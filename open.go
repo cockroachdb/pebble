@@ -808,7 +808,7 @@ func (d *DB) replayIngestedFlushable(
 		panic("pebble: invalid number of entries in batch")
 	}
 
-	meta := make([]*tableMetadata, len(fileNums))
+	meta := make([]*manifest.TableMetadata, len(fileNums))
 	var lastRangeKey keyspan.Span
 	for i, n := range fileNums {
 		readable, err := d.objProvider.OpenForReading(context.TODO(), base.FileTypeTable, n,

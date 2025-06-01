@@ -933,7 +933,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	var mem *memTable
 	var start, end *base.InternalKey
 	var blobDepth manifest.BlobReferenceDepth
-	ve := &versionEdit{}
+	ve := &manifest.VersionEdit{}
 	level := -1
 
 	maybeFlush := func() error {
@@ -984,7 +984,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			if largestSeqNum <= f.Meta.LargestSeqNum {
 				largestSeqNum = f.Meta.LargestSeqNum + 1
 			}
-			ve.NewTables = append(ve.NewTables, newTableEntry{
+			ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{
 				Level: level,
 				Meta:  f.Meta,
 			})
@@ -1005,12 +1005,12 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	}
 
 	// Example, a-c.
-	parseMeta := func(s string) (*tableMetadata, error) {
+	parseMeta := func(s string) (*manifest.TableMetadata, error) {
 		parts := strings.Split(s, "-")
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		m := (&tableMetadata{}).ExtendPointKeyBounds(
+		m := (&manifest.TableMetadata{}).ExtendPointKeyBounds(
 			opts.Comparer.Compare,
 			InternalKey{UserKey: []byte(parts[0])},
 			InternalKey{UserKey: []byte(parts[1])},
@@ -1259,7 +1259,7 @@ func runTableFileSizesCmd(td *datadriven.TestData, d *DB) string {
 	return runVersionFileSizes(d.mu.versions.currentVersion())
 }
 
-func runVersionFileSizes(v *version) string {
+func runVersionFileSizes(v *manifest.Version) string {
 	var buf bytes.Buffer
 	for l, levelMetadata := range v.Levels {
 		if levelMetadata.Empty() {
@@ -1282,7 +1282,7 @@ func runVersionFileSizes(v *version) string {
 func runMetadataCommand(t *testing.T, td *datadriven.TestData, d *DB) string {
 	var table int
 	td.ScanArgs(t, "file", &table)
-	var m *tableMetadata
+	var m *manifest.TableMetadata
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
@@ -1306,7 +1306,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 
 	// See if we can grab the TableMetadata associated with the file. This is
 	// needed to easily construct virtual sstable properties.
-	var m *tableMetadata
+	var m *manifest.TableMetadata
 	d.mu.Lock()
 	currVersion := d.mu.versions.currentVersion()
 	for _, level := range currVersion.Levels {
@@ -1463,9 +1463,9 @@ func runExciseCmd(td *datadriven.TestData, d *DB) error {
 	return d.Excise(context.Background(), exciseSpan)
 }
 
-func runExciseDryRunCmd(td *datadriven.TestData, d *DB) (*versionEdit, error) {
-	ve := &versionEdit{
-		DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
+func runExciseDryRunCmd(td *datadriven.TestData, d *DB) (*manifest.VersionEdit, error) {
+	ve := &manifest.VersionEdit{
+		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	var exciseSpan KeyRange
 	if len(td.CmdArgs) != 2 {

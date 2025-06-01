@@ -20,7 +20,7 @@ type overlapChecker struct {
 	comparer *base.Comparer
 	newIters tableNewIters
 	opts     IterOptions
-	v        *version
+	v        *manifest.Version
 }
 
 // DetermineLSMOverlap calculates the overlap.WithLSM for the given bounds.

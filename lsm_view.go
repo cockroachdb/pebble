@@ -13,12 +13,13 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/lsmview"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // LSMViewURL returns an URL which shows a diagram of the LSM.
 func (d *DB) LSMViewURL() string {
-	v := func() *version {
+	v := func() *manifest.Version {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
@@ -50,7 +51,7 @@ type lsmViewBuilder struct {
 	fmtKey base.FormatKey
 
 	levelNames []string
-	levels     [][]*tableMetadata
+	levels     [][]*manifest.TableMetadata
 
 	// The keys that appear as Smallest/Largest, sorted and formatted.
 	sortedKeys []string
@@ -64,11 +65,11 @@ type lsmViewBuilder struct {
 
 // InitLevels gets the metadata for the tables in the LSM and populates
 // levelNames and levels.
-func (b *lsmViewBuilder) InitLevels(v *version) {
+func (b *lsmViewBuilder) InitLevels(v *manifest.Version) {
 	var levelNames []string
-	var levels [][]*tableMetadata
+	var levels [][]*manifest.TableMetadata
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
-		var files []*tableMetadata
+		var files []*manifest.TableMetadata
 		for f := range v.L0SublevelFiles[sublevel].All() {
 			files = append(files, f)
 		}
@@ -81,7 +82,7 @@ func (b *lsmViewBuilder) InitLevels(v *version) {
 		levels = append(levels, nil)
 	}
 	for level := 1; level < len(v.Levels); level++ {
-		var files []*tableMetadata
+		var files []*manifest.TableMetadata
 		for f := range v.Levels[level].All() {
 			files = append(files, f)
 		}
@@ -158,7 +159,7 @@ func (b *lsmViewBuilder) Build(
 }
 
 func (b *lsmViewBuilder) tableDetails(
-	m *tableMetadata, objProvider objstorage.Provider, newIters tableNewIters,
+	m *manifest.TableMetadata, objProvider objstorage.Provider, newIters tableNewIters,
 ) []string {
 	res := make([]string, 0, 10)
 	outf := func(format string, args ...any) {

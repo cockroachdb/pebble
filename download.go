@@ -227,7 +227,7 @@ type downloadSpanTask struct {
 
 	// Testing hooks.
 	testing struct {
-		launchDownloadCompaction func(f *tableMetadata) (chan error, bool)
+		launchDownloadCompaction func(f *manifest.TableMetadata) (chan error, bool)
 	}
 }
 
@@ -242,7 +242,9 @@ type downloadBookmark struct {
 	downloadDoneCh chan error
 }
 
-func (d *DB) newDownloadSpanTask(vers *version, sp DownloadSpan) (_ *downloadSpanTask, ok bool) {
+func (d *DB) newDownloadSpanTask(
+	vers *manifest.Version, sp DownloadSpan,
+) (_ *downloadSpanTask, ok bool) {
 	bounds := base.UserKeyBoundsEndExclusive(sp.StartKey, sp.EndKey)
 	// We are interested in all external sstables that *overlap* with
 	// [sp.StartKey, sp.EndKey). Expand the bounds to the left so that we
@@ -310,7 +312,7 @@ func (c downloadCursor) String() string {
 // makeCursorAtFile returns a downloadCursor that is immediately before the
 // given file. Calling nextExternalFile on the resulting cursor (using the same
 // version) should return f.
-func makeCursorAtFile(f *tableMetadata, level int) downloadCursor {
+func makeCursorAtFile(f *manifest.TableMetadata, level int) downloadCursor {
 	return downloadCursor{
 		level:  level,
 		key:    f.Smallest().UserKey,
@@ -320,7 +322,7 @@ func makeCursorAtFile(f *tableMetadata, level int) downloadCursor {
 
 // makeCursorAfterFile returns a downloadCursor that is immediately
 // after the given file.
-func makeCursorAfterFile(f *tableMetadata, level int) downloadCursor {
+func makeCursorAfterFile(f *manifest.TableMetadata, level int) downloadCursor {
 	return downloadCursor{
 		level:  level,
 		key:    f.Smallest().UserKey,
@@ -328,7 +330,9 @@ func makeCursorAfterFile(f *tableMetadata, level int) downloadCursor {
 	}
 }
 
-func (c downloadCursor) FileIsAfterCursor(cmp base.Compare, f *tableMetadata, level int) bool {
+func (c downloadCursor) FileIsAfterCursor(
+	cmp base.Compare, f *manifest.TableMetadata, level int,
+) bool {
 	return c.Compare(cmp, makeCursorAfterFile(f, level)) < 0
 }
 
@@ -345,8 +349,8 @@ func (c downloadCursor) Compare(keyCmp base.Compare, other downloadCursor) int {
 // NextExternalFile returns the first file after the cursor, returning the file
 // and the level. If no such file exists, returns nil fileMetadata.
 func (c downloadCursor) NextExternalFile(
-	cmp base.Compare, objProvider objstorage.Provider, bounds base.UserKeyBounds, v *version,
-) (_ *tableMetadata, level int) {
+	cmp base.Compare, objProvider objstorage.Provider, bounds base.UserKeyBounds, v *manifest.Version,
+) (_ *manifest.TableMetadata, level int) {
 	for !c.AtEnd() {
 		if f := c.NextExternalFileOnLevel(cmp, objProvider, bounds.End, v); f != nil {
 			return f, c.level
@@ -362,14 +366,17 @@ func (c downloadCursor) NextExternalFile(
 // NextExternalFileOnLevel returns the first external file on c.level which is
 // after c and with Smallest.UserKey within the end bound.
 func (c downloadCursor) NextExternalFileOnLevel(
-	cmp base.Compare, objProvider objstorage.Provider, endBound base.UserKeyBoundary, v *version,
-) *tableMetadata {
+	cmp base.Compare,
+	objProvider objstorage.Provider,
+	endBound base.UserKeyBoundary,
+	v *manifest.Version,
+) *manifest.TableMetadata {
 	if c.level > 0 {
 		it := v.Levels[c.level].Iter()
 		return firstExternalFileInLevelIter(cmp, objProvider, c, it, endBound)
 	}
 	// For L0, we look at all sublevel iterators and take the first file.
-	var first *tableMetadata
+	var first *manifest.TableMetadata
 	var firstCursor downloadCursor
 	for _, sublevel := range v.L0SublevelFiles {
 		f := firstExternalFileInLevelIter(cmp, objProvider, c, sublevel.Iter(), endBound)
@@ -395,7 +402,7 @@ func firstExternalFileInLevelIter(
 	cursor downloadCursor,
 	it manifest.LevelIterator,
 	endBound base.UserKeyBoundary,
-) *tableMetadata {
+) *manifest.TableMetadata {
 	f := it.SeekGE(cmp, cursor.key)
 	// Skip the file if it starts before cursor.key or is at that same key with lower
 	// sequence number.
@@ -414,12 +421,12 @@ func firstExternalFileInLevelIter(
 // given file. Returns true on success, or false if the file is already
 // involved in a compaction.
 func (d *DB) tryLaunchDownloadForFile(
-	vers *version,
+	vers *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	env compactionEnv,
 	download *downloadSpanTask,
 	level int,
-	f *tableMetadata,
+	f *manifest.TableMetadata,
 ) (doneCh chan error, ok bool) {
 	if f.IsCompacting() {
 		return nil, false

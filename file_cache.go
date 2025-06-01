@@ -313,7 +313,7 @@ func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
 }
 
 func (h *fileCacheHandle) estimateSize(
-	meta *tableMetadata, lower, upper []byte,
+	meta *manifest.TableMetadata, lower, upper []byte,
 ) (size uint64, err error) {
 	err = h.withReader(context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) error {
 		size, err = r.EstimateDiskUsage(lower, upper, env)
@@ -322,7 +322,9 @@ func (h *fileCacheHandle) estimateSize(
 	return size, err
 }
 
-func createReader(v *fileCacheValue, meta *tableMetadata) (*sstable.Reader, sstable.ReadEnv) {
+func createReader(
+	v *fileCacheValue, meta *manifest.TableMetadata,
+) (*sstable.Reader, sstable.ReadEnv) {
 	r := v.mustSSTableReader()
 	env := sstable.ReadEnv{}
 	if meta.Virtual {
@@ -340,7 +342,7 @@ func createReader(v *fileCacheValue, meta *tableMetadata) (*sstable.Reader, ssta
 func (h *fileCacheHandle) withReader(
 	ctx context.Context,
 	blockEnv block.ReadEnv,
-	meta *tableMetadata,
+	meta *manifest.TableMetadata,
 	fn func(*sstable.Reader, sstable.ReadEnv) error,
 ) error {
 	ref, err := h.findOrCreateTable(ctx, meta)
@@ -835,7 +837,7 @@ func newRangeDelIter(
 // callers should use newIters instead.
 func newRangeKeyIter(
 	ctx context.Context,
-	file *tableMetadata,
+	file *manifest.TableMetadata,
 	r *sstable.Reader,
 	opts keyspan.SpanIterOptions,
 	internalOpts internalIterOpts,
@@ -941,7 +943,9 @@ func (rp *tableCacheShardReaderProvider) Close() {
 //
 // WARNING! If file is a virtual table, we return the properties of the physical
 // table.
-func (h *fileCacheHandle) getTableProperties(file *tableMetadata) (*sstable.Properties, error) {
+func (h *fileCacheHandle) getTableProperties(
+	file *manifest.TableMetadata,
+) (*sstable.Properties, error) {
 	// Calling findOrCreateTable gives us the responsibility of decrementing v's
 	// refCount here
 	v, err := h.findOrCreateTable(context.TODO(), file)

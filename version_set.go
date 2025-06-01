@@ -24,14 +24,6 @@ const numLevels = manifest.NumLevels
 
 const manifestMarkerName = `manifest`
 
-// Provide type aliases for the various manifest structs.
-type bulkVersionEdit = manifest.BulkVersionEdit
-type tableMetadata = manifest.TableMetadata
-type newTableEntry = manifest.NewTableEntry
-type version = manifest.Version
-type versionEdit = manifest.VersionEdit
-type versionList = manifest.VersionList
-
 // versionSet manages a collection of immutable versions, and manages the
 // creation of a new version from the most recent version. A new version is
 // created from an existing version by applying a version edit which is just
@@ -65,7 +57,7 @@ type versionSet struct {
 	dynamicBaseLevel bool
 
 	// Mutable fields.
-	versions    versionList
+	versions    manifest.VersionList
 	l0Organizer *manifest.L0Organizer
 	// blobFiles is the set of blob files referenced by the current version.
 	// blobFiles is protected by the manifest logLock (not vs.mu).
@@ -232,8 +224,8 @@ func (vs *versionSet) load(
 	manifestFilename := opts.FS.PathBase(manifestPath)
 
 	// Read the versionEdits in the manifest file.
-	var bve bulkVersionEdit
-	bve.AllAddedTables = make(map[base.TableNum]*tableMetadata)
+	var bve manifest.BulkVersionEdit
+	bve.AllAddedTables = make(map[base.TableNum]*manifest.TableMetadata)
 	manifestFile, err := vs.fs.Open(manifestPath)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
@@ -250,7 +242,7 @@ func (vs *versionSet) load(
 			return errors.Wrapf(err, "pebble: error when loading manifest file %q",
 				errors.Safe(manifestFilename))
 		}
-		var ve versionEdit
+		var ve manifest.VersionEdit
 		err = ve.Decode(r)
 		if err != nil {
 			// Break instead of returning an error if the record is corrupted
@@ -508,7 +500,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	}
 
 	currentVersion := vs.currentVersion()
-	var newVersion *version
+	var newVersion *manifest.Version
 
 	// Generate a new manifest if we don't currently have one, or forceRotation
 	// is true, or the current one is too large.
@@ -619,7 +611,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 			return errors.Wrap(err, "MANIFEST blob files apply and update failed")
 		}
 
-		var bulkEdit bulkVersionEdit
+		var bulkEdit manifest.BulkVersionEdit
 		err := bulkEdit.Accumulate(ve)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST accumulate failed")
@@ -809,7 +801,7 @@ type fileMetricDelta struct {
 //     match ve.RemovedBackingTables.
 //   - localLiveSizeDelta: the delta in local live bytes.
 func getZombieTablesAndUpdateVirtualBackings(
-	ve *versionEdit, virtualBackings *manifest.VirtualBackings, provider objstorage.Provider,
+	ve *manifest.VersionEdit, virtualBackings *manifest.VirtualBackings, provider objstorage.Provider,
 ) (zombieBackings, removedVirtualBackings []tableBackingInfo, localLiveDelta fileMetricDelta) {
 	// First, deal with the physical tables.
 	//
@@ -902,7 +894,7 @@ func getZombieTablesAndUpdateVirtualBackings(
 // zombie blob files, and computes the metric deltas for live files overall and
 // locally.
 func getZombieBlobFilesAndComputeLocalMetrics(
-	ve *versionEdit, provider objstorage.Provider,
+	ve *manifest.VersionEdit, provider objstorage.Provider,
 ) (zombieBlobFiles []objectInfo, localLiveDelta fileMetricDelta) {
 	for _, b := range ve.NewBlobFiles {
 		if objstorage.IsLocalBlobFile(provider, b.FileNum) {
@@ -1048,7 +1040,7 @@ func (vs *versionSet) createManifest(
 	// Add all extant sstables in the current version.
 	for level, levelMetadata := range vs.currentVersion().Levels {
 		for meta := range levelMetadata.All() {
-			snapshot.NewTables = append(snapshot.NewTables, newTableEntry{
+			snapshot.NewTables = append(snapshot.NewTables, manifest.NewTableEntry{
 				Level: level,
 				Meta:  meta,
 			})
@@ -1103,7 +1095,7 @@ func (vs *versionSet) getNextDiskFileNum() base.DiskFileNum {
 	return base.DiskFileNum(x)
 }
 
-func (vs *versionSet) append(v *version) {
+func (vs *versionSet) append(v *manifest.Version) {
 	if v.Refs() != 0 {
 		panic("pebble: version should be unreferenced")
 	}
@@ -1128,7 +1120,7 @@ func (vs *versionSet) append(v *version) {
 	}
 }
 
-func (vs *versionSet) currentVersion() *version {
+func (vs *versionSet) currentVersion() *manifest.Version {
 	return vs.versions.Back()
 }
 

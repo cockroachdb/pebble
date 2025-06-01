@@ -493,7 +493,7 @@ type DB struct {
 			// pending is a slice of metadata for sstables waiting to be
 			// validated. Only physical sstables should be added to the pending
 			// queue.
-			pending []newTableEntry
+			pending []manifest.NewTableEntry
 			// validating is set to true when validation is running.
 			validating bool
 		}
@@ -1027,7 +1027,7 @@ var iterAllocPool = sync.Pool{
 //     Only `seqNum` and `readState` are set.
 type snapshotIterOpts struct {
 	seqNum    base.SeqNum
-	vers      *version
+	vers      *manifest.Version
 	readState *readState
 }
 
@@ -1450,7 +1450,7 @@ func (i *Iterator) constructPointIter(
 		numMergingLevels++
 	}
 
-	var current *version
+	var current *manifest.Version
 	if !i.batchOnlyIter {
 		numMergingLevels += len(memtables)
 
@@ -2382,16 +2382,18 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 // storage size of files that meet some criteria defined by filter. When
 // applicable, this includes both the sstable size and the size of any
 // referenced blob files.
-func (d *DB) makeFileSizeAnnotator(filter func(f *tableMetadata) bool) *manifest.Annotator[uint64] {
+func (d *DB) makeFileSizeAnnotator(
+	filter func(f *manifest.TableMetadata) bool,
+) *manifest.Annotator[uint64] {
 	return &manifest.Annotator[uint64]{
 		Aggregator: manifest.SumAggregator{
-			AccumulateFunc: func(f *tableMetadata) (uint64, bool) {
+			AccumulateFunc: func(f *manifest.TableMetadata) (uint64, bool) {
 				if filter(f) {
 					return f.Size + f.EstimatedReferenceSize(), true
 				}
 				return 0, true
 			},
-			AccumulatePartialOverlapFunc: func(f *tableMetadata, bounds base.UserKeyBounds) uint64 {
+			AccumulatePartialOverlapFunc: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) uint64 {
 				if filter(f) {
 					overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
 					if err != nil {
@@ -3032,7 +3034,7 @@ func (d *DB) ObjProvider() objstorage.Provider {
 	return d.objProvider
 }
 
-func (d *DB) checkVirtualBounds(m *tableMetadata) {
+func (d *DB) checkVirtualBounds(m *manifest.TableMetadata) {
 	if !invariants.Enabled {
 		return
 	}

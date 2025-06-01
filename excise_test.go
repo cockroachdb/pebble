@@ -660,8 +660,8 @@ func TestConcurrentExcise(t *testing.T) {
 			return runTableStatsCmd(td, d)
 
 		case "excise":
-			ve := &versionEdit{
-				DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
+			ve := &manifest.VersionEdit{
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
@@ -792,7 +792,7 @@ func TestExciseBounds(t *testing.T) {
 			}
 		}
 		var buf strings.Builder
-		printBounds := func(title string, m *tableMetadata) {
+		printBounds := func(title string, m *manifest.TableMetadata) {
 			fmt.Fprintf(&buf, "%s:\n", title)
 			fmt.Fprintf(&buf, "  overall: %v - %v\n", m.Smallest(), m.Largest())
 			if m.HasPointKeys {

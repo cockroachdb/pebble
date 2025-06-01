@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
@@ -244,7 +245,7 @@ type EventuallyFileOnlySnapshot struct {
 		// The wrapped regular snapshot, if not a file-only snapshot yet.
 		snap *Snapshot
 		// The wrapped version reference, if a file-only snapshot.
-		vers *version
+		vers *manifest.Version
 	}
 
 	// Key ranges to watch for an excise on.
@@ -299,7 +300,7 @@ func (d *DB) makeEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFil
 // call.
 //
 // d.mu must be held when calling this method.
-func (es *EventuallyFileOnlySnapshot) transitionToFileOnlySnapshot(vers *version) error {
+func (es *EventuallyFileOnlySnapshot) transitionToFileOnlySnapshot(vers *manifest.Version) error {
 	es.mu.Lock()
 	select {
 	case <-es.closed:

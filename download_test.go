@@ -174,7 +174,7 @@ func TestDownloadTask(t *testing.T) {
 			var buf strings.Builder
 			maxConcurrentDownloads := 1
 			td.MaybeScanArgs(t, "max-concurrent-downloads", &maxConcurrentDownloads)
-			task.testing.launchDownloadCompaction = func(f *tableMetadata) (chan error, bool) {
+			task.testing.launchDownloadCompaction = func(f *manifest.TableMetadata) (chan error, bool) {
 				ch := make(chan error, 1)
 				if td.HasArg("fail") {
 					fmt.Fprintf(&buf, "launching download for %s and cancelling it\n", f.TableNum)

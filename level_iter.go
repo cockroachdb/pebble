@@ -69,7 +69,7 @@ type levelIter struct {
 	//   be relevant to the iteration.
 	iter internalIterator
 	// iterFile holds the current file. It is always equal to l.files.Current().
-	iterFile *tableMetadata
+	iterFile *manifest.TableMetadata
 	newIters tableNewIters
 	files    manifest.LevelIterator
 	err      error
@@ -184,7 +184,7 @@ func (l *levelIter) initCombinedIterState(state *combinedIterState) {
 	l.combinedIterState = state
 }
 
-func (l *levelIter) maybeTriggerCombinedIteration(file *tableMetadata, dir int) {
+func (l *levelIter) maybeTriggerCombinedIteration(file *manifest.TableMetadata, dir int) {
 	// If we encounter a file that contains range keys, we may need to
 	// trigger a switch to combined range-key and point-key iteration,
 	// if the *pebble.Iterator is configured for it. This switch is done
@@ -238,7 +238,7 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *tableMetadata, dir int) 
 	}
 }
 
-func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *tableMetadata {
+func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *manifest.TableMetadata {
 	// Find the earliest file whose largest key is >= key.
 
 	// NB: if flags.TrySeekUsingNext()=true, the levelIter must respect it. If
@@ -298,7 +298,7 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *tableMetadat
 		nextsUntilSeek = -1
 	}
 
-	var m *tableMetadata
+	var m *manifest.TableMetadata
 	if nextInsteadOfSeek {
 		m = l.iterFile
 	} else {
@@ -372,7 +372,7 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *tableMetadat
 	return m
 }
 
-func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *tableMetadata {
+func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *manifest.TableMetadata {
 	// Find the last file whose smallest key is < ikey.
 
 	// Ordinarily we seek the LevelIterator using SeekLT.
@@ -389,7 +389,7 @@ func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *tableMetadat
 	// one file at a time, checking each for range keys.
 	prevInsteadOfSeek := flags.RelativeSeek() && l.combinedIterState != nil && !l.combinedIterState.initialized
 
-	var m *tableMetadata
+	var m *manifest.TableMetadata
 	if prevInsteadOfSeek {
 		m = l.iterFile
 	} else {
@@ -440,7 +440,7 @@ func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *tableMetadat
 // Init the iteration bounds for the current table. Returns -1 if the table
 // lies fully before the lower bound, +1 if the table lies fully after the
 // upper bound, and 0 if the table overlaps the iteration bounds.
-func (l *levelIter) initTableBounds(f *tableMetadata) int {
+func (l *levelIter) initTableBounds(f *manifest.TableMetadata) int {
 	l.tableOpts.LowerBound = l.lower
 	if l.tableOpts.LowerBound != nil {
 		if l.cmp(f.PointKeyBounds.LargestUserKey(), l.tableOpts.LowerBound) < 0 {
@@ -480,7 +480,7 @@ const (
 	newFileLoaded
 )
 
-func (l *levelIter) loadFile(file *tableMetadata, dir int) loadFileReturnIndicator {
+func (l *levelIter) loadFile(file *manifest.TableMetadata, dir int) loadFileReturnIndicator {
 	if l.iterFile == file {
 		if l.err != nil {
 			return noFileLoaded
