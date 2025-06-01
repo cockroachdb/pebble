@@ -98,8 +98,8 @@ func rewriteKeySuffixesInBlocks(
 	case props.ComparerName != o.Comparer.Name:
 		return nil, TableFormatUnspecified, errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters",
 			props.ComparerName, o.Comparer.Name)
-	case props.FilterPolicyName != o.FilterPolicy.Name():
-		return nil, TableFormatUnspecified, errors.New("mismatched filters")
+	case o.FilterPolicy != base.NoFilterPolicy && props.FilterPolicyName != o.FilterPolicy.Name():
+		return nil, TableFormatUnspecified, errors.Errorf("mismatched filters %q vs %q", props.FilterPolicyName, o.FilterPolicy.Name())
 	}
 
 	o.TableFormat = r.tableFormat

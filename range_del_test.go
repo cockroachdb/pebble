@@ -17,6 +17,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -257,10 +258,10 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		// Use a small target file size so that there is a single key per sstable.
 		d, err := Open("", &Options{
 			FS: vfs.NewMem(),
-			Levels: []LevelOptions{
-				{TargetFileSize: 100},
-				{TargetFileSize: 80},
-				{TargetFileSize: 1},
+			Levels: [manifest.NumLevels]LevelOptions{
+				0: {TargetFileSize: 100},
+				1: {TargetFileSize: 80},
+				2: {TargetFileSize: 1},
 			},
 			DebugCheck:         DebugCheckLevels,
 			FormatMajorVersion: formatVersion,
@@ -404,10 +405,10 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
-		Levels: []LevelOptions{
-			{TargetFileSize: 200},
-			{TargetFileSize: 200},
-			{TargetFileSize: 1},
+		Levels: [manifest.NumLevels]LevelOptions{
+			0: {TargetFileSize: 200},
+			1: {TargetFileSize: 200},
+			2: {TargetFileSize: 1},
 		},
 		DebugCheck: DebugCheckLevels,
 	})
@@ -464,10 +465,10 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	d, err := Open("tmp", &Options{
 		Cleaner: ArchiveCleaner{},
 		FS:      vfs.NewMem(),
-		Levels: []LevelOptions{
-			{TargetFileSize: 200},
-			{TargetFileSize: 200},
-			{TargetFileSize: 1},
+		Levels: [manifest.NumLevels]LevelOptions{
+			0: {TargetFileSize: 200},
+			1: {TargetFileSize: 200},
+			2: {TargetFileSize: 1},
 		},
 		DebugCheck: DebugCheckLevels,
 	})

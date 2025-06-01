@@ -80,7 +80,8 @@ func TestExcise(t *testing.T) {
 			Logger:             testLogger{t},
 		}
 		if blockSize != 0 {
-			opts.Levels = append(opts.Levels, LevelOptions{BlockSize: blockSize, IndexBlockSize: 32 << 10})
+			opts.Levels[0].BlockSize = blockSize
+			opts.Levels[0].IndexBlockSize = 32 << 10
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,

@@ -969,8 +969,7 @@ func TestIteratorBlockIntervalFilter(t *testing.T) {
 			FormatMajorVersion:      internalFormatNewest,
 			BlockPropertyCollectors: bpCollectors,
 		}
-		lo := LevelOptions{BlockSize: 1, IndexBlockSize: 1}
-		opts.Levels = append(opts.Levels, lo)
+		opts.Levels[0] = LevelOptions{BlockSize: 1, IndexBlockSize: 1}
 
 		// Automatic compactions may compact away tombstones from L6, making
 		// some testcases non-deterministic.
@@ -1101,10 +1100,8 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 	opts.L0CompactionFileThreshold = 1 << rng.IntN(11) // 1-1024
 	opts.LBaseMaxBytes = 1 << rng.IntN(11)             // 1B - 1KB
 	opts.MemTableSize = 2 << 10                        // 2KB
-	var lopts LevelOptions
-	lopts.BlockSize = 1 << rng.IntN(8)      // 1B - 256B
-	lopts.IndexBlockSize = 1 << rng.IntN(8) // 1B - 256B
-	opts.Levels = []LevelOptions{lopts}
+	opts.Levels[0].BlockSize = 1 << rng.IntN(8)        // 1B - 256B
+	opts.Levels[0].IndexBlockSize = 1 << rng.IntN(8)   // 1B - 256B
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -2138,7 +2135,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 			sstable.NewTestKeysBlockPropertyCollector,
 		},
 	}
-	opts1.Levels = baseOpts.levelOpts
+	copy(opts1.Levels[:], baseOpts.levelOpts)
 	d1, err := Open("", opts1)
 	require.NoError(t, err)
 
@@ -2151,7 +2148,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 			sstable.NewTestKeysBlockPropertyCollector,
 		},
 	}
-	opts2.Levels = randomOpts.levelOpts
+	copy(opts2.Levels[:], randomOpts.levelOpts)
 	d2, err := Open("", opts2)
 	require.NoError(t, err)
 
