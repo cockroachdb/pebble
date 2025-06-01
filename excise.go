@@ -77,10 +77,10 @@ const (
 func (d *DB) exciseTable(
 	ctx context.Context,
 	exciseBounds base.UserKeyBounds,
-	m *tableMetadata,
+	m *manifest.TableMetadata,
 	level int,
 	boundsPolicy exciseBoundsPolicy,
-) (leftTable, rightTable *tableMetadata, _ error) {
+) (leftTable, rightTable *manifest.TableMetadata, _ error) {
 	// Check if there's actually an overlap between m and exciseSpan.
 	mBounds := m.UserKeyBounds()
 	if !exciseBounds.Overlaps(d.cmp, &mBounds) {
@@ -138,7 +138,7 @@ func (d *DB) exciseTable(
 	// have changed since our previous calculation. Do this optimization as part of
 	// https://github.com/cockroachdb/pebble/issues/2112 .
 	if d.cmp(m.Smallest().UserKey, exciseBounds.Start) < 0 {
-		leftTable = &tableMetadata{
+		leftTable = &manifest.TableMetadata{
 			Virtual:  true,
 			TableNum: d.mu.versions.getNextTableNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
@@ -178,7 +178,7 @@ func (d *DB) exciseTable(
 		//
 		// See comment before the definition of leftFile for the motivation behind
 		// calculating tight user-key bounds.
-		rightTable = &tableMetadata{
+		rightTable = &manifest.TableMetadata{
 			Virtual:  true,
 			TableNum: d.mu.versions.getNextTableNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
@@ -266,7 +266,7 @@ func exciseOverlapBounds(
 // Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
 // the leftFile.
 func looseLeftTableBounds(
-	cmp Compare, originalTable, leftTable *tableMetadata, exciseSpanStart []byte,
+	cmp Compare, originalTable, leftTable *manifest.TableMetadata, exciseSpanStart []byte,
 ) {
 	if originalTable.HasPointKeys {
 		largestPointKey := originalTable.PointKeyBounds.Largest()
@@ -294,7 +294,7 @@ func looseLeftTableBounds(
 // The excise span end bound is assumed to be exclusive; this function cannot be
 // used with an inclusive end bound.
 func looseRightTableBounds(
-	cmp Compare, originalTable, rightTable *tableMetadata, exciseSpanEnd []byte,
+	cmp Compare, originalTable, rightTable *manifest.TableMetadata, exciseSpanEnd []byte,
 ) {
 	if originalTable.HasPointKeys {
 		smallestPointKey := originalTable.PointKeyBounds.Smallest()
@@ -319,7 +319,10 @@ func looseRightTableBounds(
 // Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
 // the leftFile.
 func determineLeftTableBounds(
-	cmp Compare, originalTable, leftTable *tableMetadata, exciseSpanStart []byte, iters iterSet,
+	cmp Compare,
+	originalTable, leftTable *manifest.TableMetadata,
+	exciseSpanStart []byte,
+	iters iterSet,
 ) error {
 	if originalTable.HasPointKeys && cmp(originalTable.PointKeyBounds.Smallest().UserKey, exciseSpanStart) < 0 {
 		// This file will probably contain point keys.
@@ -373,7 +376,7 @@ func determineLeftTableBounds(
 // overlapping exciseSpanEnd.Key.
 func determineRightTableBounds(
 	cmp Compare,
-	originalTable, rightTable *tableMetadata,
+	originalTable, rightTable *manifest.TableMetadata,
 	exciseSpanEnd base.UserKeyBoundary,
 	iters iterSet,
 ) error {
@@ -427,7 +430,7 @@ func determineRightTableBounds(
 }
 
 func determineExcisedTableSize(
-	fc *fileCacheHandle, originalTable, excisedTable *tableMetadata,
+	fc *fileCacheHandle, originalTable, excisedTable *manifest.TableMetadata,
 ) error {
 	size, err := fc.estimateSize(originalTable, excisedTable.Smallest().UserKey, excisedTable.Largest().UserKey)
 	if err != nil {
@@ -449,7 +452,9 @@ func determineExcisedTableSize(
 // proportionally based on the ratio of the excised table's size to the original
 // table's size.
 func determineExcisedTableBlobReferences(
-	originalBlobReferences manifest.BlobReferences, originalSize uint64, excisedTable *tableMetadata,
+	originalBlobReferences manifest.BlobReferences,
+	originalSize uint64,
+	excisedTable *manifest.TableMetadata,
 ) {
 	if len(originalBlobReferences) == 0 {
 		return
@@ -467,7 +472,7 @@ func determineExcisedTableBlobReferences(
 //
 // Either or both of leftTable/rightTable can be nil.
 func applyExciseToVersionEdit(
-	ve *versionEdit, originalTable, leftTable, rightTable *tableMetadata, level int,
+	ve *versionEdit, originalTable, leftTable, rightTable *manifest.TableMetadata, level int,
 ) (newFiles []manifest.NewTableEntry) {
 	ve.DeletedTables[manifest.DeletedTableEntry{
 		Level:   level,

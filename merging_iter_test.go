@@ -206,7 +206,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 			if err != nil {
 				d.Fatalf(t, "%v", err)
 			}
-			var files [numLevels][]*tableMetadata
+			var files [numLevels][]*manifest.TableMetadata
 			for l := range levels {
 				if levels[l].Value() != "L" {
 					d.Fatalf(t, "top-level strings should be L")
@@ -669,12 +669,12 @@ func buildLevelsForMergingIterSeqSeek(
 	}
 	levelSlices = make([]manifest.LevelSlice, levelCount)
 	for i := range readers {
-		meta := make([]*tableMetadata, len(readers[i]))
+		meta := make([]*manifest.TableMetadata, len(readers[i]))
 		for j := range readers[i] {
 			iter, err := readers[i][j].NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
 			require.NoError(b, err)
 			smallest := iter.First()
-			meta[j] = &tableMetadata{}
+			meta[j] = &manifest.TableMetadata{}
 			// The same FileNum is being reused across different levels, which
 			// is harmless for the benchmark since each level has its own iterator
 			// creation func.

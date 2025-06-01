@@ -2382,16 +2382,18 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 // storage size of files that meet some criteria defined by filter. When
 // applicable, this includes both the sstable size and the size of any
 // referenced blob files.
-func (d *DB) makeFileSizeAnnotator(filter func(f *tableMetadata) bool) *manifest.Annotator[uint64] {
+func (d *DB) makeFileSizeAnnotator(
+	filter func(f *manifest.TableMetadata) bool,
+) *manifest.Annotator[uint64] {
 	return &manifest.Annotator[uint64]{
 		Aggregator: manifest.SumAggregator{
-			AccumulateFunc: func(f *tableMetadata) (uint64, bool) {
+			AccumulateFunc: func(f *manifest.TableMetadata) (uint64, bool) {
 				if filter(f) {
 					return f.Size + f.EstimatedReferenceSize(), true
 				}
 				return 0, true
 			},
-			AccumulatePartialOverlapFunc: func(f *tableMetadata, bounds base.UserKeyBounds) uint64 {
+			AccumulatePartialOverlapFunc: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) uint64 {
 				if filter(f) {
 					overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
 					if err != nil {
@@ -3032,7 +3034,7 @@ func (d *DB) ObjProvider() objstorage.Provider {
 	return d.objProvider
 }
 
-func (d *DB) checkVirtualBounds(m *tableMetadata) {
+func (d *DB) checkVirtualBounds(m *manifest.TableMetadata) {
 	if !invariants.Enabled {
 		return
 	}

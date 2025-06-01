@@ -188,12 +188,12 @@ func TestIngestLoadRand(t *testing.T) {
 		paths[i] = fmt.Sprint(i)
 		pending[i] = base.TableNum(rng.Uint64())
 		expected[i] = ingestLocalMeta{
-			tableMetadata: &tableMetadata{
+			TableMetadata: &manifest.TableMetadata{
 				TableNum: pending[i],
 			},
 			path: paths[i],
 		}
-		expected[i].tableMetadata.Stats.CompressionType = block.SnappyCompression
+		expected[i].TableMetadata.Stats.CompressionType = block.SnappyCompression
 		expected[i].StatsMarkValid()
 
 		func() {
@@ -298,10 +298,10 @@ func TestIngestSortAndVerify(t *testing.T) {
 					if cmp(smallest.UserKey, largest.UserKey) > 0 {
 						return fmt.Sprintf("range %v-%v is not valid", smallest, largest)
 					}
-					m := (&tableMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
+					m := (&manifest.TableMetadata{}).ExtendPointKeyBounds(cmp, smallest, largest)
 					m.InitPhysicalBacking()
 					meta = append(meta, ingestLocalMeta{
-						tableMetadata: m,
+						TableMetadata: m,
 						path:          strconv.Itoa(i),
 					})
 				}
@@ -342,7 +342,7 @@ func TestIngestLink(t *testing.T) {
 			contents := make([][]byte, len(meta))
 			for j := range meta {
 				meta[j].path = fmt.Sprintf("external%d", j)
-				meta[j].tableMetadata = &tableMetadata{}
+				meta[j].TableMetadata = &manifest.TableMetadata{}
 				meta[j].TableNum = base.TableNum(j)
 				meta[j].InitPhysicalBacking()
 				f, err := opts.FS.Create(meta[j].path, vfs.WriteCategoryUnspecified)
@@ -426,9 +426,9 @@ func TestIngestLinkFallback(t *testing.T) {
 	require.NoError(t, err)
 	defer objProvider.Close()
 
-	meta := &tableMetadata{TableNum: 1}
+	meta := &manifest.TableMetadata{TableNum: 1}
 	meta.InitPhysicalBacking()
-	err = ingestLinkLocal(context.Background(), 0, opts, objProvider, []ingestLocalMeta{{tableMetadata: meta, path: "source"}})
+	err = ingestLinkLocal(context.Background(), 0, opts, objProvider, []ingestLocalMeta{{TableMetadata: meta, path: "source"}})
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
@@ -915,7 +915,7 @@ func testIngestSharedImpl(
 
 		case "excise":
 			ve := &versionEdit{
-				DeletedTables: map[manifest.DeletedTableEntry]*tableMetadata{},
+				DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 			}
 			var exciseSpan KeyRange
 			if len(td.CmdArgs) != 2 {
@@ -1423,9 +1423,9 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 		t.Run(comparer.Name, func(t *testing.T) {
 			var mem *memTable
 
-			parseMeta := func(s string) *tableMetadata {
+			parseMeta := func(s string) *manifest.TableMetadata {
 				parts := strings.Split(s, "-")
-				meta := &tableMetadata{}
+				meta := &manifest.TableMetadata{}
 				if len(parts) != 2 {
 					t.Fatalf("malformed table spec: %s", s)
 				}
@@ -1514,19 +1514,19 @@ func TestKeyRangeBasic(t *testing.T) {
 	require.True(t, k1.Contains(cmp, base.MakeInternalKey([]byte("bb"), 1, InternalKeyKindSet)))
 	require.True(t, k1.Contains(cmp, base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("c"))))
 
-	m1 := &tableMetadata{}
+	m1 := &manifest.TableMetadata{}
 	m1.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet),
 		base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet))
 	require.True(t, m1.Overlaps(cmp, &k1UserKeyBounds))
-	m2 := &tableMetadata{}
+	m2 := &manifest.TableMetadata{}
 	m2.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("c"), 1, InternalKeyKindSet),
 		base.MakeInternalKey([]byte("d"), 1, InternalKeyKindSet))
 	require.False(t, m2.Overlaps(cmp, &k1UserKeyBounds))
-	m3 := &tableMetadata{}
+	m3 := &manifest.TableMetadata{}
 	m3.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
 		base.MakeExclusiveSentinelKey(InternalKeyKindRangeDelete, []byte("b")))
 	require.False(t, m3.Overlaps(cmp, &k1UserKeyBounds))
-	m4 := &tableMetadata{}
+	m4 := &manifest.TableMetadata{}
 	m4.ExtendPointKeyBounds(cmp, base.MakeInternalKey([]byte("a"), 1, InternalKeyKindSet),
 		base.MakeInternalKey([]byte("b"), 1, InternalKeyKindSet))
 	require.True(t, m4.Overlaps(cmp, &k1UserKeyBounds))
@@ -2422,7 +2422,7 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 	rr := record.NewReader(f, 0 /* logNum */)
-	var largest *tableMetadata
+	var largest *manifest.TableMetadata
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || err == record.ErrInvalidChunk {
@@ -2577,7 +2577,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 
 	var (
 		seqNum base.SeqNum
-		metas  []*tableMetadata
+		metas  []*manifest.TableMetadata
 	)
 	datadriven.RunTest(t, "testdata/ingest_update_seqnums", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -2618,7 +2618,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			}
 
 			// Construct the table metadata from the writer metadata.
-			m := &tableMetadata{
+			m := &manifest.TableMetadata{
 				SmallestSeqNum: 0, // Simulate an ingestion.
 				LargestSeqNum:  0,
 			}
@@ -2738,9 +2738,9 @@ func TestIngestCleanup(t *testing.T) {
 			// Cleanup the set of files in the FS.
 			var toRemove []ingestLocalMeta
 			for _, fn := range tc.cleanupFiles {
-				m := &tableMetadata{TableNum: fn}
+				m := &manifest.TableMetadata{TableNum: fn}
 				m.InitPhysicalBacking()
-				toRemove = append(toRemove, ingestLocalMeta{tableMetadata: m})
+				toRemove = append(toRemove, ingestLocalMeta{TableMetadata: m})
 			}
 
 			err = ingestCleanup(objProvider, toRemove)
