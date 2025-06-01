@@ -1624,7 +1624,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		err = d.handleIngestAsFlushable(fileMetas, seqNum, args.ExciseSpan)
 	}
 
-	var ve *versionEdit
+	var ve *manifest.VersionEdit
 	apply := func(seqNum base.SeqNum) {
 		if err != nil || asFlushable {
 			// An error occurred during prepare.
@@ -1784,7 +1784,7 @@ type ingestSplitFile struct {
 // d.mu as well as the manifest lock must be held when calling this method.
 func (d *DB) ingestSplit(
 	ctx context.Context,
-	ve *versionEdit,
+	ve *manifest.VersionEdit,
 	updateMetrics func(*manifest.TableMetadata, int, []manifest.NewTableEntry),
 	files []ingestSplitFile,
 	replacedTables map[base.TableNum][]manifest.NewTableEntry,
@@ -1888,11 +1888,11 @@ func (d *DB) ingestApply(
 	exciseSpan KeyRange,
 	exciseBoundsPolicy exciseBoundsPolicy,
 	exciseSeqNum base.SeqNum,
-) (*versionEdit, error) {
+) (*manifest.VersionEdit, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	ve := &versionEdit{
+	ve := &manifest.VersionEdit{
 		NewTables: make([]manifest.NewTableEntry, lr.fileCount()),
 	}
 	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {

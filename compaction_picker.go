@@ -204,7 +204,7 @@ type pickedCompaction struct {
 	// The boundaries of the input data.
 	smallest      InternalKey
 	largest       InternalKey
-	version       *version
+	version       *manifest.Version
 	l0Organizer   *manifest.L0Organizer
 	pickerMetrics pickedCompactionMetrics
 }
@@ -226,7 +226,7 @@ func defaultOutputLevel(startLevel, baseLevel int) int {
 
 func newPickedCompaction(
 	opts *Options,
-	cur *version,
+	cur *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	startLevel, outputLevel, baseLevel int,
 ) *pickedCompaction {
@@ -268,7 +268,7 @@ func adjustedOutputLevel(outputLevel int, baseLevel int) int {
 func newPickedCompactionFromL0(
 	lcf *manifest.L0CompactionFiles,
 	opts *Options,
-	vers *version,
+	vers *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	baseLevel int,
 	isBase bool,
@@ -579,7 +579,7 @@ func canCompactTables(
 // the newest version. The picker is used under logLock (until a new version is
 // installed).
 func newCompactionPickerByScore(
-	v *version,
+	v *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	virtualBackings *manifest.VirtualBackings,
 	opts *Options,
@@ -674,7 +674,7 @@ func totalCompensatedSize(iter iter.Seq[*manifest.TableMetadata]) uint64 {
 // picker is created and initialized every time a new version is installed.
 type compactionPickerByScore struct {
 	opts *Options
-	vers *version
+	vers *manifest.Version
 	// Unlike vers, which is immutable and the latest version when this picker is
 	// created, l0Organizer represents the mutable L0 state of the latest version.
 	// This means that at some point in the future a compactionPickerByScore
@@ -1024,7 +1024,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 // L0 is special in that files within L0 may overlap one another, so a different
 // set of heuristics that take into account read amplification apply.
 func calculateL0FillFactor(
-	vers *version,
+	vers *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	opts *Options,
 	inProgressCompactions []compactionInfo,
@@ -1063,7 +1063,7 @@ func calculateL0FillFactor(
 // function is linear with respect to the number of files in `level` and
 // `outputLevel`.
 func pickCompactionSeedFile(
-	vers *version,
+	vers *manifest.Version,
 	virtualBackings *manifest.VirtualBackings,
 	opts *Options,
 	level, outputLevel int,
@@ -1683,7 +1683,7 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 func pickAutoLPositive(
 	env compactionEnv,
 	opts *Options,
-	vers *version,
+	vers *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	cInfo candidateLevelInfo,
 	baseLevel int,
@@ -1839,7 +1839,11 @@ func (wa WriteAmpHeuristic) String() string {
 // Helper method to pick compactions originating from L0. Uses information about
 // sublevels to generate a compaction.
 func pickL0(
-	env compactionEnv, opts *Options, vers *version, l0Organizer *manifest.L0Organizer, baseLevel int,
+	env compactionEnv,
+	opts *Options,
+	vers *manifest.Version,
+	l0Organizer *manifest.L0Organizer,
+	baseLevel int,
 ) *pickedCompaction {
 	// It is important to pass information about Lbase files to L0Sublevels
 	// so it can pick a compaction that does not conflict with an Lbase => Lbase+1
@@ -1886,7 +1890,7 @@ func pickL0(
 }
 
 func newPickedManualCompaction(
-	vers *version,
+	vers *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	opts *Options,
 	env compactionEnv,
@@ -1949,7 +1953,7 @@ func newPickedManualCompaction(
 // which could be specified as being performed either by a copy compaction of
 // the backing file or a rewrite compaction.
 func pickDownloadCompaction(
-	vers *version,
+	vers *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	opts *Options,
 	env compactionEnv,

@@ -390,7 +390,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	d.checkVirtualBounds(v2)
 
 	// Write the version edit.
-	fileMetrics := func(ve *versionEdit) levelMetricsDelta {
+	fileMetrics := func(ve *manifest.VersionEdit) levelMetricsDelta {
 		metrics := newFileMetrics(ve.NewTables)
 		for de, f := range ve.DeletedTables {
 			lm := metrics[de.Level]
@@ -405,7 +405,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 		return metrics
 	}
 
-	applyVE := func(ve *versionEdit) error {
+	applyVE := func(ve *manifest.VersionEdit) error {
 		err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 			return versionUpdate{
 				VE:                      ve,

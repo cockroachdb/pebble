@@ -300,7 +300,7 @@ func (d *DB) scanReadStateTableStats(
 }
 
 func (d *DB) loadTableStats(
-	ctx context.Context, v *version, level int, meta *manifest.TableMetadata,
+	ctx context.Context, v *manifest.Version, level int, meta *manifest.TableMetadata,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
@@ -348,7 +348,7 @@ func (d *DB) loadTableStats(
 func (d *DB) loadTablePointKeyStats(
 	ctx context.Context,
 	props *sstable.CommonProperties,
-	v *version,
+	v *manifest.Version,
 	level int,
 	meta *manifest.TableMetadata,
 	stats *manifest.TableStats,
@@ -373,7 +373,7 @@ func (d *DB) loadTablePointKeyStats(
 func (d *DB) loadTableRangeDelStats(
 	ctx context.Context,
 	r *sstable.Reader,
-	v *version,
+	v *manifest.Version,
 	level int,
 	meta *manifest.TableMetadata,
 	stats *manifest.TableStats,
@@ -483,7 +483,7 @@ func (d *DB) loadTableRangeDelStats(
 
 func (d *DB) estimateSizesBeneath(
 	ctx context.Context,
-	v *version,
+	v *manifest.Version,
 	level int,
 	meta *manifest.TableMetadata,
 	fileProps *sstable.CommonProperties,
@@ -564,7 +564,11 @@ func (d *DB) estimateSizesBeneath(
 }
 
 func (d *DB) estimateReclaimedSizeBeneath(
-	ctx context.Context, v *version, level int, start, end []byte, hintType deleteCompactionHintType,
+	ctx context.Context,
+	v *manifest.Version,
+	level int,
+	start, end []byte,
+	hintType deleteCompactionHintType,
 ) (estimate uint64, hintSeqNum base.SeqNum, err error) {
 	// Find all files in lower levels that overlap with the deleted range
 	// [start, end).

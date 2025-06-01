@@ -933,7 +933,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	var mem *memTable
 	var start, end *base.InternalKey
 	var blobDepth manifest.BlobReferenceDepth
-	ve := &versionEdit{}
+	ve := &manifest.VersionEdit{}
 	level := -1
 
 	maybeFlush := func() error {
@@ -1259,7 +1259,7 @@ func runTableFileSizesCmd(td *datadriven.TestData, d *DB) string {
 	return runVersionFileSizes(d.mu.versions.currentVersion())
 }
 
-func runVersionFileSizes(v *version) string {
+func runVersionFileSizes(v *manifest.Version) string {
 	var buf bytes.Buffer
 	for l, levelMetadata := range v.Levels {
 		if levelMetadata.Empty() {
@@ -1463,8 +1463,8 @@ func runExciseCmd(td *datadriven.TestData, d *DB) error {
 	return d.Excise(context.Background(), exciseSpan)
 }
 
-func runExciseDryRunCmd(td *datadriven.TestData, d *DB) (*versionEdit, error) {
-	ve := &versionEdit{
+func runExciseDryRunCmd(td *datadriven.TestData, d *DB) (*manifest.VersionEdit, error) {
+	ve := &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	var exciseSpan KeyRange

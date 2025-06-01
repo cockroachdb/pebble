@@ -19,7 +19,7 @@ import (
 
 // LSMViewURL returns an URL which shows a diagram of the LSM.
 func (d *DB) LSMViewURL() string {
-	v := func() *version {
+	v := func() *manifest.Version {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
@@ -65,7 +65,7 @@ type lsmViewBuilder struct {
 
 // InitLevels gets the metadata for the tables in the LSM and populates
 // levelNames and levels.
-func (b *lsmViewBuilder) InitLevels(v *version) {
+func (b *lsmViewBuilder) InitLevels(v *manifest.Version) {
 	var levelNames []string
 	var levels [][]*manifest.TableMetadata
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {

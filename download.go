@@ -242,7 +242,9 @@ type downloadBookmark struct {
 	downloadDoneCh chan error
 }
 
-func (d *DB) newDownloadSpanTask(vers *version, sp DownloadSpan) (_ *downloadSpanTask, ok bool) {
+func (d *DB) newDownloadSpanTask(
+	vers *manifest.Version, sp DownloadSpan,
+) (_ *downloadSpanTask, ok bool) {
 	bounds := base.UserKeyBoundsEndExclusive(sp.StartKey, sp.EndKey)
 	// We are interested in all external sstables that *overlap* with
 	// [sp.StartKey, sp.EndKey). Expand the bounds to the left so that we
@@ -347,7 +349,7 @@ func (c downloadCursor) Compare(keyCmp base.Compare, other downloadCursor) int {
 // NextExternalFile returns the first file after the cursor, returning the file
 // and the level. If no such file exists, returns nil fileMetadata.
 func (c downloadCursor) NextExternalFile(
-	cmp base.Compare, objProvider objstorage.Provider, bounds base.UserKeyBounds, v *version,
+	cmp base.Compare, objProvider objstorage.Provider, bounds base.UserKeyBounds, v *manifest.Version,
 ) (_ *manifest.TableMetadata, level int) {
 	for !c.AtEnd() {
 		if f := c.NextExternalFileOnLevel(cmp, objProvider, bounds.End, v); f != nil {
@@ -364,7 +366,10 @@ func (c downloadCursor) NextExternalFile(
 // NextExternalFileOnLevel returns the first external file on c.level which is
 // after c and with Smallest.UserKey within the end bound.
 func (c downloadCursor) NextExternalFileOnLevel(
-	cmp base.Compare, objProvider objstorage.Provider, endBound base.UserKeyBoundary, v *version,
+	cmp base.Compare,
+	objProvider objstorage.Provider,
+	endBound base.UserKeyBoundary,
+	v *manifest.Version,
 ) *manifest.TableMetadata {
 	if c.level > 0 {
 		it := v.Levels[c.level].Iter()
@@ -416,7 +421,7 @@ func firstExternalFileInLevelIter(
 // given file. Returns true on success, or false if the file is already
 // involved in a compaction.
 func (d *DB) tryLaunchDownloadForFile(
-	vers *version,
+	vers *manifest.Version,
 	l0Organizer *manifest.L0Organizer,
 	env compactionEnv,
 	download *downloadSpanTask,

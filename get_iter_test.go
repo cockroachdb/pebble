@@ -440,7 +440,7 @@ func TestGetIter(t *testing.T) {
 			continue
 		}
 
-		get := func(v *version, ikey InternalKey) ([]byte, error) {
+		get := func(v *manifest.Version, ikey InternalKey) ([]byte, error) {
 			var buf struct {
 				dbi Iterator
 				get getIter

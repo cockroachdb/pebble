@@ -31,7 +31,7 @@ type getIter struct {
 	batch    *Batch
 	mem      flushableList
 	l0       []manifest.LevelSlice
-	version  *version
+	version  *manifest.Version
 	iterKV   *base.InternalKV
 	// tombstoned and tombstonedSeqNum track whether the key has been deleted by
 	// a range delete tombstone. The first visible (at getIter.snapshot) range

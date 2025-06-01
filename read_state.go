@@ -4,7 +4,11 @@
 
 package pebble
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/cockroachdb/pebble/internal/manifest"
+)
 
 // readState encapsulates the state needed for reading (the current version and
 // list of memtables). Loading the readState is done without grabbing
@@ -21,7 +25,7 @@ import "sync/atomic"
 type readState struct {
 	db        *DB
 	refcnt    atomic.Int32
-	current   *version
+	current   *manifest.Version
 	memtables flushableList
 }
 
