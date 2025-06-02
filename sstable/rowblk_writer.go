@@ -1967,9 +1967,6 @@ func (w *RawRowWriter) copyProperties(props Properties) {
 
 // copyFilter implements RawWriter.
 func (w *RawRowWriter) copyFilter(filter []byte, filterName string) error {
-	if w.filter != nil && filterName != w.filter.policyName() {
-		return errors.Newf("mismatched filters %q vs %q", filterName, w.filter.policyName())
-	}
 	w.filter = copyFilterWriter{
 		origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filter,
 	}

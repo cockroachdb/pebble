@@ -1263,9 +1263,6 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 // by the sstable copier that can copy parts of an sstable to a new sstable,
 // using CopySpan().
 func (w *RawColumnWriter) copyFilter(filter []byte, filterName string) error {
-	if w.filterBlock != nil && filterName != w.filterBlock.policyName() {
-		return errors.Newf("mismatched filters %q vs %q", filterName, w.filterBlock.policyName())
-	}
 	w.filterBlock = copyFilterWriter{
 		origPolicyName: w.filterBlock.policyName(), origMetaName: w.filterBlock.metaName(), data: filter,
 	}
