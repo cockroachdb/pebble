@@ -216,7 +216,7 @@ func TestIngestLoadRand(t *testing.T) {
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 				TableFormat: version.MaxTableFormat(),
 			})
-			var count uint64
+			var count, rawKeySize uint64
 			for i := range keys {
 				if i > 0 && base.InternalCompare(cmp, keys[i-1], keys[i]) == 0 {
 					// Duplicate key, ignore.
@@ -224,7 +224,9 @@ func TestIngestLoadRand(t *testing.T) {
 				}
 				require.NoError(t, w.Add(keys[i], nil, false /* forceObsolete */))
 				count++
+				rawKeySize += uint64(keys[i].Size())
 			}
+			expected[i].Stats.RawKeySize = rawKeySize
 			expected[i].Stats.NumEntries = count
 			require.NoError(t, w.Close())
 
