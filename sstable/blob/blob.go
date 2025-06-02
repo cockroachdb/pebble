@@ -282,7 +282,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	{
 		indexBlock := w.indexEncoder.Finish()
 		var compressedBuf []byte
-		pb := block.CompressAndChecksum(&compressedBuf, indexBlock, block.NoCompression, &w.checksummer)
+		pb := block.CompressAndChecksum(&compressedBuf, indexBlock, block.NoopCompressor, &w.checksummer)
 		if _, w.err = pb.WriteTo(w.w); w.err != nil {
 			err = w.err
 			if w.w != nil {

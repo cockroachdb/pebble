@@ -489,7 +489,10 @@ func (d *dataBlockBuf) finish() {
 }
 
 func (d *dataBlockBuf) compressAndChecksum(c block.Compression) {
-	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, c, &d.checksummer)
+	// TODO(radu): pass a Compressor here.
+	compressor := block.GetCompressor(c)
+	defer compressor.Close()
+	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, compressor, &d.checksummer)
 }
 
 func (d *dataBlockBuf) shouldFlush(
@@ -1929,10 +1932,13 @@ func (w *RawRowWriter) copyDataBlocks(
 // addDataBlock implements RawWriter.
 func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
 	blockBuf := &w.dataBlockBuf.blockBuf
+	// TODO(radu): store a compressor in w.layout.
+	compressor := block.GetCompressor(w.layout.compression)
+	defer compressor.Close()
 	pb := block.CompressAndChecksum(
 		&blockBuf.dataBuf,
 		b,
-		w.layout.compression,
+		compressor,
 		&blockBuf.checksummer,
 	)
 

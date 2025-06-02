@@ -916,7 +916,10 @@ func (w *layoutWriter) WriteValueIndexBlock(
 func (w *layoutWriter) writeBlock(
 	b []byte, compression block.Compression, buf *blockBuf,
 ) (block.Handle, error) {
-	pb := block.CompressAndChecksum(&buf.dataBuf, b, compression, &buf.checksummer)
+	// TODO(radu): store a compressor in the layoutWriter.
+	compressor := block.GetCompressor(compression)
+	defer compressor.Close()
+	pb := block.CompressAndChecksum(&buf.dataBuf, b, compressor, &buf.checksummer)
 	h, err := w.writePrecompressedBlock(pb)
 	return h, err
 }
