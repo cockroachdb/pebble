@@ -320,6 +320,8 @@ func (d *DB) loadTableStats(
 			stats.NumRangeKeySets = props.NumRangeKeySets
 			stats.ValueBlocksSize = props.ValueBlocksSize
 			stats.CompressionType = block.CompressionFromString(props.CompressionName)
+			stats.RawValueSize = props.RawValueSize
+			stats.RawKeySize = props.RawKeySize
 			if props.NumDataBlocks > 0 {
 				stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
 			}
@@ -510,21 +512,10 @@ func (d *DB) estimateSizesBeneath(
 	for l := level + 1; l < numLevels; l++ {
 		for tableBeneath := range v.Overlaps(l, meta.UserKeyBounds()).All() {
 			err := d.fileCache.withReader(ctx, block.NoReadEnv, tableBeneath, func(v *sstable.Reader, _ sstable.ReadEnv) (err error) {
-				// TODO(xinhaoz): We should avoid reading the properties block here.
-				// See https://github.com/cockroachdb/pebble/issues/4792.
-				loadedProps, err := v.ReadPropertiesBlock(ctx, nil /* buffer pool */)
-				if err != nil {
-					return err
-				}
-				props := loadedProps.CommonProperties
-				if tableBeneath.Virtual {
-					props = loadedProps.GetScaledProperties(tableBeneath.TableBacking.Size, tableBeneath.Size)
-				}
-
 				fileSum += tableBeneath.Size
 				entryCount += tableBeneath.Stats.NumEntries
-				keySum += props.RawKeySize
-				valSum += props.RawValueSize
+				keySum += tableBeneath.Stats.RawKeySize
+				valSum += tableBeneath.Stats.RawValueSize
 				return nil
 			})
 			if err != nil {
@@ -730,6 +721,8 @@ func maybeSetStatsFromProperties(
 	meta.Stats.PointDeletionsBytesEstimate = pointEstimate
 	meta.Stats.RangeDeletionsBytesEstimate = 0
 	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
+	meta.Stats.RawValueSize = props.RawValueSize
+	meta.Stats.RawKeySize = props.RawKeySize
 	meta.Stats.CompressionType = block.CompressionFromString(props.CompressionName)
 	meta.StatsMarkValid()
 	sanityCheckStats(meta, logger, "stats from properties")

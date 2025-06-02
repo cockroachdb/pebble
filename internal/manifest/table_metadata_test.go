@@ -143,14 +143,14 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 // be mindful of its size increasing -- as the cost of TableMetadata is
 // proportional to the amount of files that exist.
 func TestTableMetadataSize(t *testing.T) {
-	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-		t.Skip("Test only supported on amd64 and arm64 architectures")
-	}
-	structSize := unsafe.Sizeof(TableMetadata{})
+  if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+    t.Skip("Test only supported on amd64 and arm64 architectures")
+  }
+  structSize := unsafe.Sizeof(TableMetadata{})
 
-	const tableMetadataSize = 304
-	if structSize != tableMetadataSize {
-		t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
-			structSize, tableMetadataSize)
-	}
+  const tableMetadataSize = 320
+  if structSize != tableMetadataSize {
+    t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
+      structSize, tableMetadataSize)
+  }
 }
