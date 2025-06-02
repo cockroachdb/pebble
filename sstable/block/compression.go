@@ -5,7 +5,6 @@
 package block
 
 import (
-	"math/rand/v2"
 	"slices"
 	"sync"
 
@@ -255,11 +254,11 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 
 // CompressAndChecksumBufHandle is like CompressAndChecksum, but it will
 // retrieve a buffer for the compressed block from a sync.Pool and return a
-// *BufHandle that the caller can use to release the buffer back to the pool.
+// *TempBuffer that the caller can use to release the buffer back to the pool.
 func CompressAndChecksumBufHandle(
 	blockData []byte, compression Compression, checksummer *Checksummer,
-) (PhysicalBlock, *BufHandle) {
-	compressedBuf := compressedBuffers.Get()
+) (PhysicalBlock, *TempBuffer) {
+	compressedBuf := NewTempBuffer()
 	pb := CompressAndChecksum(&compressedBuf.b, blockData, compression, checksummer)
 	return pb, compressedBuf
 }
@@ -306,7 +305,7 @@ func CompressAndChecksumWithCompressor(
 // slices used in construction of the uncompressed block and the compressed
 // physical block.
 type Buffer struct {
-	h           *BufHandle
+	h           *TempBuffer
 	compression Compression
 	checksummer Checksummer
 }
@@ -314,7 +313,7 @@ type Buffer struct {
 // Init configures the BlockBuffer with the specified compression and checksum
 // type.
 func (b *Buffer) Init(compression Compression, checksumType ChecksumType) {
-	b.h = uncompressedBuffers.Get()
+	b.h = NewTempBuffer()
 	b.h.b = b.h.b[:0]
 	b.compression = compression
 	b.checksummer.Type = checksumType
@@ -366,15 +365,15 @@ func (b *Buffer) Resize(length int) {
 
 // CompressAndChecksum compresses and checksums the block data, returning a
 // PhysicalBlock that is owned by the caller. The returned PhysicalBlock's
-// memory is backed by the returned BufHandle. If non-nil, the returned
-// BufHandle may be Released once the caller is done with the physical block to
+// memory is backed by the returned TempBuffer. If non-nil, the returned
+// TempBuffer may be Released once the caller is done with the physical block to
 // recycle the block's underlying memory.
 //
 // When CompressAndChecksum returns, the callee has been reset and is ready to
 // be reused.
-func (b *Buffer) CompressAndChecksum() (PhysicalBlock, *BufHandle) {
+func (b *Buffer) CompressAndChecksum() (PhysicalBlock, *TempBuffer) {
 	// Grab a buffer to use as the destination for compression.
-	compressedBuf := compressedBuffers.Get()
+	compressedBuf := NewTempBuffer()
 	pb := CompressAndChecksum(&compressedBuf.b, b.h.b, b.compression, &b.checksummer)
 	b.h.b = b.h.b[:0]
 	return pb, compressedBuf
@@ -394,83 +393,46 @@ func (b *Buffer) Release() {
 	}
 }
 
-// BufHandle is a handle to a buffer that can be released to a pool for reuse.
-type BufHandle struct {
-	pool *bufferSyncPool
-	b    []byte
+// TempBuffer is a buffer that is used temporarily and is released back to a
+// pool for reuse.
+type TempBuffer struct {
+	b []byte
+}
+
+// NewTempBuffer returns a TempBuffer from the pool. TempBuffer.b will have zero
+// length and arbitrary capacity.
+func NewTempBuffer() *TempBuffer {
+	tb := tempBufferPool.Get().(*TempBuffer)
+	if invariants.Enabled && len(tb.b) > 0 {
+		panic("NewTempBuffer length not 0")
+	}
+	return tb
 }
 
 // Release releases the buffer back to the pool for reuse.
-func (h *BufHandle) Release() {
-	if invariants.Enabled && (h.pool == nil) != (h.b == nil) {
-		panic(errors.AssertionFailedf("pool (%t) and buffer (%t) nilness disagree", h.pool == nil, h.b == nil))
-	}
-	if invariants.Enabled && (h.pool != nil && h.pool.Max == 0) {
-		panic(errors.AssertionFailedf("pool has no maximum size"))
-	}
+func (tb *TempBuffer) Release() {
 	// Note we avoid releasing buffers that are larger than the configured
 	// maximum to the pool. This avoids holding on to occasional large buffers
-	// necessary for, for example, singlular large values.
-	if h.b != nil && len(h.b) < h.pool.Max {
-		if invariants.Sometimes(50) {
-			// Set the bytes to a random value. Cap the number of bytes being
-			// randomized to prevent test timeouts.
-			l := min(cap(h.b), 1000)
-			h.b = h.b[:l:l]
-			for j := range h.b {
-				h.b[j] = byte(rand.Uint32())
+	// necessary for e.g. singular large values.
+	if tb.b != nil && len(tb.b) < tempBufferMaxReusedSize {
+		if invariants.Sometimes(20) {
+			// Mangle the buffer data.
+			for i := range tb.b {
+				tb.b[i] = 0xCC
 			}
 		}
-		h.pool.Put(h)
+		tb.b = tb.b[:0]
+		tempBufferPool.Put(tb)
 	}
 }
 
-var (
-	// uncompressedBuffers is a pool of buffers that were used to store
-	// uncompressed block data. These buffers should be sized right around the
-	// configured block size. If multiple Pebble engines are running in the same
-	// process, they all share a pool and the size of the buffers may vary.
-	uncompressedBuffers = bufferSyncPool{Max: 256 << 10, Default: 4 << 10}
-	// compressedBuffers is a pool of buffers that were used to store compressed
-	// block data. These buffers will vary significantly in size depending on
-	// the compressibility of the data.
-	compressedBuffers = bufferSyncPool{Max: 128 << 10, Default: 4 << 10}
-)
-
-// bufferSyncPool is a pool of block buffers for memory re-use.
-type bufferSyncPool struct {
-	Max     int
-	Default int
-	pool    sync.Pool
+// tempBufferPool is a pool of buffers that are used to temporarily hold either
+// compressed or uncompressed block data.
+var tempBufferPool = sync.Pool{
+	New: func() any {
+		return &TempBuffer{b: make([]byte, 0, tempBufferInitialSize)}
+	},
 }
 
-// Put returns a buffer to the pool. While the buffer is in the pool, its pool
-// member is zeroed. This is used to validate invariants around double use of a
-// buffer.
-func (p *bufferSyncPool) Put(bh *BufHandle) {
-	if bh.pool != p {
-		panic(errors.AssertionFailedf("buffer has pool %v; trying to return it to pool %v", bh.pool, p))
-	}
-	bh.pool = nil
-	p.pool.Put(bh)
-}
-
-// Get retrieves a new buf from the pool, or allocates one of the configured
-// default size if the pool is empty.
-func (p *bufferSyncPool) Get() *BufHandle {
-	v := p.pool.Get()
-	if v != nil {
-		bh := v.(*BufHandle)
-		if bh.pool != nil {
-			panic(errors.AssertionFailedf("buffer has a pool; was it inserted into a pool twice?"))
-		}
-		// Set the pool so we know where to return the buffer to.
-		bh.pool = p
-		return bh
-	}
-	if invariants.Enabled && p.Default == 0 {
-		// Guard against accidentally forgetting to initialize a buffer sync pool.
-		panic(errors.AssertionFailedf("buffer pool has no default size"))
-	}
-	return &BufHandle{b: make([]byte, 0, p.Default), pool: p}
-}
+const tempBufferInitialSize = 32 * 1024
+const tempBufferMaxReusedSize = 256 * 1024
