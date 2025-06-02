@@ -224,28 +224,16 @@ type TableMetadata struct {
 }
 
 // Ref increments the table's ref count. If this is the table's first reference,
-// Ref will increment the reference of the table's TableBacking and referenced
-// blob files.
+// Ref will increment the reference of the table's TableBacking.
 func (m *TableMetadata) Ref() {
 	if v := m.refs.Add(1); v == 1 {
 		m.TableBacking.Ref()
-		for _, blobRef := range m.BlobReferences {
-			// BlobReference.Metadata is allowed to be nil when first decoded
-			// from a VersionEdit, but BulkVersionEdit.Accumulate should have
-			// populated the field (during manifest replay), or we should have
-			// set it explicitly when constructing the TableMetadata (during
-			// compactions, flushes).
-			if blobRef.Metadata == nil {
-				panic(errors.AssertionFailedf("%s reference to blob %s has no metadata", m.TableNum, blobRef.FileID))
-			}
-			blobRef.Metadata.ref()
-		}
 	}
 }
 
 // Unref decrements the table's reference count. If the count reaches zero, the
-// table releases its references on associated files. If any referenced files
-// become obsolete, they're inserted into the provided ObsoleteFiles.
+// table releases its references on associated files. If the table's backing
+// file becomes obsolete, it's inserted into the provided ObsoleteFiles.
 func (m *TableMetadata) Unref(obsoleteFiles ObsoleteFilesSet) {
 	v := m.refs.Add(-1)
 	if invariants.Enabled && v < 0 {
@@ -255,11 +243,6 @@ func (m *TableMetadata) Unref(obsoleteFiles ObsoleteFilesSet) {
 	if v == 0 {
 		if m.TableBacking.Unref() == 0 {
 			obsoleteFiles.AddBacking(m.TableBacking)
-		}
-		for _, blobRef := range m.BlobReferences {
-			if blobRef.Metadata.unref() == 0 {
-				obsoleteFiles.AddBlob(blobRef.Metadata)
-			}
 		}
 	}
 }

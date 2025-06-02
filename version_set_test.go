@@ -67,7 +67,7 @@ func TestVersionSet(t *testing.T) {
 
 	tableMetas := make(map[base.TableNum]*manifest.TableMetadata)
 	backings := make(map[base.DiskFileNum]*manifest.TableBacking)
-	blobMetas := make(map[base.BlobFileID]*manifest.BlobFileMetadata)
+	blobMetas := make(map[base.BlobFileID]*manifest.PhysicalBlobFile)
 	// When we parse VersionEdits, we get a new TableBacking each time. We need to
 	// deduplicate them, since they hold a ref count.
 	dedupBacking := func(b *manifest.TableBacking) *manifest.TableBacking {
@@ -98,7 +98,7 @@ func TestVersionSet(t *testing.T) {
 				td.Fatalf(t, "%v", err)
 			}
 			for _, bm := range ve.NewBlobFiles {
-				blobMetas[base.BlobFileID(bm.FileID)] = bm
+				blobMetas[base.BlobFileID(bm.FileNum)] = bm
 			}
 			for _, nf := range ve.NewTables {
 				// Set a size that depends on FileNum.
@@ -109,7 +109,7 @@ func TestVersionSet(t *testing.T) {
 					createFile(nf.Meta.TableBacking.DiskFileNum)
 				}
 				for i := range nf.Meta.BlobReferences {
-					nf.Meta.BlobReferences[i].Metadata = blobMetas[nf.Meta.BlobReferences[i].FileID]
+					nf.Meta.BlobReferences[i].OriginalMetadata = blobMetas[nf.Meta.BlobReferences[i].FileID]
 				}
 			}
 
@@ -199,13 +199,13 @@ func TestVersionSet(t *testing.T) {
 			// Repopulate the maps.
 			tableMetas = make(map[base.TableNum]*manifest.TableMetadata)
 			backings = make(map[base.DiskFileNum]*manifest.TableBacking)
-			blobMetas = make(map[base.BlobFileID]*manifest.BlobFileMetadata)
+			blobMetas = make(map[base.BlobFileID]*manifest.PhysicalBlobFile)
 			v := vs.currentVersion()
 			for _, l := range v.Levels {
 				for f := range l.All() {
 					tableMetas[f.TableNum] = f
 					for _, b := range f.BlobReferences {
-						blobMetas[b.FileID] = b.Metadata
+						blobMetas[b.FileID] = b.OriginalMetadata
 					}
 					dedupBacking(f.TableBacking)
 				}
