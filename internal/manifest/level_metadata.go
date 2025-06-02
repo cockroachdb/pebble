@@ -64,8 +64,8 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 	return lm
 }
 
-func makeBTree(bcmp btreeCmp[*TableMetadata], files []*TableMetadata) btree[*TableMetadata] {
-	t := btree[*TableMetadata]{bcmp: bcmp}
+func makeBTree[M fileMetadata](bcmp btreeCmp[M], files []M) btree[M] {
+	t := btree[M]{bcmp: bcmp}
 	for _, f := range files {
 		if err := t.Insert(f); err != nil {
 			panic(err)

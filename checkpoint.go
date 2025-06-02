@@ -354,13 +354,12 @@ func (d *DB) Checkpoint(
 	// When we write the MANIFEST of the checkpoint, we'll include a final
 	// VersionEdit that removes these blob files so that the checkpointed
 	// manifest is consistent.
-	var excludedBlobFiles map[base.DiskFileNum]*manifest.BlobFileMetadata
+	var excludedBlobFiles map[base.BlobFileID]*manifest.PhysicalBlobFile
 	if len(includedBlobFiles) < len(versionBlobFiles) {
-		excludedBlobFiles = make(map[base.DiskFileNum]*manifest.BlobFileMetadata, len(versionBlobFiles)-len(includedBlobFiles))
-		for _, blobFile := range versionBlobFiles {
-			if _, ok := includedBlobFiles[blobFile.FileID]; !ok {
-				diskFileNum := blob.DiskFileNumTODO(blobFile.FileID)
-				excludedBlobFiles[diskFileNum] = blobFile
+		excludedBlobFiles = make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(versionBlobFiles)-len(includedBlobFiles))
+		for _, meta := range versionBlobFiles {
+			if _, ok := includedBlobFiles[meta.FileID]; !ok {
+				excludedBlobFiles[meta.FileID] = meta.Physical
 			}
 		}
 	}
@@ -471,7 +470,7 @@ func (d *DB) writeCheckpointManifest(
 	manifestSize int64,
 	excludedTables map[manifest.DeletedTableEntry]*manifest.TableMetadata,
 	removeBackingTables []base.DiskFileNum,
-	excludedBlobFiles map[base.DiskFileNum]*manifest.BlobFileMetadata,
+	excludedBlobFiles map[base.BlobFileID]*manifest.PhysicalBlobFile,
 ) error {
 	// Copy the MANIFEST, and create a pointer to it. We copy rather
 	// than link because additional version edits added to the

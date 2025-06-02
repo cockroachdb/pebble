@@ -36,6 +36,12 @@ func btreeCmpSmallestKey(cmp Compare) btreeCmp[*TableMetadata] {
 	}
 }
 
+// btreeCmpBlobFileID is a comparator function that compares two BlobFileIDEntry
+// items by their file ID. It's used for the blob file set's B-Tree.
+func btreeCmpBlobFileID(a, b BlobFileMetadata) int {
+	return stdcmp.Compare(a.FileID, b.FileID)
+}
+
 // btreeCmpSpecificOrder is used in tests to construct a B-Tree with a specific
 // ordering of TableMetadata within the tree. It's typically used to test
 // consistency checking code that needs to construct a malformed B-Tree.
@@ -159,7 +165,7 @@ type ObsoleteFilesSet interface {
 	AddBacking(*TableBacking)
 	// AddBlob appends the provided BlobFileMetadata to the list of obsolete
 	// files.
-	AddBlob(*BlobFileMetadata)
+	AddBlob(*PhysicalBlobFile)
 }
 
 // assertNoObsoleteFiles is an obsoleteFiles implementation that panics if its
@@ -179,8 +185,8 @@ func (assertNoObsoleteFiles) AddBacking(fb *TableBacking) {
 }
 
 // AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
-func (assertNoObsoleteFiles) AddBlob(bm *BlobFileMetadata) {
-	panic(errors.AssertionFailedf("blob file %s dereferenced to zero during tree mutation", bm.FileID))
+func (assertNoObsoleteFiles) AddBlob(bm *PhysicalBlobFile) {
+	panic(errors.AssertionFailedf("blob file %s dereferenced to zero during tree mutation", bm.FileNum))
 }
 
 // ignoreObsoleteFiles is an ObsoleteFilesSet implementation that ignores
@@ -195,7 +201,7 @@ var _ ObsoleteFilesSet = ignoreObsoleteFiles{}
 func (ignoreObsoleteFiles) AddBacking(fb *TableBacking) {}
 
 // AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
-func (ignoreObsoleteFiles) AddBlob(bm *BlobFileMetadata) {}
+func (ignoreObsoleteFiles) AddBlob(bm *PhysicalBlobFile) {}
 
 // incRef acquires a reference to the node.
 func (n *node[M]) incRef() {

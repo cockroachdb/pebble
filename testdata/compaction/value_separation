@@ -14,7 +14,7 @@ compact a-b
 L6:
   000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:785 blobrefs:[(000006: 2); depth:1]
 Blob files:
-  000006: 92 physical bytes, 2 value bytes
+  000006: [000006] 92 physical bytes, 2 value bytes
 
 batch
 set c 3
@@ -27,8 +27,8 @@ L6:
   000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:785 blobrefs:[(000006: 2); depth:1]
   000008:[c#12,SET-d#13,SET] seqnums:[12-13] points:[c#12,SET-d#13,SET] size:785 blobrefs:[(000009: 2); depth:1]
 Blob files:
-  000006: 92 physical bytes, 2 value bytes
-  000009: 92 physical bytes, 2 value bytes
+  000006: [000006] 92 physical bytes, 2 value bytes
+  000009: [000009] 92 physical bytes, 2 value bytes
 
 batch
 set b 5
@@ -40,9 +40,9 @@ compact a-d
 L6:
   000013:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:812 blobrefs:[(000006: 1), (000012: 2), (000009: 1); depth:2]
 Blob files:
-  000006: 92 physical bytes, 2 value bytes
-  000009: 92 physical bytes, 2 value bytes
-  000012: 92 physical bytes, 2 value bytes
+  000006: [000006] 92 physical bytes, 2 value bytes
+  000009: [000009] 92 physical bytes, 2 value bytes
+  000012: [000012] 92 physical bytes, 2 value bytes
 
 batch
 del-range a e
@@ -80,10 +80,10 @@ L0.0:
 L6:
   000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:814 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
 Blob files:
-  000007: 100 physical bytes, 10 value bytes
-  100002: 92 physical bytes, 3 value bytes
-  100003: 92 physical bytes, 3 value bytes
-  100004: 92 physical bytes, 3 value bytes
+  000007: [000007] 100 physical bytes, 10 value bytes
+  100002: [100002] 92 physical bytes, 3 value bytes
+  100003: [100003] 92 physical bytes, 3 value bytes
+  100004: [100004] 92 physical bytes, 3 value bytes
 
 # Compacting these two sstables should result in writing the values to a new
 # blob file and the removal of the no longer referenced blob files.
@@ -93,7 +93,7 @@ compact a-z
 L6:
   000008:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:834 blobrefs:[(000009: 19); depth:1]
 Blob files:
-  000009: 112 physical bytes, 19 value bytes
+  000009: [000009] 112 physical bytes, 19 value bytes
 
 # Ensure we can read the separated values by iterating over the database.
 
@@ -185,7 +185,7 @@ L0.1:
 L0.0:
   000005:[bar#10,SET-yaya#13,SET] seqnums:[10-13] points:[bar#10,SET-yaya#13,SET] size:768
 Blob files:
-  000008: 100 physical bytes, 10 value bytes
+  000008: [000008] 100 physical bytes, 10 value bytes
 
 get
 a
@@ -221,7 +221,7 @@ L0.0:
   000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:798
   000006:[m#14,SET-m#14,SET] seqnums:[14-14] points:[m#14,SET-m#14,SET] size:781 blobrefs:[(000007: 5); depth:1]
 Blob files:
-  000007: 94 physical bytes, 5 value bytes
+  000007: [000007] 94 physical bytes, 5 value bytes
 
 # Construct an initial state with two overlapping files in L0, both with blob
 # references. Because these files overlap and are in separate sublevels, a
@@ -248,10 +248,10 @@ compact a-z
 L1:
   000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:838 blobrefs:[(100002: 3), (100001: 1), (100003: 3), (100004: 3); depth:4]
 Blob files:
-  100001: 90 physical bytes, 1 value bytes
-  100002: 92 physical bytes, 3 value bytes
-  100003: 92 physical bytes, 3 value bytes
-  100004: 92 physical bytes, 3 value bytes
+  100001: [100001] 90 physical bytes, 1 value bytes
+  100002: [100002] 92 physical bytes, 3 value bytes
+  100003: [100003] 92 physical bytes, 3 value bytes
+  100004: [100004] 92 physical bytes, 3 value bytes
 
 # Construct an initial state with two non-overlapping files in L0, both with
 # blob references. Because these files do NOT overlap and are in the same
@@ -278,10 +278,10 @@ compact a-z
 L1:
   000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:832 blobrefs:[(100001: 1), (100002: 3), (100003: 3), (100004: 3); depth:3]
 Blob files:
-  100001: 90 physical bytes, 1 value bytes
-  100002: 92 physical bytes, 3 value bytes
-  100003: 92 physical bytes, 3 value bytes
-  100004: 92 physical bytes, 3 value bytes
+  100001: [100001] 90 physical bytes, 1 value bytes
+  100002: [100002] 92 physical bytes, 3 value bytes
+  100003: [100003] 92 physical bytes, 3 value bytes
+  100004: [100004] 92 physical bytes, 3 value bytes
 
 define value-separation=(true,5,5) l0-compaction-threshold=1
 ----
@@ -320,25 +320,25 @@ L0.0:
   000039:[xwjw@1#436161,SET-zgyc@1#461856,SET] seqnums:[436161-461856] points:[xwjw@1#436161,SET-zgyc@1#461856,SET] size:390801 blobrefs:[(000040: 1644544); depth:1]
   000041:[zgyd@1#461857,SET-zzzz@1#475263,SET] seqnums:[461857-475263] points:[zgyd@1#461857,SET-zzzz@1#475263,SET] size:206828 blobrefs:[(000042: 858048); depth:1]
 Blob files:
-  000006: 1704578 physical bytes, 1642240 value bytes
-  000008: 1704776 physical bytes, 1642432 value bytes
-  000010: 1704842 physical bytes, 1642496 value bytes
-  000012: 1701714 physical bytes, 1639488 value bytes
-  000014: 1702466 physical bytes, 1640192 value bytes
-  000016: 1702066 physical bytes, 1639808 value bytes
-  000018: 1705370 physical bytes, 1643008 value bytes
-  000020: 1705634 physical bytes, 1643264 value bytes
-  000022: 1703324 physical bytes, 1641024 value bytes
-  000024: 1703654 physical bytes, 1641344 value bytes
-  000026: 1703918 physical bytes, 1641600 value bytes
-  000028: 1705502 physical bytes, 1643136 value bytes
-  000030: 1703720 physical bytes, 1641408 value bytes
-  000032: 1706118 physical bytes, 1643712 value bytes
-  000034: 1704314 physical bytes, 1641984 value bytes
-  000036: 1706053 physical bytes, 1643648 value bytes
-  000038: 1705238 physical bytes, 1642880 value bytes
-  000040: 1706980 physical bytes, 1644544 value bytes
-  000042: 890654 physical bytes, 858048 value bytes
+  000006: [000006] 1704578 physical bytes, 1642240 value bytes
+  000008: [000008] 1704776 physical bytes, 1642432 value bytes
+  000010: [000010] 1704842 physical bytes, 1642496 value bytes
+  000012: [000012] 1701714 physical bytes, 1639488 value bytes
+  000014: [000014] 1702466 physical bytes, 1640192 value bytes
+  000016: [000016] 1702066 physical bytes, 1639808 value bytes
+  000018: [000018] 1705370 physical bytes, 1643008 value bytes
+  000020: [000020] 1705634 physical bytes, 1643264 value bytes
+  000022: [000022] 1703324 physical bytes, 1641024 value bytes
+  000024: [000024] 1703654 physical bytes, 1641344 value bytes
+  000026: [000026] 1703918 physical bytes, 1641600 value bytes
+  000028: [000028] 1705502 physical bytes, 1643136 value bytes
+  000030: [000030] 1703720 physical bytes, 1641408 value bytes
+  000032: [000032] 1706118 physical bytes, 1643712 value bytes
+  000034: [000034] 1704314 physical bytes, 1641984 value bytes
+  000036: [000036] 1706053 physical bytes, 1643648 value bytes
+  000038: [000038] 1705238 physical bytes, 1642880 value bytes
+  000040: [000040] 1706980 physical bytes, 1644544 value bytes
+  000042: [000042] 890654 physical bytes, 858048 value bytes
 
 # Schedule automatic compactions. These compactions should write data to L6. The
 # resulting sstables will reference multiple blob files but maintain a blob
@@ -358,25 +358,25 @@ L6:
   000051:[uweb@1#0,SET-xvsc@1#0,SET] seqnums:[0-0] points:[uweb@1#0,SET-xvsc@1#0,SET] size:706029 blobrefs:[(000034: 233024), (000036: 1643648), (000038: 1612224); depth:1]
   000052:[xvsd@1#0,SET-zzzz@1#0,SET] seqnums:[0-0] points:[xvsd@1#0,SET-zzzz@1#0,SET] size:516163 blobrefs:[(000038: 30656), (000040: 1644544), (000042: 858048); depth:1]
 Blob files:
-  000006: 1704578 physical bytes, 1642240 value bytes
-  000008: 1704776 physical bytes, 1642432 value bytes
-  000010: 1704842 physical bytes, 1642496 value bytes
-  000012: 1701714 physical bytes, 1639488 value bytes
-  000014: 1702466 physical bytes, 1640192 value bytes
-  000016: 1702066 physical bytes, 1639808 value bytes
-  000018: 1705370 physical bytes, 1643008 value bytes
-  000020: 1705634 physical bytes, 1643264 value bytes
-  000022: 1703324 physical bytes, 1641024 value bytes
-  000024: 1703654 physical bytes, 1641344 value bytes
-  000026: 1703918 physical bytes, 1641600 value bytes
-  000028: 1705502 physical bytes, 1643136 value bytes
-  000030: 1703720 physical bytes, 1641408 value bytes
-  000032: 1706118 physical bytes, 1643712 value bytes
-  000034: 1704314 physical bytes, 1641984 value bytes
-  000036: 1706053 physical bytes, 1643648 value bytes
-  000038: 1705238 physical bytes, 1642880 value bytes
-  000040: 1706980 physical bytes, 1644544 value bytes
-  000042: 890654 physical bytes, 858048 value bytes
+  000006: [000006] 1704578 physical bytes, 1642240 value bytes
+  000008: [000008] 1704776 physical bytes, 1642432 value bytes
+  000010: [000010] 1704842 physical bytes, 1642496 value bytes
+  000012: [000012] 1701714 physical bytes, 1639488 value bytes
+  000014: [000014] 1702466 physical bytes, 1640192 value bytes
+  000016: [000016] 1702066 physical bytes, 1639808 value bytes
+  000018: [000018] 1705370 physical bytes, 1643008 value bytes
+  000020: [000020] 1705634 physical bytes, 1643264 value bytes
+  000022: [000022] 1703324 physical bytes, 1641024 value bytes
+  000024: [000024] 1703654 physical bytes, 1641344 value bytes
+  000026: [000026] 1703918 physical bytes, 1641600 value bytes
+  000028: [000028] 1705502 physical bytes, 1643136 value bytes
+  000030: [000030] 1703720 physical bytes, 1641408 value bytes
+  000032: [000032] 1706118 physical bytes, 1643712 value bytes
+  000034: [000034] 1704314 physical bytes, 1641984 value bytes
+  000036: [000036] 1706053 physical bytes, 1643648 value bytes
+  000038: [000038] 1705238 physical bytes, 1642880 value bytes
+  000040: [000040] 1706980 physical bytes, 1644544 value bytes
+  000042: [000042] 890654 physical bytes, 858048 value bytes
 
 
 excise-dryrun b c

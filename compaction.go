@@ -2478,7 +2478,7 @@ func (d *DB) handleCompactFailure(c *compaction, err error) {
 func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 	obsoleteFiles := manifest.ObsoleteFiles{
 		TableBackings: make([]*manifest.TableBacking, 0, len(ve.NewTables)),
-		BlobFiles:     make([]*manifest.BlobFileMetadata, 0, len(ve.NewBlobFiles)),
+		BlobFiles:     make([]*manifest.PhysicalBlobFile, 0, len(ve.NewBlobFiles)),
 	}
 	deletedTables := make(map[base.TableNum]struct{})
 	for key := range ve.DeletedTables {
@@ -2488,10 +2488,10 @@ func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 		obsoleteFiles.AddBlob(ve.NewBlobFiles[i])
 		d.mu.versions.zombieBlobs.Add(objectInfo{
 			fileInfo: fileInfo{
-				FileNum:  base.DiskFileNum(ve.NewBlobFiles[i].FileID),
+				FileNum:  base.DiskFileNum(ve.NewBlobFiles[i].FileNum),
 				FileSize: ve.NewBlobFiles[i].Size,
 			},
-			isLocal: objstorage.IsLocalBlobFile(d.objProvider, base.DiskFileNum(ve.NewBlobFiles[i].FileID)),
+			isLocal: objstorage.IsLocalBlobFile(d.objProvider, base.DiskFileNum(ve.NewBlobFiles[i].FileNum)),
 		})
 	}
 	for i := range ve.NewTables {
@@ -3105,7 +3105,7 @@ func (d *DB) runCompaction(
 		// Delete any created tables or blob files.
 		obsoleteFiles := manifest.ObsoleteFiles{
 			TableBackings: make([]*manifest.TableBacking, 0, len(result.Tables)),
-			BlobFiles:     make([]*manifest.BlobFileMetadata, 0, len(result.Blobs)),
+			BlobFiles:     make([]*manifest.PhysicalBlobFile, 0, len(result.Blobs)),
 		}
 		d.mu.Lock()
 		for i := range result.Tables {
@@ -3291,7 +3291,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 		}
 	}
 	// Add any newly constructed blob files to the version edit.
-	ve.NewBlobFiles = make([]*manifest.BlobFileMetadata, len(result.Blobs))
+	ve.NewBlobFiles = make([]*manifest.PhysicalBlobFile, len(result.Blobs))
 	for i := range result.Blobs {
 		ve.NewBlobFiles[i] = result.Blobs[i].Metadata
 	}

@@ -156,14 +156,14 @@ type VersionEdit struct {
 	RemovedBackingTables []base.DiskFileNum
 	// NewBlobFiles holds the metadata for all new blob files introduced within
 	// the version edit.
-	NewBlobFiles []*BlobFileMetadata
+	NewBlobFiles []*PhysicalBlobFile
 	// DeletedBlobFiles holds all blob files that became unreferenced during the
 	// version edit. These blob files must not be referenced by any sstable in
 	// the resulting Version.
 	//
 	// While replaying a MANIFEST, the values are nil. Otherwise the values must
 	// not be nil.
-	DeletedBlobFiles map[base.DiskFileNum]*BlobFileMetadata
+	DeletedBlobFiles map[base.BlobFileID]*PhysicalBlobFile
 }
 
 // Decode decodes an edit from the specified reader.
@@ -522,8 +522,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.NewBlobFiles = append(v.NewBlobFiles, &BlobFileMetadata{
-				FileID:       base.BlobFileID(fileNum),
+			v.NewBlobFiles = append(v.NewBlobFiles, &PhysicalBlobFile{
+				FileNum:      base.DiskFileNum(fileNum),
 				Size:         size,
 				ValueSize:    valueSize,
 				CreationTime: creationTime,
@@ -535,9 +535,9 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				return err
 			}
 			if v.DeletedBlobFiles == nil {
-				v.DeletedBlobFiles = make(map[base.DiskFileNum]*BlobFileMetadata)
+				v.DeletedBlobFiles = make(map[base.BlobFileID]*PhysicalBlobFile)
 			}
-			v.DeletedBlobFiles[base.DiskFileNum(fileNum)] = nil
+			v.DeletedBlobFiles[base.BlobFileID(fileNum)] = nil
 
 		case tagPrevLogNumber:
 			n, err := d.readUvarint()
@@ -679,7 +679,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 			ve.RemovedBackingTables = append(ve.RemovedBackingTables, n)
 
 		case "add-blob-file":
-			meta, err := ParseBlobFileMetadataDebug(p.Remaining())
+			meta, err := ParsePhysicalBlobFileDebug(p.Remaining())
 			if err != nil {
 				return nil, err
 			}
@@ -687,9 +687,9 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 
 		case "del-blob-file":
 			if ve.DeletedBlobFiles == nil {
-				ve.DeletedBlobFiles = make(map[base.DiskFileNum]*BlobFileMetadata)
+				ve.DeletedBlobFiles = make(map[base.BlobFileID]*PhysicalBlobFile)
 			}
-			ve.DeletedBlobFiles[p.DiskFileNum()] = nil
+			ve.DeletedBlobFiles[base.BlobFileID(p.Int())] = nil
 
 		default:
 			return nil, errors.Errorf("field %q not implemented", field)
@@ -821,7 +821,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for _, x := range v.NewBlobFiles {
 		e.writeUvarint(tagNewBlobFile)
-		e.writeUvarint(uint64(x.FileID))
+		e.writeUvarint(uint64(x.FileNum))
 		e.writeUvarint(x.Size)
 		e.writeUvarint(x.ValueSize)
 		e.writeUvarint(x.CreationTime)
@@ -937,19 +937,21 @@ type BulkVersionEdit struct {
 	BlobFiles struct {
 		// Added holds the metadata of all new blob files introduced within the
 		// aggregated version edit, keyed by file number.
-		Added map[base.DiskFileNum]*BlobFileMetadata
+		Added map[base.BlobFileID]*PhysicalBlobFile
 		// Deleted holds a list of all blob files that became unreferenced by
 		// any sstables, making them obsolete within the resulting version (a
 		// zombie if still referenced by previous versions). Deleted file
 		// numbers must not exist in Added.
-		Deleted map[base.DiskFileNum]*BlobFileMetadata
+		//
+		// Deleted is keyed by blob file ID and points to the physical blob file.
+		Deleted map[base.BlobFileID]*PhysicalBlobFile
 		// DeletedReferences holds metadata of blob files referenced by tables
 		// deleted in the accumulated version edits. This is used during replay
 		// to populate the *BlobFileMetadata pointers of new blob references,
 		// making use of the invariant that new blob references must correspond
 		// to a file introduced in VersionEdit.AddedBlobFiles or a file
 		// referenced by a deleted sstable.
-		DeletedReferences map[base.BlobFileID]*BlobFileMetadata
+		DeletedReferences map[base.BlobFileID]*PhysicalBlobFile
 	}
 
 	// AddedFileBacking is a map to support lookup so that we can populate the
@@ -978,9 +980,9 @@ type BulkVersionEdit struct {
 // version edit added the blob file to the BlobFiles.Added map, or the blob file
 // was referenced by a file that was deleted (and the blob file was added to
 // BlobFiles.DeletedReferences).
-func (b *BulkVersionEdit) getBlobFileMetadata(fileID base.BlobFileID) *BlobFileMetadata {
+func (b *BulkVersionEdit) getBlobFileMetadata(fileID base.BlobFileID) *PhysicalBlobFile {
 	if b.BlobFiles.Added != nil {
-		if md, ok := b.BlobFiles.Added[base.DiskFileNum(fileID)]; ok {
+		if md, ok := b.BlobFiles.Added[fileID]; ok {
 			return md
 		}
 	}
@@ -1014,22 +1016,22 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 	// Add any blob files that were introduced.
 	for _, nbf := range ve.NewBlobFiles {
 		if b.BlobFiles.Added == nil {
-			b.BlobFiles.Added = make(map[base.DiskFileNum]*BlobFileMetadata)
+			b.BlobFiles.Added = make(map[base.BlobFileID]*PhysicalBlobFile)
 		}
-		b.BlobFiles.Added[base.DiskFileNum(nbf.FileID)] = nbf
+		b.BlobFiles.Added[base.BlobFileID(nbf.FileNum)] = nbf
 	}
 
-	b.BlobFiles.Deleted = make(map[base.DiskFileNum]*BlobFileMetadata, len(ve.DeletedBlobFiles))
-	for dbf, blobMeta := range ve.DeletedBlobFiles {
+	b.BlobFiles.Deleted = make(map[base.BlobFileID]*PhysicalBlobFile, len(ve.DeletedBlobFiles))
+	for blobFileID, physicalBlobFile := range ve.DeletedBlobFiles {
 		// If the blob file was added in a prior, accumulated version edit we
 		// can resolve the deletion by removing it from the added files map.
 		// Otherwise the blob file deleted was added prior to this bulk edit,
 		// and we insert it into BlobFiles.Deleted so that Apply may remove it
 		// from the resulting version.
-		if b.BlobFiles.Added != nil && b.BlobFiles.Added[dbf] != nil {
-			delete(b.BlobFiles.Added, dbf)
+		if b.BlobFiles.Added != nil && b.BlobFiles.Added[blobFileID] != nil {
+			delete(b.BlobFiles.Added, blobFileID)
 		} else {
-			b.BlobFiles.Deleted[dbf] = blobMeta
+			b.BlobFiles.Deleted[blobFileID] = physicalBlobFile
 		}
 	}
 
@@ -1066,9 +1068,9 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		// *BlobFileMetadata available when we process the NewTableEntry.
 		for _, blobRef := range m.BlobReferences {
 			if b.BlobFiles.DeletedReferences == nil {
-				b.BlobFiles.DeletedReferences = make(map[base.BlobFileID]*BlobFileMetadata)
+				b.BlobFiles.DeletedReferences = make(map[base.BlobFileID]*PhysicalBlobFile)
 			}
-			b.BlobFiles.DeletedReferences[blobRef.FileID] = blobRef.Metadata
+			b.BlobFiles.DeletedReferences[blobRef.FileID] = blobRef.OriginalMetadata
 		}
 	}
 
@@ -1123,11 +1125,11 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		// to the corresponding BlobFileMetadata, populate the pointer. This is
 		// the expected case during manifest replay.
 		for i := range nf.Meta.BlobReferences {
-			if nf.Meta.BlobReferences[i].Metadata != nil {
+			if nf.Meta.BlobReferences[i].OriginalMetadata != nil {
 				continue
 			}
-			nf.Meta.BlobReferences[i].Metadata = b.getBlobFileMetadata(nf.Meta.BlobReferences[i].FileID)
-			if nf.Meta.BlobReferences[i].Metadata == nil {
+			nf.Meta.BlobReferences[i].OriginalMetadata = b.getBlobFileMetadata(nf.Meta.BlobReferences[i].FileID)
+			if nf.Meta.BlobReferences[i].OriginalMetadata == nil {
 				return errors.Errorf("blob file %s referenced by L%d.%s not found",
 					nf.Meta.BlobReferences[i].FileID, nf.Level, nf.Meta.TableNum)
 			}
@@ -1161,7 +1163,8 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Version, error) {
 	comparer := curr.cmp
 	v := &Version{
-		cmp: comparer,
+		BlobFiles: curr.BlobFiles.clone(),
+		cmp:       comparer,
 	}
 
 	// Adjust the count of files marked for compaction.
@@ -1169,6 +1172,22 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 	v.Stats.MarkedForCompaction += b.MarkedForCompactionCountDiff
 	if v.Stats.MarkedForCompaction < 0 {
 		return nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
+	}
+
+	// Update the BlobFileSet to record blob files added and deleted. The
+	// BlobFileSet ensures any physical blob files that are referenced by the
+	// version remain on storage until they're no longer referenced by any
+	// version.
+	for blobFileID, physical := range b.BlobFiles.Added {
+		if err := v.BlobFiles.insert(BlobFileMetadata{
+			FileID:   blobFileID,
+			Physical: physical,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	for blobFileID := range b.BlobFiles.Deleted {
+		v.BlobFiles.remove(BlobFileMetadata{FileID: blobFileID})
 	}
 
 	for level := range v.Levels {

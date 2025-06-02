@@ -426,42 +426,26 @@ type TableMetadata struct {
 }
 
 // Ref increments the table's ref count. If this is the table's first reference,
-// Ref will increment the reference of the table's TableBacking and referenced
-// blob files.
+// Ref will increment the reference of the table's TableBacking.
 func (m *TableMetadata) Ref() {
 	if v := m.refs.Add(1); v == 1 {
 		m.TableBacking.Ref()
-		for _, blobRef := range m.BlobReferences {
-			// BlobReference.Metadata is allowed to be nil when first decoded
-			// from a VersionEdit, but BulkVersionEdit.Accumulate should have
-			// populated the field (during manifest replay), or we should have
-			// set it explicitly when constructing the TableMetadata (during
-			// compactions, flushes).
-			if blobRef.Metadata == nil {
-				panic(errors.AssertionFailedf("%s reference to blob %s has no metadata", m.TableNum, blobRef.FileID))
-			}
-			blobRef.Metadata.ref()
-		}
 	}
 }
 
 // Unref decrements the table's reference count. If the count reaches zero, the
-// table releases its references on associated files. If any referenced files
-// become obsolete, they're inserted into the provided ObsoleteFiles.
+// table releases its references on its backing file. If the backing file's
+// reference count reaches zero, it's added to the provided ObsoleteFiles.
 func (m *TableMetadata) Unref(obsoleteFiles ObsoleteFilesSet) {
 	v := m.refs.Add(-1)
 	if invariants.Enabled && v < 0 {
 		panic(errors.AssertionFailedf("pebble: invalid TableMetadata refcounting for table %s", m.TableNum))
 	}
-	// When the reference count reaches zero, release the table's references.
+	// When the reference count reaches zero, release the table's references on
+	// its backing file.
 	if v == 0 {
 		if m.TableBacking.Unref() == 0 {
 			obsoleteFiles.AddBacking(m.TableBacking)
-		}
-		for _, blobRef := range m.BlobReferences {
-			if blobRef.Metadata.unref() == 0 {
-				obsoleteFiles.AddBlob(blobRef.Metadata)
-			}
 		}
 	}
 }
@@ -945,7 +929,7 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	return b.String()
 }
 
-const debugParserSeparators = ":-[]();"
+const debugParserSeparators = ":-[]();>"
 
 // errFromPanic can be used in a recover block to convert panics into errors.
 func errFromPanic(r any) error {
@@ -1310,7 +1294,8 @@ const NumLevels = 7
 // NewInitialVersion creates a version with no files. The L0Organizer should be freshly created.
 func NewInitialVersion(comparer *base.Comparer) *Version {
 	v := &Version{
-		cmp: comparer,
+		cmp:       comparer,
+		BlobFiles: MakeBlobFileSet(nil),
 	}
 	for level := range v.Levels {
 		v.Levels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
@@ -1385,6 +1370,12 @@ type Version struct {
 	// keys (i.e. fileMeta.HasRangeKeys == true). The memory amplification of this
 	// duplication should be minimal, as range keys are expected to be rare.
 	RangeKeyLevels [NumLevels]LevelMetadata
+
+	// BlobFiles holds the set of physical blob files that are referenced by the
+	// version. The BlobFileSet is responsible for maintaining reference counts
+	// on physical blob files so that they remain on storage until they're no
+	// longer referenced by any version.
+	BlobFiles BlobFileSet
 
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
@@ -1526,6 +1517,7 @@ func (v *Version) unrefFiles() ObsoleteFiles {
 	for _, lm := range v.RangeKeyLevels {
 		lm.release(&obsoleteFiles)
 	}
+	v.BlobFiles.release(&obsoleteFiles)
 	return obsoleteFiles
 }
 
@@ -1533,7 +1525,7 @@ func (v *Version) unrefFiles() ObsoleteFiles {
 // referenced Version.
 type ObsoleteFiles struct {
 	TableBackings []*TableBacking
-	BlobFiles     []*BlobFileMetadata
+	BlobFiles     []*PhysicalBlobFile
 }
 
 // AddBacking appends the provided TableBacking to the list of obsolete files.
@@ -1542,7 +1534,7 @@ func (of *ObsoleteFiles) AddBacking(fb *TableBacking) {
 }
 
 // AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
-func (of *ObsoleteFiles) AddBlob(bm *BlobFileMetadata) {
+func (of *ObsoleteFiles) AddBlob(bm *PhysicalBlobFile) {
 	of.BlobFiles = append(of.BlobFiles, bm)
 }
 
