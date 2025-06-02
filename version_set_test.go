@@ -98,7 +98,7 @@ func TestVersionSet(t *testing.T) {
 				td.Fatalf(t, "%v", err)
 			}
 			for _, bm := range ve.NewBlobFiles {
-				blobMetas[base.BlobFileID(bm.FileNum)] = bm
+				blobMetas[bm.FileID] = bm.Physical
 			}
 			for _, nf := range ve.NewTables {
 				// Set a size that depends on FileNum.

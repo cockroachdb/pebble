@@ -487,17 +487,17 @@ func (s *CurrentBlobFileSet) Metadatas() []BlobFileMetadata {
 // edit is modified to record the blob file removal.
 func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 	// Insert new blob files into the set.
-	for _, nf := range ve.NewBlobFiles {
-		if _, ok := s.files[base.BlobFileID(nf.FileNum)]; ok {
-			return errors.AssertionFailedf("pebble: new blob file %d already exists", nf.FileNum)
+	for _, m := range ve.NewBlobFiles {
+		if _, ok := s.files[m.FileID]; ok {
+			return errors.AssertionFailedf("pebble: new blob file %d already exists", m.FileID)
 		}
-		blobFileID := base.BlobFileID(nf.FileNum)
+		blobFileID := m.FileID
 		cbf := &currentBlobFile{references: make(map[*TableMetadata]struct{})}
-		cbf.metadata = BlobFileMetadata{FileID: blobFileID, Physical: nf}
+		cbf.metadata = BlobFileMetadata{FileID: blobFileID, Physical: m.Physical}
 		s.files[blobFileID] = cbf
 		s.stats.Count++
-		s.stats.PhysicalSize += nf.Size
-		s.stats.ValueSize += nf.ValueSize
+		s.stats.PhysicalSize += m.Physical.Size
+		s.stats.ValueSize += m.Physical.ValueSize
 	}
 
 	// Update references to blob files from new tables. Any referenced blob
