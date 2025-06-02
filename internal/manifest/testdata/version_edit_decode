@@ -56,37 +56,38 @@ decode
 0366                         # <tagNextFileNumber>, 42
 048410                       # <tagLastSequence>, 2052
 6b                           # <tagNewBlobFile>
-29                           #   . FileNum      = 000029
+29                           #   . FileID       = 000029
+29                           #   . DiskFileNum  = 000029
 d8a301                       #   . Size         = 20952
 f9a006                       #   . ValueSize    = 102521
 9f9485bd06                   #   . CreationTime = 1738623519
 6c                           # <tagDeleteBlobFile>
 21                           #   . FileNum      = 000021
 ----
-021903660484106b29d8a301f9a0069f9485bd066c21
+021903660484106b2929d8a301f9a0069f9485bd066c21
   log-num:       25
   next-file-num: 102
   last-seq-num:  2052
-  add-blob-file: 000041 size:[20952 (20KB)] vals:[102521 (100KB)]
+  add-blob-file: 000041 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
   del-blob-file: 000033
 
 encode
   add-table:     L6 000029:[bar#14,DEL-foo#13,SET] blobrefs:[(000041: 20952); depth:1]
-  add-blob-file: 000041 size:[20952 (20KB)] vals:[102521 (100KB)]
+  add-blob-file: 000943 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
   del-blob-file: 000033
 ----
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-45010129d8a301016b29d8a301f9a006006c21
+45010129d8a301016baf0729d8a301f9a006006c21
   add-table:     L6 000029:[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(000041: 20952); depth:1]
-  add-blob-file: 000041 size:[20952 (20KB)] vals:[102521 (100KB)]
+  add-blob-file: 000943 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
   del-blob-file: 000033
 
 decode
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-45010129d8a301016b29d8a301f9a006006c21
+45010129d8a301016baf0729d8a301f9a006006c21
 ----
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-45010129d8a301016b29d8a301f9a006006c21
+45010129d8a301016baf0729d8a301f9a006006c21
   add-table:     L6 000029:[bar#14,DEL-foo#13,SET]
-  add-blob-file: 000041 size:[20952 (20KB)] vals:[102521 (100KB)]
+  add-blob-file: 000943 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
   del-blob-file: 000033

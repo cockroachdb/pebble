@@ -14,7 +14,7 @@ compact a-b
 L6:
   000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:785 blobrefs:[(000006: 2); depth:1]
 Blob files:
-  000006 -> 000006 size:[92 (92B)] vals:[2 (2B)]
+  000006 physical:{000006 size:[92 (92B)] vals:[2 (2B)]}
 Blob files:
   000006: [000006] 92 physical bytes, 2 value bytes
 
@@ -29,8 +29,8 @@ L6:
   000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:785 blobrefs:[(000006: 2); depth:1]
   000008:[c#12,SET-d#13,SET] seqnums:[12-13] points:[c#12,SET-d#13,SET] size:785 blobrefs:[(000009: 2); depth:1]
 Blob files:
-  000006 -> 000006 size:[92 (92B)] vals:[2 (2B)]
-  000009 -> 000009 size:[92 (92B)] vals:[2 (2B)]
+  000006 physical:{000006 size:[92 (92B)] vals:[2 (2B)]}
+  000009 physical:{000009 size:[92 (92B)] vals:[2 (2B)]}
 Blob files:
   000006: [000006] 92 physical bytes, 2 value bytes
   000009: [000009] 92 physical bytes, 2 value bytes
@@ -45,9 +45,9 @@ compact a-d
 L6:
   000013:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:812 blobrefs:[(000006: 1), (000012: 2), (000009: 1); depth:2]
 Blob files:
-  000006 -> 000006 size:[92 (92B)] vals:[2 (2B)]
-  000009 -> 000009 size:[92 (92B)] vals:[2 (2B)]
-  000012 -> 000012 size:[92 (92B)] vals:[2 (2B)]
+  000006 physical:{000006 size:[92 (92B)] vals:[2 (2B)]}
+  000009 physical:{000009 size:[92 (92B)] vals:[2 (2B)]}
+  000012 physical:{000012 size:[92 (92B)] vals:[2 (2B)]}
 Blob files:
   000006: [000006] 92 physical bytes, 2 value bytes
   000009: [000009] 92 physical bytes, 2 value bytes
@@ -75,9 +75,9 @@ L6 blob-depth=3
 L6:
   000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:814 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
 Blob files:
-  100002 -> 100002 size:[92 (92B)] vals:[3 (3B)]
-  100003 -> 100003 size:[92 (92B)] vals:[3 (3B)]
-  100004 -> 100004 size:[92 (92B)] vals:[3 (3B)]
+  100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
+  100003 physical:{100003 size:[92 (92B)] vals:[3 (3B)]}
+  100004 physical:{100004 size:[92 (92B)] vals:[3 (3B)]}
 
 batch
 set d hello
@@ -93,10 +93,10 @@ L0.0:
 L6:
   000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:814 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
 Blob files:
-  000007 -> 000007 size:[100 (100B)] vals:[10 (10B)]
-  100002 -> 100002 size:[92 (92B)] vals:[3 (3B)]
-  100003 -> 100003 size:[92 (92B)] vals:[3 (3B)]
-  100004 -> 100004 size:[92 (92B)] vals:[3 (3B)]
+  000007 physical:{000007 size:[100 (100B)] vals:[10 (10B)]}
+  100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
+  100003 physical:{100003 size:[92 (92B)] vals:[3 (3B)]}
+  100004 physical:{100004 size:[92 (92B)] vals:[3 (3B)]}
 Blob files:
   000007: [000007] 100 physical bytes, 10 value bytes
   100002: [100002] 92 physical bytes, 3 value bytes
@@ -111,7 +111,7 @@ compact a-z
 L6:
   000008:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:834 blobrefs:[(000009: 19); depth:1]
 Blob files:
-  000009 -> 000009 size:[112 (112B)] vals:[19 (19B)]
+  000009 physical:{000009 size:[112 (112B)] vals:[19 (19B)]}
 Blob files:
   000009: [000009] 112 physical bytes, 19 value bytes
 
@@ -205,7 +205,7 @@ L0.1:
 L0.0:
   000005:[bar#10,SET-yaya#13,SET] seqnums:[10-13] points:[bar#10,SET-yaya#13,SET] size:768
 Blob files:
-  000008 -> 000008 size:[100 (100B)] vals:[10 (10B)]
+  000008 physical:{000008 size:[100 (100B)] vals:[10 (10B)]}
 Blob files:
   000008: [000008] 100 physical bytes, 10 value bytes
 
@@ -243,7 +243,7 @@ L0.0:
   000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:798
   000006:[m#14,SET-m#14,SET] seqnums:[14-14] points:[m#14,SET-m#14,SET] size:781 blobrefs:[(000007: 5); depth:1]
 Blob files:
-  000007 -> 000007 size:[94 (94B)] vals:[5 (5B)]
+  000007 physical:{000007 size:[94 (94B)] vals:[5 (5B)]}
 Blob files:
   000007: [000007] 94 physical bytes, 5 value bytes
 
@@ -267,20 +267,20 @@ L0.1:
 L0.0:
   000005:[a#1,SET-z#1,SET] seqnums:[1-1] points:[a#1,SET-z#1,SET] size:814 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
 Blob files:
-  100001 -> 100001 size:[90 (90B)] vals:[1 (1B)]
-  100002 -> 100002 size:[92 (92B)] vals:[3 (3B)]
-  100003 -> 100003 size:[92 (92B)] vals:[3 (3B)]
-  100004 -> 100004 size:[92 (92B)] vals:[3 (3B)]
+  100001 physical:{100001 size:[90 (90B)] vals:[1 (1B)]}
+  100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
+  100003 physical:{100003 size:[92 (92B)] vals:[3 (3B)]}
+  100004 physical:{100004 size:[92 (92B)] vals:[3 (3B)]}
 
 compact a-z
 ----
 L1:
   000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:838 blobrefs:[(100002: 3), (100001: 1), (100003: 3), (100004: 3); depth:4]
 Blob files:
-  100001 -> 100001 size:[90 (90B)] vals:[1 (1B)]
-  100002 -> 100002 size:[92 (92B)] vals:[3 (3B)]
-  100003 -> 100003 size:[92 (92B)] vals:[3 (3B)]
-  100004 -> 100004 size:[92 (92B)] vals:[3 (3B)]
+  100001 physical:{100001 size:[90 (90B)] vals:[1 (1B)]}
+  100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
+  100003 physical:{100003 size:[92 (92B)] vals:[3 (3B)]}
+  100004 physical:{100004 size:[92 (92B)] vals:[3 (3B)]}
 Blob files:
   100001: [100001] 90 physical bytes, 1 value bytes
   100002: [100002] 92 physical bytes, 3 value bytes
@@ -307,20 +307,20 @@ L0.0:
   000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:794 blobrefs:[(100001: 1); depth:1]
   000005:[e#1,SET-z#1,SET] seqnums:[1-1] points:[e#1,SET-z#1,SET] size:814 blobrefs:[(100002: 3), (100003: 3), (100004: 3); depth:3]
 Blob files:
-  100001 -> 100001 size:[90 (90B)] vals:[1 (1B)]
-  100002 -> 100002 size:[92 (92B)] vals:[3 (3B)]
-  100003 -> 100003 size:[92 (92B)] vals:[3 (3B)]
-  100004 -> 100004 size:[92 (92B)] vals:[3 (3B)]
+  100001 physical:{100001 size:[90 (90B)] vals:[1 (1B)]}
+  100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
+  100003 physical:{100003 size:[92 (92B)] vals:[3 (3B)]}
+  100004 physical:{100004 size:[92 (92B)] vals:[3 (3B)]}
 
 compact a-z
 ----
 L1:
   000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:832 blobrefs:[(100001: 1), (100002: 3), (100003: 3), (100004: 3); depth:3]
 Blob files:
-  100001 -> 100001 size:[90 (90B)] vals:[1 (1B)]
-  100002 -> 100002 size:[92 (92B)] vals:[3 (3B)]
-  100003 -> 100003 size:[92 (92B)] vals:[3 (3B)]
-  100004 -> 100004 size:[92 (92B)] vals:[3 (3B)]
+  100001 physical:{100001 size:[90 (90B)] vals:[1 (1B)]}
+  100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
+  100003 physical:{100003 size:[92 (92B)] vals:[3 (3B)]}
+  100004 physical:{100004 size:[92 (92B)] vals:[3 (3B)]}
 Blob files:
   100001: [100001] 90 physical bytes, 1 value bytes
   100002: [100002] 92 physical bytes, 3 value bytes
@@ -364,25 +364,25 @@ L0.0:
   000039:[xwmd@1#436223,SET-zhar@1#461926,SET] seqnums:[436223-461926] points:[xwmd@1#436223,SET-zhar@1#461926,SET] size:390252 blobrefs:[(000040: 1645056); depth:1]
   000041:[zhas@1#461927,SET-zzzz@1#475263,SET] seqnums:[461927-475263] points:[zhas@1#461927,SET-zzzz@1#475263,SET] size:206528 blobrefs:[(000042: 853568); depth:1]
 Blob files:
-  000006 -> 000006 size:[1704578 (1.6MB)] vals:[1642240 (1.6MB)]
-  000008 -> 000008 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]
-  000010 -> 000010 size:[1705238 (1.6MB)] vals:[1642880 (1.6MB)]
-  000012 -> 000012 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]
-  000014 -> 000014 size:[1702730 (1.6MB)] vals:[1640448 (1.6MB)]
-  000016 -> 000016 size:[1704644 (1.6MB)] vals:[1642304 (1.6MB)]
-  000018 -> 000018 size:[1707970 (1.6MB)] vals:[1645504 (1.6MB)]
-  000020 -> 000020 size:[1702994 (1.6MB)] vals:[1640704 (1.6MB)]
-  000022 -> 000022 size:[1705172 (1.6MB)] vals:[1642816 (1.6MB)]
-  000024 -> 000024 size:[1703918 (1.6MB)] vals:[1641600 (1.6MB)]
-  000026 -> 000026 size:[1703390 (1.6MB)] vals:[1641088 (1.6MB)]
-  000028 -> 000028 size:[1704182 (1.6MB)] vals:[1641856 (1.6MB)]
-  000030 -> 000030 size:[1702796 (1.6MB)] vals:[1640512 (1.6MB)]
-  000032 -> 000032 size:[1703720 (1.6MB)] vals:[1641408 (1.6MB)]
-  000034 -> 000034 size:[1706584 (1.6MB)] vals:[1644160 (1.6MB)]
-  000036 -> 000036 size:[1703720 (1.6MB)] vals:[1641408 (1.6MB)]
-  000038 -> 000038 size:[1706254 (1.6MB)] vals:[1643840 (1.6MB)]
-  000040 -> 000040 size:[1707508 (1.6MB)] vals:[1645056 (1.6MB)]
-  000042 -> 000042 size:[886008 (865KB)] vals:[853568 (834KB)]
+  000006 physical:{000006 size:[1704578 (1.6MB)] vals:[1642240 (1.6MB)]}
+  000008 physical:{000008 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]}
+  000010 physical:{000010 size:[1705238 (1.6MB)] vals:[1642880 (1.6MB)]}
+  000012 physical:{000012 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]}
+  000014 physical:{000014 size:[1702730 (1.6MB)] vals:[1640448 (1.6MB)]}
+  000016 physical:{000016 size:[1704644 (1.6MB)] vals:[1642304 (1.6MB)]}
+  000018 physical:{000018 size:[1707970 (1.6MB)] vals:[1645504 (1.6MB)]}
+  000020 physical:{000020 size:[1702994 (1.6MB)] vals:[1640704 (1.6MB)]}
+  000022 physical:{000022 size:[1705172 (1.6MB)] vals:[1642816 (1.6MB)]}
+  000024 physical:{000024 size:[1703918 (1.6MB)] vals:[1641600 (1.6MB)]}
+  000026 physical:{000026 size:[1703390 (1.6MB)] vals:[1641088 (1.6MB)]}
+  000028 physical:{000028 size:[1704182 (1.6MB)] vals:[1641856 (1.6MB)]}
+  000030 physical:{000030 size:[1702796 (1.6MB)] vals:[1640512 (1.6MB)]}
+  000032 physical:{000032 size:[1703720 (1.6MB)] vals:[1641408 (1.6MB)]}
+  000034 physical:{000034 size:[1706584 (1.6MB)] vals:[1644160 (1.6MB)]}
+  000036 physical:{000036 size:[1703720 (1.6MB)] vals:[1641408 (1.6MB)]}
+  000038 physical:{000038 size:[1706254 (1.6MB)] vals:[1643840 (1.6MB)]}
+  000040 physical:{000040 size:[1707508 (1.6MB)] vals:[1645056 (1.6MB)]}
+  000042 physical:{000042 size:[886008 (865KB)] vals:[853568 (834KB)]}
 Blob files:
   000006: [000006] 1704578 physical bytes, 1642240 value bytes
   000008: [000008] 1704776 physical bytes, 1642432 value bytes
@@ -422,25 +422,25 @@ L6:
   000051:[uweo@1#0,SET-xvqm@1#0,SET] seqnums:[0-0] points:[uweo@1#0,SET-xvqm@1#0,SET] size:709725 blobrefs:[(000034: 237440), (000036: 1641408), (000038: 1606400); depth:1]
   000052:[xvqn@1#0,SET-zzzz@1#0,SET] seqnums:[0-0] points:[xvqn@1#0,SET-zzzz@1#0,SET] size:516069 blobrefs:[(000038: 37440), (000040: 1645056), (000042: 853568); depth:1]
 Blob files:
-  000006 -> 000006 size:[1704578 (1.6MB)] vals:[1642240 (1.6MB)]
-  000008 -> 000008 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]
-  000010 -> 000010 size:[1705238 (1.6MB)] vals:[1642880 (1.6MB)]
-  000012 -> 000012 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]
-  000014 -> 000014 size:[1702730 (1.6MB)] vals:[1640448 (1.6MB)]
-  000016 -> 000016 size:[1704644 (1.6MB)] vals:[1642304 (1.6MB)]
-  000018 -> 000018 size:[1707970 (1.6MB)] vals:[1645504 (1.6MB)]
-  000020 -> 000020 size:[1702994 (1.6MB)] vals:[1640704 (1.6MB)]
-  000022 -> 000022 size:[1705172 (1.6MB)] vals:[1642816 (1.6MB)]
-  000024 -> 000024 size:[1703918 (1.6MB)] vals:[1641600 (1.6MB)]
-  000026 -> 000026 size:[1703390 (1.6MB)] vals:[1641088 (1.6MB)]
-  000028 -> 000028 size:[1704182 (1.6MB)] vals:[1641856 (1.6MB)]
-  000030 -> 000030 size:[1702796 (1.6MB)] vals:[1640512 (1.6MB)]
-  000032 -> 000032 size:[1703720 (1.6MB)] vals:[1641408 (1.6MB)]
-  000034 -> 000034 size:[1706584 (1.6MB)] vals:[1644160 (1.6MB)]
-  000036 -> 000036 size:[1703720 (1.6MB)] vals:[1641408 (1.6MB)]
-  000038 -> 000038 size:[1706254 (1.6MB)] vals:[1643840 (1.6MB)]
-  000040 -> 000040 size:[1707508 (1.6MB)] vals:[1645056 (1.6MB)]
-  000042 -> 000042 size:[886008 (865KB)] vals:[853568 (834KB)]
+  000006 physical:{000006 size:[1704578 (1.6MB)] vals:[1642240 (1.6MB)]}
+  000008 physical:{000008 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]}
+  000010 physical:{000010 size:[1705238 (1.6MB)] vals:[1642880 (1.6MB)]}
+  000012 physical:{000012 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]}
+  000014 physical:{000014 size:[1702730 (1.6MB)] vals:[1640448 (1.6MB)]}
+  000016 physical:{000016 size:[1704644 (1.6MB)] vals:[1642304 (1.6MB)]}
+  000018 physical:{000018 size:[1707970 (1.6MB)] vals:[1645504 (1.6MB)]}
+  000020 physical:{000020 size:[1702994 (1.6MB)] vals:[1640704 (1.6MB)]}
+  000022 physical:{000022 size:[1705172 (1.6MB)] vals:[1642816 (1.6MB)]}
+  000024 physical:{000024 size:[1703918 (1.6MB)] vals:[1641600 (1.6MB)]}
+  000026 physical:{000026 size:[1703390 (1.6MB)] vals:[1641088 (1.6MB)]}
+  000028 physical:{000028 size:[1704182 (1.6MB)] vals:[1641856 (1.6MB)]}
+  000030 physical:{000030 size:[1702796 (1.6MB)] vals:[1640512 (1.6MB)]}
+  000032 physical:{000032 size:[1703720 (1.6MB)] vals:[1641408 (1.6MB)]}
+  000034 physical:{000034 size:[1706584 (1.6MB)] vals:[1644160 (1.6MB)]}
+  000036 physical:{000036 size:[1703720 (1.6MB)] vals:[1641408 (1.6MB)]}
+  000038 physical:{000038 size:[1706254 (1.6MB)] vals:[1643840 (1.6MB)]}
+  000040 physical:{000040 size:[1707508 (1.6MB)] vals:[1645056 (1.6MB)]}
+  000042 physical:{000042 size:[886008 (865KB)] vals:[853568 (834KB)]}
 Blob files:
   000006: [000006] 1704578 physical bytes, 1642240 value bytes
   000008: [000008] 1704776 physical bytes, 1642432 value bytes

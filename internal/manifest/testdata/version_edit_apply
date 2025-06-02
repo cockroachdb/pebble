@@ -239,7 +239,7 @@ error during Accumulate: blob file 000003 referenced by L0.000004 not found
 # that references its entirety.
 
 apply v8 name=v9
-  add-blob-file: 000003 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-blob-file: 000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
   add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(000003: 25935); depth:1]
 ----
 L0.0:
@@ -249,7 +249,7 @@ L1:
 L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
 Blob files:
-  000003 -> 000003 size:[20535 (20KB)] vals:[25935 (25KB)]
+  000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
 
 # Try to add another table referencing the blob file. Since the file is not
 # added in the same version edit, and no referencing table is deleted in the
@@ -275,7 +275,7 @@ L1:
 L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
 Blob files:
-  000003 -> 000003 size:[20535 (20KB)] vals:[25935 (25KB)]
+  000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
 
 # Repeat the above but this time applying the entire lifecycle of a blob file in
 # a single bulk version edit. This simulates a manifest replay during startup.
@@ -292,7 +292,7 @@ L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
 
 apply v10
-  add-blob-file: 000003 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-blob-file: 000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
   add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(000003: 25935); depth:1]
 new version edit
   del-table:     L0 000004

@@ -2485,13 +2485,13 @@ func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 		deletedTables[key.FileNum] = struct{}{}
 	}
 	for i := range ve.NewBlobFiles {
-		obsoleteFiles.AddBlob(ve.NewBlobFiles[i])
+		obsoleteFiles.AddBlob(ve.NewBlobFiles[i].Physical)
 		d.mu.versions.zombieBlobs.Add(objectInfo{
 			fileInfo: fileInfo{
-				FileNum:  ve.NewBlobFiles[i].FileNum,
-				FileSize: ve.NewBlobFiles[i].Size,
+				FileNum:  ve.NewBlobFiles[i].Physical.FileNum,
+				FileSize: ve.NewBlobFiles[i].Physical.Size,
 			},
-			isLocal: objstorage.IsLocalBlobFile(d.objProvider, ve.NewBlobFiles[i].FileNum),
+			isLocal: objstorage.IsLocalBlobFile(d.objProvider, ve.NewBlobFiles[i].Physical.FileNum),
 		})
 	}
 	for i := range ve.NewTables {
@@ -3291,9 +3291,12 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 		}
 	}
 	// Add any newly constructed blob files to the version edit.
-	ve.NewBlobFiles = make([]*manifest.PhysicalBlobFile, len(result.Blobs))
+	ve.NewBlobFiles = make([]manifest.BlobFileMetadata, len(result.Blobs))
 	for i := range result.Blobs {
-		ve.NewBlobFiles[i] = result.Blobs[i].Metadata
+		ve.NewBlobFiles[i] = manifest.BlobFileMetadata{
+			FileID:   base.BlobFileID(result.Blobs[i].Metadata.FileNum),
+			Physical: result.Blobs[i].Metadata,
+		}
 	}
 
 	startLevelBytes := c.startLevel.files.TableSizeSum()
