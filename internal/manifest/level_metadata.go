@@ -24,7 +24,7 @@ type LevelMetadata struct {
 	NumVirtual uint64
 	// VirtualTableSize is the size of the virtual sstables in the level.
 	VirtualTableSize uint64
-	tree             btree
+	tree             btree[*TableMetadata]
 }
 
 // clone makes a copy of the level metadata, implicitly increasing the ref
@@ -64,8 +64,10 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 	return lm
 }
 
-func makeBTree(cmp base.Compare, bcmp btreeCmp, files []*TableMetadata) btree {
-	t := btree{cmp: cmp, bcmp: bcmp}
+func makeBTree(
+	cmp base.Compare, bcmp btreeCmp[*TableMetadata], files []*TableMetadata,
+) btree[*TableMetadata] {
+	t := btree[*TableMetadata]{cmp: cmp, bcmp: bcmp}
 	for _, f := range files {
 		if err := t.Insert(f); err != nil {
 			panic(err)
@@ -74,9 +76,11 @@ func makeBTree(cmp base.Compare, bcmp btreeCmp, files []*TableMetadata) btree {
 	return t
 }
 
-func makeLevelSlice(cmp base.Compare, bcmp btreeCmp, files []*TableMetadata) LevelSlice {
+func makeLevelSlice(
+	cmp base.Compare, bcmp btreeCmp[*TableMetadata], files []*TableMetadata,
+) LevelSlice {
 	t := makeBTree(cmp, bcmp, files)
-	slice := newLevelSlice(t.Iter())
+	slice := newLevelSlice(tableMetadataIter(&t))
 	slice.verifyInvariants()
 	// We can release the tree because the nodes that are referenced by the
 	// LevelSlice are immutable and we never recycle them.
@@ -139,7 +143,7 @@ func (lm *LevelMetadata) EstimatedReferenceSize() uint64 {
 
 // Iter constructs a LevelIterator over the entire level.
 func (lm *LevelMetadata) Iter() LevelIterator {
-	return LevelIterator{iter: lm.tree.Iter()}
+	return LevelIterator{iter: tableMetadataIter(&lm.tree)}
 }
 
 // All returns an iterator over all files in the level.
@@ -156,7 +160,7 @@ func (lm *LevelMetadata) All() iter.Seq[*TableMetadata] {
 
 // Slice constructs a slice containing the entire level.
 func (lm *LevelMetadata) Slice() LevelSlice {
-	return newLevelSlice(lm.tree.Iter())
+	return newLevelSlice(tableMetadataIter(&lm.tree))
 }
 
 // Find finds the provided file in the level. If it exists, returns a LevelSlice

@@ -41,7 +41,7 @@ func cmpKey(a, b InternalKey) int {
 //////////////////////////////////////////
 
 // Verify asserts that the tree's structural invariants all hold.
-func (t *btree) Verify(tt *testing.T) {
+func (t *btree[M]) Verify(tt *testing.T) {
 	if t.Count() == 0 {
 		require.Nil(tt, t.root)
 		return
@@ -52,26 +52,26 @@ func (t *btree) Verify(tt *testing.T) {
 	t.root.verifyInvariants()
 }
 
-func (t *btree) verifyLeafSameDepth(tt *testing.T) {
+func (t *btree[M]) verifyLeafSameDepth(tt *testing.T) {
 	h := t.height()
 	t.root.verifyDepthEqualToHeight(tt, 1, h)
 }
 
-func (n *node) verifyDepthEqualToHeight(t *testing.T, depth, height int) {
+func (n *node[M]) verifyDepthEqualToHeight(t *testing.T, depth, height int) {
 	if n.leaf {
 		require.Equal(t, height, depth, "all leaves should have the same depth as the tree height")
 	}
-	n.recurse(func(child *node, _ int16) {
+	n.recurse(func(child *node[M], _ int16) {
 		child.verifyDepthEqualToHeight(t, depth+1, height)
 	})
 }
 
-func (t *btree) verifyCountAllowed(tt *testing.T) {
+func (t *btree[M]) verifyCountAllowed(tt *testing.T) {
 	t.root.verifyCountAllowed(tt, true)
 }
 
 // height returns the height of the tree.
-func (t *btree) height() int {
+func (t *btree[M]) height() int {
 	if t.root == nil {
 		return 0
 	}
@@ -84,7 +84,7 @@ func (t *btree) height() int {
 	return h
 }
 
-func (n *node) verifyCountAllowed(t *testing.T, root bool) {
+func (n *node[M]) verifyCountAllowed(t *testing.T, root bool) {
 	if !root {
 		require.GreaterOrEqual(t, n.count, int16(minItems), "item count %d must be in range [%d,%d]", n.count, minItems, maxItems)
 		require.LessOrEqual(t, n.count, int16(maxItems), "item count %d must be in range [%d,%d]", n.count, minItems, maxItems)
@@ -105,16 +105,16 @@ func (n *node) verifyCountAllowed(t *testing.T, root bool) {
 			}
 		}
 	}
-	n.recurse(func(child *node, _ int16) {
+	n.recurse(func(child *node[M], _ int16) {
 		child.verifyCountAllowed(t, false)
 	})
 }
 
-func (t *btree) isSorted(tt *testing.T) {
+func (t *btree[M]) isSorted(tt *testing.T) {
 	t.root.isSorted(tt, t.bcmp)
 }
 
-func (n *node) isSorted(t *testing.T, cmp func(*TableMetadata, *TableMetadata) int) {
+func (n *node[M]) isSorted(t *testing.T, cmp func(M, M) int) {
 	for i := int16(1); i < n.count; i++ {
 		require.LessOrEqual(t, cmp(n.items[i-1], n.items[i]), 0)
 	}
@@ -127,12 +127,12 @@ func (n *node) isSorted(t *testing.T, cmp func(*TableMetadata, *TableMetadata) i
 			require.LessOrEqual(t, cmp(n.items[i], next.items[0]), 0)
 		}
 	}
-	n.recurse(func(child *node, _ int16) {
+	n.recurse(func(child *node[M], _ int16) {
 		child.isSorted(t, cmp)
 	})
 }
 
-func (n *node) recurse(f func(child *node, pos int16)) {
+func (n *node[M]) recurse(f func(child *node[M], pos int16)) {
 	if !n.leaf {
 		for i := int16(0); i <= n.count; i++ {
 			f(n.children[i], i)
@@ -208,7 +208,7 @@ func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]Intern
 
 // TestBTree tests basic btree operations.
 func TestBTree(t *testing.T) {
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	keyMemo := make(map[int]InternalKey)
 
@@ -225,7 +225,7 @@ func TestBTree(t *testing.T) {
 		if e := i + 1; e != tr.Count() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Count())
 		}
-		checkIter(t, tr.Iter(), 0, i+1, keyMemo)
+		checkIter(t, tableMetadataIter(&tr), 0, i+1, keyMemo)
 	}
 
 	// delete keys in sorted order.
@@ -239,7 +239,7 @@ func TestBTree(t *testing.T) {
 		if e := count - (i + 1); e != tr.Count() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Count())
 		}
-		checkIter(t, tr.Iter(), i+1, count, keyMemo)
+		checkIter(t, tableMetadataIter(&tr), i+1, count, keyMemo)
 	}
 
 	// Add keys in reverse sorted order.
@@ -249,7 +249,7 @@ func TestBTree(t *testing.T) {
 		if i != tr.Count() {
 			t.Fatalf("expected length %d, but found %d", i, tr.Count())
 		}
-		checkIter(t, tr.Iter(), count-i, count, keyMemo)
+		checkIter(t, tableMetadataIter(&tr), count-i, count, keyMemo)
 	}
 
 	// delete keys in reverse sorted order.
@@ -263,14 +263,14 @@ func TestBTree(t *testing.T) {
 		if e := count - i; e != tr.Count() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Count())
 		}
-		checkIter(t, tr.Iter(), 0, count-i, keyMemo)
+		checkIter(t, tableMetadataIter(&tr), 0, count-i, keyMemo)
 	}
 }
 
 func TestIterClone(t *testing.T) {
 	const count = 65536
 
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	keyMemo := make(map[int]InternalKey)
 
@@ -278,7 +278,7 @@ func TestIterClone(t *testing.T) {
 		require.NoError(t, tr.Insert(newItem(key(i))))
 	}
 
-	it := tr.Iter()
+	it := tableMetadataIter(&tr)
 	i := 0
 	for it.first(); it.valid(); it.next() {
 		if i%500 == 0 {
@@ -296,17 +296,17 @@ func TestIterClone(t *testing.T) {
 }
 
 func TestIterCmpEdgeCases(t *testing.T) {
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	t.Run("empty", func(t *testing.T) {
-		a := tr.Iter()
-		b := tr.Iter()
+		a := tableMetadataIter(&tr)
+		b := tableMetadataIter(&tr)
 		require.Equal(t, 0, cmpIter(a, b))
 	})
 	require.NoError(t, tr.Insert(newItem(key(5))))
 	t.Run("exhausted_next", func(t *testing.T) {
-		a := tr.Iter()
-		b := tr.Iter()
+		a := tableMetadataIter(&tr)
+		b := tableMetadataIter(&tr)
 		a.first()
 		b.first()
 		require.Equal(t, 0, cmpIter(a, b))
@@ -315,8 +315,8 @@ func TestIterCmpEdgeCases(t *testing.T) {
 		require.Equal(t, -1, cmpIter(a, b))
 	})
 	t.Run("exhausted_prev", func(t *testing.T) {
-		a := tr.Iter()
-		b := tr.Iter()
+		a := tableMetadataIter(&tr)
+		b := tableMetadataIter(&tr)
 		a.first()
 		b.first()
 		b.prev()
@@ -331,7 +331,7 @@ func TestIterCmpRand(t *testing.T) {
 	const itemCount = 65536
 	const iterCount = 1000
 
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	for i := 0; i < itemCount; i++ {
 		require.NoError(t, tr.Insert(newItem(key(i))))
@@ -343,7 +343,7 @@ func TestIterCmpRand(t *testing.T) {
 	iters2 := make([]*LevelIterator, iterCount)
 	for i := 0; i < iterCount; i++ {
 		k := rng.IntN(itemCount)
-		iter := LevelIterator{iter: tr.Iter()}
+		iter := LevelIterator{iter: tableMetadataIter(&tr)}
 		iter.SeekGE(base.DefaultComparer.Compare, key(k).UserKey)
 		iters1[i] = &iter
 		iters2[i] = &iter
@@ -366,13 +366,13 @@ func TestIterCmpRand(t *testing.T) {
 func TestBTreeSeek(t *testing.T) {
 	const count = 513
 
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	for i := 0; i < count; i++ {
 		require.NoError(t, tr.Insert(newItem(key(i*2))))
 	}
 
-	it := LevelIterator{iter: tr.Iter()}
+	it := LevelIterator{iter: tableMetadataIter(&tr)}
 	for i := 0; i < 2*count-1; i++ {
 		item := it.SeekGE(base.DefaultComparer.Compare, key(i).UserKey)
 		if item == nil {
@@ -405,7 +405,7 @@ func TestBTreeSeek(t *testing.T) {
 }
 
 func TestBTreeInsertDuplicateError(t *testing.T) {
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	require.NoError(t, tr.Insert(newItem(key(1))))
 	require.NoError(t, tr.Insert(newItem(key(2))))
@@ -422,8 +422,8 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 	const cloneTestSize = 1000
 	p := perm(cloneTestSize)
 
-	var trees []*btree
-	treeC, treeDone := make(chan *btree), make(chan struct{})
+	var trees []*btree[*TableMetadata]
+	treeC, treeDone := make(chan *btree[*TableMetadata]), make(chan struct{})
 	go func() {
 		for b := range treeC {
 			trees = append(trees, b)
@@ -432,8 +432,8 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 	}()
 
 	var wg sync.WaitGroup
-	var populate func(tr *btree, start int)
-	populate = func(tr *btree, start int) {
+	var populate func(tr *btree[*TableMetadata], start int)
+	populate = func(tr *btree[*TableMetadata], start int) {
 		t.Logf("Starting new clone at %v", start)
 		treeC <- tr
 		for i := start; i < cloneTestSize; i++ {
@@ -448,7 +448,7 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 	}
 
 	wg.Add(1)
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	go populate(&tr, 0)
 	wg.Wait()
@@ -501,7 +501,9 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 
 // TestIterStack tests the interface of the iterStack type.
 func TestIterStack(t *testing.T) {
-	f := func(i int) iterFrame { return iterFrame{pos: int16(i)} }
+	f := func(i int) iterFrame {
+		return iterFrame{pos: int16(i)}
+	}
 	var is iterStack
 	for i := 1; i <= 2*len(iterStackArr{}); i++ {
 		var j int
@@ -517,12 +519,12 @@ func TestIterStack(t *testing.T) {
 }
 
 func TestIterEndSentinel(t *testing.T) {
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	require.NoError(t, tr.Insert(newItem(key(1))))
 	require.NoError(t, tr.Insert(newItem(key(2))))
 	require.NoError(t, tr.Insert(newItem(key(3))))
-	iter := LevelIterator{iter: tr.Iter()}
+	iter := LevelIterator{iter: tableMetadataIter(&tr)}
 	iter.SeekGE(base.DefaultComparer.Compare, key(3).UserKey)
 	require.True(t, iter.iter.valid())
 	iter.Next()
@@ -561,7 +563,7 @@ func TestRandomizedBTree(t *testing.T) {
 
 	// Use a btree comparator that sorts by file number to make it easier to
 	// prevent duplicates or overlaps.
-	tree := btree{
+	tree := btree[*TableMetadata]{
 		bcmp: func(a *TableMetadata, b *TableMetadata) int {
 			return stdcmp.Compare(a.TableNum, b.TableNum)
 		},
@@ -599,7 +601,7 @@ func TestRandomizedBTree(t *testing.T) {
 		{
 			// Iterate
 			fn: func() {
-				iter := tree.Iter()
+				iter := tableMetadataIter(&tree)
 				count := 0
 				var prev base.FileNum
 				for iter.first(); iter.valid(); iter.next() {
@@ -661,8 +663,8 @@ func strReprs(items []*TableMetadata) []string {
 }
 
 // all extracts all items from a tree in order as a slice.
-func all(tr *btree) (out []*TableMetadata) {
-	it := tr.Iter()
+func all(tr *btree[*TableMetadata]) (out []*TableMetadata) {
+	it := tableMetadataIter(tr)
 	it.first()
 	for it.valid() {
 		out = append(out, it.cur())
@@ -685,7 +687,7 @@ func BenchmarkBTreeInsert(b *testing.B) {
 		insertP := perm(count)
 		b.ResetTimer()
 		for i := 0; i < b.N; {
-			var tr btree
+			var tr btree[*TableMetadata]
 			tr.bcmp = cmp
 			for _, item := range insertP {
 				if err := tr.Insert(item); err != nil {
@@ -707,7 +709,7 @@ func BenchmarkBTreeDelete(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; {
 			b.StopTimer()
-			var tr btree
+			var tr btree[*TableMetadata]
 			tr.bcmp = cmp
 			for _, item := range insertP {
 				if err := tr.Insert(item); err != nil {
@@ -733,7 +735,7 @@ func BenchmarkBTreeDelete(b *testing.B) {
 func BenchmarkBTreeDeleteInsert(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		insertP := perm(count)
-		var tr btree
+		var tr btree[*TableMetadata]
 		tr.bcmp = cmp
 		for _, item := range insertP {
 			if err := tr.Insert(item); err != nil {
@@ -756,7 +758,7 @@ func BenchmarkBTreeDeleteInsert(b *testing.B) {
 func BenchmarkBTreeDeleteInsertCloneOnce(b *testing.B) {
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		insertP := perm(count)
-		var tr btree
+		var tr btree[*TableMetadata]
 		tr.bcmp = cmp
 		for _, item := range insertP {
 			if err := tr.Insert(item); err != nil {
@@ -782,7 +784,7 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 		b.Run(fmt.Sprintf("release=%t", release), func(b *testing.B) {
 			forBenchmarkSizes(b, func(b *testing.B, count int) {
 				insertP := perm(count)
-				var tr, trRelease btree
+				var tr, trRelease btree[*TableMetadata]
 				tr.bcmp = cmp
 				trRelease.bcmp = cmp
 				for _, item := range insertP {
@@ -810,10 +812,10 @@ func BenchmarkBTreeDeleteInsertCloneEachTime(b *testing.B) {
 
 // BenchmarkBTreeIter measures the cost of creating a btree iterator.
 func BenchmarkBTreeIter(b *testing.B) {
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 	for i := 0; i < b.N; i++ {
-		it := tr.Iter()
+		it := tableMetadataIter(&tr)
 		it.first()
 	}
 }
@@ -824,7 +826,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 	rng := rand.New(rand.NewPCG(0, rand.Uint64()))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		var keys []InternalKey
-		var tr btree
+		var tr btree[*TableMetadata]
 		tr.bcmp = cmp
 
 		for i := 0; i < count; i++ {
@@ -838,7 +840,7 @@ func BenchmarkBTreeIterSeekGE(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			k := keys[rng.IntN(len(keys))]
-			it := LevelIterator{iter: tr.Iter()}
+			it := LevelIterator{iter: tableMetadataIter(&tr)}
 			f := it.SeekGE(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
 				if f == nil {
@@ -858,7 +860,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	forBenchmarkSizes(b, func(b *testing.B, count int) {
 		var keys []InternalKey
-		var tr btree
+		var tr btree[*TableMetadata]
 		tr.bcmp = cmp
 
 		for i := 0; i < count; i++ {
@@ -873,7 +875,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			j := rng.IntN(len(keys))
 			k := keys[j]
-			it := LevelIterator{iter: tr.Iter()}
+			it := LevelIterator{iter: tableMetadataIter(&tr)}
 			f := it.SeekLT(base.DefaultComparer.Compare, k.UserKey)
 			if testing.Verbose() {
 				if j == 0 {
@@ -897,7 +899,7 @@ func BenchmarkBTreeIterSeekLT(b *testing.B) {
 // BenchmarkBTreeIterNext measures the cost of seeking a btree iterator to the
 // next item in the tree.
 func BenchmarkBTreeIterNext(b *testing.B) {
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 
 	const count = 8 << 10
@@ -908,7 +910,7 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 		}
 	}
 
-	it := tr.Iter()
+	it := tableMetadataIter(&tr)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.valid() {
@@ -921,7 +923,7 @@ func BenchmarkBTreeIterNext(b *testing.B) {
 // BenchmarkBTreeIterPrev measures the cost of seeking a btree iterator to the
 // previous item in the tree.
 func BenchmarkBTreeIterPrev(b *testing.B) {
-	var tr btree
+	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
 
 	const count = 8 << 10
@@ -932,7 +934,7 @@ func BenchmarkBTreeIterPrev(b *testing.B) {
 		}
 	}
 
-	it := tr.Iter()
+	it := tableMetadataIter(&tr)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if !it.valid() {

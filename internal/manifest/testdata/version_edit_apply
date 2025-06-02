@@ -83,7 +83,7 @@ L0.0:
 apply v2
   add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
 ----
-pebble: files 000001 and 000001 collided on sort keys
+pebble: files 000001:[a#1,SET-c#2,SET] and 000001:[a#1,SET-c#2,SET] collided on sort keys
 
 apply empty
   add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
