@@ -65,7 +65,6 @@ func newPebbleDB(dir string) DB {
 		L0CompactionThreshold:       2,
 		L0StopWritesThreshold:       1000,
 		LBaseMaxBytes:               64 << 20, // 64 MB
-		Levels:                      make([]pebble.LevelOptions, 7),
 		MaxOpenFiles:                16384,
 		MemTableSize:                64 << 20,
 		MemTableStopWritesThreshold: 4,
@@ -100,10 +99,6 @@ func newPebbleDB(dir string) DB {
 		l.IndexBlockSize = 256 << 10 // 256 KB
 		l.FilterPolicy = bloom.FilterPolicy(10)
 		l.FilterType = pebble.TableFilter
-		if i > 0 {
-			l.TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
-		}
-		l.EnsureDefaults()
 	}
 	opts.Levels[6].FilterPolicy = pebble.NoFilterPolicy
 	opts.FlushSplitBytes = opts.Levels[0].TargetFileSize

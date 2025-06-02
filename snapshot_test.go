@@ -80,7 +80,6 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 			if td.HasArg("block-size") {
 				var blockSize int
 				td.ScanArgs(t, "block-size", &blockSize)
-				options.Levels = make([]LevelOptions, 1)
 				options.Levels[0].BlockSize = blockSize
 				options.Levels[0].IndexBlockSize = blockSize
 			}

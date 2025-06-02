@@ -1767,8 +1767,8 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			}
 			opts.Experimental.SpanPolicyFunc = MakeStaticSpanPolicyFunc(opts.Comparer.Compare, span, policy)
 		case "target-file-sizes":
-			if len(opts.Levels) < len(cmdArg.Vals) {
-				opts.Levels = slices.Grow(opts.Levels, len(cmdArg.Vals)-len(opts.Levels))[0:len(cmdArg.Vals)]
+			if len(cmdArg.Vals) > len(opts.Levels) {
+				return errors.New("too many target-file-sizes")
 			}
 			for i := range cmdArg.Vals {
 				size, err := strconv.ParseInt(cmdArg.Vals[i], 10, 64)
@@ -1776,6 +1776,12 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 					return err
 				}
 				opts.Levels[i].TargetFileSize = size
+			}
+			// Set the remaining file sizes. Normally, EnsureDefaults() would do that
+			// for us but it was already called and the target file sizes for all
+			// levels are now set to the defaults.
+			for i := len(cmdArg.Vals); i < len(opts.Levels); i++ {
+				opts.Levels[i].TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
 			}
 		case "value-separation":
 			if len(cmdArg.Vals) != 3 {

@@ -2212,8 +2212,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	mem := vfs.NewMem()
 	ii := errorfs.OnIndex(math.MaxInt32) // start disabled
 	opts := &Options{
-		FS:     errorfs.Wrap(mem, errorfs.ErrInjected.If(ii)),
-		Levels: make([]LevelOptions, numLevels),
+		FS: errorfs.Wrap(mem, errorfs.ErrInjected.If(ii)),
 		EventListener: &EventListener{
 			TableCreated: func(info TableCreateInfo) {
 				t.Log(info)
@@ -2918,8 +2917,7 @@ func TestCompactionErrorStats(t *testing.T) {
 	mem := vfs.NewMem()
 	injector := &WriteErrorInjector{}
 	opts := &Options{
-		FS:     errorfs.Wrap(mem, injector),
-		Levels: make([]LevelOptions, numLevels),
+		FS: errorfs.Wrap(mem, injector),
 		EventListener: &EventListener{
 			TableCreated: func(info TableCreateInfo) {
 				t.Log(info)

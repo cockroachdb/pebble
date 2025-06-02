@@ -74,7 +74,7 @@ func TestLevelOptions(t *testing.T) {
 		{6, (64 * 2) << 20},
 	}
 	for _, c := range testCases {
-		l := opts.Level(c.level)
+		l := opts.Levels[c.level]
 		if c.targetFileSize != l.TargetFileSize {
 			t.Fatalf("%d: expected target-file-size %d, but found %d",
 				c.level, c.targetFileSize, l.TargetFileSize)
@@ -144,6 +144,66 @@ func TestDefaultOptionsString(t *testing.T) {
   filter_type=table
   index_block_size=4096
   target_file_size=2097152
+
+[Level "1"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=4194304
+
+[Level "2"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=8388608
+
+[Level "3"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=16777216
+
+[Level "4"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=33554432
+
+[Level "5"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=67108864
+
+[Level "6"]
+  block_restart_interval=16
+  block_size=4096
+  block_size_threshold=90
+  compression=Snappy
+  filter_policy=none
+  filter_type=table
+  index_block_size=4096
+  target_file_size=134217728
 `
 
 	require.Equal(t, expected, DefaultOptions().String())
@@ -299,7 +359,6 @@ func TestOptionsParse(t *testing.T) {
 			opts.Comparer = c.comparer
 			opts.Merger = c.merger
 			opts.WALDir = "wal"
-			opts.Levels = make([]LevelOptions, 3)
 			opts.Levels[0].BlockSize = 1024
 			opts.Levels[1].BlockSize = 2048
 			opts.Levels[2].BlockSize = 4096
