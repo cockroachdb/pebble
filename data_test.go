@@ -927,7 +927,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	// them to the final version edit.
 	valueSeparator := &defineDBValueSeparator{
 		pbr:   &preserveBlobReferences{},
-		metas: make(map[base.DiskFileNum]*manifest.BlobFileMetadata),
+		metas: make(map[base.BlobFileID]*manifest.BlobFileMetadata),
 	}
 
 	var mem *memTable
@@ -1173,8 +1173,8 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			return nil, err
 		}
 		for f, stats := range fileStats {
-			valueSeparator.metas[f].Size = stats.FileLen
-			valueSeparator.metas[f].ValueSize = stats.UncompressedValueBytes
+			valueSeparator.metas[base.BlobFileID(f)].Size = stats.FileLen
+			valueSeparator.metas[base.BlobFileID(f)].ValueSize = stats.UncompressedValueBytes
 		}
 
 		ve.NewBlobFiles = slices.Collect(maps.Values(valueSeparator.metas))
@@ -1640,7 +1640,7 @@ func describeLSM(d *DB, verbose bool) string {
 	if blobFileMetas := d.mu.versions.blobFiles.Metadatas(); len(blobFileMetas) > 0 {
 		buf.WriteString("Blob files:\n")
 		for _, meta := range blobFileMetas {
-			fmt.Fprintf(&buf, "  %s: %d physical bytes, %d value bytes\n", meta.FileNum, meta.Size, meta.ValueSize)
+			fmt.Fprintf(&buf, "  %s: %d physical bytes, %d value bytes\n", meta.FileID, meta.Size, meta.ValueSize)
 		}
 	}
 	return buf.String()

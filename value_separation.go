@@ -145,7 +145,7 @@ func uniqueInputBlobMetadatas(levels []compactionLevel) []*manifest.BlobFileMeta
 	}
 	metadatas := slices.Collect(maps.Keys(m))
 	slices.SortFunc(metadatas, func(a, b *manifest.BlobFileMetadata) int {
-		return cmp.Compare(a.FileNum, b.FileNum)
+		return cmp.Compare(a.FileID, b.FileID)
 	})
 	return metadatas
 }
@@ -280,14 +280,14 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 	}
 	vs.writer = nil
 	meta := &manifest.BlobFileMetadata{
-		FileNum:      vs.objMeta.DiskFileNum,
+		FileID:       base.BlobFileID(vs.objMeta.DiskFileNum),
 		Size:         stats.FileLen,
 		ValueSize:    stats.UncompressedValueBytes,
 		CreationTime: uint64(time.Now().Unix()),
 	}
 	return compact.ValueSeparationMetadata{
 		BlobReferences: manifest.BlobReferences{{
-			FileNum:   vs.objMeta.DiskFileNum,
+			FileID:    base.BlobFileID(vs.objMeta.DiskFileNum),
 			ValueSize: stats.UncompressedValueBytes,
 			Metadata:  meta,
 		}},
@@ -365,24 +365,24 @@ func (vs *preserveBlobReferences) Add(
 	// The value is an existing blob handle. We can copy it into the output
 	// sstable, taking note of the reference for the table metadata.
 	lv := kv.V.LazyValue()
-	fn := lv.Fetcher.BlobFileNum
+	fileID := lv.Fetcher.BlobFileID
 
-	refID, found := vs.currReferences.IDByFileNum(fn)
+	refID, found := vs.currReferences.IDByBlobFileID(fileID)
 	if !found {
 		// This is the first time we're seeing this blob file for this sstable.
 		// Find the blob file metadata for this file among the input metadatas.
-		idx, found := vs.findInputBlobMetadata(fn)
+		idx, found := vs.findInputBlobMetadata(fileID)
 		if !found {
-			return errors.AssertionFailedf("pebble: blob file %s not found among input sstables", fn)
+			return errors.AssertionFailedf("pebble: blob file %s not found among input sstables", fileID)
 		}
 		refID = blob.ReferenceID(len(vs.currReferences))
 		vs.currReferences = append(vs.currReferences, manifest.BlobReference{
-			FileNum:  fn,
+			FileID:   fileID,
 			Metadata: vs.inputBlobMetadatas[idx],
 		})
 	}
 
-	if invariants.Enabled && vs.currReferences[refID].Metadata.FileNum != fn {
+	if invariants.Enabled && vs.currReferences[refID].FileID != fileID {
 		panic("wrong reference index")
 	}
 
@@ -406,10 +406,10 @@ func (vs *preserveBlobReferences) Add(
 // findInputBlobMetadata returns the index of the input blob metadata that
 // corresponds to the provided file number. If the file number is not found,
 // the function returns false in the second return value.
-func (vs *preserveBlobReferences) findInputBlobMetadata(fn base.DiskFileNum) (int, bool) {
-	return slices.BinarySearchFunc(vs.inputBlobMetadatas, fn,
-		func(bm *manifest.BlobFileMetadata, fn base.DiskFileNum) int {
-			return cmp.Compare(bm.FileNum, fn)
+func (vs *preserveBlobReferences) findInputBlobMetadata(fileID base.BlobFileID) (int, bool) {
+	return slices.BinarySearchFunc(vs.inputBlobMetadatas, fileID,
+		func(bm *manifest.BlobFileMetadata, fileID base.BlobFileID) int {
+			return cmp.Compare(base.BlobFileID(bm.FileID), fileID)
 		})
 }
 

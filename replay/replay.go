@@ -847,9 +847,9 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 						// referenced by the sstable are present.
 						if refs, ok := blobRefMap[fileNum]; ok {
 							for _, bf := range refs {
-								if _, ok := r.workload.blobFiles[base.FileNum(bf.FileNum)]; !ok {
+								if _, ok := r.workload.blobFiles[base.FileNum(bf.FileID)]; !ok {
 									return errors.Newf("blob file %s not found for sstable %s",
-										bf.FileNum, fileNum)
+										bf.FileID, fileNum)
 								}
 							}
 						}

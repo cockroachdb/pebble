@@ -47,6 +47,13 @@ type ReaderProvider interface {
 	GetValueReader(ctx context.Context, fileNum base.DiskFileNum) (r ValueReader, closeFunc func(), err error)
 }
 
+// DiskFileNumTODO is a temporary function to convert a BlobFileID to a
+// DiskFileNum. It should be removed once the manifest.Version contains a
+// mapping.
+func DiskFileNumTODO(blobFileID base.BlobFileID) base.DiskFileNum {
+	return base.DiskFileNum(blobFileID)
+}
+
 // A ValueFetcher retrieves values stored out-of-band in separate blob files.
 // The ValueFetcher caches accessed file readers to avoid redundant file cache
 // and block cache lookups when performing consecutive value retrievals.
@@ -80,14 +87,14 @@ func (r *ValueFetcher) Init(rp ReaderProvider, env block.ReadEnv) {
 // Fetch returns the value, given the handle. Fetch must not be called after
 // Close.
 func (r *ValueFetcher) Fetch(
-	ctx context.Context, handle []byte, fileNum base.DiskFileNum, valLen uint32, buf []byte,
+	ctx context.Context, handle []byte, blobFileID base.BlobFileID, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	handleSuffix := DecodeHandleSuffix(handle)
 	vh := Handle{
-		FileNum:  fileNum,
-		ValueLen: valLen,
-		BlockID:  handleSuffix.BlockID,
-		ValueID:  handleSuffix.ValueID,
+		BlobFileID: blobFileID,
+		ValueLen:   valLen,
+		BlockID:    handleSuffix.BlockID,
+		ValueID:    handleSuffix.ValueID,
 	}
 	v, err := r.retrieve(ctx, vh)
 	return v, false, err
@@ -102,7 +109,7 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 	var oldestFetchIndex int
 	// TODO(jackson): Reconsider this O(len(readers)) scan.
 	for i := range r.readers {
-		if r.readers[i].fileNum == vh.FileNum && r.readers[i].r != nil {
+		if r.readers[i].blobFileID == vh.BlobFileID && r.readers[i].r != nil {
 			cr = &r.readers[i]
 			break
 		} else if r.readers[i].lastFetchCount < r.readers[oldestFetchIndex].lastFetchCount {
@@ -119,10 +126,12 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 				return nil, err
 			}
 		}
-		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, vh.FileNum); err != nil {
+		diskFileNum := DiskFileNumTODO(vh.BlobFileID)
+		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, diskFileNum); err != nil {
 			return nil, err
 		}
-		cr.fileNum = vh.FileNum
+		cr.blobFileID = vh.BlobFileID
+		cr.diskFileNum = diskFileNum
 		cr.rh = cr.r.InitReadHandle(&cr.preallocRH)
 	}
 
@@ -151,7 +160,8 @@ func (r *ValueFetcher) Close() error {
 // cachedReader holds a Reader into an open file, and possibly blocks retrieved
 // from the block cache.
 type cachedReader struct {
-	fileNum        base.DiskFileNum
+	blobFileID     base.BlobFileID
+	diskFileNum    base.DiskFileNum
 	r              ValueReader
 	closeFunc      func()
 	rh             objstorage.ReadHandle

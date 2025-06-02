@@ -132,7 +132,7 @@ func TestValueFetcher(t *testing.T) {
 			}.Encode(handleBuf[:])
 			encodedHandleSuffix := handleBuf[:n]
 
-			val, _, err := fetcher.Fetch(ctx, encodedHandleSuffix, base.DiskFileNum(blobFileNum), valLen, nil)
+			val, _, err := fetcher.Fetch(ctx, encodedHandleSuffix, base.BlobFileID(blobFileNum), valLen, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -152,7 +152,7 @@ func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 			fmt.Fprintln(w, "  empty")
 			continue
 		}
-		fmt.Fprintf(w, "  %s (blk%d)\n", cr.fileNum, cr.currentValueBlock.physicalIndex)
+		fmt.Fprintf(w, "  %s (blk%d)\n", cr.diskFileNum, cr.currentValueBlock.physicalIndex)
 	}
 	fmt.Fprintf(w, "}\n")
 }

@@ -117,10 +117,10 @@ type TableInfo struct {
 
 // GetBlobReferenceFiles returns the list of blob file numbers referenced by
 // the table.
-func (t *TableInfo) GetBlobReferenceFiles() []base.DiskFileNum {
-	files := make([]base.DiskFileNum, 0, len(t.blobReferences))
+func (t *TableInfo) GetBlobReferenceFiles() []base.BlobFileID {
+	files := make([]base.BlobFileID, 0, len(t.blobReferences))
 	for _, blob := range t.blobReferences {
-		files = append(files, blob.FileNum)
+		files = append(files, blob.FileID)
 	}
 	return files
 }
@@ -438,7 +438,7 @@ func (m *TableMetadata) Ref() {
 			// set it explicitly when constructing the TableMetadata (during
 			// compactions, flushes).
 			if blobRef.Metadata == nil {
-				panic(errors.AssertionFailedf("%s reference to blob %s has no metadata", m.TableNum, blobRef.FileNum))
+				panic(errors.AssertionFailedf("%s reference to blob %s has no metadata", m.TableNum, blobRef.FileID))
 			}
 			blobRef.Metadata.ref()
 		}
@@ -938,7 +938,7 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 			if i > 0 {
 				fmt.Fprint(&b, ", ")
 			}
-			fmt.Fprintf(&b, "(%s: %d)", r.FileNum, r.ValueSize)
+			fmt.Fprintf(&b, "(%s: %d)", r.FileID, r.ValueSize)
 		}
 		fmt.Fprintf(&b, "; depth:%d]", m.BlobReferenceDepth)
 	}
@@ -1022,7 +1022,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 				}
 				p.Expect("(")
 				var ref BlobReference
-				ref.FileNum = base.DiskFileNum(p.FileNum())
+				ref.FileID = base.BlobFileID(p.Uint64())
 				p.Expect(":")
 				ref.ValueSize = p.Uint64()
 				m.BlobReferences = append(m.BlobReferences, ref)

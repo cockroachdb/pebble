@@ -53,15 +53,15 @@ func LoadValBlobContext(
 	}
 }
 
-// BlobReferences provides a mapping from an index to a file number for a
+// BlobReferences provides a mapping from an index to a blob file ID for a
 // sstable's blob references. In practice, this is implemented by
 // manifest.BlobReferences.
 type BlobReferences interface {
-	// FileNumByID returns the FileNum for the identified BlobReference.
-	FileNumByID(i blob.ReferenceID) base.DiskFileNum
-	// IDByFileNum returns the reference ID for the given FileNum. If the file
-	// number is not found, the second return value is false.
-	IDByFileNum(fileNum base.DiskFileNum) (blob.ReferenceID, bool)
+	// BlobFileIDByID returns the BlobFileID for the identified BlobReference.
+	BlobFileIDByID(i blob.ReferenceID) base.BlobFileID
+	// IDByBlobFileID returns the reference ID for the given BlobFileID. If the
+	// blob file ID is not found, the second return value is false.
+	IDByBlobFileID(fileID base.BlobFileID) (blob.ReferenceID, bool)
 }
 
 // TableBlobContext configures how values that reference external blob files
@@ -155,7 +155,7 @@ func (i *defaultInternalValueConstructor) GetInternalValueForPrefixAndValueHandl
 			ValueLen:       preface.ValueLen,
 			ShortAttribute: vp.ShortAttribute(),
 		},
-		BlobFileNum: i.blobContext.References.FileNumByID(preface.ReferenceID),
+		BlobFileID: i.blobContext.References.BlobFileIDByID(preface.ReferenceID),
 	}
 	return base.MakeLazyValue(base.LazyValue{
 		ValueOrHandle: remainder,
