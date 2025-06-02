@@ -60,7 +60,7 @@ type OutputBlob struct {
 	// ObjMeta is metadata for the object backing the blob file.
 	ObjMeta objstorage.ObjectMetadata
 	// Metadata is metadata for the blob file.
-	Metadata *manifest.BlobFileMetadata
+	Metadata *manifest.PhysicalBlobFile
 }
 
 // Stats describes stats collected during the compaction.
@@ -140,7 +140,7 @@ type ValueSeparationMetadata struct {
 	// The below fields are only populated if a new blob file was created.
 	BlobFileStats    blob.FileWriterStats
 	BlobFileObject   objstorage.ObjectMetadata
-	BlobFileMetadata *manifest.BlobFileMetadata
+	BlobFileMetadata *manifest.PhysicalBlobFile
 }
 
 // Runner is a helper for running the "data" part of a compaction (where we use
