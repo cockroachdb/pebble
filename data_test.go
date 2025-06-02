@@ -927,7 +927,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	// them to the final version edit.
 	valueSeparator := &defineDBValueSeparator{
 		pbr:   &preserveBlobReferences{},
-		metas: make(map[base.BlobFileID]*manifest.BlobFileMetadata),
+		metas: make(map[base.BlobFileID]*manifest.PhysicalBlobFile),
 	}
 
 	var mem *memTable
@@ -1640,7 +1640,8 @@ func describeLSM(d *DB, verbose bool) string {
 	if blobFileMetas := d.mu.versions.blobFiles.Metadatas(); len(blobFileMetas) > 0 {
 		buf.WriteString("Blob files:\n")
 		for _, meta := range blobFileMetas {
-			fmt.Fprintf(&buf, "  %s: %d physical bytes, %d value bytes\n", meta.FileID, meta.Size, meta.ValueSize)
+			fmt.Fprintf(&buf, "  %s: [%s] %d physical bytes, %d value bytes\n",
+				meta.FileID, meta.Physical.FileNum, meta.Physical.Size, meta.Physical.ValueSize)
 		}
 	}
 	return buf.String()

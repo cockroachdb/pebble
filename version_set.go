@@ -898,22 +898,22 @@ func getZombieBlobFilesAndComputeLocalMetrics(
 	ve *manifest.VersionEdit, provider objstorage.Provider,
 ) (zombieBlobFiles []objectInfo, localLiveDelta fileMetricDelta) {
 	for _, b := range ve.NewBlobFiles {
-		if objstorage.IsLocalBlobFile(provider, base.DiskFileNum(b.FileID)) {
+		if objstorage.IsLocalBlobFile(provider, b.FileNum) {
 			localLiveDelta.count++
 			localLiveDelta.size += int64(b.Size)
 		}
 	}
 	zombieBlobFiles = make([]objectInfo, 0, len(ve.DeletedBlobFiles))
-	for dfn, b := range ve.DeletedBlobFiles {
-		isLocal := objstorage.IsLocalBlobFile(provider, dfn)
+	for _, physical := range ve.DeletedBlobFiles {
+		isLocal := objstorage.IsLocalBlobFile(provider, physical.FileNum)
 		if isLocal {
 			localLiveDelta.count--
-			localLiveDelta.size -= int64(b.Size)
+			localLiveDelta.size -= int64(physical.Size)
 		}
 		zombieBlobFiles = append(zombieBlobFiles, objectInfo{
 			fileInfo: fileInfo{
-				FileNum:  dfn,
-				FileSize: b.Size,
+				FileNum:  physical.FileNum,
+				FileSize: physical.Size,
 			},
 			isLocal: isLocal,
 		})
@@ -1036,8 +1036,13 @@ func (vs *versionSet) createManifest(
 		MinUnflushedLogNum:   minUnflushedLogNum,
 		NextFileNum:          nextFileNum,
 		CreatedBackingTables: virtualBackings,
-		NewBlobFiles:         vs.blobFiles.Metadatas(),
 	}
+	blobFileMetadatas := vs.blobFiles.Metadatas()
+	snapshot.NewBlobFiles = make([]*manifest.PhysicalBlobFile, len(blobFileMetadatas))
+	for i, m := range blobFileMetadatas {
+		snapshot.NewBlobFiles[i] = m.Physical
+	}
+
 	// Add all extant sstables in the current version.
 	for level, levelMetadata := range vs.currentVersion().Levels {
 		for meta := range levelMetadata.All() {
@@ -1175,7 +1180,7 @@ func (vs *versionSet) addObsoleteLocked(obsolete manifest.ObsoleteFiles) {
 
 	newlyObsoleteBlobFiles := make([]objectInfo, len(obsolete.BlobFiles))
 	for i, bf := range obsolete.BlobFiles {
-		newlyObsoleteBlobFiles[i] = vs.zombieBlobs.Extract(base.DiskFileNum(bf.FileID))
+		newlyObsoleteBlobFiles[i] = vs.zombieBlobs.Extract(bf.FileNum)
 	}
 	vs.obsoleteBlobs = mergeObjectInfos(vs.obsoleteBlobs, newlyObsoleteBlobFiles)
 	vs.updateObsoleteObjectMetricsLocked()
