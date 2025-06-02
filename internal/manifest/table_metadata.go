@@ -1197,6 +1197,8 @@ type TableStats struct {
 	// This statistic is used to determine eligibility for a tombstone density
 	// compaction.
 	TombstoneDenseBlocksRatio float64
+	RawKeySize                uint64
+	RawValueSize              uint64
 }
 
 // CompactionState is the compaction state of a file.

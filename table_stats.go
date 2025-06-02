@@ -319,6 +319,8 @@ func (d *DB) loadTableStats(
 			stats.NumDeletions = props.NumDeletions
 			stats.NumRangeKeySets = props.NumRangeKeySets
 			stats.ValueBlocksSize = props.ValueBlocksSize
+			stats.RawKeySize = props.RawKeySize
+			stats.RawValueSize = props.RawValueSize
 			stats.CompressionType = block.CompressionFromString(props.CompressionName)
 			if props.NumDataBlocks > 0 {
 				stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
@@ -509,9 +511,15 @@ func (d *DB) estimateSizesBeneath(
 
 	for l := level + 1; l < numLevels; l++ {
 		for tableBeneath := range v.Overlaps(l, meta.UserKeyBounds()).All() {
+			fileSum += tableBeneath.Size
+			if tableBeneath.StatsValid() {
+				entryCount += tableBeneath.Stats.NumEntries
+				keySum += tableBeneath.Stats.RawKeySize
+				valSum += tableBeneath.Stats.RawValueSize
+				continue
+			}
+			// If stats aren't available, we need to read the properties block.
 			err := d.fileCache.withReader(ctx, block.NoReadEnv, tableBeneath, func(v *sstable.Reader, _ sstable.ReadEnv) (err error) {
-				// TODO(xinhaoz): We should avoid reading the properties block here.
-				// See https://github.com/cockroachdb/pebble/issues/4792.
 				loadedProps, err := v.ReadPropertiesBlock(ctx, nil /* buffer pool */)
 				if err != nil {
 					return err
@@ -521,8 +529,7 @@ func (d *DB) estimateSizesBeneath(
 					props = loadedProps.GetScaledProperties(tableBeneath.TableBacking.Size, tableBeneath.Size)
 				}
 
-				fileSum += tableBeneath.Size
-				entryCount += tableBeneath.Stats.NumEntries
+				entryCount += props.NumEntries
 				keySum += props.RawKeySize
 				valSum += props.RawValueSize
 				return nil
@@ -730,6 +737,8 @@ func maybeSetStatsFromProperties(
 	meta.Stats.PointDeletionsBytesEstimate = pointEstimate
 	meta.Stats.RangeDeletionsBytesEstimate = 0
 	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
+	meta.Stats.RawKeySize = props.RawKeySize
+	meta.Stats.RawValueSize = props.RawValueSize
 	meta.Stats.CompressionType = block.CompressionFromString(props.CompressionName)
 	meta.StatsMarkValid()
 	sanityCheckStats(meta, logger, "stats from properties")
