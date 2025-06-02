@@ -1063,8 +1063,9 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			}
 
 			pc := &pickedCompaction{
-				cmp:    DefaultComparer.Compare,
-				inputs: []compactionLevel{{level: -1}, {level: -1}},
+				cmp:       DefaultComparer.Compare,
+				baseLevel: 1,
+				inputs:    []compactionLevel{{level: -1}, {level: -1}},
 			}
 			pc.startLevel, pc.outputLevel = &pc.inputs[0], &pc.inputs[1]
 			var currentLevel int
