@@ -65,6 +65,15 @@ type FilterPolicy interface {
 	NewWriter(ftype FilterType) FilterWriter
 }
 
+// NoFilterPolicy implements the "none" filter policy.
+var NoFilterPolicy FilterPolicy = noFilter{}
+
+type noFilter struct{}
+
+func (noFilter) Name() string                                         { return "none" }
+func (noFilter) MayContain(ftype FilterType, filter, key []byte) bool { return true }
+func (noFilter) NewWriter(ftype FilterType) FilterWriter              { panic("not implemented") }
+
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
 // within the sstable. It should not maintain any per-sstable state, and must
 // be thread-safe.

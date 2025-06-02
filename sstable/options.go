@@ -174,7 +174,7 @@ type WriterOptions struct {
 	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
 	// package.
 	//
-	// The default value means to use no filter.
+	// The default value is NoFilterPolicy.
 	FilterPolicy FilterPolicy
 
 	// FilterType defines whether an existing filter policy is applied at a
@@ -347,6 +347,9 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	if o.Compression <= block.DefaultCompression || o.Compression >= block.NCompression ||
 		(o.Compression == block.MinLZCompression && o.TableFormat < TableFormatPebblev6) {
 		o.Compression = block.SnappyCompression
+	}
+	if o.FilterPolicy == nil {
+		o.FilterPolicy = base.NoFilterPolicy
 	}
 	return o
 }

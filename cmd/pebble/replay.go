@@ -300,7 +300,7 @@ func (c *replayConfig) parseHooks() *pebble.ParseHooks {
 		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
 			switch name {
 			case "none":
-				return nil, nil
+				return base.NoFilterPolicy, nil
 			case "rocksdb.BuiltinBloomFilter":
 				return bloom.FilterPolicy(10), nil
 			default:
