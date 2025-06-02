@@ -69,6 +69,8 @@ type FilterWriter = base.FilterWriter
 // FilterPolicy exports the base.FilterPolicy type.
 type FilterPolicy = base.FilterPolicy
 
+var NoFilterPolicy = base.NoFilterPolicy
+
 // KeySchema exports the colblk.KeySchema type.
 type KeySchema = colblk.KeySchema
 
@@ -421,7 +423,7 @@ type LevelOptions struct {
 	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
 	// package.
 	//
-	// The default value means to use no filter.
+	// The default value is NoFilterPolicy.
 	FilterPolicy FilterPolicy
 
 	// FilterType defines whether an existing filter policy is applied at a
@@ -463,6 +465,9 @@ func (o *LevelOptions) EnsureDefaults() {
 	}
 	if o.Compression == nil {
 		o.Compression = func() Compression { return DefaultCompression }
+	}
+	if o.FilterPolicy == nil {
+		o.FilterPolicy = NoFilterPolicy
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
@@ -1454,7 +1459,7 @@ func (o *Options) AddEventListener(l EventListener) {
 func (o *Options) initMaps() {
 	for i := range o.Levels {
 		l := &o.Levels[i]
-		if l.FilterPolicy != nil {
+		if l.FilterPolicy != NoFilterPolicy {
 			if o.Filters == nil {
 				o.Filters = make(map[string]FilterPolicy)
 			}
@@ -1486,13 +1491,6 @@ func (o *Options) Clone() *Options {
 		*n = *o
 	}
 	return n
-}
-
-func filterPolicyName(p FilterPolicy) string {
-	if p == nil {
-		return "none"
-	}
-	return p.Name()
 }
 
 func (o *Options) String() string {
@@ -1612,7 +1610,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
 		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
 		fmt.Fprintf(&buf, "  compression=%s\n", resolveDefaultCompression(l.Compression()))
-		fmt.Fprintf(&buf, "  filter_policy=%s\n", filterPolicyName(l.FilterPolicy))
+		fmt.Fprintf(&buf, "  filter_policy=%s\n", l.FilterPolicy.Name())
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
 		fmt.Fprintf(&buf, "  target_file_size=%d\n", l.TargetFileSize)
@@ -2103,6 +2101,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "filter_policy":
 				if hooks != nil && hooks.NewFilterPolicy != nil {
 					l.FilterPolicy, err = hooks.NewFilterPolicy(value)
+				} else {
+					l.FilterPolicy = NoFilterPolicy
 				}
 			case "filter_type":
 				switch value {

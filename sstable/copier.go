@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -57,7 +58,7 @@ func CopySpan(
 
 	// If our input has not filters, our output cannot have filters either.
 	if r.tableFilter == nil {
-		o.FilterPolicy = nil
+		o.FilterPolicy = base.NoFilterPolicy
 	}
 	o.TableFormat = r.tableFormat
 	// We don't want the writer to attempt to write out block property data in

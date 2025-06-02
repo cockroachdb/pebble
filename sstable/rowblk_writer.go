@@ -1742,7 +1742,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		return w
 	}
 
-	if o.FilterPolicy != nil {
+	if o.FilterPolicy != base.NoFilterPolicy {
 		switch o.FilterType {
 		case TableFilter:
 			w.filter = newTableFilterWriter(o.FilterPolicy)

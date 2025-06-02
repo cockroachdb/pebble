@@ -150,7 +150,7 @@ func newColumnarWriter(
 			block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
 			w.opts.Compression, w.opts.Checksum, func(compressedSize int) {})
 	}
-	if o.FilterPolicy != nil {
+	if o.FilterPolicy != base.NoFilterPolicy {
 		switch o.FilterType {
 		case TableFilter:
 			w.filterBlock = newTableFilterWriter(o.FilterPolicy)

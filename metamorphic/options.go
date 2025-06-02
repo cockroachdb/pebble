@@ -792,7 +792,7 @@ func RandomOptions(
 	opts.Filters = nil
 	switch rng.IntN(3) {
 	case 0:
-		lopts.FilterPolicy = nil
+		lopts.FilterPolicy = pebble.NoFilterPolicy
 	case 1:
 		lopts.FilterPolicy = bloom.FilterPolicy(10)
 	default:
@@ -1030,7 +1030,7 @@ func (t *testingFilterPolicy) Name() string {
 func filterPolicyFromName(name string) (pebble.FilterPolicy, error) {
 	switch name {
 	case "none":
-		return nil, nil
+		return base.NoFilterPolicy, nil
 	case "rocksdb.BuiltinBloomFilter":
 		return bloom.FilterPolicy(10), nil
 	}
