@@ -9,13 +9,11 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"reflect"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -316,127 +314,6 @@ func TestCheckOrdering(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
-}
-
-func TestExtendBounds(t *testing.T) {
-	cmp := base.DefaultComparer.Compare
-	parseBounds := func(line string) (lower, upper InternalKey) {
-		parts := strings.Split(line, "-")
-		if len(parts) == 1 {
-			parts = strings.Split(parts[0], ":")
-			start, end := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-			lower = base.ParseInternalKey(start)
-			switch k := lower.Kind(); k {
-			case base.InternalKeyKindRangeDelete:
-				upper = base.MakeRangeDeleteSentinelKey([]byte(end))
-			case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
-				upper = base.MakeExclusiveSentinelKey(k, []byte(end))
-			default:
-				panic(fmt.Sprintf("unknown kind %s with end key", k))
-			}
-		} else {
-			l, u := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-			lower, upper = base.ParseInternalKey(l), base.ParseInternalKey(u)
-		}
-		return
-	}
-	format := func(m *TableMetadata) string {
-		var b bytes.Buffer
-		var smallest, largest string
-		switch m.boundTypeSmallest {
-		case boundTypePointKey:
-			smallest = "point"
-		case boundTypeRangeKey:
-			smallest = "range"
-		default:
-			return fmt.Sprintf("unknown bound type %d", m.boundTypeSmallest)
-		}
-		switch m.boundTypeLargest {
-		case boundTypePointKey:
-			largest = "point"
-		case boundTypeRangeKey:
-			largest = "range"
-		default:
-			return fmt.Sprintf("unknown bound type %d", m.boundTypeLargest)
-		}
-		bounds, err := m.boundsMarker()
-		if err != nil {
-			panic(err)
-		}
-		fmt.Fprintf(&b, "%s\n", m.DebugString(base.DefaultFormatter, true))
-		fmt.Fprintf(&b, "  bounds: (smallest=%s,largest=%s) (0x%08b)\n", smallest, largest, bounds)
-		return b.String()
-	}
-	m := &TableMetadata{}
-	datadriven.RunTest(t, "testdata/file_metadata_bounds", func(t *testing.T, d *datadriven.TestData) string {
-		switch d.Cmd {
-		case "reset":
-			m = &TableMetadata{}
-			return ""
-		case "extend-point-key-bounds":
-			u, l := parseBounds(d.Input)
-			m.ExtendPointKeyBounds(cmp, u, l)
-			return format(m)
-		case "extend-range-key-bounds":
-			u, l := parseBounds(d.Input)
-			m.ExtendRangeKeyBounds(cmp, u, l)
-			return format(m)
-		default:
-			return fmt.Sprintf("unknown command %s\n", d.Cmd)
-		}
-	})
-}
-
-func TestTableMetadata_ParseRoundTrip(t *testing.T) {
-	testCases := []struct {
-		name   string
-		input  string
-		output string
-	}{
-		{
-			name:  "point keys only",
-			input: "000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]",
-		},
-		{
-			name:  "range keys only",
-			input: "000001:[a#0,RANGEKEYSET-z#0,RANGEKEYDEL] seqnums:[0-0] ranges:[a#0,RANGEKEYSET-z#0,RANGEKEYDEL]",
-		},
-		{
-			name:  "point and range keys",
-			input: "000001:[a#0,RANGEKEYSET-d#0,DEL] seqnums:[0-0] points:[b#0,SET-d#0,DEL] ranges:[a#0,RANGEKEYSET-c#0,RANGEKEYDEL]",
-		},
-		{
-			name:  "point and range keys with nonzero senums",
-			input: "000001:[a#3,RANGEKEYSET-d#4,DEL] seqnums:[3-7] points:[b#3,SET-d#4,DEL] ranges:[a#3,RANGEKEYSET-c#5,RANGEKEYDEL]",
-		},
-		{
-			name:   "whitespace",
-			input:  " 000001 : [ a#0,SET - z#0,DEL] points : [ a#0,SET - z#0,DEL] ",
-			output: "000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]",
-		},
-		{
-			name:  "virtual",
-			input: "000001(000008):[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]",
-		},
-		{
-			name:  "blobrefs",
-			input: "000196:[bar#0,SET-foo#0,SET] seqnums:[0-0] points:[bar#0,SET-foo#0,SET] blobrefs:[(000191: 2952), (000075: 108520); depth:2]",
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			m, err := ParseTableMetadataDebug(tc.input)
-			require.NoError(t, err)
-			err = m.Validate(base.DefaultComparer.Compare, base.DefaultFormatter)
-			require.NoError(t, err)
-			got := m.DebugString(base.DefaultFormatter, true)
-			want := tc.input
-			if tc.output != "" {
-				want = tc.output
-			}
-			require.Equal(t, want, got)
-		})
-	}
 }
 
 func TestCalculateInuseKeyRanges(t *testing.T) {
@@ -834,21 +711,4 @@ func TestIterAllocs(t *testing.T) {
 			t.Fatalf("allocs=%f", allocs)
 		}
 	})
-}
-
-// TestTableMetadataSize tests the expected size of our TableMetadata struct.
-// This test exists as a callout for whoever changes the TableMetadata struct to
-// be mindful of its size increasing -- as the cost of TableMetadata is
-// proportional to the amount of files that exist.
-func TestTableMetadataSize(t *testing.T) {
-	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-		t.Skip("Test only supported on amd64 and arm64 architectures")
-	}
-	structSize := unsafe.Sizeof(TableMetadata{})
-
-	const tableMetadataSize = 304
-	if structSize != tableMetadataSize {
-		t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
-			structSize, tableMetadataSize)
-	}
 }
