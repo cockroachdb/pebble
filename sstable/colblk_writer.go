@@ -720,7 +720,7 @@ func (w *RawColumnWriter) enqueueDataBlock(
 	// Serialize the data block, compress it and send it to the write queue.
 	cb := compressedBlockPool.Get().(*compressedBlock)
 	cb.blockBuf.checksummer.Type = w.opts.Checksum
-	cb.physical = block.CompressAndChecksumWithCompressor(
+	cb.physical = block.CompressAndChecksum(
 		&cb.blockBuf.dataBuf,
 		serializedBlock,
 		w.compressor,
@@ -1247,7 +1247,7 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 	// Serialize the data block, compress it and send it to the write queue.
 	cb := compressedBlockPool.Get().(*compressedBlock)
 	cb.blockBuf.checksummer.Type = w.opts.Checksum
-	cb.physical = block.CompressAndChecksumWithCompressor(
+	cb.physical = block.CompressAndChecksum(
 		&cb.blockBuf.dataBuf,
 		b,
 		w.compressor,

@@ -170,6 +170,8 @@ func rewriteDataBlocksInParallel(
 			// We'll assume all blocks are _roughly_ equal so round-robin static partition
 			// of each worker doing every ith block is probably enough.
 			err := func() error {
+				compressor := block.GetCompressor(opts.Compression)
+				defer compressor.Close()
 				for i := worker; i < len(input); i += concurrency {
 					bh := input[i]
 					var err error
@@ -190,7 +192,7 @@ func rewriteDataBlocksInParallel(
 						return err
 					}
 					compressedBuf = compressedBuf[:cap(compressedBuf)]
-					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, opts.Compression, &checksummer)
+					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, compressor, &checksummer)
 					output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
 				}
 				return nil
