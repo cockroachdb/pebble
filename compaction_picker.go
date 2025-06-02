@@ -246,7 +246,7 @@ func newPickedCompaction(
 		l0Organizer:            l0Organizer,
 		baseLevel:              baseLevel,
 		inputs:                 []compactionLevel{{level: startLevel}, {level: outputLevel}},
-		maxOutputFileSize:      uint64(opts.Level(adjustedLevel).TargetFileSize),
+		maxOutputFileSize:      uint64(opts.Levels[adjustedLevel].TargetFileSize),
 		maxOverlapBytes:        maxGrandparentOverlapBytes(opts, adjustedLevel),
 		maxReadCompactionBytes: maxReadCompactionBytes(opts, adjustedLevel),
 	}
@@ -1877,7 +1877,7 @@ func pickL0(
 	// counterproductive.
 	lcf = l0Organizer.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count, env.problemSpans)
 	if lcf != nil {
-		pc := newPickedCompactionFromL0(lcf, opts, vers, l0Organizer, 0, false)
+		pc := newPickedCompactionFromL0(lcf, opts, vers, l0Organizer, baseLevel, false)
 		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 			if pc.startLevel.files.Empty() {
 				opts.Logger.Fatalf("empty compaction chosen")

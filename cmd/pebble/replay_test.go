@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,8 +49,8 @@ func TestParseOptionsStr(t *testing.T) {
 		},
 		{
 			c: replayConfig{optionsString: `[Options] [Level "0"] target_file_size=222`},
-			options: &pebble.Options{Levels: []pebble.LevelOptions{
-				{TargetFileSize: 222},
+			options: &pebble.Options{Levels: [manifest.NumLevels]pebble.LevelOptions{
+				0: {TargetFileSize: 222},
 			}},
 		},
 		{
@@ -57,9 +58,9 @@ func TestParseOptionsStr(t *testing.T) {
 			options: &pebble.Options{
 				LBaseMaxBytes: 10,
 				MaxOpenFiles:  20,
-				Levels: []pebble.LevelOptions{
-					{TargetFileSize: 30},
-					{IndexBlockSize: 40},
+				Levels: [manifest.NumLevels]pebble.LevelOptions{
+					0: {TargetFileSize: 30},
+					1: {IndexBlockSize: 40},
 				},
 			},
 		},

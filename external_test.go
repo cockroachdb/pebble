@@ -188,7 +188,6 @@ func buildSeparatedValuesDB(
 		FS:                      vfs.NewMem(),
 		KeySchema:               cockroachkvs.KeySchema.Name,
 		KeySchemas:              sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
-		Levels:                  make([]pebble.LevelOptions, 7),
 		MemTableSize:            2 << 20,
 		L0CompactionThreshold:   2,
 	}
@@ -199,17 +198,10 @@ func buildSeparatedValuesDB(
 			MaxBlobReferenceDepth: 10,
 		}
 	}
-	for i := 0; i < len(o.Levels); i++ {
-		l := &o.Levels[i]
-		l.BlockSize = 32 << 10       // 32 KB
-		l.IndexBlockSize = 256 << 10 // 256 KB
-		l.FilterPolicy = bloom.FilterPolicy(10)
-		l.FilterType = pebble.TableFilter
-		if i > 0 {
-			l.TargetFileSize = o.Levels[i-1].TargetFileSize * 2
-		}
-		l.EnsureDefaults()
-	}
+	o.Levels[0].BlockSize = 32 << 10       // 32 KB
+	o.Levels[0].IndexBlockSize = 256 << 10 // 256 KB
+	o.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
+	o.Levels[0].FilterType = pebble.TableFilter
 	db, err := pebble.Open("", o)
 	require.NoError(tb, err)
 

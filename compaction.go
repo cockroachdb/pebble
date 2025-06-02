@@ -47,7 +47,7 @@ var gcLabels = pprof.Labels("pebble", "gc")
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
 func expandedCompactionByteSizeLimit(opts *Options, level int, availBytes uint64) uint64 {
-	v := uint64(25 * opts.Level(level).TargetFileSize)
+	v := uint64(25 * opts.Levels[level].TargetFileSize)
 
 	// Never expand a compaction beyond half the available capacity, divided
 	// by the maximum number of concurrent compactions. Each of the concurrent
@@ -69,13 +69,13 @@ func expandedCompactionByteSizeLimit(opts *Options, level int, availBytes uint64
 // maxGrandparentOverlapBytes is the maximum bytes of overlap with level+1
 // before we stop building a single file in a level-1 to level compaction.
 func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
-	return uint64(10 * opts.Level(level).TargetFileSize)
+	return uint64(10 * opts.Levels[level].TargetFileSize)
 }
 
 // maxReadCompactionBytes is used to prevent read compactions which
 // are too wide.
 func maxReadCompactionBytes(opts *Options, level int) uint64 {
-	return uint64(10 * opts.Level(level).TargetFileSize)
+	return uint64(10 * opts.Levels[level].TargetFileSize)
 }
 
 // noCloseIter wraps around a FragmentIterator, intercepting and eliding
@@ -712,7 +712,7 @@ func newFlush(
 	}
 
 	if opts.FlushSplitBytes > 0 {
-		c.maxOutputFileSize = uint64(opts.Level(0).TargetFileSize)
+		c.maxOutputFileSize = uint64(opts.Levels[0].TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
 		c.grandparents = c.version.Overlaps(baseLevel, c.userKeyBounds())
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)

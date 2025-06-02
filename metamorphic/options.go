@@ -326,16 +326,14 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 		// Use an archive cleaner to ease post-mortem debugging.
 		Cleaner: base.ArchiveCleaner{},
 		// Always use our custom comparer which provides a Split method.
-		Comparer:           kf.Comparer,
-		KeySchema:          kf.KeySchema.Name,
-		KeySchemas:         sstable.MakeKeySchemas(kf.KeySchema),
-		FS:                 vfs.NewMem(),
-		FormatMajorVersion: defaultFormatMajorVersion,
-		Levels: []pebble.LevelOptions{{
-			FilterPolicy: bloom.FilterPolicy(10),
-		}},
+		Comparer:                kf.Comparer,
+		KeySchema:               kf.KeySchema.Name,
+		KeySchemas:              sstable.MakeKeySchemas(kf.KeySchema),
+		FS:                      vfs.NewMem(),
+		FormatMajorVersion:      defaultFormatMajorVersion,
 		BlockPropertyCollectors: kf.BlockPropertyCollectors,
 	}
+	opts.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
 	opts.Experimental.IngestSplit = func() bool { return false }
 	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
@@ -808,7 +806,7 @@ func RandomOptions(
 	default:
 		lopts.Compression = func() block.Compression { return pebble.SnappyCompression }
 	}
-	opts.Levels = []pebble.LevelOptions{lopts}
+	opts.Levels[0] = lopts
 
 	// Explicitly disable disk-backed FS's for the random configurations. The
 	// single standard test configuration that uses a disk-backed FS is

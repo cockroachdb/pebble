@@ -397,24 +397,28 @@ type LevelOptions struct {
 	// BlockRestartInterval is the number of keys between restart points
 	// for delta encoding of keys.
 	//
-	// The default value is 16.
+	// The default value is 16 for L0, and the value from the previous level for
+	// all other levels.
 	BlockRestartInterval int
 
 	// BlockSize is the target uncompressed size in bytes of each table block.
 	//
-	// The default value is 4096.
+	// The default value is 4096 for L0, and the value from the previous level for
+	// all other levels.
 	BlockSize int
 
 	// BlockSizeThreshold finishes a block if the block size is larger than the
 	// specified percentage of the target block size and adding the next entry
 	// would cause the block to be larger than the target block size.
 	//
-	// The default value is 90
+	// The default value is 90 for L0, and the value from the previous level for
+	// all other levels.
 	BlockSizeThreshold int
 
 	// Compression defines the per-block compression to use.
 	//
-	// The default value (DefaultCompression) uses snappy compression.
+	// The default value is DefaultCompression (which uses Snappy) for L0, or the
+	// function from the previous level for all other levels.
 	Compression func() Compression
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
@@ -423,16 +427,12 @@ type LevelOptions struct {
 	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
 	// package.
 	//
-	// The default value is NoFilterPolicy.
+	// The default value for L0 is NoFilterPolicy (no filter), and the value from
+	// the previous level for all other levels.
 	FilterPolicy FilterPolicy
 
-	// FilterType defines whether an existing filter policy is applied at a
-	// block-level or table-level. Block-level filters use less memory to create,
-	// but are slower to access as a check for the key in the index must first be
-	// performed to locate the filter block. A table-level filter will require
-	// memory proportional to the number of keys in an sstable to create, but
-	// avoids the index lookup when determining if a key is present. Table-level
-	// filters should be preferred except under constrained memory situations.
+	// FilterType is a legacy field. The default and only possible value is
+	// TableFilter.
 	FilterType FilterType
 
 	// IndexBlockSize is the target uncompressed size in bytes of each index
@@ -441,17 +441,20 @@ type LevelOptions struct {
 	// (such as math.MaxInt32) disables the automatic creation of two-level
 	// indexes.
 	//
-	// The default value is the value of BlockSize.
+	// The default value is the value of BlockSize for L0, or the value from the
+	// previous level for all other levels.
 	IndexBlockSize int
 
 	// The target file size for the level.
+	//
+	// The default value is 2MB for L0, and double the value for the previous
+	// level for all other levels.
 	TargetFileSize int64
 }
 
-// EnsureDefaults ensures that the default values for all of the options have
-// been initialized. It is valid to call EnsureDefaults on a nil receiver. A
-// non-nil result will always be returned.
-func (o *LevelOptions) EnsureDefaults() {
+// EnsureL0Defaults ensures that the L0 default values for the options have been
+// initialized.
+func (o *LevelOptions) EnsureL0Defaults() {
 	if o.BlockRestartInterval <= 0 {
 		o.BlockRestartInterval = base.DefaultBlockRestartInterval
 	}
@@ -474,6 +477,34 @@ func (o *LevelOptions) EnsureDefaults() {
 	}
 	if o.TargetFileSize <= 0 {
 		o.TargetFileSize = 2 << 20 // 2 MB
+	}
+}
+
+// EnsureL1PlusDefaults ensures that the L1+ default values for the options have
+// been initialized. Requires the fully initialized options for the level above.
+func (o *LevelOptions) EnsureL1PlusDefaults(previousLevel *LevelOptions) {
+	if o.BlockRestartInterval <= 0 {
+		o.BlockRestartInterval = previousLevel.BlockRestartInterval
+	}
+	if o.BlockSize <= 0 {
+		o.BlockSize = previousLevel.BlockSize
+	} else if o.BlockSize > sstable.MaximumRestartOffset {
+		panic(errors.Errorf("BlockSize %d exceeds MaximumRestartOffset", o.BlockSize))
+	}
+	if o.BlockSizeThreshold <= 0 {
+		o.BlockSizeThreshold = previousLevel.BlockSizeThreshold
+	}
+	if o.Compression == nil {
+		o.Compression = previousLevel.Compression
+	}
+	if o.FilterPolicy == nil {
+		o.FilterPolicy = previousLevel.FilterPolicy
+	}
+	if o.IndexBlockSize <= 0 {
+		o.IndexBlockSize = previousLevel.IndexBlockSize
+	}
+	if o.TargetFileSize <= 0 {
+		o.TargetFileSize = previousLevel.TargetFileSize * 2
 	}
 }
 
@@ -843,9 +874,8 @@ type Options struct {
 	// maximum number of bytes for a level is exceeded, compaction is requested.
 	LBaseMaxBytes int64
 
-	// Per-level options. Options for at least one level must be specified. The
-	// options for the last level are used for all subsequent levels.
-	Levels []LevelOptions
+	// Per-level options.
+	Levels [manifest.NumLevels]LevelOptions
 
 	// LoggerAndTracer will be used, if non-nil, else Logger will be used and
 	// tracing will be a noop.
@@ -1327,21 +1357,9 @@ func (o *Options) EnsureDefaults() {
 	if o.LBaseMaxBytes <= 0 {
 		o.LBaseMaxBytes = 64 << 20 // 64 MB
 	}
-	if o.Levels == nil {
-		o.Levels = make([]LevelOptions, 1)
-		for i := range o.Levels {
-			if i > 0 {
-				l := &o.Levels[i]
-				if l.TargetFileSize <= 0 {
-					l.TargetFileSize = o.Levels[i-1].TargetFileSize * 2
-				}
-			}
-			o.Levels[i].EnsureDefaults()
-		}
-	} else {
-		for i := range o.Levels {
-			o.Levels[i].EnsureDefaults()
-		}
+	o.Levels[0].EnsureL0Defaults()
+	for i := 1; i < len(o.Levels); i++ {
+		o.Levels[i].EnsureL1PlusDefaults(&o.Levels[i-1])
 	}
 	if o.Logger == nil {
 		o.Logger = DefaultLogger
@@ -1469,19 +1487,6 @@ func (o *Options) initMaps() {
 			}
 		}
 	}
-}
-
-// Level returns the LevelOptions for the specified level.
-func (o *Options) Level(level int) LevelOptions {
-	if level < len(o.Levels) {
-		return o.Levels[level]
-	}
-	n := len(o.Levels) - 1
-	l := o.Levels[n]
-	for i := n; i < level; i++ {
-		l.TargetFileSize *= 2
-	}
-	return l
 }
 
 // Clone creates a shallow-copy of the supplied options.
@@ -2068,11 +2073,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			}
 			index, _ := strconv.Atoi(m[1])
 
-			if len(o.Levels) <= index {
-				newLevels := make([]LevelOptions, index+1)
-				copy(newLevels, o.Levels)
-				o.Levels = newLevels
-			}
 			l := &o.Levels[index]
 
 			var err error
@@ -2301,7 +2301,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 			writerOpts.WritingToLowestLevel = true
 		}
 	}
-	levelOpts := o.Level(level)
+	levelOpts := o.Levels[level]
 	writerOpts.BlockRestartInterval = levelOpts.BlockRestartInterval
 	writerOpts.BlockSize = levelOpts.BlockSize
 	writerOpts.BlockSizeThreshold = levelOpts.BlockSizeThreshold
@@ -2325,7 +2325,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 // MakeBlobWriterOptions constructs blob.FileWriterOptions from the corresponding
 // options in the receiver.
 func (o *Options) MakeBlobWriterOptions(level int) blob.FileWriterOptions {
-	lo := o.Level(level)
+	lo := o.Levels[level]
 	return blob.FileWriterOptions{
 		Compression:  resolveDefaultCompression(lo.Compression()),
 		ChecksumType: block.ChecksumTypeCRC32c,
