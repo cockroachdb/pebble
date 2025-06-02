@@ -898,9 +898,9 @@ func getZombieBlobFilesAndComputeLocalMetrics(
 	ve *manifest.VersionEdit, provider objstorage.Provider,
 ) (zombieBlobFiles []objectInfo, localLiveDelta fileMetricDelta) {
 	for _, b := range ve.NewBlobFiles {
-		if objstorage.IsLocalBlobFile(provider, b.FileNum) {
+		if objstorage.IsLocalBlobFile(provider, b.Physical.FileNum) {
 			localLiveDelta.count++
-			localLiveDelta.size += int64(b.Size)
+			localLiveDelta.size += int64(b.Physical.Size)
 		}
 	}
 	zombieBlobFiles = make([]objectInfo, 0, len(ve.DeletedBlobFiles))
@@ -1036,11 +1036,7 @@ func (vs *versionSet) createManifest(
 		MinUnflushedLogNum:   minUnflushedLogNum,
 		NextFileNum:          nextFileNum,
 		CreatedBackingTables: virtualBackings,
-	}
-	blobFileMetadatas := vs.blobFiles.Metadatas()
-	snapshot.NewBlobFiles = make([]*manifest.PhysicalBlobFile, len(blobFileMetadatas))
-	for i, m := range blobFileMetadatas {
-		snapshot.NewBlobFiles[i] = m.Physical
+		NewBlobFiles:         vs.blobFiles.Metadatas(),
 	}
 
 	// Add all extant sstables in the current version.

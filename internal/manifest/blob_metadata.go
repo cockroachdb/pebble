@@ -99,7 +99,7 @@ type BlobFileMetadata struct {
 
 // SafeFormat implements redact.SafeFormatter.
 func (m BlobFileMetadata) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("%s -> %s", m.FileID, m.Physical)
+	w.Printf("%s physical:{%s}", m.FileID, m.Physical)
 }
 
 // String implements fmt.Stringer.
@@ -183,15 +183,17 @@ func ParseBlobFileMetadataDebug(s string) (_ BlobFileMetadata, err error) {
 	}()
 
 	// Input format:
-	//  000102 -> 000000: size:[206536 (201KiB)], vals:[393256 (384KiB)]
+	//  000102 physical:{000000: size:[206536 (201KiB)], vals:[393256 (384KiB)]}
 	p := strparse.MakeParser(debugParserSeparators, s)
 	fileID := base.BlobFileID(p.Int())
-	p.Expect("-")
-	p.Expect(">")
+	p.Expect("physical")
+	p.Expect(":")
+	p.Expect("{")
 	physical, err := parsePhysicalBlobFileDebug(&p)
 	if err != nil {
 		return BlobFileMetadata{}, err
 	}
+	p.Expect("}")
 	return BlobFileMetadata{FileID: fileID, Physical: physical}, nil
 }
 
@@ -227,7 +229,7 @@ func parsePhysicalBlobFileDebug(p *strparse.Parser) (*PhysicalBlobFile, error) {
 		}
 	}
 
-	for !p.Done() {
+	for !p.Done() && p.Peek() != "}" {
 		field := p.Next()
 		p.Expect(":")
 		switch field {
@@ -487,17 +489,17 @@ func (s *CurrentBlobFileSet) Metadatas() []BlobFileMetadata {
 // edit is modified to record the blob file removal.
 func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 	// Insert new blob files into the set.
-	for _, nf := range ve.NewBlobFiles {
-		if _, ok := s.files[base.BlobFileID(nf.FileNum)]; ok {
-			return errors.AssertionFailedf("pebble: new blob file %d already exists", nf.FileNum)
+	for _, m := range ve.NewBlobFiles {
+		if _, ok := s.files[m.FileID]; ok {
+			return errors.AssertionFailedf("pebble: new blob file %d already exists", m.FileID)
 		}
-		blobFileID := base.BlobFileID(nf.FileNum)
+		blobFileID := m.FileID
 		cbf := &currentBlobFile{references: make(map[*TableMetadata]struct{})}
-		cbf.metadata = BlobFileMetadata{FileID: blobFileID, Physical: nf}
+		cbf.metadata = BlobFileMetadata{FileID: blobFileID, Physical: m.Physical}
 		s.files[blobFileID] = cbf
 		s.stats.Count++
-		s.stats.PhysicalSize += nf.Size
-		s.stats.ValueSize += nf.ValueSize
+		s.stats.PhysicalSize += m.Physical.Size
+		s.stats.ValueSize += m.Physical.ValueSize
 	}
 
 	// Update references to blob files from new tables. Any referenced blob

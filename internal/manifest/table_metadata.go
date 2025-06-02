@@ -726,7 +726,7 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	return b.String()
 }
 
-const debugParserSeparators = ":-[]();"
+const debugParserSeparators = ":-[]();{}"
 
 // errFromPanic can be used in a recover block to convert panics into errors.
 func errFromPanic(r any) error {

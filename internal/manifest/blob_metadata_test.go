@@ -57,17 +57,17 @@ func TestBlobFileMetadata_ParseRoundTrip(t *testing.T) {
 	}{
 		{
 			name:  "verbatim",
-			input: "000002 -> 000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+			input: "000002 physical:{000001 size:[903530 (882KB)] vals:[39531 (39KB)]}",
 		},
 		{
 			name:   "whitespace is insignificant",
-			input:  "000002          -> 000001   size  : [ 903530 (882KB )] vals: [ 39531 ( 39KB ) ]",
-			output: "000002 -> 000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+			input:  "000002          physical : {000001   size  : [ 903530 (882KB )] vals: [ 39531 ( 39KB ) ]  }",
+			output: "000002 physical:{000001 size:[903530 (882KB)] vals:[39531 (39KB)]}",
 		},
 		{
 			name:   "humanized sizes are optional",
-			input:  "000002 -> 000001 size:[903530] vals:[39531]",
-			output: "000002 -> 000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+			input:  "000002 physical:{000001 size:[903530] vals:[39531]}",
+			output: "000002 physical:{000001 size:[903530 (882KB)] vals:[39531 (39KB)]}",
 		},
 	}
 	for _, tc := range testCases {

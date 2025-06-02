@@ -157,7 +157,7 @@ type VersionEdit struct {
 	RemovedBackingTables []base.DiskFileNum
 	// NewBlobFiles holds the metadata for all new blob files introduced within
 	// the version edit.
-	NewBlobFiles []*PhysicalBlobFile
+	NewBlobFiles []BlobFileMetadata
 	// DeletedBlobFiles holds all blob files that became unreferenced during the
 	// version edit. These blob files must not be referenced by any sstable in
 	// the resulting Version.
@@ -507,7 +507,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			v.NewTables = append(v.NewTables, nfe)
 
 		case tagNewBlobFile:
-			fileNum, err := d.readFileNum()
+			fileID, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			diskFileNum, err := d.readFileNum()
 			if err != nil {
 				return err
 			}
@@ -523,11 +527,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			v.NewBlobFiles = append(v.NewBlobFiles, &PhysicalBlobFile{
-				FileNum:      base.DiskFileNum(fileNum),
-				Size:         size,
-				ValueSize:    valueSize,
-				CreationTime: creationTime,
+			v.NewBlobFiles = append(v.NewBlobFiles, BlobFileMetadata{
+				FileID: base.BlobFileID(fileID),
+				Physical: &PhysicalBlobFile{
+					FileNum:      base.DiskFileNum(diskFileNum),
+					Size:         size,
+					ValueSize:    valueSize,
+					CreationTime: creationTime,
+				},
 			})
 
 		case tagDeletedBlobFile:
@@ -680,7 +687,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 			ve.RemovedBackingTables = append(ve.RemovedBackingTables, n)
 
 		case "add-blob-file":
-			meta, err := ParsePhysicalBlobFileDebug(p.Remaining())
+			meta, err := ParseBlobFileMetadataDebug(p.Remaining())
 			if err != nil {
 				return nil, err
 			}
@@ -822,10 +829,11 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for _, x := range v.NewBlobFiles {
 		e.writeUvarint(tagNewBlobFile)
-		e.writeUvarint(uint64(x.FileNum))
-		e.writeUvarint(x.Size)
-		e.writeUvarint(x.ValueSize)
-		e.writeUvarint(x.CreationTime)
+		e.writeUvarint(uint64(x.FileID))
+		e.writeUvarint(uint64(x.Physical.FileNum))
+		e.writeUvarint(x.Physical.Size)
+		e.writeUvarint(x.Physical.ValueSize)
+		e.writeUvarint(x.Physical.CreationTime)
 	}
 	for x := range v.DeletedBlobFiles {
 		e.writeUvarint(tagDeletedBlobFile)
@@ -1019,7 +1027,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if b.BlobFiles.Added == nil {
 			b.BlobFiles.Added = make(map[base.BlobFileID]*PhysicalBlobFile)
 		}
-		b.BlobFiles.Added[base.BlobFileID(nbf.FileNum)] = nbf
+		b.BlobFiles.Added[nbf.FileID] = nbf.Physical
 	}
 
 	b.BlobFiles.Deleted = make(map[base.BlobFileID]*PhysicalBlobFile, len(ve.DeletedBlobFiles))
