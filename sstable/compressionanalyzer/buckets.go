@@ -9,6 +9,7 @@ import (
 	"math"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/cockroachdb/pebble/internal/compression"
 )
@@ -145,10 +146,10 @@ type Bucket struct {
 // PerSetting holds statistics from experiments on blocks in a bucket with a
 // specific compression.Setting.
 type PerSetting struct {
-	CompressionRatio Welford
-	// CPU times are in microseconds.
-	CompressionTime   Welford
-	DecompressionTime Welford
+	CompressionRatio WeightedWelford
+	// CPU times are in nanoseconds per byte.
+	CompressionTime   WeightedWelford
+	DecompressionTime WeightedWelford
 }
 
 func (b *Buckets) String(minSamples int) string {
@@ -167,19 +168,22 @@ func (b *Buckets) String(minSamples int) string {
 				if bucket.UncompressedSize.Count() < int64(minSamples) {
 					continue
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\tCR", k, sz, c, bucket.UncompressedSize.Count(), withStdDev(bucket.UncompressedSize, "KB", 1.0/1024))
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%.1fKB %s\tCR", k, sz, c, bucket.UncompressedSize.Count(), bucket.UncompressedSize.Mean()/1024, stdDevStr(bucket.UncompressedSize.Mean(), bucket.UncompressedSize.SampleStandardDeviation()))
 				for _, e := range (*b)[k][sz][c].Experiments {
-					fmt.Fprintf(tw, "\t%s", withStdDev(e.CompressionRatio, "", 1.0))
+					mean, stdDev := e.CompressionRatio.Mean(), e.CompressionRatio.SampleStandardDeviation()
+					fmt.Fprintf(tw, "\t%.2f %s", mean, stdDevStr(mean, stdDev))
 				}
 				fmt.Fprintf(tw, "\n")
 				fmt.Fprintf(tw, "\t\t\t\t\tComp")
 				for _, e := range (*b)[k][sz][c].Experiments {
-					fmt.Fprintf(tw, "\t%s", withStdDev(e.CompressionTime, "us", 1.0))
+					mean, stdDev := e.CompressionTime.Mean(), e.CompressionTime.SampleStandardDeviation()
+					fmt.Fprintf(tw, "\t%.0fMBps %s", toMBPS(mean), stdDevStr(mean, stdDev))
 				}
 				fmt.Fprintf(tw, "\n")
 				fmt.Fprintf(tw, "\t\t\t\t\tDecomp")
 				for _, e := range (*b)[k][sz][c].Experiments {
-					fmt.Fprintf(tw, "\t%s", withStdDev(e.DecompressionTime, "us", 1.0))
+					mean, stdDev := e.DecompressionTime.Mean(), e.DecompressionTime.SampleStandardDeviation()
+					fmt.Fprintf(tw, "\t%.0fMBps %s", toMBPS(mean), stdDevStr(mean, stdDev))
 				}
 				fmt.Fprintf(tw, "\n")
 			}
@@ -189,16 +193,22 @@ func (b *Buckets) String(minSamples int) string {
 	return buf.String()
 }
 
-func withStdDev(w Welford, units string, scale float64) string {
-	mean := w.Mean() * scale
-	if math.IsNaN(mean) {
-		mean = 0
+func toMBPS(nsPerByte float64) float64 {
+	if nsPerByte == 0 {
+		return 0
 	}
-	stddev := 0
-	if s := w.SampleStandardDeviation(); !math.IsNaN(s) {
-		stddev = int(100 * s / w.Mean())
+	const oneMB = 1 << 20
+	return float64(time.Second) / (nsPerByte * oneMB)
+}
+
+// stdDevStr formats the standard deviation as a percentage of the mean,
+// for example "± 10%".
+func stdDevStr(mean, stddev float64) string {
+	percent := 0
+	if mean > 0 {
+		percent = int(math.Round(100 * stddev / mean))
 	}
-	return fmt.Sprintf("%.1f%s ± %d%%", mean, units, stddev)
+	return fmt.Sprintf("± %d%%", percent)
 }
 
 func (b *Buckets) ToCSV(minSamples int) string {
@@ -207,9 +217,9 @@ func (b *Buckets) ToCSV(minSamples int) string {
 	for _, s := range Settings {
 		fmt.Fprintf(&buf, ",%s CR", s.String())
 		fmt.Fprintf(&buf, ",%s CR±", s.String())
-		fmt.Fprintf(&buf, ",%s Comp us", s.String())
+		fmt.Fprintf(&buf, ",%s Comp ns/b", s.String())
 		fmt.Fprintf(&buf, ",%s Comp±", s.String())
-		fmt.Fprintf(&buf, ",%s Decomp us", s.String())
+		fmt.Fprintf(&buf, ",%s Decomp ns/b", s.String())
 		fmt.Fprintf(&buf, ",%s Decomp±", s.String())
 	}
 	fmt.Fprintf(&buf, "\n")
@@ -222,9 +232,9 @@ func (b *Buckets) ToCSV(minSamples int) string {
 				}
 				fmt.Fprintf(&buf, "%s,%s,%s,%d,%.0f,%.0f", k, sz, c, bucket.UncompressedSize.Count(), bucket.UncompressedSize.Mean(), bucket.UncompressedSize.SampleStandardDeviation())
 				for _, e := range (*b)[k][sz][c].Experiments {
-					fmt.Fprintf(&buf, ",%.1f,%.1f", e.CompressionRatio.Mean(), e.CompressionRatio.SampleStandardDeviation())
-					fmt.Fprintf(&buf, ",%.1f,%.1f", e.CompressionTime.Mean(), e.CompressionTime.SampleStandardDeviation())
-					fmt.Fprintf(&buf, ",%.1f,%.1f", e.DecompressionTime.Mean(), e.DecompressionTime.SampleStandardDeviation())
+					fmt.Fprintf(&buf, ",%.3f,%.3f", e.CompressionRatio.Mean(), e.CompressionRatio.SampleStandardDeviation())
+					fmt.Fprintf(&buf, ",%.3f,%.3f", e.CompressionTime.Mean(), e.CompressionTime.SampleStandardDeviation())
+					fmt.Fprintf(&buf, ",%.3f,%.3f", e.DecompressionTime.Mean(), e.DecompressionTime.SampleStandardDeviation())
 				}
 				fmt.Fprintf(&buf, "\n")
 			}
