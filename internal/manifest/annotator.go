@@ -280,14 +280,16 @@ func (a *Annotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
 // [lowerBound, upperBound). A pointer to the Annotator is used as the key for
 // pre-calculated values, so the same Annotator must be used to avoid duplicate
 // computation.
-func (a *Annotator[T]) LevelRangeAnnotation(lm LevelMetadata, bounds base.UserKeyBounds) *T {
+func (a *Annotator[T]) LevelRangeAnnotation(
+	cmp base.Compare, lm LevelMetadata, bounds base.UserKeyBounds,
+) *T {
 	if lm.Empty() {
 		return a.Aggregator.Zero(nil)
 	}
 
 	var dst *T
 	dst = a.Aggregator.Zero(dst)
-	dst = a.accumulateRangeAnnotation(lm.tree.root, lm.tree.cmp, bounds, false, false, dst)
+	dst = a.accumulateRangeAnnotation(lm.tree.root, cmp, bounds, false, false, dst)
 	return dst
 }
 
