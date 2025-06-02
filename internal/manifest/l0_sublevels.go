@@ -321,7 +321,7 @@ func newL0Sublevels(
 	// Construct a parallel slice of sublevel B-Trees.
 	// TODO(jackson): Consolidate and only use the B-Trees.
 	for _, sublevelFiles := range s.levelFiles {
-		ls := makeLevelSlice(cmp, btreeCmpSmallestKey(cmp), sublevelFiles)
+		ls := makeLevelSlice(btreeCmpSmallestKey(cmp), sublevelFiles)
 		s.Levels = append(s.Levels, ls)
 	}
 
@@ -635,7 +635,7 @@ func (s *l0Sublevels) addL0Files(
 	// Construct a parallel slice of sublevel B-Trees.
 	// TODO(jackson): Consolidate and only use the B-Trees.
 	for _, sublevel := range updatedSublevels {
-		ls := makeLevelSlice(newVal.cmp, btreeCmpSmallestKey(newVal.cmp), newVal.levelFiles[sublevel])
+		ls := makeLevelSlice(btreeCmpSmallestKey(newVal.cmp), newVal.levelFiles[sublevel])
 		if sublevel == len(newVal.Levels) {
 			newVal.Levels = append(newVal.Levels, ls)
 		} else {

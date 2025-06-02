@@ -14,7 +14,6 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -690,7 +689,6 @@ func (n *node[M]) verifyInvariants() {
 // goroutines, but Read operations are.
 type btree[M fileMetadata] struct {
 	root *node[M]
-	cmp  base.Compare
 	bcmp btreeCmp[M]
 }
 

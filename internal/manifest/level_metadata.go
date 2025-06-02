@@ -52,7 +52,7 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 	}
 	var lm LevelMetadata
 	lm.level = level
-	lm.tree = makeBTree(cmp, bcmp, files)
+	lm.tree = makeBTree(bcmp, files)
 	for _, f := range files {
 		lm.totalTableSize += f.Size
 		lm.totalRefSize += f.EstimatedReferenceSize()
@@ -64,10 +64,8 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 	return lm
 }
 
-func makeBTree(
-	cmp base.Compare, bcmp btreeCmp[*TableMetadata], files []*TableMetadata,
-) btree[*TableMetadata] {
-	t := btree[*TableMetadata]{cmp: cmp, bcmp: bcmp}
+func makeBTree(bcmp btreeCmp[*TableMetadata], files []*TableMetadata) btree[*TableMetadata] {
+	t := btree[*TableMetadata]{bcmp: bcmp}
 	for _, f := range files {
 		if err := t.Insert(f); err != nil {
 			panic(err)
@@ -76,10 +74,8 @@ func makeBTree(
 	return t
 }
 
-func makeLevelSlice(
-	cmp base.Compare, bcmp btreeCmp[*TableMetadata], files []*TableMetadata,
-) LevelSlice {
-	t := makeBTree(cmp, bcmp, files)
+func makeLevelSlice(bcmp btreeCmp[*TableMetadata], files []*TableMetadata) LevelSlice {
+	t := makeBTree(bcmp, files)
 	slice := newLevelSlice(tableMetadataIter(&t))
 	slice.verifyInvariants()
 	// We can release the tree because the nodes that are referenced by the
@@ -190,7 +186,7 @@ func (lf LevelFile) Slice() LevelSlice {
 // TODO(jackson): Can we improve this interface or avoid needing to export
 // a slice constructor like this?
 func NewLevelSliceSeqSorted(files []*TableMetadata) LevelSlice {
-	return makeLevelSlice(nil, btreeCmpSeqNum, files)
+	return makeLevelSlice(btreeCmpSeqNum, files)
 }
 
 // NewLevelSliceKeySorted constructs a LevelSlice over the provided files,
@@ -198,7 +194,7 @@ func NewLevelSliceSeqSorted(files []*TableMetadata) LevelSlice {
 // TODO(jackson): Can we improve this interface or avoid needing to export
 // a slice constructor like this?
 func NewLevelSliceKeySorted(cmp base.Compare, files []*TableMetadata) LevelSlice {
-	return makeLevelSlice(cmp, btreeCmpSmallestKey(cmp), files)
+	return makeLevelSlice(btreeCmpSmallestKey(cmp), files)
 }
 
 // NewLevelSliceSpecificOrder constructs a LevelSlice over the provided files,
@@ -206,7 +202,7 @@ func NewLevelSliceKeySorted(cmp base.Compare, files []*TableMetadata) LevelSlice
 // tests.
 // TODO(jackson): Update tests to avoid requiring this and remove it.
 func NewLevelSliceSpecificOrder(files []*TableMetadata) LevelSlice {
-	slice := makeLevelSlice(nil, btreeCmpSpecificOrder(files), files)
+	slice := makeLevelSlice(btreeCmpSpecificOrder(files), files)
 	slice.verifyInvariants()
 	return slice
 }

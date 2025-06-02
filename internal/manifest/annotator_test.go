@@ -88,7 +88,7 @@ func randomBounds(rng *rand.Rand, count int) base.UserKeyBounds {
 
 func requireMatchOverlaps(t *testing.T, v *Version, bounds base.UserKeyBounds) {
 	overlaps := v.Overlaps(6, bounds)
-	numFiles := *NumFilesAnnotator.LevelRangeAnnotation(v.Levels[6], bounds)
+	numFiles := *NumFilesAnnotator.LevelRangeAnnotation(v.cmp.Compare, v.Levels[6], bounds)
 	require.EqualValues(t, overlaps.length, numFiles)
 }
 
@@ -150,7 +150,7 @@ func BenchmarkNumFilesRangeAnnotation(b *testing.B) {
 			toDelete := rng.IntN(count)
 			v.Levels[6].tree.Delete(files[toDelete], ignoreObsoleteFiles{})
 
-			NumFilesAnnotator.LevelRangeAnnotation(v.Levels[6], b)
+			NumFilesAnnotator.LevelRangeAnnotation(v.cmp.Compare, v.Levels[6], b)
 
 			v.Levels[6].tree.Insert(files[toDelete])
 		}
