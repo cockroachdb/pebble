@@ -163,9 +163,9 @@ type LazyFetcher struct {
 	Fetcher ValueFetcher
 	// Attribute includes the short attribute and value length.
 	Attribute AttributeAndLen
-	// BlobFileNum identifies the blob file containing the value. It is only
+	// BlobFileID identifies the blob file containing the value. It is only
 	// populated if the value is stored in a blob file.
-	BlobFileNum DiskFileNum
+	BlobFileID BlobFileID
 }
 
 // ValueFetcher is an interface for fetching a value.
@@ -182,7 +182,7 @@ type ValueFetcher interface {
 	// will allocate a new slice for the value. In either case it will set
 	// callerOwned to true.
 	Fetch(
-		ctx context.Context, handle []byte, blobFileNum DiskFileNum, valLen uint32, buf []byte,
+		ctx context.Context, handle []byte, blobFileID BlobFileID, valLen uint32, buf []byte,
 	) (val []byte, callerOwned bool, err error)
 }
 
@@ -193,7 +193,7 @@ func (lv *LazyValue) Value(buf []byte) (val []byte, callerOwned bool, err error)
 		return lv.ValueOrHandle, false, nil
 	}
 	return f.Fetcher.Fetch(context.TODO(),
-		lv.ValueOrHandle, f.BlobFileNum, f.Attribute.ValueLen, buf)
+		lv.ValueOrHandle, f.BlobFileID, f.Attribute.ValueLen, buf)
 }
 
 // Len returns the length of the value.
@@ -237,9 +237,9 @@ func (lv *LazyValue) Clone(buf []byte, fetcher *LazyFetcher) (LazyValue, []byte)
 	var lvCopy LazyValue
 	if lv.Fetcher != nil {
 		*fetcher = LazyFetcher{
-			Fetcher:     lv.Fetcher.Fetcher,
-			Attribute:   lv.Fetcher.Attribute,
-			BlobFileNum: lv.Fetcher.BlobFileNum,
+			Fetcher:    lv.Fetcher.Fetcher,
+			Attribute:  lv.Fetcher.Attribute,
+			BlobFileID: lv.Fetcher.BlobFileID,
 			// Not copying anything that has been extracted.
 		}
 		lvCopy.Fetcher = fetcher
@@ -266,8 +266,8 @@ var _ ValueFetcher = errValueFetcher{}
 
 // Fetch implements base.ValueFetcher.
 func (e errValueFetcher) Fetch(
-	_ context.Context, _ []byte, blobFileNum DiskFileNum, valLen uint32, _ []byte,
+	_ context.Context, _ []byte, blobFileID BlobFileID, valLen uint32, _ []byte,
 ) (val []byte, callerOwned bool, err error) {
-	err = AssertionFailedf("unexpected blob value: %d-byte from %s", valLen, blobFileNum)
+	err = AssertionFailedf("unexpected blob value: %d-byte from %s", valLen, blobFileID)
 	return nil, false, err
 }

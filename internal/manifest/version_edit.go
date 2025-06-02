@@ -426,7 +426,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 						blobReferences = make([]BlobReference, n)
 						for i := 0; i < int(n); i++ {
-							fileNum, err := d.readUvarint()
+							fileID, err := d.readUvarint()
 							if err != nil {
 								return err
 							}
@@ -435,7 +435,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 								return err
 							}
 							blobReferences[i] = BlobReference{
-								FileNum:   base.DiskFileNum(fileNum),
+								FileID:    base.BlobFileID(fileID),
 								ValueSize: valueSize,
 							}
 						}
@@ -523,7 +523,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				return err
 			}
 			v.NewBlobFiles = append(v.NewBlobFiles, &BlobFileMetadata{
-				FileNum:      base.DiskFileNum(fileNum),
+				FileID:       base.BlobFileID(fileNum),
 				Size:         size,
 				ValueSize:    valueSize,
 				CreationTime: creationTime,
@@ -812,7 +812,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeUvarint(uint64(x.Meta.BlobReferenceDepth))
 				e.writeUvarint(uint64(len(x.Meta.BlobReferences)))
 				for _, ref := range x.Meta.BlobReferences {
-					e.writeUvarint(uint64(ref.FileNum))
+					e.writeUvarint(uint64(ref.FileID))
 					e.writeUvarint(ref.ValueSize)
 				}
 			}
@@ -821,7 +821,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for _, x := range v.NewBlobFiles {
 		e.writeUvarint(tagNewBlobFile)
-		e.writeUvarint(uint64(x.FileNum))
+		e.writeUvarint(uint64(x.FileID))
 		e.writeUvarint(x.Size)
 		e.writeUvarint(x.ValueSize)
 		e.writeUvarint(x.CreationTime)
@@ -949,7 +949,7 @@ type BulkVersionEdit struct {
 		// making use of the invariant that new blob references must correspond
 		// to a file introduced in VersionEdit.AddedBlobFiles or a file
 		// referenced by a deleted sstable.
-		DeletedReferences map[base.DiskFileNum]*BlobFileMetadata
+		DeletedReferences map[base.BlobFileID]*BlobFileMetadata
 	}
 
 	// AddedFileBacking is a map to support lookup so that we can populate the
@@ -978,14 +978,14 @@ type BulkVersionEdit struct {
 // version edit added the blob file to the BlobFiles.Added map, or the blob file
 // was referenced by a file that was deleted (and the blob file was added to
 // BlobFiles.DeletedReferences).
-func (b *BulkVersionEdit) getBlobFileMetadata(fileNum base.DiskFileNum) *BlobFileMetadata {
+func (b *BulkVersionEdit) getBlobFileMetadata(fileID base.BlobFileID) *BlobFileMetadata {
 	if b.BlobFiles.Added != nil {
-		if md, ok := b.BlobFiles.Added[fileNum]; ok {
+		if md, ok := b.BlobFiles.Added[base.DiskFileNum(fileID)]; ok {
 			return md
 		}
 	}
 	if b.BlobFiles.DeletedReferences != nil {
-		if md, ok := b.BlobFiles.DeletedReferences[fileNum]; ok {
+		if md, ok := b.BlobFiles.DeletedReferences[fileID]; ok {
 			return md
 		}
 	}
@@ -1016,7 +1016,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if b.BlobFiles.Added == nil {
 			b.BlobFiles.Added = make(map[base.DiskFileNum]*BlobFileMetadata)
 		}
-		b.BlobFiles.Added[nbf.FileNum] = nbf
+		b.BlobFiles.Added[base.DiskFileNum(nbf.FileID)] = nbf
 	}
 
 	b.BlobFiles.Deleted = make(map[base.DiskFileNum]*BlobFileMetadata, len(ve.DeletedBlobFiles))
@@ -1066,9 +1066,9 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		// *BlobFileMetadata available when we process the NewTableEntry.
 		for _, blobRef := range m.BlobReferences {
 			if b.BlobFiles.DeletedReferences == nil {
-				b.BlobFiles.DeletedReferences = make(map[base.DiskFileNum]*BlobFileMetadata)
+				b.BlobFiles.DeletedReferences = make(map[base.BlobFileID]*BlobFileMetadata)
 			}
-			b.BlobFiles.DeletedReferences[blobRef.FileNum] = blobRef.Metadata
+			b.BlobFiles.DeletedReferences[blobRef.FileID] = blobRef.Metadata
 		}
 	}
 
@@ -1126,10 +1126,10 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			if nf.Meta.BlobReferences[i].Metadata != nil {
 				continue
 			}
-			nf.Meta.BlobReferences[i].Metadata = b.getBlobFileMetadata(nf.Meta.BlobReferences[i].FileNum)
+			nf.Meta.BlobReferences[i].Metadata = b.getBlobFileMetadata(nf.Meta.BlobReferences[i].FileID)
 			if nf.Meta.BlobReferences[i].Metadata == nil {
 				return errors.Errorf("blob file %s referenced by L%d.%s not found",
-					nf.Meta.BlobReferences[i].FileNum, nf.Level, nf.Meta.TableNum)
+					nf.Meta.BlobReferences[i].FileID, nf.Level, nf.Meta.TableNum)
 			}
 		}
 	}

@@ -2488,10 +2488,10 @@ func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 		obsoleteFiles.AddBlob(ve.NewBlobFiles[i])
 		d.mu.versions.zombieBlobs.Add(objectInfo{
 			fileInfo: fileInfo{
-				FileNum:  ve.NewBlobFiles[i].FileNum,
+				FileNum:  base.DiskFileNum(ve.NewBlobFiles[i].FileID),
 				FileSize: ve.NewBlobFiles[i].Size,
 			},
-			isLocal: objstorage.IsLocalBlobFile(d.objProvider, ve.NewBlobFiles[i].FileNum),
+			isLocal: objstorage.IsLocalBlobFile(d.objProvider, base.DiskFileNum(ve.NewBlobFiles[i].FileID)),
 		})
 	}
 	for i := range ve.NewTables {

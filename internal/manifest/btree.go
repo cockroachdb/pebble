@@ -164,7 +164,7 @@ func (assertNoObsoleteFiles) AddBacking(fb *TableBacking) {
 
 // AddBlob appends the provided BlobFileMetadata to the list of obsolete files.
 func (assertNoObsoleteFiles) AddBlob(bm *BlobFileMetadata) {
-	panic(errors.AssertionFailedf("blob file %s dereferenced to zero during tree mutation", bm.FileNum))
+	panic(errors.AssertionFailedf("blob file %s dereferenced to zero during tree mutation", bm.FileID))
 }
 
 // ignoreObsoleteFiles is an ObsoleteFilesSet implementation that ignores
