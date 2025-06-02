@@ -38,6 +38,13 @@ func (c *Compressor) Close() {
 	*c = Compressor{}
 }
 
+// NoopCompressor is a Compressor that does not compress data. It does not have
+// any state and can be used in parallel.
+var NoopCompressor = Compressor{
+	algorithm:  compression.NoCompression,
+	compressor: compression.GetCompressor(compression.None),
+}
+
 type Decompressor = compression.Decompressor
 
 func GetDecompressor(c CompressionIndicator) Decompressor {
