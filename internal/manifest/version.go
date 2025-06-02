@@ -1758,7 +1758,7 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 
 			if !restart {
 				// Construct a B-Tree containing only the matching items.
-				var tr btree
+				var tr btree[*TableMetadata]
 				tr.bcmp = v.Levels[level].tree.bcmp
 				for i, meta := 0, l0Iter.First(); meta != nil; i, meta = i+1, l0Iter.Next() {
 					if selectedIndices[i] {
@@ -1768,7 +1768,7 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 						}
 					}
 				}
-				slice = newLevelSlice(tr.Iter())
+				slice = newLevelSlice(tableMetadataIter(&tr))
 				// TODO(jackson): Avoid the oddity of constructing and
 				// immediately releasing a B-Tree. Make LevelSlice an
 				// interface?

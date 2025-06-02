@@ -270,12 +270,12 @@ MANIFEST-invalid
   last-seq-num:  20
   added:         L6 000002:0<#1-#4>[#0,DEL-#0,DEL]
 EOF
-pebble: files 000002 and 000001 collided on sort keys
+pebble: files 000002:[#0,DEL-#0,DEL] and 000001:[#0,DEL-#0,DEL] collided on sort keys
 
 manifest check
 ./testdata/MANIFEST-invalid
 ----
-MANIFEST-invalid: offset: 65 err: pebble: files 000002 and 000001 collided on sort keys
+MANIFEST-invalid: offset: 65 err: pebble: files 000002:[#0,DEL-#0,DEL] and 000001:[#0,DEL-#0,DEL] collided on sort keys
 Version state before failed Apply
 --- L0 ---
 --- L1 ---
