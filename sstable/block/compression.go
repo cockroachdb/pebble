@@ -252,17 +252,6 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 	return len(b.data) + len(b.trailer), nil
 }
 
-// CompressAndChecksumBufHandle is like CompressAndChecksum, but it will
-// retrieve a buffer for the compressed block from a sync.Pool and return a
-// *TempBuffer that the caller can use to release the buffer back to the pool.
-func CompressAndChecksumBufHandle(
-	blockData []byte, compression Compression, checksummer *Checksummer,
-) (PhysicalBlock, *TempBuffer) {
-	compressedBuf := NewTempBuffer()
-	pb := CompressAndChecksum(&compressedBuf.b, blockData, compression, checksummer)
-	return pb, compressedBuf
-}
-
 // CompressAndChecksum compresses and checksums the provided block, returning
 // the compressed block and its trailer. The result is appended to the dst
 // argument.
@@ -299,98 +288,16 @@ func CompressAndChecksumWithCompressor(
 	return pb
 }
 
-// A Buffer is a buffer for encoding a block. The caller mutates the buffer to
-// construct the uncompressed block, and calls CompressAndChecksum to produce
-// the physical, possibly-compressed PhysicalBlock. A Buffer recycles byte
-// slices used in construction of the uncompressed block and the compressed
-// physical block.
-type Buffer struct {
-	h           *TempBuffer
-	compression Compression
-	checksummer Checksummer
-}
-
-// Init configures the BlockBuffer with the specified compression and checksum
-// type.
-func (b *Buffer) Init(compression Compression, checksumType ChecksumType) {
-	b.h = NewTempBuffer()
-	b.h.b = b.h.b[:0]
-	b.compression = compression
-	b.checksummer.Type = checksumType
-}
-
-// Checksummer returns the Checksummer for the Buffer.
-func (b *Buffer) Checksummer() *Checksummer {
-	return &b.checksummer
-}
-
-// Get returns the byte slice currently backing the Buffer.
-func (b *Buffer) Get() []byte {
-	return b.h.b
-}
-
-// Size returns the current size of the buffer.
-func (b *Buffer) Size() int {
-	return len(b.h.b)
-}
-
-// Append appends the contents of v to the buffer, returning the offset at which
-// it was appended, growing the buffer if necessary.
-func (b *Buffer) Append(v []byte) int {
-	// We may need to grow b.Buffer to accommodate the new value. If necessary,
-	// double the size of the buffer until it's sufficiently large.
-	off := len(b.h.b)
-	newLen := off + len(v)
-	if cap(b.h.b) < newLen {
-		size := max(2*cap(b.h.b), 1024)
-		for size < newLen {
-			size *= 2
-		}
-		b.h.b = slices.Grow(b.h.b, size-len(b.h.b))
-	}
-	b.h.b = b.h.b[:newLen]
-	if n := copy(b.h.b[off:], v); n != len(v) {
-		panic("incorrect length computation")
-	}
-	return off
-}
-
-// Resize resizes the buffer to the specified length, allocating if necessary.
-func (b *Buffer) Resize(length int) {
-	if length > cap(b.h.b) {
-		b.h.b = slices.Grow(b.h.b, length-len(b.h.b))
-	}
-	b.h.b = b.h.b[:length]
-}
-
-// CompressAndChecksum compresses and checksums the block data, returning a
-// PhysicalBlock that is owned by the caller. The returned PhysicalBlock's
-// memory is backed by the returned TempBuffer. If non-nil, the returned
-// TempBuffer may be Released once the caller is done with the physical block to
-// recycle the block's underlying memory.
-//
-// When CompressAndChecksum returns, the callee has been reset and is ready to
-// be reused.
-func (b *Buffer) CompressAndChecksum() (PhysicalBlock, *TempBuffer) {
+// CompressAndChecksumToTempBuffer compresses and checksums the provided block
+// into a TempBuffer. The caller should Release() the TempBuffer once it is no
+// longer necessary.
+func CompressAndChecksumToTempBuffer(
+	blockData []byte, compressor Compressor, checksummer *Checksummer,
+) (PhysicalBlock, *TempBuffer) {
 	// Grab a buffer to use as the destination for compression.
 	compressedBuf := NewTempBuffer()
-	pb := CompressAndChecksum(&compressedBuf.b, b.h.b, b.compression, &b.checksummer)
-	b.h.b = b.h.b[:0]
+	pb := CompressAndChecksumWithCompressor(&compressedBuf.b, blockData, compressor, checksummer)
 	return pb, compressedBuf
-}
-
-// SetCompression changes the compression algorithm used by CompressAndChecksum.
-func (b *Buffer) SetCompression(compression Compression) {
-	b.compression = compression
-}
-
-// Release may be called when a buffer will no longer be used. It releases to
-// pools any memory held by the Buffer so that it may be reused.
-func (b *Buffer) Release() {
-	if b.h != nil {
-		b.h.Release()
-		b.h = nil
-	}
 }
 
 // TempBuffer is a buffer that is used temporarily and is released back to a
@@ -399,14 +306,47 @@ type TempBuffer struct {
 	b []byte
 }
 
-// NewTempBuffer returns a TempBuffer from the pool. TempBuffer.b will have zero
-// length and arbitrary capacity.
+// NewTempBuffer returns a TempBuffer from the pool. The buffer will have zero
+// size and length and arbitrary capacity.
 func NewTempBuffer() *TempBuffer {
 	tb := tempBufferPool.Get().(*TempBuffer)
 	if invariants.Enabled && len(tb.b) > 0 {
 		panic("NewTempBuffer length not 0")
 	}
 	return tb
+}
+
+// Data returns the byte slice currently backing the Buffer.
+func (tb *TempBuffer) Data() []byte {
+	return tb.b
+}
+
+// Size returns the current size of the buffer.
+func (tb *TempBuffer) Size() int {
+	return len(tb.b)
+}
+
+// Append appends the contents of v to the buffer, growing the buffer if
+// necessary. Returns the offset at which it was appended.
+func (tb *TempBuffer) Append(v []byte) (startOffset int) {
+	startOffset = len(tb.b)
+	tb.b = append(tb.b, v...)
+	return startOffset
+}
+
+// Resize resizes the buffer to the specified length, allocating if necessary.
+// If the length is longer than the current length, the values of the new bytes
+// are arbitrary.
+func (tb *TempBuffer) Resize(length int) {
+	if length > cap(tb.b) {
+		tb.b = slices.Grow(tb.b, length-len(tb.b))
+	}
+	tb.b = tb.b[:length]
+}
+
+// Reset is equivalent to Resize(0).
+func (tb *TempBuffer) Reset() {
+	tb.b = tb.b[:0]
 }
 
 // Release releases the buffer back to the pool for reuse.

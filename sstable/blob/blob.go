@@ -105,7 +105,7 @@ type FileWriter struct {
 	stats        FileWriterStats
 	flushGov     block.FlushGovernor
 	checksummer  block.Checksummer
-	compression  block.Compression
+	compressor   block.Compressor
 	cpuMeasurer  base.CPUMeasurer
 	writeQueue   struct {
 		wg  sync.WaitGroup
@@ -130,7 +130,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
 	fw.checksummer = block.Checksummer{Type: opts.ChecksumType}
-	fw.compression = opts.Compression
+	fw.compressor = block.GetCompressor(opts.Compression)
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
 	fw.writeQueue.wg.Add(1)
@@ -212,7 +212,7 @@ func (w *FileWriter) flush() {
 	if w.valuesEncoder.Count() == 0 {
 		panic(errors.AssertionFailedf("no values to flush"))
 	}
-	pb, bh := block.CompressAndChecksumBufHandle(w.valuesEncoder.Finish(), w.compression, &w.checksummer)
+	pb, bh := block.CompressAndChecksumToTempBuffer(w.valuesEncoder.Finish(), w.compressor, &w.checksummer)
 	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
 	off := w.stats.FileLen

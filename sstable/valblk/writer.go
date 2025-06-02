@@ -19,8 +19,10 @@ type Writer struct {
 	// Block finished callback.
 	blockFinishedFunc func(compressedSize int)
 
+	compressor  block.Compressor
+	checksummer block.Checksummer
 	// buf is the current block being written to (uncompressed).
-	buf block.Buffer
+	buf *block.TempBuffer
 	// Sequence of blocks that are finished.
 	blocks []bufferedValueBlock
 	// Cumulative value block bytes written so far.
@@ -54,7 +56,9 @@ func NewWriter(
 		blockFinishedFunc: blockFinishedFunc,
 		blocks:            w.blocks[:0],
 	}
-	w.buf.Init(compression, checksumType)
+	w.compressor = block.GetCompressor(compression)
+	w.checksummer.Init(checksumType)
+	w.buf = block.NewTempBuffer()
 	return w
 }
 
@@ -87,7 +91,8 @@ func (w *Writer) Size() uint64 {
 }
 
 func (w *Writer) compressAndFlush() {
-	physicalBlock, bufHandle := w.buf.CompressAndChecksum()
+	physicalBlock, bufHandle := block.CompressAndChecksumToTempBuffer(w.buf.Data(), w.compressor, &w.checksummer)
+	w.buf.Reset()
 	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
 	w.totalBlockBytes += uint64(physicalBlock.LengthWithTrailer())
 	// blockFinishedFunc length excludes the block trailer.
@@ -147,11 +152,10 @@ func (w *Writer) Finish(layout LayoutWriter, fileOffset uint64) (IndexHandle, Wr
 }
 
 func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (IndexHandle, error) {
-	w.buf.SetCompression(block.NoCompression)
 	blockLen := h.RowWidth() * len(w.blocks)
 	h.Handle.Length = uint64(blockLen)
 	w.buf.Resize(blockLen)
-	b := w.buf.Get()
+	b := w.buf.Data()
 	for i := range w.blocks {
 		littleEndianPut(uint64(i), b, int(h.BlockNumByteLength))
 		b = b[int(h.BlockNumByteLength):]
@@ -163,7 +167,7 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 	if len(b) != 0 {
 		panic("incorrect length calculation")
 	}
-	pb, bufHandle := w.buf.CompressAndChecksum()
+	pb, bufHandle := block.CompressAndChecksumToTempBuffer(w.buf.Data(), block.NoopCompressor, &w.checksummer)
 	if _, err := layout.WriteValueIndexBlock(pb, h); err != nil {
 		return IndexHandle{}, err
 	}
@@ -179,7 +183,8 @@ func (w *Writer) Release() {
 		w.blocks[i] = bufferedValueBlock{}
 	}
 	w.buf.Release()
-	w.buf = block.Buffer{}
+	w.buf = nil
+	w.compressor.Close()
 	*w = Writer{blocks: w.blocks[:0]}
 	valueBlockWriterPool.Put(w)
 }
@@ -202,7 +207,7 @@ type LayoutWriter interface {
 	// WriteValueBlock writes a pre-finished value block (with the trailer) to
 	// the writer.
 	WriteValueBlock(blk block.PhysicalBlock) (block.Handle, error)
-	// WriteValueBlockIndex writes a pre-finished value block index to the
+	// WriteValueIndexBlock writes a pre-finished value block index to the
 	// writer.
 	WriteValueIndexBlock(blk block.PhysicalBlock, vbih IndexHandle) (block.Handle, error)
 }

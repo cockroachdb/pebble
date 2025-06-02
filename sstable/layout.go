@@ -758,7 +758,7 @@ func decodeColumnarMetaIndex(
 }
 
 // layoutWriter writes the structure of an sstable to durable storage. It
-// accepts serialized blocks, writes them to storage and returns a block handle
+// accepts serialized blocks, writes them to storage, and returns a block handle
 // describing the offset and length of the block.
 type layoutWriter struct {
 	writable objstorage.Writable
@@ -842,7 +842,7 @@ func (w *layoutWriter) WriteIndexBlock(b []byte) (block.Handle, error) {
 	return h, err
 }
 
-// WriteFilterBlock finishes the provided filter, constructs a trailer and
+// WriteFilterBlock finishes the provided filter, constructs a trailer, and
 // writes the block and trailer to the writer. It automatically adds the filter
 // block to the file's meta index when the writer is finished.
 func (w *layoutWriter) WriteFilterBlock(f filterWriter) (bh block.Handle, err error) {

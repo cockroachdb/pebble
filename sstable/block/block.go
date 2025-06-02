@@ -144,6 +144,10 @@ type Checksummer struct {
 	blockTypeBuf [1]byte
 }
 
+func (c *Checksummer) Init(typ ChecksumType) {
+	c.Type = typ
+}
+
 // Checksum computes a checksum over the provided block and block type.
 func (c *Checksummer) Checksum(block []byte, blockType byte) (checksum uint32) {
 	// Calculate the checksum.

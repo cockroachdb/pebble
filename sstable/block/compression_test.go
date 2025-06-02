@@ -18,8 +18,11 @@ func TestBufferRandomized(t *testing.T) {
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, seed))
 
-	var b Buffer
-	b.Init(SnappyCompression, ChecksumTypeCRC32c)
+	compressor := GetCompressor(SnappyCompression)
+	defer compressor.Close()
+	var checksummer Checksummer
+	checksummer.Init(ChecksumTypeCRC32c)
+	b := NewTempBuffer()
 	defer b.Release()
 	vbuf := make([]byte, 0, 1<<10) // 1 KiB
 
@@ -28,7 +31,7 @@ func TestBufferRandomized(t *testing.T) {
 			// Randomly release and reinitialize the buffer.
 			if rng.IntN(5) == 1 {
 				b.Release()
-				b.Init(SnappyCompression, ChecksumTypeCRC32c)
+				b = NewTempBuffer()
 			}
 
 			aggregateSizeOfKVs := rng.IntN(4<<20-(1<<10)) + 1<<10 // [1 KiB, 4 MiB)
@@ -46,10 +49,11 @@ func TestBufferRandomized(t *testing.T) {
 				b.Append(vbuf)
 				size += vlen
 				require.Equal(t, size, b.Size())
-				s := b.Get()
+				s := b.Data()
 				require.Equal(t, vbuf, s[len(s)-len(vbuf):])
 			}
-			_, bh := b.CompressAndChecksum()
+			_, bh := CompressAndChecksumToTempBuffer(b.Data(), compressor, &checksummer)
+			b.Reset()
 			bh.Release()
 		})
 	}
