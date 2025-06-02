@@ -84,7 +84,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 					for _, line := range lines {
 						bfm, err := manifest.ParseBlobFileMetadataDebug(line)
 						require.NoError(t, err)
-						fn = max(fn, bfm.FileNum)
+						fn = max(fn, base.DiskFileNum(bfm.FileID))
 						pbr.inputBlobMetadatas = append(pbr.inputBlobMetadatas, bfm)
 					}
 					vs = pbr
@@ -142,7 +142,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 				} else {
 					fmt.Fprintln(&buf, "blobrefs:[")
 					for i, ref := range meta.BlobReferences {
-						fmt.Fprintf(&buf, " %d: %s %d\n", i, ref.FileNum, ref.ValueSize)
+						fmt.Fprintf(&buf, " %d: %s %d\n", i, ref.FileID, ref.ValueSize)
 					}
 					fmt.Fprintln(&buf, "]")
 				}
@@ -180,7 +180,7 @@ func (w *loggingRawWriter) AddWithBlobHandle(
 // references from values.
 type defineDBValueSeparator struct {
 	bv    blobtest.Values
-	metas map[base.DiskFileNum]*manifest.BlobFileMetadata
+	metas map[base.BlobFileID]*manifest.BlobFileMetadata
 	pbr   *preserveBlobReferences
 	kv    base.InternalKV
 }
@@ -220,14 +220,14 @@ func (vs *defineDBValueSeparator) Add(
 	}
 	lv := iv.LazyValue()
 	// If we haven't seen this blob file before, fabricate a metadata for it.
-	fileNum := lv.Fetcher.BlobFileNum
-	meta, ok := vs.metas[fileNum]
+	fileID := lv.Fetcher.BlobFileID
+	meta, ok := vs.metas[fileID]
 	if !ok {
 		meta = &manifest.BlobFileMetadata{
-			FileNum:      fileNum,
+			FileID:       fileID,
 			CreationTime: uint64(time.Now().Unix()),
 		}
-		vs.metas[fileNum] = meta
+		vs.metas[fileID] = meta
 	}
 	meta.Size += uint64(lv.Fetcher.Attribute.ValueLen)
 	meta.ValueSize += uint64(lv.Fetcher.Attribute.ValueLen)

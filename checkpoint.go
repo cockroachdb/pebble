@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 )
@@ -265,7 +266,7 @@ func (d *DB) Checkpoint(
 	}
 
 	var excludedTables map[manifest.DeletedTableEntry]*tableMetadata
-	var includedBlobFiles map[base.DiskFileNum]struct{}
+	var includedBlobFiles map[base.BlobFileID]struct{}
 	var remoteFiles []base.DiskFileNum
 	// Set of TableBacking.DiskFileNum which will be required by virtual sstables
 	// in the checkpoint.
@@ -309,12 +310,17 @@ func (d *DB) Checkpoint(
 			// Copy any referenced blob files that have not already been copied.
 			if len(f.BlobReferences) > 0 {
 				if includedBlobFiles == nil {
-					includedBlobFiles = make(map[base.DiskFileNum]struct{})
+					includedBlobFiles = make(map[base.BlobFileID]struct{})
 				}
 				for _, ref := range f.BlobReferences {
-					if _, ok := includedBlobFiles[ref.FileNum]; !ok {
-						includedBlobFiles[ref.FileNum] = struct{}{}
-						ckErr = copyFile(base.FileTypeBlob, ref.FileNum)
+					if _, ok := includedBlobFiles[ref.FileID]; !ok {
+						includedBlobFiles[ref.FileID] = struct{}{}
+
+						// TODO(jackson): Perform a translation to the
+						// appropriate disk file number once we support blob
+						// file replacement.
+						diskFileNum := blob.DiskFileNumTODO(ref.FileID)
+						ckErr = copyFile(base.FileTypeBlob, diskFileNum)
 						if ckErr != nil {
 							return ckErr
 						}
@@ -352,8 +358,9 @@ func (d *DB) Checkpoint(
 	if len(includedBlobFiles) < len(versionBlobFiles) {
 		excludedBlobFiles = make(map[base.DiskFileNum]*manifest.BlobFileMetadata, len(versionBlobFiles)-len(includedBlobFiles))
 		for _, blobFile := range versionBlobFiles {
-			if _, ok := includedBlobFiles[blobFile.FileNum]; !ok {
-				excludedBlobFiles[blobFile.FileNum] = blobFile
+			if _, ok := includedBlobFiles[blobFile.FileID]; !ok {
+				diskFileNum := blob.DiskFileNumTODO(blobFile.FileID)
+				excludedBlobFiles[diskFileNum] = blobFile
 			}
 		}
 	}

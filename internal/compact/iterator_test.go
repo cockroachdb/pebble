@@ -218,7 +218,7 @@ func TestCompactionIter(t *testing.T) {
 						if kv.V.IsBlobValueHandle() {
 							lv := kv.V.LazyValue()
 							value = []byte(fmt.Sprintf("<blobref(%s, encodedHandle=%x, valLen=%d)>",
-								lv.Fetcher.BlobFileNum, lv.ValueOrHandle, lv.Fetcher.Attribute.ValueLen))
+								lv.Fetcher.BlobFileID, lv.ValueOrHandle, lv.Fetcher.Attribute.ValueLen))
 						} else {
 							var err error
 							value, _, err = kv.Value(nil)
@@ -297,10 +297,10 @@ type mockBlobValueFetcher struct{}
 var _ base.ValueFetcher = mockBlobValueFetcher{}
 
 func (mockBlobValueFetcher) Fetch(
-	ctx context.Context, handle []byte, fileNum base.DiskFileNum, valLen uint32, buf []byte,
+	ctx context.Context, handle []byte, blobFileID base.BlobFileID, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	s := fmt.Sprintf("<fetched value from blobref(%s, encodedHandle=%x, valLen=%d)>",
-		fileNum, handle, valLen)
+		blobFileID, handle, valLen)
 	return []byte(s), false, nil
 }
 
@@ -324,8 +324,8 @@ func decodeBlobReference(t testing.TB, ref string) base.InternalValue {
 	return base.MakeLazyValue(base.LazyValue{
 		ValueOrHandle: encodeRemainingHandle(uint32(blockNum), uint32(off)),
 		Fetcher: &base.LazyFetcher{
-			Fetcher:     mockBlobValueFetcher{},
-			BlobFileNum: base.DiskFileNum(fileNum),
+			Fetcher:    mockBlobValueFetcher{},
+			BlobFileID: base.BlobFileID(fileNum),
 			Attribute: base.AttributeAndLen{
 				ValueLen: uint32(valLen),
 			},

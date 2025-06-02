@@ -44,6 +44,21 @@ func PhysicalTableFileNum(f DiskFileNum) TableNum {
 	return TableNum(f)
 }
 
+// BlobFileID is an internal identifier for a blob file.
+//
+// Initially there exists a physical blob file with a DiskFileNum that equals
+// the value of the BlobFileID. However, if the blob file is replaced, the
+// manifest.Version may re-map the BlobFileID to a new DiskFileNum.
+type BlobFileID uint64
+
+// String returns a string representation of the blob file ID.
+func (id BlobFileID) String() string { return fmt.Sprintf("%06d", id) }
+
+// SafeFormat implements redact.SafeFormatter.
+func (id BlobFileID) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("%06d", redact.SafeUint(id))
+}
+
 // A DiskFileNum identifies a file or object with exists on disk.
 type DiskFileNum uint64
 

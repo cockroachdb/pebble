@@ -31,7 +31,7 @@ func MakeInPlaceValue(val []byte) InternalValue {
 // to a value stored externally in a blob file.
 func (v *InternalValue) IsBlobValueHandle() bool {
 	f := v.lazyValue.Fetcher
-	return f != nil && f.BlobFileNum > 0
+	return f != nil && f.BlobFileID > 0
 }
 
 // IsInPlaceValue returns true iff the value was stored in-place and does not

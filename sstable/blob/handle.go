@@ -32,8 +32,8 @@ type BlockID uint32
 
 // Handle describes the location of a value stored within a blob file.
 type Handle struct {
-	FileNum  base.DiskFileNum
-	ValueLen uint32
+	BlobFileID base.BlobFileID
+	ValueLen   uint32
 	// BlockID identifies the block within the blob file containing the value.
 	BlockID BlockID
 	// ValueID identifies the value within the block identified by BlockID.
@@ -47,7 +47,7 @@ func (h Handle) String() string {
 
 // SafeFormat implements redact.SafeFormatter.
 func (h Handle) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("(%s,blk%d,id%d,len%d)", h.FileNum, h.BlockID, h.ValueID, h.ValueLen)
+	w.Printf("(%s,blk%d,id%d,len%d)", h.BlobFileID, h.BlockID, h.ValueID, h.ValueLen)
 }
 
 // TODO(jackson): Consider encoding the handle's data using columnar block

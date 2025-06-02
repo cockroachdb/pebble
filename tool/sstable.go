@@ -107,7 +107,7 @@ Print the records in the sstables. The sstables are scanned in command line
 order which means the records will be printed in that order. Raw range
 tombstones are displayed interleaved with point records.
 
-When --blob-mode=load is specified, the path to a directory containing a 
+When --blob-mode=load is specified, the path to a directory containing a
 manifest and blob file must be provided as the last argument.
 `,
 		Args: cobra.MinimumNArgs(1),
@@ -625,7 +625,7 @@ func findAndReadManifests(
 	if len(manifests) == 0 {
 		return nil, errors.New("no MANIFEST files found in the given path")
 	}
-	blobMetas := make(map[base.DiskFileNum]struct{})
+	blobMetas := make(map[base.BlobFileID]struct{})
 	for _, fl := range manifests {
 		func() {
 			mf, err := fs.Open(fl.path)
@@ -650,8 +650,8 @@ func findAndReadManifests(
 					break
 				}
 				for _, bf := range ve.NewBlobFiles {
-					if _, ok := blobMetas[bf.FileNum]; !ok {
-						blobMetas[bf.FileNum] = struct{}{}
+					if _, ok := blobMetas[bf.FileID]; !ok {
+						blobMetas[bf.FileID] = struct{}{}
 					}
 				}
 			}
@@ -662,7 +662,7 @@ func findAndReadManifests(
 	i := 0
 	for fn := range blobMetas {
 		blobRefs[i] = manifest.BlobReference{
-			FileNum: fn,
+			FileID: base.BlobFileID(fn),
 		}
 		i++
 	}

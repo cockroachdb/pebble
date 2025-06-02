@@ -154,10 +154,10 @@ func (w *FileWriter) AddValue(v []byte) Handle {
 	w.stats.UncompressedValueBytes += uint64(len(v))
 	w.valuesEncoder.AddValue(v)
 	return Handle{
-		FileNum:  w.fileNum,
-		ValueLen: uint32(len(v)),
-		BlockID:  BlockID(w.stats.BlockCount),
-		ValueID:  BlockValueID(valuesInBlock),
+		BlobFileID: base.BlobFileID(w.fileNum),
+		ValueLen:   uint32(len(v)),
+		BlockID:    BlockID(w.stats.BlockCount),
+		ValueID:    BlockValueID(valuesInBlock),
 	}
 }
 

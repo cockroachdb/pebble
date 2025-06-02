@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 )
@@ -905,21 +906,21 @@ func getZombieBlobFilesAndComputeLocalMetrics(
 	ve *versionEdit, provider objstorage.Provider,
 ) (zombieBlobFiles []objectInfo, localLiveDelta fileMetricDelta) {
 	for _, b := range ve.NewBlobFiles {
-		if objstorage.IsLocalBlobFile(provider, b.FileNum) {
+		if objstorage.IsLocalBlobFile(provider, base.DiskFileNum(b.FileID)) {
 			localLiveDelta.count++
 			localLiveDelta.size += int64(b.Size)
 		}
 	}
 	zombieBlobFiles = make([]objectInfo, 0, len(ve.DeletedBlobFiles))
-	for _, b := range ve.DeletedBlobFiles {
-		isLocal := objstorage.IsLocalBlobFile(provider, b.FileNum)
+	for dfn, b := range ve.DeletedBlobFiles {
+		isLocal := objstorage.IsLocalBlobFile(provider, dfn)
 		if isLocal {
 			localLiveDelta.count--
 			localLiveDelta.size -= int64(b.Size)
 		}
 		zombieBlobFiles = append(zombieBlobFiles, objectInfo{
 			fileInfo: fileInfo{
-				FileNum:  b.FileNum,
+				FileNum:  dfn,
 				FileSize: b.Size,
 			},
 			isLocal: isLocal,
@@ -1139,7 +1140,10 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 			for f := range lm.All() {
 				m[f.TableBacking.DiskFileNum] = struct{}{}
 				for _, ref := range f.BlobReferences {
-					m[ref.FileNum] = struct{}{}
+					// TODO(jackson): Once we support blob file replacement, we
+					// need to look up the new blob file's number here.
+					diskFileNum := blob.DiskFileNumTODO(ref.FileID)
+					m[diskFileNum] = struct{}{}
 				}
 			}
 		}
@@ -1179,7 +1183,7 @@ func (vs *versionSet) addObsoleteLocked(obsolete manifest.ObsoleteFiles) {
 
 	newlyObsoleteBlobFiles := make([]objectInfo, len(obsolete.BlobFiles))
 	for i, bf := range obsolete.BlobFiles {
-		newlyObsoleteBlobFiles[i] = vs.zombieBlobs.Extract(bf.FileNum)
+		newlyObsoleteBlobFiles[i] = vs.zombieBlobs.Extract(base.DiskFileNum(bf.FileID))
 	}
 	vs.obsoleteBlobs = mergeObjectInfos(vs.obsoleteBlobs, newlyObsoleteBlobFiles)
 	vs.updateObsoleteObjectMetricsLocked()
