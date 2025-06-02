@@ -134,18 +134,18 @@ func compactionBlobReferenceDepth(levels []compactionLevel) manifest.BlobReferen
 
 // uniqueInputBlobMetadatas returns a slice of all unique blob file metadata
 // objects referenced by tables in levels.
-func uniqueInputBlobMetadatas(levels []compactionLevel) []*manifest.BlobFileMetadata {
-	m := make(map[*manifest.BlobFileMetadata]struct{})
+func uniqueInputBlobMetadatas(levels []compactionLevel) []*manifest.PhysicalBlobFile {
+	m := make(map[*manifest.PhysicalBlobFile]struct{})
 	for _, level := range levels {
 		for t := range level.files.All() {
 			for _, ref := range t.BlobReferences {
-				m[ref.Metadata] = struct{}{}
+				m[ref.OriginalMetadata] = struct{}{}
 			}
 		}
 	}
 	metadatas := slices.Collect(maps.Keys(m))
-	slices.SortFunc(metadatas, func(a, b *manifest.BlobFileMetadata) int {
-		return cmp.Compare(a.FileID, b.FileID)
+	slices.SortFunc(metadatas, func(a, b *manifest.PhysicalBlobFile) int {
+		return cmp.Compare(a.FileNum, b.FileNum)
 	})
 	return metadatas
 }
@@ -279,17 +279,17 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 		return compact.ValueSeparationMetadata{}, err
 	}
 	vs.writer = nil
-	meta := &manifest.BlobFileMetadata{
-		FileID:       base.BlobFileID(vs.objMeta.DiskFileNum),
+	meta := &manifest.PhysicalBlobFile{
+		FileNum:      vs.objMeta.DiskFileNum,
 		Size:         stats.FileLen,
 		ValueSize:    stats.UncompressedValueBytes,
 		CreationTime: uint64(time.Now().Unix()),
 	}
 	return compact.ValueSeparationMetadata{
 		BlobReferences: manifest.BlobReferences{{
-			FileID:    base.BlobFileID(vs.objMeta.DiskFileNum),
-			ValueSize: stats.UncompressedValueBytes,
-			Metadata:  meta,
+			FileID:           base.BlobFileID(vs.objMeta.DiskFileNum),
+			ValueSize:        stats.UncompressedValueBytes,
+			OriginalMetadata: meta,
 		}},
 		BlobReferenceSize:  stats.UncompressedValueBytes,
 		BlobReferenceDepth: 1,
@@ -308,7 +308,7 @@ type preserveBlobReferences struct {
 	// inputBlobMetadatas should be populated to include the *BlobFileMetadata
 	// for every unique blob file referenced by input sstables.
 	// inputBlobMetadatas must be sorted by FileNum.
-	inputBlobMetadatas       []*manifest.BlobFileMetadata
+	inputBlobMetadatas       []*manifest.PhysicalBlobFile
 	outputBlobReferenceDepth manifest.BlobReferenceDepth
 
 	// state
@@ -377,8 +377,8 @@ func (vs *preserveBlobReferences) Add(
 		}
 		refID = blob.ReferenceID(len(vs.currReferences))
 		vs.currReferences = append(vs.currReferences, manifest.BlobReference{
-			FileID:   fileID,
-			Metadata: vs.inputBlobMetadatas[idx],
+			FileID:           fileID,
+			OriginalMetadata: vs.inputBlobMetadatas[idx],
 		})
 	}
 
@@ -408,8 +408,8 @@ func (vs *preserveBlobReferences) Add(
 // the function returns false in the second return value.
 func (vs *preserveBlobReferences) findInputBlobMetadata(fileID base.BlobFileID) (int, bool) {
 	return slices.BinarySearchFunc(vs.inputBlobMetadatas, fileID,
-		func(bm *manifest.BlobFileMetadata, fileID base.BlobFileID) int {
-			return cmp.Compare(base.BlobFileID(bm.FileID), fileID)
+		func(bm *manifest.PhysicalBlobFile, fileID base.BlobFileID) int {
+			return cmp.Compare(base.BlobFileID(bm.FileNum), fileID)
 		})
 }
 

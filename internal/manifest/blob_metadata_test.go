@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBlobFileMetadata_ParseRoundTrip(t *testing.T) {
+func TestPhysicalBlobFile_ParseRoundTrip(t *testing.T) {
 	testCases := []struct {
 		name   string
 		input  string
@@ -33,6 +33,41 @@ func TestBlobFileMetadata_ParseRoundTrip(t *testing.T) {
 			name:   "humanized sizes are optional",
 			input:  "000001 size:[903530] vals:[39531]",
 			output: "000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := ParsePhysicalBlobFileDebug(tc.input)
+			require.NoError(t, err)
+			got := m.String()
+			want := tc.input
+			if tc.output != "" {
+				want = tc.output
+			}
+			require.Equal(t, want, got)
+		})
+	}
+}
+
+func TestBlobFileMetadata_ParseRoundTrip(t *testing.T) {
+	testCases := []struct {
+		name   string
+		input  string
+		output string
+	}{
+		{
+			name:  "verbatim",
+			input: "000002 -> 000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+		},
+		{
+			name:   "whitespace is insignificant",
+			input:  "000002          -> 000001   size  : [ 903530 (882KB )] vals: [ 39531 ( 39KB ) ]",
+			output: "000002 -> 000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+		},
+		{
+			name:   "humanized sizes are optional",
+			input:  "000002 -> 000001 size:[903530] vals:[39531]",
+			output: "000002 -> 000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
 		},
 	}
 	for _, tc := range testCases {

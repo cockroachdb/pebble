@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
@@ -1234,10 +1233,9 @@ func (d *DB) reportCorruption(meta any, err error) error {
 	switch meta := meta.(type) {
 	case *manifest.TableMetadata:
 		return d.reportFileCorruption(base.FileTypeTable, meta.TableBacking.DiskFileNum, meta.UserKeyBounds(), err)
-	case *manifest.BlobFileMetadata:
-		diskFileNum := blob.DiskFileNumTODO(meta.FileID)
+	case *manifest.PhysicalBlobFile:
 		// TODO(jackson): Add bounds for blob files.
-		return d.reportFileCorruption(base.FileTypeBlob, diskFileNum, base.UserKeyBounds{}, err)
+		return d.reportFileCorruption(base.FileTypeBlob, meta.FileNum, base.UserKeyBounds{}, err)
 	default:
 		panic(fmt.Sprintf("unknown metadata type: %T", meta))
 	}
