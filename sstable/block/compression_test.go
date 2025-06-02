@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,7 +19,7 @@ func TestBufferRandomized(t *testing.T) {
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, seed))
 
-	compressor := MakeCompressor(SnappyCompression)
+	compressor := MakeCompressor(SnappyCompression.ToProfile())
 	defer compressor.Close()
 	var checksummer Checksummer
 	checksummer.Init(ChecksumTypeCRC32c)
@@ -52,7 +53,7 @@ func TestBufferRandomized(t *testing.T) {
 				s := b.Data()
 				require.Equal(t, vbuf, s[len(s)-len(vbuf):])
 			}
-			_, bh := CompressAndChecksumToTempBuffer(b.Data(), &compressor, &checksummer)
+			_, bh := CompressAndChecksumToTempBuffer(b.Data(), blockkind.SSTableData, &compressor, &checksummer)
 			b.Reset()
 			bh.Release()
 		})

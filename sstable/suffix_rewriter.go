@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
 
 // RewriteKeySuffixesAndReturnFormat copies the content of the passed SSTable
@@ -170,7 +171,7 @@ func rewriteDataBlocksInParallel(
 			// We'll assume all blocks are _roughly_ equal so round-robin static partition
 			// of each worker doing every ith block is probably enough.
 			err := func() error {
-				compressor := block.MakeCompressor(opts.Compression)
+				compressor := block.MakeCompressor(opts.Compression.ToProfile())
 				defer compressor.Close()
 				for i := worker; i < len(input); i += concurrency {
 					bh := input[i]
@@ -192,7 +193,7 @@ func rewriteDataBlocksInParallel(
 						return err
 					}
 					compressedBuf = compressedBuf[:cap(compressedBuf)]
-					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, &compressor, &checksummer)
+					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, blockkind.SSTableData, &compressor, &checksummer)
 					output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
 				}
 				return nil

@@ -131,7 +131,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
 	fw.checksummer = block.Checksummer{Type: opts.ChecksumType}
-	fw.compressor = block.MakeCompressor(opts.Compression)
+	fw.compressor = block.MakeCompressor(opts.Compression.ToProfile())
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
 	fw.writeQueue.wg.Add(1)
@@ -213,7 +213,7 @@ func (w *FileWriter) flush() {
 	if w.valuesEncoder.Count() == 0 {
 		panic(errors.AssertionFailedf("no values to flush"))
 	}
-	pb, bh := block.CompressAndChecksumToTempBuffer(w.valuesEncoder.Finish(), &w.compressor, &w.checksummer)
+	pb, bh := block.CompressAndChecksumToTempBuffer(w.valuesEncoder.Finish(), blockkind.BlobValue, &w.compressor, &w.checksummer)
 	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
 	off := w.stats.FileLen
@@ -283,7 +283,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	{
 		indexBlock := w.indexEncoder.Finish()
 		var compressedBuf []byte
-		pb := block.CompressAndChecksum(&compressedBuf, indexBlock, block.NoopCompressor, &w.checksummer)
+		pb := block.CompressAndChecksum(&compressedBuf, indexBlock, blockkind.Metadata, block.NoopCompressor, &w.checksummer)
 		if _, w.err = pb.WriteTo(w.w); w.err != nil {
 			err = w.err
 			if w.w != nil {

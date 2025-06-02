@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/sstable/valblk"
@@ -148,7 +149,7 @@ func newColumnarWriter(
 	if !o.DisableValueBlocks {
 		w.valueBlock = valblk.NewWriter(
 			block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
-			w.opts.Compression, w.opts.Checksum, func(compressedSize int) {})
+			&w.compressor, w.opts.Checksum, func(compressedSize int) {})
 	}
 	if o.FilterPolicy != base.NoFilterPolicy {
 		switch o.FilterType {
@@ -194,7 +195,7 @@ func newColumnarWriter(
 	w.cpuMeasurer = cpuMeasurer
 	go w.drainWriteQueue()
 
-	w.compressor = block.MakeCompressor(w.opts.Compression)
+	w.compressor = block.MakeCompressor(w.opts.Compression.ToProfile())
 	return w
 }
 
@@ -723,6 +724,7 @@ func (w *RawColumnWriter) enqueueDataBlock(
 	cb.physical = block.CompressAndChecksum(
 		&cb.blockBuf.dataBuf,
 		serializedBlock,
+		blockkind.SSTableData,
 		&w.compressor,
 		&cb.blockBuf.checksummer,
 	)
@@ -1250,6 +1252,7 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 	cb.physical = block.CompressAndChecksum(
 		&cb.blockBuf.dataBuf,
 		b,
+		blockkind.SSTableData,
 		&w.compressor,
 		&cb.blockBuf.checksummer,
 	)
