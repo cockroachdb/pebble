@@ -30,7 +30,7 @@ type Writer struct {
 
 type bufferedValueBlock struct {
 	block     block.PhysicalBlock
-	bufHandle *block.BufHandle
+	bufHandle *block.TempBuffer
 	handle    block.Handle
 }
 

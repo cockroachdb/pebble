@@ -116,7 +116,7 @@ type FileWriter struct {
 
 type compressedBlock struct {
 	pb  block.PhysicalBlock
-	bh  *block.BufHandle
+	bh  *block.TempBuffer
 	off uint64
 }
 
