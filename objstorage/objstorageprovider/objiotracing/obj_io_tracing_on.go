@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -234,7 +235,7 @@ func (rh *readHandle) RecordCacheHit(ctx context.Context, offset, size int64) {
 
 type ctxInfo struct {
 	reason       Reason
-	blockType    BlockType
+	blockKind    blockkind.Kind
 	levelPlusOne uint8
 }
 
@@ -243,8 +244,8 @@ func mergeCtxInfo(base, other ctxInfo) ctxInfo {
 	if res.reason == 0 {
 		res.reason = base.reason
 	}
-	if res.blockType == 0 {
-		res.blockType = base.blockType
+	if res.blockKind == 0 {
+		res.blockKind = base.blockKind
 	}
 	if res.levelPlusOne == 0 {
 		res.levelPlusOne = base.levelPlusOne
@@ -274,11 +275,11 @@ func WithReason(ctx context.Context, reason Reason) context.Context {
 	return withInfo(ctx, info)
 }
 
-// WithBlockType creates a context that has an associated BlockType (which ends up in
+// WithBlockKind creates a context that has an associated BlockType (which ends up in
 // traces created under that context).
-func WithBlockType(ctx context.Context, blockType BlockType) context.Context {
+func WithBlockKind(ctx context.Context, kind blockkind.Kind) context.Context {
 	info := infoFromCtx(ctx)
-	info.blockType = blockType
+	info.blockKind = kind
 	return withInfo(ctx, info)
 }
 
@@ -328,7 +329,7 @@ func (g *eventGenerator) add(ctx context.Context, e Event) {
 	info := infoFromCtx(ctx)
 	info = mergeCtxInfo(g.baseCtxInfo, info)
 	e.Reason = info.reason
-	e.BlockType = info.blockType
+	e.BlockKind = info.blockKind
 	e.LevelPlusOne = info.levelPlusOne
 	if g.buf.num == eventsPerBuf {
 		g.flush()

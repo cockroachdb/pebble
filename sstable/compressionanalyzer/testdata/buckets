@@ -53,48 +53,48 @@ compressibility
 
 example-buckets-string
 ----
-Kind    Size Range  Test CR  Samples  Size                  Snappy       MinLZ1       MinLZ2       ZSTD1        ZSTD3        ZSTD5        ZSTD7
-sstval  24-48KB     1.1-1.5  5        44.7KB ± 53%  CR      1.34 ± 17%   2.57 ± 9%    3.64 ± 6%    4.29 ± 3%    5.48 ± 5%    6.21 ± 4%    7.15 ± 1%
-                                                    Comp    91MBps ± 3%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-sstval  24-48KB     1.5-2.5  5        24.6KB ± 77%  CR      1.65 ± 10%   2.53 ± 13%   3.56 ± 4%    4.45 ± 6%    5.40 ± 6%    6.37 ± 3%    7.36 ± 4%
-                                                    Comp    93MBps ± 2%  47MBps ± 1%  31MBps ± 1%  23MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-sstval  24-48KB     >2.5     6        34.3KB ± 71%  CR      1.34 ± 22%   2.48 ± 6%    3.35 ± 8%    4.38 ± 6%    5.34 ± 3%    6.58 ± 4%    7.41 ± 4%
-                                                    Comp    92MBps ± 2%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-index   48-128KB    >2.5     12       36.6KB ± 49%  CR      1.34 ± 23%   2.64 ± 11%   3.56 ± 7%    4.26 ± 5%    5.52 ± 5%    6.35 ± 4%    7.45 ± 4%
-                                                    Comp    92MBps ± 3%  47MBps ± 2%  31MBps ± 1%  23MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-index   >128KB      <1.1     22       34.4KB ± 59%  CR      1.49 ± 22%   2.34 ± 11%   3.31 ± 7%    4.46 ± 6%    5.52 ± 6%    6.37 ± 4%    7.50 ± 4%
-                                                    Comp    91MBps ± 3%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-other   >128KB      >2.5     1        48.0KB ± 0%   CR      1.90 ± 0%    2.40 ± 0%    3.50 ± 0%    4.80 ± 0%    5.30 ± 0%    6.20 ± 0%    7.10 ± 0%
-                                                    Comp    87MBps ± 0%  47MBps ± 0%  31MBps ± 0%  24MBps ± 0%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+Kind      Size Range  Test CR  Samples  Size                  Snappy       MinLZ1       MinLZ2       ZSTD1        ZSTD3        ZSTD5        ZSTD7
+sstval    24-48KB     1.1-1.5  5        44.7KB ± 53%  CR      1.34 ± 17%   2.57 ± 9%    3.64 ± 6%    4.29 ± 3%    5.48 ± 5%    6.21 ± 4%    7.15 ± 1%
+                                                      Comp    91MBps ± 3%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+sstval    24-48KB     >2.5     6        34.3KB ± 71%  CR      1.34 ± 22%   2.48 ± 6%    3.35 ± 8%    4.38 ± 6%    5.34 ± 3%    6.58 ± 4%    7.41 ± 4%
+                                                      Comp    92MBps ± 2%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+blobval   24-48KB     1.5-2.5  5        24.6KB ± 77%  CR      1.65 ± 10%   2.53 ± 13%   3.56 ± 4%    4.45 ± 6%    5.40 ± 6%    6.37 ± 3%    7.36 ± 4%
+                                                      Comp    93MBps ± 2%  47MBps ± 1%  31MBps ± 1%  23MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+filter    >128KB      <1.1     22       34.4KB ± 59%  CR      1.49 ± 22%   2.34 ± 11%   3.31 ± 7%    4.46 ± 6%    5.52 ± 6%    6.37 ± 4%    7.50 ± 4%
+                                                      Comp    91MBps ± 3%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+rangedel  48-128KB    >2.5     12       36.6KB ± 49%  CR      1.34 ± 23%   2.64 ± 11%   3.56 ± 7%    4.26 ± 5%    5.52 ± 5%    6.35 ± 4%    7.45 ± 4%
+                                                      Comp    92MBps ± 3%  47MBps ± 2%  31MBps ± 1%  23MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+rangekey  >128KB      >2.5     1        48.0KB ± 0%   CR      1.90 ± 0%    2.40 ± 0%    3.50 ± 0%    4.80 ± 0%    5.30 ± 0%    6.20 ± 0%    7.10 ± 0%
+                                                      Comp    87MBps ± 0%  47MBps ± 0%  31MBps ± 0%  24MBps ± 0%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
 
 example-buckets-string min-samples=5
 ----
-Kind    Size Range  Test CR  Samples  Size                  Snappy       MinLZ1       MinLZ2       ZSTD1        ZSTD3        ZSTD5        ZSTD7
-sstval  24-48KB     1.1-1.5  5        44.7KB ± 53%  CR      1.34 ± 17%   2.57 ± 9%    3.64 ± 6%    4.29 ± 3%    5.48 ± 5%    6.21 ± 4%    7.15 ± 1%
-                                                    Comp    91MBps ± 3%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-sstval  24-48KB     1.5-2.5  5        24.6KB ± 77%  CR      1.65 ± 10%   2.53 ± 13%   3.56 ± 4%    4.45 ± 6%    5.40 ± 6%    6.37 ± 3%    7.36 ± 4%
-                                                    Comp    93MBps ± 2%  47MBps ± 1%  31MBps ± 1%  23MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-sstval  24-48KB     >2.5     6        34.3KB ± 71%  CR      1.34 ± 22%   2.48 ± 6%    3.35 ± 8%    4.38 ± 6%    5.34 ± 3%    6.58 ± 4%    7.41 ± 4%
-                                                    Comp    92MBps ± 2%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-index   48-128KB    >2.5     12       36.6KB ± 49%  CR      1.34 ± 23%   2.64 ± 11%   3.56 ± 7%    4.26 ± 5%    5.52 ± 5%    6.35 ± 4%    7.45 ± 4%
-                                                    Comp    92MBps ± 3%  47MBps ± 2%  31MBps ± 1%  23MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
-index   >128KB      <1.1     22       34.4KB ± 59%  CR      1.49 ± 22%   2.34 ± 11%   3.31 ± 7%    4.46 ± 6%    5.52 ± 6%    6.37 ± 4%    7.50 ± 4%
-                                                    Comp    91MBps ± 3%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
-                                                    Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+Kind      Size Range  Test CR  Samples  Size                  Snappy       MinLZ1       MinLZ2       ZSTD1        ZSTD3        ZSTD5        ZSTD7
+sstval    24-48KB     1.1-1.5  5        44.7KB ± 53%  CR      1.34 ± 17%   2.57 ± 9%    3.64 ± 6%    4.29 ± 3%    5.48 ± 5%    6.21 ± 4%    7.15 ± 1%
+                                                      Comp    91MBps ± 3%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+sstval    24-48KB     >2.5     6        34.3KB ± 71%  CR      1.34 ± 22%   2.48 ± 6%    3.35 ± 8%    4.38 ± 6%    5.34 ± 3%    6.58 ± 4%    7.41 ± 4%
+                                                      Comp    92MBps ± 2%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 0%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+blobval   24-48KB     1.5-2.5  5        24.6KB ± 77%  CR      1.65 ± 10%   2.53 ± 13%   3.56 ± 4%    4.45 ± 6%    5.40 ± 6%    6.37 ± 3%    7.36 ± 4%
+                                                      Comp    93MBps ± 2%  47MBps ± 1%  31MBps ± 1%  23MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+filter    >128KB      <1.1     22       34.4KB ± 59%  CR      1.49 ± 22%   2.34 ± 11%   3.31 ± 7%    4.46 ± 6%    5.52 ± 6%    6.37 ± 4%    7.50 ± 4%
+                                                      Comp    91MBps ± 3%  47MBps ± 1%  31MBps ± 1%  24MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
+rangedel  48-128KB    >2.5     12       36.6KB ± 49%  CR      1.34 ± 23%   2.64 ± 11%   3.56 ± 7%    4.26 ± 5%    5.52 ± 5%    6.35 ± 4%    7.45 ± 4%
+                                                      Comp    92MBps ± 3%  47MBps ± 2%  31MBps ± 1%  23MBps ± 1%  19MBps ± 1%  16MBps ± 0%  14MBps ± 0%
+                                                      Decomp  9MBps ± 0%   5MBps ± 0%   3MBps ± 0%   2MBps ± 0%   2MBps ± 0%   2MBps ± 0%   1MBps ± 0%
 
 example-buckets-csv min-samples=6
 ----
 Kind,Size Range,Test CR,Samples,Size,Size±,Snappy CR,Snappy CR±,Snappy Comp ns/b,Snappy Comp±,Snappy Decomp ns/b,Snappy Decomp±,MinLZ1 CR,MinLZ1 CR±,MinLZ1 Comp ns/b,MinLZ1 Comp±,MinLZ1 Decomp ns/b,MinLZ1 Decomp±,MinLZ2 CR,MinLZ2 CR±,MinLZ2 Comp ns/b,MinLZ2 Comp±,MinLZ2 Decomp ns/b,MinLZ2 Decomp±,ZSTD1 CR,ZSTD1 CR±,ZSTD1 Comp ns/b,ZSTD1 Comp±,ZSTD1 Decomp ns/b,ZSTD1 Decomp±,ZSTD3 CR,ZSTD3 CR±,ZSTD3 Comp ns/b,ZSTD3 Comp±,ZSTD3 Decomp ns/b,ZSTD3 Decomp±,ZSTD5 CR,ZSTD5 CR±,ZSTD5 Comp ns/b,ZSTD5 Comp±,ZSTD5 Decomp ns/b,ZSTD5 Decomp±,ZSTD7 CR,ZSTD7 CR±,ZSTD7 Comp ns/b,ZSTD7 Comp±,ZSTD7 Decomp ns/b,ZSTD7 Decomp±
 sstval,24-48KB,>2.5,6,35074,24930,1.337,0.289,10.348,0.191,100.419,0.268,2.483,0.157,20.422,0.270,200.394,0.223,3.347,0.276,30.423,0.254,300.431,0.084,4.384,0.251,40.392,0.226,400.273,0.278,5.341,0.182,50.513,0.218,500.538,0.152,6.583,0.274,60.574,0.173,600.736,0.254,7.408,0.300,70.489,0.264,700.386,0.291
-index,48-128KB,>2.5,12,37516,18543,1.336,0.308,10.419,0.275,100.429,0.305,2.635,0.282,20.423,0.351,200.391,0.336,3.559,0.248,30.453,0.319,300.496,0.267,4.262,0.210,40.597,0.290,400.442,0.233,5.525,0.250,50.441,0.295,500.490,0.281,6.353,0.226,60.591,0.281,600.367,0.240,7.450,0.301,70.278,0.145,700.416,0.313
-index,>128KB,<1.1,22,35247,20784,1.489,0.325,10.447,0.281,100.478,0.320,2.343,0.261,20.326,0.249,200.506,0.250,3.306,0.229,30.519,0.239,300.492,0.285,4.462,0.253,40.420,0.215,400.380,0.244,5.520,0.329,50.422,0.301,500.354,0.269,6.368,0.270,60.446,0.289,600.340,0.261,7.504,0.311,70.457,0.293,700.497,0.274
+filter,>128KB,<1.1,22,35247,20784,1.489,0.325,10.447,0.281,100.478,0.320,2.343,0.261,20.326,0.249,200.506,0.250,3.306,0.229,30.519,0.239,300.492,0.285,4.462,0.253,40.420,0.215,400.380,0.244,5.520,0.329,50.422,0.301,500.354,0.269,6.368,0.270,60.446,0.289,600.340,0.261,7.504,0.311,70.457,0.293,700.497,0.274
+rangedel,48-128KB,>2.5,12,37516,18543,1.336,0.308,10.419,0.275,100.429,0.305,2.635,0.282,20.423,0.351,200.391,0.336,3.559,0.248,30.453,0.319,300.496,0.267,4.262,0.210,40.597,0.290,400.442,0.233,5.525,0.250,50.441,0.295,500.490,0.281,6.353,0.226,60.591,0.281,600.367,0.240,7.450,0.301,70.278,0.145,700.416,0.313

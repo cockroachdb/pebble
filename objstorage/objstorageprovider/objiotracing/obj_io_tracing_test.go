@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -128,6 +129,6 @@ func TestTracing(t *testing.T) {
 	events = collectEvents()
 	// Expect L6 data block reads.
 	require.Greater(t, num(func(e Event) bool {
-		return e.Op == objiotracing.ReadOp && e.BlockType == objiotracing.DataBlock && e.LevelPlusOne == 7
+		return e.Op == objiotracing.ReadOp && e.BlockKind == blockkind.SSTableData && e.LevelPlusOne == 7
 	}), 0)
 }

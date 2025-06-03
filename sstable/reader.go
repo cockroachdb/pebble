@@ -21,8 +21,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/sstable/valblk"
@@ -338,8 +338,7 @@ var noInitBlockMetadataFn = func(*block.Metadata, []byte) error { return nil }
 func (r *Reader) readMetaindexBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle,
 ) (block.BufferHandle, error) {
-	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.blockReader.Read(ctx, env, readHandle, r.metaindexBH, noInitBlockMetadataFn)
+	return r.blockReader.Read(ctx, env, readHandle, r.metaindexBH, blockkind.Metadata, noInitBlockMetadataFn)
 }
 
 // readTopLevelIndexBlock reads the top-level index block.
@@ -353,8 +352,7 @@ func (r *Reader) readTopLevelIndexBlock(
 func (r *Reader) readIndexBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
-	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.blockReader.Read(ctx, env, readHandle, bh, r.initIndexBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.Index, r.initIndexBlockMetadata)
 }
 
 // initIndexBlockMetadata initializes the Metadata for a data block. This will
@@ -369,8 +367,7 @@ func (r *Reader) initIndexBlockMetadata(metadata *block.Metadata, data []byte) e
 func (r *Reader) readDataBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
-	ctx = objiotracing.WithBlockType(ctx, objiotracing.DataBlock)
-	return r.blockReader.Read(ctx, env, readHandle, bh, r.initDataBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.SSTableData, r.initDataBlockMetadata)
 }
 
 // initDataBlockMetadata initializes the Metadata for a data block. This will
@@ -385,22 +382,19 @@ func (r *Reader) initDataBlockMetadata(metadata *block.Metadata, data []byte) er
 func (r *Reader) readFilterBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
-	ctx = objiotracing.WithBlockType(ctx, objiotracing.FilterBlock)
-	return r.blockReader.Read(ctx, env, readHandle, bh, noInitBlockMetadataFn)
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.Filter, noInitBlockMetadataFn)
 }
 
 func (r *Reader) readRangeDelBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
-	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.blockReader.Read(ctx, env, readHandle, bh, r.initKeyspanBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.RangeDel, r.initKeyspanBlockMetadata)
 }
 
 func (r *Reader) readRangeKeyBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
-	ctx = objiotracing.WithBlockType(ctx, objiotracing.MetadataBlock)
-	return r.blockReader.Read(ctx, env, readHandle, bh, r.initKeyspanBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.RangeKey, r.initKeyspanBlockMetadata)
 }
 
 // initKeyspanBlockMetadata initializes the Metadata for a rangedel or range key
@@ -423,8 +417,7 @@ func (r *Reader) ReadValueBlockExternal(
 func (r *Reader) readValueBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
-	ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
-	return r.blockReader.Read(ctx, env, readHandle, bh, noInitBlockMetadataFn)
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.SSTableValue, noInitBlockMetadataFn)
 }
 
 // metaBufferPools is a sync pool of BufferPools used exclusively when opening a
@@ -554,7 +547,7 @@ func (r *Reader) readPropertiesBlockInternal(
 		defer bufferPool.Release()
 	}
 	env := block.ReadEnv{BufferPool: bufferPool}
-	b, err := r.blockReader.Read(ctx, env, readHandle, r.propertiesBH, noInitBlockMetadataFn)
+	b, err := r.blockReader.Read(ctx, env, readHandle, r.propertiesBH, blockkind.Metadata, noInitBlockMetadataFn)
 	if err != nil {
 		return Properties{}, err
 	}
@@ -711,7 +704,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 		readFn: r.readRangeKeyBlock,
 	})
 	readNoInit := func(ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle, bh block.Handle) (block.BufferHandle, error) {
-		return r.blockReader.Read(ctx, env, rh, bh, noInitBlockMetadataFn)
+		return r.blockReader.Read(ctx, env, rh, bh, blockkind.Metadata, noInitBlockMetadataFn)
 	}
 	blocks = append(blocks, blk{
 		bh:     l.Properties,
