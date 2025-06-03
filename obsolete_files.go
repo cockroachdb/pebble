@@ -66,6 +66,11 @@ type obsoleteFile struct {
 	isLocal  bool
 }
 
+func (of *obsoleteFile) needsPacing() bool {
+	// We only need to pace local objects--sstables and blob files.
+	return of.isLocal && (of.fileType == base.FileTypeTable || of.fileType == base.FileTypeBlob)
+}
+
 type cleanupJob struct {
 	jobID         JobID
 	obsoleteFiles []obsoleteFile
@@ -126,7 +131,7 @@ func (cm *cleanupManager) EnqueueJob(jobID JobID, obsoleteFiles []obsoleteFile) 
 	// subject to the throttling rate which defeats the purpose.
 	var pacingBytes uint64
 	for _, of := range obsoleteFiles {
-		if cm.needsPacing(of.fileType, of.fileNum) {
+		if of.needsPacing() {
 			pacingBytes += of.fileSize
 		}
 	}
@@ -168,11 +173,11 @@ func (cm *cleanupManager) mainLoop() {
 		for _, of := range job.obsoleteFiles {
 			switch of.fileType {
 			case base.FileTypeTable:
-				cm.maybePace(&tb, of.fileType, of.fileNum, of.fileSize)
+				cm.maybePace(&tb, &of)
 				cm.onTableDeleteFn(of.fileSize, of.isLocal)
 				cm.deleteObsoleteObject(of.fileType, job.jobID, of.fileNum)
 			case base.FileTypeBlob:
-				cm.maybePace(&tb, of.fileType, of.fileNum, of.fileSize)
+				cm.maybePace(&tb, &of)
 				cm.deleteObsoleteObject(of.fileType, job.jobID, of.fileNum)
 			default:
 				cm.deleteObsoleteFile(of.fs, of.fileType, job.jobID, of.path, of.fileNum)
@@ -186,31 +191,14 @@ func (cm *cleanupManager) mainLoop() {
 	}
 }
 
-// fileNumIfSST is read iff fileType is fileTypeTable.
-func (cm *cleanupManager) needsPacing(fileType base.FileType, fileNumIfSST base.DiskFileNum) bool {
-	if fileType != base.FileTypeTable && fileType != base.FileTypeBlob {
-		return false
-	}
-	meta, err := cm.objProvider.Lookup(fileType, fileNumIfSST)
-	if err != nil {
-		// The object was already removed from the provider; we won't actually
-		// delete anything, so we don't need to pace.
-		return false
-	}
-	// Don't throttle deletion of remote objects.
-	return !meta.IsRemote()
-}
-
 // maybePace sleeps before deleting an object if appropriate. It is always
 // called from the background goroutine.
-func (cm *cleanupManager) maybePace(
-	tb *tokenbucket.TokenBucket, fileType base.FileType, fileNum base.DiskFileNum, fileSize uint64,
-) {
-	if !cm.needsPacing(fileType, fileNum) {
+func (cm *cleanupManager) maybePace(tb *tokenbucket.TokenBucket, of *obsoleteFile) {
+	if !of.needsPacing() {
 		return
 	}
 
-	tokens := cm.deletePacer.PacingDelay(crtime.NowMono(), fileSize)
+	tokens := cm.deletePacer.PacingDelay(crtime.NowMono(), of.fileSize)
 	if tokens == 0.0 {
 		// The token bucket might be in debt; it could make us wait even for 0
 		// tokens. We don't want that if the pacer decided throttling should be
@@ -338,8 +326,8 @@ func (d *DB) onObsoleteTableDelete(fileSize uint64, isLocal bool) {
 	d.mu.versions.metrics.Table.ObsoleteCount--
 	d.mu.versions.metrics.Table.ObsoleteSize -= fileSize
 	if isLocal {
-		d.mu.versions.metrics.Table.Local.ObsoleteSize -= fileSize
 		d.mu.versions.metrics.Table.Local.ObsoleteCount--
+		d.mu.versions.metrics.Table.Local.ObsoleteSize -= fileSize
 	}
 	d.mu.Unlock()
 }
