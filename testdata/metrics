@@ -78,7 +78,7 @@ Local tables size: 755B
 Compression types: snappy: 1
 Table stats: all loaded
 Block cache: 2 entries (795B)  hit rate: 0.0%
-Table cache: 1 entries (480B)  hit rate: 0.0%
+Table cache: 1 entries (496B)  hit rate: 0.0%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -143,7 +143,7 @@ Local tables size: 1.5KB
 Compression types: snappy: 2
 Table stats: all loaded
 Block cache: 2 entries (795B)  hit rate: 33.3%
-Table cache: 2 entries (960B)  hit rate: 66.7%
+Table cache: 2 entries (992B)  hit rate: 66.7%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
@@ -191,7 +191,7 @@ Local tables size: 1.5KB
 Compression types: snappy: 2
 Table stats: all loaded
 Block cache: 2 entries (795B)  hit rate: 33.3%
-Table cache: 2 entries (960B)  hit rate: 66.7%
+Table cache: 2 entries (992B)  hit rate: 66.7%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 2
@@ -236,7 +236,7 @@ Local tables size: 1.5KB
 Compression types: snappy: 2
 Table stats: all loaded
 Block cache: 2 entries (795B)  hit rate: 33.3%
-Table cache: 1 entries (480B)  hit rate: 66.7%
+Table cache: 1 entries (496B)  hit rate: 66.7%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 1
@@ -342,24 +342,24 @@ metrics
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     7  5.3KB     0B       0 |    - 0.25 0.25 |  165B |     0     0B |     0     0B |     9  6.8KB |    0B |   1 50.0
+    0 |     7  5.7KB     0B       0 |    - 0.25 0.25 |  165B |     0     0B |     0     0B |     9  7.1KB |    0B |   1 52.1
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     6 |     2  1.5KB     0B       0 |    - 0.00 0.00 | 1.5KB |     0     0B |     0     0B |     2  1.5KB | 1.5KB |   1 1.00
-total |     9  6.8KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    11  8.4KB | 1.5KB |   2 60.2
+total |     9  7.1KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    11  8.8KB | 1.5KB |   2 62.3
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 116B  written: 165B (42% overhead)
 Flushes: 3
-Compactions: 1  estimated debt: 7.4KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
+Compactions: 1  estimated debt: 7.8KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
              default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
 Virtual tables: 0 (0B)
-Local tables size: 6.8KB
+Local tables size: 7.1KB
 Compression types: snappy: 9
 Table stats: all loaded
 Block cache: 0 entries (0B)  hit rate: 33.3%
@@ -406,14 +406,14 @@ metrics
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B       0 |    -    0    0 |  165B |     0     0B |     0     0B |     9  6.8KB |    0B |   0 50.0
+    0 |     0     0B     0B       0 |    -    0    0 |  165B |     0     0B |     0     0B |     9  7.1KB |    0B |   0 52.1
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |     9  6.8KB     0B       0 |    - 0.00 0.00 | 6.8KB |     0     0B |     0     0B |     9  6.8KB | 6.8KB |   1 1.00
-total |     9  6.8KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    18   14KB | 6.8KB |   1 93.1
+    6 |     9  6.8KB     0B       0 |    - 0.00 0.00 | 7.1KB |     0     0B |     0     0B |     9  6.8KB | 7.1KB |   1 0.95
+total |     9  6.8KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    18   14KB | 7.1KB |   1 95.2
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 116B  written: 165B (42% overhead)
 Flushes: 3
@@ -521,14 +521,14 @@ metrics
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     6  4.4KB     0B       0 |    - 0.50 0.50 |  211B |     3  2.2KB |     0     0B |    12  9.0KB |    0B |   2 49.8
+    0 |     6  4.4KB     0B       0 |    - 0.50 0.50 |  211B |     3  2.2KB |     0     0B |    12  9.4KB |    0B |   2 51.5
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |     9  6.8KB     0B       0 |    - 0.00 0.00 | 6.8KB |     0     0B |     0     0B |     9  6.8KB | 6.8KB |   1 1.00
-total |    15   11KB     0B       0 |    -    -    - | 2.4KB |     3  2.2KB |     0     0B |    21   18KB | 6.8KB |   3 8.02
+    6 |     9  6.8KB     0B       0 |    - 0.00 0.00 | 7.1KB |     0     0B |     0     0B |     9  6.8KB | 7.1KB |   1 0.95
+total |    15   11KB     0B       0 |    -    -    - | 2.4KB |     3  2.2KB |     0     0B |    21   19KB | 7.1KB |   3 8.17
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 176B  written: 211B (20% overhead)
 Flushes: 8
@@ -598,14 +598,14 @@ metrics
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |    13  9.6KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 57.0
+    0 |    13  9.6KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 58.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |     9  6.8KB     0B       0 |    - 0.00 0.00 | 6.8KB |     0     0B |     0     0B |     9  6.8KB | 6.8KB |   1 1.00
-total |    22   16KB     0B       0 |    -    -    - | 2.5KB |     3  2.2KB |     0     0B |    28   23KB | 6.8KB |   3 9.91
+    6 |     9  6.8KB     0B       0 |    - 0.00 0.00 | 7.1KB |     0     0B |     0     0B |     9  6.8KB | 7.1KB |   1 0.95
+total |    22   16KB     0B       0 |    -    -    - | 2.5KB |     3  2.2KB |     0     0B |    28   24KB | 7.1KB |   3 10.1
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 223B  written: 277B (24% overhead)
 Flushes: 9
@@ -687,14 +687,14 @@ metrics zero-cache-hits-misses
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |    11  8.1KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 57.0
+    0 |    11  8.1KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 58.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |    10  7.5KB     0B       0 |    - 0.00 0.00 | 6.8KB |     1   758B |     0     0B |     9  6.8KB | 6.8KB |   1 1.00
-total |    21   16KB     0B       0 |    -    -    - | 3.2KB |     4  3.0KB |     0     0B |    28   24KB | 6.8KB |   3 7.87
+    6 |    10  7.5KB     0B       0 |    - 0.00 0.00 | 7.1KB |     1   758B |     0     0B |     9  6.8KB | 7.1KB |   1 0.95
+total |    21   16KB     0B       0 |    -    -    - | 3.2KB |     4  3.0KB |     0     0B |    28   24KB | 7.1KB |   3 7.98
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 223B  written: 277B (24% overhead)
 Flushes: 9
@@ -812,14 +812,14 @@ metrics zero-cache-hits-misses
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B       0 |    -    0    0 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   0 57.0
+    0 |     0     0B     0B       0 |    -    0    0 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   0 58.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |    18   13KB     0B       0 |    - 0.00 0.00 |  14KB |     2  1.5KB |     0     0B |    16   12KB |  14KB |   1 0.84
-total |    18   13KB     0B       0 |    -    -    - | 4.0KB |     5  3.7KB |     0     0B |    35   30KB |  14KB |   1 7.91
+    6 |    18   13KB     0B       0 |    - 0.00 0.00 |  14KB |     2  1.5KB |     0     0B |    16   12KB |  14KB |   1 0.82
+total |    18   13KB     0B       0 |    -    -    - | 4.0KB |     5  3.7KB |     0     0B |    35   30KB |  14KB |   1 8.00
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 223B  written: 277B (24% overhead)
 Flushes: 9
@@ -1215,7 +1215,7 @@ Compression types: snappy: 5
 Garbage: point-deletions 502B range-deletions 1.5KB
 Table stats: all loaded
 Block cache: 2 entries (774B)  hit rate: 0.0%
-Table cache: 2 entries (960B)  hit rate: 0.0%
+Table cache: 2 entries (992B)  hit rate: 0.0%
 Range key sets: 0  Tombstones: 3  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -1257,7 +1257,7 @@ Compression types: snappy: 5
 Garbage: point-deletions 502B range-deletions 1.5KB
 Table stats: all loaded
 Block cache: 2 entries (774B)  hit rate: 0.0%
-Table cache: 2 entries (960B)  hit rate: 0.0%
+Table cache: 2 entries (992B)  hit rate: 0.0%
 Range key sets: 0  Tombstones: 3  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0

@@ -147,6 +147,12 @@ func TestValueSeparationPolicy(t *testing.T) {
 					}
 					fmt.Fprintln(&buf, "]")
 				}
+				if len(meta.BlobReferenceValueLivenessIndexes) > 0 {
+					fmt.Fprint(&buf, "blobref value liveness indexes: ")
+					for _, vi := range meta.BlobReferenceValueLivenessIndexes {
+						fmt.Fprintln(&buf, vi)
+					}
+				}
 				return buf.String()
 			default:
 				t.Fatalf("unknown command: %s", d.Cmd)
@@ -259,12 +265,12 @@ func (d *defineDBValueSeparator) FinishOutput() (compact.ValueSeparationMetadata
 //
 //	<reference ID> <block ID> <values size> <ellision tag byte> [<bitmap>]
 type blobRefLivenessEncoding struct {
-	refID      blob.ReferenceID
-	blockID    blob.BlockID
-	valuesSize uint64
-	elideTag   bitmapElideTag
-	nBytes     uint64
-	bitmap     []byte
+	refID   blob.ReferenceID
+	blockID blob.BlockID
+	//valuesSize uint64
+	elideTag bitmapElideTag
+	nBytes   uint64
+	bitmap   []byte
 }
 
 // decodeBlobRefLivenessEncoding decodes a blob reference liveness encoding
@@ -281,8 +287,8 @@ func decodeBlobRefLivenessEncoding(buf []byte) blobRefLivenessEncoding {
 	buf = buf[n:]
 	enc.blockID = blob.BlockID(blockIDVal)
 
-	enc.valuesSize, n = binary.Uvarint(buf)
-	buf = buf[n:]
+	//enc.valuesSize, n = binary.Uvarint(buf)
+	//buf = buf[n:]
 
 	elideTagVal, n := binary.Uvarint(buf)
 	buf = buf[n:]
@@ -326,7 +332,7 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		enc := decodeBlobRefLivenessEncoding(w.bufs[0])
 		require.Equal(t, refID, enc.refID)
 		require.Equal(t, blob.BlockID(1), enc.blockID)
-		require.Equal(t, uint64(600), enc.valuesSize) // 100 + 200 + 300.
+		//require.Equal(t, uint64(600), enc.valuesSize) // 100 + 200 + 300.
 		require.Equal(t, mixed, enc.elideTag)
 		require.Equal(t, uint64(1), enc.nBytes) // 5 bits rounded up to 1 byte.
 
@@ -337,7 +343,7 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		enc = decodeBlobRefLivenessEncoding(w.bufs[1])
 		require.Equal(t, refID, enc.refID)
 		require.Equal(t, blockID, enc.blockID)
-		require.Equal(t, uint64(400), enc.valuesSize)
+		//require.Equal(t, uint64(400), enc.valuesSize)
 		require.Equal(t, mixed, enc.elideTag)
 		require.Equal(t, uint64(1), enc.nBytes)
 
@@ -366,7 +372,7 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		enc := decodeBlobRefLivenessEncoding(w.bufs[0])
 		require.Equal(t, refID, enc.refID)
 		require.Equal(t, blockID, enc.blockID)
-		require.Equal(t, uint64(0), enc.valuesSize)
+		//require.Equal(t, uint64(0), enc.valuesSize)
 		require.Equal(t, zeros, enc.elideTag)
 		require.Equal(t, uint64(1), enc.nBytes)
 	})
@@ -388,7 +394,7 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		enc := decodeBlobRefLivenessEncoding(w.bufs[0])
 		require.Equal(t, refID, enc.refID)
 		require.Equal(t, blockID, enc.blockID)
-		require.Equal(t, uint64(600), enc.valuesSize)
+		//require.Equal(t, uint64(600), enc.valuesSize)
 		require.Equal(t, ones, enc.elideTag)
 		require.Equal(t, uint64(1), enc.nBytes)
 	})
