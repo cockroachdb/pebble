@@ -1,0 +1,22 @@
+build
+061101143
+090101032
+----
+reference-liveness-block-decoder
+ └── reference liveness block header
+      ├── columnar block header
+      │    ├── 00-01: x 01       # version 1
+      │    ├── 01-03: x 0100     # 1 columns
+      │    ├── 03-07: x 02000000 # 2 rows
+      │    ├── 07-08: b 00000011 # col 0: bytes
+      │    └── 08-12: x 0c000000 # col 0: page start 12
+      ├── data for column 0 (bytes)
+      │    ├── offsets table
+      │    │    ├── 12-13: x 01 # encoding: 1b
+      │    │    ├── 13-14: x 00 # data[0] = 0 [16 overall]
+      │    │    ├── 14-15: x 09 # data[1] = 9 [25 overall]
+      │    │    └── 15-16: x 12 # data[2] = 18 [34 overall]
+      │    └── data
+      │         ├── 16-25: x 303631313031313433 # data[0]: 061101143
+      │         └── 25-34: x 303930313031303332 # data[1]: 090101032
+      └── 34-35: x 00 # block padding byte
