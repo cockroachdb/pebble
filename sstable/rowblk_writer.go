@@ -1932,13 +1932,10 @@ func (w *RawRowWriter) copyDataBlocks(
 // addDataBlock implements RawWriter.
 func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
 	blockBuf := &w.dataBlockBuf.blockBuf
-	// TODO(radu): store a compressor in w.layout.
-	compressor := block.MakeCompressor(w.layout.compression)
-	defer compressor.Close()
 	pb := block.CompressAndChecksum(
 		&blockBuf.dataBuf,
 		b,
-		&compressor,
+		&w.layout.compressor,
 		&blockBuf.checksummer,
 	)
 
