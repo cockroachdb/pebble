@@ -74,7 +74,7 @@ crossversion-meta:
 
 .PHONY: stress-crossversion
 stress-crossversion:
-	STRESS=1 ./scripts/run-crossversion-meta.sh crl-release-23.2 crl-release-24.1 crl-release-24.3 crl-release-25.1 master
+	STRESS=1 ./scripts/run-crossversion-meta.sh crl-release-24.1 crl-release-24.2 crl-release-24.3 crl-release-25.1 crl-release-25.2
 
 .PHONY: test-s390x-qemu
 test-s390x-qemu: TAGS += slowbuild
