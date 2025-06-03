@@ -91,7 +91,7 @@ func (w *Writer) Size() uint64 {
 }
 
 func (w *Writer) compressAndFlush() {
-	physicalBlock, bufHandle := block.CompressAndChecksumToTempBuffer(w.buf.Data(), w.compressor, &w.checksummer)
+	physicalBlock, bufHandle := block.CompressAndChecksumToTempBuffer(w.buf.Data(), &w.compressor, &w.checksummer)
 	w.buf.Reset()
 	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
 	w.totalBlockBytes += uint64(physicalBlock.LengthWithTrailer())

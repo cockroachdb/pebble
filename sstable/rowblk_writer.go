@@ -492,7 +492,7 @@ func (d *dataBlockBuf) compressAndChecksum(c block.Compression) {
 	// TODO(radu): pass a Compressor here.
 	compressor := block.MakeCompressor(c)
 	defer compressor.Close()
-	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, compressor, &d.checksummer)
+	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, &compressor, &d.checksummer)
 }
 
 func (d *dataBlockBuf) shouldFlush(
@@ -1938,7 +1938,7 @@ func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithPropertie
 	pb := block.CompressAndChecksum(
 		&blockBuf.dataBuf,
 		b,
-		compressor,
+		&compressor,
 		&blockBuf.checksummer,
 	)
 
