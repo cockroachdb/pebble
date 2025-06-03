@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -49,9 +50,9 @@ func (t *Tracer) WrapWritable(
 // traces created under that context).
 func WithReason(ctx context.Context, reason Reason) context.Context { return ctx }
 
-// WithBlockType creates a context that has an associated BlockType (which ends up in
+// WithBlockKind creates a context that has an associated BlockType (which ends up in
 // traces created under that context).
-func WithBlockType(ctx context.Context, blockType BlockType) context.Context { return ctx }
+func WithBlockKind(ctx context.Context, kind blockkind.Kind) context.Context { return ctx }
 
 // WithLevel creates a context that has an associated level (which ends up in
 // traces created under that context).

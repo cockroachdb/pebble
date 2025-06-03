@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -212,7 +211,6 @@ func (cr *cachedReader) GetUnsafeValue(
 	// If we already have a block loaded (eg, we're scanning retrieving multiple
 	// values), the current block might contain the value.
 	if !cr.currentValueBlock.loaded || cr.currentValueBlock.virtualID != vh.BlockID {
-		ctx = objiotracing.WithBlockType(ctx, objiotracing.ValueBlock)
 		if !cr.indexBlock.loaded {
 			// Read the index block.
 			var err error

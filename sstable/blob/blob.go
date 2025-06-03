@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
 
 var (
@@ -460,14 +461,14 @@ func (r *FileReader) InitReadHandle(
 func (r *FileReader) ReadValueBlock(
 	ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle, h block.Handle,
 ) (block.BufferHandle, error) {
-	return r.r.Read(ctx, env, rh, h, initBlobValueBlockMetadata)
+	return r.r.Read(ctx, env, rh, h, blockkind.BlobValue, initBlobValueBlockMetadata)
 }
 
 // ReadIndexBlock reads the index block from the file.
 func (r *FileReader) ReadIndexBlock(
 	ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle,
 ) (block.BufferHandle, error) {
-	return r.r.Read(ctx, env, rh, r.footer.indexHandle, initIndexBlockMetadata)
+	return r.r.Read(ctx, env, rh, r.footer.indexHandle, blockkind.Metadata, initIndexBlockMetadata)
 }
 
 // IndexHandle returns the block handle for the file's index block.

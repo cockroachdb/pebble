@@ -12,34 +12,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/compression"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
-
-// BlockKind breaks down the types of blocks into categories which might benefit
-// from individual compressions settings.
-type BlockKind uint8
-
-const (
-	DataBlock BlockKind = iota
-	SSTableValueBlock
-	BlobValueBlock
-	IndexBlock
-	// OtherBlock includes range del/key blocks, and other top-level metadata
-	// blocks.
-	OtherBlock
-	numBlockKinds
-)
-
-var blockKindString = [...]string{
-	DataBlock:         "data",
-	SSTableValueBlock: "sstval",
-	BlobValueBlock:    "blobval",
-	IndexBlock:        "index",
-	OtherBlock:        "other",
-}
-
-func (k BlockKind) String() string {
-	return blockKindString[k]
-}
 
 // BlockSize identifies a range of block sizes.
 type BlockSize uint8
@@ -134,7 +108,7 @@ var Settings = [...]compression.Setting{
 const numSettings = 7
 
 // Buckets holds the results of all experiments.
-type Buckets [numBlockKinds][numBlockSizes][numCompressibility]Bucket
+type Buckets [blockkind.NumKinds][numBlockSizes][numCompressibility]Bucket
 
 // Bucket aggregates results for blocks of the same kind, size range, and
 // compressibility.
@@ -161,7 +135,7 @@ func (b *Buckets) String(minSamples int) string {
 		fmt.Fprintf(tw, "\t%s", s.String())
 	}
 	fmt.Fprintf(tw, "\n")
-	for k := BlockKind(0); k < numBlockKinds; k++ {
+	for _, k := range blockkind.All() {
 		for sz := BlockSize(0); sz < numBlockSizes; sz++ {
 			for c := Compressibility(0); c < numCompressibility; c++ {
 				bucket := &b[k][sz][c]
@@ -223,7 +197,7 @@ func (b *Buckets) ToCSV(minSamples int) string {
 		fmt.Fprintf(&buf, ",%s Decomp±", s.String())
 	}
 	fmt.Fprintf(&buf, "\n")
-	for k := BlockKind(0); k < numBlockKinds; k++ {
+	for _, k := range blockkind.All() {
 		for sz := BlockSize(0); sz < numBlockSizes; sz++ {
 			for c := Compressibility(0); c < numCompressibility; c++ {
 				bucket := &b[k][sz][c]
