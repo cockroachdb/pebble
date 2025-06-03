@@ -332,6 +332,7 @@ type writeNewBlobFiles struct {
 	writer  *blob.FileWriter
 	objMeta objstorage.ObjectMetadata
 
+	blobRefValueLivenessWriter
 	buf []byte
 }
 
@@ -428,6 +429,8 @@ func (vs *writeNewBlobFiles) Add(
 			ValueID: handle.ValueID,
 		},
 	}
+	vs.blobRefValueLivenessWriter.maybeInit()
+	vs.blobRefValueLivenessWriter.addLiveValue(0, handle.BlockID, handle.ValueID, uint64(handle.ValueLen))
 	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete)
 }
 
@@ -448,17 +451,23 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 		ValueSize:    stats.UncompressedValueBytes,
 		CreationTime: uint64(time.Now().Unix()),
 	}
+	if err := vs.blobRefValueLivenessWriter.finishOutput(); err != nil {
+		return compact.ValueSeparationMetadata{}, err
+	}
+	defer vs.blobRefValueLivenessWriter.reset()
+
 	return compact.ValueSeparationMetadata{
 		BlobReferences: manifest.BlobReferences{{
 			FileID:    base.BlobFileID(vs.objMeta.DiskFileNum),
 			ValueSize: stats.UncompressedValueBytes,
 			Metadata:  meta,
 		}},
-		BlobReferenceSize:  stats.UncompressedValueBytes,
-		BlobReferenceDepth: 1,
-		BlobFileStats:      stats,
-		BlobFileObject:     vs.objMeta,
-		BlobFileMetadata:   meta,
+		BlobReferenceSize:                 stats.UncompressedValueBytes,
+		BlobReferenceDepth:                1,
+		BlobReferenceValueLivenessIndexes: vs.blobRefValueLivenessWriter.bufs,
+		BlobFileStats:                     stats,
+		BlobFileObject:                    vs.objMeta,
+		BlobFileMetadata:                  meta,
 	}, nil
 }
 
@@ -479,6 +488,8 @@ type preserveBlobReferences struct {
 	currReferences manifest.BlobReferences
 	// totalValueSize is the sum of the sizes of all ValueSizes in currReferences.
 	totalValueSize uint64
+
+	blobRefValueLivenessWriter
 }
 
 // Assert that *preserveBlobReferences implements the compact.ValueSeparation
@@ -557,6 +568,27 @@ func (vs *preserveBlobReferences) Add(
 		},
 		HandleSuffix: handleSuffix,
 	}
+	vs.blobRefValueLivenessWriter.maybeInit()
+	blobBlockKey := blobBlockIdentifier{refID, handleSuffix.BlockID}
+	// Find the last encountered valueID for this reference's block (if any).
+	// The difference between the current valueID and the last encountered
+	// valueID is the number of dead values that should be added to the liveness
+	// index. If this is the first valueID for this (refID, blockID) pair, we
+	// will populate dead values starting from 0 up until this valueID.
+	stateForBlock, ok := vs.blobRefValueLivenessWriter.stateMap[blobBlockKey]
+	if invariants.Enabled && ok && stateForBlock.lastSeenValueID > handleSuffix.ValueID {
+		return base.AssertionFailedf("pebble: valueID %d for key %s is greater than last "+
+			"valueID %d for block %d in reference %d", handleSuffix.ValueID, kv.K.String(),
+			stateForBlock.lastSeenValueID, handleSuffix.BlockID, refID)
+	}
+	start := blob.BlockValueID(0)
+	if ok {
+		start = stateForBlock.lastSeenValueID + 1
+	}
+	for i := start; i < handleSuffix.ValueID; i++ {
+		vs.blobRefValueLivenessWriter.addDeadValue(refID, handleSuffix.BlockID)
+	}
+	vs.blobRefValueLivenessWriter.addLiveValue(refID, handleSuffix.BlockID, handleSuffix.ValueID, uint64(lv.Fetcher.Attribute.ValueLen))
 	err := tw.AddWithBlobHandle(kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete)
 	if err != nil {
 		return err
@@ -586,6 +618,10 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 	for _, ref := range references {
 		referenceSize += ref.ValueSize
 	}
+	if err := vs.blobRefValueLivenessWriter.finishOutput(); err != nil {
+		return compact.ValueSeparationMetadata{}, err
+	}
+	defer vs.blobRefValueLivenessWriter.reset()
 	return compact.ValueSeparationMetadata{
 		BlobReferences:    references,
 		BlobReferenceSize: referenceSize,

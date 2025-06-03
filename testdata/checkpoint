@@ -1015,9 +1015,9 @@ close: checkpoints/checkpoint8/000004.log
 scan checkpoints/checkpoint8
 ----
 open: checkpoints/checkpoint8/000005.sst (options: *vfs.randomReadsOption)
-read-at(750, 61): checkpoints/checkpoint8/000005.sst
-read-at(699, 51): checkpoints/checkpoint8/000005.sst
-read-at(172, 527): checkpoints/checkpoint8/000005.sst
+read-at(802, 61): checkpoints/checkpoint8/000005.sst
+read-at(725, 77): checkpoints/checkpoint8/000005.sst
+read-at(198, 527): checkpoints/checkpoint8/000005.sst
 read-at(131, 41): checkpoints/checkpoint8/000005.sst
 read-at(0, 131): checkpoints/checkpoint8/000005.sst
 open: checkpoints/checkpoint8/000006.blob (options: *vfs.randomReadsOption)
@@ -1125,9 +1125,9 @@ close: checkpoints/checkpoint9/000007.log
 scan checkpoints/checkpoint9
 ----
 open: checkpoints/checkpoint9/000005.sst (options: *vfs.randomReadsOption)
-read-at(750, 61): checkpoints/checkpoint9/000005.sst
-read-at(699, 51): checkpoints/checkpoint9/000005.sst
-read-at(172, 527): checkpoints/checkpoint9/000005.sst
+read-at(802, 61): checkpoints/checkpoint9/000005.sst
+read-at(725, 77): checkpoints/checkpoint9/000005.sst
+read-at(198, 527): checkpoints/checkpoint9/000005.sst
 read-at(131, 41): checkpoints/checkpoint9/000005.sst
 read-at(0, 131): checkpoints/checkpoint9/000005.sst
 open: checkpoints/checkpoint9/000006.blob (options: *vfs.randomReadsOption)
