@@ -131,7 +131,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
 	fw.checksummer = block.Checksummer{Type: opts.ChecksumType}
-	fw.compressor = block.GetCompressor(opts.Compression)
+	fw.compressor = block.MakeCompressor(opts.Compression)
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
 	fw.writeQueue.wg.Add(1)
