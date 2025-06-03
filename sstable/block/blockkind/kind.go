@@ -15,6 +15,7 @@ const (
 	SSTableIndex
 	SSTableValue
 	BlobValue
+	BlobReferenceValueLivenessIndex
 	Index
 	Filter
 	RangeDel
@@ -25,15 +26,16 @@ const (
 )
 
 var kindString = [...]string{
-	Unknown:      "unknown",
-	SSTableData:  "data",
-	SSTableValue: "sstval",
-	SSTableIndex: "index",
-	BlobValue:    "blobval",
-	Filter:       "filter",
-	RangeDel:     "rangedel",
-	RangeKey:     "rangekey",
-	Metadata:     "metadata",
+	Unknown:                         "unknown",
+	SSTableData:                     "data",
+	SSTableValue:                    "sstval",
+	SSTableIndex:                    "index",
+	BlobValue:                       "blobval",
+	BlobReferenceValueLivenessIndex: "blobrefval",
+	Filter:                          "filter",
+	RangeDel:                        "rangedel",
+	RangeKey:                        "rangekey",
+	Metadata:                        "metadata",
 }
 
 func (k Kind) String() string {

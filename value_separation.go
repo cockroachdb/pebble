@@ -288,6 +288,7 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 		ValueSize:    stats.UncompressedValueBytes,
 		CreationTime: uint64(time.Now().Unix()),
 	}
+
 	return compact.ValueSeparationMetadata{
 		BlobReferences: manifest.BlobReferences{{
 			FileID:           base.BlobFileID(vs.objMeta.DiskFileNum),

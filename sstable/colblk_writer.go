@@ -54,11 +54,12 @@ type RawColumnWriter struct {
 		// tombstone-dense for the purposes of compaction.
 		deletionSize int
 	}
-	indexBlock         colblk.IndexBlockWriter
-	topLevelIndexBlock colblk.IndexBlockWriter
-	rangeDelBlock      colblk.KeyspanBlockWriter
-	rangeKeyBlock      colblk.KeyspanBlockWriter
-	valueBlock         *valblk.Writer // nil iff WriterOptions.DisableValueBlocks=true
+	indexBlock                colblk.IndexBlockWriter
+	topLevelIndexBlock        colblk.IndexBlockWriter
+	rangeDelBlock             colblk.KeyspanBlockWriter
+	rangeKeyBlock             colblk.KeyspanBlockWriter
+	valueBlock                *valblk.Writer // nil iff WriterOptions.DisableValueBlocks=true
+	blobRefLivenessIndexBlock blobRefValueLivenessWriter
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
@@ -443,6 +444,9 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 		return err
 	}
 	w.props.NumValuesInBlobFiles++
+	if err := w.blobRefLivenessIndexBlock.addLiveValue(h.ReferenceID, h.BlockID, h.ValueID, uint64(h.ValueLen)); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1000,6 +1004,19 @@ func (w *RawColumnWriter) Close() (err error) {
 		w.props.NumValueBlocks = vbStats.NumValueBlocks
 		w.props.NumValuesInValueBlocks = vbStats.NumValuesInValueBlocks
 		w.props.ValueBlocksSize = vbStats.ValueBlocksAndIndexSize
+	}
+
+	// Write the blob reference index block if non-empty.
+	if w.blobRefLivenessIndexBlock.numReferences() > 0 {
+		var encoder colblk.ReferenceLivenessBlockEncoder
+		encoder.Init()
+		for _, buf := range w.blobRefLivenessIndexBlock.bufs {
+			encoder.AddReferenceLiveness(buf)
+		}
+		if _, err := w.layout.WriteBlobRefIndexBlock(encoder.Finish()); err != nil {
+			return err
+		}
+		encoder.Reset()
 	}
 
 	// Write the properties block.

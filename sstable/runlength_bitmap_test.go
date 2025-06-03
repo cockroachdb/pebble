@@ -35,6 +35,7 @@ func TestRunLengthBitmap(t *testing.T) {
 					i++
 				}
 			}
+			fmt.Fprintf(&buf, "Size: %d\n", enc.Size())
 			encodedBuf = enc.FinishAndAppend(encodedBuf[:0])
 			fmt.Fprintln(&buf, "Binary encoding:")
 			binfmt.FHexDump(&buf, encodedBuf, 20, false)

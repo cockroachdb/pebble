@@ -111,7 +111,11 @@ sstable
  │    ├── 00000    block:0/162
  │    │   
  │    └── trailer [compression=none checksum=0x5dbaf42d]
- ├── properties  offset: 208  length: 570
+ ├── blob-reference-index  offset: 208  length: 14
+ │    ├── 00000     (0)
+ │    ├── 00000     (0)
+ │    └── trailer [compression=none checksum=0x7a3b50b2]
+ ├── properties  offset: 227  length: 570
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.colblk.schema (68)
  │    ├── 00084    pebble.num.values.in.blob-files (28)
@@ -135,15 +139,17 @@ sstable
  │    ├── restart points
  │    │    └── 00562 [restart 0]
  │    └── trailer [compression=none checksum=0xa4bd1c81]
- ├── meta-index  offset: 783  length: 46
- │    ├── 0000    rocksdb.properties block:208/570
+ ├── meta-index  offset: 802  length: 72
+ │    ├── 0000    pebble.blob_ref_index block:208/14
  │    │   
- │    └── trailer [compression=none checksum=0x420d8f72]
- └── footer  offset: 834  length: 57
+ │    ├── 0001    rocksdb.properties block:227/570
+ │    │   
+ │    └── trailer [compression=none checksum=0xc008ed8a]
+ └── footer  offset: 879  length: 57
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=783, length=46
+      ├── 001  meta: offset=802, length=72
       ├── 004  index: offset=167, length=36
-      ├── 041  footer checksum: 0x18cbefe2
+      ├── 041  footer checksum: 0x624ec360
       ├── 045  version: 6
       └── 049  magic number: 0xf09faab3f09faab3
 
@@ -260,7 +266,11 @@ sstable
  │    ├── 00000    block:0/162
  │    │   
  │    └── trailer [compression=none checksum=0x5dbaf42d]
- ├── properties  offset: 208  length: 562
+ ├── blob-reference-index  offset: 208  length: 14
+ │    ├── 00000     (0)
+ │    ├── 00000     (0)
+ │    └── trailer [compression=none checksum=0x7a3b50b2]
+ ├── properties  offset: 227  length: 562
  │    ├── 00000    obsolete-key (13)
  │    ├── 00013    pebble.colblk.schema (65)
  │    ├── 00078    pebble.num.values.in.blob-files (32)
@@ -282,16 +292,18 @@ sstable
  │    ├── 00630    rocksdb.raw.key.size (21)
  │    ├── 00651    rocksdb.raw.value.size (24)
  │    └── trailer [compression=snappy checksum=0xe3347e32]
- ├── meta-index  offset: 775  length: 46
- │    ├── 0000    rocksdb.properties block:208/562
+ ├── meta-index  offset: 794  length: 72
+ │    ├── 0000    pebble.blob_ref_index block:208/14
  │    │   
- │    └── trailer [compression=none checksum=0xfaca32ea]
- └── footer  offset: 826  length: 61
+ │    ├── 0001    rocksdb.properties block:227/562
+ │    │   
+ │    └── trailer [compression=none checksum=0x7cced912]
+ └── footer  offset: 871  length: 61
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=775, length=46
+      ├── 001  meta: offset=794, length=72
       ├── 004  index: offset=167, length=36
       ├── 041  attributes: [BlobValues,PointKeys]
-      ├── 045  footer checksum: 0x2c50a27e
+      ├── 045  footer checksum: 0x974c7f32
       ├── 049  version: 7
       └── 053  magic number: 0xf09faab3f09faab3
 
