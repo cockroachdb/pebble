@@ -7,12 +7,14 @@ package compressionanalyzer
 import (
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
 
 func TestBuckets(t *testing.T) {
@@ -60,8 +62,9 @@ func TestBuckets(t *testing.T) {
 func exampleBuckets() Buckets {
 	var buckets Buckets
 	r := rand.New(rand.NewPCG(0, 0))
+	kinds := slices.Collect(blockkind.All())
 	for n := 0; n < 10; n++ {
-		k := BlockKind(r.IntN(int(numBlockKinds)))
+		k := kinds[r.IntN(len(kinds))]
 		sz := BlockSize(r.IntN(int(numBlockSizes)))
 		c := Compressibility(r.IntN(int(numCompressibility)))
 		b := &buckets[k][sz][c]

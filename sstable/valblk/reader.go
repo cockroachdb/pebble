@@ -10,7 +10,6 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -58,7 +57,7 @@ func (bpwc blockProviderWhenClosed) ReadValueBlock(
 	// TODO(sumeer): consider fixing this. See
 	// https://github.com/cockroachdb/pebble/pull/3065#issue-1991175365 for an
 	// alternative.
-	ctx := objiotracing.WithBlockType(context.Background(), objiotracing.ValueBlock)
+	ctx := context.Background()
 	// TODO(jackson,sumeer): Consider whether to use a buffer pool in this case.
 	// The bpwc is not allowed to outlive the iterator tree, so it cannot
 	// outlive the buffer pool.

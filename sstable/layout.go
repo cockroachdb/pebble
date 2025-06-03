@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/sstable/valblk"
@@ -269,7 +270,7 @@ func (l *Layout) Describe(
 				err = formatting.formatIndexBlock(tpNode, r, *b, h.BlockData())
 
 			case "properties":
-				h, err = r.blockReader.Read(ctx, block.NoReadEnv, noReadHandle, b.Handle, noInitBlockMetadataFn)
+				h, err = r.blockReader.Read(ctx, block.NoReadEnv, noReadHandle, b.Handle, blockkind.Metadata, noInitBlockMetadataFn)
 				if err != nil {
 					return err
 				}

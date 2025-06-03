@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/pebble/internal/compression"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // BlockAnalyzer is used to evaluate the performance and compressibility of different
@@ -48,7 +49,7 @@ func (a *BlockAnalyzer) Close() {
 
 // Block analyzes a block by measuring its compressibility and the performance
 // of various compression algorithms on it.
-func (a *BlockAnalyzer) Block(kind BlockKind, block []byte) {
+func (a *BlockAnalyzer) Block(kind block.Kind, block []byte) {
 	size := MakeBlockSize(len(block))
 	compressibility := MakeCompressibility(len(block), len(a.minLZFastest.Compress(a.buf1[:0], block)))
 	bucket := &a.b[kind][size][compressibility]

@@ -4,7 +4,10 @@
 
 package objiotracing
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+)
 
 // OpType indicates the type of operation.
 type OpType uint8
@@ -33,18 +36,6 @@ const (
 	// TODO(radu): add ForUserFacing.
 )
 
-// BlockType indicates the type of data block relevant to an operation.
-type BlockType uint8
-
-// BlockType values.
-const (
-	UnknownBlock BlockType = iota
-	DataBlock
-	ValueBlock
-	FilterBlock
-	MetadataBlock
-)
-
 // Event is the on-disk format of a tracing event. It is exported here so that
 // trace processing tools can use it by importing this package.
 type Event struct {
@@ -54,7 +45,7 @@ type Event struct {
 	StartUnixNano int64
 	Op            OpType
 	Reason        Reason
-	BlockType     BlockType
+	BlockKind     blockkind.Kind
 	// LSM level plus one (with 0 indicating unknown level).
 	LevelPlusOne uint8
 	// Hardcoded padding so that struct layout doesn't depend on architecture.
