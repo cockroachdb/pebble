@@ -56,7 +56,7 @@ func NewWriter(
 		blockFinishedFunc: blockFinishedFunc,
 		blocks:            w.blocks[:0],
 	}
-	w.compressor = block.GetCompressor(compression)
+	w.compressor = block.MakeCompressor(compression)
 	w.checksummer.Init(checksumType)
 	w.buf = block.NewTempBuffer()
 	return w

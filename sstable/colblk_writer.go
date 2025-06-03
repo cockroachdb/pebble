@@ -194,7 +194,7 @@ func newColumnarWriter(
 	w.cpuMeasurer = cpuMeasurer
 	go w.drainWriteQueue()
 
-	w.compressor = block.GetCompressor(w.opts.Compression)
+	w.compressor = block.MakeCompressor(w.opts.Compression)
 	return w
 }
 

@@ -13,9 +13,9 @@ type Compressor struct {
 	compressor compression.Compressor
 }
 
-// GetCompressor returns a Compressor that applies the given compression. Close
+// MakeCompressor returns a Compressor that applies the given compression. Close
 // must be called when it is no longer needed.
-func GetCompressor(c Compression) Compressor {
+func MakeCompressor(c Compression) Compressor {
 	s := c.setting()
 	return Compressor{
 		algorithm:  s.Algorithm,

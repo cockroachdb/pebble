@@ -18,7 +18,7 @@ func TestBufferRandomized(t *testing.T) {
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, seed))
 
-	compressor := GetCompressor(SnappyCompression)
+	compressor := MakeCompressor(SnappyCompression)
 	defer compressor.Close()
 	var checksummer Checksummer
 	checksummer.Init(ChecksumTypeCRC32c)

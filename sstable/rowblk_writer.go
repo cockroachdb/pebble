@@ -490,7 +490,7 @@ func (d *dataBlockBuf) finish() {
 
 func (d *dataBlockBuf) compressAndChecksum(c block.Compression) {
 	// TODO(radu): pass a Compressor here.
-	compressor := block.GetCompressor(c)
+	compressor := block.MakeCompressor(c)
 	defer compressor.Close()
 	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, compressor, &d.checksummer)
 }
@@ -1933,7 +1933,7 @@ func (w *RawRowWriter) copyDataBlocks(
 func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
 	blockBuf := &w.dataBlockBuf.blockBuf
 	// TODO(radu): store a compressor in w.layout.
-	compressor := block.GetCompressor(w.layout.compression)
+	compressor := block.MakeCompressor(w.layout.compression)
 	defer compressor.Close()
 	pb := block.CompressAndChecksum(
 		&blockBuf.dataBuf,
