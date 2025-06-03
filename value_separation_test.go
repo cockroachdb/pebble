@@ -147,6 +147,12 @@ func TestValueSeparationPolicy(t *testing.T) {
 					}
 					fmt.Fprintln(&buf, "]")
 				}
+				if len(meta.BlobReferenceValueLivenessIndexes) > 0 {
+					fmt.Fprint(&buf, "blobref value liveness indexes: ")
+					for _, vi := range meta.BlobReferenceValueLivenessIndexes {
+						fmt.Fprintln(&buf, vi)
+					}
+				}
 				return buf.String()
 			default:
 				t.Fatalf("unknown command: %s", d.Cmd)

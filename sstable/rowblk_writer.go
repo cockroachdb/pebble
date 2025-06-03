@@ -1978,3 +1978,8 @@ func (w *RawRowWriter) SetSnapshotPinnedProperties(
 	w.props.SnapshotPinnedKeySize = pinnedKeySize
 	w.props.SnapshotPinnedValueSize = pinnedValueSize
 }
+
+// AddToBlobRefValueLivenessIndexBlock implements RawWriter.
+func (w *RawRowWriter) AddToBlobRefValueLivenessIndexBlock(bytes []byte) {
+	// Value separation was implemented after columnar blocks were added.
+}

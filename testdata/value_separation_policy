@@ -52,6 +52,7 @@ Blob file created: 000002 size:[120 (120B)] vals:[29 (29B)]
 blobrefs:[
  0: B000002 29
 ]
+blobref value liveness indexes: [0 29 1 7]
 
 add
 zoo#220,SET:mai

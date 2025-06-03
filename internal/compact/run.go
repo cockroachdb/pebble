@@ -133,9 +133,10 @@ type ValueSeparation interface {
 // ValueSeparationMetadata describes metadata about a table's blob references,
 // and optionally a newly constructed blob file.
 type ValueSeparationMetadata struct {
-	BlobReferences     manifest.BlobReferences
-	BlobReferenceSize  uint64
-	BlobReferenceDepth manifest.BlobReferenceDepth
+	BlobReferences                    manifest.BlobReferences
+	BlobReferenceSize                 uint64
+	BlobReferenceDepth                manifest.BlobReferenceDepth
+	BlobReferenceValueLivenessIndexes [][]byte
 
 	// The below fields are only populated if a new blob file was created.
 	BlobFileStats    blob.FileWriterStats
@@ -233,6 +234,9 @@ func (r *Runner) WriteTable(
 	if valSepErr != nil {
 		r.err = errors.CombineErrors(r.err, valSepErr)
 	} else {
+		for _, buf := range valSepMeta.BlobReferenceValueLivenessIndexes {
+			tw.AddToBlobRefValueLivenessIndexBlock(buf)
+		}
 		r.tables[len(r.tables)-1].BlobReferences = valSepMeta.BlobReferences
 		r.tables[len(r.tables)-1].BlobReferenceDepth = valSepMeta.BlobReferenceDepth
 		if valSepMeta.BlobFileObject.DiskFileNum != 0 {

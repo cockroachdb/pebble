@@ -62,6 +62,9 @@ type RawColumnWriter struct {
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
+	blobReferenceValueLivenessIndexBlock struct {
+		colblk.BlobRefValueLivenessIndexBlockEncoder
+	}
 	filterBlock  filterWriter
 	prevPointKey struct {
 		trailer    base.InternalKeyTrailer
@@ -1002,6 +1005,13 @@ func (w *RawColumnWriter) Close() (err error) {
 		w.props.ValueBlocksSize = vbStats.ValueBlocksAndIndexSize
 	}
 
+	// Write the blob reference index block if non-empty.
+	if w.blobReferenceValueLivenessIndexBlock.Count() > 0 {
+		if _, err := w.layout.WriteBlobRefIndexBlock(w.blobReferenceValueLivenessIndexBlock.Finish()); err != nil {
+			return err
+		}
+	}
+
 	// Write the properties block.
 	{
 		// Finish and record the prop collectors if props are not yet recorded.
@@ -1067,6 +1077,7 @@ func (w *RawColumnWriter) Close() (err error) {
 	w.compressor.Close()
 	// Release any held memory and make any future calls error.
 	*w = RawColumnWriter{meta: w.meta, err: errWriterClosed}
+	w.blobReferenceValueLivenessIndexBlock.Reset()
 	return nil
 }
 
@@ -1286,4 +1297,9 @@ func (w *RawColumnWriter) copyProperties(props Properties) {
 	w.props.TopLevelIndexSize = 0
 	w.props.IndexSize = 0
 	w.props.IndexType = 0
+}
+
+// AddToBlobRefValueLivenessIndexBlock implements RawWriter.
+func (w *RawColumnWriter) AddToBlobRefValueLivenessIndexBlock(bytes []byte) {
+	w.blobReferenceValueLivenessIndexBlock.AddValue(bytes)
 }

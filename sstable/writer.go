@@ -381,6 +381,10 @@ type RawWriter interface {
 	// used by the sstable copier that can copy parts of an sstable to a new sstable,
 	// using CopySpan().
 	copyProperties(props Properties)
+
+	// AddToBlobRefValueLivenessIndexBlock adds a RefernceValueLiveness byte
+	// slice to the blob ref value liveness index block.
+	AddToBlobRefValueLivenessIndexBlock(bytes []byte)
 }
 
 // WriterMetadata holds info about a finished sstable.
