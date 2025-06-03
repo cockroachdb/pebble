@@ -76,7 +76,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *ingestOp:
 		return &t.dbID, nil, []interface{}{&t.batchIDs}
 	case *ingestAndExciseOp:
-		return &t.dbID, nil, []interface{}{&t.batchID, &t.exciseStart, &t.exciseEnd}
+		return &t.dbID, nil, []interface{}{&t.batchID, &t.exciseStart, &t.exciseEnd, ignoreExtraArgs{}}
 	case *ingestExternalFilesOp:
 		return &t.dbID, nil, []interface{}{&t.objs}
 	case *initOp:
@@ -132,6 +132,11 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	}
 	panic(fmt.Sprintf("unsupported op type: %T", op))
 }
+
+// ignoreExtraArgs is used as a stand-in for a variable length argument for
+// cases where we want to ignore additional arguments; used to support
+// mixed-version testing when a previous version had an extra argument.
+type ignoreExtraArgs struct{}
 
 var methods = map[string]*methodInfo{
 	"Apply":                     makeMethod(applyOp{}, dbTag, batchTag),
@@ -299,7 +304,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 	var varArg interface{}
 	if len(args) > 0 {
 		switch args[len(args)-1].(type) {
-		case *[]objID, *[]pebble.KeyRange, *[]pebble.CheckpointSpan, *[]pebble.DownloadSpan, *[]externalObjWithBounds:
+		case *[]objID, *[]pebble.KeyRange, *[]pebble.CheckpointSpan, *[]pebble.DownloadSpan, *[]externalObjWithBounds, ignoreExtraArgs:
 			varArg = args[len(args)-1]
 			args = args[:len(args)-1]
 		}
@@ -373,6 +378,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 			*t = p.parseDownloadSpans(list)
 		case *[]externalObjWithBounds:
 			*t = p.parseExternalObjsWithBounds(list)
+		case ignoreExtraArgs:
 		default:
 			// We already checked for these types when we set varArgs.
 			panic("unreachable")
