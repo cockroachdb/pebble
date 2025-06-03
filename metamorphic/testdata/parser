@@ -16,22 +16,22 @@ metamorphic test internal error: 1:1: unknown op db1.bar
 parse
 db.Apply()
 ----
-metamorphic test internal error: 1:10: Apply: not enough arguments
+parsing db1.Apply: metamorphic test internal error: 1:10: Apply: not enough arguments
 
 parse
 db.Apply(hello)
 ----
-metamorphic test internal error: 1:10: unknown object type: "hello"
+parsing db1.Apply: metamorphic test internal error: 1:10: unknown object type: "hello"
 
 parse
 db.NewBatch()
 ----
-metamorphic test internal error: 1:1: assignment expected for db1.NewBatch
+parsing db1.NewBatch: metamorphic test internal error: 1:1: assignment expected for db1.NewBatch
 
 parse
 batch0 = db.Apply()
 ----
-metamorphic test internal error: 1:10: cannot use db1.Apply in assignment
+parsing db1.Apply: metamorphic test internal error: 1:10: cannot use db1.Apply in assignment
 
 parse
 batch0 = db.NewBatch()
