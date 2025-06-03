@@ -503,8 +503,8 @@ func (pc *pickedCompaction) setupInputs(
 	return true
 }
 
-// grow grows the number of inputs at c.level without changing the number of
-// c.level+1 files in the compaction, and returns whether the inputs grew. sm
+// grow grows the number of inputs at startLevel without changing the number of
+// pc.outputLevel files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
 func (pc *pickedCompaction) grow(
 	sm, la InternalKey,
@@ -1703,15 +1703,6 @@ func pickAutoLPositive(
 		panic("pebble: compaction picked unexpected output level")
 	}
 	pc.startLevel.files = cInfo.file.Slice()
-	// Files in level 0 may overlap each other, so pick up all overlapping ones.
-	if pc.startLevel.level == 0 {
-		cmp := opts.Comparer.Compare
-		smallest, largest := manifest.KeyRange(cmp, pc.startLevel.files.All())
-		pc.startLevel.files = vers.Overlaps(0, base.UserKeyBoundsFromInternal(smallest, largest))
-		if pc.startLevel.files.Empty() {
-			panic("pebble: empty compaction")
-		}
-	}
 
 	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 		return nil
