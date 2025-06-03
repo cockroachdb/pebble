@@ -372,8 +372,14 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 			*t = p.parseUserKey(elem.pos, elem.lit)
 
 		case *UserKeySuffix:
-			elem.expectToken(p, token.STRING)
-			*t = p.parseUserKeySuffix(elem.pos, elem.lit)
+			if elem.tok == token.INT {
+				// Tolerate integers for backward compatibility (when loading ops from a
+				// previous version).
+				*t = UserKeySuffix(elem.lit)
+			} else {
+				elem.expectToken(p, token.STRING)
+				*t = p.parseUserKeySuffix(elem.pos, elem.lit)
+			}
 
 		case *[]byte:
 			elem.expectToken(p, token.STRING)
