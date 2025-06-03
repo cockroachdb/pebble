@@ -31,16 +31,16 @@ const (
 	NCompression
 )
 
-var setting = [...]compression.Setting{
-	DefaultCompression: compression.Snappy,
-	NoCompression:      compression.None,
-	SnappyCompression:  compression.Snappy,
-	ZstdCompression:    compression.ZstdLevel3,
-	MinLZCompression:   compression.MinLZFastest,
+var profiles = [...]CompressionProfile{
+	DefaultCompression: SimpleCompressionProfile(DefaultCompression.String(), compression.Snappy),
+	NoCompression:      SimpleCompressionProfile(NoCompression.String(), compression.None),
+	SnappyCompression:  SimpleCompressionProfile(SnappyCompression.String(), compression.Snappy),
+	ZstdCompression:    SimpleCompressionProfile(ZstdCompression.String(), compression.ZstdLevel3),
+	MinLZCompression:   SimpleCompressionProfile(MinLZCompression.String(), compression.MinLZFastest),
 }
 
-func (c Compression) setting() compression.Setting {
-	return setting[c]
+func (c Compression) ToProfile() *CompressionProfile {
+	return &profiles[c]
 }
 
 // String implements fmt.Stringer, returning a human-readable name for the
@@ -78,6 +78,45 @@ func CompressionFromString(s string) Compression {
 		return MinLZCompression
 	default:
 		return DefaultCompression
+	}
+}
+
+// CompressionProfile contains the parameters for compressing blocks in an
+// sstable or blob file.
+//
+// CompressionProfile is a more advanced successor to Compression.
+type CompressionProfile struct {
+	Name string
+
+	// DataBlocks applies to sstable data and value blocks, as well as blob file
+	// value blocks. OtherBlocks applies to all other blocks (such as index,
+	// filter, metadata blocks).
+	//
+	// Some blocks (like rangedel) never use compression; this is at the
+	// discretion of the sstable or blob file writer.
+	//
+	// Note that MinLZ is only supported with table formats v6+. Older formats
+	// fall back to Snappy.
+	DataBlocks  compression.Setting
+	OtherBlocks compression.Setting
+
+	// Blocks that are reduced by less than this percentage are stored
+	// uncompressed.
+	MinReductionPercent uint8
+
+	// TODO(radu): knobs for adaptive compression go here.
+}
+
+// SimpleCompressionProfile returns a CompressionProfile that uses the same
+// compression setting for all blocks and which uses the uncompressed block if
+// compression reduces it by less than 12%. This is similar to older Pebble
+// versions which used Compression.
+func SimpleCompressionProfile(name string, setting compression.Setting) CompressionProfile {
+	return CompressionProfile{
+		Name:                name,
+		DataBlocks:          setting,
+		OtherBlocks:         setting,
+		MinReductionPercent: 12,
 	}
 }
 
@@ -260,17 +299,10 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 // the compressed payload is discarded and the original, uncompressed block data
 // is used to avoid unnecessary decompression overhead at read time.
 func CompressAndChecksum(
-	dst *[]byte, blockData []byte, compressor *Compressor, checksummer *Checksummer,
+	dst *[]byte, blockData []byte, blockKind Kind, compressor *Compressor, checksummer *Checksummer,
 ) PhysicalBlock {
 	buf := (*dst)[:0]
-	// Compress the buffer, discarding the result if the improvement isn't at
-	// least 12.5%.
-	ci, buf := compressor.Compress(buf, blockData)
-	if len(buf) >= len(blockData)-len(blockData)/8 && ci != NoCompressionIndicator {
-		ci = NoCompressionIndicator
-		buf = append(buf[:0], blockData...)
-	}
-
+	ci, buf := compressor.Compress(buf, blockData, blockKind)
 	*dst = buf
 
 	// Calculate the checksum.
@@ -284,11 +316,11 @@ func CompressAndChecksum(
 // into a TempBuffer. The caller should Release() the TempBuffer once it is no
 // longer necessary.
 func CompressAndChecksumToTempBuffer(
-	blockData []byte, compressor *Compressor, checksummer *Checksummer,
+	blockData []byte, blockKind Kind, compressor *Compressor, checksummer *Checksummer,
 ) (PhysicalBlock, *TempBuffer) {
 	// Grab a buffer to use as the destination for compression.
 	compressedBuf := NewTempBuffer()
-	pb := CompressAndChecksum(&compressedBuf.b, blockData, compressor, checksummer)
+	pb := CompressAndChecksum(&compressedBuf.b, blockData, blockKind, compressor, checksummer)
 	return pb, compressedBuf
 }
 
