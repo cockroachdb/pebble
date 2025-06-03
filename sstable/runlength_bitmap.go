@@ -119,9 +119,41 @@ func (bb *BitmapRunLengthEncoder) FinishAndAppend(buf []byte) []byte {
 	return append(buf, bb.buf...)
 }
 
-// Size returns the number of bytes in the buf.
+// Size returns the current number of bytes in the buf, accounting for the buf
+// state when our current pending byte has been written. This is useful for
+// estimating the size of the bitmap without having to copy the result of
+// FinishAndAppend.
 func (bb *BitmapRunLengthEncoder) Size() int {
-	return len(bb.buf)
+	switch bb.currByte {
+	case 0xFF:
+		// 1 byte for 0xFF + n bytes for varint encoding of
+		// (allSetRunLength + 1).
+		v := bb.allSetRunLength + 1
+		varintSize := 1
+		for v >= 0x80 {
+			v >>= 7
+			varintSize++
+		}
+		return len(bb.buf) + 1 + varintSize
+	case 0x00:
+		// Only possible if Set was never called. Do nothing.
+		return len(bb.buf)
+	default:
+		if bb.allSetRunLength > 0 {
+			// 1 byte for 0xFF + n bytes for varint encoding of
+			// allSetRunLength + 1 byte for current byte.
+			v := bb.allSetRunLength
+			varintSize := 1
+			for v >= 0x80 {
+				v >>= 7
+				varintSize++
+			}
+			return len(bb.buf) + 1 + varintSize + 1
+		}
+		// For mixed byte case without pending all-set run: just 1 byte for
+		// current byte
+		return len(bb.buf) + 1
+	}
 }
 
 // iterSetBitsInRunLengthBitmap returns an iterator over the indices of set bits

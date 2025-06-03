@@ -62,20 +62,17 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		refID := blob.ReferenceID(0)
 		blockID := blob.BlockID(0)
 
-		require.NoError(t, w.maybeAddNewState(refID, blockID))
-		w.addLiveValue(refID, blockID, 0 /* valueID */, 24 /* valueSize */)
-		w.addLiveValue(refID, blockID, 1 /* valueID */, 10 /* valueSize */)
-		w.addLiveValue(refID, blockID, 2 /* valueID */, 14 /* valueSize */)
+		require.NoError(t, w.addLiveValue(refID, blockID, 0 /* valueID */, 24 /* valueSize */))
+		require.NoError(t, w.addLiveValue(refID, blockID, 1 /* valueID */, 10 /* valueSize */))
+		require.NoError(t, w.addLiveValue(refID, blockID, 2 /* valueID */, 14 /* valueSize */))
 		// Add a gap between valueIDs so that we get some dead values.
-		w.addLiveValue(refID, blockID, 5 /* valueID */, 12 /* valueSize */)
+		require.NoError(t, w.addLiveValue(refID, blockID, 5 /* valueID */, 12 /* valueSize */))
 
 		// Add values to a different block.
 		blockID++
-		require.NoError(t, w.maybeAddNewState(refID, blockID))
-		w.addLiveValue(refID, blockID, 2 /* valueID */, 20 /* valueSize */)
+		require.NoError(t, w.addLiveValue(refID, blockID, 2 /* valueID */, 20 /* valueSize */))
 
 		w.finishOutput()
-		require.Equal(t, 1, len(w.bufs))
 
 		// Verify first block (refID=0, blockID=0).
 		encodings := decodeBlobRefLivenessEncoding(w.bufs[0])
@@ -97,22 +94,6 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		require.Equal(t, uint8(0x4), secondBlock.bitmap[0])
 	})
 
-	t.Run("all-zeros", func(t *testing.T) {
-		w := &blobRefValueLivenessWriter{}
-		w.init()
-
-		require.NoError(t, w.maybeAddNewState(0, 0))
-		w.finishOutput()
-		require.Equal(t, 1, len(w.bufs))
-
-		encodings := decodeBlobRefLivenessEncoding(w.bufs[0])
-		firstBlock := encodings[0]
-		require.Equal(t, 0, firstBlock.blockID)
-		require.Equal(t, 0, firstBlock.valuesSize)
-		// No values; no bitmap.
-		require.Equal(t, 0, firstBlock.bitmapSize)
-	})
-
 	t.Run("all-ones", func(t *testing.T) {
 		w := &blobRefValueLivenessWriter{}
 		w.init()
@@ -120,13 +101,11 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		blockID := blob.BlockID(0)
 
 		// Add only live values.
-		require.NoError(t, w.maybeAddNewState(refID, blockID))
-		w.addLiveValue(refID, blockID, 0 /* valueID */, 100 /* valueSize */)
-		w.addLiveValue(refID, blockID, 1 /* valueID */, 200 /* valueSize */)
-		w.addLiveValue(refID, blockID, 2 /* valueID */, 300 /* valueSize */)
+		require.NoError(t, w.addLiveValue(refID, blockID, 0 /* valueID */, 100 /* valueSize */))
+		require.NoError(t, w.addLiveValue(refID, blockID, 1 /* valueID */, 200 /* valueSize */))
+		require.NoError(t, w.addLiveValue(refID, blockID, 2 /* valueID */, 300 /* valueSize */))
 
 		w.finishOutput()
-		require.Equal(t, 1, len(w.bufs))
 
 		encodings := decodeBlobRefLivenessEncoding(w.bufs[0])
 		firstBlock := encodings[0]
