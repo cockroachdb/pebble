@@ -601,6 +601,12 @@ func (p *parser) makeOp(methodName string, receiverID, targetID objID, pos token
 			receiverID, methodName, methodName, receiverID))
 	}
 
+	defer func() {
+		if r := recover(); r != nil {
+			panic(errors.Newf("parsing %s.%s: %v", receiverID, methodName, r))
+		}
+	}()
+
 	op := info.constructor()
 	receiver, target, args := opArgs(op)
 
