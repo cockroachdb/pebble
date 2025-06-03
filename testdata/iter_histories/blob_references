@@ -12,7 +12,7 @@ L6
   d@2.SET.2:v
 ----
 L5:
-  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:898 blobrefs:[(000921: 10); depth:1]
+  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:881 blobrefs:[(000921: 10); depth:1]
 L6:
   000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:876 blobrefs:[(000921: 6); depth:1]
 Blob files:
@@ -35,7 +35,7 @@ c@2: (foobar, .)
 d@9: (v, .)
 d@2: (v, .)
 .
-stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 381B not cached (read time: 0s); points: 6 (18B keys, 8B values); separated: 2 (16B, 16B fetched)
+stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 365B not cached (read time: 0s); points: 6 (18B keys, 8B values); separated: 2 (16B, 16B fetched)
 
 # Try the same but avoid fetching one of the values (by using NextPrefix to step
 # over it).
@@ -55,7 +55,7 @@ c@9: (helloworld, .)
 d@9: (v, .)
 d@2: (v, .)
 .
-stats: seeked 1 times (1 internal); stepped 5 times (6 internal); blocks: 381B cached; points: 6 (18B keys, 8B values); separated: 2 (16B, 10B fetched)
+stats: seeked 1 times (1 internal); stepped 5 times (6 internal); blocks: 365B cached; points: 6 (18B keys, 8B values); separated: 2 (16B, 10B fetched)
 
 # Test a couple of blob files interleaved.
 

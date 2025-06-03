@@ -796,7 +796,7 @@ func makeLayoutWriter(w objstorage.Writable, opts WriterOptions) layoutWriter {
 		writable:     w,
 		cacheOpts:    opts.internal.CacheOpts,
 		tableFormat:  opts.TableFormat,
-		compressor:   block.MakeCompressor(opts.Compression),
+		compressor:   block.MakeCompressor(opts.Compression.ToProfile()),
 		checksumType: opts.Checksum,
 		buf: blockBuf{
 			checksummer: block.Checksummer{Type: opts.Checksum},
@@ -822,7 +822,7 @@ func (w *layoutWriter) Abort() {
 // WriteDataBlock constructs a trailer for the provided data block and writes
 // the block and trailer to the writer. It returns the block's handle.
 func (w *layoutWriter) WriteDataBlock(b []byte, buf *blockBuf) (block.Handle, error) {
-	return w.writeBlock(b, &w.compressor, buf)
+	return w.writeBlock(b, blockkind.SSTableData, &w.compressor, buf)
 }
 
 // WritePrecompressedDataBlock writes a pre-compressed data block and its
@@ -837,7 +837,7 @@ func (w *layoutWriter) WritePrecompressedDataBlock(blk block.PhysicalBlock) (blo
 // the last-written index block's handle and adds it to the file's meta index
 // when the writer is finished.
 func (w *layoutWriter) WriteIndexBlock(b []byte) (block.Handle, error) {
-	h, err := w.writeBlock(b, &w.compressor, &w.buf)
+	h, err := w.writeBlock(b, blockkind.SSTableIndex, &w.compressor, &w.buf)
 	if err == nil {
 		w.lastIndexBlockHandle = h
 	}
@@ -852,7 +852,7 @@ func (w *layoutWriter) WriteFilterBlock(f filterWriter) (bh block.Handle, err er
 	if err != nil {
 		return block.Handle{}, err
 	}
-	return w.writeNamedBlock(b, block.NoopCompressor, f.metaName())
+	return w.writeNamedBlock(b, blockkind.Filter, block.NoopCompressor, f.metaName())
 }
 
 // WritePropertiesBlock constructs a trailer for the provided properties block
@@ -867,14 +867,14 @@ func (w *layoutWriter) WritePropertiesBlock(b []byte) (block.Handle, error) {
 	if w.tableFormat < TableFormatPebblev7 {
 		compressor = block.NoopCompressor
 	}
-	return w.writeNamedBlock(b, compressor, metaPropertiesName)
+	return w.writeNamedBlock(b, blockkind.Metadata, compressor, metaPropertiesName)
 }
 
 // WriteRangeKeyBlock constructs a trailer for the provided range key block and
 // writes the block and trailer to the writer. It automatically adds the range
 // key block to the file's meta index when the writer is finished.
 func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
-	return w.writeNamedBlock(b, block.NoopCompressor, metaRangeKeyName)
+	return w.writeNamedBlock(b, blockkind.RangeKey, block.NoopCompressor, metaRangeKeyName)
 }
 
 // WriteRangeDeletionBlock constructs a trailer for the provided range deletion
@@ -882,13 +882,13 @@ func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
 // the range deletion block to the file's meta index when the writer is
 // finished.
 func (w *layoutWriter) WriteRangeDeletionBlock(b []byte) (block.Handle, error) {
-	return w.writeNamedBlock(b, block.NoopCompressor, metaRangeDelV2Name)
+	return w.writeNamedBlock(b, blockkind.RangeDel, block.NoopCompressor, metaRangeDelV2Name)
 }
 
 func (w *layoutWriter) writeNamedBlock(
-	b []byte, compressor *block.Compressor, name string,
+	b []byte, kind block.Kind, compressor *block.Compressor, name string,
 ) (bh block.Handle, err error) {
-	bh, err = w.writeBlock(b, compressor, &w.buf)
+	bh, err = w.writeBlock(b, kind, compressor, &w.buf)
 	if err == nil {
 		w.recordToMetaindex(name, bh)
 	}
@@ -917,9 +917,9 @@ func (w *layoutWriter) WriteValueIndexBlock(
 
 // writeBlock checksums, compresses, and writes out a block.
 func (w *layoutWriter) writeBlock(
-	b []byte, compressor *block.Compressor, buf *blockBuf,
+	b []byte, kind block.Kind, compressor *block.Compressor, buf *blockBuf,
 ) (block.Handle, error) {
-	pb := block.CompressAndChecksum(&buf.dataBuf, b, compressor, &buf.checksummer)
+	pb := block.CompressAndChecksum(&buf.dataBuf, b, kind, compressor, &buf.checksummer)
 	h, err := w.writePrecompressedBlock(pb)
 	return h, err
 }
@@ -1003,7 +1003,7 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 		}
 		b = bw.Finish()
 	}
-	metaIndexHandle, err := w.writeBlock(b, block.NoopCompressor, &w.buf)
+	metaIndexHandle, err := w.writeBlock(b, blockkind.Metadata, block.NoopCompressor, &w.buf)
 	if err != nil {
 		return 0, err
 	}

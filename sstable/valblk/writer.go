@@ -10,6 +10,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
 
 // Writer writes a sequence of value blocks, and the value blocks index, for a
@@ -19,7 +20,7 @@ type Writer struct {
 	// Block finished callback.
 	blockFinishedFunc func(compressedSize int)
 
-	compressor  block.Compressor
+	compressor  *block.Compressor
 	checksummer block.Checksummer
 	// buf is the current block being written to (uncompressed).
 	buf *block.TempBuffer
@@ -45,7 +46,7 @@ var valueBlockWriterPool = sync.Pool{
 // NewWriter creates a new Writer of value blocks and value index blocks.
 func NewWriter(
 	flushGovernor block.FlushGovernor,
-	compression block.Compression,
+	compressor *block.Compressor,
 	checksumType block.ChecksumType,
 	// compressedSize should exclude the block trailer.
 	blockFinishedFunc func(compressedSize int),
@@ -53,10 +54,10 @@ func NewWriter(
 	w := valueBlockWriterPool.Get().(*Writer)
 	*w = Writer{
 		flush:             flushGovernor,
+		compressor:        compressor,
 		blockFinishedFunc: blockFinishedFunc,
 		blocks:            w.blocks[:0],
 	}
-	w.compressor = block.MakeCompressor(compression)
 	w.checksummer.Init(checksumType)
 	w.buf = block.NewTempBuffer()
 	return w
@@ -91,7 +92,9 @@ func (w *Writer) Size() uint64 {
 }
 
 func (w *Writer) compressAndFlush() {
-	physicalBlock, bufHandle := block.CompressAndChecksumToTempBuffer(w.buf.Data(), &w.compressor, &w.checksummer)
+	physicalBlock, bufHandle := block.CompressAndChecksumToTempBuffer(
+		w.buf.Data(), blockkind.SSTableValue, w.compressor, &w.checksummer,
+	)
 	w.buf.Reset()
 	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
 	w.totalBlockBytes += uint64(physicalBlock.LengthWithTrailer())
@@ -167,7 +170,7 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 	if len(b) != 0 {
 		panic("incorrect length calculation")
 	}
-	pb, bufHandle := block.CompressAndChecksumToTempBuffer(w.buf.Data(), block.NoopCompressor, &w.checksummer)
+	pb, bufHandle := block.CompressAndChecksumToTempBuffer(w.buf.Data(), blockkind.Metadata, block.NoopCompressor, &w.checksummer)
 	if _, err := layout.WriteValueIndexBlock(pb, h); err != nil {
 		return IndexHandle{}, err
 	}
@@ -184,7 +187,6 @@ func (w *Writer) Release() {
 	}
 	w.buf.Release()
 	w.buf = nil
-	w.compressor.Close()
 	*w = Writer{blocks: w.blocks[:0]}
 	valueBlockWriterPool.Put(w)
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
@@ -48,7 +49,6 @@ type RawRowWriter struct {
 	pointSuffixCmp       base.ComparePointSuffixes
 	split                Split
 	formatKey            base.FormatKey
-	compression          block.Compression
 	separator            Separator
 	successor            Successor
 	validateKey          base.ValidateKey
@@ -488,11 +488,8 @@ func (d *dataBlockBuf) finish() {
 	d.uncompressed = d.dataBlock.Finish()
 }
 
-func (d *dataBlockBuf) compressAndChecksum(c block.Compression) {
-	// TODO(radu): pass a Compressor here.
-	compressor := block.MakeCompressor(c)
-	defer compressor.Close()
-	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, &compressor, &d.checksummer)
+func (d *dataBlockBuf) compressAndChecksum(compressor *block.Compressor) {
+	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, blockkind.SSTableData, compressor, &d.checksummer)
 }
 
 func (d *dataBlockBuf) shouldFlush(
@@ -997,7 +994,7 @@ func (w *RawRowWriter) flush(key InternalKey) error {
 	}
 	w.dataBlockBuf.finish()
 	w.maybeIncrementTombstoneDenseBlocks()
-	w.dataBlockBuf.compressAndChecksum(w.compression)
+	w.dataBlockBuf.compressAndChecksum(&w.layout.compressor)
 	// Since dataBlockEstimates.addInflightDataBlock was never called, the
 	// inflightSize is set to 0.
 	w.coordination.sizeEstimate.dataBlockCompressed(w.dataBlockBuf.physical.LengthWithoutTrailer(), 0)
@@ -1690,7 +1687,6 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		pointSuffixCmp:             o.Comparer.ComparePointSuffixes,
 		split:                      o.Comparer.Split,
 		formatKey:                  o.Comparer.FormatKey,
-		compression:                o.Compression,
 		separator:                  o.Comparer.Separator,
 		successor:                  o.Comparer.Successor,
 		validateKey:                o.Comparer.ValidateKey,
@@ -1715,7 +1711,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		if !o.DisableValueBlocks {
 			w.valueBlockWriter = valblk.NewWriter(
 				block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
-				w.compression, w.checksumType, func(compressedSize int) {
+				&w.layout.compressor, w.checksumType, func(compressedSize int) {
 					w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
 				},
 			)
@@ -1933,10 +1929,7 @@ func (w *RawRowWriter) copyDataBlocks(
 func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
 	blockBuf := &w.dataBlockBuf.blockBuf
 	pb := block.CompressAndChecksum(
-		&blockBuf.dataBuf,
-		b,
-		&w.layout.compressor,
-		&blockBuf.checksummer,
+		&blockBuf.dataBuf, b, blockkind.SSTableData, &w.layout.compressor, &blockBuf.checksummer,
 	)
 
 	// layout.WriteDataBlock keeps layout.offset up-to-date for us.

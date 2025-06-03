@@ -497,8 +497,8 @@ tombstone-dense-blocks-ratio: 0.9
 # should indicate "move" as the compaction type.
 maybe-compact
 ----
-[JOB 100] compacted(tombstone-density) L5 [000004] (791B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (751B), in 1.0s (2.0s total), output rate 751B/s
-[JOB 101] compacted(move) L4 [000004] (791B) Score=0.00 + L5 [] (0B) Score=0.00 -> L5 [000000] (791B), in 1.0s (2.0s total), output rate 791B/s
+[JOB 100] compacted(tombstone-density) L5 [000004] (778B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (751B), in 1.0s (2.0s total), output rate 751B/s
+[JOB 101] compacted(move) L4 [000004] (778B) Score=0.00 + L5 [] (0B) Score=0.00 -> L5 [000000] (778B), in 1.0s (2.0s total), output rate 778B/s
 
 # Verify the result - the file should now be in L5
 # The file should maintain its original content since it was just moved rather than recompacted
@@ -556,7 +556,7 @@ tombstone-dense-blocks-ratio: 0.9
 # because there are overlapping files in L5 that prevent the optimization
 maybe-compact
 ----
-[JOB 100] compacted(tombstone-density) L4 [000004] (791B) Score=0.00 + L5 [000005] (764B) Score=0.00 -> L5 [000007] (751B), in 1.0s (2.0s total), output rate 751B/s
+[JOB 100] compacted(tombstone-density) L4 [000004] (778B) Score=0.00 + L5 [000005] (764B) Score=0.00 -> L5 [000007] (751B), in 1.0s (2.0s total), output rate 751B/s
 
 # Verify the result - the file was recompacted with the overlapping L5 file
 # The output file should be different from the input files
