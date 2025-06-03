@@ -192,7 +192,7 @@ func rewriteDataBlocksInParallel(
 						return err
 					}
 					compressedBuf = compressedBuf[:cap(compressedBuf)]
-					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, compressor, &checksummer)
+					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, &compressor, &checksummer)
 					output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
 				}
 				return nil

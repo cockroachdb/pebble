@@ -260,7 +260,7 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 // the compressed payload is discarded and the original, uncompressed block data
 // is used to avoid unnecessary decompression overhead at read time.
 func CompressAndChecksum(
-	dst *[]byte, blockData []byte, compressor Compressor, checksummer *Checksummer,
+	dst *[]byte, blockData []byte, compressor *Compressor, checksummer *Checksummer,
 ) PhysicalBlock {
 	buf := (*dst)[:0]
 	// Compress the buffer, discarding the result if the improvement isn't at
@@ -284,7 +284,7 @@ func CompressAndChecksum(
 // into a TempBuffer. The caller should Release() the TempBuffer once it is no
 // longer necessary.
 func CompressAndChecksumToTempBuffer(
-	blockData []byte, compressor Compressor, checksummer *Checksummer,
+	blockData []byte, compressor *Compressor, checksummer *Checksummer,
 ) (PhysicalBlock, *TempBuffer) {
 	// Grab a buffer to use as the destination for compression.
 	compressedBuf := NewTempBuffer()

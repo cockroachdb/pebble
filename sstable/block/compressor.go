@@ -40,7 +40,7 @@ func (c *Compressor) Close() {
 
 // NoopCompressor is a Compressor that does not compress data. It does not have
 // any state and can be used in parallel.
-var NoopCompressor = Compressor{
+var NoopCompressor = &Compressor{
 	algorithm:  compression.NoCompression,
 	compressor: compression.GetCompressor(compression.None),
 }

@@ -52,7 +52,7 @@ func TestBufferRandomized(t *testing.T) {
 				s := b.Data()
 				require.Equal(t, vbuf, s[len(s)-len(vbuf):])
 			}
-			_, bh := CompressAndChecksumToTempBuffer(b.Data(), compressor, &checksummer)
+			_, bh := CompressAndChecksumToTempBuffer(b.Data(), &compressor, &checksummer)
 			b.Reset()
 			bh.Release()
 		})

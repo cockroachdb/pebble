@@ -723,7 +723,7 @@ func (w *RawColumnWriter) enqueueDataBlock(
 	cb.physical = block.CompressAndChecksum(
 		&cb.blockBuf.dataBuf,
 		serializedBlock,
-		w.compressor,
+		&w.compressor,
 		&cb.blockBuf.checksummer,
 	)
 	return w.enqueuePhysicalBlock(cb, separator)
@@ -1250,7 +1250,7 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 	cb.physical = block.CompressAndChecksum(
 		&cb.blockBuf.dataBuf,
 		b,
-		w.compressor,
+		&w.compressor,
 		&cb.blockBuf.checksummer,
 	)
 	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {

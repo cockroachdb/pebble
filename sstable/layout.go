@@ -920,7 +920,7 @@ func (w *layoutWriter) writeBlock(
 	// TODO(radu): store a compressor in the layoutWriter.
 	compressor := block.MakeCompressor(compression)
 	defer compressor.Close()
-	pb := block.CompressAndChecksum(&buf.dataBuf, b, compressor, &buf.checksummer)
+	pb := block.CompressAndChecksum(&buf.dataBuf, b, &compressor, &buf.checksummer)
 	h, err := w.writePrecompressedBlock(pb)
 	return h, err
 }

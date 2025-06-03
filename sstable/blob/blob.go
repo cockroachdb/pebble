@@ -213,7 +213,7 @@ func (w *FileWriter) flush() {
 	if w.valuesEncoder.Count() == 0 {
 		panic(errors.AssertionFailedf("no values to flush"))
 	}
-	pb, bh := block.CompressAndChecksumToTempBuffer(w.valuesEncoder.Finish(), w.compressor, &w.checksummer)
+	pb, bh := block.CompressAndChecksumToTempBuffer(w.valuesEncoder.Finish(), &w.compressor, &w.checksummer)
 	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
 	off := w.stats.FileLen
