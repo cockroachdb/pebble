@@ -180,12 +180,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 					dirname)
 			}
 		}()
-	} else {
-		if opts.Experimental.CreateOnShared != remote.CreateOnSharedNone && formatVersion < FormatMinForSharedObjects {
-			return nil, errors.Newf(
-				"pebble: database %q configured with shared objects but written in too old format major version %d",
-				dirname, formatVersion)
-		}
 	}
 
 	// Find the currently active manifest, if there is one.
