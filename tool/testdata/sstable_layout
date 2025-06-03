@@ -3850,7 +3850,7 @@ sstable
       └── 045  magic number: 0xf09faab3f09faab3
 
 sstable layout
-./testdata/mixed/000005.sst
+testdata/mixed/000005.sst
 ----
 000005.sst
 sstable

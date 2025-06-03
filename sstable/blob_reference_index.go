@@ -6,10 +6,8 @@ package sstable
 
 import (
 	"encoding/binary"
-	"math"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/blob"
 )
 
@@ -37,12 +35,8 @@ func (s *blobRefValueLivenessState) init(refID blob.ReferenceID, blockID blob.Bl
 func (s *blobRefValueLivenessState) finishOutput(buf []byte) []byte {
 	buf = binary.AppendUvarint(buf, uint64(s.blockID))
 	buf = binary.AppendUvarint(buf, s.valuesSize)
-	var bitmap []byte
-	// Save the results of FinishAndAppend in case we haven't flushed in-progress
-	// bytes to the buf yet.
-	bitmap = s.bitmap.FinishAndAppend(bitmap)
-	buf = binary.AppendUvarint(buf, uint64(math.Ceil(float64(s.bitmap.Size())/8)))
-	return append(buf, bitmap...)
+	buf = binary.AppendUvarint(buf, uint64(s.bitmap.Size()))
+	return s.bitmap.FinishAndAppend(buf)
 }
 
 // blobRefValueLivenessWriter helps maintain the liveness of values in blob value
@@ -64,13 +58,50 @@ func (w *blobRefValueLivenessWriter) init() {
 	w.refState = w.refState[:0]
 }
 
+// numReferences returns the number of references that have liveness encodings
+// that have been added to the writer.
+func (w *blobRefValueLivenessWriter) numReferences() int {
+	return len(w.bufs)
+}
+
 // addLiveValue adds a live value to the state maintained by refID. If the
 // current blockID for this in-progress state is different from the provided
 // blockID, a new state is created and the old one is preserved to the buffer
 // at w.bufs[refID].
+//
+// addLiveValue adds a new state for the provided refID if one does
+// not already exist. It assumes that any new blob.ReferenceIDs are visited in
+// monotonically increasing order.
+//
+// INVARIANT: len(w.refState) == len(w.bufs).
 func (w *blobRefValueLivenessWriter) addLiveValue(
 	refID blob.ReferenceID, blockID blob.BlockID, valueID blob.BlockValueID, valueSize uint64,
-) {
+) error {
+	// Compute the minimum expected length of the state slice in order for our
+	// refID to be indexable.
+	minLen := int(refID) + 1
+
+	// If we don't already have a state for this reference, we might just need
+	// to grow.
+	if len(w.refState) < minLen {
+		// Check if we have jumped ahead more than one reference.
+		if len(w.refState) < minLen && len(w.refState)+1 != minLen {
+			return base.AssertionFailedf("jump from greatest reference ID %d to new reference "+
+				"ID %d greater than 1", len(w.refState)-1, refID)
+		}
+
+		// We have a new reference, grow the state slice and buffer.
+		w.refState = append(w.refState, blobRefValueLivenessState{
+			refID:   refID,
+			blockID: blockID,
+		})
+		w.bufs = append(w.bufs, []byte{})
+
+		if len(w.refState) != len(w.bufs) {
+			return base.AssertionFailedf("len(refState) != len(bufs): %d != %d", len(w.refState), len(w.bufs))
+		}
+	}
+
 	state := &w.refState[refID]
 	if state.blockID != blockID {
 		w.bufs[refID] = state.finishOutput(w.bufs[refID])
@@ -78,41 +109,6 @@ func (w *blobRefValueLivenessWriter) addLiveValue(
 	}
 	state.valuesSize += valueSize
 	state.bitmap.Set(int(valueID))
-}
-
-// maybeAddNewState adds a new state for the provided refID if one does
-// not already exist. It assumes that any new blob.ReferenceIDs are visited in
-// monotonically increasing order.
-//
-// INVARIANT: len(w.refState) == len(w.bufs).
-func (w *blobRefValueLivenessWriter) maybeAddNewState(
-	refID blob.ReferenceID, blockID blob.BlockID,
-) error {
-	// Compute the minimum expected length of the state slice in order for our
-	// refID to be indexable.
-	minLen := int(refID) + 1
-
-	// We already have a state for this reference. No need to grow.
-	if len(w.refState) >= minLen {
-		return nil
-	}
-
-	// Check if we have jumped ahead more than one reference.
-	if invariants.Enabled && len(w.refState) < minLen && len(w.refState)+1 != minLen {
-		return base.AssertionFailedf("jump from greatest reference ID %d to new reference "+
-			"ID %d greater than 1", len(w.refState)-1, refID)
-	}
-
-	// We have a new reference, grow the state slice and buffer.
-	w.refState = append(w.refState, blobRefValueLivenessState{
-		refID:   refID,
-		blockID: blockID,
-	})
-	w.bufs = append(w.bufs, []byte{})
-
-	if invariants.Enabled && len(w.refState) != len(w.bufs) {
-		return base.AssertionFailedf("len(refState) != len(bufs): %d != %d", len(w.refState), len(w.bufs))
-	}
 	return nil
 }
 

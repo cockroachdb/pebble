@@ -36,18 +36,19 @@ type Layout struct {
 	// ValidateBlockChecksums, which validates a static list of BlockHandles
 	// referenced in this struct.
 
-	Data       []block.HandleWithProperties
-	Index      []block.Handle
-	TopIndex   block.Handle
-	Filter     []NamedBlockHandle
-	RangeDel   block.Handle
-	RangeKey   block.Handle
-	ValueBlock []block.Handle
-	ValueIndex block.Handle
-	Properties block.Handle
-	MetaIndex  block.Handle
-	Footer     block.Handle
-	Format     TableFormat
+	Data               []block.HandleWithProperties
+	Index              []block.Handle
+	TopIndex           block.Handle
+	Filter             []NamedBlockHandle
+	RangeDel           block.Handle
+	RangeKey           block.Handle
+	ValueBlock         []block.Handle
+	ValueIndex         block.Handle
+	Properties         block.Handle
+	MetaIndex          block.Handle
+	BlobReferenceIndex block.Handle
+	Footer             block.Handle
+	Format             TableFormat
 }
 
 // NamedBlockHandle holds a block.Handle and corresponding name.
@@ -97,6 +98,9 @@ func (l *Layout) orderedBlocks() []NamedBlockHandle {
 	}
 	if l.MetaIndex.Length != 0 {
 		blocks = append(blocks, NamedBlockHandle{l.MetaIndex, "meta-index"})
+	}
+	if l.BlobReferenceIndex.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.BlobReferenceIndex, "blob-reference-index"})
 	}
 	if l.Footer.Length != 0 {
 		if l.Footer.Length == levelDBFooterLen {
@@ -364,6 +368,20 @@ func (l *Layout) Describe(
 			case "value-index":
 				// We have already read the value-index to construct the list of
 				// value-blocks, so no need to do it again.
+			case "blob-reference-index":
+				h, err = r.blockReader.Read(ctx, block.NoReadEnv, noReadHandle, b.Handle, blockkind.BlobReferenceValueLivenessIndex, noInitBlockMetadataFn)
+				if err != nil {
+					return err
+				}
+				var decoder colblk.ReferenceLivenessBlockDecoder
+				decoder.Init(h.BlockData())
+				offset := 0
+				for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
+					value := decoder.LivenessAtReference(i)
+					length := len(value)
+					tpNode.Childf("%05d    %s (%d)", offset, value, length)
+					offset += length
+				}
 			}
 
 			// Format the trailer.
@@ -875,6 +893,14 @@ func (w *layoutWriter) WritePropertiesBlock(b []byte) (block.Handle, error) {
 // key block to the file's meta index when the writer is finished.
 func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlock(b, blockkind.RangeKey, block.NoopCompressor, metaRangeKeyName)
+}
+
+// WriteBlobRefIndexBlock constructs a trailer for the provided blob reference
+// index block and writes the block and trailer to the writer. It automatically
+// adds the blob reference index block to the file's meta index when the writer
+// is finished.
+func (w *layoutWriter) WriteBlobRefIndexBlock(b []byte) (block.Handle, error) {
+	return w.writeNamedBlock(b, blockkind.BlobReferenceValueLivenessIndex, &w.compressor, metaBlobRefIndexName)
 }
 
 // WriteRangeDeletionBlock constructs a trailer for the provided range deletion
