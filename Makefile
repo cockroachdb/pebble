@@ -64,6 +64,7 @@ stressmeta: override TESTS = TestMeta$$
 stressmeta: stress
 
 .PHONY: crossversion-meta
+crossversion-meta: LATEST_RELEASE := crl-release-24.1
 crossversion-meta: LATEST_RELEASE := crl-release-25.1
 crossversion-meta:
 	git checkout ${LATEST_RELEASE}; \
