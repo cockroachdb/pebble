@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"slices"
@@ -251,4 +252,144 @@ func (d *defineDBValueSeparator) FinishOutput() (compact.ValueSeparationMetadata
 	// TODO(jackson): Support setting a specific depth from the datadriven test.
 	m.BlobReferenceDepth = manifest.BlobReferenceDepth(len(m.BlobReferences))
 	return m, nil
+}
+
+// blobRefLivenessEncoding represents the decoded form of a blob reference
+// liveness encoding. The encoding format is:
+//
+//	<reference ID> <block ID> <values size> <ellision tag byte> [<bitmap>]
+type blobRefLivenessEncoding struct {
+	refID      blob.ReferenceID
+	blockID    blob.BlockID
+	valuesSize uint64
+	elideTag   bitmapElideTag
+	nBytes     uint64
+	bitmap     []byte
+}
+
+// decodeBlobRefLivenessEncoding decodes a blob reference liveness encoding
+// from the provided buffer.
+func decodeBlobRefLivenessEncoding(buf []byte) blobRefLivenessEncoding {
+	var enc blobRefLivenessEncoding
+	var n int
+
+	refIDVal, n := binary.Uvarint(buf)
+	buf = buf[n:]
+	enc.refID = blob.ReferenceID(refIDVal)
+
+	blockIDVal, n := binary.Uvarint(buf)
+	buf = buf[n:]
+	enc.blockID = blob.BlockID(blockIDVal)
+
+	enc.valuesSize, n = binary.Uvarint(buf)
+	buf = buf[n:]
+
+	elideTagVal, n := binary.Uvarint(buf)
+	buf = buf[n:]
+	enc.elideTag = bitmapElideTag(elideTagVal)
+
+	enc.nBytes, n = binary.Uvarint(buf)
+	buf = buf[n:]
+
+	enc.bitmap = buf
+	return enc
+}
+
+// TestBlobRefValueLivenessWriter tests functions around the
+// blobRefValueLivenessWriter.
+func TestBlobRefValueLivenessWriter(t *testing.T) {
+	t.Run("basic", func(t *testing.T) {
+		w := &blobRefValueLivenessWriter{}
+		w.maybeInit()
+		refID := blob.ReferenceID(0)
+		blockID := blob.BlockID(1)
+
+		// Add some live values.
+		w.addLiveValue(refID, blockID, 1, 100)
+		w.addLiveValue(refID, blockID, 2, 200)
+		w.addLiveValue(refID, blockID, 3, 300)
+
+		// Add some dead values.
+		w.addDeadValue(refID, blockID)
+		w.addDeadValue(refID, blockID)
+
+		// Add values to a different block.
+		blockID++
+		w.addLiveValue(refID, blockID, 1, 400)
+		w.addDeadValue(refID, blockID)
+
+		// Finish output.
+		require.NoError(t, w.finishOutput())
+		require.Equal(t, 2, len(w.bufs))
+
+		// Verify first block (refID=0, blockID=1).
+		enc := decodeBlobRefLivenessEncoding(w.bufs[0])
+		require.Equal(t, refID, enc.refID)
+		require.Equal(t, blob.BlockID(1), enc.blockID)
+		require.Equal(t, uint64(600), enc.valuesSize) // 100 + 200 + 300.
+		require.Equal(t, mixed, enc.elideTag)
+		require.Equal(t, uint64(1), enc.nBytes) // 5 bits rounded up to 1 byte.
+
+		// Verify bitmap: 11100 (3 live values followed by 2 dead values).
+		require.Equal(t, []byte{1, 1, 1, 0, 0}, enc.bitmap)
+
+		// Verify second block (refID=0, blockID=2).
+		enc = decodeBlobRefLivenessEncoding(w.bufs[1])
+		require.Equal(t, refID, enc.refID)
+		require.Equal(t, blockID, enc.blockID)
+		require.Equal(t, uint64(400), enc.valuesSize)
+		require.Equal(t, mixed, enc.elideTag)
+		require.Equal(t, uint64(1), enc.nBytes)
+
+		// Verify bitmap: 10 (1 live value followed by 1 dead value).
+		require.Equal(t, []byte{1, 0}, enc.bitmap)
+
+		w.reset()
+		require.Nil(t, w.bufs)
+		require.Nil(t, w.stateMap)
+	})
+
+	t.Run("all-zeros", func(t *testing.T) {
+		w := &blobRefValueLivenessWriter{}
+		w.maybeInit()
+		refID := blob.ReferenceID(0)
+		blockID := blob.BlockID(1)
+
+		// Add only dead values.
+		w.addDeadValue(refID, blockID)
+		w.addDeadValue(refID, blockID)
+		w.addDeadValue(refID, blockID)
+
+		require.NoError(t, w.finishOutput())
+		require.Equal(t, 1, len(w.bufs))
+
+		enc := decodeBlobRefLivenessEncoding(w.bufs[0])
+		require.Equal(t, refID, enc.refID)
+		require.Equal(t, blockID, enc.blockID)
+		require.Equal(t, uint64(0), enc.valuesSize)
+		require.Equal(t, zeros, enc.elideTag)
+		require.Equal(t, uint64(1), enc.nBytes)
+	})
+
+	t.Run("all-ones", func(t *testing.T) {
+		w := &blobRefValueLivenessWriter{}
+		w.maybeInit()
+		refID := blob.ReferenceID(0)
+		blockID := blob.BlockID(1)
+
+		// Add only live values.
+		w.addLiveValue(refID, blockID, 1, 100)
+		w.addLiveValue(refID, blockID, 2, 200)
+		w.addLiveValue(refID, blockID, 3, 300)
+
+		require.NoError(t, w.finishOutput())
+		require.Equal(t, 1, len(w.bufs))
+
+		enc := decodeBlobRefLivenessEncoding(w.bufs[0])
+		require.Equal(t, refID, enc.refID)
+		require.Equal(t, blockID, enc.blockID)
+		require.Equal(t, uint64(600), enc.valuesSize)
+		require.Equal(t, ones, enc.elideTag)
+		require.Equal(t, uint64(1), enc.nBytes)
+	})
 }
