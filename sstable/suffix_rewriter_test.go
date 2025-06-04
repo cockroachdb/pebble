@@ -230,7 +230,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 	}
 
 	sizes := []int{100, 10000, 1e6}
-	compressions := []block.Compression{block.NoCompression, block.SnappyCompression}
+	compressions := []*block.CompressionProfile{block.NoCompression, block.SnappyCompression}
 
 	files := make([][]*Reader, len(compressions))
 	sstBytes := make([][][]byte, len(compressions))
@@ -254,7 +254,7 @@ func BenchmarkRewriteSST(b *testing.B) {
 
 	b.ResetTimer()
 	for comp := range compressions {
-		b.Run(compressions[comp].String(), func(b *testing.B) {
+		b.Run(compressions[comp].Name, func(b *testing.B) {
 			for sz := range sizes {
 				r := files[comp][sz]
 				sst := sstBytes[comp][sz]

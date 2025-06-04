@@ -171,7 +171,7 @@ func rewriteDataBlocksInParallel(
 			// We'll assume all blocks are _roughly_ equal so round-robin static partition
 			// of each worker doing every ith block is probably enough.
 			err := func() error {
-				compressor := block.MakeCompressor(opts.Compression.ToProfile())
+				compressor := block.MakeCompressor(opts.Compression)
 				defer compressor.Close()
 				for i := worker; i < len(input); i += concurrency {
 					bh := input[i]

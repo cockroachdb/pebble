@@ -41,11 +41,10 @@ const (
 	defaultLevelMultiplier = 10
 )
 
-// Compression exports the base.Compression type.
-type Compression = block.Compression
+type CompressionProfile = block.CompressionProfile
 
 // Exported Compression constants.
-const (
+var (
 	DefaultCompression = block.DefaultCompression
 	NoCompression      = block.NoCompression
 	SnappyCompression  = block.SnappyCompression
@@ -417,9 +416,9 @@ type LevelOptions struct {
 
 	// Compression defines the per-block compression to use.
 	//
-	// The default value is DefaultCompression (which uses Snappy) for L0, or the
-	// function from the previous level for all other levels.
-	Compression func() Compression
+	// The default value is Snappy for L0, or the function from the previous level
+	// for all other levels.
+	Compression func() *CompressionProfile
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
@@ -467,7 +466,7 @@ func (o *LevelOptions) EnsureL0Defaults() {
 		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold
 	}
 	if o.Compression == nil {
-		o.Compression = func() Compression { return DefaultCompression }
+		o.Compression = func() *CompressionProfile { return SnappyCompression }
 	}
 	if o.FilterPolicy == nil {
 		o.FilterPolicy = NoFilterPolicy
@@ -1614,7 +1613,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  block_restart_interval=%d\n", l.BlockRestartInterval)
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
 		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
-		fmt.Fprintf(&buf, "  compression=%s\n", resolveDefaultCompression(l.Compression()))
+		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression().Name)
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", l.FilterPolicy.Name())
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
@@ -2084,20 +2083,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "block_size_threshold":
 				l.BlockSizeThreshold, err = strconv.Atoi(value)
 			case "compression":
-				switch value {
-				case "Default":
-					l.Compression = func() Compression { return DefaultCompression }
-				case "NoCompression":
-					l.Compression = func() Compression { return NoCompression }
-				case "Snappy":
-					l.Compression = func() Compression { return SnappyCompression }
-				case "ZSTD":
-					l.Compression = func() Compression { return ZstdCompression }
-				case "MinLZ":
-					l.Compression = func() Compression { return MinLZCompression }
-				default:
+				profile := block.CompressionProfileByName(value)
+				if profile == nil {
 					return errors.Errorf("pebble: unknown compression: %q", errors.Safe(value))
 				}
+				l.Compression = func() *CompressionProfile { return profile }
 			case "filter_policy":
 				if hooks != nil && hooks.NewFilterPolicy != nil {
 					l.FilterPolicy, err = hooks.NewFilterPolicy(value)
@@ -2305,7 +2295,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.BlockRestartInterval = levelOpts.BlockRestartInterval
 	writerOpts.BlockSize = levelOpts.BlockSize
 	writerOpts.BlockSizeThreshold = levelOpts.BlockSizeThreshold
-	writerOpts.Compression = resolveDefaultCompression(levelOpts.Compression())
+	writerOpts.Compression = levelOpts.Compression()
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
@@ -2327,7 +2317,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 func (o *Options) MakeBlobWriterOptions(level int) blob.FileWriterOptions {
 	lo := o.Levels[level]
 	return blob.FileWriterOptions{
-		Compression:  resolveDefaultCompression(lo.Compression()),
+		Compression:  lo.Compression(),
 		ChecksumType: block.ChecksumTypeCRC32c,
 		FlushGovernor: block.MakeFlushGovernor(
 			lo.BlockSize,
@@ -2336,13 +2326,6 @@ func (o *Options) MakeBlobWriterOptions(level int) blob.FileWriterOptions {
 			o.AllocatorSizeClasses,
 		),
 	}
-}
-
-func resolveDefaultCompression(c Compression) Compression {
-	if c <= DefaultCompression || c >= block.NCompression {
-		c = SnappyCompression
-	}
-	return c
 }
 
 func (o *Options) MakeObjStorageProviderSettings(dirname string) objstorageprovider.Settings {

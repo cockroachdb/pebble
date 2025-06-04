@@ -120,7 +120,7 @@ var hamletNonsenseWords = []string{
 func buildHamletTestSST(
 	fs vfs.FS,
 	filename string,
-	compression block.Compression,
+	compression *block.CompressionProfile,
 	fp FilterPolicy,
 	ftype FilterType,
 	comparer *Comparer,
@@ -178,7 +178,7 @@ func buildHamletTestSST(
 // TestFixtureInfo contains all metadata necessary to generate a test sstable.
 type TestFixtureInfo struct {
 	Filename           string
-	Compression        block.Compression
+	Compression        *block.CompressionProfile
 	FullKeyFilter      bool
 	PrefixFilter       bool
 	IndexBlockSize     int

@@ -186,7 +186,7 @@ func newColumnarWriter(
 	w.props.PropertyCollectorNames = buf.String()
 
 	w.props.ComparerName = o.Comparer.Name
-	w.props.CompressionName = o.Compression.String()
+	w.props.CompressionName = o.Compression.Name
 	w.props.KeySchemaName = o.KeySchema.Name
 	w.props.MergerName = o.MergerName
 
@@ -195,7 +195,7 @@ func newColumnarWriter(
 	w.cpuMeasurer = cpuMeasurer
 	go w.drainWriteQueue()
 
-	w.compressor = block.MakeCompressor(w.opts.Compression.ToProfile())
+	w.compressor = block.MakeCompressor(w.opts.Compression)
 	return w
 }
 

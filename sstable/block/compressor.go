@@ -73,7 +73,7 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 // any state and can be used in parallel.
 var NoopCompressor = &noopCompressor
 
-var noopCompressor = MakeCompressor(NoCompression.ToProfile())
+var noopCompressor = MakeCompressor(NoCompression)
 
 type Decompressor = compression.Decompressor
 
