@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"slices"
@@ -251,4 +252,131 @@ func (d *defineDBValueSeparator) FinishOutput() (compact.ValueSeparationMetadata
 	// TODO(jackson): Support setting a specific depth from the datadriven test.
 	m.BlobReferenceDepth = manifest.BlobReferenceDepth(len(m.BlobReferences))
 	return m, nil
+}
+
+// blobRefLivenessEncoding represents the decoded form of a blob reference
+// liveness encoding. The encoding format is:
+//
+//	<block ID> <values size> <len of bitmap> [<bitmap>]
+type blobRefLivenessEncoding struct {
+	blockID    int
+	valuesSize int
+	bitmapSize int
+	bitmap     []byte
+}
+
+// decodeBlobRefLivenessEncoding decodes a sequence of blob reference liveness encodings
+// from the provided buffer. Each encoding has the format:
+// <block ID> <values size> <n bytes of bitmap> [<bitmap>]
+func decodeBlobRefLivenessEncoding(buf []byte) []blobRefLivenessEncoding {
+	var encodings []blobRefLivenessEncoding
+	for len(buf) > 0 {
+		var enc blobRefLivenessEncoding
+		var n int
+
+		blockIDVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.blockID = int(blockIDVal)
+
+		valuesSizeVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.valuesSize = int(valuesSizeVal)
+
+		bitmapSizeVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.bitmapSize = int(bitmapSizeVal)
+
+		// The bitmap takes up the remaining bitmapSize bytes for this encoding.
+		enc.bitmap = buf[:enc.bitmapSize]
+		buf = buf[enc.bitmapSize:]
+
+		encodings = append(encodings, enc)
+	}
+	return encodings
+}
+
+// TestBlobRefValueLivenessWriter tests functions around the
+// blobRefValueLivenessWriter.
+func TestBlobRefValueLivenessWriter(t *testing.T) {
+	t.Run("basic", func(t *testing.T) {
+		w := &blobRefValueLivenessWriter{}
+		w.init()
+		refID := blob.ReferenceID(0)
+		blockID := blob.BlockID(0)
+
+		w.maybeAddNewState(refID, blockID, 0)
+		w.addLiveValue(refID, blockID, 0 /* valueID */, 24)
+		w.addLiveValue(refID, blockID, 1 /* valueID */, 10)
+		w.addLiveValue(refID, blockID, 2 /* valueID */, 14)
+		// Add a gap between valueIDs so that we get some dead values.
+		w.addLiveValue(refID, blockID, 5 /* valueID */, 12)
+
+		// Add values to a different block.
+		blockID++
+		w.maybeAddNewState(refID, blockID, 2)
+		w.addLiveValue(refID, blockID, 2, 20)
+
+		w.finishOutput()
+		require.Equal(t, 1, len(w.bufs))
+
+		// Verify first block (refID=0, blockID=0).
+		encodings := decodeBlobRefLivenessEncoding(w.bufs[0])
+		firstBlock := encodings[0]
+		require.Equal(t, 0, firstBlock.blockID)
+		require.Equal(t, 60, firstBlock.valuesSize)
+		// We only have 1 byte worth of value liveness encoding.
+		require.Equal(t, 1, firstBlock.bitmapSize)
+		// Verify bitmap: 111001 (27 in hex).
+		require.Equal(t, uint8(0x27), firstBlock.bitmap[0])
+
+		// Verify second block (refID=0, blockID=1).
+		secondBlock := encodings[1]
+		require.Equal(t, 1, secondBlock.blockID)
+		require.Equal(t, 20, secondBlock.valuesSize)
+		// We only have 1 byte worth of value liveness encoding.
+		require.Equal(t, 1, secondBlock.bitmapSize)
+		// Verify bitmap: 001 (4 in hex).
+		require.Equal(t, uint8(0x4), secondBlock.bitmap[0])
+	})
+
+	t.Run("all-zeros", func(t *testing.T) {
+		w := &blobRefValueLivenessWriter{}
+		w.init()
+
+		w.maybeAddNewState(0, 0, 0)
+		w.finishOutput()
+		require.Equal(t, 1, len(w.bufs))
+
+		encodings := decodeBlobRefLivenessEncoding(w.bufs[0])
+		firstBlock := encodings[0]
+		require.Equal(t, 0, firstBlock.blockID)
+		require.Equal(t, 0, firstBlock.valuesSize)
+		// No values; no bitmap.
+		require.Equal(t, 0, firstBlock.bitmapSize)
+	})
+
+	t.Run("all-ones", func(t *testing.T) {
+		w := &blobRefValueLivenessWriter{}
+		w.init()
+		refID := blob.ReferenceID(0)
+		blockID := blob.BlockID(0)
+
+		// Add only live values.
+		w.maybeAddNewState(refID, blockID, 0)
+		w.addLiveValue(refID, blockID, 0, 100)
+		w.addLiveValue(refID, blockID, 1, 200)
+		w.addLiveValue(refID, blockID, 2, 300)
+
+		w.finishOutput()
+		require.Equal(t, 1, len(w.bufs))
+
+		encodings := decodeBlobRefLivenessEncoding(w.bufs[0])
+		firstBlock := encodings[0]
+		require.Equal(t, 0, firstBlock.blockID)
+		require.Equal(t, 600, firstBlock.valuesSize)
+		// We only have 1 byte worth of value liveness encoding.
+		require.Equal(t, 1, firstBlock.bitmapSize)
+		// Verify bitmap: 111 (7 in hex).
+		require.Equal(t, uint8(0x7), firstBlock.bitmap[0])
+	})
 }

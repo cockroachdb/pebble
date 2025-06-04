@@ -6,7 +6,9 @@ package pebble
 
 import (
 	"cmp"
+	"encoding/binary"
 	"maps"
+	"math"
 	"slices"
 	"time"
 
@@ -148,6 +150,102 @@ func uniqueInputBlobMetadatas(levels []compactionLevel) []*manifest.PhysicalBlob
 		return cmp.Compare(a.FileNum, b.FileNum)
 	})
 	return metadatas
+}
+
+// blobRefValueLivenessState tracks the liveness of values within a blob value
+// block via a sstable.BitmatRunLengthEncoder.
+type blobRefValueLivenessState struct {
+	bitmap     sstable.BitmapRunLengthEncoder
+	refID      blob.ReferenceID
+	blockID    blob.BlockID
+	valueID    blob.BlockValueID
+	valuesSize uint64
+}
+
+// init initializes the state, resetting all fields to their initial values.
+func (s *blobRefValueLivenessState) init(refID blob.ReferenceID, blockID blob.BlockID) {
+	s.bitmap.Init()
+	s.refID = refID
+	s.blockID = blockID
+	s.valuesSize = 0
+}
+
+// finishOutput writes the in-progress value liveness encoding for a blob value
+// block to the provided buffer, returning the modified buffer. The encoding is:
+//
+//	<block ID> <values size> <n bytes of bitmap> [<bitmap>]
+func (s *blobRefValueLivenessState) finishOutput(buf []byte) []byte {
+	buf = binary.AppendUvarint(buf, uint64(s.blockID))
+	buf = binary.AppendUvarint(buf, s.valuesSize)
+	var bitmap []byte
+	// Save the results of FinishAndAppend in case we haven't flushed in-progress
+	// bytes to the buf yet.
+	bitmap = s.bitmap.FinishAndAppend(bitmap)
+	buf = binary.AppendUvarint(buf, uint64(math.Ceil(float64(s.bitmap.Size())/8)))
+	return append(buf, bitmap...)
+}
+
+// blobRefValueLivenessWriter helps maintain the liveness of values in blob value
+// blocks for a sstable's blob references. It maintains:
+//   - bufs: serialized value liveness encodings that will be written to the
+//     sstable.
+//   - refState: a slice of blobRefValueLivenessState. This tracks the
+//     in-progress value liveness for each blob value block for our sstable's
+//     blob references. The index of the slice corresponds to the blob.ReferenceID.
+type blobRefValueLivenessWriter struct {
+	bufs     [][]byte
+	refState []blobRefValueLivenessState
+}
+
+// init initializes the writer's state.
+func (w *blobRefValueLivenessWriter) init() {
+	w.bufs = w.bufs[:0]
+	w.refState = w.refState[:0]
+}
+
+// addLiveValue adds a live value to the state maintained by refID. If the
+// current blockID for this in-progress state is different from the provided
+// blockID, a new state is created and the old one is preserved to the buffer
+// at w.bufs[refID].
+func (w *blobRefValueLivenessWriter) addLiveValue(
+	refID blob.ReferenceID, blockID blob.BlockID, valueID blob.BlockValueID, valueSize uint64,
+) {
+	state := w.refState[refID]
+	if state.blockID != blockID {
+		w.bufs[refID] = state.finishOutput(w.bufs[refID])
+		state = blobRefValueLivenessState{}
+		state.init(refID, blockID)
+	}
+	state.valueID = valueID
+	state.valuesSize += valueSize
+	state.bitmap.Set(int(valueID))
+	w.refState[refID] = state
+}
+
+// maybeAddNewState adds a new state for the provided referenceID if one does
+// not already exist. It assumes that blob.ReferenceIDs are visited in
+// monotonically increasing order.
+func (w *blobRefValueLivenessWriter) maybeAddNewState(
+	refID blob.ReferenceID, blockID blob.BlockID, valueID blob.BlockValueID,
+) {
+	if len(w.refState) <= int(refID) {
+		w.refState = append(w.refState, blobRefValueLivenessState{
+			refID:   refID,
+			blockID: blockID,
+			valueID: valueID,
+		})
+	}
+	if len(w.bufs) <= int(refID) {
+		w.bufs = append(w.bufs, []byte{})
+	}
+}
+
+// finishOutput finishes any in-progress state to their respective buffer.
+func (w *blobRefValueLivenessWriter) finishOutput() {
+	// N.B. `i` is equivalent to blob.ReferenceID.
+	for i, state := range w.refState {
+		w.bufs[i] = state.finishOutput(w.bufs[i])
+	}
 }
 
 // writeNewBlobFiles implements the strategy and mechanics for separating values
