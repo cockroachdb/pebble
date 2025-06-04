@@ -75,8 +75,8 @@ type versionSet struct {
 	// on the creation of every version.
 	obsoleteFn func(manifest.ObsoleteFiles)
 	// obsolete{Tables,Blobs,Manifests,Options} are sorted by file number ascending.
-	obsoleteTables    []objectInfo
-	obsoleteBlobs     []objectInfo
+	obsoleteTables    []obsoleteFile
+	obsoleteBlobs     []obsoleteFile
 	obsoleteManifests []obsoleteFile
 	obsoleteOptions   []obsoleteFile
 
@@ -1167,17 +1167,19 @@ func (vs *versionSet) addObsoleteLocked(obsolete manifest.ObsoleteFiles) {
 	// Note that the zombie objects transition from zombie *to* obsolete, and
 	// will no longer be considered zombie.
 
-	newlyObsoleteTables := make([]objectInfo, len(obsolete.TableBackings))
+	newlyObsoleteTables := make([]obsoleteFile, len(obsolete.TableBackings))
 	for i, bs := range obsolete.TableBackings {
-		newlyObsoleteTables[i] = vs.zombieTables.Extract(bs.DiskFileNum)
+		newlyObsoleteTables[i] = vs.zombieTables.Extract(bs.DiskFileNum).
+			asObsoleteFile(vs.fs, base.FileTypeTable, vs.dirname)
 	}
-	vs.obsoleteTables = mergeObjectInfos(vs.obsoleteTables, newlyObsoleteTables)
+	vs.obsoleteTables = mergeObsoleteFiles(vs.obsoleteTables, newlyObsoleteTables)
 
-	newlyObsoleteBlobFiles := make([]objectInfo, len(obsolete.BlobFiles))
+	newlyObsoleteBlobFiles := make([]obsoleteFile, len(obsolete.BlobFiles))
 	for i, bf := range obsolete.BlobFiles {
-		newlyObsoleteBlobFiles[i] = vs.zombieBlobs.Extract(base.DiskFileNum(bf.FileID))
+		newlyObsoleteBlobFiles[i] = vs.zombieBlobs.Extract(base.DiskFileNum(bf.FileID)).
+			asObsoleteFile(vs.fs, base.FileTypeBlob, vs.dirname)
 	}
-	vs.obsoleteBlobs = mergeObjectInfos(vs.obsoleteBlobs, newlyObsoleteBlobFiles)
+	vs.obsoleteBlobs = mergeObsoleteFiles(vs.obsoleteBlobs, newlyObsoleteBlobFiles)
 	vs.updateObsoleteObjectMetricsLocked()
 }
 
@@ -1195,9 +1197,9 @@ func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
 	vs.metrics.Table.Local.ObsoleteSize = 0
 	vs.metrics.Table.Local.ObsoleteCount = 0
 	for _, fi := range vs.obsoleteTables {
-		vs.metrics.Table.ObsoleteSize += fi.FileSize
+		vs.metrics.Table.ObsoleteSize += fi.fileSize
 		if fi.isLocal {
-			vs.metrics.Table.Local.ObsoleteSize += fi.FileSize
+			vs.metrics.Table.Local.ObsoleteSize += fi.fileSize
 			vs.metrics.Table.Local.ObsoleteCount++
 		}
 	}
@@ -1206,9 +1208,9 @@ func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
 	vs.metrics.BlobFiles.Local.ObsoleteSize = 0
 	vs.metrics.BlobFiles.Local.ObsoleteCount = 0
 	for _, fi := range vs.obsoleteBlobs {
-		vs.metrics.BlobFiles.ObsoleteSize += fi.FileSize
+		vs.metrics.BlobFiles.ObsoleteSize += fi.fileSize
 		if fi.isLocal {
-			vs.metrics.BlobFiles.Local.ObsoleteSize += fi.FileSize
+			vs.metrics.BlobFiles.Local.ObsoleteSize += fi.fileSize
 			vs.metrics.BlobFiles.Local.ObsoleteCount++
 		}
 	}

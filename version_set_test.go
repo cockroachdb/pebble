@@ -222,7 +222,7 @@ func TestVersionSet(t *testing.T) {
 			}
 		}
 		buf.WriteString(vs.virtualBackings.String())
-		printObjectBreakdown := func(kind string, zombies zombieObjects, obsolete []objectInfo) {
+		printObjectBreakdown := func(kind string, zombies zombieObjects, obsolete []obsoleteFile) {
 			if zombies.Count() == 0 {
 				buf.WriteString(fmt.Sprintf("no zombie %s\n", kind))
 			} else {
@@ -239,7 +239,7 @@ func TestVersionSet(t *testing.T) {
 			} else {
 				buf.WriteString(fmt.Sprintf("obsolete %s:", kind))
 				for _, fi := range obsolete {
-					fmt.Fprintf(&buf, " %s", fi.FileNum)
+					fmt.Fprintf(&buf, " %s", fi.fileNum)
 				}
 				buf.WriteString("\n")
 			}
