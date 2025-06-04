@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
 )
@@ -1296,5 +1297,14 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			}
 		}
 	}
+
+	// In invariants builds, sometimes check invariants across all blob files
+	// and their references.
+	if invariants.Sometimes(20) {
+		if err := v.validateBlobFileInvariants(); err != nil {
+			return nil, err
+		}
+	}
+
 	return v, nil
 }
