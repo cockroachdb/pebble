@@ -776,8 +776,8 @@ func (t *btree[M]) Insert(item M) error {
 // tableMetadataIter returns a new iterator over a B-Tree of *TableMetadata. It
 // is not safe to continue using an iterator after modifications are made to the
 // tree. If modifications are made, create a new iterator.
-func tableMetadataIter(tree *btree[*TableMetadata]) iterator {
-	return iterator{r: tree.root, pos: -1, cmp: tree.bcmp}
+func tableMetadataIter(tree *btree[*TableMetadata]) iterator[*TableMetadata] {
+	return iterator[*TableMetadata]{r: tree.root, pos: -1, cmp: tree.bcmp}
 }
 
 // Count returns the number of files contained within the B-Tree.
@@ -821,28 +821,28 @@ func (n *node[M]) writeString(b *strings.Builder) {
 
 // iterStack represents a stack of (node, pos) tuples, which captures
 // iteration state as an iterator descends a btree of TableMetadata.
-type iterStack struct {
+type iterStack[M fileMetadata] struct {
 	// a contains aLen stack frames when an iterator stack is short enough.
 	// If the iterator stack overflows the capacity of iterStackArr, the stack
 	// is moved to s and aLen is set to -1.
-	a    iterStackArr
+	a    iterStackArr[M]
 	aLen int16 // -1 when using s
-	s    []iterFrame
+	s    []iterFrame[M]
 }
 
 // Used to avoid allocations for stacks below a certain size.
-type iterStackArr [3]iterFrame
+type iterStackArr[M fileMetadata] [3]iterFrame[M]
 
-type iterFrame struct {
-	n   *node[*TableMetadata]
+type iterFrame[M fileMetadata] struct {
+	n   *node[M]
 	pos int16
 }
 
-func (is *iterStack) push(f iterFrame) {
+func (is *iterStack[M]) push(f iterFrame[M]) {
 	if is.aLen == -1 {
 		is.s = append(is.s, f)
 	} else if int(is.aLen) == len(is.a) {
-		is.s = make([]iterFrame, int(is.aLen)+1, 2*int(is.aLen))
+		is.s = make([]iterFrame[M], int(is.aLen)+1, 2*int(is.aLen))
 		copy(is.s, is.a[:])
 		is.s[int(is.aLen)] = f
 		is.aLen = -1
@@ -852,7 +852,7 @@ func (is *iterStack) push(f iterFrame) {
 	}
 }
 
-func (is *iterStack) pop() iterFrame {
+func (is *iterStack[M]) pop() iterFrame[M] {
 	if is.aLen == -1 {
 		f := is.s[len(is.s)-1]
 		is.s = is.s[:len(is.s)-1]
@@ -862,26 +862,26 @@ func (is *iterStack) pop() iterFrame {
 	return is.a[is.aLen]
 }
 
-func (is *iterStack) len() int {
+func (is *iterStack[M]) len() int {
 	if is.aLen == -1 {
 		return len(is.s)
 	}
 	return int(is.aLen)
 }
 
-func (is *iterStack) clone() iterStack {
+func (is *iterStack[M]) clone() iterStack[M] {
 	// If the iterator is using the embedded iterStackArr, we only need to
 	// copy the struct itself.
 	if is.s == nil {
 		return *is
 	}
 	clone := *is
-	clone.s = make([]iterFrame, len(is.s))
+	clone.s = make([]iterFrame[M], len(is.s))
 	copy(clone.s, is.s)
 	return clone
 }
 
-func (is *iterStack) nth(n int) (f iterFrame, ok bool) {
+func (is *iterStack[M]) nth(n int) (f iterFrame[M], ok bool) {
 	if is.aLen == -1 {
 		if n >= len(is.s) {
 			return f, false
@@ -894,7 +894,7 @@ func (is *iterStack) nth(n int) (f iterFrame, ok bool) {
 	return is.a[n], true
 }
 
-func (is *iterStack) reset() {
+func (is *iterStack[M]) reset() {
 	if is.aLen == -1 {
 		is.s = is.s[:0]
 	} else {
@@ -903,26 +903,26 @@ func (is *iterStack) reset() {
 }
 
 // an iterator provides search and traversal within a btree of *TableMetadata.
-type iterator struct {
+type iterator[M fileMetadata] struct {
 	// the root node of the B-Tree.
-	r *node[*TableMetadata]
+	r *node[M]
 	// n and pos make up the current position of the iterator.
 	// If valid, n.items[pos] is the current value of the iterator.
 	//
 	// n may be nil iff i.r is nil.
-	n   *node[*TableMetadata]
+	n   *node[M]
 	pos int16
 	// cmp dictates the ordering of the TableMetadata.
-	cmp func(*TableMetadata, *TableMetadata) int
+	cmp func(M, M) int
 	// a stack of n's ancestors within the B-Tree, alongside the position
 	// taken to arrive at n. If non-empty, the bottommost frame of the stack
 	// will always contain the B-Tree root.
-	s iterStack
+	s iterStack[M]
 }
 
 // countLeft returns the count of files that are to the left of the current
 // iterator position.
-func (i *iterator) countLeft() int {
+func (i *iterator[M]) countLeft() int {
 	if i.r == nil {
 		return 0
 	}
@@ -973,19 +973,19 @@ func (i *iterator) countLeft() int {
 	return count
 }
 
-func (i *iterator) clone() iterator {
+func (i *iterator[M]) clone() iterator[M] {
 	c := *i
 	c.s = i.s.clone()
 	return c
 }
 
-func (i *iterator) reset() {
+func (i *iterator[M]) reset() {
 	i.n = i.r
 	i.pos = -1
 	i.s.reset()
 }
 
-func (i iterator) String() string {
+func (i iterator[M]) String() string {
 	var buf bytes.Buffer
 	for n := 0; ; n++ {
 		f, ok := i.s.nth(n)
@@ -1002,7 +1002,7 @@ func (i iterator) String() string {
 	return buf.String()
 }
 
-func cmpIter(a, b iterator) int {
+func cmpIter[M fileMetadata](a, b iterator[M]) int {
 	if a.r != b.r {
 		panic("compared iterators from different btrees")
 	}
@@ -1044,7 +1044,7 @@ func cmpIter(a, b iterator) int {
 	// end sentinel state which sorts after everything else.
 	var aok, bok bool
 	for i := 0; ; i++ {
-		var af, bf iterFrame
+		var af, bf iterFrame[M]
 		af, aok = a.s.nth(i)
 		bf, bok = b.s.nth(i)
 		if !aok || !bok {
@@ -1095,15 +1095,15 @@ func cmpIter(a, b iterator) int {
 	}
 }
 
-func (i *iterator) descend(n *node[*TableMetadata], pos int16) {
-	i.s.push(iterFrame{n: n, pos: pos})
+func (i *iterator[M]) descend(n *node[M], pos int16) {
+	i.s.push(iterFrame[M]{n: n, pos: pos})
 	i.n = n.children[pos]
 	i.pos = 0
 }
 
 // ascend ascends up to the current node's parent and resets the position
 // to the one previously set for this parent node.
-func (i *iterator) ascend() {
+func (i *iterator[M]) ascend() {
 	f := i.s.pop()
 	i.n = f.n
 	i.pos = f.pos
@@ -1112,7 +1112,7 @@ func (i *iterator) ascend() {
 // find seeks the iterator to the provided table metadata if it exists in the
 // tree. It returns true if the table metadata is found and false otherwise. If
 // find returns false, the position of the iterator is undefined.
-func (i *iterator) find(m *TableMetadata) bool {
+func (i *iterator[M]) find(m M) bool {
 	i.reset()
 	if i.r == nil {
 		return false
@@ -1131,7 +1131,7 @@ func (i *iterator) find(m *TableMetadata) bool {
 }
 
 // first seeks to the first item in the btree.
-func (i *iterator) first() {
+func (i *iterator[M]) first() {
 	i.reset()
 	if i.r == nil {
 		return
@@ -1143,7 +1143,7 @@ func (i *iterator) first() {
 }
 
 // last seeks to the last item in the btree.
-func (i *iterator) last() {
+func (i *iterator[M]) last() {
 	i.reset()
 	if i.r == nil {
 		return
@@ -1156,7 +1156,7 @@ func (i *iterator) last() {
 
 // next positions the iterator to the item immediately following
 // its current position.
-func (i *iterator) next() {
+func (i *iterator[M]) next() {
 	if i.r == nil {
 		return
 	}
@@ -1183,7 +1183,7 @@ func (i *iterator) next() {
 
 // prev positions the iterator to the item immediately preceding
 // its current position.
-func (i *iterator) prev() {
+func (i *iterator[M]) prev() {
 	if i.r == nil {
 		return
 	}
@@ -1208,13 +1208,13 @@ func (i *iterator) prev() {
 }
 
 // valid returns whether the iterator is positioned at a valid position.
-func (i *iterator) valid() bool {
+func (i *iterator[M]) valid() bool {
 	return i.r != nil && i.pos >= 0 && i.pos < i.n.count
 }
 
 // cur returns the table metadata at the iterator's current position. It is
 // illegal to call cur if the iterator is not valid.
-func (i *iterator) cur() *TableMetadata {
+func (i *iterator[M]) cur() M {
 	if invariants.Enabled && !i.valid() {
 		panic("btree iterator.cur invoked on invalid iterator")
 	}

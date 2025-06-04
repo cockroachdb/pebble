@@ -208,7 +208,7 @@ func NewLevelSliceSpecificOrder(files []*TableMetadata) LevelSlice {
 }
 
 // newLevelSlice constructs a new LevelSlice backed by iter.
-func newLevelSlice(iter iterator) LevelSlice {
+func newLevelSlice(iter iterator[*TableMetadata]) LevelSlice {
 	s := LevelSlice{iter: iter}
 	if iter.r != nil {
 		s.length = iter.r.subtreeCount
@@ -221,7 +221,9 @@ func newLevelSlice(iter iterator) LevelSlice {
 // by the provided start and end bounds. The provided startBound and endBound
 // iterators must be iterators over the same B-Tree. Both start and end bounds
 // are inclusive.
-func newBoundedLevelSlice(iter iterator, startBound, endBound *iterator) LevelSlice {
+func newBoundedLevelSlice(
+	iter iterator[*TableMetadata], startBound, endBound *iterator[*TableMetadata],
+) LevelSlice {
 	s := LevelSlice{
 		iter:  iter,
 		start: startBound,
@@ -253,13 +255,13 @@ func newBoundedLevelSlice(iter iterator, startBound, endBound *iterator) LevelSl
 // LevelSlices should be constructed through one of the existing constructors,
 // not manually initialized.
 type LevelSlice struct {
-	iter   iterator
+	iter   iterator[*TableMetadata]
 	length int
 	// start and end form the inclusive bounds of a slice of files within a
 	// level of the LSM. They may be nil if the entire B-Tree backing iter is
 	// accessible.
-	start *iterator
-	end   *iterator
+	start *iterator[*TableMetadata]
+	end   *iterator[*TableMetadata]
 }
 
 func (ls LevelSlice) verifyInvariants() {
@@ -430,11 +432,11 @@ const (
 // LevelIterator iterates over a set of files' metadata. Its zero value is an
 // empty iterator.
 type LevelIterator struct {
-	iter iterator
+	iter iterator[*TableMetadata]
 	// If set, start is an inclusive lower bound on the iterator.
-	start *iterator
+	start *iterator[*TableMetadata]
 	// If set, end is an inclusive upper bound on the iterator.
-	end    *iterator
+	end    *iterator[*TableMetadata]
 	filter KeyType
 }
 
@@ -508,7 +510,7 @@ func (i *LevelIterator) Filter(keyType KeyType) LevelIterator {
 	return l
 }
 
-func emptyWithBounds(i iterator, start, end *iterator) bool {
+func emptyWithBounds(i iterator[*TableMetadata], start, end *iterator[*TableMetadata]) bool {
 	// If i.r is nil, the iterator was constructed from an empty btree.
 	// If the end bound is before the start bound, the bounds represent an
 	// empty slice of the B-Tree.
