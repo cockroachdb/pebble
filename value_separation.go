@@ -6,7 +6,9 @@ package pebble
 
 import (
 	"cmp"
+	"encoding/binary"
 	"maps"
+	"math"
 	"slices"
 	"time"
 
@@ -148,6 +150,167 @@ func uniqueInputBlobMetadatas(levels []compactionLevel) []*manifest.BlobFileMeta
 		return cmp.Compare(a.FileID, b.FileID)
 	})
 	return metadatas
+}
+
+// blobBlockIdentifier is a (blob.ReferenceID, blob.BlockID) pair to help track
+// unique state between blob blocks.
+type blobBlockIdentifier struct {
+	refID   blob.ReferenceID
+	blockID blob.BlockID
+}
+
+// blobRefValueLivenessState tracks the liveness of a blob block.
+type blobRefValueLivenessState struct {
+	bitmap          []byte
+	valuesSize      uint64
+	lastSeenValueID blob.BlockValueID
+
+	// The following indexes track the shape of our bitmap to avoid O(n) scans:
+	// - idxLastZero: tracks the last zero bit seen
+	// - idxLastOne: tracks the last one bit seen
+	// - idxFirstOne: tracks the first one bit seen
+	//
+	// These indexes let us quickly determine if the bitmap is:
+	// - all zeros (idxLastZero is set and equals last index in our bitmap)
+	// - all ones (idxLastOne is set and equals last index in our bitmap)
+	// - mixed (both idxLast* are set)
+	//
+	// For mixed bitmaps, we can elide leading zeros by starting at idxFirstOne.
+	idxLastZero *int
+	idxLastOne  *int
+	idxFirstOne *int
+}
+
+// blobRefValueLivenessWriter helps maintain the liveness of values in blob
+// blocks for an sstable's blob references. It maintains:
+//   - buf: serialized liveness indexes that will be written to the sstable.
+//   - lastValueIDMap: a map of blobBlockIdentifier to the last value ID that we
+//     have seen for that block. This helps us track where dead values should go
+//     in our bitmap.
+//   - stateMap: a map of blobBlockIdentifier to blobRefValueLivenessState. This
+//     tracks the value liveness for our sstable's blob references for each
+//     unique blob block.
+type blobRefValueLivenessWriter struct {
+	bufs     [][]byte
+	stateMap map[blobBlockIdentifier]blobRefValueLivenessState
+}
+
+// maybeInit initializes the writer's maps if they are not already
+// initialized.
+func (w *blobRefValueLivenessWriter) maybeInit() {
+	if w.stateMap == nil {
+		w.stateMap = make(map[blobBlockIdentifier]blobRefValueLivenessState)
+	}
+}
+
+// addLiveValue adds a live value to the state mantained by (refID, blockID).
+func (w *blobRefValueLivenessWriter) addLiveValue(
+	refID blob.ReferenceID, blockID blob.BlockID, valueID blob.BlockValueID, valueSize uint64,
+) {
+	state, ok := w.stateMap[blobBlockIdentifier{refID, blockID}]
+	if !ok {
+		state = blobRefValueLivenessState{}
+	}
+	state.lastSeenValueID = valueID
+	state.valuesSize += valueSize
+	state.bitmap = append(state.bitmap, 1)
+	lastIdx := len(state.bitmap) - 1
+	state.idxLastOne = &lastIdx
+	// If the index of the first occurrence of a 1 has not been set, set it now.
+	if state.idxFirstOne == nil {
+		state.idxFirstOne = &lastIdx
+	}
+	w.stateMap[blobBlockIdentifier{refID, blockID}] = state
+}
+
+// addDeadValue adds a dead value to the state mantained by (refID, blockID).
+func (w *blobRefValueLivenessWriter) addDeadValue(refID blob.ReferenceID, blockID blob.BlockID) {
+	state, ok := w.stateMap[blobBlockIdentifier{refID, blockID}]
+	if !ok {
+		state = blobRefValueLivenessState{}
+	}
+	state.bitmap = append(state.bitmap, 0)
+	currIdx := len(state.bitmap) - 1
+	state.idxLastZero = &currIdx
+	w.stateMap[blobBlockIdentifier{refID, blockID}] = state
+}
+
+type bitmapElideTag int
+
+// bitmapElideType is an enum that represents the type of elision we have
+// applied to a bitmap.
+const (
+	// zeros indicates that the bitmap is all zeros.
+	zeros bitmapElideTag = iota
+	// ones indicates that the bitmap is all ones.
+	ones
+	// mixed indicates that the bitmap is mixed.
+	mixed
+)
+
+// finishOutput finishes the output of the state for a blob block by writing it
+// to the provided buffer, returning the modified buffer.
+func (state *blobRefValueLivenessState) finishOutput(buf []byte) ([]byte, error) {
+	buf = binary.AppendUvarint(buf, uint64(state.valuesSize))
+
+	nBytes := uint64(math.Ceil(float64(len(state.bitmap)) / 8))
+	// The bitmap is all zeros.
+	if state.idxLastOne == nil {
+		if state.idxLastZero == nil {
+			return nil, base.AssertionFailedf("neither idxLastOne nor idxLastZero is set")
+		}
+		if *state.idxLastZero != len(state.bitmap)-1 {
+			return nil, base.AssertionFailedf("idxLastZero is not the last index of the bitmap even though idxLastOne is nil")
+		}
+		buf = binary.AppendUvarint(buf, uint64(zeros))
+		buf = binary.AppendUvarint(buf, nBytes)
+		return buf, nil
+	}
+	// The bitmap is all ones.
+	if state.idxLastZero == nil {
+		if state.idxLastOne == nil {
+			return nil, base.AssertionFailedf("neither idxLastOne nor idxLastZero is set")
+		}
+		if *state.idxLastOne != len(state.bitmap)-1 {
+			return nil, base.AssertionFailedf("idxLastOne is not the last index of the bitmap even though idxLastZero is nil")
+		}
+		buf = binary.AppendUvarint(buf, uint64(ones))
+		buf = binary.AppendUvarint(buf, nBytes)
+		return buf, nil
+	}
+	buf = binary.AppendUvarint(buf, uint64(mixed))
+	buf = binary.AppendUvarint(buf, nBytes)
+	if invariants.Enabled && state.idxFirstOne == nil {
+		return nil, base.AssertionFailedf("bitmap is not all zeros, but idxFirstOne is not set")
+	}
+	for i := *state.idxFirstOne; i < len(state.bitmap); i++ {
+		buf = binary.AppendUvarint(buf, uint64(state.bitmap[i]))
+	}
+	return buf, nil
+}
+
+// finishOutput writes the liveness indexes for all blob blocks to the writer's
+// buffer. For each blob block, the encoding looks like the following:
+//
+//	<reference ID> <block ID> <values size> <ellision tag byte> [<bitmap>]
+func (w *blobRefValueLivenessWriter) finishOutput() error {
+	var err error
+	for k, state := range w.stateMap {
+		var buf []byte
+		buf = binary.AppendUvarint(buf, uint64(k.refID))
+		buf = binary.AppendUvarint(buf, uint64(k.blockID))
+		if buf, err = state.finishOutput(buf); err != nil {
+			return err
+		}
+		w.bufs = append(w.bufs, buf)
+	}
+	return nil
+}
+
+// reset resets the writer to its initial state.
+func (w *blobRefValueLivenessWriter) reset() {
+	w.bufs = nil
+	w.stateMap = nil
 }
 
 // writeNewBlobFiles implements the strategy and mechanics for separating values
