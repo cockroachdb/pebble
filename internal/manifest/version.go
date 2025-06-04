@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"iter"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -596,6 +597,46 @@ func (v *Version) CheckOrdering() error {
 		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, Level(level), lm.Iter()); err != nil {
 			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
 		}
+	}
+	return nil
+}
+
+// validateBlobFileInvariants validates invariants around blob files. Currently
+// it validates that the set of BlobFileIDs referenced by the Version's tables'
+// blob references is exactly the same as the set of BlobFileIDs present in the
+// Version's blob files B-Tree.
+func (v *Version) validateBlobFileInvariants() error {
+	// Collect all the blob file IDs that are referenced by the Version's
+	// tables' blob references.
+	var referencedFileIDs []base.BlobFileID
+	{
+		referencedFileIDsMap := make(map[base.BlobFileID]struct{}, v.BlobFiles.tree.Count())
+		for i := 0; i < len(v.Levels); i++ {
+			for table := range v.Levels[i].All() {
+				for _, br := range table.BlobReferences {
+					referencedFileIDsMap[br.FileID] = struct{}{}
+				}
+			}
+		}
+		referencedFileIDs = slices.Collect(maps.Keys(referencedFileIDsMap))
+		slices.Sort(referencedFileIDs)
+	}
+
+	// Collect all the blob file IDs that are present in the Version's blob
+	// files B-Tree.
+	var versionBlobFileIDs []base.BlobFileID
+	{
+		versionBlobFileIDsMap := make(map[base.BlobFileID]struct{}, v.BlobFiles.tree.Count())
+		for bf := range v.BlobFiles.All() {
+			versionBlobFileIDsMap[bf.FileID] = struct{}{}
+		}
+		versionBlobFileIDs = slices.Collect(maps.Keys(versionBlobFileIDsMap))
+		slices.Sort(versionBlobFileIDs)
+	}
+
+	if !slices.Equal(referencedFileIDs, versionBlobFileIDs) {
+		return base.AssertionFailedf("divergence between referenced BlobFileIDs and Version's BlobFiles B-Tree: %v vs %v",
+			referencedFileIDs, versionBlobFileIDs)
 	}
 	return nil
 }
