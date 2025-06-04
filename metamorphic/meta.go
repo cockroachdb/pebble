@@ -18,8 +18,10 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,7 +31,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/randvar"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
-	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -304,14 +305,8 @@ To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --run-dir
 			t.Run(names[i], func(t *testing.T) {
 				lines := readHistory(t, getHistoryPath(names[i]))
 				lines = reorderHistory(lines)
-				diff := difflib.UnifiedDiff{
-					A:       base,
-					B:       lines,
-					Context: 5,
-				}
-				text, err := difflib.GetUnifiedDiffString(diff)
-				require.NoError(t, err)
-				if text != "" {
+				diff := lineByLineDiff(base, lines)
+				if diff != "" {
 					// NB: We force an exit rather than using t.Fatal because the latter
 					// will run another instance of the test if -count is specified, while
 					// we're happy to exit on the first failure.
@@ -333,7 +328,7 @@ To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --run-dir
 To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --compare "%s/{%s,%s}" --try-to-reduce -v
 `,
 						runOpts.seed,
-						metaDir, names[0], names[i], text,
+						metaDir, names[0], names[i], diff,
 						names[0], optionsStrA,
 						names[i], optionsStrB,
 						opsPath,
@@ -705,4 +700,44 @@ func readFile(path string) string {
 	}
 
 	return string(history)
+}
+
+// lineByLineDiff performs a line-by-line diff of two histories and returns the
+// first chunk of differences.
+//
+// This is preferable to unified diffs (which groups differences into sections)
+// because it's easier to see the difference in each particular operation.
+//
+// Returns "" if the two slices are equal (modulo any trailing empty lines).
+func lineByLineDiff(a, b []string) string {
+	// Make the two slices the same length.
+	for len(a) < len(b) {
+		a = append(a, "")
+	}
+	for len(b) < len(a) {
+		b = append(b, "")
+	}
+	if slices.Equal(a, b) {
+		return ""
+	}
+	firstDiff := 0
+	for ; a[firstDiff] == b[firstDiff]; firstDiff++ {
+	}
+	start := max(0, firstDiff-8)
+	end := min(firstDiff+8, len(a))
+	var buf strings.Builder
+	extraLine := false
+	for i := start; i < end; i++ {
+		if a[i] == b[i] {
+			if extraLine {
+				fmt.Fprintf(&buf, "\n")
+				extraLine = false
+			}
+			fmt.Fprintf(&buf, "%s\n", strings.TrimSuffix(a[i], "\n"))
+		} else {
+			fmt.Fprintf(&buf, "\n-%s\n+%s\n", strings.TrimSuffix(a[i], "\n"), strings.TrimSuffix(b[i], "\n"))
+			extraLine = true
+		}
+	}
+	return buf.String()
 }
