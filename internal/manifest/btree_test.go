@@ -462,7 +462,8 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 	t.Logf("Starting equality checks on %d trees", len(trees))
 	want := rang(0, cloneTestSize-1)
 	for i, tree := range trees {
-		if got := all(tree); !reflect.DeepEqual(strReprs(got), strReprs(want)) {
+		got := slices.Collect(tree.All())
+		if !reflect.DeepEqual(strReprs(got), strReprs(want)) {
 			t.Errorf("tree %v mismatch", i)
 		}
 	}
@@ -489,7 +490,8 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 		} else {
 			wantpart = want
 		}
-		if got := all(tree); !reflect.DeepEqual(strReprs(got), strReprs(wantpart)) {
+		got := slices.Collect(tree.All())
+		if !reflect.DeepEqual(strReprs(got), strReprs(wantpart)) {
 			t.Errorf("tree %v mismatch, want %#v got %#v", i, strReprs(wantpart), strReprs(got))
 		}
 	}
@@ -664,17 +666,6 @@ func strReprs(items []*TableMetadata) []string {
 		s[i] = items[i].String()
 	}
 	return s
-}
-
-// all extracts all items from a tree in order as a slice.
-func all(tr *btree[*TableMetadata]) (out []*TableMetadata) {
-	it := tableMetadataIter(tr)
-	it.first()
-	for it.valid() {
-		out = append(out, it.cur())
-		it.next()
-	}
-	return out
 }
 
 func forBenchmarkSizes(b *testing.B, f func(b *testing.B, count int)) {

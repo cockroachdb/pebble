@@ -8,6 +8,7 @@ import (
 	"bytes"
 	stdcmp "cmp"
 	"fmt"
+	"iter"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -771,6 +772,20 @@ func (t *btree[M]) Insert(item M) error {
 		t.root.verifyInvariants()
 	}
 	return err
+}
+
+// All returns an iterator over all the items in the tree.
+func (t *btree[M]) All() iter.Seq[M] {
+	iter := iterator[M]{r: t.root, pos: -1, cmp: t.bcmp}
+	iter.first()
+	return func(yield func(M) bool) {
+		for iter.valid() {
+			if !yield(iter.cur()) {
+				return
+			}
+			iter.next()
+		}
+	}
 }
 
 // tableMetadataIter returns a new iterator over a B-Tree of *TableMetadata. It
