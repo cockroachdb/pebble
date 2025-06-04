@@ -1817,7 +1817,7 @@ func buildTestTableWithProvider(
 	provider objstorage.Provider,
 	numEntries uint64,
 	blockSize, indexBlockSize int,
-	compression block.Compression,
+	compression *block.CompressionProfile,
 	prefix []byte,
 	ch *cache.Handle,
 ) *Reader {

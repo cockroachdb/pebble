@@ -321,7 +321,7 @@ func (d *DB) loadTableStats(
 			stats.ValueBlocksSize = props.ValueBlocksSize
 			stats.RawKeySize = props.RawKeySize
 			stats.RawValueSize = props.RawValueSize
-			stats.CompressionType = block.CompressionFromString(props.CompressionName)
+			stats.CompressionType = block.CompressionProfileByName(props.CompressionName)
 			if props.NumDataBlocks > 0 {
 				stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
 			}
@@ -739,7 +739,7 @@ func maybeSetStatsFromProperties(
 	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
 	meta.Stats.RawKeySize = props.RawKeySize
 	meta.Stats.RawValueSize = props.RawValueSize
-	meta.Stats.CompressionType = block.CompressionFromString(props.CompressionName)
+	meta.Stats.CompressionType = block.CompressionProfileByName(props.CompressionName)
 	meta.StatsMarkValid()
 	sanityCheckStats(meta, logger, "stats from properties")
 	return true

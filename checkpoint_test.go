@@ -434,7 +434,7 @@ func TestCheckpointManyFiles(t *testing.T) {
 	// Disable compression to speed up the test.
 	opts.EnsureDefaults()
 	for i := range opts.Levels {
-		opts.Levels[i].Compression = func() Compression { return NoCompression }
+		opts.Levels[i].Compression = func() *CompressionProfile { return NoCompression }
 	}
 
 	d, err := Open("", opts)

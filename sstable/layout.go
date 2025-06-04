@@ -796,7 +796,7 @@ func makeLayoutWriter(w objstorage.Writable, opts WriterOptions) layoutWriter {
 		writable:     w,
 		cacheOpts:    opts.internal.CacheOpts,
 		tableFormat:  opts.TableFormat,
-		compressor:   block.MakeCompressor(opts.Compression.ToProfile()),
+		compressor:   block.MakeCompressor(opts.Compression),
 		checksumType: opts.Checksum,
 		buf: blockBuf{
 			checksummer: block.Checksummer{Type: opts.Checksum},

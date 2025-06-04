@@ -6,6 +6,7 @@ package block
 
 import (
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -15,71 +16,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 )
-
-// Compression is the per-block compression algorithm to use.
-type Compression int
-
-// The available compression types.
-const (
-	DefaultCompression Compression = iota
-	NoCompression
-	SnappyCompression
-	ZstdCompression
-	// MinLZCompression is only supported with table formats v6+. Older formats
-	// fall back to snappy.
-	MinLZCompression
-	NCompression
-)
-
-var profiles = [...]CompressionProfile{
-	DefaultCompression: SimpleCompressionProfile(DefaultCompression.String(), compression.Snappy),
-	NoCompression:      SimpleCompressionProfile(NoCompression.String(), compression.None),
-	SnappyCompression:  SimpleCompressionProfile(SnappyCompression.String(), compression.Snappy),
-	ZstdCompression:    SimpleCompressionProfile(ZstdCompression.String(), compression.ZstdLevel3),
-	MinLZCompression:   SimpleCompressionProfile(MinLZCompression.String(), compression.MinLZFastest),
-}
-
-func (c Compression) ToProfile() *CompressionProfile {
-	return &profiles[c]
-}
-
-// String implements fmt.Stringer, returning a human-readable name for the
-// compression algorithm.
-func (c Compression) String() string {
-	switch c {
-	case DefaultCompression:
-		return "Default"
-	case NoCompression:
-		return "NoCompression"
-	case SnappyCompression:
-		return "Snappy"
-	case ZstdCompression:
-		return "ZSTD"
-	case MinLZCompression:
-		return "MinLZ"
-	default:
-		return "Unknown"
-	}
-}
-
-// CompressionFromString returns an sstable.Compression from its
-// string representation. Inverse of c.String() above.
-func CompressionFromString(s string) Compression {
-	switch s {
-	case "Default":
-		return DefaultCompression
-	case "NoCompression":
-		return NoCompression
-	case "Snappy":
-		return SnappyCompression
-	case "ZSTD":
-		return ZstdCompression
-	case "MinLZ":
-		return MinLZCompression
-	default:
-		return DefaultCompression
-	}
-}
 
 // CompressionProfile contains the parameters for compressing blocks in an
 // sstable or blob file.
@@ -107,17 +43,49 @@ type CompressionProfile struct {
 	// TODO(radu): knobs for adaptive compression go here.
 }
 
-// SimpleCompressionProfile returns a CompressionProfile that uses the same
+var (
+	NoCompression     = simpleCompressionProfile("NoCompression", compression.None)
+	SnappyCompression = simpleCompressionProfile("Snappy", compression.Snappy)
+	ZstdCompression   = simpleCompressionProfile("ZSTD", compression.ZstdLevel3)
+	MinLZCompression  = simpleCompressionProfile("MinLZ", compression.MinLZFastest)
+
+	DefaultCompression = SnappyCompression
+)
+
+// simpleCompressionProfile returns a CompressionProfile that uses the same
 // compression setting for all blocks and which uses the uncompressed block if
 // compression reduces it by less than 12%. This is similar to older Pebble
 // versions which used Compression.
-func SimpleCompressionProfile(name string, setting compression.Setting) CompressionProfile {
-	return CompressionProfile{
+//
+// It should only be used during global initialization.
+func simpleCompressionProfile(name string, setting compression.Setting) *CompressionProfile {
+	p := &CompressionProfile{
 		Name:                name,
 		DataBlocks:          setting,
 		OtherBlocks:         setting,
 		MinReductionPercent: 12,
 	}
+	registerCompressionProfile(p)
+	return p
+}
+
+// CompressionProfileByName returns the built-in compression profile with the
+// given name, or nil if there is no such profile. It is case-insensitive.
+//
+// The caller must gracefully handle the nil return case as an unknown
+// (user-defined or deprecated) profile.
+func CompressionProfileByName(name string) *CompressionProfile {
+	return compressionProfileMap[strings.ToLower(name)]
+}
+
+var compressionProfileMap = make(map[string]*CompressionProfile)
+
+func registerCompressionProfile(p *CompressionProfile) {
+	key := strings.ToLower(p.Name)
+	if _, ok := compressionProfileMap[key]; ok {
+		panic(errors.AssertionFailedf("duplicate compression profile: %s", p.Name))
+	}
+	compressionProfileMap[key] = p
 }
 
 // CompressionIndicator is the byte stored physically within the block.Trailer
