@@ -160,7 +160,9 @@ func keyWithMemo(i int, memo map[int]InternalKey) InternalKey {
 	return s
 }
 
-func checkIterRelative(t *testing.T, it *iterator, start, end int, keyMemo map[int]InternalKey) {
+func checkIterRelative(
+	t *testing.T, it *iterator[*TableMetadata], start, end int, keyMemo map[int]InternalKey,
+) {
 	t.Helper()
 	i := start
 	for ; it.valid(); it.next() {
@@ -176,7 +178,9 @@ func checkIterRelative(t *testing.T, it *iterator, start, end int, keyMemo map[i
 	}
 }
 
-func checkIter(t *testing.T, it iterator, start, end int, keyMemo map[int]InternalKey) {
+func checkIter(
+	t *testing.T, it iterator[*TableMetadata], start, end int, keyMemo map[int]InternalKey,
+) {
 	t.Helper()
 	i := start
 	for it.first(); it.valid(); it.next() {
@@ -501,11 +505,11 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 
 // TestIterStack tests the interface of the iterStack type.
 func TestIterStack(t *testing.T) {
-	f := func(i int) iterFrame {
-		return iterFrame{pos: int16(i)}
+	f := func(i int) iterFrame[*TableMetadata] {
+		return iterFrame[*TableMetadata]{pos: int16(i)}
 	}
-	var is iterStack
-	for i := 1; i <= 2*len(iterStackArr{}); i++ {
+	var is iterStack[*TableMetadata]
+	for i := 1; i <= 2*len(iterStackArr[*TableMetadata]{}); i++ {
 		var j int
 		for j = 0; j < i; j++ {
 			is.push(f(j))
