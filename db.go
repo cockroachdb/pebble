@@ -453,10 +453,16 @@ type DB struct {
 			noOngoingFlushStartTime crtime.Mono
 		}
 
-		// Non-zero when file cleaning is disabled. The disabled count acts as a
-		// reference count to prohibit file cleaning. See
-		// DB.{disable,Enable}FileDeletions().
-		disableFileDeletions int
+		fileDeletions struct {
+			// Non-zero when file cleaning is disableCount. The disableCount
+			// count acts as a reference count to prohibit file cleaning. See
+			// DB.{disable,enable}FileDeletions().
+			disableCount int
+			// queuedStats holds cumulative stats for files that have been
+			// queued for deletion by the cleanup manager. These stats are
+			// monotonically increasing for the *DB's lifetime.
+			queuedStats obsoleteObjectStats
+		}
 
 		snapshots struct {
 			// The list of active snapshots.
@@ -2055,6 +2061,7 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
 	walStats := d.mu.log.manager.Stats()
+	completedObsoleteFileStats := d.cleanupManager.CompletedStats()
 
 	d.mu.Lock()
 	vers := d.mu.versions.currentVersion()
@@ -2114,6 +2121,30 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Table.ZombieCount = int64(d.mu.versions.zombieTables.Count())
 	metrics.Table.ZombieSize = d.mu.versions.zombieTables.TotalSize()
 	metrics.Table.Local.ZombieCount, metrics.Table.Local.ZombieSize = d.mu.versions.zombieTables.LocalStats()
+
+	// The obsolete blob/table metrics have a subtle calculation:
+	//
+	// (A) The vs.metrics.{Table,BlobFiles}.[Local.]{ObsoleteCount,ObsoleteSize}
+	// fields reflect the set of files currently sitting in
+	// vs.obsolete{Tables,Blobs} but not yet enqueued to the cleanup manager.
+	//
+	// (B) The d.mu.fileDeletions.queuedStats field holds the set of files that have
+	// been queued for deletion by the cleanup manager.
+	//
+	// (C) The cleanup manager also maintains cumulative stats for the set of
+	// files that have been deleted.
+	//
+	// The value of currently pending obsolete files is (A) + (B) - (C).
+	pendingObsoleteFileStats := d.mu.fileDeletions.queuedStats
+	pendingObsoleteFileStats.Sub(completedObsoleteFileStats)
+	metrics.Table.Local.ObsoleteCount += pendingObsoleteFileStats.tablesLocal.count
+	metrics.Table.Local.ObsoleteSize += pendingObsoleteFileStats.tablesLocal.size
+	metrics.Table.ObsoleteCount += int64(pendingObsoleteFileStats.tablesAll.count)
+	metrics.Table.ObsoleteSize += pendingObsoleteFileStats.tablesAll.size
+	metrics.BlobFiles.Local.ObsoleteCount += pendingObsoleteFileStats.blobFilesLocal.count
+	metrics.BlobFiles.Local.ObsoleteSize += pendingObsoleteFileStats.blobFilesLocal.size
+	metrics.BlobFiles.ObsoleteCount += pendingObsoleteFileStats.blobFilesAll.count
+	metrics.BlobFiles.ObsoleteSize += pendingObsoleteFileStats.blobFilesAll.size
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	// TODO(jackson): Consider making these metrics optional.

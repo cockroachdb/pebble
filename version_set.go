@@ -1197,6 +1197,11 @@ func (vs *versionSet) addObsolete(obsolete manifest.ObsoleteFiles) {
 }
 
 func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
+	// TODO(jackson): Ideally we would update vs.fileDeletions.queuedStats to
+	// include the files on vs.obsolete{Tables,Blobs}, but there's subtlety in
+	// deduplicating the files before computing the stats. It might also be
+	// possible to refactor to remove the vs.obsolete{Tables,Blobs} intermediary
+	// step. Revisit this.
 	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
 	vs.metrics.Table.ObsoleteSize = 0
 	vs.metrics.Table.Local.ObsoleteSize = 0
