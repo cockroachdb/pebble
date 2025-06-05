@@ -11,7 +11,6 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -228,8 +227,7 @@ func ConvertToBlobRefMode(s string) BlobRefMode {
 // debugReaderProvider is a cache-less ReaderProvider meant for debugging blob
 // files.
 type debugReaderProvider struct {
-	fs  vfs.FS
-	dir string
+	objProvider objstorage.Provider
 }
 
 // Assert that *debugReaderProvider implements blob.ReaderProvider.
@@ -240,12 +238,7 @@ var _ blob.ReaderProvider = (*debugReaderProvider)(nil)
 func (p *debugReaderProvider) GetValueReader(
 	ctx context.Context, fileNum base.DiskFileNum,
 ) (blob.ValueReader, func(), error) {
-	settings := objstorageprovider.DefaultSettings(p.fs, p.dir)
-	provider, err := objstorageprovider.Open(settings)
-	if err != nil {
-		return nil, nil, err
-	}
-	readable, err := provider.OpenForReading(ctx, base.FileTypeBlob, fileNum, objstorage.OpenOptions{})
+	readable, err := p.objProvider.OpenForReading(ctx, base.FileTypeBlob, fileNum, objstorage.OpenOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

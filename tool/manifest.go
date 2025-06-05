@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
@@ -18,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -576,4 +578,17 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 	if ok {
 		fmt.Fprintf(stdout, "OK\n")
 	}
+}
+
+func findManifests(stderr io.Writer, fs vfs.FS, dir string) ([]fileLoc, error) {
+	var manifests []fileLoc
+	walk(stderr, fs, dir, func(path string) {
+		ft, fileNum, ok := base.ParseFilename(fs, path)
+		if !ok || ft != base.FileTypeManifest {
+			return
+		}
+		manifests = append(manifests, fileLoc{DiskFileNum: fileNum, path: path})
+	})
+	slices.SortFunc(manifests, cmpFileLoc)
+	return manifests, nil
 }
