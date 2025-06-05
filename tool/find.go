@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/spf13/cobra"
 )
@@ -73,8 +72,8 @@ type findT struct {
 	tableRefs map[base.FileNum]bool
 	// Map from file num to table metadata.
 	tableMeta map[base.FileNum]*manifest.TableMetadata
-	// Map from sstable file num to slice of blob references.
-	blobRefsMap map[base.FileNum]*manifest.BlobReferences
+	// Blob file mappings.
+	blobMappings *blobFileMappings
 	// List of error messages for SSTables that could not be decoded.
 	errors []string
 }
@@ -140,6 +139,13 @@ func (f *findT) run(cmd *cobra.Command, args []string) {
 		return
 	}
 	f.readManifests(stdout)
+	var err error
+	f.blobMappings, err = newBlobFileMappings(stderr, f.opts.FS, args[0], f.manifests)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s\n", err)
+		return
+	}
+	defer func() { _ = f.blobMappings.Close() }()
 
 	f.opts.Comparer = f.comparers[f.comparerName]
 	if f.opts.Comparer == nil {
@@ -183,7 +189,6 @@ func (f *findT) findFiles(stdout, stderr io.Writer, dir string) error {
 	f.manifests = nil
 	f.tables = nil
 	f.tableMeta = make(map[base.FileNum]*manifest.TableMetadata)
-	f.blobRefsMap = make(map[base.FileNum]*manifest.BlobReferences)
 
 	if _, err := f.opts.FS.Stat(dir); err != nil {
 		return err
@@ -285,7 +290,6 @@ func (f *findT) readManifests(stdout io.Writer) {
 					if _, ok := f.tableMeta[nf.Meta.TableNum]; !ok {
 						f.tableMeta[nf.Meta.TableNum] = nf.Meta
 					}
-					f.blobRefsMap[nf.Meta.TableNum] = &nf.Meta.BlobReferences
 				}
 			}
 		}()
@@ -485,15 +489,8 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				f.fmtValue.mustSet("[%s]")
 				blobContext = sstable.DebugHandlesBlobContext
 			case BlobRefModeLoad:
-				provider := debugReaderProvider{
-					fs:  f.opts.FS,
-					dir: f.Root.Flags().Arg(0),
-				}
 				f.fmtValue.mustSet("[%s]")
-				var vf *blob.ValueFetcher
-				blobRefs := f.blobRefsMap[base.PhysicalTableFileNum(fl.DiskFileNum)]
-				vf, blobContext = sstable.LoadValBlobContext(&provider, blobRefs)
-				defer func() { _ = vf.Close() }()
+				blobContext = f.blobMappings.LoadValueBlobContext(base.PhysicalTableFileNum(fl.DiskFileNum))
 			default:
 				blobContext = sstable.AssertNoBlobHandles
 			}

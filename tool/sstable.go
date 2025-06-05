@@ -21,12 +21,9 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
-	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
@@ -346,7 +343,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 	// containing the manifest(s) and blob file(s).
 	blobMode := ConvertToBlobRefMode(s.blobMode)
 	var blobDir string
-	var blobRefsMap map[base.FileNum]*manifest.BlobReferences
+	var blobMappings *blobFileMappings
 	if blobMode == BlobRefModeLoad {
 		if len(args) < 2 {
 			fmt.Fprintf(stderr, "when --blob-mode=load is specified, the path to a "+
@@ -355,12 +352,17 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 		}
 		blobDir = args[len(args)-1]
 		args = args[:len(args)-1]
-		var err error
-		blobRefsMap, err = findAndReadManifests(stderr, s.opts.FS, blobDir)
+		manifests, err := findManifests(stderr, s.opts.FS, blobDir)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
 		}
+		blobMappings, err = newBlobFileMappings(stderr, s.opts.FS, blobDir, manifests)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
+		defer func() { _ = blobMappings.Close() }()
 	}
 
 	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader, props sstable.Properties) {
@@ -389,15 +391,8 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(stderr, "unset file in path %s\n", path)
 				return
 			}
-			provider := debugReaderProvider{
-				fs:  s.opts.FS,
-				dir: blobDir,
-			}
 			s.fmtValue.mustSet("[%s]")
-			var vf *blob.ValueFetcher
-			blobRefs := blobRefsMap[base.PhysicalTableFileNum(r.BlockReader().FileNum())]
-			vf, blobContext = sstable.LoadValBlobContext(&provider, blobRefs)
-			defer func() { _ = vf.Close() }()
+			blobContext = blobMappings.LoadValueBlobContext(base.PhysicalTableFileNum(r.BlockReader().FileNum()))
 		default:
 			blobContext = sstable.AssertNoBlobHandles
 		}
@@ -621,58 +616,4 @@ func (s *sstableT) foreachSstable(
 			}
 		})
 	}
-}
-
-// findAndReadManifests finds and reads all manifests in the specified
-// directory to gather blob references for each sstable.
-func findAndReadManifests(
-	stderr io.Writer, fs vfs.FS, dir string,
-) (map[base.FileNum]*manifest.BlobReferences, error) {
-	blobRefsMap := make(map[base.FileNum]*manifest.BlobReferences)
-	var manifests []fileLoc
-	walk(stderr, fs, dir, func(path string) {
-		ft, fileNum, ok := base.ParseFilename(fs, path)
-		if !ok {
-			return
-		}
-		fl := fileLoc{DiskFileNum: fileNum, path: path}
-		switch ft {
-		case base.FileTypeManifest:
-			manifests = append(manifests, fl)
-		}
-	})
-	if len(manifests) == 0 {
-		return nil, errors.New("no MANIFEST files found in the given path")
-	}
-	slices.SortFunc(manifests, cmpFileLoc)
-	for _, fl := range manifests {
-		func() {
-			mf, err := fs.Open(fl.path)
-			if err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return
-			}
-			defer mf.Close()
-
-			rr := record.NewReader(mf, 0 /* logNum */)
-			for {
-				r, err := rr.Next()
-				if err != nil {
-					if err != io.EOF {
-						fmt.Fprintf(stderr, "%s: %s\n", fl.path, err)
-					}
-					break
-				}
-				var ve manifest.VersionEdit
-				if err = ve.Decode(r); err != nil {
-					fmt.Fprintf(stderr, "%s: %s\n", fl.path, err)
-					break
-				}
-				for _, nf := range ve.NewTables {
-					blobRefsMap[nf.Meta.TableNum] = &nf.Meta.BlobReferences
-				}
-			}
-		}()
-	}
-	return blobRefsMap, nil
 }
