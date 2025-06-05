@@ -17,7 +17,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -148,7 +147,7 @@ func runCrossVersion(
 		versionSeeds[i] = prng.Uint64()
 	}
 
-	rootDir := filepath.Join(tempDir, strconv.FormatInt(seed, 10))
+	rootDir := filepath.Join(tempDir, fmt.Sprint(seed))
 	if err := os.MkdirAll(rootDir, os.ModePerm); err != nil {
 		return err
 	}
@@ -167,7 +166,6 @@ func runCrossVersion(
 	// next is fixed by `factor`.
 	initialStates := []initialState{{}}
 	for i := range versions {
-		t.Logf("Running tests with version %s with %d initial state(s).", versions[i].SHA, len(initialStates))
 		subrunResults := runVersion(ctx, t, &fatalOnce, rootDir, versions[i], versionSeeds[i], initialStates)
 
 		// All the initial states described the same state and all of this
@@ -178,9 +176,19 @@ func runCrossVersion(
 			t.Fatal("no subrun histories")
 		}
 		if h, diff := metamorphic.CompareHistories(t, histories); h > 0 {
-			fatalf(t, &fatalOnce, []string{subrunResults[0].runDir, subrunResults[h].runDir},
-				"Metamorphic test divergence between %q and %q:\nDiff:\n%s",
-				subrunResults[0].initialState.desc, subrunResults[h].initialState.desc, diff)
+			var dirs dirsToSave
+			dirs.add(rootDir, fmt.Sprint(seed))
+			fatalf(t, &fatalOnce, dirs,
+				"Divergence when using different initial states.\n"+
+					"  initial state 1: %s (%s)\n"+
+					"  initial state 2: %s (%s)\n"+
+					"Diff:\n"+
+					"%s",
+				subrunResults[0].initialState.desc,
+				subrunResults[0].initialState.path,
+				subrunResults[h].initialState.desc,
+				subrunResults[h].initialState.path,
+				diff)
 		}
 
 		// Prune the set of initial states we collected for this version, using
@@ -264,6 +272,12 @@ func runVersion(
 	// The outer 'execution-<label>' subtest will block until all of the
 	// individual subtests have completed.
 	t.Run(fmt.Sprintf("execution-%s", vers.Label), func(t *testing.T) {
+		if len(initialStates) == 1 && initialStates[0].path == "" {
+			t.Logf("Will run the metamorphic test to generate first set of initial states.")
+		} else {
+			t.Logf("Will run the metamorphic test %d times, each time with a different initial state.", len(initialStates))
+		}
+		t.Logf("  Version: %s (%s)", vers.Label, vers.SHA)
 		for j, s := range initialStates {
 			j, s := j, s // re-bind loop vars to scope
 
@@ -275,7 +289,11 @@ func runVersion(
 				initialState:   s,
 				testBinaryPath: vers.TestBinaryPath,
 			}
-			t.Run(s.desc, func(t *testing.T) {
+			desc := s.desc
+			if s.desc == "" {
+				desc = "no-initial-state"
+			}
+			t.Run(desc, func(t *testing.T) {
 				t.Parallel()
 				require.NoError(t, os.MkdirAll(r.dir, os.ModePerm))
 
@@ -284,12 +302,18 @@ func runVersion(
 				if streamOutput {
 					out = io.MultiWriter(out, os.Stderr)
 				}
-				t.Logf("  Running test with version %s with initial state %s (dir=%s initial=%s).",
-					vers.SHA, s, r.dir, s.path)
+				t.Logf("Running metamorphic test binary.")
+				t.Logf("  Version: %s (%s)", vers.Label, vers.SHA)
+				t.Logf("  Test state dir: %s", r.dir)
+				t.Logf("  Initial state: %s (%s)", s.desc, s.path)
 
 				if err := r.run(ctx, t, out); err != nil {
-					fatalf(t, fatalOnce, []string{r.dir},
-						"Metamorphic test failed: %s. Output:\n%s\n", err, buf.String())
+					var dirs dirsToSave
+					dirs.add(r.dir, runID)
+					if s.path != "" {
+						dirs.add(s.path, runID+"-initial-state")
+					}
+					fatalf(t, fatalOnce, dirs, "Metamorphic test failed: %s. Output:\n%s\n", err, buf.String())
 				}
 
 				// dir is a directory containing the ops file and subdirectories for
@@ -326,31 +350,52 @@ func runVersion(
 	return results
 }
 
-func fatalf(t testing.TB, fatalOnce *sync.Once, dirs []string, msg string, args ...interface{}) {
-	fatalOnce.Do(func() {
-		if artifactsDir == "" {
-			var err error
-			artifactsDir, err = os.Getwd()
-			require.NoError(t, err)
-		}
-		// De-duplicate the directories.
-		slices.Sort(dirs)
-		dirs = slices.Compact(dirs)
+type dirToSave struct {
+	path string
+	// name of the directory to create in the artifacts dir.
+	name string
+}
 
-		for _, dir := range dirs {
-			// When run with test parallelism, other subtests may still be
-			// running within subdirectories of `dir`. We copy instead of rename
-			// so that those substests don't also fail when we remove their
-			// files out from under them.  Those additional failures would
-			// confuse the test output.
-			dst := filepath.Join(artifactsDir, filepath.Base(dir))
-			t.Logf("Copying test dir %q to %q.", dir, dst)
-			_, err := vfs.Clone(vfs.Default, vfs.Default, dir, dst, vfs.CloneTryLink)
-			if err != nil {
-				t.Error(err)
-			}
-			t.Fatalf(msg, args...)
+type dirsToSave struct {
+	dirs []dirToSave
+}
+
+// add appends a directory to the list of directories to save on test failure.
+// The path is copied to the artifacts subdir with the given name.
+func (d *dirsToSave) add(path string, name string) {
+	d.dirs = append(d.dirs, dirToSave{path: path, name: name})
+}
+
+func saveDirs(t testing.TB, d dirsToSave) {
+	if len(d.dirs) == 0 {
+		return
+	}
+	outDir := artifactsDir
+	if outDir == "" {
+		var err error
+		outDir, err = os.Getwd()
+		if err != nil {
+			t.Errorf("failed to determine current working directory: %s", err)
+			return
 		}
+	}
+	t.Logf("Saving artifacts:")
+	for _, dir := range d.dirs {
+		dst := filepath.Join(outDir, dir.name)
+		t.Logf("  %s", dir.name)
+		t.Logf("    src: %s", dir.path)
+		t.Logf("    dst: %s", dst)
+		_, err := vfs.Clone(vfs.Default, vfs.Default, dir.path, dst, vfs.CloneTryLink)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+func fatalf(t testing.TB, fatalOnce *sync.Once, dirs dirsToSave, msg string, args ...interface{}) {
+	fatalOnce.Do(func() {
+		saveDirs(t, dirs)
+		t.Fatalf(msg, args...)
 	})
 }
 
@@ -363,40 +408,48 @@ type metamorphicTestRun struct {
 }
 
 func (r *metamorphicTestRun) run(ctx context.Context, t *testing.T, output io.Writer) error {
-	args := []string{
-		"-test.run", "TestMeta$",
-		"-seed", strconv.FormatUint(r.seed, 10),
-		"-keep",
-		// Use an op-count distribution that includes a low lower bound, so that
-		// some intermediary versions do very little work besides opening the
-		// database. This helps exercise state from version n that survives to
-		// versions ≥ n+2.
-		"-ops", "uniform:1-10000",
-		// Explicitly specify the location of the _meta directory. In Cockroach
-		// CI when built using bazel, the subprocesses may be given a different
-		// current working directory than the one provided below. To ensure we
-		// can find this run's artifacts, explicitly pass the intended dir.
-		"-dir", filepath.Join(r.dir, "_meta"),
+	var args []string
+
+	// We also build a readable string of the command that will be run.
+	var prettyCmdLin strings.Builder
+	prettyCmdLin.WriteString(r.dir)
+
+	add := func(a ...string) {
+		args = append(args, a...)
+		prettyCmdLin.WriteString(" \\\n  ")
+		prettyCmdLin.WriteString(strings.Join(a, " "))
 	}
-	// Propagate the verbose flag, if necessary.
+
+	add("-test.run", "TestMeta$")
 	if testing.Verbose() {
-		args = append(args, "-test.v")
+		add("-test.v")
 	}
+	add("-seed", strconv.FormatUint(r.seed, 10))
+	add("-keep")
+
+	// Use an op-count distribution that includes a low lower bound, so that
+	// some intermediary versions do very little work besides opening the
+	// database. This helps exercise state from version n that survives to
+	// versions ≥ n+2.
+	add("-ops", "uniform:1-10000")
+
+	// Explicitly specify the location of the _meta directory. In Cockroach
+	// CI when built using bazel, the subprocesses may be given a different
+	// current working directory than the one provided below. To ensure we
+	// can find this run's artifacts, explicitly pass the intended dir.
+	add("-dir", filepath.Join(r.dir, "_meta"))
+
 	if r.initialState.path != "" {
-		args = append(args, "--initial-state-desc", r.initialState.desc)
-		args = append(args, "--initial-state", r.initialState.path)
-		args = append(args, "--previous-ops", r.initialState.opsPath)
+		add("--initial-state-desc", r.initialState.desc)
+		add("--initial-state", r.initialState.path)
+		add("--previous-ops", r.initialState.opsPath)
 	}
 	cmd := exec.CommandContext(ctx, r.testBinaryPath, args...)
 	cmd.Dir = r.dir
 	cmd.Stderr = output
 	cmd.Stdout = output
 
-	// Print the command itself before executing it.
-	fmt.Println(output, cmd)
-	if testing.Verbose() {
-		t.Logf("running: %s", cmd.String())
-	}
+	t.Logf("running:\n%s", prettyCmdLin.String())
 
 	return cmd.Run()
 }
