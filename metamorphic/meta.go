@@ -242,6 +242,14 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		cmd := exec.Command(binary, args...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
+			historyPath := filepath.Join(runDir, "history")
+			historyLines := strings.Split(readFile(historyPath), "\n")
+			// Show only the last 30 lines of history.
+			if maxLines := 30; len(historyLines) > maxLines {
+				start := len(historyLines) - maxLines
+				historyLines = append([]string{fmt.Sprintf("...[%d lines skipped]...", start)}, historyLines[start:]...)
+			}
+
 			t.Fatalf(`error running %v
 ===== SEED =====
 %d
@@ -255,6 +263,7 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 %s
 ===== HISTORY =====
 %s
+%s
 To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --run-dir %s --try-to-reduce -v`,
 				cmd.String(),
 				runOpts.seed,
@@ -262,7 +271,8 @@ To reduce:  go test ./internal/metamorphic -tags invariants -run '%s$' --run-dir
 				out,
 				optionsStr,
 				opsPath,
-				readFile(filepath.Join(runDir, "history")),
+				historyPath,
+				strings.Join(historyLines, "\n"),
 				topLevelTestName, runDir,
 			)
 		}
