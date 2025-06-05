@@ -56,6 +56,6 @@ jobs:
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
-          title: "${{ inputs.file_issue_branch }}: nightly stress tests failed"
-          body: "The nightly ${{ github.job_id }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} tests failed"
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
