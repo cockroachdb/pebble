@@ -38,12 +38,14 @@ runs:
       shell: bash
       id: get-issue-number
       run: |
-        num=$(jq -r '.[0].number' <<'EOF'
+        if num=$(jq -re '.[0].number' <<'EOF'
         ${{ steps.find-issue.outputs.issues }}
         EOF
-        )
-        if [ -n "$num" ]; then
+        ); then
+          echo "Found existing issue #$num"
           echo "issue-number=$num" >> $GITHUB_OUTPUT
+        else
+          echo "No existing issue found"
         fi
 
     - name: Create issue
