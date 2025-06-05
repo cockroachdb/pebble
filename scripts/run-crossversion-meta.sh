@@ -17,8 +17,13 @@ do
     # {XX.X}.
     version=`cut -d- -f3 <<< "$branch"`
 
+    toolchain=
+    if [ "$version" == "24.1" ]; then
+      toolchain=go1.22.12
+    fi
+
     echo "Building $version ($sha)"
-    go test -c -o "$TEMPDIR/meta.$version.test" ./internal/metamorphic
+    GOTOOLCHAIN="$toolchain" go test -c -o "$TEMPDIR/meta.$version.test" ./internal/metamorphic
     VERSIONS="$VERSIONS -version $version,$sha,$TEMPDIR/meta.$version.test"
 done
 
