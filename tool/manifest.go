@@ -529,9 +529,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					return
 				}
 
-				empty := true
 				if ve.ComparerName != "" {
-					empty = false
 					cmp = m.comparers[ve.ComparerName]
 					if cmp == nil {
 						fmt.Fprintf(stdout, "%s: offset: %d comparer %s not found",
@@ -541,12 +539,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					}
 					m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				}
-				empty = empty && ve.MinUnflushedLogNum == 0 && ve.ObsoletePrevLogNum == 0 &&
-					ve.LastSeqNum == 0 && len(ve.DeletedTables) == 0 &&
-					len(ve.NewTables) == 0
-				if empty {
-					continue
-				}
+
 				// TODO(sbhola): add option to Apply that reports all errors instead of
 				// one error.
 				if v == nil {
