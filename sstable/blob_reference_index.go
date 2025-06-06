@@ -119,3 +119,44 @@ func (w *blobRefValueLivenessWriter) finishOutput() {
 		w.bufs[i] = state.finishOutput(w.bufs[i])
 	}
 }
+
+// BlobRefLivenessEncoding represents the decoded form of a blob reference
+// liveness encoding. The encoding format is:
+//
+//	<block ID> <values size> <len of bitmap> [<bitmap>]
+type BlobRefLivenessEncoding struct {
+	BlockID    int
+	ValuesSize int
+	BitmapSize int
+	Bitmap     []byte
+}
+
+// DecodeBlobRefLivenessEncoding decodes a sequence of blob reference liveness encodings
+// from the provided buffer. Each encoding has the format:
+// <block ID> <values size> <n bytes of bitmap> [<bitmap>]
+func DecodeBlobRefLivenessEncoding(buf []byte) []BlobRefLivenessEncoding {
+	var encodings []BlobRefLivenessEncoding
+	for len(buf) > 0 {
+		var enc BlobRefLivenessEncoding
+		var n int
+
+		blockIDVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.BlockID = int(blockIDVal)
+
+		valuesSizeVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.ValuesSize = int(valuesSizeVal)
+
+		bitmapSizeVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.BitmapSize = int(bitmapSizeVal)
+
+		// The bitmap takes up the remaining bitmapSize bytes for this encoding.
+		enc.Bitmap = buf[:enc.BitmapSize]
+		buf = buf[enc.BitmapSize:]
+
+		encodings = append(encodings, enc)
+	}
+	return encodings
+}

@@ -182,7 +182,7 @@ type cachedReader struct {
 		// loaded indicates whether buf and dec are valid.
 		loaded bool
 		buf    block.BufferHandle
-		dec    *indexBlockDecoder
+		dec    *IndexBlockDecoder
 	}
 	// currentValueBlock holds the currently loaded blob value block, if any.
 	currentValueBlock struct {
@@ -199,7 +199,7 @@ type cachedReader struct {
 		// physicalIndex is in the range [0, indexBlock.dec.BlockCount()).
 		physicalIndex int
 		buf           block.BufferHandle
-		dec           *blobValueBlockDecoder
+		dec           *BlobValueBlockDecoder
 	}
 	preallocRH objstorageprovider.PreallocatedReadHandle
 }
@@ -225,7 +225,7 @@ func (cr *cachedReader) GetUnsafeValue(
 			if err != nil {
 				return nil, err
 			}
-			cr.indexBlock.dec = (*indexBlockDecoder)(unsafe.Pointer(cr.indexBlock.buf.BlockMetadata()))
+			cr.indexBlock.dec = (*IndexBlockDecoder)(unsafe.Pointer(cr.indexBlock.buf.BlockMetadata()))
 			cr.indexBlock.loaded = true
 		}
 
@@ -259,7 +259,7 @@ func (cr *cachedReader) GetUnsafeValue(
 		if err != nil {
 			return nil, err
 		}
-		cr.currentValueBlock.dec = (*blobValueBlockDecoder)(unsafe.Pointer(cr.currentValueBlock.buf.BlockMetadata()))
+		cr.currentValueBlock.dec = (*BlobValueBlockDecoder)(unsafe.Pointer(cr.currentValueBlock.buf.BlockMetadata()))
 		cr.currentValueBlock.physicalIndex = physicalBlockIndex
 		cr.currentValueBlock.virtualID = vh.BlockID
 		cr.currentValueBlock.valueIDOffset = valueIDOffset

@@ -369,7 +369,7 @@ func (l *Layout) Describe(
 				// We have already read the value-index to construct the list of
 				// value-blocks, so no need to do it again.
 			case "blob-reference-index":
-				h, err = r.blockReader.Read(ctx, block.NoReadEnv, noReadHandle, b.Handle, blockkind.BlobReferenceValueLivenessIndex, noInitBlockMetadataFn)
+				h, err = r.readBlobRefIndexBlock(ctx, block.NoReadEnv, noReadHandle)
 				if err != nil {
 					return err
 				}

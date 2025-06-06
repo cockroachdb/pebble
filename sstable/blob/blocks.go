@@ -128,9 +128,9 @@ func (e *indexBlockEncoder) Finish() []byte {
 	return data
 }
 
-// An indexBlockDecoder decodes blob file index blocks. See the doc comment for
+// An IndexBlockDecoder decodes blob file index blocks. See the doc comment for
 // details on the encoding.
-type indexBlockDecoder struct {
+type IndexBlockDecoder struct {
 	// virtualBlockCount is zero for blob files created during ordinary
 	// compactions. When a blob file is rewritten, virtualBlockCount is nonzero
 	// and holds the count of blocks in the original blob file. The
@@ -150,7 +150,7 @@ type indexBlockDecoder struct {
 
 // Init initializes the index block decoder with the given serialized index
 // block.
-func (d *indexBlockDecoder) Init(data []byte) {
+func (d *IndexBlockDecoder) Init(data []byte) {
 	d.virtualBlockCount = int(binary.LittleEndian.Uint32(data))
 	d.bd.Init(data, indexBlockCustomHeaderSize)
 	d.virtualBlocks = colblk.DecodeColumn(&d.bd, indexBlockColumnVirtualBlocksIdx,
@@ -163,7 +163,7 @@ func (d *indexBlockDecoder) Init(data []byte) {
 
 // BlockHandle returns the block handle for the given block index in the
 // range [0, bd.Rows()).
-func (d *indexBlockDecoder) BlockHandle(blockIndex int) block.Handle {
+func (d *IndexBlockDecoder) BlockHandle(blockIndex int) block.Handle {
 	invariants.CheckBounds(blockIndex, d.bd.Rows())
 	// TODO(jackson): Add an At2 method to the UnsafeUints type too.
 	offset := d.offsets.At(blockIndex)
@@ -180,7 +180,7 @@ func (d *indexBlockDecoder) BlockHandle(blockIndex int) block.Handle {
 // files).
 //
 // REQUIRES: d.virtualBlockCount > 0
-func (d *indexBlockDecoder) RemapVirtualBlockID(
+func (d *IndexBlockDecoder) RemapVirtualBlockID(
 	blockID BlockID,
 ) (blockIndex int, valueIDOffset BlockValueID) {
 	invariants.CheckBounds(int(blockID), d.virtualBlockCount)
@@ -191,13 +191,13 @@ func (d *indexBlockDecoder) RemapVirtualBlockID(
 }
 
 // BlockCount returns the number of physical blocks encoded in the index block.
-func (d *indexBlockDecoder) BlockCount() int {
+func (d *IndexBlockDecoder) BlockCount() int {
 	return int(d.bd.Rows())
 }
 
 // DebugString prints a human-readable explanation of the index block's binary
 // representation.
-func (d *indexBlockDecoder) DebugString() string {
+func (d *IndexBlockDecoder) DebugString() string {
 	f := binfmt.New(d.bd.Data()).LineWidth(20)
 	tp := treeprinter.New()
 	d.Describe(f, tp.Child("index-block-decoder"))
@@ -206,7 +206,7 @@ func (d *indexBlockDecoder) DebugString() string {
 
 // Describe describes the binary format of the index block, assuming f.Offset()
 // is positioned at the beginning of the same index block described by d.
-func (d *indexBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
+func (d *IndexBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -225,14 +225,14 @@ func (d *indexBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 }
 
 // Assert that an IndexBlockDecoder can fit inside block.Metadata.
-const _ uint = block.MetadataSize - uint(unsafe.Sizeof(indexBlockDecoder{}))
+const _ uint = block.MetadataSize - uint(unsafe.Sizeof(IndexBlockDecoder{}))
 
 // initIndexBlockMetadata initializes the index block metadata.
 func initIndexBlockMetadata(md *block.Metadata, data []byte) (err error) {
 	if uintptr(unsafe.Pointer(md))%8 != 0 {
 		return errors.AssertionFailedf("metadata is not 8-byte aligned")
 	}
-	d := (*indexBlockDecoder)(unsafe.Pointer(md))
+	d := (*IndexBlockDecoder)(unsafe.Pointer(md))
 	// Initialization can panic; convert panics to corruption errors (so higher
 	// layers can add file number and offset information).
 	defer func() {
@@ -303,21 +303,21 @@ func (e *blobValueBlockEncoder) Finish() []byte {
 	return e.enc.Finish()
 }
 
-// A blobValueBlockDecoder reads columnar blob value blocks.
-type blobValueBlockDecoder struct {
+// A BlobValueBlockDecoder reads columnar blob value blocks.
+type BlobValueBlockDecoder struct {
 	values colblk.RawBytes
 	bd     colblk.BlockDecoder
 }
 
 // Init initializes the decoder with the given serialized blob value block.
-func (d *blobValueBlockDecoder) Init(data []byte) {
+func (d *BlobValueBlockDecoder) Init(data []byte) {
 	d.bd.Init(data, blobValueBlockCustomHeaderSize)
 	d.values = d.bd.RawBytes(blobValueBlockColumnValuesIdx)
 }
 
 // DebugString prints a human-readable explanation of the blob value block's
 // binary representation.
-func (d *blobValueBlockDecoder) DebugString() string {
+func (d *BlobValueBlockDecoder) DebugString() string {
 	f := binfmt.New(d.bd.Data()).LineWidth(20)
 	tp := treeprinter.New()
 	d.Describe(f, tp.Child("blob-value-block-decoder"))
@@ -327,7 +327,7 @@ func (d *blobValueBlockDecoder) DebugString() string {
 // Describe describes the binary format of the blob value block, assuming
 // f.Offset() is positioned at the beginning of the same blob value block
 // described by d.
-func (d *blobValueBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
+func (d *BlobValueBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -343,15 +343,20 @@ func (d *blobValueBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Nod
 	f.ToTreePrinter(n)
 }
 
+// ValueAt returns the value at the given index.
+func (d *BlobValueBlockDecoder) ValueAt(i int) []byte {
+	return d.values.At(i)
+}
+
 // Assert that an BlobBlockDecoder can fit inside block.Metadata.
-const _ uint = block.MetadataSize - uint(unsafe.Sizeof(blobValueBlockDecoder{}))
+const _ uint = block.MetadataSize - uint(unsafe.Sizeof(BlobValueBlockDecoder{}))
 
 // initBlobValueBlockMetadata initializes the blob value block metadata.
 func initBlobValueBlockMetadata(md *block.Metadata, data []byte) (err error) {
 	if uintptr(unsafe.Pointer(md))%8 != 0 {
 		return errors.AssertionFailedf("metadata is not 8-byte aligned")
 	}
-	d := (*blobValueBlockDecoder)(unsafe.Pointer(md))
+	d := (*BlobValueBlockDecoder)(unsafe.Pointer(md))
 	// Initialization can panic; convert panics to corruption errors (so higher
 	// layers can add file number and offset information).
 	defer func() {

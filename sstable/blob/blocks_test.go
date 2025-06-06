@@ -18,7 +18,7 @@ import (
 )
 
 func TestIndexBlockEncoding(t *testing.T) {
-	var decoder indexBlockDecoder
+	var decoder IndexBlockDecoder
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/index_block", func(t *testing.T, d *datadriven.TestData) string {
 		buf.Reset()
