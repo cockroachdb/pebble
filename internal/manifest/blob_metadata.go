@@ -336,6 +336,11 @@ func (s *BlobFileSet) All() iter.Seq[BlobFileMetadata] {
 	return s.tree.All()
 }
 
+// Count returns the number of blob files in the set.
+func (s *BlobFileSet) Count() int {
+	return s.tree.Count()
+}
+
 // clone returns a copy-on-write clone of the blob file set.
 func (s *BlobFileSet) clone() BlobFileSet {
 	return BlobFileSet{tree: s.tree.Clone()}
