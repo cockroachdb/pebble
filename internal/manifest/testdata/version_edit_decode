@@ -10,7 +10,8 @@ decode
 ----
 011a6c6576656c64622e4279746577697365436f6d70617261746f720302
 0400020203030409
-  comparer:     leveldb.BytewiseComparator  log-num:       2
+  comparer:     leveldb.BytewiseComparator
+  log-num:       2
   next-file-num: 3
   last-seq-num:  9
 
@@ -24,7 +25,8 @@ decode
 ----
 011a6c6576656c64622e4279746577697365436f6d70617261746f720202
 03070400
-  comparer:     leveldb.BytewiseComparator  log-num:       2
+  comparer:     leveldb.BytewiseComparator
+  log-num:       2
   next-file-num: 7
 
 decode

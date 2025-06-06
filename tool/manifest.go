@@ -6,10 +6,8 @@ package tool
 
 import (
 	"bytes"
-	"cmp"
 	"fmt"
 	"io"
-	"slices"
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
@@ -194,67 +192,15 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 					continue
 				}
 
-				empty := true
 				if ve.ComparerName != "" {
-					empty = false
-					fmt.Fprintf(stdout, "  comparer:     %s", ve.ComparerName)
 					comparer = m.comparers[ve.ComparerName]
 					if comparer == nil {
-						fmt.Fprintf(stdout, " (unknown)")
+						fmt.Fprintf(stderr, " comparer %q unknown\n", ve.ComparerName)
 					}
-					fmt.Fprintf(stdout, "\n")
 					m.fmtKey.setForComparer(ve.ComparerName, m.comparers)
 				}
-				if ve.MinUnflushedLogNum != 0 {
-					empty = false
-					fmt.Fprintf(stdout, "  log-num:       %d\n", ve.MinUnflushedLogNum)
-				}
-				if ve.ObsoletePrevLogNum != 0 {
-					empty = false
-					fmt.Fprintf(stdout, "  prev-log-num:  %d\n", ve.ObsoletePrevLogNum)
-				}
-				if ve.NextFileNum != 0 {
-					empty = false
-					fmt.Fprintf(stdout, "  next-file-num: %d\n", ve.NextFileNum)
-				}
-				if ve.LastSeqNum != 0 {
-					empty = false
-					fmt.Fprintf(stdout, "  last-seq-num:  %d\n", ve.LastSeqNum)
-				}
-				entries := make([]manifest.DeletedTableEntry, 0, len(ve.DeletedTables))
-				for df := range ve.DeletedTables {
-					empty = false
-					entries = append(entries, df)
-				}
-				slices.SortFunc(entries, func(a, b manifest.DeletedTableEntry) int {
-					if v := cmp.Compare(a.Level, b.Level); v != 0 {
-						return v
-					}
-					return cmp.Compare(a.FileNum, b.FileNum)
-				})
-				for _, df := range entries {
-					fmt.Fprintf(stdout, "  deleted:       L%d %s\n", df.Level, df.FileNum)
-				}
-				for _, nf := range ve.NewTables {
-					empty = false
-					fmt.Fprintf(stdout, "  added:         L%d %s:%d",
-						nf.Level, nf.Meta.TableNum, nf.Meta.Size)
-					formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
-					smallest := nf.Meta.Smallest()
-					largest := nf.Meta.Largest()
-					formatKeyRange(stdout, m.fmtKey, &smallest, &largest)
-					if nf.Meta.CreationTime != 0 {
-						fmt.Fprintf(stdout, " (%s)",
-							time.Unix(nf.Meta.CreationTime, 0).UTC().Format(time.RFC3339))
-					}
-					fmt.Fprintf(stdout, "\n")
-				}
-				if empty {
-					// NB: An empty version edit can happen if we log a version edit with
-					// a zero field. RocksDB does this with a version edit that contains
-					// `LogNum == 0`.
-					fmt.Fprintf(stdout, "  <empty>\n")
-				}
+
+				fmt.Fprint(stdout, ve.DebugString(m.fmtKey.fn))
 				editIdx++
 			}
 
@@ -274,7 +220,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 }
 
 func anyOverlap(cmp base.Compare, ve *manifest.VersionEdit, start, end key) bool {
-	if start == nil && end == nil {
+	if start == nil && end == nil || len(ve.NewTables) == 0 && len(ve.DeletedTables) == 0 {
 		return true
 	}
 	for _, df := range ve.DeletedTables {
