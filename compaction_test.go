@@ -515,6 +515,13 @@ func TestPickCompaction(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		opts.CompactionConcurrencyRange = func() (lower, upper int) {
+			upper = 1
+			if tc.wantMulti {
+				upper = 2
+			}
+			return 1, upper
+		}
 		vs := &versionSet{
 			opts: opts,
 			cmp:  DefaultComparer,
@@ -915,17 +922,22 @@ func TestCompaction(t *testing.T) {
 	}
 
 	// d.mu must be held when calling.
-	createOngoingCompaction := func(start, end []byte, startLevel, outputLevel int) (ongoingCompaction *tableCompaction) {
+	createOngoingCompaction := func(start, end []byte, levels []int) (ongoingCompaction *tableCompaction) {
+		inputs := make([]compactionLevel, len(levels))
+		for i, level := range levels {
+			inputs[i] = compactionLevel{level: level}
+		}
 		ongoingCompaction = &tableCompaction{
-			inputs: []compactionLevel{{level: startLevel}, {level: outputLevel}},
+			inputs: inputs,
 			bounds: base.UserKeyBoundsInclusive(start, end),
 		}
 		ongoingCompaction.startLevel = &ongoingCompaction.inputs[0]
 		ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
 		// Mark files as compacting.
 		curr := d.mu.versions.currentVersion()
-		ongoingCompaction.startLevel.files = curr.Overlaps(startLevel, base.UserKeyBoundsInclusive(start, end))
-		ongoingCompaction.outputLevel.files = curr.Overlaps(outputLevel, base.UserKeyBoundsInclusive(start, end))
+		for _, cl := range ongoingCompaction.inputs {
+			cl.files = curr.Overlaps(cl.level, base.UserKeyBoundsInclusive(start, end))
+		}
 		for _, cl := range ongoingCompaction.inputs {
 			for f := range cl.files.All() {
 				f.CompactionState = manifest.CompactionStateCompacting
@@ -1006,6 +1018,9 @@ func TestCompaction(t *testing.T) {
 				opts.WithFSDefaults()
 				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+				if d != nil {
+					opts.CompactionConcurrencyRange = d.opts.CompactionConcurrencyRange
+				}
 
 				var err error
 				if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -1285,16 +1300,30 @@ func TestCompaction(t *testing.T) {
 					compErr.Error(), numQueuedManualCompactions, s)
 
 			case "add-ongoing-compaction":
-				var startLevel int
-				var outputLevel int
+				var levelArg int
+				var levels []int
+				var extraLevelsStr string
 				var start string
 				var end string
-				td.ScanArgs(t, "startLevel", &startLevel)
-				td.ScanArgs(t, "outputLevel", &outputLevel)
+				// TODO(xinhaoz): Consolidate into single inputs array arg.
+				td.ScanArgs(t, "startLevel", &levelArg)
+				levels = append(levels, levelArg)
+				td.MaybeScanArgs(t, "extraLevels", &extraLevelsStr)
+				if extraLevelsStr != "" {
+					for _, levelStr := range strings.Split(extraLevelsStr, ",") {
+						level, err := strconv.Atoi(levelStr)
+						if err != nil {
+							return fmt.Sprintf("invalid extraLevels: %s", err)
+						}
+						levels = append(levels, level)
+					}
+				}
+				td.ScanArgs(t, "outputLevel", &levelArg)
+				levels = append(levels, levelArg)
 				td.ScanArgs(t, "start", &start)
 				td.ScanArgs(t, "end", &end)
 				d.mu.Lock()
-				ongoingCompaction = createOngoingCompaction([]byte(start), []byte(end), startLevel, outputLevel)
+				ongoingCompaction = createOngoingCompaction([]byte(start), []byte(end), levels)
 				d.mu.Unlock()
 				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
 					adjustRunningCompactionsForTesting(+1)

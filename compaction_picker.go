@@ -587,6 +587,25 @@ func (pc *pickedTableCompaction) estimatedInputSize() uint64 {
 
 // setupMultiLevelCandidate returns true if it successfully added another level
 // to the compaction.
+// Note that adding a new level will never change the startLevel inputs, but we
+// will attempt to expand the inputs of the intermediate level to the output key range,
+// if size constraints allow it.
+// For example, consider the following LSM structure, with the initial compaction
+// from L1->L2:
+// startLevel: L1 [a-b]
+// outputLevel: L2 [a-c]
+// L1:  |a-b  | d--e
+// L2:  |a---c| d----f
+// L3:   a---------e
+//
+// When adding L3, we'll expand L2 to include d-f via a call to setupInputs with
+// startLevel=L2. L1 will not be expanded.
+// startLevel:        L1 [a-b]
+// intermediateLevel: L2 [a-c, d-f]
+// outputLevel:       L3 [a-e]
+// L1:  |a-b  |   d--e
+// L2:  |a---c  d----f|
+// L3:  |a---------e  |
 func (pc *pickedTableCompaction) setupMultiLevelCandidate(opts *Options, env compactionEnv) bool {
 	pc.inputs = append(pc.inputs, compactionLevel{level: pc.outputLevel.level + 1})
 
@@ -1783,12 +1802,26 @@ func pickAutoLPositive(
 }
 
 // maybeAddLevel maybe adds a level to the picked compaction.
+// Multilevel compactions are only allowed if the max compaction concurrency
+// is greater than 1, and there are no in-progress multi-level compactions.
 func (pc *pickedTableCompaction) maybeAddLevel(
 	opts *Options, env compactionEnv,
 ) *pickedTableCompaction {
 	pc.pickerMetrics.singleLevelOverlappingRatio = pc.overlappingRatio()
 	if pc.outputLevel.level == numLevels-1 {
 		// Don't add a level if the current output level is in L6.
+		return pc
+	}
+	// We allow at most one in-progress multiLevel compaction at any time.
+	for _, c := range env.inProgressCompactions {
+		if len(c.inputs) > 2 {
+			return pc
+		}
+	}
+	_, upper := opts.CompactionConcurrencyRange()
+	if upper == 1 {
+		// If the maximum compaction concurrency is 1, avoid picking a multi-level compactions
+		// as they could block compactions from L0.
 		return pc
 	}
 	if !opts.Experimental.MultiLevelCompactionHeuristic().allowL0() && pc.startLevel.level == 0 {

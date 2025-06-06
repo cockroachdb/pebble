@@ -157,7 +157,7 @@ L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
 compact a-z
 ----
 L5:
-  000009:[b#230,RANGEDEL-u#0,SET]
+  000010:[b#230,RANGEDEL-u#0,SET]
 
 maybe-compact
 ----

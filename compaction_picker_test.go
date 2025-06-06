@@ -1114,6 +1114,11 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		setupInputTest)
 
 	t.Logf("Turning multi level compaction on")
+	opts.CompactionConcurrencyRange = func() (int, int) {
+		// Setting an upper limit greater than 1 is necessary to allow
+		// multilevel compactions to be picked.
+		return 1, 2
+	}
 	opts.Experimental.MultiLevelCompactionHeuristic = optionAlwaysMultiLevel
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_dummy",
 		setupInputTest)
