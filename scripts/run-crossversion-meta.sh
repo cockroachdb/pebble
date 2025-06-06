@@ -37,6 +37,7 @@ if [[ -z "${STRESS}" ]]; then
       -test.run 'TestMetaCrossVersion$' \
       -seed ${SEED:-0} \
       -factor ${FACTOR:-10} \
+      -artifacts ./artifacts \
       $(echo $VERSIONS)
 else
     stress -p 1 go test ./internal/metamorphic/crossversion \
@@ -45,6 +46,7 @@ else
       -test.run 'TestMetaCrossVersion$' \
       -seed ${SEED:-0} \
       -factor ${FACTOR:-10} \
+      -artifacts ./artifacts \
       $(echo $VERSIONS)
 fi
 
