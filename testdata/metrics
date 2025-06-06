@@ -336,6 +336,14 @@ L0.0:
 L6:
   000008:[a#0,SET-a#0,SET]
   000009:[b#0,SET-b#0,SET]
+Blob files:
+  000012 -> 000012 size:[92 (92B)] vals:[3 (3B)]
+  000014 -> 000014 size:[92 (92B)] vals:[3 (3B)]
+  000016 -> 000016 size:[92 (92B)] vals:[3 (3B)]
+  000018 -> 000018 size:[92 (92B)] vals:[3 (3B)]
+  000020 -> 000020 size:[92 (92B)] vals:[3 (3B)]
+  000022 -> 000022 size:[92 (92B)] vals:[3 (3B)]
+  000024 -> 000024 size:[92 (92B)] vals:[3 (3B)]
 
 metrics
 ----
@@ -400,6 +408,14 @@ L6:
   000029:[c@16#0,SET-c@16#0,SET]
   000030:[c@15#0,SET-c@15#0,SET]
   000031:[c@14#0,SET-c@14#0,SET]
+Blob files:
+  000012 -> 000012 size:[92 (92B)] vals:[3 (3B)]
+  000014 -> 000014 size:[92 (92B)] vals:[3 (3B)]
+  000016 -> 000016 size:[92 (92B)] vals:[3 (3B)]
+  000018 -> 000018 size:[92 (92B)] vals:[3 (3B)]
+  000020 -> 000020 size:[92 (92B)] vals:[3 (3B)]
+  000022 -> 000022 size:[92 (92B)] vals:[3 (3B)]
+  000024 -> 000024 size:[92 (92B)] vals:[3 (3B)]
 
 metrics
 ----
@@ -510,6 +526,14 @@ L6:
   000029:[c@16#0,SET-c@16#0,SET]
   000030:[c@15#0,SET-c@15#0,SET]
   000031:[c@14#0,SET-c@14#0,SET]
+Blob files:
+  000012 -> 000012 size:[92 (92B)] vals:[3 (3B)]
+  000014 -> 000014 size:[92 (92B)] vals:[3 (3B)]
+  000016 -> 000016 size:[92 (92B)] vals:[3 (3B)]
+  000018 -> 000018 size:[92 (92B)] vals:[3 (3B)]
+  000020 -> 000020 size:[92 (92B)] vals:[3 (3B)]
+  000022 -> 000022 size:[92 (92B)] vals:[3 (3B)]
+  000024 -> 000024 size:[92 (92B)] vals:[3 (3B)]
 
 # We expect the ingested-as-flushable count to be three (one for each ingested
 # table). The unknown category in the iter category stats is because of a gap
@@ -592,6 +616,14 @@ L6:
   000029:[c@16#0,SET-c@16#0,SET]
   000030:[c@15#0,SET-c@15#0,SET]
   000031:[c@14#0,SET-c@14#0,SET]
+Blob files:
+  000012 -> 000012 size:[92 (92B)] vals:[3 (3B)]
+  000014 -> 000014 size:[92 (92B)] vals:[3 (3B)]
+  000016 -> 000016 size:[92 (92B)] vals:[3 (3B)]
+  000018 -> 000018 size:[92 (92B)] vals:[3 (3B)]
+  000020 -> 000020 size:[92 (92B)] vals:[3 (3B)]
+  000022 -> 000022 size:[92 (92B)] vals:[3 (3B)]
+  000024 -> 000024 size:[92 (92B)] vals:[3 (3B)]
 
 metrics
 ----
@@ -666,6 +698,14 @@ L6:
   000030:[c@15#0,SET-c@15#0,SET]
   000031:[c@14#0,SET-c@14#0,SET]
   000051:[z#33,SET-z#33,SET]
+Blob files:
+  000012 -> 000012 size:[92 (92B)] vals:[3 (3B)]
+  000014 -> 000014 size:[92 (92B)] vals:[3 (3B)]
+  000016 -> 000016 size:[92 (92B)] vals:[3 (3B)]
+  000018 -> 000018 size:[92 (92B)] vals:[3 (3B)]
+  000020 -> 000020 size:[92 (92B)] vals:[3 (3B)]
+  000022 -> 000022 size:[92 (92B)] vals:[3 (3B)]
+  000024 -> 000024 size:[92 (92B)] vals:[3 (3B)]
 
 # There should be 2 backing tables. Note that tiny sstables have inaccurate
 # virtual sstable sizes.
@@ -757,6 +797,14 @@ L6:
   000031:[c@14#0,SET-c@14#0,SET]
   000051:[z#33,SET-z#33,SET]
   000052:[zz#35,SET-zz#35,SET]
+Blob files:
+  000012 -> 000012 size:[92 (92B)] vals:[3 (3B)]
+  000014 -> 000014 size:[92 (92B)] vals:[3 (3B)]
+  000016 -> 000016 size:[92 (92B)] vals:[3 (3B)]
+  000018 -> 000018 size:[92 (92B)] vals:[3 (3B)]
+  000020 -> 000020 size:[92 (92B)] vals:[3 (3B)]
+  000022 -> 000022 size:[92 (92B)] vals:[3 (3B)]
+  000024 -> 000024 size:[92 (92B)] vals:[3 (3B)]
 
 metrics-value
 num-backing
@@ -792,6 +840,14 @@ L6:
   000059:[m#0,SET-m#0,SET]
   000051:[z#33,SET-z#33,SET]
   000052:[zz#35,SET-zz#35,SET]
+Blob files:
+  000012 -> 000012 size:[92 (92B)] vals:[3 (3B)]
+  000014 -> 000014 size:[92 (92B)] vals:[3 (3B)]
+  000016 -> 000016 size:[92 (92B)] vals:[3 (3B)]
+  000018 -> 000018 size:[92 (92B)] vals:[3 (3B)]
+  000020 -> 000020 size:[92 (92B)] vals:[3 (3B)]
+  000022 -> 000022 size:[92 (92B)] vals:[3 (3B)]
+  000024 -> 000024 size:[92 (92B)] vals:[3 (3B)]
 
 # Virtual sstables metrics should be gone after the compaction.
 metrics-value

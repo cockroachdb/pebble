@@ -248,6 +248,8 @@ L1:
   000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
 L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+Blob files:
+  000003 -> 000003 size:[20535 (20KB)] vals:[25935 (25KB)]
 
 # Try to add another table referencing the blob file. Since the file is not
 # added in the same version edit, and no referencing table is deleted in the
@@ -272,6 +274,8 @@ L1:
   000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(000003: 14192); depth:1]
 L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+Blob files:
+  000003 -> 000003 size:[20535 (20KB)] vals:[25935 (25KB)]
 
 # Repeat the above but this time applying the entire lifecycle of a blob file in
 # a single bulk version edit. This simulates a manifest replay during startup.

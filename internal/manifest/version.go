@@ -191,13 +191,19 @@ type Version struct {
 // String implements fmt.Stringer, printing the TableMetadata for each level in
 // the Version.
 func (v *Version) String() string {
-	return v.string(false)
+	return v.string(v.cmp.FormatKey, false)
 }
 
 // DebugString returns an alternative format to String() which includes sequence
 // number and kind information for the sstable boundaries.
 func (v *Version) DebugString() string {
-	return v.string(true)
+	return v.string(v.cmp.FormatKey, true)
+}
+
+// DebugStringFormatKey is like DebugString but allows overriding key formatting
+// with the provided FormatKey.
+func (v *Version) DebugStringFormatKey(fmtKey base.FormatKey) string {
+	return v.string(fmtKey, true)
 }
 
 func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSlice) string {
@@ -211,10 +217,10 @@ func describeSublevels(format base.FormatKey, verbose bool, sublevels []LevelSli
 	return buf.String()
 }
 
-func (v *Version) string(verbose bool) string {
+func (v *Version) string(fmtKey base.FormatKey, verbose bool) string {
 	var buf bytes.Buffer
 	if len(v.L0SublevelFiles) > 0 {
-		fmt.Fprintf(&buf, "%s", describeSublevels(v.cmp.FormatKey, verbose, v.L0SublevelFiles))
+		fmt.Fprintf(&buf, "%s", describeSublevels(fmtKey, verbose, v.L0SublevelFiles))
 	}
 	for level := 1; level < NumLevels; level++ {
 		if v.Levels[level].Empty() {
@@ -222,7 +228,13 @@ func (v *Version) string(verbose bool) string {
 		}
 		fmt.Fprintf(&buf, "L%d:\n", level)
 		for f := range v.Levels[level].All() {
-			fmt.Fprintf(&buf, "  %s\n", f.DebugString(v.cmp.FormatKey, verbose))
+			fmt.Fprintf(&buf, "  %s\n", f.DebugString(fmtKey, verbose))
+		}
+	}
+	if v.BlobFiles.Count() > 0 {
+		fmt.Fprintf(&buf, "Blob files:\n")
+		for f := range v.BlobFiles.All() {
+			fmt.Fprintf(&buf, "  %s\n", f.String())
 		}
 	}
 	return buf.String()
