@@ -1130,7 +1130,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				isCompacting = true
 			}
 			origPC := pc
-			pc = pc.maybeAddLevel(opts, availBytes)
+			pc = pc.maybeAddLevel(opts, availBytes, nil /* no in progress compactions */)
 			// If pc points to a new pickedCompaction, a new multi level compaction
 			// was initialized.
 			initMultiLevel := pc != origPC
