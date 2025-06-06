@@ -480,7 +480,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := opts.CheckCompatibility(previousOptions); err != nil {
+		if err := opts.CheckCompatibility(dirname, previousOptions); err != nil {
 			return nil, err
 		}
 	}
