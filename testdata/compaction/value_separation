@@ -120,22 +120,22 @@ z: (zoo, .)
 
 metrics
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |     multilevel
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  |    top   in  read
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+------------------
-    0 |     0     0B     0B       0 |    -    0    0 |   41B |     0     0B |     0     0B |     1   848B |    0B |   0 25.6 |    0B    0B    0B
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   848B |     0     0B |    0B |   0    0 |    0B    0B    0B
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B    0B    0B
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   848B |     0     0B |    0B |   0    0 |    0B    0B    0B
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0 |    0B    0B    0B
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   848B |     0     0B |    0B |   0    0 |    0B    0B    0B
-    6 |     1   899B     0B       0 |    - 0.00 0.00 |  848B |     0     0B |     0     0B |     1   899B | 1.7KB |   1 1.19 |    0B    0B    0B
-total |     1   899B     0B       0 |    -    -    - |   41B |     0     0B |     3  2.5KB |     2  1.7KB | 1.7KB |   1 51.2 |    0B    0B    0B
-------------------------------------------------------------------------------------------------------------------------------------------------
+      |                             |                |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B       0 |    -    0    0 |   41B |     0     0B |     0     0B |     1   848B |    0B |   0 25.6
+    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   848B |     0     0B |    0B |   0    0
+    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   848B |     0     0B |    0B |   0    0
+    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   848B |     0     0B |    0B |   0    0
+    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   848B |     0     0B |    0B |   0    0
+    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     1   848B |     0     0B |    0B |   0    0
+    6 |     1   899B     0B       0 |    - 0.00 0.00 |  848B |     0     0B |     0     0B |     1   899B | 1.7KB |   1 1.19
+total |     1   899B     0B       0 |    -    -    - |   41B |     0     0B |     5  4.1KB |     2  1.7KB | 1.7KB |   1 51.2
+----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 30B  written: 41B (37% overhead)
 Flushes: 1
-Compactions: 4  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 3  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 2  blob-file-rewrite:  0
+Compactions: 6  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
+             default: 1  delete: 0  elision: 0  move: 5  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -143,8 +143,8 @@ Virtual tables: 0 (0B)
 Local tables size: 899B
 Compression types: snappy: 1
 Table stats: all loaded
-Block cache: 4 entries (1.6KB)  hit rate: 70.3%
-File cache: 1 tables, 1 blobfiles (376B)  hit rate: 82.2%
+Block cache: 4 entries (1.6KB)  hit rate: 77.6%
+File cache: 1 tables, 1 blobfiles (376B)  hit rate: 86.9%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0

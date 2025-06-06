@@ -2,7 +2,43 @@
 # The multilevel compaction tests mainly live in
 # /testdata/compaction_setup_inputs_multilevel_write_amp
 
+# By default, multi level compactions should be disable due to the
+# default compaction concurrency of 1.
+
+define level-max-bytes=(L2 : 5) auto-compactions=off
+L1
+  a.SET.3:v b.SET.2:v
+L2
+  a.SET.2:v c.SET.4:v
+L3
+  c.SET.3:v d.SET.2:v
+L4
+  c.SET.2:v d.SET.1:v
+----
+L1:
+  000004:[a#3,SET-b#2,SET]
+L2:
+  000005:[a#2,SET-c#4,SET]
+L3:
+  000006:[c#3,SET-d#2,SET]
+L4:
+  000007:[c#2,SET-d#1,SET]
+
+compact a-b L1
+----
+L2:
+  000008:[a#3,SET-c#4,SET]
+L3:
+  000006:[c#3,SET-d#2,SET]
+L4:
+  000007:[c#2,SET-d#1,SET]
+
 # A vanilla multi level compaction
+
+# Set concurrent compactions to 2 for the remainder of the tests.
+set-concurrent-compactions max=2
+----
+
 define level-max-bytes=(L2 : 5) auto-compactions=off
 L1
   a.SET.3:v b.SET.2:v
@@ -79,7 +115,7 @@ L4:
   000006:[c#2,SET-d#1,SET]
 
 # Conduct a multi input compaction without intermediate or output level, basically a move.
-define level-max-bytes=(L2 : 5) auto-compactions=off multi-input-level
+define level-max-bytes=(L2 : 5) auto-compactions=off
 L1
   a.SET.3:v b.SET.2:v
 L4
@@ -98,7 +134,7 @@ L4:
   000005:[c#2,SET-d#1,SET]
 
 # Don't conduct a multi level compaction on L0.
-define level-max-bytes=(L1 : 5) auto-compactions=off multi-input-level
+define level-max-bytes=(L1 : 5) auto-compactions=off
 L0
   a.SET.1:v b.SET.2:v
 L1
@@ -119,3 +155,87 @@ L1:
   000007:[a#3,SET-c#4,SET]
 L2:
   000006:[c#2,SET-d#2,SET]
+
+
+# Only one multiLevel compaction should be picked at a time.
+define auto-compactions=off
+L1
+  a.SET.21:v f.SET.22:v
+L1
+  k.SET.25:v n.SET.26:v
+L2
+  k.SET.7:v m.SET.10:v
+L2
+  a.SET.11:v d.SET.13:v
+L3
+  a.SET.1:v f.SET.2:v
+L3
+  k.SET.3:v n.SET.5:v
+----
+L1:
+  000004:[a#21,SET-f#22,SET]
+  000005:[k#25,SET-n#26,SET]
+L2:
+  000007:[a#11,SET-d#13,SET]
+  000006:[k#7,SET-m#10,SET]
+L3:
+  000008:[a#1,SET-f#2,SET]
+  000009:[k#3,SET-n#5,SET]
+
+add-ongoing-compaction startLevel=1 extraLevels=(2) outputLevel=3 start=k end=n
+----
+
+compact a-b L1
+----
+L1:
+  000005:[k#25,SET-n#26,SET]
+L2:
+  000010:[a#21,SET-f#22,SET]
+  000006:[k#7,SET-m#10,SET]
+L3:
+  000008:[a#1,SET-f#2,SET]
+  000009:[k#3,SET-n#5,SET]
+
+
+remove-ongoing-compaction
+----
+
+
+# Define the same LSM as above and run the compaction on a-b again. This time there
+# is no ongoing multilevel compaction, which should allow the compaction on a-b to
+# expand to include L3.
+
+
+define auto-compactions=off
+L1
+  a.SET.21:v f.SET.22:v
+L1
+  k.SET.25:v n.SET.26:v
+L2
+  k.SET.7:v m.SET.10:v
+L2
+  a.SET.11:v d.SET.13:v
+L3
+  a.SET.1:v f.SET.2:v
+L3
+  k.SET.3:v n.SET.5:v
+----
+L1:
+  000004:[a#21,SET-f#22,SET]
+  000005:[k#25,SET-n#26,SET]
+L2:
+  000007:[a#11,SET-d#13,SET]
+  000006:[k#7,SET-m#10,SET]
+L3:
+  000008:[a#1,SET-f#2,SET]
+  000009:[k#3,SET-n#5,SET]
+
+compact a-b L1
+----
+L1:
+  000005:[k#25,SET-n#26,SET]
+L2:
+  000006:[k#7,SET-m#10,SET]
+L3:
+  000010:[a#0,SET-f#0,SET]
+  000009:[k#3,SET-n#5,SET]
