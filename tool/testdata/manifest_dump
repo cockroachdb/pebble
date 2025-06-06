@@ -34,7 +34,7 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000004:709<#12-#14>[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
   000004:709<#12-#14>[bar#14,DEL-foo#13,SET]
@@ -63,7 +63,7 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000004:709<#12-#14>[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
   000004:709<#12-#14>[bar#14,DEL-foo#13,SET]
@@ -122,7 +122,7 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000004:709<#12-#14>[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
   000004:709<#12-#14>[bar#14,DEL-foo#13,SET]
@@ -146,7 +146,7 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000004:709<#12-#14>[626172#14,DEL-666f6f#13,SET] (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[626172#14,DEL-666f6f#13,SET] seqnums:[12-14] points:[626172#14,DEL-666f6f#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
   000004:709<#12-#14>[626172#14,DEL-666f6f#13,SET]
@@ -170,7 +170,7 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000004:709<#12-#14> (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[#14,DEL-#13,SET] seqnums:[12-14] points:[#14,DEL-#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
   000004:709<#12-#14>
@@ -194,7 +194,7 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000004:709<#12-#14>[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
   000004:709<#12-#14>[bar#14,DEL-foo#13,SET]
@@ -218,7 +218,7 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000004:709<#12-#14>[test formatter: bar#14,DEL-test formatter: foo#13,SET] (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[test formatter: bar#14,DEL-test formatter: foo#13,SET] seqnums:[12-14] points:[test formatter: bar#14,DEL-test formatter: foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 --- L0.0 ---
   000004:709<#12-#14>[test formatter: bar#14,DEL-test formatter: foo#13,SET]
@@ -262,13 +262,13 @@ MANIFEST-invalid
   log-num:       2
   next-file-num: 5
   last-seq-num:  20
-  added:         L6 000001:0<#2-#5>[#0,DEL-#0,DEL]
+  add-table:     L6 000001:[#0,DEL-#0,DEL] seqnums:[2-5] points:[#0,DEL-#0,DEL]
 65/1
   comparer:     leveldb.BytewiseComparator
   log-num:       3
   next-file-num: 5
   last-seq-num:  20
-  added:         L6 000002:0<#1-#4>[#0,DEL-#0,DEL]
+  add-table:     L6 000002:[#0,DEL-#0,DEL] seqnums:[1-4] points:[#0,DEL-#0,DEL]
 EOF
 pebble: files 000002:[#0,DEL-#0,DEL] and 000001:[#0,DEL-#0,DEL] collided on sort keys
 
@@ -303,38 +303,38 @@ MANIFEST-000001
   log-num:       4
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000005:647<#10-#14>[aaa#10,SET-ccc#14,MERGE] (2023-12-12T18:55:00Z)
+  add-table:     L0 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[10-14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
 90/3
   next-file-num: 6
   last-seq-num:  14
-  deleted:       L0 000005
-  added:         L6 000005:647<#10-#14>[aaa#10,SET-ccc#14,MERGE] (2023-12-12T18:55:00Z)
+  del-table:     L0 000005
+  add-table:     L6 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[10-14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
 143/4
   next-file-num: 7
   last-seq-num:  15
-  added:         L0 000006:680<#15-#15>[bbb#15,SET-ccc#15,SET] (2023-12-12T18:55:00Z)
+  add-table:     L0 000006:[bbb#15,SET-ccc#15,SET] seqnums:[15-15] points:[bbb#15,SET-ccc#15,SET] size:680 (2023-12-12T18:55:00Z)
 193/5
   next-file-num: 8
   last-seq-num:  16
-  added:         L6 000007:671<#16-#16>[ddd#16,SET-ddd#16,SET] (2023-12-12T18:55:00Z)
+  add-table:     L6 000007:[ddd#16,SET-ddd#16,SET] seqnums:[16-16] points:[ddd#16,SET-ddd#16,SET] size:671 (2023-12-12T18:55:00Z)
 243/6
   next-file-num: 9
   last-seq-num:  16
-  deleted:       L0 000006
-  deleted:       L6 000005
-  added:         L6 000008:738<#0-#15>[aaa#0,SET-ccc#0,MERGE] (2023-12-12T18:55:00Z)
+  del-table:     L0 000006
+  del-table:     L6 000005
+  add-table:     L6 000008:[aaa#0,SET-ccc#0,MERGE] seqnums:[0-15] points:[aaa#0,SET-ccc#0,MERGE] size:738 (2023-12-12T18:55:00Z)
 299/7
   log-num:       9
   next-file-num: 11
   last-seq-num:  19
-  added:         L0 000010:736<#17-#19>[aaa#17,DEL-eee#inf,RANGEDEL] (2023-12-12T18:55:00Z)
+  add-table:     L0 000010:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[17-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:736 (2023-12-12T18:55:00Z)
 351/8
   next-file-num: 12
   last-seq-num:  19
-  deleted:       L0 000010
-  deleted:       L6 000007
-  deleted:       L6 000008
-  added:         L6 000011:870<#0-#19>[aaa#17,DEL-eee#inf,RANGEDEL] (2023-12-12T18:55:00Z)
+  del-table:     L0 000010
+  del-table:     L6 000007
+  del-table:     L6 000008
+  add-table:     L6 000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[0-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870 (2023-12-12T18:55:00Z)
 EOF
 --- L0 ---
 --- L1 ---
@@ -353,39 +353,42 @@ MANIFEST-000001
   comparer:     alt-comparer
   next-file-num: 2
 25/1
-38/1
+  log-num:       2
+  next-file-num: 3
+  last-seq-num:  9
+38/2
   log-num:       4
   next-file-num: 6
   last-seq-num:  14
-  added:         L0 000005:647<#10-#14>[aaa#10,SET-ccc#14,MERGE] (2023-12-12T18:55:00Z)
-90/2
+  add-table:     L0 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[10-14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
+90/3
   next-file-num: 6
   last-seq-num:  14
-  deleted:       L0 000005
-  added:         L6 000005:647<#10-#14>[aaa#10,SET-ccc#14,MERGE] (2023-12-12T18:55:00Z)
-143/3
+  del-table:     L0 000005
+  add-table:     L6 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[10-14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
+143/4
   next-file-num: 7
   last-seq-num:  15
-  added:         L0 000006:680<#15-#15>[bbb#15,SET-ccc#15,SET] (2023-12-12T18:55:00Z)
-193/4
-243/4
+  add-table:     L0 000006:[bbb#15,SET-ccc#15,SET] seqnums:[15-15] points:[bbb#15,SET-ccc#15,SET] size:680 (2023-12-12T18:55:00Z)
+193/5
+243/5
   next-file-num: 9
   last-seq-num:  16
-  deleted:       L0 000006
-  deleted:       L6 000005
-  added:         L6 000008:738<#0-#15>[aaa#0,SET-ccc#0,MERGE] (2023-12-12T18:55:00Z)
-299/5
+  del-table:     L0 000006
+  del-table:     L6 000005
+  add-table:     L6 000008:[aaa#0,SET-ccc#0,MERGE] seqnums:[0-15] points:[aaa#0,SET-ccc#0,MERGE] size:738 (2023-12-12T18:55:00Z)
+299/6
   log-num:       9
   next-file-num: 11
   last-seq-num:  19
-  added:         L0 000010:736<#17-#19>[aaa#17,DEL-eee#inf,RANGEDEL] (2023-12-12T18:55:00Z)
-351/6
+  add-table:     L0 000010:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[17-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:736 (2023-12-12T18:55:00Z)
+351/7
   next-file-num: 12
   last-seq-num:  19
-  deleted:       L0 000010
-  deleted:       L6 000007
-  deleted:       L6 000008
-  added:         L6 000011:870<#0-#19>[aaa#17,DEL-eee#inf,RANGEDEL] (2023-12-12T18:55:00Z)
+  del-table:     L0 000010
+  del-table:     L6 000007
+  del-table:     L6 000008
+  add-table:     L6 000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[0-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870 (2023-12-12T18:55:00Z)
 EOF
 --- L0 ---
 --- L1 ---
@@ -416,10 +419,40 @@ MANIFEST-000001
   log-num:       4
   next-file-num: 6
   last-seq-num:  38
-  added:         L0 000005:1056<#10-#38>[a#38,RANGEKEYDEL-z@1#35,SET] (2023-12-11T18:59:04Z)
+  add-table:     L0 000005:[a#38,RANGEKEYDEL-z@1#35,SET] seqnums:[10-38] points:[a@1#10,SET-z@1#35,SET] ranges:[a#38,RANGEKEYDEL-z#inf,RANGEKEYSET] size:1056 (2023-12-11T18:59:04Z)
 EOF
 --- L0.0 ---
   000005:1056<#10-#38>[a#38,RANGEKEYDEL-z@1#35,SET]
+--- L1 ---
+--- L2 ---
+--- L3 ---
+--- L4 ---
+--- L5 ---
+--- L6 ---
+
+manifest dump
+./testdata/find-val-sep-db/MANIFEST-000001
+----
+MANIFEST-000001
+0/0
+  comparer:     leveldb.BytewiseComparator
+  next-file-num: 2
+39/1
+  log-num:       4
+  next-file-num: 7
+  last-seq-num:  13
+  add-table:     L0 000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[10-13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:791 blobrefs:[(000006: 18); depth:1] (2025-05-28T18:51:26Z)
+  add-blob-file: 000006 size:[109 (109B)] vals:[18 (18B)]
+107/2
+  log-num:       7
+  next-file-num: 10
+  last-seq-num:  15
+  add-table:     L0 000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[14-15] points:[eee\x00#14,SET-fff\x00#15,SET] size:759 blobrefs:[(000009: 13); depth:1] (2025-05-28T18:51:26Z)
+  add-blob-file: 000009 size:[103 (103B)] vals:[13 (13B)]
+EOF
+--- L0.0 ---
+  000005:791<#10-#13>[aaa\x00#10,SET-ddd\x00#13,SET]
+  000008:759<#14-#15>[eee\x00#14,SET-fff\x00#15,SET]
 --- L1 ---
 --- L2 ---
 --- L3 ---

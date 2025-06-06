@@ -560,7 +560,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	var buf bytes.Buffer
 	if v.ComparerName != "" {
-		fmt.Fprintf(&buf, "  comparer:     %s", v.ComparerName)
+		fmt.Fprintf(&buf, "  comparer:     %s\n", v.ComparerName)
 	}
 	if v.MinUnflushedLogNum != 0 {
 		fmt.Fprintf(&buf, "  log-num:       %d\n", v.MinUnflushedLogNum)
