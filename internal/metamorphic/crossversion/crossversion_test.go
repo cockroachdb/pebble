@@ -276,7 +276,7 @@ func runVersion(
 
 				if err := r.run(ctx, t, out); err != nil {
 					var dirs dirsToSave
-					dirs.add(rootDir, runID)
+					dirs.add(r.dir, runID)
 					if s.path != "" {
 						dirs.add(s.path, runID+"-initial-state")
 					}
