@@ -1986,7 +1986,7 @@ type ErrMissingWALRecoveryDir struct {
 
 // Error implements error.
 func (e ErrMissingWALRecoveryDir) Error() string {
-	return fmt.Sprintf("directory %q may contain relevant WALs%s", e.Dir, e.ExtraInfo)
+	return fmt.Sprintf("directory %q may contain relevant WALs but is not in WALRecoveryDirs%s", e.Dir, e.ExtraInfo)
 }
 
 // CheckCompatibility verifies the options are compatible with the previous options
@@ -1995,7 +1995,9 @@ func (e ErrMissingWALRecoveryDir) Error() string {
 //
 // This function only looks at specific keys and does not error out if the
 // options are newer and contain unknown keys.
-func (o *Options) CheckCompatibility(previousOptions string) error {
+func (o *Options) CheckCompatibility(storeDir string, previousOptions string) error {
+	previousWALDir := ""
+
 	visitKeyValue := func(i, j int, section, key, value string) error {
 		switch section + "." + key {
 		case "Options.comparer":
@@ -2010,37 +2012,65 @@ func (o *Options) CheckCompatibility(previousOptions string) error {
 				return errors.Errorf("pebble: merger name from file %q != merger name from options %q",
 					errors.Safe(value), errors.Safe(o.Merger.Name))
 			}
-		case "Options.wal_dir", "WAL Failover.secondary_dir":
-			switch {
-			case value == "":
-				return nil
-			case o.WALDir == value:
-				return nil
-			case o.WALFailover != nil && o.WALFailover.Secondary.Dirname == value:
-				return nil
-			default:
-				for _, d := range o.WALRecoveryDirs {
-					if d.Dirname == value {
-						return nil
-					}
-				}
-				var buf bytes.Buffer
-				fmt.Fprintf(&buf, "\n  OPTIONS key: %s\n", section+"."+key)
-				if o.WALDir != "" {
-					fmt.Fprintf(&buf, "  o.WALDir: %s\n", o.WALDir)
-				}
-				if o.WALFailover != nil {
-					fmt.Fprintf(&buf, "  o.WALFailover.Secondary.Dirname: %s\n", o.WALFailover.Secondary.Dirname)
-				}
-				for _, d := range o.WALRecoveryDirs {
-					fmt.Fprintf(&buf, "  WALRecoveryDir: %s\n", d)
-				}
-				return ErrMissingWALRecoveryDir{Dir: value, ExtraInfo: buf.String()}
+		case "Options.wal_dir":
+			previousWALDir = value
+		case "WAL Failover.secondary_dir":
+			previousWALSecondaryDir := value
+			if err := o.checkWALDir(storeDir, previousWALSecondaryDir, "WALFailover.Secondary changed from previous options"); err != nil {
+				return err
 			}
 		}
 		return nil
 	}
-	return parseOptions(previousOptions, parseOptionsFuncs{visitKeyValue: visitKeyValue})
+	if err := parseOptions(previousOptions, parseOptionsFuncs{visitKeyValue: visitKeyValue}); err != nil {
+		return err
+	}
+	if err := o.checkWALDir(storeDir, previousWALDir, "WALDir changed from previous options"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// checkWALDir verifies that walDir is among o.WALDir, o.WALFailover.Secondary,
+// or o.WALRecoveryDirs. An empty "walDir" maps to the storeDir.
+func (o *Options) checkWALDir(storeDir, walDir, errContext string) error {
+	walPath := resolveStorePath(storeDir, walDir)
+	if walDir == "" {
+		walPath = storeDir
+	}
+
+	if o.WALDir == "" {
+		if walPath == storeDir {
+			return nil
+		}
+	} else {
+		if walPath == resolveStorePath(storeDir, o.WALDir) {
+			return nil
+		}
+	}
+
+	if o.WALFailover != nil && walPath == resolveStorePath(storeDir, o.WALFailover.Secondary.Dirname) {
+		return nil
+	}
+
+	for _, d := range o.WALRecoveryDirs {
+		// TODO(radu): should we also check that d.FS is the same as walDir's FS?
+		if walPath == resolveStorePath(storeDir, d.Dirname) {
+			return nil
+		}
+	}
+
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "\n  %s\n", errContext)
+	fmt.Fprintf(&buf, "  o.WALDir: %q\n", o.WALDir)
+	if o.WALFailover != nil {
+		fmt.Fprintf(&buf, "  o.WALFailover.Secondary.Dirname: %q\n", o.WALFailover.Secondary.Dirname)
+	}
+	fmt.Fprintf(&buf, "  o.WALRecoveryDirs: %d", len(o.WALRecoveryDirs))
+	for _, d := range o.WALRecoveryDirs {
+		fmt.Fprintf(&buf, "\n    %q", d.Dirname)
+	}
+	return ErrMissingWALRecoveryDir{Dir: walPath, ExtraInfo: buf.String()}
 }
 
 // Validate verifies that the options are mutually consistent. For example,

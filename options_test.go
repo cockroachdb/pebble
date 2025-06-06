@@ -140,19 +140,20 @@ func TestOptionsString(t *testing.T) {
 }
 
 func TestOptionsCheckCompatibility(t *testing.T) {
+	storeDir := "/mnt/foo"
 	var opts *Options
 	opts = opts.EnsureDefaults()
 	s := opts.String()
-	require.NoError(t, opts.CheckCompatibility(s))
-	require.Regexp(t, `invalid key=value syntax`, opts.CheckCompatibility("foo\n"))
+	require.NoError(t, opts.CheckCompatibility(storeDir, s))
+	require.Regexp(t, `invalid key=value syntax`, opts.CheckCompatibility(storeDir, "foo\n"))
 
 	tmp := *opts
 	tmp.Comparer = &Comparer{Name: "foo"}
-	require.Regexp(t, `comparer name from file.*!=.*`, tmp.CheckCompatibility(s))
+	require.Regexp(t, `comparer name from file.*!=.*`, tmp.CheckCompatibility(storeDir, s))
 
 	tmp = *opts
 	tmp.Merger = &Merger{Name: "foo"}
-	require.Regexp(t, `merger name from file.*!=.*`, tmp.CheckCompatibility(s))
+	require.Regexp(t, `merger name from file.*!=.*`, tmp.CheckCompatibility(storeDir, s))
 
 	// RocksDB uses a similar (INI-style) syntax for the OPTIONS file, but
 	// different section names and keys.
@@ -163,14 +164,14 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 `
 	tmp = *opts
 	tmp.Comparer = &Comparer{Name: "foo"}
-	require.Regexp(t, `comparer name from file.*!=.*`, tmp.CheckCompatibility(s))
+	require.Regexp(t, `comparer name from file.*!=.*`, tmp.CheckCompatibility(storeDir, s))
 
 	tmp.Comparer = &Comparer{Name: "rocksdb-comparer"}
 	tmp.Merger = &Merger{Name: "foo"}
-	require.Regexp(t, `merger name from file.*!=.*`, tmp.CheckCompatibility(s))
+	require.Regexp(t, `merger name from file.*!=.*`, tmp.CheckCompatibility(storeDir, s))
 
 	tmp.Merger = &Merger{Name: "rocksdb-merger"}
-	require.NoError(t, tmp.CheckCompatibility(s))
+	require.NoError(t, tmp.CheckCompatibility(storeDir, s))
 
 	// RocksDB allows the merge operator to be unspecified, in which case it
 	// shows up as "nullptr".
@@ -179,11 +180,11 @@ func TestOptionsCheckCompatibility(t *testing.T) {
   merge_operator=nullptr
 `
 	tmp = *opts
-	require.NoError(t, tmp.CheckCompatibility(s))
+	require.NoError(t, tmp.CheckCompatibility(storeDir, s))
 
 	// Check that an OPTIONS file that configured an explicit WALDir that will
 	// no longer be used errors if it's not also present in WALRecoveryDirs.
-	err := (&Options{}).EnsureDefaults().CheckCompatibility(`
+	err := (&Options{}).EnsureDefaults().CheckCompatibility(storeDir, `
 [Options]
   wal_dir=external-wal-dir
 `)
@@ -192,21 +193,48 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 	require.Equal(t, "external-wal-dir", missingWALRecoveryDirErr.Dir)
 
 	// But not if it's configured as a WALRecoveryDir or current WALDir.
-	require.NoError(t,
-		(&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "external-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+	opts = &Options{WALRecoveryDirs: []wal.Dir{{Dirname: "external-wal-dir"}}}
+	opts.EnsureDefaults()
+	require.NoError(t, opts.CheckCompatibility(storeDir, `
 [Options]
   wal_dir=external-wal-dir
 `))
-	require.NoError(t,
-		(&Options{WALDir: "external-wal-dir"}).EnsureDefaults().CheckCompatibility(`
+	opts = &Options{WALDir: "external-wal-dir"}
+	opts.EnsureDefaults()
+	require.NoError(t, opts.CheckCompatibility(storeDir, `
 [Options]
   wal_dir=external-wal-dir
 `))
 
+	// Check that an OPTIONS file that was configured without an explicit WALDir
+	// errors out if the store path is not in WALRecoveryDirs.
+	opts = &Options{WALDir: "external-wal-dir"}
+	opts.EnsureDefaults()
+	err = opts.CheckCompatibility(storeDir, `
+[Options]
+  wal_dir=
+`)
+	require.True(t, errors.As(err, &missingWALRecoveryDirErr))
+	require.Equal(t, storeDir, missingWALRecoveryDirErr.Dir)
+
+	// Should be the same as above.
+	err = opts.CheckCompatibility(storeDir, ``)
+	require.True(t, errors.As(err, &missingWALRecoveryDirErr))
+	require.Equal(t, storeDir, missingWALRecoveryDirErr.Dir)
+
+	opts.WALRecoveryDirs = []wal.Dir{{Dirname: storePathIdentifier}}
+	require.NoError(t, (&Options{}).EnsureDefaults().CheckCompatibility(storeDir, `
+[Options]
+  wal_dir=
+`))
+
+	// Should be the same as above.
+	require.NoError(t, (&Options{}).EnsureDefaults().CheckCompatibility(storeDir, ``))
+
 	// Check that an OPTIONS file that configured a secondary failover WAL dir
 	// that will no longer be used errors if it's not also present in
 	// WALRecoveryDirs.
-	err = (&Options{}).EnsureDefaults().CheckCompatibility(`
+	err = (&Options{}).EnsureDefaults().CheckCompatibility(storeDir, `
 [Options]
 
 [WAL Failover]
@@ -217,13 +245,17 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 
 	// But not if it's configured as a WALRecoveryDir or current failover
 	// secondary dir.
-	require.NoError(t, (&Options{WALRecoveryDirs: []wal.Dir{{Dirname: "failover-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+	opts = &Options{WALRecoveryDirs: []wal.Dir{{Dirname: "failover-wal-dir"}}}
+	opts.EnsureDefaults()
+	require.NoError(t, opts.CheckCompatibility(storeDir, `
 [Options]
 
 [WAL Failover]
   secondary_dir=failover-wal-dir
 `))
-	require.NoError(t, (&Options{WALFailover: &WALFailoverOptions{Secondary: wal.Dir{Dirname: "failover-wal-dir"}}}).EnsureDefaults().CheckCompatibility(`
+	opts = &Options{WALFailover: &WALFailoverOptions{Secondary: wal.Dir{Dirname: "failover-wal-dir"}}}
+	opts.EnsureDefaults()
+	require.NoError(t, opts.CheckCompatibility(storeDir, `
 [Options]
 
 [WAL Failover]
