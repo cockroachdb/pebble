@@ -183,13 +183,7 @@ func CompareHistories(t TestingT, paths []string) (i int, diff string) {
 	for i := 1; i < len(paths); i++ {
 		lines := readHistory(t, paths[i])
 		lines = reorderHistory(lines)
-		diff := difflib.UnifiedDiff{
-			A:       base,
-			B:       lines,
-			Context: 5,
-		}
-		text, err := difflib.GetUnifiedDiffString(diff)
-		require.NoError(t, err)
+		text := lineByLineDiff(base, lines)
 		if text != "" {
 			return i, text
 		}
