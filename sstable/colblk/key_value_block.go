@@ -14,7 +14,7 @@ import (
 const keyValueBlockCustomHeaderSize = 0
 
 // KeyValueBlockWriter writes key value blocks. The writer is used as a
-// drop-in replacement for the metaindex block.
+// drop-in replacement for the metaindex and properties blocks.
 // The key value block schema consists of two primary columns:
 //   - Key: represented by RawBytes
 //   - Value: represented by RawBytes
@@ -55,6 +55,8 @@ func (w *KeyValueBlockWriter) size(rows int) int {
 	off := HeaderSize(keyValueBlockColumnCount, keyValueBlockCustomHeaderSize)
 	off = w.keys.Size(rows, off)
 	off = w.values.Size(rows, off)
+	// Add a padding byte at the end to allow the block's end to be represented
+	// as a pointer to allocated memory.
 	off++
 	return int(off)
 }

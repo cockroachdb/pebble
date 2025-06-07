@@ -56,14 +56,15 @@ type Reader struct {
 
 	err error
 
-	indexBH      block.Handle
-	filterBH     block.Handle
-	rangeDelBH   block.Handle
-	rangeKeyBH   block.Handle
-	valueBIH     valblk.IndexHandle
-	propertiesBH block.Handle
-	metaindexBH  block.Handle
-	footerBH     block.Handle
+	indexBH        block.Handle
+	filterBH       block.Handle
+	rangeDelBH     block.Handle
+	rangeKeyBH     block.Handle
+	valueBIH       valblk.IndexHandle
+	propertiesBH   block.Handle
+	metaindexBH    block.Handle
+	footerBH       block.Handle
+	blobRefIndexBH block.Handle
 
 	tableFormat    TableFormat
 	Attributes     Attributes
@@ -468,6 +469,10 @@ func (r *Reader) readMetaindex(
 		return errors.New("did not read any value for the properties block in the meta index")
 	}
 
+	if bh, ok := meta[metaBlobRefIndexName]; ok {
+		r.blobRefIndexBH = bh
+	}
+
 	if bh, ok := meta[metaRangeDelV2Name]; ok {
 		r.rangeDelBH = bh
 	} else if _, ok := meta[metaRangeDelV1Name]; ok {
@@ -562,14 +567,15 @@ func (r *Reader) Layout() (*Layout, error) {
 	}
 
 	l := &Layout{
-		Data:       make([]block.HandleWithProperties, 0),
-		RangeDel:   r.rangeDelBH,
-		RangeKey:   r.rangeKeyBH,
-		ValueIndex: r.valueBIH.Handle,
-		Properties: r.propertiesBH,
-		MetaIndex:  r.metaindexBH,
-		Footer:     r.footerBH,
-		Format:     r.tableFormat,
+		Data:               make([]block.HandleWithProperties, 0),
+		RangeDel:           r.rangeDelBH,
+		RangeKey:           r.rangeKeyBH,
+		ValueIndex:         r.valueBIH.Handle,
+		Properties:         r.propertiesBH,
+		MetaIndex:          r.metaindexBH,
+		Footer:             r.footerBH,
+		Format:             r.tableFormat,
+		BlobReferenceIndex: r.blobRefIndexBH,
 	}
 	if r.filterBH.Length > 0 {
 		l.Filter = []NamedBlockHandle{{Name: "fullfilter." + r.tableFilter.policy.Name(), Handle: r.filterBH}}
@@ -712,6 +718,10 @@ func (r *Reader) ValidateBlockChecksums() error {
 	})
 	blocks = append(blocks, blk{
 		bh:     l.MetaIndex,
+		readFn: readNoInit,
+	})
+	blocks = append(blocks, blk{
+		bh:     l.BlobReferenceIndex,
 		readFn: readNoInit,
 	})
 

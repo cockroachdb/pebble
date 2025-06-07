@@ -326,7 +326,7 @@ func (d *blobValueBlockDecoder) DebugString() string {
 
 // Describe describes the binary format of the blob value block, assuming
 // f.Offset() is positioned at the beginning of the same blob value block
-// described by r.
+// described by d.
 func (d *blobValueBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
