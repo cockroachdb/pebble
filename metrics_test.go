@@ -91,6 +91,12 @@ func exampleMetrics() Metrics {
 	m.Table.Local.ZombieSize = 30
 	m.Table.PendingStatsCollectionCount = 31
 	m.Table.InitialStatsCollectionComplete = true
+	m.Table.Garbage.PointDeletionsBytesEstimate = 1024
+	m.Table.Garbage.RangeDeletionsBytesEstimate = 2048
+	m.Table.CompressedCountMinLZ = 32
+	m.Table.CompressedCountSnappy = 33
+	m.Table.CompressedCountZstd = 34
+	m.Table.CompressedCountNone = 35
 
 	for i := range m.Levels {
 		l := &m.Levels[i]
@@ -116,6 +122,10 @@ func exampleMetrics() Metrics {
 		l.TablesFlushed = base + 11
 		l.TablesIngested = base + 12
 		l.TablesMoved = base + 13
+		l.Additional.ValueBlocksSize = base + 14
+		l.BlobBytesCompacted = base + 15
+		l.BlobBytesFlushed = base + 16
+		l.BlobBytesReadEstimate = base + 17
 		l.MultiLevel.TableBytesInTop = base + 4
 		l.MultiLevel.TableBytesIn = base + 4
 		l.MultiLevel.TableBytesRead = base + 4

@@ -10,74 +10,92 @@ error opening database at "non-existent": pebble: database "non-existent" does n
 db lsm
 ../testdata/db-stage-4
 ----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     1   709B     0B       0 |    - 0.50 0.50 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-total |     1   709B     0B       0 |    -    -    - |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-----------------------------------------------------------------------------------------------------------------------------
-WAL: 0 files (0B)  in: 0B  written: 0B (0% overhead)
-Flushes: 0
-Compactions: 0  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
-MemTables: 1 (256KB)  zombie: 0 (0B)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 709B
-Compression types: unknown: 1
-Table stats: <redacted>
-Block cache: 0 entries (0B)  hit rate: 0.0%
-Table cache: 0 entries (0B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: <redacted>
+LSM   |                        |    virtual   |   value sep   |        |   ingested   |    amp
+level | aggsize | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+------+---------+--------------+--------------+---------------+--------+--------------+----------
+    0 |    709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    1 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total |    709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+-------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE           ITERATORS             TABLES                  CGO MEMORY        COMPACTIONS
+wals                      block cache           stats initial load        0B tot          0B estimated debt
+  0 files (0B)              0 entries (0B)       in progress            block cache       0 in-progress (0B)
+  0B  written: 0B           0.0% hit rate       backing: 0B (0)           0B tot          0 cancelled (0B)
+  (0.0% overhead)         file cache            zombie:  0B (0)           0B data         0 failed
+memtables                   0 entries (0B)               0B local         0B maps         0 problem spans
+  flushes: 0                0.0% hit rate                                 0B ents
+  live:    1 (256KB)      bloom filter          BLOB FILES              memtables         COMPRESSION
+  zombie:  0 (0B)           0.0% util           live:   0 (0B)            0B tot            ???:    1
+ingestions                sstable iters         zombie: 0 (0B)
+  total: 0                  0 open              values                  KEYS
+  as flushable: 0 (0B)    snapshots               0B total              range keys
+                            0 open                0B referenced           0 sets
+                                                  0% referenced         tombstones
+                                                                          0 total
 
 db lsm --url
 ../testdata/db-stage-4
 ----
-----
-      |                             |                |       |   ingested   |     moved    |    written   |       |    amp
-level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
-------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     1   709B     0B       0 |    - 0.50 0.50 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-total |     1   709B     0B       0 |    -    -    - |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-----------------------------------------------------------------------------------------------------------------------------
-WAL: 0 files (0B)  in: 0B  written: 0B (0% overhead)
-Flushes: 0
-Compactions: 0  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
-MemTables: 1 (256KB)  zombie: 0 (0B)
-Zombie tables: 0 (0B, local: 0B)
-Backing tables: 0 (0B)
-Virtual tables: 0 (0B)
-Local tables size: 709B
-Compression types: unknown: 1
-Table stats: <redacted>
-Block cache: 0 entries (0B)  hit rate: 0.0%
-Table cache: 0 entries (0B)  hit rate: 0.0%
-Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
-Snapshots: 0  earliest seq num: 0
-Table iters: 0
-Filter utility: 0.0%
-Ingestions: 0  as flushable: 0 (0B in 0 tables)
-Cgo memory usage: <redacted>
-
+LSM   |                        |    virtual   |   value sep   |        |   ingested   |    amp
+level | aggsize | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+------+---------+--------------+--------------+---------------+--------+--------------+----------
+    0 |    709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    1 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6 |      0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total |    709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+-------------------------------------------------------------------------------------------------
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+--------------------------------------------------------------------------------------------------
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
+count     |         0        0        0        0        0        0        0        0        0
+--------------------------------------------------------------------------------------------------
+COMMIT PIPELINE           ITERATORS             TABLES                  CGO MEMORY        COMPACTIONS
+wals                      block cache           stats initial load        0B tot          0B estimated debt
+  0 files (0B)              0 entries (0B)       in progress            block cache       0 in-progress (0B)
+  0B  written: 0B           0.0% hit rate       backing: 0B (0)           0B tot          0 cancelled (0B)
+  (0.0% overhead)         file cache            zombie:  0B (0)           0B data         0 failed
+memtables                   0 entries (0B)               0B local         0B maps         0 problem spans
+  flushes: 0                0.0% hit rate                                 0B ents
+  live:    1 (256KB)      bloom filter          BLOB FILES              memtables         COMPRESSION
+  zombie:  0 (0B)           0.0% util           live:   0 (0B)            0B tot            ???:    1
+ingestions                sstable iters         zombie: 0 (0B)
+  total: 0                  0 open              values                  KEYS
+  as flushable: 0 (0B)    snapshots               0B total              range keys
+                            0 open                0B referenced           0 sets
+                                                  0% referenced         tombstones
+                                                                          0 total
 LSM viewer: https://raduberinde.github.io/lsmview/decode.html#eJyE0EFLw0AQBeC7v2J4uU5lN42W7lHsrTe9SSgTOi2hm13NRqGV_HdJCaUWMXvaxzfMwPuG1y_1Ce5t_G6CNAqHtbk3YHRSeR1ZKvVwKMBI9UnhFmbJSI14r6nbHPQIZxhe2v0lW8ZWO6nPJ2CGVziqpM1swc-rNc1oF2Nm5_yyeh0XO1qY5dMQ9CN8NsmRzWlGdjj8HuvQpf820JWN8ZTZ_KI3wyFSK2GvtB1qKPuy59sm7HUPf3g-4fMJLyb8YcIff3vJOOjx3HclLRi7GFH2dz8BAAD__2dulBM=
-----
-----
