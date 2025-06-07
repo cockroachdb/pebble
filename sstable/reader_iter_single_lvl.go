@@ -809,7 +809,6 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	// NOTE: prefix is only used for bloom filter checking and not later work in
 	// this method. Hence, we can use the existing iterator position if the last
 	// SeekPrefixGE did not fail bloom filter matching.
-
 	err := i.err
 	i.err = nil // clear cached iteration error
 	if i.useFilterBlock {
@@ -821,13 +820,16 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		// Check prefix bloom filter.
 		var mayContain bool
 		mayContain, i.err = i.bloomFilterMayContain(prefix)
-		if i.err != nil || !mayContain {
-			// In the i.err == nil case, this invalidation may not be necessary for
-			// correctness, and may be a place to optimize later by reusing the
-			// already loaded block. It was necessary in earlier versions of the code
-			// since the caller was allowed to call Next when SeekPrefixGE returned
-			// nil. This is no longer allowed.
+
+		if i.err != nil {
+			// fmt.Println("[DEBUG] invalidate the block due to bloomFilterMayContain error:", i.err)
 			PD(&i.data).Invalidate()
+			return nil
+		}
+		if !mayContain {
+			// Fast-path: key definitely not in table. Do NOT invalidate the block
+			// i.data can be left in place for potential reuse.
+			// fmt.Println("[DEBUG] do not invalidate the block if bloomFilterMayContain returned false only")
 			return nil
 		}
 		i.lastBloomFilterMatched = true
