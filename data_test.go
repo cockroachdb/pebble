@@ -10,11 +10,9 @@ import (
 	crand "crypto/rand"
 	"fmt"
 	"io"
-	"maps"
 	"math"
 	"math/rand/v2"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1177,7 +1175,13 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			valueSeparator.metas[base.BlobFileID(f)].ValueSize = stats.UncompressedValueBytes
 		}
 
-		ve.NewBlobFiles = slices.Collect(maps.Values(valueSeparator.metas))
+		ve.NewBlobFiles = make([]manifest.BlobFileMetadata, 0, len(valueSeparator.metas))
+		for blobFileID, m := range valueSeparator.metas {
+			ve.NewBlobFiles = append(ve.NewBlobFiles, manifest.BlobFileMetadata{
+				FileID:   blobFileID,
+				Physical: m,
+			})
+		}
 
 		jobID := d.newJobIDLocked()
 		err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {

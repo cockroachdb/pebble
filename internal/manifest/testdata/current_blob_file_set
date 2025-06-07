@@ -16,11 +16,11 @@ Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
 
 applyAndUpdateVersionEdit
   add-table: L3 000011:[d#1,SET-e#1,SET] blobrefs:[(000012: 25935); depth:1]
-  add-blob-file: 000012 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-blob-file: 000012 -> 000012 size:[20535 (20KB)] vals:[25935 (25KB)]
 ----
 modified version edit:
   add-table:     L3 000011:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(000012: 25935); depth:1]
-  add-blob-file: 000012 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-blob-file: 000012 -> 000012 size:[20535 (20KB)] vals:[25935 (25KB)]
 current blob file set:
 Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, Count: 1}
 

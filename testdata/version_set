@@ -390,13 +390,13 @@ no zombie blob files
 no obsolete blob files
 
 apply
-  add-blob-file: 000011 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-blob-file: 000011 -> 000011 size:[20535 (20KB)] vals:[25935 (25KB)]
   add-table: L3 000012:[f#1,SET-g#1,SET] blobrefs:[(000011: 25935); depth:1]
 ----
 applied:
   last-seq-num:  99
   add-table:     L3 000012:[f#1,SET-g#1,SET]
-  add-blob-file: 000011 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-blob-file: 000011 -> 000011 size:[20535 (20KB)] vals:[25935 (25KB)]
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
@@ -467,7 +467,7 @@ no zombie blob files
 no obsolete blob files
 
 apply
-  add-blob-file: 000013 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-blob-file: 000013 -> 000013 size:[20535 (20KB)] vals:[25935 (25KB)]
   add-table: L4 000014:[f#2,SET-g#2,SET] blobrefs:[(000013: 20000); depth:1]
   add-table: L3 000015:[f#1,SET-g#1,SET] blobrefs:[(000013: 15935); depth:1]
 ----
@@ -475,7 +475,7 @@ applied:
   last-seq-num:  99
   add-table:     L4 000014:[f#2,SET-g#2,SET]
   add-table:     L3 000015:[f#1,SET-g#1,SET]
-  add-blob-file: 000013 size:[20535 (20KB)] vals:[25935 (25KB)]
+  add-blob-file: 000013 -> 000013 size:[20535 (20KB)] vals:[25935 (25KB)]
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
