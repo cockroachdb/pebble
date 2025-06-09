@@ -409,6 +409,7 @@ type runOnceOptions struct {
 	failRegexp          *regexp.Regexp
 	numInstances        int
 	keyFormat           KeyFormat
+	initialStatePath    string
 	customOptionParsers map[string]func(string) (CustomOption, bool)
 }
 
@@ -462,6 +463,12 @@ type MultiInstance int
 func (m MultiInstance) apply(ro *runAndCompareOptions) { ro.numInstances = int(m) }
 func (m MultiInstance) applyOnce(ro *runOnceOptions)   { ro.numInstances = int(m) }
 
+// RunOnceInitialStatePath is used to set an initial database state path for a
+// single run.
+type RunOnceInitialStatePath string
+
+func (i RunOnceInitialStatePath) applyOnce(ro *runOnceOptions) { ro.initialStatePath = string(i) }
+
 // RunOnce performs one run of the metamorphic tests. RunOnce expects the
 // directory named by `runDir` to already exist and contain an `OPTIONS` file
 // containing the test run's configuration. The history of the run is persisted
@@ -490,6 +497,10 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	testOpts := defaultTestOptions(runOpts.keyFormat)
 	opts := testOpts.Opts
 	require.NoError(t, parseOptions(testOpts, string(optionsData), runOpts.customOptionParsers))
+
+	if runOpts.initialStatePath != "" {
+		testOpts.initialStatePath = runOpts.initialStatePath
+	}
 
 	ops, err := parse(opsData, parserOpts{
 		parseFormattedUserKey:       testOpts.KeyFormat.ParseFormattedKey,
