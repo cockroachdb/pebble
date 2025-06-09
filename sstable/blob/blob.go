@@ -477,3 +477,49 @@ func (r *FileReader) ReadIndexBlock(
 func (r *FileReader) IndexHandle() block.Handle {
 	return r.footer.indexHandle
 }
+
+// Layout returns the layout (block organization) as a string for a blob file.
+func (r *FileReader) Layout() (string, error) {
+	ctx := context.TODO()
+
+	indexH, err := r.ReadIndexBlock(ctx, block.NoReadEnv, nil /* rh */)
+	if err != nil {
+		return "", err
+	}
+	defer indexH.Release()
+
+	var buf bytes.Buffer
+	indexDecoder := indexBlockDecoder{}
+	indexDecoder.Init(indexH.BlockData())
+
+	if indexDecoder.virtualBlockCount > 0 {
+		fmt.Fprintf(&buf, "virtual blocks mapping:\n")
+		for i := range indexDecoder.virtualBlockCount {
+			blockIndex, valueIDOffset := indexDecoder.RemapVirtualBlockID(BlockID(i))
+			fmt.Fprintf(&buf, "virtual block %d -> physical block %d (valueID offset: %d)\n",
+				i, blockIndex, valueIDOffset)
+		}
+		fmt.Fprintf(&buf, "\n")
+	}
+
+	fmt.Fprintf(&buf, "physical blocks:\n")
+	for i := range indexDecoder.BlockCount() {
+		handle := indexDecoder.BlockHandle(i)
+		fmt.Fprintf(&buf, "block %d: offset=%d length=%d\n", i, handle.Offset, handle.Length)
+
+		valueBlockH, err := r.ReadValueBlock(ctx, block.NoReadEnv, nil /* rh */, handle)
+		if err != nil {
+			return "", err
+		}
+
+		valueDecoder := blobValueBlockDecoder{}
+		valueDecoder.Init(valueBlockH.BlockData())
+
+		fmt.Fprintf(&buf, "values: %d\n", valueDecoder.bd.Rows())
+		fmt.Fprintf(&buf, "%s", valueDecoder.bd.FormattedString())
+
+		valueBlockH.Release()
+	}
+
+	return buf.String(), nil
+}

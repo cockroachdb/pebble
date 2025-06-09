@@ -1,0 +1,129 @@
+blob layout
+./testdata/find-val-sep-db/000012.blob
+----
+----
+000012.blob
+physical blocks:
+block 0: offset=0 length=62
+values: 8
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 08000000 # 8 rows
+ │    ├── 07-08: b 00000011 # col 0: bytes
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (bytes)
+ │    ├── offsets table
+ │    │    ├── 12-13: x 01 # encoding: 1b
+ │    │    ├── 13-14: x 00 # data[0] = 0 [22 overall]
+ │    │    ├── 14-15: x 08 # data[1] = 8 [30 overall]
+ │    │    ├── 15-16: x 10 # data[2] = 16 [38 overall]
+ │    │    ├── 16-17: x 19 # data[3] = 25 [47 overall]
+ │    │    ├── 17-18: x 22 # data[4] = 34 [56 overall]
+ │    │    ├── 18-19: x 2b # data[5] = 43 [65 overall]
+ │    │    ├── 19-20: x 34 # data[6] = 52 [74 overall]
+ │    │    ├── 20-21: x 3d # data[7] = 61 [83 overall]
+ │    │    └── 21-22: x 46 # data[8] = 70 [92 overall]
+ │    └── data
+ │         ├── 22-30: x 636869636b656e30   # data[0]: chicken0
+ │         ├── 30-38: x 636869636b656e31   # data[1]: chicken1
+ │         ├── 38-47: x 636869636b656e3130 # data[2]: chicken10
+ │         ├── 47-56: x 636869636b656e3131 # data[3]: chicken11
+ │         ├── 56-65: x 636869636b656e3132 # data[4]: chicken12
+ │         ├── 65-74: x 636869636b656e3133 # data[5]: chicken13
+ │         ├── 74-83: x 636869636b656e3134 # data[6]: chicken14
+ │         └── 83-92: x 636869636b656e3135 # data[7]: chicken15
+ └── 92-93: x 00 # block trailer padding
+block 1: offset=67 length=67
+values: 8
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 08000000 # 8 rows
+ │    ├── 07-08: b 00000011 # col 0: bytes
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (bytes)
+ │    ├── offsets table
+ │    │    ├── 12-13: x 01 # encoding: 1b
+ │    │    ├── 13-14: x 00 # data[0] = 0 [22 overall]
+ │    │    ├── 14-15: x 09 # data[1] = 9 [31 overall]
+ │    │    ├── 15-16: x 12 # data[2] = 18 [40 overall]
+ │    │    ├── 16-17: x 1b # data[3] = 27 [49 overall]
+ │    │    ├── 17-18: x 24 # data[4] = 36 [58 overall]
+ │    │    ├── 18-19: x 2c # data[5] = 44 [66 overall]
+ │    │    ├── 19-20: x 35 # data[6] = 53 [75 overall]
+ │    │    ├── 20-21: x 3e # data[7] = 62 [84 overall]
+ │    │    └── 21-22: x 47 # data[8] = 71 [93 overall]
+ │    └── data
+ │         ├── 22-31: x 636869636b656e3136 # data[0]: chicken16
+ │         ├── 31-40: x 636869636b656e3137 # data[1]: chicken17
+ │         ├── 40-49: x 636869636b656e3138 # data[2]: chicken18
+ │         ├── 49-58: x 636869636b656e3139 # data[3]: chicken19
+ │         ├── 58-66: x 636869636b656e32   # data[4]: chicken2
+ │         ├── 66-75: x 636869636b656e3230 # data[5]: chicken20
+ │         ├── 75-84: x 636869636b656e3231 # data[6]: chicken21
+ │         └── 84-93: x 636869636b656e3232 # data[7]: chicken22
+ └── 93-94: x 00 # block trailer padding
+block 2: offset=139 length=66
+values: 8
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 08000000 # 8 rows
+ │    ├── 07-08: b 00000011 # col 0: bytes
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (bytes)
+ │    ├── offsets table
+ │    │    ├── 12-13: x 01 # encoding: 1b
+ │    │    ├── 13-14: x 00 # data[0] = 0 [22 overall]
+ │    │    ├── 14-15: x 09 # data[1] = 9 [31 overall]
+ │    │    ├── 15-16: x 12 # data[2] = 18 [40 overall]
+ │    │    ├── 16-17: x 1b # data[3] = 27 [49 overall]
+ │    │    ├── 17-18: x 24 # data[4] = 36 [58 overall]
+ │    │    ├── 18-19: x 2d # data[5] = 45 [67 overall]
+ │    │    ├── 19-20: x 36 # data[6] = 54 [76 overall]
+ │    │    ├── 20-21: x 3f # data[7] = 63 [85 overall]
+ │    │    └── 21-22: x 47 # data[8] = 71 [93 overall]
+ │    └── data
+ │         ├── 22-31: x 636869636b656e3233 # data[0]: chicken23
+ │         ├── 31-40: x 636869636b656e3234 # data[1]: chicken24
+ │         ├── 40-49: x 636869636b656e3235 # data[2]: chicken25
+ │         ├── 49-58: x 636869636b656e3236 # data[3]: chicken26
+ │         ├── 58-67: x 636869636b656e3237 # data[4]: chicken27
+ │         ├── 67-76: x 636869636b656e3238 # data[5]: chicken28
+ │         ├── 76-85: x 636869636b656e3239 # data[6]: chicken29
+ │         └── 85-93: x 636869636b656e33   # data[7]: chicken3
+ └── 93-94: x 00 # block trailer padding
+block 3: offset=210 length=55
+values: 6
+block
+ ├── columnar block header
+ │    ├── 00-01: x 01       # version 1
+ │    ├── 01-03: x 0100     # 1 columns
+ │    ├── 03-07: x 06000000 # 6 rows
+ │    ├── 07-08: b 00000011 # col 0: bytes
+ │    └── 08-12: x 0c000000 # col 0: page start 12
+ ├── data for column 0 (bytes)
+ │    ├── offsets table
+ │    │    ├── 12-13: x 01 # encoding: 1b
+ │    │    ├── 13-14: x 00 # data[0] = 0 [20 overall]
+ │    │    ├── 14-15: x 08 # data[1] = 8 [28 overall]
+ │    │    ├── 15-16: x 10 # data[2] = 16 [36 overall]
+ │    │    ├── 16-17: x 18 # data[3] = 24 [44 overall]
+ │    │    ├── 17-18: x 20 # data[4] = 32 [52 overall]
+ │    │    ├── 18-19: x 28 # data[5] = 40 [60 overall]
+ │    │    └── 19-20: x 30 # data[6] = 48 [68 overall]
+ │    └── data
+ │         ├── 20-28: x 636869636b656e34 # data[0]: chicken4
+ │         ├── 28-36: x 636869636b656e35 # data[1]: chicken5
+ │         ├── 36-44: x 636869636b656e36 # data[2]: chicken6
+ │         ├── 44-52: x 636869636b656e37 # data[3]: chicken7
+ │         ├── 52-60: x 636869636b656e38 # data[4]: chicken8
+ │         └── 60-68: x 636869636b656e39 # data[5]: chicken9
+ └── 68-69: x 00 # block trailer padding
+
+----
+----
