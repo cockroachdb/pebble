@@ -76,7 +76,7 @@ func runTestMeta(t *testing.T, addtlOptions ...option) {
 		}
 		testRootDir, runSubdirs := runOnceFlags.ParseCompare()
 		if runOnceFlags.TryToReduce {
-			tryToReduceCompare(t, runOnceFlags.Dir, testRootDir, runSubdirs, runOnceFlags.ReduceAttempts)
+			tryToReduceCompare(t, runOnceFlags.Dir, testRootDir, runSubdirs, runOnceFlags.InitialStatePath, runOnceFlags.ReduceAttempts)
 			return
 		}
 		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs,
@@ -91,7 +91,7 @@ func runTestMeta(t *testing.T, addtlOptions ...option) {
 			onceOpts = append(onceOpts, opt)
 		}
 		if runOnceFlags.TryToReduce {
-			tryToReduce(t, runOnceFlags.Dir, runOnceFlags.RunDir, runOnceFlags.ReduceAttempts)
+			tryToReduce(t, runOnceFlags.Dir, runOnceFlags.RunDir, runOnceFlags.InitialStatePath, runOnceFlags.ReduceAttempts)
 			return
 		}
 		metamorphic.RunOnce(t, runOnceFlags.RunDir, runOnceFlags.Seed,
