@@ -462,10 +462,16 @@ type DB struct {
 			noOngoingFlushStartTime crtime.Mono
 		}
 
-		// Non-zero when file cleaning is disabled. The disabled count acts as a
-		// reference count to prohibit file cleaning. See
-		// DB.{disable,Enable}FileDeletions().
-		disableFileDeletions int
+		fileDeletions struct {
+			// Non-zero when file cleaning is disabled. The disabled count acts
+			// as a reference count to prohibit file cleaning. See
+			// DB.{disable,enable}FileDeletions().
+			disableCount int
+			// queuedStats holds cumulative stats for tables that have been
+			// queued for deletion by the cleanup manager. These stats are
+			// monotonically increasing for the *DB's lifetime.
+			queuedStats obsoleteTableStats
+		}
 
 		snapshots struct {
 			// The list of active snapshots.
@@ -1955,6 +1961,7 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
 	walStats := d.mu.log.manager.Stats()
+	completedCleanupStats := d.cleanupManager.CompletedStats()
 
 	d.mu.Lock()
 	vers := d.mu.versions.currentVersion()
@@ -2021,6 +2028,24 @@ func (d *DB) Metrics() *Metrics {
 		}
 	}
 	metrics.private.optionsFileSize = d.optionsFileSize
+	// The obsolete table metrics have a subtle calculation:
+	//
+	// (A) The vs.metrics.Table.[Local.]ObsoleteSize fields reflect the set of
+	// files currently sitting in vs.obsoleteTables but not yet enqueued to the
+	// cleanup manager.
+	//
+	// (B) The d.mu.fileDeletions.queuedStats field holds the set of files that
+	// have been queued for deletion by the cleanup manager.
+	//
+	// (C) The cleanup manager also maintains cumulative stats for the set of
+	// files that have been deleted.
+	//
+	// The value of currently pending obsolete files is (A) + (B) - (C).
+	pendingObsoleteFileStats := d.mu.fileDeletions.queuedStats
+	pendingObsoleteFileStats.Sub(completedCleanupStats)
+	metrics.Table.Local.ObsoleteSize += pendingObsoleteFileStats.local.size
+	metrics.Table.ObsoleteCount += int64(pendingObsoleteFileStats.total.count)
+	metrics.Table.ObsoleteSize += pendingObsoleteFileStats.total.size
 
 	// TODO(jackson): Consider making these metrics optional.
 	metrics.Keys.RangeKeySetsCount = *rangeKeySetsAnnotator.MultiLevelAnnotation(vers.RangeKeyLevels[:])
