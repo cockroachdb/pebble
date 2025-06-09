@@ -9,13 +9,17 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -336,5 +340,54 @@ func walk(stderr io.Writer, fs vfs.FS, path string, fn func(path string)) {
 	sort.Strings(paths)
 	for _, part := range paths {
 		walk(stderr, fs, fs.PathJoin(path, part), fn)
+	}
+}
+
+// processFiles walks through the given arguments and processes files with
+// matching extensions using the provided processor.
+func processFiles[T any](
+	stderr io.Writer,
+	fs vfs.FS,
+	args []string,
+	allowedExts []string,
+	newReaderFn func(vfs.File, *cache.Handle, string) (T, error),
+	closeReaderFn func(T) error,
+	processFileFn func(string, T) error,
+) {
+	pathFn := func(path string) {
+		f, err := fs.Open(path)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+			return
+		}
+
+		// TODO(annie): Use a BufferPool.
+		c := pebble.NewCache(128 << 20 /* 128 MB */)
+		defer c.Unref()
+		ch := c.NewHandle()
+		defer ch.Close()
+
+		r, err := newReaderFn(f, ch, path)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: %s\n", path, err)
+			return
+		}
+		defer func() {
+			_ = closeReaderFn(r)
+		}()
+
+		if err := processFileFn(path, r); err != nil {
+			fmt.Fprintf(stderr, "%s\n", err)
+		}
+	}
+
+	// Walk through args and process files with matching extensions.
+	for _, arg := range args {
+		walk(stderr, fs, arg, func(path string) {
+			ext := filepath.Ext(path)
+			if slices.Contains(allowedExts, ext) {
+				pathFn(path)
+			}
+		})
 	}
 }
