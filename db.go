@@ -623,7 +623,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		keyBuf:       buf.keyBuf,
 	}
 	// Set up a blob value fetcher to use for retrieving values from blob files.
-	i.blobValueFetcher.Init(d.fileCache, block.NoReadEnv)
+	i.blobValueFetcher.Init(&readState.current.BlobFiles, d.fileCache, block.NoReadEnv)
 	get.iiopts.blobValueFetcher = &i.blobValueFetcher
 
 	if !i.First() {
@@ -1317,15 +1317,18 @@ func (d *DB) newInternalIter(
 	// files in the associated version from being deleted if there is a current
 	// compaction. The readState is unref'd by Iterator.Close().
 	var readState *readState
+	var vers *manifest.Version
 	if sOpts.vers == nil {
 		if sOpts.readState != nil {
 			readState = sOpts.readState
 			readState.ref()
+			vers = readState.current
 		} else {
 			readState = d.loadReadState()
+			vers = readState.current
 		}
-	}
-	if sOpts.vers != nil {
+	} else {
+		vers = sOpts.vers
 		sOpts.vers.Ref()
 	}
 
@@ -1352,7 +1355,7 @@ func (d *DB) newInternalIter(
 		seqNum:          seqNum,
 		mergingIter:     &buf.merging,
 	}
-	dbi.blobValueFetcher.Init(d.fileCache, block.ReadEnv{})
+	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache, block.ReadEnv{})
 
 	dbi.opts = *o
 	dbi.opts.logger = d.opts.Logger
@@ -1434,7 +1437,11 @@ func (i *Iterator) constructPointIter(
 			i.opts.Category,
 		),
 	}
-	i.blobValueFetcher.Init(i.fc, readEnv)
+	if i.readState != nil {
+		i.blobValueFetcher.Init(&i.readState.current.BlobFiles, i.fc, readEnv)
+	} else if i.version != nil {
+		i.blobValueFetcher.Init(&i.version.BlobFiles, i.fc, readEnv)
+	}
 	internalOpts := internalIterOpts{
 		readEnv:          sstable.ReadEnv{Block: readEnv},
 		blobValueFetcher: &i.blobValueFetcher,

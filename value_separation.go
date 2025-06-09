@@ -5,8 +5,6 @@
 package pebble
 
 import (
-	"cmp"
-	"maps"
 	"slices"
 	"time"
 
@@ -44,7 +42,7 @@ func (d *DB) determineCompactionValueSeparation(
 	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy); !writeBlobs {
 		// This compaction should preserve existing blob references.
 		return &preserveBlobReferences{
-			inputBlobMetadatas:       uniqueInputBlobMetadatas(c.inputs),
+			inputBlobPhysicalFiles:   uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
 			outputBlobReferenceDepth: outputBlobReferenceDepth,
 		}
 	}
@@ -134,20 +132,25 @@ func compactionBlobReferenceDepth(levels []compactionLevel) manifest.BlobReferen
 
 // uniqueInputBlobMetadatas returns a slice of all unique blob file metadata
 // objects referenced by tables in levels.
-func uniqueInputBlobMetadatas(levels []compactionLevel) []*manifest.PhysicalBlobFile {
-	m := make(map[*manifest.PhysicalBlobFile]struct{})
+func uniqueInputBlobMetadatas(
+	blobFileSet *manifest.BlobFileSet, levels []compactionLevel,
+) map[base.BlobFileID]*manifest.PhysicalBlobFile {
+	m := make(map[base.BlobFileID]*manifest.PhysicalBlobFile)
 	for _, level := range levels {
 		for t := range level.files.All() {
 			for _, ref := range t.BlobReferences {
-				m[ref.OriginalMetadata] = struct{}{}
+				if _, ok := m[ref.FileID]; ok {
+					continue
+				}
+				phys, ok := blobFileSet.LookupPhysical(ref.FileID)
+				if !ok {
+					panic(errors.AssertionFailedf("pebble: blob file %s not found", ref.FileID))
+				}
+				m[ref.FileID] = phys
 			}
 		}
 	}
-	metadatas := slices.Collect(maps.Keys(m))
-	slices.SortFunc(metadatas, func(a, b *manifest.PhysicalBlobFile) int {
-		return cmp.Compare(a.FileNum, b.FileNum)
-	})
-	return metadatas
+	return m
 }
 
 // writeNewBlobFiles implements the strategy and mechanics for separating values
@@ -305,10 +308,9 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 // references will be preserved and metadata about the table's blob references
 // will be collected.
 type preserveBlobReferences struct {
-	// inputBlobMetadatas should be populated to include the *BlobFileMetadata
-	// for every unique blob file referenced by input sstables.
-	// inputBlobMetadatas must be sorted by FileNum.
-	inputBlobMetadatas       []*manifest.PhysicalBlobFile
+	// inputBlobPhysicalFiles holds the *PhysicalBlobFile for every unique blob
+	// file referenced by input sstables.
+	inputBlobPhysicalFiles   map[base.BlobFileID]*manifest.PhysicalBlobFile
 	outputBlobReferenceDepth manifest.BlobReferenceDepth
 
 	// state
@@ -370,15 +372,15 @@ func (vs *preserveBlobReferences) Add(
 	refID, found := vs.currReferences.IDByBlobFileID(fileID)
 	if !found {
 		// This is the first time we're seeing this blob file for this sstable.
-		// Find the blob file metadata for this file among the input metadatas.
-		idx, found := vs.findInputBlobMetadata(fileID)
-		if !found {
+		// Find the physical blob file for this file ID from the inputs.
+		phys, ok := vs.inputBlobPhysicalFiles[fileID]
+		if !ok {
 			return errors.AssertionFailedf("pebble: blob file %s not found among input sstables", fileID)
 		}
 		refID = blob.ReferenceID(len(vs.currReferences))
 		vs.currReferences = append(vs.currReferences, manifest.BlobReference{
 			FileID:           fileID,
-			OriginalMetadata: vs.inputBlobMetadatas[idx],
+			OriginalMetadata: phys,
 		})
 	}
 
@@ -401,16 +403,6 @@ func (vs *preserveBlobReferences) Add(
 	vs.currReferences[refID].ValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
 	vs.totalValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
 	return nil
-}
-
-// findInputBlobMetadata returns the index of the input blob metadata that
-// corresponds to the provided file number. If the file number is not found,
-// the function returns false in the second return value.
-func (vs *preserveBlobReferences) findInputBlobMetadata(fileID base.BlobFileID) (int, bool) {
-	return slices.BinarySearchFunc(vs.inputBlobMetadatas, fileID,
-		func(bm *manifest.PhysicalBlobFile, fileID base.BlobFileID) int {
-			return cmp.Compare(base.BlobFileID(bm.FileNum), fileID)
-		})
 }
 
 // FinishOutput implements compact.ValueSeparation.

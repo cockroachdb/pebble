@@ -43,10 +43,10 @@ var DebugHandlesBlobContext = TableBlobContext{
 // sstable iterator to fetch the value stored in a blob file. It is the
 // caller's responsibility to close the ValueFetcher returned.
 func LoadValBlobContext(
-	rp blob.ReaderProvider, blobRefs BlobReferences,
+	fm blob.FileMapping, rp blob.ReaderProvider, blobRefs BlobReferences,
 ) (*blob.ValueFetcher, TableBlobContext) {
 	vf := &blob.ValueFetcher{}
-	vf.Init(rp, block.ReadEnv{})
+	vf.Init(fm, rp, block.ReadEnv{})
 	return vf, TableBlobContext{
 		ValueFetcher: vf,
 		References:   blobRefs,

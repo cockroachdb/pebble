@@ -549,7 +549,7 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 			// TODO(jackson): Add categorized stats.
 		},
 	}
-	checkConfig.blobValueFetcher.Init(d.fileCache, checkConfig.readEnv)
+	checkConfig.blobValueFetcher.Init(&readState.current.BlobFiles, d.fileCache, checkConfig.readEnv)
 	defer func() { _ = checkConfig.blobValueFetcher.Close() }()
 	return checkLevelsInternal(checkConfig)
 }
