@@ -3076,7 +3076,8 @@ func (d *DB) newCompactionOutput(
 
 	// Prefer shared storage if present.
 	createOpts := objstorage.CreateOptions{
-		PreferSharedStorage: d.shouldCreateShared(c.outputLevel.level),
+		// The writerOpts table format was set earlier, the db could have upgraded in the meantime.
+		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) && writerOpts.TableFormat >= FormatMinForSharedObjects.MaxTableFormat(),
 		WriteCategory:       writeCategory,
 	}
 	writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)
