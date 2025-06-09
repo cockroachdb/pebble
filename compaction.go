@@ -3283,7 +3283,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*versionEdit, error
 func (d *DB) newCompactionOutput(
 	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, error) {
-	writable, objMeta, err := d.newCompactionOutputObj(jobID, c, base.FileTypeTable)
+	writable, objMeta, err := d.newCompactionOutputObj(jobID, c, base.FileTypeTable, writerOpts)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
 	}
@@ -3314,7 +3314,7 @@ func (d *DB) newCompactionOutput(
 
 // newCompactionOutputObj creates an object produced by a compaction or flush.
 func (d *DB) newCompactionOutputObj(
-	jobID JobID, c *compaction, typ base.FileType,
+	jobID JobID, c *compaction, typ base.FileType, writerOpts sstable.WriterOptions,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
 
@@ -3342,7 +3342,8 @@ func (d *DB) newCompactionOutputObj(
 
 	// Prefer shared storage if present.
 	createOpts := objstorage.CreateOptions{
-		PreferSharedStorage: d.shouldCreateShared(c.outputLevel.level),
+		// The writerOpts table format was set earlier, the db could have upgraded in the meantime.
+		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) && writerOpts.TableFormat >= FormatMinForSharedObjects.MaxTableFormat(),
 		WriteCategory:       writeCategory,
 	}
 	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, createOpts)
