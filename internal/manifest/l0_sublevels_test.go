@@ -288,7 +288,7 @@ func TestL0Sublevels(t *testing.T) {
 					initialize = false
 				}
 			}
-			SortBySeqNum(fileMetas[0])
+			sortBySeqNum(fileMetas[0])
 			for i := 1; i < NumLevels; i++ {
 				SortBySmallest(fileMetas[i], base.DefaultComparer.Compare)
 			}
@@ -492,6 +492,13 @@ func TestL0Sublevels(t *testing.T) {
 			return builder.String()
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
+	})
+}
+
+// sortBySeqNum sorts the specified files by increasing sequence number.
+func sortBySeqNum(files []*TableMetadata) {
+	slices.SortFunc(files, func(a, b *TableMetadata) int {
+		return a.cmpSeqNum(b)
 	})
 }
 
