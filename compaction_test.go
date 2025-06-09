@@ -518,7 +518,7 @@ func TestPickCompaction(t *testing.T) {
 		vs.picker = &tc.picker
 		pc, got := vs.picker.pickAutoScore(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
-			c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, neverSeparateValues)
+			c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
 
 			gotStart := fileNums(c.startLevel.files)
 			gotML := ""
@@ -1397,7 +1397,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedCompaction(opts, version, l0Organizer, start, defaultOutputLevel(start, base), base)
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, neverSeparateValues)
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
 
@@ -3243,7 +3243,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	require.NotNil(t, pc, "expected a compaction to be picked")
 
 	// Create the compaction.
-	c := newCompaction(pc, opts, time.Now(), nil, noopGrantHandle{}, neverSeparateValues)
+	c := newCompaction(pc, opts, time.Now(), nil, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
 
 	// The compaction should be converted to a move.
 	require.Equal(t, compactionKindMove, c.kind, "expected compaction to be optimized to a move")
@@ -3354,7 +3354,7 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	require.NotNil(t, pc, "expected a compaction to be picked")
 
 	// Create the compaction.
-	c := newCompaction(pc, opts, time.Now(), nil, noopGrantHandle{}, neverSeparateValues)
+	c := newCompaction(pc, opts, time.Now(), nil, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
 
 	// The compaction should NOT be converted to a move.
 	require.NotEqual(t, compactionKindMove, c.kind, "move optimization should NOT apply when there is overlap in output level")
