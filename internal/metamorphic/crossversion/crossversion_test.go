@@ -439,6 +439,10 @@ func (r *metamorphicTestRun) run(ctx context.Context, t *testing.T, output io.Wr
 	// can find this run's artifacts, explicitly pass the intended dir.
 	add("-dir", filepath.Join(r.dir, "_meta"))
 
+	// Crossversion tests run with high parallelism, so the chances of a timeout
+	// are high. Increase the per-operation timeout.
+	add("--op-timeout", "10m")
+
 	if r.initialState.path != "" {
 		add("--initial-state-desc", r.initialState.desc)
 		add("--initial-state", r.initialState.path)
