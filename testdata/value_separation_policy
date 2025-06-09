@@ -104,9 +104,9 @@ blobrefs:[]
 # input sstables. The compaction should only observe references to these files.
 
 init preserve-blob-references
-000001 size:[903530] vals:[39531]
-000002 size:[82530] vals:[72111]
-000003 size:[192542] vals:[85225]
+B000001 physical:{000001 size:[903530] vals:[39531]}
+B000002 physical:{000002 size:[82530] vals:[72111]}
+B000003 physical:{000003 size:[192542] vals:[85225]}
 ----
 
 add

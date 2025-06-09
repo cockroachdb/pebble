@@ -211,7 +211,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 				return err.Error()
 			}
 			defer closeFunc()
-			err = loadFlushedSSTableKeys(b, opts.FS, "", diskFileNums, nil /* blobRefMap */, provider,
+			err = loadFlushedSSTableKeys(b, opts.FS, "", diskFileNums, nil /* blobRefMap */, nil /* blobFileMap */, provider,
 				readerOpts, &flushBufs)
 			if err != nil {
 				b.Close()

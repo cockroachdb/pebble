@@ -592,7 +592,7 @@ func TestAutomaticFlush(t *testing.T) {
 					continue
 				}
 				err := func() error {
-					fetcher, blobContext := sstable.LoadValBlobContext(d.fileCache, &meta.BlobReferences)
+					fetcher, blobContext := sstable.LoadValBlobContext(&v.BlobFiles, d.fileCache, &meta.BlobReferences)
 					defer fetcher.Close()
 
 					f, err := provider.OpenForReading(context.Background(), base.FileTypeTable, meta.TableBacking.DiskFileNum, objstorage.OpenOptions{})

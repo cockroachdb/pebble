@@ -3215,7 +3215,7 @@ func (d *DB) compactAndWrite(
 			categoryCompaction,
 		),
 	}
-	c.valueFetcher.Init(d.fileCache, blockReadEnv)
+	c.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv)
 	iiopts := internalIterOpts{
 		compaction:       true,
 		readEnv:          sstable.ReadEnv{Block: blockReadEnv},

@@ -7,6 +7,7 @@ package tool
 import (
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -23,13 +24,16 @@ import (
 // file.
 //
 // An sstable alone does not contain sufficient information to read a value from
-// a blob file. It requires the manifest to map the ReferenceIDs encoded within
-// the sstable to physical blob files. The blobFileMappings type contains
-// sufficient information to perform this mapping.
+// a blob file. The sstable encodes a ReferenceID which first must be translated
+// to a BlobFileID and then from a BlobFileID to a DiskFileNum. The manifest
+// contains this metadata. The blobFileMappings type contains this state, loaded
+// from the manifest.
 type blobFileMappings struct {
-	references map[base.TableNum]*manifest.BlobReferences
-	fetcher    blob.ValueFetcher
-	provider   debugReaderProvider
+	stderr        io.Writer
+	references    map[base.TableNum]*manifest.BlobReferences
+	physicalFiles map[base.BlobFileID][]base.DiskFileNum
+	fetcher       blob.ValueFetcher
+	provider      debugReaderProvider
 }
 
 // LoadValueBlobContext returns a TableBlobContext that configures a sstable
@@ -40,6 +44,20 @@ func (m *blobFileMappings) LoadValueBlobContext(tableNum base.TableNum) sstable.
 		ValueFetcher: &m.fetcher,
 		References:   m.references[tableNum],
 	}
+}
+
+// Lookup implements blob.FileLookupFunc.
+func (m *blobFileMappings) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+	files, ok := m.physicalFiles[fileID]
+	if !ok || len(files) == 0 {
+		return 0, false
+	}
+	// TODO(jackson): Consider checking for the existence of each file and using
+	// the most recent existing file (and log the missing files).
+	if len(files) > 1 {
+		fmt.Fprintf(m.stderr, "warning: multiple physical files for blob file %s: %v\n", fileID, files)
+	}
+	return files[len(files)-1], true
 }
 
 // Close releases any resources held by the blobFileMappings.
@@ -63,11 +81,13 @@ func newBlobFileMappings(
 	if err != nil {
 		return nil, err
 	}
-	mappings := blobFileMappings{
-		references: make(map[base.TableNum]*manifest.BlobReferences),
-		provider:   debugReaderProvider{objProvider: provider},
+	mappings := &blobFileMappings{
+		stderr:        stderr,
+		references:    make(map[base.TableNum]*manifest.BlobReferences),
+		physicalFiles: make(map[base.BlobFileID][]base.DiskFileNum),
+		provider:      debugReaderProvider{objProvider: provider},
 	}
-	mappings.fetcher.Init(&mappings.provider, block.ReadEnv{})
+	mappings.fetcher.Init(mappings, &mappings.provider, block.ReadEnv{})
 	for _, fl := range manifests {
 		err := func() error {
 			mf, err := fs.Open(fl.path)
@@ -92,6 +112,15 @@ func newBlobFileMappings(
 				for _, nf := range ve.NewTables {
 					mappings.references[nf.Meta.TableNum] = &nf.Meta.BlobReferences
 				}
+				// Accumulate all the physical file numbers ever used for each
+				// blob file ID. In the context of the debug tool, we don't want
+				// to rely on reading strictly at the latest version.
+				for _, nf := range ve.NewBlobFiles {
+					existingFiles := mappings.physicalFiles[nf.FileID]
+					if !slices.Contains(existingFiles, nf.Physical.FileNum) {
+						mappings.physicalFiles[nf.FileID] = append(existingFiles, nf.Physical.FileNum)
+					}
+				}
 			}
 			return nil
 		}()
@@ -99,5 +128,5 @@ func newBlobFileMappings(
 			fmt.Fprintf(stderr, "error reading manifest %s: %v\n", fl.path, err)
 		}
 	}
-	return &mappings, nil
+	return mappings, nil
 }
