@@ -303,7 +303,8 @@ type compaction struct {
 
 	grantHandle CompactionGrantHandle
 
-	opts objstorage.CreateOptions
+	tableFormat   sstable.TableFormat
+	objCreateOpts objstorage.CreateOptions
 }
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
@@ -374,6 +375,7 @@ func newCompaction(
 	beganAt time.Time,
 	provider objstorage.Provider,
 	grantHandle CompactionGrantHandle,
+	tableFormat sstable.TableFormat,
 	getValueSeparation getValueSeparation,
 ) *compaction {
 	c := &compaction{
@@ -393,6 +395,7 @@ func newCompaction(
 		maxOverlapBytes:    pc.maxOverlapBytes,
 		pickerMetrics:      pc.pickerMetrics,
 		grantHandle:        grantHandle,
+		tableFormat:        tableFormat,
 	}
 	c.startLevel = &c.inputs[0]
 	if pc.startLevel.l0SublevelInfo != nil {
@@ -414,13 +417,14 @@ func newCompaction(
 	)
 	c.kind = pc.kind
 
-	preferSharedStorage := remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
+	preferSharedStorage := tableFormat >= FormatMinForSharedObjects.MaxTableFormat() &&
+		remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
 	c.maybeSwitchToMoveOrCopy(preferSharedStorage, provider)
-	c.opts = objstorage.CreateOptions{
+	c.objCreateOpts = objstorage.CreateOptions{
 		PreferSharedStorage: preferSharedStorage,
 		WriteCategory:       getDiskWriteCategoryForCompaction(opts, c.kind),
 	}
-	if c.opts.PreferSharedStorage {
+	if preferSharedStorage {
 		c.getValueSeparation = neverSeparateValues
 	}
 
@@ -603,6 +607,7 @@ func newFlush(
 	baseLevel int,
 	flushing flushableList,
 	beganAt time.Time,
+	tableFormat sstable.TableFormat,
 	getValueSeparation getValueSeparation,
 ) (*compaction, error) {
 	c := &compaction{
@@ -620,6 +625,7 @@ func newFlush(
 		maxOverlapBytes:    math.MaxUint64,
 		flushing:           flushing,
 		grantHandle:        noopGrantHandle{},
+		tableFormat:        tableFormat,
 	}
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
@@ -633,11 +639,13 @@ func newFlush(
 		}
 	}
 
-	c.opts = objstorage.CreateOptions{
-		PreferSharedStorage: remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level),
+	preferSharedStorage := tableFormat >= FormatMinForSharedObjects.MaxTableFormat() &&
+		remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
+	c.objCreateOpts = objstorage.CreateOptions{
+		PreferSharedStorage: preferSharedStorage,
 		WriteCategory:       getDiskWriteCategoryForCompaction(opts, c.kind),
 	}
-	if c.opts.PreferSharedStorage {
+	if preferSharedStorage {
 		c.getValueSeparation = neverSeparateValues
 	}
 
@@ -1532,7 +1540,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.l0Organizer,
-		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], d.timeNow(), d.determineCompactionValueSeparation)
+		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], d.timeNow(), d.TableFormat(), d.determineCompactionValueSeparation)
 	if err != nil {
 		return 0, err
 	}
@@ -1907,7 +1915,7 @@ func (d *DB) runPickedCompaction(pc *pickedCompaction, grantHandle CompactionGra
 	}
 
 	d.mu.compact.compactingCount++
-	compaction := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), grantHandle, d.determineCompactionValueSeparation)
+	compaction := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), grantHandle, d.TableFormat(), d.determineCompactionValueSeparation)
 	d.addInProgressCompaction(compaction)
 	go func() {
 		d.compact(compaction, doneChannel)
@@ -2718,7 +2726,7 @@ func (d *DB) runCopyCompaction(
 		w, _, err := d.objProvider.Create(
 			ctx, base.FileTypeTable, newMeta.TableBacking.DiskFileNum,
 			objstorage.CreateOptions{
-				PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+				PreferSharedStorage: d.shouldCreateShared(c.outputLevel.level),
 			},
 		)
 		if err != nil {
@@ -3080,11 +3088,6 @@ func (d *DB) runCompaction(
 		defer vers.UnrefLocked()
 	}
 
-	// The table is typically written at the maximum allowable format implied by
-	// the current format major version of the DB, but Options may define
-	// additional constraints.
-	tableFormat := d.TableFormat()
-
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
 	d.mu.Unlock()
@@ -3095,9 +3098,9 @@ func (d *DB) runCompaction(
 	// TODO(jackson): Currently we never separate values in non-tests. Choose
 	// and initialize the appropriate ValueSeparation implementation based on
 	// Options and the compaction inputs.
-	valueSeparation := c.getValueSeparation(jobID, c, tableFormat)
+	valueSeparation := c.getValueSeparation(jobID, c, c.tableFormat)
 
-	result := d.compactAndWrite(jobID, c, snapshots, tableFormat, valueSeparation)
+	result := d.compactAndWrite(jobID, c, snapshots, c.tableFormat, valueSeparation)
 	if result.Err == nil {
 		ve, result.Err = c.makeVersionEdit(result)
 	}
@@ -3464,7 +3467,7 @@ func (d *DB) newCompactionOutputObj(
 		}
 	}
 
-	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, c.opts)
+	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, c.objCreateOpts)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
