@@ -183,9 +183,9 @@ func ParseBlobFileMetadataDebug(s string) (_ BlobFileMetadata, err error) {
 	}()
 
 	// Input format:
-	//  000102 physical:{000000: size:[206536 (201KiB)], vals:[393256 (384KiB)]}
+	//  B000102 physical:{000000: size:[206536 (201KiB)], vals:[393256 (384KiB)]}
 	p := strparse.MakeParser(debugParserSeparators, s)
-	fileID := base.BlobFileID(p.Int())
+	fileID := p.BlobFileID()
 	p.Expect("physical")
 	p.Expect(":")
 	p.Expect("{")

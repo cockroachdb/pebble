@@ -697,7 +697,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 			if ve.DeletedBlobFiles == nil {
 				ve.DeletedBlobFiles = make(map[base.BlobFileID]*PhysicalBlobFile)
 			}
-			ve.DeletedBlobFiles[base.BlobFileID(p.Int())] = nil
+			ve.DeletedBlobFiles[p.BlobFileID()] = nil
 
 		default:
 			return nil, errors.Errorf("field %q not implemented", field)

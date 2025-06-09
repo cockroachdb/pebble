@@ -358,18 +358,18 @@ MANIFEST-000001
   log-num:       4
   next-file-num: 7
   last-seq-num:  13
-  add-table:     L0 000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[10-13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:791 blobrefs:[(000006: 18); depth:1] (2025-06-02T22:18:01Z)
-  add-blob-file: 000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
+  add-table:     L0 000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[10-13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:791 blobrefs:[(B000006: 18); depth:1] (2025-06-02T22:18:01Z)
+  add-blob-file: B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
 108/2
   log-num:       7
   next-file-num: 10
   last-seq-num:  15
-  add-table:     L0 000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[14-15] points:[eee\x00#14,SET-fff\x00#15,SET] size:759 blobrefs:[(000009: 13); depth:1] (2025-06-02T22:18:01Z)
-  add-blob-file: 000009 physical:{000009 size:[103 (103B)] vals:[13 (13B)]}
+  add-table:     L0 000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[14-15] points:[eee\x00#14,SET-fff\x00#15,SET] size:759 blobrefs:[(B000009: 13); depth:1] (2025-06-02T22:18:01Z)
+  add-blob-file: B000009 physical:{000009 size:[103 (103B)] vals:[13 (13B)]}
 EOF
 L0.0:
-  000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[10-13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:791 blobrefs:[(000006: 18); depth:1]
-  000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[14-15] points:[eee\x00#14,SET-fff\x00#15,SET] size:759 blobrefs:[(000009: 13); depth:1]
+  000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[10-13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:791 blobrefs:[(B000006: 18); depth:1]
+  000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[14-15] points:[eee\x00#14,SET-fff\x00#15,SET] size:759 blobrefs:[(B000009: 13); depth:1]
 Blob files:
-  000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
-  000009 physical:{000009 size:[103 (103B)] vals:[13 (13B)]}
+  B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
+  B000009 physical:{000009 size:[103 (103B)] vals:[13 (13B)]}

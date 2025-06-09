@@ -150,6 +150,19 @@ func (p *Parser) SeqNum() base.SeqNum {
 	return base.ParseSeqNum(p.Next())
 }
 
+// BlobFileID parses the next token as a BlobFileID.
+func (p *Parser) BlobFileID() base.BlobFileID {
+	s := p.Next()
+	if !strings.HasPrefix(s, "B") {
+		p.Errf("expected blob file ID, got %q", s)
+	}
+	v, err := strconv.ParseUint(s[1:], 10, 64)
+	if err != nil {
+		p.Errf("cannot parse blob file ID: %v", err)
+	}
+	return base.BlobFileID(v)
+}
+
 // FileNum parses the next token as a FileNum.
 func (p *Parser) FileNum() base.FileNum {
 	return base.FileNum(p.Int())

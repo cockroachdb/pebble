@@ -50,7 +50,7 @@ close-output
 Blob file created: 000002 size:[120 (120B)] vals:[29 (29B)]
 {BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 29, FileLen: 120}
 blobrefs:[
- 0: 000002 29
+ 0: B000002 29
 ]
 
 add
@@ -131,8 +131,8 @@ close-output
 # close: 000005.sst
 no blob file created
 blobrefs:[
- 0: 000001 5
- 1: 000003 4
+ 0: B000001 5
+ 1: B000003 4
 ]
 
 add
@@ -153,5 +153,5 @@ close-output
 # close: 000006.sst
 no blob file created
 blobrefs:[
- 0: 000003 5
+ 0: B000003 5
 ]

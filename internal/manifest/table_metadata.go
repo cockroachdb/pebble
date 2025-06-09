@@ -803,7 +803,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 				}
 				p.Expect("(")
 				var ref BlobReference
-				ref.FileID = base.BlobFileID(p.Uint64())
+				ref.FileID = p.BlobFileID()
 				p.Expect(":")
 				ref.ValueSize = p.Uint64()
 				m.BlobReferences = append(m.BlobReferences, ref)
