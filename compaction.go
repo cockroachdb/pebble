@@ -2353,8 +2353,8 @@ func (d *DB) runCopyCompaction(
 		return nil, compact.Stats{}, err
 	}
 	if !objMeta.IsExternal() {
-		if objMeta.IsRemote() || !d.shouldCreateShared(c.outputLevel.level) {
-			panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
+		if objMeta.IsRemote() {
+			panic("pebble: scheduled a copy compaction of a shared file")
 		}
 		// Note that based on logic in the compaction picker, we're guaranteed
 		// inputMeta.Virtual is false.
