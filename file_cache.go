@@ -554,15 +554,8 @@ func (c *fileCacheShard) newPointIter(
 			ctx = objiotracing.WithLevel(ctx, opts.layer.Level())
 		}
 	}
-	tableFormat, err := r.TableFormat()
-	if err != nil {
-		return nil, err
-	}
 
 	if v.isShared && file.SyntheticSeqNum() != 0 {
-		if tableFormat < sstable.TableFormatPebblev4 {
-			return nil, errors.New("pebble: shared ingested sstable has a lower table format than expected")
-		}
 		// The table is shared and ingested.
 		hideObsoletePoints = true
 	}
@@ -573,6 +566,7 @@ func (c *fileCacheShard) newPointIter(
 		iterStatsAccum = dbOpts.sstStatsCollector.Accumulator(
 			uint64(uintptr(unsafe.Pointer(r))), opts.Category)
 	}
+	var err error
 	if internalOpts.compaction {
 		iter, err = cr.NewCompactionIter(transforms, block.ReadEnv{IterStats: iterStatsAccum, BufferPool: internalOpts.bufferPool}, &v.readerProvider)
 	} else {
