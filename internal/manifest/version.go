@@ -10,7 +10,6 @@ import (
 	"iter"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -48,34 +47,12 @@ func KeyRange(ucmp Compare, iters ...iter.Seq[*TableMetadata]) (smallest, larges
 	return smallest, largest
 }
 
-type bySeqNum []*TableMetadata
-
-func (b bySeqNum) Len() int { return len(b) }
-func (b bySeqNum) Less(i, j int) bool {
-	return b[i].lessSeqNum(b[j])
-}
-func (b bySeqNum) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
-
-// SortBySeqNum sorts the specified files by increasing sequence number.
-func SortBySeqNum(files []*TableMetadata) {
-	sort.Sort(bySeqNum(files))
-}
-
-type bySmallest struct {
-	files []*TableMetadata
-	cmp   Compare
-}
-
-func (b bySmallest) Len() int { return len(b.files) }
-func (b bySmallest) Less(i, j int) bool {
-	return b.files[i].cmpSmallestKey(b.files[j], b.cmp) < 0
-}
-func (b bySmallest) Swap(i, j int) { b.files[i], b.files[j] = b.files[j], b.files[i] }
-
 // SortBySmallest sorts the specified files by smallest key using the supplied
 // comparison function to order user keys.
 func SortBySmallest(files []*TableMetadata, cmp Compare) {
-	sort.Sort(bySmallest{files, cmp})
+	slices.SortFunc(files, func(a, b *TableMetadata) int {
+		return a.cmpSmallestKey(b, cmp)
+	})
 }
 
 // NumLevels is the number of levels a Version contains.
@@ -783,7 +760,7 @@ func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelI
 			// Validate that the sorting is sane.
 			if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
 				// Multiple files satisfying case 2 mentioned above.
-			} else if !prev.lessSeqNum(f) {
+			} else if prev.cmpSeqNum(f) >= 0 {
 				return base.CorruptionErrorf("L0 files %s and %s are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
 					errors.Safe(prev.TableNum), errors.Safe(f.TableNum),
 					errors.Safe(prev.SmallestSeqNum), errors.Safe(prev.LargestSeqNum),

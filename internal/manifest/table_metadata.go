@@ -1001,10 +1001,6 @@ func (m *TableMetadata) cmpSeqNum(b *TableMetadata) int {
 	return stdcmp.Compare(m.TableNum, b.TableNum)
 }
 
-func (m *TableMetadata) lessSeqNum(b *TableMetadata) bool {
-	return m.cmpSeqNum(b) < 0
-}
-
 func (m *TableMetadata) cmpSmallestKey(b *TableMetadata, cmp Compare) int {
 	return base.InternalCompare(cmp, m.Smallest(), b.Smallest())
 }
