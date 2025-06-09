@@ -397,7 +397,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	d.mu.log.manager = walManager
 
-	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.onObsoleteTableDelete, d.getDeletionPacerInfo)
+	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.getDeletionPacerInfo)
 
 	if manifestExists && !opts.DisableConsistencyCheck {
 		curVersion := d.mu.versions.currentVersion()
