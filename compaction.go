@@ -2456,7 +2456,7 @@ func (d *DB) runCopyCompaction(
 		return nil, compact.Stats{}, err
 	}
 	if !objMeta.IsExternal() {
-		if objMeta.IsRemote() || !remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level) {
+		if objMeta.IsRemote() || !d.shouldCreateShared(c.outputLevel.level) {
 			panic("pebble: scheduled a copy compaction that is not actually moving files to shared storage")
 		}
 		// Note that based on logic in the compaction picker, we're guaranteed
@@ -2535,7 +2535,7 @@ func (d *DB) runCopyCompaction(
 		w, _, err := d.objProvider.Create(
 			ctx, fileTypeTable, newMeta.FileBacking.DiskFileNum,
 			objstorage.CreateOptions{
-				PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+				PreferSharedStorage: d.shouldCreateShared(c.outputLevel.level),
 			},
 		)
 		if err != nil {
@@ -3195,7 +3195,7 @@ func (d *DB) newCompactionOutput(
 
 	// Prefer shared storage if present.
 	createOpts := objstorage.CreateOptions{
-		PreferSharedStorage: remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, c.outputLevel.level),
+		PreferSharedStorage: d.shouldCreateShared(c.outputLevel.level),
 		WriteCategory:       writeCategory,
 	}
 	writable, objMeta, err := d.objProvider.Create(ctx, fileTypeTable, diskFileNum, createOpts)
