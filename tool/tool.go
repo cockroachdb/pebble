@@ -38,6 +38,7 @@ type T struct {
 	remotecat       *remoteCatalogT
 	sstable         *sstableT
 	wal             *walT
+	blob            *blobT
 	opts            pebble.Options
 	comparers       sstable.Comparers
 	mergers         sstable.Mergers
@@ -190,6 +191,7 @@ func New(opts ...Option) *T {
 	t.remotecat = newRemoteCatalog(&t.opts)
 	t.sstable = newSSTable(&t.opts, t.comparers, t.mergers)
 	t.wal = newWAL(&t.opts, t.comparers, t.defaultComparer)
+	t.blob = newBlob(&t.opts)
 	t.Commands = []*cobra.Command{
 		t.db.Root,
 		t.find.Root,
@@ -198,6 +200,7 @@ func New(opts ...Option) *T {
 		t.remotecat.Root,
 		t.sstable.Root,
 		t.wal.Root,
+		t.blob.Root,
 	}
 	return t
 }
