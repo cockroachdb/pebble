@@ -3954,38 +3954,1311 @@ sstable
  │    ├── 00000 (4)
  │    │    └── block: 0, values size: 13, bitmap size: 1 byte(s), bitmap: [00000011]
  │    └── trailer [compression=none checksum=0x63e76459]
- ├── properties  offset: 173  length: 508
+ ├── properties  offset: 173  length: 531
  │    ├── 00000    obsolete-key (13)
  │    ├── 00013    pebble.colblk.schema (25)
- │    ├── 00038    pebble.num.values.in.blob-files (32)
- │    ├── 00070    rocksdb.block.based.table.index.type (40)
- │    ├── 00110    rocksdb.comparator (44)
- │    ├── 00154    rocksdb.compression (25)
- │    ├── 00179    rocksdb.compression_options (122)
- │    ├── 00301    rocksdb.data.size (18)
- │    ├── 00319    rocksdb.deleted.keys (21)
- │    ├── 00340    rocksdb.filter.size (20)
- │    ├── 00360    rocksdb.index.size (19)
- │    ├── 00379    rocksdb.merge.operands (23)
- │    ├── 00402    rocksdb.merge.operator (40)
- │    ├── 00442    rocksdb.num.data.blocks (24)
- │    ├── 00466    rocksdb.num.entries (20)
- │    ├── 00486    rocksdb.num.range-deletions (28)
- │    ├── 00514    rocksdb.property.collectors (41)
- │    ├── 00555    rocksdb.raw.key.size (21)
- │    ├── 00576    rocksdb.raw.value.size (23)
- │    └── trailer [compression=snappy checksum=0x5bfa586b]
- ├── meta-index  offset: 686  length: 72
+ │    ├── 00038    pebble.compression_stats (38)
+ │    ├── 00076    pebble.num.values.in.blob-files (32)
+ │    ├── 00108    rocksdb.block.based.table.index.type (40)
+ │    ├── 00148    rocksdb.comparator (44)
+ │    ├── 00192    rocksdb.compression (25)
+ │    ├── 00217    rocksdb.compression_options (122)
+ │    ├── 00339    rocksdb.data.size (18)
+ │    ├── 00357    rocksdb.deleted.keys (21)
+ │    ├── 00378    rocksdb.filter.size (20)
+ │    ├── 00398    rocksdb.index.size (19)
+ │    ├── 00417    rocksdb.merge.operands (23)
+ │    ├── 00440    rocksdb.merge.operator (40)
+ │    ├── 00480    rocksdb.num.data.blocks (24)
+ │    ├── 00504    rocksdb.num.entries (20)
+ │    ├── 00524    rocksdb.num.range-deletions (28)
+ │    ├── 00552    rocksdb.property.collectors (41)
+ │    ├── 00593    rocksdb.raw.key.size (21)
+ │    ├── 00614    rocksdb.raw.value.size (23)
+ │    └── trailer [compression=snappy checksum=0x61b35c0]
+ ├── meta-index  offset: 709  length: 72
  │    ├── 0000    pebble.blob_ref_index block:148/20
  │    │   
- │    ├── 0001    rocksdb.properties block:173/508
+ │    ├── 0001    rocksdb.properties block:173/531
  │    │   
- │    └── trailer [compression=none checksum=0x4fcb0b70]
- └── footer  offset: 763  length: 61
+ │    └── trailer [compression=none checksum=0xe79ed9cf]
+ └── footer  offset: 786  length: 61
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=686, length=72
+      ├── 001  meta: offset=709, length=72
       ├── 004  index: offset=107, length=36
       ├── 041  attributes: [BlobValues,PointKeys]
-      ├── 045  footer checksum: 0x43f32cc0
+      ├── 045  footer checksum: 0x61e68541
+      ├── 049  version: 7
+      └── 053  magic number: 0xf09faab3f09faab3
+
+sstable layout
+testdata/find-val-sep-db/000011.sst
+-v
+----
+000011.sst
+sstable
+ ├── data  offset: 0  length: 99
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 44000000 # col 1: page start 68
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 45000000 # col 2: page start 69
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 46000000 # col 3: page start 70
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 47000000 # col 4: page start 71
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4c000000 # col 5: page start 76
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 03 # data[0] = 3 [66 overall]
+ │    │    │    │    ├── 060-061: x 03 # data[1] = 3 [66 overall]
+ │    │    │    │    ├── 061-062: x 04 # data[2] = 4 [67 overall]
+ │    │    │    │    └── 062-063: x 05 # data[3] = 5 [68 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-066: x 676767 # data[00]: ggg (block prefix)
+ │    │    │         ├── 066-066: x        # data[01]: ... (bundle prefix)
+ │    │    │         ├── 066-067: x 30     # data[02]: ...0
+ │    │    │         └── 067-068: x 31     # data[03]: ...1
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 068-069: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 071-071: x  # data[0]:
+ │    │    │         └── 071-071: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 071-072: x 02   # encoding: 2b
+ │    │    │    ├── 072-074: x 0110 # data[0] = 4097
+ │    │    │    └── 074-076: x 0111 # data[1] = 4353
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 076-077: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 077-080: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000080000 # data[0]: "@\x00\b\x00\x00"
+ │    │    │         └── 105-110: x 4000080001 # data[1]: "@\x00\b\x00\x01"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg0\x00#16,SET [626c6f622068616e646c65202866302c626c6b302c6964302c6c656e3829]
+ │    ├── ggg1\x00#17,SET [626c6f622068616e646c65202866302c626c6b302c6964312c6c656e3829]
+ │    └── trailer [compression=snappy checksum=0xb7be4da0]
+ ├── data  offset: 104  length: 101
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676731 # data[00]: ggg1 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 30       # data[02]: ....0
+ │    │    │         └── 068-069: x 31       # data[03]: ....1
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 011a # data[0] = 6657
+ │    │    │    └── 076-078: x 011b # data[1] = 6913
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090002 # data[0]: "@\x00\t\x00\x02"
+ │    │    │         └── 105-110: x 4000090003 # data[1]: "@\x00\t\x00\x03"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg10\x00#26,SET [626c6f622068616e646c65202866302c626c6b302c6964322c6c656e3929]
+ │    ├── ggg11\x00#27,SET [626c6f622068616e646c65202866302c626c6b302c6964332c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0x1b964142]
+ ├── data  offset: 210  length: 101
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676731 # data[00]: ggg1 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 32       # data[02]: ....2
+ │    │    │         └── 068-069: x 33       # data[03]: ....3
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 011c # data[0] = 7169
+ │    │    │    └── 076-078: x 011d # data[1] = 7425
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090004 # data[0]: "@\x00\t\x00\x04"
+ │    │    │         └── 105-110: x 4000090005 # data[1]: "@\x00\t\x00\x05"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg12\x00#28,SET [626c6f622068616e646c65202866302c626c6b302c6964342c6c656e3929]
+ │    ├── ggg13\x00#29,SET [626c6f622068616e646c65202866302c626c6b302c6964352c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0x6889681c]
+ ├── data  offset: 316  length: 101
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676731 # data[00]: ggg1 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 34       # data[02]: ....4
+ │    │    │         └── 068-069: x 35       # data[03]: ....5
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 011e # data[0] = 7681
+ │    │    │    └── 076-078: x 011f # data[1] = 7937
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090006 # data[0]: "@\x00\t\x00\x06"
+ │    │    │         └── 105-110: x 4000090007 # data[1]: "@\x00\t\x00\a"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg14\x00#30,SET [626c6f622068616e646c65202866302c626c6b302c6964362c6c656e3929]
+ │    ├── ggg15\x00#31,SET [626c6f622068616e646c65202866302c626c6b302c6964372c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0x8b9a669f]
+ ├── data  offset: 422  length: 101
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676731 # data[00]: ggg1 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 36       # data[02]: ....6
+ │    │    │         └── 068-069: x 37       # data[03]: ....7
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 0120 # data[0] = 8193
+ │    │    │    └── 076-078: x 0121 # data[1] = 8449
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090100 # data[0]: "@\x00\t\x01\x00"
+ │    │    │         └── 105-110: x 4000090101 # data[1]: "@\x00\t\x01\x01"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg16\x00#32,SET [626c6f622068616e646c65202866302c626c6b312c6964302c6c656e3929]
+ │    ├── ggg17\x00#33,SET [626c6f622068616e646c65202866302c626c6b312c6964312c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0x3c676670]
+ ├── data  offset: 528  length: 100
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676731 # data[00]: ggg1 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 38       # data[02]: ....8
+ │    │    │         └── 068-069: x 39       # data[03]: ....9
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 0122 # data[0] = 8705
+ │    │    │    └── 076-078: x 0123 # data[1] = 8961
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090102 # data[0]: "@\x00\t\x01\x02"
+ │    │    │         └── 105-110: x 4000090103 # data[1]: "@\x00\t\x01\x03"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg18\x00#34,SET [626c6f622068616e646c65202866302c626c6b312c6964322c6c656e3929]
+ │    ├── ggg19\x00#35,SET [626c6f622068616e646c65202866302c626c6b312c6964332c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0x16f9ff33]
+ ├── data  offset: 633  length: 100
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 44000000 # col 1: page start 68
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 45000000 # col 2: page start 69
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 46000000 # col 3: page start 70
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 47000000 # col 4: page start 71
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4c000000 # col 5: page start 76
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 04 # data[2] = 4 [67 overall]
+ │    │    │    │    └── 062-063: x 05 # data[3] = 5 [68 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676732 # data[00]: ggg2 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-067: x          # data[02]: ....
+ │    │    │         └── 067-068: x 30       # data[03]: ....0
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 068-069: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 071-071: x  # data[0]:
+ │    │    │         └── 071-071: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 071-072: x 02   # encoding: 2b
+ │    │    │    ├── 072-074: x 0112 # data[0] = 4609
+ │    │    │    └── 074-076: x 0124 # data[1] = 9217
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 076-077: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 077-080: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000080104 # data[0]: "@\x00\b\x01\x04"
+ │    │    │         └── 105-110: x 4000090105 # data[1]: "@\x00\t\x01\x05"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg2\x00#18,SET [626c6f622068616e646c65202866302c626c6b312c6964342c6c656e3829]
+ │    ├── ggg20\x00#36,SET [626c6f622068616e646c65202866302c626c6b312c6964352c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0xf8c0352f]
+ ├── data  offset: 738  length: 101
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676732 # data[00]: ggg2 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 31       # data[02]: ....1
+ │    │    │         └── 068-069: x 32       # data[03]: ....2
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 0125 # data[0] = 9473
+ │    │    │    └── 076-078: x 0126 # data[1] = 9729
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090106 # data[0]: "@\x00\t\x01\x06"
+ │    │    │         └── 105-110: x 4000090107 # data[1]: "@\x00\t\x01\a"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg21\x00#37,SET [626c6f622068616e646c65202866302c626c6b312c6964362c6c656e3929]
+ │    ├── ggg22\x00#38,SET [626c6f622068616e646c65202866302c626c6b312c6964372c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0x92f2d49e]
+ ├── data  offset: 844  length: 101
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676732 # data[00]: ggg2 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 33       # data[02]: ....3
+ │    │    │         └── 068-069: x 34       # data[03]: ....4
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 0127 # data[0] = 9985
+ │    │    │    └── 076-078: x 0128 # data[1] = 10241
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090200 # data[0]: "@\x00\t\x02\x00"
+ │    │    │         └── 105-110: x 4000090201 # data[1]: "@\x00\t\x02\x01"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg23\x00#39,SET [626c6f622068616e646c65202866302c626c6b322c6964302c6c656e3929]
+ │    ├── ggg24\x00#40,SET [626c6f622068616e646c65202866302c626c6b322c6964312c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0x63efbeba]
+ ├── data  offset: 950  length: 101
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676732 # data[00]: ggg2 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 35       # data[02]: ....5
+ │    │    │         └── 068-069: x 36       # data[03]: ....6
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 0129 # data[0] = 10497
+ │    │    │    └── 076-078: x 012a # data[1] = 10753
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090202 # data[0]: "@\x00\t\x02\x02"
+ │    │    │         └── 105-110: x 4000090203 # data[1]: "@\x00\t\x02\x03"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg25\x00#41,SET [626c6f622068616e646c65202866302c626c6b322c6964322c6c656e3929]
+ │    ├── ggg26\x00#42,SET [626c6f622068616e646c65202866302c626c6b322c6964332c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0x818e91f]
+ ├── data  offset: 1056  length: 101
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 04 # data[0] = 4 [67 overall]
+ │    │    │    │    ├── 060-061: x 04 # data[1] = 4 [67 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-067: x 67676732 # data[00]: ggg2 (block prefix)
+ │    │    │         ├── 067-067: x          # data[01]: .... (bundle prefix)
+ │    │    │         ├── 067-068: x 37       # data[02]: ....7
+ │    │    │         └── 068-069: x 38       # data[03]: ....8
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 012b # data[0] = 11009
+ │    │    │    └── 076-078: x 012c # data[1] = 11265
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090204 # data[0]: "@\x00\t\x02\x04"
+ │    │    │         └── 105-110: x 4000090205 # data[1]: "@\x00\t\x02\x05"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg27\x00#43,SET [626c6f622068616e646c65202866302c626c6b322c6964342c6c656e3929]
+ │    ├── ggg28\x00#44,SET [626c6f622068616e646c65202866302c626c6b322c6964352c6c656e3929]
+ │    └── trailer [compression=snappy checksum=0xc81eb89]
+ ├── data  offset: 1162  length: 102
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 06000000 # maximum key length: 6
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 45000000 # col 1: page start 69
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 46000000 # col 2: page start 70
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 47000000 # col 3: page start 71
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 48000000 # col 4: page start 72
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4e000000 # col 5: page start 78
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 03 # data[0] = 3 [66 overall]
+ │    │    │    │    ├── 060-061: x 03 # data[1] = 3 [66 overall]
+ │    │    │    │    ├── 061-062: x 05 # data[2] = 5 [68 overall]
+ │    │    │    │    └── 062-063: x 06 # data[3] = 6 [69 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-066: x 676767 # data[00]: ggg (block prefix)
+ │    │    │         ├── 066-066: x        # data[01]: ... (bundle prefix)
+ │    │    │         ├── 066-068: x 3239   # data[02]: ...29
+ │    │    │         └── 068-069: x 33     # data[03]: ...3
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 071-072: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 072-072: x  # data[0]:
+ │    │    │         └── 072-072: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 072-073: x 02   # encoding: 2b
+ │    │    │    ├── 073-074: x 00   # padding (aligning to 16-bit boundary)
+ │    │    │    ├── 074-076: x 012d # data[0] = 11521
+ │    │    │    └── 076-078: x 0113 # data[1] = 4865
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 078-079: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 079-080: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000090206 # data[0]: "@\x00\t\x02\x06"
+ │    │    │         └── 105-110: x 4000080207 # data[1]: "@\x00\b\x02\a"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg29\x00#45,SET [626c6f622068616e646c65202866302c626c6b322c6964362c6c656e3929]
+ │    ├── ggg3\x00#19,SET [626c6f622068616e646c65202866302c626c6b322c6964372c6c656e3829]
+ │    └── trailer [compression=snappy checksum=0x268d9004]
+ ├── data  offset: 1269  length: 99
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 05000000 # maximum key length: 5
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 44000000 # col 1: page start 68
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 45000000 # col 2: page start 69
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 46000000 # col 3: page start 70
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 47000000 # col 4: page start 71
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4c000000 # col 5: page start 76
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 03 # data[0] = 3 [66 overall]
+ │    │    │    │    ├── 060-061: x 03 # data[1] = 3 [66 overall]
+ │    │    │    │    ├── 061-062: x 04 # data[2] = 4 [67 overall]
+ │    │    │    │    └── 062-063: x 05 # data[3] = 5 [68 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-066: x 676767 # data[00]: ggg (block prefix)
+ │    │    │         ├── 066-066: x        # data[01]: ... (bundle prefix)
+ │    │    │         ├── 066-067: x 34     # data[02]: ...4
+ │    │    │         └── 067-068: x 35     # data[03]: ...5
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 068-069: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 071-071: x  # data[0]:
+ │    │    │         └── 071-071: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 071-072: x 02   # encoding: 2b
+ │    │    │    ├── 072-074: x 0114 # data[0] = 5121
+ │    │    │    └── 074-076: x 0115 # data[1] = 5377
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 076-077: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 077-080: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000080300 # data[0]: "@\x00\b\x03\x00"
+ │    │    │         └── 105-110: x 4000080301 # data[1]: "@\x00\b\x03\x01"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg4\x00#20,SET [626c6f622068616e646c65202866302c626c6b332c6964302c6c656e3829]
+ │    ├── ggg5\x00#21,SET [626c6f622068616e646c65202866302c626c6b332c6964312c6c656e3829]
+ │    └── trailer [compression=snappy checksum=0x1d72d054]
+ ├── data  offset: 1373  length: 99
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 05000000 # maximum key length: 5
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 44000000 # col 1: page start 68
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 45000000 # col 2: page start 69
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 46000000 # col 3: page start 70
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 47000000 # col 4: page start 71
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4c000000 # col 5: page start 76
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 03 # data[0] = 3 [66 overall]
+ │    │    │    │    ├── 060-061: x 03 # data[1] = 3 [66 overall]
+ │    │    │    │    ├── 061-062: x 04 # data[2] = 4 [67 overall]
+ │    │    │    │    └── 062-063: x 05 # data[3] = 5 [68 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-066: x 676767 # data[00]: ggg (block prefix)
+ │    │    │         ├── 066-066: x        # data[01]: ... (bundle prefix)
+ │    │    │         ├── 066-067: x 36     # data[02]: ...6
+ │    │    │         └── 067-068: x 37     # data[03]: ...7
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 068-069: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 071-071: x  # data[0]:
+ │    │    │         └── 071-071: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 071-072: x 02   # encoding: 2b
+ │    │    │    ├── 072-074: x 0116 # data[0] = 5633
+ │    │    │    └── 074-076: x 0117 # data[1] = 5889
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 076-077: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 077-080: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000080302 # data[0]: "@\x00\b\x03\x02"
+ │    │    │         └── 105-110: x 4000080303 # data[1]: "@\x00\b\x03\x03"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg6\x00#22,SET [626c6f622068616e646c65202866302c626c6b332c6964322c6c656e3829]
+ │    ├── ggg7\x00#23,SET [626c6f622068616e646c65202866302c626c6b332c6964332c6c656e3829]
+ │    └── trailer [compression=snappy checksum=0xba4d3642]
+ ├── data  offset: 1477  length: 98
+ │    ├── data block header
+ │    │    ├── columnar block header
+ │    │    │    ├── 000-001: x 02       # key schema header
+ │    │    │    ├── 001-005: x 05000000 # maximum key length: 5
+ │    │    │    ├── 005-006: x 01       # version 1
+ │    │    │    ├── 006-008: x 0900     # 9 columns
+ │    │    │    ├── 008-012: x 02000000 # 2 rows
+ │    │    │    ├── 012-013: b 00000100 # col 0: prefixbytes
+ │    │    │    ├── 013-017: x 39000000 # col 0: page start 57
+ │    │    │    ├── 017-018: b 00000010 # col 1: uint
+ │    │    │    ├── 018-022: x 44000000 # col 1: page start 68
+ │    │    │    ├── 022-023: b 00000010 # col 2: uint
+ │    │    │    ├── 023-027: x 45000000 # col 2: page start 69
+ │    │    │    ├── 027-028: b 00000011 # col 3: bytes
+ │    │    │    ├── 028-032: x 46000000 # col 3: page start 70
+ │    │    │    ├── 032-033: b 00000010 # col 4: uint
+ │    │    │    ├── 033-037: x 47000000 # col 4: page start 71
+ │    │    │    ├── 037-038: b 00000001 # col 5: bool
+ │    │    │    ├── 038-042: x 4c000000 # col 5: page start 76
+ │    │    │    ├── 042-043: b 00000011 # col 6: bytes
+ │    │    │    ├── 043-047: x 60000000 # col 6: page start 96
+ │    │    │    ├── 047-048: b 00000001 # col 7: bool
+ │    │    │    ├── 048-052: x 6e000000 # col 7: page start 110
+ │    │    │    ├── 052-053: b 00000001 # col 8: bool
+ │    │    │    └── 053-057: x 80000000 # col 8: page start 128
+ │    │    ├── data for column 0 (prefixbytes)
+ │    │    │    ├── 057-058: x 04 # bundle size: 16
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 058-059: x 01 # encoding: 1b
+ │    │    │    │    ├── 059-060: x 03 # data[0] = 3 [66 overall]
+ │    │    │    │    ├── 060-061: x 03 # data[1] = 3 [66 overall]
+ │    │    │    │    ├── 061-062: x 04 # data[2] = 4 [67 overall]
+ │    │    │    │    └── 062-063: x 05 # data[3] = 5 [68 overall]
+ │    │    │    └── data
+ │    │    │         ├── 063-066: x 676767 # data[00]: ggg (block prefix)
+ │    │    │         ├── 066-066: x        # data[01]: ... (bundle prefix)
+ │    │    │         ├── 066-067: x 38     # data[02]: ...8
+ │    │    │         └── 067-068: x 39     # data[03]: ...9
+ │    │    ├── data for column 1 (uint)
+ │    │    │    └── 068-069: x 00 # encoding: zero
+ │    │    ├── data for column 2 (uint)
+ │    │    │    └── 069-070: x 00 # encoding: zero
+ │    │    ├── data for column 3 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    └── 070-071: x 00 # encoding: zero
+ │    │    │    └── data
+ │    │    │         ├── 071-071: x  # data[0]:
+ │    │    │         └── 071-071: x  # data[1]:
+ │    │    ├── data for column 4 (uint)
+ │    │    │    ├── 071-072: x 02   # encoding: 2b
+ │    │    │    ├── 072-074: x 0118 # data[0] = 6145
+ │    │    │    └── 074-076: x 0119 # data[1] = 6401
+ │    │    ├── data for column 5 (bool)
+ │    │    │    ├── 076-077: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 077-080: x 000000                                                           # padding to align to 64-bit boundary
+ │    │    │    ├── 080-088: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 088-096: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 6 (bytes)
+ │    │    │    ├── offsets table
+ │    │    │    │    ├── 096-097: x 01 # encoding: 1b
+ │    │    │    │    ├── 097-098: x 00 # data[0] = 0 [100 overall]
+ │    │    │    │    ├── 098-099: x 05 # data[1] = 5 [105 overall]
+ │    │    │    │    └── 099-100: x 0a # data[2] = 10 [110 overall]
+ │    │    │    └── data
+ │    │    │         ├── 100-105: x 4000080304 # data[0]: "@\x00\b\x03\x04"
+ │    │    │         └── 105-110: x 4000080305 # data[1]: "@\x00\b\x03\x05"
+ │    │    ├── data for column 7 (bool)
+ │    │    │    ├── 110-111: x 00                                                               # default bitmap encoding
+ │    │    │    ├── 111-112: x 00                                                               # padding to align to 64-bit boundary
+ │    │    │    ├── 112-120: b 0000001100000000000000000000000000000000000000000000000000000000 # bitmap word 0
+ │    │    │    └── 120-128: b 0000000100000000000000000000000000000000000000000000000000000000 # bitmap summary word 0-63
+ │    │    ├── data for column 8 (bool)
+ │    │    │    └── 128-129: x 01 # zero bitmap encoding
+ │    │    └── 129-130: x 00 # block padding byte
+ │    ├── ggg8\x00#24,SET [626c6f622068616e646c65202866302c626c6b332c6964342c6c656e3829]
+ │    ├── ggg9\x00#25,SET [626c6f622068616e646c65202866302c626c6b332c6964352c6c656e3829]
+ │    └── trailer [compression=snappy checksum=0x280a6a8a]
+ ├── index  offset: 1580  length: 96
+ │    ├── 00000    block:0/99
+ │    │   
+ │    ├── 00001    block:104/101
+ │    │   
+ │    ├── 00002    block:210/101
+ │    │   
+ │    ├── 00003    block:316/101
+ │    │   
+ │    ├── 00004    block:422/101
+ │    │   
+ │    ├── 00005    block:528/100
+ │    │   
+ │    ├── 00006    block:633/100
+ │    │   
+ │    └── trailer [compression=none checksum=0x8d813994]
+ ├── index  offset: 1681  length: 99
+ │    ├── 00000    block:738/101
+ │    │   
+ │    ├── 00001    block:844/101
+ │    │   
+ │    ├── 00002    block:950/101
+ │    │   
+ │    ├── 00003    block:1056/101
+ │    │   
+ │    ├── 00004    block:1162/102
+ │    │   
+ │    ├── 00005    block:1269/99
+ │    │   
+ │    ├── 00006    block:1373/99
+ │    │   
+ │    ├── 00007    block:1477/98
+ │    │   
+ │    └── trailer [compression=none checksum=0x880a0ca6]
+ ├── top-index  offset: 1785  length: 47
+ │    ├── 00000    block:1580/96
+ │    │   
+ │    ├── 00001    block:1681/99
+ │    │   
+ │    └── trailer [compression=none checksum=0xbc34772d]
+ ├── blob-reference-index  offset: 1837  length: 35
+ │    ├── 00000 (19)
+ │    │    ├── block: 0, values size: 70, bitmap size: 2 byte(s), bitmap: [11111111 00000001]
+ │    │    ├── block: 1, values size: 71, bitmap size: 2 byte(s), bitmap: [11111111 00000001]
+ │    │    ├── block: 2, values size: 71, bitmap size: 2 byte(s), bitmap: [11111111 00000001]
+ │    │    └── block: 3, values size: 48, bitmap size: 1 byte(s), bitmap: [00111111]
+ │    └── trailer [compression=none checksum=0xab1de559]
+ ├── properties  offset: 1877  length: 564
+ │    ├── 00000    obsolete-key (13)
+ │    ├── 00013    pebble.colblk.schema (25)
+ │    ├── 00038    pebble.compression_stats (40)
+ │    ├── 00078    pebble.num.values.in.blob-files (32)
+ │    ├── 00110    rocksdb.block.based.table.index.type (40)
+ │    ├── 00150    rocksdb.comparator (44)
+ │    ├── 00194    rocksdb.compression (25)
+ │    ├── 00219    rocksdb.compression_options (122)
+ │    ├── 00341    rocksdb.data.size (19)
+ │    ├── 00360    rocksdb.deleted.keys (21)
+ │    ├── 00381    rocksdb.filter.size (20)
+ │    ├── 00401    rocksdb.index.partitions (25)
+ │    ├── 00426    rocksdb.index.size (20)
+ │    ├── 00446    rocksdb.merge.operands (23)
+ │    ├── 00469    rocksdb.merge.operator (40)
+ │    ├── 00509    rocksdb.num.data.blocks (24)
+ │    ├── 00533    rocksdb.num.entries (20)
+ │    ├── 00553    rocksdb.num.range-deletions (28)
+ │    ├── 00581    rocksdb.property.collectors (41)
+ │    ├── 00622    rocksdb.raw.key.size (22)
+ │    ├── 00644    rocksdb.raw.value.size (24)
+ │    ├── 00668    rocksdb.top-level.index.size (29)
+ │    └── trailer [compression=snappy checksum=0xc5cd9341]
+ ├── meta-index  offset: 2446  length: 72
+ │    ├── 0000    pebble.blob_ref_index block:1837/35
+ │    │   
+ │    ├── 0001    rocksdb.properties block:1877/564
+ │    │   
+ │    └── trailer [compression=none checksum=0xfdc3b9e]
+ └── footer  offset: 2523  length: 61
+      ├── 000  checksum type: crc32c
+      ├── 001  meta: offset=2446, length=72
+      ├── 004  index: offset=1785, length=47
+      ├── 041  attributes: [TwoLevelIndex,BlobValues,PointKeys]
+      ├── 045  footer checksum: 0x86a64d3b
       ├── 049  version: 7
       └── 053  magic number: 0xf09faab3f09faab3
