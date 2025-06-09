@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -386,6 +387,13 @@ func (d *DB) TableFormat() sstable.TableFormat {
 		}
 	}
 	return f
+}
+
+// shouldCreateShared returns true if the database should use shared objects
+// when creating new objects on the given level.
+func (d *DB) shouldCreateShared(targetLevel int) bool {
+	return remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, targetLevel) &&
+		d.FormatMajorVersion() >= FormatMinForSharedObjects
 }
 
 // RatchetFormatMajorVersion ratchets the opened database's format major
