@@ -221,6 +221,15 @@ func (v *Version) string(fmtKey base.FormatKey, verbose bool) string {
 	var buf bytes.Buffer
 	if len(v.L0SublevelFiles) > 0 {
 		fmt.Fprintf(&buf, "%s", describeSublevels(fmtKey, verbose, v.L0SublevelFiles))
+	} else if !v.Levels[0].Empty() {
+		// Depending on where within the version lifecycle we're printing the
+		// Version, we may not have the sublevels structure populated yet. If
+		// L0SublevelFiles wasn't populated, print the L0 files without any L0
+		// structure.
+		fmt.Fprintf(&buf, "L0 (no sublevels yet):\n")
+		for f := range v.Levels[0].All() {
+			fmt.Fprintf(&buf, "  %s\n", f.DebugString(fmtKey, verbose))
+		}
 	}
 	for level := 1; level < NumLevels; level++ {
 		if v.Levels[level].Empty() {
