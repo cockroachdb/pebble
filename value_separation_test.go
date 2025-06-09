@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -80,12 +79,12 @@ func TestValueSeparationPolicy(t *testing.T) {
 				case "preserve-blob-references":
 					pbr := &preserveBlobReferences{}
 					lines := crstrings.Lines(d.Input)
-					pbr.inputBlobMetadatas = make([]*manifest.PhysicalBlobFile, 0, len(lines))
+					pbr.inputBlobPhysicalFiles = make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(lines))
 					for _, line := range lines {
-						bfm, err := manifest.ParsePhysicalBlobFileDebug(line)
+						bfm, err := manifest.ParseBlobFileMetadataDebug(line)
 						require.NoError(t, err)
-						fn = max(fn, base.DiskFileNum(bfm.FileNum))
-						pbr.inputBlobMetadatas = append(pbr.inputBlobMetadatas, bfm)
+						fn = max(fn, bfm.Physical.FileNum)
+						pbr.inputBlobPhysicalFiles[bfm.FileID] = bfm.Physical
 					}
 					vs = pbr
 				case "write-new-blob-files":
@@ -232,10 +231,10 @@ func (vs *defineDBValueSeparator) Add(
 	meta.Size += uint64(lv.Fetcher.Attribute.ValueLen)
 	meta.ValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
 
-	// If it's not already in pbr.inputBlobMetadatas, add it.
-	if !slices.Contains(vs.pbr.inputBlobMetadatas, meta) {
-		vs.pbr.inputBlobMetadatas = append(vs.pbr.inputBlobMetadatas, meta)
+	if vs.pbr.inputBlobPhysicalFiles == nil {
+		vs.pbr.inputBlobPhysicalFiles = make(map[base.BlobFileID]*manifest.PhysicalBlobFile)
 	}
+	vs.pbr.inputBlobPhysicalFiles[fileID] = meta
 	// Return a KV that uses the original key but our constructed blob reference.
 	vs.kv.K = kv.K
 	vs.kv.V = iv

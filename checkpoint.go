@@ -14,7 +14,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 )
@@ -171,6 +170,9 @@ func (d *DB) Checkpoint(
 	}
 
 	// Disable file deletions.
+	// We acquire a reference on the version down below that will prevent any
+	// sstables or blob files from becoming "obsolete" and potentially deleted,
+	// but this doesn't protect the current WALs or manifests.
 	d.mu.Lock()
 	d.disableFileDeletions()
 	defer func() {
@@ -205,10 +207,17 @@ func (d *DB) Checkpoint(
 	// before our call to List.
 	allLogicalLogs := d.mu.log.manager.List()
 
-	// Release the manifest and DB.mu so we don't block other operations on
-	// the database.
+	// Release the manifest and DB.mu so we don't block other operations on the
+	// database.
+	//
+	// But first reference the version to ensure that the version's in-memory
+	// state and its physical files remain available for the checkpoint. In
+	// particular, the Version.BlobFileSet is only valid while a version is
+	// referenced.
+	current.Ref()
 	d.mu.versions.logUnlock()
 	d.mu.Unlock()
+	defer current.Unref()
 
 	// Wrap the normal filesystem with one which wraps newly created files with
 	// vfs.NewSyncingFile.
@@ -316,10 +325,11 @@ func (d *DB) Checkpoint(
 					if _, ok := includedBlobFiles[ref.FileID]; !ok {
 						includedBlobFiles[ref.FileID] = struct{}{}
 
-						// TODO(jackson): Perform a translation to the
-						// appropriate disk file number once we support blob
-						// file replacement.
-						diskFileNum := blob.DiskFileNumTODO(ref.FileID)
+						// Map the BlobFileID to a DiskFileNum in the current version.
+						diskFileNum, ok := current.BlobFiles.Lookup(ref.FileID)
+						if !ok {
+							return errors.Errorf("blob file %s not found", ref.FileID)
+						}
 						ckErr = copyFile(base.FileTypeBlob, diskFileNum)
 						if ckErr != nil {
 							return ckErr

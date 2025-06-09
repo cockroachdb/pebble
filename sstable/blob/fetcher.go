@@ -39,18 +39,15 @@ type ValueReader interface {
 	ReadIndexBlock(context.Context, block.ReadEnv, objstorage.ReadHandle) (block.BufferHandle, error)
 }
 
+// FileLookupFunc is a function that can be used to lookup the disk file number
+// for a given blob file ID.
+type FileLookupFunc func(base.BlobFileID) (base.DiskFileNum, bool)
+
 // A ReaderProvider is an interface that can be used to retrieve a ValueReader
 // for a given file number.
 type ReaderProvider interface {
 	// GetValueReader returns a ValueReader for the given file number.
 	GetValueReader(ctx context.Context, fileNum base.DiskFileNum) (r ValueReader, closeFunc func(), err error)
-}
-
-// DiskFileNumTODO is a temporary function to convert a BlobFileID to a
-// DiskFileNum. It should be removed once the manifest.Version contains a
-// mapping.
-func DiskFileNumTODO(blobFileID base.BlobFileID) base.DiskFileNum {
-	return base.DiskFileNum(blobFileID)
 }
 
 // A ValueFetcher retrieves values stored out-of-band in separate blob files.
@@ -63,6 +60,7 @@ func DiskFileNumTODO(blobFileID base.BlobFileID) base.DiskFileNum {
 // When finished with a ValueFetcher, one must call Close to release all cached
 // readers and block buffers.
 type ValueFetcher struct {
+	lookupFileNum  FileLookupFunc
 	readerProvider ReaderProvider
 	env            block.ReadEnv
 	fetchCount     int
@@ -76,7 +74,8 @@ type ValueFetcher struct {
 var _ base.ValueFetcher = (*ValueFetcher)(nil)
 
 // Init initializes the ValueFetcher.
-func (r *ValueFetcher) Init(rp ReaderProvider, env block.ReadEnv) {
+func (r *ValueFetcher) Init(lookupFileNum FileLookupFunc, rp ReaderProvider, env block.ReadEnv) {
+	r.lookupFileNum = lookupFileNum
 	r.readerProvider = rp
 	r.env = env
 	if r.readerProvider == nil {
@@ -129,7 +128,10 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 				return nil, err
 			}
 		}
-		diskFileNum := DiskFileNumTODO(vh.BlobFileID)
+		diskFileNum, ok := r.lookupFileNum(vh.BlobFileID)
+		if !ok {
+			return nil, errors.AssertionFailedf("blob file %s not found", vh.BlobFileID)
+		}
 		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, diskFileNum); err != nil {
 			return nil, err
 		}
