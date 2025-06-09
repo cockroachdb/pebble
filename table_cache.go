@@ -563,9 +563,6 @@ func (c *tableCacheShard) newPointIter(
 	}
 
 	if v.isShared && file.SyntheticSeqNum() != 0 {
-		if tableFormat < sstable.TableFormatPebblev4 {
-			return nil, errors.New("pebble: shared ingested sstable has a lower table format than expected")
-		}
 		// The table is shared and ingested.
 		hideObsoletePoints = true
 	}
