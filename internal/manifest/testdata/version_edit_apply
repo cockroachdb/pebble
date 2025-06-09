@@ -231,34 +231,34 @@ L2:
 # that is unknown.
 
 apply v8
-  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(000003: 25935); depth:1]
+  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 ----
-error during Accumulate: blob file 000003 referenced by L0.000004 not found
+error during Accumulate: blob file B000003 referenced by L0.000004 not found
 
 # Apply a version edit that introduces a new blob file and a corresponding table
 # that references its entirety.
 
 apply v8 name=v9
-  add-blob-file: 000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
-  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(000003: 25935); depth:1]
+  add-blob-file: B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
+  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 ----
 L0.0:
-  000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(000003: 25935); depth:1]
+  000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 L1:
   000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
 L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
 Blob files:
-  000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
+  B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
 
 # Try to add another table referencing the blob file. Since the file is not
 # added in the same version edit, and no referencing table is deleted in the
 # same version edit, accumulate will error.
 
 apply v8
-  add-table:     L0 000005:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] blobrefs:[(000003: 205); depth:1]
+  add-table:     L0 000005:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] blobrefs:[(B000003: 205); depth:1]
 ----
-error during Accumulate: blob file 000003 referenced by L0.000005 not found
+error during Accumulate: blob file B000003 referenced by L0.000005 not found
 
 # We can add new tables referencing the blob file if we delete an existing table
 # with a reference to the file.
@@ -266,16 +266,16 @@ error during Accumulate: blob file 000003 referenced by L0.000005 not found
 apply v9
   del-table:     L0 000004
   del-table:     L1 000001
-  add-table:     L1 000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(000003: 12205); depth:1]
-  add-table:     L1 000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(000003: 14192); depth:1]
+  add-table:     L1 000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
+  add-table:     L1 000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
 ----
 L1:
-  000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(000003: 12205); depth:1]
-  000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(000003: 14192); depth:1]
+  000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
+  000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
 L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
 Blob files:
-  000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
+  B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
 
 # Repeat the above but this time applying the entire lifecycle of a blob file in
 # a single bulk version edit. This simulates a manifest replay during startup.
@@ -292,17 +292,17 @@ L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
 
 apply v10
-  add-blob-file: 000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
-  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(000003: 25935); depth:1]
+  add-blob-file: B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
+  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 new version edit
   del-table:     L0 000004
   del-table:     L1 000001
-  add-table:     L1 000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(000003: 12205); depth:1]
-  add-table:     L1 000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(000003: 14192); depth:1]
+  add-table:     L1 000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
+  add-table:     L1 000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
 new version edit
   del-table:     L1 000005
   del-table:     L1 000006
-  del-blob-file: 000003
+  del-blob-file: B000003
 ----
 L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]

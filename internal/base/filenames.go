@@ -52,11 +52,11 @@ func PhysicalTableFileNum(f DiskFileNum) TableNum {
 type BlobFileID uint64
 
 // String returns a string representation of the blob file ID.
-func (id BlobFileID) String() string { return fmt.Sprintf("%06d", id) }
+func (id BlobFileID) String() string { return fmt.Sprintf("B%06d", id) }
 
 // SafeFormat implements redact.SafeFormatter.
 func (id BlobFileID) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("%06d", redact.SafeUint(id))
+	w.Printf("B%06d", redact.SafeUint(id))
 }
 
 // A DiskFileNum identifies a file or object with exists on disk.

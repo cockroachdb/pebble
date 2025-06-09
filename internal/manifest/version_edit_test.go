@@ -479,10 +479,10 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 		output string
 	}{
 		{
-			input: `  del-blob-file: 000001`,
+			input: `  del-blob-file: B000001`,
 		},
 		{
-			input: `  add-blob-file: 000925 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
+			input: `  add-blob-file: B000925 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
 		},
 		{
 			input: `  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
@@ -508,15 +508,15 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 				`  del-table:     L3 000003`,
 				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
 				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2`,
-				`  add-blob-file: 000005 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
-				`  del-blob-file: 000004`,
-				`  del-blob-file: 000006`,
+				`  add-blob-file: B000005 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
+				`  del-blob-file: B000004`,
+				`  del-blob-file: B000006`,
 			}, "\n"),
 		},
 		{
 			input: strings.Join([]string{
 				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
-				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2 blobrefs:[(002431: 3008533), (002432: 10534); depth:2]`,
+				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2 blobrefs:[(B002431: 3008533), (B002432: 10534); depth:2]`,
 			}, "\n"),
 		},
 	}

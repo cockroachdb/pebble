@@ -1143,10 +1143,10 @@ next
 next
 next
 ----
-a#9,SET:<blobref(000294, encodedHandle=020a, valLen=20)>
-b#3,SET:<blobref(000294, encodedHandle=021e, valLen=5)>
-c#8,SETWITHDEL:<blobref(000294, encodedHandle=0223, valLen=100)>
-d#2,SET:<blobref(000294, encodedHandle=028701, valLen=4)>
+a#9,SET:<blobref(B000294, encodedHandle=020a, valLen=20)>
+b#3,SET:<blobref(B000294, encodedHandle=021e, valLen=5)>
+c#8,SETWITHDEL:<blobref(B000294, encodedHandle=0223, valLen=100)>
+d#2,SET:<blobref(B000294, encodedHandle=028701, valLen=4)>
 
 # The iterator may need to fetch a blob value if it's an operand to the merge
 # operator.
@@ -1162,6 +1162,6 @@ first
 next
 next
 ----
-a#3,SET:<blobref(000294, encodedHandle=020a, valLen=20)>
-b#9,SET:<fetched value from blobref(000294, encodedHandle=0223, valLen=100)>mergekeyvalue[base]
+a#3,SET:<blobref(B000294, encodedHandle=020a, valLen=20)>
+b#9,SET:<fetched value from blobref(B000294, encodedHandle=0223, valLen=100)>mergekeyvalue[base]
 .

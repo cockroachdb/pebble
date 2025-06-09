@@ -390,22 +390,22 @@ no zombie blob files
 no obsolete blob files
 
 apply
-  add-blob-file: 000011 physical:{000011 size:[20535 (20KB)] vals:[25935 (25KB)]}
-  add-table: L3 000012:[f#1,SET-g#1,SET] blobrefs:[(000011: 25935); depth:1]
+  add-blob-file: B000011 physical:{000011 size:[20535 (20KB)] vals:[25935 (25KB)]}
+  add-table: L3 000012:[f#1,SET-g#1,SET] blobrefs:[(B000011: 25935); depth:1]
 ----
 applied:
   last-seq-num:  99
   add-table:     L3 000012:[f#1,SET-g#1,SET]
-  add-blob-file: 000011 physical:{000011 size:[20535 (20KB)] vals:[25935 (25KB)]}
+  add-blob-file: B000011 physical:{000011 size:[20535 (20KB)] vals:[25935 (25KB)]}
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
     000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
-    000012:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1200 blobrefs:[(000011: 25935); depth:1]
+    000012:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1200 blobrefs:[(B000011: 25935); depth:1]
   Blob files:
-    000011 physical:{000011 size:[20535 (20KB)] vals:[25935 (25KB)]}
+    B000011 physical:{000011 size:[20535 (20KB)] vals:[25935 (25KB)]}
 no virtual backings
 no zombie tables
 obsolete tables: 000102
@@ -420,9 +420,9 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
     000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
-    000012:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1200 blobrefs:[(000011: 25935); depth:1]
+    000012:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1200 blobrefs:[(B000011: 25935); depth:1]
   Blob files:
-    000011 physical:{000011 size:[20535 (20KB)] vals:[25935 (25KB)]}
+    B000011 physical:{000011 size:[20535 (20KB)] vals:[25935 (25KB)]}
 no virtual backings
 no zombie tables
 no obsolete tables
@@ -434,12 +434,12 @@ no obsolete blob files
 
 apply
   del-table: L3 000012
-  del-blob-file: 000011
+  del-blob-file: B000011
 ----
 applied:
   last-seq-num:  99
   del-table:     L3 000012
-  del-blob-file: 000011
+  del-blob-file: B000011
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
@@ -467,26 +467,26 @@ no zombie blob files
 no obsolete blob files
 
 apply
-  add-blob-file: 000013 physical:{000013 size:[20535 (20KB)] vals:[25935 (25KB)]}
-  add-table: L4 000014:[f#2,SET-g#2,SET] blobrefs:[(000013: 20000); depth:1]
-  add-table: L3 000015:[f#1,SET-g#1,SET] blobrefs:[(000013: 15935); depth:1]
+  add-blob-file: B000013 physical:{000013 size:[20535 (20KB)] vals:[25935 (25KB)]}
+  add-table: L4 000014:[f#2,SET-g#2,SET] blobrefs:[(B000013: 20000); depth:1]
+  add-table: L3 000015:[f#1,SET-g#1,SET] blobrefs:[(B000013: 15935); depth:1]
 ----
 applied:
   last-seq-num:  99
   add-table:     L4 000014:[f#2,SET-g#2,SET]
   add-table:     L3 000015:[f#1,SET-g#1,SET]
-  add-blob-file: 000013 physical:{000013 size:[20535 (20KB)] vals:[25935 (25KB)]}
+  add-blob-file: B000013 physical:{000013 size:[20535 (20KB)] vals:[25935 (25KB)]}
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
     000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
-    000015:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1500 blobrefs:[(000013: 15935); depth:1]
+    000015:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1500 blobrefs:[(B000013: 15935); depth:1]
   L4:
-    000014:[f#2,SET-g#2,SET] seqnums:[0-0] points:[f#2,SET-g#2,SET] size:1400 blobrefs:[(000013: 20000); depth:1]
+    000014:[f#2,SET-g#2,SET] seqnums:[0-0] points:[f#2,SET-g#2,SET] size:1400 blobrefs:[(B000013: 20000); depth:1]
   Blob files:
-    000013 physical:{000013 size:[20535 (20KB)] vals:[25935 (25KB)]}
+    B000013 physical:{000013 size:[20535 (20KB)] vals:[25935 (25KB)]}
 no virtual backings
 no zombie tables
 no obsolete tables
@@ -503,11 +503,11 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
     000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
-    000015:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1500 blobrefs:[(000013: 15935); depth:1]
+    000015:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] size:1500 blobrefs:[(B000013: 15935); depth:1]
   L4:
-    000014:[f#2,SET-g#2,SET] seqnums:[0-0] points:[f#2,SET-g#2,SET] size:1400 blobrefs:[(000013: 20000); depth:1]
+    000014:[f#2,SET-g#2,SET] seqnums:[0-0] points:[f#2,SET-g#2,SET] size:1400 blobrefs:[(B000013: 20000); depth:1]
   Blob files:
-    000013 physical:{000013 size:[20535 (20KB)] vals:[25935 (25KB)]}
+    B000013 physical:{000013 size:[20535 (20KB)] vals:[25935 (25KB)]}
 no virtual backings
 no zombie tables
 no obsolete tables
@@ -521,13 +521,13 @@ no obsolete blob files
 apply
   del-table: L3 000015
   del-table: L4 000014
-  del-blob-file: 000013
+  del-blob-file: B000013
 ----
 applied:
   last-seq-num:  99
   del-table:     L3 000015
   del-table:     L4 000014
-  del-blob-file: 000013
+  del-blob-file: B000013
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
