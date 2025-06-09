@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -32,10 +33,12 @@ import (
 //
 // The test will save the smallest reproduction found and print out the relevant
 // information.
-func tryToReduce(t *testing.T, testStateDir string, runDir string, reduceAttempts int) {
+func tryToReduce(
+	t *testing.T, testStateDir string, runDir string, initialStatePath string, reduceAttempts int,
+) {
 	testRootDir := filepath.Dir(runDir)
 	runSubdir := filepath.Base(runDir)
-	r := makeReducer(t, testStateDir, testRootDir, []string{runSubdir}, reduceAttempts)
+	r := makeReducer(t, testStateDir, testRootDir, []string{runSubdir}, initialStatePath, reduceAttempts)
 	r.Run(t)
 }
 
@@ -52,9 +55,14 @@ func tryToReduce(t *testing.T, testStateDir string, runDir string, reduceAttempt
 // The test will save the smallest reproduction found and print out the relevant
 // information.
 func tryToReduceCompare(
-	t *testing.T, testStateDir string, testRootDir string, runSubdirs []string, reduceAttempts int,
+	t *testing.T,
+	testStateDir string,
+	testRootDir string,
+	runSubdirs []string,
+	initialStatePath string,
+	reduceAttempts int,
 ) {
-	r := makeReducer(t, testStateDir, testRootDir, runSubdirs, reduceAttempts)
+	r := makeReducer(t, testStateDir, testRootDir, runSubdirs, initialStatePath, reduceAttempts)
 	r.Run(t)
 }
 
@@ -62,9 +70,11 @@ func tryToReduceCompare(
 // tries to reduce the number of operations.
 type reducer struct {
 	// testRootDir is the directory of the test, which contains the "ops" file.
-	testRootDir    string
-	configs        []testConfig
-	reduceAttempts int
+	testRootDir string
+	configs     []testConfig
+	// initialStatePath stores the --initial-state value, if set.
+	initialStatePath string
+	reduceAttempts   int
 
 	ops []string
 
@@ -84,7 +94,12 @@ type testConfig struct {
 }
 
 func makeReducer(
-	t *testing.T, testStateDir string, testRootDir string, runSubdirs []string, reduceAttempts int,
+	t *testing.T,
+	testStateDir string,
+	testRootDir string,
+	runSubdirs []string,
+	initialStatePath string,
+	reduceAttempts int,
 ) *reducer {
 	// All run dirs should have the same parent path.
 	opsData, err := os.ReadFile(filepath.Join(testRootDir, "ops"))
@@ -105,11 +120,12 @@ func makeReducer(
 	t.Logf("Starting with %d operations", len(ops))
 
 	return &reducer{
-		testRootDir:    testRootDir,
-		configs:        tc,
-		ops:            ops,
-		reduceAttempts: reduceAttempts,
-		testStateDir:   testStateDir,
+		testRootDir:      testRootDir,
+		configs:          tc,
+		initialStatePath: initialStatePath,
+		ops:              ops,
+		reduceAttempts:   reduceAttempts,
+		testStateDir:     testStateDir,
 	}
 }
 
@@ -144,15 +160,16 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 		"--keep",
 	}
 
-	var runFlags []string
 	if len(runSubdirs) == 1 {
 		// RunOnce mode.
-		runFlags = []string{"--run-dir", filepath.Join(testRootDir, runSubdirs[0])}
+		args = append(args, "--run-dir", filepath.Join(testRootDir, runSubdirs[0]))
 	} else {
 		// Compare mode.
-		runFlags = []string{"--compare", filepath.Join(testRootDir, fmt.Sprintf("{%s}", strings.Join(runSubdirs, ",")))}
+		args = append(args, "--compare", filepath.Join(testRootDir, fmt.Sprintf("{%s}", strings.Join(runSubdirs, ","))))
 	}
-	args = append(args, runFlags...)
+	if r.initialStatePath != "" {
+		args = append(args, "--initial-state", r.initialStatePath)
+	}
 
 	var output bytes.Buffer
 	cmd := exec.CommandContext(context.Background(), os.Args[0], args...)
@@ -187,7 +204,7 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 		t.Logf("  Diagram: %s", diagramPath)
 	}
 
-	t.Logf(`  go test ./internal/metamorphic -tags invariants -run "%s$" -v %s %q`, t.Name(), runFlags[0], runFlags[1])
+	t.Logf("  go test ./internal/metamorphic -tags invariants %s", shellJoin(cmd.Args[1:]))
 	if r.lastSavedDir != "" {
 		require.NoError(t, os.RemoveAll(r.lastSavedDir))
 	}
@@ -236,4 +253,17 @@ func randomSubset(t *testing.T, ops []string, removeProbability float64) []strin
 		res = append(res, ops[i])
 	}
 	return res
+}
+
+func shellJoin(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		// Quote if the word has bytes that the shell would interpret.
+		if strings.ContainsAny(a, " \t\n\"'\\$`*?[]{}<>|&;()") {
+			quoted[i] = strconv.Quote(a)
+		} else {
+			quoted[i] = a
+		}
+	}
+	return strings.Join(quoted, " ")
 }
