@@ -141,3 +141,46 @@ func TestCurrentBlobFileSet(t *testing.T) {
 		return ""
 	})
 }
+
+func TestBlobFileSet_Lookup(t *testing.T) {
+	const numBlobFiles = 10000
+	set, files := makeTestBlobFiles(numBlobFiles)
+	for i := 0; i < numBlobFiles; i++ {
+		fn, ok := set.Lookup(base.BlobFileID(i))
+		require.True(t, ok)
+		require.Equal(t, files[i].FileNum, fn)
+	}
+}
+
+func makeTestBlobFiles(numBlobFiles int) (BlobFileSet, []PhysicalBlobFile) {
+	files := make([]PhysicalBlobFile, numBlobFiles)
+	for i := 0; i < numBlobFiles; i++ {
+		fileNum := base.DiskFileNum(i)
+		if i%2 == 0 {
+			fileNum = base.DiskFileNum(2*numBlobFiles + i)
+		}
+		files[i] = PhysicalBlobFile{
+			FileNum:      fileNum,
+			Size:         uint64(i),
+			ValueSize:    uint64(i),
+			CreationTime: uint64(i),
+		}
+	}
+	set := MakeBlobFileSet(nil)
+	for i := 0; i < numBlobFiles; i++ {
+		set.insert(BlobFileMetadata{
+			FileID:   base.BlobFileID(i % numBlobFiles),
+			Physical: &files[i],
+		})
+	}
+	return set, files
+}
+
+func BenchmarkBlobFileSet_Lookup(b *testing.B) {
+	const numBlobFiles = 10000
+	set, _ := makeTestBlobFiles(numBlobFiles)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = set.Lookup(base.BlobFileID(i % numBlobFiles))
+	}
+}

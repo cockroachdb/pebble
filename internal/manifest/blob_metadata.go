@@ -343,6 +343,46 @@ func (s *BlobFileSet) Count() int {
 	return s.tree.Count()
 }
 
+// Lookup returns the file number of the physical blob file backing the given
+// file ID. It returns false for the second return value if the FileID is not
+// present in the set.
+func (s *BlobFileSet) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+	// Lookup is performed during value retrieval to determine the physical blob
+	// file that should be read, so it's considered to be performance sensitive.
+	// We manually inline the B-Tree traversal and binary search with this in
+	// mind.
+
+	n := s.tree.root
+	for n != nil {
+		var h int
+		// Logic copied from sort.Search.
+		i, j := 0, int(n.count)
+		for i < j {
+			h = int(uint(i+j) >> 1) // avoid overflow when computing h
+			// i ≤ h < j
+			v := stdcmp.Compare(fileID, n.items[h].FileID)
+			if v == 0 {
+				// Found the sought blob file.
+				return n.items[h].Physical.FileNum, true
+			} else if v > 0 {
+				i = h + 1
+			} else {
+				j = h
+			}
+		}
+		// If we've reached a lead node without finding fileID, the file is not
+		// present.
+		if n.leaf {
+			return 0, false
+		}
+		n = n.children[i]
+	}
+	return 0, false
+}
+
+// Assert that (*BlobFileSet).Lookup is a blob.FileLookupFunc.
+var _ blob.FileLookupFunc = (*BlobFileSet)(nil).Lookup
+
 // clone returns a copy-on-write clone of the blob file set.
 func (s *BlobFileSet) clone() BlobFileSet {
 	return BlobFileSet{tree: s.tree.Clone()}

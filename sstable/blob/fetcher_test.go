@@ -25,6 +25,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// identityFileLookupFunc is an implementation of FileLookupFunc that casts a
+// BlobFileID to a DiskFileNum.
+func identityFileLookupFunc(blobFileID base.BlobFileID) (base.DiskFileNum, bool) {
+	return base.DiskFileNum(blobFileID), true
+}
+
 type mockReaderProvider struct {
 	w       *bytes.Buffer
 	readers map[base.DiskFileNum]*FileReader
@@ -107,7 +113,7 @@ func TestValueFetcher(t *testing.T) {
 			var name string
 			td.ScanArgs(t, "name", &name)
 			fetchers[name] = &ValueFetcher{}
-			fetchers[name].Init(rp, block.ReadEnv{})
+			fetchers[name].Init(identityFileLookupFunc, rp, block.ReadEnv{})
 			return ""
 		case "fetch":
 			var (
@@ -192,7 +198,7 @@ func TestValueFetcherRetrieveRandomized(t *testing.T) {
 
 	t.Run("sequential", func(t *testing.T) {
 		var fetcher ValueFetcher
-		fetcher.Init(rp, block.ReadEnv{})
+		fetcher.Init(identityFileLookupFunc, rp, block.ReadEnv{})
 		defer fetcher.Close()
 		for i := 0; i < len(handles); i++ {
 			val, err := fetcher.retrieve(ctx, handles[i])
@@ -202,7 +208,7 @@ func TestValueFetcherRetrieveRandomized(t *testing.T) {
 	})
 	t.Run("random", func(t *testing.T) {
 		var fetcher ValueFetcher
-		fetcher.Init(rp, block.ReadEnv{})
+		fetcher.Init(identityFileLookupFunc, rp, block.ReadEnv{})
 		defer fetcher.Close()
 		for _, i := range rng.Perm(len(handles)) {
 			val, err := fetcher.retrieve(ctx, handles[i])
@@ -264,7 +270,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, cacheSize int64)
 		rp := makeMockReaderProvider(b, obj, cacheSize, handles)
 		defer rp.Close()
 		var fetcher ValueFetcher
-		fetcher.Init(rp, block.ReadEnv{})
+		fetcher.Init(identityFileLookupFunc, rp, block.ReadEnv{})
 		defer fetcher.Close()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -284,7 +290,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, cacheSize int64)
 			indices[i] = testutils.RandIntInRange(rng, 0, len(handles))
 		}
 		var fetcher ValueFetcher
-		fetcher.Init(rp, block.ReadEnv{})
+		fetcher.Init(identityFileLookupFunc, rp, block.ReadEnv{})
 		defer fetcher.Close()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -322,7 +328,7 @@ func makeMockReaderProvider(
 	// blocks.
 	if cacheSize > 0 {
 		var fetcher ValueFetcher
-		fetcher.Init(rp, block.ReadEnv{})
+		fetcher.Init(identityFileLookupFunc, rp, block.ReadEnv{})
 		defer fetcher.Close()
 		for i, h := range handles {
 			if i > 0 && handles[i-1].BlockID == h.BlockID {
