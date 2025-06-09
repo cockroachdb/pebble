@@ -48,6 +48,9 @@ type CommonFlags struct {
 	// KeyFormatName is the name of the KeyFormat to use. Defaults to "testkeys".
 	// Acceptable values are "testkeys" and "cockroachkvs".
 	KeyFormatName string
+	// InitialStatePath is the path to a database data directory from a previous
+	// run. See the "initial-state" flag below.
+	InitialStatePath string
 }
 
 // KeyFormat returns the KeyFormat indicated by the flags KeyFormatName.
@@ -103,6 +106,10 @@ func initCommonFlags() *CommonFlags {
 
 	flag.StringVar(&c.KeyFormatName, "key-format", "testkeys",
 		"name of the key format to use")
+
+	flag.StringVar(&c.InitialStatePath, "initial-state", "",
+		`path to a database's data directory, used to prepopulate the test run's databases.
+		Must be used in conjunction with --previous-ops (unless --run or --compare is used).`)
 
 	return c
 }
@@ -160,9 +167,6 @@ type RunFlags struct {
 	// PreviousOps is the path to the ops file of a previous run. See the
 	// "previous-ops" flag below.
 	PreviousOps string
-	// InitialStatePath is the path to a database data directory from a previous
-	// run. See the "initial-state" flag below.
-	InitialStatePath string
 	// InitialStateDesc is a human-readable description of the initial database
 	// state. See "initial-state-desc" flag below.
 	InitialStateDesc string
@@ -199,10 +203,6 @@ with --run-dir or --compare`)
 	flag.StringVar(&r.PreviousOps, "previous-ops", "",
 		`path to an ops file, used to prepopulate the set of keys operations draw from." +
 		Must be used in conjunction with --initial-state`)
-
-	flag.StringVar(&r.InitialStatePath, "initial-state", "",
-		`path to a database's data directory, used to prepopulate the test run's databases.
-		Must be used in conjunction with --previous-ops.`)
 
 	flag.StringVar(&r.InitialStateDesc, "initial-state-desc", "",
 		`a human-readable description of the initial database state.
@@ -243,6 +243,9 @@ func (ro *RunOnceFlags) MakeRunOnceOptions() []metamorphic.RunOnceOption {
 	}
 	if ro.NumInstances > 1 {
 		onceOpts = append(onceOpts, metamorphic.MultiInstance(ro.NumInstances))
+	}
+	if ro.InitialStatePath != "" {
+		onceOpts = append(onceOpts, metamorphic.RunOnceInitialStatePath(ro.InitialStatePath))
 	}
 	return onceOpts
 }
