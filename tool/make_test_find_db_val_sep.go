@@ -8,6 +8,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/cockroachdb/pebble"
@@ -58,6 +59,10 @@ func main() {
 		},
 		FormatMajorVersion: pebble.FormatValueSeparation,
 	}
+	// Set block size settings for all levels
+	for i := range opts.Levels {
+		opts.Levels[i].BlockSize = 100
+	}
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{
 			Enabled:               true,
@@ -82,5 +87,10 @@ func main() {
 
 	tdb.set("eee", "pigeon")
 	tdb.set("fff", "chicken")
+	tdb.flush()
+
+	for i := range 30 {
+		tdb.set(fmt.Sprintf("ggg%d", i), fmt.Sprintf("chicken%d", i))
+	}
 	tdb.flush()
 }

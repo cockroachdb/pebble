@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -559,41 +558,16 @@ func (s *sstableT) foreachSstable(
 	args []string,
 	fn func(path string, r *sstable.Reader, props sstable.Properties),
 ) {
-	pathFn := func(path string) {
-		f, err := s.opts.FS.Open(path)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return
-		}
-
-		// TODO(annie): Use a BufferPool.
-		c := pebble.NewCache(128 << 20 /* 128 MB */)
-		defer c.Unref()
-		ch := c.NewHandle()
-		defer ch.Close()
-
-		r, err := s.newReader(f, ch, path)
-		if err != nil {
-			fmt.Fprintf(stderr, "%s: %s\n", path, err)
-			return
-		}
-		defer func() { _ = r.Close() }()
-
+	processFileFn := func(path string, r *sstable.Reader) error {
 		props, err := r.ReadPropertiesBlock(context.Background(), nil /* buffer pool */)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s\n", err)
-			return
+			return err
 		}
 		fn(path, r, props)
+		return nil
 	}
-
-	// listed and fn is invoked on any file with an .sst or .ldb suffix.
-	for _, arg := range args {
-		walk(stderr, s.opts.FS, arg, func(path string) {
-			switch filepath.Ext(path) {
-			case ".sst", ".ldb":
-				pathFn(path)
-			}
-		})
+	closeReaderFn := func(r *sstable.Reader) error {
+		return r.Close()
 	}
+	processFiles(stderr, s.opts.FS, args, []string{".sst", ".ldb"}, s.newReader, closeReaderFn, processFileFn)
 }

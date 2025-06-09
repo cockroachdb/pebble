@@ -398,8 +398,7 @@ func newBlobFileRewriter(
 
 // generateHeap populates rw.blkHeap with the blob reference liveness encodings
 // for each referencing sstable, rw.sstables.
-func (rw *blobFileRewriter) generateHeap() error {
-	ctx := context.TODO()
+func (rw *blobFileRewriter) generateHeap(ctx context.Context) error {
 	heap.Init(&rw.blkHeap)
 
 	var decoder colblk.ReferenceLivenessBlockDecoder
@@ -437,7 +436,7 @@ func (rw *blobFileRewriter) generateHeap() error {
 }
 
 func (rw *blobFileRewriter) Rewrite(ctx context.Context) (blob.FileWriterStats, error) {
-	if err := rw.generateHeap(); err != nil {
+	if err := rw.generateHeap(ctx); err != nil {
 		return blob.FileWriterStats{}, err
 	}
 	if rw.blkHeap.Len() == 0 {
