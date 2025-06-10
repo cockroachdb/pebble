@@ -62,32 +62,33 @@ d8a301                       #   . Size         = 20952
 f9a006                       #   . ValueSize    = 102521
 9f9485bd06                   #   . CreationTime = 1738623519
 6c                           # <tagDeleteBlobFile>
-21                           #   . FileNum      = 000021
+21                           #   . BlobFileID   = 000033
+21                           #   . FileNum      = 000033
 ----
-021903660484106b2929d8a301f9a0069f9485bd066c21
+021903660484106b2929d8a301f9a0069f9485bd066c2121
   log-num:       25
   next-file-num: 102
   last-seq-num:  2052
   add-blob-file: B000041 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
-  del-blob-file: B000033
+  del-blob-file: B000033 000033
 
 encode
   add-table:     L6 000029:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952); depth:1]
   add-blob-file: B000943 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
-  del-blob-file: B000033
+  del-blob-file: B000033 000033
 ----
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-45010129d8a301016baf0729d8a301f9a006006c21
+45010129d8a301016baf0729d8a301f9a006006c2121
   add-table:     L6 000029:[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952); depth:1]
   add-blob-file: B000943 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
-  del-blob-file: B000033
+  del-blob-file: B000033 000033
 
 decode
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-45010129d8a301016baf0729d8a301f9a006006c21
+45010129d8a301016baf0729d8a301f9a006006c2121
 ----
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
-45010129d8a301016baf0729d8a301f9a006006c21
+45010129d8a301016baf0729d8a301f9a006006c2121
   add-table:     L6 000029:[bar#14,DEL-foo#13,SET]
   add-blob-file: B000943 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
-  del-blob-file: B000033
+  del-blob-file: B000033 000033

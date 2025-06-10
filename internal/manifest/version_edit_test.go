@@ -479,7 +479,7 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 		output string
 	}{
 		{
-			input: `  del-blob-file: B000001`,
+			input: `  del-blob-file: B000001 000001`,
 		},
 		{
 			input: `  add-blob-file: B000925 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
@@ -509,8 +509,8 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
 				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2`,
 				`  add-blob-file: B000005 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
-				`  del-blob-file: B000004`,
-				`  del-blob-file: B000006`,
+				`  del-blob-file: B000004 000004`,
+				`  del-blob-file: B000006 000006`,
 			}, "\n"),
 		},
 		{

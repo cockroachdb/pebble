@@ -81,6 +81,13 @@ type DeletedTableEntry struct {
 	FileNum base.FileNum
 }
 
+// DeletedBlobFileEntry holds the state for a blob file deletion. The blob file
+// ID may still be in-use with a different physical blob file.
+type DeletedBlobFileEntry struct {
+	FileID  base.BlobFileID
+	FileNum base.DiskFileNum
+}
+
 // NewTableEntry holds the state for a new sstable or one moved from a different
 // level.
 type NewTableEntry struct {
@@ -158,13 +165,20 @@ type VersionEdit struct {
 	// NewBlobFiles holds the metadata for all new blob files introduced within
 	// the version edit.
 	NewBlobFiles []BlobFileMetadata
-	// DeletedBlobFiles holds all blob files that became unreferenced during the
-	// version edit. These blob files must not be referenced by any sstable in
-	// the resulting Version.
+	// DeletedBlobFiles holds all physical blob files that became unused during
+	// the version edit.
+	//
+	// A physical blob file may become unused if the corresponding BlobFileID
+	// becomes unreferenced during the version edit. In this case must the
+	// BlobFileID is not referenced by any sstable in the resulting Version.
+	//
+	// A physical blob file may also become unused if it is being replaced by a
+	// new physical blob file. In this case NewBlobFiles must contain a
+	// BlobFileMetadata with the same BlobFileID.
 	//
 	// While replaying a MANIFEST, the values are nil. Otherwise the values must
 	// not be nil.
-	DeletedBlobFiles map[base.BlobFileID]*PhysicalBlobFile
+	DeletedBlobFiles map[DeletedBlobFileEntry]*PhysicalBlobFile
 }
 
 // Decode decodes an edit from the specified reader.
@@ -538,14 +552,21 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			})
 
 		case tagDeletedBlobFile:
+			fileID, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
 			fileNum, err := d.readFileNum()
 			if err != nil {
 				return err
 			}
 			if v.DeletedBlobFiles == nil {
-				v.DeletedBlobFiles = make(map[base.BlobFileID]*PhysicalBlobFile)
+				v.DeletedBlobFiles = make(map[DeletedBlobFileEntry]*PhysicalBlobFile)
 			}
-			v.DeletedBlobFiles[base.BlobFileID(fileNum)] = nil
+			v.DeletedBlobFiles[DeletedBlobFileEntry{
+				FileID:  base.BlobFileID(fileID),
+				FileNum: base.DiskFileNum(fileNum),
+			}] = nil
 
 		case tagPrevLogNumber:
 			n, err := d.readUvarint()
@@ -610,10 +631,15 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	for _, f := range v.NewBlobFiles {
 		fmt.Fprintf(&buf, "  add-blob-file: %s\n", f.String())
 	}
-	deletedBlobFiles := slices.Collect(maps.Keys(v.DeletedBlobFiles))
-	slices.Sort(deletedBlobFiles)
-	for _, df := range deletedBlobFiles {
-		fmt.Fprintf(&buf, "  del-blob-file: %s\n", df)
+	deletedBlobFileEntries := slices.Collect(maps.Keys(v.DeletedBlobFiles))
+	slices.SortFunc(deletedBlobFileEntries, func(a, b DeletedBlobFileEntry) int {
+		if v := stdcmp.Compare(a.FileID, b.FileID); v != 0 {
+			return v
+		}
+		return stdcmp.Compare(a.FileNum, b.FileNum)
+	})
+	for _, df := range deletedBlobFileEntries {
+		fmt.Fprintf(&buf, "  del-blob-file: %s %s\n", df.FileID, df.FileNum)
 	}
 	return buf.String()
 }
@@ -695,9 +721,12 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 
 		case "del-blob-file":
 			if ve.DeletedBlobFiles == nil {
-				ve.DeletedBlobFiles = make(map[base.BlobFileID]*PhysicalBlobFile)
+				ve.DeletedBlobFiles = make(map[DeletedBlobFileEntry]*PhysicalBlobFile)
 			}
-			ve.DeletedBlobFiles[p.BlobFileID()] = nil
+			ve.DeletedBlobFiles[DeletedBlobFileEntry{
+				FileID:  p.BlobFileID(),
+				FileNum: p.DiskFileNum(),
+			}] = nil
 
 		default:
 			return nil, errors.Errorf("field %q not implemented", field)
@@ -837,7 +866,8 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	for x := range v.DeletedBlobFiles {
 		e.writeUvarint(tagDeletedBlobFile)
-		e.writeUvarint(uint64(x))
+		e.writeUvarint(uint64(x.FileID))
+		e.writeUvarint(uint64(x.FileNum))
 	}
 	_, err := w.Write(e.Bytes())
 	return err
@@ -1030,20 +1060,24 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		b.BlobFiles.Added[nbf.FileID] = nbf.Physical
 	}
 
-	for blobFileID, physicalBlobFile := range ve.DeletedBlobFiles {
-		if b.BlobFiles.Deleted == nil {
-			b.BlobFiles.Deleted = make(map[base.BlobFileID]*PhysicalBlobFile)
-		}
+	for entry, physicalBlobFile := range ve.DeletedBlobFiles {
 		// If the blob file was added in a prior, accumulated version edit we
 		// can resolve the deletion by removing it from the added files map.
+		if b.BlobFiles.Added != nil {
+			added := b.BlobFiles.Added[entry.FileID]
+			if added != nil && added.FileNum == entry.FileNum {
+				delete(b.BlobFiles.Added, entry.FileID)
+				continue
+			}
+		}
 		// Otherwise the blob file deleted was added prior to this bulk edit,
 		// and we insert it into BlobFiles.Deleted so that Apply may remove it
 		// from the resulting version.
-		if b.BlobFiles.Added != nil && b.BlobFiles.Added[blobFileID] != nil {
-			delete(b.BlobFiles.Added, blobFileID)
-		} else {
-			b.BlobFiles.Deleted[blobFileID] = physicalBlobFile
+		if b.BlobFiles.Deleted == nil {
+			b.BlobFiles.Deleted = make(map[base.BlobFileID]*PhysicalBlobFile)
 		}
+		b.BlobFiles.Deleted[entry.FileID] = physicalBlobFile
+
 	}
 
 	for df, m := range ve.DeletedTables {

@@ -564,10 +564,13 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 						cbf.referencedValueSize, cbf.metadata.FileID)
 				}
 				if ve.DeletedBlobFiles == nil {
-					ve.DeletedBlobFiles = make(map[base.BlobFileID]*PhysicalBlobFile)
+					ve.DeletedBlobFiles = make(map[DeletedBlobFileEntry]*PhysicalBlobFile)
 				}
 
-				ve.DeletedBlobFiles[cbf.metadata.FileID] = cbf.metadata.Physical
+				ve.DeletedBlobFiles[DeletedBlobFileEntry{
+					FileID:  cbf.metadata.FileID,
+					FileNum: cbf.metadata.Physical.FileNum,
+				}] = cbf.metadata.Physical
 				s.stats.Count--
 				s.stats.PhysicalSize -= cbf.metadata.Physical.Size
 				s.stats.ValueSize -= cbf.metadata.Physical.ValueSize
