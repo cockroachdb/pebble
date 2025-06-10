@@ -1030,8 +1030,10 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		b.BlobFiles.Added[nbf.FileID] = nbf.Physical
 	}
 
-	b.BlobFiles.Deleted = make(map[base.BlobFileID]*PhysicalBlobFile, len(ve.DeletedBlobFiles))
 	for blobFileID, physicalBlobFile := range ve.DeletedBlobFiles {
+		if b.BlobFiles.Deleted == nil {
+			b.BlobFiles.Deleted = make(map[base.BlobFileID]*PhysicalBlobFile)
+		}
 		// If the blob file was added in a prior, accumulated version edit we
 		// can resolve the deletion by removing it from the added files map.
 		// Otherwise the blob file deleted was added prior to this bulk edit,
