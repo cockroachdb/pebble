@@ -17,6 +17,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -207,7 +208,10 @@ func TestFlushDelayStress(t *testing.T) {
 		Logger:                testLogger{t: t},
 	}
 
-	const runs = 100
+	runs := 100
+	if buildtags.SlowBuild {
+		runs = 5
+	}
 	for run := 0; run < runs; run++ {
 		d, err := Open("", opts)
 		require.NoError(t, err)
