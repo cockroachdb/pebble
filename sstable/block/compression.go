@@ -5,6 +5,7 @@
 package block
 
 import (
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -50,7 +51,17 @@ var (
 	MinLZCompression  = simpleCompressionProfile("MinLZ", compression.MinLZFastest)
 
 	DefaultCompression = SnappyCompression
+	FastestCompression = simpleCompressionProfile("Fastest", fastestAlgorithm())
 )
+
+var fastestAlgorithm = func() compression.Setting {
+	if runtime.GOARCH == "arm64" {
+		// MinLZ is generally faster and better than Snappy except for arm64: Snappy
+		// has an arm64 assembly implementation and MinLZ does not.
+		return compression.Snappy
+	}
+	return compression.MinLZFastest
+}
 
 // simpleCompressionProfile returns a CompressionProfile that uses the same
 // compression setting for all blocks and which uses the uncompressed block if
