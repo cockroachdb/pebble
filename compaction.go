@@ -369,6 +369,10 @@ func (c *compaction) userKeyBounds() base.UserKeyBounds {
 
 type getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation
 
+// newCompaction constructs a compaction from the provided picked compaction.
+//
+// The compaction is created with a reference to its version that must be
+// released when the compaction is complete.
 func newCompaction(
 	pc *pickedCompaction,
 	opts *Options,
@@ -397,6 +401,18 @@ func newCompaction(
 		grantHandle:        grantHandle,
 		tableFormat:        tableFormat,
 	}
+	// Acquire a reference to the version to ensure that files and in-memory
+	// version state necessary for reading extant files remain available. This
+	// isn't strictly necessary for reading the sstables that are inputs to the
+	// compaction because those files are 'marked as compacting' and shouldn't
+	// be subject to any competing compactions. However we need any blob files
+	// referenced by the sstables to remain available, even if the blob file is
+	// rewritten. Additionally, some compaction variants perform excises which
+	// may need to read tables within the LSM other than the ones that are
+	// inputs to the compaction. Maintaining a reference ensures that all these
+	// files remain available for the compaction's reads.
+	c.version.Ref()
+
 	c.startLevel = &c.inputs[0]
 	if pc.startLevel.l0SublevelInfo != nil {
 		c.startLevel.l0SublevelInfo = pc.startLevel.l0SublevelInfo
@@ -501,6 +517,11 @@ func (c *compaction) maybeSwitchToMoveOrCopy(
 	}
 }
 
+// newDeleteOnlyCompaction constructs a delete-only compaction from the provided
+// inputs.
+//
+// The compaction is created with a reference to its version that must be
+// released when the compaction is complete.
 func newDeleteOnlyCompaction(
 	opts *Options,
 	cur *manifest.Version,
@@ -523,6 +544,17 @@ func newDeleteOnlyCompaction(
 		exciseEnabled: exciseEnabled,
 		grantHandle:   noopGrantHandle{},
 	}
+	// Acquire a reference to the version to ensure that files and in-memory
+	// version state necessary for reading extant files remain available. This
+	// isn't strictly necessary for reading the sstables that are inputs to the
+	// compaction because those files are 'marked as compacting' and shouldn't
+	// be subject to any competing compactions. However we need any blob files
+	// referenced by the sstables to remain available, even if the blob file is
+	// rewritten. Additionally, some compaction variants perform excises which
+	// may need to read tables within the LSM other than the ones that are
+	// inputs to the compaction. Maintaining a reference ensures that all these
+	// files remain available for the compaction's reads.
+	c.version.Ref()
 
 	// Set c.smallest, c.largest.
 	files := make([]iter.Seq[*manifest.TableMetadata], 0, len(inputs))
@@ -600,6 +632,17 @@ func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) 
 	}
 }
 
+// newFlush creates the state necessary for a flush (modeled with the compaction
+// struct).
+//
+// newFlush takes the current Version in order to populate grandparent flushing
+// limits, but it does not reference the version.
+//
+// TODO(jackson): Consider maintaining a reference to the version anyways since
+// in the future in-memory Version state may only be available while a Version
+// is referenced (eg, if we start recycling B-Tree nodes once they're no longer
+// referenced). There's subtlety around unref'ing the version at the right
+// moment, so we defer it for now.
 func newFlush(
 	opts *Options,
 	cur *manifest.Version,
@@ -1341,7 +1384,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 
 	// Finding the target level for ingestion must use the latest version
 	// after the logLock has been acquired.
-	c.version = d.mu.versions.currentVersion()
+	version := d.mu.versions.currentVersion()
 
 	baseLevel := d.mu.versions.picker.getBaseLevel()
 	ve := &manifest.VersionEdit{}
@@ -1380,7 +1423,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 			logger:   d.opts.Logger,
 			Category: categoryIngest,
 		},
-		v: c.version,
+		v: version,
 	}
 	replacedTables := make(map[base.TableNum][]manifest.NewTableEntry)
 	for _, file := range ingestFlushable.files {
@@ -1426,7 +1469,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	if ingestFlushable.exciseSpan.Valid() {
 		exciseBounds := ingestFlushable.exciseSpan.UserKeyBounds()
 		// Iterate through all levels and find files that intersect with exciseSpan.
-		for layer, ls := range c.version.AllLevelsAndSublevels() {
+		for layer, ls := range version.AllLevelsAndSublevels() {
 			for m := range ls.Overlaps(d.cmp, ingestFlushable.exciseSpan.UserKeyBounds()).All() {
 				leftTable, rightTable, err := d.exciseTable(context.TODO(), exciseBounds, m, layer.Level(), tightExciseBounds)
 				if err != nil {
@@ -2406,23 +2449,55 @@ func (d *DB) compactionPprofLabels(c *compaction) pprof.LabelSet {
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact(c *compaction, errChannel chan error) {
 	pprof.Do(context.Background(), d.compactionPprofLabels(c), func(context.Context) {
-		d.mu.Lock()
-		c.grantHandle.Started()
-		if err := d.compact1(c, errChannel); err != nil {
-			d.handleCompactFailure(c, err)
-		}
-		if c.isDownload {
-			d.mu.compact.downloadingCount--
-		} else {
-			d.mu.compact.compactingCount--
-		}
-		delete(d.mu.compact.inProgress, c)
-		// Add this compaction's duration to the cumulative duration. NB: This
-		// must be atomic with the above removal of c from
-		// d.mu.compact.InProgress to ensure Metrics.Compact.Duration does not
-		// miss or double count a completing compaction's duration.
-		d.mu.compact.duration += d.timeNow().Sub(c.beganAt)
-		d.mu.Unlock()
+		func() {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			jobID := d.newJobIDLocked()
+
+			c.grantHandle.Started()
+			var compactErr error
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						if recoveredErr, ok := r.(error); ok {
+							compactErr = recoveredErr
+						} else {
+							compactErr = errors.Newf("panic: %v", r)
+						}
+					}
+				}()
+				compactErr = d.compact1(jobID, c)
+			}()
+			// The version stored in the compaction is ref'd when the
+			// compaction is created. We're responsible for un-refing it
+			// when the compaction is complete.
+			//
+			// Unreferencing the version may have accumulated obsolete
+			// files, so we schedule a deletion of obsolete files.
+			c.version.UnrefLocked()
+			d.deleteObsoleteFiles(jobID)
+			// We send on the error channel only after we've deleted
+			// obsolete files so that tests performing manual compactions
+			// block until the obsolete files are deleted, and the test
+			// observes the deletion.
+			if errChannel != nil {
+				errChannel <- compactErr
+			}
+			if compactErr != nil {
+				d.handleCompactFailure(c, compactErr)
+			}
+			if c.isDownload {
+				d.mu.compact.downloadingCount--
+			} else {
+				d.mu.compact.compactingCount--
+			}
+			delete(d.mu.compact.inProgress, c)
+			// Add this compaction's duration to the cumulative duration. NB: This
+			// must be atomic with the above removal of c from
+			// d.mu.compact.InProgress to ensure Metrics.Compact.Duration does not
+			// miss or double count a completing compaction's duration.
+			d.mu.compact.duration += d.timeNow().Sub(c.beganAt)
+		}()
 		// Done must not be called while holding any lock that needs to be
 		// acquired by Schedule. Also, it must be called after new Version has
 		// been installed, and metadata related to compactingCount and inProgress
@@ -2440,10 +2515,12 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 		// scheduled, so we also need to call maybeScheduleCompaction. And
 		// maybeScheduleCompaction encompasses all compactions, and not only those
 		// scheduled via the CompactionScheduler.
-		d.mu.Lock()
-		d.maybeScheduleCompaction()
-		d.mu.compact.cond.Broadcast()
-		d.mu.Unlock()
+		func() {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			d.maybeScheduleCompaction()
+			d.mu.compact.cond.Broadcast()
+		}()
 	})
 }
 
@@ -2538,14 +2615,7 @@ func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
-	if errChannel != nil {
-		defer func() {
-			errChannel <- err
-		}()
-	}
-
-	jobID := d.newJobIDLocked()
+func (d *DB) compact1(jobID JobID, c *compaction) (err error) {
 	info := c.makeInfo(jobID)
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
@@ -2610,7 +2680,6 @@ func (d *DB) compact1(c *compaction, errChannel chan error) (err error) {
 		d.updateReadStateLocked(d.opts.DebugCheck)
 		d.updateTableStatsLocked(ve.NewTables)
 	}
-	d.deleteObsoleteFiles(jobID)
 
 	return err
 }
@@ -2688,13 +2757,6 @@ func (d *DB) runCopyCompaction(
 		// local -> shared copy. New file is guaranteed to not be virtual.
 		newMeta.InitPhysicalBacking()
 	}
-
-	// Before dropping the db mutex, grab a ref to the current version. This
-	// prevents any concurrent excises from deleting files that this compaction
-	// needs to read/maintain a reference to.
-	vers := d.mu.versions.currentVersion()
-	vers.Ref()
-	defer vers.UnrefLocked()
 
 	// NB: The order here is reversed, lock after unlock. This is similar to
 	// runCompaction.
@@ -3051,15 +3113,6 @@ func (d *DB) runCompaction(
 	}
 	switch c.kind {
 	case compactionKindDeleteOnly:
-		// Before dropping the db mutex, grab a ref to the current version. This
-		// prevents any concurrent excises from deleting files that this compaction
-		// needs to read/maintain a reference to.
-		//
-		// Note that delete-only compactions can call excise(), which needs to be able
-		// to read these files.
-		vers := d.mu.versions.currentVersion()
-		vers.Ref()
-		defer vers.UnrefLocked()
 		// Release the d.mu lock while doing I/O.
 		// Note the unusual order: Unlock and then Lock.
 		snapshots := d.mu.snapshots.toSlice()
@@ -3075,18 +3128,6 @@ func (d *DB) runCompaction(
 	}
 
 	snapshots := d.mu.snapshots.toSlice()
-
-	if c.flushing == nil {
-		// Before dropping the db mutex, grab a ref to the current version. This
-		// prevents any concurrent excises from deleting files that this compaction
-		// needs to read/maintain a reference to.
-		//
-		// Note that unlike user iterators, compactionIter does not maintain a ref
-		// of the version or read state.
-		vers := d.mu.versions.currentVersion()
-		vers.Ref()
-		defer vers.UnrefLocked()
-	}
 
 	// Release the d.mu lock while doing I/O.
 	// Note the unusual order: Unlock and then Lock.
