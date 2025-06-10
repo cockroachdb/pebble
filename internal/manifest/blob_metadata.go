@@ -540,9 +540,24 @@ func (s *CurrentBlobFileSet) Metadatas() []BlobFileMetadata {
 func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 	// Insert new blob files into the set.
 	for _, m := range ve.NewBlobFiles {
-		if _, ok := s.files[m.FileID]; ok {
-			return errors.AssertionFailedf("pebble: new blob file %d already exists", m.FileID)
+		// Check whether we already have a blob file with this ID. This is
+		// possible if the blob file is being replaced.
+		if cbf, ok := s.files[m.FileID]; ok {
+			// There should be a DeletedBlobFileEntry for this file ID and the
+			// FileNum currently in the set.
+			dbfe := DeletedBlobFileEntry{FileID: m.FileID, FileNum: cbf.metadata.Physical.FileNum}
+			if _, ok := ve.DeletedBlobFiles[dbfe]; !ok {
+				return errors.AssertionFailedf("pebble: new blob file %d already exists", m.FileID)
+			}
+			// The file is being replaced. Update the statistics and cbf.Physical.
+			s.stats.PhysicalSize -= cbf.metadata.Physical.Size
+			s.stats.ValueSize -= cbf.metadata.Physical.ValueSize
+			cbf.metadata.Physical = m.Physical
+			s.stats.PhysicalSize += m.Physical.Size
+			s.stats.ValueSize += m.Physical.ValueSize
+			continue
 		}
+
 		blobFileID := m.FileID
 		cbf := &currentBlobFile{references: make(map[*TableMetadata]struct{})}
 		cbf.metadata = BlobFileMetadata{FileID: blobFileID, Physical: m.Physical}

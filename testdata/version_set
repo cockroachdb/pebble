@@ -570,3 +570,116 @@ no zombie tables
 no obsolete tables
 no zombie blob files
 no obsolete blob files
+
+# Test a blob file replacement.
+
+apply
+  add-blob-file: B000016 physical:{000016 size:[10000 (9.8KB)] vals:[10000 (9.8KB)]}
+  add-table: L4 000017:[f#20,SET-g#20,SET] blobrefs:[(B000016: 10000); depth:1]
+----
+applied:
+  last-seq-num:  99
+  add-table:     L4 000017:[f#20,SET-g#20,SET]
+  add-blob-file: B000016 physical:{000016 size:[10000 (9.8KB)] vals:[10000 (9.8KB)]}
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+  L4:
+    000017:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1700 blobrefs:[(B000016: 10000); depth:1]
+  Blob files:
+    B000016 physical:{000016 size:[10000 (9.8KB)] vals:[10000 (9.8KB)]}
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+no obsolete blob files
+
+ref-version r3
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+  L4:
+    000017:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1700 blobrefs:[(B000016: 10000); depth:1]
+  Blob files:
+    B000016 physical:{000016 size:[10000 (9.8KB)] vals:[10000 (9.8KB)]}
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+no obsolete blob files
+
+# Apply the blob file replacement. Because we ref'd the previous version, the
+# previous physical blob file should be considered a zombie.
+
+apply
+  del-blob-file: B000016 000016
+  add-blob-file: B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+----
+applied:
+  last-seq-num:  99
+  add-blob-file: B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+  del-blob-file: B000016 000016
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+  L4:
+    000017:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1700 blobrefs:[(B000016: 10000); depth:1]
+  Blob files:
+    B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+no virtual backings
+no zombie tables
+no obsolete tables
+zombie blob files: 000016
+no obsolete blob files
+
+# Once we unref the version, the old 000016 physical blob file should become
+# obsolete. The new physical blob file 000018 remains under the 000016
+# BlobFileID.
+
+unref-version r3
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+  L4:
+    000017:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1700 blobrefs:[(B000016: 10000); depth:1]
+  Blob files:
+    B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+obsolete blob files: 000016
+
+# Reopening should recover the previous state.
+
+reopen
+----
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+  L4:
+    000017:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1700 blobrefs:[(B000016: 10000); depth:1]
+  Blob files:
+    B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+no virtual backings
+no zombie tables
+no obsolete tables
+no zombie blob files
+no obsolete blob files

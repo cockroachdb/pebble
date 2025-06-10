@@ -73,3 +73,25 @@ modified version edit:
   del-blob-file: B000012 000012
 current blob file set:
 Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
+
+applyAndUpdateVersionEdit
+  add-table: L3 000015:[d#1,SET-e#1,SET] blobrefs:[(B000016: 25935); depth:1]
+  add-blob-file: B000016 physical:{000016 size:[20535 (20KB)] vals:[25935 (25KB)]}
+----
+modified version edit:
+  add-table:     L3 000015:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000016: 25935); depth:1]
+  add-blob-file: B000016 physical:{000016 size:[20535 (20KB)] vals:[25935 (25KB)]}
+current blob file set:
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, Count: 1}
+
+# Perform a blob file replacement.
+
+applyAndUpdateVersionEdit
+  del-blob-file: B000016 000016
+  add-blob-file: B000016 physical:{000017 size:[10535 (10KB)] vals:[10535 (10KB)]}
+----
+modified version edit:
+  add-blob-file: B000016 physical:{000017 size:[10535 (10KB)] vals:[10535 (10KB)]}
+  del-blob-file: B000016 000016
+current blob file set:
+Files:{Count: 1, Size: 10535, ValueSize: 10535}, References:{ValueSize: 25935, Count: 1}
