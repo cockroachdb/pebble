@@ -1223,6 +1223,13 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 	// BlobFileSet ensures any physical blob files that are referenced by the
 	// version remain on storage until they're no longer referenced by any
 	// version.
+	//
+	// We remove deleted blob files first, because during a blob file
+	// replacement the BlobFileID is reused. The B-Tree insert will fail if the
+	// old blob file is still present in the tree.
+	for blobFileID := range b.BlobFiles.Deleted {
+		v.BlobFiles.remove(BlobFileMetadata{FileID: blobFileID})
+	}
 	for blobFileID, physical := range b.BlobFiles.Added {
 		if err := v.BlobFiles.insert(BlobFileMetadata{
 			FileID:   blobFileID,
@@ -1230,9 +1237,6 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 		}); err != nil {
 			return nil, err
 		}
-	}
-	for blobFileID := range b.BlobFiles.Deleted {
-		v.BlobFiles.remove(BlobFileMetadata{FileID: blobFileID})
 	}
 
 	for level := range v.Levels {
