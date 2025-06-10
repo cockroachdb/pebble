@@ -2988,6 +2988,10 @@ func (d *DB) ScanStatistics(
 	tb := tokenbucket.TokenBucket{}
 
 	if opts.LimitBytesPerSecond != 0 {
+		const minBytesPerSec = 100 * 1024
+		if opts.LimitBytesPerSecond < minBytesPerSec {
+			return stats, errors.Newf("pebble: ScanStatistics read bandwidth limit %d is below minimum %d", opts.LimitBytesPerSecond, minBytesPerSec)
+		}
 		// Each "token" roughly corresponds to a byte that was read.
 		tb.Init(tokenbucket.TokensPerSecond(opts.LimitBytesPerSecond), tokenbucket.Tokens(1024))
 		rateLimitFunc = func(key *InternalKey, val LazyValue) error {
