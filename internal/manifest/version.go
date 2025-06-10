@@ -101,7 +101,8 @@ func NewVersionForTesting(
 	comparer *base.Comparer, l0Organizer *L0Organizer, files [7][]*TableMetadata,
 ) *Version {
 	v := &Version{
-		cmp: comparer,
+		cmp:       comparer,
+		BlobFiles: MakeBlobFileSet(nil),
 	}
 	for l := range files {
 		// NB: We specifically insert `files` into the B-Tree in the order
