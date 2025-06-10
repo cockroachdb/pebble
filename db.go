@@ -2979,7 +2979,7 @@ type ScanStatisticsOptions struct {
 
 // ScanStatistics returns the count of different key kinds within the lsm for a
 // key span [lower, upper) as well as the number of snapshot keys.
-func (d *DB) ScanStatistics(
+func (d *DB) ScanStatitics(
 	ctx context.Context, lower, upper []byte, opts ScanStatisticsOptions,
 ) (LSMKeyStatistics, error) {
 	stats := LSMKeyStatistics{}
