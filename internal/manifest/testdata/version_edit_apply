@@ -302,7 +302,7 @@ new version edit
 new version edit
   del-table:     L1 000005
   del-table:     L1 000006
-  del-blob-file: B000003
+  del-blob-file: B000003 000003
 ----
 L2:
   000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
@@ -331,10 +331,10 @@ Blob files:
 
 apply v11
   del-table:     L0 000005
-  del-blob-file: B000003
+  del-blob-file: B000003 000003
 new version edit
   del-table:     L0 000006
-  del-blob-file: B000004
+  del-blob-file: B000004 000004
 ----
 L1:
   000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]

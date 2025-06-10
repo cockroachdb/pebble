@@ -434,12 +434,12 @@ no obsolete blob files
 
 apply
   del-table: L3 000012
-  del-blob-file: B000011
+  del-blob-file: B000011 000011
 ----
 applied:
   last-seq-num:  99
   del-table:     L3 000012
-  del-blob-file: B000011
+  del-blob-file: B000011 000011
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
@@ -521,13 +521,13 @@ no obsolete blob files
 apply
   del-table: L3 000015
   del-table: L4 000014
-  del-blob-file: B000013
+  del-blob-file: B000013 000013
 ----
 applied:
   last-seq-num:  99
   del-table:     L3 000015
   del-table:     L4 000014
-  del-blob-file: B000013
+  del-blob-file: B000013 000013
 current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100

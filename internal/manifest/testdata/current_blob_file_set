@@ -70,6 +70,6 @@ applyAndUpdateVersionEdit
 ----
 modified version edit:
   del-table:     L5 000013
-  del-blob-file: B000012
+  del-blob-file: B000012 000012
 current blob file set:
 Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
