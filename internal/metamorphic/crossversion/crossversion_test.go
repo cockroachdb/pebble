@@ -131,9 +131,9 @@ type pebbleVersion struct {
 }
 
 type initialState struct {
-	desc    string
-	path    string
-	opsPath string
+	desc     string
+	path     string
+	opsPaths []string
 }
 
 func (s initialState) String() string {
@@ -272,7 +272,15 @@ func runVersion(
 				t.Logf("Running metamorphic test binary.")
 				t.Logf("  Version: %s (%s)", vers.Label, vers.SHA)
 				t.Logf("  Test state dir: %s", r.dir)
-				t.Logf("  Initial state: %s (%s)", s.desc, s.path)
+				if s.desc == "" {
+					t.Logf("  No initial state.")
+				} else {
+					t.Logf("  Initial state: %s (%s)", s.desc, s.path)
+					t.Logf("  Previous ops:")
+					for _, p := range s.opsPaths {
+						t.Logf("    %s", p)
+					}
+				}
 
 				if err := r.run(ctx, t, out); err != nil {
 					var dirs dirsToSave
@@ -303,9 +311,9 @@ func runVersion(
 				for _, subrunDir := range subrunDirs {
 					// Record the subrun as an initial state for the next version.
 					nextInitialStates = append(nextInitialStates, initialState{
-						path:    filepath.Join(dir, subrunDir),
-						desc:    fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
-						opsPath: filepath.Join(dir, "ops"),
+						path:     filepath.Join(dir, subrunDir),
+						desc:     fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+						opsPaths: append(s.opsPaths[:len(s.opsPaths):len(s.opsPaths)], filepath.Join(dir, "ops")),
 					})
 					histories = append(histories, filepath.Join(dir, subrunDir, "history"))
 				}
@@ -410,7 +418,7 @@ func (r *metamorphicTestRun) run(ctx context.Context, t *testing.T, output io.Wr
 	if r.initialState.path != "" {
 		add("--initial-state-desc", r.initialState.desc)
 		add("--initial-state", r.initialState.path)
-		add("--previous-ops", r.initialState.opsPath)
+		add("--previous-ops", strings.Join(r.initialState.opsPaths, ","))
 	}
 	cmd := exec.CommandContext(ctx, r.testBinaryPath, args...)
 	cmd.Dir = r.dir
