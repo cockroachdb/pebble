@@ -226,9 +226,9 @@ type subrunResult struct {
 }
 
 type initialState struct {
-	desc    string
-	path    string
-	opsPath string
+	desc     string
+	path     string
+	opsPaths []string
 }
 
 func (s initialState) String() string {
@@ -305,7 +305,15 @@ func runVersion(
 				t.Logf("Running metamorphic test binary.")
 				t.Logf("  Version: %s (%s)", vers.Label, vers.SHA)
 				t.Logf("  Test state dir: %s", r.dir)
-				t.Logf("  Initial state: %s (%s)", s.desc, s.path)
+				if s.desc == "" {
+					t.Logf("  No initial state.")
+				} else {
+					t.Logf("  Initial state: %s (%s)", s.desc, s.path)
+					t.Logf("  Previous ops:")
+					for _, p := range s.opsPaths {
+						t.Logf("    %s", p)
+					}
+				}
 
 				if err := r.run(ctx, t, out); err != nil {
 					var dirs dirsToSave
@@ -338,9 +346,9 @@ func runVersion(
 						runDir:      dir,
 						historyPath: filepath.Join(dir, subrunDir, "history"),
 						initialState: initialState{
-							desc:    fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
-							path:    filepath.Join(dir, subrunDir),
-							opsPath: filepath.Join(dir, "ops"),
+							desc:     fmt.Sprintf("sha=%s-seed=%d-opts=%s(%s)", vers.SHA, seed, subrunDir, s.String()),
+							path:     filepath.Join(dir, subrunDir),
+							opsPaths: append(s.opsPaths, filepath.Join(dir, "ops")),
 						},
 					})
 				}
@@ -446,7 +454,7 @@ func (r *metamorphicTestRun) run(ctx context.Context, t *testing.T, output io.Wr
 	if r.initialState.path != "" {
 		add("--initial-state-desc", r.initialState.desc)
 		add("--initial-state", r.initialState.path)
-		add("--previous-ops", r.initialState.opsPath)
+		add("--previous-ops", strings.Join(r.initialState.opsPaths, ","))
 	}
 	cmd := exec.CommandContext(ctx, r.testBinaryPath, args...)
 	cmd.Dir = r.dir
