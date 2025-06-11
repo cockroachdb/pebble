@@ -256,7 +256,12 @@ type Metrics struct {
 
 	Flush struct {
 		// The total number of flushes.
-		Count           int64
+		Count int64
+		// TODO(sumeer): the IdleDuration in this metric is flawed. It only
+		// measures idle duration when a flush finishes, representing the idleness
+		// before the start of a flush. So computing deltas over this metric over
+		// some time interval D may observe the sum of IdleDuration+WorkDuration
+		// to be either much smaller or much larger than D.
 		WriteThroughput ThroughputMetric
 		// Number of flushes that are in-progress. In the current implementation
 		// this will always be zero or one.
