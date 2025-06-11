@@ -38,7 +38,7 @@ import (
 type runAndCompareOptions struct {
 	seed              uint64
 	ops               randvar.Static
-	previousOpsPath   string
+	previousOpsPaths  []string
 	initialStatePath  string
 	initialStateDesc  string
 	traceFile         string
@@ -66,20 +66,21 @@ func (s Seed) apply(ro *runAndCompareOptions) { ro.seed = uint64(s) }
 // versions of Pebble, exercising upgrade code paths and cross-version
 // compatibility.
 //
-// The opsPath should be the filesystem path to the ops file containing the
-// operations run within the previous iteration of the metamorphic test. It's
-// used to inform operation generation to prefer using keys used in the previous
-// run, which are therefore more likely to be "interesting."
+// The opsPaths should be the filesystem paths for the ops files containing the
+// runs that resulted in the initial state. It's used to inform operation
+// generation to prefer using keys used in the previous run, which are therefore
+// more likely to be "interesting."; it is also required in order to issue
+// SingleDelete operations correctly.
 //
-// The initialStatePath argument should be the filesystem path to the data
-// directory containing the database where the previous run of the metamorphic
-// test left off.
+// The initialStatePath argument should be the filesystem path to the directory
+// containing the test state for the previous run of the metamorphic test left
+// off (with the store in a "data" subdirectory).
 //
 // The initialStateDesc argument is presentational and should hold a
 // human-readable description of the initial state.
-func ExtendPreviousRun(opsPath, initialStatePath, initialStateDesc string) RunOption {
+func ExtendPreviousRun(opsPaths []string, initialStatePath, initialStateDesc string) RunOption {
 	return closureOpt(func(ro *runAndCompareOptions) {
-		ro.previousOpsPath = opsPath
+		ro.previousOpsPaths = opsPaths
 		ro.initialStatePath = initialStatePath
 		ro.initialStateDesc = initialStateDesc
 	})
@@ -186,16 +187,17 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		cfg.numInstances = runOpts.numInstances
 	}
 	g := newGenerator(rng, cfg, km)
-	if runOpts.previousOpsPath != "" {
+	for _, opsPath := range runOpts.previousOpsPaths {
 		// During cross-version testing, we load keys from an `ops` file
 		// produced by a metamorphic test run of an earlier Pebble version.
 		// Seeding the keys ensure we generate interesting operations, including
 		// ones with key shadowing, merging, etc.
-		opsPath := filepath.Join(filepath.Dir(filepath.Clean(runOpts.previousOpsPath)), "ops")
 		opsData, err := os.ReadFile(opsPath)
 		require.NoError(t, err)
 		ops, err := parse(opsData, parserOpts{})
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatalf("failed to parse previous ops file %q: %v", opsPath, err)
+		}
 		loadPrecedingKeys(ops, g.keyGenerator, km)
 	}
 

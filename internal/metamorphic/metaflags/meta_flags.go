@@ -201,15 +201,16 @@ with --run-dir or --compare`)
 	// the `ops` file and one of the previous run's data directories.
 
 	flag.StringVar(&r.PreviousOps, "previous-ops", "",
-		`path to an ops file, used to prepopulate the set of keys operations draw from." +
-		Must be used in conjunction with --initial-state`)
+		`paths to the ops files for the previous runs that resulted in the initial state
+(separated by commas); used to prepopulate the set of keys operations draw from.
+Must be used in conjunction with --initial-state.`)
 
 	flag.StringVar(&r.InitialStateDesc, "initial-state-desc", "",
 		`a human-readable description of the initial database state.
-		If set this parameter is written to the OPTIONS to aid in
-		debugging. It's intended to describe the lineage of a
-		database's state, including sufficient information for
-		reproduction (eg, SHA, prng seed, etc).`)
+If set this parameter is written to the OPTIONS to aid in
+debugging. It's intended to describe the lineage of a
+database's state, including sufficient information for
+reproduction (eg, SHA, prng seed, etc).`)
 	return r
 }
 
@@ -304,7 +305,7 @@ func (r *RunFlags) MakeRunOptions() ([]metamorphic.RunOption, error) {
 		if r.InitialStatePath == "" {
 			return nil, errors.Newf("--previous-ops requires --initial-state")
 		}
-		opts = append(opts, metamorphic.ExtendPreviousRun(r.PreviousOps, r.InitialStatePath, r.InitialStateDesc))
+		opts = append(opts, metamorphic.ExtendPreviousRun(strings.Split(r.PreviousOps, ","), r.InitialStatePath, r.InitialStateDesc))
 	} else if r.InitialStatePath != "" {
 		return nil, errors.Newf("--initial-state requires --previous-ops")
 	}
