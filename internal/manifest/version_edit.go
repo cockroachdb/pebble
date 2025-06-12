@@ -984,13 +984,6 @@ type BulkVersionEdit struct {
 		//
 		// Deleted is keyed by blob file ID and points to the physical blob file.
 		Deleted map[base.BlobFileID]*PhysicalBlobFile
-		// DeletedReferences holds metadata of blob files referenced by tables
-		// deleted in the accumulated version edits. This is used during replay
-		// to populate the *BlobFileMetadata pointers of new blob references,
-		// making use of the invariant that new blob references must correspond
-		// to a file introduced in VersionEdit.AddedBlobFiles or a file
-		// referenced by a deleted sstable.
-		DeletedReferences map[base.BlobFileID]*PhysicalBlobFile
 	}
 
 	// AddedFileBacking is a map to support lookup so that we can populate the
@@ -1011,26 +1004,6 @@ type BulkVersionEdit struct {
 	// MarkedForCompactionCountDiff holds the aggregated count of files
 	// marked for compaction added or removed.
 	MarkedForCompactionCountDiff int
-}
-
-// getBlobFileMetadata returns the metadata for the specified blob file. When a
-// new sstable with a reference to a blob file is accumulated to the
-// BulkVersionEdit, it must be the case that either an already-accumulated
-// version edit added the blob file to the BlobFiles.Added map, or the blob file
-// was referenced by a file that was deleted (and the blob file was added to
-// BlobFiles.DeletedReferences).
-func (b *BulkVersionEdit) getBlobFileMetadata(fileID base.BlobFileID) *PhysicalBlobFile {
-	if b.BlobFiles.Added != nil {
-		if md, ok := b.BlobFiles.Added[fileID]; ok {
-			return md
-		}
-	}
-	if b.BlobFiles.DeletedReferences != nil {
-		if md, ok := b.BlobFiles.DeletedReferences[fileID]; ok {
-			return md
-		}
-	}
-	return nil
 }
 
 // Accumulate adds the file addition and deletions in the specified version
@@ -1106,17 +1079,6 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			// Present in b.Added for the same level.
 			delete(b.AddedTables[df.Level], df.FileNum)
 		}
-		// If this deleted sstable had any references to blob files, record the
-		// referenced blob file to BlobFiles.DeletedReferences. If the
-		// references are carried forward to new files (eg, during a compaction
-		// that decides not to rewrite the blob file), then we'll have the
-		// *BlobFileMetadata available when we process the NewTableEntry.
-		for _, blobRef := range m.BlobReferences {
-			if b.BlobFiles.DeletedReferences == nil {
-				b.BlobFiles.DeletedReferences = make(map[base.BlobFileID]*PhysicalBlobFile)
-			}
-			b.BlobFiles.DeletedReferences[blobRef.FileID] = blobRef.OriginalMetadata
-		}
 	}
 
 	// Generate state for Added backing files. Note that these must be generated
@@ -1164,20 +1126,6 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		}
 		if nf.Meta.MarkedForCompaction {
 			b.MarkedForCompactionCountDiff++
-		}
-
-		// If there are any new sstables with blob references without a pointer
-		// to the corresponding BlobFileMetadata, populate the pointer. This is
-		// the expected case during manifest replay.
-		for i := range nf.Meta.BlobReferences {
-			if nf.Meta.BlobReferences[i].OriginalMetadata != nil {
-				continue
-			}
-			nf.Meta.BlobReferences[i].OriginalMetadata = b.getBlobFileMetadata(nf.Meta.BlobReferences[i].FileID)
-			if nf.Meta.BlobReferences[i].OriginalMetadata == nil {
-				return errors.Errorf("blob file %s referenced by L%d.%s not found",
-					nf.Meta.BlobReferences[i].FileID, nf.Level, nf.Meta.TableNum)
-			}
 		}
 	}
 
@@ -1297,6 +1245,13 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			}
 			f.AllowedSeeks.Store(allowedSeeks)
 			f.InitAllowedSeeks = allowedSeeks
+
+			// Validate that all referenced blob files exist.
+			for _, ref := range f.BlobReferences {
+				if _, ok := v.BlobFiles.LookupPhysical(ref.FileID); !ok {
+					return nil, errors.AssertionFailedf("pebble: blob file %s referenced by L%d.%s not found", ref.FileID, level, f.TableNum)
+				}
+			}
 
 			err := lm.insert(f)
 			if err != nil {

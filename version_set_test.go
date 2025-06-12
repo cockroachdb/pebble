@@ -110,10 +110,6 @@ func TestVersionSet(t *testing.T) {
 				if !nf.Meta.Virtual {
 					createFile(nf.Meta.TableBacking.DiskFileNum)
 				}
-				for i := range nf.Meta.BlobReferences {
-					fileNum := blobFileIDMappings[nf.Meta.BlobReferences[i].FileID]
-					nf.Meta.BlobReferences[i].OriginalMetadata = physicalBlobs[fileNum]
-				}
 			}
 
 			for de := range ve.DeletedTables {
@@ -208,10 +204,6 @@ func TestVersionSet(t *testing.T) {
 			for _, l := range v.Levels {
 				for f := range l.All() {
 					tableMetas[f.TableNum] = f
-					for _, b := range f.BlobReferences {
-						physicalBlobs[b.OriginalMetadata.FileNum] = b.OriginalMetadata
-						blobFileIDMappings[b.FileID] = b.OriginalMetadata.FileNum
-					}
 					dedupBacking(f.TableBacking)
 				}
 			}

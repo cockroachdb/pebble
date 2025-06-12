@@ -38,7 +38,7 @@ db space --start=z --end=z
 db space --start=a --end=z
 testdata/find-val-sep-db
 ----
-1762
+1550
 
 # Covers part of 000005.sst and part of referenced blob file 000006.blob. Note 
 # that the estimated size of the sst from [c, d] is the size of the entire data 
@@ -47,4 +47,4 @@ testdata/find-val-sep-db
 db space --start=c --end=d
 testdata/find-val-sep-db
 ----
-157
+138
