@@ -935,6 +935,13 @@ func loadPrecedingKeys(ops []op, kg KeyGenerator, m *keyManager) {
 		// Update key tracking state.
 		m.update(op)
 	}
+	// We want to retain the keys that made it to the db and clear out everything
+	// else. All other objects would conflict with objects from the test itself.
+	for objID := range m.byObj {
+		if objID.tag() != dbTag {
+			delete(m.byObj, objID)
+		}
+	}
 }
 
 func insertSorted(cmp base.Compare, dst *[][]byte, k []byte) {
