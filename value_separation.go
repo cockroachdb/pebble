@@ -290,11 +290,11 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 	}
 
 	return compact.ValueSeparationMetadata{
-		BlobReferences: manifest.BlobReferences{{
-			FileID:           base.BlobFileID(vs.objMeta.DiskFileNum),
-			ValueSize:        stats.UncompressedValueBytes,
-			OriginalMetadata: meta,
-		}},
+		BlobReferences: manifest.BlobReferences{manifest.MakeBlobReference(
+			base.BlobFileID(vs.objMeta.DiskFileNum),
+			stats.UncompressedValueBytes,
+			meta,
+		)},
 		BlobReferenceSize:  stats.UncompressedValueBytes,
 		BlobReferenceDepth: 1,
 		BlobFileStats:      stats,
@@ -315,10 +315,21 @@ type preserveBlobReferences struct {
 	outputBlobReferenceDepth manifest.BlobReferenceDepth
 
 	// state
-	buf            []byte
-	currReferences manifest.BlobReferences
-	// totalValueSize is the sum of the sizes of all ValueSizes in currReferences.
+	buf []byte
+	// currReferences holds the pending references that have been referenced by
+	// the current output sstable. The index of a reference with a given blob
+	// file ID is the value of the blob.ReferenceID used by its value handles
+	// within the output sstable.
+	currReferences []pendingReference
+	// totalValueSize is the sum of currReferenceValueSizes.
+	//
+	// INVARIANT: totalValueSize == sum(currReferenceValueSizes)
 	totalValueSize uint64
+}
+
+type pendingReference struct {
+	blobFileID base.BlobFileID
+	valueSize  uint64
 }
 
 // Assert that *preserveBlobReferences implements the compact.ValueSeparation
@@ -370,22 +381,20 @@ func (vs *preserveBlobReferences) Add(
 	lv := kv.V.LazyValue()
 	fileID := lv.Fetcher.BlobFileID
 
-	refID, found := vs.currReferences.IDByBlobFileID(fileID)
-	if !found {
-		// This is the first time we're seeing this blob file for this sstable.
-		// Find the physical blob file for this file ID from the inputs.
-		phys, ok := vs.inputBlobPhysicalFiles[fileID]
-		if !ok {
-			return errors.AssertionFailedf("pebble: blob file %s not found among input sstables", fileID)
-		}
+	var refID blob.ReferenceID
+	if refIdx := slices.IndexFunc(vs.currReferences, func(ref pendingReference) bool {
+		return ref.blobFileID == fileID
+	}); refIdx != -1 {
+		refID = blob.ReferenceID(refIdx)
+	} else {
 		refID = blob.ReferenceID(len(vs.currReferences))
-		vs.currReferences = append(vs.currReferences, manifest.BlobReference{
-			FileID:           fileID,
-			OriginalMetadata: phys,
+		vs.currReferences = append(vs.currReferences, pendingReference{
+			blobFileID: fileID,
+			valueSize:  0,
 		})
 	}
 
-	if invariants.Enabled && vs.currReferences[refID].FileID != fileID {
+	if invariants.Enabled && vs.currReferences[refID].blobFileID != fileID {
 		panic("wrong reference index")
 	}
 
@@ -401,21 +410,39 @@ func (vs *preserveBlobReferences) Add(
 	if err != nil {
 		return err
 	}
-	vs.currReferences[refID].ValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
+	vs.currReferences[refID].valueSize += uint64(lv.Fetcher.Attribute.ValueLen)
 	vs.totalValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
 	return nil
 }
 
 // FinishOutput implements compact.ValueSeparation.
 func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadata, error) {
-	references := slices.Clone(vs.currReferences)
+	if invariants.Enabled {
+		// Assert that the incrementally-maintained totalValueSize matches the
+		// sum of all the reference value sizes.
+		totalValueSize := uint64(0)
+		for _, ref := range vs.currReferences {
+			totalValueSize += ref.valueSize
+		}
+		if totalValueSize != vs.totalValueSize {
+			return compact.ValueSeparationMetadata{},
+				errors.AssertionFailedf("totalValueSize mismatch: %d != %d", totalValueSize, vs.totalValueSize)
+		}
+	}
+
+	references := make(manifest.BlobReferences, len(vs.currReferences))
+	for i := range vs.currReferences {
+		ref := vs.currReferences[i]
+		phys, ok := vs.inputBlobPhysicalFiles[ref.blobFileID]
+		if !ok {
+			return compact.ValueSeparationMetadata{},
+				errors.AssertionFailedf("pebble: blob file %s not found among input sstables", ref.blobFileID)
+		}
+		references[i] = manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, phys)
+	}
+	referenceSize := vs.totalValueSize
 	vs.currReferences = vs.currReferences[:0]
 	vs.totalValueSize = 0
-
-	referenceSize := uint64(0)
-	for _, ref := range references {
-		referenceSize += ref.ValueSize
-	}
 	return compact.ValueSeparationMetadata{
 		BlobReferences:    references,
 		BlobReferenceSize: referenceSize,

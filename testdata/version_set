@@ -615,16 +615,43 @@ no obsolete tables
 no zombie blob files
 no obsolete blob files
 
+# Compact the referencing sstable, removing half its referenced value size.
+
+apply
+  del-table: L4 000017
+  add-table: L5 000018:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1500 blobrefs:[(B000016: 5000); depth:1]
+----
+applied:
+  last-seq-num:  99
+  del-table:     L4 000017
+  add-table:     L5 000018:[f#20,SET-g#20,SET]
+current version:
+  L2:
+    000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
+  L3:
+    000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
+    000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
+  L5:
+    000018:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1800 blobrefs:[(B000016: 5000); depth:1]
+  Blob files:
+    B000016 physical:{000016 size:[10000 (9.8KB)] vals:[10000 (9.8KB)]}
+no virtual backings
+zombie tables: 000017
+no obsolete tables
+no zombie blob files
+no obsolete blob files
+
+
 # Apply the blob file replacement. Because we ref'd the previous version, the
 # previous physical blob file should be considered a zombie.
 
 apply
   del-blob-file: B000016 000016
-  add-blob-file: B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+  add-blob-file: B000016 physical:{000019 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
 ----
 applied:
   last-seq-num:  99
-  add-blob-file: B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+  add-blob-file: B000016 physical:{000019 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
   del-blob-file: B000016 000016
 current version:
   L2:
@@ -632,12 +659,12 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
     000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
-  L4:
-    000017:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1700 blobrefs:[(B000016: 10000); depth:1]
+  L5:
+    000018:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1800 blobrefs:[(B000016: 5000); depth:1]
   Blob files:
-    B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+    B000016 physical:{000019 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
 no virtual backings
-no zombie tables
+zombie tables: 000017
 no obsolete tables
 zombie blob files: 000016
 no obsolete blob files
@@ -654,13 +681,13 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
     000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
-  L4:
-    000017:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1700 blobrefs:[(B000016: 10000); depth:1]
+  L5:
+    000018:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1800 blobrefs:[(B000016: 5000); depth:1]
   Blob files:
-    B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+    B000016 physical:{000019 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
 no virtual backings
 no zombie tables
-no obsolete tables
+obsolete tables: 000017
 no zombie blob files
 obsolete blob files: 000016
 
@@ -674,10 +701,10 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
     000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] size:1000
-  L4:
-    000017:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1700 blobrefs:[(B000016: 10000); depth:1]
+  L5:
+    000018:[f#20,SET-g#20,SET] seqnums:[0-0] points:[f#20,SET-g#20,SET] size:1800 blobrefs:[(B000016: 5000); depth:1]
   Blob files:
-    B000016 physical:{000018 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
+    B000016 physical:{000019 size:[5000 (4.9KB)] vals:[5000 (4.9KB)]}
 no virtual backings
 no zombie tables
 no obsolete tables
