@@ -99,14 +99,14 @@ func CopySpan(
 	// Set the filter block to be copied over if it exists. It will return false
 	// positives for keys in blocks of the original file that we don't copy, but
 	// filters can always have false positives, so this is fine.
-	if r.tableFilter != nil {
+	if r.tableFilter != nil && o.FilterPolicy != nil && o.FilterPolicy.Name() == props.FilterPolicyName {
 		filterBlock, err := r.readFilterBlock(ctx, block.NoReadEnv, rh, r.filterBH)
 		if err != nil {
 			return 0, errors.Wrap(err, "reading filter")
 		}
 		filterBytes := append([]byte{}, filterBlock.BlockData()...)
 		filterBlock.Release()
-		if err := w.copyFilter(filterBytes, props.FilterPolicyName); err != nil {
+		if err := w.copyFilter(filterBytes); err != nil {
 			return 0, errors.Wrap(err, "copying filter")
 		}
 	}
