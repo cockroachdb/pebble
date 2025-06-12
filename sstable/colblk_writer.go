@@ -1265,7 +1265,7 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 // copyFilter copies the specified filter to the table. It's specifically used
 // by the sstable copier that can copy parts of an sstable to a new sstable,
 // using CopySpan().
-func (w *RawColumnWriter) copyFilter(filter []byte, filterName string) error {
+func (w *RawColumnWriter) copyFilter(filter []byte) error {
 	w.filterBlock = copyFilterWriter{
 		origPolicyName: w.filterBlock.policyName(), origMetaName: w.filterBlock.metaName(), data: filter,
 	}
