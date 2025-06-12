@@ -357,7 +357,7 @@ type RawWriter interface {
 	// copyFilter copies the specified filter to the table. It's specifically used
 	// by the sstable copier that can copy parts of an sstable to a new sstable,
 	// using CopySpan().
-	copyFilter(filter []byte, filterName string) error
+	copyFilter(filter []byte) error
 
 	// copyProperties copies properties from the specified props, and resets others
 	// to prepare for copying data blocks from another sstable. It's specifically
