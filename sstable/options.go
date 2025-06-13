@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
@@ -355,12 +354,9 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 }
 
 func tableFormatSupportsCompressionProfile(tf TableFormat, profile *block.CompressionProfile) bool {
-	if tf < TableFormatPebblev6 {
-		// MinLZ is only supported in TableFormatPebblev6 and higher.
-		if profile.DataBlocks.Algorithm == compression.MinLZ ||
-			profile.OtherBlocks.Algorithm == compression.MinLZ {
-			return false
-		}
+	// MinLZ is only supported in TableFormatPebblev6 and higher.
+	if tf < TableFormatPebblev6 && profile.UsesMinLZ() {
+		return false
 	}
 	return true
 }
