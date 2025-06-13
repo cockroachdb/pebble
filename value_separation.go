@@ -28,7 +28,7 @@ var neverSeparateValues getValueSeparation = func(JobID, *compaction, sstable.Ta
 func (d *DB) determineCompactionValueSeparation(
 	jobID JobID, c *compaction, tableFormat sstable.TableFormat,
 ) compact.ValueSeparation {
-	if tableFormat < sstable.TableFormatPebblev6 || d.FormatMajorVersion() < FormatExperimentalValueSeparation ||
+	if tableFormat < sstable.TableFormatPebblev7 || d.FormatMajorVersion() < FormatValueSeparation ||
 		d.opts.Experimental.ValueSeparationPolicy == nil {
 		return compact.NeverSeparateValues{}
 	}
