@@ -14,6 +14,9 @@ import (
 type Compressor struct {
 	profile              CompressionProfile
 	dataBlocksCompressor compression.Compressor
+	// valueBlocksCompressor is used for value blocks; It can be the same object as
+	// dataBlocksCompressor.
+	valueBlocksCompressor compression.Compressor
 	// otherBlocksCompressor is used for blocks that are not data blocks, such as
 	// index blocks or metadata blocks. It can be the same object as
 	// dataBlocksCompressor.
@@ -27,8 +30,14 @@ func MakeCompressor(profile *CompressionProfile) Compressor {
 		profile: *profile,
 	}
 	c.dataBlocksCompressor = compression.GetCompressor(profile.DataBlocks)
-	c.otherBlocksCompressor = c.dataBlocksCompressor
-	if profile.OtherBlocks != profile.DataBlocks {
+	if profile.ValueBlocks == profile.DataBlocks {
+		c.valueBlocksCompressor = c.dataBlocksCompressor
+	} else {
+		c.valueBlocksCompressor = compression.GetCompressor(profile.ValueBlocks)
+	}
+	if profile.OtherBlocks == profile.DataBlocks {
+		c.otherBlocksCompressor = c.dataBlocksCompressor
+	} else {
 		c.otherBlocksCompressor = compression.GetCompressor(profile.OtherBlocks)
 	}
 	return c
@@ -40,6 +49,9 @@ func (c *Compressor) Close() {
 	if c.otherBlocksCompressor != c.dataBlocksCompressor {
 		c.otherBlocksCompressor.Close()
 	}
+	if c.valueBlocksCompressor != c.dataBlocksCompressor {
+		c.valueBlocksCompressor.Close()
+	}
 	c.dataBlocksCompressor.Close()
 	*c = Compressor{}
 }
@@ -48,12 +60,16 @@ func (c *Compressor) Close() {
 //
 // In addition to the buffer, returns the algorithm that was used.
 func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator, []byte) {
-	setting := c.profile.DataBlocks
-	compressor := c.dataBlocksCompressor
-	if kind != blockkind.SSTableData && kind != blockkind.SSTableValue && kind != blockkind.BlobValue {
-		setting = c.profile.OtherBlocks
+	var compressor compression.Compressor
+	switch kind {
+	case blockkind.SSTableData:
+		compressor = c.dataBlocksCompressor
+	case blockkind.SSTableValue, blockkind.BlobValue:
+		compressor = c.valueBlocksCompressor
+	default:
 		compressor = c.otherBlocksCompressor
 	}
+
 	out := compressor.Compress(dst, src)
 
 	// Return the original data uncompressed if the reduction is less than the
@@ -62,11 +78,12 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 	//   after * 100
 	//   -----------  >  100 - MinReductionPercent
 	//      before
-	if setting.Algorithm != compression.NoCompression &&
+	algorithm := compressor.Algorithm()
+	if algorithm != compression.NoCompression &&
 		int64(len(out))*100 > int64(len(src))*int64(100-c.profile.MinReductionPercent) {
 		return NoCompressionIndicator, append(out[:0], src...)
 	}
-	return compressionIndicatorFromAlgorithm(setting.Algorithm), out
+	return compressionIndicatorFromAlgorithm(algorithm), out
 }
 
 // NoopCompressor is a Compressor that does not compress data. It does not have

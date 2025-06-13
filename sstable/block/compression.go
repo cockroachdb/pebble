@@ -25,9 +25,10 @@ import (
 type CompressionProfile struct {
 	Name string
 
-	// DataBlocks applies to sstable data and value blocks, as well as blob file
-	// value blocks. OtherBlocks applies to all other blocks (such as index,
-	// filter, metadata blocks).
+	// DataBlocks applies to sstable data blocks.
+	// ValueBlocks applies to sstable value blocks and blob file value blocks.
+	// OtherBlocks applies to all other blocks (such as index, filter, metadata
+	// blocks).
 	//
 	// Some blocks (like rangedel) never use compression; this is at the
 	// discretion of the sstable or blob file writer.
@@ -35,6 +36,7 @@ type CompressionProfile struct {
 	// Note that MinLZ is only supported with table formats v6+. Older formats
 	// fall back to Snappy.
 	DataBlocks  compression.Setting
+	ValueBlocks compression.Setting
 	OtherBlocks compression.Setting
 
 	// Blocks that are reduced by less than this percentage are stored
@@ -42,6 +44,14 @@ type CompressionProfile struct {
 	MinReductionPercent uint8
 
 	// TODO(radu): knobs for adaptive compression go here.
+}
+
+// UsesMinLZ returns true if the profile uses the MinLZ compression algorithm
+// (for any block kind).
+func (p *CompressionProfile) UsesMinLZ() bool {
+	return p.DataBlocks.Algorithm == compression.MinLZ ||
+		p.ValueBlocks.Algorithm == compression.MinLZ ||
+		p.OtherBlocks.Algorithm == compression.MinLZ
 }
 
 var (
@@ -73,6 +83,7 @@ func simpleCompressionProfile(name string, setting compression.Setting) *Compres
 	p := &CompressionProfile{
 		Name:                name,
 		DataBlocks:          setting,
+		ValueBlocks:         setting,
 		OtherBlocks:         setting,
 		MinReductionPercent: 12,
 	}

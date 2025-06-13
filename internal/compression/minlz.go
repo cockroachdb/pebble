@@ -16,6 +16,8 @@ type minlzCompressor struct {
 
 var _ Compressor = (*minlzCompressor)(nil)
 
+func (c *minlzCompressor) Algorithm() Algorithm { return MinLZ }
+
 func (c *minlzCompressor) Compress(dst, src []byte) []byte {
 	// MinLZ cannot encode blocks greater than 8MB. Fall back to Snappy in those
 	// cases. Note that MinLZ can decode the Snappy compressed block.
