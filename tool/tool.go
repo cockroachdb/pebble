@@ -200,30 +200,6 @@ func (t *T) ConfigureSharedStorage(
 	t.opts.Experimental.CreateOnSharedLocator = createOnSharedLocator
 }
 
-// BlobRefMode specifies how blob references should be handled.
-type BlobRefMode int
-
-const (
-	// BlobRefModeNone specifies the AssertNoBlobHandles TableBlobContext.
-	BlobRefModeNone BlobRefMode = iota
-	// BlobRefModePrint specifies the DebugHandlesBlobContext TableBlobContext.
-	BlobRefModePrint
-	// BlobRefModeLoad specifies the LoadValBlobContext
-	// TableBlobContext.
-	BlobRefModeLoad
-)
-
-func ConvertToBlobRefMode(s string) BlobRefMode {
-	switch s {
-	case "print":
-		return BlobRefModePrint
-	case "load":
-		return BlobRefModeLoad
-	default:
-		return BlobRefModeNone
-	}
-}
-
 // debugReaderProvider is a cache-less ReaderProvider meant for debugging blob
 // files.
 type debugReaderProvider struct {

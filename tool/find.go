@@ -52,11 +52,12 @@ type findT struct {
 	mergers   sstable.Mergers
 
 	// Flags.
-	comparerName string
-	fmtKey       keyFormatter
-	fmtValue     valueFormatter
-	verbose      bool
-	blobMode     string
+	comparerName  string
+	fmtKey        keyFormatter
+	fmtValue      valueFormatter
+	verbose       bool
+	blobModePrint bool
+	blobModeLoad  bool
 
 	// Map from file num to version edit index which references the file num.
 	editRefs map[base.DiskFileNum][]int
@@ -121,8 +122,12 @@ provenance of the sstables (flushed, ingested, compacted).
 		&f.fmtKey, "key", "key formatter")
 	f.Root.Flags().Var(
 		&f.fmtValue, "value", "value formatter")
-	f.Root.Flags().StringVar(
-		&f.blobMode, "blob-mode", "none", "blob value formatter")
+	f.Root.Flags().BoolVar(
+		&f.blobModePrint, "blob-mode-print", false, "print blob value handles when encountered. "+
+			"Cannot be used in conjunction with --blob-mode-load")
+	f.Root.Flags().BoolVar(
+		&f.blobModeLoad, "blob-mode-load", false, "load values from blob file when encountered. "+
+			"Cannot be used in conjunction with --blob-mode-print")
 	return f
 }
 
@@ -422,6 +427,10 @@ func (f *findT) searchLogs(stdout io.Writer, searchKey []byte, refs []findRef) [
 
 // Search the tables for references to the specified key.
 func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef) []findRef {
+	if f.blobModeLoad && f.blobModePrint {
+		fmt.Fprintf(stdout, "cannot use --blob-mode-load and --blob-mode-print together")
+		return nil
+	}
 	cache := pebble.NewCache(128 << 20 /* 128 MB */)
 	defer cache.Unref()
 	ch := cache.NewHandle()
@@ -483,16 +492,19 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				fragTransforms = m.FragmentIterTransforms()
 			}
 
-			var blobContext sstable.TableBlobContext
-			switch ConvertToBlobRefMode(f.blobMode) {
-			case BlobRefModePrint:
+			blobContext := sstable.AssertNoBlobHandles
+			if f.blobModePrint {
+				// TODO(annie): Revisit this once we support determining the type
+				// of value we are dealing with in our sstable internal iterator.
+				// We can use some information about the ValuePrefix to separate
+				// how we want to format in-place values and blob value handles
+				// (via a new formatter). Then, we can make printing blob value
+				// handles the default.
 				f.fmtValue.mustSet("[%s]")
 				blobContext = sstable.DebugHandlesBlobContext
-			case BlobRefModeLoad:
-				f.fmtValue.mustSet("[%s]")
+			}
+			if f.blobModeLoad {
 				blobContext = f.blobMappings.LoadValueBlobContext(base.PhysicalTableFileNum(fl.DiskFileNum))
-			default:
-				blobContext = sstable.AssertNoBlobHandles
 			}
 			iter, err := r.NewIter(transforms, nil, nil, blobContext)
 			if err != nil {

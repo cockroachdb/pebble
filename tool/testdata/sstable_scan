@@ -415,7 +415,7 @@ tcrsfsqc@1366.233420574,0#0,SET [1b22f2128e75f0433e8eda52c41872e6]
 
 sstable scan
 ./testdata/find-val-sep-db
---blob-mode=print
+--blob-mode-print
 ----
 find-val-sep-db/000005.sst
 aaa\x00#10,SET [(f0,blk0,id0,len5)]
@@ -428,21 +428,28 @@ fff\x00#15,SET [(f0,blk0,id1,len7)]
 
 sstable scan
 --filter=armed
---blob-mode=print
+--blob-mode-print
 ../sstable/testdata/hamlet-sst/000002.sst
 ----
 000002.sst: armed#0,SET [2]
 
 sstable scan
 ./testdata/find-val-sep-db/000005.sst
---blob-mode=load
+--blob-mode-load
 ----
-when --blob-mode=load is specified, the path to a directory containing a manifest and blob file must be provided as the last argument
+flag needs an argument: --blob-mode-load
 
 sstable scan
 ./testdata/find-val-sep-db/000005.sst
-./testdata/find-val-sep-db
---blob-mode=load
+--blob-mode-print
+--blob-mode-load=./testdata/find-val-sep-db
+----
+cannot use --blob-mode-load and --blob-mode-print together
+
+sstable scan
+./testdata/find-val-sep-db/000005.sst
+--blob-mode-load=find-val-sep-db
+--value=[%s]
 ----
 000005.sst
 aaa\x00#10,SET [yuumi]
@@ -452,8 +459,8 @@ ddd\x00#13,SET [6]
 
 sstable scan
 ./testdata/find-val-sep-db/000008.sst
-./testdata/find-val-sep-db
---blob-mode=load
+--blob-mode-load=find-val-sep-db
+--value=[%s]
 ----
 000008.sst
 eee\x00#14,SET [pigeon]
