@@ -233,7 +233,7 @@ L2:
 apply v8
   add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 ----
-error during Accumulate: blob file B000003 referenced by L0.000004 not found
+pebble: blob file B000003 referenced by L0.000004 not found
 
 # Apply a version edit that introduces a new blob file and a corresponding table
 # that references its entirety.
@@ -258,7 +258,7 @@ Blob files:
 apply v8
   add-table:     L0 000005:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] blobrefs:[(B000003: 205); depth:1]
 ----
-error during Accumulate: blob file B000003 referenced by L0.000005 not found
+pebble: blob file B000003 referenced by L0.000005 not found
 
 # We can add new tables referencing the blob file if we delete an existing table
 # with a reference to the file.

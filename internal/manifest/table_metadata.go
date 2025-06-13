@@ -328,7 +328,7 @@ func (m *TableMetadata) VirtualMeta() *TableMetadata {
 func (m *TableMetadata) EstimatedReferenceSize() uint64 {
 	var size uint64
 	for i := range m.BlobReferences {
-		size += m.BlobReferences[i].EstimatedPhysicalSize()
+		size += m.BlobReferences[i].EstimatedPhysicalSize
 	}
 	return size
 }

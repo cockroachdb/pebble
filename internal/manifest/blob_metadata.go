@@ -32,50 +32,40 @@ type BlobReference struct {
 	// blob file for which there exists a reference in the sstable. Note that if
 	// any of the referencing tables are virtualized tables, the ValueSize may
 	// be approximate.
-	//
-	// INVARIANT: ValueSize <= Metadata.ValueSize
 	ValueSize uint64
-
-	// OriginalMetadata is the metadata for the original physical blob file. It
-	// is non-nil for blob references contained within active Versions. It is
-	// expected to initially be nil when decoding a version edit as a part of
-	// manfiest replay. When the version edit is accumulated into a bulk version
-	// edit, the metadata is populated.
-	//
-	// The OriginalMetadata describes the physical blob file that existed when
-	// the reference was originally created. The original physical blob file may
-	// no longer exist. The BlobReference.FileID should be translated using a
-	// Version's BlobFileSet.
-	//
-	// TODO(jackson): We should either remove the OriginalMetadata from the
-	// BlobReference or use it to infer when a blob file has definitely NOT been
-	// replaced and a lookup in Version.BlobFileSet is unnecessary.
-	OriginalMetadata *PhysicalBlobFile
+	// EstimatedPhysicalSize is an estimate of the physical size of the blob
+	// reference, in bytes. It's calculated by scaling the blob file's physical
+	// size according to the ValueSize of the blob reference relative to the
+	// total ValueSize of the blob file.
+	EstimatedPhysicalSize uint64
 }
 
-// EstimatedPhysicalSize returns an estimate of the physical size of the blob
-// reference, in bytes. It's calculated by scaling the blob file's physical size
-// according to the ValueSize of the blob reference relative to the total
-// ValueSize of the blob file.
-func (br *BlobReference) EstimatedPhysicalSize() uint64 {
+// MakeBlobReference creates a BlobReference from the given file ID, value size,
+// and physical blob file.
+func MakeBlobReference(
+	fileID base.BlobFileID, valueSize uint64, phys *PhysicalBlobFile,
+) BlobReference {
 	if invariants.Enabled {
-		if br.ValueSize > br.OriginalMetadata.ValueSize {
+		switch {
+		case valueSize > phys.ValueSize:
 			panic(errors.AssertionFailedf("pebble: blob reference value size %d is greater than the blob file's value size %d",
-				br.ValueSize, br.OriginalMetadata.ValueSize))
-		}
-		if br.ValueSize == 0 {
-			panic(errors.AssertionFailedf("pebble: blob reference value size %d is zero", br.ValueSize))
-		}
-		if br.OriginalMetadata.ValueSize == 0 {
-			panic(errors.AssertionFailedf("pebble: blob file value size %d is zero", br.OriginalMetadata.ValueSize))
+				valueSize, phys.ValueSize))
+		case valueSize == 0:
+			panic(errors.AssertionFailedf("pebble: blob reference value size %d is zero", valueSize))
+		case phys.ValueSize == 0:
+			panic(errors.AssertionFailedf("pebble: blob file value size %d is zero", phys.ValueSize))
 		}
 	}
-	//                         br.ValueSize
-	//   Reference size =  -----------------------------  ×  br.OriginalMetadata.Size
-	//                     br.OriginalMetadata.ValueSize
-	//
-	// We perform the multiplication first to avoid floating point arithmetic.
-	return (br.ValueSize * br.OriginalMetadata.Size) / br.OriginalMetadata.ValueSize
+	return BlobReference{
+		FileID:    fileID,
+		ValueSize: valueSize,
+		//                        valueSize
+		//   Reference size =  -----------------  ×  phys.Size
+		//                      phys.ValueSize
+		//
+		// We perform the multiplication first to avoid floating point arithmetic.
+		EstimatedPhysicalSize: (valueSize * phys.Size) / phys.ValueSize,
+	}
 }
 
 // BlobFileMetadata encapsulates a blob file ID used to identify a particular
@@ -475,7 +465,7 @@ type currentBlobFile struct {
 	// referencing table number. This would likely be more memory efficient,
 	// reduce overall number of pointers to chase and suffer fewer allocations
 	// (and we can pool the B-Tree nodes to further reduce allocs)
-	references map[*TableMetadata]struct{}
+	references map[base.TableNum]struct{}
 	// referencedValueSize is the sum of the length of uncompressed values in
 	// this blob file that are still live.
 	referencedValueSize uint64
@@ -491,7 +481,7 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit) {
 	for blobFileID, pbf := range bve.BlobFiles.Added {
 		s.files[blobFileID] = &currentBlobFile{
 			metadata:   BlobFileMetadata{FileID: blobFileID, Physical: pbf},
-			references: make(map[*TableMetadata]struct{}),
+			references: make(map[base.TableNum]struct{}),
 		}
 		s.stats.Count++
 		s.stats.PhysicalSize += pbf.Size
@@ -506,7 +496,7 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit) {
 				if !ok {
 					panic(errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID))
 				}
-				cbf.references[table] = struct{}{}
+				cbf.references[table.TableNum] = struct{}{}
 				cbf.referencedValueSize += ref.ValueSize
 				s.stats.ReferencedValueSize += ref.ValueSize
 				s.stats.ReferencesCount++
@@ -559,7 +549,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 		}
 
 		blobFileID := m.FileID
-		cbf := &currentBlobFile{references: make(map[*TableMetadata]struct{})}
+		cbf := &currentBlobFile{references: make(map[base.TableNum]struct{})}
 		cbf.metadata = BlobFileMetadata{FileID: blobFileID, Physical: m.Physical}
 		s.files[blobFileID] = cbf
 		s.stats.Count++
@@ -577,7 +567,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			if !ok {
 				return errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID)
 			}
-			cbf.references[e.Meta] = struct{}{}
+			cbf.references[e.Meta.TableNum] = struct{}{}
 			cbf.referencedValueSize += ref.ValueSize
 			s.stats.ReferencedValueSize += ref.ValueSize
 			s.stats.ReferencesCount++
@@ -600,13 +590,15 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 					return errors.AssertionFailedf("pebble: referenced value size %d for blob file %s is greater than the referenced value size %d",
 						ref.ValueSize, cbf.metadata.FileID, cbf.referencedValueSize)
 				}
-				if _, ok := cbf.references[meta]; !ok {
-					return errors.AssertionFailedf("pebble: deleted table %s's reference to blob file %d not known",
+				if _, ok := cbf.references[meta.TableNum]; !ok {
+					return errors.AssertionFailedf("pebble: deleted table %s's reference to blob file %s not known",
 						meta.TableNum, ref.FileID)
 				}
 			}
 
-			// Decrement the stats for this reference.
+			// Decrement the stats for this reference. We decrement even if the
+			// table is being moved, because we incremented the stats when we
+			// iterated over the version edit's new tables.
 			cbf.referencedValueSize -= ref.ValueSize
 			s.stats.ReferencedValueSize -= ref.ValueSize
 			s.stats.ReferencesCount--
@@ -619,7 +611,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				continue
 			}
 			// Remove the reference of this table to this blob file.
-			delete(cbf.references, meta)
+			delete(cbf.references, meta.TableNum)
 
 			// If there are no more references to the blob file, remove it from
 			// the set and add the removal of the blob file to the version edit.
