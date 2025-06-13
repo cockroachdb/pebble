@@ -890,8 +890,8 @@ func RandomOptions(
 			return pebble.ValueSeparationPolicy{Enabled: false}
 		}
 	} else if n > 1 {
-		if testOpts.Opts.FormatMajorVersion < pebble.FormatExperimentalValueSeparation {
-			testOpts.Opts.FormatMajorVersion = pebble.FormatExperimentalValueSeparation
+		if testOpts.Opts.FormatMajorVersion < pebble.FormatValueSeparation {
+			testOpts.Opts.FormatMajorVersion = pebble.FormatValueSeparation
 		}
 		minSize := 1 + rng.IntN(maxValueSize)
 		maxBlobReferenceDepth := 2 + rng.IntN(9) // 2-10

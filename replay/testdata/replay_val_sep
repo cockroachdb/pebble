@@ -5,35 +5,35 @@ tree
 ----
           /
             build/
-     871      000005.sst
+     864      000005.sst
      101      000006.blob
-     840      000008.sst
+     833      000008.sst
       97      000009.blob
       92      000011.log
-     742      000012.sst
+     755      000012.sst
       63      000014.log
-     835      000015.sst
+     828      000015.sst
       97      000016.blob
        0      LOCK
      152      MANIFEST-000010
      250      MANIFEST-000013
     2880      OPTIONS-000003
-       0      marker.format-version.000009.022
+       0      marker.format-version.000011.024
        0      marker.manifest.000003.MANIFEST-000013
             simple_val_sep/
-     835      000015.sst
+     828      000015.sst
       97      000016.blob
      250      MANIFEST-000013
               checkpoint/
-     871        000005.sst
+     864        000005.sst
      101        000006.blob
-     840        000008.sst
+     833        000008.sst
       97        000009.blob
       64        000011.log
-     742        000012.sst
+     755        000012.sst
      187        MANIFEST-000013
     2880        OPTIONS-000003
-       0        marker.format-version.000001.022
+       0        marker.format-version.000001.024
        0        marker.manifest.000001.MANIFEST-000013
 
 replay simple_val_sep unpaced
@@ -57,7 +57,7 @@ cat build/OPTIONS-000003
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304
-  format_major_version=22
+  format_major_version=24
   key_schema=DefaultKeySchema(pebble.internal.testkeys,16)
   l0_compaction_concurrency=10
   l0_compaction_file_threshold=500

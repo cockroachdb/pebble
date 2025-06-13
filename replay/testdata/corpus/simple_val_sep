@@ -8,7 +8,7 @@ build:
   LOCK
   MANIFEST-000001
   OPTIONS-000003
-  marker.format-version.000009.022
+  marker.format-version.000011.024
   marker.manifest.000001.MANIFEST-000001
 
 commit
@@ -52,7 +52,7 @@ build:
   MANIFEST-000010
   MANIFEST-000013
   OPTIONS-000003
-  marker.format-version.000009.022
+  marker.format-version.000011.024
   marker.manifest.000003.MANIFEST-000013
 
 start
@@ -75,7 +75,7 @@ simple_val_sep/checkpoint:
   000012.sst
   MANIFEST-000013
   OPTIONS-000003
-  marker.format-version.000001.022
+  marker.format-version.000001.024
   marker.manifest.000001.MANIFEST-000013
 
 commit
@@ -103,6 +103,6 @@ stat simple_val_sep/MANIFEST-000013 simple_val_sep/000015.sst simple_val_sep/000
 simple_val_sep/MANIFEST-000013:
   size: 250
 simple_val_sep/000015.sst:
-  size: 835
+  size: 828
 simple_val_sep/000016.blob:
   size: 97
