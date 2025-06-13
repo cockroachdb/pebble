@@ -184,7 +184,7 @@ func buildSeparatedValuesDB(
 	o := &pebble.Options{
 		Comparer:                &cockroachkvs.Comparer,
 		BlockPropertyCollectors: cockroachkvs.BlockPropertyCollectors,
-		FormatMajorVersion:      pebble.FormatExperimentalValueSeparation,
+		FormatMajorVersion:      pebble.FormatValueSeparation,
 		FS:                      vfs.NewMem(),
 		KeySchema:               cockroachkvs.KeySchema.Name,
 		KeySchemas:              sstable.MakeKeySchemas(&cockroachkvs.KeySchema),

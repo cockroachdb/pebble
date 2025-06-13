@@ -1337,28 +1337,28 @@ func TestCompaction(t *testing.T) {
 		},
 		"set_with_del_sstable_Pebblev6": {
 			minVersion: FormatTableFormatV6,
-			maxVersion: FormatNewest,
+			maxVersion: FormatTableFormatV6,
 		},
 		"set_with_del_sstable_Pebblev7": {
 			minVersion: formatFooterAttributes,
 			maxVersion: formatFooterAttributes,
 		},
 		"value_separation": {
-			minVersion: FormatExperimentalValueSeparation,
-			maxVersion: FormatExperimentalValueSeparation,
+			minVersion: FormatValueSeparation,
+			maxVersion: FormatValueSeparation,
 			verbose:    true,
 		},
 		"score_compaction_picked_before_manual": {
 			// Run at a specific version, so that a single sstable format is used,
 			// since the test prints the compaction log which includes file sizes.
-			minVersion: FormatExperimentalValueSeparation,
-			maxVersion: FormatExperimentalValueSeparation,
+			minVersion: formatDeprecatedExperimentalValueSeparation,
+			maxVersion: formatDeprecatedExperimentalValueSeparation,
 		},
 		"compaction_cancellation": {
 			// Run at a specific version, so that a single sstable format is used,
 			// since the test prints the compaction log which includes file sizes.
-			minVersion: FormatExperimentalValueSeparation,
-			maxVersion: FormatExperimentalValueSeparation,
+			minVersion: formatDeprecatedExperimentalValueSeparation,
+			maxVersion: formatDeprecatedExperimentalValueSeparation,
 		},
 	}
 	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {

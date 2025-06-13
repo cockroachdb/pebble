@@ -56,7 +56,7 @@ func main() {
 		KeySchemas: sstable.KeySchemas{
 			cockroachkvs.KeySchema.Name: &cockroachkvs.KeySchema,
 		},
-		FormatMajorVersion: pebble.FormatExperimentalValueSeparation,
+		FormatMajorVersion: pebble.FormatValueSeparation,
 	}
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{

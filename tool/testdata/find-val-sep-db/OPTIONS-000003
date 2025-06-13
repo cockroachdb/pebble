@@ -13,7 +13,7 @@
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304
-  format_major_version=22
+  format_major_version=24
   key_schema=crdb1
   l0_compaction_concurrency=10
   l0_compaction_file_threshold=500

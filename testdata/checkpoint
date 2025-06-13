@@ -59,6 +59,10 @@ create: db/marker.format-version.000010.023
 close: db/marker.format-version.000010.023
 remove: db/marker.format-version.000009.022
 sync: db
+create: db/marker.format-version.000011.024
+close: db/marker.format-version.000011.024
+remove: db/marker.format-version.000010.023
+sync: db
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
 close: db/temporary.000003.dbtmp
@@ -125,9 +129,9 @@ sync-data: checkpoints/checkpoint1/OPTIONS-000003
 close: checkpoints/checkpoint1/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint1
-create: checkpoints/checkpoint1/marker.format-version.000001.023
-sync-data: checkpoints/checkpoint1/marker.format-version.000001.023
-close: checkpoints/checkpoint1/marker.format-version.000001.023
+create: checkpoints/checkpoint1/marker.format-version.000001.024
+sync-data: checkpoints/checkpoint1/marker.format-version.000001.024
+close: checkpoints/checkpoint1/marker.format-version.000001.024
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
 link: db/000005.sst -> checkpoints/checkpoint1/000005.sst
@@ -169,9 +173,9 @@ sync-data: checkpoints/checkpoint2/OPTIONS-000003
 close: checkpoints/checkpoint2/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint2
-create: checkpoints/checkpoint2/marker.format-version.000001.023
-sync-data: checkpoints/checkpoint2/marker.format-version.000001.023
-close: checkpoints/checkpoint2/marker.format-version.000001.023
+create: checkpoints/checkpoint2/marker.format-version.000001.024
+sync-data: checkpoints/checkpoint2/marker.format-version.000001.024
+close: checkpoints/checkpoint2/marker.format-version.000001.024
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 link: db/000007.sst -> checkpoints/checkpoint2/000007.sst
@@ -208,9 +212,9 @@ sync-data: checkpoints/checkpoint3/OPTIONS-000003
 close: checkpoints/checkpoint3/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint3
-create: checkpoints/checkpoint3/marker.format-version.000001.023
-sync-data: checkpoints/checkpoint3/marker.format-version.000001.023
-close: checkpoints/checkpoint3/marker.format-version.000001.023
+create: checkpoints/checkpoint3/marker.format-version.000001.024
+sync-data: checkpoints/checkpoint3/marker.format-version.000001.024
+close: checkpoints/checkpoint3/marker.format-version.000001.024
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
 link: db/000005.sst -> checkpoints/checkpoint3/000005.sst
@@ -294,7 +298,7 @@ list db
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000010.023
+marker.format-version.000011.024
 marker.manifest.000001.MANIFEST-000001
 
 list checkpoints/checkpoint1
@@ -304,7 +308,7 @@ list checkpoints/checkpoint1
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.023
+marker.format-version.000001.024
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint1 readonly
@@ -371,7 +375,7 @@ list checkpoints/checkpoint2
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.023
+marker.format-version.000001.024
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint2 readonly
@@ -413,7 +417,7 @@ list checkpoints/checkpoint3
 000007.sst
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000001.023
+marker.format-version.000001.024
 marker.manifest.000001.MANIFEST-000001
 
 open checkpoints/checkpoint3 readonly
@@ -532,9 +536,9 @@ sync-data: checkpoints/checkpoint4/OPTIONS-000003
 close: checkpoints/checkpoint4/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint4
-create: checkpoints/checkpoint4/marker.format-version.000001.023
-sync-data: checkpoints/checkpoint4/marker.format-version.000001.023
-close: checkpoints/checkpoint4/marker.format-version.000001.023
+create: checkpoints/checkpoint4/marker.format-version.000001.024
+sync-data: checkpoints/checkpoint4/marker.format-version.000001.024
+close: checkpoints/checkpoint4/marker.format-version.000001.024
 sync: checkpoints/checkpoint4
 close: checkpoints/checkpoint4
 link: db/000010.sst -> checkpoints/checkpoint4/000010.sst
@@ -622,7 +626,7 @@ list db
 LOCK
 MANIFEST-000001
 OPTIONS-000003
-marker.format-version.000010.023
+marker.format-version.000011.024
 marker.manifest.000001.MANIFEST-000001
 
 
@@ -641,9 +645,9 @@ sync-data: checkpoints/checkpoint5/OPTIONS-000003
 close: checkpoints/checkpoint5/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint5
-create: checkpoints/checkpoint5/marker.format-version.000001.023
-sync-data: checkpoints/checkpoint5/marker.format-version.000001.023
-close: checkpoints/checkpoint5/marker.format-version.000001.023
+create: checkpoints/checkpoint5/marker.format-version.000001.024
+sync-data: checkpoints/checkpoint5/marker.format-version.000001.024
+close: checkpoints/checkpoint5/marker.format-version.000001.024
 sync: checkpoints/checkpoint5
 close: checkpoints/checkpoint5
 link: db/000010.sst -> checkpoints/checkpoint5/000010.sst
@@ -743,9 +747,9 @@ sync-data: checkpoints/checkpoint6/OPTIONS-000003
 close: checkpoints/checkpoint6/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoints/checkpoint6
-create: checkpoints/checkpoint6/marker.format-version.000001.023
-sync-data: checkpoints/checkpoint6/marker.format-version.000001.023
-close: checkpoints/checkpoint6/marker.format-version.000001.023
+create: checkpoints/checkpoint6/marker.format-version.000001.024
+sync-data: checkpoints/checkpoint6/marker.format-version.000001.024
+close: checkpoints/checkpoint6/marker.format-version.000001.024
 sync: checkpoints/checkpoint6
 close: checkpoints/checkpoint6
 link: db/000011.sst -> checkpoints/checkpoint6/000011.sst
@@ -918,6 +922,10 @@ create: valsepdb/marker.format-version.000010.023
 close: valsepdb/marker.format-version.000010.023
 remove: valsepdb/marker.format-version.000009.022
 sync: valsepdb
+create: valsepdb/marker.format-version.000011.024
+close: valsepdb/marker.format-version.000011.024
+remove: valsepdb/marker.format-version.000010.023
+sync: valsepdb
 create: valsepdb/temporary.000003.dbtmp
 sync: valsepdb/temporary.000003.dbtmp
 close: valsepdb/temporary.000003.dbtmp
@@ -966,9 +974,9 @@ sync-data: checkpoints/checkpoint8/OPTIONS-000003
 close: checkpoints/checkpoint8/OPTIONS-000003
 close: valsepdb/OPTIONS-000003
 open-dir: checkpoints/checkpoint8
-create: checkpoints/checkpoint8/marker.format-version.000001.023
-sync-data: checkpoints/checkpoint8/marker.format-version.000001.023
-close: checkpoints/checkpoint8/marker.format-version.000001.023
+create: checkpoints/checkpoint8/marker.format-version.000001.024
+sync-data: checkpoints/checkpoint8/marker.format-version.000001.024
+close: checkpoints/checkpoint8/marker.format-version.000001.024
 sync: checkpoints/checkpoint8
 close: checkpoints/checkpoint8
 link: valsepdb/000006.blob -> checkpoints/checkpoint8/000006.blob
@@ -1080,9 +1088,9 @@ sync-data: checkpoints/checkpoint9/OPTIONS-000003
 close: checkpoints/checkpoint9/OPTIONS-000003
 close: valsepdb/OPTIONS-000003
 open-dir: checkpoints/checkpoint9
-create: checkpoints/checkpoint9/marker.format-version.000001.023
-sync-data: checkpoints/checkpoint9/marker.format-version.000001.023
-close: checkpoints/checkpoint9/marker.format-version.000001.023
+create: checkpoints/checkpoint9/marker.format-version.000001.024
+sync-data: checkpoints/checkpoint9/marker.format-version.000001.024
+close: checkpoints/checkpoint9/marker.format-version.000001.024
 sync: checkpoints/checkpoint9
 close: checkpoints/checkpoint9
 link: valsepdb/000006.blob -> checkpoints/checkpoint9/000006.blob

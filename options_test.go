@@ -40,7 +40,7 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 		o.Experimental.EnableColumnarBlocks = func() bool { return true }
 	}
 	// Enable value separation if using a format major version that supports it.
-	if o.FormatMajorVersion >= FormatExperimentalValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
+	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
 		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 			return ValueSeparationPolicy{
 				Enabled:               true,

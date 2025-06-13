@@ -216,30 +216,33 @@ const (
 	// This format major version does not yet enable use of value separation.
 	FormatTableFormatV6
 
-	// FormatExperimentalValueSeparation enables the use of value separation,
-	// separating values into external blob files that do not participate in
-	// every compaction.
+	// formatDeprecatedExperimentalValueSeparation was used to enable an
+	// experimental version of value separation, separating values into external
+	// blob files that do not participate in every compaction.
 	//
-	// This format major version is experimental and its physical file formats
-	// are not yet stable. Do not use this format major version in production.
-	//
-	// TODO(jackson): Rename this format major version and update FormatNewest
-	// once stable.
-	FormatExperimentalValueSeparation
+	// Value separation now depends on TableFormatPebblev7 which this format
+	// major version precedes. This format major version is deprecated and
+	// unexported, and value separation now requires FormatValueSeparation.
+	formatDeprecatedExperimentalValueSeparation
+
+	// formatFooterAttributes is a format major version that adds support for
+	// writing sstable.Attributes in the footer of sstables.
+	formatFooterAttributes
+
+	// FormatValueSeparation is a format major version that adds support for
+	// value separation, separating values into external blob files that do not
+	// participate in every compaction.
+	FormatValueSeparation
 
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
-	FormatNewest FormatMajorVersion = FormatTableFormatV6
+	FormatNewest FormatMajorVersion = iota - 1
 
 	// Experimental versions, which are excluded by FormatNewest (but can be used
 	// in tests) can be defined here.
 
 	// -- Add experimental versions here --
-
-	// formatFooterAttributes is a format major version that adds support for
-	// writing sstable.Attributes in the footer of sstables.
-	formatFooterAttributes FormatMajorVersion = iota - 1
 
 	// internalFormatNewest is the most recent, possibly experimental format major
 	// version.
@@ -271,9 +274,9 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev4
 	case FormatColumnarBlocks, FormatWALSyncChunks:
 		return sstable.TableFormatPebblev5
-	case FormatTableFormatV6, FormatExperimentalValueSeparation:
+	case FormatTableFormatV6, formatDeprecatedExperimentalValueSeparation:
 		return sstable.TableFormatPebblev6
-	case formatFooterAttributes:
+	case formatFooterAttributes, FormatValueSeparation:
 		return sstable.TableFormatPebblev7
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -287,7 +290,8 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		FormatTableFormatV6, FormatExperimentalValueSeparation, formatFooterAttributes:
+		FormatTableFormatV6, formatDeprecatedExperimentalValueSeparation, formatFooterAttributes,
+		FormatValueSeparation:
 		return sstable.TableFormatPebblev1
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -336,11 +340,14 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	FormatTableFormatV6: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatTableFormatV6)
 	},
-	FormatExperimentalValueSeparation: func(d *DB) error {
-		return d.finalizeFormatVersUpgrade(FormatExperimentalValueSeparation)
+	formatDeprecatedExperimentalValueSeparation: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(formatDeprecatedExperimentalValueSeparation)
 	},
 	formatFooterAttributes: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(formatFooterAttributes)
+	},
+	FormatValueSeparation: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatValueSeparation)
 	},
 }
 
