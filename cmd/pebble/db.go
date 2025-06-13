@@ -59,7 +59,7 @@ func newPebbleDB(dir string) DB {
 		CacheSize:                   cacheSize,
 		Comparer:                    &cockroachkvs.Comparer,
 		DisableWAL:                  disableWAL,
-		FormatMajorVersion:          pebble.FormatExperimentalValueSeparation,
+		FormatMajorVersion:          pebble.FormatNewest,
 		KeySchema:                   cockroachkvs.KeySchema.Name,
 		KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
 		L0CompactionThreshold:       2,

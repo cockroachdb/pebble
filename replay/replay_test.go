@@ -311,7 +311,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			opts := &pebble.Options{
 				Comparer:                    testkeys.Comparer,
 				DisableAutomaticCompactions: true,
-				FormatMajorVersion:          pebble.FormatExperimentalValueSeparation,
+				FormatMajorVersion:          pebble.FormatValueSeparation,
 				FS:                          fs,
 				MaxManifestFileSize:         96,
 			}
