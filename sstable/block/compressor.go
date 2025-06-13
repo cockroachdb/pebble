@@ -48,10 +48,8 @@ func (c *Compressor) Close() {
 //
 // In addition to the buffer, returns the algorithm that was used.
 func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator, []byte) {
-	setting := c.profile.DataBlocks
 	compressor := c.dataBlocksCompressor
 	if kind != blockkind.SSTableData && kind != blockkind.SSTableValue && kind != blockkind.BlobValue {
-		setting = c.profile.OtherBlocks
 		compressor = c.otherBlocksCompressor
 	}
 	out := compressor.Compress(dst, src)
@@ -62,11 +60,12 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 	//   after * 100
 	//   -----------  >  100 - MinReductionPercent
 	//      before
-	if setting.Algorithm != compression.NoCompression &&
+	algorithm := compressor.Algorithm()
+	if algorithm != compression.NoCompression &&
 		int64(len(out))*100 > int64(len(src))*int64(100-c.profile.MinReductionPercent) {
 		return NoCompressionIndicator, append(out[:0], src...)
 	}
-	return compressionIndicatorFromAlgorithm(setting.Algorithm), out
+	return compressionIndicatorFromAlgorithm(algorithm), out
 }
 
 // NoopCompressor is a Compressor that does not compress data. It does not have

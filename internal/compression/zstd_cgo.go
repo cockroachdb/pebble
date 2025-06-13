@@ -39,6 +39,8 @@ var zstdCompressorPool = sync.Pool{
 // relies on CGo.
 const UseStandardZstdLib = true
 
+func (z *zstdCompressor) Algorithm() Algorithm { return Zstd }
+
 func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) []byte {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)

@@ -72,6 +72,9 @@ var (
 // Compressor is an interface for compressing data. An instance is associated
 // with a specific Setting.
 type Compressor interface {
+	// Algorithm returns the algorithm used by this Compressor.
+	Algorithm() Algorithm
+
 	// Compress a block, appending the compressed data to dst[:0].
 	Compress(dst, src []byte) []byte
 
