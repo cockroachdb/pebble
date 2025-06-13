@@ -5,6 +5,7 @@
 package metamorphic
 
 import (
+	"flag"
 	"path/filepath"
 	"testing"
 
@@ -70,6 +71,13 @@ type option interface {
 func runTestMeta(t *testing.T, addtlOptions ...option) {
 	switch {
 	case runOnceFlags.Compare != "":
+		runOnlyFlags := metaflags.RunOnlyFlagNames()
+		flag.Visit(func(f *flag.Flag) {
+			if _, ok := runOnlyFlags[f.Name]; ok {
+				t.Fatalf("flag %q is not allowed with --compare", f.Name)
+			}
+		})
+
 		onceOpts := runOnceFlags.MakeRunOnceOptions()
 		for _, opt := range addtlOptions {
 			onceOpts = append(onceOpts, opt)
@@ -82,6 +90,13 @@ func runTestMeta(t *testing.T, addtlOptions ...option) {
 		metamorphic.Compare(t, testRootDir, runOnceFlags.Seed, runSubdirs, onceOpts...)
 
 	case runOnceFlags.RunDir != "":
+		runOnlyFlags := metaflags.RunOnlyFlagNames()
+		flag.Visit(func(f *flag.Flag) {
+			if _, ok := runOnlyFlags[f.Name]; ok {
+				t.Fatalf("flag %q is not allowed with --run-dir", f.Name)
+			}
+		})
+
 		// The --run-dir flag is specified either in the child process (see
 		// runOptions() below) or the user specified it manually in order to re-run
 		// a test.
@@ -97,6 +112,12 @@ func runTestMeta(t *testing.T, addtlOptions ...option) {
 			filepath.Join(runOnceFlags.RunDir, "history"), onceOpts...)
 
 	default:
+		runOnceOnlyFlags := metaflags.RunOnceOnlyFlagNames()
+		flag.Visit(func(f *flag.Flag) {
+			if _, ok := runOnceOnlyFlags[f.Name]; ok {
+				t.Fatalf("flag %q is only allowed with --compare or --run-dir", f.Name)
+			}
+		})
 		opts, err := runFlags.MakeRunOptions()
 		if err != nil {
 			t.Fatal(err)
