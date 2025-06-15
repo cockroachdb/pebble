@@ -47,7 +47,7 @@ var ErrNotIndexed = errors.New("pebble: batch not indexed")
 // ErrInvalidBatch indicates that a batch is invalid or otherwise corrupted.
 var ErrInvalidBatch = batchrepr.ErrInvalidBatch
 
-// ErrBatchTooLarge indicates that a batch is invalid or otherwise corrupted.
+// ErrBatchTooLarge indicates that the size of this batch is over the limit of 4GB.
 var ErrBatchTooLarge = base.MarkCorruptionError(errors.Newf("pebble: batch too large: >= %s", humanize.Bytes.Uint64(maxBatchSize)))
 
 // DeferredBatchOp represents a batch operation (eg. set, merge, delete) that is
@@ -123,14 +123,17 @@ func (d DeferredBatchOp) Finish() error {
 //
 // # Large batches
 //
-// The size of a batch is limited only by available memory (be aware that
-// indexed batches require considerably additional memory for the skiplist
-// structure). A given WAL file has a single memtable associated with it (this
-// restriction could be removed, but doing so is onerous and complex). And a
-// memtable has a fixed size due to the underlying fixed size arena. Note that
-// this differs from RocksDB where a memtable can grow arbitrarily large using
-// a list of arena chunks. In RocksDB this is accomplished by storing pointers
-// in the arena memory, but that isn't possible in Go.
+// The size of a batch is limited to 4GB, the max that can be represented by
+// a uint32 type. Be aware that indexed batches require considerably more
+// memory for the skiplist structure (this skiplist is separate from the 4GB
+// batch limit). For users that require atomic writes of data that's greater
+// than 4GB, DB.Ingest() is able to atomically ingest pre-computed sstables.
+// A given WAL file has a single memtable associated with it (this restriction
+// could be removed, but doing so is onerous and complex). And a memtable has
+// a fixed size due to the underlying fixed size arena. Note that this differs
+// from RocksDB where a memtable can grow arbitrarily large using a list of
+// arena chunks. In RocksDB this is accomplished by storing pointers in the
+// arena memory, but that isn't possible in Go.
 //
 // During Batch.Commit, a batch which is larger than a threshold (>
 // MemTableSize/2) is wrapped in a flushableBatch and inserted into the queue
