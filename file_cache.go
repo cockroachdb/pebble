@@ -34,6 +34,17 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
+// FileCacheMetrics contains metrics for the file cache. Note that the file
+// cache is normally shared between all the stores on a node.
+type FileCacheMetrics struct {
+	// The number of bytes inuse by the cache.
+	Size          int64
+	TableCount    int64
+	BlobFileCount int64
+	Hits          int64
+	Misses        int64
+}
+
 var emptyIter = &errorIter{err: nil}
 var emptyKeyspanIter = &errorKeyspanIter{err: nil}
 
@@ -290,7 +301,7 @@ func (h *fileCacheHandle) SSTStatsCollector() *block.CategoryStatsCollector {
 // Metrics returns metrics for the file cache. Note that the CacheMetrics track
 // the global cache which is shared between multiple handles (stores). The
 // FilterMetrics are per-handle.
-func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
+func (h *fileCacheHandle) Metrics() (FileCacheMetrics, FilterMetrics) {
 	m := h.fileCache.c.Metrics()
 
 	// The generic cache maintains a count of entries, but it doesn't know which
@@ -301,10 +312,11 @@ func (h *fileCacheHandle) Metrics() (CacheMetrics, FilterMetrics) {
 	countSSTables := h.fileCache.counts.sstables.Load()
 	countBlobFiles := h.fileCache.counts.blobFiles.Load()
 
-	cm := CacheMetrics{
-		Hits:   m.Hits,
-		Misses: m.Misses,
-		Count:  countSSTables + countBlobFiles,
+	cm := FileCacheMetrics{
+		TableCount:    countSSTables,
+		BlobFileCount: countBlobFiles,
+		Hits:          m.Hits,
+		Misses:        m.Misses,
 		Size: m.Size + countSSTables*int64(unsafe.Sizeof(sstable.Reader{})) +
 			countBlobFiles*int64(unsafe.Sizeof(blob.FileReader{})),
 	}

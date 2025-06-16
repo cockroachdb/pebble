@@ -34,7 +34,7 @@ Local tables size: 709B
 Compression types: unknown: 1
 Table stats: <redacted>
 Block cache: 0 entries (0B)  hit rate: 0.0%
-Table cache: 0 entries (0B)  hit rate: 0.0%
+File cache: 0 tables, 0 blobfiles (0B)  hit rate: 0.0%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -70,7 +70,7 @@ Local tables size: 709B
 Compression types: unknown: 1
 Table stats: <redacted>
 Block cache: 0 entries (0B)  hit rate: 0.0%
-Table cache: 0 entries (0B)  hit rate: 0.0%
+File cache: 0 tables, 0 blobfiles (0B)  hit rate: 0.0%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
