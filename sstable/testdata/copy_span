@@ -230,3 +230,70 @@ iter test34
 a#0,SET: foo
 b#0,SET: bar
 c#0,SET: baz
+
+# Create a table with a filter.
+build bloom-sst table-format=Pebble,v6 filter=bloom(10)
+a.SET.5:foo
+b.SET.3:bar
+c.SET.4:baz
+d.SET.5:foobar
+e.SET.5:foo
+f.SET.5:foo
+g.SET.5:foo
+h.SET.5:foo
+i.SET.5:foo
+j.SET.5:foo
+----
+
+describe bloom-sst
+----
+sstable
+ ├── data  offset: 0  length: 81
+ ├── data  offset: 86  length: 81
+ ├── data  offset: 172  length: 81
+ ├── data  offset: 258  length: 73
+ ├── data  offset: 336  length: 81
+ ├── data  offset: 422  length: 81
+ ├── data  offset: 508  length: 81
+ ├── data  offset: 594  length: 81
+ ├── data  offset: 680  length: 81
+ ├── data  offset: 766  length: 81
+ ├── index  offset: 852  length: 36
+ ├── index  offset: 893  length: 37
+ ├── index  offset: 935  length: 37
+ ├── index  offset: 977  length: 38
+ ├── index  offset: 1020  length: 38
+ ├── index  offset: 1063  length: 38
+ ├── index  offset: 1106  length: 38
+ ├── index  offset: 1149  length: 38
+ ├── index  offset: 1192  length: 38
+ ├── index  offset: 1235  length: 38
+ ├── top-index  offset: 1278  length: 83
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 1366  length: 69
+ ├── properties  offset: 1440  length: 583
+ ├── meta-index  offset: 2028  length: 88
+ └── footer  offset: 2121  length: 57
+
+props bloom-sst
+----
+rocksdb.num.entries: 10
+rocksdb.raw.key.size: 90
+rocksdb.raw.value.size: 33
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 10
+rocksdb.compression: Snappy
+rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 852
+rocksdb.filter.policy: rocksdb.BuiltinBloomFilter
+rocksdb.filter.size: 69
+rocksdb.index.partitions: 10
+rocksdb.index.size: 459
+rocksdb.block.based.table.index.type: 2
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.top-level.index.size: 83
+obsolete-key: hex:00
