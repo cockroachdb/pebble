@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -434,31 +435,41 @@ var metaBufferPools = sync.Pool{
 	},
 }
 
-func (r *Reader) readMetaindex(
-	ctx context.Context,
-	bufferPool *block.BufferPool,
-	readHandle objstorage.ReadHandle,
-	filters map[string]FilterPolicy,
-) error {
+func (r *Reader) readAndDecodeMetaindex(
+	ctx context.Context, bufferPool *block.BufferPool, readHandle objstorage.ReadHandle,
+) (map[string]block.Handle, valblk.IndexHandle, error) {
 	metaEnv := block.ReadEnv{BufferPool: bufferPool}
 	b, err := r.readMetaindexBlock(ctx, metaEnv, readHandle)
 	if err != nil {
-		return err
+		return nil, valblk.IndexHandle{}, err
 	}
 	data := b.BlockData()
 	defer b.Release()
 
 	if uint64(len(data)) != r.metaindexBH.Length {
-		return base.CorruptionErrorf("pebble/table: unexpected metaindex block size: %d vs %d",
+		return nil, valblk.IndexHandle{}, base.CorruptionErrorf("pebble/table: unexpected metaindex block size: %d vs %d",
 			errors.Safe(len(data)), errors.Safe(r.metaindexBH.Length))
 	}
 
 	var meta map[string]block.Handle
+	var valueBIH valblk.IndexHandle
 	if r.tableFormat >= TableFormatPebblev6 {
-		meta, r.valueBIH, err = decodeColumnarMetaIndex(data)
+		meta, valueBIH, err = decodeColumnarMetaIndex(data)
 	} else {
-		meta, r.valueBIH, err = decodeMetaindex(data)
+		meta, valueBIH, err = decodeMetaindex(data)
 	}
+	return meta, valueBIH, err
+}
+
+func (r *Reader) initMetaindexBlocks(
+	ctx context.Context,
+	bufferPool *block.BufferPool,
+	readHandle objstorage.ReadHandle,
+	filters map[string]FilterPolicy,
+) error {
+	var meta map[string]block.Handle
+	var err error
+	meta, r.valueBIH, err = r.readAndDecodeMetaindex(ctx, bufferPool, readHandle)
 	if err != nil {
 		return err
 	}
@@ -577,10 +588,21 @@ func (r *Reader) Layout() (*Layout, error) {
 		Format:             r.tableFormat,
 		BlobReferenceIndex: r.blobRefIndexBH,
 	}
-	if r.filterBH.Length > 0 {
-		l.Filter = []NamedBlockHandle{{Name: "fullfilter." + r.tableFilter.policy.Name(), Handle: r.filterBH}}
-	}
+
+	bufferPool := metaBufferPools.Get().(*block.BufferPool)
+	defer metaBufferPools.Put(bufferPool)
+	defer bufferPool.Release()
+
 	ctx := context.TODO()
+	meta, _, err := r.readAndDecodeMetaindex(ctx, bufferPool, noReadHandle)
+	if err != nil {
+		return nil, err
+	}
+	for name, bh := range meta {
+		if strings.HasPrefix(name, "fullfilter.") {
+			l.Filter = append(l.Filter, NamedBlockHandle{Name: name, Handle: bh})
+		}
+	}
 
 	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, noReadHandle)
 	if err != nil {
@@ -950,7 +972,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	// allocator.
 	defer bufferPool.Release()
 
-	if err := r.readMetaindex(ctx, bufferPool, rh, o.Filters); err != nil {
+	if err := r.initMetaindexBlocks(ctx, bufferPool, rh, o.Filters); err != nil {
 		r.err = err
 		return nil, err
 	}
