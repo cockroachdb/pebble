@@ -76,7 +76,8 @@ func exampleMetrics() Metrics {
 	m.Table.BackingTableSize = 2 << 20
 	m.Table.ZombieCount = 16
 	m.FileCache.Size = 17
-	m.FileCache.Count = 18
+	m.FileCache.TableCount = 180
+	m.FileCache.BlobFileCount = 181
 	m.FileCache.Hits = 19
 	m.FileCache.Misses = 20
 	m.TableIters = 21
@@ -369,7 +370,7 @@ func TestMetrics(t *testing.T) {
 			// Some subset of cases show non-determinism in cache hits/misses.
 			if td.HasArg("zero-cache-hits-misses") {
 				// Avoid non-determinism.
-				m.FileCache = cache.Metrics{}
+				m.FileCache = FileCacheMetrics{}
 				m.BlockCache = cache.Metrics{}
 				// Empirically, the unknown stats are also non-deterministic.
 				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == block.CategoryUnknown {

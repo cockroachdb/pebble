@@ -160,7 +160,7 @@ Local tables size: 879B
 Compression types: snappy: 1
 Table stats: all loaded
 Block cache: 4 entries (1.6KB)  hit rate: 70.3%
-Table cache: 2 entries (808B)  hit rate: 82.2%
+File cache: 1 tables, 1 blobfiles (376B)  hit rate: 82.2%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0

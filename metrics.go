@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -17,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
@@ -441,7 +443,7 @@ type Metrics struct {
 		}
 	}
 
-	FileCache CacheMetrics
+	FileCache FileCacheMetrics
 
 	// Count of the number of open sstable iterators.
 	TableIters int64
@@ -811,15 +813,16 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	}
 	w.Printf("\n")
 
-	formatCacheMetrics := func(m *CacheMetrics, name redact.SafeString) {
-		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
-			name,
-			humanize.Count.Int64(m.Count),
-			humanize.Bytes.Int64(m.Size),
-			redact.Safe(hitRate(m.Hits, m.Misses)))
-	}
-	formatCacheMetrics(&m.BlockCache, "Block cache")
-	formatCacheMetrics(&m.FileCache, "Table cache")
+	w.Printf("Block cache: %s entries (%s)  hit rate: %.1f%%\n",
+		humanize.Count.Int64(m.BlockCache.Count),
+		humanize.Bytes.Int64(m.BlockCache.Size),
+		redact.Safe(hitRate(m.BlockCache.Hits, m.BlockCache.Misses)))
+
+	w.Printf("File cache: %s tables, %s blobfiles (%s)  hit rate: %.1f%%\n",
+		humanize.Count.Int64(m.FileCache.TableCount),
+		humanize.Count.Int64(m.FileCache.BlobFileCount),
+		humanize.Bytes.Int64(m.FileCache.Size),
+		redact.Safe(hitRate(m.FileCache.Hits, m.FileCache.Misses)))
 
 	formatSharedCacheMetrics := func(w redact.SafePrinter, m *SecondaryCacheMetrics, name redact.SafeString) {
 		w.Printf("%s: %s entries (%s)  hit rate: %.1f%%\n",
@@ -882,17 +885,20 @@ func percent(numerator, denominator int64) float64 {
 // provide a platform-independent result for tests.
 func (m *Metrics) StringForTests() string {
 	mCopy := *m
-	if math.MaxInt == math.MaxInt32 {
-		// README: This is the difference in Sizeof(sstable.Reader{})) + Sizeof(blob.FileReader{})
-		// between 64 and 32 bit platforms. See Metrics() in file_cache.go for more details.
-		// This magic number must be updated if the sstable.Reader or blob.FileReader struct changes.
-		// On 64-bit platforms, the size of the sstable.Reader struct is 616 bytes.
-		// On 32-bit platforms, the size of the sstable.Reader struct is 496 bytes.
-		// On 64-bit platforms, the size of the blob.FileReader struct is 88 bytes.
-		// On 32-bit platforms, the size of the blob.FileReader struct is 56 bytes.
-		// The difference is 616 - 496 + 88 - 56 = 152 bytes.
-		const tableCacheSizeAdjustment = 152
-		mCopy.FileCache.Size += mCopy.FileCache.Count * tableCacheSizeAdjustment
+
+	// We recalculate the file cache size using the 64-bit sizes, and we ignore
+	// the genericcache metadata size which is harder to adjust.
+	const sstableReaderSize64bit = 280
+	const blobFileReaderSize64bit = 96
+	mCopy.FileCache.Size = mCopy.FileCache.TableCount*sstableReaderSize64bit + mCopy.FileCache.BlobFileCount*blobFileReaderSize64bit
+	if math.MaxInt == math.MaxInt64 {
+		// Verify the 64-bit sizes, so they are kept updated.
+		if sstableReaderSize64bit != unsafe.Sizeof(sstable.Reader{}) {
+			panic(fmt.Sprintf("sstableReaderSize64bit should be updated to %d", unsafe.Sizeof(sstable.Reader{})))
+		}
+		if blobFileReaderSize64bit != unsafe.Sizeof(blob.FileReader{}) {
+			panic(fmt.Sprintf("blobFileReaderSize64bit should be updated to %d", unsafe.Sizeof(blob.FileReader{})))
+		}
 	}
 	// Don't show cgo memory statistics as they can vary based on architecture,
 	// invariants tag, etc.
