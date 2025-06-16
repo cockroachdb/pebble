@@ -30,8 +30,35 @@ func TestCopySpan(t *testing.T) {
 	defer cacheHandle.Close()
 	fileNameToNum := make(map[string]base.FileNum)
 	nextFileNum := base.FileNum(1)
-
 	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
+
+	getReader := func(d *datadriven.TestData) (*Reader, error) {
+		f, err := fs.Open(d.CmdArgs[0].Key)
+		if err != nil {
+			return nil, err
+		}
+		readable, err := NewSimpleReadable(f)
+		if err != nil {
+			return nil, err
+		}
+
+		rOpts := ReaderOptions{
+			ReaderOptions: block.ReaderOptions{
+				CacheOpts: sstableinternal.CacheOptions{
+					CacheHandle: cacheHandle,
+					FileNum:     base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
+				},
+			},
+			Comparer:   testkeys.Comparer,
+			KeySchemas: KeySchemas{keySchema.Name: &keySchema},
+		}
+		r, err := NewReader(context.TODO(), readable, rOpts)
+		if err != nil {
+			return nil, errors.CombineErrors(err, readable.Close())
+		}
+		return r, nil
+	}
+
 	datadriven.RunTest(t, "testdata/copy_span", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "build":
@@ -70,14 +97,6 @@ func TestCopySpan(t *testing.T) {
 
 		case "iter":
 			// Iterate over the specified sstable
-			f, err := fs.Open(d.CmdArgs[0].Key)
-			if err != nil {
-				return err.Error()
-			}
-			readable, err := NewSimpleReadable(f)
-			if err != nil {
-				return err.Error()
-			}
 			var start, end []byte
 			for _, arg := range d.CmdArgs[1:] {
 				switch arg.Key {
@@ -87,22 +106,12 @@ func TestCopySpan(t *testing.T) {
 					end = []byte(arg.FirstVal(t))
 				}
 			}
-			rOpts := ReaderOptions{
-				ReaderOptions: block.ReaderOptions{
-					CacheOpts: sstableinternal.CacheOptions{
-						CacheHandle: cacheHandle,
-						FileNum:     base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
-					},
-				},
-				Comparer:   testkeys.Comparer,
-				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
-			}
 
-			r, err := NewReader(context.TODO(), readable, rOpts)
-			defer r.Close()
+			r, err := getReader(d)
 			if err != nil {
-				return errors.CombineErrors(err, readable.Close()).Error()
+				return err.Error()
 			}
+			defer r.Close()
 			iter, err := r.NewIter(block.NoTransforms, start, end, AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
@@ -132,14 +141,6 @@ func TestCopySpan(t *testing.T) {
 			fileNameToNum[outputFile] = nextFileNum
 			nextFileNum++
 
-			f, err := fs.Open(inputFile)
-			if err != nil {
-				t.Fatalf("failed to open sstable: %v", err)
-			}
-			readable, err := NewSimpleReadable(f)
-			if err != nil {
-				return err.Error()
-			}
 			rOpts := ReaderOptions{
 				ReaderOptions: block.ReaderOptions{
 					CacheOpts: sstableinternal.CacheOptions{
@@ -150,11 +151,12 @@ func TestCopySpan(t *testing.T) {
 				Comparer:   testkeys.Comparer,
 				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
 			}
-			r, err := NewReader(context.TODO(), readable, rOpts)
+			r, err := getReader(d)
 			if err != nil {
-				return errors.CombineErrors(err, readable.Close()).Error()
+				return err.Error()
 			}
 			defer r.Close()
+
 			wOpts := WriterOptions{
 				Comparer:  testkeys.Comparer,
 				KeySchema: &keySchema,
@@ -175,27 +177,28 @@ func TestCopySpan(t *testing.T) {
 			return fmt.Sprintf("copied %d bytes", size)
 
 		case "describe":
-			f, err := fs.Open(d.CmdArgs[0].Key)
+			r, err := getReader(d)
 			if err != nil {
 				return err.Error()
-			}
-			readable, err := NewSimpleReadable(f)
-			if err != nil {
-				return err.Error()
-			}
-			r, err := NewReader(context.TODO(), readable, ReaderOptions{
-				Comparer:   testkeys.Comparer,
-				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
-			})
-			if err != nil {
-				return errors.CombineErrors(err, readable.Close()).Error()
 			}
 			defer r.Close()
 			l, err := r.Layout()
 			if err != nil {
 				return err.Error()
 			}
-			return l.Describe(true, r, nil)
+			return l.Describe(false /* verbose */, r, nil)
+
+		case "props":
+			r, err := getReader(d)
+			if err != nil {
+				return err.Error()
+			}
+			defer r.Close()
+			props, err := r.ReadPropertiesBlock(context.TODO(), nil)
+			if err != nil {
+				return err.Error()
+			}
+			return props.String()
 
 		default:
 			t.Fatalf("unknown command: %s", d.Cmd)

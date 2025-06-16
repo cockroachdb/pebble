@@ -261,7 +261,24 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 			o.IndexBlockSize, err = strconv.Atoi(value)
 
 		case "filter":
-			o.FilterPolicy = bloom.FilterPolicy(10)
+			fields := strings.FieldsFunc(value, func(r rune) bool {
+				return r == '(' || r == ')'
+			})
+			if len(fields) != 2 {
+				return errors.Errorf("expected filter policy name and parameters, got %q", value)
+			}
+			switch fields[0] {
+			case "bloom":
+				bits, err := strconv.Atoi(fields[1])
+				if err != nil {
+					return errors.Wrapf(err, "parsing bloom filter bits")
+				}
+				o.FilterPolicy = bloom.FilterPolicy(bits)
+			case "none":
+				o.FilterPolicy = nil
+			default:
+				o.FilterPolicy = bloom.FilterPolicy(10)
+			}
 
 		case "comparer":
 			o.Comparer, err = comparerFromCmdArg(value)

@@ -714,6 +714,8 @@ func forEachIndexEntry(
 	return indexIter.Close()
 }
 
+// decodeMetaindex decodes a row-based meta index block. The returned map owns
+// all its memory and can outlive the provided data slice.
 func decodeMetaindex(
 	data []byte,
 ) (meta map[string]block.Handle, vbih valblk.IndexHandle, err error) {
@@ -723,9 +725,11 @@ func decodeMetaindex(
 	}
 	defer func() { err = firstError(err, i.Close()) }()
 
+	keysAlloc := make(bytealloc.A, 0, len(data))
 	meta = map[string]block.Handle{}
 	for valid := i.First(); valid; valid = i.Next() {
 		value := i.Value()
+		var bh block.Handle
 		if bytes.Equal(i.Key().UserKey, []byte(metaValueIndexName)) {
 			var n int
 			vbih, n, err = valblk.DecodeIndexHandle(i.Value())
@@ -735,27 +739,36 @@ func decodeMetaindex(
 			if n == 0 || n != len(value) {
 				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad value blocks index handle)")
 			}
+			bh = vbih.Handle
 		} else {
-			bh, n := block.DecodeHandle(value)
+			var n int
+			bh, n = block.DecodeHandle(value)
 			if n == 0 || n != len(value) {
 				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad block handle)")
 			}
-			meta[string(i.Key().UserKey)] = bh
 		}
+		var key []byte
+		keysAlloc, key = keysAlloc.Copy(i.Key().UserKey)
+		keyStr := unsafe.String(unsafe.SliceData(key), len(key))
+		meta[keyStr] = bh
 	}
 	return meta, vbih, nil
 }
 
+// decodeColumnarMetaIndex decodes a columnar meta index block. The returned map
+// owns all its memory and can outlive the provided data slice.
 func decodeColumnarMetaIndex(
 	data []byte,
 ) (meta map[string]block.Handle, vbih valblk.IndexHandle, err error) {
 	var decoder colblk.KeyValueBlockDecoder
 	decoder.Init(data)
+	keysAlloc := make(bytealloc.A, 0, len(data))
 	meta = map[string]block.Handle{}
 	for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
 		key := decoder.KeyAt(i)
 		value := decoder.ValueAt(i)
 
+		var bh block.Handle
 		if bytes.Equal(key, []byte(metaValueIndexName)) {
 			var n int
 			vbih, n, err = valblk.DecodeIndexHandle(value)
@@ -765,13 +778,18 @@ func decodeColumnarMetaIndex(
 			if n == 0 || n != len(value) {
 				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad value blocks index handle)")
 			}
+			bh = vbih.Handle
 		} else {
-			bh, n := block.DecodeHandle(value)
+			var n int
+			bh, n = block.DecodeHandle(value)
 			if n == 0 || n != len(value) {
 				return nil, vbih, base.CorruptionErrorf("pebble/table: invalid table (bad block handle)")
 			}
-			meta[string(key)] = bh
 		}
+		var keyCopy []byte
+		keysAlloc, keyCopy = keysAlloc.Copy(key)
+		keyStr := unsafe.String(unsafe.SliceData(keyCopy), len(keyCopy))
+		meta[keyStr] = bh
 	}
 	return meta, vbih, nil
 }
