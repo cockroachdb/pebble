@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -56,8 +57,24 @@ func CopySpan(
 		return copyWholeFileBecauseOfUnsupportedFeature(ctx, input, output) // Finishes/Aborts output.
 	}
 
-	// If our input has not filters, our output cannot have filters either.
-	if r.tableFilter == nil {
+	var preallocRH objstorageprovider.PreallocatedReadHandle
+	// ReadBeforeForIndexAndFilter attempts to read the top-level index, filter
+	// and lower-level index blocks with one read.
+	rh := r.blockReader.UsePreallocatedReadHandle(
+		objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
+	defer func() { _ = rh.Close() }()
+	rh.SetupForCompaction()
+	props, err := r.readPropertiesBlockInternal(ctx, nil /* buffer pool */, rh)
+	if err != nil {
+		return 0, errors.Wrap(err, "reading properties")
+	}
+
+	// We can only output a filter block if we've read one from the input
+	// sstable, are configured to write out for the output sstable, and the
+	// names of the filters match. The filter will return false positives for
+	// keys in blocks of the original file that we don't copy, but filters can
+	// always have false positives, so this is fine.
+	if r.tableFilter == nil || o.FilterPolicy == nil || o.FilterPolicy.Name() != props.FilterPolicyName {
 		o.FilterPolicy = base.NoFilterPolicy
 	}
 	o.TableFormat = r.tableFormat
@@ -78,33 +95,21 @@ func CopySpan(
 		}
 	}()
 
-	var preallocRH objstorageprovider.PreallocatedReadHandle
-	// ReadBeforeForIndexAndFilter attempts to read the top-level index, filter
-	// and lower-level index blocks with one read.
-	rh := r.blockReader.UsePreallocatedReadHandle(
-		objstorage.ReadBeforeForIndexAndFilter, &preallocRH)
-	defer func() { _ = rh.Close() }()
-	rh.SetupForCompaction()
 	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, rh)
 	if err != nil {
 		return 0, err
 	}
 	defer indexH.Release()
 
-	props, err := r.readPropertiesBlockInternal(ctx, nil /* buffer pool */, rh)
-	if err != nil {
-		return 0, errors.Wrap(err, "reading properties")
-	}
-
-	// Set the filter block to be copied over if it exists. It will return false
-	// positives for keys in blocks of the original file that we don't copy, but
-	// filters can always have false positives, so this is fine.
-	if r.tableFilter != nil && o.FilterPolicy != nil && o.FilterPolicy.Name() == props.FilterPolicyName {
+	// NB: We've already checked that there's a filter block we can copy over up
+	// above. At this point, we must copy it. Otherwise, we'll end up outputting
+	// an empty filter block that mistakenly encodes that all keys are missing.
+	if o.FilterPolicy != nil && o.FilterPolicy != base.NoFilterPolicy {
 		filterBlock, err := r.readFilterBlock(ctx, block.NoReadEnv, rh, r.filterBH)
 		if err != nil {
 			return 0, errors.Wrap(err, "reading filter")
 		}
-		filterBytes := append([]byte{}, filterBlock.BlockData()...)
+		filterBytes := slices.Clone(filterBlock.BlockData())
 		filterBlock.Release()
 		if err := w.copyFilter(filterBytes); err != nil {
 			return 0, errors.Wrap(err, "copying filter")

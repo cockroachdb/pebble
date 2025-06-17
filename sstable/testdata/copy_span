@@ -232,7 +232,7 @@ b#0,SET: bar
 c#0,SET: baz
 
 # Create a table with a filter.
-build bloom-sst table-format=Pebble,v6 filter=bloom(10)
+build bloom-sst table-format=Pebble,v6 filter=rocksdb.BuiltinBloomFilter/bloom(10)
 a.SET.5:foo
 b.SET.3:bar
 c.SET.4:baz
@@ -297,3 +297,20 @@ rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 83
 obsolete-key: hex:00
+
+# Ensure that copy span does not copy over a filter under a different name.
+
+copy-span bloom-sst bloom-sst-copy b.SET.10 cc.SET.0 filter=my-custom-filter/bloom(10)
+----
+copied 941 bytes
+
+describe bloom-sst-copy
+----
+sstable
+ ├── data  offset: 0  length: 81
+ ├── data  offset: 86  length: 81
+ ├── data  offset: 172  length: 73
+ ├── index  offset: 250  length: 45
+ ├── properties  offset: 300  length: 528
+ ├── meta-index  offset: 833  length: 46
+ └── footer  offset: 884  length: 57
