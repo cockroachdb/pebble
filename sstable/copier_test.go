@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
@@ -43,6 +44,9 @@ func TestCopySpan(t *testing.T) {
 		}
 
 		rOpts := ReaderOptions{
+			Filters: map[string]FilterPolicy{
+				"rocksdb.BuiltinBloomFilter": bloom.FilterPolicy(10),
+			},
 			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
 					CacheHandle: cacheHandle,
@@ -125,7 +129,7 @@ func TestCopySpan(t *testing.T) {
 
 		case "copy-span":
 			// Copy a span from one sstable to another
-			if len(d.CmdArgs) != 4 {
+			if len(d.CmdArgs) < 4 {
 				t.Fatalf("expected input sstable, output sstable, start and end keys")
 			}
 
@@ -133,6 +137,14 @@ func TestCopySpan(t *testing.T) {
 			outputFile := d.CmdArgs[1].Key
 			start := base.ParseInternalKey(d.CmdArgs[2].String())
 			end := base.ParseInternalKey(d.CmdArgs[3].String())
+			wOpts := WriterOptions{
+				Comparer:  testkeys.Comparer,
+				KeySchema: &keySchema,
+			}
+			if err := ParseWriterOptions(&wOpts, d.CmdArgs[4:]...); err != nil {
+				t.Fatal(err)
+			}
+
 			output, err := fs.Create(outputFile, vfs.WriteCategoryUnspecified)
 			if err != nil {
 				return err.Error()
@@ -142,6 +154,9 @@ func TestCopySpan(t *testing.T) {
 			nextFileNum++
 
 			rOpts := ReaderOptions{
+				Filters: map[string]FilterPolicy{
+					"rocksdb.BuiltinBloomFilter": bloom.FilterPolicy(10),
+				},
 				ReaderOptions: block.ReaderOptions{
 					CacheOpts: sstableinternal.CacheOptions{
 						CacheHandle: cacheHandle,
@@ -157,10 +172,6 @@ func TestCopySpan(t *testing.T) {
 			}
 			defer r.Close()
 
-			wOpts := WriterOptions{
-				Comparer:  testkeys.Comparer,
-				KeySchema: &keySchema,
-			}
 			// CopySpan closes readable but not reader. We need to open a new readable for it.
 			f2, err := fs.Open(inputFile)
 			if err != nil {
