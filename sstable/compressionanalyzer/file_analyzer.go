@@ -48,10 +48,12 @@ func (fa *FileAnalyzer) Close() {
 	*fa = FileAnalyzer{}
 }
 
-// SSTable analyzes the blocks in an sstable file.
+// SSTable analyzes the blocks in an sstable file and closes the readable (even
+// in error cases).
 func (fa *FileAnalyzer) SSTable(ctx context.Context, readable objstorage.Readable) error {
 	r, err := sstable.NewReader(ctx, readable, fa.sstReadOpts)
 	if err != nil {
+		_ = readable.Close()
 		return err
 	}
 	defer func() { _ = r.Close() }()

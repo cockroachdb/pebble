@@ -13,6 +13,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -20,6 +21,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/compressionanalyzer"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/tokenbucket"
@@ -34,27 +37,37 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 	isTTY := isTTY(stdout)
 
 	dir := args[0]
-	if err := d.initOptions(dir); err != nil {
-		fmt.Fprintf(stderr, "error initializing options: %s\n", err)
-		return
+
+	var dbStorage dbStorage
+	var isRemote bool
+	if strings.Contains(dir, "://") {
+		if d.remoteStorageFn == nil {
+			fmt.Fprintf(stderr, "path looks like remote storage, but remote storage not configuered.\n")
+			return
+		}
+		remoteStorageImpl, err := d.remoteStorageFn(dir)
+		if err != nil {
+			fmt.Fprintf(stderr, "error initializing remote storage: %s\n", err)
+			return
+		}
+		dbStorage = newRemoteStorage(remoteStorageImpl)
+		isRemote = true
+	} else {
+		dbStorage = newVFSStorage(d.opts.FS, dir)
 	}
 	rng := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
-	dbStorage := newVFSStorage(d.opts.FS, dir)
+	if isTTY {
+		fmt.Fprintf(stdout, "Listing files and sizes...\n")
+	}
 	files, err := makeFileSet(dbStorage, rng)
 	if err != nil {
 		fmt.Fprintf(stderr, "error loading file list: %s\n", err)
 		return
 	}
-	if files.Done() {
+	numFiles, totalSize := files.Remaining()
+	if numFiles == 0 {
 		fmt.Fprintf(stderr, "no sstables found\n")
 		return
-	}
-	totalSize := files.TotalSize()
-	// We do not recalculate the target size every time we refresh the file list.
-	// If the database is growing rapidly, we might not be able to keep up.
-	targetSize := totalSize
-	if d.analyzeData.samplePercent > 0 && d.analyzeData.samplePercent < 100 {
-		targetSize = (totalSize*int64(d.analyzeData.samplePercent) + 99) / 100
 	}
 	var readLimiter *tokenbucket.TokenBucket
 	if d.analyzeData.readMBPerSec > 0 {
@@ -64,7 +77,12 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 		readLimiter.Init(rate, burst)
 	}
 	if isTTY {
-		fmt.Fprintf(stdout, "Found %d files, total size %s.\n", len(files.files), humanize.Bytes.Int64(totalSize))
+		if isRemote {
+			// We don't obtain the sizes of the remote objects.
+			fmt.Fprintf(stdout, "Found %d objects.\n", numFiles)
+		} else {
+			fmt.Fprintf(stdout, "Found %d files, total size %s.\n", numFiles, humanize.Bytes.Int64(totalSize))
+		}
 		if d.analyzeData.readMBPerSec > 0 {
 			fmt.Fprintf(stdout, "Limiting read bandwidth to %s/s.\n", humanize.Bytes.Int64(int64(d.analyzeData.readMBPerSec)<<20))
 		} else {
@@ -84,11 +102,28 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 	startTime := time.Now()
 	lastReportTime := startTime
 
-	analyzer := compressionanalyzer.NewFileAnalyzer(readLimiter, d.opts.MakeReaderOptions())
-	var sampled int64
+	readerOptions := sstable.ReaderOptions{
+		Comparers:  d.comparers,
+		Mergers:    d.mergers,
+		KeySchemas: d.opts.KeySchemas,
+	}
+	analyzer := compressionanalyzer.NewFileAnalyzer(readLimiter, readerOptions)
+	var sampledFiles int
+	var sampledBytes int64
 	const reportPeriod = 10 * time.Second
 	for {
-		shouldStop := files.Done() || sampled >= targetSize ||
+		remainingFiles, remainingBytes := files.Remaining()
+		var percentage float64
+		if remainingFiles == 0 {
+			percentage = 100
+		} else if isRemote {
+			// We don't obtain the sizes of all remote objects, so we use the number
+			// of files.
+			percentage = float64(sampledFiles) * 100 / float64(sampledFiles+remainingFiles)
+		} else {
+			percentage = float64(sampledBytes) * 100 / float64(sampledBytes+remainingBytes)
+		}
+		shouldStop := percentage >= float64(d.analyzeData.samplePercent) ||
 			(d.analyzeData.timeout > 0 && time.Since(startTime) > d.analyzeData.timeout)
 		// Every 10 seconds, we:
 		//  - print the current results and progress (if on a tty);
@@ -103,11 +138,8 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 			if isTTY || shouldStop {
 				partialResults := analyzer.Buckets().String(minSamples)
 				fmt.Fprintf(stdout, "\n%s\n", partialResults)
-				percentage := min(float64(sampled*100)/float64(totalSize), 100)
-				if files.Done() {
-					percentage = 100
-				}
-				fmt.Fprintf(stdout, "Sampled %.2f%% (%s)\n", percentage, humanize.Bytes.Int64(sampled))
+				fmt.Fprintf(stdout, "Sampled %s files, %s (%.2f%%)\n",
+					humanize.Count.Int64(int64(sampledFiles)), humanize.Bytes.Int64(sampledBytes), percentage)
 			}
 			if err := analyzeSaveCSVFile(analyzer, d.analyzeData.outputCSVFile); err != nil {
 				fmt.Fprintf(stderr, "error writing CSV file: %s\n", err)
@@ -116,39 +148,40 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 			if shouldStop {
 				return
 			}
-			if err := files.Refresh(); err != nil {
-				fmt.Fprintf(stderr, "error loading file list: %s\n", err)
-				return
+			if !isRemote {
+				if err := files.Refresh(); err != nil {
+					fmt.Fprintf(stderr, "error loading file list: %s\n", err)
+					return
+				}
 			}
 			lastReportTime = time.Now()
 		}
 		// Sample a file and analyze it.
-		filename, size := files.Sample()
-		path := d.opts.FS.PathJoin(dir, filename)
-		if err := d.analyzeSSTable(analyzer, path); err != nil {
+		filename := files.Sample()
+		size, err := d.analyzeSSTable(analyzer, dbStorage, filename)
+		if err != nil {
 			// We silently ignore errors from files that are deleted from under us.
 			if !errors.Is(err, os.ErrNotExist) {
 				// Note that errors can happen if the sstable file wasn't completed;
 				// they should not stop the process.
-				fmt.Fprintf(stderr, "error reading file %s: %s\n", path, err)
+				fmt.Fprintf(stderr, "error reading file %s: %s\n", filename, err)
 			}
 			continue
 		}
-		sampled += size
+		sampledBytes += size
+		sampledFiles++
 	}
 }
 
-func (d *dbT) analyzeSSTable(analyzer *compressionanalyzer.FileAnalyzer, path string) error {
-	file, err := d.opts.FS.Open(path)
+func (d *dbT) analyzeSSTable(
+	analyzer *compressionanalyzer.FileAnalyzer, dbStorage dbStorage, name string,
+) (size int64, _ error) {
+	readable, err := dbStorage.Open(name)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	readable, err := objstorageprovider.NewFileReadable(file, d.opts.FS, objstorageprovider.NewReadaheadConfig(), path)
-	if err != nil {
-		return errors.CombineErrors(err, file.Close())
-	}
-	defer func() { _ = readable.Close() }()
-	return analyzer.SSTable(context.Background(), readable)
+	size = readable.Size()
+	return size, analyzer.SSTable(context.Background(), readable)
 }
 
 func analyzeSaveCSVFile(a *compressionanalyzer.FileAnalyzer, path string) error {
@@ -201,6 +234,34 @@ func (l *vfsStorage) Open(name string) (objstorage.Readable, error) {
 	return readable, nil
 }
 
+type remoteStorage struct {
+	storage remote.Storage
+}
+
+func newRemoteStorage(storage remote.Storage) *remoteStorage {
+	return &remoteStorage{storage: storage}
+}
+
+var _ dbStorage = (*remoteStorage)(nil)
+
+func (r *remoteStorage) List() ([]string, error) {
+	return r.storage.List("", "")
+}
+
+func (r *remoteStorage) Size(name string) int64 {
+	// Retrieving the size for each file from cloud storage would take too long,
+	// just make up a fixed value.
+	return 1024 * 1024
+}
+
+func (r *remoteStorage) Open(name string) (objstorage.Readable, error) {
+	objReader, size, err := r.storage.ReadObject(context.Background(), name)
+	if err != nil {
+		return nil, err
+	}
+	return objstorageprovider.NewRemoteReadable(objReader, size), nil
+}
+
 // We avoid files that are very large to prevent excessive memory usage. Note
 // that we have seen cases where large files contain a giant top index block, so
 // even getting the block layout of the file would use a lot of memory.
@@ -210,8 +271,9 @@ type fileSet struct {
 	dbStorage dbStorage
 	rng       *rand.Rand
 
-	files     []fileInSet
-	sampleIdx []int
+	files         []fileInSet
+	sampleIdx     []int
+	bytesToSample int64
 }
 
 type fileInSet struct {
@@ -299,9 +361,11 @@ func (s *fileSet) Refresh() error {
 	}
 	// Generate the samples.
 	s.sampleIdx = s.sampleIdx[:0]
+	s.bytesToSample = 0
 	for i := range s.files {
 		if !s.files[i].sampled {
 			s.sampleIdx = append(s.sampleIdx, i)
+			s.bytesToSample += s.files[i].size
 		}
 	}
 	slices.SortFunc(s.sampleIdx, func(i, j int) int {
@@ -310,25 +374,18 @@ func (s *fileSet) Refresh() error {
 	return nil
 }
 
-func (s *fileSet) TotalSize() int64 {
-	var sum int64
-	for i := range s.files {
-		sum += s.files[i].size
-	}
-	return sum
-}
-
-func (s *fileSet) Done() bool {
-	return len(s.sampleIdx) == 0
+func (s *fileSet) Remaining() (files int, bytes int64) {
+	return len(s.sampleIdx), s.bytesToSample
 }
 
 // Sample returns a random file from the set (which was not previously sampled),
 // weighted by size.
-func (s *fileSet) Sample() (filename string, size int64) {
+func (s *fileSet) Sample() (filename string) {
 	idx := s.sampleIdx[0]
 	s.sampleIdx = s.sampleIdx[1:]
 	s.files[idx].sampled = true
-	return s.files[idx].filename, s.files[idx].size
+	s.bytesToSample -= s.files[idx].size
+	return s.files[idx].filename
 }
 
 func isTTY(out io.Writer) bool {

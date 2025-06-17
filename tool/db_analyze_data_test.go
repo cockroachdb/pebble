@@ -51,7 +51,7 @@ func TestFileSetSampling(t *testing.T) {
 		dbStorage := newVFSStorage(fsWrapper{memFS}, "")
 		fs, err := makeFileSet(dbStorage, rng)
 		require.NoError(t, err)
-		file, _ := fs.Sample()
+		file := fs.Sample()
 		if file != largeFileName {
 			smallFileChosen++
 		}

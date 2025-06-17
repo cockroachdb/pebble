@@ -88,6 +88,7 @@ func newDB(
 	openErrEnhancer func(error) error,
 	openOptions []OpenOption,
 	exciseSpanFn DBExciseSpanFn,
+	remoteStorageFn DBRemoteStorageFn,
 ) *dbT {
 	d := &dbT{
 		opts:            opts,
@@ -96,6 +97,7 @@ func newDB(
 		openErrEnhancer: openErrEnhancer,
 		openOptions:     openOptions,
 		exciseSpanFn:    exciseSpanFn,
+		remoteStorageFn: remoteStorageFn,
 	}
 	d.fmtKey.mustSet("quoted")
 	d.fmtValue.mustSet("[%x]")
