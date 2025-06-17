@@ -5,14 +5,14 @@
 package compressionanalyzer
 
 import (
+	"cmp"
 	"context"
+	"slices"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/tokenbucket"
 )
 
@@ -49,35 +49,33 @@ func (fa *FileAnalyzer) Close() {
 }
 
 // SSTable analyzes the blocks in an sstable file.
-func (fa *FileAnalyzer) SSTable(ctx context.Context, fs vfs.FS, path string) error {
-	// Obtain the layout.
-	file, err := fs.Open(path)
-	if err != nil {
-		return err
-	}
-	readable, err := sstable.NewSimpleReadable(file)
-	if err != nil {
-		_ = file.Close()
-		return err
-	}
+func (fa *FileAnalyzer) SSTable(ctx context.Context, readable objstorage.Readable) error {
 	r, err := sstable.NewReader(ctx, readable, fa.sstReadOpts)
 	if err != nil {
-		return errors.CombineErrors(err, readable.Close())
+		return err
 	}
 	defer func() { _ = r.Close() }()
+
+	// Obtain the layout.
 	layout, err := r.Layout()
 	if err != nil {
 		return err
 	}
 
-	rh := objstorage.MakeNoopReadHandle(readable)
+	rh := readable.NewReadHandle(objstorage.NoReadBefore)
+	rh.SetupForCompaction()
+	defer func() { _ = rh.Close() }()
 	br := r.BlockReader()
 
-	block := func(kind block.Kind, handle block.Handle) {
-		if err == nil {
-			err = fa.sstBlock(ctx, &rh, kind, handle, br)
-		}
+	type kindAndHandle struct {
+		kind   block.Kind
+		handle block.Handle
 	}
+	var blocks []kindAndHandle
+	block := func(kind block.Kind, handle block.Handle) {
+		blocks = append(blocks, kindAndHandle{kind: kind, handle: handle})
+	}
+
 	for i := range layout.Data {
 		block(blockkind.SSTableData, layout.Data[i].Handle)
 	}
@@ -94,7 +92,19 @@ func (fa *FileAnalyzer) SSTable(ctx context.Context, fs vfs.FS, path string) err
 		block(blockkind.SSTableValue, layout.ValueBlock[i])
 	}
 	block(blockkind.Metadata, layout.ValueIndex)
-	return err
+
+	// Sort blocks by offset (to make effective use of readahead).
+	slices.SortFunc(blocks, func(a, b kindAndHandle) int {
+		return cmp.Compare(a.handle.Offset, b.handle.Offset)
+	})
+
+	for _, b := range blocks {
+		if err := fa.sstBlock(ctx, rh, b.kind, b.handle, br); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (fa *FileAnalyzer) sstBlock(
