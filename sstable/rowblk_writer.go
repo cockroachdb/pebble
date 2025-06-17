@@ -1961,12 +1961,9 @@ func (w *RawRowWriter) copyProperties(props Properties) {
 	w.props.IndexType = 0
 }
 
-// copyFilter implements RawWriter.
-func (w *RawRowWriter) copyFilter(filter []byte) error {
-	w.filter = copyFilterWriter{
-		origPolicyName: w.filter.policyName(), origMetaName: w.filter.metaName(), data: filter,
-	}
-	return nil
+// setFilter implements RawWriter.
+func (w *RawRowWriter) setFilter(fw filterWriter) {
+	w.filter = fw
 }
 
 // SetSnapshotPinnedProperties sets the properties for pinned keys. Should only

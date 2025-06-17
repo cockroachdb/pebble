@@ -371,10 +371,10 @@ type RawWriter interface {
 	// using CopySpan().
 	addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error
 
-	// copyFilter copies the specified filter to the table. It's specifically used
-	// by the sstable copier that can copy parts of an sstable to a new sstable,
-	// using CopySpan().
-	copyFilter(filter []byte) error
+	// setFilter sets the filter to the specified filterWriter. It's
+	// specifically used by the sstable copier that can copy parts of an sstable
+	// to a new sstable, using CopySpan().
+	setFilter(filterWriter)
 
 	// copyProperties copies properties from the specified props, and resets others
 	// to prepare for copying data blocks from another sstable. It's specifically

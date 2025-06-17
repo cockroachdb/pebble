@@ -262,23 +262,24 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 
 		case "filter":
 			fields := strings.FieldsFunc(value, func(r rune) bool {
-				return r == '(' || r == ')'
+				return r == '(' || r == ')' || r == '/'
 			})
 			if len(fields) == 0 {
 				o.FilterPolicy = bloom.FilterPolicy(10)
 				continue
-			} else if len(fields) != 2 {
+			} else if len(fields) != 3 {
 				return errors.Errorf("expected filter policy name and parameters, got %q", value)
 			}
-			switch fields[0] {
+			name := fields[0]
+			switch fields[1] {
 			case "bloom":
-				bits, err := strconv.Atoi(fields[1])
+				bits, err := strconv.Atoi(fields[2])
 				if err != nil {
 					return errors.Wrapf(err, "parsing bloom filter bits")
 				}
-				o.FilterPolicy = bloom.FilterPolicy(bits)
+				o.FilterPolicy = makeTestingBloomFilterPolicy(name, bits)
 			case "none":
-				o.FilterPolicy = nil
+				o.FilterPolicy = base.NoFilterPolicy
 			default:
 				return errors.Errorf("unknown filter policy: %q", value)
 			}
@@ -309,6 +310,27 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 		}
 	}
 	return nil
+}
+
+// testingBloomFilterPolicy is used to allow bloom filter policies with non-default
+// bits-per-key setting and names.
+type testingBloomFilterPolicy struct {
+	bloom.FilterPolicy
+	name string
+}
+
+var _ FilterPolicy = (*testingBloomFilterPolicy)(nil)
+
+func makeTestingBloomFilterPolicy(name string, bitsPerKey int) *testingBloomFilterPolicy {
+	return &testingBloomFilterPolicy{
+		FilterPolicy: bloom.FilterPolicy(bitsPerKey),
+		name:         name,
+	}
+}
+
+// Name implements the pebble.FilterPolicy interface.
+func (t *testingBloomFilterPolicy) Name() string {
+	return t.name
 }
 
 func comparerFromCmdArg(value string) (*Comparer, error) {
