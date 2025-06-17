@@ -48,7 +48,8 @@ func TestFileSetSampling(t *testing.T) {
 	rng := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 	smallFileChosen := 0
 	for i := 0; i < iterations; i++ {
-		fs, err := makeFileSet(fsWrapper{memFS}, "", rng)
+		dbStorage := newVFSStorage(fsWrapper{memFS}, "")
+		fs, err := makeFileSet(dbStorage, rng)
 		require.NoError(t, err)
 		file, _ := fs.Sample()
 		if file != largeFileName {

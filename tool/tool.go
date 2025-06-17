@@ -45,6 +45,7 @@ type T struct {
 	openErrEnhancer func(error) error
 	openOptions     []OpenOption
 	exciseSpanFn    DBExciseSpanFn
+	remoteStorageFn DBRemoteStorageFn
 }
 
 // A Option configures the Pebble introspection tool.
@@ -145,6 +146,18 @@ type DBExciseSpanFn func() (pebble.KeyRange, error)
 func WithDBExciseSpanFn(fn DBExciseSpanFn) Option {
 	return func(t *T) {
 		t.exciseSpanFn = fn
+	}
+}
+
+// DBRemoteStorageFn is used for certain commands which support cloud URIs (like
+// gs://foo/bar).
+type DBRemoteStorageFn func(uri string) (remote.Storage, error)
+
+// WithDBRemoteStorageFn specifies a function that returns the excise span for the
+// `db excise` command.
+func WithDBRemoteStorageFn(fn DBRemoteStorageFn) Option {
+	return func(t *T) {
+		t.remoteStorageFn = fn
 	}
 }
 
