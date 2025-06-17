@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/compressionanalyzer"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/tokenbucket"
@@ -121,16 +122,30 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 		}
 		// Sample a file and analyze it.
 		path, size := files.Sample()
-		err := analyzer.SSTable(context.Background(), d.opts.FS, path)
-		if err != nil {
-			// We ignore errors from files that are deleted from under us.
+		if err := d.analyzeSSTable(analyzer, path); err != nil {
+			// We silently ignore errors from files that are deleted from under us.
 			if !errors.Is(err, os.ErrNotExist) {
+				// Note that errors can happen if the sstable file wasn't completed;
+				// they should not stop the process.
 				fmt.Fprintf(stderr, "error reading file %s: %s\n", path, err)
 			}
 			continue
 		}
 		sampled += size
 	}
+}
+
+func (d *dbT) analyzeSSTable(analyzer *compressionanalyzer.FileAnalyzer, path string) error {
+	file, err := d.opts.FS.Open(path)
+	if err != nil {
+		return err
+	}
+	readable, err := objstorageprovider.NewFileReadable(file, d.opts.FS, objstorageprovider.NewReadaheadConfig(), path)
+	if err != nil {
+		return errors.CombineErrors(err, file.Close())
+	}
+	defer func() { _ = readable.Close() }()
+	return analyzer.SSTable(context.Background(), readable)
 }
 
 func analyzeSaveCSVFile(a *compressionanalyzer.FileAnalyzer, path string) error {
