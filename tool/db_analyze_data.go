@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/compressionanalyzer"
 	"github.com/cockroachdb/pebble/vfs"
@@ -38,7 +39,8 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 		return
 	}
 	rng := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
-	files, err := makeFileSet(d.opts.FS, dir, rng)
+	dbStorage := newVFSStorage(d.opts.FS, dir)
+	files, err := makeFileSet(dbStorage, rng)
 	if err != nil {
 		fmt.Fprintf(stderr, "error loading file list: %s\n", err)
 		return
@@ -121,7 +123,8 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 			lastReportTime = time.Now()
 		}
 		// Sample a file and analyze it.
-		path, size := files.Sample()
+		filename, size := files.Sample()
+		path := d.opts.FS.PathJoin(dir, filename)
 		if err := d.analyzeSSTable(analyzer, path); err != nil {
 			// We silently ignore errors from files that are deleted from under us.
 			if !errors.Is(err, os.ErrNotExist) {
@@ -153,15 +156,59 @@ func analyzeSaveCSVFile(a *compressionanalyzer.FileAnalyzer, path string) error 
 	return os.WriteFile(path, []byte(csv), 0o666)
 }
 
+type vfsStorage struct {
+	fs  vfs.FS
+	dir string
+}
+
+func newVFSStorage(fs vfs.FS, dir string) *vfsStorage {
+	return &vfsStorage{
+		fs:  fs,
+		dir: dir,
+	}
+}
+
+var _ dbStorage = (*vfsStorage)(nil)
+
+func (l *vfsStorage) List() ([]string, error) {
+	return l.fs.List(l.dir)
+}
+
+func (l *vfsStorage) Size(name string) int64 {
+	fileInfo, err := l.fs.Stat(l.fs.PathJoin(l.dir, name))
+	if err != nil {
+		return 0
+	}
+	// We ignore files that are less than 15 seconds old. This is to avoid trying
+	// to read a file that is still being written.
+	if time.Since(fileInfo.ModTime()) < 15*time.Second {
+		return 0
+	}
+	return fileInfo.Size()
+}
+
+func (l *vfsStorage) Open(name string) (objstorage.Readable, error) {
+	path := l.fs.PathJoin(l.dir, name)
+	file, err := l.fs.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	readable, err := objstorageprovider.NewFileReadable(file, l.fs, objstorageprovider.NewReadaheadConfig(), path)
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return readable, nil
+}
+
 // We avoid files that are very large to prevent excessive memory usage. Note
 // that we have seen cases where large files contain a giant top index block, so
 // even getting the block layout of the file would use a lot of memory.
 const analyzeMaxFileSize = 512 * 1024 * 1024
 
 type fileSet struct {
-	fs  vfs.FS
-	dir string
-	rng *rand.Rand
+	dbStorage dbStorage
+	rng       *rand.Rand
 
 	files     []fileInSet
 	sampleIdx []int
@@ -175,11 +222,21 @@ type fileInSet struct {
 	sampled     bool
 }
 
-func makeFileSet(fs vfs.FS, dir string, rng *rand.Rand) (fileSet, error) {
+type dbStorage interface {
+	// List files or objects.
+	List() ([]string, error)
+	// Size returns the size of a file or object, or 0 if the file no longer
+	// exists (or some other error was encountered).
+	Size(name string) int64
+
+	// Open returns a Readable for the file or object with the given name.
+	Open(name string) (objstorage.Readable, error)
+}
+
+func makeFileSet(dbStorage dbStorage, rng *rand.Rand) (fileSet, error) {
 	s := fileSet{
-		fs:  fs,
-		dir: dir,
-		rng: rng,
+		dbStorage: dbStorage,
+		rng:       rng,
 	}
 	return s, s.Refresh()
 }
@@ -192,32 +249,26 @@ func samplingKey(rng *rand.Rand, size int64) float64 {
 }
 
 func (s *fileSet) Refresh() error {
-	filenames, err := s.fs.List(s.dir)
+	filenames, err := s.dbStorage.List()
 	if err != nil {
 		return err
 	}
 	slices.Sort(filenames)
 	oldFiles := slices.Clone(s.files)
 	s.files = s.files[:0]
-	now := time.Now()
 
 	newFile := func(filename string) {
-		// New file.
-		fileType, _, ok := base.ParseFilename(s.fs, filename)
+		// Note that vfs.Default is only used to call BaseName which should be a
+		// no-op.
+		fileType, _, ok := base.ParseFilename(vfs.Default, filename)
 		if !ok || fileType != base.FileTypeTable {
 			return
 		}
-		fileInfo, err := s.fs.Stat(s.fs.PathJoin(s.dir, filename))
+		size := s.dbStorage.Size(filename)
 		if err != nil {
 			// Files can get deleted from under us, so we tolerate errors.
 			return
 		}
-		// We ignore files that are less than 15 seconds old. This is to avoid
-		// trying to read a file that is still being written.
-		if now.Sub(fileInfo.ModTime()) < 15*time.Second {
-			return
-		}
-		size := fileInfo.Size()
 		if size == 0 || size > analyzeMaxFileSize {
 			return
 		}
@@ -273,11 +324,11 @@ func (s *fileSet) Done() bool {
 
 // Sample returns a random file from the set (which was not previously sampled),
 // weighted by size.
-func (s *fileSet) Sample() (path string, size int64) {
+func (s *fileSet) Sample() (filename string, size int64) {
 	idx := s.sampleIdx[0]
 	s.sampleIdx = s.sampleIdx[1:]
 	s.files[idx].sampled = true
-	return s.fs.PathJoin(s.dir, s.files[idx].filename), s.files[idx].size
+	return s.files[idx].filename, s.files[idx].size
 }
 
 func isTTY(out io.Writer) bool {

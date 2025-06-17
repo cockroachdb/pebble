@@ -55,6 +55,7 @@ type dbT struct {
 	openErrEnhancer func(error) error
 	openOptions     []OpenOption
 	exciseSpanFn    DBExciseSpanFn
+	remoteStorageFn DBRemoteStorageFn
 
 	// Flags.
 	comparerName string
