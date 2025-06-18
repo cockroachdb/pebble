@@ -431,65 +431,7 @@ func (pc *pickedCompaction) setupInputs(
 	// Grow the sstables in startLevel.level as long as it doesn't affect the number
 	// of sstables included from pc.outputLevel.level.
 	if pc.lcf != nil && startLevel.level == 0 && pc.outputLevel.level != 0 {
-		// Call the L0-specific compaction extension method. Similar logic as
-		// pc.grow. Additional L0 files are optionally added to the compaction at
-		// this step. Note that the bounds passed in are not the bounds of the
-		// compaction, but rather the smallest and largest internal keys that
-		// the compaction cannot include from L0 without pulling in more Lbase
-		// files. Consider this example:
-		//
-		// L0:        c-d e+f g-h
-		// Lbase: a-b     e+f     i-j
-		//        a b c d e f g h i j
-		//
-		// The e-f files have already been chosen in the compaction. As pulling
-		// in more LBase files is undesirable, the logic below will pass in
-		// smallest = b and largest = i to ExtendL0ForBaseCompactionTo, which
-		// will expand the compaction to include c-d and g-h from L0. The
-		// bounds passed in are exclusive; the compaction cannot be expanded
-		// to include files that "touch" it.
-		smallestBaseKey := base.InvalidInternalKey
-		largestBaseKey := base.InvalidInternalKey
-		if pc.outputLevel.files.Empty() {
-			baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
-			if sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey); sm != nil {
-				smallestBaseKey = sm.Largest()
-			}
-			if la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey); la != nil {
-				largestBaseKey = la.Smallest()
-			}
-		} else {
-			// NB: We use Reslice to access the underlying level's files, but
-			// we discard the returned slice. The pc.outputLevel.files slice
-			// is not modified.
-			_ = pc.outputLevel.files.Reslice(func(start, end *manifest.LevelIterator) {
-				if sm := start.Prev(); sm != nil {
-					smallestBaseKey = sm.Largest()
-				}
-				if la := end.Next(); la != nil {
-					largestBaseKey = la.Smallest()
-				}
-			})
-		}
-		oldLcf := pc.lcf.Clone()
-		if pc.l0Organizer.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
-			var newStartLevelFiles []*manifest.TableMetadata
-			iter := pc.version.Levels[0].Iter()
-			var sizeSum uint64
-			for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
-				if pc.lcf.FilesIncluded[f.L0Index] {
-					newStartLevelFiles = append(newStartLevelFiles, f)
-					sizeSum += f.Size
-				}
-			}
-			if sizeSum+pc.outputLevel.files.AggregateSizeSum() < maxExpandedBytes {
-				startLevel.files = manifest.NewLevelSliceSeqSorted(newStartLevelFiles)
-				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
-					startLevel.files.All(), pc.outputLevel.files.All())
-			} else {
-				*pc.lcf = *oldLcf
-			}
-		}
+		pc.growL0ForBase(maxExpandedBytes)
 	} else if pc.grow(pc.smallest, pc.largest, maxExpandedBytes, startLevel, problemSpans) {
 		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp,
 			startLevel.files.All(), pc.outputLevel.files.All()))
@@ -537,6 +479,78 @@ func (pc *pickedCompaction) grow(
 	}
 	startLevel.files = grow0
 	pc.outputLevel.files = grow1
+	return true
+}
+
+// Similar logic as pc.grow. Additional L0 files are optionally added to the
+// compaction at this step. Note that the bounds passed in are not the bounds
+// of the compaction, but rather the smallest and largest internal keys that
+// the compaction cannot include from L0 without pulling in more Lbase
+// files. Consider this example:
+//
+// L0:        c-d e+f g-h
+// Lbase: a-b     e+f     i-j
+//
+//	a b c d e f g h i j
+//
+// The e-f files have already been chosen in the compaction. As pulling
+// in more LBase files is undesirable, the logic below will pass in
+// smallest = b and largest = i to ExtendL0ForBaseCompactionTo, which
+// will expand the compaction to include c-d and g-h from L0. The
+// bounds passed in are exclusive; the compaction cannot be expanded
+// to include files that "touch" it.
+func (pc *pickedCompaction) growL0ForBase(maxExpandedBytes uint64) bool {
+	if invariants.Enabled {
+		if pc.startLevel.level != 0 {
+			panic(fmt.Sprintf("pc.startLevel.level is %d, expected 0", pc.startLevel.level))
+		}
+	}
+	smallestBaseKey := base.InvalidInternalKey
+	largestBaseKey := base.InvalidInternalKey
+	if pc.outputLevel.files.Empty() {
+		baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
+		if sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey); sm != nil {
+			smallestBaseKey = sm.Largest()
+		}
+		if la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey); la != nil {
+			largestBaseKey = la.Smallest()
+		}
+	} else {
+		// NB: We use Reslice to access the underlying level's files, but
+		// we discard the returned slice. The pc.outputLevel.files slice
+		// is not modified.
+		_ = pc.outputLevel.files.Reslice(func(start, end *manifest.LevelIterator) {
+			if sm := start.Prev(); sm != nil {
+				smallestBaseKey = sm.Largest()
+			}
+			if la := end.Next(); la != nil {
+				largestBaseKey = la.Smallest()
+			}
+		})
+	}
+	oldLcf := pc.lcf.Clone()
+	if !pc.l0Organizer.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
+		return false
+	}
+
+	var newStartLevelFiles []*manifest.TableMetadata
+	iter := pc.version.Levels[0].Iter()
+	var sizeSum uint64
+	for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
+		if pc.lcf.FilesIncluded[f.L0Index] {
+			newStartLevelFiles = append(newStartLevelFiles, f)
+			sizeSum += f.Size
+		}
+	}
+
+	if sizeSum+pc.outputLevel.files.AggregateSizeSum() >= maxExpandedBytes {
+		*pc.lcf = *oldLcf
+		return false
+	}
+
+	pc.startLevel.files = manifest.NewLevelSliceSeqSorted(newStartLevelFiles)
+	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
+		pc.startLevel.files.All(), pc.outputLevel.files.All())
 	return true
 }
 
@@ -1714,7 +1728,7 @@ func pickAutoLPositive(
 func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) *pickedCompaction {
 	pc.pickerMetrics.singleLevelOverlappingRatio = pc.overlappingRatio()
 	if pc.outputLevel.level == numLevels-1 {
-		// Don't add a level if the current output level is in L6
+		// Don't add a level if the current output level is in L6.
 		return pc
 	}
 	if !opts.Experimental.MultiLevelCompactionHeuristic.allowL0() && pc.startLevel.level == 0 {
