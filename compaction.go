@@ -420,11 +420,15 @@ func newCompaction(
 	if pc.startLevel.l0SublevelInfo != nil {
 		c.startLevel.l0SublevelInfo = pc.startLevel.l0SublevelInfo
 	}
-	c.outputLevel = &c.inputs[1]
 
-	if len(pc.extraLevels) > 0 {
-		c.extraLevels = pc.extraLevels
-		c.outputLevel = &c.inputs[len(c.inputs)-1]
+	c.outputLevel = &c.inputs[len(c.inputs)-1]
+
+	if len(pc.inputs) > 2 {
+		// TODO(xinhaoz): Look into removing extraLevels on the compaction struct.
+		c.extraLevels = make([]*compactionLevel, 0, len(pc.inputs)-2)
+		for i := 1; i < len(pc.inputs)-1; i++ {
+			c.extraLevels = append(c.extraLevels, &c.inputs[i])
+		}
 	}
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
