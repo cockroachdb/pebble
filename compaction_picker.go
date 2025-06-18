@@ -181,10 +181,8 @@ type pickedCompaction struct {
 	//    - in multilevel compaction, the output level is the lowest level involved in
 	//      the compaction
 	outputLevel *compactionLevel
-	// extraLevels contain additional levels in between the input and output
-	// levels that get compacted in multi level compactions
-	extraLevels []*compactionLevel
-	inputs      []compactionLevel
+	// inputs contain levels involved in the compaction in ascending order
+	inputs []compactionLevel
 	// LBase at the time of compaction picking. Might be uninitialized for
 	// intra-L0 compactions.
 	baseLevel int
@@ -316,7 +314,6 @@ func (pc *pickedCompaction) String() string {
 	builder.WriteString(fmt.Sprintf(`inputs=%s, `, pc.inputs))
 	builder.WriteString(fmt.Sprintf(`startlevel=%s, `, pc.startLevel))
 	builder.WriteString(fmt.Sprintf(`outputLevel=%s, `, pc.outputLevel))
-	builder.WriteString(fmt.Sprintf(`extraLevels=%s, `, pc.extraLevels))
 	builder.WriteString(fmt.Sprintf(`l0SublevelInfo=%s, `, pc.startLevel.l0SublevelInfo))
 	builder.WriteString(fmt.Sprintf(`lcf=%s`, pc.lcf))
 	return builder.String()
@@ -348,15 +345,12 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 	}
 
 	newPC.inputs = make([]compactionLevel, len(pc.inputs))
-	newPC.extraLevels = make([]*compactionLevel, 0, len(pc.extraLevels))
 	for i := range pc.inputs {
 		newPC.inputs[i] = pc.inputs[i].Clone()
 		if i == 0 {
 			newPC.startLevel = &newPC.inputs[i]
 		} else if i == len(pc.inputs)-1 {
 			newPC.outputLevel = &newPC.inputs[i]
-		} else {
-			newPC.extraLevels = append(newPC.extraLevels, &newPC.inputs[i])
 		}
 	}
 
@@ -394,51 +388,56 @@ func (pc *pickedCompaction) maybeExpandBounds(smallest InternalKey, largest Inte
 	}
 }
 
-// setupInputs returns true if a compaction has been set up. It returns false if
-// a concurrent compaction is occurring on the start or output level files.
+// setupInputs returns true if a compaction has been set up using the provided inputLevel and
+// pc.outputLevel. It returns false if a concurrent compaction is occurring on the start or
+// output level files. Note that inputLevel is not necessarily pc.startLevel. In multiLevel
+// compactions, inputs are set by calling setupInputs once for each adjacent pair of levels.
+// This will preserve level invariants when expanding the compaction. pc.smallest and pc.largest
+// will be updated to reflect the key range of the inputs.
 func (pc *pickedCompaction) setupInputs(
 	opts *Options,
 	diskAvailBytes uint64,
-	startLevel *compactionLevel,
+	inputLevel *compactionLevel,
 	problemSpans *problemspans.ByLevel,
 ) bool {
-	// maxExpandedBytes is the maximum size of an expanded compaction. If
-	// growing a compaction results in a larger size, the original compaction
-	// is used instead.
-	maxExpandedBytes := expandedCompactionByteSizeLimit(
-		opts, adjustedOutputLevel(pc.outputLevel.level, pc.baseLevel), diskAvailBytes,
-	)
-
-	if !canCompactTables(startLevel.files, startLevel.level, problemSpans) {
+	if !canCompactTables(inputLevel.files, inputLevel.level, problemSpans) {
 		return false
 	}
 
-	pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, startLevel.files.All()))
+	pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, inputLevel.files.All()))
 
-	// Determine the sstables in the output level which overlap with the input
-	// sstables. No need to do this for intra-L0 compactions; outputLevel.files is
-	// left empty for those.
-	if startLevel.level != pc.outputLevel.level {
+	// Setup output files and attempt to grow the inputLevel files with
+	// the expanded key range. No need to do this for intra-L0 compactions;
+	// outputLevel.files is left empty for those.
+	if inputLevel.level != pc.outputLevel.level {
+		// Determine the sstables in the output level which overlap with the compaction
+		// key range.
 		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
 		if !canCompactTables(pc.outputLevel.files, pc.outputLevel.level, problemSpans) {
 			return false
 		}
 
-		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp,
-			startLevel.files.All(), pc.outputLevel.files.All()))
+		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, pc.outputLevel.files.All()))
+
+		// maxExpandedBytes is the maximum size of an expanded compaction. If
+		// growing a compaction results in a larger size, the original compaction
+		// is used instead.
+		maxExpandedBytes := expandedCompactionByteSizeLimit(
+			opts, adjustedOutputLevel(pc.outputLevel.level, pc.baseLevel), diskAvailBytes,
+		)
+
+		// Grow the sstables in inputLevel.level as long as it doesn't affect the number
+		// of sstables included from pc.outputLevel.level.
+		if pc.lcf != nil && inputLevel.level == 0 {
+			pc.growL0ForBase(maxExpandedBytes)
+		} else if pc.grow(pc.smallest, pc.largest, maxExpandedBytes, inputLevel, problemSpans) {
+			// inputLevel was expanded, adjust key range if necessary.
+			pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, inputLevel.files.All()))
+		}
 	}
 
-	// Grow the sstables in startLevel.level as long as it doesn't affect the number
-	// of sstables included from pc.outputLevel.level.
-	if pc.lcf != nil && startLevel.level == 0 && pc.outputLevel.level != 0 {
-		pc.growL0ForBase(maxExpandedBytes)
-	} else if pc.grow(pc.smallest, pc.largest, maxExpandedBytes, startLevel, problemSpans) {
-		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp,
-			startLevel.files.All(), pc.outputLevel.files.All()))
-	}
-
-	if pc.startLevel.level == 0 {
-		// We don't change the input files for the compaction beyond this point.
+	if inputLevel.level == 0 {
+		// If L0 is involved, it should always be the startLevel of the compaction.
 		pc.startLevel.l0SublevelInfo = generateSublevelInfo(pc.cmp, pc.startLevel.files)
 	}
 
@@ -451,34 +450,35 @@ func (pc *pickedCompaction) setupInputs(
 func (pc *pickedCompaction) grow(
 	sm, la InternalKey,
 	maxExpandedBytes uint64,
-	startLevel *compactionLevel,
+	inputLevel *compactionLevel,
 	problemSpans *problemspans.ByLevel,
 ) bool {
 	if pc.outputLevel.files.Empty() {
 		return false
 	}
-	grow0 := pc.version.Overlaps(startLevel.level, base.UserKeyBoundsFromInternal(sm, la))
-	if !canCompactTables(grow0, startLevel.level, problemSpans) {
+	expandedInputLevel := pc.version.Overlaps(inputLevel.level, base.UserKeyBoundsFromInternal(sm, la))
+	if !canCompactTables(expandedInputLevel, inputLevel.level, problemSpans) {
 		return false
 	}
-	if grow0.Len() <= startLevel.files.Len() {
+	if expandedInputLevel.Len() <= inputLevel.files.Len() {
 		return false
 	}
-	if grow0.AggregateSizeSum()+pc.outputLevel.files.AggregateSizeSum() >= maxExpandedBytes {
+	if expandedInputLevel.AggregateSizeSum()+pc.outputLevel.files.AggregateSizeSum() >= maxExpandedBytes {
 		return false
 	}
+	// Check that expanding the input level does not change the number of overlapping files in output level.
 	// We need to include the outputLevel iter because without it, in a multiLevel scenario,
-	// sm1 and la1 could shift the output level keyspace when pc.outputLevel.files is set to grow1.
-	sm1, la1 := manifest.KeyRange(pc.cmp, grow0.All(), pc.outputLevel.files.All())
-	grow1 := pc.version.Overlaps(pc.outputLevel.level, base.UserKeyBoundsFromInternal(sm1, la1))
-	if grow1.Len() != pc.outputLevel.files.Len() {
+	// expandedInputLevel's key range not fully cover all files currently in pc.outputLevel,
+	// since pc.outputLevel was created using the entire key range which includes higher levels.
+	expandedOutputLevel := pc.version.Overlaps(pc.outputLevel.level,
+		base.UserKeyBoundsFromInternal(manifest.KeyRange(pc.cmp, expandedInputLevel.All(), pc.outputLevel.files.All())))
+	if expandedOutputLevel.Len() != pc.outputLevel.files.Len() {
 		return false
 	}
-	if !canCompactTables(grow1, pc.outputLevel.level, problemSpans) {
+	if !canCompactTables(expandedOutputLevel, pc.outputLevel.level, problemSpans) {
 		return false
 	}
-	startLevel.files = grow0
-	pc.outputLevel.files = grow1
+	inputLevel.files = expandedInputLevel
 	return true
 }
 
@@ -565,7 +565,7 @@ func (pc *pickedCompaction) estimatedInputSize() uint64 {
 	return bytesToCompact
 }
 
-// setupMultiLevelCandidated returns true if it successfully added another level
+// setupMultiLevelCandidate returns true if it successfully added another level
 // to the compaction.
 func (pc *pickedCompaction) setupMultiLevelCandidate(opts *Options, diskAvailBytes uint64) bool {
 	pc.inputs = append(pc.inputs, compactionLevel{level: pc.outputLevel.level + 1})
@@ -574,9 +574,8 @@ func (pc *pickedCompaction) setupMultiLevelCandidate(opts *Options, diskAvailByt
 	//  - startLevel and outputLevel pointers may be obsolete after appending to pc.inputs.
 	//  - push outputLevel to extraLevels and move the new level to outputLevel
 	pc.startLevel = &pc.inputs[0]
-	pc.extraLevels = []*compactionLevel{&pc.inputs[1]}
 	pc.outputLevel = &pc.inputs[2]
-	return pc.setupInputs(opts, diskAvailBytes, pc.extraLevels[len(pc.extraLevels)-1], nil /* TODO(radu) */)
+	return pc.setupInputs(opts, diskAvailBytes, &pc.inputs[1], nil /* TODO(radu) */)
 }
 
 // canCompactTables returns true if the tables in the level slice are not
@@ -1947,8 +1946,8 @@ func newPickedManualCompaction(
 		return nil, false
 	}
 	if pc.outputLevel.level != outputLevel {
-		if len(pc.extraLevels) > 0 {
-			// multilevel compactions relax this invariant
+		if len(pc.inputs) > 2 {
+			// Multilevel compactions relax this invariant.
 		} else {
 			panic("pebble: compaction picked unexpected output level")
 		}

@@ -1152,7 +1152,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			}
 
 			if initMultiLevel {
-				extraLevel := pc.extraLevels[0].level
+				extraLevel := pc.inputs[1].level
 				fmt.Fprintf(&buf, "init-multi-level(%d,%d,%d)\n", pc.startLevel.level, extraLevel,
 					pc.outputLevel.level)
 				fmt.Fprintf(&buf, "Original WriteAmp %.2f; ML WriteAmp %.2f\n", origPC.predictedWriteAmp(), pc.predictedWriteAmp())
