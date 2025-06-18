@@ -122,6 +122,133 @@ func loadVersion(
 	return vers, latest, opts, ""
 }
 
+// parseTableMeta parses a table number from a string. The string is expected to
+// be in the form of one of the following:
+//
+//	start.SET.1-end.SET.2
+//	<table-num>:start.SET.1-end.SET.2
+func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetadata, error) {
+	parts := strings.Split(s, ":")
+	var tableNum base.TableNum
+	if len(parts) > 1 {
+		tableNum = parseTableNum(t, strings.TrimSpace(parts[0]))
+		parts = parts[1:]
+	}
+	fields := strings.Fields(parts[0])
+	parts = strings.Split(fields[0], "-")
+	if len(parts) != 2 {
+		return nil, errors.Errorf("malformed table spec: %s. usage: <optional-file-num>:start.SET.1-end.SET.2", s)
+	}
+	m := (&manifest.TableMetadata{
+		TableNum: tableNum,
+		Size:     1028,
+	}).ExtendPointKeyBounds(
+		opts.Comparer.Compare,
+		base.ParseInternalKey(strings.TrimSpace(parts[0])),
+		base.ParseInternalKey(strings.TrimSpace(parts[1])),
+	)
+	m.InitPhysicalBacking()
+	for _, p := range fields[1:] {
+		if strings.HasPrefix(p, "size=") {
+			v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
+			if err != nil {
+				return nil, err
+			}
+			m.Size = uint64(v)
+		}
+		if strings.HasPrefix(p, "range-deletions-bytes-estimate=") {
+			v, err := strconv.Atoi(strings.TrimPrefix(p, "range-deletions-bytes-estimate="))
+			if err != nil {
+				return nil, err
+			}
+			m.Stats.RangeDeletionsBytesEstimate = uint64(v)
+			m.Stats.NumDeletions = 1 // At least one range del responsible for the deletion bytes.
+			m.StatsMarkValid()
+		}
+	}
+	m.SmallestSeqNum = m.Smallest().SeqNum()
+	m.LargestSeqNum = m.Largest().SeqNum()
+	if m.SmallestSeqNum > m.LargestSeqNum {
+		m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
+	}
+	m.LargestSeqNumAbsolute = m.LargestSeqNum
+	return m, nil
+}
+
+// parseCompactionLines parse in-progress compactions in the form of:
+// L0 000001 -> L2 000005
+func parseCompactionLines(
+	t *testing.T, compactionLines []string, fileMetas [manifest.NumLevels][]*manifest.TableMetadata,
+) ([]compactionInfo, error) {
+	var inProgressCompactions []compactionInfo
+	for len(compactionLines) > 0 {
+		parts := strings.Fields(compactionLines[0])
+		compactionLines = compactionLines[1:]
+
+		var level int
+		var info compactionInfo
+		compactionFiles := map[int][]*manifest.TableMetadata{}
+		for _, p := range parts {
+			switch p {
+			case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+				var err error
+				level, err = strconv.Atoi(p[1:])
+				if err != nil {
+					return nil, err
+				}
+				if len(info.inputs) > 0 && info.inputs[len(info.inputs)-1].level == level {
+					// eg, L0 -> L0 compaction or L6 -> L6 compaction
+					continue
+				}
+				if info.outputLevel < level {
+					info.outputLevel = level
+				}
+				info.inputs = append(info.inputs, compactionLevel{level: level})
+			case "->":
+				continue
+			default:
+				tableNum := parseTableNum(t, p)
+				var compactFile *manifest.TableMetadata
+				for _, m := range fileMetas[level] {
+					if m.TableNum == tableNum {
+						compactFile = m
+					}
+				}
+				if compactFile == nil {
+					return nil, errors.Errorf("cannot find compaction file %s", tableNum)
+				}
+				compactFile.CompactionState = manifest.CompactionStateCompacting
+				var bounds base.UserKeyBounds
+				if info.bounds != nil {
+					bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
+				} else {
+					bounds = compactFile.UserKeyBounds()
+				}
+				info.bounds = &bounds
+				compactionFiles[level] = append(compactionFiles[level], compactFile)
+			}
+		}
+		for i, cl := range info.inputs {
+			files := compactionFiles[cl.level]
+			if cl.level == 0 {
+				info.inputs[i].files = manifest.NewLevelSliceSeqSorted(files)
+			} else {
+				info.inputs[i].files = manifest.NewLevelSliceKeySorted(DefaultComparer.Compare, files)
+			}
+			// Mark as intra-L0 compacting if the compaction is
+			// L0 -> L0.
+			if info.outputLevel == 0 {
+				for _, f := range files {
+					f.IsIntraL0Compacting = true
+				}
+			}
+		}
+		inProgressCompactions = append(inProgressCompactions, info)
+	}
+
+	return inProgressCompactions, nil
+}
+
 func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_picker_level_max_bytes",
 		func(t *testing.T, d *datadriven.TestData) string {
@@ -450,6 +577,7 @@ func TestCompactionPickerL0(t *testing.T) {
 	var ptc *pickedTableCompaction
 
 	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(t *testing.T, td *datadriven.TestData) string {
+		inProgressCompactions = nil
 		switch td.Cmd {
 		case "define":
 			fileMetas := [manifest.NumLevels][]*manifest.TableMetadata{}
@@ -457,7 +585,6 @@ func TestCompactionPickerL0(t *testing.T) {
 			level := 0
 			var err error
 			lines := strings.Split(td.Input, "\n")
-			var compactionLines []string
 
 			for len(lines) > 0 {
 				data := strings.TrimSpace(lines[0])
@@ -469,7 +596,12 @@ func TestCompactionPickerL0(t *testing.T) {
 						return err.Error()
 					}
 				case "compactions":
-					compactionLines, lines = lines, nil
+					inProgressCompactions, err = parseCompactionLines(t, lines, fileMetas)
+					if err != nil {
+						return err.Error()
+					}
+					// Compactions should be the last definition.
+					lines = nil
 				default:
 					meta, err := parseMeta(data)
 					if err != nil {
@@ -480,70 +612,6 @@ func TestCompactionPickerL0(t *testing.T) {
 					}
 					fileMetas[level] = append(fileMetas[level], meta)
 				}
-			}
-
-			// Parse in-progress compactions in the form of:
-			//   L0 000001 -> L2 000005
-			inProgressCompactions = nil
-			for len(compactionLines) > 0 {
-				parts := strings.Fields(compactionLines[0])
-				compactionLines = compactionLines[1:]
-
-				var level int
-				var info compactionInfo
-				compactionFiles := map[int][]*manifest.TableMetadata{}
-				for _, p := range parts {
-					switch p {
-					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-						var err error
-						level, err = strconv.Atoi(p[1:])
-						if err != nil {
-							return err.Error()
-						}
-						if len(info.inputs) > 0 && info.inputs[len(info.inputs)-1].level == level {
-							// eg, L0 -> L0 compaction or L6 -> L6 compaction
-							continue
-						}
-						if info.outputLevel < level {
-							info.outputLevel = level
-						}
-						info.inputs = append(info.inputs, compactionLevel{level: level})
-					case "->":
-						continue
-					default:
-						tableNum := parseTableNum(t, p)
-						var compactFile *manifest.TableMetadata
-						for _, m := range fileMetas[level] {
-							if m.TableNum == tableNum {
-								compactFile = m
-							}
-						}
-						if compactFile == nil {
-							return fmt.Sprintf("cannot find compaction file %s", tableNum)
-						}
-						compactFile.CompactionState = manifest.CompactionStateCompacting
-						var bounds base.UserKeyBounds
-						if info.bounds != nil {
-							bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
-						} else {
-							bounds = compactFile.UserKeyBounds()
-						}
-						info.bounds = &bounds
-						compactionFiles[level] = append(compactionFiles[level], compactFile)
-					}
-				}
-				for i, cl := range info.inputs {
-					files := compactionFiles[cl.level]
-					info.inputs[i].files = manifest.NewLevelSliceSeqSorted(files)
-					// Mark as intra-L0 compacting if the compaction is
-					// L0 -> L0.
-					if info.outputLevel == 0 {
-						for _, f := range files {
-							f.IsIntraL0Compacting = true
-						}
-					}
-				}
-				inProgressCompactions = append(inProgressCompactions, info)
 			}
 
 			version, latest := newVersionWithLatest(opts, fileMetas)
@@ -649,50 +717,18 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 	lowerConcurrencyLimit, upperConcurrencyLimit := 1, 4
 	opts.CompactionConcurrencyRange = func() (int, int) { return lowerConcurrencyLimit, upperConcurrencyLimit }
 
-	parseMeta := func(s string) (*manifest.TableMetadata, error) {
-		parts := strings.Split(s, ":")
-		tableNum := parseTableNum(t, parts[0])
-		fields := strings.Fields(parts[1])
-		parts = strings.Split(fields[0], "-")
-		if len(parts) != 2 {
-			return nil, errors.Errorf("malformed table spec: %s", s)
-		}
-		m := (&manifest.TableMetadata{
-			TableNum: tableNum,
-			Size:     1028,
-		}).ExtendPointKeyBounds(
-			opts.Comparer.Compare,
-			base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		)
-		m.InitPhysicalBacking()
-		for _, p := range fields[1:] {
-			if strings.HasPrefix(p, "size=") {
-				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
-				if err != nil {
-					return nil, err
-				}
-				m.Size = uint64(v)
-			}
-		}
-		m.SmallestSeqNum = m.Smallest().SeqNum()
-		m.LargestSeqNum = m.Largest().SeqNum()
-		m.LargestSeqNumAbsolute = m.Largest().SeqNum()
-		return m, nil
-	}
-
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo
 
 	datadriven.RunTest(t, "testdata/compaction_picker_concurrency", func(t *testing.T, td *datadriven.TestData) string {
+
 		switch td.Cmd {
 		case "define":
+			inProgressCompactions = nil
 			tableMetas := [manifest.NumLevels][]*manifest.TableMetadata{}
 			level := 0
 			var err error
 			lines := strings.Split(td.Input, "\n")
-			var compactionLines []string
-
 			for len(lines) > 0 {
 				data := strings.TrimSpace(lines[0])
 				lines = lines[1:]
@@ -703,82 +739,19 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 						return err.Error()
 					}
 				case "compactions":
-					compactionLines, lines = lines, nil
+					inProgressCompactions, err = parseCompactionLines(t, lines, tableMetas)
+					if err != nil {
+						return err.Error()
+					}
+					// Compactions should be the last definition.
+					lines = nil
 				default:
-					meta, err := parseMeta(data)
+					meta, err := parseTableMeta(t, data, opts)
 					if err != nil {
 						return err.Error()
 					}
 					tableMetas[level] = append(tableMetas[level], meta)
 				}
-			}
-
-			// Parse in-progress compactions in the form of:
-			//   L0 000001 -> L2 000005
-			inProgressCompactions = nil
-			for len(compactionLines) > 0 {
-				parts := strings.Fields(compactionLines[0])
-				compactionLines = compactionLines[1:]
-
-				var level int
-				var info compactionInfo
-				compactionFiles := map[int][]*manifest.TableMetadata{}
-				for _, p := range parts {
-					switch p {
-					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-						var err error
-						level, err = strconv.Atoi(p[1:])
-						if err != nil {
-							return err.Error()
-						}
-						if len(info.inputs) > 0 && info.inputs[len(info.inputs)-1].level == level {
-							// eg, L0 -> L0 compaction or L6 -> L6 compaction
-							continue
-						}
-						if info.outputLevel < level {
-							info.outputLevel = level
-						}
-						info.inputs = append(info.inputs, compactionLevel{level: level})
-					case "->":
-						continue
-					default:
-						tableNum := parseTableNum(t, p)
-						var compactFile *manifest.TableMetadata
-						for _, m := range tableMetas[level] {
-							if m.TableNum == tableNum {
-								compactFile = m
-							}
-						}
-						if compactFile == nil {
-							return fmt.Sprintf("cannot find compaction file %s", tableNum)
-						}
-						compactFile.CompactionState = manifest.CompactionStateCompacting
-						var bounds base.UserKeyBounds
-						if info.bounds != nil {
-							bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
-						} else {
-							bounds = compactFile.UserKeyBounds()
-						}
-						info.bounds = &bounds
-						compactionFiles[level] = append(compactionFiles[level], compactFile)
-					}
-				}
-				for i, cl := range info.inputs {
-					files := compactionFiles[cl.level]
-					if cl.level == 0 {
-						info.inputs[i].files = manifest.NewLevelSliceSeqSorted(files)
-					} else {
-						info.inputs[i].files = manifest.NewLevelSliceKeySorted(DefaultComparer.Compare, files)
-					}
-					// Mark as intra-L0 compacting if the compaction is
-					// L0 -> L0.
-					if info.outputLevel == 0 {
-						for _, f := range files {
-							f.IsIntraL0Compacting = true
-						}
-					}
-				}
-				inProgressCompactions = append(inProgressCompactions, info)
 			}
 
 			version, latest := newVersionWithLatest(opts, tableMetas)
@@ -853,38 +826,6 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 	var picker *compactionPickerByScore
 	var rcList readCompactionQueue
 
-	parseMeta := func(s string) (*manifest.TableMetadata, error) {
-		parts := strings.Split(s, ":")
-		tableNum := parseTableNum(t, parts[0])
-		fields := strings.Fields(parts[1])
-		parts = strings.Split(fields[0], "-")
-		if len(parts) != 2 {
-			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
-		}
-		m := (&manifest.TableMetadata{
-			TableNum: tableNum,
-			Size:     1028,
-		}).ExtendPointKeyBounds(
-			opts.Comparer.Compare,
-			base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		)
-		m.InitPhysicalBacking()
-		for _, p := range fields[1:] {
-			if strings.HasPrefix(p, "size=") {
-				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
-				if err != nil {
-					return nil, err
-				}
-				m.Size = uint64(v)
-			}
-		}
-		m.SmallestSeqNum = m.Smallest().SeqNum()
-		m.LargestSeqNum = m.Largest().SeqNum()
-		m.LargestSeqNumAbsolute = m.Largest().SeqNum()
-		return m, nil
-	}
-
 	datadriven.RunTest(t, "testdata/compaction_picker_read_triggered", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
@@ -904,7 +845,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 						return err.Error()
 					}
 				default:
-					meta, err := parseMeta(data)
+					meta, err := parseTableMeta(t, data, opts)
 					if err != nil {
 						return err.Error()
 					}
@@ -999,10 +940,10 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 type alwaysMultiLevel struct{}
 
 func (d alwaysMultiLevel) pick(
-	pcOrig *pickedTableCompaction, opts *Options, diskAvailBytes uint64,
+	pcOrig *pickedTableCompaction, opts *Options, env compactionEnv,
 ) *pickedTableCompaction {
 	pcMulti := pcOrig.clone()
-	if !pcMulti.setupMultiLevelCandidate(opts, diskAvailBytes) {
+	if !pcMulti.setupMultiLevelCandidate(opts, env) {
 		return pcOrig
 	}
 	return pcMulti
@@ -1014,47 +955,8 @@ func (d alwaysMultiLevel) String() string { return "always" }
 func TestPickedCompactionSetupInputs(t *testing.T) {
 	opts := DefaultOptions()
 
-	parseMeta := func(s string) *manifest.TableMetadata {
-		parts := strings.Split(strings.TrimSpace(s), " ")
-		var fileSize uint64
-		var compacting bool
-		for _, part := range parts {
-			switch {
-			case part == "compacting":
-				compacting = true
-			case strings.HasPrefix(part, "size="):
-				v, err := strconv.ParseUint(strings.TrimPrefix(part, "size="), 10, 64)
-				require.NoError(t, err)
-				fileSize = v
-			}
-		}
-		tableParts := strings.Split(parts[0], "-")
-		if len(tableParts) != 2 {
-			t.Fatalf("malformed table spec: %s", s)
-		}
-		state := manifest.CompactionStateNotCompacting
-		if compacting {
-			state = manifest.CompactionStateCompacting
-		}
-		m := (&manifest.TableMetadata{
-			CompactionState: state,
-			Size:            fileSize,
-		}).ExtendPointKeyBounds(
-			opts.Comparer.Compare,
-			base.ParseInternalKey(strings.TrimSpace(tableParts[0])),
-			base.ParseInternalKey(strings.TrimSpace(tableParts[1])),
-		)
-		m.SmallestSeqNum = m.Smallest().SeqNum()
-		m.LargestSeqNum = m.Largest().SeqNum()
-		if m.SmallestSeqNum > m.LargestSeqNum {
-			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
-		}
-		m.LargestSeqNumAbsolute = m.LargestSeqNum
-		m.InitPhysicalBacking()
-		return m
-	}
-
 	setupInputTest := func(t *testing.T, d *datadriven.TestData) string {
+		var inProgressCompactions []compactionInfo
 		switch d.Cmd {
 		case "setup-inputs":
 			var availBytes uint64 = math.MaxUint64
@@ -1082,8 +984,11 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			var files [numLevels][]*manifest.TableMetadata
 			tableNum := base.TableNum(1)
 
-			for _, data := range strings.Split(d.Input, "\n") {
-				switch data[:2] {
+			lines := strings.Split(d.Input, "\n")
+			for len(lines) > 0 {
+				data := strings.TrimSpace(lines[0])
+				lines = lines[1:]
+				switch strings.TrimSpace(data) {
 				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
 					levelArgs := strings.Fields(data)
 					level, err := strconv.Atoi(levelArgs[0][1:])
@@ -1110,9 +1015,23 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 						}
 						pc.outputLevel.level = level
 					}
+				case "compactions":
+					var err error
+					inProgressCompactions, err = parseCompactionLines(t, lines, files)
+					if err != nil {
+						return err.Error()
+					}
+					// Compactions should be the last definition.
+					lines = nil
 				default:
-					meta := parseMeta(data)
-					meta.TableNum = tableNum
+					meta, err := parseTableMeta(t, data, opts)
+					if err != nil {
+						return err.Error()
+					}
+					if meta.TableNum == 0 {
+						// Auto-assign table num.
+						meta.TableNum = tableNum
+					}
 					tableNum++
 					files[currentLevel] = append(files[currentLevel], meta)
 				}
@@ -1136,11 +1055,15 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			)
 
 			var isCompacting bool
-			if !pc.setupInputs(opts, availBytes, pc.startLevel, nil /* problemSpans */) {
+			if !pc.setupInputs(opts, availBytes, inProgressCompactions, pc.startLevel, nil /* problemSpans */) {
 				isCompacting = true
 			}
 			origPC := pc
-			pc = pc.maybeAddLevel(opts, availBytes)
+			env := compactionEnv{
+				diskAvailBytes:        availBytes,
+				inProgressCompactions: inProgressCompactions,
+			}
+			pc = pc.maybeAddLevel(opts, env)
 			// If pc points to a new pickedCompaction, a new multi level compaction
 			// was initialized.
 			initMultiLevel := pc != origPC
@@ -1158,6 +1081,13 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			}
 			if isCompacting {
 				fmt.Fprintf(&buf, "is-compacting\n")
+			}
+
+			if len(inProgressCompactions) > 0 {
+				fmt.Fprintln(&buf, "compactions")
+				for _, c := range inProgressCompactions {
+					fmt.Fprintf(&buf, "  %s\n", c.String())
+				}
 			}
 
 			if initMultiLevel {
@@ -1272,50 +1202,6 @@ func TestCompactionOutputFileSize(t *testing.T) {
 	opts := DefaultOptions()
 	var picker *compactionPickerByScore
 
-	parseMeta := func(s string) (*manifest.TableMetadata, error) {
-		parts := strings.Split(s, ":")
-		fileNum, err := strconv.Atoi(parts[0])
-		if err != nil {
-			return nil, err
-		}
-		fields := strings.Fields(parts[1])
-		parts = strings.Split(fields[0], "-")
-		if len(parts) != 2 {
-			return nil, errors.Errorf("malformed table spec: %s. usage: <file-num>:start.SET.1-end.SET.2", s)
-		}
-		m := (&manifest.TableMetadata{
-			TableNum: base.TableNum(fileNum),
-			Size:     1028,
-		}).ExtendPointKeyBounds(
-			opts.Comparer.Compare,
-			base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		)
-		m.InitPhysicalBacking()
-		for _, p := range fields[1:] {
-			if strings.HasPrefix(p, "size=") {
-				v, err := strconv.Atoi(strings.TrimPrefix(p, "size="))
-				if err != nil {
-					return nil, err
-				}
-				m.Size = uint64(v)
-			}
-			if strings.HasPrefix(p, "range-deletions-bytes-estimate=") {
-				v, err := strconv.Atoi(strings.TrimPrefix(p, "range-deletions-bytes-estimate="))
-				if err != nil {
-					return nil, err
-				}
-				m.Stats.RangeDeletionsBytesEstimate = uint64(v)
-				m.Stats.NumDeletions = 1 // At least one range del responsible for the deletion bytes.
-				m.StatsMarkValid()
-			}
-		}
-		m.SmallestSeqNum = m.Smallest().SeqNum()
-		m.LargestSeqNum = m.Largest().SeqNum()
-		m.LargestSeqNumAbsolute = m.LargestSeqNum
-		return m, nil
-	}
-
 	datadriven.RunTest(t, "testdata/compaction_output_file_size", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
@@ -1334,7 +1220,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 						return err.Error()
 					}
 				default:
-					meta, err := parseMeta(data)
+					meta, err := parseTableMeta(t, data, opts)
 					if err != nil {
 						return err.Error()
 					}

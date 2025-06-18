@@ -82,13 +82,7 @@ L2 max-size=5
 L3
   e.SET.3-f.SET.2 size=100
 ----
-L1
-  000001:[a#1,SET-b#2,SET]
-L2
-  000002:[a#3,SET-c#4,SET]
-init-multi-level(1,2,3)
-Original WriteAmp 1.83; ML WriteAmp 1.00
-Original OverlappingRatio 0.83; ML OverlappingRatio 0.00
+malformed table spec: L2 max-size=5. usage: <optional-file-num>:start.SET.1-end.SET.2
 
 # Init a multi-level compaction with no file in the lowest level.
 setup-inputs a a
@@ -317,13 +311,17 @@ L1
 # Verify a multi level compaction will not init on a compacting file.
 setup-inputs a a
 L1
-  a.SET.1-b.SET.2 size=1
+  000001:a.SET.1-b.SET.2 size=1
 L2
-  a.SET.3-c.SET.4 size=1
+  000002:a.SET.3-c.SET.4 size=1
 L3
-  c.SET.3-d.SET.2 size=1 compacting
+  000003:c.SET.3-d.SET.2 size=1
+compactions
+  L3  000003 -> L4
 ----
 L1
   000001:[a#1,SET-b#2,SET]
 L2
   000002:[a#3,SET-c#4,SET]
+compactions
+  L3 000003 -> L4
