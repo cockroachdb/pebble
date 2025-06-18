@@ -101,8 +101,10 @@ var Settings = [...]compression.Setting{
 	compression.MinLZBalanced,
 	compression.ZstdLevel1,
 	compression.ZstdLevel3,
-	compression.ZstdLevel5,
-	compression.ZstdLevel7,
+	// Zstd levels 5+ are too slow (on the order of 15-20MB/s to compress) and
+	// don't usually offer a very large benefit in terms of size vs. level 3.
+	// compression.ZstdLevel5,
+	// compression.ZstdLevel7,
 }
 
 const numSettings = 7
