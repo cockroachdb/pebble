@@ -89,7 +89,7 @@ func (a *BlockAnalyzer) runExperiment(
 	}
 	decompressionTime := t2.Elapsed()
 
-	// CPU times are in nanoseconds / byte.
+	// CPU times are in nanoseconds per uncompressed byte.
 	pa.CompressionTime.Add(float64(compressionTime)/float64(len(block)), uint64(len(block)))
 	pa.DecompressionTime.Add(float64(decompressionTime)/float64(len(block)), uint64(len(block)))
 	pa.CompressionRatio.Add(float64(len(block))/float64(len(compressed)), uint64(len(block)))
