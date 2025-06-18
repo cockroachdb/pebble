@@ -79,11 +79,13 @@ L2
 # Verify setup inputs can identify compacting files in range
 setup-inputs a d
 L1
-  a.SET.5-f.SET.6
+  000001:a.SET.5-f.SET.6
 L2
-  a.SET.3-c.SET.4
-  d.SET.3-e.SET.2 compacting
-  f.SET.3-g.SET.6
+  000002:a.SET.3-c.SET.4
+  000003:d.SET.3-e.SET.2
+  000004:f.SET.3-g.SET.6
+compactions
+  L2 000003 -> L3
 ----
 L1
   000001:[a#5,SET-f#6,SET]
@@ -92,22 +94,52 @@ L2
   000003:[d#3,SET-e#2,SET]
   000004:[f#3,SET-g#6,SET]
 is-compacting
+compactions
+  L2 000003 -> L3
 
 # Verify when there is one file in range and it is compacting
 setup-inputs a a
 L2
-  a.SET.3-c.SET.4 compacting
-  d.SET.3-e.SET.2
+  000001:a.SET.3-c.SET.4
+  000002:d.SET.3-e.SET.2
+compactions
+  L2 000001 -> L3
 ----
 L2
   000001:[a#3,SET-c#4,SET]
 is-compacting
+compactions
+  L2 000001 -> L3
 
 # Verify when there is one file in level and is compacting
 setup-inputs a a
 L2
-  a.SET.3-c.SET.4 compacting
+   000001:a.SET.3-c.SET.4 compacting
+compactions
+  L2 000001 -> L3
 ----
 L2
   000001:[a#3,SET-c#4,SET]
 is-compacting
+compactions
+  L2 000001 -> L3
+
+
+# Setup a compaction where the input files don't overlap
+# but the compaction range conflicts wtih an ongoing compaction.
+
+setup-inputs e f
+L1
+  000001:a.SET.5-b.SET.6
+  000003:e.SET.7-f.SET.8
+  000002:v.SET.3-z.SET.4
+L2
+  000004:a.SET.1-c.SET.2
+compactions
+  L1 000001 000002 -> L2
+----
+L1
+  000003:[e#7,SET-f#8,SET]
+is-compacting
+compactions
+  L1 000001 000002 -> L2
