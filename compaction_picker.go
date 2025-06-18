@@ -339,7 +339,6 @@ func newPickedCompactionFromL0(
 
 	pc := newPickedTableCompaction(opts, vers, l0Organizer, 0, outputLevel, baseLevel)
 	pc.lcf = lcf
-	pc.outputLevel.level = outputLevel
 
 	// Manually build the compaction as opposed to calling
 	// pickAutoHelper. This is because L0Sublevels has already added
@@ -416,11 +415,12 @@ func (pc *pickedTableCompaction) clone() *pickedTableCompaction {
 // pc.outputLevel. It returns false if a concurrent compaction is occurring on the start or
 // output level files. Note that inputLevel is not necessarily pc.startLevel. In multiLevel
 // compactions, inputs are set by calling setupInputs once for each adjacent pair of levels.
-// This will preserve level invariants when expanding the compaction. pc.smallest and pc.largest
-// will be updated to reflect the key range of the inputs.
+// This will preserve level invariants when expanding the compaction. pc.bounds will be updated
+// to reflect the key range of the inputs.
 func (pc *pickedTableCompaction) setupInputs(
 	opts *Options,
 	diskAvailBytes uint64,
+	inProgressCompactions []compactionInfo,
 	inputLevel *compactionLevel,
 	problemSpans *problemspans.ByLevel,
 ) bool {
@@ -462,7 +462,8 @@ func (pc *pickedTableCompaction) setupInputs(
 		// If L0 is involved, it should always be the startLevel of the compaction.
 		pc.startLevel.l0SublevelInfo = generateSublevelInfo(cmp, pc.startLevel.files)
 	}
-	return true
+
+	return !outputKeyRangeAlreadyCompacting(cmp, inProgressCompactions, pc)
 }
 
 // grow grows the number of inputs at startLevel without changing the number of
@@ -589,9 +590,7 @@ func (pc *pickedTableCompaction) estimatedInputSize() uint64 {
 
 // setupMultiLevelCandidate returns true if it successfully added another level
 // to the compaction.
-func (pc *pickedTableCompaction) setupMultiLevelCandidate(
-	opts *Options, diskAvailBytes uint64,
-) bool {
+func (pc *pickedTableCompaction) setupMultiLevelCandidate(opts *Options, env compactionEnv) bool {
 	pc.inputs = append(pc.inputs, compactionLevel{level: pc.outputLevel.level + 1})
 
 	// Recalibrate startLevel and outputLevel:
@@ -599,7 +598,7 @@ func (pc *pickedTableCompaction) setupMultiLevelCandidate(
 	//  - push outputLevel to extraLevels and move the new level to outputLevel
 	pc.startLevel = &pc.inputs[0]
 	pc.outputLevel = &pc.inputs[2]
-	return pc.setupInputs(opts, diskAvailBytes, &pc.inputs[1], nil /* TODO(radu) */)
+	return pc.setupInputs(opts, env.diskAvailBytes, env.inProgressCompactions, &pc.inputs[1], nil /* TODO(radu) */)
 }
 
 // canCompactTables returns true if the tables in the level slice are not
@@ -1401,9 +1400,7 @@ func (p *compactionPickerByScore) pickAutoScore(env compactionEnv) pickedCompact
 
 		if info.level == 0 {
 			ptc := pickL0(env, p.opts, p.vers, p.latestVersionState.l0Organizer, p.baseLevel)
-			// Fail-safe to protect against compacting the same sstable
-			// concurrently.
-			if ptc != nil && !inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, ptc) {
+			if ptc != nil {
 				p.addScoresToPickedCompactionMetrics(ptc, scores)
 				ptc.score = info.score
 				if false {
@@ -1422,8 +1419,7 @@ func (p *compactionPickerByScore) pickAutoScore(env compactionEnv) pickedCompact
 		}
 
 		pc := pickAutoLPositive(env, p.opts, p.vers, p.latestVersionState.l0Organizer, *info, p.baseLevel)
-		// Fail-safe to protect against compacting the same sstable concurrently.
-		if pc != nil && !inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, pc) {
+		if pc != nil {
 			p.addScoresToPickedCompactionMetrics(pc, scores)
 			pc.score = info.score
 			if false {
@@ -1615,17 +1611,10 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 		startLevel, outputLevel, p.baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = inputs
-	pc.bounds = manifest.KeyRange(p.opts.Comparer.Compare, pc.startLevel.files.All())
 
-	// Fail-safe to protect against compacting the same sstable concurrently.
-	if inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, pc) {
+	if !pc.setupInputs(p.opts, env.diskAvailBytes, env.inProgressCompactions, pc.startLevel, env.problemSpans) {
 		return nil
 	}
-
-	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
-		return nil
-	}
-
 	return pc
 }
 
@@ -1793,15 +1782,15 @@ func pickAutoLPositive(
 	}
 	pc.startLevel.files = cInfo.file.Slice()
 
-	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
+	if !pc.setupInputs(opts, env.diskAvailBytes, env.inProgressCompactions, pc.startLevel, env.problemSpans) {
 		return nil
 	}
-	return pc.maybeAddLevel(opts, env.diskAvailBytes)
+	return pc.maybeAddLevel(opts, env)
 }
 
 // maybeAddLevel maybe adds a level to the picked compaction.
 func (pc *pickedTableCompaction) maybeAddLevel(
-	opts *Options, diskAvailBytes uint64,
+	opts *Options, env compactionEnv,
 ) *pickedTableCompaction {
 	pc.pickerMetrics.singleLevelOverlappingRatio = pc.overlappingRatio()
 	if pc.outputLevel.level == numLevels-1 {
@@ -1812,17 +1801,17 @@ func (pc *pickedTableCompaction) maybeAddLevel(
 		return pc
 	}
 	targetFileSize := opts.TargetFileSize(pc.outputLevel.level, pc.baseLevel)
-	if pc.estimatedInputSize() > expandedCompactionByteSizeLimit(opts, targetFileSize, diskAvailBytes) {
+	if pc.estimatedInputSize() > expandedCompactionByteSizeLimit(opts, targetFileSize, env.diskAvailBytes) {
 		// Don't add a level if the current compaction exceeds the compaction size limit
 		return pc
 	}
-	return opts.Experimental.MultiLevelCompactionHeuristic.pick(pc, opts, diskAvailBytes)
+	return opts.Experimental.MultiLevelCompactionHeuristic.pick(pc, opts, env)
 }
 
 // MultiLevelHeuristic evaluates whether to add files from the next level into the compaction.
 type MultiLevelHeuristic interface {
 	// Evaluate returns the preferred compaction.
-	pick(pc *pickedTableCompaction, opts *Options, diskAvailBytes uint64) *pickedTableCompaction
+	pick(pc *pickedTableCompaction, opts *Options, env compactionEnv) *pickedTableCompaction
 
 	// Returns if the heuristic allows L0 to be involved in ML compaction
 	allowL0() bool
@@ -1837,7 +1826,7 @@ type NoMultiLevel struct{}
 var _ MultiLevelHeuristic = (*NoMultiLevel)(nil)
 
 func (nml NoMultiLevel) pick(
-	pc *pickedTableCompaction, opts *Options, diskAvailBytes uint64,
+	pc *pickedTableCompaction, opts *Options, env compactionEnv,
 ) *pickedTableCompaction {
 	return pc
 }
@@ -1893,17 +1882,17 @@ var _ MultiLevelHeuristic = (*WriteAmpHeuristic)(nil)
 // in-progress flushes and compactions from completing, etc. Consider ways to
 // deduplicate work, given that setupInputs has already been called.
 func (wa WriteAmpHeuristic) pick(
-	pcOrig *pickedTableCompaction, opts *Options, diskAvailBytes uint64,
+	pcOrig *pickedTableCompaction, opts *Options, env compactionEnv,
 ) *pickedTableCompaction {
 	pcMulti := pcOrig.clone()
-	if !pcMulti.setupMultiLevelCandidate(opts, diskAvailBytes) {
+	if !pcMulti.setupMultiLevelCandidate(opts, env) {
 		return pcOrig
 	}
 	// We consider the addition of a level as an "expansion" of the compaction.
 	// If pcMulti is past the expanded compaction byte size limit already,
 	// we don't consider it.
 	targetFileSize := opts.TargetFileSize(pcMulti.outputLevel.level, pcMulti.baseLevel)
-	if pcMulti.estimatedInputSize() >= expandedCompactionByteSizeLimit(opts, targetFileSize, diskAvailBytes) {
+	if pcMulti.estimatedInputSize() >= expandedCompactionByteSizeLimit(opts, targetFileSize, env.diskAvailBytes) {
 		return pcOrig
 	}
 	picked := pcOrig
@@ -1943,11 +1932,11 @@ func pickL0(
 	lcf := l0Organizer.PickBaseCompaction(opts.Logger, 1, vers.Levels[baseLevel].Slice(), baseLevel, env.problemSpans)
 	if lcf != nil {
 		pc := newPickedCompactionFromL0(lcf, opts, vers, l0Organizer, baseLevel, true)
-		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
+		if pc.setupInputs(opts, env.diskAvailBytes, env.inProgressCompactions, pc.startLevel, env.problemSpans) {
 			if pc.startLevel.files.Empty() {
 				opts.Logger.Errorf("%v", base.AssertionFailedf("empty compaction chosen"))
 			}
-			return pc.maybeAddLevel(opts, env.diskAvailBytes)
+			return pc.maybeAddLevel(opts, env)
 		}
 		// TODO(radu): investigate why this happens.
 		// opts.Logger.Errorf("%v", base.AssertionFailedf("setupInputs failed"))
@@ -1960,7 +1949,7 @@ func pickL0(
 	lcf = l0Organizer.PickIntraL0Compaction(env.earliestUnflushedSeqNum, minIntraL0Count, env.problemSpans)
 	if lcf != nil {
 		pc := newPickedCompactionFromL0(lcf, opts, vers, l0Organizer, baseLevel, false)
-		if pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
+		if pc.setupInputs(opts, env.diskAvailBytes, env.inProgressCompactions, pc.startLevel, env.problemSpans) {
 			if pc.startLevel.files.Empty() {
 				opts.Logger.Fatalf("empty compaction chosen")
 			}
@@ -2015,12 +2004,12 @@ func newPickedManualCompaction(
 	}
 	// We use nil problemSpans because we don't want problem spans to prevent
 	// manual compactions.
-	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, nil /* problemSpans */) {
+	if !pc.setupInputs(opts, env.diskAvailBytes, env.inProgressCompactions, pc.startLevel, nil /* problemSpans */) {
 		// setupInputs returned false indicating there's a conflicting
 		// concurrent compaction.
 		return nil, true
 	}
-	if pc = pc.maybeAddLevel(opts, env.diskAvailBytes); pc == nil {
+	if pc = pc.maybeAddLevel(opts, env); pc == nil {
 		return nil, false
 	}
 	if pc.outputLevel.level != outputLevel {
@@ -2029,10 +2018,6 @@ func newPickedManualCompaction(
 		} else {
 			panic("pebble: compaction picked unexpected output level")
 		}
-	}
-	// Fail-safe to protect against compacting the same sstable concurrently.
-	if inputRangeAlreadyCompacting(opts.Comparer.Compare, env, pc) {
-		return nil, true
 	}
 	return pc, false
 }
@@ -2060,17 +2045,13 @@ func pickDownloadCompaction(
 	pc = newPickedTableCompaction(opts, vers, l0Organizer, level, level, baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = manifest.NewLevelSliceKeySorted(opts.Comparer.Compare, []*manifest.TableMetadata{file})
-	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, nil /* problemSpans */) {
+	if !pc.setupInputs(opts, env.diskAvailBytes, env.inProgressCompactions, pc.startLevel, nil /* problemSpans */) {
 		// setupInputs returned false indicating there's a conflicting
 		// concurrent compaction.
 		return nil
 	}
 	if pc.outputLevel.level != level {
 		panic("pebble: download compaction picked unexpected output level")
-	}
-	// Fail-safe to protect against compacting the same sstable concurrently.
-	if inputRangeAlreadyCompacting(opts.Comparer.Compare, env, pc) {
-		return nil
 	}
 	return pc
 }
@@ -2112,10 +2093,7 @@ func pickReadTriggeredCompactionHelper(
 		rc.level, defaultOutputLevel(rc.level, p.baseLevel), p.baseLevel)
 
 	pc.startLevel.files = overlapSlice
-	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
-		return nil
-	}
-	if inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, pc) {
+	if !pc.setupInputs(p.opts, env.diskAvailBytes, env.inProgressCompactions, pc.startLevel, env.problemSpans) {
 		return nil
 	}
 	pc.kind = compactionKindRead
@@ -2140,17 +2118,11 @@ func (p *compactionPickerByScore) forceBaseLevel1() {
 	p.baseLevel = 1
 }
 
-func inputRangeAlreadyCompacting(
-	cmp base.Compare, env compactionEnv, pc *pickedTableCompaction,
+// outputKeyRangeAlreadyCompacting checks if the input range of the picked
+// compaction is already being written to by an in-progress compaction.
+func outputKeyRangeAlreadyCompacting(
+	cmp base.Compare, inProgressCompactions []compactionInfo, pc *pickedTableCompaction,
 ) bool {
-	for _, cl := range pc.inputs {
-		for f := range cl.files.All() {
-			if f.IsCompacting() {
-				return true
-			}
-		}
-	}
-
 	// Look for active compactions outputting to the same region of the key
 	// space in the same output level. Two potential compactions may conflict
 	// without sharing input files if there are no files in the output level
@@ -2180,7 +2152,7 @@ func inputRangeAlreadyCompacting(
 	//
 	// * - currently compacting
 	if pc.outputLevel != nil && pc.outputLevel.level != 0 {
-		for _, c := range env.inProgressCompactions {
+		for _, c := range inProgressCompactions {
 			if pc.outputLevel.level != c.outputLevel {
 				continue
 			}

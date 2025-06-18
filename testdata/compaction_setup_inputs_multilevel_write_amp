@@ -317,13 +317,17 @@ L1
 # Verify a multi level compaction will not init on a compacting file.
 setup-inputs a a
 L1
-  a.SET.1-b.SET.2 size=1
+  000001:a.SET.1-b.SET.2 size=1
 L2
-  a.SET.3-c.SET.4 size=1
+  000002:a.SET.3-c.SET.4 size=1
 L3
-  c.SET.3-d.SET.2 size=1 compacting
+  000003:c.SET.3-d.SET.2 size=1
+compactions
+  L3  000003 -> L4
 ----
 L1
   000001:[a#1,SET-b#2,SET]
 L2
   000002:[a#3,SET-c#4,SET]
+compactions
+  L3 000003 -> L4
