@@ -101,11 +101,13 @@ var Settings = [...]compression.Setting{
 	compression.MinLZBalanced,
 	compression.ZstdLevel1,
 	compression.ZstdLevel3,
-	compression.ZstdLevel5,
-	compression.ZstdLevel7,
+	// Zstd levels 5+ are too slow (on the order of 15-20MB/s to compress) and
+	// don't usually offer a very large benefit in terms of size vs. level 3.
+	// compression.ZstdLevel5,
+	// compression.ZstdLevel7,
 }
 
-const numSettings = 7
+const numSettings = len(Settings)
 
 // Buckets holds the results of all experiments.
 type Buckets [blockkind.NumKinds][numBlockSizes][numCompressibility]Bucket
@@ -121,7 +123,7 @@ type Bucket struct {
 // specific compression.Setting.
 type PerSetting struct {
 	CompressionRatio WeightedWelford
-	// CPU times are in nanoseconds per byte.
+	// CPU times are in nanoseconds per uncompressed byte.
 	CompressionTime   WeightedWelford
 	DecompressionTime WeightedWelford
 }
