@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/redact"
 )
 
 var neverSeparateValues getValueSeparation = func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
@@ -56,6 +57,16 @@ func (d *DB) determineCompactionValueSeparation(
 		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
 		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level),
 		minimumSize:        policy.MinimumSize,
+		invalidValueCallback: func(userKey []byte, value []byte, err error) {
+			// The value may not be safe, so it will be redacted when redaction
+			// is enabled.
+			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
+				Kind:    InvalidValue,
+				UserKey: userKey,
+				ExtraInfo: redact.Sprintf("callback=ShortAttributeExtractor,value=%x,err=%q",
+					value, err),
+			})
+		},
 	}
 }
 
@@ -167,6 +178,9 @@ type writeNewBlobFiles struct {
 	// to the sstable (but may still be written to a value block within the
 	// sstable).
 	minimumSize int
+	// invalidValueCallback is called when a value is encountered for which the
+	// short attribute extractor returns an error.
+	invalidValueCallback func(userKey []byte, value []byte, err error)
 
 	// Current blob writer state
 	writer  *blob.FileWriter
@@ -230,7 +244,15 @@ func (vs *writeNewBlobFiles) Add(
 		keyPrefixLen := vs.comparer.Split(kv.K.UserKey)
 		shortAttr, err = vs.shortAttrExtractor(kv.K.UserKey, keyPrefixLen, v)
 		if err != nil {
-			return err
+			// Report that there was a value for which the short attribute
+			// extractor was unable to extract a short attribute.
+			vs.invalidValueCallback(kv.K.UserKey, v, err)
+
+			// Rather than erroring out and aborting the flush or compaction, we
+			// fallback to writing the value verbatim to the sstable. Otherwise
+			// a flush could busy loop, repeatedly attempting to write the same
+			// memtable and repeatedly unable to extract a key's short attribute.
+			return tw.Add(kv.K, v, forceObsolete)
 		}
 	}
 

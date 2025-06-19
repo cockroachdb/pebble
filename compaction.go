@@ -32,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/redact"
 )
 
 var errEmptyTable = errors.New("pebble: empty table")
@@ -3254,9 +3255,10 @@ func (d *DB) compactAndWrite(
 		},
 		MissizedDeleteCallback: func(userKey []byte, elidedSize, expectedSize uint64) {
 			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
-				Kind:      MissizedDelete,
-				UserKey:   slices.Clone(userKey),
-				ExtraInfo: fmt.Sprintf("elidedSize=%d,expectedSize=%d", elidedSize, expectedSize),
+				Kind:    MissizedDelete,
+				UserKey: slices.Clone(userKey),
+				ExtraInfo: redact.Sprintf("elidedSize=%d,expectedSize=%d",
+					redact.SafeUint(elidedSize), redact.SafeUint(expectedSize)),
 			})
 		},
 	}
