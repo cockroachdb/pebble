@@ -155,3 +155,27 @@ no blob file created
 blobrefs:[
  0: B000003 5
 ]
+
+# Test handling of a short attribute extractor that errors when we attempt to
+# extract the short attribute. We should fall back to writing the value inplace
+# within the output sstable.
+
+init write-new-blob-files minimum-size=2 short-attr-extractor=error
+----
+
+add
+bar#201,SET:poi
+bax#202,SET:blob{value=yaya}
+----
+# create: 000007.sst
+# invalid value for key "bar", value: "poi": short attribute extractor error
+RawWriter.Add("bar#201,SET", "poi", false)
+# invalid value for key "bax", value: "yaya": short attribute extractor error
+RawWriter.Add("bax#202,SET", "yaya", false)
+
+close-output
+----
+# sync-data: 000007.sst
+# close: 000007.sst
+no blob file created
+blobrefs:[]
