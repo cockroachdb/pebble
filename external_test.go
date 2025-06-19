@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"io"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/cockroachkvs"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/metamorphic"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -39,7 +41,7 @@ func TestIteratorErrors(t *testing.T) {
 	// WriteOpConfig. We'll perform ~10,000 random operations that mutate the
 	// state of the database.
 	kf := metamorphic.TestkeysKeyFormat
-	testOpts := metamorphic.RandomOptions(rng, kf, nil /* custom opt parsers */)
+	testOpts := metamorphic.RandomOptions(rng, kf, metamorphic.RandomOptionsCfg{})
 	// With even a very small injection probability, it's relatively
 	// unlikely that pebble.DebugCheckLevels will successfully complete
 	// without being interrupted by an ErrInjected. Omit these checks.
@@ -245,4 +247,166 @@ func buildSeparatedValuesDB(
 	}
 
 	return db, keys
+}
+
+// TestDoubleRestart checks that we are not in a precarious state immediately
+// after restart. This could happen if we remove WALs before all necessary
+// flushes are complete. Steps:
+//
+//  1. Use metamorphic to run opretaions on a store; the resulting filesystem is
+//     cloned multiple times in subsequent steps.
+//  2. Clone the FS and start a "golden" store; read all KVs that will be used
+//     as the source of truth.
+//  3. Independently clone the FS again and open a store; sleep for a small
+//     random amount then close and reopen the store. Then read KVs and
+//     cross-check against the "golden" KVs in step 2.
+//  4. Repeat step 3 multiple times, each time with a new independent clone.
+//
+// This test was used to reproduce the failure in
+// https://github.com/cockroachdb/cockroach/issues/148419.
+func TestDoubleRestart(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("Using seed %d", seed)
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+
+	kf := metamorphic.TestkeysKeyFormat
+	testOpts := metamorphic.RandomOptions(rng, kf, metamorphic.RandomOptionsCfg{
+		AlwaysStrictFS:  true,
+		NoRemoteStorage: true,
+	})
+	metaFS := testOpts.Opts.FS.(*vfs.MemFS)
+
+	var metaTestOutput bytes.Buffer
+	{
+		// Disable restart (it changes the FS internally and we don't have access to
+		// the new one).
+		opCfg := metamorphic.WriteOpConfig().WithOpWeight(metamorphic.OpDBRestart, 0)
+		test, err := metamorphic.New(
+			metamorphic.GenerateOps(rng, 2000, kf, opCfg),
+			testOpts, "" /* dir */, &metaTestOutput,
+		)
+		require.NoError(t, err)
+		require.NoError(t, metamorphic.Execute(test))
+	}
+	defer func() {
+		if t.Failed() {
+			t.Logf("Meta test output:\n%s", metaTestOutput.String())
+		}
+	}()
+
+	// makeOpts creates the options for a db that starts from a clone of metaFS.
+	makeOpts := func(logger base.Logger) *pebble.Options {
+		opts := testOpts.Opts.Clone()
+
+		// Make a copy of the metaFS.
+		opts.FS = vfs.NewMem()
+		ok, err := vfs.Clone(metaFS, opts.FS, "", "")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		opts.FS = errorfs.Wrap(opts.FS, errorfs.RandomLatency(
+			errorfs.Randomly(0.8, rng.Int64()),
+			10*time.Microsecond,
+			rng.Int64(),
+			time.Millisecond,
+		))
+
+		if opts.WALFailover != nil {
+			wf := *opts.WALFailover
+			wf.Secondary.FS = opts.FS
+			opts.WALFailover = &wf
+		}
+		opts.Logger = logger
+		opts.LoggerAndTracer = nil
+		lel := pebble.MakeLoggingEventListener(logger)
+		opts.EventListener = &lel
+		return opts
+	}
+
+	// Open the "golden" filesystem and scan it to get the expected VKs.
+	goldenLog := &base.InMemLogger{}
+	defer func() {
+		if t.Failed() {
+			t.Logf("Golden db logs:\n%s\n", goldenLog.String())
+		}
+	}()
+	db, err := pebble.Open("", makeOpts(goldenLog))
+	require.NoError(t, err)
+	goldenKeys, goldenVals := getKVs(t, db)
+	require.NoError(t, db.Close())
+
+	// Repeatedly open and quickly close the database, verifying that we did not
+	// lose any data during this restart (e.g. because we prematurely deleted
+	// WALs).
+	for iter := 0; iter < 10; iter++ {
+		func() {
+			dbLog := &base.InMemLogger{}
+			defer func() {
+				if t.Failed() {
+					t.Logf("Db logs:\n%s\n", dbLog.String())
+				}
+			}()
+			opts := makeOpts(dbLog)
+			// Sometimes reduce the memtable size to trigger the large batch recovery
+			// code path.
+			if rng.IntN(2) == 0 {
+				opts.MemTableSize = 1200
+			}
+			dbLog.Infof("Opening db\n")
+			db, err := pebble.Open("", opts)
+			require.NoError(t, err)
+			if rng.IntN(2) == 0 {
+				d := time.Duration(rng.IntN(1000)) * time.Microsecond
+				dbLog.Infof("Sleeping %s", d)
+				time.Sleep(d)
+			}
+			dbLog.Infof("Closing db")
+			require.NoError(t, db.Close())
+
+			dbLog.Infof("Reopening db")
+			db, err = pebble.Open("", opts)
+			require.NoError(t, err)
+			dbLog.Infof("Checking KVs")
+			checkKVs(t, db, opts.Comparer, goldenKeys, goldenVals)
+			dbLog.Infof("Closing db")
+			require.NoError(t, db.Close())
+		}()
+	}
+}
+
+// getKVs retrieves and returns all keys and values from the database in order.
+func getKVs(t *testing.T, db *pebble.DB) (keys [][]byte, vals [][]byte) {
+	t.Helper()
+	it, err := db.NewIter(&pebble.IterOptions{})
+	require.NoError(t, err)
+	for valid := it.First(); valid; valid = it.Next() {
+		keys = append(keys, slices.Clone(it.Key()))
+		val, err := it.ValueAndErr()
+		require.NoError(t, err)
+		vals = append(vals, slices.Clone(val))
+	}
+	require.NoError(t, it.Close())
+	return keys, vals
+}
+
+// checkKVs checks that the keys and values in the database match the expected ones.
+func checkKVs(
+	t *testing.T, db *pebble.DB, cmp *base.Comparer, expectedKeys [][]byte, expectedVals [][]byte,
+) {
+	keys, vals := getKVs(t, db)
+	for i := 0; i < len(keys) || i < len(expectedKeys); i++ {
+		if i < len(keys) && i < len(expectedKeys) && cmp.Equal(keys[i], expectedKeys[i]) {
+			continue
+		}
+		if i < len(keys) && (i == len(expectedKeys) || cmp.Compare(keys[i], expectedKeys[i]) < 0) {
+			t.Fatalf("extra key: %q\n", cmp.FormatKey(keys[i]))
+		}
+		t.Fatalf("missing key: %q\n", cmp.FormatKey(expectedKeys[i]))
+	}
+	for i := range vals {
+		// require.Equalf by itself fails if one is nil and the other is a non-nil empty slice.
+		if !bytes.Equal(vals[i], expectedVals[i]) {
+			require.Equalf(t, expectedVals[i], vals[i], "key %q value msimatch", cmp.FormatKey(keys[i]))
+		}
+	}
 }
