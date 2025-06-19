@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/compact"
@@ -94,8 +95,19 @@ func TestValueSeparationPolicy(t *testing.T) {
 							fn++
 							return objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
 						},
+						invalidValueCallback: func(userKey []byte, value []byte, err error) {
+							fmt.Fprintf(&buf, "# invalid value for key %q, value: %q: %s\n", userKey, value, err)
+						},
 					}
 					d.MaybeScanArgs(t, "minimum-size", &newSep.minimumSize)
+					if arg, ok := d.Arg("short-attr-extractor"); ok {
+						switch arg.SingleVal(t) {
+						case "error":
+							newSep.shortAttrExtractor = errShortAttrExtractor
+						default:
+							t.Fatalf("unknown short attribute extractor: %s", arg.String())
+						}
+					}
 					vs = newSep
 				default:
 					t.Fatalf("unknown value separation policy: %s", x)
@@ -152,6 +164,13 @@ func TestValueSeparationPolicy(t *testing.T) {
 			panic("unreachable")
 		})
 }
+
+func errShortAttrExtractor(key []byte, keyPrefixLen int, value []byte) (ShortAttribute, error) {
+	return 0, errors.New("short attribute extractor error")
+}
+
+// Assert that errShortAttrExtractor implements the ShortAttributeExtractor
+var _ ShortAttributeExtractor = errShortAttrExtractor
 
 // loggingRawWriter wraps a sstable.RawWriter and logs calls to Add and
 // AddWithBlobHandle to provide observability into the separation of values into

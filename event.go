@@ -646,12 +646,14 @@ type PossibleAPIMisuseInfo struct {
 	// UserKey is set for the following kinds:
 	//  - IneffectualSingleDelete,
 	//  - NondeterministicSingleDelete,
-	//  - MissizedDelete.
+	//  - MissizedDelete,
+	//  - InvalidValue.
 	UserKey []byte
 
 	// ExtraInfo is set for the following kinds:
 	//  - MissizedDelete: contains "elidedSize=<size>,expectedSize=<size>"
-	ExtraInfo string
+	//  - InvalidValue: contains "callback=<callbackName>,value=<value>,err=<err>"
+	ExtraInfo redact.RedactableString
 }
 
 func (i PossibleAPIMisuseInfo) String() string {
@@ -664,7 +666,9 @@ func (i PossibleAPIMisuseInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	case IneffectualSingleDelete, NondeterministicSingleDelete:
 		w.Printf("possible API misuse: %s (key=%q)", redact.Safe(i.Kind), i.UserKey)
 	case MissizedDelete:
-		w.Printf("possible API misuse: %s (key=%q, %s)", redact.Safe(i.Kind), i.UserKey, redact.Safe(i.ExtraInfo))
+		w.Printf("possible API misuse: %s (key=%q, %s)", redact.Safe(i.Kind), i.UserKey, i.ExtraInfo)
+	case InvalidValue:
+		w.Printf("possible API misuse: %s (key=%q, %s)", redact.Safe(i.Kind), i.UserKey, i.ExtraInfo)
 	default:
 		if invariants.Enabled {
 			panic("invalid API misuse event")
@@ -759,6 +763,12 @@ const (
 	// not accurately record the size of the value it deleted. This can lead to
 	// incorrect behavior in compactions.
 	MissizedDelete
+
+	// InvalidValue is emitted when a user-implemented callback (such as
+	// ShortAttributeExtractor) returns an error for a committed value. This
+	// suggests that either the callback is not implemented for all possible
+	// values or a malformed value was committed to the engine.
+	InvalidValue
 )
 
 func (k APIMisuseKind) String() string {
@@ -769,6 +779,8 @@ func (k APIMisuseKind) String() string {
 		return "nondeterministic SINGLEDEL"
 	case MissizedDelete:
 		return "missized DELSIZED"
+	case InvalidValue:
+		return "invalid value"
 	default:
 		return "unknown"
 	}
