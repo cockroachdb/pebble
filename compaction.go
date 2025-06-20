@@ -6,9 +6,11 @@ package pebble
 
 import (
 	"bytes"
+	stdcmp "cmp"
 	"context"
 	"fmt"
 	"iter"
+	"maps"
 	"math"
 	"runtime/pprof"
 	"slices"
@@ -331,6 +333,8 @@ type tableCompaction struct {
 
 	tableFormat   sstable.TableFormat
 	objCreateOpts objstorage.CreateOptions
+
+	annotations []string
 }
 
 // Assert that tableCompaction implements the compaction interface.
@@ -2681,6 +2685,7 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 
 	ve, stats, err := d.runCompaction(jobID, c)
 
+	info.Annotations = append(info.Annotations, c.annotations...)
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
@@ -3114,6 +3119,13 @@ func (d *DB) runDeleteOnlyCompaction(
 		}
 		return false
 	})
+	sort.Slice(ve.NewTables, func(i, j int) bool {
+		return ve.NewTables[i].Meta.TableNum < ve.NewTables[j].Meta.TableNum
+	})
+	deletedTableEntries := slices.Collect(maps.Keys(ve.DeletedTables))
+	slices.SortFunc(deletedTableEntries, func(a, b manifest.DeletedTableEntry) int {
+		return stdcmp.Compare(a.FileNum, b.FileNum)
+	})
 	// Remove any entries from CreatedBackingTables that are not used in any
 	// NewFiles.
 	usedBackingFiles := make(map[base.DiskFileNum]struct{})
@@ -3126,6 +3138,22 @@ func (d *DB) runDeleteOnlyCompaction(
 		_, used := usedBackingFiles[b.DiskFileNum]
 		return !used
 	})
+
+	// Iterate through the deleted tables and new tables to annotate excised tables.
+	// If a new table is virtual and the base.DiskFileNum is the same as a deleted table, then
+	// our deleted table was excised.
+	for _, table := range deletedTableEntries {
+		for _, newEntry := range ve.NewTables {
+			if newEntry.Meta.Virtual &&
+				newEntry.Meta.TableBacking.DiskFileNum == ve.DeletedTables[table].TableBacking.DiskFileNum {
+				c.annotations = append(c.annotations,
+					fmt.Sprintf("(excised: %s)", ve.DeletedTables[table].TableNum))
+				break
+			}
+		}
+
+	}
+
 	// Refresh the disk available statistic whenever a compaction/flush
 	// completes, before re-acquiring the mutex.
 	d.calculateDiskAvailableBytes()
