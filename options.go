@@ -1391,11 +1391,15 @@ func (o *Options) Level(level int) LevelOptions {
 
 // Clone creates a shallow-copy of the supplied options.
 func (o *Options) Clone() *Options {
-	n := &Options{}
-	if o != nil {
-		*n = *o
+	if o == nil {
+		return &Options{}
 	}
-	return n
+	n := *o
+	if o.WALFailover != nil {
+		c := *o.WALFailover
+		n.WALFailover = &c
+	}
+	return &n
 }
 
 func filterPolicyName(p FilterPolicy) string {
