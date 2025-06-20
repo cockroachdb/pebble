@@ -1,0 +1,80 @@
+init write-new-blob-files minimum-size=5
+----
+
+add
+bar#201,SET:poi
+bax#202,SET:blob{value=yaya}
+----
+# create: 000001.sst
+RawWriter.Add("bar#201,SET", "poi", false)
+RawWriter.Add("bax#202,SET", "yaya", false)
+
+add
+baz#202,SET:blob{value=yuumi}
+foo#209,SET:poiandyaya
+----
+# create: 000002.blob
+RawWriter.AddWithBlobHandle("baz#202,SET", "(f0,blk0,id0,len5)", 0, false)
+RawWriter.AddWithBlobHandle("foo#209,SET", "(f0,blk0,id1,len10)", 0, false)
+
+close-output
+----
+# sync-data: 000001.sst
+# close: 000001.sst
+# sync-data: 000002.blob
+# close: 000002.blob
+Blob file created: 000002 size:[105 (105B)] vals:[15 (15B)]
+{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15, FileLen: 105}
+blobrefs:[
+ 0: B000002 15
+]
+
+init preserve-blob-references
+B000002 physical:{000002 size:[82530] vals:[72111]}
+----
+
+add
+a#9,SET:blob{fileNum=000002 value=darcy}
+a#5,SET:blob{fileNum=000002 value=tani}
+b#2,DEL:
+c#9,SET:paddy
+----
+# create: 000003.sst
+RawWriter.AddWithBlobHandle("a#9,SET", "(f0,blk0,id0,len5)", 5, false)
+RawWriter.AddWithBlobHandle("a#5,SET", "(f0,blk0,id1,len4)", 4, false)
+RawWriter.Add("b#2,DEL", "", false)
+RawWriter.Add("c#9,SET", "paddy", false)
+
+close-output
+----
+# sync-data: 000003.sst
+# close: 000003.sst
+no blob file created
+blobrefs:[
+ 0: B000002 9
+]
+
+rewrite-blob 000002 000001 000003
+----
+# create: 000004.blob
+# open: 000001.sst (options: *vfs.randomReadsOption)
+# read-at(813, 61): 000001.sst
+# read-at(736, 77): 000001.sst
+# read-at(209, 527): 000001.sst
+# read-at(184, 25): 000001.sst
+# close: 000001.sst
+# open: 000003.sst (options: *vfs.randomReadsOption)
+# read-at(828, 61): 000003.sst
+# read-at(751, 77): 000003.sst
+# read-at(193, 558): 000003.sst
+# read-at(168, 25): 000003.sst
+# close: 000003.sst
+# open: 000002.blob (options: *vfs.randomReadsOption)
+# read-at(67, 38): 000002.blob
+# read-at(37, 30): 000002.blob
+# read-at(0, 37): 000002.blob
+# sync-data: 000004.blob
+# close: 000004.blob
+Successfully rewrote blob file 000002 to 000004
+Input SSTables: [000001 000003]
+SSTables with blob references: 2
