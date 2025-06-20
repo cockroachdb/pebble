@@ -305,6 +305,8 @@ type compaction struct {
 
 	tableFormat   sstable.TableFormat
 	objCreateOpts objstorage.CreateOptions
+
+	annotations []string
 }
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
@@ -2616,6 +2618,7 @@ func (d *DB) compact1(jobID JobID, c *compaction) (err error) {
 
 	ve, stats, err := d.runCompaction(jobID, c)
 
+	info.Annotations = append(info.Annotations, c.annotations...)
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
@@ -3059,6 +3062,24 @@ func (d *DB) runDeleteOnlyCompaction(
 		_, used := usedBackingFiles[b.DiskFileNum]
 		return !used
 	})
+
+	for delEntry := range ve.DeletedTables {
+		table := ve.DeletedTables[delEntry]
+		deleted := true
+		for _, newEntry := range ve.NewTables {
+			if newEntry.Meta.Virtual &&
+				newEntry.Meta.TableBacking.DiskFileNum == table.TableBacking.DiskFileNum {
+				deleted = false
+				c.annotations = append(c.annotations,
+					fmt.Sprintf("excised:%s", table.TableNum))
+				break
+			}
+		}
+		if deleted {
+			c.annotations = append(c.annotations,
+				fmt.Sprintf("deleted:%s", table.TableNum))
+		}
+	}
 	// Refresh the disk available statistic whenever a compaction/flush
 	// completes, before re-acquiring the mutex.
 	d.calculateDiskAvailableBytes()
