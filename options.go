@@ -1172,6 +1172,9 @@ type ValueSeparationPolicy struct {
 	// overlapping blob files, the compaction will instead rewrite referenced
 	// values into new blob files.
 	MaxBlobReferenceDepth int
+	// RewriteMinimumAge is the minimum age of a blob file that is eligible to
+	// be rewritten to reclaim disk space.
+	RewriteMinimumAge time.Duration
 }
 
 // SpanPolicy contains policies that can vary by key range. The zero value is
@@ -1592,6 +1595,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
 		fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
 		fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
+		fmt.Fprintf(&buf, "  rewrite_minimum_age=%s\n", policy.RewriteMinimumAge)
 	}
 
 	if o.WALFailover != nil {
@@ -2025,6 +2029,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				valSepPolicy.MinimumSize = minimumSize
 			case "max_blob_reference_depth":
 				valSepPolicy.MaxBlobReferenceDepth, err = strconv.Atoi(value)
+			case "rewrite_minimum_age":
+				valSepPolicy.RewriteMinimumAge, err = time.ParseDuration(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil

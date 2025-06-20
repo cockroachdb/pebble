@@ -46,6 +46,8 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 				Enabled:               true,
 				MinimumSize:           1 << rand.IntN(10), // [1, 512]
 				MaxBlobReferenceDepth: rand.IntN(10),      // [0, 10)
+				// Constrain the rewrite minimum age to [0, 15m).
+				RewriteMinimumAge: time.Duration(rand.IntN(int(15 * time.Minute))).Truncate(time.Second),
 			}
 		}
 	}
@@ -408,6 +410,7 @@ func TestOptionsParse(t *testing.T) {
 					Enabled:               true,
 					MinimumSize:           1024,
 					MaxBlobReferenceDepth: 10,
+					RewriteMinimumAge:     15 * time.Minute,
 				}
 			}
 			opts.EnsureDefaults()

@@ -343,6 +343,7 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 			Enabled:               true,
 			MinimumSize:           5,
 			MaxBlobReferenceDepth: 3,
+			RewriteMinimumAge:     time.Second,
 		}
 	}
 
@@ -894,12 +895,14 @@ func RandomOptions(
 			testOpts.Opts.FormatMajorVersion = pebble.FormatValueSeparation
 		}
 		minSize := 1 + rng.IntN(maxValueSize)
-		maxBlobReferenceDepth := 2 + rng.IntN(9) // 2-10
+		maxBlobReferenceDepth := 2 + rng.IntN(9)                       // 2-10
+		rewriteMinimumAge := time.Duration(rng.IntN(10)) * time.Second // [0, 10s)
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 			return pebble.ValueSeparationPolicy{
 				Enabled:               true,
 				MinimumSize:           minSize,
 				MaxBlobReferenceDepth: maxBlobReferenceDepth,
+				RewriteMinimumAge:     rewriteMinimumAge,
 			}
 		}
 	}

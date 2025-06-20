@@ -196,6 +196,7 @@ func buildSeparatedValuesDB(
 			Enabled:               true,
 			MinimumSize:           50,
 			MaxBlobReferenceDepth: 10,
+			RewriteMinimumAge:     15 * time.Minute,
 		}
 	}
 	o.Levels[0].BlockSize = 32 << 10       // 32 KB

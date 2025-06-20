@@ -17,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crstrings"
@@ -51,6 +52,23 @@ func TestVersionSet(t *testing.T) {
 		Comparer: base.DefaultComparer,
 		Logger:   testLogger{t},
 	}
+	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+		return ValueSeparationPolicy{
+			Enabled:               true,
+			MinimumSize:           50,
+			MaxBlobReferenceDepth: 10,
+			RewriteMinimumAge:     15 * time.Minute,
+		}
+	}
+	var currentTimeSecs atomic.Uint64
+	getCurrentTimeSecs := func() uint64 {
+		return currentTimeSecs.Add(1)
+	}
+	blobRewriteHeuristic := manifest.BlobRewriteHeuristic{
+		CurrentTimeSecs: getCurrentTimeSecs,
+		MinimumAgeSecs:  uint64(opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge.Seconds()),
+	}
+
 	opts.EnsureDefaults()
 	mu := &sync.Mutex{}
 	marker, _, err := atomicfs.LocateMarker(opts.FS, "", manifestMarkerName)
@@ -61,6 +79,7 @@ func TestVersionSet(t *testing.T) {
 	require.NoError(t, vs.create(
 		0 /* jobID */, "" /* dirname */, provider, opts, marker,
 		func() FormatMajorVersion { return FormatVirtualSSTables },
+		blobRewriteHeuristic,
 		mu,
 	))
 	vs.logSeqNum.Store(100)
@@ -189,7 +208,9 @@ func TestVersionSet(t *testing.T) {
 			vs = versionSet{}
 			err = vs.load(
 				"", provider, opts, manifestNum, marker,
-				func() FormatMajorVersion { return FormatVirtualSSTables }, mu,
+				func() FormatMajorVersion { return FormatVirtualSSTables },
+				blobRewriteHeuristic,
+				mu,
 			)
 			if err != nil {
 				td.Fatalf(t, "error loading manifest: %v", err)

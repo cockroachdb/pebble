@@ -300,6 +300,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		return nil, err
 	}
 
+	var blobRewriteHeuristic manifest.BlobRewriteHeuristic
+	blobRewriteHeuristic.CurrentTimeSecs = func() uint64 {
+		return uint64(d.timeNow().UnixNano() / int64(time.Second))
+	}
+	if opts.Experimental.ValueSeparationPolicy != nil {
+		blobRewriteHeuristic.MinimumAgeSecs = uint64(opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge.Seconds())
+	}
+
 	if !manifestExists {
 		// DB does not exist.
 		if d.opts.ErrorIfNotExists || d.opts.ReadOnly {
@@ -308,7 +316,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 		// Create the DB.
 		if err := d.mu.versions.create(
-			jobID, dirname, d.objProvider, opts, manifestMarker, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
+			jobID, dirname, d.objProvider, opts, manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 	} else {
@@ -317,7 +325,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 		// Load the version set.
 		if err := d.mu.versions.load(
-			dirname, d.objProvider, opts, manifestFileNum, manifestMarker, d.FormatMajorVersion, &d.mu.Mutex); err != nil {
+			dirname, d.objProvider, opts, manifestFileNum, manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 		if opts.ErrorIfNotPristine {
