@@ -220,7 +220,7 @@ type cachedReader struct {
 		// physicalIndex is in the range [0, indexBlock.dec.BlockCount()).
 		physicalIndex int
 		buf           block.BufferHandle
-		dec           *blobValueBlockDecoder
+		dec           *BlobValueBlockDecoder
 	}
 	preallocRH objstorageprovider.PreallocatedReadHandle
 }
@@ -280,7 +280,7 @@ func (cr *cachedReader) GetUnsafeValue(
 		if err != nil {
 			return nil, err
 		}
-		cr.currentValueBlock.dec = (*blobValueBlockDecoder)(unsafe.Pointer(cr.currentValueBlock.buf.BlockMetadata()))
+		cr.currentValueBlock.dec = (*BlobValueBlockDecoder)(unsafe.Pointer(cr.currentValueBlock.buf.BlockMetadata()))
 		cr.currentValueBlock.physicalIndex = physicalBlockIndex
 		cr.currentValueBlock.virtualID = vh.BlockID
 		cr.currentValueBlock.valueIDOffset = valueIDOffset
