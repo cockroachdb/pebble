@@ -16,23 +16,31 @@ import (
 
 func TestPhysicalBlobFile_ParseRoundTrip(t *testing.T) {
 	testCases := []struct {
-		name   string
-		input  string
-		output string
+		name         string
+		input        string
+		output       string
+		creationTime uint64
 	}{
 		{
 			name:  "verbatim",
 			input: "000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
 		},
 		{
-			name:   "whitespace is insignificant",
-			input:  "000001   size  : [ 903530 (882KB )] vals: [ 39531 ( 39KB ) ]",
-			output: "000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+			name:         "whitespace is insignificant",
+			input:        "000001   size  : [ 903530 (882KB )] vals: [ 39531 ( 39KB ) ] creationTime:   1718851200",
+			output:       "000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+			creationTime: 1718851200,
 		},
 		{
 			name:   "humanized sizes are optional",
 			input:  "000001 size:[903530] vals:[39531]",
 			output: "000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+		},
+		{
+			name:         "creation time is optional",
+			input:        "000001 size:[903530 (882KB)] vals:[39531 (39KB)] creationTime:1718851200",
+			output:       "000001 size:[903530 (882KB)] vals:[39531 (39KB)]",
+			creationTime: 1718851200,
 		},
 	}
 	for _, tc := range testCases {
@@ -45,6 +53,7 @@ func TestPhysicalBlobFile_ParseRoundTrip(t *testing.T) {
 				want = tc.output
 			}
 			require.Equal(t, want, got)
+			require.Equal(t, tc.creationTime, m.CreationTime)
 		})
 	}
 }
@@ -61,12 +70,17 @@ func TestBlobFileMetadata_ParseRoundTrip(t *testing.T) {
 		},
 		{
 			name:   "whitespace is insignificant",
-			input:  "B000002          physical : {000001   size  : [ 903530 (882KB )] vals: [ 39531 ( 39KB ) ]  }",
+			input:  "B000002          physical : {000001   size  : [ 903530 (882KB )] vals: [ 39531 ( 39KB ) ] creationTime:   1718851200  }",
 			output: "B000002 physical:{000001 size:[903530 (882KB)] vals:[39531 (39KB)]}",
 		},
 		{
 			name:   "humanized sizes are optional",
 			input:  "B000002 physical:{000001 size:[903530] vals:[39531]}",
+			output: "B000002 physical:{000001 size:[903530 (882KB)] vals:[39531 (39KB)]}",
+		},
+		{
+			name:   "creation time is optional",
+			input:  "B000002 physical:{000001 size:[903530 (882KB)] vals:[39531 (39KB)] creationTime:1718851200}",
 			output: "B000002 physical:{000001 size:[903530 (882KB)] vals:[39531 (39KB)]}",
 		},
 	}
