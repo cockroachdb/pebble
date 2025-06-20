@@ -243,7 +243,7 @@ func (bv *Values) WriteFiles(
 		prevID := -1
 		for i, handle := range handles {
 			if i > 0 && handles[i-1].BlockID != handle.BlockID {
-				writer.FlushForTesting()
+				writer.ForceFlush()
 				prevID = -1
 			}
 			// The user of a blobtest.Values may specify a value ID for a handle. If
