@@ -1491,11 +1491,15 @@ func (o *Options) initMaps() {
 
 // Clone creates a shallow-copy of the supplied options.
 func (o *Options) Clone() *Options {
-	n := &Options{}
-	if o != nil {
-		*n = *o
+	if o == nil {
+		return &Options{}
 	}
-	return n
+	n := *o
+	if o.WALFailover != nil {
+		c := *o.WALFailover
+		n.WALFailover = &c
+	}
+	return &n
 }
 
 func (o *Options) String() string {
