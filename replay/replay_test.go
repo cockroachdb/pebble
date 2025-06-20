@@ -320,6 +320,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 					Enabled:               true,
 					MinimumSize:           3,
 					MaxBlobReferenceDepth: 5,
+					RewriteMinimumAge:     15 * time.Minute,
 				}
 			}
 			setDefaultExperimentalOpts(opts)

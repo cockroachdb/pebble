@@ -769,8 +769,9 @@ type Options struct {
 		UserKeyCategories UserKeyCategories
 
 		// ValueSeparationPolicy controls the policy for separating values into
-		// external blob files. If nil, value separation is disabled. The value
-		// separation policy is ignored if EnableColumnarBlocks() is false.
+		// external blob files. If nil, value separation defaults to disabled.
+		// The value separation policy is ignored if EnableColumnarBlocks() is
+		// false.
 		ValueSeparationPolicy func() ValueSeparationPolicy
 
 		// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
@@ -1165,13 +1166,21 @@ type ValueSeparationPolicy struct {
 	// separated into a blob file. Values smaller than this are always written
 	// to the sstable (but may still be written to a value block within the
 	// sstable).
+	//
+	// MinimumSize must be > 0.
 	MinimumSize int
 	// MaxBlobReferenceDepth limits the number of potentially overlapping (in
 	// the keyspace) blob files that can be referenced by a single sstable. If a
 	// compaction may produce an output sstable referencing more than this many
 	// overlapping blob files, the compaction will instead rewrite referenced
 	// values into new blob files.
+	//
+	// MaxBlobReferenceDepth must be > 0.
 	MaxBlobReferenceDepth int
+	// RewriteMinimumAge specifies how old a blob file must be in order for it
+	// to be eligible for a rewrite that reclaims disk space. Lower values
+	// reduce space amplification at the cost of write amplification
+	RewriteMinimumAge time.Duration
 }
 
 // SpanPolicy contains policies that can vary by key range. The zero value is
@@ -1316,6 +1325,11 @@ func (o *Options) EnsureDefaults() {
 		// When 40% of the DB is garbage, the compaction concurrency is at the
 		// maximum permitted.
 		o.Experimental.CompactionGarbageFractionForMaxConcurrency = func() float64 { return 0.4 }
+	}
+	if o.Experimental.ValueSeparationPolicy == nil {
+		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+			return ValueSeparationPolicy{Enabled: false}
+		}
 	}
 	if o.KeySchema == "" && len(o.KeySchemas) == 0 {
 		ks := colblk.DefaultKeySchema(o.Comparer, 16 /* bundleSize */)
@@ -1591,11 +1605,14 @@ func (o *Options) String() string {
 
 	if o.Experimental.ValueSeparationPolicy != nil {
 		policy := o.Experimental.ValueSeparationPolicy()
-		fmt.Fprintln(&buf)
-		fmt.Fprintln(&buf, "[Value Separation]")
-		fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
-		fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
-		fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
+		if policy.Enabled {
+			fmt.Fprintln(&buf)
+			fmt.Fprintln(&buf, "[Value Separation]")
+			fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
+			fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
+			fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
+			fmt.Fprintf(&buf, "  rewrite_minimum_age=%s\n", policy.RewriteMinimumAge)
+		}
 	}
 
 	if o.WALFailover != nil {
@@ -1726,7 +1743,6 @@ type ParseHooks struct {
 // merger.
 func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	var valSepPolicy ValueSeparationPolicy
-	var valSepPolicyOk bool
 	var concurrencyLimit struct {
 		lower    int
 		lowerSet bool
@@ -2018,7 +2034,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			return err
 
 		case section == "Value Separation":
-			valSepPolicyOk = true
 			var err error
 			switch key {
 			case "enabled":
@@ -2029,6 +2044,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				valSepPolicy.MinimumSize = minimumSize
 			case "max_blob_reference_depth":
 				valSepPolicy.MaxBlobReferenceDepth, err = strconv.Atoi(value)
+			case "rewrite_minimum_age":
+				valSepPolicy.RewriteMinimumAge, err = time.ParseDuration(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
@@ -2129,9 +2146,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	if err != nil {
 		return err
 	}
-	if valSepPolicyOk {
-		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return valSepPolicy }
-	}
+	o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return valSepPolicy }
 	if concurrencyLimit.lowerSet || concurrencyLimit.upperSet {
 		if !concurrencyLimit.lowerSet {
 			concurrencyLimit.lower = 1
@@ -2287,6 +2302,15 @@ func (o *Options) Validate() error {
 			fmt.Fprintf(&buf, "KeySchema %q not found in KeySchemas\n", o.KeySchema)
 		}
 	}
+	if policy := o.Experimental.ValueSeparationPolicy(); policy.Enabled {
+		if policy.MinimumSize <= 0 {
+			fmt.Fprintf(&buf, "ValueSeparationPolicy.MinimumSize (%d) must be > 0\n", policy.MinimumSize)
+		}
+		if policy.MaxBlobReferenceDepth <= 0 {
+			fmt.Fprintf(&buf, "ValueSeparationPolicy.MaxBlobReferenceDepth (%d) must be > 0\n", policy.MaxBlobReferenceDepth)
+		}
+	}
+
 	if buf.Len() == 0 {
 		return nil
 	}

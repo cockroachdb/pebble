@@ -1,7 +1,7 @@
 # Test a simple sequence of flushes and compactions where all values are
 # separated.
 
-define value-separation=(true, 0, 3)
+define value-separation=(true, 1, 3)
 ----
 
 batch

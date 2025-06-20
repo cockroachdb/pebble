@@ -172,12 +172,13 @@ func (vs *versionSet) create(
 	opts *Options,
 	marker *atomicfs.Marker,
 	getFormatMajorVersion func() FormatMajorVersion,
+	blobRewriteHeuristic manifest.BlobRewriteHeuristic,
 	mu *sync.Mutex,
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
+	vs.latest.blobFiles.Init(nil, blobRewriteHeuristic)
 	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
 	vs.append(emptyVersion)
-	vs.latest.blobFiles.Init(nil)
 
 	vs.setCompactionPicker(
 		newCompactionPickerByScore(emptyVersion, &vs.latest, vs.opts, nil))
@@ -222,6 +223,7 @@ func (vs *versionSet) load(
 	manifestFileNum base.DiskFileNum,
 	marker *atomicfs.Marker,
 	getFormatMajorVersion func() FormatMajorVersion,
+	blobRewriteHeuristic manifest.BlobRewriteHeuristic,
 	mu *sync.Mutex,
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
@@ -344,7 +346,7 @@ func (vs *versionSet) load(
 	}
 	vs.latest.l0Organizer.PerformUpdate(vs.latest.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
 	vs.latest.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
-	vs.latest.blobFiles.Init(&bve)
+	vs.latest.blobFiles.Init(&bve, blobRewriteHeuristic)
 	vs.append(newVersion)
 
 	for i := range vs.metrics.Levels {

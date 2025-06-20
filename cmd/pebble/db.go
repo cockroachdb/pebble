@@ -6,6 +6,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
@@ -86,6 +87,7 @@ func newPebbleDB(dir string) DB {
 			Enabled:               true,
 			MinimumSize:           512,
 			MaxBlobReferenceDepth: 10,
+			RewriteMinimumAge:     5 * time.Minute,
 		}
 	}
 
