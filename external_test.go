@@ -7,11 +7,15 @@ package pebble_test
 import (
 	"bytes"
 	"io"
+	randv1 "math/rand"
 	"math/rand/v2"
+	"reflect"
 	"strings"
 	"testing"
+	"testing/quick"
 	"time"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/metamorphic"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -116,4 +120,61 @@ type testWriter struct {
 func (w *testWriter) Write(b []byte) (int, error) {
 	w.t.Log(string(bytes.TrimSpace(b)))
 	return len(b), nil
+}
+
+func TestOptionsClone(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("Using seed %d", seed)
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+
+	a := metamorphic.RandomOptions(rng, metamorphic.TestkeysKeyFormat, nil /* custom opt parsers */).Opts
+	b := a.Clone()
+	if rng.IntN(2) == 0 {
+		a, b = b, a
+	}
+	before := a.String()
+	mangle(reflect.ValueOf(b).Elem(), rng)
+	after := a.String()
+	require.Equal(t, before, after)
+}
+
+func mangle(v reflect.Value, rng *rand.Rand) {
+	if !v.CanSet() {
+		return
+	}
+	// Some of the time, generate a full new value.
+	if rng.IntN(2) == 0 {
+		genVal(v, rng)
+		return
+	}
+	switch v.Type().Kind() {
+	case reflect.Pointer:
+		// If the pointer is to a type outside the pebble package, leave it alone;
+		// Options.Clone() would never clone those objects.
+		if v.Elem().CanSet() && v.Elem().Type().PkgPath() == reflect.TypeOf(pebble.Options{}).PkgPath() {
+			mangle(v.Elem(), rng)
+		}
+
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			mangle(v.Field(i), rng)
+		}
+
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			mangle(v.Index(i), rng)
+		}
+	}
+}
+
+func genVal(v reflect.Value, rng *rand.Rand) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Ignore errors generating values (caused by unexported fields).
+		}
+	}()
+	newVal, ok := quick.Value(v.Type(), randv1.New(randv1.NewSource(rng.Int64())))
+	if ok {
+		v.Set(newVal)
+	}
 }
