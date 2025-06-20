@@ -802,10 +802,10 @@ func (d *DB) findExistingBackingsForExternalObjects(metas []ingestExternalMeta) 
 		// exists in a previous version. In that case, that object could be removed
 		// at any time so we cannot reuse it.
 		for _, n := range diskFileNums {
-			if backing, ok := d.mu.versions.virtualBackings.Get(n); ok {
+			if backing, ok := d.mu.versions.latest.virtualBackings.Get(n); ok {
 				// Protect this backing from being removed from the latest version. We
 				// will unprotect in ingestUnprotectExternalBackings.
-				d.mu.versions.virtualBackings.Protect(n)
+				d.mu.versions.latest.virtualBackings.Protect(n)
 				metas[i].usedExistingBacking = true
 				metas[i].AttachVirtualBacking(backing)
 
@@ -830,7 +830,7 @@ func (d *DB) ingestUnprotectExternalBackings(lr ingestLoadResult) {
 			// If the backing is not use anywhere else and the ingest failed (or the
 			// ingested tables were already compacted away), this call will cause in
 			// the next version update to remove the backing.
-			d.mu.versions.virtualBackings.Unprotect(meta.TableBacking.DiskFileNum)
+			d.mu.versions.latest.virtualBackings.Unprotect(meta.TableBacking.DiskFileNum)
 		}
 	}
 }

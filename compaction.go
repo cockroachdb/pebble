@@ -1179,7 +1179,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 		if isIntraL0 {
 			l0Inputs = append(l0Inputs, c.outputLevel.files)
 		}
-		if err := d.mu.versions.l0Organizer.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
+		if err := d.mu.versions.latest.l0Organizer.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
 			d.opts.Logger.Fatalf("could not update state for compaction: %s", err)
 		}
 	}
@@ -1236,7 +1236,7 @@ func (d *DB) clearCompactingState(c *compaction, rollback bool) {
 		// may be able to pick a better compaction (though when this compaction
 		// succeeded we've also cleared the cache in UpdateVersionLocked).
 		defer d.mu.versions.logUnlockAndInvalidatePickedCompactionCache()
-		d.mu.versions.l0Organizer.InitCompactingFileInfo(l0InProgress)
+		d.mu.versions.latest.l0Organizer.InitCompactingFileInfo(l0InProgress)
 	}()
 }
 
@@ -1593,7 +1593,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		}
 	}
 
-	c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.l0Organizer,
+	c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.latest.l0Organizer,
 		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], d.timeNow(), d.TableFormat(), d.determineCompactionValueSeparation)
 	if err != nil {
 		return 0, err
@@ -2061,7 +2061,7 @@ func (d *DB) tryScheduleDownloadCompactions(env compactionEnv, maxConcurrentDown
 			break
 		}
 		download := d.mu.compact.downloads[i]
-		switch d.tryLaunchDownloadCompaction(download, vers, d.mu.versions.l0Organizer, env, maxConcurrentDownloads) {
+		switch d.tryLaunchDownloadCompaction(download, vers, d.mu.versions.latest.l0Organizer, env, maxConcurrentDownloads) {
 		case launchedCompaction:
 			started = true
 			continue
@@ -2080,7 +2080,8 @@ func (d *DB) pickManualCompaction(env compactionEnv) (pc *pickedCompaction) {
 	v := d.mu.versions.currentVersion()
 	for len(d.mu.compact.manual) > 0 {
 		manual := d.mu.compact.manual[0]
-		pc, retryLater := newPickedManualCompaction(v, d.mu.versions.l0Organizer, d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
+		pc, retryLater := newPickedManualCompaction(v, d.mu.versions.latest.l0Organizer,
+			d.opts, env, d.mu.versions.picker.getBaseLevel(), manual)
 		if pc != nil {
 			return pc
 		}

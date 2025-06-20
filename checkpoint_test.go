@@ -151,7 +151,7 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			d := dbs[td.CmdArgs[0].String()]
 			d.mu.Lock()
 			d.mu.versions.logLock()
-			fileNums := d.mu.versions.virtualBackings.DiskFileNums()
+			fileNums := d.mu.versions.latest.virtualBackings.DiskFileNums()
 			d.mu.versions.logUnlock()
 			d.mu.Unlock()
 

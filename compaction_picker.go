@@ -599,16 +599,14 @@ func canCompactTables(
 // installed).
 func newCompactionPickerByScore(
 	v *manifest.Version,
-	l0Organizer *manifest.L0Organizer,
-	virtualBackings *manifest.VirtualBackings,
+	lvs *latestVersionState,
 	opts *Options,
 	inProgressCompactions []compactionInfo,
 ) *compactionPickerByScore {
 	p := &compactionPickerByScore{
-		opts:            opts,
-		vers:            v,
-		l0Organizer:     l0Organizer,
-		virtualBackings: virtualBackings,
+		opts:               opts,
+		vers:               v,
+		latestVersionState: lvs,
 	}
 	p.initLevelMaxBytes(inProgressCompactions)
 	return p
@@ -694,16 +692,16 @@ func totalCompensatedSize(iter iter.Seq[*manifest.TableMetadata]) uint64 {
 type compactionPickerByScore struct {
 	opts *Options
 	vers *manifest.Version
-	// Unlike vers, which is immutable and the latest version when this picker is
-	// created, l0Organizer represents the mutable L0 state of the latest version.
-	// This means that at some point in the future a compactionPickerByScore
-	// created in the past will have mutually inconsistent state in vers and
-	// l0Organizer. This is not a problem since (a) a new picker is created in
-	// UpdateVersionLocked when a new version is installed, and (b) only the
-	// latest picker is used for picking compactions. This is ensured by holding
-	// versionSet.logLock for both (a) and (b).
-	l0Organizer     *manifest.L0Organizer
-	virtualBackings *manifest.VirtualBackings
+	// Unlike vers, which is immutable and the latest version when this picker
+	// is created, latestVersionState represents the mutable state of the latest
+	// version. This means that at some point in the future a
+	// compactionPickerByScore created in the past will have mutually
+	// inconsistent state in vers and latestVersionState. This is not a problem
+	// since (a) a new picker is created in UpdateVersionLocked when a new
+	// version is installed, and (b) only the latest picker is used for picking
+	// compactions. This is ensured by holding versionSet.logLock for both (a)
+	// and (b).
+	latestVersionState *latestVersionState
 	// The level to target for L0 compactions. Levels L1 to baseLevel must be
 	// empty.
 	baseLevel int
@@ -939,7 +937,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 		scores[i].level = i
 		scores[i].outputLevel = i + 1
 	}
-	l0FillFactor := calculateL0FillFactor(p.vers, p.l0Organizer, p.opts, inProgressCompactions)
+	l0FillFactor := calculateL0FillFactor(p.vers, p.latestVersionState.l0Organizer, p.opts, inProgressCompactions)
 	scores[0] = candidateLevelInfo{
 		outputLevel:           p.baseLevel,
 		fillFactor:            l0FillFactor,
@@ -1268,7 +1266,7 @@ func (p *compactionPickerByScore) getCompactionConcurrency() int {
 	// l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency extra compactions.
 	l0ReadAmpCompactions := 0
 	if p.opts.Experimental.L0CompactionConcurrency > 0 {
-		l0ReadAmp := p.l0Organizer.MaxDepthAfterOngoingCompactions()
+		l0ReadAmp := p.latestVersionState.l0Organizer.MaxDepthAfterOngoingCompactions()
 		l0ReadAmpCompactions = (l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency)
 	}
 	// compactionDebt >= ccSignal2 then can run another compaction, where
@@ -1378,7 +1376,7 @@ func (p *compactionPickerByScore) pickAutoScore(env compactionEnv) (pc *pickedCo
 		}
 
 		if info.level == 0 {
-			pc = pickL0(env, p.opts, p.vers, p.l0Organizer, p.baseLevel)
+			pc = pickL0(env, p.opts, p.vers, p.latestVersionState.l0Organizer, p.baseLevel)
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
 			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
@@ -1394,12 +1392,12 @@ func (p *compactionPickerByScore) pickAutoScore(env compactionEnv) (pc *pickedCo
 
 		// info.level > 0
 		var ok bool
-		info.file, ok = pickCompactionSeedFile(p.vers, p.virtualBackings, p.opts, info.level, info.outputLevel, env.earliestSnapshotSeqNum, env.problemSpans)
+		info.file, ok = pickCompactionSeedFile(p.vers, &p.latestVersionState.virtualBackings, p.opts, info.level, info.outputLevel, env.earliestSnapshotSeqNum, env.problemSpans)
 		if !ok {
 			continue
 		}
 
-		pc := pickAutoLPositive(env, p.opts, p.vers, p.l0Organizer, *info, p.baseLevel)
+		pc := pickAutoLPositive(env, p.opts, p.vers, p.latestVersionState.l0Organizer, *info, p.baseLevel)
 		// Fail-safe to protect against compacting the same sstable concurrently.
 		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
 			p.addScoresToPickedCompactionMetrics(pc, scores)
@@ -1583,7 +1581,8 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 		}
 	}
 
-	pc := newPickedCompaction(p.opts, p.vers, p.l0Organizer, startLevel, outputLevel, p.baseLevel)
+	pc := newPickedCompaction(p.opts, p.vers, p.latestVersionState.l0Organizer,
+		startLevel, outputLevel, p.baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = inputs
 	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.All())
@@ -2030,7 +2029,8 @@ func pickReadTriggeredCompactionHelper(
 		return nil
 	}
 
-	pc = newPickedCompaction(p.opts, p.vers, p.l0Organizer, rc.level, defaultOutputLevel(rc.level, p.baseLevel), p.baseLevel)
+	pc = newPickedCompaction(p.opts, p.vers, p.latestVersionState.l0Organizer,
+		rc.level, defaultOutputLevel(rc.level, p.baseLevel), p.baseLevel)
 
 	pc.startLevel.files = overlapSlice
 	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
