@@ -195,17 +195,25 @@ func (w *FileWriter) EstimatedSize() uint64 {
 	return sz
 }
 
-// FlushForTesting flushes the current block to the write queue. Writers should
-// generally not call FlushForTesting, and instead let the heuristics configured
+// ForceFlush flushes the current block to the write queue. Writers should
+// generally not call ForceFlush, and instead let the heuristics configured
 // through FileWriterOptions handle flushing.
 //
-// It's exposed so that tests can force flushes to construct blob files with
-// arbitrary structures.
-func (w *FileWriter) FlushForTesting() {
+// For blob file rewriting, ForceFlush needs to be called to ensure that there
+// is a 1:1 remapping of virtual blocks to physical blocks.
+//
+// Otherwise, it's exposed so that tests can force flushes to construct blob
+// files with arbitrary structures.
+func (w *FileWriter) ForceFlush() {
 	if w.valuesEncoder.Count() == 0 {
 		return
 	}
 	w.flush()
+}
+
+// ShouldFlush returns true if the current block should be flushed.
+func (w *FileWriter) ShouldFlush(sizeBefore, sizeAfter int) bool {
+	return w.flushGov.ShouldFlush(sizeBefore, sizeAfter)
 }
 
 // flush flushes the current block to the write queue.
