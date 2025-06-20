@@ -422,6 +422,18 @@ func (r *Reader) readValueBlock(
 	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.SSTableValue, noInitBlockMetadataFn)
 }
 
+func (r *Reader) ReadBlobRefIndexBlock(
+	ctx context.Context, env block.ReadEnv,
+) (block.BufferHandle, error) {
+	return r.readBlobRefIndexBlock(ctx, env, noReadHandle)
+}
+
+func (r *Reader) readBlobRefIndexBlock(
+	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle,
+) (block.BufferHandle, error) {
+	return r.blockReader.Read(ctx, env, readHandle, r.blobRefIndexBH, blockkind.BlobReferenceValueLivenessIndex, noInitBlockMetadataFn)
+}
+
 // metaBufferPools is a sync pool of BufferPools used exclusively when opening a
 // table and loading its meta blocks.
 var metaBufferPools = sync.Pool{
