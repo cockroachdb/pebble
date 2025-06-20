@@ -375,7 +375,7 @@ range-deletions-bytes-estimate: 8380
 # numbers, so the test overwrites them to 0.
 maybe-compact
 ----
-[JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
+[JOB 100] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
 [JOB 101] compacted(default) L5 [000004] (798B) Score=3.10 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.8KB), in 1.0s (2.0s total), output rate 4.8KB/s
 
 # The same LSM as above. However, this time, with point tombstone weighting at
@@ -421,7 +421,7 @@ range-deletions-bytes-estimate: 8380
 # numbers, so the test overwrites them to 0.
 maybe-compact
 ----
-[JOB 100] compacted(delete-only) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
+[JOB 100] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
 [JOB 101] compacted(default) L5 [000004] (798B) Score=3.10 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.8KB), in 1.0s (2.0s total), output rate 4.8KB/s
 
 # These tests demonstrate the behavior of the tombstone density compaction feature
