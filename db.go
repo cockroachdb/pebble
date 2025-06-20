@@ -2168,7 +2168,7 @@ func (d *DB) Metrics() *Metrics {
 	backingCount, backingTotalSize := d.mu.versions.latest.virtualBackings.Stats()
 	metrics.Table.BackingTableCount = uint64(backingCount)
 	metrics.Table.BackingTableSize = backingTotalSize
-	blobStats := d.mu.versions.latest.blobFiles.Stats()
+	blobStats, _ := d.mu.versions.latest.blobFiles.Stats()
 	d.mu.versions.logUnlock()
 	metrics.BlobFiles.LiveCount = blobStats.Count
 	metrics.BlobFiles.LiveSize = blobStats.PhysicalSize

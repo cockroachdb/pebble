@@ -64,7 +64,9 @@ func newVersionWithLatest(
 		l0Organizer:     l0Organizer,
 		virtualBackings: manifest.MakeVirtualBackings(),
 	}
-	latest.blobFiles.Init(nil)
+	latest.blobFiles.Init(nil, manifest.BlobRewriteHeuristic{
+		CurrentTime: time.Now,
+	})
 	return v, latest
 }
 

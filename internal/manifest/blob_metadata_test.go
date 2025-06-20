@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -100,9 +101,10 @@ func TestBlobFileMetadata_ParseRoundTrip(t *testing.T) {
 
 func TestCurrentBlobFileSet(t *testing.T) {
 	var (
-		buf        bytes.Buffer
-		set        CurrentBlobFileSet
-		tableMetas = make(map[base.FileNum]*TableMetadata)
+		buf         bytes.Buffer
+		set         CurrentBlobFileSet
+		tableMetas  = make(map[base.FileNum]*TableMetadata)
+		currentTime = time.Unix(0, 0)
 	)
 	parseAndFillVersionEdit := func(s string) *VersionEdit {
 		ve, err := ParseVersionEditDebug(s)
@@ -122,33 +124,51 @@ func TestCurrentBlobFileSet(t *testing.T) {
 		}
 		return ve
 	}
+	currentTimeFunc := func() time.Time {
+		currentTime = currentTime.Add(time.Second)
+		fmt.Fprintf(&buf, "t%d\n", currentTime.Unix())
+		return currentTime
+	}
 
 	datadriven.RunTest(t, "testdata/current_blob_file_set", func(t *testing.T, d *datadriven.TestData) string {
 		buf.Reset()
 		switch d.Cmd {
 		case "init":
+			clear(tableMetas)
+			currentTime = time.Unix(0, 0)
+			fmt.Fprintf(&buf, "t%d\n", currentTime.Unix())
+			heuristic := BlobRewriteHeuristic{CurrentTime: currentTimeFunc}
+			if arg, ok := d.Arg("rw-minimum-age"); ok {
+				arg.Scan(t, 0, &heuristic.MinimumAge)
+			}
 			ve := parseAndFillVersionEdit(d.Input)
 			bve := &BulkVersionEdit{}
 			if err := bve.Accumulate(ve); err != nil {
 				return fmt.Sprintf("error accumulating version edit: %s", err)
 			}
-			set.Init(bve)
-			return set.Stats().String()
+			set.Init(bve, heuristic)
+			return set.String()
 		case "applyAndUpdateVersionEdit":
 			ve := parseAndFillVersionEdit(d.Input)
 			if err := set.ApplyAndUpdateVersionEdit(ve); err != nil {
 				return fmt.Sprintf("error applying and updating version edit: %s", err)
 			}
 			fmt.Fprintf(&buf, "modified version edit:\n%s", ve.DebugString(base.DefaultFormatter))
-			fmt.Fprintf(&buf, "current blob file set:\n%s", set.Stats().String())
+			fmt.Fprintf(&buf, "current blob file set:\n%s", set.String())
 			return buf.String()
 		case "metadatas":
 			for _, m := range set.Metadatas() {
 				fmt.Fprintf(&buf, "%s\n", m)
 			}
 			return buf.String()
+		case "replacement-candidate":
+			m, ok := set.ReplacementCandidate()
+			if !ok {
+				return "no replacement candidate"
+			}
+			return fmt.Sprintf("replacement candidate: %s", m)
 		case "stats":
-			return set.Stats().String()
+			return set.String()
 		default:
 			t.Fatalf("unknown command: %s", d.Cmd)
 		}

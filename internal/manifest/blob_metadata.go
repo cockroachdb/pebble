@@ -6,10 +6,13 @@ package manifest
 
 import (
 	stdcmp "cmp"
+	"container/heap"
 	"fmt"
 	"iter"
 	"slices"
+	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -449,6 +452,26 @@ type CurrentBlobFileSet struct {
 	files map[base.BlobFileID]*currentBlobFile
 	// stats records cumulative stats across all blob files in the set.
 	stats AggregateBlobFileStats
+	// rewrite holds state and configuration in support of rewriting blob files
+	// to reclaim disk space.
+	rewrite struct {
+		// heuristic holds configuration of the heuristic used to determine
+		// which blob files are considered for rewrite.
+		heuristic BlobRewriteHeuristic
+		// candidates holds a set of blob files that a) contain some
+		// unreferenced values and b) are sufficiently old. The candidates are
+		// organized in a min heap of referenced ratios.
+		//
+		// Files with less referenced data relative to the total data set are at
+		// the top of the heap. Rewriting such files first maximizes the disk
+		// space reclaimed per byte written.
+		candidates currentBlobFileHeap[byReferencedRatio]
+		// recentlyCreated holds a set of blob files that contain unreferenced
+		// values but are not yet candidates for rewrite and replacement because
+		// they're too young. The set is organized as a min heap of creation
+		// times.
+		recentlyCreated currentBlobFileHeap[byCreationTime]
+	}
 }
 
 type currentBlobFile struct {
@@ -471,12 +494,82 @@ type currentBlobFile struct {
 	// referencedValueSize is the sum of the length of uncompressed values in
 	// this blob file that are still live.
 	referencedValueSize uint64
+	// heapState holds a pointer to the heap that the blob file is in (if any)
+	// and its index in the heap's items slice. If referencedValueSize is less
+	// than metadata.Physical.ValueSize, the blob file belongs in one of the two
+	// heaps. If its physical file's creation time indicates its less than
+	// MinimumAgeSecs seconds old, it belongs in the recentlyCreated heap.
+	// Otherwise, it belongs in the candidates heap.
+	heapState struct {
+		heap  heap.Interface
+		index int
+	}
+}
+
+// BlobRewriteHeuristic configures the heuristic used to determine which blob
+// files should be rewritten and replaced in order to reduce value-separation
+// induced space amplification.
+//
+// The heuristic divides blob files into three categories:
+//
+// 1. Fully referenced: Blob files that are fully referenced by live tables.
+// 2. Recently created: Blob files with garbage that were recently created.
+// 3. Eligible: Blob files with garbage that are old.
+//
+// Files in the first category (fully referenced) should never be rewritten,
+// because rewriting them has no impact on space amplification.
+//
+// Among files that are not fully referenced, the heuristic separates files into
+// files that were recently created (less than MinimumAgeSecs seconds old) and
+// files that are old and eligible for rewrite. We defer rewriting recently
+// created files under the assumption that their references may be removed
+// through ordinary compactions. The threshold for what is considered recent is
+// the MinimumAgeSecs field.
+type BlobRewriteHeuristic struct {
+	// CurrentTime returns the current time.
+	CurrentTime func() time.Time
+	// MinimumAge is the minimum age of a blob file that is considered for
+	// rewrite and replacement.
+	//
+	// TODO(jackson): Support updating this at runtime. Lowering the value is
+	// simple: pop from the recentlyCreated heap and push to the candidates
+	// heap. Raising the value is more complex: we would need to iterate over
+	// all the blob files in the candidates heap.
+	MinimumAge time.Duration
+}
+
+// BlobRewriteHeuristicStats records statistics about the blob rewrite heuristic.
+type BlobRewriteHeuristicStats struct {
+	CountFilesFullyReferenced int
+	CountFilesTooRecent       int
+	CountFilesEligible        int
+	NextEligible              BlobFileMetadata
+	NextEligibleLivePct       float64
+	NextRewrite               BlobFileMetadata
+	NextRewriteLivePct        float64
+}
+
+// String implements fmt.Stringer.
+func (s BlobRewriteHeuristicStats) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Counts:{FullyReferenced: %d, Eligible: %d, TooRecent: %d}",
+		s.CountFilesFullyReferenced, s.CountFilesEligible, s.CountFilesTooRecent))
+	if s.NextEligible.FileID != 0 {
+		sb.WriteString(fmt.Sprintf("\nNextEligible: %s (%.1f%% live, created at %d)",
+			s.NextEligible, s.NextEligibleLivePct, s.NextEligible.Physical.CreationTime))
+	}
+	if s.NextRewrite.FileID != 0 {
+		sb.WriteString(fmt.Sprintf("\nNextRewrite: %s (%.1f%% live, created at %d)",
+			s.NextRewrite, s.NextRewriteLivePct, s.NextRewrite.Physical.CreationTime))
+	}
+	return sb.String()
 }
 
 // Init initializes the CurrentBlobFileSet with the state of the provided
 // BulkVersionEdit. This is used after replaying a manifest.
-func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit) {
+func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit, h BlobRewriteHeuristic) {
 	*s = CurrentBlobFileSet{files: make(map[base.BlobFileID]*currentBlobFile)}
+	s.rewrite.heuristic = h
 	if bve == nil {
 		return
 	}
@@ -505,11 +598,74 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit) {
 			}
 		}
 	}
+
+	// Initialize the heaps.
+	//
+	// Iterate through all the blob files. If a file is fully referenced, there's
+	// no need to track it in either heap. Otherwise, if the file is sufficiently
+	// old, add it to the heap of rewrite candidates. Otherwise, add it to the
+	// heap of recently created blob files.
+	now := s.rewrite.heuristic.CurrentTime()
+	s.rewrite.candidates.items = make([]*currentBlobFile, 0, 16)
+	s.rewrite.recentlyCreated.items = make([]*currentBlobFile, 0, 16)
+	for _, cbf := range s.files {
+		if cbf.referencedValueSize >= cbf.metadata.Physical.ValueSize {
+			// The blob file is fully referenced. There's no need to track it in
+			// either heap.
+			continue
+		}
+
+		// If the blob file is sufficiently old, add it to the heap of rewrite
+		// candidates. Otherwise, add it to the heap of recently created blob
+		// files.
+		if now.Sub(time.Unix(int64(cbf.metadata.Physical.CreationTime), 0)) >= s.rewrite.heuristic.MinimumAge {
+			cbf.heapState.heap = &s.rewrite.candidates
+			cbf.heapState.index = len(s.rewrite.candidates.items)
+			s.rewrite.candidates.items = append(s.rewrite.candidates.items, cbf)
+		} else {
+			// This blob file is too young. Add it to the heap of recently
+			// created blob files.
+			cbf.heapState.heap = &s.rewrite.recentlyCreated
+			cbf.heapState.index = len(s.rewrite.recentlyCreated.items)
+			s.rewrite.recentlyCreated.items = append(s.rewrite.recentlyCreated.items, cbf)
+		}
+	}
+	// Establish the heap invariants.
+	heap.Init(&s.rewrite.candidates)
+	heap.Init(&s.rewrite.recentlyCreated)
+	s.maybeVerifyHeapStateInvariants()
 }
 
-// Stats returns the cumulative stats across all blob files in the set.
-func (s *CurrentBlobFileSet) Stats() AggregateBlobFileStats {
-	return s.stats
+// Stats returns the cumulative stats across all blob files in the set and the
+// stats for the rewrite heaps.
+func (s *CurrentBlobFileSet) Stats() (AggregateBlobFileStats, BlobRewriteHeuristicStats) {
+	rewriteStats := BlobRewriteHeuristicStats{
+		CountFilesTooRecent:       len(s.rewrite.recentlyCreated.items),
+		CountFilesEligible:        len(s.rewrite.candidates.items),
+		CountFilesFullyReferenced: int(s.stats.Count) - len(s.rewrite.candidates.items) - len(s.rewrite.recentlyCreated.items),
+	}
+	if len(s.rewrite.candidates.items) > 0 {
+		rewriteStats.NextRewrite = s.rewrite.candidates.items[0].metadata
+		rewriteStats.NextRewriteLivePct = 100 * float64(s.rewrite.candidates.items[0].referencedValueSize) /
+			float64(s.rewrite.candidates.items[0].metadata.Physical.ValueSize)
+	}
+	if len(s.rewrite.recentlyCreated.items) > 0 {
+		rewriteStats.NextEligible = s.rewrite.recentlyCreated.items[0].metadata
+		rewriteStats.NextEligibleLivePct = 100 * float64(s.rewrite.recentlyCreated.items[0].referencedValueSize) /
+			float64(s.rewrite.recentlyCreated.items[0].metadata.Physical.ValueSize)
+	}
+	return s.stats, rewriteStats
+}
+
+// String implements fmt.Stringer.
+func (s *CurrentBlobFileSet) String() string {
+	stats, rewriteStats := s.Stats()
+	var sb strings.Builder
+	sb.WriteString("CurrentBlobFileSet:\n")
+	sb.WriteString(stats.String())
+	sb.WriteString("\n")
+	sb.WriteString(rewriteStats.String())
+	return sb.String()
 }
 
 // Metadatas returns a slice of all blob file metadata in the set, sorted by
@@ -530,6 +686,10 @@ func (s *CurrentBlobFileSet) Metadatas() []BlobFileMetadata {
 // applying the version edit a blob file has no more references, the version
 // edit is modified to record the blob file removal.
 func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
+	defer s.maybeVerifyHeapStateInvariants()
+
+	currentTime := s.rewrite.heuristic.CurrentTime()
+
 	// Insert new blob files into the set.
 	for _, m := range ve.NewBlobFiles {
 		// Check whether we already have a blob file with this ID. This is
@@ -547,6 +707,19 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			cbf.metadata.Physical = m.Physical
 			s.stats.PhysicalSize += m.Physical.Size
 			s.stats.ValueSize += m.Physical.ValueSize
+			// Remove the blob file from the rewrite candidate heap.
+			if cbf.heapState.heap != nil {
+				heap.Remove(cbf.heapState.heap, cbf.heapState.index)
+				cbf.heapState.heap = nil
+				cbf.heapState.index = -1
+			}
+			// It's possible that the new blob file is still not fully
+			// referenced. Additional references could have been removed while
+			// the blob file rewrite was occurring. We need to re-add it to the
+			// heap of recently created files.
+			if cbf.referencedValueSize < cbf.metadata.Physical.ValueSize {
+				heap.Push(&s.rewrite.recentlyCreated, cbf)
+			}
 			continue
 		}
 
@@ -622,6 +795,14 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 					return errors.AssertionFailedf("pebble: referenced value size %d is non-zero for blob file %s with no refs",
 						cbf.referencedValueSize, cbf.metadata.FileID)
 				}
+
+				// Remove the blob file from any heap it's in.
+				if cbf.heapState.heap != nil {
+					heap.Remove(cbf.heapState.heap, cbf.heapState.index)
+					cbf.heapState.heap = nil
+					cbf.heapState.index = -1
+				}
+
 				if ve.DeletedBlobFiles == nil {
 					ve.DeletedBlobFiles = make(map[DeletedBlobFileEntry]*PhysicalBlobFile)
 				}
@@ -634,8 +815,178 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				s.stats.PhysicalSize -= cbf.metadata.Physical.Size
 				s.stats.ValueSize -= cbf.metadata.Physical.ValueSize
 				delete(s.files, cbf.metadata.FileID)
+				continue
+			}
+
+			if cbf.referencedValueSize >= cbf.metadata.Physical.ValueSize {
+				// This blob file is fully referenced.
+				continue
+			}
+
+			// Update the heap position of the blob file.
+			if currentTime.Sub(time.Unix(int64(cbf.metadata.Physical.CreationTime), 0)) < s.rewrite.heuristic.MinimumAge {
+				// This blob file is too young. It belongs in the heap of
+				// recently created blob files. Add it to the heap if it's not
+				// already there. If it is already there, its position in the
+				// heap is unchanged.
+				if cbf.heapState.heap == nil {
+					heap.Push(&s.rewrite.recentlyCreated, cbf)
+				}
+				continue
+			}
+
+			// This blob file is sufficiently old to be eligible for rewriting.
+			// It belongs in the rewrite candidates heap.
+			switch cbf.heapState.heap {
+			case &s.rewrite.recentlyCreated:
+				// We need to move it from the recently created heap to the
+				// rewrite candidates heap.
+				heap.Remove(cbf.heapState.heap, cbf.heapState.index)
+				heap.Push(&s.rewrite.candidates, cbf)
+			case &s.rewrite.candidates:
+				// This blob file is already in the rewrite candidates heap. We
+				// just need to fix up its position.
+				//
+				// TODO(jackson): When a version edit removes multiple
+				// references to a blob file, we'll fix it up multiple times.
+				// Should we remember the updated set of blob files and only fix
+				// up once at the end?
+				heap.Fix(cbf.heapState.heap, cbf.heapState.index)
+			case nil:
+				// This blob file is not in any heap. This is possible if this
+				// is the first time a reference to the file has been removed.
+				heap.Push(&s.rewrite.candidates, cbf)
+			default:
+				panic("unreachable")
 			}
 		}
 	}
+	s.moveAgedBlobFilesToCandidatesHeap(currentTime)
 	return nil
+}
+
+// ReplacementCandidate returns the next blob file that should be rewritten. If
+// there are no candidates, the second return value is false.  Successive calls
+// to ReplacementCandidate may (but are not guaranteed to) return the same blob
+// file until the blob file is replaced..
+func (s *CurrentBlobFileSet) ReplacementCandidate() (BlobFileMetadata, bool) {
+	s.moveAgedBlobFilesToCandidatesHeap(s.rewrite.heuristic.CurrentTime())
+	if len(s.rewrite.candidates.items) == 0 {
+		return BlobFileMetadata{}, false
+	}
+	return s.rewrite.candidates.items[0].metadata, true
+}
+
+// moveAgedBlobFilesToCandidatesHeap moves blob files from the recentlyCreated
+// heap to the candidates heap if at the provided timestamp they are considered
+// old enough to be eligible for rewriting.
+func (s *CurrentBlobFileSet) moveAgedBlobFilesToCandidatesHeap(now time.Time) {
+	defer s.maybeVerifyHeapStateInvariants()
+	for len(s.rewrite.recentlyCreated.items) > 0 {
+		root := s.rewrite.recentlyCreated.items[0]
+		if now.Sub(time.Unix(int64(root.metadata.Physical.CreationTime), 0)) < s.rewrite.heuristic.MinimumAge {
+			return
+		}
+
+		heap.Remove(&s.rewrite.recentlyCreated, root.heapState.index)
+		heap.Push(&s.rewrite.candidates, root)
+	}
+}
+
+func (s *CurrentBlobFileSet) maybeVerifyHeapStateInvariants() {
+	if invariants.Enabled {
+		for i, cbf := range s.rewrite.candidates.items {
+			if cbf.heapState.heap != &s.rewrite.candidates {
+				panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", cbf.heapState.heap, &s.rewrite.candidates))
+			} else if cbf.heapState.index != i {
+				panic(errors.AssertionFailedf("pebble: heap index mismatch %d != %d", cbf.heapState.index, i))
+			}
+		}
+		for i, cbf := range s.rewrite.recentlyCreated.items {
+			if cbf.heapState.heap != &s.rewrite.recentlyCreated {
+				panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", cbf.heapState.heap, &s.rewrite.recentlyCreated))
+			} else if cbf.heapState.index != i {
+				panic(errors.AssertionFailedf("pebble: heap index mismatch %d != %d", cbf.heapState.index, i))
+			}
+		}
+	}
+}
+
+// byReferencedRatio is a currentBlobFileOrdering that orders blob files by
+// the ratio of the blob file's referenced value size to its total value size.
+type byReferencedRatio struct{}
+
+func (byReferencedRatio) less(a, b *currentBlobFile) bool {
+	// TODO(jackson): Consider calculating the ratio whenever the references are
+	// updated and saving it on the currentBlobFile, rather than recalculating it
+	// on every comparison.
+	return float64(a.referencedValueSize)/float64(a.metadata.Physical.ValueSize) <
+		float64(b.referencedValueSize)/float64(b.metadata.Physical.ValueSize)
+}
+
+// byCreationTime is a currentBlobFileOrdering that orders blob files by
+// creation time.
+type byCreationTime struct{}
+
+func (byCreationTime) less(a, b *currentBlobFile) bool {
+	return a.metadata.Physical.CreationTime < b.metadata.Physical.CreationTime
+}
+
+type currentBlobFileOrdering interface {
+	less(*currentBlobFile, *currentBlobFile) bool
+}
+
+// currentBlobFileHeap is a heap of currentBlobFiles with a configurable
+// ordering.
+type currentBlobFileHeap[O currentBlobFileOrdering] struct {
+	items    []*currentBlobFile
+	ordering O
+}
+
+// Assert that *currentBlobFileHeap implements heap.Interface.
+var _ heap.Interface = (*currentBlobFileHeap[currentBlobFileOrdering])(nil)
+
+func (s *currentBlobFileHeap[O]) Len() int { return len(s.items) }
+
+func (s *currentBlobFileHeap[O]) Less(i, j int) bool {
+	if invariants.Enabled {
+		if s.items[i].heapState.heap != s {
+			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", s.items[i].heapState.heap, s))
+		} else if s.items[j].heapState.heap != s {
+			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", s.items[j].heapState.heap, s))
+		}
+	}
+	return s.ordering.less(s.items[i], s.items[j])
+}
+
+func (s *currentBlobFileHeap[O]) Swap(i, j int) {
+	s.items[i], s.items[j] = s.items[j], s.items[i]
+	s.items[i].heapState.index = i
+	s.items[j].heapState.index = j
+	if invariants.Enabled {
+		if s.items[i].heapState.heap != s {
+			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", s.items[i].heapState.heap, s))
+		} else if s.items[j].heapState.heap != s {
+			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", s.items[j].heapState.heap, s))
+		}
+	}
+}
+
+func (s *currentBlobFileHeap[O]) Push(x any) {
+	n := len(s.items)
+	item := x.(*currentBlobFile)
+	item.heapState.index = n
+	item.heapState.heap = s
+	s.items = append(s.items, item)
+}
+
+func (s *currentBlobFileHeap[O]) Pop() any {
+	old := s.items
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil
+	s.items = old[0 : n-1]
+	item.heapState.index = -1
+	item.heapState.heap = nil
+	return item
 }
