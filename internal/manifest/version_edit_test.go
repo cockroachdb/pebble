@@ -485,6 +485,10 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 			input: `  add-blob-file: B000925 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
 		},
 		{
+			input:  `  add-blob-file: B000925 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)] creationTime:1718851200}`,
+			output: `  add-blob-file: B000925 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
+		},
+		{
 			input: `  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
 		},
 		{

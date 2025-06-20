@@ -173,7 +173,7 @@ func ParseBlobFileMetadataDebug(s string) (_ BlobFileMetadata, err error) {
 	}()
 
 	// Input format:
-	//  B000102 physical:{000000: size:[206536 (201KiB)], vals:[393256 (384KiB)]}
+	//  B000102 physical:{000000: size:[206536 (201KiB)], vals:[393256 (384KiB)] creationTime:1718851200}
 	p := strparse.MakeParser(debugParserSeparators, s)
 	fileID := p.BlobFileID()
 	p.Expect("physical")
@@ -201,7 +201,7 @@ func ParsePhysicalBlobFileDebug(s string) (_ *PhysicalBlobFile, err error) {
 	}()
 
 	// Input format:
-	//  000000: size:[206536 (201KiB)], vals:[393256 (384KiB)]
+	//  000000: size:[206536 (201KiB)], vals:[393256 (384KiB)] creationTime:1718851200
 	p := strparse.MakeParser(debugParserSeparators, s)
 	return parsePhysicalBlobFileDebug(&p)
 }
@@ -233,6 +233,8 @@ func parsePhysicalBlobFileDebug(p *strparse.Parser) (*PhysicalBlobFile, error) {
 			m.ValueSize = p.Uint64()
 			maybeSkipParens()
 			p.Expect("]")
+		case "creationTime":
+			m.CreationTime = p.Uint64()
 		default:
 			p.Errf("unknown field %q", field)
 		}
