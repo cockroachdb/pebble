@@ -943,7 +943,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			flushable: mem,
 			flushed:   make(chan struct{}),
 		}}
-		c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.l0Organizer,
+		c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.latest.l0Organizer,
 			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now(), d.TableFormat(), d.determineCompactionValueSeparation)
 		if err != nil {
 			return err
@@ -1641,7 +1641,7 @@ func describeLSM(d *DB, verbose bool) string {
 	} else {
 		buf.WriteString(d.mu.versions.currentVersion().String())
 	}
-	if blobFileMetas := d.mu.versions.blobFiles.Metadatas(); len(blobFileMetas) > 0 {
+	if blobFileMetas := d.mu.versions.latest.blobFiles.Metadatas(); len(blobFileMetas) > 0 {
 		buf.WriteString("Blob files:\n")
 		for _, meta := range blobFileMetas {
 			fmt.Fprintf(&buf, "  %s: [%s] %d physical bytes, %d value bytes\n",

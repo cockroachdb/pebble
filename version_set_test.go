@@ -160,11 +160,11 @@ func TestVersionSet(t *testing.T) {
 
 		case "protect-backing":
 			n, _ := strconv.Atoi(td.CmdArgs[0].String())
-			vs.virtualBackings.Protect(base.DiskFileNum(n))
+			vs.latest.virtualBackings.Protect(base.DiskFileNum(n))
 
 		case "unprotect-backing":
 			n, _ := strconv.Atoi(td.CmdArgs[0].String())
-			vs.virtualBackings.Unprotect(base.DiskFileNum(n))
+			vs.latest.virtualBackings.Unprotect(base.DiskFileNum(n))
 
 		case "ref-version":
 			name := td.CmdArgs[0].String()
@@ -218,7 +218,7 @@ func TestVersionSet(t *testing.T) {
 				fmt.Fprintf(&buf, "  %s\n", l)
 			}
 		}
-		buf.WriteString(vs.virtualBackings.String())
+		buf.WriteString(vs.latest.virtualBackings.String())
 		printObjectBreakdown := func(kind string, zombies zombieObjects, obsolete []obsoleteFile) {
 			if zombies.Count() == 0 {
 				buf.WriteString(fmt.Sprintf("no zombie %s\n", kind))

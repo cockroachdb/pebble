@@ -2017,7 +2017,7 @@ func (d *DB) splitManualCompaction(
 	if level == 0 {
 		endLevel = baseLevel
 	}
-	keyRanges := curr.CalculateInuseKeyRanges(d.mu.versions.l0Organizer, level, endLevel, start, end)
+	keyRanges := curr.CalculateInuseKeyRanges(d.mu.versions.latest.l0Organizer, level, endLevel, start, end)
 	for _, keyRange := range keyRanges {
 		splitCompactions = append(splitCompactions, &manualCompaction{
 			level: level,
@@ -2165,10 +2165,10 @@ func (d *DB) Metrics() *Metrics {
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
-	backingCount, backingTotalSize := d.mu.versions.virtualBackings.Stats()
+	backingCount, backingTotalSize := d.mu.versions.latest.virtualBackings.Stats()
 	metrics.Table.BackingTableCount = uint64(backingCount)
 	metrics.Table.BackingTableSize = backingTotalSize
-	blobStats := d.mu.versions.blobFiles.Stats()
+	blobStats := d.mu.versions.latest.blobFiles.Stats()
 	d.mu.versions.logUnlock()
 	metrics.BlobFiles.LiveCount = blobStats.Count
 	metrics.BlobFiles.LiveSize = blobStats.PhysicalSize
@@ -2656,7 +2656,7 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 			}
 			continue
 		}
-		l0ReadAmp := d.mu.versions.l0Organizer.ReadAmplification()
+		l0ReadAmp := d.mu.versions.latest.l0Organizer.ReadAmplification()
 		if l0ReadAmp >= d.opts.L0StopWritesThreshold {
 			// There are too many level-0 files, so we wait.
 			if !stalled {

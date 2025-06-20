@@ -44,13 +44,13 @@ import (
 )
 
 func newVersion(opts *Options, files [numLevels][]*manifest.TableMetadata) *manifest.Version {
-	v, _ := newVersionAndL0Organizer(opts, files)
+	v, _ := newVersionWithLatest(opts, files)
 	return v
 }
 
-func newVersionAndL0Organizer(
+func newVersionWithLatest(
 	opts *Options, files [numLevels][]*manifest.TableMetadata,
-) (*manifest.Version, *manifest.L0Organizer) {
+) (*manifest.Version, *latestVersionState) {
 	l0Organizer := manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
 	v := manifest.NewVersionForTesting(
 		opts.Comparer,
@@ -59,16 +59,22 @@ func newVersionAndL0Organizer(
 	if err := v.CheckOrdering(); err != nil {
 		panic(err)
 	}
-	return v, l0Organizer
+
+	latest := &latestVersionState{
+		l0Organizer:     l0Organizer,
+		virtualBackings: manifest.MakeVirtualBackings(),
+	}
+	latest.blobFiles.Init(nil)
+	return v, latest
 }
 
 type compactionPickerForTesting struct {
-	score       float64
-	level       int
-	baseLevel   int
-	opts        *Options
-	vers        *manifest.Version
-	l0Organizer *manifest.L0Organizer
+	score     float64
+	level     int
+	baseLevel int
+	opts      *Options
+	vers      *manifest.Version
+	latest    *latestVersionState
 }
 
 var _ compactionPicker = &compactionPickerForTesting{}
@@ -103,9 +109,9 @@ func (p *compactionPickerForTesting) pickAutoScore(env compactionEnv) (pc *picke
 		file:        iter.Take(),
 	}
 	if cInfo.level == 0 {
-		return pickL0(env, p.opts, p.vers, p.l0Organizer, p.baseLevel)
+		return pickL0(env, p.opts, p.vers, p.latest.l0Organizer, p.baseLevel)
 	}
-	return pickAutoLPositive(env, p.opts, p.vers, p.l0Organizer, cInfo, p.baseLevel)
+	return pickAutoLPositive(env, p.opts, p.vers, p.latest.l0Organizer, cInfo, p.baseLevel)
 }
 
 func (p *compactionPickerForTesting) pickAutoNonScore(env compactionEnv) (pc *pickedCompaction) {
@@ -512,7 +518,7 @@ func TestPickCompaction(t *testing.T) {
 			cmp:  DefaultComparer,
 		}
 		tc.picker.opts = opts
-		tc.picker.vers, tc.picker.l0Organizer = newVersionAndL0Organizer(opts, tc.files)
+		tc.picker.vers, tc.picker.latest = newVersionWithLatest(opts, tc.files)
 		vs.versions.Init(nil)
 		vs.append(tc.picker.vers)
 		vs.picker = &tc.picker
@@ -2134,8 +2140,8 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.outputLevel.files.All())
 
 					c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
-						c.cmp, c.version, d.mu.versions.l0Organizer, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
-					)
+						c.cmp, c.version, d.mu.versions.latest.l0Organizer, c.outputLevel.level,
+						base.UserKeyBoundsFromInternal(c.smallest, c.largest))
 					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
 				}
 				return buf.String()
@@ -3226,8 +3232,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	// Set up the version: L4 has the file, L5 and L6 are empty.
 	var files [numLevels][]*manifest.TableMetadata
 	files[inputLevel] = []*manifest.TableMetadata{meta}
-	vers, l0org := newVersionAndL0Organizer(opts, files)
-	virtualBackings := manifest.MakeVirtualBackings()
+	vers, latest := newVersionWithLatest(opts, files)
 
 	// Set up a versionSet and compaction picker.
 	vs := &versionSet{
@@ -3236,7 +3241,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	}
 	vs.versions.Init(nil)
 	vs.append(vers)
-	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+	vs.picker = newCompactionPickerByScore(vers, latest, opts, nil)
 
 	// Pick a compaction.
 	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
@@ -3337,8 +3342,7 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	var files [numLevels][]*manifest.TableMetadata
 	files[inputLevel] = []*manifest.TableMetadata{metaL4}
 	files[outputLevel] = []*manifest.TableMetadata{metaL5}
-	vers, l0org := newVersionAndL0Organizer(opts, files)
-	virtualBackings := manifest.MakeVirtualBackings()
+	vers, latest := newVersionWithLatest(opts, files)
 
 	// Set up a versionSet and compaction picker.
 	vs := &versionSet{
@@ -3347,7 +3351,7 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	}
 	vs.versions.Init(nil)
 	vs.append(vers)
-	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+	vs.picker = newCompactionPickerByScore(vers, latest, opts, nil)
 
 	// Pick a compaction.
 	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
@@ -3415,8 +3419,7 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	var files [numLevels][]*manifest.TableMetadata
 	files[inputLevel] = []*manifest.TableMetadata{metaL4}
 	files[grandparentLevel] = []*manifest.TableMetadata{metaL6}
-	vers, l0org := newVersionAndL0Organizer(opts, files)
-	virtualBackings := manifest.MakeVirtualBackings()
+	vers, latest := newVersionWithLatest(opts, files)
 
 	vs := &versionSet{
 		opts: opts,
@@ -3424,7 +3427,7 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	}
 	vs.versions.Init(nil)
 	vs.append(vers)
-	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+	vs.picker = newCompactionPickerByScore(vers, latest, opts, nil)
 
 	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
 	// When grandparent overlap is too large, no compaction is picked.
@@ -3464,8 +3467,7 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 
 	var files [numLevels][]*manifest.TableMetadata
 	files[inputLevel] = []*manifest.TableMetadata{meta}
-	vers, l0org := newVersionAndL0Organizer(opts, files)
-	virtualBackings := manifest.MakeVirtualBackings()
+	vers, latest := newVersionWithLatest(opts, files)
 
 	vs := &versionSet{
 		opts: opts,
@@ -3473,7 +3475,7 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	}
 	vs.versions.Init(nil)
 	vs.append(vers)
-	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+	vs.picker = newCompactionPickerByScore(vers, latest, opts, nil)
 
 	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
 	require.Nil(t, pc, "no compaction should be picked if density is below threshold")
@@ -3508,8 +3510,7 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 
 	var files [numLevels][]*manifest.TableMetadata
 	files[inputLevel] = []*manifest.TableMetadata{meta}
-	vers, l0org := newVersionAndL0Organizer(opts, files)
-	virtualBackings := manifest.MakeVirtualBackings()
+	vers, latest := newVersionWithLatest(opts, files)
 
 	vs := &versionSet{
 		opts: opts,
@@ -3517,7 +3518,7 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 	}
 	vs.versions.Init(nil)
 	vs.append(vers)
-	vs.picker = newCompactionPickerByScore(vers, l0org, &virtualBackings, opts, nil)
+	vs.picker = newCompactionPickerByScore(vers, latest, opts, nil)
 
 	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
 	require.Nil(t, pc, "no compaction should be picked if stats are missing or invalid")

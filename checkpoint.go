@@ -197,10 +197,10 @@ func (d *DB) Checkpoint(
 	optionsFileNum := d.optionsFileNum
 
 	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
-	d.mu.versions.virtualBackings.ForEach(func(backing *manifest.TableBacking) {
+	d.mu.versions.latest.virtualBackings.ForEach(func(backing *manifest.TableBacking) {
 		virtualBackingFiles[backing.DiskFileNum] = struct{}{}
 	})
-	versionBlobFiles := d.mu.versions.blobFiles.Metadatas()
+	versionBlobFiles := d.mu.versions.latest.blobFiles.Metadatas()
 
 	// Acquire the logs while holding mutexes to ensure we don't race with a
 	// flush that might mark a log that's relevant to `current` as obsolete

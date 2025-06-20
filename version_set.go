@@ -57,12 +57,9 @@ type versionSet struct {
 	dynamicBaseLevel bool
 
 	// Mutable fields.
-	versions    manifest.VersionList
-	l0Organizer *manifest.L0Organizer
-	// blobFiles is the set of blob files referenced by the current version.
-	// blobFiles is protected by the manifest logLock (not vs.mu).
-	blobFiles manifest.CurrentBlobFileSet
-	picker    compactionPicker
+	versions manifest.VersionList
+	latest   latestVersionState
+	picker   compactionPicker
 	// curCompactionConcurrency is updated whenever picker is updated.
 	// INVARIANT: >= 1.
 	curCompactionConcurrency atomic.Int32
@@ -85,26 +82,6 @@ type versionSet struct {
 	// Zombie blobs which have been removed from the current version but are
 	// still referenced by an inuse iterator.
 	zombieBlobs zombieObjects
-	// virtualBackings contains information about the FileBackings which support
-	// virtual sstables in the latest version. It is mainly used to determine when
-	// a backing is no longer in use by the tables in the latest version; this is
-	// not a trivial problem because compactions and other operations can happen
-	// in parallel (and they can finish in unpredictable order).
-	//
-	// This mechanism is complementary to the backing Ref/Unref mechanism, which
-	// determines when a backing is no longer used by *any* live version and can
-	// be removed.
-	//
-	// In principle this should have been a copy-on-write structure, with each
-	// Version having its own record of its virtual backings (similar to the
-	// B-tree that holds the tables). However, in practice we only need it for the
-	// latest version, so we use a simpler structure and store it in the
-	// versionSet instead.
-	//
-	// virtualBackings is modified under DB.mu and the log lock. If it is accessed
-	// under DB.mu and a version update is in progress, it reflects the state of
-	// the next version.
-	virtualBackings manifest.VirtualBackings
 
 	// minUnflushedLogNum is the smallest WAL log file number corresponding to
 	// mutations that have not been flushed to an sstable.
@@ -130,6 +107,36 @@ type versionSet struct {
 	pickedCompactionCache pickedCompactionCache
 }
 
+// latestVersionState maintains mutable state describing only the most recent
+// version. Unlike a *Version, the state within this struct is updated as new
+// version edits are applied.
+type latestVersionState struct {
+	l0Organizer *manifest.L0Organizer
+	// blobFiles is the set of blob files referenced by the current version.
+	// blobFiles is protected by the manifest logLock (not vs.mu).
+	blobFiles manifest.CurrentBlobFileSet
+	// virtualBackings contains information about the FileBackings which support
+	// virtual sstables in the latest version. It is mainly used to determine when
+	// a backing is no longer in use by the tables in the latest version; this is
+	// not a trivial problem because compactions and other operations can happen
+	// in parallel (and they can finish in unpredictable order).
+	//
+	// This mechanism is complementary to the backing Ref/Unref mechanism, which
+	// determines when a backing is no longer used by *any* live version and can
+	// be removed.
+	//
+	// In principle this should have been a copy-on-write structure, with each
+	// Version having its own record of its virtual backings (similar to the
+	// B-tree that holds the tables). However, in practice we only need it for the
+	// latest version, so we use a simpler structure and store it in the
+	// versionSet instead.
+	//
+	// virtualBackings is modified under DB.mu and the log lock. If it is accessed
+	// under DB.mu and a version update is in progress, it reflects the state of
+	// the next version.
+	virtualBackings manifest.VirtualBackings
+}
+
 func (vs *versionSet) init(
 	dirname string,
 	provider objstorage.Provider,
@@ -147,11 +154,11 @@ func (vs *versionSet) init(
 	vs.cmp = opts.Comparer
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
-	vs.l0Organizer = manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
+	vs.latest.l0Organizer = manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
+	vs.latest.virtualBackings = manifest.MakeVirtualBackings()
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = makeZombieObjects()
 	vs.zombieBlobs = makeZombieObjects()
-	vs.virtualBackings = manifest.MakeVirtualBackings()
 	vs.nextFileNum.Store(1)
 	vs.manifestMarker = marker
 	vs.getFormatMajorVersion = getFMV
@@ -170,10 +177,10 @@ func (vs *versionSet) create(
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
 	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
 	vs.append(emptyVersion)
-	vs.blobFiles.Init(nil)
+	vs.latest.blobFiles.Init(nil)
 
 	vs.setCompactionPicker(
-		newCompactionPickerByScore(emptyVersion, vs.l0Organizer, &vs.virtualBackings, vs.opts, nil))
+		newCompactionPickerByScore(emptyVersion, &vs.latest, vs.opts, nil))
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
@@ -306,13 +313,13 @@ func (vs *versionSet) load(
 	// Populate the virtual backings for virtual sstables since we have finished
 	// version edit accumulation.
 	for _, b := range bve.AddedFileBacking {
-		vs.virtualBackings.AddAndRef(b)
+		vs.latest.virtualBackings.AddAndRef(b)
 	}
 
 	for _, addedLevel := range bve.AddedTables {
 		for _, m := range addedLevel {
 			if m.Virtual {
-				vs.virtualBackings.AddTable(m)
+				vs.latest.virtualBackings.AddTable(m)
 			}
 		}
 	}
@@ -335,9 +342,9 @@ func (vs *versionSet) load(
 	if err != nil {
 		return err
 	}
-	vs.l0Organizer.PerformUpdate(vs.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
-	vs.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
-	vs.blobFiles.Init(&bve)
+	vs.latest.l0Organizer.PerformUpdate(vs.latest.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
+	vs.latest.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
+	vs.latest.blobFiles.Init(&bve)
 	vs.append(newVersion)
 
 	for i := range vs.metrics.Levels {
@@ -357,7 +364,7 @@ func (vs *versionSet) load(
 			}
 		}
 	}
-	vs.virtualBackings.ForEach(func(backing *manifest.TableBacking) {
+	vs.latest.virtualBackings.ForEach(func(backing *manifest.TableBacking) {
 		isLocal, localSize := sizeIfLocal(backing, vs.provider)
 		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
 		if isLocal {
@@ -365,8 +372,7 @@ func (vs *versionSet) load(
 		}
 	})
 
-	vs.setCompactionPicker(
-		newCompactionPickerByScore(newVersion, vs.l0Organizer, &vs.virtualBackings, vs.opts, nil))
+	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, &vs.latest, vs.opts, nil))
 	return nil
 }
 
@@ -562,7 +568,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 		// We want the virtual backings *before* applying the version edit, because
 		// the new manifest will contain the pre-apply version plus the last version
 		// edit.
-		newManifestVirtualBackings = vs.virtualBackings.Backings()
+		newManifestVirtualBackings = vs.latest.virtualBackings.Backings()
 	}
 
 	// Grab certain values before releasing vs.mu, in case createManifest() needs
@@ -572,7 +578,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 
 	// Note: this call populates ve.RemovedBackingTables.
 	zombieBackings, removedVirtualBackings, localTablesLiveDelta :=
-		getZombieTablesAndUpdateVirtualBackings(ve, &vs.virtualBackings, vs.provider)
+		getZombieTablesAndUpdateVirtualBackings(ve, &vs.latest.virtualBackings, vs.provider)
 
 	var l0Update manifest.L0PreparedUpdate
 	if err := func() error {
@@ -607,7 +613,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 		// happen here because vs.blobFiles is protected by the manifest logLock
 		// (NOT vs.mu). We only read or write vs.blobFiles while holding the
 		// manifest lock.
-		if err := vs.blobFiles.ApplyAndUpdateVersionEdit(ve); err != nil {
+		if err := vs.latest.blobFiles.ApplyAndUpdateVersionEdit(ve); err != nil {
 			return errors.Wrap(err, "MANIFEST blob files apply and update failed")
 		}
 
@@ -620,7 +626,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
 		}
-		l0Update = vs.l0Organizer.PrepareUpdate(&bulkEdit, newVersion)
+		l0Update = vs.latest.l0Organizer.PrepareUpdate(&bulkEdit, newVersion)
 
 		w, err := vs.manifest.Next()
 		if err != nil {
@@ -673,8 +679,8 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	inProgress := vu.InProgressCompactionsFn()
 
 	zombieBlobs, localBlobLiveDelta := getZombieBlobFilesAndComputeLocalMetrics(ve, vs.provider)
-	vs.l0Organizer.PerformUpdate(l0Update, newVersion)
-	vs.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgress))
+	vs.latest.l0Organizer.PerformUpdate(l0Update, newVersion)
+	vs.latest.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgress))
 
 	// Update the zombie objects sets first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
@@ -768,8 +774,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	vs.metrics.BlobFiles.Local.LiveSize = uint64(int64(vs.metrics.BlobFiles.Local.LiveSize) + localBlobLiveDelta.size)
 	vs.metrics.BlobFiles.Local.LiveCount = uint64(int64(vs.metrics.BlobFiles.Local.LiveCount) + localBlobLiveDelta.count)
 
-	vs.setCompactionPicker(
-		newCompactionPickerByScore(newVersion, vs.l0Organizer, &vs.virtualBackings, vs.opts, inProgress))
+	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, &vs.latest, vs.opts, inProgress))
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}
@@ -1035,7 +1040,7 @@ func (vs *versionSet) createManifest(
 		MinUnflushedLogNum:   minUnflushedLogNum,
 		NextFileNum:          nextFileNum,
 		CreatedBackingTables: virtualBackings,
-		NewBlobFiles:         vs.blobFiles.Metadatas(),
+		NewBlobFiles:         vs.latest.blobFiles.Metadatas(),
 	}
 
 	// Add all extant sstables in the current version.
@@ -1112,7 +1117,7 @@ func (vs *versionSet) append(v *manifest.Version) {
 		for _, l := range v.Levels {
 			for f := range l.All() {
 				if f.Virtual {
-					if _, ok := vs.virtualBackings.Get(f.TableBacking.DiskFileNum); !ok {
+					if _, ok := vs.latest.virtualBackings.Get(f.TableBacking.DiskFileNum); !ok {
 						panic(fmt.Sprintf("%s is not in virtualBackings", f.TableBacking.DiskFileNum))
 					}
 				}
@@ -1145,7 +1150,7 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 	// are not but are still alive because of the protection mechanism (see
 	// manifset.VirtualBackings). This loop ensures the latter get added to the
 	// map.
-	vs.virtualBackings.ForEach(func(b *manifest.TableBacking) {
+	vs.latest.virtualBackings.ForEach(func(b *manifest.TableBacking) {
 		m[b.DiskFileNum] = struct{}{}
 	})
 }
