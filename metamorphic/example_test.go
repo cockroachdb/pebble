@@ -18,7 +18,7 @@ func ExampleExecute() {
 
 	kf := metamorphic.TestkeysKeyFormat
 	// Generate a random database by running the metamorphic test.
-	testOpts := metamorphic.RandomOptions(rng, kf, nil /* custom opt parsers */)
+	testOpts := metamorphic.RandomOptions(rng, kf, metamorphic.RandomOptionsCfg{})
 	ops := metamorphic.GenerateOps(rng, 10000, kf, metamorphic.DefaultOpConfig())
 	test, err := metamorphic.New(ops, testOpts, "" /* dir */, io.Discard)
 	if err != nil {

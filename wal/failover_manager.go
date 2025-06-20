@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -567,9 +568,15 @@ func (wm *failoverManager) Obsolete(
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
 
-	// If this is the first call to Obsolete after Open, we may have deletable
-	// logs outside the queue.
-	toDelete, wm.initialObsolete = wm.initialObsolete, nil
+	// If the DB was recently opened, we may have deletable logs outside the
+	// queue.
+	wm.initialObsolete = slices.DeleteFunc(wm.initialObsolete, func(dl DeletableLog) bool {
+		if dl.NumWAL >= minUnflushedNum {
+			return false
+		}
+		toDelete = append(toDelete, dl)
+		return true
+	})
 
 	i := 0
 	for ; i < len(wm.mu.closedWALs); i++ {

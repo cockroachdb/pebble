@@ -34,6 +34,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
+	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -372,6 +373,10 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	wals, err := wal.Scan(walDirs...)
 	if err != nil {
 		return nil, err
+	}
+	d.opts.Logger.Infof("Found %d WALs", redact.Safe(len(wals)))
+	for i := range wals {
+		d.opts.Logger.Infof("  - %s", wals[i])
 	}
 	walManager, err := wal.Init(walOpts, wals)
 	if err != nil {
