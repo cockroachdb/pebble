@@ -164,7 +164,6 @@ type pickedCompactionMetrics struct {
 // this struct, and is copied over into the compaction struct when that's
 // created.
 type pickedCompaction struct {
-	cmp Compare
 	// score of the chosen compaction (candidateLevelInfo.score).
 	score float64
 	// kind indicates the kind of compaction.
@@ -239,7 +238,6 @@ func newPickedCompaction(
 
 	adjustedLevel := adjustedOutputLevel(outputLevel, baseLevel)
 	pc := &pickedCompaction{
-		cmp:                    opts.Comparer.Compare,
 		version:                cur,
 		l0Organizer:            l0Organizer,
 		baseLevel:              baseLevel,
@@ -319,7 +317,6 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 	// Quickly copy over fields that do not require special deep copy care, and
 	// set all fields that will require a deep copy to nil.
 	newPC := &pickedCompaction{
-		cmp:                    pc.cmp,
 		score:                  pc.score,
 		kind:                   pc.kind,
 		baseLevel:              pc.baseLevel,
@@ -365,7 +362,9 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 // the candidate keys expand the key span. This avoids a bug for multi-level
 // compactions: during the second call to setupInputs, the picked compaction's
 // smallest and largest keys should not decrease the key span.
-func (pc *pickedCompaction) maybeExpandBounds(smallest InternalKey, largest InternalKey) {
+func (pc *pickedCompaction) maybeExpandBounds(
+	cmp base.Compare, smallest InternalKey, largest InternalKey,
+) {
 	if len(smallest.UserKey) == 0 && len(largest.UserKey) == 0 {
 		return
 	}
@@ -374,10 +373,10 @@ func (pc *pickedCompaction) maybeExpandBounds(smallest InternalKey, largest Inte
 		pc.largest = largest
 		return
 	}
-	if base.InternalCompare(pc.cmp, pc.smallest, smallest) >= 0 {
+	if base.InternalCompare(cmp, pc.smallest, smallest) >= 0 {
 		pc.smallest = smallest
 	}
-	if base.InternalCompare(pc.cmp, pc.largest, largest) <= 0 {
+	if base.InternalCompare(cmp, pc.largest, largest) <= 0 {
 		pc.largest = largest
 	}
 }
@@ -394,11 +393,13 @@ func (pc *pickedCompaction) setupInputs(
 	inputLevel *compactionLevel,
 	problemSpans *problemspans.ByLevel,
 ) bool {
+	cmp := opts.Comparer.Compare
 	if !canCompactTables(inputLevel.files, inputLevel.level, problemSpans) {
 		return false
 	}
 
-	pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, inputLevel.files.All()))
+	sm, la := manifest.KeyRange(cmp, inputLevel.files.All())
+	pc.maybeExpandBounds(cmp, sm, la)
 
 	// Setup output files and attempt to grow the inputLevel files with
 	// the expanded key range. No need to do this for intra-L0 compactions;
@@ -411,7 +412,8 @@ func (pc *pickedCompaction) setupInputs(
 			return false
 		}
 
-		pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, pc.outputLevel.files.All()))
+		sm, la = manifest.KeyRange(cmp, pc.outputLevel.files.All())
+		pc.maybeExpandBounds(cmp, sm, la)
 
 		// maxExpandedBytes is the maximum size of an expanded compaction. If
 		// growing a compaction results in a larger size, the original compaction
@@ -423,16 +425,17 @@ func (pc *pickedCompaction) setupInputs(
 		// Grow the sstables in inputLevel.level as long as it doesn't affect the number
 		// of sstables included from pc.outputLevel.level.
 		if pc.lcf != nil && inputLevel.level == 0 {
-			pc.growL0ForBase(maxExpandedBytes)
-		} else if pc.grow(pc.smallest, pc.largest, maxExpandedBytes, inputLevel, problemSpans) {
+			pc.growL0ForBase(cmp, maxExpandedBytes)
+		} else if pc.grow(cmp, pc.smallest, pc.largest, maxExpandedBytes, inputLevel, problemSpans) {
 			// inputLevel was expanded, adjust key range if necessary.
-			pc.maybeExpandBounds(manifest.KeyRange(pc.cmp, inputLevel.files.All()))
+			sm, la = manifest.KeyRange(cmp, inputLevel.files.All())
+			pc.maybeExpandBounds(cmp, sm, la)
 		}
 	}
 
 	if inputLevel.level == 0 {
 		// If L0 is involved, it should always be the startLevel of the compaction.
-		pc.startLevel.l0SublevelInfo = generateSublevelInfo(pc.cmp, pc.startLevel.files)
+		pc.startLevel.l0SublevelInfo = generateSublevelInfo(cmp, pc.startLevel.files)
 	}
 
 	return true
@@ -442,6 +445,7 @@ func (pc *pickedCompaction) setupInputs(
 // pc.outputLevel files in the compaction, and returns whether the inputs grew. sm
 // and la are the smallest and largest InternalKeys in all of the inputs.
 func (pc *pickedCompaction) grow(
+	cmp base.Compare,
 	sm, la InternalKey,
 	maxExpandedBytes uint64,
 	inputLevel *compactionLevel,
@@ -465,7 +469,7 @@ func (pc *pickedCompaction) grow(
 	// expandedInputLevel's key range not fully cover all files currently in pc.outputLevel,
 	// since pc.outputLevel was created using the entire key range which includes higher levels.
 	expandedOutputLevel := pc.version.Overlaps(pc.outputLevel.level,
-		base.UserKeyBoundsFromInternal(manifest.KeyRange(pc.cmp, expandedInputLevel.All(), pc.outputLevel.files.All())))
+		base.UserKeyBoundsFromInternal(manifest.KeyRange(cmp, expandedInputLevel.All(), pc.outputLevel.files.All())))
 	if expandedOutputLevel.Len() != pc.outputLevel.files.Len() {
 		return false
 	}
@@ -493,7 +497,7 @@ func (pc *pickedCompaction) grow(
 // will expand the compaction to include c-d and g-h from L0. The
 // bounds passed in are exclusive; the compaction cannot be expanded
 // to include files that "touch" it.
-func (pc *pickedCompaction) growL0ForBase(maxExpandedBytes uint64) bool {
+func (pc *pickedCompaction) growL0ForBase(cmp base.Compare, maxExpandedBytes uint64) bool {
 	if invariants.Enabled {
 		if pc.startLevel.level != 0 {
 			panic(fmt.Sprintf("pc.startLevel.level is %d, expected 0", pc.startLevel.level))
@@ -503,10 +507,10 @@ func (pc *pickedCompaction) growL0ForBase(maxExpandedBytes uint64) bool {
 	largestBaseKey := base.InvalidInternalKey
 	if pc.outputLevel.files.Empty() {
 		baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
-		if sm := baseIter.SeekLT(pc.cmp, pc.smallest.UserKey); sm != nil {
+		if sm := baseIter.SeekLT(cmp, pc.smallest.UserKey); sm != nil {
 			smallestBaseKey = sm.Largest()
 		}
-		if la := baseIter.SeekGE(pc.cmp, pc.largest.UserKey); la != nil {
+		if la := baseIter.SeekGE(cmp, pc.largest.UserKey); la != nil {
 			largestBaseKey = la.Smallest()
 		}
 	} else {
@@ -543,7 +547,7 @@ func (pc *pickedCompaction) growL0ForBase(maxExpandedBytes uint64) bool {
 	}
 
 	pc.startLevel.files = manifest.NewLevelSliceSeqSorted(newStartLevelFiles)
-	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp,
+	pc.smallest, pc.largest = manifest.KeyRange(cmp,
 		pc.startLevel.files.All(), pc.outputLevel.files.All())
 	return true
 }
@@ -1373,7 +1377,7 @@ func (p *compactionPickerByScore) pickAutoScore(env compactionEnv) (pc *pickedCo
 			pc = pickL0(env, p.opts, p.vers, p.latestVersionState.l0Organizer, p.baseLevel)
 			// Fail-safe to protect against compacting the same sstable
 			// concurrently.
-			if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
+			if pc != nil && !inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, pc) {
 				p.addScoresToPickedCompactionMetrics(pc, scores)
 				pc.score = info.score
 				if false {
@@ -1393,7 +1397,7 @@ func (p *compactionPickerByScore) pickAutoScore(env compactionEnv) (pc *pickedCo
 
 		pc := pickAutoLPositive(env, p.opts, p.vers, p.latestVersionState.l0Organizer, *info, p.baseLevel)
 		// Fail-safe to protect against compacting the same sstable concurrently.
-		if pc != nil && !inputRangeAlreadyCompacting(env, pc) {
+		if pc != nil && !inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, pc) {
 			p.addScoresToPickedCompactionMetrics(pc, scores)
 			pc.score = info.score
 			if false {
@@ -1579,10 +1583,10 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 		startLevel, outputLevel, p.baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = inputs
-	pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.All())
+	pc.smallest, pc.largest = manifest.KeyRange(p.opts.Comparer.Compare, pc.startLevel.files.All())
 
 	// Fail-safe to protect against compacting the same sstable concurrently.
-	if inputRangeAlreadyCompacting(env, pc) {
+	if inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, pc) {
 		return nil
 	}
 
@@ -1881,7 +1885,7 @@ func pickL0(
 			}
 			// A single-file intra-L0 compaction is unproductive.
 			if iter := pc.startLevel.files.Iter(); iter.First() != nil && iter.Next() != nil {
-				pc.smallest, pc.largest = manifest.KeyRange(pc.cmp, pc.startLevel.files.All())
+				pc.smallest, pc.largest = manifest.KeyRange(opts.Comparer.Compare, pc.startLevel.files.All())
 				return pc
 			}
 		} else {
@@ -1946,7 +1950,7 @@ func newPickedManualCompaction(
 		}
 	}
 	// Fail-safe to protect against compacting the same sstable concurrently.
-	if inputRangeAlreadyCompacting(env, pc) {
+	if inputRangeAlreadyCompacting(opts.Comparer.Compare, env, pc) {
 		return nil, true
 	}
 	return pc, false
@@ -1984,7 +1988,7 @@ func pickDownloadCompaction(
 		panic("pebble: download compaction picked unexpected output level")
 	}
 	// Fail-safe to protect against compacting the same sstable concurrently.
-	if inputRangeAlreadyCompacting(env, pc) {
+	if inputRangeAlreadyCompacting(opts.Comparer.Compare, env, pc) {
 		return nil
 	}
 	return pc
@@ -2030,7 +2034,7 @@ func pickReadTriggeredCompactionHelper(
 	if !pc.setupInputs(p.opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 		return nil
 	}
-	if inputRangeAlreadyCompacting(env, pc) {
+	if inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, pc) {
 		return nil
 	}
 	pc.kind = compactionKindRead
@@ -2055,7 +2059,7 @@ func (p *compactionPickerByScore) forceBaseLevel1() {
 	p.baseLevel = 1
 }
 
-func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {
+func inputRangeAlreadyCompacting(cmp base.Compare, env compactionEnv, pc *pickedCompaction) bool {
 	for _, cl := range pc.inputs {
 		for f := range cl.files.All() {
 			if f.IsCompacting() {
@@ -2097,8 +2101,8 @@ func inputRangeAlreadyCompacting(env compactionEnv, pc *pickedCompaction) bool {
 			if pc.outputLevel.level != c.outputLevel {
 				continue
 			}
-			if base.InternalCompare(pc.cmp, c.largest, pc.smallest) < 0 ||
-				base.InternalCompare(pc.cmp, c.smallest, pc.largest) > 0 {
+			if base.InternalCompare(cmp, c.largest, pc.smallest) < 0 ||
+				base.InternalCompare(cmp, c.smallest, pc.largest) > 0 {
 				continue
 			}
 

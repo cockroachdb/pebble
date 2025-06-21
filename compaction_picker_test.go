@@ -1058,7 +1058,6 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 			}
 
 			pc := &pickedCompaction{
-				cmp:       DefaultComparer.Compare,
 				baseLevel: 1,
 				inputs:    []compactionLevel{{level: -1}, {level: -1}},
 			}
@@ -1218,7 +1217,6 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 
 			case "expand-inputs":
 				pc := &pickedCompaction{
-					cmp:    cmp,
 					inputs: []compactionLevel{{level: 1}},
 				}
 				pc.startLevel = &pc.inputs[0]
