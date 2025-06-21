@@ -156,9 +156,9 @@ func (bb *BitmapRunLengthEncoder) Size() int {
 	}
 }
 
-// iterSetBitsInRunLengthBitmap returns an iterator over the indices of set bits
+// IterSetBitsInRunLengthBitmap returns an iterator over the indices of set bits
 // within the provided run-length encoded bitmap.
-func iterSetBitsInRunLengthBitmap(bitmap []byte) iter.Seq[int] {
+func IterSetBitsInRunLengthBitmap(bitmap []byte) iter.Seq[int] {
 	return func(yield func(int) bool) {
 		// i is the index of the current byte in the bitmap.
 		i := 0
