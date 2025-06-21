@@ -1131,13 +1131,13 @@ func (a compressionTypeAggregator) Accumulate(
 	f *manifest.TableMetadata, dst *compressionTypes,
 ) (v *compressionTypes, cacheOK bool) {
 	switch f.Stats.CompressionType {
-	case SnappyCompression:
+	case sstable.SnappyCompression:
 		dst.snappy++
-	case ZstdCompression:
+	case sstable.ZstdCompression:
 		dst.zstd++
-	case MinLZCompression:
+	case sstable.MinLZCompression:
 		dst.minlz++
-	case NoCompression:
+	case sstable.NoCompression:
 		dst.none++
 	default:
 		dst.unknown++

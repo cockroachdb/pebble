@@ -41,20 +41,6 @@ const (
 	defaultLevelMultiplier = 10
 )
 
-type CompressionProfile = block.CompressionProfile
-
-// Exported Compression constants.
-var (
-	DefaultCompression = block.DefaultCompression
-	NoCompression      = block.NoCompression
-	SnappyCompression  = block.SnappyCompression
-	ZstdCompression    = block.ZstdCompression
-	// MinLZCompression is only supported with table formats v6+. Older formats
-	// fall back to snappy.
-	MinLZCompression   = block.MinLZCompression
-	FastestCompression = block.FastestCompression
-)
-
 // FilterType exports the base.FilterType type.
 type FilterType = base.FilterType
 
@@ -419,7 +405,7 @@ type LevelOptions struct {
 	//
 	// The default value is Snappy for L0, or the function from the previous level
 	// for all other levels.
-	Compression func() *CompressionProfile
+	Compression func() *sstable.CompressionProfile
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
@@ -467,7 +453,7 @@ func (o *LevelOptions) EnsureL0Defaults() {
 		o.BlockSizeThreshold = base.DefaultBlockSizeThreshold
 	}
 	if o.Compression == nil {
-		o.Compression = func() *CompressionProfile { return SnappyCompression }
+		o.Compression = func() *sstable.CompressionProfile { return sstable.SnappyCompression }
 	}
 	if o.FilterPolicy == nil {
 		o.FilterPolicy = NoFilterPolicy
@@ -2115,7 +2101,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				if profile == nil {
 					return errors.Errorf("pebble: unknown compression: %q", errors.Safe(value))
 				}
-				l.Compression = func() *CompressionProfile { return profile }
+				l.Compression = func() *sstable.CompressionProfile { return profile }
 			case "filter_policy":
 				if hooks != nil && hooks.NewFilterPolicy != nil {
 					l.FilterPolicy, err = hooks.NewFilterPolicy(value)

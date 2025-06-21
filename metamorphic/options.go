@@ -801,13 +801,13 @@ func RandomOptions(
 
 	switch rng.IntN(4) {
 	case 0:
-		lopts.Compression = func() *block.CompressionProfile { return pebble.NoCompression }
+		lopts.Compression = func() *block.CompressionProfile { return sstable.NoCompression }
 	case 1:
-		lopts.Compression = func() *block.CompressionProfile { return pebble.ZstdCompression }
+		lopts.Compression = func() *block.CompressionProfile { return sstable.ZstdCompression }
 	case 2:
-		lopts.Compression = func() *block.CompressionProfile { return pebble.SnappyCompression }
+		lopts.Compression = func() *block.CompressionProfile { return sstable.SnappyCompression }
 	default:
-		lopts.Compression = func() *block.CompressionProfile { return pebble.MinLZCompression }
+		lopts.Compression = func() *block.CompressionProfile { return sstable.MinLZCompression }
 	}
 	opts.Levels[0] = lopts
 

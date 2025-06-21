@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -434,7 +435,7 @@ func TestCheckpointManyFiles(t *testing.T) {
 	// Disable compression to speed up the test.
 	opts.EnsureDefaults()
 	for i := range opts.Levels {
-		opts.Levels[i].Compression = func() *CompressionProfile { return NoCompression }
+		opts.Levels[i].Compression = func() *sstable.CompressionProfile { return sstable.NoCompression }
 	}
 
 	d, err := Open("", opts)
