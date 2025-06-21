@@ -1177,6 +1177,12 @@ type ValueSeparationPolicy struct {
 // SpanPolicy contains policies that can vary by key range. The zero value is
 // the default value.
 type SpanPolicy struct {
+	// Prefer a faster compression algorithm for the keys in this span.
+	//
+	// This is useful for keys that are frequently read or written but which don't
+	// amount to a significant amount of space.
+	PreferFastCompression bool
+
 	// DisableValueSeparationBySuffix disables discriminating KVs depending on
 	// suffix.
 	//
