@@ -265,8 +265,8 @@ func runVersion(
 	seed uint64,
 	initialStates []initialState,
 ) (results subrunResults) {
-	// mu guards histories and nextInitialStates. The subtests may be run in
-	// parallel (via t.Parallel()).
+	// mu guards histories and nextInitialStates - we used to run subtests below
+	// with t.Parallel().
 	var mu sync.Mutex
 
 	// The outer 'execution-<label>' subtest will block until all of the
@@ -294,7 +294,6 @@ func runVersion(
 				desc = "no-initial-state"
 			}
 			t.Run(desc, func(t *testing.T) {
-				t.Parallel()
 				require.NoError(t, os.MkdirAll(r.dir, os.ModePerm))
 
 				var buf bytes.Buffer
