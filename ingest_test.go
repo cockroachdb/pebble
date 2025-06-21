@@ -2957,7 +2957,7 @@ func TestIngestValidation(t *testing.T) {
 				w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 					BlockSize:   blockSize, // Create many smaller blocks.
 					Comparer:    opts.Comparer,
-					Compression: NoCompression, // For simpler debugging.
+					Compression: sstable.NoCompression, // For simpler debugging.
 					KeySchema:   opts.KeySchemas[opts.KeySchema],
 				})
 				for _, kv := range keyVals {

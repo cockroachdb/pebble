@@ -128,6 +128,20 @@ func (o ReaderOptions) ensureDefaults() ReaderOptions {
 var defaultKeySchema = colblk.DefaultKeySchema(base.DefaultComparer, 16)
 var defaultKeySchemas = MakeKeySchemas(&defaultKeySchema)
 
+type CompressionProfile = block.CompressionProfile
+
+// Exported CompressionProfile constants.
+var (
+	DefaultCompression = block.DefaultCompression
+	NoCompression      = block.NoCompression
+	SnappyCompression  = block.SnappyCompression
+	ZstdCompression    = block.ZstdCompression
+	// MinLZCompression is only supported with table formats v6+. Older formats
+	// fall back to snappy.
+	MinLZCompression   = block.MinLZCompression
+	FastestCompression = block.FastestCompression
+)
+
 // WriterOptions holds the parameters used to control building an sstable.
 type WriterOptions struct {
 	// BlockRestartInterval is the number of keys between restart points
@@ -166,7 +180,7 @@ type WriterOptions struct {
 	// Compression defines the per-block compression to use.
 	//
 	// The default value uses snappy compression.
-	Compression *block.CompressionProfile
+	Compression *CompressionProfile
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
@@ -353,7 +367,7 @@ func (o WriterOptions) ensureDefaults() WriterOptions {
 	return o
 }
 
-func tableFormatSupportsCompressionProfile(tf TableFormat, profile *block.CompressionProfile) bool {
+func tableFormatSupportsCompressionProfile(tf TableFormat, profile *CompressionProfile) bool {
 	// MinLZ is only supported in TableFormatPebblev6 and higher.
 	if tf < TableFormatPebblev6 && profile.UsesMinLZ() {
 		return false

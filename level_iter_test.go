@@ -530,7 +530,7 @@ func buildLevelIterTables(
 		writers[i] = sstable.NewRawWriter(objstorageprovider.NewFileWritable(files[i]), sstable.WriterOptions{
 			BlockRestartInterval: restartInterval,
 			BlockSize:            blockSize,
-			Compression:          NoCompression,
+			Compression:          sstable.NoCompression,
 		})
 	}
 

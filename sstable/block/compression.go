@@ -61,17 +61,41 @@ var (
 	MinLZCompression  = simpleCompressionProfile("MinLZ", compression.MinLZFastest)
 
 	DefaultCompression = SnappyCompression
-	FastestCompression = simpleCompressionProfile("Fastest", fastestAlgorithm())
+	FastestCompression = simpleCompressionProfile("Fastest", fastestCompression)
+
+	FastCompression = registerCompressionProfile(CompressionProfile{
+		Name:                "Fast",
+		DataBlocks:          fastestCompression,
+		ValueBlocks:         compression.ZstdLevel1,
+		OtherBlocks:         fastestCompression,
+		MinReductionPercent: 10,
+	})
+
+	BalancedCompression = registerCompressionProfile(CompressionProfile{
+		Name:                "Balanced",
+		DataBlocks:          compression.ZstdLevel1,
+		ValueBlocks:         compression.ZstdLevel3,
+		OtherBlocks:         fastestCompression,
+		MinReductionPercent: 5,
+	})
+
+	GoodCompression = registerCompressionProfile(CompressionProfile{
+		Name:                "Good",
+		DataBlocks:          compression.ZstdLevel3,
+		ValueBlocks:         compression.ZstdLevel3,
+		OtherBlocks:         fastestCompression,
+		MinReductionPercent: 5,
+	})
 )
 
-var fastestAlgorithm = func() compression.Setting {
+var fastestCompression = func() compression.Setting {
 	if runtime.GOARCH == "arm64" {
 		// MinLZ is generally faster and better than Snappy except for arm64: Snappy
 		// has an arm64 assembly implementation and MinLZ does not.
 		return compression.Snappy
 	}
 	return compression.MinLZFastest
-}
+}()
 
 // simpleCompressionProfile returns a CompressionProfile that uses the same
 // compression setting for all blocks and which uses the uncompressed block if
@@ -80,15 +104,13 @@ var fastestAlgorithm = func() compression.Setting {
 //
 // It should only be used during global initialization.
 func simpleCompressionProfile(name string, setting compression.Setting) *CompressionProfile {
-	p := &CompressionProfile{
+	return registerCompressionProfile(CompressionProfile{
 		Name:                name,
 		DataBlocks:          setting,
 		ValueBlocks:         setting,
 		OtherBlocks:         setting,
 		MinReductionPercent: 12,
-	}
-	registerCompressionProfile(p)
-	return p
+	})
 }
 
 // CompressionProfileByName returns the built-in compression profile with the
@@ -102,12 +124,13 @@ func CompressionProfileByName(name string) *CompressionProfile {
 
 var compressionProfileMap = make(map[string]*CompressionProfile)
 
-func registerCompressionProfile(p *CompressionProfile) {
+func registerCompressionProfile(p CompressionProfile) *CompressionProfile {
 	key := strings.ToLower(p.Name)
 	if _, ok := compressionProfileMap[key]; ok {
 		panic(errors.AssertionFailedf("duplicate compression profile: %s", p.Name))
 	}
-	compressionProfileMap[key] = p
+	compressionProfileMap[key] = &p
+	return &p
 }
 
 // CompressionIndicator is the byte stored physically within the block.Trailer
