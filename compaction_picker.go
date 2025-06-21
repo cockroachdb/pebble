@@ -291,13 +291,7 @@ func newPickedCompactionFromL0(
 	// any overlapping L0 SSTables that need to be added, and
 	// because compactions built by L0SSTables do not necessarily
 	// pick contiguous sequences of files in pc.version.Levels[0].
-	files := make([]*manifest.TableMetadata, 0, len(lcf.Files))
-	for f := range vers.Levels[0].All() {
-		if lcf.FilesIncluded[f.L0Index] {
-			files = append(files, f)
-		}
-	}
-	pc.startLevel.files = manifest.NewLevelSliceSeqSorted(files)
+	pc.startLevel.files = manifest.NewLevelSliceSeqSorted(lcf.Files)
 	return pc
 }
 
