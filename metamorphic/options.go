@@ -811,6 +811,20 @@ func RandomOptions(
 	}
 	opts.Levels[0] = lopts
 
+	// Sometimes apply DBCompressionSettings.
+	if rng.IntN(2) == 0 {
+		csList := []pebble.DBCompressionSettings{
+			pebble.DBCompressionNone,
+			pebble.DBCompressionFastest,
+			pebble.DBCompressionBalanced,
+			pebble.DBCompressionGood,
+		}
+		cs := csList[rng.IntN(len(csList))]
+		opts.ApplyCompressionSettings(func() pebble.DBCompressionSettings {
+			return cs
+		})
+	}
+
 	// Explicitly disable disk-backed FS's for the random configurations. The
 	// single standard test configuration that uses a disk-backed FS is
 	// sufficient.

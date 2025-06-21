@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/stretchr/testify/require"
@@ -575,4 +576,27 @@ func TestKeyCategories(t *testing.T) {
 			require.Equal(t, tc.expected, res)
 		})
 	}
+}
+
+func TestApplyDBCompressionSettings(t *testing.T) {
+	var o Options
+	o.testingRandomized(t)
+
+	var profile DBCompressionSettings
+	o.ApplyCompressionSettings(func() DBCompressionSettings {
+		return profile
+	})
+
+	profile = UniformDBCompressionSettings("Test", block.FastestCompression)
+	profile.Levels[1] = block.FastestCompression
+	profile.Levels[2] = block.BalancedCompression
+	profile.Levels[3] = block.GoodCompression
+	require.Equal(t, block.FastestCompression, o.Levels[1].Compression())
+	require.Equal(t, block.BalancedCompression, o.Levels[2].Compression())
+	require.Equal(t, block.GoodCompression, o.Levels[3].Compression())
+
+	profile = UniformDBCompressionSettings("Test2", block.FastestCompression)
+	require.Equal(t, block.FastestCompression, o.Levels[1].Compression())
+	require.Equal(t, block.FastestCompression, o.Levels[2].Compression())
+	require.Equal(t, block.FastestCompression, o.Levels[3].Compression())
 }

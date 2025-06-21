@@ -405,6 +405,8 @@ type LevelOptions struct {
 	//
 	// The default value is Snappy for L0, or the function from the previous level
 	// for all other levels.
+	//
+	// ApplyCompressionSettings can be used to initialize this field for all levels.
 	Compression func() *sstable.CompressionProfile
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
@@ -1271,6 +1273,54 @@ var JemallocSizeClasses = sstable.JemallocSizeClasses
 // level invariants whenever a new version is installed.
 func DebugCheckLevels(db *DB) error {
 	return db.CheckLevels(nil)
+}
+
+// DBCompressionSettings contains compression settings for the entire store. It
+// defines compression profiles for each LSM level.
+type DBCompressionSettings struct {
+	Name   string
+	Levels [manifest.NumLevels]*block.CompressionProfile
+}
+
+// Predefined compression settings.
+var (
+	DBCompressionNone     = UniformDBCompressionSettings("NoCompression", block.NoCompression)
+	DBCompressionFastest  = UniformDBCompressionSettings("Fastest", block.FastestCompression)
+	DBCompressionBalanced = func() DBCompressionSettings {
+		profile := UniformDBCompressionSettings("Balanced", block.FastestCompression)
+		profile.Levels[manifest.NumLevels-2] = block.FastCompression     // Zstd1 for value blocks.
+		profile.Levels[manifest.NumLevels-1] = block.BalancedCompression // Zstd1 for data blocks, Zstd3 for value blocks.
+		return profile
+	}()
+	DBCompressionGood = func() DBCompressionSettings {
+		profile := UniformDBCompressionSettings("Good", block.FastestCompression)
+		profile.Levels[manifest.NumLevels-2] = block.BalancedCompression // Zstd1 for data blocks, Zstd3 for value blocks.
+		profile.Levels[manifest.NumLevels-1] = block.GoodCompression     // Zstd3 for data and value blocks.
+		return profile
+	}()
+)
+
+// UniformDBCompressionSettings returns a DBCompressionSettings which uses the
+// same compression profile on all LSM levels.
+func UniformDBCompressionSettings(
+	name string, profile *block.CompressionProfile,
+) DBCompressionSettings {
+	cs := DBCompressionSettings{Name: name}
+	for i := range cs.Levels {
+		cs.Levels[i] = profile
+	}
+	return cs
+}
+
+// ApplyCompressionSettings sets the Compression field in each LevelOptions to
+// call the given function and return the compression profile for that level.
+func (o *Options) ApplyCompressionSettings(csFn func() DBCompressionSettings) {
+	for i := range o.Levels {
+		levelIdx := i
+		o.Levels[i].Compression = func() *block.CompressionProfile {
+			return csFn().Levels[levelIdx]
+		}
+	}
 }
 
 // EnsureDefaults ensures that the default values for all options are set if a
