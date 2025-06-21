@@ -385,7 +385,7 @@ func newCompaction(
 ) *compaction {
 	c := &compaction{
 		kind:               compactionKindDefault,
-		cmp:                pc.cmp,
+		cmp:                opts.Comparer.Compare,
 		equal:              opts.Comparer.Equal,
 		comparer:           opts.Comparer,
 		formatKey:          opts.Comparer.FormatKey,
