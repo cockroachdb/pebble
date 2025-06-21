@@ -45,6 +45,7 @@ type T struct {
 	openErrEnhancer func(error) error
 	openOptions     []OpenOption
 	exciseSpanFn    DBExciseSpanFn
+	remoteStorageFn DBRemoteStorageFn
 }
 
 // A Option configures the Pebble introspection tool.
@@ -148,6 +149,18 @@ func WithDBExciseSpanFn(fn DBExciseSpanFn) Option {
 	}
 }
 
+// DBRemoteStorageFn is used for certain commands which support cloud URIs (like
+// gs://foo/bar).
+type DBRemoteStorageFn func(uri string) (remote.Storage, error)
+
+// WithDBRemoteStorageFn specifies a function that returns the excise span for the
+// `db excise` command.
+func WithDBRemoteStorageFn(fn DBRemoteStorageFn) Option {
+	return func(t *T) {
+		t.remoteStorageFn = fn
+	}
+}
+
 // New creates a new introspection tool.
 func New(opts ...Option) *T {
 	t := &T{
@@ -170,7 +183,7 @@ func New(opts ...Option) *T {
 		opt(t)
 	}
 
-	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer, t.openOptions, t.exciseSpanFn)
+	t.db = newDB(&t.opts, t.comparers, t.mergers, t.openErrEnhancer, t.openOptions, t.exciseSpanFn, t.remoteStorageFn)
 	t.find = newFind(&t.opts, t.comparers, t.defaultComparer, t.mergers)
 	t.lsm = newLSM(&t.opts, t.comparers)
 	t.manifest = newManifest(&t.opts, t.comparers)

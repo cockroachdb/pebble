@@ -22,7 +22,15 @@ func TestFileAnalyzer(t *testing.T) {
 			fa := NewFileAnalyzer(nil, sstable.ReaderOptions{})
 			defer fa.Close()
 			for _, path := range crstrings.Lines(td.Input) {
-				if err := fa.SSTable(context.Background(), vfs.Default, path); err != nil {
+				file, err := vfs.Default.Open(path)
+				if err != nil {
+					td.Fatalf(t, "%v", err)
+				}
+				readable, err := sstable.NewSimpleReadable(file)
+				if err != nil {
+					td.Fatalf(t, "%v", err)
+				}
+				if err := fa.SSTable(context.Background(), readable); err != nil {
 					td.Fatalf(t, "%v", err)
 				}
 			}

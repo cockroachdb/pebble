@@ -200,6 +200,14 @@ func (rh *vfsReadHandle) RecordCacheHit(_ context.Context, offset, size int64) {
 	rh.rs.recordCacheHit(offset, size)
 }
 
+// NewFileReadable returns a new objstorage.Readable that reads from the given
+// file. It should not be used directly, except in tools or tests.
+func NewFileReadable(
+	file vfs.File, fs vfs.FS, readaheadConfig *ReadaheadConfig, filename string,
+) (objstorage.Readable, error) {
+	return newFileReadable(file, fs, readaheadConfig, filename)
+}
+
 // TestingCheckMaxReadahead returns true if the ReadHandle has switched to
 // OS-level read-ahead.
 func TestingCheckMaxReadahead(rh objstorage.ReadHandle) bool {
