@@ -277,8 +277,8 @@ func TestScanInternal(t *testing.T) {
 				if err != nil {
 					return nil, err
 				}
-				for i := range opts.Levels {
-					opts.Levels[i].TargetFileSize = int64(v)
+				for i := range opts.TargetFileSizes {
+					opts.TargetFileSizes[i] = int64(v)
 				}
 			case "bloom-bits-per-key":
 				v, err := strconv.Atoi(cmdArg.Vals[0])

@@ -178,7 +178,7 @@ func TestMetrics(t *testing.T) {
 				MaxBlobReferenceDepth: 5,
 			}
 		}
-		opts.Levels[0] = LevelOptions{TargetFileSize: 50}
+		opts.TargetFileSizes[0] = 50
 
 		// Prevent foreground flushes and compactions from triggering asynchronous
 		// follow-up compactions. This avoids asynchronously-scheduled work from

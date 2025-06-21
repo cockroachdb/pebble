@@ -2098,25 +2098,25 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	// Define a simple base testOpts, and a randomized testOpts. The results
 	// of iteration will be compared.
 	type testOpts struct {
-		levelOpts []LevelOptions
-		filter    func() BlockPropertyFilterMask
+		levelOpts       []LevelOptions
+		targetFileSizes []int64
+		filter          func() BlockPropertyFilterMask
 	}
 
 	baseOpts := testOpts{
-		levelOpts: make([]LevelOptions, 7),
+		levelOpts:       make([]LevelOptions, 7),
+		targetFileSizes: make([]int64, 7),
 	}
 	for i := 0; i < len(baseOpts.levelOpts); i++ {
-		baseOpts.levelOpts[i].TargetFileSize = 1
+		baseOpts.targetFileSizes[i] = 1
 		baseOpts.levelOpts[i].BlockSize = 1
 	}
 
 	randomOpts := testOpts{
 		levelOpts: []LevelOptions{
-			{
-				TargetFileSize: int64(1 + rng.IntN(2<<20)), // Vary the L0 file size.
-				BlockSize:      1 + rng.IntN(32<<10),
-			},
+			{BlockSize: 1 + rng.IntN(32<<10)},
 		},
+		targetFileSizes: []int64{int64(1 + rng.IntN(2<<20))}, // Vary the L0 file size.
 	}
 	if rng.IntN(2) == 0 {
 		randomOpts.filter = func() BlockPropertyFilterMask {
@@ -2135,6 +2135,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 			sstable.NewTestKeysBlockPropertyCollector,
 		},
 	}
+	copy(opts1.TargetFileSizes[:], baseOpts.targetFileSizes)
 	copy(opts1.Levels[:], baseOpts.levelOpts)
 	d1, err := Open("", opts1)
 	require.NoError(t, err)
@@ -2148,6 +2149,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 			sstable.NewTestKeysBlockPropertyCollector,
 		},
 	}
+	copy(opts2.TargetFileSizes[:], randomOpts.targetFileSizes)
 	copy(opts2.Levels[:], randomOpts.levelOpts)
 	d2, err := Open("", opts2)
 	require.NoError(t, err)
@@ -2689,8 +2691,8 @@ func buildFragmentedRangeKey(b testing.TB, seed uint64) (d *DB, keys [][]byte) {
 		L0CompactionFileThreshold: 1,
 	}
 	opts.EnsureDefaults()
-	for l := 0; l < len(opts.Levels); l++ {
-		opts.Levels[l].TargetFileSize = 1
+	for l := range opts.TargetFileSizes {
+		opts.TargetFileSizes[l] = 1
 	}
 	var err error
 	d, err = Open("", opts)
