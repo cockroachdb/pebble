@@ -3304,6 +3304,9 @@ func (d *DB) compactAndWrite(
 		if spanPolicy.DisableValueSeparationBySuffix {
 			writerOpts.DisableValueBlocks = true
 		}
+		if spanPolicy.PreferFastCompression && writerOpts.Compression != block.NoCompression {
+			writerOpts.Compression = block.FastestCompression
+		}
 		vSep := valueSeparation
 		if spanPolicy.ValueStoragePolicy == ValueStorageLowReadLatency {
 			vSep = compact.NeverSeparateValues{}
