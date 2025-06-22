@@ -46,8 +46,10 @@ var gcLabels = pprof.Labels("pebble", "gc")
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction
 // if it would make the total compaction cover more than this many bytes.
-func expandedCompactionByteSizeLimit(opts *Options, level int, availBytes uint64) uint64 {
-	v := uint64(25 * opts.Levels[level].TargetFileSize)
+func expandedCompactionByteSizeLimit(
+	opts *Options, targetFileSize int64, availBytes uint64,
+) uint64 {
+	v := uint64(25 * targetFileSize)
 
 	// Never expand a compaction beyond half the available capacity, divided
 	// by the maximum number of concurrent compactions. Each of the concurrent
@@ -68,14 +70,14 @@ func expandedCompactionByteSizeLimit(opts *Options, level int, availBytes uint64
 
 // maxGrandparentOverlapBytes is the maximum bytes of overlap with level+1
 // before we stop building a single file in a level-1 to level compaction.
-func maxGrandparentOverlapBytes(opts *Options, level int) uint64 {
-	return uint64(10 * opts.Levels[level].TargetFileSize)
+func maxGrandparentOverlapBytes(targetFileSize int64) uint64 {
+	return uint64(10 * targetFileSize)
 }
 
 // maxReadCompactionBytes is used to prevent read compactions which
 // are too wide.
-func maxReadCompactionBytes(opts *Options, level int) uint64 {
-	return uint64(10 * opts.Levels[level].TargetFileSize)
+func maxReadCompactionBytes(targetFileSize int64) uint64 {
+	return uint64(10 * targetFileSize)
 }
 
 // noCloseIter wraps around a FragmentIterator, intercepting and eliding
@@ -774,8 +776,8 @@ func newFlush(
 	}
 
 	if opts.FlushSplitBytes > 0 {
-		c.maxOutputFileSize = uint64(opts.Levels[0].TargetFileSize)
-		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
+		c.maxOutputFileSize = uint64(opts.TargetFileSizes[0])
+		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts.TargetFileSizes[0])
 		c.grandparents = c.version.Overlaps(baseLevel, c.bounds)
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}

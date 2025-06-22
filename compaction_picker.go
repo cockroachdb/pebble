@@ -230,15 +230,15 @@ func newPickedCompaction(
 			startLevel, baseLevel))
 	}
 
-	adjustedLevel := adjustedOutputLevel(outputLevel, baseLevel)
+	targetFileSize := opts.TargetFileSize(outputLevel, baseLevel)
 	pc := &pickedCompaction{
 		version:                cur,
 		l0Organizer:            l0Organizer,
 		baseLevel:              baseLevel,
 		inputs:                 []compactionLevel{{level: startLevel}, {level: outputLevel}},
-		maxOutputFileSize:      uint64(opts.Levels[adjustedLevel].TargetFileSize),
-		maxOverlapBytes:        maxGrandparentOverlapBytes(opts, adjustedLevel),
-		maxReadCompactionBytes: maxReadCompactionBytes(opts, adjustedLevel),
+		maxOutputFileSize:      uint64(targetFileSize),
+		maxOverlapBytes:        maxGrandparentOverlapBytes(targetFileSize),
+		maxReadCompactionBytes: maxReadCompactionBytes(targetFileSize),
 	}
 	pc.startLevel = &pc.inputs[0]
 	pc.outputLevel = &pc.inputs[1]
@@ -382,9 +382,8 @@ func (pc *pickedCompaction) setupInputs(
 		// maxExpandedBytes is the maximum size of an expanded compaction. If
 		// growing a compaction results in a larger size, the original compaction
 		// is used instead.
-		maxExpandedBytes := expandedCompactionByteSizeLimit(
-			opts, adjustedOutputLevel(pc.outputLevel.level, pc.baseLevel), diskAvailBytes,
-		)
+		targetFileSize := opts.TargetFileSize(pc.outputLevel.level, pc.baseLevel)
+		maxExpandedBytes := expandedCompactionByteSizeLimit(opts, targetFileSize, diskAvailBytes)
 
 		// Grow the sstables in inputLevel.level as long as it doesn't affect the number
 		// of sstables included from pc.outputLevel.level.
@@ -1692,8 +1691,8 @@ func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) 
 	if !opts.Experimental.MultiLevelCompactionHeuristic.allowL0() && pc.startLevel.level == 0 {
 		return pc
 	}
-	if pc.estimatedInputSize() > expandedCompactionByteSizeLimit(
-		opts, adjustedOutputLevel(pc.outputLevel.level, pc.baseLevel), diskAvailBytes) {
+	targetFileSize := opts.TargetFileSize(pc.outputLevel.level, pc.baseLevel)
+	if pc.estimatedInputSize() > expandedCompactionByteSizeLimit(opts, targetFileSize, diskAvailBytes) {
 		// Don't add a level if the current compaction exceeds the compaction size limit
 		return pc
 	}
@@ -1783,8 +1782,8 @@ func (wa WriteAmpHeuristic) pick(
 	// We consider the addition of a level as an "expansion" of the compaction.
 	// If pcMulti is past the expanded compaction byte size limit already,
 	// we don't consider it.
-	if pcMulti.estimatedInputSize() >= expandedCompactionByteSizeLimit(
-		opts, adjustedOutputLevel(pcMulti.outputLevel.level, pcMulti.baseLevel), diskAvailBytes) {
+	targetFileSize := opts.TargetFileSize(pcMulti.outputLevel.level, pcMulti.baseLevel)
+	if pcMulti.estimatedInputSize() >= expandedCompactionByteSizeLimit(opts, targetFileSize, diskAvailBytes) {
 		return pcOrig
 	}
 	picked := pcOrig

@@ -1779,13 +1779,13 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				if err != nil {
 					return err
 				}
-				opts.Levels[i].TargetFileSize = size
+				opts.TargetFileSizes[i] = size
 			}
 			// Set the remaining file sizes. Normally, EnsureDefaults() would do that
 			// for us but it was already called and the target file sizes for all
 			// levels are now set to the defaults.
-			for i := len(cmdArg.Vals); i < len(opts.Levels); i++ {
-				opts.Levels[i].TargetFileSize = opts.Levels[i-1].TargetFileSize * 2
+			for i := len(cmdArg.Vals); i < len(opts.TargetFileSizes); i++ {
+				opts.TargetFileSizes[i] = opts.TargetFileSizes[i-1] * 2
 			}
 		case "value-separation":
 			if len(cmdArg.Vals) != 3 {

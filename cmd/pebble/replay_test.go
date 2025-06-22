@@ -49,17 +49,19 @@ func TestParseOptionsStr(t *testing.T) {
 		},
 		{
 			c: replayConfig{optionsString: `[Options] [Level "0"] target_file_size=222`},
-			options: &pebble.Options{Levels: [manifest.NumLevels]pebble.LevelOptions{
-				0: {TargetFileSize: 222},
-			}},
+			options: &pebble.Options{
+				TargetFileSizes: [manifest.NumLevels]int64{0: 222},
+			},
 		},
 		{
 			c: replayConfig{optionsString: `[Options] lbase_max_bytes=10  max_open_files=20  [Level "0"] target_file_size=30 [Level "1"] index_block_size=40`},
 			options: &pebble.Options{
 				LBaseMaxBytes: 10,
 				MaxOpenFiles:  20,
+				TargetFileSizes: [manifest.NumLevels]int64{
+					0: 30,
+				},
 				Levels: [manifest.NumLevels]pebble.LevelOptions{
-					0: {TargetFileSize: 30},
 					1: {IndexBlockSize: 40},
 				},
 			},

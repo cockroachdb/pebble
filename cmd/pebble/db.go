@@ -103,7 +103,7 @@ func newPebbleDB(dir string) DB {
 		l.FilterType = pebble.TableFilter
 	}
 	opts.Levels[6].FilterPolicy = pebble.NoFilterPolicy
-	opts.FlushSplitBytes = opts.Levels[0].TargetFileSize
+	opts.FlushSplitBytes = opts.TargetFileSizes[0]
 
 	opts.EnsureDefaults()
 
