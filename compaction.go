@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"iter"
 	"math"
 	"runtime/pprof"
 	"slices"
@@ -263,8 +262,7 @@ type compaction struct {
 	bytesWritten atomic.Int64
 
 	// The boundaries of the input data.
-	smallest InternalKey
-	largest  InternalKey
+	bounds base.UserKeyBounds
 
 	// A list of fragment iterators to close when the compaction finishes. Used by
 	// input iteration to keep rangeDelIters open for the lifetime of the
@@ -364,10 +362,6 @@ func (c *compaction) makeInfo(jobID JobID) CompactionInfo {
 	return info
 }
 
-func (c *compaction) userKeyBounds() base.UserKeyBounds {
-	return base.UserKeyBoundsFromInternal(c.smallest, c.largest)
-}
-
 type getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation
 
 // newCompaction constructs a compaction from the provided picked compaction.
@@ -390,8 +384,7 @@ func newCompaction(
 		comparer:           opts.Comparer,
 		formatKey:          opts.Comparer.FormatKey,
 		inputs:             pc.inputs,
-		smallest:           pc.smallest,
-		largest:            pc.largest,
+		bounds:             pc.bounds,
 		logger:             opts.Logger,
 		version:            pc.version,
 		beganAt:            beganAt,
@@ -434,10 +427,10 @@ func newCompaction(
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
 	if c.outputLevel.level+1 < numLevels {
-		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.userKeyBounds())
+		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.bounds)
 	}
 	c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
-		c.cmp, c.version, pc.l0Organizer, c.outputLevel.level, base.UserKeyBoundsFromInternal(c.smallest, c.largest),
+		c.cmp, c.version, pc.l0Organizer, c.outputLevel.level, c.bounds,
 	)
 	c.kind = pc.kind
 
@@ -568,11 +561,10 @@ func newDeleteOnlyCompaction(
 	c.version.Ref()
 
 	// Set c.smallest, c.largest.
-	files := make([]iter.Seq[*manifest.TableMetadata], 0, len(inputs))
+	cmp := opts.Comparer.Compare
 	for _, in := range inputs {
-		files = append(files, in.files.All())
+		c.bounds = manifest.ExtendKeyRange(cmp, c.bounds, in.files.All())
 	}
-	c.smallest, c.largest = manifest.KeyRange(opts.Comparer.Compare, files...)
 	return c
 }
 
@@ -713,20 +705,15 @@ func newFlush(
 
 	c.l0Limits = l0Organizer.FlushSplitKeys()
 
-	smallestSet, largestSet := false, false
 	updatePointBounds := func(iter internalIterator) {
 		if kv := iter.First(); kv != nil {
-			if !smallestSet ||
-				base.InternalCompare(c.cmp, c.smallest, kv.K) > 0 {
-				smallestSet = true
-				c.smallest = kv.K.Clone()
+			if c.bounds.Start == nil || c.cmp(c.bounds.Start, kv.K.UserKey) > 0 {
+				c.bounds.Start = slices.Clone(kv.K.UserKey)
 			}
 		}
 		if kv := iter.Last(); kv != nil {
-			if !largestSet ||
-				base.InternalCompare(c.cmp, c.largest, kv.K) < 0 {
-				largestSet = true
-				c.largest = kv.K.Clone()
+			if c.bounds.End.Key == nil || !c.bounds.End.IsUpperBoundForInternalKey(c.cmp, kv.K) {
+				c.bounds.End = base.UserKeyExclusiveIf(slices.Clone(kv.K.UserKey), kv.K.IsExclusiveSentinel())
 			}
 		}
 	}
@@ -738,20 +725,12 @@ func newFlush(
 		if s, err := iter.First(); err != nil {
 			return err
 		} else if s != nil {
-			if key := s.SmallestKey(); !smallestSet ||
-				base.InternalCompare(c.cmp, c.smallest, key) > 0 {
-				smallestSet = true
-				c.smallest = key.Clone()
-			}
+			c.bounds = c.bounds.Union(c.cmp, s.Bounds().Clone())
 		}
 		if s, err := iter.Last(); err != nil {
 			return err
 		} else if s != nil {
-			if key := s.LargestKey(); !largestSet ||
-				base.InternalCompare(c.cmp, c.largest, key) < 0 {
-				largestSet = true
-				c.largest = key.Clone()
-			}
+			c.bounds = c.bounds.Union(c.cmp, s.Bounds().Clone())
 		}
 		return nil
 	}
@@ -776,7 +755,7 @@ func newFlush(
 	if opts.FlushSplitBytes > 0 {
 		c.maxOutputFileSize = uint64(opts.Levels[0].TargetFileSize)
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts, 0)
-		c.grandparents = c.version.Overlaps(baseLevel, c.userKeyBounds())
+		c.grandparents = c.version.Overlaps(baseLevel, c.bounds)
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}
 
@@ -1665,6 +1644,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			// c.kind == compactionKindIngestedFlushable && we could have deleted files due
 			// to ingest-time splits or excises.
 			ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
+			exciseBounds := ingestFlushable.exciseSpan.UserKeyBounds()
 			for c2 := range d.mu.compact.inProgress {
 				// Check if this compaction overlaps with the excise span. Note that just
 				// checking if the inputs individually overlap with the excise span
@@ -1673,7 +1653,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// doing a [c,d) excise at the same time as this compaction, we will have
 				// to error out the whole compaction as we can't guarantee it hasn't/won't
 				// write a file overlapping with the excise span.
-				if ingestFlushable.exciseSpan.OverlapsInternalKeyRange(d.cmp, c2.smallest, c2.largest) {
+				if c2.bounds.Overlaps(d.cmp, &exciseBounds) {
 					c2.cancel.Store(true)
 				}
 			}
@@ -2452,7 +2432,7 @@ func (d *DB) compactionPprofLabels(c *compaction) pprof.LabelSet {
 		level = fmt.Sprintf("L%d", c.outputLevel.level)
 	}
 	if kc := d.opts.Experimental.UserKeyCategories; kc.Len() > 0 {
-		cat := kc.CategorizeKeyRange(c.smallest.UserKey, c.largest.UserKey)
+		cat := kc.CategorizeKeyRange(c.bounds.Start, c.bounds.End.Key)
 		return pprof.Labels("pebble", activity, "output-level", level, "key-type", cat)
 	}
 	return pprof.Labels("pebble", activity, "output-level", level)
@@ -3270,7 +3250,7 @@ func (d *DB) compactAndWrite(
 	iter := compact.NewIter(cfg, pointIter, rangeDelIter, rangeKeyIter)
 
 	runnerCfg := compact.RunnerConfig{
-		CompactionBounds:           base.UserKeyBoundsFromInternal(c.smallest, c.largest),
+		CompactionBounds:           c.bounds,
 		L0SplitKeys:                c.l0Limits,
 		Grandparents:               c.grandparents,
 		MaxGrandparentOverlapBytes: c.maxOverlapBytes,

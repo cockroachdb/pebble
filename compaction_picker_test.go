@@ -266,8 +266,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					inProgress = append(inProgress, compactionInfo{
 						inputs:      pc.inputs,
 						outputLevel: pc.outputLevel.level,
-						smallest:    pc.smallest,
-						largest:     pc.largest,
+						bounds:      pc.bounds.Clone(),
 					})
 					if pc.outputLevel.level == 0 {
 						// Once we pick one L0->L0 compaction, we'll keep on doing so
@@ -323,10 +322,8 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						}
 					}
 					if c.inputs[0].level == 0 {
-						iter := c.inputs[0].files.Iter()
 						l0InProgress = append(l0InProgress, manifest.L0Compaction{
-							Smallest:  iter.First().Smallest(),
-							Largest:   iter.Last().Largest(),
+							Bounds:    manifest.KeyRange(opts.Comparer.Compare, c.inputs[0].files.All()),
 							IsIntraL0: c.outputLevel == 0,
 						})
 					}
@@ -488,7 +485,6 @@ func TestCompactionPickerL0(t *testing.T) {
 
 				var level int
 				var info compactionInfo
-				first := true
 				compactionFiles := map[int][]*manifest.TableMetadata{}
 				for _, p := range parts {
 					switch p {
@@ -520,13 +516,7 @@ func TestCompactionPickerL0(t *testing.T) {
 							return fmt.Sprintf("cannot find compaction file %s", tableNum)
 						}
 						compactFile.CompactionState = manifest.CompactionStateCompacting
-						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest()) < 0 {
-							info.largest = compactFile.Largest()
-						}
-						if first || base.InternalCompare(DefaultComparer.Compare, info.smallest, compactFile.Smallest()) > 0 {
-							info.smallest = compactFile.Smallest()
-						}
-						first = false
+						info.bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
 						compactionFiles[level] = append(compactionFiles[level], compactFile)
 					}
 				}
@@ -715,7 +705,6 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 
 				var level int
 				var info compactionInfo
-				first := true
 				compactionFiles := map[int][]*manifest.TableMetadata{}
 				for _, p := range parts {
 					switch p {
@@ -747,13 +736,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 							return fmt.Sprintf("cannot find compaction file %s", tableNum)
 						}
 						compactFile.CompactionState = manifest.CompactionStateCompacting
-						if first || base.InternalCompare(DefaultComparer.Compare, info.largest, compactFile.Largest()) < 0 {
-							info.largest = compactFile.Largest()
-						}
-						if first || base.InternalCompare(DefaultComparer.Compare, info.smallest, compactFile.Smallest()) > 0 {
-							info.smallest = compactFile.Smallest()
-						}
-						first = false
+						info.bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
 						compactionFiles[level] = append(compactionFiles[level], compactFile)
 					}
 				}

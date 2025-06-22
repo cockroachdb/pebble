@@ -916,9 +916,8 @@ func TestCompaction(t *testing.T) {
 	// d.mu must be held when calling.
 	createOngoingCompaction := func(start, end []byte, startLevel, outputLevel int) (ongoingCompaction *compaction) {
 		ongoingCompaction = &compaction{
-			inputs:   []compactionLevel{{level: startLevel}, {level: outputLevel}},
-			smallest: InternalKey{UserKey: start},
-			largest:  InternalKey{UserKey: end},
+			inputs: []compactionLevel{{level: startLevel}, {level: outputLevel}},
+			bounds: base.UserKeyBoundsInclusive(start, end),
 		}
 		ongoingCompaction.startLevel = &ongoingCompaction.inputs[0]
 		ongoingCompaction.outputLevel = &ongoingCompaction.inputs[1]
@@ -2137,13 +2136,10 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						c.outputLevel.files = manifest.NewLevelSliceKeySorted(c.cmp, outputFiles)
 					}
 
-					c.smallest, c.largest = manifest.KeyRange(c.cmp,
-						c.startLevel.files.All(),
-						c.outputLevel.files.All())
-
+					c.bounds = manifest.KeyRange(c.cmp, c.startLevel.files.All(), c.outputLevel.files.All())
 					c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
 						c.cmp, c.version, d.mu.versions.latest.l0Organizer, c.outputLevel.level,
-						base.UserKeyBoundsFromInternal(c.smallest, c.largest))
+						c.bounds)
 					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
 				}
 				return buf.String()
