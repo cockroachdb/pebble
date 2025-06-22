@@ -63,6 +63,9 @@ func TestUserKeyBounds(t *testing.T) {
 	aci := UserKeyBoundsEndExclusiveIf(a, c, false)
 	ace := UserKeyBoundsEndExclusiveIf(a, c, true)
 	cde := UserKeyBoundsEndExclusive(c, d)
+	adi := UserKeyBoundsInclusive(a, d)
+	ade := UserKeyBoundsEndExclusive(a, d)
+	empty := UserKeyBounds{}
 
 	t.Run("Valid", func(t *testing.T) {
 		require.True(t, bb.Valid(cmp))
@@ -128,5 +131,25 @@ func TestUserKeyBounds(t *testing.T) {
 		require.True(t, bdi.ContainsInternalKey(cmp, MakeInternalKey(d, 0, InternalKeyKindSet)))
 		require.False(t, bde.ContainsInternalKey(cmp, MakeInternalKey(d, 0, InternalKeyKindSet)))
 		require.True(t, bde.ContainsInternalKey(cmp, MakeRangeDeleteSentinelKey(d)))
+	})
+
+	t.Run("Union", func(t *testing.T) {
+		// Identity
+		require.Equal(t, bb, bb.Union(cmp, bb))
+		require.Equal(t, bdi, bdi.Union(cmp, bdi))
+		require.Equal(t, bde, bde.Union(cmp, bde))
+		require.Equal(t, aci, aci.Union(cmp, aci))
+
+		require.Equal(t, bdi, bb.Union(cmp, bdi))
+		require.Equal(t, bdi, bdi.Union(cmp, bde))
+		require.Equal(t, bdi, bde.Union(cmp, bdi))
+		require.Equal(t, aci, aci.Union(cmp, ace))
+
+		require.Equal(t, ade, aci.Union(cmp, bde))
+		require.Equal(t, adi, aci.Union(cmp, bdi))
+		require.Equal(t, ade, ace.Union(cmp, bde))
+		require.Equal(t, adi, ace.Union(cmp, bdi))
+
+		require.Equal(t, bde, empty.Union(cmp, bde))
 	})
 }

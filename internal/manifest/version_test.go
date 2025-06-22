@@ -84,8 +84,8 @@ func TestIkeyRange(t *testing.T) {
 		}
 		levelMetadata := MakeLevelMetadata(base.DefaultComparer.Compare, 0, f)
 
-		sm, la := KeyRange(base.DefaultComparer.Compare, levelMetadata.All())
-		got := string(sm.UserKey) + "-" + string(la.UserKey)
+		bounds := KeyRange(base.DefaultComparer.Compare, levelMetadata.All())
+		got := string(bounds.Start) + "-" + string(bounds.End.Key)
 		if got != tc.want {
 			t.Errorf("KeyRange(%q) = %q, %q", tc.input, got, tc.want)
 		}

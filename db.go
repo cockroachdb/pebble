@@ -2866,8 +2866,7 @@ func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []comp
 			info := compactionInfo{
 				versionEditApplied: c.versionEditApplied,
 				inputs:             c.inputs,
-				smallest:           c.smallest,
-				largest:            c.largest,
+				bounds:             c.bounds,
 				outputLevel:        -1,
 			}
 			if c.outputLevel != nil {
@@ -2898,8 +2897,7 @@ func inProgressL0Compactions(inProgress []compactionInfo) []manifest.L0Compactio
 			continue
 		}
 		compactions = append(compactions, manifest.L0Compaction{
-			Smallest:  info.smallest,
-			Largest:   info.largest,
+			Bounds:    info.bounds,
 			IsIntraL0: info.outputLevel == 0,
 		})
 	}

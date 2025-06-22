@@ -1024,9 +1024,8 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 			return nil, err
 		}
 		c := &compaction{
-			inputs:   []compactionLevel{{}, {level: outputLevel}},
-			smallest: m.Smallest(),
-			largest:  m.Largest(),
+			inputs: []compactionLevel{{}, {level: outputLevel}},
+			bounds: m.UserKeyBounds(),
 		}
 		c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 		return c, nil
