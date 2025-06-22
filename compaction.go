@@ -202,8 +202,6 @@ type compaction struct {
 	comparer *base.Comparer
 	logger   Logger
 	version  *manifest.Version
-	stats    base.InternalIteratorStats
-	beganAt  time.Time
 	// versionEditApplied is set to true when a compaction has completed and the
 	// resulting version has been installed (if successful), but the compaction
 	// goroutine is still cleaning up (eg, deleting obsolete files).
@@ -254,9 +252,6 @@ type compaction struct {
 	// single output table with the tables in the grandparent level.
 	maxOverlapBytes uint64
 
-	// bytesWritten contains the number of bytes that have been written to outputs.
-	bytesWritten atomic.Int64
-
 	// The boundaries of the input data.
 	bounds base.UserKeyBounds
 
@@ -305,14 +300,33 @@ type compaction struct {
 		l0Limits [][]byte
 	}
 
-	metrics levelMetricsDelta
-
-	pickerMetrics pickedCompactionMetrics
+	// metrics encapsulates various metrics collected during a compaction.
+	metrics compactionMetrics
 
 	grantHandle CompactionGrantHandle
 
 	tableFormat   sstable.TableFormat
 	objCreateOpts objstorage.CreateOptions
+}
+
+// compactionMetrics contians metrics surrounding a compaction.
+type compactionMetrics struct {
+	// beganAt is the time when the compaction began.
+	beganAt time.Time
+	// bytesWritten contains the number of bytes that have been written to
+	// outputs. It's updated whenever the compaction outputs'
+	// objstorage.Writables receive new writes. See newCompactionOutputObj.
+	bytesWritten atomic.Int64
+	// internalIterStats contains statistics from the internal iterators used by
+	// the compaction.
+	//
+	// TODO(jackson): Use these to power the compaction BytesRead metric.
+	internalIterStats base.InternalIteratorStats
+	// perLevel contains metrics for each level involved in the compaction.
+	perLevel levelMetricsDelta
+	// picker contains metrics from the compaction picker when the compaction
+	// was picked.
+	picker pickedCompactionMetrics
 }
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
@@ -360,11 +374,11 @@ func (c *compaction) makeInfo(jobID JobID) CompactionInfo {
 		info.Output.Level = numLevels - 1
 	}
 
-	for i, score := range c.pickerMetrics.scores {
+	for i, score := range c.metrics.picker.scores {
 		info.Input[i].Score = score
 	}
-	info.SingleLevelOverlappingRatio = c.pickerMetrics.singleLevelOverlappingRatio
-	info.MultiLevelOverlappingRatio = c.pickerMetrics.multiLevelOverlappingRatio
+	info.SingleLevelOverlappingRatio = c.metrics.picker.singleLevelOverlappingRatio
+	info.MultiLevelOverlappingRatio = c.metrics.picker.multiLevelOverlappingRatio
 	if len(info.Input) > 2 {
 		info.Annotations = append(info.Annotations, "multilevel")
 	}
@@ -393,13 +407,15 @@ func newCompaction(
 		bounds:             pc.bounds,
 		logger:             opts.Logger,
 		version:            pc.version,
-		beganAt:            beganAt,
 		getValueSeparation: getValueSeparation,
 		maxOutputFileSize:  pc.maxOutputFileSize,
 		maxOverlapBytes:    pc.maxOverlapBytes,
-		pickerMetrics:      pc.pickerMetrics,
-		grantHandle:        grantHandle,
-		tableFormat:        tableFormat,
+		metrics: compactionMetrics{
+			beganAt: beganAt,
+			picker:  pc.pickerMetrics,
+		},
+		grantHandle: grantHandle,
+		tableFormat: tableFormat,
 	}
 	// Acquire a reference to the version to ensure that files and in-memory
 	// version state necessary for reading files remain available. Ignoring
@@ -542,9 +558,11 @@ func newDeleteOnlyCompaction(
 		comparer:    opts.Comparer,
 		logger:      opts.Logger,
 		version:     cur,
-		beganAt:     beganAt,
 		inputs:      inputs,
 		grantHandle: noopGrantHandle{},
+		metrics: compactionMetrics{
+			beganAt: beganAt,
+		},
 	}
 	c.deleteOnly.hints = hints
 	c.deleteOnly.exciseEnabled = exciseEnabled
@@ -664,13 +682,15 @@ func newFlush(
 		comparer:           opts.Comparer,
 		logger:             opts.Logger,
 		version:            cur,
-		beganAt:            beganAt,
 		inputs:             []compactionLevel{{level: -1}, {level: 0}},
 		getValueSeparation: getValueSeparation,
 		maxOutputFileSize:  math.MaxUint64,
 		maxOverlapBytes:    math.MaxUint64,
 		grantHandle:        noopGrantHandle{},
 		tableFormat:        tableFormat,
+		metrics: compactionMetrics{
+			beganAt: beganAt,
+		},
 	}
 	c.flush.flushables = flushing
 	c.flush.l0Limits = l0Organizer.FlushSplitKeys()
@@ -1030,7 +1050,7 @@ func (c *compaction) newInputIters(
 	// iter.
 	pointIter = iters[0]
 	if len(iters) > 1 {
-		pointIter = newMergingIter(c.logger, &c.stats, cmp, nil, iters...)
+		pointIter = newMergingIter(c.logger, &c.metrics.internalIterStats, cmp, nil, iters...)
 	}
 
 	// In normal operation, levelIter iterates over the point operations in a
@@ -1382,10 +1402,10 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	ingestFlushable := c.flush.flushables[0].flushable.(*ingestedFlushable)
 
 	updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []manifest.NewTableEntry) {
-		levelMetrics := c.metrics[level]
+		levelMetrics := c.metrics.perLevel[level]
 		if levelMetrics == nil {
 			levelMetrics = &LevelMetrics{}
-			c.metrics[level] = levelMetrics
+			c.metrics.perLevel[level] = levelMetrics
 		}
 		levelMetrics.TablesCount--
 		levelMetrics.TablesSize -= int64(m.Size)
@@ -1448,11 +1468,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 				level:      level,
 			})
 		}
-		levelMetrics := c.metrics[level]
-		if levelMetrics == nil {
-			levelMetrics = &LevelMetrics{}
-			c.metrics[level] = levelMetrics
-		}
+		levelMetrics := c.metrics.perLevel.level(level)
 		levelMetrics.TableBytesIngested += file.Size
 		levelMetrics.TablesIngested++
 	}
@@ -1628,7 +1644,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		// oldest unflushed memtable.
 		ve.MinUnflushedLogNum = minUnflushedLogNum
 		if c.kind != compactionKindIngestedFlushable {
-			l0Metrics := c.metrics[0]
+			l0Metrics := c.metrics.perLevel.level(0)
 			if d.opts.DisableWAL {
 				// If the WAL is disabled, every flushable has a zero [logSize],
 				// resulting in zero bytes in. Instead, use the number of bytes we
@@ -1677,7 +1693,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		return versionUpdate{
 			VE:                      ve,
 			JobID:                   jobID,
-			Metrics:                 c.metrics,
+			Metrics:                 c.metrics.perLevel,
 			InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) },
 		}, nil
 	})
@@ -1692,7 +1708,8 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 
 	d.clearCompactingState(c, err != nil)
 	delete(d.mu.compact.inProgress, c)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten.Load(), err)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.metrics.picker,
+		c.metrics.bytesWritten.Load(), err)
 
 	var flushed flushableList
 	if err == nil {
@@ -1702,7 +1719,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		d.updateTableStatsLocked(ve.NewTables)
 		if ingest {
 			d.mu.versions.metrics.Flush.AsIngestCount++
-			for _, l := range c.metrics {
+			for _, l := range c.metrics.perLevel {
 				if l != nil {
 					d.mu.versions.metrics.Flush.AsIngestBytes += l.TableBytesIngested
 					d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested
@@ -2476,7 +2493,7 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 			// must be atomic with the above removal of c from
 			// d.mu.compact.InProgress to ensure Metrics.Compact.Duration does not
 			// miss or double count a completing compaction's duration.
-			d.mu.compact.duration += d.timeNow().Sub(c.beganAt)
+			d.mu.compact.duration += d.timeNow().Sub(c.metrics.beganAt)
 		}()
 		// Done must not be called while holding any lock that needs to be
 		// acquired by Schedule. Also, it must be called after new Version has
@@ -2625,7 +2642,7 @@ func (d *DB) compact1(jobID JobID, c *compaction) (err error) {
 			return versionUpdate{
 				VE:                      ve,
 				JobID:                   jobID,
-				Metrics:                 c.metrics,
+				Metrics:                 c.metrics.perLevel,
 				InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(c) },
 			}, nil
 		})
@@ -2646,10 +2663,11 @@ func (d *DB) compact1(jobID JobID, c *compaction) (err error) {
 	// NB: clearing compacting state must occur before updating the read state;
 	// L0Sublevels initialization depends on it.
 	d.clearCompactingState(c, err != nil)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.pickerMetrics, c.bytesWritten.Load(), err)
-	d.mu.versions.incrementCompactionBytes(-c.bytesWritten.Load())
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.metrics.picker,
+		c.metrics.bytesWritten.Load(), err)
+	d.mu.versions.incrementCompactionBytes(-c.metrics.bytesWritten.Load())
 
-	info.TotalDuration = d.timeNow().Sub(c.beganAt)
+	info.TotalDuration = d.timeNow().Sub(c.metrics.beganAt)
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the
@@ -2813,9 +2831,8 @@ func (d *DB) runCopyCompaction(
 			if errors.Is(err, sstable.ErrEmptySpan) {
 				// The virtual table was empty. Just remove the backing file.
 				// Note that deleteOnExit is true so we will delete the created object.
-				c.metrics[c.outputLevel.level] = &LevelMetrics{
-					TableBytesIn: inputMeta.Size,
-				}
+				outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
+				outputMetrics.TableBytesIn = inputMeta.Size
 
 				return ve, compact.Stats{}, nil
 			}
@@ -2839,11 +2856,10 @@ func (d *DB) runCopyCompaction(
 	if newMeta.Virtual {
 		ve.CreatedBackingTables = []*manifest.TableBacking{newMeta.TableBacking}
 	}
-	c.metrics[c.outputLevel.level] = &LevelMetrics{
-		TableBytesIn:        inputMeta.Size,
-		TableBytesCompacted: newMeta.Size,
-		TablesCompacted:     1,
-	}
+	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
+	outputMetrics.TableBytesIn = inputMeta.Size
+	outputMetrics.TableBytesCompacted = newMeta.Size
+	outputMetrics.TablesCompacted = 1
 
 	if err := d.objProvider.Sync(); err != nil {
 		return nil, compact.Stats{}, err
@@ -3022,12 +3038,11 @@ func (d *DB) runDeleteOnlyCompaction(
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	for _, cl := range c.inputs {
-		levelMetrics := &LevelMetrics{}
+		levelMetrics := c.metrics.perLevel.level(cl.level)
 		err := d.runDeleteOnlyCompactionForLevel(cl, levelMetrics, ve, snapshots, fragments, c.deleteOnly.exciseEnabled)
 		if err != nil {
 			return nil, stats, err
 		}
-		c.metrics[cl.level] = levelMetrics
 	}
 	// Remove any files that were added and deleted in the same versionEdit.
 	ve.NewTables = slices.DeleteFunc(ve.NewTables, func(e manifest.NewTableEntry) bool {
@@ -3067,10 +3082,9 @@ func (d *DB) runMoveCompaction(
 	if c.cancel.Load() {
 		return ve, stats, ErrCancelledCompaction
 	}
-	c.metrics[c.outputLevel.level] = &LevelMetrics{
-		TableBytesMoved: meta.Size,
-		TablesMoved:     1,
-	}
+	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
+	outputMetrics.TableBytesMoved = meta.Size
+	outputMetrics.TablesMoved = 1
 	ve = &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 			{Level: c.startLevel.level, FileNum: meta.TableNum}: meta,
@@ -3200,7 +3214,7 @@ func (d *DB) compactAndWrite(
 	defer c.bufferPool.Release()
 	blockReadEnv := block.ReadEnv{
 		BufferPool: &c.bufferPool,
-		Stats:      &c.stats,
+		Stats:      &c.metrics.internalIterStats,
 		IterStats: d.fileCache.SSTStatsCollector().Accumulator(
 			uint64(uintptr(unsafe.Pointer(c))),
 			categoryCompaction,
@@ -3330,13 +3344,13 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 	}
 
 	startLevelBytes := c.startLevel.files.TableSizeSum()
-	outputMetrics := &LevelMetrics{
-		TableBytesIn: startLevelBytes,
-		// TODO(jackson):  This BytesRead value does not include any blob files
-		// written. It either should, or we should add a separate metric.
-		TableBytesRead:     c.outputLevel.files.TableSizeSum(),
-		BlobBytesCompacted: result.Stats.CumulativeBlobFileSize,
-	}
+
+	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
+	outputMetrics.TableBytesIn = startLevelBytes
+	// TODO(jackson):  This BytesRead value does not include any blob files
+	// written. It either should, or we should add a separate metric.
+	outputMetrics.TableBytesRead = c.outputLevel.files.TableSizeSum()
+	outputMetrics.BlobBytesCompacted = result.Stats.CumulativeBlobFileSize
 	if c.flush.flushables != nil {
 		outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
 	}
@@ -3345,12 +3359,11 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 	}
 	outputMetrics.TableBytesRead += outputMetrics.TableBytesIn
 
-	c.metrics[c.outputLevel.level] = outputMetrics
-	if len(c.flush.flushables) == 0 && c.metrics[c.startLevel.level] == nil {
-		c.metrics[c.startLevel.level] = &LevelMetrics{}
+	if len(c.flush.flushables) == 0 {
+		c.metrics.perLevel.level(c.startLevel.level)
 	}
 	if len(c.extraLevels) > 0 {
-		c.metrics[c.extraLevels[0].level] = &LevelMetrics{}
+		c.metrics.perLevel.level(c.extraLevels[0].level)
 		outputMetrics.MultiLevel.TableBytesInTop = startLevelBytes
 		outputMetrics.MultiLevel.TableBytesIn = outputMetrics.TableBytesIn
 		outputMetrics.MultiLevel.TableBytesRead = outputMetrics.TableBytesRead
@@ -3512,7 +3525,7 @@ func (d *DB) newCompactionOutputObj(
 		writable = &compactionWritable{
 			Writable: writable,
 			versions: d.mu.versions,
-			written:  &c.bytesWritten,
+			written:  &c.metrics.bytesWritten,
 		}
 	}
 	return writable, objMeta, nil
