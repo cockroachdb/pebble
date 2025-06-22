@@ -2091,7 +2091,6 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 			case "allow-zero-seqnum":
 				d.mu.Lock()
 				c := &compaction{
-					cmp:      d.cmp,
 					comparer: d.opts.Comparer,
 					version:  d.mu.versions.currentVersion(),
 					inputs:   []compactionLevel{{}, {}},
@@ -2133,13 +2132,13 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 						}
 						c.outputLevel.level = c.startLevel.level + 1
 						c.startLevel.files = manifest.NewLevelSliceSpecificOrder(startFiles)
-						c.outputLevel.files = manifest.NewLevelSliceKeySorted(c.cmp, outputFiles)
+						c.outputLevel.files = manifest.NewLevelSliceKeySorted(c.comparer.Compare, outputFiles)
 					}
 
-					c.bounds = manifest.KeyRange(c.cmp, c.startLevel.files.All(), c.outputLevel.files.All())
+					c.bounds = manifest.KeyRange(c.comparer.Compare, c.startLevel.files.All(), c.outputLevel.files.All())
 					c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
-						c.cmp, c.version, d.mu.versions.latest.l0Organizer, c.outputLevel.level,
-						c.bounds)
+						c.comparer.Compare, c.version, d.mu.versions.latest.l0Organizer,
+						c.outputLevel.level, c.bounds)
 					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
 				}
 				return buf.String()
@@ -2173,11 +2172,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "error-on-user-key-overlap":
-				c := &compaction{
-					cmp:       DefaultComparer.Compare,
-					comparer:  DefaultComparer,
-					formatKey: DefaultComparer.FormatKey,
-				}
+				c := &compaction{comparer: DefaultComparer}
 				var files []manifest.NewTableEntry
 				tableNum := base.TableNum(1)
 
@@ -2305,11 +2300,9 @@ func TestCompactionCheckOrdering(t *testing.T) {
 			switch d.Cmd {
 			case "check-ordering":
 				c := &compaction{
-					cmp:       DefaultComparer.Compare,
-					comparer:  DefaultComparer,
-					formatKey: DefaultComparer.FormatKey,
-					logger:    panicLogger{},
-					inputs:    []compactionLevel{{level: -1}, {level: -1}},
+					comparer: DefaultComparer,
+					logger:   panicLogger{},
+					inputs:   []compactionLevel{{level: -1}, {level: -1}},
 				}
 				c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
 				var startFiles, outputFiles []*manifest.TableMetadata
@@ -2385,7 +2378,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 				if c.startLevel.level == 0 {
 					// We don't change the input files for the compaction beyond this point.
-					c.startLevel.l0SublevelInfo = generateSublevelInfo(c.cmp, c.startLevel.files)
+					c.startLevel.l0SublevelInfo = generateSublevelInfo(c.comparer.Compare, c.startLevel.files)
 				}
 
 				newIters := func(
