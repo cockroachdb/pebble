@@ -2081,7 +2081,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.Duration = d.mu.compact.duration
 	for c := range d.mu.compact.inProgress {
 		if c.kind != compactionKindFlush && c.kind != compactionKindIngestedFlushable {
-			metrics.Compact.Duration += d.timeNow().Sub(c.beganAt)
+			metrics.Compact.Duration += d.timeNow().Sub(c.metrics.beganAt)
 		}
 	}
 	metrics.Compact.NumProblemSpans = d.problemSpans.Len()
