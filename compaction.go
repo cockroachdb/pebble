@@ -191,7 +191,8 @@ type compaction struct {
 	// to cancel, such as if a conflicting excise operation raced it to manifest
 	// application. Only holders of the manifest lock will write to this atomic.
 	cancel atomic.Bool
-
+	// kind indicates the kind of compaction. Different compaction kinds have
+	// different semantics and mechanics. Some may have additional fields.
 	kind compactionKind
 	// isDownload is true if this compaction was started as part of a Download
 	// operation. In this case kind is compactionKindCopy or
@@ -253,8 +254,6 @@ type compaction struct {
 	// single output table with the tables in the grandparent level.
 	maxOverlapBytes uint64
 
-	// flushing contains the flushables (aka memtables) that are being flushed.
-	flushing flushableList
 	// bytesWritten contains the number of bytes that have been written to outputs.
 	bytesWritten atomic.Int64
 
@@ -271,10 +270,6 @@ type compaction struct {
 	// in the grandparent when this compaction finishes will be the same.
 	grandparents manifest.LevelSlice
 
-	// Boundaries at which flushes to L0 should be split. Determined by
-	// L0Sublevels. If nil, flushes aren't split.
-	l0Limits [][]byte
-
 	delElision      compact.TombstoneElision
 	rangeKeyElision compact.TombstoneElision
 
@@ -284,14 +279,31 @@ type compaction struct {
 	// lower level in the LSM during runCompaction.
 	allowedZeroSeqNum bool
 
-	// deletionHints are set if this is a compactionKindDeleteOnly. Used to figure
-	// out whether an input must be deleted in its entirety, or excised into
-	// virtual sstables.
-	deletionHints []deleteCompactionHint
-
-	// exciseEnabled is set to true if this is a compactionKindDeleteOnly and
-	// this compaction is allowed to excise files.
-	exciseEnabled bool
+	// deleteOnly contains information specific to compactions with kind
+	// compactionKindDeleteOnly. A delete-only compaction is a special
+	// compaction that does not merge or write sstables. Instead, it only
+	// performs deletions either through removing whole sstables from the LSM or
+	// virtualizing them into virtual sstables.
+	deleteOnly struct {
+		// hints are collected by the table stats collector and describe range
+		// deletions and the files containing keys deleted by them.
+		hints []deleteCompactionHint
+		// exciseEnabled is set to true if this compaction is allowed to excise
+		// files. If false, the compaction will only remove whole sstables that
+		// are wholly contained within the bounds of range deletions.
+		exciseEnabled bool
+	}
+	// flush contains information specific to flushes (compactionKindFlush and
+	// compactionKindIngestedFlushable). A flush is modeled by a compaction
+	// because it has similar mechanics to a default compaction.
+	flush struct {
+		// flushables contains the flushables (aka memtables, large batches,
+		// flushable ingestions, etc) that are being flushed.
+		flushables flushableList
+		// Boundaries at which sstables flushed to L0 should be split.
+		// Determined by L0Sublevels. If nil, ignored.
+		l0Limits [][]byte
+	}
 
 	metrics levelMetricsDelta
 
@@ -526,16 +538,16 @@ func newDeleteOnlyCompaction(
 	exciseEnabled bool,
 ) *compaction {
 	c := &compaction{
-		kind:          compactionKindDeleteOnly,
-		comparer:      opts.Comparer,
-		logger:        opts.Logger,
-		version:       cur,
-		beganAt:       beganAt,
-		inputs:        inputs,
-		deletionHints: hints,
-		exciseEnabled: exciseEnabled,
-		grantHandle:   noopGrantHandle{},
+		kind:        compactionKindDeleteOnly,
+		comparer:    opts.Comparer,
+		logger:      opts.Logger,
+		version:     cur,
+		beganAt:     beganAt,
+		inputs:      inputs,
+		grantHandle: noopGrantHandle{},
 	}
+	c.deleteOnly.hints = hints
+	c.deleteOnly.exciseEnabled = exciseEnabled
 	// Acquire a reference to the version to ensure that files and in-memory
 	// version state necessary for reading files remain available. Ignoring
 	// excises, this isn't strictly necessary for reading the sstables that are
@@ -657,10 +669,11 @@ func newFlush(
 		getValueSeparation: getValueSeparation,
 		maxOutputFileSize:  math.MaxUint64,
 		maxOverlapBytes:    math.MaxUint64,
-		flushing:           flushing,
 		grantHandle:        noopGrantHandle{},
 		tableFormat:        tableFormat,
 	}
+	c.flush.flushables = flushing
+	c.flush.l0Limits = l0Organizer.FlushSplitKeys()
 	c.startLevel = &c.inputs[0]
 	c.outputLevel = &c.inputs[1]
 	if len(flushing) > 0 {
@@ -670,6 +683,14 @@ func newFlush(
 			}
 			c.kind = compactionKindIngestedFlushable
 			return c, nil
+		} else {
+			// Make sure there's no ingestedFlushable after the first flushable
+			// in the list.
+			for _, f := range c.flush.flushables[1:] {
+				if _, ok := f.flushable.(*ingestedFlushable); ok {
+					panic("pebble: flushables shouldn't contain ingestedFlushable")
+				}
+			}
 		}
 	}
 
@@ -682,16 +703,6 @@ func newFlush(
 	if preferSharedStorage {
 		c.getValueSeparation = neverSeparateValues
 	}
-
-	// Make sure there's no ingestedFlushable after the first flushable in the
-	// list.
-	for _, f := range flushing {
-		if _, ok := f.flushable.(*ingestedFlushable); ok {
-			panic("pebble: flushing shouldn't contain ingestedFlushable flushable")
-		}
-	}
-
-	c.l0Limits = l0Organizer.FlushSplitKeys()
 
 	cmp := c.comparer.Compare
 	updatePointBounds := func(iter internalIterator) {
@@ -797,7 +808,7 @@ func (c *compaction) allowZeroSeqNum() bool {
 	// code doesn't know that L0 contains files and zeroing of seqnums should
 	// be disabled. That is fixable, but it seems safer to just match the
 	// RocksDB behavior for now.
-	return len(c.flushing) == 0 && c.delElision.ElidesEverything() && c.rangeKeyElision.ElidesEverything()
+	return len(c.flush.flushables) == 0 && c.delElision.ElidesEverything() && c.rangeKeyElision.ElidesEverything()
 }
 
 // newInputIters returns an iterator over all the input tables in a compaction.
@@ -811,7 +822,7 @@ func (c *compaction) newInputIters(
 	cmp := c.comparer.Compare
 
 	// Validate the ordering of compaction input files for defense in depth.
-	if len(c.flushing) == 0 {
+	if len(c.flush.flushables) == 0 {
 		if c.startLevel.level >= 0 {
 			err := manifest.CheckOrdering(c.comparer, manifest.Level(c.startLevel.level),
 				c.startLevel.files.Iter())
@@ -856,7 +867,7 @@ func (c *compaction) newInputIters(
 	// numInputLevels is an approximation of the number of iterator levels. Due
 	// to idiosyncrasies in iterator construction, we may (rarely) exceed this
 	// initial capacity.
-	numInputLevels := max(len(c.flushing), len(c.inputs))
+	numInputLevels := max(len(c.flush.flushables), len(c.inputs))
 	iters := make([]internalIterator, 0, numInputLevels)
 	rangeDelIters := make([]keyspan.FragmentIterator, 0, numInputLevels)
 	rangeKeyIters := make([]keyspan.FragmentIterator, 0, numInputLevels)
@@ -883,11 +894,10 @@ func (c *compaction) newInputIters(
 	// Populate iters, rangeDelIters and rangeKeyIters with the appropriate
 	// constituent iterators. This depends on whether this is a flush or a
 	// compaction.
-	if len(c.flushing) != 0 {
+	if len(c.flush.flushables) != 0 {
 		// If flushing, we need to build the input iterators over the memtables
-		// stored in c.flushing.
-		for i := range c.flushing {
-			f := c.flushing[i]
+		// stored in c.flush.flushables.
+		for _, f := range c.flush.flushables {
 			iters = append(iters, f.newFlushIter(nil))
 			rangeDelIter := f.newRangeDelIter(nil)
 			if rangeDelIter != nil {
@@ -1082,7 +1092,7 @@ func (c *compaction) newRangeDelIter(
 }
 
 func (c *compaction) String() string {
-	if len(c.flushing) != 0 {
+	if len(c.flush.flushables) != 0 {
 		return "flush\n"
 	}
 
@@ -1358,7 +1368,7 @@ func (d *DB) flush() {
 // were ingested as flushables. Both DB.mu and the manifest lock must be held
 // while runIngestFlush is called.
 func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
-	if len(c.flushing) != 1 {
+	if len(c.flush.flushables) != 1 {
 		panic("pebble: ingestedFlushable must be flushed one at a time.")
 	}
 
@@ -1369,7 +1379,7 @@ func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
 	baseLevel := d.mu.versions.picker.getBaseLevel()
 	ve := &manifest.VersionEdit{}
 	var ingestSplitFiles []ingestSplitFile
-	ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
+	ingestFlushable := c.flush.flushables[0].flushable.(*ingestedFlushable)
 
 	updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []manifest.NewTableEntry) {
 		levelMetrics := c.metrics[level]
@@ -1633,7 +1643,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		} else {
 			// c.kind == compactionKindIngestedFlushable && we could have deleted files due
 			// to ingest-time splits or excises.
-			ingestFlushable := c.flushing[0].flushable.(*ingestedFlushable)
+			ingestFlushable := c.flush.flushables[0].flushable.(*ingestedFlushable)
 			exciseBounds := ingestFlushable.exciseSpan.UserKeyBounds()
 			for c2 := range d.mu.compact.inProgress {
 				// Check if this compaction overlaps with the excise span. Note that just
@@ -2413,7 +2423,7 @@ func checkDeleteCompactionHints(
 
 func (d *DB) compactionPprofLabels(c *compaction) pprof.LabelSet {
 	activity := "compact"
-	if len(c.flushing) != 0 {
+	if len(c.flush.flushables) != 0 {
 		activity = "flush"
 	}
 	level := "L?"
@@ -3007,13 +3017,14 @@ func fragmentDeleteCompactionHints(
 func (d *DB) runDeleteOnlyCompaction(
 	jobID JobID, c *compaction, snapshots compact.Snapshots,
 ) (ve *manifest.VersionEdit, stats compact.Stats, retErr error) {
-	fragments := fragmentDeleteCompactionHints(d.cmp, c.deletionHints)
+	fragments := fragmentDeleteCompactionHints(d.cmp, c.deleteOnly.hints)
 	ve = &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	for _, cl := range c.inputs {
 		levelMetrics := &LevelMetrics{}
-		if err := d.runDeleteOnlyCompactionForLevel(cl, levelMetrics, ve, snapshots, fragments, c.exciseEnabled); err != nil {
+		err := d.runDeleteOnlyCompactionForLevel(cl, levelMetrics, ve, snapshots, fragments, c.deleteOnly.exciseEnabled)
+		if err != nil {
 			return nil, stats, err
 		}
 		c.metrics[cl.level] = levelMetrics
@@ -3245,7 +3256,7 @@ func (d *DB) compactAndWrite(
 
 	runnerCfg := compact.RunnerConfig{
 		CompactionBounds:           c.bounds,
-		L0SplitKeys:                c.l0Limits,
+		L0SplitKeys:                c.flush.l0Limits,
 		Grandparents:               c.grandparents,
 		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
 		TargetOutputFileSize:       c.maxOutputFileSize,
@@ -3329,7 +3340,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 		TableBytesRead:     c.outputLevel.files.TableSizeSum(),
 		BlobBytesCompacted: result.Stats.CumulativeBlobFileSize,
 	}
-	if c.flushing != nil {
+	if c.flush.flushables != nil {
 		outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
 	}
 	if len(c.extraLevels) > 0 {
@@ -3338,7 +3349,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 	outputMetrics.TableBytesRead += outputMetrics.TableBytesIn
 
 	c.metrics[c.outputLevel.level] = outputMetrics
-	if len(c.flushing) == 0 && c.metrics[c.startLevel.level] == nil {
+	if len(c.flush.flushables) == 0 && c.metrics[c.startLevel.level] == nil {
 		c.metrics[c.startLevel.level] = &LevelMetrics{}
 	}
 	if len(c.extraLevels) > 0 {
@@ -3369,7 +3380,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 			BlobReferences:     t.BlobReferences,
 			BlobReferenceDepth: t.BlobReferenceDepth,
 		}
-		if c.flushing == nil {
+		if c.flush.flushables == nil {
 			// Set the file's LargestSeqNumAbsolute to be the maximum value of any
 			// of the compaction's input sstables.
 			// TODO(jackson): This could be narrowed to be the maximum of input
@@ -3408,7 +3419,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 		}
 
 		// Update metrics.
-		if c.flushing == nil {
+		if c.flush.flushables == nil {
 			outputMetrics.TablesCompacted++
 			outputMetrics.TableBytesCompacted += fileMeta.Size
 		} else {
