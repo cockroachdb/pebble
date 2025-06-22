@@ -2862,7 +2862,7 @@ func (d *DB) getEarliestUnflushedSeqNumLocked() base.SeqNum {
 
 func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []compactionInfo) {
 	for c := range d.mu.compact.inProgress {
-		if len(c.flushing) == 0 && (finishing == nil || c != finishing) {
+		if len(c.flush.flushables) == 0 && (finishing == nil || c != finishing) {
 			info := compactionInfo{
 				versionEditApplied: c.versionEditApplied,
 				inputs:             c.inputs,

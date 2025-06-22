@@ -2101,7 +2101,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 				var buf bytes.Buffer
 				for _, line := range crstrings.Lines(td.Input) {
 					parts := strings.Fields(line)
-					c.flushing = nil
+					c.flush.flushables = nil
 					c.startLevel.level = -1
 
 					var startFiles, outputFiles []*manifest.TableMetadata
@@ -2110,7 +2110,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					case len(parts) == 1 && parts[0] == "flush":
 						c.outputLevel.level = 0
 						d.mu.Lock()
-						c.flushing = d.mu.mem.queue
+						c.flush.flushables = d.mu.mem.queue
 						d.mu.Unlock()
 
 					default:
