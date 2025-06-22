@@ -1284,7 +1284,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 		}
 
 		if level == 0 {
-			if err := CheckOrdering(comparer.Compare, comparer.FormatKey, Level(0), v.Levels[level].Iter()); err != nil {
+			if err := CheckOrdering(comparer, Level(0), v.Levels[level].Iter()); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 			continue
@@ -1304,7 +1304,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 					end.Prev()
 				}
 			})
-			if err := CheckOrdering(comparer.Compare, comparer.FormatKey, Level(level), check.Iter()); err != nil {
+			if err := CheckOrdering(comparer, Level(level), check.Iter()); err != nil {
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 		}
