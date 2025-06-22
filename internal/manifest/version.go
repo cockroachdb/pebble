@@ -590,13 +590,13 @@ func (v *Version) AllLevelsAndSublevels() iter.Seq2[Layer, LevelSlice] {
 func (v *Version) CheckOrdering() error {
 	for sublevel := len(v.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 		sublevelIter := v.L0SublevelFiles[sublevel].Iter()
-		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, L0Sublevel(sublevel), sublevelIter); err != nil {
+		if err := CheckOrdering(v.cmp, L0Sublevel(sublevel), sublevelIter); err != nil {
 			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
 		}
 	}
 
 	for level, lm := range v.Levels {
-		if err := CheckOrdering(v.cmp.Compare, v.cmp.FormatKey, Level(level), lm.Iter()); err != nil {
+		if err := CheckOrdering(v.cmp, Level(level), lm.Iter()); err != nil {
 			return base.CorruptionErrorf("%s\n%s", err, v.DebugString())
 		}
 	}
@@ -705,7 +705,9 @@ func (l *VersionList) Remove(v *Version) {
 // CheckOrdering checks that the files are consistent with respect to
 // seqnums (for level 0 files -- see detailed comment below) and increasing and non-
 // overlapping internal key ranges (for non-level 0 files).
-func CheckOrdering(cmp Compare, format base.FormatKey, level Layer, files LevelIterator) error {
+func CheckOrdering(comparer *base.Comparer, level Layer, files LevelIterator) error {
+	cmp := comparer.Compare
+	format := comparer.FormatKey
 	// The invariants to check for L0 sublevels are the same as the ones to
 	// check for all other levels. However, if L0 is not organized into
 	// sublevels, or if all L0 files are being passed in, we do the legacy L0

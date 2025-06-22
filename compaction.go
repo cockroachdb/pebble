@@ -198,14 +198,11 @@ type compaction struct {
 	// compactionKindRewrite.
 	isDownload bool
 
-	cmp       Compare
-	equal     Equal
-	comparer  *base.Comparer
-	formatKey base.FormatKey
-	logger    Logger
-	version   *manifest.Version
-	stats     base.InternalIteratorStats
-	beganAt   time.Time
+	comparer *base.Comparer
+	logger   Logger
+	version  *manifest.Version
+	stats    base.InternalIteratorStats
+	beganAt  time.Time
 	// versionEditApplied is set to true when a compaction has completed and the
 	// resulting version has been installed (if successful), but the compaction
 	// goroutine is still cleaning up (eg, deleting obsolete files).
@@ -379,10 +376,7 @@ func newCompaction(
 ) *compaction {
 	c := &compaction{
 		kind:               compactionKindDefault,
-		cmp:                opts.Comparer.Compare,
-		equal:              opts.Comparer.Equal,
 		comparer:           opts.Comparer,
-		formatKey:          opts.Comparer.FormatKey,
 		inputs:             pc.inputs,
 		bounds:             pc.bounds,
 		logger:             opts.Logger,
@@ -430,7 +424,7 @@ func newCompaction(
 		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.bounds)
 	}
 	c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
-		c.cmp, c.version, pc.l0Organizer, c.outputLevel.level, c.bounds,
+		c.comparer.Compare, c.version, pc.l0Organizer, c.outputLevel.level, c.bounds,
 	)
 	c.kind = pc.kind
 
@@ -533,10 +527,7 @@ func newDeleteOnlyCompaction(
 ) *compaction {
 	c := &compaction{
 		kind:          compactionKindDeleteOnly,
-		cmp:           opts.Comparer.Compare,
-		equal:         opts.Comparer.Equal,
 		comparer:      opts.Comparer,
-		formatKey:     opts.Comparer.FormatKey,
 		logger:        opts.Logger,
 		version:       cur,
 		beganAt:       beganAt,
@@ -658,10 +649,7 @@ func newFlush(
 ) (*compaction, error) {
 	c := &compaction{
 		kind:               compactionKindFlush,
-		cmp:                opts.Comparer.Compare,
-		equal:              opts.Comparer.Equal,
 		comparer:           opts.Comparer,
-		formatKey:          opts.Comparer.FormatKey,
 		logger:             opts.Logger,
 		version:            cur,
 		beganAt:            beganAt,
@@ -705,14 +693,15 @@ func newFlush(
 
 	c.l0Limits = l0Organizer.FlushSplitKeys()
 
+	cmp := c.comparer.Compare
 	updatePointBounds := func(iter internalIterator) {
 		if kv := iter.First(); kv != nil {
-			if c.bounds.Start == nil || c.cmp(c.bounds.Start, kv.K.UserKey) > 0 {
+			if c.bounds.Start == nil || cmp(c.bounds.Start, kv.K.UserKey) > 0 {
 				c.bounds.Start = slices.Clone(kv.K.UserKey)
 			}
 		}
 		if kv := iter.Last(); kv != nil {
-			if c.bounds.End.Key == nil || !c.bounds.End.IsUpperBoundForInternalKey(c.cmp, kv.K) {
+			if c.bounds.End.Key == nil || !c.bounds.End.IsUpperBoundForInternalKey(cmp, kv.K) {
 				c.bounds.End = base.UserKeyExclusiveIf(slices.Clone(kv.K.UserKey), kv.K.IsExclusiveSentinel())
 			}
 		}
@@ -725,12 +714,12 @@ func newFlush(
 		if s, err := iter.First(); err != nil {
 			return err
 		} else if s != nil {
-			c.bounds = c.bounds.Union(c.cmp, s.Bounds().Clone())
+			c.bounds = c.bounds.Union(cmp, s.Bounds().Clone())
 		}
 		if s, err := iter.Last(); err != nil {
 			return err
 		} else if s != nil {
-			c.bounds = c.bounds.Union(c.cmp, s.Bounds().Clone())
+			c.bounds = c.bounds.Union(cmp, s.Bounds().Clone())
 		}
 		return nil
 	}
@@ -785,9 +774,9 @@ func (c *compaction) errorOnUserKeyOverlap(ve *manifest.VersionEdit) error {
 		meta := ve.NewTables[n-1].Meta
 		prevMeta := ve.NewTables[n-2].Meta
 		if !prevMeta.Largest().IsExclusiveSentinel() &&
-			c.cmp(prevMeta.Largest().UserKey, meta.Smallest().UserKey) >= 0 {
+			c.comparer.Compare(prevMeta.Largest().UserKey, meta.Smallest().UserKey) >= 0 {
 			return errors.Errorf("pebble: compaction split user key across two sstables: %s in %s and %s",
-				prevMeta.Largest().Pretty(c.formatKey),
+				prevMeta.Largest().Pretty(c.comparer.FormatKey),
 				prevMeta.TableNum,
 				meta.TableNum)
 		}
@@ -819,17 +808,19 @@ func (c *compaction) newInputIters(
 	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
 	retErr error,
 ) {
+	cmp := c.comparer.Compare
+
 	// Validate the ordering of compaction input files for defense in depth.
 	if len(c.flushing) == 0 {
 		if c.startLevel.level >= 0 {
-			err := manifest.CheckOrdering(c.cmp, c.formatKey,
-				manifest.Level(c.startLevel.level), c.startLevel.files.Iter())
+			err := manifest.CheckOrdering(c.comparer, manifest.Level(c.startLevel.level),
+				c.startLevel.files.Iter())
 			if err != nil {
 				return nil, nil, nil, err
 			}
 		}
-		err := manifest.CheckOrdering(c.cmp, c.formatKey,
-			manifest.Level(c.outputLevel.level), c.outputLevel.files.Iter())
+		err := manifest.CheckOrdering(c.comparer, manifest.Level(c.outputLevel.level),
+			c.outputLevel.files.Iter())
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -838,8 +829,7 @@ func (c *compaction) newInputIters(
 				panic("l0SublevelInfo not created for compaction out of L0")
 			}
 			for _, info := range c.startLevel.l0SublevelInfo {
-				err := manifest.CheckOrdering(c.cmp, c.formatKey,
-					info.sublevel, info.Iter())
+				err := manifest.CheckOrdering(c.comparer, info.sublevel, info.Iter())
 				if err != nil {
 					return nil, nil, nil, err
 				}
@@ -850,8 +840,8 @@ func (c *compaction) newInputIters(
 				panic("n>2 multi level compaction not implemented yet")
 			}
 			interLevel := c.extraLevels[0]
-			err := manifest.CheckOrdering(c.cmp, c.formatKey,
-				manifest.Level(interLevel.level), interLevel.files.Iter())
+			err := manifest.CheckOrdering(c.comparer, manifest.Level(interLevel.level),
+				interLevel.files.Iter())
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -996,7 +986,7 @@ func (c *compaction) newInputIters(
 					return noCloseIter, err
 				}
 				li := keyspanimpl.NewLevelIter(
-					context.Background(), keyspan.SpanIterOptions{}, c.cmp,
+					context.Background(), keyspan.SpanIterOptions{}, cmp,
 					newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange,
 				)
 				rangeKeyIters = append(rangeKeyIters, li)
@@ -1030,7 +1020,7 @@ func (c *compaction) newInputIters(
 	// iter.
 	pointIter = iters[0]
 	if len(iters) > 1 {
-		pointIter = newMergingIter(c.logger, &c.stats, c.cmp, nil, iters...)
+		pointIter = newMergingIter(c.logger, &c.stats, cmp, nil, iters...)
 	}
 
 	// In normal operation, levelIter iterates over the point operations in a
@@ -2723,10 +2713,14 @@ func (d *DB) runCopyCompaction(
 		SyntheticPrefixAndSuffix: inputMeta.SyntheticPrefixAndSuffix,
 	}
 	if inputMeta.HasPointKeys {
-		newMeta.ExtendPointKeyBounds(c.cmp, inputMeta.PointKeyBounds.Smallest(), inputMeta.PointKeyBounds.Largest())
+		newMeta.ExtendPointKeyBounds(c.comparer.Compare,
+			inputMeta.PointKeyBounds.Smallest(),
+			inputMeta.PointKeyBounds.Largest())
 	}
 	if inputMeta.HasRangeKeys {
-		newMeta.ExtendRangeKeyBounds(c.cmp, inputMeta.RangeKeyBounds.Smallest(), inputMeta.RangeKeyBounds.Largest())
+		newMeta.ExtendRangeKeyBounds(c.comparer.Compare,
+			inputMeta.RangeKeyBounds.Smallest(),
+			inputMeta.RangeKeyBounds.Largest())
 	}
 	newMeta.TableNum = d.mu.versions.getNextTableNum()
 	if objMeta.IsExternal() {
@@ -3393,13 +3387,19 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 		)
 
 		if t.WriterMeta.HasPointKeys {
-			fileMeta.ExtendPointKeyBounds(c.cmp, t.WriterMeta.SmallestPoint, t.WriterMeta.LargestPoint)
+			fileMeta.ExtendPointKeyBounds(c.comparer.Compare,
+				t.WriterMeta.SmallestPoint,
+				t.WriterMeta.LargestPoint)
 		}
 		if t.WriterMeta.HasRangeDelKeys {
-			fileMeta.ExtendPointKeyBounds(c.cmp, t.WriterMeta.SmallestRangeDel, t.WriterMeta.LargestRangeDel)
+			fileMeta.ExtendPointKeyBounds(c.comparer.Compare,
+				t.WriterMeta.SmallestRangeDel,
+				t.WriterMeta.LargestRangeDel)
 		}
 		if t.WriterMeta.HasRangeKeys {
-			fileMeta.ExtendRangeKeyBounds(c.cmp, t.WriterMeta.SmallestRangeKey, t.WriterMeta.LargestRangeKey)
+			fileMeta.ExtendRangeKeyBounds(c.comparer.Compare,
+				t.WriterMeta.SmallestRangeKey,
+				t.WriterMeta.LargestRangeKey)
 		}
 
 		ve.NewTables[i] = manifest.NewTableEntry{
@@ -3425,10 +3425,10 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 
 	// Sanity check that the tables are ordered and don't overlap.
 	for i := 1; i < len(ve.NewTables); i++ {
-		if ve.NewTables[i-1].Meta.UserKeyBounds().End.IsUpperBoundFor(c.cmp, ve.NewTables[i].Meta.Smallest().UserKey) {
+		if ve.NewTables[i-1].Meta.Largest().IsUpperBoundFor(c.comparer.Compare, ve.NewTables[i].Meta.Smallest().UserKey) {
 			return nil, base.AssertionFailedf("pebble: compaction output tables overlap: %s and %s",
-				ve.NewTables[i-1].Meta.DebugString(c.formatKey, true),
-				ve.NewTables[i].Meta.DebugString(c.formatKey, true),
+				ve.NewTables[i-1].Meta.DebugString(c.comparer.FormatKey, true),
+				ve.NewTables[i].Meta.DebugString(c.comparer.FormatKey, true),
 			)
 		}
 	}
