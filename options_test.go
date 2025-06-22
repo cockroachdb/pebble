@@ -41,15 +41,14 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 	}
 	// Enable value separation if using a format major version that supports it.
 	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
-		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
-			return ValueSeparationPolicy{
-				Enabled:               true,
-				MinimumSize:           1 << rand.IntN(10), // [1, 512]
-				MaxBlobReferenceDepth: rand.IntN(10) + 1,  // [1, 10)
-				// Constrain the rewrite minimum age to [0, 15m).
-				RewriteMinimumAge: time.Duration(rand.IntN(int(15 * time.Minute))).Truncate(time.Second),
-			}
+		policy := ValueSeparationPolicy{
+			Enabled:               true,
+			MinimumSize:           1 << rand.IntN(10), // [1, 512]
+			MaxBlobReferenceDepth: rand.IntN(10) + 1,  // [1, 10)
+			// Constrain the rewrite minimum age to [0, 15s).
+			RewriteMinimumAge: time.Duration(rand.IntN(15)) * time.Second,
 		}
+		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
 	}
 	o.EnsureDefaults()
 	return o
