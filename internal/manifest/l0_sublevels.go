@@ -218,8 +218,7 @@ func (b *bitSet) clearAllBits() {
 
 // L0Compaction describes an active compaction with inputs from L0.
 type L0Compaction struct {
-	Smallest  InternalKey
-	Largest   InternalKey
+	Bounds    base.UserKeyBounds
 	IsIntraL0 bool
 }
 
@@ -766,8 +765,8 @@ func (s *l0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 	// were added after the compaction initiated, and the active compaction
 	// files straddle the input file. Mark these intervals as base compacting.
 	for _, c := range inProgress {
-		startIK := intervalKey{key: c.Smallest.UserKey, isInclusiveEndBound: false}
-		endIK := intervalKey{key: c.Largest.UserKey, isInclusiveEndBound: !c.Largest.IsExclusiveSentinel()}
+		startIK := intervalKey{key: c.Bounds.Start, isInclusiveEndBound: false}
+		endIK := intervalKey{key: c.Bounds.End.Key, isInclusiveEndBound: c.Bounds.End.Kind == base.Inclusive}
 		start, _ := slices.BinarySearchFunc(s.orderedIntervals, startIK, func(a fileInterval, b intervalKey) int {
 			return intervalKeyCompare(s.cmp, a.startKey, b)
 		})

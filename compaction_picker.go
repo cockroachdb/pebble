@@ -81,8 +81,7 @@ type compactionInfo struct {
 	versionEditApplied bool
 	inputs             []compactionLevel
 	outputLevel        int
-	smallest           InternalKey
-	largest            InternalKey
+	bounds             base.UserKeyBounds
 }
 
 func (info compactionInfo) String() string {
@@ -200,15 +199,10 @@ type pickedCompaction struct {
 	maxReadCompactionBytes uint64
 
 	// The boundaries of the input data.
-	smallest      InternalKey
-	largest       InternalKey
+	bounds        base.UserKeyBounds
 	version       *manifest.Version
 	l0Organizer   *manifest.L0Organizer
 	pickerMetrics pickedCompactionMetrics
-}
-
-func (pc *pickedCompaction) userKeyBounds() base.UserKeyBounds {
-	return base.UserKeyBoundsFromInternal(pc.smallest, pc.largest)
 }
 
 func defaultOutputLevel(startLevel, baseLevel int) int {
@@ -300,8 +294,7 @@ func (pc *pickedCompaction) String() string {
 	builder.WriteString(fmt.Sprintf(`AdjustedOutputLevel=%d, `, adjustedOutputLevel(pc.outputLevel.level, pc.baseLevel)))
 	builder.WriteString(fmt.Sprintf(`maxOutputFileSize=%d, `, pc.maxOutputFileSize))
 	builder.WriteString(fmt.Sprintf(`maxReadCompactionBytes=%d, `, pc.maxReadCompactionBytes))
-	builder.WriteString(fmt.Sprintf(`smallest=%s, `, pc.smallest))
-	builder.WriteString(fmt.Sprintf(`largest=%s, `, pc.largest))
+	builder.WriteString(fmt.Sprintf(`bounds=%s, `, pc.bounds))
 	builder.WriteString(fmt.Sprintf(`version=%s, `, pc.version))
 	builder.WriteString(fmt.Sprintf(`inputs=%s, `, pc.inputs))
 	builder.WriteString(fmt.Sprintf(`startlevel=%s, `, pc.startLevel))
@@ -323,8 +316,7 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 		maxOutputFileSize:      pc.maxOutputFileSize,
 		maxOverlapBytes:        pc.maxOverlapBytes,
 		maxReadCompactionBytes: pc.maxReadCompactionBytes,
-		smallest:               pc.smallest.Clone(),
-		largest:                pc.largest.Clone(),
+		bounds:                 pc.bounds.Clone(),
 
 		// TODO(msbutler): properly clone picker metrics
 		pickerMetrics: pc.pickerMetrics,
@@ -357,30 +349,6 @@ func (pc *pickedCompaction) clone() *pickedCompaction {
 	return newPC
 }
 
-// maybeExpandBounds is a helper function for setupInputs which ensures the
-// pickedCompaction's smallest and largest internal keys are updated iff
-// the candidate keys expand the key span. This avoids a bug for multi-level
-// compactions: during the second call to setupInputs, the picked compaction's
-// smallest and largest keys should not decrease the key span.
-func (pc *pickedCompaction) maybeExpandBounds(
-	cmp base.Compare, smallest InternalKey, largest InternalKey,
-) {
-	if len(smallest.UserKey) == 0 && len(largest.UserKey) == 0 {
-		return
-	}
-	if len(pc.smallest.UserKey) == 0 && len(pc.largest.UserKey) == 0 {
-		pc.smallest = smallest
-		pc.largest = largest
-		return
-	}
-	if base.InternalCompare(cmp, pc.smallest, smallest) >= 0 {
-		pc.smallest = smallest
-	}
-	if base.InternalCompare(cmp, pc.largest, largest) <= 0 {
-		pc.largest = largest
-	}
-}
-
 // setupInputs returns true if a compaction has been set up using the provided inputLevel and
 // pc.outputLevel. It returns false if a concurrent compaction is occurring on the start or
 // output level files. Note that inputLevel is not necessarily pc.startLevel. In multiLevel
@@ -397,9 +365,7 @@ func (pc *pickedCompaction) setupInputs(
 	if !canCompactTables(inputLevel.files, inputLevel.level, problemSpans) {
 		return false
 	}
-
-	sm, la := manifest.KeyRange(cmp, inputLevel.files.All())
-	pc.maybeExpandBounds(cmp, sm, la)
+	pc.bounds = pc.bounds.Union(cmp, manifest.KeyRange(cmp, inputLevel.files.All()))
 
 	// Setup output files and attempt to grow the inputLevel files with
 	// the expanded key range. No need to do this for intra-L0 compactions;
@@ -407,13 +373,11 @@ func (pc *pickedCompaction) setupInputs(
 	if inputLevel.level != pc.outputLevel.level {
 		// Determine the sstables in the output level which overlap with the compaction
 		// key range.
-		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
+		pc.outputLevel.files = pc.version.Overlaps(pc.outputLevel.level, pc.bounds)
 		if !canCompactTables(pc.outputLevel.files, pc.outputLevel.level, problemSpans) {
 			return false
 		}
-
-		sm, la = manifest.KeyRange(cmp, pc.outputLevel.files.All())
-		pc.maybeExpandBounds(cmp, sm, la)
+		pc.bounds = pc.bounds.Union(cmp, manifest.KeyRange(cmp, pc.outputLevel.files.All()))
 
 		// maxExpandedBytes is the maximum size of an expanded compaction. If
 		// growing a compaction results in a larger size, the original compaction
@@ -426,10 +390,9 @@ func (pc *pickedCompaction) setupInputs(
 		// of sstables included from pc.outputLevel.level.
 		if pc.lcf != nil && inputLevel.level == 0 {
 			pc.growL0ForBase(cmp, maxExpandedBytes)
-		} else if pc.grow(cmp, pc.smallest, pc.largest, maxExpandedBytes, inputLevel, problemSpans) {
+		} else if pc.grow(cmp, pc.bounds, maxExpandedBytes, inputLevel, problemSpans) {
 			// inputLevel was expanded, adjust key range if necessary.
-			sm, la = manifest.KeyRange(cmp, inputLevel.files.All())
-			pc.maybeExpandBounds(cmp, sm, la)
+			pc.bounds = pc.bounds.Union(cmp, manifest.KeyRange(cmp, inputLevel.files.All()))
 		}
 	}
 
@@ -437,7 +400,6 @@ func (pc *pickedCompaction) setupInputs(
 		// If L0 is involved, it should always be the startLevel of the compaction.
 		pc.startLevel.l0SublevelInfo = generateSublevelInfo(cmp, pc.startLevel.files)
 	}
-
 	return true
 }
 
@@ -446,7 +408,7 @@ func (pc *pickedCompaction) setupInputs(
 // and la are the smallest and largest InternalKeys in all of the inputs.
 func (pc *pickedCompaction) grow(
 	cmp base.Compare,
-	sm, la InternalKey,
+	bounds base.UserKeyBounds,
 	maxExpandedBytes uint64,
 	inputLevel *compactionLevel,
 	problemSpans *problemspans.ByLevel,
@@ -454,7 +416,7 @@ func (pc *pickedCompaction) grow(
 	if pc.outputLevel.files.Empty() {
 		return false
 	}
-	expandedInputLevel := pc.version.Overlaps(inputLevel.level, base.UserKeyBoundsFromInternal(sm, la))
+	expandedInputLevel := pc.version.Overlaps(inputLevel.level, bounds)
 	if !canCompactTables(expandedInputLevel, inputLevel.level, problemSpans) {
 		return false
 	}
@@ -469,7 +431,7 @@ func (pc *pickedCompaction) grow(
 	// expandedInputLevel's key range not fully cover all files currently in pc.outputLevel,
 	// since pc.outputLevel was created using the entire key range which includes higher levels.
 	expandedOutputLevel := pc.version.Overlaps(pc.outputLevel.level,
-		base.UserKeyBoundsFromInternal(manifest.KeyRange(cmp, expandedInputLevel.All(), pc.outputLevel.files.All())))
+		manifest.KeyRange(cmp, expandedInputLevel.All(), pc.outputLevel.files.All()))
 	if expandedOutputLevel.Len() != pc.outputLevel.files.Len() {
 		return false
 	}
@@ -507,10 +469,10 @@ func (pc *pickedCompaction) growL0ForBase(cmp base.Compare, maxExpandedBytes uin
 	largestBaseKey := base.InvalidInternalKey
 	if pc.outputLevel.files.Empty() {
 		baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
-		if sm := baseIter.SeekLT(cmp, pc.smallest.UserKey); sm != nil {
+		if sm := baseIter.SeekLT(cmp, pc.bounds.Start); sm != nil {
 			smallestBaseKey = sm.Largest()
 		}
-		if la := baseIter.SeekGE(cmp, pc.largest.UserKey); la != nil {
+		if la := baseIter.SeekGE(cmp, pc.bounds.End.Key); la != nil {
 			largestBaseKey = la.Smallest()
 		}
 	} else {
@@ -547,8 +509,8 @@ func (pc *pickedCompaction) growL0ForBase(cmp base.Compare, maxExpandedBytes uin
 	}
 
 	pc.startLevel.files = manifest.NewLevelSliceSeqSorted(newStartLevelFiles)
-	pc.smallest, pc.largest = manifest.KeyRange(cmp,
-		pc.startLevel.files.All(), pc.outputLevel.files.All())
+	pc.bounds = pc.bounds.Union(cmp, manifest.KeyRange(cmp,
+		pc.startLevel.files.All(), pc.outputLevel.files.All()))
 	return true
 }
 
@@ -1583,7 +1545,7 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 		startLevel, outputLevel, p.baseLevel)
 	pc.kind = kind
 	pc.startLevel.files = inputs
-	pc.smallest, pc.largest = manifest.KeyRange(p.opts.Comparer.Compare, pc.startLevel.files.All())
+	pc.bounds = manifest.KeyRange(p.opts.Comparer.Compare, pc.startLevel.files.All())
 
 	// Fail-safe to protect against compacting the same sstable concurrently.
 	if inputRangeAlreadyCompacting(p.opts.Comparer.Compare, env, pc) {
@@ -1885,7 +1847,7 @@ func pickL0(
 			}
 			// A single-file intra-L0 compaction is unproductive.
 			if iter := pc.startLevel.files.Iter(); iter.First() != nil && iter.Next() != nil {
-				pc.smallest, pc.largest = manifest.KeyRange(opts.Comparer.Compare, pc.startLevel.files.All())
+				pc.bounds = manifest.KeyRange(opts.Comparer.Compare, pc.startLevel.files.All())
 				return pc
 			}
 		} else {
@@ -2040,7 +2002,7 @@ func pickReadTriggeredCompactionHelper(
 	pc.kind = compactionKindRead
 
 	// Prevent read compactions which are too wide.
-	outputOverlaps := pc.version.Overlaps(pc.outputLevel.level, pc.userKeyBounds())
+	outputOverlaps := pc.version.Overlaps(pc.outputLevel.level, pc.bounds)
 	if outputOverlaps.AggregateSizeSum() > pc.maxReadCompactionBytes {
 		return nil
 	}
@@ -2101,11 +2063,9 @@ func inputRangeAlreadyCompacting(cmp base.Compare, env compactionEnv, pc *picked
 			if pc.outputLevel.level != c.outputLevel {
 				continue
 			}
-			if base.InternalCompare(cmp, c.largest, pc.smallest) < 0 ||
-				base.InternalCompare(cmp, c.smallest, pc.largest) > 0 {
+			if !c.bounds.Overlaps(cmp, &pc.bounds) {
 				continue
 			}
-
 			// The picked compaction and the in-progress compaction c are
 			// outputting to the same region of the key space of the same
 			// level.
@@ -2121,7 +2081,7 @@ func conflictsWithInProgress(
 ) bool {
 	for _, c := range inProgressCompactions {
 		if (c.outputLevel == manual.level || c.outputLevel == outputLevel) &&
-			isUserKeysOverlapping(manual.start, manual.end, c.smallest.UserKey, c.largest.UserKey, cmp) {
+			areUserKeysOverlapping(manual.start, manual.end, c.bounds.Start, c.bounds.End.Key, cmp) {
 			return true
 		}
 		for _, in := range c.inputs {
@@ -2132,7 +2092,7 @@ func conflictsWithInProgress(
 			smallest := iter.First().Smallest().UserKey
 			largest := iter.Last().Largest().UserKey
 			if (in.level == manual.level || in.level == outputLevel) &&
-				isUserKeysOverlapping(manual.start, manual.end, smallest, largest, cmp) {
+				areUserKeysOverlapping(manual.start, manual.end, smallest, largest, cmp) {
 				return true
 			}
 		}
@@ -2140,6 +2100,6 @@ func conflictsWithInProgress(
 	return false
 }
 
-func isUserKeysOverlapping(x1, x2, y1, y2 []byte, cmp Compare) bool {
+func areUserKeysOverlapping(x1, x2, y1, y2 []byte, cmp Compare) bool {
 	return cmp(x1, y2) <= 0 && cmp(y1, x2) <= 0
 }

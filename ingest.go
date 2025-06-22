@@ -987,6 +987,7 @@ func ingestTargetLevel(
 	}
 	targetLevel = 0
 	splitFile = nil
+	metaBounds := meta.UserKeyBounds()
 	for level := baseLevel; level < numLevels; level++ {
 		var candidateSplitFile *manifest.TableMetadata
 		switch lsmOverlap[level].Result {
@@ -1029,8 +1030,7 @@ func ingestTargetLevel(
 			if c.outputLevel == nil || level != c.outputLevel.level {
 				continue
 			}
-			if cmp(meta.Smallest().UserKey, c.largest.UserKey) <= 0 &&
-				cmp(meta.Largest().UserKey, c.smallest.UserKey) >= 0 {
+			if metaBounds.Overlaps(cmp, &c.bounds) {
 				overlaps = true
 				break
 			}
@@ -2062,8 +2062,9 @@ func (d *DB) ingestApply(
 				levelMetrics.EstimatedReferencesSize += added[i].Meta.EstimatedReferenceSize()
 			}
 		}
+		var exciseBounds base.UserKeyBounds
 		if exciseSpan.Valid() {
-			exciseBounds := exciseSpan.UserKeyBounds()
+			exciseBounds = exciseSpan.UserKeyBounds()
 			// Iterate through all levels and find files that intersect with exciseSpan.
 			//
 			// TODO(bilal): We could drop the DB mutex here as we don't need it for
@@ -2110,7 +2111,7 @@ func (d *DB) ingestApply(
 				// doing a [c,d) excise at the same time as this compaction, we will have
 				// to error out the whole compaction as we can't guarantee it hasn't/won't
 				// write a file overlapping with the excise span.
-				if exciseSpan.OverlapsInternalKeyRange(d.cmp, c.smallest, c.largest) {
+				if c.bounds.Overlaps(d.cmp, &exciseBounds) {
 					c.cancel.Store(true)
 				}
 				// Check if this compaction's inputs have been replaced due to an

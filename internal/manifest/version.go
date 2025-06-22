@@ -25,26 +25,16 @@ type Compare = base.Compare
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
 
-// KeyRange returns the minimum smallest and maximum largest internalKey for
-// all the TableMetadata in iters.
-func KeyRange(ucmp Compare, iters ...iter.Seq[*TableMetadata]) (smallest, largest InternalKey) {
-	first := true
+// KeyRange returns the narrowest UserKeyBounds that encompass the bounds of all
+// the TableMetadata in iters.
+func KeyRange(ucmp Compare, iters ...iter.Seq[*TableMetadata]) base.UserKeyBounds {
+	var bounds base.UserKeyBounds
 	for _, iter := range iters {
 		for meta := range iter {
-			if first {
-				first = false
-				smallest, largest = meta.Smallest(), meta.Largest()
-				continue
-			}
-			if base.InternalCompare(ucmp, smallest, meta.Smallest()) >= 0 {
-				smallest = meta.Smallest()
-			}
-			if base.InternalCompare(ucmp, largest, meta.Largest()) <= 0 {
-				largest = meta.Largest()
-			}
+			bounds = bounds.Union(ucmp, meta.UserKeyBounds())
 		}
 	}
-	return smallest, largest
+	return bounds
 }
 
 // SortBySmallest sorts the specified files by smallest key using the supplied

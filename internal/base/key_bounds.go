@@ -6,6 +6,7 @@ package base
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
@@ -205,6 +206,14 @@ func (b *UserKeyBounds) ContainsInternalKey(cmp Compare, key InternalKey) bool {
 		b.End.IsUpperBoundForInternalKey(cmp, key)
 }
 
+// Clone returns a copy of the bounds.
+func (b UserKeyBounds) Clone() UserKeyBounds {
+	return UserKeyBounds{
+		Start: slices.Clone(b.Start),
+		End:   UserKeyBoundary{Key: slices.Clone(b.End.Key), Kind: b.End.Kind},
+	}
+}
+
 func (b UserKeyBounds) String() string {
 	return b.Format(DefaultFormatter)
 }
@@ -217,4 +226,18 @@ func (b UserKeyBounds) Format(fmtKey FormatKey) string {
 		endC = ')'
 	}
 	return fmt.Sprintf("[%s, %s%c", fmtKey(b.Start), fmtKey(b.End.Key), endC)
+}
+
+// Union returns bounds that encompass both the receiver and the provided bounds.
+//
+// If either bounds are empty, the other bounds are returned.
+func (b *UserKeyBounds) Union(cmp Compare, other UserKeyBounds) UserKeyBounds {
+	union := *b
+	if other.Start != nil && (union.Start == nil || cmp(union.Start, other.Start) > 0) {
+		union.Start = other.Start
+	}
+	if other.End.Key != nil && (union.End.Key == nil || union.End.CompareUpperBounds(cmp, other.End) < 0) {
+		union.End = other.End
+	}
+	return union
 }
