@@ -910,6 +910,13 @@ func (m *Metrics) StringForTests() string {
 // (e.g. from compactions or flushes).
 type levelMetricsDelta [manifest.NumLevels]*LevelMetrics
 
+func (m *levelMetricsDelta) level(level int) *LevelMetrics {
+	if m[level] == nil {
+		m[level] = &LevelMetrics{}
+	}
+	return m[level]
+}
+
 func (m *Metrics) updateLevelMetrics(updates levelMetricsDelta) {
 	for i, u := range updates {
 		if u != nil {
