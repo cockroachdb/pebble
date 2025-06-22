@@ -206,7 +206,6 @@ type compaction struct {
 	// resulting version has been installed (if successful), but the compaction
 	// goroutine is still cleaning up (eg, deleting obsolete files).
 	versionEditApplied bool
-	bufferPool         sstable.BufferPool
 	// getValueSeparation constructs a compact.ValueSeparation for use in a
 	// compaction. It implements heuristics around choosing whether a compaction
 	// should:
@@ -223,9 +222,6 @@ type compaction struct {
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
 	getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation
-	// valueFetcher is used to fetch values from blob files. It's propagated
-	// down the iterator tree through the internal iterator options.
-	valueFetcher blob.ValueFetcher
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -254,11 +250,6 @@ type compaction struct {
 
 	// The boundaries of the input data.
 	bounds base.UserKeyBounds
-
-	// A list of fragment iterators to close when the compaction finishes. Used by
-	// input iteration to keep rangeDelIters open for the lifetime of the
-	// compaction, and only close them when the compaction finishes.
-	closers []*noCloseIter
 
 	// grandparents are the tables in level+2 that overlap with the files being
 	// compacted. Used to determine output table boundaries. Do not assume that the actual files
@@ -293,7 +284,23 @@ type compaction struct {
 		// Determined by L0Sublevels. If nil, ignored.
 		l0Limits [][]byte
 	}
-
+	// iterationState contains state used during compaction iteration.
+	iterationState struct {
+		// bufferPool is a pool of buffers used when reading blocks. Compactions
+		// do not populate the block cache under the assumption that the blocks
+		// we read will soon be irrelevant when their containing sstables are
+		// removed from the LSM.
+		bufferPool sstable.BufferPool
+		// keyspanIterClosers is a list of fragment iterators to close when the
+		// compaction finishes. As iteration opens new keyspan iterators,
+		// elements are appended. Keyspan iterators must remain open for the
+		// lifetime of the compaction, so they're accumulated here. When the
+		// compaction finishes, all the underlying keyspan iterators are closed.
+		keyspanIterClosers []*noCloseIter
+		// valueFetcher is used to fetch values from blob files. It's propagated
+		// down the iterator tree through the internal iterator options.
+		valueFetcher blob.ValueFetcher
+	}
 	// metrics encapsulates various metrics collected during a compaction.
 	metrics compactionMetrics
 
@@ -827,12 +834,13 @@ func (c *compaction) allowZeroSeqNum() bool {
 
 // newInputIters returns an iterator over all the input tables in a compaction.
 func (c *compaction) newInputIters(
-	newIters tableNewIters, newRangeKeyIter keyspanimpl.TableNewSpanIter, iiopts internalIterOpts,
+	newIters tableNewIters, iiopts internalIterOpts,
 ) (
 	pointIter internalIterator,
 	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
 	retErr error,
 ) {
+	ctx := context.TODO()
 	cmp := c.comparer.Compare
 
 	// Validate the ordering of compaction input files for defense in depth.
@@ -927,8 +935,8 @@ func (c *compaction) newInputIters(
 			// initRangeDel, the levelIter will close and forget the range
 			// deletion iterator when it steps on to a new file. Surfacing range
 			// deletions to compactions are handled below.
-			iters = append(iters, newLevelIter(context.Background(),
-				iterOpts, c.comparer, newIters, level.files.Iter(), l, iiopts))
+			iters = append(iters, newLevelIter(ctx, iterOpts, c.comparer,
+				newIters, level.files.Iter(), l, iiopts))
 			// TODO(jackson): Use keyspanimpl.LevelIter to avoid loading all the range
 			// deletions into memory upfront. (See #2015, which reverted this.) There
 			// will be no user keys that are split between sstables within a level in
@@ -966,7 +974,7 @@ func (c *compaction) newInputIters(
 			// mergingIter.
 			iter := level.files.Iter()
 			for f := iter.First(); f != nil; f = iter.Next() {
-				rangeDelIter, err := c.newRangeDelIter(newIters, iter.Take(), iterOpts, iiopts, l)
+				rangeDelIter, err := c.newRangeDelIter(ctx, newIters, iter.Take(), iterOpts, iiopts, l)
 				if err != nil {
 					// The error will already be annotated with the BackingFileNum, so
 					// we annotate it with the FileNum.
@@ -976,7 +984,7 @@ func (c *compaction) newInputIters(
 					continue
 				}
 				rangeDelIters = append(rangeDelIters, rangeDelIter)
-				c.closers = append(c.closers, rangeDelIter)
+				c.iterationState.keyspanIterClosers = append(c.iterationState.keyspanIterClosers, rangeDelIter)
 			}
 
 			// Check if this level has any range keys.
@@ -989,18 +997,18 @@ func (c *compaction) newInputIters(
 			}
 			if hasRangeKeys {
 				newRangeKeyIterWrapper := func(ctx context.Context, file *manifest.TableMetadata, iterOptions keyspan.SpanIterOptions) (keyspan.FragmentIterator, error) {
-					rangeKeyIter, err := newRangeKeyIter(ctx, file, iterOptions)
+					iters, err := newIters(ctx, file, &iterOpts, iiopts, iterRangeKeys)
 					if err != nil {
 						return nil, err
-					} else if rangeKeyIter == nil {
+					} else if iters.rangeKey == nil {
 						return emptyKeyspanIter, nil
 					}
 					// Ensure that the range key iter is not closed until the compaction is
 					// finished. This is necessary because range key processing
 					// requires the range keys to be held in memory for up to the
 					// lifetime of the compaction.
-					noCloseIter := &noCloseIter{rangeKeyIter}
-					c.closers = append(c.closers, noCloseIter)
+					noCloseIter := &noCloseIter{iters.rangeKey}
+					c.iterationState.keyspanIterClosers = append(c.iterationState.keyspanIterClosers, noCloseIter)
 
 					// We do not need to truncate range keys to sstable boundaries, or
 					// only read within the file's atomic compaction units, unlike with
@@ -1009,10 +1017,8 @@ func (c *compaction) newInputIters(
 					// in this sstable must wholly lie within the file's bounds.
 					return noCloseIter, err
 				}
-				li := keyspanimpl.NewLevelIter(
-					context.Background(), keyspan.SpanIterOptions{}, cmp,
-					newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange,
-				)
+				li := keyspanimpl.NewLevelIter(ctx, keyspan.SpanIterOptions{}, cmp,
+					newRangeKeyIterWrapper, level.files.Iter(), l, manifest.KeyTypeRange)
 				rangeKeyIters = append(rangeKeyIters, li)
 			}
 			return nil
@@ -1080,6 +1086,7 @@ func (c *compaction) newInputIters(
 }
 
 func (c *compaction) newRangeDelIter(
+	ctx context.Context,
 	newIters tableNewIters,
 	f manifest.LevelFile,
 	opts IterOptions,
@@ -1087,11 +1094,7 @@ func (c *compaction) newRangeDelIter(
 	l manifest.Layer,
 ) (*noCloseIter, error) {
 	opts.layer = l
-	iterSet, err := newIters(context.Background(), f.TableMetadata, &opts,
-		internalIterOpts{
-			compaction: true,
-			readEnv:    sstable.ReadEnv{Block: block.ReadEnv{BufferPool: &c.bufferPool}},
-		}, iterRangeDeletions)
+	iterSet, err := newIters(ctx, f.TableMetadata, &opts, iiopts, iterRangeDeletions)
 	if err != nil {
 		return nil, err
 	} else if iterSet.rangeDeletion == nil {
@@ -3204,27 +3207,27 @@ func (d *DB) compactAndWrite(
 	// a 12-buffer pool is expected to be within reason, even if all the buffers
 	// grow to the typical size of an index block (256 KiB) which would
 	// translate to 3 MiB per compaction.
-	c.bufferPool.Init(12)
-	defer c.bufferPool.Release()
+	c.iterationState.bufferPool.Init(12)
+	defer c.iterationState.bufferPool.Release()
 	blockReadEnv := block.ReadEnv{
-		BufferPool: &c.bufferPool,
+		BufferPool: &c.iterationState.bufferPool,
 		Stats:      &c.metrics.internalIterStats,
 		IterStats: d.fileCache.SSTStatsCollector().Accumulator(
 			uint64(uintptr(unsafe.Pointer(c))),
 			categoryCompaction,
 		),
 	}
-	c.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv)
+	c.iterationState.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv)
 	iiopts := internalIterOpts{
 		compaction:       true,
 		readEnv:          sstable.ReadEnv{Block: blockReadEnv},
-		blobValueFetcher: &c.valueFetcher,
+		blobValueFetcher: &c.iterationState.valueFetcher,
 	}
-	defer func() { _ = c.valueFetcher.Close() }()
+	defer func() { _ = c.iterationState.valueFetcher.Close() }()
 
-	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, d.tableNewRangeKeyIter, iiopts)
+	pointIter, rangeDelIter, rangeKeyIter, err := c.newInputIters(d.newIters, iiopts)
 	defer func() {
-		for _, closer := range c.closers {
+		for _, closer := range c.iterationState.keyspanIterClosers {
 			closer.FragmentIterator.Close()
 		}
 	}()
