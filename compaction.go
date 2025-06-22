@@ -268,12 +268,6 @@ type compaction struct {
 	delElision      compact.TombstoneElision
 	rangeKeyElision compact.TombstoneElision
 
-	// allowedZeroSeqNum is true if seqnums can be zeroed if there are no
-	// snapshots requiring them to be kept. This determination is made by
-	// looking for an sstable which overlaps the bounds of the compaction at a
-	// lower level in the LSM during runCompaction.
-	allowedZeroSeqNum bool
-
 	// deleteOnly contains information specific to compactions with kind
 	// compactionKindDeleteOnly. A delete-only compaction is a special
 	// compaction that does not merge or write sstables. Instead, it only
@@ -3237,14 +3231,13 @@ func (d *DB) compactAndWrite(
 	if err != nil {
 		return compact.Result{Err: err}
 	}
-	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	cfg := compact.IterConfig{
 		Comparer:         c.comparer,
 		Merge:            d.merge,
 		TombstoneElision: c.delElision,
 		RangeKeyElision:  c.rangeKeyElision,
 		Snapshots:        snapshots,
-		AllowZeroSeqNum:  c.allowedZeroSeqNum,
+		AllowZeroSeqNum:  c.allowZeroSeqNum(),
 		IneffectualSingleDeleteCallback: func(userKey []byte) {
 			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
 				Kind:    IneffectualSingleDelete,
