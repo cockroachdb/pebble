@@ -262,10 +262,10 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 		// Use a small target file size so that there is a single key per sstable.
 		d, err := Open("", &Options{
 			FS: vfs.NewMem(),
-			Levels: [manifest.NumLevels]LevelOptions{
-				0: {TargetFileSize: 100},
-				1: {TargetFileSize: 80},
-				2: {TargetFileSize: 1},
+			TargetFileSizes: [manifest.NumLevels]int64{
+				0: 100,
+				1: 80,
+				2: 1,
 			},
 			DebugCheck:         DebugCheckLevels,
 			FormatMajorVersion: formatVersion,
@@ -409,10 +409,10 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
-		Levels: [manifest.NumLevels]LevelOptions{
-			0: {TargetFileSize: 200},
-			1: {TargetFileSize: 200},
-			2: {TargetFileSize: 1},
+		TargetFileSizes: [manifest.NumLevels]int64{
+			0: 200,
+			1: 200,
+			2: 1,
 		},
 		DebugCheck: DebugCheckLevels,
 	})
@@ -469,10 +469,10 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 	d, err := Open("tmp", &Options{
 		Cleaner: ArchiveCleaner{},
 		FS:      vfs.NewMem(),
-		Levels: [manifest.NumLevels]LevelOptions{
-			0: {TargetFileSize: 200},
-			1: {TargetFileSize: 200},
-			2: {TargetFileSize: 1},
+		TargetFileSizes: [manifest.NumLevels]int64{
+			0: 200,
+			1: 200,
+			2: 1,
 		},
 		DebugCheck: DebugCheckLevels,
 	})

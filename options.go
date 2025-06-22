@@ -432,12 +432,6 @@ type LevelOptions struct {
 	// The default value is the value of BlockSize for L0, or the value from the
 	// previous level for all other levels.
 	IndexBlockSize int
-
-	// The target file size for the level.
-	//
-	// The default value is 2MB for L0, and double the value for the previous
-	// level for all other levels.
-	TargetFileSize int64
 }
 
 // EnsureL0Defaults ensures that the L0 default values for the options have been
@@ -463,9 +457,6 @@ func (o *LevelOptions) EnsureL0Defaults() {
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
 	}
-	if o.TargetFileSize <= 0 {
-		o.TargetFileSize = 2 << 20 // 2 MB
-	}
 }
 
 // EnsureL1PlusDefaults ensures that the L1+ default values for the options have
@@ -490,9 +481,6 @@ func (o *LevelOptions) EnsureL1PlusDefaults(previousLevel *LevelOptions) {
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = previousLevel.IndexBlockSize
-	}
-	if o.TargetFileSize <= 0 {
-		o.TargetFileSize = previousLevel.TargetFileSize * 2
 	}
 }
 
@@ -863,7 +851,19 @@ type Options struct {
 	// maximum number of bytes for a level is exceeded, compaction is requested.
 	LBaseMaxBytes int64
 
-	// Per-level options.
+	// TargetFileSizes contains the target file size for each level, ignoring
+	// unpopulated levels. Specifically:
+	// - TargetFileSizes[0] is the target file size for L0;
+	// - TargetFileSizes[1] is the target file size for Lbase;
+	// - TargetFileSizes[2] is the target file size for Lbase+1;
+	// and so on.
+	//
+	// The default value for TargetFileSizes[0] is 2MB.
+	// The default value for TargetFileSizes[i] is TargetFileSizes[i-1] * 2.
+	TargetFileSizes [manifest.NumLevels]int64
+
+	// Per-level options. Levels[i] contains the options for Li (regardless of
+	// what Lbase is).
 	Levels [manifest.NumLevels]LevelOptions
 
 	// LoggerAndTracer will be used, if non-nil, else Logger will be used and
@@ -1413,6 +1413,14 @@ func (o *Options) EnsureDefaults() {
 	if o.LBaseMaxBytes <= 0 {
 		o.LBaseMaxBytes = 64 << 20 // 64 MB
 	}
+	if o.TargetFileSizes[0] <= 0 {
+		o.TargetFileSizes[0] = 2 << 20 // 2 MB
+	}
+	for i := 1; i < len(o.TargetFileSizes); i++ {
+		if o.TargetFileSizes[i] <= 0 {
+			o.TargetFileSizes[i] = o.TargetFileSizes[i-1] * 2
+		}
+	}
 	o.Levels[0].EnsureL0Defaults()
 	for i := 1; i < len(o.Levels); i++ {
 		o.Levels[i].EnsureL1PlusDefaults(&o.Levels[i-1])
@@ -1460,7 +1468,7 @@ func (o *Options) EnsureDefaults() {
 		o.WithFSDefaults()
 	}
 	if o.FlushSplitBytes <= 0 {
-		o.FlushSplitBytes = 2 * o.Levels[0].TargetFileSize
+		o.FlushSplitBytes = 2 * o.TargetFileSizes[0]
 	}
 	if o.WALFailover != nil {
 		o.WALFailover.FailoverOptions.EnsureDefaults()
@@ -1499,6 +1507,17 @@ func (o *Options) EnsureDefaults() {
 	// in a default policy.
 
 	o.initMaps()
+}
+
+// TargetFileSize computes the target file size for the given output level.
+func (o *Options) TargetFileSize(outputLevel int, baseLevel int) int64 {
+	if outputLevel == 0 {
+		return o.TargetFileSizes[0]
+	}
+	if baseLevel > outputLevel {
+		panic(fmt.Sprintf("invalid base level %d (output level %d)", baseLevel, outputLevel))
+	}
+	return o.TargetFileSizes[outputLevel-baseLevel+1]
 }
 
 // DefaultOptions returns a new Options object with the default values set.
@@ -1681,7 +1700,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", l.FilterPolicy.Name())
 		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
-		fmt.Fprintf(&buf, "  target_file_size=%d\n", l.TargetFileSize)
+		fmt.Fprintf(&buf, "  target_file_size=%d\n", o.TargetFileSizes[i])
 	}
 
 	return buf.String()
@@ -2168,7 +2187,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "index_block_size":
 				l.IndexBlockSize, err = strconv.Atoi(value)
 			case "target_file_size":
-				l.TargetFileSize, err = strconv.ParseInt(value, 10, 64)
+				o.TargetFileSizes[index], err = strconv.ParseInt(value, 10, 64)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil

@@ -60,27 +60,28 @@ func testingRandomized(t testing.TB, o *Options) *Options {
 	return o
 }
 
-func TestLevelOptions(t *testing.T) {
+func TestTargetFileSize(t *testing.T) {
 	opts := DefaultOptions()
 
 	testCases := []struct {
 		level          int
+		baseLevel      int
 		targetFileSize int64
 	}{
-		{0, 2 << 20},
-		{1, (2 * 2) << 20},
-		{2, (4 * 2) << 20},
-		{3, (8 * 2) << 20},
-		{4, (16 * 2) << 20},
-		{5, (32 * 2) << 20},
-		{6, (64 * 2) << 20},
+		{level: 0, baseLevel: 1, targetFileSize: 2 << 20},
+		{level: 1, baseLevel: 1, targetFileSize: 2 * 2 << 20},
+		{level: 2, baseLevel: 1, targetFileSize: 4 * 2 << 20},
+		{level: 3, baseLevel: 1, targetFileSize: 8 * 2 << 20},
+		{level: 4, baseLevel: 1, targetFileSize: 16 * 2 << 20},
+		{level: 5, baseLevel: 1, targetFileSize: 32 * 2 << 20},
+		{level: 6, baseLevel: 1, targetFileSize: 64 * 2 << 20},
+
+		{level: 3, baseLevel: 3, targetFileSize: 2 * 2 << 20},
+		{level: 4, baseLevel: 3, targetFileSize: 4 * 2 << 20},
+		{level: 5, baseLevel: 3, targetFileSize: 8 * 2 << 20},
 	}
 	for _, c := range testCases {
-		l := opts.Levels[c.level]
-		if c.targetFileSize != l.TargetFileSize {
-			t.Fatalf("%d: expected target-file-size %d, but found %d",
-				c.level, c.targetFileSize, l.TargetFileSize)
-		}
+		require.Equal(t, c.targetFileSize, opts.TargetFileSize(c.level, c.baseLevel))
 	}
 }
 

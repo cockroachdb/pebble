@@ -770,13 +770,8 @@ func RandomOptions(
 		opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
 	}
 
-	var lopts pebble.LevelOptions
-	lopts.BlockRestartInterval = 1 + rng.IntN(64)  // 1 - 64
-	lopts.BlockSize = 1 << uint(rng.IntN(24))      // 1 - 16MB
-	lopts.BlockSizeThreshold = 50 + rng.IntN(50)   // 50 - 100
-	lopts.IndexBlockSize = 1 << uint(rng.IntN(24)) // 1 - 16MB
-	lopts.TargetFileSize = 1 << uint(rng.IntN(28)) // 1 - 256MB
-	if lopts.TargetFileSize < 1<<12 {
+	opts.TargetFileSizes[0] = 1 << uint(rng.IntN(28)) // 1 - 256MB
+	if opts.TargetFileSizes[0] < 1<<12 {
 		// We will generate a lot of files, which will slow down compactions.
 		// Increase L0StopWritesThreshold to reduce the number of write stalls
 		// that could cause operation timeouts.
@@ -784,7 +779,13 @@ func RandomOptions(
 	}
 	// The EstimatedSize of an empty table writer is 8 bytes. We want something a
 	// little bigger than that as the minimum target.
-	lopts.TargetFileSize = max(lopts.TargetFileSize, 12)
+	opts.TargetFileSizes[0] = max(opts.TargetFileSizes[0], 12)
+
+	var lopts pebble.LevelOptions
+	lopts.BlockRestartInterval = 1 + rng.IntN(64)  // 1 - 64
+	lopts.BlockSize = 1 << uint(rng.IntN(24))      // 1 - 16MB
+	lopts.BlockSizeThreshold = 50 + rng.IntN(50)   // 50 - 100
+	lopts.IndexBlockSize = 1 << uint(rng.IntN(24)) // 1 - 16MB
 
 	// We either use no bloom filter, the default filter, or a filter with
 	// randomized bits-per-key setting. We zero out the Filters map. It'll get

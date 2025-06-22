@@ -467,25 +467,25 @@ func TestPickCompaction(t *testing.T) {
 				1: {
 					newFileMeta(
 						200,
-						expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64)-1,
+						expandedCompactionByteSizeLimit(opts, 4<<20, math.MaxUint64)-1,
 						base.ParseInternalKey("i1.SET.201"),
 						base.ParseInternalKey("i2.SET.202"),
 					),
 					newFileMeta(
 						210,
-						expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64)-1,
+						expandedCompactionByteSizeLimit(opts, 4<<20, math.MaxUint64)-1,
 						base.ParseInternalKey("j1.SET.211"),
 						base.ParseInternalKey("j2.SET.212"),
 					),
 					newFileMeta(
 						220,
-						expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64)-1,
+						expandedCompactionByteSizeLimit(opts, 4<<20, math.MaxUint64)-1,
 						base.ParseInternalKey("k1.SET.221"),
 						base.ParseInternalKey("k2.SET.222"),
 					),
 					newFileMeta(
 						230,
-						expandedCompactionByteSizeLimit(opts, 1, math.MaxUint64)-1,
+						expandedCompactionByteSizeLimit(opts, 4<<20, math.MaxUint64)-1,
 						base.ParseInternalKey("l1.SET.231"),
 						base.ParseInternalKey("l2.SET.232"),
 					),
@@ -493,13 +493,13 @@ func TestPickCompaction(t *testing.T) {
 				2: {
 					newFileMeta(
 						300,
-						expandedCompactionByteSizeLimit(opts, 2, math.MaxUint64)-1,
+						expandedCompactionByteSizeLimit(opts, 8<<20, math.MaxUint64)-1,
 						base.ParseInternalKey("a0.SET.301"),
 						base.ParseInternalKey("l0.SET.302"),
 					),
 					newFileMeta(
 						310,
-						expandedCompactionByteSizeLimit(opts, 2, math.MaxUint64)-1,
+						expandedCompactionByteSizeLimit(opts, 8<<20, math.MaxUint64)-1,
 						base.ParseInternalKey("l2.SET.311"),
 						base.ParseInternalKey("z2.SET.312"),
 					),
@@ -2229,8 +2229,8 @@ func TestCompactionErrorCleanup(t *testing.T) {
 		},
 	}
 	opts.WithFSDefaults()
-	for i := range opts.Levels {
-		opts.Levels[i].TargetFileSize = 1
+	for i := range opts.TargetFileSizes {
+		opts.TargetFileSizes[i] = 1
 	}
 	opts.testingRandomized(t)
 	d, err := Open("", opts)
@@ -2932,8 +2932,8 @@ func TestCompactionErrorStats(t *testing.T) {
 		},
 	}
 	opts.WithFSDefaults()
-	for i := range opts.Levels {
-		opts.Levels[i].TargetFileSize = 1
+	for i := range opts.TargetFileSizes {
+		opts.TargetFileSizes[i] = 1
 	}
 	opts.testingRandomized(t)
 	d, err := Open("", opts)
