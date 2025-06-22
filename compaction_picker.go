@@ -1719,15 +1719,28 @@ func pickAutoLPositive(
 	if !pc.setupInputs(opts, env.diskAvailBytes, pc.startLevel, env.problemSpans) {
 		return nil
 	}
-	return pc.maybeAddLevel(opts, env.diskAvailBytes)
+	return pc.maybeAddLevel(opts, env.diskAvailBytes, env.inProgressCompactions)
 }
 
 // maybeAddLevel maybe adds a level to the picked compaction.
-func (pc *pickedCompaction) maybeAddLevel(opts *Options, diskAvailBytes uint64) *pickedCompaction {
+// The original outputLevel will become the intermediate level of the
+// multiLevel compaction. The inputs of the intermediate level will
+// be expanded if possible to include the added level's key range via
+// a call to setupInputs with startLevel as the intermediate level.
+// Note that the original compaction's startLevel inputs will not be changed.
+func (pc *pickedCompaction) maybeAddLevel(
+	opts *Options, diskAvailBytes uint64, inProgress []compactionInfo,
+) *pickedCompaction {
 	pc.pickerMetrics.singleLevelOverlappingRatio = pc.overlappingRatio()
 	if pc.outputLevel.level == numLevels-1 {
 		// Don't add a level if the current output level is in L6.
 		return pc
+	}
+	// We only allow one in progress multiLevel compaction at a time.
+	for _, c := range inProgress {
+		if len(c.inputs) > 2 {
+			return pc
+		}
 	}
 	if !opts.Experimental.MultiLevelCompactionHeuristic.allowL0() && pc.startLevel.level == 0 {
 		return pc
@@ -1868,7 +1881,7 @@ func pickL0(
 			if pc.startLevel.files.Empty() {
 				opts.Logger.Errorf("%v", base.AssertionFailedf("empty compaction chosen"))
 			}
-			return pc.maybeAddLevel(opts, env.diskAvailBytes)
+			return pc.maybeAddLevel(opts, env.diskAvailBytes, env.inProgressCompactions)
 		}
 		// TODO(radu): investigate why this happens.
 		// opts.Logger.Errorf("%v", base.AssertionFailedf("setupInputs failed"))
@@ -1941,7 +1954,7 @@ func newPickedManualCompaction(
 		// concurrent compaction.
 		return nil, true
 	}
-	if pc = pc.maybeAddLevel(opts, env.diskAvailBytes); pc == nil {
+	if pc = pc.maybeAddLevel(opts, env.diskAvailBytes, env.inProgressCompactions); pc == nil {
 		return nil, false
 	}
 	if pc.outputLevel.level != outputLevel {
