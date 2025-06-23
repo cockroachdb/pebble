@@ -7,6 +7,7 @@ package colblk
 import (
 	"unsafe"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -40,7 +41,10 @@ func (e *ReferenceLivenessBlockEncoder) Reset() {
 }
 
 // AddReferenceLiveness adds a value to the reference liveness block.
-func (e *ReferenceLivenessBlockEncoder) AddReferenceLiveness(v []byte) {
+func (e *ReferenceLivenessBlockEncoder) AddReferenceLiveness(referenceID int, v []byte) {
+	if e.values.Rows() != referenceID {
+		panic(base.AssertionFailedf("referenceID %d does not match number of rows %d", referenceID, e.values.Rows()))
+	}
 	e.values.Put(v)
 }
 

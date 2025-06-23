@@ -22,10 +22,10 @@ func TestValueLivenessBlock(t *testing.T) {
 		case "build":
 			var w ReferenceLivenessBlockEncoder
 			w.Init()
-			for _, line := range strings.Split(d.Input, "\n") {
+			for i, line := range strings.Split(d.Input, "\n") {
 				fields := strings.Fields(line)
 				value := fields[0]
-				w.AddReferenceLiveness([]byte(value))
+				w.AddReferenceLiveness(i, []byte(value))
 			}
 
 			data := w.Finish()
