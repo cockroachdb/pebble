@@ -948,7 +948,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		if err != nil {
 			return err
 		}
-		c.getValueSeparation = func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
+		c.getValueSeparation = func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation {
 			return valueSeparator
 		}
 		// NB: define allows the test to exactly specify which keys go
@@ -1018,12 +1018,12 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	}
 
 	// Example, compact: a-c.
-	parseCompaction := func(outputLevel int, s string) (*compaction, error) {
+	parseCompaction := func(outputLevel int, s string) (*tableCompaction, error) {
 		m, err := parseMeta(s)
 		if err != nil {
 			return nil, err
 		}
-		c := &compaction{
+		c := &tableCompaction{
 			inputs: []compactionLevel{{}, {level: outputLevel}},
 			bounds: m.UserKeyBounds(),
 		}

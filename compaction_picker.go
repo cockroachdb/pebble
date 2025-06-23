@@ -73,7 +73,7 @@ type pickedCompaction interface {
 	// compaction is not a result of a manual compaction.
 	ManualID() uint64
 	// ConstructCompaction creates a compaction from the picked compaction.
-	ConstructCompaction(*DB, CompactionGrantHandle) *compaction
+	ConstructCompaction(*DB, CompactionGrantHandle) compaction
 	// WaitingCompaction returns a WaitingCompaction description of this
 	// compaction for consumption by the compaction scheduler.
 	WaitingCompaction() WaitingCompaction
@@ -236,7 +236,7 @@ func (pc *pickedTableCompaction) Score() float64 { return pc.score }
 // pickedTableCompaction.
 func (pc *pickedTableCompaction) ConstructCompaction(
 	d *DB, grantHandle CompactionGrantHandle,
-) *compaction {
+) compaction {
 	return newCompaction(
 		pc,
 		d.opts,

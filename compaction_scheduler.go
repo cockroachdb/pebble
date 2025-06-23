@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -147,17 +146,6 @@ func init() {
 		compactionOptionalAndPriority{optional: true, priority: 40}
 	scheduledCompactionMap[compactionKindRewrite] =
 		compactionOptionalAndPriority{optional: true, priority: 30}
-}
-
-func makeWaitingCompaction(manual bool, kind compactionKind, score float64) WaitingCompaction {
-	if manual {
-		return WaitingCompaction{Priority: manualCompactionPriority, Score: score}
-	}
-	entry, ok := scheduledCompactionMap[kind]
-	if !ok {
-		panic(errors.AssertionFailedf("unexpected compactionKind %s", kind))
-	}
-	return WaitingCompaction{Optional: entry.optional, Priority: entry.priority, Score: score}
 }
 
 // noopGrantHandle is used in cases that don't interact with a CompactionScheduler.

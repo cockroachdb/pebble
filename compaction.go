@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"iter"
 	"math"
 	"runtime/pprof"
 	"slices"
@@ -23,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/problemspans"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
@@ -186,9 +188,25 @@ func (k compactionKind) compactingOrFlushing() string {
 	return "compacting"
 }
 
-// compaction is a table compaction from one level to the next, starting from a
-// given version.
-type compaction struct {
+type compaction interface {
+	AddInProgressLocked(*DB)
+	BeganAt() time.Time
+	Bounds() *base.UserKeyBounds
+	Cancel()
+	Execute(JobID, *DB) error
+	GrantHandle() CompactionGrantHandle
+	Info() compactionInfo
+	IsDownload() bool
+	IsFlush() bool
+	PprofLabels(UserKeyCategories) pprof.LabelSet
+	RecordError(*problemspans.ByLevel, error)
+	Tables() iter.Seq2[int, *manifest.TableMetadata]
+	VersionEditApplied() bool
+}
+
+// tableCompaction is a table compaction from one level to the next, starting
+// from a given version. It implements the compaction interface.
+type tableCompaction struct {
 	// cancel is a bool that can be used by other goroutines to signal a compaction
 	// to cancel, such as if a conflicting excise operation raced it to manifest
 	// application. Only holders of the manifest lock will write to this atomic.
@@ -223,7 +241,7 @@ type compaction struct {
 	// b) rewrite blob files: The compaction will write eligible values to new
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
-	getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation
+	getValueSeparation func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -312,6 +330,126 @@ type compaction struct {
 	objCreateOpts objstorage.CreateOptions
 }
 
+// Assert that tableCompaction implements the compaction interface.
+var _ compaction = (*tableCompaction)(nil)
+
+func (c *tableCompaction) AddInProgressLocked(d *DB) {
+	d.mu.compact.inProgress[c] = struct{}{}
+	var isBase, isIntraL0 bool
+	for _, cl := range c.inputs {
+		for f := range cl.files.All() {
+			if f.IsCompacting() {
+				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.TableNum)
+			}
+			f.SetCompactionState(manifest.CompactionStateCompacting)
+			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
+				if c.outputLevel.level == 0 {
+					f.IsIntraL0Compacting = true
+					isIntraL0 = true
+				} else {
+					isBase = true
+				}
+			}
+		}
+	}
+
+	if isIntraL0 || isBase {
+		l0Inputs := []manifest.LevelSlice{c.startLevel.files}
+		if isIntraL0 {
+			l0Inputs = append(l0Inputs, c.outputLevel.files)
+		}
+		if err := d.mu.versions.latest.l0Organizer.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
+			d.opts.Logger.Fatalf("could not update state for compaction: %s", err)
+		}
+	}
+}
+
+func (c *tableCompaction) BeganAt() time.Time          { return c.metrics.beganAt }
+func (c *tableCompaction) Bounds() *base.UserKeyBounds { return &c.bounds }
+func (c *tableCompaction) Cancel()                     { c.cancel.Store(true) }
+
+func (c *tableCompaction) Execute(jobID JobID, d *DB) error {
+	c.grantHandle.Started()
+	err := d.compact1(jobID, c)
+	// The version stored in the compaction is ref'd when the compaction is
+	// created. We're responsible for un-refing it when the compaction is
+	// complete.
+	if c.version != nil {
+		c.version.UnrefLocked()
+	}
+	return err
+}
+
+func (c *tableCompaction) RecordError(problemSpans *problemspans.ByLevel, err error) {
+	// Record problem spans for a short duration, unless the error is a
+	// corruption.
+	expiration := 30 * time.Second
+	if IsCorruptionError(err) {
+		// TODO(radu): ideally, we should be using the corruption reporting
+		// mechanism which has a tighter span for the corruption. We would need to
+		// somehow plumb the level of the file.
+		expiration = 5 * time.Minute
+	}
+
+	for i := range c.inputs {
+		level := c.inputs[i].level
+		if level == 0 {
+			// We do not set problem spans on L0, as they could block flushes.
+			continue
+		}
+		it := c.inputs[i].files.Iter()
+		for f := it.First(); f != nil; f = it.Next() {
+			problemSpans.Add(level, f.UserKeyBounds(), expiration)
+		}
+	}
+}
+
+func (c *tableCompaction) GrantHandle() CompactionGrantHandle { return c.grantHandle }
+func (c *tableCompaction) IsDownload() bool                   { return c.isDownload }
+func (c *tableCompaction) IsFlush() bool                      { return len(c.flush.flushables) > 0 }
+func (c *tableCompaction) Info() compactionInfo {
+	info := compactionInfo{
+		versionEditApplied: c.versionEditApplied,
+		inputs:             c.inputs,
+		bounds:             c.bounds,
+		outputLevel:        -1,
+	}
+	if c.outputLevel != nil {
+		info.outputLevel = c.outputLevel.level
+	}
+	return info
+}
+func (c *tableCompaction) PprofLabels(kc UserKeyCategories) pprof.LabelSet {
+	activity := "compact"
+	if len(c.flush.flushables) != 0 {
+		activity = "flush"
+	}
+	level := "L?"
+	// Delete-only compactions don't have an output level.
+	if c.outputLevel != nil {
+		level = fmt.Sprintf("L%d", c.outputLevel.level)
+	}
+	if kc.Len() > 0 {
+		cat := kc.CategorizeKeyRange(c.bounds.Start, c.bounds.End.Key)
+		return pprof.Labels("pebble", activity, "output-level", level, "key-type", cat)
+	}
+	return pprof.Labels("pebble", activity, "output-level", level)
+}
+
+func (c *tableCompaction) Tables() iter.Seq2[int, *manifest.TableMetadata] {
+	return func(yield func(int, *manifest.TableMetadata) bool) {
+		for _, cl := range c.inputs {
+			for f := range cl.files.All() {
+				if !yield(cl.level, f) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (c *tableCompaction) VersionEditApplied() bool { return c.versionEditApplied }
+
 // compactionMetrics contians metrics surrounding a compaction.
 type compactionMetrics struct {
 	// beganAt is the time when the compaction began.
@@ -334,7 +472,7 @@ type compactionMetrics struct {
 
 // inputLargestSeqNumAbsolute returns the maximum LargestSeqNumAbsolute of any
 // input sstables.
-func (c *compaction) inputLargestSeqNumAbsolute() base.SeqNum {
+func (c *tableCompaction) inputLargestSeqNumAbsolute() base.SeqNum {
 	var seqNum base.SeqNum
 	for _, cl := range c.inputs {
 		for m := range cl.files.All() {
@@ -344,7 +482,7 @@ func (c *compaction) inputLargestSeqNumAbsolute() base.SeqNum {
 	return seqNum
 }
 
-func (c *compaction) makeInfo(jobID JobID) CompactionInfo {
+func (c *tableCompaction) makeInfo(jobID JobID) CompactionInfo {
 	info := CompactionInfo{
 		JobID:       int(jobID),
 		Reason:      c.kind.String(),
@@ -388,7 +526,7 @@ func (c *compaction) makeInfo(jobID JobID) CompactionInfo {
 	return info
 }
 
-type getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation
+type getValueSeparation func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation
 
 // newCompaction constructs a compaction from the provided picked compaction.
 //
@@ -402,8 +540,8 @@ func newCompaction(
 	grantHandle CompactionGrantHandle,
 	tableFormat sstable.TableFormat,
 	getValueSeparation getValueSeparation,
-) *compaction {
-	c := &compaction{
+) *tableCompaction {
+	c := &tableCompaction{
 		kind:               compactionKindDefault,
 		comparer:           opts.Comparer,
 		inputs:             pc.inputs,
@@ -475,7 +613,7 @@ func newCompaction(
 
 // maybeSwitchToMoveOrCopy decides if the compaction can be changed into a move
 // or copy compaction, in which case c.kind is updated.
-func (c *compaction) maybeSwitchToMoveOrCopy(
+func (c *tableCompaction) maybeSwitchToMoveOrCopy(
 	preferSharedStorage bool, provider objstorage.Provider,
 ) {
 	// Only non-multi-level compactions with a single input file can be
@@ -555,8 +693,8 @@ func newDeleteOnlyCompaction(
 	beganAt time.Time,
 	hints []deleteCompactionHint,
 	exciseEnabled bool,
-) *compaction {
-	c := &compaction{
+) *tableCompaction {
+	c := &tableCompaction{
 		kind:        compactionKindDeleteOnly,
 		comparer:    opts.Comparer,
 		logger:      opts.Logger,
@@ -592,7 +730,7 @@ func newDeleteOnlyCompaction(
 	return c
 }
 
-func adjustGrandparentOverlapBytesForFlush(c *compaction, flushingBytes uint64) {
+func adjustGrandparentOverlapBytesForFlush(c *tableCompaction, flushingBytes uint64) {
 	// Heuristic to place a lower bound on compaction output file size
 	// caused by Lbase. Prior to this heuristic we have observed an L0 in
 	// production with 310K files of which 290K files were < 10KB in size.
@@ -679,12 +817,11 @@ func newFlush(
 	beganAt time.Time,
 	tableFormat sstable.TableFormat,
 	getValueSeparation getValueSeparation,
-) (*compaction, error) {
-	c := &compaction{
+) (*tableCompaction, error) {
+	c := &tableCompaction{
 		kind:               compactionKindFlush,
 		comparer:           opts.Comparer,
 		logger:             opts.Logger,
-		version:            cur,
 		inputs:             []compactionLevel{{level: -1}, {level: 0}},
 		getValueSeparation: getValueSeparation,
 		maxOutputFileSize:  math.MaxUint64,
@@ -778,7 +915,7 @@ func newFlush(
 	if opts.FlushSplitBytes > 0 {
 		c.maxOutputFileSize = uint64(opts.TargetFileSizes[0])
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts.TargetFileSizes[0])
-		c.grandparents = c.version.Overlaps(baseLevel, c.bounds)
+		c.grandparents = cur.Overlaps(baseLevel, c.bounds)
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}
 
@@ -787,7 +924,7 @@ func newFlush(
 	return c, nil
 }
 
-func (c *compaction) hasExtraLevelData() bool {
+func (c *tableCompaction) hasExtraLevelData() bool {
 	if len(c.extraLevels) == 0 {
 		// not a multi level compaction
 		return false
@@ -803,7 +940,7 @@ func (c *compaction) hasExtraLevelData() bool {
 // errorOnUserKeyOverlap returns an error if the last two written sstables in
 // this compaction have revisions of the same user key present in both sstables,
 // when it shouldn't (eg. when splitting flushes).
-func (c *compaction) errorOnUserKeyOverlap(ve *manifest.VersionEdit) error {
+func (c *tableCompaction) errorOnUserKeyOverlap(ve *manifest.VersionEdit) error {
 	if n := len(ve.NewTables); n > 1 {
 		meta := ve.NewTables[n-1].Meta
 		prevMeta := ve.NewTables[n-2].Meta
@@ -822,7 +959,7 @@ func (c *compaction) errorOnUserKeyOverlap(ve *manifest.VersionEdit) error {
 // snapshots requiring them to be kept. It performs this determination by
 // looking at the TombstoneElision values which are set up based on sstables
 // which overlap the bounds of the compaction at a lower level in the LSM.
-func (c *compaction) allowZeroSeqNum() bool {
+func (c *tableCompaction) allowZeroSeqNum() bool {
 	// TODO(peter): we disable zeroing of seqnums during flushing to match
 	// RocksDB behavior and to avoid generating overlapping sstables during
 	// DB.replayWAL. When replaying WAL files at startup, we flush after each
@@ -835,7 +972,7 @@ func (c *compaction) allowZeroSeqNum() bool {
 }
 
 // newInputIters returns an iterator over all the input tables in a compaction.
-func (c *compaction) newInputIters(
+func (c *tableCompaction) newInputIters(
 	newIters tableNewIters, iiopts internalIterOpts,
 ) (
 	pointIter internalIterator,
@@ -1087,7 +1224,7 @@ func (c *compaction) newInputIters(
 	return pointIter, rangeDelIter, rangeKeyIter, nil
 }
 
-func (c *compaction) newRangeDelIter(
+func (c *tableCompaction) newRangeDelIter(
 	ctx context.Context,
 	newIters tableNewIters,
 	f manifest.LevelFile,
@@ -1110,7 +1247,7 @@ func (c *compaction) newRangeDelIter(
 	return &noCloseIter{iterSet.rangeDeletion}, nil
 }
 
-func (c *compaction) String() string {
+func (c *tableCompaction) String() string {
 	if len(c.flush.flushables) != 0 {
 		return "flush\n"
 	}
@@ -1152,37 +1289,6 @@ type readCompaction struct {
 	tableNum base.TableNum
 }
 
-func (d *DB) addInProgressCompaction(c *compaction) {
-	d.mu.compact.inProgress[c] = struct{}{}
-	var isBase, isIntraL0 bool
-	for _, cl := range c.inputs {
-		for f := range cl.files.All() {
-			if f.IsCompacting() {
-				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.TableNum)
-			}
-			f.SetCompactionState(manifest.CompactionStateCompacting)
-			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
-				if c.outputLevel.level == 0 {
-					f.IsIntraL0Compacting = true
-					isIntraL0 = true
-				} else {
-					isBase = true
-				}
-			}
-		}
-	}
-
-	if isIntraL0 || isBase {
-		l0Inputs := []manifest.LevelSlice{c.startLevel.files}
-		if isIntraL0 {
-			l0Inputs = append(l0Inputs, c.outputLevel.files)
-		}
-		if err := d.mu.versions.latest.l0Organizer.UpdateStateForStartedCompaction(l0Inputs, isBase); err != nil {
-			d.opts.Logger.Fatalf("could not update state for compaction: %s", err)
-		}
-	}
-}
-
 // Removes compaction markers from files in a compaction. The rollback parameter
 // indicates whether the compaction state should be rolled back to its original
 // state in the case of an unsuccessful compaction.
@@ -1190,7 +1296,7 @@ func (d *DB) addInProgressCompaction(c *compaction) {
 // DB.mu must be held when calling this method, however this method can drop and
 // re-acquire that mutex. All writes to the manifest for this compaction should
 // have completed by this point.
-func (d *DB) clearCompactingState(c *compaction, rollback bool) {
+func (d *DB) clearCompactingState(c *tableCompaction, rollback bool) {
 	c.versionEditApplied = true
 	for _, cl := range c.inputs {
 		for f := range cl.files.All() {
@@ -1386,7 +1492,7 @@ func (d *DB) flush() {
 // runIngestFlush is used to generate a flush version edit for sstables which
 // were ingested as flushables. Both DB.mu and the manifest lock must be held
 // while runIngestFlush is called.
-func (d *DB) runIngestFlush(c *compaction) (*manifest.VersionEdit, error) {
+func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 	if len(c.flush.flushables) != 1 {
 		panic("pebble: ingestedFlushable must be flushed one at a time.")
 	}
@@ -1592,7 +1698,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	if err != nil {
 		return 0, err
 	}
-	d.addInProgressCompaction(c)
+	c.AddInProgressLocked(d)
 
 	jobID := d.newJobIDLocked()
 	info := FlushInfo{
@@ -1668,8 +1774,8 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// doing a [c,d) excise at the same time as this compaction, we will have
 				// to error out the whole compaction as we can't guarantee it hasn't/won't
 				// write a file overlapping with the excise span.
-				if c2.bounds.Overlaps(d.cmp, &exciseBounds) {
-					c2.cancel.Store(true)
+				if c2.Bounds().Overlaps(d.cmp, &exciseBounds) {
+					c2.Cancel()
 				}
 			}
 
@@ -1678,12 +1784,10 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// been replaced due to an ingest-time split or excise. In that case,
 				// cancel the compaction.
 				for c2 := range d.mu.compact.inProgress {
-					for i := range c2.inputs {
-						for f := range c2.inputs[i].files.All() {
-							if _, ok := ve.DeletedTables[manifest.DeletedTableEntry{FileNum: f.TableNum, Level: c2.inputs[i].level}]; ok {
-								c2.cancel.Store(true)
-								break
-							}
+					for level, table := range c2.Tables() {
+						if _, ok := ve.DeletedTables[manifest.DeletedTableEntry{FileNum: table.TableNum, Level: level}]; ok {
+							c2.Cancel()
+							break
 						}
 					}
 				}
@@ -1965,10 +2069,10 @@ func (d *DB) runPickedCompaction(pc pickedCompaction, grantHandle CompactionGran
 	}
 
 	d.mu.compact.compactingCount++
-	compaction := pc.ConstructCompaction(d, grantHandle)
-	d.addInProgressCompaction(compaction)
+	c := pc.ConstructCompaction(d, grantHandle)
+	c.AddInProgressLocked(d)
 	go func() {
-		d.compact(compaction, doneChannel)
+		d.compact(c, doneChannel)
 	}()
 }
 
@@ -2121,7 +2225,7 @@ func (d *DB) tryScheduleDeleteOnlyCompaction() bool {
 	if len(inputs) > 0 {
 		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow(), resolvedHints, exciseEnabled)
 		d.mu.compact.compactingCount++
-		d.addInProgressCompaction(c)
+		c.AddInProgressLocked(d)
 		go d.compact(c, nil)
 		return true
 	}
@@ -2437,40 +2541,16 @@ func checkDeleteCompactionHints(
 	return compactLevels, resolvedHints, unresolvedHints
 }
 
-func (d *DB) compactionPprofLabels(c *compaction) pprof.LabelSet {
-	activity := "compact"
-	if len(c.flush.flushables) != 0 {
-		activity = "flush"
-	}
-	level := "L?"
-	// Delete-only compactions don't have an output level.
-	if c.outputLevel != nil {
-		level = fmt.Sprintf("L%d", c.outputLevel.level)
-	}
-	if kc := d.opts.Experimental.UserKeyCategories; kc.Len() > 0 {
-		cat := kc.CategorizeKeyRange(c.bounds.Start, c.bounds.End.Key)
-		return pprof.Labels("pebble", activity, "output-level", level, "key-type", cat)
-	}
-	return pprof.Labels("pebble", activity, "output-level", level)
-}
-
 // compact runs one compaction and maybe schedules another call to compact.
-func (d *DB) compact(c *compaction, errChannel chan error) {
-	pprof.Do(context.Background(), d.compactionPprofLabels(c), func(context.Context) {
+func (d *DB) compact(c compaction, errChannel chan error) {
+	pprof.Do(context.Background(), c.PprofLabels(d.opts.Experimental.UserKeyCategories), func(context.Context) {
 		func() {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			jobID := d.newJobIDLocked()
 
-			c.grantHandle.Started()
-			compactErr := d.compact1(jobID, c)
-			// The version stored in the compaction is ref'd when the
-			// compaction is created. We're responsible for un-refing it
-			// when the compaction is complete.
-			//
-			// Unreferencing the version may have accumulated obsolete
-			// files, so we schedule a deletion of obsolete files.
-			c.version.UnrefLocked()
+			compactErr := c.Execute(jobID, d)
+
 			d.deleteObsoleteFiles(jobID)
 			// We send on the error channel only after we've deleted
 			// obsolete files so that tests performing manual compactions
@@ -2482,7 +2562,7 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 			if compactErr != nil {
 				d.handleCompactFailure(c, compactErr)
 			}
-			if c.isDownload {
+			if c.IsDownload() {
 				d.mu.compact.downloadingCount--
 			} else {
 				d.mu.compact.compactingCount--
@@ -2492,7 +2572,7 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 			// must be atomic with the above removal of c from
 			// d.mu.compact.InProgress to ensure Metrics.Compact.Duration does not
 			// miss or double count a completing compaction's duration.
-			d.mu.compact.duration += d.timeNow().Sub(c.metrics.beganAt)
+			d.mu.compact.duration += d.timeNow().Sub(c.BeganAt())
 		}()
 		// Done must not be called while holding any lock that needs to be
 		// acquired by Schedule. Also, it must be called after new Version has
@@ -2502,8 +2582,7 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 		// CompactionScheduler to schedule another compaction. Note that the only
 		// compactions that may be scheduled by Done are those integrated with the
 		// CompactionScheduler.
-		c.grantHandle.Done()
-		c.grantHandle = nil
+		c.GrantHandle().Done()
 		// The previous compaction may have produced too many files in a level, so
 		// reschedule another compaction if needed.
 		//
@@ -2520,34 +2599,14 @@ func (d *DB) compact(c *compaction, errChannel chan error) {
 	})
 }
 
-func (d *DB) handleCompactFailure(c *compaction, err error) {
+func (d *DB) handleCompactFailure(c compaction, err error) {
 	if errors.Is(err, ErrCancelledCompaction) {
 		// ErrCancelledCompaction is expected during normal operation, so we don't
 		// want to report it as a background error.
 		d.opts.Logger.Infof("%v", err)
 		return
 	}
-
-	// Record problem spans for a short duration, unless the error is a corruption.
-	expiration := 30 * time.Second
-	if IsCorruptionError(err) {
-		// TODO(radu): ideally, we should be using the corruption reporting
-		// mechanism which has a tighter span for the corruption. We would need to
-		// somehow plumb the level of the file.
-		expiration = 5 * time.Minute
-	}
-	for i := range c.inputs {
-		level := c.inputs[i].level
-		if level == 0 {
-			// We do not set problem spans on L0, as they could block flushes.
-			continue
-		}
-		it := c.inputs[i].files.Iter()
-		for f := it.First(); f != nil; f = it.Next() {
-			d.problemSpans.Add(level, f.UserKeyBounds(), expiration)
-		}
-	}
-
+	c.RecordError(&d.problemSpans, err)
 	// TODO(peter): count consecutive compaction errors and backoff.
 	d.opts.EventListener.BackgroundError(err)
 }
@@ -2611,7 +2670,7 @@ func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 //
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
-func (d *DB) compact1(jobID JobID, c *compaction) (err error) {
+func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 	info := c.makeInfo(jobID)
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
@@ -2692,7 +2751,7 @@ func (d *DB) compact1(jobID JobID, c *compaction) (err error) {
 // d.mu must be held when calling this method. The mutex will be released when
 // doing IO.
 func (d *DB) runCopyCompaction(
-	jobID JobID, c *compaction,
+	jobID JobID, c *tableCompaction,
 ) (ve *manifest.VersionEdit, stats compact.Stats, _ error) {
 	if c.cancel.Load() {
 		return nil, compact.Stats{}, ErrCancelledCompaction
@@ -3030,7 +3089,7 @@ func fragmentDeleteCompactionHints(
 //
 // d.mu must *not* be held when calling this.
 func (d *DB) runDeleteOnlyCompaction(
-	jobID JobID, c *compaction, snapshots compact.Snapshots,
+	jobID JobID, c *tableCompaction, snapshots compact.Snapshots,
 ) (ve *manifest.VersionEdit, stats compact.Stats, retErr error) {
 	fragments := fragmentDeleteCompactionHints(d.cmp, c.deleteOnly.hints)
 	ve = &manifest.VersionEdit{
@@ -3071,7 +3130,7 @@ func (d *DB) runDeleteOnlyCompaction(
 }
 
 func (d *DB) runMoveCompaction(
-	jobID JobID, c *compaction,
+	jobID JobID, c *tableCompaction,
 ) (ve *manifest.VersionEdit, stats compact.Stats, _ error) {
 	iter := c.startLevel.files.Iter()
 	meta := iter.First()
@@ -3104,7 +3163,7 @@ func (d *DB) runMoveCompaction(
 // d.mu must be held when calling this, but the mutex may be dropped and
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
-	jobID JobID, c *compaction,
+	jobID JobID, c *tableCompaction,
 ) (ve *manifest.VersionEdit, stats compact.Stats, retErr error) {
 	if c.cancel.Load() {
 		return ve, stats, ErrCancelledCompaction
@@ -3181,7 +3240,7 @@ func (d *DB) runCompaction(
 // compaction iterator and use it to write output tables.
 func (d *DB) compactAndWrite(
 	jobID JobID,
-	c *compaction,
+	c *tableCompaction,
 	snapshots compact.Snapshots,
 	tableFormat sstable.TableFormat,
 	valueSeparation compact.ValueSeparation,
@@ -3219,7 +3278,9 @@ func (d *DB) compactAndWrite(
 			categoryCompaction,
 		),
 	}
-	c.iterationState.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv)
+	if c.version != nil {
+		c.iterationState.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv)
+	}
 	iiopts := internalIterOpts{
 		compaction:       true,
 		readEnv:          sstable.ReadEnv{Block: blockReadEnv},
@@ -3323,7 +3384,7 @@ func (d *DB) compactAndWrite(
 
 // makeVersionEdit creates the version edit for a compaction, based on the
 // tables in compact.Result.
-func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEdit, error) {
+func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.VersionEdit, error) {
 	ve := &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
@@ -3461,7 +3522,7 @@ func (c *compaction) makeVersionEdit(result compact.Result) (*manifest.VersionEd
 // newCompactionOutputTable creates an object for a new table produced by a
 // compaction or flush.
 func (d *DB) newCompactionOutputTable(
-	jobID JobID, c *compaction, writerOpts sstable.WriterOptions,
+	jobID JobID, c *tableCompaction, writerOpts sstable.WriterOptions,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, error) {
 	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeTable)
 	if err != nil {
@@ -3486,7 +3547,7 @@ func (d *DB) newCompactionOutputTable(
 // newCompactionOutputBlob creates an object for a new blob produced by a
 // compaction or flush.
 func (d *DB) newCompactionOutputBlob(
-	jobID JobID, c *compaction,
+	jobID JobID, c *tableCompaction,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeBlob)
 	if err != nil {
@@ -3503,7 +3564,7 @@ func (d *DB) newCompactionOutputBlob(
 
 // newCompactionOutputObj creates an object produced by a compaction or flush.
 func (d *DB) newCompactionOutputObj(
-	c *compaction, typ base.FileType,
+	c *tableCompaction, typ base.FileType,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
 	ctx := context.TODO()
