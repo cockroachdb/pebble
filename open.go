@@ -274,7 +274,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		d.mu.mem.nextSize = initialMemTableSize
 	}
 	d.mu.compact.cond.L = &d.mu.Mutex
-	d.mu.compact.inProgress = make(map[*compaction]struct{})
+	d.mu.compact.inProgress = make(map[compaction]struct{})
 	d.mu.compact.noOngoingFlushStartTime = crtime.NowMono()
 	d.mu.snapshots.init()
 	// logSeqNum is the next sequence number that will be assigned.

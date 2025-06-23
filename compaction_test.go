@@ -915,8 +915,8 @@ func TestCompaction(t *testing.T) {
 	}
 
 	// d.mu must be held when calling.
-	createOngoingCompaction := func(start, end []byte, startLevel, outputLevel int) (ongoingCompaction *compaction) {
-		ongoingCompaction = &compaction{
+	createOngoingCompaction := func(start, end []byte, startLevel, outputLevel int) (ongoingCompaction *tableCompaction) {
+		ongoingCompaction = &tableCompaction{
 			inputs: []compactionLevel{{level: startLevel}, {level: outputLevel}},
 			bounds: base.UserKeyBoundsInclusive(start, end),
 		}
@@ -937,7 +937,7 @@ func TestCompaction(t *testing.T) {
 	}
 
 	// d.mu must be held when calling.
-	deleteOngoingCompaction := func(ongoingCompaction *compaction) {
+	deleteOngoingCompaction := func(ongoingCompaction *tableCompaction) {
 		for _, cl := range ongoingCompaction.inputs {
 			for f := range cl.files.All() {
 				f.CompactionState = manifest.CompactionStateNotCompacting
@@ -949,7 +949,7 @@ func TestCompaction(t *testing.T) {
 
 	runTest := func(t *testing.T, testData string, minVersion, maxVersion FormatMajorVersion, verbose bool) {
 		reset(minVersion, maxVersion)
-		var ongoingCompaction *compaction
+		var ongoingCompaction *tableCompaction
 		datadriven.RunTest(t, testData, func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "reset":
@@ -2091,7 +2091,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 
 			case "allow-zero-seqnum":
 				d.mu.Lock()
-				c := &compaction{
+				c := &tableCompaction{
 					comparer: d.opts.Comparer,
 					version:  d.mu.versions.currentVersion(),
 					inputs:   []compactionLevel{{}, {}},
@@ -2173,7 +2173,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "error-on-user-key-overlap":
-				c := &compaction{comparer: DefaultComparer}
+				c := &tableCompaction{comparer: DefaultComparer}
 				var files []manifest.NewTableEntry
 				tableNum := base.TableNum(1)
 
@@ -2300,7 +2300,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "check-ordering":
-				c := &compaction{
+				c := &tableCompaction{
 					comparer: DefaultComparer,
 					logger:   panicLogger{},
 					inputs:   []compactionLevel{{level: -1}, {level: -1}},
@@ -2552,7 +2552,7 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
-			c := compaction{
+			c := tableCompaction{
 				grandparents:      ls,
 				maxOverlapBytes:   maxOverlapBytes,
 				maxOutputFileSize: maxOutputFileSize,

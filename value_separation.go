@@ -19,7 +19,7 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-var neverSeparateValues getValueSeparation = func(JobID, *compaction, sstable.TableFormat) compact.ValueSeparation {
+var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation {
 	return compact.NeverSeparateValues{}
 }
 
@@ -27,7 +27,7 @@ var neverSeparateValues getValueSeparation = func(JobID, *compaction, sstable.Ta
 // separate values into blob files. It returns a compact.ValueSeparation
 // implementation that should be used for the compaction.
 func (d *DB) determineCompactionValueSeparation(
-	jobID JobID, c *compaction, tableFormat sstable.TableFormat,
+	jobID JobID, c *tableCompaction, tableFormat sstable.TableFormat,
 ) compact.ValueSeparation {
 	if tableFormat < sstable.TableFormatPebblev7 || d.FormatMajorVersion() < FormatValueSeparation ||
 		d.opts.Experimental.ValueSeparationPolicy == nil {
@@ -75,7 +75,7 @@ func (d *DB) determineCompactionValueSeparation(
 // maximum blob reference depth to assign to output sstables (the actual value
 // may be lower iff the output table references fewer distinct blob files).
 func shouldWriteBlobFiles(
-	c *compaction, policy ValueSeparationPolicy,
+	c *tableCompaction, policy ValueSeparationPolicy,
 ) (writeBlobs bool, referenceDepth manifest.BlobReferenceDepth) {
 	// Flushes will have no existing references to blob files and should write
 	// their values to new blob files.

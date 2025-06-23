@@ -912,7 +912,7 @@ func ingestTargetLevel(
 	cmp base.Compare,
 	lsmOverlap overlap.WithLSM,
 	baseLevel int,
-	compactions map[*compaction]struct{},
+	compactions map[compaction]struct{},
 	meta *manifest.TableMetadata,
 	suggestSplit bool,
 ) (targetLevel int, splitFile *manifest.TableMetadata, err error) {
@@ -1027,10 +1027,14 @@ func ingestTargetLevel(
 		// unless necessary.
 		overlaps := false
 		for c := range compactions {
-			if c.outputLevel == nil || level != c.outputLevel.level {
+			tblCompaction, ok := c.(*tableCompaction)
+			if !ok {
 				continue
 			}
-			if metaBounds.Overlaps(cmp, &c.bounds) {
+			if tblCompaction.outputLevel == nil || level != tblCompaction.outputLevel.level {
+				continue
+			}
+			if metaBounds.Overlaps(cmp, tblCompaction.Bounds()) {
 				overlaps = true
 				break
 			}
@@ -2101,7 +2105,7 @@ func (d *DB) ingestApply(
 		}
 		if len(filesToSplit) > 0 || exciseSpan.Valid() {
 			for c := range d.mu.compact.inProgress {
-				if c.versionEditApplied {
+				if c.VersionEditApplied() {
 					continue
 				}
 				// Check if this compaction overlaps with the excise span. Note that just
@@ -2111,8 +2115,8 @@ func (d *DB) ingestApply(
 				// doing a [c,d) excise at the same time as this compaction, we will have
 				// to error out the whole compaction as we can't guarantee it hasn't/won't
 				// write a file overlapping with the excise span.
-				if c.bounds.Overlaps(d.cmp, &exciseBounds) {
-					c.cancel.Store(true)
+				if c.Bounds().Overlaps(d.cmp, &exciseBounds) {
+					c.Cancel()
 				}
 				// Check if this compaction's inputs have been replaced due to an
 				// ingest-time split. In that case, cancel the compaction as a newly picked
@@ -2121,12 +2125,10 @@ func (d *DB) ingestApply(
 				// file that was ingest-split as an input, even if it started before this
 				// ingestion.
 				if checkCompactions {
-					for i := range c.inputs {
-						for f := range c.inputs[i].files.All() {
-							if _, ok := replacedTables[f.TableNum]; ok {
-								c.cancel.Store(true)
-								break
-							}
+					for _, table := range c.Tables() {
+						if _, ok := replacedTables[table.TableNum]; ok {
+							c.Cancel()
+							break
 						}
 					}
 				}

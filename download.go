@@ -449,7 +449,7 @@ func (d *DB) tryLaunchDownloadForFile(
 	c := newCompaction(pc, d.opts, d.timeNow(), d.objProvider, noopGrantHandle{}, d.TableFormat(), d.determineCompactionValueSeparation)
 	c.isDownload = true
 	d.mu.compact.downloadingCount++
-	d.addInProgressCompaction(c)
+	c.AddInProgressLocked(d)
 	go d.compact(c, doneCh)
 	return doneCh, true
 }
