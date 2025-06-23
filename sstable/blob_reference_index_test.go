@@ -5,53 +5,12 @@
 package sstable
 
 import (
-	"encoding/binary"
+	"maps"
 	"testing"
 
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/stretchr/testify/require"
 )
-
-// blobRefLivenessEncoding represents the decoded form of a blob reference
-// liveness encoding. The encoding format is:
-//
-//	<block ID> <values size> <len of bitmap> [<bitmap>]
-type blobRefLivenessEncoding struct {
-	blockID    int
-	valuesSize int
-	bitmapSize int
-	bitmap     []byte
-}
-
-// decodeBlobRefLivenessEncoding decodes a sequence of blob reference liveness encodings
-// from the provided buffer. Each encoding has the format:
-// <block ID> <values size> <n bytes of bitmap> [<bitmap>]
-func decodeBlobRefLivenessEncoding(buf []byte) []blobRefLivenessEncoding {
-	var encodings []blobRefLivenessEncoding
-	for len(buf) > 0 {
-		var enc blobRefLivenessEncoding
-		var n int
-
-		blockIDVal, n := binary.Uvarint(buf)
-		buf = buf[n:]
-		enc.blockID = int(blockIDVal)
-
-		valuesSizeVal, n := binary.Uvarint(buf)
-		buf = buf[n:]
-		enc.valuesSize = int(valuesSizeVal)
-
-		bitmapSizeVal, n := binary.Uvarint(buf)
-		buf = buf[n:]
-		enc.bitmapSize = int(bitmapSizeVal)
-
-		// The bitmap takes up the remaining bitmapSize bytes for this encoding.
-		enc.bitmap = buf[:enc.bitmapSize]
-		buf = buf[enc.bitmapSize:]
-
-		encodings = append(encodings, enc)
-	}
-	return encodings
-}
 
 // TestBlobRefValueLivenessWriter tests functions around the
 // blobRefValueLivenessWriter.
@@ -72,26 +31,26 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		blockID++
 		require.NoError(t, w.addLiveValue(refID, blockID, 2 /* valueID */, 20 /* valueSize */))
 
-		w.finishOutput()
+		encodings := maps.Collect(w.finish())
+		require.Len(t, encodings, 1)
+		blocks := DecodeBlobRefLivenessEncoding(encodings[0])
+		require.Len(t, blocks, 2)
 
 		// Verify first block (refID=0, blockID=0).
-		encodings := decodeBlobRefLivenessEncoding(w.bufs[0])
-		firstBlock := encodings[0]
-		require.Equal(t, 0, firstBlock.blockID)
-		require.Equal(t, 60, firstBlock.valuesSize)
+		require.Equal(t, blob.BlockID(0), blocks[0].BlockID)
+		require.Equal(t, 60, blocks[0].ValuesSize)
 		// We only have 1 byte worth of value liveness encoding.
-		require.Equal(t, 1, firstBlock.bitmapSize)
+		require.Equal(t, 1, blocks[0].BitmapSize)
 		// Verify bitmap: 111001 (27 in hex).
-		require.Equal(t, uint8(0x27), firstBlock.bitmap[0])
+		require.Equal(t, uint8(0x27), blocks[0].Bitmap[0])
 
 		// Verify second block (refID=0, blockID=1).
-		secondBlock := encodings[1]
-		require.Equal(t, 1, secondBlock.blockID)
-		require.Equal(t, 20, secondBlock.valuesSize)
+		require.Equal(t, blob.BlockID(1), blocks[1].BlockID)
+		require.Equal(t, 20, blocks[1].ValuesSize)
 		// We only have 1 byte worth of value liveness encoding.
-		require.Equal(t, 1, secondBlock.bitmapSize)
+		require.Equal(t, 1, blocks[1].BitmapSize)
 		// Verify bitmap: 001 (4 in hex).
-		require.Equal(t, uint8(0x4), secondBlock.bitmap[0])
+		require.Equal(t, uint8(0x4), blocks[1].Bitmap[0])
 	})
 
 	t.Run("all-ones", func(t *testing.T) {
@@ -105,15 +64,16 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		require.NoError(t, w.addLiveValue(refID, blockID, 1 /* valueID */, 200 /* valueSize */))
 		require.NoError(t, w.addLiveValue(refID, blockID, 2 /* valueID */, 300 /* valueSize */))
 
-		w.finishOutput()
+		encodings := maps.Collect(w.finish())
+		require.Len(t, encodings, 1)
+		blocks := DecodeBlobRefLivenessEncoding(encodings[0])
+		require.Len(t, blocks, 1)
 
-		encodings := decodeBlobRefLivenessEncoding(w.bufs[0])
-		firstBlock := encodings[0]
-		require.Equal(t, 0, firstBlock.blockID)
-		require.Equal(t, 600, firstBlock.valuesSize)
+		require.Equal(t, blob.BlockID(0), blocks[0].BlockID)
+		require.Equal(t, 600, blocks[0].ValuesSize)
 		// We only have 1 byte worth of value liveness encoding.
-		require.Equal(t, 1, firstBlock.bitmapSize)
+		require.Equal(t, 1, blocks[0].BitmapSize)
 		// Verify bitmap: 111 (7 in hex).
-		require.Equal(t, uint8(0x7), firstBlock.bitmap[0])
+		require.Equal(t, uint8(0x7), blocks[0].Bitmap[0])
 	})
 }

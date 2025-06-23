@@ -6,6 +6,7 @@ package sstable
 
 import (
 	"encoding/binary"
+	"iter"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -14,29 +15,34 @@ import (
 // blobRefValueLivenessState tracks the liveness of values within a blob value
 // block via a BitmapRunLengthEncoder.
 type blobRefValueLivenessState struct {
-	bitmap     BitmapRunLengthEncoder
-	refID      blob.ReferenceID
-	blockID    blob.BlockID
-	valuesSize uint64
+	currentBlock struct {
+		bitmap     BitmapRunLengthEncoder
+		refID      blob.ReferenceID
+		blockID    blob.BlockID
+		valuesSize uint64
+	}
+
+	finishedBlocks []byte
 }
 
-// init initializes the state, resetting all fields to their initial values.
-func (s *blobRefValueLivenessState) init(refID blob.ReferenceID, blockID blob.BlockID) {
-	s.bitmap.Init()
-	s.refID = refID
-	s.blockID = blockID
-	s.valuesSize = 0
+// initNewBlock initializes the state for a new block, resetting all fields to
+// their initial values.
+func (s *blobRefValueLivenessState) initNewBlock(refID blob.ReferenceID, blockID blob.BlockID) {
+	s.currentBlock.bitmap.Init()
+	s.currentBlock.refID = refID
+	s.currentBlock.blockID = blockID
+	s.currentBlock.valuesSize = 0
 }
 
-// finishOutput writes the in-progress value liveness encoding for a blob value
-// block to the provided buffer, returning the modified buffer. The encoding is:
+// finishCurrentBlock writes the in-progress value liveness encoding for a blob
+// value block to the encoder's buffer.
 //
 //	<block ID> <values size> <n bytes of bitmap> [<bitmap>]
-func (s *blobRefValueLivenessState) finishOutput(buf []byte) []byte {
-	buf = binary.AppendUvarint(buf, uint64(s.blockID))
-	buf = binary.AppendUvarint(buf, s.valuesSize)
-	buf = binary.AppendUvarint(buf, uint64(s.bitmap.Size()))
-	return s.bitmap.FinishAndAppend(buf)
+func (s *blobRefValueLivenessState) finishCurrentBlock() {
+	s.finishedBlocks = binary.AppendUvarint(s.finishedBlocks, uint64(s.currentBlock.blockID))
+	s.finishedBlocks = binary.AppendUvarint(s.finishedBlocks, s.currentBlock.valuesSize)
+	s.finishedBlocks = binary.AppendUvarint(s.finishedBlocks, uint64(s.currentBlock.bitmap.Size()))
+	s.finishedBlocks = s.currentBlock.bitmap.FinishAndAppend(s.finishedBlocks)
 }
 
 // blobRefValueLivenessWriter helps maintain the liveness of values in blob value
@@ -47,21 +53,19 @@ func (s *blobRefValueLivenessState) finishOutput(buf []byte) []byte {
 //     in-progress value liveness for each blob value block for our sstable's
 //     blob references. The index of the slice corresponds to the blob.ReferenceID.
 type blobRefValueLivenessWriter struct {
-	// INVARIANT: len(bufs) == len(refState).
-	bufs     [][]byte
 	refState []blobRefValueLivenessState
 }
 
 // init initializes the writer's state.
 func (w *blobRefValueLivenessWriter) init() {
-	w.bufs = w.bufs[:0]
+	clear(w.refState)
 	w.refState = w.refState[:0]
 }
 
 // numReferences returns the number of references that have liveness encodings
 // that have been added to the writer.
 func (w *blobRefValueLivenessWriter) numReferences() int {
-	return len(w.bufs)
+	return len(w.refState)
 }
 
 // addLiveValue adds a live value to the state maintained by refID. If the
@@ -90,32 +94,73 @@ func (w *blobRefValueLivenessWriter) addLiveValue(
 				"ID %d greater than 1", len(w.refState)-1, refID)
 		}
 
-		// We have a new reference, grow the state slice and buffer.
-		w.refState = append(w.refState, blobRefValueLivenessState{
-			refID:   refID,
-			blockID: blockID,
-		})
-		w.bufs = append(w.bufs, []byte{})
-
-		if len(w.refState) != len(w.bufs) {
-			return base.AssertionFailedf("len(refState) != len(bufs): %d != %d", len(w.refState), len(w.bufs))
-		}
+		// We have a new reference.
+		state := blobRefValueLivenessState{}
+		state.initNewBlock(refID, blockID)
+		w.refState = append(w.refState, state)
 	}
 
 	state := &w.refState[refID]
-	if state.blockID != blockID {
-		w.bufs[refID] = state.finishOutput(w.bufs[refID])
-		state.init(refID, blockID)
+	if state.currentBlock.blockID != blockID {
+		state.finishCurrentBlock()
+		state.initNewBlock(refID, blockID)
 	}
-	state.valuesSize += valueSize
-	state.bitmap.Set(int(valueID))
+	state.currentBlock.valuesSize += valueSize
+	state.currentBlock.bitmap.Set(int(valueID))
 	return nil
 }
 
-// finishOutput finishes any in-progress state to their respective buffer.
-func (w *blobRefValueLivenessWriter) finishOutput() {
-	// N.B. `i` is equivalent to blob.ReferenceID.
-	for i, state := range w.refState {
-		w.bufs[i] = state.finishOutput(w.bufs[i])
+// finish finishes encoding the per-blob reference liveness encodings, and
+// returns an in-order sequence of (referenceID, encoding) pairs.
+func (w *blobRefValueLivenessWriter) finish() iter.Seq2[blob.ReferenceID, []byte] {
+	return func(yield func(blob.ReferenceID, []byte) bool) {
+		// N.B. `i` is equivalent to blob.ReferenceID.
+		for i, state := range w.refState {
+			state.finishCurrentBlock()
+			if !yield(blob.ReferenceID(i), state.finishedBlocks) {
+				return
+			}
+		}
 	}
+}
+
+// BlobRefLivenessEncoding represents the decoded form of a blob reference
+// liveness encoding. The encoding format is:
+//
+//	<block ID> <values size> <len of bitmap> [<bitmap>]
+type BlobRefLivenessEncoding struct {
+	BlockID    blob.BlockID
+	ValuesSize int
+	BitmapSize int
+	Bitmap     []byte
+}
+
+// DecodeBlobRefLivenessEncoding decodes a sequence of blob reference liveness
+// encodings from the provided buffer. Each encoding has the format:
+// <block ID> <values size> <n bytes of bitmap> [<bitmap>]
+func DecodeBlobRefLivenessEncoding(buf []byte) []BlobRefLivenessEncoding {
+	var encodings []BlobRefLivenessEncoding
+	for len(buf) > 0 {
+		var enc BlobRefLivenessEncoding
+		var n int
+
+		blockIDVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.BlockID = blob.BlockID(blockIDVal)
+
+		valuesSizeVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.ValuesSize = int(valuesSizeVal)
+
+		bitmapSizeVal, n := binary.Uvarint(buf)
+		buf = buf[n:]
+		enc.BitmapSize = int(bitmapSizeVal)
+
+		// The bitmap takes up the remaining bitmapSize bytes for this encoding.
+		enc.Bitmap = buf[:enc.BitmapSize]
+		buf = buf[enc.BitmapSize:]
+
+		encodings = append(encodings, enc)
+	}
+	return encodings
 }

@@ -350,18 +350,18 @@ metrics
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     7  5.6KB     0B       0 |    - 0.25 0.25 |  165B |     0     0B |     0     0B |     9  7.1KB |    0B |   1 51.9
+    0 |     7  5.7KB     0B       0 |    - 0.25 0.25 |  165B |     0     0B |     0     0B |     9  7.1KB |    0B |   1 52.1
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     6 |     2  1.5KB     0B       0 |    - 0.00 0.00 | 1.5KB |     0     0B |     0     0B |     2  1.5KB | 1.5KB |   1 1.00
-total |     9  7.1KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    11  8.7KB | 1.5KB |   2 62.1
+total |     9  7.1KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    11  8.8KB | 1.5KB |   2 62.3
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 116B  written: 165B (42% overhead)
 Flushes: 3
-Compactions: 1  estimated debt: 7.7KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
+Compactions: 1  estimated debt: 7.8KB  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
              default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
@@ -422,14 +422,14 @@ metrics
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B       0 |    -    0    0 |  165B |     0     0B |     0     0B |     9  7.1KB |    0B |   0 51.9
+    0 |     0     0B     0B       0 |    -    0    0 |  165B |     0     0B |     0     0B |     9  7.1KB |    0B |   0 52.1
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     6 |     9  7.1KB     0B       0 |    - 0.00 0.00 | 7.1KB |     0     0B |     0     0B |     9  7.1KB | 7.1KB |   1 1.00
-total |     9  7.1KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    18   14KB | 7.1KB |   1 96.9
+total |     9  7.1KB     0B       0 |    -    -    - |  165B |     0     0B |     0     0B |    18   14KB | 7.1KB |   1 97.4
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 116B  written: 165B (42% overhead)
 Flushes: 3
@@ -545,14 +545,14 @@ metrics
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     6  4.4KB     0B       0 |    - 0.50 0.50 |  211B |     3  2.2KB |     0     0B |    12  9.3KB |    0B |   2 51.3
+    0 |     6  4.4KB     0B       0 |    - 0.50 0.50 |  211B |     3  2.2KB |     0     0B |    12  9.4KB |    0B |   2 51.5
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     6 |     9  7.1KB     0B       0 |    - 0.00 0.00 | 7.1KB |     0     0B |     0     0B |     9  7.1KB | 7.1KB |   1 1.00
-total |    15   12KB     0B       0 |    -    -    - | 2.4KB |     3  2.2KB |     0     0B |    21   19KB | 7.1KB |   3 8.28
+total |    15   12KB     0B       0 |    -    -    - | 2.4KB |     3  2.2KB |     0     0B |    21   19KB | 7.1KB |   3 8.31
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 176B  written: 211B (20% overhead)
 Flushes: 8
@@ -630,7 +630,7 @@ metrics
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |    13  9.6KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 58.2
+    0 |    13  9.6KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 58.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
@@ -727,14 +727,14 @@ metrics zero-cache-hits-misses
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |    11  8.1KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 58.2
+    0 |    11  8.1KB     0B       0 |    - 0.50 0.50 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   2 58.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
-    6 |    10  7.8KB     0B       0 |    - 0.00 0.00 | 7.1KB |     1   758B |     0     0B |     9  7.1KB | 7.1KB |   1 1.00
-total |    21   16KB     0B       0 |    -    -    - | 3.2KB |     4  3.0KB |     0     0B |    28   25KB | 7.1KB |   3 8.06
+    6 |    10  7.9KB     0B       0 |    - 0.00 0.00 | 7.1KB |     1   758B |     0     0B |     9  7.1KB | 7.1KB |   1 1.00
+total |    21   16KB     0B       0 |    -    -    - | 3.2KB |     4  3.0KB |     0     0B |    28   25KB | 7.1KB |   3 8.09
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 223B  written: 277B (24% overhead)
 Flushes: 9
@@ -868,14 +868,14 @@ metrics zero-cache-hits-misses
       |                             |                |       |   ingested   |     moved    |    written   |       |    amp
 level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
 ------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
-    0 |     0     0B     0B       0 |    -    0    0 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   0 58.2
+    0 |     0     0B     0B       0 |    -    0    0 |  277B |     3  2.2KB |     0     0B |    19   14KB |    0B |   0 58.3
     1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
     6 |    18   14KB     0B       0 |    - 0.00 0.00 |  14KB |     2  1.5KB |     0     0B |    16   12KB |  14KB |   1 0.85
-total |    18   14KB     0B       0 |    -    -    - | 4.0KB |     5  3.7KB |     0     0B |    35   31KB |  14KB |   1 8.07
+total |    18   14KB     0B       0 |    -    -    - | 4.0KB |     5  3.7KB |     0     0B |    35   31KB |  14KB |   1 8.09
 ----------------------------------------------------------------------------------------------------------------------------
 WAL: 1 files (0B)  in: 223B  written: 277B (24% overhead)
 Flushes: 9

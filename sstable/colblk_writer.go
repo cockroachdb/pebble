@@ -1010,13 +1010,12 @@ func (w *RawColumnWriter) Close() (err error) {
 	if w.blobRefLivenessIndexBlock.numReferences() > 0 {
 		var encoder colblk.ReferenceLivenessBlockEncoder
 		encoder.Init()
-		for _, buf := range w.blobRefLivenessIndexBlock.bufs {
-			encoder.AddReferenceLiveness(buf)
+		for refID, buf := range w.blobRefLivenessIndexBlock.finish() {
+			encoder.AddReferenceLiveness(int(refID), buf)
 		}
 		if _, err := w.layout.WriteBlobRefIndexBlock(encoder.Finish()); err != nil {
 			return err
 		}
-		encoder.Reset()
 	}
 
 	// Write the properties block.
