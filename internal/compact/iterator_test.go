@@ -296,7 +296,7 @@ type mockBlobValueFetcher struct{}
 
 var _ base.ValueFetcher = mockBlobValueFetcher{}
 
-func (mockBlobValueFetcher) Fetch(
+func (mockBlobValueFetcher) FetchHandle(
 	ctx context.Context, handle []byte, blobFileID base.BlobFileID, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	s := fmt.Sprintf("<fetched value from blobref(%s, encodedHandle=%x, valLen=%d)>",

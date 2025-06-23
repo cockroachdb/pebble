@@ -16,7 +16,7 @@ import (
 type valueFetcherFunc func(
 	handle []byte, blobFileID BlobFileID, valLen uint32, buf []byte) (val []byte, callerOwned bool, err error)
 
-func (v valueFetcherFunc) Fetch(
+func (v valueFetcherFunc) FetchHandle(
 	ctx context.Context, handle []byte, blobFileID BlobFileID, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	return v(handle, blobFileID, valLen, buf)

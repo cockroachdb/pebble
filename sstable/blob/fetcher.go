@@ -88,9 +88,9 @@ func (r *ValueFetcher) Init(fm FileMapping, rp ReaderProvider, env block.ReadEnv
 	}
 }
 
-// Fetch returns the value, given the handle. Fetch must not be called after
-// Close.
-func (r *ValueFetcher) Fetch(
+// FetchHandle returns the value, given the handle. FetchHandle must not be
+// called after Close.
+func (r *ValueFetcher) FetchHandle(
 	ctx context.Context, handle []byte, blobFileID base.BlobFileID, valLen uint32, buf []byte,
 ) (val []byte, callerOwned bool, err error) {
 	handleSuffix := DecodeHandleSuffix(handle)
@@ -99,6 +99,27 @@ func (r *ValueFetcher) Fetch(
 		ValueLen:   valLen,
 		BlockID:    handleSuffix.BlockID,
 		ValueID:    handleSuffix.ValueID,
+	}
+	v, err := r.retrieve(ctx, vh)
+	if err == nil && len(v) != int(vh.ValueLen) {
+		return nil, false,
+			errors.AssertionFailedf("value length mismatch: %d != %d", len(v), vh.ValueLen)
+	}
+	if invariants.Enabled {
+		v = r.bufMangler.MaybeMangleLater(v)
+	}
+	return v, false, err
+}
+
+// Fetch is like FetchHandle, but it constructs handle and does not
+// validate the value length. Fetch must not be called after Close.
+func (r *ValueFetcher) Fetch(
+	ctx context.Context, blobFileID base.BlobFileID, blockID BlockID, valueID BlockValueID,
+) (val []byte, callerOwned bool, err error) {
+	vh := Handle{
+		BlobFileID: blobFileID,
+		BlockID:    blockID,
+		ValueID:    valueID,
 	}
 	v, err := r.retrieve(ctx, vh)
 	if invariants.Enabled {
@@ -268,9 +289,6 @@ func (cr *cachedReader) GetUnsafeValue(
 
 	invariants.CheckBounds(int(valueID), cr.currentValueBlock.dec.bd.Rows())
 	v := cr.currentValueBlock.dec.values.Slice(cr.currentValueBlock.dec.values.Offsets(int(valueID)))
-	if len(v) != int(vh.ValueLen) {
-		return nil, errors.AssertionFailedf("value length mismatch: %d != %d", len(v), vh.ValueLen)
-	}
 	return v, nil
 }
 

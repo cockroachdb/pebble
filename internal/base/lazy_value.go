@@ -170,8 +170,8 @@ type LazyFetcher struct {
 
 // ValueFetcher is an interface for fetching a value.
 type ValueFetcher interface {
-	// Fetch returns the value, given the handle. It is acceptable to call the
-	// ValueFetcher.Fetch as long as the DB is open. However, one should assume
+	// FetchHandle returns the value, given the handle. It is acceptable to call the
+	// ValueFetcher.FetchHandle as long as the DB is open. However, one should assume
 	// there is a fast-path when the iterator tree has not moved off the sstable
 	// iterator that initially provided this LazyValue. Hence, to utilize this
 	// fast-path the caller should try to decide whether it needs the value or
@@ -181,7 +181,7 @@ type ValueFetcher interface {
 	// If the fetcher attempted to use buf *and* len(buf) was insufficient, it
 	// will allocate a new slice for the value. In either case it will set
 	// callerOwned to true.
-	Fetch(
+	FetchHandle(
 		ctx context.Context, handle []byte, blobFileID BlobFileID, valLen uint32, buf []byte,
 	) (val []byte, callerOwned bool, err error)
 }
@@ -192,7 +192,7 @@ func (lv *LazyValue) Value(buf []byte) (val []byte, callerOwned bool, err error)
 	if f == nil {
 		return lv.ValueOrHandle, false, nil
 	}
-	return f.Fetcher.Fetch(context.TODO(),
+	return f.Fetcher.FetchHandle(context.TODO(),
 		lv.ValueOrHandle, f.BlobFileID, f.Attribute.ValueLen, buf)
 }
 
@@ -264,8 +264,8 @@ type errValueFetcher struct{}
 
 var _ ValueFetcher = errValueFetcher{}
 
-// Fetch implements base.ValueFetcher.
-func (e errValueFetcher) Fetch(
+// FetchHandle implements base.ValueFetcher.
+func (e errValueFetcher) FetchHandle(
 	_ context.Context, _ []byte, blobFileID BlobFileID, valLen uint32, _ []byte,
 ) (val []byte, callerOwned bool, err error) {
 	err = AssertionFailedf("unexpected blob value: %d-byte from %s", valLen, blobFileID)
