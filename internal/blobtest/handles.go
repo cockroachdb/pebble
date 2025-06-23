@@ -34,8 +34,8 @@ type Values struct {
 	trackedHandles map[blob.Handle]string
 }
 
-// Fetch returns the value corresponding to the given handle.
-func (bv *Values) Fetch(
+// FetchHandle returns the value corresponding to the given handle.
+func (bv *Values) FetchHandle(
 	ctx context.Context, handleSuffix []byte, blobFileID base.BlobFileID, valLen uint32, _ []byte,
 ) (val []byte, callerOwned bool, err error) {
 	if bv.trackedHandles == nil {

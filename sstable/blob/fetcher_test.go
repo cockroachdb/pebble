@@ -143,7 +143,7 @@ func TestValueFetcher(t *testing.T) {
 			}.Encode(handleBuf[:])
 			encodedHandleSuffix := handleBuf[:n]
 
-			val, _, err := fetcher.Fetch(ctx, encodedHandleSuffix, base.BlobFileID(blobFileNum), valLen, nil)
+			val, _, err := fetcher.FetchHandle(ctx, encodedHandleSuffix, base.BlobFileID(blobFileNum), valLen, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
