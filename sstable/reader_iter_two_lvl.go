@@ -78,6 +78,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) loadSecondLevelIndexBlock(dir int8) loa
 		i.secondLevel.err = err
 		return loadBlockFailed
 	}
+	i.secondLevel.indexLoaded = true
 	return loadBlockOK
 }
 
