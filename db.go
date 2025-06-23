@@ -433,7 +433,7 @@ type DB struct {
 			// sublevels' state. Some of the compactions contained within this
 			// map may have already committed an edit to the version but are
 			// lingering performing cleanup, like deleting obsolete files.
-			inProgress map[*compaction]struct{}
+			inProgress map[compaction]struct{}
 
 			// rescheduleReadCompaction indicates to an iterator that a read compaction
 			// should be scheduled.
@@ -2080,8 +2080,8 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
 	metrics.Compact.Duration = d.mu.compact.duration
 	for c := range d.mu.compact.inProgress {
-		if c.kind != compactionKindFlush && c.kind != compactionKindIngestedFlushable {
-			metrics.Compact.Duration += d.timeNow().Sub(c.metrics.beganAt)
+		if !c.IsFlush() {
+			metrics.Compact.Duration += d.timeNow().Sub(c.BeganAt())
 		}
 	}
 	metrics.Compact.NumProblemSpans = d.problemSpans.Len()
@@ -2860,19 +2860,10 @@ func (d *DB) getEarliestUnflushedSeqNumLocked() base.SeqNum {
 	return seqNum
 }
 
-func (d *DB) getInProgressCompactionInfoLocked(finishing *compaction) (rv []compactionInfo) {
+func (d *DB) getInProgressCompactionInfoLocked(finishing *tableCompaction) (rv []compactionInfo) {
 	for c := range d.mu.compact.inProgress {
-		if len(c.flush.flushables) == 0 && (finishing == nil || c != finishing) {
-			info := compactionInfo{
-				versionEditApplied: c.versionEditApplied,
-				inputs:             c.inputs,
-				bounds:             c.bounds,
-				outputLevel:        -1,
-			}
-			if c.outputLevel != nil {
-				info.outputLevel = c.outputLevel.level
-			}
-			rv = append(rv, info)
+		if !c.IsFlush() && (finishing == nil || c != finishing) {
+			rv = append(rv, c.Info())
 		}
 	}
 	return

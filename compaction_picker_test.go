@@ -1654,7 +1654,7 @@ func TestCompactionPickerScores(t *testing.T) {
 						d.mu.Lock()
 						wait := len(d.mu.compact.inProgress) > 0
 						for c := range d.mu.compact.inProgress {
-							wait = wait && !c.versionEditApplied
+							wait = wait && !c.VersionEditApplied()
 						}
 						d.mu.Unlock()
 						if !wait {
