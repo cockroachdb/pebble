@@ -184,13 +184,17 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 		latest.l0Organizer.ResetForTesting(vers)
 	}
 
-	pickAuto := func(env compactionEnv, pickerByScore *compactionPickerByScore) (pc *pickedCompaction, allowedCompactions int) {
+	pickAuto := func(env compactionEnv, pickerByScore *compactionPickerByScore) (ptc *pickedTableCompaction, allowedCompactions int) {
 		inProgressCompactions := len(env.inProgressCompactions)
 		allowedCompactions = pickerByScore.getCompactionConcurrency()
 		if inProgressCompactions >= allowedCompactions {
 			return nil, allowedCompactions
 		}
-		return pickerByScore.pickAutoScore(env), allowedCompactions
+		pc := pickerByScore.pickAutoScore(env)
+		if pc == nil {
+			return nil, allowedCompactions
+		}
+		return pc.(*pickedTableCompaction), allowedCompactions
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_picker_target_level",
@@ -441,7 +445,7 @@ func TestCompactionPickerL0(t *testing.T) {
 
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo
-	var pc *pickedCompaction
+	var ptc *pickedTableCompaction
 
 	datadriven.RunTest(t, "testdata/compaction_picker_L0", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -574,19 +578,24 @@ func TestCompactionPickerL0(t *testing.T) {
 				earliestUnflushedSeqNum: math.MaxUint64,
 				inProgressCompactions:   inProgressCompactions,
 			}
+			ptc = nil
+			var pc pickedCompaction
 			if score {
 				pc = picker.pickAutoScore(env)
 			} else {
 				pc = picker.pickAutoNonScore(env)
 			}
-			var result strings.Builder
 			if pc != nil {
-				checkClone(t, pc)
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
-				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
-				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, tableNums(pc.startLevel.files))
-				if !pc.outputLevel.files.Empty() {
-					fmt.Fprintf(&result, "L%d: %s\n", pc.outputLevel.level, tableNums(pc.outputLevel.files))
+				ptc = pc.(*pickedTableCompaction)
+			}
+			var result strings.Builder
+			if ptc != nil {
+				checkClone(t, ptc)
+				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+				fmt.Fprintf(&result, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
+				fmt.Fprintf(&result, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
+				if !ptc.outputLevel.files.Empty() {
+					fmt.Fprintf(&result, "L%d: %s\n", ptc.outputLevel.level, tableNums(ptc.outputLevel.files))
 				}
 				if !c.grandparents.Empty() {
 					fmt.Fprintf(&result, "grandparents: %s\n", tableNums(c.grandparents))
@@ -612,15 +621,15 @@ func TestCompactionPickerL0(t *testing.T) {
 			}
 			return "not-found"
 		case "max-output-file-size":
-			if pc == nil {
+			if ptc == nil {
 				return "no compaction"
 			}
-			return fmt.Sprintf("%d", pc.maxOutputFileSize)
+			return fmt.Sprintf("%d", ptc.maxOutputFileSize)
 		case "max-overlap-bytes":
-			if pc == nil {
+			if ptc == nil {
 				return "no compaction"
 			}
-			return fmt.Sprintf("%d", pc.maxOverlapBytes)
+			return fmt.Sprintf("%d", ptc.maxOverlapBytes)
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
@@ -792,18 +801,24 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			}
 			inProgressCount := len(env.inProgressCompactions)
 			allowedCompactions := picker.getCompactionConcurrency()
-			var pc *pickedCompaction
+			var pc pickedCompaction
+			var ptc *pickedTableCompaction
 			if inProgressCount < allowedCompactions {
 				pc = picker.pickAutoScore(env)
+				if pc != nil {
+					// TODO(jackson): Expand the interface and adapt the test so
+					// we don't need to cast.
+					ptc = pc.(*pickedTableCompaction)
+				}
 			}
 			var result strings.Builder
 			fmt.Fprintf(&result, "picker.getCompactionConcurrency: %d\n", allowedCompactions)
 			if pc != nil {
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
-				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
-				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, tableNums(pc.startLevel.files))
-				if !pc.outputLevel.files.Empty() {
-					fmt.Fprintf(&result, "L%d: %s\n", pc.outputLevel.level, tableNums(pc.outputLevel.files))
+				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+				fmt.Fprintf(&result, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
+				fmt.Fprintf(&result, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
+				if !ptc.outputLevel.files.Empty() {
+					fmt.Fprintf(&result, "L%d: %s\n", ptc.outputLevel.level, tableNums(ptc.outputLevel.files))
 				}
 				if !c.grandparents.Empty() {
 					fmt.Fprintf(&result, "grandparents: %s\n", tableNums(c.grandparents))
@@ -935,7 +950,8 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 
 		case "pick-auto":
 			var result strings.Builder
-			var pc *pickedCompaction
+			var pc pickedCompaction
+			var ptc *pickedTableCompaction
 			env := compactionEnv{
 				earliestUnflushedSeqNum: math.MaxUint64,
 				readCompactionEnv: readCompactionEnv{
@@ -949,10 +965,13 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 				fmt.Fprintf(&result, "picked non-score-based compaction:\n")
 			}
 			if pc != nil {
-				fmt.Fprintf(&result, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
-				fmt.Fprintf(&result, "L%d: %s\n", pc.startLevel.level, tableNums(pc.startLevel.files))
-				if !pc.outputLevel.files.Empty() {
-					fmt.Fprintf(&result, "L%d: %s\n", pc.outputLevel.level, tableNums(pc.outputLevel.files))
+				ptc = pc.(*pickedTableCompaction)
+			}
+			if ptc != nil {
+				fmt.Fprintf(&result, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
+				fmt.Fprintf(&result, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
+				if !ptc.outputLevel.files.Empty() {
+					fmt.Fprintf(&result, "L%d: %s\n", ptc.outputLevel.level, tableNums(ptc.outputLevel.files))
 				}
 			} else {
 				return "nil"
@@ -966,8 +985,8 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 type alwaysMultiLevel struct{}
 
 func (d alwaysMultiLevel) pick(
-	pcOrig *pickedCompaction, opts *Options, diskAvailBytes uint64,
-) *pickedCompaction {
+	pcOrig *pickedTableCompaction, opts *Options, diskAvailBytes uint64,
+) *pickedTableCompaction {
 	pcMulti := pcOrig.clone()
 	if !pcMulti.setupMultiLevelCandidate(opts, diskAvailBytes) {
 		return pcOrig
@@ -1040,7 +1059,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 				return "setup-inputs [avail-bytes=XXX] <start> <end>"
 			}
 
-			pc := &pickedCompaction{
+			pc := &pickedTableCompaction{
 				baseLevel: 1,
 				inputs:    []compactionLevel{{level: -1}, {level: -1}},
 			}
@@ -1199,7 +1218,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				return ""
 
 			case "expand-inputs":
-				pc := &pickedCompaction{
+				pc := &pickedTableCompaction{
 					inputs: []compactionLevel{{level: 1}},
 				}
 				pc.startLevel = &pc.inputs[0]
@@ -1332,9 +1351,10 @@ func TestCompactionOutputFileSize(t *testing.T) {
 			})
 			var buf bytes.Buffer
 			if pc != nil {
-				fmt.Fprintf(&buf, "L%d -> L%d\n", pc.startLevel.level, pc.outputLevel.level)
-				fmt.Fprintf(&buf, "L%d: %s\n", pc.startLevel.level, tableNums(pc.startLevel.files))
-				fmt.Fprintf(&buf, "maxOutputFileSize: %d\n", pc.maxOutputFileSize)
+				ptc := pc.(*pickedTableCompaction)
+				fmt.Fprintf(&buf, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
+				fmt.Fprintf(&buf, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
+				fmt.Fprintf(&buf, "maxOutputFileSize: %d\n", ptc.maxOutputFileSize)
 			} else {
 				return "nil"
 			}
@@ -1678,7 +1698,7 @@ func tableNums(tables manifest.LevelSlice) string {
 	return strings.Join(ss, ",")
 }
 
-func checkClone(t *testing.T, pc *pickedCompaction) {
+func checkClone(t *testing.T, pc *pickedTableCompaction) {
 	pcClone := pc.clone()
 	require.Equal(t, pc.String(), pcClone.String())
 
