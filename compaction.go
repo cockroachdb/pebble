@@ -395,7 +395,7 @@ type getValueSeparation func(JobID, *compaction, sstable.TableFormat) compact.Va
 // The compaction is created with a reference to its version that must be
 // released when the compaction is complete.
 func newCompaction(
-	pc *pickedCompaction,
+	pc *pickedTableCompaction,
 	opts *Options,
 	beganAt time.Time,
 	provider objstorage.Provider,
@@ -1926,7 +1926,7 @@ func (d *DB) makeCompactionEnvLocked() *compactionEnv {
 }
 
 // pickAnyCompaction tries to pick a manual or automatic compaction.
-func (d *DB) pickAnyCompaction(env compactionEnv) (pc *pickedCompaction) {
+func (d *DB) pickAnyCompaction(env compactionEnv) (pc pickedCompaction) {
 	// Pick a score-based compaction first, since a misshapen LSM is bad.
 	if !d.opts.DisableAutomaticCompactions {
 		if pc = d.mu.versions.picker.pickAutoScore(env); pc != nil {
@@ -1948,11 +1948,11 @@ func (d *DB) pickAnyCompaction(env compactionEnv) (pc *pickedCompaction) {
 // is removed from d.mu.compact.manual.
 //
 // REQUIRES: d.mu and d.mu.versions.logLock is held.
-func (d *DB) runPickedCompaction(pc *pickedCompaction, grantHandle CompactionGrantHandle) {
+func (d *DB) runPickedCompaction(pc pickedCompaction, grantHandle CompactionGrantHandle) {
 	var doneChannel chan error
-	if pc.manualID > 0 {
+	if pc.ManualID() > 0 {
 		for i := range d.mu.compact.manual {
-			if d.mu.compact.manual[i].id == pc.manualID {
+			if d.mu.compact.manual[i].id == pc.ManualID() {
 				doneChannel = d.mu.compact.manual[i].done
 				d.mu.compact.manual = slices.Delete(d.mu.compact.manual, i, i+1)
 				d.mu.compact.manualLen.Store(int32(len(d.mu.compact.manual)))
@@ -1960,12 +1960,12 @@ func (d *DB) runPickedCompaction(pc *pickedCompaction, grantHandle CompactionGra
 			}
 		}
 		if doneChannel == nil {
-			panic(errors.AssertionFailedf("did not find manual compaction with id %d", pc.manualID))
+			panic(errors.AssertionFailedf("did not find manual compaction with id %d", pc.ManualID()))
 		}
 	}
 
 	d.mu.compact.compactingCount++
-	compaction := newCompaction(pc, d.opts, d.timeNow(), d.ObjProvider(), grantHandle, d.TableFormat(), d.determineCompactionValueSeparation)
+	compaction := pc.ConstructCompaction(d, grantHandle)
 	d.addInProgressCompaction(compaction)
 	go func() {
 		d.compact(compaction, doneChannel)
@@ -2028,7 +2028,7 @@ func (d *DB) GetWaitingCompaction() (bool, WaitingCompaction) {
 		}
 	}
 	// INVARIANT: pc != nil and is in the cache.
-	return true, makeWaitingCompaction(pc.manualID > 0, pc.kind, pc.score)
+	return true, pc.WaitingCompaction()
 }
 
 // GetAllowedWithoutPermission implements DBForCompaction (it is called by the
@@ -2072,7 +2072,7 @@ func (d *DB) tryScheduleDownloadCompactions(env compactionEnv, maxConcurrentDown
 	return started
 }
 
-func (d *DB) pickManualCompaction(env compactionEnv) (pc *pickedCompaction) {
+func (d *DB) pickManualCompaction(env compactionEnv) (pc pickedCompaction) {
 	v := d.mu.versions.currentVersion()
 	for len(d.mu.compact.manual) > 0 {
 		manual := d.mu.compact.manual[0]
