@@ -201,7 +201,7 @@ type pickedCompactionCache struct {
 	// invalidated due to starting a compaction, or completing a
 	// compaction/flush (since it changes the latest version).
 	waiting bool
-	pc      *pickedCompaction
+	pc      pickedCompaction
 }
 
 // invalidate the cache because a new Version is installed or a compaction is
@@ -218,7 +218,7 @@ func (c *pickedCompactionCache) isWaiting() bool {
 
 // getForRunning returns a pickedCompaction if in the cache. The cache is
 // cleared. It may return nil.
-func (c *pickedCompactionCache) getForRunning() *pickedCompaction {
+func (c *pickedCompactionCache) getForRunning() pickedCompaction {
 	// NB: This does not set c.waiting = false, since there may be more
 	// compactions to run.
 	pc := c.pc
@@ -233,12 +233,12 @@ func (c *pickedCompactionCache) setNotWaiting() {
 }
 
 // peek return the pickedCompaction, if any, in the cache.
-func (c *pickedCompactionCache) peek() *pickedCompaction {
+func (c *pickedCompactionCache) peek() pickedCompaction {
 	return c.pc
 }
 
 // add adds a pickedCompaction to the cache and sets waiting to true.
-func (c *pickedCompactionCache) add(pc *pickedCompaction) {
+func (c *pickedCompactionCache) add(pc pickedCompaction) {
 	c.waiting = true
 	c.pc = pc
 }
