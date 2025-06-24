@@ -349,6 +349,15 @@ type Manager interface {
 	// ElevateWriteStallThresholdForFailover returns true if the caller should
 	// use a high write stall threshold because the WALs are being written to
 	// the secondary dir.
+	//
+	// In practice, if this value is true, we give an unlimited memory budget
+	// for memtables. This is simpler than trying to configure an explicit
+	// value, given that memory resources can vary. When using WAL failover in
+	// CockroachDB, an OOM risk is worth tolerating for workloads that have a
+	// strict latency SLO. Also, an unlimited budget here does not mean that the
+	// disk stall in the primary will go unnoticed until the OOM -- CockroachDB
+	// is monitoring disk stalls, and we expect it to fail the node after ~60s
+	// if the primary is stalled.
 	ElevateWriteStallThresholdForFailover() bool
 	// Stats returns the latest Stats.
 	Stats() Stats

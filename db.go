@@ -2630,15 +2630,6 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 		for i := range d.mu.mem.queue {
 			size += d.mu.mem.queue[i].totalBytes()
 		}
-		// If ElevateWriteStallThresholdForFailover is true, we give an
-		// unlimited memory budget for memtables. This is simpler than trying to
-		// configure an explicit value, given that memory resources can vary.
-		// When using WAL failover in CockroachDB, an OOM risk is worth
-		// tolerating for workloads that have a strict latency SLO. Also, an
-		// unlimited budget here does not mean that the disk stall in the
-		// primary will go unnoticed until the OOM -- CockroachDB is monitoring
-		// disk stalls, and we expect it to fail the node after ~60s if the
-		// primary is stalled.
 		if size >= uint64(d.opts.MemTableStopWritesThreshold)*d.opts.MemTableSize &&
 			!d.mu.log.manager.ElevateWriteStallThresholdForFailover() {
 			// We have filled up the current memtable, but already queued memtables

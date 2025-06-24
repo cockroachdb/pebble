@@ -1592,7 +1592,19 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		// files.
 		hasRemoteFiles := len(shared) > 0 || len(external) > 0
 		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
-			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold) &&
+			// We require that either the queue of flushables is below the
+			// stop-writes threshold (note that this is typically a conservative
+			// check, since not every element of this queue will contribute the full
+			// memtable memory size that could result in a write stall), or WAL
+			// failover is permitting an unlimited queue without causing a write
+			// stall. The latter condition is important to avoid delays in
+			// visibility of concurrent writes that happen to get a sequence number
+			// after this ingest and then must wait for this ingest that is itself
+			// waiting on a large flush. See
+			// https://github.com/cockroachdb/pebble/issues/4944 for an illustration
+			// of this problem.
+			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold ||
+				d.mu.log.manager.ElevateWriteStallThresholdForFailover()) &&
 			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles &&
 			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises)
 

@@ -27,8 +27,43 @@ set d 1
 blockFlush
 ----
 
+# One WAL, corresponding to the mutable memtable containing the set.
+ls
+----
+000002.log
+LOCK
+MANIFEST-000001
+OPTIONS-000003
+ext
+ext1
+ext2
+ext3
+marker.format-version.000011.024
+marker.manifest.000001.MANIFEST-000001
+
+# Ingest can complete despite the flush being blocked.
 ingest ext1 ext2 ext3
 ----
+
+lsm
+----
+
+# Two more WALs, one for the flushable ingest, and one for the mutable
+# memtable.
+ls
+----
+000002.log
+000004.sst
+000005.sst
+000006.sst
+000007.log
+000008.log
+LOCK
+MANIFEST-000001
+OPTIONS-000003
+ext
+marker.format-version.000011.024
+marker.manifest.000001.MANIFEST-000001
 
 allowFlush
 ----
@@ -45,9 +80,10 @@ a:1
 b:1
 d:1
 
-# We expect 1 WAL for an immutable memtable, 1 file for the ingested ssts,
-# one for the mutable memtable. We also expect 3 ssts corresponding to the
-# ingested files.
+# We expect 1 WAL for an immutable memtable, 1 WAL for the ingested ssts, one
+# for the mutable memtable. We also expect 3 ssts corresponding to the
+# ingested files. The assumption here is that this command runs before the
+# flush completes.
 ls
 ----
 000002.log
@@ -162,6 +198,20 @@ blockFlush
 
 ingest ext4
 ----
+
+ls
+----
+000002.log
+000004.sst
+000005.log
+000006.log
+LOCK
+MANIFEST-000001
+OPTIONS-000003
+ext
+ext5
+marker.format-version.000011.024
+marker.manifest.000001.MANIFEST-000001
 
 allowFlush
 ----
