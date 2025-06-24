@@ -97,5 +97,5 @@ var noopCompressor = MakeCompressor(NoCompression)
 type Decompressor = compression.Decompressor
 
 func GetDecompressor(c CompressionIndicator) Decompressor {
-	return compression.GetDecompressor(c.algorithm())
+	return compression.GetDecompressor(c.Algorithm())
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/compression"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
 
@@ -95,19 +96,69 @@ func (c Compressibility) String() string {
 	}
 }
 
-var Settings = [...]compression.Setting{
-	compression.Snappy,
-	compression.MinLZFastest,
-	compression.MinLZBalanced,
-	compression.ZstdLevel1,
-	compression.ZstdLevel3,
+var Profiles = [...]*block.CompressionProfile{
+	{
+		Name:                "Snappy",
+		DataBlocks:          compression.Snappy,
+		ValueBlocks:         compression.Snappy,
+		OtherBlocks:         compression.Snappy,
+		MinReductionPercent: 0,
+	},
+
+	{
+		Name:                "MinLZ1",
+		DataBlocks:          compression.MinLZFastest,
+		ValueBlocks:         compression.MinLZFastest,
+		OtherBlocks:         compression.MinLZFastest,
+		MinReductionPercent: 0,
+	},
+
+	{
+		Name:                "MinLZ2",
+		DataBlocks:          compression.MinLZBalanced,
+		ValueBlocks:         compression.MinLZBalanced,
+		OtherBlocks:         compression.MinLZBalanced,
+		MinReductionPercent: 0,
+	},
+
+	{
+		Name:                "Zstd1",
+		DataBlocks:          compression.ZstdLevel1,
+		ValueBlocks:         compression.ZstdLevel1,
+		OtherBlocks:         compression.ZstdLevel1,
+		MinReductionPercent: 0,
+	},
+
+	{
+		Name:                           "Auto1",
+		DataBlocks:                     compression.ZstdLevel1,
+		ValueBlocks:                    compression.ZstdLevel1,
+		OtherBlocks:                    compression.MinLZFastest,
+		AdaptiveReductionCutoffPercent: 30,
+		MinReductionPercent:            0,
+	},
+
+	{
+		Name:                "Zstd3",
+		DataBlocks:          compression.ZstdLevel3,
+		ValueBlocks:         compression.ZstdLevel3,
+		OtherBlocks:         compression.ZstdLevel3,
+		MinReductionPercent: 0,
+	},
+
+	{
+		Name:                           "Auto3",
+		DataBlocks:                     compression.ZstdLevel3,
+		ValueBlocks:                    compression.ZstdLevel3,
+		OtherBlocks:                    compression.MinLZFastest,
+		AdaptiveReductionCutoffPercent: 30,
+		MinReductionPercent:            0,
+	},
 	// Zstd levels 5+ are too slow (on the order of 15-20MB/s to compress) and
 	// don't usually offer a very large benefit in terms of size vs. level 3.
-	// compression.ZstdLevel5,
-	// compression.ZstdLevel7,
 }
 
-const numSettings = len(Settings)
+const numProfiles = len(Profiles)
 
 // Buckets holds the results of all experiments.
 type Buckets [blockkind.NumKinds][numBlockSizes][numCompressibility]Bucket
@@ -116,12 +167,12 @@ type Buckets [blockkind.NumKinds][numBlockSizes][numCompressibility]Bucket
 // compressibility.
 type Bucket struct {
 	UncompressedSize Welford
-	Experiments      [numSettings]PerSetting
+	Experiments      [numProfiles]PerProfile
 }
 
-// PerSetting holds statistics from experiments on blocks in a bucket with a
+// PerProfile holds statistics from experiments on blocks in a bucket with a
 // specific compression.Setting.
-type PerSetting struct {
+type PerProfile struct {
 	CompressionRatio WeightedWelford
 	// CPU times are in nanoseconds per uncompressed byte.
 	CompressionTime   WeightedWelford
@@ -133,8 +184,8 @@ func (b *Buckets) String(minSamples int) string {
 	tw := tabwriter.NewWriter(&buf, 2, 1, 2, ' ', 0)
 
 	fmt.Fprintf(tw, "Kind\tSize Range\tTest CR\tSamples\tSize\t")
-	for _, s := range Settings {
-		fmt.Fprintf(tw, "\t%s", s.String())
+	for _, p := range Profiles {
+		fmt.Fprintf(tw, "\t%s", p.Name)
 	}
 	fmt.Fprintf(tw, "\n")
 	for k := range blockkind.All() {
@@ -190,13 +241,13 @@ func stdDevStr(mean, stddev float64) string {
 func (b *Buckets) ToCSV(minSamples int) string {
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "Kind,Size Range,Test CR,Samples,Size,Size±")
-	for _, s := range Settings {
-		fmt.Fprintf(&buf, ",%s CR", s.String())
-		fmt.Fprintf(&buf, ",%s CR±", s.String())
-		fmt.Fprintf(&buf, ",%s Comp ns/b", s.String())
-		fmt.Fprintf(&buf, ",%s Comp±", s.String())
-		fmt.Fprintf(&buf, ",%s Decomp ns/b", s.String())
-		fmt.Fprintf(&buf, ",%s Decomp±", s.String())
+	for _, p := range Profiles {
+		fmt.Fprintf(&buf, ",%s CR", p.Name)
+		fmt.Fprintf(&buf, ",%s CR±", p.Name)
+		fmt.Fprintf(&buf, ",%s Comp ns/b", p.Name)
+		fmt.Fprintf(&buf, ",%s Comp±", p.Name)
+		fmt.Fprintf(&buf, ",%s Decomp ns/b", p.Name)
+		fmt.Fprintf(&buf, ",%s Decomp±", p.Name)
 	}
 	fmt.Fprintf(&buf, "\n")
 	for k := range blockkind.All() {
