@@ -31,7 +31,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, seed))
 
 	// Generate a random database by running the metamorphic test.
-	testOpts := metamorphic.RandomOptions(rng, metamorphic.TestkeysKeyFormat, nil /* custom opt parsers */)
+	testOpts := metamorphic.RandomOptions(rng, metamorphic.TestkeysKeyFormat, metamorphic.RandomOptionsCfg{})
 	{
 		nOps := 10000
 		if buildtags.SlowBuild {

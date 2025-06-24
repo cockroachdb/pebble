@@ -381,7 +381,9 @@ func buildOptions(
 	for i := 0; i < nOpts; i++ {
 		name := fmt.Sprintf("random-%03d", i)
 		names = append(names, name)
-		opts := RandomOptions(rng, runOpts.keyFormat, runOpts.customOptionParsers)
+		opts := RandomOptions(rng, runOpts.keyFormat, RandomOptionsCfg{
+			CustomOptionParsers: runOpts.customOptionParsers,
+		})
 		options[name] = opts
 	}
 
