@@ -376,10 +376,15 @@ func (l *Layout) Describe(
 				var decoder colblk.ReferenceLivenessBlockDecoder
 				decoder.Init(h.BlockData())
 				offset := 0
-				for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
+				for i := range decoder.BlockDecoder().Rows() {
 					value := decoder.LivenessAtReference(i)
+					encs := DecodeBlobRefLivenessEncoding(value)
 					length := len(value)
-					tpNode.Childf("%05d    %s (%d)", offset, value, length)
+					parent := tpNode.Childf("%05d (%d)", offset, length)
+					for _, enc := range encs {
+						parent.Childf("block: %d, values size: %d, bitmap size: %d byte(s), bitmap: %08b",
+							enc.BlockID, enc.ValuesSize, enc.BitmapSize, enc.Bitmap)
+					}
 					offset += length
 				}
 			}
