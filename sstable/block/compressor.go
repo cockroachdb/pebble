@@ -1,6 +1,8 @@
 package block
 
 import (
+	"math/rand"
+
 	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
@@ -12,14 +14,9 @@ import (
 //	.. = c.Compress(..)
 //	c.Close()
 type Compressor struct {
-	profile              CompressionProfile
-	dataBlocksCompressor compression.Compressor
-	// valueBlocksCompressor is used for value blocks; It can be the same object as
-	// dataBlocksCompressor.
+	profile               CompressionProfile
+	dataBlocksCompressor  compression.Compressor
 	valueBlocksCompressor compression.Compressor
-	// otherBlocksCompressor is used for blocks that are not data blocks, such as
-	// index blocks or metadata blocks. It can be the same object as
-	// dataBlocksCompressor.
 	otherBlocksCompressor compression.Compressor
 }
 
@@ -29,30 +26,36 @@ func MakeCompressor(profile *CompressionProfile) Compressor {
 	c := Compressor{
 		profile: *profile,
 	}
-	c.dataBlocksCompressor = compression.GetCompressor(profile.DataBlocks)
-	if profile.ValueBlocks == profile.DataBlocks {
-		c.valueBlocksCompressor = c.dataBlocksCompressor
-	} else {
-		c.valueBlocksCompressor = compression.GetCompressor(profile.ValueBlocks)
-	}
-	if profile.OtherBlocks == profile.DataBlocks {
-		c.otherBlocksCompressor = c.dataBlocksCompressor
-	} else {
-		c.otherBlocksCompressor = compression.GetCompressor(profile.OtherBlocks)
-	}
+
+	c.dataBlocksCompressor = maybeAdaptiveCompressor(profile, profile.DataBlocks)
+	c.valueBlocksCompressor = maybeAdaptiveCompressor(profile, profile.ValueBlocks)
+	c.otherBlocksCompressor = compression.GetCompressor(profile.OtherBlocks)
 	return c
+}
+
+func maybeAdaptiveCompressor(
+	profile *CompressionProfile, setting compression.Setting,
+) compression.Compressor {
+	if profile.AdaptiveReductionCutoffPercent != 0 && setting != profile.OtherBlocks {
+		params := compression.AdaptiveCompressorParams{
+			Slow:            setting,
+			Fast:            profile.OtherBlocks,
+			ReductionCutoff: float64(profile.AdaptiveReductionCutoffPercent) * 0.01,
+			SampleEvery:     10,
+			SampleHalfLife:  256 * 1024, // 256 KB
+			SamplingSeed:    rand.Uint64(),
+		}
+		return compression.NewAdaptiveCompressor(params)
+	}
+	return compression.GetCompressor(setting)
 }
 
 // Close must be called when the Compressor is no longer needed.
 // After Close is called, the Compressor must not be used again.
 func (c *Compressor) Close() {
-	if c.otherBlocksCompressor != c.dataBlocksCompressor {
-		c.otherBlocksCompressor.Close()
-	}
-	if c.valueBlocksCompressor != c.dataBlocksCompressor {
-		c.valueBlocksCompressor.Close()
-	}
 	c.dataBlocksCompressor.Close()
+	c.valueBlocksCompressor.Close()
+	c.otherBlocksCompressor.Close()
 	*c = Compressor{}
 }
 

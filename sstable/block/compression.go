@@ -43,7 +43,12 @@ type CompressionProfile struct {
 	// uncompressed.
 	MinReductionPercent uint8
 
-	// TODO(radu): knobs for adaptive compression go here.
+	// AdaptiveReductionCutoffPercent (when set to a non-zero value) enables
+	// adaptive compressors for data and value blocks which fall back to the
+	// OtherBlocks setting. The OtherBlocks setting is used when the
+	// DataBlocks/ValueBlocks setting cannot achieve a further data reduction of
+	// at least AdaptiveReductionCutoffPercent%.
+	AdaptiveReductionCutoffPercent uint8
 }
 
 // UsesMinLZ returns true if the profile uses the MinLZ compression algorithm
@@ -72,15 +77,43 @@ var (
 	})
 
 	BalancedCompression = registerCompressionProfile(CompressionProfile{
-		Name:                "Balanced",
+		Name:                           "Balanced",
+		DataBlocks:                     compression.ZstdLevel1,
+		ValueBlocks:                    compression.ZstdLevel3,
+		OtherBlocks:                    fastestCompression,
+		AdaptiveReductionCutoffPercent: 30,
+		MinReductionPercent:            5,
+	})
+
+	GoodCompression = registerCompressionProfile(CompressionProfile{
+		Name:                "Good",
+		DataBlocks:          compression.ZstdLevel3,
+		ValueBlocks:         compression.ZstdLevel3,
+		OtherBlocks:         fastestCompression,
+		MinReductionPercent: 5,
+	})
+
+	// Adaptive compression profiles are experimental.
+
+	FastAdaptiveCompression = registerCompressionProfile(CompressionProfile{
+		Name:                           "Fast adaptive",
+		DataBlocks:                     fastestCompression,
+		ValueBlocks:                    compression.ZstdLevel1,
+		OtherBlocks:                    fastestCompression,
+		AdaptiveReductionCutoffPercent: 30,
+		MinReductionPercent:            10,
+	})
+
+	BalancedAdaptiveCompression = registerCompressionProfile(CompressionProfile{
+		Name:                "Balanced adaptive",
 		DataBlocks:          compression.ZstdLevel1,
 		ValueBlocks:         compression.ZstdLevel3,
 		OtherBlocks:         fastestCompression,
 		MinReductionPercent: 5,
 	})
 
-	GoodCompression = registerCompressionProfile(CompressionProfile{
-		Name:                "Good",
+	GoodAdaptiveCompression = registerCompressionProfile(CompressionProfile{
+		Name:                "Good adaptive",
 		DataBlocks:          compression.ZstdLevel3,
 		ValueBlocks:         compression.ZstdLevel3,
 		OtherBlocks:         fastestCompression,
