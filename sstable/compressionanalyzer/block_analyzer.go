@@ -17,7 +17,7 @@ import (
 // compression algorithms on sstable and blob file blocks.
 type BlockAnalyzer struct {
 	b             Buckets
-	compressors   [numSettings]compression.Compressor
+	compressors   [numProfiles]block.Compressor
 	decompressors [compression.NumAlgorithms]compression.Decompressor
 	minLZFastest  compression.Compressor
 	buf1          []byte
@@ -26,8 +26,8 @@ type BlockAnalyzer struct {
 
 func NewBlockAnalyzer() *BlockAnalyzer {
 	a := &BlockAnalyzer{}
-	for i, s := range Settings {
-		a.compressors[i] = compression.GetCompressor(s)
+	for i, p := range Profiles {
+		a.compressors[i] = block.MakeCompressor(p)
 	}
 	for i := range a.decompressors {
 		a.decompressors[i] = compression.GetDecompressor(compression.Algorithm(i))
@@ -36,6 +36,15 @@ func NewBlockAnalyzer() *BlockAnalyzer {
 	a.buf1 = make([]byte, 256*1024)
 	a.buf2 = make([]byte, 256*1024)
 	return a
+}
+
+// ResetCompressors the compressors. This is useful for adaptive compressors
+// which keep some state; we want to clear that state for each sstable.
+func (a *BlockAnalyzer) ResetCompressors() {
+	for i, p := range Profiles {
+		a.compressors[i].Close()
+		a.compressors[i] = block.MakeCompressor(p)
+	}
 }
 
 func (a *BlockAnalyzer) Close() {
@@ -57,8 +66,8 @@ func (a *BlockAnalyzer) Block(kind block.Kind, block []byte) {
 	compressibility := MakeCompressibility(len(block), len(compressed))
 	bucket := &a.b[kind][size][compressibility]
 	bucket.UncompressedSize.Add(float64(len(block)))
-	for i := range Settings {
-		a.runExperiment(&bucket.Experiments[i], block, a.compressors[i], a.decompressors)
+	for i := range a.compressors {
+		a.runExperiment(&bucket.Experiments[i], block, kind, &a.compressors[i], a.decompressors)
 	}
 }
 
@@ -67,9 +76,10 @@ func (a *BlockAnalyzer) Buckets() *Buckets {
 }
 
 func (a *BlockAnalyzer) runExperiment(
-	pa *PerSetting,
+	pa *PerProfile,
 	block []byte,
-	compressor compression.Compressor,
+	blockKind block.Kind,
+	compressor *block.Compressor,
 	decompressors [compression.NumAlgorithms]compression.Decompressor,
 ) {
 	// buf1 will hold the compressed data; it can get a bit larger in the worst
@@ -80,14 +90,14 @@ func (a *BlockAnalyzer) runExperiment(
 	// Compress.
 	runtime.Gosched()
 	t1 := crtime.NowMono()
-	compressed, setting := compressor.Compress(a.buf1[:0], block)
+	ci, compressed := compressor.Compress(a.buf1[:0], block, blockKind)
 	compressionTime := t1.Elapsed()
 
 	// Yield the processor, reducing the chance that we get preempted during
 	// DecompressInto.
 	runtime.Gosched()
 	t2 := crtime.NowMono()
-	if err := decompressors[setting.Algorithm].DecompressInto(a.buf2, compressed); err != nil {
+	if err := decompressors[ci.Algorithm()].DecompressInto(a.buf2, compressed); err != nil {
 		panic(err)
 	}
 	decompressionTime := t2.Elapsed()
