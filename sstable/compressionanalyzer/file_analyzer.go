@@ -20,7 +20,7 @@ import (
 //
 // TODO(radu): add support for blob files.
 type FileAnalyzer struct {
-	*BlockAnalyzer
+	blockAnalyzer *BlockAnalyzer
 
 	readLimiter *tokenbucket.TokenBucket
 	sstReadOpts sstable.ReaderOptions
@@ -35,15 +35,19 @@ func NewFileAnalyzer(
 		panic("sstReadOpts.CacheOpts.CacheHandle must be nil")
 	}
 	return &FileAnalyzer{
-		BlockAnalyzer: NewBlockAnalyzer(),
+		blockAnalyzer: NewBlockAnalyzer(),
 		readLimiter:   readLimiter,
 		sstReadOpts:   sstReadOpts,
 	}
 }
 
+func (fa *FileAnalyzer) Buckets() *Buckets {
+	return fa.blockAnalyzer.Buckets()
+}
+
 func (fa *FileAnalyzer) Close() {
-	if fa.BlockAnalyzer != nil {
-		fa.BlockAnalyzer.Close()
+	if fa.blockAnalyzer != nil {
+		fa.blockAnalyzer.Close()
 	}
 	*fa = FileAnalyzer{}
 }
@@ -51,6 +55,7 @@ func (fa *FileAnalyzer) Close() {
 // SSTable analyzes the blocks in an sstable file and closes the readable (even
 // in error cases).
 func (fa *FileAnalyzer) SSTable(ctx context.Context, readable objstorage.Readable) error {
+	fa.blockAnalyzer.ResetCompressors()
 	r, err := sstable.NewReader(ctx, readable, fa.sstReadOpts)
 	if err != nil {
 		_ = readable.Close()
@@ -124,7 +129,7 @@ func (fa *FileAnalyzer) sstBlock(
 	if err != nil {
 		return err
 	}
-	fa.BlockAnalyzer.Block(kind, h.BlockData())
+	fa.blockAnalyzer.Block(kind, h.BlockData())
 	h.Release()
 	return nil
 }

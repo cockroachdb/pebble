@@ -217,7 +217,7 @@ func (i CompressionIndicator) String() string {
 	}
 }
 
-func (i CompressionIndicator) algorithm() compression.Algorithm {
+func (i CompressionIndicator) Algorithm() compression.Algorithm {
 	switch i {
 	case NoCompressionIndicator:
 		return compression.NoCompression
