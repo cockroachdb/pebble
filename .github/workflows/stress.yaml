@@ -52,7 +52,7 @@ jobs:
           scripts/stress.sh
 
       - name: Post issue on failure
-        if: failure() && inputs.file_issue
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
