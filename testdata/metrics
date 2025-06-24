@@ -92,7 +92,7 @@ Iter category stats:
 
 disk-usage
 ----
-3.6KB
+3.7KB
 
 batch
 set b 2
@@ -158,7 +158,7 @@ Iter category stats:
 
 disk-usage
 ----
-6.0KB
+6.1KB
 
 # Closing iter a will release one of the zombie memtables.
 
