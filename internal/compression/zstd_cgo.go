@@ -39,9 +39,7 @@ var zstdCompressorPool = sync.Pool{
 // relies on CGo.
 const UseStandardZstdLib = true
 
-func (z *zstdCompressor) Algorithm() Algorithm { return Zstd }
-
-func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) []byte {
+func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) ([]byte, Setting) {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
@@ -63,7 +61,7 @@ func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) []byte {
 		panic("Allocated a new buffer despite checking CompressBound.")
 	}
 
-	return compressedBuf[:varIntLen+len(result)]
+	return compressedBuf[:varIntLen+len(result)], Setting{Algorithm: Zstd, Level: uint8(z.level)}
 }
 
 func (z *zstdCompressor) Close() {

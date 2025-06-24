@@ -18,9 +18,9 @@ var _ Compressor = (*minlzCompressor)(nil)
 
 func (c *minlzCompressor) Algorithm() Algorithm { return MinLZ }
 
-func (c *minlzCompressor) Compress(dst, src []byte) []byte {
+func (c *minlzCompressor) Compress(dst, src []byte) ([]byte, Setting) {
 	// MinLZ cannot encode blocks greater than 8MB. Fall back to Snappy in those
-	// cases. Note that MinLZ can decode the Snappy compressed block.
+	// cases.
 	if len(src) > minlz.MaxBlockSize {
 		return (snappyCompressor{}).Compress(dst, src)
 	}
@@ -29,7 +29,7 @@ func (c *minlzCompressor) Compress(dst, src []byte) []byte {
 	if err != nil {
 		panic(errors.Wrap(err, "minlz compression"))
 	}
-	return compressed
+	return compressed, Setting{Algorithm: MinLZ, Level: uint8(c.level)}
 }
 
 func (c *minlzCompressor) Close() {}

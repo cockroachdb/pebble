@@ -70,7 +70,7 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 		compressor = c.otherBlocksCompressor
 	}
 
-	out := compressor.Compress(dst, src)
+	out, setting := compressor.Compress(dst, src)
 
 	// Return the original data uncompressed if the reduction is less than the
 	// minimum, i.e.:
@@ -78,12 +78,11 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 	//   after * 100
 	//   -----------  >  100 - MinReductionPercent
 	//      before
-	algorithm := compressor.Algorithm()
-	if algorithm != compression.NoCompression &&
+	if setting.Algorithm != compression.NoCompression &&
 		int64(len(out))*100 > int64(len(src))*int64(100-c.profile.MinReductionPercent) {
 		return NoCompressionIndicator, append(out[:0], src...)
 	}
-	return compressionIndicatorFromAlgorithm(algorithm), out
+	return compressionIndicatorFromAlgorithm(setting.Algorithm), out
 }
 
 // NoopCompressor is a Compressor that does not compress data. It does not have

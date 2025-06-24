@@ -34,14 +34,13 @@ func getZstdCompressor(level int) *zstdCompressor {
 // relies on CGo.
 const UseStandardZstdLib = false
 
-func (z *zstdCompressor) Algorithm() Algorithm { return Zstd }
-
 func (z *zstdCompressor) Compress(compressedBuf, b []byte) []byte {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
-	return (*zstd.Encoder)(z).EncodeAll(b, compressedBuf[:varIntLen])
+	res := (*zstd.Encoder)(z).EncodeAll(b, compressedBuf[:varIntLen])
+	return res, Setting{Algorithm: Zstd, Level: uint8(z.level)}
 }
 
 func (z *zstdCompressor) Close() {

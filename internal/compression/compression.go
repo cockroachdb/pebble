@@ -10,7 +10,7 @@ import (
 	"github.com/minio/minlz"
 )
 
-// Algorithm identifies a compression algorithm. Some compression algorithm
+// Algorithm identifies a compression algorithm. Some compression algorithms
 // support multiple compression levels.
 //
 // Decompressing data requires only an Algorithm.
@@ -21,7 +21,8 @@ const (
 	SnappyAlgorithm
 	Zstd
 	MinLZ
-	numAlgorithms
+
+	NumAlgorithms
 )
 
 // String implements fmt.Stringer, returning a human-readable name for the
@@ -72,11 +73,9 @@ var (
 // Compressor is an interface for compressing data. An instance is associated
 // with a specific Setting.
 type Compressor interface {
-	// Algorithm returns the algorithm used by this Compressor.
-	Algorithm() Algorithm
-
 	// Compress a block, appending the compressed data to dst[:0].
-	Compress(dst, src []byte) []byte
+	// Returns setting used.
+	Compress(dst, src []byte) ([]byte, Setting)
 
 	// Close must be called when the Compressor is no longer needed.
 	// After Close is called, the Compressor must not be used again.
