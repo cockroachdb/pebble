@@ -20,12 +20,20 @@ func TestMinLZLargeBlock(t *testing.T) {
 		}
 		c := GetCompressor(MinLZFastest)
 		defer c.Close()
-		compressed := c.Compress(nil, b)
-		d := GetDecompressor(MinLZ)
-		decompressed := make([]byte, len(b))
-		defer d.Close()
+		compressed, st := c.Compress(nil, b)
 
+		d := GetDecompressor(st.Algorithm)
+		decompressed := make([]byte, len(b))
 		require.NoError(t, d.DecompressInto(decompressed, compressed))
 		require.Equal(t, b, decompressed)
+		d.Close()
+
+		// Verify that a MinLZ decompressor always works (even if Compress returned
+		// Snappy).
+		d = GetDecompressor(MinLZ)
+		clear(decompressed)
+		require.NoError(t, d.DecompressInto(decompressed, compressed))
+		require.Equal(t, b, decompressed)
+		d.Close()
 	}
 }

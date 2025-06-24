@@ -16,9 +16,9 @@ var _ Compressor = snappyCompressor{}
 
 func (snappyCompressor) Algorithm() Algorithm { return SnappyAlgorithm }
 
-func (snappyCompressor) Compress(dst, src []byte) []byte {
+func (snappyCompressor) Compress(dst, src []byte) ([]byte, Setting) {
 	dst = dst[:cap(dst):cap(dst)]
-	return snappy.Encode(dst, src)
+	return snappy.Encode(dst, src), Snappy
 }
 
 func (snappyCompressor) Close() {}
