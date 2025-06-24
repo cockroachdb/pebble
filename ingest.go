@@ -1034,7 +1034,8 @@ func ingestTargetLevel(
 			if tblCompaction.outputLevel == nil || level != tblCompaction.outputLevel.level {
 				continue
 			}
-			if metaBounds.Overlaps(cmp, tblCompaction.Bounds()) {
+			bounds := tblCompaction.Bounds()
+			if bounds != nil && metaBounds.Overlaps(cmp, bounds) {
 				overlaps = true
 				break
 			}
@@ -2115,7 +2116,8 @@ func (d *DB) ingestApply(
 				// doing a [c,d) excise at the same time as this compaction, we will have
 				// to error out the whole compaction as we can't guarantee it hasn't/won't
 				// write a file overlapping with the excise span.
-				if c.Bounds().Overlaps(d.cmp, &exciseBounds) {
+				bounds := c.Bounds()
+				if bounds != nil && bounds.Overlaps(d.cmp, &exciseBounds) {
 					c.Cancel()
 				}
 				// Check if this compaction's inputs have been replaced due to an

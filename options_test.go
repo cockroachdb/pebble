@@ -47,7 +47,8 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 			MinimumSize:           1 << rand.IntN(10), // [1, 512]
 			MaxBlobReferenceDepth: rand.IntN(10) + 1,  // [1, 10)
 			// Constrain the rewrite minimum age to [0, 15s).
-			RewriteMinimumAge: time.Duration(rand.IntN(15)) * time.Second,
+			RewriteMinimumAge:  time.Duration(rand.IntN(15)) * time.Second,
+			TargetGarbageRatio: 0.1 + rand.Float64()*0.9, // [0.1, 1.0)
 		}
 		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
 	}
