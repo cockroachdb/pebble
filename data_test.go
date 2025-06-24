@@ -1640,13 +1640,6 @@ func describeLSM(d *DB, verbose bool) string {
 	} else {
 		buf.WriteString(d.mu.versions.currentVersion().String())
 	}
-	if blobFileMetas := d.mu.versions.latest.blobFiles.Metadatas(); len(blobFileMetas) > 0 {
-		buf.WriteString("Blob files:\n")
-		for _, meta := range blobFileMetas {
-			fmt.Fprintf(&buf, "  %s: [%s] %d physical bytes, %d value bytes\n",
-				meta.FileID, meta.Physical.FileNum, meta.Physical.Size, meta.Physical.ValueSize)
-		}
-	}
 	return buf.String()
 }
 

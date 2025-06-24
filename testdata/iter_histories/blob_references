@@ -17,8 +17,6 @@ L6:
   000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:927 blobrefs:[(B000921: 6); depth:1]
 Blob files:
   B000921 physical:{000921 size:[106 (106B)] vals:[16 (16B)]}
-Blob files:
-  B000921: [000921] 106 physical bytes, 16 value bytes
 
 combined-iter
 first
@@ -80,9 +78,6 @@ L6:
 Blob files:
   B000039 physical:{000039 size:[117 (117B)] vals:[25 (25B)]}
   B000921 physical:{000921 size:[125 (125B)] vals:[33 (33B)]}
-Blob files:
-  B000039: [000039] 117 physical bytes, 25 value bytes
-  B000921: [000921] 125 physical bytes, 33 value bytes
 
 # The iterator stats should indicate that only the first value from each file
 # should trigger a read of the blob file. Once loaded, subsequent reads of the
@@ -145,8 +140,6 @@ L6:
   000004:[a#2,SETWITHDEL-l#2,SETWITHDEL] seqnums:[2-2] points:[a#2,SETWITHDEL-l#2,SETWITHDEL] size:1031 blobrefs:[(B000009: 96); depth:1]
 Blob files:
   B000009 physical:{000009 size:[322 (322B)] vals:[96 (96B)]}
-Blob files:
-  B000009: [000009] 322 physical bytes, 96 value bytes
 
 combined-iter
 first
@@ -220,8 +213,6 @@ L6:
   000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[2-5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:1080 blobrefs:[(B000009: 7); depth:1]
 Blob files:
   B000009 physical:{000009 size:[96 (96B)] vals:[7 (7B)]}
-Blob files:
-  B000009: [000009] 96 physical bytes, 7 value bytes
 
 combined-iter
 seek-lt c
