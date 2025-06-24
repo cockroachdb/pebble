@@ -918,6 +918,8 @@ func RandomOptions(
 				MinimumSize:           minSize,
 				MaxBlobReferenceDepth: maxBlobReferenceDepth,
 				RewriteMinimumAge:     rewriteMinimumAge,
+				// TODO(jackson): Begin enabling blob file rewrite compactions.
+				TargetGarbageRatio: 1.0,
 			}
 		}
 	}

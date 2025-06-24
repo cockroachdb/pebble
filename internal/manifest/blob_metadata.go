@@ -868,7 +868,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 // ReplacementCandidate returns the next blob file that should be rewritten. If
 // there are no candidates, the second return value is false.  Successive calls
 // to ReplacementCandidate may (but are not guaranteed to) return the same blob
-// file until the blob file is replaced..
+// file until the blob file is replaced.
 func (s *CurrentBlobFileSet) ReplacementCandidate() (BlobFileMetadata, bool) {
 	s.moveAgedBlobFilesToCandidatesHeap(s.rewrite.heuristic.CurrentTime())
 	if len(s.rewrite.candidates.items) == 0 {

@@ -2860,7 +2860,7 @@ func (d *DB) getEarliestUnflushedSeqNumLocked() base.SeqNum {
 	return seqNum
 }
 
-func (d *DB) getInProgressCompactionInfoLocked(finishing *tableCompaction) (rv []compactionInfo) {
+func (d *DB) getInProgressCompactionInfoLocked(finishing compaction) (rv []compactionInfo) {
 	for c := range d.mu.compact.inProgress {
 		if !c.IsFlush() && (finishing == nil || c != finishing) {
 			rv = append(rv, c.Info())
@@ -2888,7 +2888,7 @@ func inProgressL0Compactions(inProgress []compactionInfo) []manifest.L0Compactio
 			continue
 		}
 		compactions = append(compactions, manifest.L0Compaction{
-			Bounds:    info.bounds,
+			Bounds:    *info.bounds,
 			IsIntraL0: info.outputLevel == 0,
 		})
 	}
