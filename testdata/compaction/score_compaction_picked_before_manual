@@ -18,7 +18,7 @@ compaction-log
 [JOB 1] compacted(move) L5 [000004] (797B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000004] (797B), in 1.0s (1.0s total), output rate 797B/s
 
 # Do an auto score-based compaction with the same LSM as the previous test.
-define disable-multi-level lbase-max-bytes=1
+define disable-multi-level lbase-max-bytes=1 auto-compactions=off
 L5
   a.SET.2:v c.SET.4:v
 ----

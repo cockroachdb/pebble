@@ -206,7 +206,7 @@ func TestPickCompaction(t *testing.T) {
 				level:     0,
 				baseLevel: 1,
 			},
-			want: "100,110  ",
+			want: "100  ",
 		},
 
 		{
@@ -1082,15 +1082,32 @@ func TestCompaction(t *testing.T) {
 				return fmt.Sprintf("wrote %d keys\n", count)
 
 			case "auto-compact":
-				d.mu.Lock()
-				prev := d.opts.DisableAutomaticCompactions
-				d.opts.DisableAutomaticCompactions = false
-				d.maybeScheduleCompaction()
-				for d.mu.compact.compactingCount > 0 {
-					d.mu.compact.cond.Wait()
+				expectedCount := int64(1)
+				td.MaybeScanArgs(t, "count", &expectedCount)
+				err := func() error {
+					d.mu.Lock()
+					defer d.mu.Unlock()
+					prevCount := d.mu.versions.metrics.Compact.Count
+					prev := d.opts.DisableAutomaticCompactions
+					d.opts.DisableAutomaticCompactions = false
+					err := try(100*time.Microsecond, 25*time.Second, func() error {
+						d.maybeScheduleCompaction()
+						for d.mu.compact.compactingCount > 0 {
+							d.mu.compact.cond.Wait()
+						}
+						compactions := d.mu.versions.metrics.Compact.Count - prevCount
+						if compactions < expectedCount {
+							return errors.Errorf("expectedCount at least %d automatic compaction(s), got %d, total: %d",
+								expectedCount, compactions, d.mu.versions.metrics.Compact.Count)
+						}
+						return nil
+					})
+					d.opts.DisableAutomaticCompactions = prev
+					return err
+				}()
+				if err != nil {
+					return err.Error()
 				}
-				d.opts.DisableAutomaticCompactions = prev
-				d.mu.Unlock()
 				return describeLSM(d, verbose)
 
 			case "set-disable-auto-compact":
@@ -1201,13 +1218,13 @@ func TestCompaction(t *testing.T) {
 					d.mu.Lock()
 					defer d.mu.Unlock()
 					if len(d.mu.compact.manual) != numBlocked {
-						return errors.Errorf("expected %d waiting manual compactions, versus actual %d",
+						return errors.Errorf("expectedCount %d waiting manual compactions, versus actual %d",
 							numBlocked, len(d.mu.compact.manual))
 					}
 					// Expect to be back to the fake ongoing compactions when the
 					// non-blocked manual compactions are done.
 					if d.mu.compact.compactingCount != 1 {
-						return errors.Errorf("expected 1 ongoing compaction, versus actual %d",
+						return errors.Errorf("expectedCount 1 ongoing compaction, versus actual %d",
 							d.mu.compact.compactingCount)
 					}
 					return nil
@@ -1365,6 +1382,10 @@ func TestCompaction(t *testing.T) {
 		"compaction_cancellation": {
 			// Run at a specific version, so that a single sstable format is used,
 			// since the test prints the compaction log which includes file sizes.
+			minVersion: formatDeprecatedExperimentalValueSeparation,
+			maxVersion: formatDeprecatedExperimentalValueSeparation,
+		},
+		"l0_to_lbase_compaction": {
 			minVersion: formatDeprecatedExperimentalValueSeparation,
 			maxVersion: formatDeprecatedExperimentalValueSeparation,
 		},

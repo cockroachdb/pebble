@@ -302,7 +302,7 @@ Blob files:
 # garbage ratio of 0.0 (no garbage). With this configuration, any blob file that
 # contains any unreferenced values should be immediately compacted.
 
-define value-separation=(true,1,2,0s,0.0)
+define value-separation=(true,1,2,0s,0.0) auto-compactions=off
 ----
 
 batch
@@ -415,12 +415,13 @@ Blob files:
   B000040 physical:{000040 size:[1707508 (1.6MB)] vals:[1645056 (1.6MB)]}
   B000042 physical:{000042 size:[886008 (865KB)] vals:[853568 (834KB)]}
 
-# Schedule automatic compactions. These compactions should write data to L6. The
+# Manual compaction of key range so we merge files instead of moving so we
+# rewrite the files. This compactions should write data to L6. The
 # resulting sstables will reference multiple blob files but maintain a blob
 # reference depth of 1 because L6 has no referenced blob files and all the L0
 # input tables have a reference depth of 1.
 
-auto-compact
+compact a-zzzz
 ----
 L6:
   000044:[a@1#0,SET-czms@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-czms@1#0,SET] size:715291 blobrefs:[(B000006: 1642240), (B000008: 1642432), (B000010: 201984); depth:1]
