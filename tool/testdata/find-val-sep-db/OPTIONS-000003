@@ -51,6 +51,7 @@
   enabled=true
   minimum_size=3
   max_blob_reference_depth=10
+  rewrite_minimum_age=0s
 
 [Level "0"]
   block_restart_interval=16
