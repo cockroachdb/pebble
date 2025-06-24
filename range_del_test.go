@@ -446,20 +446,21 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 	defer snap2.Close()
 	require.NoError(t, d.DeleteRange([]byte("a"), []byte("d"), nil))
 
-	// Compact to produce the L1 tables.
 	require.NoError(t, d.Compact(context.Background(), []byte("b"), []byte("b\x00"), false))
 	expectLSM(`
+L0.0:
+  000007:[a#12,RANGEDEL-b#inf,RANGEDEL]
 L6:
-  000009:[a#12,RANGEDEL-d#inf,RANGEDEL]
-`)
+  000009:[b#12,RANGEDEL-d#inf,RANGEDEL]`)
 
 	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
 	require.NoError(t, d.Compact(context.Background(), []byte("c"), []byte("c\x00"), false))
 	expectLSM(`
+L0.0:
+  000007:[a#12,RANGEDEL-b#inf,RANGEDEL]
 L6:
-  000012:[a#12,RANGEDEL-c#inf,RANGEDEL]
-  000013:[c#13,SET-d#inf,RANGEDEL]
-`)
+  000012:[b#12,RANGEDEL-c#inf,RANGEDEL]
+  000013:[c#13,SET-d#inf,RANGEDEL]`)
 }
 
 // TODO(peter): rewrite this test, TestRangeDelCompactionTruncation, and
@@ -523,28 +524,31 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 		require.NoError(t, d.Compact(context.Background(), []byte("b"), []byte("b\x00"), false))
 	}
 	expectLSM(`
+L0.0:
+  000007:[a#12,RANGEDEL-b#inf,RANGEDEL]
 L3:
-  000009:[a#12,RANGEDEL-d#inf,RANGEDEL]
-`)
+  000009:[b#12,RANGEDEL-d#inf,RANGEDEL]`)
 
 	require.NoError(t, d.Set([]byte("c"), bytes.Repeat([]byte("d"), 100), nil))
 
 	require.NoError(t, d.Compact(context.Background(), []byte("c"), []byte("c\x00"), false))
 	expectLSM(`
+L0.0:
+  000007:[a#12,RANGEDEL-b#inf,RANGEDEL]
 L3:
-  000013:[a#12,RANGEDEL-b#inf,RANGEDEL]
-  000014:[b#12,RANGEDEL-c#inf,RANGEDEL]
+  000013:[b#12,RANGEDEL-c#inf,RANGEDEL]
 L4:
-  000015:[c#13,SET-d#inf,RANGEDEL]
+  000014:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	require.NoError(t, d.Compact(context.Background(), []byte("c"), []byte("c\x00"), false))
 	expectLSM(`
+L0.0:
+  000007:[a#12,RANGEDEL-b#inf,RANGEDEL]
 L3:
-  000013:[a#12,RANGEDEL-b#inf,RANGEDEL]
-  000014:[b#12,RANGEDEL-c#inf,RANGEDEL]
+  000013:[b#12,RANGEDEL-c#inf,RANGEDEL]
 L5:
-  000015:[c#13,SET-d#inf,RANGEDEL]
+  000014:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	if _, _, err := d.Get([]byte("b")); err != ErrNotFound {
@@ -553,12 +557,12 @@ L5:
 
 	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("a\x00"), false))
 	expectLSM(`
+L1:
+  000007:[a#12,RANGEDEL-b#inf,RANGEDEL]
 L3:
-  000014:[b#12,RANGEDEL-c#inf,RANGEDEL]
-L4:
-  000013:[a#12,RANGEDEL-b#inf,RANGEDEL]
+  000013:[b#12,RANGEDEL-c#inf,RANGEDEL]
 L5:
-  000015:[c#13,SET-d#inf,RANGEDEL]
+  000014:[c#13,SET-d#inf,RANGEDEL]
 `)
 
 	if v, _, err := d.Get([]byte("b")); err != ErrNotFound {

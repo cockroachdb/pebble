@@ -206,7 +206,7 @@ func TestPickCompaction(t *testing.T) {
 				level:     0,
 				baseLevel: 1,
 			},
-			want: "100,110  ",
+			want: "100  ",
 		},
 
 		{
