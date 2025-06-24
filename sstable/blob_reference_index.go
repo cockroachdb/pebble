@@ -46,12 +46,10 @@ func (s *blobRefValueLivenessState) finishCurrentBlock() {
 }
 
 // blobRefValueLivenessWriter helps maintain the liveness of values in blob value
-// blocks for a sstable's blob references. It maintains:
-//   - bufs: serialized value liveness encodings that will be written to the
-//     sstable.
-//   - refState: a slice of blobRefValueLivenessState. This tracks the
-//     in-progress value liveness for each blob value block for our sstable's
-//     blob references. The index of the slice corresponds to the blob.ReferenceID.
+// blocks for a sstable's blob references. It maintains a refState, a slice of
+// blobRefValueLivenessState. This tracks the in-progress value liveness for
+// each blob value block for our sstable's blob references. The index of the
+// slice corresponds to the blob.ReferenceID.
 type blobRefValueLivenessWriter struct {
 	refState []blobRefValueLivenessState
 }
@@ -70,14 +68,11 @@ func (w *blobRefValueLivenessWriter) numReferences() int {
 
 // addLiveValue adds a live value to the state maintained by refID. If the
 // current blockID for this in-progress state is different from the provided
-// blockID, a new state is created and the old one is preserved to the buffer
-// at w.bufs[refID].
+// blockID, a new state is created.
 //
 // addLiveValue adds a new state for the provided refID if one does
 // not already exist. It assumes that any new blob.ReferenceIDs are visited in
 // monotonically increasing order.
-//
-// INVARIANT: len(w.refState) == len(w.bufs).
 func (w *blobRefValueLivenessWriter) addLiveValue(
 	refID blob.ReferenceID, blockID blob.BlockID, valueID blob.BlockValueID, valueSize uint64,
 ) error {
@@ -137,7 +132,8 @@ type BlobRefLivenessEncoding struct {
 
 // DecodeBlobRefLivenessEncoding decodes a sequence of blob reference liveness
 // encodings from the provided buffer. Each encoding has the format:
-// <block ID> <values size> <n bytes of bitmap> [<bitmap>]
+//
+//	<block ID> <values size> <len of bitmap> [<bitmap>]
 func DecodeBlobRefLivenessEncoding(buf []byte) []BlobRefLivenessEncoding {
 	var encodings []BlobRefLivenessEncoding
 	for len(buf) > 0 {
