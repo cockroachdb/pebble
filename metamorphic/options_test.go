@@ -150,7 +150,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	for i := 0; i < 100; i++ {
 		t.Run(fmt.Sprintf("random-%03d", i), func(t *testing.T) {
-			o := RandomOptions(rng, TestkeysKeyFormat, nil)
+			o := RandomOptions(rng, TestkeysKeyFormat, RandomOptionsCfg{})
 			checkOptions(t, o)
 		})
 	}
