@@ -1068,6 +1068,9 @@ func TestCompaction(t *testing.T) {
 				return runLSMCmd(td, d)
 
 			case "metrics":
+				d.mu.Lock()
+				d.waitTableStatsInitialLoad()
+				d.mu.Unlock()
 				m := d.Metrics()
 				return m.StringForTests()
 
