@@ -1,0 +1,89 @@
+# Generate sstables with sequential, non-overlapping keys. When we trigger a compaction
+# from L0 to Lbase, we expect all the compactions to be moves, since there are no
+# overlapping keys being written.
+define l0-compaction-threshold=1 auto-compactions=off
+----
+
+
+populate keylen=4 timestamps=(1) vallen=64
+----
+wrote 475254 keys
+
+
+flush
+----
+L0.0:
+  000005:[a@1#10,SET-boao@1#28148,SET]
+  000006:[boap@1#28149,SET-dcbc@1#56285,SET]
+  000007:[dcbd@1#56286,SET-eqbu@1#84424,SET]
+  000008:[eqbv@1#84425,SET-gecj@1#112562,SET]
+  000009:[geck@1#112563,SET-hsda@1#140701,SET]
+  000010:[hsdb@1#140702,SET-jgdq@1#168839,SET]
+  000011:[jgdr@1#168840,SET-kueg@1#196977,SET]
+  000012:[kueh@1#196978,SET-miev@1#225114,SET]
+  000013:[miew@1#225115,SET-nwfl@1#253252,SET]
+  000014:[nwfm@1#253253,SET-pkga@1#281390,SET]
+  000015:[pkgb@1#281391,SET-qygs@1#309529,SET]
+  000016:[qygt@1#309530,SET-smhh@1#337667,SET]
+  000017:[smhi@1#337668,SET-uahw@1#365804,SET]
+  000018:[uahx@1#365805,SET-voim@1#393942,SET]
+  000019:[voin@1#393943,SET-xcjb@1#422080,SET]
+  000020:[xcjc@1#422081,SET-yqjt@1#450219,SET]
+  000021:[yqju@1#450220,SET-zzzz@1#475263,SET]
+
+
+auto-compact count=17
+----
+L6:
+  000005:[a@1#10,SET-boao@1#28148,SET]
+  000006:[boap@1#28149,SET-dcbc@1#56285,SET]
+  000007:[dcbd@1#56286,SET-eqbu@1#84424,SET]
+  000008:[eqbv@1#84425,SET-gecj@1#112562,SET]
+  000009:[geck@1#112563,SET-hsda@1#140701,SET]
+  000010:[hsdb@1#140702,SET-jgdq@1#168839,SET]
+  000011:[jgdr@1#168840,SET-kueg@1#196977,SET]
+  000012:[kueh@1#196978,SET-miev@1#225114,SET]
+  000013:[miew@1#225115,SET-nwfl@1#253252,SET]
+  000014:[nwfm@1#253253,SET-pkga@1#281390,SET]
+  000015:[pkgb@1#281391,SET-qygs@1#309529,SET]
+  000016:[qygt@1#309530,SET-smhh@1#337667,SET]
+  000017:[smhi@1#337668,SET-uahw@1#365804,SET]
+  000018:[uahx@1#365805,SET-voim@1#393942,SET]
+  000019:[voin@1#393943,SET-xcjb@1#422080,SET]
+  000020:[xcjc@1#422081,SET-yqjt@1#450219,SET]
+  000021:[yqju@1#450220,SET-zzzz@1#475263,SET]
+
+
+metrics
+----
+      |                             |                |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B       0 |    -    0    0 |  33MB |     0     0B |     0     0B |    17   34MB |    0B |   0 1.02
+    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    6 |    17   34MB     0B       0 |    - 0.53 0.53 |    0B |     0     0B |    17   34MB |     0     0B |    0B |   1    0
+total |    17   34MB     0B       0 |    -    -    - |  33MB |     0     0B |    17   34MB |    17   67MB |    0B |   1 2.02
+----------------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (0B)  in: 33MB  written: 33MB (0% overhead)
+Flushes: 2
+Compactions: 17  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
+             default: 0  delete: 0  elision: 0  move: 17  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
+MemTables: 1 (512KB)  zombie: 1 (512KB)
+Zombie tables: 0 (0B, local: 0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Local tables size: 34MB
+Compression types: snappy: 17
+Table stats: all loaded
+Block cache: 3.3K entries (7.0MB)  hit rate: 0.1%
+File cache: 17 tables, 0 blobfiles (4.6KB)  hit rate: 97.4%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
+Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B

@@ -527,29 +527,26 @@ func (pc *pickedTableCompaction) growL0ForBase(cmp base.Compare, maxExpandedByte
 			panic(fmt.Sprintf("pc.startLevel.level is %d, expected 0", pc.startLevel.level))
 		}
 	}
+
+	if pc.outputLevel.files.Empty() {
+		// If there are no overlapping fields in the output level, we do not
+		// attempt to expand the compaction to encourage move compactions.
+		return false
+	}
+
 	smallestBaseKey := base.InvalidInternalKey
 	largestBaseKey := base.InvalidInternalKey
-	if pc.outputLevel.files.Empty() {
-		baseIter := pc.version.Levels[pc.outputLevel.level].Iter()
-		if sm := baseIter.SeekLT(cmp, pc.bounds.Start); sm != nil {
+	// NB: We use Reslice to access the underlying level's files, but
+	// we discard the returned slice. The pc.outputLevel.files slice
+	// is not modified.
+	_ = pc.outputLevel.files.Reslice(func(start, end *manifest.LevelIterator) {
+		if sm := start.Prev(); sm != nil {
 			smallestBaseKey = sm.Largest()
 		}
-		if la := baseIter.SeekGE(cmp, pc.bounds.End.Key); la != nil {
+		if la := end.Next(); la != nil {
 			largestBaseKey = la.Smallest()
 		}
-	} else {
-		// NB: We use Reslice to access the underlying level's files, but
-		// we discard the returned slice. The pc.outputLevel.files slice
-		// is not modified.
-		_ = pc.outputLevel.files.Reslice(func(start, end *manifest.LevelIterator) {
-			if sm := start.Prev(); sm != nil {
-				smallestBaseKey = sm.Largest()
-			}
-			if la := end.Next(); la != nil {
-				largestBaseKey = la.Smallest()
-			}
-		})
-	}
+	})
 	oldLcf := pc.lcf.Clone()
 	if !pc.l0Organizer.ExtendL0ForBaseCompactionTo(smallestBaseKey, largestBaseKey, pc.lcf) {
 		return false
