@@ -5,9 +5,13 @@
 package sstable
 
 import (
+	"iter"
 	"maps"
+	"math/rand/v2"
 	"testing"
+	"time"
 
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/stretchr/testify/require"
 )
@@ -76,4 +80,69 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 		// Verify bitmap: 111 (7 in hex).
 		require.Equal(t, uint8(0x7), blocks[0].Bitmap[0])
 	})
+}
+
+func TestBlobRefLivenessEncoding_Randomized(t *testing.T) {
+	const valueSize = uint64(10)
+	prng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0))
+	w := blobRefValueLivenessWriter{}
+
+	collectSlice := func(i iter.Seq2[blob.ReferenceID, []byte]) [][]byte {
+		var s [][]byte
+		for _, enc := range i {
+			s = append(s, enc)
+		}
+		return s
+	}
+
+	for range 20 {
+		w.init()
+		numRefs := testutils.RandIntInRange(prng, 1, 10)
+		for refID := range numRefs {
+			numBlocks := testutils.RandIntInRange(prng, 1, 6)
+			currentBlockID := blob.BlockID(testutils.RandIntInRange(prng, 0, 4))
+
+			for range numBlocks {
+				// Generate blockIDs that are increasing -- with occasional
+				// duplicates. Allow a 70% chance to repeat the previous block
+				// ID.
+				if prng.Float64() < 0.3 {
+					currentBlockID += blob.BlockID(testutils.RandIntInRange(prng, 1, 4))
+				}
+				numValues := testutils.RandIntInRange(prng, 10, 101)
+				currentValueID := blob.BlockValueID(testutils.RandIntInRange(prng, 0, 4))
+				for range numValues {
+					require.NoError(t, w.addLiveValue(
+						blob.ReferenceID(refID),
+						currentBlockID,
+						currentValueID,
+						valueSize,
+					))
+					currentValueID += blob.BlockValueID(testutils.RandIntInRange(prng, 1, 4))
+				}
+			}
+		}
+		encoded := collectSlice(w.finish())
+
+		// Test the encoding/decoding roundtrip to ensure idempotence.
+		// Reinitialize the writer before reconstructing values.
+		w.init()
+		for refID, blockEnc := range encoded {
+			for _, block := range DecodeBlobRefLivenessEncoding(blockEnc) {
+				// Reconstruct the live values from the bitmap and add them to
+				// the writer.
+				for valueID := range IterSetBitsInRunLengthBitmap(block.Bitmap) {
+					require.NoError(t, w.addLiveValue(
+						blob.ReferenceID(refID),
+						block.BlockID,
+						blob.BlockValueID(valueID),
+						valueSize,
+					))
+				}
+			}
+		}
+
+		reencoded := collectSlice(w.finish())
+		require.Equal(t, encoded, reencoded)
+	}
 }
