@@ -646,9 +646,8 @@ add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=z
 set-concurrent-compactions max=2
 ----
 
-async-compact a-b L3
+compact a-b L3
 ----
-manual compaction did not block for ongoing
 L4:
   000012:[a#0,SET-a#0,SET]
   000013:[b#0,SET-b#0,SET]

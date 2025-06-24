@@ -1113,18 +1113,12 @@ func TestCompaction(t *testing.T) {
 					close(ch)
 				}()
 
-				manualDone := func() bool {
+				// Wait until the manual compaction is queued.
+				err := try(100*time.Microsecond, 20*time.Second, func() error {
 					select {
 					case <-ch:
-						return true
+						td.Fatalf(t, "manual compaction did not block for ongoing\n%s", s)
 					default:
-						return false
-					}
-				}
-
-				err := try(100*time.Microsecond, 20*time.Second, func() error {
-					if manualDone() {
-						return nil
 					}
 
 					d.mu.Lock()
@@ -1138,8 +1132,11 @@ func TestCompaction(t *testing.T) {
 					return err.Error()
 				}
 
-				if manualDone() {
-					return "manual compaction did not block for ongoing\n" + s
+				// Make sure the manual compaction doesn't complete.
+				select {
+				case <-ch:
+					td.Fatalf(t, "manual compaction did not block for ongoing\n%s", s)
+				case <-time.After(10 * time.Millisecond):
 				}
 
 				d.mu.Lock()
@@ -1216,7 +1213,7 @@ func TestCompaction(t *testing.T) {
 					return err.Error()
 				}
 				if compDone {
-					return "manual compaction did not block for ongoing\n" + s
+					td.Fatalf(t, "manual compaction did not block for ongoing\n%s", s)
 				}
 				// Cancel the manual compaction.
 				(*cancelFunc.Load())()
