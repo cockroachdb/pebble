@@ -93,6 +93,7 @@ var testProps = Properties{
 	NumValuesInValueBlocks: 23,
 	PropertyCollectorNames: "prefix collector names",
 	TopLevelIndexSize:      27,
+	CompressionStats:       "Snappy:1024/2048",
 	UserProperties: map[string]string{
 		"user-prop-a": "1",
 		"user-prop-b": "2",

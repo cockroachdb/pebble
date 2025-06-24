@@ -37,7 +37,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 328895
+range-deletions-bytes-estimate: 328905
 
 scores
 ----
@@ -80,7 +80,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       780B     0.00     0.01           0.01
+L5       816B     0.00     0.01           0.01
 L6       321KB    1.11     1.11           1.11
 
 enable-table-stats
@@ -103,7 +103,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       780B     0.01     0.01           2.51
+L5       816B     0.01     0.01           2.51
 L6       321KB    1.11     1.11           1.11
 
 # Run a similar test as above, but this time the table containing the DELs is
@@ -212,11 +212,11 @@ L6       386KB    0.00     0.42           0.42
 lsm verbose
 ----
 L5:
-  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET] size:525403
-  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET] size:131858
+  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET] size:525413
+  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET] size:131868
 L6:
-  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET] size:263255
-  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET] size:131858
+  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET] size:263265
+  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET] size:131868
 
 # Attempting to schedule a compaction should begin a L5->L6 compaction.
 
