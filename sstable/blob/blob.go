@@ -211,9 +211,11 @@ func (w *FileWriter) ForceFlush() {
 	w.flush()
 }
 
-// ShouldFlush returns true if the current block should be flushed.
-func (w *FileWriter) ShouldFlush(sizeBefore, sizeAfter int) bool {
-	return w.flushGov.ShouldFlush(sizeBefore, sizeAfter)
+// ShouldFlush returns true if the current block should be flushed before adding
+// newDataBytes of data.
+func (w *FileWriter) ShouldFlushBefore(newDataBytes int) bool {
+	size := w.valuesEncoder.size() + block.TrailerLen
+	return w.flushGov.ShouldFlush(size, size+newDataBytes)
 }
 
 // flush flushes the current block to the write queue.

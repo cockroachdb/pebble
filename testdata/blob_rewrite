@@ -62,13 +62,11 @@ rewrite-blob 000002 000001 000003
 # read-at(736, 77): 000001.sst
 # read-at(209, 527): 000001.sst
 # read-at(184, 25): 000001.sst
-# close: 000001.sst
 # open: 000003.sst (options: *vfs.randomReadsOption)
 # read-at(828, 61): 000003.sst
 # read-at(751, 77): 000003.sst
 # read-at(193, 558): 000003.sst
 # read-at(168, 25): 000003.sst
-# close: 000003.sst
 # open: 000002.blob (options: *vfs.randomReadsOption)
 # read-at(67, 38): 000002.blob
 # read-at(37, 30): 000002.blob
@@ -78,3 +76,4 @@ rewrite-blob 000002 000001 000003
 Successfully rewrote blob file 000002 to 000004
 Input SSTables: [000001 000003]
 SSTables with blob references: 2
+{BlockCount: 1, ValueCount: 4, UncompressedValueBytes: 30, FileLen: 123}

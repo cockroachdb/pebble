@@ -1,7 +1,7 @@
 # Test a simple sequence of flushes and compactions where all values are
 # separated.
 
-define value-separation=(true, 1, 3)
+define value-separation=(true, 1, 3, 0, 1.0)
 ----
 
 batch
@@ -55,7 +55,7 @@ compact a-d
 # and the value separation policy is configured to limit the blob reference
 # depth to 3.
 
-define verbose value-separation=(true, 3, 3)
+define verbose value-separation=(true, 3, 3, 0s, 1.0)
 L6 blob-depth=3
   a.SET.0:a
   b.SET.0:blob{fileNum=100002 value=bar}
@@ -154,7 +154,7 @@ Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtabl
 
 # Set the minimum size for a separated value to 5.
 
-define value-separation=(true, 5, 3)
+define value-separation=(true, 5, 3, 0s, 1.0)
 ----
 
 batch
@@ -204,7 +204,7 @@ w:world
 
 # Configure the database to require keys in the range [a,m) to be in-place.
 
-define required-in-place=(a,m) value-separation=(true,1,3)
+define required-in-place=(a,m) value-separation=(true,1,3,0s,1.0)
 ----
 
 batch
@@ -231,7 +231,7 @@ Blob files:
 # references. Because these files overlap and are in separate sublevels, a
 # compaction that preserves blob references should sum their depths.
 
-define value-separation=(true,1,5) l0-compaction-threshold=2
+define value-separation=(true,1,5,0s,1.0) l0-compaction-threshold=2
 L0 blob-depth=1
   a.SET.9:a
   d.SET.9:blob{fileNum=100001 value=d}
@@ -267,7 +267,7 @@ Blob files:
 # sublevel, a compaction that preserves blob references should take the MAX of
 # their depths.
 
-define value-separation=(true,1,5) l0-compaction-threshold=2
+define value-separation=(true,1,5,0s,1.0) l0-compaction-threshold=2
 L0 blob-depth=1
   a.SET.9:a
   d.SET.9:blob{fileNum=100001 value=d}
@@ -297,7 +297,68 @@ Blob files:
   B100003 physical:{100003 size:[92 (92B)] vals:[3 (3B)]}
   B100004 physical:{100004 size:[92 (92B)] vals:[3 (3B)]}
 
-define value-separation=(true,5,5) l0-compaction-threshold=1
+
+# Configure a database with a minimum rewrite age of 0s (no delay) and a target
+# garbage ratio of 0.0 (no garbage). With this configuration, any blob file that
+# contains any unreferenced values should be immediately compacted.
+
+define value-separation=(true,1,2,0s,0.0)
+----
+
+batch
+set a apple
+set b banana
+set c coconut
+set d dragonfruit
+set e elderberry
+set f fig
+set g grapefruit
+set h honeydew
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-h#17,SET] seqnums:[10-17] points:[a#10,SET-h#17,SET] size:893 blobrefs:[(B000006: 60); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[156 (156B)] vals:[60 (60B)]}
+
+# Overwrite the value of the key 'c'.
+
+batch
+set c cherry
+----
+
+flush
+----
+L0.1:
+  000008:[c#18,SET-c#18,SET] seqnums:[18-18] points:[c#18,SET-c#18,SET] size:817 blobrefs:[(B000009: 6); depth:1]
+L0.0:
+  000005:[a#10,SET-h#17,SET] seqnums:[10-17] points:[a#10,SET-h#17,SET] size:893 blobrefs:[(B000006: 60); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[156 (156B)] vals:[60 (60B)]}
+  B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
+
+# Compacting the two sstables will result in 'coconut' in the first blob file
+# becoming unreferenced.
+
+compact a-b
+----
+L6:
+  000010:[a#0,SET-h#0,SET] seqnums:[0-0] points:[a#0,SET-h#0,SET] size:871 blobrefs:[(B000006: 53), (B000009: 6); depth:2]
+Blob files:
+  B000006 physical:{000006 size:[156 (156B)] vals:[60 (60B)]}
+  B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
+
+auto-compact
+----
+L6:
+  000010:[a#0,SET-h#0,SET] seqnums:[0-0] points:[a#0,SET-h#0,SET] size:871 blobrefs:[(B000006: 53), (B000009: 6); depth:2]
+Blob files:
+  B000006 physical:{000011 size:[150 (150B)] vals:[53 (53B)]}
+  B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
+
+define value-separation=(true,5,5,0s,1.0) l0-compaction-threshold=1
 ----
 
 # Test writing a non-trivial amount of data. With a key length of 4, we'll write

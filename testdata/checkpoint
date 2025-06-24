@@ -861,7 +861,7 @@ L6:
 # Create a new database with value separation enabled to test that blob files
 # are included in checkpoints.
 
-open valsepdb value-separation=(true,1,5)
+open valsepdb value-separation=(true,1,5,0s,1.0)
 ----
 mkdir-all: valsepdb 0755
 open-dir: .

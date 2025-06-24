@@ -267,11 +267,13 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 						break
 					}
 					fmt.Fprintf(&b, "L%d->L%d: %.1f\n", pc.startLevel.level, pc.outputLevel.level, pc.score)
+					bounds := pc.bounds.Clone()
 					inProgress = append(inProgress, compactionInfo{
 						inputs:      pc.inputs,
 						outputLevel: pc.outputLevel.level,
-						bounds:      pc.bounds.Clone(),
+						bounds:      &bounds,
 					})
+
 					if pc.outputLevel.level == 0 {
 						// Once we pick one L0->L0 compaction, we'll keep on doing so
 						// because the test isn't marking files as Compacting.
@@ -520,7 +522,13 @@ func TestCompactionPickerL0(t *testing.T) {
 							return fmt.Sprintf("cannot find compaction file %s", tableNum)
 						}
 						compactFile.CompactionState = manifest.CompactionStateCompacting
-						info.bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
+						var bounds base.UserKeyBounds
+						if info.bounds != nil {
+							bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
+						} else {
+							bounds = compactFile.UserKeyBounds()
+						}
+						info.bounds = &bounds
 						compactionFiles[level] = append(compactionFiles[level], compactFile)
 					}
 				}
@@ -745,7 +753,13 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 							return fmt.Sprintf("cannot find compaction file %s", tableNum)
 						}
 						compactFile.CompactionState = manifest.CompactionStateCompacting
-						info.bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
+						var bounds base.UserKeyBounds
+						if info.bounds != nil {
+							bounds = info.bounds.Union(DefaultComparer.Compare, compactFile.UserKeyBounds())
+						} else {
+							bounds = compactFile.UserKeyBounds()
+						}
+						info.bounds = &bounds
 						compactionFiles[level] = append(compactionFiles[level], compactFile)
 					}
 				}
