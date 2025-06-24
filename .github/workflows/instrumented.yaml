@@ -49,7 +49,7 @@ jobs:
       - run: GOTRACEBACK=all make testrace TAGS=
 
       - name: Post issue on failure
-        if: failure() && inputs.file_issue
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
@@ -73,7 +73,7 @@ jobs:
       - run: make testasan
 
       - name: Post issue on failure
-        if: failure() && inputs.file_issue
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
@@ -97,7 +97,7 @@ jobs:
       - run: make testmsan
 
       - name: Post issue on failure
-        if: failure() && inputs.file_issue
+        if: failure() && inputs.file_issue_branch != ''
         id: create-or-update-unique-issue
         uses: ./.github/actions/post-issue
         with:
