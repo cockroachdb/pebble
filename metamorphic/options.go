@@ -640,11 +640,18 @@ enabled = false
 	return opts
 }
 
+// RandomOptionsCfg contains knobs that can tweak RandomOptions.
+// The zero value is the default.
+type RandomOptionsCfg struct {
+	CustomOptionParsers map[string]func(string) (CustomOption, bool)
+	AlwaysStrictFS      bool
+	NoRemoteStorage     bool
+	NoWALFailover       bool
+}
+
 // RandomOptions generates a random set of operations, drawing randomness from
 // rng.
-func RandomOptions(
-	rng *rand.Rand, kf KeyFormat, customOptionParsers map[string]func(string) (CustomOption, bool),
-) *TestOptions {
+func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOptions {
 	testOpts := defaultTestOptions(kf)
 	opts := testOpts.Opts
 
@@ -664,7 +671,7 @@ func RandomOptions(
 			fmt.Fprintln(&privateOpts, `  disable_lazy_combined_iteration=true`)
 		}
 		if privateOptsStr := privateOpts.String(); privateOptsStr != `[Options]\n` {
-			if err := parseOptions(testOpts, privateOptsStr, customOptionParsers); err != nil {
+			if err := parseOptions(testOpts, privateOptsStr, cfg.CustomOptionParsers); err != nil {
 				panic(err)
 			}
 		}
@@ -715,7 +722,7 @@ func RandomOptions(
 	}
 
 	// Half the time enable WAL failover.
-	if rng.IntN(2) == 0 {
+	if !cfg.NoWALFailover && rng.IntN(2) == 0 {
 		// Use 10x longer durations when writing directly to FS; we don't want
 		// WAL failover to trigger excessively frequently.
 		referenceDur := time.Millisecond
@@ -830,7 +837,7 @@ func RandomOptions(
 	// single standard test configuration that uses a disk-backed FS is
 	// sufficient.
 	testOpts.useDisk = false
-	testOpts.strictFS = rng.IntN(2) != 0 // Only relevant for MemFS.
+	testOpts.strictFS = cfg.AlwaysStrictFS || rng.IntN(2) != 0 // Only relevant for MemFS.
 	// 50% of the time, enable IO latency injection.
 	if rng.IntN(2) == 0 {
 		// Note: we want ioLatencyProbability to be at least 1e-10, otherwise it
@@ -867,7 +874,7 @@ func RandomOptions(
 	testOpts.disableValueBlocksForIngestSSTables = rng.IntN(2) == 0
 	testOpts.asyncApplyToDB = rng.IntN(2) != 0
 	// 20% of the time, enable shared storage.
-	if rng.IntN(5) == 0 {
+	if !cfg.NoRemoteStorage && rng.IntN(5) == 0 {
 		testOpts.sharedStorageEnabled = true
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatMinForSharedObjects {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatMinForSharedObjects
@@ -889,7 +896,7 @@ func RandomOptions(
 	}
 
 	// 50% of the time, enable external storage.
-	if rng.IntN(2) == 0 {
+	if !cfg.NoRemoteStorage && rng.IntN(2) == 0 {
 		testOpts.externalStorageEnabled = true
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatSyntheticPrefixSuffix {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatSyntheticPrefixSuffix
