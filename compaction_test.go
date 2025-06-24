@@ -206,7 +206,7 @@ func TestPickCompaction(t *testing.T) {
 				level:     0,
 				baseLevel: 1,
 			},
-			want: "100,110  ",
+			want: "100  ",
 		},
 
 		{
@@ -1365,6 +1365,10 @@ func TestCompaction(t *testing.T) {
 		"compaction_cancellation": {
 			// Run at a specific version, so that a single sstable format is used,
 			// since the test prints the compaction log which includes file sizes.
+			minVersion: formatDeprecatedExperimentalValueSeparation,
+			maxVersion: formatDeprecatedExperimentalValueSeparation,
+		},
+		"l0_to_lbase_compaction": {
 			minVersion: formatDeprecatedExperimentalValueSeparation,
 			maxVersion: formatDeprecatedExperimentalValueSeparation,
 		},
