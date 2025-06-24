@@ -1781,8 +1781,8 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				opts.TargetFileSizes[i] = opts.TargetFileSizes[i-1] * 2
 			}
 		case "value-separation":
-			if len(cmdArg.Vals) != 3 {
-				return errors.New("value-separation-policy expects 3 arguments: (enabled, minimum-size, max-blob-reference-depth)")
+			if len(cmdArg.Vals) != 5 {
+				return errors.New("value-separation expects 5 arguments: (enabled, minimum-size, max-blob-reference-depth, rewrite-minimum-age, target-garbage-ratio)")
 			}
 			var policy ValueSeparationPolicy
 			var err error
@@ -1795,6 +1795,14 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				return err
 			}
 			policy.MaxBlobReferenceDepth, err = strconv.Atoi(cmdArg.Vals[2])
+			if err != nil {
+				return err
+			}
+			policy.RewriteMinimumAge, err = time.ParseDuration(cmdArg.Vals[3])
+			if err != nil {
+				return err
+			}
+			policy.TargetGarbageRatio, err = strconv.ParseFloat(cmdArg.Vals[4], 64)
 			if err != nil {
 				return err
 			}

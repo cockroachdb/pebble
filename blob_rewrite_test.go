@@ -194,7 +194,7 @@ func TestBlobRewrite(t *testing.T) {
 
 				blobWriter := blob.NewFileWriter(fn, outputWritable, blob.FileWriterOptions{})
 				rewriter := newBlobFileRewriter(mockFC, block.ReadEnv{}, blobWriter, sstables, inputBlob)
-				err = rewriter.Rewrite()
+				stats, err := rewriter.Rewrite(context.Background())
 				if err != nil {
 					fmt.Fprintf(&buf, "rewrite error: %v\n", err)
 				} else {
@@ -202,6 +202,7 @@ func TestBlobRewrite(t *testing.T) {
 						targetBlobFileStr, fn.String())
 					fmt.Fprintf(&buf, "Input SSTables: %v\n", sstableFileNums)
 					fmt.Fprintf(&buf, "SSTables with blob references: %d\n", len(sstables))
+					fmt.Fprintln(&buf, stats)
 				}
 
 				return buf.String()

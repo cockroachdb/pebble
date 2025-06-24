@@ -93,9 +93,13 @@ type compactionInfo struct {
 	// been committed. The compaction may still be in-progress deleting newly
 	// obsolete files.
 	versionEditApplied bool
-	inputs             []compactionLevel
-	outputLevel        int
-	bounds             base.UserKeyBounds
+	// kind indicates the kind of compaction.
+	kind        compactionKind
+	inputs      []compactionLevel
+	outputLevel int
+	// bounds may be nil if the compaction does not involve sstables
+	// (specifically, a blob file rewrite).
+	bounds *base.UserKeyBounds
 }
 
 func (info compactionInfo) String() string {
@@ -1448,6 +1452,12 @@ func (p *compactionPickerByScore) pickAutoNonScore(env compactionEnv) (pc picked
 		return pc
 	}
 
+	// Check for blob file rewrites. These are low-priority compactions because
+	// they don't help us keep up with writes, just reclaim disk space.
+	if pc := p.pickBlobFileRewriteCompaction(env); pc != nil {
+		return pc
+	}
+
 	if pc := p.pickReadTriggeredCompaction(env); pc != nil {
 		return pc
 	}
@@ -1660,6 +1670,52 @@ func (p *compactionPickerByScore) pickRewriteCompaction(
 		}
 	}
 	return nil
+}
+
+// pickBlobFileRewriteCompaction looks for compactions of blob files that
+// can be rewritten to reclaim disk space.
+func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
+	env compactionEnv,
+) (pc *pickedBlobFileCompaction) {
+	aggregateStats, heuristicStats := p.latestVersionState.blobFiles.Stats()
+	if heuristicStats.CountFilesEligible == 0 && heuristicStats.CountFilesTooRecent == 0 {
+		// No blob files with any garbage to rewrite.
+		return nil
+	}
+	policy := p.opts.Experimental.ValueSeparationPolicy()
+	if policy.TargetGarbageRatio >= 1.0 {
+		// Blob file rewrite compactions are disabled.
+		return nil
+	}
+	garbagePct := float64(aggregateStats.ValueSize-aggregateStats.ReferencedValueSize) /
+		float64(aggregateStats.ValueSize)
+	if garbagePct <= policy.TargetGarbageRatio {
+		// Not enough garbage to warrant a rewrite compaction.
+		return nil
+	}
+
+	// Check if there is an ongoing blob file rewrite compaction. If there is,
+	// don't schedule a new one.
+	for _, c := range env.inProgressCompactions {
+		if c.kind == compactionKindBlobFileRewrite {
+			return nil
+		}
+	}
+
+	candidate, ok := p.latestVersionState.blobFiles.ReplacementCandidate()
+	if !ok {
+		// None meet the heuristic.
+		return nil
+	}
+	fmt.Printf("picked blob file rewrite compaction for %s\n", candidate.FileID)
+	// Add a reference to the version. The compaction will release the reference
+	// when it completes.
+	p.vers.Ref()
+	return &pickedBlobFileCompaction{
+		vers:              p.vers,
+		file:              candidate,
+		referencingTables: p.latestVersionState.blobFiles.ReferencingTables(candidate.FileID),
+	}
 }
 
 // pickTombstoneDensityCompaction looks for a compaction that eliminates
