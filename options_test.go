@@ -48,6 +48,8 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 			MaxBlobReferenceDepth: rand.IntN(10) + 1,  // [1, 10)
 			// Constrain the rewrite minimum age to [0, 15s).
 			RewriteMinimumAge: time.Duration(rand.IntN(15)) * time.Second,
+			// TODO(jackson): Begin enabling blob file rewrite compactions.
+			TargetGarbageRatio: 1.0,
 		}
 		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
 	}

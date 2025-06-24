@@ -151,6 +151,7 @@ const (
 	compactionKindTombstoneDensity
 	compactionKindRewrite
 	compactionKindIngestedFlushable
+	compactionKindBlobFileRewrite
 )
 
 func (k compactionKind) String() string {
@@ -175,6 +176,8 @@ func (k compactionKind) String() string {
 		return "ingested-flushable"
 	case compactionKindCopy:
 		return "copy"
+	case compactionKindBlobFileRewrite:
+		return "blob-file-rewrite"
 	}
 	return "?"
 }
@@ -410,8 +413,9 @@ func (c *tableCompaction) IsFlush() bool                      { return len(c.flu
 func (c *tableCompaction) Info() compactionInfo {
 	info := compactionInfo{
 		versionEditApplied: c.versionEditApplied,
+		kind:               c.kind,
 		inputs:             c.inputs,
-		bounds:             c.bounds,
+		bounds:             &c.bounds,
 		outputLevel:        -1,
 	}
 	if c.outputLevel != nil {
@@ -1774,7 +1778,8 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// doing a [c,d) excise at the same time as this compaction, we will have
 				// to error out the whole compaction as we can't guarantee it hasn't/won't
 				// write a file overlapping with the excise span.
-				if c2.Bounds().Overlaps(d.cmp, &exciseBounds) {
+				bounds := c2.Bounds()
+				if bounds != nil && bounds.Overlaps(d.cmp, &exciseBounds) {
 					c2.Cancel()
 				}
 			}
@@ -3623,6 +3628,8 @@ func getDiskWriteCategoryForCompaction(opts *Options, kind compactionKind) vfs.D
 		return "sql-row-spill"
 	} else if kind == compactionKindFlush {
 		return "pebble-memtable-flush"
+	} else if kind == compactionKindBlobFileRewrite {
+		return "pebble-blob-file-rewrite"
 	} else {
 		return "pebble-compaction"
 	}

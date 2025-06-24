@@ -52,6 +52,7 @@
   minimum_size=3
   max_blob_reference_depth=10
   rewrite_minimum_age=0s
+  target_garbage_ratio=0.00
 
 [Level "0"]
   block_restart_interval=16
