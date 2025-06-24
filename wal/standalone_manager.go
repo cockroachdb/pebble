@@ -6,6 +6,7 @@ package wal
 
 import (
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -98,9 +99,15 @@ func (m *StandaloneManager) Obsolete(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// If this is the first call to Obsolete after Open, we may have deletable
-	// logs outside the queue.
-	toDelete, m.initialObsolete = m.initialObsolete, nil
+	// If the DB was recently opened, we may have deletable logs outside the
+	// queue.
+	m.initialObsolete = slices.DeleteFunc(m.initialObsolete, func(dl DeletableLog) bool {
+		if dl.NumWAL >= minUnflushedNum {
+			return false
+		}
+		toDelete = append(toDelete, dl)
+		return true
+	})
 
 	i := 0
 	for ; i < len(m.mu.queue); i++ {
