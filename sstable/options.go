@@ -138,8 +138,11 @@ var (
 	ZstdCompression    = block.ZstdCompression
 	// MinLZCompression is only supported with table formats v6+. Older formats
 	// fall back to snappy.
-	MinLZCompression   = block.MinLZCompression
-	FastestCompression = block.FastestCompression
+	MinLZCompression    = block.MinLZCompression
+	FastestCompression  = block.FastestCompression
+	FastCompression     = block.FastCompression
+	BalancedCompression = block.BalancedCompression
+	GoodCompression     = block.GoodCompression
 )
 
 // WriterOptions holds the parameters used to control building an sstable.

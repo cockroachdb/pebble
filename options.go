@@ -1301,28 +1301,32 @@ type DBCompressionSettings struct {
 
 // Predefined compression settings.
 var (
-	DBCompressionNone     = UniformDBCompressionSettings("NoCompression", block.NoCompression)
-	DBCompressionFastest  = UniformDBCompressionSettings("Fastest", block.FastestCompression)
+	DBCompressionNone     = UniformDBCompressionSettings(block.NoCompression)
+	DBCompressionFastest  = UniformDBCompressionSettings(block.FastestCompression)
 	DBCompressionBalanced = func() DBCompressionSettings {
-		profile := UniformDBCompressionSettings("Balanced", block.FastestCompression)
-		profile.Levels[manifest.NumLevels-2] = block.FastCompression     // Zstd1 for value blocks.
-		profile.Levels[manifest.NumLevels-1] = block.BalancedCompression // Zstd1 for data blocks, Zstd3 for value blocks.
-		return profile
+		cs := DBCompressionSettings{Name: "Balanced"}
+		for i := 0; i < manifest.NumLevels-2; i++ {
+			cs.Levels[i] = block.FastestCompression
+		}
+		cs.Levels[manifest.NumLevels-2] = block.FastCompression     // Zstd1 for value blocks.
+		cs.Levels[manifest.NumLevels-1] = block.BalancedCompression // Zstd1 for data and value blocks.
+		return cs
 	}()
 	DBCompressionGood = func() DBCompressionSettings {
-		profile := UniformDBCompressionSettings("Good", block.FastestCompression)
-		profile.Levels[manifest.NumLevels-2] = block.BalancedCompression // Zstd1 for data blocks, Zstd3 for value blocks.
-		profile.Levels[manifest.NumLevels-1] = block.GoodCompression     // Zstd3 for data and value blocks.
-		return profile
+		cs := DBCompressionSettings{Name: "Good"}
+		for i := 0; i < manifest.NumLevels-2; i++ {
+			cs.Levels[i] = block.FastestCompression
+		}
+		cs.Levels[manifest.NumLevels-2] = block.BalancedCompression // Zstd1 for data and value blocks.
+		cs.Levels[manifest.NumLevels-1] = block.GoodCompression     // Zstd3 for data and value blocks.
+		return cs
 	}()
 )
 
 // UniformDBCompressionSettings returns a DBCompressionSettings which uses the
 // same compression profile on all LSM levels.
-func UniformDBCompressionSettings(
-	name string, profile *block.CompressionProfile,
-) DBCompressionSettings {
-	cs := DBCompressionSettings{Name: name}
+func UniformDBCompressionSettings(profile *block.CompressionProfile) DBCompressionSettings {
+	cs := DBCompressionSettings{Name: profile.Name}
 	for i := range cs.Levels {
 		cs.Levels[i] = profile
 	}
