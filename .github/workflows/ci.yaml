@@ -63,6 +63,19 @@ jobs:
 
       - run: GOTRACEBACK=all make test TAGS=
 
+  linux-no-cgo:
+    name: go-linux-no-cgo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - run: GOTRACEBACK=all make testnocgo
+
   linux-race:
     name: linux-race
     runs-on: ubuntu-latest

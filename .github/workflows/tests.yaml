@@ -171,7 +171,7 @@ jobs:
         with:
           go-version: ${{ inputs.go_version }}
 
-      - run: GOTRACEBACK=all CGO_ENABLED=0 make test TAGS=
+      - run: GOTRACEBACK=all make testnocgo
 
       - name: Post issue on failure
         if: failure() && inputs.file_issue_branch != ''
