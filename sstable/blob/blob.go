@@ -162,19 +162,21 @@ func (w *FileWriter) AddValue(v []byte) Handle {
 	}
 }
 
-// BeginNewVirtualBlock adds a virtual block mapping to the current physical
+// beginNewVirtualBlock adds a virtual block mapping to the current physical
 // block and valueID offset within the block.
 //
-// When a blob file is rewritten, BeginNewVirtualBlock is called for each block
+// When a blob file is rewritten, beginNewVirtualBlock is called for each block
 // in the original blob file before adding any of the block's extant values.
-// BeginNewVirtualBlock records a mapping from the original block ID (referred
+// beginNewVirtualBlock records a mapping from the original block ID (referred
 // to as a virtual block) to a tuple of the physical block index and the offset
 // of the BlockValueIDs within the new physical block.
 //
 // This mapping is used by readers to determine which physical block contains a
 // given virtual block, and how to map BlockValueIDs from the given virtual
 // block to BlockValueIDs in the physical block.
-func (w *FileWriter) BeginNewVirtualBlock(vblockID BlockID) {
+func (w *FileWriter) beginNewVirtualBlock(vblockID BlockID) {
+	// TODO(jackson): Update tests to use the blob.FileRewriter type and move this
+	// into the FileRewriter.
 	w.indexEncoder.AddVirtualBlockMapping(vblockID, int(w.stats.BlockCount),
 		BlockValueID(w.valuesEncoder.Count()))
 }
@@ -195,27 +197,17 @@ func (w *FileWriter) EstimatedSize() uint64 {
 	return sz
 }
 
-// ForceFlush flushes the current block to the write queue. Writers should
-// generally not call ForceFlush, and instead let the heuristics configured
+// FlushForTesting flushes the current block to the write queue. Writers should
+// generally not call FlushForTesting, and instead let the heuristics configured
 // through FileWriterOptions handle flushing.
 //
-// For blob file rewriting, ForceFlush needs to be called to ensure that there
-// is a 1:1 remapping of virtual blocks to physical blocks.
-//
-// Otherwise, it's exposed so that tests can force flushes to construct blob
-// files with arbitrary structures.
-func (w *FileWriter) ForceFlush() {
+// It's exposed so that tests can force flushes to construct blob files with
+// arbitrary structures.
+func (w *FileWriter) FlushForTesting() {
 	if w.valuesEncoder.Count() == 0 {
 		return
 	}
 	w.flush()
-}
-
-// ShouldFlush returns true if the current block should be flushed before adding
-// newDataBytes of data.
-func (w *FileWriter) ShouldFlushBefore(newDataBytes int) bool {
-	size := w.valuesEncoder.size() + block.TrailerLen
-	return w.flushGov.ShouldFlush(size, size+newDataBytes)
 }
 
 // flush flushes the current block to the write queue.

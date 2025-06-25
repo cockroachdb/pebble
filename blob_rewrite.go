@@ -280,14 +280,20 @@ func (d *DB) runBlobFileRewriteLocked(
 		Path:    d.objProvider.Path(objMeta),
 		FileNum: objMeta.DiskFileNum,
 	})
-	// Initialize a blob file writer. We pass L6 to MakeBlobWriterOptions.
+	// Initialize a blob file rewriter. We pass L6 to MakeBlobWriterOptions.
 	// There's no single associated level with a blob file. A long-lived blob
 	// file that gets rewritten is likely to mostly be referenced from L6.
 	// TODO(jackson): Consider refactoring to remove the level association.
-	writer := blob.NewFileWriter(newDiskFileNum, writable, d.opts.MakeBlobWriterOptions(6))
-
+	rewriter := newBlobFileRewriter(
+		d.fileCache,
+		env,
+		newDiskFileNum,
+		writable,
+		d.opts.MakeBlobWriterOptions(6),
+		c.referencingTables,
+		c.input,
+	)
 	// Perform the rewrite.
-	rewriter := newBlobFileRewriter(d.fileCache, env, writer, c.referencingTables, c.input)
 	stats, err := rewriter.Rewrite(ctx)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
@@ -361,51 +367,35 @@ type blockValues struct {
 	liveValueIDs []int
 }
 
-// blobFileMapping implements blob.FileMapping to always map to the input blob
-// file.
-type blobFileMapping struct {
-	fileNum base.DiskFileNum
-}
-
-// Assert that (*blobFileMapping) implements blob.FileMapping.
-var _ blob.FileMapping = (*blobFileMapping)(nil)
-
-func (m *blobFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
-	return m.fileNum, true
-}
-
 // blobFileRewriter is responsible for rewriting blob files by combining and
 // processing blob reference liveness encodings from multiple SSTables. It
 // maintains state for writing to an output blob file.
 type blobFileRewriter struct {
-	fc       *fileCacheHandle
-	env      block.ReadEnv
-	sstables []*manifest.TableMetadata
-
-	inputBlob    manifest.BlobFileMetadata
-	valueFetcher blob.ValueFetcher
-	fileMapping  blobFileMapping
-	blkHeap      blockHeap
-
-	// Current blob writer state.
-	writer *blob.FileWriter
+	fc        *fileCacheHandle
+	readEnv   block.ReadEnv
+	sstables  []*manifest.TableMetadata
+	inputBlob manifest.BlobFileMetadata
+	rw        *blob.FileRewriter
+	blkHeap   blockHeap
 }
 
 func newBlobFileRewriter(
 	fc *fileCacheHandle,
-	env block.ReadEnv,
-	writer *blob.FileWriter,
+	readEnv block.ReadEnv,
+	outputFileNum base.DiskFileNum,
+	w objstorage.Writable,
+	opts blob.FileWriterOptions,
 	sstables []*manifest.TableMetadata,
 	inputBlob manifest.BlobFileMetadata,
 ) *blobFileRewriter {
+	rw := blob.NewFileRewriter(inputBlob.FileID, inputBlob.Physical.FileNum, fc, readEnv, outputFileNum, w, opts)
 	return &blobFileRewriter{
-		fc:          fc,
-		env:         env,
-		writer:      writer,
-		sstables:    sstables,
-		inputBlob:   inputBlob,
-		fileMapping: blobFileMapping{fileNum: inputBlob.Physical.FileNum},
-		blkHeap:     blockHeap{},
+		fc:        fc,
+		readEnv:   readEnv,
+		rw:        rw,
+		sstables:  sstables,
+		inputBlob: inputBlob,
+		blkHeap:   blockHeap{},
 	}
 }
 
@@ -426,7 +416,7 @@ func (rw *blobFileRewriter) generateHeap() error {
 			return errors.AssertionFailedf("table %s doesn't contain a reference to blob file %s",
 				sst.TableNum, rw.inputBlob.FileID)
 		}
-		err := rw.fc.withReader(ctx, rw.env, sst, func(r *sstable.Reader, readEnv sstable.ReadEnv) error {
+		err := rw.fc.withReader(ctx, rw.readEnv, sst, func(r *sstable.Reader, readEnv sstable.ReadEnv) error {
 			h, err := r.ReadBlobRefIndexBlock(ctx, readEnv.Block)
 			if err != nil {
 				return err
@@ -449,42 +439,8 @@ func (rw *blobFileRewriter) generateHeap() error {
 	return nil
 }
 
-// copyBlockValues copies the live values from the given block to the output
-// blob file, flushing the current block before if necessary.
-func (rw *blobFileRewriter) copyBlockValues(ctx context.Context, finishedBlock blockValues) error {
-	shouldFlush := rw.writer.ShouldFlushBefore(finishedBlock.valuesSize)
-	if shouldFlush {
-		rw.writer.ForceFlush()
-	}
-
-	// Record the mapping from the virtual block ID to the current physical
-	// block and value ID offset.
-	rw.writer.BeginNewVirtualBlock(finishedBlock.blockID)
-	slices.Sort(finishedBlock.liveValueIDs)
-
-	for i, valueID := range finishedBlock.liveValueIDs {
-		if i > 0 && finishedBlock.liveValueIDs[i-1]+1 != valueID {
-			// There's a gap in the referenced value IDs.
-			for missing := finishedBlock.liveValueIDs[i-1] + 1; missing < valueID; missing++ {
-				rw.writer.AddValue(nil)
-			}
-		}
-
-		value, _, err := rw.valueFetcher.Fetch(ctx, rw.inputBlob.FileID, finishedBlock.blockID, blob.BlockValueID(valueID))
-		if err != nil {
-			return err
-		}
-		rw.writer.AddValue(value)
-	}
-	return nil
-}
-
 func (rw *blobFileRewriter) Rewrite(ctx context.Context) (blob.FileWriterStats, error) {
-	rw.valueFetcher.Init(&rw.fileMapping, rw.fc, rw.env)
-	defer func() { _ = rw.valueFetcher.Close() }()
-
-	err := rw.generateHeap()
-	if err != nil {
+	if err := rw.generateHeap(); err != nil {
 		return blob.FileWriterStats{}, err
 	}
 	if rw.blkHeap.Len() == 0 {
@@ -494,7 +450,7 @@ func (rw *blobFileRewriter) Rewrite(ctx context.Context) (blob.FileWriterStats, 
 	// Begin constructing our output blob file. We maintain a map of blockID
 	// to accumulated liveness data across all referencing sstables.
 	firstBlock := heap.Pop(&rw.blkHeap).(*sstable.BlobRefLivenessEncoding)
-	pendingBlock := blockValues{
+	pending := blockValues{
 		blockID:      firstBlock.BlockID,
 		valuesSize:   firstBlock.ValuesSize,
 		liveValueIDs: slices.Collect(sstable.IterSetBitsInRunLengthBitmap(firstBlock.Bitmap)),
@@ -504,21 +460,23 @@ func (rw *blobFileRewriter) Rewrite(ctx context.Context) (blob.FileWriterStats, 
 
 		// If we are encountering a new block, write the last accumulated block
 		// to the blob file.
-		if pendingBlock.blockID != nextBlock.BlockID {
+		if pending.blockID != nextBlock.BlockID {
 			// Write the last accumulated block's values to the blob file.
-			if err := rw.copyBlockValues(ctx, pendingBlock); err != nil {
+			err := rw.rw.CopyBlock(ctx, pending.blockID, pending.valuesSize, pending.liveValueIDs)
+			if err != nil {
 				return blob.FileWriterStats{}, err
 			}
 		}
 		// Update the accumulated encoding for this block.
-		pendingBlock.valuesSize += nextBlock.ValuesSize
-		pendingBlock.liveValueIDs = slices.AppendSeq(pendingBlock.liveValueIDs,
+		pending.valuesSize += nextBlock.ValuesSize
+		pending.liveValueIDs = slices.AppendSeq(pending.liveValueIDs,
 			sstable.IterSetBitsInRunLengthBitmap(nextBlock.Bitmap))
 	}
 
 	// Copy the last accumulated block.
-	if err := rw.copyBlockValues(ctx, pendingBlock); err != nil {
+	err := rw.rw.CopyBlock(ctx, pending.blockID, pending.valuesSize, pending.liveValueIDs)
+	if err != nil {
 		return blob.FileWriterStats{}, err
 	}
-	return rw.writer.Close()
+	return rw.rw.Close()
 }
