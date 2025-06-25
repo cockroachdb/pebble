@@ -192,8 +192,8 @@ func TestBlobRewrite(t *testing.T) {
 				outputWritable, _, err := objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
 				require.NoError(t, err)
 
-				blobWriter := blob.NewFileWriter(fn, outputWritable, blob.FileWriterOptions{})
-				rewriter := newBlobFileRewriter(mockFC, block.ReadEnv{}, blobWriter, sstables, inputBlob)
+				rewriter := newBlobFileRewriter(mockFC, block.ReadEnv{}, fn, outputWritable,
+					blob.FileWriterOptions{}, sstables, inputBlob)
 				stats, err := rewriter.Rewrite(context.Background())
 				if err != nil {
 					fmt.Fprintf(&buf, "rewrite error: %v\n", err)
