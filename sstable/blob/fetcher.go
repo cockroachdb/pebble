@@ -261,6 +261,10 @@ func (cr *cachedReader) GetUnsafeValue(
 		var valueIDOffset BlockValueID
 		if cr.indexBlock.dec.virtualBlockCount > 0 {
 			physicalBlockIndex, valueIDOffset = cr.indexBlock.dec.RemapVirtualBlockID(vh.BlockID)
+			if valueIDOffset == virtualBlockIndexMask {
+				return nil, errors.AssertionFailedf("blob file indicates virtual block ID %d in %s should be unreferenced",
+					vh.BlockID, vh.BlobFileID)
+			}
 		}
 		invariants.CheckBounds(physicalBlockIndex, cr.indexBlock.dec.BlockCount())
 

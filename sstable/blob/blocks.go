@@ -95,8 +95,15 @@ func (e *indexBlockEncoder) AddBlockHandle(h block.Handle) {
 func (e *indexBlockEncoder) AddVirtualBlockMapping(
 	virtualBlockID BlockID, physicalBlockIndex int, valueIDOffset BlockValueID,
 ) {
-	if virtualBlockID != BlockID(e.countVirtualBlocks) {
+	// Require that virtual blocks are added in order.
+	if virtualBlockID < BlockID(e.countVirtualBlocks) {
 		panic(errors.AssertionFailedf("virtual block ID %d is out of order; expected %d", virtualBlockID, e.countVirtualBlocks))
+	}
+	// If there's a gap within the virtual block IDs, we fill in the gap with
+	// entries that clarify these blocks are empty.
+	for id := BlockID(e.countVirtualBlocks); id < virtualBlockID; id++ {
+		e.virtualBlocks.Set(int(id), virtualBlockIndexMask)
+		e.countVirtualBlocks++
 	}
 	e.virtualBlocks.Set(int(virtualBlockID), uint64(physicalBlockIndex)|(uint64(valueIDOffset)<<32))
 	e.countVirtualBlocks++
