@@ -344,6 +344,8 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 			MinimumSize:           5,
 			MaxBlobReferenceDepth: 3,
 			RewriteMinimumAge:     time.Second,
+			// TODO(jackson): Adjust the TargetGarbageRatio to allow blob file rewrites.
+			TargetGarbageRatio: 1.0, // Disabled
 		}
 	}
 
