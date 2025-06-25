@@ -8,19 +8,22 @@ package compression
 
 import (
 	"encoding/binary"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/klauspost/compress/zstd"
 )
 
-type zstdCompressor zstd.Encoder
+type zstdCompressor struct {
+	level   int
+	encoder *zstd.Encoder
+}
 
 var _ Compressor = (*zstdCompressor)(nil)
 
-func getZstdCompressor(level int) *zstdCompressor {
-	writer, _ := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)))
-	return (*zstdCompressor)(writer)
+var zstdCompressorPool = sync.Pool{
+	New: func() any { return &zstdCompressor{} },
 }
 
 // UseStandardZstdLib indicates whether the zstd implementation is a port of the
@@ -39,14 +42,27 @@ func (z *zstdCompressor) Compress(compressedBuf, b []byte) ([]byte, Setting) {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
-	res := (*zstd.Encoder)(z).EncodeAll(b, compressedBuf[:varIntLen])
+	res := z.encoder.EncodeAll(b, compressedBuf[:varIntLen])
 	return res, Setting{Algorithm: Zstd, Level: uint8(z.level)}
 }
 
 func (z *zstdCompressor) Close() {
-	if err := (*zstd.Encoder)(z).Close(); err != nil {
+	if err := z.encoder.Close(); err != nil {
 		panic(err)
 	}
+	z.encoder = nil
+	zstdCompressorPool.Put(z)
+}
+
+func getZstdCompressor(level int) *zstdCompressor {
+	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)))
+	if err != nil {
+		panic(err)
+	}
+	z := zstdCompressorPool.Get().(*zstdCompressor)
+	z.level = level
+	z.encoder = encoder
+	return z
 }
 
 type zstdDecompressor struct{}

@@ -44,6 +44,10 @@ testmsan: testflags += -msan -timeout 20m
 testmsan: TAGS += slowbuild
 testmsan: test
 
+.PHONY: testnocgo
+testnocgo:
+	CGO_ENABLED=0 ${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
+
 .PHONY: testobjiotracing
 testobjiotracing:
 	${GO} test -tags '$(TAGS) pebble_obj_io_tracing' ${testflags} -run ${TESTS} ./objstorage/objstorageprovider/objiotracing
