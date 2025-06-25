@@ -1803,7 +1803,7 @@ func (w *RawRowWriter) rewriteSuffixes(
 	}
 
 	// Copy data blocks in parallel, rewriting suffixes as we go.
-	blocks, err := rewriteDataBlocksInParallel(r, sst, wo, l.Data, from, to, concurrency, func() blockRewriter {
+	blocks, err := rewriteDataBlocksInParallel(r, sst, wo, l.Data, from, to, concurrency, w.layout.compressor.Stats(), func() blockRewriter {
 		return rowblk.NewRewriter(r.Comparer, wo.BlockRestartInterval)
 	})
 	if err != nil {

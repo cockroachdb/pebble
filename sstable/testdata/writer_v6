@@ -235,9 +235,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 548
- ├── meta-index  offset: 968  length: 46
- └── footer  offset: 1019  length: 57
+ ├── properties  offset: 415  length: 580
+ ├── meta-index  offset: 1000  length: 46
+ └── footer  offset: 1051  length: 57
 
 props
 ----
@@ -260,6 +260,7 @@ rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 48
+pebble.compression_stats: Snappy:222/261
 obsolete-key: hex:00
 
 # Exercise the non-Reader layout-decoding codepath.
@@ -274,9 +275,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 548
- ├── meta-index  offset: 968  length: 46
- └── footer  offset: 1019  length: 57
+ ├── properties  offset: 415  length: 580
+ ├── meta-index  offset: 1000  length: 46
+ └── footer  offset: 1051  length: 57
 
 scan
 ----

@@ -1047,6 +1047,7 @@ func (w *RawColumnWriter) Close() (err error) {
 			}
 		}
 
+		w.props.CompressionStats = w.compressor.Stats().String()
 		var toWrite []byte
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		if w.opts.TableFormat >= TableFormatPebblev7 {
@@ -1100,7 +1101,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		return errors.Wrap(err, "reading layout")
 	}
 	// Copy data blocks in parallel, rewriting suffixes as we go.
-	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, func() blockRewriter {
+	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.compressor.Stats(), func() blockRewriter {
 		return colblk.NewDataBlockRewriter(wo.KeySchema, w.comparer)
 	})
 	if err != nil {

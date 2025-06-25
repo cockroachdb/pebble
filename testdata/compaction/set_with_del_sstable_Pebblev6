@@ -88,7 +88,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1494
+range-deletions-bytes-estimate: 1554
 
 compact a-e L1
 ----
@@ -106,7 +106,7 @@ num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 747
+range-deletions-bytes-estimate: 777
 
 # Same as above, except range tombstone covers multiple grandparent file boundaries.
 
