@@ -88,11 +88,11 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 	return compressionIndicatorFromAlgorithm(setting.Algorithm), out
 }
 
-// NoopCompressor is a Compressor that does not compress data. It does not have
-// any state and can be used in parallel.
-var NoopCompressor = &noopCompressor
-
-var noopCompressor = MakeCompressor(NoCompression)
+// UncompressedBlock informs the compressor that a block of the given size and
+// kind was written uncompressed. This is used so that the final statistics are
+// complete.
+func (c *Compressor) UncompressedBlock(size int, kind Kind) {
+}
 
 type Decompressor = compression.Decompressor
 
