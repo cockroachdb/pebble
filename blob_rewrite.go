@@ -456,7 +456,12 @@ func (rw *blobFileRewriter) copyBlockValues(ctx context.Context, finishedBlock b
 	if shouldFlush {
 		rw.writer.ForceFlush()
 	}
+
+	// Record the mapping from the virtual block ID to the current physical
+	// block and value ID offset.
+	rw.writer.BeginNewVirtualBlock(finishedBlock.blockID)
 	slices.Sort(finishedBlock.liveValueIDs)
+
 	for i, valueID := range finishedBlock.liveValueIDs {
 		if i > 0 && finishedBlock.liveValueIDs[i-1]+1 != valueID {
 			// There's a gap in the referenced value IDs.
@@ -489,11 +494,6 @@ func (rw *blobFileRewriter) Rewrite(ctx context.Context) (blob.FileWriterStats, 
 	// Begin constructing our output blob file. We maintain a map of blockID
 	// to accumulated liveness data across all referencing sstables.
 	firstBlock := heap.Pop(&rw.blkHeap).(*sstable.BlobRefLivenessEncoding)
-
-	// Add virtual block mappings for all blocks from 0 to the first block.
-	for blockID := blob.BlockID(0); blockID < firstBlock.BlockID; blockID++ {
-		rw.writer.BeginNewVirtualBlock(blockID)
-	}
 	pendingBlock := blockValues{
 		blockID:      firstBlock.BlockID,
 		valuesSize:   firstBlock.ValuesSize,
@@ -505,11 +505,6 @@ func (rw *blobFileRewriter) Rewrite(ctx context.Context) (blob.FileWriterStats, 
 		// If we are encountering a new block, write the last accumulated block
 		// to the blob file.
 		if pendingBlock.blockID != nextBlock.BlockID {
-			// Add virtual block mappings for all blocks between the last block
-			// we encountered and the current block.
-			for blockID := pendingBlock.blockID; blockID < nextBlock.BlockID; blockID++ {
-				rw.writer.BeginNewVirtualBlock(blockID)
-			}
 			// Write the last accumulated block's values to the blob file.
 			if err := rw.copyBlockValues(ctx, pendingBlock); err != nil {
 				return blob.FileWriterStats{}, err
@@ -522,7 +517,6 @@ func (rw *blobFileRewriter) Rewrite(ctx context.Context) (blob.FileWriterStats, 
 	}
 
 	// Copy the last accumulated block.
-	rw.writer.BeginNewVirtualBlock(pendingBlock.blockID)
 	if err := rw.copyBlockValues(ctx, pendingBlock); err != nil {
 		return blob.FileWriterStats{}, err
 	}
