@@ -193,6 +193,9 @@ type Properties struct {
 	SnapshotPinnedValueSize uint64 `prop:"pebble.raw.snapshot-pinned-values.size"`
 	// Size (uncompressed) of the top-level index if kTwoLevelIndexSearch is used.
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
+	// The compression statistics encoded as a string. The format is:
+	// "<setting1>:<compressed1>/<uncompressed1>,<setting2>:<compressed2>/<uncompressed2>,..."
+	CompressionStats string `prop:"pebble.compression_stats"`
 	// User collected properties. Currently, we only use them to store block
 	// properties aggregated at the table level.
 	UserProperties map[string]string
@@ -467,6 +470,9 @@ func (p *Properties) accumulateProps(tblFormat TableFormat) ([]string, map[strin
 	}
 	if p.NumTombstoneDenseBlocks != 0 {
 		p.saveUvarint(m, unsafe.Offsetof(p.NumTombstoneDenseBlocks), p.NumTombstoneDenseBlocks)
+	}
+	if p.CompressionStats != "" {
+		p.saveString(m, unsafe.Offsetof(p.CompressionStats), p.CompressionStats)
 	}
 
 	if tblFormat < TableFormatPebblev1 {

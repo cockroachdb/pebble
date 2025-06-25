@@ -259,7 +259,7 @@ bounds:  [a#1,SET-f#1,SET]
 filenum: 000006
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 6
+  rocksdb.raw.key.size: 5
   rocksdb.raw.value.size: 1
   rocksdb.deleted.keys: 1
   rocksdb.num.range-deletions: 1
@@ -313,7 +313,7 @@ virtualize lower=dd.SET.5 upper=ddd.SET.6 show-props
 bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000008
 props:
-  rocksdb.num.entries: 2
+  rocksdb.num.entries: 1
   rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2
   rocksdb.num.data.blocks: 1
