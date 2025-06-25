@@ -34,7 +34,7 @@ func getZstdCompressor(level int) *zstdCompressor {
 // relies on CGo.
 const UseStandardZstdLib = false
 
-func (z *zstdCompressor) Compress(compressedBuf, b []byte) []byte {
+func (z *zstdCompressor) Compress(compressedBuf, b []byte) ([]byte, Setting) {
 	if len(compressedBuf) < binary.MaxVarintLen64 {
 		compressedBuf = append(compressedBuf, make([]byte, binary.MaxVarintLen64-len(compressedBuf))...)
 	}
