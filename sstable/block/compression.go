@@ -340,10 +340,6 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 // CompressAndChecksum compresses and checksums the provided block, returning
 // the compressed block and its trailer. The result is appended to the dst
 // argument.
-//
-// If the compressed block is not sufficiently smaller than the original block,
-// the compressed payload is discarded and the original, uncompressed block data
-// is used to avoid unnecessary decompression overhead at read time.
 func CompressAndChecksum(
 	dst *[]byte, blockData []byte, blockKind Kind, compressor *Compressor, checksummer *Checksummer,
 ) PhysicalBlock {
@@ -358,6 +354,27 @@ func CompressAndChecksum(
 	return pb
 }
 
+// CopyAndChecksum copies the provided block (without compressing it) and
+// checksums it, returning the physical block. The result is appended to the dst
+// argument.
+//
+// Note that we still need to provide a Compressor so we can inform it of the
+// uncompressed block (for statistics).
+func CopyAndChecksum(
+	dst *[]byte, blockData []byte, blockKind Kind, compressor *Compressor, checksummer *Checksummer,
+) PhysicalBlock {
+	buf := *dst
+	buf = append(buf[:0], blockData...)
+	*dst = buf
+
+	// Calculate the checksum.
+	pb := PhysicalBlock{data: buf}
+	checksum := checksummer.Checksum(buf, byte(NoCompressionIndicator))
+	pb.trailer = MakeTrailer(byte(NoCompressionIndicator), checksum)
+	compressor.UncompressedBlock(len(blockData), blockKind)
+	return pb
+}
+
 // CompressAndChecksumToTempBuffer compresses and checksums the provided block
 // into a TempBuffer. The caller should Release() the TempBuffer once it is no
 // longer necessary.
@@ -367,6 +384,18 @@ func CompressAndChecksumToTempBuffer(
 	// Grab a buffer to use as the destination for compression.
 	compressedBuf := NewTempBuffer()
 	pb := CompressAndChecksum(&compressedBuf.b, blockData, blockKind, compressor, checksummer)
+	return pb, compressedBuf
+}
+
+// CopyAndChecksumToTempBuffer copies (without compressing) and checksums
+// the provided block into a TempBuffer. The caller should Release() the
+// TempBuffer once it is no longer necessary.
+func CopyAndChecksumToTempBuffer(
+	blockData []byte, blockKind Kind, compressor *Compressor, checksummer *Checksummer,
+) (PhysicalBlock, *TempBuffer) {
+	// Grab a buffer to use as the destination for compression.
+	compressedBuf := NewTempBuffer()
+	pb := CopyAndChecksum(&compressedBuf.b, blockData, blockKind, compressor, checksummer)
 	return pb, compressedBuf
 }
 

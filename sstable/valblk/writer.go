@@ -170,7 +170,7 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 	if len(b) != 0 {
 		panic("incorrect length calculation")
 	}
-	pb, bufHandle := block.CompressAndChecksumToTempBuffer(w.buf.Data(), blockkind.Metadata, block.NoopCompressor, &w.checksummer)
+	pb, bufHandle := block.CopyAndChecksumToTempBuffer(w.buf.Data(), blockkind.Metadata, w.compressor, &w.checksummer)
 	if _, err := layout.WriteValueIndexBlock(pb, h); err != nil {
 		return IndexHandle{}, err
 	}
