@@ -50,6 +50,9 @@ func (c *pickedBlobFileCompaction) WaitingCompaction() WaitingCompaction {
 func (c *pickedBlobFileCompaction) ConstructCompaction(
 	d *DB, grantHandle CompactionGrantHandle,
 ) compaction {
+	// Add a reference to the version. The compaction will release the reference
+	// when it completes.
+	c.vers.Ref()
 	return &blobFileRewriteCompaction{
 		beganAt:           d.timeNow(),
 		grantHandle:       grantHandle,
