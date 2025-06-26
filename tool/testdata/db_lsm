@@ -25,7 +25,7 @@ total |     1   709B     0B       0 |    -    -    - |    0B |     0     0B |   
 WAL: 0 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 0
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
 MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -61,7 +61,7 @@ total |     1   709B     0B       0 |    -    -    - |    0B |     0     0B |   
 WAL: 0 files (0B)  in: 0B  written: 0B (0% overhead)
 Flushes: 0
 Compactions: 0  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0
+             default: 0  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  0
 MemTables: 1 (256KB)  zombie: 0 (0B)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)

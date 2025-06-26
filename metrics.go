@@ -222,6 +222,7 @@ type Metrics struct {
 		TombstoneDensityCount int64
 		RewriteCount          int64
 		MultiLevelCount       int64
+		BlobFileRewriteCount  int64
 		CounterLevelCount     int64
 		// An estimate of the number of bytes that need to be compacted for the LSM
 		// to reach a stable state.
@@ -751,7 +752,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.Compact.NumProblemSpans),
 	)
 
-	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  tombstone-density: %d  rewrite: %d  copy: %d  multi-level: %d\n",
+	w.Printf("             default: %d  delete: %d  elision: %d  move: %d  read: %d  tombstone-density: %d  rewrite: %d  copy: %d  multi-level: %d  blob-file-rewrite:  %d\n",
 		redact.Safe(m.Compact.DefaultCount),
 		redact.Safe(m.Compact.DeleteOnlyCount),
 		redact.Safe(m.Compact.ElisionOnlyCount),
@@ -761,6 +762,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(m.Compact.RewriteCount),
 		redact.Safe(m.Compact.CopyCount),
 		redact.Safe(m.Compact.MultiLevelCount),
+		redact.Safe(m.Compact.BlobFileRewriteCount),
 	)
 
 	w.Printf("MemTables: %d (%s)  zombie: %d (%s)\n",
