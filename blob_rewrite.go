@@ -466,6 +466,7 @@ func (rw *blobFileRewriter) Rewrite(ctx context.Context) (blob.FileWriterStats, 
 			if err != nil {
 				return blob.FileWriterStats{}, err
 			}
+			pending = blockValues{blockID: nextBlock.BlockID, liveValueIDs: pending.liveValueIDs[:0]}
 		}
 		// Update the accumulated encoding for this block.
 		pending.valuesSize += nextBlock.ValuesSize
