@@ -291,8 +291,14 @@ func (cr *cachedReader) GetUnsafeValue(
 		cr.currentValueBlock.loaded = true
 	}
 
-	invariants.CheckBounds(int(valueID), cr.currentValueBlock.dec.bd.Rows())
-	v := cr.currentValueBlock.dec.values.Slice(cr.currentValueBlock.dec.values.Offsets(int(valueID)))
+	// Convert the ValueID to an index into the block's values. When a blob file
+	// is first constructed, the ValueID == the index. However when a blob file
+	// is rewritten, multiple blocks from the original blob file may be combined
+	// into the same physical block. To translate the ValueID to the
+	// apppropriate index, we need to add the 'virtual block' valueIDOffset.
+	valueIndex := int(valueID) + int(cr.currentValueBlock.valueIDOffset)
+	invariants.CheckBounds(valueIndex, cr.currentValueBlock.dec.bd.Rows())
+	v := cr.currentValueBlock.dec.values.Slice(cr.currentValueBlock.dec.values.Offsets(valueIndex))
 	return v, nil
 }
 
