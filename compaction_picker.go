@@ -1707,9 +1707,6 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
 		// None meet the heuristic.
 		return nil
 	}
-	// Add a reference to the version. The compaction will release the reference
-	// when it completes.
-	p.vers.Ref()
 	return &pickedBlobFileCompaction{
 		vers:              p.vers,
 		file:              candidate,
