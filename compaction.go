@@ -3527,7 +3527,8 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 func (d *DB) newCompactionOutputTable(
 	jobID JobID, c *tableCompaction, writerOpts sstable.WriterOptions,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, error) {
-	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeTable)
+	writable, objMeta, err := d.newCompactionOutputObj(
+		base.FileTypeTable, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
 	}
@@ -3550,15 +3551,19 @@ func (d *DB) newCompactionOutputTable(
 // newCompactionOutputBlob creates an object for a new blob produced by a
 // compaction or flush.
 func (d *DB) newCompactionOutputBlob(
-	jobID JobID, c *tableCompaction,
+	jobID JobID,
+	kind compactionKind,
+	outputLevel int,
+	bytesWritten *atomic.Int64,
+	opts objstorage.CreateOptions,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
-	writable, objMeta, err := d.newCompactionOutputObj(c, base.FileTypeBlob)
+	writable, objMeta, err := d.newCompactionOutputObj(base.FileTypeBlob, kind, outputLevel, bytesWritten, opts)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
 	d.opts.EventListener.BlobFileCreated(BlobFileCreateInfo{
 		JobID:   int(jobID),
-		Reason:  c.kind.compactingOrFlushing(),
+		Reason:  kind.compactingOrFlushing(),
 		Path:    d.objProvider.Path(objMeta),
 		FileNum: objMeta.DiskFileNum,
 	})
@@ -3567,30 +3572,34 @@ func (d *DB) newCompactionOutputBlob(
 
 // newCompactionOutputObj creates an object produced by a compaction or flush.
 func (d *DB) newCompactionOutputObj(
-	c *tableCompaction, typ base.FileType,
+	typ base.FileType,
+	kind compactionKind,
+	outputLevel int,
+	bytesWritten *atomic.Int64,
+	opts objstorage.CreateOptions,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	diskFileNum := d.mu.versions.getNextDiskFileNum()
 	ctx := context.TODO()
 
 	if objiotracing.Enabled {
-		ctx = objiotracing.WithLevel(ctx, c.outputLevel.level)
-		if c.kind == compactionKindFlush {
+		ctx = objiotracing.WithLevel(ctx, outputLevel)
+		if kind == compactionKindFlush {
 			ctx = objiotracing.WithReason(ctx, objiotracing.ForFlush)
 		} else {
 			ctx = objiotracing.WithReason(ctx, objiotracing.ForCompaction)
 		}
 	}
 
-	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, c.objCreateOpts)
+	writable, objMeta, err := d.objProvider.Create(ctx, typ, diskFileNum, opts)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
 
-	if c.kind != compactionKindFlush {
+	if kind != compactionKindFlush {
 		writable = &compactionWritable{
 			Writable: writable,
 			versions: d.mu.versions,
-			written:  &c.metrics.bytesWritten,
+			written:  bytesWritten,
 		}
 	}
 	return writable, objMeta, nil

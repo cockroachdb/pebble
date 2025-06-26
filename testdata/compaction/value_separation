@@ -135,7 +135,7 @@ total |     1   899B     0B       0 |    -    -    - |   41B |     0     0B |   
 WAL: 1 files (0B)  in: 30B  written: 41B (37% overhead)
 Flushes: 1
 Compactions: 4  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
-             default: 1  delete: 0  elision: 0  move: 3  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 2
+             default: 1  delete: 0  elision: 0  move: 3  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 2  blob-file-rewrite:  0
 MemTables: 1 (256KB)  zombie: 1 (256KB)
 Zombie tables: 0 (0B, local: 0B)
 Backing tables: 0 (0B)
@@ -357,6 +357,41 @@ L6:
 Blob files:
   B000006 physical:{000011 size:[150 (150B)] vals:[53 (53B)]}
   B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
+
+metrics
+----
+      |                             |                |       |   ingested   |     moved    |    written   |       |    amp
+level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w
+------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------
+    0 |     0     0B     0B       0 |    -    0    0 |  156B |     0     0B |     0     0B |     2  1.7KB |    0B |   0 14.5
+    1 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    2 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    3 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    4 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    5 |     0     0B     0B       0 |    -    0    0 |    0B |     0     0B |     0     0B |     0     0B |    0B |   0    0
+    6 |     1   900B     0B       0 |    - 0.00 0.00 | 1.7KB |     0     0B |     0     0B |     1   900B | 1.7KB |   1 0.51
+total |     1   900B     0B       0 |    -    -    - |  156B |     0     0B |     0     0B |     3  2.8KB | 1.7KB |   1 21.3
+----------------------------------------------------------------------------------------------------------------------------
+WAL: 1 files (0B)  in: 126B  written: 156B (24% overhead)
+Flushes: 2
+Compactions: 2  estimated debt: 0B  in progress: 0 (0B)  canceled: 0 (0B)  failed: 0  problem spans: 0
+             default: 1  delete: 0  elision: 0  move: 0  read: 0  tombstone-density: 0  rewrite: 0  copy: 0  multi-level: 0  blob-file-rewrite:  1
+MemTables: 1 (256KB)  zombie: 1 (256KB)
+Zombie tables: 0 (0B, local: 0B)
+Backing tables: 0 (0B)
+Virtual tables: 0 (0B)
+Local tables size: 900B
+Compression types: snappy: 1
+Table stats: all loaded
+Block cache: 6 entries (2.3KB)  hit rate: 48.6%
+File cache: 1 tables, 2 blobfiles (472B)  hit rate: 73.9%
+Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
+Snapshots: 0  earliest seq num: 0
+Table iters: 0
+Filter utility: 0.0%
+Ingestions: 0  as flushable: 0 (0B in 0 tables)
+Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
+
 
 define value-separation=(true,5,5,0s,1.0) l0-compaction-threshold=1
 ----

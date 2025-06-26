@@ -982,10 +982,14 @@ func (vs *versionSet) incrementCompactions(
 	case compactionKindCopy:
 		vs.metrics.Compact.CopyCount++
 
+	case compactionKindBlobFileRewrite:
+		vs.metrics.Compact.BlobFileRewriteCount++
+
 	default:
 		if invariants.Enabled {
 			panic("unhandled compaction kind")
 		}
+
 	}
 	if len(extraLevels) > 0 {
 		vs.metrics.Compact.MultiLevelCount++

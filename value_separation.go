@@ -52,7 +52,8 @@ func (d *DB) determineCompactionValueSeparation(
 	return &writeNewBlobFiles{
 		comparer: d.opts.Comparer,
 		newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
-			return d.newCompactionOutputBlob(jobID, c)
+			return d.newCompactionOutputBlob(
+				jobID, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts)
 		},
 		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
 		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level),

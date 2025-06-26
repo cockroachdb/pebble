@@ -94,6 +94,7 @@ type blobFileRewriteCompaction struct {
 	referencingTables     []*manifest.TableMetadata
 	objCreateOpts         objstorage.CreateOptions
 	internalIteratorStats base.InternalIteratorStats
+	bytesWritten          atomic.Int64 // Total bytes written to the new blob file.
 }
 
 // Assert that *blobFileRewriteCompaction implements the Compaction interface.
@@ -200,6 +201,9 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 		})
 	}
 
+	d.mu.versions.incrementCompactions(compactionKindBlobFileRewrite, nil, c.bytesWritten.Load(), err)
+	d.mu.versions.incrementCompactionBytes(-c.bytesWritten.Load())
+
 	// Update the read state to publish the new version.
 	if err == nil {
 		d.updateReadStateLocked(d.opts.DebugCheck)
@@ -269,17 +273,10 @@ func (d *DB) runBlobFileRewriteLocked(
 	}
 
 	// Create a new file for the rewritten blob file.
-	newDiskFileNum := d.mu.versions.getNextDiskFileNum()
-	writable, objMeta, err := d.objProvider.Create(ctx, base.FileTypeBlob, newDiskFileNum, c.objCreateOpts)
+	writable, objMeta, err := d.newCompactionOutputBlob(jobID, compactionKindBlobFileRewrite, -1, &c.bytesWritten, c.objCreateOpts)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
 	}
-	d.opts.EventListener.BlobFileCreated(BlobFileCreateInfo{
-		JobID:   int(jobID),
-		Reason:  "compaction",
-		Path:    d.objProvider.Path(objMeta),
-		FileNum: objMeta.DiskFileNum,
-	})
 	// Initialize a blob file rewriter. We pass L6 to MakeBlobWriterOptions.
 	// There's no single associated level with a blob file. A long-lived blob
 	// file that gets rewritten is likely to mostly be referenced from L6.
@@ -287,7 +284,7 @@ func (d *DB) runBlobFileRewriteLocked(
 	rewriter := newBlobFileRewriter(
 		d.fileCache,
 		env,
-		newDiskFileNum,
+		objMeta.DiskFileNum,
 		writable,
 		d.opts.MakeBlobWriterOptions(6),
 		c.referencingTables,
@@ -316,7 +313,7 @@ func (d *DB) runBlobFileRewriteLocked(
 			{
 				FileID: c.input.FileID,
 				Physical: &manifest.PhysicalBlobFile{
-					FileNum:      newDiskFileNum,
+					FileNum:      objMeta.DiskFileNum,
 					Size:         stats.FileLen,
 					ValueSize:    stats.UncompressedValueBytes,
 					CreationTime: uint64(d.timeNow().Unix()),
