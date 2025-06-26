@@ -939,11 +939,7 @@ func sizeIfLocal(
 }
 
 func (vs *versionSet) incrementCompactions(
-	kind compactionKind,
-	extraLevels []*compactionLevel,
-	pickerMetrics pickedCompactionMetrics,
-	bytesWritten int64,
-	compactionErr error,
+	kind compactionKind, extraLevels []*compactionLevel, bytesWritten int64, compactionErr error,
 ) {
 	if kind == compactionKindFlush || kind == compactionKindIngestedFlushable {
 		vs.metrics.Flush.Count++

@@ -1816,8 +1816,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 
 	d.clearCompactingState(c, err != nil)
 	delete(d.mu.compact.inProgress, c)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.metrics.picker,
-		c.metrics.bytesWritten.Load(), err)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.metrics.bytesWritten.Load(), err)
 
 	var flushed flushableList
 	if err == nil {
@@ -2726,8 +2725,7 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 	// NB: clearing compacting state must occur before updating the read state;
 	// L0Sublevels initialization depends on it.
 	d.clearCompactingState(c, err != nil)
-	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.metrics.picker,
-		c.metrics.bytesWritten.Load(), err)
+	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.metrics.bytesWritten.Load(), err)
 	d.mu.versions.incrementCompactionBytes(-c.metrics.bytesWritten.Load())
 
 	info.TotalDuration = d.timeNow().Sub(c.metrics.beganAt)
