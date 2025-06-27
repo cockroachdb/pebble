@@ -1283,7 +1283,7 @@ func TestCompaction(t *testing.T) {
 				lower := 1
 				upper := 1
 				td.MaybeScanArgs(t, "max", &upper)
-				td.MaybeScanArgs(t, "range", &lower, upper)
+				td.MaybeScanArgs(t, "range", &lower, &upper)
 				d.opts.CompactionConcurrencyRange = func() (int, int) {
 					return lower, upper
 				}
