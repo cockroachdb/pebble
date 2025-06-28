@@ -158,8 +158,6 @@ find
 testdata/find-val-sep-db
 crdb:eee
 ----
-000004.log
-    eee\x00#14,SET [706967656f6e]
 000008.sst [eee\x00#14,SET-fff\x00#15,SET]
     (flushed to L0)
     eee\x00#14,SET [(f0,blk0,id0,len6)]
@@ -195,8 +193,6 @@ testdata/find-val-sep-db
 crdb:eee
 --load-blobs
 ----
-000004.log
-    eee\x00#14,SET [706967656f6e]
 000008.sst [eee\x00#14,SET-fff\x00#15,SET]
     (flushed to L0)
     eee\x00#14,SET [706967656f6e]
