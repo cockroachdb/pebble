@@ -918,3 +918,65 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 588
+
+# Create a database with value separation enabled.
+
+define format-major-version=24 value-separation=(true,1,10,1m,1.0) target-file-sizes=(100000)
+----
+
+batch
+set a <rand-bytes=4096>
+set b <rand-bytes=4096>
+set c <rand-bytes=4096>
+set d <rand-bytes=4096>
+set e <rand-bytes=4096>
+set f <rand-bytes=4096>
+set g <rand-bytes=4096>
+set h <rand-bytes=4096>
+set i <rand-bytes=4096>
+set j <rand-bytes=4096>
+set k <rand-bytes=4096>
+set l <rand-bytes=4096>
+set m <rand-bytes=4096>
+set n <rand-bytes=4096>
+set o <rand-bytes=4096>
+set p <rand-bytes=4096>
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-p#25,SET]
+Blob files:
+  B000006 physical:{000006 size:[23206 (23KB)] vals:[65536 (64KB)]}
+
+compact a-z
+----
+L6:
+  000005:[a#10,SET-p#25,SET]
+Blob files:
+  B000006 physical:{000006 size:[23206 (23KB)] vals:[65536 (64KB)]}
+
+# Ingest an sstable that deletes the keys. Its point deletion bytes estimate
+# should reflect the size of the keys and separated values.
+
+ingest ext-dels
+del c
+del d
+del e
+----
+L5:
+  000007:[c#26,DEL-e#26,DEL]
+L6:
+  000005:[a#10,SET-p#25,SET]
+Blob files:
+  B000006 physical:{000006 size:[23206 (23KB)] vals:[65536 (64KB)]}
+
+wait-pending-table-stats
+000007
+----
+num-entries: 3
+num-deletions: 3
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 283
+range-deletions-bytes-estimate: 0
