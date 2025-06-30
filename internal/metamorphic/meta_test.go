@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/metamorphic/metaflags"
 	"github.com/cockroachdb/pebble/metamorphic"
 )
@@ -52,14 +53,17 @@ var runOnceFlags, runFlags = metaflags.InitAllFlags()
 // be customized via the --inner-binary flag (used for code coverage
 // instrumentation).
 func TestMeta(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	runTestMeta(t)
 }
 
 func TestMetaTwoInstance(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	runTestMeta(t, metamorphic.MultiInstance(2))
 }
 
 func TestMetaCockroachKVs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	runTestMeta(t, metamorphic.CockroachKeyFormat)
 }
 
