@@ -392,6 +392,44 @@ Filter utility: 0.0%
 Ingestions: 0  as flushable: 0 (0B in 0 tables)
 Cgo memory usage: 0B  block cache: 0B (data: 0B, maps: 0B, entries: 0B)  memtables: 0B
 
+# Test a blob file rewrite compaction with virtual sstable references.
+
+define value-separation=(true,1,10,0s,0.01)
+----
+
+batch
+set a apple
+set b banana
+set c coconut
+----
+
+compact a-b
+----
+L6:
+  000005:[a#10,SET-c#12,SET] seqnums:[10-12] points:[a#10,SET-c#12,SET] size:862 blobrefs:[(B000006: 18); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
+
+excise b ba
+----
+L6:
+  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(862) blobrefs:[(B000006: 2); depth:1]
+  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(862) blobrefs:[(B000006: 2); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
+
+# Run a blob-rewrite compaction. It'll rewrite the blob file, but it won't
+# actually reclaim disk space. This is a known limitation due to the lack of
+# accurate blob value liveness for virtual sstables. See
+# https://github.com/cockroachdb/pebble/issues/4915.
+
+run-blob-rewrite-compaction
+----
+L6:
+  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(862) blobrefs:[(B000006: 2); depth:1]
+  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(862) blobrefs:[(B000006: 2); depth:1]
+Blob files:
+  B000006 physical:{000009 size:[110 (110B)] vals:[18 (18B)]}
 
 define value-separation=(true,5,5,0s,1.0) l0-compaction-threshold=1
 ----
