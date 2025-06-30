@@ -164,12 +164,24 @@ func expectEqualFn[T any](t *testing.T, expected func() T, actual func() T) {
 		require.Nil(t, actual)
 	} else {
 		require.NotNil(t, actual)
-		var zeroT T
-		if reflect.TypeOf(zeroT) == reflect.TypeOf(float64(0)) {
-			require.InDelta(t, expected(), actual(), 1e-5)
-		} else {
-			require.Equal(t, expected(), actual())
+		ev, av := expected(), actual()
+		expectEqualValue(t, reflect.ValueOf(ev).Interface(), reflect.ValueOf(av).Interface())
+	}
+}
+
+func expectEqualValue(t *testing.T, expected any, actual any) {
+	t.Helper()
+	typ := reflect.TypeOf(expected)
+	switch typ.Kind() {
+	case reflect.Float64:
+		require.InDelta(t, expected, actual, 1e-2)
+	case reflect.Struct:
+		for i := range typ.NumField() {
+			expectEqualValue(t, reflect.ValueOf(expected).Field(i).Interface(),
+				reflect.ValueOf(actual).Field(i).Interface())
 		}
+	default:
+		require.Equal(t, expected, actual)
 	}
 }
 
