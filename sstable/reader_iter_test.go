@@ -68,18 +68,13 @@ func TestIteratorErrorOnInit(t *testing.T) {
 			require.Error(t, iter.Error())
 			iter.Close()
 		} else {
-			iter, err := newRowBlockTwoLevelIterator(context.Background(), r, IterOptions{
+			_, err := newRowBlockTwoLevelIterator(context.Background(), r, IterOptions{
 				Transforms:           NoTransforms,
 				FilterBlockSizeLimit: NeverUseFilterBlock,
 				Env:                  ReadEnv{Block: block.ReadEnv{Stats: &stats, BufferPool: &pool}},
 				ReaderProvider:       MakeTrivialReaderProvider(r),
 			})
-			// Two-level iterators use lazy loading - creation succeeds but first access fails
-			require.NoError(t, err)
-			// Error should surface when trying to use the iterator
-			_ = iter.First()
-			require.Error(t, iter.Error())
-			iter.Close()
+			require.Error(t, err)
 		}
 	}
 }
