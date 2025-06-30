@@ -503,7 +503,7 @@ func (d *DB) estimateSizesBeneath(
 		// resulting in a lower than expected avgValueLogicalSize. For an example of
 		// this effect see the estimate in testdata/compaction_picker_scores (search
 		// for "point-deletions-bytes-estimate: 163850").
-		fileSum    = meta.Size
+		fileSum    = meta.Size + meta.EstimatedReferenceSize()
 		entryCount = fileProps.NumEntries
 		keySum     = fileProps.RawKeySize
 		valSum     = fileProps.RawValueSize
@@ -511,7 +511,7 @@ func (d *DB) estimateSizesBeneath(
 
 	for l := level + 1; l < numLevels; l++ {
 		for tableBeneath := range v.Overlaps(l, meta.UserKeyBounds()).All() {
-			fileSum += tableBeneath.Size
+			fileSum += tableBeneath.Size + tableBeneath.EstimatedReferenceSize()
 			if tableBeneath.StatsValid() {
 				entryCount += tableBeneath.Stats.NumEntries
 				keySum += tableBeneath.Stats.RawKeySize
@@ -727,7 +727,7 @@ func maybeSetStatsFromProperties(
 		// doesn't require any additional IO and since the number of point
 		// deletions in the file is low, the error introduced by this crude
 		// estimate is expected to be small.
-		avgValSize, compressionRatio := estimatePhysicalSizes(meta.Size, props)
+		avgValSize, compressionRatio := estimatePhysicalSizes(meta, props)
 		pointEstimate = pointDeletionsBytesEstimate(props, avgValSize, compressionRatio)
 	}
 
@@ -833,7 +833,7 @@ func pointDeletionsBytesEstimate(
 }
 
 func estimatePhysicalSizes(
-	fileSize uint64, props *sstable.CommonProperties,
+	tableMeta *manifest.TableMetadata, props *sstable.CommonProperties,
 ) (avgValLogicalSize, compressionRatio float64) {
 	// RawKeySize and RawValueSize are uncompressed totals. Scale according to
 	// the data size to account for compression, index blocks and metadata
@@ -847,8 +847,9 @@ func estimatePhysicalSizes(
 	//   -----------------------  ×  ----------
 	//   RawKeySize+RawValueSize     NumEntries
 	//
+	physicalSize := tableMeta.Size + tableMeta.EstimatedReferenceSize()
 	uncompressedSum := props.RawKeySize + props.RawValueSize
-	compressionRatio = float64(fileSize) / float64(uncompressedSum)
+	compressionRatio = float64(physicalSize) / float64(uncompressedSum)
 	if compressionRatio > 1 {
 		// We can get huge compression ratios due to the fixed overhead of files
 		// containing a tiny amount of data. By setting this to 1, we are ignoring
