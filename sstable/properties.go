@@ -83,7 +83,8 @@ type CommonProperties struct {
 	NumEntries uint64 `prop:"rocksdb.num.entries"`
 	// Total raw key size.
 	RawKeySize uint64 `prop:"rocksdb.raw.key.size"`
-	// Total raw value size.
+	// Total raw value size. If values are separated, this includes the size of
+	// the separated value, NOT the value handle.
 	RawValueSize uint64 `prop:"rocksdb.raw.value.size"`
 	// Total raw key size of point deletion tombstones. This value is comparable
 	// to RawKeySize.
