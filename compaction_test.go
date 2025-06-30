@@ -1022,6 +1022,12 @@ func TestCompaction(t *testing.T) {
 				}
 				return s
 
+			case "excise":
+				if err := runExciseCmd(td, d); err != nil {
+					return err.Error()
+				}
+				return describeLSM(d, verbose)
+
 			case "excise-dryrun":
 				ve, err := runExciseDryRunCmd(td, d)
 				if err != nil {
@@ -1080,6 +1086,31 @@ func TestCompaction(t *testing.T) {
 				count := b.Count()
 				require.NoError(t, b.Commit(nil))
 				return fmt.Sprintf("wrote %d keys\n", count)
+
+			case "run-blob-rewrite-compaction":
+				err := func() error {
+					d.mu.Lock()
+					defer d.mu.Unlock()
+					d.mu.versions.logLock()
+					env := d.makeCompactionEnvLocked()
+					require.NotNil(t, env)
+					picker := d.mu.versions.picker.(*compactionPickerByScore)
+					pc := picker.pickBlobFileRewriteCompaction(*env)
+					if pc == nil {
+						d.mu.versions.logUnlock()
+						return errors.New("no blob file rewrite compaction")
+					}
+					d.mu.versions.logUnlock()
+					d.runPickedCompaction(pc, noopGrantHandle{})
+					for d.mu.compact.compactingCount > 0 {
+						d.mu.compact.cond.Wait()
+					}
+					return nil
+				}()
+				if err != nil {
+					return err.Error()
+				}
+				return describeLSM(d, verbose)
 
 			case "auto-compact":
 				d.mu.Lock()
