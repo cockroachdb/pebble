@@ -62,8 +62,8 @@ stressmeta: override TESTS = TestMeta$$
 stressmeta: stress
 
 .PHONY: crossversion-meta
+crossversion-meta: LATEST_RELEASE := crl-release-24.1
 crossversion-meta:
-	$(eval LATEST_RELEASE := $(shell git fetch origin && git branch -r --list '*/crl-release-*' | grep -o 'crl-release-.*$$' | sort | tail -1))
 	git checkout ${LATEST_RELEASE}; \
 		${GO} test -c ./internal/metamorphic -o './internal/metamorphic/crossversion/${LATEST_RELEASE}.test'; \
 		git checkout -; \
