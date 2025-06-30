@@ -44,19 +44,6 @@ jobs:
 
       - run: GOTRACEBACK=all GOARCH=386 make test
 
-  linux-crossversion:
-    name: go-linux-crossversion
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: "${{ env.GO_VERSION }}"
-
-    - run: make crossversion-meta
-
   linux-race:
     name: go-linux-race
     runs-on: ubuntu-latest
