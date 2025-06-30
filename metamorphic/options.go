@@ -343,9 +343,8 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 			Enabled:               true,
 			MinimumSize:           5,
 			MaxBlobReferenceDepth: 3,
-			RewriteMinimumAge:     time.Second,
-			// TODO(jackson): Adjust the TargetGarbageRatio to allow blob file rewrites.
-			TargetGarbageRatio: 1.0, // Disabled
+			RewriteMinimumAge:     50 * time.Millisecond,
+			TargetGarbageRatio:    0.1,
 		}
 	}
 
@@ -921,10 +920,9 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		policy := pebble.ValueSeparationPolicy{
 			Enabled:               true,
 			MinimumSize:           1 + rng.IntN(maxValueSize),
-			MaxBlobReferenceDepth: 2 + rng.IntN(9),                           // 2-10
-			RewriteMinimumAge:     time.Duration(rng.IntN(10)) * time.Second, // [0, 10s)
-			// TODO(jackson): Begin enabling blob file rewrite compactions.
-			TargetGarbageRatio: 1.0,
+			MaxBlobReferenceDepth: 2 + rng.IntN(9),                                   // 2-10
+			RewriteMinimumAge:     time.Duration(rng.IntN(90)+10) * time.Millisecond, // [10ms, 100ms)
+			TargetGarbageRatio:    max(rng.Float64(), 0.05),
 		}
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 			return policy
