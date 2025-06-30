@@ -53,20 +53,15 @@ func TestIteratorErrorOnInit(t *testing.T) {
 	defer toggle.Off()
 
 	var stats base.InternalIteratorStats
-	for range 20 {
+	for k := 0; k < 20; k++ {
 		if rand.IntN(2) == 0 {
-			iter, err := newRowBlockSingleLevelIterator(context.Background(), r, IterOptions{
+			_, err := newRowBlockSingleLevelIterator(context.Background(), r, IterOptions{
 				Transforms:           NoTransforms,
 				FilterBlockSizeLimit: NeverUseFilterBlock,
 				Env:                  ReadEnv{Block: block.ReadEnv{Stats: &stats, BufferPool: &pool}},
 				ReaderProvider:       MakeTrivialReaderProvider(r),
 			})
-			// Single-level iterators use lazy loading - creation succeeds but first access fails
-			require.NoError(t, err)
-			// Error should surface when trying to use the iterator
-			_ = iter.First()
-			require.Error(t, iter.Error())
-			iter.Close()
+			require.Error(t, err)
 		} else {
 			_, err := newRowBlockTwoLevelIterator(context.Background(), r, IterOptions{
 				Transforms:           NoTransforms,
