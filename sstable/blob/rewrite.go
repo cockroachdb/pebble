@@ -69,6 +69,14 @@ func (rw *FileRewriter) CopyBlock(
 
 	previousValueID := -1
 	for _, valueID := range valueIDs {
+		// Subsequent logic depends on the valueIDs being unique.
+		// TODO(jackson): This is a workaround because we don't have per-sstable
+		// liveness data. See https://github.com/cockroachdb/pebble/issues/4915.
+		// If we had per-sstable liveness data, we should be able to make this
+		// an assertion failure.
+		if previousValueID == valueID {
+			continue
+		}
 		// If there is a gap in the referenced Value IDs within this block, we
 		// need to represent this sparseness as empty values within the block.
 		// We can represent sparseness at the tail of a block or between blocks
@@ -83,6 +91,10 @@ func (rw *FileRewriter) CopyBlock(
 		value, _, err := rw.f.Fetch(ctx, rw.fileID, blockID, BlockValueID(valueID))
 		if err != nil {
 			return err
+		}
+		// We don't know the value size, but we know it must not be empty.
+		if len(value) == 0 {
+			return errors.AssertionFailedf("value is empty")
 		}
 		rw.w.stats.ValueCount++
 		rw.w.stats.UncompressedValueBytes += uint64(len(value))
