@@ -3224,10 +3224,6 @@ func (d *DB) runCompaction(
 	defer d.mu.Lock()
 
 	// Determine whether we should separate values into blob files.
-	//
-	// TODO(jackson): Currently we never separate values in non-tests. Choose
-	// and initialize the appropriate ValueSeparation implementation based on
-	// Options and the compaction inputs.
 	valueSeparation := c.getValueSeparation(jobID, c, c.tableFormat)
 
 	result := d.compactAndWrite(jobID, c, snapshots, c.tableFormat, valueSeparation)

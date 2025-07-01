@@ -20,9 +20,8 @@ import (
 // Result stores the result of a compaction - more specifically, the "data" part
 // where we use the compaction iterator to write output tables.
 type Result struct {
-	// Err is the result of the compaction. On success, Err is nil and Tables
-	// stores the output tables. On failure, Err is set and Tables stores the
-	// tables created so far (and which need to be cleaned up).
+	// Err is the result of the compaction. On failure, Err is set, Tables/Blobs
+	// stores the tables/blobs created so far (and which need to be cleaned up).
 	Err    error
 	Tables []OutputTable
 	Blobs  []OutputBlob

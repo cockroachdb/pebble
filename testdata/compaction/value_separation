@@ -143,8 +143,8 @@ Virtual tables: 0 (0B)
 Local tables size: 899B
 Compression types: snappy: 1
 Table stats: all loaded
-Block cache: 4 entries (1.6KB)  hit rate: 77.6%
-File cache: 1 tables, 1 blobfiles (376B)  hit rate: 86.9%
+Block cache: 5 entries (1.9KB)  hit rate: 81.8%
+File cache: 1 tables, 1 blobfiles (376B)  hit rate: 89.2%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -383,8 +383,8 @@ Virtual tables: 0 (0B)
 Local tables size: 900B
 Compression types: snappy: 1
 Table stats: all loaded
-Block cache: 6 entries (2.3KB)  hit rate: 48.6%
-File cache: 1 tables, 2 blobfiles (472B)  hit rate: 73.9%
+Block cache: 7 entries (2.7KB)  hit rate: 59.6%
+File cache: 1 tables, 2 blobfiles (472B)  hit rate: 78.6%
 Range key sets: 0  Tombstones: 0  Total missized tombstones encountered: 0
 Snapshots: 0  earliest seq num: 0
 Table iters: 0
@@ -430,6 +430,12 @@ L6:
   000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(862) blobrefs:[(B000006: 2); depth:1]
 Blob files:
   B000006 physical:{000009 size:[110 (110B)] vals:[18 (18B)]}
+
+validate-blob-reference-index-block
+000007.sst
+000008.sst
+----
+validated
 
 define value-separation=(true,5,5,0s,1.0) l0-compaction-threshold=1
 ----
