@@ -155,7 +155,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-   4 (1.6KB) |       77.6% |     1 (376B) |       86.9% |         0.0% |           0 |           0
+   5 (1.9KB) |       81.8% |     1 (376B) |       89.2% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -423,7 +423,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-   6 (2.3KB) |       48.6% |     1 (472B) |       73.9% |         0.0% |           0 |           0
+   7 (2.7KB) |       59.6% |     1 (472B) |       78.6% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -486,6 +486,12 @@ L6:
   000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(862) blobrefs:[(B000006: 2); depth:1]
 Blob files:
   B000006 physical:{000009 size:[110 (110B)] vals:[18 (18B)]}
+
+validate-blob-reference-index-block
+000007.sst
+000008.sst
+----
+validated
 
 define value-separation=(true,5,5,0s,1.0) l0-compaction-threshold=1
 ----

@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -297,5 +299,106 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
+	})
+}
+func TestPerformValidationForSSTableFailures(t *testing.T) {
+	const tableNum = base.TableNum(1)
+
+	//	<block ID> <values size> <n bytes of bitmap> [<bitmap>]
+	var encoding []byte
+	encoding = binary.AppendUvarint(encoding, 0)
+	encoding = binary.AppendUvarint(encoding, 30)
+	encoding = binary.AppendUvarint(encoding, 1)
+	encoding = append(encoding, 0x01)
+	encoder := &colblk.ReferenceLivenessBlockEncoder{}
+	encoder.Init()
+	encoder.AddReferenceLiveness(0, encoding)
+	defultEncodedData := encoder.Finish()
+
+	t.Run("wrong_row_count", func(t *testing.T) {
+		encoder := &colblk.ReferenceLivenessBlockEncoder{}
+		encoder.Init()
+		encoder.AddReferenceLiveness(0, []byte{})
+		encoder.AddReferenceLiveness(1, []byte{})
+		encodedData := encoder.Finish()
+
+		var decoder colblk.ReferenceLivenessBlockDecoder
+		decoder.Init(encodedData)
+
+		referenced := []map[blob.BlockID]valuesInfo{
+			{blob.BlockID(1): {valueIDs: []int{0}, totalSize: 10}},
+		}
+
+		err := performValidationForSSTable(decoder, tableNum, referenced)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "mismatch in number of references in blob value liveness block: expected=1 found=2")
+	})
+
+	t.Run("dangling_reference_in_encoding", func(t *testing.T) {
+		var decoder colblk.ReferenceLivenessBlockDecoder
+		decoder.Init(defultEncodedData)
+
+		referenced := []map[blob.BlockID]valuesInfo{
+			{blob.BlockID(1): {valueIDs: []int{0}, totalSize: 10}},
+		}
+
+		err := performValidationForSSTable(decoder, tableNum, referenced)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "dangling refID=0 blockID=0 in blob value liveness encoding for sstable 000001")
+	})
+
+	t.Run("bitmap_mismatch", func(t *testing.T) {
+		var decoder colblk.ReferenceLivenessBlockDecoder
+		decoder.Init(defultEncodedData)
+
+		// Create referenced slice with different value IDs than what's encoded.
+		referenced := []map[blob.BlockID]valuesInfo{
+			{blob.BlockID(0): {valueIDs: []int{0, 1, 2}, totalSize: 30}},
+		}
+
+		err := performValidationForSSTable(decoder, tableNum, referenced)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "bitmap mismatch for refID=0 blockID=0: expected=[0 1 2] encoded=[0] for sstable 000001")
+	})
+
+	t.Run("value_size_mismatch", func(t *testing.T) {
+		var decoder colblk.ReferenceLivenessBlockDecoder
+		decoder.Init(defultEncodedData)
+
+		// Create referenced slice with different value sizes than what's encoded.
+		referenced := []map[blob.BlockID]valuesInfo{
+			{blob.BlockID(0): {valueIDs: []int{0}, totalSize: 50}},
+		}
+
+		err := performValidationForSSTable(decoder, tableNum, referenced)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "value size mismatch for refID=0 blockID=0: expected=50 encoded=30 for sstable 000001")
+	})
+
+	t.Run("missing_reference", func(t *testing.T) {
+		var decoder colblk.ReferenceLivenessBlockDecoder
+		decoder.Init(defultEncodedData)
+
+		// Create referenced slice with references that don't exist in the
+		// liveness block.
+		referenced := []map[blob.BlockID]valuesInfo{
+			{blob.BlockID(0): {valueIDs: []int{0}, totalSize: 30}, blob.BlockID(1): {valueIDs: []int{0}, totalSize: 10}},
+		}
+
+		err := performValidationForSSTable(decoder, tableNum, referenced)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "refID=0 blockIDs=[1] referenced by sstable 000001 is/are not present in blob reference liveness block")
+	})
+
+	t.Run("success_case", func(t *testing.T) {
+		var decoder colblk.ReferenceLivenessBlockDecoder
+		decoder.Init(defultEncodedData)
+
+		referenced := []map[blob.BlockID]valuesInfo{
+			{blob.BlockID(0): {valueIDs: []int{0}, totalSize: 30}},
+		}
+
+		err := performValidationForSSTable(decoder, tableNum, referenced)
+		require.NoError(t, err)
 	})
 }
