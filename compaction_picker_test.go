@@ -939,6 +939,10 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 
 type alwaysMultiLevel struct{}
 
+func optionAlwaysMultiLevel() MultiLevelHeuristic {
+	return alwaysMultiLevel{}
+}
+
 func (d alwaysMultiLevel) pick(
 	pcOrig *pickedTableCompaction, opts *Options, env compactionEnv,
 ) *pickedTableCompaction {
@@ -1105,17 +1109,17 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 	}
 
 	t.Logf("Test basic setup inputs behavior without multi level compactions")
-	opts.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
+	opts.Experimental.MultiLevelCompactionHeuristic = OptionNoMultiLevel
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
 		setupInputTest)
 
 	t.Logf("Turning multi level compaction on")
-	opts.Experimental.MultiLevelCompactionHeuristic = alwaysMultiLevel{}
+	opts.Experimental.MultiLevelCompactionHeuristic = optionAlwaysMultiLevel
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_dummy",
 		setupInputTest)
 
 	t.Logf("Try Write-Amp Heuristic")
-	opts.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
+	opts.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_write_amp",
 		setupInputTest)
 }

@@ -1684,7 +1684,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			}
 			opts.Cache = NewCache(size)
 		case "disable-multi-level":
-			opts.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
+			opts.Experimental.MultiLevelCompactionHeuristic = OptionNoMultiLevel
 		case "enable-table-stats":
 			enable, err := strconv.ParseBool(cmdArg.Vals[0])
 			if err != nil {

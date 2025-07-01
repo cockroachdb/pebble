@@ -667,6 +667,11 @@ L5:
   000014:[a#0,SET-a#0,SET]
   000015:[b#0,SET-b#0,SET]
 
+# Reset to default value of 1.
+set-concurrent-compactions max=1
+----
+
+
 # Test of a scenario where consecutive elided range tombstones and grandparent
 # boundaries could result in an invariant violation in the rangedel fragmenter.
 

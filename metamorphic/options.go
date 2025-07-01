@@ -765,13 +765,16 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	// ohterwise would.
 	switch rng.IntN(3) {
 	case 0:
-		opts.Experimental.MultiLevelCompactionHeuristic = pebble.NoMultiLevel{}
+		opts.Experimental.MultiLevelCompactionHeuristic = pebble.OptionNoMultiLevel
 	case 1:
-		opts.Experimental.MultiLevelCompactionHeuristic = pebble.WriteAmpHeuristic{}
+		opts.Experimental.MultiLevelCompactionHeuristic = pebble.OptionWriteAmpHeuristic
 	default:
-		opts.Experimental.MultiLevelCompactionHeuristic = pebble.WriteAmpHeuristic{
+		writeAmpHeuristic := &pebble.WriteAmpHeuristic{
 			AddPropensity: rng.Float64() * float64(rng.IntN(3)), // [0,3.0)
 			AllowL0:       rng.IntN(4) == 1,                     // 25% of the time
+		}
+		opts.Experimental.MultiLevelCompactionHeuristic = func() pebble.MultiLevelHeuristic {
+			return writeAmpHeuristic
 		}
 	}
 	if rng.IntN(2) == 0 {
