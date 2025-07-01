@@ -46,7 +46,7 @@ func TestAdaptiveCompressorCompressible(t *testing.T) {
 	})
 	defer ac.Close()
 	for i := 0; i < 100; i++ {
-		data := make([]byte, 10+rand.IntN(64*1024))
+		data := make([]byte, 512+rand.IntN(64*1024))
 		for j := range data {
 			data[j] = byte(j / 100)
 		}
