@@ -681,9 +681,8 @@ type Options struct {
 		LevelMultiplier int
 
 		// MultiLevelCompactionHeuristic determines whether to add an additional
-		// level to a conventional two level compaction. If nil, a multilevel
-		// compaction will never get triggered.
-		MultiLevelCompactionHeuristic MultiLevelHeuristic
+		// level to a conventional two level compaction.
+		MultiLevelCompactionHeuristic func() MultiLevelHeuristic
 
 		// EnableColumnarBlocks is used to decide whether to enable writing
 		// TableFormatPebblev5 sstables. This setting is only respected by
@@ -1519,7 +1518,7 @@ func (o *Options) EnsureDefaults() {
 		o.Experimental.FileCacheShards = runtime.GOMAXPROCS(0)
 	}
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
-		o.Experimental.MultiLevelCompactionHeuristic = WriteAmpHeuristic{}
+		o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 	}
 	if o.Experimental.SpanPolicyFunc == nil {
 		o.Experimental.SpanPolicyFunc = func(startKey []byte) (SpanPolicy, []byte, error) { return SpanPolicy{}, nil, nil }
@@ -1652,7 +1651,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  obsolete_bytes_timeframe=%s\n", o.ObsoleteBytesTimeframe.String())
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	if o.Experimental.MultiLevelCompactionHeuristic != nil {
-		fmt.Fprintf(&buf, "  multilevel_compaction_heuristic=%s\n", o.Experimental.MultiLevelCompactionHeuristic.String())
+		fmt.Fprintf(&buf, "  multilevel_compaction_heuristic=%s\n", o.Experimental.MultiLevelCompactionHeuristic().String())
 	}
 	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
@@ -2026,8 +2025,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "multilevel_compaction_heuristic":
 				switch {
 				case value == "none":
-					o.Experimental.MultiLevelCompactionHeuristic = NoMultiLevel{}
+					o.Experimental.MultiLevelCompactionHeuristic = OptionNoMultiLevel
 				case strings.HasPrefix(value, "wamp"):
+					o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 					fields := strings.FieldsFunc(strings.TrimPrefix(value, "wamp"), func(r rune) bool {
 						return unicode.IsSpace(r) || r == ',' || r == '(' || r == ')'
 					})
@@ -2041,8 +2041,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					if err == nil {
 						h.AllowL0, err = strconv.ParseBool(fields[1])
 					}
+
 					if err == nil {
-						o.Experimental.MultiLevelCompactionHeuristic = h
+						if h.AllowL0 || h.AddPropensity != 0 {
+							o.Experimental.MultiLevelCompactionHeuristic = func() MultiLevelHeuristic {
+								return &h
+							}
+						}
 					} else {
 						err = errors.Wrapf(err, "unexpected wamp heuristic arguments: %s", value)
 					}

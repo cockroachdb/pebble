@@ -96,6 +96,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
 		"Experimental.MultiLevelCompactionHeuristic.AddPropensity",
+		"Experimental.MultiLevelCompactionHeuristic",
 	}
 
 	checkOptions := func(t *testing.T, o *TestOptions) {

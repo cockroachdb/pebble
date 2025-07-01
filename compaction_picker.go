@@ -1791,7 +1791,7 @@ func (pc *pickedTableCompaction) maybeAddLevel(
 		// Don't add a level if the current output level is in L6.
 		return pc
 	}
-	if !opts.Experimental.MultiLevelCompactionHeuristic.allowL0() && pc.startLevel.level == 0 {
+	if !opts.Experimental.MultiLevelCompactionHeuristic().allowL0() && pc.startLevel.level == 0 {
 		return pc
 	}
 	targetFileSize := opts.TargetFileSize(pc.outputLevel.level, pc.baseLevel)
@@ -1799,7 +1799,7 @@ func (pc *pickedTableCompaction) maybeAddLevel(
 		// Don't add a level if the current compaction exceeds the compaction size limit
 		return pc
 	}
-	return opts.Experimental.MultiLevelCompactionHeuristic.pick(pc, opts, env)
+	return opts.Experimental.MultiLevelCompactionHeuristic().pick(pc, opts, env)
 }
 
 // MultiLevelHeuristic evaluates whether to add files from the next level into the compaction.
@@ -1818,6 +1818,10 @@ type MultiLevelHeuristic interface {
 type NoMultiLevel struct{}
 
 var _ MultiLevelHeuristic = (*NoMultiLevel)(nil)
+
+func OptionNoMultiLevel() MultiLevelHeuristic {
+	return NoMultiLevel{}
+}
 
 func (nml NoMultiLevel) pick(
 	pc *pickedTableCompaction, opts *Options, env compactionEnv,
@@ -1869,6 +1873,14 @@ type WriteAmpHeuristic struct {
 }
 
 var _ MultiLevelHeuristic = (*WriteAmpHeuristic)(nil)
+
+// Default write amp heuristic with no propensity towards multi-level
+// and no multilevel compactions involving L0.
+var defaultWriteAmpHeuristic = &WriteAmpHeuristic{}
+
+func OptionWriteAmpHeuristic() MultiLevelHeuristic {
+	return defaultWriteAmpHeuristic
+}
 
 // TODO(msbutler): microbenchmark the extent to which multilevel compaction
 // picking slows down the compaction picking process.  This should be as fast as
