@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"maps"
 	"slices"
 	"sort"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 )
 
 // This file implements DB.CheckLevels() which checks that every entry in the
@@ -360,6 +362,7 @@ type checkConfig struct {
 	// blobValueFetcher is the ValueFetcher to use when retrieving values stored
 	// externally in blob files.
 	blobValueFetcher blob.ValueFetcher
+	fileCache        *fileCacheHandle
 }
 
 // cmp is shorthand for comparer.Compare.
@@ -527,6 +530,7 @@ type CheckLevelsStats struct {
 //   - Point keys in sstables are ordered.
 //   - Range delete tombstones in sstables are ordered and fragmented.
 //   - Successful processing of all MERGE records.
+//   - Each sstable's blob reference liveness block is valid.
 func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	// Grab and reference the current readState.
 	readState := d.loadReadState()
@@ -548,8 +552,9 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 		readEnv:   block.ReadEnv{
 			// TODO(jackson): Add categorized stats.
 		},
+		fileCache: d.fileCache,
 	}
-	checkConfig.blobValueFetcher.Init(&readState.current.BlobFiles, d.fileCache, checkConfig.readEnv)
+	checkConfig.blobValueFetcher.Init(&readState.current.BlobFiles, checkConfig.fileCache, checkConfig.readEnv)
 	defer func() { _ = checkConfig.blobValueFetcher.Close() }()
 	return checkLevelsInternal(checkConfig)
 }
@@ -608,6 +613,8 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		mlevels = append(mlevels, simpleMergingIterLevel{})
 	}
 	mlevelAlloc := mlevels[start:]
+	var allTables []*manifest.TableMetadata
+
 	// Add L0 files by sublevel.
 	for sublevel := len(current.L0SublevelFiles) - 1; sublevel >= 0; sublevel-- {
 		if current.L0SublevelFiles[sublevel].Empty() {
@@ -621,12 +628,14 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li.initRangeDel(&mlevelAlloc[0])
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
+		for f := range current.L0SublevelFiles[sublevel].All() {
+			allTables = append(allTables, f)
+		}
 	}
 	for level := 1; level < len(current.Levels); level++ {
 		if current.Levels[level].Empty() {
 			continue
 		}
-
 		iterOpts := IterOptions{logger: c.logger}
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.comparer, c.newIters,
@@ -634,6 +643,9 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li.initRangeDel(&mlevelAlloc[0])
 		mlevelAlloc[0].iter = li
 		mlevelAlloc = mlevelAlloc[1:]
+		for f := range current.Levels[level].All() {
+			allTables = append(allTables, f)
+		}
 	}
 
 	mergingIter := &simpleMergingIter{}
@@ -648,7 +660,150 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	}
 
 	// Phase 2: Check that the tombstones are mutually consistent.
-	return checkRangeTombstones(c)
+	if err := checkRangeTombstones(c); err != nil {
+		return err
+	}
+
+	// Phase 3: Validate blob value liveness block for all tables in the LSM.
+	// TODO(annie): This is a very expensive operation. We should try to reduce
+	// the amount of work performed. One possibility is to have the caller
+	// pass in a prng seed and use that to choose which tables to validate.
+	if err := validateBlobValueLiveness(allTables, c.fileCache, c.readEnv, &c.blobValueFetcher); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type valuesInfo struct {
+	valueIDs  []int
+	totalSize int
+}
+
+// gatherBlobHandles gathers all the blob handles in an sstable, returning a
+// slice of maps; indexing into the slice at `i` is equivalent to retrieving
+// each blob.BlockID's referenced blob.BlockValueID for the `i`th blob reference.
+func gatherBlobHandles(
+	ctx context.Context,
+	r *sstable.Reader,
+	blobRefs manifest.BlobReferences,
+	valueFetcher base.ValueFetcher,
+) ([]map[blob.BlockID]valuesInfo, error) {
+	iter, err := r.NewPointIter(ctx, sstable.IterOptions{
+		BlobContext: sstable.TableBlobContext{
+			ValueFetcher: valueFetcher,
+			References:   &blobRefs,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = iter.Close() }()
+
+	referenced := make([]map[blob.BlockID]valuesInfo, len(blobRefs))
+	for i := range referenced {
+		referenced[i] = make(map[blob.BlockID]valuesInfo)
+	}
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		if kv.V.IsBlobValueHandle() {
+			lv := kv.V.LazyValue()
+			handleSuffix := blob.DecodeHandleSuffix(lv.ValueOrHandle)
+			refID, ok := blobRefs.IDByBlobFileID(lv.Fetcher.BlobFileID)
+			if !ok {
+				return nil, errors.Errorf("blob file ID %d not found in blob references", lv.Fetcher.BlobFileID)
+			}
+			blockID := handleSuffix.BlockID
+			valueID := int(handleSuffix.ValueID)
+			vi := referenced[refID][blockID]
+			vi.valueIDs = append(vi.valueIDs, valueID)
+			vi.totalSize += lv.Len()
+			referenced[refID][blockID] = vi
+		}
+	}
+	return referenced, nil
+}
+
+func performValidationForSSTable(
+	decoder colblk.ReferenceLivenessBlockDecoder,
+	tableNum base.TableNum,
+	referenced []map[blob.BlockID]valuesInfo,
+) error {
+	if len(referenced) != decoder.BlockDecoder().Rows() {
+		return errors.Errorf("mismatch in number of references in blob value "+
+			"liveness block: expected=%d found=%d", len(referenced),
+			decoder.BlockDecoder().Rows())
+	}
+	for refID, blockValues := range referenced {
+		bitmapEncodings := slices.Clone(decoder.LivenessAtReference(refID))
+		for _, blockEnc := range sstable.DecodeBlobRefLivenessEncoding(bitmapEncodings) {
+			blockID := blockEnc.BlockID
+			vi, ok := blockValues[blockID]
+			if !ok {
+				return errors.Errorf("dangling refID=%d blockID=%d in blob value "+
+					"liveness encoding for sstable %d", refID, blockID, tableNum)
+			}
+			encodedVals := slices.Collect(sstable.IterSetBitsInRunLengthBitmap(blockEnc.Bitmap))
+			if !slices.Equal(vi.valueIDs, encodedVals) {
+				return errors.Errorf("bitmap mismatch for refID=%d blockID=%d: "+
+					"expected=%v encoded=%v for sstable %d", refID, blockID, vi.valueIDs,
+					encodedVals, tableNum)
+			}
+			if vi.totalSize != blockEnc.ValuesSize {
+				return errors.Errorf("value size mismatch for refID=%d blockID=%d: "+
+					"expected=%d encoded=%d for sstable %d", refID, blockID, vi.totalSize,
+					blockEnc.ValuesSize, tableNum)
+			}
+			// Remove the processed blockID from the map so that later,
+			// we can check if we processed everything. This is to
+			// ensure that we do not have any missing references in the
+			// blob reference liveness block for any of the references
+			// in the sstable.
+			delete(blockValues, blockID)
+		}
+		if len(blockValues) > 0 {
+			return errors.Errorf("refID=%d blockIDs=%v referenced by sstable %d "+
+				"is/are not present in blob reference liveness block", refID,
+				slices.Collect(maps.Keys(blockValues)), tableNum)
+		}
+	}
+	return nil
+}
+
+// validateBlobValueLiveness iterates through each table,
+// gathering all the blob handles, and then compares the values encoded in the
+// blob reference liveness block to the values referenced by the blob handles.
+func validateBlobValueLiveness(
+	tables []*manifest.TableMetadata,
+	fc *fileCacheHandle,
+	readEnv block.ReadEnv,
+	valueFetcher base.ValueFetcher,
+) error {
+	ctx := context.TODO()
+	var decoder colblk.ReferenceLivenessBlockDecoder
+	for _, t := range tables {
+		if len(t.BlobReferences) == 0 {
+			continue
+		}
+		if err := fc.withReader(ctx, readEnv, t, func(r *sstable.Reader, readEnv sstable.ReadEnv) error {
+			// For this sstable, gather all the blob handles -- tracking
+			// each blob.ReferenceID + blob.BlockID's referenced
+			// blob.BlockValueIDs.
+			referenced, err := gatherBlobHandles(ctx, r, t.BlobReferences, valueFetcher)
+			if err != nil {
+				return err
+			}
+			h, err := r.ReadBlobRefIndexBlock(ctx, readEnv.Block)
+			if err != nil {
+				return err
+			}
+			defer h.Release()
+			decoder.Init(h.BlockData())
+			return performValidationForSSTable(decoder, t.TableNum, referenced)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type simpleMergingIterItem struct {

@@ -38,6 +38,8 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -1126,6 +1128,44 @@ func TestCompaction(t *testing.T) {
 					return err.Error()
 				}
 				return describeLSM(d, verbose)
+
+			case "validate-blob-reference-index-block":
+				var inputTables []*manifest.TableMetadata
+				for _, line := range crstrings.Lines(td.Input) {
+					// Parse the file number from the filename
+					fileName := strings.TrimSuffix(line, ".sst")
+					fileNum, err := strconv.ParseUint(fileName, 10, 64)
+					if err != nil {
+						return err.Error()
+					}
+					tableNum := base.TableNum(fileNum)
+
+					d.mu.Lock()
+					currentVersion := d.mu.versions.currentVersion()
+					d.mu.Unlock()
+
+					var tableMeta *manifest.TableMetadata
+					for _, levelMetadata := range currentVersion.Levels {
+						for f := range levelMetadata.All() {
+							if f.TableNum == tableNum {
+								tableMeta = f
+								break
+							}
+						}
+						if tableMeta != nil {
+							inputTables = append(inputTables, tableMeta)
+							break
+						}
+					}
+				}
+				vf := &blob.ValueFetcher{}
+				vf.Init(&d.mu.versions.currentVersion().BlobFiles, d.fileCache, block.ReadEnv{})
+				defer func() { _ = vf.Close() }()
+				err := validateBlobValueLiveness(inputTables, d.fileCache, block.ReadEnv{}, vf)
+				if err != nil {
+					return err.Error()
+				}
+				return "validated"
 
 			case "auto-compact":
 				expectedCount := int64(1)
