@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -1330,9 +1331,15 @@ func TestIteratorStatsMerge(t *testing.T) {
 		ForwardStepCount: [NumStatsKind]int{5, 6},
 		ReverseStepCount: [NumStatsKind]int{7, 8},
 		InternalStats: InternalIteratorStats{
-			BlockBytes:                     9,
-			BlockBytesInCache:              10,
-			BlockReadDuration:              3 * time.Millisecond,
+			BlockReads: [blockkind.NumKinds]base.BlockReadStats{
+				blockkind.SSTableData: {
+					Count:             2,
+					CountInCache:      1,
+					BlockBytes:        9,
+					BlockBytesInCache: 10,
+					BlockReadDuration: 3 * time.Millisecond,
+				},
+			},
 			KeyBytes:                       11,
 			ValueBytes:                     12,
 			PointCount:                     13,
@@ -1353,9 +1360,15 @@ func TestIteratorStatsMerge(t *testing.T) {
 		ForwardStepCount: [NumStatsKind]int{5, 6},
 		ReverseStepCount: [NumStatsKind]int{7, 8},
 		InternalStats: InternalIteratorStats{
-			BlockBytes:                     9,
-			BlockBytesInCache:              10,
-			BlockReadDuration:              4 * time.Millisecond,
+			BlockReads: [blockkind.NumKinds]base.BlockReadStats{
+				blockkind.SSTableData: {
+					Count:             1,
+					CountInCache:      1,
+					BlockBytes:        9,
+					BlockBytesInCache: 10,
+					BlockReadDuration: 3 * time.Millisecond,
+				},
+			},
 			KeyBytes:                       11,
 			ValueBytes:                     12,
 			PointCount:                     13,
@@ -1377,9 +1390,15 @@ func TestIteratorStatsMerge(t *testing.T) {
 		ForwardStepCount: [NumStatsKind]int{10, 12},
 		ReverseStepCount: [NumStatsKind]int{14, 16},
 		InternalStats: InternalIteratorStats{
-			BlockBytes:                     18,
-			BlockBytesInCache:              20,
-			BlockReadDuration:              7 * time.Millisecond,
+			BlockReads: [blockkind.NumKinds]base.BlockReadStats{
+				blockkind.SSTableData: {
+					Count:             3,
+					CountInCache:      2,
+					BlockBytes:        18,
+					BlockBytesInCache: 20,
+					BlockReadDuration: 6 * time.Millisecond,
+				},
+			},
 			KeyBytes:                       22,
 			ValueBytes:                     24,
 			PointCount:                     26,

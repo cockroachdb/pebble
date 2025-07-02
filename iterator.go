@@ -130,6 +130,9 @@ var _ redact.SafeFormatter = &IteratorStats{}
 // iterators.
 type InternalIteratorStats = base.InternalIteratorStats
 
+// BlockReadStats contains iterators stats about block reads.
+type BlockReadStats = base.BlockReadStats
+
 // RangeKeyIteratorStats contains miscellaneous stats about range keys
 // encountered by the iterator.
 type RangeKeyIteratorStats struct {

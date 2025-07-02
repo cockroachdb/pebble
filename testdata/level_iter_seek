@@ -119,25 +119,25 @@ reset-stats
 stats
 ----
 a#9,SET:a
-{BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-{BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 56B not cached (read time: 0s); points: 0 (0B keys, 0B values)
+blocks: 0B cached; points: 0 (0B keys, 0B values)
 b#8,SET:b
-{BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached; points: 0 (0B keys, 0B values)
 c#7,SET:c
-{BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 56B not cached (read time: 0s); points: 0 (0B keys, 0B values)
 d#inf,RANGEDEL:
-{BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 56B not cached (read time: 0s); points: 0 (0B keys, 0B values)
 e#inf,RANGEDEL:
-{BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 56B not cached (read time: 0s); points: 0 (0B keys, 0B values)
 f#5,SET:f
-{BlockBytes:56 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 56B not cached (read time: 0s); points: 0 (0B keys, 0B values)
 g#4,SET:g
-{BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 112B not cached (read time: 0s); points: 0 (0B keys, 0B values)
 h#3,SET:h
-{BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 112B not cached (read time: 0s); points: 0 (0B keys, 0B values)
 .
-{BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
-{BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 112B not cached (read time: 0s); points: 0 (0B keys, 0B values)
+blocks: 0B cached; points: 0 (0B keys, 0B values)
 
 iter
 set-bounds lower=d

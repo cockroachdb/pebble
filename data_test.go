@@ -37,6 +37,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -212,7 +213,9 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 		case "stats":
 			stats := iter.Stats()
 			// The timing is non-deterministic, so set to 0.
-			stats.InternalStats.BlockReadDuration = 0
+			for i := range blockkind.NumKinds {
+				stats.InternalStats.BlockReads[i].BlockReadDuration = 0
+			}
 			fmt.Fprintf(&b, "stats: %s\n", stats.String())
 			continue
 		case "clone":
