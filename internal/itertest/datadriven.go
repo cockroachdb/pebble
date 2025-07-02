@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/stretchr/testify/require"
 )
 
@@ -222,8 +223,10 @@ func RunInternalIterCmdWriter(
 		case "stats":
 			if o.stats != nil {
 				// The timing is non-deterministic, so set to 0.
-				o.stats.BlockReadDuration = 0
-				fmt.Fprintf(w, "%+v\n", *o.stats)
+				for i := range blockkind.NumKinds {
+					o.stats.BlockReads[i].BlockReadDuration = 0
+				}
+				fmt.Fprintln(w, o.stats.String())
 			}
 			continue
 		case "reset-stats":

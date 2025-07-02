@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -326,8 +327,10 @@ func runIterCmd(
 			kv = nil
 		case "stats":
 			// The timing is non-deterministic, so set to 0.
-			opts.stats.BlockReadDuration = 0
-			fmt.Fprintf(&b, "%+v\n", *opts.stats)
+			for i := range blockkind.NumKinds {
+				opts.stats.BlockReads[i].BlockReadDuration = 0
+			}
+			fmt.Fprintf(&b, "%s\n", opts.stats.String())
 			continue
 		case "reset-stats":
 			*opts.stats = base.InternalIteratorStats{}

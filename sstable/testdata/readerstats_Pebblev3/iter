@@ -33,13 +33,13 @@ next
 stats
 ----
 first: <c@10:10>
-{BlockBytes:251 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:0 ValueBytes:0 ValueBytesFetched:0}}
+blocks: 0B cached, 251B not cached (read time: 0s); points: 0 (0B keys, 0B values)
  next: <c@9:9>
-{BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:1 ValueBytes:4 ValueBytesFetched:4}}
+blocks: 0B cached, 328B not cached (read time: 0s); points: 0 (0B keys, 0B values); separated: 1 (4B, 4B fetched)
  next: <c@8:8>
-{BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:2 ValueBytes:8 ValueBytesFetched:8}}
+blocks: 0B cached, 328B not cached (read time: 0s); points: 0 (0B keys, 0B values); separated: 2 (8B, 8B fetched)
  next: <d@7:9>
-{BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:2 ValueBytes:8 ValueBytesFetched:8}}
+blocks: 0B cached, 328B not cached (read time: 0s); points: 0 (0B keys, 0B values); separated: 2 (8B, 8B fetched)
 
 # seek-ge e@37 starts at the restart point at the beginning of the block and
 # iterates over 3 irrelevant separated versions before getting to e@37
@@ -55,12 +55,12 @@ next
 stats
 ----
 seek-ge e@37: <e@37:47>
-{BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:4 ValueBytes:18 ValueBytesFetched:5}}
+blocks: 0B cached, 328B not cached (read time: 0s); points: 0 (0B keys, 0B values); separated: 4 (18B, 5B fetched)
         next: <e@36:46>
         next: <e@35:45>
         next: <e@34:44>
         next: <e@33:43>
-{BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:8 ValueBytes:38 ValueBytesFetched:25}}
+blocks: 0B cached, 328B not cached (read time: 0s); points: 0 (0B keys, 0B values); separated: 8 (38B, 25B fetched)
 
 # seek-ge e@26 lands at the restart point e@26.
 iter
@@ -72,8 +72,8 @@ prev
 stats
 ----
 seek-ge e@26: <e@26:36>
-{BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:1 ValueBytes:5 ValueBytesFetched:5}}
+blocks: 0B cached, 328B not cached (read time: 0s); points: 0 (0B keys, 0B values); separated: 1 (5B, 5B fetched)
         prev: <e@27:37>
-{BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:2 ValueBytes:10 ValueBytesFetched:10}}
+blocks: 0B cached, 328B not cached (read time: 0s); points: 0 (0B keys, 0B values); separated: 2 (10B, 10B fetched)
         prev: <e@28:38>
-{BlockBytes:328 BlockBytesInCache:0 BlockReadDuration:0s KeyBytes:0 ValueBytes:0 PointCount:0 PointsCoveredByRangeTombstones:0 SeparatedPointValue:{Count:3 ValueBytes:15 ValueBytesFetched:15}}
+blocks: 0B cached, 328B not cached (read time: 0s); points: 0 (0B keys, 0B values); separated: 3 (15B, 15B fetched)
