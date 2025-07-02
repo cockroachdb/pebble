@@ -5,14 +5,18 @@
 package pebble
 
 import (
+	"bytes"
+	"fmt"
 	"math/rand/v2"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
@@ -601,4 +605,41 @@ func TestApplyDBCompressionSettings(t *testing.T) {
 	require.Equal(t, block.FastestCompression, o.Levels[1].Compression())
 	require.Equal(t, block.FastestCompression, o.Levels[2].Compression())
 	require.Equal(t, block.FastestCompression, o.Levels[3].Compression())
+}
+
+func TestStaticSpanPolicyFunc(t *testing.T) {
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/static_span_policy_func", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
+		var inputSpanPolicies []SpanAndPolicy
+		for _, cmdArg := range td.CmdArgs {
+			p := strparse.MakeParser("-:", cmdArg.String())
+			var sap SpanAndPolicy
+			sap.KeyRange.Start = []byte(p.Next())
+			p.Expect("-")
+			sap.KeyRange.End = []byte(p.Next())
+			p.Expect(":")
+			switch tok := p.Next(); tok {
+			case "lowlatency":
+				sap.Policy.ValueStoragePolicy = ValueStorageLowReadLatency
+			case "latencytolerant":
+				sap.Policy.ValueStoragePolicy = ValueStorageLatencyTolerant
+			default:
+				t.Fatalf("unknown policy: %s", tok)
+			}
+			inputSpanPolicies = append(inputSpanPolicies, sap)
+		}
+
+		spf := MakeStaticSpanPolicyFunc(testkeys.Comparer.Compare, inputSpanPolicies...)
+		for _, key := range strings.Fields(td.Input) {
+			policy, endKey, err := spf([]byte(key))
+			require.NoError(t, err)
+			if endKey == nil {
+				fmt.Fprintf(&buf, "%s -> none\n", key)
+			} else {
+				fmt.Fprintf(&buf, "%s -> %s until %s\n", key, policy, endKey)
+			}
+		}
+		return buf.String()
+	})
 }

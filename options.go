@@ -10,6 +10,7 @@ import (
 	"io"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1210,6 +1211,24 @@ type SpanPolicy struct {
 	ValueStoragePolicy ValueStoragePolicy
 }
 
+// String returns a string representation of the SpanPolicy.
+func (p SpanPolicy) String() string {
+	var sb strings.Builder
+	if p.PreferFastCompression {
+		sb.WriteString("fast-compression,")
+	}
+	if p.DisableValueSeparationBySuffix {
+		sb.WriteString("disable-value-separation-by-suffix,")
+	}
+	switch p.ValueStoragePolicy {
+	case ValueStorageLowReadLatency:
+		sb.WriteString("low-read-latency,")
+	case ValueStorageLatencyTolerant:
+		sb.WriteString("latency-tolerant,")
+	}
+	return strings.TrimSuffix(sb.String(), ",")
+}
+
 // ValueStoragePolicy is a hint used to determine where to store the values for
 // KVs.
 type ValueStoragePolicy uint8
@@ -1222,6 +1241,15 @@ const (
 	// ValueStorageLowReadLatency indicates Pebble should prefer storing values
 	// in-place.
 	ValueStorageLowReadLatency
+
+	// ValueStorageLatencyTolerant indicates value retrieval can tolerate
+	// additional latency, so Pebble should aggressively prefer storing values
+	// separately if it can reduce write amplification.
+	//
+	// If the global Options' enable value separation, Pebble may choose to
+	// separate values under the LatencyTolerant policy even if they do not meet
+	// the minimum size threshold of the global Options' ValueSeparationPolicy.
+	ValueStorageLatencyTolerant
 )
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.
@@ -1237,32 +1265,56 @@ const (
 // keyspace after startKey.
 type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, endKey []byte, err error)
 
+// SpanAndPolicy defines a key range and the policy to apply to it.
+type SpanAndPolicy struct {
+	KeyRange KeyRange
+	Policy   SpanPolicy
+}
+
 // MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
-// to the given span (and the default policy outside the span).
-func MakeStaticSpanPolicyFunc(cmp base.Compare, span KeyRange, policy SpanPolicy) SpanPolicyFunc {
+// to the given span (and the default policy outside the span). The supplied
+// policies must be non-overlapping in key range.
+func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) SpanPolicyFunc {
+	// Collect all the boundaries of the input policies, sort and deduplicate them.
+	uniqueKeys := make([][]byte, 0, 2*len(inputPolicies))
+	for i := range inputPolicies {
+		uniqueKeys = append(uniqueKeys, inputPolicies[i].KeyRange.Start)
+		uniqueKeys = append(uniqueKeys, inputPolicies[i].KeyRange.End)
+	}
+	slices.SortFunc(uniqueKeys, cmp)
+	uniqueKeys = slices.CompactFunc(uniqueKeys, func(a, b []byte) bool { return cmp(a, b) == 0 })
+
+	// Create a list of policies.
+	policies := make([]SpanPolicy, len(uniqueKeys)-1)
+	for _, p := range inputPolicies {
+		idx, _ := slices.BinarySearchFunc(uniqueKeys, p.KeyRange.Start, cmp)
+		policies[idx] = p.Policy
+	}
+
 	return func(startKey []byte) (_ SpanPolicy, endKey []byte, _ error) {
-		if cmp(startKey, span.End) >= 0 {
-			//      Start     End
-			//      v         v
-			// -----|---------|-----|---
-			//                      ^
-			//                      startKey
+		// Find the policy that applies to the start key.
+		idx, eq := slices.BinarySearchFunc(uniqueKeys, startKey, cmp)
+		switch idx {
+		case len(uniqueKeys):
+			// The start key is after the last policy.
 			return SpanPolicy{}, nil, nil
+		case len(uniqueKeys) - 1:
+			if eq {
+				// The start key is exactly the start of the last policy.
+				return SpanPolicy{}, nil, nil
+			}
+		case 0:
+			if !eq {
+				// The start key is before the first policy.
+				return SpanPolicy{}, uniqueKeys[0], nil
+			}
 		}
-		if cmp(startKey, span.Start) < 0 {
-			//      Start     End
-			//      v         v
-			// --|--|---------|-----
-			//   ^
-			//   startKey
-			return SpanPolicy{}, span.Start, nil
+		if eq {
+			// The start key is exactly the start of this policy.
+			return policies[idx], uniqueKeys[idx+1], nil
 		}
-		//      Start     End
-		//      v         v
-		// -----|----|----|-----
-		//           ^
-		//           startKey
-		return policy, span.End, nil
+		// The start key is between two policies.
+		return policies[idx-1], uniqueKeys[idx], nil
 	}
 }
 
