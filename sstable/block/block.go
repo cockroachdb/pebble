@@ -377,10 +377,12 @@ type ReadEnv struct {
 }
 
 // BlockServedFromCache updates the stats when a block was found in the cache.
-func (env *ReadEnv) BlockServedFromCache(blockLength uint64) {
+func (env *ReadEnv) BlockServedFromCache(kind Kind, blockLength uint64) {
 	if env.Stats != nil {
-		env.Stats.BlockBytes += blockLength
-		env.Stats.BlockBytesInCache += blockLength
+		env.Stats.BlockReads[kind].Count++
+		env.Stats.BlockReads[kind].CountInCache++
+		env.Stats.BlockReads[kind].BlockBytes += blockLength
+		env.Stats.BlockReads[kind].BlockBytesInCache += blockLength
 	}
 	if env.IterStats != nil {
 		env.IterStats.Accumulate(blockLength, blockLength, 0)
@@ -388,10 +390,11 @@ func (env *ReadEnv) BlockServedFromCache(blockLength uint64) {
 }
 
 // BlockRead updates the stats when a block had to be read.
-func (env *ReadEnv) BlockRead(blockLength uint64, readDuration time.Duration) {
+func (env *ReadEnv) BlockRead(kind Kind, blockLength uint64, readDuration time.Duration) {
 	if env.Stats != nil {
-		env.Stats.BlockBytes += blockLength
-		env.Stats.BlockReadDuration += readDuration
+		env.Stats.BlockReads[kind].Count++
+		env.Stats.BlockReads[kind].BlockBytes += blockLength
+		env.Stats.BlockReads[kind].BlockReadDuration += readDuration
 	}
 	if env.IterStats != nil {
 		env.IterStats.Accumulate(blockLength, 0, readDuration)
@@ -461,7 +464,7 @@ func (r *Reader) Read(
 	if r.opts.CacheOpts.CacheHandle == nil || env.BufferPool != nil {
 		if r.opts.CacheOpts.CacheHandle != nil {
 			if cv := r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset); cv != nil {
-				recordCacheHit(ctx, env, readHandle, bh)
+				recordCacheHit(ctx, env, readHandle, bh, kind)
 				return CacheBufferHandle(cv), nil
 			}
 		}
@@ -493,7 +496,7 @@ func (r *Reader) Read(
 			panic("cache.ReadHandle must not be valid")
 		}
 		if hit {
-			recordCacheHit(ctx, env, readHandle, bh)
+			recordCacheHit(ctx, env, readHandle, bh, kind)
 		}
 		return CacheBufferHandle(cv), nil
 	}
@@ -507,12 +510,14 @@ func (r *Reader) Read(
 	return value.MakeHandle(), nil
 }
 
-func recordCacheHit(ctx context.Context, env ReadEnv, readHandle objstorage.ReadHandle, bh Handle) {
+func recordCacheHit(
+	ctx context.Context, env ReadEnv, readHandle objstorage.ReadHandle, bh Handle, kind Kind,
+) {
 	// Cache hit.
 	if readHandle != nil {
 		readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+TrailerLen))
 	}
-	env.BlockServedFromCache(bh.Length)
+	env.BlockServedFromCache(kind, bh.Length)
 }
 
 // TODO(sumeer): should the threshold be configurable.
@@ -562,7 +567,7 @@ func (r *Reader) doRead(
 		compressed.Release()
 		return Value{}, err
 	}
-	env.BlockRead(bh.Length, readDuration)
+	env.BlockRead(kind, bh.Length, readDuration)
 	if err = ValidateChecksum(r.checksumType, compressed.BlockData(), bh); err != nil {
 		compressed.Release()
 		err = errors.Wrapf(err, "pebble: file %s", r.opts.CacheOpts.FileNum)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/redact"
 )
 
@@ -365,11 +366,12 @@ func (s SeekLTFlags) DisableRelativeSeek() SeekLTFlags {
 	return s &^ (1 << seekLTFlagRelativeSeek)
 }
 
-// InternalIteratorStats contains miscellaneous stats produced by
-// InternalIterators that are part of the InternalIterator tree. Not every
-// field is relevant for an InternalIterator implementation. The field values
-// are aggregated as one goes up the InternalIterator tree.
-type InternalIteratorStats struct {
+// BlockReadStats contains stats about block reads performed by an iterator.
+type BlockReadStats struct {
+	// Count is the count of blocks loaded.
+	Count uint64
+	// CountInCache is the subset of Count that were found in the block cache.
+	CountInCache uint64
 	// Bytes in the loaded blocks. If the block was compressed, this is the
 	// compressed bytes. Currently, only the index blocks, data blocks
 	// containing points, and filter blocks are included.
@@ -381,6 +383,26 @@ type InternalIteratorStats struct {
 	// TODO(sumeer): this currently excludes the time spent in Reader creation,
 	// and in reading the rangedel and rangekey blocks. Fix that.
 	BlockReadDuration time.Duration
+}
+
+// Add adds the stats in other to the stats in s.
+func (s *BlockReadStats) Add(other BlockReadStats) {
+	s.Count += other.Count
+	s.CountInCache += other.CountInCache
+	s.BlockBytes += other.BlockBytes
+	s.BlockBytesInCache += other.BlockBytesInCache
+	s.BlockReadDuration += other.BlockReadDuration
+}
+
+// InternalIteratorStats contains miscellaneous stats produced by
+// InternalIterators that are part of the InternalIterator tree. Not every
+// field is relevant for an InternalIterator implementation. The field values
+// are aggregated as one goes up the InternalIterator tree.
+type InternalIteratorStats struct {
+	// BlockReads is the count of block reads performed by the iterator by
+	// type.
+	BlockReads [blockkind.NumKinds]BlockReadStats
+
 	// The following can repeatedly count the same points if they are iterated
 	// over multiple times. Additionally, they may count a point twice when
 	// switching directions. The latter could be improved if needed.
@@ -424,9 +446,9 @@ type InternalIteratorStats struct {
 
 // Merge merges the stats in from into the given stats.
 func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
-	s.BlockBytes += from.BlockBytes
-	s.BlockBytesInCache += from.BlockBytesInCache
-	s.BlockReadDuration += from.BlockReadDuration
+	for i := range blockkind.NumKinds {
+		s.BlockReads[i].Add(from.BlockReads[i])
+	}
 	s.KeyBytes += from.KeyBytes
 	s.ValueBytes += from.ValueBytes
 	s.PointCount += from.PointCount
@@ -440,15 +462,24 @@ func (s *InternalIteratorStats) String() string {
 	return redact.StringWithoutMarkers(s)
 }
 
+func (s *InternalIteratorStats) TotalBlockReads() BlockReadStats {
+	var total BlockReadStats
+	for i := range blockkind.NumKinds {
+		total.Add(s.BlockReads[i])
+	}
+	return total
+}
+
 // SafeFormat implements the redact.SafeFormatter interface.
 func (s *InternalIteratorStats) SafeFormat(p redact.SafePrinter, verb rune) {
+	total := s.TotalBlockReads()
 	p.Printf("blocks: %s cached",
-		humanize.Bytes.Uint64(s.BlockBytesInCache),
+		humanize.Bytes.Uint64(total.BlockBytesInCache),
 	)
-	if s.BlockBytes != s.BlockBytesInCache || s.BlockReadDuration != 0 {
+	if total.BlockBytes != total.BlockBytesInCache || total.BlockReadDuration != 0 {
 		p.Printf(", %s not cached (read time: %s)",
-			humanize.Bytes.Uint64(s.BlockBytes-s.BlockBytesInCache),
-			humanize.FormattedString(s.BlockReadDuration.String()),
+			humanize.Bytes.Uint64(total.BlockBytes-total.BlockBytesInCache),
+			humanize.FormattedString(total.BlockReadDuration.String()),
 		)
 	}
 	p.Printf("; points: %s", humanize.Count.Uint64(s.PointCount))
