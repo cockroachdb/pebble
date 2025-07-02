@@ -110,9 +110,21 @@ type RunnerConfig struct {
 	GrantHandle base.CompactionGrantHandle
 }
 
+// ValueSeparationOutputConfig is used to configure value separation for an
+// individual compaction output.
+type ValueSeparationOutputConfig struct {
+	// MinimumSize is the minimum size of a value that will be separated into a
+	// blob file.
+	MinimumSize int
+}
+
 // ValueSeparation defines an interface for writing some values to separate blob
 // files.
 type ValueSeparation interface {
+	// SetNextOutputConfig is called when a compaction is starting a new output
+	// sstable. It can be used to configure value separation specifically for
+	// the next compaction output.
+	SetNextOutputConfig(config ValueSeparationOutputConfig)
 	// EstimatedFileSize returns an estimate of the disk space consumed by the
 	// current, pending blob file if it were closed now. If no blob file has
 	// been created, it returns 0.
@@ -474,6 +486,9 @@ type NeverSeparateValues struct{}
 
 // Assert that NeverSeparateValues implements the ValueSeparation interface.
 var _ ValueSeparation = NeverSeparateValues{}
+
+// SetNextOutputConfig implements the ValueSeparation interface.
+func (NeverSeparateValues) SetNextOutputConfig(config ValueSeparationOutputConfig) {}
 
 // EstimatedFileSize implements the ValueSeparation interface.
 func (NeverSeparateValues) EstimatedFileSize() uint64 { return 0 }

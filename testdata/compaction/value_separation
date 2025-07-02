@@ -535,3 +535,116 @@ would excise 1 files.
   add-table:     L6 000053(000044):[a@1#0,SET-azzz@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-azzz@1#0,SET] size:242560(715291) blobrefs:[(B000006: 556894), (B000008: 556959), (B000010: 68494); depth:1]
   add-table:     L6 000054(000044):[c@1#0,SET-czms@1#0,SET] seqnums:[0-0] points:[c@1#0,SET-czms@1#0,SET] size:230320(715291) blobrefs:[(B000006: 528792), (B000008: 528854), (B000010: 65037); depth:1]
   add-backing:   000044
+
+
+# Test a value separation policy that is configured to only separate values ≥
+# 1024 bytes, but there's also a key span defined with the latency-tolerant
+# value storage policy.
+
+define value-separation=(true,1024,10,0s,1.0) tolerate-latency-span=(f,o)
+----
+
+batch
+set a hello
+set b helloworld
+set c helloworld!
+set d hello
+set e helloworld
+set f helloworld!
+set g hello
+set h helloworld
+set i helloworld!
+set j hello
+set k helloworld
+set l helloworld!
+set m hello
+set n helloworld
+set o helloworld!
+set p hello
+set q helloworld
+set r helloworld!
+set s hello
+set t helloworld
+set u helloworld!
+set v hello
+set w helloworld
+set x helloworld!
+set y hello
+set z helloworld
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:799
+  000006:[f#15,SET-n#23,SET] seqnums:[15-23] points:[f#15,SET-n#23,SET] size:925 blobrefs:[(B000007: 63); depth:1]
+  000008:[o#24,SET-z#35,SET] seqnums:[24-35] points:[o#24,SET-z#35,SET] size:836
+Blob files:
+  B000007 physical:{000007 size:[115 (115B)] vals:[63 (63B)]}
+
+iter
+first
+next
+next
+stats
+next
+next
+next
+stats
+next
+next
+next
+stats
+next
+next
+next
+stats
+next
+next
+next
+stats
+next
+next
+next
+stats
+next
+next
+next
+stats
+next
+next
+next
+stats
+----
+a: (hello, .)
+b: (helloworld, .)
+c: (helloworld!, .)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 158B cached; points: 3 (3B keys, 26B values)
+d: (hello, .)
+e: (helloworld, .)
+f: (helloworld!, .)
+stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 421B cached; points: 6 (6B keys, 43B values); separated: 1 (11B, 11B fetched)
+g: (hello, .)
+h: (helloworld, .)
+i: (helloworld!, .)
+stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 421B cached; points: 9 (9B keys, 52B values); separated: 3 (32B, 32B fetched)
+j: (hello, .)
+k: (helloworld, .)
+l: (helloworld!, .)
+stats: seeked 1 times (1 internal); stepped 11 times (11 internal); blocks: 421B cached; points: 12 (12B keys, 61B values); separated: 5 (53B, 53B fetched)
+m: (hello, .)
+n: (helloworld, .)
+o: (helloworld!, .)
+stats: seeked 1 times (1 internal); stepped 14 times (14 internal); blocks: 615B cached; points: 15 (15B keys, 79B values); separated: 6 (63B, 63B fetched)
+p: (hello, .)
+q: (helloworld, .)
+r: (helloworld!, .)
+stats: seeked 1 times (1 internal); stepped 17 times (17 internal); blocks: 615B cached; points: 18 (18B keys, 105B values); separated: 6 (63B, 63B fetched)
+s: (hello, .)
+t: (helloworld, .)
+u: (helloworld!, .)
+stats: seeked 1 times (1 internal); stepped 20 times (20 internal); blocks: 615B cached; points: 21 (21B keys, 131B values); separated: 6 (63B, 63B fetched)
+v: (hello, .)
+w: (helloworld, .)
+x: (helloworld!, .)
+stats: seeked 1 times (1 internal); stepped 23 times (23 internal); blocks: 615B cached; points: 24 (24B keys, 157B values); separated: 6 (63B, 63B fetched)

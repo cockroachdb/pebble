@@ -1644,6 +1644,7 @@ func describeLSM(d *DB, verbose bool) string {
 }
 
 func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
+	var spanPolicies []SpanAndPolicy
 	for _, cmdArg := range args {
 		switch cmdArg.Key {
 		case "auto-compactions":
@@ -1762,7 +1763,23 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				DisableValueSeparationBySuffix: true,
 				ValueStoragePolicy:             ValueStorageLowReadLatency,
 			}
-			opts.Experimental.SpanPolicyFunc = MakeStaticSpanPolicyFunc(opts.Comparer.Compare, span, policy)
+			spanPolicies = append(spanPolicies, SpanAndPolicy{
+				KeyRange: span,
+				Policy:   policy,
+			})
+		case "tolerate-latency-span":
+			if len(cmdArg.Vals) != 2 {
+				return errors.New("tolerate-latency-span expects 2 arguments: <start-key> <end-key>")
+			}
+			span := KeyRange{
+				Start: []byte(cmdArg.Vals[0]),
+				End:   []byte(cmdArg.Vals[1]),
+			}
+			policy := SpanPolicy{ValueStoragePolicy: ValueStorageLatencyTolerant}
+			spanPolicies = append(spanPolicies, SpanAndPolicy{
+				KeyRange: span,
+				Policy:   policy,
+			})
 		case "target-file-sizes":
 			if len(cmdArg.Vals) > len(opts.Levels) {
 				return errors.New("too many target-file-sizes")
@@ -1819,6 +1836,9 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			}
 			opts.WALFailover.EnsureDefaults()
 		}
+	}
+	if len(spanPolicies) > 0 {
+		opts.Experimental.SpanPolicyFunc = MakeStaticSpanPolicyFunc(opts.Comparer.Compare, spanPolicies...)
 	}
 	return nil
 }
