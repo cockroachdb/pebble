@@ -34,6 +34,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
@@ -3447,9 +3448,14 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 
 	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
 	outputMetrics.TableBytesIn = startLevelBytes
-	// TODO(jackson):  This BytesRead value does not include any blob files
-	// written. It either should, or we should add a separate metric.
-	outputMetrics.TableBytesRead = c.outputLevel.files.TableSizeSum()
+	for i := range c.metrics.internalIterStats.BlockReads {
+		switch blockkind.Kind(i) {
+		case blockkind.BlobValue:
+			outputMetrics.BlobBytesRead += c.metrics.internalIterStats.BlockReads[i].BlockBytes
+		default:
+			outputMetrics.TableBytesRead += c.metrics.internalIterStats.BlockReads[i].BlockBytes
+		}
+	}
 	outputMetrics.BlobBytesCompacted = result.Stats.CumulativeBlobFileSize
 	if c.flush.flushables != nil {
 		outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
@@ -3457,7 +3463,6 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 	if len(c.extraLevels) > 0 {
 		outputMetrics.TableBytesIn += c.extraLevels[0].files.TableSizeSum()
 	}
-	outputMetrics.TableBytesRead += outputMetrics.TableBytesIn
 
 	if len(c.flush.flushables) == 0 {
 		c.metrics.perLevel.level(c.startLevel.level)
@@ -3537,7 +3542,6 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			outputMetrics.TableBytesFlushed += fileMeta.Size
 		}
 		outputMetrics.EstimatedReferencesSize += fileMeta.EstimatedReferenceSize()
-		outputMetrics.BlobBytesReadEstimate += fileMeta.EstimatedReferenceSize()
 		outputMetrics.TablesSize += int64(fileMeta.Size)
 		outputMetrics.TablesCount++
 		outputMetrics.Additional.BytesWrittenDataBlocks += t.WriterMeta.Properties.DataSize

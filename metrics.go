@@ -103,10 +103,9 @@ type LevelMetrics struct {
 	TablesDeleted uint64
 	// The number of sstables excised in a level by a delete-only compaction.
 	TablesExcised uint64
-	// BlobBytesReadEstimate is an estimate of the physical bytes corresponding
-	// to values referenced by sstables that were inputs into compactions
-	// outputting into this level.
-	BlobBytesReadEstimate uint64
+	// BlobBytesRead is the volume of physical bytes read from blob files during
+	// compactions outputting into this level.
+	BlobBytesRead uint64
 	// BlobBytesCompacted is the number of bytes written to blob files while
 	// compacting sstables in this level.
 	BlobBytesCompacted uint64
@@ -169,7 +168,7 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.TablesMoved += u.TablesMoved
 	m.BlobBytesCompacted += u.BlobBytesCompacted
 	m.BlobBytesFlushed += u.BlobBytesFlushed
-	m.BlobBytesReadEstimate += u.BlobBytesReadEstimate
+	m.BlobBytesRead += u.BlobBytesRead
 	m.MultiLevel.TableBytesInTop += u.MultiLevel.TableBytesInTop
 	m.MultiLevel.TableBytesRead += u.MultiLevel.TableBytesRead
 	m.MultiLevel.TableBytesIn += u.MultiLevel.TableBytesIn
