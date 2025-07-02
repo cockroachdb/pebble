@@ -19,6 +19,11 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
+// latencyTolerantMinimumSize is the minimum size, in bytes, of a value that
+// will be separated into a blob file when the value storage policy is
+// ValueStorageLatencyTolerant.
+const latencyTolerantMinimumSize = 10
+
 var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation {
 	return compact.NeverSeparateValues{}
 }
@@ -58,6 +63,7 @@ func (d *DB) determineCompactionValueSeparation(
 		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
 		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level),
 		minimumSize:        policy.MinimumSize,
+		globalMinimumSize:  policy.MinimumSize,
 		invalidValueCallback: func(userKey []byte, value []byte, err error) {
 			// The value may not be safe, so it will be redacted when redaction
 			// is enabled.
@@ -178,7 +184,15 @@ type writeNewBlobFiles struct {
 	// separated into a blob file. Values smaller than this are always written
 	// to the sstable (but may still be written to a value block within the
 	// sstable).
+	//
+	// minimumSize is set to globalMinimumSize by default and on every call to
+	// FinishOutput. It may be overriden by SetNextOutputConfig (i.e, if a
+	// SpanPolicy dictates a different minimum size for a span of the keyspace).
 	minimumSize int
+	// globalMinimumSize is the size threshold for separating values into blob
+	// files globally across the keyspace. It may be overridden per-output by
+	// SetNextOutputConfig.
+	globalMinimumSize int
 	// invalidValueCallback is called when a value is encountered for which the
 	// short attribute extractor returns an error.
 	invalidValueCallback func(userKey []byte, value []byte, err error)
@@ -192,6 +206,11 @@ type writeNewBlobFiles struct {
 
 // Assert that *writeNewBlobFiles implements the compact.ValueSeparation interface.
 var _ compact.ValueSeparation = (*writeNewBlobFiles)(nil)
+
+// SetNextOutputConfig implements the ValueSeparation interface.
+func (vs *writeNewBlobFiles) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {
+	vs.minimumSize = config.MinimumSize
+}
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
@@ -311,6 +330,8 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 		ValueSize:    stats.UncompressedValueBytes,
 		CreationTime: uint64(time.Now().Unix()),
 	}
+	// Reset the minimum size for the next output.
+	vs.minimumSize = vs.globalMinimumSize
 
 	return compact.ValueSeparationMetadata{
 		BlobReferences: manifest.BlobReferences{manifest.MakeBlobReference(
@@ -358,6 +379,9 @@ type pendingReference struct {
 // Assert that *preserveBlobReferences implements the compact.ValueSeparation
 // interface.
 var _ compact.ValueSeparation = (*preserveBlobReferences)(nil)
+
+// SetNextOutputConfig implements the ValueSeparation interface.
+func (vs *preserveBlobReferences) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.

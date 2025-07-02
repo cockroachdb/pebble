@@ -100,6 +100,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 						},
 					}
 					d.MaybeScanArgs(t, "minimum-size", &newSep.minimumSize)
+					newSep.globalMinimumSize = newSep.minimumSize
 					if arg, ok := d.Arg("short-attr-extractor"); ok {
 						switch arg.SingleVal(t) {
 						case "error":
@@ -205,6 +206,9 @@ type defineDBValueSeparator struct {
 
 // Assert that *defineDBValueSeparator implements the compact.ValueSeparation interface.
 var _ compact.ValueSeparation = (*defineDBValueSeparator)(nil)
+
+// SetNextOutputConfig implements the compact.ValueSeparation interface.
+func (vs *defineDBValueSeparator) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
