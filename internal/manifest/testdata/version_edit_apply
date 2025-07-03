@@ -187,6 +187,7 @@ apply v6
   add-table: L1 000003(000009):[a#2,SET-b#2,SET]
   add-table: L1 000004(000009):[c#2,SET-e#2,SET]
   add-backing: 000009
+  excise-op: [b, c] #3
 ----
 L1:
   000003(000009):[a#2,SET-b#2,SET] seqnums:[0-0] points:[a#2,SET-b#2,SET]

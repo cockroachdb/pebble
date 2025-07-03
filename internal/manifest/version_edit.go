@@ -35,14 +35,15 @@ type byteReader interface {
 // Tag 8 is no longer used.
 const (
 	// LevelDB tags.
-	tagComparator     = 1
-	tagLogNumber      = 2
-	tagNextFileNumber = 3
-	tagLastSequence   = 4
-	tagCompactPointer = 5
-	tagDeletedFile    = 6
-	tagNewFile        = 7
-	tagPrevLogNumber  = 9
+	tagComparator         = 1
+	tagLogNumber          = 2
+	tagNextFileNumber     = 3
+	tagLastSequence       = 4
+	tagCompactPointer     = 5
+	tagDeletedFile        = 6
+	tagNewFile            = 7
+	tagPrevLogNumber      = 9
+	tagExciseBoundsRecord = 10
 
 	// RocksDB tags.
 	tagNewFile2         = 100
@@ -96,6 +97,12 @@ type NewTableEntry struct {
 	// BackingFileNum is only set during manifest replay, and only for virtual
 	// sstables.
 	BackingFileNum base.DiskFileNum
+}
+
+// ExciseOpEntry holds the bounds and sequence number for an excise operation.
+type ExciseOpEntry struct {
+	Bounds base.UserKeyBounds
+	SeqNum base.SeqNum
 }
 
 // VersionEdit holds the state for an edit to a Version along with other
@@ -179,6 +186,9 @@ type VersionEdit struct {
 	// While replaying a MANIFEST, the values are nil. Otherwise the values must
 	// not be nil.
 	DeletedBlobFiles map[DeletedBlobFileEntry]*PhysicalBlobFile
+
+	// ExciseBoundsRecord holds excise operations as a slice of entries.
+	ExciseBoundsRecord []ExciseOpEntry
 }
 
 // Decode decodes an edit from the specified reader.
@@ -575,6 +585,32 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			v.ObsoletePrevLogNum = n
 
+		case tagExciseBoundsRecord:
+			start, err := d.readBytes()
+			if err != nil {
+				return err
+			}
+			end, err := d.readBytes()
+			if err != nil {
+				return err
+			}
+			kind, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			seqNum, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			bounds := base.UserKeyBounds{
+				Start: start,
+				End:   base.UserKeyExclusiveIf(end, base.BoundaryKind(kind) == base.Exclusive),
+			}
+			v.ExciseBoundsRecord = append(v.ExciseBoundsRecord, ExciseOpEntry{
+				Bounds: bounds,
+				SeqNum: base.SeqNum(seqNum),
+			})
+
 		case tagColumnFamily, tagColumnFamilyAdd, tagColumnFamilyDrop, tagMaxColumnFamily:
 			return base.CorruptionErrorf("column families are not supported")
 
@@ -641,6 +677,10 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	for _, df := range deletedBlobFileEntries {
 		fmt.Fprintf(&buf, "  del-blob-file: %s %s\n", df.FileID, df.FileNum)
 	}
+	for _, exciseBounds := range v.ExciseBoundsRecord {
+		fmt.Fprintf(&buf, "  excise-op:     %s #%d\n", exciseBounds.Bounds.String(), exciseBounds.SeqNum)
+	}
+
 	return buf.String()
 }
 
@@ -727,6 +767,14 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 				FileID:  p.BlobFileID(),
 				FileNum: p.DiskFileNum(),
 			}] = nil
+
+		case "excise-op":
+			bounds := p.UserKeyBounds()
+			seqNum := p.HashSeqNum()
+			ve.ExciseBoundsRecord = append(ve.ExciseBoundsRecord, ExciseOpEntry{
+				Bounds: bounds,
+				SeqNum: seqNum,
+			})
 
 		default:
 			return nil, errors.Errorf("field %q not implemented", field)
@@ -868,6 +916,13 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(tagDeletedBlobFile)
 		e.writeUvarint(uint64(x.FileID))
 		e.writeUvarint(uint64(x.FileNum))
+	}
+	for _, entry := range v.ExciseBoundsRecord {
+		e.writeUvarint(tagExciseBoundsRecord)
+		e.writeBytes(entry.Bounds.Start)
+		e.writeBytes(entry.Bounds.End.Key)
+		e.writeUvarint(uint64(entry.Bounds.End.Kind))
+		e.writeUvarint(uint64(entry.SeqNum))
 	}
 	_, err := w.Write(e.Bytes())
 	return err

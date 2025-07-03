@@ -1805,6 +1805,7 @@ func (d *DB) ingestSplit(
 	updateMetrics func(*manifest.TableMetadata, int, []manifest.NewTableEntry),
 	files []ingestSplitFile,
 	replacedTables map[base.TableNum][]manifest.NewTableEntry,
+	exciseSeqNum base.SeqNum,
 ) error {
 	for _, s := range files {
 		ingestFileBounds := s.ingestFile.UserKeyBounds()
@@ -1880,6 +1881,11 @@ func (d *DB) ingestSplit(
 			}
 		}
 		updateMetrics(splitFile, s.level, added)
+		// Update the ExciseBoundsRecord
+		ve.ExciseBoundsRecord = append(ve.ExciseBoundsRecord, manifest.ExciseOpEntry{
+			Bounds: exciseBounds,
+			SeqNum: exciseSeqNum,
+		})
 	}
 	// Flatten the version edit by removing any entries from ve.NewFiles that
 	// are also in ve.DeletedFiles.
@@ -2108,11 +2114,15 @@ func (d *DB) ingestApply(
 					updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 				}
 			}
+			ve.ExciseBoundsRecord = append(ve.ExciseBoundsRecord, manifest.ExciseOpEntry{
+				Bounds: exciseBounds,
+				SeqNum: exciseSeqNum,
+			})
 		}
 		if len(filesToSplit) > 0 {
 			// For the same reasons as the above call to excise, we hold the db mutex
 			// while calling this method.
-			if err := d.ingestSplit(ctx, ve, updateLevelMetricsOnExcise, filesToSplit, replacedTables); err != nil {
+			if err := d.ingestSplit(ctx, ve, updateLevelMetricsOnExcise, filesToSplit, replacedTables, exciseSeqNum); err != nil {
 				return versionUpdate{}, err
 			}
 		}

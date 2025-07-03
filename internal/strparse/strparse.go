@@ -109,6 +109,36 @@ func (p *Parser) TryLevel() (level int, ok bool) {
 	return 0, false
 }
 
+// BracketedRange parses UserKeyBounds as string form [a, b], [bb, cc),
+// handles exclusive and inclusive cases of excise bounds.
+func (p *Parser) BracketedRange() string {
+	if p.Done() {
+		p.Errf("expected bracketed range, but no tokens found")
+	}
+	open := p.Peek()
+	if !(open == "[") {
+		p.Errf("expected opening bracket, got %q", open)
+	}
+
+	p.Next()
+	var builder strings.Builder
+	builder.WriteString(open)
+	first := true
+	for !p.Done() {
+		tok := p.Next()
+		if tok == "]" || tok == ")" {
+			builder.WriteString(tok)
+			break
+		}
+		if !first {
+			builder.WriteString(" ")
+		}
+		builder.WriteString(tok)
+		first = false
+	}
+	return builder.String()
+}
+
 // Level parses the next token as a level.
 func (p *Parser) Level() int {
 	level, ok := p.TryLevel()
@@ -150,6 +180,12 @@ func (p *Parser) SeqNum() base.SeqNum {
 	return base.ParseSeqNum(p.Next())
 }
 
+// Uint64 parses the next token as a sequence number with a "#" prefix.
+func (p *Parser) HashSeqNum() base.SeqNum {
+	p.tokens[0] = p.tokens[0][1:]
+	return base.ParseSeqNum(p.Next())
+}
+
 // BlobFileID parses the next token as a BlobFileID.
 func (p *Parser) BlobFileID() base.BlobFileID {
 	s := p.Next()
@@ -176,6 +212,11 @@ func (p *Parser) DiskFileNum() base.DiskFileNum {
 // InternalKey parses the next token as an internal key.
 func (p *Parser) InternalKey() base.InternalKey {
 	return base.ParseInternalKey(p.Next())
+}
+
+// UserKeyBounds parses the next token as an user key interval.
+func (p *Parser) UserKeyBounds() base.UserKeyBounds {
+	return base.ParseUserKeyBounds(p.BracketedRange())
 }
 
 // Errf panics with an error which includes the original string and the last
