@@ -81,6 +81,11 @@ close: db/marker.format-version.000011.024
 remove: db/marker.format-version.000010.023
 sync: db
 upgraded to format version: 024
+create: db/marker.format-version.000012.025
+close: db/marker.format-version.000012.025
+remove: db/marker.format-version.000011.024
+sync: db
+upgraded to format version: 025
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
 close: db/temporary.000003.dbtmp
@@ -397,9 +402,9 @@ sync-data: checkpoint/OPTIONS-000003
 close: checkpoint/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoint
-create: checkpoint/marker.format-version.000001.024
-sync-data: checkpoint/marker.format-version.000001.024
-close: checkpoint/marker.format-version.000001.024
+create: checkpoint/marker.format-version.000001.025
+sync-data: checkpoint/marker.format-version.000001.025
+close: checkpoint/marker.format-version.000001.025
 sync: checkpoint
 close: checkpoint
 link: db/000013.sst -> checkpoint/000013.sst

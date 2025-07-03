@@ -2108,6 +2108,10 @@ func (d *DB) ingestApply(
 					updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 				}
 			}
+			ve.ExciseBoundsRecord = append(ve.ExciseBoundsRecord, manifest.ExciseOpEntry{
+				Bounds: exciseBounds,
+				SeqNum: exciseSeqNum,
+			})
 		}
 		if len(filesToSplit) > 0 {
 			// For the same reasons as the above call to excise, we hold the db mutex
