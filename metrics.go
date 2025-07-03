@@ -598,20 +598,21 @@ func (m *Metrics) RemoteTablesTotal() (count uint64, size uint64) {
 	return remoteCount, remoteSize
 }
 
-// String pretty-prints the metrics as below:
+// String pretty-prints the metrics as below (semi-adjusted visually to avoid
+// the crlfmt from auto-reformatting):
 //
-//	      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |     multilevel
-//	level | tables  size val-bl vtables | score  uc    c |   in  | tables  size | tables  size | tables  size |  read |   r   w  |    top   in  read
-//	------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+------------------
-//	    0 |   101   102B     0B     101 | 1.10 2.10 0.30 |  104B |   112   104B |   113   106B |   221   217B |  107B |   1 2.09 |  104B  104B  104B
-//	    1 |   201   202B     0B     201 | 1.20 2.20 0.60 |  204B |   212   204B |   213   206B |   421   417B |  207B |   2 2.04 |  204B  204B  204B
-//	    2 |   301   302B     0B     301 | 1.30 2.30 0.90 |  304B |   312   304B |   313   306B |   621   617B |  307B |   3 2.03 |  304B  304B  304B
-//	    3 |   401   402B     0B     401 | 1.40 2.40 1.20 |  404B |   412   404B |   413   406B |   821   817B |  407B |   4 2.02 |  404B  404B  404B
-//	    4 |   501   502B     0B     501 | 1.50 2.50 1.50 |  504B |   512   504B |   513   506B |  1.0K  1017B |  507B |   5 2.02 |  504B  504B  504B
-//	    5 |   601   602B     0B     601 | 1.60 2.60 1.80 |  604B |   612   604B |   613   606B |  1.2K  1.2KB |  607B |   6 2.01 |  604B  604B  604B
-//	    6 |   701   702B     0B     701 |    - 2.70 2.10 |  704B |   712   704B |   713   706B |  1.4K  1.4KB |  707B |   7 2.01 |  704B  704B  704B
-//	total |  2.8K  2.7KB     0B    2.8K |    -    -    - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |  5.7K  8.4KB | 2.8KB |  28 3.00 | 2.8KB 2.8KB 2.8KB
-//	------------------------------------------------------------------------------------------------------------------------------------------------
+//	      |                             |                |       |   ingested   |     moved    |  written  |       |   amp   |    val sep   |     multilevel
+//	level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size |tables size|  read |  r   w  | refsz  valblk|   top   in  read
+//	------+-----------------------------+----------------+-------+--------------+--------------+-----------+-------+---------+--------------+------------------
+//	    0 |   101   102B     0B     101 | 1.10 2.10 0.30 |  104B |   112   104B |   113   106B | 221   217B|  107B |  1 2.09 | 114B       0B|  104B  104B  104B
+//	    1 |   201   202B     0B     201 | 1.20 2.20 0.60 |  204B |   212   204B |   213   206B | 421   417B|  207B |  2 2.04 | 214B       0B|  204B  204B  204B
+//	    2 |   301   302B     0B     301 | 1.30 2.30 0.90 |  304B |   312   304B |   313   306B | 621   617B|  307B |  3 2.03 | 314B       0B|  304B  304B  304B
+//	    3 |   401   402B     0B     401 | 1.40 2.40 1.20 |  404B |   412   404B |   413   406B | 821   817B|  407B |  4 2.02 | 414B       0B|  404B  404B  404B
+//	    4 |   501   502B     0B     501 | 1.50 2.50 1.50 |  504B |   512   504B |   513   506B |1.0K  1017B|  507B |  5 2.02 | 514B       0B|  504B  504B  504B
+//	    5 |   601   602B     0B     601 | 1.60 2.60 1.80 |  604B |   612   604B |   613   606B |1.2K  1.2KB|  607B |  6 2.01 | 614B       0B|  604B  604B  604B
+//	    6 |   701   702B     0B     701 |    - 2.70 2.10 |  704B |   712   704B |   713   706B |1.4K  1.4KB|  707B |  7 2.01 | 714B       0B|  704B  704B  704B
+//	total |  2.8K  2.7KB     0B    2.8K |    -    -    - | 2.8KB |  2.9K  2.8KB |  2.9K  2.8KB |5.7K  8.4KB| 2.8KB | 28 3.00 |2.8KB       0B| 2.8KB 2.8KB 2.8KB
+//
 //	WAL: 22 files (24B)  in: 25B  written: 26B (4% overhead)
 //	Flushes: 8
 //	Compactions: 5  estimated debt: 6B  in progress: 2 (7B)
@@ -655,13 +656,13 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.SafeString("\n")
 	}
 
-	w.SafeString("      |                             |                |       |   ingested   |     moved    |    written   |       |    amp")
-	appendIfMulti("   |     multilevel")
+	w.SafeString("      |                             |                |       |   ingested   |     moved    |    written   |       |    amp   |    val sep")
+	appendIfMulti("    |     multilevel")
 	newline()
-	w.SafeString("level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w")
-	appendIfMulti("  |    top   in  read")
+	w.SafeString("level | tables  size val-bl vtables | score  ff  cff |   in  | tables  size | tables  size | tables  size |  read |   r   w  | refsz  valblk")
+	appendIfMulti(" |   top   in  read")
 	newline()
-	w.SafeString("------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+---------")
+	w.SafeString("------+-----------------------------+----------------+-------+--------------+--------------+--------------+-------+----------+--------------")
 	appendIfMulti("-+------------------")
 	newline()
 
@@ -672,7 +673,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			// Format a zero level score as a dash.
 			score = math.NaN()
 		}
-		w.Printf("| %5s %6s %6s %7s | %4s %4s %4s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s",
+		w.Printf("| %5s %6s %6s %7s | %4s %4s %4s | %5s | %5s %6s | %5s %6s | %5s %6s | %5s | %3d %4s | %5s %7s",
 			humanize.Count.Int64(m.TablesCount),
 			humanize.Bytes.Int64(m.TablesSize),
 			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
@@ -690,6 +691,8 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 			humanize.Bytes.Uint64(m.TableBytesRead),
 			redact.Safe(m.Sublevels),
 			humanizeFloat(m.WriteAmp(), 4),
+			humanize.Bytes.Uint64(m.EstimatedReferencesSize),
+			humanize.Bytes.Uint64(m.Additional.ValueBlocksSize),
 		)
 
 		if multiExists {
@@ -721,7 +724,7 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.SafeString("total ")
 	formatRow(&total)
 
-	w.SafeString("----------------------------------------------------------------------------------------------------------------------------")
+	w.SafeString("--------------------------------------------------------------------------------------------------------------------------------------------")
 	appendIfMulti("--------------------")
 	newline()
 	w.Printf("WAL: %d files (%s)  in: %s  written: %s (%.0f%% overhead)",
