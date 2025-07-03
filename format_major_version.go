@@ -235,6 +235,9 @@ const (
 	FormatValueSeparation
 
 	// -- Add new versions here --
+	// FormatExciseBoundsRecord is a format major version that adds support for
+	// persisting excise bounds records in the manifest (VersionEdit).
+	FormatExciseBoundsRecord
 
 	// FormatNewest is the most recent format major version.
 	FormatNewest FormatMajorVersion = iota - 1
@@ -276,7 +279,7 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 		return sstable.TableFormatPebblev5
 	case FormatTableFormatV6, formatDeprecatedExperimentalValueSeparation:
 		return sstable.TableFormatPebblev6
-	case formatFooterAttributes, FormatValueSeparation:
+	case formatFooterAttributes, FormatValueSeparation, FormatExciseBoundsRecord:
 		return sstable.TableFormatPebblev7
 	default:
 		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
@@ -290,7 +293,7 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
 		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
 		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		FormatTableFormatV6, formatDeprecatedExperimentalValueSeparation, formatFooterAttributes,
+		FormatExciseBoundsRecord, FormatTableFormatV6, formatDeprecatedExperimentalValueSeparation, formatFooterAttributes,
 		FormatValueSeparation:
 		return sstable.TableFormatPebblev1
 	default:
@@ -348,6 +351,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatValueSeparation: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatValueSeparation)
+	},
+	FormatExciseBoundsRecord: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatExciseBoundsRecord)
 	},
 }
 

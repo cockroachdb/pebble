@@ -1588,6 +1588,11 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 	}
 	if ingestFlushable.exciseSpan.Valid() {
 		exciseBounds := ingestFlushable.exciseSpan.UserKeyBounds()
+		ve.ExciseBoundsRecord = append(ve.ExciseBoundsRecord, manifest.ExciseOpEntry{
+			Bounds: exciseBounds,
+			SeqNum: ingestFlushable.exciseSeqNum,
+		})
+
 		// Iterate through all levels and find files that intersect with exciseSpan.
 		for layer, ls := range version.AllLevelsAndSublevels() {
 			for m := range ls.Overlaps(d.cmp, ingestFlushable.exciseSpan.UserKeyBounds()).All() {
