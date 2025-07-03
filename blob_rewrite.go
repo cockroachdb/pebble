@@ -215,16 +215,18 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 	// Ensure we clean up the blob file we created on failure.
 	if err != nil {
 		if objMeta.DiskFileNum != 0 {
-			d.mu.versions.obsoleteBlobs = append(d.mu.versions.obsoleteBlobs, obsoleteFile{
-				fileType: base.FileTypeBlob,
-				fs:       d.opts.FS,
-				path:     d.objProvider.Path(objMeta),
-				fileNum:  objMeta.DiskFileNum,
-				// We don't know the size of the output blob file--it may have
-				// been half-written. We use the input blob file size as an
-				// approximation for deletion pacing.
-				fileSize: c.input.Physical.Size,
-				isLocal:  true,
+			d.mu.versions.obsoleteBlobs = mergeObsoleteFiles(d.mu.versions.obsoleteBlobs, []obsoleteFile{
+				{
+					fileType: base.FileTypeBlob,
+					fs:       d.opts.FS,
+					path:     d.objProvider.Path(objMeta),
+					fileNum:  objMeta.DiskFileNum,
+					// We don't know the size of the output blob file--it may have
+					// been half-written. We use the input blob file size as an
+					// approximation for deletion pacing.
+					fileSize: c.input.Physical.Size,
+					isLocal:  true,
+				},
 			})
 		}
 	}
