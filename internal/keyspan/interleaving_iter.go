@@ -492,7 +492,9 @@ func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 		return nil
 	case posPointKey:
 		i.savePoint(i.pointIter.NextPrefix(succKey))
-		if i.withinSpan {
+		if i.err != nil {
+			i.pos = posExhausted
+		} else if i.withinSpan {
 			if i.pointKV == nil || i.cmp(i.span.End, i.pointKV.K.UserKey) <= 0 {
 				i.pos = posKeyspanEnd
 			} else {
