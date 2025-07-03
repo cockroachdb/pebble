@@ -1871,7 +1871,7 @@ func (d *DB) ingestSplit(
 		if err != nil {
 			return err
 		}
-		added := applyExciseToVersionEdit(ve, splitFile, leftTable, rightTable, s.level)
+		added := applyExciseToVersionEdit(ve, splitFile, leftTable, rightTable, s.level, exciseBounds)
 		replacedTables[splitFile.TableNum] = added
 		for i := range added {
 			addedBounds := added[i].Meta.UserKeyBounds()
@@ -2103,7 +2103,7 @@ func (d *DB) ingestApply(
 					if err != nil {
 						return versionUpdate{}, err
 					}
-					newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
+					newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level(), exciseBounds)
 					replacedTables[m.TableNum] = newFiles
 					updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 				}

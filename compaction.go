@@ -1594,7 +1594,7 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 				if err != nil {
 					return nil, err
 				}
-				newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
+				newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level(), exciseBounds)
 				replacedTables[m.TableNum] = newFiles
 				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
@@ -2973,7 +2973,7 @@ func (d *DB) applyHintOnFile(
 	if err != nil {
 		return nil, errors.Wrap(err, "error when running excise for delete-only compaction")
 	}
-	newFiles = applyExciseToVersionEdit(ve, f, leftTable, rightTable, level)
+	newFiles = applyExciseToVersionEdit(ve, f, leftTable, rightTable, level, exciseBounds)
 	return newFiles, nil
 }
 

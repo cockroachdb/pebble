@@ -35,8 +35,9 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 
 	// When we add a new version, we should add a check for the new version in
 	// addition to updating these expected values.
-	require.Equal(t, FormatNewest, FormatMajorVersion(24))
-	require.Equal(t, internalFormatNewest, FormatMajorVersion(24))
+	require.Equal(t, FormatNewest, FormatMajorVersion(25))
+	require.Equal(t, internalFormatNewest, FormatMajorVersion(25))
+	require.Equal(t, FormatExciseBoundsRecord, FormatMajorVersion(25))
 }
 
 func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
@@ -77,6 +78,8 @@ func TestRatchetFormat(t *testing.T) {
 	require.Equal(t, formatFooterAttributes, d.FormatMajorVersion())
 	require.NoError(t, d.RatchetFormatMajorVersion(FormatValueSeparation))
 	require.Equal(t, FormatValueSeparation, d.FormatMajorVersion())
+	require.NoError(t, d.RatchetFormatMajorVersion(FormatExciseBoundsRecord))
+	require.Equal(t, FormatExciseBoundsRecord, d.FormatMajorVersion())
 
 	require.NoError(t, d.Close())
 
@@ -239,6 +242,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		formatDeprecatedExperimentalValueSeparation: {sstable.TableFormatPebblev1, sstable.TableFormatPebblev6},
 		formatFooterAttributes:                      {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 		FormatValueSeparation:                       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
+		FormatExciseBoundsRecord:                    {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 	}
 
 	// Valid versions.

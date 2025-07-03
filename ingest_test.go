@@ -941,7 +941,7 @@ func testIngestSharedImpl(
 						d.mu.Unlock()
 						return fmt.Sprintf("error when excising %s: %s", m.TableNum, err.Error())
 					}
-					applyExciseToVersionEdit(ve, m, leftTable, rightTable, level)
+					applyExciseToVersionEdit(ve, m, leftTable, rightTable, level, exciseBounds)
 				}
 			}
 			d.mu.Lock()

@@ -535,6 +535,7 @@ would excise 1 files.
   add-table:     L6 000053(000044):[a@1#0,SET-azzz@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-azzz@1#0,SET] size:242560(715291) blobrefs:[(B000006: 556894), (B000008: 556959), (B000010: 68494); depth:1]
   add-table:     L6 000054(000044):[c@1#0,SET-czms@1#0,SET] seqnums:[0-0] points:[c@1#0,SET-czms@1#0,SET] size:230320(715291) blobrefs:[(B000006: 528792), (B000008: 528854), (B000010: 65037); depth:1]
   add-backing:   000044
+  excise-op:     [b, c) #0
 
 
 # Test a value separation policy that is configured to only separate values ≥

@@ -472,7 +472,10 @@ func determineExcisedTableBlobReferences(
 //
 // Either or both of leftTable/rightTable can be nil.
 func applyExciseToVersionEdit(
-	ve *manifest.VersionEdit, originalTable, leftTable, rightTable *manifest.TableMetadata, level int,
+	ve *manifest.VersionEdit,
+	originalTable, leftTable, rightTable *manifest.TableMetadata,
+	level int,
+	exciseBounds base.UserKeyBounds,
 ) (newFiles []manifest.NewTableEntry) {
 	ve.DeletedTables[manifest.DeletedTableEntry{
 		Level:   level,
@@ -495,5 +498,14 @@ func applyExciseToVersionEdit(
 	if rightTable != nil {
 		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{Level: level, Meta: rightTable})
 	}
+
+	ve.ExciseBoundsRecord = append(ve.ExciseBoundsRecord, manifest.ExciseOpEntry{
+		Bounds: base.UserKeyBounds{
+			Start: exciseBounds.Start,
+			End:   exciseBounds.End,
+		},
+		SeqNum: originalTable.LargestSeqNum,
+	})
+
 	return ve.NewTables[originalLen:]
 }

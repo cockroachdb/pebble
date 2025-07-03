@@ -1495,7 +1495,7 @@ func runExciseDryRunCmd(td *datadriven.TestData, d *DB) (*manifest.VersionEdit, 
 			if err != nil {
 				return nil, errors.Errorf("error when excising %s: %s", m.TableNum, err.Error())
 			}
-			applyExciseToVersionEdit(ve, m, leftTable, rightTable, l.Level())
+			applyExciseToVersionEdit(ve, m, leftTable, rightTable, l.Level(), exciseBounds)
 		}
 	}
 

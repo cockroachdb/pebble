@@ -115,6 +115,7 @@ would excise 1 files, use ingest-and-excise to excise.
   add-table:     L6 000008(000007):[a#0,SET-d#0,SET]
   add-table:     L6 000009(000007):[l#0,SET-l#0,SET]
   add-backing:   000007
+  excise-op:     [e, gg) #0
 
 replicate 2 1 e gg
 ----
