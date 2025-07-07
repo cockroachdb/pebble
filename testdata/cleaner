@@ -15,6 +15,7 @@ open-dir: db_wal
 close: db_wal
 open-dir: db
 lock: db/LOCK
+lock: db_wal/LOCK
 open-dir: db
 open-dir: db
 open-dir: db
@@ -115,6 +116,7 @@ marker.manifest.000001.MANIFEST-000001
 list db_wal
 ----
 000006.log
+LOCK
 archive
 
 list db/archive
@@ -144,6 +146,7 @@ open-dir: db1_wal
 close: db1_wal
 open-dir: db1
 lock: db1/LOCK
+lock: db1_wal/LOCK
 open-dir: db1
 open-dir: db1
 open-dir: db1
@@ -235,6 +238,7 @@ open-dir: db1_wal
 close: db1_wal
 open-dir: db1
 lock: db1/LOCK
+lock: db1_wal/LOCK
 open-dir: db1
 open-dir: db1
 open-dir: db1
