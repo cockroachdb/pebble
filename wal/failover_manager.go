@@ -715,6 +715,12 @@ func (wm *failoverManager) Close() error {
 	for _, f := range wm.dirHandles {
 		err = firstError(err, f.Close())
 	}
+	if wm.opts.Primary.Lock != nil {
+		err = firstError(err, wm.opts.Primary.Lock.Close())
+	}
+	if wm.opts.Secondary.Lock != nil {
+		err = firstError(err, wm.opts.Secondary.Lock.Close())
+	}
 	return err
 }
 

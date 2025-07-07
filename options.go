@@ -832,7 +832,7 @@ type Options struct {
 	// Open will enforce that the Lock passed locks the same directory passed to
 	// Open. Concurrent calls to Open using the same Lock are detected and
 	// prohibited.
-	Lock *Lock
+	Lock *base.DirLock
 
 	// The count of L0 files necessary to trigger an L0 compaction.
 	L0CompactionFileThreshold int
@@ -1032,6 +1032,17 @@ type Options struct {
 	// empty (the default), WALs will be stored in the same directory as sstables
 	// (i.e. the directory passed to pebble.Open).
 	WALDir string
+
+	// WALDirLock, if set, must be a directory lock acquired through LockDirectory
+	// for the same directory set on WALDir passed to Open. If provided, Open will
+	// skip locking the directory. Closing the database will not release the lock,
+	// and it's the responsibility of the caller to release the lock after closing the
+	// database.
+	//
+	// Open will enforce that the Lock passed locks the same WAL directory passed to
+	// Open. Concurrent calls to Open using the same Lock are detected and
+	// prohibited.
+	WALDirLock *base.DirLock
 
 	// WALFailover may be set to configure Pebble to monitor writes to its
 	// write-ahead log and failover to writing write-ahead log entries to a
@@ -1322,8 +1333,10 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) 
 // transient write unavailability on the primary WAL volume.
 type WALFailoverOptions struct {
 	// Secondary indicates the secondary directory and VFS to use in the event a
-	// write to the primary WAL stalls.
+	// write to the primary WAL stalls. The Lock field may be set during setup to
+	// preacquire the lock on the secondary directory.
 	Secondary wal.Dir
+
 	// FailoverOptions provides configuration of the thresholds and intervals
 	// involved in WAL failover. If any of its fields are left unspecified,
 	// reasonable defaults will be used.
