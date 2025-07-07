@@ -103,7 +103,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// deferred cleanups.
 
 	// Open the database and WAL directories first.
-	walDirname, dataDir, err := prepareAndOpenDirs(dirname, opts)
+	walDirname, secondaryWalDirName, dataDir, err := prepareAndOpenDirs(dirname, opts)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error opening database at %q", dirname)
 	}
@@ -113,29 +113,41 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 	}()
 
+	// Lock all directories that will be written to.
+	var dirLocks [3]*Lock
+	defer func() {
+		for _, lock := range dirLocks {
+			if db == nil && lock != nil {
+				_ = lock.Close()
+			}
+		}
+	}()
+
 	// Lock the database directory.
-	var fileLock *Lock
-	if opts.Lock != nil {
-		// The caller already acquired the database lock. Ensure that the
-		// directory matches.
-		if err := opts.Lock.pathMatches(dirname); err != nil {
-			return nil, err
-		}
-		if err := opts.Lock.refForOpen(); err != nil {
-			return nil, err
-		}
-		fileLock = opts.Lock
-	} else {
-		fileLock, err = LockDirectory(dirname, opts.FS)
+	fileLock, err := acquireOrValidateDirectoryLock(opts.Lock, dirname, opts.FS)
+	if err != nil {
+		return nil, err
+	}
+	dirLocks[0] = fileLock
+
+	// Lock the WAL directories, if configured.
+	var walDirLock, walFailoverLock *Lock
+	if walDirname != dirname {
+		walDirLock, err = acquireOrValidateDirectoryLock(opts.WALDirLock, walDirname, opts.FS)
 		if err != nil {
 			return nil, err
 		}
+		dirLocks[1] = walDirLock
 	}
-	defer func() {
-		if db == nil {
-			_ = fileLock.Close()
+	// In testing, we may have a secondary WAL directory == the default directory.
+	if opts.WALFailover != nil && secondaryWalDirName != dirname && secondaryWalDirName != walDirname {
+		walFailoverLock, err = acquireOrValidateDirectoryLock(
+			opts.WALFailover.SecondaryLock, secondaryWalDirName, opts.WALFailover.Secondary.FS)
+		if err != nil {
+			return nil, err
 		}
-	}()
+		dirLocks[2] = walFailoverLock
+	}
 
 	// List the directory contents. This also happens to include WAL log files, if
 	// they are in the same dir, but we will ignore those below. The provider is
@@ -220,8 +232,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
 		largeBatchThreshold: (opts.MemTableSize - uint64(memTableEmptySize)) / 2,
-		fileLock:            fileLock,
 		dataDir:             dataDir,
+		directoryLocks:      dirLocks,
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
 	}
@@ -658,7 +670,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 // Returns an error if ReadOnly is set and the directories don't exist.
 func prepareAndOpenDirs(
 	dirname string, opts *Options,
-) (walDirname string, dataDir vfs.File, err error) {
+) (walDirname string, secondaryWalDirName string, dataDir vfs.File, err error) {
 	walDirname = dirname
 	if opts.WALDir != "" {
 		walDirname = resolveStorePath(dirname, opts.WALDir)
@@ -668,21 +680,22 @@ func prepareAndOpenDirs(
 	if !opts.ReadOnly {
 		f, err := mkdirAllAndSyncParents(opts.FS, dirname)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		f.Close()
 		if walDirname != dirname {
 			f, err := mkdirAllAndSyncParents(opts.FS, walDirname)
 			if err != nil {
-				return "", nil, err
+				return "", "", nil, err
 			}
 			f.Close()
 		}
 		if opts.WALFailover != nil {
 			secondary := opts.WALFailover.Secondary
-			f, err := mkdirAllAndSyncParents(secondary.FS, resolveStorePath(dirname, secondary.Dirname))
+			secondaryWalDirName = resolveStorePath(dirname, secondary.Dirname)
+			f, err := mkdirAllAndSyncParents(secondary.FS, secondaryWalDirName)
 			if err != nil {
-				return "", nil, err
+				return "", "", nil, err
 			}
 			f.Close()
 		}
@@ -691,21 +704,21 @@ func prepareAndOpenDirs(
 	dataDir, err = opts.FS.OpenDir(dirname)
 	if err != nil {
 		if opts.ReadOnly && oserror.IsNotExist(err) {
-			return "", nil, errors.Errorf("pebble: database %q does not exist", dirname)
+			return "", "", nil, errors.Errorf("pebble: database %q does not exist", dirname)
 		}
-		return "", nil, err
+		return "", "", nil, err
 	}
 	if opts.ReadOnly && walDirname != dirname {
 		// Check that the wal dir exists.
 		walDir, err := opts.FS.OpenDir(walDirname)
 		if err != nil {
 			dataDir.Close()
-			return "", nil, err
+			return "", "", nil, err
 		}
 		walDir.Close()
 	}
 
-	return walDirname, dataDir, nil
+	return walDirname, secondaryWalDirName, dataDir, nil
 }
 
 // GetVersion returns the engine version string from the latest options
@@ -1160,6 +1173,22 @@ func Peek(dirname string, fs vfs.FS) (*DBDesc, error) {
 		desc.ManifestFilename = base.MakeFilepath(fs, dirname, base.FileTypeManifest, manifestFileNum)
 	}
 	return desc, nil
+}
+
+func acquireOrValidateDirectoryLock(
+	preAcquiredLock *Lock, dirname string, fs vfs.FS,
+) (*Lock, error) {
+	// If a pre-acquired lock is provided, check that it matches the directory
+	// we're trying to open.
+	if preAcquiredLock != nil {
+		if err := preAcquiredLock.pathMatches(dirname); err != nil {
+			return preAcquiredLock, err
+		}
+		return preAcquiredLock, preAcquiredLock.refForOpen()
+	}
+
+	// Otherwise, acquire the lock for the directory.
+	return LockDirectory(dirname, fs)
 }
 
 // LockDirectory acquires the database directory lock in the named directory,

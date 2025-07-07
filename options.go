@@ -1033,6 +1033,17 @@ type Options struct {
 	// (i.e. the directory passed to pebble.Open).
 	WALDir string
 
+	// WALDirLock, if set, must be a directory lock acquired through LockDirectory
+	// for the same directory set on WALDir passed to Open. If provided, Open will
+	// skip locking the directory. Closing the database will not release the lock,
+	// and it's the responsibility of the caller to release the lock after closing the
+	// database.
+	//
+	// Open will enforce that the Lock passed locks the same WAL directory passed to
+	// Open. Concurrent calls to Open using the same Lock are detected and
+	// prohibited.
+	WALDirLock *Lock
+
 	// WALFailover may be set to configure Pebble to monitor writes to its
 	// write-ahead log and failover to writing write-ahead log entries to a
 	// secondary location (eg, a separate physical disk). WALFailover may be
@@ -1324,6 +1335,18 @@ type WALFailoverOptions struct {
 	// Secondary indicates the secondary directory and VFS to use in the event a
 	// write to the primary WAL stalls.
 	Secondary wal.Dir
+
+	// SecondaryLock, if set, must be a lock acquired through LockDirectory for the same
+	// directory passed to Secondary in Open.
+	// If provided, Open will skip locking the directory. Closing the database will
+	// not release the lock, and it's the responsibility of the caller to release the
+	// lock after closing the database.
+	//
+	// Open will enforce that the SecondaryLock passed locks the same directory
+	// passed to Open. Concurrent calls to Open using the same Lock are detected and
+	// prohibited.
+	SecondaryLock *Lock
+
 	// FailoverOptions provides configuration of the thresholds and intervals
 	// involved in WAL failover. If any of its fields are left unspecified,
 	// reasonable defaults will be used.

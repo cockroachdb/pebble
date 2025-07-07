@@ -290,8 +290,16 @@ type DB struct {
 	// objProvider is used to access and manage SSTs.
 	objProvider objstorage.Provider
 
-	fileLock *Lock
-	dataDir  vfs.File
+	dataDir vfs.File
+
+	// Directory locks held by the DB. These locks are used to
+	// ensure that the DB's data directories are not opened by
+	// multiple DB instances at the same time. The possible
+	// locks are:
+	// - The main data dir lock.
+	// - WAL dir lock, if configured to be different than the data directory.
+	// - The secondary WAL lock, if WAL failover is configured.
+	directoryLocks [3]*Lock
 
 	fileCache            *fileCacheHandle
 	newIters             tableNewIters
@@ -1734,7 +1742,11 @@ func (d *DB) Close() error {
 		panic("pebble: log-writer should be nil in read-only mode")
 	}
 	err = firstError(err, d.mu.log.manager.Close())
-	err = firstError(err, d.fileLock.Close())
+	for _, lock := range d.directoryLocks {
+		if lock != nil {
+			err = firstError(err, lock.Close())
+		}
+	}
 
 	// Note that versionSet.close() only closes the MANIFEST. The versions list
 	// is still valid for the checks below.
