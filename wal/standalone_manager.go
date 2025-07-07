@@ -250,7 +250,11 @@ func (m *StandaloneManager) Close() error {
 	if m.w != nil {
 		_, err = m.w.Close()
 	}
-	return firstError(err, m.walDir.Close())
+	err = firstError(err, m.walDir.Close())
+	if m.o.Primary.Lock != nil {
+		err = firstError(err, m.o.Primary.Lock.Close())
+	}
+	return err
 }
 
 // RecyclerForTesting implements Manager.

@@ -290,8 +290,8 @@ type DB struct {
 	// objProvider is used to access and manage SSTs.
 	objProvider objstorage.Provider
 
-	fileLock *Lock
-	dataDir  vfs.File
+	dataDirLock *base.DirLock
+	dataDir     vfs.File
 
 	fileCache            *fileCacheHandle
 	newIters             tableNewIters
@@ -1734,7 +1734,7 @@ func (d *DB) Close() error {
 		panic("pebble: log-writer should be nil in read-only mode")
 	}
 	err = firstError(err, d.mu.log.manager.Close())
-	err = firstError(err, d.fileLock.Close())
+	err = firstError(err, d.dataDirLock.Close())
 
 	// Note that versionSet.close() only closes the MANIFEST. The versions list
 	// is still valid for the checks below.

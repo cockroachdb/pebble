@@ -23,6 +23,7 @@ import (
 
 // Dir is used for storing log files.
 type Dir struct {
+	Lock    *base.DirLock
 	FS      vfs.FS
 	Dirname string
 }

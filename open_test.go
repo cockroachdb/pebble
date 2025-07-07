@@ -277,53 +277,218 @@ func TestOpen_WALFailover(t *testing.T) {
 	})
 }
 
+// TestOpenAlreadyLocked verifies that we acquire the directory locks
+// required by the database during Open.
+// Each test case:
+// - Sets up pre-acquired locks according to the scenario.
+// - Opens a database.
+// - Attempts to open the same database again (should fail).
+// - Closes the database reopens the database (should now succeed).
+// - Closes and cleans up all locks.
 func TestOpenAlreadyLocked(t *testing.T) {
-	runTest := func(t *testing.T, lockPath, dirname string, fs vfs.FS) {
-		opts := testingRandomized(t, &Options{FS: fs})
-		var err error
-		opts.Lock, err = LockDirectory(lockPath, fs)
+	testCases := []struct {
+		name       string
+		setupLocks func(opts *Options, dirname, walDirname, secondaryWalDirname string, fs vfs.FS) error
+	}{
+		{
+			name: "no_pre_acquired_locks",
+			setupLocks: func(opts *Options, _, _, _ string, fs vfs.FS) error {
+				// No pre-acquired locks. Open should acquire them automatically.
+				return nil
+			},
+		},
+		{
+			name: "data_dir_lock",
+			setupLocks: func(opts *Options, dirname, _, _ string, fs vfs.FS) error {
+				var err error
+				opts.Lock, err = base.LockDirectory(dirname, fs)
+				return err
+			},
+		},
+		{
+			name: "wal_dir_lock",
+			setupLocks: func(opts *Options, dirname, walDirname, _ string, fs vfs.FS) error {
+				opts.WALDir = walDirname
+				var err error
+				opts.WALDirLock, err = base.LockDirectory(walDirname, fs)
+				return err
+			},
+		},
+		{
+			name: "secondary_wal_lock",
+			setupLocks: func(opts *Options, dirname, _, secondaryWalDirname string, fs vfs.FS) error {
+				opts.WALFailover = &WALFailoverOptions{
+					Secondary: wal.Dir{FS: fs, Dirname: secondaryWalDirname},
+				}
+				var err error
+				opts.WALFailover.Secondary.Lock, err = base.LockDirectory(secondaryWalDirname, fs)
+				return err
+			},
+		},
+		{
+			name: "data_and_primary_wal_locks",
+			setupLocks: func(opts *Options, dirname, walDirname, _ string, fs vfs.FS) error {
+				opts.WALDir = walDirname
+				var err error
+				opts.Lock, err = base.LockDirectory(dirname, fs)
+				if err != nil {
+					return err
+				}
+				opts.WALDirLock, err = base.LockDirectory(walDirname, fs)
+				return err
+			},
+		},
+		{
+			name: "all_locks",
+			setupLocks: func(opts *Options, dirname, walDirname, secondaryWalDirname string, fs vfs.FS) error {
+				opts.WALDir = walDirname
+				opts.WALFailover = &WALFailoverOptions{
+					Secondary: wal.Dir{FS: fs, Dirname: secondaryWalDirname},
+				}
+				var err error
+				opts.Lock, err = base.LockDirectory(dirname, fs)
+				if err != nil {
+					return err
+				}
+				opts.WALDirLock, err = base.LockDirectory(walDirname, fs)
+				if err != nil {
+					return err
+				}
+				opts.WALFailover.Secondary.Lock, err = base.LockDirectory(secondaryWalDirname, fs)
+				return err
+			},
+		},
+		{
+			name: "wal_dir_same_as_data_dir",
+			setupLocks: func(opts *Options, dirname, _, _ string, fs vfs.FS) error {
+				// WAL dir same as data dir - should not require separate lock.
+				opts.WALDir = dirname
+				var err error
+				opts.Lock, err = base.LockDirectory(dirname, fs)
+				return err
+			},
+		},
+	}
+	// We'll provide the same WAL recovery directory for all tests, to
+	// verify that the lock acquired during Open to read the recovery
+	// directory is properly released.
+	walRecoveryDir := t.TempDir()
+	recoveryLock, err := base.LockDirectory(walRecoveryDir, vfs.Default)
+	require.NoError(t, err)
+	defer recoveryLock.Close()
+	walRecoveryDirs := []wal.Dir{
+		{FS: vfs.Default, Dirname: t.TempDir()},
+		{Lock: recoveryLock, FS: vfs.Default, Dirname: walRecoveryDir},
+	}
+
+	runTest := func(t *testing.T, tmpDirs [4]string, setupLocks func(opts *Options, dirname, walDirname, secondaryWalDirname string, fs vfs.FS) error, fs vfs.FS) {
+		dataDir := tmpDirs[0]
+		dataDir2 := tmpDirs[1]
+		walDir := tmpDirs[2]
+		secondaryWalDir := tmpDirs[3]
+
+		// Setup directory locks.
+		opts := testingRandomized(t, &Options{FS: fs, WALRecoveryDirs: walRecoveryDirs})
+		err := setupLocks(opts, dataDir, walDir, secondaryWalDir, fs)
 		require.NoError(t, err)
 
-		d, err := Open(dirname, opts)
+		defer func() {
+			if opts.Lock != nil {
+				require.NoError(t, opts.Lock.Close(), "Failed to close data dir lock")
+				require.Zero(t, opts.Lock.Refs(), "Data dir lock should have no remaining refs")
+			}
+			if opts.WALDirLock != nil {
+				require.NoError(t, opts.WALDirLock.Close(), "Failed to close WAL dir lock")
+				require.Zero(t, opts.WALDirLock.Refs(), "WAL dir lock should have no remaining refs")
+			}
+			if opts.WALFailover != nil && opts.WALFailover.Secondary.Lock != nil {
+				require.NoError(t, opts.WALFailover.Secondary.Lock.Close(), "Failed to close secondary WAL lock")
+				require.Zero(t, opts.WALFailover.Secondary.Lock.Refs(), "Secondary WAL lock should have no remaining refs")
+			}
+		}()
+
+		d, err := Open(dataDir, opts)
 		require.NoError(t, err)
 		require.NoError(t, d.Set([]byte("foo"), []byte("bar"), Sync))
 
-		// Try to open the same database reusing the Options containing the same
-		// Lock. It should error when it observes that it's already referenced.
-		_, err = Open(dirname, opts)
-		require.Error(t, err)
+		_, err = Open(dataDir, opts)
+		require.Error(t, err, "Expected error when opening already locked database")
+
+		if opts.WALDir != "" {
+			// Try opening a different database with the same wal directory.
+			opts2 := testingRandomized(t, &Options{WALDir: opts.WALDir, FS: fs})
+			_, err := Open(dataDir2, opts2)
+			require.Error(t, err, "Expected error when opening another database with the same WAL directory")
+		}
+
+		if opts.WALFailover != nil {
+			// Try opening a different database with the same secondary WAL directory.
+			opts2 := testingRandomized(t, &Options{
+				WALFailover: &WALFailoverOptions{
+					Secondary: wal.Dir{FS: fs, Dirname: opts.WALFailover.Secondary.Dirname},
+				},
+				FS: fs,
+			})
+			_, err := Open(dataDir2, opts2)
+			require.Error(t, err, "Expected error when opening another database with the same secondary WAL directory")
+		}
 
 		// Close the database.
 		require.NoError(t, d.Close())
 
-		// Now Opening should succeed again.
-		d, err = Open(dirname, opts)
+		// Now Open should succeed again.
+		d, err = Open(dataDir, opts)
 		require.NoError(t, err)
 		require.NoError(t, d.Close())
-
-		require.NoError(t, opts.Lock.Close())
-		// There should be no more remaining references.
-		require.Equal(t, int32(0), opts.Lock.refs.Load())
 	}
+
+	// Run tests for different filesystems.
 	t.Run("memfs", func(t *testing.T) {
-		runTest(t, "", "", vfs.NewMem())
+		for _, tc := range testCases {
+			mem := vfs.NewMem()
+			var tmpDirs [4]string
+			for i := range tmpDirs {
+				tmpDirs[i] = mem.PathJoin("dir", fmt.Sprintf("%d", i))
+				require.NoError(t, mem.MkdirAll(tmpDirs[i], 0755), "Failed to create temp dir %s", tmpDirs[i])
+			}
+			runTest(t, tmpDirs, tc.setupLocks, mem)
+		}
 	})
+
 	t.Run("disk", func(t *testing.T) {
 		t.Run("absolute", func(t *testing.T) {
-			dir := t.TempDir()
-			runTest(t, dir, dir, vfs.Default)
+			for _, tc := range testCases {
+				t.Run(tc.name, func(t *testing.T) {
+					var tmpDirs [4]string
+					for i := range tmpDirs {
+						tmpDirs[i] = t.TempDir()
+					}
+					runTest(t, tmpDirs, tc.setupLocks, vfs.Default)
+				})
+			}
 		})
+
 		t.Run("relative", func(t *testing.T) {
-			dir := t.TempDir()
 			original, err := os.Getwd()
 			require.NoError(t, err)
 			defer func() { require.NoError(t, os.Chdir(original)) }()
 
-			wd := filepath.Dir(dir)
-			require.NoError(t, os.Chdir(wd))
-			lockPath, err := filepath.Rel(wd, dir)
-			require.NoError(t, err)
-			runTest(t, lockPath, dir, vfs.Default)
+			for _, tc := range testCases {
+				t.Run(tc.name, func(t *testing.T) {
+					// Create a temporary directory structure for relative paths.
+					tempRoot := t.TempDir()
+					wd := filepath.Dir(tempRoot)
+					require.NoError(t, os.Chdir(wd))
+
+					var tmpDirs [4]string
+					for i := range tmpDirs {
+						tmpDirs[i] = filepath.Join(tempRoot, fmt.Sprintf("dir%d", i))
+						require.NoError(t, os.MkdirAll(tmpDirs[i], 0755), "Failed to create temp dir %s", tmpDirs[i])
+					}
+
+					runTest(t, tmpDirs, tc.setupLocks, vfs.Default)
+				})
+			}
 		})
 	})
 }
