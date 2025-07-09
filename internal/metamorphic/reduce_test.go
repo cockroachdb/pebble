@@ -150,6 +150,20 @@ func (r *reducer) setupRunDirs(
 	return testRootDir, runSubdirs
 }
 
+func (r *reducer) getKeyFormat() metamorphic.KeyFormat {
+	if len(r.configs) == 0 {
+		return metamorphic.TestkeysKeyFormat
+	}
+
+	optionsStr := string(r.configs[0].optionsData)
+	if strings.Contains(optionsStr, "comparer=cockroach_comparator") {
+		return metamorphic.CockroachKeyFormat
+	}
+
+	// Default to TestkeysKeyFormat (pebble.internal.testkeys is the default)
+	return metamorphic.TestkeysKeyFormat
+}
+
 func (r *reducer) try(t *testing.T, ops []string) bool {
 	testRootDir, runSubdirs := r.setupRunDirs(t, ops)
 
@@ -195,7 +209,7 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 
 	// Try to generate a diagram.
 	diagram, err := metamorphic.TryToGenerateDiagram(
-		metamorphic.TestkeysKeyFormat,
+		r.getKeyFormat(),
 		[]byte(strings.Join(ops, "\n")),
 	)
 	require.NoError(t, err)
@@ -231,7 +245,7 @@ func (r *reducer) Run(t *testing.T) {
 	// Try to simplify the keys.
 	opsData := []byte(strings.Join(ops, "\n"))
 	for _, retainSuffixes := range []bool{false, true} {
-		newOpsData := metamorphic.TryToSimplifyKeys(metamorphic.TestkeysKeyFormat, opsData, retainSuffixes)
+		newOpsData := metamorphic.TryToSimplifyKeys(r.getKeyFormat(), opsData, retainSuffixes)
 		o := strings.Split(strings.TrimSpace(string(newOpsData)), "\n")
 		if r.try(t, o) {
 			return
