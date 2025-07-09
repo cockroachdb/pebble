@@ -261,6 +261,7 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen uint32) (val 
 		f.valueBlockPtr = unsafe.Pointer(&f.valueBlock[0])
 	}
 	if f.stats != nil {
+		f.stats.SeparatedPointValue.CountFetched++
 		f.stats.SeparatedPointValue.ValueBytesFetched += uint64(valLen)
 	}
 	return f.valueBlock[vh.OffsetInBlock : vh.OffsetInBlock+vh.ValueLen], nil
