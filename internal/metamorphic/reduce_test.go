@@ -235,6 +235,11 @@ func (r *reducer) Run(t *testing.T) {
 	for removeProbability := 0.1; removeProbability > 1e-5 && removeProbability > 0.1/float64(len(ops)); removeProbability *= 0.5 {
 		t.Logf("removeProbability %.2f%%", removeProbability*100.0)
 		for i := 0; i < r.reduceAttempts; i++ {
+			// Only try to reduce if we have more than 1 op
+			if len(ops) <= 1 {
+				break
+			}
+
 			if o := randomSubset(t, ops, removeProbability); r.try(t, o) {
 				ops = o
 				// Reset the counter.
