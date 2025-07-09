@@ -58,14 +58,14 @@ rewrite-blob 000002 000001 000003
 ----
 # create: 000004.blob
 # open: 000001.sst (options: *vfs.randomReadsOption)
-# read-at(846, 61): 000001.sst
-# read-at(769, 77): 000001.sst
-# read-at(209, 560): 000001.sst
+# read-at(869, 61): 000001.sst
+# read-at(792, 77): 000001.sst
+# read-at(209, 583): 000001.sst
 # read-at(184, 25): 000001.sst
 # open: 000003.sst (options: *vfs.randomReadsOption)
-# read-at(848, 61): 000003.sst
-# read-at(771, 77): 000003.sst
-# read-at(193, 578): 000003.sst
+# read-at(872, 61): 000003.sst
+# read-at(795, 77): 000003.sst
+# read-at(193, 602): 000003.sst
 # read-at(168, 25): 000003.sst
 # open: 000002.blob (options: *vfs.randomReadsOption)
 # read-at(67, 38): 000002.blob

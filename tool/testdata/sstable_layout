@@ -3954,40 +3954,41 @@ sstable
  │    ├── 00000 (4)
  │    │    └── block: 0, values size: 13, bitmap size: 1 byte(s), bitmap: [00000011]
  │    └── trailer [compression=none checksum=0x63e76459]
- ├── properties  offset: 173  length: 531
+ ├── properties  offset: 173  length: 554
  │    ├── 00000    obsolete-key (13)
  │    ├── 00013    pebble.colblk.schema (25)
  │    ├── 00038    pebble.compression_stats (38)
  │    ├── 00076    pebble.num.values.in.blob-files (32)
- │    ├── 00108    rocksdb.block.based.table.index.type (40)
- │    ├── 00148    rocksdb.comparator (44)
- │    ├── 00192    rocksdb.compression (25)
- │    ├── 00217    rocksdb.compression_options (122)
- │    ├── 00339    rocksdb.data.size (18)
- │    ├── 00357    rocksdb.deleted.keys (21)
- │    ├── 00378    rocksdb.filter.size (20)
- │    ├── 00398    rocksdb.index.size (19)
- │    ├── 00417    rocksdb.merge.operands (23)
- │    ├── 00440    rocksdb.merge.operator (40)
- │    ├── 00480    rocksdb.num.data.blocks (24)
- │    ├── 00504    rocksdb.num.entries (20)
- │    ├── 00524    rocksdb.num.range-deletions (28)
- │    ├── 00552    rocksdb.property.collectors (41)
- │    ├── 00593    rocksdb.raw.key.size (21)
- │    ├── 00614    rocksdb.raw.value.size (23)
- │    └── trailer [compression=snappy checksum=0x61b35c0]
- ├── meta-index  offset: 709  length: 72
+ │    ├── 00108    pebble.valsep.smallest-size (28)
+ │    ├── 00136    rocksdb.block.based.table.index.type (40)
+ │    ├── 00176    rocksdb.comparator (44)
+ │    ├── 00220    rocksdb.compression (25)
+ │    ├── 00245    rocksdb.compression_options (122)
+ │    ├── 00367    rocksdb.data.size (18)
+ │    ├── 00385    rocksdb.deleted.keys (21)
+ │    ├── 00406    rocksdb.filter.size (20)
+ │    ├── 00426    rocksdb.index.size (19)
+ │    ├── 00445    rocksdb.merge.operands (23)
+ │    ├── 00468    rocksdb.merge.operator (40)
+ │    ├── 00508    rocksdb.num.data.blocks (24)
+ │    ├── 00532    rocksdb.num.entries (20)
+ │    ├── 00552    rocksdb.num.range-deletions (28)
+ │    ├── 00580    rocksdb.property.collectors (41)
+ │    ├── 00621    rocksdb.raw.key.size (21)
+ │    ├── 00642    rocksdb.raw.value.size (23)
+ │    └── trailer [compression=snappy checksum=0xa4177d34]
+ ├── meta-index  offset: 732  length: 72
  │    ├── 0000    pebble.blob_ref_index block:148/20
  │    │   
- │    ├── 0001    rocksdb.properties block:173/531
+ │    ├── 0001    rocksdb.properties block:173/554
  │    │   
- │    └── trailer [compression=none checksum=0xe79ed9cf]
- └── footer  offset: 786  length: 61
+ │    └── trailer [compression=none checksum=0x3f4eaf4f]
+ └── footer  offset: 809  length: 61
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=709, length=72
+      ├── 001  meta: offset=732, length=72
       ├── 004  index: offset=107, length=36
       ├── 041  attributes: [BlobValues,PointKeys]
-      ├── 045  footer checksum: 0x61e68541
+      ├── 045  footer checksum: 0xf3ebdc4e
       ├── 049  version: 7
       └── 053  magic number: 0xf09faab3f09faab3
 
@@ -5224,41 +5225,42 @@ sstable
  │    │    ├── block: 2, values size: 71, bitmap size: 2 byte(s), bitmap: [11111111 00000001]
  │    │    └── block: 3, values size: 48, bitmap size: 1 byte(s), bitmap: [00111111]
  │    └── trailer [compression=none checksum=0xab1de559]
- ├── properties  offset: 1877  length: 564
+ ├── properties  offset: 1877  length: 601
  │    ├── 00000    obsolete-key (13)
  │    ├── 00013    pebble.colblk.schema (25)
  │    ├── 00038    pebble.compression_stats (40)
  │    ├── 00078    pebble.num.values.in.blob-files (32)
- │    ├── 00110    rocksdb.block.based.table.index.type (40)
- │    ├── 00150    rocksdb.comparator (44)
- │    ├── 00194    rocksdb.compression (25)
- │    ├── 00219    rocksdb.compression_options (122)
- │    ├── 00341    rocksdb.data.size (19)
- │    ├── 00360    rocksdb.deleted.keys (21)
- │    ├── 00381    rocksdb.filter.size (20)
- │    ├── 00401    rocksdb.index.partitions (25)
- │    ├── 00426    rocksdb.index.size (20)
- │    ├── 00446    rocksdb.merge.operands (23)
- │    ├── 00469    rocksdb.merge.operator (40)
- │    ├── 00509    rocksdb.num.data.blocks (24)
- │    ├── 00533    rocksdb.num.entries (20)
- │    ├── 00553    rocksdb.num.range-deletions (28)
- │    ├── 00581    rocksdb.property.collectors (41)
- │    ├── 00622    rocksdb.raw.key.size (22)
- │    ├── 00644    rocksdb.raw.value.size (24)
- │    ├── 00668    rocksdb.top-level.index.size (29)
- │    └── trailer [compression=snappy checksum=0xc5cd9341]
- ├── meta-index  offset: 2446  length: 72
+ │    ├── 00110    pebble.valsep.smallest-size (28)
+ │    ├── 00138    rocksdb.block.based.table.index.type (40)
+ │    ├── 00178    rocksdb.comparator (44)
+ │    ├── 00222    rocksdb.compression (25)
+ │    ├── 00247    rocksdb.compression_options (122)
+ │    ├── 00369    rocksdb.data.size (19)
+ │    ├── 00388    rocksdb.deleted.keys (21)
+ │    ├── 00409    rocksdb.filter.size (20)
+ │    ├── 00429    rocksdb.index.partitions (25)
+ │    ├── 00454    rocksdb.index.size (20)
+ │    ├── 00474    rocksdb.merge.operands (23)
+ │    ├── 00497    rocksdb.merge.operator (40)
+ │    ├── 00537    rocksdb.num.data.blocks (24)
+ │    ├── 00561    rocksdb.num.entries (20)
+ │    ├── 00581    rocksdb.num.range-deletions (28)
+ │    ├── 00609    rocksdb.property.collectors (41)
+ │    ├── 00650    rocksdb.raw.key.size (22)
+ │    ├── 00672    rocksdb.raw.value.size (24)
+ │    ├── 00696    rocksdb.top-level.index.size (29)
+ │    └── trailer [compression=snappy checksum=0x5d0c4d6f]
+ ├── meta-index  offset: 2483  length: 72
  │    ├── 0000    pebble.blob_ref_index block:1837/35
  │    │   
- │    ├── 0001    rocksdb.properties block:1877/564
+ │    ├── 0001    rocksdb.properties block:1877/601
  │    │   
- │    └── trailer [compression=none checksum=0xfdc3b9e]
- └── footer  offset: 2523  length: 61
+ │    └── trailer [compression=none checksum=0xad5df45f]
+ └── footer  offset: 2560  length: 61
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=2446, length=72
+      ├── 001  meta: offset=2483, length=72
       ├── 004  index: offset=1785, length=47
       ├── 041  attributes: [TwoLevelIndex,BlobValues,PointKeys]
-      ├── 045  footer checksum: 0x86a64d3b
+      ├── 045  footer checksum: 0x4aaecaa3
       ├── 049  version: 7
       └── 053  magic number: 0xf09faab3f09faab3
