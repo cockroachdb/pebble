@@ -164,9 +164,13 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 		cr.blobFileID = vh.BlobFileID
 		cr.diskFileNum = diskFileNum
 		cr.rh = cr.r.InitReadHandle(&cr.preallocRH)
+		if r.env.Stats != nil {
+			r.env.Stats.SeparatedPointValue.ReaderCacheMisses++
+		}
 	}
 
 	if r.env.Stats != nil {
+		r.env.Stats.SeparatedPointValue.CountFetched++
 		r.env.Stats.SeparatedPointValue.ValueBytesFetched += uint64(vh.ValueLen)
 	}
 

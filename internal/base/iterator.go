@@ -432,6 +432,11 @@ type InternalIteratorStats struct {
 		// in the heap got positioned. The count here includes every sstable
 		// iterator that got positioned in the heap.
 		Count uint64
+		// CountFetched is the subset of Count that were fetched.
+		CountFetched uint64
+		// ReaderCacheMisses is the count of separated value retrievals that did
+		// not find the named blob file reader in the iterator's reader cache.
+		ReaderCacheMisses uint64
 		// ValueBytes represent the total byte length of the values (in value
 		// blocks) of the points corresponding to Count.
 		ValueBytes uint64
@@ -454,6 +459,8 @@ func (s *InternalIteratorStats) Merge(from InternalIteratorStats) {
 	s.PointCount += from.PointCount
 	s.PointsCoveredByRangeTombstones += from.PointsCoveredByRangeTombstones
 	s.SeparatedPointValue.Count += from.SeparatedPointValue.Count
+	s.SeparatedPointValue.CountFetched += from.SeparatedPointValue.CountFetched
+	s.SeparatedPointValue.ReaderCacheMisses += from.SeparatedPointValue.ReaderCacheMisses
 	s.SeparatedPointValue.ValueBytes += from.SeparatedPointValue.ValueBytes
 	s.SeparatedPointValue.ValueBytesFetched += from.SeparatedPointValue.ValueBytesFetched
 }
