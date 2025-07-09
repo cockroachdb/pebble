@@ -443,6 +443,9 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	if err != nil {
 		return err
 	}
+	if w.props.SmallestSeparatedValue == 0 || uint64(h.ValueLen) < w.props.SmallestSeparatedValue {
+		w.props.SmallestSeparatedValue = uint64(h.ValueLen)
+	}
 	w.props.NumValuesInBlobFiles++
 	if err := w.blobRefLivenessIndexBlock.addLiveValue(h.ReferenceID, h.BlockID, h.ValueID, uint64(h.ValueLen)); err != nil {
 		return err

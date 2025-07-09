@@ -165,6 +165,10 @@ type Properties struct {
 	// The name of the key schema used in this table. Empty for formats <=
 	// TableFormatPebblev4.
 	KeySchemaName string `prop:"pebble.colblk.schema"`
+	// SmallestSeparatedValue is the size of the smallest separated value
+	// referenced by the sstable. Zero if the sstable does not contain any
+	// handles to separated values.
+	SmallestSeparatedValue uint64 `prop:"pebble.valsep.smallest-size"`
 	// The name of the merger used in this table. Empty if no merger is used.
 	MergerName string `prop:"rocksdb.merge.operator"`
 	// The number of merge operands in the table.
@@ -418,6 +422,9 @@ func (p *Properties) accumulateProps(tblFormat TableFormat) ([]string, map[strin
 	}
 	if p.KeySchemaName != "" {
 		p.saveString(m, unsafe.Offsetof(p.KeySchemaName), p.KeySchemaName)
+	}
+	if p.SmallestSeparatedValue > 0 {
+		p.saveUvarint(m, unsafe.Offsetof(p.SmallestSeparatedValue), p.SmallestSeparatedValue)
 	}
 	if p.MergerName != "" {
 		p.saveString(m, unsafe.Offsetof(p.MergerName), p.MergerName)

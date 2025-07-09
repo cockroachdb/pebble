@@ -978,5 +978,5 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 3940
+point-deletions-bytes-estimate: 3943
 range-deletions-bytes-estimate: 0
