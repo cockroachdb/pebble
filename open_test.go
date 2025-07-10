@@ -427,6 +427,8 @@ func TestOpenAlreadyLocked(t *testing.T) {
 					Secondary: wal.Dir{FS: fs, Dirname: opts.WALFailover.Secondary.Dirname},
 				},
 				FS: fs,
+				// Setting the recovery dir to be the same as the dir being opened should not error.
+				WALRecoveryDirs: []wal.Dir{{FS: fs, Dirname: dataDir2}},
 			})
 			_, err := Open(dataDir2, opts2)
 			require.Error(t, err, "Expected error when opening another database with the same secondary WAL directory")

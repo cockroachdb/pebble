@@ -395,10 +395,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}()
 	for i, dir := range opts.WALRecoveryDirs {
 		dir.Dirname = resolveStorePath(dirname, dir.Dirname)
-		// Acquire a lock on the WAL recovery directory.
-		walRecoveryLocks[i], err = base.AcquireOrValidateDirectoryLock(dir.Lock, dir.Dirname, dir.FS)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error acquiring lock on WAL recovery directory %q", dir.Dirname)
+		if dir.Dirname != dirname {
+			// Acquire a lock on the WAL recovery directory.
+			walRecoveryLocks[i], err = base.AcquireOrValidateDirectoryLock(dir.Lock, dir.Dirname, dir.FS)
+			if err != nil {
+				return nil, errors.Wrapf(err, "error acquiring lock on WAL recovery directory %q", dir.Dirname)
+			}
 		}
 		walDirs = append(walDirs, dir)
 	}
