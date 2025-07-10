@@ -328,7 +328,7 @@ func (h *fileCacheHandle) estimateSize(
 	meta *manifest.TableMetadata, lower, upper []byte,
 ) (size uint64, err error) {
 	err = h.withReader(context.TODO(), block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) error {
-		size, err = r.EstimateDiskUsage(lower, upper, env)
+		size, err = r.EstimateDiskUsage(lower, upper, env, meta.IterTransforms())
 		return err
 	})
 	return size, err

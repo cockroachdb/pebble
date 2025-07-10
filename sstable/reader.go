@@ -796,19 +796,20 @@ func (r *Reader) ValidateBlockChecksums() error {
 // TODO(ajkr): account for metablock space usage. Perhaps look at the fraction of
 // data blocks overlapped and add that same fraction of the metadata blocks to the
 // estimate.
-func (r *Reader) EstimateDiskUsage(start []byte, end []byte, env ReadEnv) (uint64, error) {
+func (r *Reader) EstimateDiskUsage(
+	start []byte, end []byte, env ReadEnv, transforms IterTransforms,
+) (uint64, error) {
 	if env.Virtual != nil {
 		_, start, end = env.Virtual.ConstrainBounds(start, end, false, r.Comparer.Compare)
 	}
-
 	if !r.tableFormat.BlockColumnar() {
-		return estimateDiskUsage[rowblk.IndexIter, *rowblk.IndexIter](r, start, end)
+		return estimateDiskUsage[rowblk.IndexIter, *rowblk.IndexIter](r, start, end, transforms)
 	}
-	return estimateDiskUsage[colblk.IndexIter, *colblk.IndexIter](r, start, end)
+	return estimateDiskUsage[colblk.IndexIter, *colblk.IndexIter](r, start, end, transforms)
 }
 
 func estimateDiskUsage[I any, PI indexBlockIterator[I]](
-	r *Reader, start, end []byte,
+	r *Reader, start, end []byte, transforms IterTransforms,
 ) (uint64, error) {
 	if r.err != nil {
 		return 0, r.err
@@ -830,13 +831,13 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 	var startIdxIter, endIdxIter PI
 	if !r.Attributes.Has(AttributeTwoLevelIndex) {
 		startIdxIter = new(I)
-		if err := startIdxIter.InitHandle(r.Comparer, indexH, NoTransforms); err != nil {
+		if err := startIdxIter.InitHandle(r.Comparer, indexH, transforms); err != nil {
 			return 0, err
 		}
 		endIdxIter = startIdxIter
 	} else {
 		var topIter PI = new(I)
-		if err := topIter.InitHandle(r.Comparer, indexH, NoTransforms); err != nil {
+		if err := topIter.InitHandle(r.Comparer, indexH, transforms); err != nil {
 			return 0, err
 		}
 		if !topIter.SeekGE(start) {
@@ -853,7 +854,7 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 		}
 		defer startIdxBlock.Release()
 		startIdxIter = new(I)
-		err = startIdxIter.InitHandle(r.Comparer, startIdxBlock, NoTransforms)
+		err = startIdxIter.InitHandle(r.Comparer, startIdxBlock, transforms)
 		if err != nil {
 			return 0, err
 		}
@@ -869,7 +870,7 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 			}
 			defer endIdxBlock.Release()
 			endIdxIter = new(I)
-			err = endIdxIter.InitHandle(r.Comparer, endIdxBlock, NoTransforms)
+			err = endIdxIter.InitHandle(r.Comparer, endIdxBlock, transforms)
 			if err != nil {
 				return 0, err
 			}

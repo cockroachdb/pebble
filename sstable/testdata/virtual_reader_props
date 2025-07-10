@@ -345,3 +345,25 @@ props:
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
   rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
+
+# Test virtual sstable with a synthetic prefix.
+build
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+d.SET.1:d
+----
+point:    [a#1,SET-d#1,SET]
+seqnums:  [1-1]
+
+virtualize lower=poi-b.SET.1 upper=poi-c.SET.1 prefix=poi- show-props
+----
+bounds:  [poi-b#1,SET-poi-c#1,SET]
+filenum: 000010
+props:
+  rocksdb.num.entries: 1
+  rocksdb.raw.key.size: 4
+  rocksdb.raw.value.size: 1
+  rocksdb.num.data.blocks: 1
+  rocksdb.compression: Snappy
+  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
