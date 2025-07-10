@@ -864,8 +864,8 @@ type pair[k, v any] struct {
 //      6 | 0.00  2.70 2.10 |  713   706B |  704B  704B  704B |  707B  717B | 1.4K   1.4KB   1.4KB
 //  total |   -     -    -  | 2.9K  2.8KB | 2.8KB 2.8KB 2.8KB | 2.8KB 2.9KB | 5.7K   8.4KB   5.7KB
 // -----------------------------------------------------------------------------------------------
-// kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
-// count     |        27       28       29       30       31       16       32       33       34
+// kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
+// count     |        27       28       29       30       31       16       32       33       34        0
 // -----------------------------------------------------------------------------------------------
 // COMMIT PIPELINE
 //               wals               |              memtables              |        ingestions
@@ -967,6 +967,7 @@ func (m *Metrics) String() string {
 		{k: "rewrite", v: m.Compact.RewriteCount},
 		{k: "copy", v: m.Compact.CopyCount},
 		{k: "multi", v: m.Compact.MultiLevelCount},
+		{k: "blob", v: m.Compact.BlobFileRewriteCount},
 	}
 	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
 		return compactionKindTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compactionKindContents))

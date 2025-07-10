@@ -142,8 +142,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      1 848 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
 total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B |  372 B  84 B |      1  899 B  112 B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
-count     |         1        0        0        5        0        0        0        0        0
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
+count     |         1        0        0        5        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -410,8 +410,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
 total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B |  310 B   0 B |      1  900 B    0 B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi
-count     |         1        0        0        0        0        0        0        0        0
+kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
+count     |         1        0        0        0        0        0        0        0        0        1
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
