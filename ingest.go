@@ -1172,7 +1172,7 @@ type ExternalFile struct {
 	// ingestion.
 	HasPointKey, HasRangeKey bool
 
-	// SyntheticPrefix will prepend this suffix to all keys in the file during
+	// SyntheticPrefix will prepend this prefix to all keys in the file during
 	// iteration. Note that the backing file itself is not modified.
 	//
 	// SyntheticPrefix must be a prefix of both Bounds.Start and Bounds.End.

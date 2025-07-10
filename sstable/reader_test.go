@@ -199,6 +199,13 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 
 			showProps := td.HasArg("show-props")
 
+			var syntheticPrefix []byte
+			if td.HasArg("prefix") {
+				var synthPrefixStr string
+				td.ScanArgs(t, "prefix", &synthPrefixStr)
+				syntheticPrefix = []byte(synthPrefixStr)
+			}
+
 			syntheticSuffix = nil
 			if td.HasArg("suffix") {
 				var synthSuffixStr string
@@ -210,7 +217,10 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			env.Virtual = &params
 
 			var err error
-			tableSize, err := r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey, env)
+			transforms := IterTransforms{
+				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+			}
+			tableSize, err := r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey, env, transforms)
 			if err != nil {
 				return err.Error()
 			}
@@ -590,7 +600,7 @@ func TestInjectedErrors(t *testing.T) {
 			}
 			defer func() { reterr = firstError(reterr, r.Close()) }()
 
-			_, err = r.EstimateDiskUsage([]byte("borrower"), []byte("lender"), NoReadEnv)
+			_, err = r.EstimateDiskUsage([]byte("borrower"), []byte("lender"), NoReadEnv, NoTransforms)
 			if err != nil {
 				return err
 			}
