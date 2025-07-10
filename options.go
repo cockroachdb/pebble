@@ -76,6 +76,21 @@ type UserKeyPrefixBound = sstable.UserKeyPrefixBound
 // IterKeyType configures which types of keys an iterator should surface.
 type IterKeyType int8
 
+// DirLock represents a file lock on a directory. It may be passed to Open through
+// Options.Lock to elide lock aquisition during Open.
+type DirLock = base.DirLock
+
+// LockDirectory acquires the directory lock in the named directory, preventing
+// another process from opening the database. LockDirectory returns a
+// handle to the held lock that may be passed to Open, skipping lock acquisition
+// during Open.
+//
+// LockDirectory may be used to expand the critical section protected by the
+// database lock to include setup before the call to Open.
+func LockDirectory(dirname string, fs vfs.FS) (*DirLock, error) {
+	return base.LockDirectory(dirname, fs)
+}
+
 const (
 	// IterKeyTypePointsOnly configures an iterator to iterate over point keys
 	// only.
