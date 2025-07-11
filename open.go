@@ -101,52 +101,25 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	// In all error cases, we return db = nil; this is used by various
 	// deferred cleanups.
+	maybeCleanUp := func(fn func() error) {
+		if db == nil {
+			err = errors.CombineErrors(err, fn())
+		}
+	}
 
 	// Open the database and WAL directories first.
 	walDirname, secondaryWalDirName, dataDir, err := prepareAndOpenDirs(dirname, opts)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error opening database at %q", dirname)
 	}
-	defer func() {
-		if db == nil {
-			dataDir.Close()
-		}
-	}()
-
-	// Lock all directories that will be written to.
-	var dirLocks [3]*base.DirLock
-	defer func() {
-		for _, lock := range dirLocks {
-			if db == nil && lock != nil {
-				_ = lock.Close()
-			}
-		}
-	}()
+	defer maybeCleanUp(dataDir.Close)
 
 	// Lock the database directory.
 	fileLock, err := base.AcquireOrValidateDirectoryLock(opts.Lock, dirname, opts.FS)
 	if err != nil {
 		return nil, err
 	}
-	dirLocks[0] = fileLock
-
-	// Lock the WAL directories, if configured.
-	var walDirLock, walFailoverLock *base.DirLock
-	if walDirname != dirname {
-		walDirLock, err = base.AcquireOrValidateDirectoryLock(opts.WALDirLock, walDirname, opts.FS)
-		if err != nil {
-			return nil, err
-		}
-		dirLocks[1] = walDirLock
-	}
-	if opts.WALFailover != nil && secondaryWalDirName != dirname && secondaryWalDirName != walDirname {
-		walFailoverLock, err = base.AcquireOrValidateDirectoryLock(
-			opts.WALFailover.Secondary.Lock, secondaryWalDirName, opts.WALFailover.Secondary.FS)
-		if err != nil {
-			return nil, err
-		}
-		dirLocks[2] = walFailoverLock
-	}
+	defer maybeCleanUp(fileLock.Close)
 
 	// List the directory contents. This also happens to include WAL log files, if
 	// they are in the same dir, but we will ignore those below. The provider is
@@ -358,8 +331,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.log.metrics.fsyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Buckets: FsyncLatencyBuckets,
 	})
+
 	walOpts := wal.Options{
-		Primary:              wal.Dir{Lock: walDirLock, FS: opts.FS, Dirname: walDirname},
+		Primary:              wal.Dir{FS: opts.FS, Dirname: walDirname},
 		Secondary:            wal.Dir{},
 		MinUnflushedWALNum:   wal.NumWAL(d.mu.versions.minUnflushedLogNum),
 		MaxNumRecyclableLogs: opts.MemTableStopWritesThreshold + 1,
@@ -373,10 +347,45 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
 		WriteWALSyncOffsets:  func() bool { return d.FormatMajorVersion() >= FormatWALSyncChunks },
 	}
+	// Ensure we release the WAL directory locks if we fail to open the
+	// database. If we fail before initializing the WAL manager, this defer is
+	// responsible for releasing the locks. If we fail after initializing the
+	// WAL manager, closing the WAL manager will release the locks.
+	//
+	// TODO(jackson): Open's cleanup error handling logic is convoluted; can we
+	// simplify it?
+	defer maybeCleanUp(func() (err error) {
+		if d.mu.log.manager == nil {
+			if walOpts.Primary.Lock != nil {
+				err = errors.CombineErrors(err, walOpts.Primary.Lock.Close())
+			}
+			if walOpts.Secondary.Lock != nil {
+				err = errors.CombineErrors(err, walOpts.Secondary.Lock.Close())
+			}
+			return err
+		}
+		return nil
+	})
+
+	// Lock the dedicated WAL directory, if configured.
+	if walDirname != dirname {
+		walOpts.Primary.Lock, err = base.AcquireOrValidateDirectoryLock(opts.WALDirLock, walDirname, opts.FS)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if opts.WALFailover != nil {
 		walOpts.Secondary = opts.WALFailover.Secondary
+		// Lock the secondary WAL directory, if distinct from the data directory
+		// and primary WAL directory.
+		if secondaryWalDirName != dirname && secondaryWalDirName != walDirname {
+			walOpts.Secondary.Lock, err = base.AcquireOrValidateDirectoryLock(
+				opts.WALFailover.Secondary.Lock, secondaryWalDirName, opts.WALFailover.Secondary.FS)
+			if err != nil {
+				return nil, err
+			}
+		}
 		walOpts.Secondary.Dirname = secondaryWalDirName
-		walOpts.Secondary.Lock = walFailoverLock
 		walOpts.FailoverOptions = opts.WALFailover.FailoverOptions
 		walOpts.FailoverWriteAndSyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
 			Buckets: FsyncLatencyBuckets,
@@ -416,12 +425,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if db == nil {
-			_ = walManager.Close()
-		}
-	}()
-
+	defer maybeCleanUp(walManager.Close)
 	d.mu.log.manager = walManager
 
 	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.getDeletionPacerInfo)

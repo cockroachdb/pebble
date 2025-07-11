@@ -64,8 +64,8 @@ type DirLock struct {
 	//
 	// When acquired by the client and passed to Open, refs = 1 and the Open
 	// call increments it to 2. When the database is closed, it's decremented to
-	// 1. Finally when the original caller, calls Close on the Lock, it's
-	// drecemented to zero and the underlying file lock is released.
+	// 1. Finally when the original caller calls Close on the Lock, it's
+	// decremented to zero and the underlying file lock is released.
 	//
 	// When Open acquires the file lock, refs remains at 1 until the database is
 	// closed.
@@ -78,7 +78,7 @@ func (l *DirLock) refForOpen() error {
 	// it's 2, the lock is already in use by another database within the
 	// process.
 	if !l.refs.CompareAndSwap(1, 2) {
-		return errors.Errorf("pebble: unexpected Lock reference count; is the lock already in use?")
+		return errors.Errorf("pebble: unexpected %q DirLock reference count; is the lock already in use?", l.dirname)
 	}
 	return nil
 }
@@ -92,8 +92,11 @@ func (l *DirLock) Refs() int {
 // database. Close must not be called until after a database using the Lock has
 // been closed.
 func (l *DirLock) Close() error {
-	if l.refs.Add(-1) > 0 {
+	v := l.refs.Add(-1)
+	if v > 0 {
 		return nil
+	} else if v < 0 {
+		return errors.AssertionFailedf("pebble: unexpected %q DirLock reference count %d", l.dirname, v)
 	}
 	defer func() { l.fileLock = nil }()
 	return l.fileLock.Close()

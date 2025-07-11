@@ -15,7 +15,6 @@ open-dir: db_wal
 close: db_wal
 open-dir: db
 lock: db/LOCK
-lock: db_wal/LOCK
 open-dir: db
 open-dir: db
 open-dir: db
@@ -24,6 +23,7 @@ sync: db/MANIFEST-000001
 create: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
+lock: db_wal/LOCK
 open-dir: db_wal
 create: db_wal/000002.log
 sync: db_wal
@@ -146,7 +146,6 @@ open-dir: db1_wal
 close: db1_wal
 open-dir: db1
 lock: db1/LOCK
-lock: db1_wal/LOCK
 open-dir: db1
 open-dir: db1
 open-dir: db1
@@ -155,6 +154,7 @@ sync: db1/MANIFEST-000001
 create: db1/marker.manifest.000001.MANIFEST-000001
 close: db1/marker.manifest.000001.MANIFEST-000001
 sync: db1
+lock: db1_wal/LOCK
 open-dir: db1_wal
 create: db1_wal/000002.log
 sync: db1_wal
@@ -238,12 +238,12 @@ open-dir: db1_wal
 close: db1_wal
 open-dir: db1
 lock: db1/LOCK
-lock: db1_wal/LOCK
 open-dir: db1
 open-dir: db1
 open-dir: db1
 open: db1/MANIFEST-000001
 close: db1/MANIFEST-000001
+lock: db1_wal/LOCK
 open-dir: db1_wal
 open: db1/OPTIONS-000003
 close: db1/OPTIONS-000003
