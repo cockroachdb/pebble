@@ -472,19 +472,20 @@ func TestOpenAlreadyLocked(t *testing.T) {
 		t.Run("relative", func(t *testing.T) {
 			original, err := os.Getwd()
 			require.NoError(t, err)
-			defer func() { require.NoError(t, os.Chdir(original)) }()
 
 			for _, tc := range testCases {
 				t.Run(tc.name, func(t *testing.T) {
 					// Create a temporary directory structure for relative paths.
 					tempRoot := t.TempDir()
-					wd := filepath.Dir(tempRoot)
-					require.NoError(t, os.Chdir(wd))
+					require.NoError(t, os.Chdir(tempRoot))
+					defer func() { require.NoError(t, os.Chdir(original)) }()
 
 					var tmpDirs [4]string
 					for i := range tmpDirs {
 						tmpDirs[i] = filepath.Join(tempRoot, fmt.Sprintf("dir%d", i))
-						require.NoError(t, os.MkdirAll(tmpDirs[i], 0755), "Failed to create temp dir %s", tmpDirs[i])
+						require.NoError(t, os.Mkdir(tmpDirs[i], 0755), "Failed to create temp dir %s", tmpDirs[i])
+						tmpDirs[i], err = filepath.Rel(tempRoot, tmpDirs[i])
+						require.NoError(t, err)
 					}
 
 					runTest(t, tmpDirs, tc.setupLocks, vfs.Default)
