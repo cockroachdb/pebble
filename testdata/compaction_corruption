@@ -1,42 +1,25 @@
-build-remote file1
-a#0,SET = avalue
-b#0,SET = bvalue
-c#0,SET = cvalue
-----
-
-build-remote file2-not-there
+build-remote file-not-there
 d#0,SET = dvalue
 q#0,SET = qvalue
 w#0,SET = wvalue
 ----
 
-build-remote file3
-x#0,SET = xvalue
-y#0,SET = yvalue
-z#0,SET = zvalue
-----
-
 ingest-external
-file1 bounds=(a,c0)
-file2 bounds=(d,w0)
-file3 bounds=(x,z0)
-----
-
-start-workload
+file bounds=(d,w0)
 ----
 
 # Verify that a problem span is set.
-wait-for-problem-span
+wait-for-problem-span workload=(d,w)
 ----
 
 # Verify that compactions still go through.
-wait-for-compactions
+wait-for-compactions workload=(a,z)
 ----
 
-# Make file2 appear.
-move-remote-object file2-not-there file2
+# Make file appear.
+move-remote-object file-not-there file
 ----
-file2-not-there -> file2
+file-not-there -> file
 
 # Expire spans.
 expire-spans
@@ -44,30 +27,27 @@ expire-spans
 
 # Compactions should now go through and eventually there should be no external
 # files.
-wait-for-no-external-files
+wait-for-no-external-files workload=(d,w)
 ----
 
-build-remote file4-not-there
+build-remote file2-not-there
 a#0,SET = avalue
 u#0,SET = uvalue
 z#0,SET = zvalue
 ----
 
 ingest-external
-file4 bounds=(a,z0)
+file2 bounds=(a,z0)
 ----
 
 # Verify that a problem span is set.
-wait-for-problem-span
+wait-for-problem-span workload=(a,z)
 ----
 
-stop-workload
+# Make file2 appear.
+move-remote-object file2-not-there file2
 ----
-
-# Make file4 appear.
-move-remote-object file4-not-there file4
-----
-file4-not-there -> file4
+file2-not-there -> file2
 
 # Verify that a manual compaction goes through despite the problem span.
 manual-compaction
