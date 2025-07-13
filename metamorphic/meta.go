@@ -612,6 +612,9 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 
 // Execute runs the provided test, writing the execution history into the Test's
 // sink.
+//
+// Note that the test execution might change the filesystems in the TestOptions
+// used with New(); see the restart operation.
 func Execute(m *Test) error {
 	if m.testOpts.Threads <= 1 {
 		for m.step(m.h, nil /* optionalRecordf */) {
