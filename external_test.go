@@ -53,10 +53,9 @@ func TestIteratorErrors(t *testing.T) {
 	// at most once. We would need to skip retrying on the second invocation
 	// of DebugCheckLevels. It's all likely more trouble than it's worth.
 	testOpts.Opts.DebugCheck = nil
-	// Disable the physical FS so we don't need to worry about paths down below.
-	if fs := testOpts.Opts.FS; fs == nil || fs == vfs.Default {
-		testOpts.Opts.FS = vfs.NewMem()
-	}
+	// The FS should be in-memory, so we don't need to worry about paths down
+	// below.
+	_ = vfs.Root(testOpts.Opts.FS).(*vfs.MemFS)
 
 	{
 		test, err := metamorphic.New(metamorphic.GenerateOps(

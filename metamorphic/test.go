@@ -28,6 +28,8 @@ import (
 // against a database using the provided TestOptions and outputs the history of
 // events to an io.Writer.
 //
+// Note that the test aliases the TestOptions and can change the filesystems.
+//
 // dir specifies the path within opts.Opts.FS to open the database.
 func New(ops Ops, opts *TestOptions, dir string, w io.Writer) (*Test, error) {
 	t := newTest(ops)
@@ -346,8 +348,12 @@ func (t *Test) restartDB(dbID objID) error {
 	}
 	t.opts.FS = crashFS
 	t.opts.WithFSDefaults()
+	// We want to set the new FS in testOpts too, so they are propagated to the
+	// TestOptions that were used with metamorphic.New().
+	t.testOpts.Opts.FS = t.opts.FS
 	if t.opts.WALFailover != nil {
 		t.opts.WALFailover.Secondary.FS = t.opts.FS
+		t.testOpts.Opts.WALFailover.Secondary.FS = t.opts.FS
 	}
 
 	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
