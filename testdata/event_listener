@@ -238,7 +238,7 @@ sync: db
 remove: db/MANIFEST-000011
 [JOB 10] MANIFEST deleted 000011
 remove: ext/0
-[JOB 10] ingested L0:000015 (757B)
+[JOB 10] ingested L0:000015 (755B); manifest update took 0.1s
 
 metrics
 ----
@@ -350,7 +350,7 @@ sync: wal
 [JOB 13] WAL created 000020
 remove: ext/a
 remove: ext/b
-[JOB 11] ingested as flushable 000017 (757B), 000018 (757B)
+[JOB 11] ingested as flushable, memtable flushes took 0.2s: 000017 (755B), 000018 (755B); manifest update took 0.1s
 sync-data: wal/000020.log
 close: wal/000020.log
 create: wal/000021.log
