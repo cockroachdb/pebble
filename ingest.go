@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -1499,6 +1500,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
+	var waitFlushStart crtime.Mono
 	prepare := func(seqNum base.SeqNum) {
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
@@ -1607,7 +1609,6 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 				d.mu.log.manager.ElevateWriteStallThresholdForFailover()) &&
 			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles &&
 			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises)
-
 		if !canIngestFlushable {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
@@ -1628,6 +1629,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			mut = d.mu.mem.mutable
 			mut.writerRef()
 			mem.flushForced = true
+			waitFlushStart = crtime.NowMono()
 			d.maybeScheduleFlush()
 			return
 		}
@@ -1642,6 +1644,8 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	}
 
 	var ve *manifest.VersionEdit
+	var waitFlushDuration time.Duration
+	var manifestUpdateDuration time.Duration
 	apply := func(seqNum base.SeqNum) {
 		if err != nil || asFlushable {
 			// An error occurred during prepare.
@@ -1683,11 +1687,12 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		// finish.
 		if mem != nil {
 			<-mem.flushed
+			waitFlushDuration = waitFlushStart.Elapsed()
 		}
 
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, seqNum)
+		ve, manifestUpdateDuration, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, seqNum)
 	}
 
 	// Only one ingest can occur at a time because if not, one would block waiting
@@ -1724,9 +1729,11 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	var stats IngestOperationStats
 	if loadResult.fileCount() > 0 {
 		info := TableIngestInfo{
-			JobID:     int(jobID),
-			Err:       err,
-			flushable: asFlushable,
+			JobID:                  int(jobID),
+			Err:                    err,
+			flushable:              asFlushable,
+			WaitFlushDuration:      waitFlushDuration,
+			ManifestUpdateDuration: manifestUpdateDuration,
 		}
 		if len(loadResult.local) > 0 {
 			info.GlobalSeqNum = loadResult.local[0].SmallestSeqNum
@@ -1905,7 +1912,7 @@ func (d *DB) ingestApply(
 	exciseSpan KeyRange,
 	exciseBoundsPolicy exciseBoundsPolicy,
 	exciseSeqNum base.SeqNum,
-) (*manifest.VersionEdit, error) {
+) (*manifest.VersionEdit, time.Duration, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -1917,6 +1924,7 @@ func (d *DB) ingestApply(
 	}
 	var metrics levelMetricsDelta
 
+	manifestUpdateStart := crtime.NowMono()
 	// Determine the target level inside UpdateVersionLocked. This prevents two
 	// concurrent ingestion jobs from using the same version to determine the
 	// target level, and also provides serialization with concurrent compaction
@@ -2164,8 +2172,9 @@ func (d *DB) ingestApply(
 		}, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
+	manifestUpdateDuration := manifestUpdateStart.Elapsed()
 
 	// Check for any EventuallyFileOnlySnapshots that could be watching for
 	// an excise on this span. There should be none as the
@@ -2211,7 +2220,7 @@ func (d *DB) ingestApply(
 		}
 	}
 	d.maybeValidateSSTablesLocked(toValidate)
-	return ve, nil
+	return ve, manifestUpdateDuration, nil
 }
 
 // maybeValidateSSTablesLocked adds the slice of newTableEntrys to the pending
