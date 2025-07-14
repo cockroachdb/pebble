@@ -50,6 +50,12 @@ func (*Value[V]) Get() V {
 // Set the value; no-op in non-invariant builds.
 func (*Value[V]) Set(v V) {}
 
+// MaybeMangle mangles a byte slice sometimes in invariant builds.
+func MaybeMangle(b []byte) {}
+
+// Mangle mangles a byte slice in invariant builds.
+func Mangle(b []byte) {}
+
 // BufMangler is a utility that can be used to test that the caller doesn't use
 type BufMangler struct{}
 
