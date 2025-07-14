@@ -7,6 +7,8 @@ package sstable
 import (
 	"encoding/binary"
 	"iter"
+
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // BitmapRunLengthEncoder encodes a bitmap. It uses a run-length encoding for
@@ -42,6 +44,7 @@ type BitmapRunLengthEncoder struct {
 
 // Init initializes or resets the encoder to its initial state.
 func (bb *BitmapRunLengthEncoder) Init() {
+	invariants.Mangle(bb.buf)
 	bb.buf = bb.buf[:0]
 	bb.allSetRunLength = 0
 	bb.currByte = 0

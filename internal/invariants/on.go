@@ -72,6 +72,13 @@ func (v *Value[V]) Get() V {
 	return v.v
 }
 
+// Mangle mangles a byte slice in invariant builds.
+func Mangle(b []byte) {
+	for i := range b {
+		b[i] = 0xCC
+	}
+}
+
 // BufMangler is a utility that can be used to test that the caller doesn't use
 type BufMangler struct {
 	lastReturnedBuf []byte

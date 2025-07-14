@@ -305,9 +305,7 @@ func (b *PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
 	// WriteTo is allowed to mangle the data. Mangle it ourselves some of the time
 	// in invariant builds to catch callers that don't handle this.
 	if invariants.Enabled && invariants.Sometimes(1) {
-		for i := range b.data {
-			b.data[i] = 0xFF
-		}
+		invariants.Mangle(b.data)
 	}
 	return len(b.data) + len(b.trailer), nil
 }
@@ -429,12 +427,7 @@ func (tb *TempBuffer) Release() {
 	// maximum to the pool. This avoids holding on to occasional large buffers
 	// necessary for e.g. singular large values.
 	if tb.b != nil && len(tb.b) < tempBufferMaxReusedSize {
-		if invariants.Sometimes(20) {
-			// Mangle the buffer data.
-			for i := range tb.b {
-				tb.b[i] = 0xCC
-			}
-		}
+		invariants.Mangle(tb.b)
 		tb.b = tb.b[:0]
 		tempBufferPool.Put(tb)
 	}

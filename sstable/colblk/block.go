@@ -141,6 +141,7 @@ import (
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
@@ -209,6 +210,9 @@ type BlockEncoder struct {
 
 // Reset resets an encoder for reuse.
 func (e *BlockEncoder) Reset() {
+	if invariants.Enabled && invariants.Sometimes(10) {
+		invariants.Mangle(e.buf)
+	}
 	if cap(e.buf) > maxBlockRetainedSize {
 		e.buf = nil
 	}

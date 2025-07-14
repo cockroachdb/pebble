@@ -153,6 +153,9 @@ func (b *RawBytesBuilder) Init() {
 // Reset resets the builder to an empty state.
 func (b *RawBytesBuilder) Reset() {
 	b.rows = 0
+	if invariants.Enabled && invariants.Sometimes(10) {
+		invariants.Mangle(b.data)
+	}
 	b.data = b.data[:0]
 	b.offsets.Reset()
 	// Add an initial offset of zero to streamline the logic in RawBytes.At() to

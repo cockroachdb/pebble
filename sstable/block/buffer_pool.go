@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // Alloc allocates a new Value for a block of length n (excluding the block
@@ -234,6 +235,9 @@ func (b Buf) Valid() bool {
 func (b *Buf) Release() {
 	if b.p == nil {
 		return
+	}
+	if invariants.Enabled && invariants.Sometimes(10) {
+		invariants.Mangle(b.p.pool[b.i].b)
 	}
 	// Clear the allocedBuffer's byte slice. This signals the allocated buffer
 	// is no longer in use and a future call to BufferPool.Alloc may reuse this

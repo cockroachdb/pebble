@@ -721,6 +721,9 @@ func (b *PrefixBytesBuilder) DataType(int) DataType { return DataTypePrefixBytes
 // size.
 func (b *PrefixBytesBuilder) Reset() {
 	const maxRetainedData = 512 << 10 // 512 KB
+	if invariants.Enabled && invariants.Sometimes(10) {
+		invariants.Mangle(b.data)
+	}
 	*b = PrefixBytesBuilder{
 		bundleCalc: b.bundleCalc,
 		data:       b.data[:0],
