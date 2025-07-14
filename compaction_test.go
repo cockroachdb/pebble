@@ -25,6 +25,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -123,6 +124,8 @@ func (p *compactionPickerForTesting) pickAutoNonScore(env compactionEnv) (pc pic
 }
 
 func TestPickCompaction(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	fileNums := func(files manifest.LevelSlice) string {
 		var ss []string
 		for meta := range files.All() {
@@ -559,6 +562,8 @@ func TestPickCompaction(t *testing.T) {
 }
 
 func TestAutomaticFlush(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	const memTableSize = 10000
 	// Tuned so that 2 values can reside in the memtable before a flush, but a
 	// 3rd value will cause a flush. Needs to account for the max skiplist node
@@ -701,6 +706,8 @@ func TestAutomaticFlush(t *testing.T) {
 }
 
 func TestValidateVersionEdit(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	const badKey = "malformed-key"
 
 	errValidationFailed := errors.New("validation failed")
@@ -871,6 +878,8 @@ func TestValidateVersionEdit(t *testing.T) {
 // TestCompaction tests compaction mechanics. It is a datadriven test, with
 // multiple datadriven test files in the testdata/compaction directory.
 func TestCompaction(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	var mem vfs.FS
 	var d *DB
 	defer func() {
@@ -1508,6 +1517,8 @@ func TestCompaction(t *testing.T) {
 }
 
 func TestCompactionOutputLevel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	opts := DefaultOptions()
 	version := manifest.NewInitialVersion(opts.Comparer)
 	l0Organizer := manifest.NewL0Organizer(opts.Comparer, 0 /* flushSplitBytes */)
@@ -1537,6 +1548,8 @@ func TestCompactionOutputLevel(t *testing.T) {
 }
 
 func TestCompactionDeleteOnlyHints(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	parseUint64 := func(s string) uint64 {
 		v, err := strconv.ParseUint(s, 10, 64)
 		require.NoError(t, err)
@@ -1815,6 +1828,8 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 }
 
 func TestCompactionTombstones(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -1969,6 +1984,7 @@ func closeAllSnapshots(d *DB) error {
 }
 
 func TestCompactionReadTriggeredQueue(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 
 	// Convert a read compaction to a string which this test
 	// understands.
@@ -2045,6 +2061,8 @@ func (qu *readCompactionQueue) at(i int) *readCompaction {
 }
 
 func TestCompactionReadTriggered(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -2159,6 +2177,8 @@ func TestCompactionReadTriggered(t *testing.T) {
 }
 
 func TestCompactionAllowZeroSeqNum(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -2272,6 +2292,8 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 }
 
 func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	cmp := DefaultComparer.Compare
 	parseMeta := func(s string) *manifest.TableMetadata {
 		parts := strings.Split(s, "-")
@@ -2324,6 +2346,8 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 // after some output tables have been created. It ensures that the pending
 // output tables are removed from the filesystem.
 func TestCompactionErrorCleanup(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	// protected by d.mu
 	var (
 		initialSetupDone bool
@@ -2399,6 +2423,8 @@ func TestCompactionErrorCleanup(t *testing.T) {
 }
 
 func TestCompactionCheckOrdering(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	cmp := DefaultComparer.Compare
 	parseMeta := func(s string) *manifest.TableMetadata {
 		parts := strings.Split(s, "-")
@@ -2522,6 +2548,8 @@ func TestCompactionCheckOrdering(t *testing.T) {
 }
 
 func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	t.Run("", func(t *testing.T) {
 		// Verify that manual compaction forces a flush of a queued memtable.
 
@@ -2584,6 +2612,8 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 }
 
 func TestCompactFlushQueuedLargeBatch(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	// Verify that compaction forces a flush of a queued large batch.
 
 	mem := vfs.NewMem()
@@ -2620,6 +2650,8 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 }
 
 func TestFlushError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	// Error the first five times we try to write a sstable.
 	var errorOps atomic.Int32
 	errorOps.Store(3)
@@ -2646,6 +2678,8 @@ func TestFlushError(t *testing.T) {
 }
 
 func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	// 500MB in Lbase
 	var lbaseFiles []*manifest.TableMetadata
 	const lbaseSize = 5 << 20
@@ -2685,6 +2719,8 @@ func TestAdjustGrandparentOverlapBytesForFlush(t *testing.T) {
 }
 
 func TestCompactionInvalidBounds(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	opts := &Options{
 		FS: vfs.NewMem(),
 	}
@@ -2698,6 +2734,8 @@ func TestCompactionInvalidBounds(t *testing.T) {
 }
 
 func TestMarkedForCompaction(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	var mem vfs.FS = vfs.NewMem()
 	var d *DB
 	defer func() {
@@ -2838,6 +2876,9 @@ var _ errorfs.Injector = &createManifestErrorInjector{}
 //
 // Regression test for #1669.
 func TestCompaction_UpdateVersionFails(t *testing.T) {
+	// TODO(jackson): Fix the leak.
+	// defer leaktest.AfterTest(t)()
+
 	// flushKeys writes the given keys to the DB, flushing the resulting memtable.
 	var key = []byte("foo")
 	flushErrC := make(chan error)
@@ -2935,6 +2976,8 @@ func TestCompaction_UpdateVersionFails(t *testing.T) {
 // TestSharedObjectDeletePacing tests that we don't throttle shared object
 // deletes (see the TargetBytesDeletionRate option).
 func TestSharedObjectDeletePacing(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	var opts Options
 	opts.FS = vfs.NewMem()
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
@@ -3027,6 +3070,8 @@ var _ errorfs.Injector = &WriteErrorInjector{}
 
 // Cumulative compaction stats shouldn't be updated on compaction error.
 func TestCompactionErrorStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	// protected by d.mu
 	var (
 		useInjector   bool
@@ -3111,6 +3156,8 @@ func TestCompactionErrorStats(t *testing.T) {
 }
 
 func TestCompactionCorruption(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	if buildtags.SlowBuild {
 		t.Skip("disabled in slow builds")
 	}
@@ -3151,6 +3198,11 @@ func TestCompactionCorruption(t *testing.T) {
 	})
 	d, err := Open("", opts)
 	require.NoError(t, err)
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
 
 	var now crtime.AtomicMono
 	now.Store(1)
@@ -3314,6 +3366,8 @@ func hasExternalFiles(d *DB) bool {
 // - There are no overlapping files in the output level
 // - The grandparent overlap is below the threshold
 func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	const (
 		inputLevel  = 4
 		outputLevel = 5
@@ -3412,6 +3466,8 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 // TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap verifies that
 // the move optimization does NOT apply when there is an overlapping file in the output level.
 func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	const (
 		inputLevel  = 4
 		outputLevel = 5
@@ -3490,6 +3546,8 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 // TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge
 // verifies that the move optimization does NOT apply if the grandparent overlap exceeds the threshold.
 func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	const (
 		inputLevel       = 4
 		outputLevel      = 5
@@ -3553,6 +3611,8 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 // TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold
 // verifies that the move optimization does NOT apply if the file's tombstone density is below the threshold.
 func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	const (
 		inputLevel  = 4
 		outputLevel = 5
@@ -3600,6 +3660,8 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 // TestTombstoneDensityCompactionMoveOptimization_InvalidStats
 // verifies that the move optimization does NOT apply if the file's stats are missing or invalid.
 func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	const (
 		inputLevel  = 4
 		outputLevel = 5
