@@ -128,6 +128,10 @@ func TestWorkloadCollector(t *testing.T) {
 					_, err = currentManifest.Write(randData(25))
 					require.NoError(t, err)
 				}
+				// Override the default duration values for TableIngestInfo to
+				// ensure deterministic output.
+				ingestInfo.WaitFlushDuration = 200 * time.Millisecond
+				ingestInfo.ManifestUpdateDuration = 100 * time.Millisecond
 				fmt.Fprint(&buf, ingestInfo.String())
 				c.onTableIngest(ingestInfo)
 				return buf.String()
