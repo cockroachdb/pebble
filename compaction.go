@@ -1368,23 +1368,27 @@ func (d *DB) calculateDiskAvailableBytes() uint64 {
 	return space.AvailBytes
 }
 
-// maybeScheduleFlush schedules a flush if necessary.
+// maybeScheduleFlush schedules a flush if necessary, returning the time stamp
+// before the flush was scheduled. If no flush was scheduled, the timestamp is a
+// sentinel value of 0.
 //
 // d.mu must be held when calling this.
-func (d *DB) maybeScheduleFlush() {
+func (d *DB) maybeScheduleFlush() crtime.Mono {
 	if d.mu.compact.flushing || d.closed.Load() != nil || d.opts.ReadOnly {
-		return
+		return crtime.Mono(0)
 	}
 	if len(d.mu.mem.queue) <= 1 {
-		return
+		return crtime.Mono(0)
 	}
 
 	if !d.passedFlushThreshold() {
-		return
+		return crtime.Mono(0)
 	}
 
 	d.mu.compact.flushing = true
+	now := crtime.NowMono()
 	go d.flush()
+	return now
 }
 
 func (d *DB) passedFlushThreshold() bool {
