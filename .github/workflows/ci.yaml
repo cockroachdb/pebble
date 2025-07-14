@@ -102,3 +102,24 @@ jobs:
 
       - run: GOTRACEBACK=all make test
 
+  stress-new-tests:
+    if: github.event_name == 'pull_request'  # Skip job unless it's a PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Stress new tests
+        env:
+          BASE_BRANCH: origin/${{ github.base_ref }}
+        run: |
+          go install github.com/cockroachdb/stress@latest
+          bash scripts/stress-new-tests.sh
