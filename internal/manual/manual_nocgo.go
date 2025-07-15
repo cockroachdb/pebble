@@ -6,7 +6,11 @@
 
 package manual
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/cockroachdb/pebble/internal/invariants"
+)
 
 // Provides versions of New and Free when cgo is not available (e.g. cross
 // compilation).
@@ -27,5 +31,6 @@ func New(purpose Purpose, n uintptr) Buf {
 // Free frees the specified slice. It has to be exactly the slice that was
 // returned by New.
 func Free(purpose Purpose, b Buf) {
+	invariants.MaybeMangle(b.Slice())
 	recordFree(purpose, b.n)
 }
