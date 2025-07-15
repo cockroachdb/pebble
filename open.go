@@ -134,11 +134,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if db == nil {
-			_ = formatVersionMarker.Close()
-		}
-	}()
+	defer maybeCleanUp(formatVersionMarker.Close)
 
 	noFormatVersionMarker := formatVersion == FormatDefault
 	if noFormatVersionMarker {
@@ -172,11 +168,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
 	}
-	defer func() {
-		if db == nil {
-			_ = manifestMarker.Close()
-		}
-	}()
+	defer maybeCleanUp(manifestMarker.Close)
 
 	// Atomic markers may leave behind obsolete files if there's a crash
 	// mid-update. Clean these up if we're not in read-only mode.
@@ -240,6 +232,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			}
 			if d.objProvider != nil {
 				_ = d.objProvider.Close()
+			}
+			if d.mu.versions.manifestFile != nil {
+				_ = d.mu.versions.manifestFile.Close()
 			}
 			if r != nil {
 				panic(r)
