@@ -75,6 +75,7 @@ func New(purpose Purpose, n uintptr) Buf {
 // returned by New.
 func Free(purpose Purpose, b Buf) {
 	if b.n != 0 {
+		invariants.MaybeMangle(b.Slice())
 		recordFree(purpose, b.n)
 
 		if !invariants.RaceEnabled || !useGoAllocation {
