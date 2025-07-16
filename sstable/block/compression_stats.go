@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
@@ -125,4 +126,28 @@ func (c CompressionStats) String() string {
 		fmt.Fprintf(&buf, "%s:%d/%d", e.s.String(), e.cs.CompressedBytes, e.cs.UncompressedBytes)
 	}
 	return buf.String()
+}
+
+// ParseCompressionStats parses the output of CompressionStats.String back into CompressionStats.
+//
+// If the string contains statistics for unknown compression settings, these are
+// accumulated under a special "unknown" setting.
+func ParseCompressionStats(s string) (CompressionStats, error) {
+	var stats CompressionStats
+	for _, a := range strings.Split(s, ",") {
+		b := strings.Split(a, ":")
+		if len(b) != 2 {
+			return CompressionStats{}, errors.Errorf("cannot parse compression stats %q", s)
+		}
+		setting, ok := compression.ParseSetting(b[0])
+		if !ok {
+			setting = compression.Setting{Algorithm: compression.Unknown, Level: 0}
+		}
+		var cs CompressionStatsForSetting
+		if _, err := fmt.Sscanf(b[1], "%d/%d", &cs.CompressedBytes, &cs.UncompressedBytes); err != nil {
+			return CompressionStats{}, errors.Errorf("cannot parse compression stats %q", s)
+		}
+		stats.add(setting, cs)
+	}
+	return stats, nil
 }

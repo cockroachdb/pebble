@@ -80,3 +80,12 @@ func decompress(algo Algorithm, b []byte) ([]byte, error) {
 	}
 	return decodedBuf, nil
 }
+
+func TestSettingString(t *testing.T) {
+	for _, s := range presets {
+		str := s.String()
+		s2, ok := ParseSetting(str)
+		require.True(t, ok)
+		require.Equal(t, s, s2)
+	}
+}
