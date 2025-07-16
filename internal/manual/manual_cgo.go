@@ -25,6 +25,12 @@ func throw(s string)
 // memory. Performing some allocations using Go allows the race detector to
 // observe concurrent memory access to memory allocated by this package.
 //
+// Note that we must either perform ALL allocations made by this package using
+// Go or none of them. We sometimes store a pointer to a buffer allocated by
+// this package (eg, a block) in a struct also allocated by this package (a
+// block cache entry). The CGo pointer passing rules require that only pinned Go
+// pointers are stored in CGo memory.
+//
 // TODO(jackson): Confirm that the race detector does not detect races within
 // cgo-allocated memory.
 var useGoAllocation = invariants.RaceEnabled && rand.Uint32()%2 == 0
