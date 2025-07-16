@@ -8,29 +8,42 @@ import (
 	"encoding/binary"
 	"iter"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/blob"
 )
 
-// blobRefValueLivenessState tracks the liveness of values within a blob value
-// block via a BitmapRunLengthEncoder.
-type blobRefValueLivenessState struct {
+// blobReferenceValues tracks which values within a blob file are referenced
+// from an sstable being constructed.
+type blobReferenceValues struct {
+	// currentBlock tracks which values are referenced within the most-recently
+	// observed BlockID of the referenced blob file.
+	//
+	// Values are written to blob files in the order of their referencing keys,
+	// which guarantees that compactions always observe the blob value handles
+	// referencing a particular blob file in order by (blockID, valueID).
+	//
+	// We take advantage of this ordering in the blobReferenceValues type,
+	// accumulating a bitmap of values referenced in an individual block of a
+	// blob file at a time. Once we see a reference to a new block within the
+	// same blob file, the buffered bitmap is encoded and appended to
+	// encodedFinishedBlocks.
 	currentBlock struct {
-		bitmap     BitmapRunLengthEncoder
-		refID      blob.ReferenceID
 		blockID    blob.BlockID
+		bitmap     BitmapRunLengthEncoder
 		valuesSize uint64
 	}
-
-	finishedBlocks []byte
+	// encodedFinishedBlocks is a buffer encoding which values were referenced
+	// within the blob file among all the referenced blob file's blocks prior to
+	// currentBlock.blockID.
+	encodedFinishedBlocks []byte
 }
 
 // initNewBlock initializes the state for a new block, resetting all fields to
 // their initial values.
-func (s *blobRefValueLivenessState) initNewBlock(refID blob.ReferenceID, blockID blob.BlockID) {
-	s.currentBlock.bitmap.Init()
-	s.currentBlock.refID = refID
+func (s *blobReferenceValues) initNewBlock(blockID blob.BlockID) {
 	s.currentBlock.blockID = blockID
+	s.currentBlock.bitmap.Init()
 	s.currentBlock.valuesSize = 0
 }
 
@@ -38,11 +51,14 @@ func (s *blobRefValueLivenessState) initNewBlock(refID blob.ReferenceID, blockID
 // value block to the encoder's buffer.
 //
 //	<block ID> <values size> <n bytes of bitmap> [<bitmap>]
-func (s *blobRefValueLivenessState) finishCurrentBlock() {
-	s.finishedBlocks = binary.AppendUvarint(s.finishedBlocks, uint64(s.currentBlock.blockID))
-	s.finishedBlocks = binary.AppendUvarint(s.finishedBlocks, s.currentBlock.valuesSize)
-	s.finishedBlocks = binary.AppendUvarint(s.finishedBlocks, uint64(s.currentBlock.bitmap.Size()))
-	s.finishedBlocks = s.currentBlock.bitmap.FinishAndAppend(s.finishedBlocks)
+func (s *blobReferenceValues) finishCurrentBlock() {
+	if s.currentBlock.valuesSize == 0 {
+		panic(errors.AssertionFailedf("no pending current block"))
+	}
+	s.encodedFinishedBlocks = binary.AppendUvarint(s.encodedFinishedBlocks, uint64(s.currentBlock.blockID))
+	s.encodedFinishedBlocks = binary.AppendUvarint(s.encodedFinishedBlocks, s.currentBlock.valuesSize)
+	s.encodedFinishedBlocks = binary.AppendUvarint(s.encodedFinishedBlocks, uint64(s.currentBlock.bitmap.Size()))
+	s.encodedFinishedBlocks = s.currentBlock.bitmap.FinishAndAppend(s.encodedFinishedBlocks)
 }
 
 // blobRefValueLivenessWriter helps maintain the liveness of values in blob value
@@ -51,7 +67,7 @@ func (s *blobRefValueLivenessState) finishCurrentBlock() {
 // each blob value block for our sstable's blob references. The index of the
 // slice corresponds to the blob.ReferenceID.
 type blobRefValueLivenessWriter struct {
-	refState []blobRefValueLivenessState
+	refState []blobReferenceValues
 }
 
 // init initializes the writer's state.
@@ -90,15 +106,15 @@ func (w *blobRefValueLivenessWriter) addLiveValue(
 		}
 
 		// We have a new reference.
-		state := blobRefValueLivenessState{}
-		state.initNewBlock(refID, blockID)
+		state := blobReferenceValues{}
+		state.initNewBlock(blockID)
 		w.refState = append(w.refState, state)
 	}
 
 	state := &w.refState[refID]
 	if state.currentBlock.blockID != blockID {
 		state.finishCurrentBlock()
-		state.initNewBlock(refID, blockID)
+		state.initNewBlock(blockID)
 	}
 	state.currentBlock.valuesSize += valueSize
 	state.currentBlock.bitmap.Set(int(valueID))
@@ -112,7 +128,7 @@ func (w *blobRefValueLivenessWriter) finish() iter.Seq2[blob.ReferenceID, []byte
 		// N.B. `i` is equivalent to blob.ReferenceID.
 		for i, state := range w.refState {
 			state.finishCurrentBlock()
-			if !yield(blob.ReferenceID(i), state.finishedBlocks) {
+			if !yield(blob.ReferenceID(i), state.encodedFinishedBlocks) {
 				return
 			}
 		}
