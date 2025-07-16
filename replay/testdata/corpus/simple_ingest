@@ -1,0 +1,80 @@
+open-ingest-excise
+----
+
+list-files build
+----
+build:
+  000002.log
+  LOCK
+  MANIFEST-000001
+  OPTIONS-000003
+  marker.format-version.000012.025
+  marker.manifest.000001.MANIFEST-000001
+
+build-sst foo.sst
+a#0,SET = a
+b#0,SET = byaya
+c#0,SET = cyuumi
+d#0,SET = d
+----
+
+ingest foo.sst
+----
+ingested
+
+build-sst f.sst
+p#0,SET = p
+q#0,SET = q
+----
+
+ingest-and-excise f.sst excise=a-d
+----
+ingest-and-excised
+
+list-files build
+----
+build:
+  000002.log
+  000004.sst
+  000005.sst
+  LOCK
+  MANIFEST-000001
+  OPTIONS-000003
+  marker.format-version.000012.025
+  marker.manifest.000001.MANIFEST-000001
+
+start
+----
+started
+
+build-sst loo.sst
+x#0,SET = x
+y#0,SET = y
+----
+
+ingest loo.sst
+----
+ingested
+
+build-sst l.sst
+z#0,SET = z
+----
+
+ingest-and-excise l.sst excise=d-p
+----
+ingest-and-excised
+
+
+stop
+----
+stopped
+
+list-files simple_ingest
+----
+simple_ingest:
+  000007.sst
+  000009.sst
+  MANIFEST-000001
+  MANIFEST-000008
+  MANIFEST-000010
+  checkpoint

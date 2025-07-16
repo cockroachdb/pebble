@@ -118,6 +118,7 @@ type Metrics struct {
 		// effective heuristics are at ingesting files into lower levels, saving
 		// write amplification.
 		BytesWeightedByLevel uint64
+		ExciseIngestCount    int64
 	}
 	// PaceDuration is the time waiting for the pacer to allow the workload to
 	// continue.
@@ -173,6 +174,7 @@ func (m *Metrics) WriteBenchmarkString(name string, w io.Writer) error {
 			{Value: float64(m.CompactionCounts.Rewrite), Unit: "rewrite"},
 			{Value: float64(m.CompactionCounts.Copy), Unit: "copy"},
 			{Value: float64(m.CompactionCounts.MultiLevel), Unit: "multilevel"},
+			{Value: float64(m.Ingest.ExciseIngestCount), Unit: "excise"},
 		}},
 		// Total database sizes sampled after every workload step and
 		// compaction. This can be used to evaluate the relative LSM space
@@ -563,6 +565,7 @@ func (r *Runner) Wait() (Metrics, error) {
 	m.CompactionCounts.Rewrite = pm.Compact.RewriteCount
 	m.CompactionCounts.Copy = pm.Compact.CopyCount
 	m.CompactionCounts.MultiLevel = pm.Compact.MultiLevelCount
+	m.Ingest.ExciseIngestCount = pm.Ingest.ExciseIngestCount
 	m.Ingest.BytesIntoL0 = pm.Levels[0].TableBytesIngested
 	m.Ingest.BytesWeightedByLevel = ingestBytesWeighted
 	return m, err
@@ -584,8 +587,10 @@ type workloadStep struct {
 	// readAmp estimation for the LSM *before* ve was applied.
 	previousReadAmp int
 	// non-nil for flushStepKind
-	flushBatch           *pebble.Batch
-	tablesToIngest       []string
+	flushBatch     *pebble.Batch
+	tablesToIngest []string
+	// exciseSpan is set for exciseStepKind
+	exciseSpan           pebble.KeyRange
 	cumulativeWriteBytes uint64
 }
 
@@ -595,6 +600,7 @@ const (
 	flushStepKind stepKind = iota
 	ingestStepKind
 	compactionStepKind
+	ingestAndExciseStepKind
 )
 
 // eventListener returns a Pebble EventListener that is installed on the replay
@@ -688,6 +694,12 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 			r.stepsApplied <- step
 		case ingestStepKind:
 			if err := r.d.Ingest(context.Background(), step.tablesToIngest); err != nil {
+				return err
+			}
+			r.metrics.writeBytes.Store(step.cumulativeWriteBytes)
+			r.stepsApplied <- step
+		case ingestAndExciseStepKind:
+			if _, err := r.d.IngestAndExcise(context.Background(), step.tablesToIngest, nil, nil, step.exciseSpan); err != nil {
 				return err
 			}
 			r.metrics.writeBytes.Store(step.cumulativeWriteBytes)
@@ -795,12 +807,22 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					// flush.
 					s.kind = ingestStepKind
 				}
+				if len(ve.ExciseBoundsRecord) > 0 {
+					// If a version edit contains excise bounds records, it's an excise operation.
+					// In practice, there should typically be only one excise bounds record per version edit.
+					exciseEntry := ve.ExciseBoundsRecord[0]
+					s.exciseSpan = pebble.KeyRange{
+						Start: exciseEntry.Bounds.Start,
+						End:   exciseEntry.Bounds.End.Key,
+					}
+					s.kind = ingestAndExciseStepKind
+				}
 				var newFiles []base.DiskFileNum
 				blobRefMap := make(map[base.DiskFileNum]manifest.BlobReferences)
 				blobFileMap := make(map[base.BlobFileID]base.DiskFileNum)
 				for _, nf := range ve.NewTables {
 					newFiles = append(newFiles, nf.Meta.TableBacking.DiskFileNum)
-					if s.kind == ingestStepKind && (nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum || nf.Level != 0) {
+					if s.kind == ingestStepKind && (nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum) {
 						s.kind = flushStepKind
 					}
 					if nf.Meta.BlobReferenceDepth > 0 {
@@ -870,7 +892,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 						return errors.Wrapf(err, "flush in %q at offset %d", manifestName, rr.Offset())
 					}
 					cumulativeWriteBytes += uint64(s.flushBatch.Len())
-				case ingestStepKind:
+				case ingestStepKind, ingestAndExciseStepKind:
 					// Copy the ingested sstables into a staging area within the
 					// run dir. This is necessary for two reasons:
 					//  a) Ingest will remove the source file, and we don't want
