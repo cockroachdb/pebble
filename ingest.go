@@ -2082,6 +2082,7 @@ func (d *DB) ingestApply(
 		var exciseBounds base.UserKeyBounds
 		if exciseSpan.Valid() {
 			exciseBounds = exciseSpan.UserKeyBounds()
+			d.mu.versions.metrics.Ingest.ExciseIngestCount++
 			// Iterate through all levels and find files that intersect with exciseSpan.
 			//
 			// TODO(bilal): We could drop the DB mutex here as we don't need it for

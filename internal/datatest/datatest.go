@@ -7,12 +7,16 @@
 package datatest
 
 import (
+	"context"
 	"strings"
 	"sync"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // TODO(jackson): Consider a refactoring that can consolidate this package and
@@ -137,4 +141,77 @@ func (cql *CompactionTracker) WaitForInflightCompactionsToEqual(target int) {
 		cql.Wait()
 	}
 	cql.L.Unlock()
+}
+
+// Below functions are more or less replica from data_test.go pebble package
+func RunBuildSSTCmd(
+	input string,
+	writerArgs []datadriven.CmdArg,
+	path string,
+	fs vfs.FS,
+	opts ...func(*dataDrivenCmdOptions),
+) (sstable.WriterMetadata, error) {
+	ddOpts := combineDataDrivenOpts(opts...)
+
+	writerOpts := ddOpts.defaultWriterOpts
+	if err := sstable.ParseWriterOptions(&writerOpts, writerArgs...); err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+
+	f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
+	if err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
+	if err := sstable.ParseTestSST(w.Raw(), input, nil /* bv */); err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+	if err := w.Close(); err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+	metadata, err := w.Metadata()
+	if err != nil {
+		return sstable.WriterMetadata{}, err
+	}
+	return *metadata, nil
+}
+
+func combineDataDrivenOpts(opts ...func(*dataDrivenCmdOptions)) dataDrivenCmdOptions {
+	combined := dataDrivenCmdOptions{}
+	for _, opt := range opts {
+		opt(&combined)
+	}
+	return combined
+}
+
+type dataDrivenCmdOptions struct {
+	defaultWriterOpts sstable.WriterOptions
+}
+
+func WithDefaultWriterOpts(defaultWriterOpts sstable.WriterOptions) func(*dataDrivenCmdOptions) {
+	return func(o *dataDrivenCmdOptions) { o.defaultWriterOpts = defaultWriterOpts }
+}
+
+func RunIngestAndExciseCmd(td *datadriven.TestData, d *pebble.DB) error {
+	paths := make([]string, 0)
+	var exciseSpan pebble.KeyRange
+	for i := range td.CmdArgs {
+		if strings.HasSuffix(td.CmdArgs[i].Key, ".sst") {
+			paths = append(paths, td.CmdArgs[i].Key)
+		} else if td.CmdArgs[i].Key == "excise" {
+			if len(td.CmdArgs[i].Vals) != 1 {
+				return errors.New("expected 2 values for excise separated by -, eg. ingest-and-excise foo1 excise=\"start-end\"")
+			}
+			fields := strings.Split(td.CmdArgs[i].Vals[0], "-")
+			if len(fields) != 2 {
+				return errors.New("expected 2 values for excise separated by -, eg. ingest-and-excise foo1 excise=\"start-end\"")
+			}
+			exciseSpan.Start = []byte(fields[0])
+			exciseSpan.End = []byte(fields[1])
+		}
+	}
+	if _, err := d.IngestAndExcise(context.Background(), paths, nil /* shared */, nil /* external */, exciseSpan); err != nil {
+		return err
+	}
+	return nil
 }
