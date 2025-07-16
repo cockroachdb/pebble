@@ -5,12 +5,16 @@
 package sstable
 
 import (
+	"bytes"
+	"fmt"
 	"iter"
 	"maps"
 	"math/rand/v2"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/stretchr/testify/require"
@@ -145,4 +149,29 @@ func TestBlobRefLivenessEncoding_Randomized(t *testing.T) {
 		reencoded := collectSlice(w.finish())
 		require.Equal(t, encoded, reencoded)
 	}
+}
+
+func TestValueLivenessBlock(t *testing.T) {
+	var decoder ReferenceLivenessBlockDecoder
+	var buf bytes.Buffer
+	datadriven.RunTest(t, "testdata/value_liveness_block", func(t *testing.T, d *datadriven.TestData) string {
+		buf.Reset()
+		switch d.Cmd {
+		case "build":
+			var w referenceLivenessBlockEncoder
+			w.Init()
+			for i, line := range strings.Split(d.Input, "\n") {
+				fields := strings.Fields(line)
+				value := fields[0]
+				w.AddReferenceLiveness(i, []byte(value))
+			}
+
+			data := w.Finish()
+			decoder.Init(data)
+			fmt.Fprint(&buf, decoder.DebugString())
+			return buf.String()
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
 }

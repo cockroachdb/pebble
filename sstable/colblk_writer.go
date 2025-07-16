@@ -1013,7 +1013,7 @@ func (w *RawColumnWriter) Close() (err error) {
 		if w.opts.TableFormat < TableFormatPebblev6 {
 			return errors.AssertionFailedf("blob reference index block not supported in table format %s", w.layout.tableFormat)
 		}
-		var encoder colblk.ReferenceLivenessBlockEncoder
+		var encoder referenceLivenessBlockEncoder
 		encoder.Init()
 		for refID, buf := range w.blobRefLivenessIndexBlock.finish() {
 			encoder.AddReferenceLiveness(int(refID), buf)

@@ -7,11 +7,80 @@ package sstable
 import (
 	"encoding/binary"
 	"iter"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/binfmt"
+	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 )
+
+const (
+	valueLivenessBlockCustomHeaderSize = 0
+	valueLivenessBlockColumnCount      = 1
+	valueLivenessBlockColumnIndex      = 0
+)
+
+// referenceLivenessBlockEncoder encodes a reference liveness block.
+// A reference liveness block is a columnar block that contains a single column:
+// an array of bytes encoding the liveness of values within a sstable's blob
+// references. The indexes into this array are the blob.ReferenceIDs contained
+// within the sstable.
+type referenceLivenessBlockEncoder struct {
+	values colblk.RawBytesBuilder
+	enc    colblk.BlockEncoder
+}
+
+// Init initializes the reference liveness block encoder.
+func (e *referenceLivenessBlockEncoder) Init() {
+	e.values.Init()
+}
+
+// Reset resets the reference liveness block encoder.
+func (e *referenceLivenessBlockEncoder) Reset() {
+	e.values.Reset()
+	e.enc.Reset()
+}
+
+// AddReferenceLiveness adds a value to the reference liveness block.
+func (e *referenceLivenessBlockEncoder) AddReferenceLiveness(referenceID int, v []byte) {
+	if e.values.Rows() != referenceID {
+		panic(base.AssertionFailedf("referenceID %d does not match number of rows %d", referenceID, e.values.Rows()))
+	}
+	e.values.Put(v)
+}
+
+// Count returns the number of values in the reference liveness block.
+func (e *referenceLivenessBlockEncoder) Count() int {
+	return e.values.Rows()
+}
+
+func (e *referenceLivenessBlockEncoder) size() int {
+	rows := e.values.Rows()
+	if rows == 0 {
+		return 0
+	}
+	off := colblk.HeaderSize(valueLivenessBlockColumnCount, valueLivenessBlockCustomHeaderSize)
+	off = e.values.Size(rows, off)
+	// Add a padding byte at the end to allow the block's end to be represented
+	// as a pointer to allocated memory.
+	off++
+	return int(off)
+}
+
+// Finish serializes the pending reference liveness block.
+func (e *referenceLivenessBlockEncoder) Finish() []byte {
+	e.enc.Init(e.size(), colblk.Header{
+		Version: colblk.Version1,
+		Columns: valueLivenessBlockColumnCount,
+		Rows:    uint32(e.values.Rows()),
+	}, valueLivenessBlockCustomHeaderSize)
+	e.enc.Encode(e.values.Rows(), &e.values)
+	return e.enc.Finish()
+}
 
 // blobReferenceValues tracks which values within a blob file are referenced
 // from an sstable being constructed.
@@ -176,3 +245,57 @@ func DecodeBlobRefLivenessEncoding(buf []byte) []BlobRefLivenessEncoding {
 	}
 	return encodings
 }
+
+// ReferenceLivenessBlockDecoder reads columnar reference liveness blocks.
+type ReferenceLivenessBlockDecoder struct {
+	values colblk.RawBytes
+	bd     colblk.BlockDecoder
+}
+
+// Init initializes the decoder with the given serialized reference liveness
+// block.
+func (d *ReferenceLivenessBlockDecoder) Init(data []byte) {
+	d.bd.Init(data, valueLivenessBlockCustomHeaderSize)
+	d.values = d.bd.RawBytes(valueLivenessBlockColumnIndex)
+}
+
+// DebugString prints a human-readable explanation of the reference liveness
+// block's binary representation.
+func (d *ReferenceLivenessBlockDecoder) DebugString() string {
+	f := binfmt.New(d.bd.Data()).LineWidth(20)
+	tp := treeprinter.New()
+	d.Describe(f, tp.Child("reference-liveness-block-decoder"))
+	return tp.String()
+}
+
+// Describe describes the binary format of the reference liveness block, assuming
+// f.Offset() is positioned at the beginning of the same reference liveness
+// block described by d.
+func (d *ReferenceLivenessBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
+	// Set the relative offset. When loaded into memory, the beginning of blocks
+	// are aligned. Padding that ensures alignment is done relative to the
+	// current offset. Setting the relative offset ensures that if we're
+	// describing this block within a larger structure (eg, f.Offset()>0), we
+	// compute padding appropriately assuming the current byte f.Offset() is
+	// aligned.
+	f.SetAnchorOffset()
+
+	n := tp.Child("reference liveness block header")
+	d.bd.HeaderToBinFormatter(f, n)
+	d.bd.ColumnToBinFormatter(f, n, 0, d.bd.Rows())
+	f.HexBytesln(1, "block padding byte")
+	f.ToTreePrinter(n)
+}
+
+// BlockDecoder returns the block decoder for the reference liveness block.
+func (d *ReferenceLivenessBlockDecoder) BlockDecoder() *colblk.BlockDecoder {
+	return &d.bd
+}
+
+// LivenessAtReference returns the liveness of the reference (the given index).
+func (d *ReferenceLivenessBlockDecoder) LivenessAtReference(i int) []byte {
+	return d.values.At(i)
+}
+
+// Assert that an ReferenceLivenessBlockDecoder can fit inside block.Metadata.
+const _ uint = block.MetadataSize - uint(unsafe.Sizeof(ReferenceLivenessBlockDecoder{}))

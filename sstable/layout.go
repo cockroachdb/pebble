@@ -373,7 +373,7 @@ func (l *Layout) Describe(
 				if err != nil {
 					return err
 				}
-				var decoder colblk.ReferenceLivenessBlockDecoder
+				var decoder ReferenceLivenessBlockDecoder
 				decoder.Init(h.BlockData())
 				offset := 0
 				for i := range decoder.BlockDecoder().Rows() {
