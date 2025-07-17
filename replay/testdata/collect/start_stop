@@ -14,7 +14,7 @@ ingest
 created src/000002.sst
 created src/000003.sst
 created src/000004.sst
-[JOB 0] ingested L0:000002 (10KB), L0:000003 (10KB), L0:000004 (10KB); manifest update took 0.1s
+[JOB 0] ingested L0:000002 (10KB), L0:000003 (10KB), L0:000004 (10KB); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
 
 
 wait

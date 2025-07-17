@@ -60,6 +60,8 @@ func TestEventListener(t *testing.T) {
 				// Make deterministic.
 				info.WaitFlushDuration = 200 * time.Millisecond
 				info.ManifestUpdateDuration = 100 * time.Millisecond
+				info.BlockReadDuration = 300 * time.Millisecond
+				info.BlockReadBytes = 7894
 				tableIngested(info)
 			}
 			opts := &Options{

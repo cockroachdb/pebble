@@ -9,7 +9,9 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -435,6 +437,15 @@ type versionUpdate struct {
 	// in-progress (excluding than the one that is being applied).
 	InProgressCompactionsFn func() []compactionInfo
 	ForceManifestRotation   bool
+	// ManifestUpdateDuration is the time spent successfully updating the
+	// manifest. If manifest update is unsuccessful, this value will be unset.
+	ManifestUpdateDuration *manifestUpdateDuration
+}
+
+// manifestUpdateDuration is a wrapper around time.Duration to allow for
+// mutation.
+type manifestUpdateDuration struct {
+	Duration time.Duration
 }
 
 // UpdateVersionLocked is used to update the current version.
@@ -472,6 +483,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
 	}
 
+	updateManifestStart := crtime.NowMono()
 	ve := vu.VE
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
@@ -779,6 +791,10 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, &vs.latest, vs.opts, inProgress))
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
+	}
+
+	if vu.ManifestUpdateDuration != nil {
+		vu.ManifestUpdateDuration.Duration = updateManifestStart.Elapsed()
 	}
 	return nil
 }
