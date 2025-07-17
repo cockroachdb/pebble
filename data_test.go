@@ -1186,7 +1186,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		}
 
 		jobID := d.newJobIDLocked()
-		err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 			return versionUpdate{
 				VE:                      ve,
 				JobID:                   jobID,

@@ -612,7 +612,7 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 
 	// Lock the manifest for a coherent view of the LSM. The database lock has
 	// been re-acquired by the defer within the above anonymous function.
-	return d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+	_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 		vers := d.mu.versions.currentVersion()
 		for l, filesToMark := range files {
 			if len(filesToMark) == 0 {
@@ -653,4 +653,5 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 			InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(nil) },
 		}, nil
 	})
+	return err
 }

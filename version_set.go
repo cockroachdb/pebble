@@ -9,7 +9,9 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -437,7 +439,9 @@ type versionUpdate struct {
 	ForceManifestRotation   bool
 }
 
-// UpdateVersionLocked is used to update the current version.
+// UpdateVersionLocked is used to update the current version, returning the
+// duration of the manifest update. If the manifest update is unsuccessful, the
+// duration will be unset (0).
 //
 // DB.mu must be held. UpdateVersionLocked first waits for any other version
 // update to complete, releasing and reacquiring DB.mu.
@@ -459,19 +463,22 @@ type versionUpdate struct {
 //
 // If updateFn returns an error, no update is applied and that same error is returned.
 // If versionUpdate.VE is nil, the no update is applied (and no error is returned).
-func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)) error {
+func (vs *versionSet) UpdateVersionLocked(
+	updateFn func() (versionUpdate, error),
+) (time.Duration, error) {
 	vs.logLock()
 	defer vs.logUnlockAndInvalidatePickedCompactionCache()
 
 	vu, err := updateFn()
 	if err != nil || vu.VE == nil {
-		return err
+		return 0, err
 	}
 
 	if !vs.writing {
 		vs.opts.Logger.Fatalf("MANIFEST not locked for writing")
 	}
 
+	updateManifestStart := crtime.NowMono()
 	ve := vu.VE
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
@@ -669,7 +676,7 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 		// certain manifest / WAL operations become retryable. For more context, see
 		// #1159 and #1792.
 		vs.opts.Logger.Fatalf("%s", err)
-		return err
+		return 0, err
 	}
 
 	if requireRotation {
@@ -780,7 +787,8 @@ func (vs *versionSet) UpdateVersionLocked(updateFn func() (versionUpdate, error)
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}
-	return nil
+
+	return updateManifestStart.Elapsed(), nil
 }
 
 func (vs *versionSet) setCompactionPicker(picker *compactionPickerByScore) {
