@@ -132,6 +132,8 @@ func TestWorkloadCollector(t *testing.T) {
 				// ensure deterministic output.
 				ingestInfo.WaitFlushDuration = 200 * time.Millisecond
 				ingestInfo.ManifestUpdateDuration = 100 * time.Millisecond
+				ingestInfo.BlockReadDuration = 300 * time.Millisecond
+				ingestInfo.BlockReadBytes = 7894
 				fmt.Fprint(&buf, ingestInfo.String())
 				c.onTableIngest(ingestInfo)
 				return buf.String()

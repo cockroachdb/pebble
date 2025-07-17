@@ -406,7 +406,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 	}
 
 	applyVE := func(ve *manifest.VersionEdit) error {
-		err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		_, err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 			return versionUpdate{
 				VE:                      ve,
 				JobID:                   d.newJobIDLocked(),

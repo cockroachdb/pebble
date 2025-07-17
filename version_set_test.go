@@ -159,7 +159,7 @@ func TestVersionSet(t *testing.T) {
 			}
 
 			mu.Lock()
-			err = vs.UpdateVersionLocked(func() (versionUpdate, error) {
+			_, err = vs.UpdateVersionLocked(func() (versionUpdate, error) {
 				return versionUpdate{
 					VE:                      ve,
 					Metrics:                 fileMetrics,

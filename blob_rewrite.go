@@ -175,7 +175,7 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 		info.Output.DiskFileNum = ve.NewBlobFiles[0].Physical.FileNum
 		info.Output.Size = ve.NewBlobFiles[0].Physical.Size
 		info.Output.ValueSize = ve.NewBlobFiles[0].Physical.ValueSize
-		err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 			// It's possible that concurrent compactions removed references to
 			// the blob file while the blob file rewrite compaction was running.
 			// Now that we have the manifest lock, check if the blob file is

@@ -259,7 +259,12 @@ func ingestLoad1(
 	cacheHandle *cache.Handle,
 	tableNum base.TableNum,
 	rangeKeyValidator rangeKeyIngestValidator,
-) (meta *manifest.TableMetadata, lastRangeKey keyspan.Span, err error) {
+) (
+	meta *manifest.TableMetadata,
+	lastRangeKey keyspan.Span,
+	blockReadStats base.BlockReadStats,
+	err error,
+) {
 	o := opts.MakeReaderOptions()
 	o.CacheOpts = sstableinternal.CacheOptions{
 		CacheHandle: cacheHandle,
@@ -267,36 +272,36 @@ func ingestLoad1(
 	}
 	r, err := sstable.NewReader(ctx, readable, o)
 	if err != nil {
-		return nil, keyspan.Span{}, errors.CombineErrors(err, readable.Close())
+		return nil, keyspan.Span{}, base.BlockReadStats{}, errors.CombineErrors(err, readable.Close())
 	}
 	defer func() { _ = r.Close() }()
 
 	// Avoid ingesting tables with format versions this DB doesn't support.
 	tf, err := r.TableFormat()
 	if err != nil {
-		return nil, keyspan.Span{}, err
+		return nil, keyspan.Span{}, base.BlockReadStats{}, err
 	}
 	if tf < fmv.MinTableFormat() || tf > fmv.MaxTableFormat() {
-		return nil, keyspan.Span{}, errors.Newf(
+		return nil, keyspan.Span{}, base.BlockReadStats{}, errors.Newf(
 			"pebble: table format %s is not within range supported at DB format major version %d, (%s,%s)",
 			tf, fmv, fmv.MinTableFormat(), fmv.MaxTableFormat(),
 		)
 	}
 
 	if r.Attributes.Has(sstable.AttributeBlobValues) {
-		return nil, keyspan.Span{}, errors.Newf(
+		return nil, keyspan.Span{}, base.BlockReadStats{}, errors.Newf(
 			"pebble: ingesting tables with blob references is not supported")
 	}
 
 	props, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
 	if err != nil {
-		return nil, keyspan.Span{}, err
+		return nil, keyspan.Span{}, base.BlockReadStats{}, err
 	}
 
 	// If this is a columnar block, read key schema name from properties block.
 	if tf.BlockColumnar() {
 		if _, ok := opts.KeySchemas[props.KeySchemaName]; !ok {
-			return nil, keyspan.Span{}, errors.Newf(
+			return nil, keyspan.Span{}, base.BlockReadStats{}, errors.Newf(
 				"pebble: table uses key schema %q unknown to the database",
 				props.KeySchemaName)
 		}
@@ -319,55 +324,71 @@ func ingestLoad1(
 	// calculating stats before we can remove the original link.
 	maybeSetStatsFromProperties(meta.PhysicalMeta(), &props, opts.Logger)
 
+	var iterStats base.InternalIteratorStats
+	env := sstable.ReadEnv{
+		Block: block.ReadEnv{
+			Stats: &iterStats,
+		},
+	}
 	{
-		iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)
+		iterOpts := sstable.IterOptions{
+			Lower:                nil,
+			Upper:                nil,
+			Transforms:           sstable.NoTransforms,
+			Filterer:             nil,
+			FilterBlockSizeLimit: sstable.AlwaysUseFilterBlock,
+			Env:                  env,
+			ReaderProvider:       sstable.MakeTrivialReaderProvider(r),
+			BlobContext:          sstable.AssertNoBlobHandles,
+		}
+		iter, err := r.NewPointIter(ctx, iterOpts)
 		if err != nil {
-			return nil, keyspan.Span{}, err
+			return nil, keyspan.Span{}, base.BlockReadStats{}, err
 		}
 		defer func() { _ = iter.Close() }()
 		var smallest InternalKey
 		if kv := iter.First(); kv != nil {
 			if err := ingestValidateKey(opts, &kv.K); err != nil {
-				return nil, keyspan.Span{}, err
+				return nil, keyspan.Span{}, base.BlockReadStats{}, err
 			}
 			smallest = kv.K.Clone()
 		}
 		if err := iter.Error(); err != nil {
-			return nil, keyspan.Span{}, err
+			return nil, keyspan.Span{}, base.BlockReadStats{}, err
 		}
 		if kv := iter.Last(); kv != nil {
 			if err := ingestValidateKey(opts, &kv.K); err != nil {
-				return nil, keyspan.Span{}, err
+				return nil, keyspan.Span{}, base.BlockReadStats{}, err
 			}
 			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, kv.K.Clone())
 		}
 		if err := iter.Error(); err != nil {
-			return nil, keyspan.Span{}, err
+			return nil, keyspan.Span{}, base.BlockReadStats{}, err
 		}
 	}
 
-	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, sstable.NoReadEnv)
+	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, env)
 	if err != nil {
-		return nil, keyspan.Span{}, err
+		return nil, keyspan.Span{}, base.BlockReadStats{}, err
 	}
 	if iter != nil {
 		defer iter.Close()
 		var smallest InternalKey
 		if s, err := iter.First(); err != nil {
-			return nil, keyspan.Span{}, err
+			return nil, keyspan.Span{}, base.BlockReadStats{}, err
 		} else if s != nil {
 			key := s.SmallestKey()
 			if err := ingestValidateKey(opts, &key); err != nil {
-				return nil, keyspan.Span{}, err
+				return nil, keyspan.Span{}, base.BlockReadStats{}, err
 			}
 			smallest = key.Clone()
 		}
 		if s, err := iter.Last(); err != nil {
-			return nil, keyspan.Span{}, err
+			return nil, keyspan.Span{}, base.BlockReadStats{}, err
 		} else if s != nil {
 			k := s.SmallestKey()
 			if err := ingestValidateKey(opts, &k); err != nil {
-				return nil, keyspan.Span{}, err
+				return nil, keyspan.Span{}, base.BlockReadStats{}, err
 			}
 			largest := s.LargestKey().Clone()
 			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
@@ -376,34 +397,34 @@ func ingestLoad1(
 
 	// Update the range-key bounds for the table.
 	{
-		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, sstable.NoReadEnv)
+		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, env)
 		if err != nil {
-			return nil, keyspan.Span{}, err
+			return nil, keyspan.Span{}, base.BlockReadStats{}, err
 		}
 		if iter != nil {
 			defer iter.Close()
 			var smallest InternalKey
 			if s, err := iter.First(); err != nil {
-				return nil, keyspan.Span{}, err
+				return nil, keyspan.Span{}, base.BlockReadStats{}, err
 			} else if s != nil {
 				key := s.SmallestKey()
 				if err := ingestValidateKey(opts, &key); err != nil {
-					return nil, keyspan.Span{}, err
+					return nil, keyspan.Span{}, base.BlockReadStats{}, err
 				}
 				smallest = key.Clone()
 				// Range keys need some additional validation as we need to ensure they
 				// defragment cleanly with the lastRangeKey from the previous file.
 				if err := rangeKeyValidator.Validate(s); err != nil {
-					return nil, keyspan.Span{}, err
+					return nil, keyspan.Span{}, base.BlockReadStats{}, err
 				}
 			}
 			lastRangeKey = keyspan.Span{}
 			if s, err := iter.Last(); err != nil {
-				return nil, keyspan.Span{}, err
+				return nil, keyspan.Span{}, base.BlockReadStats{}, err
 			} else if s != nil {
 				k := s.SmallestKey()
 				if err := ingestValidateKey(opts, &k); err != nil {
-					return nil, keyspan.Span{}, err
+					return nil, keyspan.Span{}, base.BlockReadStats{}, err
 				}
 				// As range keys are fragmented, the end key of the last range key in
 				// the table provides the upper bound for the table.
@@ -413,27 +434,27 @@ func ingestLoad1(
 			} else {
 				// s == nil.
 				if err := rangeKeyValidator.Validate(nil /* nextFileSmallestKey */); err != nil {
-					return nil, keyspan.Span{}, err
+					return nil, keyspan.Span{}, base.BlockReadStats{}, err
 				}
 			}
 		} else {
 			if err := rangeKeyValidator.Validate(nil /* nextFileSmallestKey */); err != nil {
-				return nil, keyspan.Span{}, err
+				return nil, keyspan.Span{}, base.BlockReadStats{}, err
 			}
 			lastRangeKey = keyspan.Span{}
 		}
 	}
 
 	if !meta.HasPointKeys && !meta.HasRangeKeys {
-		return nil, keyspan.Span{}, nil
+		return nil, keyspan.Span{}, base.BlockReadStats{}, nil
 	}
 
 	// Sanity check that the various bounds on the file were set consistently.
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
-		return nil, keyspan.Span{}, err
+		return nil, keyspan.Span{}, base.BlockReadStats{}, err
 	}
 
-	return meta, lastRangeKey, nil
+	return meta, lastRangeKey, iterStats.TotalBlockReads(), nil
 }
 
 type ingestLoadResult struct {
@@ -442,6 +463,7 @@ type ingestLoadResult struct {
 	external []ingestExternalMeta
 
 	externalFilesHaveLevel bool
+	blockReadStats         base.BlockReadStats
 }
 
 type ingestLocalMeta struct {
@@ -485,6 +507,7 @@ func ingestLoad(
 	var result ingestLoadResult
 	result.local = make([]ingestLocalMeta, 0, len(paths))
 	var lastRangeKey keyspan.Span
+	var blockReadStats base.BlockReadStats
 	// NB: we disable range key boundary assertions if we have shared or external files
 	// present in this ingestion. This is because a suffixed range key in a local file
 	// can possibly defragment with a suffixed range key in a shared or external file.
@@ -508,7 +531,7 @@ func ingestLoad(
 		if !shouldDisableRangeKeyChecks {
 			rangeKeyValidator = validateSuffixedBoundaries(opts.Comparer, lastRangeKey)
 		}
-		m, lastRangeKey, err = ingestLoad1(ctx, opts, fmv, readable, cacheHandle, localFileNums[i], rangeKeyValidator)
+		m, lastRangeKey, blockReadStats, err = ingestLoad1(ctx, opts, fmv, readable, cacheHandle, localFileNums[i], rangeKeyValidator)
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -517,6 +540,7 @@ func ingestLoad(
 				TableMetadata: m,
 				path:          paths[i],
 			})
+			result.blockReadStats = blockReadStats
 		}
 	}
 
@@ -1455,7 +1479,8 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 
 	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
-	loadResult, err := ingestLoad(ctx, d.opts, d.FormatMajorVersion(), paths, shared, external, d.cacheHandle, pendingOutputs)
+	loadResult, err := ingestLoad(ctx, d.opts, d.FormatMajorVersion(), paths, shared, external,
+		d.cacheHandle, pendingOutputs)
 	if err != nil {
 		return IngestOperationStats{}, err
 	}
@@ -1734,6 +1759,8 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			flushable:              asFlushable,
 			WaitFlushDuration:      waitFlushDuration,
 			ManifestUpdateDuration: manifestUpdateDuration,
+			BlockReadDuration:      loadResult.blockReadStats.BlockReadDuration,
+			BlockReadBytes:         loadResult.blockReadStats.BlockBytes - loadResult.blockReadStats.BlockBytesInCache,
 		}
 		if len(loadResult.local) > 0 {
 			info.GlobalSeqNum = loadResult.local[0].SmallestSeqNum
@@ -1924,12 +1951,11 @@ func (d *DB) ingestApply(
 	}
 	var metrics levelMetricsDelta
 
-	manifestUpdateStart := crtime.NowMono()
 	// Determine the target level inside UpdateVersionLocked. This prevents two
 	// concurrent ingestion jobs from using the same version to determine the
 	// target level, and also provides serialization with concurrent compaction
 	// and flush jobs.
-	err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+	manifestUpdateDuration, err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 		if mut != nil {
 			// Unref the mutable memtable to allows its flush to proceed. Now that we've
 			// acquired the manifest lock, we can be certain that if the mutable
@@ -2174,8 +2200,6 @@ func (d *DB) ingestApply(
 	if err != nil {
 		return nil, 0, err
 	}
-	manifestUpdateDuration := manifestUpdateStart.Elapsed()
-
 	// Check for any EventuallyFileOnlySnapshots that could be watching for
 	// an excise on this span. There should be none as the
 	// computePossibleOverlaps steps should have forced these EFOS to transition
@@ -2220,6 +2244,7 @@ func (d *DB) ingestApply(
 		}
 	}
 	d.maybeValidateSSTablesLocked(toValidate)
+
 	return ve, manifestUpdateDuration, nil
 }
 

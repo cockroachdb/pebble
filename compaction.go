@@ -1739,7 +1739,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		ve, stats, compactionErr = d.runCompaction(jobID, c)
 	}
 
-	err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+	_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 		err := compactionErr
 		if c.kind == compactionKindIngestedFlushable {
 			ve, err = d.runIngestFlush(c)
@@ -2697,7 +2697,7 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 	info.Duration = d.timeNow().Sub(startTime)
 	if err == nil {
 		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
-		err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 			// Check if this compaction had a conflicting operation (eg. a d.excise())
 			// that necessitates it restarting from scratch. Note that since we hold
 			// the manifest lock, we don't expect this bool to change its value
