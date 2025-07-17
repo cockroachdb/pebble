@@ -187,7 +187,9 @@ func (p *BufferPool) Release() {
 		if p.pool[i].b != nil {
 			panic(errors.AssertionFailedf("Release called on a BufferPool with in-use buffers"))
 		}
-		cache.Free(p.pool[i].v)
+		v := p.pool[i].v
+		p.pool[i].v = nil
+		cache.Free(v)
 	}
 	*p = BufferPool{}
 }
