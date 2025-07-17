@@ -851,7 +851,7 @@ func (d *DB) replayIngestedFlushable(
 			return nil, errors.Wrap(err, "pebble: error when opening flushable ingest files")
 		}
 		// NB: ingestLoad1 will close readable.
-		meta[i], lastRangeKey, err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(),
+		meta[i], lastRangeKey, _, err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(),
 			readable, d.cacheHandle, base.PhysicalTableFileNum(n), disableRangeKeyChecks())
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")

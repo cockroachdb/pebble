@@ -541,6 +541,12 @@ type TableIngestInfo struct {
 	WaitFlushDuration time.Duration
 	// ManifestUpdateDuration is the time spent updating the manifest.
 	ManifestUpdateDuration time.Duration
+	// BlockReadDuration is the total time spent reading blocks for the ingested
+	// sstable.
+	BlockReadDuration time.Duration
+	// BlockReadBytes is the total number of bytes from blocks read for the
+	// ingested sstable. This does not include bytes read from the block cache.
+	BlockReadBytes uint64
 }
 
 func (i TableIngestInfo) String() string {
@@ -573,7 +579,9 @@ func (i TableIngestInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf(" %s%s (%s)", redact.Safe(levelStr), t.FileNum,
 			redact.Safe(humanize.Bytes.Uint64(t.Size)))
 	}
-	w.Printf("; manifest update took %.1fs", redact.Safe(i.ManifestUpdateDuration.Seconds()))
+	w.Printf("; manifest update took %.1fs; block read took %.1fs with %s block bytes read",
+		redact.Safe(i.ManifestUpdateDuration.Seconds()), redact.Safe(i.BlockReadDuration.Seconds()),
+		redact.Safe(humanize.Bytes.Uint64(i.BlockReadBytes)))
 }
 
 // TableStatsInfo contains the info for a table stats loaded event.
