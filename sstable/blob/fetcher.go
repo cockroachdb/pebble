@@ -6,7 +6,6 @@ package blob
 
 import (
 	"context"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -246,7 +245,7 @@ func (cr *cachedReader) GetUnsafeValue(
 			if err != nil {
 				return nil, err
 			}
-			cr.indexBlock.dec = (*indexBlockDecoder)(unsafe.Pointer(cr.indexBlock.buf.BlockMetadata()))
+			cr.indexBlock.dec = block.CastMetadata[indexBlockDecoder](cr.indexBlock.buf.BlockMetadata())
 			cr.indexBlock.loaded = true
 		}
 
@@ -277,6 +276,9 @@ func (cr *cachedReader) GetUnsafeValue(
 		// this case to be rare, and this is a hot path for the more common case
 		// of non-rewritten blob files, so we defer optimizing for now.
 		h := cr.indexBlock.dec.BlockHandle(physicalBlockIndex)
+		// Nil out the decoder before releasing the buffers to ensure the Go GC
+		// doesn't misinterpret the freed memory backing the decoders.
+		cr.currentValueBlock.dec = nil
 		cr.currentValueBlock.buf.Release()
 		cr.currentValueBlock.loaded = false
 		var err error
@@ -284,7 +286,7 @@ func (cr *cachedReader) GetUnsafeValue(
 		if err != nil {
 			return nil, err
 		}
-		cr.currentValueBlock.dec = (*blobValueBlockDecoder)(unsafe.Pointer(cr.currentValueBlock.buf.BlockMetadata()))
+		cr.currentValueBlock.dec = block.CastMetadata[blobValueBlockDecoder](cr.currentValueBlock.buf.BlockMetadata())
 		cr.currentValueBlock.physicalIndex = physicalBlockIndex
 		cr.currentValueBlock.virtualID = vh.BlockID
 		cr.currentValueBlock.valueIDOffset = valueIDOffset
@@ -307,6 +309,10 @@ func (cfr *cachedReader) Close() (err error) {
 	if cfr.rh != nil {
 		err = cfr.rh.Close()
 	}
+	// Nil out the decoders before releasing the buffers to ensure the Go GC
+	// doesn't misinterpret the freed memory backing the decoders.
+	cfr.indexBlock.dec = nil
+	cfr.currentValueBlock.dec = nil
 	cfr.indexBlock.buf.Release()
 	cfr.currentValueBlock.buf.Release()
 	// Release the cfg.Reader. closeFunc is provided by the file cache and

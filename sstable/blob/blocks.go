@@ -236,10 +236,7 @@ const _ uint = block.MetadataSize - uint(unsafe.Sizeof(indexBlockDecoder{}))
 
 // initIndexBlockMetadata initializes the index block metadata.
 func initIndexBlockMetadata(md *block.Metadata, data []byte) (err error) {
-	if uintptr(unsafe.Pointer(md))%8 != 0 {
-		return errors.AssertionFailedf("metadata is not 8-byte aligned")
-	}
-	d := (*indexBlockDecoder)(unsafe.Pointer(md))
+	d := block.CastMetadataZero[indexBlockDecoder](md)
 	// Initialization can panic; convert panics to corruption errors (so higher
 	// layers can add file number and offset information).
 	defer func() {
@@ -355,10 +352,7 @@ const _ uint = block.MetadataSize - uint(unsafe.Sizeof(blobValueBlockDecoder{}))
 
 // initBlobValueBlockMetadata initializes the blob value block metadata.
 func initBlobValueBlockMetadata(md *block.Metadata, data []byte) (err error) {
-	if uintptr(unsafe.Pointer(md))%8 != 0 {
-		return errors.AssertionFailedf("metadata is not 8-byte aligned")
-	}
-	d := (*blobValueBlockDecoder)(unsafe.Pointer(md))
+	d := block.CastMetadataZero[blobValueBlockDecoder](md)
 	// Initialization can panic; convert panics to corruption errors (so higher
 	// layers can add file number and offset information).
 	defer func() {
