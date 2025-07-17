@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"time"
+	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/cockroachdb/crlib/crtime"
@@ -219,11 +220,39 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 // when the block is read from disk.
 //
 // Portions of this buffer can be cast to the structures we need (through
-// unsafe.Pointer), but note that any pointers in these structures will be
-// invisible to the GC. Pointers to the block's data buffer are ok, since the
-// metadata and the data have the same lifetime (sharing the underlying
-// allocation).
+// CastMetadataZero), but note that any pointers in these structures should be
+// considered invisible to the GC for the purpose of preserving lifetime.
+// Pointers to the block's data buffer are ok, since the metadata and the data
+// have the same lifetime (sharing the underlying allocation).
 type Metadata [MetadataSize]byte
+
+// CastMetadataZero casts the provided metadata to the type parameter T, zeroing
+// the memory backing the metadata first. This zeroing is necessary to ensure
+// that the Go garbage collector doesn't misinterpret any of T's pointer fields,
+// falsely detecting them as invalid pointers.
+func CastMetadataZero[T any](md *Metadata) *T {
+	var z T
+	if invariants.Enabled {
+		if uintptr(unsafe.Pointer(md))%unsafe.Alignof(z) != 0 {
+			panic(errors.AssertionFailedf("incorrect alignment for %T (%p)", z, unsafe.Pointer(md)))
+		}
+	}
+	clear((*md)[:unsafe.Sizeof(z)])
+	return (*T)(unsafe.Pointer(md))
+}
+
+// CastMetadata casts the provided metadata to the type parameter T. If the
+// Metadata has not already been initialized, callers should use
+// CastMetadataZero.
+func CastMetadata[T any](md *Metadata) *T {
+	var z T
+	if invariants.Enabled {
+		if uintptr(unsafe.Pointer(md))%unsafe.Alignof(z) != 0 {
+			panic(fmt.Sprintf("incorrect alignment for %T (%p)", z, unsafe.Pointer(md)))
+		}
+	}
+	return (*T)(unsafe.Pointer(md))
+}
 
 // MetadataSize is the size of the metadata. The value is chosen to fit a
 // colblk.DataBlockDecoder and a CockroachDB colblk.KeySeeker.
