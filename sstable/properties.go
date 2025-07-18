@@ -17,6 +17,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crmath"
 	"github.com/cockroachdb/pebble/internal/intern"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/colblk"
@@ -143,7 +144,7 @@ func (c *CommonProperties) GetScaledProperties(backingSize, size uint64) CommonP
 	backingSize = max(backingSize, size)
 
 	scale := func(a uint64) uint64 {
-		return (a*size + backingSize - 1) / backingSize
+		return crmath.ScaleUint64(a, size, backingSize)
 	}
 	// It's important that no non-zero fields (like NumDeletions, NumRangeKeySets)
 	// become zero (or vice-versa).
