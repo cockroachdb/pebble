@@ -1008,6 +1008,11 @@ func (w *RawColumnWriter) Close() (err error) {
 
 	// Write the blob reference index block if non-empty.
 	if w.blobRefLivenessIndexBlock.numReferences() > 0 {
+		// Blob references (and thus blob reference index blocks) require at
+		// least TableFormatPebblev6.
+		if w.opts.TableFormat < TableFormatPebblev6 {
+			return errors.AssertionFailedf("blob reference index block not supported in table format %s", w.layout.tableFormat)
+		}
 		var encoder colblk.ReferenceLivenessBlockEncoder
 		encoder.Init()
 		for refID, buf := range w.blobRefLivenessIndexBlock.finish() {
