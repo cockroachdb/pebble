@@ -175,7 +175,7 @@ func (p *Parser) Uint32() uint32 {
 	return uint32(x)
 }
 
-// Uint64 parses the next token as a sequence number.
+// SeqNum parses the next token as a sequence number.
 func (p *Parser) SeqNum() base.SeqNum {
 	return base.ParseSeqNum(p.Next())
 }
