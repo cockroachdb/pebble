@@ -63,14 +63,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/constants"
 )
 
 const (
 	maxHeight    = 20
 	maxNodeSize  = uint64(unsafe.Sizeof(node{}))
 	linksSize    = uint64(unsafe.Sizeof(links{}))
-	maxNodesSize = constants.MaxUint32OrInt
+	maxNodesSize = min(math.MaxUint32, math.MaxInt)
 )
 
 var (
