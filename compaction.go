@@ -1593,6 +1593,7 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 				Bounds: exciseBounds,
 				SeqNum: ingestFlushable.exciseSeqNum,
 			})
+			d.mu.versions.metrics.Ingest.ExciseIngestCount++
 		}
 		// Iterate through all levels and find files that intersect with exciseSpan.
 		for layer, ls := range version.AllLevelsAndSublevels() {

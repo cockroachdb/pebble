@@ -260,6 +260,8 @@ type Metrics struct {
 	Ingest struct {
 		// The total number of ingestions
 		Count uint64
+		// The number of excise operations during ingestion
+		ExciseIngestCount int64
 	}
 
 	Flush struct {
