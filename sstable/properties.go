@@ -135,6 +135,48 @@ func (c *CommonProperties) NumPointDeletions() uint64 {
 	return invariants.SafeSub(c.NumDeletions, c.NumRangeDeletions)
 }
 
+// GetScaledProperties returns an estimation of the common properties for a
+// virtual table that addresses only <size> bytes out of the entire <backingSize>.
+func (c *CommonProperties) GetScaledProperties(backingSize, size uint64) CommonProperties {
+	// Make sure the sizes are sane, just in case.
+	size = max(size, 1)
+	backingSize = max(backingSize, size)
+
+	scale := func(a uint64) uint64 {
+		return (a*size + backingSize - 1) / backingSize
+	}
+	// It's important that no non-zero fields (like NumDeletions, NumRangeKeySets)
+	// become zero (or vice-versa).
+	if invariants.Enabled && (scale(1) != 1 || scale(0) != 0) {
+		panic("bad scale()")
+	}
+
+	scaled := *c
+	scaled.RawKeySize = scale(c.RawKeySize)
+	scaled.RawValueSize = scale(c.RawValueSize)
+	scaled.NumEntries = scale(c.NumEntries)
+	scaled.NumDataBlocks = scale(c.NumDataBlocks)
+	scaled.NumTombstoneDenseBlocks = scale(c.NumTombstoneDenseBlocks)
+
+	scaled.NumRangeDeletions = scale(c.NumRangeDeletions)
+	scaled.NumSizedDeletions = scale(c.NumSizedDeletions)
+	// We cannot directly scale NumDeletions, because it is supposed to be the sum
+	// of various types of deletions. See #4670.
+	numOtherDeletions := scale(invariants.SafeSub(c.NumDeletions, c.NumRangeDeletions) + c.NumSizedDeletions)
+	scaled.NumDeletions = numOtherDeletions + scaled.NumRangeDeletions + scaled.NumSizedDeletions
+
+	scaled.NumRangeKeyDels = scale(c.NumRangeKeyDels)
+	scaled.NumRangeKeySets = scale(c.NumRangeKeySets)
+
+	scaled.ValueBlocksSize = scale(c.ValueBlocksSize)
+
+	scaled.RawPointTombstoneKeySize = scale(c.RawPointTombstoneKeySize)
+	scaled.RawPointTombstoneValueSize = scale(c.RawPointTombstoneValueSize)
+
+	scaled.CompressionName = c.CompressionName
+	return scaled
+}
+
 // Properties holds the sstable property values. The properties are
 // automatically populated during sstable creation and load from the properties
 // meta block when an sstable is opened.
@@ -254,47 +296,6 @@ func writeProperties(loaded map[uintptr]struct{}, v reflect.Value, buf *bytes.Bu
 			panic("not reached")
 		}
 	}
-}
-
-func (p *Properties) GetScaledProperties(backingSize, size uint64) CommonProperties {
-	// Make sure the sizes are sane, just in case.
-	size = max(size, 1)
-	backingSize = max(backingSize, size)
-
-	scale := func(a uint64) uint64 {
-		return (a*size + backingSize - 1) / backingSize
-	}
-	// It's important that no non-zero fields (like NumDeletions, NumRangeKeySets)
-	// become zero (or vice-versa).
-	if invariants.Enabled && (scale(1) != 1 || scale(0) != 0) {
-		panic("bad scale()")
-	}
-
-	props := p.CommonProperties
-	props.RawKeySize = scale(p.RawKeySize)
-	props.RawValueSize = scale(p.RawValueSize)
-	props.NumEntries = scale(p.NumEntries)
-	props.NumDataBlocks = scale(p.NumDataBlocks)
-	props.NumTombstoneDenseBlocks = scale(p.NumTombstoneDenseBlocks)
-
-	props.NumRangeDeletions = scale(p.NumRangeDeletions)
-	props.NumSizedDeletions = scale(p.NumSizedDeletions)
-	// We cannot directly scale NumDeletions, because it is supposed to be the sum
-	// of various types of deletions. See #4670.
-	numOtherDeletions := scale(invariants.SafeSub(p.NumDeletions, p.NumRangeDeletions) + p.NumSizedDeletions)
-	props.NumDeletions = numOtherDeletions + props.NumRangeDeletions + props.NumSizedDeletions
-
-	props.NumRangeKeyDels = scale(p.NumRangeKeyDels)
-	props.NumRangeKeySets = scale(p.NumRangeKeySets)
-
-	props.ValueBlocksSize = scale(p.ValueBlocksSize)
-
-	props.RawPointTombstoneKeySize = scale(p.RawPointTombstoneKeySize)
-	props.RawPointTombstoneValueSize = scale(p.RawPointTombstoneValueSize)
-
-	props.CompressionName = p.CompressionName
-
-	return props
 }
 
 func (p *Properties) String() string {
