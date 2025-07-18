@@ -18,11 +18,11 @@
 package arenaskl
 
 import (
+	"math"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/constants"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -40,14 +40,16 @@ var (
 	ErrArenaFull = errors.New("allocation failed because arena is full")
 )
 
+const MaxArenaSize = min(math.MaxUint32, math.MaxInt)
+
 // NewArena allocates a new arena using the specified buffer as the backing
 // store.
 func NewArena(buf []byte) *Arena {
-	if len(buf) > constants.MaxUint32OrInt {
+	if len(buf) > MaxArenaSize {
 		if invariants.Enabled {
 			panic(errors.AssertionFailedf("attempting to create arena of size %d", len(buf)))
 		}
-		buf = buf[:constants.MaxUint32OrInt]
+		buf = buf[:MaxArenaSize]
 	}
 	a := &Arena{
 		buf: buf,
@@ -61,10 +63,10 @@ func NewArena(buf []byte) *Arena {
 // Size returns the number of bytes allocated by the arena.
 func (a *Arena) Size() uint32 {
 	s := a.n.Load()
-	if s > constants.MaxUint32OrInt {
+	if s > MaxArenaSize {
 		// The last failed allocation can push the size higher than len(a.buf).
 		// Saturate at the maximum representable offset.
-		return constants.MaxUint32OrInt
+		return MaxArenaSize
 	}
 	return uint32(s)
 }

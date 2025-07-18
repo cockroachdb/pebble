@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/constants"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -49,7 +48,7 @@ const (
 	//
 	// On 32-bit systems, slices are naturally limited to MaxInt (just short of
 	// 2GB).
-	maxBatchSize = constants.MaxUint32OrInt
+	maxBatchSize = min(math.MaxUint32, math.MaxInt)
 
 	// The max memtable size is limited by the uint32 offsets stored in
 	// internal/arenaskl.node, DeferredBatchOp, and flushableBatchEntry.
@@ -59,7 +58,7 @@ const (
 	//
 	// On 32-bit systems, slices are naturally limited to MaxInt (just short of
 	// 2GB).
-	maxMemTableSize = constants.MaxUint32OrInt
+	maxMemTableSize = min(math.MaxUint32, math.MaxInt)
 )
 
 // FileCacheSize can be used to determine the file
