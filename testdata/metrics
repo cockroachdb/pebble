@@ -120,7 +120,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (795B) |        0.0% |     1 (280B) |        0.0% |         0.0% |           1 |           0
+    2 (747B) |        0.0% |     1 (280B) |        0.0% |         0.0% |           1 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -213,7 +213,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (795B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
+    2 (747B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -289,7 +289,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (795B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
+    2 (747B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -362,7 +362,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (795B) |       33.3% |     1 (280B) |       66.7% |         0.0% |           1 |           0
+    2 (747B) |       33.3% |     1 (280B) |       66.7% |         0.0% |           1 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -804,7 +804,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-   6 (2.3KB) |        7.3% |       0 (0B) |       55.0% |         0.0% |           0 |           0
+   6 (2.2KB) |        7.3% |       0 (0B) |       55.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -917,7 +917,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-   6 (2.3KB) |        7.3% |       0 (0B) |       55.0% |         0.0% |           0 |           0
+   6 (2.2KB) |        7.3% |       0 (0B) |       55.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -1457,7 +1457,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (787B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+    2 (739B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -1537,7 +1537,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (787B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+    2 (739B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -1788,7 +1788,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (774B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
+    2 (726B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
@@ -1857,7 +1857,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (774B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
+    2 (726B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
 FILES                 tables                      |     blob files     |        blob values
    stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
