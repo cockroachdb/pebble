@@ -22,8 +22,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |  1.60  2.60  1.80 |    613  606B |  604B  604B  604B |   607B  617B |   1.2K  1.2KB  1.2KB
 total |     0  2.70  2.10 |    713  706B |  704B  704B  704B |   707B  717B |   1.4K  1.4KB  1.4KB
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |        10       11       12       14       15       16       17       13       18       19
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |       10       11       12       13       14       15       16       17       18       19
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -37,10 +38,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
    100 (1GB) |       66.7% |    180 (1MB) |       48.7% |        47.4% |          21 |           4
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   31 pending |   2MB (1) | 17MB (18) |      30MB | 1.2K (1 | 14 (30MB |   14GB |   11GB |     79%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   31 pending |    1 (2MB) |  18 (17MB local:30MB) | 1.2K (15GB |  14 (30MB) |   14GB | 79% (11GB)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -107,8 +108,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         0        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        0        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -122,10 +124,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (747B) |        0.0% |     1 (280B) |        0.0% |         0.0% |           1 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -200,8 +202,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -215,10 +218,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (747B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) | 1.5KB (2) |     1.5KB |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) | 2 (1.5KB local:1.5KB) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -276,8 +279,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -291,10 +295,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (747B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) | 1.5KB (2) |     1.5KB |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) | 2 (1.5KB local:1.5KB) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -349,8 +353,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -364,10 +369,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (747B) |       33.3% |     1 (280B) |       66.7% |         0.0% |           1 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |  756B (1) |      756B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |   1 (756B local:756B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -425,8 +430,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -440,10 +446,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |       33.3% |       0 (0B) |       66.7% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -540,8 +546,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -555,10 +562,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |       33.3% |       0 (0B) |       66.7% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -640,8 +647,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         2        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        2        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -655,10 +663,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |       10.0% |       0 (0B) |       55.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -791,8 +799,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         2        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        2        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -806,10 +815,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
    6 (2.2KB) |        7.3% |       0 (0B) |       55.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -904,8 +913,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         2        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        2        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -919,10 +929,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
    6 (2.2KB) |        7.3% |       0 (0B) |       55.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1029,8 +1039,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         2        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        2        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1044,10 +1055,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1198,8 +1209,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  2.2KB    0B |     16   13KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         3        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        3        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1213,10 +1225,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B | 7 (644B |   0 (0B) |    21B |    21B |    100%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1284,8 +1296,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         0        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        0        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1299,10 +1312,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1356,8 +1369,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  2.2KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1371,10 +1385,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1444,8 +1458,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  2.2KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1459,10 +1474,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (739B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1524,8 +1539,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  2.2KB     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1539,10 +1555,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (739B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1593,8 +1609,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         0        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        0        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1608,10 +1625,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1665,8 +1682,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   342B    0B |      1   763B     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         1        0        0        0        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        1        0        0        0        0        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1680,10 +1698,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1775,8 +1793,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      3 2.3KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         0        0        0        3        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        0        0        0        0        3        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1790,10 +1809,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (726B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1844,8 +1863,9 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      3 2.3KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 --------------------------------------------------------------------------------------------------
-kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
-count     |         0        0        0        3        0        0        0        0        0        0
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        0        0        0        0        3        0        0        0        0        0
 --------------------------------------------------------------------------------------------------
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1859,10 +1879,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (726B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
 --------------------------------------------------------------------------------------------------
-FILES                 tables                      |     blob files     |        blob values
-   stats prog |   backing |    zombie |  loc zomb |    live |   zombie |  total |  refed | refed %
---------------+-----------+-----------+-----------+---------+----------+--------+--------+--------
-   all loaded |    0B (0) |    0B (0) |        0B |  0 (0B) |   0 (0B) |     0B |     0B |      0%
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
 --------------------------------------------------------------------------------------------------
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
