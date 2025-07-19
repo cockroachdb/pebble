@@ -305,7 +305,7 @@ func Count[T any, N constraints.Integer](
 ) Field[T] {
 	spec := widthStr(width, align) + "s"
 	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, crhumanize.Count(fn(tuple)))
+		ctx.PaddedPos(width).Printf(spec, crhumanize.Count(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
 	})
 }
 
@@ -314,7 +314,7 @@ func Bytes[T any, N constraints.Integer](
 ) Field[T] {
 	spec := widthStr(width, align) + "s"
 	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, crhumanize.Bytes(fn(tuple)))
+		ctx.PaddedPos(width).Printf(spec, crhumanize.Bytes(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
 	})
 }
 
