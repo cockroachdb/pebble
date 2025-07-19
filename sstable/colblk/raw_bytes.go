@@ -49,7 +49,6 @@ import (
 type RawBytes struct {
 	slices  int
 	offsets UnsafeOffsets
-	start   unsafe.Pointer
 	data    unsafe.Pointer
 }
 
@@ -67,7 +66,6 @@ func DecodeRawBytes(b []byte, offset uint32, count int) (rawBytes RawBytes, endO
 	return RawBytes{
 		slices:  count,
 		offsets: offsets,
-		start:   unsafe.Pointer(&b[offset]),
 		data:    unsafe.Pointer(&b[dataOff]),
 	}, dataOff + offsets.At(count)
 }
@@ -92,8 +90,11 @@ func rawBytesToBinFormatter(
 		sliceFormatter = defaultSliceFormatter
 	}
 
-	rb, _ := DecodeRawBytes(f.RelativeData(), uint32(f.RelativeOffset()), count)
-	dataOffset := uint64(f.RelativeOffset()) + uint64(uintptr(rb.data)-uintptr(rb.start))
+	data := f.RelativeData()
+	off := f.RelativeOffset()
+	start := unsafe.Pointer(&data[off])
+	rb, _ := DecodeRawBytes(data, uint32(off), count)
+	dataOffset := uint64(off) + uint64(uintptr(rb.data)-uintptr(start))
 	n := tp.Child("offsets table")
 	uintsToBinFormatter(f, n, count+1, func(offset, base uint64) string {
 		// NB: base is always zero for RawBytes columns.

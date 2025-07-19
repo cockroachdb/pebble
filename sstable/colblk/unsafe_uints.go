@@ -19,8 +19,8 @@ import (
 //
 // The At() method is defined in endian_little.go and endian_big.go.
 type UnsafeUints struct {
-	base  uint64
 	ptr   unsafe.Pointer
+	base  uint64
 	width uint8
 }
 

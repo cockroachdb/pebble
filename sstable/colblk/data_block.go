@@ -66,7 +66,7 @@ type KeySeekerMetadata [KeySeekerMetadataSize]byte
 
 // KeySeekerMetadataSize is chosen to fit the CockroachDB key seeker
 // implementation.
-const KeySeekerMetadataSize = 176
+const KeySeekerMetadataSize = 160
 
 // A KeyWriter maintains ColumnWriters for a data block for writing user keys
 // into the database-specific key schema. Users may define their own key schema

@@ -615,13 +615,16 @@ func prefixBytesToBinFormatter(
 	if sliceFormatter == nil {
 		sliceFormatter = defaultSliceFormatter
 	}
-	pb, _ := DecodePrefixBytes(f.RelativeData(), uint32(f.RelativeOffset()), count)
+	data := f.RelativeData()
+	off := f.RelativeOffset()
+	start := unsafe.Pointer(&data[off])
+	pb, _ := DecodePrefixBytes(data, uint32(off), count)
 
 	f.HexBytesln(1, "bundle size: %d", 1<<pb.bundleShift)
 	f.ToTreePrinter(tp)
 
 	n := tp.Child("offsets table")
-	dataOffset := uint64(f.RelativeOffset()) + uint64(uintptr(pb.rawBytes.data)-uintptr(pb.rawBytes.start))
+	dataOffset := uint64(off) + uint64(uintptr(pb.rawBytes.data)-uintptr(start))
 	uintsToBinFormatter(f, n, pb.rawBytes.slices+1, func(offsetDelta, offsetBase uint64) string {
 		// NB: offsetBase will always be zero for PrefixBytes columns.
 		return fmt.Sprintf("%d [%d overall]", offsetDelta+offsetBase, offsetDelta+offsetBase+dataOffset)
