@@ -12,11 +12,11 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/cockroachdb/pebble/internal/ascii"
 	"github.com/cockroachdb/pebble/internal/ascii/table"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
@@ -911,16 +911,16 @@ func (m *Metrics) String() string {
 
 	commitPipelineInfoContents := commitPipelineInfo{
 		// wals.
-		files:    fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.WAL.Files), humanize.Bytes.Uint64(m.WAL.Size)),
-		written:  fmt.Sprintf("%s: %s", humanize.Bytes.Uint64(m.WAL.BytesIn), humanize.Bytes.Uint64(m.WAL.BytesWritten)),
+		files:    fmt.Sprintf("%s (%s)", humanizeCount(m.WAL.Files), humanizeBytes(m.WAL.Size)),
+		written:  fmt.Sprintf("%s: %s", humanizeBytes(m.WAL.BytesIn), humanizeBytes(m.WAL.BytesWritten)),
 		overhead: fmt.Sprintf("%.1f%%", percent(int64(m.WAL.BytesWritten)-int64(m.WAL.BytesIn), int64(m.WAL.BytesIn))),
 		// memtables.
-		flushes: humanize.Count.Int64(m.Flush.Count).String(),
-		live:    fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.MemTable.Count), humanize.Bytes.Uint64(m.MemTable.Size)),
-		zombie:  fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.MemTable.ZombieCount), humanize.Bytes.Uint64(m.MemTable.ZombieSize)),
+		flushes: crhumanize.Count(m.Flush.Count).String(),
+		live:    fmt.Sprintf("%s (%s)", humanizeCount(m.MemTable.Count), humanizeBytes(m.MemTable.Size)),
+		zombie:  fmt.Sprintf("%s (%s)", humanizeCount(m.MemTable.ZombieCount), humanizeBytes(m.MemTable.ZombieSize)),
 		// ingestions.
-		total:     humanize.Count.Uint64(m.WAL.BytesIn + m.WAL.BytesWritten).String(),
-		flushable: fmt.Sprintf("%s (%s)", humanize.Count.Uint64(m.Flush.AsIngestCount), humanize.Bytes.Uint64(m.Flush.AsIngestBytes)),
+		total:     crhumanize.Count(m.WAL.BytesIn + m.WAL.BytesWritten).String(),
+		flushable: fmt.Sprintf("%s (%s)", humanizeCount(m.Flush.AsIngestCount), humanizeBytes(m.Flush.AsIngestBytes)),
 	}
 	commitPipelineInfoIter := func(yield func(commitPipelineInfo) bool) {
 		yield(commitPipelineInfoContents)
@@ -932,13 +932,13 @@ func (m *Metrics) String() string {
 	}, max(commitPipelineInfoTable.CumulativeFieldWidth, cur.Column()), -3)
 
 	iteratorInfoContents := iteratorInfo{
-		bcEntries:        fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.BlockCache.Count), humanize.Bytes.Int64(m.BlockCache.Size)),
+		bcEntries:        fmt.Sprintf("%s (%s)", humanizeCount(m.BlockCache.Count), humanizeBytes(m.BlockCache.Size)),
 		bcHitRate:        fmt.Sprintf("%.1f%%", hitRate(m.BlockCache.Hits, m.BlockCache.Misses)),
-		fcEntries:        fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.FileCache.TableCount), humanize.Bytes.Int64(m.FileCache.Size)),
+		fcEntries:        fmt.Sprintf("%s (%s)", humanizeCount(m.FileCache.TableCount), humanizeBytes(m.FileCache.Size)),
 		fcHitRate:        fmt.Sprintf("%.1f%%", hitRate(m.FileCache.Hits, m.FileCache.Misses)),
 		bloomFilterUtil:  fmt.Sprintf("%.1f%%", hitRate(m.Filter.Hits, m.Filter.Misses)),
-		sstableItersOpen: humanize.Count.Int64(m.TableIters).String(),
-		snapshotsOpen:    humanize.Count.Uint64(uint64(m.Snapshots.Count)).String(),
+		sstableItersOpen: humanizeCount(m.TableIters).String(),
+		snapshotsOpen:    humanizeCount(m.Snapshots.Count).String(),
 	}
 	iteratorInfoIter := func(yield func(iteratorInfo) bool) {
 		yield(iteratorInfoContents)
@@ -949,7 +949,7 @@ func (m *Metrics) String() string {
 		return iteratorInfoTable.Render(cur, table.RenderOptions{}, iteratorInfoIter)
 	}, max(iteratorInfoTable.CumulativeFieldWidth, cur.Column()), -3)
 
-	status := fmt.Sprintf("%s pending", humanize.Count.Int64(m.Table.PendingStatsCollectionCount))
+	status := fmt.Sprintf("%s pending", humanizeCount(m.Table.PendingStatsCollectionCount))
 	if !m.Table.InitialStatsCollectionComplete {
 		status = "loading"
 	} else if m.Table.PendingStatsCollectionCount == 0 {
@@ -957,15 +957,15 @@ func (m *Metrics) String() string {
 	}
 	tableInfoContents := tableInfo{
 		stats:       status,
-		backing:     fmt.Sprintf("%s (%d)", humanize.Bytes.Uint64(m.Table.BackingTableSize), m.Table.BackingTableCount),
-		zombie:      fmt.Sprintf("%s (%d)", humanize.Bytes.Uint64(m.Table.ZombieSize), m.Table.ZombieCount),
-		localZombie: humanize.Bytes.Uint64(m.Table.Local.ZombieSize).String(),
+		backing:     fmt.Sprintf("%s (%d)", humanizeBytes(m.Table.BackingTableSize), m.Table.BackingTableCount),
+		zombie:      fmt.Sprintf("%s (%d)", humanizeBytes(m.Table.ZombieSize), m.Table.ZombieCount),
+		localZombie: humanizeBytes(m.Table.Local.ZombieSize).String(),
 	}
 	blobInfoContents := blobInfo{
-		live:              fmt.Sprintf("%s (%s)", humanize.Count.Uint64(m.BlobFiles.LiveCount), humanize.Bytes.Uint64(m.BlobFiles.LiveSize)),
-		zombie:            fmt.Sprintf("%s (%s)", humanize.Count.Uint64(m.BlobFiles.ZombieCount), humanize.Bytes.Uint64(m.BlobFiles.ZombieSize)),
-		total:             humanize.Bytes.Uint64(m.BlobFiles.ValueSize).String(),
-		referenced:        humanize.Bytes.Uint64(m.BlobFiles.ReferencedValueSize).String(),
+		live:              fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.LiveCount), humanizeBytes(m.BlobFiles.LiveSize)),
+		zombie:            fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.ZombieCount), humanizeBytes(m.BlobFiles.ZombieSize)),
+		total:             humanizeBytes(m.BlobFiles.ValueSize).String(),
+		referenced:        humanizeBytes(m.BlobFiles.ReferencedValueSize).String(),
 		referencedPercent: fmt.Sprintf("%.0f%%", percent(m.BlobFiles.ReferencedValueSize, m.BlobFiles.ValueSize)),
 	}
 	fileInfoContents := tableAndBlobInfo{
@@ -988,13 +988,13 @@ func (m *Metrics) String() string {
 		return m.manualMemory[purpose].InUseBytes
 	}
 	cgoMemInfoContents := cgoMemInfo{
-		tot: humanize.Bytes.Uint64(inUseTotal).String(),
-		bcTot: humanize.Bytes.Uint64(inUse(manual.BlockCacheData) +
+		tot: humanizeBytes(inUseTotal).String(),
+		bcTot: humanizeBytes(inUse(manual.BlockCacheData) +
 			inUse(manual.BlockCacheMap) + inUse(manual.BlockCacheEntry)).String(),
-		bcData:       humanize.Bytes.Uint64(inUse(manual.BlockCacheData)).String(),
-		bcMaps:       humanize.Bytes.Uint64(inUse(manual.BlockCacheMap)).String(),
-		bcEnts:       humanize.Bytes.Uint64(inUse(manual.BlockCacheEntry)).String(),
-		memtablesTot: humanize.Bytes.Uint64(inUse(manual.MemTable)).String(),
+		bcData:       humanizeBytes(inUse(manual.BlockCacheData)).String(),
+		bcMaps:       humanizeBytes(inUse(manual.BlockCacheMap)).String(),
+		bcEnts:       humanizeBytes(inUse(manual.BlockCacheEntry)).String(),
+		memtablesTot: humanizeBytes(inUse(manual.MemTable)).String(),
 	}
 	cgoMemInfoIter := func(yield func(cgoMemInfo) bool) {
 		yield(cgoMemInfoContents)
@@ -1005,11 +1005,11 @@ func (m *Metrics) String() string {
 	}, max(cgoMemInfoTable.CumulativeFieldWidth, cur.Column()), -2)
 
 	compactionMetricsInfoContents := compactionMetricsInfo{
-		estimatedDebt: humanize.Bytes.Uint64(m.Compact.EstimatedDebt).String(),
-		inProgress: fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.Compact.NumInProgress),
-			humanize.Bytes.Int64(m.Compact.InProgressBytes)),
-		cancelled: fmt.Sprintf("%s (%s)", humanize.Count.Int64(m.Compact.CancelledCount),
-			humanize.Bytes.Int64(m.Compact.CancelledBytes)),
+		estimatedDebt: humanizeBytes(m.Compact.EstimatedDebt).String(),
+		inProgress: fmt.Sprintf("%s (%s)", humanizeCount(m.Compact.NumInProgress),
+			humanizeBytes(m.Compact.InProgressBytes)),
+		cancelled: fmt.Sprintf("%s (%s)", humanizeCount(m.Compact.CancelledCount),
+			humanizeBytes(m.Compact.CancelledBytes)),
 		failed:       m.Compact.FailedCount,
 		problemSpans: fmt.Sprintf("%d%s", m.Compact.NumProblemSpans, ifNonZero(m.Compact.NumProblemSpans, "!!")),
 	}
@@ -1022,11 +1022,11 @@ func (m *Metrics) String() string {
 	}, max(compactionInfoTable.CumulativeFieldWidth, cur.Column()), -2)
 
 	keysInfoContents := keysInfo{
-		rangeKeys:          humanize.Count.Uint64(m.Keys.RangeKeySetsCount).String(),
-		tombstones:         humanize.Count.Uint64(m.Keys.TombstoneCount).String(),
+		rangeKeys:          humanizeCount(m.Keys.RangeKeySetsCount).String(),
+		tombstones:         humanizeCount(m.Keys.TombstoneCount).String(),
 		missizedTombstones: fmt.Sprintf("%d%s", m.Keys.MissizedTombstonesCount, ifNonZero(m.Keys.MissizedTombstonesCount, "!!")),
-		pointDels:          humanize.Bytes.Uint64(m.Table.Garbage.PointDeletionsBytesEstimate).String(),
-		rangeDels:          humanize.Bytes.Uint64(m.Table.Garbage.RangeDeletionsBytesEstimate).String(),
+		pointDels:          humanizeBytes(m.Table.Garbage.PointDeletionsBytesEstimate).String(),
+		rangeDels:          humanizeBytes(m.Table.Garbage.RangeDeletionsBytesEstimate).String(),
 	}
 	keysInfoIter := func(yield func(keysInfo) bool) {
 		yield(keysInfoContents)
@@ -1040,7 +1040,7 @@ func (m *Metrics) String() string {
 	func(cur ascii.Cursor) {
 		maybePrintCompression := func(pos ascii.Cursor, name string, value int64) ascii.Cursor {
 			if value > 0 {
-				pos = pos.Printf("  %s %s", name, humanize.Count.Int64(value)).NewlineReturn()
+				pos = pos.Printf("  %s %s", name, humanizeCount(value)).NewlineReturn()
 			}
 			return pos
 		}
@@ -1116,4 +1116,12 @@ func (m *Metrics) updateLevelMetrics(updates levelMetricsDelta) {
 			m.Levels[i].Add(u)
 		}
 	}
+}
+
+func humanizeCount[T crhumanize.Integer](value T) crhumanize.SafeString {
+	return crhumanize.Count(value, crhumanize.Compact, crhumanize.OmitI)
+}
+
+func humanizeBytes[T crhumanize.Integer](value T) crhumanize.SafeString {
+	return crhumanize.Bytes(value, crhumanize.Compact, crhumanize.OmitI)
 }
