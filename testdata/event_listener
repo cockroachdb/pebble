@@ -245,24 +245,24 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B |   97 B |      1 755 B |   2 23.10
-    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-total      755 B |      1 755 B |      0     0 |    0 B    0 B | 1.5 Ki |      0   0 B |   1  0.51
+    0      1.5KB |      2 1.5KB |      0     0 |     0B     0B |    97B |      1  755B |   2 23.10
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total       755B |      1  755B |      0     0 |     0B     0B |  1.5KB |      0    0B |   1  0.51
 --------------------------------------------------------------------------------------------------
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     0  0.40  0.40 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      3 2.2 Ki    0 B
-    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B |  218 B   0 B |      1  755 B    0 B
+    0 |     0  0.40  0.40 |      0    0B |    0B    0B    0B |     0B    0B |      3  2.2KB     0B
+    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   755B     0B
 --------------------------------------------------------------------------------------------------
 kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
 count     |         1        0        0        0        0        0        0        0        0        0
@@ -378,24 +378,24 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0    2.9 KiB |      4 2.9 K |      0     0 |    0 B    0 B |  132 B |      2 1.5 K |   4 22.64
-    1        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-    2        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-    3        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-    4        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-    5        0 B |      0   0 B |      0     0 |    0 B    0 B |    0 B |      0   0 B |   0     0
-total    1.5 KiB |      2 1.5 K |      0     0 |    0 B    0 B | 1.5 Ki |      1 755 B |   1  0.51
+    0      2.9KB |      4 2.9KB |      0     0 |     0B     0B |   132B |      2 1.5KB |   4 22.64
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total      1.5KB |      2 1.5KB |      0     0 |     0B     0B |  1.5KB |      1  755B |   1  0.51
 --------------------------------------------------------------------------------------------------
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     0  0.80  0.80 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      4 2.9 Ki    0 B
-    1 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-    2 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-    3 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-    4 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-    5 |     0     0     0 |      0   0 B |   0 B   0 B   0 B |    0 B   0 B |      0    0 B    0 B
-total |     0  0.00  0.00 |      0   0 B |   0 B   0 B   0 B |  218 B   0 B |      1  755 B    0 B
+    0 |     0  0.80  0.80 |      0    0B |    0B    0B    0B |     0B    0B |      4  2.9KB     0B
+    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   755B     0B
 --------------------------------------------------------------------------------------------------
 kind      |   default   delete  elision     move     read     tomb  rewrite     copy    multi     blob
 count     |         1        0        0        0        0        0        0        0        0        0
