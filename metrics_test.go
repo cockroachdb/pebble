@@ -33,71 +33,50 @@ import (
 )
 
 func exampleMetrics() Metrics {
+	const MB = 1 << 20
+	const GB = 1 << 30
+
 	var m Metrics
-	m.BlockCache.Size = 1
-	m.BlockCache.Count = 2
-	m.BlockCache.Hits = 3
-	m.BlockCache.Misses = 4
-	m.Compact.Count = 5
-	m.Compact.DefaultCount = 27
-	m.Compact.DeleteOnlyCount = 28
-	m.Compact.ElisionOnlyCount = 29
-	m.Compact.MoveCount = 30
-	m.Compact.ReadCount = 31
+	m.BlockCache.Size = 1 * GB
+	m.BlockCache.Count = 100
+	m.BlockCache.Hits = 10000
+	m.BlockCache.Misses = 5000
+
+	m.Compact.Count = 1000
+	m.Compact.DefaultCount = 10
+	m.Compact.DeleteOnlyCount = 11
+	m.Compact.ElisionOnlyCount = 12
+	m.Compact.CopyCount = 13
+	m.Compact.MoveCount = 14
+	m.Compact.ReadCount = 15
 	m.Compact.TombstoneDensityCount = 16
-	m.Compact.RewriteCount = 32
-	m.Compact.CopyCount = 33
-	m.Compact.MultiLevelCount = 34
-	m.Compact.EstimatedDebt = 6
-	m.Compact.InProgressBytes = 7
+	m.Compact.RewriteCount = 17
+	m.Compact.MultiLevelCount = 18
+	m.Compact.BlobFileRewriteCount = 19
+	m.Compact.CounterLevelCount = 20
+	m.Compact.EstimatedDebt = 6 * GB
+	m.Compact.InProgressBytes = 1 * MB
 	m.Compact.NumInProgress = 2
-	m.Compact.CounterLevelCount = 10
 	m.Compact.CancelledCount = 3
 	m.Compact.CancelledBytes = 3 * 1024
-	m.Compact.FailedCount = 5
-	m.Compact.NumProblemSpans = 2
+	m.Compact.FailedCount = 4
+	m.Compact.NumProblemSpans = 5
+	m.Compact.MarkedFiles = 6
+	m.Compact.Duration = 10 * time.Hour
+
+	m.Ingest.Count = 12
+
 	m.Flush.Count = 8
-	m.Flush.AsIngestBytes = 34
-	m.Flush.AsIngestTableCount = 35
-	m.Flush.AsIngestCount = 36
+	m.Flush.WriteThroughput.Bytes = 2 * MB
+	m.Flush.WriteThroughput.WorkDuration = time.Hour
+	m.Flush.WriteThroughput.IdleDuration = 10 * time.Hour
+	m.Flush.NumInProgress = 2
+	m.Flush.AsIngestCount = 4
+	m.Flush.AsIngestTableCount = 5
+	m.Flush.AsIngestBytes = 6
+
 	m.Filter.Hits = 9
 	m.Filter.Misses = 10
-	m.MemTable.Size = 11
-	m.MemTable.Count = 12
-	m.MemTable.ZombieSize = 13
-	m.MemTable.ZombieCount = 14
-	m.Keys.RangeKeySetsCount = 123
-	m.Keys.TombstoneCount = 456
-	m.Keys.MissizedTombstonesCount = 789
-	m.Snapshots.Count = 4
-	m.Snapshots.EarliestSeqNum = 1024
-	m.Table.ZombieSize = 15
-	m.Table.BackingTableCount = 1
-	m.Table.BackingTableSize = 2 << 20
-	m.Table.ZombieCount = 16
-	m.FileCache.Size = 17
-	m.FileCache.TableCount = 180
-	m.FileCache.BlobFileCount = 181
-	m.FileCache.Hits = 19
-	m.FileCache.Misses = 20
-	m.TableIters = 21
-	m.WAL.Files = 22
-	m.WAL.ObsoleteFiles = 23
-	m.WAL.Size = 24
-	m.WAL.BytesIn = 25
-	m.WAL.BytesWritten = 26
-	m.Ingest.Count = 27
-	m.Table.Local.LiveSize = 28
-	m.Table.Local.ObsoleteSize = 29
-	m.Table.Local.ZombieSize = 30
-	m.Table.PendingStatsCollectionCount = 31
-	m.Table.InitialStatsCollectionComplete = true
-	m.Table.Garbage.PointDeletionsBytesEstimate = 1024
-	m.Table.Garbage.RangeDeletionsBytesEstimate = 2048
-	m.Table.CompressedCountMinLZ = 32
-	m.Table.CompressedCountSnappy = 33
-	m.Table.CompressedCountZstd = 34
-	m.Table.CompressedCountNone = 35
 
 	for i := range m.Levels {
 		l := &m.Levels[i]
@@ -131,6 +110,72 @@ func exampleMetrics() Metrics {
 		l.MultiLevel.TableBytesIn = base + 4
 		l.MultiLevel.TableBytesRead = base + 4
 	}
+
+	m.MemTable.Size = 2 * GB
+	m.MemTable.Count = 12
+	m.MemTable.ZombieSize = 13 * MB
+	m.MemTable.ZombieCount = 5
+
+	m.Keys.RangeKeySetsCount = 123
+	m.Keys.TombstoneCount = 456
+	m.Keys.MissizedTombstonesCount = 789
+
+	m.Snapshots.Count = 4
+	m.Snapshots.EarliestSeqNum = 1024
+	m.Snapshots.PinnedKeys = 1234
+	m.Snapshots.PinnedSize = 3 * GB
+
+	m.Table.ObsoleteSize = 15 * MB
+	m.Table.ObsoleteCount = 16
+	m.Table.ZombieSize = 17 * MB
+	m.Table.ZombieCount = 18
+	m.Table.BackingTableCount = 1
+	m.Table.BackingTableSize = 2 * MB
+	m.Table.CompressedCountMinLZ = 32
+	m.Table.CompressedCountSnappy = 33
+	m.Table.CompressedCountZstd = 34
+	m.Table.CompressedCountNone = 35
+	m.Table.Local.LiveSize = 28 * GB
+	m.Table.Local.LiveCount = 10_000
+	m.Table.Local.ObsoleteSize = 29 * MB
+	m.Table.Local.ObsoleteCount = 13
+	m.Table.Local.ZombieSize = 30 * MB
+	m.Table.Local.ZombieCount = 14
+	m.Table.Garbage.PointDeletionsBytesEstimate = 1 * MB
+	m.Table.Garbage.RangeDeletionsBytesEstimate = 2 * MB
+	m.Table.InitialStatsCollectionComplete = true
+	m.Table.PendingStatsCollectionCount = 31
+
+	m.BlobFiles.LiveCount = 1234
+	m.BlobFiles.LiveSize = 15 * GB
+	m.BlobFiles.ValueSize = 14 * GB
+	m.BlobFiles.ReferencedValueSize = 11 * GB
+	m.BlobFiles.ObsoleteCount = 13
+	m.BlobFiles.ObsoleteSize = 29 * MB
+	m.BlobFiles.ZombieCount = 14
+	m.BlobFiles.ZombieSize = 30 * MB
+	m.BlobFiles.Local.LiveSize = 28 * GB
+	m.BlobFiles.Local.LiveCount = 10_000
+	m.BlobFiles.Local.ObsoleteSize = 29 * MB
+	m.BlobFiles.Local.ObsoleteCount = 13
+	m.BlobFiles.Local.ZombieSize = 30 * MB
+	m.BlobFiles.Local.ZombieCount = 14
+
+	m.FileCache.Size = 1 * MB
+	m.FileCache.TableCount = 180
+	m.FileCache.BlobFileCount = 181
+	m.FileCache.Hits = 19
+	m.FileCache.Misses = 20
+
+	m.TableIters = 21
+	m.Uptime = 72 * time.Hour
+
+	m.WAL.Files = 22
+	m.WAL.ObsoleteFiles = 23
+	m.WAL.Size = 24
+	m.WAL.BytesIn = 25
+	m.WAL.BytesWritten = 26
+
 	for i := range m.manualMemory {
 		m.manualMemory[i].InUseBytes = uint64((i + 1) * 1024)
 	}
