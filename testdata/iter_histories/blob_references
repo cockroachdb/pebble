@@ -210,7 +210,7 @@ L6
   b.SETWITHDEL.2:blob{fileNum=000009 value=keylime}
 ----
 L6:
-  000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[2-5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:1111 blobrefs:[(B000009: 7); depth:1]
+  000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[2-5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:1093 blobrefs:[(B000009: 7); depth:1]
 Blob files:
   B000009 physical:{000009 size:[96 (96B)] vals:[7 (7B)]}
 
