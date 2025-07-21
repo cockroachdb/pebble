@@ -259,7 +259,7 @@ bounds:  [a#1,SET-f#1,SET]
 filenum: 000006
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 5
+  rocksdb.raw.key.size: 6
   rocksdb.raw.value.size: 1
   rocksdb.deleted.keys: 1
   rocksdb.num.range-deletions: 1

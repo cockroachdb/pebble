@@ -50,7 +50,7 @@ hello@2
 ----
 reading footer of 61 bytes took 5ms
 reading block of 62 bytes took 5ms (<redacted>)
-reading block of 504 bytes took 5ms (<redacted>)
+reading block of 486 bytes took 5ms (<redacted>)
 reading block of 27 bytes took 5ms (<redacted>)
 reading block of 35 bytes took 5ms (<redacted>)
 hello@2:foo1
