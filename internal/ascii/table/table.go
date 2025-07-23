@@ -114,23 +114,25 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq
 	if opts.Orientation == Vertically {
 		cur.Offset(0, 0).WriteString(d.verticalHeaderLine)
 		cur.Offset(1, 0).WriteString(d.verticalHeaderSep)
-		r := 0
+		tupleIndex := 0
 		for t := range rows {
 			for _, c := range d.fields {
 				if div, ok := c.f.(divider); ok {
-					div.renderStatic(Vertically, d.MaxFieldWidth, cur.Offset(2+r, c.off))
+					div.renderStatic(Vertically, d.MaxFieldWidth, cur.Offset(2+tupleIndex, c.off))
 				} else {
-					c.f.(Field[T]).renderValue(RenderContext[T]{
+					ctx := RenderContext[T]{
 						Orientation:   Vertically,
-						TupleIndex:    r,
-						Pos:           cur.Offset(2+r, c.off),
+						Pos:           cur.Offset(2+tupleIndex, c.off),
 						MaxFieldWidth: d.MaxFieldWidth,
-					}, t)
+					}
+					width := c.f.width()
+					spec := widthStr(width, c.f.align()) + "s"
+					ctx.PaddedPos(width).Printf(spec, c.f.(Field[T]).renderValue(tupleIndex, t))
 				}
 			}
-			r++
+			tupleIndex++
 		}
-		return cur.Offset(2+r, 0)
+		return cur.Offset(2+tupleIndex, 0)
 	}
 
 	for i := range d.fields {
@@ -148,12 +150,15 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq
 			if div, ok := d.fields[i].f.(divider); ok {
 				div.renderStatic(Horizontally, d.MaxFieldWidth, cur.Offset(i, c))
 			} else {
-				d.fields[i].f.(Field[T]).renderValue(RenderContext[T]{
+				ctx := RenderContext[T]{
 					Orientation:   Horizontally,
-					TupleIndex:    tupleIndex,
 					Pos:           cur.Offset(i, c),
 					MaxFieldWidth: d.MaxFieldWidth,
-				}, t)
+				}
+				f := d.fields[i].f.(Field[T])
+				width := f.width()
+				spec := widthStr(width, f.align()) + "s"
+				ctx.PaddedPos(width).Printf(spec, f.renderValue(tupleIndex, t))
 			}
 		}
 		tupleIndex++
@@ -165,7 +170,6 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq
 // A RenderContext provides the context for rendering a table.
 type RenderContext[T any] struct {
 	Orientation   Orientation
-	TupleIndex    int
 	Pos           ascii.Cursor
 	MaxFieldWidth int
 }
@@ -195,7 +199,7 @@ type StaticElement interface {
 // Field is an Element that depends on the tuple value for rendering.
 type Field[T any] interface {
 	Element
-	renderValue(ctx RenderContext[T], tuple T)
+	renderValue(tupleIndex int, tuple T) string
 }
 
 // Div creates a divider field used to visually separate regions of the table.
@@ -252,8 +256,8 @@ var (
 func (l literal[T]) header(o Orientation, maxWidth int) string { return " " }
 func (l literal[T]) width() int                                { return len(l) }
 func (l literal[T]) align() Align                              { return AlignLeft }
-func (l literal[T]) renderValue(ctx RenderContext[T], tuple T) {
-	ctx.PaddedPos(len(l)).WriteString(string(l))
+func (l literal[T]) renderValue(tupleIndex int, tuple T) string {
+	return string(l)
 }
 
 const (
@@ -280,59 +284,53 @@ const (
 type Orientation uint8
 
 func String[T any](header string, width int, align Align, fn func(r T) string) Field[T] {
-	spec := widthStr(width, align) + "s"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], r T) {
-		ctx.PaddedPos(width).Printf(spec, fn(r))
+	return makeFuncField(header, width, align, func(tupleIndex int, r T) string {
+		return fn(r)
 	})
 }
 
 func Int[T any](header string, width int, align Align, fn func(r T) int) Field[T] {
-	spec := widthStr(width, align) + "d"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, fn(tuple))
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return strconv.Itoa(fn(tuple))
 	})
 }
 
 func AutoIncrement[T any](header string, width int, align Align) Field[T] {
-	spec := widthStr(width, align) + "d"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, ctx.TupleIndex)
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return strconv.Itoa(tupleIndex)
 	})
 }
 
 func Count[T any, N constraints.Integer](
 	header string, width int, align Align, fn func(r T) N,
 ) Field[T] {
-	spec := widthStr(width, align) + "s"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, crhumanize.Count(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return string(crhumanize.Count(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
 	})
 }
 
 func Bytes[T any, N constraints.Integer](
 	header string, width int, align Align, fn func(r T) N,
 ) Field[T] {
-	spec := widthStr(width, align) + "s"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, crhumanize.Bytes(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return string(crhumanize.Bytes(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
 	})
 }
 
 func Float[T any](header string, width int, align Align, fn func(r T) float64) Field[T] {
-	spec := widthStr(width, align) + "s"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, humanizeFloat(fn(tuple), width))
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return humanizeFloat(fn(tuple), width)
 	})
 }
 
 func makeFuncField[T any](
-	header string, width int, align Align, fn func(ctx RenderContext[T], tuple T),
+	header string, width int, align Align, toStringFn func(tupleIndex int, tuple T) string,
 ) Field[T] {
 	return &funcField[T]{
 		headerValue: header,
 		widthValue:  width,
 		alignValue:  align,
-		fn:          fn,
+		toStringFn:  toStringFn,
 	}
 }
 
@@ -340,7 +338,7 @@ type funcField[T any] struct {
 	headerValue string
 	widthValue  int
 	alignValue  Align
-	fn          func(ctx RenderContext[T], tuple T)
+	toStringFn  func(tupleIndex int, tuple T) string
 }
 
 var (
@@ -357,8 +355,8 @@ var (
 func (c *funcField[T]) header(o Orientation, maxWidth int) string { return c.headerValue }
 func (c *funcField[T]) width() int                                { return c.widthValue }
 func (c *funcField[T]) align() Align                              { return c.alignValue }
-func (c *funcField[T]) renderValue(ctx RenderContext[T], tuple T) {
-	c.fn(ctx, tuple)
+func (c *funcField[T]) renderValue(tupleIndex int, tuple T) string {
+	return c.toStringFn(tupleIndex, tuple)
 }
 
 func widthStr(width int, align Align) string {
