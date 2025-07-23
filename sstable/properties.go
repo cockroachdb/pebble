@@ -339,7 +339,13 @@ func (p *Properties) load(i iter.Seq2[[]byte, []byte]) error {
 				n, _ := binary.Uvarint(val)
 				field.SetUint(n)
 			case reflect.String:
-				field.SetString(intern.Bytes(val))
+				// Don't intern CompressionStats as it's unique per sstable and would
+				// cause a memory leak by accumulating strings over the program lifetime.
+				if string(key) == "pebble.compression_stats" {
+					field.SetString(string(val))
+				} else {
+					field.SetString(intern.Bytes(val))
+				}
 			default:
 				panic("not reached")
 			}
