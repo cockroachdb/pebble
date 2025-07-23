@@ -55,6 +55,15 @@ func TestEventListener(t *testing.T) {
 				info.InputBytes = 100
 				flushEnd(info)
 			}
+			tableIngested := lel.TableIngested
+			lel.TableIngested = func(info TableIngestInfo) {
+				// Make deterministic.
+				info.WaitFlushDuration = 200 * time.Millisecond
+				info.ManifestUpdateDuration = 100 * time.Millisecond
+				info.BlockReadDuration = 300 * time.Millisecond
+				info.BlockReadBytes = 7894
+				tableIngested(info)
+			}
 			opts := &Options{
 				// The table stats collector runs asynchronously and its
 				// timing is less predictable. It increments nextJobID, which
