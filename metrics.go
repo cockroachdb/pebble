@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"iter"
 	"math"
-	"strings"
 	"time"
 	"unsafe"
 
@@ -637,7 +636,6 @@ var (
 		table.Literal[*LevelMetrics](" "),
 		table.Float("w", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.WriteAmp() }),
 	)
-	levelMetricsTableBottomDivider       = strings.Repeat("-", levelMetricsTable.CumulativeFieldWidth)
 	levelCompactionMetricsTableTopHeader = `COMPACTIONS               |     moved    |     multilevel    |     read     |       written`
 	compactionLevelMetricsTable          = table.Define[*LevelMetrics](
 		table.AutoIncrement[*LevelMetrics]("level", 5, table.AlignRight),
@@ -881,7 +879,8 @@ func (m *Metrics) String() string {
 	}
 	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, levelIter)
 	cur.Offset(-1, 0).WriteString("total")
-	cur = cur.WriteString(levelMetricsTableBottomDivider).NewlineReturn()
+	//cur = cur.WriteString(levelMetricsTableBottomDivider).NewlineReturn()
+	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
 	cur = cur.WriteString(levelCompactionMetricsTableTopHeader).NewlineReturn()
@@ -894,16 +893,6 @@ func (m *Metrics) String() string {
 	}
 	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, compactionLevelIter)
 	cur.Offset(-1, 0).WriteString("total")
-
-	renderTableWithDivider := func(
-		cur ascii.Cursor, renderFunc func(ascii.Cursor) ascii.Cursor, dividerLen int, dr int,
-	) ascii.Cursor {
-		startCur := cur.NewlineReturn()
-		cur = renderFunc(startCur)
-		startCur.Offset(dr, 0).RepeatByte(dividerLen, '-')
-		cur = cur.NewlineReturn()
-		return cur
-	}
 
 	compactionKindsContents := compactionKindsInfo{
 		def:        humanizeCount(m.Compact.DefaultCount).String(),
@@ -918,9 +907,9 @@ func (m *Metrics) String() string {
 		blob:       humanizeCount(m.Compact.BlobFileRewriteCount).String(),
 	}
 
-	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
-		return compactionKindTable.Render(cur, table.RenderOptions{}, oneItemIter(compactionKindsContents))
-	}, compactionKindTable.CumulativeFieldWidth, -1)
+	cur = cur.NewlineReturn()
+	cur = compactionKindTable.Render(cur, table.RenderOptions{}, oneItemIter(compactionKindsContents))
+	cur = cur.NewlineReturn()
 
 	commitPipelineInfoContents := commitPipelineInfo{
 		// wals.
@@ -936,10 +925,9 @@ func (m *Metrics) String() string {
 		flushable: fmt.Sprintf("%s (%s)", humanizeCount(m.Flush.AsIngestCount), humanizeBytes(m.Flush.AsIngestBytes)),
 	}
 	cur = cur.WriteString(commitPipelineInfoTableTopHeader).NewlineReturn()
-	cur = cur.WriteString(commitPipelineInfoTableSubHeader)
-	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
-		return commitPipelineInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(commitPipelineInfoContents))
-	}, max(commitPipelineInfoTable.CumulativeFieldWidth, cur.Column()), -3)
+	cur = cur.WriteString(commitPipelineInfoTableSubHeader).NewlineReturn()
+	cur = commitPipelineInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(commitPipelineInfoContents))
+	cur = cur.NewlineReturn()
 
 	iteratorInfoContents := iteratorInfo{
 		bcEntries:        fmt.Sprintf("%s (%s)", humanizeCount(m.BlockCache.Count), humanizeBytes(m.BlockCache.Size)),
@@ -951,10 +939,9 @@ func (m *Metrics) String() string {
 		snapshotsOpen:    humanizeCount(m.Snapshots.Count).String(),
 	}
 	cur = cur.WriteString(iteratorInfoTableTopHeader).NewlineReturn()
-	cur = cur.WriteString(iteratorInfoTableSubHeader)
-	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
-		return iteratorInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(iteratorInfoContents))
-	}, max(iteratorInfoTable.CumulativeFieldWidth, cur.Column()), -3)
+	cur = cur.WriteString(iteratorInfoTableSubHeader).NewlineReturn()
+	cur = iteratorInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(iteratorInfoContents))
+	cur = cur.NewlineReturn()
 
 	status := fmt.Sprintf("%s pending", humanizeCount(m.Table.PendingStatsCollectionCount))
 	if !m.Table.InitialStatsCollectionComplete {
@@ -977,10 +964,9 @@ func (m *Metrics) String() string {
 		tableInfo: tableInfoContents,
 		blobInfo:  blobInfoContents,
 	}
-	cur = cur.WriteString(fileInfoTableHeader)
-	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
-		return fileInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(fileInfoContents))
-	}, max(fileInfoTable.CumulativeFieldWidth, cur.Column()), -2)
+	cur = cur.WriteString(fileInfoTableHeader).NewlineReturn()
+	cur = fileInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(fileInfoContents))
+	cur = cur.NewlineReturn()
 
 	var inUseTotal uint64
 	for i := range m.manualMemory {
@@ -998,10 +984,9 @@ func (m *Metrics) String() string {
 		bcEnts:       humanizeBytes(inUse(manual.BlockCacheEntry)).String(),
 		memtablesTot: humanizeBytes(inUse(manual.MemTable)).String(),
 	}
-	cur = cur.WriteString(cgoMemInfoTableHeader)
-	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
-		return cgoMemInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(cgoMemInfoContents))
-	}, max(cgoMemInfoTable.CumulativeFieldWidth, cur.Column()), -2)
+	cur = cur.WriteString(cgoMemInfoTableHeader).NewlineReturn()
+	cur = cgoMemInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(cgoMemInfoContents))
+	cur = cur.NewlineReturn()
 
 	compactionMetricsInfoContents := compactionMetricsInfo{
 		estimatedDebt: humanizeBytes(m.Compact.EstimatedDebt).String(),
@@ -1012,10 +997,9 @@ func (m *Metrics) String() string {
 		failed:       m.Compact.FailedCount,
 		problemSpans: fmt.Sprintf("%d%s", m.Compact.NumProblemSpans, ifNonZero(m.Compact.NumProblemSpans, "!!")),
 	}
-	cur = cur.WriteString(compactionInfoTableTopHeader)
-	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
-		return compactionInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(compactionMetricsInfoContents))
-	}, max(compactionInfoTable.CumulativeFieldWidth, cur.Column()), -2)
+	cur = cur.WriteString(compactionInfoTableTopHeader).NewlineReturn()
+	cur = compactionInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(compactionMetricsInfoContents))
+	cur = cur.NewlineReturn()
 
 	keysInfoContents := keysInfo{
 		rangeKeys:          humanizeCount(m.Keys.RangeKeySetsCount).String(),
@@ -1024,11 +1008,9 @@ func (m *Metrics) String() string {
 		pointDels:          humanizeBytes(m.Table.Garbage.PointDeletionsBytesEstimate).String(),
 		rangeDels:          humanizeBytes(m.Table.Garbage.RangeDeletionsBytesEstimate).String(),
 	}
-	cur = cur.WriteString(keysInfoTableTopHeader)
-	cur = renderTableWithDivider(cur, func(cur ascii.Cursor) ascii.Cursor {
-		return keysInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(keysInfoContents))
-	}, max(keysInfoTable.CumulativeFieldWidth, cur.Column()), -2)
-	cur.Offset(-1, 0).RepeatByte(max(keysInfoTable.CumulativeFieldWidth, cur.Column()), '-')
+	cur = cur.WriteString(keysInfoTableTopHeader).NewlineReturn()
+	cur = keysInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(keysInfoContents))
+	cur = cur.NewlineReturn()
 
 	func(cur ascii.Cursor) {
 		maybePrintCompression := func(pos ascii.Cursor, name string, value int64) ascii.Cursor {
