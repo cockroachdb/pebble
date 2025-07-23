@@ -10,69 +10,6 @@ error opening database at "non-existent": pebble: database "non-existent" does n
 db lsm
 ../testdata/db-stage-4
 ----
-LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
-level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
------------------+--------------+--------------+---------------+--------+--------------+----------
-    0       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-total         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
---------------------------------------------------------------------------------------------------
-COMPACTIONS               |     moved    |     multilevel    |     read     |       written
-level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
-------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     0  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-total |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
---------------------------------------------------------------------------------------------------
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        0        0        0        0        0        0        0        0        0        0
---------------------------------------------------------------------------------------------------
-COMMIT PIPELINE
-               wals                |              memtables              |       ingestions
-    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
-----------+------------+-----------+-----------+------------+------------+-----------+------------
-   0 (0B) |     0B: 0B |      0.0% |         0 |  1 (256KB) |     0 (0B) |         0 |      0 (0B)
---------------------------------------------------------------------------------------------------
-ITERATORS
-        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
-     entries |    hit rate |      entries |    hit rate |         util |        open |        open
--------------+-------------+--------------+-------------+--------------+-------------+------------
-      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
---------------------------------------------------------------------------------------------------
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-      loading |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
---------------------------------------------------------------------------------------------------
-CGO MEMORY    |          block cache           |                     memtables
-          tot |           tot |           data |            maps |            ents |           tot
---------------+---------------+----------------+-----------------+-----------------+--------------
-           0B |            0B |             0B |              0B |              0B |            0B
---------------------------------------------------------------------------------------------------
-COMPACTIONS
-   estimated debt |       in progress |         cancelled |            failed |      problem spans
-------------------+-------------------+-------------------+-------------------+-------------------
-               0B |            0 (0B) |            0 (0B) |                 0 |                  0
---------------------------------------------------------------------------------------------------
-KEYS
-      range keys |       tombstones |      missized tombstones |      point dels |      range dels
------------------+------------------+--------------------------+-----------------+----------------
-               0 |                0 |                        0 |              0B |              0B
---------------------------------------------------------------------------------------------------
-COMPRESSION
-  ???:    1
-
-db lsm --url
-../testdata/db-stage-4
 ----
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
@@ -84,7 +21,7 @@ level       size | tables  size |  count  size |  refsz valblk |     in | tables
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
 total         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
---------------------------------------------------------------------------------------------------
+
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
@@ -95,43 +32,112 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
---------------------------------------------------------------------------------------------------
+
   kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
 -------+------------------------------------------------------------------------------------------
  count |        0        0        0        0        0        0        0        0        0        0
---------------------------------------------------------------------------------------------------
+
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    0 (0B) |     0B: 0B |      0.0% |         0 |  1 (256KB) |     0 (0B) |         0 |      0 (0B)
---------------------------------------------------------------------------------------------------
+
 ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
       0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
---------------------------------------------------------------------------------------------------
+
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
 --------------+------------+-----------------------+------------+------------+--------+-----------
       loading |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
---------------------------------------------------------------------------------------------------
+
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
 --------------+---------------+----------------+-----------------+-----------------+--------------
            0B |            0B |             0B |              0B |              0B |            0B
---------------------------------------------------------------------------------------------------
+
 COMPACTIONS
    estimated debt |       in progress |         cancelled |            failed |      problem spans
 ------------------+-------------------+-------------------+-------------------+-------------------
                0B |            0 (0B) |            0 (0B) |                 0 |                  0
---------------------------------------------------------------------------------------------------
+
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
 -----------------+------------------+--------------------------+-----------------+----------------
                0 |                0 |                        0 |              0B |              0B
---------------------------------------------------------------------------------------------------
+
+COMPRESSION
+  ???:    1
+----
+----
+
+db lsm --url
+../testdata/db-stage-4
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     0  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+
+  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
+-------+------------------------------------------------------------------------------------------
+ count |        0        0        0        0        0        0        0        0        0        0
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   0 (0B) |     0B: 0B |      0.0% |         0 |  1 (256KB) |     0 (0B) |         0 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+      loading |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
 COMPRESSION
   ???:    1
 LSM viewer: https://raduberinde.github.io/lsmview/decode.html#eJyE0EFLw0AQBeC7v2J4uU5lN42W7lHsrTe9SSgTOi2hm13NRqGV_HdJCaUWMXvaxzfMwPuG1y_1Ce5t_G6CNAqHtbk3YHRSeR1ZKvVwKMBI9UnhFmbJSI14r6nbHPQIZxhe2v0lW8ZWO6nPJ2CGVziqpM1swc-rNc1oF2Nm5_yyeh0XO1qY5dMQ9CN8NsmRzWlGdjj8HuvQpf820JWN8ZTZ_KI3wyFSK2GvtB1qKPuy59sm7HUPf3g-4fMJLyb8YcIff3vJOOjx3HclLRi7GFH2dz8BAAD__2dulBM=
+----
+----
