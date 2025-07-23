@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/rangekey"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -166,6 +167,10 @@ func TestReplayValSep(t *testing.T) {
 	runReplayTest(t, "testdata/replay_val_sep")
 }
 
+func TestReplayIngest(t *testing.T) {
+	runReplayTest(t, "testdata/replay_ingest")
+}
+
 func TestLoadFlushedSSTableKeys(t *testing.T) {
 	var buf bytes.Buffer
 	var diskFileNums []base.DiskFileNum
@@ -283,6 +288,34 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 				return err.Error()
 			}
 			return ""
+		case "build-sst":
+			writerOpts := sstable.WriterOptions{
+				Comparer: testkeys.Comparer,
+			}
+			sstPath := td.CmdArgs[0].Key
+			writerOpts.TableFormat = sstable.TableFormatPebblev7
+
+			_, err := datatest.RunBuildSSTCmd(td.Input, td.CmdArgs, sstPath, fs, datatest.WithDefaultWriterOpts(writerOpts))
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		case "ingest":
+			paths := make([]string, 0)
+			for i := range td.CmdArgs {
+				if strings.HasSuffix(td.CmdArgs[i].Key, ".sst") {
+					paths = append(paths, td.CmdArgs[i].Key)
+				}
+			}
+			if err := d.Ingest(context.Background(), paths); err != nil {
+				return err.Error()
+			}
+			return "ingested"
+		case "ingest-and-excise":
+			if err := datatest.RunIngestAndExciseCmd(td, d); err != nil {
+				return err.Error()
+			}
+			return "ingest-and-excised"
 		case "flush":
 			require.NoError(t, d.Flush())
 			return ""
@@ -322,6 +355,21 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 					MaxBlobReferenceDepth: 5,
 					RewriteMinimumAge:     15 * time.Minute,
 				}
+			}
+			setDefaultExperimentalOpts(opts)
+			wc.Attach(opts)
+			var err error
+			d, err = pebble.Open("build", opts)
+			require.NoError(t, err)
+			return ""
+		case "open-ingest-excise":
+			wc = NewWorkloadCollector("build")
+			opts := &pebble.Options{
+				Comparer:                    testkeys.Comparer,
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          pebble.FormatExciseBoundsRecord,
+				FS:                          fs,
+				MaxManifestFileSize:         156,
 			}
 			setDefaultExperimentalOpts(opts)
 			wc.Attach(opts)
@@ -492,6 +540,7 @@ BenchmarkBenchmarkReplay/tpcc/DurationQuiescing 1 0.5 sec/op
 BenchmarkBenchmarkReplay/tpcc/DurationPaceDelay 1 0.25 sec/op
 BenchmarkBenchmarkReplay/tpcc/EstimatedDebt/mean 1 1.6777216e+08 bytes
 BenchmarkBenchmarkReplay/tpcc/EstimatedDebt/max 1 1.6777216e+08 bytes
+BenchmarkBenchmarkReplay/tpcc/ExciseDuringIngestion 1 0 excise
 BenchmarkBenchmarkReplay/tpcc/FlushUtilization 1 0 util
 BenchmarkBenchmarkReplay/tpcc/IngestedIntoL0 1 5.24288e+06 bytes
 BenchmarkBenchmarkReplay/tpcc/IngestWeightedByLevel 1 9.437184e+06 bytes
