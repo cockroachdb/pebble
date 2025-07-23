@@ -44,12 +44,26 @@ func TestTable(t *testing.T) {
 			return wb.String()
 		case "cats-nodiv":
 			def := Define[Cat](
-				String("name", 7, AlignLeft, func(c Cat) string { return c.Name }),
-				Int("age", 4, AlignRight, func(c Cat) int { return c.Age }),
+				String("name", 6, AlignLeft, func(c Cat) string { return c.Name }),
+				Int("age", 3, AlignRight, func(c Cat) int { return c.Age }),
 				Int("cuteness", 8, AlignRight, func(c Cat) int { return c.Cuteness }),
 			)
 			wb.Reset(def.CumulativeFieldWidth)
 			def.Render(wb.At(0, 0), RenderOptions{}, slices.Values(cats))
+			return wb.String()
+		case "cats-column-too-wide":
+			c := slices.Clone(cats)
+			for i := range c {
+				c[i].Age *= 1_000_000
+			}
+			def := Define[Cat](
+				String("name", 6, AlignLeft, func(c Cat) string { return c.Name }),
+				Div(),
+				Int("age", 3, AlignRight, func(c Cat) int { return c.Age }),
+				Int("c", 1, AlignRight, func(c Cat) int { return c.Cuteness }),
+			)
+			wb.Reset(def.CumulativeFieldWidth)
+			def.Render(wb.At(0, 0), RenderOptions{}, slices.Values(c))
 			return wb.String()
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -47,43 +48,24 @@ import (
 //	Mai       2      10
 //	Yuumi     5      10
 func Define[T any](fields ...Element) Layout[T] {
-	var verticalHeader strings.Builder
-	var verticalHeaderSep strings.Builder
-	defFields := make([]definitionField, len(fields))
 	maxFieldWidth := 0
 	for i := range len(fields) {
 		maxFieldWidth = max(maxFieldWidth, fields[i].width())
 	}
 
+	cumulativeFieldWidth := 0
 	for i := range len(fields) {
 		w := fields[i].width()
 		h := fields[i].header(Vertically, maxFieldWidth)
 		if len(h) > w {
 			panic(fmt.Sprintf("header %q is too long for column %d", h, i))
 		}
-
-		defFields[i] = definitionField{
-			f:   fields[i],
-			off: verticalHeaderSep.Len(),
-		}
-
-		// Create the vertical header strings.
-		if _, ok := fields[i].(divider); ok {
-			verticalHeaderSep.WriteString("-+-")
-		} else {
-			verticalHeaderSep.WriteString(strings.Repeat("-", w))
-		}
-		padding := w - len(h)
-		verticalHeader.WriteString(fields[i].align().maybePadding(AlignRight, padding))
-		verticalHeader.WriteString(h)
-		verticalHeader.WriteString(fields[i].align().maybePadding(AlignLeft, padding))
+		cumulativeFieldWidth += w
 	}
 	return Layout[T]{
-		CumulativeFieldWidth: verticalHeaderSep.Len(),
+		CumulativeFieldWidth: cumulativeFieldWidth,
 		MaxFieldWidth:        maxFieldWidth,
-		fields:               defFields,
-		verticalHeaderLine:   verticalHeader.String(),
-		verticalHeaderSep:    verticalHeaderSep.String(),
+		fields:               fields,
 	}
 }
 
@@ -91,14 +73,7 @@ func Define[T any](fields ...Element) Layout[T] {
 type Layout[T any] struct {
 	CumulativeFieldWidth int
 	MaxFieldWidth        int
-	fields               []definitionField
-	verticalHeaderLine   string
-	verticalHeaderSep    string
-}
-
-type definitionField struct {
-	f   Element
-	off int
+	fields               []Element
 }
 
 // RenderOptions specifies the options for rendering a table.
@@ -110,34 +85,61 @@ type RenderOptions struct {
 // returning the modified cursor.
 func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq[T]) ascii.Cursor {
 	cur := start
+	tuples := slices.Collect(rows)
 
 	if opts.Orientation == Vertically {
-		cur.Offset(0, 0).WriteString(d.verticalHeaderLine)
-		cur.Offset(1, 0).WriteString(d.verticalHeaderSep)
-		tupleIndex := 0
-		for t := range rows {
-			for _, c := range d.fields {
-				if div, ok := c.f.(divider); ok {
-					div.renderStatic(Vertically, d.MaxFieldWidth, cur.Offset(2+tupleIndex, c.off))
-				} else {
-					ctx := RenderContext[T]{
-						Orientation:   Vertically,
-						Pos:           cur.Offset(2+tupleIndex, c.off),
-						MaxFieldWidth: d.MaxFieldWidth,
-					}
-					width := c.f.width()
-					spec := widthStr(width, c.f.align()) + "s"
-					ctx.PaddedPos(width).Printf(spec, c.f.(Field[T]).renderValue(tupleIndex, t))
-				}
+		vals := make([]string, len(tuples))
+		for fieldIdx, c := range d.fields {
+			if fieldIdx > 0 {
+				cur.Offset(1, 0).WriteString("-")
+				// Each column is separated by a space from the previous column or
+				// separator.
+				cur = cur.Offset(0, 1)
 			}
-			tupleIndex++
+			if _, ok := c.(divider); ok {
+				cur.Offset(0, 0).WriteString("|")
+				cur.Offset(1, 0).WriteString("+")
+				for i := range tuples {
+					cur.Offset(2+i, 0).WriteString("|")
+				}
+				cur = cur.Offset(0, 1)
+				continue
+			}
+			for i, t := range tuples {
+				vals[i] = c.(Field[T]).renderValue(i, t)
+			}
+
+			width := c.width()
+			// If one of the values exceeds the column width, widen the column as
+			// necessary.
+			for i := range vals {
+				width = max(width, len(vals[i]))
+			}
+			header := c.header(Vertically, width)
+			align := c.align()
+			padding := width - len(header)
+			cur.Offset(0, 0).WriteString(
+				align.maybePadding(AlignRight, padding) + header + align.maybePadding(AlignLeft, padding),
+			)
+			cur.Offset(1, 0).WriteString(strings.Repeat("-", width))
+
+			for i := range vals {
+				ctx := RenderContext[T]{
+					Orientation:   Vertically,
+					Pos:           cur.Offset(2+i, 0),
+					MaxFieldWidth: d.MaxFieldWidth,
+				}
+				spec := widthStr(width, c.align()) + "s"
+				ctx.PaddedPos(width).Printf(spec, vals[i])
+			}
+			cur = cur.Offset(0, width)
 		}
-		return cur.Offset(2+tupleIndex, 0)
+		return start.Offset(2+len(tuples), 0)
 	}
 
 	for i := range d.fields {
-		cur.Offset(i, 0).WriteString(d.fields[i].f.header(Horizontally, d.MaxFieldWidth))
-		if _, ok := d.fields[i].f.(divider); ok {
+		cur.Offset(i, 0).WriteString(d.fields[i].header(Horizontally, d.MaxFieldWidth))
+		if _, ok := d.fields[i].(divider); ok {
 			cur.Offset(i, d.MaxFieldWidth).WriteString("-+-")
 		} else {
 			cur.Offset(i, d.MaxFieldWidth).WriteString(" | ")
@@ -147,7 +149,7 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq
 	c := d.MaxFieldWidth + 3
 	for t := range rows {
 		for i := range d.fields {
-			if div, ok := d.fields[i].f.(divider); ok {
+			if div, ok := d.fields[i].(divider); ok {
 				div.renderStatic(Horizontally, d.MaxFieldWidth, cur.Offset(i, c))
 			} else {
 				ctx := RenderContext[T]{
@@ -155,7 +157,7 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq
 					Pos:           cur.Offset(i, c),
 					MaxFieldWidth: d.MaxFieldWidth,
 				}
-				f := d.fields[i].f.(Field[T])
+				f := d.fields[i].(Field[T])
 				width := f.width()
 				spec := widthStr(width, f.align()) + "s"
 				ctx.PaddedPos(width).Printf(spec, f.renderValue(tupleIndex, t))

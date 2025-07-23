@@ -40,9 +40,9 @@ ITERATORS
    100 (1GB) |       66.7% |    180 (1MB) |       48.7% |        47.4% |          21 |           4
 
 FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   31 pending |    1 (2MB) |  18 (17MB local:30MB) | 1.2K (15GB |  14 (30MB) |   14GB | 79% (11GB)
+   stats prog |    backing |                zombie |        live |     zombie |  total |      refed
+--------------+------------+-----------------------+-------------+------------+--------+-----------
+   31 pending |    1 (2MB) |  18 (17MB local:30MB) | 1.2K (15GB) |  14 (30MB) |   14GB | 79% (11GB)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
