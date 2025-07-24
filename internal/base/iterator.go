@@ -246,17 +246,28 @@ const (
 // SeekGEFlagsNone is the default value of SeekGEFlags, with all flags disabled.
 const SeekGEFlagsNone = SeekGEFlags(0)
 
-// TrySeekUsingNext indicates whether a performance optimization was enabled
-// by a caller, indicating the caller has not done any action to move this
-// iterator beyond the first key that would be found if this iterator were to
-// honestly do the intended seek. For example, say the caller did a
-// SeekGE(k1...), followed by SeekGE(k2...) where k1 <= k2, without any
-// intermediate positioning calls. The caller can safely specify true for this
-// parameter in the second call. As another example, say the caller did do one
-// call to Next between the two Seek calls, and k1 < k2. Again, the caller can
-// safely specify a true value for this parameter. Note that a false value is
-// always safe. The callee is free to ignore the true value if its
-// implementation does not permit this optimization.
+// TODO(jackson): Rename TrySeekUsingNext to MonotonicallyForward or something
+// similar that avoids prescribing the implementation of the optimization but
+// instead focuses on the contract expected of the caller.
+
+// TrySeekUsingNext is set when the caller has knowledge that it has performed
+// no action to move this iterator beyond the first key that would be found if
+// this iterator were to honestly do the intended seek. This enables a class of
+// performance optimizations within various internal iterator implementations.
+// For example, say the caller did a SeekGE(k1...), followed by SeekGE(k2...)
+// where k1 <= k2, without any intermediate positioning calls. The caller can
+// safely specify true for this parameter in the second call. As another
+// example, say the caller did do one call to Next between the two Seek calls,
+// and k1 < k2. Again, the caller can safely specify a true value for this
+// parameter. Note that a false value is always safe. If true, the callee should
+// not return a key less than the current iterator position even if a naive seek
+// would land there.
+//
+// The same promise applies to SeekPrefixGE: Prefixes of k1 and k2 may be
+// different. If the callee does not position itself for k1 (for example, an
+// sstable iterator that elides a seek due to bloom filter exclusion), the
+// callee must remember it did not position itself for k1 and that it must
+// perform the full seek.
 //
 // We make the caller do this determination since a string comparison of k1, k2
 // is not necessarily cheap, and there may be many iterators in the iterator
