@@ -89,10 +89,13 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 	//      before
 	if setting.Algorithm != compression.NoCompression &&
 		int64(len(out))*100 > int64(len(src))*int64(100-c.minReductionPercent) {
-		c.stats.add(compression.None, uint64(len(src)), uint64(len(src)))
-		return NoCompressionIndicator, append(out[:0], src...)
+		setting.Algorithm = compression.NoCompression
+		out = append(out[:0], src...)
 	}
-	c.stats.add(setting, uint64(len(src)), uint64(len(out)))
+	c.stats.add(setting, CompressionStatsForSetting{
+		UncompressedBytes: uint64(len(src)),
+		CompressedBytes:   uint64(len(out)),
+	})
 	return compressionIndicatorFromAlgorithm(setting.Algorithm), out
 }
 
@@ -100,7 +103,10 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 // kind was written uncompressed. This is used so that the final statistics are
 // complete.
 func (c *Compressor) UncompressedBlock(size int, kind Kind) {
-	c.stats.add(compression.None, uint64(size), uint64(size))
+	c.stats.add(compression.None, CompressionStatsForSetting{
+		UncompressedBytes: uint64(size),
+		CompressedBytes:   uint64(size),
+	})
 }
 
 // Stats returns the compression stats. The result can only be used until the
