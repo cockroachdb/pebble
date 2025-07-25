@@ -839,7 +839,7 @@ type keysInfo struct {
 //
 // See testdata/metrics for an example.
 func (m *Metrics) String() string {
-	wb := ascii.Make(92, levelMetricsTable.CumulativeFieldWidth)
+	wb := ascii.Make(128 /* width */, 80 /* height */)
 	var total LevelMetrics
 	for l := range numLevels {
 		total.Add(&m.Levels[l])
