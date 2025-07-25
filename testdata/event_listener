@@ -265,9 +265,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   755B     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -302,7 +301,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 3
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       3      0     0
 ----
 ----
 
@@ -402,9 +402,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   755B     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -439,7 +438,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 6
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       6      0     0
 ----
 ----
 

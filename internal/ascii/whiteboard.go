@@ -17,9 +17,9 @@ type Board struct {
 }
 
 // Make returns a new Board with the given initial width and height.
-func Make(w, h int) Board {
-	buf := make([]byte, 0, w*h)
-	return Board{buf: buf, width: w}
+func Make(width, height int) Board {
+	buf := make([]byte, 0, width*height)
+	return Board{buf: buf, width: width}
 }
 
 // At returns a position at the given coordinates.
@@ -118,6 +118,18 @@ func (c Cursor) Offset(dr, dc int) Cursor {
 	return c
 }
 
+// Down returns a new cursor with the given row offset from the current cursor.
+func (c Cursor) Down(numRows int) Cursor {
+	c.r += numRows
+	return c
+}
+
+// Right returns a new cursor with the given column offset from the current cursor.
+func (c Cursor) Right(numCols int) Cursor {
+	c.c += numCols
+	return c
+}
+
 // SetCarriageReturnPosition returns a copy of the cursor, but with a carriage
 // return position set so that newlines written to the resulting Cursor will
 // return to the current column.
@@ -178,7 +190,7 @@ func (c Cursor) WriteString(s string) Cursor {
 // cursor where the written bytes end.
 func (c Cursor) RepeatByte(n int, b byte) Cursor {
 	c.b.repeat(c.r, c.c, n, b)
-	return c.Offset(0, n)
+	return c.Right(n)
 }
 
 // NewlineReturn returns a cursor at the next line, with the column set to the

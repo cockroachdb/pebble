@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"slices"
 	"time"
 	"unsafe"
 
@@ -612,28 +613,23 @@ var (
 	levelMetricsTableTopHeader = `LSM                             |    vtables   |   value sep   |        |   ingested   |    amp`
 	levelMetricsTable          = table.Define[*LevelMetrics](
 		table.AutoIncrement[*LevelMetrics]("level", 5, table.AlignRight),
-		table.Bytes("size", 11, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.TablesSize) + m.EstimatedReferencesSize }),
+		table.Bytes("size", 10, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.TablesSize) + m.EstimatedReferencesSize }),
 		table.Div(),
 		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesCount }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesSize }),
 		table.Div(),
 		table.Count("count", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesCount }),
-		table.Literal[*LevelMetrics](" "),
 		table.Count("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesSize }),
 		table.Div(),
 		table.Bytes("refsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.EstimatedReferencesSize }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("valblk", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.Additional.ValueBlocksSize }),
 		table.Div(),
 		table.Bytes("in", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIn }),
 		table.Div(),
 		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesIngested }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIngested }),
 		table.Div(),
 		table.Int("r", 3, table.AlignRight, func(m *LevelMetrics) int { return int(m.Sublevels) }),
-		table.Literal[*LevelMetrics](" "),
 		table.Float("w", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.WriteAmp() }),
 	)
 	levelCompactionMetricsTableTopHeader = `COMPACTIONS               |     moved    |     multilevel    |     read     |       written`
@@ -641,44 +637,26 @@ var (
 		table.AutoIncrement[*LevelMetrics]("level", 5, table.AlignRight),
 		table.Div(),
 		table.Float("score", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.Score }),
-		table.Literal[*LevelMetrics](" "),
 		table.Float("ff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.FillFactor }),
-		table.Literal[*LevelMetrics](" "),
 		table.Float("cff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.CompensatedFillFactor }),
 		table.Div(),
 		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesMoved }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesMoved }),
 		table.Div(),
 		table.Bytes("top", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesInTop }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("in", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesIn }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("read", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesRead }),
 		table.Div(),
 		table.Bytes("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesRead }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("blob", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesRead }),
 		table.Div(),
 		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesFlushed + m.TablesCompacted }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("sstsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesFlushed + m.TableBytesCompacted }),
-		table.Literal[*LevelMetrics](" "),
 		table.Bytes("blobsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesFlushed + m.BlobBytesCompacted }),
 	)
-	compactionKindTable = table.Define[compactionKindsInfo](
-		table.String("kind", 6, table.AlignRight, func(i compactionKindsInfo) string { return "count" }),
-		table.Div(),
-		table.String("default", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.def }),
-		table.String("delete", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.delete }),
-		table.String("elision", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.elision }),
-		table.String("copy", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.copy }),
-		table.String("move", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.move }),
-		table.String("read", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.read }),
-		table.String("tomb", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.tombstone }),
-		table.String("rewrite", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.rewrite }),
-		table.String("multi", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.multilevel }),
-		table.String("blob", 9, table.AlignRight, func(i compactionKindsInfo) string { return i.blob }),
+	compactionKindTable = table.Define[pair[string, int64]](
+		table.String("kind", 5, table.AlignRight, func(p pair[string, int64]) string { return p.k }),
+		table.Count("count", 5, table.AlignRight, func(p pair[string, int64]) int64 { return p.v }),
 	)
 	commitPipelineInfoTableTopHeader = `COMMIT PIPELINE`
 	commitPipelineInfoTableSubHeader = `               wals                |              memtables              |       ingestions`
@@ -770,20 +748,12 @@ var (
 		table.Div(),
 		table.String("range dels", 15, table.AlignRight, func(i keysInfo) string { return i.rangeDels }),
 	)
+	compressionTableHeader = `COMPRESSION`
+	compressionTable       = table.Define[pair[string, int64]](
+		table.String("algorithm", 10, table.AlignRight, func(p pair[string, int64]) string { return p.k }),
+		table.Count("tables", 10, table.AlignRight, func(p pair[string, int64]) int64 { return p.v }),
+	)
 )
-
-type compactionKindsInfo struct {
-	def        string
-	delete     string
-	elision    string
-	copy       string
-	move       string
-	read       string
-	tombstone  string
-	rewrite    string
-	multilevel string
-	blob       string
-}
 
 type commitPipelineInfo struct {
 	files     string
@@ -848,11 +818,16 @@ type keysInfo struct {
 	rangeDels          string
 }
 
+type pair[k, v any] struct {
+	k k
+	v v
+}
+
 // String pretty-prints the metrics.
 //
 // See testdata/metrics for an example.
 func (m *Metrics) String() string {
-	wb := ascii.Make(92, levelMetricsTable.CumulativeFieldWidth)
+	wb := ascii.Make(128 /* width */, 80 /* height */)
 	var total LevelMetrics
 	for l := range numLevels {
 		total.Add(&m.Levels[l])
@@ -894,21 +869,20 @@ func (m *Metrics) String() string {
 	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, compactionLevelIter)
 	cur.Offset(-1, 0).WriteString("total")
 
-	compactionKindsContents := compactionKindsInfo{
-		def:        humanizeCount(m.Compact.DefaultCount).String(),
-		delete:     humanizeCount(m.Compact.DeleteOnlyCount).String(),
-		elision:    humanizeCount(m.Compact.ElisionOnlyCount).String(),
-		copy:       humanizeCount(m.Compact.CopyCount).String(),
-		move:       humanizeCount(m.Compact.MoveCount).String(),
-		read:       humanizeCount(m.Compact.ReadCount).String(),
-		tombstone:  humanizeCount(m.Compact.TombstoneDensityCount).String(),
-		rewrite:    humanizeCount(m.Compact.RewriteCount).String(),
-		multilevel: humanizeCount(m.Compact.MultiLevelCount).String(),
-		blob:       humanizeCount(m.Compact.BlobFileRewriteCount).String(),
-	}
-
 	cur = cur.NewlineReturn()
-	cur = compactionKindTable.Render(cur, table.RenderOptions{}, oneItemIter(compactionKindsContents))
+	compactionKindContents := []pair[string, int64]{
+		{k: "default", v: m.Compact.DefaultCount},
+		{k: "delete", v: m.Compact.DeleteOnlyCount},
+		{k: "elision", v: m.Compact.ElisionOnlyCount},
+		{k: "move", v: m.Compact.MoveCount},
+		{k: "read", v: m.Compact.ReadCount},
+		{k: "tomb", v: m.Compact.TombstoneDensityCount},
+		{k: "rewrite", v: m.Compact.RewriteCount},
+		{k: "copy", v: m.Compact.CopyCount},
+		{k: "multi", v: m.Compact.MultiLevelCount},
+		{k: "blob", v: m.Compact.BlobFileRewriteCount},
+	}
+	cur = compactionKindTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compactionKindContents))
 	cur = cur.NewlineReturn()
 
 	commitPipelineInfoContents := commitPipelineInfo{
@@ -1012,21 +986,17 @@ func (m *Metrics) String() string {
 	cur = keysInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(keysInfoContents))
 	cur = cur.NewlineReturn()
 
-	func(cur ascii.Cursor) {
-		maybePrintCompression := func(pos ascii.Cursor, name string, value int64) ascii.Cursor {
-			if value > 0 {
-				pos = pos.Printf("  %s %s", name, humanizeCount(value)).NewlineReturn()
-			}
-			return pos
-		}
-		cur = cur.WriteString("COMPRESSION").NewlineReturn()
-		cur = maybePrintCompression(cur, "minlz: ", m.Table.CompressedCountMinLZ)
-		cur = maybePrintCompression(cur, "snappy:", m.Table.CompressedCountSnappy)
-		cur = maybePrintCompression(cur, "zstd:  ", m.Table.CompressedCountZstd)
-		cur = maybePrintCompression(cur, "none:  ", m.Table.CompressedCountNone)
-		cur = maybePrintCompression(cur, "???:   ", m.Table.CompressedCountUnknown)
-		_ = cur
-	}(cur)
+	cur = cur.WriteString(compressionTableHeader).NewlineReturn()
+	compressionContents := []pair[string, int64]{
+		{k: "none", v: m.Table.CompressedCountNone},
+		{k: "snappy", v: m.Table.CompressedCountSnappy},
+		{k: "minlz", v: m.Table.CompressedCountMinLZ},
+		{k: "zstd", v: m.Table.CompressedCountZstd},
+	}
+	if m.Table.CompressedCountUnknown > 0 {
+		compressionContents = append(compressionContents, pair[string, int64]{k: "???", v: m.Table.CompressedCountUnknown})
+	}
+	compressionTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compressionContents))
 
 	return wb.String()
 }

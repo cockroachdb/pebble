@@ -23,9 +23,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |  1.60  2.60  1.80 |    613  606B |  604B  604B  604B |   607B  617B |   1.2K  1.2KB  1.2KB
 total |     0  2.70  2.10 |    713  706B |  704B  704B  704B |   707B  717B |   1.4K  1.4KB  1.4KB
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |       10       11       12       13       14       15       16       17       18       19
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |      10      11       12    14    15    16       17    13     18    19
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -40,9 +39,9 @@ ITERATORS
    100 (1GB) |       66.7% |    180 (1MB) |       48.7% |        47.4% |          21 |           4
 
 FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   31 pending |    1 (2MB) |  18 (17MB local:30MB) | 1.2K (15GB |  14 (30MB) |   14GB | 79% (11GB)
+   stats prog |    backing |                zombie |        live |     zombie |  total |      refed
+--------------+------------+-----------------------+-------------+------------+--------+-----------
+   31 pending |    1 (2MB) |  18 (17MB local:30MB) | 1.2K (15GB) |  14 (30MB) |   14GB | 79% (11GB)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -60,10 +59,8 @@ KEYS
              123 |              456 |                    789!! |             1MB |             2MB
 
 COMPRESSION
-  minlz:  32
-  snappy: 33
-  zstd:   34
-  none:   35
+ algorithm | none  snappy  minlz  zstd
+    tables |   35      33     32    34
 ----
 ----
 
@@ -112,9 +109,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        0        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       0       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -149,7 +145,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 1
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       1      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -209,9 +206,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -246,7 +242,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 2
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       2      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -289,9 +286,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -326,7 +322,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 2
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       2      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -366,9 +363,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -403,7 +399,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 2
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       2      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -446,9 +443,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -483,7 +479,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 2
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       2      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -565,9 +562,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -602,7 +598,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 9
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       9      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -669,9 +666,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        2        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       2       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -706,7 +702,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 9
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       9      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -824,9 +821,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        2        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       2       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -861,7 +857,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 15
+ algorithm | none  snappy  minlz  zstd
+    tables |    0      15      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -941,9 +938,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        2        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       2       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -978,7 +974,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 22
+ algorithm | none  snappy  minlz  zstd
+    tables |    0      22      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1070,9 +1067,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        2        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       2       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1107,7 +1103,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 21
+ algorithm | none  snappy  minlz  zstd
+    tables |    0      21      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1243,9 +1240,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |  2.2KB    0B |     16   13KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        3        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       3       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1280,7 +1276,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 18
+ algorithm | none  snappy  minlz  zstd
+    tables |    0      18      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:2235 BlockBytesInCache:457 BlockReadDuration:150ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1333,9 +1330,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        0        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       0       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1370,7 +1366,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 3
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       3      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----
@@ -1409,9 +1406,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  2.2KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1446,7 +1442,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 3
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       3      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
 ----
@@ -1501,9 +1498,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  2.2KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1538,7 +1534,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 4
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       4      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
 ----
@@ -1585,9 +1582,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  2.2KB     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1622,7 +1618,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 5
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       5      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
 ----
@@ -1658,9 +1655,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        0        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       0       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1695,7 +1691,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 5
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       5      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----
@@ -1734,9 +1731,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      0    0B |    0B    0B    0B |   342B    0B |      1   763B     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        1        0        0        0        0        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1771,7 +1767,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 3
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       3      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:342 BlockBytesInCache:0 BlockReadDuration:30ms}
 ----
@@ -1848,9 +1845,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      3 2.3KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        0        0        0        0        3        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       0       0        0     3     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1885,7 +1881,8 @@ KEYS
                0 |                3 |                        0 |            502B |           1.5KB
 
 COMPRESSION
-  snappy: 5
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       5      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----
@@ -1921,9 +1918,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     0  0.00  0.00 |      3 2.3KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 
-  kind |  default   delete  elision     copy     move     read     tomb  rewrite    multi     blob
--------+------------------------------------------------------------------------------------------
- count |        0        0        0        0        3        0        0        0        0        0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       0       0        0     3     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1958,7 +1954,8 @@ KEYS
                0 |                3 |                        0 |            502B |           1.5KB
 
 COMPRESSION
-  snappy: 5
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       5      0     0
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----

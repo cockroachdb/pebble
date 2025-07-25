@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/cockroachdb/pebble/internal/ascii"
@@ -20,7 +20,7 @@ import (
 //
 // Example:
 //
-//	wb := ascii.Make(1, 10)
+//	wb := ascii.Make(10, 10)
 //	type Cat struct {
 //		Name     string
 //		Age      int
@@ -37,7 +37,7 @@ import (
 //		Int("cuteness", 8, AlignRight, func(c Cat) int { return c.Cuteness }),
 //	)
 //
-//	wb.Reset(def.CumulativeFieldWidth)
+//	wb.Reset(10)
 //	def.Render(wb.At(0, 0), RenderOptions{}, cats)
 //
 // Output of wb.String():
@@ -47,58 +47,21 @@ import (
 //	Mai       2      10
 //	Yuumi     5      10
 func Define[T any](fields ...Element) Layout[T] {
-	var verticalHeader strings.Builder
-	var verticalHeaderSep strings.Builder
-	defFields := make([]definitionField, len(fields))
-	maxFieldWidth := 0
-	for i := range len(fields) {
-		maxFieldWidth = max(maxFieldWidth, fields[i].width())
-	}
-
-	for i := range len(fields) {
-		w := fields[i].width()
-		h := fields[i].header(Vertically, maxFieldWidth)
-		if len(h) > w {
-			panic(fmt.Sprintf("header %q is too long for column %d", h, i))
+	for i := range fields {
+		if f, ok := fields[i].(Field[T]); ok {
+			if h := f.header(); len(h) > f.width() {
+				panic(fmt.Sprintf("header %q is too long for column %d", h, i))
+			}
 		}
-
-		defFields[i] = definitionField{
-			f:   fields[i],
-			off: verticalHeaderSep.Len(),
-		}
-
-		// Create the vertical header strings.
-		if _, ok := fields[i].(divider); ok {
-			verticalHeaderSep.WriteString("-+-")
-		} else {
-			verticalHeaderSep.WriteString(strings.Repeat("-", w))
-		}
-		padding := w - len(h)
-		verticalHeader.WriteString(fields[i].align().maybePadding(AlignRight, padding))
-		verticalHeader.WriteString(h)
-		verticalHeader.WriteString(fields[i].align().maybePadding(AlignLeft, padding))
 	}
 	return Layout[T]{
-		CumulativeFieldWidth: verticalHeaderSep.Len(),
-		MaxFieldWidth:        maxFieldWidth,
-		fields:               defFields,
-		verticalHeaderLine:   verticalHeader.String(),
-		verticalHeaderSep:    verticalHeaderSep.String(),
+		fields: fields,
 	}
 }
 
 // A Layout defines the layout of a table.
 type Layout[T any] struct {
-	CumulativeFieldWidth int
-	MaxFieldWidth        int
-	fields               []definitionField
-	verticalHeaderLine   string
-	verticalHeaderSep    string
-}
-
-type definitionField struct {
-	f   Element
-	off int
+	fields []Element
 }
 
 // RenderOptions specifies the options for rendering a table.
@@ -112,125 +75,124 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq
 	cur := start
 
 	if opts.Orientation == Vertically {
-		cur.Offset(0, 0).WriteString(d.verticalHeaderLine)
-		cur.Offset(1, 0).WriteString(d.verticalHeaderSep)
-		r := 0
-		for t := range rows {
-			for _, c := range d.fields {
-				if div, ok := c.f.(divider); ok {
-					div.renderStatic(Vertically, d.MaxFieldWidth, cur.Offset(2+r, c.off))
-				} else {
-					c.f.(Field[T]).renderValue(RenderContext[T]{
-						Orientation:   Vertically,
-						TupleIndex:    r,
-						Pos:           cur.Offset(2+r, c.off),
-						MaxFieldWidth: d.MaxFieldWidth,
-					}, t)
-				}
+		tuples := slices.Collect(rows)
+		vals := make([]string, len(tuples))
+		for fieldIdx, c := range d.fields {
+			if fieldIdx > 0 {
+				cur.Offset(1, 0).WriteString("-")
+				// Each column is separated by a space from the previous column or
+				// separator.
+				cur = cur.Offset(0, 1)
 			}
-			r++
+			if _, ok := c.(divider); ok {
+				cur.Offset(0, 0).WriteString("|")
+				cur.Offset(1, 0).WriteString("+")
+				for i := range tuples {
+					cur.Offset(2+i, 0).WriteString("|")
+				}
+				cur = cur.Offset(0, 1)
+				continue
+			}
+			f := c.(Field[T])
+			for i, t := range tuples {
+				vals[i] = f.renderValue(i, t)
+			}
+
+			width := c.width()
+			// If one of the values exceeds the column width, widen the column as
+			// necessary.
+			for i := range vals {
+				width = max(width, len(vals[i]))
+			}
+			header := f.header()
+			align := f.align()
+			pad(cur, width, align, header)
+			cur.Down(1).RepeatByte(width, '-')
+			for i := range vals {
+				pad(cur.Down(2+i), width, align, vals[i])
+			}
+			cur = cur.Right(width)
 		}
-		return cur.Offset(2+r, 0)
+		return start.Down(2 + len(tuples))
+	}
+
+	headerColumnWidth := 1
+	for i := range d.fields {
+		headerColumnWidth = max(headerColumnWidth, d.fields[i].width())
 	}
 
 	for i := range d.fields {
-		cur.Offset(i, 0).WriteString(d.fields[i].f.header(Horizontally, d.MaxFieldWidth))
-		if _, ok := d.fields[i].f.(divider); ok {
-			cur.Offset(i, d.MaxFieldWidth).WriteString("-+-")
+		if _, ok := d.fields[i].(divider); ok {
+			cur.Down(i).RepeatByte(headerColumnWidth, '-')
 		} else {
-			cur.Offset(i, d.MaxFieldWidth).WriteString(" | ")
+			pad(cur.Down(i), headerColumnWidth, AlignRight, d.fields[i].(Field[T]).header())
 		}
 	}
+	cur = cur.Right(headerColumnWidth)
+	for i := range d.fields {
+		if _, ok := d.fields[i].(divider); ok {
+			cur.Down(i).WriteString("-+-")
+		} else {
+			cur.Down(i).WriteString(" | ")
+		}
+	}
+	cur = cur.Right(3)
+
 	tupleIndex := 0
-	c := d.MaxFieldWidth + 3
+	colSpacing := 0
 	for t := range rows {
+		width := 1
 		for i := range d.fields {
-			if div, ok := d.fields[i].f.(divider); ok {
-				div.renderStatic(Horizontally, d.MaxFieldWidth, cur.Offset(i, c))
+			if f, ok := d.fields[i].(Field[T]); ok {
+				width = max(width, len(f.renderValue(tupleIndex, t)))
+			}
+		}
+		for i := range d.fields {
+			if _, ok := d.fields[i].(divider); ok {
+				cur.Down(i).RepeatByte(width+colSpacing, '-')
 			} else {
-				d.fields[i].f.(Field[T]).renderValue(RenderContext[T]{
-					Orientation:   Horizontally,
-					TupleIndex:    tupleIndex,
-					Pos:           cur.Offset(i, c),
-					MaxFieldWidth: d.MaxFieldWidth,
-				}, t)
+				f := d.fields[i].(Field[T])
+				pad(cur.Down(i).Right(colSpacing), width, d.fields[i].align(), f.renderValue(tupleIndex, t))
 			}
 		}
 		tupleIndex++
-		c += d.MaxFieldWidth
+		cur = cur.Right(width + colSpacing)
+		colSpacing = 2
 	}
-	return cur.Offset(len(d.fields), c)
-}
-
-// A RenderContext provides the context for rendering a table.
-type RenderContext[T any] struct {
-	Orientation   Orientation
-	TupleIndex    int
-	Pos           ascii.Cursor
-	MaxFieldWidth int
-}
-
-func (c *RenderContext[T]) PaddedPos(width int) ascii.Cursor {
-	if c.Orientation == Vertically {
-		return c.Pos
-	}
-	// Horizontally, we need to pad the width to the max field width.
-	return c.Pos.Offset(0, c.MaxFieldWidth-width)
+	return start.Down(len(d.fields))
 }
 
 // Element is the base interface, common to all table elements.
 type Element interface {
-	header(o Orientation, maxWidth int) string
 	width() int
 	align() Align
-}
-
-// StaticElement is an Element that doesn't depend on the tuple value for
-// rendering.
-type StaticElement interface {
-	Element
-	renderStatic(o Orientation, maxWidth int, pos ascii.Cursor)
 }
 
 // Field is an Element that depends on the tuple value for rendering.
 type Field[T any] interface {
 	Element
-	renderValue(ctx RenderContext[T], tuple T)
+	header() string
+	renderValue(tupleIndex int, tuple T) string
 }
 
 // Div creates a divider field used to visually separate regions of the table.
-func Div() StaticElement {
+func Div() Element {
 	return divider{}
 }
 
 type divider struct{}
 
 var (
-	_ StaticElement = (*divider)(nil)
+	_ Element = (*divider)(nil)
 
 	// TODO(jackson): The staticcheck tool doesn't recognize that these are used to
 	// satisfy the Field interface. Why not?
-	_ = divider.header
 	_ = divider.width
 	_ = divider.align
-	_ = divider.renderStatic
 )
 
-func (d divider) header(o Orientation, maxWidth int) string {
-	if o == Horizontally {
-		return strings.Repeat("-", maxWidth)
-	}
-	return " | "
-}
-func (d divider) width() int   { return 3 }
+func (d divider) width() int   { return 1 }
 func (d divider) align() Align { return AlignLeft }
-func (d divider) renderStatic(o Orientation, maxWidth int, pos ascii.Cursor) {
-	if o == Horizontally {
-		pos.RepeatByte(maxWidth, '-')
-	} else {
-		pos.WriteString(" | ")
-	}
-}
 
 func Literal[T any](s string) Field[T] {
 	return literal[T](s)
@@ -249,11 +211,11 @@ var (
 	_ = literal[any].renderValue
 )
 
-func (l literal[T]) header(o Orientation, maxWidth int) string { return " " }
-func (l literal[T]) width() int                                { return len(l) }
-func (l literal[T]) align() Align                              { return AlignLeft }
-func (l literal[T]) renderValue(ctx RenderContext[T], tuple T) {
-	ctx.PaddedPos(len(l)).WriteString(string(l))
+func (l literal[T]) header() string { return " " }
+func (l literal[T]) width() int     { return len(l) }
+func (l literal[T]) align() Align   { return AlignLeft }
+func (l literal[T]) renderValue(tupleIndex int, tuple T) string {
+	return string(l)
 }
 
 const (
@@ -263,11 +225,18 @@ const (
 
 type Align uint8
 
-func (a Align) maybePadding(ifAlign Align, width int) string {
-	if a == ifAlign {
-		return strings.Repeat(" ", width)
+// pad writes the given string to the cursor, padding it to the given width
+// (according to the alignment).
+func pad(cur ascii.Cursor, toWidth int, align Align, s string) ascii.Cursor {
+	if len(s) >= toWidth {
+		return cur.WriteString(s)
 	}
-	return ""
+	startCur := cur
+	if align == AlignRight {
+		cur = cur.Right(toWidth - len(s))
+	}
+	cur.WriteString(s)
+	return startCur.Right(toWidth)
 }
 
 const (
@@ -280,59 +249,53 @@ const (
 type Orientation uint8
 
 func String[T any](header string, width int, align Align, fn func(r T) string) Field[T] {
-	spec := widthStr(width, align) + "s"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], r T) {
-		ctx.PaddedPos(width).Printf(spec, fn(r))
+	return makeFuncField(header, width, align, func(tupleIndex int, r T) string {
+		return fn(r)
 	})
 }
 
 func Int[T any](header string, width int, align Align, fn func(r T) int) Field[T] {
-	spec := widthStr(width, align) + "d"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, fn(tuple))
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return strconv.Itoa(fn(tuple))
 	})
 }
 
 func AutoIncrement[T any](header string, width int, align Align) Field[T] {
-	spec := widthStr(width, align) + "d"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, ctx.TupleIndex)
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return strconv.Itoa(tupleIndex)
 	})
 }
 
 func Count[T any, N constraints.Integer](
 	header string, width int, align Align, fn func(r T) N,
 ) Field[T] {
-	spec := widthStr(width, align) + "s"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, crhumanize.Count(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return string(crhumanize.Count(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
 	})
 }
 
 func Bytes[T any, N constraints.Integer](
 	header string, width int, align Align, fn func(r T) N,
 ) Field[T] {
-	spec := widthStr(width, align) + "s"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, crhumanize.Bytes(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return string(crhumanize.Bytes(fn(tuple), crhumanize.Compact, crhumanize.OmitI))
 	})
 }
 
 func Float[T any](header string, width int, align Align, fn func(r T) float64) Field[T] {
-	spec := widthStr(width, align) + "s"
-	return makeFuncField(header, width, align, func(ctx RenderContext[T], tuple T) {
-		ctx.PaddedPos(width).Printf(spec, humanizeFloat(fn(tuple), width))
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return humanizeFloat(fn(tuple), width)
 	})
 }
 
 func makeFuncField[T any](
-	header string, width int, align Align, fn func(ctx RenderContext[T], tuple T),
+	header string, width int, align Align, toStringFn func(tupleIndex int, tuple T) string,
 ) Field[T] {
 	return &funcField[T]{
 		headerValue: header,
 		widthValue:  width,
 		alignValue:  align,
-		fn:          fn,
+		toStringFn:  toStringFn,
 	}
 }
 
@@ -340,7 +303,7 @@ type funcField[T any] struct {
 	headerValue string
 	widthValue  int
 	alignValue  Align
-	fn          func(ctx RenderContext[T], tuple T)
+	toStringFn  func(tupleIndex int, tuple T) string
 }
 
 var (
@@ -354,18 +317,11 @@ var (
 	_ = (&funcField[any]{}).renderValue
 )
 
-func (c *funcField[T]) header(o Orientation, maxWidth int) string { return c.headerValue }
-func (c *funcField[T]) width() int                                { return c.widthValue }
-func (c *funcField[T]) align() Align                              { return c.alignValue }
-func (c *funcField[T]) renderValue(ctx RenderContext[T], tuple T) {
-	c.fn(ctx, tuple)
-}
-
-func widthStr(width int, align Align) string {
-	if align == AlignLeft {
-		return "%-" + strconv.Itoa(width)
-	}
-	return "%" + strconv.Itoa(width)
+func (c *funcField[T]) header() string { return c.headerValue }
+func (c *funcField[T]) width() int     { return c.widthValue }
+func (c *funcField[T]) align() Align   { return c.alignValue }
+func (c *funcField[T]) renderValue(tupleIndex int, tuple T) string {
+	return c.toStringFn(tupleIndex, tuple)
 }
 
 // humanizeFloat formats a float64 value as a string. It shows up to two
