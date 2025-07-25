@@ -91,6 +91,7 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-  snappy: 3
+ algorithm | none  snappy  minlz  zstd
+    tables |    0       3      0     0
 ----
 ----
