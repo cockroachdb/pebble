@@ -112,8 +112,10 @@ type RawColumnWriter struct {
 	disableKeyOrderChecks bool
 	cpuMeasurer           base.CPUMeasurer
 
-	// RawColumnWriter writes data sequentially so each writer can have a compressor
-	compressor block.Compressor
+	// RawColumnWriter writes data sequentially so each writer can have a
+	// compressor and checksummer.
+	compressor  block.Compressor
+	checksummer block.Checksummer
 }
 
 // Assert that *RawColumnWriter implements RawWriter.
@@ -137,9 +139,9 @@ func newColumnarWriter(
 			SmallestSeqNum: math.MaxUint64,
 		},
 		opts:                  o,
-		layout:                makeLayoutWriter(writable, o),
 		disableKeyOrderChecks: o.internal.DisableKeyOrderChecks,
 	}
+	w.layout.Init(writable, o)
 	w.dataFlush = block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	w.indexFlush = block.MakeFlushGovernor(o.IndexBlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	w.dataBlock.Init(o.KeySchema)
@@ -150,7 +152,7 @@ func newColumnarWriter(
 	if !o.DisableValueBlocks {
 		w.valueBlock = valblk.NewWriter(
 			block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
-			&w.compressor, w.opts.Checksum, func(compressedSize int) {})
+			&w.compressor, &w.checksummer, func(compressedSize int) {})
 	}
 	if o.FilterPolicy != base.NoFilterPolicy {
 		switch o.FilterType {
@@ -197,6 +199,7 @@ func newColumnarWriter(
 	go w.drainWriteQueue()
 
 	w.compressor = block.MakeCompressor(w.opts.Compression)
+	w.checksummer.Init(w.opts.Checksum)
 	return w
 }
 
@@ -724,13 +727,12 @@ func (w *RawColumnWriter) enqueueDataBlock(
 
 	// Serialize the data block, compress it and send it to the write queue.
 	cb := compressedBlockPool.Get().(*compressedBlock)
-	cb.blockBuf.checksummer.Type = w.opts.Checksum
 	cb.physical = block.CompressAndChecksum(
 		&cb.blockBuf.dataBuf,
 		serializedBlock,
 		blockkind.SSTableData,
 		&w.compressor,
-		&cb.blockBuf.checksummer,
+		&w.checksummer,
 	)
 	return w.enqueuePhysicalBlock(cb, separator)
 }
@@ -1265,13 +1267,12 @@ func (w *RawColumnWriter) copyDataBlocks(
 func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
 	// Serialize the data block, compress it and send it to the write queue.
 	cb := compressedBlockPool.Get().(*compressedBlock)
-	cb.blockBuf.checksummer.Type = w.opts.Checksum
 	cb.physical = block.CompressAndChecksum(
 		&cb.blockBuf.dataBuf,
 		b,
 		blockkind.SSTableData,
 		&w.compressor,
-		&cb.blockBuf.checksummer,
+		&w.checksummer,
 	)
 	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
 		return err

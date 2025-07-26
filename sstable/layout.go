@@ -810,9 +810,10 @@ type layoutWriter struct {
 	cacheOpts sstableinternal.CacheOptions
 
 	// options copied from WriterOptions
-	tableFormat  TableFormat
-	compressor   block.Compressor
-	checksumType block.ChecksumType
+	tableFormat TableFormat
+
+	compressor  block.Compressor
+	checksummer block.Checksummer
 
 	// Attribute bitset of the sstable, derived from sstable Properties at the time
 	// of writing.
@@ -832,17 +833,13 @@ type layoutWriter struct {
 	buf                  blockBuf
 }
 
-func makeLayoutWriter(w objstorage.Writable, opts WriterOptions) layoutWriter {
-	return layoutWriter{
-		writable:     w,
-		cacheOpts:    opts.internal.CacheOpts,
-		tableFormat:  opts.TableFormat,
-		compressor:   block.MakeCompressor(opts.Compression),
-		checksumType: opts.Checksum,
-		buf: blockBuf{
-			checksummer: block.Checksummer{Type: opts.Checksum},
-		},
-	}
+func (w *layoutWriter) Init(writable objstorage.Writable, opts WriterOptions) {
+	*w = layoutWriter{}
+	w.writable = writable
+	w.cacheOpts = opts.internal.CacheOpts
+	w.tableFormat = opts.TableFormat
+	w.compressor = block.MakeCompressor(opts.Compression)
+	w.checksummer.Init(opts.Checksum)
 }
 
 type metaIndexHandle struct {
@@ -971,7 +968,7 @@ func (w *layoutWriter) WriteValueIndexBlock(
 
 // writeBlock checksums, compresses, and writes out a block.
 func (w *layoutWriter) writeBlock(b []byte, kind block.Kind, buf *blockBuf) (block.Handle, error) {
-	pb := block.CompressAndChecksum(&buf.dataBuf, b, kind, &w.compressor, &buf.checksummer)
+	pb := block.CompressAndChecksum(&buf.dataBuf, b, kind, &w.compressor, &w.checksummer)
 	h, err := w.writePrecompressedBlock(pb)
 	return h, err
 }
@@ -980,7 +977,7 @@ func (w *layoutWriter) writeBlock(b []byte, kind block.Kind, buf *blockBuf) (blo
 func (w *layoutWriter) writeBlockUncompressed(
 	b []byte, kind block.Kind, buf *blockBuf,
 ) (block.Handle, error) {
-	pb := block.CopyAndChecksum(&buf.dataBuf, b, kind, &w.compressor, &buf.checksummer)
+	pb := block.CopyAndChecksum(&buf.dataBuf, b, kind, &w.compressor, &w.checksummer)
 	h, err := w.writePrecompressedBlock(pb)
 	return h, err
 }
@@ -1072,7 +1069,7 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    w.checksumType,
+		checksum:    w.checksummer.Type,
 		metaindexBH: metaIndexHandle,
 		indexBH:     w.lastIndexBlockHandle,
 		attributes:  w.attributes,
