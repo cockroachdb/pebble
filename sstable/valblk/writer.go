@@ -21,7 +21,7 @@ type Writer struct {
 	blockFinishedFunc func(compressedSize int)
 
 	compressor  *block.Compressor
-	checksummer block.Checksummer
+	checksummer *block.Checksummer
 	// buf is the current block being written to (uncompressed).
 	buf *block.TempBuffer
 	// Sequence of blocks that are finished.
@@ -47,7 +47,7 @@ var valueBlockWriterPool = sync.Pool{
 func NewWriter(
 	flushGovernor block.FlushGovernor,
 	compressor *block.Compressor,
-	checksumType block.ChecksumType,
+	checksummer *block.Checksummer,
 	// compressedSize should exclude the block trailer.
 	blockFinishedFunc func(compressedSize int),
 ) *Writer {
@@ -55,10 +55,10 @@ func NewWriter(
 	*w = Writer{
 		flush:             flushGovernor,
 		compressor:        compressor,
+		checksummer:       checksummer,
 		blockFinishedFunc: blockFinishedFunc,
 		blocks:            w.blocks[:0],
 	}
-	w.checksummer.Init(checksumType)
 	w.buf = block.NewTempBuffer()
 	return w
 }
@@ -93,7 +93,7 @@ func (w *Writer) Size() uint64 {
 
 func (w *Writer) compressAndFlush() {
 	physicalBlock, bufHandle := block.CompressAndChecksumToTempBuffer(
-		w.buf.Data(), blockkind.SSTableValue, w.compressor, &w.checksummer,
+		w.buf.Data(), blockkind.SSTableValue, w.compressor, w.checksummer,
 	)
 	w.buf.Reset()
 	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
@@ -170,7 +170,7 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 	if len(b) != 0 {
 		panic("incorrect length calculation")
 	}
-	pb, bufHandle := block.CopyAndChecksumToTempBuffer(w.buf.Data(), blockkind.Metadata, w.compressor, &w.checksummer)
+	pb, bufHandle := block.CopyAndChecksumToTempBuffer(w.buf.Data(), blockkind.Metadata, w.compressor, w.checksummer)
 	if _, err := layout.WriteValueIndexBlock(pb, h); err != nil {
 		return IndexHandle{}, err
 	}

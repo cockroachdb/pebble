@@ -600,7 +600,7 @@ func TestBlockBufClear(t *testing.T) {
 
 func TestClearDataBlockBuf(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	d := newDataBlockBuf(1, block.ChecksumTypeCRC32c)
+	d := newDataBlockBuf(1)
 	d.blockBuf.dataBuf = make([]byte, 1)
 	require.NoError(t, d.dataBlock.Add(ikey("apple"), nil))
 	require.NoError(t, d.dataBlock.Add(ikey("banana"), nil))
