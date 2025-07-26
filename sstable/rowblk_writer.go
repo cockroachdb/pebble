@@ -56,7 +56,6 @@ type RawRowWriter struct {
 	isStrictObsolete     bool
 	writingToLowestLevel bool
 	restartInterval      int
-	checksumType         block.ChecksumType
 	// disableKeyOrderChecks disables the checks that keys are added to an
 	// sstable in order. It is intended for internal use only in the construction
 	// of invalid sstables for testing. See tool/make_test_sstables.go.
@@ -411,8 +410,7 @@ type blockBuf struct {
 	// compression is not used) for storing a copy of the data. It is re-used over
 	// the lifetime of the blockBuf, avoiding the allocation of a temporary buffer
 	// for each block.
-	dataBuf     []byte
-	checksummer block.Checksummer
+	dataBuf []byte
 }
 
 func (b *blockBuf) clear() {
@@ -477,10 +475,9 @@ var dataBlockBufPool = sync.Pool{
 	},
 }
 
-func newDataBlockBuf(restartInterval int, checksumType block.ChecksumType) *dataBlockBuf {
+func newDataBlockBuf(restartInterval int) *dataBlockBuf {
 	d := dataBlockBufPool.Get().(*dataBlockBuf)
 	d.dataBlock.RestartInterval = restartInterval
-	d.checksummer.Type = checksumType
 	return d
 }
 
@@ -488,8 +485,10 @@ func (d *dataBlockBuf) finish() {
 	d.uncompressed = d.dataBlock.Finish()
 }
 
-func (d *dataBlockBuf) compressAndChecksum(compressor *block.Compressor) {
-	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, blockkind.SSTableData, compressor, &d.checksummer)
+func (d *dataBlockBuf) compressAndChecksum(
+	compressor *block.Compressor, checksummer *block.Checksummer,
+) {
+	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, blockkind.SSTableData, compressor, checksummer)
 }
 
 func (d *dataBlockBuf) shouldFlush(
@@ -994,7 +993,7 @@ func (w *RawRowWriter) flush(key InternalKey) error {
 	}
 	w.dataBlockBuf.finish()
 	w.maybeIncrementTombstoneDenseBlocks()
-	w.dataBlockBuf.compressAndChecksum(&w.layout.compressor)
+	w.dataBlockBuf.compressAndChecksum(&w.layout.compressor, &w.layout.checksummer)
 	// Since dataBlockEstimates.addInflightDataBlock was never called, the
 	// inflightSize is set to 0.
 	w.coordination.sizeEstimate.dataBlockCompressed(w.dataBlockBuf.physical.LengthWithoutTrailer(), 0)
@@ -1053,7 +1052,7 @@ func (w *RawRowWriter) flush(key InternalKey) error {
 
 	w.dataBlockBuf = nil
 	err = w.coordination.writeQueue.addSync(writeTask)
-	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
+	w.dataBlockBuf = newDataBlockBuf(w.restartInterval)
 
 	return err
 }
@@ -1679,7 +1678,6 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	}
 	o = o.ensureDefaults()
 	w := &RawRowWriter{
-		layout: makeLayoutWriter(writable, o),
 		meta: WriterMetadata{
 			SmallestSeqNum: math.MaxUint64,
 		},
@@ -1694,7 +1692,6 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		isStrictObsolete:           o.IsStrictObsolete,
 		writingToLowestLevel:       o.WritingToLowestLevel,
 		restartInterval:            o.BlockRestartInterval,
-		checksumType:               o.Checksum,
 		disableKeyOrderChecks:      o.internal.DisableKeyOrderChecks,
 		indexBlock:                 newIndexBlockBuf(),
 		rangeDelBlock:              rowblk.Writer{RestartInterval: 1},
@@ -1704,6 +1701,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		numDeletionsThreshold:      o.NumDeletionsThreshold,
 		deletionSizeRatioThreshold: o.DeletionSizeRatioThreshold,
 	}
+	w.layout.Init(writable, o)
 	w.dataFlush = block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	w.indexFlush = block.MakeFlushGovernor(o.IndexBlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	if w.tableFormat >= TableFormatPebblev3 {
@@ -1711,18 +1709,14 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 		if !o.DisableValueBlocks {
 			w.valueBlockWriter = valblk.NewWriter(
 				block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
-				&w.layout.compressor, w.checksumType, func(compressedSize int) {
+				&w.layout.compressor, &w.layout.checksummer, func(compressedSize int) {
 					w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
 				},
 			)
 		}
 	}
 
-	w.dataBlockBuf = newDataBlockBuf(w.restartInterval, w.checksumType)
-
-	w.blockBuf = blockBuf{
-		checksummer: block.Checksummer{Type: o.Checksum},
-	}
+	w.dataBlockBuf = newDataBlockBuf(w.restartInterval)
 
 	w.coordination.init(w)
 	defer func() {
@@ -1929,7 +1923,7 @@ func (w *RawRowWriter) copyDataBlocks(
 func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
 	blockBuf := &w.dataBlockBuf.blockBuf
 	pb := block.CompressAndChecksum(
-		&blockBuf.dataBuf, b, blockkind.SSTableData, &w.layout.compressor, &blockBuf.checksummer,
+		&blockBuf.dataBuf, b, blockkind.SSTableData, &w.layout.compressor, &w.layout.checksummer,
 	)
 
 	// layout.WriteDataBlock keeps layout.offset up-to-date for us.
