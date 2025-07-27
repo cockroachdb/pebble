@@ -790,24 +790,21 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	return start, end, rewritten, nil
 }
 
-// dataBlockDecoderSize is the size of DataBlockDecoder, round up to 8 bytes.
-const dataBlockDecoderSize = (unsafe.Sizeof(DataBlockDecoder{}) + 7) &^ 7
+type blockDecoderAndKeySeekerMetadata struct {
+	d DataBlockDecoder
+	// Pad to ensure KeySeekerMetadata is 8-byte aligned.
+	_             [(8 - unsafe.Sizeof(DataBlockDecoder{})%8) % 8]byte
+	keySchemaMeta KeySeekerMetadata
+}
 
-// Assert that dataBlockDecoderSize is a multiple of 8 bytes (so that
-// KeySeekerMetadata is also aligned).
-const _ uint = uint(-(dataBlockDecoderSize % 8))
+// Assert that keySchemaMeta is aligned to 8 bytes.
+const _ uint = uint(-(unsafe.Offsetof(blockDecoderAndKeySeekerMetadata{}.keySchemaMeta) % 8))
 
-// Assert that a DataBlockDecoder and a KeySeekerMetadata can fit inside block.Metadata.
-const _ uint = block.MetadataSize - uint(dataBlockDecoderSize) - KeySeekerMetadataSize
+// Assert that blockDecoderAndKeySeekerMetadata fit inside block.Metadata.
+const _ uint = block.MetadataSize - uint(unsafe.Sizeof(blockDecoderAndKeySeekerMetadata{}))
 
 // InitDataBlockMetadata initializes the metadata for a data block.
 func InitDataBlockMetadata(schema *KeySchema, md *block.Metadata, data []byte) (err error) {
-	type blockDecoderAndKeySeekerMetadata struct {
-		d DataBlockDecoder
-		// Pad to ensure KeySeekerMetadata is 8-byte aligned.
-		_             [dataBlockDecoderSize - unsafe.Sizeof(DataBlockDecoder{})]byte
-		keySchemaMeta KeySeekerMetadata
-	}
 	metadatas := block.CastMetadataZero[blockDecoderAndKeySeekerMetadata](md)
 	// Initialization can panic; convert panics to corruption errors (so higher
 	// layers can add file number and offset information).
@@ -1095,9 +1092,9 @@ func (i *DataBlockIter) InitHandle(
 ) error {
 	i.suffixCmp = comparer.ComparePointSuffixes
 	i.split = comparer.Split
-	blockMeta := h.BlockMetadata()
-	i.d = (*DataBlockDecoder)(unsafe.Pointer(blockMeta))
-	keySeekerMeta := (*KeySeekerMetadata)(blockMeta[unsafe.Sizeof(DataBlockDecoder{}):])
+	blockMeta := (*blockDecoderAndKeySeekerMetadata)(unsafe.Pointer(h.BlockMetadata()))
+	i.d = &blockMeta.d
+	keySeekerMeta := &blockMeta.keySchemaMeta
 	i.h.Release()
 	i.h = h
 

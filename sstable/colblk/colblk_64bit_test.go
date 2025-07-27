@@ -6,8 +6,12 @@
 
 package colblk
 
-import "github.com/cockroachdb/pebble/sstable/block"
+import (
+	"unsafe"
+
+	"github.com/cockroachdb/pebble/sstable/block"
+)
 
 // Assert that block.MetadataSize is not larger than it needs to be on a 64-bit
 // platform.
-const _ uint = uint(dataBlockDecoderSize) + KeySeekerMetadataSize - block.MetadataSize
+const _ uint = uint(unsafe.Sizeof(blockDecoderAndKeySeekerMetadata{})) - block.MetadataSize
