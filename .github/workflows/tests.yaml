@@ -56,7 +56,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -80,7 +80,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly linux-32bit test failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -104,7 +104,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly linux-arm test failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -131,7 +131,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly crossversion test failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -155,7 +155,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -179,7 +179,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -203,7 +203,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -227,7 +227,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
   lint-checks:
@@ -254,7 +254,7 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} test failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
 
 
@@ -284,5 +284,5 @@ jobs:
         uses: ./.github/actions/post-issue
         with:
           title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} failed"
-          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           labels: "C-test-failure"
