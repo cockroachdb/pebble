@@ -3214,16 +3214,23 @@ func TestCompactionCorruption(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			var valSeed [32]byte
+			for i := range valSeed {
+				valSeed[i] = byte(rand.Uint32())
+			}
+			cha := rand.NewChaCha8(valSeed)
 			for !shouldStop.Load() {
+				time.Sleep(time.Millisecond)
+				if m := d.Metrics(); m.Compact.NumInProgress > 0 {
+					// Pause the workload while there are compactions happening (we run
+					// the risk of compactions not keeping up).
+					continue
+				}
 				b := d.NewBatch()
 				// Write a random key of the form a012345 and flush it. This will result
 				// in (mostly) non-overlapping tables in L0.
-				var valSeed [32]byte
-				for i := range valSeed {
-					valSeed[i] = byte(rand.Uint32())
-				}
-				v := make([]byte, 1024+rand.IntN(10240))
-				_, _ = rand.NewChaCha8(valSeed).Read(v)
+				v := make([]byte, 1+int(100*rand.ExpFloat64()))
+				_, _ = cha.Read(v)
 				key := fmt.Sprintf("%c%06d", minKey+byte(rand.IntN(int(maxKey-minKey+1))), rand.IntN(1000000))
 				if err := b.Set([]byte(key), v, nil); err != nil {
 					panic(err)
@@ -3234,7 +3241,6 @@ func TestCompactionCorruption(t *testing.T) {
 				if err := d.Flush(); err != nil {
 					panic(err)
 				}
-				time.Sleep(10 * time.Millisecond)
 			}
 		}()
 		return func() {
