@@ -222,6 +222,9 @@ func DecodePrefixBytes(
 		rows:       count,
 		rawBytes:   rb,
 	}
+	if invariants.Enabled && pb.rawBytes.slices == 0 {
+		panic(fmt.Sprintf("expected at least one slice in PrefixBytes, got %d (count=%d nBundles=%d)", pb.rawBytes.slices, count, nBundles))
+	}
 	pb.sharedPrefixLen = int(pb.rawBytes.offsets.At(0))
 	return pb, endOffset
 }
