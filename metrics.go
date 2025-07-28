@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"slices"
 	"time"
 	"unsafe"
 
@@ -655,19 +656,9 @@ var (
 		table.Bytes("sstsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesFlushed + m.TableBytesCompacted }),
 		table.Bytes("blobsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesFlushed + m.BlobBytesCompacted }),
 	)
-	compactionKindTable = table.Define[compactionKindsInfo](
-		table.String("kind", 6, table.AlignRight, func(i compactionKindsInfo) string { return "count" }),
-		table.Div(),
-		table.String("default", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.def }),
-		table.String("delete", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.delete }),
-		table.String("elision", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.elision }),
-		table.String("copy", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.copy }),
-		table.String("move", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.move }),
-		table.String("read", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.read }),
-		table.String("tomb", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.tombstone }),
-		table.String("rewrite", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.rewrite }),
-		table.String("multi", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.multilevel }),
-		table.String("blob", 8, table.AlignRight, func(i compactionKindsInfo) string { return i.blob }),
+	compactionKindTable = table.Define[pair[string, int64]](
+		table.String("kind", 5, table.AlignRight, func(p pair[string, int64]) string { return p.k }),
+		table.Count("count", 5, table.AlignRight, func(p pair[string, int64]) int64 { return p.v }),
 	)
 	commitPipelineInfoTableTopHeader = `COMMIT PIPELINE`
 	commitPipelineInfoTableSubHeader = `               wals                |              memtables              |       ingestions`
@@ -761,19 +752,6 @@ var (
 	)
 )
 
-type compactionKindsInfo struct {
-	def        string
-	delete     string
-	elision    string
-	copy       string
-	move       string
-	read       string
-	tombstone  string
-	rewrite    string
-	multilevel string
-	blob       string
-}
-
 type commitPipelineInfo struct {
 	files     string
 	written   string
@@ -837,6 +815,11 @@ type keysInfo struct {
 	rangeDels          string
 }
 
+type pair[k, v any] struct {
+	k k
+	v v
+}
+
 // String pretty-prints the metrics.
 //
 // See testdata/metrics for an example.
@@ -883,21 +866,20 @@ func (m *Metrics) String() string {
 	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, compactionLevelIter)
 	cur.Offset(-1, 0).WriteString("total")
 
-	compactionKindsContents := compactionKindsInfo{
-		def:        humanizeCount(m.Compact.DefaultCount).String(),
-		delete:     humanizeCount(m.Compact.DeleteOnlyCount).String(),
-		elision:    humanizeCount(m.Compact.ElisionOnlyCount).String(),
-		copy:       humanizeCount(m.Compact.CopyCount).String(),
-		move:       humanizeCount(m.Compact.MoveCount).String(),
-		read:       humanizeCount(m.Compact.ReadCount).String(),
-		tombstone:  humanizeCount(m.Compact.TombstoneDensityCount).String(),
-		rewrite:    humanizeCount(m.Compact.RewriteCount).String(),
-		multilevel: humanizeCount(m.Compact.MultiLevelCount).String(),
-		blob:       humanizeCount(m.Compact.BlobFileRewriteCount).String(),
-	}
-
 	cur = cur.NewlineReturn()
-	cur = compactionKindTable.Render(cur, table.RenderOptions{}, oneItemIter(compactionKindsContents))
+	compactionKindContents := []pair[string, int64]{
+		{k: "default", v: m.Compact.DefaultCount},
+		{k: "delete", v: m.Compact.DeleteOnlyCount},
+		{k: "elision", v: m.Compact.ElisionOnlyCount},
+		{k: "move", v: m.Compact.MoveCount},
+		{k: "read", v: m.Compact.ReadCount},
+		{k: "tomb", v: m.Compact.TombstoneDensityCount},
+		{k: "rewrite", v: m.Compact.RewriteCount},
+		{k: "copy", v: m.Compact.CopyCount},
+		{k: "multi", v: m.Compact.MultiLevelCount},
+		{k: "blob", v: m.Compact.BlobFileRewriteCount},
+	}
+	cur = compactionKindTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compactionKindContents))
 	cur = cur.NewlineReturn()
 
 	commitPipelineInfoContents := commitPipelineInfo{
