@@ -180,9 +180,11 @@ func TestBlobFileSet_Lookup(t *testing.T) {
 	const numBlobFiles = 10000
 	set, files := makeTestBlobFiles(numBlobFiles)
 	for i := 0; i < numBlobFiles; i++ {
-		fn, ok := set.Lookup(base.BlobFileID(i))
+		obj, ok := set.Lookup(base.BlobFileID(i))
 		require.True(t, ok)
-		require.Equal(t, files[i].FileNum, fn.DiskFileNum())
+		ftyp, fileNum := obj.FileInfo()
+		require.Equal(t, base.FileTypeBlob, ftyp)
+		require.Equal(t, files[i].FileNum, fileNum)
 	}
 }
 

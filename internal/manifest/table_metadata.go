@@ -326,6 +326,11 @@ func (m *TableMetadata) EstimatedReferenceSize() uint64 {
 	return size
 }
 
+// ObjectInfo implements the base.ObjectInfo interface.
+func (m *TableMetadata) FileInfo() (base.FileType, base.DiskFileNum) {
+	return base.FileTypeTable, m.TableBacking.DiskFileNum
+}
+
 // TableBacking either backs a single physical sstable, or one or more virtual
 // sstables.
 //

@@ -228,9 +228,10 @@ var _ blob.ReaderProvider = (*debugReaderProvider)(nil)
 // GetValueReader returns a blob.ValueReader for a blob file identified by
 // fileNum.
 func (p *debugReaderProvider) GetValueReader(
-	ctx context.Context, fileNum base.DiskFileNum,
+	ctx context.Context, diskFile base.ObjectInfo,
 ) (blob.ValueReader, func(), error) {
-	readable, err := p.objProvider.OpenForReading(ctx, base.FileTypeBlob, fileNum, objstorage.OpenOptions{})
+	ftyp, fileNum := diskFile.FileInfo()
+	readable, err := p.objProvider.OpenForReading(ctx, ftyp, fileNum, objstorage.OpenOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

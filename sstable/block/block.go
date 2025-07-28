@@ -275,8 +275,8 @@ type ReadEnv struct {
 	// whenever an SSTable corruption is detected. The argument is used to avoid
 	// allocating a separate function for each object. It returns an error with
 	// more details.
-	ReportCorruptionFn  func(opaque any, err error) error
-	ReportCorruptionArg any
+	ReportCorruptionFn  func(base.ObjectInfo, error) error
+	ReportCorruptionArg base.ObjectInfo
 }
 
 // BlockServedFromCache updates the stats when a block was found in the cache.

@@ -64,19 +64,43 @@ func (id BlobFileID) SafeFormat(w redact.SafePrinter, _ rune) {
 // manifest.
 type BlobReferenceID uint32
 
-// DiskFile is an interface that provides access to a disk file number.
-type DiskFile interface {
-	// DiskFileNum returns the disk file number.
-	DiskFileNum() DiskFileNum
+// ObjectInfo is an interface that provides access to information about an
+// object (a sstable or blob file).
+type ObjectInfo interface {
+	// FileInfo returns the type and file number of the object.
+	FileInfo() (FileType, DiskFileNum)
+
+	// UserKeyBounds returns the user key bounds of the object.
+	UserKeyBounds() UserKeyBounds
+}
+
+// ObjectInfoLiteral is a concrete implementation of ObjectInfo. It's provided
+// for use in tests, tools, etc. Most code should use either
+// *manifest.TableMetadata or *manifest.PhysicalBlobFile to satisfy the ObjectInfo
+// interface.
+type ObjectInfoLiteral struct {
+	FileType    FileType
+	DiskFileNum DiskFileNum
+	Bounds      UserKeyBounds
+}
+
+// FileInfo returns the type and file number of the object.
+func (o ObjectInfoLiteral) FileInfo() (FileType, DiskFileNum) {
+	return o.FileType, o.DiskFileNum
+}
+
+// UserKeyBounds returns the user key bounds of the object.
+func (o ObjectInfoLiteral) UserKeyBounds() UserKeyBounds {
+	return o.Bounds
 }
 
 // BlobFileMapping defines the mapping between blob file IDs and disk file numbers.
 // It's implemented by *manifest.BlobFileSet.
 type BlobFileMapping interface {
-	// Lookup returns a DiskFile for the given blob file ID. It
+	// Lookup returns a ObjectInfo for the given blob file ID. It
 	// returns false for the second return value if the blob file ID is not
 	// present in the mapping.
-	Lookup(BlobFileID) (DiskFile, bool)
+	Lookup(BlobFileID) (ObjectInfo, bool)
 }
 
 // A DiskFileNum identifies a file or object with exists on disk.
@@ -87,11 +111,6 @@ func (dfn DiskFileNum) String() string { return fmt.Sprintf("%06d", dfn) }
 // SafeFormat implements redact.SafeFormatter.
 func (dfn DiskFileNum) SafeFormat(w redact.SafePrinter, verb rune) {
 	w.Printf("%06d", redact.SafeUint(dfn))
-}
-
-// DiskFileNum implements the DiskFile interface.
-func (fdn DiskFileNum) DiskFileNum() DiskFileNum {
-	return fdn
 }
 
 // FileType enumerates the types of files found in a DB.
