@@ -296,7 +296,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 			base.MakeInternalKey(keys[i], base.SeqNum(i), base.InternalKeyKindSet),
 			blob.InlineHandle{
 				InlineHandlePreface: blob.InlineHandlePreface{
-					ReferenceID: blob.ReferenceID(0),
+					ReferenceID: base.BlobReferenceID(0),
 					ValueLen:    uint32(len(values[i])),
 				},
 				HandleSuffix: blob.HandleSuffix{
@@ -415,11 +415,11 @@ func TestBlobRewriteRandomized(t *testing.T) {
 	}
 }
 
-// constantFileMapping implements blob.FileMapping and always maps to itself.
+// constantFileMapping implements base.BlobFileMapping and always maps to itself.
 type constantFileMapping base.DiskFileNum
 
-// Assert that (*inputFileMapping) implements blob.FileMapping.
-var _ blob.FileMapping = constantFileMapping(0)
+// Assert that (*inputFileMapping) implements base.BlobFileMapping.
+var _ base.BlobFileMapping = constantFileMapping(0)
 
 func (m constantFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
 	return base.DiskFileNum(m), true

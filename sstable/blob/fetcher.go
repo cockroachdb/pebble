@@ -38,15 +38,6 @@ type ValueReader interface {
 	ReadIndexBlock(context.Context, block.ReadEnv, objstorage.ReadHandle) (block.BufferHandle, error)
 }
 
-// A FileMapping defines the mapping between blob file IDs and disk file numbers.
-// It's implemented by *manifest.BlobFileSet.
-type FileMapping interface {
-	// Lookup returns the disk file number for the given blob file ID. It
-	// returns false for the second return value if the blob file ID is not
-	// present in the mapping.
-	Lookup(base.BlobFileID) (base.DiskFileNum, bool)
-}
-
 // A ReaderProvider is an interface that can be used to retrieve a ValueReader
 // for a given file number.
 type ReaderProvider interface {
@@ -64,7 +55,7 @@ type ReaderProvider interface {
 // When finished with a ValueFetcher, one must call Close to release all cached
 // readers and block buffers.
 type ValueFetcher struct {
-	fileMapping    FileMapping
+	fileMapping    base.BlobFileMapping
 	readerProvider ReaderProvider
 	env            block.ReadEnv
 	fetchCount     int
@@ -78,7 +69,7 @@ type ValueFetcher struct {
 var _ base.ValueFetcher = (*ValueFetcher)(nil)
 
 // Init initializes the ValueFetcher.
-func (r *ValueFetcher) Init(fm FileMapping, rp ReaderProvider, env block.ReadEnv) {
+func (r *ValueFetcher) Init(fm base.BlobFileMapping, rp ReaderProvider, env block.ReadEnv) {
 	r.fileMapping = fm
 	r.readerProvider = rp
 	r.env = env

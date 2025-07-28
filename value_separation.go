@@ -362,7 +362,7 @@ type preserveBlobReferences struct {
 	buf []byte
 	// currReferences holds the pending references that have been referenced by
 	// the current output sstable. The index of a reference with a given blob
-	// file ID is the value of the blob.ReferenceID used by its value handles
+	// file ID is the value of the base.BlobReferenceID used by its value handles
 	// within the output sstable.
 	currReferences []pendingReference
 	// totalValueSize is the sum of currReferenceValueSizes.
@@ -428,13 +428,13 @@ func (vs *preserveBlobReferences) Add(
 	lv := kv.V.LazyValue()
 	fileID := lv.Fetcher.BlobFileID
 
-	var refID blob.ReferenceID
+	var refID base.BlobReferenceID
 	if refIdx := slices.IndexFunc(vs.currReferences, func(ref pendingReference) bool {
 		return ref.blobFileID == fileID
 	}); refIdx != -1 {
-		refID = blob.ReferenceID(refIdx)
+		refID = base.BlobReferenceID(refIdx)
 	} else {
-		refID = blob.ReferenceID(len(vs.currReferences))
+		refID = base.BlobReferenceID(len(vs.currReferences))
 		vs.currReferences = append(vs.currReferences, pendingReference{
 			blobFileID: fileID,
 			valueSize:  0,
