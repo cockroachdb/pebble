@@ -425,13 +425,13 @@ func (r *Reader) readValueBlock(
 func (r *Reader) ReadBlobRefIndexBlock(
 	ctx context.Context, env block.ReadEnv,
 ) (block.BufferHandle, error) {
-	return r.readBlobRefIndexBlock(ctx, env, noReadHandle)
+	return r.readBlobRefIndexBlock(ctx, env, noReadHandle, r.blobRefIndexBH)
 }
 
 func (r *Reader) readBlobRefIndexBlock(
-	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle,
+	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
-	return r.blockReader.Read(ctx, env, readHandle, r.blobRefIndexBH, blockkind.BlobReferenceValueLivenessIndex, noInitBlockMetadataFn)
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.BlobReferenceValueLivenessIndex, noInitBlockMetadataFn)
 }
 
 // metaBufferPools is a sync pool of BufferPools used exclusively when opening a
@@ -756,7 +756,7 @@ func (r *Reader) ValidateBlockChecksums() error {
 	})
 	blocks = append(blocks, blk{
 		bh:     l.BlobReferenceIndex,
-		readFn: readNoInit,
+		readFn: r.readBlobRefIndexBlock,
 	})
 
 	// Sorting by offset ensures we are performing a sequential scan of the
