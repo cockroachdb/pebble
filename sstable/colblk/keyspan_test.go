@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,9 +60,9 @@ func TestKeyspanBlock(t *testing.T) {
 			td.MaybeScanArgs(t, "synthetic-seq-num", &syntheticSeqNum)
 			td.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 			td.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
-			transforms := block.FragmentIterTransforms{
-				SyntheticSeqNum:          block.SyntheticSeqNum(syntheticSeqNum),
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
+			transforms := blockiter.FragmentTransforms{
+				SyntheticSeqNum:          blockiter.SyntheticSeqNum(syntheticSeqNum),
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
 			}
 			iter.init(base.DefaultComparer.Compare, &kr, transforms)
 			return keyspan.RunFragmentIteratorCmd(&iter, td.Input, nil)
@@ -95,7 +96,7 @@ func TestKeyspanBlockPooling(t *testing.T) {
 	getBlockAndIterate := func() {
 		cv := ch.Get(base.DiskFileNum(1), 0)
 		require.NotNil(t, cv)
-		it := NewKeyspanIter(testkeys.Comparer.Compare, block.CacheBufferHandle(cv), block.NoFragmentTransforms)
+		it := NewKeyspanIter(testkeys.Comparer.Compare, block.CacheBufferHandle(cv), blockiter.NoFragmentTransforms)
 		defer it.Close()
 		s, err := it.First()
 		require.NoError(t, err)
@@ -167,7 +168,7 @@ func benchmarkKeyspanBlockRangeDeletions(b *testing.B, numSpans, keysPerSpan, ke
 	kr.Init(w.Finish())
 
 	var it KeyspanIter
-	it.init(base.DefaultComparer.Compare, &kr, block.NoFragmentTransforms)
+	it.init(base.DefaultComparer.Compare, &kr, blockiter.NoFragmentTransforms)
 	b.Run("SeekGE", func(b *testing.B) {
 		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 

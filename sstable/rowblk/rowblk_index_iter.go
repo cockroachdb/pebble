@@ -19,13 +19,13 @@ type IndexIter struct {
 var _ blockiter.Index = (*IndexIter)(nil)
 
 // Init initializes an iterator from the provided block data slice.
-func (i *IndexIter) Init(c *base.Comparer, blk []byte, transforms block.IterTransforms) error {
+func (i *IndexIter) Init(c *base.Comparer, blk []byte, transforms blockiter.Transforms) error {
 	return i.iter.Init(c.Compare, c.ComparePointSuffixes, c.Split, blk, transforms)
 }
 
 // InitHandle initializes an iterator from the provided block handle.
 func (i *IndexIter) InitHandle(
-	comparer *base.Comparer, block block.BufferHandle, transforms block.IterTransforms,
+	comparer *base.Comparer, block block.BufferHandle, transforms blockiter.Transforms,
 ) error {
 	return i.iter.InitHandle(comparer, block, transforms)
 }

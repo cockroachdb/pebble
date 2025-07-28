@@ -462,7 +462,7 @@ func formatColblkDataBlock(
 	if fmtKV != nil {
 		var iter colblk.DataBlockIter
 		iter.InitOnce(r.keySchema, r.Comparer, describingLazyValueHandler{})
-		if err := iter.Init(&decoder, block.IterTransforms{}); err != nil {
+		if err := iter.Init(&decoder, blockiter.Transforms{}); err != nil {
 			return err
 		}
 		defer func() { _ = iter.Close() }()
@@ -696,10 +696,10 @@ func newIndexIter(
 	var err error
 	if tableFormat <= TableFormatPebblev4 {
 		iter = new(rowblk.IndexIter)
-		err = iter.Init(comparer, data, block.NoTransforms)
+		err = iter.Init(comparer, data, blockiter.NoTransforms)
 	} else {
 		iter = new(colblk.IndexIter)
-		err = iter.Init(comparer, data, block.NoTransforms)
+		err = iter.Init(comparer, data, blockiter.NoTransforms)
 	}
 	if err != nil {
 		return nil, err

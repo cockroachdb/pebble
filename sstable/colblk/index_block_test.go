@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,8 +57,8 @@ func TestIndexBlock(t *testing.T) {
 			var syntheticPrefix, syntheticSuffix string
 			d.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 			d.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
-			transforms := block.IterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
+			transforms := blockiter.Transforms{
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
 			}
 			var it IndexIter
 			it.InitWithDecoder(testkeys.Comparer, &decoder, transforms)
@@ -133,7 +134,7 @@ func TestIndexIterInitHandle(t *testing.T) {
 	getBlockAndIterate := func(it *IndexIter) {
 		cv := ch.Get(base.DiskFileNum(1), 0)
 		require.NotNil(t, cv)
-		require.NoError(t, it.InitHandle(testkeys.Comparer, block.CacheBufferHandle(cv), block.NoTransforms))
+		require.NoError(t, it.InitHandle(testkeys.Comparer, block.CacheBufferHandle(cv), blockiter.NoTransforms))
 		defer it.Close()
 		require.True(t, it.First())
 		bh, err := it.BlockHandleWithProperties()

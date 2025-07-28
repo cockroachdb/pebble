@@ -15,7 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 type methodInfo struct {
@@ -570,7 +570,7 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 			},
 		}
 		if syntheticSuffix := p.parseUserKeySuffix(p.pop(&list, token.STRING)); len(syntheticSuffix) > 0 {
-			objs[i].syntheticSuffix = block.SyntheticSuffix(syntheticSuffix)
+			objs[i].syntheticSuffix = blockiter.SyntheticSuffix(syntheticSuffix)
 		}
 
 		// NB: We cannot use p.parseUserKey for the syntheticPrefix because it
@@ -589,7 +589,7 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 			if !bytes.HasPrefix(objs[i].bounds.End, []byte(syntheticPrefix)) {
 				panic(fmt.Sprintf("invalid synthetic prefix %q %s", objs[i].bounds.End, syntheticPrefix))
 			}
-			objs[i].syntheticPrefix = block.SyntheticPrefix(syntheticPrefix)
+			objs[i].syntheticPrefix = blockiter.SyntheticPrefix(syntheticPrefix)
 		}
 	}
 	return objs

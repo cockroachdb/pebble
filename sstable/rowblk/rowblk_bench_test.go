@@ -13,7 +13,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 var (
@@ -95,8 +95,8 @@ func BenchmarkBlockIterSeekGE(b *testing.B) {
 							benchComparer.ComparePointSuffixes,
 							benchComparer.Split,
 							w.Finish(),
-							block.IterTransforms{
-								SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+							blockiter.Transforms{
+								SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 							})
 						if err != nil {
 							b.Fatal(err)
@@ -137,8 +137,8 @@ func BenchmarkBlockIterSeekLT(b *testing.B) {
 							benchComparer.ComparePointSuffixes,
 							benchComparer.Split,
 							w.Finish(),
-							block.IterTransforms{
-								SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+							blockiter.Transforms{
+								SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 							})
 						if err != nil {
 							b.Fatal(err)
@@ -186,8 +186,8 @@ func BenchmarkBlockIterNext(b *testing.B) {
 							benchComparer.ComparePointSuffixes,
 							benchComparer.Split,
 							w.Finish(),
-							block.IterTransforms{
-								SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+							blockiter.Transforms{
+								SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 							})
 						if err != nil {
 							b.Fatal(err)
@@ -223,8 +223,8 @@ func BenchmarkBlockIterPrev(b *testing.B) {
 							benchComparer.ComparePointSuffixes,
 							benchComparer.Split,
 							w.Finish(),
-							block.IterTransforms{
-								SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+							blockiter.Transforms{
+								SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 							})
 						if err != nil {
 							b.Fatal(err)

@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,14 +83,14 @@ func TestBlockFragmentIterator(t *testing.T) {
 			}
 
 		case "iter":
-			var transforms block.FragmentIterTransforms
+			var transforms blockiter.FragmentTransforms
 			var seqNum uint64
 			d.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
-			transforms.SyntheticSeqNum = block.SyntheticSeqNum(seqNum)
+			transforms.SyntheticSeqNum = blockiter.SyntheticSeqNum(seqNum)
 			var syntheticPrefix, syntheticSuffix string
 			d.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 			d.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
-			transforms.SyntheticPrefixAndSuffix = block.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix))
+			transforms.SyntheticPrefixAndSuffix = blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix))
 			if d.HasArg("invariants-only") && !invariants.Enabled {
 				// Skip testcase.
 				return d.Expected

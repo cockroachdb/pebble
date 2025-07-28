@@ -739,8 +739,8 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	// - We still need to read all the key columns in order to synthesize
 	//   [start] and [end].
 	//
-	// The columnar format is designed to support fast IterTransforms at read
-	// time, including IterTransforms.SyntheticSuffix. Our effort might be
+	// The columnar format is designed to support fast Transforms at read
+	// time, including Transforms.SyntheticSuffix. Our effort might be
 	// better spent dropping support for the physical rewriting of data blocks
 	// we're performing here and instead use a read-time IterTransform.
 
@@ -749,7 +749,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	rw.KeySchema.InitKeySeekerMetadata(meta, &rw.decoder)
 	rw.keySeeker = rw.KeySchema.KeySeeker(meta)
 	rw.encoder.Reset()
-	if err = rw.iter.Init(&rw.decoder, block.IterTransforms{}); err != nil {
+	if err = rw.iter.Init(&rw.decoder, blockiter.Transforms{}); err != nil {
 		return base.InternalKey{}, base.InternalKey{}, nil, err
 	}
 
@@ -1022,7 +1022,7 @@ type DataBlockIter struct {
 	d            *DataBlockDecoder
 	h            block.BufferHandle
 	maxRow       int
-	transforms   block.IterTransforms
+	transforms   blockiter.Transforms
 	noTransforms bool
 	keySeeker    KeySeeker
 
@@ -1057,7 +1057,7 @@ func (i *DataBlockIter) InitOnce(
 
 // Init initializes the data block iterator, configuring it to read from the
 // provided decoder.
-func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms block.IterTransforms) error {
+func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms blockiter.Transforms) error {
 	i.d = d
 	// Leave i.h unchanged.
 	numRows := int(d.d.header.Rows)
@@ -1088,7 +1088,7 @@ func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms block.IterTransform
 // assumes that the block's metadata was initialized using
 // InitDataBlockMetadata().
 func (i *DataBlockIter) InitHandle(
-	comparer *base.Comparer, h block.BufferHandle, transforms block.IterTransforms,
+	comparer *base.Comparer, h block.BufferHandle, transforms blockiter.Transforms,
 ) error {
 	i.suffixCmp = comparer.ComparePointSuffixes
 	i.split = comparer.Split
@@ -1545,7 +1545,7 @@ func (i *DataBlockIter) Close() error {
 	i.d = nil
 	i.h.Release()
 	i.h = block.BufferHandle{}
-	i.transforms = block.IterTransforms{}
+	i.transforms = blockiter.Transforms{}
 	i.kv = base.InternalKV{}
 	return nil
 }

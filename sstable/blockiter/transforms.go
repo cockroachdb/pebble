@@ -1,8 +1,8 @@
-// Copyright 2024 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// Copyright 2025 The LevelDB-Go and Pebble Authors. All rights reserved. Use
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package block
+package blockiter
 
 import (
 	"bytes"
@@ -12,12 +12,12 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
-// IterTransforms allow on-the-fly transformation of data at iteration time.
+// Transforms allow on-the-fly transformation of data at iteration time.
 //
 // These transformations could in principle be implemented as block transforms
 // (at least for non-virtual sstables), but applying them during iteration is
 // preferable.
-type IterTransforms struct {
+type Transforms struct {
 	// SyntheticSeqNum, if set, overrides the sequence number in all keys. It is
 	// set if the sstable was ingested or it is foreign.
 	SyntheticSeqNum SyntheticSeqNum
@@ -29,63 +29,63 @@ type IterTransforms struct {
 	SyntheticPrefixAndSuffix SyntheticPrefixAndSuffix
 }
 
-// NoTransforms is the default value for IterTransforms.
-var NoTransforms = IterTransforms{}
+// NoTransforms is the default value for Transforms.
+var NoTransforms = Transforms{}
 
 // NoTransforms returns true if there are no transforms enabled.
-func (t *IterTransforms) NoTransforms() bool {
+func (t *Transforms) NoTransforms() bool {
 	return t.SyntheticSeqNum == 0 &&
 		!t.HideObsoletePoints &&
 		t.SyntheticPrefixAndSuffix.IsUnset()
 }
 
-func (t *IterTransforms) HasSyntheticPrefix() bool {
+func (t *Transforms) HasSyntheticPrefix() bool {
 	return t.SyntheticPrefixAndSuffix.HasPrefix()
 }
 
-func (t *IterTransforms) SyntheticPrefix() []byte {
+func (t *Transforms) SyntheticPrefix() []byte {
 	return t.SyntheticPrefixAndSuffix.Prefix()
 }
 
-func (t *IterTransforms) HasSyntheticSuffix() bool {
+func (t *Transforms) HasSyntheticSuffix() bool {
 	return t.SyntheticPrefixAndSuffix.HasSuffix()
 }
 
-func (t *IterTransforms) SyntheticSuffix() []byte {
+func (t *Transforms) SyntheticSuffix() []byte {
 	return t.SyntheticPrefixAndSuffix.Suffix()
 }
 
-// FragmentIterTransforms allow on-the-fly transformation of range deletion or
+// FragmentTransforms allow on-the-fly transformation of range deletion or
 // range key data at iteration time.
-type FragmentIterTransforms struct {
+type FragmentTransforms struct {
 	SyntheticSeqNum          SyntheticSeqNum
 	SyntheticPrefixAndSuffix SyntheticPrefixAndSuffix
 }
 
 // NoTransforms returns true if there are no transforms enabled.
-func (t *FragmentIterTransforms) NoTransforms() bool {
+func (t *FragmentTransforms) NoTransforms() bool {
 	// NoTransforms returns true if there are no transforms enabled.
 	return t.SyntheticSeqNum == 0 && t.SyntheticPrefixAndSuffix.IsUnset()
 }
 
-func (t *FragmentIterTransforms) HasSyntheticPrefix() bool {
+func (t *FragmentTransforms) HasSyntheticPrefix() bool {
 	return t.SyntheticPrefixAndSuffix.HasPrefix()
 }
 
-func (t *FragmentIterTransforms) SyntheticPrefix() []byte {
+func (t *FragmentTransforms) SyntheticPrefix() []byte {
 	return t.SyntheticPrefixAndSuffix.Prefix()
 }
 
-func (t *FragmentIterTransforms) HasSyntheticSuffix() bool {
+func (t *FragmentTransforms) HasSyntheticSuffix() bool {
 	return t.SyntheticPrefixAndSuffix.HasSuffix()
 }
 
-func (t *FragmentIterTransforms) SyntheticSuffix() []byte {
+func (t *FragmentTransforms) SyntheticSuffix() []byte {
 	return t.SyntheticPrefixAndSuffix.Suffix()
 }
 
-// NoFragmentTransforms is the default value for IterTransforms.
-var NoFragmentTransforms = FragmentIterTransforms{}
+// NoFragmentTransforms is the default value for Transforms.
+var NoFragmentTransforms = FragmentTransforms{}
 
 // SyntheticSeqNum is used to override all sequence numbers in a table. It is
 // set to a non-zero value when the table was created externally and ingested

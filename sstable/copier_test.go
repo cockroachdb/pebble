@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -116,7 +117,7 @@ func TestCopySpan(t *testing.T) {
 				return err.Error()
 			}
 			defer r.Close()
-			iter, err := r.NewIter(block.NoTransforms, start, end, AssertNoBlobHandles)
+			iter, err := r.NewIter(blockiter.NoTransforms, start, end, AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
 			}

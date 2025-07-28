@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
@@ -88,7 +89,7 @@ func benchmarkCockroachDataRowBlockIter(b *testing.B, keyConfig KeyGenConfig, va
 	}
 	serializedBlock := w.Finish()
 	var it rowblk.Iter
-	it.Init(Compare, ComparePointSuffixes, Split, serializedBlock, block.NoTransforms)
+	it.Init(Compare, ComparePointSuffixes, Split, serializedBlock, blockiter.NoTransforms)
 	avgRowSize := float64(len(serializedBlock)) / float64(count)
 
 	b.Run("Next", func(b *testing.B) {

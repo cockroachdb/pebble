@@ -16,7 +16,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,7 +46,7 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 	writer := &Writer{RestartInterval: 1}
 	require.NoError(t, writer.Add(base.InternalKey{UserKey: largeKey}, largeValue))
 	blockData := writer.Finish()
-	iter, err := NewIter(bytes.Compare, nil, nil, blockData, block.NoTransforms)
+	iter, err := NewIter(bytes.Compare, nil, nil, blockData, blockiter.NoTransforms)
 	require.NoError(t, err, "failed to create iterator for block")
 
 	// Ensure that SeekGE() does not raise panic due to integer overflow
@@ -158,7 +158,7 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 	writer.Add(base.InternalKey{UserKey: []byte("large-kv")}, bytes.Repeat([]byte("v"), fourGB))
 
 	blockData := writer.Finish()
-	iter, err := NewIter(bytes.Compare, nil, nil, blockData, block.NoTransforms)
+	iter, err := NewIter(bytes.Compare, nil, nil, blockData, blockiter.NoTransforms)
 	require.NoError(t, err, "failed to create iterator for block")
 	require.Greater(t, int64(iter.restarts), int64(MaximumRestartOffset), "check iter.restarts > 2GiB")
 	require.Greater(t, int64(iter.restarts), int64(math.MaxUint32), "check iter.restarts > 2^32-1")

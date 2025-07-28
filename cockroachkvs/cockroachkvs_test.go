@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/olekukonko/tablewriter"
 	testify "github.com/stretchr/testify/require"
@@ -412,7 +413,7 @@ func testCockroachDataColBlock(t *testing.T, seed uint64, keyCfg KeyGenConfig) {
 		return base.MakeInPlaceValue([]byte("mock external value"))
 	}))
 	decoder.Init(&KeySchema, serializedBlock)
-	if err := it.Init(&decoder, block.IterTransforms{}); err != nil {
+	if err := it.Init(&decoder, blockiter.Transforms{}); err != nil {
 		t.Fatal(err)
 	}
 	// Scan the block using Next and ensure that all the keys values match.

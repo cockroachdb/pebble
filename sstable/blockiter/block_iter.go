@@ -21,7 +21,7 @@ type Data interface {
 	// The iterator takes ownership of the BufferHandle and releases it when it is
 	// closed (or re-initialized with another handle). This happens even in error
 	// cases.
-	InitHandle(*base.Comparer, block.BufferHandle, block.IterTransforms) error
+	InitHandle(*base.Comparer, block.BufferHandle, Transforms) error
 	// Valid returns true if the iterator is currently positioned at a valid KV.
 	Valid() bool
 	// KV returns the key-value pair at the current iterator position. The
@@ -52,13 +52,13 @@ type Data interface {
 // blocks. It's implemented by *rowblk.IndexIter and *colblk.IndexBlockIter.
 type Index interface {
 	// Init initializes the block iterator from the provided block.
-	Init(*base.Comparer, []byte, block.IterTransforms) error
+	Init(*base.Comparer, []byte, Transforms) error
 	// InitHandle initializes an iterator from the provided block handle.
 	//
 	// The iterator takes ownership of the BufferHandle and releases it when it is
 	// closed (or re-initialized with another handle). This happens even in error
 	// cases.
-	InitHandle(*base.Comparer, block.BufferHandle, block.IterTransforms) error
+	InitHandle(*base.Comparer, block.BufferHandle, Transforms) error
 	// Valid returns true if the iterator is currently positioned at a valid
 	// block handle.
 	Valid() bool

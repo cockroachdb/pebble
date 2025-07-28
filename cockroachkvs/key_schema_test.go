@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 )
 
@@ -81,7 +82,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 		case "keys":
 			var d colblk.DataBlockDecoder
 			d.Init(&KeySchema, blockData)
-			require.NoError(t, iter.Init(&d, block.IterTransforms{}))
+			require.NoError(t, iter.Init(&d, blockiter.Transforms{}))
 			defer iter.Close()
 			var buf bytes.Buffer
 			var prevKey base.InternalKey
@@ -98,7 +99,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 		case "seek":
 			var d colblk.DataBlockDecoder
 			d.Init(&KeySchema, blockData)
-			require.NoError(t, iter.Init(&d, block.IterTransforms{}))
+			require.NoError(t, iter.Init(&d, blockiter.Transforms{}))
 			defer iter.Close()
 			var buf strings.Builder
 			for _, l := range crstrings.Lines(td.Input) {
@@ -147,7 +148,7 @@ func TestKeySchema_RandomKeys(t *testing.T) {
 	dec.Init(&KeySchema, blk)
 	var it colblk.DataBlockIter
 	it.InitOnce(&KeySchema, &Comparer, nil)
-	require.NoError(t, it.Init(&dec, block.NoTransforms))
+	require.NoError(t, it.Init(&dec, blockiter.NoTransforms))
 	// Ensure that a scan across the block finds all the relevant keys.
 	var valBuf []byte
 	for k, kv := 0, it.First(); kv != nil; k, kv = k+1, it.Next() {
