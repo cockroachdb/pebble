@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 // Iter is an iterator over a single block of data.
@@ -217,8 +218,7 @@ type blockEntry struct {
 	valSize  uint32
 }
 
-// *Iter implements the block.DataBlockIterator interface.
-var _ block.DataBlockIterator = (*Iter)(nil)
+var _ blockiter.Data = (*Iter)(nil)
 
 // NewIter constructs a new row-oriented block iterator over the provided serialized block.
 func NewIter(
@@ -538,7 +538,7 @@ func (i *Iter) cacheEntry() {
 	i.cachedBuf = append(i.cachedBuf, i.key...)
 }
 
-// IsLowerBound implements the block.DataBlockIterator interface.
+// IsLowerBound implements the blockiter.Data interface.
 func (i *Iter) IsLowerBound(k []byte) bool {
 	// Note: we ignore HideObsoletePoints, but false negatives are allowed.
 	return i.cmp(i.firstUserKey, k) >= 0

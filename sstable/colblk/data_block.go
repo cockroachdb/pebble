@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 // KeySchema defines the schema of a user key, as defined by the user's
@@ -150,7 +151,7 @@ func (kcmp KeyComparison) PrefixEqual() bool { return kcmp.PrefixLen == kcmp.Com
 // seek over their decomposed keys.
 //
 // KeySeeker implementations must be safe for concurrent use by multiple
-// goroutines. In practice, multiple DataBlockIterators may use the same
+// goroutines. In practice, multiple data block iterators may use the same
 // KeySeeker.
 type KeySeeker interface {
 	// IsLowerBound returns true if all keys in the data block (after suffix
@@ -998,8 +999,7 @@ func (v *DataBlockValidator) Validate(
 	return nil
 }
 
-// Assert that *DataBlockIter implements block.DataBlockIterator.
-var _ block.DataBlockIterator = (*DataBlockIter)(nil)
+var _ blockiter.Data = (*DataBlockIter)(nil)
 
 // DataBlockIter iterates over a columnar data block.
 type DataBlockIter struct {
@@ -1149,7 +1149,7 @@ func (i *DataBlockIter) IsDataInvalidated() bool {
 	return i.d == nil
 }
 
-// IsLowerBound implements the block.DataBlockIterator interface.
+// IsLowerBound implements the blockiter.Data interface.
 func (i *DataBlockIter) IsLowerBound(k []byte) bool {
 	if i.transforms.HasSyntheticPrefix() {
 		var keyPrefix []byte

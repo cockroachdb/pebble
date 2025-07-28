@@ -33,7 +33,7 @@ import (
 // pointer receivers but embed the non-pointer types within the struct. The D
 // and I type parameters are the non-pointer data and index block iterator
 // types, and the PD and PI type parameters are the *D and *I types that
-// actually implement the DataBlockIterator and IndexBlockIterator constraints.
+// actually implement the blockiter.Data and blockiter.Index constraints.
 //
 // Unfortunately, uses of the [data] and [index] fields must explicitly cast
 // &data/&index to the PD/PI type in order to access its interface methods. This

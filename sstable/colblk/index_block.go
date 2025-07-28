@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 const indexBlockCustomHeaderSize = 0
@@ -198,8 +199,7 @@ type IndexIter struct {
 	keyBuf       []byte
 }
 
-// Assert that IndexIter satisfies the block.IndexBlockIterator interface.
-var _ block.IndexBlockIterator = (*IndexIter)(nil)
+var _ blockiter.Index = (*IndexIter)(nil)
 
 // InitWithDecoder initializes an index iterator from the provided decoder.
 func (i *IndexIter) InitWithDecoder(
