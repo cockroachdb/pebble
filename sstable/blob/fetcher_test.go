@@ -25,12 +25,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// identityFileMapping is an implementation of FileMapping that casts a
+// identityFileMapping is an implementation of base.BlobFileMapping that casts a
 // BlobFileID to a DiskFileNum.
 type identityFileMapping struct{}
 
-// Assert that (identityFileMapping) implements FileMapping.
-var _ FileMapping = identityFileMapping{}
+// Assert that (identityFileMapping) implements base.BlobFileMapping.
+var _ base.BlobFileMapping = identityFileMapping{}
 
 func (identityFileMapping) Lookup(blobFileID base.BlobFileID) (base.DiskFileNum, bool) {
 	return base.DiskFileNum(blobFileID), true

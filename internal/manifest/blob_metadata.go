@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/redact"
 )
 
@@ -291,20 +290,20 @@ type BlobReferences []BlobReference
 var _ sstable.BlobReferences = (*BlobReferences)(nil)
 
 // BlobFileIDByID returns the BlobFileID for the identified BlobReference.
-func (br *BlobReferences) BlobFileIDByID(i blob.ReferenceID) base.BlobFileID {
+func (br *BlobReferences) BlobFileIDByID(i base.BlobReferenceID) base.BlobFileID {
 	return (*br)[i].FileID
 }
 
 // IDByBlobFileID returns the reference ID for the given BlobFileID. If the
 // blob file ID is not found, the second return value is false.
 // IDByBlobFileID is linear in the length of the BlobReferences slice.
-func (br *BlobReferences) IDByBlobFileID(fileID base.BlobFileID) (blob.ReferenceID, bool) {
+func (br *BlobReferences) IDByBlobFileID(fileID base.BlobFileID) (base.BlobReferenceID, bool) {
 	for i, ref := range *br {
 		if ref.FileID == fileID {
-			return blob.ReferenceID(i), true
+			return base.BlobReferenceID(i), true
 		}
 	}
-	return blob.ReferenceID(len(*br)), false
+	return base.BlobReferenceID(len(*br)), false
 }
 
 // BlobFileSet contains a set of blob files that are referenced by a version.
@@ -386,8 +385,8 @@ func (s *BlobFileSet) LookupPhysical(fileID base.BlobFileID) (*PhysicalBlobFile,
 	return nil, false
 }
 
-// Assert that (*BlobFileSet) implements blob.FileMapping.
-var _ blob.FileMapping = (*BlobFileSet)(nil)
+// Assert that (*BlobFileSet) implements base.BlobFileMapping.
+var _ base.BlobFileMapping = (*BlobFileSet)(nil)
 
 // clone returns a copy-on-write clone of the blob file set.
 func (s *BlobFileSet) clone() BlobFileSet {

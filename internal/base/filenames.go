@@ -59,6 +59,20 @@ func (id BlobFileID) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("B%06d", redact.SafeUint(id))
 }
 
+// BlobReferenceID identifies a particular blob reference within a table. It's
+// implemented as an index into the slice of the BlobReferences recorded in the
+// manifest.
+type BlobReferenceID uint32
+
+// BlobFileMapping defines the mapping between blob file IDs and disk file numbers.
+// It's implemented by *manifest.BlobFileSet.
+type BlobFileMapping interface {
+	// Lookup returns the disk file number for the given blob file ID. It
+	// returns false for the second return value if the blob file ID is not
+	// present in the mapping.
+	Lookup(BlobFileID) (DiskFileNum, bool)
+}
+
 // A DiskFileNum identifies a file or object with exists on disk.
 type DiskFileNum uint64
 

@@ -110,11 +110,11 @@ func (rw *FileRewriter) Close() (FileWriterStats, error) {
 	return stats, errors.CombineErrors(err, rw.f.Close())
 }
 
-// inputFileMapping implements blob.FileMapping and always maps to itself.
+// inputFileMapping implements base.BlobFileMapping and always maps to itself.
 type inputFileMapping base.DiskFileNum
 
-// Assert that (*inputFileMapping) implements blob.FileMapping.
-var _ FileMapping = inputFileMapping(0)
+// Assert that (*inputFileMapping) implements base.BlobFileMapping.
+var _ base.BlobFileMapping = inputFileMapping(0)
 
 func (m inputFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
 	return base.DiskFileNum(m), true

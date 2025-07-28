@@ -786,7 +786,7 @@ func validateBlobValueLiveness(
 		}
 		if err := fc.withReader(ctx, readEnv, t, func(r *sstable.Reader, readEnv sstable.ReadEnv) error {
 			// For this sstable, gather all the blob handles -- tracking
-			// each blob.ReferenceID + blob.BlockID's referenced
+			// each base.BlobReferenceID + blob.BlockID's referenced
 			// blob.BlockValueIDs.
 			referenced, err := gatherBlobHandles(ctx, r, t.BlobReferences, valueFetcher)
 			if err != nil {
