@@ -99,7 +99,7 @@ type RawColumnWriter struct {
 
 	writeQueue struct {
 		wg  sync.WaitGroup
-		ch  chan *compressedBlock
+		ch  chan block.PhysicalBlock
 		err error
 	}
 	layout layoutWriter
@@ -113,9 +113,8 @@ type RawColumnWriter struct {
 	cpuMeasurer           base.CPUMeasurer
 
 	// RawColumnWriter writes data sequentially so each writer can have a
-	// compressor and checksummer.
-	compressor  block.Compressor
-	checksummer block.Checksummer
+	// physical block maker.
+	physBlockMaker block.PhysicalBlockMaker
 }
 
 // Assert that *RawColumnWriter implements RawWriter.
@@ -149,10 +148,12 @@ func newColumnarWriter(
 	w.topLevelIndexBlock.Init()
 	w.rangeDelBlock.Init(w.comparer.Equal)
 	w.rangeKeyBlock.Init(w.comparer.Equal)
+	w.physBlockMaker.Init(w.opts.Compression, w.opts.Checksum)
 	if !o.DisableValueBlocks {
-		w.valueBlock = valblk.NewWriter(
-			block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
-			&w.compressor, &w.checksummer, func(compressedSize int) {})
+		flushGovernor := block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
+		// We use the value block writer in the same goroutine so it's safe to share
+		// the physBlockMaker.
+		w.valueBlock = valblk.NewWriter(flushGovernor, &w.physBlockMaker, func(compressedSize int) {})
 	}
 	if o.FilterPolicy != base.NoFilterPolicy {
 		switch o.FilterType {
@@ -193,13 +194,11 @@ func newColumnarWriter(
 	w.props.KeySchemaName = o.KeySchema.Name
 	w.props.MergerName = o.MergerName
 
-	w.writeQueue.ch = make(chan *compressedBlock)
+	w.writeQueue.ch = make(chan block.PhysicalBlock)
 	w.writeQueue.wg.Add(1)
 	w.cpuMeasurer = cpuMeasurer
 	go w.drainWriteQueue()
 
-	w.compressor = block.MakeCompressor(w.opts.Compression)
-	w.checksummer.Init(w.opts.Checksum)
 	return w
 }
 
@@ -661,17 +660,6 @@ func (w *RawColumnWriter) evaluatePoint(
 	return eval, nil
 }
 
-var compressedBlockPool = sync.Pool{
-	New: func() interface{} {
-		return new(compressedBlock)
-	},
-}
-
-type compressedBlock struct {
-	physical block.PhysicalBlock
-	blockBuf blockBuf
-}
-
 func (w *RawColumnWriter) flushDataBlockWithoutNextKey(nextKey []byte) error {
 	serializedBlock, lastKey := w.dataBlock.Finish(w.dataBlock.Rows()-1, w.pendingDataBlockSize)
 	w.maybeIncrementTombstoneDenseBlocks(len(serializedBlock))
@@ -725,25 +713,18 @@ func (w *RawColumnWriter) enqueueDataBlock(
 		}
 	}
 
-	// Serialize the data block, compress it and send it to the write queue.
-	cb := compressedBlockPool.Get().(*compressedBlock)
-	cb.physical = block.CompressAndChecksum(
-		&cb.blockBuf.dataBuf,
-		serializedBlock,
-		blockkind.SSTableData,
-		&w.compressor,
-		&w.checksummer,
-	)
-	return w.enqueuePhysicalBlock(cb, separator)
+	// Compress and checksum the data block and send it to the write queue.
+	pb := w.physBlockMaker.Make(serializedBlock, blockkind.SSTableData, block.NoFlags)
+	return w.enqueuePhysicalBlock(pb, separator)
 }
 
-func (w *RawColumnWriter) enqueuePhysicalBlock(cb *compressedBlock, separator []byte) error {
+func (w *RawColumnWriter) enqueuePhysicalBlock(pb block.PhysicalBlock, separator []byte) error {
 	dataBlockHandle := block.Handle{
 		Offset: w.queuedDataSize,
-		Length: uint64(cb.physical.LengthWithoutTrailer()),
+		Length: uint64(pb.LengthWithoutTrailer()),
 	}
 	w.queuedDataSize += dataBlockHandle.Length + block.TrailerLen
-	w.writeQueue.ch <- cb
+	w.writeQueue.ch <- pb
 
 	var err error
 	w.blockPropsEncoder.resetProps()
@@ -899,16 +880,14 @@ func (w *RawColumnWriter) drainWriteQueue() {
 	defer w.writeQueue.wg.Done()
 	// Call once to initialize the CPU measurer.
 	w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineSSTableSecondary)
-	for cb := range w.writeQueue.ch {
-		if _, err := w.layout.WritePrecompressedDataBlock(cb.physical); err != nil {
+	for pb := range w.writeQueue.ch {
+		if _, err := w.layout.WritePrecompressedDataBlock(pb); err != nil {
 			w.writeQueue.err = err
 		}
+		pb.Release()
 		// Report to the CPU measurer immediately after writing (note that there
 		// may be a time lag until the next block is available to write).
 		w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineSSTableSecondary)
-		cb.blockBuf.clear()
-		cb.physical = block.PhysicalBlock{}
-		compressedBlockPool.Put(cb)
 	}
 }
 
@@ -1054,7 +1033,7 @@ func (w *RawColumnWriter) Close() (err error) {
 			}
 		}
 
-		w.props.CompressionStats = w.compressor.Stats().String()
+		w.props.CompressionStats = w.physBlockMaker.Compressor.Stats().String()
 		var toWrite []byte
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		if w.opts.TableFormat >= TableFormatPebblev7 {
@@ -1088,7 +1067,7 @@ func (w *RawColumnWriter) Close() (err error) {
 		return err
 	}
 	w.meta.Properties = w.props
-	w.compressor.Close()
+	w.physBlockMaker.Close()
 	// Release any held memory and make any future calls error.
 	*w = RawColumnWriter{meta: w.meta, err: errWriterClosed}
 	return nil
@@ -1108,7 +1087,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		return errors.Wrap(err, "reading layout")
 	}
 	// Copy data blocks in parallel, rewriting suffixes as we go.
-	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.compressor.Stats(), func() blockRewriter {
+	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.physBlockMaker.Compressor.Stats(), func() blockRewriter {
 		return colblk.NewDataBlockRewriter(wo.KeySchema, w.comparer)
 	})
 	if err != nil {
@@ -1123,9 +1102,6 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	}
 	oldProps := make([][]byte, len(w.blockPropCollectors))
 	for i := range blocks {
-		cb := compressedBlockPool.Get().(*compressedBlock)
-		cb.physical = blocks[i].physical
-
 		// Load any previous values for our prop collectors into oldProps.
 		for i := range oldProps {
 			oldProps[i] = nil
@@ -1153,7 +1129,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 			w.separatorBuf = w.comparer.Successor(w.separatorBuf[:0], blocks[i].end.UserKey)
 			separator = w.separatorBuf
 		}
-		if err := w.enqueuePhysicalBlock(cb, separator); err != nil {
+		if err := w.enqueuePhysicalBlock(blocks[i].physical, separator); err != nil {
 			return err
 		}
 	}
@@ -1214,6 +1190,7 @@ func (w *RawColumnWriter) copyDataBlocks(
 	ctx context.Context, blocks []indexEntry, rh objstorage.ReadHandle,
 ) error {
 	const readSizeTarget = 256 << 10
+	var buf []byte
 	readAndFlushBlocks := func(firstBlockIdx, lastBlockIdx int) error {
 		if firstBlockIdx > lastBlockIdx {
 			panic("pebble: readAndFlushBlocks called with invalid block range")
@@ -1226,18 +1203,15 @@ func (w *RawColumnWriter) copyDataBlocks(
 		// blocks in one request.
 		lastBH := blocks[lastBlockIdx].bh
 		blocksToReadLen := lastBH.Offset + lastBH.Length + block.TrailerLen - blocks[firstBlockIdx].bh.Offset
-		// We need to create a new buffer for each read, as w.enqueuePhysicalBlock passes
-		// a pointer to the buffer to the write queue.
-		buf := make([]byte, 0, blocksToReadLen)
+		buf = slices.Grow(buf[:0], int(blocksToReadLen))
 		if err := rh.ReadAt(ctx, buf[:blocksToReadLen], int64(blocks[firstBlockIdx].bh.Offset)); err != nil {
 			return err
 		}
 		for i := firstBlockIdx; i <= lastBlockIdx; i++ {
 			offsetDiff := blocks[i].bh.Offset - blocks[firstBlockIdx].bh.Offset
-			blockBuf := buf[offsetDiff : offsetDiff+blocks[i].bh.Length+block.TrailerLen]
-			cb := compressedBlockPool.Get().(*compressedBlock)
-			cb.physical = block.NewPhysicalBlock(blockBuf)
-			if err := w.enqueuePhysicalBlock(cb, blocks[i].sep); err != nil {
+			dataWithTrailer := buf[offsetDiff : offsetDiff+blocks[i].bh.Length+block.TrailerLen]
+			pb := block.AlreadyEncodedPhysicalBlock(dataWithTrailer)
+			if err := w.enqueuePhysicalBlock(pb, blocks[i].sep); err != nil {
 				return err
 			}
 		}
@@ -1270,16 +1244,9 @@ func (w *RawColumnWriter) copyDataBlocks(
 // by the sstable copier that can copy parts of an sstable to a new sstable,
 // using CopySpan().
 func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
-	// Serialize the data block, compress it and send it to the write queue.
-	cb := compressedBlockPool.Get().(*compressedBlock)
-	cb.physical = block.CompressAndChecksum(
-		&cb.blockBuf.dataBuf,
-		b,
-		blockkind.SSTableData,
-		&w.compressor,
-		&w.checksummer,
-	)
-	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
+	// Compress and checksum the data block and send it to the write queue.
+	pb := w.physBlockMaker.Make(b, blockkind.SSTableData, block.NoFlags)
+	if err := w.enqueuePhysicalBlock(pb, sep); err != nil {
 		return err
 	}
 	return nil

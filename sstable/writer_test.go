@@ -598,19 +598,6 @@ func TestBlockBufClear(t *testing.T) {
 	testBlockBufClear(t, b1, &blockBuf{})
 }
 
-func TestClearDataBlockBuf(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	d := newDataBlockBuf(1)
-	d.blockBuf.dataBuf = make([]byte, 1)
-	require.NoError(t, d.dataBlock.Add(ikey("apple"), nil))
-	require.NoError(t, d.dataBlock.Add(ikey("banana"), nil))
-
-	d.clear()
-	testBlockBufClear(t, &d.blockBuf, &blockBuf{})
-
-	dataBlockBufPool.Put(d)
-}
-
 func TestClearIndexBlockBuf(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	i := newIndexBlockBuf()

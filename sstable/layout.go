@@ -811,8 +811,7 @@ type layoutWriter struct {
 	// options copied from WriterOptions
 	tableFormat TableFormat
 
-	compressor  block.Compressor
-	checksummer block.Checksummer
+	physBlockMaker block.PhysicalBlockMaker
 
 	// Attribute bitset of the sstable, derived from sstable Properties at the time
 	// of writing.
@@ -829,7 +828,6 @@ type layoutWriter struct {
 	handles              []metaIndexHandle
 	handlesBuf           bytealloc.A
 	tmp                  [blockHandleLikelyMaxLen]byte
-	buf                  blockBuf
 }
 
 func (w *layoutWriter) Init(writable objstorage.Writable, opts WriterOptions) {
@@ -837,8 +835,7 @@ func (w *layoutWriter) Init(writable objstorage.Writable, opts WriterOptions) {
 	w.writable = writable
 	w.cacheOpts = opts.internal.CacheOpts
 	w.tableFormat = opts.TableFormat
-	w.compressor = block.MakeCompressor(opts.Compression)
-	w.checksummer.Init(opts.Checksum)
+	w.physBlockMaker.Init(opts.Compression, opts.Checksum)
 }
 
 type metaIndexHandle struct {
@@ -852,21 +849,21 @@ func (w *layoutWriter) Abort() {
 	if w.writable != nil {
 		w.writable.Abort()
 		w.writable = nil
-		w.compressor.Close()
+		w.physBlockMaker.Close()
 	}
 }
 
 // WriteDataBlock constructs a trailer for the provided data block and writes
 // the block and trailer to the writer. It returns the block's handle.
-func (w *layoutWriter) WriteDataBlock(b []byte, buf *blockBuf) (block.Handle, error) {
-	return w.writeBlock(b, blockkind.SSTableData, buf)
+func (w *layoutWriter) WriteDataBlock(b []byte) (block.Handle, error) {
+	return w.writeBlock(b, blockkind.SSTableData)
 }
 
 // WritePrecompressedDataBlock writes a pre-compressed data block and its
 // pre-computed trailer to the writer, returning its block handle. It can mangle
 // the block data.
 func (w *layoutWriter) WritePrecompressedDataBlock(blk block.PhysicalBlock) (block.Handle, error) {
-	return w.writePrecompressedBlock(blk)
+	return w.writePhysicalBlock(blk)
 }
 
 // WriteIndexBlock constructs a trailer for the provided index (first or
@@ -874,7 +871,7 @@ func (w *layoutWriter) WritePrecompressedDataBlock(blk block.PhysicalBlock) (blo
 // the last-written index block's handle and adds it to the file's meta index
 // when the writer is finished.
 func (w *layoutWriter) WriteIndexBlock(b []byte) (block.Handle, error) {
-	h, err := w.writeBlock(b, blockkind.SSTableIndex, &w.buf)
+	h, err := w.writeBlock(b, blockkind.SSTableIndex)
 	if err == nil {
 		w.lastIndexBlockHandle = h
 	}
@@ -901,9 +898,9 @@ func (w *layoutWriter) WritePropertiesBlock(b []byte) (bh block.Handle, err erro
 	// columnar format without prefix compression for this block; we enable block
 	// compression to compensate.
 	if w.tableFormat < TableFormatPebblev7 {
-		bh, err = w.writeBlockUncompressed(b, blockkind.Metadata, &w.buf)
+		bh, err = w.writeBlockUncompressed(b, blockkind.Metadata)
 	} else {
-		bh, err = w.writeBlock(b, blockkind.Metadata, &w.buf)
+		bh, err = w.writeBlock(b, blockkind.Metadata)
 	}
 	if err == nil {
 		w.recordToMetaindex(metaPropertiesName, bh)
@@ -938,7 +935,7 @@ func (w *layoutWriter) WriteRangeDeletionBlock(b []byte) (block.Handle, error) {
 func (w *layoutWriter) writeNamedBlockUncompressed(
 	b []byte, kind block.Kind, name string,
 ) (bh block.Handle, err error) {
-	bh, err = w.writeBlockUncompressed(b, kind, &w.buf)
+	bh, err = w.writeBlockUncompressed(b, kind)
 	if err == nil {
 		w.recordToMetaindex(name, bh)
 	}
@@ -948,7 +945,7 @@ func (w *layoutWriter) writeNamedBlockUncompressed(
 // WriteValueBlock writes a pre-finished value block (with the trailer) to the
 // writer. It can mangle the block data.
 func (w *layoutWriter) WriteValueBlock(blk block.PhysicalBlock) (block.Handle, error) {
-	return w.writePrecompressedBlock(blk)
+	return w.writePhysicalBlock(blk)
 }
 
 // WriteValueIndexBlock writes a value index block and adds it to the meta
@@ -956,7 +953,7 @@ func (w *layoutWriter) WriteValueBlock(blk block.PhysicalBlock) (block.Handle, e
 func (w *layoutWriter) WriteValueIndexBlock(
 	blk block.PhysicalBlock, vbih valblk.IndexHandle,
 ) (block.Handle, error) {
-	h, err := w.writePrecompressedBlock(blk)
+	h, err := w.writePhysicalBlock(blk)
 	if err != nil {
 		return block.Handle{}, err
 	}
@@ -966,26 +963,24 @@ func (w *layoutWriter) WriteValueIndexBlock(
 }
 
 // writeBlock checksums, compresses, and writes out a block.
-func (w *layoutWriter) writeBlock(b []byte, kind block.Kind, buf *blockBuf) (block.Handle, error) {
-	pb := block.CompressAndChecksum(&buf.dataBuf, b, kind, &w.compressor, &w.checksummer)
-	h, err := w.writePrecompressedBlock(pb)
+func (w *layoutWriter) writeBlock(b []byte, kind block.Kind) (block.Handle, error) {
+	pb := w.physBlockMaker.Make(b, kind, block.NoFlags)
+	h, err := w.writePhysicalBlock(pb)
 	return h, err
 }
 
 // writeBlock checksums and writes out a block.
-func (w *layoutWriter) writeBlockUncompressed(
-	b []byte, kind block.Kind, buf *blockBuf,
-) (block.Handle, error) {
-	pb := block.CopyAndChecksum(&buf.dataBuf, b, kind, &w.compressor, &w.checksummer)
-	h, err := w.writePrecompressedBlock(pb)
+func (w *layoutWriter) writeBlockUncompressed(b []byte, kind block.Kind) (block.Handle, error) {
+	pb := w.physBlockMaker.Make(b, kind, block.DontCompress)
+	h, err := w.writePhysicalBlock(pb)
 	return h, err
 }
 
-// writePrecompressedBlock writes a pre-compressed block and its
-// pre-computed trailer to the writer, returning its block handle.
+// writePhysicalBlock writes a physical block to the writer, returning its block
+// handle.
 //
-// writePrecompressedBlock might mangle the block data.
-func (w *layoutWriter) writePrecompressedBlock(blk block.PhysicalBlock) (block.Handle, error) {
+// writePhysicalBlock might mangle the block data.
+func (w *layoutWriter) writePhysicalBlock(blk block.PhysicalBlock) (block.Handle, error) {
 	w.clearFromCache(w.offset)
 	// Write the bytes to the file.
 	n, err := blk.WriteTo(w.writable)
@@ -1060,7 +1055,7 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 		}
 		b = bw.Finish()
 	}
-	metaIndexHandle, err := w.writeBlockUncompressed(b, blockkind.Metadata, &w.buf)
+	metaIndexHandle, err := w.writeBlockUncompressed(b, blockkind.Metadata)
 	if err != nil {
 		return 0, err
 	}
@@ -1068,7 +1063,7 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 	// Write the table footer.
 	footer := footer{
 		format:      w.tableFormat,
-		checksum:    w.checksummer.Type,
+		checksum:    w.physBlockMaker.Checksummer.Type,
 		metaindexBH: metaIndexHandle,
 		indexBH:     w.lastIndexBlockHandle,
 		attributes:  w.attributes,
@@ -1081,6 +1076,6 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 
 	err = w.writable.Finish()
 	w.writable = nil
-	w.compressor.Close()
+	w.physBlockMaker.Close()
 	return w.offset, err
 }

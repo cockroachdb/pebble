@@ -101,20 +101,6 @@ func DecodeHandleWithProperties(src []byte) (HandleWithProperties, error) {
 	}, nil
 }
 
-// TrailerLen is the length of the trailer at the end of a block.
-const TrailerLen = 5
-
-// Trailer is the trailer at the end of a block, encoding the block type
-// (compression) and a checksum.
-type Trailer = [TrailerLen]byte
-
-// MakeTrailer constructs a trailer from a block type and a checksum.
-func MakeTrailer(blockType byte, checksum uint32) (t Trailer) {
-	t[0] = blockType
-	binary.LittleEndian.PutUint32(t[1:5], checksum)
-	return t
-}
-
 // ChecksumType specifies the checksum used for blocks.
 type ChecksumType byte
 
