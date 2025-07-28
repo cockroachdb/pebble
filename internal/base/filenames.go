@@ -64,13 +64,19 @@ func (id BlobFileID) SafeFormat(w redact.SafePrinter, _ rune) {
 // manifest.
 type BlobReferenceID uint32
 
+// DiskFile is an interface that provides access to a disk file number.
+type DiskFile interface {
+	// DiskFileNum returns the disk file number.
+	DiskFileNum() DiskFileNum
+}
+
 // BlobFileMapping defines the mapping between blob file IDs and disk file numbers.
 // It's implemented by *manifest.BlobFileSet.
 type BlobFileMapping interface {
-	// Lookup returns the disk file number for the given blob file ID. It
+	// Lookup returns a DiskFile for the given blob file ID. It
 	// returns false for the second return value if the blob file ID is not
 	// present in the mapping.
-	Lookup(BlobFileID) (DiskFileNum, bool)
+	Lookup(BlobFileID) (DiskFile, bool)
 }
 
 // A DiskFileNum identifies a file or object with exists on disk.
@@ -81,6 +87,11 @@ func (dfn DiskFileNum) String() string { return fmt.Sprintf("%06d", dfn) }
 // SafeFormat implements redact.SafeFormatter.
 func (dfn DiskFileNum) SafeFormat(w redact.SafePrinter, verb rune) {
 	w.Printf("%06d", redact.SafeUint(dfn))
+}
+
+// DiskFileNum implements the DiskFile interface.
+func (fdn DiskFileNum) DiskFileNum() DiskFileNum {
+	return fdn
 }
 
 // FileType enumerates the types of files found in a DB.

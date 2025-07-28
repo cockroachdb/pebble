@@ -148,6 +148,11 @@ func (m *PhysicalBlobFile) String() string {
 	return redact.StringWithoutMarkers(m)
 }
 
+// DiskFileNum implements base.DiskFile.
+func (m *PhysicalBlobFile) DiskFileNum() base.DiskFileNum {
+	return m.FileNum
+}
+
 // ref increments the reference count for the blob file.
 func (m *PhysicalBlobFile) ref() {
 	m.refs.Add(+1)
@@ -338,15 +343,14 @@ func (s *BlobFileSet) Count() int {
 	return s.tree.Count()
 }
 
-// Lookup returns the file number of the physical blob file backing the given
-// file ID. It returns false for the second return value if the FileID is not
-// present in the set.
-func (s *BlobFileSet) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+// Lookup returns the physical blob file backing the given file ID. It returns
+// false for the second return value if the FileID is not present in the set.
+func (s *BlobFileSet) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
 	phys, ok := s.LookupPhysical(fileID)
 	if !ok {
-		return 0, false
+		return nil, false
 	}
-	return phys.FileNum, true
+	return phys, true
 }
 
 // LookupPhysical returns the *PhysicalBlobFile backing the given file ID. It
