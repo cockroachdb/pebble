@@ -11,33 +11,33 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
 
-// dataBlockIterator extends the block.IndexBlockIterator interface with a
-// constraint that the implementing type be a pointer to a type I.
+// dataBlockIterator extends the blockiter.Data interface with a constraint
+// that the implementing type be a pointer to a type I.
 //
-// DataBlockIterator requires that the type be a pointer to its type parameter,
+// dataBlockIterator requires that the type be a pointer to its type parameter,
 // D, to allow sstable iterators embed the block iterator within its struct. See
 // this example from the Go generics proposal:
 // https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
 type dataBlockIterator[D any] interface {
-	block.DataBlockIterator
+	blockiter.Data
 
 	*D // non-interface type constraint element
 }
 
-// indexBlockIterator extends the block.IndexBlockIterator interface with a
-// constraint that the implementing type be a pointer to a type I.
+// indexBlockIterator extends the blockiter.Index interface with a constraint
+// that the implementing type be a pointer to a type I.
 //
 // indexBlockIterator requires that the type be a pointer to its type parameter,
 // I, to allow sstable iterators embed the block iterator within its struct. See
 // this example from the Go generics proposal:
 // https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
 type indexBlockIterator[I any] interface {
-	block.IndexBlockIterator
+	blockiter.Index
 
 	*I // non-interface type constraint element
 }

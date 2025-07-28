@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/sstable/valblk"
@@ -690,8 +691,8 @@ func decompressInMemory(data []byte, bh block.Handle) ([]byte, error) {
 
 func newIndexIter(
 	tableFormat TableFormat, comparer *base.Comparer, data []byte,
-) (block.IndexBlockIterator, error) {
-	var iter block.IndexBlockIterator
+) (blockiter.Index, error) {
+	var iter blockiter.Index
 	var err error
 	if tableFormat <= TableFormatPebblev4 {
 		iter = new(rowblk.IndexIter)
@@ -706,9 +707,7 @@ func newIndexIter(
 	return iter, nil
 }
 
-func forEachIndexEntry(
-	indexIter block.IndexBlockIterator, fn func(block.HandleWithProperties),
-) error {
+func forEachIndexEntry(indexIter blockiter.Index, fn func(block.HandleWithProperties)) error {
 	for v := indexIter.First(); v; v = indexIter.Next() {
 		bhp, err := indexIter.BlockHandleWithProperties()
 		if err != nil {

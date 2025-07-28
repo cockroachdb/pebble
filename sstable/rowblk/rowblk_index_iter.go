@@ -7,6 +7,7 @@ package rowblk
 import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 // IndexIter is a lightweight adapter that implements block.IndexIterator for a
@@ -15,8 +16,7 @@ type IndexIter struct {
 	iter Iter
 }
 
-// Assert that IndexIter satisfies the block.IndexBlockIterator interface.
-var _ block.IndexBlockIterator = (*IndexIter)(nil)
+var _ blockiter.Index = (*IndexIter)(nil)
 
 // Init initializes an iterator from the provided block data slice.
 func (i *IndexIter) Init(c *base.Comparer, blk []byte, transforms block.IterTransforms) error {

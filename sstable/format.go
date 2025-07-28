@@ -7,7 +7,7 @@ package sstable
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
@@ -300,7 +300,7 @@ func (f TableFormat) FooterSize() int {
 	return footerSizes[f]
 }
 
-func (f TableFormat) newIndexIter() block.IndexBlockIterator {
+func (f TableFormat) newIndexIter() blockiter.Index {
 	if !f.BlockColumnar() {
 		return new(rowblk.IndexIter)
 	}
