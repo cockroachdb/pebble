@@ -268,17 +268,16 @@ func (h *fileCacheHandle) findOrCreateTable(
 // the given blob file. If a corruption error is encountered,
 // reportCorruptionFn() is called.
 func (h *fileCacheHandle) findOrCreateBlob(
-	ctx context.Context, fileNum base.DiskFileNum,
+	ctx context.Context, diskFile base.DiskFile,
 ) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
 	key := fileCacheKey{
 		handle:   h,
-		fileNum:  fileNum,
+		fileNum:  diskFile.DiskFileNum(),
 		fileType: base.FileTypeBlob,
 	}
 	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
-	// TODO(jackson): Propagate a blob metadata object here.
 	if err != nil && IsCorruptionError(err) {
-		err = h.reportCorruptionFn(nil, err)
+		err = h.reportCorruptionFn(diskFile, err)
 	}
 	return valRef, err
 }
@@ -388,9 +387,9 @@ func (h *fileCacheHandle) IterCount() int64 {
 
 // GetValueReader returns a blob.ValueReader for blob file identified by fileNum.
 func (h *fileCacheHandle) GetValueReader(
-	ctx context.Context, fileNum base.DiskFileNum,
+	ctx context.Context, diskFile base.DiskFile,
 ) (r blob.ValueReader, closeFunc func(), err error) {
-	ref, err := h.findOrCreateBlob(ctx, fileNum)
+	ref, err := h.findOrCreateBlob(ctx, diskFile)
 	if err != nil {
 		return nil, nil, err
 	}

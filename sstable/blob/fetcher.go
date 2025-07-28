@@ -41,8 +41,8 @@ type ValueReader interface {
 // A ReaderProvider is an interface that can be used to retrieve a ValueReader
 // for a given file number.
 type ReaderProvider interface {
-	// GetValueReader returns a ValueReader for the given file number.
-	GetValueReader(ctx context.Context, fileNum base.DiskFileNum) (r ValueReader, closeFunc func(), err error)
+	// GetValueReader returns a ValueReader for the given disk file.
+	GetValueReader(ctx context.Context, diskFile base.DiskFile) (r ValueReader, closeFunc func(), err error)
 }
 
 // A ValueFetcher retrieves values stored out-of-band in separate blob files.
@@ -148,12 +148,11 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 		if !ok {
 			return nil, errors.AssertionFailedf("blob file %s not found", vh.BlobFileID)
 		}
-		diskFileNum := diskFile.DiskFileNum()
-		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, diskFileNum); err != nil {
+		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, diskFile); err != nil {
 			return nil, err
 		}
 		cr.blobFileID = vh.BlobFileID
-		cr.diskFileNum = diskFileNum
+		cr.diskFileNum = diskFile.DiskFileNum()
 		cr.rh = cr.r.InitReadHandle(&cr.preallocRH)
 		if r.env.Stats != nil {
 			r.env.Stats.SeparatedPointValue.ReaderCacheMisses++

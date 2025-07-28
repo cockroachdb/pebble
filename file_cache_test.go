@@ -1089,13 +1089,13 @@ func TestFileCacheRetryAfterFailure(t *testing.T) {
 		h, fs := fct.newTestHandle()
 
 		fs.setOpenError(true /* enabled */)
-		_, _, err := h.GetValueReader(ctx, fileCacheTestNumTables)
+		_, _, err := h.GetValueReader(ctx, base.DiskFileNum(fileCacheTestNumTables))
 		if err == nil {
 			t.Fatalf("expected failure, but found success")
 		}
 		require.Equal(t, "pebble: backing file 000200 error: injected error", err.Error())
 		fs.setOpenError(false /* enabled */)
-		_, closeFunc, err := h.GetValueReader(ctx, fileCacheTestNumTables)
+		_, closeFunc, err := h.GetValueReader(ctx, base.DiskFileNum(fileCacheTestNumTables))
 		require.NoError(t, err)
 		closeFunc()
 		fs.validateAndCloseHandle(t, h, nil)

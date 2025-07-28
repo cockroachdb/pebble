@@ -633,7 +633,11 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		}
 		return nil, nil, ErrNotFound
 	}
-	return i.Value(), i, nil
+	val, err := i.ValueAndErr()
+	if err != nil {
+		return nil, nil, errors.CombineErrors(err, i.Close())
+	}
+	return val, i, nil
 }
 
 // Set sets the value for the given key. It overwrites any previous value

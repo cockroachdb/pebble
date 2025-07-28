@@ -44,8 +44,9 @@ type mockReaderProvider struct {
 }
 
 func (rp *mockReaderProvider) GetValueReader(
-	ctx context.Context, fileNum base.DiskFileNum,
+	ctx context.Context, diskFile base.DiskFile,
 ) (r ValueReader, closeFunc func(), err error) {
+	fileNum := diskFile.DiskFileNum()
 	if rp.w != nil {
 		fmt.Fprintf(rp.w, "# GetValueReader(%s)\n", fileNum)
 	}

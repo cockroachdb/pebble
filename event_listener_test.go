@@ -605,3 +605,80 @@ func TestSSTCorruptionEvent(t *testing.T) {
 		})
 	}
 }
+
+func TestBlobCorruptionEvent(t *testing.T) {
+	for _, test := range []string{"missing-file"} {
+		t.Run(test, func(t *testing.T) {
+			var mu sync.Mutex
+			var events []DataCorruptionInfo
+			fs := vfs.NewMem()
+			opts := &Options{
+				FS:                 fs,
+				Logger:             testLogger{t},
+				FormatMajorVersion: FormatValueSeparation,
+				EventListener: &EventListener{
+					DataCorruption: func(info DataCorruptionInfo) {
+						mu.Lock()
+						defer mu.Unlock()
+						events = append(events, info)
+					},
+				},
+				DisableAutomaticCompactions: true,
+			}
+			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+				return ValueSeparationPolicy{
+					Enabled:               true,
+					MinimumSize:           1,
+					MaxBlobReferenceDepth: 10,
+				}
+			}
+			d, err := Open("", opts)
+			require.NoError(t, err)
+
+			key := func(k int) []byte {
+				return []byte(fmt.Sprintf("key-%05d", k))
+			}
+
+			// Create large values to ensure they get separated into blob files
+			largeValue := make([]byte, 1000) // 1KB values
+			for i := range largeValue {
+				largeValue[i] = byte('a' + (i % 26))
+			}
+
+			for i := 0; i < 10; i++ {
+				require.NoError(t, d.Set(key(i), largeValue, nil))
+			}
+			require.NoError(t, d.Flush())
+
+			// We expect a blob file to be created.
+			files := testutils.CheckErr(fs.List(""))
+			blobFiles := slices.DeleteFunc(files, func(name string) bool {
+				return !strings.HasSuffix(name, ".blob")
+			})
+			require.Greaterf(t, len(blobFiles), 0, "expected at least one blob file, got %v", files)
+			for _, blobFileName := range blobFiles {
+				switch test {
+				case "missing-file":
+					require.NoError(t, fs.Remove(blobFileName))
+				default:
+					t.Fatalf("invalid test")
+				}
+			}
+
+			// Try to read a value that should be in the blob file
+			_, _, err = d.Get(key(5))
+			require.Error(t, err)
+			require.True(t, IsCorruptionError(err))
+			infoInError := ExtractDataCorruptionInfo(err)
+			require.NotNil(t, infoInError)
+			require.Greater(t, len(events), 0)
+			info := events[0]
+			require.False(t, info.IsRemote)
+			// Note: Blob files don't currently have user key bounds, so they're empty
+			require.Equal(t, base.UserKeyBounds{}, info.Bounds)
+			require.Equal(t, info, *infoInError)
+
+			d.Close()
+		})
+	}
+}
