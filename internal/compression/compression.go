@@ -6,6 +6,8 @@ package compression
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/minio/minlz"
 )
@@ -23,6 +25,8 @@ const (
 	MinLZ
 
 	NumAlgorithms
+
+	Unknown Algorithm = 100
 )
 
 // String implements fmt.Stringer, returning a human-readable name for the
@@ -37,8 +41,10 @@ func (a Algorithm) String() string {
 		return "ZSTD"
 	case MinLZ:
 		return "MinLZ"
+	case Unknown:
+		return "unknown"
 	default:
-		return fmt.Sprintf("unknown(%d)", a)
+		return fmt.Sprintf("invalid(%d)", a)
 	}
 }
 
@@ -56,6 +62,26 @@ func (s Setting) String() string {
 		return s.Algorithm.String()
 	}
 	return fmt.Sprintf("%s%d", s.Algorithm, s.Level)
+}
+
+// ParseSetting parses the result of Setting.String() back into the setting.
+func ParseSetting(s string) (_ Setting, ok bool) {
+	for i := range NumAlgorithms {
+		remainder, ok := strings.CutPrefix(s, i.String())
+		if !ok {
+			continue
+		}
+		var level int
+		if remainder != "" {
+			var err error
+			level, err = strconv.Atoi(remainder)
+			if err != nil {
+				continue
+			}
+		}
+		return Setting{Algorithm: i, Level: uint8(level)}, true
+	}
+	return Setting{}, false
 }
 
 // Setting presets.
