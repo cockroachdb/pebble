@@ -61,9 +61,9 @@ total |     0  0.09  0.09 |      3   6MB |    0B    0B    0B |     0B    0B |   
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
-    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
-----------+------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) | 4.5MB: 4.5 |      0.0% |         2 |  1 (512KB) |  1 (512KB) |     9.5 M |      0 (0B)
+    files |      written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+--------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 4.5MB: 4.5MB |      0.0% |         2 |  1 (512KB) |  1 (512KB) |     9.5 M |      0 (0B)
 
 ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
