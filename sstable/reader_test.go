@@ -2618,7 +2618,8 @@ func TestReaderReportsCorruption(t *testing.T) {
 
 	var lastReportedCorruption error
 	env := ReadEnv{Block: block.ReadEnv{
-		ReportCorruptionFn: func(opaque any, err error) error {
+		ReportCorruptionFn: func(info base.ObjectInfo, err error) error {
+			t.Logf("ReportCorruptionFn: %v", err)
 			lastReportedCorruption = err
 			return errors.Wrap(err, "error passed through ReportCorruptionFn")
 		},

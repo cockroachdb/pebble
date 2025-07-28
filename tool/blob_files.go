@@ -47,7 +47,7 @@ func (m *blobFileMappings) LoadValueBlobContext(tableNum base.TableNum) sstable.
 }
 
 // Lookup implements base.BlobFileMapping.
-func (m *blobFileMappings) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
+func (m *blobFileMappings) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
 	files, ok := m.physicalFiles[fileID]
 	if !ok || len(files) == 0 {
 		return nil, false
@@ -57,7 +57,12 @@ func (m *blobFileMappings) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) 
 	if len(files) > 1 {
 		fmt.Fprintf(m.stderr, "warning: multiple physical files for blob file %s: %v\n", fileID, files)
 	}
-	return files[len(files)-1], true
+	return base.ObjectInfoLiteral{
+		FileType:    base.FileTypeBlob,
+		DiskFileNum: files[len(files)-1],
+		// TODO(jackson): Add bounds for blob files.
+		Bounds: base.UserKeyBounds{},
+	}, true
 }
 
 // Close releases any resources held by the blobFileMappings.

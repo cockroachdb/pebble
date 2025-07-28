@@ -32,8 +32,13 @@ type identityFileMapping struct{}
 // Assert that (identityFileMapping) implements base.BlobFileMapping.
 var _ base.BlobFileMapping = identityFileMapping{}
 
-func (identityFileMapping) Lookup(blobFileID base.BlobFileID) (base.DiskFile, bool) {
-	return base.DiskFileNum(blobFileID), true
+func (identityFileMapping) Lookup(blobFileID base.BlobFileID) (base.ObjectInfo, bool) {
+	return base.ObjectInfoLiteral{
+		FileType:    base.FileTypeBlob,
+		DiskFileNum: base.DiskFileNum(blobFileID),
+		// TODO(jackson): Add bounds for blob files.
+		Bounds: base.UserKeyBounds{},
+	}, true
 }
 
 type mockReaderProvider struct {
@@ -44,8 +49,9 @@ type mockReaderProvider struct {
 }
 
 func (rp *mockReaderProvider) GetValueReader(
-	ctx context.Context, fileNum base.DiskFileNum,
+	ctx context.Context, obj base.ObjectInfo,
 ) (r ValueReader, closeFunc func(), err error) {
+	_, fileNum := obj.FileInfo()
 	if rp.w != nil {
 		fmt.Fprintf(rp.w, "# GetValueReader(%s)\n", fileNum)
 	}
