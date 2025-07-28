@@ -28,7 +28,7 @@ type FileRewriter struct {
 // input blob file to the output blob file.
 func NewFileRewriter(
 	fileID base.BlobFileID,
-	inputFileNum base.DiskFileNum,
+	inputFile base.ObjectInfo,
 	rp ReaderProvider,
 	readEnv block.ReadEnv,
 	outputFileNum base.DiskFileNum,
@@ -39,7 +39,7 @@ func NewFileRewriter(
 		fileID: fileID,
 		w:      NewFileWriter(outputFileNum, w, opts),
 	}
-	rw.f.Init(inputFileMapping(inputFileNum), rp, readEnv)
+	rw.f.Init(inputFileMapping{info: inputFile}, rp, readEnv)
 	return rw
 }
 
@@ -111,11 +111,13 @@ func (rw *FileRewriter) Close() (FileWriterStats, error) {
 }
 
 // inputFileMapping implements base.BlobFileMapping and always maps to itself.
-type inputFileMapping base.DiskFileNum
+type inputFileMapping struct {
+	info base.ObjectInfo
+}
 
 // Assert that (*inputFileMapping) implements base.BlobFileMapping.
-var _ base.BlobFileMapping = inputFileMapping(0)
+var _ base.BlobFileMapping = inputFileMapping{}
 
-func (m inputFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
-	return base.DiskFileNum(m), true
+func (m inputFileMapping) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
+	return m.info, true
 }

@@ -821,7 +821,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				}
 				var newFiles []base.DiskFileNum
 				blobRefMap := make(map[base.DiskFileNum]manifest.BlobReferences)
-				blobFileMap := make(map[base.BlobFileID]base.DiskFileNum)
+				blobFileMap := make(map[base.BlobFileID]base.ObjectInfo)
 				for _, nf := range ve.NewTables {
 					newFiles = append(newFiles, nf.Meta.TableBacking.DiskFileNum)
 					if s.kind == ingestStepKind && (nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum) {
@@ -832,7 +832,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 					}
 				}
 				for _, bf := range ve.NewBlobFiles {
-					blobFileMap[bf.FileID] = bf.Physical.FileNum
+					blobFileMap[bf.FileID] = bf.Physical
 				}
 				if previousVersion != nil {
 					// previousVersion contains the current version, and so l0Organizer is
@@ -1023,14 +1023,14 @@ func findManifestStart(
 	return index, info.Size(), nil
 }
 
-type blobFileMap map[base.BlobFileID]base.DiskFileNum
+type blobFileMap map[base.BlobFileID]base.ObjectInfo
 
-func (m blobFileMap) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
-	diskFileNum, ok := m[fileID]
+func (m blobFileMap) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
+	obj, ok := m[fileID]
 	if !ok {
 		return nil, false
 	}
-	return diskFileNum, true
+	return obj, true
 }
 
 // loadFlushedSSTableKeys copies keys from the sstables specified by `fileNums`

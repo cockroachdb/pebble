@@ -181,12 +181,12 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 			// Now that we have the manifest lock, check if the blob file is
 			// still current. If not, we bubble up ErrCancelledCompaction.
 			v := d.mu.versions.currentVersion()
-			currentDiskFile, ok := v.BlobFiles.Lookup(c.input.FileID)
+			currentDiskFile, ok := v.BlobFiles.LookupPhysical(c.input.FileID)
 			if !ok {
 				return versionUpdate{}, errors.Wrapf(ErrCancelledCompaction,
 					"blob file %s became unreferenced", c.input.FileID)
 			}
-			currentDiskFileNum := currentDiskFile.DiskFileNum()
+			currentDiskFileNum := currentDiskFile.FileNum
 			// Assert that the current version's disk file number for the blob
 			// matches the one we rewrote. This compaction should be the only
 			// rewrite compaction running for this blob file.
@@ -391,7 +391,7 @@ func newBlobFileRewriter(
 	sstables []*manifest.TableMetadata,
 	inputBlob manifest.BlobFileMetadata,
 ) *blobFileRewriter {
-	rw := blob.NewFileRewriter(inputBlob.FileID, inputBlob.Physical.FileNum, fc, readEnv, outputFileNum, w, opts)
+	rw := blob.NewFileRewriter(inputBlob.FileID, inputBlob.Physical, fc, readEnv, outputFileNum, w, opts)
 	return &blobFileRewriter{
 		fc:        fc,
 		readEnv:   readEnv,
