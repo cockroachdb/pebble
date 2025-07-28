@@ -116,6 +116,6 @@ type inputFileMapping base.DiskFileNum
 // Assert that (*inputFileMapping) implements base.BlobFileMapping.
 var _ base.BlobFileMapping = inputFileMapping(0)
 
-func (m inputFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+func (m inputFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
 	return base.DiskFileNum(m), true
 }

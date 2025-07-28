@@ -326,11 +326,11 @@ func (d *DB) Checkpoint(
 						includedBlobFiles[ref.FileID] = struct{}{}
 
 						// Map the BlobFileID to a DiskFileNum in the current version.
-						diskFileNum, ok := current.BlobFiles.Lookup(ref.FileID)
+						diskFile, ok := current.BlobFiles.Lookup(ref.FileID)
 						if !ok {
 							return errors.Errorf("blob file %s not found", ref.FileID)
 						}
-						ckErr = copyFile(base.FileTypeBlob, diskFileNum)
+						ckErr = copyFile(base.FileTypeBlob, diskFile.DiskFileNum())
 						if ckErr != nil {
 							return ckErr
 						}

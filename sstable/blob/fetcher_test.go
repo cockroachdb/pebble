@@ -32,7 +32,7 @@ type identityFileMapping struct{}
 // Assert that (identityFileMapping) implements base.BlobFileMapping.
 var _ base.BlobFileMapping = identityFileMapping{}
 
-func (identityFileMapping) Lookup(blobFileID base.BlobFileID) (base.DiskFileNum, bool) {
+func (identityFileMapping) Lookup(blobFileID base.BlobFileID) (base.DiskFile, bool) {
 	return base.DiskFileNum(blobFileID), true
 }
 
