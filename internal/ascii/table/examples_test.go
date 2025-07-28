@@ -27,7 +27,7 @@ func ExampleDefine() {
 		table.Int("cuteness", 8, table.AlignRight, func(c Cat) int { return c.Cuteness }),
 	)
 
-	board := ascii.Make(8, tbl.CumulativeFieldWidth)
+	board := ascii.Make(8, 1)
 	fmt.Println("Cool cats:")
 	tbl.Render(board.At(0, 0), table.RenderOptions{}, slices.Values([]Cat{
 		{Name: "Chicken", Age: 5, Cuteness: 10},
@@ -68,25 +68,25 @@ func ExampleHorizontally() {
 		table.Int("cuteness", 8, table.AlignRight, func(c Cat) int { return c.Cuteness }),
 	)
 
-	board := ascii.Make(8, tbl.CumulativeFieldWidth)
+	board := ascii.Make(8, 1)
 	fmt.Println("Cool cats:")
 	opts := table.RenderOptions{Orientation: table.Horizontally}
 	tbl.Render(board.At(0, 0), opts, slices.Values([]Cat{
 		{Name: "Chicken", Age: 5, Cuteness: 10},
 		{Name: "Heart", Age: 4, Cuteness: 10},
 		{Name: "Mai", Age: 2, Cuteness: 10},
-		{Name: "Poi", Age: 15, Cuteness: 10},
+		{Name: "Poi", Age: 150000000, Cuteness: 10},
 		{Name: "Pigeon", Age: 2, Cuteness: 10},
-		{Name: "Sugar", Age: 8, Cuteness: 10},
+		{Name: "Sugar", Age: 8, Cuteness: 1000000000},
 		{Name: "Yaya", Age: 5, Cuteness: 10},
 		{Name: "Yuumi", Age: 5, Cuteness: 10},
-		{Name: "Yuumibestcatever", Age: 5, Cuteness: 100000000},
+		{Name: "Yuumibestcatever", Age: 5, Cuteness: 100},
 	}))
 	fmt.Println(board.String())
 	// Output:
 	// Cool cats:
-	// name     |  Chicken   Heart     Mai     Poi  Pigeon   Sugar    Yaya   Yuumi Yuumibestcatever
-	// ---------+-------------------------------------------------------------------------
-	// age      |        5       4       2      15       2       8       5       5       5
-	// cuteness |       10      10      10      10      10      10      10      10100000000
+	//     name | Chicken  Heart  Mai        Poi  Pigeon       Sugar  Yaya  Yuumi  Yuumibestcatever
+	// ---------+----------------------------------------------------------------------------------
+	//      age |       5      4    2  150000000       2           8     5      5                 5
+	// cuteness |      10     10   10         10      10  1000000000    10     10               100
 }
