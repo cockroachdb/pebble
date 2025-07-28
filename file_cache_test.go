@@ -179,11 +179,17 @@ func newFileCacheTest(
 	}
 }
 
-func (t *fileCacheTest) fileByIdx(i int) (base.DiskFileNum, base.FileType) {
+func (t *fileCacheTest) fileByIdx(i int) base.ObjectInfo {
 	if i < fileCacheTestNumTables {
-		return base.DiskFileNum(i), base.FileTypeTable
+		return base.ObjectInfoLiteral{
+			FileType:    base.FileTypeTable,
+			DiskFileNum: base.DiskFileNum(i),
+		}
 	}
-	return base.DiskFileNum(i), base.FileTypeBlob
+	return base.ObjectInfoLiteral{
+		FileType:    base.FileTypeBlob,
+		DiskFileNum: base.DiskFileNum(i),
+	}
 }
 
 func (t *fileCacheTest) cleanup() {
@@ -192,7 +198,7 @@ func (t *fileCacheTest) cleanup() {
 	t.blockCache.Unref()
 }
 
-func noopCorruptionFn(_ any, err error) error { return err }
+func noopCorruptionFn(_ base.ObjectInfo, err error) error { return err }
 
 // newTestHandle creates a filesystem with a set of test tables and an
 // associated file cache handle. The caller must close the handle.
@@ -727,9 +733,10 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % fileCacheTestNumFiles, pinned1} {
-			fn, typ := fct.fileByIdx(j)
-			if typ == base.FileTypeBlob {
-				_, closeFunc, err := h.GetValueReader(context.Background(), fn)
+			obj := fct.fileByIdx(j)
+			ftyp, fn := obj.FileInfo()
+			if ftyp == base.FileTypeBlob {
+				_, closeFunc, err := h.GetValueReader(context.Background(), obj)
 				if err != nil {
 					t.Fatalf("i=%d, j=%d: get value reader: %v", i, j, err)
 				}
@@ -787,9 +794,10 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		for _, j := range [...]int{pinned0, i % fileCacheTestNumFiles, pinned1} {
-			fn, typ := fct.fileByIdx(j)
-			if typ == base.FileTypeBlob {
-				_, closeFunc, err := h1.GetValueReader(context.Background(), fn)
+			obj := fct.fileByIdx(j)
+			ftyp, fn := obj.FileInfo()
+			if ftyp == base.FileTypeBlob {
+				_, closeFunc, err := h1.GetValueReader(context.Background(), obj)
 				if err != nil {
 					t.Fatalf("i=%d, j=%d: get value reader: %v", i, j, err)
 				}
@@ -847,9 +855,10 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 
 	rng := rand.New(rand.NewPCG(2, 2))
 	for i := 0; i < N; i++ {
-		fn, typ := fct.fileByIdx(rng.IntN(fileCacheTestNumFiles))
-		if typ == base.FileTypeBlob {
-			_, closeFunc, err := h.GetValueReader(context.Background(), fn)
+		obj := fct.fileByIdx(rng.IntN(fileCacheTestNumFiles))
+		ftyp, fn := obj.FileInfo()
+		if ftyp == base.FileTypeBlob {
+			_, closeFunc, err := h.GetValueReader(context.Background(), obj)
 			if err != nil {
 				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
 			}
@@ -873,7 +882,9 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 			}
 		}
 
-		h.Evict(fct.fileByIdx(int(lo + rng.Uint64N(hi-lo))))
+		obj = fct.fileByIdx(int(lo + rng.Uint64N(hi-lo)))
+		ftyp, fn = obj.FileInfo()
+		h.Evict(fn, ftyp)
 	}
 
 	sumEvicted, nEvicted := 0, 0
@@ -923,13 +934,14 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, 0))
 	for i := 0; i < N; i++ {
 		j := rng.IntN(fileCacheTestNumFiles)
-		fn, typ := fct.fileByIdx(j)
-		if typ == base.FileTypeBlob {
-			_, closeFunc1, err := h1.GetValueReader(context.Background(), fn)
+		obj := fct.fileByIdx(j)
+		ftyp, fn := obj.FileInfo()
+		if ftyp == base.FileTypeBlob {
+			_, closeFunc1, err := h1.GetValueReader(context.Background(), obj)
 			if err != nil {
 				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
 			}
-			_, closeFunc2, err := h2.GetValueReader(context.Background(), fn)
+			_, closeFunc2, err := h2.GetValueReader(context.Background(), obj)
 			if err != nil {
 				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
 			}
@@ -955,8 +967,12 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 			}
 		}
 
-		h1.Evict(fct.fileByIdx(int(lo + rng.Uint64N(hi-lo))))
-		h2.Evict(fct.fileByIdx(int(lo + rng.Uint64N(hi-lo))))
+		obj = fct.fileByIdx(int(lo + rng.Uint64N(hi-lo)))
+		ftyp, fn = obj.FileInfo()
+		h1.Evict(fn, ftyp)
+		obj = fct.fileByIdx(int(lo + rng.Uint64N(hi-lo)))
+		ftyp, fn = obj.FileInfo()
+		h2.Evict(fn, ftyp)
 	}
 
 	check := func(fs *fileCacheTestFS, h *fileCacheHandle) (float64, float64, float64) {
@@ -1089,13 +1105,14 @@ func TestFileCacheRetryAfterFailure(t *testing.T) {
 		h, fs := fct.newTestHandle()
 
 		fs.setOpenError(true /* enabled */)
-		_, _, err := h.GetValueReader(ctx, fileCacheTestNumTables)
+		obj := fct.fileByIdx(fileCacheTestNumTables)
+		_, _, err := h.GetValueReader(ctx, obj)
 		if err == nil {
 			t.Fatalf("expected failure, but found success")
 		}
 		require.Equal(t, "pebble: backing file 000200 error: injected error", err.Error())
 		fs.setOpenError(false /* enabled */)
-		_, closeFunc, err := h.GetValueReader(ctx, fileCacheTestNumTables)
+		_, closeFunc, err := h.GetValueReader(ctx, obj)
 		require.NoError(t, err)
 		closeFunc()
 		fs.validateAndCloseHandle(t, h, nil)

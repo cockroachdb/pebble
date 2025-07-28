@@ -173,7 +173,7 @@ func TestBlobRewrite(t *testing.T) {
 					objStore,
 					&base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 					sstable.ReaderOptions{},
-					func(any, error) error { return nil },
+					func(base.ObjectInfo, error) error { return nil },
 				)
 				var sstables []*manifest.TableMetadata
 				for _, sstFileNum := range sstableFileNums {
@@ -421,6 +421,10 @@ type constantFileMapping base.DiskFileNum
 // Assert that (*inputFileMapping) implements base.BlobFileMapping.
 var _ base.BlobFileMapping = constantFileMapping(0)
 
-func (m constantFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
-	return base.DiskFileNum(m), true
+func (m constantFileMapping) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
+	return base.ObjectInfoLiteral{
+		FileType:    base.FileTypeBlob,
+		DiskFileNum: base.DiskFileNum(m),
+		Bounds:      base.UserKeyBounds{},
+	}, true
 }

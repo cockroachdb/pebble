@@ -1327,24 +1327,11 @@ func (r *lowDiskSpaceReporter) findThreshold(
 
 // reportCorruption reports a corruption of a TableMetadata or BlobFileMetadata
 // to the event listener and also adds a DataCorruptionInfo payload to the error.
-func (d *DB) reportCorruption(meta any, err error) error {
-	switch meta := meta.(type) {
-	case *manifest.TableMetadata:
-		return d.reportFileCorruption(base.FileTypeTable, meta.TableBacking.DiskFileNum, meta.UserKeyBounds(), err)
-	case *manifest.PhysicalBlobFile:
-		// TODO(jackson): Add bounds for blob files.
-		return d.reportFileCorruption(base.FileTypeBlob, meta.FileNum, base.UserKeyBounds{}, err)
-	default:
-		panic(fmt.Sprintf("unknown metadata type: %T", meta))
-	}
-}
-
-func (d *DB) reportFileCorruption(
-	fileType base.FileType, fileNum base.DiskFileNum, userKeyBounds base.UserKeyBounds, err error,
-) error {
+func (d *DB) reportCorruption(meta base.ObjectInfo, err error) error {
 	if invariants.Enabled && !IsCorruptionError(err) {
 		panic("not a corruption error")
 	}
+	fileType, fileNum := meta.FileInfo()
 
 	objMeta, lookupErr := d.objProvider.Lookup(fileType, fileNum)
 	if lookupErr != nil {
@@ -1368,7 +1355,7 @@ func (d *DB) reportFileCorruption(
 		Path:     path,
 		IsRemote: objMeta.IsRemote(),
 		Locator:  objMeta.Remote.Locator,
-		Bounds:   userKeyBounds,
+		Bounds:   meta.UserKeyBounds(),
 		Details:  err,
 	}
 	d.opts.EventListener.DataCorruption(info)

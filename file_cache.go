@@ -118,10 +118,11 @@ type fileCacheHandle struct {
 	iterCount         atomic.Int32
 	sstStatsCollector block.CategoryStatsCollector
 
-	// reportCorruptionFn is used for block.ReadEnv.ReportCorruptionFn. It expects
-	// the first argument to be a `*TableMetadata`. It returns an error that
-	// contains more details.
-	reportCorruptionFn func(any, error) error
+	// reportCorruptionFn is used for block.ReadEnv.ReportCorruptionFn. The
+	// first argument must implement the ObjectInfo interface. Typically callers
+	// use *TableMetadata or *PhysicalBlobFile to satisfy this interface.
+	// reportCorruptionFn returns an error that contains more details.
+	reportCorruptionFn func(base.ObjectInfo, error) error
 
 	// This struct is only populated in race builds.
 	raceMu struct {
@@ -146,7 +147,7 @@ func (c *FileCache) newHandle(
 	objProvider objstorage.Provider,
 	loggerAndTracer LoggerAndTracer,
 	readerOpts sstable.ReaderOptions,
-	reportCorruptionFn func(any, error) error,
+	reportCorruptionFn func(base.ObjectInfo, error) error,
 ) *fileCacheHandle {
 	c.Ref()
 
@@ -268,17 +269,17 @@ func (h *fileCacheHandle) findOrCreateTable(
 // the given blob file. If a corruption error is encountered,
 // reportCorruptionFn() is called.
 func (h *fileCacheHandle) findOrCreateBlob(
-	ctx context.Context, fileNum base.DiskFileNum,
+	ctx context.Context, info base.ObjectInfo,
 ) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
+	ftyp, fileNum := info.FileInfo()
 	key := fileCacheKey{
 		handle:   h,
 		fileNum:  fileNum,
-		fileType: base.FileTypeBlob,
+		fileType: ftyp,
 	}
 	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
-	// TODO(jackson): Propagate a blob metadata object here.
 	if err != nil && IsCorruptionError(err) {
-		err = h.reportCorruptionFn(nil, err)
+		err = h.reportCorruptionFn(info, err)
 	}
 	return valRef, err
 }
@@ -388,9 +389,9 @@ func (h *fileCacheHandle) IterCount() int64 {
 
 // GetValueReader returns a blob.ValueReader for blob file identified by fileNum.
 func (h *fileCacheHandle) GetValueReader(
-	ctx context.Context, fileNum base.DiskFileNum,
+	ctx context.Context, diskFile base.ObjectInfo,
 ) (r blob.ValueReader, closeFunc func(), err error) {
-	ref, err := h.findOrCreateBlob(ctx, fileNum)
+	ref, err := h.findOrCreateBlob(ctx, diskFile)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -803,7 +804,7 @@ func SetupBlobReaderProvider(
 		objProvider,
 		opts.LoggerAndTracer,
 		readOpts,
-		func(any, error) error { return nil },
+		func(base.ObjectInfo, error) error { return nil },
 	)
 
 	return provider, cleanup, nil
