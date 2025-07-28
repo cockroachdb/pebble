@@ -750,6 +750,11 @@ var (
 		table.Div(),
 		table.String("range dels", 15, table.AlignRight, func(i keysInfo) string { return i.rangeDels }),
 	)
+	compressionTableHeader = `COMPRESSION`
+	compressionTable       = table.Define[pair[string, int64]](
+		table.String("algorithm", 10, table.AlignRight, func(p pair[string, int64]) string { return p.k }),
+		table.Count("tables", 10, table.AlignRight, func(p pair[string, int64]) int64 { return p.v }),
+	)
 )
 
 type commitPipelineInfo struct {
@@ -983,21 +988,17 @@ func (m *Metrics) String() string {
 	cur = keysInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(keysInfoContents))
 	cur = cur.NewlineReturn()
 
-	func(cur ascii.Cursor) {
-		maybePrintCompression := func(pos ascii.Cursor, name string, value int64) ascii.Cursor {
-			if value > 0 {
-				pos = pos.Printf("  %s %s", name, humanizeCount(value)).NewlineReturn()
-			}
-			return pos
-		}
-		cur = cur.WriteString("COMPRESSION").NewlineReturn()
-		cur = maybePrintCompression(cur, "minlz: ", m.Table.CompressedCountMinLZ)
-		cur = maybePrintCompression(cur, "snappy:", m.Table.CompressedCountSnappy)
-		cur = maybePrintCompression(cur, "zstd:  ", m.Table.CompressedCountZstd)
-		cur = maybePrintCompression(cur, "none:  ", m.Table.CompressedCountNone)
-		cur = maybePrintCompression(cur, "???:   ", m.Table.CompressedCountUnknown)
-		_ = cur
-	}(cur)
+	cur = cur.WriteString(compressionTableHeader).NewlineReturn()
+	compressionContents := []pair[string, int64]{
+		{k: "none", v: m.Table.CompressedCountNone},
+		{k: "snappy", v: m.Table.CompressedCountSnappy},
+		{k: "minlz", v: m.Table.CompressedCountMinLZ},
+		{k: "zstd", v: m.Table.CompressedCountZstd},
+	}
+	if m.Table.CompressedCountUnknown > 0 {
+		compressionContents = append(compressionContents, pair[string, int64]{k: "???", v: m.Table.CompressedCountUnknown})
+	}
+	compressionTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compressionContents))
 
 	return wb.String()
 }
