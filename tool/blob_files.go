@@ -24,7 +24,7 @@ import (
 // file.
 //
 // An sstable alone does not contain sufficient information to read a value from
-// a blob file. The sstable encodes a ReferenceID which first must be translated
+// a blob file. The sstable encodes a BlobReferenceID which first must be translated
 // to a BlobFileID and then from a BlobFileID to a DiskFileNum. The manifest
 // contains this metadata. The blobFileMappings type contains this state, loaded
 // from the manifest.
