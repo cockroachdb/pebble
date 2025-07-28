@@ -46,11 +46,11 @@ func (m *blobFileMappings) LoadValueBlobContext(tableNum base.TableNum) sstable.
 	}
 }
 
-// Lookup implements blob.FileLookupFunc.
-func (m *blobFileMappings) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+// Lookup implements base.BlobFileMapping.
+func (m *blobFileMappings) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
 	files, ok := m.physicalFiles[fileID]
 	if !ok || len(files) == 0 {
-		return 0, false
+		return nil, false
 	}
 	// TODO(jackson): Consider checking for the existence of each file and using
 	// the most recent existing file (and log the missing files).

@@ -421,6 +421,6 @@ type constantFileMapping base.DiskFileNum
 // Assert that (*inputFileMapping) implements base.BlobFileMapping.
 var _ base.BlobFileMapping = constantFileMapping(0)
 
-func (m constantFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+func (m constantFileMapping) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
 	return base.DiskFileNum(m), true
 }

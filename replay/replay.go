@@ -1025,9 +1025,12 @@ func findManifestStart(
 
 type blobFileMap map[base.BlobFileID]base.DiskFileNum
 
-func (m blobFileMap) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+func (m blobFileMap) Lookup(fileID base.BlobFileID) (base.DiskFile, bool) {
 	diskFileNum, ok := m[fileID]
-	return diskFileNum, ok
+	if !ok {
+		return nil, false
+	}
+	return diskFileNum, true
 }
 
 // loadFlushedSSTableKeys copies keys from the sstables specified by `fileNums`

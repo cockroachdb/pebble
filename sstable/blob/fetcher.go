@@ -144,10 +144,11 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 				return nil, err
 			}
 		}
-		diskFileNum, ok := r.fileMapping.Lookup(vh.BlobFileID)
+		diskFile, ok := r.fileMapping.Lookup(vh.BlobFileID)
 		if !ok {
 			return nil, errors.AssertionFailedf("blob file %s not found", vh.BlobFileID)
 		}
+		diskFileNum := diskFile.DiskFileNum()
 		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, diskFileNum); err != nil {
 			return nil, err
 		}

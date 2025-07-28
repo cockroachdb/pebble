@@ -182,7 +182,7 @@ func TestBlobFileSet_Lookup(t *testing.T) {
 	for i := 0; i < numBlobFiles; i++ {
 		fn, ok := set.Lookup(base.BlobFileID(i))
 		require.True(t, ok)
-		require.Equal(t, files[i].FileNum, fn)
+		require.Equal(t, files[i].FileNum, fn.DiskFileNum())
 	}
 }
 
