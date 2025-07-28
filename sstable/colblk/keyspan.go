@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 // the keyspan header encodes a 32-bit count of the number of unique boundary
@@ -289,7 +290,7 @@ func (d *KeyspanDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 // searchBoundaryKeys returns the index of the first boundary key greater than
 // or equal to key and whether or not the key was found exactly.
 func (d *KeyspanDecoder) searchBoundaryKeysWithSyntheticPrefix(
-	cmp base.Compare, key []byte, syntheticPrefix block.SyntheticPrefix,
+	cmp base.Compare, key []byte, syntheticPrefix blockiter.SyntheticPrefix,
 ) (index int, equal bool) {
 	if syntheticPrefix.IsSet() {
 		// The seek key must have the synthetic prefix, otherwise it falls entirely
@@ -323,7 +324,7 @@ func (d *KeyspanDecoder) searchBoundaryKeysWithSyntheticPrefix(
 
 // NewKeyspanIter constructs a new iterator over a keyspan columnar block.
 func NewKeyspanIter(
-	cmp base.Compare, h block.BufferHandle, transforms block.FragmentIterTransforms,
+	cmp base.Compare, h block.BufferHandle, transforms blockiter.FragmentTransforms,
 ) *KeyspanIter {
 	i := keyspanIterPool.Get().(*KeyspanIter)
 	i.closeCheck = invariants.CloseChecker{}
@@ -379,7 +380,7 @@ func (i *KeyspanIter) Close() {
 type keyspanIter struct {
 	r            *KeyspanDecoder
 	cmp          base.Compare
-	transforms   block.FragmentIterTransforms
+	transforms   blockiter.FragmentTransforms
 	noTransforms bool
 	span         keyspan.Span
 	// When positioned, the current span's start key is the user key at
@@ -400,7 +401,7 @@ var _ keyspan.FragmentIterator = (*keyspanIter)(nil)
 // init initializes the iterator with the given comparison function and keyspan
 // decoder.
 func (i *keyspanIter) init(
-	cmp base.Compare, r *KeyspanDecoder, transforms block.FragmentIterTransforms,
+	cmp base.Compare, r *KeyspanDecoder, transforms blockiter.FragmentTransforms,
 ) {
 	i.r = r
 	i.cmp = cmp
@@ -550,7 +551,7 @@ func (i *keyspanIter) materializeSpan() *keyspan.Span {
 	if i.noTransforms {
 		return &i.span
 	}
-	if i.transforms.SyntheticSeqNum != block.NoSyntheticSeqNum {
+	if i.transforms.SyntheticSeqNum != blockiter.NoSyntheticSeqNum {
 		for j := range i.span.Keys {
 			i.span.Keys[j].Trailer = base.MakeTrailer(
 				base.SeqNum(i.transforms.SyntheticSeqNum), i.span.Keys[j].Trailer.Kind())

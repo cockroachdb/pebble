@@ -35,6 +35,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/pebble/sstable/virtual"
 	"github.com/cockroachdb/pebble/vfs"
@@ -218,7 +219,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 
 			var err error
 			transforms := IterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			}
 			tableSize, err := r.EstimateDiskUsage(params.Lower.UserKey, params.Upper.UserKey, env, transforms)
 			if err != nil {
@@ -236,7 +237,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 
 			var rp valblk.ReaderProvider
 			transforms := IterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
 			env.Block.BufferPool = &bp
 			iter, err := r.NewCompactionIter(transforms, env, rp, AssertNoBlobHandles)
@@ -279,7 +280,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				return "virtualize must be called before scan-range-del"
 			}
 			transforms := FragmentIterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
 			iter, err := r.NewRawRangeDelIter(context.Background(), transforms, env)
 			if err != nil {
@@ -305,7 +306,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				return "virtualize must be called before scan-range-key"
 			}
 			transforms := FragmentIterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
 
 			iter, err := r.NewRawRangeKeyIter(context.Background(), transforms, env)
@@ -364,7 +365,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			env.Block.Stats = &stats
 			iter, err := r.NewPointIter(context.Background(), IterOptions{
 				Transforms: IterTransforms{
-					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
+					SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 				},
 				Lower:                lower,
 				Upper:                upper,
@@ -1302,8 +1303,8 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 		eReader, err := newReader(f, opts)
 		require.NoError(t, err)
 		iter, err := eReader.newPointIter(context.Background(), IterOptions{
-			Transforms: block.IterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+			Transforms: blockiter.Transforms{
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			},
 			FilterBlockSizeLimit: AlwaysUseFilterBlock,
 			ReaderProvider:       MakeTrivialReaderProvider(eReader),

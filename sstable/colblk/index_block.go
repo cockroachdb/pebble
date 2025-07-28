@@ -190,7 +190,7 @@ type IndexIter struct {
 	n       int
 	row     int
 
-	syntheticPrefixAndSuffix block.SyntheticPrefixAndSuffix
+	syntheticPrefixAndSuffix blockiter.SyntheticPrefixAndSuffix
 
 	h block.BufferHandle
 	// TODO(radu): remove allocDecoder and require any Init callers to provide the
@@ -203,7 +203,7 @@ var _ blockiter.Index = (*IndexIter)(nil)
 
 // InitWithDecoder initializes an index iterator from the provided decoder.
 func (i *IndexIter) InitWithDecoder(
-	comparer *base.Comparer, d *IndexBlockDecoder, transforms block.IterTransforms,
+	comparer *base.Comparer, d *IndexBlockDecoder, transforms blockiter.Transforms,
 ) {
 	i.compare = comparer.Compare
 	i.split = comparer.Split
@@ -216,7 +216,7 @@ func (i *IndexIter) InitWithDecoder(
 
 // Init initializes an iterator from the provided block data slice.
 func (i *IndexIter) Init(
-	comparer *base.Comparer, blk []byte, transforms block.IterTransforms,
+	comparer *base.Comparer, blk []byte, transforms blockiter.Transforms,
 ) error {
 	i.h.Release()
 	i.h = block.BufferHandle{}
@@ -227,7 +227,7 @@ func (i *IndexIter) Init(
 
 // InitHandle initializes an iterator from the provided block handle.
 func (i *IndexIter) InitHandle(
-	comparer *base.Comparer, blk block.BufferHandle, transforms block.IterTransforms,
+	comparer *base.Comparer, blk block.BufferHandle, transforms blockiter.Transforms,
 ) error {
 	i.h.Release()
 	i.h = blk
@@ -386,6 +386,6 @@ func (i *IndexIter) Close() error {
 	i.h = block.BufferHandle{}
 	i.d = nil
 	i.n = 0
-	i.syntheticPrefixAndSuffix = block.SyntheticPrefixAndSuffix{}
+	i.syntheticPrefixAndSuffix = blockiter.SyntheticPrefixAndSuffix{}
 	return nil
 }

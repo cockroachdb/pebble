@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 var testKeysSchema = DefaultKeySchema(testkeys.Comparer, 16)
@@ -124,10 +125,10 @@ func TestDataBlock(t *testing.T) {
 				td.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
 				td.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 				td.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
-				transforms := block.IterTransforms{
-					SyntheticSeqNum:          block.SyntheticSeqNum(seqNum),
+				transforms := blockiter.Transforms{
+					SyntheticSeqNum:          blockiter.SyntheticSeqNum(seqNum),
 					HideObsoletePoints:       td.HasArg("hide-obsolete-points"),
-					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
+					SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
 				}
 				if err := it.Init(&r, transforms); err != nil {
 					return err.Error()

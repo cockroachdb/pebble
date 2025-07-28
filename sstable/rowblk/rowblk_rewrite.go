@@ -11,7 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 // NewRewriter constructs a new rewriter.
@@ -41,7 +41,7 @@ type Rewriter struct {
 func (r *Rewriter) RewriteSuffixes(
 	input []byte, from []byte, to []byte,
 ) (start, end base.InternalKey, rewritten []byte, err error) {
-	if err := r.iter.Init(r.comparer.Compare, r.comparer.ComparePointSuffixes, r.comparer.Split, input, block.NoTransforms); err != nil {
+	if err := r.iter.Init(r.comparer.Compare, r.comparer.ComparePointSuffixes, r.comparer.Split, input, blockiter.NoTransforms); err != nil {
 		return base.InternalKey{}, base.InternalKey{}, nil, err
 	}
 	if cap(r.writer.restarts) < int(r.iter.restarts) {

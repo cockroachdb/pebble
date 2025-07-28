@@ -15,7 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -127,7 +127,7 @@ func TestBlockIter2(t *testing.T) {
 				case "iter":
 					var globalSeqNum uint64
 					d.MaybeScanArgs(t, "globalSeqNum", &globalSeqNum)
-					transforms := block.IterTransforms{SyntheticSeqNum: block.SyntheticSeqNum(globalSeqNum)}
+					transforms := blockiter.Transforms{SyntheticSeqNum: blockiter.SyntheticSeqNum(globalSeqNum)}
 					iter, err := NewIter(bytes.Compare, nil, nil, blk, transforms)
 					if err != nil {
 						return err.Error()
@@ -155,7 +155,7 @@ func TestBlockIterKeyStability(t *testing.T) {
 	}
 	blk := w.Finish()
 
-	i, err := NewIter(bytes.Compare, nil, nil, blk, block.NoTransforms)
+	i, err := NewIter(bytes.Compare, nil, nil, blk, blockiter.NoTransforms)
 	require.NoError(t, err)
 
 	// Check that the supplied slice resides within the bounds of the block.
@@ -215,7 +215,7 @@ func TestBlockIterReverseDirections(t *testing.T) {
 
 	for targetPos := 0; targetPos < w.RestartInterval; targetPos++ {
 		t.Run("", func(t *testing.T) {
-			i, err := NewIter(bytes.Compare, nil, nil, blk, block.NoTransforms)
+			i, err := NewIter(bytes.Compare, nil, nil, blk, blockiter.NoTransforms)
 			require.NoError(t, err)
 
 			pos := 3
@@ -286,11 +286,11 @@ func TestBlockSyntheticPrefix(t *testing.T) {
 
 				elidedPrefixBlock, includedPrefixBlock := elidedPrefixWriter.Finish(), includedPrefixWriter.Finish()
 
-				expect, err := NewIter(bytes.Compare, nil, nil, includedPrefixBlock, block.IterTransforms{})
+				expect, err := NewIter(bytes.Compare, nil, nil, includedPrefixBlock, blockiter.Transforms{})
 				require.NoError(t, err)
 
-				got, err := NewIter(bytes.Compare, nil, nil, elidedPrefixBlock, block.IterTransforms{
-					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte(prefix), nil),
+				got, err := NewIter(bytes.Compare, nil, nil, elidedPrefixBlock, blockiter.Transforms{
+					SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte(prefix), nil),
 				})
 				require.NoError(t, err)
 
@@ -374,11 +374,11 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 				suffixReplacedBlock := suffixWriter.Finish()
 				expectedBlock := expectedSuffixWriter.Finish()
 
-				expect, err := NewIter(cmp, suffixCmp, split, expectedBlock, block.NoTransforms)
+				expect, err := NewIter(cmp, suffixCmp, split, expectedBlock, blockiter.NoTransforms)
 				require.NoError(t, err)
 
-				got, err := NewIter(cmp, suffixCmp, split, suffixReplacedBlock, block.IterTransforms{
-					SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(synthPrefix, synthSuffix),
+				got, err := NewIter(cmp, suffixCmp, split, suffixReplacedBlock, blockiter.Transforms{
+					SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(synthPrefix, synthSuffix),
 				})
 				require.NoError(t, err)
 

@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 )
 
@@ -244,7 +245,7 @@ var benchConfigs = []benchConfig{
 func BenchmarkCockroachDataColBlockIter(b *testing.B) {
 	for _, cfg := range benchConfigs {
 		b.Run(cfg.String(), func(b *testing.B) {
-			benchmarkCockroachDataColBlockIter(b, cfg, block.IterTransforms{})
+			benchmarkCockroachDataColBlockIter(b, cfg, blockiter.Transforms{})
 		})
 	}
 }
@@ -252,31 +253,31 @@ func BenchmarkCockroachDataColBlockIter(b *testing.B) {
 func BenchmarkCockroachDataColBlockIterTransforms(b *testing.B) {
 	transforms := []struct {
 		description string
-		transforms  block.IterTransforms
+		transforms  blockiter.Transforms
 	}{
 		{},
 		{
 			description: "SynthSeqNum",
-			transforms: block.IterTransforms{
+			transforms: blockiter.Transforms{
 				SyntheticSeqNum: 1234,
 			},
 		},
 		{
 			description: "HideObsolete",
-			transforms: block.IterTransforms{
+			transforms: blockiter.Transforms{
 				HideObsoletePoints: true,
 			},
 		},
 		{
 			description: "SyntheticPrefix",
-			transforms: block.IterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix([]byte("prefix_"), nil),
+			transforms: blockiter.Transforms{
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte("prefix_"), nil),
 			},
 		},
 		{
 			description: "SyntheticSuffix",
-			transforms: block.IterTransforms{
-				SyntheticPrefixAndSuffix: block.MakeSyntheticPrefixAndSuffix(
+			transforms: blockiter.Transforms{
+				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(
 					nil,
 					EncodeTimestamp(make([]byte, 0, 20), 1_000_000_000_000, 0)[1:],
 				),
@@ -303,7 +304,7 @@ func (cfg benchConfig) String() string {
 }
 
 func benchmarkCockroachDataColBlockIter(
-	b *testing.B, cfg benchConfig, transforms block.IterTransforms,
+	b *testing.B, cfg benchConfig, transforms blockiter.Transforms,
 ) {
 	const targetBlockSize = 32 << 10
 	seed := uint64(time.Now().UnixNano())

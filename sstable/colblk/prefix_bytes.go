@@ -18,7 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 // PrefixBytes holds an array of lexicographically ordered byte slices. It
@@ -259,7 +259,7 @@ type PrefixBytesIter struct {
 // Init initializes the prefix bytes iterator; maxKeyLength must be
 // large enough to fit any key in the block after applying any synthetic prefix
 // and/or suffix.
-func (i *PrefixBytesIter) Init(maxKeyLength int, syntheticPrefix block.SyntheticPrefix) {
+func (i *PrefixBytesIter) Init(maxKeyLength int, syntheticPrefix blockiter.SyntheticPrefix) {
 	// Allocate a buffer that's large enough to hold the largest user key in the
 	// block with 1 byte to spare (so that pointer arithmetic is never pointing
 	// beyond the allocation, which would violate Go rules).

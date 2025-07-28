@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 // FilterBlockSizeLimit is a size limit for bloom filter blocks - if a bloom
@@ -25,34 +26,34 @@ const (
 type (
 	// BufferPool re-exports block.BufferPool.
 	BufferPool = block.BufferPool
-	// IterTransforms re-exports block.IterTransforms.
-	IterTransforms = block.IterTransforms
-	// FragmentIterTransforms re-exports block.FragmentIterTransforms.
-	FragmentIterTransforms = block.FragmentIterTransforms
+	// IterTransforms re-exports block.Transforms.
+	IterTransforms = blockiter.Transforms
+	// FragmentIterTransforms re-exports block.FragmentTransforms.
+	FragmentIterTransforms = blockiter.FragmentTransforms
 	// SyntheticSeqNum re-exports block.SyntheticSeqNum.
-	SyntheticSeqNum = block.SyntheticSeqNum
+	SyntheticSeqNum = blockiter.SyntheticSeqNum
 	// SyntheticSuffix re-exports block.SyntheticSuffix.
-	SyntheticSuffix = block.SyntheticSuffix
+	SyntheticSuffix = blockiter.SyntheticSuffix
 	// SyntheticPrefix re-exports block.SyntheticPrefix.
-	SyntheticPrefix = block.SyntheticPrefix
+	SyntheticPrefix = blockiter.SyntheticPrefix
 	// SyntheticPrefixAndSuffix re-exports block.SyntheticPrefixAndSuffix.
-	SyntheticPrefixAndSuffix = block.SyntheticPrefixAndSuffix
+	SyntheticPrefixAndSuffix = blockiter.SyntheticPrefixAndSuffix
 )
 
 // NoTransforms is the default value for IterTransforms.
-var NoTransforms = block.NoTransforms
+var NoTransforms = blockiter.NoTransforms
 
 // NoFragmentTransforms is the default value for FragmentIterTransforms.
-var NoFragmentTransforms = block.NoFragmentTransforms
+var NoFragmentTransforms = blockiter.NoFragmentTransforms
 
 // MakeSyntheticPrefixAndSuffix returns a SyntheticPrefixAndSuffix with the
 // given prefix and suffix.
 func MakeSyntheticPrefixAndSuffix(
 	prefix SyntheticPrefix, suffix SyntheticSuffix,
 ) SyntheticPrefixAndSuffix {
-	return block.MakeSyntheticPrefixAndSuffix(prefix, suffix)
+	return blockiter.MakeSyntheticPrefixAndSuffix(prefix, suffix)
 }
 
 // NoSyntheticSeqNum is the default zero value for SyntheticSeqNum, which
 // disables overriding the sequence number.
-const NoSyntheticSeqNum = block.NoSyntheticSeqNum
+const NoSyntheticSeqNum = blockiter.NoSyntheticSeqNum

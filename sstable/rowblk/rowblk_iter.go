@@ -111,7 +111,7 @@ type Iter struct {
 	//
 	// In addition, we also assume that any block with rangekeys will not contain
 	// a synthetic suffix.
-	transforms block.IterTransforms
+	transforms blockiter.Transforms
 
 	// offset is the byte index that marks where the current key/value is
 	// encoded in the block.
@@ -226,7 +226,7 @@ func NewIter(
 	suffixCmp base.ComparePointSuffixes,
 	split base.Split,
 	block []byte,
-	transforms block.IterTransforms,
+	transforms blockiter.Transforms,
 ) (*Iter, error) {
 	i := &Iter{}
 	return i, i.Init(cmp, suffixCmp, split, block, transforms)
@@ -243,7 +243,7 @@ func (i *Iter) Init(
 	suffixCmp base.ComparePointSuffixes,
 	split base.Split,
 	blk []byte,
-	transforms block.IterTransforms,
+	transforms blockiter.Transforms,
 ) error {
 	numRestarts := int32(binary.LittleEndian.Uint32(blk[len(blk)-4:]))
 	if numRestarts == 0 {
@@ -281,7 +281,7 @@ func (i *Iter) Init(
 //     ingested.
 //   - Foreign sstable iteration: syntheticSeqNum is always set.
 func (i *Iter) InitHandle(
-	comparer *base.Comparer, block block.BufferHandle, transforms block.IterTransforms,
+	comparer *base.Comparer, block block.BufferHandle, transforms blockiter.Transforms,
 ) error {
 	i.handle.Release()
 	i.handle = block

@@ -1,8 +1,8 @@
-// Copyright 2024 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// Copyright 2025 The LevelDB-Go and Pebble Authors. All rights reserved. Use
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package block
+package blockiter
 
 import (
 	"testing"
@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIterTransforms(t *testing.T) {
+func TestTransforms(t *testing.T) {
 	require.True(t, NoTransforms.NoTransforms())
-	var transforms IterTransforms
+	var transforms Transforms
 	require.True(t, transforms.NoTransforms())
 	require.True(t, transforms.SyntheticPrefixAndSuffix.IsUnset())
 	transforms.SyntheticPrefixAndSuffix = MakeSyntheticPrefixAndSuffix([]byte{}, []byte{})
@@ -34,9 +34,9 @@ func TestIterTransforms(t *testing.T) {
 	require.False(t, transforms.NoTransforms())
 }
 
-func TestFragmentIterTransforms(t *testing.T) {
+func TestFragmentTransforms(t *testing.T) {
 	require.True(t, NoFragmentTransforms.NoTransforms())
-	var transforms FragmentIterTransforms
+	var transforms FragmentTransforms
 	require.True(t, transforms.NoTransforms())
 	require.True(t, transforms.SyntheticPrefixAndSuffix.IsUnset())
 	transforms.SyntheticPrefixAndSuffix = MakeSyntheticPrefixAndSuffix([]byte{}, []byte{})

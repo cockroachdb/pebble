@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
 
 // fragmentIter wraps an Iter, implementing the keyspan.FragmentIterator
@@ -48,7 +49,7 @@ type fragmentIter struct {
 	// fileNum is used for logging/debugging.
 	fileNum base.DiskFileNum
 
-	syntheticPrefixAndSuffix block.SyntheticPrefixAndSuffix
+	syntheticPrefixAndSuffix blockiter.SyntheticPrefixAndSuffix
 	// startKeyBuf is a buffer that is reused to store the start key of the span
 	// when a synthetic prefix is used.
 	startKeyBuf []byte
@@ -77,7 +78,7 @@ func NewFragmentIter(
 	fileNum base.DiskFileNum,
 	comparer *base.Comparer,
 	blockHandle block.BufferHandle,
-	transforms block.FragmentIterTransforms,
+	transforms blockiter.FragmentTransforms,
 ) (keyspan.FragmentIterator, error) {
 	i := fragmentBlockIterPool.Get().(*fragmentIter)
 
@@ -92,7 +93,7 @@ func NewFragmentIter(
 	}
 	i.closeCheck = invariants.CloseChecker{}
 
-	if err := i.blockIter.InitHandle(comparer, blockHandle, block.IterTransforms{
+	if err := i.blockIter.InitHandle(comparer, blockHandle, blockiter.Transforms{
 		SyntheticSeqNum: transforms.SyntheticSeqNum,
 		// We let the blockIter prepend the prefix to span start keys; the fragment
 		// iterator will prepend it for end keys. We could do everything in the
@@ -293,7 +294,7 @@ func (i *fragmentIter) Close() {
 	i.span = keyspan.Span{}
 	i.dir = 0
 	i.fileNum = 0
-	i.syntheticPrefixAndSuffix = block.SyntheticPrefixAndSuffix{}
+	i.syntheticPrefixAndSuffix = blockiter.SyntheticPrefixAndSuffix{}
 	i.startKeyBuf = i.startKeyBuf[:0]
 	i.endKeyBuf = i.endKeyBuf[:0]
 	fragmentBlockIterPool.Put(i)
