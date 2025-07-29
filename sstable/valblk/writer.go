@@ -20,8 +20,8 @@ type Writer struct {
 	// Block finished callback.
 	blockFinishedFunc func(compressedSize int)
 
-	compressor  *block.Compressor
-	checksummer *block.Checksummer
+	physBlockMaker *block.PhysicalBlockMaker
+
 	// buf is the current block being written to (uncompressed).
 	buf *block.TempBuffer
 	// Sequence of blocks that are finished.
@@ -32,9 +32,8 @@ type Writer struct {
 }
 
 type bufferedValueBlock struct {
-	block     block.PhysicalBlock
-	bufHandle *block.TempBuffer
-	handle    block.Handle
+	block  block.PhysicalBlock
+	handle block.Handle
 }
 
 var valueBlockWriterPool = sync.Pool{
@@ -46,16 +45,14 @@ var valueBlockWriterPool = sync.Pool{
 // NewWriter creates a new Writer of value blocks and value index blocks.
 func NewWriter(
 	flushGovernor block.FlushGovernor,
-	compressor *block.Compressor,
-	checksummer *block.Checksummer,
+	physBlockMaker *block.PhysicalBlockMaker,
 	// compressedSize should exclude the block trailer.
 	blockFinishedFunc func(compressedSize int),
 ) *Writer {
 	w := valueBlockWriterPool.Get().(*Writer)
 	*w = Writer{
 		flush:             flushGovernor,
-		compressor:        compressor,
-		checksummer:       checksummer,
+		physBlockMaker:    physBlockMaker,
 		blockFinishedFunc: blockFinishedFunc,
 		blocks:            w.blocks[:0],
 	}
@@ -92,18 +89,15 @@ func (w *Writer) Size() uint64 {
 }
 
 func (w *Writer) compressAndFlush() {
-	physicalBlock, bufHandle := block.CompressAndChecksumToTempBuffer(
-		w.buf.Data(), blockkind.SSTableValue, w.compressor, w.checksummer,
-	)
+	physicalBlock := w.physBlockMaker.Make(w.buf.Data(), blockkind.SSTableValue, block.NoFlags)
 	w.buf.Reset()
 	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
 	w.totalBlockBytes += uint64(physicalBlock.LengthWithTrailer())
 	// blockFinishedFunc length excludes the block trailer.
 	w.blockFinishedFunc(physicalBlock.LengthWithoutTrailer())
 	w.blocks = append(w.blocks, bufferedValueBlock{
-		block:     physicalBlock,
-		bufHandle: bufHandle,
-		handle:    bh,
+		block:  physicalBlock,
+		handle: bh,
 	})
 }
 
@@ -170,11 +164,11 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 	if len(b) != 0 {
 		panic("incorrect length calculation")
 	}
-	pb, bufHandle := block.CopyAndChecksumToTempBuffer(w.buf.Data(), blockkind.Metadata, w.compressor, w.checksummer)
+	pb := w.physBlockMaker.Make(w.buf.Data(), blockkind.Metadata, block.DontCompress)
+	defer pb.Release()
 	if _, err := layout.WriteValueIndexBlock(pb, h); err != nil {
 		return IndexHandle{}, err
 	}
-	bufHandle.Release()
 	return h, nil
 }
 
@@ -182,7 +176,7 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 // to a pool.
 func (w *Writer) Release() {
 	for i := range w.blocks {
-		w.blocks[i].bufHandle.Release()
+		w.blocks[i].block.Release()
 		w.blocks[i] = bufferedValueBlock{}
 	}
 	w.buf.Release()
