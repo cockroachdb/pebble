@@ -99,7 +99,7 @@ type RawColumnWriter struct {
 
 	writeQueue struct {
 		wg  sync.WaitGroup
-		ch  chan block.PhysicalBlock
+		ch  chan block.OwnedPhysicalBlock
 		err error
 	}
 	layout layoutWriter
@@ -194,7 +194,7 @@ func newColumnarWriter(
 	w.props.KeySchemaName = o.KeySchema.Name
 	w.props.MergerName = o.MergerName
 
-	w.writeQueue.ch = make(chan block.PhysicalBlock)
+	w.writeQueue.ch = make(chan block.OwnedPhysicalBlock)
 	w.writeQueue.wg.Add(1)
 	w.cpuMeasurer = cpuMeasurer
 	go w.drainWriteQueue()
@@ -715,15 +715,17 @@ func (w *RawColumnWriter) enqueueDataBlock(
 
 	// Compress and checksum the data block and send it to the write queue.
 	pb := w.physBlockMaker.Make(serializedBlock, blockkind.SSTableData, block.NoFlags)
-	return w.enqueuePhysicalBlock(pb, separator)
+	return w.enqueuePhysicalBlock(pb.Take(), separator)
 }
 
 // enqueuePhysicalBlock enqueues a physical block to the write queue; the
 // physical block will be automatically released.
-func (w *RawColumnWriter) enqueuePhysicalBlock(pb block.PhysicalBlock, separator []byte) error {
+func (w *RawColumnWriter) enqueuePhysicalBlock(
+	pb block.OwnedPhysicalBlock, separator []byte,
+) error {
 	dataBlockHandle := block.Handle{
 		Offset: w.queuedDataSize,
-		Length: uint64(pb.LengthWithoutTrailer()),
+		Length: uint64(pb.Length().WithoutTrailer()),
 	}
 	w.queuedDataSize += dataBlockHandle.Length + block.TrailerLen
 	w.writeQueue.ch <- pb
@@ -886,7 +888,6 @@ func (w *RawColumnWriter) drainWriteQueue() {
 		if _, err := w.layout.WritePrecompressedDataBlock(pb); err != nil {
 			w.writeQueue.err = err
 		}
-		pb.Release()
 		// Report to the CPU measurer immediately after writing (note that there
 		// may be a time lag until the next block is available to write).
 		w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineSSTableSecondary)
@@ -1131,7 +1132,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 			w.separatorBuf = w.comparer.Successor(w.separatorBuf[:0], blocks[i].end.UserKey)
 			separator = w.separatorBuf
 		}
-		if err := w.enqueuePhysicalBlock(blocks[i].physical, separator); err != nil {
+		if err := w.enqueuePhysicalBlock(blocks[i].physical.Take(), separator); err != nil {
 			return err
 		}
 	}
@@ -1213,7 +1214,7 @@ func (w *RawColumnWriter) copyDataBlocks(
 			offsetDiff := blocks[i].bh.Offset - blocks[firstBlockIdx].bh.Offset
 			dataWithTrailer := buf[offsetDiff : offsetDiff+blocks[i].bh.Length+block.TrailerLen]
 			pb := block.AlreadyEncodedPhysicalBlock(dataWithTrailer)
-			if err := w.enqueuePhysicalBlock(pb, blocks[i].sep); err != nil {
+			if err := w.enqueuePhysicalBlock(pb.Take(), blocks[i].sep); err != nil {
 				return err
 			}
 		}
@@ -1248,7 +1249,7 @@ func (w *RawColumnWriter) copyDataBlocks(
 func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
 	// Compress and checksum the data block and send it to the write queue.
 	pb := w.physBlockMaker.Make(b, blockkind.SSTableData, block.NoFlags)
-	if err := w.enqueuePhysicalBlock(pb, sep); err != nil {
+	if err := w.enqueuePhysicalBlock(pb.Take(), sep); err != nil {
 		return err
 	}
 	return nil

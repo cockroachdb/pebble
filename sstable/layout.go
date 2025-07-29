@@ -859,10 +859,12 @@ func (w *layoutWriter) WriteDataBlock(b []byte) (block.Handle, error) {
 	return w.writeBlock(b, blockkind.SSTableData)
 }
 
-// WritePrecompressedDataBlock writes a pre-compressed data block and its
-// pre-computed trailer to the writer, returning its block handle. It can mangle
-// the block data.
-func (w *layoutWriter) WritePrecompressedDataBlock(blk block.PhysicalBlock) (block.Handle, error) {
+// WritePrecompressedDataBlock writes a pre-compressed data block (including the
+// trailer) and releases it, returning its block handle. Releases the block even
+// in error cases.
+func (w *layoutWriter) WritePrecompressedDataBlock(
+	blk block.OwnedPhysicalBlock,
+) (block.Handle, error) {
 	return w.writePhysicalBlock(blk)
 }
 
@@ -943,15 +945,15 @@ func (w *layoutWriter) writeNamedBlockUncompressed(
 }
 
 // WriteValueBlock writes a pre-finished value block (with the trailer) to the
-// writer. It can mangle the block data.
-func (w *layoutWriter) WriteValueBlock(blk block.PhysicalBlock) (block.Handle, error) {
+// writer and releases the buffer. The buffer is releaseed even in error cases.
+func (w *layoutWriter) WriteValueBlock(blk block.OwnedPhysicalBlock) (block.Handle, error) {
 	return w.writePhysicalBlock(blk)
 }
 
-// WriteValueIndexBlock writes a value index block and adds it to the meta
-// index. It can mangle the block data.
+// WriteValueIndexBlock writes a value index block, releases it, ands updates
+// the meta index. The block is released even in error cases.
 func (w *layoutWriter) WriteValueIndexBlock(
-	blk block.PhysicalBlock, vbih valblk.IndexHandle,
+	blk block.OwnedPhysicalBlock, vbih valblk.IndexHandle,
 ) (block.Handle, error) {
 	h, err := w.writePhysicalBlock(blk)
 	if err != nil {
@@ -965,32 +967,31 @@ func (w *layoutWriter) WriteValueIndexBlock(
 // writeBlock checksums, compresses, and writes out a block.
 func (w *layoutWriter) writeBlock(b []byte, kind block.Kind) (block.Handle, error) {
 	pb := w.physBlockMaker.Make(b, kind, block.NoFlags)
-	defer pb.Release()
-	h, err := w.writePhysicalBlock(pb)
+	h, err := w.writePhysicalBlock(pb.Take())
 	return h, err
 }
 
 // writeBlock checksums and writes out a block.
 func (w *layoutWriter) writeBlockUncompressed(b []byte, kind block.Kind) (block.Handle, error) {
 	pb := w.physBlockMaker.Make(b, kind, block.DontCompress)
-	defer pb.Release()
-	h, err := w.writePhysicalBlock(pb)
+	h, err := w.writePhysicalBlock(pb.Take())
 	return h, err
 }
 
-// writePhysicalBlock writes a physical block to the writer, returning its block
-// handle. Does not release the physical block.
+// writePhysicalBlock writes a physical block to the writer and releases it,
+// returning its block handle. Releases the physical block even in error cases.
 //
 // writePhysicalBlock might mangle the block data.
-func (w *layoutWriter) writePhysicalBlock(blk block.PhysicalBlock) (block.Handle, error) {
+func (w *layoutWriter) writePhysicalBlock(blk block.OwnedPhysicalBlock) (block.Handle, error) {
 	w.clearFromCache(w.offset)
-	// Write the bytes to the file.
-	n, err := blk.WriteTo(w.writable)
+	// Write the bytes to the file. Note that this call can mangle the block data,
+	// but it should not matter since we are releasing the TempBuffer right away.
+	length, err := block.WriteAndReleasePhysicalBlock(blk, w.writable)
 	if err != nil {
 		return block.Handle{}, err
 	}
-	bh := block.Handle{Offset: w.offset, Length: uint64(blk.LengthWithoutTrailer())}
-	w.offset += uint64(n)
+	bh := block.Handle{Offset: w.offset, Length: uint64(length.WithoutTrailer())}
+	w.offset += uint64(length.WithTrailer())
 	return bh, nil
 }
 

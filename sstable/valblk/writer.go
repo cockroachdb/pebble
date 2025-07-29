@@ -91,8 +91,8 @@ func (w *Writer) Size() uint64 {
 func (w *Writer) compressAndFlush() {
 	physicalBlock := w.physBlockMaker.Make(w.buf.Data(), blockkind.SSTableValue, block.NoFlags)
 	w.buf.Reset()
-	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.LengthWithoutTrailer())}
-	w.totalBlockBytes += uint64(physicalBlock.LengthWithTrailer())
+	bh := block.Handle{Offset: w.totalBlockBytes, Length: uint64(physicalBlock.Length().WithoutTrailer())}
+	w.totalBlockBytes += uint64(physicalBlock.Length().WithTrailer())
 	// blockFinishedFunc length excludes the block trailer.
 	w.blockFinishedFunc(physicalBlock.LengthWithoutTrailer())
 	w.blocks = append(w.blocks, bufferedValueBlock{
@@ -114,7 +114,7 @@ func (w *Writer) Finish(layout LayoutWriter, fileOffset uint64) (IndexHandle, Wr
 	largestOffset := uint64(0)
 	largestLength := uint64(0)
 	for i := range w.blocks {
-		_, err := layout.WriteValueBlock(w.blocks[i].block)
+		_, err := layout.WriteValueBlock(w.blocks[i].block.Take())
 		if err != nil {
 			return IndexHandle{}, WriterStats{}, err
 		}
@@ -165,8 +165,7 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 		panic("incorrect length calculation")
 	}
 	pb := w.physBlockMaker.Make(w.buf.Data(), blockkind.Metadata, block.DontCompress)
-	defer pb.Release()
-	if _, err := layout.WriteValueIndexBlock(pb, h); err != nil {
+	if _, err := layout.WriteValueIndexBlock(pb.Take(), h); err != nil {
 		return IndexHandle{}, err
 	}
 	return h, nil
@@ -200,10 +199,10 @@ type WriterStats struct {
 // LayoutWriter defines the interface for a writer that writes out serialized
 // value and value index blocks.
 type LayoutWriter interface {
-	// WriteValueBlock writes a pre-finished value block (with the trailer) to
-	// the writer.
-	WriteValueBlock(blk block.PhysicalBlock) (block.Handle, error)
-	// WriteValueIndexBlock writes a pre-finished value block index to the
-	// writer.
-	WriteValueIndexBlock(blk block.PhysicalBlock, vbih IndexHandle) (block.Handle, error)
+	// WriteValueBlock writes a pre-finished value block (with the trailer) to the
+	// writer and releases the block. The block is released even in error cases.
+	WriteValueBlock(blk block.OwnedPhysicalBlock) (block.Handle, error)
+	// WriteValueIndexBlock writes a pre-finished value block index to the writer
+	// and releases the block. The block is released even in error cases.
+	WriteValueIndexBlock(blk block.OwnedPhysicalBlock, vbih IndexHandle) (block.Handle, error)
 }
