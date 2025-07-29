@@ -172,6 +172,18 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 
 	index I
 	data  D
+
+	// indexLazyEnabled is set to true if the index block is lazy-loaded. This is the
+	// default for single-level iterators. But it can be false for two-level iterators.
+	indexLazyEnabled bool
+	// indexLoaded is set to true if the index block load operation completed
+	// regardless of success or failure. In case of failure, indexLoadError is set
+	// to avoid retrying the load operation.
+	indexLoaded bool
+	// indexLoadError saves the error from the index block load operation. Note that
+	// the error is not reset for reuse.
+	indexLoadError error
+
 	// inPool is set to true before putting the iterator in the reusable pool;
 	// used to detect double-close.
 	inPool bool
@@ -191,9 +203,8 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 // singleLevelIterator implements the base.InternalIterator interface.
 var _ base.InternalIterator = (*singleLevelIteratorRowBlocks)(nil)
 
-// newColumnBlockSingleLevelIterator reads the index block and creates and
-// initializes a singleLevelIterator over an sstable with column-oriented data
-// blocks.
+// newColumnBlockSingleLevelIterator creates a singleLevelIterator over an
+// sstable with column-oriented data blocks that loads the index block lazily.
 //
 // Note that lower, upper are iterator bounds and are separate from virtual
 // sstable bounds. If the virtualState passed in is not nil, then virtual
@@ -207,6 +218,7 @@ func newColumnBlockSingleLevelIterator(
 	if !r.tableFormat.BlockColumnar() {
 		panic(errors.AssertionFailedf("table format %d should not use columnar block format", r.tableFormat))
 	}
+
 	i := singleLevelIterColumnBlockPool.Get().(*singleLevelIteratorColumnBlocks)
 	i.init(ctx, r, opts)
 	if r.Attributes.Has(AttributeValueBlocks) {
@@ -214,20 +226,14 @@ func newColumnBlockSingleLevelIterator(
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
 	i.data.InitOnce(r.keySchema, r.Comparer, &i.internalValueConstructor)
-	indexH, err := r.readTopLevelIndexBlock(ctx, i.readEnv.Block, i.indexFilterRH)
-	if err == nil {
-		err = i.index.InitHandle(r.Comparer, indexH, opts.Transforms)
-	}
-	if err != nil {
-		_ = i.Close()
-		return nil, err
-	}
+
+	i.indexLazyEnabled = true
+
 	return i, nil
 }
 
-// newRowBlockSingleLevelIterator reads the index block and creates and
-// initializes a singleLevelIterator over an sstable with row-oriented data
-// blocks.
+// newRowBlockSingleLevelIterator creates a singleLevelIterator over an
+// sstable with row-oriented data blocks that loads the index block lazily.
 //
 // Note that lower, upper are iterator bounds and are separate from virtual
 // sstable bounds. If the virtualState passed in is not nil, then virtual
@@ -241,6 +247,7 @@ func newRowBlockSingleLevelIterator(
 	if r.tableFormat.BlockColumnar() {
 		panic(errors.AssertionFailedf("table format %s uses block columnar format", r.tableFormat))
 	}
+
 	i := singleLevelIterRowBlockPool.Get().(*singleLevelIteratorRowBlocks)
 	i.init(ctx, r, opts)
 	if r.tableFormat >= TableFormatPebblev3 {
@@ -254,20 +261,17 @@ func newRowBlockSingleLevelIterator(
 		i.data.SetHasValuePrefix(true)
 	}
 
-	indexH, err := r.readTopLevelIndexBlock(ctx, i.readEnv.Block, i.indexFilterRH)
-	if err == nil {
-		err = i.index.InitHandle(r.Comparer, indexH, opts.Transforms)
-	}
-	if err != nil {
-		_ = i.Close()
-		return nil, err
-	}
+	i.indexLazyEnabled = true
+
 	return i, nil
 }
 
 // init initializes the singleLevelIterator struct. It does not read the index.
 func (i *singleLevelIterator[I, PI, D, PD]) init(ctx context.Context, r *Reader, opts IterOptions) {
 	i.inPool = false
+	i.indexLazyEnabled = false
+	i.indexLoaded = false
+	i.indexLoadError = nil
 	i.ctx = ctx
 	i.lower = opts.Lower
 	i.upper = opts.Upper
@@ -325,6 +329,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) resetForReuse() {
 }
 
 func (i *singleLevelIterator[I, PI, D, PD]) initBounds() {
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return
+	}
+
 	// Trim the iteration bounds for the current block. We don't have to check
 	// the bounds on each iteration if the block is entirely contained within the
 	// iteration bounds.
@@ -351,6 +360,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) initBounds() {
 }
 
 func (i *singleLevelIterator[I, PI, D, PD]) initBoundsForAlreadyLoadedBlock() {
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return
+	}
 	// TODO(radu): determine automatically if we need to call First or not and
 	// unify this function with initBounds().
 	i.blockLower = i.lower
@@ -449,6 +462,12 @@ func (i *singleLevelIterator[I, PI, P, PD]) SetContext(ctx context.Context) {
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
 func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockResult {
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		// Ensure the data block iterator is invalidated
+		PD(&i.data).Invalidate()
+		return loadBlockFailed
+	}
 	if !PI(&i.index).Valid() {
 		// Ensure the data block iterator is invalidated even if loading of the block
 		// fails.
@@ -684,10 +703,19 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 ) *base.InternalKV {
 	// Invariant: trySeekUsingNext => !i.data.isDataInvalidated() && i.exhaustedBounds != +1
 
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return nil
+	}
+
 	// SeekGE performs various step-instead-of-seeking optimizations: eg enabled
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
 
 	var dontSeekWithinBlock bool
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return nil
+	}
 	if !PD(&i.data).IsDataInvalidated() && PD(&i.data).Valid() && PI(&i.index).Valid() &&
 		boundsCmp > 0 && PI(&i.index).SeparatorGT(key, true /* orEqual */) {
 		// Fast-path: The bounds have moved forward and this SeekGE is
@@ -742,6 +770,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 
 		// Slow-path.
 
+		if err := i.ensureIndexLoaded(); err != nil {
+			i.err = err
+			return nil
+		}
 		if !PI(&i.index).SeekGE(key) {
 			// The target key is greater than any key in the index block.
 			// Invalidate the block iterator so that a subsequent call to Prev()
@@ -905,6 +937,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLast() *base.InternalKV {
 // uses of this method in the future. Does a SeekLE on the upper bound of the
 // file/iterator.
 func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return nil
+	}
+
 	// Callers of SeekLE don't know about virtual sstable bounds, so we may
 	// have to internally restrict the bounds.
 	//
@@ -1014,12 +1051,21 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return nil
+	}
+
 	// Seeking operations perform various step-instead-of-seeking optimizations:
 	// eg by considering monotonically increasing bounds (i.boundsCmp).
 
 	i.positionedUsingLatestBounds = true
 
 	var dontSeekWithinBlock bool
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return nil
+	}
 	if !PD(&i.data).IsDataInvalidated() && PD(&i.data).Valid() && PI(&i.index).Valid() &&
 		boundsCmp < 0 && !PD(&i.data).IsLowerBound(key) {
 		// Fast-path: The bounds have moved backward, and this SeekLT is
@@ -1047,6 +1093,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 		// externally ensured that the filter is disabled (through returning
 		// Intersects=false irrespective of the block props provided) during
 		// seeks.
+		if err := i.ensureIndexLoaded(); err != nil {
+			i.err = err
+			return nil
+		}
 		if !PI(&i.index).SeekGE(key) {
 			if !PI(&i.index).Last() {
 				return nil
@@ -1121,6 +1171,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return nil
+	}
+
 	if !PI(&i.index).First() {
 		PD(&i.data).Invalidate()
 		return nil
@@ -1184,6 +1239,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
+
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return nil
+	}
 
 	if !PI(&i.index).Last() {
 		PD(&i.data).Invalidate()
@@ -1273,6 +1333,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Int
 	// Did not find prefix in the existing data block. This is the slow-path
 	// where we effectively seek the iterator.
 	// The key is likely to be in the next data block, so try one step.
+	if err := i.ensureIndexLoaded(); err != nil {
+		i.err = err
+		return nil
+	}
 	if !PI(&i.index).Next() {
 		// The target key is greater than any key in the index block.
 		// Invalidate the block iterator so that a subsequent call to Prev()
@@ -1344,6 +1408,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) Prev() *base.InternalKV {
 
 func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 	for {
+		if err := i.ensureIndexLoaded(); err != nil {
+			i.err = err
+			return nil
+		}
 		if !PI(&i.index).Next() {
 			PD(&i.data).Invalidate()
 			break
@@ -1422,6 +1490,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 
 func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 	for {
+		if err := i.ensureIndexLoaded(); err != nil {
+			i.err = err
+			return nil
+		}
 		if !PI(&i.index).Prev() {
 			PD(&i.data).Invalidate()
 			break
@@ -1474,6 +1546,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 func (i *singleLevelIterator[I, PI, D, PD]) Error() error {
 	if err := PD(&i.data).Error(); err != nil {
 		return err
+	}
+	// Check for lazy loading errors
+	if i.indexLoadError != nil {
+		return i.indexLoadError
 	}
 	return i.err
 }
@@ -1545,4 +1621,34 @@ func (i *singleLevelIterator[I, PI, D, PD]) String() string {
 // DebugTree is part of the InternalIterator interface.
 func (i *singleLevelIterator[I, PI, D, PD]) DebugTree(tp treeprinter.Node) {
 	tp.Childf("%T(%p) fileNum=%s", i, i, i.String())
+}
+
+func (i *singleLevelIterator[I, PI, D, PD]) ensureIndexLoaded() error {
+	// If lazy loading not enabled, nothing to do
+	if !i.indexLazyEnabled {
+		return nil
+	}
+
+	// If already loaded, return cached error (nil means success)
+	if i.indexLoaded {
+		return i.indexLoadError
+	}
+
+	// Perform the deferred index loading calls
+	indexH, err := i.reader.readTopLevelIndexBlock(i.ctx, i.readEnv.Block, i.indexFilterRH)
+	if err != nil {
+		i.indexLoadError = err
+		i.indexLoaded = true // Mark as loaded to avoid retry
+		return err
+	}
+
+	err = PI(&i.index).InitHandle(i.reader.Comparer, indexH, i.transforms)
+	if err != nil {
+		i.indexLoadError = err
+		i.indexLoaded = true
+		return err
+	}
+
+	i.indexLoaded = true
+	return nil
 }
