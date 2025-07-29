@@ -151,11 +151,11 @@ open: db/000008.sst (options: *vfs.randomReadsOption)
 read-at(596, 61): db/000008.sst
 read-at(546, 50): db/000008.sst
 read-at(119, 427): db/000008.sst
-read-at(78, 41): db/000005.sst
 open: db/000005.sst (options: *vfs.sequentialReadsOption)
+read-at(78, 41): db/000005.sst
 read-at(0, 78): db/000005.sst
-read-at(78, 41): db/000008.sst
 open: db/000008.sst (options: *vfs.sequentialReadsOption)
+read-at(78, 41): db/000008.sst
 read-at(0, 78): db/000008.sst
 close: db/000008.sst
 close: db/000005.sst
