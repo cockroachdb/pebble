@@ -60,12 +60,12 @@ func newWriteQueue(size int, writer *RawRowWriter) *writeQueue {
 }
 
 func (w *writeQueue) performWrite(task *writeTask) error {
-	var bhp block.HandleWithProperties
-	var err error
-	if bhp.Handle, err = w.writer.layout.WritePrecompressedDataBlock(task.buf.physical); err != nil {
+	handle, err := w.writer.layout.WritePrecompressedDataBlock(task.buf.physical)
+	task.buf.physical.Release()
+	if err != nil {
 		return err
 	}
-	bhp = block.HandleWithProperties{Handle: bhp.Handle, Props: task.buf.dataBlockProps}
+	bhp := block.HandleWithProperties{Handle: handle, Props: task.buf.dataBlockProps}
 	if err = w.writer.addIndexEntry(
 		task.indexEntrySep, bhp, task.buf.tmp[:], task.flushableIndexBlock, task.currIndexBlock,
 		task.indexInflightSize, task.finishedIndexProps); err != nil {

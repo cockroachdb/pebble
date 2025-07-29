@@ -424,7 +424,6 @@ func (b *blockBuf) clear() {
 // until the block is full. Once a dataBlockBuf's block is full, the dataBlockBuf may be passed
 // to other goroutines for compression and file I/O.
 type dataBlockBuf struct {
-	blockBuf
 	dataBlock rowblk.Writer
 
 	// uncompressed is a reference to a byte slice which is owned by the dataBlockBuf. It is the
@@ -432,10 +431,7 @@ type dataBlockBuf struct {
 	// dataBlock.buf.
 	uncompressed []byte
 
-	// physical holds the (possibly) compressed block and its trailer. The
-	// underlying block data's byte slice is owned by the dataBlockBuf. It  may
-	// be backed by the dataBlock.buf, or the dataBlockBuf.compressedBuf,
-	// depending on whether we use the result of the compression.
+	// physical holds the (possibly) compressed block and its trailer.
 	physical block.PhysicalBlock
 
 	// We're making calls to BlockPropertyCollectors from the Writer client goroutine. We need to
@@ -457,10 +453,12 @@ type dataBlockBuf struct {
 	// It's used to determine if this data block is considered tombstone-dense
 	// for the purposes of compaction.
 	deletionSize int
+
+	tmp [blockHandleLikelyMaxLen]byte
 }
 
 func (d *dataBlockBuf) clear() {
-	d.blockBuf.clear()
+	//d.blockBuf.clear()
 	d.dataBlock.Reset()
 
 	d.uncompressed = nil
@@ -485,10 +483,8 @@ func (d *dataBlockBuf) finish() {
 	d.uncompressed = d.dataBlock.Finish()
 }
 
-func (d *dataBlockBuf) compressAndChecksum(
-	compressor *block.Compressor, checksummer *block.Checksummer,
-) {
-	d.physical = block.CompressAndChecksum(&d.dataBuf, d.uncompressed, blockkind.SSTableData, compressor, checksummer)
+func (d *dataBlockBuf) compressAndChecksum(physBlockMaker *block.PhysicalBlockMaker) {
+	d.physical = physBlockMaker.Make(d.uncompressed, blockkind.SSTableData, block.NoFlags)
 }
 
 func (d *dataBlockBuf) shouldFlush(
@@ -993,7 +989,7 @@ func (w *RawRowWriter) flush(key InternalKey) error {
 	}
 	w.dataBlockBuf.finish()
 	w.maybeIncrementTombstoneDenseBlocks()
-	w.dataBlockBuf.compressAndChecksum(&w.layout.compressor, &w.layout.checksummer)
+	w.dataBlockBuf.compressAndChecksum(&w.layout.physBlockMaker)
 	// Since dataBlockEstimates.addInflightDataBlock was never called, the
 	// inflightSize is set to 0.
 	w.coordination.sizeEstimate.dataBlockCompressed(w.dataBlockBuf.physical.LengthWithoutTrailer(), 0)
@@ -1471,7 +1467,7 @@ func (w *RawRowWriter) Close() (err error) {
 	if w.dataBlockBuf.dataBlock.EntryCount() > 0 || w.indexBlock.block.EntryCount() == 0 {
 		w.dataBlockBuf.finish()
 		w.maybeIncrementTombstoneDenseBlocks()
-		bh, err := w.layout.WriteDataBlock(w.dataBlockBuf.uncompressed, &w.dataBlockBuf.blockBuf)
+		bh, err := w.layout.WriteDataBlock(w.dataBlockBuf.uncompressed)
 		if err != nil {
 			return err
 		}
@@ -1707,12 +1703,12 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	if w.tableFormat >= TableFormatPebblev3 {
 		w.shortAttributeExtractor = o.ShortAttributeExtractor
 		if !o.DisableValueBlocks {
-			w.valueBlockWriter = valblk.NewWriter(
-				block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
-				&w.layout.compressor, &w.layout.checksummer, func(compressedSize int) {
-					w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
-				},
-			)
+			flushGovernor := block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
+			// We use the value block writer in the same goroutine so it's safe to share
+			// the physBlockMaker.
+			w.valueBlockWriter = valblk.NewWriter(flushGovernor, &w.layout.physBlockMaker, func(compressedSize int) {
+				w.coordination.sizeEstimate.dataBlockCompressed(compressedSize, 0)
+			})
 		}
 	}
 
@@ -1797,7 +1793,7 @@ func (w *RawRowWriter) rewriteSuffixes(
 	}
 
 	// Copy data blocks in parallel, rewriting suffixes as we go.
-	blocks, err := rewriteDataBlocksInParallel(r, sst, wo, l.Data, from, to, concurrency, w.layout.compressor.Stats(), func() blockRewriter {
+	blocks, err := rewriteDataBlocksInParallel(r, sst, wo, l.Data, from, to, concurrency, w.layout.physBlockMaker.Compressor.Stats(), func() blockRewriter {
 		return rowblk.NewRewriter(r.Comparer, wo.BlockRestartInterval)
 	})
 	if err != nil {
@@ -1815,6 +1811,7 @@ func (w *RawRowWriter) rewriteSuffixes(
 	for i := range blocks {
 		// Write the rewritten block to the file.
 		bh, err := w.layout.WritePrecompressedDataBlock(blocks[i].physical)
+		blocks[i].physical.Release()
 		if err != nil {
 			return err
 		}
@@ -1921,14 +1918,12 @@ func (w *RawRowWriter) copyDataBlocks(
 
 // addDataBlock implements RawWriter.
 func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
-	blockBuf := &w.dataBlockBuf.blockBuf
-	pb := block.CompressAndChecksum(
-		&blockBuf.dataBuf, b, blockkind.SSTableData, &w.layout.compressor, &w.layout.checksummer,
-	)
+	pb := w.layout.physBlockMaker.Make(b, blockkind.SSTableData, block.NoFlags)
 
-	// layout.WriteDataBlock keeps layout.offset up-to-date for us.
+	// layout.writePhysicalBlock keeps layout.offset up-to-date for us.
 	// Note that this can mangle the pb data.
-	bh, err := w.layout.writePrecompressedBlock(pb)
+	bh, err := w.layout.writePhysicalBlock(pb)
+	pb.Release()
 	if err != nil {
 		return err
 	}

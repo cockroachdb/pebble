@@ -15,7 +15,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -167,12 +166,10 @@ func rewriteDataBlocksInParallel(
 		go func() {
 			defer g.Done()
 			rw := newDataBlockRewriter()
-			var blockAlloc bytealloc.A
-			var compressedBuf []byte
 			var inputBlock, inputBlockBuf []byte
-			checksummer := block.Checksummer{Type: opts.Checksum}
-			compressor := block.MakeCompressor(opts.Compression)
-			defer compressor.Close()
+			var physBlockMaker block.PhysicalBlockMaker
+			physBlockMaker.Init(opts.Compression, opts.Checksum)
+			defer physBlockMaker.Close()
 			// We'll assume all blocks are _roughly_ equal so round-robin static partition
 			// of each worker doing every ith block is probably enough.
 			err := func() error {
@@ -195,9 +192,7 @@ func rewriteDataBlocksInParallel(
 					if err := r.Comparer.ValidateKey.Validate(output[i].end.UserKey); err != nil {
 						return err
 					}
-					compressedBuf = compressedBuf[:cap(compressedBuf)]
-					finished := block.CompressAndChecksum(&compressedBuf, outputBlock, blockkind.SSTableData, &compressor, &checksummer)
-					output[i].physical = finished.CloneWithByteAlloc(&blockAlloc)
+					output[i].physical = physBlockMaker.Make(outputBlock, blockkind.SSTableData, block.NoFlags)
 				}
 				return nil
 			}()
@@ -205,7 +200,7 @@ func rewriteDataBlocksInParallel(
 				errCh <- workerErr{worker: worker, err: err}
 			}
 			compressionStatsMu.Lock()
-			compressionStats.MergeWith(compressor.Stats())
+			compressionStats.MergeWith(physBlockMaker.Compressor.Stats())
 			defer compressionStatsMu.Unlock()
 		}()
 	}

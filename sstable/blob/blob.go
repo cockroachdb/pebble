@@ -102,13 +102,12 @@ type FileWriter struct {
 	// index block encoding the offsets at which each block is written.
 	// Additionally, when rewriting a blob file, the index block's virtualBlocks
 	// column is also populated to remap blockIDs to the physical block indexes.
-	indexEncoder indexBlockEncoder
-	stats        FileWriterStats
-	flushGov     block.FlushGovernor
-	checksummer  block.Checksummer
-	compressor   block.Compressor
-	cpuMeasurer  base.CPUMeasurer
-	writeQueue   struct {
+	indexEncoder   indexBlockEncoder
+	stats          FileWriterStats
+	flushGov       block.FlushGovernor
+	physBlockMaker block.PhysicalBlockMaker
+	cpuMeasurer    base.CPUMeasurer
+	writeQueue     struct {
 		wg  sync.WaitGroup
 		ch  chan compressedBlock
 		err error
@@ -117,7 +116,6 @@ type FileWriter struct {
 
 type compressedBlock struct {
 	pb  block.PhysicalBlock
-	bh  *block.TempBuffer
 	off uint64
 }
 
@@ -130,8 +128,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.valuesEncoder.Init()
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
-	fw.checksummer = block.Checksummer{Type: opts.ChecksumType}
-	fw.compressor = block.MakeCompressor(opts.Compression)
+	fw.physBlockMaker.Init(opts.Compression, opts.ChecksumType)
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
 	fw.writeQueue.wg.Add(1)
@@ -215,12 +212,12 @@ func (w *FileWriter) flush() {
 	if w.valuesEncoder.Count() == 0 {
 		panic(errors.AssertionFailedf("no values to flush"))
 	}
-	pb, bh := block.CompressAndChecksumToTempBuffer(w.valuesEncoder.Finish(), blockkind.BlobValue, &w.compressor, &w.checksummer)
+	pb := w.physBlockMaker.Make(w.valuesEncoder.Finish(), blockkind.BlobValue, block.NoFlags)
 	compressedLen := uint64(pb.LengthWithoutTrailer())
 	w.stats.BlockCount++
 	off := w.stats.FileLen
 	w.stats.FileLen += compressedLen + block.TrailerLen
-	w.writeQueue.ch <- compressedBlock{pb: pb, bh: bh, off: off}
+	w.writeQueue.ch <- compressedBlock{pb: pb, off: off}
 	w.valuesEncoder.Reset()
 }
 
@@ -244,9 +241,8 @@ func (w *FileWriter) drainWriteQueue() {
 			Offset: cb.off,
 			Length: uint64(cb.pb.LengthWithoutTrailer()),
 		})
-		// We're done with the buffer associated with this physical block.
-		// Release it back to its pool.
-		cb.bh.Release()
+		// We're done with this physical block.
+		cb.pb.Release()
 	}
 }
 
@@ -284,14 +280,13 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	var indexBlockHandle block.Handle
 	{
 		indexBlock := w.indexEncoder.Finish()
-		var compressedBuf []byte
-		pb := block.CopyAndChecksum(&compressedBuf, indexBlock, blockkind.Metadata, &w.compressor, &w.checksummer)
+		pb := w.physBlockMaker.Make(indexBlock, blockkind.Metadata, block.DontCompress)
+		defer pb.Release()
 		if _, w.err = pb.WriteTo(w.w); w.err != nil {
-			err = w.err
 			if w.w != nil {
 				w.w.Abort()
 			}
-			return FileWriterStats{}, err
+			return FileWriterStats{}, w.err
 		}
 		indexBlockHandle.Offset = stats.FileLen
 		indexBlockHandle.Length = uint64(pb.LengthWithoutTrailer())
@@ -301,7 +296,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	// Write the footer.
 	footer := fileFooter{
 		format:          FileFormatV1,
-		checksum:        w.checksummer.Type,
+		checksum:        w.physBlockMaker.Checksummer.Type,
 		indexHandle:     indexBlockHandle,
 		originalFileNum: w.fileNum,
 	}
