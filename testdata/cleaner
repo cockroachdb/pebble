@@ -83,13 +83,13 @@ open: db/000007.sst (options: *vfs.randomReadsOption)
 read-at(501, 61): db/000007.sst
 read-at(472, 37): db/000007.sst
 read-at(53, 419): db/000007.sst
-read-at(52, 27): db/000005.sst
 open: db/000005.sst (options: *vfs.sequentialReadsOption)
+read-at(52, 27): db/000005.sst
 read-at(0, 52): db/000005.sst
 create: db/000008.sst
 close: db/000005.sst
-read-at(26, 27): db/000007.sst
 open: db/000007.sst (options: *vfs.sequentialReadsOption)
+read-at(26, 27): db/000007.sst
 read-at(0, 26): db/000007.sst
 close: db/000007.sst
 sync-data: db/000008.sst
