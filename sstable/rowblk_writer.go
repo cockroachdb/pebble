@@ -458,7 +458,7 @@ type dataBlockBuf struct {
 }
 
 func (d *dataBlockBuf) clear() {
-	//d.blockBuf.clear()
+	// d.blockBuf.clear()
 	d.dataBlock.Reset()
 
 	d.uncompressed = nil
@@ -1393,6 +1393,19 @@ func (w *RawRowWriter) ComparePrev(k []byte) int {
 		return +1
 	}
 	return w.compare(k, w.dataBlockBuf.dataBlock.CurUserKey())
+}
+
+// IsPrefixEqualPrev compares the provided user key's prefix to the key
+// prefix of the last point key written to the writer.
+//
+// If no key has been written yet, IsPrefixEqualPrev returns false.
+//
+// Must not be called after Writer is closed.
+func (w *RawRowWriter) IsPrefixEqualPrev(k []byte) bool {
+	if w == nil || w.dataBlockBuf.dataBlock.EntryCount() == 0 {
+		return false
+	}
+	return bytes.Equal(w.split.Prefix(k), w.split.Prefix(w.dataBlockBuf.dataBlock.CurUserKey()))
 }
 
 // EncodeSpan encodes the keys in the given span. The span can contain either

@@ -215,7 +215,7 @@ set w world
 ----
 
 # This flush *should* write a blob file, containing 2 values: "hello" and
-# "world" totalling 10 bytes of logical values.
+# "world" totaling 10 bytes of logical values.
 
 flush
 ----

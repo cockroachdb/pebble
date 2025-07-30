@@ -337,9 +337,9 @@ type RawWriter interface {
 	// EstimatedSize returns the estimated size of the sstable being written if
 	// a call to Close() was made without adding additional keys.
 	EstimatedSize() uint64
-	// ComparePrev compares the provided user to the last point key written to the
-	// writer. The returned value is equivalent to Compare(key, prevKey) where
-	// prevKey is the last point key written to the writer.
+	// ComparePrev compares the provided user key to the last point key written
+	// to the writer. The returned value is equivalent to Compare(key, prevKey)
+	// where prevKey is the last point key written to the writer.
 	//
 	// If no key has been written yet, ComparePrev returns +1.
 	//
@@ -354,6 +354,13 @@ type RawWriter interface {
 	// Metadata returns the metadata for the finished sstable. Only valid to
 	// call after the sstable has been finished.
 	Metadata() (*WriterMetadata, error)
+	// IsPrefixEqualPrev compares the provided user key's prefix to the key
+	// prefix of the last point key written to the writer.
+	//
+	// If no key has been written yet, IsPrefixEqualPrev returns false.
+	//
+	// Must not be called after Writer is closed.
+	IsPrefixEqualPrev(k []byte) bool
 
 	// rewriteSuffixes rewrites the table's data blocks to all contain the
 	// provided suffix. It's specifically used for the implementation of
