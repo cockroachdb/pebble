@@ -847,29 +847,36 @@ func (m *Metrics) String() string {
 	// LSM level metrics.
 	cur := wb.At(0, 0)
 	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
+	redactUnsetValues := func(m *LevelMetrics) {
+		if m.Score == 0 {
+			m.Score = math.NaN()
+		}
+		if m.FillFactor == 0 {
+			m.FillFactor = math.NaN()
+		}
+		if m.CompensatedFillFactor == 0 {
+			m.CompensatedFillFactor = math.NaN()
+		}
+	}
 	levelIter := func(yield func(*LevelMetrics) bool) {
 		for i := range m.Levels {
-			if !yield(&m.Levels[i]) {
+			lvlMetric := m.Levels[i]
+			redactUnsetValues(&lvlMetric)
+			if !yield(&lvlMetric) {
 				break
 			}
 		}
+		t := m.Total()
+		redactUnsetValues(&t)
+		yield(&t)
 	}
 	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, levelIter)
-	cur = cur.NewlineReturn()
 	cur.Offset(-1, 0).WriteString("total")
 	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
 	cur = cur.WriteString(levelCompactionMetricsTableTopHeader).NewlineReturn()
-	compactionLevelIter := func(yield func(*LevelMetrics) bool) {
-		for i := range m.Levels {
-			if !yield(&m.Levels[i]) {
-				break
-			}
-		}
-	}
-	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, compactionLevelIter)
-	cur = cur.NewlineReturn()
+	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, levelIter)
 	cur.Offset(-1, 0).WriteString("total")
 
 	cur = cur.NewlineReturn()
