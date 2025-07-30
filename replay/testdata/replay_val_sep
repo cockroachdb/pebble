@@ -6,14 +6,14 @@ tree
           /
             build/
      787      000005.sst
-     101      000006.blob
-     766      000008.sst
-      97      000009.blob
+     103      000006.blob
+     763      000008.sst
+     101      000009.blob
       92      000011.log
      660      000012.sst
       63      000014.log
-     760      000015.sst
-      97      000016.blob
+     751      000015.sst
+      99      000016.blob
        0      LOCK
      152      MANIFEST-000010
      250      MANIFEST-000013
@@ -21,14 +21,14 @@ tree
        0      marker.format-version.000011.024
        0      marker.manifest.000003.MANIFEST-000013
             simple_val_sep/
-     760      000015.sst
-      97      000016.blob
+     751      000015.sst
+      99      000016.blob
      250      MANIFEST-000013
               checkpoint/
      787        000005.sst
-     101        000006.blob
-     766        000008.sst
-      97        000009.blob
+     103        000006.blob
+     763        000008.sst
+     101        000009.blob
       64        000011.log
      660        000012.sst
      187        MANIFEST-000013

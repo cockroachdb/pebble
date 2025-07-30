@@ -5,6 +5,7 @@
 package compact
 
 import (
+	"bytes"
 	"sort"
 	"time"
 
@@ -133,7 +134,7 @@ type ValueSeparation interface {
 	EstimatedReferenceSize() uint64
 	// Add adds the provided key-value pair to the provided sstable writer,
 	// possibly separating the value into a blob file.
-	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool) error
+	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isMVCCKey bool) error
 	// FinishOutput is called when a compaction is finishing an output sstable.
 	// It returns the table's blob references, which will be added to the
 	// table's TableMetadata, and stats and metadata describing a newly
@@ -294,8 +295,11 @@ func (r *Runner) writeKeysToTable(
 	}
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	var iteratedKeys uint64
+	garbageDetector := &mvccGarbageDetector{}
+	garbageDetector.init(r.iter.cfg.Comparer.Split)
 	kv := r.kv
 	for ; kv != nil; kv = r.iter.Next() {
+		isMaybeGarbage := garbageDetector.isMaybeGarbage(&kv.K)
 		iteratedKeys++
 		if iteratedKeys%updateGrantHandleEveryNKeys == 0 {
 			r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
@@ -334,7 +338,9 @@ func (r *Runner) writeKeysToTable(
 		// Add the value to the sstable, possibly separating its value into a
 		// blob file. The ValueSeparation implementation is responsible for
 		// writing the KV to the sstable.
-		if err := valueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
+		// If the key might be garbage (i.e. we have seen this key before),
+		// we eagerly separate the value into a blob file.
+		if err := valueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel(), isMaybeGarbage); err != nil {
 			return nil, err
 		}
 		if r.iter.SnapshotPinned() {
@@ -346,6 +352,7 @@ func (r *Runner) writeKeysToTable(
 			pinnedValueSize += uint64(valueLen)
 		}
 	}
+	garbageDetector.reset()
 	r.kv = kv
 	splitKey = splitter.SplitKey()
 	if err := SplitAndEncodeSpan(r.cmp, &r.lastRangeDelSpan, splitKey, tw); err != nil {
@@ -497,7 +504,7 @@ func (NeverSeparateValues) EstimatedReferenceSize() uint64 { return 0 }
 
 // Add implements the ValueSeparation interface.
 func (NeverSeparateValues) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
 ) error {
 	v, _, err := kv.Value(nil)
 	if err != nil {
@@ -509,4 +516,33 @@ func (NeverSeparateValues) Add(
 // FinishOutput implements the ValueSeparation interface.
 func (NeverSeparateValues) FinishOutput() (ValueSeparationMetadata, error) {
 	return ValueSeparationMetadata{}, nil
+}
+
+// mvccGarbageDetector is a helper for detecting what keys might be MVCC garbage.
+//
+// TODO(annie): Revist this to instead use the logic around PrefixEqual.
+type mvccGarbageDetector struct {
+	lastKeyPrefix []byte
+	split         base.Split
+}
+
+func (d *mvccGarbageDetector) init(split base.Split) {
+	d.split = split
+}
+
+func (d *mvccGarbageDetector) reset() {
+	d.lastKeyPrefix = nil
+}
+
+func (d *mvccGarbageDetector) isMaybeGarbage(key *base.InternalKey) bool {
+	split := d.split(key.UserKey)
+	if d.lastKeyPrefix == nil {
+		d.lastKeyPrefix = key.UserKey[:split]
+		return false
+	}
+	if bytes.Equal(d.lastKeyPrefix, key.UserKey[:split]) {
+		return true
+	}
+	d.lastKeyPrefix = key.UserKey[:split]
+	return false
 }
