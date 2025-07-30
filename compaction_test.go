@@ -924,6 +924,7 @@ func TestCompaction(t *testing.T) {
 			EventListener:               compactionLogEventListener,
 			FormatMajorVersion:          randVersion(minVersion, maxVersion),
 			Logger:                      testutils.Logger{T: t},
+			Comparer:                    testkeys.Comparer,
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -1028,6 +1029,7 @@ func TestCompaction(t *testing.T) {
 					DisableAutomaticCompactions: true,
 					Logger:                      testutils.Logger{T: t},
 				}
+				opts.Comparer = testkeys.Comparer
 				opts.WithFSDefaults()
 				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 				if d != nil {
@@ -1105,6 +1107,16 @@ func TestCompaction(t *testing.T) {
 				d.waitTableStatsInitialLoad()
 				d.mu.Unlock()
 				m := d.Metrics()
+				return m.StringForTests()
+
+			case "metrics-l0-to-lbase":
+				d.mu.Lock()
+				d.waitTableStatsInitialLoad()
+				d.mu.Unlock()
+				m := d.Metrics()
+				// Make deterministic.
+				m.BlockCache.Hits = 0
+				m.BlockCache.Size = 0
 				return m.StringForTests()
 
 			case "populate":
