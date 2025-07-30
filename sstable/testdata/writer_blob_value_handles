@@ -141,7 +141,7 @@ sstable
  │    ├── 00586    rocksdb.raw.value.size (15)
  │    ├── restart points
  │    │    └── 00601 [restart 0]
- │    └── trailer [compression=none checksum=0x1d3282d8]
+ │    └── trailer [compression=none checksum=0x27d9426d]
  ├── meta-index  offset: 862  length: 72
  │    ├── 0000    pebble.blob_ref_index block:208/35
  │    │   
@@ -297,7 +297,7 @@ sstable
  │    ├── 00634    rocksdb.property.collectors (41)
  │    ├── 00675    rocksdb.raw.key.size (21)
  │    ├── 00696    rocksdb.raw.value.size (24)
- │    └── trailer [compression=snappy checksum=0x6413fc6d]
+ │    └── trailer [compression=snappy checksum=0xc03bcadf]
  ├── meta-index  offset: 837  length: 72
  │    ├── 0000    pebble.blob_ref_index block:208/35
  │    │   

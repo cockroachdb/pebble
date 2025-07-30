@@ -107,6 +107,7 @@ pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
+pebble.compression_stats: NoCompression:107/107
 obsolete-key: hex:0074
 
 # The range tombstone upper bound is exclusive, so a point operation
@@ -235,9 +236,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 580
- ├── meta-index  offset: 1000  length: 46
- └── footer  offset: 1051  length: 57
+ ├── properties  offset: 415  length: 602
+ ├── meta-index  offset: 1022  length: 46
+ └── footer  offset: 1073  length: 57
 
 props
 ----
@@ -260,7 +261,7 @@ rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 48
-pebble.compression_stats: Snappy:222/261
+pebble.compression_stats: NoCompression:158/158,Snappy:222/261
 obsolete-key: hex:00
 
 # Exercise the non-Reader layout-decoding codepath.
@@ -275,9 +276,9 @@ sstable
  ├── index  offset: 278  length: 37
  ├── index  offset: 320  length: 37
  ├── top-index  offset: 362  length: 48
- ├── properties  offset: 415  length: 580
- ├── meta-index  offset: 1000  length: 46
- └── footer  offset: 1051  length: 57
+ ├── properties  offset: 415  length: 602
+ ├── meta-index  offset: 1022  length: 46
+ └── footer  offset: 1073  length: 57
 
 scan
 ----
@@ -322,9 +323,9 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 589
- ├── meta-index  offset: 716  length: 65
- └── footer  offset: 786  length: 57
+ ├── properties  offset: 122  length: 628
+ ├── meta-index  offset: 755  length: 65
+ └── footer  offset: 825  length: 57
 
 props
 ----
@@ -350,6 +351,7 @@ pebble.num.range-key-unsets: 0
 rocksdb.property.collectors: [obsolete-key]
 pebble.raw.range-key.key.size: 6
 pebble.raw.range-key.value.size: 9
+pebble.compression_stats: NoCompression:112/112
 obsolete-key: hex:0074
 
 open-writer disable-value-blocks
