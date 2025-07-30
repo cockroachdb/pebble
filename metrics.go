@@ -853,9 +853,10 @@ func (m *Metrics) String() string {
 				break
 			}
 		}
+		t := m.Total()
+		yield(&t)
 	}
 	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, levelIter)
-	cur = cur.NewlineReturn()
 	cur.Offset(-1, 0).WriteString("total")
 	cur = cur.NewlineReturn()
 
@@ -867,9 +868,10 @@ func (m *Metrics) String() string {
 				break
 			}
 		}
+		t := m.Total()
+		yield(&t)
 	}
 	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, compactionLevelIter)
-	cur = cur.NewlineReturn()
 	cur.Offset(-1, 0).WriteString("total")
 
 	cur = cur.NewlineReturn()
