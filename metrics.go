@@ -855,8 +855,8 @@ func (m *Metrics) String() string {
 		}
 	}
 	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, levelIter)
+	cur = cur.NewlineReturn()
 	cur.Offset(-1, 0).WriteString("total")
-	//cur = cur.WriteString(levelMetricsTableBottomDivider).NewlineReturn()
 	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
@@ -869,6 +869,7 @@ func (m *Metrics) String() string {
 		}
 	}
 	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, compactionLevelIter)
+	cur = cur.NewlineReturn()
 	cur.Offset(-1, 0).WriteString("total")
 
 	cur = cur.NewlineReturn()
