@@ -256,6 +256,19 @@ func (w *RawColumnWriter) ComparePrev(k []byte) int {
 	return int(w.dataBlock.KeyWriter.ComparePrev(k).UserKeyComparison)
 }
 
+// IsPrefixEqualPrev compares the provided user key's prefix to the key
+// prefix of the last point key written to the writer.
+//
+// If no key has been written yet, IsPrefixEqualPrev returns false.
+//
+// Must not be called after Writer is closed.
+func (w *RawColumnWriter) IsPrefixEqualPrev(k []byte) bool {
+	if w == nil || w.dataBlock.Rows() == 0 {
+		return false
+	}
+	return w.dataBlock.KeyWriter.ComparePrev(k).PrefixEqual()
+}
+
 // SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
 // be used internally by Pebble.
 func (w *RawColumnWriter) SetSnapshotPinnedProperties(
@@ -621,30 +634,18 @@ func (w *RawColumnWriter) evaluatePoint(
 			key.Pretty(w.comparer.FormatKey))
 	}
 
+	prefixEqual := func(k []byte) bool {
+		return w.IsPrefixEqualPrev(k)
+	}
 	// We might want to write this key's value to a value block if it has the
 	// same prefix.
 	//
 	// We require:
 	//  . Value blocks to be enabled.
-	//  . The current key to have the same prefix as the previous key.
-	//  . The previous key to be a SET.
-	//  . The current key to be a SET.
-	//  . If there are bounds requiring some keys' values to be in-place, the
-	//    key must not fall within those bounds.
-	//  . The value to be sufficiently large. (Currently we simply require a
-	//    non-zero length, so all non-empty values are eligible for storage
-	//    out-of-band in a value block.)
-	//
-	// Use of 0 here is somewhat arbitrary. Given the minimum 3 byte encoding of
-	// valueHandle, this should be > 3. But tiny values are common in test and
-	// unlikely in production, so we use 0 here for better test coverage.
-	const tinyValueThreshold = 0
+	//  . IsLikelyMVCCGarbage to be true; see comment for MVCC garbage criteria.
 	useValueBlock := !w.opts.DisableValueBlocks &&
-		eval.kcmp.PrefixEqual() &&
-		prevKeyKind == InternalKeyKindSet &&
-		keyKind == InternalKeyKindSet &&
-		valueLen > tinyValueThreshold &&
-		w.valueBlock != nil
+		w.valueBlock != nil &&
+		IsLikelyMVCCGarbage(key.UserKey, prevKeyKind, keyKind, valueLen, prefixEqual)
 	if !useValueBlock {
 		return eval, nil
 	}
@@ -1269,4 +1270,34 @@ func (w *RawColumnWriter) copyProperties(props Properties) {
 	w.props.TopLevelIndexSize = 0
 	w.props.IndexSize = 0
 	w.props.IndexType = 0
+}
+
+// IsLikelyMVCCGarbage determines whether the given user key is likely MVCC
+// garbage.
+//
+// We require:
+//
+//	. The previous key to be a SET.
+//	. The current key to be a SET.
+//	. If there are bounds requiring some keys' values to be in-place, the
+//	  key must not fall within those bounds.
+//	. The value to be sufficiently large. (Currently we simply require a
+//	  non-zero length, so all non-empty values are eligible for storage
+//	  out-of-band in a value block.)
+//	. The current key to have the same prefix as the previous key.
+//
+// Use of 0 here is somewhat arbitrary. Given the minimum 3 byte encoding of
+// valueHandle, this should be > 3. But tiny values are common in test and
+// unlikely in production, so we use 0 here for better test coverage.
+func IsLikelyMVCCGarbage(
+	k []byte,
+	prevKeyKind, keyKind base.InternalKeyKind,
+	valueLen int,
+	prefixEqual func(k []byte) bool,
+) bool {
+	const tinyValueThreshold = 0
+	return prevKeyKind == InternalKeyKindSet &&
+		keyKind == InternalKeyKindSet &&
+		valueLen > tinyValueThreshold &&
+		prefixEqual(k)
 }
