@@ -922,6 +922,7 @@ func TestCompaction(t *testing.T) {
 			DisableAutomaticCompactions: true,
 			EventListener:               compactionLogEventListener,
 			FormatMajorVersion:          randVersion(minVersion, maxVersion),
+			Comparer:                    testkeys.Comparer,
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
@@ -1026,6 +1027,7 @@ func TestCompaction(t *testing.T) {
 					FormatMajorVersion:          randVersion(minVersion, maxVersion),
 					DisableAutomaticCompactions: true,
 				}
+				opts.Comparer = testkeys.Comparer
 				opts.WithFSDefaults()
 				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()

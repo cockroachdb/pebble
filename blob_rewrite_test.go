@@ -120,7 +120,7 @@ func TestBlobRewrite(t *testing.T) {
 					} else {
 						ikv.V = base.MakeInPlaceValue([]byte(parts[1]))
 					}
-					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */))
+					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isMVCCKey */))
 				}
 				return buf.String()
 			case "close-output":
