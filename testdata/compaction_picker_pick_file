@@ -16,9 +16,9 @@ L2:
 file-sizes
 ----
 L1:
-  000004:[b#11,SET-c#11,SET]: 778 bytes (778B)
+  000004:[b#11,SET-c#11,SET]: 780 bytes (780B)
 L2:
-  000005:[c#0,SET-d#0,SET]: 761 bytes (761B)
+  000005:[c#0,SET-d#0,SET]: 774 bytes (774B)
 
 pick-file L1
 ----
@@ -171,7 +171,7 @@ L5:
   000005:[f#11,SET-f#11,SET]: 58129 bytes (57KB)
 L6:
   000006:[c#0,SET-c#0,SET]: 66323 bytes (65KB)
-  000009:[d#13,SET-d#13,SET]: 763 bytes (763B)
+  000009:[d#13,SET-d#13,SET]: 765 bytes (765B)
   000007:[e#0,SET-e#0,SET]: 66323 bytes (65KB)
   000008:[f#0,SET-f#0,SET]: 66323 bytes (65KB)
 
@@ -209,8 +209,8 @@ L5:
   000011:[e#11,SET-e#11,SET]: 191 bytes (191B)
   000005:[f#11,SET-f#11,SET]: 58129 bytes (57KB)
 L6:
-  000012:[c#15,SET-c#15,SET]: 763 bytes (763B)
-  000009:[d#13,SET-d#13,SET]: 763 bytes (763B)
+  000012:[c#15,SET-c#15,SET]: 765 bytes (765B)
+  000009:[d#13,SET-d#13,SET]: 765 bytes (765B)
   000007:[e#0,SET-e#0,SET]: 66323 bytes (65KB)
   000008:[f#0,SET-f#0,SET]: 66323 bytes (65KB)
 

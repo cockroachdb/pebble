@@ -111,9 +111,6 @@ type RawColumnWriter struct {
 	validator             invariants.Value[*colblk.DataBlockValidator]
 	disableKeyOrderChecks bool
 	cpuMeasurer           base.CPUMeasurer
-
-	// RawColumnWriter writes data sequentially so each writer can have a compressor
-	compressor block.Compressor
 }
 
 // Assert that *RawColumnWriter implements RawWriter.
@@ -150,7 +147,7 @@ func newColumnarWriter(
 	if !o.DisableValueBlocks {
 		w.valueBlock = valblk.NewWriter(
 			block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses),
-			&w.compressor, w.opts.Checksum, func(compressedSize int) {})
+			&w.layout.compressor, w.opts.Checksum, func(compressedSize int) {})
 	}
 	if o.FilterPolicy != base.NoFilterPolicy {
 		switch o.FilterType {
@@ -196,7 +193,6 @@ func newColumnarWriter(
 	w.cpuMeasurer = cpuMeasurer
 	go w.drainWriteQueue()
 
-	w.compressor = block.MakeCompressor(w.opts.Compression)
 	return w
 }
 
@@ -729,7 +725,7 @@ func (w *RawColumnWriter) enqueueDataBlock(
 		&cb.blockBuf.dataBuf,
 		serializedBlock,
 		blockkind.SSTableData,
-		&w.compressor,
+		&w.layout.compressor,
 		&cb.blockBuf.checksummer,
 	)
 	return w.enqueuePhysicalBlock(cb, separator)
@@ -1047,7 +1043,7 @@ func (w *RawColumnWriter) Close() (err error) {
 			}
 		}
 
-		w.props.CompressionStats = w.compressor.Stats().String()
+		w.props.CompressionStats = w.layout.compressor.Stats().String()
 		var toWrite []byte
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		if w.opts.TableFormat >= TableFormatPebblev7 {
@@ -1081,7 +1077,6 @@ func (w *RawColumnWriter) Close() (err error) {
 		return err
 	}
 	w.meta.Properties = w.props
-	w.compressor.Close()
 	// Release any held memory and make any future calls error.
 	*w = RawColumnWriter{meta: w.meta, err: errWriterClosed}
 	return nil
@@ -1101,7 +1096,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		return errors.Wrap(err, "reading layout")
 	}
 	// Copy data blocks in parallel, rewriting suffixes as we go.
-	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.compressor.Stats(), func() blockRewriter {
+	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.layout.compressor.Stats(), func() blockRewriter {
 		return colblk.NewDataBlockRewriter(wo.KeySchema, w.comparer)
 	})
 	if err != nil {
@@ -1270,7 +1265,7 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 		&cb.blockBuf.dataBuf,
 		b,
 		blockkind.SSTableData,
-		&w.compressor,
+		&w.layout.compressor,
 		&cb.blockBuf.checksummer,
 	)
 	if err := w.enqueuePhysicalBlock(cb, sep); err != nil {
