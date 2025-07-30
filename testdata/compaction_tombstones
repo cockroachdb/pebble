@@ -323,7 +323,7 @@ range-deletions-bytes-estimate: 94
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (1003B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (751B), in 1.0s (2.0s total), output rate 751B/s
+[JOB 100] compacted(elision-only) L6 [000004] (957B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (751B), in 1.0s (2.0s total), output rate 751B/s
 
 # Close the DB, asserting that the reference counts balance.
 close
