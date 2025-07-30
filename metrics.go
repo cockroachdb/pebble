@@ -847,29 +847,13 @@ func (m *Metrics) String() string {
 	// LSM level metrics.
 	cur := wb.At(0, 0)
 	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
-	levelIter := func(yield func(*LevelMetrics) bool) {
-		for i := range m.Levels {
-			if !yield(&m.Levels[i]) {
-				break
-			}
-		}
-	}
-	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, levelIter)
-	cur = cur.NewlineReturn()
+	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, m.LevelMetricsIter())
 	cur.Offset(-1, 0).WriteString("total")
 	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
 	cur = cur.WriteString(levelCompactionMetricsTableTopHeader).NewlineReturn()
-	compactionLevelIter := func(yield func(*LevelMetrics) bool) {
-		for i := range m.Levels {
-			if !yield(&m.Levels[i]) {
-				break
-			}
-		}
-	}
-	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, compactionLevelIter)
-	cur = cur.NewlineReturn()
+	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, m.LevelMetricsIter())
 	cur.Offset(-1, 0).WriteString("total")
 
 	cur = cur.NewlineReturn()
@@ -1045,6 +1029,25 @@ func (m *Metrics) StringForTests() string {
 	// invariants tag, etc.
 	mCopy.manualMemory = manual.Metrics{}
 	return redact.StringWithoutMarkers(&mCopy)
+}
+
+// LevelMetricsIter returns an iterator over all level metrics - including the
+// total for all levels.
+func (m *Metrics) LevelMetricsIter() iter.Seq[*LevelMetrics] {
+	return func(yield func(*LevelMetrics) bool) {
+		for i := range m.Levels {
+			lvlMetric := m.Levels[i]
+			if lvlMetric.Score == 0 {
+				lvlMetric.Score = math.NaN()
+			}
+			if !yield(&lvlMetric) {
+				break
+			}
+		}
+		t := m.Total()
+		t.Score, t.FillFactor, t.CompensatedFillFactor = math.NaN(), math.NaN(), math.NaN()
+		yield(&t)
+	}
 }
 
 // levelMetricsDelta accumulates incremental ("delta") level metric updates

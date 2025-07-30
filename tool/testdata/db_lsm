@@ -21,19 +21,19 @@ level       size | tables  size |  count  size |  refsz valblk |     in | tables
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     6         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-total
+total       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     0  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-total
+    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       0       0        0     0     0     0        0     0      0     0
@@ -90,19 +90,19 @@ level       size | tables  size |  count  size |  refsz valblk |     in | tables
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     6         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-total
+total       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     0  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    1 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    2 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    3 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    4 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    5 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     0     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-total
+    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       0       0        0     0     0     0        0     0      0     0
