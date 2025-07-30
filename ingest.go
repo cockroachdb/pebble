@@ -316,7 +316,7 @@ func ingestLoad1(
 	// disallowing removal of an open file. Under MemFS, if we don't populate
 	// meta.Stats here, the file will be loaded into the file cache for
 	// calculating stats before we can remove the original link.
-	maybeSetStatsFromProperties(meta.PhysicalMeta(), &props.CommonProperties, opts.Logger)
+	maybeSetStatsFromProperties(meta.PhysicalMeta(), &props, opts.Logger)
 
 	{
 		iter, err := r.NewIter(sstable.NoTransforms, nil /* lower */, nil /* upper */, sstable.AssertNoBlobHandles)

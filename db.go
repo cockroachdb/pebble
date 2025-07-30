@@ -2185,12 +2185,8 @@ func (d *DB) Metrics() *Metrics {
 	}
 	for i := 0; i < numLevels; i++ {
 		metrics.Levels[i].Additional.ValueBlocksSize = *valueBlockSizeAnnotator.LevelAnnotation(vers.Levels[i])
-		compressionTypes := compressionTypeAnnotator.LevelAnnotation(vers.Levels[i])
-		metrics.Table.CompressedCountUnknown += int64(compressionTypes.unknown)
-		metrics.Table.CompressedCountSnappy += int64(compressionTypes.snappy)
-		metrics.Table.CompressedCountZstd += int64(compressionTypes.zstd)
-		metrics.Table.CompressedCountMinLZ += int64(compressionTypes.minlz)
-		metrics.Table.CompressedCountNone += int64(compressionTypes.none)
+		compressionMetrics := compressionStatsAnnotator.LevelAnnotation(vers.Levels[i])
+		metrics.Compression.MergeWith(compressionMetrics)
 	}
 
 	metrics.Table.PendingStatsCollectionCount = int64(len(d.mu.tableStats.pending))
