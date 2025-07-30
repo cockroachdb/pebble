@@ -24,7 +24,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       754B     0.00     0.01           0.01
+L5       759B     0.00     0.01           0.01
 L6       321KB    1.11     1.11           1.11
 
 enable-table-stats
@@ -47,7 +47,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       754B     0.01     0.01           5.03
+L5       759B     0.01     0.01           5.03
 L6       321KB    1.11     1.11           1.11
 
 # Ensure that point deletions in a higher level result in a compensated level
