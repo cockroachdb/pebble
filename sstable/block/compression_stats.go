@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cockroachdb/crlib/crmath"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -37,13 +38,28 @@ type CompressionStatsForSetting struct {
 	UncompressedBytes uint64
 }
 
+// CompressionRatio returns the compression ratio for the setting.
+func (cs CompressionStatsForSetting) CompressionRatio() float64 {
+	return float64(cs.UncompressedBytes) / float64(cs.CompressedBytes)
+}
+
 func (cs *CompressionStatsForSetting) Add(other CompressionStatsForSetting) {
 	cs.CompressedBytes += other.CompressedBytes
 	cs.UncompressedBytes += other.UncompressedBytes
 }
 
-// add updates the stats to reflect a block that was compressed with the given setting.
-func (c *CompressionStats) add(setting compression.Setting, stats CompressionStatsForSetting) {
+func (c *CompressionStats) IsEmpty() bool {
+	return c.noCompressionBytes == 0 && c.fastest.CompressedBytes == 0 && len(c.others) == 0
+}
+
+func (c *CompressionStats) Reset() {
+	c.noCompressionBytes = 0
+	c.fastest = CompressionStatsForSetting{}
+	clear(c.others)
+}
+
+// addOne updates the stats to reflect a block that was compressed with the given setting.
+func (c *CompressionStats) addOne(setting compression.Setting, stats CompressionStatsForSetting) {
 	switch setting {
 	case compression.None:
 		c.noCompressionBytes += stats.UncompressedBytes
@@ -62,10 +78,10 @@ func (c *CompressionStats) add(setting compression.Setting, stats CompressionSta
 	}
 }
 
-// MergeWith updates the receiver stats to include the other stats.
-func (c *CompressionStats) MergeWith(other *CompressionStats) {
+// Add updates the receiver stats to include the other stats.
+func (c *CompressionStats) Add(other *CompressionStats) {
 	for s, cs := range other.All() {
-		c.add(s, cs)
+		c.addOne(s, cs)
 	}
 }
 
@@ -128,11 +144,32 @@ func (c CompressionStats) String() string {
 	return buf.String()
 }
 
+// Scale the stats by (size/backingSize). Used to obtain an approximation of the
+// stats for a virtual table.
+func (c *CompressionStats) Scale(size uint64, backingSize uint64) {
+	// Make sure the sizes are sane, just in case.
+	size = max(size, 1)
+	backingSize = max(backingSize, size)
+
+	c.noCompressionBytes = crmath.ScaleUint64(c.noCompressionBytes, size, backingSize)
+	c.fastest.CompressedBytes = crmath.ScaleUint64(c.fastest.CompressedBytes, size, backingSize)
+	c.fastest.UncompressedBytes = crmath.ScaleUint64(c.fastest.UncompressedBytes, size, backingSize)
+
+	for s, cs := range c.others {
+		cs.CompressedBytes = crmath.ScaleUint64(cs.CompressedBytes, size, backingSize)
+		cs.UncompressedBytes = crmath.ScaleUint64(cs.UncompressedBytes, size, backingSize)
+		c.others[s] = cs
+	}
+}
+
 // ParseCompressionStats parses the output of CompressionStats.String back into CompressionStats.
 //
 // If the string contains statistics for unknown compression settings, these are
 // accumulated under a special "unknown" setting.
 func ParseCompressionStats(s string) (CompressionStats, error) {
+	if s == "" {
+		return CompressionStats{}, nil
+	}
 	var stats CompressionStats
 	for _, a := range strings.Split(s, ",") {
 		b := strings.Split(a, ":")
@@ -147,7 +184,7 @@ func ParseCompressionStats(s string) (CompressionStats, error) {
 		if _, err := fmt.Sscanf(b[1], "%d/%d", &cs.CompressedBytes, &cs.UncompressedBytes); err != nil {
 			return CompressionStats{}, errors.Errorf("cannot parse compression stats %q", s)
 		}
-		stats.add(setting, cs)
+		stats.addOne(setting, cs)
 	}
 	return stats, nil
 }

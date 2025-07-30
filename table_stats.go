@@ -322,6 +322,18 @@ func (d *DB) loadTableStats(
 			stats.RawKeySize = props.RawKeySize
 			stats.RawValueSize = props.RawValueSize
 			stats.CompressionType = block.CompressionProfileByName(props.CompressionName)
+
+			if loadedProps.CompressionStats != "" {
+				var err error
+				stats.CompressionStats, err = block.ParseCompressionStats(loadedProps.CompressionStats)
+				if invariants.Enabled && err != nil {
+					panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", loadedProps.CompressionStats, meta.TableNum, err))
+				}
+				if meta.Virtual {
+					meta.Stats.CompressionStats.Scale(meta.Size, meta.TableBacking.Size)
+				}
+			}
+
 			if props.NumDataBlocks > 0 {
 				stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
 			}
@@ -695,7 +707,7 @@ func sanityCheckStats(meta *manifest.TableMetadata, logger Logger, info string) 
 }
 
 func maybeSetStatsFromProperties(
-	meta *manifest.TableMetadata, props *sstable.CommonProperties, logger Logger,
+	meta *manifest.TableMetadata, props *sstable.Properties, logger Logger,
 ) bool {
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
@@ -727,8 +739,8 @@ func maybeSetStatsFromProperties(
 		// doesn't require any additional IO and since the number of point
 		// deletions in the file is low, the error introduced by this crude
 		// estimate is expected to be small.
-		avgValSize, compressionRatio := estimatePhysicalSizes(meta, props)
-		pointEstimate = pointDeletionsBytesEstimate(props, avgValSize, compressionRatio)
+		avgValSize, compressionRatio := estimatePhysicalSizes(meta, &props.CommonProperties)
+		pointEstimate = pointDeletionsBytesEstimate(&props.CommonProperties, avgValSize, compressionRatio)
 	}
 
 	meta.Stats.NumEntries = props.NumEntries
@@ -740,6 +752,16 @@ func maybeSetStatsFromProperties(
 	meta.Stats.RawKeySize = props.RawKeySize
 	meta.Stats.RawValueSize = props.RawValueSize
 	meta.Stats.CompressionType = block.CompressionProfileByName(props.CompressionName)
+	if props.CompressionStats != "" {
+		var err error
+		meta.Stats.CompressionStats, err = block.ParseCompressionStats(props.CompressionStats)
+		if invariants.Enabled && err != nil {
+			panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", props.CompressionStats, meta.TableNum, err))
+		}
+		if meta.Virtual {
+			meta.Stats.CompressionStats.Scale(meta.Size, meta.TableBacking.Size)
+		}
+	}
 	meta.StatsMarkValid()
 	sanityCheckStats(meta, logger, "stats from properties")
 	return true
@@ -1105,54 +1127,41 @@ var rangeDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifes
 	return f.Stats.RangeDeletionsBytesEstimate, f.StatsValid()
 })
 
-// compressionTypeAnnotator is a manifest.Annotator that annotates B-tree
-// nodes with the compression type of the file. Its annotation type is
-// compressionTypes. The compression type may change once a table's stats are
-// loaded asynchronously, so its values are marked as cacheable only if a file's
-// stats have been loaded.
-var compressionTypeAnnotator = manifest.Annotator[compressionTypes]{
-	Aggregator: compressionTypeAggregator{},
+// compressionStatsAnnotator is a manifest.Annotator that annotates B-tree nodes
+// with the compression statistics for tables. Its annotation type is
+// block.CompressionStats. The compression type may change once a table's stats
+// are loaded asynchronously, so its values are marked as cacheable only if a
+// file's stats have been loaded. Statistics for virtual tables are estimated
+// from the physical table statistics, proportional to the estimated virtual
+// table size.
+var compressionStatsAnnotator = manifest.Annotator[CompressionMetrics]{
+	Aggregator: compressionStatsAggregator{},
 }
 
-type compressionTypeAggregator struct{}
+type compressionStatsAggregator struct{}
 
-type compressionTypes struct {
-	snappy, zstd, minlz, none, unknown uint64
-}
-
-func (a compressionTypeAggregator) Zero(dst *compressionTypes) *compressionTypes {
+func (a compressionStatsAggregator) Zero(dst *CompressionMetrics) *CompressionMetrics {
 	if dst == nil {
-		return new(compressionTypes)
+		return new(CompressionMetrics)
 	}
-	*dst = compressionTypes{}
+	*dst = CompressionMetrics{}
 	return dst
 }
 
-func (a compressionTypeAggregator) Accumulate(
-	f *manifest.TableMetadata, dst *compressionTypes,
-) (v *compressionTypes, cacheOK bool) {
-	switch f.Stats.CompressionType {
-	case sstable.SnappyCompression:
-		dst.snappy++
-	case sstable.ZstdCompression:
-		dst.zstd++
-	case sstable.MinLZCompression:
-		dst.minlz++
-	case sstable.NoCompression:
-		dst.none++
-	default:
-		dst.unknown++
+func (a compressionStatsAggregator) Accumulate(
+	f *manifest.TableMetadata, dst *CompressionMetrics,
+) (v *CompressionMetrics, cacheOK bool) {
+	if statsValid := f.StatsValid(); !statsValid || f.Stats.CompressionStats.IsEmpty() {
+		dst.CompressedBytesWithoutStats += f.Size
+		return dst, statsValid
 	}
-	return dst, f.StatsValid()
+	dst.Add(&f.Stats.CompressionStats)
+	return dst, true
 }
 
-func (a compressionTypeAggregator) Merge(
-	src *compressionTypes, dst *compressionTypes,
-) *compressionTypes {
-	dst.snappy += src.snappy
-	dst.zstd += src.zstd
-	dst.minlz += src.minlz
-	dst.none += src.none
-	dst.unknown += src.unknown
+func (a compressionStatsAggregator) Merge(
+	src *CompressionMetrics, dst *CompressionMetrics,
+) *CompressionMetrics {
+	dst.MergeWith(src)
 	return dst
 }

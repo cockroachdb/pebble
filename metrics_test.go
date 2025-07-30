@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -130,10 +129,6 @@ func exampleMetrics() Metrics {
 	m.Table.ZombieCount = 18
 	m.Table.BackingTableCount = 1
 	m.Table.BackingTableSize = 2 * MB
-	m.Table.CompressedCountMinLZ = 32
-	m.Table.CompressedCountSnappy = 33
-	m.Table.CompressedCountZstd = 34
-	m.Table.CompressedCountNone = 35
 	m.Table.Local.LiveSize = 28 * GB
 	m.Table.Local.LiveCount = 10_000
 	m.Table.Local.ObsoleteSize = 29 * MB
@@ -159,6 +154,15 @@ func exampleMetrics() Metrics {
 	m.BlobFiles.Local.ObsoleteCount = 13
 	m.BlobFiles.Local.ZombieSize = 30 * MB
 	m.BlobFiles.Local.ZombieCount = 14
+
+	m.Compression.NoCompressionBytes = 100 * MB
+	m.Compression.CompressedBytesWithoutStats = 500 * MB
+	m.Compression.Snappy.CompressedBytes = 1 * GB
+	m.Compression.Snappy.UncompressedBytes = 2 * GB
+	m.Compression.MinLZ.CompressedBytes = 1 * GB
+	m.Compression.MinLZ.UncompressedBytes = 3 * GB
+	m.Compression.Zstd.CompressedBytes = 10 * GB
+	m.Compression.Zstd.UncompressedBytes = 50 * GB
 
 	m.FileCache.Size = 1 * MB
 	m.FileCache.TableCount = 180
@@ -418,9 +422,6 @@ func TestMetrics(t *testing.T) {
 			d.mu.Unlock()
 
 			m := d.Metrics()
-			// Don't show memory usage as that can depend on architecture, invariants
-			// tag, etc.
-			m.manualMemory = manual.Metrics{}
 			// Some subset of cases show non-determinism in cache hits/misses.
 			if td.HasArg("zero-cache-hits-misses") {
 				// Avoid non-determinism.
@@ -432,7 +433,7 @@ func TestMetrics(t *testing.T) {
 				}
 			}
 			var buf strings.Builder
-			fmt.Fprintf(&buf, "%s", m.StringForTests())
+			fmt.Fprintf(&buf, "%s\n", m.StringForTests())
 			if len(m.CategoryStats) > 0 {
 				fmt.Fprintf(&buf, "\nIter category stats:\n")
 				for _, stats := range m.CategoryStats {

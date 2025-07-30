@@ -15,27 +15,27 @@ import (
 func TestCompressionStatsString(t *testing.T) {
 	var stats CompressionStats
 
-	stats.add(compression.None, CompressionStatsForSetting{CompressedBytes: 100, UncompressedBytes: 100})
+	stats.addOne(compression.None, CompressionStatsForSetting{CompressedBytes: 100, UncompressedBytes: 100})
 	require.Equal(t, "NoCompression:100/100", stats.String())
 
-	stats.add(compression.Snappy, CompressionStatsForSetting{CompressedBytes: 100, UncompressedBytes: 200})
+	stats.addOne(compression.Snappy, CompressionStatsForSetting{CompressedBytes: 100, UncompressedBytes: 200})
 	require.Equal(t, "NoCompression:100/100,Snappy:100/200", stats.String())
 
-	stats.add(compression.Snappy, CompressionStatsForSetting{CompressedBytes: 100, UncompressedBytes: 200})
+	stats.addOne(compression.Snappy, CompressionStatsForSetting{CompressedBytes: 100, UncompressedBytes: 200})
 	require.Equal(t, "NoCompression:100/100,Snappy:200/400", stats.String())
 
-	stats.add(compression.MinLZFastest, CompressionStatsForSetting{CompressedBytes: 1000, UncompressedBytes: 4000})
+	stats.addOne(compression.MinLZFastest, CompressionStatsForSetting{CompressedBytes: 1000, UncompressedBytes: 4000})
 	require.Equal(t, "MinLZ1:1000/4000,NoCompression:100/100,Snappy:200/400", stats.String())
 
-	stats.add(compression.ZstdLevel1, CompressionStatsForSetting{CompressedBytes: 10000, UncompressedBytes: 80000})
+	stats.addOne(compression.ZstdLevel1, CompressionStatsForSetting{CompressedBytes: 10000, UncompressedBytes: 80000})
 	require.Equal(t, "MinLZ1:1000/4000,NoCompression:100/100,Snappy:200/400,ZSTD1:10000/80000", stats.String())
 
 	stats = CompressionStats{}
-	stats.add(compression.MinLZFastest, CompressionStatsForSetting{CompressedBytes: 1000, UncompressedBytes: 4000})
+	stats.addOne(compression.MinLZFastest, CompressionStatsForSetting{CompressedBytes: 1000, UncompressedBytes: 4000})
 	require.Equal(t, "MinLZ1:1000/4000", stats.String())
 
 	stats = CompressionStats{}
-	stats.add(compression.Snappy, CompressionStatsForSetting{CompressedBytes: 1000, UncompressedBytes: 4000})
+	stats.addOne(compression.Snappy, CompressionStatsForSetting{CompressedBytes: 1000, UncompressedBytes: 4000})
 	require.Equal(t, "Snappy:1000/4000", stats.String())
 }
 
@@ -49,7 +49,7 @@ func TestCompressionStatsRoundtrip(t *testing.T) {
 			if settings[i] != compression.None {
 				uncompressed += compressed * rand.Uint64N(20) / 10
 			}
-			stats.add(settings[i], CompressionStatsForSetting{CompressedBytes: compressed, UncompressedBytes: uncompressed})
+			stats.addOne(settings[i], CompressionStatsForSetting{CompressedBytes: compressed, UncompressedBytes: uncompressed})
 			str := stats.String()
 			stats2, err := ParseCompressionStats(str)
 			require.NoError(t, err)
