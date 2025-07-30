@@ -908,7 +908,7 @@ func TestCompaction(t *testing.T) {
 			fmt.Fprintln(&compactionLog, info.String())
 		},
 	}
-	reset := func(minVersion, maxVersion FormatMajorVersion) {
+	reset := func(minVersion, maxVersion FormatMajorVersion, cmp *Comparer) {
 		compactionLog.Reset()
 		if d != nil {
 			require.NoError(t, closeAllSnapshots(d))
@@ -924,6 +924,7 @@ func TestCompaction(t *testing.T) {
 			EventListener:               compactionLogEventListener,
 			FormatMajorVersion:          randVersion(minVersion, maxVersion),
 			Logger:                      testutils.Logger{T: t},
+			Comparer:                    cmp,
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -971,13 +972,13 @@ func TestCompaction(t *testing.T) {
 		d.mu.compact.compactingCount--
 	}
 
-	runTest := func(t *testing.T, testData string, minVersion, maxVersion FormatMajorVersion, verbose bool) {
-		reset(minVersion, maxVersion)
+	runTest := func(t *testing.T, testData string, minVersion, maxVersion FormatMajorVersion, verbose bool, cmp *Comparer) {
+		reset(minVersion, maxVersion, cmp)
 		var ongoingCompaction *tableCompaction
 		datadriven.RunTest(t, testData, func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "reset":
-				reset(minVersion, maxVersion)
+				reset(minVersion, maxVersion, cmp)
 				return ""
 
 			case "batch":
@@ -1027,6 +1028,9 @@ func TestCompaction(t *testing.T) {
 					FormatMajorVersion:          randVersion(minVersion, maxVersion),
 					DisableAutomaticCompactions: true,
 					Logger:                      testutils.Logger{T: t},
+				}
+				if cmp != nil {
+					opts.Comparer = cmp
 				}
 				opts.WithFSDefaults()
 				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -1453,6 +1457,7 @@ func TestCompaction(t *testing.T) {
 		minVersion FormatMajorVersion // inclusive, FormatMinSupported if unspecified.
 		maxVersion FormatMajorVersion // inclusive, internalFormatNewest if unspecified.
 		verbose    bool
+		cmp        *Comparer
 	}
 	testConfigs := map[string]testConfig{
 		"singledel_set_with_del": {},
@@ -1482,6 +1487,12 @@ func TestCompaction(t *testing.T) {
 			minVersion: FormatValueSeparation,
 			maxVersion: FormatValueSeparation,
 			verbose:    true,
+		},
+		"mvcc_garbage_blob": {
+			minVersion: FormatValueSeparation,
+			maxVersion: FormatValueSeparation,
+			verbose:    true,
+			cmp:        testkeys.Comparer,
 		},
 		"score_compaction_picked_before_manual": {
 			// Run at a specific version, so that a single sstable format is used,
@@ -1513,7 +1524,7 @@ func TestCompaction(t *testing.T) {
 		if maxVersion == 0 {
 			maxVersion = internalFormatNewest
 		}
-		runTest(t, path, minVersion, maxVersion, tc.verbose)
+		runTest(t, path, minVersion, maxVersion, tc.verbose, tc.cmp)
 	})
 }
 
@@ -1592,14 +1603,14 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			// Collection of table stats can trigger compactions. As we want full
 			// control over when compactions are run, disable stats by default.
 			DisableTableStats: true,
-			//EventListener: &EventListener{
+			// EventListener: &EventListener{
 			//	CompactionEnd: func(info CompactionInfo) {
 			//		if compactInfo != nil {
 			//			return
 			//		}
 			//		compactInfo = &info
 			//	},
-			//},
+			// },
 			EventListener:      &el,
 			FormatMajorVersion: internalFormatNewest,
 			Logger:             testutils.Logger{T: t},
