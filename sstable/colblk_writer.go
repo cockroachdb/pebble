@@ -111,10 +111,6 @@ type RawColumnWriter struct {
 	validator             invariants.Value[*colblk.DataBlockValidator]
 	disableKeyOrderChecks bool
 	cpuMeasurer           base.CPUMeasurer
-
-	// RawColumnWriter writes data sequentially so each writer can have a
-	// physical block maker.
-	physBlockMaker block.PhysicalBlockMaker
 }
 
 // Assert that *RawColumnWriter implements RawWriter.
@@ -148,12 +144,11 @@ func newColumnarWriter(
 	w.topLevelIndexBlock.Init()
 	w.rangeDelBlock.Init(w.comparer.Equal)
 	w.rangeKeyBlock.Init(w.comparer.Equal)
-	w.physBlockMaker.Init(w.opts.Compression, w.opts.Checksum)
 	if !o.DisableValueBlocks {
 		flushGovernor := block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 		// We use the value block writer in the same goroutine so it's safe to share
 		// the physBlockMaker.
-		w.valueBlock = valblk.NewWriter(flushGovernor, &w.physBlockMaker, func(compressedSize int) {})
+		w.valueBlock = valblk.NewWriter(flushGovernor, &w.layout.physBlockMaker, func(compressedSize int) {})
 	}
 	if o.FilterPolicy != base.NoFilterPolicy {
 		switch o.FilterType {
@@ -714,7 +709,7 @@ func (w *RawColumnWriter) enqueueDataBlock(
 	}
 
 	// Compress and checksum the data block and send it to the write queue.
-	pb := w.physBlockMaker.Make(serializedBlock, blockkind.SSTableData, block.NoFlags)
+	pb := w.layout.physBlockMaker.Make(serializedBlock, blockkind.SSTableData, block.NoFlags)
 	return w.enqueuePhysicalBlock(pb, separator)
 }
 
@@ -1035,7 +1030,7 @@ func (w *RawColumnWriter) Close() (err error) {
 			}
 		}
 
-		w.props.CompressionStats = w.physBlockMaker.Compressor.Stats().String()
+		w.props.CompressionStats = w.layout.physBlockMaker.Compressor.Stats().String()
 		var toWrite []byte
 		w.props.CompressionOptions = rocksDBCompressionOptions
 		if w.opts.TableFormat >= TableFormatPebblev7 {
@@ -1069,7 +1064,6 @@ func (w *RawColumnWriter) Close() (err error) {
 		return err
 	}
 	w.meta.Properties = w.props
-	w.physBlockMaker.Close()
 	// Release any held memory and make any future calls error.
 	*w = RawColumnWriter{meta: w.meta, err: errWriterClosed}
 	return nil
@@ -1089,7 +1083,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		return errors.Wrap(err, "reading layout")
 	}
 	// Copy data blocks in parallel, rewriting suffixes as we go.
-	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.physBlockMaker.Compressor.Stats(), func() blockRewriter {
+	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.layout.physBlockMaker.Compressor.Stats(), func() blockRewriter {
 		return colblk.NewDataBlockRewriter(wo.KeySchema, w.comparer)
 	})
 	if err != nil {
@@ -1247,7 +1241,7 @@ func (w *RawColumnWriter) copyDataBlocks(
 // using CopySpan().
 func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProperties) error {
 	// Compress and checksum the data block and send it to the write queue.
-	pb := w.physBlockMaker.Make(b, blockkind.SSTableData, block.NoFlags)
+	pb := w.layout.physBlockMaker.Make(b, blockkind.SSTableData, block.NoFlags)
 	if err := w.enqueuePhysicalBlock(pb, sep); err != nil {
 		return err
 	}

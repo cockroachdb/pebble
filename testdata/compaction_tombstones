@@ -41,7 +41,7 @@ range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (756B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(elision-only) L6 [000004] (750B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # Test a table that straddles a snapshot. It should not be compacted.
 define snapshots=(50) auto-compactions=off
@@ -85,7 +85,7 @@ range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (802B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (758B), in 1.0s (2.0s total), output rate 758B/s
+[JOB 100] compacted(elision-only) L6 [000004] (804B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (760B), in 1.0s (2.0s total), output rate 760B/s
 
 version
 ----
@@ -134,7 +134,7 @@ close-snapshot
 close-snapshot
 103
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (939B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(elision-only) L6 [000004] (997B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # Test a table that contains both deletions and non-deletions, but whose
 # non-deletions well outnumber its deletions. The table should not be
@@ -243,7 +243,7 @@ range-deletions-bytes-estimate: 0
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000004] (806B) Score=6.20 + L6 [000006] (13KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(default) L5 [000004] (808B) Score=6.21 + L6 [000006] (13KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # A table containing only range keys is not eligible for elision.
 # RANGEKEYDEL or RANGEKEYUNSET.
@@ -323,7 +323,7 @@ range-deletions-bytes-estimate: 94
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (1003B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (751B), in 1.0s (2.0s total), output rate 751B/s
+[JOB 100] compacted(elision-only) L6 [000004] (1004B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (765B), in 1.0s (2.0s total), output rate 765B/s
 
 # Close the DB, asserting that the reference counts balance.
 close
@@ -376,7 +376,7 @@ range-deletions-bytes-estimate: 8380
 maybe-compact
 ----
 [JOB 100] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
-[JOB 101] compacted(default) L5 [000004] (798B) Score=3.10 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.8KB), in 1.0s (2.0s total), output rate 4.8KB/s
+[JOB 101] compacted(default) L5 [000004] (800B) Score=3.13 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.8KB), in 1.0s (2.0s total), output rate 4.8KB/s
 
 # The same LSM as above. However, this time, with point tombstone weighting at
 # 2x, the table with the point tombstone (000004) will be selected as the
@@ -422,7 +422,7 @@ range-deletions-bytes-estimate: 8380
 maybe-compact
 ----
 [JOB 100] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
-[JOB 101] compacted(default) L5 [000004] (798B) Score=3.10 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.8KB), in 1.0s (2.0s total), output rate 4.8KB/s
+[JOB 101] compacted(default) L5 [000004] (800B) Score=3.13 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.8KB), in 1.0s (2.0s total), output rate 4.8KB/s
 
 # These tests demonstrate the behavior of the tombstone density compaction feature
 # in Pebble. This feature identifies files with a high density of tombstones and
@@ -497,8 +497,8 @@ tombstone-dense-blocks-ratio: 0.9
 # should indicate "move" as the compaction type.
 maybe-compact
 ----
-[JOB 100] compacted(tombstone-density) L5 [000004] (806B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (751B), in 1.0s (2.0s total), output rate 751B/s
-[JOB 101] compacted(move) L4 [000004] (806B) Score=0.00 + L5 [] (0B) Score=0.00 -> L5 [000000] (806B), in 1.0s (2.0s total), output rate 806B/s
+[JOB 100] compacted(tombstone-density) L5 [000004] (819B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (765B), in 1.0s (2.0s total), output rate 765B/s
+[JOB 101] compacted(move) L4 [000004] (819B) Score=0.00 + L5 [] (0B) Score=0.00 -> L5 [000000] (819B), in 1.0s (2.0s total), output rate 819B/s
 
 # Verify the result - the file should now be in L5
 # The file should maintain its original content since it was just moved rather than recompacted
@@ -556,7 +556,7 @@ tombstone-dense-blocks-ratio: 0.9
 # because there are overlapping files in L5 that prevent the optimization
 maybe-compact
 ----
-[JOB 100] compacted(tombstone-density) L4 [000004] (806B) Score=0.00 + L5 [000005] (769B) Score=0.00 -> L5 [000007] (751B), in 1.0s (2.0s total), output rate 751B/s
+[JOB 100] compacted(tombstone-density) L4 [000004] (819B) Score=0.00 + L5 [000005] (771B) Score=0.00 -> L5 [000007] (765B), in 1.0s (2.0s total), output rate 765B/s
 
 # Verify the result - the file was recompacted with the overlapping L5 file
 # The output file should be different from the input files
