@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/ascii/table"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
@@ -347,18 +348,6 @@ type Metrics struct {
 		BackingTableCount uint64
 		// The sum of the sizes of the BackingTableCount sstables that are backing virtual tables.
 		BackingTableSize uint64
-		// The number of sstables that are compressed with an unknown compression
-		// algorithm.
-		CompressedCountUnknown int64
-		// The number of sstables that are compressed with the default compression
-		// algorithm, snappy.
-		CompressedCountSnappy int64
-		// The number of sstables that are compressed with zstd.
-		CompressedCountZstd int64
-		// The number of sstables that are compressed with minlz.
-		CompressedCountMinLZ int64
-		// The number of sstables that are uncompressed.
-		CompressedCountNone int64
 
 		// Local file sizes.
 		Local struct {
@@ -450,6 +439,8 @@ type Metrics struct {
 		}
 	}
 
+	Compression CompressionMetrics
+
 	FileCache FileCacheMetrics
 
 	// Count of the number of open sstable iterators.
@@ -496,6 +487,46 @@ type Metrics struct {
 	}
 
 	manualMemory manual.Metrics
+}
+
+// CompressionMetrics contains compression metrics for sstables and blob files.
+type CompressionMetrics struct {
+	// NoCompressionBytes is the total number of bytes in files that do are not
+	// compressed. Data can be uncompressed when 1) compression is disabled; 2)
+	// for certain special types of blocks; and 3) for blocks that are not
+	// compressible.
+	NoCompressionBytes uint64
+	// CompressedBytesWithoutStats is the total number of bytes in files that do not
+	// encode compression statistics (or for which there are no statistics yet).
+	CompressedBytesWithoutStats uint64
+	Snappy                      CompressionStatsForSetting
+	MinLZ                       CompressionStatsForSetting
+	Zstd                        CompressionStatsForSetting
+}
+
+type CompressionStatsForSetting = block.CompressionStatsForSetting
+
+func (cm *CompressionMetrics) Add(stats *block.CompressionStats) {
+	for s, cs := range stats.All() {
+		switch s.Algorithm {
+		case compression.NoCompression:
+			cm.NoCompressionBytes += cs.UncompressedBytes
+		case compression.SnappyAlgorithm:
+			cm.Snappy.Add(cs)
+		case compression.MinLZ:
+			cm.MinLZ.Add(cs)
+		case compression.Zstd:
+			cm.Zstd.Add(cs)
+		}
+	}
+}
+
+func (cm *CompressionMetrics) MergeWith(o *CompressionMetrics) {
+	cm.NoCompressionBytes += o.NoCompressionBytes
+	cm.CompressedBytesWithoutStats += o.CompressedBytesWithoutStats
+	cm.Snappy.Add(o.Snappy)
+	cm.MinLZ.Add(o.MinLZ)
+	cm.Zstd.Add(o.Zstd)
 }
 
 var (
@@ -751,9 +782,18 @@ var (
 		table.String("range dels", 15, table.AlignRight, func(i keysInfo) string { return i.rangeDels }),
 	)
 	compressionTableHeader = `COMPRESSION`
-	compressionTable       = table.Define[pair[string, int64]](
-		table.String("algorithm", 10, table.AlignRight, func(p pair[string, int64]) string { return p.k }),
-		table.Count("tables", 10, table.AlignRight, func(p pair[string, int64]) int64 { return p.v }),
+	compressionTable       = table.Define[pair[string, CompressionStatsForSetting]](
+		table.String("algorithm", 13, table.AlignRight, func(p pair[string, CompressionStatsForSetting]) string { return p.k }),
+		table.Bytes("on disk bytes", 13, table.AlignRight, func(p pair[string, CompressionStatsForSetting]) uint64 { return p.v.CompressedBytes }),
+		table.String("CR", 13, table.AlignRight, func(p pair[string, CompressionStatsForSetting]) string {
+			if p.v.UncompressedBytes == p.v.CompressedBytes {
+				return ""
+			}
+			if p.v.UncompressedBytes == 0 {
+				return "?"
+			}
+			return crhumanize.Float(p.v.CompressionRatio(), 2 /* precision */).String()
+		}),
 	)
 )
 
@@ -990,15 +1030,19 @@ func (m *Metrics) String() string {
 	cur = cur.NewlineReturn()
 
 	cur = cur.WriteString(compressionTableHeader).NewlineReturn()
-	compressionContents := []pair[string, int64]{
-		{k: "none", v: m.Table.CompressedCountNone},
-		{k: "snappy", v: m.Table.CompressedCountSnappy},
-		{k: "minlz", v: m.Table.CompressedCountMinLZ},
-		{k: "zstd", v: m.Table.CompressedCountZstd},
+	compressionContents := []pair[string, CompressionStatsForSetting]{
+		{k: "none", v: CompressionStatsForSetting{
+			CompressedBytes:   m.Compression.NoCompressionBytes,
+			UncompressedBytes: m.Compression.NoCompressionBytes,
+		}},
+		{k: "snappy", v: m.Compression.Snappy},
+		{k: "minlz", v: m.Compression.MinLZ},
+		{k: "zstd", v: m.Compression.Zstd},
+		{k: "unknown", v: CompressionStatsForSetting{CompressedBytes: m.Compression.CompressedBytesWithoutStats}},
 	}
-	if m.Table.CompressedCountUnknown > 0 {
-		compressionContents = append(compressionContents, pair[string, int64]{k: "???", v: m.Table.CompressedCountUnknown})
-	}
+	compressionContents = slices.DeleteFunc(compressionContents, func(p pair[string, CompressionStatsForSetting]) bool {
+		return p.v.CompressedBytes == 0
+	})
 	compressionTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compressionContents))
 
 	return wb.String()
