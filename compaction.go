@@ -3512,7 +3512,7 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
 		maybeSetStatsFromProperties(
-			fileMeta.PhysicalMeta(), &t.WriterMeta.Properties.CommonProperties, c.logger,
+			fileMeta.PhysicalMeta(), &t.WriterMeta.Properties, c.logger,
 		)
 
 		if t.WriterMeta.HasPointKeys {

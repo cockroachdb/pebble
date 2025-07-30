@@ -1167,6 +1167,9 @@ type TableStats struct {
 	// CompressionType is the compression profile used for the table (or nil if
 	// the profile name is not recognized).
 	CompressionType *block.CompressionProfile
+	// CompressionStats contains compression statistics; not available for older
+	// table versions.
+	CompressionStats block.CompressionStats
 	// TombstoneDenseBlocksRatio is the ratio of data blocks in this table that
 	// fulfills at least one of the following:
 	// 1. The block contains at least options.Experimental.NumDeletionsThreshold

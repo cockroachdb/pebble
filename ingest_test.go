@@ -249,6 +249,7 @@ func TestIngestLoadRand(t *testing.T) {
 
 	for _, m := range lr.local {
 		m.CreationTime = 0
+		m.Stats.CompressionStats = block.CompressionStats{}
 	}
 	t.Log(strings.Join(pretty.Diff(expected, lr.local), "\n"))
 	require.Equal(t, expected, lr.local)

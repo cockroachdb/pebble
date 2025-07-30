@@ -200,7 +200,7 @@ func rewriteDataBlocksInParallel(
 				errCh <- workerErr{worker: worker, err: err}
 			}
 			compressionStatsMu.Lock()
-			compressionStats.MergeWith(physBlockMaker.Compressor.Stats())
+			compressionStats.Add(physBlockMaker.Compressor.Stats())
 			defer compressionStatsMu.Unlock()
 		}()
 	}
