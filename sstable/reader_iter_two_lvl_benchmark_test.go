@@ -7,6 +7,7 @@ package sstable
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/pebble/bloom"
@@ -265,4 +266,380 @@ func BenchmarkTwoLevelIteratorSeekPrefixGE_Hit(b *testing.B) {
 			iter.Close()
 		}
 	})
+}
+
+// BenchmarkTwoLevelLazyLoadingConstruction measures pure iterator construction overhead
+// This validates the lazy loading benefit - construction should be faster since
+// top-level index loading is deferred
+func BenchmarkTwoLevelLazyLoadingConstruction(b *testing.B) {
+	testCases := []struct {
+		name      string
+		blockSize int
+		useBloom  bool
+	}{
+		{"rowblk-1024", 1024, false},
+		{"rowblk-4096", 4096, false},
+		{"rowblk-bloom", 1024, true},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.name, func(b *testing.B) {
+			var reader *Reader
+			if tc.useBloom {
+				reader, _ = setupBloomFilterData(b)
+			} else {
+				reader, _ = setupTwoLevelBenchmarkData(b, tc.blockSize)
+			}
+			defer reader.Close()
+
+			opts := IterOptions{}
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				iter, err := newRowBlockTwoLevelIterator(context.Background(), reader, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+				// Just construction, no access
+				iter.Close()
+			}
+		})
+	}
+}
+
+// BenchmarkTwoLevelLazyLoadingFirstAccess measures construction + first access
+// This shows the total cost when lazy loading actually needs to load the index
+func BenchmarkTwoLevelLazyLoadingFirstAccess(b *testing.B) {
+	testCases := []struct {
+		name      string
+		blockSize int
+		useBloom  bool
+	}{
+		{"rowblk-1024", 1024, false},
+		{"rowblk-4096", 4096, false},
+		{"rowblk-bloom", 1024, true},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.name, func(b *testing.B) {
+			var reader *Reader
+			if tc.useBloom {
+				reader, _ = setupBloomFilterData(b)
+			} else {
+				reader, _ = setupTwoLevelBenchmarkData(b, tc.blockSize)
+			}
+			defer reader.Close()
+
+			opts := IterOptions{}
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				iter, err := newRowBlockTwoLevelIterator(context.Background(), reader, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				// First access triggers lazy loading
+				kv := iter.First()
+				if kv == nil {
+					b.Fatal("Expected non-nil key-value from First()")
+				}
+
+				iter.Close()
+			}
+		})
+	}
+}
+
+// BenchmarkTwoLevelLazyLoadingBloomFilterComparison measures the key benefit of lazy loading:
+// bloom filter misses should be much faster than hits because no index loading is needed
+func BenchmarkTwoLevelLazyLoadingBloomFilterComparison(b *testing.B) {
+	reader, keys := setupBloomFilterData(b)
+	defer reader.Close()
+
+	// Get a valid prefix for hits
+	fullKey := []byte(keys[0])
+	splitIndex := testkeys.Comparer.Split(fullKey)
+	validPrefix := fullKey[:splitIndex]
+
+	testCases := []struct {
+		name      string
+		prefix    []byte
+		key       []byte
+		expectHit bool
+	}{
+		{"miss", []byte("nonexistent"), []byte("nonexistent@1"), false},
+		{"hit", validPrefix, fullKey, true},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.name, func(b *testing.B) {
+			opts := IterOptions{}
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				iter, err := newRowBlockTwoLevelIterator(context.Background(), reader, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				kv := iter.SeekPrefixGE(tc.prefix, tc.key, base.SeekGEFlagsNone)
+				if tc.expectHit && kv == nil {
+					b.Fatal("Expected hit but got miss")
+				}
+				if !tc.expectHit && kv != nil {
+					b.Fatal("Expected miss but got hit")
+				}
+
+				iter.Close()
+			}
+		})
+	}
+}
+
+// BenchmarkTwoLevelLazyLoadingIteratorReuse measures the performance of reusing iterators
+// This validates that lazy state is properly reset between uses
+func BenchmarkTwoLevelLazyLoadingIteratorReuse(b *testing.B) {
+	reader, keys := setupBloomFilterData(b)
+	defer reader.Close()
+
+	// Create a pool for testing reuse
+	var pool sync.Pool
+	pool.New = func() interface{} {
+		return &twoLevelIteratorRowBlocks{pool: &pool}
+	}
+
+	opts := IterOptions{}
+	seekKey := []byte(keys[len(keys)/2])
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		// Get iterator from pool (simulating reuse)
+		iter := pool.Get().(*twoLevelIteratorRowBlocks)
+		iter.secondLevel.init(context.Background(), reader, opts)
+		iter.useFilterBlock = iter.secondLevel.useFilterBlock
+		iter.secondLevel.useFilterBlock = false
+
+		// Set up lazy loading state
+		iter.topLevelLazyState = &topLevelLazyState{
+			loaded:        false,
+			ctx:           context.Background(),
+			reader:        reader,
+			indexFilterRH: iter.secondLevel.indexFilterRH,
+			readEnv:       iter.secondLevel.readEnv.Block,
+			comparer:      reader.Comparer,
+			transforms:    opts.Transforms,
+		}
+
+		// Use the iterator
+		kv := iter.SeekGE(seekKey, base.SeekGEFlagsNone)
+		if kv == nil {
+			b.Fatal("Expected non-nil key-value from SeekGE")
+		}
+
+		// Clean up and return to pool
+		iter.Close()
+		iter.secondLevel.resetForReuse()
+		pool.Put(iter)
+	}
+}
+
+// BenchmarkTwoLevelLazyLoadingConcurrentAccess measures concurrent iterator creation
+// This validates thread safety and performance under concurrent load
+func BenchmarkTwoLevelLazyLoadingConcurrentAccess(b *testing.B) {
+	reader, keys := setupTwoLevelBenchmarkData(b, 1024)
+	defer reader.Close()
+
+	opts := IterOptions{}
+	seekKey := []byte(keys[len(keys)/4])
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			iter, err := newRowBlockTwoLevelIterator(context.Background(), reader, opts)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			kv := iter.SeekGE(seekKey, base.SeekGEFlagsNone)
+			if kv == nil {
+				b.Fatal("Expected non-nil key-value from SeekGE")
+			}
+
+			iter.Close()
+		}
+	})
+}
+
+// BenchmarkTwoLevelLazyLoadingOperations measures various iterator operations
+// to ensure lazy loading doesn't add overhead to normal operations
+func BenchmarkTwoLevelLazyLoadingOperations(b *testing.B) {
+	reader, keys := setupTwoLevelBenchmarkData(b, 1024)
+	defer reader.Close()
+
+	operations := []struct {
+		name string
+		fn   func(iter Iterator, keys [][]byte) *base.InternalKV
+	}{
+		{"First", func(iter Iterator, keys [][]byte) *base.InternalKV {
+			return iter.First()
+		}},
+		{"Last", func(iter Iterator, keys [][]byte) *base.InternalKV {
+			return iter.Last()
+		}},
+		{"SeekGE", func(iter Iterator, keys [][]byte) *base.InternalKV {
+			return iter.SeekGE(keys[len(keys)/2], base.SeekGEFlagsNone)
+		}},
+		{"SeekLT", func(iter Iterator, keys [][]byte) *base.InternalKV {
+			return iter.SeekLT(keys[len(keys)/2], base.SeekLTFlagsNone)
+		}},
+	}
+
+	for _, op := range operations {
+		b.Run(op.name, func(b *testing.B) {
+			opts := IterOptions{}
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				iter, err := newRowBlockTwoLevelIterator(context.Background(), reader, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				kv := op.fn(iter, keys)
+				if kv == nil {
+					b.Fatalf("Expected non-nil key-value from %s", op.name)
+				}
+
+				iter.Close()
+			}
+		})
+	}
+}
+
+// BenchmarkTwoLevelLazyLoadingMemoryUsage measures memory allocation patterns
+// This ensures lazy loading doesn't cause excessive allocations
+func BenchmarkTwoLevelLazyLoadingMemoryUsage(b *testing.B) {
+	reader, keys := setupTwoLevelBenchmarkData(b, 1024)
+	defer reader.Close()
+
+	testCases := []struct {
+		name string
+		fn   func(iter Iterator, keys [][]byte)
+	}{
+		{"construction-only", func(iter Iterator, keys [][]byte) {
+			// Just construct, don't access
+		}},
+		{"single-access", func(iter Iterator, keys [][]byte) {
+			iter.First()
+		}},
+		{"multiple-seeks", func(iter Iterator, keys [][]byte) {
+			iter.SeekGE(keys[len(keys)/4], base.SeekGEFlagsNone)
+			iter.SeekGE(keys[len(keys)/2], base.SeekGEFlagsNone)
+			iter.SeekGE(keys[3*len(keys)/4], base.SeekGEFlagsNone)
+		}},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.name, func(b *testing.B) {
+			opts := IterOptions{}
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				iter, err := newRowBlockTwoLevelIterator(context.Background(), reader, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				tc.fn(iter, keys)
+
+				iter.Close()
+			}
+		})
+	}
+}
+
+// BenchmarkTwoLevelLazyLoadingTableFormats compares performance across different table formats
+func BenchmarkTwoLevelLazyLoadingTableFormats(b *testing.B) {
+	formats := []struct {
+		name   string
+		format TableFormat
+	}{
+		{"v3", TableFormatPebblev3},
+		{"v4", TableFormatPebblev4},
+		{"v5", TableFormatPebblev5},
+	}
+
+	for _, format := range formats {
+		b.Run(format.name, func(b *testing.B) {
+			// Create test data with specific table format
+			mem := vfs.NewMem()
+			f, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
+			require.NoError(b, err)
+
+			w := NewWriter(objstorageprovider.NewFileWritable(f), WriterOptions{
+				BlockSize:      1024,
+				IndexBlockSize: 1024,
+				Comparer:       testkeys.Comparer,
+				MergerName:     "nullptr",
+				TableFormat:    format.format,
+			})
+
+			// Write enough keys to create two-level index
+			ks := testkeys.Alpha(5)
+			for i := range int64(10000) {
+				key := testkeys.Key(ks, i)
+				require.NoError(b, w.Set(key, []byte(fmt.Sprintf("value-%d", i))))
+			}
+			require.NoError(b, w.Close())
+
+			// Open reader
+			f, err = mem.Open("bench")
+			require.NoError(b, err)
+
+			reader, err := newReader(f, ReaderOptions{
+				Comparer: testkeys.Comparer,
+			})
+			require.NoError(b, err)
+			defer reader.Close()
+
+			if !reader.Attributes.Has(AttributeTwoLevelIndex) {
+				b.Skip("Test data did not create two-level index")
+			}
+
+			opts := IterOptions{}
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				var iter Iterator
+				var err error
+
+				if format.format.BlockColumnar() {
+					iter, err = newColumnBlockTwoLevelIterator(context.Background(), reader, opts)
+				} else {
+					iter, err = newRowBlockTwoLevelIterator(context.Background(), reader, opts)
+				}
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				kv := iter.First()
+				if kv == nil {
+					b.Fatal("Expected non-nil key-value from First()")
+				}
+
+				iter.Close()
+			}
+		})
+	}
 }
