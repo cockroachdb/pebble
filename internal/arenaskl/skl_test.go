@@ -22,6 +22,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
+	"reflect"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,6 +77,15 @@ func lengthRev(s *Skiplist) int {
 		count++
 	}
 	return count
+}
+
+// TestNoPointers tests that the node struct does not contain any pointers. No
+// struct that is backed by the arena may contain pointers (at least without
+// zeroing the backing memory) *before* type casting the pointer. Otherwise, the
+// Go GC may observe the pointer (while a GC write barrier is in effect) and
+// complain that the uninitialized value is a bad pointer. See 273e2665.
+func TestNoPointers(t *testing.T) {
+	require.False(t, testutils.AnyPointers(reflect.TypeOf(node{})))
 }
 
 func TestEmpty(t *testing.T) {
