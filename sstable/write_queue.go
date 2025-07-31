@@ -60,8 +60,7 @@ func newWriteQueue(size int, writer *RawRowWriter) *writeQueue {
 }
 
 func (w *writeQueue) performWrite(task *writeTask) error {
-	handle, err := w.writer.layout.WritePrecompressedDataBlock(task.buf.physical)
-	task.buf.physical.Release()
+	handle, err := w.writer.layout.WritePrecompressedDataBlock(task.buf.physical.Take())
 	if err != nil {
 		return err
 	}

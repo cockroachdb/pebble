@@ -36,9 +36,22 @@ func MakeTrailer(blockType byte, checksum uint32) (t Trailer) {
 	return t
 }
 
-// LengthWithTrailer returns the length of the data block, including the trailer.
-func (b PhysicalBlock) LengthWithTrailer() int {
-	return b.tb.Size()
+// PhysicalBlockLength represents the length of a physical block.
+type PhysicalBlockLength struct {
+	lenWithTrailer int
+}
+
+func (l PhysicalBlockLength) WithTrailer() int {
+	return l.lenWithTrailer
+}
+
+func (l PhysicalBlockLength) WithoutTrailer() int {
+	return invariants.SafeSub(l.lenWithTrailer, TrailerLen)
+}
+
+// Length returns the length of the data block.
+func (b PhysicalBlock) Length() PhysicalBlockLength {
+	return PhysicalBlockLength{lenWithTrailer: b.tb.Size()}
 }
 
 // LengthWithoutTrailer returns the length of the data block, excluding the trailer.
@@ -48,8 +61,10 @@ func (b PhysicalBlock) LengthWithoutTrailer() int {
 
 // Release the underlying TempBuffer. The PhysicalBlock should not be used again.
 func (b *PhysicalBlock) Release() {
-	b.tb.Release()
-	b.tb = nil
+	if b.tb != nil {
+		b.tb.Release()
+		b.tb = nil
+	}
 }
 
 // AlreadyEncodedPhysicalBlock creates a PhysicalBlock from the provided on-disk
@@ -61,21 +76,37 @@ func AlreadyEncodedPhysicalBlock(dataWithTrailer []byte) PhysicalBlock {
 	return PhysicalBlock{tb: tb}
 }
 
-// WriteTo writes the block (including its trailer) to the provided Writable. If
-// err == nil, n is the number of bytes successfully written to the Writable.
-//
-// WriteTo might mangle the block data.
-func (b PhysicalBlock) WriteTo(w objstorage.Writable) (n int, err error) {
-	if err := w.Write(b.tb.Data()); err != nil {
-		return 0, err
-	}
+// OwnedPhysicalBlock is a wrapper around PhysicalBlock which indicates that
+// whoever is holding it is responsible for releasing the buffer.
+type OwnedPhysicalBlock struct {
+	pb PhysicalBlock
+}
 
-	// WriteTo is allowed to mangle the data. Mangle it ourselves some of the time
-	// in invariant builds to catch callers that don't handle this.
-	if invariants.Enabled && invariants.Sometimes(1) {
-		invariants.Mangle(b.tb.Data())
+// Length returns the length of the data block.
+func (b OwnedPhysicalBlock) Length() PhysicalBlockLength {
+	return PhysicalBlockLength{lenWithTrailer: b.pb.tb.Size()}
+}
+
+// Take moves the physical block to an OwnedPhysicalBlock. The receiver must not
+// be used again. This is used to make the ownership transfer more explicit.
+func (b *PhysicalBlock) Take() OwnedPhysicalBlock {
+	pb := *b
+	b.tb = nil
+	return OwnedPhysicalBlock{pb: pb}
+}
+
+// WriteAndReleasePhysicalBlock writes the block (including its trailer) to the
+// provided Writable and releases the block. The block is released even in error
+// cases.
+func WriteAndReleasePhysicalBlock(
+	b OwnedPhysicalBlock, w objstorage.Writable,
+) (length PhysicalBlockLength, err error) {
+	defer b.pb.Release()
+	// Note that Write can mangle the buffer, but we're releasing it anyway.
+	if err := w.Write(b.pb.tb.Data()); err != nil {
+		return PhysicalBlockLength{}, err
 	}
-	return b.tb.Size(), nil
+	return b.Length(), nil
 }
 
 // PhysicalBlockMaker is used to create physical blocks from logical block data.
