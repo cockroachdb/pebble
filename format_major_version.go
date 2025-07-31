@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 )
@@ -234,10 +235,15 @@ const (
 	// participate in every compaction.
 	FormatValueSeparation
 
-	// -- Add new versions here --
 	// FormatExciseBoundsRecord is a format major version that adds support for
 	// persisting excise bounds records in the manifest (VersionEdit).
 	FormatExciseBoundsRecord
+
+	// FormatV2BlobFiles is a format major version that adds support for V2 blob
+	// file format (which adds compression statistics).
+	FormatV2BlobFiles
+
+	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
 	FormatNewest FormatMajorVersion = iota - 1
@@ -266,38 +272,55 @@ func (v FormatMajorVersion) IsSupported() bool {
 	return v == FormatDefault && v >= FormatMinSupported && v <= internalFormatNewest
 }
 
+// resolveDefault asserts that the given version is supported, and returns the
+// given version, replacing FormatDefault with FormatMinSupported.
+func (v FormatMajorVersion) resolveDefault() FormatMajorVersion {
+	if !v.IsSupported() {
+		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
+	}
+	if v == FormatDefault {
+		return FormatMinSupported
+	}
+	return v
+}
+
 // MaxTableFormat returns the maximum sstable.TableFormat that can be used at
 // this FormatMajorVersion.
 func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
-	switch v {
-	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted:
-		return sstable.TableFormatPebblev3
-	case FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
-		FormatFlushableIngestExcises:
-		return sstable.TableFormatPebblev4
-	case FormatColumnarBlocks, FormatWALSyncChunks:
-		return sstable.TableFormatPebblev5
-	case FormatTableFormatV6, formatDeprecatedExperimentalValueSeparation:
-		return sstable.TableFormatPebblev6
-	case formatFooterAttributes, FormatValueSeparation, FormatExciseBoundsRecord:
+	v = v.resolveDefault()
+	switch {
+	case v >= formatFooterAttributes:
 		return sstable.TableFormatPebblev7
+	case v >= FormatTableFormatV6:
+		return sstable.TableFormatPebblev6
+	case v >= FormatColumnarBlocks:
+		return sstable.TableFormatPebblev5
+	case v >= FormatDeleteSizedAndObsolete:
+		return sstable.TableFormatPebblev4
 	default:
-		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
+		return sstable.TableFormatPebblev3
 	}
 }
 
 // MinTableFormat returns the minimum sstable.TableFormat that can be used at
 // this FormatMajorVersion.
 func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
-	switch v {
-	case FormatDefault, FormatFlushableIngest, FormatPrePebblev1MarkedCompacted,
-		FormatDeleteSizedAndObsolete, FormatVirtualSSTables, FormatSyntheticPrefixSuffix,
-		FormatFlushableIngestExcises, FormatColumnarBlocks, FormatWALSyncChunks,
-		FormatExciseBoundsRecord, FormatTableFormatV6, formatDeprecatedExperimentalValueSeparation, formatFooterAttributes,
-		FormatValueSeparation:
-		return sstable.TableFormatPebblev1
+	_ = v.resolveDefault()
+	return sstable.TableFormatPebblev1
+}
+
+// MaxBlobFileFormat returns the maximum blob.FileFormat that can be used at
+// this FormatMajorVersion. It can only be used on versions that support value
+// separation.
+func (v FormatMajorVersion) MaxBlobFileFormat() blob.FileFormat {
+	v = v.resolveDefault()
+	switch {
+	case v >= FormatV2BlobFiles:
+		return blob.FileFormatV2
+	case v >= FormatValueSeparation:
+		return blob.FileFormatV1
 	default:
-		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
+		panic(fmt.Sprintf("pebble: format major version %s does not support blob files", v))
 	}
 }
 
@@ -354,6 +377,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatExciseBoundsRecord: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatExciseBoundsRecord)
+	},
+	FormatV2BlobFiles: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatV2BlobFiles)
 	},
 }
 
@@ -424,6 +450,12 @@ func (d *DB) TableFormat() sstable.TableFormat {
 		}
 	}
 	return f
+}
+
+// BlobFileFormat returns the blob.FileFormat that the database is currently
+// using when writing blob files.
+func (d *DB) BlobFileFormat() blob.FileFormat {
+	return d.FormatMajorVersion().MaxBlobFileFormat()
 }
 
 // shouldCreateShared returns true if the database should use shared objects

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/stretchr/testify/require"
@@ -32,12 +33,13 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 	require.Equal(t, formatDeprecatedExperimentalValueSeparation, FormatMajorVersion(22))
 	require.Equal(t, formatFooterAttributes, FormatMajorVersion(23))
 	require.Equal(t, FormatValueSeparation, FormatMajorVersion(24))
-
-	// When we add a new version, we should add a check for the new version in
-	// addition to updating these expected values.
-	require.Equal(t, FormatNewest, FormatMajorVersion(25))
-	require.Equal(t, internalFormatNewest, FormatMajorVersion(25))
 	require.Equal(t, FormatExciseBoundsRecord, FormatMajorVersion(25))
+	require.Equal(t, FormatV2BlobFiles, FormatMajorVersion(26))
+
+	// When we add a new version, we should add a check for the new version above
+	// in addition to updating the expected values below.
+	require.Equal(t, FormatNewest, FormatMajorVersion(26))
+	require.Equal(t, internalFormatNewest, FormatMajorVersion(26))
 }
 
 func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
@@ -55,36 +57,18 @@ func TestRatchetFormat(t *testing.T) {
 	d, err := Open("", opts)
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("foo"), []byte("bar"), Sync))
-	require.Equal(t, FormatFlushableIngest, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatPrePebblev1MarkedCompacted))
-	require.Equal(t, FormatPrePebblev1MarkedCompacted, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatDeleteSizedAndObsolete))
-	require.Equal(t, FormatDeleteSizedAndObsolete, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatVirtualSSTables))
-	require.Equal(t, FormatVirtualSSTables, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatSyntheticPrefixSuffix))
-	require.Equal(t, FormatSyntheticPrefixSuffix, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatFlushableIngestExcises))
-	require.Equal(t, FormatFlushableIngestExcises, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatColumnarBlocks))
-	require.Equal(t, FormatColumnarBlocks, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatWALSyncChunks))
-	require.Equal(t, FormatWALSyncChunks, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatTableFormatV6))
-	require.Equal(t, FormatTableFormatV6, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(formatDeprecatedExperimentalValueSeparation))
-	require.Equal(t, formatDeprecatedExperimentalValueSeparation, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(formatFooterAttributes))
-	require.Equal(t, formatFooterAttributes, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatValueSeparation))
-	require.Equal(t, FormatValueSeparation, d.FormatMajorVersion())
-	require.NoError(t, d.RatchetFormatMajorVersion(FormatExciseBoundsRecord))
-	require.Equal(t, FormatExciseBoundsRecord, d.FormatMajorVersion())
+
+	// Ratchet through all supported versions.
+	require.Equal(t, FormatMinSupported, d.FormatMajorVersion())
+	for v := FormatMinSupported + 1; v <= internalFormatNewest; v++ {
+		require.NoError(t, d.RatchetFormatMajorVersion(v))
+		require.Equal(t, v, d.FormatMajorVersion())
+	}
 
 	require.NoError(t, d.Close())
 
 	// If we Open the database again, leaving the default format, the
-	// database should Open using the persisted FormatNewest.
+	// database should Open using the persisted internalFormatNewest.
 	opts = &Options{FS: fs, Logger: testLogger{t}}
 	opts.WithFSDefaults()
 	d, err = Open("", opts)
@@ -243,6 +227,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		formatFooterAttributes:                      {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 		FormatValueSeparation:                       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 		FormatExciseBoundsRecord:                    {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
+		FormatV2BlobFiles:                           {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 	}
 
 	// Valid versions.
@@ -256,6 +241,29 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 	fmv := internalFormatNewest + 1
 	require.Panics(t, func() { _ = fmv.MaxTableFormat() })
 	require.Panics(t, func() { _ = fmv.MinTableFormat() })
+}
+
+func TestFormatMajorVersions_BlobFileFormat(t *testing.T) {
+	// NB: This test is intended to validate the mapping between every
+	// FormatMajorVersion and blob.FileFormat exhaustively. This serves as a
+	// sanity check that new versions have a corresponding mapping. The test
+	// fixture is intentionally verbose.
+
+	m := map[FormatMajorVersion]blob.FileFormat{
+		FormatValueSeparation:    blob.FileFormatV1,
+		FormatExciseBoundsRecord: blob.FileFormatV1,
+		FormatV2BlobFiles:        blob.FileFormatV2,
+	}
+
+	// Valid versions.
+	for fmv := FormatValueSeparation; fmv <= internalFormatNewest; fmv++ {
+		got := fmv.MaxBlobFileFormat()
+		require.Equalf(t, m[fmv], got, "got %s; want %s", got, m[fmv])
+	}
+
+	// Invalid versions.
+	require.Panics(t, func() { _ = (internalFormatNewest + 1).MaxBlobFileFormat() })
+	require.Panics(t, func() { _ = (FormatValueSeparation - 1).MaxBlobFileFormat() })
 }
 
 // TestFormatMajorVersions_ColumnarBlocks ensures that

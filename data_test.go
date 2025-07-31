@@ -1163,12 +1163,18 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		return nil, err
 	}
 
-	if len(ve.NewTables) > 0 {
-		// Collect any blob files created.
-		fileStats, err := valueSeparator.bv.WriteFiles(func(fileNum base.DiskFileNum) (objstorage.Writable, error) {
+	if len(ve.NewTables) == 0 {
+		return d, nil
+	}
+
+	// Collect any blob files created.
+	if !valueSeparator.bv.IsEmpty() {
+		newBlobObject := func(fileNum base.DiskFileNum) (objstorage.Writable, error) {
 			writable, _, err := d.objProvider.Create(context.Background(), base.FileTypeBlob, fileNum, objstorage.CreateOptions{})
 			return writable, err
-		}, d.opts.MakeBlobWriterOptions(0))
+		}
+		blobWriterOpts := d.opts.MakeBlobWriterOptions(0, d.BlobFileFormat())
+		fileStats, err := valueSeparator.bv.WriteFiles(newBlobObject, blobWriterOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -1184,22 +1190,22 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 				Physical: m,
 			})
 		}
-
-		jobID := d.newJobIDLocked()
-		_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
-			return versionUpdate{
-				VE:                      ve,
-				JobID:                   jobID,
-				Metrics:                 newFileMetrics(ve.NewTables),
-				InProgressCompactionsFn: func() []compactionInfo { return nil },
-			}, nil
-		})
-		if err != nil {
-			return nil, err
-		}
-		d.updateReadStateLocked(nil)
-		d.updateTableStatsLocked(ve.NewTables)
 	}
+
+	jobID := d.newJobIDLocked()
+	_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		return versionUpdate{
+			VE:                      ve,
+			JobID:                   jobID,
+			Metrics:                 newFileMetrics(ve.NewTables),
+			InProgressCompactionsFn: func() []compactionInfo { return nil },
+		}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	d.updateReadStateLocked(nil)
+	d.updateTableStatsLocked(ve.NewTables)
 
 	return d, nil
 }
