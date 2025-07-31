@@ -229,7 +229,7 @@ func (w *FileWriter) drainWriteQueue() {
 	// Call once to initialize the CPU measurer.
 	w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineBlobFileSecondary)
 	for cb := range w.writeQueue.ch {
-		_, err := cb.pb.WriteTo(w.w)
+		length, err := block.WriteAndReleasePhysicalBlock(cb.pb.Take(), w.w)
 		// Report to the CPU measurer immediately after writing (note that there
 		// may be a time lag until the next block is available to write).
 		w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineBlobFileSecondary)
@@ -239,10 +239,8 @@ func (w *FileWriter) drainWriteQueue() {
 		}
 		w.indexEncoder.AddBlockHandle(block.Handle{
 			Offset: cb.off,
-			Length: uint64(cb.pb.LengthWithoutTrailer()),
+			Length: uint64(length.WithoutTrailer()),
 		})
-		// We're done with this physical block.
-		cb.pb.Release()
 	}
 }
 
@@ -281,16 +279,17 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	{
 		indexBlock := w.indexEncoder.Finish()
 		pb := w.physBlockMaker.Make(indexBlock, blockkind.Metadata, block.DontCompress)
-		defer pb.Release()
-		if _, w.err = pb.WriteTo(w.w); w.err != nil {
+		length, err := block.WriteAndReleasePhysicalBlock(pb.Take(), w.w)
+		if err != nil {
+			w.err = err
 			if w.w != nil {
 				w.w.Abort()
 			}
-			return FileWriterStats{}, w.err
+			return FileWriterStats{}, err
 		}
 		indexBlockHandle.Offset = stats.FileLen
-		indexBlockHandle.Length = uint64(pb.LengthWithoutTrailer())
-		stats.FileLen += uint64(pb.LengthWithTrailer())
+		indexBlockHandle.Length = uint64(length.WithoutTrailer())
+		stats.FileLen += uint64(length.WithTrailer())
 	}
 
 	// Write the footer.

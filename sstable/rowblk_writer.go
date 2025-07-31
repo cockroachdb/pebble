@@ -1810,7 +1810,7 @@ func (w *RawRowWriter) rewriteSuffixes(
 
 	for i := range blocks {
 		// Write the rewritten block to the file.
-		bh, err := w.layout.WritePrecompressedDataBlock(blocks[i].physical)
+		bh, err := w.layout.WritePrecompressedDataBlock(blocks[i].physical.Take())
 		blocks[i].physical.Release()
 		if err != nil {
 			return err
@@ -1922,8 +1922,7 @@ func (w *RawRowWriter) addDataBlock(b, sep []byte, bhp block.HandleWithPropertie
 
 	// layout.writePhysicalBlock keeps layout.offset up-to-date for us.
 	// Note that this can mangle the pb data.
-	bh, err := w.layout.writePhysicalBlock(pb)
-	pb.Release()
+	bh, err := w.layout.writePhysicalBlock(pb.Take())
 	if err != nil {
 		return err
 	}
