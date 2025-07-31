@@ -14,11 +14,11 @@ type snappyCompressor struct{}
 
 var _ Compressor = snappyCompressor{}
 
-func (snappyCompressor) Algorithm() Algorithm { return SnappyAlgorithm }
+func (snappyCompressor) Algorithm() Algorithm { return Snappy }
 
 func (snappyCompressor) Compress(dst, src []byte) ([]byte, Setting) {
 	dst = dst[:cap(dst):cap(dst)]
-	return snappy.Encode(dst, src), Snappy
+	return snappy.Encode(dst, src), SnappySetting
 }
 
 func (snappyCompressor) Close() {}
