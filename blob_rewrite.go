@@ -291,7 +291,7 @@ func (d *DB) runBlobFileRewriteLocked(
 		env,
 		objMeta.DiskFileNum,
 		writable,
-		d.opts.MakeBlobWriterOptions(6),
+		d.opts.MakeBlobWriterOptions(6, d.BlobFileFormat()),
 		c.referencingTables,
 		c.input,
 	)

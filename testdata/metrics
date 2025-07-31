@@ -552,13 +552,13 @@ L6:
   000008:[a#0,SET-a#0,SET]
   000009:[b#0,SET-b#0,SET]
 Blob files:
-  B000012 physical:{000012 size:[92 (92B)] vals:[3 (3B)]}
-  B000014 physical:{000014 size:[92 (92B)] vals:[3 (3B)]}
-  B000016 physical:{000016 size:[92 (92B)] vals:[3 (3B)]}
-  B000018 physical:{000018 size:[92 (92B)] vals:[3 (3B)]}
-  B000020 physical:{000020 size:[92 (92B)] vals:[3 (3B)]}
-  B000022 physical:{000022 size:[92 (92B)] vals:[3 (3B)]}
-  B000024 physical:{000024 size:[92 (92B)] vals:[3 (3B)]}
+  B000012 physical:{000012 size:[189 (189B)] vals:[3 (3B)]}
+  B000014 physical:{000014 size:[189 (189B)] vals:[3 (3B)]}
+  B000016 physical:{000016 size:[189 (189B)] vals:[3 (3B)]}
+  B000018 physical:{000018 size:[189 (189B)] vals:[3 (3B)]}
+  B000020 physical:{000020 size:[189 (189B)] vals:[3 (3B)]}
+  B000022 physical:{000022 size:[189 (189B)] vals:[3 (3B)]}
+  B000024 physical:{000024 size:[189 (189B)] vals:[3 (3B)]}
 
 metrics
 ----
@@ -566,26 +566,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0      6.6KB |      7   6KB |      0     0 |   644B     0B |   165B |      0    0B |   1 54.16
+    0      7.3KB |      7   6KB |      0     0 |  1.3KB     0B |   165B |      0    0B |   1 62.39
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     6      1.5KB |      2 1.5KB |      0     0 |     0B     0B |  1.5KB |      0    0B |   1  0.99
-total      8.1KB |      9 7.5KB |      0     0 |   644B     0B |   165B |      0    0B |   2 64.44
+total      8.8KB |      9 7.5KB |      0     0 |  1.3KB     0B |   165B |      0    0B |   2 72.67
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      9  7.5KB  1.3KB
+    0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      9  7.5KB  2.6KB
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.5KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   224B    0B |     11  9.1KB  1.3KB
+total |     -     -     - |      0    0B |    0B    0B    0B |   224B    0B |     11  9.1KB  2.6KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -605,7 +605,7 @@ ITERATORS
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
 --------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
+   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.3KB) |     0 (0B) |    21B | 100% (21B)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -615,7 +615,7 @@ CGO MEMORY    |          block cache           |                     memtables
 COMPACTIONS
    estimated debt |       in progress |         cancelled |            failed |      problem spans
 ------------------+-------------------+-------------------+-------------------+-------------------
-            8.1KB |            0 (0B) |            0 (0B) |                 0 |                  0
+            8.8KB |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
@@ -660,13 +660,13 @@ L6:
   000030:[c@15#0,SET-c@15#0,SET]
   000031:[c@14#0,SET-c@14#0,SET]
 Blob files:
-  B000012 physical:{000012 size:[92 (92B)] vals:[3 (3B)]}
-  B000014 physical:{000014 size:[92 (92B)] vals:[3 (3B)]}
-  B000016 physical:{000016 size:[92 (92B)] vals:[3 (3B)]}
-  B000018 physical:{000018 size:[92 (92B)] vals:[3 (3B)]}
-  B000020 physical:{000020 size:[92 (92B)] vals:[3 (3B)]}
-  B000022 physical:{000022 size:[92 (92B)] vals:[3 (3B)]}
-  B000024 physical:{000024 size:[92 (92B)] vals:[3 (3B)]}
+  B000012 physical:{000012 size:[189 (189B)] vals:[3 (3B)]}
+  B000014 physical:{000014 size:[189 (189B)] vals:[3 (3B)]}
+  B000016 physical:{000016 size:[189 (189B)] vals:[3 (3B)]}
+  B000018 physical:{000018 size:[189 (189B)] vals:[3 (3B)]}
+  B000020 physical:{000020 size:[189 (189B)] vals:[3 (3B)]}
+  B000022 physical:{000022 size:[189 (189B)] vals:[3 (3B)]}
+  B000024 physical:{000024 size:[189 (189B)] vals:[3 (3B)]}
 
 metrics
 ----
@@ -674,26 +674,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0         0B |      0    0B |      0     0 |     0B     0B |   165B |      0    0B |   0 54.16
+    0         0B |      0    0B |      0     0 |     0B     0B |   165B |      0    0B |   0 62.39
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6      8.1KB |      9 7.4KB |      0     0 |   644B     0B |  7.5KB |      0    0B |   1  1.00
-total      8.1KB |      9 7.4KB |      0     0 |   644B     0B |   165B |      0    0B |   1 101.4
+    6      8.7KB |      9 7.4KB |      0     0 |  1.3KB     0B |  7.5KB |      0    0B |   1  1.00
+total      8.7KB |      9 7.4KB |      0     0 |  1.3KB     0B |   165B |      0    0B |   1 109.6
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      9  7.5KB  1.3KB
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      9  7.5KB  2.6KB
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     18   15KB  1.3KB
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     18   15KB  2.6KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       2       0        0     0     0     0        0     0      0     0
@@ -713,7 +713,7 @@ ITERATORS
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
 --------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
+   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.3KB) |     0 (0B) |    21B | 100% (21B)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -814,13 +814,13 @@ L6:
   000030:[c@15#0,SET-c@15#0,SET]
   000031:[c@14#0,SET-c@14#0,SET]
 Blob files:
-  B000012 physical:{000012 size:[92 (92B)] vals:[3 (3B)]}
-  B000014 physical:{000014 size:[92 (92B)] vals:[3 (3B)]}
-  B000016 physical:{000016 size:[92 (92B)] vals:[3 (3B)]}
-  B000018 physical:{000018 size:[92 (92B)] vals:[3 (3B)]}
-  B000020 physical:{000020 size:[92 (92B)] vals:[3 (3B)]}
-  B000022 physical:{000022 size:[92 (92B)] vals:[3 (3B)]}
-  B000024 physical:{000024 size:[92 (92B)] vals:[3 (3B)]}
+  B000012 physical:{000012 size:[189 (189B)] vals:[3 (3B)]}
+  B000014 physical:{000014 size:[189 (189B)] vals:[3 (3B)]}
+  B000016 physical:{000016 size:[189 (189B)] vals:[3 (3B)]}
+  B000018 physical:{000018 size:[189 (189B)] vals:[3 (3B)]}
+  B000020 physical:{000020 size:[189 (189B)] vals:[3 (3B)]}
+  B000022 physical:{000022 size:[189 (189B)] vals:[3 (3B)]}
+  B000024 physical:{000024 size:[189 (189B)] vals:[3 (3B)]}
 
 # We expect the ingested-as-flushable count to be three (one for each ingested
 # table). The unknown category in the iter category stats is because of a gap
@@ -833,26 +833,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0      4.5KB |      6 4.5KB |      0     0 |     0B     0B |   211B |      3 2.2KB |   2 53.29
+    0      4.5KB |      6 4.5KB |      0     0 |     0B     0B |   211B |      3 2.2KB |   2 59.73
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6      8.1KB |      9 7.4KB |      0     0 |   644B     0B |  7.5KB |      0    0B |   1  1.00
-total       13KB |     15  12KB |      0     0 |   644B     0B |  2.4KB |      3 2.2KB |   3  8.53
+    6      8.7KB |      9 7.4KB |      0     0 |  1.3KB     0B |  7.5KB |      0    0B |   1  1.00
+total       13KB |     15  12KB |      0     0 |  1.3KB     0B |  2.4KB |      3 2.2KB |   3  9.07
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     12  9.7KB  1.3KB
+    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     12  9.7KB  2.6KB
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     21   20KB  1.3KB
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     21   20KB  2.6KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       2       0        0     0     0     0        0     0      0     0
@@ -872,7 +872,7 @@ ITERATORS
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
 --------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
+   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.3KB) |     0 (0B) |    21B | 100% (21B)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -940,13 +940,13 @@ L6:
   000030:[c@15#0,SET-c@15#0,SET]
   000031:[c@14#0,SET-c@14#0,SET]
 Blob files:
-  B000012 physical:{000012 size:[92 (92B)] vals:[3 (3B)]}
-  B000014 physical:{000014 size:[92 (92B)] vals:[3 (3B)]}
-  B000016 physical:{000016 size:[92 (92B)] vals:[3 (3B)]}
-  B000018 physical:{000018 size:[92 (92B)] vals:[3 (3B)]}
-  B000020 physical:{000020 size:[92 (92B)] vals:[3 (3B)]}
-  B000022 physical:{000022 size:[92 (92B)] vals:[3 (3B)]}
-  B000024 physical:{000024 size:[92 (92B)] vals:[3 (3B)]}
+  B000012 physical:{000012 size:[189 (189B)] vals:[3 (3B)]}
+  B000014 physical:{000014 size:[189 (189B)] vals:[3 (3B)]}
+  B000016 physical:{000016 size:[189 (189B)] vals:[3 (3B)]}
+  B000018 physical:{000018 size:[189 (189B)] vals:[3 (3B)]}
+  B000020 physical:{000020 size:[189 (189B)] vals:[3 (3B)]}
+  B000022 physical:{000022 size:[189 (189B)] vals:[3 (3B)]}
+  B000024 physical:{000024 size:[189 (189B)] vals:[3 (3B)]}
 
 metrics
 ----
@@ -954,26 +954,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0      9.8KB |     13 9.8KB |      0     0 |     0B     0B |   277B |      3 2.2KB |   2 60.03
+    0      9.8KB |     13 9.8KB |      0     0 |     0B     0B |   277B |      3 2.2KB |   2 64.93
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6      8.1KB |      9 7.4KB |      0     0 |   644B     0B |  7.5KB |      0    0B |   1  1.00
-total       18KB |     22  17KB |      0     0 |   644B     0B |  2.5KB |      3 2.2KB |   3 10.43
+    6      8.7KB |      9 7.4KB |      0     0 |  1.3KB     0B |  7.5KB |      0    0B |   1  1.00
+total       18KB |     22  17KB |      0     0 |  1.3KB     0B |  2.5KB |      3 2.2KB |   3 10.96
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   15KB  1.3KB
+    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   15KB  2.6KB
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     28   25KB  1.3KB
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     28   25KB  2.6KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       2       0        0     0     0     0        0     0      0     0
@@ -993,7 +993,7 @@ ITERATORS
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
 --------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
+   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.3KB) |     0 (0B) |    21B | 100% (21B)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1058,13 +1058,13 @@ L6:
   000031:[c@14#0,SET-c@14#0,SET]
   000051:[z#33,SET-z#33,SET]
 Blob files:
-  B000012 physical:{000012 size:[92 (92B)] vals:[3 (3B)]}
-  B000014 physical:{000014 size:[92 (92B)] vals:[3 (3B)]}
-  B000016 physical:{000016 size:[92 (92B)] vals:[3 (3B)]}
-  B000018 physical:{000018 size:[92 (92B)] vals:[3 (3B)]}
-  B000020 physical:{000020 size:[92 (92B)] vals:[3 (3B)]}
-  B000022 physical:{000022 size:[92 (92B)] vals:[3 (3B)]}
-  B000024 physical:{000024 size:[92 (92B)] vals:[3 (3B)]}
+  B000012 physical:{000012 size:[189 (189B)] vals:[3 (3B)]}
+  B000014 physical:{000014 size:[189 (189B)] vals:[3 (3B)]}
+  B000016 physical:{000016 size:[189 (189B)] vals:[3 (3B)]}
+  B000018 physical:{000018 size:[189 (189B)] vals:[3 (3B)]}
+  B000020 physical:{000020 size:[189 (189B)] vals:[3 (3B)]}
+  B000022 physical:{000022 size:[189 (189B)] vals:[3 (3B)]}
+  B000024 physical:{000024 size:[189 (189B)] vals:[3 (3B)]}
 
 # There should be 2 backing tables. Note that tiny sstables have inaccurate
 # virtual sstable sizes.
@@ -1087,26 +1087,26 @@ metrics zero-cache-hits-misses
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0      8.2KB |     11 8.2KB |      0     0 |     0B     0B |   277B |      3 2.2KB |   2 60.03
+    0      8.2KB |     11 8.2KB |      0     0 |     0B     0B |   277B |      3 2.2KB |   2 64.93
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6      8.8KB |     10 8.2KB |      0     0 |   644B     0B |  7.5KB |      1  765B |   1  1.00
-total       17KB |     21  16KB |      0     0 |   644B     0B |  3.3KB |      4   3KB |   3  8.27
+    6      9.5KB |     10 8.2KB |      0     0 |  1.3KB     0B |  7.5KB |      1  765B |   1  1.00
+total       18KB |     21  16KB |      0     0 |  1.3KB     0B |  3.3KB |      4   3KB |   3  8.68
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   15KB  1.3KB
+    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   15KB  2.6KB
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  7.4KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     28   26KB  1.3KB
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     28   26KB  2.6KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       2       0        0     0     0     0        0     0      0     0
@@ -1126,7 +1126,7 @@ ITERATORS
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
 --------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
+   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.3KB) |     0 (0B) |    21B | 100% (21B)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1136,7 +1136,7 @@ CGO MEMORY    |          block cache           |                     memtables
 COMPACTIONS
    estimated debt |       in progress |         cancelled |            failed |      problem spans
 ------------------+-------------------+-------------------+-------------------+-------------------
-             17KB |            0 (0B) |            0 (0B) |                 0 |                  0
+             18KB |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
@@ -1193,13 +1193,13 @@ L6:
   000051:[z#33,SET-z#33,SET]
   000052:[zz#35,SET-zz#35,SET]
 Blob files:
-  B000012 physical:{000012 size:[92 (92B)] vals:[3 (3B)]}
-  B000014 physical:{000014 size:[92 (92B)] vals:[3 (3B)]}
-  B000016 physical:{000016 size:[92 (92B)] vals:[3 (3B)]}
-  B000018 physical:{000018 size:[92 (92B)] vals:[3 (3B)]}
-  B000020 physical:{000020 size:[92 (92B)] vals:[3 (3B)]}
-  B000022 physical:{000022 size:[92 (92B)] vals:[3 (3B)]}
-  B000024 physical:{000024 size:[92 (92B)] vals:[3 (3B)]}
+  B000012 physical:{000012 size:[189 (189B)] vals:[3 (3B)]}
+  B000014 physical:{000014 size:[189 (189B)] vals:[3 (3B)]}
+  B000016 physical:{000016 size:[189 (189B)] vals:[3 (3B)]}
+  B000018 physical:{000018 size:[189 (189B)] vals:[3 (3B)]}
+  B000020 physical:{000020 size:[189 (189B)] vals:[3 (3B)]}
+  B000022 physical:{000022 size:[189 (189B)] vals:[3 (3B)]}
+  B000024 physical:{000024 size:[189 (189B)] vals:[3 (3B)]}
 
 metrics-value
 num-backing
@@ -1236,13 +1236,13 @@ L6:
   000051:[z#33,SET-z#33,SET]
   000052:[zz#35,SET-zz#35,SET]
 Blob files:
-  B000012 physical:{000012 size:[92 (92B)] vals:[3 (3B)]}
-  B000014 physical:{000014 size:[92 (92B)] vals:[3 (3B)]}
-  B000016 physical:{000016 size:[92 (92B)] vals:[3 (3B)]}
-  B000018 physical:{000018 size:[92 (92B)] vals:[3 (3B)]}
-  B000020 physical:{000020 size:[92 (92B)] vals:[3 (3B)]}
-  B000022 physical:{000022 size:[92 (92B)] vals:[3 (3B)]}
-  B000024 physical:{000024 size:[92 (92B)] vals:[3 (3B)]}
+  B000012 physical:{000012 size:[189 (189B)] vals:[3 (3B)]}
+  B000014 physical:{000014 size:[189 (189B)] vals:[3 (3B)]}
+  B000016 physical:{000016 size:[189 (189B)] vals:[3 (3B)]}
+  B000018 physical:{000018 size:[189 (189B)] vals:[3 (3B)]}
+  B000020 physical:{000020 size:[189 (189B)] vals:[3 (3B)]}
+  B000022 physical:{000022 size:[189 (189B)] vals:[3 (3B)]}
+  B000024 physical:{000024 size:[189 (189B)] vals:[3 (3B)]}
 
 # Virtual sstables metrics should be gone after the compaction.
 metrics-value
@@ -1264,26 +1264,26 @@ metrics zero-cache-hits-misses
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0         0B |      0    0B |      0     0 |     0B     0B |   277B |      3 2.2KB |   0 60.03
+    0         0B |      0    0B |      0     0 |     0B     0B |   277B |      3 2.2KB |   0 64.93
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6       15KB |     18  14KB |      0     0 |   644B     0B |   15KB |      2 1.5KB |   1  0.85
-total       15KB |     18  14KB |      0     0 |   644B     0B |    4KB |      5 3.7KB |   1  8.23
+    6       15KB |     18  14KB |      0     0 |  1.3KB     0B |   15KB |      2 1.5KB |   1  0.85
+total       15KB |     18  14KB |      0     0 |  1.3KB     0B |    4KB |      5 3.7KB |   1  8.56
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |     19   15KB  1.3KB
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |     19   15KB  2.6KB
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  2.2KB    0B |     16   13KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  2.2KB    0B |     35   32KB  1.3KB
+total |     -     -     - |      0    0B |    0B    0B    0B |  2.2KB    0B |     35   32KB  2.6KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       3       0        0     0     0     0        0     0      0     0
@@ -1303,7 +1303,7 @@ ITERATORS
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
 --------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |   7 (644B) |     0 (0B) |    21B | 100% (21B)
+   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.3KB) |     0 (0B) |    21B | 100% (21B)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot

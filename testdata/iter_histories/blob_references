@@ -1,7 +1,7 @@
 # Test a simple scenario where two distinct sstables contain blob handles
 # referencing the same file.
 
-define verbose format-major-version=21
+define verbose format-major-version=24
 L5
   b@9.SET.9:v
   c@9.SET.9:blob{fileNum=000921 value=helloworld}
@@ -12,9 +12,9 @@ L6
   d@2.SET.2:v
 ----
 L5:
-  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:984 blobrefs:[(B000921: 10); depth:1]
+  000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:949 blobrefs:[(B000921: 10); depth:1]
 L6:
-  000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:979 blobrefs:[(B000921: 6); depth:1]
+  000005:[b@2#2,SET-d@2#2,SET] seqnums:[2-2] points:[b@2#2,SET-d@2#2,SET] size:944 blobrefs:[(B000921: 6); depth:1]
 Blob files:
   B000921 physical:{000921 size:[106 (106B)] vals:[16 (16B)]}
 
@@ -59,7 +59,7 @@ stats: seeked 1 times (1 internal); stepped 5 times (6 internal); blocks: 365B c
 
 # Test a couple of blob files interleaved.
 
-define verbose format-major-version=21
+define verbose format-major-version=24
 L5
   b@9.SETWITHDEL.9:blob{fileNum=000039 value=orange}
   c@9.SETWITHDEL.9:blob{fileNum=000921 value=canteloupe}
@@ -72,9 +72,9 @@ L6
   f@2.SETWITHDEL.3:blob{fileNum=000039 value=grapes}
 ----
 L5:
-  000004:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] seqnums:[9-9] points:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] size:985 blobrefs:[(B000039: 14), (B000921: 20); depth:2]
+  000004:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] seqnums:[9-9] points:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] size:950 blobrefs:[(B000039: 14), (B000921: 20); depth:2]
 L6:
-  000005:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] seqnums:[2-9] points:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] size:993 blobrefs:[(B000039: 11), (B000921: 13); depth:2]
+  000005:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] seqnums:[2-9] points:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] size:958 blobrefs:[(B000039: 11), (B000921: 13); depth:2]
 Blob files:
   B000039 physical:{000039 size:[117 (117B)] vals:[25 (25B)]}
   B000921 physical:{000921 size:[125 (125B)] vals:[33 (33B)]}
@@ -121,7 +121,7 @@ stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cac
 # Test scanning a table, stepping into new blocks of the blob file. The stats
 # should reflect that a block is only loaded when stepping into a new block.
 
-define verbose format-major-version=21
+define verbose format-major-version=24
 L6
   a.SETWITHDEL.2:blob{fileNum=000009 value=lemonmeringue}
   b.SETWITHDEL.2:blob{fileNum=000009 value=keylime}
@@ -137,7 +137,7 @@ L6
   l.SETWITHDEL.2:blob{fileNum=000009 value=peach blockID=6 valueID=0}
 ----
 L6:
-  000004:[a#2,SETWITHDEL-l#2,SETWITHDEL] seqnums:[2-2] points:[a#2,SETWITHDEL-l#2,SETWITHDEL] size:1083 blobrefs:[(B000009: 96); depth:1]
+  000004:[a#2,SETWITHDEL-l#2,SETWITHDEL] seqnums:[2-2] points:[a#2,SETWITHDEL-l#2,SETWITHDEL] size:1043 blobrefs:[(B000009: 96); depth:1]
 Blob files:
   B000009 physical:{000009 size:[322 (322B)] vals:[96 (96B)]}
 
@@ -204,13 +204,13 @@ stats: seeked 1 times (1 internal); stepped 12 times (12 internal); blocks: 0B c
 # retrieve the value length. This resulted in a data race if the underlying
 # sstable iterator backing a LazyValue stored in i.value was pooled and reused.
 
-define verbose format-major-version=21
+define verbose format-major-version=24
 L6
   rangekey:a-d:{(#5,RANGEKEYSET,@2,foo)}
   b.SETWITHDEL.2:blob{fileNum=000009 value=keylime}
 ----
 L6:
-  000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[2-5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:1133 blobrefs:[(B000009: 7); depth:1]
+  000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[2-5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:1089 blobrefs:[(B000009: 7); depth:1]
 Blob files:
   B000009 physical:{000009 size:[96 (96B)] vals:[7 (7B)]}
 

@@ -212,6 +212,11 @@ func (bv *Values) ParseInlineHandle(
 	return h, remaining, nil
 }
 
+// IsEmpty returns true if the Values has no tracked handles.
+func (bv *Values) IsEmpty() bool {
+	return len(bv.trackedHandles) == 0
+}
+
 // WriteFiles writes all the blob files referenced by Values, using
 // newBlobObject to construct new objects.
 //

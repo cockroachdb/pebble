@@ -61,7 +61,7 @@ func (d *DB) determineCompactionValueSeparation(
 				jobID, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts)
 		},
 		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
-		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level),
+		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level, d.BlobFileFormat()),
 		minimumSize:        policy.MinimumSize,
 		globalMinimumSize:  policy.MinimumSize,
 		invalidValueCallback: func(userKey []byte, value []byte, err error) {
