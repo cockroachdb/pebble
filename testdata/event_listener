@@ -115,7 +115,7 @@ close: db/marker.manifest.000002.MANIFEST-000006
 remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 3] MANIFEST created 000006
-[JOB 3] flushed 1 memtable (100B) to L0 [000005] (761B), in 1.0s (2.0s total), output rate 761B/s
+[JOB 3] flushed 1 memtable (100B) to L0 [000005] (755B), in 1.0s (2.0s total), output rate 755B/s
 
 compact
 ----
@@ -139,18 +139,18 @@ close: db/marker.manifest.000003.MANIFEST-000009
 remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
 [JOB 5] MANIFEST created 000009
-[JOB 5] flushed 1 memtable (100B) to L0 [000008] (761B), in 1.0s (2.0s total), output rate 761B/s
+[JOB 5] flushed 1 memtable (100B) to L0 [000008] (755B), in 1.0s (2.0s total), output rate 755B/s
 remove: db/MANIFEST-000001
 [JOB 5] MANIFEST deleted 000001
 [JOB 6] compacting(default) L0 [000005 000008] (1.5KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00
 open: db/000005.sst (options: *vfs.randomReadsOption)
-read-at(700, 61): db/000005.sst
-read-at(650, 50): db/000005.sst
-read-at(119, 531): db/000005.sst
+read-at(694, 61): db/000005.sst
+read-at(644, 50): db/000005.sst
+read-at(119, 525): db/000005.sst
 open: db/000008.sst (options: *vfs.randomReadsOption)
-read-at(700, 61): db/000008.sst
-read-at(650, 50): db/000008.sst
-read-at(119, 531): db/000008.sst
+read-at(694, 61): db/000008.sst
+read-at(644, 50): db/000008.sst
+read-at(119, 525): db/000008.sst
 read-at(78, 41): db/000005.sst
 open: db/000005.sst (options: *vfs.sequentialReadsOption)
 read-at(0, 78): db/000005.sst
@@ -172,7 +172,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 6] MANIFEST created 000011
-[JOB 6] compacted(default) L0 [000005 000008] (1.5KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (757B), in 1.0s (3.0s total), output rate 757B/s
+[JOB 6] compacted(default) L0 [000005 000008] (1.5KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (750B), in 1.0s (3.0s total), output rate 750B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/MANIFEST-000006
@@ -207,7 +207,7 @@ close: db/marker.manifest.000005.MANIFEST-000014
 remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
 [JOB 8] MANIFEST created 000014
-[JOB 8] flushed 1 memtable (100B) to L0 [000013] (761B), in 1.0s (2.0s total), output rate 761B/s
+[JOB 8] flushed 1 memtable (100B) to L0 [000013] (755B), in 1.0s (2.0s total), output rate 755B/s
 
 enable-file-deletions
 ----
@@ -217,10 +217,10 @@ remove: db/MANIFEST-000009
 ingest
 ----
 open: ext/0
-read-at(696, 61): ext/0
-read-at(646, 50): ext/0
-read-at(122, 524): ext/0
-read-at(122, 524): ext/0
+read-at(689, 61): ext/0
+read-at(639, 50): ext/0
+read-at(122, 517): ext/0
+read-at(122, 517): ext/0
 read-at(81, 41): ext/0
 read-at(0, 81): ext/0
 close: ext/0
@@ -238,7 +238,7 @@ sync: db
 remove: db/MANIFEST-000011
 [JOB 10] MANIFEST deleted 000011
 remove: ext/0
-[JOB 10] ingested L0:000015 (757B); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
+[JOB 10] ingested L0:000015 (750B); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
 
 metrics
 ----
@@ -246,14 +246,14 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0      1.5KB |      2 1.5KB |      0     0 |     0B     0B |    97B |      1  757B |   2 23.54
+    0      1.5KB |      2 1.5KB |      0     0 |     0B     0B |    97B |      1  750B |   2 23.35
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6       757B |      1  757B |      0     0 |     0B     0B |  1.5KB |      0    0B |   1  0.50
-total      2.2KB |      3 2.2KB |      0     0 |     0B     0B |   854B |      1  757B |   3  4.56
+    6       750B |      1  750B |      0     0 |     0B     0B |  1.5KB |      0    0B |   1  0.50
+total      2.2KB |      3 2.2KB |      0     0 |     0B     0B |   847B |      1  750B |   3  4.56
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
@@ -264,7 +264,7 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   757B     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   750B     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |   218B    0B |      4  3.8KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
@@ -317,18 +317,18 @@ ingest-flushable
 ----
 sync-data: wal/000012.log
 open: ext/a
-read-at(696, 61): ext/a
-read-at(646, 50): ext/a
-read-at(122, 524): ext/a
-read-at(122, 524): ext/a
+read-at(689, 61): ext/a
+read-at(639, 50): ext/a
+read-at(122, 517): ext/a
+read-at(122, 517): ext/a
 read-at(81, 41): ext/a
 read-at(0, 81): ext/a
 close: ext/a
 open: ext/b
-read-at(696, 61): ext/b
-read-at(646, 50): ext/b
-read-at(122, 524): ext/b
-read-at(122, 524): ext/b
+read-at(689, 61): ext/b
+read-at(639, 50): ext/b
+read-at(122, 517): ext/b
+read-at(122, 517): ext/b
 read-at(81, 41): ext/b
 read-at(0, 81): ext/b
 close: ext/b
@@ -350,7 +350,7 @@ sync: wal
 [JOB 13] WAL created 000020
 remove: ext/a
 remove: ext/b
-[JOB 11] ingested as flushable, memtable flushes took 0.2s: 000017 (757B), 000018 (757B); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
+[JOB 11] ingested as flushable, memtable flushes took 0.2s: 000017 (750B), 000018 (750B); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
 sync-data: wal/000020.log
 close: wal/000020.log
 create: wal/000021.log
@@ -363,7 +363,7 @@ sync-data: db/000022.sst
 close: db/000022.sst
 sync: db
 sync: db/MANIFEST-000016
-[JOB 15] flushed 1 memtable (100B) to L0 [000022] (761B), in 1.0s (2.0s total), output rate 761B/s
+[JOB 15] flushed 1 memtable (100B) to L0 [000022] (755B), in 1.0s (2.0s total), output rate 755B/s
 [JOB 16] flushing 2 ingested tables
 create: db/MANIFEST-000023
 close: db/MANIFEST-000016
@@ -373,7 +373,7 @@ close: db/marker.manifest.000007.MANIFEST-000023
 remove: db/marker.manifest.000006.MANIFEST-000016
 sync: db
 [JOB 16] MANIFEST created 000023
-[JOB 16] flushed 2 ingested flushables L0:000017 (757B) + L6:000018 (757B) in 1.0s (2.0s total), output rate 1.5KB/s
+[JOB 16] flushed 2 ingested flushables L0:000017 (750B) + L6:000018 (750B) in 1.0s (2.0s total), output rate 1.5KB/s
 remove: db/MANIFEST-000014
 [JOB 16] MANIFEST deleted 000014
 [JOB 17] flushing 1 memtable (100B) to L0
@@ -386,26 +386,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0        3KB |      4   3KB |      0     0 |     0B     0B |   132B |      2 1.5KB |   4 23.06
+    0      2.9KB |      4 2.9KB |      0     0 |     0B     0B |   132B |      2 1.5KB |   4 22.88
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6      1.5KB |      2 1.5KB |      0     0 |     0B     0B |  1.5KB |      1  757B |   1  0.50
+    6      1.5KB |      2 1.5KB |      0     0 |     0B     0B |  1.5KB |      1  750B |   1  0.50
 total      4.4KB |      6 4.4KB |      0     0 |     0B     0B |  2.3KB |      3 2.2KB |   5  2.58
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -  0.80  0.80 |      0    0B |    0B    0B    0B |     0B    0B |      4    3KB     0B
+    0 |     -  0.80  0.80 |      0    0B |    0B    0B    0B |     0B    0B |      4  2.9KB     0B
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   757B     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   218B    0B |      5  6.1KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   750B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   218B    0B |      5    6KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0

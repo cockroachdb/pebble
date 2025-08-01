@@ -37,7 +37,7 @@ func TestAdaptiveCompressorCompressible(t *testing.T) {
 	// Test the adaptive compressor with compressible data and make sure it uses
 	// the slow algorithm.
 	ac := NewAdaptiveCompressor(AdaptiveCompressorParams{
-		Fast:            None,
+		Fast:            NoCompression,
 		Slow:            ZstdLevel1,
 		ReductionCutoff: 0.6,
 		SampleEvery:     10,

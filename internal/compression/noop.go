@@ -9,7 +9,7 @@ type noopCompressor struct{}
 var _ Compressor = noopCompressor{}
 
 func (noopCompressor) Compress(dst, src []byte) ([]byte, Setting) {
-	return append(dst[:0], src...), None
+	return append(dst[:0], src...), NoCompression
 }
 func (noopCompressor) Close() {}
 

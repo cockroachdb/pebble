@@ -15,8 +15,8 @@ import (
 
 func TestCompressor(t *testing.T) {
 	settings := []compression.Setting{
-		compression.None,
-		compression.Snappy,
+		compression.NoCompression,
+		compression.SnappySetting,
 		compression.MinLZFastest,
 		compression.ZstdLevel3,
 	}

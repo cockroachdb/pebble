@@ -99,7 +99,7 @@ d#0,SET: foobar
 
 copy-span test3 test4 b.SET.10 cc.SET.0
 ----
-copied 941 bytes
+copied 928 bytes
 
 iter test4
 ----
@@ -109,7 +109,7 @@ d#0,SET: foobar
 
 copy-span test3 test5 a.SET.10 bb.SET.0
 ----
-copied 936 bytes
+copied 923 bytes
 
 iter test5
 ----
@@ -139,7 +139,7 @@ d#0,SET: foobar
 
 copy-span test32 test33 b.SET.10 cc.SET.0
 ----
-copied 941 bytes
+copied 928 bytes
 
 iter test33
 ----
@@ -149,7 +149,7 @@ d#0,SET: foobar
 
 copy-span test32 test34 a.SET.10 bb.SET.0
 ----
-copied 936 bytes
+copied 923 bytes
 
 iter test34
 ----
@@ -173,7 +173,7 @@ d#0,SET: foobar
 
 copy-span test3 test4 b.SET.10 cc.SET.0
 ----
-copied 958 bytes
+copied 945 bytes
 
 iter test4
 ----
@@ -183,7 +183,7 @@ d#0,SET: foobar
 
 copy-span test3 test5 a.SET.10 bb.SET.0
 ----
-copied 953 bytes
+copied 940 bytes
 
 iter test5
 ----
@@ -213,7 +213,7 @@ d#0,SET: foobar
 
 copy-span test32 test33 b.SET.10 cc.SET.0
 ----
-copied 958 bytes
+copied 945 bytes
 
 iter test33
 ----
@@ -223,7 +223,7 @@ d#0,SET: foobar
 
 copy-span test32 test34 a.SET.10 bb.SET.0
 ----
-copied 953 bytes
+copied 940 bytes
 
 iter test34
 ----
@@ -270,9 +270,9 @@ sstable
  ├── index  offset: 1235  length: 38
  ├── top-index  offset: 1278  length: 83
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 1366  length: 69
- ├── properties  offset: 1440  length: 637
- ├── meta-index  offset: 2082  length: 88
- └── footer  offset: 2175  length: 57
+ ├── properties  offset: 1440  length: 623
+ ├── meta-index  offset: 2068  length: 88
+ └── footer  offset: 2161  length: 57
 
 props bloom-sst
 ----
@@ -296,7 +296,7 @@ rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 83
-pebble.compression_stats: NoCompression:1257/1257,Snappy:73/84
+pebble.compression_stats: None:1257,Snappy:73/84
 obsolete-key: hex:00
 
 # Ensure that CopySpan copies over a filter block even if the writer options are
@@ -304,7 +304,7 @@ obsolete-key: hex:00
 
 copy-span bloom-sst bloom-sst-copy b.SET.10 cc.SET.0 filter=my-custom-filter/bloom(10)
 ----
-copied 1096 bytes
+copied 1083 bytes
 
 describe bloom-sst-copy
 ----
@@ -314,6 +314,6 @@ sstable
  ├── data  offset: 172  length: 73
  ├── index  offset: 250  length: 45
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 300  length: 69
- ├── properties  offset: 374  length: 567
- ├── meta-index  offset: 946  length: 88
- └── footer  offset: 1039  length: 57
+ ├── properties  offset: 374  length: 554
+ ├── meta-index  offset: 933  length: 88
+ └── footer  offset: 1026  length: 57

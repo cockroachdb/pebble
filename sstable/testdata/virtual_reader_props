@@ -314,7 +314,7 @@ bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000008
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 9
+  rocksdb.raw.key.size: 10
   rocksdb.raw.value.size: 2
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy

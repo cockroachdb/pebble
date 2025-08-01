@@ -19,10 +19,10 @@ import (
 type Algorithm uint8
 
 const (
-	NoCompression Algorithm = iota
-	SnappyAlgorithm
-	Zstd
+	NoAlgorithm Algorithm = iota
+	Snappy
 	MinLZ
+	Zstd
 
 	NumAlgorithms
 
@@ -33,9 +33,9 @@ const (
 // compression algorithm.
 func (a Algorithm) String() string {
 	switch a {
-	case NoCompression:
-		return "NoCompression"
-	case SnappyAlgorithm:
+	case NoAlgorithm:
+		return "None"
+	case Snappy:
 		return "Snappy"
 	case Zstd:
 		return "ZSTD"
@@ -86,8 +86,8 @@ func ParseSetting(s string) (_ Setting, ok bool) {
 
 // Setting presets.
 var (
-	None          = makePreset(NoCompression, 0)
-	Snappy        = makePreset(SnappyAlgorithm, 0)
+	NoCompression = makePreset(NoAlgorithm, 0)
+	SnappySetting = makePreset(Snappy, 0)
 	MinLZFastest  = makePreset(MinLZ, minlz.LevelFastest)
 	MinLZBalanced = makePreset(MinLZ, minlz.LevelBalanced)
 	ZstdLevel1    = makePreset(Zstd, 1)
@@ -110,9 +110,9 @@ type Compressor interface {
 
 func GetCompressor(s Setting) Compressor {
 	switch s.Algorithm {
-	case NoCompression:
+	case NoAlgorithm:
 		return noopCompressor{}
-	case SnappyAlgorithm:
+	case Snappy:
 		return snappyCompressor{}
 	case Zstd:
 		return getZstdCompressor(int(s.Level))
@@ -143,9 +143,9 @@ type Decompressor interface {
 
 func GetDecompressor(a Algorithm) Decompressor {
 	switch a {
-	case NoCompression:
+	case NoAlgorithm:
 		return noopDecompressor{}
-	case SnappyAlgorithm:
+	case Snappy:
 		return snappyDecompressor{}
 	case Zstd:
 		return getZstdDecompressor()
