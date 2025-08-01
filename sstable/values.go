@@ -52,7 +52,7 @@ var DebugHandlesBlobContext = TableBlobContext{
 // sstable iterator to fetch the value stored in a blob file. It is the
 // caller's responsibility to close the ValueFetcher returned.
 func LoadValBlobContext(
-	fm blob.FileMapping, rp blob.ReaderProvider, blobRefs BlobReferences,
+	fm base.BlobFileMapping, rp blob.ReaderProvider, blobRefs BlobReferences,
 ) (*blob.ValueFetcher, TableBlobContext) {
 	vf := &blob.ValueFetcher{}
 	vf.Init(fm, rp, block.ReadEnv{})
@@ -67,10 +67,10 @@ func LoadValBlobContext(
 // manifest.BlobReferences.
 type BlobReferences interface {
 	// BlobFileIDByID returns the BlobFileID for the identified BlobReference.
-	BlobFileIDByID(i blob.ReferenceID) base.BlobFileID
+	BlobFileIDByID(i base.BlobReferenceID) base.BlobFileID
 	// IDByBlobFileID returns the reference ID for the given BlobFileID. If the
 	// blob file ID is not found, the second return value is false.
-	IDByBlobFileID(fileID base.BlobFileID) (blob.ReferenceID, bool)
+	IDByBlobFileID(fileID base.BlobFileID) (base.BlobReferenceID, bool)
 }
 
 // TableBlobContext configures how values that reference external blob files

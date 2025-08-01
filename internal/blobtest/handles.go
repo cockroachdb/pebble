@@ -292,13 +292,13 @@ type References struct {
 }
 
 // MapToReferenceID maps the given file number to a reference ID.
-func (b *References) MapToReferenceID(fileID base.BlobFileID) blob.ReferenceID {
+func (b *References) MapToReferenceID(fileID base.BlobFileID) base.BlobReferenceID {
 	for i, fn := range b.fileIDs {
 		if fn == fileID {
-			return blob.ReferenceID(i)
+			return base.BlobReferenceID(i)
 		}
 	}
 	i := uint32(len(b.fileIDs))
 	b.fileIDs = append(b.fileIDs, fileID)
-	return blob.ReferenceID(i)
+	return base.BlobReferenceID(i)
 }

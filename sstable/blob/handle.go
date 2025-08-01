@@ -67,15 +67,10 @@ type InlineHandle struct {
 	HandleSuffix
 }
 
-// ReferenceID identifies a particular blob reference within a table. It's
-// implemented as an index into the slice of the BlobReferences recorded in the
-// manifest.
-type ReferenceID uint32
-
 // InlineHandlePreface is the prefix of an inline handle. It's eagerly decoded
 // when returning an InternalValue to higher layers.
 type InlineHandlePreface struct {
-	ReferenceID ReferenceID
+	ReferenceID base.BlobReferenceID
 	ValueLen    uint32
 }
 
@@ -158,7 +153,7 @@ func DecodeInlineHandlePreface(src []byte) (InlineHandlePreface, []byte) {
 	}
 
 	return InlineHandlePreface{
-		ReferenceID: ReferenceID(refIdx),
+		ReferenceID: base.BlobReferenceID(refIdx),
 		ValueLen:    valueLen,
 	}, src
 }

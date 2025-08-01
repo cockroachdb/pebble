@@ -38,20 +38,11 @@ type ValueReader interface {
 	ReadIndexBlock(context.Context, block.ReadEnv, objstorage.ReadHandle) (block.BufferHandle, error)
 }
 
-// A FileMapping defines the mapping between blob file IDs and disk file numbers.
-// It's implemented by *manifest.BlobFileSet.
-type FileMapping interface {
-	// Lookup returns the disk file number for the given blob file ID. It
-	// returns false for the second return value if the blob file ID is not
-	// present in the mapping.
-	Lookup(base.BlobFileID) (base.DiskFileNum, bool)
-}
-
 // A ReaderProvider is an interface that can be used to retrieve a ValueReader
 // for a given file number.
 type ReaderProvider interface {
-	// GetValueReader returns a ValueReader for the given file number.
-	GetValueReader(ctx context.Context, fileNum base.DiskFileNum) (r ValueReader, closeFunc func(), err error)
+	// GetValueReader returns a ValueReader for the given object.
+	GetValueReader(ctx context.Context, obj base.ObjectInfo) (r ValueReader, closeFunc func(), err error)
 }
 
 // A ValueFetcher retrieves values stored out-of-band in separate blob files.
@@ -64,7 +55,7 @@ type ReaderProvider interface {
 // When finished with a ValueFetcher, one must call Close to release all cached
 // readers and block buffers.
 type ValueFetcher struct {
-	fileMapping    FileMapping
+	fileMapping    base.BlobFileMapping
 	readerProvider ReaderProvider
 	env            block.ReadEnv
 	fetchCount     int
@@ -78,7 +69,7 @@ type ValueFetcher struct {
 var _ base.ValueFetcher = (*ValueFetcher)(nil)
 
 // Init initializes the ValueFetcher.
-func (r *ValueFetcher) Init(fm FileMapping, rp ReaderProvider, env block.ReadEnv) {
+func (r *ValueFetcher) Init(fm base.BlobFileMapping, rp ReaderProvider, env block.ReadEnv) {
 	r.fileMapping = fm
 	r.readerProvider = rp
 	r.env = env
@@ -153,15 +144,15 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 				return nil, err
 			}
 		}
-		diskFileNum, ok := r.fileMapping.Lookup(vh.BlobFileID)
+		obj, ok := r.fileMapping.Lookup(vh.BlobFileID)
 		if !ok {
 			return nil, errors.AssertionFailedf("blob file %s not found", vh.BlobFileID)
 		}
-		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, diskFileNum); err != nil {
+		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, obj); err != nil {
 			return nil, err
 		}
 		cr.blobFileID = vh.BlobFileID
-		cr.diskFileNum = diskFileNum
+		_, cr.diskFileNum = obj.FileInfo()
 		cr.rh = cr.r.InitReadHandle(&cr.preallocRH)
 		if r.env.Stats != nil {
 			r.env.Stats.SeparatedPointValue.ReaderCacheMisses++

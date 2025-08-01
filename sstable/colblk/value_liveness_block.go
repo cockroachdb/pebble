@@ -22,7 +22,7 @@ const (
 // ReferenceLivenessBlockEncoder encodes a reference liveness block.
 // A reference liveness block is a columnar block that contains a single column:
 // an array of bytes encoding the liveness of values within a sstable's blob
-// references. The indexes into this array are the blob.ReferenceIDs contained
+// references. The indexes into this array are the base.BlobReferenceIDs contained
 // within the sstable.
 type ReferenceLivenessBlockEncoder struct {
 	values RawBytesBuilder

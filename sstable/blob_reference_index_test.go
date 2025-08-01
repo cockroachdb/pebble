@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/stretchr/testify/require"
@@ -22,7 +23,7 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
 		w := &blobRefValueLivenessWriter{}
 		w.init()
-		refID := blob.ReferenceID(0)
+		refID := base.BlobReferenceID(0)
 		blockID := blob.BlockID(0)
 
 		require.NoError(t, w.addLiveValue(refID, blockID, 0 /* valueID */, 24 /* valueSize */))
@@ -60,7 +61,7 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 	t.Run("all-ones", func(t *testing.T) {
 		w := &blobRefValueLivenessWriter{}
 		w.init()
-		refID := blob.ReferenceID(0)
+		refID := base.BlobReferenceID(0)
 		blockID := blob.BlockID(0)
 
 		// Add only live values.
@@ -87,7 +88,7 @@ func TestBlobRefLivenessEncoding_Randomized(t *testing.T) {
 	prng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0))
 	w := blobRefValueLivenessWriter{}
 
-	collectSlice := func(i iter.Seq2[blob.ReferenceID, []byte]) [][]byte {
+	collectSlice := func(i iter.Seq2[base.BlobReferenceID, []byte]) [][]byte {
 		var s [][]byte
 		for _, enc := range i {
 			s = append(s, enc)
@@ -113,7 +114,7 @@ func TestBlobRefLivenessEncoding_Randomized(t *testing.T) {
 				currentValueID := blob.BlockValueID(testutils.RandIntInRange(prng, 0, 4))
 				for range numValues {
 					require.NoError(t, w.addLiveValue(
-						blob.ReferenceID(refID),
+						base.BlobReferenceID(refID),
 						currentBlockID,
 						currentValueID,
 						valueSize,
@@ -133,7 +134,7 @@ func TestBlobRefLivenessEncoding_Randomized(t *testing.T) {
 				// the writer.
 				for valueID := range IterSetBitsInRunLengthBitmap(block.Bitmap) {
 					require.NoError(t, w.addLiveValue(
-						blob.ReferenceID(refID),
+						base.BlobReferenceID(refID),
 						block.BlockID,
 						blob.BlockValueID(valueID),
 						valueSize,

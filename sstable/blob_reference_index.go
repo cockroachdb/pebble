@@ -65,7 +65,7 @@ func (s *blobReferenceValues) finishCurrentBlock() {
 // blocks for a sstable's blob references. It maintains a refState, a slice of
 // blobRefValueLivenessState. This tracks the in-progress value liveness for
 // each blob value block for our sstable's blob references. The index of the
-// slice corresponds to the blob.ReferenceID.
+// slice corresponds to the base.BlobReferenceID.
 type blobRefValueLivenessWriter struct {
 	refState []blobReferenceValues
 }
@@ -87,10 +87,10 @@ func (w *blobRefValueLivenessWriter) numReferences() int {
 // blockID, a new state is created.
 //
 // addLiveValue adds a new state for the provided refID if one does
-// not already exist. It assumes that any new blob.ReferenceIDs are visited in
+// not already exist. It assumes that any new base.BlobReferenceIDs are visited in
 // monotonically increasing order.
 func (w *blobRefValueLivenessWriter) addLiveValue(
-	refID blob.ReferenceID, blockID blob.BlockID, valueID blob.BlockValueID, valueSize uint64,
+	refID base.BlobReferenceID, blockID blob.BlockID, valueID blob.BlockValueID, valueSize uint64,
 ) error {
 	// Compute the minimum expected length of the state slice in order for our
 	// refID to be indexable.
@@ -123,12 +123,12 @@ func (w *blobRefValueLivenessWriter) addLiveValue(
 
 // finish finishes encoding the per-blob reference liveness encodings, and
 // returns an in-order sequence of (referenceID, encoding) pairs.
-func (w *blobRefValueLivenessWriter) finish() iter.Seq2[blob.ReferenceID, []byte] {
-	return func(yield func(blob.ReferenceID, []byte) bool) {
-		// N.B. `i` is equivalent to blob.ReferenceID.
+func (w *blobRefValueLivenessWriter) finish() iter.Seq2[base.BlobReferenceID, []byte] {
+	return func(yield func(base.BlobReferenceID, []byte) bool) {
+		// N.B. `i` is equivalent to base.BlobReferenceID.
 		for i, state := range w.refState {
 			state.finishCurrentBlock()
-			if !yield(blob.ReferenceID(i), state.encodedFinishedBlocks) {
+			if !yield(base.BlobReferenceID(i), state.encodedFinishedBlocks) {
 				return
 			}
 		}

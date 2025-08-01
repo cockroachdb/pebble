@@ -24,7 +24,7 @@ import (
 // file.
 //
 // An sstable alone does not contain sufficient information to read a value from
-// a blob file. The sstable encodes a ReferenceID which first must be translated
+// a blob file. The sstable encodes a BlobReferenceID which first must be translated
 // to a BlobFileID and then from a BlobFileID to a DiskFileNum. The manifest
 // contains this metadata. The blobFileMappings type contains this state, loaded
 // from the manifest.
@@ -46,18 +46,23 @@ func (m *blobFileMappings) LoadValueBlobContext(tableNum base.TableNum) sstable.
 	}
 }
 
-// Lookup implements blob.FileLookupFunc.
-func (m *blobFileMappings) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+// Lookup implements base.BlobFileMapping.
+func (m *blobFileMappings) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
 	files, ok := m.physicalFiles[fileID]
 	if !ok || len(files) == 0 {
-		return 0, false
+		return nil, false
 	}
 	// TODO(jackson): Consider checking for the existence of each file and using
 	// the most recent existing file (and log the missing files).
 	if len(files) > 1 {
 		fmt.Fprintf(m.stderr, "warning: multiple physical files for blob file %s: %v\n", fileID, files)
 	}
-	return files[len(files)-1], true
+	return base.ObjectInfoLiteral{
+		FileType:    base.FileTypeBlob,
+		DiskFileNum: files[len(files)-1],
+		// TODO(jackson): Add bounds for blob files.
+		Bounds: base.UserKeyBounds{},
+	}, true
 }
 
 // Close releases any resources held by the blobFileMappings.

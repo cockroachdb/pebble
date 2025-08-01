@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/redact"
 )
 
@@ -147,6 +146,17 @@ func (m *PhysicalBlobFile) SafeFormat(w redact.SafePrinter, _ rune) {
 // String implements fmt.Stringer.
 func (m *PhysicalBlobFile) String() string {
 	return redact.StringWithoutMarkers(m)
+}
+
+// FileInfo returns the type and file number of the blob file.
+func (m *PhysicalBlobFile) FileInfo() (base.FileType, base.DiskFileNum) {
+	return base.FileTypeBlob, m.FileNum
+}
+
+// UserKeyBounds returns the user key bounds of the blob file, if known.
+func (m *PhysicalBlobFile) UserKeyBounds() base.UserKeyBounds {
+	// TODO(jackson): Add bounds for blob files.
+	return base.UserKeyBounds{}
 }
 
 // ref increments the reference count for the blob file.
@@ -291,20 +301,20 @@ type BlobReferences []BlobReference
 var _ sstable.BlobReferences = (*BlobReferences)(nil)
 
 // BlobFileIDByID returns the BlobFileID for the identified BlobReference.
-func (br *BlobReferences) BlobFileIDByID(i blob.ReferenceID) base.BlobFileID {
+func (br *BlobReferences) BlobFileIDByID(i base.BlobReferenceID) base.BlobFileID {
 	return (*br)[i].FileID
 }
 
 // IDByBlobFileID returns the reference ID for the given BlobFileID. If the
 // blob file ID is not found, the second return value is false.
 // IDByBlobFileID is linear in the length of the BlobReferences slice.
-func (br *BlobReferences) IDByBlobFileID(fileID base.BlobFileID) (blob.ReferenceID, bool) {
+func (br *BlobReferences) IDByBlobFileID(fileID base.BlobFileID) (base.BlobReferenceID, bool) {
 	for i, ref := range *br {
 		if ref.FileID == fileID {
-			return blob.ReferenceID(i), true
+			return base.BlobReferenceID(i), true
 		}
 	}
-	return blob.ReferenceID(len(*br)), false
+	return base.BlobReferenceID(len(*br)), false
 }
 
 // BlobFileSet contains a set of blob files that are referenced by a version.
@@ -339,15 +349,14 @@ func (s *BlobFileSet) Count() int {
 	return s.tree.Count()
 }
 
-// Lookup returns the file number of the physical blob file backing the given
-// file ID. It returns false for the second return value if the FileID is not
-// present in the set.
-func (s *BlobFileSet) Lookup(fileID base.BlobFileID) (base.DiskFileNum, bool) {
+// Lookup returns the physical blob file backing the given file ID. It returns
+// false for the second return value if the FileID is not present in the set.
+func (s *BlobFileSet) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
 	phys, ok := s.LookupPhysical(fileID)
 	if !ok {
-		return 0, false
+		return nil, false
 	}
-	return phys.FileNum, true
+	return phys, true
 }
 
 // LookupPhysical returns the *PhysicalBlobFile backing the given file ID. It
@@ -386,8 +395,8 @@ func (s *BlobFileSet) LookupPhysical(fileID base.BlobFileID) (*PhysicalBlobFile,
 	return nil, false
 }
 
-// Assert that (*BlobFileSet) implements blob.FileMapping.
-var _ blob.FileMapping = (*BlobFileSet)(nil)
+// Assert that (*BlobFileSet) implements base.BlobFileMapping.
+var _ base.BlobFileMapping = (*BlobFileSet)(nil)
 
 // clone returns a copy-on-write clone of the blob file set.
 func (s *BlobFileSet) clone() BlobFileSet {
