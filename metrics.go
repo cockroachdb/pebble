@@ -509,9 +509,9 @@ type CompressionStatsForSetting = block.CompressionStatsForSetting
 func (cm *CompressionMetrics) Add(stats *block.CompressionStats) {
 	for s, cs := range stats.All() {
 		switch s.Algorithm {
-		case compression.NoCompression:
+		case compression.NoAlgorithm:
 			cm.NoCompressionBytes += cs.UncompressedBytes
-		case compression.SnappyAlgorithm:
+		case compression.Snappy:
 			cm.Snappy.Add(cs)
 		case compression.MinLZ:
 			cm.MinLZ.Add(cs)

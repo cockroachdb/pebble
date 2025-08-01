@@ -61,7 +61,7 @@ func (c *CompressionStats) Reset() {
 // addOne updates the stats to reflect a block that was compressed with the given setting.
 func (c *CompressionStats) addOne(setting compression.Setting, stats CompressionStatsForSetting) {
 	switch setting {
-	case compression.None:
+	case compression.NoCompression:
 		c.noCompressionBytes += stats.UncompressedBytes
 		if invariants.Enabled && stats.UncompressedBytes != stats.CompressedBytes {
 			panic("invalid stats for no-compression")
@@ -88,9 +88,9 @@ func (c *CompressionStats) Add(other *CompressionStats) {
 // All returns an iterator over the collected stats, in arbitrary order.
 func (c *CompressionStats) All() iter.Seq2[compression.Setting, CompressionStatsForSetting] {
 	return func(yield func(s compression.Setting, cs CompressionStatsForSetting) bool) {
-		if c.noCompressionBytes != 0 && !yield(compression.None, CompressionStatsForSetting{
-			UncompressedBytes: c.noCompressionBytes,
+		if c.noCompressionBytes != 0 && !yield(compression.NoCompression, CompressionStatsForSetting{
 			CompressedBytes:   c.noCompressionBytes,
+			UncompressedBytes: c.noCompressionBytes,
 		}) {
 			return
 		}
@@ -108,7 +108,8 @@ func (c *CompressionStats) All() iter.Seq2[compression.Setting, CompressionStats
 // String returns a string representation of the stats, in the format:
 // "<setting1>:<compressed1>/<uncompressed1>,<setting2>:<compressed2>/<uncompressed2>,..."
 //
-// The settings are ordered alphabetically.
+// The settings are ordered according to the algorithm definition ordering (and
+// by increasing level).
 func (c CompressionStats) String() string {
 	n := len(c.others)
 	if c.noCompressionBytes != 0 {
@@ -124,16 +125,21 @@ func (c CompressionStats) String() string {
 	}
 	entries := make([]entry, 0, n)
 	for s, cs := range c.All() {
-		entries = append(entries, entry{s, cs})
+		if s != compression.NoCompression {
+			entries = append(entries, entry{s, cs})
+		}
 	}
 	slices.SortFunc(entries, func(x, y entry) int {
-		if x.s.Algorithm != y.s.Algorithm {
-			return cmp.Compare(x.s.Algorithm.String(), y.s.Algorithm.String())
-		}
-		return cmp.Compare(x.s.Level, y.s.Level)
+		return cmp.Or(
+			cmp.Compare(x.s.Algorithm, y.s.Algorithm),
+			cmp.Compare(x.s.Level, y.s.Level),
+		)
 	})
 
 	var buf strings.Builder
+	if c.noCompressionBytes != 0 {
+		fmt.Fprintf(&buf, "%s:%d", compression.NoCompression.String(), c.noCompressionBytes)
+	}
 	buf.Grow(n * 64)
 	for _, e := range entries {
 		if buf.Len() > 0 {
@@ -176,9 +182,25 @@ func ParseCompressionStats(s string) (CompressionStats, error) {
 		if len(b) != 2 {
 			return CompressionStats{}, errors.Errorf("cannot parse compression stats %q", s)
 		}
-		setting, ok := compression.ParseSetting(b[0])
-		if !ok {
-			setting = compression.Setting{Algorithm: compression.Unknown, Level: 0}
+		if b[0] == compression.NoCompression.String() {
+			if _, err := fmt.Sscanf(b[1], "%d", &stats.noCompressionBytes); err != nil {
+				return CompressionStats{}, errors.Errorf("cannot parse compression stats %q", s)
+			}
+			continue
+		}
+		setting := compression.NoCompression
+		// We tolerate the older format which uses NoCompression instead of None and
+		// included both (equal) byte values.
+		//
+		// Note that the Pebble versions that write out the old format never parse
+		// it, which is what allows newer versions to change the format without
+		// changing the table format version.
+		if b[0] != "NoCompression" {
+			var ok bool
+			setting, ok = compression.ParseSetting(b[0])
+			if !ok {
+				setting = compression.Setting{Algorithm: compression.Unknown, Level: 0}
+			}
 		}
 		var cs CompressionStatsForSetting
 		if _, err := fmt.Sscanf(b[1], "%d/%d", &cs.CompressedBytes, &cs.UncompressedBytes); err != nil {
