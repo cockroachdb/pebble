@@ -701,17 +701,17 @@ allowFlush
 get with-fs-logging
 small-00001
 ----
-read-at(158, 41): 000004.sst
 read-at(199, 74): 000004.sst
+read-at(158, 41): 000004.sst
 read-at(0, 158): 000004.sst
 small-00001:val-00001
 
-# When the key doesn't pass the bloom filter, we should see only two block
-# reads.
+# When the key doesn't pass the bloom filter, we should see only one block
+# read due to lazy loading optimization - bloom filter is checked first,
+# and if it rejects the key, we can avoid loading the index block entirely.
 get with-fs-logging
 small-00001-does-not-exist
 ----
-read-at(158, 41): 000004.sst
 read-at(199, 74): 000004.sst
 small-00001-does-not-exist: pebble: not found
 

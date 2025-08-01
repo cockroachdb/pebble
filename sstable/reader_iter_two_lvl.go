@@ -32,6 +32,12 @@ type twoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterat
 	// false - any filtering happens at the top level.
 	useFilterBlock         bool
 	lastBloomFilterMatched bool
+
+	// topLevelIndexLoaded is set to true if the top-level index block load
+	// operation completed regardless of success or failure. In case of failure,
+	// topLevelIndexLoadError is set to avoid retrying the load operation.
+	topLevelIndexLoaded    bool
+	topLevelIndexLoadError error
 }
 
 var _ Iterator = (*twoLevelIteratorRowBlocks)(nil)
@@ -45,6 +51,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) loadSecondLevelIndexBlock(dir int8) loa
 	// the index fails.
 	PD(&i.secondLevel.data).Invalidate()
 	PI(&i.secondLevel.index).Invalidate()
+
+	// Ensure top-level index is loaded before accessing it
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return loadBlockFailed
+	}
+
 	if !PI(&i.topLevelIndex).Valid() {
 		return loadBlockFailed
 	}
@@ -87,6 +100,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) loadSecondLevelIndexBlock(dir int8) loa
 // appropriate bound, depending on the iteration direction, and returns either
 // `blockIntersects` or `blockExcluded`.
 func (i *twoLevelIterator[I, PI, D, PD]) resolveMaybeExcluded(dir int8) intersectsResult {
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return blockExcluded // Conservative choice when we can't load the index
+	}
+
 	// This iterator is configured with a bound-limited block property filter.
 	// The bpf determined this entire index block could be excluded from
 	// iteration based on the property encoded in the block handle. However, we
@@ -181,14 +199,7 @@ func newColumnBlockTwoLevelIterator(
 			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
 	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, &i.secondLevel.internalValueConstructor)
-	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readEnv.Block, i.secondLevel.indexFilterRH)
-	if err == nil {
-		err = i.topLevelIndex.InitHandle(r.Comparer, topLevelIndexH, opts.Transforms)
-	}
-	if err != nil {
-		_ = i.Close()
-		return nil, err
-	}
+
 	return i, nil
 }
 
@@ -235,14 +246,6 @@ func newRowBlockTwoLevelIterator(
 		i.secondLevel.data.SetHasValuePrefix(true)
 	}
 
-	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readEnv.Block, i.secondLevel.indexFilterRH)
-	if err == nil {
-		err = i.topLevelIndex.InitHandle(r.Comparer, topLevelIndexH, opts.Transforms)
-	}
-	if err != nil {
-		_ = i.Close()
-		return nil, err
-	}
 	return i, nil
 }
 
@@ -274,6 +277,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 
 	err := i.secondLevel.err
 	i.secondLevel.err = nil // clear cached iteration error
+
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return nil
+	}
 
 	// The twoLevelIterator could be already exhausted. Utilize that when
 	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
@@ -416,6 +424,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 
 	err := i.secondLevel.err
 	i.secondLevel.err = nil // clear cached iteration error
+
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return nil
+	}
 
 	// The twoLevelIterator could be already exhausted. Utilize that when
 	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
@@ -584,6 +597,12 @@ func (i *twoLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
 		panic("unexpected virtualLastSeekLE with exclusive upper bounds")
 	}
 	key := i.secondLevel.upper
+
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return nil
+	}
+
 	// Need to position the topLevelIndex.
 	//
 	// The previous exhausted state of singleLevelIterator is no longer
@@ -640,6 +659,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 	i.secondLevel.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
+
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return nil
+	}
 
 	var result loadBlockResult
 	// NB: Unlike SeekGE, we don't have a fast-path here since we don't know
@@ -714,6 +738,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
 
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return nil
+	}
+
 	if !PI(&i.topLevelIndex).First() {
 		return nil
 	}
@@ -762,6 +791,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
 	i.secondLevel.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
+
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return nil
+	}
 
 	if !PI(&i.topLevelIndex).Last() {
 		return nil
@@ -830,6 +864,12 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Intern
 
 	// Did not find prefix in the existing second-level index block. This is the
 	// slow-path where we seek the iterator.
+
+	if err := i.ensureTopLevelIndexLoaded(); err != nil {
+		i.secondLevel.err = err
+		return nil
+	}
+
 	if !PI(&i.topLevelIndex).SeekGE(succKey) {
 		PD(&i.secondLevel.data).Invalidate()
 		PI(&i.secondLevel.index).Invalidate()
@@ -874,6 +914,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) Prev() *base.InternalKV {
 func (i *twoLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 	for {
 		if i.secondLevel.err != nil || i.secondLevel.exhaustedBounds > 0 {
+			return nil
+		}
+
+		if err := i.ensureTopLevelIndexLoaded(); err != nil {
+			i.secondLevel.err = err
 			return nil
 		}
 
@@ -954,6 +999,12 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 		if i.secondLevel.err != nil || i.secondLevel.exhaustedBounds < 0 {
 			return nil
 		}
+
+		if err := i.ensureTopLevelIndexLoaded(); err != nil {
+			i.secondLevel.err = err
+			return nil
+		}
+
 		i.secondLevel.exhaustedBounds = 0
 		if !PI(&i.topLevelIndex).Prev() {
 			PD(&i.secondLevel.data).Invalidate()
@@ -1009,6 +1060,39 @@ func (i *twoLevelIterator[I, PI, D, PD]) SetupForCompaction() {
 
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
+func (i *twoLevelIterator[I, PI, D, PD]) ensureTopLevelIndexLoaded() error {
+	// If already loaded, return cached error (nil means success)
+	if i.topLevelIndexLoaded {
+		return i.topLevelIndexLoadError
+	}
+
+	// Perform the deferred top-level index loading calls
+	topLevelIndexH, err := i.secondLevel.reader.readTopLevelIndexBlock(
+		i.secondLevel.ctx,
+		i.secondLevel.readEnv.Block,
+		i.secondLevel.indexFilterRH,
+	)
+	if err != nil {
+		i.topLevelIndexLoadError = err
+		i.topLevelIndexLoaded = true // Mark as loaded to avoid retry
+		return err
+	}
+
+	err = PI(&i.topLevelIndex).InitHandle(
+		i.secondLevel.reader.Comparer,
+		topLevelIndexH,
+		i.secondLevel.transforms,
+	)
+	if err != nil {
+		i.topLevelIndexLoadError = err
+		i.topLevelIndexLoaded = true
+		return err
+	}
+
+	i.topLevelIndexLoaded = true
+	return nil
+}
+
 func (i *twoLevelIterator[I, PI, D, PD]) Close() error {
 	if invariants.Enabled && i.secondLevel.pool != nil {
 		panic("twoLevelIterator's singleLevelIterator has its own non-nil pool")
@@ -1019,6 +1103,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) Close() error {
 	err = firstError(err, PI(&i.topLevelIndex).Close())
 	i.useFilterBlock = false
 	i.lastBloomFilterMatched = false
+	i.topLevelIndexLoaded = false
+	i.topLevelIndexLoadError = nil
 	if pool != nil {
 		pool.Put(i)
 	}
