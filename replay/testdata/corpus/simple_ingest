@@ -101,6 +101,6 @@ simple_ingest/MANIFEST-000008:
   size: 209
 simple_ingest/MANIFEST-000010: stat simple_ingest/MANIFEST-000010: file does not exist
 simple_ingest/000007.sst:
-  size: 770
-simple_ingest/000009.sst:
   size: 765
+simple_ingest/000009.sst:
+  size: 759

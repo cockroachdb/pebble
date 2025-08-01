@@ -55,8 +55,8 @@ func (p *CompressionProfile) UsesMinLZ() bool {
 }
 
 var (
-	NoCompression     = simpleCompressionProfile("NoCompression", compression.None)
-	SnappyCompression = simpleCompressionProfile("Snappy", compression.Snappy)
+	NoCompression     = simpleCompressionProfile("NoCompression", compression.NoCompression)
+	SnappyCompression = simpleCompressionProfile("Snappy", compression.SnappySetting)
 	ZstdCompression   = simpleCompressionProfile("ZSTD", compression.ZstdLevel3)
 	MinLZCompression  = simpleCompressionProfile("MinLZ", compression.MinLZFastest)
 
@@ -95,7 +95,7 @@ var fastestCompression = func() compression.Setting {
 	if runtime.GOARCH == "arm64" {
 		// MinLZ is generally faster and better than Snappy except for arm64: Snappy
 		// has an arm64 assembly implementation and MinLZ does not.
-		return compression.Snappy
+		return compression.SnappySetting
 	}
 	return compression.MinLZFastest
 }()
@@ -190,9 +190,9 @@ func (i CompressionIndicator) String() string {
 func (i CompressionIndicator) Algorithm() compression.Algorithm {
 	switch i {
 	case NoCompressionIndicator:
-		return compression.NoCompression
+		return compression.NoAlgorithm
 	case SnappyCompressionIndicator:
-		return compression.SnappyAlgorithm
+		return compression.Snappy
 	case ZstdCompressionIndicator:
 		return compression.Zstd
 	case MinLZCompressionIndicator:
@@ -204,9 +204,9 @@ func (i CompressionIndicator) Algorithm() compression.Algorithm {
 
 func compressionIndicatorFromAlgorithm(algo compression.Algorithm) CompressionIndicator {
 	switch algo {
-	case compression.NoCompression:
+	case compression.NoAlgorithm:
 		return NoCompressionIndicator
-	case compression.SnappyAlgorithm:
+	case compression.Snappy:
 		return SnappyCompressionIndicator
 	case compression.Zstd:
 		return ZstdCompressionIndicator

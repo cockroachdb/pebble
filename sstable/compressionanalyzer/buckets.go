@@ -99,9 +99,9 @@ func (c Compressibility) String() string {
 var Profiles = [...]*block.CompressionProfile{
 	{
 		Name:                "Snappy",
-		DataBlocks:          compression.Snappy,
-		ValueBlocks:         compression.Snappy,
-		OtherBlocks:         compression.Snappy,
+		DataBlocks:          compression.SnappySetting,
+		ValueBlocks:         compression.SnappySetting,
+		OtherBlocks:         compression.SnappySetting,
 		MinReductionPercent: 0,
 	},
 
