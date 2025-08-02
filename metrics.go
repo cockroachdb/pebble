@@ -348,6 +348,8 @@ type Metrics struct {
 		BackingTableCount uint64
 		// The sum of the sizes of the BackingTableCount sstables that are backing virtual tables.
 		BackingTableSize uint64
+		// Compression statistics for sstable data (does not include blob files).
+		Compression CompressionMetrics
 
 		// Local file sizes.
 		Local struct {
@@ -437,9 +439,9 @@ type Metrics struct {
 			// ZombieCount is the number of local zombie blob files.
 			ZombieCount uint64
 		}
-	}
 
-	Compression CompressionMetrics
+		// TODO(radu): add compression stats.
+	}
 
 	FileCache FileCacheMetrics
 
@@ -489,15 +491,16 @@ type Metrics struct {
 	manualMemory manual.Metrics
 }
 
-// CompressionMetrics contains compression metrics for sstables and blob files.
+// CompressionMetrics contains compression metrics for sstables or blob files.
 type CompressionMetrics struct {
 	// NoCompressionBytes is the total number of bytes in files that do are not
 	// compressed. Data can be uncompressed when 1) compression is disabled; 2)
 	// for certain special types of blocks; and 3) for blocks that are not
 	// compressible.
 	NoCompressionBytes uint64
-	// CompressedBytesWithoutStats is the total number of bytes in files that do not
-	// encode compression statistics (or for which there are no statistics yet).
+	// CompressedBytesWithoutStats is the total number of bytes in files that do
+	// not encode compression statistics (or for which there are no statistics
+	// yet).
 	CompressedBytesWithoutStats uint64
 	Snappy                      CompressionStatsForSetting
 	MinLZ                       CompressionStatsForSetting
@@ -1016,13 +1019,13 @@ func (m *Metrics) String() string {
 	cur = cur.WriteString(compressionTableHeader).NewlineReturn()
 	compressionContents := []pair[string, CompressionStatsForSetting]{
 		{k: "none", v: CompressionStatsForSetting{
-			CompressedBytes:   m.Compression.NoCompressionBytes,
-			UncompressedBytes: m.Compression.NoCompressionBytes,
+			CompressedBytes:   m.Table.Compression.NoCompressionBytes,
+			UncompressedBytes: m.Table.Compression.NoCompressionBytes,
 		}},
-		{k: "snappy", v: m.Compression.Snappy},
-		{k: "minlz", v: m.Compression.MinLZ},
-		{k: "zstd", v: m.Compression.Zstd},
-		{k: "unknown", v: CompressionStatsForSetting{CompressedBytes: m.Compression.CompressedBytesWithoutStats}},
+		{k: "snappy", v: m.Table.Compression.Snappy},
+		{k: "minlz", v: m.Table.Compression.MinLZ},
+		{k: "zstd", v: m.Table.Compression.Zstd},
+		{k: "unknown", v: CompressionStatsForSetting{CompressedBytes: m.Table.Compression.CompressedBytesWithoutStats}},
 	}
 	compressionContents = slices.DeleteFunc(compressionContents, func(p pair[string, CompressionStatsForSetting]) bool {
 		return p.v.CompressedBytes == 0
