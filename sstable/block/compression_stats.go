@@ -38,8 +38,12 @@ type CompressionStatsForSetting struct {
 	UncompressedBytes uint64
 }
 
-// CompressionRatio returns the compression ratio for the setting.
+// CompressionRatio returns the compression ratio for the setting. Returns 0 if
+// the stats are empty.
 func (cs CompressionStatsForSetting) CompressionRatio() float64 {
+	if cs.CompressedBytes == 0 {
+		return 0
+	}
 	return float64(cs.UncompressedBytes) / float64(cs.CompressedBytes)
 }
 
