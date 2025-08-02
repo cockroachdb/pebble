@@ -129,6 +129,14 @@ func exampleMetrics() Metrics {
 	m.Table.ZombieCount = 18
 	m.Table.BackingTableCount = 1
 	m.Table.BackingTableSize = 2 * MB
+	m.Table.Compression.NoCompressionBytes = 100 * MB
+	m.Table.Compression.CompressedBytesWithoutStats = 500 * MB
+	m.Table.Compression.Snappy.CompressedBytes = 1 * GB
+	m.Table.Compression.Snappy.UncompressedBytes = 2 * GB
+	m.Table.Compression.MinLZ.CompressedBytes = 1 * GB
+	m.Table.Compression.MinLZ.UncompressedBytes = 3 * GB
+	m.Table.Compression.Zstd.CompressedBytes = 10 * GB
+	m.Table.Compression.Zstd.UncompressedBytes = 50 * GB
 	m.Table.Local.LiveSize = 28 * GB
 	m.Table.Local.LiveCount = 10_000
 	m.Table.Local.ObsoleteSize = 29 * MB
@@ -154,15 +162,6 @@ func exampleMetrics() Metrics {
 	m.BlobFiles.Local.ObsoleteCount = 13
 	m.BlobFiles.Local.ZombieSize = 30 * MB
 	m.BlobFiles.Local.ZombieCount = 14
-
-	m.Compression.NoCompressionBytes = 100 * MB
-	m.Compression.CompressedBytesWithoutStats = 500 * MB
-	m.Compression.Snappy.CompressedBytes = 1 * GB
-	m.Compression.Snappy.UncompressedBytes = 2 * GB
-	m.Compression.MinLZ.CompressedBytes = 1 * GB
-	m.Compression.MinLZ.UncompressedBytes = 3 * GB
-	m.Compression.Zstd.CompressedBytes = 10 * GB
-	m.Compression.Zstd.UncompressedBytes = 50 * GB
 
 	m.FileCache.Size = 1 * MB
 	m.FileCache.TableCount = 180

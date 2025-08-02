@@ -2186,7 +2186,7 @@ func (d *DB) Metrics() *Metrics {
 	for i := 0; i < numLevels; i++ {
 		metrics.Levels[i].Additional.ValueBlocksSize = *valueBlockSizeAnnotator.LevelAnnotation(vers.Levels[i])
 		compressionMetrics := compressionStatsAnnotator.LevelAnnotation(vers.Levels[i])
-		metrics.Compression.MergeWith(compressionMetrics)
+		metrics.Table.Compression.MergeWith(compressionMetrics)
 	}
 
 	metrics.Table.PendingStatsCollectionCount = int64(len(d.mu.tableStats.pending))
