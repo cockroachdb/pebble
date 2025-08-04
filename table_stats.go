@@ -62,7 +62,7 @@ func (d *DB) maybeCollectTableStatsLocked() {
 func (d *DB) updateTableStatsLocked(newTables []manifest.NewTableEntry) {
 	var needStats bool
 	for _, nf := range newTables {
-		if !nf.Meta.StatsValid() {
+		if _, statsValid := nf.Meta.Stats(); !statsValid {
 			needStats = true
 			break
 		}
@@ -134,10 +134,9 @@ func (d *DB) collectTableStats() bool {
 
 	maybeCompact := false
 	for _, c := range collected {
-		c.TableMetadata.Stats = c.TableStats
+		sanityCheckStats(c.TableMetadata, &c.TableStats, d.opts.Logger, "collected stats")
+		c.TableMetadata.PopulateStats(&c.TableStats)
 		maybeCompact = maybeCompact || tableTombstoneCompensation(c.TableMetadata) > 0
-		sanityCheckStats(c.TableMetadata, d.opts.Logger, "collected stats")
-		c.TableMetadata.StatsMarkValid()
 	}
 
 	d.mu.tableStats.cond.Broadcast()
@@ -182,11 +181,10 @@ func (d *DB) loadNewFileStats(
 	for _, nf := range pending {
 		// A file's stats might have been populated by an earlier call to
 		// loadNewFileStats if the file was moved.
-		// NB: We're not holding d.mu which protects f.Stats, but only
-		// collectTableStats updates f.Stats for active files, and we
+		// NB: Only collectTableStats updates f.Stats for active files, and we
 		// ensure only one goroutine runs it at a time through
 		// d.mu.tableStats.loading.
-		if nf.Meta.StatsValid() {
+		if _, ok := nf.Meta.Stats(); ok {
 			continue
 		}
 
@@ -225,12 +223,10 @@ func (d *DB) scanReadStateTableStats(
 	sizesChecked := make(map[base.DiskFileNum]struct{})
 	for l, levelMetadata := range rs.current.Levels {
 		for f := range levelMetadata.All() {
-			// NB: We're not holding d.mu which protects f.Stats, but only the
-			// active stats collection job updates f.Stats for active files,
-			// and we ensure only one goroutine runs it at a time through
-			// d.mu.tableStats.loading. This makes it safe to read validity
-			// through f.Stats.ValidLocked despite not holding d.mu.
-			if f.StatsValid() {
+			// NB: Only the active stats collection job updates f.Stats for active
+			// files, and we ensure only one goroutine runs it at a time through
+			// d.mu.tableStats.loading.
+			if _, ok := f.Stats(); ok {
 				continue
 			}
 
@@ -524,10 +520,10 @@ func (d *DB) estimateSizesBeneath(
 	for l := level + 1; l < numLevels; l++ {
 		for tableBeneath := range v.Overlaps(l, meta.UserKeyBounds()).All() {
 			fileSum += tableBeneath.Size + tableBeneath.EstimatedReferenceSize()
-			if tableBeneath.StatsValid() {
-				entryCount += tableBeneath.Stats.NumEntries
-				keySum += tableBeneath.Stats.RawKeySize
-				valSum += tableBeneath.Stats.RawValueSize
+			if stats, ok := tableBeneath.Stats(); ok {
+				entryCount += stats.NumEntries
+				keySum += stats.RawKeySize
+				valSum += stats.RawValueSize
 				continue
 			}
 			// If stats aren't available, we need to read the properties block.
@@ -681,25 +677,27 @@ func (d *DB) estimateReclaimedSizeBeneath(
 
 var lastSanityCheckStatsLog crtime.AtomicMono
 
-func sanityCheckStats(meta *manifest.TableMetadata, logger Logger, info string) {
+func sanityCheckStats(
+	meta *manifest.TableMetadata, stats *manifest.TableStats, logger Logger, info string,
+) {
 	// Values for PointDeletionsBytesEstimate and RangeDeletionsBytesEstimate that
 	// exceed this value are likely indicative of a bug (eg, underflow).
 	const maxDeletionBytesEstimate = 1 << 50 // 1 PiB
 
-	if meta.Stats.PointDeletionsBytesEstimate > maxDeletionBytesEstimate ||
-		meta.Stats.RangeDeletionsBytesEstimate > maxDeletionBytesEstimate {
+	if stats.PointDeletionsBytesEstimate > maxDeletionBytesEstimate ||
+		stats.RangeDeletionsBytesEstimate > maxDeletionBytesEstimate {
 		if invariants.Enabled {
 			panic(fmt.Sprintf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
 				info, meta.TableNum,
-				redact.Safe(meta.Stats.PointDeletionsBytesEstimate),
-				redact.Safe(meta.Stats.RangeDeletionsBytesEstimate),
+				redact.Safe(stats.PointDeletionsBytesEstimate),
+				redact.Safe(stats.RangeDeletionsBytesEstimate),
 			))
 		}
 		if v := lastSanityCheckStatsLog.Load(); v == 0 || v.Elapsed() > 30*time.Second {
 			logger.Errorf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
 				info, meta.TableNum,
-				redact.Safe(meta.Stats.PointDeletionsBytesEstimate),
-				redact.Safe(meta.Stats.RangeDeletionsBytesEstimate),
+				redact.Safe(stats.PointDeletionsBytesEstimate),
+				redact.Safe(stats.RangeDeletionsBytesEstimate),
 			)
 			lastSanityCheckStatsLog.Store(crtime.NowMono())
 		}
@@ -743,27 +741,29 @@ func maybeSetStatsFromProperties(
 		pointEstimate = pointDeletionsBytesEstimate(&props.CommonProperties, avgValSize, compressionRatio)
 	}
 
-	meta.Stats.NumEntries = props.NumEntries
-	meta.Stats.NumDeletions = props.NumDeletions
-	meta.Stats.NumRangeKeySets = props.NumRangeKeySets
-	meta.Stats.PointDeletionsBytesEstimate = pointEstimate
-	meta.Stats.RangeDeletionsBytesEstimate = 0
-	meta.Stats.ValueBlocksSize = props.ValueBlocksSize
-	meta.Stats.RawKeySize = props.RawKeySize
-	meta.Stats.RawValueSize = props.RawValueSize
-	meta.Stats.CompressionType = block.CompressionProfileByName(props.CompressionName)
+	stats := manifest.TableStats{
+		NumEntries:                  props.NumEntries,
+		NumDeletions:                props.NumDeletions,
+		NumRangeKeySets:             props.NumRangeKeySets,
+		PointDeletionsBytesEstimate: pointEstimate,
+		RangeDeletionsBytesEstimate: 0,
+		ValueBlocksSize:             props.ValueBlocksSize,
+		RawKeySize:                  props.RawKeySize,
+		RawValueSize:                props.RawValueSize,
+		CompressionType:             block.CompressionProfileByName(props.CompressionName),
+	}
 	if props.CompressionStats != "" {
 		var err error
-		meta.Stats.CompressionStats, err = block.ParseCompressionStats(props.CompressionStats)
+		stats.CompressionStats, err = block.ParseCompressionStats(props.CompressionStats)
 		if invariants.Enabled && err != nil {
 			panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", props.CompressionStats, meta.TableNum, err))
 		}
 		if meta.Virtual {
-			meta.Stats.CompressionStats.Scale(meta.Size, meta.TableBacking.Size)
+			stats.CompressionStats.Scale(meta.Size, meta.TableBacking.Size)
 		}
 	}
-	meta.StatsMarkValid()
-	sanityCheckStats(meta, logger, "stats from properties")
+	sanityCheckStats(meta, &stats, logger, "stats from properties")
+	meta.PopulateStats(&stats)
 	return true
 }
 
@@ -1091,7 +1091,10 @@ func newCombinedDeletionKeyspanIter(
 // key sets may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
 var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	return f.Stats.NumRangeKeySets, f.StatsValid()
+	if stats, ok := f.Stats(); ok {
+		return stats.NumRangeKeySets, true
+	}
+	return 0, false
 })
 
 // tombstonesAnnotator is a manifest.Annotator that annotates B-Tree nodes
@@ -1100,7 +1103,10 @@ var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata
 // asynchronously, so its values are marked as cacheable only if a file's stats
 // have been loaded.
 var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	return f.Stats.NumDeletions, f.StatsValid()
+	if stats, ok := f.Stats(); ok {
+		return stats.NumDeletions, true
+	}
+	return 0, false
 })
 
 // valueBlocksSizeAnnotator is a manifest.Annotator that annotates B-Tree
@@ -1108,7 +1114,10 @@ var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) 
 // size may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
 var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	return f.Stats.ValueBlocksSize, f.StatsValid()
+	if stats, ok := f.Stats(); ok {
+		return stats.ValueBlocksSize, true
+	}
+	return 0, false
 })
 
 // pointDeletionsBytesEstimateAnnotator is a manifest.Annotator that annotates
@@ -1116,7 +1125,10 @@ var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetada
 // value may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
 var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	return f.Stats.PointDeletionsBytesEstimate, f.StatsValid()
+	if stats, ok := f.Stats(); ok {
+		return stats.PointDeletionsBytesEstimate, true
+	}
+	return 0, false
 })
 
 // rangeDeletionsBytesEstimateAnnotator is a manifest.Annotator that annotates
@@ -1124,7 +1136,10 @@ var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifes
 // value may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
 var rangeDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	return f.Stats.RangeDeletionsBytesEstimate, f.StatsValid()
+	if stats, ok := f.Stats(); ok {
+		return stats.RangeDeletionsBytesEstimate, true
+	}
+	return 0, false
 })
 
 // compressionStatsAnnotator is a manifest.Annotator that annotates B-tree nodes
@@ -1151,11 +1166,12 @@ func (a compressionStatsAggregator) Zero(dst *CompressionMetrics) *CompressionMe
 func (a compressionStatsAggregator) Accumulate(
 	f *manifest.TableMetadata, dst *CompressionMetrics,
 ) (v *CompressionMetrics, cacheOK bool) {
-	if statsValid := f.StatsValid(); !statsValid || f.Stats.CompressionStats.IsEmpty() {
+	stats, statsValid := f.Stats()
+	if !statsValid || stats.CompressionStats.IsEmpty() {
 		dst.CompressedBytesWithoutStats += f.Size
 		return dst, statsValid
 	}
-	dst.Add(&f.Stats.CompressionStats)
+	dst.Add(&stats.CompressionStats)
 	return dst, true
 }
 

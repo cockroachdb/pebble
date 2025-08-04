@@ -1096,11 +1096,11 @@ L0->L5: 5.0
   000010:[0001#10,SET-0001#10,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
 L5->L6: 10.8
-  500005:[0005#5,SET-0005#5,SET] marked as compacting
-  600005:[0005#5,SET-0005#5,SET] marked as compacting
-L5->L6: 8.4
   500002:[0002#2,SET-0002#2,SET] marked as compacting
   600002:[0002#2,SET-0002#2,SET] marked as compacting
+L5->L6: 8.4
+  500003:[0003#3,SET-0003#3,SET] marked as compacting
+  600003:[0003#3,SET-0003#3,SET] marked as compacting
 
 init l-base-max-bytes=5 compaction-debt-concurrency=10
 0: 10
@@ -1363,14 +1363,14 @@ L0->L5: 4.4
   000007:[0001#7,SET-0001#7,SET] marked as compacting
   500001:[0001#1,SET-0001#1,SET] marked as compacting
 L5->L6: 6.6
-  500004:[0004#4,SET-0004#4,SET] marked as compacting
-  600004:[0004#4,SET-0004#4,SET] marked as compacting
-L5->L6: 5.0
   500002:[0002#2,SET-0002#2,SET] marked as compacting
   600002:[0002#2,SET-0002#2,SET] marked as compacting
-L5->L6: 3.9
+L5->L6: 5.0
   500003:[0003#3,SET-0003#3,SET] marked as compacting
   600003:[0003#3,SET-0003#3,SET] marked as compacting
+L5->L6: 3.9
+  500004:[0004#4,SET-0004#4,SET] marked as compacting
+  600004:[0004#4,SET-0004#4,SET] marked as compacting
 
 # The compaction concurrency is 4 since 3/11 = 0.27 fraction of the DB is
 # garbage.

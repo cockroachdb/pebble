@@ -3390,18 +3390,17 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	meta := &manifest.TableMetadata{
 		TableNum: 1,
 		Size:     1024,
-		Stats: manifest.TableStats{
-			NumEntries:                10,
-			NumDeletions:              8,
-			TombstoneDenseBlocksRatio: 0.9, // Above threshold
-		},
 	}
+	meta.PopulateStats(&manifest.TableStats{
+		NumEntries:                10,
+		NumDeletions:              8,
+		TombstoneDenseBlocksRatio: 0.9, // Above threshold
+	})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
 	)
 	meta.InitPhysicalBacking()
-	meta.StatsMarkValid()
 
 	// Set up the version: L4 has the file, L5 and L6 are empty.
 	var files [numLevels][]*manifest.TableMetadata
@@ -3490,18 +3489,17 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	metaL4 := &manifest.TableMetadata{
 		TableNum: 1,
 		Size:     1024,
-		Stats: manifest.TableStats{
-			NumEntries:                10,
-			NumDeletions:              8,
-			TombstoneDenseBlocksRatio: 0.9, // Above threshold
-		},
 	}
+	metaL4.PopulateStats(&manifest.TableStats{
+		NumEntries:                10,
+		NumDeletions:              8,
+		TombstoneDenseBlocksRatio: 0.9, // Above threshold
+	})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
 	)
 	metaL4.InitPhysicalBacking()
-	metaL4.StatsMarkValid()
 
 	// Create an overlapping file in L5.
 	metaL5 := &manifest.TableMetadata{
@@ -3513,7 +3511,7 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 		base.ParseInternalKey("z.SET.3"),
 	)
 	metaL5.InitPhysicalBacking()
-	metaL5.StatsMarkValid()
+	metaL5.PopulateStats(&manifest.TableStats{})
 
 	// Set up the version: L4 has metaL4, L5 has metaL5.
 	var files [numLevels][]*manifest.TableMetadata
@@ -3571,18 +3569,17 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	metaL4 := &manifest.TableMetadata{
 		TableNum: 1,
 		Size:     1024,
-		Stats: manifest.TableStats{
-			NumEntries:                10,
-			NumDeletions:              8,
-			TombstoneDenseBlocksRatio: 0.9,
-		},
 	}
+	metaL4.PopulateStats(&manifest.TableStats{
+		NumEntries:                10,
+		NumDeletions:              8,
+		TombstoneDenseBlocksRatio: 0.9,
+	})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
 	)
 	metaL4.InitPhysicalBacking()
-	metaL4.StatsMarkValid()
 
 	// Large overlapping file in L6 (grandparent level).
 	metaL6 := &manifest.TableMetadata{
@@ -3594,7 +3591,7 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 		base.ParseInternalKey("z.SET.3"),
 	)
 	metaL6.InitPhysicalBacking()
-	metaL6.StatsMarkValid()
+	metaL6.PopulateStats(&manifest.TableStats{})
 
 	var files [numLevels][]*manifest.TableMetadata
 	files[inputLevel] = []*manifest.TableMetadata{metaL4}
@@ -3634,18 +3631,17 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	meta := &manifest.TableMetadata{
 		TableNum: 1,
 		Size:     1024,
-		Stats: manifest.TableStats{
-			NumEntries:                10,
-			NumDeletions:              5,
-			TombstoneDenseBlocksRatio: 0.5, // Below threshold
-		},
 	}
+	meta.PopulateStats(&manifest.TableStats{
+		NumEntries:                10,
+		NumDeletions:              5,
+		TombstoneDenseBlocksRatio: 0.5, // Below threshold
+	})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
 	)
 	meta.InitPhysicalBacking()
-	meta.StatsMarkValid()
 
 	var files [numLevels][]*manifest.TableMetadata
 	files[inputLevel] = []*manifest.TableMetadata{meta}

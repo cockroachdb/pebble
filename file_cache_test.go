@@ -358,7 +358,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 		base.MakeInternalKey([]byte{'a'}, seqNumA, InternalKeyKindSet))
 	v1.ExtendPointKeyBounds(DefaultComparer.Compare, v1.PointKeyBounds.Smallest(), v1.PointKeyBounds.Largest())
 	v1.AttachVirtualBacking(parentFile.TableBacking)
-	v1.Stats.NumEntries = 1
+	v1.PopulateStats(&manifest.TableStats{NumEntries: 1})
 
 	v2 := &manifest.TableMetadata{
 		TableNum:              f2,
@@ -378,7 +378,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 		base.MakeInternalKey([]byte{'k'}, seqNumRangeUnset, InternalKeyKindRangeKeyUnset))
 	v2.ExtendPointKeyBounds(DefaultComparer.Compare, v2.PointKeyBounds.Smallest(), v2.PointKeyBounds.Largest())
 	v2.AttachVirtualBacking(parentFile.TableBacking)
-	v2.Stats.NumEntries = 6
+	v2.PopulateStats(&manifest.TableStats{NumEntries: 6})
 
 	v1.PointKeyBounds.SetInternalKeyBounds(v1.Smallest(), v1.Largest())
 

@@ -2350,13 +2350,11 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 					continue
 				}
 			}
-			var tableStats manifest.TableStats
-			if m.StatsValid() {
-				tableStats = m.Stats
-			}
 			destTables[j] = SSTableInfo{
-				TableInfo:  m.TableInfo(),
-				TableStats: tableStats,
+				TableInfo: m.TableInfo(),
+			}
+			if stats, ok := m.Stats(); ok {
+				destTables[j].TableStats = *stats
 			}
 			if opt.withProperties {
 				p, err := d.fileCache.getTableProperties(

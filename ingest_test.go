@@ -193,8 +193,6 @@ func TestIngestLoadRand(t *testing.T) {
 			},
 			path: paths[i],
 		}
-		expected[i].TableMetadata.Stats.CompressionType = block.SnappyCompression
-		expected[i].StatsMarkValid()
 
 		func() {
 			f, err := mem.Create(paths[i], vfs.WriteCategoryUnspecified)
@@ -226,8 +224,11 @@ func TestIngestLoadRand(t *testing.T) {
 				count++
 				rawKeySize += uint64(keys[i].Size())
 			}
-			expected[i].Stats.RawKeySize = rawKeySize
-			expected[i].Stats.NumEntries = count
+			expected[i].TableMetadata.PopulateStats(&manifest.TableStats{
+				RawKeySize:      rawKeySize,
+				NumEntries:      count,
+				CompressionType: block.SnappyCompression,
+			})
 			require.NoError(t, w.Close())
 
 			meta, err := w.Metadata()
@@ -247,9 +248,11 @@ func TestIngestLoadRand(t *testing.T) {
 	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, nil, pending)
 	require.NoError(t, err)
 
+	// Reset flaky stats.
 	for _, m := range lr.local {
 		m.CreationTime = 0
-		m.Stats.CompressionStats = block.CompressionStats{}
+		stats, _ := m.Stats()
+		stats.CompressionStats = block.CompressionStats{}
 	}
 	t.Log(strings.Join(pretty.Diff(expected, lr.local), "\n"))
 	require.Equal(t, expected, lr.local)

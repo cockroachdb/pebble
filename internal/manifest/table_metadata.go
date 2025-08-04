@@ -83,10 +83,6 @@ type TableMetadata struct {
 	// that returns a user key (eg. Next, Prev, SeekGE, SeekLT, etc).
 	AllowedSeeks atomic.Int64
 
-	// statsValid indicates if stats have been loaded for the table. The
-	// TableStats structure is populated only if valid is true.
-	statsValid atomic.Bool
-
 	// TableBacking is the physical file that backs either physical or virtual
 	// sstables.
 	TableBacking *TableBacking
@@ -132,7 +128,7 @@ type TableMetadata struct {
 	// NB: these field should be set using ExtendPointKeyBounds. They are left
 	// exported for reads as an optimization.
 	PointKeyBounds InternalKeyBounds
-	// RangeKeyBounds.Smallest() and RangeKeyBounds.Largest() are the inclusive bounds for the
+	// RangeKeyBounds.Smallest() and RangeKeyBounds.Largest() are the bounds for the
 	// internal range keys stored in the table.
 	// NB: these field should be set using ExtendRangeKeyBounds. They are left
 	// exported for reads as an optimization.
@@ -156,15 +152,12 @@ type TableMetadata struct {
 	// each B-tree node keeps a reference on the contained tables.
 	refs atomic.Int32
 
-	// Stats describe table statistics. Protected by DB.mu.
+	// statsValid indicates if stats have been loaded for the table. The
+	// TableStats structure is populated only if valid is true.
+	statsValid atomic.Bool
+	// stats describe table statistics. Written only once, by the same process
 	//
-	// For virtual sstables, set stats upon virtual sstable creation as
-	// asynchronous computation of stats is not currently supported.
-	//
-	// TODO(bananabrick): To support manifest replay for virtual sstables, we
-	// probably need to compute virtual sstable stats asynchronously. Otherwise,
-	// we'd have to write virtual sstable stats to the version edit.
-	Stats TableStats
+	stats TableStats
 
 	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
 	// pick L0 compactions. Only accurate for the most recent Version.
@@ -483,18 +476,25 @@ func (m *TableMetadata) IsCompacting() bool {
 	return m.CompactionState == CompactionStateCompacting
 }
 
-// StatsValid returns true if the table stats have been populated. If StatValid
-// returns true, the Stats field may be read (with or without holding the
-// database mutex).
-func (m *TableMetadata) StatsValid() bool {
-	return m.statsValid.Load()
+// Stats returns the table statistics if they have been populated, or nil and
+// ok=false if they are were not.
+//
+// The caller must not modify the returned stats.
+func (m *TableMetadata) Stats() (_ *TableStats, ok bool) {
+	if !m.statsValid.Load() {
+		return nil, false
+	}
+	return &m.stats, true
 }
 
-// StatsMarkValid marks the TableStats as valid. The caller must hold DB.mu
-// while populating TableStats and calling StatsMarkValud. Once stats are
-// populated, they must not be mutated.
-func (m *TableMetadata) StatsMarkValid() {
-	m.statsValid.Store(true)
+// PopulateStats populates the table stats. Can be called at most once for a
+// TableMetadata.
+func (m *TableMetadata) PopulateStats(stats *TableStats) {
+	m.stats = *stats
+	oldStatsValid := m.statsValid.Swap(true)
+	if invariants.Enabled && oldStatsValid {
+		panic("stats set twice")
+	}
 }
 
 // ExtendPointKeyBounds attempts to extend the lower and upper point key bounds
