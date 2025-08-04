@@ -982,6 +982,8 @@ point-deletions-bytes-estimate: 3942
 range-deletions-bytes-estimate: 0
 compression: None:36,Snappy:73/84
 
+# Use a small block-size so that excising the table results in virtual tables
+# which cover significantly fewer blocks.
 define format-major-version=25 block-size=100 value-separation=off
 ----
 
@@ -1027,6 +1029,8 @@ L6:
   000006:[c1#16,SET-c1#16,SET]
   000008(000005):[e#14,SET-e#14,SET]
 
+# These excised pieces should show a fraction of the compression stat sizes
+# compared to the original table.
 wait-pending-table-stats
 000007
 ----
@@ -1035,7 +1039,7 @@ num-deletions: 0
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
-compression: None:20986
+compression: None:4060
 
 wait-pending-table-stats
 000008
@@ -1045,4 +1049,4 @@ num-deletions: 0
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
-compression: None:20986
+compression: None:4060
