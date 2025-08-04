@@ -38,6 +38,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 328899
+compression: None:79
 
 scores
 ----
@@ -94,6 +95,7 @@ num-deletions: 5
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 163850
 range-deletions-bytes-estimate: 0
+compression: None:128
 
 scores
 ----
@@ -147,6 +149,7 @@ num-deletions: 5
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 163860
 range-deletions-bytes-estimate: 0
+compression: None:129
 
 maybe-compact
 ----

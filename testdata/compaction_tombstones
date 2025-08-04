@@ -16,6 +16,7 @@ num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+compression: None:85
 
 maybe-compact
 ----
@@ -38,6 +39,7 @@ num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+compression: None:85
 
 maybe-compact
 ----
@@ -59,6 +61,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+compression: None:87,Snappy:76/87
 
 maybe-compact
 ----
@@ -82,6 +85,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 2
 range-deletions-bytes-estimate: 0
+compression: None:124
 
 maybe-compact
 ----
@@ -121,6 +125,7 @@ num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 2
 range-deletions-bytes-estimate: 101
+compression: None:87,Snappy:96/129
 
 maybe-compact
 ----
@@ -154,6 +159,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 2
 range-deletions-bytes-estimate: 0
+compression: None:36,Snappy:131/169
 
 close-snapshot
 15
@@ -198,6 +204,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 16824
+compression: None:16929
 
 # Because we set max bytes low, maybe-compact will trigger an automatic
 # compaction in preference over an elision-only compaction.
@@ -235,6 +242,7 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 6150
 range-deletions-bytes-estimate: 0
+compression: None:128
 
 # By plain file size, 000005 should be picked because it is larger and
 # overlaps the same amount of data in L6. However, 000004 has a high
@@ -269,6 +277,7 @@ num-deletions: 0
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+compression: None:79
 
 wait-pending-table-stats
 000005
@@ -278,6 +287,7 @@ num-deletions: 0
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+compression: None:83
 
 wait-pending-table-stats
 000006
@@ -287,6 +297,7 @@ num-deletions: 0
 num-range-key-sets: 1
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
+compression: None:83
 
 maybe-compact
 ----
@@ -320,6 +331,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 94
+compression: None:227
 
 maybe-compact
 ----
@@ -361,6 +373,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 2459
 range-deletions-bytes-estimate: 0
+compression: None:120
 
 wait-pending-table-stats
 000005
@@ -370,6 +383,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 8380
+compression: None:87,Snappy:73/84
 
 # With multiple compactions, there is non-determinism in the output table
 # numbers, so the test overwrites them to 0.
@@ -407,6 +421,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 2459
 range-deletions-bytes-estimate: 0
+compression: None:120
 
 wait-pending-table-stats
 000005
@@ -416,6 +431,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 8380
+compression: None:87,Snappy:73/84
 
 # With multiple compactions, there is non-determinism in the output table
 # numbers, so the test overwrites them to 0.
@@ -478,6 +494,7 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 7
 range-deletions-bytes-estimate: 0
+compression: None:36,Snappy:95/108
 
 # Force a high tombstone density ratio to trigger the compaction
 # In a real scenario, this would be calculated based on the actual
@@ -491,6 +508,7 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 7
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
+compression: None:36,Snappy:95/108
 
 # Now the compaction should be triggered with tombstone-density type
 # since the file has a high tombstone density. The compaction log
@@ -540,6 +558,7 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 7
 range-deletions-bytes-estimate: 0
+compression: None:36,Snappy:95/108
 
 # Force a high tombstone density ratio to trigger the compaction
 wait-pending-table-stats force-tombstone-density-ratio=0.9
@@ -551,6 +570,7 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 7
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
+compression: None:36,Snappy:95/108
 
 # A regular tombstone density compaction should be triggered (not a move optimization)
 # because there are overlapping files in L5 that prevent the optimization
@@ -599,6 +619,7 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 857149
 range-deletions-bytes-estimate: 0
+compression: None:36,Snappy:95/108
 
 # Force a high tombstone density ratio to trigger the compaction
 wait-pending-table-stats force-tombstone-density-ratio=0.9
@@ -610,6 +631,7 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 857149
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
+compression: None:36,Snappy:95/108
 
 # No compaction is triggered because the overlapping bytes in L6 exceed MaxOverlapBytes.
 # Pebble avoids triggering a compaction in this case to prevent excessive overlap in the

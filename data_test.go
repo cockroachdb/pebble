@@ -1253,6 +1253,10 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 				fmt.Fprintf(&b, "tombstone-dense-blocks-ratio: %0.1f\n", f.Stats.TombstoneDenseBlocksRatio)
 			}
 
+			if !f.Stats.CompressionStats.IsEmpty() {
+				fmt.Fprintf(&b, "compression: %s\n", f.Stats.CompressionStats.String())
+			}
+
 			return b.String()
 		}
 	}
@@ -1801,30 +1805,34 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				opts.TargetFileSizes[i] = opts.TargetFileSizes[i-1] * 2
 			}
 		case "value-separation":
-			if len(cmdArg.Vals) != 5 {
-				return errors.New("value-separation expects 5 arguments: (enabled, minimum-size, max-blob-reference-depth, rewrite-minimum-age, target-garbage-ratio)")
-			}
 			var policy ValueSeparationPolicy
-			var err error
-			policy.Enabled, err = strconv.ParseBool(cmdArg.Vals[0])
-			if err != nil {
-				return err
-			}
-			policy.MinimumSize, err = strconv.Atoi(cmdArg.Vals[1])
-			if err != nil {
-				return err
-			}
-			policy.MaxBlobReferenceDepth, err = strconv.Atoi(cmdArg.Vals[2])
-			if err != nil {
-				return err
-			}
-			policy.RewriteMinimumAge, err = time.ParseDuration(cmdArg.Vals[3])
-			if err != nil {
-				return err
-			}
-			policy.TargetGarbageRatio, err = strconv.ParseFloat(cmdArg.Vals[4], 64)
-			if err != nil {
-				return err
+			if len(cmdArg.Vals) == 1 && cmdArg.Vals[0] == "off" || cmdArg.Vals[0] == "disabled" {
+				policy.Enabled = false
+			} else {
+				if len(cmdArg.Vals) != 5 {
+					return errors.New("value-separation expects 5 arguments: (enabled, minimum-size, max-blob-reference-depth, rewrite-minimum-age, target-garbage-ratio)")
+				}
+				var err error
+				policy.Enabled, err = strconv.ParseBool(cmdArg.Vals[0])
+				if err != nil {
+					return err
+				}
+				policy.MinimumSize, err = strconv.Atoi(cmdArg.Vals[1])
+				if err != nil {
+					return err
+				}
+				policy.MaxBlobReferenceDepth, err = strconv.Atoi(cmdArg.Vals[2])
+				if err != nil {
+					return err
+				}
+				policy.RewriteMinimumAge, err = time.ParseDuration(cmdArg.Vals[3])
+				if err != nil {
+					return err
+				}
+				policy.TargetGarbageRatio, err = strconv.ParseFloat(cmdArg.Vals[4], 64)
+				if err != nil {
+					return err
+				}
 			}
 			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 				return policy
