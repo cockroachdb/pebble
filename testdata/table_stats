@@ -980,3 +980,69 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 3942
 range-deletions-bytes-estimate: 0
+compression: None:36,Snappy:73/84
+
+define format-major-version=25 block-size=100 value-separation=off
+----
+
+batch
+set a <rand-bytes=4096>
+set b <rand-bytes=4096>
+set c <rand-bytes=4096>
+set d <rand-bytes=4096>
+set e <rand-bytes=4096>
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-e#14,SET]
+
+compact a-c
+----
+L6:
+  000005:[a#10,SET-e#14,SET]
+
+wait-pending-table-stats
+000005
+----
+num-entries: 5
+num-deletions: 0
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+compression: None:20986
+
+build dummy
+set c1 c1
+----
+
+ingest-and-excise dummy excise=b-e
+----
+
+lsm
+----
+L6:
+  000007(000005):[a#10,SET-a#10,SET]
+  000006:[c1#16,SET-c1#16,SET]
+  000008(000005):[e#14,SET-e#14,SET]
+
+wait-pending-table-stats
+000007
+----
+num-entries: 1
+num-deletions: 0
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+compression: None:20986
+
+wait-pending-table-stats
+000008
+----
+num-entries: 1
+num-deletions: 0
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 0
+compression: None:20986
