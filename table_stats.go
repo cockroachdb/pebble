@@ -330,7 +330,7 @@ func (d *DB) loadTableStats(
 					panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", loadedProps.CompressionStats, meta.TableNum, err))
 				}
 				if meta.Virtual {
-					meta.Stats.CompressionStats.Scale(meta.Size, meta.TableBacking.Size)
+					stats.CompressionStats.Scale(meta.Size, meta.TableBacking.Size)
 				}
 			}
 
