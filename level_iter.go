@@ -191,49 +191,62 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *manifest.TableMetadata, 
 	// lazily because range keys are intended to be rare, and
 	// constructing the range-key iterator substantially adds to the
 	// cost of iterator construction and seeking.
-	//
+	if file == nil || !file.HasRangeKeys {
+		return
+	}
+
 	// If l.combinedIterState.initialized is already true, either the
 	// iterator is already using combined iteration or the iterator is not
 	// configured to observe range keys. Either way, there's nothing to do.
-	// If false, trigger the switch to combined iteration, using the the
+	// If false, trigger the switch to combined iteration, using the
 	// file's bounds to seek the range-key iterator appropriately.
+	if l.combinedIterState == nil || l.combinedIterState.initialized {
+		return
+	}
+
+	if l.upper != nil && l.cmp(file.RangeKeyBounds.SmallestUserKey(), l.upper) >= 0 {
+		// Range key bounds are above the upper iteration bound.
+		return
+	}
+	if l.lower != nil && l.cmp(file.RangeKeyBounds.LargestUserKey(), l.lower) <= 0 {
+		// Range key bounds are below the lower iteration bound.
+		return
+	}
+	if stats, ok := file.Stats(); ok && stats.NumRangeKeySets == 0 {
+		// We only need to trigger combined iteration if the file contains
+		// RangeKeySets: if there are only Unsets and Dels, the user will observe no
+		// range keys regardless. If this file has table stats available, they'll
+		// tell us whether the file has any RangeKeySets. Otherwise, we must
+		// fallback to assuming it does (given that HasRangeKeys=true).
+		return
+	}
+
+	// The file contains range keys, and we're not using combined iteration yet.
+	// Trigger a switch to combined iteration. It's possible that a switch has
+	// already been triggered if multiple levels encounter files containing
+	// range keys while executing a single mergingIter operation. In this case,
+	// we need to compare the existing key recorded to l.combinedIterState.key,
+	// adjusting it if our key is smaller (forward iteration) or larger
+	// (backward iteration) than the existing key.
 	//
-	// We only need to trigger combined iteration if the file contains
-	// RangeKeySets: if there are only Unsets and Dels, the user will observe no
-	// range keys regardless. If this file has table stats available, they'll
-	// tell us whether the file has any RangeKeySets. Otherwise, we must
-	// fallback to assuming it does if HasRangeKeys=true.
-	if file != nil && file.HasRangeKeys && l.combinedIterState != nil && !l.combinedIterState.initialized &&
-		(l.upper == nil || l.cmp(file.RangeKeyBounds.SmallestUserKey(), l.upper) < 0) &&
-		(l.lower == nil || l.cmp(file.RangeKeyBounds.LargestUserKey(), l.lower) > 0) &&
-		(!file.StatsValid() || file.Stats.NumRangeKeySets > 0) {
-		// The file contains range keys, and we're not using combined iteration yet.
-		// Trigger a switch to combined iteration. It's possible that a switch has
-		// already been triggered if multiple levels encounter files containing
-		// range keys while executing a single mergingIter operation. In this case,
-		// we need to compare the existing key recorded to l.combinedIterState.key,
-		// adjusting it if our key is smaller (forward iteration) or larger
-		// (backward iteration) than the existing key.
-		//
-		// These key comparisons are only required during a single high-level
-		// iterator operation. When the high-level iter op completes,
-		// iinitialized will be true, and future calls to this function will be
-		// no-ops.
-		switch dir {
-		case +1:
-			if !l.combinedIterState.triggered {
-				l.combinedIterState.triggered = true
-				l.combinedIterState.key = file.RangeKeyBounds.SmallestUserKey()
-			} else if l.cmp(l.combinedIterState.key, file.RangeKeyBounds.SmallestUserKey()) > 0 {
-				l.combinedIterState.key = file.RangeKeyBounds.SmallestUserKey()
-			}
-		case -1:
-			if !l.combinedIterState.triggered {
-				l.combinedIterState.triggered = true
-				l.combinedIterState.key = file.RangeKeyBounds.LargestUserKey()
-			} else if l.cmp(l.combinedIterState.key, file.RangeKeyBounds.LargestUserKey()) < 0 {
-				l.combinedIterState.key = file.RangeKeyBounds.LargestUserKey()
-			}
+	// These key comparisons are only required during a single high-level
+	// iterator operation. When the high-level iter op completes,
+	// iinitialized will be true, and future calls to this function will be
+	// no-ops.
+	switch dir {
+	case +1:
+		if !l.combinedIterState.triggered {
+			l.combinedIterState.triggered = true
+			l.combinedIterState.key = file.RangeKeyBounds.SmallestUserKey()
+		} else if l.cmp(l.combinedIterState.key, file.RangeKeyBounds.SmallestUserKey()) > 0 {
+			l.combinedIterState.key = file.RangeKeyBounds.SmallestUserKey()
+		}
+	case -1:
+		if !l.combinedIterState.triggered {
+			l.combinedIterState.triggered = true
+			l.combinedIterState.key = file.RangeKeyBounds.LargestUserKey()
+		} else if l.cmp(l.combinedIterState.key, file.RangeKeyBounds.LargestUserKey()) < 0 {
+			l.combinedIterState.key = file.RangeKeyBounds.LargestUserKey()
 		}
 	}
 }

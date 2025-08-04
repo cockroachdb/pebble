@@ -701,7 +701,10 @@ func (c *candidateLevelInfo) shouldCompact() bool {
 }
 
 func tableTombstoneCompensation(t *manifest.TableMetadata) uint64 {
-	return t.Stats.PointDeletionsBytesEstimate + t.Stats.RangeDeletionsBytesEstimate
+	if stats, ok := t.Stats(); ok {
+		return stats.PointDeletionsBytesEstimate + stats.RangeDeletionsBytesEstimate
+	}
+	return 0
 }
 
 // tableCompensatedSize returns t's size, including an estimate of the physical
@@ -1199,7 +1202,9 @@ func pickCompactionSeedFile(
 			// out of the overlapping bytes helps prioritize these compactions
 			// that are cheaper than their file sizes suggest.
 			if outputLevel == numLevels-1 && outputFile.LargestSeqNum < earliestSnapshotSeqNum {
-				overlappingBytes -= outputFile.Stats.RangeDeletionsBytesEstimate
+				if stats, ok := outputFile.Stats(); ok {
+					overlappingBytes -= stats.RangeDeletionsBytesEstimate
+				}
 			}
 
 			// If the file in the next level extends beyond f's largest key,
@@ -1550,7 +1555,8 @@ var elisionOnlyAnnotator = &manifest.Annotator[manifest.TableMetadata]{
 			if f.IsCompacting() {
 				return false, true
 			}
-			if !f.StatsValid() {
+			stats, statsValid := f.Stats()
+			if !statsValid {
 				return false, false
 			}
 			// Bottommost files are large and not worthwhile to compact just
@@ -1567,7 +1573,7 @@ var elisionOnlyAnnotator = &manifest.Annotator[manifest.TableMetadata]{
 			// `NumEntries` and `RangeDeletionsBytesEstimate` are both zero) are excluded
 			// from elision-only compactions.
 			// TODO(travers): Consider an alternative heuristic for elision of range-keys.
-			return f.Stats.RangeDeletionsBytesEstimate*10 >= f.Size || f.Stats.NumDeletions*10 > f.Stats.NumEntries, true
+			return stats.RangeDeletionsBytesEstimate*10 >= f.Size || stats.NumDeletions*10 > stats.NumEntries, true
 		},
 		Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
 			return f1.LargestSeqNum < f2.LargestSeqNum
@@ -1733,6 +1739,7 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 	}
 
 	var candidate *manifest.TableMetadata
+	var candidateTombstoneDenseBlocksRatio float64
 	var level int
 	// If a candidate file has a very high overlapping ratio, point tombstones
 	// in it are likely sparse in keyspace even if the sstable itself is tombstone
@@ -1747,18 +1754,20 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 	for l := numLevels - 2; l >= 0; l-- {
 		iter := p.vers.Levels[l].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			if f.IsCompacting() || !f.StatsValid() || f.Size == 0 {
+			if f.IsCompacting() || f.Size == 0 {
 				continue
 			}
-			if f.Stats.TombstoneDenseBlocksRatio < p.opts.Experimental.TombstoneDenseCompactionThreshold {
+			stats, statsValid := f.Stats()
+			if !statsValid || stats.TombstoneDenseBlocksRatio < p.opts.Experimental.TombstoneDenseCompactionThreshold {
 				continue
 			}
 			overlaps := p.vers.Overlaps(lastNonEmptyLevel, f.UserKeyBounds())
 			if float64(overlaps.AggregateSizeSum())/float64(f.Size) > maxOverlappingRatio {
 				continue
 			}
-			if candidate == nil || candidate.Stats.TombstoneDenseBlocksRatio < f.Stats.TombstoneDenseBlocksRatio {
+			if candidate == nil || candidateTombstoneDenseBlocksRatio < stats.TombstoneDenseBlocksRatio {
 				candidate = f
+				candidateTombstoneDenseBlocksRatio = stats.TombstoneDenseBlocksRatio
 				level = l
 			}
 		}

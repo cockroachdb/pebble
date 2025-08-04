@@ -2810,9 +2810,11 @@ func (d *DB) runCopyCompaction(
 		SmallestSeqNum:           inputMeta.SmallestSeqNum,
 		LargestSeqNum:            inputMeta.LargestSeqNum,
 		LargestSeqNumAbsolute:    inputMeta.LargestSeqNumAbsolute,
-		Stats:                    inputMeta.Stats,
 		Virtual:                  inputMeta.Virtual,
 		SyntheticPrefixAndSuffix: inputMeta.SyntheticPrefixAndSuffix,
+	}
+	if inputStats, ok := inputMeta.Stats(); ok {
+		newMeta.PopulateStats(inputStats)
 	}
 	if inputMeta.HasPointKeys {
 		newMeta.ExtendPointKeyBounds(c.comparer.Compare,

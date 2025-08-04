@@ -1233,28 +1233,33 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 				continue
 			}
 
-			if !f.StatsValid() {
+			stats, statsValid := f.Stats()
+			if !statsValid {
 				d.waitTableStats()
+				stats, statsValid = f.Stats()
+				if !statsValid {
+					panic("stats not valid after waitTableStats")
+				}
 			}
 
 			var b bytes.Buffer
-			fmt.Fprintf(&b, "num-entries: %d\n", f.Stats.NumEntries)
-			fmt.Fprintf(&b, "num-deletions: %d\n", f.Stats.NumDeletions)
-			fmt.Fprintf(&b, "num-range-key-sets: %d\n", f.Stats.NumRangeKeySets)
-			fmt.Fprintf(&b, "point-deletions-bytes-estimate: %d\n", f.Stats.PointDeletionsBytesEstimate)
-			fmt.Fprintf(&b, "range-deletions-bytes-estimate: %d\n", f.Stats.RangeDeletionsBytesEstimate)
+			fmt.Fprintf(&b, "num-entries: %d\n", stats.NumEntries)
+			fmt.Fprintf(&b, "num-deletions: %d\n", stats.NumDeletions)
+			fmt.Fprintf(&b, "num-range-key-sets: %d\n", stats.NumRangeKeySets)
+			fmt.Fprintf(&b, "point-deletions-bytes-estimate: %d\n", stats.PointDeletionsBytesEstimate)
+			fmt.Fprintf(&b, "range-deletions-bytes-estimate: %d\n", stats.RangeDeletionsBytesEstimate)
 
 			// If requested, override the tombstone density ratio for testing
 			if forceTombstoneDensityRatio >= 0 {
-				f.Stats.TombstoneDenseBlocksRatio = forceTombstoneDensityRatio
+				stats.TombstoneDenseBlocksRatio = forceTombstoneDensityRatio
 			}
 			// Only include the tombstone-dense-blocks-ratio if it was forced or is non-zero
-			if forceTombstoneDensityRatio >= 0 || f.Stats.TombstoneDenseBlocksRatio > 0 {
-				fmt.Fprintf(&b, "tombstone-dense-blocks-ratio: %0.1f\n", f.Stats.TombstoneDenseBlocksRatio)
+			if forceTombstoneDensityRatio >= 0 || stats.TombstoneDenseBlocksRatio > 0 {
+				fmt.Fprintf(&b, "tombstone-dense-blocks-ratio: %0.1f\n", stats.TombstoneDenseBlocksRatio)
 			}
 
-			if !f.Stats.CompressionStats.IsEmpty() {
-				fmt.Fprintf(&b, "compression: %s\n", f.Stats.CompressionStats.String())
+			if !stats.CompressionStats.IsEmpty() {
+				fmt.Fprintf(&b, "compression: %s\n", stats.CompressionStats.String())
 			}
 
 			return b.String()

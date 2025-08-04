@@ -72,7 +72,6 @@ func loadVersion(
 				}
 			}
 
-			var lastFile *manifest.TableMetadata
 			for i := uint64(1); sizes[level] < int64(size); i++ {
 				var key InternalKey
 				if level == 0 {
@@ -81,19 +80,15 @@ func loadVersion(
 				} else {
 					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), base.SeqNum(i), InternalKeyKindSet)
 				}
-				m := (&manifest.TableMetadata{
+				m := &manifest.TableMetadata{
 					TableNum:              base.TableNum(uint64(level)*100_000 + i),
 					SmallestSeqNum:        key.SeqNum(),
 					LargestSeqNum:         key.SeqNum(),
 					LargestSeqNumAbsolute: key.SeqNum(),
 					Size:                  1,
-					Stats: manifest.TableStats{
-						RangeDeletionsBytesEstimate: 0,
-					},
-				}).ExtendPointKeyBounds(opts.Comparer.Compare, key, key)
+				}
+				m.ExtendPointKeyBounds(opts.Comparer.Compare, key, key)
 				m.InitPhysicalBacking()
-				m.StatsMarkValid()
-				lastFile = m
 				if size >= 100 {
 					// If the requested size of the level is very large only add a single
 					// file in order to avoid massive blow-up in the number of files in
@@ -108,12 +103,13 @@ func loadVersion(
 						m.ExtendPointKeyBounds(opts.Comparer.Compare, key, endKey)
 					}
 				}
+				if compensation > 0 {
+					m.PopulateStats(&manifest.TableStats{
+						RangeDeletionsBytesEstimate: compensation,
+					})
+				}
 				files[level] = append(files[level], m)
 				sizes[level] += int64(m.Size)
-			}
-			// Let all the compensation be due to the last file.
-			if lastFile != nil && compensation > 0 {
-				lastFile.Stats.RangeDeletionsBytesEstimate = compensation
 			}
 		}
 	}
@@ -139,10 +135,11 @@ func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetad
 	if len(parts) != 2 {
 		return nil, errors.Errorf("malformed table spec: %s. usage: <optional-file-num>:start.SET.1-end.SET.2", s)
 	}
-	m := (&manifest.TableMetadata{
+	m := &manifest.TableMetadata{
 		TableNum: tableNum,
 		Size:     1028,
-	}).ExtendPointKeyBounds(
+	}
+	m.ExtendPointKeyBounds(
 		opts.Comparer.Compare,
 		base.ParseInternalKey(strings.TrimSpace(parts[0])),
 		base.ParseInternalKey(strings.TrimSpace(parts[1])),
@@ -160,9 +157,10 @@ func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetad
 			if err != nil {
 				return nil, err
 			}
-			m.Stats.RangeDeletionsBytesEstimate = uint64(v)
-			m.Stats.NumDeletions = 1 // At least one range del responsible for the deletion bytes.
-			m.StatsMarkValid()
+			m.PopulateStats(&manifest.TableStats{
+				RangeDeletionsBytesEstimate: uint64(v),
+				NumDeletions:                1, // At least one range del responsible for the deletion bytes.
+			})
 		}
 	}
 	m.SmallestSeqNum = m.Smallest().SeqNum()
@@ -1306,8 +1304,10 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			f := &manifest.TableMetadata{Size: tc.size}
 			f.InitPhysicalBacking()
-			f.Stats.PointDeletionsBytesEstimate = tc.pointDelEstimateBytes
-			f.Stats.RangeDeletionsBytesEstimate = tc.rangeDelEstimateBytes
+			f.PopulateStats(&manifest.TableStats{
+				PointDeletionsBytesEstimate: tc.pointDelEstimateBytes,
+				RangeDeletionsBytesEstimate: tc.rangeDelEstimateBytes,
+			})
 			gotBytes := tableCompensatedSize(f)
 			require.Equal(t, tc.wantBytes, gotBytes)
 		})
