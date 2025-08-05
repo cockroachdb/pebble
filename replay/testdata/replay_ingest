@@ -6,9 +6,9 @@ tree
           /
             build/
       36      000002.log
-     765      000005.sst
-     765      000007.sst
-     759      000009.sst
+     661      000005.sst
+     661      000007.sst
+     655      000009.sst
        0      LOCK
      172      MANIFEST-000001
      209      MANIFEST-000008
@@ -16,14 +16,14 @@ tree
        0      marker.format-version.000012.025
        0      marker.manifest.000002.MANIFEST-000008
             simple_ingest/
-     765      000007.sst
-     759      000009.sst
+     661      000007.sst
+     655      000009.sst
      172      MANIFEST-000001
      209      MANIFEST-000008
               checkpoint/
       25        000002.log
-     782        000004.sst
-     765        000005.sst
+     678        000004.sst
+     661        000005.sst
      172        MANIFEST-000001
     2800        OPTIONS-000003
        0        marker.format-version.000001.025
@@ -158,7 +158,7 @@ replay simple_ingest unpaced
 
 wait
 ----
-replayed 1.5KB in writes
+replayed 1.3KB in writes
 
 scan-keys
 ----

@@ -43,14 +43,14 @@ set a(p,1000000)rove
 flush verbose
 ----
 L0.0:
-  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] seqnums:[10-13] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] size:563939
-  000006:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] seqnums:[14-17] points:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] size:563957
-  000007:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] seqnums:[18-23] points:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] size:563948
-  000008:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] seqnums:[21-25] points:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] size:563942
-  000009:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] seqnums:[26-29] points:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] size:563939
-  000010:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] seqnums:[30-33] points:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] size:563954
-  000011:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] seqnums:[34-37] points:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] size:563957
-  000012:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] seqnums:[38-38] points:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] size:94435
+  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] seqnums:[10-13] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] size:563833
+  000006:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] seqnums:[14-17] points:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] size:563851
+  000007:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] seqnums:[18-23] points:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] size:563842
+  000008:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] seqnums:[21-25] points:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] size:563836
+  000009:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] seqnums:[26-29] points:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] size:563833
+  000010:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] seqnums:[30-33] points:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] size:563848
+  000011:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] seqnums:[34-37] points:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] size:563851
+  000012:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] seqnums:[38-38] points:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] size:94329
 
 layout filename=000005.sst
 ----
@@ -64,9 +64,9 @@ sstable
  ├── index  offset: 281692  length: 46942
  ├── index  offset: 328639  length: 46945
  ├── top-index  offset: 375589  length: 187759
- ├── properties  offset: 563353  length: 489
- ├── meta-index  offset: 563847  length: 34
- └── footer  offset: 563886  length: 53
+ ├── properties  offset: 563353  length: 383
+ ├── meta-index  offset: 563741  length: 34
+ └── footer  offset: 563780  length: 53
 
 properties file=000005
 raw.key.size
@@ -96,18 +96,18 @@ del-range a(p,1000000)rovals a(p,1000000)rove
 flush verbose
 ----
 L0.1:
-  000015:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)lauding#inf,RANGEDEL] seqnums:[39-41] points:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)lauding#inf,RANGEDEL] size:6000726
-  000016:[a(p,1000000)le#42,RANGEDEL-a(p,1000000)lying#inf,RANGEDEL] seqnums:[42-44] points:[a(p,1000000)le#42,RANGEDEL-a(p,1000000)lying#inf,RANGEDEL] size:6000732
-  000017:[a(p,1000000)raisals#45,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] seqnums:[45-47] points:[a(p,1000000)raisals#45,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] size:6000726
+  000015:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)lauding#inf,RANGEDEL] seqnums:[39-41] points:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)lauding#inf,RANGEDEL] size:6000620
+  000016:[a(p,1000000)le#42,RANGEDEL-a(p,1000000)lying#inf,RANGEDEL] seqnums:[42-44] points:[a(p,1000000)le#42,RANGEDEL-a(p,1000000)lying#inf,RANGEDEL] size:6000626
+  000017:[a(p,1000000)raisals#45,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] seqnums:[45-47] points:[a(p,1000000)raisals#45,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] size:6000620
 L0.0:
-  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] seqnums:[10-13] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] size:563939
-  000006:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] seqnums:[14-17] points:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] size:563957
-  000007:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] seqnums:[18-23] points:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] size:563948
-  000008:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] seqnums:[21-25] points:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] size:563942
-  000009:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] seqnums:[26-29] points:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] size:563939
-  000010:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] seqnums:[30-33] points:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] size:563954
-  000011:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] seqnums:[34-37] points:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] size:563957
-  000012:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] seqnums:[38-38] points:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] size:94435
+  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] seqnums:[10-13] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)e(l,2)ate#13,SET] size:563833
+  000006:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] seqnums:[14-17] points:[a(p,1000000)endectomy#14,SET-a(p,1000000)laude#17,SET] size:563851
+  000007:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] seqnums:[18-23] points:[a(p,1000000)lauding#18,SET-a(p,1000000)les#20,SET] size:563842
+  000008:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] seqnums:[21-25] points:[a(p,1000000)letini#21,SET-a(p,1000000)ly#25,SET] size:563836
+  000009:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] seqnums:[26-29] points:[a(p,1000000)lying#26,SET-a(p,1000000)raisals#29,SET] size:563833
+  000010:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] seqnums:[30-33] points:[a(p,1000000)raiser#30,SET-a(p,1000000)rentice#33,SET] size:563848
+  000011:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] seqnums:[34-37] points:[a(p,1000000)rentices#34,SET-a(p,1000000)rovals#37,SET] size:563851
+  000012:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] seqnums:[38-38] points:[a(p,1000000)rove#38,SET-a(p,1000000)rove#38,SET] size:94329
 
 layout filename=000015.sst
 ----
@@ -115,9 +115,9 @@ sstable
  ├── data  offset: 0  length: 8
  ├── index  offset: 13  length: 24
  ├── range-del  offset: 42  length: 6000104
- ├── properties  offset: 6000151  length: 447
- ├── meta-index  offset: 6000603  length: 65
- └── footer  offset: 6000673  length: 53
+ ├── properties  offset: 6000151  length: 341
+ ├── meta-index  offset: 6000497  length: 65
+ └── footer  offset: 6000567  length: 53
 
 properties file=000008
 rocksdb.raw
@@ -168,16 +168,16 @@ set a(p,1000000)rove
 flush verbose
 ----
 L0.0:
-  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)eal#12,SET] seqnums:[10-12] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)eal#12,SET] size:423430
-  000006:[a(p,1000000)e(l,2)ate#13,SET-a(p,1000000)etizers#15,SET] seqnums:[13-15] points:[a(p,1000000)e(l,2)ate#13,SET-a(p,1000000)etizers#15,SET] size:423451
-  000007:[a(p,1000000)etizing#16,SET-a(p,1000000)lauding#18,SET] seqnums:[16-18] points:[a(p,1000000)etizing#16,SET-a(p,1000000)lauding#18,SET] size:423436
-  000008:[a(p,1000000)le#19,SET-a(p,1000000)les#20,SET] seqnums:[19-23] points:[a(p,1000000)le#19,SET-a(p,1000000)les#20,SET] size:423440
-  000009:[a(p,1000000)letini#21,SET-a(p,1000000)lication#24,SET] seqnums:[21-24] points:[a(p,1000000)letini#21,SET-a(p,1000000)lication#24,SET] size:423451
-  000010:[a(p,1000000)ly#25,SET-a(p,1000000)o(l,2)o#27,SET] seqnums:[25-27] points:[a(p,1000000)ly#25,SET-a(p,1000000)o(l,2)o#27,SET] size:423416
-  000011:[a(p,1000000)raisal#28,SET-a(p,1000000)raiser#30,SET] seqnums:[28-30] points:[a(p,1000000)raisal#28,SET-a(p,1000000)raiser#30,SET] size:423436
-  000012:[a(p,1000000)raisers#31,SET-a(p,1000000)rentice#33,SET] seqnums:[31-33] points:[a(p,1000000)raisers#31,SET-a(p,1000000)rentice#33,SET] size:423442
-  000013:[a(p,1000000)rentices#34,SET-a(p,1000000)roval#36,SET] seqnums:[34-36] points:[a(p,1000000)rentices#34,SET-a(p,1000000)roval#36,SET] size:423449
-  000014:[a(p,1000000)rovals#37,SET-a(p,1000000)rove#38,SET] seqnums:[37-38] points:[a(p,1000000)rovals#37,SET-a(p,1000000)rove#38,SET] size:282526
+  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)eal#12,SET] seqnums:[10-12] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)eal#12,SET] size:423324
+  000006:[a(p,1000000)e(l,2)ate#13,SET-a(p,1000000)etizers#15,SET] seqnums:[13-15] points:[a(p,1000000)e(l,2)ate#13,SET-a(p,1000000)etizers#15,SET] size:423345
+  000007:[a(p,1000000)etizing#16,SET-a(p,1000000)lauding#18,SET] seqnums:[16-18] points:[a(p,1000000)etizing#16,SET-a(p,1000000)lauding#18,SET] size:423330
+  000008:[a(p,1000000)le#19,SET-a(p,1000000)les#20,SET] seqnums:[19-23] points:[a(p,1000000)le#19,SET-a(p,1000000)les#20,SET] size:423334
+  000009:[a(p,1000000)letini#21,SET-a(p,1000000)lication#24,SET] seqnums:[21-24] points:[a(p,1000000)letini#21,SET-a(p,1000000)lication#24,SET] size:423345
+  000010:[a(p,1000000)ly#25,SET-a(p,1000000)o(l,2)o#27,SET] seqnums:[25-27] points:[a(p,1000000)ly#25,SET-a(p,1000000)o(l,2)o#27,SET] size:423310
+  000011:[a(p,1000000)raisal#28,SET-a(p,1000000)raiser#30,SET] seqnums:[28-30] points:[a(p,1000000)raisal#28,SET-a(p,1000000)raiser#30,SET] size:423330
+  000012:[a(p,1000000)raisers#31,SET-a(p,1000000)rentice#33,SET] seqnums:[31-33] points:[a(p,1000000)raisers#31,SET-a(p,1000000)rentice#33,SET] size:423336
+  000013:[a(p,1000000)rentices#34,SET-a(p,1000000)roval#36,SET] seqnums:[34-36] points:[a(p,1000000)rentices#34,SET-a(p,1000000)roval#36,SET] size:423343
+  000014:[a(p,1000000)rovals#37,SET-a(p,1000000)rove#38,SET] seqnums:[37-38] points:[a(p,1000000)rovals#37,SET-a(p,1000000)rove#38,SET] size:282420
 
 layout filename=000006.sst
 ----
@@ -189,9 +189,9 @@ sstable
  ├── index  offset: 187971  length: 46971
  ├── index  offset: 234947  length: 46973
  ├── top-index  offset: 281925  length: 140828
- ├── properties  offset: 422758  length: 596
- ├── meta-index  offset: 423359  length: 34
- └── footer  offset: 423398  length: 53
+ ├── properties  offset: 422758  length: 490
+ ├── meta-index  offset: 423253  length: 34
+ └── footer  offset: 423292  length: 53
 
 properties file=000006
 raw.key.size
@@ -221,29 +221,29 @@ del-range a(p,1000000)rovals a(p,1000000)rove
 flush verbose
 ----
 L0.1:
-  000017:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)lauding#inf,RANGEDEL] seqnums:[39-41] points:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)lauding#inf,RANGEDEL] size:6000837
-  000018:[a(p,1000000)le#42,RANGEDEL-a(p,1000000)rentice#inf,RANGEDEL] seqnums:[42-45] points:[a(p,1000000)le#42,RANGEDEL-a(p,1000000)rentice#inf,RANGEDEL] size:7000851
-  000019:[a(p,1000000)rentices#46,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] seqnums:[46-47] points:[a(p,1000000)rentices#46,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] size:4000809
+  000017:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)lauding#inf,RANGEDEL] seqnums:[39-41] points:[a(p,1000000)arition#39,RANGEDEL-a(p,1000000)lauding#inf,RANGEDEL] size:6000731
+  000018:[a(p,1000000)le#42,RANGEDEL-a(p,1000000)rentice#inf,RANGEDEL] seqnums:[42-45] points:[a(p,1000000)le#42,RANGEDEL-a(p,1000000)rentice#inf,RANGEDEL] size:7000745
+  000019:[a(p,1000000)rentices#46,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] seqnums:[46-47] points:[a(p,1000000)rentices#46,RANGEDEL-a(p,1000000)rove#inf,RANGEDEL] size:4000703
 L0.0:
-  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)eal#12,SET] seqnums:[10-12] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)eal#12,SET] size:423430
-  000006:[a(p,1000000)e(l,2)ate#13,SET-a(p,1000000)etizers#15,SET] seqnums:[13-15] points:[a(p,1000000)e(l,2)ate#13,SET-a(p,1000000)etizers#15,SET] size:423451
-  000007:[a(p,1000000)etizing#16,SET-a(p,1000000)lauding#18,SET] seqnums:[16-18] points:[a(p,1000000)etizing#16,SET-a(p,1000000)lauding#18,SET] size:423436
-  000008:[a(p,1000000)le#19,SET-a(p,1000000)les#20,SET] seqnums:[19-23] points:[a(p,1000000)le#19,SET-a(p,1000000)les#20,SET] size:423440
-  000009:[a(p,1000000)letini#21,SET-a(p,1000000)lication#24,SET] seqnums:[21-24] points:[a(p,1000000)letini#21,SET-a(p,1000000)lication#24,SET] size:423451
-  000010:[a(p,1000000)ly#25,SET-a(p,1000000)o(l,2)o#27,SET] seqnums:[25-27] points:[a(p,1000000)ly#25,SET-a(p,1000000)o(l,2)o#27,SET] size:423416
-  000011:[a(p,1000000)raisal#28,SET-a(p,1000000)raiser#30,SET] seqnums:[28-30] points:[a(p,1000000)raisal#28,SET-a(p,1000000)raiser#30,SET] size:423436
-  000012:[a(p,1000000)raisers#31,SET-a(p,1000000)rentice#33,SET] seqnums:[31-33] points:[a(p,1000000)raisers#31,SET-a(p,1000000)rentice#33,SET] size:423442
-  000013:[a(p,1000000)rentices#34,SET-a(p,1000000)roval#36,SET] seqnums:[34-36] points:[a(p,1000000)rentices#34,SET-a(p,1000000)roval#36,SET] size:423449
-  000014:[a(p,1000000)rovals#37,SET-a(p,1000000)rove#38,SET] seqnums:[37-38] points:[a(p,1000000)rovals#37,SET-a(p,1000000)rove#38,SET] size:282526
+  000005:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)eal#12,SET] seqnums:[10-12] points:[a(p,1000000)a(l,2)ing#11,SET-a(p,1000000)eal#12,SET] size:423324
+  000006:[a(p,1000000)e(l,2)ate#13,SET-a(p,1000000)etizers#15,SET] seqnums:[13-15] points:[a(p,1000000)e(l,2)ate#13,SET-a(p,1000000)etizers#15,SET] size:423345
+  000007:[a(p,1000000)etizing#16,SET-a(p,1000000)lauding#18,SET] seqnums:[16-18] points:[a(p,1000000)etizing#16,SET-a(p,1000000)lauding#18,SET] size:423330
+  000008:[a(p,1000000)le#19,SET-a(p,1000000)les#20,SET] seqnums:[19-23] points:[a(p,1000000)le#19,SET-a(p,1000000)les#20,SET] size:423334
+  000009:[a(p,1000000)letini#21,SET-a(p,1000000)lication#24,SET] seqnums:[21-24] points:[a(p,1000000)letini#21,SET-a(p,1000000)lication#24,SET] size:423345
+  000010:[a(p,1000000)ly#25,SET-a(p,1000000)o(l,2)o#27,SET] seqnums:[25-27] points:[a(p,1000000)ly#25,SET-a(p,1000000)o(l,2)o#27,SET] size:423310
+  000011:[a(p,1000000)raisal#28,SET-a(p,1000000)raiser#30,SET] seqnums:[28-30] points:[a(p,1000000)raisal#28,SET-a(p,1000000)raiser#30,SET] size:423330
+  000012:[a(p,1000000)raisers#31,SET-a(p,1000000)rentice#33,SET] seqnums:[31-33] points:[a(p,1000000)raisers#31,SET-a(p,1000000)rentice#33,SET] size:423336
+  000013:[a(p,1000000)rentices#34,SET-a(p,1000000)roval#36,SET] seqnums:[34-36] points:[a(p,1000000)rentices#34,SET-a(p,1000000)roval#36,SET] size:423343
+  000014:[a(p,1000000)rovals#37,SET-a(p,1000000)rove#38,SET] seqnums:[37-38] points:[a(p,1000000)rovals#37,SET-a(p,1000000)rove#38,SET] size:282420
 
 layout filename=000017.sst
 ----
 sstable
  ├── index  offset: 0  length: 28
  ├── range-del  offset: 33  length: 6000129
- ├── properties  offset: 6000167  length: 542
- ├── meta-index  offset: 6000714  length: 65
- └── footer  offset: 6000784  length: 53
+ ├── properties  offset: 6000167  length: 436
+ ├── meta-index  offset: 6000608  length: 65
+ └── footer  offset: 6000678  length: 53
 
 properties file=000017
 rocksdb.raw

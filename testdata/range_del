@@ -1241,7 +1241,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 601
+range-deletions-bytes-estimate: 495
 
 wait-pending-table-stats
 000004
@@ -1250,7 +1250,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1202
+range-deletions-bytes-estimate: 990
 
 wait-pending-table-stats
 000005
@@ -1259,7 +1259,7 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1202
+range-deletions-bytes-estimate: 990
 
 
 # Range deletions with varying overlap.
@@ -1362,7 +1362,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 573
+range-deletions-bytes-estimate: 467
 
 wait-pending-table-stats
 000006
@@ -1371,7 +1371,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 562
+range-deletions-bytes-estimate: 456
 
 wait-pending-table-stats
 000004
@@ -1380,7 +1380,7 @@ num-entries: 2
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 1135
+range-deletions-bytes-estimate: 923
 
 define
 L1

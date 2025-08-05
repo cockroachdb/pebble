@@ -181,7 +181,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 560
+range-deletions-bytes-estimate: 454
 
 wait-pending-table-stats
 000012
@@ -190,7 +190,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 560
+range-deletions-bytes-estimate: 454
 
 # A table in L6 with two point keys blocks, each covered by distinct range dels.
 # The deletion estimate takes into account the contribution from both deleted
@@ -346,7 +346,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 706
+range-deletions-bytes-estimate: 600
 
 # Drop a range del and a range key del over the entire keyspace. This table can
 # delete everything underneath it.
@@ -588,7 +588,7 @@ L0.0:
 
 metadata-stats file=5
 ----
-size: 654
+size: 548
 
 # Just grab the physical sstable properties as these are used to construct the
 # virtual sstable properties.
@@ -604,7 +604,6 @@ rocksdb:
   rocksdb.num.range-deletions: 0
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
   rocksdb.comparator: pebble.internal.testkeys
   rocksdb.data.size: 53
   rocksdb.filter.size: 0
@@ -657,7 +656,6 @@ pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.data.blocks: 1
 rocksdb.compression: Snappy
-rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 
 properties file=8
 ----
@@ -668,7 +666,6 @@ pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.data.blocks: 1
 rocksdb.compression: Snappy
-rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 
 wait-pending-table-stats
 000007
@@ -718,7 +715,6 @@ rocksdb:
   rocksdb.num.range-deletions: 0
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
   rocksdb.comparator: pebble.internal.testkeys
   rocksdb.data.size: 47
   rocksdb.filter.size: 0
@@ -738,7 +734,7 @@ pebble:
 
 metadata-stats file=10
 ----
-size: 756
+size: 650
 
 build ext2
 set z z
@@ -776,7 +772,6 @@ rocksdb.raw.value.size: 1
 pebble.num.range-key-sets: 1
 rocksdb.num.data.blocks: 1
 rocksdb.compression: Snappy
-rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 
 properties file=13
 ----
@@ -786,7 +781,6 @@ rocksdb.raw.value.size: 1
 pebble.num.range-key-sets: 1
 rocksdb.num.data.blocks: 1
 rocksdb.compression: Snappy
-rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 
 wait-pending-table-stats
 000012
@@ -846,7 +840,6 @@ rocksdb:
   rocksdb.num.range-deletions: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
   rocksdb.comparator: pebble.internal.testkeys
   rocksdb.data.size: 13
   rocksdb.filter.size: 0
@@ -888,7 +881,6 @@ rocksdb.deleted.keys: 1
 rocksdb.num.range-deletions: 1
 rocksdb.num.data.blocks: 1
 rocksdb.compression: Snappy
-rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 
 properties file=21
 ----
@@ -899,7 +891,6 @@ rocksdb.deleted.keys: 1
 rocksdb.num.range-deletions: 1
 rocksdb.num.data.blocks: 1
 rocksdb.compression: Snappy
-rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 
 wait-pending-table-stats
 000020
@@ -908,7 +899,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 589
+range-deletions-bytes-estimate: 483
 
 wait-pending-table-stats
 000021
@@ -917,7 +908,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 588
+range-deletions-bytes-estimate: 482
 
 # Create a database with value separation enabled.
 
@@ -978,7 +969,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 3942
+point-deletions-bytes-estimate: 3908
 range-deletions-bytes-estimate: 0
 compression: None:36,Snappy:73/84
 
@@ -1039,7 +1030,7 @@ num-deletions: 0
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
-compression: None:4060
+compression: None:4080
 
 wait-pending-table-stats
 000008
@@ -1049,4 +1040,4 @@ num-deletions: 0
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
-compression: None:4060
+compression: None:4080

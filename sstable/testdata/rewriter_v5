@@ -45,9 +45,9 @@ sstable
  ├── index  offset: 363  length: 37
  ├── top-index  offset: 405  length: 52
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 462  length: 69
- ├── properties  offset: 536  length: 609
- ├── meta-index  offset: 1150  length: 80
- └── footer  offset: 1235  length: 53
+ ├── properties  offset: 536  length: 503
+ ├── meta-index  offset: 1044  length: 80
+ └── footer  offset: 1129  length: 53
 
 scan
 ----
@@ -80,9 +80,9 @@ sstable
  ├── index  offset: 367  length: 37
  ├── top-index  offset: 409  length: 56
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
- ├── properties  offset: 544  length: 609
- ├── meta-index  offset: 1158  length: 80
- └── footer  offset: 1243  length: 53
+ ├── properties  offset: 544  length: 503
+ ├── meta-index  offset: 1052  length: 80
+ └── footer  offset: 1137  length: 53
 
 scan
 ----
@@ -115,9 +115,9 @@ sstable
  ├── index  offset: 367  length: 37
  ├── top-index  offset: 409  length: 56
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
- ├── properties  offset: 544  length: 609
- ├── meta-index  offset: 1158  length: 80
- └── footer  offset: 1243  length: 53
+ ├── properties  offset: 544  length: 503
+ ├── meta-index  offset: 1052  length: 80
+ └── footer  offset: 1137  length: 53
 
 scan
 ----
@@ -150,9 +150,9 @@ sstable
  ├── index  offset: 367  length: 37
  ├── top-index  offset: 409  length: 56
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 470  length: 69
- ├── properties  offset: 544  length: 609
- ├── meta-index  offset: 1158  length: 80
- └── footer  offset: 1243  length: 53
+ ├── properties  offset: 544  length: 503
+ ├── meta-index  offset: 1052  length: 80
+ └── footer  offset: 1137  length: 53
 
 scan
 ----
@@ -186,9 +186,9 @@ sstable
  ├── index  offset: 363  length: 37
  ├── top-index  offset: 405  length: 52
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 462  length: 69
- ├── properties  offset: 536  length: 609
- ├── meta-index  offset: 1150  length: 80
- └── footer  offset: 1235  length: 53
+ ├── properties  offset: 536  length: 503
+ ├── meta-index  offset: 1044  length: 80
+ └── footer  offset: 1129  length: 53
 
 scan
 ----

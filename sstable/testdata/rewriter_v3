@@ -45,9 +45,9 @@ sstable
  ├── index  offset: 194  length: 22
  ├── index  offset: 221  length: 22
  ├── top-index  offset: 248  length: 48
- ├── properties  offset: 301  length: 486
- ├── meta-index  offset: 792  length: 79
- └── footer  offset: 876  length: 53
+ ├── properties  offset: 301  length: 380
+ ├── meta-index  offset: 686  length: 79
+ └── footer  offset: 770  length: 53
 
 scan
 ----
@@ -80,9 +80,9 @@ sstable
  ├── index  offset: 194  length: 22
  ├── index  offset: 221  length: 22
  ├── top-index  offset: 248  length: 48
- ├── properties  offset: 301  length: 486
- ├── meta-index  offset: 792  length: 79
- └── footer  offset: 876  length: 53
+ ├── properties  offset: 301  length: 380
+ ├── meta-index  offset: 686  length: 79
+ └── footer  offset: 770  length: 53
 
 scan
 ----
@@ -115,9 +115,9 @@ sstable
  ├── index  offset: 194  length: 22
  ├── index  offset: 221  length: 22
  ├── top-index  offset: 248  length: 48
- ├── properties  offset: 301  length: 486
- ├── meta-index  offset: 792  length: 79
- └── footer  offset: 876  length: 53
+ ├── properties  offset: 301  length: 380
+ ├── meta-index  offset: 686  length: 79
+ └── footer  offset: 770  length: 53
 
 scan
 ----
@@ -150,9 +150,9 @@ sstable
  ├── index  offset: 194  length: 22
  ├── index  offset: 221  length: 22
  ├── top-index  offset: 248  length: 48
- ├── properties  offset: 301  length: 486
- ├── meta-index  offset: 792  length: 79
- └── footer  offset: 876  length: 53
+ ├── properties  offset: 301  length: 380
+ ├── meta-index  offset: 686  length: 79
+ └── footer  offset: 770  length: 53
 
 scan
 ----
@@ -186,9 +186,9 @@ sstable
  ├── index  offset: 194  length: 22
  ├── index  offset: 221  length: 22
  ├── top-index  offset: 248  length: 48
- ├── properties  offset: 301  length: 486
- ├── meta-index  offset: 792  length: 79
- └── footer  offset: 876  length: 53
+ ├── properties  offset: 301  length: 380
+ ├── meta-index  offset: 686  length: 79
+ └── footer  offset: 770  length: 53
 
 scan
 ----

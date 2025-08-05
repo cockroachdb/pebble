@@ -1590,7 +1590,6 @@ func (w *RawRowWriter) Close() (err error) {
 		// is always read sequentially and cached in a heap located object. This
 		// reduces table size without a significant impact on performance.
 		raw.RestartInterval = propertiesBlockRestartInterval
-		w.props.CompressionOptions = rocksDBCompressionOptions
 		if err := w.props.saveToRowWriter(w.tableFormat, &raw); err != nil {
 			return err
 		}

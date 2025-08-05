@@ -38,6 +38,7 @@ var ignoredInternalProperties = map[string]struct{}{
 	"rocksdb.creation.time":                {},
 	"rocksdb.file.creation.time":           {},
 	"rocksdb.format.version":               {},
+	"rocksdb.compression_options":          {},
 }
 
 // FilterType exports the base.FilterType type.

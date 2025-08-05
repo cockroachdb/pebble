@@ -1033,7 +1033,6 @@ func (w *RawColumnWriter) Close() (err error) {
 
 		w.props.CompressionStats = w.layout.physBlockMaker.Compressor.Stats().String()
 		var toWrite []byte
-		w.props.CompressionOptions = rocksDBCompressionOptions
 		if w.opts.TableFormat >= TableFormatPebblev7 {
 			var cw colblk.KeyValueBlockWriter
 			cw.Init()

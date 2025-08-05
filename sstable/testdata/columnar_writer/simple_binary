@@ -80,7 +80,7 @@ sstable
  │    ├── 00000    block:0/88
  │    │   
  │    └── trailer [compression=none checksum=0x6147006e]
- ├── properties  offset: 149  length: 648
+ ├── properties  offset: 149  length: 542
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.colblk.schema (68)
  │    ├── 00084    pebble.compression_stats (26)
@@ -89,30 +89,29 @@ sstable
  │    ├── 00183    rocksdb.block.based.table.index.type (43)
  │    ├── 00226    rocksdb.comparator (37)
  │    ├── 00263    rocksdb.compression (23)
- │    ├── 00286    rocksdb.compression_options (106)
- │    ├── 00392    rocksdb.data.size (13)
- │    ├── 00405    rocksdb.deleted.keys (15)
- │    ├── 00420    rocksdb.filter.size (15)
- │    ├── 00435    rocksdb.index.size (14)
- │    ├── 00449    rocksdb.merge.operands (18)
- │    ├── 00467    rocksdb.merge.operator (24)
- │    ├── 00491    rocksdb.num.data.blocks (19)
- │    ├── 00510    rocksdb.num.entries (11)
- │    ├── 00521    rocksdb.num.range-deletions (19)
- │    ├── 00540    rocksdb.property.collectors (70)
- │    ├── 00610    rocksdb.raw.key.size (16)
- │    ├── 00626    rocksdb.raw.value.size (14)
+ │    ├── 00286    rocksdb.data.size (13)
+ │    ├── 00299    rocksdb.deleted.keys (15)
+ │    ├── 00314    rocksdb.filter.size (15)
+ │    ├── 00329    rocksdb.index.size (14)
+ │    ├── 00343    rocksdb.merge.operands (18)
+ │    ├── 00361    rocksdb.merge.operator (24)
+ │    ├── 00385    rocksdb.num.data.blocks (19)
+ │    ├── 00404    rocksdb.num.entries (11)
+ │    ├── 00415    rocksdb.num.range-deletions (19)
+ │    ├── 00434    rocksdb.property.collectors (70)
+ │    ├── 00504    rocksdb.raw.key.size (16)
+ │    ├── 00520    rocksdb.raw.value.size (14)
  │    ├── restart points
- │    │    └── 00640 [restart 0]
- │    └── trailer [compression=none checksum=0x5dd6d20e]
- ├── meta-index  offset: 802  length: 33
- │    ├── 0000    rocksdb.properties block:149/648 [restart]
+ │    │    └── 00534 [restart 0]
+ │    └── trailer [compression=none checksum=0x8eaf980e]
+ ├── meta-index  offset: 696  length: 33
+ │    ├── 0000    rocksdb.properties block:149/542 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0x3009f55c]
- └── footer  offset: 840  length: 53
+ │    └── trailer [compression=none checksum=0xf9b7c800]
+ └── footer  offset: 734  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=802, length=33
+      ├── 001  meta: offset=696, length=33
       ├── 004  index: offset=93, length=51
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
@@ -127,7 +126,6 @@ rocksdb.deleted.keys: 1
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 1
 rocksdb.compression: NoCompression
-rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 93
 rocksdb.filter.size: 0
@@ -230,7 +228,7 @@ sstable
  │    ├── 00000    block:0/116
  │    │   
  │    └── trailer [compression=none checksum=0xcf86ef66]
- ├── properties  offset: 177  length: 616
+ ├── properties  offset: 177  length: 510
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.colblk.schema (68)
  │    ├── 00084    pebble.compression_stats (26)
@@ -238,30 +236,29 @@ sstable
  │    ├── 00151    rocksdb.block.based.table.index.type (43)
  │    ├── 00194    rocksdb.comparator (37)
  │    ├── 00231    rocksdb.compression (23)
- │    ├── 00254    rocksdb.compression_options (106)
- │    ├── 00360    rocksdb.data.size (13)
- │    ├── 00373    rocksdb.deleted.keys (15)
- │    ├── 00388    rocksdb.filter.size (15)
- │    ├── 00403    rocksdb.index.size (14)
- │    ├── 00417    rocksdb.merge.operands (18)
- │    ├── 00435    rocksdb.merge.operator (24)
- │    ├── 00459    rocksdb.num.data.blocks (19)
- │    ├── 00478    rocksdb.num.entries (11)
- │    ├── 00489    rocksdb.num.range-deletions (19)
- │    ├── 00508    rocksdb.property.collectors (70)
- │    ├── 00578    rocksdb.raw.key.size (16)
- │    ├── 00594    rocksdb.raw.value.size (14)
+ │    ├── 00254    rocksdb.data.size (13)
+ │    ├── 00267    rocksdb.deleted.keys (15)
+ │    ├── 00282    rocksdb.filter.size (15)
+ │    ├── 00297    rocksdb.index.size (14)
+ │    ├── 00311    rocksdb.merge.operands (18)
+ │    ├── 00329    rocksdb.merge.operator (24)
+ │    ├── 00353    rocksdb.num.data.blocks (19)
+ │    ├── 00372    rocksdb.num.entries (11)
+ │    ├── 00383    rocksdb.num.range-deletions (19)
+ │    ├── 00402    rocksdb.property.collectors (70)
+ │    ├── 00472    rocksdb.raw.key.size (16)
+ │    ├── 00488    rocksdb.raw.value.size (14)
  │    ├── restart points
- │    │    └── 00608 [restart 0]
- │    └── trailer [compression=none checksum=0x8a2913db]
- ├── meta-index  offset: 798  length: 33
- │    ├── 0000    rocksdb.properties block:177/616 [restart]
+ │    │    └── 00502 [restart 0]
+ │    └── trailer [compression=none checksum=0x10d6f69c]
+ ├── meta-index  offset: 692  length: 33
+ │    ├── 0000    rocksdb.properties block:177/510 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0xe26972d2]
- └── footer  offset: 836  length: 53
+ │    └── trailer [compression=none checksum=0xafaf1ae5]
+ └── footer  offset: 730  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=798, length=33
+      ├── 001  meta: offset=692, length=33
       ├── 004  index: offset=121, length=51
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
@@ -626,7 +623,7 @@ sstable
  │    ├── 00003    block:449/128
  │    │   
  │    └── trailer [compression=none checksum=0xd5c96d3a]
- ├── properties  offset: 697  length: 619
+ ├── properties  offset: 697  length: 513
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.colblk.schema (68)
  │    ├── 00084    pebble.compression_stats (26)
@@ -634,30 +631,29 @@ sstable
  │    ├── 00151    rocksdb.block.based.table.index.type (43)
  │    ├── 00194    rocksdb.comparator (37)
  │    ├── 00231    rocksdb.compression (23)
- │    ├── 00254    rocksdb.compression_options (106)
- │    ├── 00360    rocksdb.data.size (14)
- │    ├── 00374    rocksdb.deleted.keys (15)
- │    ├── 00389    rocksdb.filter.size (15)
- │    ├── 00404    rocksdb.index.size (14)
- │    ├── 00418    rocksdb.merge.operands (18)
- │    ├── 00436    rocksdb.merge.operator (24)
- │    ├── 00460    rocksdb.num.data.blocks (19)
- │    ├── 00479    rocksdb.num.entries (11)
- │    ├── 00490    rocksdb.num.range-deletions (19)
- │    ├── 00509    rocksdb.property.collectors (70)
- │    ├── 00579    rocksdb.raw.key.size (17)
- │    ├── 00596    rocksdb.raw.value.size (15)
+ │    ├── 00254    rocksdb.data.size (14)
+ │    ├── 00268    rocksdb.deleted.keys (15)
+ │    ├── 00283    rocksdb.filter.size (15)
+ │    ├── 00298    rocksdb.index.size (14)
+ │    ├── 00312    rocksdb.merge.operands (18)
+ │    ├── 00330    rocksdb.merge.operator (24)
+ │    ├── 00354    rocksdb.num.data.blocks (19)
+ │    ├── 00373    rocksdb.num.entries (11)
+ │    ├── 00384    rocksdb.num.range-deletions (19)
+ │    ├── 00403    rocksdb.property.collectors (70)
+ │    ├── 00473    rocksdb.raw.key.size (17)
+ │    ├── 00490    rocksdb.raw.value.size (15)
  │    ├── restart points
- │    │    └── 00611 [restart 0]
- │    └── trailer [compression=none checksum=0x665621a7]
- ├── meta-index  offset: 1321  length: 33
- │    ├── 0000    rocksdb.properties block:697/619 [restart]
+ │    │    └── 00505 [restart 0]
+ │    └── trailer [compression=none checksum=0x4fbac26d]
+ ├── meta-index  offset: 1215  length: 33
+ │    ├── 0000    rocksdb.properties block:697/513 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0xcb345d4b]
- └── footer  offset: 1359  length: 53
+ │    └── trailer [compression=none checksum=0xc544d7e7]
+ └── footer  offset: 1253  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=1321, length=33
+      ├── 001  meta: offset=1215, length=33
       ├── 004  index: offset=582, length=110
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
@@ -675,7 +671,6 @@ rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 4
 rocksdb.compression: NoCompression
-rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; 
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 582
 rocksdb.filter.size: 0
@@ -1019,7 +1014,7 @@ sstable
  │    ├── 00003    block:449/128
  │    │   
  │    └── trailer [compression=none checksum=0xd5c96d3a]
- ├── properties  offset: 697  length: 619
+ ├── properties  offset: 697  length: 513
  │    ├── 00000    obsolete-key (16) [restart]
  │    ├── 00016    pebble.colblk.schema (68)
  │    ├── 00084    pebble.compression_stats (26)
@@ -1027,30 +1022,29 @@ sstable
  │    ├── 00151    rocksdb.block.based.table.index.type (43)
  │    ├── 00194    rocksdb.comparator (37)
  │    ├── 00231    rocksdb.compression (23)
- │    ├── 00254    rocksdb.compression_options (106)
- │    ├── 00360    rocksdb.data.size (14)
- │    ├── 00374    rocksdb.deleted.keys (15)
- │    ├── 00389    rocksdb.filter.size (15)
- │    ├── 00404    rocksdb.index.size (14)
- │    ├── 00418    rocksdb.merge.operands (18)
- │    ├── 00436    rocksdb.merge.operator (24)
- │    ├── 00460    rocksdb.num.data.blocks (19)
- │    ├── 00479    rocksdb.num.entries (11)
- │    ├── 00490    rocksdb.num.range-deletions (19)
- │    ├── 00509    rocksdb.property.collectors (70)
- │    ├── 00579    rocksdb.raw.key.size (17)
- │    ├── 00596    rocksdb.raw.value.size (15)
+ │    ├── 00254    rocksdb.data.size (14)
+ │    ├── 00268    rocksdb.deleted.keys (15)
+ │    ├── 00283    rocksdb.filter.size (15)
+ │    ├── 00298    rocksdb.index.size (14)
+ │    ├── 00312    rocksdb.merge.operands (18)
+ │    ├── 00330    rocksdb.merge.operator (24)
+ │    ├── 00354    rocksdb.num.data.blocks (19)
+ │    ├── 00373    rocksdb.num.entries (11)
+ │    ├── 00384    rocksdb.num.range-deletions (19)
+ │    ├── 00403    rocksdb.property.collectors (70)
+ │    ├── 00473    rocksdb.raw.key.size (17)
+ │    ├── 00490    rocksdb.raw.value.size (15)
  │    ├── restart points
- │    │    └── 00611 [restart 0]
- │    └── trailer [compression=none checksum=0x665621a7]
- ├── meta-index  offset: 1321  length: 33
- │    ├── 0000    rocksdb.properties block:697/619 [restart]
+ │    │    └── 00505 [restart 0]
+ │    └── trailer [compression=none checksum=0x4fbac26d]
+ ├── meta-index  offset: 1215  length: 33
+ │    ├── 0000    rocksdb.properties block:697/513 [restart]
  │    ├── restart points
  │    │    └── 00025 [restart 0]
- │    └── trailer [compression=none checksum=0xcb345d4b]
- └── footer  offset: 1359  length: 53
+ │    └── trailer [compression=none checksum=0xc544d7e7]
+ └── footer  offset: 1253  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=1321, length=33
+      ├── 001  meta: offset=1215, length=33
       ├── 004  index: offset=582, length=110
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
@@ -1117,7 +1111,7 @@ sstable
  │    │    │         └── 50-50: x  # data[0]:
  │    │    └── 50-51: x 00 # block padding byte
  │    └── trailer [compression=none checksum=0xb1e3982b]
- ├── properties  offset: 89  length: 605
+ ├── properties  offset: 89  length: 499
  │    ├── 00000    obsolete-key (17) [restart]
  │    ├── 00017    pebble.colblk.schema (68)
  │    ├── 00085    pebble.compression_stats (25)
@@ -1125,32 +1119,31 @@ sstable
  │    ├── 00140    rocksdb.block.based.table.index.type (43)
  │    ├── 00183    rocksdb.comparator (37)
  │    ├── 00220    rocksdb.compression (23)
- │    ├── 00243    rocksdb.compression_options (106)
- │    ├── 00349    rocksdb.data.size (13)
- │    ├── 00362    rocksdb.deleted.keys (15)
- │    ├── 00377    rocksdb.filter.size (15)
- │    ├── 00392    rocksdb.index.size (14)
- │    ├── 00406    rocksdb.merge.operands (18)
- │    ├── 00424    rocksdb.merge.operator (24)
- │    ├── 00448    rocksdb.num.data.blocks (19)
- │    ├── 00467    rocksdb.num.entries (11)
- │    ├── 00478    rocksdb.num.range-deletions (19)
- │    ├── 00497    rocksdb.property.collectors (70)
- │    ├── 00567    rocksdb.raw.key.size (16)
- │    ├── 00583    rocksdb.raw.value.size (14)
+ │    ├── 00243    rocksdb.data.size (13)
+ │    ├── 00256    rocksdb.deleted.keys (15)
+ │    ├── 00271    rocksdb.filter.size (15)
+ │    ├── 00286    rocksdb.index.size (14)
+ │    ├── 00300    rocksdb.merge.operands (18)
+ │    ├── 00318    rocksdb.merge.operator (24)
+ │    ├── 00342    rocksdb.num.data.blocks (19)
+ │    ├── 00361    rocksdb.num.entries (11)
+ │    ├── 00372    rocksdb.num.range-deletions (19)
+ │    ├── 00391    rocksdb.property.collectors (70)
+ │    ├── 00461    rocksdb.raw.key.size (16)
+ │    ├── 00477    rocksdb.raw.value.size (14)
  │    ├── restart points
- │    │    └── 00597 [restart 0]
- │    └── trailer [compression=none checksum=0x2b36072]
- ├── meta-index  offset: 699  length: 59
- │    ├── 0000    rocksdb.properties block:89/605 [restart]
+ │    │    └── 00491 [restart 0]
+ │    └── trailer [compression=none checksum=0x7470df51]
+ ├── meta-index  offset: 593  length: 59
+ │    ├── 0000    rocksdb.properties block:89/499 [restart]
  │    ├── 0024    rocksdb.range_del2 block:33/51 [restart]
  │    ├── restart points
  │    │    ├── 00047 [restart 0]
  │    │    └── 00051 [restart 24]
- │    └── trailer [compression=none checksum=0xdf5a81e9]
- └── footer  offset: 763  length: 53
+ │    └── trailer [compression=none checksum=0x3ffcde03]
+ └── footer  offset: 657  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=699, length=59
+      ├── 001  meta: offset=593, length=59
       ├── 004  index: offset=0, length=28
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3
@@ -1231,7 +1224,7 @@ sstable
  │    │    │         └── 67-67: x        # data[1]:
  │    │    └── 67-68: x 00 # block padding byte
  │    └── trailer [compression=none checksum=0x45325be7]
- ├── properties  offset: 106  length: 687
+ ├── properties  offset: 106  length: 581
  │    ├── 00000    obsolete-key (17) [restart]
  │    ├── 00017    pebble.colblk.schema (68)
  │    ├── 00085    pebble.compression_stats (25)
@@ -1244,32 +1237,31 @@ sstable
  │    ├── 00222    rocksdb.block.based.table.index.type (43)
  │    ├── 00265    rocksdb.comparator (37)
  │    ├── 00302    rocksdb.compression (23)
- │    ├── 00325    rocksdb.compression_options (106)
- │    ├── 00431    rocksdb.data.size (13)
- │    ├── 00444    rocksdb.deleted.keys (15)
- │    ├── 00459    rocksdb.filter.size (15)
- │    ├── 00474    rocksdb.index.size (14)
- │    ├── 00488    rocksdb.merge.operands (18)
- │    ├── 00506    rocksdb.merge.operator (24)
- │    ├── 00530    rocksdb.num.data.blocks (19)
- │    ├── 00549    rocksdb.num.entries (11)
- │    ├── 00560    rocksdb.num.range-deletions (19)
- │    ├── 00579    rocksdb.property.collectors (70)
- │    ├── 00649    rocksdb.raw.key.size (16)
- │    ├── 00665    rocksdb.raw.value.size (14)
+ │    ├── 00325    rocksdb.data.size (13)
+ │    ├── 00338    rocksdb.deleted.keys (15)
+ │    ├── 00353    rocksdb.filter.size (15)
+ │    ├── 00368    rocksdb.index.size (14)
+ │    ├── 00382    rocksdb.merge.operands (18)
+ │    ├── 00400    rocksdb.merge.operator (24)
+ │    ├── 00424    rocksdb.num.data.blocks (19)
+ │    ├── 00443    rocksdb.num.entries (11)
+ │    ├── 00454    rocksdb.num.range-deletions (19)
+ │    ├── 00473    rocksdb.property.collectors (70)
+ │    ├── 00543    rocksdb.raw.key.size (16)
+ │    ├── 00559    rocksdb.raw.value.size (14)
  │    ├── restart points
- │    │    └── 00679 [restart 0]
- │    └── trailer [compression=none checksum=0x7a8cc91]
- ├── meta-index  offset: 798  length: 57
+ │    │    └── 00573 [restart 0]
+ │    └── trailer [compression=none checksum=0x8e07fccd]
+ ├── meta-index  offset: 692  length: 57
  │    ├── 0000    pebble.range_key block:33/68 [restart]
- │    ├── 0021    rocksdb.properties block:106/687 [restart]
+ │    ├── 0021    rocksdb.properties block:106/581 [restart]
  │    ├── restart points
  │    │    ├── 00045 [restart 0]
  │    │    └── 00049 [restart 21]
- │    └── trailer [compression=none checksum=0xe1ee4669]
- └── footer  offset: 860  length: 53
+ │    └── trailer [compression=none checksum=0x65e19fae]
+ └── footer  offset: 754  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=798, length=57
+      ├── 001  meta: offset=692, length=57
       ├── 004  index: offset=0, length=28
       ├── 041  version: 5
       └── 045  magic number: 0xf09faab3f09faab3

@@ -19,11 +19,10 @@ bounds:  [b#1,SET-c#1,SET]
 filenum: 000001
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 3
+  rocksdb.raw.key.size: 4
   rocksdb.raw.value.size: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Repeat the above with (Pebble,v5).
 
@@ -46,11 +45,10 @@ bounds:  [b#1,SET-c#1,SET]
 filenum: 000002
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 4
+  rocksdb.raw.key.size: 5
   rocksdb.raw.value.size: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 
 # Test 2: Similar to test 1 but force two level iterators.
@@ -69,11 +67,10 @@ bounds:  [b#1,SET-c#1,SET]
 filenum: 000003
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 2
+  rocksdb.raw.key.size: 3
   rocksdb.raw.value.size: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -149,7 +146,6 @@ props:
   rocksdb.raw.value.size: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -233,7 +229,6 @@ props:
   pebble.num.range-key-sets: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Repeat the above with (Pebble,v5).
 
@@ -259,14 +254,13 @@ bounds:  [a#1,SET-f#1,SET]
 filenum: 000006
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 5
+  rocksdb.raw.key.size: 6
   rocksdb.raw.value.size: 1
   rocksdb.deleted.keys: 1
   rocksdb.num.range-deletions: 1
   pebble.num.range-key-sets: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 build table-format=Pebble,v4
 a.SET.1:a
@@ -287,11 +281,10 @@ bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000007
 props:
   rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 10
+  rocksdb.raw.key.size: 12
   rocksdb.raw.value.size: 2
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Repeat the above with (Pebble,v5).
 
@@ -313,12 +306,11 @@ virtualize lower=dd.SET.5 upper=ddd.SET.6 show-props
 bounds:  [dd#5,SET-ddd#6,SET]
 filenum: 000008
 props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 10
+  rocksdb.num.entries: 2
+  rocksdb.raw.key.size: 11
   rocksdb.raw.value.size: 2
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 build
 a.DEL.1:
@@ -337,14 +329,13 @@ bounds:  [a#1,DEL-a0#1,SET]
 filenum: 000009
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 2
+  rocksdb.raw.key.size: 3
   pebble.raw.point-tombstone.key.size: 1
   pebble.num.deletions.sized: 1
   rocksdb.deleted.keys: 3
   rocksdb.num.range-deletions: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;
 
 # Test virtual sstable with a synthetic prefix.
 build
@@ -362,8 +353,7 @@ bounds:  [poi-b#1,SET-poi-c#1,SET]
 filenum: 000010
 props:
   rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 4
+  rocksdb.raw.key.size: 5
   rocksdb.raw.value.size: 1
   rocksdb.num.data.blocks: 1
   rocksdb.compression: Snappy
-  rocksdb.compression_options: window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0;

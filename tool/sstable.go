@@ -318,7 +318,6 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "merger\t%s\n", formatNull(props.MergerName))
 		fmt.Fprintf(tw, "filter\t%s\n", formatNull(props.FilterPolicyName))
 		fmt.Fprintf(tw, "compression\t%s\n", props.CompressionName)
-		fmt.Fprintf(tw, "  options\t%s\n", props.CompressionOptions)
 		fmt.Fprintf(tw, "user properties\t\n")
 		fmt.Fprintf(tw, "  collectors\t%s\n", props.PropertyCollectorNames)
 		// Read UserProperties directly from reader.

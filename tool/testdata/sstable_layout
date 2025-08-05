@@ -19,9 +19,9 @@ sstable
  ├── data  offset: 13752  length: 156
  ├── index  offset: 13913  length: 245
  ├── range-del  offset: 14163  length: 421
- ├── properties  offset: 14589  length: 409
- ├── meta-index  offset: 15003  length: 62
- └── footer  offset: 15070  length: 53
+ ├── properties  offset: 14589  length: 303
+ ├── meta-index  offset: 14897  length: 62
+ └── footer  offset: 14964  length: 53
 
 sstable layout
 ../sstable/testdata/h-table-bloom-no-compression-sst/000011.sst
@@ -45,9 +45,9 @@ sstable
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 26799  length: 2245
  ├── index  offset: 29049  length: 325
  ├── range-del  offset: 29379  length: 421
- ├── properties  offset: 29805  length: 453
- ├── meta-index  offset: 30263  length: 113
- └── footer  offset: 30381  length: 53
+ ├── properties  offset: 29805  length: 347
+ ├── meta-index  offset: 30157  length: 113
+ └── footer  offset: 30275  length: 53
 
 sstable layout
 ../sstable/testdata/h-no-compression-two-level-index-sst/000003.sst
@@ -73,9 +73,9 @@ sstable
  ├── index  offset: 27047  length: 95
  ├── top-index  offset: 27147  length: 70
  ├── range-del  offset: 27222  length: 421
- ├── properties  offset: 27648  length: 455
- ├── meta-index  offset: 28108  length: 64
- └── footer  offset: 28177  length: 53
+ ├── properties  offset: 27648  length: 349
+ ├── meta-index  offset: 28002  length: 64
+ └── footer  offset: 28071  length: 53
 
 sstable layout
 -v
@@ -3760,38 +3760,37 @@ sstable
  │    │    ├── 00409 [restart 301]
  │    │    └── 00413 [restart 324]
  │    └── trailer [compression=none checksum=0xb93b31c5]
- ├── properties  offset: 27648  length: 455
+ ├── properties  offset: 27648  length: 349
  │    ├── 00000    rocksdb.block.based.table.index.type (43) [restart]
  │    ├── 00043    rocksdb.comparator (39)
  │    ├── 00082    rocksdb.compression (23)
- │    ├── 00105    rocksdb.compression_options (106)
- │    ├── 00211    rocksdb.data.size (15)
- │    ├── 00226    rocksdb.deleted.keys (15)
- │    ├── 00241    rocksdb.filter.size (15)
- │    ├── 00256    rocksdb.index.partitions (20)
- │    ├── 00276    rocksdb.index.size (9)
- │    ├── 00285    rocksdb.merge.operands (18)
- │    ├── 00303    rocksdb.merge.operator (13)
- │    ├── 00316    rocksdb.num.data.blocks (19)
- │    ├── 00335    rocksdb.num.entries (12)
- │    ├── 00347    rocksdb.num.range-deletions (19)
- │    ├── 00366    rocksdb.property.collectors (24)
- │    ├── 00390    rocksdb.raw.key.size (18)
- │    ├── 00408    rocksdb.raw.value.size (15)
- │    ├── 00423    rocksdb.top-level.index.size (24)
+ │    ├── 00105    rocksdb.data.size (15)
+ │    ├── 00120    rocksdb.deleted.keys (15)
+ │    ├── 00135    rocksdb.filter.size (15)
+ │    ├── 00150    rocksdb.index.partitions (20)
+ │    ├── 00170    rocksdb.index.size (9)
+ │    ├── 00179    rocksdb.merge.operands (18)
+ │    ├── 00197    rocksdb.merge.operator (13)
+ │    ├── 00210    rocksdb.num.data.blocks (19)
+ │    ├── 00229    rocksdb.num.entries (12)
+ │    ├── 00241    rocksdb.num.range-deletions (19)
+ │    ├── 00260    rocksdb.property.collectors (24)
+ │    ├── 00284    rocksdb.raw.key.size (18)
+ │    ├── 00302    rocksdb.raw.value.size (15)
+ │    ├── 00317    rocksdb.top-level.index.size (24)
  │    ├── restart points
- │    │    └── 00447 [restart 0]
- │    └── trailer [compression=none checksum=0x3c8612a0]
- ├── meta-index  offset: 28108  length: 64
- │    ├── 0000    rocksdb.properties block:27648/455 [restart]
+ │    │    └── 00341 [restart 0]
+ │    └── trailer [compression=none checksum=0x5095b010]
+ ├── meta-index  offset: 28002  length: 64
+ │    ├── 0000    rocksdb.properties block:27648/349 [restart]
  │    ├── 0026    rocksdb.range_del2 block:27222/421 [restart]
  │    ├── restart points
  │    │    ├── 00052 [restart 0]
  │    │    └── 00056 [restart 26]
- │    └── trailer [compression=none checksum=0x8809b4f7]
- └── footer  offset: 28177  length: 53
+ │    └── trailer [compression=none checksum=0xfa32432f]
+ └── footer  offset: 28071  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=28108, length=64
+      ├── 001  meta: offset=28002, length=64
       ├── 005  index: offset=27147, length=70
       ├── 041  version: 1
       └── 045  magic number: 0xf09faab3f09faab3

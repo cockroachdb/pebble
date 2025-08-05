@@ -12,7 +12,7 @@ set b 2
 compact a-b
 ----
 L6:
-  000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:857 blobrefs:[(B000006: 2); depth:1]
+  000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:754 blobrefs:[(B000006: 2); depth:1]
 Blob files:
   B000006 physical:{000006 size:[92 (92B)] vals:[2 (2B)]}
 
@@ -24,8 +24,8 @@ set d 4
 compact c-d
 ----
 L6:
-  000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:857 blobrefs:[(B000006: 2); depth:1]
-  000008:[c#12,SET-d#13,SET] seqnums:[12-13] points:[c#12,SET-d#13,SET] size:857 blobrefs:[(B000009: 2); depth:1]
+  000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:754 blobrefs:[(B000006: 2); depth:1]
+  000008:[c#12,SET-d#13,SET] seqnums:[12-13] points:[c#12,SET-d#13,SET] size:754 blobrefs:[(B000009: 2); depth:1]
 Blob files:
   B000006 physical:{000006 size:[92 (92B)] vals:[2 (2B)]}
   B000009 physical:{000009 size:[92 (92B)] vals:[2 (2B)]}
@@ -38,7 +38,7 @@ set c 6
 compact a-d
 ----
 L6:
-  000013:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:895 blobrefs:[(B000006: 1), (B000012: 2), (B000009: 1); depth:2]
+  000013:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:792 blobrefs:[(B000006: 1), (B000012: 2), (B000009: 1); depth:2]
 Blob files:
   B000006 physical:{000006 size:[92 (92B)] vals:[2 (2B)]}
   B000009 physical:{000009 size:[92 (92B)] vals:[2 (2B)]}
@@ -64,7 +64,7 @@ L6 blob-depth=3
   z.SET.0:blob{fileNum=100004 value=zoo}
 ----
 L6:
-  000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:897 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
+  000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:794 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
 Blob files:
   B100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
   B100003 physical:{100003 size:[92 (92B)] vals:[3 (3B)]}
@@ -80,9 +80,9 @@ set e world
 flush
 ----
 L0.0:
-  000006:[d#10,SET-e#11,SET] seqnums:[10-11] points:[d#10,SET-e#11,SET] size:856 blobrefs:[(B000007: 10); depth:1]
+  000006:[d#10,SET-e#11,SET] seqnums:[10-11] points:[d#10,SET-e#11,SET] size:753 blobrefs:[(B000007: 10); depth:1]
 L6:
-  000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:897 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
+  000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:794 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
 Blob files:
   B000007 physical:{000007 size:[100 (100B)] vals:[10 (10B)]}
   B100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
@@ -95,7 +95,7 @@ Blob files:
 compact a-z
 ----
 L6:
-  000008:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:907 blobrefs:[(B000009: 19); depth:1]
+  000008:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:804 blobrefs:[(B000009: 19); depth:1]
 Blob files:
   B000009 physical:{000009 size:[112 (112B)] vals:[19 (19B)]}
 
@@ -124,26 +124,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0         0B |      0    0B |      0     0 |     0B     0B |    41B |      0    0B |   0 25.76
+    0         0B |      0    0B |      0     0 |     0B     0B |    41B |      0    0B |   0 23.24
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6        1KB |      1  907B |      0     0 |   112B     0B |   856B |      0    0B |   1  1.19
-total        1KB |      1  907B |      0     0 |   112B     0B |    41B |      0    0B |   1 51.61
+    6       916B |      1  804B |      0     0 |   112B     0B |   753B |      0    0B |   1  1.22
+total       916B |      1  804B |      0     0 |   112B     0B |    41B |      0    0B |   1 46.59
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      1   856B   200B
-    1 |     -     0     0 |      1  856B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    2 |     -     0     0 |      1  856B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    3 |     -     0     0 |      1  856B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    4 |     -     0     0 |      1  856B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    5 |     -     0     0 |      1  856B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   372B   84B |      1   907B   112B
-total |     -     -     - |      5 4.2KB |    0B    0B    0B |   372B   84B |      2  1.8KB   312B
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      1   753B   200B
+    1 |     -     0     0 |      1  753B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      1  753B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      1  753B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      1  753B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      1  753B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   372B   84B |      1   804B   112B
+total |     -     -     - |      5 3.7KB |    0B    0B    0B |   372B   84B |      2  1.6KB   312B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     5     0     0        0     0      0     0
@@ -205,7 +205,7 @@ set yaya yaya
 flush
 ----
 L0.0:
-  000005:[bar#10,SET-yaya#13,SET] seqnums:[10-13] points:[bar#10,SET-yaya#13,SET] size:781
+  000005:[bar#10,SET-yaya#13,SET] seqnums:[10-13] points:[bar#10,SET-yaya#13,SET] size:683
 
 batch
 set a a
@@ -220,9 +220,9 @@ set w world
 flush
 ----
 L0.1:
-  000007:[a#14,SET-w#17,SET] seqnums:[14-17] points:[a#14,SET-w#17,SET] size:885 blobrefs:[(B000008: 10); depth:1]
+  000007:[a#14,SET-w#17,SET] seqnums:[14-17] points:[a#14,SET-w#17,SET] size:782 blobrefs:[(B000008: 10); depth:1]
 L0.0:
-  000005:[bar#10,SET-yaya#13,SET] seqnums:[10-13] points:[bar#10,SET-yaya#13,SET] size:781
+  000005:[bar#10,SET-yaya#13,SET] seqnums:[10-13] points:[bar#10,SET-yaya#13,SET] size:683
 Blob files:
   B000008 physical:{000008 size:[100 (100B)] vals:[10 (10B)]}
 
@@ -257,8 +257,8 @@ set m mango
 flush
 ----
 L0.0:
-  000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:802
-  000006:[m#14,SET-m#14,SET] seqnums:[14-14] points:[m#14,SET-m#14,SET] size:853 blobrefs:[(B000007: 5); depth:1]
+  000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:704
+  000006:[m#14,SET-m#14,SET] seqnums:[14-14] points:[m#14,SET-m#14,SET] size:750 blobrefs:[(B000007: 5); depth:1]
 Blob files:
   B000007 physical:{000007 size:[94 (94B)] vals:[5 (5B)]}
 
@@ -278,9 +278,9 @@ L0 blob-depth=3
   z.SET.1:blob{fileNum=100004 value=zoo}
 ----
 L0.1:
-  000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:866 blobrefs:[(B100001: 1); depth:1]
+  000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:763 blobrefs:[(B100001: 1); depth:1]
 L0.0:
-  000005:[a#1,SET-z#1,SET] seqnums:[1-1] points:[a#1,SET-z#1,SET] size:897 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
+  000005:[a#1,SET-z#1,SET] seqnums:[1-1] points:[a#1,SET-z#1,SET] size:794 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
 Blob files:
   B100001 physical:{100001 size:[90 (90B)] vals:[1 (1B)]}
   B100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
@@ -290,7 +290,7 @@ Blob files:
 compact a-z
 ----
 L1:
-  000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:916 blobrefs:[(B100002: 3), (B100001: 1), (B100003: 3), (B100004: 3); depth:4]
+  000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:813 blobrefs:[(B100002: 3), (B100001: 1), (B100003: 3), (B100004: 3); depth:4]
 Blob files:
   B100001 physical:{100001 size:[90 (90B)] vals:[1 (1B)]}
   B100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
@@ -314,8 +314,8 @@ L0 blob-depth=3
   z.SET.1:blob{fileNum=100004 value=zoo}
 ----
 L0.0:
-  000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:866 blobrefs:[(B100001: 1); depth:1]
-  000005:[e#1,SET-z#1,SET] seqnums:[1-1] points:[e#1,SET-z#1,SET] size:897 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
+  000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:763 blobrefs:[(B100001: 1); depth:1]
+  000005:[e#1,SET-z#1,SET] seqnums:[1-1] points:[e#1,SET-z#1,SET] size:794 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
 Blob files:
   B100001 physical:{100001 size:[90 (90B)] vals:[1 (1B)]}
   B100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
@@ -325,7 +325,7 @@ Blob files:
 compact a-z
 ----
 L1:
-  000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:920 blobrefs:[(B100001: 1), (B100002: 3), (B100003: 3), (B100004: 3); depth:3]
+  000006:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:817 blobrefs:[(B100001: 1), (B100002: 3), (B100003: 3), (B100004: 3); depth:3]
 Blob files:
   B100001 physical:{100001 size:[90 (90B)] vals:[1 (1B)]}
   B100002 physical:{100002 size:[92 (92B)] vals:[3 (3B)]}
@@ -354,7 +354,7 @@ set h honeydew
 flush
 ----
 L0.0:
-  000005:[a#10,SET-h#17,SET] seqnums:[10-17] points:[a#10,SET-h#17,SET] size:930 blobrefs:[(B000006: 60); depth:1]
+  000005:[a#10,SET-h#17,SET] seqnums:[10-17] points:[a#10,SET-h#17,SET] size:827 blobrefs:[(B000006: 60); depth:1]
 Blob files:
   B000006 physical:{000006 size:[156 (156B)] vals:[60 (60B)]}
 
@@ -367,9 +367,9 @@ set c cherry
 flush
 ----
 L0.1:
-  000008:[c#18,SET-c#18,SET] seqnums:[18-18] points:[c#18,SET-c#18,SET] size:853 blobrefs:[(B000009: 6); depth:1]
+  000008:[c#18,SET-c#18,SET] seqnums:[18-18] points:[c#18,SET-c#18,SET] size:750 blobrefs:[(B000009: 6); depth:1]
 L0.0:
-  000005:[a#10,SET-h#17,SET] seqnums:[10-17] points:[a#10,SET-h#17,SET] size:930 blobrefs:[(B000006: 60); depth:1]
+  000005:[a#10,SET-h#17,SET] seqnums:[10-17] points:[a#10,SET-h#17,SET] size:827 blobrefs:[(B000006: 60); depth:1]
 Blob files:
   B000006 physical:{000006 size:[156 (156B)] vals:[60 (60B)]}
   B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
@@ -380,7 +380,7 @@ Blob files:
 compact a-b
 ----
 L6:
-  000010:[a#0,SET-h#0,SET] seqnums:[0-0] points:[a#0,SET-h#0,SET] size:908 blobrefs:[(B000006: 53), (B000009: 6); depth:2]
+  000010:[a#0,SET-h#0,SET] seqnums:[0-0] points:[a#0,SET-h#0,SET] size:805 blobrefs:[(B000006: 53), (B000009: 6); depth:2]
 Blob files:
   B000006 physical:{000006 size:[156 (156B)] vals:[60 (60B)]}
   B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
@@ -388,7 +388,7 @@ Blob files:
 auto-compact
 ----
 L6:
-  000010:[a#0,SET-h#0,SET] seqnums:[0-0] points:[a#0,SET-h#0,SET] size:908 blobrefs:[(B000006: 53), (B000009: 6); depth:2]
+  000010:[a#0,SET-h#0,SET] seqnums:[0-0] points:[a#0,SET-h#0,SET] size:805 blobrefs:[(B000006: 53), (B000009: 6); depth:2]
 Blob files:
   B000006 physical:{000011 size:[150 (150B)] vals:[53 (53B)]}
   B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
@@ -399,26 +399,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0         0B |      0    0B |      0     0 |     0B     0B |   156B |      0    0B |   0 14.65
+    0         0B |      0    0B |      0     0 |     0B     0B |   156B |      0    0B |   0 13.33
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6      1.1KB |      1  908B |      0     0 |   232B     0B |  1.7KB |      0    0B |   1  0.51
-total      1.1KB |      1  908B |      0     0 |   232B     0B |   156B |      0    0B |   1 21.47
+    6        1KB |      1  805B |      0     0 |   232B     0B |  1.5KB |      0    0B |   1  0.51
+total        1KB |      1  805B |      0     0 |   232B     0B |   156B |      0    0B |   1 19.49
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.7KB   502B
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.5KB   502B
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   310B    0B |      1   908B     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   310B    0B |      3  2.8KB   502B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   310B    0B |      1   805B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   310B    0B |      3  2.5KB   502B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     1
@@ -476,15 +476,15 @@ set c coconut
 compact a-b
 ----
 L6:
-  000005:[a#10,SET-c#12,SET] seqnums:[10-12] points:[a#10,SET-c#12,SET] size:870 blobrefs:[(B000006: 18); depth:1]
+  000005:[a#10,SET-c#12,SET] seqnums:[10-12] points:[a#10,SET-c#12,SET] size:767 blobrefs:[(B000006: 18); depth:1]
 Blob files:
   B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
 
 excise b ba
 ----
 L6:
-  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(870) blobrefs:[(B000006: 2); depth:1]
-  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(870) blobrefs:[(B000006: 2); depth:1]
+  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(767) blobrefs:[(B000006: 2); depth:1]
+  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(767) blobrefs:[(B000006: 2); depth:1]
 Blob files:
   B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
 
@@ -496,8 +496,8 @@ Blob files:
 run-blob-rewrite-compaction
 ----
 L6:
-  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(870) blobrefs:[(B000006: 2); depth:1]
-  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(870) blobrefs:[(B000006: 2); depth:1]
+  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(767) blobrefs:[(B000006: 2); depth:1]
+  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(767) blobrefs:[(B000006: 2); depth:1]
 Blob files:
   B000006 physical:{000009 size:[110 (110B)] vals:[18 (18B)]}
 
@@ -524,25 +524,25 @@ wrote 475254 keys
 flush
 ----
 L0.0:
-  000005:[a@1#10,SET-bkmx@1#25669,SET] seqnums:[10-25669] points:[a@1#10,SET-bkmx@1#25669,SET] size:396633 blobrefs:[(B000006: 1642240); depth:1]
-  000007:[bkmy@1#25670,SET-cv@1#51332,SET] seqnums:[25670-51332] points:[bkmy@1#25670,SET-cv@1#51332,SET] size:396460 blobrefs:[(B000008: 1642432); depth:1]
-  000009:[cva@1#51333,SET-efnh@1#77002,SET] seqnums:[51333-77002] points:[cva@1#51333,SET-efnh@1#77002,SET] size:395944 blobrefs:[(B000010: 1642880); depth:1]
-  000011:[efni@1#77003,SET-fqaj@1#102665,SET] seqnums:[77003-102665] points:[efni@1#77003,SET-fqaj@1#102665,SET] size:396376 blobrefs:[(B000012: 1642432); depth:1]
-  000013:[fqak@1#102666,SET-hamh@1#128297,SET] seqnums:[102666-128297] points:[fqak@1#102666,SET-hamh@1#128297,SET] size:398456 blobrefs:[(B000014: 1640448); depth:1]
-  000015:[hami@1#128298,SET-ikzi@1#153958,SET] seqnums:[128298-153958] points:[hami@1#128298,SET-ikzi@1#153958,SET] size:396579 blobrefs:[(B000016: 1642304); depth:1]
-  000017:[ikzj@1#153959,SET-jvoe@1#179669,SET] seqnums:[153959-179669] points:[ikzj@1#153959,SET-jvoe@1#179669,SET] size:393157 blobrefs:[(B000018: 1645504); depth:1]
-  000019:[jvof@1#179670,SET-lgaf@1#205305,SET] seqnums:[179670-205305] points:[jvof@1#179670,SET-lgaf@1#205305,SET] size:397681 blobrefs:[(B000020: 1640704); depth:1]
-  000021:[lgag@1#205306,SET-mqno@1#230974,SET] seqnums:[205306-230974] points:[lgag@1#205306,SET-mqno@1#230974,SET] size:396023 blobrefs:[(B000022: 1642816); depth:1]
-  000023:[mqnp@1#230975,SET-obac@1#256624,SET] seqnums:[230975-256624] points:[mqnp@1#230975,SET-obac@1#256624,SET] size:397277 blobrefs:[(B000024: 1641600); depth:1]
-  000025:[obad@1#256625,SET-plml@1#282266,SET] seqnums:[256625-282266] points:[obad@1#256625,SET-plml@1#282266,SET] size:397827 blobrefs:[(B000026: 1641088); depth:1]
-  000027:[plmm@1#282267,SET-qvzf@1#307920,SET] seqnums:[282267-307920] points:[plmm@1#282267,SET-qvzf@1#307920,SET] size:396975 blobrefs:[(B000028: 1641856); depth:1]
-  000029:[qvzg@1#307921,SET-sgld@1#333553,SET] seqnums:[307921-333553] points:[qvzg@1#307921,SET-sgld@1#333553,SET] size:398386 blobrefs:[(B000030: 1640512); depth:1]
-  000031:[sgle@1#333554,SET-tqxr@1#359200,SET] seqnums:[333554-359200] points:[sgle@1#333554,SET-tqxr@1#359200,SET] size:397490 blobrefs:[(B000032: 1641408); depth:1]
-  000033:[tqxs@1#359201,SET-vbls@1#384890,SET] seqnums:[359201-384890] points:[tqxs@1#359201,SET-vbls@1#384890,SET] size:394565 blobrefs:[(B000034: 1644160); depth:1]
-  000035:[vblt@1#384891,SET-wlyf@1#410537,SET] seqnums:[384891-410537] points:[vblt@1#384891,SET-wlyf@1#410537,SET] size:397488 blobrefs:[(B000036: 1641408); depth:1]
-  000037:[wlyg@1#410538,SET-xwmc@1#436222,SET] seqnums:[410538-436222] points:[wlyg@1#410538,SET-xwmc@1#436222,SET] size:394935 blobrefs:[(B000038: 1643840); depth:1]
-  000039:[xwmd@1#436223,SET-zhar@1#461926,SET] seqnums:[436223-461926] points:[xwmd@1#436223,SET-zhar@1#461926,SET] size:393601 blobrefs:[(B000040: 1645056); depth:1]
-  000041:[zhas@1#461927,SET-zzzz@1#475263,SET] seqnums:[461927-475263] points:[zhas@1#461927,SET-zzzz@1#475263,SET] size:208253 blobrefs:[(B000042: 853568); depth:1]
+  000005:[a@1#10,SET-bkmx@1#25669,SET] seqnums:[10-25669] points:[a@1#10,SET-bkmx@1#25669,SET] size:396512 blobrefs:[(B000006: 1642240); depth:1]
+  000007:[bkmy@1#25670,SET-cv@1#51332,SET] seqnums:[25670-51332] points:[bkmy@1#25670,SET-cv@1#51332,SET] size:396339 blobrefs:[(B000008: 1642432); depth:1]
+  000009:[cva@1#51333,SET-efnh@1#77002,SET] seqnums:[51333-77002] points:[cva@1#51333,SET-efnh@1#77002,SET] size:395823 blobrefs:[(B000010: 1642880); depth:1]
+  000011:[efni@1#77003,SET-fqaj@1#102665,SET] seqnums:[77003-102665] points:[efni@1#77003,SET-fqaj@1#102665,SET] size:396255 blobrefs:[(B000012: 1642432); depth:1]
+  000013:[fqak@1#102666,SET-hamh@1#128297,SET] seqnums:[102666-128297] points:[fqak@1#102666,SET-hamh@1#128297,SET] size:398335 blobrefs:[(B000014: 1640448); depth:1]
+  000015:[hami@1#128298,SET-ikzi@1#153958,SET] seqnums:[128298-153958] points:[hami@1#128298,SET-ikzi@1#153958,SET] size:396458 blobrefs:[(B000016: 1642304); depth:1]
+  000017:[ikzj@1#153959,SET-jvoe@1#179669,SET] seqnums:[153959-179669] points:[ikzj@1#153959,SET-jvoe@1#179669,SET] size:393037 blobrefs:[(B000018: 1645504); depth:1]
+  000019:[jvof@1#179670,SET-lgaf@1#205305,SET] seqnums:[179670-205305] points:[jvof@1#179670,SET-lgaf@1#205305,SET] size:397560 blobrefs:[(B000020: 1640704); depth:1]
+  000021:[lgag@1#205306,SET-mqno@1#230974,SET] seqnums:[205306-230974] points:[lgag@1#205306,SET-mqno@1#230974,SET] size:395902 blobrefs:[(B000022: 1642816); depth:1]
+  000023:[mqnp@1#230975,SET-obac@1#256624,SET] seqnums:[230975-256624] points:[mqnp@1#230975,SET-obac@1#256624,SET] size:397156 blobrefs:[(B000024: 1641600); depth:1]
+  000025:[obad@1#256625,SET-plml@1#282266,SET] seqnums:[256625-282266] points:[obad@1#256625,SET-plml@1#282266,SET] size:397706 blobrefs:[(B000026: 1641088); depth:1]
+  000027:[plmm@1#282267,SET-qvzf@1#307920,SET] seqnums:[282267-307920] points:[plmm@1#282267,SET-qvzf@1#307920,SET] size:396854 blobrefs:[(B000028: 1641856); depth:1]
+  000029:[qvzg@1#307921,SET-sgld@1#333553,SET] seqnums:[307921-333553] points:[qvzg@1#307921,SET-sgld@1#333553,SET] size:398265 blobrefs:[(B000030: 1640512); depth:1]
+  000031:[sgle@1#333554,SET-tqxr@1#359200,SET] seqnums:[333554-359200] points:[sgle@1#333554,SET-tqxr@1#359200,SET] size:397369 blobrefs:[(B000032: 1641408); depth:1]
+  000033:[tqxs@1#359201,SET-vbls@1#384890,SET] seqnums:[359201-384890] points:[tqxs@1#359201,SET-vbls@1#384890,SET] size:394445 blobrefs:[(B000034: 1644160); depth:1]
+  000035:[vblt@1#384891,SET-wlyf@1#410537,SET] seqnums:[384891-410537] points:[vblt@1#384891,SET-wlyf@1#410537,SET] size:397367 blobrefs:[(B000036: 1641408); depth:1]
+  000037:[wlyg@1#410538,SET-xwmc@1#436222,SET] seqnums:[410538-436222] points:[wlyg@1#410538,SET-xwmc@1#436222,SET] size:394815 blobrefs:[(B000038: 1643840); depth:1]
+  000039:[xwmd@1#436223,SET-zhar@1#461926,SET] seqnums:[436223-461926] points:[xwmd@1#436223,SET-zhar@1#461926,SET] size:393481 blobrefs:[(B000040: 1645056); depth:1]
+  000041:[zhas@1#461927,SET-zzzz@1#475263,SET] seqnums:[461927-475263] points:[zhas@1#461927,SET-zzzz@1#475263,SET] size:208147 blobrefs:[(B000042: 853568); depth:1]
 Blob files:
   B000006 physical:{000006 size:[1704578 (1.6MB)] vals:[1642240 (1.6MB)]}
   B000008 physical:{000008 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]}
@@ -573,15 +573,15 @@ Blob files:
 compact a-zzzz
 ----
 L6:
-  000044:[a@1#0,SET-czms@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-czms@1#0,SET] size:715285 blobrefs:[(B000006: 1642240), (B000008: 1642432), (B000010: 201984); depth:1]
-  000045:[czmt@1#0,SET-fyxn@1#0,SET] seqnums:[0-0] points:[czmt@1#0,SET-fyxn@1#0,SET] size:718634 blobrefs:[(B000010: 1440896), (B000012: 1642432), (B000014: 399936); depth:1]
-  000046:[fyxo@1#0,SET-iykr@1#0,SET] seqnums:[0-0] points:[fyxo@1#0,SET-iykr@1#0,SET] size:714587 blobrefs:[(B000014: 1240512), (B000016: 1642304), (B000018: 604544); depth:1]
-  000047:[iyks@1#0,SET-lxxi@1#0,SET] seqnums:[0-0] points:[iyks@1#0,SET-lxxi@1#0,SET] size:715501 blobrefs:[(B000018: 1040960), (B000020: 1640704), (B000022: 804800); depth:1]
-  000048:[lxxj@1#0,SET-oxiv@1#0,SET] seqnums:[0-0] points:[lxxj@1#0,SET-oxiv@1#0,SET] size:716962 blobrefs:[(B000022: 838016), (B000024: 1641600), (B000026: 1004864); depth:1]
-  000049:[oxiw@1#0,SET-rwta@1#0,SET] seqnums:[0-0] points:[oxiw@1#0,SET-rwta@1#0,SET] size:719348 blobrefs:[(B000026: 636224), (B000028: 1641856), (B000030: 1204160); depth:1]
-  000050:[rwtb@1#0,SET-uwen@1#0,SET] seqnums:[0-0] points:[rwtb@1#0,SET-uwen@1#0,SET] size:717493 blobrefs:[(B000030: 436352), (B000032: 1641408), (B000034: 1406720); depth:1]
-  000051:[uweo@1#0,SET-xvqm@1#0,SET] seqnums:[0-0] points:[uweo@1#0,SET-xvqm@1#0,SET] size:716738 blobrefs:[(B000034: 237440), (B000036: 1641408), (B000038: 1606400); depth:1]
-  000052:[xvqn@1#0,SET-zzzz@1#0,SET] seqnums:[0-0] points:[xvqn@1#0,SET-zzzz@1#0,SET] size:521136 blobrefs:[(B000038: 37440), (B000040: 1645056), (B000042: 853568); depth:1]
+  000044:[a@1#0,SET-czms@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-czms@1#0,SET] size:715164 blobrefs:[(B000006: 1642240), (B000008: 1642432), (B000010: 201984); depth:1]
+  000045:[czmt@1#0,SET-fyxn@1#0,SET] seqnums:[0-0] points:[czmt@1#0,SET-fyxn@1#0,SET] size:718513 blobrefs:[(B000010: 1440896), (B000012: 1642432), (B000014: 399936); depth:1]
+  000046:[fyxo@1#0,SET-iykr@1#0,SET] seqnums:[0-0] points:[fyxo@1#0,SET-iykr@1#0,SET] size:714466 blobrefs:[(B000014: 1240512), (B000016: 1642304), (B000018: 604544); depth:1]
+  000047:[iyks@1#0,SET-lxxi@1#0,SET] seqnums:[0-0] points:[iyks@1#0,SET-lxxi@1#0,SET] size:715380 blobrefs:[(B000018: 1040960), (B000020: 1640704), (B000022: 804800); depth:1]
+  000048:[lxxj@1#0,SET-oxiv@1#0,SET] seqnums:[0-0] points:[lxxj@1#0,SET-oxiv@1#0,SET] size:716841 blobrefs:[(B000022: 838016), (B000024: 1641600), (B000026: 1004864); depth:1]
+  000049:[oxiw@1#0,SET-rwta@1#0,SET] seqnums:[0-0] points:[oxiw@1#0,SET-rwta@1#0,SET] size:719227 blobrefs:[(B000026: 636224), (B000028: 1641856), (B000030: 1204160); depth:1]
+  000050:[rwtb@1#0,SET-uwen@1#0,SET] seqnums:[0-0] points:[rwtb@1#0,SET-uwen@1#0,SET] size:717372 blobrefs:[(B000030: 436352), (B000032: 1641408), (B000034: 1406720); depth:1]
+  000051:[uweo@1#0,SET-xvqm@1#0,SET] seqnums:[0-0] points:[uweo@1#0,SET-xvqm@1#0,SET] size:716617 blobrefs:[(B000034: 237440), (B000036: 1641408), (B000038: 1606400); depth:1]
+  000052:[xvqn@1#0,SET-zzzz@1#0,SET] seqnums:[0-0] points:[xvqn@1#0,SET-zzzz@1#0,SET] size:521015 blobrefs:[(B000038: 37440), (B000040: 1645056), (B000042: 853568); depth:1]
 Blob files:
   B000006 physical:{000006 size:[1704578 (1.6MB)] vals:[1642240 (1.6MB)]}
   B000008 physical:{000008 size:[1704776 (1.6MB)] vals:[1642432 (1.6MB)]}
@@ -608,8 +608,8 @@ excise-dryrun b c
 ----
 would excise 1 files.
   del-table:     L6 000044
-  add-table:     L6 000053(000044):[a@1#0,SET-azzz@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-azzz@1#0,SET] size:242560(715285) blobrefs:[(B000006: 556899), (B000008: 556964), (B000010: 68494); depth:1]
-  add-table:     L6 000054(000044):[c@1#0,SET-czms@1#0,SET] seqnums:[0-0] points:[c@1#0,SET-czms@1#0,SET] size:230320(715285) blobrefs:[(B000006: 528797), (B000008: 528859), (B000010: 65038); depth:1]
+  add-table:     L6 000053(000044):[a@1#0,SET-azzz@1#0,SET] seqnums:[0-0] points:[a@1#0,SET-azzz@1#0,SET] size:242560(715164) blobrefs:[(B000006: 556993), (B000008: 557058), (B000010: 68506); depth:1]
+  add-table:     L6 000054(000044):[c@1#0,SET-czms@1#0,SET] seqnums:[0-0] points:[c@1#0,SET-czms@1#0,SET] size:230320(715164) blobrefs:[(B000006: 528886), (B000008: 528948), (B000010: 65049); depth:1]
   add-backing:   000044
 
 
@@ -652,9 +652,9 @@ set z helloworld
 flush
 ----
 L0.0:
-  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:807
-  000006:[f#15,SET-n#23,SET] seqnums:[15-23] points:[f#15,SET-n#23,SET] size:933 blobrefs:[(B000007: 63); depth:1]
-  000008:[o#24,SET-z#35,SET] seqnums:[24-35] points:[o#24,SET-z#35,SET] size:844
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:709
+  000006:[f#15,SET-n#23,SET] seqnums:[15-23] points:[f#15,SET-n#23,SET] size:830 blobrefs:[(B000007: 63); depth:1]
+  000008:[o#24,SET-z#35,SET] seqnums:[24-35] points:[o#24,SET-z#35,SET] size:746
 Blob files:
   B000007 physical:{000007 size:[115 (115B)] vals:[63 (63B)]}
 

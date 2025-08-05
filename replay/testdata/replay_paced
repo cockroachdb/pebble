@@ -5,12 +5,12 @@ tree
 ----
           /
             build/
-     864      000005.sst
-     560      000007.sst
+     758      000005.sst
+     454      000007.sst
       89      000008.log
-     560      000009.sst
+     454      000009.sst
      200      000011.log
-     614      000012.sst
+     508      000012.sst
        0      LOCK
      133      MANIFEST-000001
      205      MANIFEST-000010
@@ -18,13 +18,13 @@ tree
        0      marker.format-version.000001.013
        0      marker.manifest.000002.MANIFEST-000010
             high_read_amp/
-     614      000012.sst
+     508      000012.sst
      205      MANIFEST-000010
               checkpoint/
-     864        000005.sst
-     560        000007.sst
+     758        000005.sst
+     454        000007.sst
       39        000008.log
-     560        000009.sst
+     454        000009.sst
      157        MANIFEST-000010
     2799        OPTIONS-000003
        0        marker.format-version.000001.013

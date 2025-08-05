@@ -330,8 +330,8 @@ gi: (foo, .)
 lsm verbose
 ----
 L6:
-  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:1361(1361)
-  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:948(948)
+  000004(000004):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:1267(1267)
+  000005(000005):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:844(844)
 
 download g h via-backing-file-download
 ----
@@ -341,8 +341,8 @@ ok
 lsm verbose
 ----
 L6:
-  000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:1026(1026)
-  000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:940(940)
+  000006(000006):[gc#10,DELSIZED-gf#inf,RANGEDEL] seqnums:[10-10] points:[gc#10,DELSIZED-gf#inf,RANGEDEL] size:920(920)
+  000007(000007):[gg#11,DELSIZED-gj#inf,RANGEDEL] seqnums:[11-11] points:[gg#11,DELSIZED-gj#inf,RANGEDEL] size:834(834)
 
 reopen
 ----
