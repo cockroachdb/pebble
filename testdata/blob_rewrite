@@ -68,7 +68,7 @@ rewrite-blob 000002 000001 000003
 # read-at(193, 491): 000003.sst
 # read-at(168, 25): 000003.sst
 # open: 000002.blob (options: *vfs.randomReadsOption)
-# read-at(67, 38): 000002.blob
+# read-at(35, 70): 000002.blob
 # read-at(37, 30): 000002.blob
 # read-at(0, 37): 000002.blob
 # sync-data: 000004.blob

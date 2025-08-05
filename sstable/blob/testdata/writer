@@ -60,9 +60,78 @@ Stats:
 
 open
 ----
-TableFormat: blobV1
+FileFormat: blobV1
 ChecksumType: crc32c
 IndexHandle: (308, 35)
+
+build target-block-size=64 block-size-threshold=90 format=2
+canteloupe
+apple
+orange
+blueberry
+kiwi
+tangerine
+pear
+pomegranate
+guava
+watermelon
+fig
+plum
+raspberry
+strawberry
+durian
+honeydew
+starfruit
+mango
+grape
+papaya
+lychee
+persimmon
+mandarin
+peach
+apricot
+nectarine
+----
+(B000001,blk0,id0,len10) : "canteloupe"
+(B000001,blk0,id1,len5)  : "apple"
+(B000001,blk0,id2,len6)  : "orange"
+(B000001,blk0,id3,len9)  : "blueberry"
+(B000001,blk0,id4,len4)  : "kiwi"
+(B000001,blk0,id5,len9)  : "tangerine"
+(B000001,blk1,id0,len4)  : "pear"
+(B000001,blk1,id1,len11) : "pomegranate"
+(B000001,blk1,id2,len5)  : "guava"
+(B000001,blk1,id3,len10) : "watermelon"
+(B000001,blk1,id4,len3)  : "fig"
+(B000001,blk1,id5,len4)  : "plum"
+(B000001,blk2,id0,len9)  : "raspberry"
+(B000001,blk2,id1,len10) : "strawberry"
+(B000001,blk2,id2,len6)  : "durian"
+(B000001,blk2,id3,len8)  : "honeydew"
+(B000001,blk2,id4,len9)  : "starfruit"
+(B000001,blk3,id0,len5)  : "mango"
+(B000001,blk3,id1,len5)  : "grape"
+(B000001,blk3,id2,len6)  : "papaya"
+(B000001,blk3,id3,len6)  : "lychee"
+(B000001,blk3,id4,len9)  : "persimmon"
+(B000001,blk3,id5,len8)  : "mandarin"
+(B000001,blk4,id0,len5)  : "peach"
+(B000001,blk4,id1,len7)  : "apricot"
+(B000001,blk4,id2,len9)  : "nectarine"
+Stats:
+  BlockCount: 5
+  ValueCount: 26
+  UncompressedValueBytes: 182
+  FileLen: 472
+
+open
+----
+FileFormat: blobV2
+ChecksumType: crc32c
+IndexHandle: (308, 35)
+PropsHandle: (348, 49)
+Properties:
+  compression_stats: None:318
 
 # Build a sparse table containing a subset of the previous block's values.
 
@@ -103,6 +172,6 @@ Stats:
 
 open
 ----
-TableFormat: blobV1
+FileFormat: blobV1
 ChecksumType: crc32c
 IndexHandle: (130, 33)

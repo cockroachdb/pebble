@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 )
 
 var (
@@ -30,6 +31,8 @@ type FileFormat uint8
 // String implements the fmt.Stringer interface.
 func (f FileFormat) String() string {
 	switch f {
+	case FileFormatV2:
+		return "blobV2"
 	case FileFormatV1:
 		return "blobV1"
 	default:
@@ -40,15 +43,50 @@ func (f FileFormat) String() string {
 const (
 	// FileFormatV1 is the first version of the blob file format.
 	FileFormatV1 FileFormat = 1
+	// FileFormatV2 switches to an extended footer that includes property and
+	// metaindex block handles. The property block contains compression
+	// statistics; the metaindex handle is not used.
+	FileFormatV2 FileFormat = 2
+
+	latestFileFormat FileFormat = iota
 )
 
 const (
-	fileFooterLength = 38
-	fileMagic        = "\xf0\x9f\xaa\xb3\xf0\x9f\xa6\x80" // 🪳🦀
+	fileMagicV1 = "\xf0\x9f\xaa\xb3\xf0\x9f\xa6\x80" // 🪳🦀
+	fileMagicV2 = "\xf0\x9f\xaa\xb3\xf0\x9f\xa6\x82" // 🪳🦂
+
+	// V1 footer format:
+	//  Bytes   Description
+	//  ------+-----------------------------------
+	//  0:4     Checksum CRC over footer data
+	//  4:12    Index block offset (8 bytes)
+	//  12:20   Index block length (8 bytes)
+	//  20      Checksum type (1 byte)
+	//  21      File format version (1 byte)
+	//  22:30   Original file number (8 bytes)
+	//  30:38   Blob file magic string (8 bytes)
+	fileFooterLengthV1 = 38
+
+	// V2 footer format:
+	//  Bytes   Description
+	//  ------+-----------------------------------
+	//  0:4     Checksum CRC over footer data
+	//  4:12    Index block offset (8 bytes)
+	//  12:20   Index block length (8 bytes)
+	//  20      Checksum type (1 byte)
+	//  21      File format version (1 byte)
+	//  22:30   Original file number (8 bytes)
+	//  30:38   Properties block offset (8 bytes)
+	//  38:46   Properties block length (8 bytes)
+	//  46:54   Metaindex block offset (8 bytes); optional (for future use)
+	//  54:62   Metaindex block length (8 bytes); optional (for future use)
+	//  62:70   Blob file magic string (8 bytes)
+	fileFooterLengthV2 = 70
 )
 
 // FileWriterOptions are used to configure the FileWriter.
 type FileWriterOptions struct {
+	Format        FileFormat
 	Compression   *block.CompressionProfile
 	ChecksumType  block.ChecksumType
 	FlushGovernor block.FlushGovernor
@@ -57,6 +95,9 @@ type FileWriterOptions struct {
 }
 
 func (o *FileWriterOptions) ensureDefaults() {
+	if o.Format == 0 {
+		o.Format = FileFormatV1
+	}
 	if o.Compression == nil {
 		o.Compression = block.SnappyCompression
 	}
@@ -97,6 +138,7 @@ type FileWriter struct {
 	fileNum       base.DiskFileNum
 	w             objstorage.Writable
 	err           error
+	format        FileFormat
 	valuesEncoder blobValueBlockEncoder
 	// indexEncoder is an encoder for the index block. Every blob file has an
 	// index block encoding the offsets at which each block is written.
@@ -125,6 +167,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw := writerPool.Get().(*FileWriter)
 	fw.fileNum = fn
 	fw.w = w
+	fw.format = opts.Format
 	fw.valuesEncoder.Init()
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
@@ -190,7 +233,11 @@ func (w *FileWriter) EstimatedSize() uint64 {
 	// relatively speaking. In practice, offsets should use at most 4 bytes per
 	// offset.
 	sz += uint64(w.stats.BlockCount+1)*4 + block.TrailerLen // Index block
-	sz += fileFooterLength                                  // Footer
+	if w.format == FileFormatV1 {
+		sz += fileFooterLengthV1
+	} else {
+		sz += fileFooterLengthV2
+	}
 	return sz
 }
 
@@ -257,65 +304,66 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	// for it to complete.
 	close(w.writeQueue.ch)
 	w.writeQueue.wg.Wait()
-	var err error
-	if w.writeQueue.err != nil {
-		err = w.writeQueue.err
-		if w.w != nil {
-			w.w.Abort()
-		}
-		return FileWriterStats{}, err
-	}
-	stats := w.stats
-	if stats.BlockCount != uint32(w.indexEncoder.countBlocks) {
-		panic(errors.AssertionFailedf("block count mismatch: %d vs %d",
-			stats.BlockCount, w.indexEncoder.countBlocks))
-	}
-	if stats.BlockCount == 0 {
-		panic(errors.AssertionFailedf("no blocks written"))
-	}
 
-	// Write the index block.
-	var indexBlockHandle block.Handle
-	{
-		indexBlock := w.indexEncoder.Finish()
-		pb := w.physBlockMaker.Make(indexBlock, blockkind.Metadata, block.DontCompress)
-		length, err := block.WriteAndReleasePhysicalBlock(pb.Take(), w.w)
+	err := func() error {
+		if w.writeQueue.err != nil {
+			return w.writeQueue.err
+		}
+
+		if w.stats.BlockCount != uint32(w.indexEncoder.countBlocks) {
+			panic(errors.AssertionFailedf("block count mismatch: %d vs %d",
+				w.stats.BlockCount, w.indexEncoder.countBlocks))
+		}
+		if w.stats.BlockCount == 0 {
+			panic(errors.AssertionFailedf("no blocks written"))
+		}
+
+		// Write the index block.
+		indexBlockHandle, err := w.writeMetadataBlock(w.indexEncoder.Finish())
 		if err != nil {
-			w.err = err
-			if w.w != nil {
-				w.w.Abort()
-			}
-			return FileWriterStats{}, err
+			return err
 		}
-		indexBlockHandle.Offset = stats.FileLen
-		indexBlockHandle.Length = uint64(length.WithoutTrailer())
-		stats.FileLen += uint64(length.WithTrailer())
+
+		// Write the properties and the v2 footer if the file format is v2.
+		var propBlockHandle block.Handle
+		if w.format >= FileFormatV2 {
+			var cw colblk.KeyValueBlockWriter
+			cw.Init()
+			p := Properties{
+				CompressionStats: w.physBlockMaker.Compressor.Stats().String(),
+			}
+			p.writeTo(&cw)
+			propBlockHandle, err = w.writeMetadataBlock(cw.Finish(cw.Rows()))
+			if err != nil {
+				return err
+			}
+		}
+		// Write the footer.
+		footer := fileFooter{
+			format:           w.format,
+			checksumType:     w.physBlockMaker.Checksummer.Type,
+			indexHandle:      indexBlockHandle,
+			originalFileNum:  w.fileNum,
+			propertiesHandle: propBlockHandle,
+		}
+		footerBuf := footer.encode()
+		if err := w.w.Write(footerBuf); err != nil {
+			return err
+		}
+		w.stats.FileLen += uint64(len(footerBuf))
+		return w.w.Finish()
+	}()
+	if err != nil {
+		w.err = err
+		w.w.Abort()
+		w.w = nil
+		return FileWriterStats{}, err
 	}
 
-	// Write the footer.
-	footer := fileFooter{
-		format:          FileFormatV1,
-		checksum:        w.physBlockMaker.Checksummer.Type,
-		indexHandle:     indexBlockHandle,
-		originalFileNum: w.fileNum,
-	}
-	footerBuf := make([]byte, fileFooterLength)
-	footer.encode(footerBuf)
-	if w.err = w.w.Write(footerBuf); w.err != nil {
-		err = w.err
-		if w.w != nil {
-			w.w.Abort()
-		}
-		return FileWriterStats{}, err
-	}
-	stats.FileLen += fileFooterLength
-	if w.err = w.w.Finish(); w.err != nil {
-		err = w.err
-		if w.w != nil {
-			w.w.Abort()
-		}
-		return FileWriterStats{}, err
-	}
+	// Save the stats. Note that we don't do this earlier because
+	// writeMetadataBlock modifies w.stats (and we want to capture that
+	// modification).
+	stats := w.stats
 
 	// Clean up w and return it to the pool.
 	w.indexEncoder.Reset()
@@ -329,56 +377,99 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	return stats, nil
 }
 
-// fileFooter contains the information contained within the footer of a blob
-// file.
-//
-// Blob file footer format:
-//   - checksum CRC over footer data (4 bytes)
-//   - index block offset (8 bytes)
-//   - index block length (8 bytes)
-//   - checksum type (1 byte)
-//   - format (1 byte)
-//   - original file number (8 bytes)
-//   - blob file magic string (8 bytes)
-type fileFooter struct {
-	format          FileFormat
-	checksum        block.ChecksumType
-	indexHandle     block.Handle
-	originalFileNum base.DiskFileNum
+func (w *FileWriter) writeMetadataBlock(data []byte) (block.Handle, error) {
+	pb := w.physBlockMaker.Make(data, blockkind.Metadata, block.DontCompress)
+	length, err := block.WriteAndReleasePhysicalBlock(pb.Take(), w.w)
+	if err != nil {
+		return block.Handle{}, err
+	}
+	h := block.Handle{
+		Offset: w.stats.FileLen,
+		Length: uint64(length.WithoutTrailer()),
+	}
+	w.stats.FileLen += uint64(length.WithTrailer())
+	return h, nil
 }
 
+// fileFooter contains the information contained within the footer of a blob
+// file. See fileFooterLengthV1 and fileFooterLengthV2 for the footer format.
+type fileFooter struct {
+	format          FileFormat
+	checksumType    block.ChecksumType
+	indexHandle     block.Handle
+	originalFileNum base.DiskFileNum
+
+	// Only in V2+.
+	propertiesHandle block.Handle
+}
+
+// decode the footer given the last fileFooterLengthV2 bytes in the file (or
+// fileFooterLengthV1 bytes if the file is shorter than fileFooterLengthV2).
 func (f *fileFooter) decode(b []byte) error {
-	if uint64(len(b)) != fileFooterLength {
-		return errors.AssertionFailedf("invalid blob file footer length")
+	magic := b[len(b)-len(fileMagicV1):]
+	isV2 := false
+	switch string(magic) {
+	case fileMagicV1:
+		if len(b) < fileFooterLengthV1 {
+			return errors.AssertionFailedf("invalid blob file footer length")
+		}
+		b = b[len(b)-fileFooterLengthV1:]
+
+	case fileMagicV2:
+		if len(b) < fileFooterLengthV2 {
+			return errors.AssertionFailedf("invalid blob file footer length")
+		}
+		b = b[len(b)-fileFooterLengthV2:]
+		isV2 = true
 	}
 	encodedChecksum := binary.LittleEndian.Uint32(b[0:])
 	computedChecksum := crc.New(b[4:]).Value()
 	if encodedChecksum != computedChecksum {
-		return base.CorruptionErrorf("invalid blob file checksum 0x%04x, expected: 0x%04x", encodedChecksum, computedChecksum)
+		return base.CorruptionErrorf("invalid blob file footer checksum 0x%04x, expected: 0x%04x", encodedChecksum, computedChecksum)
 	}
-	f.indexHandle.Offset = binary.LittleEndian.Uint64(b[4:])
-	f.indexHandle.Length = binary.LittleEndian.Uint64(b[12:])
-	f.checksum = block.ChecksumType(b[20])
+	f.indexHandle.Offset = binary.LittleEndian.Uint64(b[4:12])
+	f.indexHandle.Length = binary.LittleEndian.Uint64(b[12:20])
+	f.checksumType = block.ChecksumType(b[20])
 	f.format = FileFormat(b[21])
-	if f.format != FileFormatV1 {
+	if f.format < FileFormatV1 || f.format > latestFileFormat {
 		return base.CorruptionErrorf("invalid blob file format %x", f.format)
 	}
-	f.originalFileNum = base.DiskFileNum(binary.LittleEndian.Uint64(b[22:]))
-	if string(b[30:]) != fileMagic {
-		return base.CorruptionErrorf("invalid blob file magic string %x", b[30:])
+	if !isV2 && f.format != FileFormatV1 {
+		return base.CorruptionErrorf("invalid blob V1 file format %x", f.format)
+	} else if isV2 && f.format < FileFormatV2 {
+		return base.CorruptionErrorf("invalid blob V2 file format %x", f.format)
+	}
+	f.originalFileNum = base.DiskFileNum(binary.LittleEndian.Uint64(b[22:30]))
+	f.propertiesHandle = block.Handle{}
+	if isV2 {
+		f.propertiesHandle.Offset = binary.LittleEndian.Uint64(b[30:38])
+		f.propertiesHandle.Length = binary.LittleEndian.Uint64(b[38:46])
 	}
 	return nil
 }
 
-func (f *fileFooter) encode(b []byte) {
-	binary.LittleEndian.PutUint64(b[4:], f.indexHandle.Offset)
-	binary.LittleEndian.PutUint64(b[12:], f.indexHandle.Length)
-	b[20] = byte(f.checksum)
+func (f *fileFooter) encode() []byte {
+	footerLength, magic := fileFooterLengthV1, fileMagicV1
+	if f.format >= FileFormatV2 {
+		footerLength, magic = fileFooterLengthV2, fileMagicV2
+	}
+	b := make([]byte, footerLength)
+	binary.LittleEndian.PutUint64(b[4:12], f.indexHandle.Offset)
+	binary.LittleEndian.PutUint64(b[12:20], f.indexHandle.Length)
+	b[20] = byte(f.checksumType)
 	b[21] = byte(f.format)
-	binary.LittleEndian.PutUint64(b[22:], uint64(f.originalFileNum))
-	copy(b[30:], fileMagic)
-	footerChecksum := crc.New(b[4 : 30+len(fileMagic)]).Value()
+	binary.LittleEndian.PutUint64(b[22:30], uint64(f.originalFileNum))
+	if f.format >= FileFormatV2 {
+		binary.LittleEndian.PutUint64(b[30:38], f.propertiesHandle.Offset)
+		binary.LittleEndian.PutUint64(b[38:46], f.propertiesHandle.Length)
+		// Metaindex not currently used.
+		binary.LittleEndian.PutUint64(b[46:54], 0)
+		binary.LittleEndian.PutUint64(b[54:62], 0)
+	}
+	copy(b[len(b)-len(magic):], magic)
+	footerChecksum := crc.New(b[4:]).Value()
 	binary.LittleEndian.PutUint32(b[:4], footerChecksum)
+	return b
 }
 
 // FileReader reads a blob file.
@@ -415,18 +506,20 @@ func NewFileReader(
 
 	fileNum := ro.CacheOpts.FileNum
 
-	var footerBuf [fileFooterLength]byte
+	footerBuf := make([]byte, fileFooterLengthV2)
 	size := r.Size()
-	off := size - fileFooterLength
-	if size < fileFooterLength {
-		return nil, base.CorruptionErrorf("pebble: invalid blob file %s (file size is too small)",
-			errors.Safe(fileNum))
+	if size < int64(len(footerBuf)) {
+		if size < fileFooterLengthV1 {
+			return nil, base.CorruptionErrorf("pebble: invalid blob file %s (file size is too small)",
+				errors.Safe(fileNum))
+		}
+		footerBuf = footerBuf[:fileFooterLengthV1]
 	}
-	var preallocRH objstorageprovider.PreallocatedReadHandle
-	rh := objstorageprovider.UsePreallocatedReadHandle(
-		r, objstorage.ReadBeforeForNewReader, &preallocRH)
 
-	encodedFooter, err := block.ReadRaw(ctx, r, rh, ro.LoggerAndTracer, fileNum, footerBuf[:], off)
+	rh := r.NewReadHandle(objstorage.ReadBeforeForNewReader)
+
+	offset := size - int64(len(footerBuf))
+	encodedFooter, err := block.ReadRaw(ctx, r, rh, ro.LoggerAndTracer, fileNum, footerBuf, offset)
 	_ = rh.Close()
 	if err != nil {
 		return nil, err
@@ -436,7 +529,7 @@ func NewFileReader(
 	if err := fr.footer.decode(encodedFooter); err != nil {
 		return nil, err
 	}
-	fr.r.Init(r, ro.ReaderOptions, fr.footer.checksum)
+	fr.r.Init(r, ro.ReaderOptions, fr.footer.checksumType)
 	return fr, nil
 }
 
@@ -475,6 +568,12 @@ func (r *FileReader) IndexHandle() block.Handle {
 // Layout returns the layout (block organization) as a string for a blob file.
 func (r *FileReader) Layout() (string, error) {
 	ctx := context.TODO()
+	var buf bytes.Buffer
+
+	if r.footer.format >= FileFormatV2 {
+		h := r.footer.propertiesHandle
+		fmt.Fprintf(&buf, "properties block: offset=%d length=%d\n", h.Offset, h.Length)
+	}
 
 	indexH, err := r.ReadIndexBlock(ctx, block.NoReadEnv, nil /* rh */)
 	if err != nil {
@@ -482,7 +581,6 @@ func (r *FileReader) Layout() (string, error) {
 	}
 	defer indexH.Release()
 
-	var buf bytes.Buffer
 	indexDecoder := indexBlockDecoder{}
 	indexDecoder.Init(indexH.BlockData())
 
@@ -516,4 +614,61 @@ func (r *FileReader) Layout() (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+type Properties struct {
+	CompressionStats string
+}
+
+// String returns any set properties, one per line.
+func (p *Properties) String() string {
+	var buf bytes.Buffer
+	if p.CompressionStats != "" {
+		fmt.Fprintf(&buf, "%s: %s\n", propertyKeyCompressionStats, p.CompressionStats)
+	}
+	return buf.String()
+}
+
+func (p *Properties) set(key []byte, value []byte) {
+	switch string(key) {
+	case propertyKeyCompressionStats:
+		p.CompressionStats = string(value)
+	default:
+		// Ignore unknown properties (for forward compatibility).
+	}
+}
+
+func (p *Properties) writeTo(w *colblk.KeyValueBlockWriter) {
+	if p.CompressionStats != "" {
+		w.AddKV([]byte(propertyKeyCompressionStats), []byte(p.CompressionStats))
+	}
+}
+
+const propertyKeyCompressionStats = "compression_stats"
+
+// ReadProperties reads the properties block from the file, if it exists.
+func (r *FileReader) ReadProperties(ctx context.Context) (Properties, error) {
+	if r.footer.format < FileFormatV2 {
+		return Properties{}, nil
+	}
+	// We don't want the property block to go into the block cache, so we use a
+	// buffer pool.
+	var bufferPool block.BufferPool
+	bufferPool.Init(1)
+	defer bufferPool.Release()
+	b, err := r.r.Read(
+		ctx, block.NoReadEnv, nil /* readHandle */, r.footer.propertiesHandle, blockkind.Metadata,
+		func(*block.Metadata, []byte) error { return nil },
+	)
+	if err != nil {
+		return Properties{}, err
+	}
+	defer b.Release()
+	var decoder colblk.KeyValueBlockDecoder
+	decoder.Init(b.BlockData())
+	var p Properties
+	for k, v := range decoder.All() {
+		p.set(k, v)
+	}
+	return p, nil
 }
