@@ -117,8 +117,6 @@ type CommonProperties struct {
 	NumTombstoneDenseBlocks uint64 `prop:"pebble.num.tombstone-dense-blocks"`
 	// The compression algorithm used to compress blocks.
 	CompressionName string `prop:"rocksdb.compression"`
-	// The compression options used to compress blocks.
-	CompressionOptions string `prop:"rocksdb.compression_options"`
 }
 
 // String is only used for testing purposes.
@@ -401,9 +399,6 @@ func (p *Properties) accumulateProps(tblFormat TableFormat) ([]string, map[strin
 	if p.CompressionName != "" {
 		p.saveString(m, unsafe.Offsetof(p.CompressionName), p.CompressionName)
 	}
-	if p.CompressionOptions != "" {
-		p.saveString(m, unsafe.Offsetof(p.CompressionOptions), p.CompressionOptions)
-	}
 	p.saveUvarint(m, unsafe.Offsetof(p.DataSize), p.DataSize)
 	if p.FilterPolicyName != "" {
 		p.saveString(m, unsafe.Offsetof(p.FilterPolicyName), p.FilterPolicyName)
@@ -486,6 +481,7 @@ func (p *Properties) accumulateProps(tblFormat TableFormat) ([]string, map[strin
 		m["rocksdb.oldest.key.time"] = singleZeroSlice
 		m["rocksdb.creation.time"] = singleZeroSlice
 		m["rocksdb.format.version"] = singleZeroSlice
+		m["rocksdb.compression_options"] = rocksDBCompressionOptions
 	}
 
 	keys := slices.Collect(maps.Keys(m))
@@ -554,4 +550,8 @@ func (p *Properties) toAttributes() Attributes {
 var (
 	singleZeroSlice = []byte{0x00}
 	maxInt32Slice   = binary.AppendUvarint([]byte(nil), math.MaxInt32)
+
+	// RocksDB always includes this in the properties block, so we include it for
+	// formats below TableFormatPebble.
+	rocksDBCompressionOptions = []byte("window_bits=-14; level=32767; strategy=0; max_dict_bytes=0; zstd_max_train_bytes=0; enabled=0; ")
 )

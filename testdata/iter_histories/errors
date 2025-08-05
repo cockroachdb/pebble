@@ -81,9 +81,9 @@ sstable
  ├── data  offset: 0  length: 38
  ├── index  offset: 43  length: 35
  ├── range-key  offset: 83  length: 29
- ├── properties  offset: 117  length: 573
- ├── meta-index  offset: 695  length: 57
- └── footer  offset: 757  length: 53
+ ├── properties  offset: 117  length: 467
+ ├── meta-index  offset: 589  length: 57
+ └── footer  offset: 651  length: 53
 
 # Inject an error on the first `ReadAt` call on 000004.sst's range key block
 # (which is at offset 83).
@@ -129,9 +129,9 @@ sstable
  ├── data  offset: 139  length: 22
  ├── data  offset: 166  length: 22
  ├── index  offset: 193  length: 113
- ├── properties  offset: 311  length: 571
- ├── meta-index  offset: 887  length: 33
- └── footer  offset: 925  length: 53
+ ├── properties  offset: 311  length: 465
+ ├── meta-index  offset: 781  length: 33
+ └── footer  offset: 819  length: 53
 
 reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 0))))
 ----
@@ -183,9 +183,9 @@ sstable
  ├── data  offset: 81  length: 22
  ├── data  offset: 108  length: 22
  ├── index  offset: 135  length: 84
- ├── properties  offset: 224  length: 495
- ├── meta-index  offset: 724  length: 33
- └── footer  offset: 762  length: 53
+ ├── properties  offset: 224  length: 389
+ ├── meta-index  offset: 618  length: 33
+ └── footer  offset: 656  length: 53
 
 # NB: Block offset to key contained:
 #  0 -> a, 27 -> b, 54 -> c, 81 -> d, 108 -> e
@@ -244,9 +244,9 @@ sstable
  ├── data  offset: 54  length: 22
  ├── data  offset: 81  length: 22
  ├── index  offset: 108  length: 71
- ├── properties  offset: 184  length: 570
- ├── meta-index  offset: 759  length: 33
- └── footer  offset: 797  length: 53
+ ├── properties  offset: 184  length: 464
+ ├── meta-index  offset: 653  length: 33
+ └── footer  offset: 691  length: 53
 
 
 reopen auto-compactions=off enable-table-stats=false inject-errors=((ErrInjected (And (PathMatch "000004.sst") (OpFileReadAt 54))))
