@@ -40,10 +40,6 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 		o.FormatMajorVersion = FormatMinSupported + FormatMajorVersion(n)
 		t.Logf("Running %s with format major version %s", t.Name(), o.FormatMajorVersion.String())
 	}
-	// Enable columnar blocks if using a format major version that supports it.
-	if o.FormatMajorVersion >= FormatColumnarBlocks && o.Experimental.EnableColumnarBlocks == nil && rand.Int64N(4) > 0 {
-		o.Experimental.EnableColumnarBlocks = func() bool { return true }
-	}
 	// Enable value separation if using a format major version that supports it.
 	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
 		policy := ValueSeparationPolicy{
@@ -105,7 +101,6 @@ func TestDefaultOptionsString(t *testing.T) {
   compaction_garbage_fraction_for_max_concurrency=0.40
   comparer=leveldb.BytewiseComparator
   disable_wal=false
-  enable_columnar_blocks=true
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304

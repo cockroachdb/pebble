@@ -1321,7 +1321,6 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		FormatMajorVersion: FormatNewest,
 		FS:                 fs,
 	}
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 
 	d, err := Open("", opts)
@@ -1465,7 +1464,6 @@ func TestCompactionPickerScores(t *testing.T) {
 		FormatMajorVersion:          FormatNewest,
 		FS:                          fs,
 	}
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 
 	d, err := Open("", opts)

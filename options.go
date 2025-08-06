@@ -700,14 +700,6 @@ type Options struct {
 		// level to a conventional two level compaction.
 		MultiLevelCompactionHeuristic func() MultiLevelHeuristic
 
-		// EnableColumnarBlocks is used to decide whether to enable writing
-		// TableFormatPebblev5 sstables. This setting is only respected by
-		// FormatColumnarBlocks. In lower format major versions, the
-		// TableFormatPebblev5 format is prohibited. If EnableColumnarBlocks is
-		// nil and the DB is at FormatColumnarBlocks, the DB defaults to not
-		// writing columnar blocks.
-		EnableColumnarBlocks func() bool
-
 		// EnableValueBlocks is used to decide whether to enable writing
 		// TableFormatPebblev3 sstables. This setting is only respected by a
 		// specific subset of format major versions: FormatSSTableValueBlocks,
@@ -1588,9 +1580,6 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.DeletionSizeRatioThreshold == 0 {
 		o.Experimental.DeletionSizeRatioThreshold = sstable.DefaultDeletionSizeRatioThreshold
 	}
-	if o.Experimental.EnableColumnarBlocks == nil {
-		o.Experimental.EnableColumnarBlocks = func() bool { return true }
-	}
 	if o.Experimental.TombstoneDenseCompactionThreshold == 0 {
 		o.Experimental.TombstoneDenseCompactionThreshold = 0.10
 	}
@@ -1699,9 +1688,6 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
 	if o.Experimental.DisableIngestAsFlushable != nil && o.Experimental.DisableIngestAsFlushable() {
 		fmt.Fprintf(&buf, "  disable_ingest_as_flushable=%t\n", true)
-	}
-	if o.Experimental.EnableColumnarBlocks != nil && o.Experimental.EnableColumnarBlocks() {
-		fmt.Fprintf(&buf, "  enable_columnar_blocks=%t\n", true)
 	}
 	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
 	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
@@ -1997,10 +1983,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
 			case "enable_columnar_blocks":
-				var v bool
-				if v, err = strconv.ParseBool(value); err == nil {
-					o.Experimental.EnableColumnarBlocks = func() bool { return v }
-				}
+				// Do nothing; option existed in older versions of pebble.
 			case "flush_delay_delete_range":
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "flush_delay_range_key":

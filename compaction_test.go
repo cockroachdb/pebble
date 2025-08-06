@@ -924,7 +924,6 @@ func TestCompaction(t *testing.T) {
 			FormatMajorVersion:          randVersion(minVersion, maxVersion),
 		}
 		opts.WithFSDefaults()
-		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 
 		var err error
@@ -1027,7 +1026,6 @@ func TestCompaction(t *testing.T) {
 					DisableAutomaticCompactions: true,
 				}
 				opts.WithFSDefaults()
-				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 				if d != nil {
 					opts.CompactionConcurrencyRange = d.opts.CompactionConcurrencyRange
@@ -1592,7 +1590,6 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
-		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		return opts, nil
 	}
 
@@ -1902,7 +1899,6 @@ func TestCompactionTombstones(t *testing.T) {
 				}
 				opts.WithFSDefaults()
 				opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
-				opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 				var err error
 				d, err = runDBDefineCmd(td, opts)
@@ -2761,7 +2757,6 @@ func TestMarkedForCompaction(t *testing.T) {
 		},
 	}
 	opts.WithFSDefaults()
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 	reset := func() {
 		if d != nil {
@@ -3382,7 +3377,6 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5 // Lower for test
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	opts.WithFSDefaults()
 
@@ -3481,7 +3475,6 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5 // Lower for test
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	opts.WithFSDefaults()
 
@@ -3561,7 +3554,6 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	opts.WithFSDefaults()
 
@@ -3624,7 +3616,6 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.9 // Set high threshold
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	opts.WithFSDefaults()
 
@@ -3672,7 +3663,6 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	opts.WithFSDefaults()
 

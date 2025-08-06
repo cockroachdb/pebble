@@ -76,9 +76,6 @@ func newPebbleDB(dir string) DB {
 			return 1, 3
 		},
 	}
-	// In FormatColumnarBlocks (the value of FormatNewest at the time of
-	// writing), columnar blocks are only written if explicitly opted into.
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 	// Enable value separation. Note the minimum size of 512 means that only the
 	// variant of the ycsb benchmarks that uses 1024 values will result in any
 	// value separation.

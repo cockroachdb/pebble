@@ -266,69 +266,39 @@ func TestFormatMajorVersions_BlobFileFormat(t *testing.T) {
 	require.Panics(t, func() { _ = (FormatValueSeparation - 1).MaxBlobFileFormat() })
 }
 
-// TestFormatMajorVersions_ColumnarBlocks ensures that
-// Experimental.EnableColumnarBlocks is respected on recent format major
-// versions.
-func TestFormatMajorVersions_ColumnarBlocks(t *testing.T) {
+func TestFormatMajorVersions_MaxTableFormat(t *testing.T) {
 	type testCase struct {
-		fmv     FormatMajorVersion
-		colBlks bool
-		want    sstable.TableFormat
+		fmv  FormatMajorVersion
+		want sstable.TableFormat
 	}
 	testCases := []testCase{
 		{
-			fmv:     FormatTableFormatV6,
-			colBlks: true,
-			want:    sstable.TableFormatPebblev6,
+			fmv:  FormatTableFormatV6,
+			want: sstable.TableFormatPebblev6,
 		},
 		{
-			fmv:     FormatTableFormatV6,
-			colBlks: false,
-			want:    sstable.TableFormatPebblev4,
+			fmv:  FormatColumnarBlocks,
+			want: sstable.TableFormatPebblev5,
 		},
 		{
-			fmv:     FormatColumnarBlocks,
-			colBlks: true,
-			want:    sstable.TableFormatPebblev5,
+			fmv:  FormatFlushableIngestExcises,
+			want: sstable.TableFormatPebblev4,
 		},
 		{
-			fmv:     FormatColumnarBlocks,
-			colBlks: false,
-			want:    sstable.TableFormatPebblev4,
+			fmv:  formatDeprecatedExperimentalValueSeparation,
+			want: sstable.TableFormatPebblev6,
 		},
 		{
-			fmv:     FormatFlushableIngestExcises,
-			colBlks: true,
-			want:    sstable.TableFormatPebblev4,
-		},
-		{
-			fmv:     FormatNewest,
-			colBlks: false,
-			want:    sstable.TableFormatPebblev4,
-		},
-		{
-			fmv:     formatDeprecatedExperimentalValueSeparation,
-			colBlks: true,
-			want:    sstable.TableFormatPebblev6,
-		},
-		{
-			fmv:     formatDeprecatedExperimentalValueSeparation,
-			colBlks: false,
-			want:    sstable.TableFormatPebblev4,
-		},
-		{
-			fmv:     FormatNewest,
-			colBlks: true,
-			want:    sstable.TableFormatPebblev7,
+			fmv:  FormatNewest,
+			want: sstable.TableFormatPebblev7,
 		},
 	}
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("(%s,%t)", tc.fmv, tc.colBlks), func(t *testing.T) {
+		t.Run(tc.fmv.String(), func(t *testing.T) {
 			opts := &Options{
 				FS:                 vfs.NewMem(),
 				FormatMajorVersion: tc.fmv,
 			}
-			opts.Experimental.EnableColumnarBlocks = func() bool { return tc.colBlks }
 			d, err := Open("", opts)
 			require.NoError(t, err)
 			defer func() { _ = d.Close() }()

@@ -428,19 +428,13 @@ func (d *DB) TableFormat() sstable.TableFormat {
 	// The table is typically written at the maximum allowable format implied by
 	// the current format major version of the DB.
 	f := d.FormatMajorVersion().MaxTableFormat()
-	switch f {
-	case sstable.TableFormatPebblev3:
+	if f == sstable.TableFormatPebblev3 {
 		// In format major versions with maximum table formats of Pebblev3,
 		// value blocks were conditional on an experimental setting. In format
 		// major versions with maximum table formats of Pebblev4 and higher,
 		// value blocks are always enabled.
 		if d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks() {
 			f = sstable.TableFormatPebblev2
-		}
-	default:
-		if f.BlockColumnar() && (d.opts.Experimental.EnableColumnarBlocks == nil ||
-			!d.opts.Experimental.EnableColumnarBlocks()) {
-			f = sstable.TableFormatPebblev4
 		}
 	}
 	return f

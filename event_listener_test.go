@@ -77,7 +77,6 @@ func TestEventListener(t *testing.T) {
 				L0CompactionThreshold: 10,
 				WALDir:                "wal",
 			}
-			opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 			var err error
 			d, err = Open("db", opts)
 			if err != nil {

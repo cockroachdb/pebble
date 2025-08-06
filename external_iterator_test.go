@@ -28,7 +28,6 @@ func TestExternalIterator(t *testing.T) {
 		FormatMajorVersion: internalFormatNewest,
 		Comparer:           testkeys.Comparer,
 	}
-	o.Experimental.EnableColumnarBlocks = func() bool { return true }
 	o.testingRandomized(t)
 	o.EnsureDefaults()
 	d, err := Open("", o)

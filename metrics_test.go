@@ -227,7 +227,6 @@ func TestMetrics(t *testing.T) {
 			MaxOpenFiles: 10000,
 		}
 		opts.Experimental.EnableValueBlocks = func() bool { return true }
-		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 			return ValueSeparationPolicy{
 				Enabled:               true,
