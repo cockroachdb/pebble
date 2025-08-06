@@ -336,7 +336,6 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 	}
 	opts.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
 	opts.Experimental.IngestSplit = func() bool { return false }
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{

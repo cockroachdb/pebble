@@ -500,7 +500,6 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			Logger:                      testLogger{t},
 		}
 		opts.WithFSDefaults()
-		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		if testing.Verbose() {
 			lel := MakeLoggingEventListener(DefaultLogger)
 			opts.EventListener = &lel
@@ -1172,7 +1171,6 @@ func TestIngestExternal(t *testing.T) {
 			FormatMajorVersion: majorVersion,
 			Logger:             testLogger{t},
 		}
-		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,
 		})
@@ -1702,7 +1700,6 @@ func TestIngest(t *testing.T) {
 			}},
 			FormatMajorVersion: internalFormatNewest,
 		}
-		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		opts.Experimental.IngestSplit = func() bool {
 			return split
 		}

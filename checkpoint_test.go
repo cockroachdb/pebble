@@ -45,7 +45,6 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			DisableAutomaticCompactions: true,
 			Logger:                      testLogger{t},
 		}
-		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": remoteMem,
 		})

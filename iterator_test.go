@@ -614,7 +614,6 @@ func TestIteratorStats(t *testing.T) {
 		opts := &Options{Comparer: testkeys.Comparer, FS: mem, FormatMajorVersion: internalFormatNewest}
 		// Automatic compactions may make some testcases non-deterministic.
 		opts.DisableAutomaticCompactions = true
-		opts.Experimental.EnableColumnarBlocks = func() bool { return true }
 		var err error
 		d, err = Open("", opts)
 		require.NoError(t, err)
