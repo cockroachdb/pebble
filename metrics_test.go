@@ -195,7 +195,7 @@ func TestMetrics(t *testing.T) {
 	if runtime.GOARCH == "386" {
 		t.Skip("skipped on 32-bit due to slightly varied output")
 	}
-	defer block.DeterministicReadBlockDurationForTesting()()
+	defer base.DeterministicReadDurationForTesting()()
 
 	var d *DB
 	var iters map[string]*Iterator
