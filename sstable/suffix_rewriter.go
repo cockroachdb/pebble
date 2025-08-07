@@ -400,9 +400,12 @@ func readBlockBuf(
 		}
 	}
 
-	decompressedLen, err := block.DecompressedLen(algo, raw)
+	decompressor := block.GetDecompressor(algo)
+	defer decompressor.Close()
+
+	decompressedLen, err := decompressor.DecompressedLen(raw[:bh.Length])
 	if err != nil {
-		return nil, buf, err
+		return nil, buf, base.MarkCorruptionError(err)
 	}
 	if cap(buf) < decompressedLen {
 		// We want the buffer to be 8 byte aligned.
@@ -412,8 +415,11 @@ func readBlockBuf(
 		}
 	}
 	dst := buf[:decompressedLen]
-	err = block.DecompressInto(algo, raw, dst)
-	return dst, buf, err
+	err = decompressor.DecompressInto(dst, raw[:bh.Length])
+	if err != nil {
+		return nil, buf, base.MarkCorruptionError(err)
+	}
+	return dst, buf, nil
 }
 
 // memReader is a thin wrapper around a []byte such that it can be passed to

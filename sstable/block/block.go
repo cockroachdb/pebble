@@ -482,18 +482,22 @@ func (r *Reader) doRead(
 	if typ == NoCompressionIndicator {
 		decompressed = compressed
 	} else {
+		decompressor := GetDecompressor(typ)
 		// Decode the length of the decompressed value.
-		decodedLen, err := DecompressedLen(typ, compressed.BlockData())
+		compressedData := compressed.BlockData()[:bh.Length]
+		decodedLen, err := decompressor.DecompressedLen(compressedData)
 		if err != nil {
+			decompressor.Close()
 			compressed.Release()
-			return Value{}, err
+			return Value{}, base.MarkCorruptionError(err)
 		}
 		decompressed = Alloc(decodedLen, env.BufferPool)
-		err = DecompressInto(typ, compressed.BlockData(), decompressed.BlockData())
+		err = decompressor.DecompressInto(decompressed.BlockData(), compressedData)
+		decompressor.Close()
 		compressed.Release()
 		if err != nil {
 			decompressed.Release()
-			return Value{}, err
+			return Value{}, base.MarkCorruptionError(err)
 		}
 	}
 	if err = initBlockMetadataFn(decompressed.BlockMetadata(), decompressed.BlockData()); err != nil {
