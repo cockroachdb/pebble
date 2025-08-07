@@ -157,7 +157,7 @@ on disk bytes |  36B     76B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
 ----
 ----
 
@@ -258,7 +258,7 @@ on disk bytes | 230B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -342,7 +342,7 @@ on disk bytes | 230B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -423,7 +423,7 @@ on disk bytes | 230B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -507,7 +507,7 @@ on disk bytes | 230B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -630,7 +630,7 @@ on disk bytes | 622B    630B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -738,7 +738,7 @@ on disk bytes | 622B    615B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -897,7 +897,7 @@ on disk bytes |  1KB    843B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1018,7 +1018,7 @@ on disk bytes | 1.3KB   1.3KB
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1151,7 +1151,7 @@ on disk bytes | 1.3KB   1.2KB
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1328,7 +1328,7 @@ on disk bytes | 1.5KB    682B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:2235 BlockBytesInCache:457 BlockReadDuration:150ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:10ms}
+                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----

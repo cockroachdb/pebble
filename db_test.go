@@ -30,7 +30,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -1493,7 +1492,7 @@ func (t *testTracer) IsTracingEnabled(ctx context.Context) bool {
 }
 
 func TestTracing(t *testing.T) {
-	defer block.DeterministicReadBlockDurationForTesting()()
+	defer base.DeterministicReadDurationForTesting()()
 
 	var tracer testTracer
 	buf := &tracer.buf

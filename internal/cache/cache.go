@@ -280,7 +280,8 @@ func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64) *Value {
 // This method can block before returning since multiple concurrent gets for
 // the same cache value will take turns getting a ReadHandle, which represents
 // permission to do the read. This blocking respects context cancellation, in
-// which case an error is returned (and not a valid ReadHandle).
+// which case an error is returned (and not a valid ReadHandle). The
+// waitDuration returns the duration of the blocking.
 //
 // When blocking, the errorDuration return value can be non-zero and is
 // populated with the total duration that other readers that observed an error
@@ -294,18 +295,27 @@ func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64) *Value {
 // in a valid Handle being returned. This is a case where cacheHit=false.
 func (c *Handle) GetWithReadHandle(
 	ctx context.Context, fileNum base.DiskFileNum, offset uint64,
-) (cv *Value, rh ReadHandle, errorDuration time.Duration, cacheHit bool, err error) {
+) (
+	cv *Value,
+	rh ReadHandle,
+	errorDuration time.Duration,
+	waitDuration time.Duration,
+	cacheHit bool,
+	err error,
+) {
 	k := makeKey(c.id, fileNum, offset)
 	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, true /* desireReadEntry */)
 	if cv != nil {
-		return cv, ReadHandle{}, 0, true, nil
+		return cv, ReadHandle{}, 0, 0, true, nil
 	}
+	waitStopwatch := base.MakeStopwatch()
 	cv, errorDuration, err = re.waitForReadPermissionOrHandle(ctx)
+	waitDuration = waitStopwatch.Stop()
 	if err != nil || cv != nil {
 		re.unrefAndTryRemoveFromMap()
-		return cv, ReadHandle{}, errorDuration, false, err
+		return cv, ReadHandle{}, errorDuration, waitDuration, false, err
 	}
-	return nil, ReadHandle{entry: re}, errorDuration, false, nil
+	return nil, ReadHandle{entry: re}, errorDuration, waitDuration, false, nil
 }
 
 // Set sets the cache value for the specified file and offset, overwriting an

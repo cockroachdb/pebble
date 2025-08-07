@@ -161,7 +161,10 @@ type CategoryStats struct {
 	// cache.
 	BlockBytesInCache uint64
 	// BlockReadDuration is the total duration to read the bytes not in the
-	// cache, i.e., BlockBytes-BlockBytesInCache.
+	// cache, i.e., BlockBytes-BlockBytesInCache. When multiple concurrent
+	// readers wait for each other, and only one does the read, this will
+	// account for the total time spent waiting plus potentially reading for all
+	// those readers, so it can over count. Such over counting should be rare.
 	BlockReadDuration time.Duration
 }
 
