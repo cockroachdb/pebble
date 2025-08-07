@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compression"
 )
 
@@ -215,26 +214,4 @@ func compressionIndicatorFromAlgorithm(algo compression.Algorithm) CompressionIn
 	default:
 		panic("invalid algorithm")
 	}
-}
-
-// DecompressedLen returns the length of the provided block once decompressed,
-// allowing the caller to allocate a buffer exactly sized to the decompressed
-// payload.
-func DecompressedLen(ci CompressionIndicator, b []byte) (decompressedLen int, err error) {
-	decompressor := GetDecompressor(ci)
-	defer decompressor.Close()
-	return decompressor.DecompressedLen(b)
-}
-
-// DecompressInto decompresses compressed into buf. The buf slice must have the
-// exact size as the decompressed value. Callers may use DecompressedLen to
-// determine the correct size.
-func DecompressInto(ci CompressionIndicator, compressed []byte, buf []byte) error {
-	decompressor := GetDecompressor(ci)
-	defer decompressor.Close()
-	err := decompressor.DecompressInto(buf, compressed)
-	if err != nil {
-		return base.MarkCorruptionError(err)
-	}
-	return nil
 }

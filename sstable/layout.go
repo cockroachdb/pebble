@@ -677,14 +677,16 @@ func decompressInMemory(data []byte, bh block.Handle) ([]byte, error) {
 	if typ == block.NoCompressionIndicator {
 		return data[bh.Offset : bh.Offset+bh.Length], nil
 	}
+	decompressor := block.GetDecompressor(typ)
+	defer decompressor.Close()
 	// Decode the length of the decompressed value.
-	decodedLen, err := block.DecompressedLen(typ, data[bh.Offset:bh.Offset+bh.Length])
+	decodedLen, err := decompressor.DecompressedLen(data[bh.Offset : bh.Offset+bh.Length])
 	if err != nil {
-		return nil, err
+		return nil, base.MarkCorruptionError(err)
 	}
 	decompressed = make([]byte, decodedLen)
-	if err := block.DecompressInto(typ, data[int(bh.Offset):bh.Offset+bh.Length], decompressed); err != nil {
-		return nil, err
+	if err := decompressor.DecompressInto(decompressed, data[bh.Offset:bh.Offset+bh.Length]); err != nil {
+		return nil, base.MarkCorruptionError(err)
 	}
 	return decompressed, nil
 }
