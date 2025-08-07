@@ -15,7 +15,6 @@ import (
 	"unsafe"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -378,11 +377,13 @@ func (r *Reader) Read(
 		return value.MakeHandle(), nil
 	}
 
-	cv, crh, errorDuration, hit, err := r.opts.CacheOpts.CacheHandle.GetWithReadHandle(
+	cv, crh, errorDuration, waitDuration, hit, err := r.opts.CacheOpts.CacheHandle.GetWithReadHandle(
 		ctx, r.opts.CacheOpts.FileNum, bh.Offset)
-	if errorDuration > 5*time.Millisecond && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
+	const slowDur = 5 * time.Millisecond
+	if (errorDuration > slowDur || waitDuration > slowDur) && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		r.opts.LoggerAndTracer.Eventf(
-			ctx, "waited for turn when %s time wasted by failed reads", errorDuration.String())
+			ctx, "waited for turn for %s when %s time wasted by failed reads", waitDuration.String(),
+			errorDuration.String())
 	}
 	// TODO(sumeer): consider tracing when waited longer than some duration
 	// for turn to do the read.
@@ -423,9 +424,6 @@ func recordCacheHit(
 	env.BlockServedFromCache(kind, bh.Length)
 }
 
-// TODO(sumeer): should the threshold be configurable.
-const slowReadTracingThreshold = 5 * time.Millisecond
-
 // doRead is a helper for Read that does the read, checksum check,
 // decompression, and returns either a Value or an error.
 func (r *Reader) doRead(
@@ -447,17 +445,17 @@ func (r *Reader) doRead(
 	}
 
 	compressed := Alloc(int(bh.Length+TrailerLen), env.BufferPool)
-	readStopwatch := makeStopwatch()
+	readStopwatch := base.MakeStopwatch()
 	var err error
 	if readHandle != nil {
 		err = readHandle.ReadAt(ctx, compressed.BlockData(), int64(bh.Offset))
 	} else {
 		err = r.readable.ReadAt(ctx, compressed.BlockData(), int64(bh.Offset))
 	}
-	readDuration := readStopwatch.stop()
+	readDuration := readStopwatch.Stop()
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
-	if readDuration >= slowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
+	if readDuration >= base.SlowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		_, file1, line1, _ := runtime.Caller(1)
 		_, file2, line2, _ := runtime.Caller(2)
 		r.opts.LoggerAndTracer.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
@@ -553,17 +551,17 @@ func ReadRaw(
 		return nil, base.CorruptionErrorf("pebble: invalid file %s (file size is too small)", errors.Safe(fileNum))
 	}
 
-	readStopwatch := makeStopwatch()
+	readStopwatch := base.MakeStopwatch()
 	var err error
 	if readHandle != nil {
 		err = readHandle.ReadAt(ctx, buf, off)
 	} else {
 		err = f.ReadAt(ctx, buf, off)
 	}
-	readDuration := readStopwatch.stop()
+	readDuration := readStopwatch.Stop()
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
-	if readDuration >= slowReadTracingThreshold && logger.IsTracingEnabled(ctx) {
+	if readDuration >= base.SlowReadTracingThreshold && logger.IsTracingEnabled(ctx) {
 		logger.Eventf(ctx, "reading footer of %d bytes took %s",
 			len(buf), readDuration.String())
 	}
@@ -571,33 +569,4 @@ func ReadRaw(
 		return nil, errors.Wrap(err, "pebble: invalid file (could not read footer)")
 	}
 	return buf, nil
-}
-
-// DeterministicReadBlockDurationForTesting is for tests that want a
-// deterministic value of the time to read a block (that is not in the cache).
-// The return value is a function that must be called before the test exits.
-func DeterministicReadBlockDurationForTesting() func() {
-	drbdForTesting := deterministicReadBlockDurationForTesting
-	deterministicReadBlockDurationForTesting = true
-	return func() {
-		deterministicReadBlockDurationForTesting = drbdForTesting
-	}
-}
-
-var deterministicReadBlockDurationForTesting = false
-
-type deterministicStopwatchForTesting struct {
-	startTime crtime.Mono
-}
-
-func makeStopwatch() deterministicStopwatchForTesting {
-	return deterministicStopwatchForTesting{startTime: crtime.NowMono()}
-}
-
-func (w deterministicStopwatchForTesting) stop() time.Duration {
-	dur := w.startTime.Elapsed()
-	if deterministicReadBlockDurationForTesting {
-		dur = slowReadTracingThreshold
-	}
-	return dur
 }

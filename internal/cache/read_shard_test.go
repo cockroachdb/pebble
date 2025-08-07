@@ -254,7 +254,7 @@ func TestReadShardConcurrent(t *testing.T) {
 	for _, r := range differentReaders {
 		for j := 0; j < r.numReaders; j++ {
 			go func(r *testSyncReaders, index int) {
-				v, rh, _, _, err := r.handle.GetWithReadHandle(context.Background(), r.fileNum, r.offset)
+				v, rh, _, _, _, err := r.handle.GetWithReadHandle(context.Background(), r.fileNum, r.offset)
 				require.NoError(t, err)
 				if v != nil {
 					require.Equal(t, r.val, v.RawBuffer())

@@ -288,24 +288,34 @@ func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64) *Value {
 // greater than the time spent blocked in this method, since some of these
 // errors could have occurred prior to this call. But it serves as a rough
 // indicator of whether turn taking could have caused higher latency due to
-// context cancellation of other readers.
+// context cancellation of other readers. The waitDuration returns the
+// duration of the blocking.
 //
 // While waiting, someone else may successfully read the value, which results
 // in a valid Handle being returned. This is a case where cacheHit=false.
 func (c *Handle) GetWithReadHandle(
 	ctx context.Context, fileNum base.DiskFileNum, offset uint64,
-) (cv *Value, rh ReadHandle, errorDuration time.Duration, cacheHit bool, err error) {
+) (
+	cv *Value,
+	rh ReadHandle,
+	errorDuration time.Duration,
+	waitDuration time.Duration,
+	cacheHit bool,
+	err error,
+) {
 	k := makeKey(c.id, fileNum, offset)
 	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, true /* desireReadEntry */)
 	if cv != nil {
-		return cv, ReadHandle{}, 0, true, nil
+		return cv, ReadHandle{}, 0, 0, true, nil
 	}
+	waitStopwatch := base.MakeStopwatch()
 	cv, errorDuration, err = re.waitForReadPermissionOrHandle(ctx)
+	waitDuration = waitStopwatch.Stop()
 	if err != nil || cv != nil {
 		re.unrefAndTryRemoveFromMap()
-		return cv, ReadHandle{}, errorDuration, false, err
+		return cv, ReadHandle{}, errorDuration, waitDuration, false, err
 	}
-	return nil, ReadHandle{entry: re}, errorDuration, false, nil
+	return nil, ReadHandle{entry: re}, errorDuration, waitDuration, false, nil
 }
 
 // Set sets the cache value for the specified file and offset, overwriting an
