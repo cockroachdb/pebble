@@ -3172,30 +3172,31 @@ func TestCompactionCorruption(t *testing.T) {
 	mem := vfs.NewMem()
 	var numFinishedCompactions atomic.Int32
 	var once sync.Once
-	opts := &Options{
-		FS:                 mem,
-		FormatMajorVersion: FormatNewest,
-		EventListener: &EventListener{
-			BackgroundError: func(error) {},
-			DataCorruption: func(info DataCorruptionInfo) {
-				if testing.Verbose() {
-					once.Do(func() { fmt.Printf("got expected data corruption: %s\n", info.Path) })
-				}
-			},
-			CompactionBegin: func(info CompactionInfo) {
-				if testing.Verbose() {
-					fmt.Printf("%d: compaction begin (L%d)\n", info.JobID, info.Output.Level)
-				}
-			},
-			CompactionEnd: func(info CompactionInfo) {
-				if testing.Verbose() {
-					fmt.Printf("%d: compaction end (L%d)\n", info.JobID, info.Output.Level)
-				}
-				if info.Err == nil {
-					numFinishedCompactions.Add(1)
-				}
-			},
+
+	memLogger := &base.InMemLogger{}
+	el := TeeEventListener(MakeLoggingEventListener(memLogger), EventListener{
+		BackgroundError: func(error) {},
+		DataCorruption: func(info DataCorruptionInfo) {
+			once.Do(func() {
+				memLogger.Infof("got expected data corruption: %s\n", info.Path)
+			})
 		},
+		CompactionEnd: func(info CompactionInfo) {
+			if info.Err == nil {
+				numFinishedCompactions.Add(1)
+			}
+		},
+	})
+	defer func() {
+		if t.Failed() {
+			t.Logf("test failed; logs:\n%s\n", memLogger.String())
+		}
+	}()
+
+	opts := &Options{
+		FS:                        mem,
+		EventListener:             &el,
+		FormatMajorVersion:        FormatNewest,
 		L0CompactionThreshold:     1,
 		L0CompactionFileThreshold: 5,
 		Logger:                    testutils.Logger{T: t},
@@ -3276,6 +3277,7 @@ func TestCompactionCorruption(t *testing.T) {
 				time.Sleep(10 * time.Millisecond)
 			}
 		}
+		memLogger.Infof("%s: %s", td.Pos, td.FullCmd())
 
 		switch td.Cmd {
 		case "build-remote":
@@ -3309,9 +3311,7 @@ func TestCompactionCorruption(t *testing.T) {
 			wait("problem span", func() bool {
 				return !d.problemSpans.IsEmpty()
 			})
-			if testing.Verbose() {
-				fmt.Printf("%s: wait-for-problem-span:\n%s", td.Pos, d.problemSpans.String())
-			}
+			memLogger.Infof("problem spans: %s", d.problemSpans.String())
 
 		case "wait-for-compactions":
 			target := numFinishedCompactions.Load() + 5
