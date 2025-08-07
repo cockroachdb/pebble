@@ -421,7 +421,7 @@ type IteratorLevel struct {
 type scanInternalIterator struct {
 	ctx              context.Context
 	db               *DB
-	opts             scanInternalOptions
+	opts             ScanInternalOptions
 	comparer         *base.Comparer
 	merge            Merge
 	iter             internalIterator
@@ -676,12 +676,12 @@ func (d *DB) truncateSharedFile(
 }
 
 func scanInternalImpl(
-	ctx context.Context, lower, upper []byte, iter *scanInternalIterator, opts *scanInternalOptions,
+	ctx context.Context, iter *scanInternalIterator, opts *ScanInternalOptions,
 ) error {
-	if opts.visitSharedFile != nil && (lower == nil || upper == nil) {
+	if opts.VisitSharedFile != nil && (opts.LowerBound == nil || opts.UpperBound == nil) {
 		panic("lower and upper bounds must be specified in skip-shared iteration mode")
 	}
-	if opts.visitSharedFile != nil && opts.visitExternalFile != nil {
+	if opts.VisitSharedFile != nil && opts.VisitExternalFile != nil {
 		return base.AssertionFailedf("cannot provide both a shared-file and external-file visitor")
 	}
 
@@ -698,7 +698,7 @@ func scanInternalImpl(
 		current = iter.readState.current
 	}
 
-	if opts.visitSharedFile != nil || opts.visitExternalFile != nil {
+	if opts.VisitSharedFile != nil || opts.VisitExternalFile != nil {
 		if provider == nil {
 			panic("expected non-nil Provider in skip-shared iteration mode")
 		}
@@ -706,8 +706,8 @@ func scanInternalImpl(
 		firstLevelWithRemote := opts.skipLevelForOpts()
 		for level := firstLevelWithRemote; level < numLevels; level++ {
 			files := current.Levels[level].Iter()
-			for f := files.SeekGE(cmp, lower); f != nil && cmp(f.Smallest().UserKey, upper) < 0; f = files.Next() {
-				if cmp(lower, f.Largest().UserKey) == 0 && f.Largest().IsExclusiveSentinel() {
+			for f := files.SeekGE(cmp, opts.LowerBound); f != nil && cmp(f.Smallest().UserKey, opts.UpperBound) < 0; f = files.Next() {
+				if cmp(opts.LowerBound, f.Largest().UserKey) == 0 && f.Largest().IsExclusiveSentinel() {
 					continue
 				}
 
@@ -725,11 +725,11 @@ func scanInternalImpl(
 					}
 				}
 
-				if objMeta.IsShared() && opts.visitSharedFile == nil {
+				if objMeta.IsShared() && opts.VisitSharedFile == nil {
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "shared file is present but no shared file visitor is defined")
 				}
 
-				if objMeta.IsExternal() && opts.visitExternalFile == nil {
+				if objMeta.IsExternal() && opts.VisitExternalFile == nil {
 					return errors.Wrapf(ErrInvalidSkipSharedIteration, "external file is present but no external file visitor is defined")
 				}
 
@@ -744,22 +744,22 @@ func scanInternalImpl(
 				if objMeta.IsShared() {
 					var sst *SharedSSTMeta
 					var skip bool
-					sst, skip, err = iter.db.truncateSharedFile(ctx, lower, upper, level, f, objMeta)
+					sst, skip, err = iter.db.truncateSharedFile(ctx, opts.LowerBound, opts.UpperBound, level, f, objMeta)
 					if err != nil {
 						return err
 					}
 					if skip {
 						continue
 					}
-					if err = opts.visitSharedFile(sst); err != nil {
+					if err = opts.VisitSharedFile(sst); err != nil {
 						return err
 					}
 				} else if objMeta.IsExternal() {
-					sst, err := iter.db.truncateExternalFile(ctx, lower, upper, level, f, objMeta)
+					sst, err := iter.db.truncateExternalFile(ctx, opts.LowerBound, opts.UpperBound, level, f, objMeta)
 					if err != nil {
 						return err
 					}
-					if err := opts.visitExternalFile(sst); err != nil {
+					if err := opts.VisitExternalFile(sst); err != nil {
 						return err
 					}
 				}
@@ -768,18 +768,18 @@ func scanInternalImpl(
 		}
 	}
 
-	for valid := iter.seekGE(lower); valid && iter.error() == nil; valid = iter.next() {
+	for valid := iter.seekGE(opts.LowerBound); valid && iter.error() == nil; valid = iter.next() {
 		key := iter.unsafeKey()
 
-		if opts.rateLimitFunc != nil {
-			if err := opts.rateLimitFunc(key, iter.lazyValue()); err != nil {
+		if opts.RateLimitFunc != nil {
+			if err := opts.RateLimitFunc(key, iter.lazyValue()); err != nil {
 				return err
 			}
 		}
 
 		switch key.Kind() {
 		case InternalKeyKindRangeKeyDelete, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
-			if opts.visitRangeKey != nil {
+			if opts.VisitRangeKey != nil {
 				span := iter.unsafeSpan()
 				// NB: The caller isn't interested in the sequence numbers of these
 				// range keys. Rather, the caller wants them to be in trailer order
@@ -791,19 +791,19 @@ func scanInternalImpl(
 					keysCopy[i].Trailer = base.MakeTrailer(0, span.Keys[i].Kind())
 				}
 				keyspan.SortKeysByTrailer(keysCopy)
-				if err := opts.visitRangeKey(span.Start, span.End, keysCopy); err != nil {
+				if err := opts.VisitRangeKey(span.Start, span.End, keysCopy); err != nil {
 					return err
 				}
 			}
 		case InternalKeyKindRangeDelete:
-			if opts.visitRangeDel != nil {
+			if opts.VisitRangeDel != nil {
 				rangeDel := iter.unsafeRangeDel()
-				if err := opts.visitRangeDel(rangeDel.Start, rangeDel.End, rangeDel.LargestSeqNum()); err != nil {
+				if err := opts.VisitRangeDel(rangeDel.Start, rangeDel.End, rangeDel.LargestSeqNum()); err != nil {
 					return err
 				}
 			}
 		default:
-			if opts.visitPointKey != nil {
+			if opts.VisitPointKey != nil {
 				var info IteratorLevel
 				if len(iter.mergingIter.heap.items) > 0 {
 					mergingIterIdx := iter.mergingIter.heap.items[0].index
@@ -812,7 +812,7 @@ func scanInternalImpl(
 					info = IteratorLevel{Kind: IteratorLevelUnknown}
 				}
 				val := iter.lazyValue()
-				if err := opts.visitPointKey(key, val, info); err != nil {
+				if err := opts.VisitPointKey(key, val, info); err != nil {
 					return err
 				}
 			}
@@ -822,11 +822,11 @@ func scanInternalImpl(
 	return nil
 }
 
-func (opts *scanInternalOptions) skipLevelForOpts() int {
-	if opts.visitSharedFile != nil {
+func (opts *ScanInternalOptions) skipLevelForOpts() int {
+	if opts.VisitSharedFile != nil {
 		return sharedLevelsStart
 	}
-	if opts.visitExternalFile != nil {
+	if opts.VisitExternalFile != nil {
 		return externalSkipStart
 	}
 	return numLevels
@@ -948,8 +948,8 @@ func (i *scanInternalIterator) constructPointIter(
 				if err != nil {
 					return err
 				}
-				if (meta.IsShared() && i.opts.visitSharedFile != nil) ||
-					(meta.IsExternal() && i.opts.visitExternalFile != nil) {
+				if (meta.IsShared() && i.opts.VisitSharedFile != nil) ||
+					(meta.IsExternal() && i.opts.VisitExternalFile != nil) {
 					// Skip this file.
 					continue
 				}
@@ -966,7 +966,7 @@ func (i *scanInternalIterator) constructPointIter(
 	buf.merging.snapshot = i.seqNum
 	rangeDelMiter.Init(i.comparer, keyspan.VisibleTransform(i.seqNum), new(keyspanimpl.MergingBuffers), rangeDelIters...)
 
-	if i.opts.includeObsoleteKeys {
+	if i.opts.IncludeObsoleteKeys {
 		iiter := &keyspan.InterleavingIter{}
 		iiter.Init(i.comparer, &buf.merging, &rangeDelMiter,
 			keyspan.InterleavingIterOpts{
@@ -1060,8 +1060,8 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 				if err != nil {
 					return err
 				}
-				if (meta.IsShared() && i.opts.visitSharedFile != nil) ||
-					(meta.IsExternal() && i.opts.visitExternalFile != nil) {
+				if (meta.IsShared() && i.opts.VisitSharedFile != nil) ||
+					(meta.IsExternal() && i.opts.VisitExternalFile != nil) {
 					// Skip this file.
 					continue
 				}

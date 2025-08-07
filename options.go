@@ -269,25 +269,25 @@ func (o *IterOptions) SpanIterOptions() keyspan.SpanIterOptions {
 	}
 }
 
-// scanInternalOptions is similar to IterOptions, meant for use with
+// ScanInternalOptions is similar to IterOptions, meant for use with
 // scanInternalIterator.
-type scanInternalOptions struct {
+type ScanInternalOptions struct {
 	IterOptions
 
-	category block.Category
+	Category block.Category
 
-	visitPointKey     func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error
-	visitRangeDel     func(start, end []byte, seqNum SeqNum) error
-	visitRangeKey     func(start, end []byte, keys []rangekey.Key) error
-	visitSharedFile   func(sst *SharedSSTMeta) error
-	visitExternalFile func(sst *ExternalFile) error
+	VisitPointKey     func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error
+	VisitRangeDel     func(start, end []byte, seqNum SeqNum) error
+	VisitRangeKey     func(start, end []byte, keys []rangekey.Key) error
+	VisitSharedFile   func(sst *SharedSSTMeta) error
+	VisitExternalFile func(sst *ExternalFile) error
 
-	// includeObsoleteKeys specifies whether keys shadowed by newer internal keys
+	// IncludeObsoleteKeys specifies whether keys shadowed by newer internal keys
 	// are exposed. If false, only one internal key per user key is exposed.
-	includeObsoleteKeys bool
+	IncludeObsoleteKeys bool
 
-	// rateLimitFunc is used to limit the amount of bytes read per second.
-	rateLimitFunc func(key *InternalKey, value LazyValue) error
+	// RateLimitFunc is used to limit the amount of bytes read per second.
+	RateLimitFunc func(key *InternalKey, value LazyValue) error
 }
 
 // RangeKeyMasking configures automatic hiding of point keys by range keys. A

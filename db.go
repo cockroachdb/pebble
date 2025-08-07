@@ -1273,35 +1273,13 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 // creator ID was set (as creator IDs are necessary to enable shared storage)
 // resulting in some lower level SSTs being on non-shared storage. Skip-shared
 // iteration is invalid in those cases.
-func (d *DB) ScanInternal(
-	ctx context.Context,
-	category block.Category,
-	lower, upper []byte,
-	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
-	visitRangeDel func(start, end []byte, seqNum SeqNum) error,
-	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
-	visitSharedFile func(sst *SharedSSTMeta) error,
-	visitExternalFile func(sst *ExternalFile) error,
-) error {
-	scanInternalOpts := &scanInternalOptions{
-		category:          category,
-		visitPointKey:     visitPointKey,
-		visitRangeDel:     visitRangeDel,
-		visitRangeKey:     visitRangeKey,
-		visitSharedFile:   visitSharedFile,
-		visitExternalFile: visitExternalFile,
-		IterOptions: IterOptions{
-			KeyTypes:   IterKeyTypePointsAndRanges,
-			LowerBound: lower,
-			UpperBound: upper,
-		},
-	}
-	iter, err := d.newInternalIter(ctx, snapshotIterOpts{} /* snapshot */, scanInternalOpts)
+func (d *DB) ScanInternal(ctx context.Context, opts ScanInternalOptions) error {
+	iter, err := d.newInternalIter(ctx, snapshotIterOpts{} /* snapshot */, &opts)
 	if err != nil {
 		return err
 	}
 	defer iter.close()
-	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
+	return scanInternalImpl(ctx, iter, &opts)
 }
 
 // newInternalIter constructs and returns a new scanInternalIterator on this db.
@@ -1312,7 +1290,7 @@ func (d *DB) ScanInternal(
 // finishInitializingIter. Both pairs of methods should be refactored to reduce
 // this duplication.
 func (d *DB) newInternalIter(
-	ctx context.Context, sOpts snapshotIterOpts, o *scanInternalOptions,
+	ctx context.Context, sOpts snapshotIterOpts, o *ScanInternalOptions,
 ) (*scanInternalIterator, error) {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
@@ -1399,7 +1377,7 @@ func finishInitializingInternalIter(
 	}
 	i.initializeBoundBufs(i.opts.LowerBound, i.opts.UpperBound)
 
-	if err := i.constructPointIter(i.opts.category, memtables, buf); err != nil {
+	if err := i.constructPointIter(i.opts.Category, memtables, buf); err != nil {
 		return nil, err
 	}
 
@@ -2984,8 +2962,8 @@ func (d *DB) ScanStatistics(
 		}
 	}
 
-	scanInternalOpts := &scanInternalOptions{
-		visitPointKey: func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error {
+	scanInternalOpts := &ScanInternalOptions{
+		VisitPointKey: func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error {
 			// If the previous key is equal to the current point key, the current key was
 			// pinned by a snapshot.
 			size := uint64(key.Size())
@@ -3012,12 +2990,12 @@ func (d *DB) ScanStatistics(
 			stats.BytesRead += uint64(key.Size() + value.Len())
 			return nil
 		},
-		visitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
+		VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
 			stats.Accumulated.KindsCount[InternalKeyKindRangeDelete]++
 			stats.BytesRead += uint64(len(start) + len(end))
 			return nil
 		},
-		visitRangeKey: func(start, end []byte, keys []rangekey.Key) error {
+		VisitRangeKey: func(start, end []byte, keys []rangekey.Key) error {
 			stats.BytesRead += uint64(len(start) + len(end))
 			for _, key := range keys {
 				stats.Accumulated.KindsCount[key.Kind()]++
@@ -3025,13 +3003,13 @@ func (d *DB) ScanStatistics(
 			}
 			return nil
 		},
-		includeObsoleteKeys: true,
+		IncludeObsoleteKeys: true,
 		IterOptions: IterOptions{
 			KeyTypes:   IterKeyTypePointsAndRanges,
 			LowerBound: lower,
 			UpperBound: upper,
 		},
-		rateLimitFunc: rateLimitFunc,
+		RateLimitFunc: rateLimitFunc,
 	}
 	iter, err := d.newInternalIter(ctx, snapshotIterOpts{}, scanInternalOpts)
 	if err != nil {
@@ -3039,7 +3017,7 @@ func (d *DB) ScanStatistics(
 	}
 	defer iter.close()
 
-	err = scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
+	err = scanInternalImpl(ctx, iter, scanInternalOpts)
 
 	if err != nil {
 		return LSMKeyStatistics{}, err

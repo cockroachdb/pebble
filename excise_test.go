@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -583,14 +582,19 @@ func TestConcurrentExcise(t *testing.T) {
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
-			err = from.ScanInternal(context.TODO(), block.CategoryUnknown, startKey, endKey,
-				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
+			err = from.ScanInternal(context.TODO(), ScanInternalOptions{
+				IterOptions: IterOptions{
+					KeyTypes:   IterKeyTypePointsAndRanges,
+					LowerBound: startKey,
+					UpperBound: endKey,
+				},
+				VisitPointKey: func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
 					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
 					return nil
 				},
-				func(start, end []byte, seqNum base.SeqNum) error {
+				VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
 					require.NoError(t, w.EncodeSpan(keyspan.Span{
 						Start: start,
 						End:   end,
@@ -598,7 +602,7 @@ func TestConcurrentExcise(t *testing.T) {
 					}))
 					return nil
 				},
-				func(start, end []byte, keys []keyspan.Key) error {
+				VisitRangeKey: func(start, end []byte, keys []keyspan.Key) error {
 					require.NoError(t, w.EncodeSpan(keyspan.Span{
 						Start:     start,
 						End:       end,
@@ -607,12 +611,11 @@ func TestConcurrentExcise(t *testing.T) {
 					}))
 					return nil
 				},
-				func(sst *SharedSSTMeta) error {
+				VisitSharedFile: func(sst *SharedSSTMeta) error {
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
-				nil,
-			)
+			})
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
