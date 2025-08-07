@@ -14,8 +14,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/rangekey"
-	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // Snapshot provides a read-only point-in-time view of the DB state.
@@ -74,40 +72,16 @@ func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) (*Ite
 //
 // See comment on db.ScanInternal for the behaviour that can be expected of
 // point keys deleted by range dels and keys masked by range keys.
-func (s *Snapshot) ScanInternal(
-	ctx context.Context,
-	category block.Category,
-	lower, upper []byte,
-	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
-	visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
-	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
-	visitSharedFile func(sst *SharedSSTMeta) error,
-	visitExternalFile func(sst *ExternalFile) error,
-) error {
+func (s *Snapshot) ScanInternal(ctx context.Context, opts ScanInternalOptions) error {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	scanInternalOpts := &scanInternalOptions{
-		category:          category,
-		visitPointKey:     visitPointKey,
-		visitRangeDel:     visitRangeDel,
-		visitRangeKey:     visitRangeKey,
-		visitSharedFile:   visitSharedFile,
-		visitExternalFile: visitExternalFile,
-		IterOptions: IterOptions{
-			KeyTypes:   IterKeyTypePointsAndRanges,
-			LowerBound: lower,
-			UpperBound: upper,
-		},
-	}
-
-	iter, err := s.db.newInternalIter(ctx, snapshotIterOpts{seqNum: s.seqNum}, scanInternalOpts)
+	iter, err := s.db.newInternalIter(ctx, snapshotIterOpts{seqNum: s.seqNum}, &opts)
 	if err != nil {
 		return err
 	}
 	defer iter.close()
-
-	return scanInternalImpl(ctx, lower, upper, iter, scanInternalOpts)
+	return scanInternalImpl(ctx, iter, &opts)
 }
 
 // closeLocked is similar to Close(), except it requires that db.mu be held
@@ -474,32 +448,13 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 // See comment on db.ScanInternal for the behaviour that can be expected of
 // point keys deleted by range dels and keys masked by range keys.
 func (es *EventuallyFileOnlySnapshot) ScanInternal(
-	ctx context.Context,
-	category block.Category,
-	lower, upper []byte,
-	visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
-	visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
-	visitRangeKey func(start, end []byte, keys []rangekey.Key) error,
-	visitSharedFile func(sst *SharedSSTMeta) error,
-	visitExternalFile func(sst *ExternalFile) error,
+	ctx context.Context, opts ScanInternalOptions,
 ) error {
 	if es.db == nil {
 		panic(ErrClosed)
 	}
 	var sOpts snapshotIterOpts
-	opts := &scanInternalOptions{
-		category: category,
-		IterOptions: IterOptions{
-			KeyTypes:   IterKeyTypePointsAndRanges,
-			LowerBound: lower,
-			UpperBound: upper,
-		},
-		visitPointKey:     visitPointKey,
-		visitRangeDel:     visitRangeDel,
-		visitRangeKey:     visitRangeKey,
-		visitSharedFile:   visitSharedFile,
-		visitExternalFile: visitExternalFile,
-	}
+
 	es.mu.Lock()
 	if es.mu.vers != nil {
 		sOpts = snapshotIterOpts{
@@ -512,11 +467,10 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 		}
 	}
 	es.mu.Unlock()
-	iter, err := es.db.newInternalIter(ctx, sOpts, opts)
+	iter, err := es.db.newInternalIter(ctx, sOpts, &opts)
 	if err != nil {
 		return err
 	}
 	defer iter.close()
-
-	return scanInternalImpl(ctx, lower, upper, iter, opts)
+	return scanInternalImpl(ctx, iter, &opts)
 }

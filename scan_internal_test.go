@@ -25,7 +25,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -212,16 +211,7 @@ func TestScanStatistics(t *testing.T) {
 func TestScanInternal(t *testing.T) {
 	var d *DB
 	type scanInternalReader interface {
-		ScanInternal(
-			ctx context.Context,
-			category block.Category,
-			lower, upper []byte,
-			visitPointKey func(key *InternalKey, value LazyValue, iterInfo IteratorLevel) error,
-			visitRangeDel func(start, end []byte, seqNum base.SeqNum) error,
-			visitRangeKey func(start, end []byte, keys []keyspan.Key) error,
-			visitSharedFile func(sst *SharedSSTMeta) error,
-			visitExternalFile func(sst *ExternalFile) error,
-		) error
+		ScanInternal(context.Context, ScanInternalOptions) error
 	}
 	batches := map[string]*Batch{}
 	snaps := map[string]*Snapshot{}
@@ -562,8 +552,13 @@ func TestScanInternal(t *testing.T) {
 					}
 				}
 			}
-			err := reader.ScanInternal(context.TODO(), block.CategoryUnknown, lower, upper,
-				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
+			err := reader.ScanInternal(context.TODO(), ScanInternalOptions{
+				IterOptions: IterOptions{
+					KeyTypes:   IterKeyTypePointsAndRanges,
+					LowerBound: lower,
+					UpperBound: upper,
+				},
+				VisitPointKey: func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					v, _, err := value.Value(nil)
 					if err != nil {
 						return err
@@ -571,18 +566,18 @@ func TestScanInternal(t *testing.T) {
 					fmt.Fprintf(&b, "%s (%s)\n", key, v)
 					return nil
 				},
-				func(start, end []byte, seqNum base.SeqNum) error {
+				VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
 					fmt.Fprintf(&b, "%s-%s#%d,RANGEDEL\n", start, end, seqNum)
 					return nil
 				},
-				func(start, end []byte, keys []keyspan.Key) error {
+				VisitRangeKey: func(start, end []byte, keys []keyspan.Key) error {
 					s := keyspan.Span{Start: start, End: end, Keys: keys}
 					fmt.Fprintf(&b, "%s\n", s.String())
 					return nil
 				},
-				sharedFileVisitor,
-				externalFileVisitor,
-			)
+				VisitSharedFile:   sharedFileVisitor,
+				VisitExternalFile: externalFileVisitor,
+			})
 			if err != nil {
 				return err.Error()
 			}

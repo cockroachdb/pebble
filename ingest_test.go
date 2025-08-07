@@ -841,14 +841,19 @@ func testIngestSharedImpl(
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var sharedSSTs []SharedSSTMeta
-			err = from.ScanInternal(context.TODO(), block.CategoryUnknown, startKey, endKey,
-				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
+			err = from.ScanInternal(context.TODO(), ScanInternalOptions{
+				IterOptions: IterOptions{
+					KeyTypes:   IterKeyTypePointsAndRanges,
+					LowerBound: startKey,
+					UpperBound: endKey,
+				},
+				VisitPointKey: func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
 					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
 					return nil
 				},
-				func(start, end []byte, seqNum base.SeqNum) error {
+				VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
 					require.NoError(t, w.EncodeSpan(keyspan.Span{
 						Start: start,
 						End:   end,
@@ -856,7 +861,7 @@ func testIngestSharedImpl(
 					}))
 					return nil
 				},
-				func(start, end []byte, keys []keyspan.Key) error {
+				VisitRangeKey: func(start, end []byte, keys []keyspan.Key) error {
 					require.NoError(t, w.EncodeSpan(keyspan.Span{
 						Start:     start,
 						End:       end,
@@ -865,12 +870,11 @@ func testIngestSharedImpl(
 					}))
 					return nil
 				},
-				func(sst *SharedSSTMeta) error {
+				VisitSharedFile: func(sst *SharedSSTMeta) error {
 					sharedSSTs = append(sharedSSTs, *sst)
 					return nil
 				},
-				nil,
-			)
+			})
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 
@@ -1361,14 +1365,19 @@ func TestIngestExternal(t *testing.T) {
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writeOpts)
 
 			var externalFiles []ExternalFile
-			err = from.ScanInternal(context.TODO(), block.CategoryUnknown, startKey, endKey,
-				func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
+			err = from.ScanInternal(context.TODO(), ScanInternalOptions{
+				IterOptions: IterOptions{
+					KeyTypes:   IterKeyTypePointsAndRanges,
+					LowerBound: startKey,
+					UpperBound: endKey,
+				},
+				VisitPointKey: func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
 					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
 					return nil
 				},
-				func(start, end []byte, seqNum base.SeqNum) error {
+				VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
 					require.NoError(t, w.EncodeSpan(keyspan.Span{
 						Start: start,
 						End:   end,
@@ -1376,7 +1385,7 @@ func TestIngestExternal(t *testing.T) {
 					}))
 					return nil
 				},
-				func(start, end []byte, keys []keyspan.Key) error {
+				VisitRangeKey: func(start, end []byte, keys []keyspan.Key) error {
 					require.NoError(t, w.EncodeSpan(keyspan.Span{
 						Start:     start,
 						End:       end,
@@ -1385,12 +1394,11 @@ func TestIngestExternal(t *testing.T) {
 					}))
 					return nil
 				},
-				nil,
-				func(sst *ExternalFile) error {
+				VisitExternalFile: func(sst *ExternalFile) error {
 					externalFiles = append(externalFiles, *sst)
 					return nil
 				},
-			)
+			})
 			require.NoError(t, err)
 			require.NoError(t, w.Close())
 			_, err = to.IngestAndExcise(context.Background(), []string{sstPath}, nil /* shared */, externalFiles, KeyRange{Start: startKey, End: endKey})

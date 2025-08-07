@@ -25,7 +25,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 )
@@ -2001,30 +2000,34 @@ func (r *replicateOp) runSharedReplicate(
 ) {
 	var sharedSSTs []pebble.SharedSSTMeta
 	var err error
-	err = source.ScanInternal(context.TODO(), block.CategoryUnknown, r.start, r.end,
-		func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
+	err = source.ScanInternal(context.TODO(), pebble.ScanInternalOptions{
+		IterOptions: pebble.IterOptions{
+			KeyTypes:   pebble.IterKeyTypePointsAndRanges,
+			LowerBound: r.start,
+			UpperBound: r.end,
+		},
+		VisitPointKey: func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
 			val, _, err := value.Value(nil)
 			if err != nil {
 				panic(err)
 			}
 			return w.Raw().Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false)
 		},
-		func(start, end []byte, seqNum base.SeqNum) error {
+		VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
 			return w.DeleteRange(start, end)
 		},
-		func(start, end []byte, keys []keyspan.Key) error {
+		VisitRangeKey: func(start, end []byte, keys []keyspan.Key) error {
 			return w.Raw().EncodeSpan(keyspan.Span{
 				Start: start,
 				End:   end,
 				Keys:  keys,
 			})
 		},
-		func(sst *pebble.SharedSSTMeta) error {
+		VisitSharedFile: func(sst *pebble.SharedSSTMeta) error {
 			sharedSSTs = append(sharedSSTs, *sst)
 			return nil
 		},
-		nil,
-	)
+	})
 	if err != nil {
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
@@ -2064,8 +2067,13 @@ func (r *replicateOp) runExternalReplicate(
 ) {
 	var externalSSTs []pebble.ExternalFile
 	var err error
-	err = source.ScanInternal(context.TODO(), block.CategoryUnknown, r.start, r.end,
-		func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
+	err = source.ScanInternal(context.TODO(), pebble.ScanInternalOptions{
+		IterOptions: pebble.IterOptions{
+			KeyTypes:   pebble.IterKeyTypePointsAndRanges,
+			LowerBound: r.start,
+			UpperBound: r.end,
+		},
+		VisitPointKey: func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
 			val, _, err := value.Value(nil)
 			if err != nil {
 				panic(err)
@@ -2073,12 +2081,12 @@ func (r *replicateOp) runExternalReplicate(
 			t.opts.Comparer.ValidateKey.MustValidate(key.UserKey)
 			return w.Raw().Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false)
 		},
-		func(start, end []byte, seqNum base.SeqNum) error {
+		VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
 			t.opts.Comparer.ValidateKey.MustValidate(start)
 			t.opts.Comparer.ValidateKey.MustValidate(end)
 			return w.DeleteRange(start, end)
 		},
-		func(start, end []byte, keys []keyspan.Key) error {
+		VisitRangeKey: func(start, end []byte, keys []keyspan.Key) error {
 			t.opts.Comparer.ValidateKey.MustValidate(start)
 			t.opts.Comparer.ValidateKey.MustValidate(end)
 			return w.Raw().EncodeSpan(keyspan.Span{
@@ -2087,12 +2095,11 @@ func (r *replicateOp) runExternalReplicate(
 				Keys:  keys,
 			})
 		},
-		nil,
-		func(sst *pebble.ExternalFile) error {
+		VisitExternalFile: func(sst *pebble.ExternalFile) error {
 			externalSSTs = append(externalSSTs, *sst)
 			return nil
 		},
-	)
+	})
 	if err != nil {
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
