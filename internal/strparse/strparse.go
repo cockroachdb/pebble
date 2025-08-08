@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -28,29 +29,58 @@ import (
 // that uses a Parser can recover them and convert them to errors.
 type Parser struct {
 	original  string
-	tokens    []string
-	lastToken string
+	tokens    []token
+	lastToken token
+}
+
+type token struct {
+	tok    string
+	offset int
 }
 
 // MakeParser constructs a new Parser that converts any instance of the runes
 // contained in [separators] into separate tokens, and consumes the provided
 // input string.
 func MakeParser(separators string, input string) Parser {
-	p := Parser{
-		original: input,
-	}
-	for _, f := range strings.Fields(input) {
-		for f != "" {
-			pos := strings.IndexAny(f, separators)
-			if pos == -1 {
-				p.tokens = append(p.tokens, f)
-				break
+	p := Parser{original: input}
+
+	s := input
+	off := 0
+	for len(s) > 0 {
+		nonWhiteSpacePos := strings.IndexFunc(s, func(r rune) bool { return !unicode.IsSpace(r) })
+		switch nonWhiteSpacePos {
+		case -1:
+			// Only whitespace.
+			off += len(s)
+			s = s[len(s):]
+		case 0:
+			// s is the beginning of a non-whitespace token.
+			// It might be a separator, or it might be an arbitrary token
+			wsPos := strings.IndexFunc(s, unicode.IsSpace)
+			switch pos := strings.IndexAny(s, separators); pos {
+			case -1:
+				if wsPos == -1 {
+					wsPos = len(s)
+				}
+				p.tokens = append(p.tokens, token{tok: s[:wsPos], offset: off})
+				off += wsPos
+				s = s[wsPos:]
+			case 0:
+				p.tokens = append(p.tokens, token{tok: s[:1], offset: off})
+				off += 1
+				s = s[1:]
+			default:
+				if wsPos != -1 && wsPos < pos {
+					pos = wsPos
+				}
+				p.tokens = append(p.tokens, token{tok: s[:pos], offset: off})
+				off += pos
+				s = s[pos:]
 			}
-			if pos > 0 {
-				p.tokens = append(p.tokens, f[:pos])
-			}
-			p.tokens = append(p.tokens, f[pos:pos+1])
-			f = f[pos+1:]
+		default:
+			// Whitespace.
+			off += nonWhiteSpacePos
+			s = s[nonWhiteSpacePos:]
 		}
 	}
 	return p
@@ -61,15 +91,23 @@ func (p *Parser) Done() bool {
 	return len(p.tokens) == 0
 }
 
+// Offset returns the offset of the next token.
+func (p *Parser) Offset() int {
+	if p.Done() {
+		return len(p.original)
+	}
+	return p.tokens[0].offset
+}
+
 // Peek returns the next token, without consuming the token. Returns "" if there
 // are no more tokens.
 func (p *Parser) Peek() string {
 	if p.Done() {
-		p.lastToken = ""
+		p.lastToken = token{}
 		return ""
 	}
 	p.lastToken = p.tokens[0]
-	return p.tokens[0]
+	return p.tokens[0].tok
 }
 
 // Next returns the next token, or "" if there are no more tokens.
@@ -81,11 +119,29 @@ func (p *Parser) Next() string {
 	return res
 }
 
+// ExpectAll consumes the next token, verifying that it contains only characters
+// for which fn returns true. It returns the token itself.
+func (p *Parser) ExpectAll(fn func(r rune) bool) string {
+	next := p.Next()
+	for _, r := range next {
+		if !fn(r) {
+			p.Errf("expected all characters to satisfy fn, %q of %q did not", r, next)
+		}
+	}
+	return next
+}
+
 // Remaining returns all the remaining tokens, separated by spaces.
 func (p *Parser) Remaining() string {
-	res := strings.Join(p.tokens, " ")
+	var buf strings.Builder
+	for _, tok := range p.tokens {
+		if buf.Len() > 0 {
+			buf.WriteString(" ")
+		}
+		buf.WriteString(tok.tok)
+	}
 	p.tokens = nil
-	return res
+	return buf.String()
 }
 
 // Expect consumes the next tokens, verifying that they exactly match the
@@ -182,8 +238,8 @@ func (p *Parser) SeqNum() base.SeqNum {
 
 // Uint64 parses the next token as a sequence number with a "#" prefix.
 func (p *Parser) HashSeqNum() base.SeqNum {
-	p.tokens[0] = p.tokens[0][1:]
-	return base.ParseSeqNum(p.Next())
+	tok := p.Next()
+	return base.ParseSeqNum(tok[1:])
 }
 
 // BlobFileID parses the next token as a BlobFileID.
