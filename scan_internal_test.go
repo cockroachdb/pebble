@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -46,7 +47,7 @@ func TestScanStatistics(t *testing.T) {
 	getOpts := func() *Options {
 		opts := &Options{
 			FS:                 vfs.NewMem(),
-			Logger:             testLogger{t: t},
+			Logger:             testutils.Logger{T: t},
 			Comparer:           testkeys.Comparer,
 			FormatMajorVersion: FormatMinForSharedObjects,
 			BlockPropertyCollectors: []func() BlockPropertyCollector{
@@ -230,7 +231,7 @@ func TestScanInternal(t *testing.T) {
 	parseOpts := func(td *datadriven.TestData) (*Options, error) {
 		opts := &Options{
 			FS:                 vfs.NewMem(),
-			Logger:             testLogger{t: t},
+			Logger:             testutils.Logger{T: t},
 			Comparer:           testkeys.Comparer,
 			FormatMajorVersion: FormatVirtualSSTables,
 			BlockPropertyCollectors: []func() BlockPropertyCollector{

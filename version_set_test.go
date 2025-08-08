@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
@@ -50,7 +51,7 @@ func TestVersionSet(t *testing.T) {
 	opts := &Options{
 		FS:       vfs.NewMem(),
 		Comparer: base.DefaultComparer,
-		Logger:   testLogger{t},
+		Logger:   testutils.Logger{T: t},
 	}
 	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 		return ValueSeparationPolicy{
@@ -275,7 +276,7 @@ func TestVersionSetCheckpoint(t *testing.T) {
 	opts := &Options{
 		FS:                  mem,
 		MaxManifestFileSize: 1,
-		Logger:              testLogger{t: t},
+		Logger:              testutils.Logger{T: t},
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -308,7 +309,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 	opts := &Options{
 		FS:                  mem,
 		MaxManifestFileSize: 1,
-		Logger:              testLogger{t: t},
+		Logger:              testutils.Logger{T: t},
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -377,7 +378,7 @@ func TestLargeKeys(t *testing.T) {
 		Comparer:                    &largeKeyComparer,
 		FormatMajorVersion:          internalFormatNewest,
 		FS:                          vfs.NewMem(),
-		Logger:                      testLogger{t: t},
+		Logger:                      testutils.Logger{T: t},
 		MemTableStopWritesThreshold: 4,
 		DisableTableStats:           true,
 	}
@@ -527,7 +528,7 @@ func TestCrashDuringManifestWrite_LargeKeys(t *testing.T) {
 		}))
 	}
 
-	opts := &Options{Logger: testLogger{t: t}}
+	opts := &Options{Logger: testutils.Logger{T: t}}
 	lel := MakeLoggingEventListener(opts.Logger)
 	opts.EventListener = &lel
 

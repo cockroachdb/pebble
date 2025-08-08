@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/problemspans"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -1320,6 +1321,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		Comparer:           testkeys.Comparer,
 		FormatMajorVersion: FormatNewest,
 		FS:                 fs,
+		Logger:             testutils.Logger{T: t},
 	}
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 
@@ -1463,6 +1465,7 @@ func TestCompactionPickerScores(t *testing.T) {
 		DisableAutomaticCompactions: true,
 		FormatMajorVersion:          FormatNewest,
 		FS:                          fs,
+		Logger:                      testutils.Logger{T: t},
 	}
 	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 

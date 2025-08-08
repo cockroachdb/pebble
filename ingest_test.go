@@ -33,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -497,7 +498,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			L0StopWritesThreshold:       100,
 			DebugCheck:                  DebugCheckLevels,
 			FormatMajorVersion:          internalFormatNewest,
-			Logger:                      testLogger{t},
+			Logger:                      testutils.Logger{T: t},
 		}
 		opts.WithFSDefaults()
 		if testing.Verbose() {
@@ -689,9 +690,9 @@ func testIngestSharedImpl(
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    FormatVirtualSSTables,
-			Logger:                testLogger{t},
+			Logger:                testutils.Logger{T: t},
 		}
-		lel := MakeLoggingEventListener(testLogger{t})
+		lel := MakeLoggingEventListener(testutils.Logger{T: t})
 		opts1.EventListener = &lel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": sstorage,
@@ -1014,7 +1015,7 @@ func TestSimpleIngestShared(t *testing.T) {
 	mem := vfs.NewMem()
 	var d *DB
 	var provider2 objstorage.Provider
-	opts2 := Options{FS: vfs.NewMem(), FormatMajorVersion: FormatVirtualSSTables, Logger: testLogger{t}}
+	opts2 := Options{FS: vfs.NewMem(), FormatMajorVersion: FormatVirtualSSTables, Logger: testutils.Logger{T: t}}
 	opts2.EnsureDefaults()
 
 	// Create an objProvider where we will fake-create some sstables that can
@@ -1056,7 +1057,7 @@ func TestSimpleIngestShared(t *testing.T) {
 			FS:                    mem,
 			L0CompactionThreshold: 100,
 			L0StopWritesThreshold: 100,
-			Logger:                testLogger{t},
+			Logger:                testutils.Logger{T: t},
 		}
 		opts.Experimental.RemoteStorage = providerSettings.Remote.StorageFactory
 		opts.Experimental.CreateOnShared = providerSettings.Remote.CreateOnShared
@@ -1169,7 +1170,7 @@ func TestIngestExternal(t *testing.T) {
 				flushed = true
 			}},
 			FormatMajorVersion: majorVersion,
-			Logger:             testLogger{t},
+			Logger:             testutils.Logger{T: t},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"external-locator": remoteStorage,
@@ -1181,7 +1182,7 @@ func TestIngestExternal(t *testing.T) {
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
-		lel := MakeLoggingEventListener(testLogger{t})
+		lel := MakeLoggingEventListener(testutils.Logger{T: t})
 		opts.EventListener = &lel
 		reopen(t)
 	}
@@ -2299,22 +2300,6 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 	require.NoError(t, d.Close())
 }
 
-type testLogger struct {
-	t testing.TB
-}
-
-func (l testLogger) Infof(format string, args ...interface{}) {
-	l.t.Logf(format, args...)
-}
-
-func (l testLogger) Errorf(format string, args ...interface{}) {
-	l.t.Logf(format, args...)
-}
-
-func (l testLogger) Fatalf(format string, args ...interface{}) {
-	l.t.Fatalf(format, args...)
-}
-
 // TestIngestMemtableOverlapRace is a regression test for the race described in
 // #2196. If an ingest that checks for overlap with the mutable memtable and
 // finds no overlap, it must not allow overlapping keys with later sequence
@@ -2331,7 +2316,7 @@ func (l testLogger) Fatalf(format string, args ...interface{}) {
 // numbers, since every flush and every ingest conflicts with one another.
 func TestIngestMemtableOverlapRace(t *testing.T) {
 	mem := vfs.NewMem()
-	el := MakeLoggingEventListener(testLogger{t: t})
+	el := MakeLoggingEventListener(testutils.Logger{T: t})
 	d, err := Open("", &Options{
 		FS: mem,
 		// Disable automatic compactions to keep the manifest clean; only
@@ -2531,7 +2516,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	// to induce errors on Remove calls. Even if we're unsuccessful in
 	// removing the obsolete files, the external files should not be
 	// overwritten.
-	d, err = Open(dir, &Options{FS: noRemoveFS{FS: fs}, Logger: testLogger{t}})
+	d, err = Open(dir, &Options{FS: noRemoveFS{FS: fs}, Logger: testutils.Logger{T: t}})
 	require.NoError(t, err)
 	require.NoError(t, d.Set([]byte("bar"), nil, nil))
 	require.NoError(t, d.Flush())

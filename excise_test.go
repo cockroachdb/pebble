@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -77,7 +78,7 @@ func TestExcise(t *testing.T) {
 				flushed = true
 			}},
 			FormatMajorVersion: FormatFlushableIngestExcises,
-			Logger:             testLogger{t},
+			Logger:             testutils.Logger{T: t},
 		}
 		if blockSize != 0 {
 			opts.Levels[0].BlockSize = blockSize
@@ -398,7 +399,7 @@ func TestConcurrentExcise(t *testing.T) {
 		compactionErrs = make(chan error, 5)
 
 		var el EventListener
-		el.EnsureDefaults(testLogger{t: t})
+		el.EnsureDefaults(testutils.Logger{T: t})
 		el.FlushBegin = func(info FlushInfo) {
 			// Don't block flushes
 		}
@@ -444,9 +445,9 @@ func TestConcurrentExcise(t *testing.T) {
 			L0StopWritesThreshold: 100,
 			DebugCheck:            DebugCheckLevels,
 			FormatMajorVersion:    FormatVirtualSSTables,
-			Logger:                testLogger{t},
+			Logger:                testutils.Logger{T: t},
 		}
-		lel := MakeLoggingEventListener(testLogger{t})
+		lel := MakeLoggingEventListener(testutils.Logger{T: t})
 		tel := TeeEventListener(lel, el)
 		opts1.EventListener = &tel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{

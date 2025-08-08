@@ -622,7 +622,7 @@ func TestBlobCorruptionEvent(t *testing.T) {
 			fs := vfs.NewMem()
 			opts := &Options{
 				FS:                 fs,
-				Logger:             testLogger{t},
+				Logger:             testutils.Logger{T: t},
 				FormatMajorVersion: FormatValueSeparation,
 				EventListener: &EventListener{
 					DataCorruption: func(info DataCorruptionInfo) {

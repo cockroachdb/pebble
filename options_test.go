@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -31,7 +32,7 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 		o = &Options{}
 	}
 	if o.Logger == nil {
-		o.Logger = testLogger{t: t}
+		o.Logger = testutils.Logger{T: t}
 	}
 	if o.FormatMajorVersion == FormatDefault {
 		// Pick a random format major version from the range

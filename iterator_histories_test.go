@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -51,7 +52,7 @@ func TestIterHistories(t *testing.T) {
 				BlockPropertyCollectors: []func() BlockPropertyCollector{
 					sstable.NewTestKeysBlockPropertyCollector,
 				},
-				Logger: testLogger{t},
+				Logger: testutils.Logger{T: t},
 			}
 			opts.DisableAutomaticCompactions = true
 			opts.EnsureDefaults()

@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -34,8 +35,10 @@ func TestRangeDel(t *testing.T) {
 			require.NoError(t, d.Close())
 		}
 	}()
-	opts := &Options{}
-	opts.DisableAutomaticCompactions = true
+	opts := &Options{
+		DisableAutomaticCompactions: true,
+		Logger:                      testutils.Logger{T: t},
+	}
 
 	datadriven.RunTest(t, "testdata/range_del", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -104,7 +107,7 @@ func TestFlushDelay(t *testing.T) {
 		FlushDelayDeleteRange: 10 * time.Millisecond,
 		FlushDelayRangeKey:    10 * time.Millisecond,
 		FormatMajorVersion:    internalFormatNewest,
-		Logger:                testLogger{t: t},
+		Logger:                testutils.Logger{T: t},
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -205,7 +208,7 @@ func TestFlushDelayStress(t *testing.T) {
 		FlushDelayRangeKey:    time.Duration(rng.IntN(10)+1) * time.Millisecond,
 		FormatMajorVersion:    internalFormatNewest,
 		MemTableSize:          8192,
-		Logger:                testLogger{t: t},
+		Logger:                testutils.Logger{T: t},
 	}
 
 	runs := 100
@@ -269,6 +272,7 @@ func TestRangeDelCompactionTruncation(t *testing.T) {
 			},
 			DebugCheck:         DebugCheckLevels,
 			FormatMajorVersion: formatVersion,
+			Logger:             testutils.Logger{T: t},
 		})
 		require.NoError(t, err)
 		defer d.Close()
@@ -415,6 +419,7 @@ func TestRangeDelCompactionTruncation2(t *testing.T) {
 			2: 1,
 		},
 		DebugCheck: DebugCheckLevels,
+		Logger:     testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -476,6 +481,7 @@ func TestRangeDelCompactionTruncation3(t *testing.T) {
 			2: 1,
 		},
 		DebugCheck: DebugCheckLevels,
+		Logger:     testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -595,6 +601,7 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 		Cache:      cache,
 		FS:         mem,
 		DebugCheck: DebugCheckLevels,
+		Logger:     testutils.Logger{T: b},
 	})
 	if err != nil {
 		b.Fatal(err)
