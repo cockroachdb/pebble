@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/itertest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -298,7 +299,8 @@ func testBatchEmpty(t *testing.T, size int, opts ...BatchOption) {
 	b = &Batch{}
 
 	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	defer d.Close()
@@ -322,7 +324,8 @@ func testBatchEmpty(t *testing.T, size int, opts ...BatchOption) {
 
 func TestBatchApplyNoSyncWait(t *testing.T) {
 	db, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	defer db.Close()
@@ -348,7 +351,8 @@ func TestBatchApplyNoSyncWait(t *testing.T) {
 
 func TestBatchReset(t *testing.T) {
 	db, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	defer db.Close()
@@ -419,7 +423,8 @@ func TestBatchReset(t *testing.T) {
 
 func TestBatchReuse(t *testing.T) {
 	db, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 
@@ -509,7 +514,8 @@ func TestIndexedBatchReset(t *testing.T) {
 		return count
 	}
 	db, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	defer db.Close()
@@ -595,6 +601,7 @@ func TestIndexedBatchMutation(t *testing.T) {
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: internalFormatNewest,
+		Logger:             testutils.Logger{T: t},
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -701,6 +708,7 @@ func TestIndexedBatch_GlobalVisibility(t *testing.T) {
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: internalFormatNewest,
 		Comparer:           testkeys.Comparer,
+		Logger:             testutils.Logger{T: t},
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -884,6 +892,7 @@ func TestBatchGet(t *testing.T) {
 			d, err := Open("", &Options{
 				FS:           vfs.NewMem(),
 				MemTableSize: c.memTableSize,
+				Logger:       testutils.Logger{T: t},
 			})
 			if err != nil {
 				t.Fatalf("Open: %v", err)
@@ -1284,7 +1293,8 @@ func TestEmptyFlushableBatch(t *testing.T) {
 func TestBatchCommitStats(t *testing.T) {
 	testFunc := func() error {
 		db, err := Open("", &Options{
-			FS: vfs.NewMem(),
+			FS:     vfs.NewMem(),
+			Logger: testutils.Logger{T: t},
 		})
 		require.NoError(t, err)
 		defer db.Close()
@@ -1571,9 +1581,9 @@ func BenchmarkIndexedBatchSetDeferred(b *testing.B) {
 }
 
 func TestBatchMemTableSizeOverflow(t *testing.T) {
-	opts := &Options{
+	opts := testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
-	}
+	})
 	opts.EnsureDefaults()
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -1599,6 +1609,7 @@ func TestBatchSpanCaching(t *testing.T) {
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: internalFormatNewest,
+		Logger:             testutils.Logger{T: t},
 	}
 	d, err := Open("", opts)
 	require.NoError(t, err)

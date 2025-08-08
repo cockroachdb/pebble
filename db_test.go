@@ -739,12 +739,14 @@ func TestIterLeakSharedCache(t *testing.T) {
 					d1, err := Open("", &Options{
 						FS:        vfs.NewMem(),
 						FileCache: fc,
+						Logger:    testutils.Logger{T: t},
 					})
 					require.NoError(t, err)
 
 					d2, err := Open("", &Options{
 						FS:        vfs.NewMem(),
 						FileCache: fc,
+						Logger:    testutils.Logger{T: t},
 					})
 					require.NoError(t, err)
 
@@ -892,7 +894,7 @@ func TestMemTableReservation(t *testing.T) {
 }
 
 func TestMemTableReservationLeak(t *testing.T) {
-	d, err := Open("", &Options{FS: vfs.NewMem()})
+	d, err := Open("", testingRandomized(t, &Options{FS: vfs.NewMem()}))
 	require.NoError(t, err)
 
 	d.mu.Lock()
@@ -1214,7 +1216,7 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 }
 
 func TestDBApplyBatchNilDB(t *testing.T) {
-	d, err := Open("", &Options{FS: vfs.NewMem()})
+	d, err := Open("", testingRandomized(t, &Options{FS: vfs.NewMem()}))
 	require.NoError(t, err)
 
 	b1 := &Batch{}
@@ -1234,10 +1236,10 @@ func TestDBApplyBatchNilDB(t *testing.T) {
 }
 
 func TestDBApplyBatchMismatch(t *testing.T) {
-	srcDB, err := Open("", &Options{FS: vfs.NewMem()})
+	srcDB, err := Open("", testingRandomized(t, &Options{FS: vfs.NewMem()}))
 	require.NoError(t, err)
 
-	applyDB, err := Open("", &Options{FS: vfs.NewMem()})
+	applyDB, err := Open("", testingRandomized(t, &Options{FS: vfs.NewMem()}))
 	require.NoError(t, err)
 
 	err = func() (err error) {
@@ -1297,9 +1299,9 @@ func TestCloseCleanerRace(t *testing.T) {
 }
 
 func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
-	d, err := Open("", &Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
-	})
+	}))
 	require.NoError(t, err)
 	defer func() {
 		if d != nil {
@@ -1338,9 +1340,9 @@ func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
 }
 
 func TestFilterSSTablesWithOption(t *testing.T) {
-	d, err := Open("", &Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
-	})
+	}))
 	require.NoError(t, err)
 	defer func() {
 		if d != nil {
@@ -1378,9 +1380,9 @@ func TestFilterSSTablesWithOption(t *testing.T) {
 }
 
 func TestSSTables(t *testing.T) {
-	d, err := Open("", &Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
-	})
+	}))
 	require.NoError(t, err)
 	defer func() {
 		if d != nil {
@@ -1415,10 +1417,10 @@ func TestSSTables(t *testing.T) {
 }
 
 func TestVirtualSSTables(t *testing.T) {
-	d, err := Open("", &Options{
+	d, err := Open("", testingRandomized(t, &Options{
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatTableFormatV6,
-	})
+	}))
 	require.NoError(t, err)
 	defer func() {
 		if d != nil {
@@ -1573,6 +1575,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		MemTableStopWritesThreshold: 1000,
 		L0StopWritesThreshold:       1000,
 		L0CompactionThreshold:       2,
+		Logger:                      testutils.Logger{T: t},
 		CompactionConcurrencyRange: func() (int, int) {
 			return 1, 1000
 		},
@@ -1599,7 +1602,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	var blockedCompactionsMu sync.Mutex // protects the above two variables.
 	nextSem := make(chan chan struct{}, 1)
 	var el EventListener
-	el.EnsureDefaults(testLogger{t: t})
+	el.EnsureDefaults(testutils.Logger{T: t})
 	el.FlushBegin = func(info FlushInfo) {
 		blockedCompactionsMu.Lock()
 		defer blockedCompactionsMu.Unlock()
@@ -1635,7 +1638,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 		nextSem <- sem
 		<-sem
 	}
-	tel := TeeEventListener(MakeLoggingEventListener(testLogger{t: t}), el)
+	tel := TeeEventListener(MakeLoggingEventListener(testutils.Logger{T: t}), el)
 	opts.EventListener = &tel
 	opts.Experimental.L0CompactionConcurrency = 1
 	d, err := Open("", opts)
@@ -2064,7 +2067,8 @@ func BenchmarkRotateMemtables(b *testing.B) {
 func TestRecycleLogs(t *testing.T) {
 	mem := vfs.NewMem()
 	d, err := Open("", &Options{
-		FS: mem,
+		FS:     mem,
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 
@@ -2100,7 +2104,7 @@ func TestRecycleLogs(t *testing.T) {
 
 	d, err = Open("", &Options{
 		FS:     mem,
-		Logger: testLogger{t},
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	recycler = d.mu.log.manager.RecyclerForTesting()
@@ -2160,6 +2164,7 @@ func TestWALFailoverAvoidsWriteStall(t *testing.T) {
 		MemTableSize:                4 << 20,
 		MemTableStopWritesThreshold: 2,
 		WALFailover:                 walFailover,
+		Logger:                      testutils.Logger{T: t},
 	}
 	d, err := Open("", o)
 	require.NoError(t, err)
@@ -2226,7 +2231,7 @@ func TestDeterminism(t *testing.T) {
 					opts := &Options{
 						FS:                          fs,
 						DebugCheck:                  DebugCheckLevels,
-						Logger:                      testLogger{t},
+						Logger:                      testutils.Logger{T: t},
 						FormatMajorVersion:          FormatNewest,
 						DisableAutomaticCompactions: true,
 					}
@@ -2483,6 +2488,7 @@ func TestLoadBlockSema(t *testing.T) {
 		Cache:         cache.New(1),
 		FS:            fs,
 		LoadBlockSema: sema,
+		Logger:        testutils.Logger{T: t},
 	}))
 	require.NoError(t, err)
 

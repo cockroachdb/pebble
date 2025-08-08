@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -43,7 +44,7 @@ func TestCheckLevelsBasics(t *testing.T) {
 			}
 			d, err := Open(tc, &Options{
 				FS:     fs,
-				Logger: testLogger{t},
+				Logger: testutils.Logger{T: t},
 			})
 			if err != nil {
 				t.Fatalf("%s: Open failed: %v", tc, err)

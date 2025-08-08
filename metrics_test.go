@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
@@ -222,6 +223,7 @@ func TestMetrics(t *testing.T) {
 			Comparer:              testkeys.Comparer,
 			FormatMajorVersion:    internalFormatNewest,
 			FS:                    memFS,
+			Logger:                testutils.Logger{T: t},
 			L0CompactionThreshold: 8,
 			// Large value for determinism.
 			MaxOpenFiles: 10000,
@@ -535,7 +537,7 @@ func TestMetrics(t *testing.T) {
 }
 
 func TestMetricsWAmpDisableWAL(t *testing.T) {
-	d, err := Open("", &Options{FS: vfs.NewMem(), DisableWAL: true})
+	d, err := Open("", &Options{FS: vfs.NewMem(), DisableWAL: true, Logger: testutils.Logger{T: t}})
 	require.NoError(t, err)
 	ks := testkeys.Alpha(2)
 	wo := WriteOptions{Sync: false}
@@ -561,7 +563,8 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 	fs := errorfs.Wrap(vfs.NewMem(), errorfs.RandomLatency(
 		nil, 100*time.Microsecond, time.Now().UnixNano(), 0 /* no limit */))
 	d, err := Open("", &Options{
-		FS: fs,
+		FS:     fs,
+		Logger: testutils.Logger{T: t},
 		// Use a tiny memtable size so that we get frequent flushes. While a
 		// flush is in-progress or completing, the WAL bytes written should
 		// remain nondecreasing.

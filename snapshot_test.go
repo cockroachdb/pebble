@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -76,6 +77,7 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 			options := &Options{
 				FS:                 vfs.NewMem(),
 				FormatMajorVersion: randVersion(),
+				Logger:             testutils.Logger{T: t},
 			}
 			if td.HasArg("block-size") {
 				var blockSize int
@@ -213,7 +215,8 @@ func TestEventuallyFileOnlySnapshot(t *testing.T) {
 
 func TestSnapshotClosed(t *testing.T) {
 	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 
@@ -241,7 +244,8 @@ func TestSnapshotRangeDeletionStress(t *testing.T) {
 	const middleKey = runs * runs
 
 	d, err := Open("", &Options{
-		FS: vfs.NewMem(),
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 
@@ -322,7 +326,10 @@ func TestSnapshotRangeDeletionStress(t *testing.T) {
 // snapshot could drop keys required by the snapshot.
 func TestNewSnapshotRace(t *testing.T) {
 	const runs = 10
-	d, err := Open("", &Options{FS: vfs.NewMem()})
+	d, err := Open("", &Options{
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
+	})
 	require.NoError(t, err)
 
 	v := []byte(`foo`)

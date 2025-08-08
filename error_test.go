@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/stretchr/testify/require"
@@ -459,7 +460,7 @@ func TestDBCompactionCrash(t *testing.T) {
 		opts := &Options{
 			DisableTableStats:           true,
 			FS:                          fs,
-			Logger:                      testLogger{t: t},
+			Logger:                      testutils.Logger{T: t},
 			MemTableSize:                128 << 10,
 			CompactionConcurrencyRange:  func() (int, int) { return 1, maxConcurrentCompactions },
 			LBaseMaxBytes:               64 << 10,

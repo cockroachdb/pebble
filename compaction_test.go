@@ -576,6 +576,7 @@ func TestAutomaticFlush(t *testing.T) {
 		DebugCheck:            DebugCheckLevels,
 		FS:                    mem,
 		L0CompactionThreshold: 8,
+		Logger:                testutils.Logger{T: t},
 		MemTableSize:          memTableSize,
 	}
 	opts = opts.testingRandomized(t)
@@ -922,6 +923,7 @@ func TestCompaction(t *testing.T) {
 			DisableAutomaticCompactions: true,
 			EventListener:               compactionLogEventListener,
 			FormatMajorVersion:          randVersion(minVersion, maxVersion),
+			Logger:                      testutils.Logger{T: t},
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -1024,6 +1026,7 @@ func TestCompaction(t *testing.T) {
 					EventListener:               compactionLogEventListener,
 					FormatMajorVersion:          randVersion(minVersion, maxVersion),
 					DisableAutomaticCompactions: true,
+					Logger:                      testutils.Logger{T: t},
 				}
 				opts.WithFSDefaults()
 				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -1587,6 +1590,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				},
 			},
 			FormatMajorVersion: internalFormatNewest,
+			Logger:             testutils.Logger{T: t},
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
@@ -1896,6 +1900,7 @@ func TestCompactionTombstones(t *testing.T) {
 						},
 					},
 					FormatMajorVersion: internalFormatNewest,
+					Logger:             testutils.Logger{T: t},
 				}
 				opts.WithFSDefaults()
 				opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
@@ -2103,6 +2108,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 							compactInfo = &info
 						},
 					},
+					Logger: testutils.Logger{T: t},
 				}
 				opts.WithFSDefaults()
 				var err error
@@ -2217,7 +2223,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 				}
 
 				var err error
-				if d, err = runDBDefineCmd(td, nil /* options */); err != nil {
+				if d, err = runDBDefineCmd(td, &Options{Logger: testutils.Logger{T: t}}); err != nil {
 					return err.Error()
 				}
 
@@ -2369,6 +2375,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 				}
 			},
 		},
+		Logger: testutils.Logger{T: t},
 	}
 	opts.WithFSDefaults()
 	for i := range opts.TargetFileSizes {
@@ -2551,7 +2558,8 @@ func TestCompactFlushQueuedMemTableAndFlushMetrics(t *testing.T) {
 
 		mem := vfs.NewMem()
 		opts := &Options{
-			FS: mem,
+			FS:     mem,
+			Logger: testutils.Logger{T: t},
 		}
 		opts.WithFSDefaults()
 		d, err := Open("", testingRandomized(t, opts))
@@ -2614,7 +2622,8 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 
 	mem := vfs.NewMem()
 	opts := &Options{
-		FS: mem,
+		FS:     mem,
+		Logger: testutils.Logger{T: t},
 	}
 	opts.WithFSDefaults()
 	d, err := Open("", testingRandomized(t, opts))
@@ -2664,6 +2673,7 @@ func TestFlushError(t *testing.T) {
 				t.Log(err)
 			},
 		},
+		Logger: testutils.Logger{T: t},
 	}
 	opts.WithFSDefaults()
 	d, err := Open("", testingRandomized(t, opts))
@@ -2718,7 +2728,8 @@ func TestCompactionInvalidBounds(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	opts := &Options{
-		FS: vfs.NewMem(),
+		FS:     vfs.NewMem(),
+		Logger: testutils.Logger{T: t},
 	}
 	opts.WithFSDefaults()
 	db, err := Open("", testingRandomized(t, opts))
@@ -2755,6 +2766,7 @@ func TestMarkedForCompaction(t *testing.T) {
 				fmt.Fprintln(&buf, info)
 			},
 		},
+		Logger: testutils.Logger{T: t},
 	}
 	opts.WithFSDefaults()
 
@@ -2980,7 +2992,7 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 	})
 	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 	opts.TargetByteDeletionRate = 1
-	opts.Logger = testLogger{t}
+	opts.Logger = testutils.Logger{T: t}
 
 	d, err := Open("", &opts)
 	require.NoError(t, err)
@@ -3092,6 +3104,7 @@ func TestCompactionErrorStats(t *testing.T) {
 				}
 			},
 		},
+		Logger: testutils.Logger{T: t},
 	}
 	opts.WithFSDefaults()
 	for i := range opts.TargetFileSizes {
@@ -3185,6 +3198,7 @@ func TestCompactionCorruption(t *testing.T) {
 		},
 		L0CompactionThreshold:     1,
 		L0CompactionFileThreshold: 5,
+		Logger:                    testutils.Logger{T: t},
 	}
 	opts.WithFSDefaults()
 	remoteStorage := remote.NewInMem()

@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 )
 
 func TestGetIter(t *testing.T) {
@@ -456,7 +457,7 @@ func TestGetIter(t *testing.T) {
 			get.snapshot = ikey.SeqNum() + 1
 			get.iterOpts = IterOptions{
 				Category:                      categoryGet,
-				logger:                        testLogger{t},
+				logger:                        testutils.Logger{T: t},
 				snapshotForHideObsoletePoints: get.snapshot,
 			}
 

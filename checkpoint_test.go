@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -43,7 +44,7 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			FormatMajorVersion:          internalFormatNewest,
 			L0CompactionThreshold:       10,
 			DisableAutomaticCompactions: true,
-			Logger:                      testLogger{t},
+			Logger:                      testutils.Logger{T: t},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			"": remoteMem,
@@ -287,7 +288,7 @@ func TestCheckpoint(t *testing.T) {
 
 func TestCheckpointCompaction(t *testing.T) {
 	fs := vfs.NewMem()
-	d, err := Open("", &Options{FS: fs, Logger: testLogger{t: t}})
+	d, err := Open("", &Options{FS: fs, Logger: testutils.Logger{T: t}})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -333,7 +334,7 @@ func TestCheckpointCompaction(t *testing.T) {
 		}
 	}()
 	go func() {
-		opts := &Options{FS: fs, Logger: testLogger{t: t}}
+		opts := &Options{FS: fs, Logger: testutils.Logger{T: t}}
 		defer cancel()
 		defer wg.Done()
 		for dir := range check {
@@ -370,7 +371,7 @@ func TestCheckpointCompaction(t *testing.T) {
 func TestCheckpointFlushWAL(t *testing.T) {
 	const checkpointPath = "checkpoints/checkpoint"
 	fs := vfs.NewCrashableMem()
-	opts := &Options{FS: fs, Logger: testLogger{t: t}}
+	opts := &Options{FS: fs, Logger: testutils.Logger{T: t}}
 	key, value := []byte("key"), []byte("value")
 
 	// Create a checkpoint from an unsynced DB.
@@ -429,7 +430,7 @@ func TestCheckpointManyFiles(t *testing.T) {
 		FS:                          vfs.NewMem(),
 		FormatMajorVersion:          internalFormatNewest,
 		DisableAutomaticCompactions: true,
-		Logger:                      testLogger{t},
+		Logger:                      testutils.Logger{T: t},
 	}
 	// Disable compression to speed up the test.
 	opts.EnsureDefaults()

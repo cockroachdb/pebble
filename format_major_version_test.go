@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
@@ -69,7 +70,7 @@ func TestRatchetFormat(t *testing.T) {
 
 	// If we Open the database again, leaving the default format, the
 	// database should Open using the persisted internalFormatNewest.
-	opts = &Options{FS: fs, Logger: testLogger{t}}
+	opts = &Options{FS: fs, Logger: testutils.Logger{T: t}}
 	opts.WithFSDefaults()
 	d, err = Open("", opts)
 	require.NoError(t, err)
@@ -121,7 +122,7 @@ func TestFormatMajorVersions(t *testing.T) {
 			opts := &Options{
 				FS:                 fs,
 				FormatMajorVersion: vers,
-				Logger:             testLogger{t},
+				Logger:             testutils.Logger{T: t},
 			}
 			opts.WithFSDefaults()
 

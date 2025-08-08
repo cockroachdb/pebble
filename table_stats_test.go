@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/colblk"
@@ -36,7 +37,7 @@ func TestTableStats(t *testing.T) {
 				loadedInfo = &info
 			},
 		},
-		Logger: testLogger{t},
+		Logger: testutils.Logger{T: t},
 	}
 
 	d, err := Open("", opts)
