@@ -2,14 +2,17 @@ build
 set hello foo
 ----
 
+# The first 3 reads are for initializing the Reader, which don't use
+# cache.Handle.GetWithReadHandle, while the remaining do. For the latter,
+# cache misses result in deterministic 5ms of wait time and 5ms of read time.
 get
 hello
 ----
 reading footer of 61 bytes took 5ms
 reading block of 37 bytes took 5ms (<redacted>)
 reading block of 311 bytes took 5ms (<redacted>)
-reading block of 31 bytes took 5ms (<redacted>)
-reading block of 32 bytes took 5ms (<redacted>)
+reading block of 31 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 32 bytes took 5ms + 5ms wait (<redacted>)
 hello:foo
 
 # If we disable background tracing, we should see no traces with Get.
@@ -21,22 +24,22 @@ hello:foo
 iter
 seek-ge hello
 ----
-reading block of 31 bytes took 5ms (<redacted>)
-reading block of 32 bytes took 5ms (<redacted>)
+reading block of 31 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 32 bytes took 5ms + 5ms wait (<redacted>)
 hello: (foo, .)
 
 snapshot-iter
 seek-ge hello
 ----
-reading block of 31 bytes took 5ms (<redacted>)
-reading block of 32 bytes took 5ms (<redacted>)
+reading block of 31 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 32 bytes took 5ms + 5ms wait (<redacted>)
 hello: (foo, .)
 
 indexed-batch-iter
 seek-ge hello
 ----
-reading block of 31 bytes took 5ms (<redacted>)
-reading block of 32 bytes took 5ms (<redacted>)
+reading block of 31 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 32 bytes took 5ms + 5ms wait (<redacted>)
 hello: (foo, .)
 
 build
@@ -45,14 +48,18 @@ range-key-set a z @4 foo2
 ----
 
 # This operation should not read the range key block.
+#
+# The first 3 reads are for initializing the Reader, which don't use
+# cache.Handle.GetWithReadHandle, while the remaining do. For the latter,
+# cache misses result in deterministic 5ms of wait time and 5ms of read time.
 get
 hello@2
 ----
 reading footer of 61 bytes took 5ms
 reading block of 62 bytes took 5ms (<redacted>)
 reading block of 398 bytes took 5ms (<redacted>)
-reading block of 27 bytes took 5ms (<redacted>)
-reading block of 35 bytes took 5ms (<redacted>)
+reading block of 27 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 35 bytes took 5ms + 5ms wait (<redacted>)
 hello@2:foo1
 
 # These operations should read the range key block, which shows up as a third
@@ -61,9 +68,9 @@ iter
 seek-ge hello
 next
 ----
-reading block of 27 bytes took 5ms (<redacted>)
-reading block of 35 bytes took 5ms (<redacted>)
-reading block of 35 bytes took 5ms (<redacted>)
+reading block of 27 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 35 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 35 bytes took 5ms + 5ms wait (<redacted>)
 hello: (., [a-z) @4=foo2 UPDATED)
 hello@2: (foo1, [a-z) @4=foo2)
 
@@ -71,9 +78,9 @@ snapshot-iter
 seek-ge hello
 next
 ----
-reading block of 27 bytes took 5ms (<redacted>)
-reading block of 35 bytes took 5ms (<redacted>)
-reading block of 35 bytes took 5ms (<redacted>)
+reading block of 27 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 35 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 35 bytes took 5ms + 5ms wait (<redacted>)
 hello: (., [a-z) @4=foo2 UPDATED)
 hello@2: (foo1, [a-z) @4=foo2)
 
@@ -81,8 +88,8 @@ indexed-batch-iter
 seek-ge hello
 next
 ----
-reading block of 27 bytes took 5ms (<redacted>)
-reading block of 35 bytes took 5ms (<redacted>)
-reading block of 35 bytes took 5ms (<redacted>)
+reading block of 27 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 35 bytes took 5ms + 5ms wait (<redacted>)
+reading block of 35 bytes took 5ms + 5ms wait (<redacted>)
 hello: (., [a-z) @4=foo2 UPDATED)
 hello@2: (foo1, [a-z) @4=foo2)

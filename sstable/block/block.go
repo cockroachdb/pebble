@@ -370,7 +370,7 @@ func (r *Reader) Read(
 				return CacheBufferHandle(cv), nil
 			}
 		}
-		value, err := r.doRead(ctx, env, readHandle, bh, kind, initBlockMetadataFn)
+		value, err := r.doRead(ctx, env, readHandle, bh, kind, 0, initBlockMetadataFn)
 		if err != nil {
 			return BufferHandle{}, env.maybeReportCorruption(err)
 		}
@@ -401,11 +401,15 @@ func (r *Reader) Read(
 		}
 		if hit {
 			recordCacheHit(ctx, env, readHandle, bh, kind)
+		} else {
+			// The block was not in the cache, and someone else read it, but this
+			// caller had to wait for that read. So account for it in the stats.
+			env.BlockRead(kind, bh.Length, waitDuration)
 		}
 		return CacheBufferHandle(cv), nil
 	}
 
-	value, err := r.doRead(ctx, env, readHandle, bh, kind, initBlockMetadataFn)
+	value, err := r.doRead(ctx, env, readHandle, bh, kind, waitDuration, initBlockMetadataFn)
 	if err != nil {
 		crh.SetReadError(err)
 		return BufferHandle{}, env.maybeReportCorruption(err)
@@ -432,6 +436,7 @@ func (r *Reader) doRead(
 	readHandle objstorage.ReadHandle,
 	bh Handle,
 	kind Kind,
+	waitBeforeReadDuration time.Duration,
 	initBlockMetadataFn func(*Metadata, []byte) error,
 ) (Value, error) {
 	ctx = objiotracing.WithBlockKind(ctx, kind)
@@ -455,11 +460,16 @@ func (r *Reader) doRead(
 	readDuration := readStopwatch.Stop()
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
 	// interface{}, unless necessary.
-	if readDuration >= base.SlowReadTracingThreshold && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
+	if (readDuration+waitBeforeReadDuration) >= base.SlowReadTracingThreshold &&
+		r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		_, file1, line1, _ := runtime.Caller(1)
 		_, file2, line2, _ := runtime.Caller(2)
-		r.opts.LoggerAndTracer.Eventf(ctx, "reading block of %d bytes took %s (fileNum=%s; %s/%s:%d -> %s/%s:%d)",
-			int(bh.Length+TrailerLen), readDuration.String(),
+		var waitDurStr string
+		if waitBeforeReadDuration > 0 {
+			waitDurStr = fmt.Sprintf("+ %s wait ", waitBeforeReadDuration.String())
+		}
+		r.opts.LoggerAndTracer.Eventf(ctx, "reading block of %d bytes took %s %s(fileNum=%s; %s/%s:%d -> %s/%s:%d)",
+			int(bh.Length+TrailerLen), readDuration.String(), waitDurStr,
 			r.opts.CacheOpts.FileNum,
 			filepath.Base(filepath.Dir(file2)), filepath.Base(file2), line2,
 			filepath.Base(filepath.Dir(file1)), filepath.Base(file1), line1)
@@ -468,7 +478,7 @@ func (r *Reader) doRead(
 		compressed.Release()
 		return Value{}, err
 	}
-	env.BlockRead(kind, bh.Length, readDuration)
+	env.BlockRead(kind, bh.Length, readDuration+waitBeforeReadDuration)
 	if err = ValidateChecksum(r.checksumType, compressed.BlockData(), bh); err != nil {
 		compressed.Release()
 		err = errors.Wrapf(err, "pebble: file %s", r.opts.CacheOpts.FileNum)
