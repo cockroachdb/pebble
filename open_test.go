@@ -36,6 +36,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -235,7 +236,7 @@ func TestOpen_WALFailover(t *testing.T) {
 			return buf.String()
 		case "open":
 			var dataDir string
-			o := &Options{Logger: testLogger{t}}
+			o := &Options{Logger: testutils.Logger{T: t}}
 			for _, cmdArg := range td.CmdArgs {
 				switch cmdArg.Key {
 				case "path":
@@ -514,6 +515,7 @@ func TestNewDBFilenames(t *testing.T) {
 			d, err := Open(fooBar, &Options{
 				FS:                 mem,
 				FormatMajorVersion: formatVers,
+				Logger:             testutils.Logger{T: t},
 			})
 			if err != nil {
 				t.Fatalf("Open: %v", err)
@@ -656,7 +658,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 
 func TestOpenOptionsCheck(t *testing.T) {
 	mem := vfs.NewMem()
-	opts := &Options{FS: mem}
+	opts := testingRandomized(t, &Options{FS: mem})
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -690,11 +692,11 @@ func TestOpenCrashWritingOptions(t *testing.T) {
 	// Open the database again, this time with a mocked filesystem that
 	// will only succeed in partially writing the OPTIONS file.
 	fs := optionsTornWriteFS{FS: memFS}
-	_, err = Open("", &Options{FS: fs, Logger: testLogger{t}})
+	_, err = Open("", &Options{FS: fs, Logger: testutils.Logger{T: t}})
 	require.Error(t, err)
 
 	// Re-opening the database must succeed.
-	d, err = Open("", &Options{FS: memFS, Logger: testLogger{t}})
+	d, err = Open("", &Options{FS: memFS, Logger: testutils.Logger{T: t}})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
 }
@@ -976,7 +978,7 @@ func TestWALReplaySequenceNumBug(t *testing.T) {
 	d, err = Open("", &Options{
 		FS:       mem,
 		ReadOnly: true,
-		Logger:   testLogger{t},
+		Logger:   testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	val, c, _ := d.Get([]byte("1"))
@@ -1174,7 +1176,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 	{
 		d, err := Open("", &Options{
 			FS:     instrumentedFS,
-			Logger: testLogger{t},
+			Logger: testutils.Logger{T: t},
 		})
 		require.NoError(t, err)
 		require.NoError(t, d.Close())
@@ -1452,7 +1454,7 @@ func TestOpenNeverFlushed(t *testing.T) {
 
 	opts := &Options{
 		FS:     mem,
-		Logger: testLogger{t},
+		Logger: testutils.Logger{T: t},
 	}
 	db, err := Open("", opts)
 	require.NoError(t, err)
@@ -1475,6 +1477,7 @@ func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 	d, err := Open("", &Options{
 		FS:                 fs,
 		FormatMajorVersion: FormatMinSupported,
+		Logger:             testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
 	require.NoError(t, d.Close())
@@ -1680,7 +1683,7 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	mem := vfs.NewMem()
 	memShared := remote.NewInMem()
 
-	opts := &Options{FS: mem, Logger: testLogger{t}}
+	opts := &Options{FS: mem, Logger: testutils.Logger{T: t}}
 	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": memShared,
@@ -1798,7 +1801,7 @@ func TestWALFailoverRandomized(t *testing.T) {
 		return &Options{
 			FS:                          fs,
 			FormatMajorVersion:          internalFormatNewest,
-			Logger:                      testLogger{t},
+			Logger:                      testutils.Logger{T: t},
 			MemTableSize:                128 << 10, // 128 KiB
 			MemTableStopWritesThreshold: 4,
 			WALFailover:                 &failoverOpts,
@@ -1974,7 +1977,7 @@ func TestWALHardCrashRandomized(t *testing.T) {
 				opts := &Options{
 					FS:                          fs,
 					FormatMajorVersion:          internalFormatNewest,
-					Logger:                      testLogger{t},
+					Logger:                      testutils.Logger{T: t},
 					MemTableSize:                32 << (10 + prng.IntN(6)), // [32 KiB, 256 KiB]
 					MemTableStopWritesThreshold: 4,
 				}

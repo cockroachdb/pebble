@@ -9,6 +9,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +23,7 @@ func TestSetCurrentFileCrash(t *testing.T) {
 
 	// Initialize a fresh database to write the initial MANIFEST.
 	{
-		d, err := Open("", &Options{FS: mem})
+		d, err := Open("", &Options{FS: mem, Logger: testutils.Logger{T: t}})
 		require.NoError(t, err)
 		require.NoError(t, d.Close())
 	}
@@ -59,7 +60,7 @@ func TestSetCurrentFileCrash(t *testing.T) {
 			FS:                    mem,
 			MaxManifestFileSize:   1,
 			L0CompactionThreshold: 10,
-			Logger:                testLogger{t},
+			Logger:                testutils.Logger{T: t},
 		})
 		require.NoError(t, err)
 		require.NoError(t, d.Close())

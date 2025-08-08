@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -96,7 +97,7 @@ func TestCleaner(t *testing.T) {
 			opts := &Options{
 				FS:     fs,
 				WALDir: dir + "_wal",
-				Logger: testLogger{t},
+				Logger: testutils.Logger{T: t},
 			}
 			opts.WithFSDefaults()
 
