@@ -360,7 +360,7 @@ func runIterCmd(
 				}
 				fmt.Fprintf(&b, "|  topLevelIndex.isDataInvalidated()=%t\n", twoLevelIter.topLevelIndex.IsDataInvalidated())
 			}
-			if si.index.Valid() {
+			if si != nil && si.index.Valid() {
 				fmt.Fprintf(&b, "|  index.Separator() = %q\n", si.index.Separator())
 				bhp, err := si.index.BlockHandleWithProperties()
 				if err != nil {
@@ -372,12 +372,14 @@ func runIterCmd(
 			} else {
 				fmt.Fprintf(&b, "|  index iter invalid\n")
 			}
-			fmt.Fprintf(&b, "|  index.isDataInvalidated()=%t\n", si.index.IsDataInvalidated())
-			fmt.Fprintf(&b, "|  data.isDataInvalidated()=%t\n", si.data.IsDataInvalidated())
-			fmt.Fprintf(&b, "|  hideObsoletePoints = %t\n", si.transforms.HideObsoletePoints)
-			fmt.Fprintf(&b, "|  dataBH = (Offset: %d, Length: %d)\n", si.dataBH.Offset, si.dataBH.Length)
-			fmt.Fprintf(&b, "|  (boundsCmp,positionedUsingLatestBounds) = (%d,%t)\n", si.boundsCmp, si.positionedUsingLatestBounds)
-			fmt.Fprintf(&b, "|  exhaustedBounds = %d\n", si.exhaustedBounds)
+			if si != nil {
+				fmt.Fprintf(&b, "|  index.isDataInvalidated()=%t\n", si.index.IsDataInvalidated())
+				fmt.Fprintf(&b, "|  data.isDataInvalidated()=%t\n", si.data.IsDataInvalidated())
+				fmt.Fprintf(&b, "|  hideObsoletePoints = %t\n", si.transforms.HideObsoletePoints)
+				fmt.Fprintf(&b, "|  dataBH = (Offset: %d, Length: %d)\n", si.dataBH.Offset, si.dataBH.Length)
+				fmt.Fprintf(&b, "|  (boundsCmp,positionedUsingLatestBounds) = (%d,%t)\n", si.boundsCmp, si.positionedUsingLatestBounds)
+				fmt.Fprintf(&b, "|  exhaustedBounds = %d\n", si.exhaustedBounds)
+			}
 
 			continue
 		}
