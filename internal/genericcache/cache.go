@@ -17,8 +17,8 @@ import (
 //
 // Values are initialized on demand and are automatically released when they are
 // evicted.
-type Cache[K Key, V any] struct {
-	shards []shard[K, V]
+type Cache[K Key, V any, InitOpts any] struct {
+	shards []shard[K, V, InitOpts]
 }
 
 // Key must be implemented by the key type used with a Cache.
@@ -37,7 +37,7 @@ type Key interface {
 //
 // It is guaranteed that there will be no concurrent calls to InitValueFn() with
 // the same key.
-type InitValueFn[K Key, V any] func(context.Context, K, ValueRef[K, V]) error
+type InitValueFn[K Key, V any, InitOpts any] func(context.Context, K, InitOpts, ValueRef[K, V, InitOpts]) error
 
 // ReleaseValueFn is called to release a value that is no longer used
 // (specifically: it was evicted from the cache AND there are no outstanding
@@ -48,19 +48,25 @@ type ReleaseValueFn[V any] func(*V)
 //
 // initValue is used to initialize a new value when it is added to the cache.
 // releaseValueFn is used to close a V when it is no longer needed.
-func New[K Key, V any](
-	capacity int, numShards int, initValueFn InitValueFn[K, V], releaseValueFn ReleaseValueFn[V],
-) *Cache[K, V] {
-	c := &Cache[K, V]{}
+func New[K Key, V any, InitOpts any](
+	capacity int,
+	numShards int,
+	initValueFn InitValueFn[K, V, InitOpts],
+	releaseValueFn ReleaseValueFn[V],
+) *Cache[K, V, InitOpts] {
+	c := &Cache[K, V, InitOpts]{}
 	c.Init(capacity, numShards, initValueFn, releaseValueFn)
 	return c
 }
 
 // Init can be used instead of New when the cache is embedded in another struct.
-func (c *Cache[K, V]) Init(
-	capacity int, numShards int, initValueFn InitValueFn[K, V], releaseValueFn ReleaseValueFn[V],
+func (c *Cache[K, V, InitOpts]) Init(
+	capacity int,
+	numShards int,
+	initValueFn InitValueFn[K, V, InitOpts],
+	releaseValueFn ReleaseValueFn[V],
 ) {
-	c.shards = make([]shard[K, V], numShards)
+	c.shards = make([]shard[K, V, InitOpts], numShards)
 	shardCapacity := (capacity + numShards - 1) / numShards
 	for i := range c.shards {
 		c.shards[i].Init(shardCapacity, initValueFn, releaseValueFn)
@@ -69,7 +75,7 @@ func (c *Cache[K, V]) Init(
 
 // Close the cache, releasing all live values. There must not be any outstanding
 // references on any of the values.
-func (c *Cache[K, V]) Close() {
+func (c *Cache[K, V, InitOpts]) Close() {
 	for i := range c.shards {
 		c.shards[i].Close()
 	}
@@ -79,28 +85,30 @@ func (c *Cache[K, V]) Close() {
 // FindOrCreate retrieves an existing value or creates a new value for the given
 // key. The result can be accessed via ValueRef.Value(). The caller must call
 // ValueRef.Close() when it no longer needs the value.
-func (c *Cache[K, V]) FindOrCreate(ctx context.Context, key K) (ValueRef[K, V], error) {
+func (c *Cache[K, V, InitOpts]) FindOrCreate(
+	ctx context.Context, key K, opts InitOpts,
+) (ValueRef[K, V, InitOpts], error) {
 	shard := c.getShard(key)
-	value := shard.findOrCreateValue(ctx, key)
+	value := shard.findOrCreateValue(ctx, key, opts)
 	if err := value.err; err != nil {
 		shard.UnrefValue(value)
-		return ValueRef[K, V]{}, err
+		return ValueRef[K, V, InitOpts]{}, err
 	}
-	return ValueRef[K, V]{shard: shard, value: value}, nil
+	return ValueRef[K, V, InitOpts]{shard: shard, value: value}, nil
 }
 
 // ValueRef is returned by FindOrCreate. It holds a reference on a value; the
 // value will be kept "alive" even if the cache decides to evict the value to
 // make room for another one.
 // The ValueRef is identical to the one passed to InitValueFn for this value.
-type ValueRef[K Key, V any] struct {
-	shard *shard[K, V]
+type ValueRef[K Key, V any, InitOpts any] struct {
+	shard *shard[K, V, InitOpts]
 	value *value[V]
 }
 
 // Value returns the value. This method and the returned value can only be used
 // until ref.Close() is called.
-func (ref ValueRef[K, V]) Value() *V {
+func (ref ValueRef[K, V, InitOpts]) Value() *V {
 	if invariants.Enabled && ref.value.err != nil {
 		panic("ValueRef with error")
 	}
@@ -109,14 +117,14 @@ func (ref ValueRef[K, V]) Value() *V {
 
 // Unref releases the reference. This must be called or the underlying value
 // will never be cleaned up.
-func (ref ValueRef[K, V]) Unref() {
+func (ref ValueRef[K, V, InitOpts]) Unref() {
 	ref.shard.UnrefValue(ref.value)
 }
 
 // Evict any entry associated with the given key. If there is a corresponding
 // value in the cache, it is cleaned up before the function returns. There must
 // not be any outstanding references on the value.
-func (c *Cache[K, V]) Evict(key K) {
+func (c *Cache[K, V, InitOpts]) Evict(key K) {
 	c.getShard(key).Evict(key)
 }
 
@@ -128,7 +136,7 @@ func (c *Cache[K, V]) Evict(key K) {
 // It should be used sparingly as it is an O(n) operation. Returns the list of
 // keys that were evicted (note that some may have been "ghost" entries without
 // an associated value in the cache).
-func (c *Cache[K, V]) EvictAll(predicate func(K) bool) []K {
+func (c *Cache[K, V, InitOpts]) EvictAll(predicate func(K) bool) []K {
 	var keys []K
 	for i := range c.shards {
 		keys = append(keys, c.shards[i].EvictAll(predicate)...)
@@ -136,7 +144,7 @@ func (c *Cache[K, V]) EvictAll(predicate func(K) bool) []K {
 	return keys
 }
 
-func (c *Cache[K, V]) getShard(key K) *shard[K, V] {
+func (c *Cache[K, V, InitOpts]) getShard(key K) *shard[K, V, InitOpts] {
 	return &c.shards[key.Shard(len(c.shards))]
 }
 
@@ -156,7 +164,7 @@ type Metrics struct {
 }
 
 // Metrics retrieves metrics for the cache.
-func (c *Cache[K, V]) Metrics() Metrics {
+func (c *Cache[K, V, InitOpts]) Metrics() Metrics {
 	var numHotOrCold, numTest int64
 	var m Metrics
 	for i := range c.shards {

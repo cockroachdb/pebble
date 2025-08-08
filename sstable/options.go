@@ -108,6 +108,10 @@ type ReaderOptions struct {
 
 	// FilterMetricsTracker is optionally used to track filter metrics.
 	FilterMetricsTracker *FilterMetricsTracker
+
+	// InitFileReadStats is to only be used for reads in NewReader and forgotten
+	// after.
+	InitFileReadStats InitFileReadStats
 }
 
 func (o ReaderOptions) ensureDefaults() ReaderOptions {
@@ -124,6 +128,26 @@ func (o ReaderOptions) ensureDefaults() ReaderOptions {
 		o.KeySchemas = defaultKeySchemas
 	}
 	return o
+}
+
+// InitFileReadStats is used to capture file reading stats when a file is
+// initialized in the file cache. The primary use case is when such
+// initialization is triggered because an iterator needs to read that file,
+// and we are able to capture these initialization stats in the iterator
+// stats.
+type InitFileReadStats struct {
+	// Stats and IterStats are slightly different. Stats is a shared struct
+	// supplied from the outside, and represents stats for the whole iterator
+	// tree and can be reset from the outside (e.g. when the pebble.Iterator is
+	// being reused). It is currently only provided when the iterator tree is
+	// rooted at pebble.Iterator. IterStats contains an sstable iterator's
+	// private stats that are reported to a CategoryStatsCollector when this
+	// iterator is closed. In the important code paths, the
+	// CategoryStatsCollector is managed by the fileCacheContainer.
+	//
+	// Both can be nil.
+	Stats     *base.InternalIteratorStats
+	IterStats *block.CategoryStatsShard
 }
 
 var defaultKeySchema = colblk.DefaultKeySchema(base.DefaultComparer, 16)
