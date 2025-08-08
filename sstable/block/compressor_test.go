@@ -41,7 +41,7 @@ func TestCompressor(t *testing.T) {
 		ci, _ = compressor.Compress(dst, src, blockkind.BlobValue)
 		require.Equal(t, compressionIndicatorFromAlgorithm(profile.ValueBlocks.Algorithm), ci)
 
-		ci, _ = compressor.Compress(dst, src, blockkind.Index)
+		ci, _ = compressor.Compress(dst, src, blockkind.SSTableIndex)
 		require.Equal(t, compressionIndicatorFromAlgorithm(profile.OtherBlocks.Algorithm), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.Metadata)

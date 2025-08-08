@@ -354,7 +354,7 @@ func (r *Reader) readTopLevelIndexBlock(
 func (r *Reader) readIndexBlock(
 	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
 ) (block.BufferHandle, error) {
-	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.Index, r.initIndexBlockMetadata)
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.SSTableIndex, r.initIndexBlockMetadata)
 }
 
 // initIndexBlockMetadata initializes the Metadata for a data block. This will

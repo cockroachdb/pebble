@@ -16,7 +16,6 @@ const (
 	SSTableValue
 	BlobValue
 	BlobReferenceValueLivenessIndex
-	Index
 	Filter
 	RangeDel
 	RangeKey
@@ -28,8 +27,8 @@ const (
 var kindString = [...]string{
 	Unknown:                         "unknown",
 	SSTableData:                     "data",
-	SSTableValue:                    "sstval",
 	SSTableIndex:                    "index",
+	SSTableValue:                    "sstval",
 	BlobValue:                       "blobval",
 	BlobReferenceValueLivenessIndex: "blobrefval",
 	Filter:                          "filter",
