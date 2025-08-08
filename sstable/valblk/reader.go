@@ -16,19 +16,24 @@ import (
 // ReaderProvider supports the implementation of blockProviderWhenClosed.
 // GetReader and Close can be called multiple times in pairs.
 type ReaderProvider interface {
-	GetReader(context.Context) (ExternalBlockReader, error)
+	GetReader(context.Context, block.InitFileReadStats) (ExternalBlockReader, error)
 	Close()
 }
 
 // ExternalBlockReader is used to read value blocks from a file outside the
 // context of a open sstable iterator reading the file.
 type ExternalBlockReader interface {
-	ReadValueBlockExternal(context.Context, block.Handle) (block.BufferHandle, error)
+	ReadValueBlockExternal(
+		context.Context, block.Handle, *base.InternalIteratorStats,
+		*block.CategoryStatsShard,
+	) (block.BufferHandle, error)
 }
 
 // IteratorBlockReader is used to read value blocks from within an open file.
 type IteratorBlockReader interface {
-	ReadValueBlock(block.Handle, *base.InternalIteratorStats) (block.BufferHandle, error)
+	ReadValueBlock(
+		block.Handle, *base.InternalIteratorStats, *block.CategoryStatsShard,
+	) (block.BufferHandle, error)
 }
 
 type blockProviderWhenClosed struct {
@@ -36,9 +41,11 @@ type blockProviderWhenClosed struct {
 	r  ExternalBlockReader
 }
 
-func (bpwc *blockProviderWhenClosed) open(ctx context.Context) error {
+func (bpwc *blockProviderWhenClosed) open(
+	ctx context.Context, stats block.InitFileReadStats,
+) error {
 	var err error
-	bpwc.r, err = bpwc.rp.GetReader(ctx)
+	bpwc.r, err = bpwc.rp.GetReader(ctx, stats)
 	return err
 }
 
@@ -48,7 +55,7 @@ func (bpwc *blockProviderWhenClosed) close() {
 }
 
 func (bpwc blockProviderWhenClosed) ReadValueBlock(
-	h block.Handle, stats *base.InternalIteratorStats,
+	h block.Handle, stats *base.InternalIteratorStats, catStats *block.CategoryStatsShard,
 ) (block.BufferHandle, error) {
 	// This is rare, since most block reads happen when the corresponding
 	// sstable iterator is open. So we are willing to sacrifice a proper context
@@ -61,7 +68,7 @@ func (bpwc blockProviderWhenClosed) ReadValueBlock(
 	// TODO(jackson,sumeer): Consider whether to use a buffer pool in this case.
 	// The bpwc is not allowed to outlive the iterator tree, so it cannot
 	// outlive the buffer pool.
-	return bpwc.r.ReadValueBlockExternal(ctx, h)
+	return bpwc.r.ReadValueBlockExternal(ctx, h, stats, catStats)
 }
 
 // Reader implements GetLazyValueForPrefixAndValueHandler; it is used to create
@@ -73,7 +80,7 @@ type Reader struct {
 	bpOpen IteratorBlockReader
 	rp     ReaderProvider
 	vbih   IndexHandle
-	stats  *base.InternalIteratorStats
+	stats  fetcherStats
 
 	// fetcher is allocated lazily the first time we create a LazyValue, in order
 	// to avoid the allocation if we never read a lazy value (which should be the
@@ -83,13 +90,20 @@ type Reader struct {
 
 // MakeReader constructs a Reader.
 func MakeReader(
-	i IteratorBlockReader, rp ReaderProvider, vbih IndexHandle, stats *base.InternalIteratorStats,
+	i IteratorBlockReader,
+	rp ReaderProvider,
+	vbih IndexHandle,
+	stats *base.InternalIteratorStats,
+	catStats *block.CategoryStatsShard,
 ) Reader {
 	return Reader{
 		bpOpen: i,
 		rp:     rp,
 		vbih:   vbih,
-		stats:  stats,
+		stats: fetcherStats{
+			stats:    stats,
+			catStats: catStats,
+		},
 	}
 }
 
@@ -122,9 +136,9 @@ func (r *Reader) GetInternalValueForPrefixAndValueHandle(handle []byte) base.Int
 			ShortAttribute: block.ValuePrefix(handle[0]).ShortAttribute(),
 		},
 	}
-	if r.stats != nil {
-		r.stats.SeparatedPointValue.Count++
-		r.stats.SeparatedPointValue.ValueBytes += uint64(valLen)
+	if r.stats.stats != nil {
+		r.stats.stats.SeparatedPointValue.Count++
+		r.stats.stats.SeparatedPointValue.ValueBytes += uint64(valLen)
 	}
 	return base.MakeLazyValue(base.LazyValue{
 		ValueOrHandle: h,
@@ -148,7 +162,7 @@ type valueBlockFetcher struct {
 	bpOpen IteratorBlockReader
 	rp     ReaderProvider
 	vbih   IndexHandle
-	stats  *base.InternalIteratorStats
+	stats  fetcherStats
 	// The value blocks index is lazily retrieved the first time the reader
 	// needs to read a value that resides in a value block.
 	vbiBlock []byte
@@ -171,13 +185,17 @@ type valueBlockFetcher struct {
 	bufMangler invariants.BufMangler
 }
 
+// fetcherStats are used to update stats specific to the value block fetcher,
+// and to update stats when using the ReaderProvider and ExternalBlockReader.
+type fetcherStats struct {
+	stats    *base.InternalIteratorStats
+	catStats *block.CategoryStatsShard
+}
+
 var _ base.ValueFetcher = (*valueBlockFetcher)(nil)
 
 func newValueBlockFetcher(
-	bpOpen IteratorBlockReader,
-	rp ReaderProvider,
-	vbih IndexHandle,
-	stats *base.InternalIteratorStats,
+	bpOpen IteratorBlockReader, rp ReaderProvider, vbih IndexHandle, stats fetcherStats,
 ) *valueBlockFetcher {
 	return &valueBlockFetcher{
 		bpOpen: bpOpen,
@@ -200,7 +218,10 @@ func (f *valueBlockFetcher) FetchHandle(
 	}
 
 	bp := blockProviderWhenClosed{rp: f.rp}
-	err = bp.open(ctx)
+	err = bp.open(ctx, block.InitFileReadStats{
+		Stats:     f.stats.stats,
+		IterStats: f.stats.catStats,
+	})
 	if err != nil {
 		return nil, false, err
 	}
@@ -238,7 +259,7 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen uint32) (val 
 	vh := DecodeRemainingHandle(handle)
 	vh.ValueLen = valLen
 	if f.vbiBlock == nil {
-		ch, err := f.bpOpen.ReadValueBlock(f.vbih.Handle, f.stats)
+		ch, err := f.bpOpen.ReadValueBlock(f.vbih.Handle, f.stats.stats, f.stats.catStats)
 		if err != nil {
 			return nil, err
 		}
@@ -250,7 +271,7 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen uint32) (val 
 		if err != nil {
 			return nil, err
 		}
-		vbCacheHandle, err := f.bpOpen.ReadValueBlock(vbh, f.stats)
+		vbCacheHandle, err := f.bpOpen.ReadValueBlock(vbh, f.stats.stats, f.stats.catStats)
 		if err != nil {
 			return nil, err
 		}
@@ -260,9 +281,9 @@ func (f *valueBlockFetcher) getValueInternal(handle []byte, valLen uint32) (val 
 		f.valueBlock = vbCacheHandle.BlockData()
 		f.valueBlockPtr = unsafe.Pointer(&f.valueBlock[0])
 	}
-	if f.stats != nil {
-		f.stats.SeparatedPointValue.CountFetched++
-		f.stats.SeparatedPointValue.ValueBytesFetched += uint64(valLen)
+	if f.stats.stats != nil {
+		f.stats.stats.SeparatedPointValue.CountFetched++
+		f.stats.stats.SeparatedPointValue.ValueBytesFetched += uint64(valLen)
 	}
 	return f.valueBlock[vh.OffsetInBlock : vh.OffsetInBlock+vh.ValueLen], nil
 }

@@ -411,9 +411,16 @@ func (r *Reader) initKeyspanBlockMetadata(metadata *block.Metadata, data []byte)
 // ReadValueBlockExternal implements valblk.ExternalBlockReader, allowing a
 // base.LazyValue to read a value block.
 func (r *Reader) ReadValueBlockExternal(
-	ctx context.Context, bh block.Handle,
+	ctx context.Context,
+	bh block.Handle,
+	stats *base.InternalIteratorStats,
+	catStats *block.CategoryStatsShard,
 ) (block.BufferHandle, error) {
-	return r.readValueBlock(ctx, block.NoReadEnv, noReadHandle, bh)
+	readEnv := block.ReadEnv{
+		Stats:     stats,
+		IterStats: catStats,
+	}
+	return r.readValueBlock(ctx, readEnv, noReadHandle, bh)
 }
 
 func (r *Reader) readValueBlock(
@@ -448,9 +455,8 @@ var metaBufferPools = sync.Pool{
 }
 
 func (r *Reader) readAndDecodeMetaindex(
-	ctx context.Context, bufferPool *block.BufferPool, readHandle objstorage.ReadHandle,
+	ctx context.Context, metaEnv block.ReadEnv, readHandle objstorage.ReadHandle,
 ) (map[string]block.Handle, valblk.IndexHandle, error) {
-	metaEnv := block.ReadEnv{BufferPool: bufferPool}
 	b, err := r.readMetaindexBlock(ctx, metaEnv, readHandle)
 	if err != nil {
 		return nil, valblk.IndexHandle{}, err
@@ -475,13 +481,13 @@ func (r *Reader) readAndDecodeMetaindex(
 
 func (r *Reader) initMetaindexBlocks(
 	ctx context.Context,
-	bufferPool *block.BufferPool,
+	blockEnv block.ReadEnv,
 	readHandle objstorage.ReadHandle,
 	filters map[string]FilterPolicy,
 ) error {
 	var meta map[string]block.Handle
 	var err error
-	meta, r.valueBIH, err = r.readAndDecodeMetaindex(ctx, bufferPool, readHandle)
+	meta, r.valueBIH, err = r.readAndDecodeMetaindex(ctx, blockEnv, readHandle)
 	if err != nil {
 		return err
 	}
@@ -561,20 +567,19 @@ var propertiesBlockBufPools = sync.Pool{
 func (r *Reader) ReadPropertiesBlock(
 	ctx context.Context, bufferPool *block.BufferPool,
 ) (Properties, error) {
-	return r.readPropertiesBlockInternal(ctx, bufferPool, noReadHandle)
+	return r.readPropertiesBlockInternal(ctx, block.ReadEnv{BufferPool: bufferPool}, noReadHandle)
 }
 
 func (r *Reader) readPropertiesBlockInternal(
-	ctx context.Context, bufferPool *block.BufferPool, readHandle objstorage.ReadHandle,
+	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle,
 ) (Properties, error) {
-	if bufferPool == nil {
+	if env.BufferPool == nil {
 		// We always use a buffer pool when reading the properties block as
 		// we don't want it in the block cache.
-		bufferPool = propertiesBlockBufPools.Get().(*block.BufferPool)
-		defer propertiesBlockBufPools.Put(bufferPool)
-		defer bufferPool.Release()
+		env.BufferPool = propertiesBlockBufPools.Get().(*block.BufferPool)
+		defer propertiesBlockBufPools.Put(env.BufferPool)
+		defer env.BufferPool.Release()
 	}
-	env := block.ReadEnv{BufferPool: bufferPool}
 	b, err := r.blockReader.Read(ctx, env, readHandle, r.propertiesBH, blockkind.Metadata, noInitBlockMetadataFn)
 	if err != nil {
 		return Properties{}, err
@@ -606,7 +611,7 @@ func (r *Reader) Layout() (*Layout, error) {
 	defer bufferPool.Release()
 
 	ctx := context.TODO()
-	meta, _, err := r.readAndDecodeMetaindex(ctx, bufferPool, noReadHandle)
+	meta, _, err := r.readAndDecodeMetaindex(ctx, block.ReadEnv{BufferPool: bufferPool}, noReadHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -960,6 +965,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		f, objstorage.ReadBeforeForNewReader, &preallocRH)
 	defer func() { _ = rh.Close() }()
 
+	// TODO(sumeer): use o.InitBlockEnv for this read.
 	footer, err := readFooter(ctx, f, rh, o.LoggerAndTracer, o.CacheOpts.FileNum)
 	if err != nil {
 		return nil, err
@@ -985,12 +991,17 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 	// allocator.
 	defer bufferPool.Release()
 
-	if err := r.initMetaindexBlocks(ctx, bufferPool, rh, o.Filters); err != nil {
+	blockEnv := block.ReadEnv{
+		Stats:      o.InitFileReadStats.Stats,
+		IterStats:  o.InitFileReadStats.IterStats,
+		BufferPool: bufferPool,
+	}
+	if err := r.initMetaindexBlocks(ctx, blockEnv, rh, o.Filters); err != nil {
 		r.err = err
 		return nil, err
 	}
 
-	props, err := r.readPropertiesBlockInternal(ctx, bufferPool, rh)
+	props, err := r.readPropertiesBlockInternal(ctx, blockEnv, rh)
 	if err != nil {
 		r.err = err
 		return nil, err
@@ -1131,7 +1142,7 @@ var _ valblk.ReaderProvider = (*trivialReaderProvider)(nil)
 
 // GetReader implements ReaderProvider.
 func (trp *trivialReaderProvider) GetReader(
-	ctx context.Context,
+	ctx context.Context, _ block.InitFileReadStats,
 ) (valblk.ExternalBlockReader, error) {
 	return (*Reader)(trp), nil
 }

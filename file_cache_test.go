@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -736,7 +737,7 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 			obj := fct.fileByIdx(j)
 			ftyp, fn := obj.FileInfo()
 			if ftyp == base.FileTypeBlob {
-				_, closeFunc, err := h.GetValueReader(context.Background(), obj)
+				_, closeFunc, err := h.GetValueReader(context.Background(), obj, block.InitFileReadStats{})
 				if err != nil {
 					t.Fatalf("i=%d, j=%d: get value reader: %v", i, j, err)
 				}
@@ -797,7 +798,7 @@ func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
 			obj := fct.fileByIdx(j)
 			ftyp, fn := obj.FileInfo()
 			if ftyp == base.FileTypeBlob {
-				_, closeFunc, err := h1.GetValueReader(context.Background(), obj)
+				_, closeFunc, err := h1.GetValueReader(context.Background(), obj, block.InitFileReadStats{})
 				if err != nil {
 					t.Fatalf("i=%d, j=%d: get value reader: %v", i, j, err)
 				}
@@ -858,7 +859,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 		obj := fct.fileByIdx(rng.IntN(fileCacheTestNumFiles))
 		ftyp, fn := obj.FileInfo()
 		if ftyp == base.FileTypeBlob {
-			_, closeFunc, err := h.GetValueReader(context.Background(), obj)
+			_, closeFunc, err := h.GetValueReader(context.Background(), obj, block.InitFileReadStats{})
 			if err != nil {
 				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
 			}
@@ -937,11 +938,11 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 		obj := fct.fileByIdx(j)
 		ftyp, fn := obj.FileInfo()
 		if ftyp == base.FileTypeBlob {
-			_, closeFunc1, err := h1.GetValueReader(context.Background(), obj)
+			_, closeFunc1, err := h1.GetValueReader(context.Background(), obj, block.InitFileReadStats{})
 			if err != nil {
 				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
 			}
-			_, closeFunc2, err := h2.GetValueReader(context.Background(), obj)
+			_, closeFunc2, err := h2.GetValueReader(context.Background(), obj, block.InitFileReadStats{})
 			if err != nil {
 				t.Fatalf("i=%d, fn=%d: get value reader: %v", i, fn, err)
 			}
@@ -1106,13 +1107,13 @@ func TestFileCacheRetryAfterFailure(t *testing.T) {
 
 		fs.setOpenError(true /* enabled */)
 		obj := fct.fileByIdx(fileCacheTestNumTables)
-		_, _, err := h.GetValueReader(ctx, obj)
+		_, _, err := h.GetValueReader(ctx, obj, block.InitFileReadStats{})
 		if err == nil {
 			t.Fatalf("expected failure, but found success")
 		}
 		require.Equal(t, "pebble: backing file 000200 error: injected error", err.Error())
 		fs.setOpenError(false /* enabled */)
-		_, closeFunc, err := h.GetValueReader(ctx, obj)
+		_, closeFunc, err := h.GetValueReader(ctx, obj, block.InitFileReadStats{})
 		require.NoError(t, err)
 		closeFunc()
 		fs.validateAndCloseHandle(t, h, nil)
@@ -1242,7 +1243,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		m := &manifest.TableMetadata{TableNum: base.TableNum(key)}
 		m.InitPhysicalBacking()
 		m.TableBacking.Ref()
-		v, err := h.findOrCreateTable(context.Background(), m)
+		v, err := h.findOrCreateTable(context.Background(), m, initFileOpts{})
 		require.NoError(t, err)
 		v.Unref()
 
@@ -1365,7 +1366,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v, _ := h.findOrCreateTable(context.Background(), m)
+		v, _ := h.findOrCreateTable(context.Background(), m, initFileOpts{})
 		v.Unref()
 	}
 }

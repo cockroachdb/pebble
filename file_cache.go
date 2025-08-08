@@ -205,7 +205,7 @@ func (h *fileCacheHandle) Close() error {
 
 // openFile is called when we insert a new entry in the file cache.
 func (h *fileCacheHandle) openFile(
-	ctx context.Context, fileNum base.DiskFileNum, fileType base.FileType,
+	ctx context.Context, fileNum base.DiskFileNum, fileType base.FileType, opts initFileOpts,
 ) (io.Closer, objstorage.ObjectMetadata, error) {
 	f, err := h.objProvider.OpenForReading(
 		ctx, fileType, fileNum, objstorage.OpenOptions{MustExist: true},
@@ -223,6 +223,7 @@ func (h *fileCacheHandle) openFile(
 		CacheHandle: h.blockCacheHandle,
 		FileNum:     fileNum,
 	}
+	o.InitFileReadStats = opts.stats
 	switch fileType {
 	case base.FileTypeTable:
 		r, err := sstable.NewReader(ctx, f, o)
@@ -233,6 +234,8 @@ func (h *fileCacheHandle) openFile(
 		}
 		return r, objMeta, nil
 	case base.FileTypeBlob:
+		// TODO(sumeer): we should pass o.InitFileReadStats, so that the latency
+		// of the footer read is accounted for.
 		r, err := blob.NewFileReader(ctx, f, blob.FileReaderOptions{
 			ReaderOptions: o.ReaderOptions,
 		})
@@ -251,14 +254,14 @@ func (h *fileCacheHandle) openFile(
 // for the backing file of the given table. If a corruption error is
 // encountered, reportCorruptionFn() is called.
 func (h *fileCacheHandle) findOrCreateTable(
-	ctx context.Context, meta *manifest.TableMetadata,
-) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
+	ctx context.Context, meta *manifest.TableMetadata, opts initFileOpts,
+) (genericcache.ValueRef[fileCacheKey, fileCacheValue, initFileOpts], error) {
 	key := fileCacheKey{
 		handle:   h,
 		fileNum:  meta.TableBacking.DiskFileNum,
 		fileType: base.FileTypeTable,
 	}
-	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
+	valRef, err := h.fileCache.c.FindOrCreate(ctx, key, opts)
 	if err != nil && IsCorruptionError(err) {
 		err = h.reportCorruptionFn(meta, err)
 	}
@@ -269,15 +272,15 @@ func (h *fileCacheHandle) findOrCreateTable(
 // the given blob file. If a corruption error is encountered,
 // reportCorruptionFn() is called.
 func (h *fileCacheHandle) findOrCreateBlob(
-	ctx context.Context, info base.ObjectInfo,
-) (genericcache.ValueRef[fileCacheKey, fileCacheValue], error) {
+	ctx context.Context, info base.ObjectInfo, stats block.InitFileReadStats,
+) (genericcache.ValueRef[fileCacheKey, fileCacheValue, initFileOpts], error) {
 	ftyp, fileNum := info.FileInfo()
 	key := fileCacheKey{
 		handle:   h,
 		fileNum:  fileNum,
 		fileType: ftyp,
 	}
-	valRef, err := h.fileCache.c.FindOrCreate(ctx, key)
+	valRef, err := h.fileCache.c.FindOrCreate(ctx, key, initFileOpts{stats: stats})
 	if err != nil && IsCorruptionError(err) {
 		err = h.reportCorruptionFn(info, err)
 	}
@@ -358,7 +361,7 @@ func (h *fileCacheHandle) withReader(
 	meta *manifest.TableMetadata,
 	fn func(*sstable.Reader, sstable.ReadEnv) error,
 ) error {
-	ref, err := h.findOrCreateTable(ctx, meta)
+	ref, err := h.findOrCreateTable(ctx, meta, optsFromBlockReadEnv(blockEnv))
 	if err != nil {
 		return err
 	}
@@ -388,10 +391,11 @@ func (h *fileCacheHandle) IterCount() int64 {
 }
 
 // GetValueReader returns a blob.ValueReader for blob file identified by fileNum.
+// Implements blob.ReaderProvider.
 func (h *fileCacheHandle) GetValueReader(
-	ctx context.Context, diskFile base.ObjectInfo,
+	ctx context.Context, diskFile base.ObjectInfo, stats block.InitFileReadStats,
 ) (r blob.ValueReader, closeFunc func(), err error) {
-	ref, err := h.findOrCreateBlob(ctx, diskFile)
+	ref, err := h.findOrCreateBlob(ctx, diskFile, stats)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -414,7 +418,7 @@ type FileCache struct {
 		blobFiles atomic.Int64
 	}
 
-	c genericcache.Cache[fileCacheKey, fileCacheValue]
+	c genericcache.Cache[fileCacheKey, fileCacheValue, initFileOpts]
 }
 
 // Ref adds a reference to the file cache. Once a file cache is constructed, the
@@ -436,7 +440,20 @@ func (c *FileCache) Unref() {
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
 		c.c.Close()
-		c.c = genericcache.Cache[fileCacheKey, fileCacheValue]{}
+		c.c = genericcache.Cache[fileCacheKey, fileCacheValue, initFileOpts]{}
+	}
+}
+
+type initFileOpts struct {
+	stats block.InitFileReadStats
+}
+
+func optsFromBlockReadEnv(blockEnv block.ReadEnv) initFileOpts {
+	return initFileOpts{
+		stats: block.InitFileReadStats{
+			Stats:     blockEnv.Stats,
+			IterStats: blockEnv.IterStats,
+		},
 	}
 }
 
@@ -453,7 +470,9 @@ func NewFileCache(numShards int, size int) *FileCache {
 	c := &FileCache{}
 
 	// initFn is used whenever a new entry is added to the file cache.
-	initFn := func(ctx context.Context, key fileCacheKey, vRef genericcache.ValueRef[fileCacheKey, fileCacheValue]) error {
+	initFn := func(
+		ctx context.Context, key fileCacheKey, opts initFileOpts,
+		vRef genericcache.ValueRef[fileCacheKey, fileCacheValue, initFileOpts]) error {
 		v := vRef.Value()
 		handle := key.handle
 		v.readerProvider.init(c, key)
@@ -464,7 +483,7 @@ func NewFileCache(numShards int, size int) *FileCache {
 			vRef.Unref()
 			handle.iterCount.Add(-1)
 		}
-		reader, objMeta, err := handle.openFile(ctx, key.fileNum, key.fileType)
+		reader, objMeta, err := handle.openFile(ctx, key.fileNum, key.fileType, opts)
 		if err != nil {
 			return errors.Wrapf(err, "pebble: backing file %s error", redact.Safe(key.fileNum))
 		}
@@ -551,7 +570,13 @@ func (h *fileCacheHandle) newIters(
 	kinds iterKinds,
 ) (iterSet, error) {
 	// Calling findOrCreate gives us the responsibility of Unref()ing vRef.
-	vRef, err := h.findOrCreateTable(ctx, file)
+	//
+	// TODO(sumeer): it is possible that many goroutines concurrently miss on
+	// the same file. Only one of them will create the sstable.Reader, and the
+	// read latency incurred in that creation will only be accounted in that
+	// iterator's stats. We should explicitly account for the latency of this in
+	// the case of a miss, and include it somewhere in the iterator stats.
+	vRef, err := h.findOrCreateTable(ctx, file, optsFromBlockReadEnv(internalOpts.readEnv.Block))
 	if err != nil {
 		return iterSet{}, err
 	}
@@ -870,13 +895,13 @@ func newRangeKeyIter(
 // tableCacheShardReaderProvider implements sstable.ReaderProvider for a
 // specific table.
 type tableCacheShardReaderProvider struct {
-	c   *genericcache.Cache[fileCacheKey, fileCacheValue]
+	c   *genericcache.Cache[fileCacheKey, fileCacheValue, initFileOpts]
 	key fileCacheKey
 
 	mu struct {
 		sync.Mutex
 		// r is the result of c.FindOrCreate(), only set iff refCount > 0.
-		r genericcache.ValueRef[fileCacheKey, fileCacheValue]
+		r genericcache.ValueRef[fileCacheKey, fileCacheValue, initFileOpts]
 		// refCount is the number of GetReader() calls that have not received a
 		// corresponding Close().
 		refCount int
@@ -888,11 +913,11 @@ var _ valblk.ReaderProvider = &tableCacheShardReaderProvider{}
 func (rp *tableCacheShardReaderProvider) init(fc *FileCache, key fileCacheKey) {
 	rp.c = &fc.c
 	rp.key = key
-	rp.mu.r = genericcache.ValueRef[fileCacheKey, fileCacheValue]{}
+	rp.mu.r = genericcache.ValueRef[fileCacheKey, fileCacheValue, initFileOpts]{}
 	rp.mu.refCount = 0
 }
 
-// GetReader implements sstable.ReaderProvider. Note that it is not the
+// GetReader implements valblk.ReaderProvider. Note that it is not the
 // responsibility of tableCacheShardReaderProvider to ensure that the file
 // continues to exist. The ReaderProvider is used in iterators where the
 // top-level iterator is pinning the read state and preventing the files from
@@ -907,7 +932,7 @@ func (rp *tableCacheShardReaderProvider) init(fc *FileCache, key fileCacheKey) {
 // TODO(bananabrick): We could return a wrapper over the Reader to ensure
 // that the reader isn't used for other purposes.
 func (rp *tableCacheShardReaderProvider) GetReader(
-	ctx context.Context,
+	ctx context.Context, stats block.InitFileReadStats,
 ) (valblk.ExternalBlockReader, error) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
@@ -923,7 +948,7 @@ func (rp *tableCacheShardReaderProvider) GetReader(
 	// longer in the cache, FindOrCreate will need to do IO (through initFn in
 	// NewFileCache) to initialize a new Reader. We hold rp.mu during this time so
 	// that concurrent GetReader calls block until the Reader is created.
-	r, err := rp.c.FindOrCreate(ctx, rp.key)
+	r, err := rp.c.FindOrCreate(ctx, rp.key, initFileOpts{stats: stats})
 	if err != nil {
 		return nil, err
 	}
@@ -942,7 +967,7 @@ func (rp *tableCacheShardReaderProvider) Close() {
 			panic("pebble: sstable.ReaderProvider misuse")
 		}
 		rp.mu.r.Unref()
-		rp.mu.r = genericcache.ValueRef[fileCacheKey, fileCacheValue]{}
+		rp.mu.r = genericcache.ValueRef[fileCacheKey, fileCacheValue, initFileOpts]{}
 	}
 }
 
@@ -955,7 +980,7 @@ func (h *fileCacheHandle) getTableProperties(
 ) (*sstable.Properties, error) {
 	// Calling findOrCreateTable gives us the responsibility of decrementing v's
 	// refCount here
-	v, err := h.findOrCreateTable(context.TODO(), file)
+	v, err := h.findOrCreateTable(context.TODO(), file, initFileOpts{})
 	if err != nil {
 		return nil, err
 	}
