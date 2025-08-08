@@ -157,7 +157,7 @@ on disk bytes |  36B     76B
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
 ----
 ----
 
@@ -212,8 +212,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.3KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   224B    0B |      4  2.6KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |      4  2.6KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -256,9 +256,9 @@ on disk bytes | 230B
            CR |
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -296,8 +296,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.3KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   224B    0B |      4  2.6KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |      4  2.6KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -340,9 +340,9 @@ on disk bytes | 230B
            CR |
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -377,8 +377,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.3KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   224B    0B |      4  2.6KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |      4  2.6KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -421,9 +421,9 @@ on disk bytes | 230B
            CR |
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -461,8 +461,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.3KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   224B    0B |      4  2.6KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |      4  2.6KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -505,9 +505,9 @@ on disk bytes | 230B
            CR |
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -584,8 +584,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   224B    0B |      2  1.3KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   224B    0B |     11  7.9KB  2.4KB
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |     11  7.9KB  2.4KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -628,9 +628,9 @@ on disk bytes | 622B    630B
            CR |         1.27
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:224 BlockBytesInCache:112 BlockReadDuration:10ms}
+   pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -692,8 +692,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  6.4KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     18   13KB  2.4KB
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.1KB    0B |      9  6.4KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  5.1KB    0B |     18   13KB  2.4KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       2       0        0     0     0     0        0     0      0     0
@@ -736,9 +736,9 @@ on disk bytes | 622B    615B
            CR |          1.3
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
+   pebble-compaction, non-latency: {BlockBytes:5234 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -851,8 +851,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  6.4KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     21   17KB  2.4KB
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.1KB    0B |      9  6.4KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  5.1KB    0B |     21   17KB  2.4KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       2       0        0     0     0     0        0     0      0     0
@@ -895,9 +895,9 @@ on disk bytes |  1KB    843B
            CR |         1.26
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
+   pebble-compaction, non-latency: {BlockBytes:5234 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -972,8 +972,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  6.4KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     28   22KB  2.4KB
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.1KB    0B |      9  6.4KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  5.1KB    0B |     28   22KB  2.4KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       2       0        0     0     0     0        0     0      0     0
@@ -1016,9 +1016,9 @@ on disk bytes | 1.3KB   1.3KB
            CR |          1.21
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
+   pebble-compaction, non-latency: {BlockBytes:5234 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1105,8 +1105,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      9  6.4KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |     28   22KB  2.4KB
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.1KB    0B |      9  6.4KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  5.1KB    0B |     28   22KB  2.4KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       2       0        0     0     0     0        0     0      0     0
@@ -1149,9 +1149,9 @@ on disk bytes | 1.3KB   1.2KB
            CR |          1.22
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:1106 BlockBytesInCache:112 BlockReadDuration:80ms}
+   pebble-compaction, non-latency: {BlockBytes:5234 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1282,8 +1282,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  2.2KB    0B |     16   11KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |  2.2KB    0B |     35   27KB  2.4KB
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   11KB    0B |     16   11KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   11KB    0B |     35   27KB  2.4KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       3       0        0     0     0     0        0     0      0     0
@@ -1326,9 +1326,9 @@ on disk bytes | 1.5KB    682B
            CR |           1.3
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:2235 BlockBytesInCache:457 BlockReadDuration:150ms}
+   pebble-compaction, non-latency: {BlockBytes:11009 BlockBytesInCache:457 BlockReadDuration:330ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:112 BlockBytesInCache:0 BlockReadDuration:20ms}
+                   b,     latency: {BlockBytes:579 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1456,8 +1456,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  1.9KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   336B    0B |      6  3.9KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.7KB    0B |      3  1.9KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.7KB    0B |      6  3.9KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -1500,7 +1500,7 @@ on disk bytes | 345B
            CR |
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
+   pebble-compaction, non-latency: {BlockBytes:1737 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
 ----
 
@@ -1552,8 +1552,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  1.9KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   336B    0B |      6  4.5KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.7KB    0B |      3  1.9KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.7KB    0B |      6  4.5KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -1596,7 +1596,7 @@ on disk bytes | 460B
            CR |
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
+   pebble-compaction, non-latency: {BlockBytes:1737 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
 ----
 
@@ -1640,8 +1640,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   336B    0B |      3  1.9KB     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   336B    0B |      7  5.2KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.7KB    0B |      3  1.9KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.7KB    0B |      7  5.2KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -1684,7 +1684,7 @@ on disk bytes | 496B     76B
            CR |         1.14
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:336 BlockBytesInCache:0 BlockReadDuration:30ms}
+   pebble-compaction, non-latency: {BlockBytes:1737 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
 ----
 

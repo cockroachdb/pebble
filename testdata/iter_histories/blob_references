@@ -35,7 +35,7 @@ c@2: (foobar, .)
 d@9: (v, .)
 d@2: (v, .)
 .
-stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 365B not cached (read time: 0s); points: 6 (18B keys, 8B values); separated: 2 (16B, 16B fetched)
+stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 1.4KB not cached (read time: 0s); points: 6 (18B keys, 8B values); separated: 2 (16B, 16B fetched)
 
 # Try the same but avoid fetching one of the values (by using NextPrefix to step
 # over it).
@@ -104,19 +104,19 @@ next
 stats
 ----
 b@9: (orange, .)
-stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cached, 381B not cached (read time: 0s); points: 1 (3B keys, 2B values); separated: 2 (11B, 6B fetched)
+stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 1 (3B keys, 2B values); separated: 2 (11B, 6B fetched)
 b@2: (lemon, .)
-stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 381B not cached (read time: 0s); points: 2 (6B keys, 4B values); separated: 3 (21B, 11B fetched)
+stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 2 (6B keys, 4B values); separated: 3 (21B, 11B fetched)
 c@9: (canteloupe, .)
-stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 458B not cached (read time: 0s); points: 3 (9B keys, 6B values); separated: 4 (25B, 21B fetched)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 3 (9B keys, 6B values); separated: 4 (25B, 21B fetched)
 c@2: (kiwi, .)
 d@9: (honeydew, .)
 d@2: (tangerine, .)
-stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 0B cached, 458B not cached (read time: 0s); points: 6 (18B keys, 12B values); separated: 7 (52B, 42B fetched)
+stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 6 (18B keys, 12B values); separated: 7 (52B, 42B fetched)
 e@1: (watermelon, .)
 f@2: (grapes, .)
 .
-stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cached, 458B not cached (read time: 0s); points: 8 (24B keys, 16B values); separated: 8 (58B, 58B fetched)
+stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 8 (24B keys, 16B values); separated: 8 (58B, 58B fetched)
 
 # Test scanning a table, stepping into new blocks of the blob file. The stats
 # should reflect that a block is only loaded when stepping into a new block.
@@ -170,31 +170,31 @@ next
 stats
 ----
 a: (lemonmeringue, .)
-stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cached, 289B not cached (read time: 0s); points: 1 (1B keys, 2B values); separated: 1 (13B, 13B fetched)
+stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cached, 850B not cached (read time: 0s); points: 1 (1B keys, 2B values); separated: 1 (13B, 13B fetched)
 b: (keylime, .)
-stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 289B not cached (read time: 0s); points: 2 (2B keys, 4B values); separated: 2 (20B, 20B fetched)
+stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 850B not cached (read time: 0s); points: 2 (2B keys, 4B values); separated: 2 (20B, 20B fetched)
 c: (pecan, .)
-stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 323B not cached (read time: 0s); points: 3 (3B keys, 6B values); separated: 3 (25B, 25B fetched)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 884B not cached (read time: 0s); points: 3 (3B keys, 6B values); separated: 3 (25B, 25B fetched)
 d: (cherry, .)
-stats: seeked 1 times (1 internal); stepped 3 times (3 internal); blocks: 0B cached, 323B not cached (read time: 0s); points: 4 (4B keys, 8B values); separated: 4 (31B, 31B fetched)
+stats: seeked 1 times (1 internal); stepped 3 times (3 internal); blocks: 0B cached, 884B not cached (read time: 0s); points: 4 (4B keys, 8B values); separated: 4 (31B, 31B fetched)
 e: (apple, .)
-stats: seeked 1 times (1 internal); stepped 4 times (4 internal); blocks: 0B cached, 323B not cached (read time: 0s); points: 5 (5B keys, 10B values); separated: 5 (36B, 36B fetched)
+stats: seeked 1 times (1 internal); stepped 4 times (4 internal); blocks: 0B cached, 884B not cached (read time: 0s); points: 5 (5B keys, 10B values); separated: 5 (36B, 36B fetched)
 f: (bananacream, .)
-stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 0B cached, 360B not cached (read time: 0s); points: 6 (6B keys, 12B values); separated: 6 (47B, 47B fetched)
+stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 0B cached, 921B not cached (read time: 0s); points: 6 (6B keys, 12B values); separated: 6 (47B, 47B fetched)
 g: (chocolate, .)
-stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 360B not cached (read time: 0s); points: 7 (7B keys, 14B values); separated: 7 (56B, 56B fetched)
+stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 921B not cached (read time: 0s); points: 7 (7B keys, 14B values); separated: 7 (56B, 56B fetched)
 h: (strawberry, .)
-stats: seeked 1 times (1 internal); stepped 7 times (7 internal); blocks: 0B cached, 394B not cached (read time: 0s); points: 8 (8B keys, 16B values); separated: 8 (66B, 66B fetched)
+stats: seeked 1 times (1 internal); stepped 7 times (7 internal); blocks: 0B cached, 955B not cached (read time: 0s); points: 8 (8B keys, 16B values); separated: 8 (66B, 66B fetched)
 i: (custard, .)
-stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cached, 394B not cached (read time: 0s); points: 9 (9B keys, 18B values); separated: 9 (73B, 73B fetched)
+stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cached, 955B not cached (read time: 0s); points: 9 (9B keys, 18B values); separated: 9 (73B, 73B fetched)
 j: (blueberry, .)
-stats: seeked 1 times (1 internal); stepped 9 times (9 internal); blocks: 0B cached, 419B not cached (read time: 0s); points: 10 (10B keys, 20B values); separated: 10 (82B, 82B fetched)
+stats: seeked 1 times (1 internal); stepped 9 times (9 internal); blocks: 0B cached, 980B not cached (read time: 0s); points: 10 (10B keys, 20B values); separated: 10 (82B, 82B fetched)
 k: (raspberry, .)
-stats: seeked 1 times (1 internal); stepped 10 times (10 internal); blocks: 0B cached, 444B not cached (read time: 0s); points: 11 (11B keys, 22B values); separated: 11 (91B, 91B fetched)
+stats: seeked 1 times (1 internal); stepped 10 times (10 internal); blocks: 0B cached, 1005B not cached (read time: 0s); points: 11 (11B keys, 22B values); separated: 11 (91B, 91B fetched)
 l: (peach, .)
-stats: seeked 1 times (1 internal); stepped 11 times (11 internal); blocks: 0B cached, 465B not cached (read time: 0s); points: 12 (12B keys, 24B values); separated: 12 (96B, 96B fetched)
+stats: seeked 1 times (1 internal); stepped 11 times (11 internal); blocks: 0B cached, 1.0KB not cached (read time: 0s); points: 12 (12B keys, 24B values); separated: 12 (96B, 96B fetched)
 .
-stats: seeked 1 times (1 internal); stepped 12 times (12 internal); blocks: 0B cached, 465B not cached (read time: 0s); points: 12 (12B keys, 24B values); separated: 12 (96B, 96B fetched)
+stats: seeked 1 times (1 internal); stepped 12 times (12 internal); blocks: 0B cached, 1.0KB not cached (read time: 0s); points: 12 (12B keys, 24B values); separated: 12 (96B, 96B fetched)
 
 # Regression test for #4741.
 #

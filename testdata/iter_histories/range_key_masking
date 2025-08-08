@@ -153,7 +153,7 @@ stats
 ----
 a: (., [a-z) @5=boop UPDATED)
 .
-stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 1.1KB not cached (read time: 0s); points: 25 (75B keys, 75B values), range keys: 1, contained points: 25 (25 skipped)
+stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 1.6KB not cached (read time: 0s); points: 25 (75B keys, 75B values), range keys: 1, contained points: 25 (25 skipped)
 
 # Repeat the above test, but with an iterator that uses a block-property filter
 # mask. The internal stats should reflect fewer bytes read and fewer points

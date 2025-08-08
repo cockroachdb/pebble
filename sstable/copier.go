@@ -91,11 +91,11 @@ func CopySpan(
 	defer metaBufferPools.Put(bufferPool)
 	defer bufferPool.Release()
 
-	metaIndex, _, err := r.readAndDecodeMetaindex(ctx, bufferPool, rh)
+	metaIndex, _, err := r.readAndDecodeMetaindex(ctx, block.ReadEnv{BufferPool: bufferPool}, rh)
 	if err != nil {
 		return 0, errors.Wrap(err, "reading metaindex")
 	}
-	props, err := r.readPropertiesBlockInternal(ctx, bufferPool, rh)
+	props, err := r.readPropertiesBlockInternal(ctx, block.ReadEnv{BufferPool: bufferPool}, rh)
 	if err != nil {
 		return 0, errors.Wrap(err, "reading properties")
 	}

@@ -1242,7 +1242,7 @@ func TestFileCacheClockPro(t *testing.T) {
 		m := &manifest.TableMetadata{TableNum: base.TableNum(key)}
 		m.InitPhysicalBacking()
 		m.TableBacking.Ref()
-		v, err := h.findOrCreateTable(context.Background(), m)
+		v, err := h.findOrCreateTable(context.Background(), m, initFileOpts{})
 		require.NoError(t, err)
 		v.Unref()
 
@@ -1365,7 +1365,7 @@ func BenchmarkFileCacheHotPath(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		v, _ := h.findOrCreateTable(context.Background(), m)
+		v, _ := h.findOrCreateTable(context.Background(), m, initFileOpts{})
 		v.Unref()
 	}
 }
