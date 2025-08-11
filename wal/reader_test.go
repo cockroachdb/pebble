@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/batchrepr"
@@ -97,9 +98,18 @@ func TestList(t *testing.T) {
 // TestReader tests the virtual WAL reader that merges across multiple physical
 // log files.
 func TestReader(t *testing.T) {
-	fs := vfs.NewCrashableMem()
 	rng := rand.New(rand.NewPCG(1, 1))
 	var buf bytes.Buffer
+	var fs vfs.FS
+	var memFS *vfs.MemFS
+	setFS := func(mem *vfs.MemFS) {
+		memFS = mem
+		fs = vfs.WithLogging(mem, func(format string, args ...interface{}) {
+			s := fmt.Sprintf("# "+format, args...)
+			fmt.Fprintln(&buf, strings.TrimRightFunc(s, unicode.IsSpace))
+		})
+	}
+	setFS(vfs.NewCrashableMem())
 	datadriven.RunTest(t, "testdata/reader", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
@@ -202,19 +212,43 @@ func TestReader(t *testing.T) {
 				}
 			}
 			if td.HasArg("close-unclean") {
-				crashFS := fs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
+				crashFS := memFS.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 				require.NoError(t, w.Close())
-				fs = crashFS
+				setFS(crashFS)
 			} else {
 				require.NoError(t, w.Close())
+			}
+			return buf.String()
+		case "copy":
+			var logNum uint64
+			var copyDir string
+			var visibleSeqNum uint64
+			td.ScanArgs(t, "logNum", &logNum)
+			td.ScanArgs(t, "copyDir", &copyDir)
+			td.ScanArgs(t, "visibleSeqNum", &visibleSeqNum)
+			logs, err := Scan(Dir{FS: fs})
+			require.NoError(t, err)
+			log, ok := logs.Get(NumWAL(logNum))
+			if !ok {
+				return fmt.Sprintf("log with logNum %d not found", logNum)
+			}
+			require.NoError(t, fs.MkdirAll(copyDir, os.ModePerm))
+			cfg := record.LogWriterConfig{
+				WriteWALSyncOffsets: func() bool { return false },
+			}
+			err = Copy(fs, copyDir, log, base.SeqNum(visibleSeqNum), cfg)
+			if err != nil {
+				return err.Error()
 			}
 			return buf.String()
 		case "read":
 			var logNum uint64
 			var forceLogNameIndexes []uint64
+			dirname := ""
 			td.ScanArgs(t, "logNum", &logNum)
 			td.MaybeScanArgs(t, "forceLogNameIndexes", &forceLogNameIndexes)
-			logs, err := Scan(Dir{FS: fs})
+			td.MaybeScanArgs(t, "dirname", &dirname)
+			logs, err := Scan(Dir{Dirname: dirname, FS: fs})
 			require.NoError(t, err)
 			log, ok := logs.Get(NumWAL(logNum))
 			if !ok {

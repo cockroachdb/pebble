@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/pebble/wal"
 )
 
 // checkpointOptions hold the optional parameters to construct checkpoint
@@ -207,6 +208,11 @@ func (d *DB) Checkpoint(
 	// before our call to List.
 	allLogicalLogs := d.mu.log.manager.List()
 
+	// Grab the visible sequence number. The checkpoint's view of the state of
+	// the database will be equivalent to an iterator that acquired this same
+	// visible sequence number.
+	visibleSeqNum := d.mu.versions.visibleSeqNum.Load()
+
 	// Release the manifest and DB.mu so we don't block other operations on the
 	// database.
 	//
@@ -391,24 +397,29 @@ func (d *DB) Checkpoint(
 		}
 	}
 
-	// Copy the WAL files. We copy rather than link because WAL file recycling
-	// will cause the WAL files to be reused which would invalidate the
-	// checkpoint. It's possible allLogicalLogs includes logs that are not
-	// relevant (beneath the version's MinUnflushedLogNum). These extra files
-	// are harmless. The earlier (wal.Manager).List call will not include
-	// obsolete logs that are sitting in the recycler or have already been
-	// passed off to the cleanup manager for deletion.
+	// Copy the WAL files. We copy rather than link for a few reasons:
+	// - WAL file recycling will cause the WAL files to be reused which
+	//   would invalidate the checkpoint.
+	// - While we're performing our checkpoint, the latest WAL may still be
+	//   receiving writes. We must exclude these writes, otherwise we'll
+	//   violate the guarantee that the checkpoint is a consistent snapshot
+	//   (we could copy a write that was committed after an ingest that was
+	//    committed after we acquired our version).
+	//
+	// It's possible allLogicalLogs includes logs that are not relevant (beneath
+	// the version's MinUnflushedLogNum). These extra files are harmless. The
+	// earlier (wal.Manager).List call will not include obsolete logs that are
+	// sitting in the recycler or have already been passed off to the cleanup
+	// manager for deletion.
 	//
 	// TODO(jackson): It would be desirable to copy all recycling and obsolete
 	// WALs to aid corruption postmortem debugging should we need them.
 	for _, log := range allLogicalLogs {
-		for i := 0; i < log.NumSegments(); i++ {
-			srcFS, srcPath := log.SegmentLocation(i)
-			destPath := fs.PathJoin(destDir, srcFS.PathBase(srcPath))
-			ckErr = vfs.CopyAcrossFS(srcFS, srcPath, fs, destPath)
-			if ckErr != nil {
-				return ckErr
-			}
+		ckErr = wal.Copy(fs, destDir, log, visibleSeqNum, record.LogWriterConfig{
+			WriteWALSyncOffsets: func() bool { return formatVers > FormatWALSyncChunks },
+		})
+		if ckErr != nil {
+			return ckErr
 		}
 	}
 
