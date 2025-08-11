@@ -370,7 +370,7 @@ func (r *virtualWALReader) nextFile() error {
 	r.off.PhysicalFile = path
 	r.off.Physical = 0
 	var err error
-	if r.currFile, err = fs.Open(path); err != nil {
+	if r.currFile, err = fs.Open(path, vfs.SequentialReadsOption); err != nil {
 		return errors.Wrapf(err, "opening WAL file segment %q", path)
 	}
 	r.currReader = record.NewReader(r.currFile, base.DiskFileNum(r.Num))

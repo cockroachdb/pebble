@@ -247,7 +247,7 @@ lock: db1_wal/LOCK
 open-dir: db1_wal
 open: db1/OPTIONS-000003
 close: db1/OPTIONS-000003
-open: db1_wal/000004.log
+open: db1_wal/000004.log (options: *vfs.sequentialReadsOption)
 close: db1_wal/000004.log
 create: db1/MANIFEST-000458
 sync: db1/MANIFEST-000458

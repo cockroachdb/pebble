@@ -332,7 +332,7 @@ close: checkpoints/checkpoint1/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
 open: checkpoints/checkpoint1/OPTIONS-000003
 close: checkpoints/checkpoint1/OPTIONS-000003
-open: checkpoints/checkpoint1/000006.log
+open: checkpoints/checkpoint1/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint1/000006.log
 
 scan checkpoints/checkpoint1
@@ -399,7 +399,7 @@ close: checkpoints/checkpoint2/MANIFEST-000001
 open-dir: checkpoints/checkpoint2
 open: checkpoints/checkpoint2/OPTIONS-000003
 close: checkpoints/checkpoint2/OPTIONS-000003
-open: checkpoints/checkpoint2/000006.log
+open: checkpoints/checkpoint2/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint2/000006.log
 
 scan checkpoints/checkpoint2
@@ -441,7 +441,7 @@ close: checkpoints/checkpoint3/MANIFEST-000001
 open-dir: checkpoints/checkpoint3
 open: checkpoints/checkpoint3/OPTIONS-000003
 close: checkpoints/checkpoint3/OPTIONS-000003
-open: checkpoints/checkpoint3/000006.log
+open: checkpoints/checkpoint3/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint3/000006.log
 
 scan checkpoints/checkpoint3
@@ -584,7 +584,7 @@ close: checkpoints/checkpoint4/MANIFEST-000001
 open-dir: checkpoints/checkpoint4
 open: checkpoints/checkpoint4/OPTIONS-000003
 close: checkpoints/checkpoint4/OPTIONS-000003
-open: checkpoints/checkpoint4/000008.log
+open: checkpoints/checkpoint4/000008.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint4/000008.log
 
 scan checkpoints/checkpoint4
@@ -699,7 +699,7 @@ close: checkpoints/checkpoint5/MANIFEST-000001
 open-dir: checkpoints/checkpoint5
 open: checkpoints/checkpoint5/OPTIONS-000003
 close: checkpoints/checkpoint5/OPTIONS-000003
-open: checkpoints/checkpoint5/000008.log
+open: checkpoints/checkpoint5/000008.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint5/000008.log
 create: checkpoints/checkpoint5/000018.sst
 sync-data: checkpoints/checkpoint5/000018.sst
@@ -800,7 +800,7 @@ close: checkpoints/checkpoint6/MANIFEST-000001
 open-dir: checkpoints/checkpoint6
 open: checkpoints/checkpoint6/OPTIONS-000003
 close: checkpoints/checkpoint6/OPTIONS-000003
-open: checkpoints/checkpoint6/000008.log
+open: checkpoints/checkpoint6/000008.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint6/000008.log
 create: checkpoints/checkpoint6/000018.sst
 sync-data: checkpoints/checkpoint6/000018.sst
@@ -1031,7 +1031,7 @@ close: checkpoints/checkpoint8/MANIFEST-000001
 open-dir: checkpoints/checkpoint8
 open: checkpoints/checkpoint8/OPTIONS-000003
 close: checkpoints/checkpoint8/OPTIONS-000003
-open: checkpoints/checkpoint8/000004.log
+open: checkpoints/checkpoint8/000004.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint8/000004.log
 
 # Ensure that we can read values contained in the blob file.
@@ -1143,7 +1143,7 @@ close: checkpoints/checkpoint9/MANIFEST-000001
 open-dir: checkpoints/checkpoint9
 open: checkpoints/checkpoint9/OPTIONS-000003
 close: checkpoints/checkpoint9/OPTIONS-000003
-open: checkpoints/checkpoint9/000007.log
+open: checkpoints/checkpoint9/000007.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint9/000007.log
 
 scan checkpoints/checkpoint9
