@@ -155,8 +155,8 @@ sync-data: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
-open: db/000006.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint1/000006.log
+open: db/000006.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint1/000006.log
 close: checkpoints/checkpoint1/000006.log
 close: db/000006.log
@@ -198,8 +198,8 @@ sync-data: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
-open: db/000006.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint2/000006.log
+open: db/000006.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint2/000006.log
 close: checkpoints/checkpoint2/000006.log
 close: db/000006.log
@@ -238,8 +238,8 @@ sync-data: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
-open: db/000006.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint3/000006.log
+open: db/000006.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint3/000006.log
 close: checkpoints/checkpoint3/000006.log
 close: db/000006.log
@@ -563,8 +563,8 @@ sync-data: checkpoints/checkpoint4/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint4/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint4
 close: checkpoints/checkpoint4
-open: db/000008.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint4/000008.log
+open: db/000008.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint4/000008.log
 close: checkpoints/checkpoint4/000008.log
 close: db/000008.log
@@ -672,8 +672,8 @@ sync-data: checkpoints/checkpoint5/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint5/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint5
 close: checkpoints/checkpoint5
-open: db/000008.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint5/000008.log
+open: db/000008.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint5/000008.log
 close: checkpoints/checkpoint5/000008.log
 close: db/000008.log
@@ -773,8 +773,8 @@ sync-data: checkpoints/checkpoint6/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint6/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint6
 close: checkpoints/checkpoint6
-open: db/000008.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint6/000008.log
+open: db/000008.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint6/000008.log
 close: checkpoints/checkpoint6/000008.log
 close: db/000008.log
@@ -1008,11 +1008,11 @@ sync-data: checkpoints/checkpoint8/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint8/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint8
 close: checkpoints/checkpoint8
-open: valsepdb/000004.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint8/000004.log
+open: valsepdb/000004.log (options: *vfs.sequentialReadsOption)
+close: valsepdb/000004.log
 sync-data: checkpoints/checkpoint8/000004.log
 close: checkpoints/checkpoint8/000004.log
-close: valsepdb/000004.log
 sync: checkpoints/checkpoint8
 close: checkpoints/checkpoint8
 
@@ -1122,8 +1122,8 @@ sync-data: checkpoints/checkpoint9/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint9/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint9
 close: checkpoints/checkpoint9
-open: valsepdb/000007.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint9/000007.log
+open: valsepdb/000007.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint9/000007.log
 close: checkpoints/checkpoint9/000007.log
 close: valsepdb/000007.log

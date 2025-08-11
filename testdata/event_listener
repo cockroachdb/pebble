@@ -500,11 +500,11 @@ sync-data: checkpoint/marker.manifest.000001.MANIFEST-000023
 close: checkpoint/marker.manifest.000001.MANIFEST-000023
 sync: checkpoint
 close: checkpoint
-open: wal/000021.log (options: *vfs.sequentialReadsOption)
 create: checkpoint/000021.log
+open: wal/000021.log (options: *vfs.sequentialReadsOption)
+close: wal/000021.log
 sync-data: checkpoint/000021.log
 close: checkpoint/000021.log
-close: wal/000021.log
 sync: checkpoint
 close: checkpoint
 
