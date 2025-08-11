@@ -1116,6 +1116,7 @@ func TestCompaction(t *testing.T) {
 				m := d.Metrics()
 				// Make deterministic.
 				m.BlockCache.Hits = 0
+				m.BlockCache.Size = 0
 				return m.StringForTests()
 
 			case "populate":

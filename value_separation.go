@@ -251,9 +251,8 @@ func (vs *writeNewBlobFiles) Add(
 
 	// Values that are too small are never separated; however, MVCC keys are
 	// separated if they are a SET key kind, as long as the value is not empty.
-	//
-	// TODO(annie): Also allow SetWithDelete keys to be separated.
-	isSeparableMVCCKey := isMVCCKey && len(v) != 0 && kv.K.Kind() == base.InternalKeyKindSet
+	isSeparableMVCCKey := isMVCCKey && len(v) != 0 &&
+		(kv.K.Kind() == base.InternalKeyKindSet || kv.K.Kind() == base.InternalKeyKindSetWithDelete)
 	if len(v) < vs.minimumSize && !isSeparableMVCCKey {
 		return tw.Add(kv.K, v, forceObsolete)
 	}

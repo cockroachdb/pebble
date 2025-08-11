@@ -31,7 +31,8 @@ L6:
   000007:[qxvh@1#309220,SET-zjdt@1#463415,SET]
   000008:[zjdu@1#463416,SET-zzzz@1#475263,SET]
 
-# Note that the block cache hit rate is overridden to 0% for determinism.
+# Note that the block cache hit rate and size of entries is overridden for
+# determinism.
 metrics-l0-to-lbase
 ----
 ----
@@ -72,7 +73,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-1.8K (6.9MB) |        0.0% |    4 (1.1KB) |       91.7% |         0.0% |           0 |           0
+   1.8K (0B) |        0.0% |    4 (1.1KB) |       91.7% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
