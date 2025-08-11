@@ -315,7 +315,7 @@ close: checkpoints/checkpoint1/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
 open: checkpoints/checkpoint1/OPTIONS-000003
 close: checkpoints/checkpoint1/OPTIONS-000003
-open: checkpoints/checkpoint1/000006.log
+open: checkpoints/checkpoint1/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint1/000006.log
 
 scan checkpoints/checkpoint1
@@ -367,7 +367,7 @@ close: checkpoints/checkpoint2/MANIFEST-000001
 open-dir: checkpoints/checkpoint2
 open: checkpoints/checkpoint2/OPTIONS-000003
 close: checkpoints/checkpoint2/OPTIONS-000003
-open: checkpoints/checkpoint2/000006.log
+open: checkpoints/checkpoint2/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint2/000006.log
 
 scan checkpoints/checkpoint2
