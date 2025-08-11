@@ -247,11 +247,16 @@ var _ Reader = (*virtualWALReader)(nil)
 // are no more records. The reader returned becomes stale after the next
 // NextRecord call, and should no longer be used.
 func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
+	rec, _, off, err := r.nextRecord()
+	return rec, off, err
+}
+
+func (r *virtualWALReader) nextRecord() (io.Reader, batchrepr.Header, Offset, error) {
 	// On the first call, we need to open the first file.
 	if r.currIndex < 0 {
 		err := r.nextFile()
 		if err != nil {
-			return nil, Offset{}, err
+			return nil, batchrepr.Header{}, Offset{}, err
 		}
 	}
 
@@ -264,7 +269,7 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 			// This file is exhausted; continue to the next.
 			err := r.nextFile()
 			if err != nil {
-				return nil, r.off, err
+				return nil, batchrepr.Header{}, r.off, err
 			}
 			continue
 		}
@@ -290,11 +295,11 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 		// in-flight write at the time of process exit/crash. See #453.
 		if record.IsInvalidRecord(err) && r.currIndex < len(r.segments)-1 {
 			if err := r.nextFile(); err != nil {
-				return nil, r.off, err
+				return nil, batchrepr.Header{}, r.off, err
 			}
 			continue
 		} else if err != nil {
-			return nil, r.off, err
+			return nil, batchrepr.Header{}, r.off, err
 		}
 
 		// We may observe repeat records between the physical files that make up
@@ -314,7 +319,7 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 			// corruption. We could return the record to the caller, allowing
 			// the caller to interpret it as corruption, but it seems safer to
 			// be explicit and surface the corruption error here.
-			return nil, r.off, base.CorruptionErrorf("pebble: corrupt log file logNum=%d, logNameIndex=%s: invalid batch",
+			return nil, h, r.off, base.CorruptionErrorf("pebble: corrupt log file logNum=%d, logNameIndex=%s: invalid batch",
 				r.Num, errors.Safe(r.segments[r.currIndex].logNameIndex))
 		}
 
@@ -337,7 +342,7 @@ func (r *virtualWALReader) NextRecord() (io.Reader, Offset, error) {
 			continue
 		}
 		r.lastSeqNum = h.SeqNum
-		return &r.recordBuf, r.off, nil
+		return &r.recordBuf, h, r.off, nil
 	}
 }
 
@@ -375,4 +380,53 @@ func (r *virtualWALReader) nextFile() error {
 	}
 	r.currReader = record.NewReader(r.currFile, base.DiskFileNum(r.Num))
 	return nil
+}
+
+// Copy copies the contents of the provided LogicalLog to a new WAL file on fs
+// within dstDir. The copy will be a logical copy and will not include the
+// source WAL's structure if split across multiple physical segment files. Copy
+// will only copy the prefix of the WAL up until visibleSeqNum (exclusive).
+//
+// Copy does NOT sync the destination directory, and the caller must explicitly
+// sync it if they require the new WAL file to be durably linked.
+func Copy(
+	fs vfs.FS, dstDir string, ll LogicalLog, visibleSeqNum base.SeqNum, cfg record.LogWriterConfig,
+) (err error) {
+	dstPath := fs.PathJoin(dstDir, makeLogFilename(ll.Num, 0))
+	var dstFile vfs.File
+	dstFile, err = fs.Create(dstPath, vfs.WriteCategoryUnspecified)
+	if err != nil {
+		return err
+	}
+	w := record.NewLogWriter(dstFile, base.DiskFileNum(ll.Num), cfg)
+
+	r := newVirtualWALReader(ll)
+	defer func() { err = errors.CombineErrors(err, r.Close()) }()
+	for {
+		rec, h, _, err := r.nextRecord()
+		if errors.Is(err, io.EOF) || errors.Is(err, record.ErrUnexpectedEOF) {
+			break
+		}
+		if err != nil {
+			return errors.Wrapf(err, "copying WAL file %s", ll.Num)
+		}
+		// A batch assigns sequence numbers beginning at the header's SeqNum,
+		// increasing for successive internal keys. We only copy the batch if
+		// the entirety of the batch's keys are visible.
+		batchLargestSeqNum := h.SeqNum + base.SeqNum(h.Count-1)
+		if !base.Visible(batchLargestSeqNum, visibleSeqNum, base.SeqNumMax) {
+			break
+		}
+		b, err := io.ReadAll(rec)
+		if err != nil {
+			return errors.Wrapf(err, "copying WAL file %s", ll.Num)
+		}
+		if _, err := w.WriteRecord(b); err != nil {
+			return errors.Wrapf(err, "copying WAL file %s", ll.Num)
+		}
+	}
+	if err := w.Close(); err != nil {
+		return errors.Wrapf(err, "copying WAL file %s", ll.Num)
+	}
+	return err
 }
