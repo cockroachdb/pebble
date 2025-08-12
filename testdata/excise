@@ -402,7 +402,7 @@ lsm
 L0.0:
   000009:[bd#17,RANGEKEYSET-f#17,MERGE]
 L6:
-  000008:[a@3#0,SET-z#0,MERGE]
+  000008:[a@3#0,SET-z#0,SET]
 
 build ext3
 set z updated
@@ -417,8 +417,8 @@ L0.0:
   000011(000009):[cc#17,RANGEKEYSET-f#17,MERGE]
   000010:[z#19,SET-z#19,SET]
 L6:
-  000012(000008):[a@3#0,SET-bbsomethinglong@4#0,MERGE]
-  000013(000008):[d@6#0,MERGE-z#0,MERGE]
+  000012(000008):[a@3#0,SET-bbsomethinglong@4#0,SET]
+  000013(000008):[d@6#0,SET-z#0,SET]
 
 iter range-key-masking=@10
 first

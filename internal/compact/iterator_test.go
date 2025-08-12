@@ -55,7 +55,7 @@ func TestCompactionIter(t *testing.T) {
 	var rangeDels []keyspan.Span
 	var snapshots Snapshots
 	var elideTombstones bool
-	var allowZeroSeqnum bool
+	var isBottommostDataLayer bool
 	var ineffectualSingleDeleteKeys []string
 	var invariantViolationSingleDeleteKeys []string
 	resetSingleDelStats := func() {
@@ -77,12 +77,12 @@ func TestCompactionIter(t *testing.T) {
 			elision = ElideTombstonesOutsideOf(nil)
 		}
 		cfg := IterConfig{
-			Comparer:         base.DefaultComparer,
-			Merge:            merge,
-			Snapshots:        snapshots,
-			TombstoneElision: elision,
-			RangeKeyElision:  elision,
-			AllowZeroSeqNum:  allowZeroSeqnum,
+			Comparer:              base.DefaultComparer,
+			Merge:                 merge,
+			Snapshots:             snapshots,
+			TombstoneElision:      elision,
+			RangeKeyElision:       elision,
+			IsBottommostDataLayer: isBottommostDataLayer,
 			IneffectualSingleDeleteCallback: func(userKey []byte) {
 				ineffectualSingleDeleteKeys = append(ineffectualSingleDeleteKeys, string(userKey))
 			},
@@ -154,7 +154,7 @@ func TestCompactionIter(t *testing.T) {
 			case "iter":
 				snapshots = snapshots[:0]
 				elideTombstones = false
-				allowZeroSeqnum = false
+				isBottommostDataLayer = false
 				printSnapshotPinned := false
 				printMissizedDels := false
 				printForceObsolete := false
@@ -170,9 +170,9 @@ func TestCompactionIter(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-					case "allow-zero-seqnum":
+					case "is-bottommost-layer":
 						var err error
-						allowZeroSeqnum, err = strconv.ParseBool(arg.Vals[0])
+						isBottommostDataLayer, err = strconv.ParseBool(arg.Vals[0])
 						if err != nil {
 							return err.Error()
 						}
