@@ -44,7 +44,7 @@ type KeySchema struct {
 	// InitKeySeekerMetadata initializes the provided KeySeekerMetadata. This
 	// happens once when a block enters the block cache and can be used to save
 	// computation in NewKeySeeker.
-	InitKeySeekerMetadata func(meta *KeySeekerMetadata, d *DataBlockDecoder)
+	InitKeySeekerMetadata func(meta *KeySeekerMetadata, d *DataBlockDecoder, bd *BlockDecoder)
 
 	// KeySeeker returns a KeySeeker using metadata that was previously
 	// initialized with InitKeySeekerMetadata. The returned key seeker can be an
@@ -215,10 +215,10 @@ func DefaultKeySchema(comparer *base.Comparer, prefixBundleSize int) KeySchema {
 			kw.suffixes.Init()
 			return kw
 		},
-		InitKeySeekerMetadata: func(meta *KeySeekerMetadata, d *DataBlockDecoder) {
+		InitKeySeekerMetadata: func(meta *KeySeekerMetadata, d *DataBlockDecoder, bd *BlockDecoder) {
 			ks := (*defaultKeySeeker)(unsafe.Pointer(&meta[0]))
 			ks.comparer = comparer
-			ks.init(d)
+			ks.init(d, bd)
 		},
 		KeySeeker: func(meta *KeySeekerMetadata) KeySeeker {
 			ks := (*defaultKeySeeker)(unsafe.Pointer(&meta[0]))
@@ -358,10 +358,10 @@ type defaultKeySeeker struct {
 	sharedPrefix []byte
 }
 
-func (ks *defaultKeySeeker) init(d *DataBlockDecoder) {
+func (ks *defaultKeySeeker) init(d *DataBlockDecoder, bd *BlockDecoder) {
 	ks.decoder = d
-	ks.prefixes = d.d.PrefixBytes(defaultKeySchemaColumnPrefix)
-	ks.suffixes = d.d.RawBytes(defaultKeySchemaColumnSuffix)
+	ks.prefixes = bd.PrefixBytes(defaultKeySchemaColumnPrefix)
+	ks.suffixes = bd.RawBytes(defaultKeySchemaColumnSuffix)
 	ks.sharedPrefix = ks.prefixes.SharedPrefix()
 }
 
@@ -498,7 +498,7 @@ const (
 // grow key buffers while iterating over the block, ensuring that the key buffer
 // is always sufficiently large.
 // This is serialized immediately after the KeySchema specific header.
-const dataBlockCustomHeaderSize = 4
+const DataBlockCustomHeaderSize = 4
 
 // Init initializes the data block writer.
 func (w *DataBlockEncoder) Init(schema *KeySchema) {
@@ -605,7 +605,7 @@ func (w *DataBlockEncoder) Rows() int {
 
 // Size returns the size of the current pending data block.
 func (w *DataBlockEncoder) Size() int {
-	off := HeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
+	off := HeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, DataBlockCustomHeaderSize+w.Schema.HeaderSize)
 	off = w.KeyWriter.Size(w.rows, off)
 	off = w.trailers.Size(w.rows, off)
 	off = w.prefixSame.InvertedSize(w.rows, off)
@@ -646,12 +646,12 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 	// to represent when the prefix changes.
 	w.prefixSame.Invert(rows)
 
-	w.enc.Init(size, h, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
+	w.enc.Init(size, h, DataBlockCustomHeaderSize+w.Schema.HeaderSize)
 
 	// Write the key schema custom header.
 	w.KeyWriter.FinishHeader(w.enc.Data()[:w.Schema.HeaderSize])
 	// Write the max key length in the data block custom header.
-	binary.LittleEndian.PutUint32(w.enc.Data()[w.Schema.HeaderSize:w.Schema.HeaderSize+dataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
+	binary.LittleEndian.PutUint32(w.enc.Data()[w.Schema.HeaderSize:w.Schema.HeaderSize+DataBlockCustomHeaderSize], uint32(w.maximumKeyLength))
 	w.enc.Encode(rows, w.KeyWriter)
 	w.enc.Encode(rows, &w.trailers)
 	w.enc.Encode(rows, &w.prefixSame)
@@ -744,12 +744,12 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	// better spent dropping support for the physical rewriting of data blocks
 	// we're performing here and instead use a read-time IterTransform.
 
-	rw.decoder.Init(rw.KeySchema, input)
+	bd := rw.decoder.Init(rw.KeySchema, input)
 	meta := &KeySeekerMetadata{}
-	rw.KeySchema.InitKeySeekerMetadata(meta, &rw.decoder)
+	rw.KeySchema.InitKeySeekerMetadata(meta, &rw.decoder, bd)
 	rw.keySeeker = rw.KeySchema.KeySeeker(meta)
 	rw.encoder.Reset()
-	if err = rw.iter.Init(&rw.decoder, blockiter.Transforms{}); err != nil {
+	if err = rw.iter.Init(&rw.decoder, bd, blockiter.Transforms{}); err != nil {
 		return base.InternalKey{}, base.InternalKey{}, nil, err
 	}
 
@@ -786,7 +786,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 		k := base.InternalKey{UserKey: rw.keyBuf, Trailer: kv.K.Trailer}
 		rw.encoder.Add(k, value, valuePrefix, kcmp, rw.decoder.isObsolete.At(i))
 	}
-	rewritten, end = rw.encoder.Finish(int(rw.decoder.d.header.Rows), rw.encoder.Size())
+	rewritten, end = rw.encoder.Finish(int(bd.header.Rows), rw.encoder.Size())
 	end.UserKey, rw.keyAlloc = rw.keyAlloc.Copy(end.UserKey)
 	return start, end, rewritten, nil
 }
@@ -814,8 +814,8 @@ func InitDataBlockMetadata(schema *KeySchema, md *block.Metadata, data []byte) (
 			err = base.CorruptionErrorf("error initializing data block metadata: %v", r)
 		}
 	}()
-	metadatas.d.Init(schema, data)
-	schema.InitKeySeekerMetadata(&metadatas.keySchemaMeta, &metadatas.d)
+	bd := metadatas.d.Init(schema, data)
+	schema.InitKeySeekerMetadata(&metadatas.keySchemaMeta, &metadatas.d, bd)
 	return nil
 }
 
@@ -885,38 +885,31 @@ type DataBlockDecoder struct {
 	maximumKeyLength uint32
 }
 
-// BlockDecoder returns a pointer to the underlying BlockDecoder.
-func (d *DataBlockDecoder) BlockDecoder() *BlockDecoder {
-	return &d.d
-}
-
 // PrefixChanged returns the prefix-changed bitmap.
 func (d *DataBlockDecoder) PrefixChanged() Bitmap {
 	return d.prefixChanged
 }
 
-// KeySchemaHeader returns the KeySchema-specific header.
-func (d *DataBlockDecoder) KeySchemaHeader() []byte {
-	return d.d.data[:d.d.customHeaderSize-dataBlockCustomHeaderSize]
-}
-
 // Init initializes the data block reader with the given serialized data block.
-func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) {
+func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) *BlockDecoder {
 	if uintptr(unsafe.Pointer(unsafe.SliceData(data)))&7 != 0 {
 		panic("data buffer not 8-byte aligned")
 	}
-	d.d.Init(data, dataBlockCustomHeaderSize+schema.HeaderSize)
-	d.trailers = d.d.Uints(len(schema.ColumnTypes) + dataBlockColumnTrailer)
-	d.prefixChanged = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
-	d.values = d.d.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
-	d.isValueExternal = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
-	d.isObsolete = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsObsolete)
+	bd := BlockDecoder{}
+	bd.Init(data, DataBlockCustomHeaderSize+schema.HeaderSize)
+	d.d = bd
+	d.trailers = bd.Uints(len(schema.ColumnTypes) + dataBlockColumnTrailer)
+	d.prefixChanged = bd.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
+	d.values = bd.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
+	d.isValueExternal = bd.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
+	d.isObsolete = bd.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsObsolete)
 	d.maximumKeyLength = binary.LittleEndian.Uint32(data[schema.HeaderSize:])
+	return &bd
 }
 
 // Describe descirbes the binary format of the data block, assuming f.Offset()
 // is positioned at the beginning of the same data block described by d.
-func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
+func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node, bd *BlockDecoder) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -926,13 +919,13 @@ func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node) {
 	f.SetAnchorOffset()
 
 	n := tp.Child("data block header")
-	if keySchemaHeaderSize := int(d.d.customHeaderSize - 4); keySchemaHeaderSize > 0 {
+	if keySchemaHeaderSize := int(bd.customHeaderSize - DataBlockCustomHeaderSize); keySchemaHeaderSize > 0 {
 		f.HexBytesln(keySchemaHeaderSize, "key schema header")
 	}
 	f.HexBytesln(4, "maximum key length: %d", d.maximumKeyLength)
-	d.d.HeaderToBinFormatter(f, n)
-	for i := 0; i < int(d.d.header.Columns); i++ {
-		d.d.ColumnToBinFormatter(f, n, i, int(d.d.header.Rows))
+	bd.HeaderToBinFormatter(f, n)
+	for i := 0; i < int(bd.header.Columns); i++ {
+		bd.ColumnToBinFormatter(f, n, i, int(bd.header.Rows))
 	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)
@@ -953,9 +946,9 @@ type DataBlockValidator struct {
 func (v *DataBlockValidator) Validate(
 	data []byte, comparer *base.Comparer, keySchema *KeySchema,
 ) error {
-	v.dec.Init(keySchema, data)
-	n := v.dec.d.header.Rows
-	keySchema.InitKeySeekerMetadata(&v.keySeekerMeta, &v.dec)
+	bd := v.dec.Init(keySchema, data)
+	n := bd.header.Rows
+	keySchema.InitKeySeekerMetadata(&v.keySeekerMeta, &v.dec, bd)
 	keySeeker := keySchema.KeySeeker(&v.keySeekerMeta)
 
 	if cap(v.prevUserKeyBuf) < int(v.dec.maximumKeyLength)+1 {
@@ -1057,10 +1050,12 @@ func (i *DataBlockIter) InitOnce(
 
 // Init initializes the data block iterator, configuring it to read from the
 // provided decoder.
-func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms blockiter.Transforms) error {
+func (i *DataBlockIter) Init(
+	d *DataBlockDecoder, bd *BlockDecoder, transforms blockiter.Transforms,
+) error {
 	i.d = d
 	// Leave i.h unchanged.
-	numRows := int(d.d.header.Rows)
+	numRows := int(bd.header.Rows)
 	i.maxRow = numRows - 1
 	i.transforms = transforms
 	if i.transforms.HideObsoletePoints && d.isObsolete.SeekSetBitGE(0) == numRows {
@@ -1071,7 +1066,7 @@ func (i *DataBlockIter) Init(d *DataBlockDecoder, transforms blockiter.Transform
 
 	// TODO(radu): see if this allocation can be a problem for the suffix rewriter.
 	meta := &KeySeekerMetadata{}
-	i.keySchema.InitKeySeekerMetadata(meta, d)
+	i.keySchema.InitKeySeekerMetadata(meta, d, bd)
 	i.keySeeker = i.keySchema.KeySeeker(meta)
 
 	// The worst case is when the largest key in the block has no suffix.
