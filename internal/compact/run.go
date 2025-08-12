@@ -503,7 +503,7 @@ func (NeverSeparateValues) Add(
 	if err != nil {
 		return err
 	}
-	return tw.Add(kv.K, v, forceObsolete)
+	return tw.Add(kv.K, v, forceObsolete, kv.M)
 }
 
 // FinishOutput implements the ValueSeparation interface.

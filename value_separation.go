@@ -248,12 +248,12 @@ func (vs *writeNewBlobFiles) Add(
 
 	// Values that are too small are never separated.
 	if len(v) < vs.minimumSize {
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, kv.M)
 	}
 	// Merge and deletesized keys are never separated.
 	switch kv.K.Kind() {
 	case base.InternalKeyKindMerge, base.InternalKeyKindDeleteSized:
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, kv.M)
 	}
 
 	// This KV met all the criteria and its value will be separated.
@@ -272,7 +272,7 @@ func (vs *writeNewBlobFiles) Add(
 			// fallback to writing the value verbatim to the sstable. Otherwise
 			// a flush could busy loop, repeatedly attempting to write the same
 			// memtable and repeatedly unable to extract a key's short attribute.
-			return tw.Add(kv.K, v, forceObsolete)
+			return tw.Add(kv.K, v, forceObsolete, kv.M)
 		}
 	}
 
@@ -310,7 +310,7 @@ func (vs *writeNewBlobFiles) Add(
 			ValueID: handle.ValueID,
 		},
 	}
-	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete)
+	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete, kv.M)
 }
 
 // FinishOutput closes the current blob file (if any). It returns the stats
@@ -420,7 +420,7 @@ func (vs *preserveBlobReferences) Add(
 		if callerOwned {
 			vs.buf = v[:0]
 		}
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, kv.M)
 	}
 
 	// The value is an existing blob handle. We can copy it into the output
@@ -453,7 +453,7 @@ func (vs *preserveBlobReferences) Add(
 		},
 		HandleSuffix: handleSuffix,
 	}
-	err := tw.AddWithBlobHandle(kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete)
+	err := tw.AddWithBlobHandle(kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete, base.KVMeta{})
 	if err != nil {
 		return err
 	}

@@ -217,9 +217,9 @@ func ParseTestSST(w RawWriter, input string, bv *blobtest.Values) error {
 		case kv.IsKeySpan():
 			err = w.EncodeSpan(*kv.Span)
 		case kv.HasBlobValue():
-			err = w.AddWithBlobHandle(kv.Key, kv.BlobHandle, kv.Attr, kv.ForceObsolete)
+			err = w.AddWithBlobHandle(kv.Key, kv.BlobHandle, kv.Attr, kv.ForceObsolete, base.KVMeta{})
 		default:
-			err = w.Add(kv.Key, kv.Value, kv.ForceObsolete)
+			err = w.Add(kv.Key, kv.Value, kv.ForceObsolete, base.KVMeta{})
 		}
 		if err != nil {
 			return errors.Wrapf(err, "failed to write %s", kv)

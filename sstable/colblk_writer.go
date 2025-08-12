@@ -139,7 +139,7 @@ func newColumnarWriter(
 	w.layout.Init(writable, o)
 	w.dataFlush = block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 	w.indexFlush = block.MakeFlushGovernor(o.IndexBlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
-	w.dataBlock.Init(o.KeySchema)
+	w.dataBlock.Init(sstableFormatToColumnarFormat(o.TableFormat), o.KeySchema)
 	w.indexBlock.Init()
 	w.topLevelIndexBlock.Init()
 	w.rangeDelBlock.Init(w.comparer.Equal)
@@ -359,7 +359,9 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 // that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
 // responsibility of the caller. S1 is solely the responsibility of the
 // callee.
-func (w *RawColumnWriter) Add(key InternalKey, value []byte, forceObsolete bool) error {
+func (w *RawColumnWriter) Add(
+	key InternalKey, value []byte, forceObsolete bool, meta base.KVMeta,
+) error {
 	switch key.Kind() {
 	case base.InternalKeyKindRangeDelete, base.InternalKeyKindRangeKeySet,
 		base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
@@ -405,12 +407,16 @@ func (w *RawColumnWriter) Add(key InternalKey, value []byte, forceObsolete bool)
 			valuePrefix = block.InPlaceValuePrefix(eval.kcmp.PrefixEqual())
 		}
 	}
-	return w.add(key, len(value), valueStoredWithKey, valuePrefix, eval)
+	return w.add(key, len(value), valueStoredWithKey, valuePrefix, eval, meta)
 }
 
 // AddWithBlobHandle implements the RawWriter interface.
 func (w *RawColumnWriter) AddWithBlobHandle(
-	key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool,
+	key InternalKey,
+	h blob.InlineHandle,
+	attr base.ShortAttribute,
+	forceObsolete bool,
+	meta base.KVMeta,
 ) error {
 	// Blob value handles require at least TableFormatPebblev6.
 	if w.opts.TableFormat <= TableFormatPebblev5 {
@@ -436,7 +442,7 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	n := h.Encode(w.tmp[:])
 	valueStoredWithKey := w.tmp[:n]
 	valuePrefix := block.BlobValueHandlePrefix(eval.kcmp.PrefixEqual(), attr)
-	err = w.add(key, int(h.ValueLen), valueStoredWithKey, valuePrefix, eval)
+	err = w.add(key, int(h.ValueLen), valueStoredWithKey, valuePrefix, eval, meta)
 	if err != nil {
 		return err
 	}
@@ -453,12 +459,13 @@ func (w *RawColumnWriter) add(
 	valueStoredWithKey []byte,
 	valuePrefix block.ValuePrefix,
 	eval pointKeyEvaluation,
+	meta base.KVMeta,
 ) error {
 	// Append the key to the data block. We have NOT yet committed to
 	// including the key in the block. The data block writer permits us to
 	// finish the block excluding the last-appended KV.
 	entriesWithoutKV := w.dataBlock.Rows()
-	w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete)
+	w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete, meta)
 
 	// Now that we've appended the KV pair, we can compute the exact size of the
 	// block with this key-value pair included. Check to see if we should flush
@@ -472,7 +479,7 @@ func (w *RawColumnWriter) add(
 		}
 		// flushDataBlockWithoutNextKey reset the data block builder, and we can
 		// add the key to this next block now.
-		w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete)
+		w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete, meta)
 		w.pendingDataBlockSize = w.dataBlock.Size()
 	} else {
 		// We're not flushing the data block, and we're committing to including
@@ -703,7 +710,8 @@ func (w *RawColumnWriter) enqueueDataBlock(
 			v = &colblk.DataBlockValidator{}
 			w.validator.Set(v)
 		}
-		if err := v.Validate(serializedBlock, w.comparer, w.opts.KeySchema); err != nil {
+		if err := v.Validate(
+			sstableFormatToColumnarFormat(w.opts.TableFormat), serializedBlock, w.comparer, w.opts.KeySchema); err != nil {
 			panic(err)
 		}
 	}
@@ -1084,7 +1092,7 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	}
 	// Copy data blocks in parallel, rewriting suffixes as we go.
 	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.layout.physBlockMaker.Compressor.Stats(), func() blockRewriter {
-		return colblk.NewDataBlockRewriter(wo.KeySchema, w.comparer)
+		return colblk.NewDataBlockRewriter(sstableFormatToColumnarFormat(wo.TableFormat), wo.KeySchema, w.comparer)
 	})
 	if err != nil {
 		return errors.Wrap(err, "rewriting data blocks")

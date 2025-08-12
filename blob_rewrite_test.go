@@ -292,21 +292,16 @@ func TestBlobRewriteRandomized(t *testing.T) {
 		tw := sstable.NewRawWriter(w, sstable.WriterOptions{
 			TableFormat: sstable.TableFormatMax,
 		})
-		require.NoError(t, tw.AddWithBlobHandle(
-			base.MakeInternalKey(keys[i], base.SeqNum(i), base.InternalKeyKindSet),
-			blob.InlineHandle{
-				InlineHandlePreface: blob.InlineHandlePreface{
-					ReferenceID: base.BlobReferenceID(0),
-					ValueLen:    uint32(len(values[i])),
-				},
-				HandleSuffix: blob.HandleSuffix{
-					BlockID: handles[i].BlockID,
-					ValueID: handles[i].ValueID,
-				},
+		require.NoError(t, tw.AddWithBlobHandle(base.MakeInternalKey(keys[i], base.SeqNum(i), base.InternalKeyKindSet), blob.InlineHandle{
+			InlineHandlePreface: blob.InlineHandlePreface{
+				ReferenceID: base.BlobReferenceID(0),
+				ValueLen:    uint32(len(values[i])),
 			},
-			base.ShortAttribute(0),
-			false, /* forceObsolete */
-		))
+			HandleSuffix: blob.HandleSuffix{
+				BlockID: handles[i].BlockID,
+				ValueID: handles[i].ValueID,
+			},
+		}, base.ShortAttribute(0), false, base.KVMeta{}))
 		require.NoError(t, tw.Close())
 		originalValueIndices[i] = i
 		originalTables[i] = &manifest.TableMetadata{

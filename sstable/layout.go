@@ -455,13 +455,14 @@ func formatColblkDataBlock(
 	fmtKV func(key *base.InternalKey, value []byte) string,
 ) error {
 	var decoder colblk.DataBlockDecoder
-	decoder.Init(r.keySchema, data)
+	colFormat := sstableFormatToColumnarFormat(r.tableFormat)
+	decoder.Init(colFormat, r.keySchema, data)
 	f := binfmt.New(data)
 	decoder.Describe(f, tp)
 
 	if fmtKV != nil {
 		var iter colblk.DataBlockIter
-		iter.InitOnce(r.keySchema, r.Comparer, describingLazyValueHandler{})
+		iter.InitOnce(colFormat, r.keySchema, r.Comparer, describingLazyValueHandler{})
 		if err := iter.Init(&decoder, blockiter.Transforms{}); err != nil {
 			return err
 		}

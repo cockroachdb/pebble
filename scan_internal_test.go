@@ -433,7 +433,7 @@ func TestScanInternal(t *testing.T) {
 					var err error
 					value, _, err = kv.Value(value)
 					require.NoError(t, err)
-					require.NoError(t, w.Raw().Add(kv.K, value, false))
+					require.NoError(t, w.Raw().Add(kv.K, value, false, base.KVMeta{}))
 				}
 				points.Close()
 				require.NoError(t, w.Close())

@@ -456,6 +456,7 @@ func (ks *defaultKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 
 // DataBlockEncoder encodes columnar data blocks using a user-defined schema.
 type DataBlockEncoder struct {
+	format    ColumnarFormat
 	Schema    *KeySchema
 	KeyWriter KeyWriter
 	// trailers is the column writer for InternalKey uint64 trailers.
@@ -476,6 +477,18 @@ type DataBlockEncoder struct {
 	// when a key is known to be obsolete/non-live (i.e., shadowed by another
 	// identical point key or range deletion with a higher sequence number).
 	isObsolete BitmapBuilder
+	// These two columns are only accessed when the sstable is rewritten, so we
+	// stick them at the end of the data block. Both will be accessed together
+	// for each key, and we expect that in most cases there will be at most one
+	// unique spanID.
+	//
+	// Alternatively, we could have added these fields to the custom
+	// serialization we do for values when it is a value block handle or blob
+	// handle, but then we need to add a custom serialization for the in-place
+	// value case too, and all that serialization predated support for columnar
+	// blocks.
+	tieringSpanIDs    UintBuilder
+	tieringAttributes UintBuilder
 
 	enc              BlockEncoder
 	rows             int
@@ -490,7 +503,72 @@ const (
 	dataBlockColumnValue
 	dataBlockColumnIsValueExternal
 	dataBlockColumnIsObsolete
-	dataBlockColumnMax
+	dataBlockColumnMaxV1
+	dataBlockColumnTieringSpanID    = dataBlockColumnMaxV1
+	dataBlockColumnTieringAttribute = dataBlockColumnTieringSpanID + 1
+	dataBlockColumnMaxV2            = dataBlockColumnTieringAttribute + 1
+)
+
+type ColumnarFormat uint8
+
+const (
+	ColumnFormatv1 ColumnarFormat = iota
+	// ColumnFormatv2 adds support for a tiering (spanID, attribute) pair, for
+	// use in tiered storage.
+	//
+	// Why spanID? An attribute extraction policy for a SQL index is immutable
+	// in CockroachDB. It can be represented by the [start, end) span at the
+	// Pebble layer, and/or a spanID. The age at which data becomes cold is the
+	// tiering policy and is mutable. Pebble needs the following information:
+	//
+	// - Extract the attribute from the key-value pair for the first time. We
+	//   want to do this once when first generating a sstable (and possibly a
+	//   blob file) containing that key-value pair. With key and value
+	//   separation, we are moving into a world where we want to continue to be
+	//   able to rewrite sstables without reading the value from the blob file
+	//   and rewrite blob files without reading the key from the sstable. And
+	//   even though we start with only cold blob files, we plan to extend this
+	//   to cold sstables too, so the attribute is stored with the key in the
+	//   sstable, and with the value in the blob file.
+	//
+	// - Get the current tiering policy for a key (sstable rewriting) or for the
+	//   value (when rewriting a blob file for policy enforcement or for space
+	//   reclamation). A spanID permits easier/faster policy lookup for the key
+	//   case, but is not necessary. For the value case, we need a way to lookup
+	//   the policy. With a single conceptual spanID in an sstable or blob file,
+	//   we can store a single key belonging to that span in the blob file and
+	//   use it for policy lookup. So a spanID is again not necessary. If we
+	//   allow multiple conceptual spanIDs in a sstable or blob file, having a
+	//   spanID becomes necessary for a blob file since we can store the spanID
+	//   concisely with each value. For blob files in higher levels, splitting
+	//   per spanID may result in unnecessarily small files. Arguably, we could
+	//   have two approaches where blob files in higher levels are not split by
+	//   spanID, since these blob files may never need to be cold, and when we
+	//   write blob files for lower level sstable compactions we would extract
+	//   the tiering policy using the sstable key and make the blob file have a
+	//   single spanID. Having blob files that are not self contained wrt us
+	//   being able to compute how much cold data is in them (by reading them)
+	//   is not ideal, IMHO, so we don't do this (yet).
+	//
+	// - Store the histogram of attributes inside a sstable and blob file. This
+	//   is needed to decide when to rewrite to make a hot => cold transition.
+	//   With a single spanID per file, we don't need a spanID. There is some
+	//   concern that users could easily abuse the system by creating 1000s of
+	//   tiny SQL tables with different attribute extraction policies, resulting
+	//   in many tiny files. With multiple extraction policies per file, a
+	//   spanID provides a convenient key.
+	//
+	// - Tiering policy change: At the Pebble layer we will keep aggregate
+	//   histograms of each attribute extraction policy, so we can compare these
+	//   to the current tiering policy (which may have changed since the last
+	//   time we checked), to decide if there is substantial amount of data in
+	//   the wrong tier. A spanID is a convenient key, though we could also
+	//   accomplish this with the start key of the policy.
+	//
+	// TODO(sumeer): decide later if we can remove spanID, if the data-structure
+	// simplification is not worthwhile.
+	ColumnFormatv2
+	numColumnFormats
 )
 
 // The data block header is a 4-byte uint32 encoding the maximum length of a key
@@ -501,7 +579,8 @@ const (
 const dataBlockCustomHeaderSize = 4
 
 // Init initializes the data block writer.
-func (w *DataBlockEncoder) Init(schema *KeySchema) {
+func (w *DataBlockEncoder) Init(format ColumnarFormat, schema *KeySchema) {
+	w.format = format
 	w.Schema = schema
 	w.KeyWriter = schema.NewKeyWriter()
 	w.trailers.Init()
@@ -509,6 +588,10 @@ func (w *DataBlockEncoder) Init(schema *KeySchema) {
 	w.values.Init()
 	w.isValueExternal.Reset()
 	w.isObsolete.Reset()
+	if format > ColumnFormatv1 {
+		w.tieringSpanIDs.InitWithDefault()
+		w.tieringAttributes.InitWithDefault()
+	}
 	w.rows = 0
 	w.maximumKeyLength = 0
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
@@ -523,6 +606,10 @@ func (w *DataBlockEncoder) Reset() {
 	w.values.Reset()
 	w.isValueExternal.Reset()
 	w.isObsolete.Reset()
+	if w.format > ColumnFormatv1 {
+		w.tieringSpanIDs.Reset()
+		w.tieringAttributes.Reset()
+	}
 	w.rows = 0
 	w.maximumKeyLength = 0
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
@@ -556,6 +643,16 @@ func (w *DataBlockEncoder) String() string {
 	w.isObsolete.WriteDebug(&buf, w.rows)
 	fmt.Fprintln(&buf)
 
+	if w.format > ColumnFormatv1 {
+		fmt.Fprintf(&buf, "%d: tiering-span-id: ", len(w.Schema.ColumnTypes)+dataBlockColumnTieringSpanID)
+		w.tieringSpanIDs.WriteDebug(&buf, w.rows)
+		fmt.Fprintln(&buf)
+
+		fmt.Fprintf(&buf, "%d: tiering-attribute:    ", len(w.Schema.ColumnTypes)+dataBlockColumnTieringAttribute)
+		w.tieringAttributes.WriteDebug(&buf, w.rows)
+		fmt.Fprintln(&buf)
+	}
+
 	return buf.String()
 }
 
@@ -573,6 +670,7 @@ func (w *DataBlockEncoder) Add(
 	valuePrefix block.ValuePrefix,
 	kcmp KeyComparison,
 	isObsolete bool,
+	meta base.KVMeta,
 ) {
 	w.KeyWriter.WriteKey(w.rows, ikey.UserKey, kcmp.PrefixLen, kcmp.CommonPrefixLen)
 	if kcmp.PrefixEqual() {
@@ -592,6 +690,10 @@ func (w *DataBlockEncoder) Add(
 		// bitmap and know there is no value prefix byte if !isValueExternal.
 		w.values.Put(value)
 	}
+	if w.format > ColumnFormatv1 && meta != (base.KVMeta{}) {
+		w.tieringSpanIDs.Set(w.rows, meta.Tiering.SpanID)
+		w.tieringAttributes.Set(w.rows, uint64(meta.Tiering.Attribute))
+	}
 	if len(ikey.UserKey) > int(w.maximumKeyLength) {
 		w.maximumKeyLength = len(ikey.UserKey)
 	}
@@ -605,13 +707,18 @@ func (w *DataBlockEncoder) Rows() int {
 
 // Size returns the size of the current pending data block.
 func (w *DataBlockEncoder) Size() int {
-	off := HeaderSize(len(w.Schema.ColumnTypes)+dataBlockColumnMax, dataBlockCustomHeaderSize+w.Schema.HeaderSize)
+	off := HeaderSize(len(w.Schema.ColumnTypes)+w.numFormatColumns(),
+		dataBlockCustomHeaderSize+w.Schema.HeaderSize)
 	off = w.KeyWriter.Size(w.rows, off)
 	off = w.trailers.Size(w.rows, off)
 	off = w.prefixSame.InvertedSize(w.rows, off)
 	off = w.values.Size(w.rows, off)
 	off = w.isValueExternal.Size(w.rows, off)
 	off = w.isObsolete.Size(w.rows, off)
+	if w.format > ColumnFormatv1 {
+		off = w.tieringSpanIDs.Size(w.rows, off)
+		off = w.tieringAttributes.Size(w.rows, off)
+	}
 	off++ // trailer padding byte
 	return int(off)
 }
@@ -619,6 +726,14 @@ func (w *DataBlockEncoder) Size() int {
 // MaterializeLastUserKey materializes the last added user key.
 func (w *DataBlockEncoder) MaterializeLastUserKey(appendTo []byte) []byte {
 	return w.KeyWriter.MaterializeKey(appendTo, w.rows-1)
+}
+
+func (w *DataBlockEncoder) numFormatColumns() int {
+	formatColumns := dataBlockColumnMaxV1
+	if w.format > ColumnFormatv1 {
+		formatColumns = dataBlockColumnMaxV2
+	}
+	return formatColumns
 }
 
 // Finish serializes the pending data block, including the first [rows] rows.
@@ -635,7 +750,7 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 		panic(errors.AssertionFailedf("data block has %d rows; asked to finish %d", w.rows, rows))
 	}
 
-	cols := len(w.Schema.ColumnTypes) + dataBlockColumnMax
+	cols := len(w.Schema.ColumnTypes) + w.numFormatColumns()
 	h := Header{
 		Version: Version1,
 		Columns: uint16(cols),
@@ -658,6 +773,10 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 	w.enc.Encode(rows, &w.values)
 	w.enc.Encode(rows, &w.isValueExternal)
 	w.enc.Encode(rows, &w.isObsolete)
+	if w.format > ColumnFormatv1 {
+		w.enc.Encode(rows, &w.tieringSpanIDs)
+		w.enc.Encode(rows, &w.tieringAttributes)
+	}
 	finished = w.enc.Finish()
 
 	w.lastUserKeyTmp = w.lastUserKeyTmp[:0]
@@ -671,6 +790,7 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 
 // DataBlockRewriter rewrites data blocks. See RewriteSuffixes.
 type DataBlockRewriter struct {
+	format    ColumnarFormat
 	KeySchema *KeySchema
 
 	encoder   DataBlockEncoder
@@ -686,8 +806,11 @@ type DataBlockRewriter struct {
 }
 
 // NewDataBlockRewriter creates a block rewriter.
-func NewDataBlockRewriter(keySchema *KeySchema, comparer *base.Comparer) *DataBlockRewriter {
+func NewDataBlockRewriter(
+	format ColumnarFormat, keySchema *KeySchema, comparer *base.Comparer,
+) *DataBlockRewriter {
 	return &DataBlockRewriter{
+		format:    format,
 		KeySchema: keySchema,
 		comparer:  comparer,
 	}
@@ -718,8 +841,8 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	input []byte, from []byte, to []byte,
 ) (start, end base.InternalKey, rewritten []byte, err error) {
 	if !rw.initialized {
-		rw.iter.InitOnce(rw.KeySchema, rw.comparer, assertNoExternalValues{})
-		rw.encoder.Init(rw.KeySchema)
+		rw.iter.InitOnce(rw.format, rw.KeySchema, rw.comparer, assertNoExternalValues{})
+		rw.encoder.Init(rw.format, rw.KeySchema)
 		rw.initialized = true
 	}
 
@@ -744,7 +867,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 	// better spent dropping support for the physical rewriting of data blocks
 	// we're performing here and instead use a read-time IterTransform.
 
-	rw.decoder.Init(rw.KeySchema, input)
+	rw.decoder.Init(rw.format, rw.KeySchema, input)
 	meta := &KeySeekerMetadata{}
 	rw.KeySchema.InitKeySeekerMetadata(meta, &rw.decoder)
 	rw.keySeeker = rw.KeySchema.KeySeeker(meta)
@@ -784,7 +907,7 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 			start.Trailer = kv.K.Trailer
 		}
 		k := base.InternalKey{UserKey: rw.keyBuf, Trailer: kv.K.Trailer}
-		rw.encoder.Add(k, value, valuePrefix, kcmp, rw.decoder.isObsolete.At(i))
+		rw.encoder.Add(k, value, valuePrefix, kcmp, rw.decoder.isObsolete.At(i), kv.M)
 	}
 	rewritten, end = rw.encoder.Finish(int(rw.decoder.d.header.Rows), rw.encoder.Size())
 	end.UserKey, rw.keyAlloc = rw.keyAlloc.Copy(end.UserKey)
@@ -805,7 +928,9 @@ const _ uint = uint(-(unsafe.Offsetof(blockDecoderAndKeySeekerMetadata{}.keySche
 const _ uint = block.MetadataSize - uint(unsafe.Sizeof(blockDecoderAndKeySeekerMetadata{}))
 
 // InitDataBlockMetadata initializes the metadata for a data block.
-func InitDataBlockMetadata(schema *KeySchema, md *block.Metadata, data []byte) (err error) {
+func InitDataBlockMetadata(
+	format ColumnarFormat, schema *KeySchema, md *block.Metadata, data []byte,
+) (err error) {
 	metadatas := block.CastMetadataZero[blockDecoderAndKeySeekerMetadata](md)
 	// Initialization can panic; convert panics to corruption errors (so higher
 	// layers can add file number and offset information).
@@ -814,7 +939,7 @@ func InitDataBlockMetadata(schema *KeySchema, md *block.Metadata, data []byte) (
 			err = base.CorruptionErrorf("error initializing data block metadata: %v", r)
 		}
 	}()
-	metadatas.d.Init(schema, data)
+	metadatas.d.Init(format, schema, data)
 	schema.InitKeySeekerMetadata(&metadatas.keySchemaMeta, &metadatas.d)
 	return nil
 }
@@ -875,7 +1000,9 @@ type DataBlockDecoder struct {
 	isValueExternal Bitmap
 	// isObsolete is the column reader for the is-obsolete bitmap
 	// that indicates whether a key is obsolete/non-live.
-	isObsolete Bitmap
+	isObsolete        Bitmap
+	tieringSpanIDs    UnsafeUints
+	tieringAttributes UnsafeUints
 	// maximumKeyLength is the maximum length of a user key in the block.
 	// Iterators may use it to allocate a sufficiently large buffer up front,
 	// and elide size checks during iteration. Note that iterators should add +1
@@ -901,7 +1028,7 @@ func (d *DataBlockDecoder) KeySchemaHeader() []byte {
 }
 
 // Init initializes the data block reader with the given serialized data block.
-func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) {
+func (d *DataBlockDecoder) Init(format ColumnarFormat, schema *KeySchema, data []byte) {
 	if uintptr(unsafe.Pointer(unsafe.SliceData(data)))&7 != 0 {
 		panic("data buffer not 8-byte aligned")
 	}
@@ -911,6 +1038,10 @@ func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) {
 	d.values = d.d.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
 	d.isValueExternal = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
 	d.isObsolete = d.d.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsObsolete)
+	if format > ColumnFormatv1 {
+		d.tieringSpanIDs = d.d.Uints(len(schema.ColumnTypes) + dataBlockColumnTieringSpanID)
+		d.tieringAttributes = d.d.Uints(len(schema.ColumnTypes) + dataBlockColumnTieringAttribute)
+	}
 	d.maximumKeyLength = binary.LittleEndian.Uint32(data[schema.HeaderSize:])
 }
 
@@ -951,9 +1082,9 @@ type DataBlockValidator struct {
 // Validate validates the provided block. It returns an error if the block is
 // invalid.
 func (v *DataBlockValidator) Validate(
-	data []byte, comparer *base.Comparer, keySchema *KeySchema,
+	format ColumnarFormat, data []byte, comparer *base.Comparer, keySchema *KeySchema,
 ) error {
-	v.dec.Init(keySchema, data)
+	v.dec.Init(format, keySchema, data)
 	n := v.dec.d.header.Rows
 	keySchema.InitKeySeekerMetadata(&v.keySeekerMeta, &v.dec)
 	keySeeker := keySchema.KeySeeker(&v.keySeekerMeta)
@@ -1009,6 +1140,7 @@ type DataBlockIter struct {
 	// keySchema configures the DataBlockIterConfig to use the provided
 	// KeySchema when initializing the DataBlockIter for iteration over a new
 	// block.
+	format    ColumnarFormat
 	keySchema *KeySchema
 	suffixCmp base.ComparePointSuffixes
 	split     base.Split
@@ -1045,10 +1177,12 @@ type DataBlockIter struct {
 // handler. The iterator must be initialized with a block before it can be used.
 // It may be reinitialized with new blocks without calling InitOnce again.
 func (i *DataBlockIter) InitOnce(
+	format ColumnarFormat,
 	keySchema *KeySchema,
 	comparer *base.Comparer,
 	getLazyValuer block.GetInternalValueForPrefixAndValueHandler,
 ) {
+	i.format = format
 	i.keySchema = keySchema
 	i.suffixCmp = comparer.ComparePointSuffixes
 	i.split = comparer.Split
@@ -1329,6 +1463,7 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 			i.kv.K.SetSeqNum(base.SeqNum(n))
 		}
 	}
+	i.decodeMeta()
 	invariants.CheckBounds(i.row, i.d.values.slices)
 	// Inline i.d.values.At(row).
 	v := i.d.values.Slice(i.d.values.offsets.At2(i.row))
@@ -1507,6 +1642,7 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 		} else {
 			i.kv.V = base.MakeInPlaceValue(v)
 		}
+		i.decodeMeta()
 		i.kvRow = i.row
 		return &i.kv
 	}
@@ -1535,6 +1671,15 @@ func (i *DataBlockIter) decodeKey() {
 			i.kv.K.SetSeqNum(base.SeqNum(n))
 		}
 	}
+	i.decodeMeta()
+}
+
+func (i *DataBlockIter) decodeMeta() {
+	if i.format < ColumnFormatv2 {
+		return
+	}
+	i.kv.M.Tiering.SpanID = i.d.tieringSpanIDs.At(i.row)
+	i.kv.M.Tiering.Attribute = base.TieringAttribute(i.d.tieringAttributes.At(i.row))
 }
 
 var _ = (*DataBlockIter).decodeKey
