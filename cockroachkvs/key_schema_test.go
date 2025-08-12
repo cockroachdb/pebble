@@ -66,23 +66,23 @@ func runDataDrivenTest(t *testing.T, path string) {
 
 		case "describe":
 			var d colblk.DataBlockDecoder
-			d.Init(&KeySchema, blockData)
+			bd := d.Init(&KeySchema, blockData)
 			f := binfmt.New(blockData)
 			tp := treeprinter.New()
-			d.Describe(f, tp)
+			d.Describe(f, tp, bd)
 			return tp.String()
 
 		case "suffix-types":
 			var d colblk.DataBlockDecoder
-			d.Init(&KeySchema, blockData)
+			bd := d.Init(&KeySchema, blockData)
 			var ks cockroachKeySeeker
-			ks.init(&d)
+			ks.init(&d, bd)
 			return fmt.Sprintf("suffix-types: %s", ks.suffixTypes)
 
 		case "keys":
 			var d colblk.DataBlockDecoder
-			d.Init(&KeySchema, blockData)
-			require.NoError(t, iter.Init(&d, blockiter.Transforms{}))
+			bd := d.Init(&KeySchema, blockData)
+			require.NoError(t, iter.Init(&d, bd, blockiter.Transforms{}))
 			defer iter.Close()
 			var buf bytes.Buffer
 			var prevKey base.InternalKey
@@ -98,8 +98,8 @@ func runDataDrivenTest(t *testing.T, path string) {
 
 		case "seek":
 			var d colblk.DataBlockDecoder
-			d.Init(&KeySchema, blockData)
-			require.NoError(t, iter.Init(&d, blockiter.Transforms{}))
+			bd := d.Init(&KeySchema, blockData)
+			require.NoError(t, iter.Init(&d, bd, blockiter.Transforms{}))
 			defer iter.Close()
 			var buf strings.Builder
 			for _, l := range crstrings.Lines(td.Input) {
@@ -145,10 +145,10 @@ func TestKeySchema_RandomKeys(t *testing.T) {
 	blk = crbytes.CopyAligned(blk)
 
 	var dec colblk.DataBlockDecoder
-	dec.Init(&KeySchema, blk)
+	bd := dec.Init(&KeySchema, blk)
 	var it colblk.DataBlockIter
 	it.InitOnce(&KeySchema, &Comparer, nil)
-	require.NoError(t, it.Init(&dec, blockiter.NoTransforms))
+	require.NoError(t, it.Init(&dec, bd, blockiter.NoTransforms))
 	// Ensure that a scan across the block finds all the relevant keys.
 	var valBuf []byte
 	for k, kv := 0, it.First(); kv != nil; k, kv = k+1, it.Next() {

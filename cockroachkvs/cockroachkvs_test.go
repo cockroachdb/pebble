@@ -204,13 +204,14 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 	var buf bytes.Buffer
 	var enc colblk.DataBlockEncoder
 	var dec colblk.DataBlockDecoder
+	var bd *colblk.BlockDecoder
 	var ks colblk.KeySeeker
 	var maxKeyLen int
 	enc.Init(&KeySchema)
 
 	initKeySeeker := func() {
 		ksPointer := &cockroachKeySeeker{}
-		KeySchema.InitKeySeekerMetadata((*colblk.KeySeekerMetadata)(unsafe.Pointer(ksPointer)), &dec)
+		KeySchema.InitKeySeekerMetadata((*colblk.KeySeekerMetadata)(unsafe.Pointer(ksPointer)), &dec, bd)
 		ks = KeySchema.KeySeeker((*colblk.KeySeekerMetadata)(unsafe.Pointer(ksPointer)))
 	}
 
@@ -234,7 +235,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 				rows++
 			}
 			blk, _ := enc.Finish(rows, enc.Size())
-			dec.Init(&KeySchema, blk)
+			bd = dec.Init(&KeySchema, blk)
 			return buf.String()
 		case "is-lower-bound":
 			initKeySeeker()
@@ -256,7 +257,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 
 				fmt.Fprintf(&buf, "SeekGE(%s, boundRow=%d, searchDir=%d) = (row=%d, equalPrefix=%t)",
 					line, boundRow, searchDir, row, equalPrefix)
-				if row >= 0 && row < dec.BlockDecoder().Rows() {
+				if row >= 0 && row < bd.Rows() {
 					var kiter colblk.PrefixBytesIter
 					kiter.Buf = make([]byte, maxKeyLen+1)
 					key := ks.MaterializeUserKey(&kiter, -1, row)
@@ -412,8 +413,8 @@ func testCockroachDataColBlock(t *testing.T, seed uint64, keyCfg KeyGenConfig) {
 	it.InitOnce(&KeySchema, &Comparer, getInternalValuer(func([]byte) base.InternalValue {
 		return base.MakeInPlaceValue([]byte("mock external value"))
 	}))
-	decoder.Init(&KeySchema, serializedBlock)
-	if err := it.Init(&decoder, blockiter.Transforms{}); err != nil {
+	bd := decoder.Init(&KeySchema, serializedBlock)
+	if err := it.Init(&decoder, bd, blockiter.Transforms{}); err != nil {
 		t.Fatal(err)
 	}
 	// Scan the block using Next and ensure that all the keys values match.

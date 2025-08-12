@@ -318,8 +318,8 @@ func benchmarkCockroachDataColBlockIter(
 	it.InitOnce(&KeySchema, &Comparer, getInternalValuer(func([]byte) base.InternalValue {
 		return base.MakeInPlaceValue([]byte("mock external value"))
 	}))
-	decoder.Init(&KeySchema, serializedBlock)
-	if err := it.Init(&decoder, transforms); err != nil {
+	bd := decoder.Init(&KeySchema, serializedBlock)
+	if err := it.Init(&decoder, bd, transforms); err != nil {
 		b.Fatal(err)
 	}
 	avgRowSize := float64(len(serializedBlock)) / float64(len(keys))
