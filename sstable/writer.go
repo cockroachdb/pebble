@@ -124,7 +124,7 @@ func (w *Writer) Set(key, value []byte) error {
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable delete the added points.
-	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), value, false)
+	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), value, false, base.KVMeta{})
 }
 
 // Delete deletes the value for the given key. The sequence number is set to
@@ -141,7 +141,7 @@ func (w *Writer) Delete(key []byte) error {
 	}
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable delete the added points.
-	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil, false)
+	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindDelete), nil, false, base.KVMeta{})
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
@@ -182,7 +182,7 @@ func (w *Writer) Merge(key, value []byte) error {
 	// forceObsolete is false based on the assumption that no RANGEDELs in the
 	// sstable that delete the added points. If the user configured this writer
 	// to be strict-obsolete, addPoint will reject the addition of this MERGE.
-	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value, false)
+	return w.rw.Add(base.MakeInternalKey(key, 0, InternalKeyKindMerge), value, false, base.KVMeta{})
 }
 
 // RangeKeySet sets a range between start (inclusive) and end (exclusive) with
@@ -323,11 +323,11 @@ type RawWriter interface {
 	// that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
 	// responsibility of the caller. S1 is solely the responsibility of the
 	// callee.
-	Add(key InternalKey, value []byte, forceObsolete bool) error
+	Add(key InternalKey, value []byte, forceObsolete bool, meta base.KVMeta) error
 	// AddWithBlobHandle adds a key to the sstable, but encoding a blob value
 	// handle instead of an in-place value. See Add for more details. The caller
 	// must provide the already-extracted ShortAttribute for the value.
-	AddWithBlobHandle(key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool) error
+	AddWithBlobHandle(key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool, meta base.KVMeta) error
 	// EncodeSpan encodes the keys in the given span. The span can contain
 	// either only RANGEDEL keys or only range keys.
 	//

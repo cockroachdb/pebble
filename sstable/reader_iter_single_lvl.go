@@ -213,7 +213,8 @@ func newColumnBlockSingleLevelIterator(
 		i.internalValueConstructor.vbReader = valblk.MakeReader(i, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats)
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
-	i.data.InitOnce(r.keySchema, r.Comparer, &i.internalValueConstructor)
+	i.data.InitOnce(sstableFormatToColumnarFormat(r.tableFormat),
+		r.keySchema, r.Comparer, &i.internalValueConstructor)
 	indexH, err := r.readTopLevelIndexBlock(ctx, i.readEnv.Block, i.indexFilterRH)
 	if err == nil {
 		err = i.index.InitHandle(r.Comparer, indexH, opts.Transforms)

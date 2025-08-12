@@ -216,7 +216,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 					j := strings.Index(kv, ":")
 					ikey := base.ParseInternalKey(kv[:j])
 					value := []byte(kv[j+1:])
-					err = w.Add(ikey, value, false /* forceObsolete */)
+					err = w.Add(ikey, value, false, base.KVMeta{})
 					if err != nil {
 						return err.Error()
 					}

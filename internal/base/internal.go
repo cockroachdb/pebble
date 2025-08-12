@@ -617,6 +617,31 @@ func MakeInternalKV(k InternalKey, v []byte) InternalKV {
 type InternalKV struct {
 	K InternalKey
 	V InternalValue
+	M KVMeta
+}
+
+type TieringMeta struct {
+	SpanID uint64
+	// Timestamp is a user-specified timestamp for the key-value pair.
+	//
+	// TODO(sumeer): decide on units for timestamp, since unix nanos is
+	// unnecessarily large. log2(24*365*100) = 19.74, i.e., number of hours in
+	// 100 years fits in 3 bytes.
+	Timestamp uint64
+}
+
+// KVMeta is optional information that is known about the InternalKV. For now,
+// this is available only for KVs read from an sstable. Placing this in
+// InternalKV allows this to be exposed via the InternalIterator interface.
+//
+// TODO(sumeer): we are doing this only because we need this information
+// during a sstable compaction. It is not needed for normal iteration, so we
+// shouldn't be adding additional overhead for the common path. We should
+// specialize levelIter and the sstable iterators to have FirstWithMeta and
+// NextWithMeta methods that can be used for the limited use case of
+// compaction.Iter.
+type KVMeta struct {
+	Tiering TieringMeta
 }
 
 // Kind returns the KV's internal key kind.

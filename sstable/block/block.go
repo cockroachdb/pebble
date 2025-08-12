@@ -242,8 +242,9 @@ func CastMetadata[T any](md *Metadata) *T {
 }
 
 // MetadataSize is the size of the metadata. The value is chosen to fit a
-// colblk.DataBlockDecoder and a CockroachDB colblk.KeySeeker.
-const MetadataSize = 312
+// colblk.DataBlockDecoder and a CockroachDB colblk.KeySeeker. It is never
+// persisted.
+const MetadataSize = 360
 
 // Assert that MetadataSize is a multiple of 8. This is necessary to keep the
 // block data buffer aligned.

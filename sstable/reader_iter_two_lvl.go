@@ -180,7 +180,8 @@ func newColumnBlockTwoLevelIterator(
 		i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
-	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, &i.secondLevel.internalValueConstructor)
+	i.secondLevel.data.InitOnce(sstableFormatToColumnarFormat(r.tableFormat),
+		r.keySchema, r.Comparer, &i.secondLevel.internalValueConstructor)
 	topLevelIndexH, err := r.readTopLevelIndexBlock(ctx, i.secondLevel.readEnv.Block, i.secondLevel.indexFilterRH)
 	if err == nil {
 		err = i.topLevelIndex.InitHandle(r.Comparer, topLevelIndexH, opts.Transforms)

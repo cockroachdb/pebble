@@ -181,16 +181,22 @@ type loggingRawWriter struct {
 	sstable.RawWriter
 }
 
-func (w *loggingRawWriter) Add(key InternalKey, value []byte, forceObsolete bool) error {
+func (w *loggingRawWriter) Add(
+	key InternalKey, value []byte, forceObsolete bool, meta base.KVMeta,
+) error {
 	fmt.Fprintf(w.w, "RawWriter.Add(%q, %q, %t)\n", key, value, forceObsolete)
-	return w.RawWriter.Add(key, value, forceObsolete)
+	return w.RawWriter.Add(key, value, forceObsolete, meta)
 }
 
 func (w *loggingRawWriter) AddWithBlobHandle(
-	key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool,
+	key InternalKey,
+	h blob.InlineHandle,
+	attr base.ShortAttribute,
+	forceObsolete bool,
+	meta base.KVMeta,
 ) error {
 	fmt.Fprintf(w.w, "RawWriter.AddWithBlobHandle(%q, %q, %x, %t)\n", key, h, attr, forceObsolete)
-	return w.RawWriter.AddWithBlobHandle(key, h, attr, forceObsolete)
+	return w.RawWriter.AddWithBlobHandle(key, h, attr, forceObsolete, meta)
 }
 
 // defineDBValueSeparator is a compact.ValueSeparation implementation used by
@@ -232,7 +238,7 @@ func (vs *defineDBValueSeparator) Add(
 	v := kv.V.InPlaceValue()
 	// If the value doesn't begin with "blob", don't separate it.
 	if !bytes.HasPrefix(v, []byte("blob")) {
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, base.KVMeta{})
 	}
 
 	// This looks like a blob reference. Parse it.

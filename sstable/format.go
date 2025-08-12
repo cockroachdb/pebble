@@ -56,9 +56,18 @@ const (
 	// Supported by CockroachDB v25.3 and later.
 	TableFormatPebblev7
 
+	// TableFormatPebblev8 adds ...:
+	// TODO(sumeer)
+	// - comment
+	// - add new blob file format for key age tracking, and storing (spanID,ts)
+	//   with each entry.
+	TableFormatPebblev8
+
 	NumTableFormats
 
-	TableFormatMax = NumTableFormats - 1
+	// TODO(sumeer): change back to NumTableFormats - 1 when TableFormatPebblev8
+	// can be tested.
+	TableFormatMax = NumTableFormats - 2
 
 	// TableFormatMinSupported is the minimum format supported by Pebble.  This
 	// package still supports older formats for uses outside of Pebble
@@ -76,6 +85,7 @@ var footerSizes [NumTableFormats]int = [NumTableFormats]int{
 	TableFormatPebblev5:  rocksDBFooterLen,
 	TableFormatPebblev6:  checkedPebbleDBFooterLen,
 	TableFormatPebblev7:  pebbleDBv7FooterLen,
+	TableFormatPebblev8:  pebbleDBv7FooterLen,
 }
 
 // TableFormatPebblev4, in addition to DELSIZED, introduces the use of
@@ -279,6 +289,8 @@ func parseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 			return TableFormatPebblev6, nil
 		case 7:
 			return TableFormatPebblev7, nil
+		case 8:
+			return TableFormatPebblev8, nil
 		default:
 			return TableFormatUnspecified, base.CorruptionErrorf(
 				"(unsupported pebble format version %d)", errors.Safe(version))
@@ -328,6 +340,8 @@ func (f TableFormat) AsTuple() (string, uint32) {
 		return pebbleDBMagic, 6
 	case TableFormatPebblev7:
 		return pebbleDBMagic, 7
+	case TableFormatPebblev8:
+		return pebbleDBMagic, 8
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
@@ -356,6 +370,8 @@ func (f TableFormat) String() string {
 		return "(Pebble,v6)"
 	case TableFormatPebblev7:
 		return "(Pebble,v7)"
+	case TableFormatPebblev8:
+		return "(Pebble,v8)"
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
@@ -377,4 +393,16 @@ func ParseTableFormatString(s string) (TableFormat, error) {
 		return TableFormatUnspecified, errors.Errorf("unknown table format %q", s)
 	}
 	return f, nil
+}
+
+// Must only be called for a TableFormat that is known to be columnar.
+func sstableFormatToColumnarFormat(f TableFormat) colblk.ColumnarFormat {
+	switch {
+	case f >= TableFormatPebblev8:
+		return colblk.ColumnFormatv2
+	case f >= TableFormatPebblev5:
+		return colblk.ColumnFormatv1
+	default:
+		panic(errors.AssertionFailedf("unsupported table format %s", f))
+	}
 }
