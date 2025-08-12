@@ -193,7 +193,7 @@ func benchmarkCockroachDataColBlockWriter(b *testing.B, keyConfig KeyGenConfig, 
 	_, keys, values := generateDataBlock(rng, targetBlockSize, keyConfig, valueLen)
 
 	var w colblk.DataBlockEncoder
-	w.Init(&KeySchema)
+	w.Init(colblk.ColumnFormatv1, &KeySchema)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -202,7 +202,8 @@ func benchmarkCockroachDataColBlockWriter(b *testing.B, keyConfig KeyGenConfig, 
 		for w.Size() < targetBlockSize {
 			ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-			w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
+			w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp,
+				false /* isObsolete */, base.KVMeta{})
 			count++
 		}
 		_, _ = w.Finish(w.Rows(), w.Size())
@@ -315,10 +316,11 @@ func benchmarkCockroachDataColBlockIter(
 
 	var decoder colblk.DataBlockDecoder
 	var it colblk.DataBlockIter
-	it.InitOnce(&KeySchema, &Comparer, getInternalValuer(func([]byte) base.InternalValue {
-		return base.MakeInPlaceValue([]byte("mock external value"))
-	}))
-	decoder.Init(&KeySchema, serializedBlock)
+	it.InitOnce(colblk.ColumnFormatv1, &KeySchema, &Comparer,
+		getInternalValuer(func([]byte) base.InternalValue {
+			return base.MakeInPlaceValue([]byte("mock external value"))
+		}))
+	decoder.Init(colblk.ColumnFormatv1, &KeySchema, serializedBlock)
 	if err := it.Init(&decoder, transforms); err != nil {
 		b.Fatal(err)
 	}

@@ -672,13 +672,13 @@ func runBuildCmd(
 			if err != nil {
 				return err
 			}
-			if err := w.Raw().AddWithBlobHandle(tmp, handle, base.ShortAttribute(0), false); err != nil {
+			if err := w.Raw().AddWithBlobHandle(tmp, handle, base.ShortAttribute(0), false, base.KVMeta{}); err != nil {
 				return err
 			}
 			continue
 		}
 		// Otherwise add it as an ordinary value.
-		if err := w.Raw().Add(tmp, v, false); err != nil {
+		if err := w.Raw().Add(tmp, v, false, base.KVMeta{}); err != nil {
 			return err
 		}
 	}

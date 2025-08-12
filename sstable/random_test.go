@@ -397,7 +397,7 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 				value[j] = byte(cfg.rng.Uint32())
 			}
 		}
-		if err := w.Add(keys[i], value, false /* forceObsolete */); err != nil {
+		if err := w.Add(keys[i], value, false, base.KVMeta{}); err != nil {
 			return nil, err
 		}
 	}

@@ -25,7 +25,7 @@ import (
 func TestBlockFragmentIterator(t *testing.T) {
 	comparer := testkeys.Comparer
 	var cacheVal *cache.Value
-	c := cache.New(2048)
+	c := cache.New(3072)
 	cacheHandle := c.NewHandle()
 	defer func() {
 		cacheHandle.Close()

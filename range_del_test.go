@@ -623,7 +623,7 @@ func benchmarkRangeDelIterate(b *testing.B, entries, deleted int, snapshotCompac
 	})
 	for i := 0; i < entries; i++ {
 		key := base.MakeInternalKey(makeKey(i), 0, InternalKeyKindSet)
-		if err := w.Add(key, nil, false /* forceObsolete */); err != nil {
+		if err := w.Add(key, nil, false, base.KVMeta{}); err != nil {
 			b.Fatal(err)
 		}
 	}

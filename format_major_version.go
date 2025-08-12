@@ -243,10 +243,16 @@ const (
 	// file format (which adds compression statistics).
 	FormatV2BlobFiles
 
+	// FormatTieredStorage is a format major version that adds support for
+	// tiered storage based on the age of a key-value pair. It introduces a new
+	// columnar block format (among other things) that is required for tracking
+	// the attribute used to derive the age.
+	FormatTieredStorage
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
-	FormatNewest FormatMajorVersion = iota - 1
+	FormatNewest FormatMajorVersion = FormatV2BlobFiles
 
 	// Experimental versions, which are excluded by FormatNewest (but can be used
 	// in tests) can be defined here.
@@ -255,7 +261,9 @@ const (
 
 	// internalFormatNewest is the most recent, possibly experimental format major
 	// version.
-	internalFormatNewest FormatMajorVersion = iota - 2
+	//
+	// TODO(sumeer): change this to iota - 2 when ready to test FormatTieredStorage.
+	internalFormatNewest FormatMajorVersion = iota - 3
 )
 
 // FormatMinSupported is the minimum format version that is supported by this
@@ -283,6 +291,8 @@ func (v FormatMajorVersion) resolveDefault() FormatMajorVersion {
 func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	v = v.resolveDefault()
 	switch {
+	case v >= FormatTieredStorage:
+		return sstable.TableFormatPebblev8
 	case v >= formatFooterAttributes:
 		return sstable.TableFormatPebblev7
 	case v >= FormatTableFormatV6:
@@ -374,6 +384,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatV2BlobFiles: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatV2BlobFiles)
+	},
+	FormatTieredStorage: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatTieredStorage)
 	},
 }
 

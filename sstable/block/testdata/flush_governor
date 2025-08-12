@@ -25,8 +25,8 @@ should-flush size-before=899 size-after=10000
 ----
 should not flush
 
-# Size classes. Note that the block allocation overhead is 360.
-init target-block-size=800 size-class-aware-threshold=60 size-classes=(820, 1020, 1320, 1820)
+# Size classes. Note that the block allocation overhead is 392.
+init target-block-size=800 size-class-aware-threshold=60 size-classes=(820, 1068, 1368, 1820)
 ----
 low watermark: 480
 high watermark: 976
@@ -82,8 +82,8 @@ targetBoundary: 1000
 init target-block-size=32768 jemalloc-size-classes
 ----
 low watermark: 19661
-high watermark: 40616
-targetBoundary: 32424
+high watermark: 40568
+targetBoundary: 32376
 
 # We should not flush until exceeding the boundary.
 should-flush size-before=30000 size-after=31000

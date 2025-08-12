@@ -285,7 +285,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (736B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+    2 (832B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -425,7 +425,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-   6 (2.2KB) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+   6 (2.4KB) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed

@@ -592,7 +592,7 @@ func TestConcurrentExcise(t *testing.T) {
 				VisitPointKey: func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
-					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false, base.KVMeta{}))
 					return nil
 				},
 				VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {

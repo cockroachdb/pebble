@@ -515,7 +515,9 @@ type bufferedIndexBlock struct {
 // that strict-obsolete ssts must satisfy. S2, due to RANGEDELs, is solely the
 // responsibility of the caller. S1 is solely the responsibility of the
 // callee.
-func (w *RawRowWriter) Add(key InternalKey, value []byte, forceObsolete bool) error {
+func (w *RawRowWriter) Add(
+	key InternalKey, value []byte, forceObsolete bool, meta base.KVMeta,
+) error {
 	if w.err != nil {
 		return w.err
 	}
@@ -536,7 +538,11 @@ func (w *RawRowWriter) Add(key InternalKey, value []byte, forceObsolete bool) er
 // AddWithBlobHandle implements the RawWriter interface. This implementation
 // does not support writing blob value handles.
 func (w *RawRowWriter) AddWithBlobHandle(
-	key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool,
+	key InternalKey,
+	h blob.InlineHandle,
+	attr base.ShortAttribute,
+	forceObsolete bool,
+	meta base.KVMeta,
 ) error {
 	w.err = errors.Newf("pebble: blob value handles are not supported in %s", w.tableFormat.String())
 	return w.err

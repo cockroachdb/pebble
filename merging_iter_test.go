@@ -243,7 +243,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 							case InternalKeyKindRangeDelete:
 								frag.Add(keyspan.Span{Start: ikey.UserKey, End: value, Keys: []keyspan.Key{{Trailer: ikey.Trailer}}})
 							default:
-								if err := w.Add(ikey, value, false /* forceObsolete */); err != nil {
+								if err := w.Add(ikey, value, false, base.KVMeta{}); err != nil {
 									return err.Error()
 								}
 							}
@@ -371,7 +371,7 @@ func buildMergingIterTables(
 		ikey.UserKey = key
 		j := rand.IntN(len(writers))
 		w := writers[j]
-		w.Add(ikey, nil, false /* forceObsolete */)
+		w.Add(ikey, nil, false, base.KVMeta{})
 	}
 
 	for _, w := range writers {
@@ -602,7 +602,7 @@ func buildLevelsForMergingIterSeqSeek(
 		key := makeKey(i)
 		keys = append(keys, key)
 		ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
-		require.NoError(b, w.Add(ikey, nil, false /* forceObsolete */))
+		require.NoError(b, w.Add(ikey, nil, false, base.KVMeta{}))
 	}
 	if writeRangeTombstoneToLowestLevel {
 		require.NoError(b, w.EncodeSpan(keyspan.Span{
@@ -616,14 +616,14 @@ func buildLevelsForMergingIterSeqSeek(
 	for j := 1; j < len(files); j++ {
 		for _, k := range []int{0, len(keys) - 1} {
 			ikey := base.MakeInternalKey(keys[k], base.SeqNum(j), InternalKeyKindSet)
-			require.NoError(b, writers[j][0].Add(ikey, nil, false /* forceObsolete */))
+			require.NoError(b, writers[j][0].Add(ikey, nil, false, base.KVMeta{}))
 		}
 	}
 	lastKey := makeKey(i)
 	keys = append(keys, lastKey)
 	for j := 0; j < len(files); j++ {
 		lastIKey := base.MakeInternalKey(lastKey, base.SeqNum(j), InternalKeyKindSet)
-		require.NoError(b, writers[j][1].Add(lastIKey, nil, false /* forceObsolete */))
+		require.NoError(b, writers[j][1].Add(lastIKey, nil, false, base.KVMeta{}))
 	}
 	for _, levelWriters := range writers {
 		for j, w := range levelWriters {
