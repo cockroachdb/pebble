@@ -947,14 +947,14 @@ a.RANGEDEL.1:b
 a.MERGE.1:v1
 ----
 
-iter allow-zero-seqnum=true
+iter is-bottommost-layer=true
 first
 next
 next
 next
 ----
 a#inf,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
-a#0,MERGE:v1v2
+a#0,SET:v1v2
 .
 .
 
@@ -973,7 +973,7 @@ next
 a#5,SETWITHDEL:5[base]
 .
 
-iter allow-zero-seqnum=true
+iter is-bottommost-layer=true
 first
 next
 ----
@@ -1023,13 +1023,13 @@ a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 .
 
-iter allow-zero-seqnum=true
+iter is-bottommost-layer=true
 first
 next
 next
 ----
 a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
-b#0,MERGE:5
+b#0,SET:5
 .
 
 iter snapshots=2

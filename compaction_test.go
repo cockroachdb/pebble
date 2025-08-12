@@ -2283,7 +2283,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 					c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
 						c.comparer.Compare, c.version, d.mu.versions.latest.l0Organizer,
 						c.outputLevel.level, c.bounds)
-					fmt.Fprintf(&buf, "%t\n", c.allowZeroSeqNum())
+					fmt.Fprintf(&buf, "%t\n", c.isBottommostDataLayer())
 				}
 				return buf.String()
 

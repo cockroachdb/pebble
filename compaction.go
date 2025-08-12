@@ -964,11 +964,16 @@ func (c *tableCompaction) errorOnUserKeyOverlap(ve *manifest.VersionEdit) error 
 	return nil
 }
 
-// allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
-// snapshots requiring them to be kept. It performs this determination by
-// looking at the TombstoneElision values which are set up based on sstables
-// which overlap the bounds of the compaction at a lower level in the LSM.
-func (c *tableCompaction) allowZeroSeqNum() bool {
+// isBottommostDataLayer returns true if the compaction's inputs are known to be
+// the bottommost layer of data for the compaction's key range. If true, this
+// allows the compaction iterator to perform transformations to keys such as
+// setting a key's sequence number to zero.
+//
+// This function performs this determination by looking at the TombstoneElision
+// values which are set up based on sstables which overlap the bounds of the
+// compaction at a lower level in the LSM. This function always returns false
+// for flushes.
+func (c *tableCompaction) isBottommostDataLayer() bool {
 	// TODO(peter): we disable zeroing of seqnums during flushing to match
 	// RocksDB behavior and to avoid generating overlapping sstables during
 	// DB.replayWAL. When replaying WAL files at startup, we flush after each
@@ -3335,12 +3340,12 @@ func (d *DB) compactAndWrite(
 		return compact.Result{Err: err}
 	}
 	cfg := compact.IterConfig{
-		Comparer:         c.comparer,
-		Merge:            d.merge,
-		TombstoneElision: c.delElision,
-		RangeKeyElision:  c.rangeKeyElision,
-		Snapshots:        snapshots,
-		AllowZeroSeqNum:  c.allowZeroSeqNum(),
+		Comparer:              c.comparer,
+		Merge:                 d.merge,
+		TombstoneElision:      c.delElision,
+		RangeKeyElision:       c.rangeKeyElision,
+		Snapshots:             snapshots,
+		IsBottommostDataLayer: c.isBottommostDataLayer(),
 		IneffectualSingleDeleteCallback: func(userKey []byte) {
 			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
 				Kind:    IneffectualSingleDelete,

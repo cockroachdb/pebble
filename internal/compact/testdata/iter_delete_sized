@@ -974,13 +974,13 @@ a.RANGEDEL.1:b
 a.MERGE.1:v1
 ----
 
-iter allow-zero-seqnum=true
+iter is-bottommost-layer=true
 first
 next
 next
 ----
 a#inf,RANGEDEL:; Span() = a-b:{(#1,RANGEDEL)}
-a#0,MERGE:v1v2
+a#0,SET:v1v2
 .
 
 # Verify that we transform merge+del -> set.
@@ -998,7 +998,7 @@ next
 a#5,SETWITHDEL:5[base]
 .
 
-iter allow-zero-seqnum=true
+iter is-bottommost-layer=true
 first
 next
 ----
@@ -1048,13 +1048,13 @@ a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
 b#5,MERGE:5
 .
 
-iter allow-zero-seqnum=true
+iter is-bottommost-layer=true
 first
 next
 next
 ----
 a#inf,RANGEDEL:; Span() = a-c:{(#3,RANGEDEL)}
-b#0,MERGE:5
+b#0,SET:5
 .
 
 iter snapshots=2
@@ -1211,7 +1211,7 @@ a.SET.2:b
 a.DEL.1:
 ----
 
-iter allow-zero-seqnum=true
+iter is-bottommost-layer=true
 first
 next
 next
@@ -1220,7 +1220,7 @@ a#inf,RANGEDEL:; Span() = a-z:{(#2,RANGEDEL)}
 a#0,SET:c
 .
 
-iter allow-zero-seqnum=true snapshots=3
+iter is-bottommost-layer=true snapshots=3
 first
 next
 next
@@ -1231,7 +1231,7 @@ a#3,SET:c
 a#0,SET:b
 .
 
-iter allow-zero-seqnum=true snapshots=2
+iter is-bottommost-layer=true snapshots=2
 first
 next
 next
@@ -1573,7 +1573,7 @@ next
 
 # Try the same test as above, but with allowing sequence number zeroing as well.
 
-iter elide-tombstones=t allow-zero-seqnum=t
+iter elide-tombstones=t is-bottommost-layer=t
 first
 next
 ----
@@ -1670,7 +1670,7 @@ next
 a#inf,RANGEDEL:; Span() = a-d:{(#5,RANGEDEL)}
 .
 
-iter elide-tombstones=t allow-zero-seqnum=t
+iter elide-tombstones=t is-bottommost-layer=t
 first
 next
 ----

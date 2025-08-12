@@ -269,11 +269,17 @@ type IterConfig struct {
 	TombstoneElision TombstoneElision
 	RangeKeyElision  TombstoneElision
 
-	// AllowZeroSeqNum allows the sequence number of KVs in the bottom snapshot
-	// stripe to be simplified to 0 (which improves compression and enables an
-	// optimization during forward iteration). This can be enabled if there are no
-	// tables overlapping the output at lower levels (than the output) in the LSM.
-	AllowZeroSeqNum bool
+	// IsBottommostDataLayer indicates that the compaction inputs form the
+	// bottommost layer of data for the compaction's key range. This allows the
+	// sequence number of KVs in the bottom snapshot stripe to be simplified to
+	// 0 (which improves compression and enables an optimization during forward
+	// iteration). This can be enabled if there are no tables overlapping the
+	// output at lower levels (than the output) in the LSM.
+	//
+	// This field may be false even when nothing is overlapping in lower levels.
+	// At the time of writing, flushes always set this to false (because flushes
+	// almost never form the bottommost layer of data).
+	IsBottommostDataLayer bool
 
 	// IneffectualPointDeleteCallback is called if a SINGLEDEL is being elided
 	// without deleting a point set/merge. False positives are rare but possible
@@ -634,7 +640,21 @@ func (i *Iter) Next() *base.InternalKV {
 					continue
 				}
 
-				i.maybeZeroSeqnum(origSnapshotIdx)
+				// If this is the oldest version of this key (the bottommost
+				// snapshot stripe), we can transform the sequence number to
+				// zero. This can improve compression and enables an
+				// optimization during forward iteration to skip some key
+				// comparisons. Additionally, we can transform the key kind to
+				// SET so that iteration and future compactions do not need to
+				// invoke the user's Merge operator.
+				if i.isBottommostSnapshotStripe(origSnapshotIdx) {
+					i.kv.K.SetSeqNum(base.SeqNumZero)
+					// During the merge (see mergeNext), we may have already
+					// transformed the key kind to SET or SETWITHDEL, in which case we want to preserve the existing key kind.
+					if i.kv.K.Kind() == base.InternalKeyKindMerge {
+						i.kv.K.SetKind(base.InternalKeyKindSet)
+					}
+				}
 				return &i.kv
 			}
 			if i.err != nil {
@@ -799,7 +819,14 @@ func (i *Iter) setNext() {
 	// Save the current key.
 	i.saveKey()
 	i.kv.V = i.iterKV.V
-	i.maybeZeroSeqnum(i.curSnapshotIdx)
+
+	// If this is the oldest version of this key (the bottommost snapshot
+	// stripe), we can transform the sequence number to zero. This can improve
+	// compression and enables an optimization during forward iteration to skip
+	// some key comparisons.
+	if i.isBottommostSnapshotStripe(i.curSnapshotIdx) {
+		i.kv.K.SetSeqNum(base.SeqNumZero)
+	}
 
 	// If this key is already a SETWITHDEL we can early return and skip the remaining
 	// records in the stripe:
@@ -1415,23 +1442,21 @@ func (i *Iter) lastRangeDelSpanFrontierReached(key []byte) []byte {
 	return nil
 }
 
-// maybeZeroSeqnum attempts to set the seqnum for the current key to 0. Doing
-// so improves compression and enables an optimization during forward iteration
-// to skip some key comparisons. The seqnum for an entry can be zeroed if the
-// entry is on the bottom snapshot stripe and on the bottom level of the LSM.
-func (i *Iter) maybeZeroSeqnum(snapshotIdx int) {
-	if !i.cfg.AllowZeroSeqNum {
-		// TODO(peter): allowZeroSeqNum applies to the entire compaction. We could
-		// make the determination on a key by key basis, similar to what is done
-		// for elideTombstone. Need to add a benchmark for Iter to verify
-		// that isn't too expensive.
-		return
-	}
-	if snapshotIdx > 0 {
-		// This is not the last snapshot
-		return
-	}
-	i.kv.K.SetSeqNum(base.SeqNumZero)
+// isBottommostSnapshotStripe returns true if the compaction's inputs form the
+// bottommost layer of the LSM for the compaction's key range and the provided
+// snapshot stripe is the last stripe.
+//
+// When isBottommostSnapshotStripe returns true, it is guaranteed there does not
+// exist any overlapping keys with lower sequence numbers than the keys in the
+// provided snapshot stripe. However isBottommostSnapshotStripe is permitted to
+// return false even when there is no overlapping data in lower levels (eg,
+// flushes).
+func (i *Iter) isBottommostSnapshotStripe(snapshotIdx int) bool {
+	// TODO(peter): This determination applies to the entire compaction. We
+	// could make the determination on a key by key basis, similar to what is
+	// done for elideTombstone. Need to add a benchmark for Iter to verify that
+	// isn't too expensive.
+	return i.cfg.IsBottommostDataLayer && snapshotIdx == 0
 }
 
 func finishValueMerger(
