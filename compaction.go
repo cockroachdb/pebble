@@ -247,12 +247,6 @@ type compaction struct {
 	delElision      compact.TombstoneElision
 	rangeKeyElision compact.TombstoneElision
 
-	// allowedZeroSeqNum is true if seqnums can be zeroed if there are no
-	// snapshots requiring them to be kept. This determination is made by
-	// looking for an sstable which overlaps the bounds of the compaction at a
-	// lower level in the LSM during runCompaction.
-	allowedZeroSeqNum bool
-
 	// deletionHints are set if this is a compactionKindDeleteOnly. Used to figure
 	// out whether an input must be deleted in its entirety, or excised into
 	// virtual sstables.
@@ -643,11 +637,16 @@ func (c *compaction) errorOnUserKeyOverlap(ve *versionEdit) error {
 	return nil
 }
 
-// allowZeroSeqNum returns true if seqnum's can be zeroed if there are no
-// snapshots requiring them to be kept. It performs this determination by
-// looking at the TombstoneElision values which are set up based on sstables
-// which overlap the bounds of the compaction at a lower level in the LSM.
-func (c *compaction) allowZeroSeqNum() bool {
+// isBottommostDataLayer returns true if the compaction's inputs are known to be
+// the bottommost layer of data for the compaction's key range. If true, this
+// allows the compaction iterator to perform transformations to keys such as
+// setting a key's sequence number to zero.
+//
+// This function performs this determination by looking at the TombstoneElision
+// values which are set up based on sstables which overlap the bounds of the
+// compaction at a lower level in the LSM. This function always returns false
+// for flushes.
+func (c *compaction) isBottommostDataLayer() bool {
 	// TODO(peter): we disable zeroing of seqnums during flushing to match
 	// RocksDB behavior and to avoid generating overlapping sstables during
 	// DB.replayWAL. When replaying WAL files at startup, we flush after each
@@ -2887,14 +2886,13 @@ func (d *DB) compactAndWrite(
 	if err != nil {
 		return compact.Result{Err: err}
 	}
-	c.allowedZeroSeqNum = c.allowZeroSeqNum()
 	cfg := compact.IterConfig{
 		Comparer:                               c.comparer,
 		Merge:                                  d.merge,
 		TombstoneElision:                       c.delElision,
 		RangeKeyElision:                        c.rangeKeyElision,
 		Snapshots:                              snapshots,
-		AllowZeroSeqNum:                        c.allowedZeroSeqNum,
+		IsBottommostDataLayer:                  c.isBottommostDataLayer(),
 		IneffectualSingleDeleteCallback:        d.opts.Experimental.IneffectualSingleDeleteCallback,
 		SingleDeleteInvariantViolationCallback: d.opts.Experimental.SingleDeleteInvariantViolationCallback,
 	}
