@@ -29,6 +29,7 @@ func TestDataBlock(t *testing.T) {
 	var buf bytes.Buffer
 	var w DataBlockEncoder
 	var r DataBlockDecoder
+	var bd *BlockDecoder
 	var v DataBlockValidator
 	var it DataBlockIter
 	rw := NewDataBlockRewriter(&testKeysSchema, testkeys.Comparer.EnsureDefaults())
@@ -84,7 +85,7 @@ func TestDataBlock(t *testing.T) {
 				}
 				if td.Cmd == "write-block" {
 					block, _ := w.Finish(w.Rows(), w.Size())
-					r.Init(&testKeysSchema, block)
+					bd = r.Init(&testKeysSchema, block)
 					return ""
 				}
 				fmt.Fprint(&buf, &w)
@@ -93,14 +94,14 @@ func TestDataBlock(t *testing.T) {
 				var from, to string
 				td.ScanArgs(t, "from", &from)
 				td.ScanArgs(t, "to", &to)
-				start, end, rewrittenBlock, err := rw.RewriteSuffixes(r.d.data, []byte(from), []byte(to))
+				start, end, rewrittenBlock, err := rw.RewriteSuffixes(bd.Data(), []byte(from), []byte(to))
 				if err != nil {
 					return fmt.Sprintf("error: %s", err)
 				}
-				r.Init(&testKeysSchema, rewrittenBlock)
-				f := binfmt.New(r.d.data).LineWidth(20)
+				bd = r.Init(&testKeysSchema, rewrittenBlock)
+				f := binfmt.New(bd.Data()).LineWidth(20)
 				tp := treeprinter.New()
-				r.Describe(f, tp)
+				r.Describe(f, tp, bd)
 				fmt.Fprintf(&buf, "Start: %s\nEnd: %s\n%s",
 					start.Pretty(testkeys.Comparer.FormatKey),
 					end.Pretty(testkeys.Comparer.FormatKey),
@@ -110,10 +111,10 @@ func TestDataBlock(t *testing.T) {
 				rows := w.Rows()
 				td.MaybeScanArgs(t, "rows", &rows)
 				block, lastKey := w.Finish(rows, sizes[rows-1])
-				r.Init(&testKeysSchema, block)
-				f := binfmt.New(r.d.data).LineWidth(20)
+				bd = r.Init(&testKeysSchema, block)
+				f := binfmt.New(bd.Data()).LineWidth(20)
 				tp := treeprinter.New()
-				r.Describe(f, tp)
+				r.Describe(f, tp, bd)
 				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), tp.String())
 				if err := v.Validate(block, testkeys.Comparer, &testKeysSchema); err != nil {
 					fmt.Fprintln(&buf, err)
@@ -130,7 +131,7 @@ func TestDataBlock(t *testing.T) {
 					HideObsoletePoints:       td.HasArg("hide-obsolete-points"),
 					SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
 				}
-				if err := it.Init(&r, transforms); err != nil {
+				if err := it.Init(&r, bd, transforms); err != nil {
 					return err.Error()
 				}
 
