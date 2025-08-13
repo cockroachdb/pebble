@@ -20,6 +20,9 @@ const maxCachedReaders = 5
 // A ValueReader is an interface defined over a file that can be used to read
 // value blocks.
 type ValueReader interface {
+	// Format returns the format of the file.
+	Format() FileFormat
+
 	// IndexHandle returns the handle for the file's index block.
 	IndexHandle() block.Handle
 
@@ -90,7 +93,7 @@ func (r *ValueFetcher) FetchHandle(
 		BlockID:    handleSuffix.BlockID,
 		ValueID:    handleSuffix.ValueID,
 	}
-	v, err := r.retrieve(ctx, vh)
+	v, _, err := r.retrieve(ctx, vh)
 	if err == nil && len(v) != int(vh.ValueLen) {
 		return nil, false,
 			errors.AssertionFailedf("value length mismatch: %d != %d", len(v), vh.ValueLen)
@@ -105,20 +108,22 @@ func (r *ValueFetcher) FetchHandle(
 // validate the value length. Fetch must not be called after Close.
 func (r *ValueFetcher) Fetch(
 	ctx context.Context, blobFileID base.BlobFileID, blockID BlockID, valueID BlockValueID,
-) (val []byte, callerOwned bool, err error) {
+) (val []byte, meta base.TieringMeta, callerOwned bool, err error) {
 	vh := Handle{
 		BlobFileID: blobFileID,
 		BlockID:    blockID,
 		ValueID:    valueID,
 	}
-	v, err := r.retrieve(ctx, vh)
+	v, meta, err := r.retrieve(ctx, vh)
 	if invariants.Enabled {
 		v = r.bufMangler.MaybeMangleLater(v)
 	}
-	return v, false, err
+	return v, meta, false, err
 }
 
-func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err error) {
+func (r *ValueFetcher) retrieve(
+	ctx context.Context, vh Handle,
+) (val []byte, meta base.TieringMeta, err error) {
 	// Look for a cached reader for the file. Also, find the least-recently used
 	// reader. If we don't find a cached reader, we'll replace the
 	// least-recently used reader with the new one for the file indicated by
@@ -141,16 +146,19 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 		// Release the previous reader, if any.
 		if cr.r != nil {
 			if err = cr.Close(); err != nil {
-				return nil, err
+				return nil, base.TieringMeta{}, err
 			}
 		}
 		obj, ok := r.fileMapping.Lookup(vh.BlobFileID)
 		if !ok {
-			return nil, errors.AssertionFailedf("blob file %s not found", vh.BlobFileID)
+			return nil, base.TieringMeta{},
+				errors.AssertionFailedf("blob file %s not found", vh.BlobFileID)
 		}
 		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, obj); err != nil {
-			return nil, err
+			return nil, base.TieringMeta{}, err
 		}
+		// Retrieve the file format once from the ValueReader.
+		cr.format = cr.r.Format()
 		cr.blobFileID = vh.BlobFileID
 		_, cr.diskFileNum = obj.FileInfo()
 		cr.rh = cr.r.InitReadHandle(&cr.preallocRH)
@@ -166,8 +174,7 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 
 	r.fetchCount++
 	cr.lastFetchCount = r.fetchCount
-	val, err = cr.GetUnsafeValue(ctx, vh, r.env)
-	return val, err
+	return cr.GetUnsafeValue(ctx, vh, r.env)
 }
 
 // Close closes the ValueFetcher and releases all cached readers. Once Close is
@@ -185,8 +192,11 @@ func (r *ValueFetcher) Close() error {
 // cachedReader holds a Reader into an open file, and possibly blocks retrieved
 // from the block cache.
 type cachedReader struct {
-	blobFileID     base.BlobFileID
-	diskFileNum    base.DiskFileNum
+	blobFileID  base.BlobFileID
+	diskFileNum base.DiskFileNum
+	// The format is for the diskFileNum, since it is ok for the original
+	// BlobFileID to have been written with a different format.
+	format         FileFormat
 	r              ValueReader
 	closeFunc      func()
 	rh             objstorage.ReadHandle
@@ -225,7 +235,7 @@ type cachedReader struct {
 // or until the cachedReader is closed.
 func (cr *cachedReader) GetUnsafeValue(
 	ctx context.Context, vh Handle, env block.ReadEnv,
-) ([]byte, error) {
+) ([]byte, base.TieringMeta, error) {
 	valueID := vh.ValueID
 
 	// Determine which block contains the value.
@@ -238,7 +248,7 @@ func (cr *cachedReader) GetUnsafeValue(
 			var err error
 			cr.indexBlock.buf, err = cr.r.ReadIndexBlock(ctx, env, cr.rh)
 			if err != nil {
-				return nil, err
+				return nil, base.TieringMeta{}, err
 			}
 			cr.indexBlock.dec = block.CastMetadata[indexBlockDecoder](cr.indexBlock.buf.BlockMetadata())
 			cr.indexBlock.loaded = true
@@ -256,8 +266,9 @@ func (cr *cachedReader) GetUnsafeValue(
 		if cr.indexBlock.dec.virtualBlockCount > 0 {
 			physicalBlockIndex, valueIDOffset = cr.indexBlock.dec.RemapVirtualBlockID(vh.BlockID)
 			if valueIDOffset == virtualBlockIndexMask {
-				return nil, errors.AssertionFailedf("blob file indicates virtual block ID %d in %s should be unreferenced",
-					vh.BlockID, vh.BlobFileID)
+				return nil, base.TieringMeta{},
+					errors.AssertionFailedf("blob file indicates virtual block ID %d in %s should be unreferenced",
+						vh.BlockID, vh.BlobFileID)
 			}
 		}
 		invariants.CheckBounds(physicalBlockIndex, cr.indexBlock.dec.BlockCount())
@@ -279,7 +290,7 @@ func (cr *cachedReader) GetUnsafeValue(
 		var err error
 		cr.currentValueBlock.buf, err = cr.r.ReadValueBlock(ctx, env, cr.rh, h)
 		if err != nil {
-			return nil, err
+			return nil, base.TieringMeta{}, err
 		}
 		cr.currentValueBlock.dec = block.CastMetadata[blobValueBlockDecoder](cr.currentValueBlock.buf.BlockMetadata())
 		cr.currentValueBlock.physicalIndex = physicalBlockIndex
@@ -296,7 +307,12 @@ func (cr *cachedReader) GetUnsafeValue(
 	valueIndex := int(valueID) + int(cr.currentValueBlock.valueIDOffset)
 	invariants.CheckBounds(valueIndex, cr.currentValueBlock.dec.bd.Rows())
 	v := cr.currentValueBlock.dec.values.Slice(cr.currentValueBlock.dec.values.Offsets(valueIndex))
-	return v, nil
+	var meta base.TieringMeta
+	if cr.format >= FileFormatV2 {
+		meta.SpanID = cr.currentValueBlock.dec.tieringSpanIDs.At(valueIndex)
+		meta.Attribute = base.TieringAttribute(cr.currentValueBlock.dec.tieringAttributes.At(valueIndex))
+	}
+	return v, meta, nil
 }
 
 // Close releases resources associated with the reader.

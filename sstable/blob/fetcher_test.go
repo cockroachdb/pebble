@@ -99,7 +99,7 @@ func TestValueFetcher(t *testing.T) {
 			obj := &objstorage.MemObj{}
 			w := NewFileWriter(base.DiskFileNum(fileNum), obj, opts)
 			for _, l := range crstrings.Lines(td.Input) {
-				h := w.AddValue([]byte(l))
+				h := w.AddValue([]byte(l), base.TieringMeta{})
 				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 			}
 			stats, err := w.Close()
@@ -189,7 +189,7 @@ func TestValueFetcherRetrieveRandomized(t *testing.T) {
 	for v := 4 << 20; v > 0; {
 		n := testutils.RandIntInRange(rng, 1, 4096)
 		val := testutils.RandBytes(rng, n)
-		h := w.AddValue(val)
+		h := w.AddValue(val, base.TieringMeta{})
 		handles = append(handles, h)
 		values = append(values, val)
 		v -= n
@@ -212,7 +212,7 @@ func TestValueFetcherRetrieveRandomized(t *testing.T) {
 		fetcher.Init(identityFileMapping{}, rp, block.ReadEnv{})
 		defer fetcher.Close()
 		for i := 0; i < len(handles); i++ {
-			val, err := fetcher.retrieve(ctx, handles[i])
+			val, _, err := fetcher.retrieve(ctx, handles[i])
 			require.NoError(t, err)
 			require.Equal(t, values[i], val)
 		}
@@ -222,7 +222,7 @@ func TestValueFetcherRetrieveRandomized(t *testing.T) {
 		fetcher.Init(identityFileMapping{}, rp, block.ReadEnv{})
 		defer fetcher.Close()
 		for _, i := range rng.Perm(len(handles)) {
-			val, err := fetcher.retrieve(ctx, handles[i])
+			val, _, err := fetcher.retrieve(ctx, handles[i])
 			require.NoError(t, err)
 			require.Equal(t, values[i], val)
 		}
@@ -267,7 +267,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, cacheSize int64)
 	var handles []Handle
 	for v := valueSize; v > 0; {
 		n := testutils.RandIntInRange(rng, 1, 4096)
-		h := w.AddValue(testutils.RandBytes(rng, n))
+		h := w.AddValue(testutils.RandBytes(rng, n), base.TieringMeta{})
 		handles = append(handles, h)
 		v -= n
 	}
@@ -286,7 +286,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, cacheSize int64)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			h := handles[i%len(handles)]
-			_, err := fetcher.retrieve(ctx, h)
+			_, _, err := fetcher.retrieve(ctx, h)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -306,7 +306,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, cacheSize int64)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			h := handles[indices[i]]
-			_, err := fetcher.retrieve(ctx, h)
+			_, _, err := fetcher.retrieve(ctx, h)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -346,7 +346,7 @@ func makeMockReaderProvider(
 				// Already retrieved this block.
 				continue
 			}
-			_, err := fetcher.retrieve(ctx, h)
+			_, _, err := fetcher.retrieve(ctx, h)
 			require.NoError(tb, err)
 		}
 	}

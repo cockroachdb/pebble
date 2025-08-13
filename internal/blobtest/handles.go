@@ -261,14 +261,14 @@ func (bv *Values) WriteFiles(
 					BlockID:    handle.BlockID,
 					ValueID:    blob.BlockValueID(prevID),
 					ValueLen:   12,
-				}))
+				}), base.TieringMeta{})
 				prevID++
 			}
 
 			if value, ok := bv.trackedHandles[handle]; ok {
-				writer.AddValue([]byte(value))
+				writer.AddValue([]byte(value), base.TieringMeta{})
 			} else {
-				writer.AddValue(deriveValueFromHandle(handle))
+				writer.AddValue(deriveValueFromHandle(handle), base.TieringMeta{})
 			}
 		}
 		fileStats, err := writer.Close()
