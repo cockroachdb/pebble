@@ -47,8 +47,10 @@ const (
 	// metaindex block handles. The property block contains compression
 	// statistics; the metaindex handle is not used.
 	FileFormatV2 FileFormat = 2
+	FileFormatV3 FileFormat = 3
 
-	latestFileFormat FileFormat = iota
+	// TODO(sumeer): update to FileFormatV3 when ready for testing.
+	latestFileFormat FileFormat = FileFormatV2
 )
 
 const (
@@ -168,7 +170,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.fileNum = fn
 	fw.w = w
 	fw.format = opts.Format
-	fw.valuesEncoder.Init()
+	fw.valuesEncoder.Init(opts.Format)
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
 	fw.physBlockMaker.Init(opts.Compression, opts.ChecksumType)
@@ -185,7 +187,7 @@ var writerPool = sync.Pool{
 
 // AddValue adds the provided value to the blob file, returning a Handle
 // identifying the location of the value.
-func (w *FileWriter) AddValue(v []byte) Handle {
+func (w *FileWriter) AddValue(v []byte, meta base.TieringMeta) Handle {
 	// Determine if we should first flush the block.
 	if sz := w.valuesEncoder.size(); w.flushGov.ShouldFlush(sz, sz+len(v)) {
 		w.flush()
@@ -193,7 +195,7 @@ func (w *FileWriter) AddValue(v []byte) Handle {
 	valuesInBlock := w.valuesEncoder.Count()
 	w.stats.ValueCount++
 	w.stats.UncompressedValueBytes += uint64(len(v))
-	w.valuesEncoder.AddValue(v)
+	w.valuesEncoder.AddValue(v, meta)
 	return Handle{
 		BlobFileID: base.BlobFileID(w.fileNum),
 		ValueLen:   uint32(len(v)),
@@ -538,6 +540,11 @@ func (r *FileReader) Close() error {
 	return r.r.Close()
 }
 
+// Format implements ValueReader.
+func (r *FileReader) Format() FileFormat {
+	return r.footer.format
+}
+
 // InitReadHandle initializes a read handle for the file reader, using the
 // provided preallocated read handle.
 func (r *FileReader) InitReadHandle(
@@ -550,7 +557,20 @@ func (r *FileReader) InitReadHandle(
 func (r *FileReader) ReadValueBlock(
 	ctx context.Context, env block.ReadEnv, rh objstorage.ReadHandle, h block.Handle,
 ) (block.BufferHandle, error) {
-	return r.r.Read(ctx, env, rh, h, blockkind.BlobValue, initBlobValueBlockMetadata)
+	return r.r.Read(ctx, env, rh, h, blockkind.BlobValue, r.initBlobValueBlockMetadata)
+}
+
+func (r *FileReader) initBlobValueBlockMetadata(md *block.Metadata, data []byte) (err error) {
+	d := block.CastMetadataZero[blobValueBlockDecoder](md)
+	// Initialization can panic; convert panics to corruption errors (so higher
+	// layers can add file number and offset information).
+	defer func() {
+		if r := recover(); r != nil {
+			err = base.CorruptionErrorf("error initializing blob value block metadata: %v", r)
+		}
+	}()
+	d.Init(r.footer.format, data)
+	return nil
 }
 
 // ReadIndexBlock reads the index block from the file.
@@ -605,7 +625,7 @@ func (r *FileReader) Layout() (string, error) {
 		}
 
 		valueDecoder := blobValueBlockDecoder{}
-		valueDecoder.Init(valueBlockH.BlockData())
+		valueDecoder.Init(r.footer.format, valueBlockH.BlockData())
 
 		fmt.Fprintf(&buf, "values: %d\n", valueDecoder.bd.Rows())
 		fmt.Fprintf(&buf, "%s", valueDecoder.bd.FormattedString())

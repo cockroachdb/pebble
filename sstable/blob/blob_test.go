@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
@@ -32,7 +33,7 @@ func TestBlobWriter(t *testing.T) {
 			obj = &objstorage.MemObj{}
 			w := NewFileWriter(000001, obj, opts)
 			for _, l := range crstrings.Lines(td.Input) {
-				h := w.AddValue([]byte(l))
+				h := w.AddValue([]byte(l), base.TieringMeta{})
 				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 			}
 			stats, err := w.Close()
@@ -55,7 +56,7 @@ func TestBlobWriter(t *testing.T) {
 					w.beginNewVirtualBlock(BlockID(vBlockID))
 					vBlockID++
 				default:
-					h := w.AddValue([]byte(l))
+					h := w.AddValue([]byte(l), base.TieringMeta{})
 					fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 				}
 			}
