@@ -609,6 +609,15 @@ type Options struct {
 		// due to garbage.
 		CompactionGarbageFractionForMaxConcurrency func() float64
 
+		// UseDeprecatedCompensatedScore is a temporary option to revert the
+		// compaction picker to the previous behavior of only considering
+		// compaction out of a level if its compensated fill factor divided by
+		// the next level's fill factor is >= 1.0. The details of this setting
+		// are documented within its use within the compaction picker.
+		//
+		// The default value is false.
+		UseDeprecatedCompensatedScore func() bool
+
 		// IngestSplit, if it returns true, allows for ingest-time splitting of
 		// existing sstables into two virtual sstables to allow ingestion sstables to
 		// slot into a lower level than they otherwise would have.
@@ -1564,6 +1573,9 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.WALFailover != nil {
 		o.WALFailover.FailoverOptions.EnsureDefaults()
+	}
+	if o.Experimental.UseDeprecatedCompensatedScore == nil {
+		o.Experimental.UseDeprecatedCompensatedScore = func() bool { return false }
 	}
 	if o.Experimental.LevelMultiplier <= 0 {
 		o.Experimental.LevelMultiplier = defaultLevelMultiplier
