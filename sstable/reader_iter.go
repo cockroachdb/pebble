@@ -151,7 +151,7 @@ var (
 	singleLevelIterRowBlockPool    sync.Pool // *singleLevelIteratorRowBlocks
 	twoLevelIterRowBlockPool       sync.Pool // *twoLevelIteratorRowBlocks
 	singleLevelIterColumnBlockPool sync.Pool // *singleLevelIteratorColumnBlocks
-	twoLevelIterColumnBlockPool    sync.Pool // *singleLevelIteratorColumnBlocks
+	twoLevelIterColumnBlockPool    sync.Pool // *twoLevelIteratorColumnBlocks
 )
 
 func init() {
