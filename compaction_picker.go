@@ -1038,31 +1038,18 @@ func (p *compactionPickerByScore) calculateLevelScores(
 			continue
 		}
 		const compensatedFillFactorThreshold = 1.0
+		// The level requires compaction iff the compensatedFillFactor is >= 1.0.
 		if scores[level].compensatedFillFactor < compensatedFillFactorThreshold {
 			// No need to compact this level; score stays 0.
 			continue
 		}
 		score := scores[level].fillFactor
-		compensatedScore := scores[level].compensatedFillFactor
 		if level < numLevels-1 {
 			nextLevel := scores[level].outputLevel
 			// Avoid absurdly large scores by placing a floor on the factor that we'll
 			// adjust a level by. The value of 0.01 was chosen somewhat arbitrarily.
 			denominator := max(0.01, scores[nextLevel].fillFactor)
 			score /= denominator
-			compensatedScore /= denominator
-		}
-		// The level requires compaction iff both compensatedFillFactor and
-		// compensatedScore are >= 1.0.
-		//
-		// TODO(radu): this seems ad-hoc. In principle, the state of other levels
-		// should not come into play when we're determining this level's eligibility
-		// for compaction. The score should take care of correctly prioritizing the
-		// levels.
-		const compensatedScoreThreshold = 1.0
-		if compensatedScore < compensatedScoreThreshold {
-			// No need to compact this level; score stays 0.
-			continue
 		}
 		scores[level].score = score
 	}
