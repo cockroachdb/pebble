@@ -1052,15 +1052,29 @@ func (p *compactionPickerByScore) calculateLevelScores(
 			score /= denominator
 			compensatedScore /= denominator
 		}
-		// The level requires compaction iff both compensatedFillFactor and
+
+		// We calculated a compensated score above by dividing the
+		// compensatedFillFactor by the next level's fill factor. Previous
+		// versions of Pebble had a default behavior of only considering levels
+		// with a compensatedScore >= 1.0 eligible for compaction. This wasn't a
+		// principled decision and has been experimentally observed to limit
+		// productive compactions that would reclaim disk space, but were
+		// prohibited because the output level's fill factor was > 1.0.
+		//
+		// We allow the use of old behavior through the
+		// UseDeprecatedCompensatedScore option, which if true, only considers
+		// the level eligible for compaction iff both compensatedFillFactor and
 		// compensatedScore are >= 1.0.
 		//
-		// TODO(radu): this seems ad-hoc. In principle, the state of other levels
-		// should not come into play when we're determining this level's eligibility
-		// for compaction. The score should take care of correctly prioritizing the
-		// levels.
+		// Otherwise, only L0 requires the compensatedScore to be >= 1.0; all
+		// other levels only require the compensatedFillFactor to be >= 1.0. L0
+		// is treated exceptionally out of concern that a large, LBase that's
+		// being compacted into the next level may prevent L0->Lbase compactions
+		// and attempting to pick L0 compactions may result in intra-L0
+		// compactions.
 		const compensatedScoreThreshold = 1.0
-		if compensatedScore < compensatedScoreThreshold {
+		if (level == 0 || p.opts.Experimental.UseDeprecatedCompensatedScore()) &&
+			compensatedScore < compensatedScoreThreshold {
 			// No need to compact this level; score stays 0.
 			continue
 		}
