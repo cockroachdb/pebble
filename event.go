@@ -179,9 +179,11 @@ func (i BlobFileRewriteInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 			redact.Safe(i.JobID), i.Input.BlobFileID, i.Input.DiskFileNum)
 		return
 	}
-	w.Printf("[JOB %d] rewrote blob file (%s, %s) -> (%s, %s), in %.1fs (%.1fs total)",
+	w.Printf("[JOB %d] rewrote blob file (%s, %s) (%s) -> (%s, %s) (%s), in %.1fs (%.1fs total)",
 		redact.Safe(i.JobID), i.Input.BlobFileID, i.Input.DiskFileNum,
+		redact.Safe(humanize.Bytes.Uint64(i.Input.Size)),
 		i.Output.BlobFileID, i.Output.DiskFileNum,
+		redact.Safe(humanize.Bytes.Uint64(i.Output.Size)),
 		redact.Safe(i.Duration.Seconds()),
 		redact.Safe(i.TotalDuration.Seconds()))
 }
