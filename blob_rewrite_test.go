@@ -266,7 +266,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 			if rng.IntN(20) == 0 {
 				blobWriter.FlushForTesting()
 			}
-			handles[i] = blobWriter.AddValue(values[i])
+			handles[i] = blobWriter.AddValue(values[i], base.TieringMeta{})
 		}
 		stats, err := blobWriter.Close()
 		require.NoError(t, err)
@@ -397,7 +397,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 			defer func() { _ = valueFetcher.Close() }()
 			for _, valueIndex := range newFile.valueIndices {
 				handle := handles[valueIndex]
-				val, _, err := valueFetcher.Fetch(ctx, blobFileID, handle.BlockID, handle.ValueID)
+				val, _, _, err := valueFetcher.Fetch(ctx, blobFileID, handle.BlockID, handle.ValueID)
 				require.NoError(t, err)
 				require.Equal(t, values[valueIndex], val)
 			}

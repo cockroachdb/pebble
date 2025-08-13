@@ -84,11 +84,11 @@ func (rw *FileRewriter) CopyBlock(
 		// block. See the doc.go comment for more details on sparseness.
 		for missingValueID := previousValueID + 1; missingValueID < valueID; missingValueID++ {
 			rw.w.stats.ValueCount++
-			rw.w.valuesEncoder.AddValue(nil)
+			rw.w.valuesEncoder.AddValue(nil, base.TieringMeta{})
 		}
 
 		// Retrieve the value and copy it to the output blob file.
-		value, _, err := rw.f.Fetch(ctx, rw.fileID, blockID, BlockValueID(valueID))
+		value, meta, _, err := rw.f.Fetch(ctx, rw.fileID, blockID, BlockValueID(valueID))
 		if err != nil {
 			return err
 		}
@@ -98,7 +98,7 @@ func (rw *FileRewriter) CopyBlock(
 		}
 		rw.w.stats.ValueCount++
 		rw.w.stats.UncompressedValueBytes += uint64(len(value))
-		rw.w.valuesEncoder.AddValue(value)
+		rw.w.valuesEncoder.AddValue(value, meta)
 		previousValueID = valueID
 	}
 	return nil

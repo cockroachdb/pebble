@@ -249,23 +249,38 @@ func initIndexBlockMetadata(md *block.Metadata, data []byte) (err error) {
 }
 
 const (
-	blobValueBlockCustomHeaderSize = 0
-	blobValueBlockColumnCount      = 1
-	blobValueBlockColumnValuesIdx  = 0
+	blobValueBlockCustomHeaderSize          = 0
+	blobValueBlockColumnCount               = 1
+	blobValueBlockAdditionalColumnCount     = 2
+	blobValueBlockColumnValuesIdx           = 0
+	blobValueBlockColumnTieringSpanIDIdx    = 1
+	blobValueBlockColumnTieringAttributeIdx = 2
 )
 
 // blobValueBlockEncoder encodes a blob value block.
 //
-// A blob value block is a columnar block containing a single column: an array
-// of bytes encoding values.
+// A blob value block is a columnar block containing a column representing an
+// array of bytes encoding values. It may optionally contain two additional
+// columns, for tiering.
 type blobValueBlockEncoder struct {
+	format FileFormat
 	values colblk.RawBytesBuilder
-	enc    colblk.BlockEncoder
+	// These two columns are only accessed when the blob file is rewritten. Both
+	// will be accessed together, and we expect that in most cases there will be
+	// at most one unique spanID in a block.
+	tieringSpanIDs    colblk.UintBuilder
+	tieringAttributes colblk.UintBuilder
+	enc               colblk.BlockEncoder
 }
 
 // Init initializes the blob value block encoder.
-func (e *blobValueBlockEncoder) Init() {
+func (e *blobValueBlockEncoder) Init(format FileFormat) {
+	e.format = format
 	e.values.Init()
+	if e.format >= FileFormatV3 {
+		e.tieringSpanIDs.InitWithDefault()
+		e.tieringAttributes.InitWithDefault()
+	}
 }
 
 // Reset resets the blob value block encoder to its initial state, retaining
@@ -273,11 +288,18 @@ func (e *blobValueBlockEncoder) Init() {
 func (e *blobValueBlockEncoder) Reset() {
 	e.values.Reset()
 	e.enc.Reset()
+	e.tieringSpanIDs.Reset()
+	e.tieringAttributes.Reset()
 }
 
 // AddValue adds a value to the blob value block.
-func (e *blobValueBlockEncoder) AddValue(v []byte) {
+func (e *blobValueBlockEncoder) AddValue(v []byte, meta base.TieringMeta) {
+	rows := e.values.Rows()
 	e.values.Put(v)
+	if e.format >= FileFormatV3 && meta != (base.TieringMeta{}) {
+		e.tieringSpanIDs.Set(rows, meta.SpanID)
+		e.tieringAttributes.Set(rows, uint64(meta.Attribute))
+	}
 }
 
 // Count returns the number of values in the blob value block.
@@ -290,9 +312,13 @@ func (e *blobValueBlockEncoder) size() int {
 	if rows == 0 {
 		return 0
 	}
-	off := colblk.HeaderSize(blobValueBlockColumnCount, blobValueBlockCustomHeaderSize)
+	off := colblk.HeaderSize(e.columnCount(), blobValueBlockCustomHeaderSize)
 	off = e.values.Size(rows, off)
-	off++
+	if e.format >= FileFormatV3 {
+		off = e.tieringSpanIDs.Size(rows, off)
+		off = e.tieringAttributes.Size(rows, off)
+	}
+	off++ // trailer padding byte
 	return int(off)
 }
 
@@ -300,23 +326,44 @@ func (e *blobValueBlockEncoder) size() int {
 func (e *blobValueBlockEncoder) Finish() []byte {
 	e.enc.Init(e.size(), colblk.Header{
 		Version: colblk.Version1,
-		Columns: blobValueBlockColumnCount,
+		Columns: uint16(e.columnCount()),
 		Rows:    uint32(e.values.Rows()),
 	}, blobValueBlockCustomHeaderSize)
-	e.enc.Encode(e.values.Rows(), &e.values)
+	rows := e.values.Rows()
+	e.enc.Encode(rows, &e.values)
+	if e.format >= FileFormatV3 {
+		e.enc.Encode(rows, &e.tieringSpanIDs)
+		e.enc.Encode(rows, &e.tieringAttributes)
+	}
 	return e.enc.Finish()
+}
+
+func (e *blobValueBlockEncoder) columnCount() int {
+	count := blobValueBlockColumnCount
+	if e.format >= FileFormatV3 {
+		count += blobValueBlockAdditionalColumnCount
+	}
+	return count
 }
 
 // A blobValueBlockDecoder reads columnar blob value blocks.
 type blobValueBlockDecoder struct {
-	values colblk.RawBytes
-	bd     colblk.BlockDecoder
+	format            FileFormat
+	values            colblk.RawBytes
+	tieringSpanIDs    colblk.UnsafeUints
+	tieringAttributes colblk.UnsafeUints
+	bd                colblk.BlockDecoder
 }
 
 // Init initializes the decoder with the given serialized blob value block.
-func (d *blobValueBlockDecoder) Init(data []byte) {
+func (d *blobValueBlockDecoder) Init(format FileFormat, data []byte) {
+	d.format = format
 	d.bd.Init(data, blobValueBlockCustomHeaderSize)
 	d.values = d.bd.RawBytes(blobValueBlockColumnValuesIdx)
+	if format >= FileFormatV3 {
+		d.tieringSpanIDs = d.bd.Uints(blobValueBlockColumnTieringSpanIDIdx)
+		d.tieringAttributes = d.bd.Uints(blobValueBlockColumnTieringAttributeIdx)
+	}
 }
 
 // DebugString prints a human-readable explanation of the blob value block's
@@ -343,23 +390,13 @@ func (d *blobValueBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Nod
 	n := tp.Child("blob value block header")
 	d.bd.HeaderToBinFormatter(f, n)
 	d.bd.ColumnToBinFormatter(f, n, blobValueBlockColumnValuesIdx, d.bd.Rows())
+	if d.format >= FileFormatV3 {
+		d.bd.ColumnToBinFormatter(f, n, blobValueBlockColumnTieringSpanIDIdx, d.bd.Rows())
+		d.bd.ColumnToBinFormatter(f, n, blobValueBlockColumnTieringAttributeIdx, d.bd.Rows())
+	}
 	f.HexBytesln(1, "block padding byte")
 	f.ToTreePrinter(n)
 }
 
 // Assert that an BlobBlockDecoder can fit inside block.Metadata.
 const _ uint = block.MetadataSize - uint(unsafe.Sizeof(blobValueBlockDecoder{}))
-
-// initBlobValueBlockMetadata initializes the blob value block metadata.
-func initBlobValueBlockMetadata(md *block.Metadata, data []byte) (err error) {
-	d := block.CastMetadataZero[blobValueBlockDecoder](md)
-	// Initialization can panic; convert panics to corruption errors (so higher
-	// layers can add file number and offset information).
-	defer func() {
-		if r := recover(); r != nil {
-			err = base.CorruptionErrorf("error initializing blob value block metadata: %v", r)
-		}
-	}()
-	d.Init(data)
-	return nil
-}

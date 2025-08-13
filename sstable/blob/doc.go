@@ -59,9 +59,11 @@
 //
 // ## Blob Value Blocks
 //
-// A blob value block is a columnar block encoding blob values. It encodes a
-// single column: a RawBytes of values. The colblk.RawBytes encoding allows
-// constant-time access to the i'th value within the block.
+// A blob value block is a columnar block encoding blob values. The primary
+// column is the RawBytes of values. The colblk.RawBytes encoding allows
+// constant-time access to the i'th value within the block. In FileFormatV3
+// onwards, there are two secondary columns, a tieringSpanID and a
+// tieringAttribute, both of which may be 0 (representing they are absent).
 //
 // ## Sparseness
 //
@@ -92,15 +94,18 @@
 // |                              Value Block #0                                  |
 // |   +----------------------------------------------------------------------+   |
 // |   | RawBytes[...]                                                        |   |
+// |   | tieringSpanID[...] tieringAttribute[...]                             |   |
 // |   +----------------------------------------------------------------------+   |
 // |                              Value Block #1                                  |
 // |   +----------------------------------------------------------------------+   |
 // |   | RawBytes[...]                                                        |   |
+// |   | tieringSpanID[...] tieringAttribute[...]                             |   |
 // |   +----------------------------------------------------------------------+   |
 // |                                 ...                                          |
 // |                              Value Block #N                                  |
 // |   +----------------------------------------------------------------------+   |
 // |   | RawBytes[...]                                                        |   |
+// |   | tieringSpanID[...] tieringAttribute[...]                             |   |
 // |   +----------------------------------------------------------------------+   |
 // |                                                                              |
 // +------------------------------- Index Block ----------------------------------+

@@ -319,6 +319,8 @@ func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 func (v FormatMajorVersion) MaxBlobFileFormat() blob.FileFormat {
 	v = v.resolveDefault()
 	switch {
+	case v >= FormatTieredStorage:
+		return blob.FileFormatV3
 	case v >= FormatV2BlobFiles:
 		return blob.FileFormatV2
 	case v >= FormatValueSeparation:
