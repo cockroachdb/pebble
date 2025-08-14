@@ -757,8 +757,42 @@ type Options struct {
 		// false.
 		ValueSeparationPolicy func() ValueSeparationPolicy
 
-		// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
+		// SpanPolicyFunc is used to determine the SpanPolicy for a key region. It
+		// will be nil when there are no span policies defined.
 		SpanPolicyFunc SpanPolicyFunc
+
+		// AllTieringPolicies returns the latest list of tiering policies.
+		//
+		// This is used by Pebble in the following cases:
+		//
+		// - Periodic calls, to learn the latest ColdTierLTThresholds, so that it
+		//   can initiate explicit rewrites of files that are not being rewritten
+		//   normally, to move data between tiers.
+		//
+		// - Called when DB.TieringPolicyChange is called, when the aforementioned
+		//   periodic calls are insufficient.
+		//
+		// - Before starting a normal compaction, a decision needs to be made
+		//   whether to rewrite certain warm and cold blob files referenced in the
+		//   compaction. This rewrite decision uses the latest tiering policies
+		//   for all the spanIDs in the inputs of the compactions, and their
+		//   tiering attribute histograms. It may result in a decision to rewrite
+		//   a blob file, if it allows for significant movement of data between
+		//   tiers. In a similar vein, when writing new blob files, a decision
+		//   needs to be made up front whether there is enough cold data to
+		//   justify writing a cold blob file (to avoid having tiny files).
+		//
+		// A TieringPolicy returned from here and from SpanPolicyFunc may not be
+		// identical, but can differ in only limited ways:
+		//
+		// - One may return no TieringPolicy with a SpanID while the other returns
+		//   a non-nil one. This can happen when a TieringPolicy has been created
+		//   for the first time for a KeyRange and the calls are racing with that
+		//   creation.
+		//
+		// - Both return a TieringPolicy for a SpanID. The ColdTierLTThreshold may
+		//   not match since it can change with time.
+		AllTieringPolicies func() []TieringPolicy
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1206,9 +1240,14 @@ type ValueSeparationPolicy struct {
 	TargetGarbageRatio float64
 }
 
-// SpanPolicy contains policies that can vary by key range. The zero value is
-// the default value.
+// SpanPolicy contains policies that can vary by key range. The zero value for
+// all fields, other than the KeyRange, is the default policy.
 type SpanPolicy struct {
+	// KeyRange defines the key range for which this policy is valid. The end
+	// key can be empty, in which case the policy is valid for the entire
+	// keyspace after KeyRange.Start.
+	KeyRange KeyRange
+
 	// Prefer a faster compression algorithm for the keys in this span.
 	//
 	// This is useful for keys that are frequently read or written but which don't
@@ -1227,6 +1266,16 @@ type SpanPolicy struct {
 	// ValueStoragePolicy is a hint used to determine where to store the values
 	// for KVs.
 	ValueStoragePolicy ValueStoragePolicy
+
+	// TieringPolicy is an optional policy for specifying which key-value pairs
+	// should be stored in the warm or cold tier. Once a SpanPolicy specifies a
+	// non-nil TieringPolicy, all subsequent requests for a SpanPolicy for a key
+	// k in [KeyRange.Start, KeyRange.End) must not return a SpanPolicy that
+	// returns a different value from TieringPolicyAndExtractor.Policy.SpanID.
+	//
+	// Pebble will remember the set of (KeyRange, SpanID) pairs that it has seen
+	// in its history, for error checking the aforementioned invariant.
+	TieringPolicy TieringPolicyAndExtractor
 }
 
 // String returns a string representation of the SpanPolicy.
@@ -1272,27 +1321,21 @@ const (
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.
 //
-// The returned policy is valid from the start key until (and not including) the
-// end key.
+// The returned policy is valid over the interval in SpanPolicy.KeyRange,
+// which must include the startKey specified by the caller.
 //
 // A flush or compaction will call this function once for the first key to be
 // output. If the compaction reaches the end key, the current output sst is
 // finished and the function is called again.
-//
-// The end key can be empty, in which case the policy is valid for the entire
-// keyspace after startKey.
-type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, endKey []byte, err error)
+type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, err error)
 
-// SpanAndPolicy defines a key range and the policy to apply to it.
-type SpanAndPolicy struct {
-	KeyRange KeyRange
-	Policy   SpanPolicy
-}
-
-// MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
-// to the given span (and the default policy outside the span). The supplied
-// policies must be non-overlapping in key range.
-func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) SpanPolicyFunc {
+// MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given
+// policy to the given span (and the default policy outside the span). The
+// supplied policies must be non-overlapping in key range. This method must
+// not be called with inputPolicies that have an empty KeyRange.End to signify
+// extending to the end of the keyspace. The empty slice is assumed to be a
+// valid key that sorts before all other keys.
+func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) SpanPolicyFunc {
 	// Collect all the boundaries of the input policies, sort and deduplicate them.
 	uniqueKeys := make([][]byte, 0, 2*len(inputPolicies))
 	for i := range inputPolicies {
@@ -1302,38 +1345,74 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) 
 	slices.SortFunc(uniqueKeys, cmp)
 	uniqueKeys = slices.CompactFunc(uniqueKeys, func(a, b []byte) bool { return cmp(a, b) == 0 })
 
-	// Create a list of policies.
+	// Create a list of policies, including filling in gaps with default
+	// policies.
 	policies := make([]SpanPolicy, len(uniqueKeys)-1)
+	// Populate default policies for every index.
+	for idx := range policies {
+		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
+	}
+	// Populate the non-default policies.
 	for _, p := range inputPolicies {
 		idx, _ := slices.BinarySearchFunc(uniqueKeys, p.KeyRange.Start, cmp)
-		policies[idx] = p.Policy
+		policies[idx] = p
+		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
 	}
 
-	return func(startKey []byte) (_ SpanPolicy, endKey []byte, _ error) {
+	return func(startKey []byte) (_ SpanPolicy, _ error) {
 		// Find the policy that applies to the start key.
 		idx, eq := slices.BinarySearchFunc(uniqueKeys, startKey, cmp)
 		switch idx {
 		case len(uniqueKeys):
 			// The start key is after the last policy.
-			return SpanPolicy{}, nil, nil
+			return SpanPolicy{KeyRange: KeyRange{Start: uniqueKeys[len(uniqueKeys)-1]}}, nil
 		case len(uniqueKeys) - 1:
 			if eq {
-				// The start key is exactly the start of the last policy.
-				return SpanPolicy{}, nil, nil
+				// The start key is exactly the end of the last policy.
+				return SpanPolicy{KeyRange: KeyRange{Start: uniqueKeys[len(uniqueKeys)-1]}}, nil
 			}
 		case 0:
 			if !eq {
 				// The start key is before the first policy.
-				return SpanPolicy{}, uniqueKeys[0], nil
+				return SpanPolicy{KeyRange: KeyRange{End: uniqueKeys[0]}}, nil
 			}
 		}
 		if eq {
 			// The start key is exactly the start of this policy.
-			return policies[idx], uniqueKeys[idx+1], nil
+			return policies[idx], nil
 		}
-		// The start key is between two policies.
-		return policies[idx-1], uniqueKeys[idx], nil
+		// The start key is in the interval of the preceding policy.
+		return policies[idx-1], nil
 	}
+}
+
+type TieringMeta base.TieringMeta
+type TieringAttribute base.TieringAttribute
+
+// TieringPolicy defines a policy for tiering key-value pairs into warm and
+// cold tiers.
+type TieringPolicy struct {
+	// SpanID is an immutable id for the key span to which this policy applies.
+	// The actual span is specified by the SpanPolicy.KeyRange context in which
+	// this policy is returned.
+	SpanID uint64
+	// ColdTierLTThreshold is the threshold such that attribute < threshold
+	// belongs in the cold tier. For a SpanID, this threshold can change over
+	// time, because the typical policy uses the age of data, and (a) the age
+	// changes as time advances, (b) the user can change the age threshold that
+	// qualifies data for the cold tier.
+	ColdTierLTThreshold TieringAttribute
+}
+
+// TieringPolicyAndExtractor defines a tiering policy and an extractor for the
+// tiering attribute for that policy.
+type TieringPolicyAndExtractor interface {
+	// Policy returns the tiering policy.
+	Policy() TieringPolicy
+	// ExtractAttribute extracts the tiering attribute from the key-value pair.
+	// Once extracted, the attribute can be remembered since it must never
+	// change for this key-value pair during the lifetime of the DB.
+	ExtractAttribute(userKey []byte, value []byte) (TieringAttribute, error)
 }
 
 // WALFailoverOptions configures the WAL failover mechanics to use during
@@ -1588,9 +1667,6 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
 		o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
-	}
-	if o.Experimental.SpanPolicyFunc == nil {
-		o.Experimental.SpanPolicyFunc = func(startKey []byte) (SpanPolicy, []byte, error) { return SpanPolicy{}, nil, nil }
 	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.
