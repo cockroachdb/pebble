@@ -628,7 +628,7 @@ func TestStaticSpanPolicyFunc(t *testing.T) {
 
 		spf := MakeStaticSpanPolicyFunc(testkeys.Comparer.Compare, inputSpanPolicies...)
 		for _, key := range strings.Fields(td.Input) {
-			policy, err := spf([]byte(key))
+			policy, err := spf(UserKeyBounds{Start: []byte(key)})
 			require.NoError(t, err)
 			// TODO(sumeer): also output KeyRange.Start.
 			if policy.KeyRange.End == nil {
