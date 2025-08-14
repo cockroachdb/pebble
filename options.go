@@ -1210,11 +1210,15 @@ type ValueSeparationPolicy struct {
 // SpanPolicy contains policies that can vary by key range. The zero value for
 // all fields, other than the KeyRange, is the default policy.
 type SpanPolicy struct {
-	// KeyRange defines the key range for which this policy is valid. The end
-	// key can be empty, in which case the policy is valid for the entire
-	// keyspace after KeyRange.Start. The Start and End keys are not required to
-	// encompass the whole KeyRange over which this policy applies, i.e., they
-	// should be interpreted as a subset of the real interval for the policy.
+	// KeyRange defines the key range for which this policy is valid.
+	//
+	// If Start is empty, the policy is valid for the entire keyspace up to End.
+	// If End is empty, the policy is valid for the entire keyspace after Start.
+	// If both are empty, this is the only policy across the entire keyspace.
+	//
+	// The Start and End keys are not required to encompass the whole KeyRange over
+	// which this policy applies, i.e., they should be interpreted as a subset of
+	// the real interval for the policy.
 	KeyRange KeyRange
 
 	// Prefer a faster compression algorithm for the keys in this span.
@@ -1254,6 +1258,17 @@ type SpanPolicy struct {
 	// Pebble will remember the set of (KeyRange, SpanID) pairs that it has seen
 	// in its history, for error checking the aforementioned invariant.
 	TieringPolicy TieringPolicyAndExtractor
+
+	// NOTE: update the IsDefault() method if you add new fields to this struct.
+}
+
+// IsDefault returns true if the SpanPolicy is the default policy, i.e. none of
+// the fields other than KeyRange are set.
+func (p *SpanPolicy) IsDefault() bool {
+	return !p.PreferFastCompression &&
+		!p.DisableValueSeparationBySuffix &&
+		p.ValueStoragePolicy == ValueStorageDefault &&
+		p.TieringPolicy == nil
 }
 
 // String returns a string representation of the SpanPolicy.
@@ -1299,12 +1314,21 @@ const (
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.
 //
-// The returned policy is valid over the interval in SpanPolicy.KeyRange,
-// which must include the startKey specified by the caller.
+// The returned policy is valid over the interval in policy.KeyRange, which
+// must include the bounds.Start key specified by the caller. Specifically,
+// policy.KeyRange.Start is empty or is <= bounds.Start.
+// If policy.KeyRange.End is before bounds.End, then the policy is only valid up
+// to that point.
 //
 // A flush or compaction will call this function once for the first key to be
-// output. If the compaction reaches the end key, the current output sst is
-// finished and the function is called again.
+// output. If the compaction reaches policy.KeyRange.End, the current output sst
+// is finished and the function is called again (with the first key >=
+// policy.KeyRange.End).
+//
+// Correctness must never depend on having a specific span policy. The function
+// is allowed to change the returned policy arbitrarily.
+//
+// If this function returns an error, the flush or compaction will be aborted.
 //
 // TODO(sumeer): since there is a single TieringPolicy per SpanPolicy, we will
 // split sstables at tiering policy boundaries. Historically, SpanPolicys have
@@ -1315,20 +1339,23 @@ const (
 // apply to the sstable as a whole (e.g. PreferFastCompression) to determine
 // whether to split at the end. This will require some restructuring of the
 // compact.Runner interface, so we will do this later.
-type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, err error)
+type SpanPolicyFunc func(bounds base.UserKeyBounds) (policy SpanPolicy, err error)
 
-// MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given
-// policy to the given span (and the default policy outside the span). The
-// supplied policies must be non-overlapping in key range. This method must
-// not be called with inputPolicies that have an empty KeyRange.End to signify
-// extending to the end of the keyspace. The empty slice is assumed to be a
-// valid key that sorts before all other keys.
+// MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
+// to the given span (and the default policy outside the span). The supplied
+// policies must be non-overlapping in key range. This method must not be called
+// with inputPolicies that have an empty KeyRange.Start or End to signify
+// extending to the start/end of the keyspace.
 func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) SpanPolicyFunc {
 	// Collect all the boundaries of the input policies, sort and deduplicate them.
 	uniqueKeys := make([][]byte, 0, 2*len(inputPolicies))
 	for i := range inputPolicies {
-		uniqueKeys = append(uniqueKeys, inputPolicies[i].KeyRange.Start)
-		uniqueKeys = append(uniqueKeys, inputPolicies[i].KeyRange.End)
+		r := inputPolicies[i].KeyRange
+		if len(r.Start) == 0 || len(r.End) == 0 || cmp(r.Start, r.End) >= 0 {
+			panic("invalid key range in input policy")
+		}
+		uniqueKeys = append(uniqueKeys, r.Start)
+		uniqueKeys = append(uniqueKeys, r.End)
 	}
 	slices.SortFunc(uniqueKeys, cmp)
 	uniqueKeys = slices.CompactFunc(uniqueKeys, func(a, b []byte) bool { return cmp(a, b) == 0 })
@@ -1343,13 +1370,16 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) Spa
 	// Populate the non-default policies.
 	for _, p := range inputPolicies {
 		idx, _ := slices.BinarySearchFunc(uniqueKeys, p.KeyRange.Start, cmp)
+		if cmp(p.KeyRange.End, uniqueKeys[idx+1]) != 0 {
+			panic("overlapping key ranges in input policies")
+		}
 		policies[idx] = p
 		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
 	}
 
-	return func(startKey []byte) (_ SpanPolicy, _ error) {
+	return func(bounds base.UserKeyBounds) (_ SpanPolicy, _ error) {
 		// Find the policy that applies to the start key.
-		idx, eq := slices.BinarySearchFunc(uniqueKeys, startKey, cmp)
+		idx, eq := slices.BinarySearchFunc(uniqueKeys, bounds.Start, cmp)
 		switch idx {
 		case len(uniqueKeys):
 			// The start key is after the last policy.
