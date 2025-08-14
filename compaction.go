@@ -3393,7 +3393,10 @@ func (d *DB) compactAndWrite(
 		firstKey := runner.FirstKey()
 		if !spanPolicyValid || (len(spanPolicyEndKey) > 0 && d.cmp(firstKey, spanPolicyEndKey) >= 0) {
 			var err error
-			spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(firstKey)
+			spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(base.UserKeyBounds{
+				Start: firstKey,
+				End:   c.bounds.End,
+			})
 			if err != nil {
 				return runner.Finish().WithError(err)
 			}

@@ -1272,16 +1272,24 @@ const (
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.
 //
-// The returned policy is valid from the start key until (and not including) the
-// end key.
+// The returned policy is valid from bounds.Start until (and not including) the
+// returned endKey.
 //
 // A flush or compaction will call this function once for the first key to be
-// output. If the compaction reaches the end key, the current output sst is
-// finished and the function is called again.
+// output. If the compaction reaches endKey, the current output sst is finished
+// and the function is called again (with the first key >= endKey).
 //
-// The end key can be empty, in which case the policy is valid for the entire
-// keyspace after startKey.
-type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, endKey []byte, err error)
+// Note that the endKey always causes a split in the output sstables, even if
+// the policy is unchanged before and after the endKey.
+//
+// If endKey is empty or the endKey is beyond bounds.End, the policy is valid
+// for the entire span.
+//
+// Correctness must never depend on having a specific span policy. The function
+// is allowed to change the returned policy arbitrarily.
+//
+// If this function returns an error, the flush or compaction will be aborted.
+type SpanPolicyFunc func(span UserKeyBounds) (policy SpanPolicy, endKey []byte, err error)
 
 // SpanAndPolicy defines a key range and the policy to apply to it.
 type SpanAndPolicy struct {
@@ -1309,9 +1317,9 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) 
 		policies[idx] = p.Policy
 	}
 
-	return func(startKey []byte) (_ SpanPolicy, endKey []byte, _ error) {
+	return func(bounds base.UserKeyBounds) (_ SpanPolicy, endKey []byte, _ error) {
 		// Find the policy that applies to the start key.
-		idx, eq := slices.BinarySearchFunc(uniqueKeys, startKey, cmp)
+		idx, eq := slices.BinarySearchFunc(uniqueKeys, bounds.Start, cmp)
 		switch idx {
 		case len(uniqueKeys):
 			// The start key is after the last policy.
@@ -1590,7 +1598,7 @@ func (o *Options) EnsureDefaults() {
 		o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 	}
 	if o.Experimental.SpanPolicyFunc == nil {
-		o.Experimental.SpanPolicyFunc = func(startKey []byte) (SpanPolicy, []byte, error) { return SpanPolicy{}, nil, nil }
+		o.Experimental.SpanPolicyFunc = func(bounds base.UserKeyBounds) (SpanPolicy, []byte, error) { return SpanPolicy{}, nil, nil }
 	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.
