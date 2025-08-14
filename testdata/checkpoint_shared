@@ -152,8 +152,8 @@ sync-data: checkpoints/checkpoint1/marker.remote-obj-catalog.000001.REMOTE-OBJ-C
 close: checkpoints/checkpoint1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 sync: checkpoints/checkpoint1
 close: checkpoints/checkpoint1
-open: db/000006.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint1/000006.log
+open: db/000006.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint1/000006.log
 close: checkpoints/checkpoint1/000006.log
 close: db/000006.log
@@ -205,8 +205,8 @@ sync-data: checkpoints/checkpoint2/marker.remote-obj-catalog.000001.REMOTE-OBJ-C
 close: checkpoints/checkpoint2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
-open: db/000006.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint2/000006.log
+open: db/000006.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint2/000006.log
 close: checkpoints/checkpoint2/000006.log
 close: db/000006.log
@@ -254,8 +254,8 @@ sync-data: checkpoints/checkpoint3/marker.remote-obj-catalog.000001.REMOTE-OBJ-C
 close: checkpoints/checkpoint3/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 sync: checkpoints/checkpoint3
 close: checkpoints/checkpoint3
-open: db/000006.log (options: *vfs.sequentialReadsOption)
 create: checkpoints/checkpoint3/000006.log
+open: db/000006.log (options: *vfs.sequentialReadsOption)
 sync-data: checkpoints/checkpoint3/000006.log
 close: checkpoints/checkpoint3/000006.log
 close: db/000006.log
