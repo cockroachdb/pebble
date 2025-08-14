@@ -1382,17 +1382,18 @@ func (w *RawRowWriter) assertFormatCompatibility() error {
 }
 
 // ComparePrev compares the provided user to the last point key written to the
-// writer. The returned value is equivalent to Compare(key, prevKey) where
-// prevKey is the last point key written to the writer.
+// writer. The first returned value is equivalent to Compare(key, prevKey) where
+// prevKey is the last point key written to the writer. The second returned
+// value is always false.
 //
-// If no key has been written yet, ComparePrev returns +1.
+// If no key has been written yet, ComparePrev returns +1, false.
 //
 // Must not be called after Writer is closed.
-func (w *RawRowWriter) ComparePrev(k []byte) int {
+func (w *RawRowWriter) ComparePrev(k []byte) (int, bool) {
 	if w == nil || w.dataBlockBuf.dataBlock.EntryCount() == 0 {
-		return +1
+		return +1, false
 	}
-	return w.compare(k, w.dataBlockBuf.dataBlock.CurUserKey())
+	return w.compare(k, w.dataBlockBuf.dataBlock.CurUserKey()), false
 }
 
 // EncodeSpan encodes the keys in the given span. The span can contain either

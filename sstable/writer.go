@@ -338,13 +338,16 @@ type RawWriter interface {
 	// a call to Close() was made without adding additional keys.
 	EstimatedSize() uint64
 	// ComparePrev compares the provided user to the last point key written to the
-	// writer. The returned value is equivalent to Compare(key, prevKey) where
-	// prevKey is the last point key written to the writer.
+	// writer. The first returned value is equivalent to Compare(key, prevKey)
+	// where prevKey is the last point key written to the writer. The latter
+	// returned value indicates whether the provided key has the same prefix as
+	// the last point key written to the writer; in rowblk encoding, the second
+	// returned value is always false.
 	//
-	// If no key has been written yet, ComparePrev returns +1.
+	// If no key has been written yet, ComparePrev returns +1, false.
 	//
 	// Must not be called after Writer is closed.
-	ComparePrev(k []byte) int
+	ComparePrev(k []byte) (userKeyCmp int, isPrefixEqual bool)
 	// SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
 	// be used internally by Pebble.
 	SetSnapshotPinnedProperties(keyCount, keySize, valueSize uint64)

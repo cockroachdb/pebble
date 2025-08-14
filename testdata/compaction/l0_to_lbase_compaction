@@ -17,48 +17,50 @@ wrote 475254 keys
 flush
 ----
 L0.0:
-  000005:[a@1#10,SET-itbq@1#159645,SET]
-  000006:[itbr@1#159646,SET-rmbh@1#319226,SET]
-  000007:[rmbi@1#319227,SET-zzzz@1#475263,SET]
+  000005:[a@1#10,SET-ilsm@1#154476,SET]
+  000006:[ilsn@1#154477,SET-qxvg@1#309219,SET]
+  000007:[qxvh@1#309220,SET-zjdt@1#463415,SET]
+  000008:[zjdu@1#463416,SET-zzzz@1#475263,SET]
 
 
 auto-compact count=3
 ----
 L6:
-  000005:[a@1#10,SET-itbq@1#159645,SET]
-  000006:[itbr@1#159646,SET-rmbh@1#319226,SET]
-  000007:[rmbi@1#319227,SET-zzzz@1#475263,SET]
+  000005:[a@1#10,SET-ilsm@1#154476,SET]
+  000006:[ilsn@1#154477,SET-qxvg@1#309219,SET]
+  000007:[qxvh@1#309220,SET-zjdt@1#463415,SET]
+  000008:[zjdu@1#463416,SET-zzzz@1#475263,SET]
 
-
-metrics
+# Note that the block cache hit rate and size are overridden to 0 for determinism.
+metrics-l0-to-lbase
 ----
 ----
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0         0B |      0    0B |      0     0 |     0B     0B |  4.5MB |      0    0B |   0  1.32
+    0         0B |      0    0B |      0     0 |     0B     0B |  4.5MB |      0    0B |   0  1.36
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6        6MB |      3   6MB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
-total        6MB |      3   6MB |      0     0 |     0B     0B |  4.5MB |      0    0B |   1  2.32
+    6      6.2MB |      4 6.2MB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
+total      6.2MB |      4 6.2MB |      0     0 |     0B     0B |  4.5MB |      0    0B |   1  2.36
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      3    6MB     0B
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      4  6.2MB     0B
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.09  0.09 |      3   6MB |    0B    0B    0B |     0B    0B |      0     0B     0B
-total |     -     -     - |      3   6MB |    0B    0B    0B |     0B    0B |      3   10MB     0B
+    6 |     -  0.10  0.10 |      4 6.2MB |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     -     -     - |      4 6.2MB |    0B    0B    0B |     0B    0B |      4   11MB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       0       0        0     3     0     0        0     0      0     0
+count |       0       0        0     4     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -70,7 +72,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-1.5K (6.4MB) |       60.0% |     3 (840B) |       90.0% |         0.0% |           0 |           0
+   1.8K (0B) |        0.0% |    4 (1.1KB) |       91.7% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -93,8 +95,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm |  none
-on disk bytes | 5.9MB
-           CR |
+    algorithm |  none  snappy
+on disk bytes | 1.5MB   4.6MB
+           CR |          1.16
 ----
 ----

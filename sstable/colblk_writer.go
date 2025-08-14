@@ -243,17 +243,20 @@ func (w *RawColumnWriter) EstimatedSize() uint64 {
 }
 
 // ComparePrev compares the provided user to the last point key written to the
-// writer. The returned value is equivalent to Compare(key, prevKey) where
-// prevKey is the last point key written to the writer.
+// writer. The first returned value is equivalent to Compare(key, prevKey) where
+// prevKey is the last point key written to the writer. The second returned
+// value indicates whether the provided key has the same prefix as the last
+// point key written to the writer.
 //
-// If no key has been written yet, ComparePrev returns +1.
+// If no key has been written yet, ComparePrev returns +1, false.
 //
 // Must not be called after Writer is closed.
-func (w *RawColumnWriter) ComparePrev(k []byte) int {
+func (w *RawColumnWriter) ComparePrev(k []byte) (int, bool) {
 	if w == nil || w.dataBlock.Rows() == 0 {
-		return +1
+		return +1, false
 	}
-	return int(w.dataBlock.KeyWriter.ComparePrev(k).UserKeyComparison)
+	kcmp := w.dataBlock.KeyWriter.ComparePrev(k)
+	return int(kcmp.UserKeyComparison), kcmp.PrefixEqual()
 }
 
 // SetSnapshotPinnedProperties sets the properties for pinned keys. Should only

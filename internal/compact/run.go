@@ -133,7 +133,7 @@ type ValueSeparation interface {
 	EstimatedReferenceSize() uint64
 	// Add adds the provided key-value pair to the provided sstable writer,
 	// possibly separating the value into a blob file.
-	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool) error
+	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage bool) error
 	// FinishOutput is called when a compaction is finishing an output sstable.
 	// It returns the table's blob references, which will be added to the
 	// table's TableMetadata, and stats and metadata describing a newly
@@ -289,13 +289,14 @@ func (r *Runner) writeKeysToTable(
 		r.cmp, firstKey, limitKey,
 		r.cfg.TargetOutputFileSize, r.cfg.Grandparents.Iter(), r.iter.Frontiers(),
 	)
-	equalPrev := func(k []byte) bool {
-		return tw.ComparePrev(k) == 0
-	}
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	var iteratedKeys uint64
 	kv := r.kv
 	for ; kv != nil; kv = r.iter.Next() {
+		userKeyCmp, isPrefixEqual := tw.ComparePrev(kv.K.UserKey)
+		equalPrev := func(k []byte) bool {
+			return userKeyCmp == 0
+		}
 		iteratedKeys++
 		if iteratedKeys%updateGrantHandleEveryNKeys == 0 {
 			r.cfg.GrantHandle.CumulativeStats(base.CompactionGrantHandleStats{
@@ -334,7 +335,9 @@ func (r *Runner) writeKeysToTable(
 		// Add the value to the sstable, possibly separating its value into a
 		// blob file. The ValueSeparation implementation is responsible for
 		// writing the KV to the sstable.
-		if err := valueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel()); err != nil {
+		// If the key might be garbage (i.e. we have seen this key prefix before),
+		// we eagerly separate the value into a blob file.
+		if err := valueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel(), isPrefixEqual); err != nil {
 			return nil, err
 		}
 		if r.iter.SnapshotPinned() {
@@ -497,7 +500,7 @@ func (NeverSeparateValues) EstimatedReferenceSize() uint64 { return 0 }
 
 // Add implements the ValueSeparation interface.
 func (NeverSeparateValues) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
 ) error {
 	v, _, err := kv.Value(nil)
 	if err != nil {
