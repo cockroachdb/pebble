@@ -620,10 +620,14 @@ type InternalKV struct {
 	M KVMeta
 }
 
+// The zero values of TieringSpanID and TieringAttribute are reserved to
+// represent absence of these fields.
+
+type TieringSpanID uint64
 type TieringAttribute uint64
 
 type TieringMeta struct {
-	SpanID uint64
+	SpanID TieringSpanID
 	// Attribute is a user-specified attribute for the key-value pair.
 	//
 	// TODO(sumeer): For CockroachDB decide on units for this attribute, which

@@ -3374,11 +3374,10 @@ func (d *DB) compactAndWrite(
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 
+	// If spanPolicyValid is true and spanPolicy.KeyRange.End is empty, then
+	// spanPolicy applies for the rest of the keyspace.
 	var spanPolicyValid bool
 	var spanPolicy SpanPolicy
-	// If spanPolicyValid is true and spanPolicyEndKey is empty, then spanPolicy
-	// applies for the rest of the keyspace.
-	var spanPolicyEndKey []byte
 
 	for runner.MoreDataToWrite() {
 		if c.cancel.Load() {
@@ -3386,12 +3385,18 @@ func (d *DB) compactAndWrite(
 		}
 		// Create a new table.
 		firstKey := runner.FirstKey()
-		if !spanPolicyValid || (len(spanPolicyEndKey) > 0 && d.cmp(firstKey, spanPolicyEndKey) >= 0) {
+		if !spanPolicyValid ||
+			(len(spanPolicy.KeyRange.End) > 0 && d.cmp(firstKey, spanPolicy.KeyRange.End) >= 0) {
 			var err error
-			spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(firstKey)
-			if err != nil {
-				return runner.Finish().WithError(err)
+			if d.opts.Experimental.SpanPolicyFunc != nil {
+				spanPolicy, err = d.opts.Experimental.SpanPolicyFunc(firstKey)
+				if err != nil {
+					return runner.Finish().WithError(err)
+				}
 			}
+			// Else SpanPolicyFunc is nil, so use the empty policy which already has
+			// an empty KeyRange.End.
+
 			spanPolicyValid = true
 		}
 
@@ -3417,7 +3422,7 @@ func (d *DB) compactAndWrite(
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
-		runner.WriteTable(objMeta, tw, spanPolicyEndKey, vSep)
+		runner.WriteTable(objMeta, tw, spanPolicy.KeyRange.End, vSep)
 	}
 	result = runner.Finish()
 	if result.Err == nil {
