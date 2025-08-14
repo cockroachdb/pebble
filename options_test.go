@@ -607,19 +607,19 @@ func TestStaticSpanPolicyFunc(t *testing.T) {
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/static_span_policy_func", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
-		var inputSpanPolicies []SpanAndPolicy
+		var inputSpanPolicies []SpanPolicy
 		for _, cmdArg := range td.CmdArgs {
 			p := strparse.MakeParser("-:", cmdArg.String())
-			var sap SpanAndPolicy
+			var sap SpanPolicy
 			sap.KeyRange.Start = []byte(p.Next())
 			p.Expect("-")
 			sap.KeyRange.End = []byte(p.Next())
 			p.Expect(":")
 			switch tok := p.Next(); tok {
 			case "lowlatency":
-				sap.Policy.ValueStoragePolicy = ValueStorageLowReadLatency
+				sap.ValueStoragePolicy = ValueStorageLowReadLatency
 			case "latencytolerant":
-				sap.Policy.ValueStoragePolicy = ValueStorageLatencyTolerant
+				sap.ValueStoragePolicy = ValueStorageLatencyTolerant
 			default:
 				t.Fatalf("unknown policy: %s", tok)
 			}
@@ -628,12 +628,13 @@ func TestStaticSpanPolicyFunc(t *testing.T) {
 
 		spf := MakeStaticSpanPolicyFunc(testkeys.Comparer.Compare, inputSpanPolicies...)
 		for _, key := range strings.Fields(td.Input) {
-			policy, endKey, err := spf([]byte(key))
+			policy, err := spf([]byte(key))
 			require.NoError(t, err)
-			if endKey == nil {
+			// TODO(sumeer): also output KeyRange.Start.
+			if policy.KeyRange.End == nil {
 				fmt.Fprintf(&buf, "%s -> none\n", key)
 			} else {
-				fmt.Fprintf(&buf, "%s -> %s until %s\n", key, policy, endKey)
+				fmt.Fprintf(&buf, "%s -> %s until %s\n", key, policy, policy.KeyRange.End)
 			}
 		}
 		return buf.String()

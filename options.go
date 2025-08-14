@@ -757,7 +757,8 @@ type Options struct {
 		// false.
 		ValueSeparationPolicy func() ValueSeparationPolicy
 
-		// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
+		// SpanPolicyFunc is used to determine the SpanPolicy for a key region. It
+		// will be nil when there are no span policies defined.
 		SpanPolicyFunc SpanPolicyFunc
 	}
 
@@ -1206,9 +1207,16 @@ type ValueSeparationPolicy struct {
 	TargetGarbageRatio float64
 }
 
-// SpanPolicy contains policies that can vary by key range. The zero value is
-// the default value.
+// SpanPolicy contains policies that can vary by key range. The zero value for
+// all fields, other than the KeyRange, is the default policy.
 type SpanPolicy struct {
+	// KeyRange defines the key range for which this policy is valid. The end
+	// key can be empty, in which case the policy is valid for the entire
+	// keyspace after KeyRange.Start. The Start and End keys are not required to
+	// encompass the whole KeyRange over which this policy applies, i.e., they
+	// should be interpreted as a subset of the real interval for the policy.
+	KeyRange KeyRange
+
 	// Prefer a faster compression algorithm for the keys in this span.
 	//
 	// This is useful for keys that are frequently read or written but which don't
@@ -1227,6 +1235,20 @@ type SpanPolicy struct {
 	// ValueStoragePolicy is a hint used to determine where to store the values
 	// for KVs.
 	ValueStoragePolicy ValueStoragePolicy
+
+	// TieringPolicy is an optional policy for specifying which key-value pairs
+	// should be stored in the warm or cold tier. Once a SpanPolicy specifies a
+	// non-nil TieringPolicy, all subsequent requests for a SpanPolicy for a key
+	// k in [KeyRange.Start, KeyRange.End) must not return a TieringPolicy that
+	// returns a different value from TieringPolicyAndExtractor.Policy.SpanID.
+	//
+	// Due to eventual consistency at the CockroachDB layer, we tolerate the
+	// TieringPolicy field to appear and disappear (become nil), as long as in
+	// all appearances the SpanID is the same.
+	//
+	// Pebble will remember the set of (KeyRange, SpanID) pairs that it has seen
+	// in its history, for error checking the aforementioned invariant.
+	TieringPolicy TieringPolicyAndExtractor
 }
 
 // String returns a string representation of the SpanPolicy.
@@ -1272,27 +1294,31 @@ const (
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.
 //
-// The returned policy is valid from the start key until (and not including) the
-// end key.
+// The returned policy is valid over the interval in SpanPolicy.KeyRange,
+// which must include the startKey specified by the caller.
 //
 // A flush or compaction will call this function once for the first key to be
 // output. If the compaction reaches the end key, the current output sst is
 // finished and the function is called again.
 //
-// The end key can be empty, in which case the policy is valid for the entire
-// keyspace after startKey.
-type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, endKey []byte, err error)
+// TODO(sumeer): since there is a single TieringPolicy per SpanPolicy, we will
+// split sstables at tiering policy boundaries. Historically, SpanPolicys have
+// been coarse, but a 100TiB store (including cold data), could have a 100
+// different tiering policies, and splitting a 64MiB memtable at flush time
+// into 100 sstables is not desirable. We should include a SplitAtPolicyEnd
+// bool field in SpanPolicy, and use that plus policy changes in fields that
+// apply to the sstable as a whole (e.g. PreferFastCompression) to determine
+// whether to split at the end. This will require some restructuring of the
+// compact.Runner interface, so we will do this later.
+type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, err error)
 
-// SpanAndPolicy defines a key range and the policy to apply to it.
-type SpanAndPolicy struct {
-	KeyRange KeyRange
-	Policy   SpanPolicy
-}
-
-// MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
-// to the given span (and the default policy outside the span). The supplied
-// policies must be non-overlapping in key range.
-func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) SpanPolicyFunc {
+// MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given
+// policy to the given span (and the default policy outside the span). The
+// supplied policies must be non-overlapping in key range. This method must
+// not be called with inputPolicies that have an empty KeyRange.End to signify
+// extending to the end of the keyspace. The empty slice is assumed to be a
+// valid key that sorts before all other keys.
+func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) SpanPolicyFunc {
 	// Collect all the boundaries of the input policies, sort and deduplicate them.
 	uniqueKeys := make([][]byte, 0, 2*len(inputPolicies))
 	for i := range inputPolicies {
@@ -1302,38 +1328,127 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) 
 	slices.SortFunc(uniqueKeys, cmp)
 	uniqueKeys = slices.CompactFunc(uniqueKeys, func(a, b []byte) bool { return cmp(a, b) == 0 })
 
-	// Create a list of policies.
+	// Create a list of policies, including filling in gaps with default
+	// policies.
 	policies := make([]SpanPolicy, len(uniqueKeys)-1)
+	// Populate default policies for every index.
+	for idx := range policies {
+		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
+	}
+	// Populate the non-default policies.
 	for _, p := range inputPolicies {
 		idx, _ := slices.BinarySearchFunc(uniqueKeys, p.KeyRange.Start, cmp)
-		policies[idx] = p.Policy
+		policies[idx] = p
+		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
 	}
 
-	return func(startKey []byte) (_ SpanPolicy, endKey []byte, _ error) {
+	return func(startKey []byte) (_ SpanPolicy, _ error) {
 		// Find the policy that applies to the start key.
 		idx, eq := slices.BinarySearchFunc(uniqueKeys, startKey, cmp)
 		switch idx {
 		case len(uniqueKeys):
 			// The start key is after the last policy.
-			return SpanPolicy{}, nil, nil
+			return SpanPolicy{KeyRange: KeyRange{Start: uniqueKeys[len(uniqueKeys)-1]}}, nil
 		case len(uniqueKeys) - 1:
 			if eq {
-				// The start key is exactly the start of the last policy.
-				return SpanPolicy{}, nil, nil
+				// The start key is exactly the end of the last policy.
+				return SpanPolicy{KeyRange: KeyRange{Start: uniqueKeys[len(uniqueKeys)-1]}}, nil
 			}
 		case 0:
 			if !eq {
 				// The start key is before the first policy.
-				return SpanPolicy{}, uniqueKeys[0], nil
+				return SpanPolicy{KeyRange: KeyRange{End: uniqueKeys[0]}}, nil
 			}
 		}
 		if eq {
 			// The start key is exactly the start of this policy.
-			return policies[idx], uniqueKeys[idx+1], nil
+			return policies[idx], nil
 		}
-		// The start key is between two policies.
-		return policies[idx-1], uniqueKeys[idx], nil
+		// The start key is in the interval of the preceding policy.
+		return policies[idx-1], nil
 	}
+}
+
+type TieringMeta base.TieringMeta
+type TieringAttribute base.TieringAttribute
+
+// TieringPolicy defines a policy for tiering key-value pairs into warm and
+// cold tiers.
+type TieringPolicy struct {
+	// SpanID is an immutable id for the key span to which this policy applies.
+	// The actual span is specified by the SpanPolicy.KeyRange context in which
+	// this policy is returned.
+	SpanID uint64
+	// ColdTierLTThreshold is the threshold such that attribute < threshold
+	// belongs in the cold tier. For a SpanID, this threshold can change over
+	// time, because the typical policy uses the age of data, and (a) the age
+	// changes as time advances, (b) the user can change the age threshold that
+	// qualifies data for the cold tier.
+	ColdTierLTThreshold TieringAttribute
+}
+
+// TieringPolicyAndExtractor defines a tiering policy and an extractor for the
+// tiering attribute for that policy.
+//
+// Currently, the only way to retrieve a TieringPolicyAndExtractor is via
+// SpanPolicyFunc, by passing a key parameter. The policy is needed by Pebble
+// in the following cases:
+//
+//   - During the execution phase of a flush or a sstable compaction, to do
+//     attribute extraction, or to decide which tier a particular row belongs
+//     to. Since the key is known, the SpanPolicy can be retrieved with that
+//     key. Typically, attribute extraction is done during flushes, and we
+//     never re-extract during compactions. However, due to the eventual
+//     consistency of the tiering policies, we may need to extract for the
+//     first time during a sstable compaction. Note that we cannot extract for
+//     the first time when doing a blob file rewrite compaction since the key
+//     that determines the policy is not known.
+//
+//   - During a blob file rewrite compaction. We do not store the key with
+//     each value in the blob file, but we store a non-tight key span for the
+//     whole blob file. The start key of that span is used to retrieve the
+//     first SpanPolicy, and the SpanPolicy.KeyRange.End is used to iterate
+//     until we reach the blob file end key. Since the blob file may be have
+//     been rewritten in the past (hence the key span is not tight), we may
+//     retrieve some unnecessary policies, but we will have all the SpanIDs
+//     that could possibly apply to these values and can stash them into a
+//     SpanID => TieringPolicy map, for use in this compaction. NB: due to
+//     weak consistency, the SpanIDs in this map may be a subset of the
+//     SpanIDs in the blob file. For the ones with an unknown policy, we will
+//     not change the tier.
+//
+//   - Before starting a sstable compaction, a decision needs to be made
+//     whether to rewrite certain warm and cold blob files referenced in the
+//     compaction. This rewrite decision uses the latest tiering policies for
+//     all the spanIDs in the inputs of the compactions, and their tiering
+//     attribute histograms. It may result in a decision to rewrite a blob
+//     file, if it allows for significant movement of data between tiers. In a
+//     similar vein, when writing new blob files, a decision needs to be made
+//     up front whether there is enough cold data to justify writing a cold
+//     blob file (to avoid having tiny files). The same iteration approach
+//     mentioned earlier is used.
+//
+//   - Periodic calls, to learn the latest ColdTierLTThresholds, so that it
+//     can initiate explicit rewrites of files that are not being rewritten
+//     normally, to move data between tiers. The same iteration approach
+//     mentioned earlier is used to iterate over *all* tiering policies.
+//
+//   - Called when DB.TieringPolicyChange is called, when the aforementioned
+//     periodic calls are insufficient. The same iteration approach mentioned
+//     earlier is used. to iterate over *all* tiering policies.
+//
+// There is a concern that iteration over policies in the cases that are not
+// using actual keys stored in Pebble will result in unnecessary iteration
+// over 100s of policies for CockroachDB tenants that have no ranges on this
+// DB. One way to mitigate this is by adding an interface to lookup the
+// TieringPolicy by SpanID.
+type TieringPolicyAndExtractor interface {
+	// Policy returns the tiering policy.
+	Policy() TieringPolicy
+	// ExtractAttribute extracts the tiering attribute from the key-value pair.
+	// Once extracted, the attribute can be remembered since it must never
+	// change for this key-value pair during the lifetime of the DB.
+	ExtractAttribute(userKey []byte, value []byte) (TieringAttribute, error)
 }
 
 // WALFailoverOptions configures the WAL failover mechanics to use during
@@ -1588,9 +1703,6 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
 		o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
-	}
-	if o.Experimental.SpanPolicyFunc == nil {
-		o.Experimental.SpanPolicyFunc = func(startKey []byte) (SpanPolicy, []byte, error) { return SpanPolicy{}, nil, nil }
 	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.
