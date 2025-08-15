@@ -498,9 +498,9 @@ var KeySchema = colblk.KeySchema{
 	NewKeyWriter: func() colblk.KeyWriter {
 		return makeCockroachKeyWriter()
 	},
-	InitKeySeekerMetadata: func(meta *colblk.KeySeekerMetadata, d *colblk.DataBlockDecoder) {
+	InitKeySeekerMetadata: func(meta *colblk.KeySeekerMetadata, d *colblk.DataBlockDecoder, bd *colblk.BlockDecoder) {
 		ks := (*cockroachKeySeeker)(unsafe.Pointer(meta))
-		ks.init(d)
+		ks.init(d, bd)
 	},
 	KeySeeker: func(meta *colblk.KeySeekerMetadata) colblk.KeySeeker {
 		return (*cockroachKeySeeker)(unsafe.Pointer(meta))
@@ -747,14 +747,13 @@ var _ uint = colblk.KeySeekerMetadataSize - uint(unsafe.Sizeof(cockroachKeySeeke
 
 var _ colblk.KeySeeker = (*cockroachKeySeeker)(nil)
 
-func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder) {
-	bd := d.BlockDecoder()
+func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder, bd *colblk.BlockDecoder) {
 	ks.roachKeys = bd.PrefixBytes(cockroachColRoachKey)
 	ks.roachKeyChanged = d.PrefixChanged()
 	ks.mvccWallTimes = bd.Uints(cockroachColMVCCWallTime)
 	ks.mvccLogical = bd.Uints(cockroachColMVCCLogical)
 	ks.untypedVersions = bd.RawBytes(cockroachColUntypedVersion)
-	header := d.KeySchemaHeader()
+	header := bd.Data()[:bd.CustomHeaderSize()-colblk.DataBlockCustomHeaderSize]
 	if len(header) != 1 {
 		panic(errors.AssertionFailedf("invalid key schema-specific header %x", header))
 	}

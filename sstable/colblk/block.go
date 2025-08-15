@@ -372,6 +372,11 @@ func (d *BlockDecoder) Data() []byte {
 	return d.data
 }
 
+// CustomHeaderSize returns the underlying custom header size.
+func (d *BlockDecoder) CustomHeaderSize() uint32 {
+	return d.customHeaderSize
+}
+
 func (d *BlockDecoder) pageStart(col int) uint32 {
 	if uint16(col) >= d.header.Columns {
 		// -1 for the trailing version byte
