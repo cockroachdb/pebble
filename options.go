@@ -1371,85 +1371,8 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) Spa
 
 type TieringMeta base.TieringMeta
 type TieringAttribute base.TieringAttribute
-
-// TieringPolicy defines a policy for tiering key-value pairs into warm and
-// cold tiers.
-type TieringPolicy struct {
-	// SpanID is an immutable id for the key span to which this policy applies.
-	// The actual span is specified by the SpanPolicy.KeyRange context in which
-	// this policy is returned.
-	SpanID uint64
-	// ColdTierLTThreshold is the threshold such that attribute < threshold
-	// belongs in the cold tier. For a SpanID, this threshold can change over
-	// time, because the typical policy uses the age of data, and (a) the age
-	// changes as time advances, (b) the user can change the age threshold that
-	// qualifies data for the cold tier.
-	ColdTierLTThreshold TieringAttribute
-}
-
-// TieringPolicyAndExtractor defines a tiering policy and an extractor for the
-// tiering attribute for that policy.
-//
-// Currently, the only way to retrieve a TieringPolicyAndExtractor is via
-// SpanPolicyFunc, by passing a key parameter. The policy is needed by Pebble
-// in the following cases:
-//
-//   - During the execution phase of a flush or a sstable compaction, to do
-//     attribute extraction, or to decide which tier a particular row belongs
-//     to. Since the key is known, the SpanPolicy can be retrieved with that
-//     key. Typically, attribute extraction is done during flushes, and we
-//     never re-extract during compactions. However, due to the eventual
-//     consistency of the tiering policies, we may need to extract for the
-//     first time during a sstable compaction. Note that we cannot extract for
-//     the first time when doing a blob file rewrite compaction since the key
-//     that determines the policy is not known.
-//
-//   - During a blob file rewrite compaction. We do not store the key with
-//     each value in the blob file, but we store a non-tight key span for the
-//     whole blob file. The start key of that span is used to retrieve the
-//     first SpanPolicy, and the SpanPolicy.KeyRange.End is used to iterate
-//     until we reach the blob file end key. Since the blob file may be have
-//     been rewritten in the past (hence the key span is not tight), we may
-//     retrieve some unnecessary policies, but we will have all the SpanIDs
-//     that could possibly apply to these values and can stash them into a
-//     SpanID => TieringPolicy map, for use in this compaction. NB: due to
-//     weak consistency, the SpanIDs in this map may be a subset of the
-//     SpanIDs in the blob file. For the ones with an unknown policy, we will
-//     not change the tier.
-//
-//   - Before starting a sstable compaction, a decision needs to be made
-//     whether to rewrite certain warm and cold blob files referenced in the
-//     compaction. This rewrite decision uses the latest tiering policies for
-//     all the spanIDs in the inputs of the compactions, and their tiering
-//     attribute histograms. It may result in a decision to rewrite a blob
-//     file, if it allows for significant movement of data between tiers. In a
-//     similar vein, when writing new blob files, a decision needs to be made
-//     up front whether there is enough cold data to justify writing a cold
-//     blob file (to avoid having tiny files). The same iteration approach
-//     mentioned earlier is used.
-//
-//   - Periodic calls, to learn the latest ColdTierLTThresholds, so that it
-//     can initiate explicit rewrites of files that are not being rewritten
-//     normally, to move data between tiers. The same iteration approach
-//     mentioned earlier is used to iterate over *all* tiering policies.
-//
-//   - Called when DB.TieringPolicyChange is called, when the aforementioned
-//     periodic calls are insufficient. The same iteration approach mentioned
-//     earlier is used. to iterate over *all* tiering policies.
-//
-// There is a concern that iteration over policies in the cases that are not
-// using actual keys stored in Pebble will result in unnecessary iteration
-// over 100s of policies for CockroachDB tenants that have no ranges on this
-// DB. One way to mitigate this is by adding an interface to lookup the
-// TieringPolicy by SpanID.
-type TieringPolicyAndExtractor interface {
-	// Policy returns the tiering policy.
-	Policy() TieringPolicy
-	// ExtractAttribute extracts the tiering attribute from the key-value pair.
-	// Once extracted, the attribute can be remembered since it must never
-	// change for this key-value pair during the lifetime of the DB.
-	ExtractAttribute(userKey []byte, value []byte) (TieringAttribute, error)
-}
+type TieringPolicy base.TieringPolicy
+type TieringPolicyAndExtractor base.TieringPolicyAndExtractor
 
 // WALFailoverOptions configures the WAL failover mechanics to use during
 // transient write unavailability on the primary WAL volume.

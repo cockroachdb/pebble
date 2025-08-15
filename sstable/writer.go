@@ -327,7 +327,9 @@ type RawWriter interface {
 	// AddWithBlobHandle adds a key to the sstable, but encoding a blob value
 	// handle instead of an in-place value. See Add for more details. The caller
 	// must provide the already-extracted ShortAttribute for the value.
-	AddWithBlobHandle(key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool, meta base.KVMeta) error
+	AddWithBlobHandle(
+		key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool,
+		meta base.KVMeta) error
 	// EncodeSpan encodes the keys in the given span. The span can contain
 	// either only RANGEDEL keys or only range keys.
 	//
