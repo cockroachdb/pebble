@@ -229,6 +229,7 @@ func (r *Runner) WriteTable(
 	tw sstable.RawWriter,
 	limitKey []byte,
 	valueSeparation ValueSeparation,
+	tieringPolicy base.TieringPolicyAndExtractor,
 ) {
 	if r.err != nil {
 		panic("error already encountered")
@@ -237,7 +238,7 @@ func (r *Runner) WriteTable(
 		CreationTime: time.Now(),
 		ObjMeta:      objMeta,
 	})
-	splitKey, err := r.writeKeysToTable(tw, limitKey, valueSeparation)
+	splitKey, err := r.writeKeysToTable(tw, limitKey, valueSeparation, tieringPolicy)
 
 	// Inform the value separation policy that the table is finished.
 	valSepMeta, valSepErr := valueSeparation.FinishOutput()
@@ -277,7 +278,10 @@ func (r *Runner) WriteTable(
 }
 
 func (r *Runner) writeKeysToTable(
-	tw sstable.RawWriter, limitKey []byte, valueSeparation ValueSeparation,
+	tw sstable.RawWriter,
+	limitKey []byte,
+	valueSeparation ValueSeparation,
+	tieringPolicy base.TieringPolicyAndExtractor,
 ) (splitKey []byte, _ error) {
 	const updateGrantHandleEveryNKeys = 128
 	firstKey := r.FirstKey()
@@ -295,6 +299,10 @@ func (r *Runner) writeKeysToTable(
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	var iteratedKeys uint64
 	kv := r.kv
+	var tieringSpanID base.TieringSpanID
+	if tieringPolicy != nil {
+		tieringSpanID = tieringPolicy.Policy().SpanID
+	}
 	for ; kv != nil; kv = r.iter.Next() {
 		iteratedKeys++
 		if iteratedKeys%updateGrantHandleEveryNKeys == 0 {
@@ -328,6 +336,21 @@ func (r *Runner) writeKeysToTable(
 			}
 			r.lastRangeKeySpan.CopyFrom(r.iter.Span())
 			continue
+
+		case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
+			if tieringSpanID != 0 && kv.M.Tiering == (base.TieringMeta{}) {
+				// Try to extract the TieringMeta.
+				val, _, err := kv.V.Value(nil)
+				if err != nil {
+					return nil, err
+				}
+				attr, err := tieringPolicy.ExtractAttribute(kv.K.UserKey, val)
+				if err != nil {
+					// TODO(sumeer): log warning periodically.
+					attr = 0
+				}
+				kv.M.Tiering = base.TieringMeta{SpanID: tieringSpanID, Attribute: attr}
+			}
 		}
 
 		valueLen := kv.V.Len()
