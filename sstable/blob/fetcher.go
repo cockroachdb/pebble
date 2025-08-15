@@ -309,7 +309,7 @@ func (cr *cachedReader) GetUnsafeValue(
 	v := cr.currentValueBlock.dec.values.Slice(cr.currentValueBlock.dec.values.Offsets(valueIndex))
 	var meta base.TieringMeta
 	if cr.format >= FileFormatV2 {
-		meta.SpanID = cr.currentValueBlock.dec.tieringSpanIDs.At(valueIndex)
+		meta.SpanID = base.TieringSpanID(cr.currentValueBlock.dec.tieringSpanIDs.At(valueIndex))
 		meta.Attribute = base.TieringAttribute(cr.currentValueBlock.dec.tieringAttributes.At(valueIndex))
 	}
 	return v, meta, nil

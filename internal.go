@@ -42,6 +42,9 @@ type InternalKey = base.InternalKey
 // KeyRange exports the base.KeyRange type.
 type KeyRange = base.KeyRange
 
+// UserKeyBounds exports the base.UserKeyBounds type.
+type UserKeyBounds = base.UserKeyBounds
+
 // MakeInternalKey constructs an internal key from a specified user key,
 // sequence number and kind.
 func MakeInternalKey(userKey []byte, seqNum SeqNum, kind InternalKeyKind) InternalKey {

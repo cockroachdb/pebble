@@ -297,7 +297,7 @@ func (e *blobValueBlockEncoder) AddValue(v []byte, meta base.TieringMeta) {
 	rows := e.values.Rows()
 	e.values.Put(v)
 	if e.format >= FileFormatV3 && meta != (base.TieringMeta{}) {
-		e.tieringSpanIDs.Set(rows, meta.SpanID)
+		e.tieringSpanIDs.Set(rows, uint64(meta.SpanID))
 		e.tieringAttributes.Set(rows, uint64(meta.Attribute))
 	}
 }
