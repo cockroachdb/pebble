@@ -792,7 +792,8 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 }
 
 type blockDecoderAndKeySeekerMetadata struct {
-	d DataBlockDecoder
+	d          DataBlockDecoder
+	headerRows int
 	// Pad to ensure KeySeekerMetadata is 8-byte aligned.
 	_             [(8 - unsafe.Sizeof(DataBlockDecoder{})%8) % 8]byte
 	keySchemaMeta KeySeekerMetadata
@@ -815,6 +816,7 @@ func InitDataBlockMetadata(schema *KeySchema, md *block.Metadata, data []byte) (
 		}
 	}()
 	bd := metadatas.d.Init(schema, data)
+	metadatas.headerRows = int(bd.header.Rows)
 	schema.InitKeySeekerMetadata(&metadatas.keySchemaMeta, &metadatas.d, bd)
 	return nil
 }
@@ -856,7 +858,6 @@ func InitKeyspanBlockMetadata(md *block.Metadata, data []byte) (err error) {
 // A DataBlockDecoder holds state for interpreting a columnar data block. It may
 // be shared among multiple DataBlockIters.
 type DataBlockDecoder struct {
-	d BlockDecoder
 	// trailers holds an array of the InternalKey trailers, encoding the key
 	// kind and sequence number of each key.
 	trailers UnsafeUints
@@ -897,7 +898,6 @@ func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) *BlockDecoder {
 	}
 	bd := BlockDecoder{}
 	bd.Init(data, DataBlockCustomHeaderSize+schema.HeaderSize)
-	d.d = bd
 	d.trailers = bd.Uints(len(schema.ColumnTypes) + dataBlockColumnTrailer)
 	d.prefixChanged = bd.Bitmap(len(schema.ColumnTypes) + dataBlockColumnPrefixChanged)
 	d.values = bd.RawBytes(len(schema.ColumnTypes) + dataBlockColumnValue)
@@ -1093,11 +1093,9 @@ func (i *DataBlockIter) InitHandle(
 	i.h.Release()
 	i.h = h
 
-	numRows := int(i.d.d.header.Rows)
-	i.maxRow = numRows - 1
-
+	i.maxRow = blockMeta.headerRows - 1
 	i.transforms = transforms
-	if i.transforms.HideObsoletePoints && i.d.isObsolete.SeekSetBitGE(0) == numRows {
+	if i.transforms.HideObsoletePoints && i.d.isObsolete.SeekSetBitGE(0) == blockMeta.headerRows {
 		// There are no obsolete points in the block; don't bother checking.
 		i.transforms.HideObsoletePoints = false
 	}
