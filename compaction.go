@@ -3422,7 +3422,7 @@ func (d *DB) compactAndWrite(
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
-		runner.WriteTable(objMeta, tw, spanPolicy.KeyRange.End, vSep)
+		runner.WriteTable(objMeta, tw, spanPolicy.KeyRange.End, vSep, spanPolicy.TieringPolicy)
 	}
 	result = runner.Finish()
 	if result.Err == nil {

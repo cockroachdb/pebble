@@ -453,7 +453,8 @@ func (vs *preserveBlobReferences) Add(
 		},
 		HandleSuffix: handleSuffix,
 	}
-	err := tw.AddWithBlobHandle(kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete, base.KVMeta{})
+	err := tw.AddWithBlobHandle(
+		kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete, kv.M)
 	if err != nil {
 		return err
 	}
