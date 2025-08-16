@@ -66,7 +66,7 @@ func generateTagMaps(t reflect.Type, indexPrefix []int) {
 }
 
 func init() {
-	generateTagMaps(reflect.TypeOf(Properties{}), nil)
+	generateTagMaps(reflect.TypeFor[Properties](), nil)
 }
 
 // CommonProperties holds properties for either a virtual or a physical sstable. This
