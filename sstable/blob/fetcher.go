@@ -42,7 +42,9 @@ type ValueReader interface {
 // for a given file number.
 type ReaderProvider interface {
 	// GetValueReader returns a ValueReader for the given object.
-	GetValueReader(ctx context.Context, obj base.ObjectInfo) (r ValueReader, closeFunc func(), err error)
+	GetValueReader(
+		ctx context.Context, obj base.ObjectInfo, stats block.InitFileReadStats,
+	) (r ValueReader, closeFunc func(), err error)
 }
 
 // A ValueFetcher retrieves values stored out-of-band in separate blob files.
@@ -148,7 +150,10 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 		if !ok {
 			return nil, errors.AssertionFailedf("blob file %s not found", vh.BlobFileID)
 		}
-		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, obj); err != nil {
+		if cr.r, cr.closeFunc, err = r.readerProvider.GetValueReader(ctx, obj, block.InitFileReadStats{
+			Stats:     r.env.Stats,
+			IterStats: r.env.IterStats,
+		}); err != nil {
 			return nil, err
 		}
 		cr.blobFileID = vh.BlobFileID

@@ -33,12 +33,12 @@ stats
 stats: seeked 0 times (0 internal); stepped 0 times (0 internal)
 a: (a, .)
 b: (b, [b-c) @5=boop UPDATED)
-stats: seeked 1 times (1 internal); stepped 1 times (2 internal); blocks: 0B cached, 89B not cached (read time: 0s); points: 2 (2B keys, 2B values), range keys: 1, contained points: 1 (0 skipped)
+stats: seeked 1 times (1 internal); stepped 1 times (2 internal); blocks: 0B cached, 614B not cached (read time: 0s); points: 2 (2B keys, 2B values), range keys: 1, contained points: 1 (0 skipped)
 c: (c, . UPDATED)
 cat: (., [cat-dog) @3=beep UPDATED)
 d: (d, [cat-dog) @3=beep)
 .
-stats: seeked 1 times (1 internal); stepped 5 times (6 internal); blocks: 0B cached, 89B not cached (read time: 0s); points: 4 (4B keys, 4B values), range keys: 2, contained points: 2 (0 skipped)
+stats: seeked 1 times (1 internal); stepped 5 times (6 internal); blocks: 0B cached, 614B not cached (read time: 0s); points: 4 (4B keys, 4B values), range keys: 2, contained points: 2 (0 skipped)
 
 # Do the above forward iteration but with a mask suffix. The results should be
 # identical despite range keys serving as masks, because none of the point keys

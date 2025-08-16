@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -228,7 +229,7 @@ var _ blob.ReaderProvider = (*debugReaderProvider)(nil)
 // GetValueReader returns a blob.ValueReader for a blob file identified by
 // fileNum.
 func (p *debugReaderProvider) GetValueReader(
-	ctx context.Context, diskFile base.ObjectInfo,
+	ctx context.Context, diskFile base.ObjectInfo, _ block.InitFileReadStats,
 ) (blob.ValueReader, func(), error) {
 	ftyp, fileNum := diskFile.FileInfo()
 	readable, err := p.objProvider.OpenForReading(ctx, ftyp, fileNum, objstorage.OpenOptions{})

@@ -176,7 +176,8 @@ func newColumnBlockTwoLevelIterator(
 		// versions of keys, and therefore never expose a LazyValue that is
 		// separated to their callers, they can put this valueBlockReader into a
 		// sync.Pool.
-		i.secondLevel.internalValueConstructor.vbReader = valblk.MakeReader(&i.secondLevel, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats)
+		i.secondLevel.internalValueConstructor.vbReader = valblk.MakeReader(
+			&i.secondLevel, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats, opts.Env.Block.IterStats)
 		i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
@@ -225,7 +226,8 @@ func newRowBlockTwoLevelIterator(
 			// versions of keys, and therefore never expose a LazyValue that is
 			// separated to their callers, they can put this valueBlockReader into a
 			// sync.Pool.
-			i.secondLevel.internalValueConstructor.vbReader = valblk.MakeReader(&i.secondLevel, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats)
+			i.secondLevel.internalValueConstructor.vbReader = valblk.MakeReader(
+				&i.secondLevel, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats, opts.Env.Block.IterStats)
 			// We can set the GetLazyValuer directly to the vbReader because
 			// rowblk sstables never contain blob value handles.
 			i.secondLevel.data.SetGetLazyValuer(&i.secondLevel.internalValueConstructor.vbReader)

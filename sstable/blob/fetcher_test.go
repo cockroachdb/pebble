@@ -49,7 +49,7 @@ type mockReaderProvider struct {
 }
 
 func (rp *mockReaderProvider) GetValueReader(
-	ctx context.Context, obj base.ObjectInfo,
+	ctx context.Context, obj base.ObjectInfo, _ block.InitFileReadStats,
 ) (r ValueReader, closeFunc func(), err error) {
 	_, fileNum := obj.FileInfo()
 	if rp.w != nil {

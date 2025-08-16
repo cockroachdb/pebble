@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
-type shard[K Key, V any] struct {
+type shard[K Key, V any, InitOpts any] struct {
 	hits   atomic.Int64
 	misses atomic.Int64
 
@@ -34,14 +34,14 @@ type shard[K Key, V any] struct {
 	releasingCh     chan *value[V]
 	releaseLoopExit sync.WaitGroup
 
-	initValueFn    InitValueFn[K, V]
+	initValueFn    InitValueFn[K, V, InitOpts]
 	releaseValueFn ReleaseValueFn[V]
 }
 
-func (s *shard[K, V]) Init(
-	capacity int, initValueFn InitValueFn[K, V], releaseValueFn ReleaseValueFn[V],
+func (s *shard[K, V, InitOpts]) Init(
+	capacity int, initValueFn InitValueFn[K, V, InitOpts], releaseValueFn ReleaseValueFn[V],
 ) {
-	*s = shard[K, V]{
+	*s = shard[K, V, InitOpts]{
 		capacity:       capacity,
 		initValueFn:    initValueFn,
 		releaseValueFn: releaseValueFn,
@@ -56,7 +56,7 @@ func (s *shard[K, V]) Init(
 
 // releaseLoop runs in the background for each shard, releasing values that are
 // pushed to releasingCh.
-func (s *shard[K, V]) releaseLoop() {
+func (s *shard[K, V, InitOpts]) releaseLoop() {
 	defer s.releaseLoopExit.Done()
 	for v := range s.releasingCh {
 		<-v.initialized
@@ -66,7 +66,7 @@ func (s *shard[K, V]) releaseLoop() {
 	}
 }
 
-func (s *shard[K, V]) UnrefValue(v *value[V]) {
+func (s *shard[K, V, InitOpts]) UnrefValue(v *value[V]) {
 	if v.refCount.Add(-1) == 0 {
 		s.releasingCh <- v
 	}
@@ -76,7 +76,7 @@ func (s *shard[K, V]) UnrefValue(v *value[V]) {
 // reference in place.
 //
 // c.mu must be held when calling this.
-func (s *shard[K, V]) unlinkNode(n *node[K, V]) {
+func (s *shard[K, V, InitOpts]) unlinkNode(n *node[K, V]) {
 	delete(s.mu.nodes, n.key)
 
 	switch n.status {
@@ -109,7 +109,7 @@ func (s *shard[K, V]) unlinkNode(n *node[K, V]) {
 	n.links.next = nil
 }
 
-func (s *shard[K, V]) clearNode(n *node[K, V]) {
+func (s *shard[K, V, InitOpts]) clearNode(n *node[K, V]) {
 	if v := n.value; v != nil {
 		n.value = nil
 		s.UnrefValue(v)
@@ -121,7 +121,9 @@ func (s *shard[K, V]) clearNode(n *node[K, V]) {
 // created and initialized (evicting as necessary).
 //
 // The caller is responsible for unrefing the value.
-func (s *shard[K, V]) findOrCreateValue(ctx context.Context, key K) *value[V] {
+func (s *shard[K, V, InitOpts]) findOrCreateValue(
+	ctx context.Context, key K, opts InitOpts,
+) *value[V] {
 	// Fast-path for a hit in the cache.
 	s.mu.RLock()
 	if n := s.mu.nodes[key]; n != nil && n.value != nil {
@@ -183,12 +185,12 @@ func (s *shard[K, V]) findOrCreateValue(ctx context.Context, key K) *value[V] {
 
 	s.mu.Unlock()
 
-	vRef := ValueRef[K, V]{
+	vRef := ValueRef[K, V, InitOpts]{
 		shard: s,
 		value: v,
 	}
 
-	v.err = s.initValueFn(ctx, key, vRef)
+	v.err = s.initValueFn(ctx, key, opts, vRef)
 	if v.err != nil {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -203,7 +205,7 @@ func (s *shard[K, V]) findOrCreateValue(ctx context.Context, key K) *value[V] {
 	return v
 }
 
-func (s *shard[K, V]) addNode(n *node[K, V], key K, status nodeStatus) {
+func (s *shard[K, V, InitOpts]) addNode(n *node[K, V], key K, status nodeStatus) {
 	n.key = key
 	n.status = status
 
@@ -226,13 +228,13 @@ func (s *shard[K, V]) addNode(n *node[K, V], key K, status nodeStatus) {
 	}
 }
 
-func (s *shard[K, V]) evictNodes() {
+func (s *shard[K, V, InitOpts]) evictNodes() {
 	for s.capacity <= s.mu.sizeHot+s.mu.sizeCold && s.mu.handCold != nil {
 		s.runHandCold()
 	}
 }
 
-func (s *shard[K, V]) runHandCold() {
+func (s *shard[K, V, InitOpts]) runHandCold() {
 	n := s.mu.handCold
 	if n.status == cold {
 		if n.referenced.Load() {
@@ -258,7 +260,7 @@ func (s *shard[K, V]) runHandCold() {
 	}
 }
 
-func (s *shard[K, V]) runHandHot() {
+func (s *shard[K, V, InitOpts]) runHandHot() {
 	if s.mu.handHot == s.mu.handTest && s.mu.handTest != nil {
 		s.runHandTest()
 		if s.mu.handHot == nil {
@@ -280,7 +282,7 @@ func (s *shard[K, V]) runHandHot() {
 	s.mu.handHot = s.mu.handHot.next()
 }
 
-func (s *shard[K, V]) runHandTest() {
+func (s *shard[K, V, InitOpts]) runHandTest() {
 	if s.mu.sizeCold > 0 && s.mu.handTest == s.mu.handCold && s.mu.handCold != nil {
 		s.runHandCold()
 		if s.mu.handTest == nil {
@@ -304,7 +306,7 @@ func (s *shard[K, V]) runHandTest() {
 // Evict any entry associated with the given key. If there is a corresponding
 // value in the shard, it is released before the function returns. There must
 // not be any outstanding references on the value.
-func (s *shard[K, V]) Evict(key K) {
+func (s *shard[K, V, InitOpts]) Evict(key K) {
 	s.mu.Lock()
 	n := s.mu.nodes[key]
 	var v *value[V]
@@ -334,7 +336,7 @@ func (s *shard[K, V]) Evict(key K) {
 // satisfy the predicate should be inserted while the method is running.
 //
 // It should be used sparingly as it is an O(n) operation.
-func (s *shard[K, V]) EvictAll(predicate func(K) bool) []K {
+func (s *shard[K, V, InitOpts]) EvictAll(predicate func(K) bool) []K {
 	// Collect the keys which need to be evicted.
 	var keys []K
 	s.mu.RLock()
@@ -361,7 +363,7 @@ func (s *shard[K, V]) EvictAll(predicate func(K) bool) []K {
 	return keys
 }
 
-func (s *shard[K, V]) forAllNodesLocked(f func(n *node[K, V])) {
+func (s *shard[K, V, InitOpts]) forAllNodesLocked(f func(n *node[K, V])) {
 	if firstNode := s.mu.handHot; firstNode != nil {
 		for node := firstNode; ; {
 			f(node)
@@ -374,7 +376,7 @@ func (s *shard[K, V]) forAllNodesLocked(f func(n *node[K, V])) {
 
 // Close the shard, releasing all live values. There must not be any outstanding
 // references on any of the values.
-func (s *shard[K, V]) Close() {
+func (s *shard[K, V, InitOpts]) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

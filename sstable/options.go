@@ -108,6 +108,10 @@ type ReaderOptions struct {
 
 	// FilterMetricsTracker is optionally used to track filter metrics.
 	FilterMetricsTracker *FilterMetricsTracker
+
+	// InitFileReadStats is to only be used for reads in NewReader and forgotten
+	// after.
+	InitFileReadStats block.InitFileReadStats
 }
 
 func (o ReaderOptions) ensureDefaults() ReaderOptions {
