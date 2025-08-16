@@ -51,6 +51,7 @@ package rangekey
 
 import (
 	"encoding/binary"
+	"math/bits"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -434,10 +435,5 @@ func IsRangeKey(kind base.InternalKeyKind) bool {
 
 func lenVarint(v int) (n int) {
 	x := uint32(v)
-	n++
-	for x >= 0x80 {
-		x >>= 7
-		n++
-	}
-	return n
+	return (bits.Len32(x|1) + 6) / 7
 }
