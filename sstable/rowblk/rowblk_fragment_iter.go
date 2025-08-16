@@ -65,9 +65,12 @@ var _ keyspan.FragmentIterator = (*fragmentIter)(nil)
 var fragmentBlockIterPool = sync.Pool{
 	New: func() interface{} {
 		i := &fragmentIter{}
-		if invariants.UseFinalizers {
-			invariants.SetFinalizer(i, checkFragmentBlockIterator)
-		}
+		invariants.AddCleanup(i, func(blockIter *Iter) {
+			if h := blockIter.Handle(); h.Valid() {
+				fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %#v\n", h)
+				os.Exit(1)
+			}
+		}, &i.blockIter)
 		return i
 	},
 }

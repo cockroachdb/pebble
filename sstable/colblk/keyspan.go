@@ -337,14 +337,12 @@ func NewKeyspanIter(
 var keyspanIterPool = sync.Pool{
 	New: func() interface{} {
 		i := &KeyspanIter{}
-		if invariants.UseFinalizers {
-			invariants.SetFinalizer(i, func(obj interface{}) {
-				if i := obj.(*KeyspanIter); i.handle.Valid() {
-					fmt.Fprintf(os.Stderr, "KeyspanIter.handle is not nil: %#v\n", i.handle)
-					os.Exit(1)
-				}
-			})
-		}
+		invariants.AddCleanup(i, func(handle *block.BufferHandle) {
+			if handle.Valid() {
+				fmt.Fprintf(os.Stderr, "KeyspanIter.handle is not nil: %#v\n", handle)
+				os.Exit(1)
+			}
+		}, &i.handle)
 		return i
 	},
 }
