@@ -37,8 +37,17 @@ const UseFinalizers = !buildtags.Race && (buildtags.Invariants || buildtags.Trac
 // This function is a no-op if UseFinalizers is false and it should inline to
 // nothing. However, note that it might not inline so in very hot paths it's
 // best to check UseFinalizers first.
+//
+// Deprecated: please use  [AddCleanup].
 func SetFinalizer(obj, finalizer interface{}) {
 	if UseFinalizers {
 		runtime.SetFinalizer(obj, finalizer)
 	}
+}
+
+func AddCleanup[T, S any](ptr *T, cleanup func(S), arg S) runtime.Cleanup {
+	if UseFinalizers {
+		return runtime.AddCleanup(ptr, cleanup, arg)
+	}
+	return runtime.Cleanup{} // No-op if finalizers are not used.
 }
