@@ -52,6 +52,7 @@ package rangekey
 import (
 	"encoding/binary"
 
+	"github.com/cockroachdb/crlib/crencoding"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -257,9 +258,9 @@ type SuffixValue struct {
 func encodedSetSuffixValuesLen(suffixValues []SuffixValue) int {
 	var n int
 	for i := 0; i < len(suffixValues); i++ {
-		n += lenVarint(len(suffixValues[i].Suffix))
+		n += crencoding.UvarintLen32(uint32(len(suffixValues[i].Suffix)))
 		n += len(suffixValues[i].Suffix)
-		n += lenVarint(len(suffixValues[i].Value))
+		n += crencoding.UvarintLen32(uint32(len(suffixValues[i].Value)))
 		n += len(suffixValues[i].Value)
 	}
 	return n
@@ -293,7 +294,7 @@ func encodeSetSuffixValues(dst []byte, suffixValues []SuffixValue) int {
 // encoded. It may be used to construct a buffer of the appropriate size before
 // encoding.
 func EncodedSetValueLen(endKey []byte, suffixValues []SuffixValue) int {
-	n := lenVarint(len(endKey))
+	n := crencoding.UvarintLen32(uint32(len(endKey)))
 	n += len(endKey)
 	n += encodedSetSuffixValuesLen(suffixValues)
 	return n
@@ -357,7 +358,7 @@ func decodeSuffixValue(data []byte) (sv SuffixValue, rest []byte, ok bool) {
 func encodedUnsetSuffixesLen(suffixes [][]byte) int {
 	var n int
 	for i := 0; i < len(suffixes); i++ {
-		n += lenVarint(len(suffixes[i]))
+		n += crencoding.UvarintLen32(uint32(len(suffixes[i])))
 		n += len(suffixes[i])
 	}
 	return n
@@ -384,7 +385,7 @@ func encodeUnsetSuffixes(dst []byte, suffixes [][]byte) int {
 // encoded.  It may be used to construct a buffer of the appropriate size before
 // encoding.
 func EncodedUnsetValueLen(endKey []byte, suffixes [][]byte) int {
-	n := lenVarint(len(endKey))
+	n := crencoding.UvarintLen32(uint32(len(endKey)))
 	n += len(endKey)
 	n += encodedUnsetSuffixesLen(suffixes)
 	return n
@@ -430,14 +431,4 @@ func IsRangeKey(kind base.InternalKeyKind) bool {
 	default:
 		return false
 	}
-}
-
-func lenVarint(v int) (n int) {
-	x := uint32(v)
-	n++
-	for x >= 0x80 {
-		x >>= 7
-		n++
-	}
-	return n
 }
