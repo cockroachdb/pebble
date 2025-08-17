@@ -138,19 +138,26 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 	}
 }
 
-// TestTableMetadataSize tests the expected size of our TableMetadata struct.
-// This test exists as a callout for whoever changes the TableMetadata struct to
-// be mindful of its size increasing -- as the cost of TableMetadata is
-// proportional to the amount of files that exist.
+// TestTableMetadataSize tests the expected size of our TableMetadata and
+// TableBacking structs.
+//
+// This test exists as a callout for whoever changes these structs to be mindful
+// of their size increasing -- as the cost of these structs is proportional to
+// the amount of files that exist.
 func TestTableMetadataSize(t *testing.T) {
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		t.Skip("Test only supported on amd64 and arm64 architectures")
 	}
-	structSize := unsafe.Sizeof(TableMetadata{})
 
-	const tableMetadataSize = 344
-	if structSize != tableMetadataSize {
+	const tableMetadataSize = 288
+	if structSize := unsafe.Sizeof(TableMetadata{}); structSize != tableMetadataSize {
 		t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
 			structSize, tableMetadataSize)
+	}
+
+	const tableBackingSize = 176
+	if structSize := unsafe.Sizeof(TableBacking{}); structSize != tableBackingSize {
+		t.Errorf("TableBacking struct size (%d bytes) is not expected size (%d bytes)",
+			structSize, tableBackingSize)
 	}
 }

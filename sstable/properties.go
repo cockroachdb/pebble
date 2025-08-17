@@ -116,6 +116,7 @@ type CommonProperties struct {
 	// block is tombstone-dense.
 	NumTombstoneDenseBlocks uint64 `prop:"pebble.num.tombstone-dense-blocks"`
 	// The compression algorithm used to compress blocks.
+	// TODO(radu): move out of CommonProperties.
 	CompressionName string `prop:"rocksdb.compression"`
 }
 

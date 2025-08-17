@@ -298,71 +298,72 @@ func (d *DB) scanReadStateTableStats(
 func (d *DB) loadTableStats(
 	ctx context.Context, v *manifest.Version, level int, meta *manifest.TableMetadata,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
-	var stats manifest.TableStats
 	var compactionHints []deleteCompactionHint
+	var props sstable.CommonProperties
+	var rangeDeletionsBytesEstimate uint64
 
-	err := d.fileCache.withReader(
-		ctx, block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
-			loadedProps, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
-			if err != nil {
+	backingProps, backingPropsOk := meta.TableBacking.Properties()
+
+	// If the stats are already available (always the case other than after
+	// initial startup), and there are no range deletions or range key deletions,
+	// we avoid opening the table.
+	if !backingPropsOk || backingProps.NumRangeDeletions > 0 || backingProps.NumRangeKeyDels > 0 {
+		err := d.fileCache.withReader(
+			ctx, block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
+				if !backingPropsOk {
+					loadedProps, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+					if err != nil {
+						return err
+					}
+					backingProps = meta.TableBacking.PopulateProperties(&loadedProps)
+				}
+				if backingProps.NumRangeDeletions > 0 || backingProps.NumRangeKeyDels > 0 {
+					compactionHints, rangeDeletionsBytesEstimate, err = d.loadTableRangeDelStats(ctx, r, v, level, meta, env)
+					if err != nil {
+						return err
+					}
+				}
 				return err
-			}
-			props := loadedProps.CommonProperties
-			if meta.Virtual {
-				props = loadedProps.GetScaledProperties(meta.TableBacking.Size, meta.Size)
-			}
-			stats.NumEntries = props.NumEntries
-			stats.NumDeletions = props.NumDeletions
-			stats.NumRangeKeySets = props.NumRangeKeySets
-			stats.ValueBlocksSize = props.ValueBlocksSize
-			stats.RawKeySize = props.RawKeySize
-			stats.RawValueSize = props.RawValueSize
-			stats.CompressionType = block.CompressionProfileByName(props.CompressionName)
+			})
+		if err != nil {
+			return manifest.TableStats{}, nil, err
+		}
+	}
+	props = backingProps.CommonProperties
+	if meta.Virtual {
+		props = props.GetScaledProperties(meta.TableBacking.Size, meta.Size)
+	}
 
-			if loadedProps.CompressionStats != "" {
-				var err error
-				stats.CompressionStats, err = block.ParseCompressionStats(loadedProps.CompressionStats)
-				if invariants.Enabled && err != nil {
-					panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", loadedProps.CompressionStats, meta.TableNum, err))
-				}
-				if meta.Virtual {
-					stats.CompressionStats.Scale(meta.Size, meta.TableBacking.Size)
-				}
-			}
+	var stats manifest.TableStats
+	stats.NumEntries = props.NumEntries
+	stats.NumDeletions = props.NumDeletions
+	stats.NumRangeKeySets = props.NumRangeKeySets
+	stats.ValueBlocksSize = props.ValueBlocksSize
+	stats.RangeDeletionsBytesEstimate = rangeDeletionsBytesEstimate
 
-			if props.NumDataBlocks > 0 {
-				stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
-			}
+	if props.NumDataBlocks > 0 {
+		stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
+	}
 
-			if props.NumPointDeletions() > 0 {
-				if err = d.loadTablePointKeyStats(ctx, &props, v, level, meta, &stats); err != nil {
-					return
-				}
-			}
-			if r.Attributes.Intersects(sstable.AttributeRangeDels | sstable.AttributeRangeKeyDels) {
-				compactionHints, err = d.loadTableRangeDelStats(ctx, r, v, level, meta, &stats, env)
-				if err != nil {
-					return
-				}
-			}
-			return
-		})
-	if err != nil {
-		return stats, nil, err
+	if props.NumPointDeletions() > 0 {
+		var err error
+		stats.PointDeletionsBytesEstimate, err = d.loadTablePointKeyStats(ctx, &props, v, level, meta)
+		if err != nil {
+			return stats, nil, err
+		}
 	}
 	return stats, compactionHints, nil
 }
 
 // loadTablePointKeyStats calculates the point key statistics for the given
-// table. The provided manifest.TableStats are updated.
+// table.
 func (d *DB) loadTablePointKeyStats(
 	ctx context.Context,
 	props *sstable.CommonProperties,
 	v *manifest.Version,
 	level int,
 	meta *manifest.TableMetadata,
-	stats *manifest.TableStats,
-) error {
+) (pointDeletionsBytes uint64, _ error) {
 	// TODO(jackson): If the file has a wide keyspace, the average
 	// value size beneath the entire file might not be representative
 	// of the size of the keys beneath the point tombstones.
@@ -371,11 +372,10 @@ func (d *DB) loadTablePointKeyStats(
 	// these narrower ranges to improve the estimate.
 	avgValLogicalSize, compressionRatio, err := d.estimateSizesBeneath(ctx, v, level, meta, props)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	stats.PointDeletionsBytesEstimate =
-		pointDeletionsBytesEstimate(props, avgValLogicalSize, compressionRatio)
-	return nil
+	pointDeletionsBytes = pointDeletionsBytesEstimate(props, avgValLogicalSize, compressionRatio)
+	return pointDeletionsBytes, nil
 }
 
 // loadTableRangeDelStats calculates the range deletion and range key deletion
@@ -386,12 +386,11 @@ func (d *DB) loadTableRangeDelStats(
 	v *manifest.Version,
 	level int,
 	meta *manifest.TableMetadata,
-	stats *manifest.TableStats,
 	env sstable.ReadEnv,
-) ([]deleteCompactionHint, error) {
+) (_ []deleteCompactionHint, rangeDeletionsBytesEstimate uint64, _ error) {
 	iter, err := newCombinedDeletionKeyspanIter(ctx, d.opts.Comparer, r, meta, env)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer iter.Close()
 	var compactionHints []deleteCompactionHint
@@ -450,9 +449,9 @@ func (d *DB) loadTableRangeDelStats(
 		if level == numLevels-1 && meta.SmallestSeqNum < maxRangeDeleteSeqNum {
 			size, err := r.EstimateDiskUsage(start, end, env, meta.IterTransforms())
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
-			stats.RangeDeletionsBytesEstimate += size
+			rangeDeletionsBytesEstimate += size
 
 			// As the file is in the bottommost level, there is no need to collect a
 			// deletion hint.
@@ -465,9 +464,9 @@ func (d *DB) loadTableRangeDelStats(
 		hintType := compactionHintFromKeys(s.Keys)
 		estimate, hintSeqNum, err := d.estimateReclaimedSizeBeneath(ctx, v, level, start, end, hintType)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		stats.RangeDeletionsBytesEstimate += estimate
+		rangeDeletionsBytesEstimate += estimate
 
 		// hintSeqNum is the smallest sequence number contained in any
 		// file overlapping with the hint and in a level below it.
@@ -486,9 +485,9 @@ func (d *DB) loadTableRangeDelStats(
 		})
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return compactionHints, nil
+	return compactionHints, rangeDeletionsBytesEstimate, nil
 }
 
 func (d *DB) estimateSizesBeneath(
@@ -520,31 +519,31 @@ func (d *DB) estimateSizesBeneath(
 	for l := level + 1; l < numLevels; l++ {
 		for tableBeneath := range v.Overlaps(l, meta.UserKeyBounds()).All() {
 			fileSum += tableBeneath.Size + tableBeneath.EstimatedReferenceSize()
-			if stats, ok := tableBeneath.Stats(); ok {
-				entryCount += stats.NumEntries
-				keySum += stats.RawKeySize
-				valSum += stats.RawValueSize
-				continue
-			}
-			// If stats aren't available, we need to read the properties block.
-			err := d.fileCache.withReader(ctx, block.NoReadEnv, tableBeneath, func(v *sstable.Reader, _ sstable.ReadEnv) (err error) {
-				loadedProps, err := v.ReadPropertiesBlock(ctx, nil /* buffer pool */)
-				if err != nil {
-					return err
-				}
-				props := loadedProps.CommonProperties
-				if tableBeneath.Virtual {
-					props = loadedProps.GetScaledProperties(tableBeneath.TableBacking.Size, tableBeneath.Size)
-				}
 
-				entryCount += props.NumEntries
-				keySum += props.RawKeySize
-				valSum += props.RawValueSize
-				return nil
-			})
-			if err != nil {
-				return 0, 0, err
+			backingProps, ok := tableBeneath.TableBacking.Properties()
+			if !ok {
+				// If properties aren't available, we need to read the properties block.
+				err := d.fileCache.withReader(ctx, block.NoReadEnv, tableBeneath, func(v *sstable.Reader, _ sstable.ReadEnv) (err error) {
+					loadedProps, err := v.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+					if err != nil {
+						return err
+					}
+					backingProps = tableBeneath.TableBacking.PopulateProperties(&loadedProps)
+					return nil
+				})
+				if err != nil {
+					return 0, 0, err
+				}
 			}
+			props := backingProps.CommonProperties
+			if tableBeneath.Virtual {
+				props = backingProps.GetScaledProperties(tableBeneath.TableBacking.Size, tableBeneath.Size)
+			}
+
+			entryCount += props.NumEntries
+			keySum += props.RawKeySize
+			valSum += props.RawValueSize
+			continue
 		}
 	}
 	if entryCount == 0 {
@@ -574,7 +573,7 @@ func (d *DB) estimateSizesBeneath(
 		// such overhead is not large.
 		compressionRatio = 1
 	}
-	avgValueLogicalSize = (float64(valSum) / float64(entryCount))
+	avgValueLogicalSize = float64(valSum) / float64(entryCount)
 	return avgValueLogicalSize, compressionRatio, nil
 }
 
@@ -727,7 +726,7 @@ func maybeSetStatsFromProperties(
 	// using our limited knowledge. The table stats collector can populate the
 	// stats and calculate an average of value size of all the tables beneath
 	// the table in the LSM, which will be more accurate.
-	if unsizedDels := (props.NumDeletions - props.NumSizedDeletions); unsizedDels > props.NumEntries/10 {
+	if unsizedDels := invariants.SafeSub(props.NumDeletions, props.NumSizedDeletions); unsizedDels > props.NumEntries/10 {
 		return false
 	}
 
@@ -748,19 +747,6 @@ func maybeSetStatsFromProperties(
 		PointDeletionsBytesEstimate: pointEstimate,
 		RangeDeletionsBytesEstimate: 0,
 		ValueBlocksSize:             props.ValueBlocksSize,
-		RawKeySize:                  props.RawKeySize,
-		RawValueSize:                props.RawValueSize,
-		CompressionType:             block.CompressionProfileByName(props.CompressionName),
-	}
-	if props.CompressionStats != "" {
-		var err error
-		stats.CompressionStats, err = block.ParseCompressionStats(props.CompressionStats)
-		if invariants.Enabled && err != nil {
-			panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", props.CompressionStats, meta.TableNum, err))
-		}
-		if meta.Virtual {
-			stats.CompressionStats.Scale(meta.Size, meta.TableBacking.Size)
-		}
 	}
 	sanityCheckStats(meta, &stats, logger, "stats from properties")
 	meta.PopulateStats(&stats)
@@ -836,7 +822,7 @@ func pointDeletionsBytesEstimate(
 		// earlier as an estimate. There's a complication that
 		// `tombstonesLogicalSize` may include DELSIZED keys we already
 		// accounted for.
-		shadowedLogicalSize += float64(tombstonesLogicalSize) / float64(numPointDels) * float64(numUnsizedDels)
+		shadowedLogicalSize += tombstonesLogicalSize / float64(numPointDels) * float64(numUnsizedDels)
 
 		// Calculate the contribution of the deleted values. The caller has
 		// already computed an average logical size (possibly computed across
@@ -879,7 +865,7 @@ func estimatePhysicalSizes(
 		// such overhead is not large.
 		compressionRatio = 1
 	}
-	avgValLogicalSize = (float64(props.RawValueSize) / float64(props.NumEntries))
+	avgValLogicalSize = float64(props.RawValueSize) / float64(props.NumEntries)
 	return avgValLogicalSize, compressionRatio
 }
 
@@ -1166,12 +1152,17 @@ func (a compressionStatsAggregator) Zero(dst *CompressionMetrics) *CompressionMe
 func (a compressionStatsAggregator) Accumulate(
 	f *manifest.TableMetadata, dst *CompressionMetrics,
 ) (v *CompressionMetrics, cacheOK bool) {
-	stats, statsValid := f.Stats()
+	stats, statsValid := f.TableBacking.Properties()
 	if !statsValid || stats.CompressionStats.IsEmpty() {
 		dst.CompressedBytesWithoutStats += f.Size
 		return dst, statsValid
 	}
-	dst.Add(&stats.CompressionStats)
+	compressionStats := stats.CompressionStats
+	if f.Virtual {
+		// Scale the compression stats for virtual tables.
+		compressionStats = compressionStats.Scale(f.Size, f.TableBacking.Size)
+	}
+	dst.Add(&compressionStats)
 	return dst, true
 }
 

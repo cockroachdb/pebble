@@ -156,20 +156,28 @@ func (c CompressionStats) String() string {
 
 // Scale the stats by (size/backingSize). Used to obtain an approximation of the
 // stats for a virtual table.
-func (c *CompressionStats) Scale(size uint64, backingSize uint64) {
+//
+// TODO(radu): the utility of this is questionable; we should only be reporting
+// the statistics for the backing.
+func (c *CompressionStats) Scale(size uint64, backingSize uint64) CompressionStats {
 	// Make sure the sizes are sane, just in case.
 	size = max(size, 1)
 	backingSize = max(backingSize, size)
+	var out CompressionStats
 
-	c.noCompressionBytes = crmath.ScaleUint64(c.noCompressionBytes, size, backingSize)
-	c.fastest.CompressedBytes = crmath.ScaleUint64(c.fastest.CompressedBytes, size, backingSize)
-	c.fastest.UncompressedBytes = crmath.ScaleUint64(c.fastest.UncompressedBytes, size, backingSize)
+	out.noCompressionBytes = crmath.ScaleUint64(c.noCompressionBytes, size, backingSize)
+	out.fastest.CompressedBytes = crmath.ScaleUint64(c.fastest.CompressedBytes, size, backingSize)
+	out.fastest.UncompressedBytes = crmath.ScaleUint64(c.fastest.UncompressedBytes, size, backingSize)
 
-	for s, cs := range c.others {
-		cs.CompressedBytes = crmath.ScaleUint64(cs.CompressedBytes, size, backingSize)
-		cs.UncompressedBytes = crmath.ScaleUint64(cs.UncompressedBytes, size, backingSize)
-		c.others[s] = cs
+	if len(c.others) > 0 {
+		out.others = make(map[compression.Setting]CompressionStatsForSetting, len(c.others))
+		for s, cs := range c.others {
+			cs.CompressedBytes = crmath.ScaleUint64(cs.CompressedBytes, size, backingSize)
+			cs.UncompressedBytes = crmath.ScaleUint64(cs.UncompressedBytes, size, backingSize)
+			out.others[s] = cs
+		}
 	}
+	return out
 }
 
 // ParseCompressionStats parses the output of CompressionStats.String back into CompressionStats.

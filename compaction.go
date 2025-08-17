@@ -3515,6 +3515,7 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			fileMeta.LargestSeqNumAbsolute = t.WriterMeta.LargestSeqNum
 		}
 		fileMeta.InitPhysicalBacking()
+		fileMeta.TableBacking.PopulateProperties(&t.WriterMeta.Properties)
 
 		// If the file didn't contain any range deletions, we can fill its
 		// table stats now, avoiding unnecessarily loading the table later.
