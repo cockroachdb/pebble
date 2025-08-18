@@ -96,7 +96,6 @@ rocksdb.raw.value.size: 0
 rocksdb.deleted.keys: 9
 rocksdb.num.range-deletions: 9
 rocksdb.num.data.blocks: 0
-rocksdb.compression: Snappy
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
 rocksdb.filter.size: 0
@@ -106,6 +105,7 @@ pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
 pebble.compression_stats: None:107
 obsolete-key: hex:0074
 
@@ -247,7 +247,6 @@ rocksdb.raw.value.size: 3
 rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 3
-rocksdb.compression: Snappy
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 237
 rocksdb.filter.size: 0
@@ -259,6 +258,7 @@ rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 48
+rocksdb.compression: Snappy
 pebble.compression_stats: None:158,Snappy:222/261
 obsolete-key: hex:00
 
@@ -335,7 +335,6 @@ rocksdb.num.range-deletions: 0
 pebble.num.range-key-dels: 0
 pebble.num.range-key-sets: 3
 rocksdb.num.data.blocks: 0
-rocksdb.compression: Snappy
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 0
 rocksdb.filter.size: 0
@@ -348,6 +347,7 @@ pebble.num.range-key-unsets: 0
 rocksdb.property.collectors: [obsolete-key]
 pebble.raw.range-key.key.size: 6
 pebble.raw.range-key.value.size: 9
+rocksdb.compression: Snappy
 pebble.compression_stats: None:112
 obsolete-key: hex:0074
 
