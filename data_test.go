@@ -1248,10 +1248,15 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 				}
 			}
 
+			backingProps, backingPropsValid := f.TableBacking.Properties()
+			if !backingPropsValid {
+				panic("backing properties not valid but table stats are valid")
+			}
+
 			var b bytes.Buffer
 			fmt.Fprintf(&b, "num-entries: %d\n", stats.NumEntries)
 			fmt.Fprintf(&b, "num-deletions: %d\n", stats.NumDeletions)
-			fmt.Fprintf(&b, "num-range-key-sets: %d\n", stats.NumRangeKeySets)
+			fmt.Fprintf(&b, "num-range-key-sets: %d\n", f.ScaleStatistic(backingProps.NumRangeKeySets))
 			fmt.Fprintf(&b, "point-deletions-bytes-estimate: %d\n", stats.PointDeletionsBytesEstimate)
 			fmt.Fprintf(&b, "range-deletions-bytes-estimate: %d\n", stats.RangeDeletionsBytesEstimate)
 
@@ -1264,10 +1269,6 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 				fmt.Fprintf(&b, "tombstone-dense-blocks-ratio: %0.1f\n", stats.TombstoneDenseBlocksRatio)
 			}
 
-			backingProps, backingPropsValid := f.TableBacking.Properties()
-			if !backingPropsValid {
-				panic("backing properties not valid but table stats are valid")
-			}
 			if compressionStats := backingProps.CompressionStats; !compressionStats.IsEmpty() {
 				if f.Virtual {
 					compressionStats = compressionStats.Scale(f.Size, f.TableBacking.Size)

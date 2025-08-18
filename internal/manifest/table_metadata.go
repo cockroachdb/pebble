@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crmath"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -722,6 +723,21 @@ func (m *TableMetadata) boundsMarker() (sentinel uint8, err error) {
 	return
 }
 
+// ScaleStatistic scales the given value by the table-size:backing-size ratio if
+// the table is virtual. Returns the unchanged value when the table is not
+// virtual.
+//
+// The scaling rounds up so any non-zero value stays non-zero.
+func (m *TableMetadata) ScaleStatistic(value uint64) uint64 {
+	if !m.Virtual {
+		return value
+	}
+	// Make sure the sizes are sane, just in case.
+	size := max(m.Size, 1)
+	backingSize := max(m.TableBacking.Size, size)
+	return crmath.ScaleUint64(value, size, backingSize)
+}
+
 // String implements fmt.Stringer, printing the file number and the overall
 // table bounds.
 func (m *TableMetadata) String() string {
@@ -1184,11 +1200,6 @@ type TableStats struct {
 	NumEntries uint64
 	// The number of point and range deletion entries in the table.
 	NumDeletions uint64
-	// NumRangeKeySets is the total number of range key sets in the table.
-	//
-	// NB: If there's a chance that the sstable contains any range key sets,
-	// then NumRangeKeySets must be > 0.
-	NumRangeKeySets uint64
 	// Estimate of the total disk space that may be dropped by this table's
 	// point deletions by compacting them.
 	PointDeletionsBytesEstimate uint64

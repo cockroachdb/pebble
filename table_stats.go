@@ -337,7 +337,6 @@ func (d *DB) loadTableStats(
 	var stats manifest.TableStats
 	stats.NumEntries = props.NumEntries
 	stats.NumDeletions = props.NumDeletions
-	stats.NumRangeKeySets = props.NumRangeKeySets
 	stats.ValueBlocksSize = props.ValueBlocksSize
 	stats.RangeDeletionsBytesEstimate = rangeDeletionsBytesEstimate
 
@@ -743,7 +742,6 @@ func maybeSetStatsFromProperties(
 	stats := manifest.TableStats{
 		NumEntries:                  props.NumEntries,
 		NumDeletions:                props.NumDeletions,
-		NumRangeKeySets:             props.NumRangeKeySets,
 		PointDeletionsBytesEstimate: pointEstimate,
 		RangeDeletionsBytesEstimate: 0,
 		ValueBlocksSize:             props.ValueBlocksSize,
@@ -1077,8 +1075,8 @@ func newCombinedDeletionKeyspanIter(
 // key sets may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
 var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	if stats, ok := f.Stats(); ok {
-		return stats.NumRangeKeySets, true
+	if props, ok := f.TableBacking.Properties(); ok {
+		return f.ScaleStatistic(props.NumRangeKeySets), true
 	}
 	return 0, false
 })
