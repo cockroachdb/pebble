@@ -1218,8 +1218,6 @@ type TableStats struct {
 	// will have a zero estimate, because the file's sequence numbers indicate
 	// that the tombstone cannot drop any data contained within the file itself.
 	RangeDeletionsBytesEstimate uint64
-	// Total size of value blocks and value index block.
-	ValueBlocksSize uint64
 	// TombstoneDenseBlocksRatio is the ratio of data blocks in this table that
 	// fulfills at least one of the following:
 	// 1. The block contains at least options.Experimental.NumDeletionsThreshold
