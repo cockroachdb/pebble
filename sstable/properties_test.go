@@ -54,7 +54,7 @@ func TestPropertiesLoad(t *testing.T) {
 		loadedProps, err := r.ReadPropertiesBlock(context.Background(), nil)
 		require.NoError(t, err)
 
-		loadedProps.Loaded = nil
+		loadedProps.Loaded = 0
 
 		if diff := pretty.Diff(expected, loadedProps); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
@@ -113,7 +113,7 @@ func TestPropertiesSave(t *testing.T) {
 		i, err := rowblk.NewRawIter(bytes.Compare, w.Finish())
 		require.NoError(t, err)
 		require.NoError(t, props.load(i.All()))
-		props.Loaded = nil
+		props.Loaded = 0
 		if diff := pretty.Diff(*e, props); diff != nil {
 			t.Fatalf("%s", strings.Join(diff, "\n"))
 		}
@@ -128,7 +128,7 @@ func TestPropertiesSave(t *testing.T) {
 		if props.IndexPartitions == 0 {
 			props.TopLevelIndexSize = 0
 		}
-		props.Loaded = nil
+		props.Loaded = 0
 		check1(&props)
 	}
 }

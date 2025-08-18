@@ -278,6 +278,6 @@ sstable
  ├── data  offset: 0  length: 8
  ├── index  offset: 13  length: 21
  ├── range-key  offset: 39  length: 79
- ├── properties  offset: 123  length: 393
- ├── meta-index  offset: 521  length: 57
- └── footer  offset: 583  length: 53
+ ├── properties  offset: 123  length: 375
+ ├── meta-index  offset: 503  length: 57
+ └── footer  offset: 565  length: 53

@@ -335,7 +335,7 @@ compression: None:227
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (900B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (661B), in 1.0s (2.0s total), output rate 661B/s
+[JOB 100] compacted(elision-only) L6 [000004] (859B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (661B), in 1.0s (2.0s total), output rate 661B/s
 
 # Close the DB, asserting that the reference counts balance.
 close

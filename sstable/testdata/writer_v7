@@ -321,9 +321,9 @@ layout
 sstable
  ├── index  offset: 0  length: 28
  ├── range-key  offset: 33  length: 84
- ├── properties  offset: 122  length: 495
- ├── meta-index  offset: 622  length: 65
- └── footer  offset: 692  length: 61
+ ├── properties  offset: 122  length: 470
+ ├── meta-index  offset: 597  length: 65
+ └── footer  offset: 667  length: 61
 
 props
 ----
@@ -332,7 +332,6 @@ rocksdb.raw.key.size: 0
 rocksdb.raw.value.size: 0
 rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
-pebble.num.range-key-dels: 0
 pebble.num.range-key-sets: 3
 rocksdb.num.data.blocks: 0
 rocksdb.compression: Snappy
@@ -344,7 +343,6 @@ rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
-pebble.num.range-key-unsets: 0
 rocksdb.property.collectors: [obsolete-key]
 pebble.raw.range-key.key.size: 6
 pebble.raw.range-key.value.size: 9
