@@ -225,9 +225,7 @@ func TestIngestLoadRand(t *testing.T) {
 				count++
 				rawKeySize += uint64(keys[i].Size())
 			}
-			expected[i].TableMetadata.PopulateStats(&manifest.TableStats{
-				NumEntries: count,
-			})
+			expected[i].TableMetadata.PopulateStats(&manifest.TableStats{})
 			require.NoError(t, w.Close())
 
 			meta, err := w.Metadata()

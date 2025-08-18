@@ -335,8 +335,6 @@ func (d *DB) loadTableStats(
 	}
 
 	var stats manifest.TableStats
-	stats.NumEntries = props.NumEntries
-	stats.NumDeletions = props.NumDeletions
 	stats.RangeDeletionsBytesEstimate = rangeDeletionsBytesEstimate
 
 	if props.NumDataBlocks > 0 {
@@ -739,8 +737,6 @@ func maybeSetStatsFromProperties(
 	}
 
 	stats := manifest.TableStats{
-		NumEntries:                  props.NumEntries,
-		NumDeletions:                props.NumDeletions,
 		PointDeletionsBytesEstimate: pointEstimate,
 		RangeDeletionsBytesEstimate: 0,
 	}
@@ -1085,8 +1081,8 @@ var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata
 // asynchronously, so its values are marked as cacheable only if a file's stats
 // have been loaded.
 var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	if stats, ok := f.Stats(); ok {
-		return stats.NumDeletions, true
+	if props, ok := f.TableBacking.Properties(); ok {
+		return f.ScaleStatistic(props.NumDeletions), true
 	}
 	return 0, false
 })
