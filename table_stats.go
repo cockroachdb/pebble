@@ -337,7 +337,6 @@ func (d *DB) loadTableStats(
 	var stats manifest.TableStats
 	stats.NumEntries = props.NumEntries
 	stats.NumDeletions = props.NumDeletions
-	stats.ValueBlocksSize = props.ValueBlocksSize
 	stats.RangeDeletionsBytesEstimate = rangeDeletionsBytesEstimate
 
 	if props.NumDataBlocks > 0 {
@@ -744,7 +743,6 @@ func maybeSetStatsFromProperties(
 		NumDeletions:                props.NumDeletions,
 		PointDeletionsBytesEstimate: pointEstimate,
 		RangeDeletionsBytesEstimate: 0,
-		ValueBlocksSize:             props.ValueBlocksSize,
 	}
 	sanityCheckStats(meta, &stats, logger, "stats from properties")
 	meta.PopulateStats(&stats)
@@ -1098,8 +1096,8 @@ var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) 
 // size may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
 var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	if stats, ok := f.Stats(); ok {
-		return stats.ValueBlocksSize, true
+	if props, ok := f.TableBacking.Properties(); ok {
+		return f.ScaleStatistic(props.ValueBlocksSize), true
 	}
 	return 0, false
 })
