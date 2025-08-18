@@ -149,7 +149,7 @@ func TestTableMetadataSize(t *testing.T) {
 		t.Skip("Test only supported on amd64 and arm64 architectures")
 	}
 
-	const tableMetadataSize = 256
+	const tableMetadataSize = 248
 	if structSize := unsafe.Sizeof(TableMetadata{}); structSize != tableMetadataSize {
 		t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
 			structSize, tableMetadataSize)

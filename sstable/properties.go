@@ -110,10 +110,18 @@ type CommonProperties struct {
 	ValueBlocksSize uint64 `prop:"pebble.value-blocks.size"`
 	// NumDataBlocks is the number of data blocks in this table.
 	NumDataBlocks uint64 `prop:"rocksdb.num.data.blocks"`
-	// NumTombstoneDenseBlocks is the number of data blocks in this table that
-	// are considered tombstone-dense. See the TombstoneDenseBlocksRatio field
-	// in manifest.TableStats for the criteria used to determine if a data
-	// block is tombstone-dense.
+	// NumTombstoneDenseBlocks is the number of data blocks in this table that are
+	// considered tombstone-dense.
+	//
+	// A block is considered tombstone dense if at least one of the following:
+	//  1. The block contains at least options.Experimental.NumDeletionsThreshold
+	//     point tombstones.
+	//  2. The ratio of the uncompressed size of point tombstones to the
+	//     uncompressed size of the block is at least
+	//     options.Experimental.DeletionSizeRatioThreshold.
+	//
+	// This statistic is used to determine eligibility for a tombstone density
+	// compaction.
 	NumTombstoneDenseBlocks uint64 `prop:"pebble.num.tombstone-dense-blocks"`
 }
 
