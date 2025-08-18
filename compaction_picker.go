@@ -1555,10 +1555,13 @@ var elisionOnlyAnnotator = &manifest.Annotator[manifest.TableMetadata]{
 			if f.IsCompacting() {
 				return false, true
 			}
+
+			backingProps, backingPropsValid := f.TableBacking.Properties()
 			stats, statsValid := f.Stats()
-			if !statsValid {
+			if !backingPropsValid || !statsValid {
 				return false, false
 			}
+
 			// Bottommost files are large and not worthwhile to compact just
 			// to remove a few tombstones. Consider a file eligible only if
 			// either its own range deletions delete at least 10% of its data or
@@ -1573,7 +1576,8 @@ var elisionOnlyAnnotator = &manifest.Annotator[manifest.TableMetadata]{
 			// `NumEntries` and `RangeDeletionsBytesEstimate` are both zero) are excluded
 			// from elision-only compactions.
 			// TODO(travers): Consider an alternative heuristic for elision of range-keys.
-			return stats.RangeDeletionsBytesEstimate*10 >= f.Size || stats.NumDeletions*10 > stats.NumEntries, true
+			eligible = stats.RangeDeletionsBytesEstimate*10 >= f.Size || backingProps.NumDeletions*10 > backingProps.NumEntries
+			return eligible, true
 		},
 		Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
 			return f1.LargestSeqNum < f2.LargestSeqNum
