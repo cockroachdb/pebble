@@ -1,12 +1,15 @@
 # Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
 # block and value index block. So size 18 - 13 = 5 size of the value in the
 # value block.
+# N.B. The only key kind eligible for separation is `SET`.
 build table-format=Pebble,v4
 a@2.SET.1:a2
 b@5.SET.7:b5
 b@4.DEL.3:
 b@3.SET.2:bat3
-b@2.SET.1:vbat2
+b@2.SETWITHDEL.1:bat3
+b@1.SET.1:bat1
+b@0.SET.0:vbat0
 ----
 value-blocks: num-values 1, num-blocks: 1, size: 18
 
@@ -16,7 +19,9 @@ a@2#1,SET:in-place a2, same-pre false
 b@5#7,SET:in-place b5, same-pre false
 b@4#3,DEL:
 b@3#2,SET:in-place bat3, same-pre false
-b@2#1,SET:value-handle len 5 block 0 offset 0, att 5, same-pre true
+b@2#1,SETWITHDEL:bat3
+b@1#1,SET:in-place bat1, same-pre false
+b@0#0,SET:value-handle len 5 block 0 offset 0, att 5, same-pre true
 
 scan
 ----
@@ -24,7 +29,9 @@ a@2#1,SET:a2
 b@5#7,SET:b5
 b@4#3,DEL:
 b@3#2,SET:bat3
-b@2#1,SET:vbat2
+b@2#1,SETWITHDEL:bat3
+b@1#1,SET:bat1
+b@0#0,SET:vbat0
 
 scan-cloned-lazy-values
 ----
@@ -32,18 +39,27 @@ scan-cloned-lazy-values
 1(in-place: len 2): b5
 2(in-place: len 0):
 3(in-place: len 4): bat3
-4(lazy: len 5, attr: 5): vbat2
+4(in-place: len 4): bat3
+5(in-place: len 4): bat1
+6(lazy: len 5, attr: 5): vbat0
 
 # Repeat the above test with (Pebble,v5) [columnar blocks].
+# N.B. The key kinds eligible for separation when writing columnar blocks are
+# `SET` and `SETWITHDEL`.
 
+# Since we end up separating the SETWITHDEL key, this means 2 more values are
+# stored (each with a 5 byte value). This increases the size of the value block
+# by 10 bytes, making the total size 28.
 build table-format=Pebble,v5
 a@2.SET.1:a2
 b@5.SET.7:b5
 b@4.DEL.3:
 b@3.SET.2:bat3
-b@2.SET.1:vbat2
+b@2.SETWITHDEL.1:vbat3
+b@1.SET.1:vbat1
+b@0.SET.0:vbat0
 ----
-value-blocks: num-values 1, num-blocks: 1, size: 18
+value-blocks: num-values 3, num-blocks: 1, size: 28
 
 scan
 ----
@@ -51,7 +67,9 @@ a@2#1,SET:a2
 b@5#7,SET:b5
 b@4#3,DEL:
 b@3#2,SET:bat3
-b@2#1,SET:vbat2
+b@2#1,SETWITHDEL:vbat3
+b@1#1,SET:vbat1
+b@0#0,SET:vbat0
 
 scan-cloned-lazy-values
 ----
@@ -59,7 +77,9 @@ scan-cloned-lazy-values
 1(in-place: len 2): b5
 2(in-place: len 0):
 3(in-place: len 4): bat3
-4(lazy: len 5, attr: 5): vbat2
+4(lazy: len 5, attr: 5): vbat3
+5(lazy: len 5, attr: 5): vbat1
+6(lazy: len 5, attr: 5): vbat0
 
 # Same data as previous, with disable-value-blocks set to true
 build disable-value-blocks=true table-format=Pebble,v4
@@ -67,7 +87,9 @@ a@2.SET.1:a2
 b@5.SET.7:b5
 b@4.DEL.3:
 b@3.SET.2:bat3
-b@2.SET.1:vbat2
+b@2.SETWITHDEL.1:vbat3
+b@1.SET.1:vbat1
+b@0.SET.0:vbat0
 ----
 value-blocks: num-values 0, num-blocks: 0, size: 0
 
@@ -77,7 +99,9 @@ a@2#1,SET:in-place a2, same-pre false
 b@5#7,SET:in-place b5, same-pre false
 b@4#3,DEL:
 b@3#2,SET:in-place bat3, same-pre false
-b@2#1,SET:in-place vbat2, same-pre true
+b@2#1,SETWITHDEL:vbat3
+b@1#1,SET:in-place vbat1, same-pre false
+b@0#0,SET:in-place vbat0, same-pre true
 
 scan
 ----
@@ -85,7 +109,9 @@ a@2#1,SET:a2
 b@5#7,SET:b5
 b@4#3,DEL:
 b@3#2,SET:bat3
-b@2#1,SET:vbat2
+b@2#1,SETWITHDEL:vbat3
+b@1#1,SET:vbat1
+b@0#0,SET:vbat0
 
 # Same as above but with (Pebble,v5) [columnar blocks].
 
@@ -94,7 +120,9 @@ a@2.SET.1:a2
 b@5.SET.7:b5
 b@4.DEL.3:
 b@3.SET.2:bat3
-b@2.SET.1:vbat2
+b@2.SETWITHDEL.1:vbat3
+b@1.SET.1:vbat1
+b@0.SET.0:vbat0
 ----
 value-blocks: num-values 0, num-blocks: 0, size: 0
 
@@ -104,7 +132,9 @@ a@2#1,SET:a2
 b@5#7,SET:b5
 b@4#3,DEL:
 b@3#2,SET:bat3
-b@2#1,SET:vbat2
+b@2#1,SETWITHDEL:vbat3
+b@1#1,SET:vbat1
+b@0#0,SET:vbat0
 
 # Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
 # block and value index block. So size 33 - 13 = 20 is the total size of the
