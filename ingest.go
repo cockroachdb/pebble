@@ -312,6 +312,7 @@ func ingestLoad1(
 	meta.Size = max(uint64(readable.Size()), 1)
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
+	meta.TableBacking.PopulateProperties(&props)
 
 	// Avoid loading into the file cache for collecting stats if we
 	// don't need to. If there are no range deletions, we have all the

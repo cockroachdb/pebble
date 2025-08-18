@@ -1264,8 +1264,15 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 				fmt.Fprintf(&b, "tombstone-dense-blocks-ratio: %0.1f\n", stats.TombstoneDenseBlocksRatio)
 			}
 
-			if !stats.CompressionStats.IsEmpty() {
-				fmt.Fprintf(&b, "compression: %s\n", stats.CompressionStats.String())
+			backingProps, backingPropsValid := f.TableBacking.Properties()
+			if !backingPropsValid {
+				panic("backing properties not valid but table stats are valid")
+			}
+			if compressionStats := backingProps.CompressionStats; !compressionStats.IsEmpty() {
+				if f.Virtual {
+					compressionStats = compressionStats.Scale(f.Size, f.TableBacking.Size)
+				}
+				fmt.Fprintf(&b, "compression: %s\n", compressionStats.String())
 			}
 
 			return b.String()

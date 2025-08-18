@@ -350,6 +350,10 @@ type TableBacking struct {
 	// In addition, a reference count is taken for every backing in the latest
 	// version's VirtualBackings (necessary to support Protect/Unprotect).
 	refs atomic.Int32
+
+	propsValid atomic.Bool
+	// stats are populated exactly once.
+	stats TableBackingProperties
 }
 
 // MustHaveRefs asserts that the backing has a positive refcount.
@@ -378,6 +382,42 @@ func (b *TableBacking) Unref() int32 {
 		panic(errors.AssertionFailedf("pebble: invalid TableBacking refcounting: file %s has refcount %d", b.DiskFileNum, v))
 	}
 	return v
+}
+
+// TableBackingProperties are properties of the physical backing; they are
+// directly derived from the sstable.Properties of the physical table.
+type TableBackingProperties struct {
+	sstable.CommonProperties
+	CompressionStats block.CompressionStats
+}
+
+// Properties returns the backing properties if they have been populated, or nil and
+// ok=false if they were not.
+//
+// The caller must not modify the returned stats.
+func (b *TableBacking) Properties() (_ *TableBackingProperties, ok bool) {
+	if !b.propsValid.Load() {
+		return nil, false
+	}
+	return &b.stats, true
+}
+
+// PopulateProperties populates the table stats. Can be called at most once for a
+// TableBacking.
+func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBackingProperties {
+	b.stats.CommonProperties = props.CommonProperties
+	var err error
+	// TODO(radu): store block.CompressionStats directly in props, to avoid having
+	// to parse them back.
+	b.stats.CompressionStats, err = block.ParseCompressionStats(props.CompressionStats)
+	if invariants.Enabled && err != nil {
+		panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", b.stats.CompressionStats, b.DiskFileNum, err))
+	}
+	oldStatsValid := b.propsValid.Swap(true)
+	if invariants.Enabled && oldStatsValid {
+		panic("stats set twice")
+	}
+	return &b.stats
 }
 
 // InitPhysicalBacking allocates and sets the TableBacking which is required by a
@@ -482,7 +522,7 @@ func (m *TableMetadata) IsCompacting() bool {
 }
 
 // Stats returns the table statistics if they have been populated, or nil and
-// ok=false if they are were not.
+// ok=false if they were not.
 //
 // The caller must not modify the returned stats.
 func (m *TableMetadata) Stats() (_ *TableStats, ok bool) {
@@ -1169,12 +1209,6 @@ type TableStats struct {
 	RangeDeletionsBytesEstimate uint64
 	// Total size of value blocks and value index block.
 	ValueBlocksSize uint64
-	// CompressionType is the compression profile used for the table (or nil if
-	// the profile name is not recognized).
-	CompressionType *block.CompressionProfile
-	// CompressionStats contains compression statistics; not available for older
-	// table versions.
-	CompressionStats block.CompressionStats
 	// TombstoneDenseBlocksRatio is the ratio of data blocks in this table that
 	// fulfills at least one of the following:
 	// 1. The block contains at least options.Experimental.NumDeletionsThreshold
@@ -1185,8 +1219,6 @@ type TableStats struct {
 	// This statistic is used to determine eligibility for a tombstone density
 	// compaction.
 	TombstoneDenseBlocksRatio float64
-	RawKeySize                uint64
-	RawValueSize              uint64
 }
 
 // CompactionState is the compaction state of a file.
