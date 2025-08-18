@@ -125,7 +125,6 @@ pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 1
-rocksdb.compression: NoCompression
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 93
 rocksdb.filter.size: 0
@@ -135,6 +134,7 @@ pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
+rocksdb.compression: NoCompression
 pebble.compression_stats: None:139
 obsolete-key: hex:01
 pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
@@ -670,7 +670,6 @@ rocksdb.raw.value.size: 153
 rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 4
-rocksdb.compression: NoCompression
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 582
 rocksdb.filter.size: 0
@@ -680,6 +679,7 @@ pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [pebble.internal.testkeys.suffixes,obsolete-key]
+rocksdb.compression: NoCompression
 pebble.compression_stats: None:672
 obsolete-key: hex:01
 pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01

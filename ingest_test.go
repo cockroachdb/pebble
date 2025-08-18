@@ -237,10 +237,9 @@ func TestIngestLoadRand(t *testing.T) {
 			expected[i].InitPhysicalBacking()
 			expected[i].TableBacking.PopulateProperties(&sstable.Properties{
 				CommonProperties: sstable.CommonProperties{
-					RawKeySize:      rawKeySize,
-					NumEntries:      count,
-					NumDataBlocks:   1,
-					CompressionName: block.SnappyCompression.Name,
+					RawKeySize:    rawKeySize,
+					NumEntries:    count,
+					NumDataBlocks: 1,
 				},
 			})
 		}()
