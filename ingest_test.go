@@ -226,9 +226,7 @@ func TestIngestLoadRand(t *testing.T) {
 				rawKeySize += uint64(keys[i].Size())
 			}
 			expected[i].TableMetadata.PopulateStats(&manifest.TableStats{
-				RawKeySize:      rawKeySize,
-				NumEntries:      count,
-				CompressionType: block.SnappyCompression,
+				NumEntries: count,
 			})
 			require.NoError(t, w.Close())
 
@@ -237,6 +235,14 @@ func TestIngestLoadRand(t *testing.T) {
 
 			expected[i].Size = meta.Size
 			expected[i].InitPhysicalBacking()
+			expected[i].TableBacking.PopulateProperties(&sstable.Properties{
+				CommonProperties: sstable.CommonProperties{
+					RawKeySize:      rawKeySize,
+					NumEntries:      count,
+					NumDataBlocks:   1,
+					CompressionName: block.SnappyCompression.Name,
+				},
+			})
 		}()
 	}
 
@@ -252,8 +258,9 @@ func TestIngestLoadRand(t *testing.T) {
 	// Reset flaky stats.
 	for _, m := range lr.local {
 		m.CreationTime = 0
-		stats, _ := m.Stats()
-		stats.CompressionStats = block.CompressionStats{}
+		if stats, ok := m.TableBacking.Properties(); ok {
+			stats.CompressionStats = block.CompressionStats{}
+		}
 	}
 	t.Log(strings.Join(pretty.Diff(expected, lr.local), "\n"))
 	require.Equal(t, expected, lr.local)
