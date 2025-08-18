@@ -212,7 +212,7 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *manifest.TableMetadata, 
 		// Range key bounds are below the lower iteration bound.
 		return
 	}
-	if stats, ok := file.Stats(); ok && stats.NumRangeKeySets == 0 {
+	if props, ok := file.TableBacking.Properties(); ok && props.NumRangeKeySets == 0 {
 		// We only need to trigger combined iteration if the file contains
 		// RangeKeySets: if there are only Unsets and Dels, the user will observe no
 		// range keys regardless. If this file has table stats available, they'll
