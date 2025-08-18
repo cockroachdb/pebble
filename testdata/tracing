@@ -57,7 +57,7 @@ hello@2
 ----
 reading footer of 61 bytes took 5ms
 reading block kind metadata of 62 bytes took 5ms (<redacted>)
-reading block kind metadata of 398 bytes took 5ms (<redacted>)
+reading block kind metadata of 380 bytes took 5ms (<redacted>)
 reading block kind index of 27 bytes took 5ms + 5ms wait (<redacted>)
 reading block kind data of 35 bytes took 5ms + 5ms wait (<redacted>)
 hello@2:foo1

@@ -346,7 +346,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 600
+range-deletions-bytes-estimate: 582
 
 # Drop a range del and a range key del over the entire keyspace. This table can
 # delete everything underneath it.
@@ -724,17 +724,15 @@ rocksdb:
   rocksdb.merge.operands: 0
   rocksdb.property.collectors: [obsolete-key]
 pebble:
-  pebble.num.range-key-dels: 0
   pebble.num.range-key-sets: 1
   rocksdb.comparator: pebble.internal.testkeys
   rocksdb.merge.operator: pebble.concatenate
-  pebble.num.range-key-unsets: 0
   pebble.raw.range-key.key.size: 9
   pebble.raw.range-key.value.size: 10
 
 metadata-stats file=10
 ----
-size: 650
+size: 632
 
 build ext2
 set z z
@@ -767,7 +765,7 @@ size: 47
 properties file=12
 ----
 rocksdb.num.entries: 1
-rocksdb.raw.key.size: 2
+rocksdb.raw.key.size: 3
 rocksdb.raw.value.size: 1
 pebble.num.range-key-sets: 1
 rocksdb.num.data.blocks: 1
@@ -776,7 +774,7 @@ rocksdb.compression: Snappy
 properties file=13
 ----
 rocksdb.num.entries: 1
-rocksdb.raw.key.size: 2
+rocksdb.raw.key.size: 3
 rocksdb.raw.value.size: 1
 pebble.num.range-key-sets: 1
 rocksdb.num.data.blocks: 1

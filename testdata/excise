@@ -188,7 +188,7 @@ would excise 2 files, use ingest-and-excise to excise.
   del-table:     L6 000004
   add-table:     L0 000009(000005):[b#11,SET-b#11,SET] seqnums:[11-11] points:[b#11,SET-b#11,SET] size:28(596)
   add-table:     L0 000010(000005):[g#11,RANGEDEL-i#inf,RANGEDEL] seqnums:[11-11] points:[g#11,RANGEDEL-i#inf,RANGEDEL] size:1(596)
-  add-table:     L6 000011(000004):[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] size:1(654)
+  add-table:     L6 000011(000004):[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] seqnums:[10-10] ranges:[d#10,RANGEKEYSET-f#inf,RANGEKEYSET] size:1(636)
   add-backing:   000005
   add-backing:   000004
 

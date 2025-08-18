@@ -81,9 +81,9 @@ sstable
  ├── data  offset: 0  length: 38
  ├── index  offset: 43  length: 35
  ├── range-key  offset: 83  length: 29
- ├── properties  offset: 117  length: 467
- ├── meta-index  offset: 589  length: 57
- └── footer  offset: 651  length: 53
+ ├── properties  offset: 117  length: 449
+ ├── meta-index  offset: 571  length: 57
+ └── footer  offset: 633  length: 53
 
 # Inject an error on the first `ReadAt` call on 000004.sst's range key block
 # (which is at offset 83).

@@ -430,7 +430,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (3.5KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (3.4KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # Verify that a delete-only compaction can partially excise a file.
 
@@ -608,7 +608,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (839B) Score=0.00 -> L6 [000007 000008] (186B), in 1.0s (2.0s total), output rate 186B/s
+  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (810B) Score=0.00 -> L6 [000007 000008] (186B), in 1.0s (2.0s total), output rate 186B/s
 
 describe-lsm
 ----
@@ -753,4 +753,4 @@ L0.000006 c-h seqnums(tombstone=11-12, file-smallest=10, type=point-and-range-ke
 close-snapshot
 11
 ----
-[JOB 100] compacted(delete-only) L6 [000004] (908B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000004] (867B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
