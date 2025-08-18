@@ -1196,10 +1196,6 @@ func (t *TableInfo) GetBlobReferenceFiles() []base.BlobFileID {
 // TableStats contains statistics on a table used for compaction heuristics,
 // and export via Metrics.
 type TableStats struct {
-	// The total number of entries in the table.
-	NumEntries uint64
-	// The number of point and range deletion entries in the table.
-	NumDeletions uint64
 	// Estimate of the total disk space that may be dropped by this table's
 	// point deletions by compacting them.
 	PointDeletionsBytesEstimate uint64

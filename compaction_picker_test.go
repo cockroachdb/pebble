@@ -140,6 +140,7 @@ func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetad
 		TableNum: tableNum,
 		Size:     1028,
 	}
+	m.InitPhysicalBacking()
 	m.ExtendPointKeyBounds(
 		opts.Comparer.Compare,
 		base.ParseInternalKey(strings.TrimSpace(parts[0])),
@@ -158,9 +159,13 @@ func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetad
 			if err != nil {
 				return nil, err
 			}
+			m.TableBacking.PopulateProperties(&sstable.Properties{
+				CommonProperties: sstable.CommonProperties{
+					NumDeletions: 1, // At least one range del responsible for the deletion bytes.
+				},
+			})
 			m.PopulateStats(&manifest.TableStats{
 				RangeDeletionsBytesEstimate: uint64(v),
-				NumDeletions:                1, // At least one range del responsible for the deletion bytes.
 			})
 		}
 	}
@@ -170,7 +175,6 @@ func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetad
 		m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
 	}
 	m.LargestSeqNumAbsolute = m.LargestSeqNum
-	m.InitPhysicalBacking()
 	return m, nil
 }
 
