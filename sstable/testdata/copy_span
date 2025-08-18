@@ -282,7 +282,6 @@ rocksdb.raw.value.size: 33
 rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 10
-rocksdb.compression: Snappy
 rocksdb.comparator: pebble.internal.testkeys
 rocksdb.data.size: 852
 rocksdb.filter.policy: rocksdb.BuiltinBloomFilter
@@ -295,6 +294,7 @@ rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 83
+rocksdb.compression: Snappy
 pebble.compression_stats: None:1257,Snappy:73/84
 obsolete-key: hex:00
 

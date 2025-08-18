@@ -32,13 +32,13 @@ func TestPropertiesLoad(t *testing.T) {
 			RawKeySize:        23938,
 			RawValueSize:      1912,
 			NumDataBlocks:     14,
-			CompressionName:   "Snappy",
 		},
 		ComparerName:           "leveldb.BytewiseComparator",
 		DataSize:               13913,
 		IndexSize:              325,
 		MergerName:             "nullptr",
 		PropertyCollectorNames: "[]",
+		CompressionName:        "Snappy",
 	}
 
 	{
@@ -73,7 +73,6 @@ var testProps = Properties{
 		RawValueSize:            26,
 		NumDataBlocks:           14,
 		NumTombstoneDenseBlocks: 2,
-		CompressionName:         "compression name",
 	},
 	ComparerName:           "comparator name",
 	DataSize:               3,
@@ -91,6 +90,7 @@ var testProps = Properties{
 	NumValuesInValueBlocks: 23,
 	PropertyCollectorNames: "prefix collector names",
 	TopLevelIndexSize:      27,
+	CompressionName:        "compression name",
 	CompressionStats:       "Snappy:1024/2048",
 	UserProperties: map[string]string{
 		"user-prop-a": "1",

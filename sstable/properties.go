@@ -67,9 +67,6 @@ type CommonProperties struct {
 	// in manifest.TableStats for the criteria used to determine if a data
 	// block is tombstone-dense.
 	NumTombstoneDenseBlocks uint64 `prop:"pebble.num.tombstone-dense-blocks"`
-	// The compression algorithm used to compress blocks.
-	// TODO(radu): move out of CommonProperties.
-	CompressionName string `prop:"rocksdb.compression" options:"encodeempty"`
 }
 
 // String is only used for testing purposes.
@@ -124,7 +121,6 @@ func (c *CommonProperties) GetScaledProperties(backingSize, size uint64) CommonP
 	scaled.RawPointTombstoneKeySize = scale(c.RawPointTombstoneKeySize)
 	scaled.RawPointTombstoneValueSize = scale(c.RawPointTombstoneValueSize)
 
-	scaled.CompressionName = c.CompressionName
 	return scaled
 }
 
@@ -187,6 +183,8 @@ type Properties struct {
 	SnapshotPinnedValueSize uint64 `prop:"pebble.raw.snapshot-pinned-values.size"`
 	// Size (uncompressed) of the top-level index if kTwoLevelIndexSearch is used.
 	TopLevelIndexSize uint64 `prop:"rocksdb.top-level.index.size"`
+	// The compression algorithm used to compress blocks.
+	CompressionName string `prop:"rocksdb.compression"`
 	// The compression statistics encoded as a string. The format is:
 	// "<setting1>:<compressed1>/<uncompressed1>,<setting2>:<compressed2>/<uncompressed2>,..."
 	CompressionStats string `prop:"pebble.compression_stats"`

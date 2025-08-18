@@ -71,9 +71,6 @@ func (p *Properties) load(i iter.Seq2[[]byte, []byte]) error {
 			p.Loaded |= 1 << _bit_NumTombstoneDenseBlocks
 			n, _ := binary.Uvarint(v)
 			p.NumTombstoneDenseBlocks = n
-		case "rocksdb.compression":
-			p.Loaded |= 1 << _bit_CompressionName
-			p.CompressionName = string(v)
 		case "rocksdb.comparator":
 			p.Loaded |= 1 << _bit_ComparerName
 			p.ComparerName = intern.Bytes(v)
@@ -155,6 +152,9 @@ func (p *Properties) load(i iter.Seq2[[]byte, []byte]) error {
 			p.Loaded |= 1 << _bit_TopLevelIndexSize
 			n, _ := binary.Uvarint(v)
 			p.TopLevelIndexSize = n
+		case "rocksdb.compression":
+			p.Loaded |= 1 << _bit_CompressionName
+			p.CompressionName = string(v)
 		case "pebble.compression_stats":
 			p.Loaded |= 1 << _bit_CompressionStats
 			p.CompressionStats = string(v)
@@ -259,11 +259,6 @@ func (p *Properties) encodeAll() map[string][]byte {
 		n := binary.PutUvarint(val, p.NumTombstoneDenseBlocks)
 		val = val[:n]
 		m["pebble.num.tombstone-dense-blocks"] = val
-	}
-	if true {
-		val := alloc(len(p.CompressionName))
-		copy(val, p.CompressionName)
-		m["rocksdb.compression"] = val
 	}
 	if true {
 		val := alloc(len(p.ComparerName))
@@ -393,6 +388,11 @@ func (p *Properties) encodeAll() map[string][]byte {
 		val = val[:n]
 		m["rocksdb.top-level.index.size"] = val
 	}
+	if p.CompressionName != "" {
+		val := alloc(len(p.CompressionName))
+		copy(val, p.CompressionName)
+		m["rocksdb.compression"] = val
+	}
 	if p.CompressionStats != "" {
 		val := alloc(len(p.CompressionStats))
 		copy(val, p.CompressionStats)
@@ -446,9 +446,6 @@ func (p *Properties) String() string {
 	}
 	if p.NumTombstoneDenseBlocks != 0 || p.isLoaded(_bit_NumTombstoneDenseBlocks) {
 		fmt.Fprintf(&buf, "%s: %v\n", "pebble.num.tombstone-dense-blocks", p.NumTombstoneDenseBlocks)
-	}
-	if p.CompressionName != "" || p.isLoaded(_bit_CompressionName) {
-		fmt.Fprintf(&buf, "%s: %v\n", "rocksdb.compression", p.CompressionName)
 	}
 	if p.ComparerName != "" || p.isLoaded(_bit_ComparerName) {
 		fmt.Fprintf(&buf, "%s: %v\n", "rocksdb.comparator", p.ComparerName)
@@ -516,6 +513,9 @@ func (p *Properties) String() string {
 	if p.TopLevelIndexSize != 0 || p.isLoaded(_bit_TopLevelIndexSize) {
 		fmt.Fprintf(&buf, "%s: %v\n", "rocksdb.top-level.index.size", p.TopLevelIndexSize)
 	}
+	if p.CompressionName != "" || p.isLoaded(_bit_CompressionName) {
+		fmt.Fprintf(&buf, "%s: %v\n", "rocksdb.compression", p.CompressionName)
+	}
 	if p.CompressionStats != "" || p.isLoaded(_bit_CompressionStats) {
 		fmt.Fprintf(&buf, "%s: %v\n", "pebble.compression_stats", p.CompressionStats)
 	}
@@ -548,29 +548,29 @@ const (
 	_bit_ValueBlocksSize            = 10
 	_bit_NumDataBlocks              = 11
 	_bit_NumTombstoneDenseBlocks    = 12
-	_bit_CompressionName            = 13
-	_bit_ComparerName               = 14
-	_bit_DataSize                   = 15
-	_bit_FilterPolicyName           = 16
-	_bit_FilterSize                 = 17
-	_bit_IndexPartitions            = 18
-	_bit_IndexSize                  = 19
-	_bit_IndexType                  = 20
-	_bit_IsStrictObsolete           = 21
-	_bit_KeySchemaName              = 22
-	_bit_MergerName                 = 23
-	_bit_NumMergeOperands           = 24
-	_bit_NumRangeKeyUnsets          = 25
-	_bit_NumValueBlocks             = 26
-	_bit_NumValuesInValueBlocks     = 27
-	_bit_NumValuesInBlobFiles       = 28
-	_bit_PropertyCollectorNames     = 29
-	_bit_RawRangeKeyKeySize         = 30
-	_bit_RawRangeKeyValueSize       = 31
-	_bit_SnapshotPinnedKeys         = 32
-	_bit_SnapshotPinnedKeySize      = 33
-	_bit_SnapshotPinnedValueSize    = 34
-	_bit_TopLevelIndexSize          = 35
+	_bit_ComparerName               = 13
+	_bit_DataSize                   = 14
+	_bit_FilterPolicyName           = 15
+	_bit_FilterSize                 = 16
+	_bit_IndexPartitions            = 17
+	_bit_IndexSize                  = 18
+	_bit_IndexType                  = 19
+	_bit_IsStrictObsolete           = 20
+	_bit_KeySchemaName              = 21
+	_bit_MergerName                 = 22
+	_bit_NumMergeOperands           = 23
+	_bit_NumRangeKeyUnsets          = 24
+	_bit_NumValueBlocks             = 25
+	_bit_NumValuesInValueBlocks     = 26
+	_bit_NumValuesInBlobFiles       = 27
+	_bit_PropertyCollectorNames     = 28
+	_bit_RawRangeKeyKeySize         = 29
+	_bit_RawRangeKeyValueSize       = 30
+	_bit_SnapshotPinnedKeys         = 31
+	_bit_SnapshotPinnedKeySize      = 32
+	_bit_SnapshotPinnedValueSize    = 33
+	_bit_TopLevelIndexSize          = 34
+	_bit_CompressionName            = 35
 	_bit_CompressionStats           = 36
 	_numPropBits                    = 37
 )
