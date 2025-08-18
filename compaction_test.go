@@ -3414,13 +3414,13 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	meta.InitPhysicalBacking()
 	meta.TableBacking.PopulateProperties(&sstable.Properties{
 		CommonProperties: sstable.CommonProperties{
-			NumEntries:   10,
-			NumDeletions: 8,
+			NumEntries:              10,
+			NumDeletions:            8,
+			NumDataBlocks:           100,
+			NumTombstoneDenseBlocks: 90, // Above threshold
 		},
 	})
-	meta.PopulateStats(&manifest.TableStats{
-		TombstoneDenseBlocksRatio: 0.9, // Above threshold
-	})
+	meta.PopulateStats(&manifest.TableStats{})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
@@ -3518,11 +3518,12 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 		CommonProperties: sstable.CommonProperties{
 			NumEntries:   10,
 			NumDeletions: 8,
+
+			NumDataBlocks:           100,
+			NumTombstoneDenseBlocks: 90, // Above threshold
 		},
 	})
-	metaL4.PopulateStats(&manifest.TableStats{
-		TombstoneDenseBlocksRatio: 0.9, // Above threshold
-	})
+	metaL4.PopulateStats(&manifest.TableStats{})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
@@ -3601,11 +3602,12 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 		CommonProperties: sstable.CommonProperties{
 			NumEntries:   10,
 			NumDeletions: 8,
+
+			NumDataBlocks:           100,
+			NumTombstoneDenseBlocks: 90,
 		},
 	})
-	metaL4.PopulateStats(&manifest.TableStats{
-		TombstoneDenseBlocksRatio: 0.9,
-	})
+	metaL4.PopulateStats(&manifest.TableStats{})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
@@ -3667,11 +3669,12 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 		CommonProperties: sstable.CommonProperties{
 			NumEntries:   10,
 			NumDeletions: 5,
+
+			NumDataBlocks:           100,
+			NumTombstoneDenseBlocks: 50, // Below threshold
 		},
 	})
-	meta.PopulateStats(&manifest.TableStats{
-		TombstoneDenseBlocksRatio: 0.5, // Below threshold
-	})
+	meta.PopulateStats(&manifest.TableStats{})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
