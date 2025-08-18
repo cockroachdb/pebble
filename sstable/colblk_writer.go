@@ -1277,8 +1277,8 @@ func (w *RawColumnWriter) copyProperties(props Properties) {
 //
 // We require:
 //
-//	. The previous key to be a SET.
-//	. The current key to be a SET.
+//	. The previous key to be a SET/SETWITHDEL.
+//	. The current key to be a SET/SETWITHDEL.
 //	. The value to be sufficiently large. (Currently we simply require a
 //	  non-zero length, so all non-empty values are eligible for storage
 //	  out-of-band in a value block.)
@@ -1294,8 +1294,11 @@ func IsLikelyMVCCGarbage(
 	prefixEqual func(k []byte) bool,
 ) bool {
 	const tinyValueThreshold = 0
-	return prevKeyKind == InternalKeyKindSet &&
-		keyKind == InternalKeyKindSet &&
+	isSetStarKind := func(k base.InternalKeyKind) bool {
+		return k == InternalKeyKindSet || k == InternalKeyKindSetWithDelete
+	}
+	return isSetStarKind(prevKeyKind) &&
+		isSetStarKind(keyKind) &&
 		valueLen > tinyValueThreshold &&
 		prefixEqual(k)
 }
