@@ -1575,13 +1575,8 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				return nil, err
 			}
 		}
-		opts := &Options{
-			FS:         vfs.NewMem(),
-			DebugCheck: DebugCheckLevels,
-			// Collection of table stats can trigger compactions. As we want full
-			// control over when compactions are run, disable stats by default.
-			DisableTableStats: true,
-			EventListener: &EventListener{
+		el := TeeEventListener(
+			EventListener{
 				CompactionEnd: func(info CompactionInfo) {
 					if compactInfo != nil {
 						return
@@ -1589,6 +1584,23 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					compactInfo = &info
 				},
 			},
+			MakeLoggingEventListener(testutils.Logger{T: t}),
+		)
+		opts := &Options{
+			FS:         vfs.NewMem(),
+			DebugCheck: DebugCheckLevels,
+			// Collection of table stats can trigger compactions. As we want full
+			// control over when compactions are run, disable stats by default.
+			DisableTableStats: true,
+			//EventListener: &EventListener{
+			//	CompactionEnd: func(info CompactionInfo) {
+			//		if compactInfo != nil {
+			//			return
+			//		}
+			//		compactInfo = &info
+			//	},
+			//},
+			EventListener:      &el,
 			FormatMajorVersion: internalFormatNewest,
 			Logger:             testutils.Logger{T: t},
 		}
@@ -3399,16 +3411,20 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 		TableNum: 1,
 		Size:     1024,
 	}
+	meta.InitPhysicalBacking()
+	meta.TableBacking.PopulateProperties(&sstable.Properties{
+		CommonProperties: sstable.CommonProperties{
+			NumEntries:   10,
+			NumDeletions: 8,
+		},
+	})
 	meta.PopulateStats(&manifest.TableStats{
-		NumEntries:                10,
-		NumDeletions:              8,
 		TombstoneDenseBlocksRatio: 0.9, // Above threshold
 	})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
 	)
-	meta.InitPhysicalBacking()
 
 	// Set up the version: L4 has the file, L5 and L6 are empty.
 	var files [numLevels][]*manifest.TableMetadata
@@ -3497,16 +3513,20 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 		TableNum: 1,
 		Size:     1024,
 	}
+	metaL4.InitPhysicalBacking()
+	metaL4.TableBacking.PopulateProperties(&sstable.Properties{
+		CommonProperties: sstable.CommonProperties{
+			NumEntries:   10,
+			NumDeletions: 8,
+		},
+	})
 	metaL4.PopulateStats(&manifest.TableStats{
-		NumEntries:                10,
-		NumDeletions:              8,
 		TombstoneDenseBlocksRatio: 0.9, // Above threshold
 	})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
 	)
-	metaL4.InitPhysicalBacking()
 
 	// Create an overlapping file in L5.
 	metaL5 := &manifest.TableMetadata{
@@ -3576,16 +3596,20 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 		TableNum: 1,
 		Size:     1024,
 	}
+	metaL4.InitPhysicalBacking()
+	metaL4.TableBacking.PopulateProperties(&sstable.Properties{
+		CommonProperties: sstable.CommonProperties{
+			NumEntries:   10,
+			NumDeletions: 8,
+		},
+	})
 	metaL4.PopulateStats(&manifest.TableStats{
-		NumEntries:                10,
-		NumDeletions:              8,
 		TombstoneDenseBlocksRatio: 0.9,
 	})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
 	)
-	metaL4.InitPhysicalBacking()
 
 	// Large overlapping file in L6 (grandparent level).
 	metaL6 := &manifest.TableMetadata{
@@ -3597,6 +3621,7 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 		base.ParseInternalKey("z.SET.3"),
 	)
 	metaL6.InitPhysicalBacking()
+	metaL6.TableBacking.PopulateProperties(&sstable.Properties{})
 	metaL6.PopulateStats(&manifest.TableStats{})
 
 	var files [numLevels][]*manifest.TableMetadata
@@ -3637,16 +3662,20 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 		TableNum: 1,
 		Size:     1024,
 	}
+	meta.InitPhysicalBacking()
+	meta.TableBacking.PopulateProperties(&sstable.Properties{
+		CommonProperties: sstable.CommonProperties{
+			NumEntries:   10,
+			NumDeletions: 5,
+		},
+	})
 	meta.PopulateStats(&manifest.TableStats{
-		NumEntries:                10,
-		NumDeletions:              5,
 		TombstoneDenseBlocksRatio: 0.5, // Below threshold
 	})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
 		base.ParseInternalKey("a.SET.1"),
 		base.ParseInternalKey("z.SET.2"),
 	)
-	meta.InitPhysicalBacking()
 
 	var files [numLevels][]*manifest.TableMetadata
 	files[inputLevel] = []*manifest.TableMetadata{meta}
