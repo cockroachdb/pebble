@@ -1761,17 +1761,21 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 			if f.IsCompacting() || f.Size == 0 {
 				continue
 			}
-			stats, statsValid := f.Stats()
-			if !statsValid || stats.TombstoneDenseBlocksRatio < p.opts.Experimental.TombstoneDenseCompactionThreshold {
+			props, propsValid := f.TableBacking.Properties()
+			if !propsValid {
+				continue
+			}
+			tombstoneDenseBlocksRatio := props.TombstoneDenseBlocksRatio()
+			if tombstoneDenseBlocksRatio < p.opts.Experimental.TombstoneDenseCompactionThreshold {
 				continue
 			}
 			overlaps := p.vers.Overlaps(lastNonEmptyLevel, f.UserKeyBounds())
 			if float64(overlaps.AggregateSizeSum())/float64(f.Size) > maxOverlappingRatio {
 				continue
 			}
-			if candidate == nil || candidateTombstoneDenseBlocksRatio < stats.TombstoneDenseBlocksRatio {
+			if candidate == nil || candidateTombstoneDenseBlocksRatio < tombstoneDenseBlocksRatio {
 				candidate = f
-				candidateTombstoneDenseBlocksRatio = stats.TombstoneDenseBlocksRatio
+				candidateTombstoneDenseBlocksRatio = tombstoneDenseBlocksRatio
 				level = l
 			}
 		}

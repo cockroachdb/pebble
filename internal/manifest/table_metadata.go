@@ -392,6 +392,19 @@ type TableBackingProperties struct {
 	CompressionStats block.CompressionStats
 }
 
+// TombstoneDenseBlocksRatio is the ratio of tombstone-dense blocks in this
+// table. See CommonProperties.NumTombstoneDenseBlocks for more details on
+// tombstone-dense blocks.
+//
+// This statistic is used to determine eligibility for a tombstone density
+// compaction.
+func (p *TableBackingProperties) TombstoneDenseBlocksRatio() float64 {
+	if p.NumDataBlocks == 0 {
+		return 0
+	}
+	return float64(p.NumTombstoneDenseBlocks) / float64(p.NumDataBlocks)
+}
+
 // Properties returns the backing properties if they have been populated, or nil and
 // ok=false if they were not.
 //
@@ -1214,16 +1227,6 @@ type TableStats struct {
 	// will have a zero estimate, because the file's sequence numbers indicate
 	// that the tombstone cannot drop any data contained within the file itself.
 	RangeDeletionsBytesEstimate uint64
-	// TombstoneDenseBlocksRatio is the ratio of data blocks in this table that
-	// fulfills at least one of the following:
-	// 1. The block contains at least options.Experimental.NumDeletionsThreshold
-	//    point tombstones.
-	// 2. The ratio of the uncompressed size of point tombstones to the
-	//    uncompressed size of the block is at least
-	//    options.Experimental.DeletionSizeRatioThreshold.
-	// This statistic is used to determine eligibility for a tombstone density
-	// compaction.
-	TombstoneDenseBlocksRatio float64
 }
 
 // CompactionState is the compaction state of a file.
