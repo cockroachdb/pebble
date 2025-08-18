@@ -337,10 +337,6 @@ func (d *DB) loadTableStats(
 	var stats manifest.TableStats
 	stats.RangeDeletionsBytesEstimate = rangeDeletionsBytesEstimate
 
-	if props.NumDataBlocks > 0 {
-		stats.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
-	}
-
 	if props.NumPointDeletions() > 0 {
 		var err error
 		stats.PointDeletionsBytesEstimate, err = d.loadTablePointKeyStats(ctx, &props, v, level, meta)
