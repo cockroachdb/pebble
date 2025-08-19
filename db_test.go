@@ -1438,7 +1438,11 @@ func TestVirtualSSTables(t *testing.T) {
 	// Get the original properties.
 	tableInfos, err := d.SSTables(WithProperties())
 	require.NoError(t, err)
-	originalProps := tableInfos[0][0].Properties
+	for _, levelTables := range tableInfos {
+		for _, info := range levelTables {
+			require.NotNil(t, info.Properties)
+		}
+	}
 
 	// Excise to create virtual ssts.
 	exciseSpan := KeyRange{
@@ -1450,20 +1454,14 @@ func TestVirtualSSTables(t *testing.T) {
 
 	tableInfos, err = d.SSTables(WithProperties())
 	require.NoError(t, err)
-
-	// Find the virtual sstables and ensure that some of its common properties
-	// have been scaled down correctly.
+	sawVirtual := false
 	for _, levelTables := range tableInfos {
 		for _, info := range levelTables {
-			if info.Virtual {
-				virtualProps := info.Properties
-				require.NotNil(t, virtualProps)
-				require.Less(t, virtualProps.NumEntries, originalProps.NumEntries)
-				require.Less(t, virtualProps.RawKeySize, originalProps.RawKeySize)
-				require.Less(t, virtualProps.RawValueSize, originalProps.RawValueSize)
-			}
+			sawVirtual = sawVirtual || info.Virtual
+			require.NotNil(t, info.Properties)
 		}
 	}
+	require.True(t, sawVirtual)
 }
 
 type testTracer struct {

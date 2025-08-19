@@ -649,21 +649,45 @@ size: 53
 # of this both the files have a point deletion bytes estimate.
 properties file=7
 ----
-rocksdb.num.entries: 1
-rocksdb.raw.key.size: 3
-rocksdb.raw.value.size: 1
+virtual table (estimated size 53 B / backing size 548 B)
+rocksdb.num.entries: 3
+rocksdb.raw.key.size: 27
+rocksdb.raw.value.size: 2
 pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
+rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 1
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 53
+rocksdb.filter.size: 0
+rocksdb.index.size: 27
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+obsolete-key: hex:00
 
 properties file=8
 ----
-rocksdb.num.entries: 1
-rocksdb.raw.key.size: 3
-rocksdb.raw.value.size: 1
+virtual table (estimated size 53 B / backing size 548 B)
+rocksdb.num.entries: 3
+rocksdb.raw.key.size: 27
+rocksdb.raw.value.size: 2
 pebble.raw.point-tombstone.key.size: 1
 rocksdb.deleted.keys: 1
+rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 1
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 53
+rocksdb.filter.size: 0
+rocksdb.index.size: 27
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+obsolete-key: hex:00
 
 wait-pending-table-stats
 000007
@@ -762,19 +786,49 @@ size: 47
 # range key sets shows up for both files. This is expected.
 properties file=12
 ----
-rocksdb.num.entries: 1
-rocksdb.raw.key.size: 3
-rocksdb.raw.value.size: 1
+virtual table (estimated size 47 B / backing size 632 B)
+rocksdb.num.entries: 3
+rocksdb.raw.key.size: 27
+rocksdb.raw.value.size: 3
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
 pebble.num.range-key-sets: 1
 rocksdb.num.data.blocks: 1
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 47
+rocksdb.filter.size: 0
+rocksdb.index.size: 27
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+pebble.raw.range-key.key.size: 9
+pebble.raw.range-key.value.size: 10
+rocksdb.compression: Snappy
+obsolete-key: hex:00
 
 properties file=13
 ----
-rocksdb.num.entries: 1
-rocksdb.raw.key.size: 3
-rocksdb.raw.value.size: 1
+virtual table (estimated size 47 B / backing size 632 B)
+rocksdb.num.entries: 3
+rocksdb.raw.key.size: 27
+rocksdb.raw.value.size: 3
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
 pebble.num.range-key-sets: 1
 rocksdb.num.data.blocks: 1
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 47
+rocksdb.filter.size: 0
+rocksdb.index.size: 27
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+pebble.raw.range-key.key.size: 9
+pebble.raw.range-key.value.size: 10
+rocksdb.compression: Snappy
+obsolete-key: hex:00
 
 wait-pending-table-stats
 000012
@@ -868,21 +922,43 @@ L6:
 
 properties file=20
 ----
+virtual table (estimated size 1 B / backing size 525 B)
 rocksdb.num.entries: 1
-rocksdb.raw.key.size: 1
+rocksdb.raw.key.size: 9
 rocksdb.raw.value.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.range-deletions: 1
 rocksdb.num.data.blocks: 1
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 13
+rocksdb.filter.size: 0
+rocksdb.index.size: 29
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+obsolete-key: hex:0074
 
 properties file=21
 ----
+virtual table (estimated size 1 B / backing size 525 B)
 rocksdb.num.entries: 1
-rocksdb.raw.key.size: 1
+rocksdb.raw.key.size: 9
 rocksdb.raw.value.size: 1
 rocksdb.deleted.keys: 1
 rocksdb.num.range-deletions: 1
 rocksdb.num.data.blocks: 1
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 13
+rocksdb.filter.size: 0
+rocksdb.index.size: 29
+rocksdb.block.based.table.index.type: 0
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+obsolete-key: hex:0074
 
 wait-pending-table-stats
 000020

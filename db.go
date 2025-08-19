@@ -2278,6 +2278,9 @@ type SSTableInfo struct {
 	// BackingSSTNum is the disk file number associated with the backing sstable.
 	// If Virtual is false, BackingSSTNum == PhysicalTableDiskFileNum(TableNum).
 	BackingSSTNum base.DiskFileNum
+	// BackingSize is the size of the backing sstable. This is the same with
+	// TableInfo.Size when the table is not virtual.
+	BackingSize uint64
 	// BackingType is the type of storage backing this sstable.
 	BackingType BackingType
 	// Locator is the remote.Locator backing this sstable, if the backing type is
@@ -2345,14 +2348,11 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 				if err != nil {
 					return nil, err
 				}
-				if m.Virtual {
-					commonProps := p.GetScaledProperties(m.TableBacking.Size, m.Size)
-					p = &sstable.Properties{CommonProperties: commonProps}
-				}
 				destTables[j].Properties = p
 			}
 			destTables[j].Virtual = m.Virtual
 			destTables[j].BackingSSTNum = m.TableBacking.DiskFileNum
+			destTables[j].BackingSize = m.TableBacking.Size
 			objMeta, err := d.objProvider.Lookup(base.FileTypeTable, m.TableBacking.DiskFileNum)
 			if err != nil {
 				return nil, err

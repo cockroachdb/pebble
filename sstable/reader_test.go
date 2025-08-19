@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -138,18 +139,11 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 		}
 	}()
 
-	formatVirtualReader := func(r *Reader, showProps bool, env ReadEnv, backingSize, tableSize uint64) string {
+	formatVirtualReader := func(r *Reader, showSize bool, env ReadEnv, backingSize, tableSize uint64) string {
 		var b bytes.Buffer
 		fmt.Fprintf(&b, "bounds:  [%s-%s]\n", env.Virtual.Lower, env.Virtual.Upper)
-		if showProps {
-			fmt.Fprintf(&b, "filenum: %s\n", env.Virtual.FileNum.String())
-			fmt.Fprintf(&b, "props:\n")
-			props, err := r.ReadPropertiesBlock(context.Background(), nil)
-			require.NoError(t, err)
-			p := props.GetScaledProperties(backingSize, tableSize)
-			for _, line := range strings.Split(strings.TrimSpace(p.String()), "\n") {
-				fmt.Fprintf(&b, "  %s\n", line)
-			}
+		if showSize {
+			fmt.Fprintf(&b, "size: %s / backing size: %s\n", crhumanize.Bytes(tableSize), crhumanize.Bytes(backingSize))
 		}
 		return b.String()
 	}
@@ -198,7 +192,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			params.Lower = base.ParseInternalKey(lowerStr)
 			params.Upper = base.ParseInternalKey(upperStr)
 
-			showProps := td.HasArg("show-props")
+			showSize := td.HasArg("show-size")
 
 			var syntheticPrefix []byte
 			if td.HasArg("prefix") {
@@ -225,7 +219,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if err != nil {
 				return err.Error()
 			}
-			return formatVirtualReader(r, showProps, env, wMeta.Size, tableSize)
+			return formatVirtualReader(r, showSize, env, wMeta.Size, tableSize)
 
 		case "compaction-iter":
 			// Creates a compaction iterator from the virtual reader, and then
