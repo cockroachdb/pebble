@@ -11,7 +11,6 @@ import (
 	"slices"
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 )
@@ -20,14 +19,10 @@ import (
 
 const propertiesBlockRestartInterval = math.MaxInt32
 
-// CommonProperties holds properties for either a virtual or a physical sstable. This
-// can be used by code which doesn't care to make the distinction between physical
-// and virtual sstables properties.
-//
-// NB: The values of these properties can affect correctness. For example,
-// if NumRangeKeySets == 0, but the sstable actually contains range keys, then
-// the iterators will behave incorrectly.
-type CommonProperties struct {
+// Properties holds the sstable property values. The properties are
+// automatically populated during sstable creation and load from the properties
+// meta block when an sstable is opened.
+type Properties struct {
 	// The number of entries in this table.
 	NumEntries uint64 `prop:"rocksdb.num.entries" options:"encodeempty"`
 	// Total raw key size.
@@ -71,30 +66,6 @@ type CommonProperties struct {
 	// This statistic is used to determine eligibility for a tombstone density
 	// compaction.
 	NumTombstoneDenseBlocks uint64 `prop:"pebble.num.tombstone-dense-blocks"`
-}
-
-// String is only used for testing purposes.
-func (c *CommonProperties) String() string {
-	p := Properties{
-		CommonProperties: *c,
-	}
-	return p.String()
-}
-
-// NumPointDeletions is the number of point deletions in the sstable. For virtual
-// sstables, this is an estimate.
-func (c *CommonProperties) NumPointDeletions() uint64 {
-	return invariants.SafeSub(c.NumDeletions, c.NumRangeDeletions)
-}
-
-// Properties holds the sstable property values. The properties are
-// automatically populated during sstable creation and load from the properties
-// meta block when an sstable is opened.
-type Properties struct {
-	// CommonProperties needs to be at the top of the Properties struct so that the
-	// offsets of the fields in CommonProperties match the offsets of the embedded
-	// fields of CommonProperties in Properties.
-	CommonProperties `prop:"pebble.embbeded_common_properties"`
 
 	// The name of the comparer used in this table.
 	ComparerName string `prop:"rocksdb.comparator" options:"encodeempty,intern"`

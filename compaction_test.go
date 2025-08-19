@@ -3413,12 +3413,10 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	}
 	meta.InitPhysicalBacking()
 	meta.TableBacking.PopulateProperties(&sstable.Properties{
-		CommonProperties: sstable.CommonProperties{
-			NumEntries:              10,
-			NumDeletions:            8,
-			NumDataBlocks:           100,
-			NumTombstoneDenseBlocks: 90, // Above threshold
-		},
+		NumEntries:              10,
+		NumDeletions:            8,
+		NumDataBlocks:           100,
+		NumTombstoneDenseBlocks: 90, // Above threshold
 	})
 	meta.PopulateStats(&manifest.TableStats{})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
@@ -3515,13 +3513,11 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	}
 	metaL4.InitPhysicalBacking()
 	metaL4.TableBacking.PopulateProperties(&sstable.Properties{
-		CommonProperties: sstable.CommonProperties{
-			NumEntries:   10,
-			NumDeletions: 8,
+		NumEntries:   10,
+		NumDeletions: 8,
 
-			NumDataBlocks:           100,
-			NumTombstoneDenseBlocks: 90, // Above threshold
-		},
+		NumDataBlocks:           100,
+		NumTombstoneDenseBlocks: 90, // Above threshold
 	})
 	metaL4.PopulateStats(&manifest.TableStats{})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
@@ -3599,13 +3595,11 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	}
 	metaL4.InitPhysicalBacking()
 	metaL4.TableBacking.PopulateProperties(&sstable.Properties{
-		CommonProperties: sstable.CommonProperties{
-			NumEntries:   10,
-			NumDeletions: 8,
+		NumEntries:   10,
+		NumDeletions: 8,
 
-			NumDataBlocks:           100,
-			NumTombstoneDenseBlocks: 90,
-		},
+		NumDataBlocks:           100,
+		NumTombstoneDenseBlocks: 90,
 	})
 	metaL4.PopulateStats(&manifest.TableStats{})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
@@ -3666,13 +3660,11 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	}
 	meta.InitPhysicalBacking()
 	meta.TableBacking.PopulateProperties(&sstable.Properties{
-		CommonProperties: sstable.CommonProperties{
-			NumEntries:   10,
-			NumDeletions: 5,
+		NumEntries:   10,
+		NumDeletions: 5,
 
-			NumDataBlocks:           100,
-			NumTombstoneDenseBlocks: 50, // Below threshold
-		},
+		NumDataBlocks:           100,
+		NumTombstoneDenseBlocks: 50, // Below threshold
 	})
 	meta.PopulateStats(&manifest.TableStats{})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
