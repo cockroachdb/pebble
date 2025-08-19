@@ -138,6 +138,49 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTableMetadata_ScaleStatistic(t *testing.T) {
+	var meta TableMetadata
+	meta.TableBacking = &TableBacking{}
+	meta.Virtual = true
+
+	meta.Size = 50
+	meta.TableBacking.Size = 100
+	require.Equal(t, uint64(0), meta.ScaleStatistic(0))
+	require.Equal(t, uint64(1), meta.ScaleStatistic(1))
+	require.Equal(t, uint64(1), meta.ScaleStatistic(2))
+	require.Equal(t, uint64(2), meta.ScaleStatistic(3))
+	require.Equal(t, uint64(50_000), meta.ScaleStatistic(100_000))
+
+	t.Run("invalid sizes", func(t *testing.T) {
+		meta.Size = 0
+		meta.TableBacking.Size = 100
+		require.Equal(t, uint64(0), meta.ScaleStatistic(0))
+		require.Equal(t, uint64(1), meta.ScaleStatistic(1))
+		require.Equal(t, uint64(1), meta.ScaleStatistic(10))
+
+		meta.Size = 1000
+		meta.TableBacking.Size = 1000
+		require.Equal(t, uint64(0), meta.ScaleStatistic(0))
+		require.Equal(t, uint64(1), meta.ScaleStatistic(1))
+		require.Equal(t, uint64(10), meta.ScaleStatistic(10))
+	})
+
+	t.Run("overflow", func(t *testing.T) {
+		meta.Size = 1 << 60
+		meta.TableBacking.Size = 1 << 60
+		require.Equal(t, uint64(0), meta.ScaleStatistic(0))
+		require.Equal(t, uint64(1), meta.ScaleStatistic(1))
+		require.Equal(t, uint64(12345), meta.ScaleStatistic(12345))
+		require.Equal(t, uint64(1<<40), meta.ScaleStatistic(1<<40))
+		require.Equal(t, uint64(1<<50), meta.ScaleStatistic(1<<50))
+
+		meta.Size = 1 << 40
+		meta.TableBacking.Size = 1 << 50
+		require.Equal(t, uint64(1<<30), meta.ScaleStatistic(1<<40))
+		require.Equal(t, uint64(1<<40), meta.ScaleStatistic(1<<50))
+	})
+}
+
 // TestTableMetadataSize tests the expected size of our TableMetadata and
 // TableBacking structs.
 //

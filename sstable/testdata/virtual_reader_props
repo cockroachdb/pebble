@@ -8,20 +8,10 @@ d.SET.1:d
 point:    [a#1,SET-d#1,SET]
 seqnums:  [1-1]
 
-# Note that the raw key/value sizes aren't accurate here because we use
-# Reader.EstimateDiskUsage with virtual sstables bounds to determine virtual
-# sstable size which is then used to extrapolate virtual sstable properties, and
-# for tiny sstables, virtual sstable sizes aren't accurate. In this testcase,
-# the virtual sstable size is 50, whereas the backing sstable size is 850.
-virtualize lower=b.SET.1 upper=c.SET.1 show-props
+virtualize lower=b.SET.1 upper=c.SET.1 show-size
 ----
 bounds:  [b#1,SET-c#1,SET]
-filenum: 000001
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 4
-  rocksdb.raw.value.size: 1
-  rocksdb.num.data.blocks: 1
+size: 50 B / backing size: 595 B
 
 # Repeat the above with (Pebble,v5).
 
@@ -34,19 +24,10 @@ d.SET.1:d
 point:    [a#1,SET-d#1,SET]
 seqnums:  [1-1]
 
-# Note that the raw key/value sizes aren't accurate here because we use
-# Reader.EstimateDiskUsage with virtual sstables bounds to determine virtual
-# sstable size which is then used to extrapolate virtual sstable properties, and
-# for tiny sstables, virtual sstable sizes aren't accurate.
-virtualize lower=b.SET.1 upper=c.SET.1 show-props
+virtualize lower=b.SET.1 upper=c.SET.1 show-size
 ----
 bounds:  [b#1,SET-c#1,SET]
-filenum: 000002
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 5
-  rocksdb.raw.value.size: 1
-  rocksdb.num.data.blocks: 1
+size: 87 B / backing size: 755 B
 
 
 # Test 2: Similar to test 1 but force two level iterators.
@@ -59,15 +40,10 @@ d.SET.1:d
 point:    [a#1,SET-d#1,SET]
 seqnums:  [1-1]
 
-virtualize lower=b.SET.1 upper=c.SET.1 show-props
+virtualize lower=b.SET.1 upper=c.SET.1 show-size
 ----
 bounds:  [b#1,SET-c#1,SET]
-filenum: 000003
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 3
-  rocksdb.raw.value.size: 1
-  rocksdb.num.data.blocks: 1
+size: 54 B / backing size: 878 B
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -133,15 +109,10 @@ d.SET.1:d
 point:    [a#1,SET-d#1,SET]
 seqnums:  [1-1]
 
-virtualize lower=b.SET.1 upper=c.SET.1 show-props
+virtualize lower=b.SET.1 upper=c.SET.1 show-size
 ----
 bounds:  [b#1,SET-c#1,SET]
-filenum: 000004
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 5
-  rocksdb.raw.value.size: 1
-  rocksdb.num.data.blocks: 1
+size: 158 B / backing size: 1.2 KiB
 
 # Test the constrain bounds function. It performs some subtle shrinking and
 # expanding of bounds. The current virtual sstable bounds are [b,c].
@@ -212,18 +183,10 @@ seqnums:  [1-12]
 
 # Note that we shouldn't have range del spans which cross virtual sstable
 # boundaries; num.range-key-sets must be >= 1.
-virtualize lower=a.SET.1 upper=f.SET.1 show-props
+virtualize lower=a.SET.1 upper=f.SET.1 show-size
 ----
 bounds:  [a#1,SET-f#1,SET]
-filenum: 000005
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 4
-  rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 1
-  rocksdb.num.range-deletions: 1
-  pebble.num.range-key-sets: 1
-  rocksdb.num.data.blocks: 1
+size: 81 B / backing size: 1 KiB
 
 # Repeat the above with (Pebble,v5).
 
@@ -243,18 +206,10 @@ seqnums:  [1-12]
 
 # Note that we shouldn't have range del spans which cross virtual sstable
 # boundaries; num.range-key-sets must be >= 1.
-virtualize lower=a.SET.1 upper=f.SET.1 show-props
+virtualize lower=a.SET.1 upper=f.SET.1 show-size
 ----
 bounds:  [a#1,SET-f#1,SET]
-filenum: 000006
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 6
-  rocksdb.raw.value.size: 1
-  rocksdb.deleted.keys: 1
-  rocksdb.num.range-deletions: 1
-  pebble.num.range-key-sets: 1
-  rocksdb.num.data.blocks: 1
+size: 241 B / backing size: 1.4 KiB
 
 build table-format=Pebble,v4
 a.SET.1:a
@@ -269,15 +224,10 @@ h.SET.9:h
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize lower=dd.SET.5 upper=ddd.SET.6 show-props
+virtualize lower=dd.SET.5 upper=ddd.SET.6 show-size
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
-filenum: 000007
-props:
-  rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 12
-  rocksdb.raw.value.size: 2
-  rocksdb.num.data.blocks: 1
+size: 97 B / backing size: 643 B
 
 # Repeat the above with (Pebble,v5).
 
@@ -294,15 +244,10 @@ h.SET.9:h
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize lower=dd.SET.5 upper=ddd.SET.6 show-props
+virtualize lower=dd.SET.5 upper=ddd.SET.6 show-size
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
-filenum: 000008
-props:
-  rocksdb.num.entries: 2
-  rocksdb.raw.key.size: 11
-  rocksdb.raw.value.size: 2
-  rocksdb.num.data.blocks: 1
+size: 107 B / backing size: 776 B
 
 build
 a.DEL.1:
@@ -315,18 +260,10 @@ seqnums:  [1-1]
 
 # Verify that we get 3 deletions instead of 1 (because it has to be the sum of
 # its components).
-virtualize lower=a.DEL.1 upper=a0.SET.1 show-props
+virtualize lower=a.DEL.1 upper=a0.SET.1 show-size
 ----
 bounds:  [a#1,DEL-a0#1,SET]
-filenum: 000009
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 3
-  pebble.raw.point-tombstone.key.size: 1
-  pebble.num.deletions.sized: 1
-  rocksdb.deleted.keys: 3
-  rocksdb.num.range-deletions: 1
-  rocksdb.num.data.blocks: 1
+size: 89 B / backing size: 840 B
 
 # Test virtual sstable with a synthetic prefix.
 build
@@ -338,12 +275,7 @@ d.SET.1:d
 point:    [a#1,SET-d#1,SET]
 seqnums:  [1-1]
 
-virtualize lower=poi-b.SET.1 upper=poi-c.SET.1 prefix=poi- show-props
+virtualize lower=poi-b.SET.1 upper=poi-c.SET.1 prefix=poi- show-size
 ----
 bounds:  [poi-b#1,SET-poi-c#1,SET]
-filenum: 000010
-props:
-  rocksdb.num.entries: 1
-  rocksdb.raw.key.size: 5
-  rocksdb.raw.value.size: 1
-  rocksdb.num.data.blocks: 1
+size: 87 B / backing size: 719 B

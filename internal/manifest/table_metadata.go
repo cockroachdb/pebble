@@ -1239,7 +1239,9 @@ func (ikr *InternalKeyBounds) SetLargest(ik InternalKey) {
 type TableInfo struct {
 	// FileNum is the internal DB identifier for the table.
 	FileNum base.FileNum
-	// Size is the size of the file in bytes.
+	// Size is the size of the table in bytes. If the table is physical, this is
+	// the same with the backing size. If the table is virtual, this is an
+	// estimation of how much date the virtual table references.
 	Size uint64
 	// Smallest is the smallest internal key in the table.
 	Smallest InternalKey
