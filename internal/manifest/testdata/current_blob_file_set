@@ -1,7 +1,7 @@
 init
 ----
 CurrentBlobFileSet:
-Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
+Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, BackingValueSize: 0, Count: 0}
 Counts:{FullyReferenced: 0, Eligible: 0, TooRecent: 0}
 
 # A version edit that does not contain blob files leaves the set unchanged.
@@ -14,7 +14,7 @@ modified version edit:
   add-table:     L3 000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET]
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
+Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, BackingValueSize: 0, Count: 0}
 Counts:{FullyReferenced: 0, Eligible: 0, TooRecent: 0}
 
 # A version edit that adds a new blob file records the new file and reference.
@@ -29,7 +29,7 @@ modified version edit:
   add-blob-file: B000012 physical:{000012 size:[20535 (20KB)] vals:[25935 (25KB)]}
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, Count: 1}
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, BackingValueSize: 25935, Count: 1}
 Counts:{FullyReferenced: 1, Eligible: 0, TooRecent: 0}
 
 # A version edit that moves a referencing table from one level to another should
@@ -45,7 +45,7 @@ modified version edit:
   add-table:     L4 000013:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000012: 25935); depth:1]
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, Count: 1}
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, BackingValueSize: 25935, Count: 1}
 Counts:{FullyReferenced: 1, Eligible: 0, TooRecent: 0}
 
 # A version edit that moves references from deleted tables to created tables
@@ -63,7 +63,7 @@ modified version edit:
   add-table:     L5 000015:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] blobrefs:[(B000012: 15935); depth:2]
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15945, Count: 2}
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15945, BackingValueSize: 15945, Count: 2}
 Counts:{FullyReferenced: 0, Eligible: 1, TooRecent: 0}
 NextRewrite: B000012 physical:{000012 size:[20535 (20KB)] vals:[25935 (25KB)]} (61.5% live, created at 0)
 
@@ -77,7 +77,7 @@ modified version edit:
   del-table:     L5 000014
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15935, Count: 1}
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15935, BackingValueSize: 15935, Count: 1}
 Counts:{FullyReferenced: 0, Eligible: 1, TooRecent: 0}
 NextRewrite: B000012 physical:{000012 size:[20535 (20KB)] vals:[25935 (25KB)]} (61.4% live, created at 0)
 
@@ -93,7 +93,7 @@ modified version edit:
   del-blob-file: B000012 000012
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
+Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, BackingValueSize: 0, Count: 0}
 Counts:{FullyReferenced: 0, Eligible: 0, TooRecent: 0}
 
 applyAndUpdateVersionEdit
@@ -106,7 +106,7 @@ modified version edit:
   add-blob-file: B000017 physical:{000017 size:[20535 (20KB)] vals:[25935 (25KB)]}
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, Count: 1}
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, BackingValueSize: 25935, Count: 1}
 Counts:{FullyReferenced: 1, Eligible: 0, TooRecent: 0}
 
 applyAndUpdateVersionEdit
@@ -119,7 +119,7 @@ modified version edit:
   add-table:     L4 000018:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000017: 15935); depth:1]
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15935, Count: 1}
+Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15935, BackingValueSize: 15935, Count: 1}
 Counts:{FullyReferenced: 0, Eligible: 1, TooRecent: 0}
 NextRewrite: B000017 physical:{000017 size:[20535 (20KB)] vals:[25935 (25KB)]} (61.4% live, created at 0)
 
@@ -139,7 +139,7 @@ modified version edit:
   del-blob-file: B000017 000017
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 10535, ValueSize: 15935}, References:{ValueSize: 15935, Count: 1}
+Files:{Count: 1, Size: 10535, ValueSize: 15935}, References:{ValueSize: 15935, BackingValueSize: 15935, Count: 1}
 Counts:{FullyReferenced: 1, Eligible: 0, TooRecent: 0}
 
 # Initialize a blob file set with a minimum rewrite age of 5 seconds.
@@ -147,7 +147,7 @@ Counts:{FullyReferenced: 1, Eligible: 0, TooRecent: 0}
 init rw-minimum-age=5s
 ----
 CurrentBlobFileSet:
-Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, Count: 0}
+Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, BackingValueSize: 0, Count: 0}
 Counts:{FullyReferenced: 0, Eligible: 0, TooRecent: 0}
 
 applyAndUpdateVersionEdit
@@ -160,7 +160,7 @@ modified version edit:
   add-blob-file: B000002 physical:{000002 size:[1000 (1000B)] vals:[2000 (2.0KB)]}
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 1000, Count: 1}
+Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 1000, BackingValueSize: 1000, Count: 1}
 Counts:{FullyReferenced: 1, Eligible: 0, TooRecent: 0}
 
 # Rewrite the referencing sstable to reduce the blob file's referenced value
@@ -176,7 +176,7 @@ modified version edit:
   add-table:     L6 000004:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000002: 500); depth:1]
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, Count: 1}
+Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, BackingValueSize: 500, Count: 1}
 Counts:{FullyReferenced: 0, Eligible: 0, TooRecent: 1}
 NextEligible: B000002 physical:{000002 size:[1000 (1000B)] vals:[2000 (2.0KB)]} (25.0% live, created at 1)
 
@@ -190,7 +190,7 @@ modified version edit:
   add-table:     L6 000005:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET]
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, Count: 1}
+Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, BackingValueSize: 500, Count: 1}
 Counts:{FullyReferenced: 0, Eligible: 0, TooRecent: 1}
 NextEligible: B000002 physical:{000002 size:[1000 (1000B)] vals:[2000 (2.0KB)]} (25.0% live, created at 1)
 
@@ -202,7 +202,7 @@ modified version edit:
   add-table:     L0 000006:[a#2,SET-b#3,SET] seqnums:[0-0] points:[a#2,SET-b#3,SET]
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, Count: 1}
+Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, BackingValueSize: 500, Count: 1}
 Counts:{FullyReferenced: 0, Eligible: 0, TooRecent: 1}
 NextEligible: B000002 physical:{000002 size:[1000 (1000B)] vals:[2000 (2.0KB)]} (25.0% live, created at 1)
 
@@ -217,6 +217,6 @@ modified version edit:
   add-table:     L6 000007:[x#9,SET-y#10,SET] seqnums:[0-0] points:[x#9,SET-y#10,SET]
 current blob file set:
 CurrentBlobFileSet:
-Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, Count: 1}
+Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, BackingValueSize: 500, Count: 1}
 Counts:{FullyReferenced: 0, Eligible: 1, TooRecent: 0}
 NextRewrite: B000002 physical:{000002 size:[1000 (1000B)] vals:[2000 (2.0KB)]} (25.0% live, created at 1)

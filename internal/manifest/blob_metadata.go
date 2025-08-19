@@ -36,6 +36,10 @@ type BlobReference struct {
 	// any of the referencing tables are virtualized tables, the ValueSize may
 	// be approximate.
 	ValueSize uint64
+	// BackingValueSize is the sum of the lengths of the uncompressed values within the
+	// blob file for which there exists a reference in the backing sstable. For non-virtual
+	// sstables, this is the same as ValueSize.
+	BackingValueSize uint64
 	// EstimatedPhysicalSize is an estimate of the physical size of the blob
 	// reference, in bytes. It's calculated by scaling the blob file's physical
 	// size according to the ValueSize of the blob reference relative to the
@@ -46,7 +50,7 @@ type BlobReference struct {
 // MakeBlobReference creates a BlobReference from the given file ID, value size,
 // and physical blob file.
 func MakeBlobReference(
-	fileID base.BlobFileID, valueSize uint64, phys *PhysicalBlobFile,
+	fileID base.BlobFileID, valueSize uint64, backingValueSize uint64, phys *PhysicalBlobFile,
 ) BlobReference {
 	if invariants.Enabled {
 		switch {
@@ -60,8 +64,9 @@ func MakeBlobReference(
 		}
 	}
 	return BlobReference{
-		FileID:    fileID,
-		ValueSize: valueSize,
+		FileID:           fileID,
+		ValueSize:        valueSize,
+		BackingValueSize: backingValueSize,
 		//                        valueSize
 		//   Reference size =  -----------------  ×  phys.Size
 		//                      phys.ValueSize
@@ -441,6 +446,10 @@ type AggregateBlobFileStats struct {
 	// in all blob files in the set that are still referenced by live tables
 	// (i.e., in the latest version).
 	ReferencedValueSize uint64
+	// ReferencedBackingValueSize is the sum of the length of the uncompressed
+	// values in all blob files in the set that are still referenced by live
+	// backing tables (i.e., in the latest version). es in live tables.
+	ReferencedBackingValueSize uint64
 	// ReferencesCount is the total number of tracked references in live tables
 	// (i.e., in the latest version). When virtual sstables are present, this
 	// count is per-virtual sstable (not per backing physical sstable).
@@ -449,8 +458,8 @@ type AggregateBlobFileStats struct {
 
 // String implements fmt.Stringer.
 func (s AggregateBlobFileStats) String() string {
-	return fmt.Sprintf("Files:{Count: %d, Size: %d, ValueSize: %d}, References:{ValueSize: %d, Count: %d}",
-		s.Count, s.PhysicalSize, s.ValueSize, s.ReferencedValueSize, s.ReferencesCount)
+	return fmt.Sprintf("Files:{Count: %d, Size: %d, ValueSize: %d}, References:{ValueSize: %d, BackingValueSize: %d, Count: %d}",
+		s.Count, s.PhysicalSize, s.ValueSize, s.ReferencedValueSize, s.ReferencedBackingValueSize, s.ReferencesCount)
 }
 
 // CurrentBlobFileSet describes the set of blob files that are currently live in
@@ -502,7 +511,10 @@ type currentBlobFile struct {
 	// (and we can pool the B-Tree nodes to further reduce allocs)
 	references map[*TableMetadata]struct{}
 	// referencedValueSize is the sum of the length of uncompressed values in
-	// this blob file that are still live.
+	// this blob file that are still live (referenced by backing tables).
+	// This value can be greater than the physical ValueSize of the blob file,
+	// since for virtual sstables, the referencedValueSize is that of the original
+	// backing table.
 	referencedValueSize uint64
 	// heapState holds a pointer to the heap that the blob file is in (if any)
 	// and its index in the heap's items slice. If referencedValueSize is less
@@ -602,7 +614,11 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit, h BlobRewriteHeuristic) 
 					panic(errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID))
 				}
 				cbf.references[table] = struct{}{}
-				cbf.referencedValueSize += ref.ValueSize
+				refSize := ref.BackingValueSize
+				if refSize == 0 {
+					refSize = ref.ValueSize
+				}
+				cbf.referencedValueSize += refSize
 				s.stats.ReferencedValueSize += ref.ValueSize
 				s.stats.ReferencesCount++
 			}
@@ -753,8 +769,14 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				return errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID)
 			}
 			cbf.references[e.Meta] = struct{}{}
-			cbf.referencedValueSize += ref.ValueSize
+			refSize := ref.BackingValueSize
+			if refSize == 0 {
+				// Fall back to using ValueSize to estimate reference size.
+				refSize = ref.ValueSize
+			}
+			cbf.referencedValueSize += refSize
 			s.stats.ReferencedValueSize += ref.ValueSize
+			s.stats.ReferencedBackingValueSize += refSize
 			s.stats.ReferencesCount++
 		}
 	}
@@ -771,10 +793,6 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				return errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID)
 			}
 			if invariants.Enabled {
-				if ref.ValueSize > cbf.referencedValueSize {
-					return errors.AssertionFailedf("pebble: referenced value size %d for blob file %s is greater than the referenced value size %d",
-						ref.ValueSize, cbf.metadata.FileID, cbf.referencedValueSize)
-				}
 				if _, ok := cbf.references[meta]; !ok {
 					return errors.AssertionFailedf("pebble: deleted table %s's reference to blob file %s not known",
 						meta.TableNum, ref.FileID)
@@ -784,7 +802,13 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			// Decrement the stats for this reference. We decrement even if the
 			// table is being moved, because we incremented the stats when we
 			// iterated over the version edit's new tables.
-			cbf.referencedValueSize -= ref.ValueSize
+			refSize := ref.BackingValueSize
+			if refSize == 0 {
+				// Fall back to using ValueSize to estimate reference size.
+				refSize = ref.ValueSize
+			}
+			cbf.referencedValueSize -= refSize
+			s.stats.ReferencedBackingValueSize -= refSize
 			s.stats.ReferencedValueSize -= ref.ValueSize
 			s.stats.ReferencesCount--
 			if _, ok := newTables[meta.TableNum]; ok {
