@@ -198,8 +198,7 @@ func main() {
 						continue
 					}
 					qname := pkg.Types.Path() + "." + ts.Name.Name
-					if qname != "github.com/cockroachdb/pebble/sstable.Properties" &&
-						qname != "github.com/cockroachdb/pebble/sstable.CommonProperties" {
+					if qname != "github.com/cockroachdb/pebble/sstable.Properties" {
 						continue
 					}
 					for _, f := range st.Fields.List {
