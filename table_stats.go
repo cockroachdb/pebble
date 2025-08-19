@@ -729,7 +729,7 @@ func maybeSetStatsFromProperties(
 		// doesn't require any additional IO and since the number of point
 		// deletions in the file is low, the error introduced by this crude
 		// estimate is expected to be small.
-		avgValSize, compressionRatio := estimatePhysicalSizes(meta, &props.CommonProperties)
+		avgValSize, compressionRatio := estimatePhysicalSizes(meta, props)
 		pointEstimate = pointDeletionsBytesEstimate(backingProps, avgValSize, compressionRatio)
 	}
 
@@ -833,7 +833,7 @@ func pointDeletionsBytesEstimate(
 }
 
 func estimatePhysicalSizes(
-	tableMeta *manifest.TableMetadata, props *sstable.CommonProperties,
+	tableMeta *manifest.TableMetadata, props *sstable.Properties,
 ) (avgValLogicalSize, compressionRatio float64) {
 	// RawKeySize and RawValueSize are uncompressed totals. Scale according to
 	// the data size to account for compression, index blocks and metadata
