@@ -387,6 +387,9 @@ func (b *TableBacking) Unref() int32 {
 
 // TableBackingProperties are properties of the physical backing; they are
 // directly derived from the sstable.Properties of the physical table.
+//
+// These properties are held in memory for all tables; the size should be
+// minimized.
 type TableBackingProperties struct {
 	// The number of entries in this table.
 	NumEntries uint64
@@ -414,13 +417,13 @@ type TableBackingProperties struct {
 	NumRangeKeyDels uint64
 	// The number of RANGEKEYSETs in this table.
 	NumRangeKeySets uint64
-	// Total size of value blocks and value index block. Only serialized if > 0.
+	// Total size of value blocks and value index block.
 	ValueBlocksSize uint64
-	// NumDataBlocks is the number of data blocks in this table.
-	NumDataBlocks uint64
-	// NumTombstoneDenseBlocks is the number of data blocks in this table that are
-	// considered tombstone-dense. See sstable.Properties.
-	NumTombstoneDenseBlocks uint64
+
+	// TombstoneDenseBlocksRatio is the fraction of data blocks in this table that
+	// are tombstone-dense. See sstableCommonProperties.NumTombstoneDenseBlocks for
+	// more details.
+	TombstoneDenseBlocksRatio float64
 
 	CompressionStats block.CompressionStats
 }
@@ -429,19 +432,6 @@ type TableBackingProperties struct {
 // sstables, this is an estimate.
 func (p *TableBackingProperties) NumPointDeletions() uint64 {
 	return invariants.SafeSub(p.NumDeletions, p.NumRangeDeletions)
-}
-
-// TombstoneDenseBlocksRatio is the ratio of tombstone-dense blocks in this
-// table. See CommonProperties.NumTombstoneDenseBlocks for more details on
-// tombstone-dense blocks.
-//
-// This statistic is used to determine eligibility for a tombstone density
-// compaction.
-func (p *TableBackingProperties) TombstoneDenseBlocksRatio() float64 {
-	if p.NumDataBlocks == 0 {
-		return 0
-	}
-	return float64(p.NumTombstoneDenseBlocks) / float64(p.NumDataBlocks)
 }
 
 // Properties returns the backing properties if they have been populated, or nil and
@@ -470,8 +460,9 @@ func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBacki
 		NumRangeKeyDels:            props.NumRangeKeyDels,
 		NumRangeKeySets:            props.NumRangeKeySets,
 		ValueBlocksSize:            props.ValueBlocksSize,
-		NumDataBlocks:              props.NumDataBlocks,
-		NumTombstoneDenseBlocks:    props.NumTombstoneDenseBlocks,
+	}
+	if props.NumDataBlocks != 0 {
+		b.props.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
 	}
 	var err error
 	// TODO(radu): store block.CompressionStats directly in props, to avoid having
