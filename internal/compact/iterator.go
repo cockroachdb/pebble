@@ -1201,12 +1201,23 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 			//
 			// We treat both cases the same functionally, adopting the identity
 			// of the lower-sequence numbered tombstone. However in the second
-			// case, we also increment the stat counting missized tombstones.
+			// case, we also increment the stat counting missized tombstones and
+			// report the missizing via the callback.
 			if i.kv.V.Len() > 0 {
 				// The original DELSIZED key was missized. The key that the user
 				// thought they were deleting does not exist.
+				//
+				// We decode the original DELSIZED's value so that we can invoke
+				// the callback with the additional context. Note that the
+				// tombstone's value must be in-place.
+				v := i.kv.V.InPlaceValue()
+				expectedSize, n := binary.Uvarint(v)
+				if n != len(v) {
+					i.err = base.CorruptionErrorf("DELSIZED holds invalid value: %x", errors.Safe(v))
+					return nil
+				}
 				i.stats.CountMissizedDels++
-				i.cfg.MissizedDeleteCallback(i.kv.K.UserKey, 0, 0)
+				i.cfg.MissizedDeleteCallback(i.kv.K.UserKey, 0, expectedSize)
 			}
 			// If the tombstone has a value, it must be in-place. To save it, we
 			// can just copy the in-place value directly.

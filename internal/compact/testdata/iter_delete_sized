@@ -1877,3 +1877,24 @@ b#7,DEL:
 c#6,DELSIZED:
 missized-dels=2
 missized-delete-info: a (elided=4, expected=20); b (elided=4, expected=15)
+
+# Test a delete sized that doesn't delete a key, because it meets another
+# tombstone.
+
+define
+a.SET.1:hello
+b.DELSIZED.9:varint(6)
+b.DELSIZED.4:varint(6)
+b.SET.2:world
+----
+
+iter print-missized-dels print-missized-del-info
+first
+next
+next
+----
+a#1,SET:hello
+b#9,DELSIZED:
+.
+missized-dels=1
+missized-delete-info: b (elided=0, expected=6)
