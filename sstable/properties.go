@@ -11,7 +11,6 @@ import (
 	"slices"
 	"unsafe"
 
-	"github.com/cockroachdb/crlib/crmath"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
@@ -24,9 +23,6 @@ const propertiesBlockRestartInterval = math.MaxInt32
 // CommonProperties holds properties for either a virtual or a physical sstable. This
 // can be used by code which doesn't care to make the distinction between physical
 // and virtual sstables properties.
-//
-// For virtual sstables, fields are constructed through extrapolation upon virtual
-// reader construction.
 //
 // NB: The values of these properties can affect correctness. For example,
 // if NumRangeKeySets == 0, but the sstable actually contains range keys, then
@@ -89,47 +85,6 @@ func (c *CommonProperties) String() string {
 // sstables, this is an estimate.
 func (c *CommonProperties) NumPointDeletions() uint64 {
 	return invariants.SafeSub(c.NumDeletions, c.NumRangeDeletions)
-}
-
-// GetScaledProperties returns an estimation of the common properties for a
-// virtual table that addresses only <size> bytes out of the entire <backingSize>.
-func (c *CommonProperties) GetScaledProperties(backingSize, size uint64) CommonProperties {
-	// Make sure the sizes are sane, just in case.
-	size = max(size, 1)
-	backingSize = max(backingSize, size)
-
-	scale := func(a uint64) uint64 {
-		return crmath.ScaleUint64(a, size, backingSize)
-	}
-	// It's important that no non-zero fields (like NumDeletions, NumRangeKeySets)
-	// become zero (or vice-versa).
-	if invariants.Enabled && (scale(1) != 1 || scale(0) != 0) {
-		panic("bad scale()")
-	}
-
-	scaled := *c
-	scaled.RawKeySize = scale(c.RawKeySize)
-	scaled.RawValueSize = scale(c.RawValueSize)
-	scaled.NumEntries = scale(c.NumEntries)
-	scaled.NumDataBlocks = scale(c.NumDataBlocks)
-	scaled.NumTombstoneDenseBlocks = scale(c.NumTombstoneDenseBlocks)
-
-	scaled.NumRangeDeletions = scale(c.NumRangeDeletions)
-	scaled.NumSizedDeletions = scale(c.NumSizedDeletions)
-	// We cannot directly scale NumDeletions, because it is supposed to be the sum
-	// of various types of deletions. See #4670.
-	numOtherDeletions := scale(invariants.SafeSub(c.NumDeletions, c.NumRangeDeletions) + c.NumSizedDeletions)
-	scaled.NumDeletions = numOtherDeletions + scaled.NumRangeDeletions + scaled.NumSizedDeletions
-
-	scaled.NumRangeKeyDels = scale(c.NumRangeKeyDels)
-	scaled.NumRangeKeySets = scale(c.NumRangeKeySets)
-
-	scaled.ValueBlocksSize = scale(c.ValueBlocksSize)
-
-	scaled.RawPointTombstoneKeySize = scale(c.RawPointTombstoneKeySize)
-	scaled.RawPointTombstoneValueSize = scale(c.RawPointTombstoneValueSize)
-
-	return scaled
 }
 
 // Properties holds the sstable property values. The properties are

@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -1378,22 +1379,22 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	}
 	defer r.Close()
 
-	loadedProps, err := r.ReadPropertiesBlock(context.Background(), nil /* buffer pool */)
+	props, err := r.ReadPropertiesBlock(context.Background(), nil /* buffer pool */)
 	if err != nil {
 		return err.Error()
 	}
-	props := loadedProps.String()
-	env := sstable.ReadEnv{}
+	var buf bytes.Buffer
+
 	if m != nil && m.Virtual {
-		env.Virtual = m.VirtualParams
-		scaledProps := loadedProps.GetScaledProperties(m.TableBacking.Size, m.Size)
-		props = scaledProps.String()
+		fmt.Fprintf(&buf, "virtual table (estimated size %s / backing size %s)\n",
+			crhumanize.Bytes(m.Size), crhumanize.Bytes(m.TableBacking.Size),
+		)
 	}
 	if len(td.Input) == 0 {
-		return props
+		buf.WriteString(props.String())
+		return buf.String()
 	}
-	var buf bytes.Buffer
-	propsSlice := strings.Split(props, "\n")
+	propsSlice := strings.Split(props.String(), "\n")
 	for _, requestedProp := range strings.Split(td.Input, "\n") {
 		fmt.Fprintf(&buf, "%s:\n", requestedProp)
 		for _, prop := range propsSlice {
