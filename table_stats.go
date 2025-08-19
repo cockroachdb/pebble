@@ -299,7 +299,6 @@ func (d *DB) loadTableStats(
 	ctx context.Context, v *manifest.Version, level int, meta *manifest.TableMetadata,
 ) (manifest.TableStats, []deleteCompactionHint, error) {
 	var compactionHints []deleteCompactionHint
-	var props sstable.CommonProperties
 	var rangeDeletionsBytesEstimate uint64
 
 	backingProps, backingPropsOk := meta.TableBacking.Properties()
@@ -329,17 +328,13 @@ func (d *DB) loadTableStats(
 			return manifest.TableStats{}, nil, err
 		}
 	}
-	props = backingProps.CommonProperties
-	if meta.Virtual {
-		props = props.GetScaledProperties(meta.TableBacking.Size, meta.Size)
-	}
 
 	var stats manifest.TableStats
 	stats.RangeDeletionsBytesEstimate = rangeDeletionsBytesEstimate
 
-	if props.NumPointDeletions() > 0 {
+	if backingProps.NumPointDeletions() > 0 {
 		var err error
-		stats.PointDeletionsBytesEstimate, err = d.loadTablePointKeyStats(ctx, &props, v, level, meta)
+		stats.PointDeletionsBytesEstimate, err = d.loadTablePointKeyStats(ctx, backingProps, v, level, meta)
 		if err != nil {
 			return stats, nil, err
 		}
@@ -349,9 +344,11 @@ func (d *DB) loadTableStats(
 
 // loadTablePointKeyStats calculates the point key statistics for the given
 // table.
+//
+// The backing props are scaled as necessary if the table is virtual.
 func (d *DB) loadTablePointKeyStats(
 	ctx context.Context,
-	props *sstable.CommonProperties,
+	props *manifest.TableBackingProperties,
 	v *manifest.Version,
 	level int,
 	meta *manifest.TableMetadata,
@@ -367,6 +364,7 @@ func (d *DB) loadTablePointKeyStats(
 		return 0, err
 	}
 	pointDeletionsBytes = pointDeletionsBytesEstimate(props, avgValLogicalSize, compressionRatio)
+	pointDeletionsBytes = meta.ScaleStatistic(pointDeletionsBytes)
 	return pointDeletionsBytes, nil
 }
 
@@ -487,7 +485,7 @@ func (d *DB) estimateSizesBeneath(
 	v *manifest.Version,
 	level int,
 	meta *manifest.TableMetadata,
-	fileProps *sstable.CommonProperties,
+	fileProps *manifest.TableBackingProperties,
 ) (avgValueLogicalSize, compressionRatio float64, err error) {
 	// Find all files in lower levels that overlap with meta,
 	// summing their value sizes and entry counts.
@@ -527,14 +525,10 @@ func (d *DB) estimateSizesBeneath(
 					return 0, 0, err
 				}
 			}
-			props := backingProps.CommonProperties
-			if tableBeneath.Virtual {
-				props = backingProps.GetScaledProperties(tableBeneath.TableBacking.Size, tableBeneath.Size)
-			}
 
-			entryCount += props.NumEntries
-			keySum += props.RawKeySize
-			valSum += props.RawValueSize
+			entryCount += tableBeneath.ScaleStatistic(backingProps.NumEntries)
+			keySum += tableBeneath.ScaleStatistic(backingProps.RawKeySize)
+			valSum += tableBeneath.ScaleStatistic(backingProps.RawValueSize)
 			continue
 		}
 	}
@@ -695,9 +689,16 @@ func sanityCheckStats(
 	}
 }
 
+// maybeSetStatsFromProperties sets the table backin properties and attempts to
+// set the table stats from the properties, for a table that was created by an
+// ingestion or compaction.
 func maybeSetStatsFromProperties(
 	meta *manifest.TableMetadata, props *sstable.Properties, logger Logger,
 ) bool {
+	backingProps := meta.TableBacking.PopulateProperties(props)
+	if invariants.Enabled && meta.Virtual {
+		panic("table expected to be physical")
+	}
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
 	//
@@ -729,7 +730,7 @@ func maybeSetStatsFromProperties(
 		// deletions in the file is low, the error introduced by this crude
 		// estimate is expected to be small.
 		avgValSize, compressionRatio := estimatePhysicalSizes(meta, &props.CommonProperties)
-		pointEstimate = pointDeletionsBytesEstimate(&props.CommonProperties, avgValSize, compressionRatio)
+		pointEstimate = pointDeletionsBytesEstimate(backingProps, avgValSize, compressionRatio)
 	}
 
 	stats := manifest.TableStats{
@@ -741,8 +742,11 @@ func maybeSetStatsFromProperties(
 	return true
 }
 
+// pointDeletionBytesEstimate returns an estimation of the total disk space that
+// may be dropped by the physical table's point deletions by compacting them.
+// The results should be scaled accordingly for virtual tables.
 func pointDeletionsBytesEstimate(
-	props *sstable.CommonProperties, avgValLogicalSize, compressionRatio float64,
+	props *manifest.TableBackingProperties, avgValLogicalSize, compressionRatio float64,
 ) (estimate uint64) {
 	if props.NumEntries == 0 {
 		return 0
