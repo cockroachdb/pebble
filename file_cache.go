@@ -957,7 +957,7 @@ func (rp *tableCacheShardReaderProvider) GetReader(
 	return r.Value().mustSSTableReader(), nil
 }
 
-// Close implements sstable.ReaderProvider.
+// Close implements valblk.ReaderProvider.
 func (rp *tableCacheShardReaderProvider) Close() {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()

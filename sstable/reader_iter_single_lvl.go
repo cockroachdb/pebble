@@ -507,18 +507,11 @@ func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockRes
 	return loadBlockOK
 }
 
-// ReadValueBlock implements the valblk.BlockProviderWhenOpen interface for use
-// by the valblk.IteratorBlockReader.
-//
-// TODO(sumeer): why does this have stats and catStats parameters, given this
-// iter gave them to the valblk.Reader constructor? Remove.
+// ReadValueBlock implements the valblk.IteratorBlockReader interface.
 func (i *singleLevelIterator[I, PI, D, PD]) ReadValueBlock(
-	bh block.Handle, stats *base.InternalIteratorStats, catStats *block.CategoryStatsShard,
+	bh block.Handle,
 ) (block.BufferHandle, error) {
-	env := i.readEnv.Block
-	env.Stats = stats
-	env.IterStats = catStats
-	return i.reader.readValueBlock(i.ctx, env, i.vbRH, bh)
+	return i.reader.readValueBlock(i.ctx, i.readEnv.Block, i.vbRH, bh)
 }
 
 // resolveMaybeExcluded is invoked when the block-property filterer has found
