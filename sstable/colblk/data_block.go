@@ -795,7 +795,7 @@ type blockDecoderAndKeySeekerMetadata struct {
 	d          DataBlockDecoder
 	headerRows int
 	// Pad to ensure KeySeekerMetadata is 8-byte aligned.
-	_             [(8 - unsafe.Sizeof(DataBlockDecoder{})%8) % 8]byte
+	_             [(8 - (unsafe.Sizeof(DataBlockDecoder{})+unsafe.Sizeof(int(0)))%8) % 8]byte
 	keySchemaMeta KeySeekerMetadata
 }
 
