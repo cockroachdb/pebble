@@ -49,7 +49,7 @@ c505                         #   . FileSize        = 709
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] (2023-12-04T17:57:24Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:24Z)
 
 decode
 0219                         # <tagLogNumber>, 19
@@ -94,7 +94,42 @@ decode
 ----
 67061d000b626172000e0000000000000b666f6f010d0000000000000000
 45010129d8a301016baf0729d8a301f9a006006c21210a016201630103
-  add-table:     L6 000029:[bar#14,DEL-foo#13,SET]
+  add-table:     L6 000029:[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952); depth:1]
   add-blob-file: B000943 physical:{000041 size:[20952 (20KB)] vals:[102521 (100KB)]}
   del-blob-file: B000033 000033
   excise-op:     [b, c] #3
+
+encode
+  add-table:     L3 000029 (000009):[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952 / 30952); depth:1]
+  add-backing:   000009
+----
+69096467031d000b626172000e0000000000000b666f6f010d0000000000
+000000420946010129d8a301e8f10101
+  add-table:     L3 000029(000009):[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952/30952); depth:1]
+  add-backing:   000009
+
+decode virtual
+69096467031d000b626172000e0000000000000b666f6f010d0000000000
+000000420946010129d8a301e8f10101
+----
+69096467031d000b626172000e0000000000000b666f6f010d0000000000
+000000420946010129d8a301e8f10101
+  add-table:     L3 000029(000009):[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952/30952); depth:1]
+  add-backing:   000009
+
+# Encoding a non-virtual SST with backing value size should skip the backing size info.
+encode
+  add-table:     L3 000029:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952 / 30952); depth:1]
+----
+67031d000b626172000e0000000000000b666f6f010d0000000000000000
+45010129d8a30101
+  add-table:     L3 000029:[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952/30952); depth:1]
+
+
+decode
+67031d000b626172000e0000000000000b666f6f010d0000000000000000
+45010129d8a30101
+----
+67031d000b626172000e0000000000000b666f6f010d0000000000000000
+45010129d8a30101
+  add-table:     L3 000029:[bar#14,DEL-foo#13,SET] seqnums:[0-0] points:[bar#14,DEL-foo#13,SET] blobrefs:[(B000041: 20952); depth:1]

@@ -1,0 +1,36 @@
+# Test a blob file rewrite compaction with virtual sstable references that
+# track backing value sizes do not trigger unnecessary blob file rewrites.
+
+define value-separation=(true,1,10,0s,0.01)
+----
+
+batch
+set a apple
+set b banana
+set c coconut
+----
+
+compact a-b
+----
+L6:
+  000005:[a#10,SET-c#12,SET] seqnums:[10-12] points:[a#10,SET-c#12,SET] size:767 blobrefs:[(B000006: 18); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[194 (194B)] vals:[18 (18B)]}
+
+excise b ba
+----
+L6:
+  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(767) blobrefs:[(B000006: 2/18); depth:1]
+  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(767) blobrefs:[(B000006: 2/18); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[194 (194B)] vals:[18 (18B)]}
+
+run-blob-rewrite-compaction
+----
+no blob file rewrite compaction
+
+validate-blob-reference-index-block
+000007.sst
+000008.sst
+----
+validated

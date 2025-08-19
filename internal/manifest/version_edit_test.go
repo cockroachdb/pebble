@@ -58,6 +58,10 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		LargestSeqNum:            11,
 		LargestSeqNumAbsolute:    11,
 		SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix([]byte("after"), []byte("foo")),
+		BlobReferences: []BlobReference{
+			{FileID: 900, ValueSize: 1024, BackingValueSize: 1024},
+			{FileID: 910, ValueSize: 1024, BackingValueSize: 8090},
+		},
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -77,6 +81,10 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		LargestSeqNum:         11,
 		LargestSeqNumAbsolute: 11,
 		Virtual:               true,
+		BlobReferences: []BlobReference{
+			{FileID: 900, ValueSize: 512, BackingValueSize: 1024},
+			{FileID: 910, ValueSize: 916, BackingValueSize: 8090},
+		},
 	}).ExtendPointKeyBounds(
 		cmp,
 		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
@@ -311,9 +319,18 @@ func TestVersionEditDecode(t *testing.T) {
 					return fmt.Sprintf("err: %v", err)
 				}
 
-				// Ensure the version edit roundtrips.
-				if err := checkRoundTrip(ve); err != nil {
-					t.Fatal(err)
+				if d.HasArg("virtual") {
+					var bve BulkVersionEdit
+					// Init backing tables for virtual ssts.
+					require.NoError(t, bve.Accumulate(&ve))
+
+				} else {
+					// Ensure the version edit roundtrips.
+					// This is skipped for version edits with virtual sstables
+					// since Decode does not set the TableBacking for virtual sstables.
+					if err := checkRoundTrip(ve); err != nil {
+						t.Fatal(err)
+					}
 				}
 
 				serialized := inputBuf.Bytes()
@@ -323,7 +340,7 @@ func TestVersionEditDecode(t *testing.T) {
 					outputBuf.WriteString(hex.EncodeToString(line))
 					outputBuf.WriteByte('\n')
 				}
-				fmt.Fprint(&outputBuf, ve.String())
+				fmt.Fprint(&outputBuf, ve.DebugString(base.DefaultFormatter))
 				return outputBuf.String()
 			default:
 				panic(fmt.Sprintf("unknown command: %s", d.Cmd))

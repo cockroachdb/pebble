@@ -850,7 +850,12 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 			if i > 0 {
 				fmt.Fprint(&b, ", ")
 			}
-			fmt.Fprintf(&b, "(%s: %d)", r.FileID, r.ValueSize)
+			fmt.Fprintf(&b, "(%s: %d", r.FileID, r.ValueSize)
+			// BackingValueSize is only set for on virtual ssts with FMV >= FormatBackingValueSize.
+			if r.BackingValueSize > 0 && r.BackingValueSize != r.ValueSize {
+				fmt.Fprintf(&b, "/%d", r.BackingValueSize)
+			}
+			fmt.Fprintf(&b, ")")
 		}
 		fmt.Fprintf(&b, "; depth:%d]", m.BlobReferenceDepth)
 	}
@@ -937,6 +942,10 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 				ref.FileID = p.BlobFileID()
 				p.Expect(":")
 				ref.ValueSize = p.Uint64()
+				if p.Peek() == "/" {
+					p.Expect("/")
+					ref.BackingValueSize = p.Uint64()
+				}
 				m.BlobReferences = append(m.BlobReferences, ref)
 				p.Expect(")")
 			}

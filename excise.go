@@ -163,7 +163,7 @@ func (d *DB) exciseTable(
 			} else if err := determineExcisedTableSize(d.fileCache, m, leftTable); err != nil {
 				return nil, nil, err
 			}
-			determineExcisedTableBlobReferences(m.BlobReferences, m.Size, leftTable)
+			determineExcisedTableBlobReferences(m.BlobReferences, m.Size, leftTable, d.FormatMajorVersion())
 			if err := leftTable.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				return nil, nil, err
 			}
@@ -203,7 +203,7 @@ func (d *DB) exciseTable(
 			} else if err := determineExcisedTableSize(d.fileCache, m, rightTable); err != nil {
 				return nil, nil, err
 			}
-			determineExcisedTableBlobReferences(m.BlobReferences, m.Size, rightTable)
+			determineExcisedTableBlobReferences(m.BlobReferences, m.Size, rightTable, d.FormatMajorVersion())
 			if err := rightTable.Validate(d.cmp, d.opts.Comparer.FormatKey); err != nil {
 				return nil, nil, err
 			}
@@ -455,6 +455,7 @@ func determineExcisedTableBlobReferences(
 	originalBlobReferences manifest.BlobReferences,
 	originalSize uint64,
 	excisedTable *manifest.TableMetadata,
+	fmv FormatMajorVersion,
 ) {
 	if len(originalBlobReferences) == 0 {
 		return
@@ -462,6 +463,9 @@ func determineExcisedTableBlobReferences(
 	newBlobReferences := make(manifest.BlobReferences, len(originalBlobReferences))
 	for i, bf := range originalBlobReferences {
 		bf.ValueSize = max(bf.ValueSize*excisedTable.Size/originalSize, 1)
+		if fmv < FormatBackingValueSize {
+			bf.BackingValueSize = 0
+		}
 		newBlobReferences[i] = bf
 	}
 	excisedTable.BlobReferences = newBlobReferences
