@@ -1262,13 +1262,11 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 
 			// If requested, override the tombstone density ratio for testing
 			if forceTombstoneDensityRatio >= 0 {
-				backingProps.NumDataBlocks = 100
-				backingProps.NumTombstoneDenseBlocks = uint64(100 * forceTombstoneDensityRatio)
+				backingProps.TombstoneDenseBlocksRatio = forceTombstoneDensityRatio
 			}
 			// Only include the tombstone-dense-blocks-ratio if it was forced or is non-zero
-			tombstoneDenseBlocksRatio := backingProps.TombstoneDenseBlocksRatio()
-			if forceTombstoneDensityRatio >= 0 || tombstoneDenseBlocksRatio > 0 {
-				fmt.Fprintf(&b, "tombstone-dense-blocks-ratio: %0.1f\n", tombstoneDenseBlocksRatio)
+			if forceTombstoneDensityRatio >= 0 || backingProps.TombstoneDenseBlocksRatio > 0 {
+				fmt.Fprintf(&b, "tombstone-dense-blocks-ratio: %0.1f\n", backingProps.TombstoneDenseBlocksRatio)
 			}
 
 			if compressionStats := backingProps.CompressionStats; !compressionStats.IsEmpty() {
