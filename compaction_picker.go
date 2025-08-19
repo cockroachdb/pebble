@@ -1690,7 +1690,8 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
 		// Blob file rewrite compactions are disabled.
 		return nil
 	}
-	garbagePct := float64(aggregateStats.ValueSize-aggregateStats.ReferencedValueSize) /
+
+	garbagePct := float64(aggregateStats.ValueSize-aggregateStats.ReferencedBackingValueSize) /
 		float64(aggregateStats.ValueSize)
 	if garbagePct <= policy.TargetGarbageRatio {
 		// Not enough garbage to warrant a rewrite compaction.

@@ -1508,6 +1508,11 @@ func TestCompaction(t *testing.T) {
 			minVersion: formatDeprecatedExperimentalValueSeparation,
 			maxVersion: formatDeprecatedExperimentalValueSeparation,
 		},
+		"backing_value_size": {
+			minVersion: FormatBackingValueSize,
+			maxVersion: FormatBackingValueSize,
+			verbose:    true,
+		},
 	}
 	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {
 		filename := filepath.Base(path)

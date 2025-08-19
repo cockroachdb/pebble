@@ -142,7 +142,11 @@ func TestBlobRewrite(t *testing.T) {
 				} else {
 					fmt.Fprintln(&buf, "blobrefs:[")
 					for i, ref := range meta.BlobReferences {
-						fmt.Fprintf(&buf, " %d: %s %d\n", i, ref.FileID, ref.ValueSize)
+						fmt.Fprintf(&buf, " %d: %s %d", i, ref.FileID, ref.ValueSize)
+						if ref.ValueSize != ref.BackingValueSize && ref.BackingValueSize > 0 {
+							fmt.Fprintf(&buf, "/%d", ref.BackingValueSize)
+						}
+						fmt.Fprintf(&buf, "\n")
 					}
 					fmt.Fprintln(&buf, "]")
 				}
@@ -309,13 +313,14 @@ func TestBlobRewriteRandomized(t *testing.T) {
 		))
 		require.NoError(t, tw.Close())
 		originalValueIndices[i] = i
+		valueSize := uint64(len(values[i]))
 		originalTables[i] = &manifest.TableMetadata{
 			TableNum: base.TableNum(i),
 			TableBacking: &manifest.TableBacking{
 				DiskFileNum: base.DiskFileNum(i),
 			},
 			BlobReferences: []manifest.BlobReference{
-				{FileID: base.BlobFileID(blobFileID), ValueSize: uint64(len(values[i]))},
+				{FileID: base.BlobFileID(blobFileID), ValueSize: valueSize, BackingValueSize: valueSize},
 			},
 		}
 	}

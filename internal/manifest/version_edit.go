@@ -73,6 +73,8 @@ const (
 	customTagSyntheticPrefix   = 67
 	customTagSyntheticSuffix   = 68
 	customTagBlobReferences    = 69
+	// customTagBlobReferences2 contains BackingValueSize for each BlobReference.
+	customTagBlobReferences2 = 70
 )
 
 // DeletedTableEntry holds the state for a sstable deletion from a level. The
@@ -437,7 +439,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							return err
 						}
 
-					case customTagBlobReferences:
+					case customTagBlobReferences, customTagBlobReferences2:
 						// The first varint encodes the 'blob reference depth'
 						// of the table.
 						v, err := d.readUvarint()
@@ -459,9 +461,17 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							if err != nil {
 								return err
 							}
+							var backingValueSize uint64
+							if customTag == customTagBlobReferences2 {
+								backingValueSize, err = d.readUvarint()
+								if err != nil {
+									return err
+								}
+							}
 							blobReferences[i] = BlobReference{
-								FileID:    base.BlobFileID(fileID),
-								ValueSize: valueSize,
+								FileID:           base.BlobFileID(fileID),
+								ValueSize:        valueSize,
+								BackingValueSize: backingValueSize,
 							}
 						}
 						continue
@@ -893,12 +903,28 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeBytes(x.Meta.SyntheticPrefixAndSuffix.Suffix())
 			}
 			if len(x.Meta.BlobReferences) > 0 {
-				e.writeUvarint(customTagBlobReferences)
+				writeBackingValueSize := false
+				if x.Meta.Virtual {
+					for _, ref := range x.Meta.BlobReferences {
+						if ref.BackingValueSize > 0 && ref.BackingValueSize != ref.ValueSize {
+							writeBackingValueSize = true
+							break
+						}
+					}
+				}
+				if writeBackingValueSize {
+					e.writeUvarint(customTagBlobReferences2)
+				} else {
+					e.writeUvarint(customTagBlobReferences)
+				}
 				e.writeUvarint(uint64(x.Meta.BlobReferenceDepth))
 				e.writeUvarint(uint64(len(x.Meta.BlobReferences)))
 				for _, ref := range x.Meta.BlobReferences {
 					e.writeUvarint(uint64(ref.FileID))
 					e.writeUvarint(ref.ValueSize)
+					if writeBackingValueSize {
+						e.writeUvarint(ref.BackingValueSize)
+					}
 				}
 			}
 			e.writeUvarint(customTagTerminate)
@@ -1300,7 +1326,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				if ref.EstimatedPhysicalSize == 0 {
 					// We must call MakeBlobReference so that we compute the
 					// reference's physical estimated size.
-					f.BlobReferences[i] = MakeBlobReference(ref.FileID, ref.ValueSize, phys)
+					f.BlobReferences[i] = MakeBlobReference(ref.FileID, ref.ValueSize, ref.BackingValueSize, phys)
 				}
 			}
 

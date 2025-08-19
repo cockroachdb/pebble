@@ -154,7 +154,11 @@ func TestValueSeparationPolicy(t *testing.T) {
 				} else {
 					fmt.Fprintln(&buf, "blobrefs:[")
 					for i, ref := range meta.BlobReferences {
-						fmt.Fprintf(&buf, " %d: %s %d\n", i, ref.FileID, ref.ValueSize)
+						fmt.Fprintf(&buf, " %d: %s %d", i, ref.FileID, ref.ValueSize)
+						if ref.ValueSize != ref.BackingValueSize && ref.BackingValueSize > 0 {
+							fmt.Fprintf(&buf, "/%d", ref.BackingValueSize)
+						}
+						fmt.Fprintf(&buf, "\n")
 					}
 					fmt.Fprintln(&buf, "]")
 				}

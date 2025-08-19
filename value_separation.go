@@ -340,11 +340,9 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 	vs.minimumSize = vs.globalMinimumSize
 
 	return compact.ValueSeparationMetadata{
-		BlobReferences: manifest.BlobReferences{manifest.MakeBlobReference(
-			base.BlobFileID(vs.objMeta.DiskFileNum),
-			stats.UncompressedValueBytes,
-			meta,
-		)},
+		BlobReferences: manifest.BlobReferences{
+			manifest.MakeBlobReference(base.BlobFileID(vs.objMeta.DiskFileNum), stats.UncompressedValueBytes, stats.UncompressedValueBytes, meta),
+		},
 		BlobReferenceSize:  stats.UncompressedValueBytes,
 		BlobReferenceDepth: 1,
 		BlobFileStats:      stats,
@@ -491,7 +489,7 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 			return compact.ValueSeparationMetadata{},
 				errors.AssertionFailedf("pebble: blob file %s not found among input sstables", ref.blobFileID)
 		}
-		references[i] = manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, phys)
+		references[i] = manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, ref.valueSize, phys)
 	}
 	referenceSize := vs.totalValueSize
 	vs.currReferences = vs.currReferences[:0]
