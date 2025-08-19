@@ -353,8 +353,8 @@ type TableBacking struct {
 	refs atomic.Int32
 
 	propsValid atomic.Bool
-	// stats are populated exactly once.
-	stats TableBackingProperties
+	// props are populated exactly once.
+	props TableBackingProperties
 }
 
 // MustHaveRefs asserts that the backing has a positive refcount.
@@ -388,8 +388,47 @@ func (b *TableBacking) Unref() int32 {
 // TableBackingProperties are properties of the physical backing; they are
 // directly derived from the sstable.Properties of the physical table.
 type TableBackingProperties struct {
-	sstable.CommonProperties
+	// The number of entries in this table.
+	NumEntries uint64
+	// Total raw key size.
+	RawKeySize uint64
+	// Total raw value size. If values are separated, this includes the size of
+	// the separated value, NOT the value handle.
+	RawValueSize uint64
+	// Total raw key size of point deletion tombstones. This value is comparable
+	// to RawKeySize.
+	RawPointTombstoneKeySize uint64
+	// Sum of the raw value sizes carried by point deletion tombstones
+	// containing size estimates. See the DeleteSized key kind. This value is
+	// comparable to Raw{Key,Value}Size.
+	RawPointTombstoneValueSize uint64
+	// The number of point deletion entries ("tombstones") in this table that
+	// carry a size hint indicating the size of the value the tombstone deletes.
+	NumSizedDeletions uint64
+	// The number of deletion entries in this table, including both point and
+	// range deletions.
+	NumDeletions uint64
+	// The number of range deletions in this table.
+	NumRangeDeletions uint64
+	// The number of RANGEKEYDELs in this table.
+	NumRangeKeyDels uint64
+	// The number of RANGEKEYSETs in this table.
+	NumRangeKeySets uint64
+	// Total size of value blocks and value index block. Only serialized if > 0.
+	ValueBlocksSize uint64
+	// NumDataBlocks is the number of data blocks in this table.
+	NumDataBlocks uint64
+	// NumTombstoneDenseBlocks is the number of data blocks in this table that are
+	// considered tombstone-dense. See sstable.Properties.
+	NumTombstoneDenseBlocks uint64
+
 	CompressionStats block.CompressionStats
+}
+
+// NumPointDeletions is the number of point deletions in the sstable. For virtual
+// sstables, this is an estimate.
+func (p *TableBackingProperties) NumPointDeletions() uint64 {
+	return invariants.SafeSub(p.NumDeletions, p.NumRangeDeletions)
 }
 
 // TombstoneDenseBlocksRatio is the ratio of tombstone-dense blocks in this
@@ -413,25 +452,39 @@ func (b *TableBacking) Properties() (_ *TableBackingProperties, ok bool) {
 	if !b.propsValid.Load() {
 		return nil, false
 	}
-	return &b.stats, true
+	return &b.props, true
 }
 
 // PopulateProperties populates the table stats. Can be called at most once for a
 // TableBacking.
 func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBackingProperties {
-	b.stats.CommonProperties = props.CommonProperties
+	b.props = TableBackingProperties{
+		NumEntries:                 props.NumEntries,
+		RawKeySize:                 props.RawKeySize,
+		RawValueSize:               props.RawValueSize,
+		RawPointTombstoneKeySize:   props.RawPointTombstoneKeySize,
+		RawPointTombstoneValueSize: props.RawPointTombstoneValueSize,
+		NumSizedDeletions:          props.NumSizedDeletions,
+		NumDeletions:               props.NumDeletions,
+		NumRangeDeletions:          props.NumRangeDeletions,
+		NumRangeKeyDels:            props.NumRangeKeyDels,
+		NumRangeKeySets:            props.NumRangeKeySets,
+		ValueBlocksSize:            props.ValueBlocksSize,
+		NumDataBlocks:              props.NumDataBlocks,
+		NumTombstoneDenseBlocks:    props.NumTombstoneDenseBlocks,
+	}
 	var err error
 	// TODO(radu): store block.CompressionStats directly in props, to avoid having
 	// to parse them back.
-	b.stats.CompressionStats, err = block.ParseCompressionStats(props.CompressionStats)
+	b.props.CompressionStats, err = block.ParseCompressionStats(props.CompressionStats)
 	if invariants.Enabled && err != nil {
-		panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", b.stats.CompressionStats, b.DiskFileNum, err))
+		panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", b.props.CompressionStats, b.DiskFileNum, err))
 	}
 	oldStatsValid := b.propsValid.Swap(true)
 	if invariants.Enabled && oldStatsValid {
 		panic("stats set twice")
 	}
-	return &b.stats
+	return &b.props
 }
 
 // InitPhysicalBacking allocates and sets the TableBacking which is required by a
@@ -749,6 +802,19 @@ func (m *TableMetadata) ScaleStatistic(value uint64) uint64 {
 	size := max(m.Size, 1)
 	backingSize := max(m.TableBacking.Size, size)
 	return crmath.ScaleUint64(value, size, backingSize)
+}
+
+// ScaleStatisticFloat scales the given value by the table-size:backing-size
+// ratio if the table is virtual. Returns the unchanged value when the table is
+// not virtual.
+func (m *TableMetadata) ScaleStatisticFloat(value float64) float64 {
+	if !m.Virtual {
+		return value
+	}
+	// Make sure the sizes are sane, just in case.
+	size := max(m.Size, 1)
+	backingSize := max(m.TableBacking.Size, size)
+	return value * float64(size) / float64(backingSize)
 }
 
 // String implements fmt.Stringer, printing the file number and the overall

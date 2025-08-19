@@ -671,7 +671,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 3
+point-deletions-bytes-estimate: 1
 range-deletions-bytes-estimate: 0
 
 wait-pending-table-stats
@@ -680,7 +680,7 @@ wait-pending-table-stats
 num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 3
+point-deletions-bytes-estimate: 1
 range-deletions-bytes-estimate: 0
 
 # Create an sstable with a range key set.
