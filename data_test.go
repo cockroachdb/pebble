@@ -1211,7 +1211,7 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	return d, nil
 }
 
-func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
+func runWaitForTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	// In the original test file, parse the command args first
 	var forceTombstoneDensityRatio float64 = -1.0
 	for _, arg := range td.CmdArgs {
@@ -1231,8 +1231,8 @@ func runTableStatsCmd(td *datadriven.TestData, d *DB) string {
 	tableNum := base.TableNum(u)
 
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	v := d.mu.versions.currentVersion()
+	d.mu.Unlock()
 
 	for _, levelMetadata := range v.Levels {
 		for f := range levelMetadata.All() {
@@ -1461,25 +1461,20 @@ func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
 	}
 }
 
-// waitTableStatsInitialLoad waits until the statistics for all files that
-// existed during Open have been loaded; used in tests.
-// The d.mu mutex must be locked while calling this method.
-//
-// TODO(jackson): Consolidate waitTableStatsInitialLoad and waitTableStats. It
-// seems to be possible for loadedInitial to remain indefinitely false in some
-// tests that use waitTableStats today.
-func (d *DB) waitTableStatsInitialLoad() {
-	for !d.mu.tableStats.loadedInitial {
+func (d *DB) waitTableStatsLocked() {
+	if d.opts.DisableTableStats {
+		return
+	}
+	for d.mu.tableStats.loading || !d.mu.tableStats.loadedInitial || len(d.mu.tableStats.pending) > 0 {
 		d.mu.tableStats.cond.Wait()
 	}
 }
 
-// waitTableStats waits until all new files' statistics have been loaded. It's
-// used in tests. The d.mu mutex must be locked while calling this method.
+// waitTableStatsLocked waits for all table statistics to be loaded; use
 func (d *DB) waitTableStats() {
-	for d.mu.tableStats.loading || len(d.mu.tableStats.pending) > 0 {
-		d.mu.tableStats.cond.Wait()
-	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.waitTableStatsLocked()
 }
 
 func runExciseCmd(td *datadriven.TestData, d *DB) error {

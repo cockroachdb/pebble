@@ -157,7 +157,7 @@ func TestTableStats(t *testing.T) {
 			return ""
 
 		case "wait-pending-table-stats":
-			return runTableStatsCmd(td, d)
+			return runWaitForTableStatsCmd(td, d)
 
 		case "wait-loaded-initial":
 			d.mu.Lock()
