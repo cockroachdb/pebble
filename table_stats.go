@@ -480,6 +480,16 @@ func (d *DB) loadTableRangeDelStats(
 	return compactionHints, rangeDeletionsBytesEstimate, nil
 }
 
+// estimateSizesBeneath calculates two statistics describing the data in the LSM
+// below the provided table metadata:
+//
+//  1. The average logical size of values: This is a precompression sum of
+//     non-tombstone values. It's helpful for estimating how much data a DEL
+//     might delete.
+//  2. The compression ratio of the data beneath the table.
+//
+// estimateSizesBeneath walks the LSM table metadata for all tables beneath meta
+// (plus the table itself), computing the above statistics.
 func (d *DB) estimateSizesBeneath(
 	ctx context.Context,
 	v *manifest.Version,
@@ -496,14 +506,11 @@ func (d *DB) estimateSizesBeneath(
 	// calculate a compression ratio of 0 which is not accurate for the file's
 	// own tombstones.
 	var (
-		// TODO(sumeer): The entryCount includes the tombstones, which can be small,
-		// resulting in a lower than expected avgValueLogicalSize. For an example of
-		// this effect see the estimate in testdata/compaction_picker_scores (search
-		// for "point-deletions-bytes-estimate: 163850").
-		fileSum    = meta.Size + meta.EstimatedReferenceSize()
-		entryCount = fileProps.NumEntries
-		keySum     = fileProps.RawKeySize
-		valSum     = fileProps.RawValueSize
+		fileSum       = meta.Size + meta.EstimatedReferenceSize()
+		entryCount    = fileProps.NumEntries
+		deletionCount = fileProps.NumDeletions
+		keySum        = fileProps.RawKeySize
+		valSum        = fileProps.RawValueSize
 	)
 
 	for l := level + 1; l < numLevels; l++ {
@@ -527,6 +534,7 @@ func (d *DB) estimateSizesBeneath(
 			}
 
 			entryCount += tableBeneath.ScaleStatistic(backingProps.NumEntries)
+			deletionCount += tableBeneath.ScaleStatistic(backingProps.NumDeletions)
 			keySum += tableBeneath.ScaleStatistic(backingProps.RawKeySize)
 			valSum += tableBeneath.ScaleStatistic(backingProps.RawValueSize)
 			continue
@@ -543,9 +551,9 @@ func (d *DB) estimateSizesBeneath(
 	//
 	//                            ↓
 	//
-	//         FileSize              RawValueSize
-	//   -----------------------  ×  ------------
-	//   RawKeySize+RawValueSize     NumEntries
+	//         FileSize                    RawValueSize
+	//   -----------------------  ×  -------------------------
+	//   RawKeySize+RawValueSize     NumEntries - NumDeletions
 	//
 	// We return the average logical value size plus the compression ratio,
 	// leaving the scaling to the caller. This allows the caller to perform
@@ -559,7 +567,9 @@ func (d *DB) estimateSizesBeneath(
 		// such overhead is not large.
 		compressionRatio = 1
 	}
-	avgValueLogicalSize = float64(valSum) / float64(entryCount)
+	// When calculating the average value size, we subtract the number of
+	// deletions from the total number of entries.
+	avgValueLogicalSize = float64(valSum) / float64(max(1, invariants.SafeSub(entryCount, deletionCount)))
 	return avgValueLogicalSize, compressionRatio, nil
 }
 
@@ -716,8 +726,7 @@ func maybeSetStatsFromProperties(meta *manifest.TableMetadata, props *sstable.Pr
 	if props.NumDeletions != 0 || props.NumRangeKeyDels != 0 {
 		return false
 	}
-	var stats manifest.TableStats
-	meta.PopulateStats(&stats)
+	meta.PopulateStats(new(manifest.TableStats))
 	return true
 }
 

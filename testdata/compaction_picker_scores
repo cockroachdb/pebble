@@ -93,7 +93,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 5
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 163850
+point-deletions-bytes-estimate: 327690
 range-deletions-bytes-estimate: 0
 compression: None:128
 
@@ -105,7 +105,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       709B     0.01     0.01           2.51
+L5       709B     0.01     0.01           5.01
 L6       321KB    1.11     1.11           1.11
 
 # Run a similar test as above, but this time the table containing the DELs is
@@ -147,7 +147,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 5
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 163860
+point-deletions-bytes-estimate: 327700
 range-deletions-bytes-estimate: 0
 compression: None:129
 
