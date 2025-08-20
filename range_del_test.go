@@ -65,7 +65,7 @@ func TestRangeDel(t *testing.T) {
 			return s
 
 		case "wait-pending-table-stats":
-			return runTableStatsCmd(td, d)
+			return runWaitForTableStatsCmd(td, d)
 
 		case "compact":
 			if err := runCompactCmd(td, d); err != nil {

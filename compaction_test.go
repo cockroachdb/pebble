@@ -1105,9 +1105,7 @@ func TestCompaction(t *testing.T) {
 				return runLSMCmd(td, d)
 
 			case "metrics":
-				d.mu.Lock()
-				d.waitTableStatsInitialLoad()
-				d.mu.Unlock()
+				d.waitTableStats()
 				m := d.Metrics()
 				return m.StringForTests()
 
@@ -1407,7 +1405,7 @@ func TestCompaction(t *testing.T) {
 				return runSSTablePropertiesCmd(t, td, d)
 
 			case "wait-pending-table-stats":
-				return runTableStatsCmd(td, d)
+				return runWaitForTableStatsCmd(td, d)
 
 			case "close-snapshots":
 				d.mu.Lock()
@@ -1736,13 +1734,11 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				// NB: collectTableStats attempts to acquire the lock. Temporarily
 				// unlock here to avoid a deadlock.
 				d.mu.Unlock()
-				didRun := d.collectTableStats()
-				d.mu.Lock()
-
-				if !didRun {
+				if didRun := d.collectTableStats(); !didRun {
 					// If a job was already running, wait for the results.
 					d.waitTableStats()
 				}
+				d.mu.Lock()
 
 				hints := d.mu.compact.deletionHints
 				if len(hints) == 0 {
@@ -1947,7 +1943,7 @@ func TestCompactionTombstones(t *testing.T) {
 				return s
 
 			case "wait-pending-table-stats":
-				return runTableStatsCmd(td, d)
+				return runWaitForTableStatsCmd(td, d)
 
 			case "close-snapshot":
 				seqNum := base.ParseSeqNum(strings.TrimSpace(td.Input))

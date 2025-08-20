@@ -416,10 +416,7 @@ func TestMetrics(t *testing.T) {
 		case "metrics":
 			// The asynchronous loading of table stats can change metrics, so
 			// wait for all the tables' stats to be loaded.
-			d.mu.Lock()
-			d.waitTableStatsInitialLoad()
 			d.waitTableStats()
-			d.mu.Unlock()
 
 			m := d.Metrics()
 			// Some subset of cases show non-determinism in cache hits/misses.
@@ -497,9 +494,7 @@ func TestMetrics(t *testing.T) {
 		case "additional-metrics":
 			// The asynchronous loading of table stats can change metrics, so
 			// wait for all the tables' stats to be loaded.
-			d.mu.Lock()
 			d.waitTableStats()
-			d.mu.Unlock()
 
 			m := d.Metrics()
 			var b strings.Builder
