@@ -63,6 +63,8 @@ func exampleBuckets() Buckets {
 	var buckets Buckets
 	r := rand.New(rand.NewPCG(0, 0))
 	kinds := slices.Collect(blockkind.All())
+	// TODO(sumeer): temporary hack to exclude the TieringHistogram kind.
+	kinds = kinds[:len(kinds)-1]
 	for n := 0; n < 10; n++ {
 		k := kinds[r.IntN(len(kinds))]
 		sz := BlockSize(r.IntN(int(numBlockSizes)))

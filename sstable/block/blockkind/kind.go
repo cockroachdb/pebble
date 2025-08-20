@@ -20,6 +20,7 @@ const (
 	RangeDel
 	RangeKey
 	Metadata
+	TieringHistogram
 
 	NumKinds
 )
@@ -35,6 +36,7 @@ var kindString = [...]string{
 	RangeDel:                        "rangedel",
 	RangeKey:                        "rangekey",
 	Metadata:                        "metadata",
+	TieringHistogram:                "tieringhistogram",
 }
 
 func (k Kind) String() string {

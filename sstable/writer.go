@@ -13,12 +13,24 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 )
 
 // NewRawWriter returns a new table writer for the file. Closing the writer will
 // close the file.
 func NewRawWriter(writable objstorage.Writable, o WriterOptions) RawWriter {
-	return NewRawWriterWithCPUMeasurer(writable, o, base.NoopCPUMeasurer{})
+	return NewRawWriterWithCPUMeasurer(
+		writable, o, base.NoopCPUMeasurer{}, noopColdTierThresholdRetriever{})
+}
+
+type noopColdTierThresholdRetriever struct{}
+
+var _ tieredmeta.ColdTierThresholdRetriever = noopColdTierThresholdRetriever{}
+
+func (noopColdTierThresholdRetriever) GetColdTierLTThreshold(
+	base.TieringSpanID,
+) base.TieringAttribute {
+	return 0
 }
 
 // NewRawWriterWithCPUMeasurer is like NewRawWriter, but additionally allows
@@ -26,14 +38,17 @@ func NewRawWriter(writable objstorage.Writable, o WriterOptions) RawWriter {
 // CPUMeasurer.MeasureCPU(CompactionGoroutineSSTableSecondary) is used by the
 // writer.
 func NewRawWriterWithCPUMeasurer(
-	writable objstorage.Writable, o WriterOptions, cpuMeasurer base.CPUMeasurer,
+	writable objstorage.Writable,
+	o WriterOptions,
+	cpuMeasurer base.CPUMeasurer,
+	cttRetriever tieredmeta.ColdTierThresholdRetriever,
 ) RawWriter {
 	if o.TableFormat <= TableFormatPebblev4 {
 		// Don't bother plumbing the cpuMeasurer to the row writer since it is not
 		// the default and will be removed.
 		return newRowWriter(writable, o)
 	}
-	return newColumnarWriter(writable, o, cpuMeasurer)
+	return newColumnarWriter(writable, o, cpuMeasurer, cttRetriever)
 }
 
 // Writer is a table writer.
@@ -326,10 +341,11 @@ type RawWriter interface {
 	Add(key InternalKey, value []byte, forceObsolete bool, meta base.KVMeta) error
 	// AddWithBlobHandle adds a key to the sstable, but encoding a blob value
 	// handle instead of an in-place value. See Add for more details. The caller
-	// must provide the already-extracted ShortAttribute for the value.
+	// must provide the already-extracted ShortAttribute for the value. The
+	// isInCold parameter specifies whether the blob file is in the cold tier.
 	AddWithBlobHandle(
 		key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool,
-		meta base.KVMeta) error
+		meta base.KVMeta, blobTier base.StorageTier) error
 	// EncodeSpan encodes the keys in the given span. The span can contain
 	// either only RANGEDEL keys or only range keys.
 	//

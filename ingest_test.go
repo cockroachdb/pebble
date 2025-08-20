@@ -127,7 +127,8 @@ func TestIngestLoad(t *testing.T) {
 				if blobtest.IsBlobHandle(data[j+1:]) {
 					ih, _, err := bv.ParseInlineHandle(data[j+1:])
 					require.NoError(t, err)
-					if err := w.AddWithBlobHandle(key, ih, base.ShortAttribute(0), false, base.KVMeta{}); err != nil {
+					if err := w.AddWithBlobHandle(
+						key, ih, base.ShortAttribute(0), false, base.KVMeta{}, base.HotTier); err != nil {
 						return err.Error()
 					}
 				} else {

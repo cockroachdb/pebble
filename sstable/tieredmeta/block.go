@@ -134,10 +134,8 @@ func (k *Key) decode(data []byte) error {
 	return nil
 }
 
-func NewTieringHistogramBlockWriter(
-	retriever ColdTierThresholdRetriever,
-) *TieringHistogramBlockWriter {
-	return &TieringHistogramBlockWriter{
+func (w *TieringHistogramBlockWriter) Init(retriever ColdTierThresholdRetriever) {
+	*w = TieringHistogramBlockWriter{
 		retriever: retriever,
 		writers:   make(map[Key]*histogramWriter),
 	}
@@ -176,6 +174,8 @@ func (w *TieringHistogramBlockWriter) Flush() []byte {
 	for _, k := range keys {
 		cw.AddKV(k.encode(), w.writers[k].encode())
 	}
+	clear(w.writers)
+	w.writers = nil
 	return cw.Finish(cw.Rows())
 }
 

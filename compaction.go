@@ -35,6 +35,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
@@ -3374,6 +3375,11 @@ func (d *DB) compactAndWrite(
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 
+	var cttRetriever coldTierThresholdRetriever
+	if err := cttRetriever.init(d.opts.Experimental.SpanPolicyFunc, c.bounds, d.cmp); err != nil {
+		return compact.Result{Err: err}
+	}
+
 	// If spanPolicyValid is true and spanPolicy.KeyRange.End is empty, then
 	// spanPolicy applies for the rest of the keyspace.
 	var spanPolicyValid bool
@@ -3421,7 +3427,7 @@ func (d *DB) compactAndWrite(
 				MinimumSize: latencyTolerantMinimumSize,
 			})
 		}
-		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts)
+		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts, &cttRetriever)
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
@@ -3577,7 +3583,10 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 // newCompactionOutputTable creates an object for a new table produced by a
 // compaction or flush.
 func (d *DB) newCompactionOutputTable(
-	jobID JobID, c *tableCompaction, writerOpts sstable.WriterOptions,
+	jobID JobID,
+	c *tableCompaction,
+	writerOpts sstable.WriterOptions,
+	cttRetriever tieredmeta.ColdTierThresholdRetriever,
 ) (objstorage.ObjectMetadata, sstable.RawWriter, error) {
 	writable, objMeta, err := d.newCompactionOutputObj(
 		base.FileTypeTable, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts)
@@ -3596,7 +3605,7 @@ func (d *DB) newCompactionOutputTable(
 			FileNum:     objMeta.DiskFileNum,
 		},
 	})
-	tw := sstable.NewRawWriterWithCPUMeasurer(writable, writerOpts, c.grantHandle)
+	tw := sstable.NewRawWriterWithCPUMeasurer(writable, writerOpts, c.grantHandle, cttRetriever)
 	return objMeta, tw, nil
 }
 
@@ -3692,4 +3701,55 @@ func getDiskWriteCategoryForCompaction(opts *Options, kind compactionKind) vfs.D
 	} else {
 		return "pebble-compaction"
 	}
+}
+
+type coldTierThresholdRetriever struct {
+	m map[base.TieringSpanID]base.TieringAttribute
+}
+
+var _ tieredmeta.ColdTierThresholdRetriever = &coldTierThresholdRetriever{}
+
+func (c *coldTierThresholdRetriever) init(
+	f SpanPolicyFunc, bounds base.UserKeyBounds, cmp Compare,
+) error {
+	if f == nil {
+		// No span policy function is set, so there are no tiering policies.
+		return nil
+	}
+	// Iterate over the compaction bounds, retrieving the SpanPolicys.
+	for {
+		policy, err := f(bounds)
+		if err != nil {
+			return err
+		}
+		if policy.TieringPolicy != nil {
+			p := policy.TieringPolicy.Policy()
+			if c.m == nil {
+				c.m = make(map[base.TieringSpanID]base.TieringAttribute)
+			}
+			c.m[p.SpanID] = p.ColdTierLTThreshold
+		}
+		if len(policy.KeyRange.End) == 0 || !bounds.End.IsUpperBoundFor(cmp, policy.KeyRange.End) {
+			// Done iterating over the compaction bounds.
+			break
+		}
+		bounds.Start = policy.KeyRange.End
+	}
+	return nil
+}
+
+func (c *coldTierThresholdRetriever) GetColdTierLTThreshold(
+	spanID base.TieringSpanID,
+) base.TieringAttribute {
+	attr, ok := c.m[spanID]
+	if !ok {
+		// TODO(sumeer): we should be more graceful. If we return 0, then
+		// everything in this compaction will get classified as unaccounted bytes
+		// in the histogram. That is preferable to returning MaxUint64, which will
+		// sum across histograms and destroy incremental accounting. For now, it
+		// is better to panic to discovery bugs, given the lack of unit tests in
+		// the prototype.
+		panic(errors.AssertionFailedf("unknown compaction TieringSpanID %v", spanID))
+	}
+	return attr
 }

@@ -194,9 +194,10 @@ func (w *loggingRawWriter) AddWithBlobHandle(
 	attr base.ShortAttribute,
 	forceObsolete bool,
 	meta base.KVMeta,
+	blobTier base.StorageTier,
 ) error {
 	fmt.Fprintf(w.w, "RawWriter.AddWithBlobHandle(%q, %q, %x, %t)\n", key, h, attr, forceObsolete)
-	return w.RawWriter.AddWithBlobHandle(key, h, attr, forceObsolete, meta)
+	return w.RawWriter.AddWithBlobHandle(key, h, attr, forceObsolete, meta, blobTier)
 }
 
 // defineDBValueSeparator is a compact.ValueSeparation implementation used by
