@@ -243,6 +243,11 @@ const (
 	// file format (which adds compression statistics).
 	FormatV2BlobFiles
 
+	// FormatBackingValueSize is a format major version that adds support for
+	// persisting the value size of the backing sst for virtual sstables in the
+	// manifest (VersionEdit).
+	FormatBackingValueSize
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
@@ -374,6 +379,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatV2BlobFiles: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatV2BlobFiles)
+	},
+	FormatBackingValueSize: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatBackingValueSize)
 	},
 }
 
