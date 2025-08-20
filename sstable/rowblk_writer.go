@@ -543,6 +543,7 @@ func (w *RawRowWriter) AddWithBlobHandle(
 	attr base.ShortAttribute,
 	forceObsolete bool,
 	meta base.KVMeta,
+	blobTier base.StorageTier,
 ) error {
 	w.err = errors.Newf("pebble: blob value handles are not supported in %s", w.tableFormat.String())
 	return w.err

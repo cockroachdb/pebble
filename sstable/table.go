@@ -94,6 +94,7 @@ The table file format looks like:
 [value block M-1] (optional)
 [blob reference value liveness index block] (optional)
 [meta value index block] (optional)
+[meta tiering histogram block] (since TableFormatPebblev8)
 [meta properties block]
 [metaindex block]
 [footer]
@@ -226,13 +227,14 @@ const (
 	levelDBFormatVersion  = 0
 	rocksDBFormatVersion2 = 2
 
-	metaRangeKeyName        = "pebble.range_key"
-	metaValueIndexName      = "pebble.value_index"
-	metaPropertiesName      = "rocksdb.properties"
-	metaRangeDelV1Name      = "rocksdb.range_del"
-	metaRangeDelV2Name      = "rocksdb.range_del2"
-	metaBlobRefIndexName    = "pebble.blob_ref_index"
-	metaBlobRefLivenessName = "pebble.blob_ref_liveness"
+	metaRangeKeyName         = "pebble.range_key"
+	metaValueIndexName       = "pebble.value_index"
+	metaPropertiesName       = "rocksdb.properties"
+	metaRangeDelV1Name       = "rocksdb.range_del"
+	metaRangeDelV2Name       = "rocksdb.range_del2"
+	metaBlobRefIndexName     = "pebble.blob_ref_index"
+	metaBlobRefLivenessName  = "pebble.blob_ref_liveness"
+	metaTieringHistogramName = "pebble.tiering_histogram"
 
 	// Index Types.
 	// A space efficient index block that is optimized for binary-search-based

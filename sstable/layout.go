@@ -936,6 +936,14 @@ func (w *layoutWriter) WriteRangeDeletionBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlockUncompressed(b, blockkind.RangeDel, metaRangeDelV2Name)
 }
 
+func (w *layoutWriter) WriteTieringHistogramBlock(b []byte) (block.Handle, error) {
+	bh, err := w.writeBlock(b, blockkind.TieringHistogram)
+	if err == nil {
+		w.recordToMetaindex(metaTieringHistogramName, bh)
+	}
+	return bh, err
+}
+
 // writeNamedBlockUncompressed writes a block without compressing it and adds it to the metaindex.
 func (w *layoutWriter) writeNamedBlockUncompressed(
 	b []byte, kind block.Kind, name string,
