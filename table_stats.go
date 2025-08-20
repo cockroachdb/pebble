@@ -692,52 +692,31 @@ func sanityCheckStats(
 // maybeSetStatsFromProperties sets the table backing properties and attempts to
 // set the table stats from the properties, for a table that was created by an
 // ingestion or compaction.
-func maybeSetStatsFromProperties(
-	meta *manifest.TableMetadata, props *sstable.Properties, logger Logger,
-) bool {
-	backingProps := meta.TableBacking.PopulateProperties(props)
+func maybeSetStatsFromProperties(meta *manifest.TableMetadata, props *sstable.Properties) bool {
+	meta.TableBacking.PopulateProperties(props)
 	if invariants.Enabled && meta.Virtual {
 		panic("table expected to be physical")
 	}
-	// If a table contains range deletions or range key deletions, we defer the
-	// stats collection. There are two main reasons for this:
+	// If a table contains any deletions, we defer the stats collection. There
+	// are two main reasons for this:
 	//
-	//  1. Estimating the potential for reclaimed space due to a range deletion
-	//     tombstone requires scanning the LSM - a potentially expensive operation
-	//     that should be deferred.
-	//  2. Range deletions and / or range key deletions present an opportunity to
-	//     compute "deletion hints", which also requires a scan of the LSM to
-	//     compute tables that would be eligible for deletion.
+	//  1. Estimating the potential for reclaimed space due to a deletion
+	//     requires scanning the LSM - a potentially expensive operation that
+	//     should be deferred.
+	//  2. Range deletions present an opportunity to compute "deletion hints",
+	//     which also requires a scan of the LSM to compute tables that would be
+	//     eligible for deletion.
 	//
 	// These two tasks are deferred to the table stats collector goroutine.
-	if props.NumRangeDeletions != 0 || props.NumRangeKeyDels != 0 {
+	//
+	// Note that even if the point deletions are sized (DELSIZEDs), an accurate
+	// compression ratio is necessary to calculate an accurate estimate of the
+	// physical disk space they reclaim. To do that, we need to scan the LSM
+	// beneath the file.
+	if props.NumDeletions != 0 || props.NumRangeKeyDels != 0 {
 		return false
 	}
-
-	// If a table is more than 10% point deletions without user-provided size
-	// estimates, don't calculate the PointDeletionsBytesEstimate statistic
-	// using our limited knowledge. The table stats collector can populate the
-	// stats and calculate an average of value size of all the tables beneath
-	// the table in the LSM, which will be more accurate.
-	if unsizedDels := invariants.SafeSub(props.NumDeletions, props.NumSizedDeletions); unsizedDels > props.NumEntries/10 {
-		return false
-	}
-
-	var pointEstimate uint64
-	if props.NumEntries > 0 {
-		// Use the file's own average key and value sizes as an estimate. This
-		// doesn't require any additional IO and since the number of point
-		// deletions in the file is low, the error introduced by this crude
-		// estimate is expected to be small.
-		avgValSize, compressionRatio := estimatePhysicalSizes(meta, props)
-		pointEstimate = pointDeletionsBytesEstimate(backingProps, avgValSize, compressionRatio)
-	}
-
-	stats := manifest.TableStats{
-		PointDeletionsBytesEstimate: pointEstimate,
-		RangeDeletionsBytesEstimate: 0,
-	}
-	sanityCheckStats(meta, &stats, logger, "stats from properties")
+	var stats manifest.TableStats
 	meta.PopulateStats(&stats)
 	return true
 }
@@ -830,35 +809,6 @@ func pointDeletionsBytesEstimate(
 	//      Logical       RawKeySize+RawValueSize
 	//
 	return uint64((tombstonesLogicalSize + shadowedLogicalSize) * compressionRatio)
-}
-
-func estimatePhysicalSizes(
-	tableMeta *manifest.TableMetadata, props *sstable.Properties,
-) (avgValLogicalSize, compressionRatio float64) {
-	// RawKeySize and RawValueSize are uncompressed totals. Scale according to
-	// the data size to account for compression, index blocks and metadata
-	// overhead. Eg:
-	//
-	//    Compression rate        ×  Average uncompressed value size
-	//
-	//                            ↓
-	//
-	//         FileSize              RawValSize
-	//   -----------------------  ×  ----------
-	//   RawKeySize+RawValueSize     NumEntries
-	//
-	physicalSize := tableMeta.Size + tableMeta.EstimatedReferenceSize()
-	uncompressedSum := props.RawKeySize + props.RawValueSize
-	compressionRatio = float64(physicalSize) / float64(uncompressedSum)
-	if compressionRatio > 1 {
-		// We can get huge compression ratios due to the fixed overhead of files
-		// containing a tiny amount of data. By setting this to 1, we are ignoring
-		// that overhead, but we accept that tradeoff since the total bytes in
-		// such overhead is not large.
-		compressionRatio = 1
-	}
-	avgValLogicalSize = float64(props.RawValueSize) / float64(props.NumEntries)
-	return avgValLogicalSize, compressionRatio
 }
 
 // newCombinedDeletionKeyspanIter returns a keyspan.FragmentIterator that
