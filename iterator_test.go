@@ -2798,10 +2798,10 @@ func waitForCompactionsAndTableStats(d *DB) {
 	d.mu.Lock()
 	// NB: Wait for table stats because some compaction types rely
 	// on table stats to be collected.
-	d.waitTableStats()
+	d.waitTableStatsLocked()
 	for d.mu.compact.compactingCount > 0 {
 		d.mu.compact.cond.Wait()
-		d.waitTableStats()
+		d.waitTableStatsLocked()
 	}
 	d.mu.Unlock()
 }

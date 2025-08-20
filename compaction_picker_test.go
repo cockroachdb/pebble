@@ -1593,7 +1593,7 @@ func TestCompactionPickerScores(t *testing.T) {
 			return buf.String()
 
 		case "wait-pending-table-stats":
-			return runTableStatsCmd(td, d)
+			return runWaitForTableStatsCmd(td, d)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

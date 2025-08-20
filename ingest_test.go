@@ -916,14 +916,12 @@ func testIngestSharedImpl(
 		case "metrics":
 			// The asynchronous loading of table stats can change metrics, so
 			// wait for all the tables' stats to be loaded.
-			d.mu.Lock()
 			d.waitTableStats()
-			d.mu.Unlock()
 
 			return d.Metrics().StringForTests()
 
 		case "wait-pending-table-stats":
-			return runTableStatsCmd(td, d)
+			return runWaitForTableStatsCmd(td, d)
 
 		case "excise":
 			ve := &manifest.VersionEdit{
@@ -1316,14 +1314,12 @@ func TestIngestExternal(t *testing.T) {
 		case "metrics":
 			// The asynchronous loading of table stats can change metrics, so
 			// wait for all the tables' stats to be loaded.
-			d.mu.Lock()
 			d.waitTableStats()
-			d.mu.Unlock()
 
 			return d.Metrics().StringForTests()
 
 		case "wait-pending-table-stats":
-			return runTableStatsCmd(td, d)
+			return runWaitForTableStatsCmd(td, d)
 
 		case "compact":
 			if len(td.CmdArgs) != 2 {
@@ -1785,15 +1781,12 @@ func TestIngest(t *testing.T) {
 		case "metrics":
 			// The asynchronous loading of table stats can change metrics, so
 			// wait for all the tables' stats to be loaded.
-			d.mu.Lock()
-			d.waitTableStatsInitialLoad()
 			d.waitTableStats()
-			d.mu.Unlock()
 
 			return d.Metrics().StringForTests()
 
 		case "wait-pending-table-stats":
-			return runTableStatsCmd(td, d)
+			return runWaitForTableStatsCmd(td, d)
 
 		case "compact":
 			if len(td.CmdArgs) != 2 {

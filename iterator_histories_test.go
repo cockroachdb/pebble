@@ -243,9 +243,7 @@ func TestIterHistories(t *testing.T) {
 			case "lsm":
 				return runLSMCmd(td, d)
 			case "metrics":
-				d.mu.Lock()
 				d.waitTableStats()
-				d.mu.Unlock()
 				m := d.Metrics()
 				return fmt.Sprintf("Metrics.Keys.RangeKeySetsCount = %d\n", m.Keys.RangeKeySetsCount)
 			case "mutate":
@@ -398,9 +396,7 @@ func TestIterHistories(t *testing.T) {
 				td.ScanArgs(t, "iter", &name)
 				return runIterCmd(td, iters[name], false /* close iter */)
 			case "wait-table-stats":
-				d.mu.Lock()
 				d.waitTableStats()
-				d.mu.Unlock()
 				return ""
 			default:
 				return fmt.Sprintf("unknown command %q", td.Cmd)
