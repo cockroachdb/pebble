@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -60,6 +61,8 @@ type RawColumnWriter struct {
 	rangeKeyBlock             colblk.KeyspanBlockWriter
 	valueBlock                *valblk.Writer // nil iff WriterOptions.DisableValueBlocks=true
 	blobRefLivenessIndexBlock blobRefValueLivenessWriter
+	tieringHistogramBlock     tieredmeta.TieringHistogramBlockWriter
+
 	// filter accumulates the filter block. If populated, the filter ingests
 	// either the output of w.split (i.e. a prefix extractor) if w.split is not
 	// nil, or the full keys otherwise.
@@ -119,7 +122,10 @@ var _ RawWriter = (*RawColumnWriter)(nil)
 // cpuMeasurer, if non-nil, is only used for calling
 // cpuMeasurer.MeasureCPUSSTableSecondary.
 func newColumnarWriter(
-	writable objstorage.Writable, o WriterOptions, cpuMeasurer base.CPUMeasurer,
+	writable objstorage.Writable,
+	o WriterOptions,
+	cpuMeasurer base.CPUMeasurer,
+	cttRetriever tieredmeta.ColdTierThresholdRetriever,
 ) *RawColumnWriter {
 	if writable == nil {
 		panic("pebble: nil writable")
@@ -149,6 +155,9 @@ func newColumnarWriter(
 		// We use the value block writer in the same goroutine so it's safe to share
 		// the physBlockMaker.
 		w.valueBlock = valblk.NewWriter(flushGovernor, &w.layout.physBlockMaker, func(compressedSize int) {})
+	}
+	if o.TableFormat >= TableFormatPebblev8 {
+		w.tieringHistogramBlock.Init(cttRetriever)
 	}
 	if o.FilterPolicy != base.NoFilterPolicy {
 		switch o.FilterType {
@@ -237,8 +246,8 @@ func (w *RawColumnWriter) EstimatedSize() uint64 {
 		sz += uint64(w.rangeKeyBlock.Size())
 	}
 
-	// TODO(jackson): Include an estimate of the properties, filter and meta
-	// index blocks sizes.
+	// TODO(jackson): Include an estimate of the properties, filter, tiering
+	// histogram and meta index blocks sizes.
 	return sz
 }
 
@@ -407,7 +416,24 @@ func (w *RawColumnWriter) Add(
 			valuePrefix = block.InPlaceValuePrefix(eval.kcmp.PrefixEqual())
 		}
 	}
+	w.tryAddToTieringHistogram(meta, key, uint64(len(value)), tieredmeta.SSTableValueBytes)
 	return w.add(key, len(value), valueStoredWithKey, valuePrefix, eval, meta)
+}
+
+func (w *RawColumnWriter) tryAddToTieringHistogram(
+	meta base.KVMeta, key InternalKey, valLen uint64, valKind tieredmeta.KindAndTier,
+) {
+	if w.opts.TableFormat < TableFormatPebblev8 {
+		return
+	}
+	switch key.Kind() {
+	case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
+		w.tieringHistogramBlock.Add(
+			tieredmeta.SSTableKeyBytes, meta.Tiering.SpanID, meta.Tiering.Attribute,
+			uint64(len(key.UserKey)))
+		w.tieringHistogramBlock.Add(valKind, meta.Tiering.SpanID,
+			meta.Tiering.Attribute, valLen)
+	}
 }
 
 // AddWithBlobHandle implements the RawWriter interface.
@@ -417,6 +443,7 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	attr base.ShortAttribute,
 	forceObsolete bool,
 	meta base.KVMeta,
+	blobTier base.StorageTier,
 ) error {
 	// Blob value handles require at least TableFormatPebblev6.
 	if w.opts.TableFormat <= TableFormatPebblev5 {
@@ -446,6 +473,11 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	if err != nil {
 		return err
 	}
+	tieringKind := tieredmeta.SSTableBlobReferenceHotBytes
+	if blobTier == base.ColdTier {
+		tieringKind = tieredmeta.SSTableBlobReferenceColdBytes
+	}
+	w.tryAddToTieringHistogram(meta, key, uint64(h.ValueLen), tieringKind)
 	w.props.NumValuesInBlobFiles++
 	if err := w.blobRefLivenessIndexBlock.addLiveValue(h.ReferenceID, h.BlockID, h.ValueID, uint64(h.ValueLen)); err != nil {
 		return err
@@ -1006,6 +1038,13 @@ func (w *RawColumnWriter) Close() (err error) {
 			encoder.AddReferenceLiveness(int(refID), buf)
 		}
 		if _, err := w.layout.WriteBlobRefIndexBlock(encoder.Finish()); err != nil {
+			return err
+		}
+	}
+
+	if w.opts.TableFormat >= TableFormatPebblev8 {
+		toWrite := w.tieringHistogramBlock.Flush()
+		if _, err = w.layout.WriteTieringHistogramBlock(toWrite); err != nil {
 			return err
 		}
 	}

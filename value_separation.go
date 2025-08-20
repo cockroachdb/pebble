@@ -310,7 +310,7 @@ func (vs *writeNewBlobFiles) Add(
 			ValueID: handle.ValueID,
 		},
 	}
-	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete, kv.M)
+	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete, kv.M, base.HotTier)
 }
 
 // FinishOutput closes the current blob file (if any). It returns the stats
@@ -454,7 +454,7 @@ func (vs *preserveBlobReferences) Add(
 		HandleSuffix: handleSuffix,
 	}
 	err := tw.AddWithBlobHandle(
-		kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete, kv.M)
+		kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete, kv.M, base.HotTier)
 	if err != nil {
 		return err
 	}

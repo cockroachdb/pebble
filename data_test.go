@@ -672,7 +672,8 @@ func runBuildCmd(
 			if err != nil {
 				return err
 			}
-			if err := w.Raw().AddWithBlobHandle(tmp, handle, base.ShortAttribute(0), false, base.KVMeta{}); err != nil {
+			if err := w.Raw().AddWithBlobHandle(
+				tmp, handle, base.ShortAttribute(0), false, base.KVMeta{}, base.HotTier); err != nil {
 				return err
 			}
 			continue

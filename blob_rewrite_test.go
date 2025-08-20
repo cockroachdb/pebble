@@ -301,7 +301,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 				BlockID: handles[i].BlockID,
 				ValueID: handles[i].ValueID,
 			},
-		}, base.ShortAttribute(0), false, base.KVMeta{}))
+		}, base.ShortAttribute(0), false, base.KVMeta{}, base.HotTier))
 		require.NoError(t, tw.Close())
 		originalValueIndices[i] = i
 		originalTables[i] = &manifest.TableMetadata{

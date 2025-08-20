@@ -799,3 +799,9 @@ type TieringPolicyAndExtractor interface {
 	// bytes in the system that have such errors.
 	ExtractAttribute(userKey []byte, value []byte) (TieringAttribute, error)
 }
+type StorageTier uint8
+
+const (
+	HotTier StorageTier = iota
+	ColdTier
+)
