@@ -83,7 +83,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 2
+point-deletions-bytes-estimate: 3
 range-deletions-bytes-estimate: 0
 compression: None:124
 
@@ -123,7 +123,7 @@ wait-pending-table-stats
 num-entries: 6
 num-deletions: 2
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 2
+point-deletions-bytes-estimate: 3
 range-deletions-bytes-estimate: 101
 compression: None:87,Snappy:96/129
 
@@ -157,7 +157,7 @@ wait-pending-table-stats
 num-entries: 11
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 2
+point-deletions-bytes-estimate: 3
 range-deletions-bytes-estimate: 0
 compression: None:36,Snappy:131/169
 
@@ -240,7 +240,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 6150
+point-deletions-bytes-estimate: 12294
 range-deletions-bytes-estimate: 0
 compression: None:128
 
@@ -371,7 +371,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 2459
+point-deletions-bytes-estimate: 3074
 range-deletions-bytes-estimate: 0
 compression: None:120
 
@@ -419,7 +419,7 @@ wait-pending-table-stats
 num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 2459
+point-deletions-bytes-estimate: 3074
 range-deletions-bytes-estimate: 0
 compression: None:120
 
@@ -492,7 +492,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 7
+point-deletions-bytes-estimate: 9
 range-deletions-bytes-estimate: 0
 compression: None:36,Snappy:95/108
 
@@ -505,7 +505,7 @@ wait-pending-table-stats force-tombstone-density-ratio=0.9
 num-entries: 5
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 7
+point-deletions-bytes-estimate: 9
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
 compression: None:36,Snappy:95/108
@@ -556,7 +556,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 7
+point-deletions-bytes-estimate: 9
 range-deletions-bytes-estimate: 0
 compression: None:36,Snappy:95/108
 
@@ -567,7 +567,7 @@ wait-pending-table-stats force-tombstone-density-ratio=0.9
 num-entries: 5
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 7
+point-deletions-bytes-estimate: 9
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
 compression: None:36,Snappy:95/108
@@ -617,7 +617,7 @@ wait-pending-table-stats
 num-entries: 5
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 857149
+point-deletions-bytes-estimate: 1500007
 range-deletions-bytes-estimate: 0
 compression: None:36,Snappy:95/108
 
@@ -628,7 +628,7 @@ wait-pending-table-stats force-tombstone-density-ratio=0.9
 num-entries: 5
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 857149
+point-deletions-bytes-estimate: 1500007
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
 compression: None:36,Snappy:95/108
