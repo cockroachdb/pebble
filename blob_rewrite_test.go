@@ -344,6 +344,14 @@ func TestBlobRewriteRandomized(t *testing.T) {
 		referencingTables: originalTables,
 	}}
 
+	var verboseBuffer bytes.Buffer
+	verboseBuffer.Grow(16 << 10 /* 16KiB */)
+	defer func() {
+		if t.Failed() {
+			t.Logf("verbose output:\n%s", verboseBuffer.String())
+		}
+	}()
+
 	for i := range numRewrites {
 		fileIdx := rng.IntN(len(files))
 		fileToRewrite := files[fileIdx]
@@ -357,7 +365,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 		if len(fileToRewrite.valueIndices) > 1 {
 			n = testutils.RandIntInRange(rng, 1, len(fileToRewrite.valueIndices))
 		}
-		t.Logf("rewriting file %s, preserving %d values", fileToRewrite.metadata.Physical.FileNum, n)
+		fmt.Fprintf(&verboseBuffer, "rewriting file %s, preserving %d values\n", fileToRewrite.metadata.Physical.FileNum, n)
 
 		// Produce the inputs for the rewrite.
 		newFile := sourceFile{
@@ -377,7 +385,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 		}
 		slices.Sort(newFile.valueIndices)
 		for _, idx := range newFile.valueIndices {
-			t.Logf("newFile.valueIndices: %d: %q; handle: %s", idx, values[idx], handles[idx])
+			fmt.Fprintf(&verboseBuffer, "newFile.valueIndices: %d: %q; handle: %s\n", idx, values[idx], handles[idx])
 		}
 
 		// Rewrite the blob file.
