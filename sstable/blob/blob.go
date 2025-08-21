@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -19,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 )
 
 var (
@@ -80,8 +82,8 @@ const (
 	//  22:30   Original file number (8 bytes)
 	//  30:38   Properties block offset (8 bytes)
 	//  38:46   Properties block length (8 bytes)
-	//  46:54   Metaindex block offset (8 bytes); optional (for future use)
-	//  54:62   Metaindex block length (8 bytes); optional (for future use)
+	//  46:54   Metaindex block offset (8 bytes); In FileFormatV3 onwards
+	//  54:62   Metaindex block length (8 bytes); In FileFormatV3 onwards
 	//  62:70   Blob file magic string (8 bytes)
 	fileFooterLengthV2 = 70
 )
@@ -93,7 +95,8 @@ type FileWriterOptions struct {
 	ChecksumType  block.ChecksumType
 	FlushGovernor block.FlushGovernor
 	// Only CPUMeasurer.MeasureCPUBlobFileSecondary is used.
-	CpuMeasurer base.CPUMeasurer
+	CpuMeasurer  base.CPUMeasurer
+	CTTRetriever tieredmeta.ColdTierThresholdRetriever
 }
 
 func (o *FileWriterOptions) ensureDefaults() {
@@ -115,6 +118,9 @@ func (o *FileWriterOptions) ensureDefaults() {
 	}
 	if o.CpuMeasurer == nil {
 		o.CpuMeasurer = base.NoopCPUMeasurer{}
+	}
+	if o.CTTRetriever == nil {
+		o.CTTRetriever = tieredmeta.NoopColdTierThresholdRetriever{}
 	}
 }
 
@@ -146,12 +152,13 @@ type FileWriter struct {
 	// index block encoding the offsets at which each block is written.
 	// Additionally, when rewriting a blob file, the index block's virtualBlocks
 	// column is also populated to remap blockIDs to the physical block indexes.
-	indexEncoder   indexBlockEncoder
-	stats          FileWriterStats
-	flushGov       block.FlushGovernor
-	physBlockMaker block.PhysicalBlockMaker
-	cpuMeasurer    base.CPUMeasurer
-	writeQueue     struct {
+	indexEncoder          indexBlockEncoder
+	tieringHistogramBlock tieredmeta.TieringHistogramBlockWriter
+	stats                 FileWriterStats
+	flushGov              block.FlushGovernor
+	physBlockMaker        block.PhysicalBlockMaker
+	cpuMeasurer           base.CPUMeasurer
+	writeQueue            struct {
 		wg  sync.WaitGroup
 		ch  chan compressedBlock
 		err error
@@ -163,6 +170,10 @@ type compressedBlock struct {
 	off uint64
 }
 
+const (
+	metaTieringHistogramName = "tiering_histogram"
+)
+
 // NewFileWriter creates a new FileWriter.
 func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOptions) *FileWriter {
 	opts.ensureDefaults()
@@ -173,6 +184,9 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.valuesEncoder.Init(opts.Format)
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
+	if opts.Format >= FileFormatV3 {
+		fw.tieringHistogramBlock.Init(opts.CTTRetriever)
+	}
 	fw.physBlockMaker.Init(opts.Compression, opts.ChecksumType)
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
@@ -196,6 +210,10 @@ func (w *FileWriter) AddValue(v []byte, meta base.TieringMeta) Handle {
 	w.stats.ValueCount++
 	w.stats.UncompressedValueBytes += uint64(len(v))
 	w.valuesEncoder.AddValue(v, meta)
+	if w.format >= FileFormatV3 {
+		w.tieringHistogramBlock.Add(
+			tieredmeta.BlobFileValueBytes, meta.SpanID, meta.Attribute, uint64(len(v)))
+	}
 	return Handle{
 		BlobFileID: base.BlobFileID(w.fileNum),
 		ValueLen:   uint32(len(v)),
@@ -321,12 +339,22 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 		}
 
 		// Write the index block.
-		indexBlockHandle, err := w.writeMetadataBlock(w.indexEncoder.Finish())
+		indexBlockHandle, err := w.writeMetadataBlock(w.indexEncoder.Finish(), block.DontCompress)
 		if err != nil {
 			return err
 		}
 
-		// Write the properties and the v2 footer if the file format is v2.
+		// Write the tiering histogram block if the file format is >= v3.
+		var tieringHistogramBlockHandle block.Handle
+		if w.format >= FileFormatV3 {
+			tieringHistogramBlockHandle, err =
+				w.writeMetadataBlock(w.tieringHistogramBlock.Flush(), block.NoFlags)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Write the properties block if the file format is >= v2.
 		var propBlockHandle block.Handle
 		if w.format >= FileFormatV2 {
 			var cw colblk.KeyValueBlockWriter
@@ -335,11 +363,30 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 				CompressionStats: w.physBlockMaker.Compressor.Stats().String(),
 			}
 			p.writeTo(&cw)
-			propBlockHandle, err = w.writeMetadataBlock(cw.Finish(cw.Rows()))
+			propBlockHandle, err = w.writeMetadataBlock(cw.Finish(cw.Rows()), block.DontCompress)
 			if err != nil {
 				return err
 			}
 		}
+
+		// Write the meta index block if the file format is >= v3.
+		var metaIndexBlockHandle block.Handle
+		if w.format >= FileFormatV3 {
+			var cw colblk.KeyValueBlockWriter
+			cw.Init()
+			// Encode the value.
+			var buf [block.BlockHandleLikelyMaxLen]byte
+			n := tieringHistogramBlockHandle.EncodeVarints(buf[:])
+			cw.AddKV(
+				unsafe.Slice(unsafe.StringData(metaTieringHistogramName), len(metaTieringHistogramName)),
+				buf[:n])
+			b := cw.Finish(cw.Rows())
+			metaIndexBlockHandle, err = w.writeMetadataBlock(b, block.DontCompress)
+			if err != nil {
+				return err
+			}
+		}
+
 		// Write the footer.
 		footer := fileFooter{
 			format:           w.format,
@@ -347,6 +394,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 			indexHandle:      indexBlockHandle,
 			originalFileNum:  w.fileNum,
 			propertiesHandle: propBlockHandle,
+			metaIndexHandle:  metaIndexBlockHandle,
 		}
 		footerBuf := footer.encode()
 		if err := w.w.Write(footerBuf); err != nil {
@@ -379,8 +427,10 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 	return stats, nil
 }
 
-func (w *FileWriter) writeMetadataBlock(data []byte) (block.Handle, error) {
-	pb := w.physBlockMaker.Make(data, blockkind.Metadata, block.DontCompress)
+func (w *FileWriter) writeMetadataBlock(
+	data []byte, flags block.PhysicalBlockFlags,
+) (block.Handle, error) {
+	pb := w.physBlockMaker.Make(data, blockkind.Metadata, flags)
 	length, err := block.WriteAndReleasePhysicalBlock(pb.Take(), w.w)
 	if err != nil {
 		return block.Handle{}, err
@@ -403,13 +453,15 @@ type fileFooter struct {
 
 	// Only in V2+.
 	propertiesHandle block.Handle
+	// Only in V3+
+	metaIndexHandle block.Handle
 }
 
 // decode the footer given the last fileFooterLengthV2 bytes in the file (or
 // fileFooterLengthV1 bytes if the file is shorter than fileFooterLengthV2).
 func (f *fileFooter) decode(b []byte) error {
 	magic := b[len(b)-len(fileMagicV1):]
-	isV2 := false
+	isV2Footer := false
 	switch string(magic) {
 	case fileMagicV1:
 		if len(b) < fileFooterLengthV1 {
@@ -422,7 +474,7 @@ func (f *fileFooter) decode(b []byte) error {
 			return errors.AssertionFailedf("invalid blob file footer length")
 		}
 		b = b[len(b)-fileFooterLengthV2:]
-		isV2 = true
+		isV2Footer = true
 	}
 	encodedChecksum := binary.LittleEndian.Uint32(b[0:])
 	computedChecksum := crc.New(b[4:]).Value()
@@ -436,16 +488,21 @@ func (f *fileFooter) decode(b []byte) error {
 	if f.format < FileFormatV1 || f.format > latestFileFormat {
 		return base.CorruptionErrorf("invalid blob file format %x", f.format)
 	}
-	if !isV2 && f.format != FileFormatV1 {
+	if !isV2Footer && f.format != FileFormatV1 {
 		return base.CorruptionErrorf("invalid blob V1 file format %x", f.format)
-	} else if isV2 && f.format < FileFormatV2 {
+	} else if isV2Footer && f.format < FileFormatV2 {
 		return base.CorruptionErrorf("invalid blob V2 file format %x", f.format)
 	}
 	f.originalFileNum = base.DiskFileNum(binary.LittleEndian.Uint64(b[22:30]))
 	f.propertiesHandle = block.Handle{}
-	if isV2 {
+	if isV2Footer {
 		f.propertiesHandle.Offset = binary.LittleEndian.Uint64(b[30:38])
 		f.propertiesHandle.Length = binary.LittleEndian.Uint64(b[38:46])
+	}
+	f.metaIndexHandle = block.Handle{}
+	if isV2Footer && f.format >= FileFormatV3 {
+		f.metaIndexHandle.Offset = binary.LittleEndian.Uint64(b[46:54])
+		f.metaIndexHandle.Length = binary.LittleEndian.Uint64(b[54:62])
 	}
 	return nil
 }
@@ -464,9 +521,14 @@ func (f *fileFooter) encode() []byte {
 	if f.format >= FileFormatV2 {
 		binary.LittleEndian.PutUint64(b[30:38], f.propertiesHandle.Offset)
 		binary.LittleEndian.PutUint64(b[38:46], f.propertiesHandle.Length)
-		// Metaindex not currently used.
-		binary.LittleEndian.PutUint64(b[46:54], 0)
-		binary.LittleEndian.PutUint64(b[54:62], 0)
+		if f.format >= FileFormatV3 {
+			binary.LittleEndian.PutUint64(b[46:54], f.metaIndexHandle.Offset)
+			binary.LittleEndian.PutUint64(b[54:62], f.metaIndexHandle.Length)
+		} else {
+			// Metaindex not used.
+			binary.LittleEndian.PutUint64(b[46:54], 0)
+			binary.LittleEndian.PutUint64(b[54:62], 0)
+		}
 	}
 	copy(b[len(b)-len(magic):], magic)
 	footerChecksum := crc.New(b[4:]).Value()

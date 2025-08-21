@@ -109,7 +109,7 @@ type RawColumnWriter struct {
 
 	lastKeyBuf            []byte
 	separatorBuf          []byte
-	tmp                   [blockHandleLikelyMaxLen]byte
+	tmp                   [block.BlockHandleLikelyMaxLen]byte
 	previousUserKey       invariants.Value[[]byte]
 	validator             invariants.Value[*colblk.DataBlockValidator]
 	disableKeyOrderChecks bool

@@ -102,6 +102,16 @@ type ColdTierThresholdRetriever interface {
 	GetColdTierLTThreshold(spanID base.TieringSpanID) base.TieringAttribute
 }
 
+type NoopColdTierThresholdRetriever struct{}
+
+var _ ColdTierThresholdRetriever = NoopColdTierThresholdRetriever{}
+
+func (NoopColdTierThresholdRetriever) GetColdTierLTThreshold(
+	base.TieringSpanID,
+) base.TieringAttribute {
+	return 0
+}
+
 // TieringHistogramBlockWriter is instantiated for each sstable or blob file
 // being written.
 type TieringHistogramBlockWriter struct {

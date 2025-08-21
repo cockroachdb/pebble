@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 )
 
 // Result stores the result of a compaction - more specifically, the "data" part
@@ -120,6 +121,10 @@ type ValueSeparationOutputConfig struct {
 // ValueSeparation defines an interface for writing some values to separate blob
 // files.
 type ValueSeparation interface {
+	// Init is called when the compaction has started executing and before it
+	// calls any other methods. It serves the purpose of initializing state that
+	// cannot be initialized at construction time.
+	Init(retriever tieredmeta.ColdTierThresholdRetriever)
 	// SetNextOutputConfig is called when a compaction is starting a new output
 	// sstable. It can be used to configure value separation specifically for
 	// the next compaction output.
@@ -508,6 +513,9 @@ type NeverSeparateValues struct{}
 
 // Assert that NeverSeparateValues implements the ValueSeparation interface.
 var _ ValueSeparation = NeverSeparateValues{}
+
+// Init implements the ValueSeparation interface.
+func (NeverSeparateValues) Init(retriever tieredmeta.ColdTierThresholdRetriever) {}
 
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (NeverSeparateValues) SetNextOutputConfig(config ValueSeparationOutputConfig) {}

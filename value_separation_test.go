@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -213,6 +214,8 @@ type defineDBValueSeparator struct {
 
 // Assert that *defineDBValueSeparator implements the compact.ValueSeparation interface.
 var _ compact.ValueSeparation = (*defineDBValueSeparator)(nil)
+
+func (vs *defineDBValueSeparator) Init(retriever tieredmeta.ColdTierThresholdRetriever) {}
 
 // SetNextOutputConfig implements the compact.ValueSeparation interface.
 func (vs *defineDBValueSeparator) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}

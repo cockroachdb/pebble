@@ -405,7 +405,7 @@ type blockBuf struct {
 	// tmp is a scratch buffer, large enough to hold either footerLen bytes,
 	// blockTrailerLen bytes, (5 * binary.MaxVarintLen64) bytes, and most
 	// likely large enough for a block handle with properties.
-	tmp [blockHandleLikelyMaxLen]byte
+	tmp [block.BlockHandleLikelyMaxLen]byte
 	// dataBuf is the destination buffer for compression, or (in some cases where
 	// compression is not used) for storing a copy of the data. It is re-used over
 	// the lifetime of the blockBuf, avoiding the allocation of a temporary buffer
@@ -414,7 +414,7 @@ type blockBuf struct {
 }
 
 func (b *blockBuf) clear() {
-	b.tmp = [blockHandleLikelyMaxLen]byte{}
+	b.tmp = [block.BlockHandleLikelyMaxLen]byte{}
 	b.dataBuf = b.dataBuf[:0]
 }
 
@@ -454,7 +454,7 @@ type dataBlockBuf struct {
 	// for the purposes of compaction.
 	deletionSize int
 
-	tmp [blockHandleLikelyMaxLen]byte
+	tmp [block.BlockHandleLikelyMaxLen]byte
 }
 
 func (d *dataBlockBuf) clear() {

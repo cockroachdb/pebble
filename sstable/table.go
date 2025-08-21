@@ -188,15 +188,6 @@ Data blocks have some additional features:
 */
 
 const (
-	// blockHandleMaxLenWithoutProperties is the maximum length of a block
-	// handle that does not encode any block properties. It consists of just
-	// the offset and length, each of which is a varint-encoded uint64.
-	blockHandleMaxLenWithoutProperties = 2 * binary.MaxVarintLen64
-	// blockHandleLikelyMaxLen can be used for pre-allocating buffers to
-	// reduce memory copies. It is not guaranteed that a block handle will not
-	// exceed this length.
-	blockHandleLikelyMaxLen = blockHandleMaxLenWithoutProperties + 100
-
 	checksumLen   = 4
 	magicLen      = 8
 	versionLen    = 4
@@ -205,7 +196,7 @@ const (
 	levelDBFooterLen = 48
 	levelDBMagic     = "\x57\xfb\x80\x8b\x24\x75\x47\xdb"
 
-	rocksDBFooterLen             = 1 + 2*blockHandleMaxLenWithoutProperties + versionLen + magicLen
+	rocksDBFooterLen             = 1 + 2*block.BlockHandleMaxLenWithoutProperties + versionLen + magicLen
 	rocksDBMagic                 = "\xf7\xcf\xf4\x85\xb7\x41\xe2\x88"
 	rocksDBExternalFormatVersion = 2
 

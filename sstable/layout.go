@@ -830,7 +830,7 @@ type layoutWriter struct {
 	lastIndexBlockHandle block.Handle
 	handles              []metaIndexHandle
 	handlesBuf           bytealloc.A
-	tmp                  [blockHandleLikelyMaxLen]byte
+	tmp                  [block.BlockHandleLikelyMaxLen]byte
 }
 
 func (w *layoutWriter) Init(writable objstorage.Writable, opts WriterOptions) {

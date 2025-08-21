@@ -128,4 +128,5 @@
 // | Format (1 byte)                                                              |
 // | Magic String (8 bytes)                                                       |
 // +------------------------------------------------------------------------------+
+// TODO(sumeer): add tiering histogram block and meta index block to comment.
 package blob

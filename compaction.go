@@ -3379,6 +3379,7 @@ func (d *DB) compactAndWrite(
 	if err := cttRetriever.init(d.opts.Experimental.SpanPolicyFunc, c.bounds, d.cmp); err != nil {
 		return compact.Result{Err: err}
 	}
+	valueSeparation.Init(&cttRetriever)
 
 	// If spanPolicyValid is true and spanPolicy.KeyRange.End is empty, then
 	// spanPolicy applies for the rest of the keyspace.
