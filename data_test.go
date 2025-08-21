@@ -903,6 +903,8 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	// Make sure the table stats finished loading.
+	d.waitTableStatsLocked()
 	for i := range snapshots {
 		s := &Snapshot{db: d}
 		s.seqNum = snapshots[i]
@@ -1206,7 +1208,11 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		return nil, err
 	}
 	d.updateReadStateLocked(nil)
-	d.updateTableStatsLocked(ve.NewTables)
+
+	// Force a re-read of table and blob file stats.
+	d.mu.tableStats.loadedInitial = false
+	d.maybeCollectTableStatsLocked()
+	d.waitTableStatsLocked()
 
 	return d, nil
 }

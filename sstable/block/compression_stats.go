@@ -154,6 +154,20 @@ func (c CompressionStats) String() string {
 	return buf.String()
 }
 
+// Clone returns a copy of the CompressionStats.
+func (c *CompressionStats) Clone() CompressionStats {
+	var out CompressionStats
+	out.noCompressionBytes = c.noCompressionBytes
+	out.fastest = c.fastest
+	if len(c.others) > 0 {
+		out.others = make(map[compression.Setting]CompressionStatsForSetting, len(c.others))
+		for s, cs := range c.others {
+			out.others[s] = cs
+		}
+	}
+	return out
+}
+
 // Scale the stats by (size/backingSize). Used to obtain an approximation of the
 // stats for a virtual table.
 //

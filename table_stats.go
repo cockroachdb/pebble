@@ -99,7 +99,6 @@ func (d *DB) collectTableStats() bool {
 	d.mu.tableStats.pending = nil
 	d.mu.tableStats.loading = true
 	jobID := d.newJobIDLocked()
-	loadedInitial := d.mu.tableStats.loadedInitial
 	// Drop DB.mu before performing IO.
 	d.mu.Unlock()
 
@@ -111,13 +110,20 @@ func (d *DB) collectTableStats() bool {
 	rs := d.loadReadState()
 	var collected []collectedStats
 	var hints []deleteCompactionHint
+	initialLoadCompleted := false
 	if len(pending) > 0 {
 		collected, hints = d.loadNewFileStats(ctx, rs, pending)
 	} else {
 		var moreRemain bool
 		var buf [maxTableStatsPerScan]collectedStats
-		collected, hints, moreRemain = d.scanReadStateTableStats(ctx, rs, buf[:0])
-		loadedInitial = !moreRemain
+		collected, hints, moreRemain = d.scanReadStateTableStats(ctx, rs.current, buf[:0])
+		if !moreRemain {
+			// Once we're done with table stats, load blob file properties.
+			moreRemain = d.scanBlobFileProperties(ctx, rs.current, maxTableStatsPerScan-len(collected))
+			if !moreRemain {
+				initialLoadCompleted = true
+			}
+		}
 	}
 	rs.unref()
 
@@ -125,8 +131,8 @@ func (d *DB) collectTableStats() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.mu.tableStats.loading = false
-	if loadedInitial && !d.mu.tableStats.loadedInitial {
-		d.mu.tableStats.loadedInitial = loadedInitial
+	if initialLoadCompleted && !d.mu.tableStats.loadedInitial {
+		d.mu.tableStats.loadedInitial = true
 		d.opts.EventListener.TableStatsLoaded(TableStatsInfo{
 			JobID: int(jobID),
 		})
@@ -216,12 +222,12 @@ func (d *DB) loadNewFileStats(
 // are no pending new files, but there might be files that existed at Open for
 // which we haven't loaded table stats.
 func (d *DB) scanReadStateTableStats(
-	ctx context.Context, rs *readState, fill []collectedStats,
-) ([]collectedStats, []deleteCompactionHint, bool) {
-	moreRemain := false
+	ctx context.Context, version *manifest.Version, fill []collectedStats,
+) (_ []collectedStats, _ []deleteCompactionHint, moreRemain bool) {
 	var hints []deleteCompactionHint
 	sizesChecked := make(map[base.DiskFileNum]struct{})
-	for l, levelMetadata := range rs.current.Levels {
+	// TODO(radu): an O(#tables) scan every time could be problematic.
+	for l, levelMetadata := range version.Levels {
 		for f := range levelMetadata.All() {
 			// NB: Only the active stats collection job updates f.Stats for active
 			// files, and we ensure only one goroutine runs it at a time through
@@ -278,7 +284,7 @@ func (d *DB) scanReadStateTableStats(
 				sizesChecked[f.TableBacking.DiskFileNum] = struct{}{}
 			}
 
-			stats, newHints, err := d.loadTableStats(ctx, rs.current, l, f)
+			stats, newHints, err := d.loadTableStats(ctx, version, l, f)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
 				moreRemain = true
@@ -293,6 +299,43 @@ func (d *DB) scanReadStateTableStats(
 		}
 	}
 	return fill, hints, moreRemain
+}
+
+// populateBlobFileProperties reads at most maxNum blob file properties for blob
+// files that don't have them populated. Returns false once all properties have
+// been populated.
+func (d *DB) scanBlobFileProperties(
+	ctx context.Context, version *manifest.Version, maxNum int,
+) (moreRemain bool) {
+	// TODO(radu): an O(#files) scan every time could be problematic.
+	// We could remember the last blob file ID and scan from there.
+	for f := range version.BlobFiles.All() {
+		if _, propsValid := f.Physical.Properties(); propsValid {
+			// Properties are already populated.
+			continue
+		}
+		if maxNum == 0 {
+			return moreRemain
+		}
+		v, err := d.fileCache.findOrCreateBlob(ctx, f.Physical, block.InitFileReadStats{})
+		if err != nil {
+			moreRemain = true
+			continue
+		}
+		blobReader := v.Value().mustBlob()
+		blobProps, err := blobReader.ReadProperties(ctx)
+		v.Unref()
+		if err != nil {
+			moreRemain = true
+			continue
+		}
+		// It is ok to call PopulateProperties here because this function runs as
+		// part of a table statistics job, and at most one goroutine runs this at a
+		// time (see d.mu.tableStats.loading).
+		f.Physical.PopulateProperties(&blobProps)
+		maxNum--
+	}
+	return moreRemain
 }
 
 func (d *DB) loadTableStats(
@@ -518,6 +561,9 @@ func (d *DB) estimateSizesBeneath(
 					if err != nil {
 						return err
 					}
+					// It is ok to call PopulateProperties here because this function runs as part of
+					// a table statistics job, and at most one goroutine runs this at a
+					// time (see d.mu.tableStats.loading).
 					backingProps = tableBeneath.TableBacking.PopulateProperties(&loadedProps)
 					return nil
 				})

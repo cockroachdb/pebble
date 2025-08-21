@@ -337,6 +337,7 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 		ValueSize:    stats.UncompressedValueBytes,
 		CreationTime: uint64(time.Now().Unix()),
 	}
+	meta.PopulateProperties(&stats.Properties)
 	// Reset the minimum size for the next output.
 	vs.minimumSize = vs.globalMinimumSize
 

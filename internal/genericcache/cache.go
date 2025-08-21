@@ -107,7 +107,7 @@ type ValueRef[K Key, V any, InitOpts any] struct {
 }
 
 // Value returns the value. This method and the returned value can only be used
-// until ref.Close() is called.
+// until ref.Unref() is called.
 func (ref ValueRef[K, V, InitOpts]) Value() *V {
 	if invariants.Enabled && ref.value.err != nil {
 		panic("ValueRef with error")

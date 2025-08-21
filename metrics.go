@@ -134,7 +134,7 @@ type LevelMetrics struct {
 
 	// Additional contains misc additional metrics that are not always printed.
 	Additional struct {
-		// The sum of Properties.ValueBlocksSize for all the sstables in this
+		// The sum of FileProperties.ValueBlocksSize for all the sstables in this
 		// level. Printed by LevelMetrics.format iff there is at least one level
 		// with a non-zero value.
 		ValueBlocksSize uint64
