@@ -58,7 +58,7 @@ func (t *btree[M]) verifyLeafSameDepth(tt *testing.T) {
 }
 
 func (n *node[M]) verifyDepthEqualToHeight(t *testing.T, depth, height int) {
-	if n.leaf {
+	if n.isLeaf() {
 		require.Equal(t, height, depth, "all leaves should have the same depth as the tree height")
 	}
 	n.recurse(func(child *node[M], _ int16) {
@@ -77,8 +77,8 @@ func (t *btree[M]) height() int {
 	}
 	h := 1
 	n := t.root
-	for !n.leaf {
-		n = n.children[0]
+	for !n.isLeaf() {
+		n = n.child(0)
 		h++
 	}
 	return h
@@ -96,8 +96,8 @@ func (n *node[M]) verifyCountAllowed(t *testing.T, root bool) {
 			require.Nil(t, item, "item above count")
 		}
 	}
-	if !n.leaf {
-		for i, child := range n.children {
+	if !n.isLeaf() {
+		for i, child := range n.innerNodeMeta.children {
 			if i <= int(n.count) {
 				require.NotNil(t, child, "node below count")
 			} else {
@@ -118,10 +118,10 @@ func (n *node[M]) isSorted(t *testing.T, cmp func(M, M) int) {
 	for i := int16(1); i < n.count; i++ {
 		require.LessOrEqual(t, cmp(n.items[i-1], n.items[i]), 0)
 	}
-	if !n.leaf {
+	if !n.isLeaf() {
 		for i := int16(0); i < n.count; i++ {
-			prev := n.children[i]
-			next := n.children[i+1]
+			prev := n.child(i)
+			next := n.child(i + 1)
 
 			require.LessOrEqual(t, cmp(prev.items[prev.count-1], n.items[i]), 0)
 			require.LessOrEqual(t, cmp(n.items[i], next.items[0]), 0)
@@ -133,9 +133,9 @@ func (n *node[M]) isSorted(t *testing.T, cmp func(M, M) int) {
 }
 
 func (n *node[M]) recurse(f func(child *node[M], pos int16)) {
-	if !n.leaf {
+	if !n.isLeaf() {
 		for i := int16(0); i <= n.count; i++ {
-			f(n.children[i], i)
+			f(n.child(i), i)
 		}
 	}
 }

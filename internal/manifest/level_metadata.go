@@ -211,7 +211,7 @@ func NewLevelSliceSpecificOrder(files []*TableMetadata) LevelSlice {
 func newLevelSlice(iter iterator[*TableMetadata]) LevelSlice {
 	s := LevelSlice{iter: iter}
 	if iter.r != nil {
-		s.length = iter.r.subtreeCount
+		s.length = iter.r.subtreeCount()
 	}
 	s.verifyInvariants()
 	return s
@@ -616,7 +616,7 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *TableMetadata {
 			}
 		}
 		i.iter.pos = int16(j)
-		if i.iter.n.leaf {
+		if i.iter.n.isLeaf() {
 			if i.iter.pos == i.iter.n.count {
 				// next, which will ascend and descend to move to the next node.
 				i.iter.next()
@@ -678,7 +678,7 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *TableMetadata {
 			}
 		}
 		i.iter.pos = int16(j)
-		if i.iter.n.leaf {
+		if i.iter.n.isLeaf() {
 			if i.iter.pos == i.iter.n.count {
 				i.iter.next()
 			}
