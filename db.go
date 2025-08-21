@@ -2059,7 +2059,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.InProgressBytes = d.mu.versions.atomicInProgressBytes.Load()
 	// TODO(radu): split this to separate the download compactions.
 	metrics.Compact.NumInProgress = int64(d.mu.compact.compactingCount + d.mu.compact.downloadingCount)
-	metrics.Compact.MarkedFiles = vers.Stats.MarkedForCompaction
+	metrics.Compact.MarkedFiles = vers.MarkedForCompaction.Count()
 	metrics.Compact.Duration = d.mu.compact.duration
 	for c := range d.mu.compact.inProgress {
 		if !c.IsFlush() {

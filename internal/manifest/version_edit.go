@@ -1055,10 +1055,6 @@ type BulkVersionEdit struct {
 	// number. Accumulate uses AllAddedTables to correctly populate the
 	// BulkVersionEdit's Deleted field with non-nil *TableMetadata.
 	AllAddedTables map[base.FileNum]*TableMetadata
-
-	// MarkedForCompactionCountDiff holds the aggregated count of files
-	// marked for compaction added or removed.
-	MarkedForCompactionCountDiff int
 }
 
 // Accumulate adds the file addition and deletions in the specified version
@@ -1125,9 +1121,6 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", df.Level, df.FileNum)
 			}
 		}
-		if m.MarkedForCompaction {
-			b.MarkedForCompactionCountDiff--
-		}
 		if _, ok := b.AddedTables[df.Level][df.FileNum]; !ok {
 			dmap[df.FileNum] = m
 		} else {
@@ -1179,9 +1172,6 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 		if b.AllAddedTables != nil {
 			b.AllAddedTables[nf.Meta.TableNum] = nf.Meta
 		}
-		if nf.Meta.MarkedForCompaction {
-			b.MarkedForCompactionCountDiff++
-		}
 	}
 
 	for _, n := range ve.RemovedBackingTables {
@@ -1211,15 +1201,9 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Version, error) {
 	comparer := curr.cmp
 	v := &Version{
-		BlobFiles: curr.BlobFiles.clone(),
-		cmp:       comparer,
-	}
-
-	// Adjust the count of files marked for compaction.
-	v.Stats.MarkedForCompaction = curr.Stats.MarkedForCompaction
-	v.Stats.MarkedForCompaction += b.MarkedForCompactionCountDiff
-	if v.Stats.MarkedForCompaction < 0 {
-		return nil, base.CorruptionErrorf("pebble: version marked for compaction count negative")
+		BlobFiles:           curr.BlobFiles.clone(),
+		MarkedForCompaction: curr.MarkedForCompaction.Clone(),
+		cmp:                 comparer,
 	}
 
 	// Update the BlobFileSet to record blob files added and deleted. The
@@ -1274,6 +1258,9 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			// zero. The remove call will panic if this happens.
 			v.Levels[level].remove(f)
 			v.RangeKeyLevels[level].remove(f)
+			if f.MarkedForCompaction {
+				v.MarkedForCompaction.Delete(f, level)
+			}
 		}
 
 		addedTables := make([]*TableMetadata, 0, len(addedTablesMap))
@@ -1330,11 +1317,13 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			// Track the keys with the smallest and largest keys, so that we can
 			// check consistency of the modified span.
 			if sm == nil || base.InternalCompare(comparer.Compare, sm.Smallest(), f.Smallest()) > 0 {
-
 				sm = f
 			}
 			if la == nil || base.InternalCompare(comparer.Compare, la.Largest(), f.Largest()) < 0 {
 				la = f
+			}
+			if f.MarkedForCompaction {
+				v.MarkedForCompaction.Insert(f, level)
 			}
 		}
 

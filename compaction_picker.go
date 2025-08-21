@@ -1524,7 +1524,7 @@ func (p *compactionPickerByScore) pickAutoNonScore(env compactionEnv) (pc picked
 	// MarkedForCompaction field is persisted in the manifest. That's okay. We
 	// previously would've ignored the designation, whereas now we'll re-compact
 	// the file in place.
-	if p.vers.Stats.MarkedForCompaction > 0 {
+	if p.vers.MarkedForCompaction.Count() > 0 {
 		if pc := p.pickRewriteCompaction(env); pc != nil {
 			return pc
 		}
@@ -1591,19 +1591,6 @@ var elisionOnlyAnnotator = manifest.NewTableAnnotator[manifest.TableMetadata](ma
 		// TODO(travers): Consider an alternative heuristic for elision of range-keys.
 		eligible = stats.RangeDeletionsBytesEstimate*10 >= f.Size || backingProps.NumDeletions*10 > backingProps.NumEntries
 		return eligible, true
-	},
-	Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
-		return f1.LargestSeqNum < f2.LargestSeqNum
-	},
-})
-
-// markedForCompactionAnnotator is a manifest.TableAnnotator that annotates B-Tree
-// nodes with the *fileMetadata of a file that is marked for compaction
-// within the subtree. If multiple files meet the criteria, it chooses
-// whichever file has the lowest LargestSeqNum.
-var markedForCompactionAnnotator = manifest.NewTableAnnotator[manifest.TableMetadata](manifest.PickFileAggregator{
-	Filter: func(f *manifest.TableMetadata) (eligible bool, cacheOK bool) {
-		return f.MarkedForCompaction, true
 	},
 	Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
 		return f1.LargestSeqNum < f2.LargestSeqNum
@@ -1680,17 +1667,8 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 func (p *compactionPickerByScore) pickRewriteCompaction(
 	env compactionEnv,
 ) (pc *pickedTableCompaction) {
-	if p.vers.Stats.MarkedForCompaction == 0 {
-		return nil
-	}
-	for l := numLevels - 1; l >= 0; l-- {
-		candidate := markedForCompactionAnnotator.LevelAnnotation(p.vers.Levels[l])
-		if candidate == nil {
-			// Try the next level.
-			continue
-		}
-		pc := p.pickedCompactionFromCandidateFile(candidate, env, l, l, compactionKindRewrite)
-		if pc != nil {
+	for candidate, level := range p.vers.MarkedForCompaction.Ascending() {
+		if pc := p.pickedCompactionFromCandidateFile(candidate, env, level, level, compactionKindRewrite); pc != nil {
 			return pc
 		}
 	}
