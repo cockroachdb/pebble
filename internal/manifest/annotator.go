@@ -126,8 +126,8 @@ func (a *Annotator[T]) nodeAnnotation(n *node[*TableMetadata]) (t *T, cacheOK bo
 	valid := true
 
 	for i := int16(0); i <= n.count; i++ {
-		if !n.leaf {
-			v, ok := a.nodeAnnotation(n.children[i])
+		if !n.isLeaf() {
+			v, ok := a.nodeAnnotation(n.child(i))
 			t = a.Aggregator.Merge(v, t)
 			valid = valid && ok
 		}
@@ -202,7 +202,7 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 		dst = v
 	}
 
-	if !n.leaf {
+	if !n.isLeaf() {
 		// We will accumulate annotations from each child in the end-inclusive
 		// range [leftChild, rightChild].
 		leftChild, rightChild := leftItem, rightItem
@@ -219,7 +219,7 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 
 		for i := leftChild; i <= rightChild; i++ {
 			dst = a.accumulateRangeAnnotation(
-				n.children[i],
+				n.child(int16(i)),
 				cmp,
 				bounds,
 				// If this child is to the right of leftItem, then its entire
@@ -240,9 +240,9 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 func (a *Annotator[T]) invalidateNodeAnnotation(n *node[*TableMetadata]) {
 	annot := a.findAnnotation(n)
 	annot.valid.Store(false)
-	if !n.leaf {
+	if !n.isLeaf() {
 		for i := int16(0); i <= n.count; i++ {
-			a.invalidateNodeAnnotation(n.children[i])
+			a.invalidateNodeAnnotation(n.child(i))
 		}
 	}
 }

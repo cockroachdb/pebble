@@ -387,10 +387,10 @@ func (s *BlobFileSet) LookupPhysical(fileID base.BlobFileID) (*PhysicalBlobFile,
 		}
 		// If we've reached a lead node without finding fileID, the file is not
 		// present.
-		if n.leaf {
+		if n.isLeaf() {
 			return nil, false
 		}
-		n = n.children[i]
+		n = n.child(int16(i))
 	}
 	return nil, false
 }
