@@ -61,9 +61,13 @@ KEYS
              123 |              456 |                    789!! |             1MB |             2MB
 
 COMPRESSION
-    algorithm |  none  snappy  minlz  zstd  unknown
-on disk bytes | 100MB     1GB    1GB  10GB    500MB
-           CR |             2      3     5        ?
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |         100MB |          10MB
+       snappy |    1GB (CR=2) |   10GB (CR=2)
+        minlz |    1GB (CR=3) |   10GB (CR=3)
+         zstd |   10GB (CR=5) |  100GB (CR=5)
+      unknown |         500MB |          50MB
 ----
 ----
 
@@ -150,9 +154,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes |  36B     76B
-           CR |         1.14
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |           36B |
+       snappy | 76B (CR=1.14) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -251,9 +256,9 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none
-on disk bytes | 230B
-           CR |
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          230B |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -335,9 +340,9 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none
-on disk bytes | 230B
-           CR |
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          230B |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -416,9 +421,9 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none
-on disk bytes | 230B
-           CR |
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          230B |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -500,9 +505,9 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none
-on disk bytes | 230B
-           CR |
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          230B |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -623,9 +628,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 622B    630B
-           CR |         1.27
+    algorithm |         tables |    blob files
+--------------+----------------+--------------
+         none |           622B |          308B
+       snappy | 630B (CR=1.27) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:691 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -731,9 +737,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 622B    615B
-           CR |          1.3
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          622B |          308B
+       snappy | 615B (CR=1.3) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5234 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -890,9 +897,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes |  1KB    843B
-           CR |         1.26
+    algorithm |         tables |    blob files
+--------------+----------------+--------------
+         none |            1KB |          308B
+       snappy | 843B (CR=1.26) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5234 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -1011,9 +1019,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm |  none  snappy
-on disk bytes | 1.3KB   1.3KB
-           CR |          1.21
+    algorithm |          tables |    blob files
+--------------+-----------------+--------------
+         none |           1.3KB |          308B
+       snappy | 1.3KB (CR=1.21) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5234 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -1144,9 +1153,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm |  none  snappy
-on disk bytes | 1.3KB   1.2KB
-           CR |          1.22
+    algorithm |          tables |    blob files
+--------------+-----------------+--------------
+         none |           1.3KB |          308B
+       snappy | 1.2KB (CR=1.22) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5234 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -1321,9 +1331,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm |  none  snappy
-on disk bytes | 1.5KB    682B
-           CR |           1.3
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |         1.5KB |          308B
+       snappy | 682B (CR=1.3) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:11009 BlockBytesInCache:457 BlockReadDuration:330ms}
@@ -1415,9 +1426,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 108B    228B
-           CR |         1.14
+    algorithm |         tables |    blob files
+--------------+----------------+--------------
+         none |           108B |
+       snappy | 228B (CR=1.14) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1495,9 +1507,9 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none
-on disk bytes | 345B
-           CR |
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          345B |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1737 BlockBytesInCache:0 BlockReadDuration:60ms}
@@ -1591,9 +1603,9 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none
-on disk bytes | 460B
-           CR |
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          460B |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1737 BlockBytesInCache:0 BlockReadDuration:60ms}
@@ -1679,9 +1691,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 496B     76B
-           CR |         1.14
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          496B |
+       snappy | 76B (CR=1.14) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1737 BlockBytesInCache:0 BlockReadDuration:60ms}
@@ -1756,9 +1769,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 496B     76B
-           CR |         1.14
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          496B |
+       snappy | 76B (CR=1.14) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1836,9 +1850,9 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none
-on disk bytes | 345B
-           CR |
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          345B |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:342 BlockBytesInCache:0 BlockReadDuration:30ms}
@@ -1954,9 +1968,10 @@ KEYS
                0 |                3 |                        0 |            502B |           1.3KB
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 266B    221B
-           CR |         1.19
+    algorithm |         tables |    blob files
+--------------+----------------+--------------
+         none |           266B |
+       snappy | 221B (CR=1.19) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -2031,9 +2046,10 @@ KEYS
                0 |                3 |                        0 |            502B |           1.3KB
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 266B    221B
-           CR |         1.19
+    algorithm |         tables |    blob files
+--------------+----------------+--------------
+         none |           266B |
+       snappy | 221B (CR=1.19) |
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}

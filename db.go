@@ -504,15 +504,15 @@ type DB struct {
 			validating bool
 		}
 
-		// annotators contains various instances of manifest.Annotator which
+		// annotators contains various instances of manifest.TableAnnotator which
 		// should be protected from concurrent access.
 		annotators struct {
 			// totalFileSize is the sum of the size of all files in the
 			// database. This includes local, remote, and external sstables --
 			// along with blob files.
-			totalFileSize *manifest.Annotator[uint64]
-			remoteSize    *manifest.Annotator[uint64]
-			externalSize  *manifest.Annotator[uint64]
+			totalFileSize *manifest.TableAnnotator[uint64]
+			remoteSize    *manifest.TableAnnotator[uint64]
+			externalSize  *manifest.TableAnnotator[uint64]
 		}
 	}
 
@@ -2165,14 +2165,18 @@ func (d *DB) Metrics() *Metrics {
 	if d.mu.compact.flushing {
 		metrics.Flush.NumInProgress = 1
 	}
+
+	metrics.Table.PendingStatsCollectionCount = int64(len(d.mu.tableStats.pending))
+	metrics.Table.InitialStatsCollectionComplete = d.mu.tableStats.loadedInitial
+
 	for i := 0; i < numLevels; i++ {
 		metrics.Levels[i].Additional.ValueBlocksSize = *valueBlockSizeAnnotator.LevelAnnotation(vers.Levels[i])
 		compressionMetrics := compressionStatsAnnotator.LevelAnnotation(vers.Levels[i])
 		metrics.Table.Compression.MergeWith(compressionMetrics)
 	}
 
-	metrics.Table.PendingStatsCollectionCount = int64(len(d.mu.tableStats.pending))
-	metrics.Table.InitialStatsCollectionComplete = d.mu.tableStats.loadedInitial
+	blobCompressionMetrics := blobCompressionStatsAnnotator.Annotation(&vers.BlobFiles)
+	metrics.BlobFiles.Compression.MergeWith(blobCompressionMetrics)
 
 	d.mu.Unlock()
 
@@ -2398,31 +2402,29 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 // referenced blob files.
 func (d *DB) makeFileSizeAnnotator(
 	filter func(f *manifest.TableMetadata) bool,
-) *manifest.Annotator[uint64] {
-	return &manifest.Annotator[uint64]{
-		Aggregator: manifest.SumAggregator{
-			AccumulateFunc: func(f *manifest.TableMetadata) (uint64, bool) {
-				if filter(f) {
-					return f.Size + f.EstimatedReferenceSize(), true
-				}
-				return 0, true
-			},
-			AccumulatePartialOverlapFunc: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) uint64 {
-				if filter(f) {
-					overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
-					if err != nil {
-						return 0
-					}
-					overlapFraction := float64(overlappingFileSize) / float64(f.Size)
-					// Scale the blob reference size proportionally to the file
-					// overlap from the bounds to approximate only the blob
-					// references that overlap with the requested bounds.
-					return overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
-				}
-				return 0
-			},
+) *manifest.TableAnnotator[uint64] {
+	return manifest.NewTableAnnotator[uint64](manifest.SumAggregator{
+		AccumulateFunc: func(f *manifest.TableMetadata) (uint64, bool) {
+			if filter(f) {
+				return f.Size + f.EstimatedReferenceSize(), true
+			}
+			return 0, true
 		},
-	}
+		AccumulatePartialOverlapFunc: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) uint64 {
+			if filter(f) {
+				overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
+				if err != nil {
+					return 0
+				}
+				overlapFraction := float64(overlappingFileSize) / float64(f.Size)
+				// Scale the blob reference size proportionally to the file
+				// overlap from the bounds to approximate only the blob
+				// references that overlap with the requested bounds.
+				return overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
+			}
+			return 0
+		},
+	})
 }
 
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for

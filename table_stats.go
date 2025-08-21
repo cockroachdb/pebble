@@ -1110,7 +1110,7 @@ func newCombinedDeletionKeyspanIter(
 	return mIter, nil
 }
 
-// rangeKeySetsAnnotator is a manifest.Annotator that annotates B-Tree nodes
+// rangeKeySetsAnnotator is a manifest.TableAnnotator that annotates B-Tree nodes
 // with the sum of the files' counts of range key fragments. The count of range
 // key sets may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
@@ -1121,7 +1121,7 @@ var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata
 	return 0, false
 })
 
-// tombstonesAnnotator is a manifest.Annotator that annotates B-Tree nodes
+// tombstonesAnnotator is a manifest.TableAnnotator that annotates B-Tree nodes
 // with the sum of the files' counts of tombstones (DEL, SINGLEDEL and RANGEDEL
 // keys). The count of tombstones may change once a table's stats are loaded
 // asynchronously, so its values are marked as cacheable only if a file's stats
@@ -1133,7 +1133,7 @@ var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) 
 	return 0, false
 })
 
-// valueBlocksSizeAnnotator is a manifest.Annotator that annotates B-Tree
+// valueBlocksSizeAnnotator is a manifest.TableAnnotator that annotates B-Tree
 // nodes with the sum of the files' Properties.ValueBlocksSize. The value block
 // size may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
@@ -1144,7 +1144,7 @@ var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetada
 	return 0, false
 })
 
-// pointDeletionsBytesEstimateAnnotator is a manifest.Annotator that annotates
+// pointDeletionsBytesEstimateAnnotator is a manifest.TableAnnotator that annotates
 // B-Tree nodes with the sum of the files' PointDeletionsBytesEstimate. This
 // value may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
@@ -1155,7 +1155,7 @@ var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifes
 	return 0, false
 })
 
-// rangeDeletionsBytesEstimateAnnotator is a manifest.Annotator that annotates
+// rangeDeletionsBytesEstimateAnnotator is a manifest.TableAnnotator that annotates
 // B-Tree nodes with the sum of the files' RangeDeletionsBytesEstimate. This
 // value may change once a table's stats are loaded asynchronously, so its
 // values are marked as cacheable only if a file's stats have been loaded.
@@ -1166,16 +1166,14 @@ var rangeDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifes
 	return 0, false
 })
 
-// compressionStatsAnnotator is a manifest.Annotator that annotates B-tree nodes
+// compressionStatsAnnotator is a manifest.TableAnnotator that annotates B-tree nodes
 // with the compression statistics for tables. Its annotation type is
 // block.CompressionStats. The compression type may change once a table's stats
 // are loaded asynchronously, so its values are marked as cacheable only if a
 // file's stats have been loaded. Statistics for virtual tables are estimated
 // from the physical table statistics, proportional to the estimated virtual
 // table size.
-var compressionStatsAnnotator = manifest.Annotator[CompressionMetrics]{
-	Aggregator: compressionStatsAggregator{},
-}
+var compressionStatsAnnotator = manifest.NewTableAnnotator[CompressionMetrics](compressionStatsAggregator{})
 
 type compressionStatsAggregator struct{}
 
@@ -1205,6 +1203,45 @@ func (a compressionStatsAggregator) Accumulate(
 }
 
 func (a compressionStatsAggregator) Merge(
+	src *CompressionMetrics, dst *CompressionMetrics,
+) *CompressionMetrics {
+	dst.MergeWith(src)
+	return dst
+}
+
+// compressionStatsAnnotator is a manifest.TableAnnotator that annotates B-tree nodes
+// with the compression statistics for tables. Its annotation type is
+// block.CompressionStats. The compression type may change once a table's stats
+// are loaded asynchronously, so its values are marked as cacheable only if a
+// file's stats have been loaded. Statistics for virtual tables are estimated
+// from the physical table statistics, proportional to the estimated virtual
+// table size.
+var blobCompressionStatsAnnotator = manifest.NewBlobFileAnnotator[CompressionMetrics](blobCompressionStatsAggregator{})
+
+type blobCompressionStatsAggregator struct{}
+
+func (a blobCompressionStatsAggregator) Zero(dst *CompressionMetrics) *CompressionMetrics {
+	if dst == nil {
+		return new(CompressionMetrics)
+	}
+	*dst = CompressionMetrics{}
+	return dst
+}
+
+func (a blobCompressionStatsAggregator) Accumulate(
+	f manifest.BlobFileMetadata, dst *CompressionMetrics,
+) (v *CompressionMetrics, cacheOK bool) {
+	props, propsValid := f.Physical.Properties()
+	if !propsValid || props.CompressionStats.IsEmpty() {
+		dst.CompressedBytesWithoutStats += f.Physical.Size
+		return dst, propsValid
+	}
+	compressionStats := props.CompressionStats
+	dst.Add(&compressionStats)
+	return dst, true
+}
+
+func (a blobCompressionStatsAggregator) Merge(
 	src *CompressionMetrics, dst *CompressionMetrics,
 ) *CompressionMetrics {
 	dst.MergeWith(src)

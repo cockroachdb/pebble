@@ -1557,62 +1557,58 @@ func (p *compactionPickerByScore) addScoresToPickedCompactionMetrics(
 	}
 }
 
-// elisionOnlyAnnotator is a manifest.Annotator that annotates B-Tree
+// elisionOnlyAnnotator is a manifest.TableAnnotator that annotates B-Tree
 // nodes with the *fileMetadata of a file meeting the obsolete keys criteria
 // for an elision-only compaction within the subtree. If multiple files meet
 // the criteria, it chooses whichever file has the lowest LargestSeqNum. The
 // lowest LargestSeqNum file will be the first eligible for an elision-only
 // compaction once snapshots less than or equal to its LargestSeqNum are closed.
-var elisionOnlyAnnotator = &manifest.Annotator[manifest.TableMetadata]{
-	Aggregator: manifest.PickFileAggregator{
-		Filter: func(f *manifest.TableMetadata) (eligible bool, cacheOK bool) {
-			if f.IsCompacting() {
-				return false, true
-			}
+var elisionOnlyAnnotator = manifest.NewTableAnnotator[manifest.TableMetadata](manifest.PickFileAggregator{
+	Filter: func(f *manifest.TableMetadata) (eligible bool, cacheOK bool) {
+		if f.IsCompacting() {
+			return false, true
+		}
 
-			backingProps, backingPropsValid := f.TableBacking.Properties()
-			stats, statsValid := f.Stats()
-			if !backingPropsValid || !statsValid {
-				return false, false
-			}
+		backingProps, backingPropsValid := f.TableBacking.Properties()
+		stats, statsValid := f.Stats()
+		if !backingPropsValid || !statsValid {
+			return false, false
+		}
 
-			// Bottommost files are large and not worthwhile to compact just
-			// to remove a few tombstones. Consider a file eligible only if
-			// either its own range deletions delete at least 10% of its data or
-			// its deletion tombstones make at least 10% of its entries.
-			//
-			// TODO(jackson): This does not account for duplicate user keys
-			// which may be collapsed. Ideally, we would have 'obsolete keys'
-			// statistics that would include tombstones, the keys that are
-			// dropped by tombstones and duplicated user keys. See #847.
-			//
-			// Note that tables that contain exclusively range keys (i.e. no point keys,
-			// `NumEntries` and `RangeDeletionsBytesEstimate` are both zero) are excluded
-			// from elision-only compactions.
-			// TODO(travers): Consider an alternative heuristic for elision of range-keys.
-			eligible = stats.RangeDeletionsBytesEstimate*10 >= f.Size || backingProps.NumDeletions*10 > backingProps.NumEntries
-			return eligible, true
-		},
-		Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
-			return f1.LargestSeqNum < f2.LargestSeqNum
-		},
+		// Bottommost files are large and not worthwhile to compact just
+		// to remove a few tombstones. Consider a file eligible only if
+		// either its own range deletions delete at least 10% of its data or
+		// its deletion tombstones make at least 10% of its entries.
+		//
+		// TODO(jackson): This does not account for duplicate user keys
+		// which may be collapsed. Ideally, we would have 'obsolete keys'
+		// statistics that would include tombstones, the keys that are
+		// dropped by tombstones and duplicated user keys. See #847.
+		//
+		// Note that tables that contain exclusively range keys (i.e. no point keys,
+		// `NumEntries` and `RangeDeletionsBytesEstimate` are both zero) are excluded
+		// from elision-only compactions.
+		// TODO(travers): Consider an alternative heuristic for elision of range-keys.
+		eligible = stats.RangeDeletionsBytesEstimate*10 >= f.Size || backingProps.NumDeletions*10 > backingProps.NumEntries
+		return eligible, true
 	},
-}
+	Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
+		return f1.LargestSeqNum < f2.LargestSeqNum
+	},
+})
 
-// markedForCompactionAnnotator is a manifest.Annotator that annotates B-Tree
+// markedForCompactionAnnotator is a manifest.TableAnnotator that annotates B-Tree
 // nodes with the *fileMetadata of a file that is marked for compaction
 // within the subtree. If multiple files meet the criteria, it chooses
 // whichever file has the lowest LargestSeqNum.
-var markedForCompactionAnnotator = &manifest.Annotator[manifest.TableMetadata]{
-	Aggregator: manifest.PickFileAggregator{
-		Filter: func(f *manifest.TableMetadata) (eligible bool, cacheOK bool) {
-			return f.MarkedForCompaction, true
-		},
-		Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
-			return f1.LargestSeqNum < f2.LargestSeqNum
-		},
+var markedForCompactionAnnotator = manifest.NewTableAnnotator[manifest.TableMetadata](manifest.PickFileAggregator{
+	Filter: func(f *manifest.TableMetadata) (eligible bool, cacheOK bool) {
+		return f.MarkedForCompaction, true
 	},
-}
+	Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
+		return f1.LargestSeqNum < f2.LargestSeqNum
+	},
+})
 
 // pickedCompactionFromCandidateFile creates a pickedCompaction from a *fileMetadata
 // with various checks to ensure that the file still exists in the expected level
