@@ -1061,7 +1061,7 @@ func (m *Metrics) StringForTests() string {
 	// We recalculate the file cache size using the 64-bit sizes, and we ignore
 	// the genericcache metadata size which is harder to adjust.
 	const sstableReaderSize64bit = 280
-	const blobFileReaderSize64bit = 112
+	const blobFileReaderSize64bit = 128
 	mCopy.FileCache.Size = mCopy.FileCache.TableCount*sstableReaderSize64bit + mCopy.FileCache.BlobFileCount*blobFileReaderSize64bit
 	if math.MaxInt == math.MaxInt64 {
 		// Verify the 64-bit sizes, so they are kept updated.

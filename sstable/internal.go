@@ -8,6 +8,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -31,19 +32,19 @@ type InternalKey = base.InternalKey
 // Span exports the keyspan.Span type.
 type Span = keyspan.Span
 
-const valueBlocksIndexHandleMaxLen = blockHandleMaxLenWithoutProperties + 3
+const valueBlocksIndexHandleMaxLen = block.BlockHandleMaxLenWithoutProperties + 3
 
 // Assert blockHandleLikelyMaxLen >= valueBlocksIndexHandleMaxLen.
-const _ = uint(blockHandleLikelyMaxLen - valueBlocksIndexHandleMaxLen)
+const _ = uint(block.BlockHandleLikelyMaxLen - valueBlocksIndexHandleMaxLen)
 
 // Assert blockHandleLikelyMaxLen >= (valblk.HandleMaxLen+1).
 //
 // The additional 1 is for the 'valuePrefix' byte which prefaces values in
 // recent SSTable versions.
-const _ = uint(blockHandleLikelyMaxLen - valblk.HandleMaxLen - 1)
+const _ = uint(block.BlockHandleLikelyMaxLen - valblk.HandleMaxLen - 1)
 
 // Assert blockHandleLikelyMaxLen >= (blob.MaxInlineHandleLength+1).
 //
 // The additional 1 is for the 'valuePrefix' byte which prefaces values in recent
 // SSTable versions.
-const _ = uint(blockHandleLikelyMaxLen - blob.MaxInlineHandleLength - 1)
+const _ = uint(block.BlockHandleLikelyMaxLen - blob.MaxInlineHandleLength - 1)

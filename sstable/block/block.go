@@ -33,6 +33,17 @@ import (
 // Kind is a convenience alias.
 type Kind = blockkind.Kind
 
+const (
+	// BlockHandleMaxLenWithoutProperties is the maximum length of a block
+	// handle that does not encode any block properties. It consists of just
+	// the offset and length, each of which is a varint-encoded uint64.
+	BlockHandleMaxLenWithoutProperties = 2 * binary.MaxVarintLen64
+	// blockHandleLikelyMaxLen can be used for pre-allocating buffers to
+	// reduce memory copies. It is not guaranteed that a block handle will not
+	// exceed this length.
+	BlockHandleLikelyMaxLen = BlockHandleMaxLenWithoutProperties + 100
+)
+
 // Handle is the file offset and length of a block.
 type Handle struct {
 	// Offset identifies the offset of the block within the file.

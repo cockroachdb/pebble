@@ -20,17 +20,7 @@ import (
 // close the file.
 func NewRawWriter(writable objstorage.Writable, o WriterOptions) RawWriter {
 	return NewRawWriterWithCPUMeasurer(
-		writable, o, base.NoopCPUMeasurer{}, noopColdTierThresholdRetriever{})
-}
-
-type noopColdTierThresholdRetriever struct{}
-
-var _ tieredmeta.ColdTierThresholdRetriever = noopColdTierThresholdRetriever{}
-
-func (noopColdTierThresholdRetriever) GetColdTierLTThreshold(
-	base.TieringSpanID,
-) base.TieringAttribute {
-	return 0
+		writable, o, base.NoopCPUMeasurer{}, tieredmeta.NoopColdTierThresholdRetriever{})
 }
 
 // NewRawWriterWithCPUMeasurer is like NewRawWriter, but additionally allows

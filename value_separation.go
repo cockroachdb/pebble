@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/redact"
 )
 
@@ -207,6 +208,11 @@ type writeNewBlobFiles struct {
 // Assert that *writeNewBlobFiles implements the compact.ValueSeparation interface.
 var _ compact.ValueSeparation = (*writeNewBlobFiles)(nil)
 
+// Init implements the ValueSeparation interface.
+func (vs *writeNewBlobFiles) Init(retriever tieredmeta.ColdTierThresholdRetriever) {
+	vs.writerOpts.CTTRetriever = retriever
+}
+
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (vs *writeNewBlobFiles) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {
 	vs.minimumSize = config.MinimumSize
@@ -379,6 +385,9 @@ type pendingReference struct {
 // Assert that *preserveBlobReferences implements the compact.ValueSeparation
 // interface.
 var _ compact.ValueSeparation = (*preserveBlobReferences)(nil)
+
+// Init implements the ValueSeparation interface.
+func (vs *preserveBlobReferences) Init(retriever tieredmeta.ColdTierThresholdRetriever) {}
 
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (vs *preserveBlobReferences) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
