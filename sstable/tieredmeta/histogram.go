@@ -5,8 +5,11 @@
 package tieredmeta
 
 import (
+	"encoding/binary"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 type SpanIDStats struct {
@@ -74,57 +77,148 @@ type Bucket struct {
 	Bytes uint64
 }
 
+const MaxStatsHistogramSizeExcludingBuckets = 6 * binary.MaxVarintLen64
+
 func (h *StatsHistogram) encode() []byte {
-	// TODO(sumeer): serialize the histogram.
-	return nil
+	buf := make([]byte, MaxStatsHistogramSizeExcludingBuckets+(numBuckets+1)*binary.MaxVarintLen64)
+	n := binary.PutUvarint(buf, uint64(h.BucketStart))
+	n += binary.PutUvarint(buf[n:], uint64(h.BucketLength))
+	// We encode the number of buckets, to allow for future changes in the struct.
+	n += binary.PutUvarint(buf[n:], uint64(numBuckets))
+	for i := 0; i < numBuckets; i++ {
+		n += binary.PutUvarint(buf[n:], h.Buckets[i].Bytes)
+	}
+	n += binary.PutUvarint(buf[n:], h.UnderflowBytes)
+	n += binary.PutUvarint(buf[n:], h.UnaccountedBytes)
+	n += binary.PutUvarint(buf[n:], h.ZeroBytes)
+	n += binary.PutUvarint(buf[n:], h.Count)
+	return buf[:n]
 }
 
 func (h *StatsHistogram) decode(data []byte) error {
-	// TODO(sumeer): deserialize the histogram.
+	uvarintAndCheck := func() (uint64, error) {
+		v, n := binary.Uvarint(data)
+		if n <= 0 {
+			return 0, errors.AssertionFailedf("could not decode uvarint")
+		}
+		data = data[n:]
+		return v, nil
+	}
+	if v, err := uvarintAndCheck(); err != nil {
+		return err
+	} else {
+		h.BucketStart = base.TieringAttribute(v)
+	}
+	if v, err := uvarintAndCheck(); err != nil {
+		return err
+	} else {
+		h.BucketLength = base.TieringAttribute(v)
+	}
+	if v, err := uvarintAndCheck(); err != nil {
+		return err
+	} else if v != numBuckets {
+		return errors.AssertionFailedf("expected %d buckets, got %d", numBuckets, v)
+	}
+	for i := 0; i < numBuckets; i++ {
+		if v, err := uvarintAndCheck(); err != nil {
+			return err
+		} else {
+			h.Buckets[i].Bytes = v
+		}
+	}
+	if v, err := uvarintAndCheck(); err != nil {
+		return err
+	} else {
+		h.UnderflowBytes = v
+	}
+	if v, err := uvarintAndCheck(); err != nil {
+		return err
+	} else {
+		h.UnaccountedBytes = v
+	}
+	if v, err := uvarintAndCheck(); err != nil {
+		return err
+	} else {
+		h.ZeroBytes = v
+	}
+	if v, err := uvarintAndCheck(); err != nil {
+		return err
+	} else {
+		h.Count = v
+	}
 	return nil
 }
 
-// Add is used to sum histograms stored from different files. The bucket
+// Merge is used to sum histograms stored in different files. The bucket
 // boundaries will be aligned, but they will be shifted since the histograms
 // are generated at different times.
-func (h *StatsHistogram) Add(other *StatsHistogram) {
+func (h *StatsHistogram) Merge(other *StatsHistogram) {
 	if h.BucketLength != other.BucketLength {
 		panic(errors.AssertionFailedf("bucket length %d != %d", h.BucketLength, other.BucketLength))
 	}
-	h.ZeroBytes += other.ZeroBytes
-	h.UnaccountedBytes += other.UnaccountedBytes
-	h.UnderflowBytes += other.UnderflowBytes
-	h.Count += other.Count
-	var buckets [numBuckets]Bucket
-	var older *StatsHistogram
-	var offset base.TieringAttribute
-	if h.BucketStart < other.BucketStart {
-		buckets = other.Buckets
-		older = h
-		offset = other.BucketStart - h.BucketStart
-		h.BucketStart = other.BucketStart
+	var h2 *StatsHistogram
+	if other.BucketStart < h.BucketStart {
+		otherCopy := *other
+		otherCopy.ageTo(h.BucketStart)
+		h2 = &otherCopy
 	} else {
-		buckets = h.Buckets
-		older = other
-		offset = h.BucketStart - other.BucketStart
+		h2 = other
+		if other.BucketStart > h.BucketStart {
+			h.ageTo(other.BucketStart)
+		}
 	}
-	offset /= h.BucketLength
-	// Oldest buckets are moved to the underflow.
-	for i := base.TieringAttribute(0); i < offset; i++ {
-		h.UnderflowBytes += older.Buckets[i].Bytes
+	for i := 0; i < numBuckets; i++ {
+		h.Buckets[i].Bytes += h2.Buckets[i].Bytes
 	}
-	// Newer buckets are shifted to be older.
-	for i := offset; i < numBuckets; i++ {
-		buckets[i-offset].Bytes += older.Buckets[i].Bytes
-	}
-	h.Buckets = buckets
+	h.UnderflowBytes += other.UnderflowBytes
+	h.UnaccountedBytes += other.UnaccountedBytes
+	h.ZeroBytes += other.ZeroBytes
+	h.Count += other.Count
 }
 
 // Subtract requires that h represents a histogram to which other was
 // previously added. It is used when a file corresponding to other has been
 // compacted away.
 func (h *StatsHistogram) Subtract(other *StatsHistogram) {
-	// TODO(sumeer): implement.
+	if h.BucketLength != other.BucketLength {
+		panic(errors.AssertionFailedf("bucket length %d != %d", h.BucketLength, other.BucketLength))
+	}
+	var h2 *StatsHistogram
+	if other.BucketStart < h.BucketStart {
+		otherCopy := *other
+		otherCopy.ageTo(h.BucketStart)
+		h2 = &otherCopy
+	} else {
+		h2 = other
+		if other.BucketStart > h.BucketStart {
+			h.ageTo(other.BucketStart)
+		}
+	}
+	for i := 0; i < numBuckets; i++ {
+		h.Buckets[i].Bytes = invariants.SafeSub(h.Buckets[i].Bytes, h2.Buckets[i].Bytes)
+	}
+	h.UnderflowBytes = invariants.SafeSub(h.UnderflowBytes, h2.UnderflowBytes)
+	h.UnaccountedBytes = invariants.SafeSub(h.UnaccountedBytes, h2.UnaccountedBytes)
+	h.ZeroBytes = invariants.SafeSub(h.ZeroBytes, h2.ZeroBytes)
+	h.Count = invariants.SafeSub(h.Count, h2.Count)
+}
+
+// INVARIANT: bucketStart > h.BucketStart.
+func (h *StatsHistogram) ageTo(bucketStart base.TieringAttribute) {
+	offset := min((bucketStart-h.BucketStart)/h.BucketLength, numBuckets)
+	// Oldest buckets are moved to the underflow.
+	for i := base.TieringAttribute(0); i < offset; i++ {
+		h.UnderflowBytes += h.Buckets[i].Bytes
+	}
+	// Newer buckets are shifted to be older.
+	for i := offset; i < numBuckets; i++ {
+		h.Buckets[i-offset].Bytes = h.Buckets[i].Bytes
+	}
+	// Remaining buckets are zeroed out.
+	for i := numBuckets - offset; i < numBuckets; i++ {
+		h.Buckets[i] = Bucket{}
+	}
+	h.BucketStart = bucketStart
 }
 
 type histogramWriter struct {
