@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 )
 
 func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
@@ -322,7 +323,11 @@ func ingestLoad1(
 	// disallowing removal of an open file. Under MemFS, if we don't populate
 	// meta.Stats here, the file will be loaded into the file cache for
 	// calculating stats before we can remove the original link.
-	maybeSetStatsFromProperties(meta.PhysicalMeta(), &props, opts.Logger)
+	//
+	// Assume for now that ingested files have no tiering histograms.
+	// TODO(sumeer): fix this by reading the histogram block above.
+	maybeSetStatsFromProperties(
+		meta.PhysicalMeta(), &props, tieredmeta.TieringHistogramBlockContents{}, opts.Logger)
 
 	var iterStats base.InternalIteratorStats
 	env := sstable.ReadEnv{

@@ -409,6 +409,8 @@ type WriterMetadata struct {
 	SmallestSeqNum   base.SeqNum
 	LargestSeqNum    base.SeqNum
 	Properties       Properties
+
+	TieringHistograms tieredmeta.TieringHistogramBlockContents
 }
 
 // SetSmallestPointKey sets the smallest point key to the given key.

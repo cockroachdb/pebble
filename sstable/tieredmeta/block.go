@@ -168,7 +168,7 @@ func (w *TieringHistogramBlockWriter) Add(
 }
 
 // Flush returns the encoded block contents.
-func (w *TieringHistogramBlockWriter) Flush() []byte {
+func (w *TieringHistogramBlockWriter) Flush() ([]byte, TieringHistogramBlockContents) {
 	var cw colblk.KeyValueBlockWriter
 	cw.Init()
 	keys := make([]Key, len(w.writers))
@@ -181,12 +181,17 @@ func (w *TieringHistogramBlockWriter) Flush() []byte {
 		return cmp.Or(
 			cmp.Compare(a.KindAndTier, b.KindAndTier), cmp.Compare(a.TieringSpanID, b.TieringSpanID))
 	})
+	var bc TieringHistogramBlockContents
 	for _, k := range keys {
 		cw.AddKV(k.encode(), w.writers[k].encode())
+		if bc.Histograms == nil {
+			bc.Histograms = make(map[Key]StatsHistogram)
+		}
+		bc.Histograms[k] = w.writers[k].stats
 	}
 	clear(w.writers)
 	w.writers = nil
-	return cw.Finish(cw.Rows())
+	return cw.Finish(cw.Rows()), bc
 }
 
 // TieringHistogramBlockContents is the in-memory contents of the tiering
@@ -194,7 +199,7 @@ func (w *TieringHistogramBlockWriter) Flush() []byte {
 // convenience, like we do for TableStats, but we don't need to long term,
 // since the memory overhead is likely too high.
 type TieringHistogramBlockContents struct {
-	histograms map[Key]StatsHistogram
+	Histograms map[Key]StatsHistogram
 }
 
 func DecodeTieringHistogramBlock(data []byte) (TieringHistogramBlockContents, error) {
@@ -211,10 +216,37 @@ func DecodeTieringHistogramBlock(data []byte) (TieringHistogramBlockContents, er
 		if err := hist.decode(decoder.ValueAt(i)); err != nil {
 			return TieringHistogramBlockContents{}, err
 		}
-		if c.histograms == nil {
-			c.histograms = make(map[Key]StatsHistogram)
+		if c.Histograms == nil {
+			c.Histograms = make(map[Key]StatsHistogram)
 		}
-		c.histograms[k] = hist
+		c.Histograms[k] = hist
 	}
 	return c, nil
+}
+
+func (c *TieringHistogramBlockContents) Merge(other *TieringHistogramBlockContents) {
+	if c.Histograms == nil {
+		c.Histograms = other.Histograms
+		return
+	}
+	for k, v := range other.Histograms {
+		if existing, ok := c.Histograms[k]; ok {
+			existing.Merge(&v)
+			c.Histograms[k] = existing
+		} else {
+			c.Histograms[k] = v
+		}
+	}
+}
+
+func (c *TieringHistogramBlockContents) Clone() *TieringHistogramBlockContents {
+	if len(c.Histograms) == 0 {
+		return &TieringHistogramBlockContents{}
+	}
+	var rv TieringHistogramBlockContents
+	rv.Histograms = make(map[Key]StatsHistogram, len(c.Histograms))
+	for k, v := range c.Histograms {
+		rv.Histograms[k] = v
+	}
+	return &rv
 }

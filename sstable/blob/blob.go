@@ -347,8 +347,9 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 		// Write the tiering histogram block if the file format is >= v3.
 		var tieringHistogramBlockHandle block.Handle
 		if w.format >= FileFormatV3 {
+			encoded, _ := w.tieringHistogramBlock.Flush()
 			tieringHistogramBlockHandle, err =
-				w.writeMetadataBlock(w.tieringHistogramBlock.Flush(), block.NoFlags)
+				w.writeMetadataBlock(encoded, block.NoFlags)
 			if err != nil {
 				return err
 			}

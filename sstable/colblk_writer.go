@@ -1042,8 +1042,10 @@ func (w *RawColumnWriter) Close() (err error) {
 		}
 	}
 
+	var tieringHistograms tieredmeta.TieringHistogramBlockContents
 	if w.opts.TableFormat >= TableFormatPebblev8 {
-		toWrite := w.tieringHistogramBlock.Flush()
+		var toWrite []byte
+		toWrite, tieringHistograms = w.tieringHistogramBlock.Flush()
 		if _, err = w.layout.WriteTieringHistogramBlock(toWrite); err != nil {
 			return err
 		}
@@ -1111,6 +1113,7 @@ func (w *RawColumnWriter) Close() (err error) {
 		return err
 	}
 	w.meta.Properties = w.props
+	w.meta.TieringHistograms = tieringHistograms
 	// Release any held memory and make any future calls error.
 	*w = RawColumnWriter{meta: w.meta, err: errWriterClosed}
 	return nil

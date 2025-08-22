@@ -2171,6 +2171,10 @@ func (d *DB) Metrics() *Metrics {
 		metrics.Table.Compression.MergeWith(compressionMetrics)
 	}
 
+	for i := 0; i < numLevels; i++ {
+		metrics.Levels[i].Additional.TieringHistograms =
+			*tieringHistogramsAnnotator.LevelAnnotation(vers.Levels[i]).Clone()
+	}
 	metrics.Table.PendingStatsCollectionCount = int64(len(d.mu.tableStats.pending))
 	metrics.Table.InitialStatsCollectionComplete = d.mu.tableStats.loadedInitial
 

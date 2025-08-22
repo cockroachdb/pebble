@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/sstable/virtual"
 )
 
@@ -1187,6 +1188,7 @@ type TableStats struct {
 	TombstoneDenseBlocksRatio float64
 	RawKeySize                uint64
 	RawValueSize              uint64
+	TieringHistograms         tieredmeta.TieringHistogramBlockContents
 }
 
 // CompactionState is the compaction state of a file.
