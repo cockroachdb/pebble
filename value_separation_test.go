@@ -129,7 +129,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 					} else {
 						ikv.V = base.MakeInPlaceValue([]byte(parts[1]))
 					}
-					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, func() bool { return false } /* isLikelyMVCCGarbage */))
+					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isLikelyMVCCGarbage */))
 				}
 				return buf.String()
 			case "estimated-sizes":
@@ -225,7 +225,7 @@ func (vs *defineDBValueSeparator) EstimatedReferenceSize() uint64 {
 // Add adds the provided key-value pair to the sstable, possibly separating the
 // value into a blob file.
 func (vs *defineDBValueSeparator) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ func() bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
 ) error {
 	// In datadriven tests, all defined values are in-place initially. See
 	// runDBDefineCmdReuseFS.
@@ -261,7 +261,7 @@ func (vs *defineDBValueSeparator) Add(
 	// Return a KV that uses the original key but our constructed blob reference.
 	vs.kv.K = kv.K
 	vs.kv.V = iv
-	return vs.pbr.Add(tw, &vs.kv, forceObsolete, func() bool { return false } /* isLikelyMVCCGarbage */)
+	return vs.pbr.Add(tw, &vs.kv, forceObsolete, false /* isLikelyMVCCGarbage */)
 }
 
 // FinishOutput implements compact.ValueSeparation.
