@@ -1495,7 +1495,7 @@ func (d *DB) flush() {
 		d.maybeScheduleFlush()
 		// Let the CompactionScheduler know, so that it can react immediately to
 		// an increase in DB.GetAllowedWithoutPermission.
-		d.opts.Experimental.CompactionScheduler.UpdateGetAllowedWithoutPermission()
+		d.compactionScheduler.UpdateGetAllowedWithoutPermission()
 		// The flush may have produced too many files in a level, so schedule a
 		// compaction if needed.
 		d.maybeScheduleCompaction()
@@ -2004,7 +2004,7 @@ func (d *DB) maybeScheduleCompaction() {
 		if pc == nil {
 			return
 		}
-		success, grantHandle := d.opts.Experimental.CompactionScheduler.TrySchedule()
+		success, grantHandle := d.compactionScheduler.TrySchedule()
 		if !success {
 			// Can't run now, but remember this pickedCompaction in the cache.
 			d.mu.versions.pickedCompactionCache.add(pc)

@@ -1325,7 +1325,9 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		FS:                 fs,
 		Logger:             testutils.Logger{T: t},
 	}
-	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -1469,7 +1471,9 @@ func TestCompactionPickerScores(t *testing.T) {
 		FS:                          fs,
 		Logger:                      testutils.Logger{T: t},
 	}
-	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 
 	d, err := Open("", opts)
 	require.NoError(t, err)
@@ -1491,7 +1495,9 @@ func TestCompactionPickerScores(t *testing.T) {
 			if td.HasArg("pause-cleaning") {
 				cleaner.pause()
 			}
-			opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+			}
 			d, err = runDBDefineCmd(td, opts)
 			if err != nil {
 				return err.Error()
