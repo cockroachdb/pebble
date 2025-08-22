@@ -71,6 +71,36 @@ func TestDefaultComparer(t *testing.T) {
 	}
 }
 
+func TestEnsureDefaults(t *testing.T) {
+	cases := []struct {
+		comparer *Comparer
+	}{
+		{
+			comparer: &Comparer{
+				AbbreviatedKey: DefaultComparer.AbbreviatedKey,
+				Separator:      DefaultComparer.Separator,
+				Successor:      DefaultComparer.Successor,
+				Name:           "test",
+			},
+		},
+		{
+			comparer: &Comparer{
+				AbbreviatedKey: DefaultComparer.AbbreviatedKey,
+				Separator:      DefaultComparer.Separator,
+				Successor:      DefaultComparer.Successor,
+				Compare:        DefaultComparer.Compare,
+				Name:           "test",
+			},
+		},
+	}
+	for _, tc := range cases {
+		comparer := tc.comparer.EnsureDefaults()
+		if err := CheckComparer(comparer, [][]byte{{}, []byte("abc"), []byte("d"), []byte("ef")}, [][]byte{{}}); err != nil {
+			t.Error(err)
+		}
+	}
+}
+
 func TestAbbreviatedKey(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	randBytes := func(size int) []byte {
