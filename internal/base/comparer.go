@@ -261,7 +261,7 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 	if c.AbbreviatedKey == nil || c.Separator == nil || c.Successor == nil || c.Name == "" {
 		panic("invalid Comparer: mandatory field not set")
 	}
-	if c.CompareRangeSuffixes != nil && c.Compare != nil && c.Equal != nil && c.Split != nil && c.FormatKey != nil {
+	if c.CompareRangeSuffixes != nil && c.ComparePointSuffixes != nil && c.Compare != nil && c.Equal != nil && c.Split != nil && c.FormatKey != nil {
 		return c
 	}
 	n := &Comparer{}
@@ -270,13 +270,17 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 	if n.Split == nil {
 		n.Split = DefaultSplit
 	}
-	if n.CompareRangeSuffixes == nil && n.Compare == nil && n.Equal == nil {
+	if n.CompareRangeSuffixes == nil && n.ComparePointSuffixes == nil && n.Compare == nil && n.Equal == nil {
 		n.CompareRangeSuffixes = bytes.Compare
+		n.ComparePointSuffixes = bytes.Compare
 		n.Compare = bytes.Compare
 		n.Equal = bytes.Equal
 	} else {
 		if n.CompareRangeSuffixes == nil {
 			n.CompareRangeSuffixes = bytes.Compare
+		}
+		if n.ComparePointSuffixes == nil {
+			n.ComparePointSuffixes = bytes.Compare
 		}
 		if n.Compare == nil {
 			n.Compare = func(a, b []byte) int {
