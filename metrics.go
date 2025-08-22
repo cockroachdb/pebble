@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
@@ -143,6 +144,10 @@ type LevelMetrics struct {
 		// LevelMetrics.format, but are available to sophisticated clients.
 		BytesWrittenDataBlocks  uint64
 		BytesWrittenValueBlocks uint64
+
+		// TODO(sumeer): the raw info is fine for prototyping, but this will need
+		// to be refined.
+		TieringHistograms tieredmeta.TieringHistogramBlockContents
 	}
 }
 
@@ -1060,7 +1065,7 @@ func (m *Metrics) StringForTests() string {
 
 	// We recalculate the file cache size using the 64-bit sizes, and we ignore
 	// the genericcache metadata size which is harder to adjust.
-	const sstableReaderSize64bit = 280
+	const sstableReaderSize64bit = 296
 	const blobFileReaderSize64bit = 128
 	mCopy.FileCache.Size = mCopy.FileCache.TableCount*sstableReaderSize64bit + mCopy.FileCache.BlobFileCount*blobFileReaderSize64bit
 	if math.MaxInt == math.MaxInt64 {

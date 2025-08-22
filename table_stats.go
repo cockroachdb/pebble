@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/redact"
 )
 
@@ -345,6 +346,12 @@ func (d *DB) loadTableStats(
 					return
 				}
 			}
+			var histograms tieredmeta.TieringHistogramBlockContents
+			histograms, err = r.ReadTieringHistogramBlock(ctx, block.NoReadEnv)
+			if err != nil {
+				return
+			}
+			stats.TieringHistograms = histograms
 			return
 		})
 	if err != nil {
@@ -705,7 +712,10 @@ func sanityCheckStats(
 }
 
 func maybeSetStatsFromProperties(
-	meta *manifest.TableMetadata, props *sstable.Properties, logger Logger,
+	meta *manifest.TableMetadata,
+	props *sstable.Properties,
+	tieringHistograms tieredmeta.TieringHistogramBlockContents,
+	logger Logger,
 ) bool {
 	// If a table contains range deletions or range key deletions, we defer the
 	// stats collection. There are two main reasons for this:
@@ -751,6 +761,7 @@ func maybeSetStatsFromProperties(
 		RawKeySize:                  props.RawKeySize,
 		RawValueSize:                props.RawValueSize,
 		CompressionType:             block.CompressionProfileByName(props.CompressionName),
+		TieringHistograms:           tieringHistograms,
 	}
 	if props.CompressionStats != "" {
 		var err error
@@ -1180,4 +1191,49 @@ func (a compressionStatsAggregator) Merge(
 ) *CompressionMetrics {
 	dst.MergeWith(src)
 	return dst
+}
+
+// TODO(sumeer): relying on the aggregator and TieringHistogramBlockContents
+// in TableMetadata is just a stop-gap solution. The memory overhead of this
+// may be too high. We could do a top-k aggregation, to reduce the memory in
+// interior nodes, but the overhead will primarily due to the leaves, i.e.,
+// the histograms in the TableMetadata.
+//
+// NB: StatsHistogram.Subtract is not being used, since this scheme is only
+// adding histograms, and recomputing the addition over paths in the tree --
+// if we only maintained the root, we would be doing subtraction.
+
+var tieringHistogramsAnnotator = manifest.Annotator[tieredmeta.TieringHistogramBlockContents]{
+	Aggregator: tieringHistogramsAggregator{},
+}
+
+type tieringHistogramsAggregator struct{}
+
+func (a tieringHistogramsAggregator) Zero(
+	dst *tieredmeta.TieringHistogramBlockContents,
+) *tieredmeta.TieringHistogramBlockContents {
+	if dst == nil {
+		return new(tieredmeta.TieringHistogramBlockContents)
+	}
+	clear(dst.Histograms)
+	return dst
+}
+
+func (a tieringHistogramsAggregator) Accumulate(
+	f *manifest.TableMetadata, dst *tieredmeta.TieringHistogramBlockContents,
+) (v *tieredmeta.TieringHistogramBlockContents, cacheOK bool) {
+	stats, statsValid := f.Stats()
+	if !statsValid {
+		return dst, statsValid
+	}
+	dst.Merge(&stats.TieringHistograms)
+	return dst, true
+}
+
+func (a tieringHistogramsAggregator) Merge(
+	src *tieredmeta.TieringHistogramBlockContents, dst *tieredmeta.TieringHistogramBlockContents,
+) *tieredmeta.TieringHistogramBlockContents {
+	h := src.Clone()
+	h.Merge(dst)
+	return h
 }

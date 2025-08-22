@@ -127,7 +127,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (843B) |        0.0% |     1 (280B) |        0.0% |         0.0% |           1 |           0
+    2 (843B) |        0.0% |     1 (296B) |        0.0% |         0.0% |           1 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -228,7 +228,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (843B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
+    2 (843B) |       33.3% |     2 (592B) |       66.7% |         0.0% |           2 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -312,7 +312,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (843B) |       33.3% |     2 (560B) |       66.7% |         0.0% |           2 |           0
+    2 (843B) |       33.3% |     2 (592B) |       66.7% |         0.0% |           2 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -393,7 +393,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (843B) |       33.3% |     1 (280B) |       66.7% |         0.0% |           1 |           0
+    2 (843B) |       33.3% |     1 (296B) |       66.7% |         0.0% |           1 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -1931,7 +1931,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (822B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
+    2 (822B) |        0.0% |     2 (592B) |        0.0% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -2008,7 +2008,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (822B) |        0.0% |     2 (560B) |        0.0% |         0.0% |           0 |           0
+    2 (822B) |        0.0% |     2 (592B) |        0.0% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed

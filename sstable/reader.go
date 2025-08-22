@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/pebble/sstable/virtual"
 	"github.com/cockroachdb/pebble/vfs"
@@ -66,6 +67,7 @@ type Reader struct {
 	metaindexBH    block.Handle
 	footerBH       block.Handle
 	blobRefIndexBH block.Handle
+	tieringHistBH  block.Handle
 
 	tableFormat    TableFormat
 	Attributes     Attributes
@@ -435,6 +437,29 @@ func (r *Reader) readBlobRefIndexBlock(
 	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.BlobReferenceValueLivenessIndex, noInitBlockMetadataFn)
 }
 
+func (r *Reader) ReadTieringHistogramBlock(
+	ctx context.Context, env block.ReadEnv,
+) (tieredmeta.TieringHistogramBlockContents, error) {
+	if r.tableFormat < TableFormatPebblev8 {
+		return tieredmeta.TieringHistogramBlockContents{}, nil
+	}
+	if env.BufferPool == nil {
+		// We always use a buffer pool when reading the tiering histogram block as
+		// we don't want it in the block cache.
+		bufferPool := propertiesBlockBufPools.Get().(*block.BufferPool)
+		defer propertiesBlockBufPools.Put(bufferPool)
+		defer bufferPool.Release()
+		env.BufferPool = bufferPool
+	}
+	b, err := r.blockReader.Read(ctx, env, noReadHandle, r.tieringHistBH, blockkind.TieringHistogram,
+		noInitBlockMetadataFn)
+	if err != nil {
+		return tieredmeta.TieringHistogramBlockContents{}, err
+	}
+	defer b.Release()
+	return tieredmeta.DecodeTieringHistogramBlock(b.BlockData())
+}
+
 // metaBufferPools is a sync pool of BufferPools used exclusively when opening a
 // table and loading its meta blocks.
 var metaBufferPools = sync.Pool{
@@ -512,6 +537,10 @@ func (r *Reader) initMetaindexBlocks(
 
 	if bh, ok := meta[metaRangeKeyName]; ok {
 		r.rangeKeyBH = bh
+	}
+
+	if bh, ok := meta[metaTieringHistogramName]; ok {
+		r.tieringHistBH = bh
 	}
 
 	for name, fp := range filters {
