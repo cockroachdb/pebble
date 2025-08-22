@@ -1999,6 +1999,7 @@ func BenchmarkNewIterReadAmp(b *testing.B) {
 			opts := &Options{
 				FS:                    vfs.NewMem(),
 				L0StopWritesThreshold: 1000,
+				Logger:                testutils.Logger{T: b},
 			}
 			opts.DisableAutomaticCompactions = true
 
@@ -2021,6 +2022,42 @@ func BenchmarkNewIterReadAmp(b *testing.B) {
 				require.NoError(b, iter.Close())
 			}
 
+			require.NoError(b, d.Close())
+		})
+	}
+}
+
+func BenchmarkNewIterClose(b *testing.B) {
+	for _, readAmp := range []int{1, 10, 100} {
+		b.Run(strconv.Itoa(readAmp), func(b *testing.B) {
+			opts := &Options{
+				FS:                    vfs.NewMem(),
+				L0StopWritesThreshold: 1000,
+				Logger:                testutils.Logger{T: b},
+			}
+			opts.DisableAutomaticCompactions = true
+
+			d, err := Open("", opts)
+			require.NoError(b, err)
+
+			seekKey := []byte("a")
+			for i := 0; i < readAmp; i++ {
+				require.NoError(b, d.Set([]byte("a"), []byte("b"), NoSync))
+				require.NoError(b, d.Flush())
+			}
+
+			require.Equal(b, d.Metrics().ReadAmp(), readAmp)
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				iter, _ := d.NewIter(nil)
+				iter.SeekGE(seekKey)
+				err := iter.Close()
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.StopTimer()
 			require.NoError(b, d.Close())
 		})
 	}
