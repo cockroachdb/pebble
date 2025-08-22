@@ -133,7 +133,7 @@ type ValueSeparation interface {
 	EstimatedReferenceSize() uint64
 	// Add adds the provided key-value pair to the provided sstable writer,
 	// possibly separating the value into a blob file.
-	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage func() bool) error
+	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage bool) error
 	// FinishOutput is called when a compaction is finishing an output sstable.
 	// It returns the table's blob references, which will be added to the
 	// table's TableMetadata, and stats and metadata describing a newly
@@ -335,9 +335,7 @@ func (r *Runner) writeKeysToTable(
 		}
 
 		valueLen := kv.V.Len()
-		isLikelyMVCCGarbage := func() bool {
-			return sstable.IsLikelyMVCCGarbage(kv.K.UserKey, prevKeyKind, kv.K.Kind(), valueLen, prefixEqual)
-		}
+		isLikelyMVCCGarbage := sstable.IsLikelyMVCCGarbage(kv.K.UserKey, prevKeyKind, kv.K.Kind(), valueLen, prefixEqual)
 		// Add the value to the sstable, possibly separating its value into a
 		// blob file. The ValueSeparation implementation is responsible for
 		// writing the KV to the sstable.
@@ -508,7 +506,7 @@ func (NeverSeparateValues) EstimatedReferenceSize() uint64 { return 0 }
 
 // Add implements the ValueSeparation interface.
 func (NeverSeparateValues) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ func() bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
 ) error {
 	v, _, err := kv.Value(nil)
 	if err != nil {

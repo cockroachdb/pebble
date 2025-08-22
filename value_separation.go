@@ -236,7 +236,7 @@ func (vs *writeNewBlobFiles) EstimatedReferenceSize() uint64 {
 // Add adds the provided key-value pair to the sstable, possibly separating the
 // value into a blob file.
 func (vs *writeNewBlobFiles) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage func() bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage bool,
 ) error {
 	// We always fetch the value if we're rewriting blob files. We want to
 	// replace any references to existing blob files with references to new blob
@@ -251,7 +251,7 @@ func (vs *writeNewBlobFiles) Add(
 
 	// Values that are too small are never separated; however, MVCC keys are
 	// separated if they are a SET key kind, as long as the value is not empty.
-	if len(v) < vs.minimumSize && !isLikelyMVCCGarbage() {
+	if len(v) < vs.minimumSize && !isLikelyMVCCGarbage {
 		return tw.Add(kv.K, v, forceObsolete)
 	}
 
@@ -410,7 +410,7 @@ func (vs *preserveBlobReferences) EstimatedReferenceSize() uint64 {
 // Add implements compact.ValueSeparation. This implementation will write
 // existing blob references to the output table.
 func (vs *preserveBlobReferences) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ func() bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
 ) error {
 	if !kv.V.IsBlobValueHandle() {
 		// If the value is not already a blob handle (either it's in-place or in
