@@ -2681,7 +2681,7 @@ func (d *DB) rotateWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	if err != nil {
 		// What to do here? Stumbling on doesn't seem worthwhile. If we failed to
 		// close the previous log it is possible we lost a write.
-		panic(err)
+		d.opts.Logger.Fatalf("pebble: error closing WAL; data loss possible if we continue: %s", err)
 	}
 	prevLogSize = uint64(offset)
 	metrics := d.mu.log.writer.Metrics()
