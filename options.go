@@ -753,10 +753,10 @@ type Options struct {
 		// the excise phase of IngestAndExcise.
 		EnableDeleteOnlyCompactionExcises func() bool
 
-		// CompactionScheduler, if set, is used to limit concurrent compactions as
-		// well as to pace compactions already chosen. If nil, a default scheduler
-		// is created and used.
-		CompactionScheduler CompactionScheduler
+		// CompactionScheduler, if set, is used to create a scheduler to limit
+		// concurrent compactions as well as to pace compactions already chosen. If
+		// nil, a default scheduler is created and used.
+		CompactionScheduler func() CompactionScheduler
 
 		UserKeyCategories UserKeyCategories
 

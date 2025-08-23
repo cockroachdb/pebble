@@ -302,6 +302,11 @@ func (s *ConcurrencyLimitScheduler) Register(numGoroutinesPerCompaction int, db 
 	if s.stopPeriodicGranterCh != nil {
 		go s.periodicGranter()
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mu.unregistered {
+		panic("cannot reuse ConcurrencyLimitScheduler")
+	}
 }
 
 func (s *ConcurrencyLimitScheduler) Unregister() {
@@ -429,12 +434,6 @@ func (s *ConcurrencyLimitScheduler) adjustRunningCompactionsForTesting(delta int
 	} else {
 		s.mu.Unlock()
 	}
-}
-
-func (s *ConcurrencyLimitScheduler) isUnregisteredForTesting() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.mu.unregistered
 }
 
 // schedulerTimeSource is used to abstract time.NewTicker for

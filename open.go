@@ -81,9 +81,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// Make a copy of the options so that we don't mutate the passed in options.
 	opts = opts.Clone()
 	opts.EnsureDefaults()
-	if opts.Experimental.CompactionScheduler == nil {
-		opts.Experimental.CompactionScheduler = newConcurrencyLimitScheduler(defaultTimeSource{})
-	}
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
@@ -203,6 +200,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)
 	d.problemSpans.Init(manifest.NumLevels, opts.Comparer.Compare)
+	if opts.Experimental.CompactionScheduler != nil {
+		d.compactionScheduler = opts.Experimental.CompactionScheduler()
+	} else {
+		d.compactionScheduler = newConcurrencyLimitScheduler(defaultTimeSource{})
+	}
 
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
@@ -555,7 +557,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// Register with the CompactionScheduler before calling
 	// d.maybeScheduleFlush, since completion of the flush can trigger
 	// compactions.
-	d.opts.Experimental.CompactionScheduler.Register(2, d)
+	d.compactionScheduler.Register(2, d)
 	if !d.opts.ReadOnly {
 		d.maybeScheduleFlush()
 		for d.mu.compact.flushing {
