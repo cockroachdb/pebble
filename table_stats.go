@@ -1139,12 +1139,8 @@ var compressionStatsAnnotator = manifest.NewTableAnnotator[CompressionMetrics](c
 
 type compressionStatsAggregator struct{}
 
-func (a compressionStatsAggregator) Zero(dst *CompressionMetrics) *CompressionMetrics {
-	if dst == nil {
-		return new(CompressionMetrics)
-	}
-	*dst = CompressionMetrics{}
-	return dst
+func (a compressionStatsAggregator) Zero() *CompressionMetrics {
+	return &CompressionMetrics{}
 }
 
 func (a compressionStatsAggregator) Accumulate(
@@ -1182,12 +1178,8 @@ var blobCompressionStatsAnnotator = manifest.NewBlobFileAnnotator[CompressionMet
 
 type blobCompressionStatsAggregator struct{}
 
-func (a blobCompressionStatsAggregator) Zero(dst *CompressionMetrics) *CompressionMetrics {
-	if dst == nil {
-		return new(CompressionMetrics)
-	}
-	*dst = CompressionMetrics{}
-	return dst
+func (a blobCompressionStatsAggregator) Zero() *CompressionMetrics {
+	return &CompressionMetrics{}
 }
 
 func (a blobCompressionStatsAggregator) Accumulate(

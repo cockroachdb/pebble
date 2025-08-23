@@ -59,11 +59,8 @@ type annotator[T any, M fileMetadata] struct {
 // An AnnotationAggregator defines how an annotation should be accumulated from
 // a single TableMetadata and merged with other annotated values.
 type AnnotationAggregator[T any, M fileMetadata] interface {
-	// Zero returns the zero value of an annotation. This value is returned
-	// when a LevelMetadata is empty. The dst argument, if non-nil, is an
-	// obsolete value previously returned by this TableAnnotator and may be
-	// overwritten and reused to avoid a memory allocation.
-	Zero(dst *T) *T
+	// Zero returns the zero value of an annotation.
+	Zero() *T
 
 	// Accumulate computes the annotation for a single file in a level's
 	// metadata. It merges the file's value into dst and returns a bool flag
@@ -127,7 +124,7 @@ func (a *annotator[T, M]) findAnnotation(n *node[M]) *annotation {
 		annotator: a,
 		v:         atomic.Value{},
 	})
-	n.annot[len(n.annot)-1].v.Store(a.Aggregator.Zero(nil))
+	n.annot[len(n.annot)-1].v.Store(a.Aggregator.Zero())
 	return &n.annot[len(n.annot)-1]
 }
 
@@ -145,7 +142,7 @@ func (a *annotator[T, M]) nodeAnnotation(n *node[M]) (t *T, cacheOK bool) {
 		return annot.v.Load().(*T), true
 	}
 
-	t = a.Aggregator.Zero(t)
+	t = a.Aggregator.Zero()
 	valid := true
 
 	for i := int16(0); i <= n.count; i++ {
@@ -264,7 +261,7 @@ func (a *TableAnnotator[T]) accumulateRangeAnnotation(
 // duplicate computation.
 func (a *TableAnnotator[T]) LevelAnnotation(lm LevelMetadata) *T {
 	if lm.Empty() {
-		return a.Aggregator.Zero(nil)
+		return a.Aggregator.Zero()
 	}
 
 	v, _ := a.nodeAnnotation(lm.tree.root)
@@ -276,7 +273,7 @@ func (a *TableAnnotator[T]) LevelAnnotation(lm LevelMetadata) *T {
 // key for pre-calculated values, so the same TableAnnotator must be used to avoid
 // duplicate computation.
 func (a *TableAnnotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
-	aggregated := a.Aggregator.Zero(nil)
+	aggregated := a.Aggregator.Zero()
 	for l := 0; l < len(lms); l++ {
 		if !lms[l].Empty() {
 			v := a.LevelAnnotation(lms[l])
@@ -295,11 +292,10 @@ func (a *TableAnnotator[T]) LevelRangeAnnotation(
 	cmp base.Compare, lm LevelMetadata, bounds base.UserKeyBounds,
 ) *T {
 	if lm.Empty() {
-		return a.Aggregator.Zero(nil)
+		return a.Aggregator.Zero()
 	}
 
-	var dst *T
-	dst = a.Aggregator.Zero(dst)
+	dst := a.Aggregator.Zero()
 	dst = a.accumulateRangeAnnotation(lm.tree.root, cmp, bounds, false, false, dst)
 	return dst
 }
@@ -308,8 +304,7 @@ func (a *TableAnnotator[T]) LevelRangeAnnotation(
 // for all files within the given Version which are within the range
 // defined by bounds.
 func (a *TableAnnotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserKeyBounds) *T {
-	var dst *T
-	dst = a.Aggregator.Zero(dst)
+	dst := a.Aggregator.Zero()
 	accumulateSlice := func(ls LevelSlice) {
 		if ls.Empty() {
 			return
@@ -331,7 +326,7 @@ func (a *TableAnnotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserK
 // so the same TableAnnotator must be used to avoid duplicate computation.
 func (a *BlobFileAnnotator[T]) Annotation(blobFiles *BlobFileSet) *T {
 	if blobFiles.tree.Count() == 0 {
-		return a.Aggregator.Zero(nil)
+		return a.Aggregator.Zero()
 	}
 
 	v, _ := a.nodeAnnotation(blobFiles.tree.root)
@@ -346,12 +341,8 @@ type SumAggregator struct {
 }
 
 // Zero implements AnnotationAggregator.Zero, returning a new uint64 set to 0.
-func (sa SumAggregator) Zero(dst *uint64) *uint64 {
-	if dst == nil {
-		return new(uint64)
-	}
-	*dst = 0
-	return dst
+func (sa SumAggregator) Zero() *uint64 {
+	return new(uint64)
 }
 
 // Accumulate implements AnnotationAggregator.Accumulate, accumulating a single
@@ -414,7 +405,7 @@ type PickFileAggregator struct {
 }
 
 // Zero implements AnnotationAggregator.Zero, returning nil as the zero value.
-func (fa PickFileAggregator) Zero(dst *TableMetadata) *TableMetadata {
+func (fa PickFileAggregator) Zero() *TableMetadata {
 	return nil
 }
 
