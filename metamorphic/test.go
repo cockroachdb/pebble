@@ -267,8 +267,9 @@ func (t *Test) init(
 func (t *Test) finalizeOptions() pebble.Options {
 	o := *t.opts
 	// Give each DB its own CompactionScheduler.
-	o.Experimental.CompactionScheduler =
-		pebble.NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	o.Experimental.CompactionScheduler = func() pebble.CompactionScheduler {
+		return pebble.NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 
 	// Set up external/shared storage. These directories are created inside the
 	// test's data dir and can be shared among multiple dbs.

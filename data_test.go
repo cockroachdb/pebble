@@ -853,15 +853,6 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 // runDBDefineCmdReuseFS is like runDBDefineCmd, but does not set opts.FS, expecting
 // the caller to have set an appropriate FS already.
 func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) {
-	// Some tests expect that opts is an in-out parameter in that the changes to
-	// opts made here are used later by the caller. But the
-	// ConcurrencyLimitScheduler cannot be reused after the DB is closed. So we
-	// replace it here.
-	scheduler, ok := opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler)
-	if ok && scheduler.isUnregisteredForTesting() {
-		opts.Experimental.CompactionScheduler =
-			NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
-	}
 	opts.EnsureDefaults()
 	if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
 		return nil, err

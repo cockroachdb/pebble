@@ -311,6 +311,8 @@ type DB struct {
 
 	cleanupManager *cleanupManager
 
+	compactionScheduler CompactionScheduler
+
 	// During an iterator close, we may asynchronously schedule read compactions.
 	// We want to wait for those goroutines to finish, before closing the DB.
 	// compactionShedulers.Wait() should not be called while the DB.mu is held.
@@ -1657,7 +1659,7 @@ func (d *DB) Close() error {
 	// calling d.Schedule. When this Unregister returns, we know that the
 	// CompactionScheduler will never again call a method on the DB. Note that
 	// this must be called without holding d.mu.
-	d.opts.Experimental.CompactionScheduler.Unregister()
+	d.compactionScheduler.Unregister()
 	// Lock the commit pipeline for the duration of Close. This prevents a race
 	// with makeRoomForWrite. Rotating the WAL in makeRoomForWrite requires
 	// dropping d.mu several times for I/O. If Close only holds d.mu, an

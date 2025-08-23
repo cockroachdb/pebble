@@ -927,7 +927,9 @@ func TestCompaction(t *testing.T) {
 			Comparer:                    cmp,
 		}
 		opts.WithFSDefaults()
-		opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+		opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+			return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+		}
 
 		var err error
 		d, err = Open("", opts)
@@ -1033,7 +1035,9 @@ func TestCompaction(t *testing.T) {
 					opts.Comparer = cmp
 				}
 				opts.WithFSDefaults()
-				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+				opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+					return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+				}
 				if d != nil {
 					opts.CompactionConcurrencyRange = d.opts.CompactionConcurrencyRange
 				}
@@ -1261,8 +1265,7 @@ func TestCompaction(t *testing.T) {
 				deleteOngoingCompaction(ongoingCompaction)
 				ongoingCompaction = nil
 				d.mu.Unlock()
-				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
-					adjustRunningCompactionsForTesting(-1)
+				d.compactionScheduler.(*ConcurrencyLimitScheduler).adjustRunningCompactionsForTesting(-1)
 				// If the ongoing compaction conflicted with the manual compaction,
 				// the CompactionScheduler may believe there is no waiting compaction.
 				// So explicitly call maybeScheduleCompaction.
@@ -1345,8 +1348,7 @@ func TestCompaction(t *testing.T) {
 				ongoingCompaction = nil
 				numQueuedManualCompactions := len(d.mu.compact.manual)
 				d.mu.Unlock()
-				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
-					adjustRunningCompactionsForTesting(-1)
+				d.compactionScheduler.(*ConcurrencyLimitScheduler).adjustRunningCompactionsForTesting(-1)
 				return fmt.Sprintf(
 					"manual compaction cancelled: %s, current queued compactions: %d\n%s",
 					compErr.Error(), numQueuedManualCompactions, s)
@@ -1377,8 +1379,7 @@ func TestCompaction(t *testing.T) {
 				d.mu.Lock()
 				ongoingCompaction = createOngoingCompaction([]byte(start), []byte(end), levels)
 				d.mu.Unlock()
-				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
-					adjustRunningCompactionsForTesting(+1)
+				d.compactionScheduler.(*ConcurrencyLimitScheduler).adjustRunningCompactionsForTesting(+1)
 				return ""
 
 			case "remove-ongoing-compaction":
@@ -1386,8 +1387,7 @@ func TestCompaction(t *testing.T) {
 				deleteOngoingCompaction(ongoingCompaction)
 				ongoingCompaction = nil
 				d.mu.Unlock()
-				d.opts.Experimental.CompactionScheduler.(*ConcurrencyLimitScheduler).
-					adjustRunningCompactionsForTesting(-1)
+				d.compactionScheduler.(*ConcurrencyLimitScheduler).adjustRunningCompactionsForTesting(-1)
 
 				return ""
 
@@ -1923,7 +1923,9 @@ func TestCompactionTombstones(t *testing.T) {
 				}
 				opts.WithFSDefaults()
 				opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
-				opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+				opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+					return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+				}
 				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {
@@ -3410,7 +3412,9 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5 // Lower for test
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 	opts.WithFSDefaults()
 
 	// Create a file with high tombstone density.
@@ -3510,7 +3514,9 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5 // Lower for test
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 	opts.WithFSDefaults()
 
 	// Create a file with high tombstone density in L4.
@@ -3592,7 +3598,9 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 	opts.WithFSDefaults()
 
 	// File in L4 with high tombstone density.
@@ -3658,7 +3666,9 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.9 // Set high threshold
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 	opts.WithFSDefaults()
 
 	meta := &manifest.TableMetadata{
@@ -3708,7 +3718,9 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5
 	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 	opts.WithFSDefaults()
 
 	meta := &manifest.TableMetadata{
