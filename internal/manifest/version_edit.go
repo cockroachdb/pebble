@@ -35,15 +35,16 @@ type byteReader interface {
 // Tag 8 is no longer used.
 const (
 	// LevelDB tags.
-	tagComparator         = 1
-	tagLogNumber          = 2
-	tagNextFileNumber     = 3
-	tagLastSequence       = 4
-	tagCompactPointer     = 5
-	tagDeletedFile        = 6
-	tagNewFile            = 7
-	tagPrevLogNumber      = 9
-	tagExciseBoundsRecord = 10
+	tagComparator               = 1
+	tagLogNumber                = 2
+	tagNextFileNumber           = 3
+	tagLastSequence             = 4
+	tagCompactPointer           = 5
+	tagDeletedFile              = 6
+	tagNewFile                  = 7
+	tagPrevLogNumber            = 9
+	tagExciseBoundsRecord       = 10
+	tagTableMarkedForCompaction = 11
 
 	// RocksDB tags.
 	tagNewFile2         = 100
@@ -97,6 +98,21 @@ type NewTableEntry struct {
 	// BackingFileNum is only set during manifest replay, and only for virtual
 	// sstables.
 	BackingFileNum base.DiskFileNum
+}
+
+// TableMarkedForCompactionEntry identifies a table which was marked for
+// compaction.
+type TableMarkedForCompactionEntry struct {
+	// Level on which this table resides *after* applying any table changes.
+	// Specifically, if a table moved between levels in the same version edit,
+	// this is the new level.
+	Level    int
+	TableNum base.TableNum
+
+	// Meta is only set for version edits built in memory. When decoding and
+	// replaying version edits, it is nil and the BulkVersionEdit.AllAddedTables
+	// map is used instead.
+	Meta *TableMetadata
 }
 
 // ExciseOpEntry holds the bounds and sequence number for an excise operation.
@@ -189,6 +205,11 @@ type VersionEdit struct {
 
 	// ExciseBoundsRecord holds excise operations as a slice of entries.
 	ExciseBoundsRecord []ExciseOpEntry
+
+	// TablesMarkedForCompaction holds tables that have been marked for
+	// compaction. These tables will stay marked for compaction until they are
+	// deleted.
+	TablesMarkedForCompaction []TableMarkedForCompactionEntry
 }
 
 // Decode decodes an edit from the specified reader.
@@ -375,7 +396,6 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 				largestSeqNum = base.SeqNum(n)
 			}
-			var markedForCompaction bool
 			var creationTime uint64
 			virtualState := struct {
 				virtual        bool
@@ -396,6 +416,13 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 					switch customTag {
 					case customTagNeedsCompaction:
+						// This tag has been deprecated. No recent versions marked files for
+						// compaction; the last version which had a "barrier" upgrade
+						// version that ensured all such files were compacted. So we should
+						// never see this tag again.
+						if invariants.Enabled {
+							return base.CorruptionErrorf("deprecated needs-compaction tag")
+						}
 						field, err := d.readBytes()
 						if err != nil {
 							return err
@@ -403,7 +430,6 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						if len(field) != 1 {
 							return base.CorruptionErrorf("new-file4: need-compaction field wrong size")
 						}
-						markedForCompaction = (field[0] == 1)
 
 					case customTagCreationTime:
 						field, err := d.readBytes()
@@ -485,7 +511,6 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				LargestSeqNumAbsolute:    largestSeqNum,
 				BlobReferences:           blobReferences,
 				BlobReferenceDepth:       blobReferenceDepth,
-				MarkedForCompaction:      markedForCompaction,
 				Virtual:                  virtualState.virtual,
 				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			}
@@ -611,6 +636,20 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				SeqNum: base.SeqNum(seqNum),
 			})
 
+		case tagTableMarkedForCompaction:
+			level, err := d.readUvarint()
+			if err != nil {
+				return err
+			}
+			tableNum, err := d.readFileNum()
+			if err != nil {
+				return err
+			}
+			v.TablesMarkedForCompaction = append(v.TablesMarkedForCompaction, TableMarkedForCompactionEntry{
+				Level:    int(level),
+				TableNum: tableNum,
+			})
+
 		case tagColumnFamily, tagColumnFamilyAdd, tagColumnFamilyDrop, tagMaxColumnFamily:
 			return base.CorruptionErrorf("column families are not supported")
 
@@ -676,6 +715,9 @@ func (v *VersionEdit) string(verbose bool, fmtKey base.FormatKey) string {
 	})
 	for _, df := range deletedBlobFileEntries {
 		fmt.Fprintf(&buf, "  del-blob-file: %s %s\n", df.FileID, df.FileNum)
+	}
+	for _, e := range v.TablesMarkedForCompaction {
+		fmt.Fprintf(&buf, "  mark-for-compaction: L%d %s\n", e.Level, e.TableNum)
 	}
 	for _, exciseBounds := range v.ExciseBoundsRecord {
 		fmt.Fprintf(&buf, "  excise-op:     %s #%d\n", exciseBounds.Bounds.String(), exciseBounds.SeqNum)
@@ -768,6 +810,12 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 				FileNum: p.DiskFileNum(),
 			}] = nil
 
+		case "mark-for-compaction":
+			ve.TablesMarkedForCompaction = append(ve.TablesMarkedForCompaction, TableMarkedForCompactionEntry{
+				Level:    p.Level(),
+				TableNum: p.FileNum(),
+			})
+
 		case "excise-op":
 			bounds := p.UserKeyBounds()
 			seqNum := p.HashSeqNum()
@@ -801,7 +849,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	}
 	if v.NextFileNum != 0 {
 		e.writeUvarint(tagNextFileNumber)
-		e.writeUvarint(uint64(v.NextFileNum))
+		e.writeUvarint(v.NextFileNum)
 	}
 	for _, dfn := range v.RemovedBackingTables {
 		e.writeUvarint(tagRemovedBackingTable)
@@ -825,7 +873,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewTables {
-		customFields := x.Meta.MarkedForCompaction || x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0
+		customFields := x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -876,10 +924,6 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				n := binary.PutUvarint(buf[:], uint64(x.Meta.CreationTime))
 				e.writeBytes(buf[:n])
 			}
-			if x.Meta.MarkedForCompaction {
-				e.writeUvarint(customTagNeedsCompaction)
-				e.writeBytes([]byte{1})
-			}
 			if x.Meta.Virtual {
 				e.writeUvarint(customTagVirtual)
 				e.writeUvarint(uint64(x.Meta.TableBacking.DiskFileNum))
@@ -923,6 +967,11 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeBytes(entry.Bounds.End.Key)
 		e.writeUvarint(uint64(entry.Bounds.End.Kind))
 		e.writeUvarint(uint64(entry.SeqNum))
+	}
+	for _, entry := range v.TablesMarkedForCompaction {
+		e.writeUvarint(tagTableMarkedForCompaction)
+		e.writeUvarint(uint64(entry.Level))
+		e.writeUvarint(uint64(entry.TableNum))
 	}
 	_, err := w.Write(e.Bytes())
 	return err
@@ -1046,6 +1095,10 @@ type BulkVersionEdit struct {
 	AddedFileBacking   map[base.DiskFileNum]*TableBacking
 	RemovedFileBacking []base.DiskFileNum
 
+	// TablesMarkedForCompaction contains the set of tables that have been marked
+	// for compaction.
+	TablesMarkedForCompaction MarkedForCompactionSet
+
 	// AllAddedTables maps table number to table metadata for all added sstables
 	// from accumulated version edits. AllAddedTables is only populated if set to
 	// non-nil by a caller. It must be set to non-nil when replaying version edits
@@ -1121,6 +1174,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 				return base.CorruptionErrorf("pebble: file deleted L%d.%s before it was inserted", df.Level, df.FileNum)
 			}
 		}
+		b.TablesMarkedForCompaction.Delete(m, df.Level)
 		if _, ok := b.AddedTables[df.Level][df.FileNum]; !ok {
 			dmap[df.FileNum] = m
 		} else {
@@ -1182,6 +1236,19 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			// edit it is safe to just append without any de-duplication.
 			b.RemovedFileBacking = append(b.RemovedFileBacking, n)
 		}
+	}
+
+	for _, entry := range ve.TablesMarkedForCompaction {
+		meta := entry.Meta
+		// If the VersionEdit was decoded from a MANIFEST, we need to look up the
+		// TableMetadata.
+		if meta == nil {
+			meta = b.AllAddedTables[entry.TableNum]
+			if meta == nil {
+				return errors.Errorf("unknown table %s marked for compaction", entry.TableNum)
+			}
+		}
+		b.TablesMarkedForCompaction.Insert(meta, entry.Level)
 	}
 
 	return nil
@@ -1258,9 +1325,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			// zero. The remove call will panic if this happens.
 			v.Levels[level].remove(f)
 			v.RangeKeyLevels[level].remove(f)
-			if f.MarkedForCompaction {
-				v.MarkedForCompaction.Delete(f, level)
-			}
+			v.MarkedForCompaction.Delete(f, level)
 		}
 
 		addedTables := make([]*TableMetadata, 0, len(addedTablesMap))
@@ -1322,9 +1387,6 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			if la == nil || base.InternalCompare(comparer.Compare, la.Largest(), f.Largest()) < 0 {
 				la = f
 			}
-			if f.MarkedForCompaction {
-				v.MarkedForCompaction.Insert(f, level)
-			}
 		}
 
 		if level == 0 {
@@ -1352,6 +1414,10 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				return nil, errors.Wrap(err, "pebble: internal error")
 			}
 		}
+	}
+
+	for meta, level := range b.TablesMarkedForCompaction.Ascending() {
+		v.MarkedForCompaction.Insert(meta, level)
 	}
 
 	// In invariants builds, sometimes check invariants across all blob files

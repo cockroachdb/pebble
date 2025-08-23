@@ -622,40 +622,32 @@ func (d *DB) markFilesForCompactionLocked(findFn findFilesFunc) error {
 	}
 
 	// After scanning, if we found files to mark, we fetch the current state of
-	// the LSM (which may have changed) and set MarkedForCompaction on the files,
-	// and update the version's Stats.MarkedForCompaction count, which are both
-	// protected by d.mu.
+	// the LSM (which may have changed) and build the list of tables to mark for
+	// compaction.
 
 	// Lock the manifest for a coherent view of the LSM. The database lock has
 	// been re-acquired by the defer within the above anonymous function.
 	_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		var ve manifest.VersionEdit
 		vers := d.mu.versions.currentVersion()
 		for level, filesToMark := range files {
 			for _, f := range filesToMark {
 				// Ignore files to be marked that have already been compacted or marked.
 				if f.CompactionState == manifest.CompactionStateCompacted ||
-					f.MarkedForCompaction {
+					vers.MarkedForCompaction.Contains(f, level) {
 					continue
 				}
 				// Else, mark the file for compaction in this version.
-				f.MarkedForCompaction = true
-				// We are modifying the current version in-place (so that the updated
-				// set is reflected in the "base" version in the new manifest). This is
-				// ok because we are holding the DB lock and all code that uses the
-				// MarkedForCompaction set runs under the DB lock.
-				// TODO(radu): find a less sketchy way to do this.
-				vers.MarkedForCompaction.Insert(f, level)
+				ve.TablesMarkedForCompaction = append(ve.TablesMarkedForCompaction, manifest.TableMarkedForCompactionEntry{
+					TableNum: f.TableNum,
+					Level:    level,
+					Meta:     f,
+				})
 			}
 		}
-		// The 'marked-for-compaction' bit is persisted in the MANIFEST file
-		// metadata. We've already modified the in-memory table metadata, but the
-		// manifest hasn't been updated. Force rotation to a new MANIFEST file,
-		// which will write every table metadata to the new manifest file and ensure
-		// that the now marked-for-compaction table metadata are persisted as marked.
 		return versionUpdate{
-			VE:                      &manifest.VersionEdit{},
+			VE:                      &ve,
 			JobID:                   jobID,
-			ForceManifestRotation:   true,
 			InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(nil) },
 		}, nil
 	})
