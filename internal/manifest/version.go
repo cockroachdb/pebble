@@ -148,17 +148,12 @@ type Version struct {
 	// longer referenced by any version.
 	BlobFiles BlobFileSet
 
+	// MarkedForCompaction holds the set of tables that are marked for compaction.
+	MarkedForCompaction MarkedForCompactionSet
+
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
 	Deleted func(obsolete ObsoleteFiles)
-
-	// Stats holds aggregated stats about the version maintained from
-	// version to version.
-	Stats struct {
-		// MarkedForCompaction records the count of files marked for
-		// compaction within the version.
-		MarkedForCompaction int
-	}
 
 	cmp *base.Comparer
 

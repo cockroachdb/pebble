@@ -690,9 +690,9 @@ func TestCompactionPickerL0(t *testing.T) {
 					if f.TableNum != base.TableNum(tableNum) {
 						continue
 					}
+					// This code should be identical to the one in DB.markFilesLocked().
 					f.MarkedForCompaction = true
-					picker.vers.Stats.MarkedForCompaction++
-					markedForCompactionAnnotator.InvalidateLevelAnnotation(picker.vers.Levels[l])
+					picker.vers.MarkedForCompaction.Insert(f, l)
 					return fmt.Sprintf("marked L%d.%s", l, f.TableNum)
 				}
 			}
