@@ -163,6 +163,14 @@ func exampleMetrics() Metrics {
 	m.BlobFiles.Local.ObsoleteCount = 13
 	m.BlobFiles.Local.ZombieSize = 30 * MB
 	m.BlobFiles.Local.ZombieCount = 14
+	m.BlobFiles.Compression.NoCompressionBytes = 10 * MB
+	m.BlobFiles.Compression.CompressedBytesWithoutStats = 50 * MB
+	m.BlobFiles.Compression.Snappy.CompressedBytes = 10 * GB
+	m.BlobFiles.Compression.Snappy.UncompressedBytes = 20 * GB
+	m.BlobFiles.Compression.MinLZ.CompressedBytes = 10 * GB
+	m.BlobFiles.Compression.MinLZ.UncompressedBytes = 30 * GB
+	m.BlobFiles.Compression.Zstd.CompressedBytes = 100 * GB
+	m.BlobFiles.Compression.Zstd.UncompressedBytes = 500 * GB
 
 	m.FileCache.Size = 1 * MB
 	m.FileCache.TableCount = 180

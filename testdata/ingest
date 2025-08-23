@@ -92,9 +92,9 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | unknown
-on disk bytes |    463B
-           CR |       ?
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+      unknown |          463B |
 ----
 ----
 

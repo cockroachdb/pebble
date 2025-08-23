@@ -11,7 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
-// The Annotator type defined below is used by other packages to lazily
+// The TableAnnotator type defined below is used by other packages to lazily
 // compute a value over a B-Tree. Each node of the B-Tree stores one
 // `annotation` per annotator, containing the result of the computation over
 // the node's subtree.
@@ -24,21 +24,44 @@ import (
 // on the node, ensuring that future queries for the annotation will recompute
 // the value.
 
-// An Annotator defines a computation over a level's TableMetadata. If the
+// A TableAnnotator defines a computation over a level's TableMetadata. If the
 // computation is stable and uses inputs that are fixed for the lifetime of a
 // TableMetadata, the LevelMetadata's internal data structures are annotated
 // with the intermediary computations. This allows the computation to be
 // computed incrementally as edits are applied to a level.
-type Annotator[T any] struct {
-	Aggregator AnnotationAggregator[T]
+type TableAnnotator[T any] struct {
+	annotator[T, *TableMetadata]
+}
+
+func NewTableAnnotator[T any](agg AnnotationAggregator[T, *TableMetadata]) *TableAnnotator[T] {
+	return &TableAnnotator[T]{
+		annotator: annotator[T, *TableMetadata]{Aggregator: agg},
+	}
+}
+
+// A BlobFileAnnotator defines a computation over a version's set of blob files.
+type BlobFileAnnotator[T any] struct {
+	annotator[T, BlobFileMetadata]
+}
+
+func NewBlobFileAnnotator[T any](
+	agg AnnotationAggregator[T, BlobFileMetadata],
+) *BlobFileAnnotator[T] {
+	return &BlobFileAnnotator[T]{
+		annotator: annotator[T, BlobFileMetadata]{Aggregator: agg},
+	}
+}
+
+type annotator[T any, M fileMetadata] struct {
+	Aggregator AnnotationAggregator[T, M]
 }
 
 // An AnnotationAggregator defines how an annotation should be accumulated from
 // a single TableMetadata and merged with other annotated values.
-type AnnotationAggregator[T any] interface {
+type AnnotationAggregator[T any, M fileMetadata] interface {
 	// Zero returns the zero value of an annotation. This value is returned
 	// when a LevelMetadata is empty. The dst argument, if non-nil, is an
-	// obsolete value previously returned by this Annotator and may be
+	// obsolete value previously returned by this TableAnnotator and may be
 	// overwritten and reused to avoid a memory allocation.
 	Zero(dst *T) *T
 
@@ -49,7 +72,7 @@ type AnnotationAggregator[T any] interface {
 	// the annotator must return false.
 	//
 	// Implementations may modify dst and return it to avoid an allocation.
-	Accumulate(f *TableMetadata, dst *T) (v *T, cacheOK bool)
+	Accumulate(f M, dst *T) (v *T, cacheOK bool)
 
 	// Merge combines two values src and dst, returning the result.
 	// Implementations may modify dst and return it to avoid an allocation.
@@ -57,15 +80,15 @@ type AnnotationAggregator[T any] interface {
 }
 
 // A PartialOverlapAnnotationAggregator is an extension of AnnotationAggregator
-// that allows for custom accumulation of range annotations for files that only
+// that allows for custom accumulation of range annotations for tables that only
 // partially overlap with the range.
 type PartialOverlapAnnotationAggregator[T any] interface {
-	AnnotationAggregator[T]
+	AnnotationAggregator[T, *TableMetadata]
 	AccumulatePartialOverlap(f *TableMetadata, dst *T, bounds base.UserKeyBounds) *T
 }
 
 type annotation struct {
-	// annotator is a pointer to the Annotator that computed this annotation.
+	// annotator is a pointer to the TableAnnotator that computed this annotation.
 	// NB: This is untyped to allow AnnotationAggregator to use Go generics,
 	// since annotations are stored in a slice on each node and a single
 	// slice cannot contain elements with different type parameters.
@@ -79,7 +102,7 @@ type annotation struct {
 	valid atomic.Bool
 }
 
-func (a *Annotator[T]) findExistingAnnotation(n *node[*TableMetadata]) *annotation {
+func (a *annotator[T, M]) findExistingAnnotation(n *node[M]) *annotation {
 	n.annotMu.RLock()
 	defer n.annotMu.RUnlock()
 	for i := range n.annot {
@@ -90,9 +113,9 @@ func (a *Annotator[T]) findExistingAnnotation(n *node[*TableMetadata]) *annotati
 	return nil
 }
 
-// findAnnotation finds this Annotator's annotation on a node, creating
+// findAnnotation finds this TableAnnotator's annotation on a node, creating
 // one if it doesn't already exist.
-func (a *Annotator[T]) findAnnotation(n *node[*TableMetadata]) *annotation {
+func (a *annotator[T, M]) findAnnotation(n *node[M]) *annotation {
 	if a := a.findExistingAnnotation(n); a != nil {
 		return a
 	}
@@ -111,7 +134,7 @@ func (a *Annotator[T]) findAnnotation(n *node[*TableMetadata]) *annotation {
 // nodeAnnotation computes this annotator's annotation of this node across all
 // files in the node's subtree. The second return value indicates whether the
 // annotation is stable and thus cacheable.
-func (a *Annotator[T]) nodeAnnotation(n *node[*TableMetadata]) (t *T, cacheOK bool) {
+func (a *annotator[T, M]) nodeAnnotation(n *node[M]) (t *T, cacheOK bool) {
 	annot := a.findAnnotation(n)
 	// If the annotation is already marked as valid, we can return it without
 	// recomputing anything.
@@ -152,7 +175,7 @@ func (a *Annotator[T]) nodeAnnotation(n *node[*TableMetadata]) (t *T, cacheOK bo
 // accumulateRangeAnnotation computes this annotator's annotation across all
 // files in the node's subtree which overlap with the range defined by bounds.
 // The computed annotation is accumulated into a.scratch.
-func (a *Annotator[T]) accumulateRangeAnnotation(
+func (a *TableAnnotator[T]) accumulateRangeAnnotation(
 	n *node[*TableMetadata],
 	cmp base.Compare,
 	bounds base.UserKeyBounds,
@@ -237,7 +260,7 @@ func (a *Annotator[T]) accumulateRangeAnnotation(
 
 // InvalidateAnnotation removes any existing cached annotations from this
 // annotator from a node's subtree.
-func (a *Annotator[T]) invalidateNodeAnnotation(n *node[*TableMetadata]) {
+func (a *TableAnnotator[T]) invalidateNodeAnnotation(n *node[*TableMetadata]) {
 	annot := a.findAnnotation(n)
 	annot.valid.Store(false)
 	if !n.isLeaf() {
@@ -247,11 +270,11 @@ func (a *Annotator[T]) invalidateNodeAnnotation(n *node[*TableMetadata]) {
 	}
 }
 
-// LevelAnnotation calculates the annotation defined by this Annotator for all
-// files in the given LevelMetadata. A pointer to the Annotator is used as the
-// key for pre-calculated values, so the same Annotator must be used to avoid
+// LevelAnnotation calculates the annotation defined by this TableAnnotator for all
+// files in the given LevelMetadata. A pointer to the TableAnnotator is used as the
+// key for pre-calculated values, so the same TableAnnotator must be used to avoid
 // duplicate computation.
-func (a *Annotator[T]) LevelAnnotation(lm LevelMetadata) *T {
+func (a *TableAnnotator[T]) LevelAnnotation(lm LevelMetadata) *T {
 	if lm.Empty() {
 		return a.Aggregator.Zero(nil)
 	}
@@ -260,11 +283,11 @@ func (a *Annotator[T]) LevelAnnotation(lm LevelMetadata) *T {
 	return v
 }
 
-// MultiLevelAnnotation calculates the annotation defined by this Annotator for
-// all files across the given levels. A pointer to the Annotator is used as the
-// key for pre-calculated values, so the same Annotator must be used to avoid
+// MultiLevelAnnotation calculates the annotation defined by this TableAnnotator for
+// all files across the given levels. A pointer to the TableAnnotator is used as the
+// key for pre-calculated values, so the same TableAnnotator must be used to avoid
 // duplicate computation.
-func (a *Annotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
+func (a *TableAnnotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
 	aggregated := a.Aggregator.Zero(nil)
 	for l := 0; l < len(lms); l++ {
 		if !lms[l].Empty() {
@@ -275,12 +298,12 @@ func (a *Annotator[T]) MultiLevelAnnotation(lms []LevelMetadata) *T {
 	return aggregated
 }
 
-// LevelRangeAnnotation calculates the annotation defined by this Annotator for
+// LevelRangeAnnotation calculates the annotation defined by this TableAnnotator for
 // the files within LevelMetadata which are within the range
-// [lowerBound, upperBound). A pointer to the Annotator is used as the key for
-// pre-calculated values, so the same Annotator must be used to avoid duplicate
+// [lowerBound, upperBound). A pointer to the TableAnnotator is used as the key for
+// pre-calculated values, so the same TableAnnotator must be used to avoid duplicate
 // computation.
-func (a *Annotator[T]) LevelRangeAnnotation(
+func (a *TableAnnotator[T]) LevelRangeAnnotation(
 	cmp base.Compare, lm LevelMetadata, bounds base.UserKeyBounds,
 ) *T {
 	if lm.Empty() {
@@ -293,10 +316,10 @@ func (a *Annotator[T]) LevelRangeAnnotation(
 	return dst
 }
 
-// VersionRangeAnnotation calculates the annotation defined by this Annotator
+// VersionRangeAnnotation calculates the annotation defined by this TableAnnotator
 // for all files within the given Version which are within the range
 // defined by bounds.
-func (a *Annotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserKeyBounds) *T {
+func (a *TableAnnotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserKeyBounds) *T {
 	var dst *T
 	dst = a.Aggregator.Zero(dst)
 	accumulateSlice := func(ls LevelSlice) {
@@ -314,18 +337,31 @@ func (a *Annotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserKeyBou
 	return dst
 }
 
-// InvalidateLevelAnnotation clears any cached annotations defined by Annotator.
-// A pointer to the Annotator is used as the key for pre-calculated values, so
-// the same Annotator must be used to clear the appropriate cached annotation.
+// InvalidateLevelAnnotation clears any cached annotations defined by TableAnnotator.
+// A pointer to the TableAnnotator is used as the key for pre-calculated values, so
+// the same TableAnnotator must be used to clear the appropriate cached annotation.
 // Calls to InvalidateLevelAnnotation are *not* concurrent-safe with any other
-// calls to Annotator methods for the same Annotator (concurrent calls from
+// calls to TableAnnotator methods for the same TableAnnotator (concurrent calls from
 // other annotators are fine). Any calls to this function must have some
 // externally-guaranteed mutual exclusion.
-func (a *Annotator[T]) InvalidateLevelAnnotation(lm LevelMetadata) {
+func (a *TableAnnotator[T]) InvalidateLevelAnnotation(lm LevelMetadata) {
 	if lm.Empty() {
 		return
 	}
 	a.invalidateNodeAnnotation(lm.tree.root)
+}
+
+// Annotation calculates the annotation defined by this BlobFileAnnotator for
+// all blob files in the given set.
+// A pointer to the TableAnnotator is used as the key for pre-calculated values,
+// so the same TableAnnotator must be used to avoid duplicate computation.
+func (a *BlobFileAnnotator[T]) Annotation(blobFiles *BlobFileSet) *T {
+	if blobFiles.tree.Count() == 0 {
+		return a.Aggregator.Zero(nil)
+	}
+
+	v, _ := a.nodeAnnotation(blobFiles.tree.root)
+	return v
 }
 
 // SumAggregator defines an Aggregator which sums together a uint64 value
@@ -374,17 +410,15 @@ func (sa SumAggregator) Merge(src *uint64, dst *uint64) *uint64 {
 }
 
 // SumAnnotator takes a function that computes a uint64 value from a single
-// TableMetadata and returns an Annotator that sums together the values across
+// TableMetadata and returns an TableAnnotator that sums together the values across
 // files.
-func SumAnnotator(accumulate func(f *TableMetadata) (v uint64, cacheOK bool)) *Annotator[uint64] {
-	return &Annotator[uint64]{
-		Aggregator: SumAggregator{
-			AccumulateFunc: accumulate,
-		},
-	}
+func SumAnnotator(
+	accumulate func(f *TableMetadata) (v uint64, cacheOK bool),
+) *TableAnnotator[uint64] {
+	return NewTableAnnotator[uint64](SumAggregator{AccumulateFunc: accumulate})
 }
 
-// NumFilesAnnotator is an Annotator which computes an annotation value
+// NumFilesAnnotator is an TableAnnotator which computes an annotation value
 // equal to the number of files included in the annotation. Particularly, it
 // can be used to efficiently calculate the number of files in a given key
 // range using range annotations.

@@ -92,8 +92,8 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm |  none
-on disk bytes | 5.9MB
-           CR |
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |         5.9MB |
 ----
 ----

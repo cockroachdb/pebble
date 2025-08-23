@@ -7,7 +7,9 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 
@@ -273,4 +275,61 @@ func TestTableRangeDeletionIter(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", cmd)
 		}
 	})
+}
+
+// TestStatsAfterReopen creates a random store and verifies that metrics that
+// depend on blob or table properties are the same after the store is reopened
+// and the initial stats are loaded.
+func TestStatsAfterReopen(t *testing.T) {
+	opts := &Options{
+		DisableAutomaticCompactions: true,
+		FS:                          vfs.NewMem(),
+		Logger:                      testutils.Logger{T: t},
+		MemTableStopWritesThreshold: 1000,
+		L0StopWritesThreshold:       1000,
+	}
+	opts.Levels[0].BlockSize = 50
+	opts.TargetFileSizes[0] = 100
+	opts.testingRandomized(t)
+	// We need at least FormatV2BlobFiles to retrieve blob file compression
+	// statistics.
+	opts.FormatMajorVersion = max(opts.FormatMajorVersion, FormatV2BlobFiles)
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	key := func() []byte {
+		return []byte(fmt.Sprintf("%03d", rand.Intn(1000)))
+	}
+	for i := 0; i < 100; i++ {
+		if rand.Intn(10) == 0 {
+			a, b := key(), key()
+			for bytes.Compare(a, b) >= 0 {
+				a, b = key(), key()
+			}
+			require.NoError(t, d.Compact(context.Background(), a, b, false))
+		}
+		for range rand.Intn(10) {
+			require.NoError(t, d.Set(key(), bytes.Repeat([]byte("0123456789"), 1+rand.Intn(10)), &WriteOptions{}))
+		}
+		require.NoError(t, d.Flush())
+	}
+	getMetricsStr := func() string {
+		var buf bytes.Buffer
+		m := d.Metrics()
+		fmt.Fprintf(&buf, "Table compression:\n")
+		fmt.Fprintf(&buf, "%s\n", testutils.CheckErr(json.MarshalIndent(m.Table.Compression, "  ", "  ")))
+		fmt.Fprintf(&buf, "Blob compression:\n")
+		fmt.Fprintf(&buf, "%s\n", testutils.CheckErr(json.MarshalIndent(m.BlobFiles.Compression, "  ", "  ")))
+		return buf.String()
+	}
+	before := getMetricsStr()
+
+	require.NoError(t, d.Close())
+	d, err = Open("", opts)
+	require.NoError(t, err)
+	d.waitTableStats()
+	after := getMetricsStr()
+	if before != after {
+		t.Errorf("metrics differ.\nbefore:\n%s\nafter:\n%s", before, after)
+	}
 }
