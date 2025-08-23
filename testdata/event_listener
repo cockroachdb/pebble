@@ -308,9 +308,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 260B     73B
-           CR |         1.15
+    algorithm |        tables |    blob files
+--------------+---------------+--------------
+         none |          260B |
+       snappy | 73B (CR=1.15) |
 ----
 ----
 
@@ -448,9 +449,10 @@ KEYS
                0 |                0 |                        0 |              0B |              0B
 
 COMPRESSION
-    algorithm | none  snappy
-on disk bytes | 520B    146B
-           CR |         1.15
+    algorithm |         tables |    blob files
+--------------+----------------+--------------
+         none |           520B |
+       snappy | 146B (CR=1.15) |
 ----
 ----
 

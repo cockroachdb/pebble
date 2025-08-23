@@ -53,16 +53,14 @@ func BenchmarkNumFilesAnnotator(b *testing.B) {
 
 func TestPickFileAggregator(t *testing.T) {
 	const count = 1000
-	a := Annotator[TableMetadata]{
-		Aggregator: PickFileAggregator{
-			Filter: func(f *TableMetadata) (eligible bool, cacheOK bool) {
-				return true, true
-			},
-			Compare: func(f1 *TableMetadata, f2 *TableMetadata) bool {
-				return base.DefaultComparer.Compare(f1.Smallest().UserKey, f2.Smallest().UserKey) < 0
-			},
+	a := NewTableAnnotator[TableMetadata](PickFileAggregator{
+		Filter: func(f *TableMetadata) (eligible bool, cacheOK bool) {
+			return true, true
 		},
-	}
+		Compare: func(f1 *TableMetadata, f2 *TableMetadata) bool {
+			return base.DefaultComparer.Compare(f1.Smallest().UserKey, f2.Smallest().UserKey) < 0
+		},
+	})
 
 	v, files := makeTestVersion(1)
 

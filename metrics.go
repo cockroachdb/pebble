@@ -440,7 +440,7 @@ type Metrics struct {
 			ZombieCount uint64
 		}
 
-		// TODO(radu): add compression stats.
+		Compression CompressionMetrics
 	}
 
 	FileCache FileCacheMetrics
@@ -785,18 +785,12 @@ var (
 		table.String("range dels", 15, table.AlignRight, func(i keysInfo) string { return i.rangeDels }),
 	)
 	compressionTableHeader = `COMPRESSION`
-	compressionTable       = table.Define[pair[string, CompressionStatsForSetting]](
-		table.String("algorithm", 13, table.AlignRight, func(p pair[string, CompressionStatsForSetting]) string { return p.k }),
-		table.Bytes("on disk bytes", 13, table.AlignRight, func(p pair[string, CompressionStatsForSetting]) uint64 { return p.v.CompressedBytes }),
-		table.String("CR", 13, table.AlignRight, func(p pair[string, CompressionStatsForSetting]) string {
-			if p.v.UncompressedBytes == p.v.CompressedBytes {
-				return ""
-			}
-			if p.v.UncompressedBytes == 0 {
-				return "?"
-			}
-			return crhumanize.Float(p.v.CompressionRatio(), 2 /* precision */).String()
-		}),
+	compressionTable       = table.Define[compressionInfo](
+		table.String("algorithm", 13, table.AlignRight, func(i compressionInfo) string { return i.algorithm }),
+		table.Div(),
+		table.String("tables", 13, table.AlignRight, func(i compressionInfo) string { return i.tables }),
+		table.Div(),
+		table.String("blob files", 13, table.AlignRight, func(i compressionInfo) string { return i.blobFiles }),
 	)
 )
 
@@ -861,6 +855,23 @@ type keysInfo struct {
 	missizedTombstones string
 	pointDels          string
 	rangeDels          string
+}
+
+type compressionInfo struct {
+	algorithm string
+	tables    string
+	blobFiles string
+}
+
+func makeCompressionInfo(algorithm string, table, blob CompressionStatsForSetting) compressionInfo {
+	i := compressionInfo{algorithm: algorithm}
+	if table.CompressedBytes > 0 {
+		i.tables = fmt.Sprintf("%s (CR=%s)", humanizeBytes(table.CompressedBytes), crhumanize.Float(table.CompressionRatio(), 2 /* precision */))
+	}
+	if blob.CompressedBytes > 0 {
+		i.blobFiles = fmt.Sprintf("%s (CR=%s)", humanizeBytes(blob.CompressedBytes), crhumanize.Float(blob.CompressionRatio(), 2 /* precision */))
+	}
+	return i
 }
 
 type pair[k, v any] struct {
@@ -939,8 +950,8 @@ func (m *Metrics) String() string {
 		fcEntries:        fmt.Sprintf("%s (%s)", humanizeCount(m.FileCache.TableCount), humanizeBytes(m.FileCache.Size)),
 		fcHitRate:        fmt.Sprintf("%.1f%%", hitRate(m.FileCache.Hits, m.FileCache.Misses)),
 		bloomFilterUtil:  fmt.Sprintf("%.1f%%", hitRate(m.Filter.Hits, m.Filter.Misses)),
-		sstableItersOpen: humanizeCount(m.TableIters).String(),
-		snapshotsOpen:    humanizeCount(m.Snapshots.Count).String(),
+		sstableItersOpen: humanizeCount(m.TableIters),
+		snapshotsOpen:    humanizeCount(m.Snapshots.Count),
 	}
 	cur = cur.WriteString(iteratorInfoTableTopHeader).NewlineReturn()
 	cur = cur.WriteString(iteratorInfoTableSubHeader).NewlineReturn()
@@ -961,7 +972,7 @@ func (m *Metrics) String() string {
 	blobInfoContents := blobInfo{
 		live:       fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.LiveCount), humanizeBytes(m.BlobFiles.LiveSize)),
 		zombie:     fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.ZombieCount), humanizeBytes(m.BlobFiles.ZombieSize)),
-		total:      humanizeBytes(m.BlobFiles.ValueSize).String(),
+		total:      humanizeBytes(m.BlobFiles.ValueSize),
 		referenced: fmt.Sprintf("%.0f%% (%s)", percent(m.BlobFiles.ReferencedValueSize, m.BlobFiles.ValueSize), humanizeBytes(m.BlobFiles.ReferencedValueSize)),
 	}
 	fileInfoContents := tableAndBlobInfo{
@@ -980,20 +991,20 @@ func (m *Metrics) String() string {
 		return m.manualMemory[purpose].InUseBytes
 	}
 	cgoMemInfoContents := cgoMemInfo{
-		tot: humanizeBytes(inUseTotal).String(),
+		tot: humanizeBytes(inUseTotal),
 		bcTot: humanizeBytes(inUse(manual.BlockCacheData) +
-			inUse(manual.BlockCacheMap) + inUse(manual.BlockCacheEntry)).String(),
-		bcData:       humanizeBytes(inUse(manual.BlockCacheData)).String(),
-		bcMaps:       humanizeBytes(inUse(manual.BlockCacheMap)).String(),
-		bcEnts:       humanizeBytes(inUse(manual.BlockCacheEntry)).String(),
-		memtablesTot: humanizeBytes(inUse(manual.MemTable)).String(),
+			inUse(manual.BlockCacheMap) + inUse(manual.BlockCacheEntry)),
+		bcData:       humanizeBytes(inUse(manual.BlockCacheData)),
+		bcMaps:       humanizeBytes(inUse(manual.BlockCacheMap)),
+		bcEnts:       humanizeBytes(inUse(manual.BlockCacheEntry)),
+		memtablesTot: humanizeBytes(inUse(manual.MemTable)),
 	}
 	cur = cur.WriteString(cgoMemInfoTableHeader).NewlineReturn()
 	cur = cgoMemInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(cgoMemInfoContents))
 	cur = cur.NewlineReturn()
 
 	compactionMetricsInfoContents := compactionMetricsInfo{
-		estimatedDebt: humanizeBytes(m.Compact.EstimatedDebt).String(),
+		estimatedDebt: humanizeBytes(m.Compact.EstimatedDebt),
 		inProgress: fmt.Sprintf("%s (%s)", humanizeCount(m.Compact.NumInProgress),
 			humanizeBytes(m.Compact.InProgressBytes)),
 		cancelled: fmt.Sprintf("%s (%s)", humanizeCount(m.Compact.CancelledCount),
@@ -1006,31 +1017,37 @@ func (m *Metrics) String() string {
 	cur = cur.NewlineReturn()
 
 	keysInfoContents := keysInfo{
-		rangeKeys:          humanizeCount(m.Keys.RangeKeySetsCount).String(),
-		tombstones:         humanizeCount(m.Keys.TombstoneCount).String(),
+		rangeKeys:          humanizeCount(m.Keys.RangeKeySetsCount),
+		tombstones:         humanizeCount(m.Keys.TombstoneCount),
 		missizedTombstones: fmt.Sprintf("%d%s", m.Keys.MissizedTombstonesCount, ifNonZero(m.Keys.MissizedTombstonesCount, "!!")),
-		pointDels:          humanizeBytes(m.Table.Garbage.PointDeletionsBytesEstimate).String(),
-		rangeDels:          humanizeBytes(m.Table.Garbage.RangeDeletionsBytesEstimate).String(),
+		pointDels:          humanizeBytes(m.Table.Garbage.PointDeletionsBytesEstimate),
+		rangeDels:          humanizeBytes(m.Table.Garbage.RangeDeletionsBytesEstimate),
 	}
 	cur = cur.WriteString(keysInfoTableTopHeader).NewlineReturn()
 	cur = keysInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(keysInfoContents))
 	cur = cur.NewlineReturn()
 
 	cur = cur.WriteString(compressionTableHeader).NewlineReturn()
-	compressionContents := []pair[string, CompressionStatsForSetting]{
-		{k: "none", v: CompressionStatsForSetting{
-			CompressedBytes:   m.Table.Compression.NoCompressionBytes,
-			UncompressedBytes: m.Table.Compression.NoCompressionBytes,
-		}},
-		{k: "snappy", v: m.Table.Compression.Snappy},
-		{k: "minlz", v: m.Table.Compression.MinLZ},
-		{k: "zstd", v: m.Table.Compression.Zstd},
-		{k: "unknown", v: CompressionStatsForSetting{CompressedBytes: m.Table.Compression.CompressedBytesWithoutStats}},
+
+	compressionContents := []compressionInfo{
+		{
+			algorithm: "none",
+			tables:    humanizeBytesOrEmpty(m.Table.Compression.NoCompressionBytes),
+			blobFiles: humanizeBytesOrEmpty(m.BlobFiles.Compression.NoCompressionBytes),
+		},
+		makeCompressionInfo("snappy", m.Table.Compression.Snappy, m.BlobFiles.Compression.Snappy),
+		makeCompressionInfo("minlz", m.Table.Compression.MinLZ, m.BlobFiles.Compression.MinLZ),
+		makeCompressionInfo("zstd", m.Table.Compression.Zstd, m.BlobFiles.Compression.Zstd),
+		{
+			algorithm: "unknown",
+			tables:    humanizeBytesOrEmpty(m.Table.Compression.CompressedBytesWithoutStats),
+			blobFiles: humanizeBytesOrEmpty(m.BlobFiles.Compression.CompressedBytesWithoutStats),
+		},
 	}
-	compressionContents = slices.DeleteFunc(compressionContents, func(p pair[string, CompressionStatsForSetting]) bool {
-		return p.v.CompressedBytes == 0
+	compressionContents = slices.DeleteFunc(compressionContents, func(i compressionInfo) bool {
+		return i.tables == "" && i.blobFiles == ""
 	})
-	compressionTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compressionContents))
+	compressionTable.Render(cur, table.RenderOptions{}, slices.Values(compressionContents))
 
 	return wb.String()
 }
@@ -1116,12 +1133,19 @@ func (m *Metrics) updateLevelMetrics(updates levelMetricsDelta) {
 	}
 }
 
-func humanizeCount[T crhumanize.Integer](value T) crhumanize.SafeString {
-	return crhumanize.Count(value, crhumanize.Compact, crhumanize.OmitI)
+func humanizeCount[T crhumanize.Integer](value T) string {
+	return crhumanize.Count(value, crhumanize.Compact, crhumanize.OmitI).String()
 }
 
-func humanizeBytes[T crhumanize.Integer](value T) crhumanize.SafeString {
-	return crhumanize.Bytes(value, crhumanize.Compact, crhumanize.OmitI)
+func humanizeBytes[T crhumanize.Integer](value T) string {
+	return crhumanize.Bytes(value, crhumanize.Compact, crhumanize.OmitI).String()
+}
+
+func humanizeBytesOrEmpty[T crhumanize.Integer](value T) string {
+	if value == 0 {
+		return ""
+	}
+	return crhumanize.Bytes(value, crhumanize.Compact, crhumanize.OmitI).String()
 }
 
 func oneItemIter[T any](v T) iter.Seq[T] {
