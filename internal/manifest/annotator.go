@@ -333,23 +333,24 @@ func (a *BlobFileAnnotator[T]) Annotation(blobFiles *BlobFileSet) *T {
 	return v
 }
 
-// SumAggregator defines an Aggregator which sums together a uint64 value
+// SumAggregator defines an Aggregator which sums together a T value
 // across files.
-type SumAggregator struct {
-	AccumulateFunc               func(f *TableMetadata) (v uint64, cacheOK bool)
-	AccumulatePartialOverlapFunc func(f *TableMetadata, bounds base.UserKeyBounds) uint64
+type SumAggregator[T any] struct {
+	AddFunc                      func(src, dst *T)
+	AccumulateFunc               func(f *TableMetadata) (v T, cacheOK bool)
+	AccumulatePartialOverlapFunc func(f *TableMetadata, bounds base.UserKeyBounds) T
 }
 
 // Zero implements AnnotationAggregator.Zero, returning a new uint64 set to 0.
-func (sa SumAggregator) Zero() *uint64 {
-	return new(uint64)
+func (sa SumAggregator[T]) Zero() *T {
+	return new(T)
 }
 
 // Accumulate implements AnnotationAggregator.Accumulate, accumulating a single
 // file's uint64 value.
-func (sa SumAggregator) Accumulate(f *TableMetadata, dst *uint64) (v *uint64, cacheOK bool) {
+func (sa SumAggregator[T]) Accumulate(f *TableMetadata, dst *T) (v *T, cacheOK bool) {
 	accumulated, ok := sa.AccumulateFunc(f)
-	*dst += accumulated
+	sa.AddFunc(&accumulated, dst)
 	return dst, ok
 }
 
@@ -357,20 +358,21 @@ func (sa SumAggregator) Accumulate(f *TableMetadata, dst *uint64) (v *uint64, ca
 // PartialOverlapAnnotationAggregator.AccumulatePartialOverlap, accumulating a
 // single file's uint64 value for a file which only partially overlaps with the
 // range defined by bounds.
-func (sa SumAggregator) AccumulatePartialOverlap(
-	f *TableMetadata, dst *uint64, bounds base.UserKeyBounds,
-) *uint64 {
+func (sa SumAggregator[T]) AccumulatePartialOverlap(
+	f *TableMetadata, dst *T, bounds base.UserKeyBounds,
+) *T {
 	if sa.AccumulatePartialOverlapFunc == nil {
 		v, _ := sa.Accumulate(f, dst)
 		return v
 	}
-	*dst += sa.AccumulatePartialOverlapFunc(f, bounds)
+	accumulated := sa.AccumulatePartialOverlapFunc(f, bounds)
+	sa.AddFunc(&accumulated, dst)
 	return dst
 }
 
 // Merge implements AnnotationAggregator.Merge by summing two uint64 values.
-func (sa SumAggregator) Merge(src *uint64, dst *uint64) *uint64 {
-	*dst += *src
+func (sa SumAggregator[T]) Merge(src *T, dst *T) *T {
+	sa.AddFunc(src, dst)
 	return dst
 }
 
@@ -380,7 +382,10 @@ func (sa SumAggregator) Merge(src *uint64, dst *uint64) *uint64 {
 func SumAnnotator(
 	accumulate func(f *TableMetadata) (v uint64, cacheOK bool),
 ) *TableAnnotator[uint64] {
-	return NewTableAnnotator[uint64](SumAggregator{AccumulateFunc: accumulate})
+	return NewTableAnnotator[uint64](SumAggregator[uint64]{
+		AddFunc:        func(src, dst *uint64) { *dst += *src },
+		AccumulateFunc: accumulate,
+	})
 }
 
 // NumFilesAnnotator is an TableAnnotator which computes an annotation value

@@ -48,40 +48,67 @@ func (d *DB) EstimateDiskUsageByBackingType(
 	readState := d.loadReadState()
 	defer readState.unref()
 
-	totalSize = *d.mu.annotators.totalFileSize.VersionRangeAnnotation(readState.current, bounds)
-	remoteSize = *d.mu.annotators.remoteSize.VersionRangeAnnotation(readState.current, bounds)
-	externalSize = *d.mu.annotators.externalSize.VersionRangeAnnotation(readState.current, bounds)
-
-	return
+	sizes := d.mu.fileSizeAnnotator.VersionRangeAnnotation(readState.current, bounds)
+	return sizes.totalSize, sizes.remoteSize, sizes.externalSize, nil
 }
 
-// makeFileSizeAnnotator returns an annotator that computes the total
-// storage size of files that meet some criteria defined by filter. When
-// applicable, this includes both the sstable size and the size of any
-// referenced blob files.
-func (d *DB) makeFileSizeAnnotator(
-	filter func(f *manifest.TableMetadata) bool,
-) *manifest.TableAnnotator[uint64] {
-	return manifest.NewTableAnnotator[uint64](manifest.SumAggregator{
-		AccumulateFunc: func(f *manifest.TableMetadata) (uint64, bool) {
-			if filter(f) {
-				return f.Size + f.EstimatedReferenceSize(), true
-			}
-			return 0, true
+// fileSizeByBacking contains the estimated file size for LSM data within some
+// bounds. It is broken down by backing type. The file size refers to both the
+// sstable size and an estimate of the referenced blob sizes.
+type fileSizeByBacking struct {
+	// totalSize is the estimated size of all files for the given bounds.
+	totalSize uint64
+	// remoteSize is the estimated size of remote files for the given bounds.
+	remoteSize uint64
+	// externalSize is the estimated size of external files for the given bounds.
+	externalSize uint64
+}
+
+func (d *DB) singleFileSizeByBacking(
+	fileSize uint64, t *manifest.TableMetadata,
+) (_ fileSizeByBacking, ok bool) {
+	res := fileSizeByBacking{
+		totalSize: fileSize,
+	}
+
+	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, t.TableBacking.DiskFileNum)
+	if err != nil {
+		return res, false
+	}
+	if objMeta.IsRemote() {
+		res.remoteSize += fileSize
+		if objMeta.IsExternal() {
+			res.externalSize += fileSize
+		}
+	}
+	return res, true
+}
+
+// makeFileSizeAnnotator returns an annotator that computes the storage size of
+// files. When applicable, this includes both the sstable size and the size of
+// any referenced blob files.
+func (d *DB) makeFileSizeAnnotator() *manifest.TableAnnotator[fileSizeByBacking] {
+	return manifest.NewTableAnnotator[fileSizeByBacking](manifest.SumAggregator[fileSizeByBacking]{
+		AddFunc: func(src, dst *fileSizeByBacking) {
+			dst.totalSize += src.totalSize
+			dst.remoteSize += src.remoteSize
+			dst.externalSize += src.externalSize
 		},
-		AccumulatePartialOverlapFunc: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) uint64 {
-			if filter(f) {
-				overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
-				if err != nil {
-					return 0
-				}
-				overlapFraction := float64(overlappingFileSize) / float64(f.Size)
-				// Scale the blob reference size proportionally to the file
-				// overlap from the bounds to approximate only the blob
-				// references that overlap with the requested bounds.
-				return overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
+		AccumulateFunc: func(f *manifest.TableMetadata) (v fileSizeByBacking, cacheOK bool) {
+			return d.singleFileSizeByBacking(f.Size+f.EstimatedReferenceSize(), f)
+		},
+		AccumulatePartialOverlapFunc: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) fileSizeByBacking {
+			overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
+			if err != nil {
+				return fileSizeByBacking{}
 			}
-			return 0
+			overlapFraction := float64(overlappingFileSize) / float64(f.Size)
+			// Scale the blob reference size proportionally to the file
+			// overlap from the bounds to approximate only the blob
+			// references that overlap with the requested bounds.
+			size := overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
+			res, _ := d.singleFileSizeByBacking(size, f)
+			return res
 		},
 	})
 }

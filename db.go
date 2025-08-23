@@ -505,17 +505,7 @@ type DB struct {
 			// validating is set to true when validation is running.
 			validating bool
 		}
-
-		// annotators contains various instances of manifest.TableAnnotator which
-		// should be protected from concurrent access.
-		annotators struct {
-			// totalFileSize is the sum of the size of all files in the
-			// database. This includes local, remote, and external sstables --
-			// along with blob files.
-			totalFileSize *manifest.TableAnnotator[uint64]
-			remoteSize    *manifest.TableAnnotator[uint64]
-			externalSize  *manifest.TableAnnotator[uint64]
-		}
+		fileSizeAnnotator *manifest.TableAnnotator[fileSizeByBacking]
 	}
 
 	// problemSpans keeps track of spans of keys within LSM levels where
