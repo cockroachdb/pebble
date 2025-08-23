@@ -308,6 +308,14 @@ func (d *DB) runBlobFileRewriteLocked(
 		return objstorage.ObjectMetadata{}, nil, err
 	}
 
+	physical := &manifest.PhysicalBlobFile{
+		FileNum:      objMeta.DiskFileNum,
+		Size:         stats.FileLen,
+		ValueSize:    stats.UncompressedValueBytes,
+		CreationTime: uint64(d.timeNow().Unix()),
+	}
+	physical.PopulateProperties(&stats.Properties)
+
 	ve := &manifest.VersionEdit{
 		DeletedBlobFiles: map[manifest.DeletedBlobFileEntry]*manifest.PhysicalBlobFile{
 			{
@@ -317,13 +325,8 @@ func (d *DB) runBlobFileRewriteLocked(
 		},
 		NewBlobFiles: []manifest.BlobFileMetadata{
 			{
-				FileID: c.input.FileID,
-				Physical: &manifest.PhysicalBlobFile{
-					FileNum:      objMeta.DiskFileNum,
-					Size:         stats.FileLen,
-					ValueSize:    stats.UncompressedValueBytes,
-					CreationTime: uint64(d.timeNow().Unix()),
-				},
+				FileID:   c.input.FileID,
+				Physical: physical,
 			},
 		},
 	}
