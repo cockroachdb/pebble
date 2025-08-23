@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/redact"
 )
 
@@ -134,6 +135,10 @@ type PhysicalBlobFile struct {
 	// referencing TableMetadata is installed in a Version and decremented when
 	// that TableMetadata becomes obsolete.
 	refs atomic.Int32
+
+	propsValid atomic.Bool
+	// stats are populated exactly once.
+	props blob.FileProperties
 }
 
 // SafeFormat implements redact.SafeFormatter.
@@ -157,6 +162,27 @@ func (m *PhysicalBlobFile) FileInfo() (base.FileType, base.DiskFileNum) {
 func (m *PhysicalBlobFile) UserKeyBounds() base.UserKeyBounds {
 	// TODO(jackson): Add bounds for blob files.
 	return base.UserKeyBounds{}
+}
+
+// Properties returns the blob file properties if they have been populated, or
+// nil and ok=false if they were not.
+//
+// The caller must not modify the returned stats.
+func (m *PhysicalBlobFile) Properties() (_ *blob.FileProperties, ok bool) {
+	if !m.propsValid.Load() {
+		return nil, false
+	}
+	return &m.props, true
+}
+
+// PopulateProperties populates the bob file properties. Can be called at most
+// once for a TableBacking.
+func (m *PhysicalBlobFile) PopulateProperties(props *blob.FileProperties) {
+	m.props = *props
+	oldPropsValid := m.propsValid.Swap(true)
+	if invariants.Enabled && oldPropsValid {
+		panic("props set twice")
+	}
 }
 
 // ref increments the reference count for the blob file.

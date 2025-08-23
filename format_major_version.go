@@ -117,7 +117,7 @@ const (
 	// FormatMinTableFormatPebblev1 is a format major version that guarantees that
 	// tables created by or ingested into the DB at or above this format major
 	// version will have a table format version of at least Pebblev1 (Block
-	// Properties).
+	// FileProperties).
 	// Deprecated.
 	_ // FormatMinTableFormatPebblev1
 

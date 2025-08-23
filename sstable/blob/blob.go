@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -76,8 +77,8 @@ const (
 	//  20      Checksum type (1 byte)
 	//  21      File format version (1 byte)
 	//  22:30   Original file number (8 bytes)
-	//  30:38   Properties block offset (8 bytes)
-	//  38:46   Properties block length (8 bytes)
+	//  30:38   FileProperties block offset (8 bytes)
+	//  38:46   FileProperties block length (8 bytes)
 	//  46:54   Metaindex block offset (8 bytes); optional (for future use)
 	//  54:62   Metaindex block length (8 bytes); optional (for future use)
 	//  62:70   Blob file magic string (8 bytes)
@@ -123,6 +124,7 @@ type FileWriterStats struct {
 	ValueCount             uint32
 	UncompressedValueBytes uint64
 	FileLen                uint64
+	Properties             FileProperties
 }
 
 // String implements the fmt.Stringer interface.
@@ -325,14 +327,14 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 		}
 
 		// Write the properties and the v2 footer if the file format is v2.
+		w.stats.Properties = FileProperties{
+			CompressionStats: w.physBlockMaker.Compressor.Stats().Clone(),
+		}
 		var propBlockHandle block.Handle
 		if w.format >= FileFormatV2 {
 			var cw colblk.KeyValueBlockWriter
 			cw.Init()
-			p := Properties{
-				CompressionStats: w.physBlockMaker.Compressor.Stats().String(),
-			}
-			p.writeTo(&cw)
+			w.stats.Properties.writeTo(&cw)
 			propBlockHandle, err = w.writeMetadataBlock(cw.Finish(cw.Rows()))
 			if err != nil {
 				return err
@@ -616,40 +618,45 @@ func (r *FileReader) Layout() (string, error) {
 	return buf.String(), nil
 }
 
-type Properties struct {
-	CompressionStats string
+type FileProperties struct {
+	CompressionStats block.CompressionStats
 }
 
 // String returns any set properties, one per line.
-func (p *Properties) String() string {
+func (p *FileProperties) String() string {
 	var buf bytes.Buffer
-	if p.CompressionStats != "" {
-		fmt.Fprintf(&buf, "%s: %s\n", propertyKeyCompressionStats, p.CompressionStats)
+	if !p.CompressionStats.IsEmpty() {
+		fmt.Fprintf(&buf, "%s: %s\n", propertyKeyCompressionStats, p.CompressionStats.String())
 	}
 	return buf.String()
 }
 
-func (p *Properties) set(key []byte, value []byte) {
+func (p *FileProperties) set(key []byte, value []byte) {
 	switch string(key) {
 	case propertyKeyCompressionStats:
-		p.CompressionStats = string(value)
+		var err error
+		p.CompressionStats, err = block.ParseCompressionStats(string(value))
+		if invariants.Enabled && err != nil {
+			panic(errors.AssertionFailedf("pebble: error parsing blob file compression stats %q", string(value)))
+		}
+
 	default:
 		// Ignore unknown properties (for forward compatibility).
 	}
 }
 
-func (p *Properties) writeTo(w *colblk.KeyValueBlockWriter) {
-	if p.CompressionStats != "" {
-		w.AddKV([]byte(propertyKeyCompressionStats), []byte(p.CompressionStats))
+func (p *FileProperties) writeTo(w *colblk.KeyValueBlockWriter) {
+	if !p.CompressionStats.IsEmpty() {
+		w.AddKV([]byte(propertyKeyCompressionStats), []byte(p.CompressionStats.String()))
 	}
 }
 
 const propertyKeyCompressionStats = "compression_stats"
 
 // ReadProperties reads the properties block from the file, if it exists.
-func (r *FileReader) ReadProperties(ctx context.Context) (Properties, error) {
+func (r *FileReader) ReadProperties(ctx context.Context) (FileProperties, error) {
 	if r.footer.format < FileFormatV2 {
-		return Properties{}, nil
+		return FileProperties{}, nil
 	}
 	// We don't want the property block to go into the block cache, so we use a
 	// buffer pool.
@@ -661,12 +668,12 @@ func (r *FileReader) ReadProperties(ctx context.Context) (Properties, error) {
 		func(*block.Metadata, []byte) error { return nil },
 	)
 	if err != nil {
-		return Properties{}, err
+		return FileProperties{}, err
 	}
 	defer b.Release()
 	var decoder colblk.KeyValueBlockDecoder
 	decoder.Init(b.BlockData())
-	var p Properties
+	var p FileProperties
 	for k, v := range decoder.All() {
 		p.set(k, v)
 	}
