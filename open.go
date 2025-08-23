@@ -33,7 +33,6 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
-	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -413,10 +412,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if err != nil {
 		return nil, err
 	}
-	d.opts.Logger.Infof("Found %d WALs", redact.Safe(len(wals)))
-	for i := range wals {
-		d.opts.Logger.Infof("  - %s", wals[i])
-	}
 	walManager, err := wal.Init(walOpts, wals)
 	if err != nil {
 		return nil, err
@@ -546,6 +541,17 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			d.mu.versions.logSeqNum.Store(maxSeqNum)
 		}
 	}
+	var info WALReplayInfo
+	for i := range wals {
+		for j := range wals[i].NumSegments() {
+			_, path := wals[i].SegmentLocation(j)
+			info.WALs = append(info.WALs, WALFileInfo{
+				LogicalNum: wals[i].Num,
+				Path:       path,
+			})
+		}
+	}
+	opts.EventListener.WALReplayed(info)
 	if d.mu.mem.mutable == nil {
 		// Recreate the mutable memtable if replayWAL got rid of it.
 		var entry *flushableEntry
