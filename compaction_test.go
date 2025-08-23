@@ -2789,23 +2789,19 @@ func TestMarkedForCompaction(t *testing.T) {
 		},
 		Logger: testutils.Logger{T: t},
 	}
+	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+	}
 	opts.WithFSDefaults()
 
-	reset := func() {
-		if d != nil {
-			require.NoError(t, d.Close())
-		}
-		mem = vfs.NewMem()
-		require.NoError(t, mem.MkdirAll("ext", 0755))
-
-		var err error
-		d, err = Open("", opts)
-		require.NoError(t, err)
-	}
 	datadriven.RunTest(t, "testdata/marked_for_compaction", func(t *testing.T, td *datadriven.TestData) string {
+		buf.Reset()
 		switch td.Cmd {
-		case "reset":
-			reset()
+		case "reopen":
+			require.NoError(t, d.Close())
+			var err error
+			d, err = Open("", opts)
+			require.NoError(t, err)
 			return ""
 
 		case "define":
@@ -2829,23 +2825,31 @@ func TestMarkedForCompaction(t *testing.T) {
 			return s
 
 		case "mark-for-compaction":
-			d.mu.Lock()
-			defer d.mu.Unlock()
-			vers := d.mu.versions.currentVersion()
 			var tableNum uint64
 			td.ScanArgs(t, "file", &tableNum)
-			for l, lm := range vers.Levels {
-				for f := range lm.All() {
-					if f.TableNum != base.TableNum(tableNum) {
-						continue
+
+			findFn := func(v *manifest.Version) (found bool, files [numLevels][]*manifest.TableMetadata, _ error) {
+				for l, lm := range v.Levels {
+					for f := range lm.All() {
+						if f.TableNum == base.TableNum(tableNum) {
+							files[l] = append(files[l], f)
+							fmt.Fprintf(&buf, "marked L%d.%s", l, f.TableNum)
+							return true, files, nil
+						}
 					}
-					f.MarkedForCompaction = true
-					vers.Stats.MarkedForCompaction++
-					markedForCompactionAnnotator.InvalidateLevelAnnotation(vers.Levels[l])
-					return fmt.Sprintf("marked L%d.%s", l, f.TableNum)
 				}
+				return false, files, nil
 			}
-			return "not-found"
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			if err := d.markFilesForCompactionLocked(findFn); err != nil {
+				td.Fatalf(t, "markFilesLocked: %s", err)
+			}
+
+			if buf.Len() == 0 {
+				return "not-found"
+			}
+			return buf.String()
 
 		case "maybe-compact":
 			d.mu.Lock()
@@ -2854,11 +2858,11 @@ func TestMarkedForCompaction(t *testing.T) {
 			d.maybeScheduleCompaction()
 			for d.mu.compact.compactingCount > 0 {
 				d.mu.compact.cond.Wait()
+				d.maybeScheduleCompaction()
 			}
 
 			fmt.Fprintln(&buf, d.mu.versions.currentVersion().DebugString())
 			s := strings.TrimSpace(buf.String())
-			buf.Reset()
 			opts.DisableAutomaticCompactions = true
 			return s
 

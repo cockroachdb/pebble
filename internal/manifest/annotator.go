@@ -258,18 +258,6 @@ func (a *TableAnnotator[T]) accumulateRangeAnnotation(
 	return dst
 }
 
-// InvalidateAnnotation removes any existing cached annotations from this
-// annotator from a node's subtree.
-func (a *TableAnnotator[T]) invalidateNodeAnnotation(n *node[*TableMetadata]) {
-	annot := a.findAnnotation(n)
-	annot.valid.Store(false)
-	if !n.isLeaf() {
-		for i := int16(0); i <= n.count; i++ {
-			a.invalidateNodeAnnotation(n.child(i))
-		}
-	}
-}
-
 // LevelAnnotation calculates the annotation defined by this TableAnnotator for all
 // files in the given LevelMetadata. A pointer to the TableAnnotator is used as the
 // key for pre-calculated values, so the same TableAnnotator must be used to avoid
@@ -335,20 +323,6 @@ func (a *TableAnnotator[T]) VersionRangeAnnotation(v *Version, bounds base.UserK
 		accumulateSlice(lm.Slice())
 	}
 	return dst
-}
-
-// InvalidateLevelAnnotation clears any cached annotations defined by TableAnnotator.
-// A pointer to the TableAnnotator is used as the key for pre-calculated values, so
-// the same TableAnnotator must be used to clear the appropriate cached annotation.
-// Calls to InvalidateLevelAnnotation are *not* concurrent-safe with any other
-// calls to TableAnnotator methods for the same TableAnnotator (concurrent calls from
-// other annotators are fine). Any calls to this function must have some
-// externally-guaranteed mutual exclusion.
-func (a *TableAnnotator[T]) InvalidateLevelAnnotation(lm LevelMetadata) {
-	if lm.Empty() {
-		return
-	}
-	a.invalidateNodeAnnotation(lm.tree.root)
 }
 
 // Annotation calculates the annotation defined by this BlobFileAnnotator for

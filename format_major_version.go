@@ -536,7 +536,7 @@ func (d *DB) writeFormatVersionMarker(formatVers FormatMajorVersion) error {
 // waiting for compactions to complete (or for slots to free up).
 func (d *DB) compactMarkedFilesLocked() error {
 	curr := d.mu.versions.currentVersion()
-	if curr.Stats.MarkedForCompaction == 0 {
+	if curr.MarkedForCompaction.Count() == 0 {
 		return nil
 	}
 	// Attempt to schedule a compaction to rewrite a file marked for compaction.
@@ -552,7 +552,7 @@ func (d *DB) compactMarkedFilesLocked() error {
 	// compaction.  Or compaction of the file might have already been in
 	// progress. In any scenario, wait until there's some change in the
 	// state of active compactions.
-	for curr.Stats.MarkedForCompaction > 0 {
+	for curr.MarkedForCompaction.Count() > 0 {
 		// Before waiting, check that the database hasn't been closed. Trying to
 		// schedule the compaction may have dropped d.mu while waiting for a
 		// manifest write to complete. In that dropped interim, the database may
@@ -568,7 +568,7 @@ func (d *DB) compactMarkedFilesLocked() error {
 
 		// Only wait on compactions if there are files still marked for compaction.
 		// NB: Waiting on this condition variable drops d.mu while blocked.
-		if curr.Stats.MarkedForCompaction > 0 {
+		if curr.MarkedForCompaction.Count() > 0 {
 			// NB: we cannot assert that d.mu.compact.compactingCount > 0, since
 			// with a CompactionScheduler a DB may not have even one ongoing
 			// compaction (if other competing activities are being preferred by the
@@ -586,13 +586,9 @@ func (d *DB) compactMarkedFilesLocked() error {
 // level.
 type findFilesFunc func(v *manifest.Version) (found bool, files [numLevels][]*manifest.TableMetadata, _ error)
 
-// This method is not used currently, but it will be useful the next time we need
-// to mark files for compaction.
-var _ = (*DB)(nil).markFilesLocked
-
-// markFilesLocked durably marks the files that match the given findFilesFunc for
+// markFilesForCompactionLocked durably marks the files that match the given findFilesFunc for
 // compaction.
-func (d *DB) markFilesLocked(findFn findFilesFunc) error {
+func (d *DB) markFilesForCompactionLocked(findFn findFilesFunc) error {
 	jobID := d.newJobIDLocked()
 
 	// Acquire a read state to have a view of the LSM and a guarantee that none
@@ -634,10 +630,7 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 	// been re-acquired by the defer within the above anonymous function.
 	_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 		vers := d.mu.versions.currentVersion()
-		for l, filesToMark := range files {
-			if len(filesToMark) == 0 {
-				continue
-			}
+		for level, filesToMark := range files {
 			for _, f := range filesToMark {
 				// Ignore files to be marked that have already been compacted or marked.
 				if f.CompactionState == manifest.CompactionStateCompacted ||
@@ -645,21 +638,14 @@ func (d *DB) markFilesLocked(findFn findFilesFunc) error {
 					continue
 				}
 				// Else, mark the file for compaction in this version.
-				vers.Stats.MarkedForCompaction++
 				f.MarkedForCompaction = true
+				// We are modifying the current version in-place (so that the updated
+				// set is reflected in the "base" version in the new manifest). This is
+				// ok because we are holding the DB lock and all code that uses the
+				// MarkedForCompaction set runs under the DB lock.
+				// TODO(radu): find a less sketchy way to do this.
+				vers.MarkedForCompaction.Insert(f, level)
 			}
-			// The compaction picker uses the markedForCompactionAnnotator to
-			// quickly find files marked for compaction, or to quickly determine
-			// that there are no such files marked for compaction within a level.
-			// A b-tree node may be annotated with an annotation recording that
-			// there are no files marked for compaction within the node's subtree,
-			// based on the assumption that it's static.
-			//
-			// Since we're marking files for compaction, these b-tree nodes'
-			// annotations will be out of date. Clear the compaction-picking
-			// annotation, so that it's recomputed the next time the compaction
-			// picker looks for a file marked for compaction.
-			markedForCompactionAnnotator.InvalidateLevelAnnotation(vers.Levels[l])
 		}
 		// The 'marked-for-compaction' bit is persisted in the MANIFEST file
 		// metadata. We've already modified the in-memory table metadata, but the
