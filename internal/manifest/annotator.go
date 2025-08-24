@@ -376,26 +376,6 @@ func (sa SumAggregator[T]) Merge(src *T, dst *T) *T {
 	return dst
 }
 
-// SumAnnotator takes a function that computes a uint64 value from a single
-// TableMetadata and returns an TableAnnotator that sums together the values across
-// files.
-func SumAnnotator(
-	accumulate func(f *TableMetadata) (v uint64, cacheOK bool),
-) *TableAnnotator[uint64] {
-	return NewTableAnnotator[uint64](SumAggregator[uint64]{
-		AddFunc:        func(src, dst *uint64) { *dst += *src },
-		AccumulateFunc: accumulate,
-	})
-}
-
-// NumFilesAnnotator is an TableAnnotator which computes an annotation value
-// equal to the number of files included in the annotation. Particularly, it
-// can be used to efficiently calculate the number of files in a given key
-// range using range annotations.
-var NumFilesAnnotator = SumAnnotator(func(f *TableMetadata) (uint64, bool) {
-	return 1, true
-})
-
 // PickFileAggregator implements the AnnotationAggregator interface. It defines
 // an aggregator that picks a single file from a set of eligible files.
 type PickFileAggregator struct {
