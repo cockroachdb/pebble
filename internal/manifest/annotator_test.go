@@ -12,6 +12,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// NumFilesAnnotator is an TableAnnotator which computes an annotation value
+// equal to the number of files included in the annotation. Particularly, it
+// can be used to efficiently calculate the number of files in a given key
+// range using range annotations.
+var NumFilesAnnotator = NewTableAnnotator[uint64](SumAggregator[uint64]{
+	AddFunc: func(src, dst *uint64) { *dst += *src },
+	AccumulateFunc: func(f *TableMetadata) (uint64, bool) {
+		return 1, true
+	},
+})
+
 // Creates a version with numFiles files in level 6.
 func makeTestVersion(numFiles int) (*Version, []*TableMetadata) {
 	files := make([]*TableMetadata, numFiles)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go/build"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
@@ -108,8 +109,10 @@ func TestLint(t *testing.T) {
 		installTool(t, gcassert)
 		t.Parallel()
 
-		// Build a list of all packages that contain a gcassert directive.
-		var packages []string
+		// Build a list of all packages that contain a gcassert directive. Always
+		// include the top-level package to reduce pruning of code that isn't used
+		// within `packages`.
+		packages := []string{"."}
 		if err := stream.ForEach(
 			dirCmd(
 				t, pkg.Dir, "git", "grep", "-nE", `// ?gcassert`,
@@ -117,11 +120,13 @@ func TestLint(t *testing.T) {
 				// s here is of the form
 				//   some/package/file.go:123:// gcassert:inline
 				// and we want to extract the package path.
-				filePath := s[:strings.Index(s, ":")]                  // up to the line number
-				pkgPath := filePath[:strings.LastIndex(filePath, "/")] // up to the file name
-				path := fmt.Sprintf("./%s", pkgPath)
-				if !slices.Contains(packages, path) {
-					packages = append(packages, path)
+				filePath := s[:strings.Index(s, ":")] // up to the line number
+				pkgPath := "."
+				if dir := filepath.Dir(filePath); dir != "." {
+					pkgPath = "./" + dir
+				}
+				if !slices.Contains(packages, pkgPath) {
+					packages = append(packages, pkgPath)
 				}
 			}); err != nil {
 			t.Error(err)
