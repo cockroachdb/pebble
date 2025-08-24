@@ -1877,8 +1877,9 @@ func (d *DB) Metrics() *Metrics {
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	// TODO(jackson): Consider making these metrics optional.
-	metrics.Keys.RangeKeySetsCount = *rangeKeySetsAnnotator.MultiLevelAnnotation(vers.RangeKeyLevels[:])
-	metrics.Keys.TombstoneCount = *tombstonesAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	aggProps := tablePropsAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	metrics.Keys.RangeKeySetsCount = aggProps.NumRangeKeySets
+	metrics.Keys.TombstoneCount = aggProps.NumDeletions
 
 	delBytes := deletionBytesAnnotator.MultiLevelAnnotation(vers.Levels[:])
 	metrics.Table.Garbage.PointDeletionsBytesEstimate = delBytes.PointDels
@@ -1909,9 +1910,9 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Table.InitialStatsCollectionComplete = d.mu.tableStats.loadedInitial
 
 	for i := 0; i < numLevels; i++ {
-		metrics.Levels[i].Additional.ValueBlocksSize = *valueBlockSizeAnnotator.LevelAnnotation(vers.Levels[i])
-		compressionMetrics := compressionStatsAnnotator.LevelAnnotation(vers.Levels[i])
-		metrics.Table.Compression.MergeWith(compressionMetrics)
+		aggProps := tablePropsAnnotator.LevelAnnotation(vers.Levels[i])
+		metrics.Levels[i].Additional.ValueBlocksSize = aggProps.ValueBlocksSize
+		metrics.Table.Compression.MergeWith(&aggProps.CompressionMetrics)
 	}
 
 	blobCompressionMetrics := blobCompressionStatsAnnotator.Annotation(&vers.BlobFiles)
