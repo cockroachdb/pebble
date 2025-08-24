@@ -1106,26 +1106,27 @@ var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetada
 	return 0, false
 })
 
-// pointDeletionsBytesEstimateAnnotator is a manifest.TableAnnotator that annotates
-// B-Tree nodes with the sum of the files' PointDeletionsBytesEstimate. This
-// value may change once a table's stats are loaded asynchronously, so its
-// values are marked as cacheable only if a file's stats have been loaded.
-var pointDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	if stats, ok := f.Stats(); ok {
-		return stats.PointDeletionsBytesEstimate, true
-	}
-	return 0, false
-})
+type deletionBytes struct {
+	// PointDels contains a sum of TableStats.PointDeletionsBytesEstimate.
+	PointDels uint64
+	// RangeDels contains a sum of TableStats.RangeDeletionsBytesEstimate.
+	RangeDels uint64
+}
 
-// rangeDeletionsBytesEstimateAnnotator is a manifest.TableAnnotator that annotates
-// B-Tree nodes with the sum of the files' RangeDeletionsBytesEstimate. This
-// value may change once a table's stats are loaded asynchronously, so its
-// values are marked as cacheable only if a file's stats have been loaded.
-var rangeDeletionsBytesEstimateAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	if stats, ok := f.Stats(); ok {
-		return stats.RangeDeletionsBytesEstimate, true
-	}
-	return 0, false
+var deletionBytesAnnotator = manifest.NewTableAnnotator[deletionBytes](manifest.SumAggregator[deletionBytes]{
+	AddFunc: func(src, dst *deletionBytes) {
+		dst.PointDels += src.PointDels
+		dst.RangeDels += src.RangeDels
+	},
+	AccumulateFunc: func(f *manifest.TableMetadata) (v deletionBytes, cacheOK bool) {
+		if stats, ok := f.Stats(); ok {
+			return deletionBytes{
+				PointDels: stats.PointDeletionsBytesEstimate,
+				RangeDels: stats.RangeDeletionsBytesEstimate,
+			}, true
+		}
+		return deletionBytes{}, false
+	},
 })
 
 // compressionStatsAnnotator is a manifest.TableAnnotator that annotates B-tree nodes

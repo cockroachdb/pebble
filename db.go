@@ -2132,10 +2132,9 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Keys.RangeKeySetsCount = *rangeKeySetsAnnotator.MultiLevelAnnotation(vers.RangeKeyLevels[:])
 	metrics.Keys.TombstoneCount = *tombstonesAnnotator.MultiLevelAnnotation(vers.Levels[:])
 
-	metrics.Table.Garbage.PointDeletionsBytesEstimate =
-		*pointDeletionsBytesEstimateAnnotator.MultiLevelAnnotation(vers.Levels[:])
-	metrics.Table.Garbage.RangeDeletionsBytesEstimate =
-		*rangeDeletionsBytesEstimateAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	delBytes := deletionBytesAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	metrics.Table.Garbage.PointDeletionsBytesEstimate = delBytes.PointDels
+	metrics.Table.Garbage.RangeDeletionsBytesEstimate = delBytes.RangeDels
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())

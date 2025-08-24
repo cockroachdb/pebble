@@ -987,15 +987,13 @@ func (p *compactionPickerByScore) calculateLevelScores(
 	}
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
-		compensatedLevelSize :=
-			// Actual file size.
-			p.vers.Levels[level].AggregateSize() +
-				// Point deletions.
-				*pointDeletionsBytesEstimateAnnotator.LevelAnnotation(p.vers.Levels[level]) +
-				// Range deletions.
-				*rangeDeletionsBytesEstimateAnnotator.LevelAnnotation(p.vers.Levels[level]) +
-				// Adjustments for in-progress compactions.
-				sizeAdjust[level].compensated()
+		// Actual file size.
+		compensatedLevelSize := p.vers.Levels[level].AggregateSize()
+		// Deletions.
+		delBytes := deletionBytesAnnotator.LevelAnnotation(p.vers.Levels[level])
+		compensatedLevelSize += delBytes.PointDels + delBytes.RangeDels
+		// Adjustments for in-progress compactions.
+		compensatedLevelSize += sizeAdjust[level].compensated()
 		scores[level].compensatedFillFactor = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
 		scores[level].fillFactor = float64(p.vers.Levels[level].AggregateSize()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
 	}
@@ -1343,9 +1341,8 @@ func (p *compactionPickerByScore) getCompactionConcurrency() int {
 	compactableGarbageCompactions := 0
 	garbageFractionLimit := p.opts.Experimental.CompactionGarbageFractionForMaxConcurrency()
 	if garbageFractionLimit > 0 && p.dbSizeBytes > 0 {
-		compactableGarbageBytes :=
-			*pointDeletionsBytesEstimateAnnotator.MultiLevelAnnotation(p.vers.Levels[:]) +
-				*rangeDeletionsBytesEstimateAnnotator.MultiLevelAnnotation(p.vers.Levels[:])
+		delBytes := deletionBytesAnnotator.MultiLevelAnnotation(p.vers.Levels[:])
+		compactableGarbageBytes := delBytes.PointDels + delBytes.RangeDels
 		garbageFraction := float64(compactableGarbageBytes) / float64(p.dbSizeBytes)
 		compactableGarbageCompactions =
 			int((garbageFraction / garbageFractionLimit) * float64(upper-lower))
