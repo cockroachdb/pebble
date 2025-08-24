@@ -1072,40 +1072,6 @@ func newCombinedDeletionKeyspanIter(
 	return mIter, nil
 }
 
-// rangeKeySetsAnnotator is a manifest.TableAnnotator that annotates B-Tree nodes
-// with the sum of the files' counts of range key fragments. The count of range
-// key sets may change once a table's stats are loaded asynchronously, so its
-// values are marked as cacheable only if a file's stats have been loaded.
-var rangeKeySetsAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	if props, ok := f.TableBacking.Properties(); ok {
-		return f.ScaleStatistic(props.NumRangeKeySets), true
-	}
-	return 0, false
-})
-
-// tombstonesAnnotator is a manifest.TableAnnotator that annotates B-Tree nodes
-// with the sum of the files' counts of tombstones (DEL, SINGLEDEL and RANGEDEL
-// keys). The count of tombstones may change once a table's stats are loaded
-// asynchronously, so its values are marked as cacheable only if a file's stats
-// have been loaded.
-var tombstonesAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	if props, ok := f.TableBacking.Properties(); ok {
-		return f.ScaleStatistic(props.NumDeletions), true
-	}
-	return 0, false
-})
-
-// valueBlocksSizeAnnotator is a manifest.TableAnnotator that annotates B-Tree
-// nodes with the sum of the files' Properties.ValueBlocksSize. The value block
-// size may change once a table's stats are loaded asynchronously, so its
-// values are marked as cacheable only if a file's stats have been loaded.
-var valueBlockSizeAnnotator = manifest.SumAnnotator(func(f *manifest.TableMetadata) (uint64, bool) {
-	if props, ok := f.TableBacking.Properties(); ok {
-		return f.ScaleStatistic(props.ValueBlocksSize), true
-	}
-	return 0, false
-})
-
 type deletionBytes struct {
 	// PointDels contains a sum of TableStats.PointDeletionsBytesEstimate.
 	PointDels uint64
@@ -1129,44 +1095,47 @@ var deletionBytesAnnotator = manifest.NewTableAnnotator[deletionBytes](manifest.
 	},
 })
 
-// compressionStatsAnnotator is a manifest.TableAnnotator that annotates B-tree nodes
-// with the compression statistics for tables. Its annotation type is
-// block.CompressionStats. The compression type may change once a table's stats
-// are loaded asynchronously, so its values are marked as cacheable only if a
-// file's stats have been loaded. Statistics for virtual tables are estimated
-// from the physical table statistics, proportional to the estimated virtual
-// table size.
-var compressionStatsAnnotator = manifest.NewTableAnnotator[CompressionMetrics](compressionStatsAggregator{})
+// annotatedTableProps are properties derived from TableBackingProperties that
+// are aggregated for metrics.
+type aggregatedTableProps struct {
+	// NumRangeKeySets is the sum of the tables' counts of range key fragments.
+	NumRangeKeySets uint64
+	// NumDeletions is the sum of the tables' counts of tombstones (DEL, SINGLEDEL
+	// and RANGEDEL keys).
+	NumDeletions uint64
+	// ValueBlocksSize is the sum of the tables' Properties.ValueBlocksSize.
+	ValueBlocksSize uint64
 
-type compressionStatsAggregator struct{}
-
-func (a compressionStatsAggregator) Zero() *CompressionMetrics {
-	return &CompressionMetrics{}
+	CompressionMetrics CompressionMetrics
 }
 
-func (a compressionStatsAggregator) Accumulate(
-	f *manifest.TableMetadata, dst *CompressionMetrics,
-) (v *CompressionMetrics, cacheOK bool) {
-	stats, statsValid := f.TableBacking.Properties()
-	if !statsValid || stats.CompressionStats.IsEmpty() {
-		dst.CompressedBytesWithoutStats += f.Size
-		return dst, statsValid
-	}
-	compressionStats := stats.CompressionStats
-	if f.Virtual {
-		// Scale the compression stats for virtual tables.
-		compressionStats = compressionStats.Scale(f.Size, f.TableBacking.Size)
-	}
-	dst.Add(&compressionStats)
-	return dst, true
-}
-
-func (a compressionStatsAggregator) Merge(
-	src *CompressionMetrics, dst *CompressionMetrics,
-) *CompressionMetrics {
-	dst.MergeWith(src)
-	return dst
-}
+var tablePropsAnnotator = manifest.NewTableAnnotator[aggregatedTableProps](manifest.SumAggregator[aggregatedTableProps]{
+	AddFunc: func(src, dst *aggregatedTableProps) {
+		dst.NumRangeKeySets += src.NumRangeKeySets
+		dst.NumDeletions += src.NumDeletions
+		dst.ValueBlocksSize += src.ValueBlocksSize
+		dst.CompressionMetrics.MergeWith(&src.CompressionMetrics)
+	},
+	AccumulateFunc: func(f *manifest.TableMetadata) (v aggregatedTableProps, cacheOK bool) {
+		props, propsValid := f.TableBacking.Properties()
+		if propsValid {
+			v.NumRangeKeySets = props.NumRangeKeySets
+			v.NumDeletions = props.NumDeletions
+			v.ValueBlocksSize = props.ValueBlocksSize
+		}
+		if !propsValid || props.CompressionStats.IsEmpty() {
+			v.CompressionMetrics.CompressedBytesWithoutStats = f.ScaleStatistic(f.Size)
+		} else {
+			compressionStats := props.CompressionStats
+			if f.Virtual {
+				// Scale the compression stats for virtual tables.
+				compressionStats = compressionStats.Scale(f.Size, f.TableBacking.Size)
+			}
+			v.CompressionMetrics.Add(&compressionStats)
+		}
+		return v, propsValid
+	},
+})
 
 // compressionStatsAnnotator is a manifest.TableAnnotator that annotates B-tree nodes
 // with the compression statistics for tables. Its annotation type is
