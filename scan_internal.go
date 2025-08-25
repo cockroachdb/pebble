@@ -181,7 +181,7 @@ func (d *DB) newInternalIter(
 
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	buf := iterAllocPool.Get().(*iterAlloc)
+	buf := newIterAlloc()
 	dbi := &scanInternalIterator{
 		ctx:             ctx,
 		db:              d,

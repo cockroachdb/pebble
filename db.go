@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -895,15 +896,74 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 }
 
 type iterAlloc struct {
-	keyBuf              []byte
-	boundsBuf           [2][]byte
-	prefixOrFullSeekKey []byte
+	keyBuf              []byte    `invariants:"reused"`
+	boundsBuf           [2][]byte `invariants:"reused"`
+	prefixOrFullSeekKey []byte    `invariants:"reused"`
 	batchState          iteratorBatchState
 	dbi                 Iterator
 	merging             mergingIter
 	mlevels             [3 + numLevels]mergingIterLevel
 	levels              [3 + numLevels]levelIter
 	levelsPositioned    [3 + numLevels]bool
+}
+
+// maybeAssertZeroed asserts that i is a "zeroed" value. See assertZeroed for
+// the definition of "zeroed". It's used to ensure we're properly zeroing out
+// memory before returning the iterAlloc to the shared pool.
+func (i *iterAlloc) maybeAssertZeroed() {
+	if invariants.Enabled {
+		v := reflect.ValueOf(i).Elem()
+		if err := assertZeroed(v); err != nil {
+			panic(err)
+		}
+	}
+}
+
+// assertZeroed asserts that v is a "zeroed" value. A "zeroed" value is a value
+// that is:
+//   - the Go zero value for its type, or
+//   - a pointer to a "zeroed" value, or
+//   - a slice of len()=0, with any values in the backing array being "zeroed
+//     values", or
+//   - a struct with all fields being "zeroed" values,
+//   - a struct field explicitly marked with a "invariants:reused" tag.
+func assertZeroed(v reflect.Value) error {
+	if v.IsZero() {
+		return nil
+	}
+	typ := v.Type()
+	switch typ.Kind() {
+	case reflect.Pointer:
+		return assertZeroed(v.Elem())
+	case reflect.Slice:
+		if v.Len() > 0 {
+			return errors.AssertionFailedf("%s is not zeroed (%d len): %#v", typ.Name(), v.Len(), v)
+		}
+		resliced := v.Slice(0, v.Cap())
+		for i := 0; i < resliced.Len(); i++ {
+			if err := assertZeroed(resliced.Index(i)); err != nil {
+				return errors.Wrapf(err, "[%d]", i)
+			}
+		}
+		return nil
+	case reflect.Struct:
+		for i := 0; i < typ.NumField(); i++ {
+			if typ.Field(i).Tag.Get("invariants") == "reused" {
+				continue
+			}
+			if err := assertZeroed(v.Field(i)); err != nil {
+				return errors.Wrapf(err, "%q", typ.Field(i).Name)
+			}
+		}
+		return nil
+	}
+	return errors.AssertionFailedf("%s (%s) is not zeroed: %#v", typ.Name(), typ.Kind(), v)
+}
+
+func newIterAlloc() *iterAlloc {
+	buf := iterAllocPool.Get().(*iterAlloc)
+	buf.maybeAssertZeroed()
+	return buf
 }
 
 var iterAllocPool = sync.Pool{
@@ -996,7 +1056,7 @@ func (d *DB) newIter(
 
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	buf := iterAllocPool.Get().(*iterAlloc)
+	buf := newIterAlloc()
 	dbi := &buf.dbi
 	*dbi = Iterator{
 		ctx:                 ctx,
