@@ -35,6 +35,22 @@ type getIterAlloc struct {
 	get    getIter
 }
 
+// Close closes the contained iterator and recycles the alloc.
+//
+// During a successful call to DB.Get, *getIterAlloc is returned to the caller
+// as the io.Closer.
+func (g *getIterAlloc) Close() error {
+	err := g.dbi.Close()
+	keyBuf := g.keyBuf
+	if cap(g.dbi.keyBuf) < maxKeyBufCacheSize && cap(g.dbi.keyBuf) > cap(keyBuf) {
+		keyBuf = g.dbi.keyBuf
+	}
+	*g = getIterAlloc{}
+	g.keyBuf = keyBuf
+	getIterAllocPool.Put(g)
+	return err
+}
+
 var getIterAllocPool = sync.Pool{
 	New: func() interface{} {
 		return &getIterAlloc{}
@@ -95,21 +111,20 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	i := &buf.dbi
 	pointIter := get
 	*i = Iterator{
-		ctx:          context.Background(),
-		getIterAlloc: buf,
-		iter:         pointIter,
-		pointIter:    pointIter,
-		merge:        d.merge,
-		comparer:     *d.opts.Comparer,
-		readState:    readState,
-		keyBuf:       buf.keyBuf,
+		ctx:       context.Background(),
+		iter:      pointIter,
+		pointIter: pointIter,
+		merge:     d.merge,
+		comparer:  *d.opts.Comparer,
+		readState: readState,
+		keyBuf:    buf.keyBuf,
 	}
 	// Set up a blob value fetcher to use for retrieving values from blob files.
 	i.blobValueFetcher.Init(&readState.current.BlobFiles, d.fileCache, block.NoReadEnv)
 	get.iiopts.blobValueFetcher = &i.blobValueFetcher
 
 	if !i.First() {
-		err := i.Close()
+		err := buf.Close()
 		if err != nil {
 			return nil, nil, err
 		}
@@ -117,9 +132,9 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	}
 	val, err := i.ValueAndErr()
 	if err != nil {
-		return nil, nil, errors.CombineErrors(err, i.Close())
+		return nil, nil, errors.CombineErrors(err, buf.Close())
 	}
-	return val, i, nil
+	return val, buf, nil
 }
 
 // getIter is an internal iterator used to perform gets. It iterates through
