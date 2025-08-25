@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -106,7 +107,8 @@ type BlobFileMapping interface {
 // A DiskFileNum identifies a file or object with exists on disk.
 type DiskFileNum uint64
 
-func (dfn DiskFileNum) String() string { return fmt.Sprintf("%06d", dfn) }
+// String implements fmt.Stringer.
+func (dfn DiskFileNum) String() string { return fmt.Sprintf("%06d", uint64(dfn)) }
 
 // SafeFormat implements redact.SafeFormatter.
 func (dfn DiskFileNum) SafeFormat(w redact.SafePrinter, verb rune) {
@@ -165,25 +167,35 @@ func (ft FileType) String() string {
 
 // MakeFilename builds a filename from components.
 func MakeFilename(fileType FileType, dfn DiskFileNum) string {
+	// Make a buffer sufficiently large for most possible filenames, especially
+	// the common case of a numbered table or blob file.
+	b := make([]byte, 0, 20)
+	b = appendFilename(b, fileType, dfn)
+	return unsafe.String(unsafe.SliceData(b), len(b))
+}
+
+func appendFilename(buf []byte, fileType FileType, dfn DiskFileNum) []byte {
 	switch fileType {
 	case FileTypeLog:
 		panic("the pebble/wal pkg is responsible for constructing WAL filenames")
 	case FileTypeLock:
-		return "LOCK"
+		buf = append(buf, "LOCK"...)
 	case FileTypeTable:
-		return fmt.Sprintf("%s.sst", dfn)
+		buf = fmt.Appendf(buf, "%06d.sst", uint64(dfn))
 	case FileTypeManifest:
-		return fmt.Sprintf("MANIFEST-%s", dfn)
+		buf = fmt.Appendf(buf, "MANIFEST-%06d", uint64(dfn))
 	case FileTypeOptions:
-		return fmt.Sprintf("OPTIONS-%s", dfn)
+		buf = fmt.Appendf(buf, "OPTIONS-%06d", uint64(dfn))
 	case FileTypeOldTemp:
-		return fmt.Sprintf("CURRENT.%s.dbtmp", dfn)
+		buf = fmt.Appendf(buf, "CURRENT.%06d.dbtmp", uint64(dfn))
 	case FileTypeTemp:
-		return fmt.Sprintf("temporary.%s.dbtmp", dfn)
+		buf = fmt.Appendf(buf, "temporary.%06d.dbtmp", uint64(dfn))
 	case FileTypeBlob:
-		return fmt.Sprintf("%s.blob", dfn)
+		buf = fmt.Appendf(buf, "%06d.blob", uint64(dfn))
+	default:
+		panic("unreachable")
 	}
-	panic("unreachable")
+	return buf
 }
 
 // MakeFilepath builds a filepath from components.
