@@ -247,27 +247,16 @@ type Iterator struct {
 	externalIter        *externalIterState
 	// Following fields used when constructing an iterator stack, eg, in Clone
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
-	// Non-nil if this Iterator includes a Batch.
-	batch            *Batch
 	fc               *fileCacheHandle
 	newIters         tableNewIters
 	newIterRangeKey  keyspanimpl.TableNewSpanIter
 	lazyCombinedIter lazyCombinedIter
 	seqNum           base.SeqNum
-	// batchSeqNum is used by Iterators over indexed batches to detect when the
-	// underlying batch has been mutated. The batch beneath an indexed batch may
-	// be mutated while the Iterator is open, but new keys are not surfaced
-	// until the next call to SetOptions.
-	batchSeqNum base.SeqNum
-	// batch{PointIter,RangeDelIter,RangeKeyIter} are used when the Iterator is
-	// configured to read through an indexed batch. If a batch is set, these
-	// iterators will be included within the iterator stack regardless of
-	// whether the batch currently contains any keys of their kind. These
-	// pointers are used during a call to SetOptions to refresh the Iterator's
-	// view of its indexed batch.
-	batchPointIter    batchIter
-	batchRangeDelIter keyspan.Iter
-	batchRangeKeyIter keyspan.Iter
+	// batch is non-nil if this Iterator includes an indexed batch. Batch
+	// contains all the state pertaining to iterating over the indexed batch.
+	// The iteratorBatchState struct is bundled within the iterAlloc struct to
+	// reduce allocations.
+	batch *iteratorBatchState
 	// merging is a pointer to this iterator's point merging iterator. It
 	// appears here because key visibility is handled by the merging iterator.
 	// During SetOptions on an iterator over an indexed batch, this field is
@@ -334,6 +323,28 @@ func (i *Iterator) cmp(a, b []byte) int {
 // equal is a convenience shorthand for the i.comparer.Equal function.
 func (i *Iterator) equal(a, b []byte) bool {
 	return i.comparer.Equal(a, b)
+}
+
+// iteratorBatchState holds state pertaining to iterating over an indexed batch.
+// When an iterator is configured to read through an indexed batch, the iterator
+// maintains a pointer to this struct. This struct is embedded within the
+// iterAlloc struct to reduce allocations.
+type iteratorBatchState struct {
+	batch *Batch
+	// batchSeqNum is used by Iterators over indexed batches to detect when the
+	// underlying batch has been mutated. The batch beneath an indexed batch may
+	// be mutated while the Iterator is open, but new keys are not surfaced
+	// until the next call to SetOptions.
+	batchSeqNum base.SeqNum
+	// batch{PointIter,RangeDelIter,RangeKeyIter} are used when the Iterator is
+	// configured to read through an indexed batch. If a batch is set, these
+	// iterators will be included within the iterator stack regardless of
+	// whether the batch currently contains any keys of their kind. These
+	// pointers are used during a call to SetOptions to refresh the Iterator's
+	// view of its indexed batch.
+	pointIter    batchIter
+	rangeDelIter keyspan.Iter
+	rangeKeyIter keyspan.Iter
 }
 
 // iteratorRangeKeyState holds an iterator's range key iteration state.
@@ -2621,9 +2632,9 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// iterator or range-key iterator but we require one, it'll be created in
 	// the slow path that reconstructs the iterator in finishInitializingIter.
 	if i.batch != nil {
-		nextBatchSeqNum := (base.SeqNum(len(i.batch.data)) | base.SeqNumBatchBit)
-		if nextBatchSeqNum != i.batchSeqNum {
-			i.batchSeqNum = nextBatchSeqNum
+		nextBatchSeqNum := (base.SeqNum(len(i.batch.batch.data)) | base.SeqNumBatchBit)
+		if nextBatchSeqNum != i.batch.batchSeqNum {
+			i.batch.batchSeqNum = nextBatchSeqNum
 			if i.merging != nil {
 				i.merging.batchSnapshot = nextBatchSeqNum
 			}
@@ -2631,8 +2642,8 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 			// able to reuse the top-level Iterator state, because it may be
 			// incorrect after the inclusion of new batch mutations.
 			i.batchJustRefreshed = true
-			if i.pointIter != nil && i.batch.countRangeDels > 0 {
-				if i.batchRangeDelIter.Count() == 0 {
+			if i.pointIter != nil && i.batch.batch.countRangeDels > 0 {
+				if i.batch.rangeDelIter.Count() == 0 {
 					// When we constructed this iterator, there were no
 					// rangedels in the batch. Iterator construction will
 					// have excluded the batch rangedel iterator from the
@@ -2651,11 +2662,11 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 					// which is the count of fragmented range deletions, NOT
 					// the number of range deletions written to the batch
 					// [i.batch.countRangeDels].
-					i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, nextBatchSeqNum)
+					i.batch.batch.initRangeDelIter(&i.opts, &i.batch.rangeDelIter, nextBatchSeqNum)
 				}
 			}
-			if i.rangeKey != nil && i.batch.countRangeKeys > 0 {
-				if i.batchRangeKeyIter.Count() == 0 {
+			if i.rangeKey != nil && i.batch.batch.countRangeKeys > 0 {
+				if i.batch.rangeKeyIter.Count() == 0 {
 					// When we constructed this iterator, there were no range
 					// keys in the batch. Iterator construction will have
 					// excluded the batch rangekey iterator from the range key
@@ -2673,7 +2684,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 					// tell based on i.batchRangeKeyIter.Count(), which is the
 					// count of fragmented range keys, NOT the number of
 					// range keys written to the batch [i.batch.countRangeKeys].
-					i.batch.initRangeKeyIter(&i.opts, &i.batchRangeKeyIter, nextBatchSeqNum)
+					i.batch.batch.initRangeKeyIter(&i.opts, &i.batch.rangeKeyIter, nextBatchSeqNum)
 					i.invalidate()
 				}
 			}
@@ -2705,7 +2716,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		// used by the iterator now contains range keys. Lazy combined iteration
 		// is not compatible with batch range keys because we always need to
 		// merge the batch's range keys into iteration.
-		if i.rangeKey != nil || !i.opts.rangeKeys() || i.batch == nil || i.batch.countRangeKeys == 0 {
+		if i.rangeKey != nil || !i.opts.rangeKeys() || i.batch == nil || i.batch.batch.countRangeKeys == 0 {
 			// Fast path. This preserves the Seek-using-Next optimizations as
 			// long as the iterator wasn't already invalidated up above.
 			return
@@ -2869,21 +2880,22 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
-		batch:               i.batch,
-		batchSeqNum:         i.batchSeqNum,
 		fc:                  i.fc,
 		newIters:            i.newIters,
 		newIterRangeKey:     i.newIterRangeKey,
 		seqNum:              i.seqNum,
 	}
-	dbi.processBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
-
-	// If the caller requested the clone have a current view of the indexed
-	// batch, set the clone's batch sequence number appropriately.
-	if i.batch != nil && opts.RefreshBatchView {
-		dbi.batchSeqNum = (base.SeqNum(len(i.batch.data)) | base.SeqNumBatchBit)
+	if i.batch != nil {
+		dbi.batch = &buf.batchState
+		dbi.batch.batch = i.batch.batch
+		dbi.batch.batchSeqNum = i.batch.batchSeqNum
+		// If the caller requested the clone have a current view of the indexed
+		// batch, set the clone's batch sequence number appropriately.
+		if opts.RefreshBatchView {
+			dbi.batch.batchSeqNum = (base.SeqNum(len(i.batch.batch.data)) | base.SeqNumBatchBit)
+		}
 	}
-
+	dbi.processBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
 	return finishInitializingIter(ctx, buf), nil
 }
 

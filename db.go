@@ -908,6 +908,7 @@ type iterAlloc struct {
 	boundsBuf           [2][]byte
 	prefixOrFullSeekKey []byte
 	merging             mergingIter
+	batchState          iteratorBatchState
 	mlevels             [3 + numLevels]mergingIterLevel
 	levels              [3 + numLevels]levelIter
 	levelsPositioned    [3 + numLevels]bool
@@ -1015,7 +1016,6 @@ func (d *DB) newIter(
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
 		boundsBuf:           buf.boundsBuf,
-		batch:               batch,
 		fc:                  d.fileCache,
 		newIters:            newIters,
 		newIterRangeKey:     newIterRangeKey,
@@ -1031,7 +1031,9 @@ func (d *DB) newIter(
 		dbi.opts.disableLazyCombinedIteration = true
 	}
 	if batch != nil {
-		dbi.batchSeqNum = dbi.batch.nextSeqNum()
+		dbi.batch = &buf.batchState
+		dbi.batch.batch = batch
+		dbi.batch.batchSeqNum = batch.nextSeqNum()
 	}
 	return finishInitializingIter(ctx, buf)
 }
@@ -1084,7 +1086,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 		// contains any range keys.
 		useLazyCombinedIteration := dbi.rangeKey == nil &&
 			dbi.opts.KeyTypes == IterKeyTypePointsAndRanges &&
-			(dbi.batch == nil || dbi.batch.countRangeKeys == 0) &&
+			(dbi.batch == nil || dbi.batch.batch.countRangeKeys == 0) &&
 			!dbi.opts.disableLazyCombinedIteration
 		if useLazyCombinedIteration {
 			// The user requested combined iteration, and there's no indexed
@@ -1369,23 +1371,23 @@ func (i *Iterator) constructPointIter(
 
 	// Top-level is the batch, if any.
 	if i.batch != nil {
-		if i.batch.index == nil {
+		if i.batch.batch.index == nil {
 			// This isn't an indexed batch. We shouldn't have gotten this far.
 			panic(errors.AssertionFailedf("creating an iterator over an unindexed batch"))
 		} else {
-			i.batch.initInternalIter(&i.opts, &i.batchPointIter)
-			i.batch.initRangeDelIter(&i.opts, &i.batchRangeDelIter, i.batchSeqNum)
+			i.batch.batch.initInternalIter(&i.opts, &i.batch.pointIter)
+			i.batch.batch.initRangeDelIter(&i.opts, &i.batch.rangeDelIter, i.batch.batchSeqNum)
 			// Only include the batch's rangedel iterator if it's non-empty.
 			// This requires some subtle logic in the case a rangedel is later
 			// written to the batch and the view of the batch is refreshed
 			// during a call to SetOptions—in this case, we need to reconstruct
 			// the point iterator to add the batch rangedel iterator.
 			var rangeDelIter keyspan.FragmentIterator
-			if i.batchRangeDelIter.Count() > 0 {
-				rangeDelIter = &i.batchRangeDelIter
+			if i.batch.rangeDelIter.Count() > 0 {
+				rangeDelIter = &i.batch.rangeDelIter
 			}
 			mlevels = append(mlevels, mergingIterLevel{
-				iter:         &i.batchPointIter,
+				iter:         &i.batch.pointIter,
 				rangeDelIter: rangeDelIter,
 			})
 		}
@@ -1439,7 +1441,9 @@ func (i *Iterator) constructPointIter(
 		buf.merging.levelsPositioned = buf.levelsPositioned[:len(mlevels)]
 	}
 	buf.merging.snapshot = i.seqNum
-	buf.merging.batchSnapshot = i.batchSeqNum
+	if i.batch != nil {
+		buf.merging.batchSnapshot = i.batch.batchSeqNum
+	}
 	buf.merging.combinedIterState = &i.lazyCombinedIter.combinedIterState
 	i.pointIter = invalidating.MaybeWrapIfInvariants(&buf.merging).(topLevelIterator)
 	i.merging = &buf.merging

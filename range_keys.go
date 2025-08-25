@@ -31,7 +31,7 @@ func (i *Iterator) constructRangeKeyIter() {
 
 	// If there's an indexed batch with range keys, include it.
 	if i.batch != nil {
-		if i.batch.index == nil {
+		if i.batch.batch.index == nil {
 			// This isn't an indexed batch. We shouldn't have gotten this far.
 			panic(errors.AssertionFailedf("creating an iterator over an unindexed batch"))
 		} else {
@@ -39,9 +39,9 @@ func (i *Iterator) constructRangeKeyIter() {
 			// NB: This can force reconstruction of the rangekey iterator stack
 			// in SetOptions if subsequently range keys are added. See
 			// SetOptions.
-			if i.batch.countRangeKeys > 0 {
-				i.batch.initRangeKeyIter(&i.opts, &i.batchRangeKeyIter, i.batchSeqNum)
-				i.rangeKey.iterConfig.AddLevel(&i.batchRangeKeyIter)
+			if i.batch.batch.countRangeKeys > 0 {
+				i.batch.batch.initRangeKeyIter(&i.opts, &i.batch.rangeKeyIter, i.batch.batchSeqNum)
+				i.rangeKey.iterConfig.AddLevel(&i.batch.rangeKeyIter)
 			}
 		}
 	}
