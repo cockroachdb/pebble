@@ -17,9 +17,10 @@ import (
 // LevelMetadata contains metadata for all of the files within
 // a level of the LSM.
 type LevelMetadata struct {
-	level          int
-	totalTableSize uint64
-	totalRefSize   uint64
+	level           int
+	totalTableSize  uint64
+	totalRefSize    uint64
+	totalHotRefSize uint64
 	// NumVirtual is the number of virtual sstables in the level.
 	NumVirtual uint64
 	// VirtualTableSize is the size of the virtual sstables in the level.
@@ -34,6 +35,7 @@ func (lm *LevelMetadata) clone() LevelMetadata {
 		level:            lm.level,
 		totalTableSize:   lm.totalTableSize,
 		totalRefSize:     lm.totalRefSize,
+		totalHotRefSize:  lm.totalHotRefSize,
 		NumVirtual:       lm.NumVirtual,
 		VirtualTableSize: lm.VirtualTableSize,
 		tree:             lm.tree.Clone(),
@@ -56,6 +58,7 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 	for _, f := range files {
 		lm.totalTableSize += f.Size
 		lm.totalRefSize += f.EstimatedReferenceSize()
+		lm.totalHotRefSize += f.EstimatedHotReferenceSize()
 		if f.Virtual {
 			lm.NumVirtual++
 			lm.VirtualTableSize += f.Size
@@ -90,6 +93,7 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 	}
 	lm.totalTableSize += f.Size
 	lm.totalRefSize += f.EstimatedReferenceSize()
+	lm.totalHotRefSize += f.EstimatedHotReferenceSize()
 	if f.Virtual {
 		lm.NumVirtual++
 		lm.VirtualTableSize += f.Size
@@ -100,6 +104,7 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 func (lm *LevelMetadata) remove(f *TableMetadata) {
 	lm.totalTableSize -= f.Size
 	lm.totalRefSize -= f.EstimatedReferenceSize()
+	lm.totalHotRefSize -= f.EstimatedHotReferenceSize()
 	if f.Virtual {
 		lm.NumVirtual--
 		lm.VirtualTableSize -= f.Size
@@ -122,6 +127,16 @@ func (lm *LevelMetadata) Len() int {
 // blob files. This quantity is equal to TableSize() + EstimatedReferenceSize().
 func (lm *LevelMetadata) AggregateSize() uint64 {
 	return lm.totalTableSize + lm.totalRefSize
+}
+
+// AggregateHotSize returns the aggregate size estimate of all sstables within
+// the level, plus an estimate of the physical size of values stored
+// externally in hot blob files. Callers wanting to use the level size for
+// compaction scoring should use this method instead of AggregateSize(), since
+// cold blob files should not influence the compaction score or cause more
+// levels to be populated in the LSM.
+func (lm *LevelMetadata) AggregateHotSize() uint64 {
+	return lm.totalTableSize + lm.totalHotRefSize
 }
 
 // TableSize returns the cumulative size of all sstables within the level. This
@@ -327,6 +342,14 @@ func (ls *LevelSlice) AggregateSizeSum() uint64 {
 	var sum uint64
 	for f := range ls.All() {
 		sum += f.Size + f.EstimatedReferenceSize()
+	}
+	return sum
+}
+
+func (ls *LevelSlice) AggregateHotSizeSum() uint64 {
+	var sum uint64
+	for f := range ls.All() {
+		sum += f.Size + f.EstimatedHotReferenceSize()
 	}
 	return sum
 }
