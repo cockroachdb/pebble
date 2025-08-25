@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"iter"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -82,11 +81,7 @@ type node[M fileMetadata] struct {
 	items [maxItems]M
 	// innerNodeMeta is nil for leaf nodes.
 	innerNodeMeta *innerNodeMeta[M]
-	// annot contains one annotation per annotator, merged over the entire
-	// node's files (and all descendants for non-leaf nodes). Protected by
-	// annotMu.
-	annotMu sync.RWMutex
-	annot   []annotation
+	annot         nodeAnnotations
 }
 
 type innerNodeMeta[M fileMetadata] struct {
@@ -124,17 +119,12 @@ func newInnerNode[M fileMetadata]() *node[M] {
 // mutable node.
 func mut[M fileMetadata](n **node[M]) *node[M] {
 	if (*n).ref.Load() == 1 {
-		// Exclusive ownership. Can mutate in place. Still need to lock out
-		// any concurrent writes to annot.
-		(*n).annotMu.Lock()
-		defer (*n).annotMu.Unlock()
-
+		// Exclusive ownership. Can mutate in place.
+		//
 		// Whenever a node will be mutated, reset its annotations to be marked
-		// as uncached. This ensures any future calls to (*node).annotation will
+		// as uncached. This ensures any future calls to nodeAnnotation() will
 		// recompute annotations on the modified subtree.
-		for i := range (*n).annot {
-			(*n).annot[i].valid.Store(false)
-		}
+		(*n).annot.Reset()
 		return *n
 	}
 	// If we do not have unique ownership over the node then we
