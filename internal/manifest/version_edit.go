@@ -60,6 +60,7 @@ const (
 	tagRemovedBackingTable = 106
 	tagNewBlobFile         = 107
 	tagDeletedBlobFile     = 108
+	tagNewBlobFile2        = 109 // Includes the tier of the blob file
 
 	// The custom tags sub-format used by tagNewFile4 and above. All tags less
 	// than customTagNonSafeIgnoreMask are safe to ignore and their format must be
@@ -530,7 +531,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			v.NewTables = append(v.NewTables, nfe)
 
-		case tagNewBlobFile:
+		case tagNewBlobFile, tagNewBlobFile2:
 			fileID, err := d.readUvarint()
 			if err != nil {
 				return err
@@ -551,6 +552,18 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
+			tier := base.HotTier
+			if tag == tagNewBlobFile2 {
+				// The tier field appears unused in Pebble.
+				tierInt, err := d.readUvarint()
+				if err != nil {
+					return err
+				}
+				if tierInt > uint64(base.NumStorageTiers) {
+					return errors.AssertionFailedf("unknown storage tier: %d", tierInt)
+				}
+				tier = base.StorageTier(tierInt)
+			}
 			v.NewBlobFiles = append(v.NewBlobFiles, BlobFileMetadata{
 				FileID: base.BlobFileID(fileID),
 				Physical: &PhysicalBlobFile{
@@ -558,6 +571,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					Size:         size,
 					ValueSize:    valueSize,
 					CreationTime: creationTime,
+					Tier:         tier,
 				},
 			})
 
@@ -905,12 +919,13 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		}
 	}
 	for _, x := range v.NewBlobFiles {
-		e.writeUvarint(tagNewBlobFile)
+		e.writeUvarint(tagNewBlobFile2)
 		e.writeUvarint(uint64(x.FileID))
 		e.writeUvarint(uint64(x.Physical.FileNum))
 		e.writeUvarint(x.Physical.Size)
 		e.writeUvarint(x.Physical.ValueSize)
 		e.writeUvarint(x.Physical.CreationTime)
+		e.writeUvarint(uint64(x.Physical.Tier))
 	}
 	for x := range v.DeletedBlobFiles {
 		e.writeUvarint(tagDeletedBlobFile)

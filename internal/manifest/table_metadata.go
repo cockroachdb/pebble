@@ -327,6 +327,16 @@ func (m *TableMetadata) EstimatedReferenceSize() uint64 {
 	return size
 }
 
+func (m *TableMetadata) EstimatedHotReferenceSize() uint64 {
+	var size uint64
+	for i := range m.BlobReferences {
+		if m.BlobReferences[i].Tier == base.HotTier {
+			size += m.BlobReferences[i].EstimatedPhysicalSize
+		}
+	}
+	return size
+}
+
 // ObjectInfo implements the base.ObjectInfo interface.
 func (m *TableMetadata) FileInfo() (base.FileType, base.DiskFileNum) {
 	return base.FileTypeTable, m.TableBacking.DiskFileNum
