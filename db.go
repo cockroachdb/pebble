@@ -905,12 +905,12 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 }
 
 type iterAlloc struct {
-	dbi                 Iterator
 	keyBuf              []byte
 	boundsBuf           [2][]byte
 	prefixOrFullSeekKey []byte
-	merging             mergingIter
 	batchState          iteratorBatchState
+	dbi                 Iterator
+	merging             mergingIter
 	mlevels             [3 + numLevels]mergingIterLevel
 	levels              [3 + numLevels]levelIter
 	levelsPositioned    [3 + numLevels]bool

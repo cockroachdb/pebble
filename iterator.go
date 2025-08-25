@@ -2416,56 +2416,50 @@ func (i *Iterator) Close() error {
 		iterRangeKeyStateAllocPool.Put(i.rangeKey)
 		i.rangeKey = nil
 	}
-	if alloc := i.alloc; alloc != nil {
-		var (
-			keyBuf               []byte
-			boundsBuf            [2][]byte
-			prefixOrFullSeekKey  []byte
-			mergingIterHeapItems []mergingIterHeapItem
-		)
 
-		// Avoid caching the key buf if it is overly large. The constant is fairly
-		// arbitrary.
-		if cap(i.keyBuf) < maxKeyBufCacheSize {
-			keyBuf = i.keyBuf
-		}
-		if cap(i.prefixOrFullSeekKey) < maxKeyBufCacheSize {
-			prefixOrFullSeekKey = i.prefixOrFullSeekKey
-		}
-		for j := range i.boundsBuf {
-			if cap(i.boundsBuf[j]) < maxKeyBufCacheSize {
-				boundsBuf[j] = i.boundsBuf[j]
-			}
-		}
-		mergingIterHeapItems = alloc.merging.heap.items
-
-		// Reset the alloc struct, re-assign the fields that are being recycled, and
-		// then return it to the pool. Splitting the first two steps performs better
-		// than doing them in a single step (e.g. *alloc = iterAlloc{...}) because
-		// the compiler can avoid the use of a stack allocated autotmp iterAlloc
-		// variable (~12KB, as of Dec 2024), which must first be zeroed out, then
-		// assigned into, then copied over into the heap-allocated alloc. Instead,
-		// the two-step process allows the compiler to quickly zero out the heap
-		// allocated object and then assign the few fields we want to preserve.
-		//
-		// TODO(nvanbenschoten): even with this optimization, zeroing out the alloc
-		// struct still shows up in profiles because it is such a large struct. Can
-		// we do something better here? We are hanging 22 separated iterators off of
-		// the alloc struct (or more, depending on how you count), many of which are
-		// only used in a few cases. Can those iterators be responsible for zeroing
-		// out their own memory on Close, allowing us to assume that most of the
-		// alloc struct is already zeroed out by this point?
-		*alloc = iterAlloc{}
-		alloc.keyBuf = keyBuf
-		alloc.boundsBuf = boundsBuf
-		alloc.prefixOrFullSeekKey = prefixOrFullSeekKey
-		alloc.merging.heap.items = mergingIterHeapItems
-
-		iterAllocPool.Put(alloc)
+	alloc := i.alloc
+	if alloc == nil {
+		// NB: When the Iterator is used as a part of a Get(), Close() is called by
+		// getIterAlloc.Close which handles recycling the appropriate structure and
+		// fields.
+		return err
 	}
-	// NB: When the Iterator is used as a part of a Get(), Close() is called by
-	// getIterAlloc.Close which handles recycling the appropriate structure and
-	// fields.
+
+	// Reset the alloc struct, retaining any buffers within their maximum
+	// bounds, and return the iterAlloc struct to the pool.
+
+	// Avoid caching the key buf if it is overly large. The constant is fairly
+	// arbitrary.
+	if cap(i.keyBuf) < maxKeyBufCacheSize {
+		alloc.keyBuf = i.keyBuf
+	}
+	if cap(i.prefixOrFullSeekKey) < maxKeyBufCacheSize {
+		alloc.prefixOrFullSeekKey = i.prefixOrFullSeekKey
+	}
+	for j := range i.boundsBuf {
+		if cap(i.boundsBuf[j]) < maxKeyBufCacheSize {
+			alloc.boundsBuf[j] = i.boundsBuf[j]
+		}
+	}
+	mergingIterHeapItems := alloc.merging.heap.items
+
+	// We zero each field piecemeal in part to avoid the use of a stack
+	// allocated autotmp iterAlloc variable, and in part to make it easier
+	// to make zeroing conditional on whether the field was actually used.
+	//
+	// TODO(jackson,nvanbenschoten): Iterator.Close continues to appear in
+	// profiles in part because of this zeroing.
+	if i.batch != nil {
+		alloc.batchState = iteratorBatchState{}
+	}
+	alloc.dbi = Iterator{}
+	alloc.merging = mergingIter{}
+	alloc.merging.heap.items = mergingIterHeapItems
+	clear(alloc.mlevels[:])
+	clear(alloc.levels[:])
+	clear(alloc.levelsPositioned[:])
+
+	iterAllocPool.Put(alloc)
 	return err
 }
 
