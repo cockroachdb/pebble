@@ -36,8 +36,6 @@ type levelIter struct {
 	ctx      context.Context
 	logger   Logger
 	comparer *Comparer
-	cmp      Compare
-	split    Split
 	// The lower/upper bounds for iteration as specified at creation or the most
 	// recent call to SetBounds.
 	lower []byte
@@ -161,8 +159,6 @@ func (l *levelIter) init(
 	l.tableOpts.layer = l.layer
 	l.tableOpts.snapshotForHideObsoletePoints = opts.snapshotForHideObsoletePoints
 	l.comparer = comparer
-	l.cmp = comparer.Compare
-	l.split = comparer.Split
 	l.iterFile = nil
 	l.newIters = newIters
 	l.files = files
@@ -204,11 +200,11 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *manifest.TableMetadata, 
 		return
 	}
 
-	if l.upper != nil && l.cmp(file.RangeKeyBounds.SmallestUserKey(), l.upper) >= 0 {
+	if l.upper != nil && l.comparer.Compare(file.RangeKeyBounds.SmallestUserKey(), l.upper) >= 0 {
 		// Range key bounds are above the upper iteration bound.
 		return
 	}
-	if l.lower != nil && l.cmp(file.RangeKeyBounds.LargestUserKey(), l.lower) <= 0 {
+	if l.lower != nil && l.comparer.Compare(file.RangeKeyBounds.LargestUserKey(), l.lower) <= 0 {
 		// Range key bounds are below the lower iteration bound.
 		return
 	}
@@ -238,14 +234,14 @@ func (l *levelIter) maybeTriggerCombinedIteration(file *manifest.TableMetadata, 
 		if !l.combinedIterState.triggered {
 			l.combinedIterState.triggered = true
 			l.combinedIterState.key = file.RangeKeyBounds.SmallestUserKey()
-		} else if l.cmp(l.combinedIterState.key, file.RangeKeyBounds.SmallestUserKey()) > 0 {
+		} else if l.comparer.Compare(l.combinedIterState.key, file.RangeKeyBounds.SmallestUserKey()) > 0 {
 			l.combinedIterState.key = file.RangeKeyBounds.SmallestUserKey()
 		}
 	case -1:
 		if !l.combinedIterState.triggered {
 			l.combinedIterState.triggered = true
 			l.combinedIterState.key = file.RangeKeyBounds.LargestUserKey()
-		} else if l.cmp(l.combinedIterState.key, file.RangeKeyBounds.LargestUserKey()) < 0 {
+		} else if l.comparer.Compare(l.combinedIterState.key, file.RangeKeyBounds.LargestUserKey()) < 0 {
 			l.combinedIterState.key = file.RangeKeyBounds.LargestUserKey()
 		}
 	}
@@ -315,7 +311,7 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *manifest.Tab
 	if nextInsteadOfSeek {
 		m = l.iterFile
 	} else {
-		m = l.files.SeekGE(l.cmp, key)
+		m = l.files.SeekGE(l.comparer.Compare, key)
 	}
 	// The below loop has a bit of an unusual organization. There are several
 	// conditions under which we need to Next to a later file. If none of those
@@ -348,14 +344,14 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *manifest.Tab
 		//
 		// If the file does not contain point keys ≥ `key`, next to continue
 		// looking for a file that does.
-		if (m.HasRangeKeys || nextInsteadOfSeek) && l.cmp(m.PointKeyBounds.LargestUserKey(), key) < 0 {
+		if (m.HasRangeKeys || nextInsteadOfSeek) && l.comparer.Compare(m.PointKeyBounds.LargestUserKey(), key) < 0 {
 			// If nextInsteadOfSeek is set and nextsUntilSeek is non-negative,
 			// the iterator has been nexting hoping to discover the relevant
 			// file without seeking. It's exhausted the allotted nextsUntilSeek
 			// and should seek to the sought key.
 			if nextInsteadOfSeek && nextsUntilSeek == 0 {
 				nextInsteadOfSeek = false
-				m = l.files.SeekGE(l.cmp, key)
+				m = l.files.SeekGE(l.comparer.Compare, key)
 				continue
 			} else if nextsUntilSeek > 0 {
 				nextsUntilSeek--
@@ -374,7 +370,7 @@ func (l *levelIter) findFileGE(key []byte, flags base.SeekGEFlags) *manifest.Tab
 		// a table which can't possibly contain the target key and is required
 		// for correctness by mergingIter.SeekGE (see the comment in that
 		// function).
-		if m.PointKeyBounds.Largest().IsExclusiveSentinel() && l.cmp(m.PointKeyBounds.LargestUserKey(), key) == 0 {
+		if m.PointKeyBounds.Largest().IsExclusiveSentinel() && l.comparer.Compare(m.PointKeyBounds.LargestUserKey(), key) == 0 {
 			m = l.files.Next()
 			continue
 		}
@@ -406,7 +402,7 @@ func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *manifest.Tab
 	if prevInsteadOfSeek {
 		m = l.iterFile
 	} else {
-		m = l.files.SeekLT(l.cmp, key)
+		m = l.files.SeekLT(l.comparer.Compare, key)
 	}
 	// The below loop has a bit of an unusual organization. There are several
 	// conditions under which we need to Prev to a previous file. If none of
@@ -439,7 +435,7 @@ func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *manifest.Tab
 		//
 		// If the file does not contain point keys < `key`, prev to continue
 		// looking for a file that does.
-		if (m.HasRangeKeys || prevInsteadOfSeek) && l.cmp(m.PointKeyBounds.SmallestUserKey(), key) >= 0 {
+		if (m.HasRangeKeys || prevInsteadOfSeek) && l.comparer.Compare(m.PointKeyBounds.SmallestUserKey(), key) >= 0 {
 			m = l.files.Prev()
 			continue
 		}
@@ -456,11 +452,11 @@ func (l *levelIter) findFileLT(key []byte, flags base.SeekLTFlags) *manifest.Tab
 func (l *levelIter) initTableBounds(f *manifest.TableMetadata) int {
 	l.tableOpts.LowerBound = l.lower
 	if l.tableOpts.LowerBound != nil {
-		if l.cmp(f.PointKeyBounds.LargestUserKey(), l.tableOpts.LowerBound) < 0 {
+		if l.comparer.Compare(f.PointKeyBounds.LargestUserKey(), l.tableOpts.LowerBound) < 0 {
 			// The largest key in the sstable is smaller than the lower bound.
 			return -1
 		}
-		if l.cmp(l.tableOpts.LowerBound, f.PointKeyBounds.SmallestUserKey()) <= 0 {
+		if l.comparer.Compare(l.tableOpts.LowerBound, f.PointKeyBounds.SmallestUserKey()) <= 0 {
 			// The lower bound is smaller or equal to the smallest key in the
 			// table. Iteration within the table does not need to check the lower
 			// bound.
@@ -469,12 +465,12 @@ func (l *levelIter) initTableBounds(f *manifest.TableMetadata) int {
 	}
 	l.tableOpts.UpperBound = l.upper
 	if l.tableOpts.UpperBound != nil {
-		if l.cmp(f.PointKeyBounds.SmallestUserKey(), l.tableOpts.UpperBound) >= 0 {
+		if l.comparer.Compare(f.PointKeyBounds.SmallestUserKey(), l.tableOpts.UpperBound) >= 0 {
 			// The smallest key in the sstable is greater than or equal to the upper
 			// bound.
 			return 1
 		}
-		if l.cmp(l.tableOpts.UpperBound, f.PointKeyBounds.LargestUserKey()) > 0 {
+		if l.comparer.Compare(l.tableOpts.UpperBound, f.PointKeyBounds.LargestUserKey()) > 0 {
 			// The upper bound is greater than the largest key in the
 			// table. Iteration within the table does not need to check the upper
 			// bound. NB: tableOpts.UpperBound is exclusive and f.PointKeyBounds.Largest() is
@@ -564,7 +560,7 @@ func (l *levelIter) loadFile(file *manifest.TableMetadata, dir int) loadFileRetu
 		// any keys within the iteration prefix. Loading the next file is
 		// unnecessary. This has been observed in practice on slow shared
 		// storage. See #3575.
-		if l.prefix != nil && l.cmp(l.split.Prefix(file.PointKeyBounds.SmallestUserKey()), l.prefix) > 0 {
+		if l.prefix != nil && l.comparer.Compare(l.comparer.Split.Prefix(file.PointKeyBounds.SmallestUserKey()), l.prefix) > 0 {
 			// Note that because l.iter is nil, a subsequent call to
 			// SeekPrefixGE with TrySeekUsingNext()=true will load the file
 			// (returning newFileLoaded) and disable TrySeekUsingNext before
@@ -625,10 +621,10 @@ func (l *levelIter) verify(kv *base.InternalKV) *base.InternalKV {
 		// We allow returning a boundary key that is outside of the lower/upper
 		// bounds as such keys are always range tombstones which will be skipped
 		// by the Iterator.
-		if l.lower != nil && kv != nil && !kv.K.IsExclusiveSentinel() && l.cmp(kv.K.UserKey, l.lower) < 0 {
+		if l.lower != nil && kv != nil && !kv.K.IsExclusiveSentinel() && l.comparer.Compare(kv.K.UserKey, l.lower) < 0 {
 			l.logger.Fatalf("levelIter %s: lower bound violation: %s < %s\n%s", l.layer, kv, l.lower, debug.Stack())
 		}
-		if l.upper != nil && kv != nil && !kv.K.IsExclusiveSentinel() && l.cmp(kv.K.UserKey, l.upper) > 0 {
+		if l.upper != nil && kv != nil && !kv.K.IsExclusiveSentinel() && l.comparer.Compare(kv.K.UserKey, l.upper) > 0 {
 			l.logger.Fatalf("levelIter %s: upper bound violation: %s > %s\n%s", l.layer, kv, l.upper, debug.Stack())
 		}
 	}
@@ -636,7 +632,7 @@ func (l *levelIter) verify(kv *base.InternalKV) *base.InternalKV {
 }
 
 func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	if invariants.Enabled && l.lower != nil && l.cmp(key, l.lower) < 0 {
+	if invariants.Enabled && l.lower != nil && l.comparer.Compare(key, l.lower) < 0 {
 		panic(errors.AssertionFailedf("levelIter SeekGE to key %q violates lower bound %q", key, l.lower))
 	}
 
@@ -662,7 +658,7 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 }
 
 func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	if invariants.Enabled && l.lower != nil && l.cmp(key, l.lower) < 0 {
+	if invariants.Enabled && l.lower != nil && l.comparer.Compare(key, l.lower) < 0 {
 		panic(errors.AssertionFailedf("levelIter SeekGE to key %q violates lower bound %q", key, l.lower))
 	}
 	l.err = nil // clear cached iteration error
@@ -691,7 +687,7 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 }
 
 func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
-	if invariants.Enabled && l.upper != nil && l.cmp(key, l.upper) > 0 {
+	if invariants.Enabled && l.upper != nil && l.comparer.Compare(key, l.upper) > 0 {
 		panic(errors.AssertionFailedf("levelIter SeekLT to key %q violates upper bound %q", key, l.upper))
 	}
 
@@ -853,7 +849,7 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 		// subsequent SeekPrefixGE with TrySeekUsingNext could mistakenly skip
 		// the file's relevant keys.
 		if l.prefix != nil {
-			if l.cmp(l.split.Prefix(l.iterFile.PointKeyBounds.LargestUserKey()), l.prefix) > 0 {
+			if l.comparer.Compare(l.comparer.Split.Prefix(l.iterFile.PointKeyBounds.LargestUserKey()), l.prefix) > 0 {
 				l.exhaustedForward()
 				return nil
 			}
