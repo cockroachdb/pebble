@@ -708,18 +708,19 @@ func tableTombstoneCompensation(t *manifest.TableMetadata) uint64 {
 }
 
 // tableCompensatedSize returns t's size, including an estimate of the physical
-// size of its external references, and inflated according to compaction
+// size of its hot external references, and inflated according to compaction
 // priorities.
 func tableCompensatedSize(t *manifest.TableMetadata) uint64 {
 	// Add in the estimate of disk space that may be reclaimed by compacting the
 	// table's tombstones.
-	return t.Size + t.EstimatedReferenceSize() + tableTombstoneCompensation(t)
+	return t.Size + t.EstimatedHotReferenceSize() + tableTombstoneCompensation(t)
 }
 
 // totalCompensatedSize computes the compensated size over a table metadata
-// iterator. Note that this function is linear in the files available to the
-// iterator. Use the compensatedSizeAnnotator if querying the total
-// compensated size of a level.
+// iterator, ignoring cold blob files. Note that this function is linear in
+// the files available to the iterator. Use the
+// {point,range}DeletionsByteEstimateAnnotator to query the total compensated
+// size of a level.
 func totalCompensatedSize(iter iter.Seq[*manifest.TableMetadata]) uint64 {
 	var sz uint64
 	for f := range iter {
@@ -750,7 +751,8 @@ type compactionPickerByScore struct {
 	// levelMaxBytes holds the dynamically adjusted max bytes setting for each
 	// level.
 	levelMaxBytes [numLevels]int64
-	dbSizeBytes   uint64
+	// dbSizeBytes includes cold tier bytes.
+	dbSizeBytes uint64
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -781,8 +783,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt() uint64 {
 
 	// We assume that all the bytes in L0 need to be compacted to Lbase. This is
 	// unlike the RocksDB logic that figures out whether L0 needs compaction.
-	bytesAddedToNextLevel := p.vers.Levels[0].AggregateSize()
-	lbaseSize := p.vers.Levels[p.baseLevel].AggregateSize()
+	bytesAddedToNextLevel := p.vers.Levels[0].AggregateHotSize()
+	lbaseSize := p.vers.Levels[p.baseLevel].AggregateHotSize()
 
 	var compactionDebt uint64
 	if bytesAddedToNextLevel > 0 && lbaseSize > 0 {
@@ -795,8 +797,8 @@ func (p *compactionPickerByScore) estimatedCompactionDebt() uint64 {
 	// loop invariant: At the beginning of the loop, bytesAddedToNextLevel is the
 	// bytes added to `level` in the loop.
 	for level := p.baseLevel; level < numLevels-1; level++ {
-		levelSize := p.vers.Levels[level].AggregateSize() + bytesAddedToNextLevel
-		nextLevelSize := p.vers.Levels[level+1].AggregateSize()
+		levelSize := p.vers.Levels[level].AggregateHotSize() + bytesAddedToNextLevel
+		nextLevelSize := p.vers.Levels[level+1].AggregateHotSize()
 		if levelSize > uint64(p.levelMaxBytes[level]) {
 			bytesAddedToNextLevel = levelSize - uint64(p.levelMaxBytes[level])
 			if nextLevelSize > 0 {
@@ -836,13 +838,14 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 
 	// Determine the first non-empty level and the total DB size.
 	firstNonEmptyLevel := -1
-	var dbSize uint64
+	var dbHotSize, dbAllTiersSize uint64
 	for level := 1; level < numLevels; level++ {
 		if p.vers.Levels[level].AggregateSize() > 0 {
 			if firstNonEmptyLevel == -1 {
 				firstNonEmptyLevel = level
 			}
-			dbSize += p.vers.Levels[level].AggregateSize()
+			dbHotSize += p.vers.Levels[level].AggregateHotSize()
+			dbAllTiersSize += p.vers.Levels[level].AggregateSize()
 		}
 	}
 	for _, c := range inProgressCompactions {
@@ -861,9 +864,10 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		p.levelMaxBytes[level] = math.MaxInt64
 	}
 
-	dbSizeBelowL0 := dbSize
-	dbSize += p.vers.Levels[0].AggregateSize()
-	p.dbSizeBytes = dbSize
+	dbSizeBelowL0 := dbAllTiersSize
+	dbHotSize += p.vers.Levels[0].AggregateHotSize()
+	dbAllTiersSize += p.vers.Levels[0].AggregateSize()
+	p.dbSizeBytes = dbAllTiersSize
 	if dbSizeBelowL0 == 0 {
 		// No levels for L1 and up contain any data. Target L0 compactions for the
 		// last level or to the level to which there is an ongoing L0 compaction.
@@ -874,7 +878,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		return
 	}
 
-	bottomLevelSize := dbSize - dbSize/uint64(p.opts.Experimental.LevelMultiplier)
+	bottomLevelSize := dbHotSize - dbHotSize/uint64(p.opts.Experimental.LevelMultiplier)
 
 	curLevelSize := bottomLevelSize
 	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
@@ -954,7 +958,7 @@ func calculateSizeAdjust(inProgressCompactions []compactionInfo) [numLevels]leve
 		}
 
 		for _, input := range c.inputs {
-			actualSize := input.files.AggregateSizeSum()
+			actualSize := input.files.AggregateHotSizeSum()
 			compensatedSize := totalCompensatedSize(input.files.All())
 
 			if input.level != c.outputLevel {
@@ -987,9 +991,13 @@ func (p *compactionPickerByScore) calculateLevelScores(
 	}
 	sizeAdjust := calculateSizeAdjust(inProgressCompactions)
 	for level := 1; level < numLevels; level++ {
+		// NB: the deletions may be to data in cold blob files referenced by lower
+		// levels. We still want to inflate this level, since we want to compact
+		// these dels down so they reach the level where the references are.
 		compensatedLevelSize :=
-			// Actual file size.
-			p.vers.Levels[level].AggregateSize() +
+			// Actual file size. Exclude cold data referenced by this level, since
+			// we are in no hurry to compact the references down.
+			p.vers.Levels[level].AggregateHotSize() +
 				// Point deletions.
 				*pointDeletionsBytesEstimateAnnotator.LevelAnnotation(p.vers.Levels[level]) +
 				// Range deletions.
@@ -997,7 +1005,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 				// Adjustments for in-progress compactions.
 				sizeAdjust[level].compensated()
 		scores[level].compensatedFillFactor = float64(compensatedLevelSize) / float64(p.levelMaxBytes[level])
-		scores[level].fillFactor = float64(p.vers.Levels[level].AggregateSize()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
+		scores[level].fillFactor = float64(p.vers.Levels[level].AggregateHotSize()+sizeAdjust[level].actual()) / float64(p.levelMaxBytes[level])
 	}
 
 	// Adjust each level's fill factor by the fill factor of the next level to get

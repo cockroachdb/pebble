@@ -41,6 +41,17 @@ type BlobReference struct {
 	// size according to the ValueSize of the blob reference relative to the
 	// total ValueSize of the blob file.
 	EstimatedPhysicalSize uint64
+	// Tier is the storage tier in which the referenced blob file resides. NB:
+	// not serialized in the VersionEdit. Like EstimatedPhysicalSize, this is
+	// populated via MakeBlobReference.
+	//
+	// TODO(sumeer): it is wasteful from a memory perspective to track this in
+	// each reference. Additionally, this prevents copying a blob from hot to
+	// cold storage or vice versa -- though there are other things like
+	// different histograms for hot and cold blob references stores in the
+	// sstable's tiering histogram block that also prevent such copying. See if
+	// we can improve this.
+	Tier base.StorageTier
 }
 
 // MakeBlobReference creates a BlobReference from the given file ID, value size,
@@ -68,6 +79,7 @@ func MakeBlobReference(
 		//
 		// We perform the multiplication first to avoid floating point arithmetic.
 		EstimatedPhysicalSize: (valueSize * phys.Size) / phys.ValueSize,
+		Tier:                  phys.Tier,
 	}
 }
 
@@ -124,6 +136,8 @@ type PhysicalBlobFile struct {
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
 	// UTC).
 	CreationTime uint64
+	// Tier is the storage tier in which the blob file resides.
+	Tier base.StorageTier
 
 	// Mutable state
 
