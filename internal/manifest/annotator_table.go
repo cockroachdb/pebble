@@ -10,19 +10,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
-// The TableAnnotator type defined below is used by other packages to lazily
-// compute a value over a B-Tree. Each node of the B-Tree stores one
-// `annotation` per annotator, containing the result of the computation over
-// the node's subtree.
-//
-// An annotation is marked as valid if it's current with the current subtree
-// state. Annotations are marked as invalid whenever a node will be mutated
-// (in mut).  Annotators may also return `false` from `Accumulate` to signal
-// that a computation for a file is not stable and may change in the future.
-// Annotations that include these unstable values are also marked as invalid
-// on the node, ensuring that future queries for the annotation will recompute
-// the value.
-
 // A TableAnnotator defines a computation over a level's TableMetadata. If the
 // computation is stable and uses inputs that are fixed for the lifetime of a
 // TableMetadata, the LevelMetadata's internal data structures are annotated

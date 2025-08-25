@@ -442,7 +442,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
-	d.mu.fileSizeAnnotator = d.makeFileSizeAnnotator()
+	d.fileSizeAnnotator = d.makeFileSizeAnnotator()
 
 	var previousOptionsFileNum base.DiskFileNum
 	var previousOptionsFilename string

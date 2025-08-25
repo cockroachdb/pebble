@@ -36,8 +36,6 @@ type BlobFileAnnotatorFuncs[T any] struct {
 
 // Annotation calculates the annotation defined by this BlobFileAnnotator for
 // all blob files in the given set.
-// A pointer to the TableAnnotator is used as the key for pre-calculated values,
-// so the same TableAnnotator must be used to avoid duplicate computation.
 func (a *BlobFileAnnotator[T]) Annotation(blobFiles *BlobFileSet) T {
 	if blobFiles.tree.Count() == 0 {
 		var zero T
