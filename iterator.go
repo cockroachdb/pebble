@@ -201,7 +201,7 @@ type Iterator struct {
 	ctx       context.Context
 	opts      IterOptions
 	merge     Merge
-	comparer  base.Comparer
+	comparer  *base.Comparer
 	iter      internalIterator
 	pointIter topLevelIterator
 	// Either readState or version is set, but not both.

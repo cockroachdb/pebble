@@ -462,7 +462,7 @@ func TestGetIter(t *testing.T) {
 			}
 
 			i := &buf.dbi
-			i.comparer = *testkeys.Comparer
+			i.comparer = testkeys.Comparer
 			i.merge = DefaultMerger.Merge
 			i.iter = get
 

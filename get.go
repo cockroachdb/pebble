@@ -115,7 +115,7 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		iter:      pointIter,
 		pointIter: pointIter,
 		merge:     d.merge,
-		comparer:  *d.opts.Comparer,
+		comparer:  d.opts.Comparer,
 		readState: readState,
 		keyBuf:    buf.keyBuf,
 	}
