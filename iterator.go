@@ -2454,6 +2454,7 @@ func (i *Iterator) Close() error {
 	}
 	alloc.dbi = Iterator{}
 	alloc.merging = mergingIter{}
+	clear(mergingIterHeapItems[:cap(mergingIterHeapItems)])
 	alloc.merging.heap.items = mergingIterHeapItems
 	clear(alloc.mlevels[:])
 	clear(alloc.levels[:])
@@ -2861,7 +2862,7 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	}
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	buf := iterAllocPool.Get().(*iterAlloc)
+	buf := newIterAlloc()
 	dbi := &buf.dbi
 	*dbi = Iterator{
 		ctx:                 ctx,
