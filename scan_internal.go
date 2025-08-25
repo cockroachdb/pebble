@@ -130,12 +130,13 @@ func (s *SharedSSTMeta) cloneFromFileMeta(f *manifest.TableMetadata) {
 // creator ID was set (as creator IDs are necessary to enable shared storage)
 // resulting in some lower level SSTs being on non-shared storage. Skip-shared
 // iteration is invalid in those cases.
-func (d *DB) ScanInternal(ctx context.Context, opts ScanInternalOptions) error {
-	iter, err := d.newInternalIter(ctx, snapshotIterOpts{} /* snapshot */, &opts)
+func (d *DB) ScanInternal(ctx context.Context, opts ScanInternalOptions) (err error) {
+	var iter *scanInternalIterator
+	iter, err = d.newInternalIter(ctx, snapshotIterOpts{} /* snapshot */, &opts)
 	if err != nil {
 		return err
 	}
-	defer iter.close()
+	defer func() { err = errors.CombineErrors(err, iter.Close()) }()
 	return scanInternalImpl(ctx, iter, &opts)
 }
 
@@ -1277,10 +1278,10 @@ func (i *scanInternalIterator) error() error {
 	return i.iter.Error()
 }
 
-// close closes this iterator, and releases any pooled objects.
-func (i *scanInternalIterator) close() {
-	_ = i.iter.Close()
-	_ = i.blobValueFetcher.Close()
+// Close closes this iterator, and releases any pooled objects.
+func (i *scanInternalIterator) Close() error {
+	err := i.iter.Close()
+	err = errors.CombineErrors(err, i.blobValueFetcher.Close())
 	if i.readState != nil {
 		i.readState.unref()
 	}
@@ -1311,6 +1312,7 @@ func (i *scanInternalIterator) close() {
 		iterAllocPool.Put(alloc)
 		i.alloc = nil
 	}
+	return err
 }
 
 func (i *scanInternalIterator) initializeBoundBufs(lower, upper []byte) {
