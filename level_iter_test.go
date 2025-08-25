@@ -422,7 +422,7 @@ func (i *levelIterTestIter) rangeDelSeek(
 		var t *keyspan.Span
 		var err error
 		if dir < 0 {
-			t, err = keyspan.SeekLE(i.levelIter.cmp, i.rangeDelIter, key)
+			t, err = keyspan.SeekLE(i.levelIter.comparer.Compare, i.rangeDelIter, key)
 		} else {
 			t, err = i.rangeDelIter.SeekGE(key)
 		}
