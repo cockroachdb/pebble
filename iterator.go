@@ -241,7 +241,6 @@ type Iterator struct {
 	// called. In that case, it is explicitly set to nil.
 	iterKV              *base.InternalKV
 	alloc               *iterAlloc
-	getIterAlloc        *getIterAlloc
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 	stats               IteratorStats
@@ -2452,17 +2451,10 @@ func (i *Iterator) Close() error {
 		alloc.merging.heap.items = mergingIterHeapItems
 
 		iterAllocPool.Put(alloc)
-	} else if alloc := i.getIterAlloc; alloc != nil {
-		if cap(i.keyBuf) >= maxKeyBufCacheSize {
-			alloc.keyBuf = nil
-		} else {
-			alloc.keyBuf = i.keyBuf
-		}
-		*alloc = getIterAlloc{
-			keyBuf: alloc.keyBuf,
-		}
-		getIterAllocPool.Put(alloc)
 	}
+	// NB: When the Iterator is used as a part of a Get(), Close() is called by
+	// getIterAlloc.Close which handles recycling the appropriate structure and
+	// fields.
 	return err
 }
 
