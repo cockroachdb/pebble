@@ -181,7 +181,7 @@ func (d *DB) newInternalIter(
 
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	buf := iterAllocPool.Get().(*iterAlloc)
+	buf := newIterAlloc()
 	dbi := &scanInternalIterator{
 		ctx:             ctx,
 		db:              d,
@@ -1309,6 +1309,7 @@ func (i *scanInternalIterator) Close() error {
 			boundsBuf:           alloc.boundsBuf,
 			prefixOrFullSeekKey: alloc.prefixOrFullSeekKey[:0],
 		}
+		alloc.maybeAssertZeroed()
 		iterAllocPool.Put(alloc)
 		i.alloc = nil
 	}

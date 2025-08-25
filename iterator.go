@@ -2459,6 +2459,7 @@ func (i *Iterator) Close() error {
 	clear(alloc.levels[:])
 	clear(alloc.levelsPositioned[:])
 
+	alloc.maybeAssertZeroed()
 	iterAllocPool.Put(alloc)
 	return err
 }
@@ -2861,7 +2862,7 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	}
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	buf := iterAllocPool.Get().(*iterAlloc)
+	buf := newIterAlloc()
 	dbi := &buf.dbi
 	*dbi = Iterator{
 		ctx:                 ctx,
