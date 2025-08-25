@@ -20,7 +20,7 @@ import (
 // i.rangeKey.rangeKeyIter with the resulting iterator.
 func (i *Iterator) constructRangeKeyIter() {
 	i.rangeKey.rangeKeyIter = i.rangeKey.iterConfig.Init(
-		&i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
+		i.comparer, i.seqNum, i.opts.LowerBound, i.opts.UpperBound,
 		&i.hasPrefix, &i.prefixOrFullSeekKey, false /* internalKeys */, &i.rangeKey.rangeKeyBuffers.internal)
 
 	if i.opts.DebugRangeKeyStack {
@@ -562,7 +562,7 @@ func (i *lazyCombinedIter) initCombinedIteration(
 
 	// Initialize the Iterator's interleaving iterator.
 	i.parent.rangeKey.iiter.Init(
-		&i.parent.comparer, i.parent.pointIter, i.parent.rangeKey.rangeKeyIter,
+		i.parent.comparer, i.parent.pointIter, i.parent.rangeKey.rangeKeyIter,
 		keyspan.InterleavingIterOpts{
 			Mask:       &i.parent.rangeKeyMasking,
 			LowerBound: i.parent.opts.LowerBound,

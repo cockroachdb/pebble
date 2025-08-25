@@ -1010,7 +1010,7 @@ func (d *DB) newIter(
 		ctx:                 ctx,
 		alloc:               buf,
 		merge:               d.merge,
-		comparer:            *d.opts.Comparer,
+		comparer:            d.opts.Comparer,
 		readState:           readState,
 		version:             newIterOpts.snapshot.vers,
 		keyBuf:              buf.keyBuf,
@@ -1074,7 +1074,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 	}
 
 	if dbi.opts.rangeKeys() {
-		dbi.rangeKeyMasking.init(dbi, &dbi.comparer)
+		dbi.rangeKeyMasking.init(dbi, dbi.comparer)
 
 		// When iterating over both point and range keys, don't create the
 		// range-key iterator stack immediately if we can avoid it. This
@@ -1129,7 +1129,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 			// NB: The interleaving iterator is always reinitialized, even if
 			// dbi already had an initialized range key iterator, in case the point
 			// iterator changed or the range key masking suffix changed.
-			dbi.rangeKey.iiter.Init(&dbi.comparer, dbi.iter, dbi.rangeKey.rangeKeyIter,
+			dbi.rangeKey.iiter.Init(dbi.comparer, dbi.iter, dbi.rangeKey.rangeKeyIter,
 				keyspan.InterleavingIterOpts{
 					Mask:       &dbi.rangeKeyMasking,
 					LowerBound: dbi.opts.LowerBound,
@@ -1260,7 +1260,7 @@ func (i *Iterator) constructPointIter(
 		addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Layer) {
 			li := &levels[levelsIndex]
 
-			li.init(ctx, i.opts, &i.comparer, i.newIters, files, level, internalOpts)
+			li.init(ctx, i.opts, i.comparer, i.newIters, files, level, internalOpts)
 			li.initRangeDel(&mlevels[mlevelsIndex])
 			li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
 			mlevels[mlevelsIndex].levelIter = li

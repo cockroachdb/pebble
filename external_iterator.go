@@ -71,7 +71,7 @@ func NewExternalIterWithContext(
 		ctx:                 ctx,
 		alloc:               buf,
 		merge:               o.Merger.Merge,
-		comparer:            *o.Comparer,
+		comparer:            o.Comparer,
 		readState:           nil,
 		keyBuf:              buf.keyBuf,
 		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
@@ -236,7 +236,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 	it.iter = it.pointIter
 
 	if it.opts.rangeKeys() {
-		it.rangeKeyMasking.init(it, &it.comparer)
+		it.rangeKeyMasking.init(it, it.comparer)
 		var rangeKeyIters []keyspan.FragmentIterator
 		if it.rangeKey == nil {
 			// We could take advantage of the lack of overlaps in range keys within
@@ -272,7 +272,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 			if len(rangeKeyIters) > 0 {
 				it.rangeKey = iterRangeKeyStateAllocPool.Get().(*iteratorRangeKeyState)
 				it.rangeKey.rangeKeyIter = it.rangeKey.iterConfig.Init(
-					&it.comparer,
+					it.comparer,
 					base.SeqNumMax,
 					it.opts.LowerBound, it.opts.UpperBound,
 					&it.hasPrefix, &it.prefixOrFullSeekKey,
@@ -284,7 +284,7 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 			}
 		}
 		if it.rangeKey != nil {
-			it.rangeKey.iiter.Init(&it.comparer, it.iter, it.rangeKey.rangeKeyIter,
+			it.rangeKey.iiter.Init(it.comparer, it.iter, it.rangeKey.rangeKeyIter,
 				keyspan.InterleavingIterOpts{
 					Mask:       &it.rangeKeyMasking,
 					LowerBound: it.opts.LowerBound,
