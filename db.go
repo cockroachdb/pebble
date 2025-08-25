@@ -505,8 +505,9 @@ type DB struct {
 			// validating is set to true when validation is running.
 			validating bool
 		}
-		fileSizeAnnotator manifest.TableAnnotator[fileSizeByBacking]
 	}
+
+	fileSizeAnnotator manifest.TableAnnotator[fileSizeByBacking]
 
 	// problemSpans keeps track of spans of keys within LSM levels where
 	// compactions have failed; used to avoid retrying these compactions too
@@ -1506,16 +1507,13 @@ func (d *DB) Close() error {
 	// Wait for all cleaning jobs to finish.
 	d.cleanupManager.Close()
 
-	// Sanity check metrics.
+	d.mu.Lock()
+	// Sanity check compaction metrics.
 	if invariants.Enabled {
-		m := d.Metrics()
-		if m.Compact.NumInProgress > 0 || m.Compact.InProgressBytes > 0 {
-			d.mu.Lock()
-			panic(fmt.Sprintf("invalid metrics on close:\n%s", m))
+		if d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.versions.atomicInProgressBytes.Load() > 0 {
+			panic("compacting counts not 0 on close")
 		}
 	}
-
-	d.mu.Lock()
 
 	// As a sanity check, ensure that there are no zombie tables or blob files.
 	// A non-zero count hints at a reference count leak.
@@ -1794,6 +1792,9 @@ func (d *DB) Metrics() *Metrics {
 
 	d.mu.Lock()
 	vers := d.mu.versions.currentVersion()
+	vers.Ref()
+	defer vers.Unref()
+
 	*metrics = d.mu.versions.metrics
 	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt()
 	metrics.Compact.InProgressBytes = d.mu.versions.atomicInProgressBytes.Load()
@@ -1876,15 +1877,6 @@ func (d *DB) Metrics() *Metrics {
 	metrics.BlobFiles.ObsoleteSize += pendingObsoleteFileStats.blobFilesAll.size
 	metrics.private.optionsFileSize = d.optionsFileSize
 
-	// TODO(jackson): Consider making these metrics optional.
-	aggProps := tablePropsAnnotator.MultiLevelAnnotation(vers.Levels[:])
-	metrics.Keys.RangeKeySetsCount = aggProps.NumRangeKeySets
-	metrics.Keys.TombstoneCount = aggProps.NumDeletions
-
-	delBytes := deletionBytesAnnotator.MultiLevelAnnotation(vers.Levels[:])
-	metrics.Table.Garbage.PointDeletionsBytesEstimate = delBytes.PointDels
-	metrics.Table.Garbage.RangeDeletionsBytesEstimate = delBytes.RangeDels
-
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
 	backingCount, backingTotalSize := d.mu.versions.latest.virtualBackings.Stats()
@@ -1909,6 +1901,17 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Table.PendingStatsCollectionCount = int64(len(d.mu.tableStats.pending))
 	metrics.Table.InitialStatsCollectionComplete = d.mu.tableStats.loadedInitial
 
+	d.mu.Unlock()
+
+	// TODO(jackson): Consider making these metrics optional.
+	aggProps := tablePropsAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	metrics.Keys.RangeKeySetsCount = aggProps.NumRangeKeySets
+	metrics.Keys.TombstoneCount = aggProps.NumDeletions
+
+	delBytes := deletionBytesAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	metrics.Table.Garbage.PointDeletionsBytesEstimate = delBytes.PointDels
+	metrics.Table.Garbage.RangeDeletionsBytesEstimate = delBytes.RangeDels
+
 	for i := 0; i < numLevels; i++ {
 		aggProps := tablePropsAnnotator.LevelAnnotation(vers.Levels[i])
 		metrics.Levels[i].Additional.ValueBlocksSize = aggProps.ValueBlocksSize
@@ -1917,8 +1920,6 @@ func (d *DB) Metrics() *Metrics {
 
 	blobCompressionMetrics := blobCompressionStatsAnnotator.Annotation(&vers.BlobFiles)
 	metrics.BlobFiles.Compression.MergeWith(&blobCompressionMetrics)
-
-	d.mu.Unlock()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
 	metrics.FileCache, metrics.Filter = d.fileCache.Metrics()
