@@ -2692,8 +2692,7 @@ type ScanStatisticsOptions struct {
 // key span [lower, upper) as well as the number of snapshot keys.
 func (d *DB) ScanStatistics(
 	ctx context.Context, lower, upper []byte, opts ScanStatisticsOptions,
-) (LSMKeyStatistics, error) {
-	stats := LSMKeyStatistics{}
+) (stats LSMKeyStatistics, err error) {
 	var prevKey InternalKey
 	var rateLimitFunc func(key *InternalKey, val LazyValue) error
 	tb := tokenbucket.TokenBucket{}
@@ -2763,14 +2762,12 @@ func (d *DB) ScanStatistics(
 	if err != nil {
 		return LSMKeyStatistics{}, err
 	}
-	defer iter.close()
+	defer func() { err = errors.CombineErrors(err, iter.Close()) }()
 
 	err = scanInternalImpl(ctx, iter, scanInternalOpts)
-
 	if err != nil {
 		return LSMKeyStatistics{}, err
 	}
-
 	return stats, nil
 }
 

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -72,15 +73,16 @@ func (s *Snapshot) NewIterWithContext(ctx context.Context, o *IterOptions) (*Ite
 //
 // See comment on db.ScanInternal for the behaviour that can be expected of
 // point keys deleted by range dels and keys masked by range keys.
-func (s *Snapshot) ScanInternal(ctx context.Context, opts ScanInternalOptions) error {
+func (s *Snapshot) ScanInternal(ctx context.Context, opts ScanInternalOptions) (err error) {
 	if s.db == nil {
 		panic(ErrClosed)
 	}
-	iter, err := s.db.newInternalIter(ctx, snapshotIterOpts{seqNum: s.seqNum}, &opts)
+	var iter *scanInternalIterator
+	iter, err = s.db.newInternalIter(ctx, snapshotIterOpts{seqNum: s.seqNum}, &opts)
 	if err != nil {
 		return err
 	}
-	defer iter.close()
+	defer func() { err = errors.CombineErrors(err, iter.Close()) }()
 	return scanInternalImpl(ctx, iter, &opts)
 }
 
@@ -449,7 +451,7 @@ func (es *EventuallyFileOnlySnapshot) NewIterWithContext(
 // point keys deleted by range dels and keys masked by range keys.
 func (es *EventuallyFileOnlySnapshot) ScanInternal(
 	ctx context.Context, opts ScanInternalOptions,
-) error {
+) (err error) {
 	if es.db == nil {
 		panic(ErrClosed)
 	}
@@ -467,10 +469,11 @@ func (es *EventuallyFileOnlySnapshot) ScanInternal(
 		}
 	}
 	es.mu.Unlock()
-	iter, err := es.db.newInternalIter(ctx, sOpts, &opts)
+	var iter *scanInternalIterator
+	iter, err = es.db.newInternalIter(ctx, sOpts, &opts)
 	if err != nil {
 		return err
 	}
-	defer iter.close()
+	defer func() { err = errors.CombineErrors(err, iter.Close()) }()
 	return scanInternalImpl(ctx, iter, &opts)
 }
