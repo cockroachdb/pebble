@@ -16,11 +16,9 @@ import (
 // equal to the number of files included in the annotation. Particularly, it
 // can be used to efficiently calculate the number of files in a given key
 // range using range annotations.
-var NumFilesAnnotator = NewTableAnnotator[uint64](SumAggregator[uint64]{
-	AddFunc: func(src, dst *uint64) { *dst += *src },
-	AccumulateFunc: func(f *TableMetadata) (uint64, bool) {
-		return 1, true
-	},
+var NumFilesAnnotator = MakeTableAnnotator[uint64](0 /* idx */, TableAnnotatorFuncs[uint64]{
+	Merge: func(dst *uint64, src uint64) { *dst += src },
+	Table: func(*TableMetadata) (_ uint64, cacheOK bool) { return 1, true },
 })
 
 // Creates a version with numFiles files in level 6.
@@ -48,7 +46,7 @@ func TestNumFilesAnnotator(t *testing.T) {
 
 	for i := 1; i <= count; i++ {
 		v.Levels[6].tree.Insert(newItem(key(i)))
-		numFiles := *NumFilesAnnotator.LevelAnnotation(v.Levels[6])
+		numFiles := NumFilesAnnotator.LevelAnnotation(v.Levels[6])
 		require.EqualValues(t, i, numFiles)
 	}
 }
@@ -57,14 +55,14 @@ func BenchmarkNumFilesAnnotator(b *testing.B) {
 	v, _ := makeTestVersion(0)
 	for i := 1; i <= b.N; i++ {
 		v.Levels[6].tree.Insert(newItem(key(i)))
-		numFiles := *NumFilesAnnotator.LevelAnnotation(v.Levels[6])
+		numFiles := NumFilesAnnotator.LevelAnnotation(v.Levels[6])
 		require.EqualValues(b, uint64(i), numFiles)
 	}
 }
 
 func TestPickFileAggregator(t *testing.T) {
 	const count = 1000
-	a := NewTableAnnotator[TableMetadata](PickFileAggregator{
+	a := MakePickFileAnnotator(0 /* idx */, PickFileAnnotatorFuncs{
 		Filter: func(f *TableMetadata) (eligible bool, cacheOK bool) {
 			return true, true
 		},
@@ -97,7 +95,7 @@ func randomBounds(rng *rand.Rand, count int) base.UserKeyBounds {
 
 func requireMatchOverlaps(t *testing.T, v *Version, bounds base.UserKeyBounds) {
 	overlaps := v.Overlaps(6, bounds)
-	numFiles := *NumFilesAnnotator.LevelRangeAnnotation(v.cmp.Compare, v.Levels[6], bounds)
+	numFiles := NumFilesAnnotator.LevelRangeAnnotation(v.cmp.Compare, v.Levels[6], bounds)
 	require.EqualValues(t, overlaps.length, numFiles)
 }
 

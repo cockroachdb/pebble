@@ -84,31 +84,35 @@ func (d *DB) singleFileSizeByBacking(
 	return res, true
 }
 
+var fileSizeAnnotatorIdx = manifest.NewTableAnnotationIdx()
+
 // makeFileSizeAnnotator returns an annotator that computes the storage size of
 // files. When applicable, this includes both the sstable size and the size of
 // any referenced blob files.
-func (d *DB) makeFileSizeAnnotator() *manifest.TableAnnotator[fileSizeByBacking] {
-	return manifest.NewTableAnnotator[fileSizeByBacking](manifest.SumAggregator[fileSizeByBacking]{
-		AddFunc: func(src, dst *fileSizeByBacking) {
-			dst.totalSize += src.totalSize
-			dst.remoteSize += src.remoteSize
-			dst.externalSize += src.externalSize
-		},
-		AccumulateFunc: func(f *manifest.TableMetadata) (v fileSizeByBacking, cacheOK bool) {
-			return d.singleFileSizeByBacking(f.Size+f.EstimatedReferenceSize(), f)
-		},
-		AccumulatePartialOverlapFunc: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) fileSizeByBacking {
-			overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
-			if err != nil {
-				return fileSizeByBacking{}
-			}
-			overlapFraction := float64(overlappingFileSize) / float64(f.Size)
-			// Scale the blob reference size proportionally to the file
-			// overlap from the bounds to approximate only the blob
-			// references that overlap with the requested bounds.
-			size := overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
-			res, _ := d.singleFileSizeByBacking(size, f)
-			return res
-		},
-	})
+func (d *DB) makeFileSizeAnnotator() manifest.TableAnnotator[fileSizeByBacking] {
+	return manifest.MakeTableAnnotator[fileSizeByBacking](
+		fileSizeAnnotatorIdx,
+		manifest.TableAnnotatorFuncs[fileSizeByBacking]{
+			Merge: func(dst *fileSizeByBacking, src fileSizeByBacking) {
+				dst.totalSize += src.totalSize
+				dst.remoteSize += src.remoteSize
+				dst.externalSize += src.externalSize
+			},
+			Table: func(f *manifest.TableMetadata) (v fileSizeByBacking, cacheOK bool) {
+				return d.singleFileSizeByBacking(f.Size+f.EstimatedReferenceSize(), f)
+			},
+			PartialOverlap: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) fileSizeByBacking {
+				overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
+				if err != nil {
+					return fileSizeByBacking{}
+				}
+				overlapFraction := float64(overlappingFileSize) / float64(f.Size)
+				// Scale the blob reference size proportionally to the file
+				// overlap from the bounds to approximate only the blob
+				// references that overlap with the requested bounds.
+				size := overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
+				res, _ := d.singleFileSizeByBacking(size, f)
+				return res
+			},
+		})
 }
