@@ -505,7 +505,7 @@ type DB struct {
 			// validating is set to true when validation is running.
 			validating bool
 		}
-		fileSizeAnnotator *manifest.TableAnnotator[fileSizeByBacking]
+		fileSizeAnnotator manifest.TableAnnotator[fileSizeByBacking]
 	}
 
 	// problemSpans keeps track of spans of keys within LSM levels where
@@ -1916,7 +1916,7 @@ func (d *DB) Metrics() *Metrics {
 	}
 
 	blobCompressionMetrics := blobCompressionStatsAnnotator.Annotation(&vers.BlobFiles)
-	metrics.BlobFiles.Compression.MergeWith(blobCompressionMetrics)
+	metrics.BlobFiles.Compression.MergeWith(&blobCompressionMetrics)
 
 	d.mu.Unlock()
 

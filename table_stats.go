@@ -1079,21 +1079,24 @@ type deletionBytes struct {
 	RangeDels uint64
 }
 
-var deletionBytesAnnotator = manifest.NewTableAnnotator[deletionBytes](manifest.SumAggregator[deletionBytes]{
-	AddFunc: func(src, dst *deletionBytes) {
-		dst.PointDels += src.PointDels
-		dst.RangeDels += src.RangeDels
+var deletionBytesAnnotator = manifest.MakeTableAnnotator[deletionBytes](
+	manifest.NewTableAnnotationIdx(),
+	manifest.TableAnnotatorFuncs[deletionBytes]{
+		Merge: func(dst *deletionBytes, src deletionBytes) {
+			dst.PointDels += src.PointDels
+			dst.RangeDels += src.RangeDels
+		},
+		Table: func(t *manifest.TableMetadata) (v deletionBytes, cacheOK bool) {
+			if stats, ok := t.Stats(); ok {
+				return deletionBytes{
+					PointDels: stats.PointDeletionsBytesEstimate,
+					RangeDels: stats.RangeDeletionsBytesEstimate,
+				}, true
+			}
+			return deletionBytes{}, false
+		},
 	},
-	AccumulateFunc: func(f *manifest.TableMetadata) (v deletionBytes, cacheOK bool) {
-		if stats, ok := f.Stats(); ok {
-			return deletionBytes{
-				PointDels: stats.PointDeletionsBytesEstimate,
-				RangeDels: stats.RangeDeletionsBytesEstimate,
-			}, true
-		}
-		return deletionBytes{}, false
-	},
-})
+)
 
 // annotatedTableProps are properties derived from TableBackingProperties that
 // are aggregated for metrics.
@@ -1109,33 +1112,35 @@ type aggregatedTableProps struct {
 	CompressionMetrics CompressionMetrics
 }
 
-var tablePropsAnnotator = manifest.NewTableAnnotator[aggregatedTableProps](manifest.SumAggregator[aggregatedTableProps]{
-	AddFunc: func(src, dst *aggregatedTableProps) {
-		dst.NumRangeKeySets += src.NumRangeKeySets
-		dst.NumDeletions += src.NumDeletions
-		dst.ValueBlocksSize += src.ValueBlocksSize
-		dst.CompressionMetrics.MergeWith(&src.CompressionMetrics)
-	},
-	AccumulateFunc: func(f *manifest.TableMetadata) (v aggregatedTableProps, cacheOK bool) {
-		props, propsValid := f.TableBacking.Properties()
-		if propsValid {
-			v.NumRangeKeySets = props.NumRangeKeySets
-			v.NumDeletions = props.NumDeletions
-			v.ValueBlocksSize = props.ValueBlocksSize
-		}
-		if !propsValid || props.CompressionStats.IsEmpty() {
-			v.CompressionMetrics.CompressedBytesWithoutStats = f.ScaleStatistic(f.Size)
-		} else {
-			compressionStats := props.CompressionStats
-			if f.Virtual {
-				// Scale the compression stats for virtual tables.
-				compressionStats = compressionStats.Scale(f.Size, f.TableBacking.Size)
+var tablePropsAnnotator = manifest.MakeTableAnnotator[aggregatedTableProps](
+	manifest.NewTableAnnotationIdx(),
+	manifest.TableAnnotatorFuncs[aggregatedTableProps]{
+		Merge: func(dst *aggregatedTableProps, src aggregatedTableProps) {
+			dst.NumRangeKeySets += src.NumRangeKeySets
+			dst.NumDeletions += src.NumDeletions
+			dst.ValueBlocksSize += src.ValueBlocksSize
+			dst.CompressionMetrics.MergeWith(&src.CompressionMetrics)
+		},
+		Table: func(t *manifest.TableMetadata) (v aggregatedTableProps, cacheOK bool) {
+			props, propsValid := t.TableBacking.Properties()
+			if propsValid {
+				v.NumRangeKeySets = props.NumRangeKeySets
+				v.NumDeletions = props.NumDeletions
+				v.ValueBlocksSize = props.ValueBlocksSize
 			}
-			v.CompressionMetrics.Add(&compressionStats)
-		}
-		return v, propsValid
-	},
-})
+			if !propsValid || props.CompressionStats.IsEmpty() {
+				v.CompressionMetrics.CompressedBytesWithoutStats = t.ScaleStatistic(t.Size)
+			} else {
+				compressionStats := props.CompressionStats
+				if t.Virtual {
+					// Scale the compression stats for virtual tables.
+					compressionStats = compressionStats.Scale(t.Size, t.TableBacking.Size)
+				}
+				v.CompressionMetrics.Add(&compressionStats)
+			}
+			return v, propsValid
+		},
+	})
 
 // compressionStatsAnnotator is a manifest.TableAnnotator that annotates B-tree nodes
 // with the compression statistics for tables. Its annotation type is
@@ -1144,30 +1149,21 @@ var tablePropsAnnotator = manifest.NewTableAnnotator[aggregatedTableProps](manif
 // file's stats have been loaded. Statistics for virtual tables are estimated
 // from the physical table statistics, proportional to the estimated virtual
 // table size.
-var blobCompressionStatsAnnotator = manifest.NewBlobFileAnnotator[CompressionMetrics](blobCompressionStatsAggregator{})
-
-type blobCompressionStatsAggregator struct{}
-
-func (a blobCompressionStatsAggregator) Zero() *CompressionMetrics {
-	return &CompressionMetrics{}
-}
-
-func (a blobCompressionStatsAggregator) Accumulate(
-	f manifest.BlobFileMetadata, dst *CompressionMetrics,
-) (v *CompressionMetrics, cacheOK bool) {
-	props, propsValid := f.Physical.Properties()
-	if !propsValid || props.CompressionStats.IsEmpty() {
-		dst.CompressedBytesWithoutStats += f.Physical.Size
-		return dst, propsValid
-	}
-	compressionStats := props.CompressionStats
-	dst.Add(&compressionStats)
-	return dst, true
-}
-
-func (a blobCompressionStatsAggregator) Merge(
-	src *CompressionMetrics, dst *CompressionMetrics,
-) *CompressionMetrics {
-	dst.MergeWith(src)
-	return dst
-}
+var blobCompressionStatsAnnotator = manifest.MakeBlobFileAnnotator[CompressionMetrics](
+	manifest.NewBlobAnnotationIdx(),
+	manifest.BlobFileAnnotatorFuncs[CompressionMetrics]{
+		Merge: func(dst *CompressionMetrics, src CompressionMetrics) {
+			dst.MergeWith(&src)
+		},
+		BlobFile: func(f manifest.BlobFileMetadata) (v CompressionMetrics, cacheOK bool) {
+			props, propsValid := f.Physical.Properties()
+			if !propsValid || props.CompressionStats.IsEmpty() {
+				v.CompressedBytesWithoutStats += f.Physical.Size
+				return v, propsValid
+			}
+			compressionStats := props.CompressionStats
+			v.Add(&compressionStats)
+			return v, true
+		},
+	},
+)
