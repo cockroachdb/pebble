@@ -110,3 +110,13 @@ func (l noFatalLogger) Errorf(format string, args ...interface{}) {
 func (l noFatalLogger) Fatalf(format string, args ...interface{}) {
 	l.t.Logf(format, args...)
 }
+
+func BenchmarkMakeFilename(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		typ := base.FileTypeTable
+		if i%2 == 0 {
+			typ = base.FileTypeBlob
+		}
+		var _ = base.MakeFilename(typ, base.DiskFileNum(i))
+	}
+}
