@@ -25,6 +25,9 @@ type Compare = base.Compare
 // InternalKey exports the base.InternalKey type.
 type InternalKey = base.InternalKey
 
+// InternalKeyBounds exports the base.InternalKeyBounds type.
+type InternalKeyBounds = base.InternalKeyBounds
+
 // KeyRange returns the narrowest UserKeyBounds that encompass the bounds of all
 // the TableMetadata in iters.
 func KeyRange(ucmp Compare, iters ...iter.Seq[*TableMetadata]) base.UserKeyBounds {
