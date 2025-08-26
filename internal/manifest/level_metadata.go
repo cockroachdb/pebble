@@ -609,7 +609,7 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *TableMetadata {
 				ik = i.iter.n.items[h].RangeKeyBounds
 			}
 			c := cmp(userKey, ik.LargestUserKey())
-			if c > 0 || (c == 0 && ik.largestTrailer.IsExclusiveSentinel()) {
+			if c > 0 || (c == 0 && ik.LargestTrailer().IsExclusiveSentinel()) {
 				j = h + 1 // preserves INVARIANT A
 			} else {
 				k = h // preserves INVARIANT B
