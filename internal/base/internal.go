@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -680,4 +681,79 @@ func (asn *AtomicSeqNum) Add(delta SeqNum) SeqNum {
 // CompareAndSwap executes the compare-and-swap operation.
 func (asn *AtomicSeqNum) CompareAndSwap(old, new SeqNum) bool {
 	return asn.value.CompareAndSwap(uint64(old), uint64(new))
+}
+
+type InternalKeyBounds struct {
+	userKeyData         string
+	userKeySeparatorIdx int
+	smallestTrailer     InternalKeyTrailer
+	largestTrailer      InternalKeyTrailer
+}
+
+// InternalKeyBounds represents set of keys (smallest, largest) used for the
+// in-memory and on-disk partial DBs that make up a pebble DB.
+//
+// It consists of the smallest, largest keys and their respective trailers.
+// The keys are represented as a single string; their individual representations
+// are given by the userKeySeparatorIdx as:
+//   - smallest: [0, userKeySeparatorIdx)
+//   - largest: [userKeySeparatorIdx, len(userKeyData))
+//
+// This format allows us to save a couple of bytes that will add up
+// proportionally to the amount of sstables we have.
+
+func (ikr *InternalKeyBounds) SetInternalKeyBounds(smallest, largest InternalKey) {
+	ikr.userKeyData = string(smallest.UserKey) + string(largest.UserKey)
+	ikr.smallestTrailer = smallest.Trailer
+	ikr.largestTrailer = largest.Trailer
+	ikr.userKeySeparatorIdx = len(smallest.UserKey)
+}
+
+//gcassert:inline
+func (ikr *InternalKeyBounds) SmallestUserKey() []byte {
+	return unsafe.Slice(unsafe.StringData(ikr.userKeyData), ikr.userKeySeparatorIdx)
+}
+
+//gcassert:inline
+func (ikr *InternalKeyBounds) Smallest() InternalKey {
+	return InternalKey{
+		UserKey: ikr.SmallestUserKey(),
+		Trailer: ikr.smallestTrailer,
+	}
+}
+
+//gcassert:inline
+func (ikr *InternalKeyBounds) LargestUserKey() []byte {
+	largestStart := unsafe.StringData(ikr.userKeyData[ikr.userKeySeparatorIdx:])
+	return unsafe.Slice(largestStart, len(ikr.userKeyData)-ikr.userKeySeparatorIdx)
+}
+
+//gcassert:inline
+func (ikr *InternalKeyBounds) Largest() InternalKey {
+	ik := InternalKey{
+		UserKey: ikr.LargestUserKey(),
+		Trailer: ikr.largestTrailer,
+	}
+	return ik
+}
+
+func (ikr *InternalKeyBounds) SmallestTrailer() InternalKeyTrailer {
+	return ikr.smallestTrailer
+}
+
+func (ikr *InternalKeyBounds) LargestTrailer() InternalKeyTrailer {
+	return ikr.largestTrailer
+}
+
+func (ikr *InternalKeyBounds) SetSmallest(ik InternalKey) {
+	ikr.userKeyData = string(ik.UserKey) + string(ikr.LargestUserKey())
+	ikr.smallestTrailer = ik.Trailer
+	ikr.userKeySeparatorIdx = len(ik.UserKey)
+}
+
+func (ikr *InternalKeyBounds) SetLargest(ik InternalKey) {
+	smallestUserKey := ikr.SmallestUserKey()
+	ikr.userKeyData = string(smallestUserKey) + string(ik.UserKey)
+	ikr.largestTrailer = ik.Trailer
+	ikr.userKeySeparatorIdx = len(smallestUserKey)
 }
