@@ -25,7 +25,8 @@ import (
 // ValueStorageLatencyTolerant.
 const latencyTolerantMinimumSize = 10
 
-var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation {
+var neverSeparateValues getValueSeparation = func(
+	JobID, *tableCompaction, sstable.TableFormat, tieredmeta.ColdTierThresholdRetriever) compact.ValueSeparation {
 	return compact.NeverSeparateValues{}
 }
 
@@ -33,7 +34,10 @@ var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, sstab
 // separate values into blob files. It returns a compact.ValueSeparation
 // implementation that should be used for the compaction.
 func (d *DB) determineCompactionValueSeparation(
-	jobID JobID, c *tableCompaction, tableFormat sstable.TableFormat,
+	jobID JobID,
+	c *tableCompaction,
+	tableFormat sstable.TableFormat,
+	cttRetriever tieredmeta.ColdTierThresholdRetriever,
 ) compact.ValueSeparation {
 	if tableFormat < sstable.TableFormatPebblev7 || d.FormatMajorVersion() < FormatValueSeparation ||
 		d.opts.Experimental.ValueSeparationPolicy == nil {
@@ -46,7 +50,9 @@ func (d *DB) determineCompactionValueSeparation(
 
 	// We're allowed to write blob references. Determine whether we should carry
 	// forward existing blob references, or write new ones.
-	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy); !writeBlobs {
+	writeBlobs, outputBlobReferenceDepth, coldWriteSpans :=
+		shouldWriteBlobFiles(c, policy, cttRetriever)
+	if !writeBlobs {
 		// This compaction should preserve existing blob references.
 		return &preserveBlobReferences{
 			inputBlobPhysicalFiles:   uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
@@ -75,37 +81,107 @@ func (d *DB) determineCompactionValueSeparation(
 					value, err),
 			})
 		},
+		coldWriteSpans: coldWriteSpans,
 	}
 }
 
+const minLevelForColdBlobFiles = 5
+
+// TODO(sumeer): make this configurable.
+const coldTierValSizeThreshold = 50
+
 // shouldWriteBlobFiles returns true if the compaction should write new blob
-// files. If it returns false, the referenceDepth return value contains the
-// maximum blob reference depth to assign to output sstables (the actual value
-// may be lower iff the output table references fewer distinct blob files).
+// files.
+//
+// If it returns false, the referenceDepth return value contains the maximum
+// blob reference depth to assign to output sstables (the actual value may be
+// lower iff the output table references fewer distinct blob files).
+//
+// If it returns true, existing hot tier blob references will get rewritten,
+// and existing inline values can get separated. For this case, we also need
+// to decide whether to write cold tier blob files or not, since we don't want
+// to move small number of bytes with each compaction to cold tier blob files
+// (which will be tiny). Since the size threshold for a value to be separated
+// into a cold tier blob file is low, we will see transitions from both inline
+// values and hot tier blob files to cold tier blob files. We make this
+// decision of whether to write new cold blob files per TieringSpanID, by
+// approximating the bytes that will get written. Any cold tier reference that
+// is becoming hot will get rewritten, but other cold tier references will be
+// preserved in their existing blob files.
 func shouldWriteBlobFiles(
-	c *tableCompaction, policy ValueSeparationPolicy,
-) (writeBlobs bool, referenceDepth manifest.BlobReferenceDepth) {
+	c *tableCompaction,
+	policy ValueSeparationPolicy,
+	cttRetriever tieredmeta.ColdTierThresholdRetriever,
+) (
+	writeBlobs bool,
+	referenceDepth manifest.BlobReferenceDepth,
+	coldWriteSpans map[base.TieringSpanID]struct{},
+) {
 	// Flushes will have no existing references to blob files and should write
 	// their values to new blob files.
 	if c.kind == compactionKindFlush {
-		return true, 0
+		return true, 0, nil
 	}
 	inputReferenceDepth := compactionBlobReferenceDepth(c.inputs)
-	if inputReferenceDepth == 0 {
-		// None of the input sstables reference blob files. It may be the case
-		// that these sstables were created before value separation was enabled.
-		// We should try to write to new blob files.
-		return true, 0
-	}
 	// If the compaction's output blob reference depth would be greater than the
 	// configured max, we should rewrite the values into new blob files to
 	// restore locality.
-	if inputReferenceDepth > manifest.BlobReferenceDepth(policy.MaxBlobReferenceDepth) {
-		return true, 0
+	if inputReferenceDepth > 0 &&
+		inputReferenceDepth <= manifest.BlobReferenceDepth(policy.MaxBlobReferenceDepth) {
+		return false, inputReferenceDepth, nil
 	}
-	// Otherwise, we won't write any new blob files but will carry forward
-	// existing references.
-	return false, inputReferenceDepth
+	// Else, either the compaction's input blob reference depth is greater than
+	// the configured max, so we should rewrite the values into new blob files
+	// to restore locality, or the inputs have no hot blob references. In the
+	// latter case, either these sstables were created before value separation
+	// was enabled, or they only have cold blob references. In either case, we
+	// should be willing to write new blob references.
+
+	// TODO(sumeer): completely skip if tiering is disabled.
+	if c.outputLevel != nil && c.outputLevel.level >= minLevelForColdBlobFiles {
+		hist := compactionTieringHistograms(c.inputs)
+		type coldAttrAndBytesEstimates struct {
+			coldLTThreshold base.TieringAttribute
+			valueBytes      uint64
+		}
+		var tieringSpansLTThreshold map[base.TieringSpanID]coldAttrAndBytesEstimates
+		for k := range hist.Histograms {
+			if k.TieringSpanID == 0 {
+				continue
+			}
+			if tieringSpansLTThreshold == nil {
+				tieringSpansLTThreshold = make(map[base.TieringSpanID]coldAttrAndBytesEstimates)
+			}
+			tieringSpansLTThreshold[k.TieringSpanID] = coldAttrAndBytesEstimates{}
+		}
+		for spanID := range tieringSpansLTThreshold {
+			tieringSpansLTThreshold[spanID] =
+				coldAttrAndBytesEstimates{coldLTThreshold: cttRetriever.GetColdTierLTThreshold(spanID)}
+		}
+		for k, h := range hist.Histograms {
+			if k.KindAndTier == tieredmeta.SSTableKeyBytes ||
+				k.KindAndTier == tieredmeta.SSTableBlobReferenceColdBytes {
+				continue
+			}
+			if k.KindAndTier == tieredmeta.SSTableValueBytes && h.MeanSize() < coldTierValSizeThreshold {
+				continue
+			}
+			v := tieringSpansLTThreshold[k.TieringSpanID]
+			v.valueBytes += h.ColdBytes(v.coldLTThreshold)
+			tieringSpansLTThreshold[k.TieringSpanID] = v
+		}
+		for spanID, v := range tieringSpansLTThreshold {
+			// TODO(sumeer): make this byte threshold a function of the level, and the
+			// number of input bytes in the compaction.
+			if v.valueBytes > 1e6 {
+				if coldWriteSpans == nil {
+					coldWriteSpans = make(map[base.TieringSpanID]struct{})
+				}
+				coldWriteSpans[spanID] = struct{}{}
+			}
+		}
+	}
+	return true, 0, coldWriteSpans
 }
 
 // compactionBlobReferenceDepth computes the blob reference depth for a
@@ -147,6 +223,22 @@ func compactionBlobReferenceDepth(levels []compactionLevel) manifest.BlobReferen
 		depth += levelDepth
 	}
 	return depth
+}
+
+func compactionTieringHistograms(
+	levels []compactionLevel,
+) tieredmeta.TieringHistogramBlockContents {
+	var hist tieredmeta.TieringHistogramBlockContents
+	for _, level := range levels {
+		for t := range level.files.All() {
+			stats, valid := t.Stats()
+			if !valid {
+				continue
+			}
+			hist.Merge(&stats.TieringHistograms)
+		}
+	}
+	return hist
 }
 
 // uniqueInputBlobMetadatas returns a slice of all unique blob file metadata
@@ -197,6 +289,8 @@ type writeNewBlobFiles struct {
 	// invalidValueCallback is called when a value is encountered for which the
 	// short attribute extractor returns an error.
 	invalidValueCallback func(userKey []byte, value []byte, err error)
+	// TODO(sumeer): use during compaction execution.
+	coldWriteSpans map[base.TieringSpanID]struct{}
 
 	// Current blob writer state
 	writer  *blob.FileWriter

@@ -248,7 +248,8 @@ type tableCompaction struct {
 	// b) rewrite blob files: The compaction will write eligible values to new
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
-	getValueSeparation func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation
+	getValueSeparation func(
+		JobID, *tableCompaction, sstable.TableFormat, tieredmeta.ColdTierThresholdRetriever) compact.ValueSeparation
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -536,7 +537,8 @@ func (c *tableCompaction) makeInfo(jobID JobID) CompactionInfo {
 	return info
 }
 
-type getValueSeparation func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation
+type getValueSeparation func(
+	JobID, *tableCompaction, sstable.TableFormat, tieredmeta.ColdTierThresholdRetriever) compact.ValueSeparation
 
 // newCompaction constructs a compaction from the provided picked compaction.
 //
@@ -3234,9 +3236,16 @@ func (d *DB) runCompaction(
 	defer d.mu.Lock()
 
 	// Determine whether we should separate values into blob files.
-	valueSeparation := c.getValueSeparation(jobID, c, c.tableFormat)
+	var cttRetriever coldTierThresholdRetriever
+	if err := cttRetriever.init(d.opts.Experimental.SpanPolicyFunc, c.bounds, d.cmp); err != nil {
+		return nil, compact.Stats{}, err
+	}
+	valueSeparation := c.getValueSeparation(jobID, c, c.tableFormat, &cttRetriever)
+	// TODO(sumeer): remove Init method, since getValueSeparation already has
+	// the cttRetriever.
+	valueSeparation.Init(&cttRetriever)
 
-	result := d.compactAndWrite(jobID, c, snapshots, c.tableFormat, valueSeparation)
+	result := d.compactAndWrite(jobID, c, snapshots, c.tableFormat, valueSeparation, cttRetriever)
 	if result.Err == nil {
 		ve, result.Err = c.makeVersionEdit(result)
 	}
@@ -3282,6 +3291,7 @@ func (d *DB) compactAndWrite(
 	snapshots compact.Snapshots,
 	tableFormat sstable.TableFormat,
 	valueSeparation compact.ValueSeparation,
+	cttRetriever coldTierThresholdRetriever,
 ) (result compact.Result) {
 	// Compactions use a pool of buffers to read blocks, avoiding polluting the
 	// block cache with blocks that will not be read again. We initialize the
@@ -3374,12 +3384,6 @@ func (d *DB) compactAndWrite(
 		GrantHandle:                c.grantHandle,
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
-
-	var cttRetriever coldTierThresholdRetriever
-	if err := cttRetriever.init(d.opts.Experimental.SpanPolicyFunc, c.bounds, d.cmp); err != nil {
-		return compact.Result{Err: err}
-	}
-	valueSeparation.Init(&cttRetriever)
 
 	// If spanPolicyValid is true and spanPolicy.KeyRange.End is empty, then
 	// spanPolicy applies for the rest of the keyspace.
