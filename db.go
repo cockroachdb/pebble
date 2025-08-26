@@ -1059,22 +1059,20 @@ func (d *DB) newIter(
 	// them together.
 	buf := newIterAlloc()
 	dbi := &buf.dbi
-	*dbi = Iterator{
-		ctx:                 ctx,
-		alloc:               buf,
-		merge:               d.merge,
-		comparer:            d.opts.Comparer,
-		readState:           readState,
-		version:             newIterOpts.snapshot.vers,
-		keyBuf:              buf.keyBuf,
-		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
-		boundsBuf:           buf.boundsBuf,
-		fc:                  d.fileCache,
-		newIters:            newIters,
-		newIterRangeKey:     newIterRangeKey,
-		seqNum:              seqNum,
-		batchOnlyIter:       newIterOpts.batch.batchOnly,
-	}
+	dbi.ctx = ctx
+	dbi.alloc = buf
+	dbi.merge = d.merge
+	dbi.comparer = d.opts.Comparer
+	dbi.readState = readState
+	dbi.version = newIterOpts.snapshot.vers
+	dbi.keyBuf = buf.keyBuf
+	dbi.prefixOrFullSeekKey = buf.prefixOrFullSeekKey
+	dbi.boundsBuf = buf.boundsBuf
+	dbi.fc = d.fileCache
+	dbi.newIters = newIters
+	dbi.newIterRangeKey = newIterRangeKey
+	dbi.seqNum = seqNum
+	dbi.batchOnlyIter = newIterOpts.batch.batchOnly
 	if o != nil {
 		dbi.opts = *o
 		dbi.processBounds(o.LowerBound, o.UpperBound)
