@@ -3321,7 +3321,8 @@ func (d *DB) compactAndWrite(
 		),
 	}
 	if c.version != nil {
-		c.iterationState.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv)
+		c.iterationState.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv,
+			blob.SuggestedCachedReaders(len(c.inputs)))
 	}
 	iiopts := internalIterOpts{
 		compaction:       true,

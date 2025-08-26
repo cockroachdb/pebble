@@ -6,6 +6,7 @@ package blob
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -14,8 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
-
-const maxCachedReaders = 5
 
 // A ValueReader is an interface defined over a file that can be used to read
 // value blocks.
@@ -47,6 +46,12 @@ type ReaderProvider interface {
 	) (r ValueReader, closeFunc func(), err error)
 }
 
+// SuggestedCachedReaders returns the suggested default number of cached readers
+// to use for ValueFetcher.Init given the number of non-empty levels in the LSM.
+func SuggestedCachedReaders(readAmp int) int {
+	return 5 * max(1, readAmp)
+}
+
 // A ValueFetcher retrieves values stored out-of-band in separate blob files.
 // The ValueFetcher caches accessed file readers to avoid redundant file cache
 // and block cache lookups when performing consecutive value retrievals.
@@ -62,7 +67,7 @@ type ValueFetcher struct {
 	env            block.ReadEnv
 	fetchCount     int
 	bufMangler     invariants.BufMangler
-	readers        [maxCachedReaders]cachedReader
+	readers        []cachedReader
 }
 
 // TODO(jackson): Support setting up a read handle for compaction when relevant.
@@ -71,13 +76,16 @@ type ValueFetcher struct {
 var _ base.ValueFetcher = (*ValueFetcher)(nil)
 
 // Init initializes the ValueFetcher.
-func (r *ValueFetcher) Init(fm base.BlobFileMapping, rp ReaderProvider, env block.ReadEnv) {
+func (r *ValueFetcher) Init(
+	fm base.BlobFileMapping, rp ReaderProvider, env block.ReadEnv, maxCachedReaders int,
+) {
 	r.fileMapping = fm
 	r.readerProvider = rp
 	r.env = env
 	if r.readerProvider == nil {
 		panic("readerProvider is nil")
 	}
+	r.readers = slices.Grow(r.readers[:0], maxCachedReaders)[:maxCachedReaders]
 }
 
 // FetchHandle returns the value, given the handle. FetchHandle must not be
@@ -189,6 +197,7 @@ func (r *ValueFetcher) Close() error {
 	r.env = block.ReadEnv{}
 	r.fetchCount = 0
 	r.bufMangler = invariants.BufMangler{}
+	r.readers = r.readers[:0]
 	return err
 }
 

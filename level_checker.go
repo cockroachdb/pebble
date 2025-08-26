@@ -554,7 +554,11 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 		},
 		fileCache: d.fileCache,
 	}
-	checkConfig.blobValueFetcher.Init(&readState.current.BlobFiles, checkConfig.fileCache, checkConfig.readEnv)
+	checkConfig.blobValueFetcher.Init(
+		&readState.current.BlobFiles,
+		checkConfig.fileCache,
+		checkConfig.readEnv,
+		blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
 	defer func() { _ = checkConfig.blobValueFetcher.Close() }()
 	return checkLevelsInternal(checkConfig)
 }
