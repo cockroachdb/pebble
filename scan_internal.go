@@ -195,7 +195,8 @@ func (d *DB) newInternalIter(
 		seqNum:          seqNum,
 		mergingIter:     &buf.merging,
 	}
-	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache, block.ReadEnv{})
+	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache, block.ReadEnv{},
+		blob.SuggestedCachedReaders(vers.MaxReadAmp()))
 
 	dbi.opts = *o
 	dbi.opts.logger = d.opts.Logger

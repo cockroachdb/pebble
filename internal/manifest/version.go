@@ -308,6 +308,19 @@ func (v *Version) unrefFiles() ObsoleteFiles {
 	return obsoleteFiles
 }
 
+// MaxReadAmp returns the number of non-empty sublevels and levels in the
+// Version. This is the maximum number of sstables that a point read must
+// consult.
+func (v *Version) MaxReadAmp() int {
+	readAmp := len(v.L0SublevelFiles)
+	for i := 1; i < len(v.Levels); i++ {
+		if !v.Levels[i].Empty() {
+			readAmp++
+		}
+	}
+	return readAmp
+}
+
 // ObsoleteFiles holds a set of files that are no longer referenced by any
 // referenced Version.
 type ObsoleteFiles struct {

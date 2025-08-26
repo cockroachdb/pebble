@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -120,7 +121,8 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		keyBuf:    buf.keyBuf,
 	}
 	// Set up a blob value fetcher to use for retrieving values from blob files.
-	i.blobValueFetcher.Init(&readState.current.BlobFiles, d.fileCache, block.NoReadEnv)
+	i.blobValueFetcher.Init(&readState.current.BlobFiles, d.fileCache, block.NoReadEnv,
+		blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
 	get.iiopts.blobValueFetcher = &i.blobValueFetcher
 
 	if !i.First() {

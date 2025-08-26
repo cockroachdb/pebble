@@ -1175,7 +1175,8 @@ func TestCompaction(t *testing.T) {
 					}
 				}
 				vf := &blob.ValueFetcher{}
-				vf.Init(&d.mu.versions.currentVersion().BlobFiles, d.fileCache, block.ReadEnv{})
+				vf.Init(&d.mu.versions.currentVersion().BlobFiles, d.fileCache, block.ReadEnv{},
+					blob.SuggestedCachedReaders(d.mu.versions.currentVersion().MaxReadAmp()))
 				defer func() { _ = vf.Close() }()
 				err := validateBlobValueLiveness(inputTables, d.fileCache, block.ReadEnv{}, vf)
 				if err != nil {

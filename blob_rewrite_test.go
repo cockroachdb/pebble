@@ -410,7 +410,8 @@ func TestBlobRewriteRandomized(t *testing.T) {
 		// Verify that the rewritten blob file contains the correct values, and
 		// that they may still be accessed using the original handles.
 		var valueFetcher blob.ValueFetcher
-		valueFetcher.Init(constantFileMapping(newBlobFileNum), fch, readEnv)
+		valueFetcher.Init(constantFileMapping(newBlobFileNum), fch, readEnv,
+			blob.SuggestedCachedReaders(1))
 		func() {
 			defer func() { _ = valueFetcher.Close() }()
 			for _, valueIndex := range newFile.valueIndices {

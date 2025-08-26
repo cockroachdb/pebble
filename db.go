@@ -33,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
@@ -1217,9 +1218,11 @@ func (i *Iterator) constructPointIter(
 		),
 	}
 	if i.readState != nil {
-		i.blobValueFetcher.Init(&i.readState.current.BlobFiles, i.fc, readEnv)
+		i.blobValueFetcher.Init(&i.readState.current.BlobFiles, i.fc, readEnv,
+			blob.SuggestedCachedReaders(i.readState.current.MaxReadAmp()))
 	} else if i.version != nil {
-		i.blobValueFetcher.Init(&i.version.BlobFiles, i.fc, readEnv)
+		i.blobValueFetcher.Init(&i.version.BlobFiles, i.fc, readEnv,
+			blob.SuggestedCachedReaders(i.version.MaxReadAmp()))
 	}
 	internalOpts := internalIterOpts{
 		readEnv:          sstable.ReadEnv{Block: readEnv},
@@ -1245,20 +1248,13 @@ func (i *Iterator) constructPointIter(
 	var current *manifest.Version
 	if !i.batchOnlyIter {
 		numMergingLevels += len(memtables)
-
 		current = i.version
 		if current == nil {
 			current = i.readState.current
 		}
-		numMergingLevels += len(current.L0SublevelFiles)
-		numLevelIters += len(current.L0SublevelFiles)
-		for level := 1; level < len(current.Levels); level++ {
-			if current.Levels[level].Empty() {
-				continue
-			}
-			numMergingLevels++
-			numLevelIters++
-		}
+		maxReadAmp := current.MaxReadAmp()
+		numMergingLevels += maxReadAmp
+		numLevelIters += maxReadAmp
 	}
 
 	if numMergingLevels > cap(mlevels) {
