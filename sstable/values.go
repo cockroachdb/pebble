@@ -55,7 +55,7 @@ func LoadValBlobContext(
 	fm base.BlobFileMapping, rp blob.ReaderProvider, blobRefs BlobReferences,
 ) (*blob.ValueFetcher, TableBlobContext) {
 	vf := &blob.ValueFetcher{}
-	vf.Init(fm, rp, block.ReadEnv{})
+	vf.Init(fm, rp, block.ReadEnv{}, 1)
 	return vf, TableBlobContext{
 		ValueFetcher: vf,
 		References:   blobRefs,

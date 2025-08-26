@@ -92,7 +92,11 @@ func newBlobFileMappings(
 		physicalFiles: make(map[base.BlobFileID][]base.DiskFileNum),
 		provider:      debugReaderProvider{objProvider: provider},
 	}
-	mappings.fetcher.Init(mappings, &mappings.provider, block.ReadEnv{})
+	mappings.fetcher.Init(mappings, &mappings.provider, block.ReadEnv{},
+		// The choice of 5 is arbitrary. We could base this off the manifest's
+		// final LSM's read-amp, but there's no need in the context of the debug
+		// tool.
+		blob.SuggestedCachedReaders(5))
 	for _, fl := range manifests {
 		err := func() error {
 			mf, err := fs.Open(fl.path)

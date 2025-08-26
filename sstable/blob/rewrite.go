@@ -39,7 +39,7 @@ func NewFileRewriter(
 		fileID: fileID,
 		w:      NewFileWriter(outputFileNum, w, opts),
 	}
-	rw.f.Init(inputFileMapping{info: inputFile}, rp, readEnv)
+	rw.f.Init(inputFileMapping{info: inputFile}, rp, readEnv, 1)
 	return rw
 }
 
