@@ -194,6 +194,17 @@ type LazyValue = base.LazyValue
 // Next, Prev) return without advancing if the iterator has an accumulated
 // error.
 type Iterator struct {
+	// blobValueFetcher is the ValueFetcher to use when retrieving values stored
+	// externally in blob files.
+	blobValueFetcher blob.ValueFetcher
+
+	// All fields below this field are cleared during Iterator.Close before
+	// returning the Iterator to the pool. Any fields above this field must also
+	// be cleared, but may be cleared as a part of the body of Iterator.Close
+	// (eg, if these types have their own Close method that zeroes their
+	// fields).
+	clearForReuseBoundary struct{}
+
 	// The context is stored here since (a) Iterators are expected to be
 	// short-lived (since they pin memtables and sstables), (b) plumbing a
 	// context into every method is very painful, (c) they do not (yet) respect
@@ -228,9 +239,6 @@ type Iterator struct {
 	// For use in LazyValue.Value.
 	lazyValueBuf []byte
 	valueCloser  io.Closer
-	// blobValueFetcher is the ValueFetcher to use when retrieving values stored
-	// externally in blob files.
-	blobValueFetcher blob.ValueFetcher
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
 	// Whenever the Iterator's bounds change, the new bounds are copied into
 	// boundsBuf[boundsBufIdx]. The two bounds share a slice to reduce
@@ -313,6 +321,13 @@ type Iterator struct {
 	// Set to true if NextPrefix is not currently permitted. Defaults to false
 	// in case an iterator never had any bounds.
 	nextPrefixNotPermittedByUpperBound bool
+}
+
+const clearOff = unsafe.Offsetof(Iterator{}.clearForReuseBoundary)
+const clearLen = unsafe.Sizeof(Iterator{}) - clearOff
+
+func (i *Iterator) clearForReuse() {
+	*(*[clearLen]byte)(unsafe.Add(unsafe.Pointer(i), clearOff)) = [clearLen]byte{}
 }
 
 // cmp is a convenience shorthand for the i.comparer.Compare function.
@@ -2452,7 +2467,7 @@ func (i *Iterator) Close() error {
 	if i.batch != nil {
 		alloc.batchState = iteratorBatchState{}
 	}
-	alloc.dbi = Iterator{}
+	alloc.dbi.clearForReuse()
 	alloc.merging = mergingIter{}
 	clear(mergingIterHeapItems[:cap(mergingIterHeapItems)])
 	alloc.merging.heap.items = mergingIterHeapItems

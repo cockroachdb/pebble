@@ -61,8 +61,8 @@ type ValueFetcher struct {
 	readerProvider ReaderProvider
 	env            block.ReadEnv
 	fetchCount     int
-	readers        [maxCachedReaders]cachedReader
 	bufMangler     invariants.BufMangler
+	readers        [maxCachedReaders]cachedReader
 }
 
 // TODO(jackson): Support setting up a read handle for compaction when relevant.
@@ -184,6 +184,11 @@ func (r *ValueFetcher) Close() error {
 			err = errors.CombineErrors(err, r.readers[i].Close())
 		}
 	}
+	r.fileMapping = nil
+	r.readerProvider = nil
+	r.env = block.ReadEnv{}
+	r.fetchCount = 0
+	r.bufMangler = invariants.BufMangler{}
 	return err
 }
 
