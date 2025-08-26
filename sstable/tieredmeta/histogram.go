@@ -77,6 +77,40 @@ type Bucket struct {
 	Bytes uint64
 }
 
+func (h *StatsHistogram) TotalBytes() uint64 {
+	var total uint64
+	for i := 0; i < numBuckets; i++ {
+		total += h.Buckets[i].Bytes
+	}
+	total += h.UnderflowBytes
+	total += h.UnaccountedBytes
+	total += h.ZeroBytes
+	return total
+}
+
+func (h *StatsHistogram) MeanSize() uint64 {
+	if h.Count == 0 {
+		return 0
+	}
+	return h.TotalBytes() / h.Count
+}
+
+func (h *StatsHistogram) ColdBytes(coldTierLTThreshold base.TieringAttribute) uint64 {
+	var b uint64
+	if h.BucketStart >= coldTierLTThreshold {
+		b = h.UnderflowBytes
+	}
+	for i := 0; i < numBuckets; i++ {
+		bucketEnd := h.BucketStart + (base.TieringAttribute(i)+1)*h.BucketLength
+		if bucketEnd <= coldTierLTThreshold {
+			b += h.Buckets[i].Bytes
+		} else {
+			break
+		}
+	}
+	return b
+}
+
 const MaxStatsHistogramSizeExcludingBuckets = 6 * binary.MaxVarintLen64
 
 func (h *StatsHistogram) encode() []byte {

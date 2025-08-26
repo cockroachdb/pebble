@@ -38,6 +38,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -952,7 +953,9 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		if err != nil {
 			return err
 		}
-		c.getValueSeparation = func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation {
+		c.getValueSeparation = func(
+			JobID, *tableCompaction, sstable.TableFormat, tieredmeta.ColdTierThresholdRetriever,
+		) compact.ValueSeparation {
 			return valueSeparator
 		}
 		// NB: define allows the test to exactly specify which keys go
