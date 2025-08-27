@@ -248,6 +248,11 @@ const (
 	// manifest (VersionEdit).
 	FormatBackingValueSize
 
+	// FormatMarkForCompactionInVersionEdit is a format major version that adds
+	// marking tables for compaction (via tagTableMarkedForCompaction).
+	// Previously, marking for compaction required a manifest rotation.
+	FormatMarkForCompactionInVersionEdit
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
@@ -382,6 +387,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatBackingValueSize: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatBackingValueSize)
+	},
+	FormatMarkForCompactionInVersionEdit: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatMarkForCompactionInVersionEdit)
 	},
 }
 
@@ -597,6 +605,9 @@ type findFilesFunc func(v *manifest.Version) (found bool, files [numLevels][]*ma
 // markFilesForCompactionLocked durably marks the files that match the given findFilesFunc for
 // compaction.
 func (d *DB) markFilesForCompactionLocked(findFn findFilesFunc) error {
+	if d.FormatMajorVersion() < FormatMarkForCompactionInVersionEdit {
+		return errors.Newf("pebble: marking files for compaction requires format major version %d or higher", FormatMarkForCompactionInVersionEdit)
+	}
 	jobID := d.newJobIDLocked()
 
 	// Acquire a read state to have a view of the LSM and a guarantee that none
@@ -630,40 +641,32 @@ func (d *DB) markFilesForCompactionLocked(findFn findFilesFunc) error {
 	}
 
 	// After scanning, if we found files to mark, we fetch the current state of
-	// the LSM (which may have changed) and set MarkedForCompaction on the files,
-	// and update the version's Stats.MarkedForCompaction count, which are both
-	// protected by d.mu.
+	// the LSM (which may have changed) and build the list of tables to mark for
+	// compaction.
 
 	// Lock the manifest for a coherent view of the LSM. The database lock has
 	// been re-acquired by the defer within the above anonymous function.
 	_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		var ve manifest.VersionEdit
 		vers := d.mu.versions.currentVersion()
 		for level, filesToMark := range files {
 			for _, f := range filesToMark {
 				// Ignore files to be marked that have already been compacted or marked.
 				if f.CompactionState == manifest.CompactionStateCompacted ||
-					f.MarkedForCompaction {
+					vers.MarkedForCompaction.Contains(f, level) {
 					continue
 				}
 				// Else, mark the file for compaction in this version.
-				f.MarkedForCompaction = true
-				// We are modifying the current version in-place (so that the updated
-				// set is reflected in the "base" version in the new manifest). This is
-				// ok because we are holding the DB lock and all code that uses the
-				// MarkedForCompaction set runs under the DB lock.
-				// TODO(radu): find a less sketchy way to do this.
-				vers.MarkedForCompaction.Insert(f, level)
+				ve.TablesMarkedForCompaction = append(ve.TablesMarkedForCompaction, manifest.TableMarkedForCompactionEntry{
+					TableNum: f.TableNum,
+					Level:    level,
+					Meta:     f,
+				})
 			}
 		}
-		// The 'marked-for-compaction' bit is persisted in the MANIFEST file
-		// metadata. We've already modified the in-memory table metadata, but the
-		// manifest hasn't been updated. Force rotation to a new MANIFEST file,
-		// which will write every table metadata to the new manifest file and ensure
-		// that the now marked-for-compaction table metadata are persisted as marked.
 		return versionUpdate{
-			VE:                      &manifest.VersionEdit{},
+			VE:                      &ve,
 			JobID:                   jobID,
-			ForceManifestRotation:   true,
 			InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(nil) },
 		}, nil
 	})

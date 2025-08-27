@@ -177,23 +177,6 @@ type TableMetadata struct {
 	// file must be part of a compaction to Lbase.
 	IsIntraL0Compacting bool
 	CompactionState     CompactionState
-	// True if compaction of this file has been explicitly requested.
-	// Previously, RocksDB and earlier versions of Pebble allowed this
-	// flag to be set by a user table property collector. Some earlier
-	// versions of Pebble respected this flag, while other more recent
-	// versions ignored this flag.
-	//
-	// More recently this flag has been repurposed to facilitate the
-	// compaction of 'atomic compaction units'. Files marked for
-	// compaction are compacted in a rewrite compaction at the lowest
-	// possible compaction priority.
-	//
-	// NB: A count of files marked for compaction is maintained on
-	// Version, and compaction picking reads cached annotations
-	// determined by this field.
-	//
-	// Protected by DB.mu.
-	MarkedForCompaction bool
 	// HasPointKeys tracks whether the table contains point keys (including
 	// RANGEDELs). If a table contains only range deletions, HasPointsKeys is
 	// still true.

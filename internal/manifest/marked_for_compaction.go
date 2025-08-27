@@ -55,15 +55,20 @@ func (s *MarkedForCompactionSet) Insert(meta *TableMetadata, level int) {
 	}
 }
 
-// Delete removes a table from the set. The table must be in the set.
+// Delete removes a table from the set (if it is in the set).
 func (s *MarkedForCompactionSet) Delete(meta *TableMetadata, level int) {
-	ok := false
 	if s.tree != nil {
-		_, ok = s.tree.Delete(tableAndLevel{meta: meta, level: level})
+		s.tree.Delete(tableAndLevel{meta: meta, level: level})
 	}
-	if invariants.Enabled && !ok {
-		panic(errors.AssertionFailedf("table %s not in MarkedForCompaction", meta.TableNum))
+}
+
+// Contains returns true if the set contains the given table/level pair.
+func (s *MarkedForCompactionSet) Contains(meta *TableMetadata, level int) bool {
+	if s.tree == nil {
+		return false
 	}
+	_, ok := s.tree.Get(tableAndLevel{meta: meta, level: level})
+	return ok
 }
 
 // Clone the set. The resulting set can be independently modified.
