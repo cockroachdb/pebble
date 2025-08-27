@@ -1063,6 +1063,16 @@ func (vs *versionSet) createManifest(
 		}
 	}
 
+	// Add all tables marked for compaction.
+	if vs.getFormatMajorVersion() >= FormatMarkForCompactionInVersionEdit {
+		for meta, level := range vs.currentVersion().MarkedForCompaction.Ascending() {
+			snapshot.TablesMarkedForCompaction = append(snapshot.TablesMarkedForCompaction, manifest.TableMarkedForCompactionEntry{
+				Level:    level,
+				TableNum: meta.TableNum,
+			})
+		}
+	}
+
 	w, err1 := manifestWriter.Next()
 	if err1 != nil {
 		return err1

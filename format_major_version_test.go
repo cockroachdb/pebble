@@ -37,11 +37,12 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 	require.Equal(t, FormatExciseBoundsRecord, FormatMajorVersion(25))
 	require.Equal(t, FormatV2BlobFiles, FormatMajorVersion(26))
 	require.Equal(t, FormatBackingValueSize, FormatMajorVersion(27))
+	require.Equal(t, FormatMarkForCompactionInVersionEdit, FormatMajorVersion(28))
 
 	// When we add a new version, we should add a check for the new version above
 	// in addition to updating the expected values below.
-	require.Equal(t, FormatNewest, FormatMajorVersion(27))
-	require.Equal(t, internalFormatNewest, FormatMajorVersion(27))
+	require.Equal(t, FormatNewest, FormatMajorVersion(28))
+	require.Equal(t, internalFormatNewest, FormatMajorVersion(28))
 }
 
 func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
@@ -231,6 +232,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatExciseBoundsRecord:                    {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 		FormatV2BlobFiles:                           {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 		FormatBackingValueSize:                      {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
+		FormatMarkForCompactionInVersionEdit:        {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 	}
 
 	// Valid versions.
@@ -253,10 +255,11 @@ func TestFormatMajorVersions_BlobFileFormat(t *testing.T) {
 	// fixture is intentionally verbose.
 
 	m := map[FormatMajorVersion]blob.FileFormat{
-		FormatValueSeparation:    blob.FileFormatV1,
-		FormatExciseBoundsRecord: blob.FileFormatV1,
-		FormatV2BlobFiles:        blob.FileFormatV2,
-		FormatBackingValueSize:   blob.FileFormatV2,
+		FormatValueSeparation:                blob.FileFormatV1,
+		FormatExciseBoundsRecord:             blob.FileFormatV1,
+		FormatV2BlobFiles:                    blob.FileFormatV2,
+		FormatBackingValueSize:               blob.FileFormatV2,
+		FormatMarkForCompactionInVersionEdit: blob.FileFormatV2,
 	}
 
 	// Valid versions.

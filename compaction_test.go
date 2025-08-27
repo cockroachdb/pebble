@@ -2772,11 +2772,6 @@ func TestMarkedForCompaction(t *testing.T) {
 
 	var mem vfs.FS = vfs.NewMem()
 	var d *DB
-	defer func() {
-		if d != nil {
-			require.NoError(t, d.Close())
-		}
-	}()
 
 	var buf bytes.Buffer
 	opts := &Options{
@@ -2807,6 +2802,19 @@ func TestMarkedForCompaction(t *testing.T) {
 			require.NoError(t, d.Close())
 			var err error
 			d, err = Open("", opts)
+			require.NoError(t, err)
+			return ""
+
+		case "rotate-manifest":
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			_, err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+				return versionUpdate{
+					VE:                      &manifest.VersionEdit{},
+					ForceManifestRotation:   true,
+					InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(nil) },
+				}, nil
+			})
 			require.NoError(t, err)
 			return ""
 
@@ -2861,10 +2869,14 @@ func TestMarkedForCompaction(t *testing.T) {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			d.opts.DisableAutomaticCompactions = false
-			d.maybeScheduleCompaction()
-			for d.mu.compact.compactingCount > 0 {
-				d.mu.compact.cond.Wait()
+			for {
 				d.maybeScheduleCompaction()
+				if d.mu.compact.compactingCount == 0 {
+					break
+				}
+				for d.mu.compact.compactingCount > 0 {
+					d.mu.compact.cond.Wait()
+				}
 			}
 
 			fmt.Fprintln(&buf, d.mu.versions.currentVersion().DebugString())
@@ -2876,6 +2888,9 @@ func TestMarkedForCompaction(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+	if d != nil {
+		require.NoError(t, d.Close())
+	}
 }
 
 // createManifestErrorInjector injects errors (when enabled) into vfs.FS calls
