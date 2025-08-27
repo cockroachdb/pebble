@@ -48,30 +48,34 @@ func (d *DB) determineCompactionValueSeparation(
 		return compact.NeverSeparateValues{}
 	}
 
+	var inputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile
+	if c.version != nil {
+		inputBlobPhysicalFiles = uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs)
+	}
 	// We're allowed to write blob references. Determine whether we should carry
 	// forward existing blob references, or write new ones.
 	writeBlobs, outputBlobReferenceDepth, coldWriteSpans :=
 		shouldWriteBlobFiles(c, policy, cttRetriever)
 	if !writeBlobs {
 		// This compaction should preserve existing blob references.
-		return &preserveBlobReferences{
-			inputBlobPhysicalFiles:   uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
-			outputBlobReferenceDepth: outputBlobReferenceDepth,
-		}
+		return newPreserveAllHotBlobReferences(
+			inputBlobPhysicalFiles, outputBlobReferenceDepth)
 	}
-
+	_ = coldWriteSpans
 	// This compaction should write values to new blob files.
-	return &writeNewBlobFiles{
-		comparer: d.opts.Comparer,
-		newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+	writerOpts := d.opts.MakeBlobWriterOptions(c.outputLevel.level, d.BlobFileFormat())
+	writerOpts.CTTRetriever = cttRetriever
+	return newWriteNewBlobFiles(
+		inputBlobPhysicalFiles,
+		d.opts.Comparer,
+		func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
 			return d.newCompactionOutputBlob(
 				jobID, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts)
 		},
-		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
-		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level, d.BlobFileFormat()),
-		minimumSize:        policy.MinimumSize,
-		globalMinimumSize:  policy.MinimumSize,
-		invalidValueCallback: func(userKey []byte, value []byte, err error) {
+		d.opts.Experimental.ShortAttributeExtractor,
+		writerOpts,
+		policy.MinimumSize,
+		func(userKey []byte, value []byte, err error) {
 			// The value may not be safe, so it will be redacted when redaction
 			// is enabled.
 			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
@@ -81,8 +85,8 @@ func (d *DB) determineCompactionValueSeparation(
 					value, err),
 			})
 		},
-		coldWriteSpans: coldWriteSpans,
-	}
+		nil,
+	)
 }
 
 const minLevelForColdBlobFiles = 5
@@ -289,8 +293,6 @@ type writeNewBlobFiles struct {
 	// invalidValueCallback is called when a value is encountered for which the
 	// short attribute extractor returns an error.
 	invalidValueCallback func(userKey []byte, value []byte, err error)
-	// TODO(sumeer): use during compaction execution.
-	coldWriteSpans map[base.TieringSpanID]struct{}
 
 	// Current blob writer state
 	writer  *blob.FileWriter
@@ -302,15 +304,15 @@ type writeNewBlobFiles struct {
 // Assert that *writeNewBlobFiles implements the compact.ValueSeparation interface.
 var _ compact.ValueSeparation = (*writeNewBlobFiles)(nil)
 
-// Init implements the ValueSeparation interface.
-func (vs *writeNewBlobFiles) Init(retriever tieredmeta.ColdTierThresholdRetriever) {
-	vs.writerOpts.CTTRetriever = retriever
-}
-
-// SetNextOutputConfig implements the ValueSeparation interface.
-func (vs *writeNewBlobFiles) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {
+// OverrideNextOutputConfig implements the ValueSeparation interface.
+func (vs *writeNewBlobFiles) OverrideNextOutputConfig(
+	config compact.ValueSeparationOverrideConfig,
+) {
 	vs.minimumSize = config.MinimumSize
 }
+
+// StartOutput implements the ValueSeparation interface.
+func (vs *writeNewBlobFiles) StartOutput(config compact.ValueSeparationOutputConfig) {}
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
@@ -321,9 +323,8 @@ func (vs *writeNewBlobFiles) EstimatedFileSize() uint64 {
 	return vs.writer.EstimatedSize()
 }
 
-// EstimatedReferenceSize returns an estimate of the disk space consumed by the
-// current output sstable's blob references so far.
-func (vs *writeNewBlobFiles) EstimatedReferenceSize() uint64 {
+// EstimatedHotReferenceSize implements compact.ValueSeparation.
+func (vs *writeNewBlobFiles) EstimatedHotReferenceSize() uint64 {
 	// When we're writing to new blob files, the size of the blob file itself is
 	// a better estimate of the disk space consumed than the uncompressed value
 	// sizes.
@@ -441,9 +442,11 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 		)},
 		BlobReferenceSize:  stats.UncompressedValueBytes,
 		BlobReferenceDepth: 1,
-		BlobFileStats:      stats,
-		BlobFileObject:     vs.objMeta,
-		BlobFileMetadata:   meta,
+		NewBlobFiles: []compact.NewBlobFileInfo{{
+			FileStats:    stats,
+			FileObject:   vs.objMeta,
+			FileMetadata: meta,
+		}},
 	}, nil
 }
 
@@ -480,11 +483,14 @@ type pendingReference struct {
 // interface.
 var _ compact.ValueSeparation = (*preserveBlobReferences)(nil)
 
-// Init implements the ValueSeparation interface.
-func (vs *preserveBlobReferences) Init(retriever tieredmeta.ColdTierThresholdRetriever) {}
+// OverrideNextOutputConfig implements the ValueSeparation interface.
+func (vs *preserveBlobReferences) OverrideNextOutputConfig(
+	config compact.ValueSeparationOverrideConfig,
+) {
+}
 
-// SetNextOutputConfig implements the ValueSeparation interface.
-func (vs *preserveBlobReferences) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
+// StartOutput implements the ValueSeparation interface.
+func (vs *preserveBlobReferences) StartOutput(config compact.ValueSeparationOutputConfig) {}
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
@@ -492,9 +498,8 @@ func (vs *preserveBlobReferences) EstimatedFileSize() uint64 {
 	return 0
 }
 
-// EstimatedReferenceSize returns an estimate of the disk space consumed by the
-// current output sstable's blob references so far.
-func (vs *preserveBlobReferences) EstimatedReferenceSize() uint64 {
+// EstimatedHotReferenceSize implements compact.ValueSeparation.
+func (vs *preserveBlobReferences) EstimatedHotReferenceSize() uint64 {
 	// TODO(jackson): The totalValueSize is the uncompressed value sizes. With
 	// compressible data, it overestimates the disk space consumed by the blob
 	// references. It also does not include the blob file's index block or
@@ -604,3 +609,460 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 		BlobReferenceDepth: min(vs.outputBlobReferenceDepth, manifest.BlobReferenceDepth(len(references))),
 	}, nil
 }
+
+type valueSeparationMode uint8
+
+const (
+	// preserveAllHotBlobReferences preserves existing hot blob references and
+	// does not write any new (hot or cold) blob files. Existing cold blob
+	// references that are now hot, will be inlined.
+	preserveAllHotBlobReferences valueSeparationMode = iota
+	// rewriteAllHotBlobReferences rewrites all existing hot blob references,
+	// and preserves existing cold blob references, and may write new cold blob
+	// files, depending on other configuration.
+	rewriteAllHotBlobReferences
+)
+
+// generalizedValueSeparation can function in any of the valueSeparationModes,
+// and can write cold blob files.
+//
+// TODO(sumeer): fully integrate generalizedValueSeparation and remove the
+// other implementations.
+type generalizedValueSeparation struct {
+	// Initial state.
+
+	mode valueSeparationMode
+	// inputBlobPhysicalFiles holds the *PhysicalBlobFile for every unique blob
+	// file referenced by input sstables.
+	inputBlobPhysicalFiles   map[base.BlobFileID]*manifest.PhysicalBlobFile
+	outputBlobReferenceDepth manifest.BlobReferenceDepth
+
+	comparer *base.Comparer
+	// newBlobObject constructs a new blob object for use in the compaction.
+	newBlobObject      func() (objstorage.Writable, objstorage.ObjectMetadata, error)
+	shortAttrExtractor ShortAttributeExtractor
+	// writerOpts is used to configure all constructed blob writers.
+	writerOpts blob.FileWriterOptions
+	// minimumSize imposes a lower bound on the size of values that can be
+	// separated into a blob file. Values smaller than this are always written
+	// to the sstable (but may still be written to a value block within the
+	// sstable).
+	//
+	// minimumSize is set to globalMinimumSize by default and on every call to
+	// FinishOutput. It may be overriden by SetNextOutputConfig (i.e, if a
+	// SpanPolicy dictates a different minimum size for a span of the keyspace).
+	minimumSize int
+	// globalMinimumSize is the size threshold for separating values into blob
+	// files globally across the keyspace. It may be overridden per-output by
+	// SetNextOutputConfig.
+	globalMinimumSize int
+	// invalidValueCallback is called when a value is encountered for which the
+	// short attribute extractor returns an error.
+	invalidValueCallback func(userKey []byte, value []byte, err error)
+	// coldWriteSpans is the set of spans for which new cold blob files can be
+	// written for the compaction as a whole. For a particular output, the call
+	// to StartOutput will select 0 or 1 element from this set.
+	coldWriteSpans map[base.TieringSpanID]struct{}
+
+	// state.
+	buf                           []byte
+	preservedReferenceIndexOffset base.BlobReferenceID
+	tieringSpanForNewColdBlobFile base.TieringSpanID
+	// currPreservedReferences holds the pending references that have been referenced by
+	// the current output sstable. The index of a reference with a given blob
+	// file ID is the value of the base.BlobReferenceID used by its value handles
+	// within the output sstable.
+	currPreservedReferences []pendingReference
+	// totalPreservedValueSize is the sum of currPreservedReferenceValueSizes.
+	//
+	// INVARIANT: sum(totalPreservedValueSize) == sum(currReferenceValueSizes)
+	totalPreservedValueSize [base.NumStorageTiers]uint64
+	writers                 [base.NumStorageTiers]blobWriterAndMeta
+}
+
+var _ compact.ValueSeparation = &generalizedValueSeparation{}
+
+func newPreserveAllHotBlobReferences(
+	inputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile,
+	outputBlobReferenceDepth manifest.BlobReferenceDepth,
+) *generalizedValueSeparation {
+	return &generalizedValueSeparation{
+		mode:                     preserveAllHotBlobReferences,
+		inputBlobPhysicalFiles:   inputBlobPhysicalFiles,
+		outputBlobReferenceDepth: outputBlobReferenceDepth,
+	}
+}
+
+func newWriteNewBlobFiles(
+	inputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile,
+	comparer *base.Comparer,
+	newBlobObject func() (objstorage.Writable, objstorage.ObjectMetadata, error),
+	shortAttrExtractor ShortAttributeExtractor,
+	writerOpts blob.FileWriterOptions,
+	globalMinimumSize int,
+	invalidValueCallback func(userKey []byte, value []byte, err error),
+	coldWriteSpans map[base.TieringSpanID]struct{},
+) *generalizedValueSeparation {
+	return &generalizedValueSeparation{
+		mode:                     rewriteAllHotBlobReferences,
+		inputBlobPhysicalFiles:   inputBlobPhysicalFiles,
+		outputBlobReferenceDepth: 1,
+		comparer:                 comparer,
+		newBlobObject:            newBlobObject,
+		shortAttrExtractor:       shortAttrExtractor,
+		writerOpts:               writerOpts,
+		minimumSize:              globalMinimumSize,
+		globalMinimumSize:        globalMinimumSize,
+		invalidValueCallback:     invalidValueCallback,
+		coldWriteSpans:           coldWriteSpans,
+	}
+}
+
+type blobWriterAndMeta struct {
+	writer  *blob.FileWriter
+	objMeta objstorage.ObjectMetadata
+}
+
+// OverrideNextOutputConfig implements the ValueSeparation interface.
+func (vs *generalizedValueSeparation) OverrideNextOutputConfig(
+	config compact.ValueSeparationOverrideConfig,
+) {
+	vs.minimumSize = config.MinimumSize
+}
+
+// StartOutput implements the ValueSeparation interface.
+func (vs *generalizedValueSeparation) StartOutput(config compact.ValueSeparationOutputConfig) {
+	if vs.mode == preserveAllHotBlobReferences {
+		return
+	}
+	// Index 0 is used for the new hot blob file, if any.
+	preservedOffset := base.BlobReferenceID(1)
+	if config.TieringSpanIDForNewColdBlobFile != 0 {
+		_, ok := vs.coldWriteSpans[config.TieringSpanIDForNewColdBlobFile]
+		if ok {
+			// Index 1 is used for the new cold blob file, if any.
+			preservedOffset++
+			vs.tieringSpanForNewColdBlobFile = config.TieringSpanIDForNewColdBlobFile
+		}
+	}
+	vs.preservedReferenceIndexOffset = preservedOffset
+}
+
+// EstimatedFileSize returns an estimate of the disk space consumed by the current
+// blob files if they were closed now.
+func (vs *generalizedValueSeparation) EstimatedFileSize() uint64 {
+	if vs.mode == preserveAllHotBlobReferences {
+		return 0
+	}
+	var size uint64
+	for i := range vs.writers {
+		if vs.writers[i].writer != nil {
+			size += vs.writers[i].writer.EstimatedSize()
+		}
+	}
+	return size
+}
+
+// EstimatedHotReferenceSize implements compact.ValueSeparation.
+func (vs *generalizedValueSeparation) EstimatedHotReferenceSize() uint64 {
+	// When we're writing to new blob files, the size of the blob file itself is
+	// a better estimate of the disk space consumed than the uncompressed value
+	// sizes, so we use vs.EstimatedFileSize.
+	//
+	// TODO(jackson): The totalValueSize is the uncompressed value sizes. With
+	// compressible data, it overestimates the disk space consumed by the blob
+	// references. It also does not include the blob file's index block or
+	// footer, so it can underestimate if values are completely incompressible.
+	//
+	// Should we compute a compression ratio per blob file and scale the
+	// references appropriately?
+	return vs.EstimatedFileSize() + vs.totalPreservedValueSize[base.HotTier]
+}
+
+// Add implements compact.ValueSeparation.
+func (vs *generalizedValueSeparation) Add(
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool,
+) error {
+	shouldBeCold := false
+	if kv.M.Tiering.SpanID != 0 {
+		ctLTThreshold := vs.writerOpts.CTTRetriever.GetColdTierLTThreshold(kv.M.Tiering.SpanID)
+		if kv.M.Tiering.Attribute < ctLTThreshold {
+			shouldBeCold = true
+		}
+	}
+	// Only set to true if it is already a reference.
+	preserveReference := false
+	// Only set if it is currently a reference, and represents the tier of the
+	// reference.
+	var referenceTier base.StorageTier
+	if kv.V.IsBlobValueHandle() {
+		lv := kv.V.LazyValue()
+		blobFileID := lv.Fetcher.BlobFileID
+		phys, ok := vs.inputBlobPhysicalFiles[blobFileID]
+		if !ok {
+			return errors.AssertionFailedf("pebble: blob file %s not found among input sstables", blobFileID)
+		}
+		referenceTier = phys.Tier
+		if phys.Tier == base.HotTier {
+			// hot => {hot, cold}.
+			if vs.mode == preserveAllHotBlobReferences {
+				// Can't do hot => cold transition, even if desired.
+				preserveReference = true
+			}
+			// Else will be rewritten, anyway, so we can decide whether
+			// to do a transition or not below.
+		} else {
+			if shouldBeCold {
+				// cold => cold.
+				preserveReference = true
+			} else {
+				// cold => hot. We do this even if no blob files are being written --
+				// i.e., we will inline the value.
+				preserveReference = false
+			}
+		}
+	}
+	if preserveReference {
+		// The value is an existing blob handle. We can copy it into the output
+		// sstable, taking note of the reference for the table metadata.
+		lv := kv.V.LazyValue()
+		fileID := lv.Fetcher.BlobFileID
+		var refID base.BlobReferenceID
+		if refIdx := slices.IndexFunc(vs.currPreservedReferences, func(ref pendingReference) bool {
+			return ref.blobFileID == fileID
+		}); refIdx != -1 {
+			refID = base.BlobReferenceID(refIdx) + vs.preservedReferenceIndexOffset
+		} else {
+			refID = base.BlobReferenceID(len(vs.currPreservedReferences)) + vs.preservedReferenceIndexOffset
+			vs.currPreservedReferences = append(vs.currPreservedReferences, pendingReference{
+				blobFileID: fileID,
+				valueSize:  0,
+			})
+		}
+		if invariants.Enabled && vs.currPreservedReferences[refID].blobFileID != fileID {
+			panic("wrong reference index")
+		}
+		handleSuffix := blob.DecodeHandleSuffix(lv.ValueOrHandle)
+		inlineHandle := blob.InlineHandle{
+			InlineHandlePreface: blob.InlineHandlePreface{
+				ReferenceID: refID,
+				ValueLen:    lv.Fetcher.Attribute.ValueLen,
+			},
+			HandleSuffix: handleSuffix,
+		}
+		err := tw.AddWithBlobHandle(
+			kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete, kv.M, referenceTier)
+		if err != nil {
+			return err
+		}
+		vs.currPreservedReferences[refID].valueSize += uint64(lv.Fetcher.Attribute.ValueLen)
+		vs.totalPreservedValueSize[referenceTier] += uint64(lv.Fetcher.Attribute.ValueLen)
+		return nil
+	}
+	// Fetch the value since either not a reference, or not preserving the reference.
+	v, callerOwned, err := kv.Value(vs.buf)
+	if err != nil {
+		return err
+	}
+	if callerOwned {
+		vs.buf = v[:0]
+	}
+	keyKind := kv.K.Kind()
+	if keyKind != base.InternalKeyKindSet && keyKind != base.InternalKeyKindSetWithDelete {
+		// Only SET and SETWITHDEL can be separated.
+		return tw.Add(kv.K, v, forceObsolete, kv.M)
+	}
+	// Key is SET or SETWITHDEL.
+	writeToColdBlob :=
+		vs.mode == rewriteAllHotBlobReferences && shouldBeCold && len(v) >= coldTierValSizeThreshold &&
+			vs.tieringSpanForNewColdBlobFile == kv.M.Tiering.SpanID
+	writeToHotBlob := !writeToColdBlob && vs.mode == rewriteAllHotBlobReferences
+	if writeToHotBlob {
+		// Values that are too small are never separated.
+		if len(v) < vs.minimumSize {
+			writeToHotBlob = false
+		}
+	}
+	if !writeToHotBlob && !writeToColdBlob {
+		return tw.Add(kv.K, v, forceObsolete, kv.M)
+	}
+	// This KV met all the criteria and its value will be separated.
+	// If there's a configured short attribute extractor, extract the value's
+	// short attribute.
+	var shortAttr base.ShortAttribute
+	if vs.shortAttrExtractor != nil {
+		keyPrefixLen := vs.comparer.Split(kv.K.UserKey)
+		shortAttr, err = vs.shortAttrExtractor(kv.K.UserKey, keyPrefixLen, v)
+		if err != nil {
+			// Report that there was a value for which the short attribute
+			// extractor was unable to extract a short attribute.
+			vs.invalidValueCallback(kv.K.UserKey, v, err)
+
+			// Rather than erroring out and aborting the flush or compaction, we
+			// fallback to writing the value verbatim to the sstable. Otherwise
+			// a flush could busy loop, repeatedly attempting to write the same
+			// memtable and repeatedly unable to extract a key's short attribute.
+			return tw.Add(kv.K, v, forceObsolete, kv.M)
+		}
+	}
+	blobTier := base.HotTier
+	if writeToColdBlob {
+		blobTier = base.ColdTier
+	}
+	wnm, err := vs.getWriter(blobTier, kv.M.Tiering.SpanID)
+	if err != nil {
+		return err
+	}
+	// Append the value to the blob file.
+	handle := wnm.writer.AddValue(v, kv.M.Tiering)
+	// The referenceID is 0 for hot blob file, 1 for cold blob file (if any).
+	var referenceID base.BlobReferenceID
+	if writeToColdBlob {
+		referenceID = 1
+	}
+	// Write the key and the handle to the sstable. We need to map the
+	// blob.Handle into a blob.InlineHandle. Everything is copied verbatim,
+	// except the FileNum is translated into a reference index.
+	inlineHandle := blob.InlineHandle{
+		InlineHandlePreface: blob.InlineHandlePreface{
+			ReferenceID: referenceID,
+			ValueLen:    handle.ValueLen,
+		},
+		HandleSuffix: blob.HandleSuffix{
+			BlockID: handle.BlockID,
+			ValueID: handle.ValueID,
+		},
+	}
+	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete, kv.M, blobTier)
+}
+
+func (vs *generalizedValueSeparation) getWriter(
+	blobTier base.StorageTier, spanID base.TieringSpanID,
+) (*blobWriterAndMeta, error) {
+	wnm := &vs.writers[blobTier]
+	if wnm.writer != nil {
+		return wnm, nil
+	}
+	// TODO(sumeer): use blobTier to create in the appropriate tier.
+	writable, objMeta, err := vs.newBlobObject()
+	if err != nil {
+		return nil, err
+	}
+	wnm.objMeta = objMeta
+	wnm.writer = blob.NewFileWriter(objMeta.DiskFileNum, writable, vs.writerOpts)
+	return wnm, nil
+}
+
+// FinishOutput closes the current blob file (if any). It returns the stats
+// and metadata of the now completed blob file.
+func (vs *generalizedValueSeparation) FinishOutput() (compact.ValueSeparationMetadata, error) {
+	if invariants.Enabled {
+		for i := base.StorageTier(0); i < base.NumStorageTiers; i++ {
+			// Assert that the incrementally-maintained totalValueSize matches the
+			// sum of all the reference value sizes.
+			totalValueSize := uint64(0)
+			for _, ref := range vs.currPreservedReferences {
+				if phys, ok := vs.inputBlobPhysicalFiles[ref.blobFileID]; ok && phys.Tier == i {
+					totalValueSize += ref.valueSize
+				}
+			}
+			if totalValueSize != vs.totalPreservedValueSize[i] {
+				return compact.ValueSeparationMetadata{},
+					errors.AssertionFailedf("totalValueSize mismatch for tier %d: %d != %d",
+						i, totalValueSize, vs.totalPreservedValueSize[i])
+			}
+		}
+	}
+	var references manifest.BlobReferences
+	if len(vs.currPreservedReferences) > 0 || vs.writers[base.ColdTier].writer != nil {
+		// vs.preservedReferenceIndexOffset leaves space in the prefix for the new
+		// blob files.
+		references = make(manifest.BlobReferences,
+			len(vs.currPreservedReferences)+int(vs.preservedReferenceIndexOffset))
+	} else {
+		// No preserved references and no new cold blob file, so tighten up the
+		// references slice.
+		if vs.writers[base.HotTier].writer != nil {
+			references = make(manifest.BlobReferences, 1)
+		}
+		// Else no references.
+	}
+	numPopulatedHotReferences := 0
+	for i := range vs.currPreservedReferences {
+		ref := vs.currPreservedReferences[i]
+		phys, ok := vs.inputBlobPhysicalFiles[ref.blobFileID]
+		if !ok {
+			return compact.ValueSeparationMetadata{},
+				errors.AssertionFailedf("pebble: blob file %s not found among input sstables", ref.blobFileID)
+		}
+		if phys.Tier == base.HotTier {
+			numPopulatedHotReferences++
+		}
+		references[i+int(vs.preservedReferenceIndexOffset)] =
+			manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, phys)
+	}
+	var referenceSize uint64
+	for i := range vs.totalPreservedValueSize {
+		referenceSize += vs.totalPreservedValueSize[i]
+	}
+
+	var newBlobFiles []compact.NewBlobFileInfo
+	for i := range vs.writers {
+		if vs.writers[i].writer == nil {
+			continue
+		}
+		stats, err := vs.writers[i].writer.Close()
+		if err != nil {
+			return compact.ValueSeparationMetadata{}, err
+		}
+		vs.writers[i].writer = nil
+		meta := &manifest.PhysicalBlobFile{
+			FileNum:      vs.writers[i].objMeta.DiskFileNum,
+			Size:         stats.FileLen,
+			ValueSize:    stats.UncompressedValueBytes,
+			CreationTime: uint64(time.Now().Unix()),
+			Tier:         base.StorageTier(i),
+		}
+		references[i] = manifest.MakeBlobReference(
+			base.BlobFileID(vs.writers[i].objMeta.DiskFileNum),
+			stats.UncompressedValueBytes,
+			meta,
+		)
+		if i == int(base.HotTier) {
+			numPopulatedHotReferences++
+		}
+		referenceSize += stats.UncompressedValueBytes
+		newBlobFiles = append(newBlobFiles, compact.NewBlobFileInfo{
+			FileStats:    stats,
+			FileObject:   vs.writers[i].objMeta,
+			FileMetadata: meta,
+		})
+	}
+	// The outputBlobReferenceDepth is computed from the input sstables,
+	// reflecting the worst-case overlap of referenced blob files. If this
+	// sstable references fewer unique hot blob files, reduce its depth to the
+	// count of unique hot blob files.
+	blobReferenceDepth := min(vs.outputBlobReferenceDepth,
+		manifest.BlobReferenceDepth(numPopulatedHotReferences))
+
+	// Reset the minimum size for the next output.
+	vs.minimumSize = vs.globalMinimumSize
+	// Reset the remaining state.
+	vs.preservedReferenceIndexOffset = 0
+	vs.tieringSpanForNewColdBlobFile = 0
+	vs.currPreservedReferences = vs.currPreservedReferences[:0]
+	for i := range vs.totalPreservedValueSize {
+		vs.totalPreservedValueSize[i] = 0
+		vs.writers[i] = blobWriterAndMeta{}
+	}
+
+	return compact.ValueSeparationMetadata{
+		BlobReferences:     references,
+		BlobReferenceSize:  referenceSize,
+		BlobReferenceDepth: blobReferenceDepth,
+		NewBlobFiles:       newBlobFiles,
+	}, nil
+}
+
+// Lint
+var _ = &generalizedValueSeparation{}
