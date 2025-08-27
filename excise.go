@@ -461,6 +461,9 @@ func determineExcisedTableBlobReferences(
 	}
 	newBlobReferences := make(manifest.BlobReferences, len(originalBlobReferences))
 	for i, bf := range originalBlobReferences {
+		if bf == (manifest.BlobReference{}) {
+			continue
+		}
 		bf.ValueSize = max(bf.ValueSize*excisedTable.Size/originalSize, 1)
 		newBlobReferences[i] = bf
 	}

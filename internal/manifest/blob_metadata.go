@@ -309,6 +309,11 @@ type BlobReferenceDepth int
 // significant and should be maintained. In practice, a sstable's BlobReferences
 // are ordered by earliest appearance within the sstable. The ordering is
 // persisted to the manifest.
+//
+// Some BlobReference fields may be zero, since while writing a sstable that
+// will preserve some references and write some new references, the writer
+// cannot foretell the future and needs to reserve some slots for new
+// references.
 type BlobReferences []BlobReference
 
 // Assert that *BlobReferences implements sstable.BlobReferences.

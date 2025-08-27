@@ -25,7 +25,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
-	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -79,41 +78,45 @@ func TestValueSeparationPolicy(t *testing.T) {
 				case "never-separate-values":
 					vs = compact.NeverSeparateValues{}
 				case "preserve-blob-references":
-					pbr := &preserveBlobReferences{}
 					lines := crstrings.Lines(d.Input)
-					pbr.inputBlobPhysicalFiles = make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(lines))
+					inputBlobPhysicalFiles := make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(lines))
 					for _, line := range lines {
 						bfm, err := manifest.ParseBlobFileMetadataDebug(line)
 						require.NoError(t, err)
 						fn = max(fn, bfm.Physical.FileNum)
-						pbr.inputBlobPhysicalFiles[bfm.FileID] = bfm.Physical
+						inputBlobPhysicalFiles[bfm.FileID] = bfm.Physical
 					}
+					pbr := newPreserveAllHotBlobReferences(inputBlobPhysicalFiles, 0)
 					vs = pbr
 				case "write-new-blob-files":
-					newSep := &writeNewBlobFiles{
-						comparer: testkeys.Comparer,
-						newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
-							fn++
-							return objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
-						},
-						invalidValueCallback: func(userKey []byte, value []byte, err error) {
-							fmt.Fprintf(&buf, "# invalid value for key %q, value: %q: %s\n", userKey, value, err)
-						},
-					}
-					d.MaybeScanArgs(t, "minimum-size", &newSep.minimumSize)
-					newSep.globalMinimumSize = newSep.minimumSize
+					var minimumSize int
+					d.MaybeScanArgs(t, "minimum-size", &minimumSize)
+					var shortAttrExtractor ShortAttributeExtractor
 					if arg, ok := d.Arg("short-attr-extractor"); ok {
 						switch arg.SingleVal(t) {
 						case "error":
-							newSep.shortAttrExtractor = errShortAttrExtractor
+							shortAttrExtractor = errShortAttrExtractor
 						default:
 							t.Fatalf("unknown short attribute extractor: %s", arg.String())
 						}
 					}
+					newSep := newWriteNewBlobFiles(nil, testkeys.Comparer,
+						func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+							fn++
+							return objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
+						},
+						shortAttrExtractor,
+						blob.FileWriterOptions{},
+						minimumSize,
+						func(userKey []byte, value []byte, err error) {
+							fmt.Fprintf(&buf, "# invalid value for key %q, value: %q: %s\n", userKey, value, err)
+						}, nil,
+					)
 					vs = newSep
 				default:
 					t.Fatalf("unknown value separation policy: %s", x)
 				}
+				vs.StartOutput(compact.ValueSeparationOutputConfig{})
 				return buf.String()
 			case "add":
 				if tw == nil {
@@ -134,7 +137,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 				}
 				return buf.String()
 			case "estimated-sizes":
-				fmt.Fprintf(&buf, "file: %d, references: %d\n", vs.EstimatedFileSize(), vs.EstimatedReferenceSize())
+				fmt.Fprintf(&buf, "file: %d, references: %d\n", vs.EstimatedFileSize(), vs.EstimatedHotReferenceSize())
 				return buf.String()
 			case "close-output":
 				if tw != nil {
@@ -144,11 +147,13 @@ func TestValueSeparationPolicy(t *testing.T) {
 
 				meta, err := vs.FinishOutput()
 				require.NoError(t, err)
-				if meta.BlobFileObject.DiskFileNum == 0 {
+				if len(meta.NewBlobFiles) == 0 {
 					fmt.Fprintln(&buf, "no blob file created")
 				} else {
-					fmt.Fprintf(&buf, "Blob file created: %s\n", meta.BlobFileMetadata)
-					fmt.Fprintln(&buf, meta.BlobFileStats)
+					for _, nb := range meta.NewBlobFiles {
+						fmt.Fprintf(&buf, "Blob file created: %s\n", nb.FileMetadata)
+						fmt.Fprintln(&buf, nb.FileStats)
+					}
 				}
 				if len(meta.BlobReferences) == 0 {
 					fmt.Fprintln(&buf, "blobrefs:[]")
@@ -215,10 +220,14 @@ type defineDBValueSeparator struct {
 // Assert that *defineDBValueSeparator implements the compact.ValueSeparation interface.
 var _ compact.ValueSeparation = (*defineDBValueSeparator)(nil)
 
-func (vs *defineDBValueSeparator) Init(retriever tieredmeta.ColdTierThresholdRetriever) {}
+// OverrideNextOutputConfig implements the compact.ValueSeparation interface.
+func (vs *defineDBValueSeparator) OverrideNextOutputConfig(
+	config compact.ValueSeparationOverrideConfig,
+) {
+}
 
-// SetNextOutputConfig implements the compact.ValueSeparation interface.
-func (vs *defineDBValueSeparator) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
+// StartOutput implements the compact.ValueSeparation interface.
+func (vs *defineDBValueSeparator) StartOutput(config compact.ValueSeparationOutputConfig) {}
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
@@ -226,10 +235,9 @@ func (vs *defineDBValueSeparator) EstimatedFileSize() uint64 {
 	return vs.pbr.EstimatedFileSize()
 }
 
-// EstimatedReferenceSize returns an estimate of the disk space consumed by the
-// current output sstable's blob references so far.
-func (vs *defineDBValueSeparator) EstimatedReferenceSize() uint64 {
-	return vs.pbr.EstimatedReferenceSize()
+// EstimatedReferenceSize implements compact.ValueSeparation.
+func (vs *defineDBValueSeparator) EstimatedHotReferenceSize() uint64 {
+	return vs.pbr.EstimatedHotReferenceSize()
 }
 
 // Add adds the provided key-value pair to the sstable, possibly separating the
