@@ -1,6 +1,6 @@
 # Set the minimum size for a separated value to 5.
 
-define value-separation=(true, 5, 3, 0s, 1.0)
+define value-separation=(enabled, min-size=5, max-ref-depth=3, garbage-ratios=1.0:1.0)
 ----
 
 batch

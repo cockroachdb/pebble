@@ -339,11 +339,12 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{
-			Enabled:               true,
-			MinimumSize:           5,
-			MaxBlobReferenceDepth: 3,
-			RewriteMinimumAge:     50 * time.Millisecond,
-			TargetGarbageRatio:    0.1,
+			Enabled:                  true,
+			MinimumSize:              5,
+			MaxBlobReferenceDepth:    3,
+			RewriteMinimumAge:        50 * time.Millisecond,
+			GarbageRatioLowPriority:  0.10, // 10% garbage
+			GarbageRatioHighPriority: 0.30, // 30% garbage
 		}
 	}
 
@@ -919,12 +920,14 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatValueSeparation {
 			testOpts.Opts.FormatMajorVersion = pebble.FormatValueSeparation
 		}
+		lowPri := max(rng.Float64(), 0.05)
 		policy := pebble.ValueSeparationPolicy{
-			Enabled:               true,
-			MinimumSize:           1 + rng.IntN(maxValueSize),
-			MaxBlobReferenceDepth: 2 + rng.IntN(9),                                   // 2-10
-			RewriteMinimumAge:     time.Duration(rng.IntN(90)+10) * time.Millisecond, // [10ms, 100ms)
-			TargetGarbageRatio:    max(rng.Float64(), 0.05),
+			Enabled:                  true,
+			MinimumSize:              1 + rng.IntN(maxValueSize),
+			MaxBlobReferenceDepth:    2 + rng.IntN(9),                                   // 2-10
+			RewriteMinimumAge:        time.Duration(rng.IntN(90)+10) * time.Millisecond, // [10ms, 100ms)
+			GarbageRatioLowPriority:  lowPri,
+			GarbageRatioHighPriority: lowPri + rand.Float64()*(1.0-lowPri), // [lowPri, 1.0)
 		}
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 			return policy

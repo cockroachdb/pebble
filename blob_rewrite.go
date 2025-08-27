@@ -7,6 +7,7 @@ package pebble
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"iter"
 	"runtime/pprof"
 	"slices"
@@ -28,6 +29,12 @@ import (
 // A pickedBlobFileCompaction is a blob file rewrite compaction that has been
 // picked by the compaction picker.
 type pickedBlobFileCompaction struct {
+	// highPriority is set to true if the compaction was picked because the
+	// ValueSeparationPolcy.GarbageThresholdHighPriority heuristic was
+	// triggered. In this case, the resulting compaction will be permitted to
+	// use a burst compaction concurrency slot to avoid starving default
+	// compactions.
+	highPriority      bool
 	vers              *manifest.Version
 	file              manifest.BlobFileMetadata
 	referencingTables []*manifest.TableMetadata
@@ -64,6 +71,7 @@ func (c *pickedBlobFileCompaction) ConstructCompaction(
 			PreferSharedStorage: false,
 			WriteCategory:       getDiskWriteCategoryForCompaction(d.opts, compactionKindBlobFileRewrite),
 		},
+		highPriority: c.highPriority,
 	}
 }
 
@@ -98,6 +106,21 @@ type blobFileRewriteCompaction struct {
 	objCreateOpts         objstorage.CreateOptions
 	internalIteratorStats base.InternalIteratorStats
 	bytesWritten          atomic.Int64 // Total bytes written to the new blob file.
+	// highPriority is set to true if the compaction was picked because the
+	// ValueSeparationPolcy.GarbageThresholdHighPriority heuristic was
+	// triggered. In this case, the resulting compaction will be permitted to
+	// use a burst compaction concurrency slot to avoid starving default
+	// compactions. This field is set when the compaction is created.
+	highPriority bool
+}
+
+func (c *blobFileRewriteCompaction) String() string {
+	s := fmt.Sprintf("blob file (ID: %s) %s (%s) being rewritten",
+		c.input.FileID, c.input.Physical.FileNum, humanizeBytes(uint64(c.input.Physical.Size)))
+	if c.highPriority {
+		s += " (high priority)"
+	}
+	return s
 }
 
 // Assert that *blobFileRewriteCompaction implements the Compaction interface.
@@ -105,6 +128,9 @@ var _ compaction = (*blobFileRewriteCompaction)(nil)
 
 func (c *blobFileRewriteCompaction) AddInProgressLocked(d *DB) {
 	d.mu.compact.inProgress[c] = struct{}{}
+	if c.highPriority {
+		d.mu.compact.burstConcurrency.Add(1)
+	}
 	// TODO(jackson): Currently the compaction picker iterates through all
 	// ongoing compactions in order to limit the number of concurrent blob
 	// rewrite compactions to 1.
@@ -247,6 +273,10 @@ func (c *blobFileRewriteCompaction) Info() compactionInfo {
 		versionEditApplied: c.versionEditApplied,
 		outputLevel:        -1,
 	}
+}
+
+func (c *blobFileRewriteCompaction) UsesBurstConcurrency() bool {
+	return c.highPriority
 }
 
 func (c *blobFileRewriteCompaction) RecordError(*problemspans.ByLevel, error) {

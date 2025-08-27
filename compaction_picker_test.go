@@ -6,8 +6,11 @@ package pebble
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1486,6 +1489,17 @@ func TestCompactionPickerScores(t *testing.T) {
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/compaction_picker_scores", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "batch":
+			b := d.NewBatch()
+			err := runBatchDefineCmd(td, b)
+			if err != nil {
+				return err.Error()
+			}
+			if err = b.Commit(Sync); err != nil {
+				return err.Error()
+			}
+			return ""
+
 		case "define":
 			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
@@ -1518,6 +1532,12 @@ func TestCompactionPickerScores(t *testing.T) {
 			d.mu.Unlock()
 			return ""
 
+		case "flush":
+			if err := d.Flush(); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
 		case "resume-cleaning":
 			cleaner.resume()
 			return ""
@@ -1542,8 +1562,15 @@ func TestCompactionPickerScores(t *testing.T) {
 			d.mu.Lock()
 			d.opts.DisableAutomaticCompactions = false
 			d.maybeScheduleCompaction()
+			if v := d.mu.compact.burstConcurrency.Load(); v > 0 {
+				fmt.Fprintf(&buf, "%d burst concurrency active\n", v)
+			}
 			fmt.Fprintf(&buf, "%d compactions in progress:", d.mu.compact.compactingCount)
-			for c := range d.mu.compact.inProgress {
+
+			runningCompactions := slices.SortedFunc(maps.Keys(d.mu.compact.inProgress), func(a, b compaction) int {
+				return cmp.Compare(a.Info().String(), b.Info().String())
+			})
+			for _, c := range runningCompactions {
 				fmt.Fprintf(&buf, "\n%s", c)
 			}
 			d.opts.DisableAutomaticCompactions = true
@@ -1595,6 +1622,14 @@ func TestCompactionPickerScores(t *testing.T) {
 			}
 			tw.Flush()
 			return buf.String()
+
+		case "wait-compactions":
+			d.mu.Lock()
+			for d.mu.compact.compactingCount > 0 {
+				d.mu.compact.cond.Wait()
+			}
+			d.mu.Unlock()
+			return ""
 
 		case "wait-pending-table-stats":
 			return runWaitForTableStatsCmd(td, d)

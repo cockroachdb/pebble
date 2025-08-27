@@ -1825,29 +1825,49 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			if len(cmdArg.Vals) == 1 && cmdArg.Vals[0] == "off" || cmdArg.Vals[0] == "disabled" {
 				policy.Enabled = false
 			} else {
-				if len(cmdArg.Vals) != 5 {
-					return errors.New("value-separation expects 5 arguments: (enabled, minimum-size, max-blob-reference-depth, rewrite-minimum-age, target-garbage-ratio)")
-				}
-				var err error
-				policy.Enabled, err = strconv.ParseBool(cmdArg.Vals[0])
-				if err != nil {
-					return err
-				}
-				policy.MinimumSize, err = strconv.Atoi(cmdArg.Vals[1])
-				if err != nil {
-					return err
-				}
-				policy.MaxBlobReferenceDepth, err = strconv.Atoi(cmdArg.Vals[2])
-				if err != nil {
-					return err
-				}
-				policy.RewriteMinimumAge, err = time.ParseDuration(cmdArg.Vals[3])
-				if err != nil {
-					return err
-				}
-				policy.TargetGarbageRatio, err = strconv.ParseFloat(cmdArg.Vals[4], 64)
-				if err != nil {
-					return err
+				for _, arg := range cmdArg.Vals {
+					i := strings.Index(arg, "=")
+					name := arg
+					var value string
+					if i > 0 {
+						name = arg[:i]
+						value = arg[i+1:]
+					}
+					var err error
+					switch name {
+					case "enabled", "disabled":
+						policy.Enabled = name == "enabled"
+					case "min-size":
+						policy.MinimumSize, err = strconv.Atoi(value)
+						if err != nil {
+							return err
+						}
+					case "max-ref-depth":
+						policy.MaxBlobReferenceDepth, err = strconv.Atoi(value)
+						if err != nil {
+							return err
+						}
+					case "rw-min-age":
+						policy.RewriteMinimumAge, err = time.ParseDuration(value)
+						if err != nil {
+							return err
+						}
+					case "garbage-ratios":
+						i := strings.Index(value, ":")
+						if i == -1 {
+							return errors.New("garbage-ratios expects a colon-separated list of two float")
+						}
+						policy.GarbageRatioLowPriority, err = strconv.ParseFloat(value[:i], 64)
+						if err != nil {
+							return err
+						}
+						policy.GarbageRatioHighPriority, err = strconv.ParseFloat(value[i+1:], 64)
+						if err != nil {
+							return err
+						}
+					default:
+						return errors.Newf("unrecognized value-separation argument %q", name)
+					}
 				}
 			}
 			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {

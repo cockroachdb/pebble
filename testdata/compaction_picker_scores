@@ -265,3 +265,87 @@ L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
 L5       129KB    0.00     0.53           0.53
 L6       898KB    0.00     0.97           0.97
+
+# Test high priority blob file rewrite space reclamation compactions.  We set
+# l0-compaction-threshold=1 to ensure that post-flush, L0 has a score ≥ 1.0.  If
+# it weren't for the high priority blob file rewrite compaction heuristic
+# triggering, we would pursue an automatic score compaction from L0 -> LBase.
+
+define l0-compaction-threshold=1 lbase-max-bytes=65536  enable-table-stats=true auto-compactions=off value-separation=(enabled, min-size=1, max-ref-depth=5, garbage-ratios=0.1:0.2)
+----
+
+batch
+set a apple
+set b banana
+set c coconut
+set d dragonfruit
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-d#13,SET]
+Blob files:
+  B000006 physical:{000006 size:[206 (206B)] vals:[29 (29B)]}
+
+batch
+del b
+del d
+----
+
+flush
+----
+L0.1:
+  000008:[b#14,DEL-d#15,DEL]
+L0.0:
+  000005:[a#10,SET-d#13,SET]
+Blob files:
+  B000006 physical:{000006 size:[206 (206B)] vals:[29 (29B)]}
+
+maybe-compact
+----
+1 compactions in progress:
+0: 000005:a#10,SET-d#13,SET 000008:b#14,DEL-d#15,DEL
+6:
+
+batch
+set e elderberry
+set f fraise
+set g grapefruit
+set h huckleberry
+----
+
+wait-compactions
+----
+
+flush
+----
+L0.0:
+  000011:[e#16,SET-h#19,SET]
+L6:
+  000009:[a#0,SET-c#0,SET]
+Blob files:
+  B000006 physical:{000006 size:[206 (206B)] vals:[29 (29B)]}
+  B000012 physical:{000012 size:[214 (214B)] vals:[37 (37B)]}
+
+scores wait-for-compaction=completion
+----
+Level    Size    Score     Fill factor    Compensated fill factor
+L0       988B    156.97    2.00           2.00
+L1       0B      0.00      0.00           0.00
+L2       0B      0.00      0.00           0.00
+L3       0B      0.00      0.00           0.00
+L4       0B      0.00      0.00           0.00
+L5       0B      0.00      0.00           0.00
+L6       835B    0.00      0.01           0.01
+
+# This attempt to compact should chose to rewrite the blob file B000006 *AND*
+# compact out of L0.
+
+maybe-compact
+----
+1 burst concurrency active
+2 compactions in progress:
+blob file (ID: B000006) 000006 (206B) being rewritten (high priority)
+0: 000011:e#16,SET-h#19,SET
+6:
