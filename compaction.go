@@ -207,6 +207,7 @@ type compaction interface {
 	PprofLabels(UserKeyCategories) pprof.LabelSet
 	RecordError(*problemspans.ByLevel, error)
 	Tables() iter.Seq2[int, *manifest.TableMetadata]
+	UsesBurstConcurrency() bool
 	VersionEditApplied() bool
 }
 
@@ -343,6 +344,9 @@ var _ compaction = (*tableCompaction)(nil)
 
 func (c *tableCompaction) AddInProgressLocked(d *DB) {
 	d.mu.compact.inProgress[c] = struct{}{}
+	if c.UsesBurstConcurrency() {
+		d.mu.compact.burstConcurrency.Add(1)
+	}
 	var isBase, isIntraL0 bool
 	for _, cl := range c.inputs {
 		for f := range cl.files.All() {
@@ -456,6 +460,8 @@ func (c *tableCompaction) Tables() iter.Seq2[int, *manifest.TableMetadata] {
 		}
 	}
 }
+
+func (c *tableCompaction) UsesBurstConcurrency() bool { return false }
 
 func (c *tableCompaction) VersionEditApplied() bool { return c.versionEditApplied }
 
@@ -1267,10 +1273,9 @@ func (c *tableCompaction) String() string {
 	}
 
 	var buf bytes.Buffer
-	for level := c.startLevel.level; level <= c.outputLevel.level; level++ {
-		i := level - c.startLevel.level
-		fmt.Fprintf(&buf, "%d:", level)
-		for f := range c.inputs[i].files.All() {
+	for _, l := range c.inputs {
+		fmt.Fprintf(&buf, "%d:", l.level)
+		for f := range l.files.All() {
 			fmt.Fprintf(&buf, " %s:%s-%s", f.TableNum, f.Smallest(), f.Largest())
 		}
 		fmt.Fprintf(&buf, "\n")
@@ -1832,6 +1837,11 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 
 	d.clearCompactingState(c, err != nil)
+	if c.UsesBurstConcurrency() {
+		if v := d.mu.compact.burstConcurrency.Add(-1); v < 0 {
+			panic(errors.AssertionFailedf("burst concurrency underflow: %d", v))
+		}
+	}
 	delete(d.mu.compact.inProgress, c)
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.metrics.bytesWritten.Load(), err)
 
@@ -2052,8 +2062,16 @@ func (d *DB) makeCompactionEnvLocked() *compactionEnv {
 
 // pickAnyCompaction tries to pick a manual or automatic compaction.
 func (d *DB) pickAnyCompaction(env compactionEnv) (pc pickedCompaction) {
-	// Pick a score-based compaction first, since a misshapen LSM is bad.
 	if !d.opts.DisableAutomaticCompactions {
+		// Pick a score-based compaction first, since a misshapen LSM is bad.
+		// We allow an exception for a high-priority disk-space reclamation
+		// compaction. Future work will explore balancing the various competing
+		// compaction priorities more judiciously. For now, we're relying on the
+		// configured heuristic to be set carefully so that we don't starve
+		// score-based compactions.
+		if pc := d.mu.versions.picker.pickHighPrioritySpaceCompaction(env); pc != nil {
+			return pc
+		}
 		if pc = d.mu.versions.picker.pickAutoScore(env); pc != nil {
 			return pc
 		}
@@ -2160,13 +2178,15 @@ func (d *DB) GetWaitingCompaction() (bool, WaitingCompaction) {
 // CompactionScheduler).
 func (d *DB) GetAllowedWithoutPermission() int {
 	allowedBasedOnBacklog := int(d.mu.versions.curCompactionConcurrency.Load())
-	allowedBasedOnManual := 0
-	manualBacklog := int(d.mu.compact.manualLen.Load())
-	if manualBacklog > 0 {
-		_, maxAllowed := d.opts.CompactionConcurrencyRange()
-		allowedBasedOnManual = min(maxAllowed, manualBacklog+allowedBasedOnBacklog)
+	allowedBasedOnManual := int(d.mu.compact.manualLen.Load())
+	allowedBasedOnSpaceHeuristic := int(d.mu.compact.burstConcurrency.Load())
+
+	v := allowedBasedOnBacklog + allowedBasedOnManual + allowedBasedOnSpaceHeuristic
+	if v == allowedBasedOnBacklog {
+		return v
 	}
-	return max(allowedBasedOnBacklog, allowedBasedOnManual)
+	_, maxAllowed := d.opts.CompactionConcurrencyRange()
+	return min(v, maxAllowed)
 }
 
 // tryScheduleDownloadCompactions tries to start download compactions.
@@ -2587,6 +2607,11 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 				d.mu.compact.downloadingCount--
 			} else {
 				d.mu.compact.compactingCount--
+			}
+			if c.UsesBurstConcurrency() {
+				if v := d.mu.compact.burstConcurrency.Add(-1); v < 0 {
+					panic(errors.AssertionFailedf("burst concurrency underflow: %d", v))
+				}
 			}
 			delete(d.mu.compact.inProgress, c)
 			// Add this compaction's duration to the cumulative duration. NB: This

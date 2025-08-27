@@ -438,6 +438,24 @@ type DB struct {
 			// map may have already committed an edit to the version but are
 			// lingering performing cleanup, like deleting obsolete files.
 			inProgress map[compaction]struct{}
+			// burstConcurrency is the number of additional compaction
+			// concurrency slots that have been added in order to allow
+			// high-priority compactions to run.
+			//
+			// Today, it's used when scheduling 'high priority' blob file
+			// rewrite compactions to reclaim disk space. Normally compactions
+			// that reclaim disk space and don't reshape the LSM are considered
+			// low priority. If there's sufficient space amplification,
+			// heuristics may decide to let these space-reclamation compactions
+			// run anyways.
+			//
+			// In this case we don't want to steal concurrency from the default
+			// compactions, so we temporarily inflate the allowed compaction
+			// concurrency for the duration of the compaction. This field is the
+			// count of compactions within inProgress for which
+			// UsesBurstConcurrency is true. It's incremented when one begins
+			// and decremented when it completes.
+			burstConcurrency atomic.Int32
 
 			// rescheduleReadCompaction indicates to an iterator that a read compaction
 			// should be scheduled.

@@ -60,6 +60,7 @@ type compactionPicker interface {
 	getMetrics([]compactionInfo) compactionPickerMetrics
 	getBaseLevel() int
 	estimatedCompactionDebt() uint64
+	pickHighPrioritySpaceCompaction(env compactionEnv) pickedCompaction
 	pickAutoScore(env compactionEnv) (pc pickedCompaction)
 	pickAutoNonScore(env compactionEnv) (pc pickedCompaction)
 	forceBaseLevel1()
@@ -1406,6 +1407,22 @@ func (p *compactionPickerByScore) logCompactionForTesting(
 		pc.startLevel.level, pc.outputLevel.level, buf.String())
 }
 
+// pickHighPrioritySpaceCompaction checks for a high-priority space reclamation
+// compaction. Under some circumstances, we want to persue a compaction for the
+// purpose of reclaiming disk space even when there are eligible default
+// compactions.
+func (p *compactionPickerByScore) pickHighPrioritySpaceCompaction(
+	env compactionEnv,
+) pickedCompaction {
+	if pc := p.pickBlobFileRewriteCompactionHighPriority(env); pc != nil {
+		return pc
+	}
+	// NB: We can't just return the above result because the above func returns
+	// a *pickedBlobFileCompaction, not a pickedCompaction. We need to return an
+	// untyped nil.
+	return nil
+}
+
 // pickAutoScore picks the best score-based compaction, if any.
 //
 // On each call, pickAutoScore computes per-level size adjustments based on
@@ -1482,7 +1499,7 @@ func (p *compactionPickerByScore) pickAutoNonScore(env compactionEnv) (pc picked
 
 	// Check for blob file rewrites. These are low-priority compactions because
 	// they don't help us keep up with writes, just reclaim disk space.
-	if pc := p.pickBlobFileRewriteCompaction(env); pc != nil {
+	if pc := p.pickBlobFileRewriteCompactionLowPriority(env); pc != nil {
 		return pc
 	}
 
@@ -1675,9 +1692,40 @@ func (p *compactionPickerByScore) pickRewriteCompaction(
 	return nil
 }
 
-// pickBlobFileRewriteCompaction looks for compactions of blob files that
-// can be rewritten to reclaim disk space.
-func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
+// pickBlobFileRewriteCompactionHighPriority picks a compaction that rewrites a
+// blob file to reclaim disk space if the heuristics for high-priority blob file
+// rewrites are met.
+func (p *compactionPickerByScore) pickBlobFileRewriteCompactionHighPriority(
+	env compactionEnv,
+) (pc *pickedBlobFileCompaction) {
+	policy := p.opts.Experimental.ValueSeparationPolicy()
+	if policy.GarbageRatioHighPriority >= 1.0 {
+		// High-priority blob file rewrite compactions are disabled.
+		return nil
+	}
+	aggregateStats, heuristicStats := p.latestVersionState.blobFiles.Stats()
+	if heuristicStats.CountFilesEligible == 0 && heuristicStats.CountFilesTooRecent == 0 {
+		// No blob files with any garbage to rewrite.
+		return nil
+	}
+
+	garbagePct := float64(aggregateStats.ValueSize-aggregateStats.ReferencedValueSize) /
+		float64(aggregateStats.ValueSize)
+	if garbagePct <= policy.GarbageRatioHighPriority {
+		// Not enough garbage to warrant a rewrite compaction.
+		return nil
+	}
+	pc = p.pickBlobFileRewriteCandidate(env)
+	if pc != nil {
+		pc.highPriority = true
+	}
+	return pc
+}
+
+// pickBlobFileRewriteCompactionLowPriority picks a compaction that rewrites a
+// blob file to reclaim disk space if the heuristics for low-priority blob file
+// rewrites are met.
+func (p *compactionPickerByScore) pickBlobFileRewriteCompactionLowPriority(
 	env compactionEnv,
 ) (pc *pickedBlobFileCompaction) {
 	aggregateStats, heuristicStats := p.latestVersionState.blobFiles.Stats()
@@ -1686,7 +1734,7 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
 		return nil
 	}
 	policy := p.opts.Experimental.ValueSeparationPolicy()
-	if policy.TargetGarbageRatio >= 1.0 {
+	if policy.GarbageRatioLowPriority >= 1.0 {
 		// Blob file rewrite compactions are disabled.
 		return nil
 	}
@@ -1696,11 +1744,16 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
 	// are actually any candidates with garbage to reclaim.
 	garbagePct := float64(aggregateStats.ValueSize-aggregateStats.ReferencedValueSize) /
 		float64(aggregateStats.ValueSize)
-	if garbagePct <= policy.TargetGarbageRatio {
+	if garbagePct <= policy.GarbageRatioLowPriority {
 		// Not enough garbage to warrant a rewrite compaction.
 		return nil
 	}
+	return p.pickBlobFileRewriteCandidate(env)
+}
 
+func (p *compactionPickerByScore) pickBlobFileRewriteCandidate(
+	env compactionEnv,
+) (pc *pickedBlobFileCompaction) {
 	// Check if there is an ongoing blob file rewrite compaction. If there is,
 	// don't schedule a new one.
 	for _, c := range env.inProgressCompactions {
@@ -1708,7 +1761,6 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
 			return nil
 		}
 	}
-
 	candidate, ok := p.latestVersionState.blobFiles.ReplacementCandidate()
 	if !ok {
 		// None meet the heuristic.
