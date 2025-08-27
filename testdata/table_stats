@@ -980,7 +980,7 @@ range-deletions-bytes-estimate: 482
 
 # Create a database with value separation enabled.
 
-define format-major-version=24 value-separation=(true,1,10,1m,1.0) target-file-sizes=(100000)
+define format-major-version=24 value-separation=(enabled, min-size=1, max-ref-depth=10, rw-min-age=1m, garbage-ratios=0.1:0.3) target-file-sizes=(100000)
 ----
 
 batch
@@ -1043,7 +1043,7 @@ compression: None:36,Snappy:73/84
 
 # Use a small block-size so that excising the table results in virtual tables
 # which cover significantly fewer blocks.
-define format-major-version=25 block-size=100 value-separation=off
+define format-major-version=25 block-size=100 value-separation=disabled
 ----
 
 batch

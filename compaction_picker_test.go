@@ -1486,6 +1486,17 @@ func TestCompactionPickerScores(t *testing.T) {
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/compaction_picker_scores", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
+		case "batch":
+			b := d.NewBatch()
+			err := runBatchDefineCmd(td, b)
+			if err != nil {
+				return err.Error()
+			}
+			if err = b.Commit(Sync); err != nil {
+				return err.Error()
+			}
+			return ""
+
 		case "define":
 			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
@@ -1518,6 +1529,12 @@ func TestCompactionPickerScores(t *testing.T) {
 			d.mu.Unlock()
 			return ""
 
+		case "flush":
+			if err := d.Flush(); err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+
 		case "resume-cleaning":
 			cleaner.resume()
 			return ""
@@ -1542,6 +1559,9 @@ func TestCompactionPickerScores(t *testing.T) {
 			d.mu.Lock()
 			d.opts.DisableAutomaticCompactions = false
 			d.maybeScheduleCompaction()
+			if v := d.mu.compact.burstConcurrency.Load(); v > 0 {
+				fmt.Fprintf(&buf, "%d burst concurrency active\n", v)
+			}
 			fmt.Fprintf(&buf, "%d compactions in progress:", d.mu.compact.compactingCount)
 			for c := range d.mu.compact.inProgress {
 				fmt.Fprintf(&buf, "\n%s", c)
