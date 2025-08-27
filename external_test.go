@@ -79,9 +79,15 @@ func TestIteratorErrors(t *testing.T) {
 		testOpts.Opts.FS = errorfs.Wrap(testOpts.Opts.FS, &toggle)
 		testOpts.Opts.ReadOnly = true
 
-		test, err := metamorphic.New(
-			metamorphic.GenerateOps(rng, 5000, metamorphic.TestkeysKeyFormat, metamorphic.ReadOpConfig()),
-			testOpts, "" /* dir */, &testWriter{t: t})
+		var logBuf bytes.Buffer
+		defer func() {
+			if t.Failed() {
+				t.Log(logBuf.String())
+			}
+		}()
+
+		ops := metamorphic.GenerateOps(rng, 5000, metamorphic.TestkeysKeyFormat, metamorphic.ReadOpConfig())
+		test, err := metamorphic.New(ops, testOpts, "" /* dir */, &logBuf)
 		require.NoError(t, err)
 
 		defer func() {
@@ -115,15 +121,6 @@ func TestIteratorErrors(t *testing.T) {
 		}
 		t.Logf("Injected %d errors over the course of the test.", counter.Load())
 	}
-}
-
-type testWriter struct {
-	t *testing.T
-}
-
-func (w *testWriter) Write(b []byte) (int, error) {
-	w.t.Log(string(bytes.TrimSpace(b)))
-	return len(b), nil
 }
 
 func BenchmarkPointLookupSeparatedValues(b *testing.B) {
