@@ -103,7 +103,7 @@ gen-bazel:
 	@echo "Generating WORKSPACE"
 	@echo 'workspace(name = "com_github_cockroachdb_pebble")' > WORKSPACE
 	@echo 'Running gazelle...'
-	${GO} run github.com/bazelbuild/bazel-gazelle/cmd/gazelle@v0.37.0 update --go_prefix=github.com/cockroachdb/pebble --repo_root=.
+	${GO} run github.com/bazelbuild/bazel-gazelle/cmd/gazelle@v0.37.0 update --go_prefix=github.com/cockroachdb/pebble/v2 --repo_root=.
 	@echo 'You should now be able to build Cockroach using:'
 	@echo '  ./dev build short -- --override_repository=com_github_cockroachdb_pebble=${CURDIR}'
 

@@ -9,10 +9,10 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/objstorage"
 )
 
 // Excise atomically deletes all data overlapping with the provided span. All
@@ -136,7 +136,7 @@ func (d *DB) exciseTable(
 	// lock; we could grab one currentVersion, release the lock, calculate excised
 	// files, then grab the lock again and recalculate for just the files that
 	// have changed since our previous calculation. Do this optimization as part of
-	// https://github.com/cockroachdb/pebble/issues/2112 .
+	// https://github.com/cockroachdb/pebble/v2/issues/2112 .
 	if d.cmp(m.Smallest().UserKey, exciseBounds.Start) < 0 {
 		leftTable = &manifest.TableMetadata{
 			Virtual:  true,

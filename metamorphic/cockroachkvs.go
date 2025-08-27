@@ -9,11 +9,11 @@ import (
 	"math/rand/v2"
 	"slices"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/cockroachkvs"
-	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/cockroachkvs"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/sstable/colblk"
 )
 
 // CockroachKeyFormat provides a KeyFormat implementation that uses

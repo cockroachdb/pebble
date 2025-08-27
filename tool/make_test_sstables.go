@@ -11,11 +11,11 @@ import (
 	"log"
 	"math/rand/v2"
 
-	"github.com/cockroachdb/pebble/cockroachkvs"
-	"github.com/cockroachdb/pebble/internal/sstableinternal"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/cockroachkvs"
+	"github.com/cockroachdb/pebble/v2/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 func makeOutOfOrderSST() {

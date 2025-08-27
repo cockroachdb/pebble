@@ -6,7 +6,7 @@
 // filesystems during tests and benchmarks.
 package vfstest
 
-import "github.com/cockroachdb/pebble/vfs"
+import "github.com/cockroachdb/pebble/v2/vfs"
 
 // DiscardFile implements vfs.File but discards all written data and reads
 // without mutating input buffers.

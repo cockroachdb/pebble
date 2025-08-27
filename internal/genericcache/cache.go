@@ -8,7 +8,7 @@ import (
 	"context"
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // Cache implements a generic cache that associates arbitrary keys with values.

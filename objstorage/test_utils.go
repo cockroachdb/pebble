@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 	"github.com/pkg/errors"
 )
 

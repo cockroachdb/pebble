@@ -9,8 +9,8 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/crlib/crtime"
-	"github.com/cockroachdb/pebble/internal/compression"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/compression"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // BlockAnalyzer is used to evaluate the performance and compressibility of different

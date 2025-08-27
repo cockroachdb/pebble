@@ -8,9 +8,9 @@ import (
 	"context"
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // ReaderProvider supports the implementation of blockProviderWhenClosed.
@@ -55,7 +55,7 @@ func (bpwc blockProviderWhenClosed) ReadValueBlock(
 	// for tracing.
 	//
 	// TODO(sumeer): consider fixing this. See
-	// https://github.com/cockroachdb/pebble/pull/3065#issue-1991175365 for an
+	// https://github.com/cockroachdb/pebble/v2/pull/3065#issue-1991175365 for an
 	// alternative.
 	ctx := context.Background()
 	// TODO(jackson,sumeer): Consider whether to use a buffer pool in this case.

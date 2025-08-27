@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Stress all packages, one at a time. This allows for a more useful output.
-for p in $(go list ./... | sed 's#github.com/cockroachdb/pebble#.#'); do
+for p in $(go list ./... | sed 's#github.com/cockroachdb/pebble/v2#.#'); do
 echo
   echo ""
   echo ""

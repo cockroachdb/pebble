@@ -12,9 +12,9 @@ import (
 
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/record"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -73,7 +73,7 @@ type recordQueue struct {
 	// contents corresponding to poppedEntry), *before* it succeeds with the
 	// atomic read-write. This introduced a false data race in the Golang data
 	// race detector
-	// https://github.com/cockroachdb/pebble/issues/3380#issuecomment-1981188174.
+	// https://github.com/cockroachdb/pebble/v2/issues/3380#issuecomment-1981188174.
 	// Consider the case where the queue is [10,20), and consumer C1 is trying
 	// to pop [10,12) and consumer C2 is trying to pop [10,14). The following
 	// interleaving can happen:

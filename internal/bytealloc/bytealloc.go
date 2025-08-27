@@ -14,7 +14,7 @@
 
 package bytealloc
 
-import "github.com/cockroachdb/pebble/internal/rawalloc"
+import "github.com/cockroachdb/pebble/v2/internal/rawalloc"
 
 // An A provides chunk allocation of []byte, amortizing the overhead of each
 // allocation. Because the underlying storage for the slices is shared, they

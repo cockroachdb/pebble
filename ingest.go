@@ -12,17 +12,17 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/overlap"
-	"github.com/cockroachdb/pebble/internal/sstableinternal"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/cache"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/internal/overlap"
+	"github.com/cockroachdb/pebble/v2/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/objstorage/remote"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
@@ -1072,7 +1072,7 @@ func ingestTargetLevel(
 // platform-and-FS-agnostic way, ensure that all sstables in the input are
 // properly synced to disk. Opening new file handles and Sync()-ing them
 // does not always guarantee durability; see the discussion here on that:
-// https://github.com/cockroachdb/pebble/pull/835#issuecomment-663075379
+// https://github.com/cockroachdb/pebble/v2/pull/835#issuecomment-663075379
 //
 // Ingestion loads each sstable into the lowest level of the LSM which it
 // doesn't overlap (see ingestTargetLevel). If an sstable overlaps a memtable,
@@ -1106,7 +1106,7 @@ func ingestTargetLevel(
 // mutations that get sequence numbers larger than the ingestion sequence
 // number get queued up behind the ingestion waiting for it to complete. This
 // can produce a noticeable hiccup in performance. See
-// https://github.com/cockroachdb/pebble/issues/25 for an idea for how to fix
+// https://github.com/cockroachdb/pebble/v2/issues/25 for an idea for how to fix
 // this hiccup.
 func (d *DB) Ingest(ctx context.Context, paths []string) error {
 	if err := d.closed.Load(); err != nil {
@@ -1601,7 +1601,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			// visibility of concurrent writes that happen to get a sequence number
 			// after this ingest and then must wait for this ingest that is itself
 			// waiting on a large flush. See
-			// https://github.com/cockroachdb/pebble/issues/4944 for an illustration
+			// https://github.com/cockroachdb/pebble/v2/issues/4944 for an illustration
 			// of this problem.
 			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold ||
 				d.mu.log.manager.ElevateWriteStallThresholdForFailover()) &&

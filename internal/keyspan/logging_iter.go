@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 // WrapFn is the prototype for a function that wraps a FragmentIterator.

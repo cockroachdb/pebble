@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 type CompactionGrantHandle = base.CompactionGrantHandle

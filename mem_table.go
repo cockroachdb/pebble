@@ -12,12 +12,12 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/arenaskl"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/manual"
-	"github.com/cockroachdb/pebble/internal/rangedel"
-	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/v2/internal/arenaskl"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/internal/manual"
+	"github.com/cockroachdb/pebble/v2/internal/rangedel"
+	"github.com/cockroachdb/pebble/v2/internal/rangekey"
 )
 
 func memTableEntrySize(keyBytes, valueBytes int) uint64 {

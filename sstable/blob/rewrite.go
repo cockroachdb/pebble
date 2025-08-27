@@ -9,9 +9,9 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // A FileRewriter copies values from an input blob file, outputting a new blob
@@ -71,7 +71,7 @@ func (rw *FileRewriter) CopyBlock(
 	for _, valueID := range valueIDs {
 		// Subsequent logic depends on the valueIDs being unique.
 		// TODO(jackson): This is a workaround because we don't have per-sstable
-		// liveness data. See https://github.com/cockroachdb/pebble/issues/4915.
+		// liveness data. See https://github.com/cockroachdb/pebble/v2/issues/4915.
 		// If we had per-sstable liveness data, we should be able to make this
 		// an assertion failure.
 		if previousValueID == valueID {

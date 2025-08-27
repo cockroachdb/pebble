@@ -5,8 +5,8 @@
 package objiotracing
 
 import (
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/sstable/block/blockkind"
 )
 
 // OpType indicates the type of operation.

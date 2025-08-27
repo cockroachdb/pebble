@@ -40,5 +40,5 @@ trap 'rm -f "${tmpfile}"' EXIT
 
 make testcoverage COVER_PROFILE="${tmpfile}" PKG="$paths"
 go run github.com/cockroachdb/code-cov-utils/gocover2json@v1.0.0 \
-  --trim-prefix github.com/cockroachdb/pebble/ \
+  --trim-prefix github.com/cockroachdb/pebble/v2/ \
   "${tmpfile}" "${output_json_file}"

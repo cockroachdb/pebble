@@ -708,7 +708,7 @@ L6:
   000004:[a#10,RANGEDEL-b#inf,RANGEDEL]
 
 # Check for range key ingestion bug fix in
-# https://github.com/cockroachdb/pebble/pull/2082. Without the fix, we expect
+# https://github.com/cockroachdb/pebble/v2/pull/2082. Without the fix, we expect
 # the range key associated with the table ext3 to get elided. This test checks
 # that the elision does not happen.
 reset

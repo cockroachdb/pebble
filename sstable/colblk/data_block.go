@@ -16,12 +16,12 @@ import (
 
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/binfmt"
-	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/binfmt"
+	"github.com/cockroachdb/pebble/v2/internal/bytealloc"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // KeySchema defines the schema of a user key, as defined by the user's

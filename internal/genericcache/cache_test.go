@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/v2/internal/testutils"
 	"github.com/stretchr/testify/require"
 )
 

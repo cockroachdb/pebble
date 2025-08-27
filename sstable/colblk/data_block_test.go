@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/binfmt"
-	"github.com/cockroachdb/pebble/internal/itertest"
-	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/binfmt"
+	"github.com/cockroachdb/pebble/v2/internal/itertest"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 var testKeysSchema = DefaultKeySchema(testkeys.Comparer, 16)

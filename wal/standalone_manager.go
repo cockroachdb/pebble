@@ -9,9 +9,9 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/record"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 // StandaloneManager implements Manager with a single log file per WAL (no

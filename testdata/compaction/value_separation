@@ -421,7 +421,7 @@ Blob files:
 # Run a blob-rewrite compaction. It'll rewrite the blob file, but it won't
 # actually reclaim disk space. This is a known limitation due to the lack of
 # accurate blob value liveness for virtual sstables. See
-# https://github.com/cockroachdb/pebble/issues/4915.
+# https://github.com/cockroachdb/pebble/v2/issues/4915.
 
 run-blob-rewrite-compaction
 ----

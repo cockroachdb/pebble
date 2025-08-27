@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/rangekey"
-	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/rangekey"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 )
 
 // Snapshot provides a read-only point-in-time view of the DB state.

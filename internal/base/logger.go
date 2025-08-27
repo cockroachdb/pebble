@@ -12,7 +12,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // Logger defines an interface for writing log messages.

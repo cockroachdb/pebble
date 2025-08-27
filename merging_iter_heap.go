@@ -4,7 +4,7 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/invariants"
+import "github.com/cockroachdb/pebble/v2/internal/invariants"
 
 // mergingIterHeap is a heap of mergingIterLevels. It only reads
 // mergingIterLevel.iterKV.K.

@@ -10,8 +10,8 @@ import (
 	"iter"
 	"reflect"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // LevelMetadata contains metadata for all of the files within

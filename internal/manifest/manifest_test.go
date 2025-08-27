@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors/oserror"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/buildtags"
-	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/metamorphic"
-	"github.com/cockroachdb/pebble/record"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/buildtags"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/metamorphic"
+	"github.com/cockroachdb/pebble/v2/record"
 	"github.com/stretchr/testify/require"
 )
 

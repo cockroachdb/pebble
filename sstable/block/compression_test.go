@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/v2/sstable/block/blockkind"
 	"github.com/stretchr/testify/require"
 )
 

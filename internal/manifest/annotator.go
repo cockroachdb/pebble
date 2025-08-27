@@ -8,7 +8,7 @@ import (
 	"sort"
 	"sync/atomic"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // The Annotator type defined below is used by other packages to lazily

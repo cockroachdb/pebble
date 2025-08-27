@@ -10,9 +10,9 @@ package main
 import (
 	"log"
 
-	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/record"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/record"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 func writeVE(writer *record.Writer, ve *manifest.VersionEdit) {

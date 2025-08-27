@@ -22,8 +22,8 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/constants"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/constants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // Arena is lock-free.

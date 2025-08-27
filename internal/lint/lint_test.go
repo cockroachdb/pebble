@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/buildtags"
+	"github.com/cockroachdb/pebble/v2/internal/buildtags"
 	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +25,7 @@ const (
 	staticcheck = "honnef.co/go/tools/cmd/staticcheck"
 	crlfmt      = "github.com/cockroachdb/crlfmt"
 	gcassert    = "github.com/jordanlewis/gcassert/cmd/gcassert"
-	roachvet    = "github.com/cockroachdb/pebble/internal/devtools/roachvet"
+	roachvet    = "github.com/cockroachdb/pebble/v2/internal/devtools/roachvet"
 )
 
 func dirCmd(t *testing.T, dir string, name string, args ...string) stream.Filter {
@@ -67,7 +67,7 @@ func TestLint(t *testing.T) {
 		t.Skip("lint checks skipped on instrumented builds")
 	}
 
-	const root = "github.com/cockroachdb/pebble"
+	const root = "github.com/cockroachdb/pebble/v2"
 
 	pkg, err := build.Import(root, "../..", 0)
 	require.NoError(t, err)

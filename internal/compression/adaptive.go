@@ -9,7 +9,7 @@ import (
 	"math/rand/v2"
 	"sync"
 
-	"github.com/cockroachdb/pebble/internal/ewma"
+	"github.com/cockroachdb/pebble/v2/internal/ewma"
 )
 
 // AdaptiveCompressor is a Compressor that automatically chooses between two

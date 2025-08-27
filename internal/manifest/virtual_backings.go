@@ -11,7 +11,7 @@ import (
 	"slices"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // VirtualBackings maintains information about the set of backings that support

@@ -60,7 +60,7 @@ Proof by contradiction:
   - S2 and S1 are part of different ingests. They must be assigned different
     sst seqnums. Ingests must be added to the LSM in order of their seqnum
     (see the discussion here
-    https://github.com/cockroachdb/pebble/issues/2196#issuecomment-1523461535).
+    https://github.com/cockroachdb/pebble/v2/issues/2196#issuecomment-1523461535).
     So seqnum of S2 < seqnum of S1. Contradiction.
 
   - S2 is an ingest and S1 is from a flush, and S2 is added first. Cases:
@@ -84,7 +84,7 @@ Proof by contradiction:
 
     - The k in S2 was added to the memtable after S1 was assigned a seqnum,
       but S2 got added first. This is disallowed by the fix in
-      https://github.com/cockroachdb/pebble/issues/2196. Contradiction.
+      https://github.com/cockroachdb/pebble/v2/issues/2196. Contradiction.
 
 Claim 1 is sufficient to prove the level invariant for key k for the
 simple-stack, since when S1 has k#t1 and S2 has k#t2, and t1 < t2, S1 is added
@@ -126,7 +126,7 @@ Cases:
       has LSN(S1) < t2. Contradiction.
 
     - k#t1 is in M1: Mn becomes full and flushes together with M1. Can happen
-      but will be fixed in https://github.com/cockroachdb/pebble/issues/2196
+      but will be fixed in https://github.com/cockroachdb/pebble/v2/issues/2196
       by preventing any memtable with seqnum > t2 from flushing.
 
 - S1 is an ingest and S2 is a flush: By definition LSN(S1)=t1. t1 >= t2 is not

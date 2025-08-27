@@ -6,8 +6,8 @@ import (
 	"math/rand"
 	"strings"
 
-	"github.com/cockroachdb/pebble/internal/compression"
-	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/v2/internal/compression"
+	"github.com/cockroachdb/pebble/v2/sstable/block/blockkind"
 )
 
 // Compressor is used to compress blocks. Typical usage:

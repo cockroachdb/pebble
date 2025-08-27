@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/randvar"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/internal/randvar"
 	"github.com/stretchr/testify/require"
 )
 

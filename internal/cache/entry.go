@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/cockroachdb/pebble/internal/buildtags"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/v2/internal/buildtags"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/manual"
 )
 
 type entryType int8

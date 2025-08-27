@@ -7,7 +7,7 @@ package batchrepr
 import (
 	"encoding/binary"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // SetSeqNum mutates the provided batch representation, storing the provided

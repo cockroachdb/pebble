@@ -32,18 +32,18 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/metamorphic"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
-	"github.com/cockroachdb/pebble/objstorage/remote"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
-	"github.com/cockroachdb/pebble/vfs/atomicfs"
-	"github.com/cockroachdb/pebble/vfs/errorfs"
-	"github.com/cockroachdb/pebble/wal"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/cache"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/objstorage"
+	"github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/v2/objstorage/remote"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs/atomicfs"
+	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
+	"github.com/cockroachdb/pebble/v2/wal"
 	"github.com/cockroachdb/redact"
 	"github.com/ghemawat/stream"
 	"github.com/kr/pretty"
@@ -759,7 +759,7 @@ func TestOpenWALReplay(t *testing.T) {
 	}
 }
 
-// Reproduction for https://github.com/cockroachdb/pebble/issues/2234.
+// Reproduction for https://github.com/cockroachdb/pebble/v2/issues/2234.
 func TestWALReplaySequenceNumBug(t *testing.T) {
 	mem := vfs.NewMem()
 	d, err := Open("", testingRandomized(t, &Options{
@@ -1042,7 +1042,7 @@ func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
 // crashAfterLogCreationFS wraps a MemFS and extracts a crash clone after a WAL
 // is created and the directory is subsequently synced.
 // TODO(radu): replace this with errorfs predicates; see
-// https://github.com/cockroachdb/pebble/pull/4308#pullrequestreview-2584817912
+// https://github.com/cockroachdb/pebble/v2/pull/4308#pullrequestreview-2584817912
 type crashAfterLogCreationFS struct {
 	*vfs.MemFS
 	// state is 0 before the first log is created, 1 after the first log is

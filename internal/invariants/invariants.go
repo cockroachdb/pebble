@@ -7,7 +7,7 @@ package invariants
 import (
 	"runtime"
 
-	"github.com/cockroachdb/pebble/internal/buildtags"
+	"github.com/cockroachdb/pebble/v2/internal/buildtags"
 )
 
 // Enabled is true if we were built with the "invariants" or "race" build tags.

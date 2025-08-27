@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/metamorphic"
+	"github.com/cockroachdb/pebble/v2/metamorphic"
 	"github.com/stretchr/testify/require"
 )
 

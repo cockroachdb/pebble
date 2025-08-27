@@ -12,7 +12,7 @@ import (
 	"github.com/RaduBerinde/axisds"
 	"github.com/RaduBerinde/axisds/regiontree"
 	"github.com/cockroachdb/crlib/crtime"
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // Set maintains a set of spans with expiration times and allows checking for

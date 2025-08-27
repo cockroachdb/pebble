@@ -140,8 +140,8 @@ import (
 
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/binfmt"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/binfmt"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 // Version indicates the version of the columnar block format encoded. The

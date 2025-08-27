@@ -7,7 +7,7 @@ package pebble
 import (
 	"sync/atomic"
 
-	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
 )
 
 // readState encapsulates the state needed for reading (the current version and

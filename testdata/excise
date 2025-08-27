@@ -226,7 +226,7 @@ L0.0:
 L6:
   000006:[z#15,SET-z#15,SET]
 
-# Regression test for https://github.com/cockroachdb/pebble/issues/2947.
+# Regression test for https://github.com/cockroachdb/pebble/v2/issues/2947.
 reset
 ----
 

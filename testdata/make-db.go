@@ -10,7 +10,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
 
 const version = pebble.FormatFlushableIngest

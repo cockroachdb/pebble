@@ -15,7 +15,7 @@
 // The original paper: http://static.usenix.org/event/usenix05/tech/general/full_papers/jiang/jiang_html/html.html
 //
 // It is MIT licensed, like the original.
-package cache // import "github.com/cockroachdb/pebble/internal/cache"
+package cache // import "github.com/cockroachdb/pebble/v2/internal/cache"
 
 import (
 	"fmt"
@@ -25,8 +25,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // key is associated with a specific block.

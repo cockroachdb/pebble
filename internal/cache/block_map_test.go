@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // The Pebble block cache can be configured with a capacity of GBs or 10s of

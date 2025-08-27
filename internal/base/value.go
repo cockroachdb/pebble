@@ -4,7 +4,7 @@
 
 package base
 
-import "github.com/cockroachdb/pebble/internal/invariants"
+import "github.com/cockroachdb/pebble/v2/internal/invariants"
 
 // An InternalValue represents a value. The value may be in-memory, immediately
 // accessible, or it may be stored out-of-band and need to be fetched when

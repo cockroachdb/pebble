@@ -7,7 +7,7 @@ package ewma
 import (
 	"math"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // Bytes is an estimator for an arbitrary value that is sampled from byte

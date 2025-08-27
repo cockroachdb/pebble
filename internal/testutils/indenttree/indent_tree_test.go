@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 func TestIndentTree(t *testing.T) {

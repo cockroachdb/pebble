@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/v2/internal/testkeys"
 )
 
 // Code in this file contains utils for testing. It implements interval block

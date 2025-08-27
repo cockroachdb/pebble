@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 // KeyRange encodes a key range in user key space. A KeyRange's Start is

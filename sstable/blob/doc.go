@@ -49,7 +49,7 @@
 // TODO(jackson,radu): Consider interleaving the encoding of the uints so that
 // in the common case of <64K blocks and <64K values per-block, the uint column
 // can be encoded in 32-bits.
-// See related issue https://github.com/cockroachdb/pebble/issues/4426.
+// See related issue https://github.com/cockroachdb/pebble/v2/issues/4426.
 //
 // **Offsets**:
 // an array of uints encoding the offset in the blob file at which each block

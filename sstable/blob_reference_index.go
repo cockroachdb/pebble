@@ -8,8 +8,8 @@ import (
 	"encoding/binary"
 	"iter"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/sstable/blob"
 )
 
 // blobRefValueLivenessState tracks the liveness of values within a blob value

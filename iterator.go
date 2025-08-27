@@ -13,16 +13,16 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/bytealloc"
-	"github.com/cockroachdb/pebble/internal/humanize"
-	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
-	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/rangekeystack"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
-	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/bytealloc"
+	"github.com/cockroachdb/pebble/v2/internal/humanize"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan"
+	"github.com/cockroachdb/pebble/v2/internal/keyspan/keyspanimpl"
+	"github.com/cockroachdb/pebble/v2/internal/manifest"
+	"github.com/cockroachdb/pebble/v2/internal/rangekeystack"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/sstable/blob"
 	"github.com/cockroachdb/redact"
 )
 
@@ -83,7 +83,7 @@ const (
 // Approximate gap in bytes between samples of data read during iteration.
 // This is multiplied with a default ReadSamplingMultiplier of 1 << 4 to yield
 // 1 << 20 (1MB). The 1MB factor comes from:
-// https://github.com/cockroachdb/pebble/issues/29#issuecomment-494477985
+// https://github.com/cockroachdb/pebble/v2/issues/29#issuecomment-494477985
 const readBytesPeriod uint64 = 1 << 16
 
 var errReversePrefixIteration = errors.New("pebble: unsupported reverse prefix iteration")
@@ -850,7 +850,7 @@ func (i *Iterator) sampleRead() {
 				// doing that are significant enough to negate the benefits
 				// of read sampling in the first place. See the discussion
 				// at:
-				// https://github.com/cockroachdb/pebble/pull/1041#issuecomment-763226492
+				// https://github.com/cockroachdb/pebble/v2/pull/1041#issuecomment-763226492
 				if containsKey {
 					numOverlappingLevels++
 					if numOverlappingLevels >= 2 {

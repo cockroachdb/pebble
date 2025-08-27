@@ -9,8 +9,8 @@ import (
 	"math"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/sstable"
 )
 
 const mvccWallTimeIntervalCollector = "MVCCTimeInterval"

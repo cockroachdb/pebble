@@ -1,6 +1,6 @@
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/v2/internal/base"
 
 // The maximum number of elements in the readCompactions queue.
 // We want to limit the number of elements so that we only do

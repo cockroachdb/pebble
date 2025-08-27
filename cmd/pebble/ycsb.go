@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/internal/ackseq"
-	"github.com/cockroachdb/pebble/internal/randvar"
-	"github.com/cockroachdb/pebble/internal/rate"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/internal/ackseq"
+	"github.com/cockroachdb/pebble/v2/internal/randvar"
+	"github.com/cockroachdb/pebble/v2/internal/rate"
 	"github.com/spf13/cobra"
 )
 

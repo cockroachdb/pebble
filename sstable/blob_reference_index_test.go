@@ -8,7 +8,7 @@ import (
 	"maps"
 	"testing"
 
-	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/v2/sstable/blob"
 	"github.com/stretchr/testify/require"
 )
 

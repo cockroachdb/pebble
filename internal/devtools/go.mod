@@ -1,4 +1,4 @@
-module github.com/cockroachdb/pebble/internal/devtools
+module github.com/cockroachdb/pebble/v2/internal/devtools
 
 go 1.23.6
 

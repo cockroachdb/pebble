@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 // Steps contains the result of a recording: the full details of the hierarchy

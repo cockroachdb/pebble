@@ -4,7 +4,7 @@
 - Authors: Sumeer Bhola, Jackson Owens
 - RFC PR: #1341
 - Pebble Issues:
-  https://github.com/cockroachdb/pebble/issues/1339
+  https://github.com/cockroachdb/pebble/v2/issues/1339
 - Cockroach Issues:
   https://github.com/cockroachdb/cockroach/issues/70429
   https://github.com/cockroachdb/cockroach/issues/70412
@@ -133,7 +133,7 @@ range keys within their span at all suffix values.
 The optional suffix in `RangeKeySet` and `RangeKeyUnset` operations is related
 to the pebble `Comparer.Split` operation which is explicitly documented as being
 for [MVCC
-keys](https://github.com/cockroachdb/pebble/blob/e95e73745ce8a85d605ef311d29a6574db8ed3bf/internal/base/comparer.go#L69-L88),
+keys](https://github.com/cockroachdb/pebble/v2/blob/e95e73745ce8a85d605ef311d29a6574db8ed3bf/internal/base/comparer.go#L69-L88),
 without mandating exactly how the versions are represented. `RangeKeySet` and
 `RangeKeyUnset` keys with different suffixes do not interact logically, although
 Pebble will observably fragment ranges at intersection points.
@@ -568,7 +568,7 @@ We have created three versions of `b` in this example. In previous versions,
 Pebble could split output sstables during a compaction such that the different
 `b` versions span more than one sstable. This creates problems for `RANGEDEL`s
 which span these two sstables which are discussed in the section on [improperly
-truncated RANGEDELS](https://github.com/cockroachdb/pebble/blob/master/docs/range_deletions.md#improperly-truncated-range-deletes).
+truncated RANGEDELS](https://github.com/cockroachdb/pebble/v2/blob/master/docs/range_deletions.md#improperly-truncated-range-deletes).
 We manage to tolerate this for `RANGEDEL`s since their semantics are defined by
 the system, which is not true for these range keys where the actual semantics
 are up to the user.

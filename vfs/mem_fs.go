@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package vfs // import "github.com/cockroachdb/pebble/vfs"
+package vfs // import "github.com/cockroachdb/pebble/v2/vfs"
 
 import (
 	"bytes"
@@ -22,7 +22,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/v2/internal/invariants"
 )
 
 const sep = "/"

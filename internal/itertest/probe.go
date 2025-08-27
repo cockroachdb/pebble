@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/dsl"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/dsl"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 // OpKind indicates the type of iterator operation being performed.

@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package keyspan // import "github.com/cockroachdb/pebble/internal/keyspan"
+package keyspan // import "github.com/cockroachdb/pebble/v2/internal/keyspan"
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 )
 
 // Span represents a set of keys over a span of user key space. All of the keys

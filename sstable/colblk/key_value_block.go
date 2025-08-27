@@ -7,8 +7,8 @@ package colblk
 import (
 	"iter"
 
-	"github.com/cockroachdb/pebble/internal/binfmt"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/binfmt"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 const keyValueBlockCustomHeaderSize = 0

@@ -2,8 +2,8 @@
 - Status: in-progress
 - Start Date: 2022-03-11
 - Authors: Mufeez Amjad
-- RFC PR: [#1586](https://github.com/cockroachdb/pebble/pull/1586)
-- Pebble Issues: [#25](https://github.com/cockroachdb/pebble/issues/25)
+- RFC PR: [#1586](https://github.com/cockroachdb/pebble/v2/pull/1586)
+- Pebble Issues: [#25](https://github.com/cockroachdb/pebble/v2/issues/25)
 - Cockroach Issues:
 
 ## Summary
@@ -20,7 +20,7 @@ the ingestion in the event of a crash.
 
 Currently, if any of the SSTs that need to be ingested have an overlap with a
 memtable, we
-[wait](https://github.com/cockroachdb/pebble/blob/56c5aebe151977964db7e464bb6c87ebd3451bd5/ingest.go#L671)
+[wait](https://github.com/cockroachdb/pebble/v2/blob/56c5aebe151977964db7e464bb6c87ebd3451bd5/ingest.go#L671)
 for the memtable to be flushed before the ingestion can proceed. This is to
 satisfy the invariant that newer entries (those in the ingested SSTs) in the LSM
 have a higher sequence number than old entries (those in the memtables). This

@@ -3,7 +3,7 @@ package rangekey
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/base"
 	"github.com/stretchr/testify/require"
 )
 

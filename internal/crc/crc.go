@@ -14,7 +14,7 @@
 //	var u uint32 = crc.New(data).Value()
 //
 // In pebble, the uint32 value is then stored in little-endian format.
-package crc // import "github.com/cockroachdb/pebble/internal/crc"
+package crc // import "github.com/cockroachdb/pebble/v2/internal/crc"
 
 import "hash/crc32"
 

@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 // WithOpenFileTracking wraps a FS, returning an FS that will monitor open

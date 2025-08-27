@@ -4,7 +4,7 @@
 
 package sstable
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/v2/internal/base"
 
 // Compare exports the base.Compare type.
 type Compare = base.Compare

@@ -51,7 +51,7 @@ Key differences:
 - Node storage grows to an arbitrary size.
 */
 
-package batchskl // import "github.com/cockroachdb/pebble/internal/batchskl"
+package batchskl // import "github.com/cockroachdb/pebble/v2/internal/batchskl"
 
 import (
 	"bytes"
@@ -62,8 +62,8 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/constants"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/constants"
 )
 
 const (

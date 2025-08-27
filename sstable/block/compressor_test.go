@@ -8,8 +8,8 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/compression"
-	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/v2/internal/compression"
+	"github.com/cockroachdb/pebble/v2/sstable/block/blockkind"
 	"github.com/stretchr/testify/require"
 )
 

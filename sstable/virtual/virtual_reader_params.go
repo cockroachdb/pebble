@@ -1,6 +1,6 @@
 package virtual
 
-import "github.com/cockroachdb/pebble/internal/base"
+import "github.com/cockroachdb/pebble/v2/internal/base"
 
 // VirtualReaderParams are the parameters necessary for a reader to read virtual sstables.
 type VirtualReaderParams struct {

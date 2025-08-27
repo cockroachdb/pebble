@@ -7,8 +7,8 @@ package keyspan
 import (
 	"context"
 
-	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/internal/treeprinter"
 )
 
 // FilterFunc is a callback that allows filtering keys from a Span. The result
