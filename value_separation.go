@@ -304,6 +304,16 @@ type writeNewBlobFiles struct {
 // Assert that *writeNewBlobFiles implements the compact.ValueSeparation interface.
 var _ compact.ValueSeparation = (*writeNewBlobFiles)(nil)
 
+// MayWriteColdBlobFiles implements the ValueSeparation interface.
+func (vs *writeNewBlobFiles) MayWriteColdBlobFiles() bool {
+	return false
+}
+
+// MayWriteColdBlobFilesForTieringSpanID implements the ValueSeparation interface.
+func (vs *writeNewBlobFiles) MayWriteColdBlobFilesForTieringSpanID(_ base.TieringSpanID) bool {
+	return false
+}
+
 // OverrideNextOutputConfig implements the ValueSeparation interface.
 func (vs *writeNewBlobFiles) OverrideNextOutputConfig(
 	config compact.ValueSeparationOverrideConfig,
@@ -482,6 +492,16 @@ type pendingReference struct {
 // Assert that *preserveBlobReferences implements the compact.ValueSeparation
 // interface.
 var _ compact.ValueSeparation = (*preserveBlobReferences)(nil)
+
+// MayWriteColdBlobFiles implements the ValueSeparation interface.
+func (vs *preserveBlobReferences) MayWriteColdBlobFiles() bool {
+	return false
+}
+
+// MayWriteColdBlobFilesForTieringSpanID implements the ValueSeparation interface.
+func (vs *preserveBlobReferences) MayWriteColdBlobFilesForTieringSpanID(_ base.TieringSpanID) bool {
+	return false
+}
 
 // OverrideNextOutputConfig implements the ValueSeparation interface.
 func (vs *preserveBlobReferences) OverrideNextOutputConfig(
@@ -721,6 +741,22 @@ func newWriteNewBlobFiles(
 type blobWriterAndMeta struct {
 	writer  *blob.FileWriter
 	objMeta objstorage.ObjectMetadata
+}
+
+// MayWriteColdBlobFiles implements the ValueSeparation interface.
+func (vs *generalizedValueSeparation) MayWriteColdBlobFiles() bool {
+	return vs.mode == rewriteAllHotBlobReferences && len(vs.coldWriteSpans) > 0
+}
+
+// MayWriteColdBlobFilesForTieringSpanID implements the ValueSeparation interface.
+func (vs *generalizedValueSeparation) MayWriteColdBlobFilesForTieringSpanID(
+	tieringSpanID base.TieringSpanID,
+) bool {
+	if vs.mode != rewriteAllHotBlobReferences {
+		return false
+	}
+	_, ok := vs.coldWriteSpans[tieringSpanID]
+	return ok
 }
 
 // OverrideNextOutputConfig implements the ValueSeparation interface.
