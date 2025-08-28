@@ -168,7 +168,12 @@ func (e *entry) acquireValue() *Value {
 // We also use the Go allocator in race mode because the normal path relies on a
 // finalizer (and historically there have been some finalizer-related bugs in
 // the race detector, in go1.15 and earlier).
-const entriesGoAllocated = valueEntryGoAllocated || buildtags.Race
+//
+// entriesCanBeGoAllocated is used to allow the compiler to statically elide
+// code blocks.
+const entriesCanBeGoAllocated = valueEntryCanBeGoAllocated || buildtags.Race
+
+var entriesGoAllocated = valueEntryGoAllocated || buildtags.Race
 
 const entrySize = unsafe.Sizeof(entry{})
 
@@ -219,7 +224,8 @@ type entryAllocCache struct {
 
 func newEntryAllocCache() *entryAllocCache {
 	c := &entryAllocCache{}
-	if !entriesGoAllocated {
+	// We check the constant so that the code block can be statically elided.
+	if !entriesCanBeGoAllocated || !entriesGoAllocated {
 		// Note the use of a "real" finalizer here (as opposed to a build tag-gated
 		// no-op finalizer). Without the finalizer, objects released from the pool
 		// and subsequently GC'd by the Go runtime would fail to have their manually
@@ -241,7 +247,8 @@ func freeEntryAllocCache(obj interface{}) {
 func (c *entryAllocCache) alloc() *entry {
 	n := len(c.entries)
 	if n == 0 {
-		if entriesGoAllocated {
+		// We check the constant so that the code block can be statically elided.
+		if entriesCanBeGoAllocated && entriesGoAllocated {
 			return &entry{}
 		}
 		b := manual.New(manual.BlockCacheEntry, entrySize)
@@ -253,7 +260,8 @@ func (c *entryAllocCache) alloc() *entry {
 }
 
 func (c *entryAllocCache) dealloc(e *entry) {
-	if !entriesGoAllocated {
+	// We check the constant so that the code block can be statically elided.
+	if !entriesCanBeGoAllocated || !entriesGoAllocated {
 		buf := manual.MakeBufUnsafe(unsafe.Pointer(e), entrySize)
 		manual.Free(manual.BlockCacheEntry, buf)
 	}
