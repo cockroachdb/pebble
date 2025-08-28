@@ -53,7 +53,7 @@ func Alloc(n int) *Value {
 
 	if valueEntryGoAllocated {
 		// Note: if cgo is not enabled, manual.New will do a regular Go allocation.
-		b := manual.New(manual.BlockCacheData, uintptr(n))
+		b := manual.NewUninitialized(manual.BlockCacheData, uintptr(n))
 		v := &Value{buf: b.Slice()}
 		v.ref.init(1)
 		// Note: this is a no-op if invariants and tracing are disabled or race is
@@ -71,7 +71,10 @@ func Alloc(n int) *Value {
 	// When we're not performing leak detection, the lifetime of the returned
 	// Value is exactly the lifetime of the backing buffer and we can manually
 	// allocate both.
-	b := manual.New(manual.BlockCacheData, ValueMetadataSize+uintptr(n))
+	b := manual.NewUninitialized(manual.BlockCacheData, ValueMetadataSize+uintptr(n))
+	// We must clear the slice because Value contains pointers. See
+	// manual.NewUninitialized.
+	clear(b.Slice()[:ValueMetadataSize])
 	v := (*Value)(b.Data())
 	v.buf = b.Slice()[ValueMetadataSize:]
 	v.ref.init(1)
