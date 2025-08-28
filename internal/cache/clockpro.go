@@ -122,7 +122,7 @@ func (c *shard) init(maxSize int64) {
 		maxSize:    maxSize,
 		coldTarget: maxSize,
 	}
-	if entriesGoAllocated {
+	if entriesCanBeGoAllocated && entriesGoAllocated {
 		c.entries = make(map[*entry]struct{})
 	}
 	c.blocks.Init(16)
@@ -396,7 +396,7 @@ func (c *shard) metaAdd(key key, e *entry) bool {
 	}
 
 	c.blocks.Put(key, e)
-	if entriesGoAllocated {
+	if entriesCanBeGoAllocated && entriesGoAllocated {
 		// Go allocated entries need to be referenced from Go memory. The entries
 		// map provides that reference.
 		c.entries[e] = struct{}{}
@@ -436,7 +436,7 @@ func (c *shard) metaDel(e *entry) (deletedValue *Value) {
 	e.val = nil
 
 	c.blocks.Delete(e.key)
-	if entriesGoAllocated {
+	if entriesCanBeGoAllocated && entriesGoAllocated {
 		// Go allocated entries need to be referenced from Go memory. The entries
 		// map provides that reference.
 		delete(c.entries, e)

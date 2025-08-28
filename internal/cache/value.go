@@ -6,6 +6,7 @@ package cache
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"unsafe"
 
@@ -39,7 +40,12 @@ type Value struct {
 // If cgo is not available, the Value must be a normal Go object to keep
 // the buffer reference visible to the GC. We also use the Go allocator if we
 // want to add finalizer assertions.
-const valueEntryGoAllocated = !buildtags.Cgo || invariants.UseFinalizers
+//
+// valueEntryCanBeGoAllocated is used to allow the compiler to statically elide
+// code blocks.
+const valueEntryCanBeGoAllocated = !buildtags.Cgo || invariants.UseFinalizers
+
+var valueEntryGoAllocated = !buildtags.Cgo || (invariants.UseFinalizers && rand.IntN(2) == 0)
 
 // Alloc allocates a byte slice of the specified size, possibly reusing
 // previously allocated but unused memory. The memory backing the value is
@@ -51,7 +57,7 @@ func Alloc(n int) *Value {
 		return nil
 	}
 
-	if valueEntryGoAllocated {
+	if valueEntryCanBeGoAllocated && valueEntryGoAllocated {
 		// Note: if cgo is not enabled, manual.New will do a regular Go allocation.
 		b := manual.New(manual.BlockCacheData, uintptr(n))
 		v := &Value{buf: b.Slice()}
@@ -85,7 +91,7 @@ func (v *Value) free() {
 			v.buf[i] = 0xff
 		}
 	}
-	if valueEntryGoAllocated {
+	if valueEntryCanBeGoAllocated && valueEntryGoAllocated {
 		buf := manual.MakeBufUnsafe(unsafe.Pointer(unsafe.SliceData(v.buf)), uintptr(cap(v.buf)))
 		manual.Free(manual.BlockCacheData, buf)
 		v.buf = nil
