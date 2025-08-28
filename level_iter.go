@@ -154,6 +154,7 @@ func (l *levelIter) init(
 	if len(opts.PointKeyFilters) == 0 {
 		l.tableOpts.PointKeyFilters = l.filtersBuf[:0:1]
 	}
+	l.tableOpts.MaximumSuffixProperty = opts.MaximumSuffixProperty
 	l.tableOpts.UseL6Filters = opts.UseL6Filters
 	l.tableOpts.Category = opts.Category
 	l.tableOpts.layer = l.layer

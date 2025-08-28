@@ -67,6 +67,9 @@ type BlockPropertyCollector = sstable.BlockPropertyCollector
 // BlockPropertyFilter exports the sstable.BlockPropertyFilter type.
 type BlockPropertyFilter = base.BlockPropertyFilter
 
+// MaximumSuffixProperty exports the sstable.MaximumSuffixProperty type.
+type MaximumSuffixProperty = sstable.MaximumSuffixProperty
+
 // ShortAttributeExtractor exports the base.ShortAttributeExtractor type.
 type ShortAttributeExtractor = base.ShortAttributeExtractor
 
@@ -218,6 +221,9 @@ type IterOptions struct {
 	// implies obsolete points should not be hidden.
 	snapshotForHideObsoletePoints base.SeqNum
 
+	// MaximumSuffixProperty is the maximum suffix property for the iterator.
+	// This is used to perform the synthetic key optimization.
+	MaximumSuffixProperty MaximumSuffixProperty
 	// NB: If adding new Options, you must account for them in iterator
 	// construction and Iterator.SetOptions.
 }
@@ -236,6 +242,14 @@ func (o *IterOptions) GetUpperBound() []byte {
 		return nil
 	}
 	return o.UpperBound
+}
+
+// GetMaximumSuffixProperty returns the MaximumSuffixProperty.
+func (o *IterOptions) GetMaximumSuffixProperty() MaximumSuffixProperty {
+	if o == nil {
+		return nil
+	}
+	return o.MaximumSuffixProperty
 }
 
 func (o *IterOptions) pointKeys() bool {
