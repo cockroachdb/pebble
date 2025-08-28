@@ -19,6 +19,7 @@ const (
 	InternalKeyKindMerge          = base.InternalKeyKindMerge
 	InternalKeyKindLogData        = base.InternalKeyKindLogData
 	InternalKeyKindSingleDelete   = base.InternalKeyKindSingleDelete
+	InternalKeyKindSyntheticKey   = base.InternalKeyKindSyntheticKey
 	InternalKeyKindRangeDelete    = base.InternalKeyKindRangeDelete
 	InternalKeyKindMax            = base.InternalKeyKindMax
 	InternalKeyKindSetWithDelete  = base.InternalKeyKindSetWithDelete
