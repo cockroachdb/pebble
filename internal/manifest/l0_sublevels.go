@@ -93,27 +93,15 @@ func intervalKeyCompare(cmp Compare, a, b intervalKey) int {
 	return rv
 }
 
-type intervalKeySorter struct {
-	keys []intervalKeyTemp
-	cmp  Compare
-}
-
-func (s intervalKeySorter) Len() int { return len(s.keys) }
-func (s intervalKeySorter) Less(i, j int) bool {
-	return intervalKeyCompare(s.cmp, s.keys[i].intervalKey, s.keys[j].intervalKey) < 0
-}
-func (s intervalKeySorter) Swap(i, j int) {
-	s.keys[i], s.keys[j] = s.keys[j], s.keys[i]
-}
-
-// sortAndSweep will sort the intervalKeys using intervalKeySorter, remove the
-// duplicate fileIntervals, and set the {min, max}IntervalIndex for the files.
+// sortAndSweep will sort the intervalKeys by interval key, remove the duplicate
+// fileIntervals, and set the {min, max}IntervalIndex for the files.
 func sortAndSweep(keys []intervalKeyTemp, cmp Compare) []intervalKeyTemp {
 	if len(keys) == 0 {
 		return nil
 	}
-	sorter := intervalKeySorter{keys: keys, cmp: cmp}
-	sort.Sort(sorter)
+	slices.SortFunc(keys, func(a, b intervalKeyTemp) int {
+		return intervalKeyCompare(cmp, a.intervalKey, b.intervalKey)
+	})
 
 	// intervalKeys are generated using the file bounds. Specifically, there are
 	// 2 intervalKeys for each file, and len(keys) = 2 * number of files. Each
@@ -336,8 +324,9 @@ func newL0Sublevels(
 func mergeIntervals(
 	old, result []fileInterval, added []intervalKeyTemp, compare Compare,
 ) ([]fileInterval, []int) {
-	sorter := intervalKeySorter{keys: added, cmp: compare}
-	sort.Sort(sorter)
+	slices.SortFunc(added, func(a, b intervalKeyTemp) int {
+		return intervalKeyCompare(compare, a.intervalKey, b.intervalKey)
+	})
 
 	oldToNewMap := make([]int, len(old))
 	i := 0
