@@ -15,10 +15,12 @@ import (
 func TestVirtualBackings(t *testing.T) {
 	bv := MakeVirtualBackings()
 	datadriven.RunTest(t, "testdata/virtual_backings", func(t *testing.T, d *datadriven.TestData) (retVal string) {
-		var nInt, size uint64
+		var nInt, size, tInt uint64
 		d.MaybeScanArgs(t, "n", &nInt)
 		d.MaybeScanArgs(t, "size", &size)
+		d.MaybeScanArgs(t, "table", &tInt)
 		n := base.DiskFileNum(nInt)
+		tableNum := base.TableNum(tInt)
 
 		defer func() {
 			if r := recover(); r != nil {
@@ -38,6 +40,7 @@ func TestVirtualBackings(t *testing.T) {
 
 		case "add-table":
 			m := &TableMetadata{
+				TableNum:     tableNum,
 				TableBacking: &TableBacking{DiskFileNum: n},
 				Size:         size,
 				Virtual:      true,
@@ -45,12 +48,7 @@ func TestVirtualBackings(t *testing.T) {
 			bv.AddTable(m)
 
 		case "remove-table":
-			m := &TableMetadata{
-				TableBacking: &TableBacking{DiskFileNum: n},
-				Size:         size,
-				Virtual:      true,
-			}
-			bv.RemoveTable(m)
+			bv.RemoveTable(n, tableNum)
 
 		case "protect":
 			bv.Protect(n)

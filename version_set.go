@@ -862,7 +862,7 @@ func getZombieTablesAndUpdateVirtualBackings(
 
 	// Now deal with virtual tables.
 	//
-	// When a virtual table moves between levels we AddTable() then RemoveTable(),
+	// When a virtual table moves between levels we RemoveTable() then AddTable(),
 	// which works out.
 	for _, b := range ve.CreatedBackingTables {
 		virtualBackings.AddAndRef(b)
@@ -872,14 +872,14 @@ func getZombieTablesAndUpdateVirtualBackings(
 			localLiveDelta.count++
 		}
 	}
+	for _, m := range ve.DeletedTables {
+		if m.Virtual {
+			virtualBackings.RemoveTable(m.TableBacking.DiskFileNum, m.TableNum)
+		}
+	}
 	for _, nf := range ve.NewTables {
 		if nf.Meta.Virtual {
 			virtualBackings.AddTable(nf.Meta)
-		}
-	}
-	for _, m := range ve.DeletedTables {
-		if m.Virtual {
-			virtualBackings.RemoveTable(m)
 		}
 	}
 
