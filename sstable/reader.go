@@ -78,6 +78,7 @@ type ReadEnv struct {
 	// only be set when Virtual is non-nil.
 	IsSharedIngested bool
 	Block            block.ReadEnv
+	InternalBounds   *base.InternalKeyBounds
 }
 
 var NoReadEnv = ReadEnv{}
@@ -95,13 +96,25 @@ func (r *Reader) Close() error {
 
 // IterOptions defines options for configuring a sstable pointer iterator.
 type IterOptions struct {
-	Lower, Upper         []byte
-	Transforms           IterTransforms
-	Filterer             *BlockPropertiesFilterer
-	FilterBlockSizeLimit FilterBlockSizeLimit
-	Env                  ReadEnv
-	ReaderProvider       valblk.ReaderProvider
-	BlobContext          TableBlobContext
+	Lower, Upper          []byte
+	Transforms            IterTransforms
+	Filterer              *BlockPropertiesFilterer
+	FilterBlockSizeLimit  FilterBlockSizeLimit
+	Env                   ReadEnv
+	ReaderProvider        valblk.ReaderProvider
+	BlobContext           TableBlobContext
+	MaximumSuffixProperty MaximumSuffixProperty
+}
+
+type MaximumSuffixProperty interface {
+	Name() string
+	Extract(encodedProperty []byte) (suffix []byte, ok bool, err error)
+}
+
+type SyntheticKey struct {
+	kv             base.InternalKV
+	seekKey        []byte
+	atSyntheticKey bool
 }
 
 // NewPointIter returns an iterator for the point keys in the table.

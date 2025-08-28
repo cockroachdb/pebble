@@ -352,6 +352,7 @@ func createReader(
 		env.Virtual = meta.VirtualParams
 		env.IsSharedIngested = v.isShared && meta.SyntheticSeqNum() != 0
 	}
+	env.InternalBounds = &meta.PointKeyBounds
 	return r, env
 }
 
@@ -588,6 +589,7 @@ func (h *fileCacheHandle) newIters(
 	r, env := createReader(v, file)
 	internalOpts.readEnv.Virtual = env.Virtual
 	internalOpts.readEnv.IsSharedIngested = env.IsSharedIngested
+	internalOpts.readEnv.InternalBounds = env.InternalBounds
 
 	var iters iterSet
 	if kinds.RangeKey() && file.HasRangeKeys {
@@ -730,6 +732,7 @@ func (h *fileCacheHandle) newPointIter(
 				ValueFetcher: internalOpts.blobValueFetcher,
 				References:   blobReferences,
 			},
+			MaximumSuffixProperty: sstable.MaxTestKeysSuffixProperty{},
 		})
 	}
 	if err != nil {
