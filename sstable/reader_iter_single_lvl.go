@@ -168,7 +168,7 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	transforms IterTransforms
 
 	maximumSuffixProperty MaximumSuffixProperty
-	synthetic             SyntheticKey
+	synthetic             syntheticKey
 
 	// All fields above this field are cleared when resetting the iterator for reuse.
 	clearForResetBoundary struct{}
@@ -642,6 +642,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
+	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
 
 	if i.readEnv.Virtual != nil {
@@ -796,8 +797,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
 	if i.synthetic.atSyntheticKey {
-		// TODO : currently we cant take advantage of trySeekUsingNext in case of synthetic reseeks.
+		// TODO : We have to disable the optimization to avoid false data invalidation if there back to back SeekPrefixGE calls
+		// so currently we cant take advantage of trySeekUsingNext in case of synthetic reseeks.
 		flags = flags.DisableTrySeekUsingNext()
+		// The synthetic key is no longer relevant and must be cleared.
 		i.synthetic.atSyntheticKey = false
 	}
 	if i.readEnv.Virtual != nil {
@@ -813,9 +816,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	// If there's a maximum suffix property configured and the seek key contains
 	// a suffix (len(key) > len(prefix)), we might be able to defer actually
 	// performing the seek and potentially loading additional blocks.
-	// However, for virtual tables (used in external file ingestion), the block
-	// properties may be stale, so we disable this optimization.
-	// Upper bounds
+	// However, perform the synthetic key optimization if the prefix is wholly contained within the sstable's bounds
+	// We do so because there might be cases which result in generating a synthetic key which was not supposed to be generated
+	// But due to the Bounds we might end up creating the synthetic key, which will result in a seek failure. A case that can
+	// be considered is when we have a RangeDel key at the upper bound of the sstable, which possibly can result in fake synthetic key.
 	if i.maximumSuffixProperty != nil && len(key) > len(prefix) && i.readEnv.InternalBounds != nil {
 		smallest := i.readEnv.InternalBounds.SmallestUserKey()
 		smallest = i.reader.Comparer.Split.Prefix(smallest)
@@ -829,12 +833,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 			var ok bool
 			var err error
 			if prop != "" {
+				// Check if the synthetic suffix is present
 				if i.transforms.HasSyntheticSuffix() {
 					if maxSuffix = i.transforms.SyntheticSuffix(); maxSuffix != nil {
 						ok = true
 					}
 				} else {
-					maxSuffix, ok, err = i.maximumSuffixProperty.Extract([]byte(prop))
+					maxSuffix, ok, err = i.maximumSuffixProperty.Extract(maxSuffix, unsafe.Slice(unsafe.StringData(prop), len(prop)))
 					if err != nil {
 						i.err = err
 						return nil
@@ -1055,6 +1060,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) *base.InternalKV {
+	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
 	if i.readEnv.Virtual != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
@@ -1162,10 +1168,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *singleLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
+	// The synthetic key is no longer relevant and must be cleared.
+	i.synthetic.atSyntheticKey = false
 	// If we have a lower bound, use SeekGE. Note that in general this is not
 	// supported usage, except when the lower bound is there because the table is
 	// virtual.
-	i.synthetic.atSyntheticKey = false
 	if i.lower != nil {
 		return i.SeekGE(i.lower, base.SeekGEFlagsNone)
 	}
@@ -1228,6 +1235,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *singleLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
+	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
 	if i.readEnv.Virtual != nil {
 		return i.maybeVerifyKey(i.virtualLast())
@@ -1289,6 +1297,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 func (i *singleLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 
 	if i.synthetic.atSyntheticKey {
+		// The synthetic key is no longer relevant and must be cleared.
+		// Perform the actual seek since the synthetic key is on top of the heap and must be resolved.
 		i.synthetic.atSyntheticKey = false
 		return i.seekPrefixGE(i.reader.Comparer.Split.Prefix(i.synthetic.seekKey), i.synthetic.seekKey, base.SeekGEFlagsNone)
 	}
