@@ -1,3 +1,75 @@
+# Test case for the lazy seek prefix optimization
+
+reset
+----
+
+batch commit
+set a@1 a@1
+set s@10 s@10
+set s@8 s@8
+set w@7 w@7
+----
+committed 4 keys
+
+flush
+----
+
+batch commit
+set a@1 a@1
+set s@3 s@3
+set z@5 z@5
+----
+committed 3 keys
+
+flush
+----
+
+batch commit
+set a@1 a@1
+set s@4 s@4
+set t@5 t@5
+----
+committed 3 keys
+
+flush
+----
+
+lsm
+----
+L0.2:
+  000009:[a@1#17,SET-t@5#19,SET]
+L0.1:
+  000007:[a@1#14,SET-z@5#16,SET]
+L0.0:
+  000005:[a@1#10,SET-w@7#13,SET]
+
+# We only performed one seek here. We made
+# 3 synthetic keys for each level we detected a key.
+# s@10, s@8, s@5 all synthetic. since s@10 is the largest key, and 
+# sits on top of the heap, we will Next() and perform the real seek. 
+# we discover s@10 SET, since its still on top of the heap, we don't need to
+# perform the real seek.
+
+combined-iter probe-points=(9,(Log "OpSeekPrefixGE")) probe-points=(7,(Log "OpSeekPrefixGE")) probe-points=(5,(Log "OpSeekPrefixGE"))
+seek-prefix-ge s@10
+next
+next
+----
+s@10: (s@10, .)
+s@8: (s@8, .)
+s@4: (s@4, .)
+OpSeekPrefixGESeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
+OpSeekPrefixGESeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
+OpSeekPrefixGESeekPrefixGE("s@10") = (s@10#11,SET,"s@10")
+OpSeekPrefixGENext() = (s@8#12,SET,"s@8")
+OpSeekPrefixGENext() = (w@7#13,SET,"w@7")
+OpSeekPrefixGENext() = (s@4#18,SET,"s@4")
+OpSeekPrefixGENext() = (s@3#15,SET,"s@3")
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+
+
 # Test case discovered during implementation of the optimization
 # An example of this edge case would be RangeDel, however there can be other
 # instances that might produce the same scenario
@@ -184,3 +256,51 @@ seek-prefix-ge a
 ww@25: (ww@25, .)
 z@4: (z@4, .)
 a@19: (a@19, .)
+
+
+# Test disabling the optimization if prefix bounds do not strictly fall within the sstable bounds
+
+reset
+----
+
+batch commit
+set a@1 a@1
+set s@10 s@10
+set s@8 s@8
+----
+committed 3 keys
+
+flush
+----
+
+batch commit
+set c@2 c@2
+set s@9 s@9
+set s@7 s@7
+----
+committed 3 keys
+
+flush
+----
+
+lsm
+----
+L0.1:
+  000007:[c@2#13,SET-s@7#15,SET]
+L0.0:
+  000005:[a@1#10,SET-s@8#12,SET]
+
+combined-iter probe-points=(7,(Log "OpSeekPrefixGE")) probe-points=(5,(Log "OpSeekPrefixGE"))
+seek-prefix-ge s
+next
+next
+----
+s@10: (s@10, .)
+s@9: (s@9, .)
+s@8: (s@8, .)
+OpSeekPrefixGESeekPrefixGE("s") = (s@9#14,SET,"s@9")
+OpSeekPrefixGESeekPrefixGE("s") = (s@10#11,SET,"s@10")
+OpSeekPrefixGENext() = (s@8#12,SET,"s@8")
+OpSeekPrefixGENext() = (s@7#15,SET,"s@7")
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
