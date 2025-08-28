@@ -8,6 +8,7 @@ import (
 	"bytes"
 	stdcmp "cmp"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -86,16 +87,16 @@ func MakeVirtualBackings() VirtualBackings {
 type backingWithMetadata struct {
 	backing *TableBacking
 
-	// A backing initially has a useCount of 0. The useCount is increased by
-	// AddTable and decreased by RemoveTable. Backings that have useCount=0 are
-
-	useCount int32
 	// protectionCount is used by Protect to temporarily prevent a backing from
 	// being reported as unused.
 	protectionCount int32
-	// virtualizedSize is the sum of the sizes of the useCount virtual tables
+	// virtualizedSize is the sum of the sizes of the virtual tables
 	// associated with this backing.
 	virtualizedSize uint64
+
+	// virtualTables is the list of virtual tables that use this backing.
+	// AddTable/RemoveTable maintain this map.
+	virtualTables map[base.TableNum]*TableMetadata
 }
 
 // AddAndRef adds a new backing to the set and takes a reference on it. Another
@@ -108,7 +109,8 @@ func (bv *VirtualBackings) AddAndRef(backing *TableBacking) {
 	// (see Protect), we might be the only ones holding on to a backing.
 	backing.Ref()
 	bv.mustAdd(backingWithMetadata{
-		backing: backing,
+		backing:       backing,
+		virtualTables: make(map[base.TableNum]*TableMetadata),
 	})
 	bv.unused[backing] = struct{}{}
 	bv.totalSize += backing.Size
@@ -123,7 +125,7 @@ func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 	if v.inUse() {
 		panic(errors.AssertionFailedf(
 			"backing %s still in use (useCount=%d protectionCount=%d)",
-			v.backing.DiskFileNum, v.useCount, v.protectionCount,
+			v.backing.DiskFileNum, len(v.virtualTables), v.protectionCount,
 		))
 	}
 	delete(bv.m, n)
@@ -131,35 +133,35 @@ func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 	bv.totalSize -= v.backing.Size
 }
 
-// AddTable is used when a new table is using an exiting backing. The backing
+// AddTable is used when a new table is using an existing backing. The backing
 // must be in the set already.
 func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 	if !m.Virtual {
 		panic(errors.AssertionFailedf("table %s not virtual", m.TableNum))
 	}
 	v := bv.mustGet(m.TableBacking.DiskFileNum)
+	if _, ok := v.virtualTables[m.TableNum]; ok {
+		panic(errors.AssertionFailedf("table %s already uses backing %s", m.TableNum, v.backing.DiskFileNum))
+	}
 	if !v.inUse() {
 		delete(bv.unused, v.backing)
 	}
-	v.useCount++
 	v.virtualizedSize += m.Size
+	v.virtualTables[m.TableNum] = m
 	bv.m[m.TableBacking.DiskFileNum] = v
 }
 
 // RemoveTable is used when a table using a backing is removed. The backing is
 // not removed from the set, even if it becomes unused.
-func (bv *VirtualBackings) RemoveTable(m *TableMetadata) {
-	if !m.Virtual {
-		panic(errors.AssertionFailedf("table %s not virtual", m.TableNum))
+func (bv *VirtualBackings) RemoveTable(backing base.DiskFileNum, table base.TableNum) {
+	v := bv.mustGet(backing)
+	t, ok := v.virtualTables[table]
+	if !ok {
+		panic(errors.AssertionFailedf("table %s does not use backing %s", table, v.backing.DiskFileNum))
 	}
-	v := bv.mustGet(m.TableBacking.DiskFileNum)
-
-	if v.useCount <= 0 {
-		panic(errors.AssertionFailedf("invalid useCount"))
-	}
-	v.useCount--
-	v.virtualizedSize -= m.Size
-	bv.m[m.TableBacking.DiskFileNum] = v
+	delete(v.virtualTables, table)
+	v.virtualizedSize -= t.Size
+	bv.m[backing] = v
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
 	}
@@ -210,7 +212,7 @@ func (bv *VirtualBackings) Stats() (count int, totalSize uint64) {
 // virtual sstable with a higher priority.
 func (bv *VirtualBackings) Usage(n base.DiskFileNum) (useCount int, virtualizedSize uint64) {
 	v := bv.mustGet(n)
-	return int(v.useCount), v.virtualizedSize
+	return len(v.virtualTables), v.virtualizedSize
 }
 
 // Unused returns all backings that are and no longer used by the latest version
@@ -273,8 +275,10 @@ func (bv *VirtualBackings) String() string {
 		fmt.Fprintf(&buf, "%d virtual backings, total size %d:\n", count, totalSize)
 		for _, n := range nums {
 			v := bv.m[n]
-			fmt.Fprintf(&buf, "  %s:  size=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d\n",
-				n, v.backing.Size, v.useCount, v.protectionCount, v.virtualizedSize)
+			fmt.Fprintf(&buf, "  %s:  size=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d",
+				n, v.backing.Size, len(v.virtualTables), v.protectionCount, v.virtualizedSize)
+			tableNums := slices.Sorted(maps.Keys(v.virtualTables))
+			fmt.Fprintf(&buf, "  tables: %v\n", tableNums)
 		}
 	}
 	unused := bv.Unused()
@@ -306,5 +310,5 @@ func (bv *VirtualBackings) mustGet(n base.DiskFileNum) backingWithMetadata {
 
 // inUse returns true if b is used to back at least one virtual table.
 func (v *backingWithMetadata) inUse() bool {
-	return v.useCount > 0 || v.protectionCount > 0
+	return len(v.virtualTables) > 0 || v.protectionCount > 0
 }

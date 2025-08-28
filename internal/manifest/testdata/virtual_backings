@@ -2,86 +2,96 @@
 add n=1 size=100
 ----
 1 virtual backings, total size 100:
-  000001:  size=100  useCount=0  protectionCount=0  virtualizedSize=0
+  000001:  size=100  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000001
 
 add n=2 size=200
 ----
 2 virtual backings, total size 300:
-  000001:  size=100  useCount=0  protectionCount=0  virtualizedSize=0
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000001:  size=100  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000001 000002
 
 add n=2 size=200
 ----
 pebble: trying to add an existing file backing
 
-add-table n=1 size=10
+add-table n=1 size=10 table=1
 ----
 2 virtual backings, total size 300:
-  000001:  size=100  useCount=1  protectionCount=0  virtualizedSize=10
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000001:  size=100  useCount=1  protectionCount=0  virtualizedSize=10  tables: [000001]
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000002
 
-add-table n=1 size=10
+remove-table n=2 table=1
+----
+table 000001 does not use backing 000002
+
+
+add-table n=1 size=10 table=3
 ----
 2 virtual backings, total size 300:
-  000001:  size=100  useCount=2  protectionCount=0  virtualizedSize=20
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000001:  size=100  useCount=2  protectionCount=0  virtualizedSize=20  tables: [000001 000003]
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000002
 
-add-table n=1 size=10
+add-table n=1 size=10 table=5
 ----
 2 virtual backings, total size 300:
-  000001:  size=100  useCount=3  protectionCount=0  virtualizedSize=30
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000001:  size=100  useCount=3  protectionCount=0  virtualizedSize=30  tables: [000001 000003 000005]
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000002
+
+add-table n=1 size=10 table=5
+----
+table 000005 already uses backing 000001
+
 
 remove n=1
 ----
 backing 000001 still in use (useCount=3 protectionCount=0)
 
-remove-table n=1 size=10
+remove-table n=1 table=1
 ----
 2 virtual backings, total size 300:
-  000001:  size=100  useCount=2  protectionCount=0  virtualizedSize=20
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000001:  size=100  useCount=2  protectionCount=0  virtualizedSize=20  tables: [000003 000005]
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000002
 
-remove-table n=1 size=10
+remove-table n=1 table=3
 ----
 2 virtual backings, total size 300:
-  000001:  size=100  useCount=1  protectionCount=0  virtualizedSize=10
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000001:  size=100  useCount=1  protectionCount=0  virtualizedSize=10  tables: [000005]
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000002
 
-remove-table n=1 size=10
+remove-table n=1 table=5
 ----
 2 virtual backings, total size 300:
-  000001:  size=100  useCount=0  protectionCount=0  virtualizedSize=0
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000001:  size=100  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000001 000002
 
 remove n=1
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000002
 
 protect n=2
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=0  protectionCount=1  virtualizedSize=0
+  000002:  size=200  useCount=0  protectionCount=1  virtualizedSize=0  tables: []
 
 protect n=2
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=0  protectionCount=2  virtualizedSize=0
+  000002:  size=200  useCount=0  protectionCount=2  virtualizedSize=0  tables: []
 
 unprotect n=2
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=0  protectionCount=1  virtualizedSize=0
+  000002:  size=200  useCount=0  protectionCount=1  virtualizedSize=0  tables: []
 
 remove n=2
 ----
@@ -90,36 +100,36 @@ backing 000002 still in use (useCount=0 protectionCount=1)
 unprotect n=2
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000002
 
-add-table n=2 size=10
+add-table n=2 size=10 table=2
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=1  protectionCount=0  virtualizedSize=10
+  000002:  size=200  useCount=1  protectionCount=0  virtualizedSize=10  tables: [000002]
 
-add-table n=2 size=10
+add-table n=2 size=10 table=4
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=2  protectionCount=0  virtualizedSize=20
+  000002:  size=200  useCount=2  protectionCount=0  virtualizedSize=20  tables: [000002 000004]
 
 protect n=2
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=2  protectionCount=1  virtualizedSize=20
+  000002:  size=200  useCount=2  protectionCount=1  virtualizedSize=20  tables: [000002 000004]
 
-remove-table n=2 size=10
+remove-table n=2 size=10 table=4
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=1  protectionCount=1  virtualizedSize=10
+  000002:  size=200  useCount=1  protectionCount=1  virtualizedSize=10  tables: [000002]
 
-remove-table n=2 size=10
+remove-table n=2 size=10 table=2
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=0  protectionCount=1  virtualizedSize=0
+  000002:  size=200  useCount=0  protectionCount=1  virtualizedSize=0  tables: []
 
 unprotect n=2
 ----
 1 virtual backings, total size 200:
-  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0
+  000002:  size=200  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000002
