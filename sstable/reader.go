@@ -78,7 +78,8 @@ type ReadEnv struct {
 	// only be set when Virtual is non-nil.
 	IsSharedIngested bool
 	Block            block.ReadEnv
-	InternalBounds   *base.InternalKeyBounds
+	// InternalBounds is the bounds of the sstable. This is currently used during synthetic key optimization.
+	InternalBounds *base.InternalKeyBounds
 }
 
 var NoReadEnv = ReadEnv{}
@@ -106,11 +107,14 @@ type IterOptions struct {
 	MaximumSuffixProperty MaximumSuffixProperty
 }
 
+// MaximumSuffixProperty is an interface for the maximum suffix property.
+// This is used to perform the synthetic key optimization.
 type MaximumSuffixProperty interface {
 	Name() string
 	Extract(encodedProperty []byte) (suffix []byte, ok bool, err error)
 }
 
+// SyntheticKey is a struct that contains the synthetic key and the seek key.
 type SyntheticKey struct {
 	kv             base.InternalKV
 	seekKey        []byte

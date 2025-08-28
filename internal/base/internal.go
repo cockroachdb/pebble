@@ -96,6 +96,8 @@ const (
 	//InternalKeyKindRollbackXID              InternalKeyKind = 12
 	//InternalKeyKindNoop                     InternalKeyKind = 13
 	//InternalKeyKindColumnFamilyRangeDelete  InternalKeyKind = 14
+	// InternalKeyKindSyntheticKey is a key used to mark synthetic keys in the
+	// sstable. This is used to perform optimization during SeekPrefixGE.
 	InternalKeyKindSyntheticKey InternalKeyKind = 14
 	InternalKeyKindRangeDelete  InternalKeyKind = 15
 	//InternalKeyKindColumnFamilyBlobIndex    InternalKeyKind = 16

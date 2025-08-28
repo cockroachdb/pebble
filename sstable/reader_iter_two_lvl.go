@@ -263,6 +263,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) DebugTree(tp treeprinter.Node) {
 func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
+	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
 	if i.secondLevel.readEnv.Virtual != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
@@ -405,6 +406,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 
 	if i.secondLevel.synthetic.atSyntheticKey {
 		flags = flags.DisableTrySeekUsingNext()
+		// The synthetic key is no longer relevant and must be cleared.
 		i.secondLevel.synthetic.atSyntheticKey = false
 	}
 	if i.secondLevel.readEnv.Virtual != nil {
@@ -420,8 +422,10 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	// If there's a maximum suffix property configured and the seek key contains
 	// a suffix (len(key) > len(prefix)), we might be able to defer actually
 	// performing the seek and potentially loading additional blocks.
-	// However, for virtual tables (used in external file ingestion), the block
-	// properties may be stale, so we disable this optimization.
+	// However, perform the synthetic key optimization if the prefix is wholly contained within the sstable's bounds
+	// We do so because there might be cases which result in generating a synthetic key which was not supposed to be generated
+	// But due to the Bounds we might end up creating the synthetic key, which will result in a seek failure. A case that can
+	// be considered is when we have a RangeDel key at the upper bound of the sstable, which possibly can result in fake synthetic key.
 	if i.secondLevel.maximumSuffixProperty != nil && len(key) > len(prefix) && i.secondLevel.readEnv.InternalBounds != nil {
 		smallest := i.secondLevel.readEnv.InternalBounds.SmallestUserKey()
 		smallest = i.secondLevel.reader.Comparer.Split.Prefix(smallest)
@@ -681,6 +685,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) *base.InternalKV {
 
+	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
 	if i.secondLevel.readEnv.Virtual != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
@@ -763,10 +768,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
+	// The synthetic key is no longer relevant and must be cleared.
+	i.secondLevel.synthetic.atSyntheticKey = false
 	// If we have a lower bound, use SeekGE. Note that in general this is not
 	// supported usage, except when the lower bound is there because the table is
 	// virtual.
-	i.secondLevel.synthetic.atSyntheticKey = false
 	if i.secondLevel.lower != nil {
 		return i.SeekGE(i.secondLevel.lower, base.SeekGEFlagsNone)
 	}
@@ -809,6 +815,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
+	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
 	if i.secondLevel.readEnv.Virtual != nil {
 		if i.secondLevel.endKeyInclusive {
@@ -860,8 +867,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 
 	if i.secondLevel.synthetic.atSyntheticKey {
 		// Ensure the second-level index block is loaded/valid before resolving the
-		// synthetic. SeekPrefixGE may have deferred this work.
-		// TODO (sachin): This is might not be the best way to do this, but we need to load the second level index
+		// synthetic. Since SeekPrefixGE deferred this work during synthetic key generation
+		// TODO (sachin): Is there a better way to do this, but we need to load the second level index
 		// block before we can resolve the synthetic key.
 		i.secondLevel.err = nil
 		if i.useFilterBlock {
@@ -884,7 +891,6 @@ func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 			(i.secondLevel.boundsCmp <= 0) || PI(&i.topLevelIndex).SeparatorLT(i.secondLevel.synthetic.seekKey) {
 			// Position the top-level index at the synthetic seek key and load the
 			// corresponding second-level index block.
-
 			if !PI(&i.topLevelIndex).SeekGE(i.secondLevel.synthetic.seekKey) {
 				PD(&i.secondLevel.data).Invalidate()
 				PI(&i.secondLevel.index).Invalidate()
@@ -906,7 +912,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 				dontSeekWithinSingleLevelIter = true
 			}
 
-			// TODO : currently we cant take advantage of trySeekUsingNext in case of synthetic reseeks.
+			// We have to disable the optimization to avoid false data invalidation if there back to back SeekPrefixGE calls
+			// so currently we cant take advantage of trySeekUsingNext in case of synthetic reseeks.
 		}
 		if !dontSeekWithinSingleLevelIter {
 			kv := i.secondLevel.Next()

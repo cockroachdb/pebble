@@ -141,10 +141,13 @@ func testKeysSuffixToInterval(suffix []byte) BlockInterval {
 
 type MaxTestKeysSuffixProperty struct{}
 
+// Name is part of the MaxTestKeysSuffixProperty interface.
 func (testprop MaxTestKeysSuffixProperty) Name() string {
 	return `pebble.internal.testkeys.suffixes`
 }
 
+// Extract is part of the MaxTestKeysSuffixProperty interface used to extract the
+// latest suffix from the block property.
 func (testprop MaxTestKeysSuffixProperty) Extract(
 	encodedProperty []byte,
 ) (suffix []byte, ok bool, err error) {
