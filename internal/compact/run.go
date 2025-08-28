@@ -140,6 +140,14 @@ type ValueSeparationOutputConfig struct {
 // ValueSeparation defines an interface for writing some values to separate blob
 // files.
 type ValueSeparation interface {
+	// MayWriteColdBlobFiles returns true if this ValueSeparation may write cold
+	// blob files during the compaction.
+	MayWriteColdBlobFiles() bool
+	// MayWriteColdBlobFilesForTieringSpanID returns true if this
+	// ValueSeparation may write cold blob files for the specified tieringSpanID
+	// during the compaction. It can only return true if MayWriteColdBlobFiles()
+	// returns true.
+	MayWriteColdBlobFilesForTieringSpanID(tieringSpanID base.TieringSpanID) bool
 	// OverrideNextOutputConfig may be called when a compaction is starting a
 	// new output sstable. It can be used to configure value separation
 	// specifically for the next compaction output. If not called, the default
@@ -242,19 +250,27 @@ func (r *Runner) FirstKey() []byte {
 	return firstKey
 }
 
+type TieringPolicyAndEndKey struct {
+	TieringPolicy base.TieringPolicyAndExtractor
+	EndKey        []byte
+}
+
 // WriteTable writes a new output table. This table will be part of
 // Result.Tables. Should only be called if MoreDataToWrite() returned true.
 //
-// limitKey (if non-empty) forces the sstable to be finished before reaching
-// this key.
+// tieringAndEndKeys is always non-empty. The last EndKey in this slice, if
+// non-empty, forces the sstable to be finished before reaching this key.
+//
+// tieringPolicyForNewColdBlob, if specified, is the tiering policy that
+// should be used for writing a new cold blob file.
 //
 // WriteTable always closes the Writer.
 func (r *Runner) WriteTable(
 	objMeta objstorage.ObjectMetadata,
 	tw sstable.RawWriter,
-	limitKey []byte,
+	tieringPolicyForNewColdBlob base.TieringPolicy,
+	tieringAndEndKeys []TieringPolicyAndEndKey,
 	valueSeparation ValueSeparation,
-	tieringPolicy base.TieringPolicyAndExtractor,
 ) {
 	if r.err != nil {
 		panic("error already encountered")
@@ -263,7 +279,9 @@ func (r *Runner) WriteTable(
 		CreationTime: time.Now(),
 		ObjMeta:      objMeta,
 	})
-	splitKey, err := r.writeKeysToTable(tw, limitKey, valueSeparation, tieringPolicy)
+	valueSeparation.StartOutput(
+		ValueSeparationOutputConfig{TieringSpanIDForNewColdBlobFile: tieringPolicyForNewColdBlob.SpanID})
+	splitKey, err := r.writeKeysToTable(tw, tieringAndEndKeys, valueSeparation)
 
 	// Inform the value separation policy that the table is finished.
 	valSepMeta, valSepErr := valueSeparation.FinishOutput()
@@ -305,16 +323,15 @@ func (r *Runner) WriteTable(
 }
 
 func (r *Runner) writeKeysToTable(
-	tw sstable.RawWriter,
-	limitKey []byte,
-	valueSeparation ValueSeparation,
-	tieringPolicy base.TieringPolicyAndExtractor,
+	tw sstable.RawWriter, tieringAndEndKeys []TieringPolicyAndEndKey, valueSeparation ValueSeparation,
 ) (splitKey []byte, _ error) {
 	const updateGrantHandleEveryNKeys = 128
 	firstKey := r.FirstKey()
 	if firstKey == nil {
 		return nil, base.AssertionFailedf("no data to write")
 	}
+	n := len(tieringAndEndKeys)
+	limitKey := tieringAndEndKeys[n-1].EndKey
 	limitKey = base.MinUserKey(r.cmp, limitKey, r.TableSplitLimit(firstKey))
 	splitter := NewOutputSplitter(
 		r.cmp, firstKey, limitKey,
@@ -326,9 +343,31 @@ func (r *Runner) writeKeysToTable(
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	var iteratedKeys uint64
 	kv := r.kv
-	var tieringSpanID base.TieringSpanID
-	if tieringPolicy != nil {
-		tieringSpanID = tieringPolicy.Policy().SpanID
+	tieringPolicy := tieringAndEndKeys[0].TieringPolicy
+	// tieringSpanEndKey is the end key of the current tiering policy span. It
+	// is empty when len(tieringAndEndKeys)==1, since the limitKey is already
+	// ensuring that we notice the end (which should be the common case).
+	var tieringSpanEndKey []byte
+	// tryUpdateTieringSpanIDAndEndKey is only called when tieringAndEndKey is
+	// non-empty.
+	//
+	// TODO(sumeer): use the Frontiers heap to optimize the comparisons.
+	tryUpdateTieringSpanIDAndEndKey := func(k []byte) {
+		for {
+			if len(tieringAndEndKeys) == 1 {
+				// Nothing to update.
+				break
+			}
+			if r.cmp(k, tieringSpanEndKey) >= 0 {
+				tieringAndEndKeys = tieringAndEndKeys[1:]
+				if len(tieringAndEndKeys) == 1 {
+					tieringSpanEndKey = nil
+				} else {
+					tieringSpanEndKey = tieringAndEndKeys[0].EndKey
+				}
+				tieringPolicy = tieringAndEndKeys[0].TieringPolicy
+			}
+		}
 	}
 	for ; kv != nil; kv = r.iter.Next() {
 		iteratedKeys++
@@ -369,7 +408,10 @@ func (r *Runner) writeKeysToTable(
 			continue
 
 		case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
-			if tieringSpanID != 0 && kv.M.Tiering == (base.TieringMeta{}) {
+			if tieringSpanEndKey != nil {
+				tryUpdateTieringSpanIDAndEndKey(kv.K.UserKey)
+			}
+			if tieringPolicy.Policy.SpanID != 0 && kv.M.Tiering == (base.TieringMeta{}) {
 				// Try to extract the TieringMeta.
 				val, _, err := kv.V.Value(nil)
 				if err != nil {
@@ -380,7 +422,7 @@ func (r *Runner) writeKeysToTable(
 					// TODO(sumeer): log warning periodically.
 					attr = 0
 				}
-				kv.M.Tiering = base.TieringMeta{SpanID: tieringSpanID, Attribute: attr}
+				kv.M.Tiering = base.TieringMeta{SpanID: tieringPolicy.Policy.SpanID, Attribute: attr}
 			}
 		}
 
@@ -539,6 +581,16 @@ type NeverSeparateValues struct{}
 
 // Assert that NeverSeparateValues implements the ValueSeparation interface.
 var _ ValueSeparation = NeverSeparateValues{}
+
+// MayWriteColdBlobFiles implements the ValueSeparation interface.
+func (NeverSeparateValues) MayWriteColdBlobFiles() bool {
+	return false
+}
+
+// MayWriteColdBlobFilesForTieringSpanID implements the ValueSeparation interface.
+func (NeverSeparateValues) MayWriteColdBlobFilesForTieringSpanID(_ base.TieringSpanID) bool {
+	return false
+}
 
 // OverrideNextOutputConfig implements the ValueSeparation interface.
 func (NeverSeparateValues) OverrideNextOutputConfig(config ValueSeparationOverrideConfig) {}
