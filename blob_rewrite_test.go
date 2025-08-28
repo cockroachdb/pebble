@@ -81,26 +81,27 @@ func TestBlobRewrite(t *testing.T) {
 				bv = blobtest.Values{}
 				switch x := d.CmdArgs[0].String(); x {
 				case "preserve-blob-references":
-					pbr := &preserveBlobReferences{}
 					lines := crstrings.Lines(d.Input)
-					pbr.inputBlobPhysicalFiles = make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(lines))
+					inputBlobPhysicalFiles := make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(lines))
 					for _, line := range lines {
 						bfm, err := manifest.ParseBlobFileMetadataDebug(line)
 						require.NoError(t, err)
 						fn = max(fn, bfm.Physical.FileNum)
-						pbr.inputBlobPhysicalFiles[bfm.FileID] = bfm.Physical
+						inputBlobPhysicalFiles[bfm.FileID] = bfm.Physical
 					}
+					pbr := newPreserveAllHotBlobReferences(inputBlobPhysicalFiles, 0)
 					vs = pbr
+					vs.StartOutput(compact.ValueSeparationOutputConfig{})
 				case "write-new-blob-files":
-					newSep := &writeNewBlobFiles{
-						comparer: testkeys.Comparer,
-						newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+					var minimumSize int
+					d.MaybeScanArgs(t, "minimum-size", &minimumSize)
+					newSep := newWriteNewBlobFiles(nil, testkeys.Comparer,
+						func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
 							fn++
 							return objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
-						},
-					}
-					d.MaybeScanArgs(t, "minimum-size", &newSep.minimumSize)
+						}, nil, blob.FileWriterOptions{}, minimumSize, nil, nil)
 					vs = newSep
+					vs.StartOutput(compact.ValueSeparationOutputConfig{})
 				default:
 					t.Fatalf("unknown value separation policy: %s", x)
 				}
@@ -131,11 +132,13 @@ func TestBlobRewrite(t *testing.T) {
 
 				meta, err := vs.FinishOutput()
 				require.NoError(t, err)
-				if meta.BlobFileObject.DiskFileNum == 0 {
+				if len(meta.NewBlobFiles) == 0 {
 					fmt.Fprintln(&buf, "no blob file created")
 				} else {
-					fmt.Fprintf(&buf, "Blob file created: %s\n", meta.BlobFileMetadata)
-					fmt.Fprintln(&buf, meta.BlobFileStats)
+					for _, nb := range meta.NewBlobFiles {
+						fmt.Fprintf(&buf, "Blob file created: %s\n", nb.FileMetadata)
+						fmt.Fprintln(&buf, nb.FileStats)
+					}
 				}
 				if len(meta.BlobReferences) == 0 {
 					fmt.Fprintln(&buf, "blobrefs:[]")

@@ -3241,9 +3241,6 @@ func (d *DB) runCompaction(
 		return nil, compact.Stats{}, err
 	}
 	valueSeparation := c.getValueSeparation(jobID, c, c.tableFormat, &cttRetriever)
-	// TODO(sumeer): remove Init method, since getValueSeparation already has
-	// the cttRetriever.
-	valueSeparation.Init(&cttRetriever)
 
 	result := d.compactAndWrite(jobID, c, snapshots, c.tableFormat, valueSeparation, cttRetriever)
 	if result.Err == nil {
@@ -3428,7 +3425,7 @@ func (d *DB) compactAndWrite(
 		case ValueStorageLatencyTolerant:
 			// This span of keyspace is more tolerant of latency, so set a more
 			// aggressive value separation policy for this output.
-			vSep.SetNextOutputConfig(compact.ValueSeparationOutputConfig{
+			vSep.OverrideNextOutputConfig(compact.ValueSeparationOverrideConfig{
 				MinimumSize: latencyTolerantMinimumSize,
 			})
 		}

@@ -44,7 +44,8 @@ func PhysicalTableFileNum(f DiskFileNum) TableNum {
 	return TableNum(f)
 }
 
-// BlobFileID is an internal identifier for a blob file.
+// BlobFileID is an internal identifier for a blob file. Zero is not a valid
+// BlobFileID.
 //
 // Initially there exists a physical blob file with a DiskFileNum that equals
 // the value of the BlobFileID. However, if the blob file is replaced, the
