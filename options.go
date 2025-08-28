@@ -1221,24 +1221,8 @@ type SpanPolicy struct {
 	// the real interval for the policy.
 	KeyRange KeyRange
 
-	// Prefer a faster compression algorithm for the keys in this span.
-	//
-	// This is useful for keys that are frequently read or written but which don't
-	// amount to a significant amount of space.
-	PreferFastCompression bool
-
-	// DisableValueSeparationBySuffix disables discriminating KVs depending on
-	// suffix.
-	//
-	// Among a set of keys with the same prefix, Pebble's default heuristics
-	// optimize access to the KV with the smallest suffix. This is useful for MVCC
-	// keys (where the smallest suffix is the latest version), but should be
-	// disabled for keys where the suffix does not correspond to a version.
-	DisableValueSeparationBySuffix bool
-
-	// ValueStoragePolicy is a hint used to determine where to store the values
-	// for KVs.
-	ValueStoragePolicy ValueStoragePolicy
+	// CoreSpanPolicy contains the core policy fields.
+	CoreSpanPolicy
 
 	// TieringPolicy is an optional policy for specifying which key-value pairs
 	// should be stored in the warm or cold tier. Once a SpanPolicy specifies a
@@ -1268,7 +1252,7 @@ func (p *SpanPolicy) IsDefault() bool {
 	return !p.PreferFastCompression &&
 		!p.DisableValueSeparationBySuffix &&
 		p.ValueStoragePolicy == ValueStorageDefault &&
-		p.TieringPolicy == nil
+		p.TieringPolicy.IsEmpty()
 }
 
 // String returns a string representation of the SpanPolicy.
@@ -1287,6 +1271,27 @@ func (p SpanPolicy) String() string {
 		sb.WriteString("latency-tolerant,")
 	}
 	return strings.TrimSuffix(sb.String(), ",")
+}
+
+// CoreSpanPolicy contains the core policy fields. It excludes the
+// TieringPolicy.
+type CoreSpanPolicy struct {
+	// Prefer a faster compression algorithm for the keys in this span.
+	//
+	// This is useful for keys that are frequently read or written but which don't
+	// amount to a significant amount of space.
+	PreferFastCompression bool
+	// DisableValueSeparationBySuffix disables discriminating KVs depending on
+	// suffix.
+	//
+	// Among a set of keys with the same prefix, Pebble's default heuristics
+	// optimize access to the KV with the smallest suffix. This is useful for MVCC
+	// keys (where the smallest suffix is the latest version), but should be
+	// disabled for keys where the suffix does not correspond to a version.
+	DisableValueSeparationBySuffix bool
+	// ValueStoragePolicy is a hint used to determine where to store the values
+	// for KVs.
+	ValueStoragePolicy ValueStoragePolicy
 }
 
 // ValueStoragePolicy is a hint used to determine where to store the values for
@@ -1321,25 +1326,30 @@ const (
 // to that point.
 //
 // A flush or compaction will call this function once for the first key to be
-// output. If the compaction reaches policy.KeyRange.End, the current output sst
-// is finished and the function is called again (with the first key >=
-// policy.KeyRange.End).
+// output. If the compaction reaches policy.KeyRange.End, the function is
+// called again (with the first key >= policy.KeyRange.End).
 //
 // Correctness must never depend on having a specific span policy. The function
 // is allowed to change the returned policy arbitrarily.
 //
 // If this function returns an error, the flush or compaction will be aborted.
 //
-// TODO(sumeer): since there is a single TieringPolicy per SpanPolicy, we will
-// split sstables at tiering policy boundaries. Historically, SpanPolicys have
-// been coarse, but a 100TiB store (including cold data), could have a 100
-// different tiering policies, and splitting a 64MiB memtable at flush time
-// into 100 sstables is not desirable. We should include a SplitAtPolicyEnd
-// bool field in SpanPolicy, and use that plus policy changes in fields that
-// apply to the sstable as a whole (e.g. PreferFastCompression) to determine
-// whether to split at the end. This will require some restructuring of the
-// compact.Runner interface, so we will do this later.
-type SpanPolicyFunc func(bounds base.UserKeyBounds) (policy SpanPolicy, err error)
+// In contexts like CockroachDB, where Pebble is used as the storage engine
+// for a distributed database/datastore, multiple database shards (CockroachDB
+// ranges) may be stored in the same Pebble instance. When moving shards
+// across nodes, the higher layer will want to extract all the data for a
+// shard, and delete all the data for a shard. Such operations can interact
+// with sstables or blob files stored in disaggregated object storage, or in
+// cold storage on the same node. Specifically, it is advantageous to be able
+// to delete whole cold blob files or cold sstables. The
+// breakAtShardEndBoundary parameter indicates whether the caller would like
+// the returned SpanPolicys to be broken not just at points where the policy
+// changes, but additionally at shard end boundaries. NB: we are not saying
+// that a shard should have a uniform policy, in that we are just requiring
+// additional splits at shard boundaries, via the mechanism of returning two
+// different SpanPolicys even if the policy is otherwise the same.
+type SpanPolicyFunc func(
+	bounds base.UserKeyBounds, breakAtShardEndBoundary bool) (policy SpanPolicy, err error)
 
 // MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
 // to the given span (and the default policy outside the span). The supplied
@@ -1377,7 +1387,7 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) Spa
 		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
 	}
 
-	return func(bounds base.UserKeyBounds) (_ SpanPolicy, _ error) {
+	return func(bounds base.UserKeyBounds, _ bool) (_ SpanPolicy, _ error) {
 		// Find the policy that applies to the start key.
 		idx, eq := slices.BinarySearchFunc(uniqueKeys, bounds.Start, cmp)
 		switch idx {

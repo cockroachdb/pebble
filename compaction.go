@@ -3382,33 +3382,112 @@ func (d *DB) compactAndWrite(
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 
+	mayWriteColdBlobFiles := valueSeparation.MayWriteColdBlobFiles()
 	// If spanPolicyValid is true and spanPolicy.KeyRange.End is empty, then
 	// spanPolicy applies for the rest of the keyspace.
+	//
+	// spanPolicyValid transitions once from false to true, in the first
+	// iteration.
 	var spanPolicyValid bool
-	var spanPolicy SpanPolicy
-
+	// spanPolicy is always valid once initialized and is the current extracted
+	// policy.
+	var spanPolicy CoreSpanPolicy
+	// tieringAndEndKeys goes together with spanPolicy. When multiple
+	// SpanPolicies have been encountered without a change in the
+	// CoreSpanPolicy, the corresponding end keys and the tiering policies
+	// are in this slice. This is always non-empty after initialization.
+	var tieringAndEndKeys []compact.TieringPolicyAndEndKey
+	// When mayWriteColdBlobFiles is true, tieringPolicyForNewColdBlob, if
+	// populated, specifies the single tiering policy that will be used for
+	// writing a new cold blob file in the context of this sstable. This
+	// restriction of one policy is due to the fact that a sstable cannot refer
+	// to multiple new cold blob files, while writing.
+	//
+	// We considered a cruder approach where maybeWriteColdBlobFiles always
+	// results in a single element in tieringAndEndKeys, but we are concerned
+	// that many compactions may encounter multiple tiering policies, with at
+	// most one having enough cold data to justify movement from hot to cold,
+	// and we don't want to unnecessarily create small sstables in such cases.
+	// Consider the following case where the TieringSpanIDs observed by the
+	// compaction are 1, 2, 3, 4, and only 3 has enough cold data that a cold
+	// blob file should be written. That is, only the call to
+	// ValueSeparation.MayWriteColdBlobFilesForTieringSpanID(3) will return
+	// true. In this case, the compaction may only create 2 sstables, one with
+	// the TieringSpanIDs {1, 2, 3} and one with {4}. If there are multiple
+	// shard boundaries for span 3, there will be more sstables. The main thing
+	// to note is that {1, 2, 3} can share a sstable.
+	var tieringPolicyForNewColdBlob base.TieringPolicy
 	for runner.MoreDataToWrite() {
 		if c.cancel.Load() {
 			return runner.Finish().WithError(ErrCancelledCompaction)
 		}
 		// Create a new table.
 		firstKey := runner.FirstKey()
-		if !spanPolicyValid ||
-			(len(spanPolicy.KeyRange.End) > 0 && d.cmp(firstKey, spanPolicy.KeyRange.End) >= 0) {
-			var err error
-			if d.opts.Experimental.SpanPolicyFunc != nil {
-				spanPolicy, err = d.opts.Experimental.SpanPolicyFunc(base.UserKeyBounds{
-					Start: firstKey,
-					End:   c.bounds.End,
-				})
-				if err != nil {
-					return runner.Finish().WithError(err)
-				}
-			}
-			// Else SpanPolicyFunc is nil, so use the empty policy which already has
-			// an empty KeyRange.End.
 
+		// Figure out the policy to use.
+		n := len(tieringAndEndKeys)
+		if !spanPolicyValid ||
+			(len(tieringAndEndKeys[n-1].EndKey) > 0 && d.cmp(firstKey, tieringAndEndKeys[n-1].EndKey) >= 0) {
+			// Need to get new policies to use.
+			spanPolicy = CoreSpanPolicy{}
+			tieringAndEndKeys = tieringAndEndKeys[:0]
+			tieringPolicyForNewColdBlob = TieringPolicy{}
+			if d.opts.Experimental.SpanPolicyFunc != nil {
+				first := true
+				for {
+					nextSpanPolicy, err := d.opts.Experimental.SpanPolicyFunc(base.UserKeyBounds{
+						Start: firstKey,
+						End:   c.bounds.End,
+					}, mayWriteColdBlobFiles)
+					if err != nil {
+						return runner.Finish().WithError(err)
+					}
+					tieringPolicyAppliesForNewBlobs := mayWriteColdBlobFiles &&
+						nextSpanPolicy.TieringPolicy.Policy != TieringPolicy{} &&
+						valueSeparation.MayWriteColdBlobFilesForTieringSpanID(
+							nextSpanPolicy.TieringPolicy.Policy.SpanID)
+					if first {
+						spanPolicy = nextSpanPolicy.CoreSpanPolicy
+						first = false
+					} else if nextSpanPolicy.CoreSpanPolicy != spanPolicy {
+						// Policy changed. Don't include it.
+						break
+					}
+					// Either the first, or the extracted policy is the same, and we
+					// either don't care about multiple tiering policies
+					// (mayWriteColdBlobFiles is false), or we haven't initialized
+					// singletonTieringPolicyForNewBlobs.
+					tieringAndEndKeys = append(tieringAndEndKeys, compact.TieringPolicyAndEndKey{
+						TieringPolicy: nextSpanPolicy.TieringPolicy,
+						EndKey:        nextSpanPolicy.KeyRange.End,
+					})
+					if tieringPolicyAppliesForNewBlobs {
+						// We are initializing singletonTieringPolicyForNewBlobs, so we
+						// stop here. The next SpanPolicy may have the same TieringPolicy,
+						// but note that we are splitting at shard boundaries in this
+						// case.
+						tieringPolicyForNewColdBlob = nextSpanPolicy.TieringPolicy.Policy
+						break
+					}
+					firstKey = nextSpanPolicy.KeyRange.End
+					if len(firstKey) == 0 {
+						// No more SpanPolicies.
+						break
+					}
+				}
+			} else {
+				// Else SpanPolicyFunc is nil, so use the empty policy, and initialize
+				// tieringAndEndKeys to have one empty entry, which has an empty
+				// EndKey.
+				tieringAndEndKeys = append(tieringAndEndKeys, compact.TieringPolicyAndEndKey{})
+			}
 			spanPolicyValid = true
+		} else {
+			// The existing policy is still relevant. Pop from tieringAndEndKeys if
+			// it is longer than 1.
+			for len(tieringAndEndKeys) > 1 && d.cmp(firstKey, tieringAndEndKeys[0].EndKey) >= 0 {
+				tieringAndEndKeys = tieringAndEndKeys[1:]
+			}
 		}
 
 		writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
@@ -3433,7 +3512,8 @@ func (d *DB) compactAndWrite(
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
-		runner.WriteTable(objMeta, tw, spanPolicy.KeyRange.End, vSep, spanPolicy.TieringPolicy)
+		runner.WriteTable(
+			objMeta, tw, tieringPolicyForNewColdBlob, tieringAndEndKeys, vSep)
 	}
 	result = runner.Finish()
 	if result.Err == nil {
@@ -3720,12 +3800,12 @@ func (c *coldTierThresholdRetriever) init(
 	}
 	// Iterate over the compaction bounds, retrieving the SpanPolicys.
 	for {
-		policy, err := f(bounds)
+		policy, err := f(bounds, false)
 		if err != nil {
 			return err
 		}
-		if policy.TieringPolicy != nil {
-			p := policy.TieringPolicy.Policy()
+		if !policy.TieringPolicy.IsEmpty() {
+			p := policy.TieringPolicy.Policy
 			if c.m == nil {
 				c.m = make(map[base.TieringSpanID]base.TieringAttribute)
 			}
