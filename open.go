@@ -167,6 +167,11 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 	} else {
 		opts.FilterCache.Ref()
 	}
+	if opts.IndexCache == nil {
+		opts.IndexCache = cache.New(cacheDefaultSize)
+	} else {
+		opts.IndexCache.Ref()
+	}
 
 	d := &DB{
 		cacheID:             opts.Cache.NewID(),
@@ -201,6 +206,7 @@ func Open(dirname string, opts *Options) (db *DB, _ error) {
 			// reference to the cache.
 			opts.Cache.Unref()
 			opts.FilterCache.Unref()
+			opts.IndexCache.Unref()
 
 			if d.tableCache != nil {
 				_ = d.tableCache.close()

@@ -237,6 +237,7 @@ type Reader struct {
 func (r *Reader) Close() error {
 	r.opts.Cache.Unref()
 	r.opts.FilterCache.Unref()
+	r.opts.IndexCache.Unref()
 
 	if r.readable != nil {
 		r.err = firstError(r.err, r.readable.Close())
@@ -528,6 +529,8 @@ func (r *Reader) readBlock(
 	dbCache := r.opts.Cache
 	if ctx.Value("blockType") == objiotracing.FilterBlock {
 		dbCache = r.opts.FilterCache
+	} else if ctx.Value("blockType") == objiotracing.MetadataBlock {
+		dbCache = r.opts.IndexCache
 	}
 
 	if h := dbCache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
@@ -1124,6 +1127,11 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 		r.opts.FilterCache = cache.New(0)
 	} else {
 		r.opts.FilterCache.Ref()
+	}
+	if r.opts.IndexCache == nil {
+		r.opts.IndexCache = cache.New(0)
+	} else {
+		r.opts.IndexCache.Ref()
 	}
 
 	if f == nil {

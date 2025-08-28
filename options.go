@@ -483,6 +483,7 @@ type Options struct {
 	// The default cache size is 8 MB.
 	Cache       *cache.Cache
 	FilterCache *cache.Cache
+	IndexCache  *cache.Cache
 
 	// LoadBlockSema, if set, is used to limit the number of blocks that can be
 	// loaded (i.e. read from the filesystem) in parallel. Each load acquires one
@@ -1734,6 +1735,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 	if o != nil {
 		readerOpts.Cache = o.Cache
 		readerOpts.FilterCache = o.FilterCache
+		readerOpts.IndexCache = o.IndexCache
 		readerOpts.LoadBlockSema = o.LoadBlockSema
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
@@ -1754,6 +1756,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	if o != nil {
 		writerOpts.Cache = o.Cache
 		writerOpts.FilterCache = o.FilterCache
+		writerOpts.IndexCache = o.IndexCache
 		writerOpts.Comparer = o.Comparer
 		if o.Merger != nil {
 			writerOpts.MergerName = o.Merger.Name

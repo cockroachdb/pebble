@@ -57,9 +57,12 @@ func newPebbleDB(dir string) DB {
 	defer cache.Unref()
 	filterCache := pebble.NewCache(cacheSize)
 	defer filterCache.Unref()
+	indexCache := pebble.NewCache(cacheSize)
+	defer indexCache.Unref()
 	opts := &pebble.Options{
 		Cache:                       cache,
 		FilterCache:                 filterCache,
+		IndexCache:                  indexCache,
 		Comparer:                    mvccComparer,
 		DisableWAL:                  disableWAL,
 		FormatMajorVersion:          pebble.FormatNewest,

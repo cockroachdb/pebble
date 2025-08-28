@@ -986,6 +986,7 @@ func (c *tableCacheShard) evict(fileNum base.DiskFileNum, dbOpts *tableCacheOpts
 
 	dbOpts.opts.Cache.EvictFile(dbOpts.cacheID, fileNum)
 	dbOpts.opts.FilterCache.EvictFile(dbOpts.cacheID, fileNum)
+	dbOpts.opts.IndexCache.EvictFile(dbOpts.cacheID, fileNum)
 }
 
 // removeDB evicts any nodes which have a reference to the DB

@@ -149,6 +149,7 @@ func (s *sstableT) newReader(f vfs.File) (*sstable.Reader, error) {
 	o := sstable.ReaderOptions{
 		Cache:       cache,
 		FilterCache: cache,
+		IndexCache:  cache,
 		Comparer:    s.opts.Comparer,
 		Filters:     s.opts.Filters,
 	}
