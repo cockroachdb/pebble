@@ -1209,6 +1209,28 @@ type ValueSeparationPolicy struct {
 
 // SpanPolicy contains policies that can vary by key range. The zero value for
 // all fields, other than the KeyRange, is the default policy.
+/*
+Only want that split if writing something cold.
+Later only want that split if writing something to disagg storage.
+
+Don't want to split higher level sstables. Don't necessarily want to split
+lower level sstables if not writing them to cold, since there is a tradeoff if
+too small (especially if most data is in cold blob file). Only split newly
+written cold blob files. Later will split cold ssts since don't want to
+virtualize them as recovering space requires a rewrite.
+
+Call it shardEndBoundary.
+
+Shards can be fully deleted via excise or rangedel. Shards may need to be
+cheaply extracted for other nodes.
+
+TieringPolicy change may happen within a shard if multiple tables and indices
+are sharing the same crdb range.
+
+Value separation impl doesn't need to keep multiple blob files open, one per
+tiering policy since once pass tiering policy id we don't see it again in
+compaction. But we haven't specified this restriction so no harm.
+*/
 type SpanPolicy struct {
 	// KeyRange defines the key range for which this policy is valid.
 	//
@@ -1268,7 +1290,7 @@ func (p *SpanPolicy) IsDefault() bool {
 	return !p.PreferFastCompression &&
 		!p.DisableValueSeparationBySuffix &&
 		p.ValueStoragePolicy == ValueStorageDefault &&
-		p.TieringPolicy == nil
+		p.TieringPolicy.IsEmpty()
 }
 
 // String returns a string representation of the SpanPolicy.
@@ -1287,6 +1309,22 @@ func (p SpanPolicy) String() string {
 		sb.WriteString("latency-tolerant,")
 	}
 	return strings.TrimSuffix(sb.String(), ",")
+}
+
+// ExtractedSpanPolicy is like SpanPolicy but focused on the policy fields,
+// minus the TieringPolicyAndExtractor.
+type ExtractedSpanPolicy struct {
+	PreferFastCompression          bool
+	DisableValueSeparationBySuffix bool
+	ValueStoragePolicy             ValueStoragePolicy
+}
+
+func (p *SpanPolicy) ExtractCorePolicy() ExtractedSpanPolicy {
+	return ExtractedSpanPolicy{
+		PreferFastCompression:          p.PreferFastCompression,
+		DisableValueSeparationBySuffix: p.DisableValueSeparationBySuffix,
+		ValueStoragePolicy:             p.ValueStoragePolicy,
+	}
 }
 
 // ValueStoragePolicy is a hint used to determine where to store the values for
@@ -1321,25 +1359,30 @@ const (
 // to that point.
 //
 // A flush or compaction will call this function once for the first key to be
-// output. If the compaction reaches policy.KeyRange.End, the current output sst
-// is finished and the function is called again (with the first key >=
-// policy.KeyRange.End).
+// output. If the compaction reaches policy.KeyRange.End, the function is
+// called again (with the first key >= policy.KeyRange.End).
 //
 // Correctness must never depend on having a specific span policy. The function
 // is allowed to change the returned policy arbitrarily.
 //
 // If this function returns an error, the flush or compaction will be aborted.
 //
-// TODO(sumeer): since there is a single TieringPolicy per SpanPolicy, we will
-// split sstables at tiering policy boundaries. Historically, SpanPolicys have
-// been coarse, but a 100TiB store (including cold data), could have a 100
-// different tiering policies, and splitting a 64MiB memtable at flush time
-// into 100 sstables is not desirable. We should include a SplitAtPolicyEnd
-// bool field in SpanPolicy, and use that plus policy changes in fields that
-// apply to the sstable as a whole (e.g. PreferFastCompression) to determine
-// whether to split at the end. This will require some restructuring of the
-// compact.Runner interface, so we will do this later.
-type SpanPolicyFunc func(bounds base.UserKeyBounds) (policy SpanPolicy, err error)
+// In contexts like CockroachDB, where Pebble is used as the storage engine
+// for a distributed database/datastore, multiple database shards (CockroachDB
+// ranges) may be stored in the same Pebble instance. When moving shards
+// across nodes, the higher layer will want to extract all the data for a
+// shard, and delete all the data for a shard. Such operations can interact
+// with sstables or blob files stored in disaggregated object storage, or in
+// cold storage on the same node. Specifically, it is advantageous to be able
+// to delete whole cold blob files or cold sstables. The
+// breakAtShardEndBoundary parameter indicates whether the caller would like
+// the returned SpanPolicys to be broken not just at points where the policy
+// changes, but additionally at shard end boundaries. NB: we are not saying
+// that a shard should have a uniform policy, in that we are just requiring
+// additional splits at shard boundaries, via the mechanism of returning two
+// different SpanPolicys even if the policy is otherwise the same.
+type SpanPolicyFunc func(
+	bounds base.UserKeyBounds, breakAtShardEndBoundary bool) (policy SpanPolicy, err error)
 
 // MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
 // to the given span (and the default policy outside the span). The supplied
@@ -1377,7 +1420,7 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) Spa
 		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
 	}
 
-	return func(bounds base.UserKeyBounds) (_ SpanPolicy, _ error) {
+	return func(bounds base.UserKeyBounds, _ bool) (_ SpanPolicy, _ error) {
 		// Find the policy that applies to the start key.
 		idx, eq := slices.BinarySearchFunc(uniqueKeys, bounds.Start, cmp)
 		switch idx {
@@ -1404,10 +1447,10 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) Spa
 	}
 }
 
-type TieringMeta base.TieringMeta
-type TieringAttribute base.TieringAttribute
-type TieringPolicy base.TieringPolicy
-type TieringPolicyAndExtractor base.TieringPolicyAndExtractor
+type TieringMeta = base.TieringMeta
+type TieringAttribute = base.TieringAttribute
+type TieringPolicy = base.TieringPolicy
+type TieringPolicyAndExtractor = base.TieringPolicyAndExtractor
 
 // WALFailoverOptions configures the WAL failover mechanics to use during
 // transient write unavailability on the primary WAL volume.

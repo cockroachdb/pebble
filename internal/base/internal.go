@@ -786,9 +786,9 @@ type TieringPolicy struct {
 // over 100s of policies for CockroachDB tenants that have no ranges on this
 // DB. One way to mitigate this is by adding an interface to lookup the
 // TieringPolicy by SpanID.
-type TieringPolicyAndExtractor interface {
+type TieringPolicyAndExtractor struct {
 	// Policy returns the tiering policy.
-	Policy() TieringPolicy
+	Policy TieringPolicy
 	// ExtractAttribute extracts the tiering attribute from the key-value pair.
 	// Once extracted, the attribute can be remembered since it must never
 	// change for this key-value pair during the lifetime of the DB.
@@ -797,8 +797,13 @@ type TieringPolicyAndExtractor interface {
 	// 0 attribute (with a non-zero SpanID) to represent an extraction error,
 	// and stats are maintained for this so that users can enquire about the
 	// bytes in the system that have such errors.
-	ExtractAttribute(userKey []byte, value []byte) (TieringAttribute, error)
+	ExtractAttribute func(userKey []byte, value []byte) (TieringAttribute, error)
 }
+
+func (tpe TieringPolicyAndExtractor) IsEmpty() bool {
+	return tpe.Policy == (TieringPolicy{})
+}
+
 type StorageTier uint8
 
 const (

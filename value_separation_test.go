@@ -220,6 +220,16 @@ type defineDBValueSeparator struct {
 // Assert that *defineDBValueSeparator implements the compact.ValueSeparation interface.
 var _ compact.ValueSeparation = (*defineDBValueSeparator)(nil)
 
+// MayWriteColdBlobFiles implements the ValueSeparation interface.
+func (vs *defineDBValueSeparator) MayWriteColdBlobFiles() bool {
+	return false
+}
+
+// MayWriteColdBlobFilesForTieringSpanID implements the ValueSeparation interface.
+func (vs *defineDBValueSeparator) MayWriteColdBlobFilesForTieringSpanID(_ base.TieringSpanID) bool {
+	return false
+}
+
 // OverrideNextOutputConfig implements the compact.ValueSeparation interface.
 func (vs *defineDBValueSeparator) OverrideNextOutputConfig(
 	config compact.ValueSeparationOverrideConfig,
