@@ -44,7 +44,7 @@ current version:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
     000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300(2000)
 1 virtual backings, total size 2000:
-  000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=300
+  000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=300  tables: [000003]
 no zombie tables
 no obsolete tables
 no zombie blob files
@@ -63,7 +63,7 @@ current version:
     000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300(2000)
     000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400(2000)
 1 virtual backings, total size 2000:
-  000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700
+  000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700  tables: [000003 000004]
 no zombie tables
 no obsolete tables
 no zombie blob files
@@ -85,7 +85,7 @@ current version:
   L3:
     000003(000002):[e#1,SET-h#1,SET] seqnums:[0-0] points:[e#1,SET-h#1,SET] size:300(2000)
 1 virtual backings, total size 2000:
-  000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700
+  000002:  size=2000  useCount=2  protectionCount=0  virtualizedSize=700  tables: [000003 000004]
 no zombie tables
 no obsolete tables
 no zombie blob files
@@ -103,7 +103,7 @@ current version:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
     000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400(2000)
 1 virtual backings, total size 2000:
-  000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400
+  000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400  tables: [000004]
 no zombie tables
 no obsolete tables
 no zombie blob files
@@ -116,7 +116,7 @@ current version:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
     000004(000002):[i#1,SET-k#1,SET] seqnums:[0-0] points:[i#1,SET-k#1,SET] size:400(2000)
 1 virtual backings, total size 2000:
-  000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400
+  000002:  size=2000  useCount=1  protectionCount=0  virtualizedSize=400  tables: [000004]
 no zombie tables
 no obsolete tables
 no zombie blob files
@@ -154,7 +154,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 100000:
-  000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500
+  000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500  tables: [000005]
 no zombie tables
 obsolete tables: 000002
 no zombie blob files
@@ -168,7 +168,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 100000:
-  000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500
+  000100:  size=100000  useCount=1  protectionCount=0  virtualizedSize=500  tables: [000005]
 no zombie tables
 obsolete tables: 000002
 no zombie blob files
@@ -223,7 +223,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
-  000101:  size=101000  useCount=2  protectionCount=0  virtualizedSize=1300
+  000101:  size=101000  useCount=2  protectionCount=0  virtualizedSize=1300  tables: [000006 000007]
 no zombie tables
 obsolete tables: 000002 000100
 no zombie blob files
@@ -238,7 +238,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
-  000101:  size=101000  useCount=2  protectionCount=1  virtualizedSize=1300
+  000101:  size=101000  useCount=2  protectionCount=1  virtualizedSize=1300  tables: [000006 000007]
 no zombie tables
 obsolete tables: 000002 000100
 no zombie blob files
@@ -257,7 +257,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
-  000101:  size=101000  useCount=0  protectionCount=1  virtualizedSize=0
+  000101:  size=101000  useCount=0  protectionCount=1  virtualizedSize=0  tables: []
 no zombie tables
 obsolete tables: 000002 000100
 no zombie blob files
@@ -269,7 +269,7 @@ current version:
   L2:
     000001:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:100
 1 virtual backings, total size 101000:
-  000101:  size=101000  useCount=0  protectionCount=0  virtualizedSize=0
+  000101:  size=101000  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000101
 no zombie tables
 obsolete tables: 000002 000100
@@ -313,7 +313,7 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
 1 virtual backings, total size 102000:
-  000102:  size=102000  useCount=1  protectionCount=0  virtualizedSize=900
+  000102:  size=102000  useCount=1  protectionCount=0  virtualizedSize=900  tables: [000009]
 no zombie tables
 obsolete tables: 000002 000100 000101
 no zombie blob files
@@ -329,7 +329,7 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
 1 virtual backings, total size 102000:
-  000102:  size=102000  useCount=1  protectionCount=1  virtualizedSize=900
+  000102:  size=102000  useCount=1  protectionCount=1  virtualizedSize=900  tables: [000009]
 no zombie tables
 obsolete tables: 000002 000100 000101
 no zombie blob files
@@ -347,7 +347,7 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
 1 virtual backings, total size 102000:
-  000102:  size=102000  useCount=0  protectionCount=1  virtualizedSize=0
+  000102:  size=102000  useCount=0  protectionCount=1  virtualizedSize=0  tables: []
 no zombie tables
 obsolete tables: 000002 000100 000101
 no zombie blob files
@@ -362,7 +362,7 @@ current version:
   L3:
     000008:[a#1,SET-c#1,SET] seqnums:[0-0] points:[a#1,SET-c#1,SET] size:800
 1 virtual backings, total size 102000:
-  000102:  size=102000  useCount=0  protectionCount=0  virtualizedSize=0
+  000102:  size=102000  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
 unused virtual backings: 000102
 no zombie tables
 no obsolete tables
