@@ -1,0 +1,225 @@
+# Test for SeekPrefixGE with probes that includes synthetic keys and range deletions
+
+define
+L6
+  a@5.SET.10:10 a@3.SET.8:8 a@1.SET.5:5 b@2.SET.7:7 c@10.SET.2:2 c@5.SET.1:1
+  a@2.RANGEDEL.10:b@3
+----
+L6:
+  000004:[a@5#10,SET-c@5#1,SET]
+
+
+batch commit
+set a@10 a10
+set a@8 a8
+set a@6 a6
+set b@9 b9
+set b@8 b8
+set b@6 b6
+set c@6 c6
+set c@20 c20
+----
+committed 8 keys
+
+combined-iter probe-points=(4,(Log "OpSeekPrefixGE")) probe-points=(4,(Log "OpNext"))
+seek-prefix-ge a@12
+next
+----
+a@10: (a10, .)
+a@8: (a8, .)
+OpNextSeekPrefixGE("a@12") = (a@5#10,SET,"10")
+OpNextClose() = nil
+
+# Basic test with no probes
+combined-iter
+seek-prefix-ge a@7
+next
+next
+----
+a@6: (a6, .)
+a@5: (10, .)
+a@3: (8, .)
+
+# Test synthetic key behavior - when SeekPrefixGE returns a key with max suffix
+# This tests the MVCCGet optimization where smaller suffixes return synthetic keys
+combined-iter probe-points=(4,(Log "OpSeekPrefixGE")) probe-points=(4,(Log "OpNext"))
+seek-prefix-ge b@15
+next
+next
+seek-prefix-ge c@3
+next
+----
+b@9: (b9, .)
+b@8: (b8, .)
+b@6: (b6, .)
+.
+.
+OpNextSeekPrefixGE("b@15") = (b@10#inf,SYNTHETIC,"")
+OpNextSeekPrefixGE("b@15") = (b@10#inf,SYNTHETIC,"")
+OpNextNext() = (b@2#7,SET,"7")
+OpNextNext() = (b@2#7,SET,"7")
+OpNextClose() = nil
+OpNextClose() = nil
+
+
+# Test with range deletion probe to observe range deletion behavior
+combined-iter probe-points=(4,(Log "OpSeekPrefixGE")) probe-rangedels=(4,(Log "OpSpanSeekGE"))
+seek-prefix-ge b@7
+next
+----
+b@6: (b6, .)
+b@2: (7, .)
+OpNextSeekPrefixGE("b@7") = (b@2#7,SET,"7")
+OpNextSeekPrefixGE("b@7") = (b@2#7,SET,"7")
+OpSeekPrefixGESeekPrefixGE("b@7") = (b@2#7,SET,"7")
+OpSpanSeekGEopSpanSeekGE("b@7") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b@7") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b@3") = nil
+OpSpanSeekGEopSpanNext() = nil
+OpNextClose() = nil
+OpNextClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+
+# Test with bounds and multiple probes
+combined-iter lower=b upper=c probe-points=(4,(Log "OpSeekPrefixGE")) probe-rangedels=(4,(Log "OpSpanSeekGE"))
+seek-prefix-ge b@20
+next
+seek-prefix-ge c@20
+----
+b@9: (b9, .)
+b@8: (b8, .)
+.
+OpNextSeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
+OpNextSeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
+OpSeekPrefixGESeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
+OpSeekPrefixGESeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
+OpSpanSeekGEopSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
+OpNextNext() = (b@2#7,SET,"7")
+OpNextNext() = (b@2#7,SET,"7")
+OpSeekPrefixGENext() = (b@2#7,SET,"7")
+OpSeekPrefixGENext() = (b@2#7,SET,"7")
+OpNextSeekPrefixGE("c") = nil
+OpNextSeekPrefixGE("c") = nil
+OpSeekPrefixGESeekPrefixGE("c") = nil
+OpSeekPrefixGESeekPrefixGE("c") = nil
+OpSpanSeekGEopSpanSeekGE("c") = nil
+OpSpanSeekGEopSpanSeekGE("c") = nil
+OpNextClose() = nil
+OpNextClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+
+
+# Test complex probe combination - logging, error injection, and result modification
+combined-iter probe-points=(4, (If (UserKey "c@5") (ReturnKV "c@99#7,SET" "cc") noop))
+seek-prefix-ge c@15
+next
+----
+c@10: (2, .)
+c@99: (cc, .)
+OpNextSeekPrefixGE("c@15") = (c@10#2,SET,"2")
+OpNextSeekPrefixGE("c@15") = (c@10#2,SET,"2")
+OpSeekPrefixGESeekPrefixGE("c@15") = (c@10#2,SET,"2")
+OpSeekPrefixGESeekPrefixGE("c@15") = (c@10#2,SET,"2")
+OpSpanSeekGEopSpanSeekGE("c@15") = nil
+OpSpanSeekGEopSpanSeekGE("c@15") = nil
+OpSpanSeekGEopSpanSeekGE("c@10") = nil
+OpSpanSeekGEopSpanSeekGE("c@10") = nil
+OpNextNext() = (c@5#1,SET,"1")
+OpNextNext() = (c@5#1,SET,"1")
+OpSeekPrefixGENext() = (c@5#1,SET,"1")
+OpSeekPrefixGENext() = (c@5#1,SET,"1")
+OpNextClose() = nil
+OpNextClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+
+batch commit
+del-range b c
+----
+committed 1 keys
+
+lsm
+----
+L6:
+  000004:[a@5#10,SET-c@5#1,SET]
+
+build ext1
+set b@22 b22
+set b@21 b21
+set b@20 b20
+set d@22 d22
+set d@21 d21
+set d@20 d20
+set e@22 e22
+set e@21 e21
+set e@20 e20
+----
+
+ingest external ext1
+----
+
+flush
+----
+
+combined-iter probe-points=(4,(Log "OpSeekPrefixGE")) probe-rangedels=(4,(Log "OpSeekPrefixGE"))
+seek-prefix-ge b
+next
+seek-prefix-ge b@10
+seek-prefix-ge d
+next
+----
+b@22: (b22, .)
+b@21: (b21, .)
+.
+d@22: (d22, .)
+d@21: (d21, .)
+OpNextSeekPrefixGE("b") = (b@2#7,SET,"7")
+OpNextSeekPrefixGE("b") = (b@2#7,SET,"7")
+OpSeekPrefixGESeekPrefixGE("b") = (b@2#7,SET,"7")
+OpSeekPrefixGESeekPrefixGE("b") = (b@2#7,SET,"7")
+OpSeekPrefixGESeekPrefixGE("b") = (b@2#7,SET,"7")
+OpSpanSeekGEopSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
+OpSeekPrefixGEopSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
+OpSeekPrefixGEopSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
+OpNextSeekPrefixGE("b@10") = (b@2#7,SET,"7")
+OpNextSeekPrefixGE("b@10") = (b@2#7,SET,"7")
+OpSeekPrefixGESeekPrefixGE("b@10") = (b@2#7,SET,"7")
+OpSeekPrefixGESeekPrefixGE("b@10") = (b@2#7,SET,"7")
+OpSeekPrefixGESeekPrefixGE("b@10") = (b@2#7,SET,"7")
+OpSpanSeekGEopSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
+OpSeekPrefixGEopSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
+OpSeekPrefixGEopSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
+OpSpanSeekGEopSpanNext() = nil
+OpSpanSeekGEopSpanNext() = nil
+OpSeekPrefixGEopSpanNext() = nil
+OpNextClose() = nil
+OpNextClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSeekPrefixGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSpanSeekGEopSpanClose() = nil
+OpSeekPrefixGEopSpanClose() = nil
