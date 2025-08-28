@@ -1942,6 +1942,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.BlobFiles.LiveSize = blobStats.PhysicalSize
 	metrics.BlobFiles.ValueSize = blobStats.ValueSize
 	metrics.BlobFiles.ReferencedValueSize = blobStats.ReferencedValueSize
+	metrics.BlobFiles.ReferencedBackingValueSize = blobStats.ReferencedBackingValueSize
 
 	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
 	if err := metrics.LogWriter.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
