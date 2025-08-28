@@ -5,6 +5,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/itertest"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable"
@@ -38,6 +41,7 @@ func TestIterHistories(t *testing.T) {
 		var buf bytes.Buffer
 		iters := map[string]*Iterator{}
 		batches := map[string]*Batch{}
+		parser := itertest.NewParser()
 		newIter := func(name string, reader Reader, o *IterOptions) *Iterator {
 			it, _ := reader.NewIter(o)
 			iters[name] = it
@@ -285,9 +289,11 @@ func TestIterHistories(t *testing.T) {
 				delete(batches, name)
 				return fmt.Sprintf("committed %d keys\n", count)
 			case "combined-iter":
-				o := &IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
+				o := &IterOptions{KeyTypes: IterKeyTypePointsAndRanges, MaximumSuffixProperty: sstable.MaxTestKeysSuffixProperty{}}
 				var reader Reader = d
 				var name string
+				pointProbes := make(map[base.TableNum][]itertest.Probe)
+				rangeDelProbes := make(map[base.TableNum][]keyspanProbe)
 				for _, arg := range td.CmdArgs {
 					switch arg.Key {
 					case "mask-suffix":
@@ -348,6 +354,41 @@ func TestIterHistories(t *testing.T) {
 						}()
 					case "use-l6-filter":
 						o.UseL6Filters = true
+					case "probe-points":
+						fileNumStr := arg.Vals[0]
+						i, err := strconv.Atoi(fileNumStr)
+						if err != nil {
+							require.NoError(t, err)
+						}
+						pointProbes[base.TableNum(i)] = itertest.MustParseProbes(parser, arg.Vals[1:]...)
+					case "probe-rangedels":
+						fileNumStr := arg.Vals[0]
+						i, err := strconv.Atoi(fileNumStr)
+						if err != nil {
+							require.NoError(t, err)
+						}
+						rangeDelProbes[base.TableNum(i)] = parseKeyspanProbes(arg.Vals[1:]...)
+					}
+				}
+				// If we have probes, override d.newIters to attach them
+				if (len(pointProbes) > 0 || len(rangeDelProbes) > 0) && reader == d {
+					oldNewIters := d.newIters
+					d.newIters = func(
+						ctx context.Context, file *manifest.TableMetadata, iopts *IterOptions,
+						iio internalIterOpts, kinds iterKinds,
+					) (iterSet, error) {
+						iopts.MaximumSuffixProperty = sstable.MaxTestKeysSuffixProperty{}
+						set, err := oldNewIters(ctx, file, iopts, iio, kinds)
+						if err != nil {
+							return set, err
+						}
+						if probes := pointProbes[file.TableNum]; len(probes) > 0 {
+							set.point = itertest.Attach(set.point, itertest.ProbeState{Comparer: testkeys.Comparer, Log: &buf}, probes...)
+						}
+						if rangedelProbes := rangeDelProbes[file.TableNum]; len(rangedelProbes) > 0 {
+							set.rangeDeletion = attachKeyspanProbes(set.rangeDeletion, keyspanProbeContext{log: &buf}, rangedelProbes...)
+						}
+						return set, nil
 					}
 				}
 				var iter *Iterator
@@ -370,7 +411,12 @@ func TestIterHistories(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				return runIterCmd(td, iter, name == "" /* close iter */)
+				out := runIterCmd(td, iter, name == "" /* close iter */)
+				// Append probe logs if any
+				if len(pointProbes) > 0 && buf.Len() > 0 {
+					out += buf.String()
+				}
+				return out
 			case "rangekey-iter":
 				name := pluckStringCmdArg(td, "name")
 				iter := newIter(name, d, &IterOptions{KeyTypes: IterKeyTypeRangesOnly})
