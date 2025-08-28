@@ -153,6 +153,7 @@ func exampleMetrics() Metrics {
 	m.BlobFiles.LiveSize = 15 * GB
 	m.BlobFiles.ValueSize = 14 * GB
 	m.BlobFiles.ReferencedValueSize = 11 * GB
+	m.BlobFiles.ReferencedBackingValueSize = 12 * GB
 	m.BlobFiles.ObsoleteCount = 13
 	m.BlobFiles.ObsoleteSize = 29 * MB
 	m.BlobFiles.ZombieCount = 14
