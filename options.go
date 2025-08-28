@@ -481,7 +481,8 @@ type Options struct {
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
 	// The default cache size is 8 MB.
-	Cache *cache.Cache
+	Cache       *cache.Cache
+	FilterCache *cache.Cache
 
 	// LoadBlockSema, if set, is used to limit the number of blocks that can be
 	// loaded (i.e. read from the filesystem) in parallel. Each load acquires one
@@ -1732,6 +1733,7 @@ func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 	var readerOpts sstable.ReaderOptions
 	if o != nil {
 		readerOpts.Cache = o.Cache
+		readerOpts.FilterCache = o.FilterCache
 		readerOpts.LoadBlockSema = o.LoadBlockSema
 		readerOpts.Comparer = o.Comparer
 		readerOpts.Filters = o.Filters
@@ -1751,6 +1753,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.TableFormat = format
 	if o != nil {
 		writerOpts.Cache = o.Cache
+		writerOpts.FilterCache = o.FilterCache
 		writerOpts.Comparer = o.Comparer
 		if o.Merger != nil {
 			writerOpts.MergerName = o.Merger.Name

@@ -428,9 +428,10 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			}()
 
 			opts := sstable.ReaderOptions{
-				Cache:    cache,
-				Comparer: f.opts.Comparer,
-				Filters:  f.opts.Filters,
+				Cache:       cache,
+				FilterCache: cache,
+				Comparer:    f.opts.Comparer,
+				Filters:     f.opts.Filters,
 			}
 			readable, err := sstable.NewSimpleReadable(tf)
 			if err != nil {

@@ -1584,7 +1584,7 @@ func (d *DB) Close() error {
 	close(d.closedCh)
 
 	defer d.opts.Cache.Unref()
-
+	defer d.opts.FilterCache.Unref()
 	for d.mu.compact.compactingCount > 0 || d.mu.compact.flushing {
 		d.mu.compact.cond.Wait()
 	}

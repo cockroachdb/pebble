@@ -458,8 +458,9 @@ func randomOptions(
 		}
 	}
 
-	opts.BytesPerSync = 1 << uint(rng.Intn(28))     // 1B - 256MB
-	opts.Cache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
+	opts.BytesPerSync = 1 << uint(rng.Intn(28))           // 1B - 256MB
+	opts.Cache = cache.New(1 << uint(rng.Intn(30)))       // 1B - 1GB
+	opts.FilterCache = cache.New(1 << uint(rng.Intn(30))) // 1B - 1GB
 	opts.DisableWAL = rng.Intn(2) == 0
 	opts.FlushDelayDeleteRange = time.Millisecond * time.Duration(5*rng.Intn(245)) // 5-250ms
 	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(5*rng.Intn(245))    // 5-250ms
