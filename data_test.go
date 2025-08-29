@@ -1782,9 +1782,11 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				End:   []byte(cmdArg.Vals[1]),
 			}
 			policy := SpanPolicy{
-				KeyRange:                       span,
-				DisableValueSeparationBySuffix: true,
-				ValueStoragePolicy:             ValueStorageLowReadLatency,
+				KeyRange: span,
+				CoreSpanPolicy: CoreSpanPolicy{
+					DisableValueSeparationBySuffix: true,
+					ValueStoragePolicy:             ValueStorageLowReadLatency,
+				},
 			}
 			spanPolicies = append(spanPolicies, policy)
 		case "latency-tolerant-span":
@@ -1795,7 +1797,10 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				Start: []byte(cmdArg.Vals[0]),
 				End:   []byte(cmdArg.Vals[1]),
 			}
-			policy := SpanPolicy{KeyRange: span, ValueStoragePolicy: ValueStorageLatencyTolerant}
+			policy := SpanPolicy{
+				KeyRange:       span,
+				CoreSpanPolicy: CoreSpanPolicy{ValueStoragePolicy: ValueStorageLatencyTolerant},
+			}
 			spanPolicies = append(spanPolicies, policy)
 		case "target-file-sizes":
 			if len(cmdArg.Vals) > len(opts.Levels) {

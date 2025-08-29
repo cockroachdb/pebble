@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
-	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 )
 
 // Result stores the result of a compaction - more specifically, the "data" part
@@ -110,32 +109,59 @@ type RunnerConfig struct {
 	GrantHandle base.CompactionGrantHandle
 }
 
-// ValueSeparationOutputConfig is used to configure value separation for an
-// individual compaction output.
-type ValueSeparationOutputConfig struct {
+// ValueSeparationOverrideConfig is used to selectively override value
+// separation for an individual compaction output.
+type ValueSeparationOverrideConfig struct {
 	// MinimumSize is the minimum size of a value that will be separated into a
 	// blob file.
 	MinimumSize int
 }
 
+// ValueSeparationOutputConfig is used to configure value separation for the
+// next output sstable.
+type ValueSeparationOutputConfig struct {
+	// TieringSpanIDForNewColdBlobFile is only relevant when ValueSeparation is
+	// permitted to create new cold blob files. It specifies the single
+	// TieringSpanID that it is allowed to create cold blob files for.
+	//
+	// This is only necessary because we need to assign BlobReferenceIDs to blob
+	// references as we write the sstable, and we need to bound the number of
+	// new output blob files that can be created, so that we can pre-allocate
+	// the BlobReferenceIDs for the new output blob files. This ensures that
+	// reused references can have stable BlobReferenceIDs. An implication is
+	// that we cannot create multiple cold blob files for this TieringSpanID
+	// when writing the sstable. We could allow for multiple cold blob files (to
+	// fatten the sstable), by reserving additional BlobReferenceIDs, with the
+	// tradeoff that reserved slots may be unused, but occupy space in
+	// FileMetadata.
+	TieringSpanIDForNewColdBlobFile base.TieringSpanID
+}
+
 // ValueSeparation defines an interface for writing some values to separate blob
 // files.
 type ValueSeparation interface {
-	// Init is called when the compaction has started executing and before it
-	// calls any other methods. It serves the purpose of initializing state that
-	// cannot be initialized at construction time.
-	Init(retriever tieredmeta.ColdTierThresholdRetriever)
-	// SetNextOutputConfig is called when a compaction is starting a new output
-	// sstable. It can be used to configure value separation specifically for
-	// the next compaction output.
-	SetNextOutputConfig(config ValueSeparationOutputConfig)
+	// MayWriteColdBlobFiles returns true if this ValueSeparation may write cold
+	// blob files during the compaction.
+	MayWriteColdBlobFiles() bool
+	// MayWriteColdBlobFilesForTieringSpanID returns true if this
+	// ValueSeparation may write cold blob files for the specified tieringSpanID
+	// during the compaction. It can only return true if MayWriteColdBlobFiles()
+	// returns true.
+	MayWriteColdBlobFilesForTieringSpanID(tieringSpanID base.TieringSpanID) bool
+	// OverrideNextOutputConfig may be called when a compaction is starting a
+	// new output sstable. It can be used to configure value separation
+	// specifically for the next compaction output. If not called, the default
+	// configuration that ValueSeparation was created with is used.
+	OverrideNextOutputConfig(config ValueSeparationOverrideConfig)
+	// StartOutput is called when a compaction is starting a new output sstable ...
+	StartOutput(config ValueSeparationOutputConfig)
 	// EstimatedFileSize returns an estimate of the disk space consumed by the
 	// current, pending blob file if it were closed now. If no blob file has
 	// been created, it returns 0.
 	EstimatedFileSize() uint64
-	// EstimatedReferenceSize returns an estimate of the disk space consumed by
-	// the current output sstable's blob references so far.
-	EstimatedReferenceSize() uint64
+	// EstimatedHotReferenceSize returns an estimate of the disk space consumed
+	// by the current output sstable's hot blob references so far.
+	EstimatedHotReferenceSize() uint64
 	// Add adds the provided key-value pair to the provided sstable writer,
 	// possibly separating the value into a blob file.
 	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool) error
@@ -152,11 +178,13 @@ type ValueSeparationMetadata struct {
 	BlobReferences     manifest.BlobReferences
 	BlobReferenceSize  uint64
 	BlobReferenceDepth manifest.BlobReferenceDepth
+	NewBlobFiles       []NewBlobFileInfo
+}
 
-	// The below fields are only populated if a new blob file was created.
-	BlobFileStats    blob.FileWriterStats
-	BlobFileObject   objstorage.ObjectMetadata
-	BlobFileMetadata *manifest.PhysicalBlobFile
+type NewBlobFileInfo struct {
+	FileStats    blob.FileWriterStats
+	FileObject   objstorage.ObjectMetadata
+	FileMetadata *manifest.PhysicalBlobFile
 }
 
 // Runner is a helper for running the "data" part of a compaction (where we use
@@ -222,19 +250,27 @@ func (r *Runner) FirstKey() []byte {
 	return firstKey
 }
 
+type TieringPolicyAndEndKey struct {
+	TieringPolicy base.TieringPolicyAndExtractor
+	EndKey        []byte
+}
+
 // WriteTable writes a new output table. This table will be part of
 // Result.Tables. Should only be called if MoreDataToWrite() returned true.
 //
-// limitKey (if non-empty) forces the sstable to be finished before reaching
-// this key.
+// tieringAndEndKeys is always non-empty. The last EndKey in this slice, if
+// non-empty, forces the sstable to be finished before reaching this key.
+//
+// tieringPolicyForNewColdBlob, if specified, is the tiering policy that
+// should be used for writing a new cold blob file.
 //
 // WriteTable always closes the Writer.
 func (r *Runner) WriteTable(
 	objMeta objstorage.ObjectMetadata,
 	tw sstable.RawWriter,
-	limitKey []byte,
+	tieringPolicyForNewColdBlob base.TieringPolicy,
+	tieringAndEndKeys []TieringPolicyAndEndKey,
 	valueSeparation ValueSeparation,
-	tieringPolicy base.TieringPolicyAndExtractor,
 ) {
 	if r.err != nil {
 		panic("error already encountered")
@@ -243,21 +279,25 @@ func (r *Runner) WriteTable(
 		CreationTime: time.Now(),
 		ObjMeta:      objMeta,
 	})
-	splitKey, err := r.writeKeysToTable(tw, limitKey, valueSeparation, tieringPolicy)
+	valueSeparation.StartOutput(
+		ValueSeparationOutputConfig{TieringSpanIDForNewColdBlobFile: tieringPolicyForNewColdBlob.SpanID})
+	splitKey, err := r.writeKeysToTable(tw, tieringAndEndKeys, valueSeparation)
 
 	// Inform the value separation policy that the table is finished.
 	valSepMeta, valSepErr := valueSeparation.FinishOutput()
+	var newBlobsSize uint64
 	if valSepErr != nil {
 		r.err = errors.CombineErrors(r.err, valSepErr)
 	} else {
 		r.tables[len(r.tables)-1].BlobReferences = valSepMeta.BlobReferences
 		r.tables[len(r.tables)-1].BlobReferenceDepth = valSepMeta.BlobReferenceDepth
-		if valSepMeta.BlobFileObject.DiskFileNum != 0 {
+		for _, nb := range valSepMeta.NewBlobFiles {
 			r.blobs = append(r.blobs, OutputBlob{
-				Stats:    valSepMeta.BlobFileStats,
-				ObjMeta:  valSepMeta.BlobFileObject,
-				Metadata: valSepMeta.BlobFileMetadata,
+				Stats:    nb.FileStats,
+				ObjMeta:  nb.FileObject,
+				Metadata: nb.FileMetadata,
 			})
+			newBlobsSize += nb.FileStats.FileLen
 		}
 	}
 
@@ -277,22 +317,21 @@ func (r *Runner) WriteTable(
 		return
 	}
 	r.tables[len(r.tables)-1].WriterMeta = *writerMeta
-	r.stats.CumulativeWrittenSize += writerMeta.Size + valSepMeta.BlobFileStats.FileLen
+	r.stats.CumulativeWrittenSize += writerMeta.Size + newBlobsSize
 	r.stats.CumulativeBlobReferenceSize += valSepMeta.BlobReferenceSize
-	r.stats.CumulativeBlobFileSize += valSepMeta.BlobFileStats.FileLen
+	r.stats.CumulativeBlobFileSize += newBlobsSize
 }
 
 func (r *Runner) writeKeysToTable(
-	tw sstable.RawWriter,
-	limitKey []byte,
-	valueSeparation ValueSeparation,
-	tieringPolicy base.TieringPolicyAndExtractor,
+	tw sstable.RawWriter, tieringAndEndKeys []TieringPolicyAndEndKey, valueSeparation ValueSeparation,
 ) (splitKey []byte, _ error) {
 	const updateGrantHandleEveryNKeys = 128
 	firstKey := r.FirstKey()
 	if firstKey == nil {
 		return nil, base.AssertionFailedf("no data to write")
 	}
+	n := len(tieringAndEndKeys)
+	limitKey := tieringAndEndKeys[n-1].EndKey
 	limitKey = base.MinUserKey(r.cmp, limitKey, r.TableSplitLimit(firstKey))
 	splitter := NewOutputSplitter(
 		r.cmp, firstKey, limitKey,
@@ -304,9 +343,31 @@ func (r *Runner) writeKeysToTable(
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	var iteratedKeys uint64
 	kv := r.kv
-	var tieringSpanID base.TieringSpanID
-	if tieringPolicy != nil {
-		tieringSpanID = tieringPolicy.Policy().SpanID
+	tieringPolicy := tieringAndEndKeys[0].TieringPolicy
+	// tieringSpanEndKey is the end key of the current tiering policy span. It
+	// is empty when len(tieringAndEndKeys)==1, since the limitKey is already
+	// ensuring that we notice the end (which should be the common case).
+	var tieringSpanEndKey []byte
+	// tryUpdateTieringSpanIDAndEndKey is only called when tieringAndEndKey is
+	// non-empty.
+	//
+	// TODO(sumeer): use the Frontiers heap to optimize the comparisons.
+	tryUpdateTieringSpanIDAndEndKey := func(k []byte) {
+		for {
+			if len(tieringAndEndKeys) == 1 {
+				// Nothing to update.
+				break
+			}
+			if r.cmp(k, tieringSpanEndKey) >= 0 {
+				tieringAndEndKeys = tieringAndEndKeys[1:]
+				if len(tieringAndEndKeys) == 1 {
+					tieringSpanEndKey = nil
+				} else {
+					tieringSpanEndKey = tieringAndEndKeys[0].EndKey
+				}
+				tieringPolicy = tieringAndEndKeys[0].TieringPolicy
+			}
+		}
 	}
 	for ; kv != nil; kv = r.iter.Next() {
 		iteratedKeys++
@@ -318,7 +379,11 @@ func (r *Runner) writeKeysToTable(
 			r.cfg.GrantHandle.MeasureCPU(base.CompactionGoroutinePrimary)
 		}
 		outputSize := tw.EstimatedSize()
-		outputSize += valueSeparation.EstimatedReferenceSize()
+		// NB: only hot references are added to sstable size when deciding to
+		// split since we don't have to worry about huge compactions rewriting
+		// cold blob files, since they are never rewritten as part of sstable
+		// compactions.
+		outputSize += valueSeparation.EstimatedHotReferenceSize()
 		if splitter.ShouldSplitBefore(kv.K.UserKey, outputSize, equalPrev) {
 			break
 		}
@@ -343,7 +408,10 @@ func (r *Runner) writeKeysToTable(
 			continue
 
 		case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
-			if tieringSpanID != 0 && kv.M.Tiering == (base.TieringMeta{}) {
+			if tieringSpanEndKey != nil {
+				tryUpdateTieringSpanIDAndEndKey(kv.K.UserKey)
+			}
+			if tieringPolicy.Policy.SpanID != 0 && kv.M.Tiering == (base.TieringMeta{}) {
 				// Try to extract the TieringMeta.
 				val, _, err := kv.V.Value(nil)
 				if err != nil {
@@ -354,7 +422,7 @@ func (r *Runner) writeKeysToTable(
 					// TODO(sumeer): log warning periodically.
 					attr = 0
 				}
-				kv.M.Tiering = base.TieringMeta{SpanID: tieringSpanID, Attribute: attr}
+				kv.M.Tiering = base.TieringMeta{SpanID: tieringPolicy.Policy.SpanID, Attribute: attr}
 			}
 		}
 
@@ -514,17 +582,27 @@ type NeverSeparateValues struct{}
 // Assert that NeverSeparateValues implements the ValueSeparation interface.
 var _ ValueSeparation = NeverSeparateValues{}
 
-// Init implements the ValueSeparation interface.
-func (NeverSeparateValues) Init(retriever tieredmeta.ColdTierThresholdRetriever) {}
+// MayWriteColdBlobFiles implements the ValueSeparation interface.
+func (NeverSeparateValues) MayWriteColdBlobFiles() bool {
+	return false
+}
 
-// SetNextOutputConfig implements the ValueSeparation interface.
-func (NeverSeparateValues) SetNextOutputConfig(config ValueSeparationOutputConfig) {}
+// MayWriteColdBlobFilesForTieringSpanID implements the ValueSeparation interface.
+func (NeverSeparateValues) MayWriteColdBlobFilesForTieringSpanID(_ base.TieringSpanID) bool {
+	return false
+}
+
+// OverrideNextOutputConfig implements the ValueSeparation interface.
+func (NeverSeparateValues) OverrideNextOutputConfig(config ValueSeparationOverrideConfig) {}
+
+// StartOutput implements the ValueSeparation interface.
+func (NeverSeparateValues) StartOutput(config ValueSeparationOutputConfig) {}
 
 // EstimatedFileSize implements the ValueSeparation interface.
 func (NeverSeparateValues) EstimatedFileSize() uint64 { return 0 }
 
-// EstimatedReferenceSize implements the ValueSeparation interface.
-func (NeverSeparateValues) EstimatedReferenceSize() uint64 { return 0 }
+// EstimatedHotReferenceSize implements the ValueSeparation interface.
+func (NeverSeparateValues) EstimatedHotReferenceSize() uint64 { return 0 }
 
 // Add implements the ValueSeparation interface.
 func (NeverSeparateValues) Add(

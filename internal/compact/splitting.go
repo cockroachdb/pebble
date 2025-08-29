@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -145,7 +146,7 @@ func NewOutputSplitter(
 	}
 	if len(limit) > 0 {
 		if invariants.Enabled && cmp(startKey, limit) >= 0 {
-			panic("limit <= startKey")
+			panic(errors.AssertionFailedf("limit %x <= startKey %x", limit, startKey))
 		}
 		s.limit = slices.Clone(limit)
 	}
