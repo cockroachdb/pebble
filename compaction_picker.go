@@ -1691,7 +1691,10 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
 		return nil
 	}
 
-	garbagePct := float64(aggregateStats.ValueSize-aggregateStats.ReferencedBackingValueSize) /
+	// We want to use ReferencedValueSize here instead of ReferencedBackingValueSize
+	// to get the estimate of live data in blob files. We'll check below to see if there
+	// are actually any candidates with garbage to reclaim.
+	garbagePct := float64(aggregateStats.ValueSize-aggregateStats.ReferencedValueSize) /
 		float64(aggregateStats.ValueSize)
 	if garbagePct <= policy.TargetGarbageRatio {
 		// Not enough garbage to warrant a rewrite compaction.

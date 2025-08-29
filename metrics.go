@@ -416,6 +416,12 @@ type Metrics struct {
 		// blob files were rewritten, discarding values that are no longer
 		// referenced by any keys in any sstables within the current version.
 		ReferencedValueSize uint64
+		// ReferencedBackingValueSize is the sum of the length of the uncompressed
+		// values (in all live blob files) that are still referenced by keys
+		// within backing tables. Note that this value is an overestimate because
+		// each virtual table will contribute their backing table's referenced
+		// value sizes.
+		ReferencedBackingValueSize uint64
 		// The count of all obsolete blob files.
 		ObsoleteCount uint64
 		// The physical size of all obsolete blob files.
