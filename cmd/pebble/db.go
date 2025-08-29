@@ -81,11 +81,12 @@ func newPebbleDB(dir string) DB {
 	// value separation.
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{
-			Enabled:               true,
-			MinimumSize:           512,
-			MaxBlobReferenceDepth: 10,
-			RewriteMinimumAge:     5 * time.Minute,
-			TargetGarbageRatio:    0.1,
+			Enabled:                  true,
+			MinimumSize:              512,
+			MaxBlobReferenceDepth:    10,
+			RewriteMinimumAge:        5 * time.Minute,
+			GarbageRatioLowPriority:  0.10, // 10% garbage
+			GarbageRatioHighPriority: 0.30, // 30% garbage
 		}
 	}
 

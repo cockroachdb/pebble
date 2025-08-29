@@ -1,7 +1,7 @@
 # Test a simple sequence of flushes and compactions where all values are
 # separated.
 
-define value-separation=(true, 1, 3, 0, 1.0)
+define value-separation=(enabled, min-size=1, max-ref-depth=3, rw-min-age=0, garbage-ratios=1.0:1.0)
 ----
 
 batch
@@ -55,7 +55,7 @@ compact a-d
 # and the value separation policy is configured to limit the blob reference
 # depth to 3.
 
-define verbose value-separation=(true, 3, 3, 0s, 1.0)
+define verbose value-separation=(enabled, min-size=3, max-ref-depth=3, rw-min-age=0s, garbage-ratios=1.0:1.0)
 L6 blob-depth=3
   a.SET.0:a
   b.SET.0:blob{fileNum=100002 value=bar}
@@ -190,7 +190,7 @@ COMPRESSION
 
 # Set the minimum size for a separated value to 5.
 
-define value-separation=(true, 5, 3, 0s, 1.0)
+define value-separation=(enabled, min-size=5, max-ref-depth=3, rw-min-age=0s, garbage-ratios=1.0:1.0)
 ----
 
 batch
@@ -240,7 +240,7 @@ w:world
 
 # Configure the database to require keys in the range [a,m) to be in-place.
 
-define required-in-place=(a,m) value-separation=(true,1,3,0s,1.0)
+define required-in-place=(a,m) value-separation=(enabled, min-size=1, max-ref-depth=3, rw-min-age=0s, garbage-ratios=1.0:1.0)
 ----
 
 batch
@@ -267,7 +267,7 @@ Blob files:
 # references. Because these files overlap and are in separate sublevels, a
 # compaction that preserves blob references should sum their depths.
 
-define value-separation=(true,1,5,0s,1.0) l0-compaction-threshold=2
+define value-separation=(enabled, min-size=1, max-ref-depth=5, rw-min-age=0s, garbage-ratios=1.0:1.0) l0-compaction-threshold=2
 L0 blob-depth=1
   a.SET.9:a
   d.SET.9:blob{fileNum=100001 value=d}
@@ -303,7 +303,7 @@ Blob files:
 # sublevel, a compaction that preserves blob references should take the MAX of
 # their depths.
 
-define value-separation=(true,1,5,0s,1.0) l0-compaction-threshold=2
+define value-separation=(enabled, min-size=1, max-ref-depth=5, rw-min-age=0s, garbage-ratios=1.0:1.0) l0-compaction-threshold=2
 L0 blob-depth=1
   a.SET.9:a
   d.SET.9:blob{fileNum=100001 value=d}
@@ -338,7 +338,7 @@ Blob files:
 # garbage ratio of 0.0 (no garbage). With this configuration, any blob file that
 # contains any unreferenced values should be immediately compacted.
 
-define value-separation=(true,1,2,0s,0.0) auto-compactions=off
+define value-separation=(enabled, min-size=1, max-ref-depth=2, rw-min-age=0s, garbage-ratios=0.0:0.0) auto-compactions=off
 ----
 
 batch
@@ -466,7 +466,7 @@ COMPRESSION
 
 # Test a blob file rewrite compaction with virtual sstable references.
 
-define value-separation=(true,1,10,0s,0.01)
+define value-separation=(enabled, min-size=1, max-ref-depth=10, rw-min-age=0s, garbage-ratios=0.01:0.01)
 ----
 
 batch
@@ -509,7 +509,7 @@ validate-blob-reference-index-block
 ----
 validated
 
-define value-separation=(true,5,5,0s,1.0) l0-compaction-threshold=1
+define value-separation=(enabled, min-size=5, max-ref-depth=5, rw-min-age=0s, garbage-ratios=1.0:1.0) l0-compaction-threshold=1
 ----
 
 # Test writing a non-trivial amount of data. With a key length of 4, we'll write
@@ -619,7 +619,7 @@ would excise 1 files.
 # 1024 bytes, but there's also a key span defined with the latency-tolerant
 # value storage policy.
 
-define value-separation=(true,1024,10,0s,1.0) latency-tolerant-span=(f,o)
+define value-separation=(enabled, min-size=1024, max-ref-depth=10, rw-min-age=0s, garbage-ratios=1.0:1.0) latency-tolerant-span=(f,o)
 ----
 
 batch
