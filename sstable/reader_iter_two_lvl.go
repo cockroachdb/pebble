@@ -439,13 +439,14 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 		i.lastBloomFilterMatched = false
 		var mayContain bool
 		mayContain, i.secondLevel.err = i.secondLevel.bloomFilterMayContain(prefix)
-		if i.secondLevel.err != nil || !mayContain {
-			// In the i.secondLevel.err == nil case, this invalidation may not be necessary for
-			// correctness, and may be a place to optimize later by reusing the
-			// already loaded block. It was necessary in earlier versions of the code
-			// since the caller was allowed to call Next when SeekPrefixGE returned
-			// nil. This is no longer allowed.
+		if i.secondLevel.err != nil {
 			PD(&i.secondLevel.data).Invalidate()
+			return nil
+		}
+		if !mayContain {
+			// In the no-error bloom filter miss case, the key definitely not in table.
+			// We can avoid invalidating the already loaded block since the caller is
+			// not allowed to call Next when SeekPrefixGE returns nil.
 			return nil
 		}
 		i.lastBloomFilterMatched = true
