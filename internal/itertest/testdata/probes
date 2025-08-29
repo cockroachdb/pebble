@@ -21,6 +21,30 @@ bar#2,SET:value
 bar#2,SET:value
 bar#2,SET:value
 
+# Create probes to exercise the UserKey predicate. On Next/Prev return a KV
+# with user key "bar"; on other ops return a KV with user key "foo". Then if
+# the returned KV's user key is "bar", override the result with a specific KV.
+
+new
+(If (Or OpNext OpPrev) (ReturnKV "bar.SET.2" "value") (ReturnKV "foo.SET.1" "value"))
+(If (UserKey "bar") (ReturnKV "ok.SET.1" "ok") noop)
+----
+
+iter
+first
+next
+seek-ge foo
+seek-lt bar
+last
+prev
+----
+foo#1,SET:value
+ok#1,SET:ok
+foo#1,SET:value
+foo#1,SET:value
+foo#1,SET:value
+ok#1,SET:ok
+
 # Create an identical probe as above, and then wrap it in a "noop" probe.
 # A noop probe does nothing; it passes through the child iterator's results
 # verbatim, so the iteration results should be the same.

@@ -1,0 +1,307 @@
+# Test case for the lazy seek prefix optimization
+
+reset
+----
+
+batch commit
+set a@1 a@1
+set s@10 s@10
+set s@8 s@8
+set w@7 w@7
+----
+committed 4 keys
+
+flush
+----
+
+batch commit
+set a@1 a@1
+set s@3 s@3
+set z@5 z@5
+----
+committed 3 keys
+
+flush
+----
+
+batch commit
+set a@1 a@1
+set s@4 s@4
+set t@5 t@5
+----
+committed 3 keys
+
+flush
+----
+
+lsm
+----
+L0.2:
+  000009:[a@1#17,SET-t@5#19,SET]
+L0.1:
+  000007:[a@1#14,SET-z@5#16,SET]
+L0.0:
+  000005:[a@1#10,SET-w@7#13,SET]
+
+# We only performed one seek here. We made
+# 3 synthetic keys for each level we detected a key.
+# s@10, s@8, s@5 all synthetic. since s@10 is the largest key, and 
+# sits on top of the heap, we will Next() and perform the real seek. 
+# we discover s@10 SET, since its still on top of the heap, we don't need to
+# perform the real seek.
+
+combined-iter probe-points=(9,(Log "OpSeekPrefixGE")) probe-points=(7,(Log "OpSeekPrefixGE")) probe-points=(5,(Log "OpSeekPrefixGE"))
+seek-prefix-ge s@10
+next
+next
+----
+s@10: (s@10, .)
+s@8: (s@8, .)
+s@4: (s@4, .)
+OpSeekPrefixGESeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
+OpSeekPrefixGESeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
+OpSeekPrefixGESeekPrefixGE("s@10") = (s@10#11,SET,"s@10")
+OpSeekPrefixGENext() = (s@8#12,SET,"s@8")
+OpSeekPrefixGENext() = (w@7#13,SET,"w@7")
+OpSeekPrefixGENext() = (s@4#18,SET,"s@4")
+OpSeekPrefixGENext() = (s@3#15,SET,"s@3")
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+
+
+# Test case discovered during implementation of the optimization
+# An example of this edge case would be RangeDel, however there can be other
+# instances that might produce the same scenario
+# consider the heap has a key with s@5 SET
+# SSTable 1                                         SSTable 2
+# a@3#SET - s@8 RangeDel                 s@8#SET - w@7#SET
+#
+# In this scenerio if we have SeekPrefixGE at for example s@11. 
+# This case will return s@3 as the synthetic key.
+# Heap, -> s@5 SET, s@3 SYNTHETIC. We miss s@8, since we detected presence of s@8
+# in table 1, we produced s@3#SYNTHETIC but the key was never present in the table.
+# To Fix this we must make sure that prefix is wholly contained within the sstable's bounds 
+# so that prevent wrong seeks in case of false loads.
+
+reset
+----
+
+batch commit
+set s@8 s@8
+set w@7 w@7
+----
+committed 2 keys
+
+flush
+----
+
+compact a-z
+----
+L6:
+  000005:[s@8#10,SET-w@7#11,SET]
+
+batch commit
+set s@5 s@5
+----
+committed 1 keys
+
+flush
+----
+
+compact a-z
+----
+L6:
+  000008:[s@8#0,SET-w@7#0,SET]
+
+batch commit
+set a@3 a@3
+del-range b@3 s@8
+----
+committed 2 keys
+
+flush
+----
+
+compact s-z
+----
+L6:
+  000010:[a@3#13,SET-s@8#inf,RANGEDEL]
+  000008:[s@8#0,SET-w@7#0,SET]
+
+batch commit
+set s@5 s@5
+----
+committed 1 keys
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000012:[s@5#15,SET-s@5#15,SET]
+L6:
+  000010:[a@3#13,SET-s@8#inf,RANGEDEL]
+  000008:[s@8#0,SET-w@7#0,SET]
+
+combined-iter
+seek-prefix-ge s@11
+next
+----
+s@8: (s@8, .)
+s@5: (s@5, .)
+
+
+# Test case back to back SeekPrefixGE call
+# We discovered that performing back to back SeekPrefixGE calls will cause 
+# Try seeking optimization to trigger, and we will miss the latest key
+# Consider the following scenario, 
+# SeekPrefixGE(as@16), we will make synthetic keys and finally return the result for the key
+# When peroforming a subsequent SeekPrefixGE(ay@16), we trigger the tryseekingusingnext optimization
+# now we will miss the key ay@16, since we return nil because the next key is actually a synthetic key which was never positioned.
+
+reset
+----
+
+batch commit
+set a@16 a@16
+set ww@23 ww@23
+set as@13 as@13
+set ay@12 ay@12
+set z@1 z@1
+----
+committed 5 keys
+
+flush
+----
+
+compact a-z
+----
+L6:
+  000005:[a@16#10,SET-z@1#14,SET]
+
+batch commit
+set a@3 a@3
+set as@28 as@28
+set ay@11 ay@11
+set z@2 z@2
+----
+committed 4 keys
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000007:[a@3#15,SET-z@2#18,SET]
+L6:
+  000005:[a@16#10,SET-z@1#14,SET]
+
+combined-iter
+seek-prefix-ge as@30
+seek-prefix-ge ay
+----
+as@28: (as@28, .)
+ay@12: (ay@12, .)
+
+
+
+# Test case during ingestion of external SSTables
+
+reset
+----
+
+batch commit
+set a@16 a@16
+set ww@23 ww@23
+set as@13 as@13
+set ay@12 ay@12
+set z@1 z@1
+----
+committed 5 keys
+
+flush
+----
+
+batch commit
+set a@16 a@16
+set b@17 b@17
+del-range a@16 b@17
+----
+committed 3 keys
+
+build ext1
+set a@19 a@19
+set ww@25 ww@25
+set z@4 z@4
+----
+
+combined-iter
+seek-prefix-ge z
+seek-prefix-ge ww
+----
+z@1: (z@1, .)
+ww@23: (ww@23, .)
+
+ingest external ext1
+----
+
+combined-iter
+seek-prefix-ge ww
+seek-prefix-ge z
+seek-prefix-ge a
+----
+ww@25: (ww@25, .)
+z@4: (z@4, .)
+a@19: (a@19, .)
+
+
+# Test disabling the optimization if prefix bounds do not strictly fall within the sstable bounds
+
+reset
+----
+
+batch commit
+set a@1 a@1
+set s@10 s@10
+set s@8 s@8
+----
+committed 3 keys
+
+flush
+----
+
+batch commit
+set c@2 c@2
+set s@9 s@9
+set s@7 s@7
+----
+committed 3 keys
+
+flush
+----
+
+lsm
+----
+L0.1:
+  000007:[c@2#13,SET-s@7#15,SET]
+L0.0:
+  000005:[a@1#10,SET-s@8#12,SET]
+
+combined-iter probe-points=(7,(Log "OpSeekPrefixGE")) probe-points=(5,(Log "OpSeekPrefixGE"))
+seek-prefix-ge s
+next
+next
+----
+s@10: (s@10, .)
+s@9: (s@9, .)
+s@8: (s@8, .)
+OpSeekPrefixGESeekPrefixGE("s") = (s@9#14,SET,"s@9")
+OpSeekPrefixGESeekPrefixGE("s") = (s@10#11,SET,"s@10")
+OpSeekPrefixGENext() = (s@8#12,SET,"s@8")
+OpSeekPrefixGENext() = (s@7#15,SET,"s@7")
+OpSeekPrefixGEClose() = nil
+OpSeekPrefixGEClose() = nil
+

@@ -96,7 +96,8 @@ const (
 	//InternalKeyKindRollbackXID              InternalKeyKind = 12
 	//InternalKeyKindNoop                     InternalKeyKind = 13
 	//InternalKeyKindColumnFamilyRangeDelete  InternalKeyKind = 14
-	InternalKeyKindRangeDelete InternalKeyKind = 15
+	InternalKeyKindSyntheticKey InternalKeyKind = 14
+	InternalKeyKindRangeDelete  InternalKeyKind = 15
 	//InternalKeyKindColumnFamilyBlobIndex    InternalKeyKind = 16
 	//InternalKeyKindBlobIndex                InternalKeyKind = 17
 
@@ -200,6 +201,7 @@ var internalKeyKindNames = []string{
 	InternalKeyKindMerge:          "MERGE",
 	InternalKeyKindLogData:        "LOGDATA",
 	InternalKeyKindSingleDelete:   "SINGLEDEL",
+	InternalKeyKindSyntheticKey:   "SYNTHETIC",
 	InternalKeyKindRangeDelete:    "RANGEDEL",
 	InternalKeyKindSeparator:      "SEPARATOR",
 	InternalKeyKindSetWithDelete:  "SETWITHDEL",
@@ -307,6 +309,7 @@ func MakeExclusiveSentinelKey(kind InternalKeyKind, userKey []byte) InternalKey 
 var kindsMap = map[string]InternalKeyKind{
 	"DEL":           InternalKeyKindDelete,
 	"SINGLEDEL":     InternalKeyKindSingleDelete,
+	"SYNTHETIC":     InternalKeyKindSyntheticKey,
 	"RANGEDEL":      InternalKeyKindRangeDelete,
 	"LOGDATA":       InternalKeyKindLogData,
 	"SET":           InternalKeyKindSet,
@@ -541,7 +544,8 @@ func (k InternalKey) IsExclusiveSentinel() bool {
 	}
 	switch kind := k.Kind(); kind {
 	case InternalKeyKindRangeDelete, InternalKeyKindRangeKeyDelete,
-		InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
+		InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet,
+		InternalKeyKindSyntheticKey:
 		return true
 	default:
 		return false
