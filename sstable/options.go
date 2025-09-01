@@ -110,7 +110,9 @@ type ReaderOptions struct {
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
 	// The default cache size is a zero-size cache.
-	Cache *cache.Cache
+	Cache       *cache.Cache
+	FilterCache *cache.Cache
+	IndexCache  *cache.Cache
 
 	// LoadBlockSema, if set, is used to limit the number of blocks that can be
 	// loaded (i.e. read from the filesystem) in parallel. Each load acquires one
@@ -187,7 +189,9 @@ type WriterOptions struct {
 	// Cache is used to cache uncompressed blocks from sstables.
 	//
 	// The default is a nil cache.
-	Cache *cache.Cache
+	Cache       *cache.Cache
+	FilterCache *cache.Cache
+	IndexCache  *cache.Cache
 
 	// Comparer defines a total ordering over the space of []byte keys: a 'less
 	// than' relationship. The same comparison algorithm must be used for reads

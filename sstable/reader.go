@@ -236,6 +236,8 @@ type Reader struct {
 // Close implements DB.Close, as documented in the pebble package.
 func (r *Reader) Close() error {
 	r.opts.Cache.Unref()
+	r.opts.FilterCache.Unref()
+	r.opts.IndexCache.Unref()
 
 	if r.readable != nil {
 		r.err = firstError(r.err, r.readable.Close())
@@ -524,7 +526,14 @@ func (r *Reader) readBlock(
 	stats *base.InternalIteratorStats,
 	bufferPool *BufferPool,
 ) (handle bufferHandle, _ error) {
-	if h := r.opts.Cache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
+	dbCache := r.opts.Cache
+	if ctx.Value("blockType") == objiotracing.FilterBlock {
+		dbCache = r.opts.FilterCache
+	} else if ctx.Value("blockType") == objiotracing.MetadataBlock {
+		dbCache = r.opts.IndexCache
+	}
+
+	if h := dbCache.Get(r.cacheID, r.fileNum, bh.Offset); h.Get() != nil {
 		// Cache hit.
 		if readHandle != nil {
 			readHandle.RecordCacheHit(ctx, int64(bh.Offset), int64(bh.Length+blockTrailerLen))
@@ -641,7 +650,7 @@ func (r *Reader) readBlock(
 	if decompressed.buf.Valid() {
 		return bufferHandle{b: decompressed.buf}, nil
 	}
-	h := r.opts.Cache.Set(r.cacheID, r.fileNum, bh.Offset, decompressed.v)
+	h := dbCache.Set(r.cacheID, r.fileNum, bh.Offset, decompressed.v)
 	return bufferHandle{h: h}, nil
 }
 
@@ -1113,6 +1122,16 @@ func NewReader(f objstorage.Readable, o ReaderOptions, extraOpts ...ReaderOption
 		r.opts.Cache = cache.New(0)
 	} else {
 		r.opts.Cache.Ref()
+	}
+	if r.opts.FilterCache == nil {
+		r.opts.FilterCache = cache.New(0)
+	} else {
+		r.opts.FilterCache.Ref()
+	}
+	if r.opts.IndexCache == nil {
+		r.opts.IndexCache = cache.New(0)
+	} else {
+		r.opts.IndexCache.Ref()
 	}
 
 	if f == nil {
