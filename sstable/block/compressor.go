@@ -135,7 +135,7 @@ func (c *CompressionStats) add(
 			return
 		}
 	}
-	if c.n >= len(c.buf)-1 {
+	if c.n >= len(c.buf) {
 		panic("too many compression settings")
 	}
 	c.buf[c.n] = CompressionStatsForSetting{
