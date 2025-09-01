@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2/internal/compression"
 	"github.com/cockroachdb/pebble/v2/sstable/block/blockkind"
 	"github.com/stretchr/testify/require"
 )
@@ -57,5 +58,21 @@ func TestBufferRandomized(t *testing.T) {
 			b.Reset()
 			bh.Release()
 		})
+	}
+}
+
+func TestCompressionStats(t *testing.T) {
+	// Verify that CompressionStats can hold four settings.
+	var s CompressionStats
+	// Any profile can have uncompressed blocks.
+	s.add(compression.None, 1024, 1024)
+	s.add(fastestCompression, 20000, 10000)
+	s.add(compression.ZstdLevel1, 400000, 100000)
+	s.add(compression.ZstdLevel3, 500, 300)
+
+	exp1 := "NoCompression:1024/1024,Snappy:10000/20000,ZSTD1:100000/400000,ZSTD3:300/500"
+	exp2 := "NoCompression:1024/1024,MinLZ1:10000/20000,ZSTD1:100000/400000,ZSTD3:300/500"
+	if str := s.String(); str != exp1 && str != exp2 {
+		t.Fatalf("unexpected: %s", str)
 	}
 }
