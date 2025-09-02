@@ -354,6 +354,8 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 	return nil
 }
 
+type KVMeta = base.KVMeta
+
 // Add adds a point key/value pair when writing a
 // strict-obsolete sstable. For a given Writer, the keys passed to Add must be
 // in increasing order. Span keys (range deletions, range keys) must be added
