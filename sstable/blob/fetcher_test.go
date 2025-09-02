@@ -166,7 +166,7 @@ func TestValueFetcher(t *testing.T) {
 
 func writeValueFetcherState(w *bytes.Buffer, f *ValueFetcher) {
 	fmt.Fprintf(w, "ValueFetcher{\n")
-	for _, cr := range f.readers {
+	for _, cr := range f.cached.readers {
 		if cr.r == nil {
 			fmt.Fprintln(w, "  empty")
 			continue
