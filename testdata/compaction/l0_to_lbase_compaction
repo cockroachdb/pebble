@@ -57,8 +57,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.09  0.09 |      3   6MB |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     -     -     - |      3   6MB |    0B    0B    0B |     0B    0B |      3   10MB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       0       0        0     3     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       0       0        0     3     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
