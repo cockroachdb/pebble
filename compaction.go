@@ -155,6 +155,7 @@ const (
 	compactionKindRewrite
 	compactionKindIngestedFlushable
 	compactionKindBlobFileRewrite
+	compactionKindVirtualRewrite
 )
 
 func (k compactionKind) String() string {
@@ -181,6 +182,8 @@ func (k compactionKind) String() string {
 		return "copy"
 	case compactionKindBlobFileRewrite:
 		return "blob-file-rewrite"
+	case compactionKindVirtualRewrite:
+		return "virtual-sst-rewrite"
 	}
 	return "?"
 }
@@ -3254,7 +3257,12 @@ func (d *DB) runCompaction(
 	case compactionKindIngestedFlushable:
 		panic("pebble: runCompaction cannot handle compactionKindIngestedFlushable.")
 	}
+	return d.runDefaultTableCompaction(jobID, c)
+}
 
+func (d *DB) runDefaultTableCompaction(
+	jobID JobID, c *tableCompaction,
+) (ve *manifest.VersionEdit, stats compact.Stats, retErr error) {
 	snapshots := d.mu.snapshots.toSlice()
 
 	// Release the d.mu lock while doing I/O.

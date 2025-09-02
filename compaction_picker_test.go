@@ -1336,9 +1336,10 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			}
 
 			opts := &Options{
-				Comparer:           testkeys.Comparer,
-				FormatMajorVersion: FormatNewest,
-				Logger:             testutils.Logger{T: t},
+				Comparer:                    testkeys.Comparer,
+				FormatMajorVersion:          FormatNewest,
+				Logger:                      testutils.Logger{T: t},
+				DisableAutomaticCompactions: true,
 			}
 			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()

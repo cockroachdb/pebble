@@ -1497,6 +1497,12 @@ func (p *compactionPickerByScore) pickAutoNonScore(env compactionEnv) (pc picked
 		return pc
 	}
 
+	// Check for virtual SST rewrites. These compactions materialize virtual tables
+	// to reclaim space in backing files with low utilization.
+	if pc := p.pickVirtualRewriteCompaction(env); pc != nil {
+		return pc
+	}
+
 	// Check for blob file rewrites. These are low-priority compactions because
 	// they don't help us keep up with writes, just reclaim disk space.
 	if pc := p.pickBlobFileRewriteCompactionLowPriority(env); pc != nil {
@@ -1689,6 +1695,37 @@ func (p *compactionPickerByScore) pickRewriteCompaction(
 			return pc
 		}
 	}
+	return nil
+}
+
+// pickVirtualRewriteCompaction looks for backing tables that have a low percentage
+// of referenced data and materializes their virtual sstables.
+func (p *compactionPickerByScore) pickVirtualRewriteCompaction(
+	env compactionEnv,
+) *pickedTableCompaction {
+
+	for _, c := range env.inProgressCompactions {
+		// Allow only one virtual rewrite compaction at a time.
+		if c.kind == compactionKindVirtualRewrite {
+			return nil
+		}
+	}
+
+	// We'll pick one virtual table at a time to materialize. This works with our
+	// current compaction system, which currently doesn't support outputting to
+	// multiple levels.
+	_, vtablesByLevel := p.latestVersionState.virtualBackings.ReplacementCandidate()
+	for level, tables := range vtablesByLevel {
+		for _, vt := range tables {
+			if vt.IsCompacting() {
+				continue
+			}
+			if pc := p.pickedCompactionFromCandidateFile(vt, env, level, level, compactionKindVirtualRewrite); pc != nil {
+				return pc
+			}
+		}
+	}
+
 	return nil
 }
 
