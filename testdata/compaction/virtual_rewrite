@@ -1,0 +1,207 @@
+# Test virtual rewrite compaction picks backing with least referenced data.
+# Creates multiple virtual tables from different backings and verifies that the 
+# backing with the lowest percentage of referenced data is selected for rewrite.
+
+define auto-compactions=off
+----
+
+# Create first backing table
+batch
+set a value_a_first_table
+set b value_b_first_table  
+set c value_c_first_table
+set d value_d_first_table
+set e value_e_first_table
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:732
+
+# Compact to L6 to create backing table
+compact a-e
+----
+L6:
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:732
+
+# Create second backing table  
+batch
+set f value_f_second_table
+set g value_g_second_table
+set h value_h_second_table
+set i value_i_second_table
+set j value_j_second_table
+----
+
+flush
+----
+L0.0:
+  000007:[f#15,SET-j#19,SET] seqnums:[15-19] points:[f#15,SET-j#19,SET] size:724
+L6:
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:732
+
+# Compact to L6 to create second backing table.
+compact f-j
+----
+L6:
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:732
+  000007:[f#15,SET-j#19,SET] seqnums:[15-19] points:[f#15,SET-j#19,SET] size:724
+
+# Excise from first backing to create virtual tables with high utilization (~80%)
+excise b c
+----
+L6:
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[10-14] points:[a#10,SET-a#10,SET] size:147(732)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
+  000007:[f#15,SET-j#19,SET] seqnums:[15-19] points:[f#15,SET-j#19,SET] size:724
+
+# Excise from second backing to create virtual tables with low utilization (~40%).
+excise g i
+----
+L6:
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[10-14] points:[a#10,SET-a#10,SET] size:147(732)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
+  000010(000007):[f#15,SET-f#15,SET] seqnums:[15-19] points:[f#15,SET-f#15,SET] size:141(724)
+  000011(000007):[i#18,SET-j#19,SET] seqnums:[15-19] points:[i#18,SET-j#19,SET] size:141(724)
+
+# Check the LSM state - we should have virtual tables with different backing utilization
+lsm
+----
+L6:
+  000008(000005):[a#10,SET-a#10,SET]
+  000009(000005):[c#12,SET-e#14,SET]
+  000010(000007):[f#15,SET-f#15,SET]
+  000011(000007):[i#18,SET-j#19,SET]
+
+# Show virtual backing information to see referenced ratios.
+# Virtual rewrite should pick 000009, which is the least utilized backing.
+virtual-backings
+----
+2 virtual backings, total size 1456:
+  000005:  size=732  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
+  000007:  size=724  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=282  tables: [000010 000011]
+rewrite candidates heap: 000007(39.0%) 000005(40.2%) 
+
+# Run virtual rewrite compaction, which should pick backing 000007 to materialize.
+run-virtual-rewrite-compaction
+----
+L6:
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[10-14] points:[a#10,SET-a#10,SET] size:147(732)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
+  000012:[f#0,SET-f#0,SET] seqnums:[0-0] points:[f#0,SET-f#0,SET] size:669
+  000011(000007):[i#18,SET-j#19,SET] seqnums:[15-19] points:[i#18,SET-j#19,SET] size:141(724)
+
+
+# Check virtual backings state after rewrite.
+# The backing we chose should now contain even more unreferenced data.
+# backing 000009 should now have only one virtual table (000013)
+virtual-backings
+----
+2 virtual backings, total size 1456:
+  000005:  size=732  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
+  000007:  size=724  refBlobValueSize=0  useCount=1  protectionCount=0  virtualizedSize=141  tables: [000011]
+rewrite candidates heap: 000007(19.5%) 000005(40.2%) 
+
+# Run another virtual rewrite compaction to materialize the remaining virtual table from 7.
+run-virtual-rewrite-compaction  
+----
+L6:
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[10-14] points:[a#10,SET-a#10,SET] size:147(732)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
+  000012:[f#0,SET-f#0,SET] seqnums:[0-0] points:[f#0,SET-f#0,SET] size:669
+  000013:[i#0,SET-j#0,SET] seqnums:[0-0] points:[i#0,SET-j#0,SET] size:687
+
+# Backing 000007 should have been removed.
+virtual-backings
+----
+1 virtual backings, total size 732:
+  000005:  size=732  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
+rewrite candidates heap: 000005(40.2%) 
+
+# Run one more virtual rewrite compaction to test materialization from backing 000005.
+run-virtual-rewrite-compaction
+----
+L6:
+  000014:[a#0,SET-a#0,SET] seqnums:[0-0] points:[a#0,SET-a#0,SET] size:668
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
+  000012:[f#0,SET-f#0,SET] seqnums:[0-0] points:[f#0,SET-f#0,SET] size:669
+  000013:[i#0,SET-j#0,SET] seqnums:[0-0] points:[i#0,SET-j#0,SET] size:687
+
+virtual-backings
+----
+1 virtual backings, total size 732:
+  000005:  size=732  refBlobValueSize=0  useCount=1  protectionCount=0  virtualizedSize=147  tables: [000009]
+rewrite candidates heap: 000005(20.1%) 
+
+metrics
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0         0B |      0    0B |      0     0 |     0B     0B |   289B |      0    0B |   0  5.04
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6      2.1KB |      4 2.1KB |      1   147 |     0B     0B |   429B |      0    0B |   1  4.72
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+total      2.1KB |      4 2.1KB |      1   147 |     0B     0B |   289B |      0    0B |   1 13.04
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.4KB     0B
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -  0.00  0.00 |      2 1.4KB |    0B    0B    0B |   522B    0B |      3    2KB     0B
+------+-------------------+--------------+-------------------+--------------+---------------------
+total |     -     -     - |      2 1.4KB |    0B    0B    0B |   522B    0B |      5  3.7KB     0B
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
+count |       0       0        0     2     0     0        0     0      0     0       3
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 259B: 289B |     11.6% |         2 |  1 (256KB) |  1 (256KB) |       548 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+   8 (2.8KB) |       69.2% |    4 (1.1KB) |       91.9% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |   1 (732B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
+COMPRESSION
+    algorithm |         tables |    blob files
+--------------+----------------+--------------
+         none |           116B |
+       snappy | 296B (CR=1.23) |
+----
+----
