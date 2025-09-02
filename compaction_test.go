@@ -1132,6 +1132,37 @@ func runCompactionTest(
 			}
 			return describeLSM(d, verbose)
 
+		case "run-virtual-rewrite-compaction":
+			err := func() error {
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				d.mu.versions.logLock()
+				env := d.makeCompactionEnvLocked()
+				require.NotNil(t, env)
+				picker := d.mu.versions.picker.(*compactionPickerByScore)
+				pc := picker.pickVirtualRewriteCompaction(*env)
+				if pc == nil {
+					d.mu.versions.logUnlock()
+					return errors.New("no virtual rewrite compaction")
+				}
+				d.mu.versions.logUnlock()
+				d.runPickedCompaction(pc, noopGrantHandle{})
+				for d.mu.compact.compactingCount > 0 {
+					d.mu.compact.cond.Wait()
+				}
+				return nil
+			}()
+			if err != nil {
+				return err.Error()
+			}
+			return describeLSM(d, verbose)
+
+		case "virtual-backings":
+			d.mu.Lock()
+			s := d.mu.versions.latest.virtualBackings.String()
+			d.mu.Unlock()
+			return s
+
 		case "validate-blob-reference-index-block":
 			var inputTables []*manifest.TableMetadata
 			for _, line := range crstrings.Lines(td.Input) {
@@ -1516,6 +1547,11 @@ func TestCompaction(t *testing.T) {
 			verbose:    true,
 			cmp:        DefaultComparer,
 		},
+		"virtual_rewrite": {
+			minVersion: FormatNewest,
+			maxVersion: FormatNewest,
+			verbose:    true,
+		},
 	}
 	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {
 		filename := filepath.Base(path)
@@ -1734,12 +1770,14 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 				// NB: collectTableStats attempts to acquire the lock. Temporarily
 				// unlock here to avoid a deadlock.
-				d.mu.Unlock()
-				if didRun := d.collectTableStats(); !didRun {
-					// If a job was already running, wait for the results.
-					d.waitTableStats()
-				}
-				d.mu.Lock()
+				func() {
+					d.mu.Unlock()
+					defer d.mu.Lock()
+					if didRun := d.collectTableStats(); !didRun {
+						// If a job was already running, wait for the results.
+						d.waitTableStats()
+					}
+				}()
 
 				hints := d.mu.compact.deletionHints
 				if len(hints) == 0 {
@@ -1879,6 +1917,13 @@ func TestCompactionTombstones(t *testing.T) {
 				// multiple concurrent compactions.
 				for i := range c.Output.Tables {
 					c.Output.Tables[i].FileNum = 0
+				}
+				if c.Reason == "virtual-sst-rewrite" {
+					for i := range c.Input {
+						for j := range c.Input[i].Tables {
+							c.Input[i].Tables[j].FileNum = 0
+						}
+					}
 				}
 			}
 		}
