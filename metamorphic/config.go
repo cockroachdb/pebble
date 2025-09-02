@@ -28,6 +28,7 @@ const (
 	OpDBFlush
 	OpDBRatchetFormatMajorVersion
 	OpDBRestart
+	OpDBEstimateDiskUsage
 	OpIterClose
 	OpIterFirst
 	OpIterLast
@@ -158,6 +159,7 @@ func DefaultOpConfig() OpConfig {
 			OpDBFlush:                     2,
 			OpDBRatchetFormatMajorVersion: 1,
 			OpDBRestart:                   2,
+			OpDBEstimateDiskUsage:         1,
 			OpIterClose:                   5,
 			OpIterFirst:                   100,
 			OpIterLast:                    100,
@@ -219,6 +221,7 @@ func ReadOpConfig() OpConfig {
 			OpDBFlush:                     0,
 			OpDBRatchetFormatMajorVersion: 0,
 			OpDBRestart:                   0,
+			OpDBEstimateDiskUsage:         0,
 			OpIterClose:                   5,
 			OpIterFirst:                   100,
 			OpIterLast:                    100,
@@ -277,6 +280,7 @@ func WriteOpConfig() OpConfig {
 			OpDBFlush:                     2,
 			OpDBRatchetFormatMajorVersion: 1,
 			OpDBRestart:                   2,
+			OpDBEstimateDiskUsage:         1,
 			OpIterClose:                   0,
 			OpIterFirst:                   0,
 			OpIterLast:                    0,
