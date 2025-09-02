@@ -994,6 +994,9 @@ func (vs *versionSet) incrementCompactions(
 	case compactionKindBlobFileRewrite:
 		vs.metrics.Compact.BlobFileRewriteCount++
 
+	case compactionKindVirtualRewrite:
+		vs.metrics.Compact.VirtualRewriteCount++
+
 	default:
 		if invariants.Enabled {
 			panic("unhandled compaction kind")
