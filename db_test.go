@@ -1421,6 +1421,9 @@ func TestVirtualSSTables(t *testing.T) {
 	d, err := Open("", testingRandomized(t, &Options{
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatTableFormatV6,
+		// Disable automatic compactions, as virtual ssts may
+		// be compacted away too quickly.
+		DisableAutomaticCompactions: true,
 	}))
 	require.NoError(t, err)
 	defer func() {

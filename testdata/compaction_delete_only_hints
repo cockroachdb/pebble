@@ -88,7 +88,7 @@ maybe-compact
 Deletion hints:
   L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (666B) Score=0.00 + L3 [000006] (666B) Score=0.00 + L4 [000007] (666B) Score=0.00 -> L6 [000008] (94B), in 1.0s (2.0s total), output rate 94B/s
+  (none)
 
 # Verify that compaction correctly handles the presence of multiple
 # overlapping hints which might delete a file multiple times. All of the
@@ -127,7 +127,8 @@ maybe-compact
 Deletion hints:
   L1.000005 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (666B) Score=0.00 + L3 [000006] (666B) Score=0.00 + L4 [000007] (666B) Score=0.00 -> L6 [000008] (94B), in 1.0s (2.0s total), output rate 94B/s
+  [JOB 100] compacted(delete-only) (excised: 000005) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 -> L6 [000009] (1B), in 1.0s (2.0s total), output rate 1B/s
+[JOB 100] compacted(virtual-sst-rewrite) L1 [000009] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000010] (643B), in 1.0s (2.0s total), output rate 643B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -207,6 +208,7 @@ Deletion hints:
   (none)
 Compactions:
   [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (666B) Score=0.00 + L3 [000006] (666B) Score=0.00 + L4 [000007] (666B) Score=0.00 -> L6 [000009] (94B), in 1.0s (2.0s total), output rate 94B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000009] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000010] (655B), in 1.0s (2.0s total), output rate 655B/s
 
 # A deletion hint present on an sstable in a higher level should NOT result in a
 # deletion-only compaction incorrectly removing an sstable in L6 following an
@@ -475,15 +477,15 @@ Deletion hints:
   (none)
 Compactions:
   [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 + L3 [000007] (666B) Score=0.00 + L4 [000008] (666B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
+[JOB 100] compacted(virtual-sst-rewrite) L1 [000009] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000010] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000011] (655B), in 1.0s (2.0s total), output rate 655B/s
 
 describe-lsm
 ----
 L0.0:
   000004:[a#300,RANGEDEL-k#inf,RANGEDEL]
-L1:
-  000009(000005):[k#200,RANGEDEL-r#inf,RANGEDEL]
 L4:
-  000010(000008):[u#60,SET-u#60,SET]
+  000011:[u#0,SET-u#0,SET]
 
 iter
 first
@@ -609,14 +611,16 @@ Deletion hints:
   (none)
 Compactions:
   [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (810B) Score=0.00 -> L6 [000007 000008] (186B), in 1.0s (2.0s total), output rate 186B/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000007] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000009] (788B), in 1.0s (2.0s total), output rate 788B/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000008] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (792B), in 1.0s (2.0s total), output rate 792B/s
 
 describe-lsm
 ----
 L0.0:
   000005:[b#11,RANGEKEYDEL-n#inf,RANGEDEL]
 L6:
-  000007(000004):[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
-  000008(000004):[n#10,RANGEKEYSET-o#10,SET]
+  000009:[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
+  000010:[n#10,RANGEKEYSET-o#0,SET]
 
 iter
 first

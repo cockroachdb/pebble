@@ -53,6 +53,7 @@ func exampleMetrics() Metrics {
 	m.Compact.RewriteCount = 17
 	m.Compact.MultiLevelCount = 18
 	m.Compact.BlobFileRewriteCount = 19
+	m.Compact.VirtualRewriteCount = 20
 	m.Compact.EstimatedDebt = 6 * GB
 	m.Compact.InProgressBytes = 1 * MB
 	m.Compact.NumInProgress = 2
