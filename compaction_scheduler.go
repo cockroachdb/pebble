@@ -142,12 +142,14 @@ func init() {
 		compactionOptionalAndPriority{optional: true, priority: 60}
 	scheduledCompactionMap[compactionKindElisionOnly] =
 		compactionOptionalAndPriority{optional: true, priority: 50}
-	scheduledCompactionMap[compactionKindBlobFileRewrite] =
+	scheduledCompactionMap[compactionKindVirtualRewrite] =
 		compactionOptionalAndPriority{optional: true, priority: 40}
-	scheduledCompactionMap[compactionKindRead] =
+	scheduledCompactionMap[compactionKindBlobFileRewrite] =
 		compactionOptionalAndPriority{optional: true, priority: 30}
-	scheduledCompactionMap[compactionKindRewrite] =
+	scheduledCompactionMap[compactionKindRead] =
 		compactionOptionalAndPriority{optional: true, priority: 20}
+	scheduledCompactionMap[compactionKindRewrite] =
+		compactionOptionalAndPriority{optional: true, priority: 10}
 }
 
 // noopGrantHandle is used in cases that don't interact with a CompactionScheduler.

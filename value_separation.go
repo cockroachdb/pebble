@@ -89,7 +89,16 @@ func shouldWriteBlobFiles(
 	if c.kind == compactionKindFlush {
 		return true, 0
 	}
+
 	inputReferenceDepth := compactionBlobReferenceDepth(c.inputs)
+
+	if c.kind == compactionKindVirtualRewrite {
+		// A virtual rewrite is a compaction that just materializes a
+		// virtual table. No new blob files should be written, and the
+		// reference depth is unchanged.
+		return false, inputReferenceDepth
+	}
+
 	if inputReferenceDepth == 0 {
 		// None of the input sstables reference blob files. It may be the case
 		// that these sstables were created before value separation was enabled.

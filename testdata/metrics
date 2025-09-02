@@ -25,8 +25,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  2.70  2.10 |    713  706B |  704B  704B  704B |   707B  717B |   1.4K  1.4KB  1.4KB
 total |     -     -     - |   2.9K 2.8KB | 2.8KB 2.8KB 2.8KB |  2.8KB 2.9KB |   5.7K  8.4KB  5.7KB
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |      10      11       12    14    15    16       17    13     18    19
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |      10      11       12    14    15    16       17    13     18    19       20
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -118,8 +118,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      1   688B     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       0       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       0       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -220,8 +220,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |      4  2.6KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -304,8 +304,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |      4  2.6KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -385,8 +385,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |      4  2.6KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -469,8 +469,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |      4  2.6KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -592,8 +592,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   691B    0B |      2  1.3KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |   691B    0B |     11  7.9KB  2.4KB
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -701,8 +701,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.1KB    0B |      9  6.4KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.1KB    0B |     18   13KB  2.4KB
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       2       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       2       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -861,8 +861,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.1KB    0B |      9  6.4KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.1KB    0B |     21   17KB  2.4KB
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       2       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       2       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -983,8 +983,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.1KB    0B |      9  6.4KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.1KB    0B |     28   22KB  2.4KB
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       2       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       2       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1117,8 +1117,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.1KB    0B |      9  6.4KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.1KB    0B |     28   22KB  2.4KB
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       2       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       2       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1295,8 +1295,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   11KB    0B |     16   11KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |   11KB    0B |     35   27KB  2.4KB
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       3       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       3       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1390,8 +1390,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      3    2KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       0       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       0       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1471,8 +1471,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.7KB    0B |      3  1.9KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |  1.7KB    0B |      6  3.9KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1567,8 +1567,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.7KB    0B |      3  1.9KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |  1.7KB    0B |      6  4.5KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1655,8 +1655,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.7KB    0B |      3  1.9KB     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |  1.7KB    0B |      7  5.2KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1733,8 +1733,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       0       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       0       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1814,8 +1814,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   342B    0B |      1   655B     0B
 total |     -     -     - |      0    0B |    0B    0B    0B |   342B    0B |      1   655B     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       1       0        0     0     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -1932,8 +1932,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      3   2KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     -     -     - |      3   2KB |    0B    0B    0B |     0B    0B |      5  3.3KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       0       0        0     3     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       0       0        0     3     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -2010,8 +2010,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     6 |     -  0.00  0.00 |      3   2KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 total |     -     -     - |      3   2KB |    0B    0B    0B |     0B    0B |      5  3.3KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       0       0        0     3     0     0        0     0      0     0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob  virtual
+count |       0       0        0     3     0     0        0     0      0     0        0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
