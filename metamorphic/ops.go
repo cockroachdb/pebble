@@ -2246,3 +2246,38 @@ func (r *replicateOp) rewriteKeys(fn func(UserKey) UserKey) {
 func (r *replicateOp) diagramKeyRanges() []pebble.KeyRange {
 	return []pebble.KeyRange{{Start: r.start, End: r.end}}
 }
+
+// estimateDiskUsageOp models DB.EstimateDiskUsage and DB.EstimateDiskUsageByBackingType operations.
+type estimateDiskUsageOp struct {
+	dbID  objID
+	start UserKey
+	end   UserKey
+}
+
+func (o *estimateDiskUsageOp) run(t *Test, h historyRecorder) {
+	db := t.getDB(o.dbID)
+	_, err := db.EstimateDiskUsage(o.start, o.end)
+	if err != nil {
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
+	} else {
+		h.Recordf("%s // <OK>", o.formattedString(t.testOpts.KeyFormat))
+	}
+
+}
+
+func (o *estimateDiskUsageOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.EstimateDiskUsage(%q, %q)",
+		o.dbID, kf.FormatKey(o.start), kf.FormatKey(o.end))
+}
+
+func (o *estimateDiskUsageOp) receiver() objID      { return o.dbID }
+func (o *estimateDiskUsageOp) syncObjs() objIDSlice { return nil }
+
+func (o *estimateDiskUsageOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.start = fn(o.start)
+	o.end = fn(o.end)
+}
+
+func (o *estimateDiskUsageOp) diagramKeyRanges() []pebble.KeyRange {
+	return []pebble.KeyRange{{Start: o.start, End: o.end}}
+}

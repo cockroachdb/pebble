@@ -29,7 +29,7 @@ func (d *DB) EstimateDiskUsage(start, end []byte) (uint64, error) {
 }
 
 // EstimateDiskUsageByBackingType is like EstimateDiskUsage but additionally
-// returns the subsets of that size in remote ane external files.
+// returns the subsets of that size in remote and external files.
 func (d *DB) EstimateDiskUsageByBackingType(
 	start, end []byte,
 ) (totalSize, remoteSize, externalSize uint64, _ error) {

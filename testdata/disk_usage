@@ -1,0 +1,146 @@
+# Test comprehensive disk usage estimation with various ranges and scenarios
+
+open db1
+----
+
+# Test empty database should have zero estimated usage for any range
+estimate-disk-usage a z
+----
+size: 0
+
+
+estimate-disk-usage-by-backing-type a z
+----
+total: 0, remote: 0, external: 0
+
+
+# Test with some data
+batch
+set a 1
+set b 2
+set c 3
+set d 4
+set e 5
+----
+
+flush
+----
+
+estimate-disk-usage a z
+----
+size: 682
+
+
+
+estimate-disk-usage-by-backing-type a z
+----
+total: 682, remote: 0, external: 0
+
+
+# Test specific ranges within the data
+estimate-disk-usage a c
+----
+size: 101
+
+
+
+estimate-disk-usage y z
+----
+size: 0
+
+
+estimate-disk-usage z a
+----
+invalid key-range specified (start > end)
+
+
+estimate-disk-usage-by-backing-type x z
+----
+total: 0, remote: 0, external: 0
+
+
+estimate-disk-usage b b
+----
+size: 101
+
+# Test with external files
+
+build ext1
+set f 6
+set g 7
+set h 8
+set i 9
+set j 10
+----
+
+ingest ext1
+----
+
+flush
+----
+
+# Test disk usage after ingestion
+estimate-disk-usage a z
+----
+size: 1358
+
+
+estimate-disk-usage-by-backing-type a z
+----
+total: 1358, remote: 0, external: 0
+
+
+# Test with remote files and external files
+build-remote ext2
+k#0,SET = foo
+l#0,SET = foo
+m#0,SET = foo
+n#0,SET = foo
+o#0,SET = foo
+----
+
+estimate-disk-usage-by-backing-type a z
+----
+total: 1358, remote: 0, external: 0
+
+ingest-external 
+ext2 bounds=(k,o)
+----
+
+estimate-disk-usage-by-backing-type a z expect-total=non-zero expect-remote=non-zero expect-external=non-zero
+----
+success
+
+# Test with compaction
+compact c-e
+----
+L6:
+  000005:[a#10,SET-e#14,SET]
+  000006:[f#15,SET-j#15,SET]
+  000008(000008):[k#16,DELSIZED-o#inf,RANGEDEL]
+
+
+build ext3
+set a 11
+set b 12
+set c 13
+set d 14
+set e 15
+----
+
+estimate-disk-usage a e
+----
+size: 682
+
+ingest ext3
+----
+
+flush
+----
+
+estimate-disk-usage d j
+----
+size: 876
+
+close db1
+----
