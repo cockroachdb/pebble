@@ -310,7 +310,9 @@ func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, [NumLevels][]*
 	}
 	v := bv.rewriteCandidates.items[0]
 	var tables [NumLevels][]*TableMetadata
-	for _, tl := range v.virtualTables {
+	tableNums := slices.Sorted(maps.Keys(v.virtualTables))
+	for _, t := range tableNums {
+		tl := v.virtualTables[t]
 		tables[tl.level] = append(tables[tl.level], tl.meta)
 	}
 	return v.backing, tables
