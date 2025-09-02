@@ -1404,10 +1404,10 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) Spa
 	}
 }
 
-type TieringMeta base.TieringMeta
-type TieringAttribute base.TieringAttribute
-type TieringPolicy base.TieringPolicy
-type TieringPolicyAndExtractor base.TieringPolicyAndExtractor
+type TieringMeta = base.TieringMeta
+type TieringAttribute = base.TieringAttribute
+type TieringPolicy = base.TieringPolicy
+type TieringPolicyAndExtractor = base.TieringPolicyAndExtractor
 
 // WALFailoverOptions configures the WAL failover mechanics to use during
 // transient write unavailability on the primary WAL volume.
