@@ -310,7 +310,9 @@ func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, [NumLevels][]*
 	}
 	v := bv.rewriteCandidates.items[0]
 	var tables [NumLevels][]*TableMetadata
-	for _, tl := range v.virtualTables {
+	tableNums := slices.Sorted(maps.Keys(v.virtualTables))
+	for _, t := range tableNums {
+		tl := v.virtualTables[t]
 		tables[tl.level] = append(tables[tl.level], tl.meta)
 	}
 	return v.backing, tables
@@ -330,7 +332,7 @@ func (bv *VirtualBackings) String() string {
 			fmt.Fprintf(&buf, "  %s:  size=%d  refBlobValueSize=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d",
 				n, v.backing.Size, v.backing.ReferencedBlobValueSizeTotal, len(v.virtualTables), v.protectionCount, v.virtualizedSize)
 			if !v.isLocal {
-				fmt.Fprintf(&buf, "  (external)")
+				fmt.Fprintf(&buf, "  (remote)")
 			}
 			tableNums := slices.Sorted(maps.Keys(v.virtualTables))
 			fmt.Fprintf(&buf, "  tables: %v\n", tableNums)
