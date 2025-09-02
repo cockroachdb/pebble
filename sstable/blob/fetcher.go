@@ -7,6 +7,7 @@ package blob
 import (
 	"context"
 	"slices"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -52,6 +53,26 @@ func SuggestedCachedReaders(readAmp int) int {
 	return 5 * max(1, readAmp)
 }
 
+// cachedReaderPool is a pool of cachedReaderSets. It's used to recycle
+// []cachedReaders. Recycling is done explicitly via a pool, rather than
+// retaining a recycled iterator's pool, because not all iterators need to
+// retrieve separated values.
+var cachedReaderPool sync.Pool = sync.Pool{
+	New: func() interface{} {
+		return &cachedReaderSet{}
+	},
+}
+
+// minAllocedReaders is the minimum number of cached readers to allocate when
+// allocating a new cachedReaderSet. Some ValueFetchers only use a small
+// quantity of cached readers, and setting a minimum helps reduce allocations
+// assuming typical read-amp of ~7.
+const minAllocedReaders = 35
+
+type cachedReaderSet struct {
+	readers []cachedReader
+}
+
 // A ValueFetcher retrieves values stored out-of-band in separate blob files.
 // The ValueFetcher caches accessed file readers to avoid redundant file cache
 // and block cache lookups when performing consecutive value retrievals.
@@ -62,12 +83,14 @@ func SuggestedCachedReaders(readAmp int) int {
 // When finished with a ValueFetcher, one must call Close to release all cached
 // readers and block buffers.
 type ValueFetcher struct {
-	fileMapping    base.BlobFileMapping
-	readerProvider ReaderProvider
-	env            block.ReadEnv
-	fetchCount     int
-	bufMangler     invariants.BufMangler
-	readers        []cachedReader
+	fileMapping      base.BlobFileMapping
+	readerProvider   ReaderProvider
+	env              block.ReadEnv
+	fetchCount       int
+	bufMangler       invariants.BufMangler
+	maxCachedReaders int
+	// cached is nil until the first call to retrieve.
+	cached *cachedReaderSet
 }
 
 // TODO(jackson): Support setting up a read handle for compaction when relevant.
@@ -85,7 +108,7 @@ func (r *ValueFetcher) Init(
 	if r.readerProvider == nil {
 		panic("readerProvider is nil")
 	}
-	r.readers = slices.Grow(r.readers[:0], maxCachedReaders)[:maxCachedReaders]
+	r.maxCachedReaders = maxCachedReaders
 }
 
 // FetchHandle returns the value, given the handle. FetchHandle must not be
@@ -129,6 +152,12 @@ func (r *ValueFetcher) Fetch(
 }
 
 func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err error) {
+	if r.cached == nil {
+		r.cached = cachedReaderPool.Get().(*cachedReaderSet)
+		allocSize := max(minAllocedReaders, r.maxCachedReaders)
+		r.cached.readers = slices.Grow(r.cached.readers[:0], allocSize)[:r.maxCachedReaders]
+	}
+
 	// Look for a cached reader for the file. Also, find the least-recently used
 	// reader. If we don't find a cached reader, we'll replace the
 	// least-recently used reader with the new one for the file indicated by
@@ -136,18 +165,18 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 	var cr *cachedReader
 	var oldestFetchIndex int
 	// TODO(jackson): Reconsider this O(len(readers)) scan.
-	for i := range r.readers {
-		if r.readers[i].blobFileID == vh.BlobFileID && r.readers[i].r != nil {
-			cr = &r.readers[i]
+	for i := range r.cached.readers {
+		if r.cached.readers[i].blobFileID == vh.BlobFileID && r.cached.readers[i].r != nil {
+			cr = &r.cached.readers[i]
 			break
-		} else if r.readers[i].lastFetchCount < r.readers[oldestFetchIndex].lastFetchCount {
+		} else if r.cached.readers[i].lastFetchCount < r.cached.readers[oldestFetchIndex].lastFetchCount {
 			oldestFetchIndex = i
 		}
 	}
 
 	if cr == nil {
 		// No cached reader found for the file. Get one from the file cache.
-		cr = &r.readers[oldestFetchIndex]
+		cr = &r.cached.readers[oldestFetchIndex]
 		// Release the previous reader, if any.
 		if cr.r != nil {
 			if err = cr.Close(); err != nil {
@@ -187,17 +216,21 @@ func (r *ValueFetcher) retrieve(ctx context.Context, vh Handle) (val []byte, err
 // called, the ValueFetcher is no longer usable.
 func (r *ValueFetcher) Close() error {
 	var err error
-	for i := range r.readers {
-		if r.readers[i].r != nil {
-			err = errors.CombineErrors(err, r.readers[i].Close())
+	if r.cached != nil {
+		for i := range r.cached.readers {
+			if r.cached.readers[i].r != nil {
+				err = errors.CombineErrors(err, r.cached.readers[i].Close())
+			}
 		}
+		cachedReaderPool.Put(r.cached)
+		r.cached = nil
 	}
 	r.fileMapping = nil
 	r.readerProvider = nil
 	r.env = block.ReadEnv{}
 	r.fetchCount = 0
 	r.bufMangler = invariants.BufMangler{}
-	r.readers = r.readers[:0]
+	r.maxCachedReaders = 0
 	return err
 }
 
