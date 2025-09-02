@@ -168,6 +168,7 @@ func (g *generator) generate(count uint64) []op {
 		OpDBFlush:                     g.dbFlush,
 		OpDBRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
 		OpDBRestart:                   g.dbRestart,
+		OpDBEstimateDiskUsage:         g.dbEstimateDiskUsage,
 		OpIterClose:                   g.randIter(g.iterClose),
 		OpIterFirst:                   g.randIter(g.iterFirst),
 		OpIterLast:                    g.randIter(g.iterLast),
@@ -411,6 +412,21 @@ func (g *generator) dbCompact() {
 		start:       start,
 		end:         end,
 		parallelize: g.rng.Float64() < 0.5,
+	})
+}
+
+func (g *generator) dbEstimateDiskUsage() {
+	// Generate new key(s) with a 1% probability.
+	start := g.keyGenerator.RandKey(0.01)
+	end := g.keyGenerator.RandKey(0.01)
+	if g.cmp(start, end) > 0 {
+		start, end = end, start
+	}
+	dbID := g.dbs.rand(g.rng)
+	g.add(&estimateDiskUsageOp{
+		dbID:  dbID,
+		start: start,
+		end:   end,
 	})
 }
 

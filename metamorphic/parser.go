@@ -130,6 +130,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.writerID, nil, []interface{}{&t.start, &t.end, &t.suffix}
 	case *replicateOp:
 		return &t.source, nil, []interface{}{&t.dest, &t.start, &t.end}
+	case *estimateDiskUsageOp:
+		return &t.dbID, nil, []interface{}{&t.start, &t.end}
 	}
 	panic(fmt.Sprintf("unsupported op type: %T", op))
 }
@@ -146,6 +148,7 @@ var methods = map[string]*methodInfo{
 	"Close":                     makeMethod(closeOp{}, dbTag, batchTag, iterTag, snapTag),
 	"Commit":                    makeMethod(batchCommitOp{}, batchTag),
 	"Compact":                   makeMethod(compactOp{}, dbTag),
+	"EstimateDiskUsage":         makeMethod(estimateDiskUsageOp{}, dbTag),
 	"Delete":                    makeMethod(deleteOp{}, dbTag, batchTag),
 	"DeleteRange":               makeMethod(deleteRangeOp{}, dbTag, batchTag),
 	"Download":                  makeMethod(downloadOp{}, dbTag),
