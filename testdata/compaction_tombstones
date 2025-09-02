@@ -389,8 +389,9 @@ compression: None:87,Snappy:73/84
 # numbers, so the test overwrites them to 0.
 maybe-compact
 ----
-[JOB 100] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
-[JOB 101] compacted(default) L5 [000004] (696B) Score=2.72 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (8.2KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (8.7KB), in 1.0s (2.0s total), output rate 8.7KB/s
+[JOB 101] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
+[JOB 102] compacted(default) L5 [000004] (696B) Score=2.72 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
 
 # The same LSM as above. However, this time, with point tombstone weighting at
 # 2x, the table with the point tombstone (000004) will be selected as the
@@ -437,8 +438,10 @@ compression: None:87,Snappy:73/84
 # numbers, so the test overwrites them to 0.
 maybe-compact
 ----
-[JOB 100] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
-[JOB 101] compacted(default) L5 [000004] (696B) Score=2.72 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (8.2KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (8.7KB), in 1.0s (2.0s total), output rate 8.7KB/s
+[JOB 101] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
+[JOB 102] compacted(default) L5 [000004] (696B) Score=2.72 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
+
 
 # These tests demonstrate the behavior of the tombstone density compaction feature
 # in Pebble. This feature identifies files with a high density of tombstones and

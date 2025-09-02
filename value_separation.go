@@ -89,7 +89,13 @@ func shouldWriteBlobFiles(
 	if c.kind == compactionKindFlush {
 		return true, 0
 	}
+
 	inputReferenceDepth := compactionBlobReferenceDepth(c.inputs)
+
+	if c.kind == compactionKindVirtualRewrite {
+		return false, inputReferenceDepth
+	}
+
 	if inputReferenceDepth == 0 {
 		// None of the input sstables reference blob files. It may be the case
 		// that these sstables were created before value separation was enabled.
