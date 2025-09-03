@@ -757,7 +757,7 @@ type TieringPolicy struct {
 //     retrieve some unnecessary policies, but we will have all the SpanIDs
 //     that could possibly apply to these values and can stash them into a
 //     SpanID => TieringPolicy map, for use in this compaction. NB: due to
-//     weak consistency, the SpanIDs in this map may be a subset of the
+//     eventual consistency, the SpanIDs in this map may be a subset of the
 //     SpanIDs in the blob file. For the ones with an unknown policy, we will
 //     not change the tier.
 //
@@ -811,3 +811,102 @@ const (
 	ColdTier
 	NumStorageTiers
 )
+
+// Tiering and iterators.
+//
+// We consider the question of correctness when the tiering attribute value is
+// used to ignore key-value pairs during iteration. Specifically, consider a
+// SQL scan over a SQL index, that corresponds to a single TieringSpanID,
+// where the scan is only interested in rows with a tiering attribute value >=
+// T.
+//
+// We first note that we have an existing mechanism to ignore whole blocks of
+// key-value pairs during iteration, based on a block property filter.
+// Historically, this could expose keys that were deleted (see CockroachDB's
+// MVCCIncrementalIterator that still uses a pair of iterators, one with and
+// one without a block property filter, to overcome the additional keys
+// exposed by the iterator with the block property filter). However, as part
+// of supporting range key masking, Pebble's block property filter was
+// strengthened to be correct wrt hiding keys that are not visible from a
+// Pebble perspective. This correctness depends on the block property
+// collector being a function only of the key. See
+// https://github.com/cockroachdb/pebble/blob/82fc444f6f79c4a135ef58bf954c2a134e958aed/sstable/block_property.go#L51-L83
+// for details.
+//
+// We now consider the ExtractAttribute function, which is a function of both
+// the userKey and value. This is needed since it will be common for the SQL
+// column from which the tiering attribute is derived to be part of the value.
+// We will also discuss below the case where the tiering attribute is part of
+// the key. Along with this we consider two ways of tiering:
+//
+// - Only-value-cold: Only the value is written to the cold tier in a cold
+//   blob file. This is our initial implementation.
+//
+// - Key-and-value-cold: In addition to cold blob files, this scheme will have
+//   cold sstables (say in L7 and L8). This is needed when tiering large SQL
+//   secondary indexes where the key is large and the value is small. We have
+//   seen such examples in at least one customer workload. We are not yet
+//   implementing this, but we want to consider this in the correctness
+//   discussion.
+//
+// Example 1:
+//
+// The LSM contains k1@t1#seq2 => v2, and k1@t1#seq1 => v1. where seq2 > seq1.
+// Since the tiering attribute is a function of (k1@t1, v2) and (k1@t1, v1)
+// respectively, it is possible that extract(k1@t1,v2) < T and
+// extract(k1@t1,v1) >= T. If we hide k1@t1#seq2 => v2 when iterating (say in
+// the sstable iterator), then we can incorrectly expose k1@t1#seq1 => v1,
+// even though it is not visible. NB: this example is agnostic to whether we
+// are operating with only-value-cold or key-and-value-cold.
+//
+// Example 2:
+//
+// One could claim that CockroachDB never reuses the same key k1 (this is not
+// actually true, since a txn can abort and another txn can then write to the
+// same timestamp, or a txn can write to the same key multiple times). Here we
+// show that correctness at the MVCC level is also not guaranteed.
+//
+// The LSM contains k1@t2#seq2 => v2, and k1@t1#seq1 => v1. where seq2 > seq1,
+// and t2 > t1. Both keys are visible from Pebble's perspective. Again, it is
+// possible for extract(k1@t2,v2) < T and extract(k1@t1,v1) >= T. If we hide
+// k1@t2#seq2 => v2 when iterating, then the MVCC history is incorrect at the
+// CockroachDB level.
+//
+// Solution Part 1:
+//
+// For TieringSpanIDs where the extraction is a function of both key and
+// value, we will do only-value-cold tiering. Additionally, iterators on such
+// spans cannot ask for any filtering based on the tiering attribute. For
+// efficiency, either the iterator spans must naturally touch only hot data,
+// or the iteration must typically stop before reaching cold data.
+//
+// We have examined the existing customer schemas for tiering and prospective
+// queries, and this approach seems sufficient. See
+// https://docs.google.com/document/d/1lWuUeqZ34GlB_9QulXIlx3Lk_A7UB_9lLqmwldm4EfQ/edit?pli=1&tab=t.0#bookmark=id.u330thrif93y
+// for details related to this and solution part 2 below.
+//
+// Solution Part 2:
+//
+// Applies to TieringSpanIDs for which the extraction is a function of only
+// the key prefix (which makes the above examples correct). There are existing
+// examples of SQL secondary indexes where the tiering column is part of the
+// key. Additionally, we can add the tiering column to the key when the
+// secondary index is not UNIQUE. In this case we can do key-and-value-cold
+// tiering, and block property filters will be defined over the tiering
+// attribute, to be able to skip over cold sstables, and cold sstable blocks.
+// If the secondary index is storing many columns, we can also usefully use
+// only-value-cold tiering: for queries where the span of the index can be
+// constrained using the tiering column, only hot data will typically be read.
+// We have seen one customer example where the span of the index cannot be
+// constrained using the tiering column, despite a predicate on the tiering
+// column -- this will result in retrieving cold values and then performing
+// filtering at the SQL layer. This can be avoided by having the SQL layer
+// pass down an interval for the tiering column desired by the query, and the
+// iterator using it to skip keys that are not in the interval.
+//
+// Solution part 2 requires removing the "eventual consistency" behavior of
+// the policies mentioned in the comment on TieringPolicyAndExtractor.
+// Extraction errors are not permitted either (in that such errors will cause
+// the flush or compaction to fail), since if k1@t1#seq1 => v1 (from example
+// 2) suffers an extraction error, it will not become cold, while k1@t2#seq2
+// => v2 will be cold.
