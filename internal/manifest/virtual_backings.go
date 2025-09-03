@@ -67,7 +67,7 @@ import (
 //   - ingestion fails, calls Unprotect(B1). B1 is now Unused() and the next
 //     version (applied by whatever next operation is) will remove B1.
 type VirtualBackings struct {
-	m map[base.DiskFileNum]backingWithMetadata
+	m map[base.DiskFileNum]*backingWithMetadata
 
 	// unused are all the backings in m that are not inUse(). Used for
 	// implementing Unused() efficiently.
@@ -79,7 +79,7 @@ type VirtualBackings struct {
 // MakeVirtualBackings returns empty initialized VirtualBackings.
 func MakeVirtualBackings() VirtualBackings {
 	return VirtualBackings{
-		m:      make(map[base.DiskFileNum]backingWithMetadata),
+		m:      make(map[base.DiskFileNum]*backingWithMetadata),
 		unused: make(map[*TableBacking]struct{}),
 	}
 }
@@ -108,7 +108,7 @@ func (bv *VirtualBackings) AddAndRef(backing *TableBacking) {
 	// We take a reference on the backing because in case of protected backings
 	// (see Protect), we might be the only ones holding on to a backing.
 	backing.Ref()
-	bv.mustAdd(backingWithMetadata{
+	bv.mustAdd(&backingWithMetadata{
 		backing:       backing,
 		virtualTables: make(map[base.TableNum]*TableMetadata),
 	})
@@ -147,8 +147,10 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 		delete(bv.unused, v.backing)
 	}
 	v.virtualizedSize += m.Size
+	if _, ok := v.virtualTables[m.TableNum]; ok {
+		panic(errors.AssertionFailedf("table %s already uses backing %s", m.TableNum, v.backing.DiskFileNum))
+	}
 	v.virtualTables[m.TableNum] = m
-	bv.m[m.TableBacking.DiskFileNum] = v
 }
 
 // RemoveTable is used when a table using a backing is removed. The backing is
@@ -161,7 +163,6 @@ func (bv *VirtualBackings) RemoveTable(backing base.DiskFileNum, table base.Tabl
 	}
 	delete(v.virtualTables, table)
 	v.virtualizedSize -= t.Size
-	bv.m[backing] = v
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
 	}
@@ -178,7 +179,6 @@ func (bv *VirtualBackings) Protect(n base.DiskFileNum) {
 		delete(bv.unused, v.backing)
 	}
 	v.protectionCount++
-	bv.m[n] = v
 }
 
 // Unprotect reverses a Protect call.
@@ -189,7 +189,6 @@ func (bv *VirtualBackings) Unprotect(n base.DiskFileNum) {
 		panic(errors.AssertionFailedf("invalid protectionCount"))
 	}
 	v.protectionCount--
-	bv.m[n] = v
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
 	}
@@ -292,7 +291,7 @@ func (bv *VirtualBackings) String() string {
 	return buf.String()
 }
 
-func (bv *VirtualBackings) mustAdd(v backingWithMetadata) {
+func (bv *VirtualBackings) mustAdd(v *backingWithMetadata) {
 	_, ok := bv.m[v.backing.DiskFileNum]
 	if ok {
 		panic("pebble: trying to add an existing file backing")
@@ -300,7 +299,7 @@ func (bv *VirtualBackings) mustAdd(v backingWithMetadata) {
 	bv.m[v.backing.DiskFileNum] = v
 }
 
-func (bv *VirtualBackings) mustGet(n base.DiskFileNum) backingWithMetadata {
+func (bv *VirtualBackings) mustGet(n base.DiskFileNum) *backingWithMetadata {
 	v, ok := bv.m[n]
 	if !ok {
 		panic(fmt.Sprintf("unknown backing %s", n))
