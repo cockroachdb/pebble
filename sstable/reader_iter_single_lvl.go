@@ -439,9 +439,8 @@ func (i *singleLevelIterator[I, PI, P, PD]) SetContext(ctx context.Context) {
 // unpositioned. If unsuccessful, it sets i.err to any error encountered, which
 // may be nil if we have simply exhausted the entire table.
 func (i *singleLevelIterator[I, PI, P, PD]) loadDataBlock(dir int8) loadBlockResult {
-	if !i.ensureIndexLoaded() {
-		// Ensure the data block iterator is invalidated
-		PD(&i.data).Invalidate()
+	if !i.indexLoaded {
+		i.err = errors.AssertionFailedf("index block is not loaded")
 		return loadBlockFailed
 	}
 	if !PI(&i.index).Valid() {
@@ -608,7 +607,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 	key []byte,
 ) (kv *base.InternalKV, done bool) {
 	kv = PD(&i.data).KV()
-	for j := 0; j < numStepsBeforeSeek; j++ {
+	for range numStepsBeforeSeek {
 		curKeyCmp := i.cmp(kv.K.UserKey, key)
 		if curKeyCmp < 0 {
 			if i.blockLower != nil && i.cmp(kv.K.UserKey, i.blockLower) < 0 {
@@ -1284,7 +1283,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Int
 	// Did not find prefix in the existing data block. This is the slow-path
 	// where we effectively seek the iterator.
 	// The key is likely to be in the next data block, so try one step.
-	if !i.ensureIndexLoaded() {
+	if !i.indexLoaded {
+		i.err = errors.AssertionFailedf("index block is not loaded")
 		return nil
 	}
 	if !PI(&i.index).Next() {
@@ -1358,7 +1358,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) Prev() *base.InternalKV {
 
 func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 	for {
-		if !i.ensureIndexLoaded() {
+		if !i.indexLoaded {
+			i.err = errors.AssertionFailedf("index block is not loaded")
 			return nil
 		}
 		if !PI(&i.index).Next() {
@@ -1439,7 +1440,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 
 func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 	for {
-		if !i.ensureIndexLoaded() {
+		if !i.indexLoaded {
+			i.err = errors.AssertionFailedf("index block is not loaded")
 			return nil
 		}
 		if !PI(&i.index).Prev() {

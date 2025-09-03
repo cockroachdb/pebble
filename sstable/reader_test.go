@@ -1139,6 +1139,8 @@ func (rw *readerWorkload) handleInvalid(callType readCallType, iter Iterator) *b
 	switch callType {
 	case SeekGE, Next, Last:
 		if len(rw.seekKeyAfterInvalid) == 0 {
+			// Ensure iterator is positioned before calling Prev()
+			iter.Last()
 			return iter.Prev()
 		}
 		return iter.SeekLT(rw.seekKeyAfterInvalid, base.SeekLTFlagsNone)
@@ -1149,6 +1151,8 @@ func (rw *readerWorkload) handleInvalid(callType readCallType, iter Iterator) *b
 		return iter.SeekLT(rw.seekKeyAfterInvalid, base.SeekLTFlagsNone)
 	case SeekLT, Prev, First:
 		if len(rw.seekKeyAfterInvalid) == 0 {
+			// Ensure iterator is positioned before calling Next()
+			iter.First()
 			return iter.Next()
 		}
 		return iter.SeekGE(rw.seekKeyAfterInvalid, base.SeekGEFlagsNone)
@@ -1385,6 +1389,10 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 			fileName := createFile(true, nil)
 			iter, cleanup := createIter(fileName, syntheticSuffix, syntheticPrefix)
 			defer cleanup()
+
+			// Position both iterators to ensure index blocks are loaded
+			eIter.First()
+			iter.First()
 
 			w := createReadWorkload(t, rng, callCount, ks, maxTs+2, syntheticPrefix)
 			workloadChecker := checker{

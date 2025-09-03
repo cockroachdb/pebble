@@ -854,7 +854,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Intern
 	// Did not find prefix in the existing second-level index block. This is the
 	// slow-path where we seek the iterator.
 
-	if !i.ensureTopLevelIndexLoaded() {
+	if !i.topLevelIndexLoaded {
+		i.secondLevel.err = errors.AssertionFailedf("top level index is not loaded")
 		return nil
 	}
 
@@ -905,7 +906,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 			return nil
 		}
 
-		if !i.ensureTopLevelIndexLoaded() {
+		if !i.topLevelIndexLoaded {
+			i.secondLevel.err = errors.AssertionFailedf("top level index is not loaded")
 			return nil
 		}
 
@@ -987,7 +989,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			return nil
 		}
 
-		if !i.ensureTopLevelIndexLoaded() {
+		if !i.topLevelIndexLoaded {
+			i.secondLevel.err = errors.AssertionFailedf("top level index is not loaded")
 			return nil
 		}
 

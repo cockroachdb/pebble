@@ -444,9 +444,12 @@ func TestLazyLoadingStressOperations(t *testing.T) {
 	require.NoError(t, err)
 	defer iter.Close()
 
+	// Ensure iterator is positioned before operations
+	iter.First()
+
 	// Perform many repeated operations
 	const numOperations = 5000
-	for i := 0; i < numOperations; i++ {
+	for i := range numOperations {
 		switch i % 5 {
 		case 0:
 			iter.First()
@@ -523,7 +526,10 @@ func performConcurrentOps(reader *Reader, keys [][]byte, numOps int, goroutineID
 	}
 	defer iter.Close()
 
-	for i := 0; i < numOps; i++ {
+	// Ensure iterator is positioned before any operations
+	iter.First()
+
+	for i := range numOps {
 		// Vary operations based on goroutine ID and iteration
 		switch (goroutineID + i) % 4 {
 		case 0:
