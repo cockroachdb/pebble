@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -181,8 +182,9 @@ func (d *DB) newInternalIter(
 
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	buf := newIterAlloc()
-	dbi := &scanInternalIterator{
+	buf := scanInternalIteratorIterAllocPool.Get().(*scanInternalIterAlloc)
+	dbi := &buf.scanIter
+	*dbi = scanInternalIterator{
 		ctx:             ctx,
 		db:              d,
 		comparer:        d.opts.Comparer,
@@ -193,7 +195,7 @@ func (d *DB) newInternalIter(
 		newIters:        d.newIters,
 		newIterRangeKey: d.tableNewRangeKeyIter,
 		seqNum:          seqNum,
-		mergingIter:     &buf.merging,
+		mergingIter:     &buf.iterAlloc.merging,
 	}
 	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache, block.ReadEnv{},
 		blob.SuggestedCachedReaders(vers.MaxReadAmp()))
@@ -219,7 +221,7 @@ type internalIterOpts struct {
 }
 
 func finishInitializingInternalIter(
-	buf *iterAlloc, i *scanInternalIterator,
+	buf *scanInternalIterAlloc, i *scanInternalIterator,
 ) (*scanInternalIterator, error) {
 	// Short-hand.
 	var memtables flushableList
@@ -236,7 +238,7 @@ func finishInitializingInternalIter(
 	}
 	i.initializeBoundBufs(i.opts.LowerBound, i.opts.UpperBound)
 
-	if err := i.constructPointIter(i.opts.Category, memtables, buf); err != nil {
+	if err := i.constructPointIter(i.opts.Category, memtables, &buf.iterAlloc); err != nil {
 		return nil, err
 	}
 
@@ -585,7 +587,7 @@ type scanInternalIterator struct {
 	rangeKey         *iteratorRangeKeyState
 	pointKeyIter     internalIterator
 	iterKV           *base.InternalKV
-	alloc            *iterAlloc
+	alloc            *scanInternalIterAlloc
 	newIters         tableNewIters
 	newIterRangeKey  keyspanimpl.TableNewSpanIter
 	seqNum           base.SeqNum
@@ -1300,18 +1302,19 @@ func (i *scanInternalIterator) Close() error {
 	if alloc := i.alloc; alloc != nil {
 		for j := range i.boundsBuf {
 			if cap(i.boundsBuf[j]) >= maxKeyBufCacheSize {
-				alloc.boundsBuf[j] = nil
+				alloc.iterAlloc.boundsBuf[j] = nil
 			} else {
-				alloc.boundsBuf[j] = i.boundsBuf[j]
+				alloc.iterAlloc.boundsBuf[j] = i.boundsBuf[j]
 			}
 		}
-		*alloc = iterAlloc{
-			keyBuf:              alloc.keyBuf[:0],
-			boundsBuf:           alloc.boundsBuf,
-			prefixOrFullSeekKey: alloc.prefixOrFullSeekKey[:0],
-		}
-		iterAllocPool.Put(alloc)
-		i.alloc = nil
+		keyBuf := alloc.iterAlloc.keyBuf[:0]
+		boundsBuf := alloc.iterAlloc.boundsBuf
+		prefixOrFullSeekKey := alloc.iterAlloc.prefixOrFullSeekKey[:0]
+		*alloc = scanInternalIterAlloc{}
+		alloc.iterAlloc.keyBuf = keyBuf
+		alloc.iterAlloc.boundsBuf = boundsBuf
+		alloc.iterAlloc.prefixOrFullSeekKey = prefixOrFullSeekKey
+		scanInternalIteratorIterAllocPool.Put(alloc)
 	}
 	return err
 }
@@ -1332,4 +1335,17 @@ func (i *scanInternalIterator) initializeBoundBufs(lower, upper []byte) {
 	}
 	i.boundsBuf[i.boundsBufIdx] = buf
 	i.boundsBufIdx = 1 - i.boundsBufIdx
+}
+
+// scanInternalIterAlloc is a wrapper around iterAlloc that includes a
+// scanInternalIterator.
+type scanInternalIterAlloc struct {
+	iterAlloc iterAlloc
+	scanIter  scanInternalIterator
+}
+
+var scanInternalIteratorIterAllocPool = sync.Pool{
+	New: func() interface{} {
+		return &scanInternalIterAlloc{}
+	},
 }
