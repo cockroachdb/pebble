@@ -1274,8 +1274,7 @@ func (b *Batch) SetRepr(data []byte) error {
 // SeekPrefixGE, SeekLT, First or Last. Only indexed batches support iterators.
 //
 // The returned Iterator observes all of the Batch's existing mutations, but no
-// later mutations. Its view can be refreshed via RefreshBatchSnapshot or
-// SetOptions().
+// later mutations. Its view can be refreshed by calling SetOptions.
 func (b *Batch) NewIter(o *IterOptions) (*Iterator, error) {
 	return b.NewIterWithContext(context.Background(), o)
 }
@@ -1293,8 +1292,7 @@ func (b *Batch) NewIterWithContext(ctx context.Context, o *IterOptions) (*Iterat
 // batch, and does not overlay the batch mutations on top of the DB state.
 //
 // The returned Iterator observes all of the Batch's existing mutations, but
-// no later mutations. Its view can be refreshed via RefreshBatchSnapshot or
-// SetOptions().
+// no later mutations. Its view can be refreshed by calling SetOptions.
 func (b *Batch) NewBatchOnlyIter(ctx context.Context, o *IterOptions) (*Iterator, error) {
 	if b.index == nil {
 		return nil, ErrNotIndexed
