@@ -5,10 +5,13 @@
 package cache
 
 import (
+	"cmp"
 	"context"
 	crand "crypto/rand"
 	"fmt"
 	"math/rand"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -189,6 +192,34 @@ func TestReadShard(t *testing.T) {
 				delete(readers, name)
 				time.Sleep(10 * time.Millisecond)
 				return fmt.Sprintf("map-len: %d", c.readShard.lenForTesting())
+
+			case "print-shard":
+				return func() string {
+					c.mu.RLock()
+					defer c.mu.RUnlock()
+					type shardEntry struct {
+						k          key
+						hasValue   bool
+						referenced bool
+					}
+					var entries []shardEntry
+					c.blocks.All(func(k key, e *entry) bool {
+						entries = append(entries,
+							shardEntry{k: k, hasValue: e.val != nil, referenced: e.referenced.Load()})
+						return true
+					})
+					slices.SortFunc(entries, func(a, b shardEntry) int {
+						return cmp.Or(
+							cmp.Compare(a.k.id, b.k.id), cmp.Compare(a.k.fileNum, b.k.fileNum),
+							cmp.Compare(a.k.offset, b.k.offset))
+					})
+					var b strings.Builder
+					for _, e := range entries {
+						fmt.Fprintf(&b, "id=%d file=%d offset=%d hasValue=%t referenced=%t\n",
+							e.k.id, e.k.fileNum, e.k.offset, e.hasValue, e.referenced)
+					}
+					return b.String()
+				}()
 
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
