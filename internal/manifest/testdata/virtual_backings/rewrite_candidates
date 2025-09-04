@@ -1,0 +1,131 @@
+# Test rewrite candidates heap with blob value sizes.
+
+# Add backings with values in blob files.
+add n=1 size=100 blobValueSize=50
+----
+1 virtual backings, total size 100:
+  000001:  size=100  refBlobValueSize=50  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+unused virtual backings: 000001
+
+add n=2 size=200 blobValueSize=100
+----
+2 virtual backings, total size 300:
+  000001:  size=100  refBlobValueSize=50  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000002:  size=200  refBlobValueSize=100  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+unused virtual backings: 000001 000002
+
+add n=3 size=150 blobValueSize=75
+----
+3 virtual backings, total size 450:
+  000001:  size=100  refBlobValueSize=50  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000002:  size=200  refBlobValueSize=100  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000003:  size=150  refBlobValueSize=75  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+unused virtual backings: 000001 000002 000003
+
+add n=4 size=300 blobValueSize=150
+----
+4 virtual backings, total size 750:
+  000001:  size=100  refBlobValueSize=50  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000002:  size=200  refBlobValueSize=100  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000003:  size=150  refBlobValueSize=75  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+unused virtual backings: 000001 000002 000003 000004
+
+add n=5 size=250 blobValueSize=125
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000002:  size=200  refBlobValueSize=100  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000003:  size=150  refBlobValueSize=75  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+unused virtual backings: 000001 000002 000003 000004 000005
+
+# Add tables to create rewrite candidates with varying percentages.
+add-table n=1 size=50 table=1
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=1  protectionCount=0  virtualizedSize=50  tables: [000001]
+  000002:  size=200  refBlobValueSize=100  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000003:  size=150  refBlobValueSize=75  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+rewrite candidates: 000001(33.3%) 
+unused virtual backings: 000002 000003 000004 000005
+
+add-table n=2 size=10 table=2
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=1  protectionCount=0  virtualizedSize=50  tables: [000001]
+  000002:  size=200  refBlobValueSize=100  useCount=1  protectionCount=0  virtualizedSize=10  tables: [000002]
+  000003:  size=150  refBlobValueSize=75  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+rewrite candidates: 000002(3.3%) 000001(33.3%) 
+unused virtual backings: 000003 000004 000005
+
+add-table n=3 size=90 table=3
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=1  protectionCount=0  virtualizedSize=50  tables: [000001]
+  000002:  size=200  refBlobValueSize=100  useCount=1  protectionCount=0  virtualizedSize=10  tables: [000002]
+  000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
+  000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+rewrite candidates: 000002(3.3%) 000001(33.3%) 000003(40.0%) 
+unused virtual backings: 000004 000005
+
+add-table n=4 size=45 table=4
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=1  protectionCount=0  virtualizedSize=50  tables: [000001]
+  000002:  size=200  refBlobValueSize=100  useCount=1  protectionCount=0  virtualizedSize=10  tables: [000002]
+  000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
+  000004:  size=300  refBlobValueSize=150  useCount=1  protectionCount=0  virtualizedSize=45  tables: [000004]
+  000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+rewrite candidates: 000002(3.3%) 000004(10.0%) 000001(33.3%) 000003(40.0%) 
+unused virtual backings: 000005
+
+add-table n=5 size=100 table=5
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=1  protectionCount=0  virtualizedSize=50  tables: [000001]
+  000002:  size=200  refBlobValueSize=100  useCount=1  protectionCount=0  virtualizedSize=10  tables: [000002]
+  000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
+  000004:  size=300  refBlobValueSize=150  useCount=1  protectionCount=0  virtualizedSize=45  tables: [000004]
+  000005:  size=250  refBlobValueSize=125  useCount=1  protectionCount=0  virtualizedSize=100  tables: [000005]
+rewrite candidates: 000002(3.3%) 000004(10.0%) 000005(26.7%) 000001(33.3%) 000003(40.0%) 
+
+add-table n=2 size=80 table=6
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=1  protectionCount=0  virtualizedSize=50  tables: [000001]
+  000002:  size=200  refBlobValueSize=100  useCount=2  protectionCount=0  virtualizedSize=90  tables: [000002 000006]
+  000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
+  000004:  size=300  refBlobValueSize=150  useCount=1  protectionCount=0  virtualizedSize=45  tables: [000004]
+  000005:  size=250  refBlobValueSize=125  useCount=1  protectionCount=0  virtualizedSize=100  tables: [000005]
+rewrite candidates: 000002(30.0%) 000004(10.0%) 000005(26.7%) 000002(30.0%) 000001(33.3%) 000003(40.0%) 
+
+# Remove some tables to demonstrate heap updates.
+remove-table n=5 table=5
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=1  protectionCount=0  virtualizedSize=50  tables: [000001]
+  000002:  size=200  refBlobValueSize=100  useCount=2  protectionCount=0  virtualizedSize=90  tables: [000002 000006]
+  000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
+  000004:  size=300  refBlobValueSize=150  useCount=1  protectionCount=0  virtualizedSize=45  tables: [000004]
+  000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+rewrite candidates: 000002(30.0%) 000004(10.0%) 000002(30.0%) 000001(33.3%) 000003(40.0%) 
+unused virtual backings: 000005
+
+# Remove backing 4's table. Should remove from heap since virtualizedSize=0.
+remove-table n=4 table=4
+----
+5 virtual backings, total size 1000:
+  000001:  size=100  refBlobValueSize=50  useCount=1  protectionCount=0  virtualizedSize=50  tables: [000001]
+  000002:  size=200  refBlobValueSize=100  useCount=2  protectionCount=0  virtualizedSize=90  tables: [000002 000006]
+  000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
+  000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+  000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
+rewrite candidates: 000002(30.0%) 000002(30.0%) 000001(33.3%) 000003(40.0%) 
+unused virtual backings: 000004 000005

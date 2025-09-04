@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	googlebtree "github.com/google/btree"
 )
 
 // VirtualBackings maintains information about the set of backings that support
@@ -68,6 +69,9 @@ import (
 //     version (applied by whatever next operation is) will remove B1.
 type VirtualBackings struct {
 	m map[base.DiskFileNum]*backingWithMetadata
+	// rewriteCandidates is a BTree of virtual backings ordered by
+	// referencedDataPct. Used to pick a candidate for rewriting.
+	rewriteCandidates *googlebtree.BTreeG[*backingWithMetadata]
 
 	// unused are all the backings in m that are not inUse(). Used for
 	// implementing Unused() efficiently.
@@ -79,8 +83,9 @@ type VirtualBackings struct {
 // MakeVirtualBackings returns empty initialized VirtualBackings.
 func MakeVirtualBackings() VirtualBackings {
 	return VirtualBackings{
-		m:      make(map[base.DiskFileNum]*backingWithMetadata),
-		unused: make(map[*TableBacking]struct{}),
+		m:                 make(map[base.DiskFileNum]*backingWithMetadata),
+		unused:            make(map[*TableBacking]struct{}),
+		rewriteCandidates: googlebtree.NewG[*backingWithMetadata](16, backingCandidatesLessFn),
 	}
 }
 
@@ -99,6 +104,11 @@ type backingWithMetadata struct {
 	virtualTables map[base.TableNum]*TableMetadata
 }
 
+func (bm *backingWithMetadata) referencedDataPct() float64 {
+	return float64(bm.virtualizedSize) /
+		float64(bm.backing.Size+bm.backing.ReferencedBlobValueSizeTotal)
+}
+
 // AddAndRef adds a new backing to the set and takes a reference on it. Another
 // backing for the same DiskFileNum must not exist.
 //
@@ -108,10 +118,11 @@ func (bv *VirtualBackings) AddAndRef(backing *TableBacking) {
 	// We take a reference on the backing because in case of protected backings
 	// (see Protect), we might be the only ones holding on to a backing.
 	backing.Ref()
-	bv.mustAdd(&backingWithMetadata{
+	bm := &backingWithMetadata{
 		backing:       backing,
 		virtualTables: make(map[base.TableNum]*TableMetadata),
-	})
+	}
+	bv.mustAdd(bm)
 	bv.unused[backing] = struct{}{}
 	bv.totalSize += backing.Size
 }
@@ -147,10 +158,9 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 		delete(bv.unused, v.backing)
 	}
 	v.virtualizedSize += m.Size
-	if _, ok := v.virtualTables[m.TableNum]; ok {
-		panic(errors.AssertionFailedf("table %s already uses backing %s", m.TableNum, v.backing.DiskFileNum))
-	}
 	v.virtualTables[m.TableNum] = m
+	// Update rewrite candidates.
+	bv.rewriteCandidates.ReplaceOrInsert(v)
 }
 
 // RemoveTable is used when a table using a backing is removed. The backing is
@@ -165,6 +175,12 @@ func (bv *VirtualBackings) RemoveTable(backing base.DiskFileNum, table base.Tabl
 	v.virtualizedSize -= t.Size
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
+	}
+	// Update rewrite candidates.
+	if len(v.virtualTables) == 0 {
+		bv.rewriteCandidates.Delete(v)
+	} else {
+		bv.rewriteCandidates.ReplaceOrInsert(v)
 	}
 }
 
@@ -263,6 +279,18 @@ func (bv *VirtualBackings) Backings() []*TableBacking {
 	return res
 }
 
+// ReplacementCandidate returns the backing with the lowest ratio of data
+// referenced by virtual tables to total size, along with the list of virtual
+// tables that use the backing. If there are no backings in the set, nil is
+// returned.
+func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, []*TableMetadata) {
+	v, ok := bv.rewriteCandidates.Min()
+	if !ok {
+		panic("unexpected empty rewriteCandidates tree")
+	}
+	return v.backing, slices.Collect(maps.Values(v.virtualTables))
+}
+
 func (bv *VirtualBackings) String() string {
 	nums := bv.DiskFileNums()
 
@@ -274,10 +302,19 @@ func (bv *VirtualBackings) String() string {
 		fmt.Fprintf(&buf, "%d virtual backings, total size %d:\n", count, totalSize)
 		for _, n := range nums {
 			v := bv.m[n]
-			fmt.Fprintf(&buf, "  %s:  size=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d",
-				n, v.backing.Size, len(v.virtualTables), v.protectionCount, v.virtualizedSize)
+			fmt.Fprintf(&buf, "  %s:  size=%d  refBlobValueSize=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d",
+				n, v.backing.Size, v.backing.ReferencedBlobValueSizeTotal, len(v.virtualTables), v.protectionCount, v.virtualizedSize)
 			tableNums := slices.Sorted(maps.Keys(v.virtualTables))
 			fmt.Fprintf(&buf, "  tables: %v\n", tableNums)
+		}
+		// Print candidates tree state.
+		if bv.rewriteCandidates.Len() > 0 {
+			fmt.Fprint(&buf, "rewrite candidates: ")
+			bv.rewriteCandidates.Ascend(func(v *backingWithMetadata) bool {
+				fmt.Fprintf(&buf, "%s(%.1f%%) ", v.backing.DiskFileNum, v.referencedDataPct()*100)
+				return true
+			})
+			fmt.Fprintf(&buf, "\n")
 		}
 	}
 	unused := bv.Unused()
@@ -310,4 +347,10 @@ func (bv *VirtualBackings) mustGet(n base.DiskFileNum) *backingWithMetadata {
 // inUse returns true if b is used to back at least one virtual table.
 func (v *backingWithMetadata) inUse() bool {
 	return len(v.virtualTables) > 0 || v.protectionCount > 0
+}
+
+func backingCandidatesLessFn(a, b *backingWithMetadata) bool {
+	// We want to rewrite backings with a high percentage of garbage first,
+	// so we order the tree by ratio of data referenced in virtual tables.
+	return a.referencedDataPct() < b.referencedDataPct()
 }
