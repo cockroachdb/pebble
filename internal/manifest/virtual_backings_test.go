@@ -31,9 +31,12 @@ func TestVirtualBackings(t *testing.T) {
 
 			switch d.Cmd {
 			case "add":
+				var blobValueSize uint64
+				d.MaybeScanArgs(t, "blobValueSize", &blobValueSize)
 				bv.AddAndRef(&TableBacking{
-					DiskFileNum: n,
-					Size:        size,
+					DiskFileNum:                  n,
+					Size:                         size,
+					ReferencedBlobValueSizeTotal: blobValueSize,
 				})
 
 			case "remove":

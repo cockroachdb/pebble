@@ -60,7 +60,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix([]byte("after"), []byte("foo")),
 		BlobReferences: []BlobReference{
 			{FileID: 900, ValueSize: 1024, BackingValueSize: 1024},
-			{FileID: 910, ValueSize: 1024, BackingValueSize: 8090},
+			{FileID: 910, ValueSize: 8090, BackingValueSize: 8090},
 		},
 	}).ExtendPointKeyBounds(
 		cmp,
