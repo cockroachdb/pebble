@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"path"
 	"runtime/debug"
@@ -321,10 +322,11 @@ func (t *Test) minFMV() pebble.FormatMajorVersion {
 	return minVersion
 }
 
-func (t *Test) restartDB(dbID objID) error {
+func (t *Test) restartDB(dbID objID, shouldCrashDuringOpen bool) error {
 	db := t.getDB(dbID)
-	// If strictFS is not used, we use pebble.NoSync for writeOpts, so we can't
-	// restart the database (even if we don't revert to synced data).
+	// If strictFS is not used, no-op since we end up using pebble.NoSync for
+	// writeOpts. In the case of pebble.NoSync, we can't restart the database
+	// even if we don't revert to synced data.
 	if !t.testOpts.strictFS {
 		return nil
 	}
@@ -348,6 +350,19 @@ func (t *Test) restartDB(dbID objID) error {
 		}
 	}
 	t.opts.FS = crashFS
+	var slowFS *errorfs.FS
+	// If we should crash during Open, inject some latency into the filesystem
+	// so that the first Open is slow enough for us to capture some arbitrary
+	// intermediate state.
+	if shouldCrashDuringOpen {
+		seed := time.Now().UnixNano()
+		t.opts.Logger.Infof("seed %d", seed)
+		mean := time.Duration(rand.IntN(20) + 10*int(time.Millisecond))
+		t.opts.Logger.Infof("Injecting mean %s of latency with p=%.3f", mean, 1.0)
+		slowFS = errorfs.Wrap(crashFS,
+			errorfs.RandomLatency(errorfs.Randomly(1.0, seed), mean, seed, time.Second))
+		t.opts.FS = slowFS
+	}
 	t.opts.WithFSDefaults()
 	// We want to set the new FS in testOpts too, so they are propagated to the
 	// TestOptions that were used with metamorphic.New().
@@ -357,6 +372,7 @@ func (t *Test) restartDB(dbID objID) error {
 		t.testOpts.Opts.WALFailover.Secondary.FS = t.opts.FS
 	}
 
+	done := make(chan struct{})
 	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
 	// are well defined within the context of retries.
 	err := t.withRetries(func() (err error) {
@@ -373,12 +389,54 @@ func (t *Test) restartDB(dbID objID) error {
 			dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
 		}
 		o := t.finalizeOptions()
+		if shouldCrashDuringOpen {
+			go func() {
+				defer close(done)
+				// Wait a bit for the first Open to make some progress.
+				time.Sleep(30 * time.Millisecond)
+
+				// Create a crash clone of the current filesystem state.
+				crashCloneFS, err := slowFS.CrashClone(dir, vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
+				if err != nil {
+					return
+				}
+				t.opts.FS = crashFS
+
+				// Create a copy of options for the second DB.
+				dir := t.dir
+				if len(t.dbs) > 1 {
+					dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
+				}
+				o := t.finalizeOptions()
+				o.FS = crashCloneFS
+
+				// Attempt to open the second DB.
+				var secondDB *pebble.DB
+				secondDB, err = pebble.Open(dir, &o)
+				if err != nil {
+					return
+				}
+				if secondDB != nil {
+					_ = secondDB.Close()
+				}
+			}()
+			if err != nil {
+				return err
+			}
+		}
+		thyme := time.Now()
 		t.dbs[dbID.slot()-1], err = pebble.Open(dir, &o)
+		if shouldCrashDuringOpen {
+			fmt.Printf("Open took %s\n", time.Since(thyme))
+		}
 		if err != nil {
 			return err
 		}
 		return err
 	})
+	if shouldCrashDuringOpen {
+		<-done
+	}
 	return err
 }
 
