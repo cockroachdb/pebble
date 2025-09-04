@@ -322,9 +322,14 @@ func (c *Handle) GetWithReadHandle(
 // existing value if present. The value must have been allocated by Cache.Alloc.
 //
 // The cache takes a reference on the Value and holds it until it gets evicted.
+//
+// REQUIRES: value.refs() == 1
 func (c *Handle) Set(fileNum base.DiskFileNum, offset uint64, value *Value) {
+	if n := value.refs(); n != 1 {
+		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
+	}
 	k := makeKey(c.id, fileNum, offset)
-	c.cache.getShard(k).set(k, value)
+	c.cache.getShard(k).set(k, value, false /*markAccessed*/)
 }
 
 // Delete deletes the cached value for the specified file and offset.

@@ -153,6 +153,12 @@ set-read-value name=s1_f2_off3 val=brinjal
 ----
 map-len: 0
 
+# The added entry is marked as referenced, since there is a concurrent reader
+# (that is still waiting).
+print-shard
+----
+id=1 file=2 offset=3 hasValue=true referenced=true
+
 wait name=s1_f2_off3_2
 ----
 val: brinjal
@@ -161,3 +167,24 @@ map-len: 0
 get name=s1_f2_off3_3 id=1 file-num=2 offset=3
 ----
 val: brinjal
+
+# Get misses the cache and has turn to read.
+get name=s1_f2_off20 id=1 file-num=2 offset=20
+----
+waiting
+map-len: 1
+
+wait name=s1_f2_off20
+----
+turn to read
+map-len: 1
+
+set-read-value name=s1_f2_off20 val=okra
+----
+map-len: 0
+
+# The added entry is not referenced, since there was not a concurrent reader.
+print-shard
+----
+id=1 file=2 offset=3 hasValue=true referenced=true
+id=1 file=2 offset=20 hasValue=true referenced=false

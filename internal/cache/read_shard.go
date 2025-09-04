@@ -6,6 +6,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -293,15 +294,10 @@ func (e *readEntry) unrefAndTryRemoveFromMap() {
 }
 
 func (e *readEntry) setReadValue(v *Value) {
-	// Add to the cache before taking another ref for readEntry, since the cache
-	// expects ref=1 when it is called.
-	//
-	// TODO(sumeer): if e.refCount > 1, we should consider overriding to ensure
-	// that it is added as etHot. The common case will be e.refCount = 1, and we
-	// don't want to acquire e.mu twice, so one way to do this would be relax
-	// the invariant in shard.Set that requires Value.refs() == 1. Then we can
-	// do the work under e.mu before calling shard.Set.
-	e.readShard.shard.set(e.key, v)
+	if n := v.refs(); n != 1 {
+		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
+	}
+	concurrentRequesters := false
 	e.mu.Lock()
 	// Acquire a ref for readEntry, since we are going to remember it in e.mu.v.
 	v.acquire()
@@ -318,8 +314,12 @@ func (e *readEntry) setReadValue(v *Value) {
 		// readEntry.waitForReadPermissionOrHandle, and those will also use
 		// e.mu.v.
 		close(e.mu.ch)
+		// e.mu.ch is non-nil only when there were concurrent requesters. NB: we
+		// can't read e.refCount here since it is protected by e.readShard.mu.
+		concurrentRequesters = true
 	}
 	e.mu.Unlock()
+	e.readShard.shard.set(e.key, v, concurrentRequesters)
 	e.unrefAndTryRemoveFromMap()
 }
 
@@ -368,6 +368,8 @@ func (rh ReadHandle) Valid() bool {
 //
 // The cache takes a reference on the Value and holds it until it is evicted and
 // no longer needed by other readers.
+//
+// REQUIRES: v.refs() == 1
 func (rh ReadHandle) SetReadValue(v *Value) {
 	rh.entry.setReadValue(v)
 }

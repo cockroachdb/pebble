@@ -158,11 +158,7 @@ func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (*Value, *rea
 	return value, re
 }
 
-func (c *shard) set(k key, value *Value) {
-	if n := value.refs(); n != 1 {
-		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
-	}
-
+func (c *shard) set(k key, value *Value, markAccessed bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -173,6 +169,9 @@ func (c *shard) set(k key, value *Value) {
 		// no cache entry? add it
 		e = newEntry(k, int64(len(value.buf)))
 		e.setValue(value)
+		if markAccessed {
+			e.referenced.Store(true)
+		}
 		if c.metaAdd(k, e) {
 			value.ref.trace("add-cold")
 			c.sizeCold += e.size
@@ -219,7 +218,7 @@ func (c *shard) set(k key, value *Value) {
 			c.coldTarget = c.targetSize()
 		}
 
-		e.referenced.Store(false)
+		e.referenced.Store(markAccessed)
 		e.setValue(value)
 		e.ptype = etHot
 		if c.metaAdd(k, e) {
