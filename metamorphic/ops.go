@@ -1965,7 +1965,7 @@ type dbRestartOp struct {
 }
 
 func (o *dbRestartOp) run(t *Test, h historyRecorder) {
-	if err := t.restartDB(o.dbID); err != nil {
+	if err := t.restartDB(o.dbID, false /* shouldCrashDuringOpen */); err != nil {
 		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
 		h.history.err.Store(errors.Wrap(err, "dbRestartOp"))
 	} else {
@@ -1979,6 +1979,37 @@ func (o *dbRestartOp) syncObjs() objIDSlice             { return o.affectedObjec
 
 func (o *dbRestartOp) rewriteKeys(func(UserKey) UserKey)   {}
 func (o *dbRestartOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+
+// dbUncleanRestartOp performs an unclean restart like dbRestartOp, but also
+// starts a concurrent goroutine that calls CrashClone during the Open and uses
+// that clone to do a second Open. This tests crashing during Open with
+// concurrent operations.
+type dbUncleanRestartOp struct {
+	dbID objID
+
+	// affectedObjects is the list of additional objects that are affected by this
+	// operation, and which syncObjs() must return so that we don't perform the
+	// restart in parallel with other operations to affected objects.
+	affectedObjects []objID
+}
+
+func (o *dbUncleanRestartOp) run(t *Test, h historyRecorder) {
+	if err := t.restartDB(o.dbID, true /* shouldCrashDuringOpen */); err != nil {
+		h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
+		h.history.err.Store(errors.Wrap(err, "dbCrashDuringOpenOp"))
+	} else {
+		h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
+	}
+}
+
+func (o *dbUncleanRestartOp) formattedString(KeyFormat) string {
+	return fmt.Sprintf("%s.RestartWithCrashClone()", o.dbID)
+}
+func (o *dbUncleanRestartOp) receiver() objID      { return o.dbID }
+func (o *dbUncleanRestartOp) syncObjs() objIDSlice { return o.affectedObjects }
+
+func (o *dbUncleanRestartOp) rewriteKeys(func(UserKey) UserKey)   {}
+func (o *dbUncleanRestartOp) diagramKeyRanges() []pebble.KeyRange { return nil }
 
 func formatOps(kf KeyFormat, ops []op) string {
 	var buf strings.Builder

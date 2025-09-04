@@ -7,6 +7,7 @@ package metamorphic
 import (
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"path"
 	"runtime/debug"
@@ -321,10 +322,11 @@ func (t *Test) minFMV() pebble.FormatMajorVersion {
 	return minVersion
 }
 
-func (t *Test) restartDB(dbID objID) error {
+func (t *Test) restartDB(dbID objID, shouldCrashDuringOpen bool) error {
 	db := t.getDB(dbID)
-	// If strictFS is not used, we use pebble.NoSync for writeOpts, so we can't
-	// restart the database (even if we don't revert to synced data).
+	// If strictFS is not used, no-op since we end up using pebble.NoSync for
+	// writeOpts. In the case of pebble.NoSync, we can't restart the database
+	// even if we don't revert to synced data.
 	if !t.testOpts.strictFS {
 		return nil
 	}
@@ -348,15 +350,26 @@ func (t *Test) restartDB(dbID objID) error {
 		}
 	}
 	t.opts.FS = crashFS
+	var slowFS *errorfs.FS
+	// If we should crash during Open, inject some latency into the filesystem
+	// so that the first Open is slow enough for us to capture some arbitrary
+	// intermediate state.
+	if shouldCrashDuringOpen {
+		seed := time.Now().UnixNano()
+		t.opts.Logger.Infof("seed %d", seed)
+		mean := time.Duration(rand.IntN(20) + 10*int(time.Millisecond))
+		t.opts.Logger.Infof("Injecting mean %s of latency with p=%.3f", mean, 1.0)
+		slowFS = errorfs.Wrap(crashFS,
+			errorfs.RandomLatency(errorfs.Randomly(1.0, seed), mean, seed, time.Second))
+		t.opts.FS = slowFS
+	}
 	t.opts.WithFSDefaults()
 	// We want to set the new FS in testOpts too, so they are propagated to the
 	// TestOptions that were used with metamorphic.New().
 	t.testOpts.Opts.FS = t.opts.FS
-	if t.opts.WALFailover != nil {
-		t.opts.WALFailover.Secondary.FS = t.opts.FS
-		t.testOpts.Opts.WALFailover.Secondary.FS = t.opts.FS
-	}
 
+	firstOpenDone := make(chan struct{})
+	secondOpenDone := make(chan struct{})
 	// TODO(jackson): Audit errorRate and ensure custom options' hooks semantics
 	// are well defined within the context of retries.
 	err := t.withRetries(func() (err error) {
@@ -373,13 +386,88 @@ func (t *Test) restartDB(dbID objID) error {
 			dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
 		}
 		o := t.finalizeOptions()
+		if shouldCrashDuringOpen {
+			go func() {
+				err = t.simulateCrashDuringOpen(dbID, slowFS, secondOpenDone, firstOpenDone)
+			}()
+			if err != nil {
+				return err
+			}
+		}
 		t.dbs[dbID.slot()-1], err = pebble.Open(dir, &o)
-		if err != nil {
-			return err
+		if shouldCrashDuringOpen {
+			firstOpenDone <- struct{}{}
 		}
 		return err
 	})
+	if shouldCrashDuringOpen {
+		<-secondOpenDone
+	}
 	return err
+}
+
+func (t *Test) simulateCrashDuringOpen(
+	dbID objID, slowFS *errorfs.FS, secondOpenDone, firstOpenDone chan struct{},
+) error {
+	defer func() { secondOpenDone <- struct{}{} }()
+
+	// Wait a bit for the first Open to make some progress.
+	time.Sleep(30 * time.Millisecond)
+
+	// Create a crash clone of the current filesystem state.
+	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
+	crashCloneFS, err := slowFS.CrashClone(vfs.CrashCloneCfg{
+		UnsyncedDataPercent: rng.IntN(101),
+		RNG:                 rng,
+	})
+	if err != nil {
+		return err
+	}
+
+	// After the first Open has completed, close the resulting DB and open the
+	// second DB.
+	<-firstOpenDone
+	err = t.dbs[dbID.slot()-1].Close()
+	if err != nil {
+		return err
+	}
+	// Release any resources held by custom options. This may be used, for
+	// example, by the encryption-at-rest custom option (within the Cockroach
+	// repository) to close the file registry.
+	for i := range t.testOpts.CustomOpts {
+		if err := t.testOpts.CustomOpts[i].Close(t.opts); err != nil {
+			return err
+		}
+	}
+	t.opts.FS = crashCloneFS
+	if t.opts.WALFailover != nil {
+		ccsmemFS := t.opts.WALFailover.Secondary.FS.(*vfs.MemFS)
+		crashCloneSecondaryFS := ccsmemFS.CrashClone(vfs.CrashCloneCfg{
+			UnsyncedDataPercent: rng.IntN(101),
+			RNG:                 rng,
+		})
+		t.testOpts.Opts.WALFailover.Secondary.FS = crashCloneSecondaryFS
+		t.opts.WALFailover.Secondary.FS = crashCloneSecondaryFS
+	}
+	// Reacquire any resources required by custom options. This may be used, for
+	// example, by the encryption-at-rest custom option (within the Cockroach
+	// repository) to reopen the file registry.
+	for i := range t.testOpts.CustomOpts {
+		if err := t.testOpts.CustomOpts[i].Open(t.opts); err != nil {
+			return err
+		}
+	}
+	// Create a copy of options for the second DB.
+	dir := t.dir
+	if len(t.dbs) > 1 {
+		dir = path.Join(dir, fmt.Sprintf("db%d", dbID.slot()))
+	}
+	o := t.finalizeOptions()
+	t.dbs[dbID.slot()-1], err = pebble.Open(dir, &o)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (t *Test) saveInMemoryDataInternal() error {

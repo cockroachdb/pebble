@@ -560,7 +560,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 			// multi-instance mode.
 			testOpts.Opts.WALFailover = nil
 		} else {
-			testOpts.Opts.WALFailover.Secondary.FS = opts.FS
+			testOpts.Opts.WALFailover.Secondary.FS = vfs.NewCrashableMem()
 		}
 	}
 
