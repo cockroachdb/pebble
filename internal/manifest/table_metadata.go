@@ -322,6 +322,11 @@ type TableBacking struct {
 	DiskFileNum base.DiskFileNum
 	Size        uint64
 
+	// ReferencedBlobValueSizeTotal is the the sum of the length of uncompressed
+	// values in all blob files for which there exists a reference in the backing
+	// table.
+	ReferencedBlobValueSizeTotal uint64
+
 	// Reference count for the backing file, used to determine when a backing file
 	// is obsolete and can be removed.
 	//
@@ -474,9 +479,16 @@ func (m *TableMetadata) InitPhysicalBacking() {
 	if m.TableBacking != nil {
 		panic("backing already initialized")
 	}
+
+	var blobValueSizeTotal uint64
+	for i := range m.BlobReferences {
+		blobValueSizeTotal += m.BlobReferences[i].BackingValueSize
+	}
+
 	m.TableBacking = &TableBacking{
-		DiskFileNum: base.PhysicalTableDiskFileNum(m.TableNum),
-		Size:        m.Size,
+		DiskFileNum:                  base.PhysicalTableDiskFileNum(m.TableNum),
+		Size:                         m.Size,
+		ReferencedBlobValueSizeTotal: blobValueSizeTotal,
 	}
 }
 
