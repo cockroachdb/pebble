@@ -164,6 +164,10 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	// a match is high).
 	useFilterBlock         bool
 	lastBloomFilterMatched bool
+	// lastOpWasSeekPrefixGE tracks if the previous operation was SeekPrefixGE
+	// that returned nil due to bloom filter miss. Used for invariant checking
+	// in Next() to ensure the block is not invalidated when it doesn't have to be.
+	lastOpWasSeekPrefixGE invariants.Value[bool]
 
 	// indexLoaded is set to true if the index block load operation completed
 	// successfully.
@@ -646,6 +650,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
+	// Clear the tracking flag since this is a new absolute positioning operation
+	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
 
@@ -890,6 +896,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	// this method. Hence, we can use the existing iterator position if the last
 	// SeekPrefixGE did not fail bloom filter matching.
 
+	// Clear the tracking flag initially; will be set later if bloom filter returns false
+	i.lastOpWasSeekPrefixGE.Set(false)
 	err := i.err
 	i.err = nil // clear cached iteration error
 	if i.useFilterBlock {
@@ -901,13 +909,15 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		// Check prefix bloom filter.
 		var mayContain bool
 		mayContain, i.err = i.bloomFilterMayContain(prefix)
-		if i.err != nil || !mayContain {
-			// In the i.err == nil case, this invalidation may not be necessary for
-			// correctness, and may be a place to optimize later by reusing the
-			// already loaded block. It was necessary in earlier versions of the code
-			// since the caller was allowed to call Next when SeekPrefixGE returned
-			// nil. This is no longer allowed.
+		if i.err != nil {
 			PD(&i.data).Invalidate()
+			return nil
+		}
+		if !mayContain {
+			// In the no-error bloom filter miss case, the key is definitely not in table.
+			// We can avoid invalidating the already loaded block since the caller is
+			// not allowed to call Next when SeekPrefixGE returns nil.
+			i.lastOpWasSeekPrefixGE.Set(true)
 			return nil
 		}
 		i.lastBloomFilterMatched = true
@@ -1077,8 +1087,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) *base.InternalKV {
+	// Clear the tracking flag since this is a new absolute positioning operation
+	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
+
 	if i.readEnv.Virtual != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
 		// known to callers of SeekLT.
@@ -1189,8 +1202,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *singleLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
+	// Clear the tracking flag since this is a new absolute positioning operation
+	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
+
 	// If we have a lower bound, use SeekGE. Note that in general this is not
 	// supported usage, except when the lower bound is there because the table is
 	// virtual.
@@ -1260,8 +1276,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *singleLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
+	// Clear the tracking flag since this is a new absolute positioning operation
+	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
+
 	if i.readEnv.Virtual != nil {
 		return i.maybeVerifyKey(i.virtualLast())
 	}
@@ -1324,6 +1343,16 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 // Note: compactionIterator.Next mirrors the implementation of Iterator.Next
 // due to performance. Keep the two in sync.
 func (i *singleLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
+	if invariants.Enabled && i.lastOpWasSeekPrefixGE.Get() {
+		// If the previous operation was SeekPrefixGE that returned nil due to bloom
+		// filter miss, the data block should not have been invalidated. This assertion
+		// ensures the optimization to preserve loaded blocks is working correctly.
+		if PD(&i.data).IsDataInvalidated() {
+			panic("pebble: data block was invalidated after SeekPrefixGE returned nil due to bloom filter miss")
+		}
+	}
+	// Clear the tracking flag since this is no longer the next operation after SeekPrefixGE
+	i.lastOpWasSeekPrefixGE.Set(false)
 
 	// The SeekPrefixGE might have returned a synthetic key with latest suffix
 	// contained in the sstable. If the caller is calling Next(), that means
@@ -1335,6 +1364,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 		i.synthetic.atSyntheticKey = false
 		return i.seekPrefixGE(i.reader.Comparer.Split.Prefix(i.synthetic.seekKey), i.synthetic.seekKey, base.SeekGEFlagsNone)
 	}
+
 	if i.exhaustedBounds == +1 {
 		panic("Next called even though exhausted upper bound")
 	}
@@ -1362,6 +1392,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
 func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
+	// Clear the tracking flag since this is a relative positioning operation
+	i.lastOpWasSeekPrefixGE.Set(false)
 	if i.exhaustedBounds == +1 {
 		panic("NextPrefix called even though exhausted upper bound")
 	}
@@ -1439,6 +1471,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Int
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *singleLevelIterator[I, PI, D, PD]) Prev() *base.InternalKV {
+	// Clear the tracking flag since this is a relative positioning operation
+	i.lastOpWasSeekPrefixGE.Set(false)
 	if i.exhaustedBounds == -1 {
 		panic("Prev called even though exhausted lower bound")
 	}
