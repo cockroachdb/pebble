@@ -167,7 +167,8 @@ func (g *generator) generate(count uint64) []op {
 		OpDBDownload:                  g.dbDownload,
 		OpDBFlush:                     g.dbFlush,
 		OpDBRatchetFormatMajorVersion: g.dbRatchetFormatMajorVersion,
-		OpDBRestart:                   g.dbRestart,
+		OpDBRestart:                   g.dbRestart(false /* shouldCrashDuringOpen */),
+		OpDBCrashDuringOpen:           g.dbRestart(true /* shouldCrashDuringOpen */),
 		OpDBEstimateDiskUsage:         g.dbEstimateDiskUsage,
 		OpIterClose:                   g.randIter(g.iterClose),
 		OpIterFirst:                   g.randIter(g.iterFirst),
@@ -465,27 +466,33 @@ func (g *generator) dbRatchetFormatMajorVersion() {
 	g.add(&dbRatchetFormatMajorVersionOp{dbID: dbID, vers: vers})
 }
 
-func (g *generator) dbRestart() {
-	// Close any live iterators and snapshots, so that we can close the DB
-	// cleanly.
-	dbID := g.dbs.rand(g.rng)
-	for len(g.liveIters) > 0 {
-		g.randIter(g.iterClose)()
+func (g *generator) dbRestart(shouldCrashDuringOpen bool) func() {
+	return func() {
+		// Close any live iterators and snapshots, so that we can close the DB
+		// cleanly.
+		dbID := g.dbs.rand(g.rng)
+		for len(g.liveIters) > 0 {
+			g.randIter(g.iterClose)()
+		}
+		for len(g.liveSnapshots) > 0 {
+			g.snapshotClose()
+		}
+		// Close the batches.
+		for len(g.liveBatches) > 0 {
+			batchID := g.liveBatches[0]
+			g.removeBatchFromGenerator(batchID)
+			g.add(&closeOp{objID: batchID})
+		}
+		if len(g.liveReaders) != len(g.dbs) || len(g.liveWriters) != len(g.dbs) {
+			panic(fmt.Sprintf("unexpected counts: liveReaders %d, liveWriters: %d",
+				len(g.liveReaders), len(g.liveWriters)))
+		}
+		if shouldCrashDuringOpen {
+			g.add(&dbUncleanRestartOp{dbID: dbID})
+		} else {
+			g.add(&dbRestartOp{dbID: dbID})
+		}
 	}
-	for len(g.liveSnapshots) > 0 {
-		g.snapshotClose()
-	}
-	// Close the batches.
-	for len(g.liveBatches) > 0 {
-		batchID := g.liveBatches[0]
-		g.removeBatchFromGenerator(batchID)
-		g.add(&closeOp{objID: batchID})
-	}
-	if len(g.liveReaders) != len(g.dbs) || len(g.liveWriters) != len(g.dbs) {
-		panic(fmt.Sprintf("unexpected counts: liveReaders %d, liveWriters: %d",
-			len(g.liveReaders), len(g.liveWriters)))
-	}
-	g.add(&dbRestartOp{dbID: dbID})
 }
 
 // maybeSetSnapshotIterBounds must be called whenever creating a new iterator or

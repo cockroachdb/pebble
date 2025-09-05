@@ -457,6 +457,18 @@ func (fs *FS) Stat(name string) (vfs.FileInfo, error) {
 	return fs.fs.Stat(name)
 }
 
+// CrashClone implements MemFS.CrashClone.
+func (fs *FS) CrashClone(dir string, cfg vfs.CrashCloneCfg) (*vfs.MemFS, error) {
+	if err := fs.inj.MaybeError(Op{Kind: OpStat, Path: dir}); err != nil {
+		return nil, err
+	}
+	memFs, ok := fs.fs.(*vfs.MemFS)
+	if !ok {
+		return nil, errors.New("not a MemFS")
+	}
+	return memFs.CrashClone(cfg), nil
+}
+
 // errorFile implements vfs.File. The interface is implemented on the pointer
 // type to allow pointer equality comparisons.
 type errorFile struct {
