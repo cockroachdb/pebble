@@ -17,8 +17,9 @@ var _ Compressor = snappyCompressor{}
 func (snappyCompressor) Algorithm() Algorithm { return Snappy }
 
 func (snappyCompressor) Compress(dst, src []byte) ([]byte, Setting) {
-	dst = dst[:cap(dst):cap(dst)]
-	return snappy.Encode(dst, src), SnappySetting
+	result := snappy.Encode(dst[:cap(dst):cap(dst)], src)
+	msanWrite(result)
+	return result, SnappySetting
 }
 
 func (snappyCompressor) Close() {}
@@ -36,6 +37,7 @@ func (snappyDecompressor) DecompressInto(buf, compressed []byte) error {
 		return base.CorruptionErrorf("pebble: decompressed into unexpected buffer: %p != %p",
 			errors.Safe(result), errors.Safe(buf))
 	}
+	msanWrite(buf)
 	return nil
 }
 

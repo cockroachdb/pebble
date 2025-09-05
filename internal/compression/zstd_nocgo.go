@@ -43,6 +43,7 @@ func (z *zstdCompressor) Compress(compressedBuf, b []byte) ([]byte, Setting) {
 	}
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
 	res := z.encoder.EncodeAll(b, compressedBuf[:varIntLen])
+	msanWrite(res)
 	return res, Setting{Algorithm: Zstd, Level: uint8(z.level)}
 }
 
@@ -84,6 +85,7 @@ func (zstdDecompressor) DecompressInto(dst, src []byte) error {
 		return base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",
 			errors.Safe(result), errors.Safe(dst))
 	}
+	msanWrite(result)
 	return nil
 }
 
