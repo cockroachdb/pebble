@@ -98,6 +98,12 @@ func (p *compactionPickerForTesting) estimatedCompactionDebt() uint64 {
 
 func (p *compactionPickerForTesting) forceBaseLevel1() {}
 
+func (p *compactionPickerForTesting) pickHighPrioritySpaceCompaction(
+	env compactionEnv,
+) pickedCompaction {
+	return nil
+}
+
 func (p *compactionPickerForTesting) pickAutoScore(env compactionEnv) (pc pickedCompaction) {
 	if p.score < 1 {
 		return nil
@@ -1128,7 +1134,7 @@ func TestCompaction(t *testing.T) {
 					env := d.makeCompactionEnvLocked()
 					require.NotNil(t, env)
 					picker := d.mu.versions.picker.(*compactionPickerByScore)
-					pc := picker.pickBlobFileRewriteCompaction(*env)
+					pc := picker.pickBlobFileRewriteCompactionLowPriority(*env)
 					if pc == nil {
 						d.mu.versions.logUnlock()
 						return errors.New("no blob file rewrite compaction")

@@ -1196,7 +1196,7 @@ type ValueSeparationPolicy struct {
 	// to be eligible for a rewrite that reclaims disk space. Lower values
 	// reduce space amplification at the cost of write amplification
 	RewriteMinimumAge time.Duration
-	// TargetGarbageRatio is a value in the range [0, 1.0] and configures how
+	// GarbageRatioLowPriority is a value in the range [0, 1.0] configuring how
 	// aggressively blob files should be written in order to reduce space
 	// amplification induced by value separation. As compactions rewrite blob
 	// files, data may be duplicated.  Older blob files containing the
@@ -1206,13 +1206,23 @@ type ValueSeparationPolicy struct {
 	// The DB can rewrite these blob files in place in order to reduce this
 	// space amplification, but this incurs write amplification. This option
 	// configures how much garbage may accrue before the DB will attempt to
-	// rewrite blob files to reduce it. A value of 0.20 indicates that once 20%
-	// of values in blob files are unreferenced, the DB should attempt to
-	// rewrite blob files to reclaim disk space.
+	// rewrite blob files to reduce it if there is no other higher priority
+	// compaction work available. A value of 0.20 indicates that once 20% of
+	// values in blob files are unreferenced, the DB should attempt to rewrite
+	// blob files to reclaim disk space.
 	//
 	// A value of 1.0 indicates that the DB should never attempt to rewrite blob
 	// files.
-	TargetGarbageRatio float64
+	GarbageRatioLowPriority float64
+	// GarbageRatioHighPriority is a value in the range [0, 1.0] configuring how
+	// much garbage must be present before the DB will schedule blob file
+	// rewrite compactions at a high priority (including above default
+	// compactions necessary to keep up with incoming writes). At most 1 blob file
+	// rewrite compaction will be scheduled at a time.
+	//
+	// See GarbageRatioLowPriority for more details. Must be >=
+	// GarbageRatioLowPriority.
+	GarbageRatioHighPriority float64
 }
 
 // SpanPolicy contains policies that can vary by key range. The zero value is
@@ -1771,7 +1781,8 @@ func (o *Options) String() string {
 			fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
 			fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
 			fmt.Fprintf(&buf, "  rewrite_minimum_age=%s\n", policy.RewriteMinimumAge)
-			fmt.Fprintf(&buf, "  target_garbage_ratio=%.2f\n", policy.TargetGarbageRatio)
+			fmt.Fprintf(&buf, "  garbage_ratio_low_priority=%.2f\n", policy.GarbageRatioLowPriority)
+			fmt.Fprintf(&buf, "  garbage_ratio_high_priority=%.2f\n", policy.GarbageRatioHighPriority)
 		}
 	}
 
@@ -2209,8 +2220,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				valSepPolicy.MaxBlobReferenceDepth, err = strconv.Atoi(value)
 			case "rewrite_minimum_age":
 				valSepPolicy.RewriteMinimumAge, err = time.ParseDuration(value)
-			case "target_garbage_ratio":
-				valSepPolicy.TargetGarbageRatio, err = strconv.ParseFloat(value, 64)
+			case "target_garbage_ratio", "garbage_ratio_low_priority":
+				// NB: "target_garbage_ratio" is a deprecated name for the same field.
+				valSepPolicy.GarbageRatioLowPriority, err = strconv.ParseFloat(value, 64)
+			case "garbage_ratio_high_priority":
+				valSepPolicy.GarbageRatioHighPriority, err = strconv.ParseFloat(value, 64)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
@@ -2473,6 +2487,10 @@ func (o *Options) Validate() error {
 		}
 		if policy.MaxBlobReferenceDepth <= 0 {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.MaxBlobReferenceDepth (%d) must be > 0\n", policy.MaxBlobReferenceDepth)
+		}
+		if policy.GarbageRatioHighPriority < policy.GarbageRatioLowPriority {
+			fmt.Fprintf(&buf, "ValueSeparationPolicy.GarbageRatioHighPriority (%f) must be >= ValueSeparationPolicy.GarbageRatioLowPriority (%f)\n",
+				policy.GarbageRatioHighPriority, policy.GarbageRatioLowPriority)
 		}
 	}
 
