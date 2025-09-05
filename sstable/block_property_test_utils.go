@@ -7,6 +7,7 @@ package sstable
 import (
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
@@ -136,4 +137,31 @@ func testKeysSuffixToInterval(suffix []byte) BlockInterval {
 		panic(err)
 	}
 	return BlockInterval{uint64(n), uint64(n) + 1}
+}
+
+type MaxTestKeysSuffixProperty struct{}
+
+// Name is part of the MaxTestKeysSuffixProperty interface.
+func (testprop MaxTestKeysSuffixProperty) Name() string {
+	return `pebble.internal.testkeys.suffixes`
+}
+
+// Extract is part of the MaxTestKeysSuffixProperty interface used to extract the
+// latest suffix from the block property.
+func (testprop MaxTestKeysSuffixProperty) Extract(
+	dst []byte, encodedProperty []byte,
+) (suffix []byte, ok bool, err error) {
+	if len(encodedProperty) <= 1 {
+		return nil, false, nil
+	}
+	// First byte is shortID, skip it and decode interval from remainder.
+	interval, err := decodeBlockInterval(encodedProperty[1:])
+	if err != nil {
+		return nil, false, err
+	} else if interval.IsEmpty() {
+		return nil, false, nil
+	}
+	dst = append(dst, '@')
+	dst = strconv.AppendUint(dst, (interval.Upper - 1), 10)
+	return dst, true, nil
 }

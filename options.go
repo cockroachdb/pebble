@@ -218,6 +218,9 @@ type IterOptions struct {
 	// implies obsolete points should not be hidden.
 	snapshotForHideObsoletePoints base.SeqNum
 
+	// MaximumSuffixProperty is the maximum suffix property for the iterator.
+	// This is used to perform the synthetic key optimization.
+	MaximumSuffixProperty sstable.MaxTestKeysSuffixProperty
 	// NB: If adding new Options, you must account for them in iterator
 	// construction and Iterator.SetOptions.
 }
@@ -236,6 +239,14 @@ func (o *IterOptions) GetUpperBound() []byte {
 		return nil
 	}
 	return o.UpperBound
+}
+
+// GetMaximumSuffixProperty returns the MaximumSuffixProperty.
+func (o *IterOptions) GetMaximumSuffixProperty() sstable.MaxTestKeysSuffixProperty {
+	if o == nil {
+		return sstable.MaxTestKeysSuffixProperty{}
+	}
+	return o.MaximumSuffixProperty
 }
 
 func (o *IterOptions) pointKeys() bool {

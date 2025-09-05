@@ -147,6 +147,9 @@ const (
 	// appear amongst other key kinds in a batch (with the exception of alongside
 	// InternalKeyKindIngestSST), or in an sstable.
 	InternalKeyKindExcise InternalKeyKind = 24
+	// InternalKeyKindSyntheticKey is a key used to mark synthetic keys in the
+	// sstable. This is used to perform optimization during SeekPrefixGE.
+	InternalKeyKindSyntheticKey InternalKeyKind = 25
 
 	// This maximum value isn't part of the file format. Future extensions may
 	// increase this value.
@@ -157,7 +160,7 @@ const (
 	// which sorts 'less than or equal to' any other valid internalKeyKind, when
 	// searching for any kind of internal key formed by a certain user key and
 	// seqNum.
-	InternalKeyKindMax InternalKeyKind = 24
+	InternalKeyKindMax InternalKeyKind = 25
 
 	// InternalKeyKindMaxForSSTable is the largest valid key kind that can exist
 	// in an SSTable. This should usually equal InternalKeyKindMax, except
@@ -209,6 +212,7 @@ var internalKeyKindNames = []string{
 	InternalKeyKindIngestSST:      "INGESTSST",
 	InternalKeyKindDeleteSized:    "DELSIZED",
 	InternalKeyKindExcise:         "EXCISE",
+	InternalKeyKindSyntheticKey:   "SYNTHETIC",
 	InternalKeyKindInvalid:        "INVALID",
 }
 
@@ -320,6 +324,7 @@ var kindsMap = map[string]InternalKeyKind{
 	"INGESTSST":     InternalKeyKindIngestSST,
 	"DELSIZED":      InternalKeyKindDeleteSized,
 	"EXCISE":        InternalKeyKindExcise,
+	"SYNTHETIC":     InternalKeyKindSyntheticKey,
 }
 
 // ParseSeqNum parses the string representation of a sequence number.
@@ -541,7 +546,8 @@ func (k InternalKey) IsExclusiveSentinel() bool {
 	}
 	switch kind := k.Kind(); kind {
 	case InternalKeyKindRangeDelete, InternalKeyKindRangeKeyDelete,
-		InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet:
+		InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeySet,
+		InternalKeyKindSyntheticKey:
 		return true
 	default:
 		return false
