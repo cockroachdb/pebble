@@ -1240,6 +1240,11 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			if backing == nil {
 				return errors.Errorf("TableBacking for virtual sstable must not be nil")
 			}
+			if backing.ReferencedBlobValueSizeTotal == 0 {
+				for _, br := range nf.Meta.BlobReferences {
+					backing.ReferencedBlobValueSizeTotal += br.BackingValueSize
+				}
+			}
 			nf.Meta.AttachVirtualBacking(backing)
 		} else if nf.Meta.TableBacking == nil {
 			return errors.Errorf("Added file L%d.%s's has no TableBacking", nf.Level, nf.Meta.TableNum)

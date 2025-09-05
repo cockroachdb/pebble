@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	stdcmp "cmp"
+	"container/heap"
 	"fmt"
 	"maps"
 	"slices"
@@ -67,7 +68,10 @@ import (
 //   - ingestion fails, calls Unprotect(B1). B1 is now Unused() and the next
 //     version (applied by whatever next operation is) will remove B1.
 type VirtualBackings struct {
-	m map[base.DiskFileNum]backingWithMetadata
+	m map[base.DiskFileNum]*backingWithMetadata
+	// rewriteCandidates is a min heap of virtual backings ordered by
+	// referencedDataPct. Used to pick a candidate for rewriting.
+	rewriteCandidates virtualBackingRewriteCandidatesHeap
 
 	// unused are all the backings in m that are not inUse(). Used for
 	// implementing Unused() efficiently.
@@ -79,7 +83,7 @@ type VirtualBackings struct {
 // MakeVirtualBackings returns empty initialized VirtualBackings.
 func MakeVirtualBackings() VirtualBackings {
 	return VirtualBackings{
-		m:      make(map[base.DiskFileNum]backingWithMetadata),
+		m:      make(map[base.DiskFileNum]*backingWithMetadata),
 		unused: make(map[*TableBacking]struct{}),
 	}
 }
@@ -97,6 +101,12 @@ type backingWithMetadata struct {
 	// virtualTables is the list of virtual tables that use this backing.
 	// AddTable/RemoveTable maintain this map.
 	virtualTables map[base.TableNum]*TableMetadata
+	heapIndex     int
+}
+
+func (bm *backingWithMetadata) referencedDataPct() float64 {
+	return float64(bm.virtualizedSize) /
+		float64(bm.backing.Size+bm.backing.ReferencedBlobValueSizeTotal)
 }
 
 // AddAndRef adds a new backing to the set and takes a reference on it. Another
@@ -108,10 +118,12 @@ func (bv *VirtualBackings) AddAndRef(backing *TableBacking) {
 	// We take a reference on the backing because in case of protected backings
 	// (see Protect), we might be the only ones holding on to a backing.
 	backing.Ref()
-	bv.mustAdd(backingWithMetadata{
+	bm := &backingWithMetadata{
 		backing:       backing,
 		virtualTables: make(map[base.TableNum]*TableMetadata),
-	})
+		heapIndex:     -1,
+	}
+	bv.mustAdd(bm)
 	bv.unused[backing] = struct{}{}
 	bv.totalSize += backing.Size
 }
@@ -127,6 +139,9 @@ func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 			"backing %s still in use (useCount=%d protectionCount=%d)",
 			v.backing.DiskFileNum, len(v.virtualTables), v.protectionCount,
 		))
+	}
+	if v.heapIndex != -1 {
+		panic(errors.AssertionFailedf("backing %s still in rewriteCandidates heap", v.backing.DiskFileNum))
 	}
 	delete(bv.m, n)
 	delete(bv.unused, v.backing)
@@ -148,7 +163,12 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 	}
 	v.virtualizedSize += m.Size
 	v.virtualTables[m.TableNum] = m
-	bv.m[m.TableBacking.DiskFileNum] = v
+	// Update candidates heap.
+	if v.heapIndex == -1 {
+		heap.Push(&bv.rewriteCandidates, v)
+	} else {
+		heap.Fix(&bv.rewriteCandidates, v.heapIndex)
+	}
 }
 
 // RemoveTable is used when a table using a backing is removed. The backing is
@@ -161,9 +181,15 @@ func (bv *VirtualBackings) RemoveTable(backing base.DiskFileNum, table base.Tabl
 	}
 	delete(v.virtualTables, table)
 	v.virtualizedSize -= t.Size
-	bv.m[backing] = v
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
+	}
+	// Update candidates heap.
+	if v.virtualizedSize == 0 && v.heapIndex != -1 {
+		heap.Remove(&bv.rewriteCandidates, v.heapIndex)
+		v.heapIndex = -1
+	} else {
+		heap.Fix(&bv.rewriteCandidates, v.heapIndex)
 	}
 }
 
@@ -178,7 +204,6 @@ func (bv *VirtualBackings) Protect(n base.DiskFileNum) {
 		delete(bv.unused, v.backing)
 	}
 	v.protectionCount++
-	bv.m[n] = v
 }
 
 // Unprotect reverses a Protect call.
@@ -189,7 +214,6 @@ func (bv *VirtualBackings) Unprotect(n base.DiskFileNum) {
 		panic(errors.AssertionFailedf("invalid protectionCount"))
 	}
 	v.protectionCount--
-	bv.m[n] = v
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
 	}
@@ -264,6 +288,18 @@ func (bv *VirtualBackings) Backings() []*TableBacking {
 	return res
 }
 
+// ReplacementCandidate returns the backing with the lowest ratio of data
+// referenced by virtual tables to total size, along with the list of virtual
+// tables that use the backing. If there are no backings in the set, nil is
+// returned.
+func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, []*TableMetadata) {
+	if bv.rewriteCandidates.Len() == 0 {
+		return nil, nil
+	}
+	return bv.rewriteCandidates.items[0].backing,
+		slices.Collect(maps.Values(bv.rewriteCandidates.items[0].virtualTables))
+}
+
 func (bv *VirtualBackings) String() string {
 	nums := bv.DiskFileNums()
 
@@ -275,10 +311,18 @@ func (bv *VirtualBackings) String() string {
 		fmt.Fprintf(&buf, "%d virtual backings, total size %d:\n", count, totalSize)
 		for _, n := range nums {
 			v := bv.m[n]
-			fmt.Fprintf(&buf, "  %s:  size=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d",
-				n, v.backing.Size, len(v.virtualTables), v.protectionCount, v.virtualizedSize)
+			fmt.Fprintf(&buf, "  %s:  size=%d  refBlobValueSize=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d",
+				n, v.backing.Size, v.backing.ReferencedBlobValueSizeTotal, len(v.virtualTables), v.protectionCount, v.virtualizedSize)
 			tableNums := slices.Sorted(maps.Keys(v.virtualTables))
 			fmt.Fprintf(&buf, "  tables: %v\n", tableNums)
+		}
+		// Print heap state.
+		if len(bv.rewriteCandidates.items) > 0 {
+			fmt.Fprint(&buf, "rewrite candidates heap: ")
+			for _, v := range bv.rewriteCandidates.items {
+				fmt.Fprintf(&buf, "%s(%.1f%%) ", v.backing.DiskFileNum, v.referencedDataPct()*100)
+			}
+			fmt.Fprintf(&buf, "\n")
 		}
 	}
 	unused := bv.Unused()
@@ -292,7 +336,7 @@ func (bv *VirtualBackings) String() string {
 	return buf.String()
 }
 
-func (bv *VirtualBackings) mustAdd(v backingWithMetadata) {
+func (bv *VirtualBackings) mustAdd(v *backingWithMetadata) {
 	_, ok := bv.m[v.backing.DiskFileNum]
 	if ok {
 		panic("pebble: trying to add an existing file backing")
@@ -300,7 +344,7 @@ func (bv *VirtualBackings) mustAdd(v backingWithMetadata) {
 	bv.m[v.backing.DiskFileNum] = v
 }
 
-func (bv *VirtualBackings) mustGet(n base.DiskFileNum) backingWithMetadata {
+func (bv *VirtualBackings) mustGet(n base.DiskFileNum) *backingWithMetadata {
 	v, ok := bv.m[n]
 	if !ok {
 		panic(fmt.Sprintf("unknown backing %s", n))
@@ -311,4 +355,41 @@ func (bv *VirtualBackings) mustGet(n base.DiskFileNum) backingWithMetadata {
 // inUse returns true if b is used to back at least one virtual table.
 func (v *backingWithMetadata) inUse() bool {
 	return len(v.virtualTables) > 0 || v.protectionCount > 0
+}
+
+type virtualBackingRewriteCandidatesHeap struct {
+	items []*backingWithMetadata
+}
+
+var _ heap.Interface = (*virtualBackingRewriteCandidatesHeap)(nil)
+
+func (v *virtualBackingRewriteCandidatesHeap) Len() int {
+	return len(v.items)
+}
+
+func (v *virtualBackingRewriteCandidatesHeap) Less(i, j int) bool {
+	// We want to rewrite backings with a high percentage of garbage first,
+	// so we order the heap by ratio of data referenced in virtual tables.
+	return v.items[i].referencedDataPct() < v.items[j].referencedDataPct()
+}
+
+func (v *virtualBackingRewriteCandidatesHeap) Swap(i, j int) {
+	v.items[i], v.items[j] = v.items[j], v.items[i]
+	v.items[i].heapIndex = i
+	v.items[j].heapIndex = j
+}
+
+func (v *virtualBackingRewriteCandidatesHeap) Push(x any) {
+	x.(*backingWithMetadata).heapIndex = len(v.items)
+	v.items = append(v.items, x.(*backingWithMetadata))
+}
+
+func (v *virtualBackingRewriteCandidatesHeap) Pop() any {
+	old := v.items
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil
+	v.items = old[0 : n-1]
+	item.heapIndex = -1
+	return item
 }
