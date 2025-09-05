@@ -988,7 +988,7 @@ func testIngestSharedImpl(
 			return "ok"
 
 		case "compact":
-			err := runCompactCmd(td, d)
+			err := runCompactCmd(t, td, d)
 			if err != nil {
 				return err.Error()
 			}

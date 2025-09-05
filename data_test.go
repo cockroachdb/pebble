@@ -760,53 +760,50 @@ func runBuildSSTCmd(
 	return *metadata, nil
 }
 
-func runCompactCmdAsync(
-	td *datadriven.TestData, d *DB, cancellable bool,
-) (compactFunc func() error, cancelFunc context.CancelFunc, err error) {
+// runCompactCmdFn reurns a function that runs the compaction in the given
+// command. The context can be cancellable.
+func runCompactCmdFn(
+	ctx context.Context, t *testing.T, td *datadriven.TestData, d *DB,
+) (compactFunc func() error) {
 	if len(td.CmdArgs) == 0 {
-		return nil, nil, errors.Errorf("%s expects at least one argument", td.Cmd)
+		td.Fatalf(t, "%s expects at least one argument", td.Cmd)
 	}
 	parts := strings.Split(td.CmdArgs[0].Key, "-")
 	if len(parts) != 2 {
-		return nil, nil, errors.Errorf("expected <begin>-<end>: %s", td.Input)
+		td.Fatalf(t, "expected <begin>-<end>: %s", td.Input)
 	}
 	parallelize := td.HasArg("parallel")
-	ctx := context.Background()
-	if cancellable {
-		ctx, cancelFunc = context.WithCancel(ctx)
-	}
 	if len(td.CmdArgs) >= 2 && strings.HasPrefix(td.CmdArgs[1].Key, "L") {
 		levelString := td.CmdArgs[1].String()
 		iStart := base.MakeInternalKey([]byte(parts[0]), base.SeqNumMax, InternalKeyKindMax)
 		iEnd := base.MakeInternalKey([]byte(parts[1]), 0, 0)
 		if levelString[0] != 'L' {
-			if cancelFunc != nil {
-				cancelFunc()
-			}
-			return nil, nil, errors.Errorf("expected L<n>: %s", levelString)
+			td.Fatalf(t, "expected L<n>: %s", levelString)
 		}
 		level, err := strconv.Atoi(levelString[1:])
 		if err != nil {
-			if cancelFunc != nil {
-				cancelFunc()
-			}
-			return nil, nil, err
+			td.Fatalf(t, "cannot parse level number: %v", err)
 		}
 		return func() error {
 			return d.manualCompact(ctx, iStart.UserKey, iEnd.UserKey, level, parallelize)
-		}, cancelFunc, nil
+		}
 	}
 	return func() error {
 		return d.Compact(ctx, []byte(parts[0]), []byte(parts[1]), parallelize)
-	}, cancelFunc, nil
+	}
 }
 
-func runCompactCmd(td *datadriven.TestData, d *DB) error {
-	compactFunc, _, err := runCompactCmdAsync(td, d, false)
-	if err != nil {
-		return err
+func runCompactCmd(t *testing.T, td *datadriven.TestData, d *DB) error {
+	ctx := context.Background()
+	// Set up a 1-minute deadline to detect stuck compactions.
+	ctx, cancelFn := context.WithDeadline(ctx, time.Now().Add(time.Minute))
+	defer cancelFn()
+	compactFunc := runCompactCmdFn(ctx, t, td, d)
+	err := compactFunc()
+	if ctx.Err() != nil {
+		td.Fatalf(t, "compaction took too long")
 	}
-	return compactFunc()
+	return err
 }
 
 // runDBDefineCmd prepares a database state, returning the opened

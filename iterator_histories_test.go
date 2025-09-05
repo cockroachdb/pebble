@@ -181,7 +181,7 @@ func TestIterHistories(t *testing.T) {
 				}
 				return fmt.Sprintf("wrote %d keys to batch %q\n", count, name)
 			case "compact":
-				if err := runCompactCmd(td, d); err != nil {
+				if err := runCompactCmd(t, td, d); err != nil {
 					return err.Error()
 				}
 				return runLSMCmd(td, d)
