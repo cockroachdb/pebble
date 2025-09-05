@@ -60,6 +60,7 @@ func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) ([]byte, Setti
 	if &result[0] != &compressedBuf[varIntLen] {
 		panic("Allocated a new buffer despite checking CompressBound.")
 	}
+	msanWrite(result)
 
 	return compressedBuf[:varIntLen+len(result)], Setting{Algorithm: Zstd, Level: uint8(z.level)}
 }
@@ -80,8 +81,7 @@ type zstdDecompressor struct {
 
 var _ Decompressor = (*zstdDecompressor)(nil)
 
-// DecompressInto decompresses src with the Zstandard algorithm. The destination
-// buffer must already be sufficiently sized, otherwise DecompressInto may error.
+// DecompressInto is part of the Decompressor interface.
 func (z *zstdDecompressor) DecompressInto(dst, src []byte) error {
 	// The payload is prefixed with a varint encoding the length of
 	// the decompressed block.
@@ -93,10 +93,14 @@ func (z *zstdDecompressor) DecompressInto(dst, src []byte) error {
 	if len(dst) == 0 {
 		return errors.Errorf("decodeZstd: empty dst buffer")
 	}
-	_, err := z.ctx.DecompressInto(dst, src)
+	n, err := z.ctx.DecompressInto(dst, src)
 	if err != nil {
 		return err
 	}
+	if n != len(dst) {
+		return base.CorruptionErrorf("ZSTD decompressed %d bytes, expected %d", n, len(dst))
+	}
+	msanWrite(dst)
 	return nil
 }
 

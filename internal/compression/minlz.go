@@ -29,6 +29,7 @@ func (c *minlzCompressor) Compress(dst, src []byte) ([]byte, Setting) {
 	if err != nil {
 		panic(errors.Wrap(err, "minlz compression"))
 	}
+	msanWrite(compressed)
 	return compressed, Setting{Algorithm: MinLZ, Level: uint8(c.level)}
 }
 
@@ -54,11 +55,15 @@ var _ Decompressor = minlzDecompressor{}
 
 func (minlzDecompressor) DecompressInto(buf, compressed []byte) error {
 	result, err := minlz.Decode(buf, compressed)
+	if err != nil {
+		return err
+	}
 	if len(result) != len(buf) || (len(result) > 0 && &result[0] != &buf[0]) {
 		return base.CorruptionErrorf("pebble/table: decompressed into unexpected buffer: %p != %p",
 			errors.Safe(result), errors.Safe(buf))
 	}
-	return err
+	msanWrite(result)
+	return nil
 }
 
 func (minlzDecompressor) DecompressedLen(b []byte) (decompressedLen int, err error) {
