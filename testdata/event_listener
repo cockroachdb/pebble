@@ -25,6 +25,7 @@ sync: db
 [JOB 1] MANIFEST created 000001
 lock: wal/LOCK
 open-dir: wal
+Replayed WALs: none
 create: wal/000002.log
 sync: wal
 [JOB 1] WAL created 000002

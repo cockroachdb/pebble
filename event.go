@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
 )
 
@@ -95,6 +96,35 @@ func (i LevelInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		redact.Safe(formatFileNums(i.Tables)),
 		redact.Safe(humanize.Bytes.Uint64(tablesTotalSize(i.Tables))),
 		redact.Safe(i.Score))
+}
+
+// WALReplayInfo contains the info for the WAL replay information event.
+type WALReplayInfo struct {
+	// WALs contains the list of WALs that were replayed.
+	WALs []WALFileInfo
+}
+
+// WALFileInfo contains information about a single WAL file. Multiple files can
+// be part of the same logical WAL.
+type WALFileInfo struct {
+	LogicalNum wal.NumWAL
+	Path       string
+}
+
+func (i WALReplayInfo) String() string {
+	return redact.StringWithoutMarkers(i)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (i WALReplayInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Printf("Replayed WALs:")
+	if len(i.WALs) == 0 {
+		w.Printf(" none")
+		return
+	}
+	for _, wal := range i.WALs {
+		w.Printf(" %s:%s", redact.Safe(wal.LogicalNum), redact.Safe(wal.Path))
+	}
 }
 
 // BlobFileCreateInfo contains the info for a blob file creation event.
@@ -874,6 +904,10 @@ type EventListener struct {
 	// operation such as flush or compaction.
 	BackgroundError func(error)
 
+	// WALReplayed is emitted once during Open; it contains information about WAL
+	// replay.
+	WALReplayed func(WALReplayInfo)
+
 	// BlobFileCreated is invoked after a blob file has been created.
 	BlobFileCreated func(BlobFileCreateInfo)
 
@@ -985,6 +1019,9 @@ func (l *EventListener) EnsureDefaults(logger Logger) {
 			l.BackgroundError = func(error) {}
 		}
 	}
+	if l.WALReplayed == nil {
+		l.WALReplayed = func(info WALReplayInfo) {}
+	}
 	if l.BlobFileCreated == nil {
 		l.BlobFileCreated = func(info BlobFileCreateInfo) {}
 	}
@@ -1082,6 +1119,9 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		BackgroundError: func(err error) {
 			logger.Errorf("background error: %s", err)
 		},
+		WALReplayed: func(info WALReplayInfo) {
+			logger.Infof("%s", info)
+		},
 		BlobFileCreated: func(info BlobFileCreateInfo) {
 			logger.Infof("%s", info)
 		},
@@ -1171,6 +1211,10 @@ func TeeEventListener(a, b EventListener) EventListener {
 		BackgroundError: func(err error) {
 			a.BackgroundError(err)
 			b.BackgroundError(err)
+		},
+		WALReplayed: func(info WALReplayInfo) {
+			a.WALReplayed(info)
+			b.WALReplayed(info)
 		},
 		BlobFileCreated: func(info BlobFileCreateInfo) {
 			a.BlobFileCreated(info)
