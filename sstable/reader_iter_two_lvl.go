@@ -37,6 +37,11 @@ type twoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterat
 	// topLevelIndexLoaded is set to true if the top-level index block load
 	// operation completed successfully.
 	topLevelIndexLoaded bool
+
+	// lastOpWasSeekPrefixGE tracks if the previous operation was SeekPrefixGE
+	// that returned nil due to bloom filter miss. Used for invariant checking
+	// in Next() to ensure the block is not invalidated when it doesn't have to be.
+	lastOpWasSeekPrefixGE invariants.Value[bool]
 }
 
 var _ Iterator = (*twoLevelIteratorRowBlocks)(nil)
@@ -262,6 +267,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 ) *base.InternalKV {
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
+	i.lastOpWasSeekPrefixGE.Set(false)
 	if i.secondLevel.readEnv.Virtual != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
@@ -404,6 +410,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
+	i.lastOpWasSeekPrefixGE.Set(false)
 
 	if i.secondLevel.synthetic.atSyntheticKey {
 		// TODO(sachin) : We have to disable the optimization to avoid false data
@@ -413,6 +420,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 		// The synthetic key is no longer relevant and must be cleared.
 		i.secondLevel.synthetic.atSyntheticKey = false
 	}
+
 	if i.secondLevel.readEnv.Virtual != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
@@ -518,13 +526,15 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		i.lastBloomFilterMatched = false
 		var mayContain bool
 		mayContain, i.secondLevel.err = i.secondLevel.bloomFilterMayContain(prefix)
-		if i.secondLevel.err != nil || !mayContain {
-			// In the i.secondLevel.err == nil case, this invalidation may not be necessary for
-			// correctness, and may be a place to optimize later by reusing the
-			// already loaded block. It was necessary in earlier versions of the code
-			// since the caller was allowed to call Next when SeekPrefixGE returned
-			// nil. This is no longer allowed.
+		if i.secondLevel.err != nil {
 			PD(&i.secondLevel.data).Invalidate()
+			return nil
+		}
+		if !mayContain {
+			// In the no-error bloom filter miss case, the key is definitely not in table.
+			// We can avoid invalidating the already loaded block since the caller is
+			// not allowed to call Next when SeekPrefixGE returns nil.
+			i.lastOpWasSeekPrefixGE.Set(true)
 			return nil
 		}
 		i.lastBloomFilterMatched = true
@@ -708,9 +718,10 @@ func (i *twoLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
 func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) *base.InternalKV {
-
+	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
+
 	if i.secondLevel.readEnv.Virtual != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
 		// known to callers of SeekLT.
@@ -796,8 +807,10 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
+	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
+
 	// If we have a lower bound, use SeekGE. Note that in general this is not
 	// supported usage, except when the lower bound is there because the table is
 	// virtual.
@@ -847,8 +860,10 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
 func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
+	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
+
 	if i.secondLevel.readEnv.Virtual != nil {
 		if i.secondLevel.endKeyInclusive {
 			return i.virtualLast()
@@ -900,6 +915,15 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
 // Note: twoLevelCompactionIterator.Next mirrors the implementation of
 // twoLevelIterator.Next due to performance. Keep the two in sync.
 func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
+	if invariants.Enabled && i.lastOpWasSeekPrefixGE.Get() {
+		// If the previous operation was SeekPrefixGE that returned nil due to bloom
+		// filter miss, the data block should not have been invalidated. This assertion
+		// ensures the optimization to preserve loaded blocks is working correctly.
+		if PD(&i.secondLevel.data).IsDataInvalidated() {
+			panic("pebble: data block was invalidated after SeekPrefixGE returned nil due to bloom filter miss")
+		}
+	}
+	i.lastOpWasSeekPrefixGE.Set(false)
 
 	// The SeekPrefixGE might have returned a synthetic key with latest suffix
 	// contained in the sstable. If the caller is calling Next(), that means
@@ -929,6 +953,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
 func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
+	i.lastOpWasSeekPrefixGE.Set(false)
 	if i.secondLevel.exhaustedBounds == +1 {
 		panic("Next called even though exhausted upper bound")
 	}
@@ -985,6 +1010,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Intern
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *twoLevelIterator[I, PI, D, PD]) Prev() *base.InternalKV {
+	i.lastOpWasSeekPrefixGE.Set(false)
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
 	if i.secondLevel.err != nil {
