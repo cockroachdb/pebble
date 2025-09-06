@@ -2774,21 +2774,25 @@ func TestMarkedForCompaction(t *testing.T) {
 	var d *DB
 
 	var buf bytes.Buffer
+	eventListener := EventListener{
+		CompactionEnd: func(info CompactionInfo) {
+			// Fix the job ID and durations for determinism.
+			info.JobID = 100
+			info.Duration = time.Second
+			info.TotalDuration = 2 * time.Second
+			fmt.Fprintln(&buf, info)
+		},
+	}
+	if testing.Verbose() {
+		eventListener = TeeEventListener(eventListener, MakeLoggingEventListener(base.DefaultLogger))
+	}
 	opts := &Options{
 		FS:                          mem,
 		DebugCheck:                  DebugCheckLevels,
 		DisableAutomaticCompactions: true,
 		FormatMajorVersion:          internalFormatNewest,
-		EventListener: &EventListener{
-			CompactionEnd: func(info CompactionInfo) {
-				// Fix the job ID and durations for determinism.
-				info.JobID = 100
-				info.Duration = time.Second
-				info.TotalDuration = 2 * time.Second
-				fmt.Fprintln(&buf, info)
-			},
-		},
-		Logger: testutils.Logger{T: t},
+		EventListener:               &eventListener,
+		Logger:                      testutils.Logger{T: t},
 	}
 	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -2869,6 +2873,9 @@ func TestMarkedForCompaction(t *testing.T) {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			d.opts.DisableAutomaticCompactions = false
+			defer func() {
+				d.opts.DisableAutomaticCompactions = true
+			}()
 			for {
 				d.maybeScheduleCompaction()
 				if d.mu.compact.compactingCount == 0 {
@@ -2881,7 +2888,6 @@ func TestMarkedForCompaction(t *testing.T) {
 
 			fmt.Fprintln(&buf, d.mu.versions.currentVersion().DebugString())
 			s := strings.TrimSpace(buf.String())
-			opts.DisableAutomaticCompactions = true
 			return s
 
 		default:

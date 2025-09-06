@@ -987,6 +987,9 @@ type Options struct {
 	// DisableAutomaticCompactions dictates whether automatic compactions are
 	// scheduled or not. The default is false (enabled). This option is only used
 	// externally when running a manual compaction, and internally for tests.
+	//
+	// Note that this field is only consulted while holding DB.mu, so it it safe
+	// for a test to modify it while holding DB.mu.
 	DisableAutomaticCompactions bool
 
 	// DisableConsistencyCheck disables the consistency check that is performed on
