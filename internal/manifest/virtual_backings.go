@@ -100,7 +100,7 @@ type backingWithMetadata struct {
 
 	// virtualTables is the list of virtual tables that use this backing.
 	// AddTable/RemoveTable maintain this map.
-	virtualTables map[base.TableNum]*TableMetadata
+	virtualTables map[base.TableNum]tableAndLevel
 	heapIndex     int
 }
 
@@ -120,7 +120,7 @@ func (bv *VirtualBackings) AddAndRef(backing *TableBacking) {
 	backing.Ref()
 	bm := &backingWithMetadata{
 		backing:       backing,
-		virtualTables: make(map[base.TableNum]*TableMetadata),
+		virtualTables: make(map[base.TableNum]tableAndLevel),
 		heapIndex:     -1,
 	}
 	bv.mustAdd(bm)
@@ -150,7 +150,7 @@ func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 
 // AddTable is used when a new table is using an existing backing. The backing
 // must be in the set already.
-func (bv *VirtualBackings) AddTable(m *TableMetadata) {
+func (bv *VirtualBackings) AddTable(m *TableMetadata, level int) {
 	if !m.Virtual {
 		panic(errors.AssertionFailedf("table %s not virtual", m.TableNum))
 	}
@@ -162,7 +162,10 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata) {
 		delete(bv.unused, v.backing)
 	}
 	v.virtualizedSize += m.Size
-	v.virtualTables[m.TableNum] = m
+	v.virtualTables[m.TableNum] = tableAndLevel{
+		meta:  m,
+		level: level,
+	}
 	// Update candidates heap.
 	if v.heapIndex == -1 {
 		heap.Push(&bv.rewriteCandidates, v)
@@ -180,7 +183,7 @@ func (bv *VirtualBackings) RemoveTable(backing base.DiskFileNum, table base.Tabl
 		panic(errors.AssertionFailedf("table %s does not use backing %s", table, v.backing.DiskFileNum))
 	}
 	delete(v.virtualTables, table)
-	v.virtualizedSize -= t.Size
+	v.virtualizedSize -= t.meta.Size
 	if !v.inUse() {
 		bv.unused[v.backing] = struct{}{}
 	}
@@ -295,12 +298,16 @@ func (bv *VirtualBackings) Backings() []*TableBacking {
 // referenced by virtual tables to total size, along with the list of virtual
 // tables that use the backing. If there are no backings in the set, nil is
 // returned.
-func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, []*TableMetadata) {
+func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, [NumLevels][]*TableMetadata) {
 	if bv.rewriteCandidates.Len() == 0 {
-		return nil, nil
+		return nil, [NumLevels][]*TableMetadata{}
 	}
-	return bv.rewriteCandidates.items[0].backing,
-		slices.Collect(maps.Values(bv.rewriteCandidates.items[0].virtualTables))
+	v := bv.rewriteCandidates.items[0]
+	var tables [NumLevels][]*TableMetadata
+	for _, tl := range v.virtualTables {
+		tables[tl.level] = append(tables[tl.level], tl.meta)
+	}
+	return v.backing, tables
 }
 
 func (bv *VirtualBackings) String() string {
