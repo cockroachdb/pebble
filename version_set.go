@@ -320,10 +320,10 @@ func (vs *versionSet) load(
 		vs.latest.virtualBackings.AddAndRef(b)
 	}
 
-	for _, addedLevel := range bve.AddedTables {
+	for l, addedLevel := range bve.AddedTables {
 		for _, m := range addedLevel {
 			if m.Virtual {
-				vs.latest.virtualBackings.AddTable(m)
+				vs.latest.virtualBackings.AddTable(m, l)
 			}
 		}
 	}
@@ -879,7 +879,7 @@ func getZombieTablesAndUpdateVirtualBackings(
 	}
 	for _, nf := range ve.NewTables {
 		if nf.Meta.Virtual {
-			virtualBackings.AddTable(nf.Meta)
+			virtualBackings.AddTable(nf.Meta, nf.Level)
 		}
 	}
 

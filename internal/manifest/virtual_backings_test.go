@@ -43,13 +43,15 @@ func TestVirtualBackings(t *testing.T) {
 				bv.Remove(n)
 
 			case "add-table":
+				level := 1
+				d.MaybeScanArgs(t, "level", &level)
 				m := &TableMetadata{
 					TableNum:     tableNum,
 					TableBacking: &TableBacking{DiskFileNum: n},
 					Size:         size,
 					Virtual:      true,
 				}
-				bv.AddTable(m)
+				bv.AddTable(m, level)
 
 			case "remove-table":
 				bv.RemoveTable(n, tableNum)
