@@ -661,6 +661,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			os.Exit(1)
 		}
 	})
+	if !d.opts.ReadOnly {
+		// Periodically signal the compaction condition variable, to allow for
+		// write stall inputs to be changed during a stall.
+		go d.periodicCompactCondSignaller()
+	}
 
 	return d, nil
 }
@@ -1249,4 +1254,17 @@ func (l walEventListenerAdaptor) LogCreated(ci wal.CreateInfo) {
 		Err:             ci.Err,
 	}
 	l.l.WALCreated(wci)
+}
+
+func (d *DB) periodicCompactCondSignaller() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			d.mu.compact.cond.Broadcast()
+		case <-d.closedCh:
+			return
+		}
+	}
 }

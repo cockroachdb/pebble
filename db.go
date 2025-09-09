@@ -2357,6 +2357,11 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 				})
 			}
 			beforeWait := crtime.NowMono()
+			// NB: In a rare case, we can start a write stall, and then the system
+			// may detect WAL failover, resulting in
+			// ElevateWriteStallThresholdForFailover returning true. This condition
+			// variable is signaled in the background every 1s, so the if-predicate
+			// above will get reevaluated periodically.
 			d.mu.compact.cond.Wait()
 			if b != nil {
 				b.commitStats.MemTableWriteStallDuration += beforeWait.Elapsed()
