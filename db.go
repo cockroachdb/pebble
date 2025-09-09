@@ -2341,6 +2341,7 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 	// This function will call EventListener.WriteStallBegin at most once.  If
 	// it does call it, it will call EventListener.WriteStallEnd once before
 	// returning.
+	var timer *time.Timer
 	for {
 		var size uint64
 		for i := range d.mu.mem.queue {
@@ -2357,7 +2358,18 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 				})
 			}
 			beforeWait := crtime.NowMono()
+			// NB: In a rare case, we can start a write stall, and then the system
+			// may detect WAL failover, resulting in
+			// ElevateWriteStallThresholdForFailover returning true. So we want to
+			// recheck the predicate periodically, which we do by signaling the
+			// condition variable.
+			if timer == nil {
+				timer = time.AfterFunc(time.Second, d.mu.compact.cond.Broadcast)
+			} else {
+				timer.Reset(time.Second)
+			}
 			d.mu.compact.cond.Wait()
+			timer.Stop()
 			if b != nil {
 				b.commitStats.MemTableWriteStallDuration += beforeWait.Elapsed()
 			}
