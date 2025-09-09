@@ -1609,7 +1609,6 @@ func TestIngestTargetLevel(t *testing.T) {
 			opts := Options{
 				FormatMajorVersion: internalFormatNewest,
 			}
-			opts.WithFSDefaults()
 			if d, err = runDBDefineCmd(td, &opts); err != nil {
 				return err.Error()
 			}

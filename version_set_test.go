@@ -375,7 +375,11 @@ func TestLargeKeys(t *testing.T) {
 	}()
 
 	var d *DB
-	defer func() { require.NoError(t, d.Close()) }()
+	defer func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+		}
+	}()
 	datadriven.RunTest(t, "testdata/large_keys", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":

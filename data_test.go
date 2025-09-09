@@ -838,22 +838,16 @@ func runCompactCmd(td *datadriven.TestData, d *DB) error {
 // The resulting version edit is then manipulated to write the files
 // to the indicated level.
 //
-// Because of it's low-level manipulation, runDBDefineCmd does allow the
+// Because of its low-level manipulation, runDBDefineCmd does allow the
 // creation of invalid database states. If opts.DebugCheck is set, the
 // level checker should detect the invalid state.
+//
+// The given opts are modified if the test directive contains any options. If
+// opts.FS is nil, it is initialized to a new MemFS.
 func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
-	if opts == nil {
-		opts = &Options{}
+	if opts.FS == nil {
+		opts.FS = vfs.NewMem()
 	}
-	opts.EnsureDefaults()
-	opts.FS = vfs.NewMem()
-	return runDBDefineCmdReuseFS(td, opts)
-}
-
-// runDBDefineCmdReuseFS is like runDBDefineCmd, but does not set opts.FS, expecting
-// the caller to have set an appropriate FS already.
-func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) {
-	opts.EnsureDefaults()
 	if err := parseDBOptionsArgs(opts, td.CmdArgs); err != nil {
 		return nil, err
 	}
@@ -1005,13 +999,18 @@ func runDBDefineCmdReuseFS(td *datadriven.TestData, opts *Options) (*DB, error) 
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed table spec: %s", s)
 		}
-		m := (&manifest.TableMetadata{}).ExtendPointKeyBounds(
-			opts.Comparer.Compare,
+		var m manifest.TableMetadata
+		cmp := base.DefaultComparer.Compare
+		if opts.Comparer != nil {
+			cmp = opts.Comparer.Compare
+		}
+		m.ExtendPointKeyBounds(
+			cmp,
 			InternalKey{UserKey: []byte(parts[0])},
 			InternalKey{UserKey: []byte(parts[1])},
 		)
 		m.InitPhysicalBacking()
-		return m, nil
+		return &m, nil
 	}
 
 	// Example, compact: a-c.
@@ -1815,11 +1814,18 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				opts.TargetFileSizes[i] = size
 			}
 			// Set the remaining file sizes. Normally, EnsureDefaults() would do that
-			// for us but it was already called and the target file sizes for all
+			// for us but if it was already called the target file sizes for all
 			// levels are now set to the defaults.
 			for i := len(cmdArg.Vals); i < len(opts.TargetFileSizes); i++ {
 				opts.TargetFileSizes[i] = opts.TargetFileSizes[i-1] * 2
 			}
+		case "flush-split-bytes":
+			flushSplitBytes, err := strconv.ParseInt(cmdArg.Vals[0], 10, 64)
+			if err != nil {
+				return err
+			}
+			opts.FlushSplitBytes = flushSplitBytes
+
 		case "value-separation":
 			var policy ValueSeparationPolicy
 			if len(cmdArg.Vals) == 1 && cmdArg.Vals[0] == "off" || cmdArg.Vals[0] == "disabled" {

@@ -1437,6 +1437,12 @@ type pausableCleaner struct {
 	cleaner Cleaner
 }
 
+func newPausableCleaner(cleaner Cleaner) *pausableCleaner {
+	p := &pausableCleaner{cleaner: cleaner}
+	p.cond.L = &p.mu
+	return p
+}
+
 func (c *pausableCleaner) Clean(fs vfs.FS, fileType base.FileType, path string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1460,9 +1466,7 @@ func (c *pausableCleaner) resume() {
 }
 
 func TestCompactionPickerScores(t *testing.T) {
-	fs := vfs.NewMem()
-	cleaner := pausableCleaner{cleaner: DeleteCleaner{}}
-	cleaner.cond.L = &cleaner.mu
+	cleaner := newPausableCleaner(DeleteCleaner{})
 
 	var d *DB
 	defer func() {
@@ -1497,11 +1501,10 @@ func TestCompactionPickerScores(t *testing.T) {
 				cleaner.pause()
 			}
 			opts := &Options{
-				Cleaner:                     &cleaner,
+				Cleaner:                     cleaner,
 				Comparer:                    testkeys.Comparer,
 				DisableAutomaticCompactions: true,
 				FormatMajorVersion:          FormatNewest,
-				FS:                          fs,
 				Logger:                      testutils.Logger{T: t},
 			}
 			opts.Experimental.CompactionScheduler = func() CompactionScheduler {

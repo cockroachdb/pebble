@@ -1452,31 +1452,38 @@ func TestCompaction(t *testing.T) {
 		"file_boundaries_delsized": {
 			minVersion: FormatDeleteSizedAndObsolete,
 			maxVersion: FormatFlushableIngestExcises,
+			cmp:        DefaultComparer,
 		},
 		"set_with_del_sstable_Pebblev4": {
 			minVersion: FormatDeleteSizedAndObsolete,
 			maxVersion: FormatFlushableIngestExcises,
+			cmp:        DefaultComparer,
 		},
 		"multilevel": {
 			minVersion: FormatMinSupported,
 			maxVersion: internalFormatNewest,
+			cmp:        DefaultComparer,
 		},
 		"set_with_del_sstable_Pebblev5": {
 			minVersion: FormatColumnarBlocks,
 			maxVersion: FormatColumnarBlocks,
+			cmp:        DefaultComparer,
 		},
 		"set_with_del_sstable_Pebblev6": {
 			minVersion: FormatTableFormatV6,
 			maxVersion: FormatTableFormatV6,
+			cmp:        DefaultComparer,
 		},
 		"set_with_del_sstable_Pebblev7": {
 			minVersion: formatFooterAttributes,
 			maxVersion: formatFooterAttributes,
+			cmp:        DefaultComparer,
 		},
 		"value_separation": {
 			minVersion: FormatValueSeparation,
 			maxVersion: FormatValueSeparation,
 			verbose:    true,
+			cmp:        DefaultComparer,
 		},
 		"mvcc_garbage_blob": {
 			minVersion: FormatValueSeparation,
@@ -1489,21 +1496,25 @@ func TestCompaction(t *testing.T) {
 			// since the test prints the compaction log which includes file sizes.
 			minVersion: formatDeprecatedExperimentalValueSeparation,
 			maxVersion: formatDeprecatedExperimentalValueSeparation,
+			cmp:        DefaultComparer,
 		},
 		"compaction_cancellation": {
 			// Run at a specific version, so that a single sstable format is used,
 			// since the test prints the compaction log which includes file sizes.
 			minVersion: formatDeprecatedExperimentalValueSeparation,
 			maxVersion: formatDeprecatedExperimentalValueSeparation,
+			cmp:        DefaultComparer,
 		},
 		"l0_to_lbase_compaction": {
 			minVersion: formatDeprecatedExperimentalValueSeparation,
 			maxVersion: formatDeprecatedExperimentalValueSeparation,
+			cmp:        DefaultComparer,
 		},
 		"backing_value_size": {
 			minVersion: FormatBackingValueSize,
 			maxVersion: FormatBackingValueSize,
 			verbose:    true,
+			cmp:        DefaultComparer,
 		},
 	}
 	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {
@@ -2767,21 +2778,6 @@ func TestMarkedForCompaction(t *testing.T) {
 	if testing.Verbose() {
 		eventListener = TeeEventListener(eventListener, MakeLoggingEventListener(base.DefaultLogger))
 	}
-	mkOpts := func() *Options {
-		opts := &Options{
-			FS:                          vfs.NewMem(),
-			DebugCheck:                  DebugCheckLevels,
-			DisableAutomaticCompactions: true,
-			FormatMajorVersion:          internalFormatNewest,
-			EventListener:               &eventListener,
-			Logger:                      testutils.Logger{T: t},
-		}
-		opts.Experimental.CompactionScheduler = func() CompactionScheduler {
-			return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
-		}
-		opts.WithFSDefaults()
-		return opts
-	}
 
 	var opts *Options
 	var d *DB
@@ -2810,11 +2806,18 @@ func TestMarkedForCompaction(t *testing.T) {
 
 		case "define":
 			if d != nil {
-				if err := d.Close(); err != nil {
-					return err.Error()
-				}
+				require.NoError(t, d.Close())
 			}
-			opts = mkOpts()
+			opts = &Options{
+				DebugCheck:                  DebugCheckLevels,
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          internalFormatNewest,
+				EventListener:               &eventListener,
+				Logger:                      testutils.Logger{T: t},
+			}
+			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+			}
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
 				return err.Error()
