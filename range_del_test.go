@@ -35,10 +35,6 @@ func TestRangeDel(t *testing.T) {
 			require.NoError(t, d.Close())
 		}
 	}()
-	opts := &Options{
-		DisableAutomaticCompactions: true,
-		Logger:                      testutils.Logger{T: t},
-	}
 
 	datadriven.RunTest(t, "testdata/range_del", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -52,6 +48,10 @@ func TestRangeDel(t *testing.T) {
 				}
 			}
 
+			opts := &Options{
+				DisableAutomaticCompactions: true,
+				Logger:                      testutils.Logger{T: t},
+			}
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
 				return err.Error()
