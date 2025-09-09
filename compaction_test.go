@@ -2776,9 +2776,6 @@ func TestCompactionInvalidBounds(t *testing.T) {
 func TestMarkedForCompaction(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	var mem vfs.FS = vfs.NewMem()
-	var d *DB
-
 	var buf bytes.Buffer
 	eventListener := EventListener{
 		CompactionEnd: func(info CompactionInfo) {
@@ -2792,19 +2789,24 @@ func TestMarkedForCompaction(t *testing.T) {
 	if testing.Verbose() {
 		eventListener = TeeEventListener(eventListener, MakeLoggingEventListener(base.DefaultLogger))
 	}
-	opts := &Options{
-		FS:                          mem,
-		DebugCheck:                  DebugCheckLevels,
-		DisableAutomaticCompactions: true,
-		FormatMajorVersion:          internalFormatNewest,
-		EventListener:               &eventListener,
-		Logger:                      testutils.Logger{T: t},
+	mkOpts := func() *Options {
+		opts := &Options{
+			FS:                          vfs.NewMem(),
+			DebugCheck:                  DebugCheckLevels,
+			DisableAutomaticCompactions: true,
+			FormatMajorVersion:          internalFormatNewest,
+			EventListener:               &eventListener,
+			Logger:                      testutils.Logger{T: t},
+		}
+		opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+			return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+		}
+		opts.WithFSDefaults()
+		return opts
 	}
-	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
-		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
-	}
-	opts.WithFSDefaults()
 
+	var opts *Options
+	var d *DB
 	datadriven.RunTest(t, "testdata/marked_for_compaction", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()
 		switch td.Cmd {
@@ -2834,6 +2836,7 @@ func TestMarkedForCompaction(t *testing.T) {
 					return err.Error()
 				}
 			}
+			opts = mkOpts()
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
 				return err.Error()
