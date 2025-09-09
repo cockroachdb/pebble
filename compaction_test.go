@@ -893,7 +893,6 @@ func runCompactionTest(
 ) {
 	defer leaktest.AfterTest(t)()
 
-	var mem vfs.FS
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -906,10 +905,6 @@ func runCompactionTest(
 	rng := rand.New(rand.NewPCG(0, seed))
 	t.Logf("seed: %d", seed)
 
-	randVersion := func(min, max FormatMajorVersion) FormatMajorVersion {
-		return FormatMajorVersion(int(min) + rng.IntN(int(max)-int(min)+1))
-	}
-
 	var compactionLog bytes.Buffer
 	compactionLogEventListener := &EventListener{
 		CompactionEnd: func(info CompactionInfo) {
@@ -920,31 +915,36 @@ func runCompactionTest(
 			fmt.Fprintln(&compactionLog, info.String())
 		},
 	}
-	reset := func(minVersion, maxVersion FormatMajorVersion, cmp *Comparer) {
-		compactionLog.Reset()
-		if d != nil {
-			require.NoError(t, closeAllSnapshots(d))
-			require.NoError(t, d.Close())
-		}
-		mem = vfs.NewMem()
-		require.NoError(t, mem.MkdirAll("ext", 0755))
-
+	concurrencyLow, concurrencyHigh := 1, 1
+	mkOpts := func() *Options {
+		randVersion := FormatMajorVersion(int(minVersion) + rng.IntN(int(maxVersion)-int(minVersion)+1))
 		opts := &Options{
-			FS:                          mem,
+			FS:                          vfs.NewMem(),
 			DebugCheck:                  DebugCheckLevels,
 			DisableAutomaticCompactions: true,
 			EventListener:               compactionLogEventListener,
-			FormatMajorVersion:          randVersion(minVersion, maxVersion),
+			FormatMajorVersion:          randVersion,
 			Logger:                      testutils.Logger{T: t},
 			Comparer:                    cmp,
+			CompactionConcurrencyRange: func() (int, int) {
+				return concurrencyLow, concurrencyHigh
+			},
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 			return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 		}
-
+		return opts
+	}
+	reset := func() {
+		if d != nil {
+			require.NoError(t, closeAllSnapshots(d))
+			require.NoError(t, d.Close())
+		}
+		compactionLog.Reset()
+		concurrencyLow, concurrencyHigh = 1, 1
 		var err error
-		d, err = Open("", opts)
+		d, err = Open("", mkOpts())
 		require.NoError(t, err)
 	}
 
@@ -986,12 +986,12 @@ func runCompactionTest(
 		d.mu.compact.compactingCount--
 	}
 
-	reset(minVersion, maxVersion, cmp)
+	reset()
 	var ongoingCompaction *tableCompaction
 	datadriven.RunTest(t, testData, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "reset":
-			reset(minVersion, maxVersion, cmp)
+			reset()
 			return ""
 
 		case "batch":
@@ -1003,7 +1003,7 @@ func runCompactionTest(
 			return ""
 
 		case "build":
-			if err := runBuildCmd(td, d, mem); err != nil {
+			if err := runBuildCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
 			}
 			return ""
@@ -1025,36 +1025,12 @@ func runCompactionTest(
 
 		case "define":
 			if d != nil {
-				if err := closeAllSnapshots(d); err != nil {
-					return err.Error()
-				}
-				if err := d.Close(); err != nil {
-					return err.Error()
-				}
-			}
-
-			mem = vfs.NewMem()
-			opts := &Options{
-				FS:                          mem,
-				DebugCheck:                  DebugCheckLevels,
-				EventListener:               compactionLogEventListener,
-				FormatMajorVersion:          randVersion(minVersion, maxVersion),
-				DisableAutomaticCompactions: true,
-				Logger:                      testutils.Logger{T: t},
-			}
-			if cmp != nil {
-				opts.Comparer = cmp
-			}
-			opts.WithFSDefaults()
-			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
-				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
-			}
-			if d != nil {
-				opts.CompactionConcurrencyRange = d.opts.CompactionConcurrencyRange
+				require.NoError(t, closeAllSnapshots(d))
+				require.NoError(t, d.Close())
 			}
 
 			var err error
-			if d, err = runDBDefineCmd(td, opts); err != nil {
+			if d, err = runDBDefineCmd(td, mkOpts()); err != nil {
 				return err.Error()
 			}
 
@@ -1404,14 +1380,10 @@ func runCompactionTest(
 			return ""
 
 		case "set-concurrent-compactions":
-			lower := 1
-			upper := 1
-			td.MaybeScanArgs(t, "max", &upper)
-			td.MaybeScanArgs(t, "range", &lower, &upper)
-			d.opts.CompactionConcurrencyRange = func() (int, int) {
-				return lower, upper
-			}
-			return ""
+			concurrencyLow, concurrencyHigh = 1, 1
+			td.MaybeScanArgs(t, "max", &concurrencyHigh)
+			td.MaybeScanArgs(t, "range", &concurrencyLow, &concurrencyHigh)
+			return fmt.Sprintf("concurrency set to [%d, %d]", concurrencyLow, concurrencyHigh)
 
 		case "sstable-properties":
 			return runSSTablePropertiesCmd(t, td, d)
