@@ -1319,33 +1319,32 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 }
 
 func TestCompactionPickerPickFile(t *testing.T) {
-	fs := vfs.NewMem()
-	opts := &Options{
-		Comparer:           testkeys.Comparer,
-		FormatMajorVersion: FormatNewest,
-		FS:                 fs,
-		Logger:             testutils.Logger{T: t},
-	}
-	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
-		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
-	}
-
-	d, err := Open("", opts)
-	require.NoError(t, err)
+	var problemSpans *problemspans.ByLevel
+	var d *DB
 	defer func() {
 		if d != nil {
 			require.NoError(t, d.Close())
 		}
 	}()
 
-	var problemSpans *problemspans.ByLevel
-
 	datadriven.RunTest(t, "testdata/compaction_picker_pick_file", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
 			problemSpans = nil
-			require.NoError(t, d.Close())
+			if d != nil {
+				require.NoError(t, d.Close())
+			}
 
+			opts := &Options{
+				Comparer:           testkeys.Comparer,
+				FormatMajorVersion: FormatNewest,
+				Logger:             testutils.Logger{T: t},
+			}
+			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+			}
+
+			var err error
 			d, err = runDBDefineCmd(td, opts)
 			if err != nil {
 				return err.Error()
@@ -1378,7 +1377,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 
 		case "problem-spans":
 			problemSpans = &problemspans.ByLevel{}
-			problemSpans.Init(manifest.NumLevels, opts.Comparer.Compare)
+			problemSpans.Init(manifest.NumLevels, d.opts.Comparer.Compare)
 			for _, line := range crstrings.Lines(td.Input) {
 				var level int
 				var span1, span2 string
@@ -1418,7 +1417,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 				}
 				p := d.mu.versions.picker.(*compactionPickerByScore)
 				lf, ok = pickCompactionSeedFile(p.vers, &p.latestVersionState.virtualBackings,
-					opts, level, level+1, env.earliestSnapshotSeqNum, problemSpans)
+					d.opts, level, level+1, env.earliestSnapshotSeqNum, problemSpans)
 			}()
 			if !ok {
 				return "(none)"
