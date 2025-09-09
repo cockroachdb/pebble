@@ -649,6 +649,7 @@ add-ongoing-compaction startLevel=0 outputLevel=1 start=a end=z
 
 set-concurrent-compactions max=2
 ----
+concurrency set to [1, 2]
 
 compact a-b L3
 ----

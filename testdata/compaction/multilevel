@@ -38,6 +38,7 @@ L4:
 # Set concurrent compactions to 2 for the remainder of the tests.
 set-concurrent-compactions max=2
 ----
+concurrency set to [1, 2]
 
 define level-max-bytes=(L2 : 5) auto-compactions=off
 L1

@@ -7,6 +7,7 @@ define l0-compaction-threshold=1 auto-compactions=off
 
 set-concurrent-compactions range=(3,3)
 ----
+concurrency set to [3, 3]
 
 
 populate keylen=4 timestamps=(1) vallen=1
