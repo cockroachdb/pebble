@@ -2160,6 +2160,8 @@ func TestRecycleLogs(t *testing.T) {
 
 type sstAndLogFileBlockingFS struct {
 	vfs.FS
+	blockWAL  bool
+	blockSST  bool
 	unblocker sync.WaitGroup
 }
 
@@ -2168,7 +2170,8 @@ var _ vfs.FS = &sstAndLogFileBlockingFS{}
 func (fs *sstAndLogFileBlockingFS) Create(
 	name string, category vfs.DiskWriteCategory,
 ) (vfs.File, error) {
-	if strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".sst") {
+	if (strings.HasSuffix(name, ".log") && fs.blockWAL) ||
+		(strings.HasSuffix(name, ".sst") && fs.blockSST) {
 		fs.unblocker.Wait()
 	}
 	return fs.FS.Create(name, category)
@@ -2178,8 +2181,8 @@ func (fs *sstAndLogFileBlockingFS) unblock() {
 	fs.unblocker.Done()
 }
 
-func newBlockingFS(fs vfs.FS) *sstAndLogFileBlockingFS {
-	lfbfs := &sstAndLogFileBlockingFS{FS: fs}
+func newBlockingFS(fs vfs.FS, blockWAL, blockSST bool) *sstAndLogFileBlockingFS {
+	lfbfs := &sstAndLogFileBlockingFS{FS: fs, blockWAL: blockWAL, blockSST: blockSST}
 	lfbfs.unblocker.Add(1)
 	return lfbfs
 }
@@ -2187,7 +2190,7 @@ func newBlockingFS(fs vfs.FS) *sstAndLogFileBlockingFS {
 func TestWALFailoverAvoidsWriteStall(t *testing.T) {
 	mem := vfs.NewMem()
 	// All sst and log creation is blocked.
-	primaryFS := newBlockingFS(mem)
+	primaryFS := newBlockingFS(mem, true /*blockWAL*/, true /*blockSST*/)
 	// Secondary for WAL failover can do log creation.
 	secondary := wal.Dir{FS: mem, Dirname: "secondary"}
 	walFailover := &WALFailoverOptions{Secondary: secondary, FailoverOptions: wal.FailoverOptions{
@@ -2219,6 +2222,59 @@ func TestWALFailoverAvoidsWriteStall(t *testing.T) {
 		t, d.Metrics().MemTable.Size, o.MemTableSize*uint64(o.MemTableStopWritesThreshold))
 	// Unblock the writes to allow the DB to close.
 	primaryFS.unblock()
+}
+
+type testLogManager struct {
+	wal.Manager
+	elevateWriteStallThreshold atomic.Bool
+}
+
+func (tlm *testLogManager) ElevateWriteStallThresholdForFailover() bool {
+	return tlm.elevateWriteStallThreshold.Load()
+}
+
+func TestElevateThresholdAfterWriteStallUnblocksStall(t *testing.T) {
+	mem := vfs.NewMem()
+	// All sst writes are blocked.
+	blockingFS := newBlockingFS(mem, false /*blockWAL*/, true /*blockSST*/)
+	writeStallBeginCh := make(chan struct{}, 1)
+	el := EventListener{
+		WriteStallBegin: func(_ WriteStallBeginInfo) {
+			writeStallBeginCh <- struct{}{}
+		},
+	}
+	o := &Options{
+		FS:                          blockingFS,
+		MemTableSize:                4 << 20,
+		MemTableStopWritesThreshold: 2,
+		Logger:                      testutils.Logger{T: t},
+		EventListener:               &el,
+	}
+	d, err := Open("", o)
+	// Replace the log manager with one that can elevate the write stall threshold.
+	d.mu.Lock()
+	testWALManager := &testLogManager{Manager: d.mu.log.manager}
+	d.mu.log.manager = testWALManager
+	d.mu.Unlock()
+	require.NoError(t, err)
+	defer d.Close()
+	value := make([]byte, 1<<20)
+	for i := range value {
+		value[i] = byte(rand.Uint32())
+	}
+	go func() {
+		// Wait for write stall to begin.
+		<-writeStallBeginCh
+		t.Logf("write stall has begun")
+		testWALManager.elevateWriteStallThreshold.Store(true)
+	}()
+	// After ~8 writes, the default write stall threshold is exceeded.
+	// It is observed by the above goroutine, which removes the stall.
+	for i := 0; i < 200; i++ {
+		require.NoError(t, d.Set([]byte(fmt.Sprintf("%d", i)), value, nil))
+	}
+	// Unblock the writes to allow the DB to close.
+	blockingFS.unblock()
 }
 
 // TestDeterminism is a datadriven test intended to validate determinism of
