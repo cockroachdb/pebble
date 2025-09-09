@@ -262,7 +262,7 @@ range-deletions-bytes-estimate: 78
 
 # Test the interaction between point and range key deletions.
 
-define
+define block-size=1 target-file-sizes=(100, 1)
 ----
 
 # Start with a table that contains point and range keys, but no range dels or
@@ -393,7 +393,7 @@ range-deletions-bytes-estimate: 0
 # A hint for exclusively range key deletions that covers a table with point keys
 # should not contain an estimate for point keys.
 
-define
+define block-size=1 target-file-sizes=(100, 1)
 ----
 
 # A table with point keys.
@@ -451,7 +451,7 @@ range-deletions-bytes-estimate: 0
 # A hint from a range del that covers a table with only range keys should not
 # contain an estimate for the range keys.
 
-define
+define block-size=1 target-file-sizes=(100, 1)
 L4
   a.RANGEDEL.4:c
 L5
@@ -572,7 +572,7 @@ keys.missized-tombstones-count: 1
 
 # Virtual sstables tests. Note that these tests are just for sanity checking
 # purposes. Small sstables lead to inaccurate values during extrapolation.
-define format-major-version=16
+define format-major-version=16 block-size=32768 target-file-sizes=(100, 1)
 ----
 
 batch
@@ -980,7 +980,7 @@ range-deletions-bytes-estimate: 482
 
 # Create a database with value separation enabled.
 
-define format-major-version=24 value-separation=(enabled, min-size=1, max-ref-depth=10, rw-min-age=1m, garbage-ratios=0.1:0.3) target-file-sizes=(100000)
+define format-major-version=24 value-separation=(enabled, min-size=1, max-ref-depth=10, rw-min-age=1m, garbage-ratios=0.1:0.3) target-file-sizes=(100000) block-size=32768
 ----
 
 batch
