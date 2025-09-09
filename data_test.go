@@ -1553,7 +1553,7 @@ func runIngestAndExciseCmd(td *datadriven.TestData, d *DB) error {
 	return nil
 }
 
-func runIngestCmd(td *datadriven.TestData, d *DB, fs vfs.FS) error {
+func runIngestCmd(td *datadriven.TestData, d *DB) error {
 	paths := make([]string, 0, len(td.CmdArgs))
 	for _, arg := range td.CmdArgs {
 		if arg.Key == "no-wait" {

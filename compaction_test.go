@@ -1094,7 +1094,7 @@ func runCompactionTest(
 			return runGetCmd(t, td, d)
 
 		case "ingest":
-			if err := runIngestCmd(td, d, mem); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			d.mu.Lock()
@@ -1848,7 +1848,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				if err = runBuildCmd(td, d, d.opts.FS); err != nil {
 					return err.Error()
 				}
-				if err = runIngestCmd(td, d, d.opts.FS); err != nil {
+				if err = runIngestCmd(td, d); err != nil {
 					return err.Error()
 				}
 				return "OK"

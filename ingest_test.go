@@ -579,7 +579,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			return ""
 
 		case "ingest":
-			if err := runIngestCmd(td, d, mem); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			if !blockFlush {
@@ -789,7 +789,7 @@ func testIngestSharedImpl(
 			return ""
 
 		case "ingest":
-			if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.
@@ -1245,7 +1245,7 @@ func TestIngestExternal(t *testing.T) {
 
 		case "ingest":
 			flushed = false
-			if err := runIngestCmd(td, d, mem); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.
@@ -1752,7 +1752,7 @@ func TestIngest(t *testing.T) {
 
 		case "ingest":
 			flushed = false
-			if err := runIngestCmd(td, d, mem); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.

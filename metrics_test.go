@@ -362,7 +362,7 @@ func TestMetrics(t *testing.T) {
 			return s
 
 		case "ingest":
-			if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			return ""

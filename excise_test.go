@@ -160,7 +160,7 @@ func TestExcise(t *testing.T) {
 			if !noWait {
 				clearFlushed()
 			}
-			if err := runIngestCmd(td, d, mem); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			if noWait {
@@ -519,7 +519,7 @@ func TestConcurrentExcise(t *testing.T) {
 			return ""
 
 		case "ingest":
-			if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			// Wait for a possible flush.

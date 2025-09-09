@@ -88,7 +88,7 @@ func TestEstimateDiskUsageDataDriven(t *testing.T) {
 			return ""
 
 		case "ingest":
-			if err := runIngestCmd(td, d, fs); err != nil {
+			if err := runIngestCmd(td, d); err != nil {
 				return err.Error()
 			}
 			return ""

@@ -226,7 +226,7 @@ func TestIterHistories(t *testing.T) {
 				}
 				return ""
 			case "ingest-existing":
-				if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+				if err := runIngestCmd(td, d); err != nil {
 					return err.Error()
 				}
 				return ""
@@ -234,7 +234,7 @@ func TestIterHistories(t *testing.T) {
 				if err := runBuildCmd(td, d, d.opts.FS); err != nil {
 					return err.Error()
 				}
-				if err := runIngestCmd(td, d, d.opts.FS); err != nil {
+				if err := runIngestCmd(td, d); err != nil {
 					return err.Error()
 				}
 				return ""
