@@ -29,19 +29,22 @@ import (
 func TestTableStats(t *testing.T) {
 	// loadedInfo is protected by d.mu.
 	var loadedInfo *TableStatsInfo
-	opts := &Options{
-		Comparer:                    testkeys.Comparer,
-		DisableAutomaticCompactions: true,
-		FormatMajorVersion:          FormatMinSupported,
-		FS:                          vfs.NewMem(),
-		EventListener: &EventListener{
-			TableStatsLoaded: func(info TableStatsInfo) {
-				loadedInfo = &info
+	mkOpts := func() *Options {
+		return &Options{
+			Comparer:                    testkeys.Comparer,
+			DisableAutomaticCompactions: true,
+			FormatMajorVersion:          FormatMinSupported,
+			FS:                          vfs.NewMem(),
+			EventListener: &EventListener{
+				TableStatsLoaded: func(info TableStatsInfo) {
+					loadedInfo = &info
+				},
 			},
-		},
-		Logger: testutils.Logger{T: t},
+			Logger: testutils.Logger{T: t},
+		}
 	}
 
+	opts := mkOpts()
 	d, err := Open("", opts)
 	require.NoError(t, err)
 	defer func() {
@@ -71,6 +74,7 @@ func TestTableStats(t *testing.T) {
 			require.NoError(t, d.Close())
 			loadedInfo = nil
 
+			opts = mkOpts()
 			d, err = runDBDefineCmd(td, opts)
 			if err != nil {
 				return err.Error()
