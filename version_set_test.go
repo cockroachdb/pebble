@@ -374,19 +374,19 @@ func TestLargeKeys(t *testing.T) {
 		return c
 	}()
 
-	opts := &Options{
-		Comparer:                    &largeKeyComparer,
-		FormatMajorVersion:          internalFormatNewest,
-		FS:                          vfs.NewMem(),
-		Logger:                      testutils.Logger{T: t},
-		MemTableStopWritesThreshold: 4,
-		DisableTableStats:           true,
-	}
 	var d *DB
 	defer func() { require.NoError(t, d.Close()) }()
 	datadriven.RunTest(t, "testdata/large_keys", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define":
+			opts := &Options{
+				Comparer:                    &largeKeyComparer,
+				FormatMajorVersion:          internalFormatNewest,
+				FS:                          vfs.NewMem(),
+				Logger:                      testutils.Logger{T: t},
+				MemTableStopWritesThreshold: 4,
+				DisableTableStats:           true,
+			}
 			var err error
 			d, err = runDBDefineCmd(td, opts)
 			require.NoError(t, err)
