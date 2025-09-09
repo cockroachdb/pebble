@@ -262,7 +262,7 @@ range-deletions-bytes-estimate: 78
 
 # Test the interaction between point and range key deletions.
 
-define block-size=1 target-file-sizes=(100, 1)
+define block-size=1 target-file-sizes=(100, 1) flush-split-bytes=1000000
 ----
 
 # Start with a table that contains point and range keys, but no range dels or

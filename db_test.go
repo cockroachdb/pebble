@@ -2272,7 +2272,7 @@ func TestDeterminism(t *testing.T) {
 					}
 					opts.Experimental.IngestSplit = func() bool { return rand.IntN(2) == 1 }
 					var err error
-					if d, err = runDBDefineCmdReuseFS(td, opts); err != nil {
+					if d, err = runDBDefineCmd(td, opts); err != nil {
 						return err.Error()
 					}
 					return d.mu.versions.currentVersion().String()

@@ -15,7 +15,7 @@ func TestLSMViewURL(t *testing.T) {
 		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {
 			case "define":
-				d, err := runDBDefineCmd(td, nil /* options */)
+				d, err := runDBDefineCmd(td, &Options{})
 				if err != nil {
 					td.Fatalf(t, "error: %s", err)
 				}
