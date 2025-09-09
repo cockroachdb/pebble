@@ -1463,20 +1463,8 @@ func TestCompactionPickerScores(t *testing.T) {
 	fs := vfs.NewMem()
 	cleaner := pausableCleaner{cleaner: DeleteCleaner{}}
 	cleaner.cond.L = &cleaner.mu
-	opts := &Options{
-		Cleaner:                     &cleaner,
-		Comparer:                    testkeys.Comparer,
-		DisableAutomaticCompactions: true,
-		FormatMajorVersion:          FormatNewest,
-		FS:                          fs,
-		Logger:                      testutils.Logger{T: t},
-	}
-	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
-		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
-	}
 
-	d, err := Open("", opts)
-	require.NoError(t, err)
+	var d *DB
 	defer func() {
 		if d != nil {
 			cleaner.resume()
@@ -1500,15 +1488,26 @@ func TestCompactionPickerScores(t *testing.T) {
 			return ""
 
 		case "define":
-			require.NoError(t, closeAllSnapshots(d))
-			require.NoError(t, d.Close())
+			if d != nil {
+				require.NoError(t, closeAllSnapshots(d))
+				require.NoError(t, d.Close())
+			}
 
 			if td.HasArg("pause-cleaning") {
 				cleaner.pause()
 			}
+			opts := &Options{
+				Cleaner:                     &cleaner,
+				Comparer:                    testkeys.Comparer,
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          FormatNewest,
+				FS:                          fs,
+				Logger:                      testutils.Logger{T: t},
+			}
 			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 			}
+			var err error
 			d, err = runDBDefineCmd(td, opts)
 			if err != nil {
 				return err.Error()
@@ -1542,10 +1541,10 @@ func TestCompactionPickerScores(t *testing.T) {
 			return ""
 
 		case "ingest":
-			if err = runBuildCmd(td, d, d.opts.FS); err != nil {
+			if err := runBuildCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
 			}
-			if err = runIngestCmd(td, d, d.opts.FS); err != nil {
+			if err := runIngestCmd(td, d, d.opts.FS); err != nil {
 				return err.Error()
 			}
 			d.mu.Lock()
