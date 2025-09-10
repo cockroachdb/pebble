@@ -1452,7 +1452,10 @@ func (b *Batch) initRangeKeyIter(_ *IterOptions, iter *keyspan.Iter, batchSnapsh
 		iter:     b.rangeKeyIndex.NewIter(nil, nil),
 		snapshot: batchSnapshot,
 	}
-	_ = fragmentRangeKeys(frag, it, int(b.countRangeKeys))
+	if err := fragmentRangeKeys(frag, it, int(b.countRangeKeys)); err != nil {
+		panic(errors.Wrap(err, "cannot init range key iter"))
+	}
+
 	iter.Init(b.comparer.Compare, rangeKeys)
 
 	// If we just read all the range keys in the batch (eg, batchSnapshot was
