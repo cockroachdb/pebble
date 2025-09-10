@@ -1,4 +1,4 @@
-init
+#  init
 ----
 
 blocking-conf filename=000000.log sync

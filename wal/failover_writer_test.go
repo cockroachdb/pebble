@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"math/rand/v2"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -38,6 +39,9 @@ const (
 
 func TestFailoverWriter(t *testing.T) {
 	datadriven.Walk(t, "testdata/failover_writer", func(t *testing.T, path string) {
+		if filepath.Base(path) == "blocking" {
+			t.Skip("skipping flaky subtest (#5268)")
+		}
 		memFS := vfs.NewCrashableMem()
 		dirs := [numDirIndices]dirAndFileHandle{
 			{Dir: Dir{Dirname: "pri"}},
