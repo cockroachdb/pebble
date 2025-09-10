@@ -50,7 +50,7 @@ func newTestReader(
 }
 
 func (r *testReader) getAsync(shard *shard) *string {
-	v, re := shard.getWithMaybeReadEntry(r.key, true /* desireReadEntry */)
+	v, re := shard.getWithReadEntry(r.key)
 	if v != nil {
 		str := string(v.RawBuffer())
 		v.Release()

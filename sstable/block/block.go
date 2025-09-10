@@ -532,6 +532,9 @@ func (r *Reader) Readable() objstorage.Readable {
 //
 // Users should prefer using Read, which handles reading from object storage on
 // a cache miss.
+//
+// GetFromCache is not intended for latency-sensitive paths and does not update
+// cache hit metrics.
 func (r *Reader) GetFromCache(bh Handle) *cache.Value {
 	return r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset)
 }

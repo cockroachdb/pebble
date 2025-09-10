@@ -261,13 +261,12 @@ func (c *Handle) Cache() *Cache {
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
+//
+// This method is not intended for latency-sensitive paths and does not update
+// hit/miss metrics.
 func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64) *Value {
 	k := makeKey(c.id, fileNum, offset)
-	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, false /* desireReadEntry */)
-	if invariants.Enabled && re != nil {
-		panic("readEntry should be nil")
-	}
-	return cv
+	return c.cache.getShard(k).get(k)
 }
 
 // GetWithReadHandle retrieves the cache value for the specified handleID, fileNum
@@ -304,7 +303,7 @@ func (c *Handle) GetWithReadHandle(
 	err error,
 ) {
 	k := makeKey(c.id, fileNum, offset)
-	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, true /* desireReadEntry */)
+	cv, re := c.cache.getShard(k).getWithReadEntry(k)
 	if cv != nil {
 		return cv, ReadHandle{}, 0, 0, true, nil
 	}

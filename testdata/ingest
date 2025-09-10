@@ -69,7 +69,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    3 (924B) |       15.4% |     1 (280B) |       50.0% |         0.0% |           0 |           0
+    3 (924B) |       40.0% |     1 (280B) |       50.0% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed

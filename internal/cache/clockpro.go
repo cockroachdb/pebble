@@ -130,32 +130,47 @@ func (c *shard) init(maxSize int64) {
 	c.readShard.Init(c)
 }
 
-// getWithMaybeReadEntry is the internal helper for implementing
-// Cache.{Get,GetWithReadHandle}. When desireReadEntry is true, and the block
-// is not in the cache (nil Value), a non-nil readEntry is returned (in which
-// case the caller is responsible to dereference the entry, via one of
-// unrefAndTryRemoveFromMap(), setReadValue(), setReadError()).
-func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (*Value, *readEntry) {
+// get is the internal helper for implementing Cache.Get. This is not used for
+// latency-sensitive paths and does *not* update cache hit metrics.
+func (c *shard) get(k key) *Value {
 	c.mu.RLock()
-	var value *Value
+	defer c.mu.RUnlock()
+	e, _ := c.blocks.Get(k)
+	if e == nil {
+		return nil
+	}
+	value := e.acquireValue()
+	// Note: we Load first to avoid an atomic XCHG when not necessary.
+	if value != nil && !e.referenced.Load() {
+		e.referenced.Store(true)
+	}
+	return value
+}
+
+// getWithReadEntry is the internal helper for implementing
+// Cache.GetWithReadHandle. When the block is not in the cache (nil Value), a
+// non-nil readEntry is returned (in which case the caller is responsible to
+// dereference the entry, via one of unrefAndTryRemoveFromMap(), setReadValue(),
+// setReadError()).
+//
+// This method updates cache hit/miss metrics.
+func (c *shard) getWithReadEntry(k key) (*Value, *readEntry) {
+	c.mu.RLock()
 	if e, _ := c.blocks.Get(k); e != nil {
-		value = e.acquireValue()
-		// Note: we Load first to avoid an atomic XCHG when not necessary.
-		if value != nil && !e.referenced.Load() {
-			e.referenced.Store(true)
+		if value := e.acquireValue(); value != nil {
+			// Note: we Load first to avoid an atomic XCHG when not necessary.
+			if !e.referenced.Load() {
+				e.referenced.Store(true)
+			}
+			c.mu.RUnlock()
+			c.hits.Add(1)
+			return value, nil
 		}
 	}
-	var re *readEntry
-	if value == nil && desireReadEntry {
-		re = c.readShard.acquireReadEntry(k)
-	}
+	re := c.readShard.acquireReadEntry(k)
 	c.mu.RUnlock()
-	if value == nil {
-		c.misses.Add(1)
-	} else {
-		c.hits.Add(1)
-	}
-	return value, re
+	c.misses.Add(1)
+	return nil, re
 }
 
 func (c *shard) set(k key, value *Value, markAccessed bool) {
