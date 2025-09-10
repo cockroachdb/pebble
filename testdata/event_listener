@@ -291,11 +291,17 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   48B: 97B |    102.1% |         3 |  1 (256KB) |  1 (256KB) |       145 |      0 (0B)
 
+BLOCK CACHE: 2 entries (672B)
+                 miss rate [percentage of total misses] since start
+   all |  background |     sstdata |      sstval |     blobval |      filter |       index
+-------+-------------+-------------+-------------+-------------+-------------+------------
+  0.0% |  100% [85%] | 100% [7.7%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 100% [7.7%]
+
 ITERATORS
-        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
-     entries |    hit rate |      entries |    hit rate |         util |        open |        open
--------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (672B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+        file cache        |    filter   |    open     |    open
+     entries |   hit rate | utilization |  sst iters  |  snapshots
+-------------+------------+-------------+-------------+------------
+      0 (0B) |      50.0% |        0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -432,11 +438,17 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |  82B: 132B |     61.0% |         6 |  1 (512KB) |  1 (512KB) |       214 |   1 (1.3KB)
 
+BLOCK CACHE: 6 entries (2KB)
+                 miss rate [percentage of total misses] since start
+   all |  background |     sstdata |      sstval |     blobval |      filter |       index
+-------+-------------+-------------+-------------+-------------+-------------+------------
+  0.0% |  100% [74%] |  100% [13%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  100% [13%]
+
 ITERATORS
-        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
-     entries |    hit rate |      entries |    hit rate |         util |        open |        open
--------------+-------------+--------------+-------------+--------------+-------------+------------
-     6 (2KB) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+        file cache        |    filter   |    open     |    open
+     entries |   hit rate | utilization |  sst iters  |  snapshots
+-------------+------------+-------------+-------------+------------
+      0 (0B) |      50.0% |        0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
