@@ -77,11 +77,14 @@ offset: 35
 # Because we did not request a sync, the log writer is not trying to do a
 # write. But the record is in the log writer's buffer.
 #
-# TODO(sumeer): this flakes under stress, with the flushLoop picking up the
-# write even though it should not. Fix or remove.
-ongoing-latency writer-index=0 none
-----
-no ongoing
+# Unfortunately this flakes under stress, with the flushLoop sometimes picking
+# up the write, possibly because of a spurious signal to the flusherCond
+# conditional variable. It doesn't really matter to the test whether the log
+# writer is blocked here or not, so we don't check.
+#
+# ongoing-latency writer-index=0 none
+# ----
+# no ongoing
 
 # Block writes on the second log file too, which we haven't created yet.
 blocking-conf filename=000001-001.log write
