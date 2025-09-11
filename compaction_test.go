@@ -906,13 +906,22 @@ func runCompactionTest(
 	t.Logf("seed: %d", seed)
 
 	var compactionLog bytes.Buffer
-	compactionLogEventListener := &EventListener{
+	var flushLog bytes.Buffer
+	logEventListener := &EventListener{
 		CompactionEnd: func(info CompactionInfo) {
 			// Ensure determinism.
 			info.JobID = 1
 			info.Duration = time.Second
 			info.TotalDuration = time.Second
 			fmt.Fprintln(&compactionLog, info.String())
+		},
+		FlushEnd: func(info FlushInfo) {
+			// Ensure determinism.
+			info.JobID = 1
+			info.Duration = time.Second
+			info.TotalDuration = time.Second
+			info.InputBytes = 100
+			fmt.Fprintln(&flushLog, info.String())
 		},
 	}
 	concurrencyLow, concurrencyHigh := 1, 1
@@ -922,7 +931,7 @@ func runCompactionTest(
 			FS:                          vfs.NewMem(),
 			DebugCheck:                  DebugCheckLevels,
 			DisableAutomaticCompactions: true,
-			EventListener:               compactionLogEventListener,
+			EventListener:               logEventListener,
 			FormatMajorVersion:          randVersion,
 			Logger:                      testutils.Logger{T: t},
 			Comparer:                    cmp,
@@ -1414,6 +1423,24 @@ func runCompactionTest(
 		case "compaction-log":
 			defer compactionLog.Reset()
 			s := compactionLog.String()
+			if td.HasArg("sort") {
+				lines := strings.Split(s, "\n")
+				sort.Strings(lines)
+				// Remove empty lines.
+				i := 0
+				for ; i < len(lines); i++ {
+					if len(lines[i]) != 0 {
+						break
+					}
+				}
+				lines = lines[i:]
+				s = strings.Join(lines, "\n")
+			}
+			return s
+
+		case "flush-log":
+			defer flushLog.Reset()
+			s := flushLog.String()
 			if td.HasArg("sort") {
 				lines := strings.Split(s, "\n")
 				sort.Strings(lines)
