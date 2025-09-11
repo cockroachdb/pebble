@@ -239,7 +239,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 			t.Fatal(err)
 		}
 		bw := blob.NewFileWriter(fn, w, blob.FileWriterOptions{})
-		_ = bw.AddValue(xxx[:fn])
+		_ = bw.AddValue(xxx[:fn], false /* isLikelyMVCCGarbage */)
 		if _, err := bw.Close(); err != nil {
 			t.Fatal(err)
 		}

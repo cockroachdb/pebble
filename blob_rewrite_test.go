@@ -270,7 +270,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 			if rng.IntN(20) == 0 {
 				blobWriter.FlushForTesting()
 			}
-			handles[i] = blobWriter.AddValue(values[i])
+			handles[i] = blobWriter.AddValue(values[i], false /* isLikelyMVCCGarbage */)
 		}
 		stats, err := blobWriter.Close()
 		require.NoError(t, err)
