@@ -179,7 +179,7 @@ func (w *WorkloadCollector) onFlushEnd(info pebble.FlushInfo) {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for _, table := range info.Output {
+	for _, table := range info.OutputTables {
 		w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(table.FileNum), base.FileTypeTable)
 		for _, fn := range table.GetBlobReferenceFiles() {
 			w.enqueueCopyLocked(base.PhysicalTableDiskFileNum(base.TableNum(fn)), base.FileTypeBlob)

@@ -1739,6 +1739,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 
 	var ve *manifest.VersionEdit
 	var stats compact.Stats
+	var outputBlobs []compact.OutputBlob
 	// To determine the target level of the files in the ingestedFlushable, we
 	// need to acquire the logLock, and not release it for that duration. Since
 	// UpdateVersionLocked acquires it anyway, we create the VersionEdit for
@@ -1746,7 +1747,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	// construct the VersionEdit inside runCompaction.
 	var compactionErr error
 	if c.kind != compactionKindIngestedFlushable {
-		ve, stats, compactionErr = d.runCompaction(jobID, c)
+		ve, stats, outputBlobs, compactionErr = d.runCompaction(jobID, c)
 	}
 
 	_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
@@ -1762,12 +1763,23 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
 		for i := range ve.NewTables {
 			e := &ve.NewTables[i]
-			info.Output = append(info.Output, e.Meta.TableInfo())
+			info.OutputTables = append(info.OutputTables, e.Meta.TableInfo())
 			// Ingested tables are not necessarily flushed to L0. Record the level of
 			// each ingested file explicitly.
 			if ingest {
 				info.IngestLevels = append(info.IngestLevels, e.Level)
 			}
+		}
+		for i := range outputBlobs {
+			b := &outputBlobs[i]
+			info.OutputBlobs = append(info.OutputBlobs, BlobFileInfo{
+				BlobFileID:      base.BlobFileID(b.Metadata.FileNum),
+				DiskFileNum:     b.ObjMeta.DiskFileNum,
+				Size:            b.Metadata.Size,
+				ValueSize:       b.Stats.UncompressedValueBytes,
+				MVCCGarbageSize: b.Stats.MVCCGarbageBytes,
+			})
+
 		}
 
 		// The flush succeeded or it produced an empty sstable. In either case we
@@ -2721,7 +2733,7 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 	d.opts.EventListener.CompactionBegin(info)
 	startTime := d.timeNow()
 
-	ve, stats, err := d.runCompaction(jobID, c)
+	ve, stats, outputBlobs, err := d.runCompaction(jobID, c)
 
 	info.Annotations = append(info.Annotations, c.annotations...)
 	info.Duration = d.timeNow().Sub(startTime)
@@ -2759,6 +2771,16 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 		for i := range ve.NewTables {
 			e := &ve.NewTables[i]
 			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo())
+		}
+		for i := range outputBlobs {
+			b := &outputBlobs[i]
+			info.Output.Blobs = append(info.Output.Blobs, BlobFileInfo{
+				BlobFileID:      base.BlobFileID(b.Metadata.FileNum),
+				DiskFileNum:     b.ObjMeta.DiskFileNum,
+				Size:            b.Metadata.Size,
+				ValueSize:       b.Stats.UncompressedValueBytes,
+				MVCCGarbageSize: b.Stats.MVCCGarbageBytes,
+			})
 		}
 		d.mu.snapshots.cumulativePinnedCount += stats.CumulativePinnedKeys
 		d.mu.snapshots.cumulativePinnedSize += stats.CumulativePinnedSize
@@ -2798,17 +2820,17 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 // doing IO.
 func (d *DB) runCopyCompaction(
 	jobID JobID, c *tableCompaction,
-) (ve *manifest.VersionEdit, stats compact.Stats, _ error) {
+) (ve *manifest.VersionEdit, stats compact.Stats, blobs []compact.OutputBlob, _ error) {
 	if c.cancel.Load() {
-		return nil, compact.Stats{}, ErrCancelledCompaction
+		return nil, compact.Stats{}, blobs, ErrCancelledCompaction
 	}
 	iter := c.startLevel.files.Iter()
 	inputMeta := iter.First()
 	if iter.Next() != nil {
-		return nil, compact.Stats{}, base.AssertionFailedf("got more than one file for a move compaction")
+		return nil, compact.Stats{}, []compact.OutputBlob{}, base.AssertionFailedf("got more than one file for a move compaction")
 	}
 	if inputMeta.BlobReferenceDepth > 0 || len(inputMeta.BlobReferences) > 0 {
-		return nil, compact.Stats{}, base.AssertionFailedf(
+		return nil, compact.Stats{}, []compact.OutputBlob{}, base.AssertionFailedf(
 			"copy compaction for %s with blob references (depth=%d, refs=%d)",
 			inputMeta.TableNum, inputMeta.BlobReferenceDepth, len(inputMeta.BlobReferences),
 		)
@@ -2821,11 +2843,11 @@ func (d *DB) runCopyCompaction(
 
 	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, inputMeta.TableBacking.DiskFileNum)
 	if err != nil {
-		return nil, compact.Stats{}, err
+		return nil, compact.Stats{}, []compact.OutputBlob{}, err
 	}
 	// This code does not support copying a shared table (which should never be necessary).
 	if objMeta.IsShared() {
-		return nil, compact.Stats{}, base.AssertionFailedf("copy compaction of shared table")
+		return nil, compact.Stats{}, []compact.OutputBlob{}, base.AssertionFailedf("copy compaction of shared table")
 	}
 
 	// We are in the relatively more complex case where we need to copy this
@@ -2885,7 +2907,7 @@ func (d *DB) runCopyCompaction(
 			ctx, base.FileTypeTable, inputMeta.TableBacking.DiskFileNum, objstorage.OpenOptions{},
 		)
 		if err != nil {
-			return nil, compact.Stats{}, err
+			return nil, compact.Stats{}, []compact.OutputBlob{}, err
 		}
 		defer func() {
 			if src != nil {
@@ -2900,7 +2922,7 @@ func (d *DB) runCopyCompaction(
 			},
 		)
 		if err != nil {
-			return nil, compact.Stats{}, err
+			return nil, compact.Stats{}, []compact.OutputBlob{}, err
 		}
 		deleteOnExit = true
 
@@ -2940,9 +2962,9 @@ func (d *DB) runCopyCompaction(
 				outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
 				outputMetrics.TableBytesIn = inputMeta.Size
 
-				return ve, compact.Stats{}, nil
+				return ve, compact.Stats{}, []compact.OutputBlob{}, nil
 			}
-			return nil, compact.Stats{}, err
+			return nil, compact.Stats{}, []compact.OutputBlob{}, err
 		}
 		newMeta.TableBacking.Size = wrote
 		newMeta.Size = wrote
@@ -2951,7 +2973,7 @@ func (d *DB) runCopyCompaction(
 			d.objProvider.Path(objMeta), base.FileTypeTable, newMeta.TableBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true})
 		if err != nil {
-			return nil, compact.Stats{}, err
+			return nil, compact.Stats{}, []compact.OutputBlob{}, err
 		}
 		deleteOnExit = true
 	}
@@ -2968,10 +2990,10 @@ func (d *DB) runCopyCompaction(
 	outputMetrics.TablesCompacted = 1
 
 	if err := d.objProvider.Sync(); err != nil {
-		return nil, compact.Stats{}, err
+		return nil, compact.Stats{}, []compact.OutputBlob{}, err
 	}
 	deleteOnExit = false
-	return ve, compact.Stats{}, nil
+	return ve, compact.Stats{}, []compact.OutputBlob{}, nil
 }
 
 // applyHintOnFile applies a deleteCompactionHint to a file, and updates the
@@ -3138,7 +3160,7 @@ func fragmentDeleteCompactionHints(
 // d.mu must *not* be held when calling this.
 func (d *DB) runDeleteOnlyCompaction(
 	jobID JobID, c *tableCompaction, snapshots compact.Snapshots,
-) (ve *manifest.VersionEdit, stats compact.Stats, retErr error) {
+) (ve *manifest.VersionEdit, stats compact.Stats, blobs []compact.OutputBlob, retErr error) {
 	fragments := fragmentDeleteCompactionHints(d.cmp, c.deleteOnly.hints)
 	ve = &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
@@ -3147,7 +3169,7 @@ func (d *DB) runDeleteOnlyCompaction(
 		levelMetrics := c.metrics.perLevel.level(cl.level)
 		err := d.runDeleteOnlyCompactionForLevel(cl, levelMetrics, ve, snapshots, fragments, c.deleteOnly.exciseEnabled)
 		if err != nil {
-			return nil, stats, err
+			return nil, stats, blobs, err
 		}
 	}
 	// Remove any files that were added and deleted in the same versionEdit.
@@ -3197,19 +3219,19 @@ func (d *DB) runDeleteOnlyCompaction(
 	// Refresh the disk available statistic whenever a compaction/flush
 	// completes, before re-acquiring the mutex.
 	d.calculateDiskAvailableBytes()
-	return ve, stats, nil
+	return ve, stats, blobs, nil
 }
 
 func (d *DB) runMoveCompaction(
 	jobID JobID, c *tableCompaction,
-) (ve *manifest.VersionEdit, stats compact.Stats, _ error) {
+) (ve *manifest.VersionEdit, stats compact.Stats, blobs []compact.OutputBlob, _ error) {
 	iter := c.startLevel.files.Iter()
 	meta := iter.First()
 	if iter.Next() != nil {
-		return nil, stats, base.AssertionFailedf("got more than one file for a move compaction")
+		return nil, stats, blobs, base.AssertionFailedf("got more than one file for a move compaction")
 	}
 	if c.cancel.Load() {
-		return ve, stats, ErrCancelledCompaction
+		return ve, stats, blobs, ErrCancelledCompaction
 	}
 	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
 	outputMetrics.TableBytesMoved = meta.Size
@@ -3223,7 +3245,7 @@ func (d *DB) runMoveCompaction(
 		},
 	}
 
-	return ve, stats, nil
+	return ve, stats, blobs, nil
 }
 
 // runCompaction runs a compaction that produces new on-disk tables from
@@ -3235,9 +3257,14 @@ func (d *DB) runMoveCompaction(
 // re-acquired during the course of this method.
 func (d *DB) runCompaction(
 	jobID JobID, c *tableCompaction,
-) (ve *manifest.VersionEdit, stats compact.Stats, retErr error) {
+) (
+	ve *manifest.VersionEdit,
+	stats compact.Stats,
+	outputBlobs []compact.OutputBlob,
+	retErr error,
+) {
 	if c.cancel.Load() {
-		return ve, stats, ErrCancelledCompaction
+		return ve, stats, outputBlobs, ErrCancelledCompaction
 	}
 	switch c.kind {
 	case compactionKindDeleteOnly:
@@ -3300,7 +3327,7 @@ func (d *DB) runCompaction(
 	// Refresh the disk available statistic whenever a compaction/flush
 	// completes, before re-acquiring the mutex.
 	d.calculateDiskAvailableBytes()
-	return ve, result.Stats, result.Err
+	return ve, result.Stats, result.Blobs, result.Err
 }
 
 // compactAndWrite runs the data part of a compaction, where we set up a
