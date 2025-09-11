@@ -98,7 +98,7 @@ func TestWorkloadCollector(t *testing.T) {
 
 					p := writeFile(t, fs, srcDir, base.FileTypeTable, base.PhysicalTableDiskFileNum(tableInfo.FileNum), randData(int(tableInfo.Size)))
 					fmt.Fprintf(&buf, "created %s\n", p)
-					flushInfo.Output = append(flushInfo.Output, tableInfo)
+					flushInfo.OutputTables = append(flushInfo.OutputTables, tableInfo)
 
 					// Simulate a version edit applied to the current manifest.
 					_, err = currentManifest.Write(randData(25))
