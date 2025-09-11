@@ -221,6 +221,7 @@ func (l literal[T]) renderValue(tupleIndex int, tuple T) string {
 const (
 	AlignLeft Align = iota
 	AlignRight
+	AlignCenter
 )
 
 type Align uint8
@@ -231,12 +232,15 @@ func pad(cur ascii.Cursor, toWidth int, align Align, s string) ascii.Cursor {
 	if len(s) >= toWidth {
 		return cur.WriteString(s)
 	}
-	startCur := cur
-	if align == AlignRight {
-		cur = cur.Right(toWidth - len(s))
+	padding := 0
+	switch align {
+	case AlignRight:
+		padding = toWidth - len(s)
+	case AlignCenter:
+		padding = (toWidth - len(s)) / 2
 	}
-	cur.WriteString(s)
-	return startCur.Right(toWidth)
+	cur.Right(padding).WriteString(s)
+	return cur.Right(toWidth)
 }
 
 const (
