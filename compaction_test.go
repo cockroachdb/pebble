@@ -905,16 +905,26 @@ func runCompactionTest(
 	rng := rand.New(rand.NewPCG(0, seed))
 	t.Logf("seed: %d", seed)
 
+	var dbLog base.InMemLogger
+	defer func() {
+		if t.Failed() {
+			t.Logf("db log:\n%s\n", dbLog.String())
+		}
+	}()
 	var compactionLog bytes.Buffer
-	compactionLogEventListener := &EventListener{
-		CompactionEnd: func(info CompactionInfo) {
-			// Ensure determinism.
-			info.JobID = 1
-			info.Duration = time.Second
-			info.TotalDuration = time.Second
-			fmt.Fprintln(&compactionLog, info.String())
+	eventListener := TeeEventListener(
+		MakeLoggingEventListener(&dbLog),
+		EventListener{
+			CompactionEnd: func(info CompactionInfo) {
+				// Ensure determinism.
+				info.JobID = 1
+				info.Duration = time.Second
+				info.TotalDuration = time.Second
+				fmt.Fprintln(&compactionLog, info.String())
+			},
 		},
-	}
+	)
+
 	concurrencyLow, concurrencyHigh := 1, 1
 	mkOpts := func() *Options {
 		randVersion := FormatMajorVersion(int(minVersion) + rng.IntN(int(maxVersion)-int(minVersion)+1))
@@ -922,7 +932,7 @@ func runCompactionTest(
 			FS:                          vfs.NewMem(),
 			DebugCheck:                  DebugCheckLevels,
 			DisableAutomaticCompactions: true,
-			EventListener:               compactionLogEventListener,
+			EventListener:               &eventListener,
 			FormatMajorVersion:          randVersion,
 			Logger:                      testutils.Logger{T: t},
 			Comparer:                    cmp,
@@ -941,6 +951,7 @@ func runCompactionTest(
 			require.NoError(t, closeAllSnapshots(d))
 			require.NoError(t, d.Close())
 		}
+		dbLog.Reset()
 		compactionLog.Reset()
 		concurrencyLow, concurrencyHigh = 1, 1
 		var err error
@@ -1009,7 +1020,7 @@ func runCompactionTest(
 			return ""
 
 		case "compact":
-			if err := runCompactCmd(td, d); err != nil {
+			if err := runCompactCmd(t, td, d); err != nil {
 				return err.Error()
 			}
 			s := describeLSM(d, verbose)
@@ -1029,6 +1040,8 @@ func runCompactionTest(
 				require.NoError(t, d.Close())
 			}
 
+			dbLog.Reset()
+			compactionLog.Reset()
 			var err error
 			if d, err = runDBDefineCmd(td, mkOpts()); err != nil {
 				return err.Error()
@@ -1212,7 +1225,7 @@ func runCompactionTest(
 			var s string
 			ch := make(chan error, 1)
 			go func() {
-				if err := runCompactCmd(td, d); err != nil {
+				if err := runCompactCmd(t, td, d); err != nil {
 					ch <- err
 					close(ch)
 					return
@@ -1276,12 +1289,10 @@ func runCompactionTest(
 			td.ScanArgs(t, "num-blocked", &numBlocked)
 			var cancelFunc atomic.Pointer[context.CancelFunc]
 			go func() {
-				compactFunc, cf, err := runCompactCmdAsync(td, d, true)
-				if err == nil {
-					cancelFunc.Store(&cf)
-					err = compactFunc()
-				}
-				if err != nil {
+				ctx, cf := context.WithCancel(context.Background())
+				compactFunc := runCompactCmdFn(ctx, t, td, d)
+				cancelFunc.Store(&cf)
+				if err := compactFunc(); err != nil {
 					ch <- err
 					close(ch)
 					return
@@ -1769,7 +1780,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				return buf.String()
 
 			case "compact":
-				if err := runCompactCmd(td, d); err != nil {
+				if err := runCompactCmd(t, td, d); err != nil {
 					return err.Error()
 				}
 				d.mu.Lock()

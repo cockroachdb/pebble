@@ -175,7 +175,7 @@ func TestTableStats(t *testing.T) {
 			return s
 
 		case "compact":
-			if err := runCompactCmd(td, d); err != nil {
+			if err := runCompactCmd(t, td, d); err != nil {
 				return err.Error()
 			}
 			d.mu.Lock()
