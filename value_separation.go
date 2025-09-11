@@ -296,7 +296,7 @@ func (vs *writeNewBlobFiles) Add(
 	}
 
 	// Append the value to the blob file.
-	handle := vs.writer.AddValue(v)
+	handle := vs.writer.AddValue(v, isLikelyMVCCGarbage)
 
 	// Write the key and the handle to the sstable. We need to map the
 	// blob.Handle into a blob.InlineHandle. Everything is copied verbatim,
@@ -341,7 +341,8 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 
 	return compact.ValueSeparationMetadata{
 		BlobReferences: manifest.BlobReferences{
-			manifest.MakeBlobReference(base.BlobFileID(vs.objMeta.DiskFileNum), stats.UncompressedValueBytes, stats.UncompressedValueBytes, meta),
+			manifest.MakeBlobReference(base.BlobFileID(vs.objMeta.DiskFileNum),
+				stats.UncompressedValueBytes, stats.UncompressedValueBytes, meta),
 		},
 		BlobReferenceSize:  stats.UncompressedValueBytes,
 		BlobReferenceDepth: 1,

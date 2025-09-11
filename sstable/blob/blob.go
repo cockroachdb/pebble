@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/crc"
@@ -125,13 +126,14 @@ type FileWriterStats struct {
 	UncompressedValueBytes uint64
 	FileLen                uint64
 	Properties             FileProperties
+	MVCCGarbageBytes       uint64
 }
 
 // String implements the fmt.Stringer interface.
 func (s FileWriterStats) String() string {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "{BlockCount: %d, ValueCount: %d, UncompressedValueBytes: %d, FileLen: %d}",
-		s.BlockCount, s.ValueCount, s.UncompressedValueBytes, s.FileLen)
+	fmt.Fprintf(&buf, "{BlockCount: %d, ValueCount: %d, UncompressedValueBytes: %d (%s MVCCGarbage), FileLen: %d}",
+		s.BlockCount, s.ValueCount, s.UncompressedValueBytes, crhumanize.Percent(s.MVCCGarbageBytes, s.UncompressedValueBytes), s.FileLen)
 	return buf.String()
 }
 
@@ -187,7 +189,7 @@ var writerPool = sync.Pool{
 
 // AddValue adds the provided value to the blob file, returning a Handle
 // identifying the location of the value.
-func (w *FileWriter) AddValue(v []byte) Handle {
+func (w *FileWriter) AddValue(v []byte, isLikelyMVCCGarbage bool) Handle {
 	// Determine if we should first flush the block.
 	if sz := w.valuesEncoder.size(); w.flushGov.ShouldFlush(sz, sz+len(v)) {
 		w.flush()
@@ -195,6 +197,9 @@ func (w *FileWriter) AddValue(v []byte) Handle {
 	valuesInBlock := w.valuesEncoder.Count()
 	w.stats.ValueCount++
 	w.stats.UncompressedValueBytes += uint64(len(v))
+	if isLikelyMVCCGarbage {
+		w.stats.MVCCGarbageBytes += uint64(len(v))
+	}
 	w.valuesEncoder.AddValue(v)
 	return Handle{
 		BlobFileID: base.BlobFileID(w.fileNum),

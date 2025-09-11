@@ -32,7 +32,7 @@ func TestBlobWriter(t *testing.T) {
 			obj = &objstorage.MemObj{}
 			w := NewFileWriter(000001, obj, opts)
 			for _, l := range crstrings.Lines(td.Input) {
-				h := w.AddValue([]byte(l))
+				h := w.AddValue([]byte(l), false /* isLikelyMVCCGarbage */)
 				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 			}
 			stats, err := w.Close()
@@ -55,7 +55,7 @@ func TestBlobWriter(t *testing.T) {
 					w.beginNewVirtualBlock(BlockID(vBlockID))
 					vBlockID++
 				default:
-					h := w.AddValue([]byte(l))
+					h := w.AddValue([]byte(l), false /* isLikelyMVCCGarbage */)
 					fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 				}
 			}
