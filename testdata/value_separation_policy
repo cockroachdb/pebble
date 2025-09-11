@@ -48,7 +48,7 @@ close-output
 # sync-data: 000002.blob
 # close: 000002.blob
 Blob file created: 000002 size:[120 (120B)] vals:[29 (29B)]
-{BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 29, FileLen: 120}
+{BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 29 (0% MVCC), FileLen: 120}
 blobrefs:[
  0: B000002 29
 ]

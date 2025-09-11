@@ -24,7 +24,7 @@ close-output
 # sync-data: 000002.blob
 # close: 000002.blob
 Blob file created: 000002 size:[105 (105B)] vals:[15 (15B)]
-{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15, FileLen: 105}
+{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15 (0% MVCC), FileLen: 105}
 blobrefs:[
  0: B000002 15
 ]
@@ -76,4 +76,4 @@ rewrite-blob 000002 000001 000003
 Successfully rewrote blob file 000002 to 000004
 Input SSTables: [000001 000003]
 SSTables with blob references: 2
-{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15, FileLen: 106}
+{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15 (0% MVCC), FileLen: 106}

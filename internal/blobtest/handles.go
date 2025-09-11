@@ -261,14 +261,14 @@ func (bv *Values) WriteFiles(
 					BlockID:    handle.BlockID,
 					ValueID:    blob.BlockValueID(prevID),
 					ValueLen:   12,
-				}))
+				}), false /* isLikelyMVCCGarbage */)
 				prevID++
 			}
 
 			if value, ok := bv.trackedHandles[handle]; ok {
-				writer.AddValue([]byte(value))
+				writer.AddValue([]byte(value), false /* isLikelyMVCCGarbage */)
 			} else {
-				writer.AddValue(deriveValueFromHandle(handle))
+				writer.AddValue(deriveValueFromHandle(handle), false /* isLikelyMVCCGarbage */)
 			}
 		}
 		fileStats, err := writer.Close()

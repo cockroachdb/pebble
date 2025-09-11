@@ -99,7 +99,7 @@ func TestValueFetcher(t *testing.T) {
 			obj := &objstorage.MemObj{}
 			w := NewFileWriter(base.DiskFileNum(fileNum), obj, opts)
 			for _, l := range crstrings.Lines(td.Input) {
-				h := w.AddValue([]byte(l))
+				h := w.AddValue([]byte(l), false /* isLikelyMVCCGarbage */)
 				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 			}
 			stats, err := w.Close()
@@ -191,7 +191,7 @@ func TestValueFetcherRetrieveRandomized(t *testing.T) {
 	for v := 4 << 20; v > 0; {
 		n := testutils.RandIntInRange(rng, 1, 4096)
 		val := testutils.RandBytes(rng, n)
-		h := w.AddValue(val)
+		h := w.AddValue(val, false /* isLikelyMVCCGarbage */)
 		handles = append(handles, h)
 		values = append(values, val)
 		v -= n
@@ -269,7 +269,7 @@ func benchmarkValueFetcherRetrieve(b *testing.B, valueSize int, cacheSize int64)
 	var handles []Handle
 	for v := valueSize; v > 0; {
 		n := testutils.RandIntInRange(rng, 1, 4096)
-		h := w.AddValue(testutils.RandBytes(rng, n))
+		h := w.AddValue(testutils.RandBytes(rng, n), false /* isLikelyMVCCGarbage */)
 		handles = append(handles, h)
 		v -= n
 	}
