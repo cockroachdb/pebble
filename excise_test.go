@@ -756,7 +756,7 @@ func TestConcurrentExcise(t *testing.T) {
 			tdClone = *td
 			tdClone.CmdArgs = otherArgs
 			if !async {
-				err := runCompactCmd(td, d)
+				err := runCompactCmd(t, td, d)
 				if err != nil {
 					return err.Error()
 				}
@@ -764,7 +764,7 @@ func TestConcurrentExcise(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					_ = runCompactCmd(&tdClone, d)
+					_ = runCompactCmd(t, &tdClone, d)
 				}()
 				<-bc.startBlock
 				return "spun off in separate goroutine"
