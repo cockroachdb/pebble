@@ -2274,11 +2274,13 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			if m == nil {
 				return errors.Errorf("pebble: unknown section: %q", errors.Safe(section))
 			}
-			index, _ := strconv.Atoi(m[1])
+			index, err := strconv.Atoi(m[1])
+			if err != nil || index < 0 || index >= len(o.Levels) {
+				return errors.Errorf("pebble: invalid level index: %q", errors.Safe(m[1]))
+			}
 
 			l := &o.Levels[index]
 
-			var err error
 			switch key {
 			case "block_restart_interval":
 				l.BlockRestartInterval, err = strconv.Atoi(value)

@@ -461,6 +461,36 @@ func TestOptionsParseLevelNoQuotes(t *testing.T) {
 	require.Equal(t, o1.String(), o2.String())
 }
 
+func TestOptionsParseInvalidLevel(t *testing.T) {
+	str := `
+[Options]
+[Level 1]
+  block_restart_interval=8
+  block_size=10
+[Level 10]
+  block_restart_interval=8
+  block_size=10
+`
+	o := &Options{}
+	require.Error(t, o.Parse(str, nil))
+
+	str = `
+[Options]
+[Level -1]
+  block_restart_interval=8
+  block_size=10
+`
+	require.Error(t, o.Parse(str, nil))
+
+	str = `
+[Options]
+[Level 100000000000000000000000000]
+  block_restart_interval=8
+  block_size=10
+`
+	require.Error(t, o.Parse(str, nil))
+}
+
 func TestOptionsParseComparerOverwrite(t *testing.T) {
 	// Test that an unrecognized comparer in the OPTIONS file does not nil out
 	// the Comparer field.
