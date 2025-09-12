@@ -197,6 +197,13 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 
 	// Update the version with the remapped blob file.
 	if err == nil {
+		// Ensure the rewrite did reduce the aggregate value size. If it didn't,
+		// we should have never selected this blob file for rewrite and there
+		// must be a bug in the statistics we maintain.
+		if ve.NewBlobFiles[0].Physical.ValueSize >= c.input.Physical.ValueSize {
+			return errors.AssertionFailedf("pebble: blob file %s rewrite did not reduce value size", c.input.FileID)
+		}
+
 		info.Output.BlobFileID = ve.NewBlobFiles[0].FileID
 		info.Output.DiskFileNum = ve.NewBlobFiles[0].Physical.FileNum
 		info.Output.Size = ve.NewBlobFiles[0].Physical.Size
