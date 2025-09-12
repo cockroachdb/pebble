@@ -1804,66 +1804,137 @@ func TestIngest(t *testing.T) {
 	})
 }
 
+// linkAndRemovePredicate is like errorfs.InjectIndex, and injects only on the
+// set of Link and Remove operations, or the complement of that set. Link and
+// Remove operation errors are hidden by Ingest.
+type linkAndRemovePredicate struct {
+	isComplement bool
+	*errorfs.InjectIndex
+}
+
+func (p linkAndRemovePredicate) Evaluate(op errorfs.Op) bool {
+	isLinkOrRemove := op.Kind == errorfs.OpLink || op.Kind == errorfs.OpRemove
+	if (isLinkOrRemove && p.isComplement) || (!isLinkOrRemove && !p.isComplement) {
+		return false
+	}
+	return p.InjectIndex.Evaluate(op)
+}
+
+var _ errorfs.Predicate = &linkAndRemovePredicate{}
+
 func TestIngestError(t *testing.T) {
-	for i := int32(0); ; i++ {
-		mem := vfs.NewMem()
+	for _, linkAndRemove := range []bool{false, true} {
+		for i := int32(0); ; i++ {
+			mem := vfs.NewMem()
 
-		f0, err := mem.Create("ext0", vfs.WriteCategoryUnspecified)
-		require.NoError(t, err)
-		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{})
-		require.NoError(t, w.Set([]byte("d"), nil))
-		require.NoError(t, w.Close())
-		f1, err := mem.Create("ext1", vfs.WriteCategoryUnspecified)
-		require.NoError(t, err)
-		w = sstable.NewWriter(objstorageprovider.NewFileWritable(f1), sstable.WriterOptions{})
-		require.NoError(t, w.Set([]byte("d"), nil))
-		require.NoError(t, w.Close())
+			f0, err := mem.Create("ext0", vfs.WriteCategoryUnspecified)
+			require.NoError(t, err)
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f0), sstable.WriterOptions{})
+			require.NoError(t, w.Set([]byte("d"), []byte("d1")))
+			require.NoError(t, w.Close())
+			f1, err := mem.Create("ext1", vfs.WriteCategoryUnspecified)
+			require.NoError(t, err)
+			w = sstable.NewWriter(objstorageprovider.NewFileWritable(f1), sstable.WriterOptions{})
+			require.NoError(t, w.Set([]byte("d"), []byte("d2")))
+			require.NoError(t, w.Close())
 
-		ii := errorfs.OnIndex(-1)
-		d, err := Open("", &Options{
-			FS:                    errorfs.Wrap(mem, errorfs.ErrInjected.If(ii)),
-			Logger:                panicLogger{},
-			L0CompactionThreshold: 8,
-		})
-		require.NoError(t, err)
-		// Force the creation of an L0 sstable that overlaps with the tables
-		// we'll attempt to ingest. This ensures that we exercise filesystem
-		// codepaths when determining the ingest target level.
-		require.NoError(t, d.Set([]byte("a"), nil, nil))
-		require.NoError(t, d.Set([]byte("d"), nil, nil))
-		require.NoError(t, d.Flush())
+			ii := errorfs.OnIndex(-1)
+			d, err := Open("", &Options{
+				FS: errorfs.Wrap(
+					mem, errorfs.ErrInjected.If(linkAndRemovePredicate{
+						isComplement: !linkAndRemove, InjectIndex: ii})),
+				Logger:                panicLogger{},
+				L0CompactionThreshold: 8,
+			})
+			require.NoError(t, err)
+			// Force the creation of an L0 sstable that overlaps with the tables
+			// we'll attempt to ingest. This ensures that we exercise filesystem
+			// codepaths when determining the ingest target level.
+			require.NoError(t, d.Set([]byte("a"), nil, nil))
+			require.NoError(t, d.Set([]byte("d"), []byte("d0"), nil))
+			require.NoError(t, d.Flush())
 
-		t.Run(fmt.Sprintf("index-%d", i), func(t *testing.T) {
-			defer func() {
-				if r := recover(); r != nil {
-					if e, ok := r.(error); ok && errors.Is(e, errorfs.ErrInjected) {
-						return
-					}
-					// d.opts.Logger.Fatalf won't propagate ErrInjected
-					// itself, but should contain the error message.
-					if strings.HasSuffix(fmt.Sprint(r), errorfs.ErrInjected.Error()) {
-						return
-					}
-					t.Fatal(r)
-				}
-			}()
-
-			ii.Store(i)
-			err1 := d.Ingest(context.Background(), []string{"ext0"})
-			err2 := d.Ingest(context.Background(), []string{"ext1"})
-			err := firstError(err1, err2)
-			if err != nil && !errors.Is(err, errorfs.ErrInjected) {
-				t.Fatal(err)
+			checkVal := func(t *testing.T, expected string) {
+				ii.Store(math.MaxInt32)
+				val, closer, err := d.Get([]byte("d"))
+				require.NoError(t, err)
+				defer closer.Close()
+				require.Equal(t, expected, string(val))
 			}
-		})
+			observedPanic := false
+			var errWasInjected bool
+			t.Run(fmt.Sprintf("link-and-remove=%t,index=%d", linkAndRemove, i), func(t *testing.T) {
+				defer func() {
+					if r := recover(); r != nil {
+						// Error injected on link or remove should be completely hidden,
+						// let alone cause a panic.
+						require.False(t, linkAndRemove)
+						observedPanic = true
+						errWasInjected = ii.Load() < 0
+						t.Logf("error with panic")
+						if e, ok := r.(error); ok && errors.Is(e, errorfs.ErrInjected) {
+							return
+						}
+						// d.opts.Logger.Fatalf won't propagate ErrInjected
+						// itself, but should contain the error message.
+						if strings.HasSuffix(fmt.Sprint(r), errorfs.ErrInjected.Error()) {
+							return
+						}
+						t.Fatal(r)
+					}
+				}()
 
-		// d.Close may error if we failed to flush the manifest.
-		_ = d.Close()
+				ii.Store(i)
+				err1 := d.Ingest(context.Background(), []string{"ext0"})
+				err2 := d.Ingest(context.Background(), []string{"ext1"})
+				errWasInjected = ii.Load() < 0
+				// Check that the value of "d" is as expected, given the observed
+				// errors, if any. We only do this if the error did not cause a panic,
+				// since the DB should be usable.
+				expectedVal := "d2"
+				if err2 != nil {
+					if err1 != nil {
+						expectedVal = "d0"
+					} else {
+						expectedVal = "d1"
+					}
+				}
 
-		// If the injector's index is non-negative, the i-th filesystem
-		// operation was never executed.
-		if ii.Load() >= 0 {
-			break
+				checkVal(t, expectedVal)
+				err := firstError(err1, err2)
+				if err != nil {
+					// Error injected on link or remove should be completely hidden.
+					require.False(t, linkAndRemove)
+					if !errors.Is(err, errorfs.ErrInjected) {
+						t.Fatal(err)
+					}
+					if !errWasInjected {
+						t.Fatalf("error observed but not injected")
+					}
+					t.Logf("error without panic")
+					// Exercise some more operations on the DB, which must succeed. NB: we
+					// have disabled error injection by calling checkVal above.
+					require.NoError(t, d.Set([]byte("d"), []byte("d3"), nil))
+					checkVal(t, "d3")
+					require.NoError(t, d.Flush())
+				} else {
+					if errWasInjected && !linkAndRemove {
+						t.Fatalf("error injected but not observed")
+					}
+				}
+			})
+
+			// d.Close may error if we failed to flush the manifest and panicked.
+			ii.Store(math.MaxInt32)
+			err = d.Close()
+			if !observedPanic {
+				require.NoError(t, err)
+			}
+
+			// If !errWasInjected, the i-th filesystem operation was never executed.
+			if !errWasInjected {
+				break
+			}
 		}
 	}
 }
