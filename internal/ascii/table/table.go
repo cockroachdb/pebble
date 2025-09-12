@@ -62,9 +62,32 @@ type Layout[T any] struct {
 	fields []Element
 }
 
+// HorizontalDividers is a set of row indices before which a horizontal divider
+// is placed. If nil, the defult is to place a divider before the first row
+// (i.e. HorizontalDividers{0}).
+type HorizontalDividers map[int]struct{}
+
+func MakeHorizontalDividers(rowIdx ...int) HorizontalDividers {
+	hd := make(HorizontalDividers)
+	for _, i := range rowIdx {
+		hd[i] = struct{}{}
+	}
+	return hd
+}
+
+func (hd HorizontalDividers) Contains(rowIdx int) bool {
+	if hd == nil {
+		// Special case the nil value.
+		return rowIdx == 0
+	}
+	_, ok := hd[rowIdx]
+	return ok
+}
+
 // RenderOptions specifies the options for rendering a table.
 type RenderOptions struct {
-	Orientation Orientation
+	Orientation        Orientation
+	HorizontalDividers HorizontalDividers
 }
 
 // Render renders the given iterator of rows of a table into the given cursor,
@@ -77,18 +100,30 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) as
 		vals := make([]string, len(tuples))
 		for fieldIdx, c := range d.fields {
 			if fieldIdx > 0 {
-				cur.Offset(1, 0).WriteString("-")
 				// Each column is separated by a space from the previous column or
 				// separator.
-				cur = cur.Offset(0, 1)
+				rowCur := cur
+				for rowIdx := range tuples {
+					if opts.HorizontalDividers.Contains(rowIdx) {
+						rowCur = rowCur.Down(1)
+						rowCur.WriteString("-")
+					}
+					rowCur = rowCur.Down(1)
+				}
+				cur = cur.Right(1)
 			}
 			if _, ok := c.(divider); ok {
-				cur.Offset(0, 0).WriteString("|")
-				cur.Offset(1, 0).WriteString("+")
-				for i := range tuples {
-					cur.Offset(2+i, 0).WriteString("|")
+				rowCur := cur
+				rowCur.WriteString("|")
+				for rowIdx := range tuples {
+					if opts.HorizontalDividers.Contains(rowIdx) {
+						rowCur = rowCur.Down(1)
+						rowCur.WriteString("+")
+					}
+					rowCur = rowCur.Down(1)
+					rowCur.WriteString("|")
 				}
-				cur = cur.Offset(0, 1)
+				cur = cur.Right(1)
 				continue
 			}
 			f := c.(Field[T])
@@ -105,13 +140,24 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) as
 			header := f.header()
 			align := f.align()
 			pad(cur, width, align, header)
-			cur.Down(1).RepeatByte(width, '-')
-			for i := range vals {
-				pad(cur.Down(2+i), width, align, vals[i])
+			rowCur := cur
+			for rowIdx := range vals {
+				if opts.HorizontalDividers.Contains(rowIdx) {
+					rowCur = rowCur.Down(1)
+					rowCur.RepeatByte(width, '-')
+				}
+				rowCur = rowCur.Down(1)
+				pad(rowCur, width, align, vals[rowIdx])
 			}
 			cur = cur.Right(width)
 		}
-		return start.Down(2 + len(tuples))
+		rowCur := start.Down(len(vals) + 1)
+		for rowIdx := range vals {
+			if opts.HorizontalDividers.Contains(rowIdx) {
+				rowCur = rowCur.Down(1)
+			}
+		}
+		return rowCur
 	}
 
 	headerColumnWidth := 1
