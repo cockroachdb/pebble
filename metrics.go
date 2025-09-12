@@ -907,13 +907,17 @@ func (m *Metrics) String() string {
 	// LSM level metrics.
 	cur := wb.At(0, 0)
 	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
-	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, slices.Collect(m.LevelMetricsIter())...)
+	cur = levelMetricsTable.Render(cur, table.RenderOptions{
+		HorizontalDividers: table.MakeHorizontalDividers(0, manifest.NumLevels),
+	}, slices.Collect(m.LevelMetricsIter())...)
 	cur.Offset(-1, 0).WriteString("total")
 	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
 	cur = cur.WriteString(levelCompactionMetricsTableTopHeader).NewlineReturn()
-	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, slices.Collect(m.LevelMetricsIter())...)
+	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{
+		HorizontalDividers: table.MakeHorizontalDividers(0, manifest.NumLevels),
+	}, slices.Collect(m.LevelMetricsIter())...)
 	cur.Offset(-1, 0).WriteString("total")
 
 	cur = cur.NewlineReturn()
