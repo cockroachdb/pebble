@@ -6,9 +6,7 @@ package table
 
 import (
 	"fmt"
-	"iter"
 	"math"
-	"slices"
 	"strconv"
 
 	"github.com/cockroachdb/crlib/crhumanize"
@@ -71,11 +69,11 @@ type RenderOptions struct {
 
 // Render renders the given iterator of rows of a table into the given cursor,
 // returning the modified cursor.
-func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq[T]) ascii.Cursor {
+func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) ascii.Cursor {
 	cur := start
 
 	if opts.Orientation == Vertically {
-		tuples := slices.Collect(rows)
+		tuples := rows
 		vals := make([]string, len(tuples))
 		for fieldIdx, c := range d.fields {
 			if fieldIdx > 0 {
@@ -140,7 +138,7 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows iter.Seq
 
 	tupleIndex := 0
 	colSpacing := 0
-	for t := range rows {
+	for _, t := range rows {
 		width := 1
 		for i := range d.fields {
 			if f, ok := d.fields[i].(Field[T]); ok {
