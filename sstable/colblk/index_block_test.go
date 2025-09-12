@@ -132,7 +132,7 @@ func TestIndexIterInitHandle(t *testing.T) {
 	}
 
 	getBlockAndIterate := func(it *IndexIter) {
-		cv := ch.Get(base.DiskFileNum(1), 0)
+		cv := ch.Get(base.DiskFileNum(1), 0, cache.CategorySSTableData)
 		require.NotNil(t, cv)
 		require.NoError(t, it.InitHandle(testkeys.Comparer, block.CacheBufferHandle(cv), blockiter.NoTransforms))
 		defer it.Close()

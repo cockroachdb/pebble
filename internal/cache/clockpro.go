@@ -76,9 +76,13 @@ func (k key) String() string {
 	return fmt.Sprintf("%d/%d/%d", k.id, k.fileNum, k.offset)
 }
 
-type shard struct {
+type counters [NumCategories]struct {
 	hits   atomic.Int64
 	misses atomic.Int64
+}
+
+type shard struct {
+	counters counters
 
 	mu sync.RWMutex
 
@@ -135,27 +139,28 @@ func (c *shard) init(maxSize int64) {
 // is not in the cache (nil Value), a non-nil readEntry is returned (in which
 // case the caller is responsible to dereference the entry, via one of
 // unrefAndTryRemoveFromMap(), setReadValue(), setReadError()).
-func (c *shard) getWithMaybeReadEntry(k key, desireReadEntry bool) (*Value, *readEntry) {
+func (c *shard) getWithMaybeReadEntry(
+	k key, category Category, desireReadEntry bool,
+) (*Value, *readEntry) {
 	c.mu.RLock()
-	var value *Value
 	if e, _ := c.blocks.Get(k); e != nil {
-		value = e.acquireValue()
-		// Note: we Load first to avoid an atomic XCHG when not necessary.
-		if value != nil && !e.referenced.Load() {
-			e.referenced.Store(true)
+		if value := e.acquireValue(); value != nil {
+			// Note: we Load first to avoid an atomic XCHG when not necessary.
+			if !e.referenced.Load() {
+				e.referenced.Store(true)
+			}
+			c.mu.RUnlock()
+			c.counters[category].hits.Add(1)
+			return value, nil
 		}
 	}
 	var re *readEntry
-	if value == nil && desireReadEntry {
+	if desireReadEntry {
 		re = c.readShard.acquireReadEntry(k)
 	}
 	c.mu.RUnlock()
-	if value == nil {
-		c.misses.Add(1)
-	} else {
-		c.hits.Add(1)
-	}
-	return value, re
+	c.counters[category].misses.Add(1)
+	return nil, re
 }
 
 func (c *shard) set(k key, value *Value, markAccessed bool) {
