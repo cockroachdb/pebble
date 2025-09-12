@@ -36,12 +36,19 @@ func TestTable(t *testing.T) {
 		if td.HasArg("horizontally") {
 			opts.Orientation = Horizontally
 		}
+		align := AlignRight
+		if td.HasArg("left") {
+			align = AlignLeft
+		}
+		if td.HasArg("center") {
+			align = AlignCenter
+		}
 		switch td.Cmd {
 		case "cats-autoincrement":
 			def := Define[Cat](
 				AutoIncrement[Cat]("idx", 3, AlignLeft),
 				Div(),
-				String("name", 7, AlignRight, func(c Cat) string { return c.Name }),
+				String("name", 7, align, func(c Cat) string { return c.Name }),
 			)
 			wb.Reset(1)
 			def.Render(wb.At(0, 0), opts, slices.Values(cats))
@@ -49,8 +56,8 @@ func TestTable(t *testing.T) {
 		case "cats-nodiv":
 			def := Define[Cat](
 				String("name", 6, AlignLeft, func(c Cat) string { return c.Name }),
-				Int("age", 3, AlignRight, func(c Cat) int { return c.Age }),
-				Int("cuteness", 8, AlignRight, func(c Cat) int { return c.Cuteness }),
+				Int("age", 3, align, func(c Cat) int { return c.Age }),
+				Int("cuteness", 8, align, func(c Cat) int { return c.Cuteness }),
 			)
 			wb.Reset(1)
 			def.Render(wb.At(0, 0), opts, slices.Values(cats))
@@ -63,8 +70,8 @@ func TestTable(t *testing.T) {
 			def := Define[Cat](
 				String("name", 6, AlignLeft, func(c Cat) string { return c.Name }),
 				Div(),
-				Int("age", 3, AlignRight, func(c Cat) int { return c.Age }),
-				Int("c", 1, AlignRight, func(c Cat) int { return c.Cuteness }),
+				Int("age", 3, align, func(c Cat) int { return c.Age }),
+				Int("c", 1, align, func(c Cat) int { return c.Cuteness }),
 			)
 			wb.Reset(1)
 			def.Render(wb.At(0, 0), opts, slices.Values(c))
