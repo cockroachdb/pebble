@@ -664,8 +664,8 @@ func (r *FileReader) ReadProperties(ctx context.Context) (FileProperties, error)
 	bufferPool.Init(1)
 	defer bufferPool.Release()
 	b, err := r.r.Read(
-		ctx, block.NoReadEnv, nil /* readHandle */, r.footer.propertiesHandle, blockkind.Metadata,
-		func(*block.Metadata, []byte) error { return nil },
+		ctx, block.ReadEnv{BufferPool: &bufferPool}, nil /* readHandle */, r.footer.propertiesHandle,
+		blockkind.Metadata, func(*block.Metadata, []byte) error { return nil },
 	)
 	if err != nil {
 		return FileProperties{}, err
