@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
@@ -249,10 +248,12 @@ func TestCacheStressSetExisting(t *testing.T) {
 }
 
 func BenchmarkCacheGet(b *testing.B) {
-	const size = 100000
+	const size = 1_000_000
 
-	n := runtime.GOMAXPROCS(0)
-	cache := NewWithShards(size*int64(n), n)
+	// We double the size to allow for shard imbalances. With many objects and
+	// relatively few shards, the probability that any bucket is more than double
+	// the expected size is vanishingly small.
+	cache := New(2 * size)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()
@@ -263,14 +264,13 @@ func BenchmarkCacheGet(b *testing.B) {
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
-
+		pcg := rand.NewPCG(rand.Uint64(), rand.Uint64())
 		for pb.Next() {
-			v := h.Get(base.DiskFileNum(0), uint64(rng.IntN(size)))
-			if v == nil {
-				b.Fatal("failed to lookup value")
+			offset := pcg.Uint64() % size
+			v := h.Get(base.DiskFileNum(0), offset)
+			if v != nil {
+				v.Release()
 			}
-			v.Release()
 		}
 	})
 }
