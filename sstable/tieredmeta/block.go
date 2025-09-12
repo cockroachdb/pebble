@@ -70,28 +70,7 @@ import (
 // information for now, since in addition to decision making, it helps with
 // observability.
 
-type KindAndTier uint8
-
-const (
-	// SSTableKeyBytes is the histogram for sstable keys. The tier is implicit
-	// based on whether the sstable is in hot or cold storage.
-	SSTableKeyBytes KindAndTier = iota
-	// SSTableValueBytes is the histogram for values stored inside the
-	// sstable. The tier is implicit based on whether the sstable is in hot or
-	// cold storage.
-	SSTableValueBytes
-	// SSTableBlobReferenceHotBytes is the histogram for blob references from the
-	// sstable to hot tier blob files. The size is the size of the value.
-	SSTableBlobReferenceHotBytes
-	// SSTableBlobReferenceColdBytes is the histogram for blob references from the
-	// sstable to cold tier blob files. The size is the size of the value.
-	SSTableBlobReferenceColdBytes
-	// BlobFileValueBytes is the histogram for values stored inside the blob
-	// file. The tier is implicit based on whether the blob file is in hot or
-	// cold storage.
-	BlobFileValueBytes
-	NumKindAndTiers
-)
+type KindAndTier = base.KindAndTier
 
 type ColdTierThresholdRetriever interface {
 	// GetColdTierLTThreshold returns the current cold threshold for the given
@@ -133,7 +112,7 @@ func (k *Key) decode(data []byte) error {
 		return errors.AssertionFailedf("key too short")
 	}
 	kt := KindAndTier(data[0])
-	if kt >= NumKindAndTiers {
+	if kt >= base.NumKindAndTiers {
 		return errors.AssertionFailedf("invalid KindAndTier %d", kt)
 	}
 	id, err := strconv.ParseUint(string(data[1:]), 10, 64)

@@ -163,11 +163,14 @@ func shouldWriteBlobFiles(
 				coldAttrAndBytesEstimates{coldLTThreshold: cttRetriever.GetColdTierLTThreshold(spanID)}
 		}
 		for k, h := range hist.Histograms {
-			if k.KindAndTier == tieredmeta.SSTableKeyBytes ||
-				k.KindAndTier == tieredmeta.SSTableBlobReferenceColdBytes {
+			if k.TieringSpanID == 0 {
 				continue
 			}
-			if k.KindAndTier == tieredmeta.SSTableValueBytes && h.MeanSize() < coldTierValSizeThreshold {
+			if k.KindAndTier == base.SSTableKeyBytes ||
+				k.KindAndTier == base.SSTableBlobReferenceColdBytes {
+				continue
+			}
+			if k.KindAndTier == base.SSTableValueBytes && h.MeanSize() < coldTierValSizeThreshold {
 				continue
 			}
 			v := tieringSpansLTThreshold[k.TieringSpanID]

@@ -252,7 +252,7 @@ const (
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
-	FormatNewest FormatMajorVersion = FormatV2BlobFiles
+	FormatNewest FormatMajorVersion = FormatTieredStorage
 
 	// Experimental versions, which are excluded by FormatNewest (but can be used
 	// in tests) can be defined here.
@@ -261,9 +261,7 @@ const (
 
 	// internalFormatNewest is the most recent, possibly experimental format major
 	// version.
-	//
-	// TODO(sumeer): change this to iota - 2 when ready to test FormatTieredStorage.
-	internalFormatNewest FormatMajorVersion = iota - 3
+	internalFormatNewest FormatMajorVersion = iota - 2
 )
 
 // FormatMinSupported is the minimum format version that is supported by this

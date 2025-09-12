@@ -30,39 +30,45 @@ nectarine
 (B000001,blk0,id1,len5)  : "apple"
 (B000001,blk0,id2,len6)  : "orange"
 (B000001,blk0,id3,len9)  : "blueberry"
-(B000001,blk0,id4,len4)  : "kiwi"
-(B000001,blk0,id5,len9)  : "tangerine"
-(B000001,blk1,id0,len4)  : "pear"
-(B000001,blk1,id1,len11) : "pomegranate"
-(B000001,blk1,id2,len5)  : "guava"
-(B000001,blk1,id3,len10) : "watermelon"
-(B000001,blk1,id4,len3)  : "fig"
-(B000001,blk1,id5,len4)  : "plum"
-(B000001,blk2,id0,len9)  : "raspberry"
-(B000001,blk2,id1,len10) : "strawberry"
-(B000001,blk2,id2,len6)  : "durian"
-(B000001,blk2,id3,len8)  : "honeydew"
-(B000001,blk2,id4,len9)  : "starfruit"
-(B000001,blk3,id0,len5)  : "mango"
-(B000001,blk3,id1,len5)  : "grape"
-(B000001,blk3,id2,len6)  : "papaya"
-(B000001,blk3,id3,len6)  : "lychee"
-(B000001,blk3,id4,len9)  : "persimmon"
-(B000001,blk3,id5,len8)  : "mandarin"
-(B000001,blk4,id0,len5)  : "peach"
-(B000001,blk4,id1,len7)  : "apricot"
-(B000001,blk4,id2,len9)  : "nectarine"
+(B000001,blk1,id0,len4)  : "kiwi"
+(B000001,blk1,id1,len9)  : "tangerine"
+(B000001,blk1,id2,len4)  : "pear"
+(B000001,blk1,id3,len11) : "pomegranate"
+(B000001,blk1,id4,len5)  : "guava"
+(B000001,blk2,id0,len10) : "watermelon"
+(B000001,blk2,id1,len3)  : "fig"
+(B000001,blk2,id2,len4)  : "plum"
+(B000001,blk2,id3,len9)  : "raspberry"
+(B000001,blk2,id4,len10) : "strawberry"
+(B000001,blk3,id0,len6)  : "durian"
+(B000001,blk3,id1,len8)  : "honeydew"
+(B000001,blk3,id2,len9)  : "starfruit"
+(B000001,blk3,id3,len5)  : "mango"
+(B000001,blk3,id4,len5)  : "grape"
+(B000001,blk4,id0,len6)  : "papaya"
+(B000001,blk4,id1,len6)  : "lychee"
+(B000001,blk4,id2,len9)  : "persimmon"
+(B000001,blk4,id3,len8)  : "mandarin"
+(B000001,blk5,id0,len5)  : "peach"
+(B000001,blk5,id1,len7)  : "apricot"
+(B000001,blk5,id2,len9)  : "nectarine"
 Stats:
-  BlockCount: 5
+  BlockCount: 6
   ValueCount: 26
   UncompressedValueBytes: 182
-  FileLen: 386
+  FileLen: 671
 
 open
 ----
-FileFormat: blobV1
+FileFormat: blobV3
 ChecksumType: crc32c
-IndexHandle: (308, 35)
+IndexHandle: (400, 37)
+PropsHandle: (498, 49)
+MetaIndexHandle: (552, 44)
+MetaIndexBlockHandles:
+tiering_histogram: (442, 51)
+Properties:
+  compression_stats: None:458
 
 build target-block-size=64 block-size-threshold=90 format=2
 canteloupe
@@ -168,10 +174,16 @@ Stats:
   BlockCount: 3
   ValueCount: 10
   UncompressedValueBytes: 60
-  FileLen: 206
+  FileLen: 432
 
 open
 ----
-FileFormat: blobV1
+FileFormat: blobV3
 ChecksumType: crc32c
-IndexHandle: (130, 33)
+IndexHandle: (166, 33)
+PropsHandle: (259, 49)
+MetaIndexHandle: (313, 44)
+MetaIndexBlockHandles:
+tiering_histogram: (204, 50)
+Properties:
+  compression_stats: None:234

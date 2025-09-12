@@ -56,18 +56,12 @@ const (
 	// Supported by CockroachDB v25.3 and later.
 	TableFormatPebblev7
 
-	// TableFormatPebblev8 adds ...:
-	// TODO(sumeer)
-	// - comment
-	// - add new blob file format for key age tracking, and storing (spanID,ts)
-	//   with each entry.
+	// TableFormatPebblev8 adds ...
 	TableFormatPebblev8
 
 	NumTableFormats
 
-	// TODO(sumeer): change back to NumTableFormats - 1 when TableFormatPebblev8
-	// can be tested.
-	TableFormatMax = NumTableFormats - 2
+	TableFormatMax = NumTableFormats - 1
 
 	// TableFormatMinSupported is the minimum format supported by Pebble.  This
 	// package still supports older formats for uses outside of Pebble

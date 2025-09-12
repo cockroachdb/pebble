@@ -74,6 +74,17 @@ func TestBlobWriter(t *testing.T) {
 			if r.footer.format >= FileFormatV2 {
 				fmt.Fprintf(&buf, "PropsHandle: %s\n", r.footer.propertiesHandle.String())
 			}
+			if r.footer.format >= FileFormatV3 {
+				fmt.Fprintf(&buf, "MetaIndexHandle: %s\n", r.footer.metaIndexHandle.String())
+				bhs, err := r.ReadMetaIndexBlockHandles(context.Background())
+				require.NoError(t, err)
+				if len(bhs) > 0 {
+					fmt.Fprintf(&buf, "MetaIndexBlockHandles:\n")
+					for k, bh := range bhs {
+						fmt.Fprintf(&buf, "%s: %s\n", k, bh.String())
+					}
+				}
+			}
 			props, err := r.ReadProperties(context.Background())
 			require.NoError(t, err)
 			if propsStr := props.String(); propsStr != "" {

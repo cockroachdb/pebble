@@ -812,6 +812,29 @@ const (
 	NumStorageTiers
 )
 
+type KindAndTier uint8
+
+const (
+	// SSTableKeyBytes is the histogram for sstable keys. The tier is implicit
+	// based on whether the sstable is in hot or cold storage.
+	SSTableKeyBytes KindAndTier = iota
+	// SSTableValueBytes is the histogram for values stored inside the
+	// sstable. The tier is implicit based on whether the sstable is in hot or
+	// cold storage.
+	SSTableValueBytes
+	// SSTableBlobReferenceHotBytes is the histogram for blob references from the
+	// sstable to hot tier blob files. The size is the size of the value.
+	SSTableBlobReferenceHotBytes
+	// SSTableBlobReferenceColdBytes is the histogram for blob references from the
+	// sstable to cold tier blob files. The size is the size of the value.
+	SSTableBlobReferenceColdBytes
+	// BlobFileValueBytes is the histogram for values stored inside the blob
+	// file. The tier is implicit based on whether the blob file is in hot or
+	// cold storage.
+	BlobFileValueBytes
+	NumKindAndTiers
+)
+
 // Tiering and iterators.
 //
 // We consider the question of correctness when the tiering attribute value is

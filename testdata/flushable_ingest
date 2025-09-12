@@ -38,7 +38,7 @@ ext
 ext1
 ext2
 ext3
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 # Ingest can complete despite the flush being blocked.
@@ -62,7 +62,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 allowFlush
@@ -96,7 +96,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 # Test basic WAL replay
@@ -117,7 +117,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -210,7 +210,7 @@ MANIFEST-000001
 OPTIONS-000003
 ext
 ext5
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 allowFlush
@@ -440,7 +440,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -460,7 +460,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -493,7 +493,7 @@ MANIFEST-000001
 MANIFEST-000011
 OPTIONS-000014
 ext
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000002.MANIFEST-000011
 
 # Make sure that the new mutable memtable can accept writes.
@@ -636,7 +636,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000003
 ext
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -655,7 +655,7 @@ MANIFEST-000001
 OPTIONS-000003
 ext
 ext1
-marker.format-version.000013.026
+marker.format-version.000014.027
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -701,9 +701,9 @@ allowFlush
 get with-fs-logging
 small-00001
 ----
-read-at(158, 41): 000004.sst
-read-at(199, 74): 000004.sst
-read-at(0, 158): 000004.sst
+read-at(169, 41): 000004.sst
+read-at(210, 74): 000004.sst
+read-at(0, 169): 000004.sst
 small-00001:val-00001
 
 # When the key doesn't pass the bloom filter, we should see only two block
@@ -711,8 +711,8 @@ small-00001:val-00001
 get with-fs-logging
 small-00001-does-not-exist
 ----
-read-at(158, 41): 000004.sst
-read-at(199, 74): 000004.sst
+read-at(169, 41): 000004.sst
+read-at(210, 74): 000004.sst
 small-00001-does-not-exist: pebble: not found
 
 # When looking inside the large table, we will not read the bloom filter which
@@ -721,16 +721,16 @@ small-00001-does-not-exist: pebble: not found
 get with-fs-logging
 large-00001
 ----
-read-at(1165164, 65): 000005.sst
-read-at(1159763, 3000): 000005.sst
-read-at(0, 3069): 000005.sst
+read-at(1174126, 65): 000005.sst
+read-at(1168669, 2997): 000005.sst
+read-at(0, 3072): 000005.sst
 large-00001:val-00001
 
 # Same number of block reads for a key that doesn't exist.
 get with-fs-logging
 large-00001-does-not-exist
 ----
-read-at(1165164, 65): 000005.sst
-read-at(1159763, 3000): 000005.sst
-read-at(0, 3069): 000005.sst
+read-at(1174126, 65): 000005.sst
+read-at(1168669, 2997): 000005.sst
+read-at(0, 3072): 000005.sst
 large-00001-does-not-exist: pebble: not found

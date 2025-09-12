@@ -23,8 +23,8 @@ close-output
 # close: 000001.sst
 # sync-data: 000002.blob
 # close: 000002.blob
-Blob file created: 000002 size:[105 (105B)] vals:[15 (15B)]
-{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15, FileLen: 105}
+Blob file created: 000002 size:[306 (306B)] vals:[15 (15B)]
+{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15, FileLen: 306}
 blobrefs:[
  0: B000002 15
 ]
@@ -58,22 +58,22 @@ rewrite-blob 000002 000001 000003
 ----
 # create: 000004.blob
 # open: 000001.sst (options: *vfs.randomReadsOption)
-# read-at(737, 61): 000001.sst
-# read-at(660, 77): 000001.sst
-# read-at(209, 451): 000001.sst
-# read-at(184, 25): 000001.sst
+# read-at(855, 61): 000001.sst
+# read-at(749, 106): 000001.sst
+# read-at(288, 461): 000001.sst
+# read-at(194, 25): 000001.sst
 # open: 000003.sst (options: *vfs.randomReadsOption)
-# read-at(761, 61): 000003.sst
-# read-at(684, 77): 000003.sst
-# read-at(193, 491): 000003.sst
-# read-at(168, 25): 000003.sst
+# read-at(870, 61): 000003.sst
+# read-at(764, 106): 000003.sst
+# read-at(272, 492): 000003.sst
+# read-at(178, 25): 000003.sst
 # open: 000002.blob (options: *vfs.randomReadsOption)
-# read-at(35, 70): 000002.blob
-# read-at(37, 30): 000002.blob
-# read-at(0, 37): 000002.blob
+# read-at(236, 70): 000002.blob
+# read-at(49, 30): 000002.blob
+# read-at(0, 49): 000002.blob
 # sync-data: 000004.blob
 # close: 000004.blob
 Successfully rewrote blob file 000002 to 000004
 Input SSTables: [000001 000003]
 SSTables with blob references: 2
-{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15, FileLen: 106}
+{BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 15, FileLen: 274}

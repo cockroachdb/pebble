@@ -1,0 +1,390 @@
+build
+a.SET.1:a
+----
+point:    [a#1,SET-a#1,SET]
+seqnums:  [1-1]
+
+scan
+----
+a#1,SET:a
+
+scan-range-del
+----
+
+scan-range-key
+----
+
+build
+a.SET.1:a
+b.DEL.2:
+c.MERGE.3:c
+Span: d-e:{(#4,RANGEDEL)}
+f.SET.5:f
+g.DEL.6:
+h.MERGE.7:h
+Span: i-j:{(#8,RANGEDEL)}
+Span: j-k:{(#9,RANGEKEYDEL)}
+Span: k-l:{(#10,RANGEKEYUNSET,@5)}
+Span: l-m:{(#11,RANGEKEYSET,@10,foo)}
+----
+point:    [a#1,SET-h#7,MERGE]
+rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
+rangekey: [j#9,RANGEKEYDEL-m#inf,RANGEKEYSET]
+seqnums:  [1-11]
+
+build
+a.SET.1:a
+b.DEL.2:
+c.MERGE.3:c
+Span: d-e:{(#4,RANGEDEL)}
+f.SET.5:f
+g.DEL.6:
+h.MERGE.7:h
+Span: i-j:{(#8,RANGEDEL)}
+----
+point:    [a#1,SET-h#7,MERGE]
+rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
+seqnums:  [1-8]
+
+scan
+----
+a#1,SET:a
+b#2,DEL:
+c#3,MERGE:c
+f#5,SET:f
+g#6,DEL:
+h#7,MERGE:h
+
+scan-range-del
+----
+d-e:{(#4,RANGEDEL)}
+i-j:{(#8,RANGEDEL)}
+
+# 3: a-----------m
+# 2:      f------------s
+# 1:          j---------------z
+
+build
+Span: a-f:{(#3,RANGEDEL)}
+Span: f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
+Span: j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+Span: m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
+Span: s-z:{(#1,RANGEDEL)}
+----
+rangedel: [a#3,RANGEDEL-z#inf,RANGEDEL]
+seqnums:  [1-3]
+
+scan
+----
+
+scan-range-del
+----
+a-f:{(#3,RANGEDEL)}
+f-j:{(#3,RANGEDEL) (#2,RANGEDEL)}
+j-m:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
+m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
+s-z:{(#1,RANGEDEL)}
+
+scan-range-key
+----
+
+props
+----
+rocksdb.num.entries: 9
+rocksdb.raw.key.size: 10
+rocksdb.raw.value.size: 0
+rocksdb.deleted.keys: 9
+rocksdb.num.range-deletions: 9
+rocksdb.num.data.blocks: 0
+rocksdb.compression: Snappy
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 0
+rocksdb.filter.size: 0
+rocksdb.index.size: 28
+rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+pebble.compression_stats: None:125
+obsolete-key: hex:0074
+
+# The range tombstone upper bound is exclusive, so a point operation
+# on that same key will be the actual boundary.
+
+build
+Span: a-b:{(#3,RANGEDEL)}
+b.SET.4:c
+----
+point:    [b#4,SET-b#4,SET]
+rangedel: [a#3,RANGEDEL-b#inf,RANGEDEL]
+seqnums:  [3-4]
+
+build
+Span: a-b:{(#3,RANGEDEL)}
+b.SET.2:c
+----
+point:    [b#2,SET-b#2,SET]
+rangedel: [a#3,RANGEDEL-b#inf,RANGEDEL]
+seqnums:  [2-3]
+
+build
+Span: a-c:{(#3,RANGEDEL)}
+b.SET.2:c
+----
+point:    [b#2,SET-b#2,SET]
+rangedel: [a#3,RANGEDEL-c#inf,RANGEDEL]
+seqnums:  [2-3]
+
+# Keys must be added in order.
+
+build
+a.SET.1:b
+a.SET.2:c
+----
+failed to write a#2,SET = c: pebble: keys must be added in strictly increasing order: a#1,SET, a#2,SET
+
+build
+b.SET.1:a
+a.SET.2:b
+----
+failed to write a#2,SET = b: pebble: keys must be added in strictly increasing order: b#1,SET, a#2,SET
+
+build
+b.RANGEDEL.1:c
+a.RANGEDEL.2:b
+----
+failed to write b#1,RANGEDEL = c: RANGEDEL must be added through EncodeSpan
+
+build
+Span: b-c:{(#1,RANGEDEL)}
+Span: a-b:{(#2,RANGEDEL)}
+----
+failed to write Span: a-b:{(#2,RANGEDEL)}: pebble: keys must be added in order: b-c:{(#1,RANGEDEL)}, a-b:{(#2,RANGEDEL)}
+
+build-raw
+Span: a-c:{(#1,RANGEDEL)}
+Span: a-c:{(#2,RANGEDEL)}
+----
+pebble: keys must be added in order: a-c:{(#1,RANGEDEL)}, a-c:{(#2,RANGEDEL)}
+
+build-raw
+Span: a-c:{(#1,RANGEDEL)}
+Span: b-d:{(#2,RANGEDEL)}
+----
+pebble: keys must be added in order: a-c:{(#1,RANGEDEL)}, b-d:{(#2,RANGEDEL)}
+
+build-raw
+Span: a-c:{(#2,RANGEDEL)}
+Span: a-d:{(#1,RANGEDEL)}
+----
+pebble: keys must be added in order: a-c:{(#2,RANGEDEL)}, a-d:{(#1,RANGEDEL)}
+
+build-raw
+Span: a-c:{(#1,RANGEDEL)}
+Span: c-d:{(#2,RANGEDEL)}
+----
+rangedel: [a#1,RANGEDEL-d#inf,RANGEDEL]
+seqnums:  [1-2]
+
+build-raw
+Span: a-b:{(#2,RANGEKEYSET,@10,foo) (#1,RANGEKEYSET,@10,foo)}
+----
+rangekey: [a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
+seqnums:  [1-2]
+
+build-raw
+Span: b-c:{(#2,RANGEKEYSET,@10,foo)}
+Span: a-b:{(#1,RANGEKEYSET,@10,foo)}
+----
+pebble: keys must be added in order: b-c:{(#2,RANGEKEYSET)}, a-b:{(#1,RANGEKEYSET,@10,foo)}
+
+build-raw
+Span: a-c:{(#1,RANGEKEYSET,@10,foo)}
+Span: c-d:{(#2,RANGEKEYSET,@10,foo)}
+----
+rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+seqnums:  [1-2]
+
+# Range keys may have perfectly aligned spans (including sequence numbers),
+# though the key kinds must be ordered (descending).
+
+build-raw
+Span: a-b:{(#1,RANGEKEYSET,@10,foo) (#1,RANGEKEYUNSET,@10) (#1,RANGEKEYDEL)}
+----
+rangekey: [a#1,RANGEKEYSET-b#inf,RANGEKEYDEL]
+seqnums:  [1-1]
+
+# Setting a very small index-block-size results in a two-level index.
+
+build block-size=1 index-block-size=1
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+----
+point:    [a#1,SET-c#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+sstable
+ ├── data  offset: 0  length: 78
+ ├── data  offset: 83  length: 78
+ ├── data  offset: 166  length: 78
+ ├── index  offset: 249  length: 36
+ ├── index  offset: 290  length: 37
+ ├── index  offset: 332  length: 37
+ ├── top-index  offset: 374  length: 48
+ ├── tiering-histogram  offset: 427  length: 48
+ ├── properties  offset: 480  length: 465
+ ├── meta-index  offset: 950  length: 75
+ └── footer  offset: 1030  length: 61
+
+props
+----
+rocksdb.num.entries: 3
+rocksdb.raw.key.size: 27
+rocksdb.raw.value.size: 3
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 3
+rocksdb.compression: Snappy
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 249
+rocksdb.filter.size: 0
+rocksdb.index.partitions: 3
+rocksdb.index.size: 158
+rocksdb.block.based.table.index.type: 2
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.top-level.index.size: 48
+pebble.compression_stats: None:158,Snappy:282/369
+obsolete-key: hex:00
+
+# Exercise the non-Reader layout-decoding codepath.
+
+decode-layout
+----
+sstable
+ ├── data  offset: 0  length: 78
+ ├── data  offset: 83  length: 78
+ ├── data  offset: 166  length: 78
+ ├── index  offset: 249  length: 36
+ ├── index  offset: 290  length: 37
+ ├── index  offset: 332  length: 37
+ ├── top-index  offset: 374  length: 48
+ ├── properties  offset: 480  length: 465
+ ├── meta-index  offset: 950  length: 75
+ └── footer  offset: 1030  length: 61
+
+scan
+----
+a#1,SET:a
+b#1,SET:b
+c#1,SET:c
+
+# Enabling leveldb format disables the creation of a two-level index
+# (the input data here mirrors the test case above).
+
+build table-format=LevelDB block-size=1 index-block-size=1
+a.SET.1:a
+b.SET.1:b
+c.SET.1:c
+----
+point:    [a#1,SET-c#1,SET]
+seqnums:  [1-1]
+
+layout
+----
+sstable
+ ├── data  offset: 0  length: 21
+ ├── data  offset: 26  length: 21
+ ├── data  offset: 52  length: 21
+ ├── index  offset: 78  length: 45
+ ├── properties  offset: 128  length: 549
+ ├── meta-index  offset: 682  length: 33
+ └── leveldb-footer  offset: 720  length: 48
+
+# Range keys, if present, are shown in the layout.
+
+build
+Span: a-b:{(#3,RANGEKEYSET,@3,foo)}
+Span: b-c:{(#2,RANGEKEYSET,@2,bar)}
+Span: c-d:{(#1,RANGEKEYSET,@1,baz)}
+----
+rangekey: [a#3,RANGEKEYSET-d#inf,RANGEKEYSET]
+seqnums:  [1-3]
+
+layout
+----
+sstable
+ ├── index  offset: 0  length: 28
+ ├── range-key  offset: 33  length: 84
+ ├── tiering-histogram  offset: 122  length: 18
+ ├── properties  offset: 145  length: 495
+ ├── meta-index  offset: 645  length: 94
+ └── footer  offset: 744  length: 61
+
+props
+----
+rocksdb.num.entries: 0
+rocksdb.raw.key.size: 0
+rocksdb.raw.value.size: 0
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+pebble.num.range-key-dels: 0
+pebble.num.range-key-sets: 3
+rocksdb.num.data.blocks: 0
+rocksdb.compression: Snappy
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 0
+rocksdb.filter.size: 0
+rocksdb.index.size: 28
+rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+pebble.num.range-key-unsets: 0
+rocksdb.property.collectors: [obsolete-key]
+pebble.raw.range-key.key.size: 6
+pebble.raw.range-key.value.size: 9
+pebble.compression_stats: None:130
+obsolete-key: hex:0074
+
+open-writer disable-value-blocks
+----
+
+write-kvs
+a@2.SET.1:a2
+a@1.SET.1:a1
+b@2.SET.1:b2
+----
+EstimatedSize()=181
+
+close
+----
+point:    [a@2#1,SET-b@2#1,SET]
+seqnums:  [1-1]
+
+build compression=zstd
+a.SET.1:thequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydog
+----
+point:    [a#1,SET-a#1,SET]
+seqnums:  [1-1]
+
+props rocksdb.compression
+----
+rocksdb.compression: ZSTD
+
+# MinLZ is supported in v6.
+build compression=minlz
+a.SET.1:thequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydog
+----
+point:    [a#1,SET-a#1,SET]
+seqnums:  [1-1]
+
+props rocksdb.compression
+----
+rocksdb.compression: MinLZ

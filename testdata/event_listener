@@ -92,6 +92,11 @@ close: db/marker.format-version.000013.026
 remove: db/marker.format-version.000012.025
 sync: db
 upgraded to format version: 026
+create: db/marker.format-version.000014.027
+close: db/marker.format-version.000014.027
+remove: db/marker.format-version.000013.026
+sync: db
+upgraded to format version: 027
 create: db/temporary.000003.dbtmp
 sync: db/temporary.000003.dbtmp
 close: db/temporary.000003.dbtmp
@@ -120,7 +125,7 @@ close: db/marker.manifest.000002.MANIFEST-000006
 remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 3] MANIFEST created 000006
-[JOB 3] flushed 1 memtable (100B) to L0 [000005] (657B), in 1.0s (2.0s total), output rate 657B/s
+[JOB 3] flushed 1 memtable (100B) to L0 [000005] (766B), in 1.0s (2.0s total), output rate 766B/s
 
 compact
 ----
@@ -144,24 +149,24 @@ close: db/marker.manifest.000003.MANIFEST-000009
 remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
 [JOB 5] MANIFEST created 000009
-[JOB 5] flushed 1 memtable (100B) to L0 [000008] (657B), in 1.0s (2.0s total), output rate 657B/s
+[JOB 5] flushed 1 memtable (100B) to L0 [000008] (766B), in 1.0s (2.0s total), output rate 766B/s
 remove: db/MANIFEST-000001
 [JOB 5] MANIFEST deleted 000001
-[JOB 6] compacting(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00
+[JOB 6] compacting(default) L0 [000005 000008] (1.5KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00
 open: db/000005.sst (options: *vfs.randomReadsOption)
-read-at(596, 61): db/000005.sst
-read-at(546, 50): db/000005.sst
-read-at(119, 427): db/000005.sst
+read-at(705, 61): db/000005.sst
+read-at(625, 80): db/000005.sst
+read-at(197, 428): db/000005.sst
 open: db/000008.sst (options: *vfs.randomReadsOption)
-read-at(596, 61): db/000008.sst
-read-at(546, 50): db/000008.sst
-read-at(119, 427): db/000008.sst
-read-at(78, 41): db/000005.sst
+read-at(705, 61): db/000008.sst
+read-at(625, 80): db/000008.sst
+read-at(197, 428): db/000008.sst
+read-at(99, 41): db/000005.sst
 open: db/000005.sst (options: *vfs.sequentialReadsOption)
-read-at(0, 78): db/000005.sst
-read-at(78, 41): db/000008.sst
+read-at(0, 99): db/000005.sst
+read-at(99, 41): db/000008.sst
 open: db/000008.sst (options: *vfs.sequentialReadsOption)
-read-at(0, 78): db/000008.sst
+read-at(0, 99): db/000008.sst
 close: db/000008.sst
 close: db/000005.sst
 create: db/000010.sst
@@ -177,7 +182,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 6] MANIFEST created 000011
-[JOB 6] compacted(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (652B), in 1.0s (3.0s total), output rate 652B/s
+[JOB 6] compacted(default) L0 [000005 000008] (1.5KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (747B), in 1.0s (3.0s total), output rate 747B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/MANIFEST-000006
@@ -212,7 +217,7 @@ close: db/marker.manifest.000005.MANIFEST-000014
 remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
 [JOB 8] MANIFEST created 000014
-[JOB 8] flushed 1 memtable (100B) to L0 [000013] (657B), in 1.0s (2.0s total), output rate 657B/s
+[JOB 8] flushed 1 memtable (100B) to L0 [000013] (766B), in 1.0s (2.0s total), output rate 766B/s
 
 enable-file-deletions
 ----
@@ -222,12 +227,12 @@ remove: db/MANIFEST-000009
 ingest
 ----
 open: ext/0
-read-at(591, 61): ext/0
-read-at(541, 50): ext/0
-read-at(122, 419): ext/0
-read-at(122, 419): ext/0
-read-at(81, 41): ext/0
-read-at(0, 81): ext/0
+read-at(686, 61): ext/0
+read-at(607, 79): ext/0
+read-at(178, 429): ext/0
+read-at(178, 429): ext/0
+read-at(80, 41): ext/0
+read-at(0, 80): ext/0
 close: ext/0
 link: ext/0 -> db/000015.sst
 [JOB 10] ingesting: sstable created 000015
@@ -243,7 +248,7 @@ sync: db
 remove: db/MANIFEST-000011
 [JOB 10] MANIFEST deleted 000011
 remove: ext/0
-[JOB 10] ingested L0:000015 (652B); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
+[JOB 10] ingested L0:000015 (747B); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
 
 metrics
 ----
@@ -251,26 +256,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    97B |      1  652B |   2 20.32
+    0      1.5KB |      2 1.5KB |      0     0 |     0B     0B |    97B |      1  747B |   2 23.69
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6       652B |      1  652B |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.50
-total      1.9KB |      3 1.9KB |      0     0 |     0B     0B |   749B |      1  652B |   3  4.50
+    6       747B |      1  747B |      0     0 |     0B     0B |  1.5KB |      0    0B |   1  0.49
+total      2.2KB |      3 2.2KB |      0     0 |     0B     0B |   844B |      1  747B |   3  4.61
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -  0.40  0.40 |      0    0B |    0B    0B    0B |     0B    0B |      3  1.9KB     0B
+    0 |     -  0.40  0.40 |      0    0B |    0B    0B    0B |     0B    0B |      3  2.2KB     0B
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   652B     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   218B    0B |      4  3.3KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   260B    0B |      1   747B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   260B    0B |      4  3.8KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -285,7 +290,7 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-    2 (832B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+    2 (850B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -300,7 +305,7 @@ CGO MEMORY    |          block cache           |                     memtables
 COMPACTIONS
    estimated debt |       in progress |         cancelled |            failed |      problem spans
 ------------------+-------------------+-------------------+-------------------+-------------------
-            1.9KB |            0 (0B) |            0 (0B) |                 0 |                  0
+            2.2KB |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
@@ -309,8 +314,8 @@ KEYS
 
 COMPRESSION
     algorithm | none  snappy
-on disk bytes | 260B     73B
-           CR |         1.15
+on disk bytes | 202B    306B
+           CR |         1.38
 ----
 ----
 
@@ -322,20 +327,20 @@ ingest-flushable
 ----
 sync-data: wal/000012.log
 open: ext/a
-read-at(591, 61): ext/a
-read-at(541, 50): ext/a
-read-at(122, 419): ext/a
-read-at(122, 419): ext/a
-read-at(81, 41): ext/a
-read-at(0, 81): ext/a
+read-at(686, 61): ext/a
+read-at(607, 79): ext/a
+read-at(178, 429): ext/a
+read-at(178, 429): ext/a
+read-at(80, 41): ext/a
+read-at(0, 80): ext/a
 close: ext/a
 open: ext/b
-read-at(591, 61): ext/b
-read-at(541, 50): ext/b
-read-at(122, 419): ext/b
-read-at(122, 419): ext/b
-read-at(81, 41): ext/b
-read-at(0, 81): ext/b
+read-at(686, 61): ext/b
+read-at(607, 79): ext/b
+read-at(178, 429): ext/b
+read-at(178, 429): ext/b
+read-at(80, 41): ext/b
+read-at(0, 80): ext/b
 close: ext/b
 link: ext/a -> db/000017.sst
 [JOB 11] ingesting: sstable created 000017
@@ -355,7 +360,7 @@ sync: wal
 [JOB 13] WAL created 000020
 remove: ext/a
 remove: ext/b
-[JOB 11] ingested as flushable, memtable flushes took 0.2s: 000017 (652B), 000018 (652B); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
+[JOB 11] ingested as flushable, memtable flushes took 0.2s: 000017 (747B), 000018 (747B); manifest update took 0.1s; block reads took 0.3s with 7.7KB block bytes read
 sync-data: wal/000020.log
 close: wal/000020.log
 create: wal/000021.log
@@ -368,7 +373,7 @@ sync-data: db/000022.sst
 close: db/000022.sst
 sync: db
 sync: db/MANIFEST-000016
-[JOB 15] flushed 1 memtable (100B) to L0 [000022] (657B), in 1.0s (2.0s total), output rate 657B/s
+[JOB 15] flushed 1 memtable (100B) to L0 [000022] (766B), in 1.0s (2.0s total), output rate 766B/s
 [JOB 16] flushing 2 ingested tables
 create: db/MANIFEST-000023
 close: db/MANIFEST-000016
@@ -378,7 +383,7 @@ close: db/marker.manifest.000007.MANIFEST-000023
 remove: db/marker.manifest.000006.MANIFEST-000016
 sync: db
 [JOB 16] MANIFEST created 000023
-[JOB 16] flushed 2 ingested flushables L0:000017 (652B) + L6:000018 (652B) in 1.0s (2.0s total), output rate 1.3KB/s
+[JOB 16] flushed 2 ingested flushables L0:000017 (747B) + L6:000018 (747B) in 1.0s (2.0s total), output rate 1.5KB/s
 remove: db/MANIFEST-000014
 [JOB 16] MANIFEST deleted 000014
 [JOB 17] flushing 1 memtable (100B) to L0
@@ -391,26 +396,26 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-    0      2.6KB |      4 2.6KB |      0     0 |     0B     0B |   132B |      2 1.3KB |   4 19.91
+    0        3KB |      4   3KB |      0     0 |     0B     0B |   132B |      2 1.5KB |   4 23.21
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
-    6      1.3KB |      2 1.3KB |      0     0 |     0B     0B |  1.3KB |      1  652B |   1  0.50
-total      3.8KB |      6 3.8KB |      0     0 |     0B     0B |    2KB |      3 1.9KB |   5  2.57
+    6      1.5KB |      2 1.5KB |      0     0 |     0B     0B |  1.5KB |      1  747B |   1  0.49
+total      4.4KB |      6 4.4KB |      0     0 |     0B     0B |  2.3KB |      3 2.2KB |   5  2.61
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-    0 |     -  0.80  0.80 |      0    0B |    0B    0B    0B |     0B    0B |      4  2.6KB     0B
+    0 |     -  0.80  0.80 |      0    0B |    0B    0B    0B |     0B    0B |      4    3KB     0B
     1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
-    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   218B    0B |      1   652B     0B
-total |     -     -     - |      0    0B |    0B    0B    0B |   218B    0B |      5  5.2KB     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   260B    0B |      1   747B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   260B    0B |      5    6KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
 count |       1       0        0     0     0     0        0     0      0     0
@@ -419,13 +424,13 @@ COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) |  82B: 132B |     61.0% |         6 |  1 (512KB) |  1 (512KB) |       214 |   1 (1.3KB)
+   1 (0B) |  82B: 132B |     61.0% |         6 |  1 (512KB) |  1 (512KB) |       214 |   1 (1.5KB)
 
 ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-   6 (2.4KB) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
+   6 (2.5KB) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -440,7 +445,7 @@ CGO MEMORY    |          block cache           |                     memtables
 COMPACTIONS
    estimated debt |       in progress |         cancelled |            failed |      problem spans
 ------------------+-------------------+-------------------+-------------------+-------------------
-            3.8KB |            0 (0B) |            0 (0B) |                 0 |                  0
+            4.4KB |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
@@ -449,8 +454,8 @@ KEYS
 
 COMPRESSION
     algorithm | none  snappy
-on disk bytes | 520B    146B
-           CR |         1.15
+on disk bytes | 404B    612B
+           CR |         1.38
 ----
 ----
 
@@ -478,9 +483,9 @@ sync-data: checkpoint/OPTIONS-000003
 close: checkpoint/OPTIONS-000003
 close: db/OPTIONS-000003
 open-dir: checkpoint
-create: checkpoint/marker.format-version.000001.026
-sync-data: checkpoint/marker.format-version.000001.026
-close: checkpoint/marker.format-version.000001.026
+create: checkpoint/marker.format-version.000001.027
+sync-data: checkpoint/marker.format-version.000001.027
+close: checkpoint/marker.format-version.000001.027
 sync: checkpoint
 close: checkpoint
 link: db/000013.sst -> checkpoint/000013.sst

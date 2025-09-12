@@ -48,6 +48,7 @@ type Layout struct {
 	Properties         block.Handle
 	MetaIndex          block.Handle
 	BlobReferenceIndex block.Handle
+	TieringHistogram   block.Handle
 	Footer             block.Handle
 	Format             TableFormat
 }
@@ -102,6 +103,9 @@ func (l *Layout) orderedBlocks() []NamedBlockHandle {
 	}
 	if l.BlobReferenceIndex.Length != 0 {
 		blocks = append(blocks, NamedBlockHandle{l.BlobReferenceIndex, "blob-reference-index"})
+	}
+	if l.TieringHistogram.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.TieringHistogram, "tiering-histogram"})
 	}
 	if l.Footer.Length != 0 {
 		if l.Footer.Length == levelDBFooterLen {
