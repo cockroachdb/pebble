@@ -21,7 +21,6 @@ all:
 	@echo "  make generate"
 	@echo "  make generate-test-data"
 	@echo "  make clean"
-
 override testflags :=
 .PHONY: test
 test:
@@ -35,10 +34,13 @@ testcoverage:
 testrace: testflags += -race -timeout 20m
 testrace: test
 
+.PHONY: testasan
 testasan: testflags += -asan -timeout 20m
 testasan: TAGS += slowbuild
-testasan: test
+testasan:
+	ASAN_OPTIONS=detect_leaks=0 ${GO} test -tags '$(TAGS)' ${testflags} -run ${TESTS} ${PKG}
 
+.PHONY: testmsan
 testmsan: export CC=clang
 testmsan: testflags += -msan -timeout 20m
 testmsan: TAGS += slowbuild
