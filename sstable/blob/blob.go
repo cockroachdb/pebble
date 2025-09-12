@@ -33,6 +33,8 @@ type FileFormat uint8
 // String implements the fmt.Stringer interface.
 func (f FileFormat) String() string {
 	switch f {
+	case FileFormatV3:
+		return "blobV3"
 	case FileFormatV2:
 		return "blobV2"
 	case FileFormatV1:
@@ -51,8 +53,7 @@ const (
 	FileFormatV2 FileFormat = 2
 	FileFormatV3 FileFormat = 3
 
-	// TODO(sumeer): update to FileFormatV3 when ready for testing.
-	latestFileFormat FileFormat = FileFormatV2
+	latestFileFormat FileFormat = FileFormatV3
 )
 
 const (
@@ -101,7 +102,7 @@ type FileWriterOptions struct {
 
 func (o *FileWriterOptions) ensureDefaults() {
 	if o.Format == 0 {
-		o.Format = FileFormatV1
+		o.Format = FileFormatV3
 	}
 	if o.Compression == nil {
 		o.Compression = block.SnappyCompression
@@ -212,7 +213,7 @@ func (w *FileWriter) AddValue(v []byte, meta base.TieringMeta) Handle {
 	w.valuesEncoder.AddValue(v, meta)
 	if w.format >= FileFormatV3 {
 		w.tieringHistogramBlock.Add(
-			tieredmeta.BlobFileValueBytes, meta.SpanID, meta.Attribute, uint64(len(v)))
+			base.BlobFileValueBytes, meta.SpanID, meta.Attribute, uint64(len(v)))
 	}
 	return Handle{
 		BlobFileID: base.BlobFileID(w.fileNum),
@@ -643,6 +644,49 @@ func (r *FileReader) ReadIndexBlock(
 	return r.r.Read(ctx, env, rh, r.footer.indexHandle, blockkind.Metadata, initIndexBlockMetadata)
 }
 
+func (r *FileReader) ReadMetaIndexBlockHandles(
+	ctx context.Context,
+) (map[string]block.Handle, error) {
+	if r.Format() < FileFormatV3 {
+		return nil, errors.AssertionFailedf("blob format %d does not support tiering histogram", r.Format())
+	}
+	// We don't want the property block to go into the block cache, so we use a
+	// buffer pool.
+	var bufferPool block.BufferPool
+	bufferPool.Init(1)
+	defer bufferPool.Release()
+	readEnv := block.ReadEnv{BufferPool: &bufferPool}
+	b, err := r.r.Read(ctx, readEnv, nil, r.footer.metaIndexHandle, blockkind.Metadata,
+		func(*block.Metadata, []byte) error { return nil })
+	if err != nil {
+		return nil, err
+	}
+	data := b.BlockData()
+	defer b.Release()
+	if uint64(len(data)) != r.footer.metaIndexHandle.Length {
+		return nil, base.CorruptionErrorf("pebble/blob: unexpected metaindex block size: %d vs %d",
+			errors.Safe(len(data)), errors.Safe(r.footer.metaIndexHandle.Length))
+	}
+	var meta map[string]block.Handle
+	var decoder colblk.KeyValueBlockDecoder
+	decoder.Init(data)
+	meta = map[string]block.Handle{}
+	for i := 0; i < decoder.BlockDecoder().Rows(); i++ {
+		key := decoder.KeyAt(i)
+		value := decoder.ValueAt(i)
+		var bh block.Handle
+		var n int
+		bh, n = block.DecodeHandle(value)
+		if n == 0 || n != len(value) {
+			return nil, base.CorruptionErrorf("pebble/blob: invalid blob (bad block handle)")
+		}
+		// TODO(sumeer): user bytealloc.A if this map ends up being large.
+		keyStr := string(key)
+		meta[keyStr] = bh
+	}
+	return meta, nil
+}
+
 // IndexHandle returns the block handle for the file's index block.
 func (r *FileReader) IndexHandle() block.Handle {
 	return r.footer.indexHandle
@@ -656,6 +700,20 @@ func (r *FileReader) Layout() (string, error) {
 	if r.footer.format >= FileFormatV2 {
 		h := r.footer.propertiesHandle
 		fmt.Fprintf(&buf, "properties block: offset=%d length=%d\n", h.Offset, h.Length)
+	}
+	if r.footer.format >= FileFormatV3 {
+		h := r.footer.metaIndexHandle
+		fmt.Fprintf(&buf, "metaindex block: offset=%d length=%d\n", h.Offset, h.Length)
+		bhs, err := r.ReadMetaIndexBlockHandles(context.TODO())
+		if err != nil {
+			return "", err
+		}
+		if len(bhs) > 0 {
+			fmt.Fprintf(&buf, " handles:\n")
+			for k, bh := range bhs {
+				fmt.Fprintf(&buf, "  %s: %s\n", k, bh.String())
+			}
+		}
 	}
 
 	indexH, err := r.ReadIndexBlock(ctx, block.NoReadEnv, nil /* rh */)

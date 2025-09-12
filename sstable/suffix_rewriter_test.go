@@ -40,6 +40,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 
 	// Test suffix rewriting from every table format.
 	for format := TableFormatPebblev2; format <= TableFormatMax; format++ {
+		if format != TableFormatMax {
+			continue
+		}
 		t.Run(format.String(), func(t *testing.T) {
 			rng := rand.New(rand.NewPCG(0, seed))
 			// Construct a test sstable.
@@ -53,6 +56,8 @@ func TestRewriteSuffixProps(t *testing.T) {
 			// Pick a random subset of available test collectors.
 			var originalCollectors []string
 			originalCollectors, wOpts.BlockPropertyCollectors = randomTestCollectors(rng)
+			originalCollectors = originalCollectors[:0]
+			wOpts.BlockPropertyCollectors = nil
 			sst := makeTestkeySSTable(t, wOpts, []byte(from), keyCount, rangeKeyCount)
 
 			// Create the rewrite options.

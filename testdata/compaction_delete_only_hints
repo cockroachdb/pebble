@@ -88,7 +88,7 @@ maybe-compact
 Deletion hints:
   L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (666B) Score=0.00 + L3 [000006] (666B) Score=0.00 + L4 [000007] (666B) Score=0.00 -> L6 [000008] (94B), in 1.0s (2.0s total), output rate 94B/s
+  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (767B) Score=0.00 + L3 [000006] (767B) Score=0.00 + L4 [000007] (767B) Score=0.00 -> L6 [000008] (104B), in 1.0s (2.0s total), output rate 104B/s
 
 # Verify that compaction correctly handles the presence of multiple
 # overlapping hints which might delete a file multiple times. All of the
@@ -127,7 +127,7 @@ maybe-compact
 Deletion hints:
   L1.000005 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (666B) Score=0.00 + L3 [000006] (666B) Score=0.00 + L4 [000007] (666B) Score=0.00 -> L6 [000008] (94B), in 1.0s (2.0s total), output rate 94B/s
+  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (767B) Score=0.00 + L3 [000006] (767B) Score=0.00 + L4 [000007] (767B) Score=0.00 -> L6 [000008] (104B), in 1.0s (2.0s total), output rate 104B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -206,7 +206,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (666B) Score=0.00 + L3 [000006] (666B) Score=0.00 + L4 [000007] (666B) Score=0.00 -> L6 [000009] (94B), in 1.0s (2.0s total), output rate 94B/s
+  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (767B) Score=0.00 + L3 [000006] (767B) Score=0.00 + L4 [000007] (767B) Score=0.00 -> L6 [000009] (104B), in 1.0s (2.0s total), output rate 104B/s
 
 # A deletion hint present on an sstable in a higher level should NOT result in a
 # deletion-only compaction incorrectly removing an sstable in L6 following an
@@ -255,7 +255,7 @@ L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0, type=point-key-only)
 close-snapshot
 10
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (739B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(elision-only) L6 [000004] (826B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (744B), in 1.0s (2.0s total), output rate 744B/s
 
 # In previous versions of the code, the deletion hint was removed by the
 # elision-only compaction because it zeroed sequence numbers of keys with
@@ -430,7 +430,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (3.5KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (3.9KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # Verify that a delete-only compaction can partially excise a file.
 
@@ -474,7 +474,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 + L3 [000007] (666B) Score=0.00 + L4 [000008] (666B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
+  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (701B) Score=0.00 + L2 [000006] (767B) Score=0.00 + L3 [000007] (767B) Score=0.00 + L4 [000008] (767B) Score=0.00 -> L6 [000009 000010] (105B), in 1.0s (2.0s total), output rate 105B/s
 
 describe-lsm
 ----
@@ -542,7 +542,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000005] (661B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+  [JOB 100] compacted(delete-only) L6 [000005] (767B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 describe-lsm
 ----
@@ -608,7 +608,7 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (839B) Score=0.00 -> L6 [000007 000008] (186B), in 1.0s (2.0s total), output rate 186B/s
+  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (930B) Score=0.00 -> L6 [000007 000008] (204B), in 1.0s (2.0s total), output rate 204B/s
 
 describe-lsm
 ----
@@ -753,4 +753,4 @@ L0.000006 c-h seqnums(tombstone=11-12, file-smallest=10, type=point-and-range-ke
 close-snapshot
 11
 ----
-[JOB 100] compacted(delete-only) L6 [000004] (908B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000004] (994B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s

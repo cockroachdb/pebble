@@ -629,6 +629,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		Footer:             r.footerBH,
 		Format:             r.tableFormat,
 		BlobReferenceIndex: r.blobRefIndexBH,
+		TieringHistogram:   r.tieringHistBH,
 	}
 
 	bufferPool := metaBufferPools.Get().(*block.BufferPool)
@@ -788,6 +789,11 @@ func (r *Reader) ValidateBlockChecksums() error {
 		bh:     l.BlobReferenceIndex,
 		readFn: r.readBlobRefIndexBlock,
 	})
+	// TODO(sumeer): uncomment and fix.
+	// blocks = append(blocks, blk{
+	// 	bh:     l.TieringHistogram,
+	// 	readFn: r.ReadTieringHistogramBlock,
+	// })
 
 	// Sorting by offset ensures we are performing a sequential scan of the
 	// file.

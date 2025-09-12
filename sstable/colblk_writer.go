@@ -418,11 +418,11 @@ func (w *RawColumnWriter) Add(
 			valuePrefix = block.InPlaceValuePrefix(eval.kcmp.PrefixEqual())
 		}
 	}
-	w.tryAddToTieringHistogram(meta, key, uint64(len(value)), tieredmeta.SSTableValueBytes)
+	w.TryAddToTieringHistogram(meta, key, uint64(len(value)), base.SSTableValueBytes)
 	return w.add(key, len(value), valueStoredWithKey, valuePrefix, eval, meta)
 }
 
-func (w *RawColumnWriter) tryAddToTieringHistogram(
+func (w *RawColumnWriter) TryAddToTieringHistogram(
 	meta base.KVMeta, key InternalKey, valLen uint64, valKind tieredmeta.KindAndTier,
 ) {
 	if w.opts.TableFormat < TableFormatPebblev8 {
@@ -431,7 +431,7 @@ func (w *RawColumnWriter) tryAddToTieringHistogram(
 	switch key.Kind() {
 	case base.InternalKeyKindSet, base.InternalKeyKindSetWithDelete:
 		w.tieringHistogramBlock.Add(
-			tieredmeta.SSTableKeyBytes, meta.Tiering.SpanID, meta.Tiering.Attribute,
+			base.SSTableKeyBytes, meta.Tiering.SpanID, meta.Tiering.Attribute,
 			uint64(len(key.UserKey)))
 		w.tieringHistogramBlock.Add(valKind, meta.Tiering.SpanID,
 			meta.Tiering.Attribute, valLen)
@@ -475,11 +475,11 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	if err != nil {
 		return err
 	}
-	tieringKind := tieredmeta.SSTableBlobReferenceHotBytes
+	tieringKind := base.SSTableBlobReferenceHotBytes
 	if blobTier == base.ColdTier {
-		tieringKind = tieredmeta.SSTableBlobReferenceColdBytes
+		tieringKind = base.SSTableBlobReferenceColdBytes
 	}
-	w.tryAddToTieringHistogram(meta, key, uint64(h.ValueLen), tieringKind)
+	w.TryAddToTieringHistogram(meta, key, uint64(h.ValueLen), tieringKind)
 	w.props.NumValuesInBlobFiles++
 	if err := w.blobRefLivenessIndexBlock.addLiveValue(h.ReferenceID, h.BlockID, h.ValueID, uint64(h.ValueLen)); err != nil {
 		return err
@@ -1136,7 +1136,8 @@ func (w *RawColumnWriter) rewriteSuffixes(
 	}
 	// Copy data blocks in parallel, rewriting suffixes as we go.
 	blocks, err := rewriteDataBlocksInParallel(r, sstBytes, wo, l.Data, from, to, concurrency, w.layout.physBlockMaker.Compressor.Stats(), func() blockRewriter {
-		return colblk.NewDataBlockRewriter(sstableFormatToColumnarFormat(wo.TableFormat), wo.KeySchema, w.comparer)
+		return colblk.NewDataBlockRewriter(
+			sstableFormatToColumnarFormat(wo.TableFormat), wo.KeySchema, w.comparer, w)
 	})
 	if err != nil {
 		return errors.Wrap(err, "rewriting data blocks")

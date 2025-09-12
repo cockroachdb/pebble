@@ -31,7 +31,8 @@ func TestDataBlock(t *testing.T) {
 	var r DataBlockDecoder
 	var v DataBlockValidator
 	var it DataBlockIter
-	rw := NewDataBlockRewriter(ColumnFormatv1, &testKeysSchema, testkeys.Comparer.EnsureDefaults())
+	rw := NewDataBlockRewriter(
+		ColumnFormatv1, &testKeysSchema, testkeys.Comparer.EnsureDefaults(), nil)
 	var sizes []int
 	it.InitOnce(ColumnFormatv1, &testKeysSchema, testkeys.Comparer,
 		getInternalValuer(func([]byte) base.InternalValue {

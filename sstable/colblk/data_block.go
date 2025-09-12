@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crbytes"
@@ -792,28 +793,44 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 type DataBlockRewriter struct {
 	format    ColumnarFormat
 	KeySchema *KeySchema
+	comparer  *base.Comparer
+	mu        struct {
+		sync.Mutex
+		tieringHistogramWriter TieringHistogramWriter
+	}
 
 	encoder   DataBlockEncoder
 	decoder   DataBlockDecoder
 	iter      DataBlockIter
 	keySeeker KeySeeker
-	comparer  *base.Comparer
-	keyBuf    []byte
+
+	keyBuf []byte
 	// keyAlloc grown throughout the lifetime of the rewriter.
 	keyAlloc        bytealloc.A
 	prefixBytesIter PrefixBytesIter
 	initialized     bool
 }
 
+// TieringHistogramWriter is not threadsafe.
+type TieringHistogramWriter interface {
+	TryAddToTieringHistogram(
+		meta base.KVMeta, key base.InternalKey, valLen uint64, valKind base.KindAndTier)
+}
+
 // NewDataBlockRewriter creates a block rewriter.
 func NewDataBlockRewriter(
-	format ColumnarFormat, keySchema *KeySchema, comparer *base.Comparer,
+	format ColumnarFormat,
+	keySchema *KeySchema,
+	comparer *base.Comparer,
+	tieringHistogramWriter TieringHistogramWriter,
 ) *DataBlockRewriter {
-	return &DataBlockRewriter{
+	rw := &DataBlockRewriter{
 		format:    format,
 		KeySchema: keySchema,
 		comparer:  comparer,
 	}
+	rw.mu.tieringHistogramWriter = tieringHistogramWriter
+	return rw
 }
 
 type assertNoExternalValues struct{}
@@ -888,7 +905,8 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 
 	// Rewrite each key-value pair one-by-one.
 	for i, kv := 0, rw.iter.First(); kv != nil; i, kv = i+1, rw.iter.Next() {
-		value := kv.V.LazyValue().ValueOrHandle
+		lv := kv.V.LazyValue()
+		value := lv.ValueOrHandle
 		valuePrefix := block.InPlaceValuePrefix(false /* setHasSamePrefix (unused) */)
 		isValueExternal := rw.decoder.isValueExternal.At(i)
 		if isValueExternal {
@@ -908,6 +926,12 @@ func (rw *DataBlockRewriter) RewriteSuffixes(
 		}
 		k := base.InternalKey{UserKey: rw.keyBuf, Trailer: kv.K.Trailer}
 		rw.encoder.Add(k, value, valuePrefix, kcmp, rw.decoder.isObsolete.At(i), kv.M)
+		if rw.mu.tieringHistogramWriter != nil {
+			rw.mu.Lock()
+			rw.mu.tieringHistogramWriter.TryAddToTieringHistogram(
+				kv.M, k, uint64(lv.Len()), base.SSTableValueBytes)
+			rw.mu.Unlock()
+		}
 	}
 	rewritten, end = rw.encoder.Finish(int(rw.decoder.d.header.Rows), rw.encoder.Size())
 	end.UserKey, rw.keyAlloc = rw.keyAlloc.Copy(end.UserKey)
