@@ -696,9 +696,19 @@ var (
 		table.Bytes("sstsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesFlushed + m.TableBytesCompacted }),
 		table.Bytes("blobsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesFlushed + m.BlobBytesCompacted }),
 	)
-	compactionKindTable = table.Define[pair[string, int64]](
-		table.String("kind", 5, table.AlignRight, func(p pair[string, int64]) string { return p.k }),
-		table.Count("count", 5, table.AlignRight, func(p pair[string, int64]) int64 { return p.v }),
+	compactionKindTable = table.Define[*Metrics](
+		table.String("kind", 5, table.AlignRight, func(m *Metrics) string { return "count" }),
+		table.Div(),
+		table.Int64("default", 7, table.AlignRight, func(m *Metrics) int64 { return m.Compact.DefaultCount }),
+		table.Int64("delete", 7, table.AlignRight, func(m *Metrics) int64 { return m.Compact.DeleteOnlyCount }),
+		table.Int64("elision", 8, table.AlignRight, func(m *Metrics) int64 { return m.Compact.ElisionOnlyCount }),
+		table.Int64("move", 5, table.AlignRight, func(m *Metrics) int64 { return m.Compact.MoveCount }),
+		table.Int64("read", 5, table.AlignRight, func(m *Metrics) int64 { return m.Compact.ReadCount }),
+		table.Int64("tomb", 5, table.AlignRight, func(m *Metrics) int64 { return m.Compact.TombstoneDensityCount }),
+		table.Int64("rewrite", 8, table.AlignRight, func(m *Metrics) int64 { return m.Compact.RewriteCount }),
+		table.Int64("copy", 5, table.AlignRight, func(m *Metrics) int64 { return m.Compact.CopyCount }),
+		table.Int64("multi", 6, table.AlignRight, func(m *Metrics) int64 { return m.Compact.MultiLevelCount }),
+		table.Int64("blob", 5, table.AlignRight, func(m *Metrics) int64 { return m.Compact.BlobFileRewriteCount }),
 	)
 	commitPipelineInfoTableTopHeader = `COMMIT PIPELINE`
 	commitPipelineInfoTableSubHeader = `               wals                |              memtables              |       ingestions`
@@ -880,11 +890,6 @@ func makeCompressionInfo(algorithm string, table, blob CompressionStatsForSettin
 	return i
 }
 
-type pair[k, v any] struct {
-	k k
-	v v
-}
-
 // String pretty-prints the metrics.
 //
 // See testdata/metrics for an example.
@@ -907,29 +912,23 @@ func (m *Metrics) String() string {
 	// LSM level metrics.
 	cur := wb.At(0, 0)
 	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
-	cur = levelMetricsTable.Render(cur, table.RenderOptions{}, m.LevelMetricsIter())
+	cur = levelMetricsTable.Render(cur, table.RenderOptions{
+		HorizontalDividers: table.MakeHorizontalDividers(0, manifest.NumLevels),
+	}, slices.Collect(m.LevelMetricsIter())...)
 	cur.Offset(-1, 0).WriteString("total")
 	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
 	cur = cur.WriteString(levelCompactionMetricsTableTopHeader).NewlineReturn()
-	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{}, m.LevelMetricsIter())
+	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{
+		HorizontalDividers: table.MakeHorizontalDividers(0, manifest.NumLevels),
+	}, slices.Collect(m.LevelMetricsIter())...)
 	cur.Offset(-1, 0).WriteString("total")
 
 	cur = cur.NewlineReturn()
-	compactionKindContents := []pair[string, int64]{
-		{k: "default", v: m.Compact.DefaultCount},
-		{k: "delete", v: m.Compact.DeleteOnlyCount},
-		{k: "elision", v: m.Compact.ElisionOnlyCount},
-		{k: "move", v: m.Compact.MoveCount},
-		{k: "read", v: m.Compact.ReadCount},
-		{k: "tomb", v: m.Compact.TombstoneDensityCount},
-		{k: "rewrite", v: m.Compact.RewriteCount},
-		{k: "copy", v: m.Compact.CopyCount},
-		{k: "multi", v: m.Compact.MultiLevelCount},
-		{k: "blob", v: m.Compact.BlobFileRewriteCount},
-	}
-	cur = compactionKindTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compactionKindContents))
+	cur = compactionKindTable.Render(cur, table.RenderOptions{
+		HorizontalDividers: table.HorizontalDividers{},
+	}, m)
 	cur = cur.NewlineReturn()
 
 	commitPipelineInfoContents := commitPipelineInfo{
@@ -947,7 +946,7 @@ func (m *Metrics) String() string {
 	}
 	cur = cur.WriteString(commitPipelineInfoTableTopHeader).NewlineReturn()
 	cur = cur.WriteString(commitPipelineInfoTableSubHeader).NewlineReturn()
-	cur = commitPipelineInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(commitPipelineInfoContents))
+	cur = commitPipelineInfoTable.Render(cur, table.RenderOptions{}, commitPipelineInfoContents)
 	cur = cur.NewlineReturn()
 
 	iteratorInfoContents := iteratorInfo{
@@ -961,7 +960,7 @@ func (m *Metrics) String() string {
 	}
 	cur = cur.WriteString(iteratorInfoTableTopHeader).NewlineReturn()
 	cur = cur.WriteString(iteratorInfoTableSubHeader).NewlineReturn()
-	cur = iteratorInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(iteratorInfoContents))
+	cur = iteratorInfoTable.Render(cur, table.RenderOptions{}, iteratorInfoContents)
 	cur = cur.NewlineReturn()
 
 	status := fmt.Sprintf("%s pending", humanizeCount(m.Table.PendingStatsCollectionCount))
@@ -986,7 +985,7 @@ func (m *Metrics) String() string {
 		blobInfo:  blobInfoContents,
 	}
 	cur = cur.WriteString(fileInfoTableHeader).NewlineReturn()
-	cur = fileInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(fileInfoContents))
+	cur = fileInfoTable.Render(cur, table.RenderOptions{}, fileInfoContents)
 	cur = cur.NewlineReturn()
 
 	var inUseTotal uint64
@@ -1006,7 +1005,7 @@ func (m *Metrics) String() string {
 		memtablesTot: humanizeBytes(inUse(manual.MemTable)),
 	}
 	cur = cur.WriteString(cgoMemInfoTableHeader).NewlineReturn()
-	cur = cgoMemInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(cgoMemInfoContents))
+	cur = cgoMemInfoTable.Render(cur, table.RenderOptions{}, cgoMemInfoContents)
 	cur = cur.NewlineReturn()
 
 	compactionMetricsInfoContents := compactionMetricsInfo{
@@ -1019,7 +1018,7 @@ func (m *Metrics) String() string {
 		problemSpans: fmt.Sprintf("%d%s", m.Compact.NumProblemSpans, ifNonZero(m.Compact.NumProblemSpans, "!!")),
 	}
 	cur = cur.WriteString(compactionInfoTableTopHeader).NewlineReturn()
-	cur = compactionInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(compactionMetricsInfoContents))
+	cur = compactionInfoTable.Render(cur, table.RenderOptions{}, compactionMetricsInfoContents)
 	cur = cur.NewlineReturn()
 
 	keysInfoContents := keysInfo{
@@ -1030,7 +1029,7 @@ func (m *Metrics) String() string {
 		rangeDels:          humanizeBytes(m.Table.Garbage.RangeDeletionsBytesEstimate),
 	}
 	cur = cur.WriteString(keysInfoTableTopHeader).NewlineReturn()
-	cur = keysInfoTable.Render(cur, table.RenderOptions{}, oneItemIter(keysInfoContents))
+	cur = keysInfoTable.Render(cur, table.RenderOptions{}, keysInfoContents)
 	cur = cur.NewlineReturn()
 
 	cur = cur.WriteString(compressionTableHeader).NewlineReturn()
@@ -1053,7 +1052,7 @@ func (m *Metrics) String() string {
 	compressionContents = slices.DeleteFunc(compressionContents, func(i compressionInfo) bool {
 		return i.tables == "" && i.blobFiles == ""
 	})
-	compressionTable.Render(cur, table.RenderOptions{}, slices.Values(compressionContents))
+	compressionTable.Render(cur, table.RenderOptions{}, compressionContents...)
 
 	return wb.String()
 }
@@ -1152,10 +1151,4 @@ func humanizeBytesOrEmpty[T crhumanize.Integer](value T) string {
 		return ""
 	}
 	return crhumanize.Bytes(value, crhumanize.Compact, crhumanize.OmitI).String()
-}
-
-func oneItemIter[T any](v T) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		yield(v)
-	}
 }

@@ -7,6 +7,7 @@ package table
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -33,8 +34,15 @@ func TestTable(t *testing.T) {
 	wb := ascii.Make(1, 10)
 	datadriven.RunTest(t, "testdata/table", func(t *testing.T, td *datadriven.TestData) string {
 		var opts RenderOptions
-		if td.HasArg("horizontally") {
-			opts.Orientation = Horizontally
+		if hd, ok := td.Arg("horizontal-dividers"); ok {
+			opts.HorizontalDividers = make(HorizontalDividers)
+			for _, v := range hd.Vals {
+				i, err := strconv.Atoi(v)
+				if err != nil {
+					t.Fatalf("invalid horizontal-divider %q: %s", v, err)
+				}
+				opts.HorizontalDividers[i] = struct{}{}
+			}
 		}
 		switch td.Cmd {
 		case "cats-autoincrement":
@@ -44,7 +52,7 @@ func TestTable(t *testing.T) {
 				String("name", 7, AlignRight, func(c Cat) string { return c.Name }),
 			)
 			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, slices.Values(cats))
+			def.Render(wb.At(0, 0), opts, cats...)
 			return wb.String()
 		case "cats-nodiv":
 			def := Define[Cat](
@@ -53,7 +61,7 @@ func TestTable(t *testing.T) {
 				Int("cuteness", 8, AlignRight, func(c Cat) int { return c.Cuteness }),
 			)
 			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, slices.Values(cats))
+			def.Render(wb.At(0, 0), opts, cats...)
 			return wb.String()
 		case "cats-column-too-wide":
 			c := slices.Clone(cats)
@@ -67,7 +75,7 @@ func TestTable(t *testing.T) {
 				Int("c", 1, AlignRight, func(c Cat) int { return c.Cuteness }),
 			)
 			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, slices.Values(c))
+			def.Render(wb.At(0, 0), opts, c...)
 			return wb.String()
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

@@ -11,11 +11,19 @@ Sugar     8       10
 Yaya      5       10
 Yuumi     5       10
 
-cats-nodiv horizontally
+cats-nodiv horizontal-dividers=(1,5)
 ----
-    name | Chicken  Heart  Mai  Poi  Pigeon  Sugar  Yaya  Yuumi
-     age |       5      4    2   15       2      8     5      5
-cuteness |      10     10   10   10      10     10    10     10
+name    age cuteness
+Chicken   5       10
+--------------------
+Heart     4       10
+Mai       2       10
+Poi      15       10
+Pigeon    2       10
+--------------------
+Sugar     8       10
+Yaya      5       10
+Yuumi     5       10
 
 cats-autoincrement
 ----
@@ -30,11 +38,23 @@ idx |    name
 6   |    Yaya
 7   |   Yuumi
 
-cats-autoincrement horizontally
+cats-autoincrement horizontal-dividers=(0,1,2,3,6,7)
 ----
-    idx | 0        1      2    3    4       5      6     7
---------+-----------------------------------------------------
-   name | Chicken  Heart  Mai  Poi  Pigeon  Sugar  Yaya  Yuumi
+idx |    name
+----+--------
+0   | Chicken
+----+--------
+1   |   Heart
+----+--------
+2   |     Mai
+----+--------
+3   |     Poi
+4   |  Pigeon
+5   |   Sugar
+----+--------
+6   |    Yaya
+----+--------
+7   |   Yuumi
 
 cats-column-too-wide
 ----
@@ -49,9 +69,17 @@ Sugar   |  8000000 10
 Yaya    |  5000000 10
 Yuumi   |  5000000 10
 
-cats-column-too-wide horizontally
+cats-column-too-wide horizontal-dividers=(0,3,5)
 ----
-  name | Chicken  Heart    Mai      Poi       Pigeon   Sugar    Yaya     Yuumi
--------+------------------------------------------------------------------------
-   age | 5000000  4000000  2000000  15000000  2000000  8000000  5000000  5000000
-     c |      10       10       10        10       10       10       10       10
+name    |      age  c
+--------+------------
+Chicken |  5000000 10
+Heart   |  4000000 10
+Mai     |  2000000 10
+--------+------------
+Poi     | 15000000 10
+Pigeon  |  2000000 10
+--------+------------
+Sugar   |  8000000 10
+Yaya    |  5000000 10
+Yuumi   |  5000000 10
