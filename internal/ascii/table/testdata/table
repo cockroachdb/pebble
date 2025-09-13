@@ -25,12 +25,6 @@ Sugar     8       10
 Yaya      5       10
 Yuumi     5       10
 
-cats-nodiv horizontally
-----
-    name | Chicken  Heart  Mai  Poi  Pigeon  Sugar  Yaya  Yuumi
-     age |       5      4    2   15       2      8     5      5
-cuteness |      10     10   10   10      10     10    10     10
-
 cats-autoincrement
 ----
 idx |    name
@@ -62,12 +56,6 @@ idx |    name
 ----+--------
 7   |   Yuumi
 
-cats-autoincrement horizontally
-----
-    idx | 0        1      2    3    4       5      6     7
---------+-----------------------------------------------------
-   name | Chicken  Heart  Mai  Poi  Pigeon  Sugar  Yaya  Yuumi
-
 cats-column-too-wide
 ----
 name    |      age  c
@@ -95,10 +83,3 @@ Pigeon  |  2000000 10
 Sugar   |  8000000 10
 Yaya    |  5000000 10
 Yuumi   |  5000000 10
-
-cats-column-too-wide horizontally
-----
-  name | Chicken  Heart    Mai      Poi       Pigeon   Sugar    Yaya     Yuumi
--------+------------------------------------------------------------------------
-   age | 5000000  4000000  2000000  15000000  2000000  8000000  5000000  5000000
-     c |      10       10       10        10       10       10       10       10

@@ -34,9 +34,6 @@ func TestTable(t *testing.T) {
 	wb := ascii.Make(1, 10)
 	datadriven.RunTest(t, "testdata/table", func(t *testing.T, td *datadriven.TestData) string {
 		var opts RenderOptions
-		if td.HasArg("horizontally") {
-			opts.Orientation = Horizontally
-		}
 		if hd, ok := td.Arg("horizontal-dividers"); ok {
 			opts.HorizontalDividers = make(HorizontalDividers)
 			for _, v := range hd.Vals {
