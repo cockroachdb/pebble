@@ -37,7 +37,7 @@ func TestVirtualBackings(t *testing.T) {
 					DiskFileNum:                  n,
 					Size:                         size,
 					ReferencedBlobValueSizeTotal: blobValueSize,
-				})
+				}, true /* local */)
 
 			case "remove":
 				bv.Remove(n)
