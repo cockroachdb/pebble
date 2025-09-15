@@ -3312,6 +3312,7 @@ func (d *DB) compactAndWrite(
 	tableFormat sstable.TableFormat,
 	valueSeparation compact.ValueSeparation,
 ) (result compact.Result) {
+	suggestedCacheReaders := blob.SuggestedCachedReaders(len(c.inputs))
 	// Compactions use a pool of buffers to read blocks, avoiding polluting the
 	// block cache with blocks that will not be read again. We initialize the
 	// buffer pool with a size 12. This initial size does not need to be
@@ -3320,13 +3321,13 @@ func (d *DB) compactAndWrite(
 	// choosing a size larger than that working set avoids any additional
 	// allocations to grow the size of the pool over the course of iteration.
 	//
-	// Justification for initial size 12: In a two-level compaction, at any
-	// given moment we'll have 2 index blocks in-use and 2 data blocks in-use.
+	// Justification for initial size 18: In a compaction with up to 3 levels,
+	// at any given moment we'll have 3 index blocks in-use and 3 data blocks in-use.
 	// Additionally, when decoding a compressed block, we'll temporarily
 	// allocate 1 additional block to hold the compressed buffer. In the worst
-	// case that all input sstables have two-level index blocks (+2), value
-	// blocks (+2), range deletion blocks (+n) and range key blocks (+n), we'll
-	// additionally require 2n+4 blocks where n is the number of input sstables.
+	// case that all input sstables have two-level index blocks (+3), value
+	// blocks (+3), range deletion blocks (+n) and range key blocks (+n), we'll
+	// additionally require 2n+6 blocks where n is the number of input sstables.
 	// Range deletion and range key blocks are relatively rare, and the cost of
 	// an additional allocation or two over the course of the compaction is
 	// considered to be okay. A larger initial size would cause the pool to hold
@@ -3335,7 +3336,7 @@ func (d *DB) compactAndWrite(
 	// a 12-buffer pool is expected to be within reason, even if all the buffers
 	// grow to the typical size of an index block (256 KiB) which would
 	// translate to 3 MiB per compaction.
-	c.iterationState.bufferPool.Init(12)
+	c.iterationState.bufferPool.Init(18 + suggestedCacheReaders)
 	defer c.iterationState.bufferPool.Release()
 	blockReadEnv := block.ReadEnv{
 		BufferPool: &c.iterationState.bufferPool,
@@ -3346,8 +3347,7 @@ func (d *DB) compactAndWrite(
 		),
 	}
 	if c.version != nil {
-		c.iterationState.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv,
-			blob.SuggestedCachedReaders(len(c.inputs)))
+		c.iterationState.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv, suggestedCacheReaders)
 	}
 	iiopts := internalIterOpts{
 		compaction:       true,
