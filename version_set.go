@@ -317,7 +317,8 @@ func (vs *versionSet) load(
 	// Populate the virtual backings for virtual sstables since we have finished
 	// version edit accumulation.
 	for _, b := range bve.AddedFileBacking {
-		vs.latest.virtualBackings.AddAndRef(b)
+		isLocal := objstorage.IsLocalTable(provider, b.DiskFileNum)
+		vs.latest.virtualBackings.AddAndRef(b, isLocal)
 	}
 
 	for l, addedLevel := range bve.AddedTables {
@@ -865,8 +866,8 @@ func getZombieTablesAndUpdateVirtualBackings(
 	// When a virtual table moves between levels we RemoveTable() then AddTable(),
 	// which works out.
 	for _, b := range ve.CreatedBackingTables {
-		virtualBackings.AddAndRef(b)
 		isLocal, localFileDelta := sizeIfLocal(b, provider)
+		virtualBackings.AddAndRef(b, isLocal)
 		localLiveDelta.size += localFileDelta
 		if isLocal {
 			localLiveDelta.count++

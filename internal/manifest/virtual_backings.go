@@ -91,6 +91,9 @@ func MakeVirtualBackings() VirtualBackings {
 type backingWithMetadata struct {
 	backing *TableBacking
 
+	// isLocal is true if the backing's fileNum is local to the file system.
+	isLocal bool
+
 	// protectionCount is used by Protect to temporarily prevent a backing from
 	// being reported as unused.
 	protectionCount int32
@@ -114,12 +117,13 @@ func (bm *backingWithMetadata) referencedDataPct() float64 {
 //
 // The added backing is unused until it is associated with a table via AddTable
 // or protected via Protect.
-func (bv *VirtualBackings) AddAndRef(backing *TableBacking) {
+func (bv *VirtualBackings) AddAndRef(backing *TableBacking, isLocal bool) {
 	// We take a reference on the backing because in case of protected backings
 	// (see Protect), we might be the only ones holding on to a backing.
 	backing.Ref()
 	bm := &backingWithMetadata{
 		backing:       backing,
+		isLocal:       isLocal,
 		virtualTables: make(map[base.TableNum]tableAndLevel),
 		heapIndex:     -1,
 	}
@@ -167,10 +171,12 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata, level int) {
 		level: level,
 	}
 	// Update candidates heap.
-	if v.heapIndex == -1 {
-		heap.Push(&bv.rewriteCandidates, v)
-	} else {
-		heap.Fix(&bv.rewriteCandidates, v.heapIndex)
+	if v.isLocal {
+		if v.heapIndex == -1 {
+			heap.Push(&bv.rewriteCandidates, v)
+		} else {
+			heap.Fix(&bv.rewriteCandidates, v.heapIndex)
+		}
 	}
 }
 
@@ -323,6 +329,9 @@ func (bv *VirtualBackings) String() string {
 			v := bv.m[n]
 			fmt.Fprintf(&buf, "  %s:  size=%d  refBlobValueSize=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d",
 				n, v.backing.Size, v.backing.ReferencedBlobValueSizeTotal, len(v.virtualTables), v.protectionCount, v.virtualizedSize)
+			if !v.isLocal {
+				fmt.Fprintf(&buf, "  (external)")
+			}
 			tableNums := slices.Sorted(maps.Keys(v.virtualTables))
 			fmt.Fprintf(&buf, "  tables: %v\n", tableNums)
 		}
