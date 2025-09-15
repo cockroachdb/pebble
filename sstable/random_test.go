@@ -168,10 +168,11 @@ type opRunner struct {
 	randomTableConfig
 	it Iterator
 
-	latestOpDesc  string
-	latestSeekKey []byte
-	dir           int8
-	kv            *base.InternalKV
+	latestOpDesc          string
+	latestSeekKey         []byte
+	dir                   int8
+	kv                    *base.InternalKV
+	lastOpWasSeekPrefixGE bool
 }
 
 func (r *opRunner) runSeekGE() bool {
@@ -184,6 +185,8 @@ func (r *opRunner) runSeekGE() bool {
 	r.latestOpDesc = fmt.Sprintf("SeekGE(%q, TrySeekUsingNext()=%t)",
 		k, flags.TrySeekUsingNext())
 	r.latestSeekKey = k
+
+	r.lastOpWasSeekPrefixGE = false
 	r.kv = r.it.SeekGE(k, base.SeekGEFlagsNone)
 	r.dir = +1
 	return true
@@ -200,6 +203,8 @@ func (r *opRunner) runSeekPrefixGE() bool {
 	r.latestOpDesc = fmt.Sprintf("SeekPrefixGE(%q, %q, TrySeekUsingNext()=%t)",
 		k[:i], k, flags.TrySeekUsingNext())
 	r.latestSeekKey = k
+
+	r.lastOpWasSeekPrefixGE = true
 	r.kv = r.it.SeekPrefixGE(k[:i], k, flags)
 	r.dir = +1
 	return true
@@ -208,6 +213,8 @@ func (r *opRunner) runSeekPrefixGE() bool {
 func (r *opRunner) runSeekLT() bool {
 	k := r.randKey()
 	r.latestOpDesc = fmt.Sprintf("SeekLT(%q)", k)
+
+	r.lastOpWasSeekPrefixGE = false
 	r.kv = r.it.SeekLT(k, base.SeekLTFlagsNone)
 	r.dir = -1
 	return true
@@ -215,6 +222,8 @@ func (r *opRunner) runSeekLT() bool {
 
 func (r *opRunner) runFirst() bool {
 	r.latestOpDesc = "First()"
+
+	r.lastOpWasSeekPrefixGE = false
 	r.kv = r.it.First()
 	r.dir = +1
 	return true
@@ -222,16 +231,24 @@ func (r *opRunner) runFirst() bool {
 
 func (r *opRunner) runLast() bool {
 	r.latestOpDesc = "Last()"
+
+	r.lastOpWasSeekPrefixGE = false
 	r.kv = r.it.Last()
 	r.dir = -1
 	return true
 }
 
 func (r *opRunner) runNext() bool {
-	if r.dir == +1 && r.kv == nil {
+	if r.dir != -1 || r.kv == nil {
 		return false
 	}
+
+	if r.lastOpWasSeekPrefixGE {
+		return false
+	}
+
 	r.latestOpDesc = "Next()"
+	r.lastOpWasSeekPrefixGE = false
 	r.kv = r.it.Next()
 	r.dir = +1
 	return true
@@ -246,6 +263,7 @@ func (r *opRunner) runNextPrefix() bool {
 	p := r.kv.K.UserKey[:r.wopts.Comparer.Split(r.kv.K.UserKey)]
 	succKey := r.wopts.Comparer.ImmediateSuccessor(nil, p)
 	r.latestOpDesc = fmt.Sprintf("NextPrefix(%q)", succKey)
+	r.lastOpWasSeekPrefixGE = false
 	r.kv = r.it.NextPrefix(succKey)
 	r.dir = +1
 	return true
@@ -256,6 +274,7 @@ func (r *opRunner) runPrev() bool {
 		return false
 	}
 	r.latestOpDesc = "Prev()"
+	r.lastOpWasSeekPrefixGE = false
 	r.kv = r.it.Prev()
 	r.dir = -1
 	return true
