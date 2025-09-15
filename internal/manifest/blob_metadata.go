@@ -544,6 +544,18 @@ type currentBlobFile struct {
 	// since virtual sstables contribute the referenced value size of the original
 	// backing table.
 	referencedValueSize uint64
+	// virtualReferencesWithoutBackingValueSize is the count of virtual tables
+	// referencing this blob file that do not have a BackingValueSize. The
+	// BackingValueSize is only populated for format major version
+	// FormatBackingValueSize and beyond. Virtual tables created before this
+	// format major version have no accounting of the backing table's references
+	// to this blob file, so the referencedValueSize is unreliable.
+	//
+	// If virtualReferencesWithoutBackingValueSize is positive, the blob file is
+	// considered ineligible for blob rewrite compactions, because we cannot be
+	// sure that rewriting the blob file will actually allow us to elide any
+	// values.
+	virtualReferencesWithoutBackingValueSize uint64
 	// heapState holds a pointer to the heap that the blob file is in (if any)
 	// and its index in the heap's items slice. If referencedValueSize is less
 	// than metadata.Physical.ValueSize, the blob file belongs in one of the two
@@ -554,6 +566,16 @@ type currentBlobFile struct {
 		heap  heap.Interface
 		index int
 	}
+}
+
+func (cbf *currentBlobFile) isEligibleForRewrite() bool {
+	// The blob file must not be fully referenced. Additionally it must not have
+	// an outstanding reference from a virtual table without a BackingValueSize,
+	// which would cause the referencedValueSize to be unreliable (and we would
+	// not be able to guarantee rewriting the blob file would actually elide any
+	// values.
+	return cbf.referencedValueSize < cbf.metadata.Physical.ValueSize &&
+		cbf.virtualReferencesWithoutBackingValueSize == 0
 }
 
 // BlobRewriteHeuristic configures the heuristic used to determine which blob
@@ -642,9 +664,9 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit, h BlobRewriteHeuristic) 
 					panic(errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID))
 				}
 				cbf.references[table] = struct{}{}
-				refSize := ref.BackingValueSize
-				if refSize == 0 {
-					refSize = ref.ValueSize
+				refSize := max(ref.BackingValueSize, ref.ValueSize)
+				if table.Virtual && ref.BackingValueSize == 0 {
+					cbf.virtualReferencesWithoutBackingValueSize++
 				}
 				cbf.referencedValueSize += refSize
 				s.stats.ReferencedValueSize += ref.ValueSize
@@ -663,9 +685,7 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit, h BlobRewriteHeuristic) 
 	s.rewrite.candidates.items = make([]*currentBlobFile, 0, 16)
 	s.rewrite.recentlyCreated.items = make([]*currentBlobFile, 0, 16)
 	for _, cbf := range s.files {
-		if cbf.referencedValueSize >= cbf.metadata.Physical.ValueSize {
-			// The blob file is fully referenced. There's no need to track it in
-			// either heap.
+		if !cbf.isEligibleForRewrite() {
 			continue
 		}
 
@@ -771,7 +791,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			// referenced. Additional references could have been removed while
 			// the blob file rewrite was occurring. We need to re-add it to the
 			// heap of recently created files.
-			if cbf.referencedValueSize < cbf.metadata.Physical.ValueSize {
+			if cbf.isEligibleForRewrite() {
 				heap.Push(&s.rewrite.recentlyCreated, cbf)
 			}
 			continue
@@ -797,10 +817,9 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				return errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID)
 			}
 			cbf.references[e.Meta] = struct{}{}
-			refSize := ref.BackingValueSize
-			if refSize == 0 {
-				// Fall back to using ValueSize to estimate reference size.
-				refSize = ref.ValueSize
+			refSize := max(ref.BackingValueSize, ref.ValueSize)
+			if e.Meta.Virtual && ref.BackingValueSize == 0 {
+				cbf.virtualReferencesWithoutBackingValueSize++
 			}
 			cbf.referencedValueSize += refSize
 			s.stats.ReferencedValueSize += ref.ValueSize
@@ -830,10 +849,9 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			// Decrement the stats for this reference. We decrement even if the
 			// table is being moved, because we incremented the stats when we
 			// iterated over the version edit's new tables.
-			refSize := ref.BackingValueSize
-			if refSize == 0 {
-				// Fall back to using ValueSize to estimate reference size.
-				refSize = ref.ValueSize
+			refSize := max(ref.BackingValueSize, ref.ValueSize)
+			if meta.Virtual && ref.BackingValueSize == 0 {
+				cbf.virtualReferencesWithoutBackingValueSize--
 			}
 			cbf.referencedValueSize -= refSize
 			s.stats.ReferencedBackingValueSize -= refSize
@@ -880,8 +898,8 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				continue
 			}
 
-			if cbf.referencedValueSize >= cbf.metadata.Physical.ValueSize {
-				// This blob file is fully referenced.
+			if !cbf.isEligibleForRewrite() {
+				// This blob file is not eligible for rewrite.
 				continue
 			}
 

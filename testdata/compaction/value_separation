@@ -490,18 +490,13 @@ L6:
 Blob files:
   B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
 
-# Run a blob-rewrite compaction. It'll rewrite the blob file, but it won't
-# actually reclaim disk space. This is a known limitation due to the lack of
-# accurate blob value liveness for virtual sstables. See
-# https://github.com/cockroachdb/pebble/issues/4915.
+# Attempt to run a blob-rewrite compaction. We won't be able to guarantee that a
+# rewrite would reclaim disk space because of the virtual table's reference
+# (also, in reality it wouldn't), so we won't schedule the compaction.
 
 run-blob-rewrite-compaction
 ----
-L6:
-  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(767) blobrefs:[(B000006: 2); depth:1]
-  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(767) blobrefs:[(B000006: 2); depth:1]
-Blob files:
-  B000006 physical:{000009 size:[110 (110B)] vals:[18 (18B)]}
+no blob file rewrite compaction
 
 validate-blob-reference-index-block
 000007.sst
