@@ -93,9 +93,9 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newIndexedBatchOp:
 		return &t.dbID, &t.batchID, nil
 	case *newIterOp:
-		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.maximumSuffixProperty}
 	case *newIterUsingCloneOp:
-		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.maximumSuffixProperty}
 	case *newSnapshotOp:
 		return &t.dbID, &t.snapID, []interface{}{&t.bounds}
 	case *newExternalObjOp:
@@ -119,7 +119,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *iterSetBoundsOp:
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
 	case *iterSetOptionsOp:
-		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.maximumSuffixProperty}
 	case *singleDeleteOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
 	case *rangeKeyDeleteOp:
@@ -407,6 +407,14 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 				panic(p.errorf(elem.pos, "error parsing %q: %s", elem.lit, err))
 			}
 			*t = pebble.FormatMajorVersion(val)
+
+		case *pebble.MaximumSuffixProperty:
+			elem.expectToken(p, token.STRING)
+			s, err := strconv.Unquote(elem.lit)
+			if err != nil {
+				panic(p.errorf(elem.pos, "error parsing %q: %s", elem.lit, err))
+			}
+			*t = deserializeMaximumSuffixProperty(s)
 
 		default:
 			panic(p.errorf(pos, "%s: unsupported arg[%d] type: %T", methodName, i, args[i]))

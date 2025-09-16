@@ -156,6 +156,11 @@ func (kg *testkeyKeyGenerator) IncMaxSuffix() []byte {
 	return testkeys.Suffix(int64(kg.cfg.writeSuffixDist.Max()))
 }
 
+// MaximumSuffixProperty returns the maximum suffix property.
+func (kg *testkeyKeyGenerator) MaximumSuffixProperty() pebble.MaximumSuffixProperty {
+	return sstable.MaxTestKeysSuffixProperty{}
+}
+
 // SuffixRange generates a new uniformly random range of suffixes (low, high]
 // such that high is guaranteed to be strictly greater (as defined by
 // ComparePointSuffixes) than low.
