@@ -654,7 +654,12 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 var (
 	levelMetricsTableTopHeader = `LSM                             |    vtables   |   value sep   |        |   ingested   |    amp`
 	levelMetricsTable          = table.Define[*LevelMetrics](
-		table.AutoIncrement[*LevelMetrics]("level", 5, table.AlignRight),
+		table.StringWithTupleIndex("level", 5, table.AlignRight, func(tupleIndex int, m *LevelMetrics) string {
+			if tupleIndex == manifest.NumLevels {
+				return "total"
+			}
+			return fmt.Sprintf("%d", tupleIndex)
+		}),
 		table.Bytes("size", 10, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.TablesSize) + m.EstimatedReferencesSize }),
 		table.Div(),
 		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesCount }),
@@ -676,7 +681,12 @@ var (
 	)
 	levelCompactionMetricsTableTopHeader = `COMPACTIONS               |     moved    |     multilevel    |     read     |       written`
 	compactionLevelMetricsTable          = table.Define[*LevelMetrics](
-		table.AutoIncrement[*LevelMetrics]("level", 5, table.AlignRight),
+		table.StringWithTupleIndex("level", 5, table.AlignRight, func(tupleIndex int, m *LevelMetrics) string {
+			if tupleIndex == manifest.NumLevels {
+				return "total"
+			}
+			return fmt.Sprintf("%d", tupleIndex)
+		}),
 		table.Div(),
 		table.Float("score", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.Score }),
 		table.Float("ff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.FillFactor }),
@@ -915,7 +925,6 @@ func (m *Metrics) String() string {
 	cur = levelMetricsTable.Render(cur, table.RenderOptions{
 		HorizontalDividers: table.MakeHorizontalDividers(0, manifest.NumLevels),
 	}, slices.Collect(m.LevelMetricsIter())...)
-	cur.Offset(-1, 0).WriteString("total")
 	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
@@ -923,7 +932,6 @@ func (m *Metrics) String() string {
 	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{
 		HorizontalDividers: table.MakeHorizontalDividers(0, manifest.NumLevels),
 	}, slices.Collect(m.LevelMetricsIter())...)
-	cur.Offset(-1, 0).WriteString("total")
 
 	cur = cur.NewlineReturn()
 	cur = compactionKindTable.Render(cur, table.RenderOptions{
