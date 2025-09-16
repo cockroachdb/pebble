@@ -313,7 +313,7 @@ func (b *BlockIntervalCollector) AddRangeKeys(span Span) error {
 func (b *BlockIntervalCollector) AddCollectedWithSuffixReplacement(
 	oldProp []byte, oldSuffix, newSuffix []byte,
 ) error {
-	i, err := decodeBlockInterval(oldProp)
+	i, err := DecodeBlockInterval(oldProp)
 	if err != nil {
 		return err
 	}
@@ -399,7 +399,7 @@ func encodeBlockInterval(i BlockInterval, buf []byte) []byte {
 	return append(buf, encoded[:n]...)
 }
 
-func decodeBlockInterval(buf []byte) (BlockInterval, error) {
+func DecodeBlockInterval(buf []byte) (BlockInterval, error) {
 	if len(buf) == 0 {
 		return BlockInterval{}, nil
 	}
@@ -479,7 +479,7 @@ func (b *BlockIntervalFilter) Name() string {
 
 // Intersects implements the BlockPropertyFilter interface.
 func (b *BlockIntervalFilter) Intersects(prop []byte) (bool, error) {
-	i, err := decodeBlockInterval(prop)
+	i, err := DecodeBlockInterval(prop)
 	if err != nil {
 		return false, err
 	}
@@ -491,7 +491,7 @@ func (b *BlockIntervalFilter) SyntheticSuffixIntersects(prop []byte, suffix []by
 	if b.suffixReplacer == nil {
 		return false, base.AssertionFailedf("missing SuffixReplacer for SyntheticSuffixIntersects()")
 	}
-	i, err := decodeBlockInterval(prop)
+	i, err := DecodeBlockInterval(prop)
 	if err != nil {
 		return false, err
 	}

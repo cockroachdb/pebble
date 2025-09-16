@@ -155,7 +155,7 @@ func (testprop MaxTestKeysSuffixProperty) Extract(
 		return nil, false, nil
 	}
 	// First byte is shortID, skip it and decode interval from remainder.
-	interval, err := decodeBlockInterval(encodedProperty[1:])
+	interval, err := DecodeBlockInterval(encodedProperty[1:])
 	if err != nil {
 		return nil, false, err
 	} else if interval.IsEmpty() {

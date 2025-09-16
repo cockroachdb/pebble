@@ -144,3 +144,32 @@ func mapSuffixToInterval(b []byte) (sstable.BlockInterval, error) {
 	}
 	return sstable.BlockInterval{}, nil
 }
+
+type MaxMVCCTimestampProperty struct{}
+
+// Name implements pebble.MaximumSuffixProperty interface.
+func (MaxMVCCTimestampProperty) Name() string {
+	return mvccWallTimeIntervalCollector
+}
+
+// Extract implements pebble.MaximumSuffixProperty interface.
+// It extracts the maximum MVCC timestamp from the encoded block property and
+// returns it as a CockroachDB-formatted suffix.
+func (MaxMVCCTimestampProperty) Extract(
+	dst []byte, encodedProperty []byte,
+) (suffix []byte, ok bool, err error) {
+	if len(encodedProperty) <= 1 {
+		return nil, false, nil
+	}
+	// First byte is shortID, skip it and decode interval from remainder.
+	interval, err := sstable.DecodeBlockInterval(encodedProperty[1:])
+	if err != nil {
+		return nil, false, err
+	} else if interval.IsEmpty() {
+		return nil, false, nil
+	}
+	dst = append(dst, make([]byte, suffixLenWithWall)...)
+	binary.BigEndian.PutUint64(dst[len(dst)-suffixLenWithWall:], interval.Upper)
+	dst[len(dst)-1] = suffixLenWithWall
+	return dst, true, nil
+}
