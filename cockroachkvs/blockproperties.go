@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -143,4 +144,52 @@ func mapSuffixToInterval(b []byte) (sstable.BlockInterval, error) {
 		return sstable.BlockInterval{Lower: ts, Upper: ts + 1}, nil
 	}
 	return sstable.BlockInterval{}, nil
+}
+
+type MaxMVCCTimestampProperty struct{}
+
+// Name is part of the cockroachkvs.MaxMVCCTimestampProperty interface.
+func (MaxMVCCTimestampProperty) Name() string {
+	return mvccWallTimeIntervalCollector
+}
+
+// Extract is part of the cockroachkvs.MaxMVCCTimestampProperty interface.
+// It extracts the maximum MVCC timestamp from the encoded block property and
+// returns it as a CockroachDB-formatted suffix.
+func (MaxMVCCTimestampProperty) Extract(
+	dst []byte, encodedProperty []byte,
+) (suffix []byte, ok bool, err error) {
+	if len(encodedProperty) <= 1 {
+		return nil, false, nil
+	}
+	// First byte is shortID, skip it and decode interval from remainder.
+	buf := encodedProperty[1:]
+	if len(buf) == 0 {
+		return nil, false, nil
+	}
+	// Decode the block interval using the same logic as sstable.decodeBlockInterval
+	var interval sstable.BlockInterval
+	var n int
+	interval.Lower, n = binary.Uvarint(buf)
+	if n <= 0 || n >= len(buf) {
+		return nil, false, base.CorruptionErrorf("cannot decode interval from buf %x", buf)
+	}
+	pos := n
+	interval.Upper, n = binary.Uvarint(buf[pos:])
+	pos += n
+	if pos != len(buf) || n <= 0 {
+		return nil, false, base.CorruptionErrorf("cannot decode interval from buf %x", buf)
+	}
+	// Delta decode.
+	interval.Upper += interval.Lower
+	if interval.Upper < interval.Lower {
+		return nil, false, base.CorruptionErrorf("unexpected overflow, upper %d < lower %d", interval.Upper, interval.Lower)
+	}
+	if interval.IsEmpty() {
+		return nil, false, nil
+	}
+	dst = append(dst, make([]byte, 9)...)
+	binary.BigEndian.PutUint64(dst[len(dst)-9:], interval.Upper)
+	dst[len(dst)-1] = 9
+	return dst, true, nil
 }
