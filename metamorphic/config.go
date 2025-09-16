@@ -440,4 +440,7 @@ type KeyGenerator interface {
 	//
 	// May return a nil suffix.
 	UniformSuffix() []byte
+	// MaximumSuffixProperty returns the maximum suffix property used during
+	// the lazy position of SeekPrefixGE optimization.
+	MaximumSuffixProperty() pebble.MaximumSuffixProperty
 }
