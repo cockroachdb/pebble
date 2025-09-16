@@ -257,6 +257,16 @@ func Int64[T any](header string, width int, align Align, fn func(r T) int64) Fie
 	})
 }
 
+// StringWithTupleIndex is like String, but the function is also passed the
+// index of the row.
+func StringWithTupleIndex[T any](
+	header string, width int, align Align, fn func(tupleIndex int, r T) string,
+) Field[T] {
+	return makeFuncField(header, width, align, func(tupleIndex int, r T) string {
+		return fn(tupleIndex, r)
+	})
+}
+
 func AutoIncrement[T any](header string, width int, align Align) Field[T] {
 	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
 		return strconv.Itoa(tupleIndex)
