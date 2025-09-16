@@ -52,9 +52,11 @@ func TestTable(t *testing.T) {
 			}
 		}
 		switch td.Cmd {
-		case "cats-autoincrement":
+		case "cats-tuple-index":
 			def := Define[Cat](
-				AutoIncrement[Cat]("idx", 3, AlignLeft),
+				StringWithTupleIndex("idx", 3, AlignLeft, func(tupleIndex int, r Cat) string {
+					return fmt.Sprintf("%d", tupleIndex)
+				}),
 				Div(),
 				String("name", 7, align, func(c Cat) string { return c.Name }),
 			)
