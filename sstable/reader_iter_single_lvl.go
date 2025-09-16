@@ -863,7 +863,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 		// table's max suffix, return a synthetic key with that max suffix.
 		// We'll only actually perform the seek if the synthetic key rises to
 		// the top of the iterator's heap, and the iterator is Nexted.
-		if ok && maxSuffix != nil && i.cmp(key[len(prefix):], maxSuffix) < 0 {
+		// During a RangeDelIter, the prefix passed and the prefix in the key might not be the same.
+		if ok && maxSuffix != nil && i.reader.Comparer.ComparePointSuffixes(key[i.reader.Comparer.Split(key):], maxSuffix) < 0 {
 			smallest := i.readEnv.InternalBounds.SmallestUserKey()
 			smallest = i.reader.Comparer.Split.Prefix(smallest)
 			largest := i.readEnv.InternalBounds.LargestUserKey()
