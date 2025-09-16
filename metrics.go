@@ -653,59 +653,73 @@ func (m *Metrics) SafeFormat(w redact.SafePrinter, _ rune) {
 
 var (
 	levelMetricsTableTopHeader = `LSM                             |    vtables   |   value sep   |        |   ingested   |    amp`
-	levelMetricsTable          = table.Define[*LevelMetrics](
-		table.StringWithTupleIndex("level", 5, table.AlignRight, func(tupleIndex int, m *LevelMetrics) string {
-			if tupleIndex == manifest.NumLevels {
-				return "total"
-			}
-			return fmt.Sprintf("%d", tupleIndex)
-		}),
-		table.Bytes("size", 10, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.TablesSize) + m.EstimatedReferencesSize }),
-		table.Div(),
-		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesCount }),
-		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesSize }),
-		table.Div(),
-		table.Count("count", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesCount }),
-		table.Count("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesSize }),
-		table.Div(),
-		table.Bytes("refsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.EstimatedReferencesSize }),
-		table.Bytes("valblk", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.Additional.ValueBlocksSize }),
-		table.Div(),
-		table.Bytes("in", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIn }),
-		table.Div(),
-		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesIngested }),
-		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIngested }),
-		table.Div(),
-		table.Int("r", 3, table.AlignRight, func(m *LevelMetrics) int { return int(m.Sublevels) }),
-		table.Float("w", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.WriteAmp() }),
-	)
+	levelMetricsTable          = func() table.Layout[*LevelMetrics] {
+		def := table.Define[*LevelMetrics](
+			table.StringWithTupleIndex("level", 5, table.AlignRight, func(tupleIndex int, m *LevelMetrics) string {
+				if tupleIndex == manifest.NumLevels {
+					return "total"
+				}
+				return fmt.Sprintf("L%d", tupleIndex)
+			}),
+			table.Bytes("size", 10, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.TablesSize) + m.EstimatedReferencesSize }),
+			table.Div(),
+			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesCount }),
+			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesSize }),
+			table.Div(),
+			table.Count("count", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesCount }),
+			table.Count("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesSize }),
+			table.Div(),
+			table.Bytes("refsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.EstimatedReferencesSize }),
+			table.Bytes("valblk", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.Additional.ValueBlocksSize }),
+			table.Div(),
+			table.Bytes("in", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIn }),
+			table.Div(),
+			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesIngested }),
+			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIngested }),
+			table.Div(),
+			table.Int("r", 3, table.AlignRight, func(m *LevelMetrics) int { return int(m.Sublevels) }),
+			table.Float("w", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.WriteAmp() }),
+		)
+		def.FilterFn = func(tupleIndex int, m *LevelMetrics) (passed bool) {
+			return m.TablesCount != 0 || m.VirtualTablesCount != 0
+		}
+		return def
+	}()
 	levelCompactionMetricsTableTopHeader = `COMPACTIONS               |     moved    |     multilevel    |     read     |       written`
-	compactionLevelMetricsTable          = table.Define[*LevelMetrics](
-		table.StringWithTupleIndex("level", 5, table.AlignRight, func(tupleIndex int, m *LevelMetrics) string {
-			if tupleIndex == manifest.NumLevels {
-				return "total"
-			}
-			return fmt.Sprintf("%d", tupleIndex)
-		}),
-		table.Div(),
-		table.Float("score", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.Score }),
-		table.Float("ff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.FillFactor }),
-		table.Float("cff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.CompensatedFillFactor }),
-		table.Div(),
-		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesMoved }),
-		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesMoved }),
-		table.Div(),
-		table.Bytes("top", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesInTop }),
-		table.Bytes("in", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesIn }),
-		table.Bytes("read", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesRead }),
-		table.Div(),
-		table.Bytes("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesRead }),
-		table.Bytes("blob", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesRead }),
-		table.Div(),
-		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesFlushed + m.TablesCompacted }),
-		table.Bytes("sstsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesFlushed + m.TableBytesCompacted }),
-		table.Bytes("blobsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesFlushed + m.BlobBytesCompacted }),
-	)
+	compactionLevelMetricsTable          = func() table.Layout[*LevelMetrics] {
+		def := table.Define[*LevelMetrics](
+			table.StringWithTupleIndex("level", 5, table.AlignRight, func(tupleIndex int, m *LevelMetrics) string {
+				if tupleIndex == manifest.NumLevels {
+					return "total"
+				}
+				return fmt.Sprintf("L%d", tupleIndex)
+			}),
+			table.Div(),
+			table.Float("score", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.Score }),
+			table.Float("ff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.FillFactor }),
+			table.Float("cff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.CompensatedFillFactor }),
+			table.Div(),
+			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesMoved }),
+			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesMoved }),
+			table.Div(),
+			table.Bytes("top", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesInTop }),
+			table.Bytes("in", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesIn }),
+			table.Bytes("read", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesRead }),
+			table.Div(),
+			table.Bytes("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesRead }),
+			table.Bytes("blob", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesRead }),
+			table.Div(),
+			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesFlushed + m.TablesCompacted }),
+			table.Bytes("sstsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesFlushed + m.TableBytesCompacted }),
+			table.Bytes("blobsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesFlushed + m.BlobBytesCompacted }),
+		)
+		def.FilterFn = func(tupleIndex int, m *LevelMetrics) (passed bool) {
+			return !math.IsNaN(m.Score) || m.FillFactor != 0 || m.TablesMoved != 0 || m.MultiLevel.TableBytesInTop != 0 ||
+				m.MultiLevel.TableBytesIn != 0 || m.MultiLevel.TableBytesRead != 0 || m.BlobBytesRead != 0 ||
+				m.TablesFlushed != 0 || m.TablesCompacted != 0 || m.BlobBytesFlushed != 0 || m.BlobBytesCompacted != 0
+		}
+		return def
+	}()
 	compactionKindTable = table.Define[*Metrics](
 		table.String("kind", 5, table.AlignRight, func(m *Metrics) string { return "count" }),
 		table.Div(),
@@ -923,14 +937,14 @@ func (m *Metrics) String() string {
 	cur := wb.At(0, 0)
 	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
 	cur = levelMetricsTable.Render(cur, table.RenderOptions{
-		HorizontalDividers: table.MakeHorizontalDividers(0, manifest.NumLevels),
+		HorizontalDividers: table.MakeHorizontalDividers(0, -1),
 	}, slices.Collect(m.LevelMetricsIter())...)
 	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
 	cur = cur.WriteString(levelCompactionMetricsTableTopHeader).NewlineReturn()
 	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{
-		HorizontalDividers: table.MakeHorizontalDividers(0, manifest.NumLevels),
+		HorizontalDividers: table.MakeHorizontalDividers(0, -1),
 	}, slices.Collect(m.LevelMetricsIter())...)
 
 	cur = cur.NewlineReturn()
