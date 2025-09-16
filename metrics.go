@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"cmp"
 	"fmt"
 	"iter"
 	"math"
@@ -18,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/compression"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
@@ -803,7 +805,83 @@ var (
 			return crhumanize.Float(p.v.CompressionRatio(), 2 /* precision */).String()
 		}),
 	)
+	// TODO(sumeer): this is just a crude placeholder.
+	tieringSpanTable = table.Define[pair[tieredmeta.Key, tieredmeta.StatsHistogram]](
+		table.Int("sp", 2, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) int { return int(p.k.TieringSpanID) }),
+		table.Int("k", 2, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) int { return int(p.k.KindAndTier) }),
+		table.String("n", histOtherWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return string(humanize.Count.Uint64(p.v.Count))
+			}),
+		table.String("zero", histOtherWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return string(humanize.Bytes.Uint64(p.v.ZeroBytes))
+			}),
+		table.String("b0", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart,
+					humanize.Bytes.Uint64(p.v.Buckets[0].Bytes))
+			}),
+		table.String("b1", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+1*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[1].Bytes))
+			}),
+		table.String("b2", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+2*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[2].Bytes))
+			}),
+		table.String("b3", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+3*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[3].Bytes))
+			}),
+		table.String("b4", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+4*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[4].Bytes))
+			}),
+		table.String("b5", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+5*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[5].Bytes))
+			}),
+		table.String("b6", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+6*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[6].Bytes))
+			}),
+		table.String("b7", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+7*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[7].Bytes))
+			}),
+		table.String("b8", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+8*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[8].Bytes))
+			}),
+		table.String("b9", histBucketWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return fmt.Sprintf("%d:%s", p.v.BucketStart+9*p.v.BucketLength,
+					humanize.Bytes.Uint64(p.v.Buckets[9].Bytes))
+			}),
+		table.String("uf", histOtherWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return string(humanize.Bytes.Uint64(p.v.UnderflowBytes))
+			}),
+		table.String("uc", histOtherWidth, table.AlignLeft,
+			func(p pair[tieredmeta.Key, tieredmeta.StatsHistogram]) string {
+				return string(humanize.Bytes.Uint64(p.v.UnaccountedBytes))
+			}),
+	)
 )
+
+const histBucketWidth = 8
+const histOtherWidth = 5
 
 type commitPipelineInfo struct {
 	files     string
@@ -1035,8 +1113,28 @@ func (m *Metrics) String() string {
 	compressionContents = slices.DeleteFunc(compressionContents, func(p pair[string, CompressionStatsForSetting]) bool {
 		return p.v.CompressedBytes == 0
 	})
-	compressionTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compressionContents))
+	cur = compressionTable.Render(cur, table.RenderOptions{Orientation: table.Horizontally}, slices.Values(compressionContents))
 
+	for i := range m.Levels {
+		cur = cur.Printf("Tiering Histogram L%d\n", i)
+		cur = tieringSpanTable.Render(cur, table.RenderOptions{},
+			func(yield func(pair[tieredmeta.Key, tieredmeta.StatsHistogram]) bool) {
+				keys := make([]tieredmeta.Key, 0, len(m.Levels[i].Additional.TieringHistograms.Histograms))
+				for k := range m.Levels[i].Additional.TieringHistograms.Histograms {
+					keys = append(keys, k)
+				}
+				slices.SortFunc(keys, func(a, b tieredmeta.Key) int {
+					return cmp.Or(cmp.Compare(a.TieringSpanID, b.TieringSpanID),
+						cmp.Compare(a.KindAndTier, b.KindAndTier))
+				})
+				for _, k := range keys {
+					v := m.Levels[i].Additional.TieringHistograms.Histograms[k]
+					if !yield(pair[tieredmeta.Key, tieredmeta.StatsHistogram]{k: k, v: v}) {
+						break
+					}
+				}
+			})
+	}
 	return wb.String()
 }
 

@@ -208,7 +208,7 @@ func TestMetrics(t *testing.T) {
 			closeFunc()
 		}
 	}()
-	init := func(t *testing.T, createOnSharedLower bool, reopen bool) {
+	init := func(t *testing.T, createOnSharedLower bool, reopen bool, targetFileSize int) {
 		if closeFunc != nil {
 			closeFunc()
 		}
@@ -236,7 +236,7 @@ func TestMetrics(t *testing.T) {
 				MaxBlobReferenceDepth: 5,
 			}
 		}
-		opts.TargetFileSizes[0] = 50
+		opts.TargetFileSizes[0] = int64(targetFileSize)
 
 		// Prevent foreground flushes and compactions from triggering asynchronous
 		// follow-up compactions. This avoids asynchronously-scheduled work from
@@ -291,7 +291,11 @@ func TestMetrics(t *testing.T) {
 			if td.HasArg("reopen") {
 				reopen = true
 			}
-			init(t, createOnSharedLower, reopen)
+			targetFileSize := 50
+			if td.HasArg("target-file-size") {
+				td.ScanArgs(t, "target-file-size", &targetFileSize)
+			}
+			init(t, createOnSharedLower, reopen, targetFileSize)
 			return ""
 
 		case "example":

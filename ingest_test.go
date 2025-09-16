@@ -41,6 +41,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/kr/pretty"
@@ -255,6 +256,7 @@ func TestIngestLoadRand(t *testing.T) {
 		m.CreationTime = 0
 		stats, _ := m.Stats()
 		stats.CompressionStats = block.CompressionStats{}
+		stats.TieringHistograms = tieredmeta.TieringHistogramBlockContents{}
 	}
 	t.Log(strings.Join(pretty.Diff(expected, lr.local), "\n"))
 	require.Equal(t, expected, lr.local)
