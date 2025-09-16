@@ -42,6 +42,7 @@ level       size | tables  size |  count  size |  refsz valblk |     in | tables
     4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
     6       463B |      1  463B |      0     0 |     0B     0B |     0B |      1  463B |   1     0
+-----------------+--------------+--------------+---------------+--------+--------------+----------
 total       463B |      1  463B |      0     0 |     0B     0B |   463B |      1  463B |   1  1.00
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
@@ -54,6 +55,7 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
     4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
     6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      0   463B     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
