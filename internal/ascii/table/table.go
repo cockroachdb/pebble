@@ -86,7 +86,6 @@ func (hd HorizontalDividers) Contains(rowIdx int) bool {
 
 // RenderOptions specifies the options for rendering a table.
 type RenderOptions struct {
-	Orientation        Orientation
 	HorizontalDividers HorizontalDividers
 }
 
@@ -95,115 +94,68 @@ type RenderOptions struct {
 func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) ascii.Cursor {
 	cur := start
 
-	if opts.Orientation == Vertically {
-		tuples := rows
-		vals := make([]string, len(tuples))
-		for fieldIdx, c := range d.fields {
-			if fieldIdx > 0 {
-				// Each column is separated by a space from the previous column or
-				// separator.
-				rowCur := cur
-				for rowIdx := range tuples {
-					if opts.HorizontalDividers.Contains(rowIdx) {
-						rowCur = rowCur.Down(1)
-						rowCur.WriteString("-")
-					}
-					rowCur = rowCur.Down(1)
-				}
-				cur = cur.Right(1)
-			}
-			if _, ok := c.(divider); ok {
-				rowCur := cur
-				rowCur.WriteString("|")
-				for rowIdx := range tuples {
-					if opts.HorizontalDividers.Contains(rowIdx) {
-						rowCur = rowCur.Down(1)
-						rowCur.WriteString("+")
-					}
-					rowCur = rowCur.Down(1)
-					rowCur.WriteString("|")
-				}
-				cur = cur.Right(1)
-				continue
-			}
-			f := c.(Field[T])
-			for i, t := range tuples {
-				vals[i] = f.renderValue(i, t)
-			}
-
-			width := c.width()
-			// If one of the values exceeds the column width, widen the column as
-			// necessary.
-			for i := range vals {
-				width = max(width, len(vals[i]))
-			}
-			header := f.header()
-			align := f.align()
-			pad(cur, width, align, header)
+	tuples := rows
+	vals := make([]string, len(tuples))
+	for fieldIdx, c := range d.fields {
+		if fieldIdx > 0 {
+			// Each column is separated by a space from the previous column or
+			// separator.
 			rowCur := cur
-			for rowIdx := range vals {
+			for rowIdx := range tuples {
 				if opts.HorizontalDividers.Contains(rowIdx) {
 					rowCur = rowCur.Down(1)
-					rowCur.RepeatByte(width, '-')
+					rowCur.WriteString("-")
 				}
 				rowCur = rowCur.Down(1)
-				pad(rowCur, width, align, vals[rowIdx])
 			}
-			cur = cur.Right(width)
+			cur = cur.Right(1)
 		}
-		rowCur := start.Down(len(vals) + 1)
+		if _, ok := c.(divider); ok {
+			rowCur := cur
+			rowCur.WriteString("|")
+			for rowIdx := range tuples {
+				if opts.HorizontalDividers.Contains(rowIdx) {
+					rowCur = rowCur.Down(1)
+					rowCur.WriteString("+")
+				}
+				rowCur = rowCur.Down(1)
+				rowCur.WriteString("|")
+			}
+			cur = cur.Right(1)
+			continue
+		}
+		f := c.(Field[T])
+		for i, t := range tuples {
+			vals[i] = f.renderValue(i, t)
+		}
+
+		width := c.width()
+		// If one of the values exceeds the column width, widen the column as
+		// necessary.
+		for i := range vals {
+			width = max(width, len(vals[i]))
+		}
+		header := f.header()
+		align := f.align()
+		pad(cur, width, align, header)
+		rowCur := cur
 		for rowIdx := range vals {
 			if opts.HorizontalDividers.Contains(rowIdx) {
 				rowCur = rowCur.Down(1)
+				rowCur.RepeatByte(width, '-')
 			}
+			rowCur = rowCur.Down(1)
+			pad(rowCur, width, align, vals[rowIdx])
 		}
-		return rowCur
+		cur = cur.Right(width)
 	}
-
-	headerColumnWidth := 1
-	for i := range d.fields {
-		headerColumnWidth = max(headerColumnWidth, d.fields[i].width())
-	}
-
-	for i := range d.fields {
-		if _, ok := d.fields[i].(divider); ok {
-			cur.Down(i).RepeatByte(headerColumnWidth, '-')
-		} else {
-			pad(cur.Down(i), headerColumnWidth, AlignRight, d.fields[i].(Field[T]).header())
+	rowCur := start.Down(len(vals) + 1)
+	for rowIdx := range vals {
+		if opts.HorizontalDividers.Contains(rowIdx) {
+			rowCur = rowCur.Down(1)
 		}
 	}
-	cur = cur.Right(headerColumnWidth)
-	for i := range d.fields {
-		if _, ok := d.fields[i].(divider); ok {
-			cur.Down(i).WriteString("-+-")
-		} else {
-			cur.Down(i).WriteString(" | ")
-		}
-	}
-	cur = cur.Right(3)
-
-	tupleIndex := 0
-	colSpacing := 0
-	for _, t := range rows {
-		width := 1
-		for i := range d.fields {
-			if f, ok := d.fields[i].(Field[T]); ok {
-				width = max(width, len(f.renderValue(tupleIndex, t)))
-			}
-		}
-		for i := range d.fields {
-			if _, ok := d.fields[i].(divider); ok {
-				cur.Down(i).RepeatByte(width+colSpacing, '-')
-			} else {
-				f := d.fields[i].(Field[T])
-				pad(cur.Down(i).Right(colSpacing), width, d.fields[i].align(), f.renderValue(tupleIndex, t))
-			}
-		}
-		tupleIndex++
-		cur = cur.Right(width + colSpacing)
-		colSpacing = 2
-	}
-	return start.Down(len(d.fields))
+	return rowCur
 }
 
 // Element is the base interface, common to all table elements.
@@ -286,15 +238,6 @@ func pad(cur ascii.Cursor, toWidth int, align Align, s string) ascii.Cursor {
 	cur.Right(padding).WriteString(s)
 	return cur.Right(toWidth)
 }
-
-const (
-	Vertically Orientation = iota
-	Horizontally
-)
-
-// Orientation specifies the orientation of the table. The default orientation
-// is vertical.
-type Orientation uint8
 
 func String[T any](header string, width int, align Align, fn func(r T) string) Field[T] {
 	return makeFuncField(header, width, align, func(tupleIndex int, r T) string {
