@@ -6,7 +6,6 @@ package table
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"testing"
 
@@ -19,16 +18,6 @@ func TestTable(t *testing.T) {
 		Name     string
 		Age      int
 		Cuteness int
-	}
-	cats := []Cat{
-		{Name: "Chicken", Age: 5, Cuteness: 10},
-		{Name: "Heart", Age: 4, Cuteness: 10},
-		{Name: "Mai", Age: 2, Cuteness: 10},
-		{Name: "Poi", Age: 15, Cuteness: 10},
-		{Name: "Pigeon", Age: 2, Cuteness: 10},
-		{Name: "Sugar", Age: 8, Cuteness: 10},
-		{Name: "Yaya", Age: 5, Cuteness: 10},
-		{Name: "Yuumi", Age: 5, Cuteness: 10},
 	}
 
 	wb := ascii.Make(1, 10)
@@ -51,43 +40,55 @@ func TestTable(t *testing.T) {
 				opts.HorizontalDividers[i] = struct{}{}
 			}
 		}
+		var def Layout[Cat]
+		cats := []Cat{
+			{Name: "Chicken", Age: 5, Cuteness: 10},
+			{Name: "Heart", Age: 4, Cuteness: 10},
+			{Name: "Mai", Age: 2, Cuteness: 10},
+			{Name: "Poi", Age: 15, Cuteness: 10},
+			{Name: "Pigeon", Age: 2, Cuteness: 10},
+			{Name: "Sugar", Age: 8, Cuteness: 10},
+			{Name: "Yaya", Age: 5, Cuteness: 10},
+			{Name: "Yuumi", Age: 5, Cuteness: 10},
+		}
 		switch td.Cmd {
 		case "cats-tuple-index":
-			def := Define[Cat](
+			def = Define[Cat](
 				StringWithTupleIndex("idx", 3, AlignLeft, func(tupleIndex int, r Cat) string {
 					return fmt.Sprintf("%d", tupleIndex)
 				}),
 				Div(),
 				String("name", 7, align, func(c Cat) string { return c.Name }),
 			)
-			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, cats...)
-			return wb.String()
+
 		case "cats-nodiv":
-			def := Define[Cat](
+			def = Define[Cat](
 				String("name", 6, AlignLeft, func(c Cat) string { return c.Name }),
 				Int("age", 3, align, func(c Cat) int { return c.Age }),
 				Int("cuteness", 8, align, func(c Cat) int { return c.Cuteness }),
 			)
-			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, cats...)
-			return wb.String()
+
 		case "cats-column-too-wide":
-			c := slices.Clone(cats)
-			for i := range c {
-				c[i].Age *= 1_000_000
+			for i := range cats {
+				cats[i].Age *= 1_000_000
 			}
-			def := Define[Cat](
+			def = Define[Cat](
 				String("name", 6, AlignLeft, func(c Cat) string { return c.Name }),
 				Div(),
 				Int("age", 3, align, func(c Cat) int { return c.Age }),
 				Int("c", 1, align, func(c Cat) int { return c.Cuteness }),
 			)
-			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, c...)
-			return wb.String()
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
+		wb.Reset(1)
+		if td.HasArg("odd") {
+			def.FilterFn = func(tupleIndex int, c Cat) bool {
+				return c.Age%2 == 1
+			}
+		}
+		def.Render(wb.At(0, 0), opts, cats...)
+		return wb.String()
 	})
 }

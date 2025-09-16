@@ -64,7 +64,7 @@ idx |    name
 6   |    Yaya
 7   |   Yuumi
 
-cats-tuple-index horizontal-dividers=(0,1,2,3,6,7)
+cats-tuple-index horizontal-dividers=(0,1,2,3,-2,-1)
 ----
 idx |    name
 ----+--------
@@ -82,6 +82,16 @@ idx |    name
 ----+--------
 7   |   Yuumi
 
+cats-tuple-index odd horizontal-dividers=(1,-1)
+----
+idx |    name
+0   | Chicken
+----+--------
+3   |     Poi
+6   |    Yaya
+----+--------
+7   |   Yuumi
+
 cats-column-too-wide
 ----
 name    |      age  c
@@ -95,7 +105,7 @@ Sugar   |  8000000 10
 Yaya    |  5000000 10
 Yuumi   |  5000000 10
 
-cats-column-too-wide horizontal-dividers=(0,3,5)
+cats-column-too-wide horizontal-dividers=(0,3,-3)
 ----
 name    |      age  c
 --------+------------
