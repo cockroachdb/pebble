@@ -7,6 +7,7 @@ package table
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -42,6 +43,16 @@ func TestTable(t *testing.T) {
 		}
 		if td.HasArg("center") {
 			align = AlignCenter
+		}
+		if hd, ok := td.Arg("horizontal-dividers"); ok {
+			opts.HorizontalDividers = make(HorizontalDividers)
+			for _, v := range hd.Vals {
+				i, err := strconv.Atoi(v)
+				if err != nil {
+					t.Fatalf("invalid horizontal-divider %q: %s", v, err)
+				}
+				opts.HorizontalDividers[i] = struct{}{}
+			}
 		}
 		switch td.Cmd {
 		case "cats-autoincrement":
