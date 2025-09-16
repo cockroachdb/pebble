@@ -916,16 +916,6 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
 // Note: twoLevelCompactionIterator.Next mirrors the implementation of
 // twoLevelIterator.Next due to performance. Keep the two in sync.
 func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
-	if invariants.Enabled && i.lastOpWasSeekPrefixGE.Get() {
-		// If the previous operation was SeekPrefixGE that returned nil due to bloom
-		// filter miss, the data block should not have been invalidated. This assertion
-		// ensures the optimization to preserve loaded blocks is working correctly.
-		if PD(&i.secondLevel.data).IsDataInvalidated() {
-			panic("pebble: data block was invalidated after SeekPrefixGE returned nil due to bloom filter miss")
-		}
-	}
-	i.lastOpWasSeekPrefixGE.Set(false)
-
 	// The SeekPrefixGE might have returned a synthetic key with latest suffix
 	// contained in the sstable. If the caller is calling Next(), that means
 	// they want to move past the synthetic key and Next() is responsible for
@@ -938,6 +928,16 @@ func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 		return i.seekPrefixGE(i.secondLevel.reader.Comparer.Split.Prefix(i.secondLevel.synthetic.seekKey),
 			i.secondLevel.synthetic.seekKey, base.SeekGEFlagsNone)
 	}
+
+	if invariants.Enabled && i.lastOpWasSeekPrefixGE.Get() {
+		// If the previous operation was SeekPrefixGE that returned nil due to bloom
+		// filter miss, the data block should not have been invalidated. This assertion
+		// ensures the optimization to preserve loaded blocks is working correctly.
+		if PD(&i.secondLevel.data).IsDataInvalidated() {
+			panic("pebble: data block was invalidated after SeekPrefixGE returned nil due to bloom filter miss")
+		}
+	}
+	i.lastOpWasSeekPrefixGE.Set(false)
 
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
