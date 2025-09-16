@@ -88,7 +88,7 @@ func TestIntervalEncodeDecode(t *testing.T) {
 }
 
 func decodeAndCheck(t *testing.T, buf []byte, expected BlockInterval) {
-	i2, err := decodeBlockInterval(buf)
+	i2, err := DecodeBlockInterval(buf)
 	require.NoError(t, err)
 	require.Equal(t, expected, i2)
 }
@@ -239,7 +239,7 @@ func TestBlockIntervalCollector(t *testing.T) {
 	addTestRangeKeys(t, bic, 149)
 	encoded, err = bic.FinishDataBlock(nil)
 	require.NoError(t, err)
-	decoded, err := decodeBlockInterval(encoded)
+	decoded, err := DecodeBlockInterval(encoded)
 	require.NoError(t, err)
 	require.Equal(t, BlockInterval{20, 25}, decoded)
 	var encodedIndexBlock []byte
@@ -1114,7 +1114,7 @@ func (bl *boundLimitedWrapper) Name() string { return bl.inner.Name() }
 
 func (bl *boundLimitedWrapper) Intersects(prop []byte) (bool, error) {
 	propString := fmt.Sprintf("%x", prop)
-	i, err := decodeBlockInterval(prop)
+	i, err := DecodeBlockInterval(prop)
 	if err == nil {
 		// If it decodes as an interval, pretty print it as an interval.
 		propString = fmt.Sprintf("[%d, %d)", i.Lower, i.Upper)
@@ -1129,7 +1129,7 @@ func (bl *boundLimitedWrapper) Intersects(prop []byte) (bool, error) {
 
 func (bl *boundLimitedWrapper) SyntheticSuffixIntersects(prop []byte, suffix []byte) (bool, error) {
 	propString := fmt.Sprintf("%x", prop)
-	i, err := decodeBlockInterval(prop)
+	i, err := DecodeBlockInterval(prop)
 	if err == nil {
 		// If it decodes as an interval, pretty print it as an interval.
 		propString = fmt.Sprintf("[%d, %d)", i.Lower, i.Upper)
@@ -1205,7 +1205,7 @@ func runTablePropsCmd(r *Reader, td *datadriven.TestData) string {
 	var lines []string
 	for _, val := range r.UserProperties {
 		id := shortID(val[0])
-		i, err := decodeBlockInterval([]byte(val[1:]))
+		i, err := DecodeBlockInterval([]byte(val[1:]))
 		if err != nil {
 			return err.Error()
 		}
@@ -1306,7 +1306,7 @@ func runBlockPropsCmd(r *Reader) string {
 			if prop == nil {
 				continue
 			}
-			i, err := decodeBlockInterval(prop)
+			i, err := DecodeBlockInterval(prop)
 			if err != nil {
 				return err
 			}
