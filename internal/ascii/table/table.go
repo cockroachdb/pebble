@@ -60,11 +60,20 @@ func Define[T any](fields ...Element) Layout[T] {
 // A Layout defines the layout of a table.
 type Layout[T any] struct {
 	fields []Element
+	// FilterFn can be set to filter out rows. This is useful when using the tuple
+	// index (e.g. StringWithTupleIndex), as the tuple index indicates the
+	// original (pre-filter) index.
+	FilterFn func(tupleIndex int, tuple T) (passed bool)
 }
 
 // HorizontalDividers is a set of row indices before which a horizontal divider
-// is placed. If nil, the defult is to place a divider before the first row
+// is placed. If nil, the default is to place a divider before the first row
 // (i.e. HorizontalDividers{0}).
+//
+// A negative index corresponds to the end of the table, with -1 being the last
+// row (meaning there will be a divider before the last row).
+//
+// The row indices apply after any filtering is performed (see Layout.FilterFn).
 type HorizontalDividers map[int]struct{}
 
 func MakeHorizontalDividers(rowIdx ...int) HorizontalDividers {
@@ -75,13 +84,19 @@ func MakeHorizontalDividers(rowIdx ...int) HorizontalDividers {
 	return hd
 }
 
-func (hd HorizontalDividers) Contains(rowIdx int) bool {
+func (hd HorizontalDividers) Contains(rowIdx int, numRows int) bool {
 	if hd == nil {
 		// Special case the nil value.
 		return rowIdx == 0
 	}
-	_, ok := hd[rowIdx]
-	return ok
+	if _, ok := hd[rowIdx]; ok {
+		return true
+	}
+	// Negative indices count from the end of the table (-1 is the last row).
+	if _, ok := hd[rowIdx-numRows]; ok {
+		return true
+	}
+	return false
 }
 
 // RenderOptions specifies the options for rendering a table.
@@ -89,20 +104,25 @@ type RenderOptions struct {
 	HorizontalDividers HorizontalDividers
 }
 
-// Render renders the given iterator of rows of a table into the given cursor,
-// returning the modified cursor.
-func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) ascii.Cursor {
+// Render renders the given tuples into the given cursor, returning the modified
+// cursor.
+func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, tuples ...T) ascii.Cursor {
 	cur := start
 
-	tuples := rows
-	vals := make([]string, len(tuples))
+	rows := make([]int, 0, len(tuples))
+	for i := range tuples {
+		if d.FilterFn == nil || d.FilterFn(i, tuples[i]) {
+			rows = append(rows, i)
+		}
+	}
+	vals := make([]string, len(rows))
 	for fieldIdx, c := range d.fields {
 		if fieldIdx > 0 {
 			// Each column is separated by a space from the previous column or
 			// separator.
 			rowCur := cur
-			for rowIdx := range tuples {
-				if opts.HorizontalDividers.Contains(rowIdx) {
+			for rowIdx := range rows {
+				if opts.HorizontalDividers.Contains(rowIdx, len(rows)) {
 					rowCur = rowCur.Down(1)
 					rowCur.WriteString("-")
 				}
@@ -113,8 +133,8 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) as
 		if _, ok := c.(divider); ok {
 			rowCur := cur
 			rowCur.WriteString("|")
-			for rowIdx := range tuples {
-				if opts.HorizontalDividers.Contains(rowIdx) {
+			for rowIdx := range rows {
+				if opts.HorizontalDividers.Contains(rowIdx, len(rows)) {
 					rowCur = rowCur.Down(1)
 					rowCur.WriteString("+")
 				}
@@ -125,8 +145,8 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) as
 			continue
 		}
 		f := c.(Field[T])
-		for i, t := range tuples {
-			vals[i] = f.renderValue(i, t)
+		for rowIdx, tupleIdx := range rows {
+			vals[rowIdx] = f.renderValue(tupleIdx, tuples[tupleIdx])
 		}
 
 		width := c.width()
@@ -140,7 +160,7 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) as
 		pad(cur, width, align, header)
 		rowCur := cur
 		for rowIdx := range vals {
-			if opts.HorizontalDividers.Contains(rowIdx) {
+			if opts.HorizontalDividers.Contains(rowIdx, len(vals)) {
 				rowCur = rowCur.Down(1)
 				rowCur.RepeatByte(width, '-')
 			}
@@ -151,7 +171,7 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, rows ...T) as
 	}
 	rowCur := start.Down(len(vals) + 1)
 	for rowIdx := range vals {
-		if opts.HorizontalDividers.Contains(rowIdx) {
+		if opts.HorizontalDividers.Contains(rowIdx, len(vals)) {
 			rowCur = rowCur.Down(1)
 		}
 	}
