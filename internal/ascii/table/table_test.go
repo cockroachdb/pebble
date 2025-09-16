@@ -51,7 +51,7 @@ func TestTable(t *testing.T) {
 				String("name", 7, align, func(c Cat) string { return c.Name }),
 			)
 			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, slices.Values(cats))
+			def.Render(wb.At(0, 0), opts, cats...)
 			return wb.String()
 		case "cats-nodiv":
 			def := Define[Cat](
@@ -60,7 +60,7 @@ func TestTable(t *testing.T) {
 				Int("cuteness", 8, align, func(c Cat) int { return c.Cuteness }),
 			)
 			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, slices.Values(cats))
+			def.Render(wb.At(0, 0), opts, cats...)
 			return wb.String()
 		case "cats-column-too-wide":
 			c := slices.Clone(cats)
@@ -74,7 +74,7 @@ func TestTable(t *testing.T) {
 				Int("c", 1, align, func(c Cat) int { return c.Cuteness }),
 			)
 			wb.Reset(1)
-			def.Render(wb.At(0, 0), opts, slices.Values(c))
+			def.Render(wb.At(0, 0), opts, c...)
 			return wb.String()
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
