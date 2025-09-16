@@ -6,7 +6,6 @@ package table_test
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/cockroachdb/pebble/internal/ascii"
 	"github.com/cockroachdb/pebble/internal/ascii/table"
@@ -29,7 +28,7 @@ func ExampleDefine() {
 
 	board := ascii.Make(8, 1)
 	fmt.Println("Cool cats:")
-	tbl.Render(board.At(0, 0), table.RenderOptions{}, slices.Values([]Cat{
+	tbl.Render(board.At(0, 0), table.RenderOptions{}, []Cat{
 		{Name: "Chicken", Age: 5, Cuteness: 10},
 		{Name: "Heart", Age: 4, Cuteness: 10},
 		{Name: "Mai", Age: 2, Cuteness: 10},
@@ -38,7 +37,7 @@ func ExampleDefine() {
 		{Name: "Sugar", Age: 8, Cuteness: 10},
 		{Name: "Yaya", Age: 5, Cuteness: 10},
 		{Name: "Yuumi", Age: 5, Cuteness: 10},
-	}))
+	}...)
 	fmt.Println(board.String())
 	// Output:
 	// Cool cats:
@@ -71,7 +70,7 @@ func ExampleHorizontally() {
 	board := ascii.Make(8, 1)
 	fmt.Println("Cool cats:")
 	opts := table.RenderOptions{Orientation: table.Horizontally}
-	tbl.Render(board.At(0, 0), opts, slices.Values([]Cat{
+	tbl.Render(board.At(0, 0), opts, []Cat{
 		{Name: "Chicken", Age: 5, Cuteness: 10},
 		{Name: "Heart", Age: 4, Cuteness: 10},
 		{Name: "Mai", Age: 2, Cuteness: 10},
@@ -81,7 +80,7 @@ func ExampleHorizontally() {
 		{Name: "Yaya", Age: 5, Cuteness: 10},
 		{Name: "Yuumi", Age: 5, Cuteness: 10},
 		{Name: "Yuumibestcatever", Age: 5, Cuteness: 100},
-	}))
+	}...)
 	fmt.Println(board.String())
 	// Output:
 	// Cool cats:
