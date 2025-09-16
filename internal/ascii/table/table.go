@@ -308,6 +308,12 @@ func Int[T any](header string, width int, align Align, fn func(r T) int) Field[T
 	})
 }
 
+func Int64[T any](header string, width int, align Align, fn func(r T) int64) Field[T] {
+	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
+		return strconv.FormatInt(fn(tuple), 10)
+	})
+}
+
 func AutoIncrement[T any](header string, width int, align Align) Field[T] {
 	return makeFuncField(header, width, align, func(tupleIndex int, tuple T) string {
 		return strconv.Itoa(tupleIndex)
