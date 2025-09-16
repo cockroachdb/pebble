@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
@@ -562,6 +563,32 @@ func (o *rangeKeySetOp) rewriteKeys(fn func(UserKey) UserKey) {
 
 func (o *rangeKeySetOp) diagramKeyRanges() []pebble.KeyRange {
 	return []pebble.KeyRange{{Start: o.start, End: o.end}}
+}
+
+// Helper functions to serialize/deserialize MaximumSuffixProperty for metamorphic tests
+func serializeMaximumSuffixProperty(prop pebble.MaximumSuffixProperty) string {
+	if prop == nil {
+		return "nil"
+	}
+	switch prop.(type) {
+	case sstable.MaxTestKeysSuffixProperty:
+		return "testkeys"
+	default:
+		return "cockroachkvs"
+	}
+}
+
+func deserializeMaximumSuffixProperty(s string) pebble.MaximumSuffixProperty {
+	switch s {
+	case "nil":
+		return nil
+	case "testkeys":
+		return sstable.MaxTestKeysSuffixProperty{}
+	case "cockroachkvs":
+		return cockroachkvs.MaxMVCCTimestampProperty{}
+	default:
+		return nil
+	}
 }
 
 // rangeKeyUnsetOp models a Write.RangeKeyUnset operation.
@@ -1206,10 +1233,10 @@ func (o *newIterOp) run(t *Test, h historyRecorder) {
 }
 
 func (o *newIterOp) formattedString(kf KeyFormat) string {
-	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */, %q /* maximum suffix property */)",
 		o.iterID, o.readerID, kf.FormatKey(o.lower), kf.FormatKey(o.upper),
 		o.keyTypes, kf.FormatKeySuffix(o.filterMax), kf.FormatKeySuffix(o.filterMin),
-		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
+		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix), serializeMaximumSuffixProperty(o.maximumSuffixProperty))
 }
 
 func (o *newIterOp) receiver() objID { return o.readerID }
@@ -1273,10 +1300,10 @@ func (o *newIterUsingCloneOp) run(t *Test, h historyRecorder) {
 }
 
 func (o *newIterUsingCloneOp) formattedString(kf KeyFormat) string {
-	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */, %q /* maximum suffix property */)",
 		o.iterID, o.existingIterID, o.refreshBatch, kf.FormatKey(o.lower),
 		kf.FormatKey(o.upper), o.keyTypes, kf.FormatKeySuffix(o.filterMax),
-		kf.FormatKeySuffix(o.filterMin), o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
+		kf.FormatKeySuffix(o.filterMin), o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix), serializeMaximumSuffixProperty(o.maximumSuffixProperty))
 }
 
 func (o *newIterUsingCloneOp) receiver() objID { return o.existingIterID }
@@ -1370,10 +1397,10 @@ func (o *iterSetOptionsOp) run(t *Test, h historyRecorder) {
 }
 
 func (o *iterSetOptionsOp) formattedString(kf KeyFormat) string {
-	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */, %q /* maximum suffix property */)",
 		o.iterID, kf.FormatKey(o.lower), kf.FormatKey(o.upper),
 		o.keyTypes, kf.FormatKeySuffix(o.filterMax), kf.FormatKeySuffix(o.filterMin),
-		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
+		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix), serializeMaximumSuffixProperty(o.maximumSuffixProperty))
 }
 
 func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
@@ -1394,8 +1421,9 @@ func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
 		RangeKeyMasking: pebble.RangeKeyMasking{
 			Suffix: o.maskSuffix,
 		},
-		UseL6Filters:       o.useL6Filters,
-		DebugRangeKeyStack: debugIterators,
+		UseL6Filters:          o.useL6Filters,
+		DebugRangeKeyStack:    debugIterators,
+		MaximumSuffixProperty: o.maximumSuffixProperty,
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
 		opts.RangeKeyMasking.Filter = kf.NewSuffixFilterMask
