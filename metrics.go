@@ -729,22 +729,32 @@ var (
 		table.Div(),
 		table.String("flushable", 11, table.AlignRight, func(i commitPipelineInfo) string { return i.flushable }),
 	)
+	blockCacheInfoTableTopHeader = `BLOCK CACHE`
+	blockCacheInfoTable          = table.Define[blockCacheInfo](
+		func() []table.Element {
+			e := make([]table.Element, 1, 1+2*cache.NumCategories)
+			e[0] = table.String("all", 6, table.AlignRight, func(i blockCacheInfo) string { return i.missRate })
+			for c := range cache.Categories {
+				e = append(e, table.Div())
+				e = append(e, table.String(c.String(), 11, table.AlignRight, func(i blockCacheInfo) string {
+					return i.perCategory[c]
+				}))
+			}
+			return e
+		}()...,
+	)
 	iteratorInfoTableTopHeader = `ITERATORS`
-	iteratorInfoTableSubHeader = `        block cache        |         file cache         |    filter    |  sst iters  |  snapshots`
+	iteratorInfoTableSubHeader = `        file cache        |    filter   |    open     |    open`
 	iteratorInfoTable          = table.Define[iteratorInfo](
-		table.String("entries", 12, table.AlignRight, func(i iteratorInfo) string { return i.bcEntries }),
-		table.Div(),
-		table.String("hit rate", 11, table.AlignRight, func(i iteratorInfo) string { return i.bcHitRate }),
-		table.Div(),
 		table.String("entries", 12, table.AlignRight, func(i iteratorInfo) string { return i.fcEntries }),
 		table.Div(),
-		table.String("hit rate", 11, table.AlignRight, func(i iteratorInfo) string { return i.fcHitRate }),
+		table.String("hit rate", 10, table.AlignRight, func(i iteratorInfo) string { return i.fcHitRate }),
 		table.Div(),
-		table.String("util", 12, table.AlignRight, func(i iteratorInfo) string { return i.bloomFilterUtil }),
+		table.String("utilization", 11, table.AlignRight, func(i iteratorInfo) string { return i.bloomFilterUtil }),
 		table.Div(),
-		table.String("open", 11, table.AlignRight, func(i iteratorInfo) string { return i.sstableItersOpen }),
+		table.String("sst iters ", 11, table.AlignRight, func(i iteratorInfo) string { return i.sstableItersOpen }),
 		table.Div(),
-		table.String("open", 11, table.AlignRight, func(i iteratorInfo) string { return i.snapshotsOpen }),
+		table.String("snapshots ", 11, table.AlignRight, func(i iteratorInfo) string { return i.snapshotsOpen }),
 	)
 	fileInfoTableHeader = `FILES                 tables                       |       blob files        |     blob values`
 	fileInfoTable       = table.Define[tableAndBlobInfo](
@@ -821,9 +831,30 @@ type commitPipelineInfo struct {
 	flushable string
 }
 
+type blockCacheInfo struct {
+	missRate    string
+	perCategory [cache.NumCategories]string
+}
+
+func makeBlockCacheInfo(hm *cache.HitsAndMisses) blockCacheInfo {
+	hits, misses := hm.Aggregate()
+	var bci blockCacheInfo
+	bci.missRate = fmt.Sprintf("%.1f%%", hitRate(hits, misses))
+	decimals := func(v float64) int {
+		if v >= 9.95 {
+			return 0
+		}
+		return 1
+	}
+	for i := range bci.perCategory {
+		mr := percent(hm[i].Misses, hm[i].Hits+hm[i].Misses)
+		p := percent(hm[i].Misses, misses)
+		bci.perCategory[i] = fmt.Sprintf("%.*f%% [%.*f%%]", decimals(mr), mr, decimals(p), p)
+	}
+	return bci
+}
+
 type iteratorInfo struct {
-	bcEntries        string
-	bcHitRate        string
 	fcEntries        string
 	fcHitRate        string
 	bloomFilterUtil  string
@@ -949,9 +980,30 @@ func (m *Metrics) String() string {
 	cur = commitPipelineInfoTable.Render(cur, table.RenderOptions{}, commitPipelineInfoContents)
 	cur = cur.NewlineReturn()
 
+	cur = cur.WriteString(blockCacheInfoTableTopHeader)
+	cur = cur.Printf(": %s entries (%s)", humanizeCount(m.BlockCache.Count), humanizeBytes(m.BlockCache.Size))
+	cur = cur.NewlineReturn()
+
+	cur = cur.WriteString("                 miss rate [percentage of total misses] since start\n")
+	bci := makeBlockCacheInfo(&m.BlockCache.HitsAndMisses)
+	cur = blockCacheInfoTable.Render(cur, table.RenderOptions{}, bci)
+	cur = cur.NewlineReturn()
+
+	if m.BlockCache.Recent[0].Since != 0 {
+		cur = cur.WriteString("                 miss rate [percentage of total misses] over last ~10m\n") // TODO(radu): print exact timeframe
+		bci = makeBlockCacheInfo(&m.BlockCache.Recent[0].HitsAndMisses)
+		cur = blockCacheInfoTable.Render(cur, table.RenderOptions{}, bci)
+		cur = cur.NewlineReturn()
+	}
+
+	if m.BlockCache.Recent[1].Since != 0 {
+		cur = cur.WriteString("                 miss rate [percentage of total misses] over last ~1h\n") // TODO(radu): print exact timeframe
+		bci = makeBlockCacheInfo(&m.BlockCache.Recent[1].HitsAndMisses)
+		cur = blockCacheInfoTable.Render(cur, table.RenderOptions{}, bci)
+		cur = cur.NewlineReturn()
+	}
+
 	iteratorInfoContents := iteratorInfo{
-		bcEntries:        fmt.Sprintf("%s (%s)", humanizeCount(m.BlockCache.Count), humanizeBytes(m.BlockCache.Size)),
-		bcHitRate:        fmt.Sprintf("%.1f%%", hitRate(m.BlockCache.Hits, m.BlockCache.Misses)),
 		fcEntries:        fmt.Sprintf("%s (%s)", humanizeCount(m.FileCache.TableCount), humanizeBytes(m.FileCache.Size)),
 		fcHitRate:        fmt.Sprintf("%.1f%%", hitRate(m.FileCache.Hits, m.FileCache.Misses)),
 		bloomFilterUtil:  fmt.Sprintf("%.1f%%", hitRate(m.Filter.Hits, m.Filter.Misses)),
@@ -1097,6 +1149,12 @@ func (m *Metrics) StringForTests() string {
 	// Don't show cgo memory statistics as they can vary based on architecture,
 	// invariants tag, etc.
 	mCopy.manualMemory = manual.Metrics{}
+
+	// Clear the recent block cache stats as they can vary based on timing.
+	for i := range mCopy.BlockCache.Recent {
+		mCopy.BlockCache.Recent[i].HitsAndMisses = cache.HitsAndMisses{}
+		mCopy.BlockCache.Recent[i].Since = 0
+	}
 	return redact.StringWithoutMarkers(&mCopy)
 }
 
