@@ -351,6 +351,7 @@ func (d *DB) loadTableStats(
 			if err != nil {
 				return
 			}
+			adjustTieringHistogramsIfVirtual(meta, &histograms)
 			stats.TieringHistograms = histograms
 			return
 		})
@@ -751,6 +752,7 @@ func maybeSetStatsFromProperties(
 		pointEstimate = pointDeletionsBytesEstimate(&props.CommonProperties, avgValSize, compressionRatio)
 	}
 
+	adjustTieringHistogramsIfVirtual(meta, &tieringHistograms)
 	stats := manifest.TableStats{
 		NumEntries:                  props.NumEntries,
 		NumDeletions:                props.NumDeletions,
@@ -776,6 +778,20 @@ func maybeSetStatsFromProperties(
 	sanityCheckStats(meta, &stats, logger, "stats from properties")
 	meta.PopulateStats(&stats)
 	return true
+}
+
+func adjustTieringHistogramsIfVirtual(
+	meta *manifest.TableMetadata, histograms *tieredmeta.TieringHistogramBlockContents,
+) {
+	if !meta.Virtual {
+		return
+	}
+	// TODO(sumeer): this is crude and inaccurate.
+	scaleFactor := float64(meta.Size) / float64(meta.TableBacking.Size)
+	for k, v := range histograms.Histograms {
+		v = v.Scale(scaleFactor)
+		histograms.Histograms[k] = v
+	}
 }
 
 func pointDeletionsBytesEstimate(
@@ -1233,7 +1249,6 @@ func (a tieringHistogramsAggregator) Accumulate(
 func (a tieringHistogramsAggregator) Merge(
 	src *tieredmeta.TieringHistogramBlockContents, dst *tieredmeta.TieringHistogramBlockContents,
 ) *tieredmeta.TieringHistogramBlockContents {
-	h := src.Clone()
-	h.Merge(dst)
-	return h
+	dst.Merge(src)
+	return dst
 }

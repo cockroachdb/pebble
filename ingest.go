@@ -308,6 +308,12 @@ func ingestLoad1(
 		}
 	}
 
+	var histograms tieredmeta.TieringHistogramBlockContents
+	histograms, err = r.ReadTieringHistogramBlock(ctx, block.NoReadEnv)
+	if err != nil {
+		return
+	}
+
 	meta = &manifest.TableMetadata{}
 	meta.TableNum = tableNum
 	meta.Size = max(uint64(readable.Size()), 1)
@@ -323,11 +329,8 @@ func ingestLoad1(
 	// disallowing removal of an open file. Under MemFS, if we don't populate
 	// meta.Stats here, the file will be loaded into the file cache for
 	// calculating stats before we can remove the original link.
-	//
-	// Assume for now that ingested files have no tiering histograms.
-	// TODO(sumeer): fix this by reading the histogram block above.
 	maybeSetStatsFromProperties(
-		meta.PhysicalMeta(), &props, tieredmeta.TieringHistogramBlockContents{}, opts.Logger)
+		meta.PhysicalMeta(), &props, histograms, opts.Logger)
 
 	var iterStats base.InternalIteratorStats
 	env := sstable.ReadEnv{

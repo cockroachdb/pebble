@@ -255,6 +255,24 @@ func (h *StatsHistogram) ageTo(bucketStart base.TieringAttribute) {
 	h.BucketStart = bucketStart
 }
 
+func (h *StatsHistogram) Scale(factor float64) StatsHistogram {
+	h2 := *h
+	scaleFunc := func(v uint64) uint64 {
+		if v == 0 {
+			return 0
+		}
+		return max(1, uint64(float64(v)*factor))
+	}
+	h2.UnderflowBytes = scaleFunc(h.UnderflowBytes)
+	h2.UnaccountedBytes = scaleFunc(h.UnaccountedBytes)
+	h2.ZeroBytes = scaleFunc(h.ZeroBytes)
+	for i := 0; i < numBuckets; i++ {
+		h2.Buckets[i].Bytes = scaleFunc(h.Buckets[i].Bytes)
+	}
+	h2.Count = scaleFunc(h.Count)
+	return h2
+}
+
 type histogramWriter struct {
 	stats StatsHistogram
 }

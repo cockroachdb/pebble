@@ -204,9 +204,8 @@ func DecodeTieringHistogramBlock(data []byte) (TieringHistogramBlockContents, er
 }
 
 func (c *TieringHistogramBlockContents) Merge(other *TieringHistogramBlockContents) {
-	if c.Histograms == nil {
-		c.Histograms = other.Histograms
-		return
+	if c.Histograms == nil && other.Histograms != nil {
+		c.Histograms = make(map[Key]StatsHistogram, len(other.Histograms))
 	}
 	for k, v := range other.Histograms {
 		if existing, ok := c.Histograms[k]; ok {
