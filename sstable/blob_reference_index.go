@@ -16,6 +16,7 @@ import (
 // blobReferenceValues tracks which values within a blob file are referenced
 // from an sstable being constructed.
 type blobReferenceValues struct {
+	initialized bool
 	// currentBlock tracks which values are referenced within the most-recently
 	// observed BlockID of the referenced blob file.
 	//
@@ -98,21 +99,14 @@ func (w *blobRefValueLivenessWriter) addLiveValue(
 
 	// If we don't already have a state for this reference, we might just need
 	// to grow.
-	if len(w.refState) < minLen {
-		// Check if we have jumped ahead more than one reference.
-		if len(w.refState) < minLen && len(w.refState)+1 != minLen {
-			return base.AssertionFailedf("jump from greatest reference ID %d to new reference "+
-				"ID %d greater than 1", len(w.refState)-1, refID)
-		}
-
-		// We have a new reference.
-		state := blobReferenceValues{}
-		state.initNewBlock(blockID)
-		w.refState = append(w.refState, state)
+	for len(w.refState) < minLen {
+		w.refState = append(w.refState, blobReferenceValues{})
 	}
-
 	state := &w.refState[refID]
-	if state.currentBlock.blockID != blockID {
+	if !state.initialized {
+		state.initialized = true
+		state.initNewBlock(blockID)
+	} else if state.currentBlock.blockID != blockID {
 		state.finishCurrentBlock()
 		state.initNewBlock(blockID)
 	}
@@ -122,13 +116,17 @@ func (w *blobRefValueLivenessWriter) addLiveValue(
 }
 
 // finish finishes encoding the per-blob reference liveness encodings, and
-// returns an in-order sequence of (referenceID, encoding) pairs.
+// returns an in-order dense sequence of (referenceID, encoding) pairs.
 func (w *blobRefValueLivenessWriter) finish() iter.Seq2[base.BlobReferenceID, []byte] {
 	return func(yield func(base.BlobReferenceID, []byte) bool) {
 		// N.B. `i` is equivalent to base.BlobReferenceID.
 		for i, state := range w.refState {
-			state.finishCurrentBlock()
-			if !yield(base.BlobReferenceID(i), state.encodedFinishedBlocks) {
+			var b []byte
+			if state.initialized {
+				state.finishCurrentBlock()
+				b = state.encodedFinishedBlocks
+			}
+			if !yield(base.BlobReferenceID(i), b) {
 				return
 			}
 		}

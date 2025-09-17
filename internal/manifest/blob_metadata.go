@@ -155,6 +155,9 @@ func (m *PhysicalBlobFile) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("%s size:[%d (%s)] vals:[%d (%s)]",
 		m.FileNum, redact.Safe(m.Size), humanize.Bytes.Uint64(m.Size),
 		redact.Safe(m.ValueSize), humanize.Bytes.Uint64(m.ValueSize))
+	if m.Tier == base.ColdTier {
+		w.Printf(" tier:cold")
+	}
 }
 
 // String implements fmt.Stringer.
@@ -334,6 +337,16 @@ func (br *BlobReferences) IDByBlobFileID(fileID base.BlobFileID) (base.BlobRefer
 		}
 	}
 	return base.BlobReferenceID(len(*br)), false
+}
+
+func (br *BlobReferences) HotTierBlobReferences() int {
+	count := 0
+	for _, ref := range *br {
+		if ref.FileID != 0 && ref.Tier == base.HotTier {
+			count++
+		}
+	}
+	return count
 }
 
 // BlobFileSet contains a set of blob files that are referenced by a version.
@@ -616,6 +629,10 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit, h BlobRewriteHeuristic) 
 	for _, levelTables := range bve.AddedTables {
 		for _, table := range levelTables {
 			for _, ref := range table.BlobReferences {
+				if ref.FileID == 0 {
+					// BlobReferences can be sparse.
+					continue
+				}
 				cbf, ok := s.files[ref.FileID]
 				if !ok {
 					panic(errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID))
@@ -767,6 +784,10 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 	for _, e := range ve.NewTables {
 		newTables[e.Meta.TableNum] = struct{}{}
 		for _, ref := range e.Meta.BlobReferences {
+			if ref.FileID == 0 {
+				// BlobReferences can be sparse.
+				continue
+			}
 			cbf, ok := s.files[ref.FileID]
 			if !ok {
 				return errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID)
@@ -785,6 +806,10 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 	// remove it from the set.
 	for _, meta := range ve.DeletedTables {
 		for _, ref := range meta.BlobReferences {
+			if ref.FileID == 0 {
+				// BlobReferences can be sparse.
+				continue
+			}
 			cbf, ok := s.files[ref.FileID]
 			if !ok {
 				return errors.AssertionFailedf("pebble: referenced blob file %d not found", ref.FileID)

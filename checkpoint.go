@@ -322,6 +322,10 @@ func (d *DB) Checkpoint(
 					includedBlobFiles = make(map[base.BlobFileID]struct{})
 				}
 				for _, ref := range f.BlobReferences {
+					if ref.FileID == 0 {
+						// BlobReferences can be slightly sparse.
+						continue
+					}
 					if _, ok := includedBlobFiles[ref.FileID]; !ok {
 						includedBlobFiles[ref.FileID] = struct{}{}
 

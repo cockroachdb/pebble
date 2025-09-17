@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -208,7 +209,24 @@ func TestMetrics(t *testing.T) {
 			closeFunc()
 		}
 	}()
-	init := func(t *testing.T, createOnSharedLower bool, reopen bool, targetFileSize int) {
+	tieringAttrExtractor := func(userKey []byte, value []byte) (TieringAttribute, error) {
+		columns := strings.Split(string(value), ":")
+		for _, c := range columns {
+			if strings.HasPrefix(c, "ts=") {
+				tsStr := strings.TrimPrefix(c, "ts=")
+				ts, err := strconv.Atoi(tsStr)
+				if err != nil {
+					return 0, err
+				}
+				return TieringAttribute(ts), nil
+			}
+		}
+		return 0, errors.Errorf("no tiering attribute found")
+	}
+	const initColdTierLTThreshold = 100
+	var coldTierLTThreshold TieringAttribute
+	init := func(t *testing.T, createOnSharedLower bool, reopen bool, targetFileSize int,
+		specifyTiering bool) {
 		if closeFunc != nil {
 			closeFunc()
 		}
@@ -218,6 +236,7 @@ func TestMetrics(t *testing.T) {
 		}
 		c := cache.New(cacheDefaultSize)
 		defer c.Unref()
+		coldTierLTThreshold = initColdTierLTThreshold
 		opts := &Options{
 			Cache:                 c,
 			Comparer:              testkeys.Comparer,
@@ -228,12 +247,31 @@ func TestMetrics(t *testing.T) {
 			// Large value for determinism.
 			MaxOpenFiles: 10000,
 		}
+		maxBlobReferenceDepth := 5
+		if specifyTiering {
+			opts.Experimental.SpanPolicyFunc =
+				func(bounds base.UserKeyBounds, breakAtShardEndBoundary bool) (policy SpanPolicy, err error) {
+					return SpanPolicy{
+						TieringPolicy: TieringPolicyAndExtractor{
+							Policy: TieringPolicy{
+								SpanID:              3,
+								ColdTierLTThreshold: coldTierLTThreshold,
+							},
+							ExtractAttribute: tieringAttrExtractor,
+						},
+					}, nil
+				}
+			// For ease of testing, allow rewrites every time and tiny moves to cold
+			// storage.
+			maxBlobReferenceDepth = 1
+			opts.Experimental.MinColdWriteSizeForNewColdFile = 1
+		}
 		opts.Experimental.EnableValueBlocks = func() bool { return true }
 		opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 			return ValueSeparationPolicy{
 				Enabled:               true,
 				MinimumSize:           3,
-				MaxBlobReferenceDepth: 5,
+				MaxBlobReferenceDepth: maxBlobReferenceDepth,
 			}
 		}
 		opts.TargetFileSizes[0] = int64(targetFileSize)
@@ -295,7 +333,11 @@ func TestMetrics(t *testing.T) {
 			if td.HasArg("target-file-size") {
 				td.ScanArgs(t, "target-file-size", &targetFileSize)
 			}
-			init(t, createOnSharedLower, reopen, targetFileSize)
+			specifyTiering := false
+			if td.HasArg("tiering") {
+				specifyTiering = true
+			}
+			init(t, createOnSharedLower, reopen, targetFileSize, specifyTiering)
 			return ""
 
 		case "example":
@@ -532,6 +574,12 @@ func TestMetrics(t *testing.T) {
 				d.problemSpans.Add(level, bounds, time.Hour*10)
 			}
 			return ""
+
+		case "advance-cold-tier-threshold":
+			var toAdd int
+			td.ScanArgs(t, "add", &toAdd)
+			coldTierLTThreshold += TieringAttribute(toAdd)
+			return fmt.Sprintf("cold tier LT threshold: %d", coldTierLTThreshold)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)

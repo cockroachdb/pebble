@@ -214,6 +214,8 @@ type Runner struct {
 	// Last range key span (or portion of it) that was not yet written to a table.
 	lastRangeKeySpan keyspan.Span
 	stats            Stats
+
+	scratchKV base.InternalKV
 }
 
 // NewRunner creates a new Runner.
@@ -412,6 +414,9 @@ func (r *Runner) writeKeysToTable(
 				tryUpdateTieringSpanIDAndEndKey(kv.K.UserKey)
 			}
 			if tieringPolicy.Policy.SpanID != 0 && kv.M.Tiering == (base.TieringMeta{}) {
+				// Don't modify the kv var that may be owned by the compact.Iter.
+				r.scratchKV = *kv
+				kv = &r.scratchKV
 				// Try to extract the TieringMeta.
 				val, _, err := kv.V.Value(nil)
 				if err != nil {

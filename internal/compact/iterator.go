@@ -496,6 +496,7 @@ func (i *Iter) Next() *base.InternalKV {
 			// therefore warrants some investigation.
 			i.saveKey()
 			i.kv.V = i.iterKV.V
+			i.kv.M = i.iterKV.M
 			if invariants.Enabled && !i.kv.V.IsInPlaceValue() {
 				panic(errors.AssertionFailedf("pebble: span key's value is not in-place"))
 			}
@@ -567,6 +568,7 @@ func (i *Iter) Next() *base.InternalKV {
 			case base.InternalKeyKindDelete:
 				i.saveKey()
 				i.kv.V = base.InternalValue{} // DELs are value-less.
+				i.kv.M = base.KVMeta{}
 				i.skip = true
 				return &i.kv
 
@@ -608,6 +610,7 @@ func (i *Iter) Next() *base.InternalKV {
 			var valueMerger base.ValueMerger
 			// MERGE values are always stored in-place.
 			valueMerger, i.err = i.cfg.Merge(i.iterKV.K.UserKey, i.iterKV.InPlaceValue())
+			meta := i.iterKV.M
 			if i.err == nil {
 				i.mergeNext(valueMerger)
 			}
@@ -625,6 +628,7 @@ func (i *Iter) Next() *base.InternalKV {
 						"unexpected kind %s", redact.SafeString(i.kv.K.Kind().String())))
 				}
 				i.kv.V, needDelete, i.valueCloser, i.err = finishValueMerger(valueMerger, includesBase)
+				i.kv.M = meta
 			}
 			if i.err == nil {
 				if needDelete {
@@ -799,6 +803,7 @@ func (i *Iter) setNext() {
 	// Save the current key.
 	i.saveKey()
 	i.kv.V = i.iterKV.V
+	i.kv.M = i.iterKV.M
 	i.maybeZeroSeqnum(i.curSnapshotIdx)
 
 	// If this key is already a SETWITHDEL we can early return and skip the remaining
@@ -946,6 +951,7 @@ func (i *Iter) singleDeleteNext() bool {
 		panic(errors.AssertionFailedf("pebble: single delete value is not in-place or is non-empty"))
 	}
 	i.kv.V = base.InternalValue{} // SINGLEDELs are value-less.
+	i.kv.M = base.KVMeta{}
 
 	// Loop until finds a key to be passed to the next level.
 	for {
@@ -1139,6 +1145,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 	// If the DELSIZED does have a value, it must be in-place.
 	i.valueBuf = append(i.valueBuf[:0], i.iterKV.InPlaceValue()...)
 	i.kv.V = base.MakeInPlaceValue(i.valueBuf)
+	i.kv.M = base.KVMeta{}
 
 	// Loop through all the keys within this stripe that are skippable.
 	i.pos = iterPosNext
@@ -1185,6 +1192,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 			// can just copy the in-place value directly.
 			i.valueBuf = append(i.valueBuf[:0], i.iterKV.InPlaceValue()...)
 			i.kv.V = base.MakeInPlaceValue(i.valueBuf)
+			i.kv.M = base.KVMeta{}
 			if i.iterKV.Kind() != base.InternalKeyKindDeleteSized {
 				// Convert the DELSIZED to a DEL—The DEL/SINGLEDEL we're eliding
 				// may not have deleted the key(s) it was intended to yet. The
@@ -1257,6 +1265,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 				i.cfg.MissizedDeleteCallback(i.kv.K.UserKey, elidedSize, expectedSize)
 				i.kv.K.SetKind(base.InternalKeyKindDelete)
 				i.kv.V = base.InternalValue{}
+				i.kv.M = base.KVMeta{}
 				// NB: We skipInStripe now, rather than returning leaving
 				// i.skip=true and returning early, because Next() requires
 				// that i.skip=true only if i.iterPos = iterPosCurForward.
@@ -1271,6 +1280,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 			// appropriately. The size encoded is 'consumed' the first time it
 			// meets a key that it deletes.
 			i.kv.V = base.InternalValue{}
+			i.kv.M = base.KVMeta{}
 
 		default:
 			i.err = base.CorruptionErrorf("invalid internal key kind: %d", errors.Safe(i.iterKV.Kind()))
@@ -1319,6 +1329,7 @@ func (i *Iter) saveValue() {
 	// Clone blob value handles to defer the retrieval of the value.
 	if i.iterKV.V.IsBlobValueHandle() {
 		i.kv.V, i.valueBuf = i.iterKV.V.Clone(i.valueBuf, &i.valueFetcher)
+		i.kv.M = i.iterKV.M
 		return
 	}
 
@@ -1326,11 +1337,14 @@ func (i *Iter) saveValue() {
 	if err != nil {
 		i.err = err
 		i.kv.V = base.InternalValue{}
+		i.kv.M = base.KVMeta{}
 	} else if !callerOwned {
 		i.valueBuf = append(i.valueBuf[:0], v...)
 		i.kv.V = base.MakeInPlaceValue(i.valueBuf)
+		i.kv.M = i.iterKV.M
 	} else {
 		i.kv.V = base.MakeInPlaceValue(v)
+		i.kv.M = i.iterKV.M
 	}
 }
 
