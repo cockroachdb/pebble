@@ -2106,3 +2106,155 @@ func TestWALCorruptionBitFlip(t *testing.T) {
 	}
 	checkBitFlipErr(err, t)
 }
+
+// TestCrashDuringOpenRandomized is a randomized test that simulates a hard crash
+// during database opening. It creates a database with some data, then simulates
+// opening it with injected filesystem slowness and crashes during the open
+// process. It ensures that the resulting DB state opens successfully, and the
+// contents of the DB match the expectations based on the keys written.
+func TestCrashDuringOpenRandomized(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("seed %d", seed)
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+
+	// Create initial database with some data.
+	mem := vfs.NewCrashableMem()
+	failoverOpts := WALFailoverOptions{
+		Secondary: wal.Dir{FS: mem, Dirname: "secondary"},
+		FailoverOptions: wal.FailoverOptions{
+			PrimaryDirProbeInterval:      100 * time.Microsecond,
+			HealthyProbeLatencyThreshold: 5 * time.Millisecond,
+			HealthyInterval:              50 * time.Microsecond,
+			UnhealthySamplingInterval:    10 * time.Microsecond,
+			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) {
+				return 50 * time.Microsecond, true
+			},
+			ElevatedWriteStallThresholdLag: 100 * time.Microsecond,
+		},
+	}
+	opts := &Options{
+		FS:                          mem,
+		FormatMajorVersion:          internalFormatNewest,
+		Logger:                      testutils.Logger{T: t},
+		MemTableSize:                128 << 10, // 128 KiB
+		MemTableStopWritesThreshold: 4,
+		WALFailover:                 &failoverOpts,
+	}
+
+	// Create and populate initial database.
+	d, err := Open("testdb", opts)
+	require.NoError(t, err)
+
+	testData := make(map[string][]byte)
+	for i := range 50 {
+		key := fmt.Sprintf("key-%d", i)
+		value := make([]byte, 100+rng.IntN(900)) // 100-1000 bytes
+		for j := range value {
+			value[j] = byte(i + j)
+		}
+		testData[key] = value
+		require.NoError(t, d.Set([]byte(key), value, Sync))
+	}
+	require.NoError(t, d.Close())
+
+	// Now simulate opening with a crash clone we have taken during open.
+	// Create options with latency injection and WAL failover for the slow
+	// open process.
+	mean := time.Duration(rng.ExpFloat64() * float64(time.Microsecond))
+	p := 1.0
+	t.Logf("injecting mean %s of latency with p=%.3f", mean, p)
+	slowFS := errorfs.Wrap(mem, errorfs.RandomLatency(
+		errorfs.Randomly(p, seed),
+		mean,
+		seed,
+		10*time.Millisecond,
+	))
+
+	// Create WAL failover options for the slow open.
+	slowFailoverOpts := failoverOpts
+	slowFailoverOpts.Secondary = wal.Dir{FS: slowFS, Dirname: "secondary"}
+	slowOpts := &Options{
+		FS:                          mem,
+		FormatMajorVersion:          internalFormatNewest,
+		Logger:                      testutils.Logger{T: t},
+		MemTableSize:                128 << 10,
+		MemTableStopWritesThreshold: 4,
+		WALFailover:                 &slowFailoverOpts,
+	}
+
+	// Start opening the database in a goroutine.
+	type openResult struct {
+		db  *DB
+		err error
+	}
+	openResultChan := make(chan openResult, 1)
+	go func() {
+		t.Log("opening database")
+		db, err := Open("testdb", slowOpts)
+		t.Log("opened database")
+		openResultChan <- openResult{db: db, err: err}
+	}()
+
+	// Wait a bit to let the open process make some progress.
+	time.Sleep(time.Millisecond * time.Duration(5+rng.IntN(10)))
+
+	// Take crash clone while the open process is still running.
+	t.Log("taking crash clone during open process")
+	crashClone := mem.CrashClone(vfs.CrashCloneCfg{
+		UnsyncedDataPercent: rng.IntN(101),
+		RNG:                 rng,
+	})
+
+	// Wait for the original open to complete (it might succeed or fail).
+	result := <-openResultChan
+	openedDB := result.db
+	if result.err != nil {
+		t.Errorf("open failed: %v", result.err)
+	}
+	if openedDB != nil {
+		if err := openedDB.Close(); err != nil {
+			t.Errorf("failed to close openedDB: %v", err)
+		}
+
+	}
+	t.Log("using crashed filesystem for recovery")
+	// Create WAL failover options for the crashed filesystem recovery.
+	crashedFailoverOpts := failoverOpts
+	crashedFailoverOpts.Secondary = wal.Dir{FS: crashClone, Dirname: "secondary"}
+
+	// Now try to open the crashed filesystem with WAL failover.
+	crashedOpts := &Options{
+		FS:                          crashClone,
+		FormatMajorVersion:          internalFormatNewest,
+		Logger:                      testutils.Logger{T: t},
+		MemTableSize:                128 << 10,
+		MemTableStopWritesThreshold: 4,
+		WALFailover:                 &crashedFailoverOpts,
+	}
+
+	recoveredDB, err := Open("testdb", crashedOpts)
+	require.NoError(t, err)
+
+	// Verify that we can read some of the expected data.
+	iter, err := recoveredDB.NewIter(nil)
+	require.NoError(t, err)
+
+	foundKeys := make(map[string][]byte)
+	for valid := iter.First(); valid; valid = iter.Next() {
+		key := string(iter.Key())
+		value := slices.Clone(iter.Value())
+		foundKeys[key] = value
+	}
+	require.NoError(t, iter.Close())
+
+	// Verify that found data matches expected data.
+	require.NotEmpty(t, foundKeys, "no keys found after crash")
+
+	// Check that all found keys match expected data.
+	for key, foundValue := range foundKeys {
+		expectedValue, exists := testData[key]
+		require.True(t, exists, "found unexpected key: %s", key)
+		require.Equal(t, expectedValue, foundValue, "mismatch for key %s", key)
+	}
+	require.NoError(t, recoveredDB.Close())
+}
