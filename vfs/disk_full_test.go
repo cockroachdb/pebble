@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
@@ -41,7 +40,7 @@ func TestOnDiskFull_FS(t *testing.T) {
 	for name, fn := range filesystemWriteOps {
 		t.Run(name, func(t *testing.T) {
 			innerFS := &enospcMockFS{}
-			innerFS.enospcs.Store(1)
+			innerFS.addENOSPC(1)
 			var callbackInvocations int
 			fs := OnDiskFull(innerFS, func() {
 				callbackInvocations++
@@ -55,7 +54,7 @@ func TestOnDiskFull_FS(t *testing.T) {
 			require.Equal(t, 1, callbackInvocations)
 			// The inner filesystem should be invoked twice because of the
 			// retry.
-			require.Equal(t, uint32(2), innerFS.invocations.Load())
+			require.Equal(t, 2, innerFS.mu.invocations)
 		})
 	}
 }
@@ -72,7 +71,7 @@ func TestOnDiskFull_File(t *testing.T) {
 		require.NoError(t, err)
 
 		// The next Write should ENOSPC.
-		innerFS.enospcs.Store(1)
+		innerFS.addENOSPC(1)
 
 		// Call the Write method on the wrapped file. The first call should return
 		// ENOSPC, but also that six bytes were written. Our registered callback
@@ -84,7 +83,7 @@ func TestOnDiskFull_File(t *testing.T) {
 		require.Equal(t, 1, callbackInvocations)
 		// The inner filesystem should be invoked 3 times. Once during Create
 		// and twice during Write.
-		require.Equal(t, uint32(3), innerFS.invocations.Load())
+		require.Equal(t, 3, innerFS.mu.invocations)
 	})
 	t.Run("Sync", func(t *testing.T) {
 		innerFS := &enospcMockFS{bytesWritten: 6}
@@ -98,30 +97,29 @@ func TestOnDiskFull_File(t *testing.T) {
 
 		// The next Sync should ENOSPC. The callback should be invoked, but a
 		// Sync cannot be retried.
-		innerFS.enospcs.Store(1)
+		innerFS.addENOSPC(1)
 
 		err = f.Sync()
 		require.Error(t, err)
 		require.Equal(t, 1, callbackInvocations)
 		// The inner filesystem should be invoked 2 times. Once during Create
 		// and once during Sync.
-		require.Equal(t, uint32(2), innerFS.invocations.Load())
+		require.Equal(t, 2, innerFS.mu.invocations)
 	})
 }
 
 func TestOnDiskFull_Concurrent(t *testing.T) {
-	innerFS := &enospcMockFS{
-		opDelay: 10 * time.Millisecond,
-	}
-	innerFS.enospcs.Store(10)
+	const concurrentWriters = 10
+	innerFS := &enospcMockFS{}
+	innerFS.mu.enospcs = concurrentWriters
 	var callbackInvocations atomic.Int32
 	fs := OnDiskFull(innerFS, func() {
 		callbackInvocations.Add(1)
 	})
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
+	wg.Add(concurrentWriters)
+	for range concurrentWriters {
 		go func() {
 			defer wg.Done()
 			_, err := fs.Create("foo", WriteCategoryUnspecified)
@@ -133,26 +131,51 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 	// Since all operations should start before the first one returns an
 	// ENOSPC, the callback should only be invoked once.
 	require.Equal(t, int32(1), callbackInvocations.Load())
-	require.Equal(t, uint32(20), innerFS.invocations.Load())
+	require.Equal(t, 2*concurrentWriters, innerFS.mu.invocations)
 }
 
 type enospcMockFS struct {
 	FS
-	opDelay      time.Duration
 	bytesWritten int
-	enospcs      atomic.Int32
-	invocations  atomic.Uint32
+
+	mu struct {
+		sync.Mutex
+		cond        sync.Cond
+		enospcs     int
+		invocations int
+	}
+}
+
+func (fs *enospcMockFS) addENOSPC(n int) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.mu.enospcs += n
 }
 
 func (fs *enospcMockFS) maybeENOSPC() error {
-	fs.invocations.Add(1)
-	v := fs.enospcs.Add(-1)
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	if fs.mu.cond.L == nil {
+		fs.mu.cond.L = &fs.mu.Mutex
+	}
 
-	// Sleep before returning so that tests may issue concurrent writes that
-	// fall into the same write generation.
-	time.Sleep(fs.opDelay)
+	fs.mu.invocations++
 
-	if v >= 0 {
+	// If there are any ENOSPCs left, inject one and return an error.
+	if fs.mu.enospcs > 0 {
+		fs.mu.enospcs--
+		// If there are remaining ENOSPCs, we wait for the other goroutines to
+		// reach this point. We wait on the condition variable until all ENOSPCs
+		// have been consumed. If we are the last goroutine to reach this point,
+		// we wake up any other goroutines waiting on the condition variable.
+		// This ensures that all the gorouintes part of the same 'write
+		// generation' are blocked together.
+		if fs.mu.enospcs == 0 {
+			fs.mu.cond.Broadcast()
+		}
+		for fs.mu.enospcs > 0 {
+			fs.mu.cond.Wait()
+		}
 		// Wrap the error to test error unwrapping.
 		err := &os.PathError{Op: "mock", Path: "mock", Err: syscall.ENOSPC}
 		return errors.Wrap(err, "uh oh")
