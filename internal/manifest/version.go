@@ -578,6 +578,20 @@ func (v *Version) Overlaps(level int, bounds base.UserKeyBounds) LevelSlice {
 	return v.Levels[level].Slice().Overlaps(v.cmp.Compare, bounds)
 }
 
+// HasOverlap is equivalent to len(v.Overlaps(level, bounds)) > 0 but more
+// efficient.
+func (v *Version) HasOverlap(level int, bounds base.UserKeyBounds) bool {
+	if level == 0 {
+		for sublevel := range v.L0SublevelFiles {
+			if v.L0SublevelFiles[sublevel].HasOverlap(v.cmp.Compare, bounds) {
+				return true
+			}
+		}
+		return false
+	}
+	return v.Levels[level].Slice().HasOverlap(v.cmp.Compare, bounds)
+}
+
 // AllLevelsAndSublevels returns an iterator that produces a Layer, LevelSlice
 // pair for each L0 sublevel (from top to bottom) and each level below L0.
 func (v *Version) AllLevelsAndSublevels() iter.Seq2[Layer, LevelSlice] {

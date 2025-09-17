@@ -268,6 +268,15 @@ type tableCompaction struct {
 
 	inputs []compactionLevel
 
+	// eventualOutputLevel is normally outputLevel.level, unless
+	// outputLevel.level+1 has no overlap with the compaction bounds (in which
+	// case it is the bottom-most consecutive level with no such overlap).
+	//
+	// Because of move compactions, we know that any sstables produced by this
+	// compaction will be later moved to eventualOutputLevel. So we use
+	// eventualOutputLevel when determining the target file size, compression
+	// options, etc.
+	eventualOutputLevel int
 	// maxOutputFileSize is the maximum size of an individual table created
 	// during compaction.
 	maxOutputFileSize uint64
@@ -278,9 +287,10 @@ type tableCompaction struct {
 	// The boundaries of the input data.
 	bounds base.UserKeyBounds
 
-	// grandparents are the tables in level+2 that overlap with the files being
-	// compacted. Used to determine output table boundaries. Do not assume that the actual files
-	// in the grandparent when this compaction finishes will be the same.
+	// grandparents are the tables in eventualOutputLevel+2 that overlap with the
+	// files being compacted. Used to determine output table boundaries. Do not
+	// assume that the actual files in the grandparent when this compaction
+	// finishes will be the same.
 	grandparents manifest.LevelSlice
 
 	delElision      compact.TombstoneElision
@@ -572,7 +582,18 @@ func newCompaction(
 		tableFormat: tableFormat,
 	}
 
-	targetFileSize := opts.TargetFileSize(pc.outputLevel.level, pc.baseLevel)
+	// Determine eventual output level.
+	c.eventualOutputLevel = pc.outputLevel.level
+	// TODO(radu): for intra-L0 compactions, we could check if the compaction
+	// includes all L0 files within the bounds.
+	if pc.outputLevel.level != 0 {
+		for c.eventualOutputLevel < manifest.NumLevels-1 && !c.version.HasOverlap(c.eventualOutputLevel+1, c.bounds) {
+			// All output tables are guaranteed to be moved down.
+			c.eventualOutputLevel++
+		}
+	}
+
+	targetFileSize := opts.TargetFileSize(c.eventualOutputLevel, pc.baseLevel)
 	c.maxOutputFileSize = uint64(targetFileSize)
 	c.maxOverlapBytes = maxGrandparentOverlapBytes(targetFileSize)
 
@@ -607,8 +628,8 @@ func newCompaction(
 	}
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
-	if c.outputLevel.level+1 < numLevels {
-		c.grandparents = c.version.Overlaps(max(c.outputLevel.level+1, pc.baseLevel), c.bounds)
+	if c.eventualOutputLevel < manifest.NumLevels-1 {
+		c.grandparents = c.version.Overlaps(max(c.eventualOutputLevel+1, pc.baseLevel), c.bounds)
 	}
 	c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
 		c.comparer.Compare, c.version, pc.l0Organizer, c.outputLevel.level, c.bounds,
@@ -668,7 +689,10 @@ func (c *tableCompaction) maybeSwitchToMoveOrCopy(
 	// We avoid a move or copy if there is lots of overlapping grandparent data.
 	// Otherwise, the move could create a parent file that will require a very
 	// expensive merge later on.
-	if c.grandparents.AggregateSizeSum() > c.maxOverlapBytes {
+	//
+	// Note that if eventualOutputLevel != outputLevel, there are no
+	// "grandparents" on the output level.
+	if c.eventualOutputLevel == c.outputLevel.level && c.grandparents.AggregateSizeSum() > c.maxOverlapBytes {
 		return
 	}
 
@@ -842,14 +866,19 @@ func newFlush(
 		logger:             opts.Logger,
 		inputs:             []compactionLevel{{level: -1}, {level: 0}},
 		getValueSeparation: getValueSeparation,
-		maxOutputFileSize:  math.MaxUint64,
-		maxOverlapBytes:    math.MaxUint64,
-		grantHandle:        noopGrantHandle{},
-		tableFormat:        tableFormat,
+		// TODO(radu): consider calculating the eventual output level for flushes.
+		// We expect the bounds to be very wide in practice, but perhaps we can do a
+		// finer-grained overlap analysis.
+		eventualOutputLevel: 0,
+		maxOutputFileSize:   math.MaxUint64,
+		maxOverlapBytes:     math.MaxUint64,
+		grantHandle:         noopGrantHandle{},
+		tableFormat:         tableFormat,
 		metrics: compactionMetrics{
 			beganAt: beganAt,
 		},
 	}
+
 	c.flush.flushables = flushing
 	c.flush.l0Limits = l0Organizer.FlushSplitKeys()
 	c.startLevel = &c.inputs[0]
@@ -3429,7 +3458,7 @@ func (d *DB) compactAndWrite(
 			spanPolicyValid = true
 		}
 
-		writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
+		writerOpts := d.opts.MakeWriterOptions(c.eventualOutputLevel, tableFormat)
 		if spanPolicy.DisableValueSeparationBySuffix {
 			writerOpts.DisableValueBlocks = true
 		}

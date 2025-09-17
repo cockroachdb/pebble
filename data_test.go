@@ -1425,31 +1425,35 @@ func runLayoutCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
 func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
 	var maxKeyLength, valLength int
 	var timestamps []int
+	var prefix string
 	td.ScanArgs(t, "keylen", &maxKeyLength)
 	td.MaybeScanArgs(t, "timestamps", &timestamps)
 	td.MaybeScanArgs(t, "vallen", &valLength)
+	td.MaybeScanArgs(t, "prefix", &prefix)
 	// Default to writing timestamps @1.
 	if len(timestamps) == 0 {
 		timestamps = append(timestamps, 1)
 	}
 
 	ks := testkeys.Alpha(maxKeyLength)
-	buf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
+	buf := make([]byte, len(prefix)+ks.MaxLen()+testkeys.MaxSuffixLen)
+	copy(buf, prefix)
 	vbuf := make([]byte, valLength)
 	for i := int64(0); i < ks.Count(); i++ {
 		for _, ts := range timestamps {
-			n := testkeys.WriteKeyAt(buf, ks, i, int64(ts))
+			n := testkeys.WriteKeyAt(buf[len(prefix):], ks, i, int64(ts))
+			key := buf[:len(prefix)+n]
 
 			// Default to using the key as the value, but if the user provided
 			// the vallen argument, generate a random value of the specified
 			// length.
-			value := buf[:n]
+			value := key
 			if valLength > 0 {
 				_, err := crand.Read(vbuf)
 				require.NoError(t, err)
 				value = vbuf
 			}
-			require.NoError(t, b.Set(buf[:n], value, nil))
+			require.NoError(t, b.Set(key, value, nil))
 		}
 	}
 }
