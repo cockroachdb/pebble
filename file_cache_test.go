@@ -5,14 +5,11 @@
 package pebble
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"os"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1184,75 +1181,6 @@ func TestFileCacheEvictClose(t *testing.T) {
 
 	for err := range errs {
 		require.NoError(t, err)
-	}
-}
-
-func TestFileCacheClockPro(t *testing.T) {
-	// Test data was generated from the python code. See also
-	// internal/cache/clockpro_test.go:TestCache.
-	f, err := os.Open("internal/cache/testdata/cache")
-	require.NoError(t, err)
-
-	mem := vfs.NewMem()
-	objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(mem, ""))
-	require.NoError(t, err)
-	defer objProvider.Close()
-
-	makeTable := func(dfn base.DiskFileNum) {
-		require.NoError(t, err)
-		f, _, err := objProvider.Create(context.Background(), base.FileTypeTable, dfn, objstorage.CreateOptions{})
-		require.NoError(t, err)
-		w := sstable.NewWriter(f, sstable.WriterOptions{})
-		require.NoError(t, w.Set([]byte("a"), nil))
-		require.NoError(t, w.Close())
-	}
-
-	// NB: The file cache size of 200 with a single shard is required for the
-	// expected test values.
-	fcs := newFileCacheTest(t, 8<<20 /* 8 MB */, 200, 1)
-	defer fcs.cleanup()
-
-	opts := &Options{
-		Cache:           fcs.blockCache,
-		FileCache:       fcs.fileCache,
-		LoggerAndTracer: &base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
-	}
-	opts.EnsureDefaults()
-	h := fcs.fileCache.newHandle(fcs.blockCacheHandle, objProvider, opts.LoggerAndTracer, opts.MakeReaderOptions(), noopCorruptionFn)
-	defer h.Close()
-
-	scanner := bufio.NewScanner(f)
-	tables := make(map[int]bool)
-	line := 1
-
-	for scanner.Scan() {
-		fields := bytes.Fields(scanner.Bytes())
-
-		key, err := strconv.Atoi(string(fields[0]))
-		require.NoError(t, err)
-
-		// Ensure that underlying sstables exist on disk, creating each table the
-		// first time it is seen.
-		if !tables[key] {
-			makeTable(base.DiskFileNum(key))
-			tables[key] = true
-		}
-
-		oldHits := fcs.fileCache.c.Metrics().Hits
-		m := &manifest.TableMetadata{TableNum: base.TableNum(key)}
-		m.InitPhysicalBacking()
-		m.TableBacking.Ref()
-		v, err := h.findOrCreateTable(context.Background(), m, initFileOpts{})
-		require.NoError(t, err)
-		v.Unref()
-
-		hit := fcs.fileCache.c.Metrics().Hits != oldHits
-		wantHit := fields[1][0] == 'h'
-		if hit != wantHit {
-			t.Errorf("%d: cache hit mismatch: got %v, want %v\n", line, hit, wantHit)
-		}
-		line++
-		m.TableBacking.Unref()
 	}
 }
 
