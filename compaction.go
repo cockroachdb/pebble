@@ -605,7 +605,7 @@ func newCompaction(
 	// Compute the set of outputLevel+1 files that overlap this compaction (these
 	// are the grandparent sstables).
 	if c.outputLevel.level+1 < numLevels {
-		c.grandparents = c.version.Overlaps(c.outputLevel.level+1, c.bounds)
+		c.grandparents = c.version.Overlaps(max(c.outputLevel.level+1, pc.baseLevel), c.bounds)
 	}
 	c.delElision, c.rangeKeyElision = compact.SetupTombstoneElision(
 		c.comparer.Compare, c.version, pc.l0Organizer, c.outputLevel.level, c.bounds,
