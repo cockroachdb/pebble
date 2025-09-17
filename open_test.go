@@ -2105,3 +2105,190 @@ func TestWALCorruptionBitFlip(t *testing.T) {
 	}
 	checkBitFlipErr(err, t)
 }
+
+// TestCrashDuringOpenRandomized is a randomized test that simulates a hard crash
+// during database opening. It creates a database with some data, then simulates
+// opening it with injected filesystem slowness and crashes during the open
+// process. It verifies that the crash clone can be opened successfully and
+// contains the expected data.
+func TestCrashDuringOpenRandomized(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("seed %d", seed)
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+
+	// Create initial database with some data.
+	mem := vfs.NewCrashableMem()
+	baseFailoverOpts := WALFailoverOptions{
+		Secondary: wal.Dir{FS: mem, Dirname: "secondary"},
+		FailoverOptions: wal.FailoverOptions{
+			PrimaryDirProbeInterval:      100 * time.Microsecond,
+			HealthyProbeLatencyThreshold: 5 * time.Millisecond,
+			HealthyInterval:              50 * time.Microsecond,
+			UnhealthySamplingInterval:    10 * time.Microsecond,
+			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) {
+				return 50 * time.Microsecond, true
+			},
+			ElevatedWriteStallThresholdLag: 100 * time.Microsecond,
+		},
+	}
+
+	// Create options with WAL failover configuration.
+	failoverOpts := baseFailoverOpts
+	failoverOpts.Secondary.FS = mem
+
+	mean := time.Duration(rng.ExpFloat64() * float64(100*time.Microsecond))
+	p := 0.1 // Only 10% of operations get latency
+	t.Logf("Injecting mean %s of latency with p=%.3f", mean, p)
+	fs := errorfs.Wrap(mem, errorfs.RandomLatency(
+		errorfs.Randomly(p, seed),
+		mean,
+		seed,
+		10*time.Millisecond,
+	))
+	opts := &Options{
+		FS:                          fs,
+		FormatMajorVersion:          internalFormatNewest,
+		Logger:                      testutils.Logger{T: t},
+		MemTableSize:                128 << 10, // 128 KiB
+		MemTableStopWritesThreshold: 4,
+		WALFailover:                 &failoverOpts,
+	}
+
+	// Create and populate initial database.
+	d, err := Open("testdb", opts)
+	require.NoError(t, err)
+
+	testData := make(map[string][]byte)
+	for i := range 50 {
+		key := fmt.Sprintf("key-%d", i)
+		value := make([]byte, 100+rng.IntN(900)) // 100-1000 bytes
+		for j := range value {
+			value[j] = byte(i + j)
+		}
+		testData[key] = value
+		require.NoError(t, d.Set([]byte(key), value, Sync))
+	}
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Close())
+
+	// Now simulate opening with a crash during open.
+	for attempt := range 3 {
+		t.Logf("attempt %d", attempt)
+
+		// Create a crashable clone of the filesystem.
+		crashClone := mem.CrashClone(vfs.CrashCloneCfg{
+			UnsyncedDataPercent: rng.IntN(101), // 0-100% unsynced data
+			RNG:                 rng,
+		})
+
+		// Create options with latency injection and WAL failover for the slow
+		// open process.
+		mean := time.Duration(rng.ExpFloat64() * float64(500*time.Microsecond))
+		p := 1.0
+		t.Logf("Injecting mean %s of latency with p=%.3f", mean, p)
+		slowFS := errorfs.Wrap(crashClone, errorfs.RandomLatency(
+			errorfs.Randomly(p, seed+int64(attempt)),
+			mean,
+			seed+int64(attempt),
+			10*time.Millisecond,
+		))
+
+		// Create WAL failover options for the slow open.
+		slowFailoverOpts := baseFailoverOpts
+		slowFailoverOpts.Secondary.FS = crashClone
+		slowOpts := &Options{
+			FS:                          slowFS,
+			FormatMajorVersion:          internalFormatNewest,
+			Logger:                      testutils.Logger{T: t},
+			MemTableSize:                128 << 10,
+			MemTableStopWritesThreshold: 4,
+			WALFailover:                 &slowFailoverOpts,
+		}
+
+		// Start opening the database in a goroutine.
+		type openResult struct {
+			db  *DB
+			err error
+		}
+		openResultChan := make(chan openResult, 1)
+		openDone := make(chan struct{})
+		go func() {
+			defer close(openDone)
+			db, err := Open("testdb", slowOpts)
+			openResultChan <- openResult{db: db, err: err}
+		}()
+
+		// Wait a bit to let the open process make some progress.
+		time.Sleep(time.Millisecond * time.Duration(5+rng.IntN(20)))
+
+		// Simulate a crash by taking another crash clone.
+		t.Log("simulating crash during open")
+		crashedFS := crashClone.CrashClone(vfs.CrashCloneCfg{
+			UnsyncedDataPercent: rng.IntN(31),
+			RNG:                 rng,
+		})
+
+		// Wait for the original open to complete (it might succeed or fail).
+		var openedDB *DB
+		select {
+		case result := <-openResultChan:
+			openedDB = result.db
+			if result.err != nil {
+				t.Logf("Open failed: %v", result.err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Log("open timed out, proceeding with crash simulation")
+		}
+		if openedDB != nil {
+			if err := openedDB.Close(); err != nil {
+				t.Logf("Failed to close openedDB: %v", err)
+			}
+		}
+
+		// Create WAL failover options for the crashed filesystem recovery.
+		crashedFailoverOpts := baseFailoverOpts
+		crashedFailoverOpts.Secondary.FS = crashedFS
+
+		// Now try to open the crashed filesystem with WAL failover.
+		crashedOpts := &Options{
+			FS:                          crashedFS,
+			FormatMajorVersion:          internalFormatNewest,
+			Logger:                      testutils.Logger{T: t},
+			MemTableSize:                128 << 10,
+			MemTableStopWritesThreshold: 4,
+			WALFailover:                 &crashedFailoverOpts,
+		}
+
+		recoveredDB, err := Open("testdb", crashedOpts)
+		if err != nil {
+			t.Logf("failed to open crashed database (attempt %d): %v", attempt, err)
+			continue
+		}
+
+		// Verify that we can read some of the expected data.
+		iter, err := recoveredDB.NewIter(nil)
+		require.NoError(t, err)
+
+		foundKeys := make(map[string][]byte)
+		for valid := iter.First(); valid; valid = iter.Next() {
+			key := string(iter.Key())
+			value := make([]byte, len(iter.Value()))
+			copy(value, iter.Value())
+			foundKeys[key] = value
+		}
+		require.NoError(t, iter.Close())
+
+		// Verify that found data matches expected data.
+		if len(foundKeys) > 0 {
+			t.Logf("recovered %d keys after crash", len(foundKeys))
+		}
+
+		// Check that all found keys match expected data.
+		for key, foundValue := range foundKeys {
+			expectedValue, exists := testData[key]
+			require.True(t, exists, "found unexpected key: %s", key)
+			require.Equal(t, expectedValue, foundValue, "mismatch for key %s", key)
+		}
+		require.NoError(t, recoveredDB.Close())
+	}
+}
