@@ -1993,7 +1993,7 @@ func TestWALHardCrashRandomized(t *testing.T) {
 				maxValueSize:        1 << (prng.IntN(19)), // [1, 256 KiB]
 				unsyncedDataPercent: prng.IntN(101),       // [0, 100]
 				seed:                seed,
-				numOps:              250,
+				numOps:              int(prng.ExpFloat64() * 100),
 				opCrashWeight:       1,
 				opBatchWeight:       20 << prng.IntN(3),
 			})
