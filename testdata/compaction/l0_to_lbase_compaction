@@ -1,7 +1,7 @@
 # Generate sstables with sequential, non-overlapping keys. When we trigger a compaction
 # from L0 to Lbase, we expect all the compactions to be moves, since there are no
 # overlapping keys being written.
-define l0-compaction-threshold=1 auto-compactions=off
+define l0-compaction-threshold=1 auto-compactions=off target-file-sizes=65536
 ----
 
 
@@ -10,25 +10,27 @@ set-concurrent-compactions range=(3,3)
 concurrency set to [3, 3]
 
 
-populate keylen=4 timestamps=(1) vallen=1
+populate keylen=3 timestamps=(1) vallen=1
 ----
-wrote 475254 keys
+wrote 18278 keys
 
 
 flush
 ----
 L0.0:
-  000005:[a@1#10,SET-itbq@1#159645,SET]
-  000006:[itbr@1#159646,SET-rmbh@1#319226,SET]
-  000007:[rmbi@1#319227,SET-zzzz@1#475263,SET]
+  000006:[a@1#10,SET-hci@1#4995,SET]
+  000007:[hcj@1#4996,SET-oex@1#9985,SET]
+  000008:[oey@1#9986,SET-vhm@1#14976,SET]
+  000009:[vhn@1#14977,SET-zzz@1#18287,SET]
 
 
 auto-compact count=3
 ----
 L6:
-  000005:[a@1#10,SET-itbq@1#159645,SET]
-  000006:[itbr@1#159646,SET-rmbh@1#319226,SET]
-  000007:[rmbi@1#319227,SET-zzzz@1#475263,SET]
+  000006:[a@1#10,SET-hci@1#4995,SET]
+  000007:[hcj@1#4996,SET-oex@1#9985,SET]
+  000008:[oey@1#9986,SET-vhm@1#14976,SET]
+  000009:[vhn@1#14977,SET-zzz@1#18287,SET]
 
 metrics
 ----
@@ -36,33 +38,33 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |  4.5MB |      0    0B |   0  1.32
-   L6        6MB |      3   6MB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
+   L0         0B |      0    0B |      0     0 |     0B     0B |  160KB |      0    0B |   0  1.47
+   L6      236KB |      4 236KB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total        6MB |      3   6MB |      0     0 |     0B     0B |  4.5MB |      0    0B |   1  2.32
+total      236KB |      4 236KB |      0     0 |     0B     0B |  160KB |      0    0B |   1  2.47
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      3    6MB     0B
-   L6 |     -  0.09  0.09 |      3   6MB |    0B    0B    0B |     0B    0B |      0     0B     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      4  236KB     0B
+   L6 |     -  0.00  0.00 |      4 236KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      3   6MB |    0B    0B    0B |     0B    0B |      3   10MB     0B
+total |     -     -     - |      4 236KB |    0B    0B    0B |     0B    0B |      4  396KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       0       0        0     3     0     0        0     0      0     0
+count |       0       0        0     4     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |      written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+--------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) | 4.5MB: 4.5MB |      0.0% |         2 |  1 (512KB) |  1 (512KB) |     9.5 M |      0 (0B)
+   1 (0B) | 160KB: 160KB |      0.0% |         1 |  1 (512KB) |  1 (512KB) |     328 K |      0 (0B)
 
 ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-1.5K (6.4MB) |       60.0% |     3 (840B) |       90.0% |         0.0% |           0 |           0
+  63 (251KB) |       78.0% |    4 (1.1KB) |       90.0% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -87,6 +89,6 @@ KEYS
 COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
-         none |         5.9MB |
+         none |         234KB |
 ----
 ----
