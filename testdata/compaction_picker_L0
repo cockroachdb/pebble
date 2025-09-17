@@ -258,6 +258,7 @@ pick-auto
 ----
 L0 -> L0
 L0: 000100,000110,000130,000140
+grandparents: 000200
 
 max-output-file-size
 ----
@@ -436,3 +437,4 @@ pick-auto non-score l0_compaction_threshold=1000
 ----
 L0 -> L0
 L0: 000049
+grandparents: 000045
