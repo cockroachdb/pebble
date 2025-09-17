@@ -1182,19 +1182,15 @@ func (l *L0CompactionFiles) addFile(f *TableMetadata) {
 	l.maxIntervalIndex = max(l.maxIntervalIndex, f.maxIntervalIndex)
 }
 
-// Helper to order intervals being considered for compaction.
 type intervalAndScore struct {
 	interval int
 	score    int
 }
-type intervalSorterByDecreasingScore []intervalAndScore
 
-func (is intervalSorterByDecreasingScore) Len() int { return len(is) }
-func (is intervalSorterByDecreasingScore) Less(i, j int) bool {
-	return is[i].score > is[j].score
-}
-func (is intervalSorterByDecreasingScore) Swap(i, j int) {
-	is[i], is[j] = is[j], is[i]
+func sortIntervalsByDecreasingScore(s []intervalAndScore) {
+	slices.SortFunc(s, func(a, b intervalAndScore) int {
+		return stdcmp.Compare(b.score, a.score)
+	})
 }
 
 // Compactions:
@@ -1401,7 +1397,7 @@ func (s *l0Sublevels) PickBaseCompaction(
 			scoredIntervals = append(scoredIntervals, intervalAndScore{interval: i, score: depth + sublevelCount})
 		}
 	}
-	sort.Sort(intervalSorterByDecreasingScore(scoredIntervals))
+	sortIntervalsByDecreasingScore(scoredIntervals)
 
 	// Optimization to avoid considering different intervals that
 	// are likely to choose the same seed file. Again this is just
@@ -1614,7 +1610,7 @@ func (s *l0Sublevels) PickIntraL0Compaction(
 		}
 		scoredIntervals[i] = intervalAndScore{interval: i, score: depth}
 	}
-	sort.Sort(intervalSorterByDecreasingScore(scoredIntervals))
+	sortIntervalsByDecreasingScore(scoredIntervals)
 
 	// Optimization to avoid considering different intervals that are likely to
 	// choose the same seed file. Again this is just to reduce wasted work.
