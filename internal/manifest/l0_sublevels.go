@@ -379,7 +379,7 @@ func mergeIntervals(
 				// the file bytes are interpolated over has changed.
 				estimatedBytes: 0,
 				// Copy the below attributes from prevInterval.
-				files:                         append([]*TableMetadata(nil), prevInterval.files...),
+				files:                         slices.Clone(prevInterval.files),
 				isBaseCompacting:              prevInterval.isBaseCompacting,
 				intervalRangeIsBaseCompacting: prevInterval.intervalRangeIsBaseCompacting,
 				compactingFileCount:           prevInterval.compactingFileCount,
@@ -463,11 +463,9 @@ func (s *l0Sublevels) addL0Files(
 	// Shallow copies of slices that we just append to, are okay.
 	newVal.levelFiles = make([][]*TableMetadata, len(s.levelFiles))
 	for i := range s.levelFiles {
-		newVal.levelFiles[i] = make([]*TableMetadata, len(s.levelFiles[i]))
-		copy(newVal.levelFiles[i], s.levelFiles[i])
+		newVal.levelFiles[i] = slices.Clone(s.levelFiles[i])
 	}
-	newVal.Levels = make([]LevelSlice, len(s.Levels))
-	copy(newVal.Levels, s.Levels)
+	newVal.Levels = slices.Clone(s.Levels)
 
 	fileKeys := make([]intervalKeyTemp, 0, 2*len(files))
 	for _, f := range files {
@@ -603,7 +601,7 @@ func (s *l0Sublevels) addL0Files(
 	}
 
 	// Sort and deduplicate updatedSublevels.
-	sort.Ints(updatedSublevels)
+	slices.Sort(updatedSublevels)
 	{
 		j := 0
 		for i := 1; i < len(updatedSublevels); i++ {
@@ -763,9 +761,8 @@ func (s *l0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 			return intervalKeyCompare(s.cmp, a.startKey, b)
 		})
 		for i := start; i < end && i < len(s.orderedIntervals); i++ {
-			interval := &s.orderedIntervals[i]
 			if !c.IsIntraL0 {
-				interval.isBaseCompacting = true
+				s.orderedIntervals[i].isBaseCompacting = true
 			}
 		}
 	}
@@ -908,12 +905,8 @@ func (s *l0Sublevels) describe(verbose bool) string {
 // sublevels.
 func (s *l0Sublevels) ReadAmplification() int {
 	amp := 0
-	for i := range s.orderedIntervals {
-		interval := &s.orderedIntervals[i]
-		fileCount := len(interval.files)
-		if amp < fileCount {
-			amp = fileCount
-		}
+	for _, interval := range s.orderedIntervals {
+		amp = max(amp, len(interval.files))
 	}
 	return amp
 }
@@ -995,12 +988,8 @@ func (s *l0Sublevels) FlushSplitKeys() [][]byte {
 // L0 -> Lbase compaction.
 func (s *l0Sublevels) MaxDepthAfterOngoingCompactions() int {
 	depth := 0
-	for i := range s.orderedIntervals {
-		interval := &s.orderedIntervals[i]
-		intervalDepth := len(interval.files) - interval.compactingFileCount
-		if depth < intervalDepth {
-			depth = intervalDepth
-		}
+	for _, interval := range s.orderedIntervals {
+		depth = max(depth, len(interval.files)-interval.compactingFileCount)
 	}
 	return depth
 }
@@ -1038,21 +1027,13 @@ func (s *l0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 		}
 	}
 	for _, f := range c.Files {
-		if fileIntervalsByLevel[f.SubLevel].min > f.minIntervalIndex {
-			fileIntervalsByLevel[f.SubLevel].min = f.minIntervalIndex
-		}
-		if fileIntervalsByLevel[f.SubLevel].max < f.maxIntervalIndex {
-			fileIntervalsByLevel[f.SubLevel].max = f.maxIntervalIndex
-		}
+		fileIntervalsByLevel[f.SubLevel].min = min(fileIntervalsByLevel[f.SubLevel].min, f.minIntervalIndex)
+		fileIntervalsByLevel[f.SubLevel].max = max(fileIntervalsByLevel[f.SubLevel].max, f.maxIntervalIndex)
 		includedFiles.markBit(f.L0Index)
 		if c.isIntraL0 {
-			if topLevel > f.SubLevel {
-				topLevel = f.SubLevel
-			}
+			topLevel = min(topLevel, f.SubLevel)
 		} else {
-			if topLevel < f.SubLevel {
-				topLevel = f.SubLevel
-			}
+			topLevel = max(topLevel, f.SubLevel)
 		}
 	}
 	min := fileIntervalsByLevel[topLevel].min
@@ -1109,20 +1090,15 @@ func (s *l0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 // and IsIntraL0Compacting fields are already set on all [TableMetadata]s passed
 // in.
 func (s *l0Sublevels) UpdateStateForStartedCompaction(inputs []LevelSlice, isBase bool) error {
-	minIntervalIndex := -1
+	minIntervalIndex := math.MaxInt
 	maxIntervalIndex := 0
 	for i := range inputs {
 		for f := range inputs[i].All() {
 			for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
-				interval := &s.orderedIntervals[i]
-				interval.compactingFileCount++
+				s.orderedIntervals[i].compactingFileCount++
 			}
-			if f.minIntervalIndex < minIntervalIndex || minIntervalIndex == -1 {
-				minIntervalIndex = f.minIntervalIndex
-			}
-			if f.maxIntervalIndex > maxIntervalIndex {
-				maxIntervalIndex = f.maxIntervalIndex
-			}
+			minIntervalIndex = min(minIntervalIndex, f.minIntervalIndex)
+			maxIntervalIndex = max(maxIntervalIndex, f.maxIntervalIndex)
 		}
 	}
 	if isBase {
@@ -1202,12 +1178,8 @@ func (l *L0CompactionFiles) addFile(f *TableMetadata) {
 	l.Files = append(l.Files, f)
 	l.filesAdded = append(l.filesAdded, f)
 	l.fileBytes += f.Size
-	if f.minIntervalIndex < l.minIntervalIndex {
-		l.minIntervalIndex = f.minIntervalIndex
-	}
-	if f.maxIntervalIndex > l.maxIntervalIndex {
-		l.maxIntervalIndex = f.maxIntervalIndex
-	}
+	l.minIntervalIndex = min(l.minIntervalIndex, f.minIntervalIndex)
+	l.maxIntervalIndex = max(l.maxIntervalIndex, f.maxIntervalIndex)
 }
 
 // Helper to order intervals being considered for compaction.
@@ -1918,12 +1890,9 @@ func (s *l0Sublevels) extendCandidateToRectangle(
 	candidate.preExtensionMaxInterval = candidate.maxIntervalIndex
 	// Extend {min,max}IntervalIndex to include all of the candidate's current
 	// bounds.
-	if minIntervalIndex > candidate.minIntervalIndex {
-		minIntervalIndex = candidate.minIntervalIndex
-	}
-	if maxIntervalIndex < candidate.maxIntervalIndex {
-		maxIntervalIndex = candidate.maxIntervalIndex
-	}
+	minIntervalIndex = min(minIntervalIndex, candidate.minIntervalIndex)
+	maxIntervalIndex = max(maxIntervalIndex, candidate.maxIntervalIndex)
+
 	var startLevel, increment, endLevel int
 	if isBase {
 		startLevel = 0
