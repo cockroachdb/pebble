@@ -760,6 +760,11 @@ type Options struct {
 		// SpanPolicyFunc is used to determine the SpanPolicy for a key region. It
 		// will be nil when there are no span policies defined.
 		SpanPolicyFunc SpanPolicyFunc
+
+		// MinColdWriteSizeForNewColdFile is the minimum total size of cold values
+		// in hot storage for a TieringSpanID involved in a compaction, for them
+		// to be moved to cold storage.
+		MinColdWriteSizeForNewColdFile uint64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1671,6 +1676,9 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.MultiLevelCompactionHeuristic == nil {
 		o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
+	}
+	if o.Experimental.MinColdWriteSizeForNewColdFile == 0 {
+		o.Experimental.MinColdWriteSizeForNewColdFile = 1 << 20 // 1 MB
 	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.

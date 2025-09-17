@@ -616,6 +616,10 @@ func (v *Version) validateBlobFileInvariants() error {
 		for i := 0; i < len(v.Levels); i++ {
 			for table := range v.Levels[i].All() {
 				for _, br := range table.BlobReferences {
+					if br.FileID == 0 {
+						// BlobReferences can be sparse.
+						continue
+					}
 					referencedFileIDsMap[br.FileID] = struct{}{}
 				}
 			}

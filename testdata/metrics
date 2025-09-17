@@ -2747,3 +2747,791 @@ Iter category stats:
        pebble-ingest,     latency: {BlockBytes:167 BlockBytesInCache:0 BlockReadDuration:20ms}
 ----
 ----
+
+
+# Start writing cold blob files. The cold tier threshold is initially 100.
+init target-file-size=8192 tiering
+----
+
+# Three cold kvs and one hot kv.
+batch
+set a ts=10:aaaa
+set b ts=50:bbbb
+set c ts=90:cccc
+set d ts=130:dddd
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-d#13,SET]
+Blob files:
+  B000006 physical:{000006 size:[342 (342B)] vals:[41 (41B)]}
+
+metrics
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0      1.2KB |      1  896B |      0     0 |   342B     0B |    80B |      0    0B |   1 19.75
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total      1.2KB |      1  896B |      0     0 |   342B     0B |    80B |      0    0B |   1 20.75
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      1   896B   684B
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      1   976B   684B
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       0       0        0     0     0     0        0     0      0     0
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |   69B: 80B |     15.9% |         1 |  1 (256KB) |  1 (256KB) |       149 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   1 (342B) |     0 (0B) |    41B | 100% (41B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
+COMPRESSION
+    algorithm | none  snappy
+on disk bytes |  56B    195B
+           CR |          1.2
+Tiering Histogram L0
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  4     0B    72:0B    80:0B    88:1B    96:0B    104:0B   112:0B   120:0B   128:1B   136:0B   144:0B   2B    0B
+3  2  4     0B    72:0B    80:0B    88:10B   96:0B    104:0B   112:0B   120:0B   128:11B  136:0B   144:0B   20B   0B
+Tiering Histogram L1
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L2
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L3
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L4
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L5
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L6
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
+----
+----
+
+# Another cold kv. There are no cold blob files yet, since everything is in
+# L0.
+batch
+set b1 ts=50:b1b1
+----
+
+flush
+----
+L0.1:
+  000008:[b1#14,SET-b1#14,SET]
+L0.0:
+  000005:[a#10,SET-d#13,SET]
+Blob files:
+  B000006 physical:{000006 size:[342 (342B)] vals:[41 (41B)]}
+  B000009 physical:{000009 size:[302 (302B)] vals:[10 (10B)]}
+
+metrics
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0      2.3KB |      2 1.7KB |      0     0 |   644B     0B |   126B |      0    0B |   2 24.06
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total      2.3KB |      2 1.7KB |      0     0 |   644B     0B |   126B |      0    0B |   2 25.06
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.7KB  1.3KB
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      2  1.8KB  1.3KB
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       0       0        0     0     0     0        0     0      0     0
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |  96B: 126B |     31.2% |         2 |  1 (256KB) |  1 (256KB) |       222 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |        0.0% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   2 (644B) |     0 (0B) |    51B | 100% (51B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
+COMPRESSION
+    algorithm | none  snappy
+on disk bytes | 113B    342B
+           CR |         1.28
+Tiering Histogram L0
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  5     0B    72:0B    80:0B    88:1B    96:0B    104:0B   112:0B   120:0B   128:1B   136:0B   144:0B   4B    0B
+3  2  5     0B    72:0B    80:0B    88:10B   96:0B    104:0B   112:0B   120:0B   128:11B  136:0B   144:0B   30B   0B
+Tiering Histogram L1
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L2
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L3
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L4
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L5
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L6
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
+----
+----
+
+# Compaction to L6, creates a cold blob file 11. It will never be rewritten.
+compact a-z
+----
+L6:
+  000010:[a#0,SET-d#0,SET]
+Blob files:
+  B000011 physical:{000011 size:[341 (341B)] vals:[40 (40B)] tier:cold}
+  B000012 physical:{000012 size:[303 (303B)] vals:[11 (11B)]}
+
+metrics
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0         0B |      0    0B |      0     0 |     0B     0B |   126B |      0    0B |   0 24.06
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6      1.5KB |      1  921B |      0     0 |   644B     0B |  1.7KB |      0    0B |   1  0.90
+total      1.5KB |      1  921B |      0     0 |   644B     0B |   126B |      0    0B |   1 37.48
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.7KB  1.3KB
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   342B  120B |      1   921B   644B
+total |     -     -     - |      0    0B |    0B    0B    0B |   342B  120B |      3  2.7KB  1.9KB
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) |  96B: 126B |     31.2% |         2 |  1 (256KB) |  1 (256KB) |       222 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |       33.3% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   2 (644B) |     0 (0B) |    51B | 100% (51B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
+COMPRESSION
+    algorithm | none  snappy
+on disk bytes |  61B    215B
+           CR |         1.27
+Tiering Histogram L0
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L1
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L2
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L3
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L4
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L5
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L6
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  5     0B    72:0B    80:0B    88:1B    96:0B    104:0B   112:0B   120:0B   128:1B   136:0B   144:0B   4B    0B
+3  2  1     0B    72:0B    80:0B    88:0B    96:0B    104:0B   112:0B   120:0B   128:11B  136:0B   144:0B   0B    0B
+3  3  4     0B    72:0B    80:0B    88:10B   96:0B    104:0B   112:0B   120:0B   128:0B   136:0B   144:0B   30B   0B
+
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:462 BlockBytesInCache:0 BlockReadDuration:40ms}
+----
+----
+
+# Write another cold kv.
+batch
+set b2 ts=80:b1b1b1b1
+----
+
+flush
+----
+L0.0:
+  000014:[b2#15,SET-b2#15,SET]
+L6:
+  000010:[a#0,SET-d#0,SET]
+Blob files:
+  B000011 physical:{000011 size:[341 (341B)] vals:[40 (40B)] tier:cold}
+  B000012 physical:{000012 size:[303 (303B)] vals:[11 (11B)]}
+  B000015 physical:{000015 size:[306 (306B)] vals:[14 (14B)]}
+
+metrics
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0      1.1KB |      1  854B |      0     0 |   306B     0B |   176B |      0    0B |   1 25.56
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6      1.5KB |      1  921B |      0     0 |   644B     0B |  1.7KB |      0    0B |   1  0.90
+total      2.7KB |      2 1.7KB |      0     0 |   950B     0B |   176B |      0    0B |   2 35.45
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      3  2.5KB  1.9KB
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   342B  120B |      1   921B   644B
+total |     -     -     - |      0    0B |    0B    0B    0B |   342B  120B |      4  3.6KB  2.5KB
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       1       0        0     0     0     0        0     0      0     0
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 127B: 176B |     38.6% |         3 |  1 (256KB) |  1 (256KB) |       303 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |       33.3% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   3 (950B) |     0 (0B) |    65B | 100% (65B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+            2.3KB |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
+COMPRESSION
+    algorithm | none  snappy
+on disk bytes | 118B    368B
+           CR |         1.29
+Tiering Histogram L0
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  1     0B    72:0B    80:2B    88:0B    96:0B    104:0B   112:0B   120:0B   128:0B   136:0B   144:0B   0B    0B
+3  2  1     0B    72:0B    80:14B   88:0B    96:0B    104:0B   112:0B   120:0B   128:0B   136:0B   144:0B   0B    0B
+Tiering Histogram L1
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L2
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L3
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L4
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L5
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L6
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  5     0B    72:0B    80:0B    88:1B    96:0B    104:0B   112:0B   120:0B   128:1B   136:0B   144:0B   4B    0B
+3  2  1     0B    72:0B    80:0B    88:0B    96:0B    104:0B   112:0B   120:0B   128:11B  136:0B   144:0B   0B    0B
+3  3  4     0B    72:0B    80:0B    88:10B   96:0B    104:0B   112:0B   120:0B   128:0B   136:0B   144:0B   30B   0B
+
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:462 BlockBytesInCache:0 BlockReadDuration:40ms}
+----
+----
+
+# Blob file 11 and 17 are cold.
+compact a-z
+----
+L6:
+  000016:[a#0,SET-d#0,SET]
+Blob files:
+  B000011 physical:{000011 size:[341 (341B)] vals:[40 (40B)] tier:cold}
+  B000017 physical:{000017 size:[306 (306B)] vals:[14 (14B)] tier:cold}
+  B000018 physical:{000018 size:[303 (303B)] vals:[11 (11B)]}
+
+metrics
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0         0B |      0    0B |      0     0 |     0B     0B |   176B |      0    0B |   0 25.56
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6      1.8KB |      1  939B |      0     0 |   950B     0B |  2.5KB |      0    0B |   1  1.20
+total      1.8KB |      1  939B |      0     0 |   950B     0B |   176B |      0    0B |   1 44.24
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      3  2.5KB  1.9KB
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   686B  205B |      2  1.8KB  1.2KB
+total |     -     -     - |      0    0B |    0B    0B    0B |   686B  205B |      5  4.5KB  3.1KB
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       2       0        0     0     0     0        0     0      0     0
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 127B: 176B |     38.6% |         3 |  1 (256KB) |  1 (256KB) |       303 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |       33.3% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   3 (950B) |     0 (0B) |    65B | 100% (65B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
+COMPRESSION
+    algorithm | none  snappy
+on disk bytes |  66B    228B
+           CR |         1.24
+Tiering Histogram L0
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L1
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L2
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L3
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L4
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L5
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L6
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  6     0B    72:0B    80:2B    88:1B    96:0B    104:0B   112:0B   120:0B   128:1B   136:0B   144:0B   4B    0B
+3  2  1     0B    72:0B    80:0B    88:0B    96:0B    104:0B   112:0B   120:0B   128:11B  136:0B   144:0B   0B    0B
+3  3  5     0B    72:0B    80:14B   88:10B   96:0B    104:0B   112:0B   120:0B   128:0B   136:0B   144:0B   30B   0B
+
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:891 BlockBytesInCache:0 BlockReadDuration:80ms}
+----
+----
+
+# Advance the cold tier threshold so that everything in the LSM can become
+# cold.
+advance-cold-tier-threshold add=36
+----
+cold tier LT threshold: 136
+
+# Nothing happens, since there is nothing to compact.
+compact a-z
+----
+L6:
+  000016:[a#0,SET-d#0,SET]
+Blob files:
+  B000011 physical:{000011 size:[341 (341B)] vals:[40 (40B)] tier:cold}
+  B000017 physical:{000017 size:[306 (306B)] vals:[14 (14B)] tier:cold}
+  B000018 physical:{000018 size:[303 (303B)] vals:[11 (11B)]}
+
+# Add some more cold data.
+batch
+set b3 ts=130:alongvaluecontainingb3
+----
+
+# Flushed to L0. Nothing changes in L6.
+flush
+----
+L0.0:
+  000020:[b3#16,SET-b3#16,SET]
+L6:
+  000016:[a#0,SET-d#0,SET]
+Blob files:
+  B000011 physical:{000011 size:[341 (341B)] vals:[40 (40B)] tier:cold}
+  B000017 physical:{000017 size:[306 (306B)] vals:[14 (14B)] tier:cold}
+  B000018 physical:{000018 size:[303 (303B)] vals:[11 (11B)]}
+  B000021 physical:{000021 size:[321 (321B)] vals:[29 (29B)]}
+
+metrics
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0      1.1KB |      1  854B |      0     0 |   321B     0B |   241B |      0    0B |   1 24.87
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6      1.8KB |      1  939B |      0     0 |   950B     0B |  2.5KB |      0    0B |   1  1.20
+total        3KB |      2 1.8KB |      0     0 |  1.2KB     0B |   241B |      0    0B |   2 38.79
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      4  3.4KB  2.5KB
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   686B  205B |      2  1.8KB  1.2KB
+total |     -     -     - |      0    0B |    0B    0B    0B |   686B  205B |      6  5.4KB  3.7KB
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       2       0        0     0     0     0        0     0      0     0
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 173B: 241B |     39.3% |         4 |  1 (256KB) |  1 (256KB) |       414 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |       33.3% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |  4 (1.2KB) |     0 (0B) |    94B | 100% (94B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+            2.4KB |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
+COMPRESSION
+    algorithm | none  snappy
+on disk bytes | 123B    381B
+           CR |         1.28
+Tiering Histogram L0
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  1     0B    104:0B   112:0B   120:0B   128:2B   136:0B   144:0B   152:0B   160:0B   168:0B   176:0B   0B    0B
+3  2  1     0B    104:0B   112:0B   120:0B   128:29B  136:0B   144:0B   152:0B   160:0B   168:0B   176:0B   0B    0B
+Tiering Histogram L1
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L2
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L3
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L4
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L5
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L6
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  6     0B    72:0B    80:2B    88:1B    96:0B    104:0B   112:0B   120:0B   128:1B   136:0B   144:0B   4B    0B
+3  2  1     0B    72:0B    80:0B    88:0B    96:0B    104:0B   112:0B   120:0B   128:11B  136:0B   144:0B   0B    0B
+3  3  5     0B    72:0B    80:14B   88:10B   96:0B    104:0B   112:0B   120:0B   128:0B   136:0B   144:0B   30B   0B
+
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:891 BlockBytesInCache:0 BlockReadDuration:80ms}
+----
+----
+
+# Compact. Everything is in cold blob files now.
+compact a-z
+----
+L6:
+  000022:[a#0,SET-d#0,SET]
+Blob files:
+  B000011 physical:{000011 size:[341 (341B)] vals:[40 (40B)] tier:cold}
+  B000017 physical:{000017 size:[306 (306B)] vals:[14 (14B)] tier:cold}
+  B000023 physical:{000023 size:[335 (335B)] vals:[40 (40B)] tier:cold}
+
+metrics
+----
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0         0B |      0    0B |      0     0 |     0B     0B |   241B |      0    0B |   0 24.87
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    5         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    6      1.9KB |      1  929B |      0     0 |   982B     0B |  3.4KB |      0    0B |   1  1.27
+total      1.9KB |      1  929B |      0     0 |   982B     0B |   241B |      0    0B |   1 44.03
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      4  3.4KB  2.5KB
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    5 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |    1KB  305B |      3  2.7KB  1.6KB
+total |     -     -     - |      0    0B |    0B    0B    0B |    1KB  305B |      7  6.3KB    4KB
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |       3       0        0     0     0     0        0     0      0     0
+
+COMMIT PIPELINE
+               wals                |              memtables              |       ingestions
+    files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
+----------+------------+-----------+-----------+------------+------------+-----------+------------
+   1 (0B) | 173B: 241B |     39.3% |         4 |  1 (256KB) |  1 (256KB) |       414 |      0 (0B)
+
+ITERATORS
+        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
+     entries |    hit rate |      entries |    hit rate |         util |        open |        open
+-------------+-------------+--------------+-------------+--------------+-------------+------------
+      0 (0B) |        0.0% |       0 (0B) |       33.3% |         0.0% |           0 |           0
+
+FILES                 tables                       |       blob files        |     blob values
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
+--------------+------------+-----------------------+------------+------------+--------+-----------
+   all loaded |     0 (0B) |       0 (0B local:0B) |   3 (982B) |     0 (0B) |    94B | 100% (94B)
+
+CGO MEMORY    |          block cache           |                     memtables
+          tot |           tot |           data |            maps |            ents |           tot
+--------------+---------------+----------------+-----------------+-----------------+--------------
+           0B |            0B |             0B |              0B |              0B |            0B
+
+COMPACTIONS
+   estimated debt |       in progress |         cancelled |            failed |      problem spans
+------------------+-------------------+-------------------+-------------------+-------------------
+               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+
+KEYS
+      range keys |       tombstones |      missized tombstones |      point dels |      range dels
+-----------------+------------------+--------------------------+-----------------+----------------
+               0 |                0 |                        0 |              0B |              0B
+
+COMPRESSION
+    algorithm | none  snappy
+on disk bytes |  67B    217B
+           CR |         1.22
+Tiering Histogram L0
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L1
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L2
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L3
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L4
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L5
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+Tiering Histogram L6
+sp k  n     zero  b0       b1       b2       b3       b4       b5       b6       b7       b8       b9       uf    uc
+-----------------------------------------------------------------------------------------------------------------------
+3  0  7     0B    104:0B   112:0B   120:0B   128:3B   136:0B   144:0B   152:0B   160:0B   168:0B   176:0B   7B    0B
+3  3  7     0B    104:0B   112:0B   120:0B   128:40B  136:0B   144:0B   152:0B   160:0B   168:0B   176:0B   54B   0B
+
+Iter category stats:
+   pebble-compaction, non-latency: {BlockBytes:1345 BlockBytesInCache:0 BlockReadDuration:120ms}
+----
+----

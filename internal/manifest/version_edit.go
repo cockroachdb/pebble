@@ -1318,6 +1318,10 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 
 			// Validate that all referenced blob files exist.
 			for i, ref := range f.BlobReferences {
+				if ref.FileID == 0 {
+					// BlobReferences can be sparse.
+					continue
+				}
 				phys, ok := v.BlobFiles.LookupPhysical(ref.FileID)
 				if !ok {
 					return nil, errors.AssertionFailedf("pebble: blob file %s referenced by L%d.%s not found",

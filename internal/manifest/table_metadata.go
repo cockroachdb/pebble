@@ -321,17 +321,25 @@ func (m *TableMetadata) VirtualMeta() *TableMetadata {
 // incrementally-updated metrics.
 func (m *TableMetadata) EstimatedReferenceSize() uint64 {
 	var size uint64
-	for i := range m.BlobReferences {
-		size += m.BlobReferences[i].EstimatedPhysicalSize
+	for _, ref := range m.BlobReferences {
+		if ref.FileID == 0 {
+			// BlobReferences can be sparse.
+			continue
+		}
+		size += ref.EstimatedPhysicalSize
 	}
 	return size
 }
 
 func (m *TableMetadata) EstimatedHotReferenceSize() uint64 {
 	var size uint64
-	for i := range m.BlobReferences {
-		if m.BlobReferences[i].Tier == base.HotTier {
-			size += m.BlobReferences[i].EstimatedPhysicalSize
+	for _, ref := range m.BlobReferences {
+		if ref.FileID == 0 {
+			// BlobReferences can be sparse.
+			continue
+		}
+		if ref.Tier == base.HotTier {
+			size += ref.EstimatedPhysicalSize
 		}
 	}
 	return size
@@ -947,7 +955,9 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 	// Assert that there's a nonzero blob reference depth if and only if the
 	// table has a nonzero count of blob references. Additionally, the file's
 	// blob reference depth should be bounded by the number of blob references.
-	if (len(m.BlobReferences) == 0) != (m.BlobReferenceDepth == 0) || m.BlobReferenceDepth > BlobReferenceDepth(len(m.BlobReferences)) {
+	hotTierBlobRefs := m.BlobReferences.HotTierBlobReferences()
+	if (hotTierBlobRefs == 0) != (m.BlobReferenceDepth == 0) ||
+		m.BlobReferenceDepth > BlobReferenceDepth(hotTierBlobRefs) {
 		return base.CorruptionErrorf("table %s with %d blob refs but %d blob ref depth",
 			m.TableNum, len(m.BlobReferences), m.BlobReferenceDepth)
 	}

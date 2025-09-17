@@ -55,13 +55,12 @@ func (d *DB) determineCompactionValueSeparation(
 	// We're allowed to write blob references. Determine whether we should carry
 	// forward existing blob references, or write new ones.
 	writeBlobs, outputBlobReferenceDepth, coldWriteSpans :=
-		shouldWriteBlobFiles(c, policy, cttRetriever)
+		shouldWriteBlobFiles(c, policy, cttRetriever, d.opts.Experimental.MinColdWriteSizeForNewColdFile)
 	if !writeBlobs {
 		// This compaction should preserve existing blob references.
 		return newPreserveAllHotBlobReferences(
 			inputBlobPhysicalFiles, outputBlobReferenceDepth)
 	}
-	_ = coldWriteSpans
 	// This compaction should write values to new blob files.
 	writerOpts := d.opts.MakeBlobWriterOptions(c.outputLevel.level, d.BlobFileFormat())
 	writerOpts.CTTRetriever = cttRetriever
@@ -85,14 +84,11 @@ func (d *DB) determineCompactionValueSeparation(
 					value, err),
 			})
 		},
-		nil,
+		coldWriteSpans,
 	)
 }
 
 const minLevelForColdBlobFiles = 5
-
-// TODO(sumeer): make this configurable.
-const coldTierValSizeThreshold = 50
 
 // shouldWriteBlobFiles returns true if the compaction should write new blob
 // files.
@@ -116,6 +112,7 @@ func shouldWriteBlobFiles(
 	c *tableCompaction,
 	policy ValueSeparationPolicy,
 	cttRetriever tieredmeta.ColdTierThresholdRetriever,
+	minColdWriteSizeForNewColdFile uint64,
 ) (
 	writeBlobs bool,
 	referenceDepth manifest.BlobReferenceDepth,
@@ -170,7 +167,7 @@ func shouldWriteBlobFiles(
 				k.KindAndTier == base.SSTableBlobReferenceColdBytes {
 				continue
 			}
-			if k.KindAndTier == base.SSTableValueBytes && h.MeanSize() < coldTierValSizeThreshold {
+			if k.KindAndTier == base.SSTableValueBytes && h.MeanSize() < uint64(policy.MinimumSize) {
 				continue
 			}
 			v := tieringSpansLTThreshold[k.TieringSpanID]
@@ -178,9 +175,7 @@ func shouldWriteBlobFiles(
 			tieringSpansLTThreshold[k.TieringSpanID] = v
 		}
 		for spanID, v := range tieringSpansLTThreshold {
-			// TODO(sumeer): make this byte threshold a function of the level, and the
-			// number of input bytes in the compaction.
-			if v.valueBytes > 1e6 {
+			if v.valueBytes > minColdWriteSizeForNewColdFile {
 				if coldWriteSpans == nil {
 					coldWriteSpans = make(map[base.TieringSpanID]struct{})
 				}
@@ -257,6 +252,10 @@ func uniqueInputBlobMetadatas(
 	for _, level := range levels {
 		for t := range level.files.All() {
 			for _, ref := range t.BlobReferences {
+				if ref.FileID == 0 {
+					// BlobReferences can be sparse.
+					continue
+				}
 				if _, ok := m[ref.FileID]; ok {
 					continue
 				}
@@ -878,7 +877,8 @@ func (vs *generalizedValueSeparation) Add(
 				valueSize:  0,
 			})
 		}
-		if invariants.Enabled && vs.currPreservedReferences[refID].blobFileID != fileID {
+		if invariants.Enabled &&
+			vs.currPreservedReferences[refID-vs.preservedReferenceIndexOffset].blobFileID != fileID {
 			panic("wrong reference index")
 		}
 		handleSuffix := blob.DecodeHandleSuffix(lv.ValueOrHandle)
@@ -894,7 +894,8 @@ func (vs *generalizedValueSeparation) Add(
 		if err != nil {
 			return err
 		}
-		vs.currPreservedReferences[refID].valueSize += uint64(lv.Fetcher.Attribute.ValueLen)
+		vs.currPreservedReferences[refID-vs.preservedReferenceIndexOffset].valueSize +=
+			uint64(lv.Fetcher.Attribute.ValueLen)
 		vs.totalPreservedValueSize[referenceTier] += uint64(lv.Fetcher.Attribute.ValueLen)
 		return nil
 	}
@@ -913,7 +914,7 @@ func (vs *generalizedValueSeparation) Add(
 	}
 	// Key is SET or SETWITHDEL.
 	writeToColdBlob :=
-		vs.mode == rewriteAllHotBlobReferences && shouldBeCold && len(v) >= coldTierValSizeThreshold &&
+		vs.mode == rewriteAllHotBlobReferences && shouldBeCold && len(v) >= vs.minimumSize &&
 			vs.tieringSpanForNewColdBlobFile == kv.M.Tiering.SpanID
 	writeToHotBlob := !writeToColdBlob && vs.mode == rewriteAllHotBlobReferences
 	if writeToHotBlob {
@@ -1001,6 +1002,10 @@ func (vs *generalizedValueSeparation) FinishOutput() (compact.ValueSeparationMet
 			// sum of all the reference value sizes.
 			totalValueSize := uint64(0)
 			for _, ref := range vs.currPreservedReferences {
+				if ref.blobFileID == 0 {
+					return compact.ValueSeparationMetadata{},
+						errors.AssertionFailedf("unexpected zero blobFileID in reference")
+				}
 				if phys, ok := vs.inputBlobPhysicalFiles[ref.blobFileID]; ok && phys.Tier == i {
 					totalValueSize += ref.valueSize
 				}

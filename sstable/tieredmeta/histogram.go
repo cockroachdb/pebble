@@ -280,7 +280,7 @@ type histogramWriter struct {
 func newHistogramWriter(curColdTierLTThreshold base.TieringAttribute) *histogramWriter {
 	cur := curColdTierLTThreshold + tempAgeThreshold
 	bucketLength := tempAgeThreshold / (numBuckets / 2) // 20% granularity
-	lastBucketEnd := (cur + 2*bucketLength - 1) / bucketLength
+	lastBucketEnd := ((cur + 2*bucketLength - 1) / bucketLength) * bucketLength
 	var bucketStart base.TieringAttribute
 	if lastBucketEnd >= (bucketLength * numBuckets) {
 		bucketStart = lastBucketEnd - (bucketLength * numBuckets)
