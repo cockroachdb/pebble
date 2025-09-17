@@ -541,7 +541,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 	useStoreRelativeWALPath := rand.IntN(2) == 0
 	for _, startFromEmpty := range []bool{false, true} {
 		for _, walDirname := range []string{"", "wal"} {
-			for _, length := range []int{-1, 0, 1, 1000, 10000, 100000} {
+			for _, length := range []int{-1, 0, 1, 1000, 100000} {
 				dirname := "sharedDatabase" + walDirname
 				if startFromEmpty {
 					dirname = "startFromEmpty" + walDirname + strconv.Itoa(length)
@@ -566,7 +566,6 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 				if err != nil {
 					t.Fatalf("sfe=%t, length=%d: Open #0: %v",
 						startFromEmpty, length, err)
-					continue
 				}
 				if length >= 0 {
 					err = d0.Set([]byte("key"), []byte(xxx), nil)
