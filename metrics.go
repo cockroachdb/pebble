@@ -756,11 +756,12 @@ var (
 	blockCacheInfoTableTopHeader = `BLOCK CACHE`
 	blockCacheInfoTable          = table.Define[blockCacheInfo](
 		func() []table.Element {
-			e := make([]table.Element, 1, 1+2*cache.NumCategories)
-			e[0] = table.String("all", 6, table.AlignRight, func(i blockCacheInfo) string { return i.missRate })
+			e := make([]table.Element, 0, 3+cache.NumCategories)
+			e = append(e, table.String("level", 6, table.AlignCenter, func(i blockCacheInfo) string { return i.level }))
+			e = append(e, table.String("all", 11, table.AlignCenter, func(i blockCacheInfo) string { return i.missRate }))
+			e = append(e, table.Div())
 			for c := range cache.Categories {
-				e = append(e, table.Div())
-				e = append(e, table.String(c.String(), 11, table.AlignRight, func(i blockCacheInfo) string {
+				e = append(e, table.String(c.String(), 12, table.AlignCenter, func(i blockCacheInfo) string {
 					return i.perCategory[c]
 				}))
 			}
@@ -856,26 +857,51 @@ type commitPipelineInfo struct {
 }
 
 type blockCacheInfo struct {
+	level       string
 	missRate    string
 	perCategory [cache.NumCategories]string
 }
 
-func makeBlockCacheInfo(hm *cache.HitsAndMisses) blockCacheInfo {
-	hits, misses := hm.Aggregate()
-	var bci blockCacheInfo
-	bci.missRate = fmt.Sprintf("%.1f%%", hitRate(hits, misses))
-	decimals := func(v float64) int {
-		if v >= 9.95 {
-			return 0
+func makeBlockCacheInfo(hm *cache.HitsAndMisses) []blockCacheInfo {
+	// missRateAndPercentage returns a string that shows misses/(hits+misses) and
+	// misses/totalMisses as percentages; for example: "12% [4.5%]".
+	missRateAndPercentage := func(hits, misses, totalMisses int64) string {
+		if hits == 0 && misses == 0 {
+			return ""
 		}
-		return 1
+		return fmt.Sprintf("%s [%s]",
+			crhumanize.Percent(misses, hits+misses),
+			crhumanize.Percent(misses, totalMisses),
+		)
 	}
-	for i := range bci.perCategory {
-		mr := percent(hm[i].Misses, hm[i].Hits+hm[i].Misses)
-		p := percent(hm[i].Misses, misses)
-		bci.perCategory[i] = fmt.Sprintf("%.*f%% [%.*f%%]", decimals(mr), mr, decimals(p), p)
+
+	totalHits, totalMisses := hm.Aggregate()
+	res := make([]blockCacheInfo, 0, cache.NumLevels+1)
+	for level := range cache.Levels {
+		levelHits, levelMisses := hm.AggregateLevel(level)
+		if levelHits == 0 && levelMisses == 0 {
+			// Skip levels with no activity.
+			continue
+		}
+		bci := blockCacheInfo{
+			level:    level.String(),
+			missRate: missRateAndPercentage(levelHits, levelMisses, totalMisses),
+		}
+		for category := range cache.Categories {
+			hits, misses := hm.Get(level, category)
+			bci.perCategory[category] = missRateAndPercentage(hits, misses, totalMisses)
+		}
+		res = append(res, bci)
 	}
-	return bci
+	last := blockCacheInfo{
+		level:    "total",
+		missRate: fmt.Sprintf("%s%%", crhumanize.Float(percent(totalMisses, totalHits+totalMisses), 1)),
+	}
+	for category := range cache.Categories {
+		catHits, catMisses := hm.AggregateCategory(category)
+		last.perCategory[category] = missRateAndPercentage(catHits, catMisses, totalMisses)
+	}
+	return append(res, last)
 }
 
 type iteratorInfo struct {
@@ -1008,20 +1034,26 @@ func (m *Metrics) String() string {
 
 	cur = cur.WriteString("                 miss rate [percentage of total misses] since start\n")
 	bci := makeBlockCacheInfo(&m.BlockCache.HitsAndMisses)
-	cur = blockCacheInfoTable.Render(cur, table.RenderOptions{}, bci)
+	cur = blockCacheInfoTable.Render(cur, table.RenderOptions{
+		HorizontalDividers: table.MakeHorizontalDividers(0, len(bci)-1),
+	}, bci...)
 	cur = cur.NewlineReturn()
 
 	if m.BlockCache.Recent[0].Since != 0 {
 		cur = cur.WriteString("                 miss rate [percentage of total misses] over last ~10m\n") // TODO(radu): print exact timeframe
 		bci = makeBlockCacheInfo(&m.BlockCache.Recent[0].HitsAndMisses)
-		cur = blockCacheInfoTable.Render(cur, table.RenderOptions{}, bci)
+		cur = blockCacheInfoTable.Render(cur, table.RenderOptions{
+			HorizontalDividers: table.MakeHorizontalDividers(0, len(bci)-1),
+		}, bci...)
 		cur = cur.NewlineReturn()
 	}
 
 	if m.BlockCache.Recent[1].Since != 0 {
 		cur = cur.WriteString("                 miss rate [percentage of total misses] over last ~1h\n") // TODO(radu): print exact timeframe
 		bci = makeBlockCacheInfo(&m.BlockCache.Recent[1].HitsAndMisses)
-		cur = blockCacheInfoTable.Render(cur, table.RenderOptions{}, bci)
+		cur = blockCacheInfoTable.Render(cur, table.RenderOptions{
+			HorizontalDividers: table.MakeHorizontalDividers(0, len(bci)-1),
+		}, bci...)
 		cur = cur.NewlineReturn()
 	}
 

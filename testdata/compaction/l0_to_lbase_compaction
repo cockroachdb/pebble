@@ -60,9 +60,13 @@ COMMIT PIPELINE
 
 BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start
-   all |  background |     sstdata |      sstval |     blobval |      filter |       index
--------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% | 100% [100%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%]
+level      all     |  background    sstdata       sstval      blobval       filter       index
+-------------------+------------------------------------------------------------------------------
+ n/a   100% [0.1%] | 100% [0.1%]
+  L0   100% [60%]  |  100% [60%]
+  L6   100% [40%]  |  100% [40%]
+-------------------+------------------------------------------------------------------------------
+total     100%     | 100% [100%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open

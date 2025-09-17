@@ -76,7 +76,7 @@ func (k key) String() string {
 	return fmt.Sprintf("%d/%d/%d", k.id, k.fileNum, k.offset)
 }
 
-type counters [NumCategories]struct {
+type counters [NumLevels][NumCategories]struct {
 	hits   atomic.Int64
 	misses atomic.Int64
 }
@@ -140,7 +140,7 @@ func (c *shard) init(maxSize int64) {
 // case the caller is responsible to dereference the entry, via one of
 // unrefAndTryRemoveFromMap(), setReadValue(), setReadError()).
 func (c *shard) getWithMaybeReadEntry(
-	k key, category Category, desireReadEntry bool,
+	k key, level Level, category Category, desireReadEntry bool,
 ) (*Value, *readEntry) {
 	c.mu.RLock()
 	if e, _ := c.blocks.Get(k); e != nil {
@@ -150,7 +150,7 @@ func (c *shard) getWithMaybeReadEntry(
 				e.referenced.Store(true)
 			}
 			c.mu.RUnlock()
-			c.counters[category].hits.Add(1)
+			c.counters[level.index()][category].hits.Add(1)
 			return value, nil
 		}
 	}
@@ -159,7 +159,7 @@ func (c *shard) getWithMaybeReadEntry(
 		re = c.readShard.acquireReadEntry(k)
 	}
 	c.mu.RUnlock()
-	c.counters[category].misses.Add(1)
+	c.counters[level.index()][category].misses.Add(1)
 	return nil, re
 }
 

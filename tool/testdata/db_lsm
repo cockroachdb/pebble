@@ -36,9 +36,9 @@ COMMIT PIPELINE
 
 BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start
-   all |  background |     sstdata |      sstval |     blobval |      filter |       index
--------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%]
+level      all     |  background    sstdata       sstval      blobval       filter       index
+-------------------+------------------------------------------------------------------------------
+total      0%      |
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -102,9 +102,9 @@ COMMIT PIPELINE
 
 BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start
-   all |  background |     sstdata |      sstval |     blobval |      filter |       index
--------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%]
+level      all     |  background    sstdata       sstval      blobval       filter       index
+-------------------+------------------------------------------------------------------------------
+total      0%      |
 
 ITERATORS
         file cache        |    filter   |    open     |    open
