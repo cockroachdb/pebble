@@ -71,7 +71,7 @@ func TestBasic(t *testing.T) {
 	c.Close()
 }
 
-func TestFileCacheClockPro(t *testing.T) {
+func TestClockPro(t *testing.T) {
 	// Reuse the data from the block cache. See
 	// internal/cache/clockpro_test.go:TestCache.
 	f, err := os.Open("../cache/testdata/cache")
