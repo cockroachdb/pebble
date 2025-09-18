@@ -7,6 +7,7 @@ package sstable
 import (
 	"encoding/binary"
 	"iter"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -55,9 +56,12 @@ func (s *blobReferenceValues) finishCurrentBlock() {
 	if s.currentBlock.valuesSize == 0 {
 		panic(errors.AssertionFailedf("no pending current block"))
 	}
+	// Ensure there's enough space for the bytes we're about to append.
+	bitmapSize := s.currentBlock.bitmap.Size()
+	s.encodedFinishedBlocks = slices.Grow(s.encodedFinishedBlocks, 3*binary.MaxVarintLen64+bitmapSize)
 	s.encodedFinishedBlocks = binary.AppendUvarint(s.encodedFinishedBlocks, uint64(s.currentBlock.blockID))
 	s.encodedFinishedBlocks = binary.AppendUvarint(s.encodedFinishedBlocks, s.currentBlock.valuesSize)
-	s.encodedFinishedBlocks = binary.AppendUvarint(s.encodedFinishedBlocks, uint64(s.currentBlock.bitmap.Size()))
+	s.encodedFinishedBlocks = binary.AppendUvarint(s.encodedFinishedBlocks, uint64(bitmapSize))
 	s.encodedFinishedBlocks = s.currentBlock.bitmap.FinishAndAppend(s.encodedFinishedBlocks)
 }
 
@@ -107,6 +111,7 @@ func (w *blobRefValueLivenessWriter) addLiveValue(
 
 		// We have a new reference.
 		state := blobReferenceValues{}
+		state.encodedFinishedBlocks = slices.Grow(state.encodedFinishedBlocks, 512)
 		state.initNewBlock(blockID)
 		w.refState = append(w.refState, state)
 	}
