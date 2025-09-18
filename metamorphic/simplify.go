@@ -21,6 +21,7 @@ func TryToSimplifyKeys(keyFormat KeyFormat, opsData []byte, retainSuffixes bool)
 	ops, err := parse(opsData, parserOpts{
 		parseFormattedUserKey:       keyFormat.ParseFormattedKey,
 		parseFormattedUserKeySuffix: keyFormat.ParseFormattedKeySuffix,
+		parseMaximumSuffixProperty:  keyFormat.ParseMaximumSuffixProperty,
 	})
 	if err != nil {
 		panic(err)

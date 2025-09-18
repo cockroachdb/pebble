@@ -5,7 +5,7 @@ snap9 = db2.NewSnapshot("a", "z")
 db2.RangeKeyDelete("d", "f")
 db2.Compact("g", "i", true /* parallelize */)
 db2.Replicate(db1, "b", "f")
-iter25 = db1.NewIter("", "", 2 /* key types */, "", "", false /* use L6 filters */, "@7" /* masking suffix */)
+iter25 = db1.NewIter("", "", 2 /* key types */, "", "", false /* use L6 filters */, "@7" /* masking suffix */, "" /* maximum suffix property */)
 iter25.SeekGE("e", "")
 ----
                                                         Init(2 /* dbs */, 49 /* batches */, 63 /* iters */, 45 /* snapshots */, 0 /* externalObjs */)
@@ -14,7 +14,7 @@ iter25.SeekGE("e", "")
                   |-----------|                         db2.RangeKeyDelete("d", "f")
                                     |-----------|       db2.Compact("g", "i", true /* parallelize */)
       |-----------------------|                         db2.Replicate(db1, "b", "f")
-                                                        iter25 = db1.NewIter("", "", 2 /* key types */, "", "", false /* use L6 filters */, "@7" /* masking suffix */)
+                                                        iter25 = db1.NewIter("", "", 2 /* key types */, "", "", false /* use L6 filters */, "@7" /* masking suffix */, "" /* maximum suffix property */)
                         |                               iter25.SeekGE("e", "")
 |-----|-----|-----|-----|-----|-----|-----|-----|-----|
 a     b     c     d     e     f     g     h     i     z
