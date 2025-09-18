@@ -1778,6 +1778,7 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 func TestWALFailoverRandomized(t *testing.T) {
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
+	rng := rand.New(rand.NewPCG(1, uint64(seed)))
 	makeOptions := func(mem *vfs.MemFS) *Options {
 		failoverOpts := WALFailoverOptions{
 			Secondary: wal.Dir{FS: mem, Dirname: "secondary"},
@@ -1793,8 +1794,8 @@ func TestWALFailoverRandomized(t *testing.T) {
 			},
 		}
 
-		mean := time.Duration(rand.ExpFloat64() * float64(time.Microsecond))
-		p := rand.Float64()
+		mean := time.Duration(rng.ExpFloat64() * float64(time.Microsecond))
+		p := rng.Float64()
 		t.Logf("Injecting mean %s of latency with p=%.3f", mean, p)
 		fs := errorfs.Wrap(mem, errorfs.RandomLatency(errorfs.Randomly(p, seed), mean, seed, time.Second))
 		return &Options{
@@ -1806,12 +1807,13 @@ func TestWALFailoverRandomized(t *testing.T) {
 			WALFailover:                 &failoverOpts,
 		}
 	}
+	numOps := int(rand.ExpFloat64() * 200)
 	runRandomizedCrashTest(t, randomizedCrashTestOptions{
 		makeOptions:         makeOptions,
 		maxValueSize:        4096,
 		seed:                seed,
 		unsyncedDataPercent: 50,
-		numOps:              1000,
+		numOps:              numOps,
 		opCrashWeight:       1,
 		opBatchWeight:       20,
 	})
