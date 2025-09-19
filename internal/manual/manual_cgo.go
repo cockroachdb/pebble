@@ -39,9 +39,9 @@ var useGoAllocation = invariants.RaceEnabled && rand.Uint32()%2 == 0
 // runtime page allocator and allocate large chunks of memory using mmap or
 // similar.
 
-// New allocates a slice of size n. The returned slice is from manually managed
-// memory and MUST be released by calling Free. Failure to do so will result in
-// a memory leak.
+// New allocates a slice of size n. The returned slice is from manually
+// managed memory and MUST be released by calling Free. Failure to do so will
+// result in a memory leak.
 func New(purpose Purpose, n uintptr) Buf {
 	if n == 0 {
 		return Buf{}
@@ -67,39 +67,7 @@ func New(purpose Purpose, n uintptr) Buf {
 	//   passing uninitialized C memory to Go code if the Go code is going to
 	//   store pointer values in it. Zero out the memory in C before passing it
 	//   to Go.
-	//
-	// See https://github.com/golang/go/issues/19928
 	ptr := C.calloc(C.size_t(n), 1)
-	if ptr == nil {
-		// NB: throw is like panic, except it guarantees the process will be
-		// terminated. The call below is exactly what the Go runtime invokes when
-		// it cannot allocate memory.
-		throw("out of memory")
-	}
-	return Buf{data: ptr, n: n}
-}
-
-// NewUninitialized allocates a slice of size n without zeroing it out. The
-// returned slice is from manually managed memory and MUST be released by
-// calling Free. Failure to do so will result in a memory leak (see
-// https://github.com/golang/go/issues/19928).
-//
-// If the caller does an unsafe cast from the slice to any type containing
-// pointers, the relevant part of the slice *must* be zeroed out.
-func NewUninitialized(purpose Purpose, n uintptr) Buf {
-	if n == 0 {
-		return Buf{}
-	}
-	recordAlloc(purpose, n)
-
-	// In race-enabled builds, we sometimes make allocations using Go to allow
-	// the race detector to observe concurrent memory access to memory allocated
-	// by this package. See the definition of useGoAllocation for more details.
-	if invariants.RaceEnabled && useGoAllocation {
-		b := make([]byte, n)
-		return Buf{data: unsafe.Pointer(&b[0]), n: n}
-	}
-	ptr := C.malloc(C.size_t(n))
 	if ptr == nil {
 		// NB: throw is like panic, except it guarantees the process will be
 		// terminated. The call below is exactly what the Go runtime invokes when
