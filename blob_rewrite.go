@@ -159,6 +159,7 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 			DiskFileNum: c.input.Physical.FileNum,
 			Size:        c.input.Physical.Size,
 			ValueSize:   c.input.Physical.ValueSize,
+			Tier:        c.input.Physical.Tier,
 		},
 	}
 	d.opts.EventListener.BlobFileRewriteBegin(info)
@@ -175,6 +176,7 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 		info.Output.DiskFileNum = ve.NewBlobFiles[0].Physical.FileNum
 		info.Output.Size = ve.NewBlobFiles[0].Physical.Size
 		info.Output.ValueSize = ve.NewBlobFiles[0].Physical.ValueSize
+		info.Output.Tier = ve.NewBlobFiles[0].Physical.Tier
 		_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 			// It's possible that concurrent compactions removed references to
 			// the blob file while the blob file rewrite compaction was running.
@@ -279,7 +281,8 @@ func (d *DB) runBlobFileRewriteLocked(
 	}
 
 	// Create a new file for the rewritten blob file.
-	writable, objMeta, err := d.newCompactionOutputBlob(jobID, compactionKindBlobFileRewrite, -1, &c.bytesWritten, c.objCreateOpts)
+	writable, objMeta, err := d.newCompactionOutputBlob(
+		jobID, compactionKindBlobFileRewrite, -1, &c.bytesWritten, c.objCreateOpts, c.input.Physical.Tier)
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
 	}

@@ -812,6 +812,21 @@ const (
 	NumStorageTiers
 )
 
+func (t StorageTier) String() string {
+	switch t {
+	case HotTier:
+		return "hot"
+	case ColdTier:
+		return "cold"
+	default:
+		return fmt.Sprintf("unknown:%d", t)
+	}
+}
+
+func (t StorageTier) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Print(redact.SafeString(t.String()))
+}
+
 type KindAndTier uint8
 
 const (

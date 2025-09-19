@@ -2150,12 +2150,10 @@ func (d *DB) Metrics() *Metrics {
 	backingCount, backingTotalSize := d.mu.versions.latest.virtualBackings.Stats()
 	metrics.Table.BackingTableCount = uint64(backingCount)
 	metrics.Table.BackingTableSize = backingTotalSize
-	blobStats, _ := d.mu.versions.latest.blobFiles.Stats()
+	blobStats, coldBlobStats, _ := d.mu.versions.latest.blobFiles.Stats()
 	d.mu.versions.logUnlock()
-	metrics.BlobFiles.LiveCount = blobStats.Count
-	metrics.BlobFiles.LiveSize = blobStats.PhysicalSize
-	metrics.BlobFiles.ValueSize = blobStats.ValueSize
-	metrics.BlobFiles.ReferencedValueSize = blobStats.ReferencedValueSize
+	metrics.BlobFiles.BlobFileStats.Set(&blobStats)
+	metrics.BlobFiles.Cold.Set(&coldBlobStats)
 
 	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
 	if err := metrics.LogWriter.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
@@ -2407,7 +2405,8 @@ func (d *DB) makeFileSizeAnnotator(
 		Aggregator: manifest.SumAggregator{
 			AccumulateFunc: func(f *manifest.TableMetadata) (uint64, bool) {
 				if filter(f) {
-					return f.Size + f.EstimatedReferenceSize(), true
+					refSize, _ := f.EstimatedReferenceSize()
+					return f.Size + refSize, true
 				}
 				return 0, true
 			},
@@ -2421,7 +2420,8 @@ func (d *DB) makeFileSizeAnnotator(
 					// Scale the blob reference size proportionally to the file
 					// overlap from the bounds to approximate only the blob
 					// references that overlap with the requested bounds.
-					return overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
+					refSize, _ := f.EstimatedReferenceSize()
+					return overlappingFileSize + uint64(float64(refSize)*overlapFraction)
 				}
 				return 0
 			},

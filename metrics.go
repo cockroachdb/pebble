@@ -70,7 +70,8 @@ type LevelMetrics struct {
 	// The estimated total physical size of all blob references across all
 	// sstables in the level. The physical size is estimated based on the size
 	// of referenced values and the values' blob file's compression ratios.
-	EstimatedReferencesSize uint64
+	EstimatedReferencesSize     uint64
+	EstimatedColdReferencesSize uint64
 	// The level's compaction score, used to rank levels (0 if the level doesn't
 	// need compaction). See candidateLevelInfo.
 	Score float64
@@ -170,6 +171,7 @@ func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.VirtualTablesCount += u.VirtualTablesCount
 	m.VirtualTablesSize += u.VirtualTablesSize
 	m.EstimatedReferencesSize += u.EstimatedReferencesSize
+	m.EstimatedColdReferencesSize += u.EstimatedColdReferencesSize
 	m.TableBytesIn += u.TableBytesIn
 	m.TableBytesIngested += u.TableBytesIngested
 	m.TableBytesMoved += u.TableBytesMoved
@@ -398,31 +400,8 @@ type Metrics struct {
 	}
 
 	BlobFiles struct {
-		// The count of all live blob files.
-		LiveCount uint64
-		// The physical file size of all live blob files.
-		LiveSize uint64
-		// ValueSize is the sum of the length of the uncompressed values in all
-		// live (referenced by some sstable(s) within the current version) blob
-		// files. ValueSize may be greater than LiveSize when compression is
-		// effective. ValueSize includes bytes in live blob files that are not
-		// actually reachable by any sstable key. If any value within the blob
-		// file is reachable by a key in a live sstable, then the entirety of
-		// the blob file's values are included within ValueSize.
-		ValueSize uint64
-		// ReferencedValueSize is the sum of the length of the uncompressed
-		// values (in all live blob files) that are still referenced by keys
-		// within live tables. Over the lifetime of a blob file, a blob file's
-		// references are removed as some compactions choose to write new blob
-		// files containing the same values or keys referencing the file's
-		// values are deleted. ReferencedValueSize accounts the volume of bytes
-		// that are actually reachable by some key in a live table.
-		//
-		// The difference between ValueSize and ReferencedValueSize is
-		// (uncompressed) space amplification that could be reclaimed if all
-		// blob files were rewritten, discarding values that are no longer
-		// referenced by any keys in any sstables within the current version.
-		ReferencedValueSize uint64
+		BlobFileStats
+		Cold BlobFileStats
 		// The count of all obsolete blob files.
 		ObsoleteCount uint64
 		// The physical size of all obsolete blob files.
@@ -496,6 +475,41 @@ type Metrics struct {
 	}
 
 	manualMemory manual.Metrics
+}
+
+type BlobFileStats struct {
+	// The count of all live blob files.
+	LiveCount uint64
+	// The physical file size of all live blob files.
+	LiveSize uint64
+	// ValueSize is the sum of the length of the uncompressed values in all
+	// live (referenced by some sstable(s) within the current version) blob
+	// files. ValueSize may be greater than LiveSize when compression is
+	// effective. ValueSize includes bytes in live blob files that are not
+	// actually reachable by any sstable key. If any value within the blob
+	// file is reachable by a key in a live sstable, then the entirety of
+	// the blob file's values are included within ValueSize.
+	ValueSize uint64
+	// ReferencedValueSize is the sum of the length of the uncompressed
+	// values (in all live blob files) that are still referenced by keys
+	// within live tables. Over the lifetime of a blob file, a blob file's
+	// references are removed as some compactions choose to write new blob
+	// files containing the same values or keys referencing the file's
+	// values are deleted. ReferencedValueSize accounts the volume of bytes
+	// that are actually reachable by some key in a live table.
+	//
+	// The difference between ValueSize and ReferencedValueSize is
+	// (uncompressed) space amplification that could be reclaimed if all
+	// blob files were rewritten, discarding values that are no longer
+	// referenced by any keys in any sstables within the current version.
+	ReferencedValueSize uint64
+}
+
+func (bfs *BlobFileStats) Set(s *manifest.AggregateBlobFileStats) {
+	bfs.LiveCount = s.Count
+	bfs.LiveSize = s.PhysicalSize
+	bfs.ValueSize = s.ValueSize
+	bfs.ReferencedValueSize = s.ReferencedValueSize
 }
 
 // CompressionMetrics contains compression metrics for sstables or blob files.
@@ -656,7 +670,16 @@ var (
 	levelMetricsTableTopHeader = `LSM                             |    vtables   |   value sep   |        |   ingested   |    amp`
 	levelMetricsTable          = table.Define[*LevelMetrics](
 		table.AutoIncrement[*LevelMetrics]("level", 5, table.AlignRight),
-		table.Bytes("size", 10, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.TablesSize) + m.EstimatedReferencesSize }),
+		table.String("size(hot)", 10, table.AlignRight, func(m *LevelMetrics) string {
+			allBytes := uint64(m.TablesSize) + m.EstimatedReferencesSize
+			coldBytes := m.EstimatedColdReferencesSize
+			str := string(humanizeBytes(allBytes))
+			if coldBytes > 0 {
+				hotBytes := allBytes - coldBytes
+				str = fmt.Sprintf("%s(%s)", str, humanizeBytes(hotBytes))
+			}
+			return str
+		}),
 		table.Div(),
 		table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesCount }),
 		table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesSize }),
@@ -737,7 +760,7 @@ var (
 		table.Div(),
 		table.String("open", 11, table.AlignRight, func(i iteratorInfo) string { return i.snapshotsOpen }),
 	)
-	fileInfoTableHeader = `FILES                 tables                       |       blob files        |     blob values`
+	fileInfoTableHeader = `FILES                 tables                       |       blob files        |     blob values     |     cold blobs`
 	fileInfoTable       = table.Define[tableAndBlobInfo](
 		table.String("stats prog", 13, table.AlignRight, func(i tableAndBlobInfo) string { return i.tableInfo.stats }),
 		table.Div(),
@@ -752,6 +775,10 @@ var (
 		table.String("total", 6, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.total }),
 		table.Div(),
 		table.String("refed", 10, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.referenced }),
+		table.Div(),
+		table.String("live", 10, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.coldLive }),
+		table.Div(),
+		table.String("refed", 10, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.coldReferenced }),
 	)
 	cgoMemInfoTableHeader = `CGO MEMORY    |          block cache           |                     memtables`
 	cgoMemInfoTable       = table.Define[cgoMemInfo](
@@ -910,10 +937,12 @@ type tableInfo struct {
 }
 
 type blobInfo struct {
-	live       string
-	zombie     string
-	total      string
-	referenced string
+	live           string
+	coldLive       string
+	zombie         string
+	total          string
+	referenced     string
+	coldReferenced string
 }
 
 type tableAndBlobInfo struct {
@@ -1046,6 +1075,11 @@ func (m *Metrics) String() string {
 		zombie:     fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.ZombieCount), humanizeBytes(m.BlobFiles.ZombieSize)),
 		total:      humanizeBytes(m.BlobFiles.ValueSize).String(),
 		referenced: fmt.Sprintf("%.0f%% (%s)", percent(m.BlobFiles.ReferencedValueSize, m.BlobFiles.ValueSize), humanizeBytes(m.BlobFiles.ReferencedValueSize)),
+	}
+	if m.BlobFiles.Cold.LiveCount > 0 {
+		blobInfoContents.coldLive = fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.Cold.LiveCount), humanizeBytes(m.BlobFiles.Cold.LiveSize))
+		blobInfoContents.coldReferenced =
+			fmt.Sprintf("%.0f%% (%s)", percent(m.BlobFiles.Cold.ReferencedValueSize, m.BlobFiles.Cold.ValueSize), humanizeBytes(m.BlobFiles.Cold.ReferencedValueSize))
 	}
 	fileInfoContents := tableAndBlobInfo{
 		tableInfo: tableInfoContents,

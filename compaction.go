@@ -1526,11 +1526,15 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 		}
 		levelMetrics.TablesCount--
 		levelMetrics.TablesSize -= int64(m.Size)
-		levelMetrics.EstimatedReferencesSize -= m.EstimatedReferenceSize()
+		refSize, coldRefSize := m.EstimatedReferenceSize()
+		levelMetrics.EstimatedReferencesSize -= refSize
+		levelMetrics.EstimatedColdReferencesSize -= coldRefSize
 		for i := range added {
 			levelMetrics.TablesCount++
 			levelMetrics.TablesSize += int64(added[i].Meta.Size)
-			levelMetrics.EstimatedReferencesSize += added[i].Meta.EstimatedReferenceSize()
+			refSize, coldRefSize := added[i].Meta.EstimatedReferenceSize()
+			levelMetrics.EstimatedReferencesSize += refSize
+			levelMetrics.EstimatedColdReferencesSize += coldRefSize
 		}
 	}
 
@@ -1761,6 +1765,16 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			if ingest {
 				info.IngestLevels = append(info.IngestLevels, e.Level)
 			}
+		}
+		for i := range ve.NewBlobFiles {
+			e := &ve.NewBlobFiles[i]
+			info.OutputBlobs = append(info.OutputBlobs, BlobFileInfo{
+				BlobFileID:  e.FileID,
+				DiskFileNum: e.Physical.FileNum,
+				Size:        e.Physical.Size,
+				ValueSize:   e.Physical.ValueSize,
+				Tier:        e.Physical.Tier,
+			})
 		}
 
 		// The flush succeeded or it produced an empty sstable. In either case we
@@ -2733,6 +2747,16 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 			e := &ve.NewTables[i]
 			info.Output.Tables = append(info.Output.Tables, e.Meta.TableInfo())
 		}
+		for i := range ve.NewBlobFiles {
+			e := &ve.NewBlobFiles[i]
+			info.OutputBlobs = append(info.OutputBlobs, BlobFileInfo{
+				BlobFileID:  e.FileID,
+				DiskFileNum: e.Physical.FileNum,
+				Size:        e.Physical.Size,
+				ValueSize:   e.Physical.ValueSize,
+				Tier:        e.Physical.Tier,
+			})
+		}
 		d.mu.snapshots.cumulativePinnedCount += stats.CumulativePinnedKeys
 		d.mu.snapshots.cumulativePinnedSize += stats.CumulativePinnedSize
 		d.mu.versions.metrics.Keys.MissizedTombstonesCount += stats.CountMissizedDels
@@ -3379,6 +3403,7 @@ func (d *DB) compactAndWrite(
 		MaxGrandparentOverlapBytes: c.maxOverlapBytes,
 		TargetOutputFileSize:       c.maxOutputFileSize,
 		GrantHandle:                c.grantHandle,
+		Logger:                     d.opts.Logger,
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 
@@ -3545,7 +3570,16 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 		}
 	}
 
-	startLevelBytes := c.startLevel.files.TableSizeSum()
+	// If we rewrote any input blob references, we should count them here as
+	// input. The difficulty is that some blob files may be preserved and others
+	// rewritten. And some cold data may transition to hot and be written to the
+	// sstable. We only want to count the incoming compressed bytes that we
+	// rewrote.
+	//
+	// A different way to interpret startLevelBytes is the bytes that are
+	// logically being "rewritten". In that sense, the AggregateSizeSum is the
+	// right metric. We do that below.
+	startLevelBytes := c.startLevel.files.AggregateSizeSum()
 
 	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
 	outputMetrics.TableBytesIn = startLevelBytes
@@ -3562,7 +3596,7 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 		outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
 	}
 	if len(c.extraLevels) > 0 {
-		outputMetrics.TableBytesIn += c.extraLevels[0].files.TableSizeSum()
+		outputMetrics.TableBytesIn += c.extraLevels[0].files.AggregateSizeSum()
 	}
 
 	if len(c.flush.flushables) == 0 {
@@ -3642,7 +3676,9 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			outputMetrics.TablesFlushed++
 			outputMetrics.TableBytesFlushed += fileMeta.Size
 		}
-		outputMetrics.EstimatedReferencesSize += fileMeta.EstimatedReferenceSize()
+		refSize, coldRefSize := fileMeta.EstimatedReferenceSize()
+		outputMetrics.EstimatedReferencesSize += refSize
+		outputMetrics.EstimatedColdReferencesSize += coldRefSize
 		outputMetrics.TablesSize += int64(fileMeta.Size)
 		outputMetrics.TablesCount++
 		outputMetrics.Additional.BytesWrittenDataBlocks += t.WriterMeta.Properties.DataSize
@@ -3699,6 +3735,7 @@ func (d *DB) newCompactionOutputBlob(
 	outputLevel int,
 	bytesWritten *atomic.Int64,
 	opts objstorage.CreateOptions,
+	tier base.StorageTier,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	writable, objMeta, err := d.newCompactionOutputObj(base.FileTypeBlob, kind, outputLevel, bytesWritten, opts)
 	if err != nil {
@@ -3709,6 +3746,7 @@ func (d *DB) newCompactionOutputBlob(
 		Reason:  kind.compactingOrFlushing(),
 		Path:    d.objProvider.Path(objMeta),
 		FileNum: objMeta.DiskFileNum,
+		Tier:    tier,
 	})
 	return writable, objMeta, nil
 }

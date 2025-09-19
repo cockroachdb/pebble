@@ -1479,9 +1479,13 @@ func (p *compactionPickerByScore) pickAutoNonScore(env compactionEnv) (pc picked
 
 	// Check for blob file rewrites. These are low-priority compactions because
 	// they don't help us keep up with writes, just reclaim disk space.
-	if pc := p.pickBlobFileRewriteCompaction(env); pc != nil {
-		return pc
-	}
+	//
+	// TODO(sumeer): uncomment, after picking up fix from master that results in
+	// unnecessary blob file rewrites. We may not even need that fix for
+	// purposes of the prototype.
+	// if pc := p.pickBlobFileRewriteCompaction(env); pc != nil {
+	//	 return pc
+	// }
 
 	if pc := p.pickReadTriggeredCompaction(env); pc != nil {
 		return pc
@@ -1696,7 +1700,7 @@ func (p *compactionPickerByScore) pickRewriteCompaction(
 func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
 	env compactionEnv,
 ) (pc *pickedBlobFileCompaction) {
-	aggregateStats, heuristicStats := p.latestVersionState.blobFiles.Stats()
+	aggregateStats, _, heuristicStats := p.latestVersionState.blobFiles.Stats()
 	if heuristicStats.CountFilesEligible == 0 && heuristicStats.CountFilesTooRecent == 0 {
 		// No blob files with any garbage to rewrite.
 		return nil
