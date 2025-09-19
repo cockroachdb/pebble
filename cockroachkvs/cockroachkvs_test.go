@@ -204,7 +204,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 	var buf bytes.Buffer
 	var enc colblk.DataBlockEncoder
 	var dec colblk.DataBlockDecoder
-	var bd *colblk.BlockDecoder
+	var bd colblk.BlockDecoder
 	var ks colblk.KeySeeker
 	var maxKeyLen int
 	enc.Init(&KeySchema)
