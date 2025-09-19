@@ -540,6 +540,10 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	// memtables) above.
 	seqNum := d.mu.versions.visibleSeqNum.Load()
 
+	bufferPool := new(block.BufferPool)
+	bufferPool.Init(10)
+	defer bufferPool.Release()
+
 	checkConfig := &checkConfig{
 		logger:    d.opts.Logger,
 		comparer:  d.opts.Comparer,
@@ -549,7 +553,8 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 		stats:     stats,
 		merge:     d.merge,
 		formatKey: d.opts.Comparer.FormatKey,
-		readEnv:   block.ReadEnv{
+		readEnv: block.ReadEnv{
+			BufferPool: bufferPool,
 			// TODO(jackson): Add categorized stats.
 		},
 		fileCache: d.fileCache,
