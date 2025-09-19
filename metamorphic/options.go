@@ -741,8 +741,9 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		// maintains a maximum history 120 entries, so the healthy interval
 		// must not exceed 119x the probe interval.
 		healthyInterval := scaleDuration(probeInterval, 1.0, 119.0)
+		newMem := vfs.NewCrashableMem()
 		opts.WALFailover = &pebble.WALFailoverOptions{
-			Secondary: wal.Dir{FS: vfs.Default, Dirname: pebble.MakeStoreRelativePath(vfs.Default, "wal_secondary")},
+			Secondary: wal.Dir{FS: newMem, Dirname: pebble.MakeStoreRelativePath(newMem, "wal_secondary")},
 			FailoverOptions: wal.FailoverOptions{
 				PrimaryDirProbeInterval:      probeInterval,
 				HealthyProbeLatencyThreshold: healthyThreshold,
