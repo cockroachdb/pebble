@@ -39,8 +39,17 @@ func exampleMetrics() Metrics {
 	var m Metrics
 	m.BlockCache.Size = 1 * GB
 	m.BlockCache.Count = 100
-	m.BlockCache.Hits = 10000
-	m.BlockCache.Misses = 5000
+	for i := range m.BlockCache.HitsAndMisses {
+		for j := range m.BlockCache.HitsAndMisses[i] {
+			x := int64(i)*1000 + int64(j)*100
+			m.BlockCache.HitsAndMisses[i][j].Hits = 10000 + x
+			m.BlockCache.HitsAndMisses[i][j].Misses = 1000 + x
+			m.BlockCache.Recent[0].HitsAndMisses[i][j].Hits = 20000 + x
+			m.BlockCache.Recent[0].HitsAndMisses[i][j].Misses = 4000 + x
+			m.BlockCache.Recent[1].HitsAndMisses[i][j].Hits = 30000 + x
+			m.BlockCache.Recent[1].HitsAndMisses[i][j].Misses = 9000 + x
+		}
+	}
 
 	m.Compact.Count = 1000
 	m.Compact.DefaultCount = 10

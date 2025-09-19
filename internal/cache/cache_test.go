@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
@@ -42,7 +41,7 @@ func TestCache(t *testing.T) {
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool
-		cv := h.Get(base.DiskFileNum(key), 0)
+		cv := h.Get(base.DiskFileNum(key), 0, MakeLevel(0), CategorySSTableData)
 		if cv == nil {
 			cv = Alloc(1)
 			cv.RawBuffer()[0] = fields[0][0]
@@ -85,12 +84,12 @@ func TestCacheDelete(t *testing.T) {
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	if v := h.Get(base.DiskFileNum(0), 0); v == nil {
+	if v := h.Get(base.DiskFileNum(0), 0, MakeLevel(0), CategorySSTableData); v == nil {
 		t.Fatalf("expected to find block 0/0")
 	} else {
 		v.Release()
 	}
-	if v := h.Get(base.DiskFileNum(1), 0); v != nil {
+	if v := h.Get(base.DiskFileNum(1), 0, MakeLevel(0), CategorySSTableData); v != nil {
 		t.Fatalf("expected to not find block 1/0")
 	}
 	// Deleting a non-existing block does nothing.
@@ -157,11 +156,11 @@ func TestMultipleDBs(t *testing.T) {
 	if expected, size := int64(5), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	v := h1.Get(base.DiskFileNum(0), 0)
+	v := h1.Get(base.DiskFileNum(0), 0, MakeLevel(0), CategorySSTableData)
 	if v != nil {
 		t.Fatalf("expected not present, but found %#v", v)
 	}
-	v = h2.Get(base.DiskFileNum(0), 0)
+	v = h2.Get(base.DiskFileNum(0), 0, MakeLevel(0), CategorySSTableData)
 	if v := v.RawBuffer(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %s", v)
 	}
@@ -249,10 +248,12 @@ func TestCacheStressSetExisting(t *testing.T) {
 }
 
 func BenchmarkCacheGet(b *testing.B) {
-	const size = 100000
+	const size = 1_000_000
 
-	n := runtime.GOMAXPROCS(0)
-	cache := NewWithShards(size*int64(n), n)
+	// We double the size to allow for shard imbalances. With many objects and
+	// relatively few shards, the probability that any bucket is more than double
+	// the expected size is vanishingly small.
+	cache := New(2 * size)
 	defer cache.Unref()
 	h := cache.NewHandle()
 	defer h.Close()
@@ -263,12 +264,15 @@ func BenchmarkCacheGet(b *testing.B) {
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
-
+		pcg := rand.NewPCG(rand.Uint64(), rand.Uint64())
 		for pb.Next() {
-			v := h.Get(base.DiskFileNum(0), uint64(rng.IntN(size)))
+			randVal := pcg.Uint64()
+			offset := randVal % size
+			level := Level{levelPlusOne: int8((randVal >> 32) % NumLevels)}
+			category := Category((randVal >> 48) % uint64(NumCategories))
+			v := h.Get(base.DiskFileNum(0), offset, level, category)
 			if v == nil {
-				b.Fatal("failed to lookup value")
+				b.Fatal("failed to look up value")
 			}
 			v.Release()
 		}

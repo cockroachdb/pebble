@@ -154,19 +154,6 @@ func TestCopySpan(t *testing.T) {
 			fileNameToNum[outputFile] = nextFileNum
 			nextFileNum++
 
-			rOpts := ReaderOptions{
-				Filters: map[string]FilterPolicy{
-					"rocksdb.BuiltinBloomFilter": bloom.FilterPolicy(10),
-				},
-				ReaderOptions: block.ReaderOptions{
-					CacheOpts: sstableinternal.CacheOptions{
-						CacheHandle: cacheHandle,
-						FileNum:     base.DiskFileNum(fileNameToNum[d.CmdArgs[0].Key]),
-					},
-				},
-				Comparer:   testkeys.Comparer,
-				KeySchemas: KeySchemas{keySchema.Name: &keySchema},
-			}
 			r, err := getReader(d)
 			if err != nil {
 				return err.Error()
@@ -182,7 +169,7 @@ func TestCopySpan(t *testing.T) {
 			if err != nil {
 				return err.Error()
 			}
-			size, err := CopySpan(context.TODO(), readable2, r, rOpts, writable, wOpts, start, end)
+			size, err := CopySpan(context.TODO(), readable2, r, 0 /* level */, writable, wOpts, start, end)
 			if err != nil {
 				return err.Error()
 			}

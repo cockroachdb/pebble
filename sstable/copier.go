@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -46,7 +47,7 @@ func CopySpan(
 	ctx context.Context,
 	input objstorage.Readable,
 	r *Reader,
-	rOpts ReaderOptions,
+	level int,
 	output objstorage.Writable,
 	o WriterOptions,
 	start, end InternalKey,
@@ -162,7 +163,7 @@ func CopySpan(
 	var blocksNotInCache []indexEntry
 
 	for i := range blocks {
-		cv := r.blockReader.GetFromCache(blocks[i].bh.Handle)
+		cv := r.blockReader.GetFromCache(blocks[i].bh.Handle, cache.MakeLevel(level))
 		if cv == nil {
 			// Cache miss. Add this block to the list of blocks that are not in cache.
 			blocksNotInCache = blocks[i-len(blocksNotInCache) : i+1]

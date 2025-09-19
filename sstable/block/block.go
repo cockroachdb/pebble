@@ -255,6 +255,9 @@ var NoReadEnv = ReadEnv{}
 
 // ReadEnv contains arguments used when reading a block which apply to all
 // the block reads performed by a higher-level operation.
+//
+// ReadEnv can be copied by value; any copy will use the same statistics and
+// buffer pool.
 type ReadEnv struct {
 	// stats and iterStats are slightly different. stats is a shared struct
 	// supplied from the outside, and represents stats for the whole iterator
@@ -268,8 +271,15 @@ type ReadEnv struct {
 	IterStats *CategoryStatsShard
 
 	// BufferPool is not-nil if we read blocks into a buffer pool and not into the
-	// cache. This is used during compactions.
+	// cache. This is used during compactions and by the level checker.
+	//
+	// When BufferPool is non-nil, any block cache accesses use the background
+	// category.
 	BufferPool *BufferPool
+	// Level is the LSM level associated with the operation, when the operation
+	// applies to a (possibly virtual) sstable. It is used when interacting with
+	// the block cache.
+	Level cache.Level
 
 	// ReportCorruptionFn is called with ReportCorruptionArg and the error
 	// whenever an SSTable corruption is detected. The argument is used to avoid
@@ -351,6 +361,19 @@ func (r *Reader) ChecksumType() ChecksumType {
 	return r.checksumType
 }
 
+var kindToCacheCategory = [blockkind.NumKinds]cache.Category{
+	blockkind.Unknown:                         cache.CategoryBackground,
+	blockkind.SSTableData:                     cache.CategorySSTableData,
+	blockkind.SSTableIndex:                    cache.CategoryIndex,
+	blockkind.SSTableValue:                    cache.CategorySSTableValue,
+	blockkind.BlobValue:                       cache.CategoryBlobValue,
+	blockkind.BlobReferenceValueLivenessIndex: cache.CategoryIndex,
+	blockkind.Filter:                          cache.CategoryFilter,
+	blockkind.RangeDel:                        cache.CategorySSTableData,
+	blockkind.RangeKey:                        cache.CategorySSTableData,
+	blockkind.Metadata:                        cache.CategoryIndex,
+}
+
 // Read reads the block referenced by the provided handle. The readHandle is
 // optional.
 func (r *Reader) Read(
@@ -366,7 +389,7 @@ func (r *Reader) Read(
 	// reading a block.
 	if r.opts.CacheOpts.CacheHandle == nil || env.BufferPool != nil {
 		if r.opts.CacheOpts.CacheHandle != nil {
-			if cv := r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset); cv != nil {
+			if cv := r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset, env.Level, cache.CategoryBackground); cv != nil {
 				recordCacheHit(ctx, env, readHandle, bh, kind)
 				return CacheBufferHandle(cv), nil
 			}
@@ -379,7 +402,7 @@ func (r *Reader) Read(
 	}
 
 	cv, crh, errorDuration, waitDuration, hit, err := r.opts.CacheOpts.CacheHandle.GetWithReadHandle(
-		ctx, r.opts.CacheOpts.FileNum, bh.Offset)
+		ctx, r.opts.CacheOpts.FileNum, bh.Offset, env.Level, kindToCacheCategory[kind])
 	const slowDur = 5 * time.Millisecond
 	if waitDuration > slowDur && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		r.opts.LoggerAndTracer.Eventf(
@@ -532,8 +555,8 @@ func (r *Reader) Readable() objstorage.Readable {
 //
 // Users should prefer using Read, which handles reading from object storage on
 // a cache miss.
-func (r *Reader) GetFromCache(bh Handle) *cache.Value {
-	return r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset)
+func (r *Reader) GetFromCache(bh Handle, level cache.Level) *cache.Value {
+	return r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset, level, cache.CategoryBackground)
 }
 
 // UsePreallocatedReadHandle returns a ReadHandle that reads from the reader and
