@@ -319,16 +319,18 @@ func (m *TableMetadata) VirtualMeta() *TableMetadata {
 // EstimatedReferenceSize is an estimate, but it's guaranteed to be stable over
 // the lifetime of the table. This is necessary to correctly maintain
 // incrementally-updated metrics.
-func (m *TableMetadata) EstimatedReferenceSize() uint64 {
-	var size uint64
+func (m *TableMetadata) EstimatedReferenceSize() (size uint64, coldSize uint64) {
 	for _, ref := range m.BlobReferences {
 		if ref.FileID == 0 {
 			// BlobReferences can be sparse.
 			continue
 		}
 		size += ref.EstimatedPhysicalSize
+		if ref.Tier == base.ColdTier {
+			coldSize += ref.EstimatedPhysicalSize
+		}
 	}
-	return size
+	return size, coldSize
 }
 
 func (m *TableMetadata) EstimatedHotReferenceSize() uint64 {

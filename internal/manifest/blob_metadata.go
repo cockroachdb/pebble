@@ -494,6 +494,11 @@ type CurrentBlobFileSet struct {
 	files map[base.BlobFileID]*currentBlobFile
 	// stats records cumulative stats across all blob files in the set.
 	stats AggregateBlobFileStats
+	// Subset of stats.
+	//
+	// TODO(sumeer): just separate cold and hot stats, and aggregate where
+	// needed.
+	coldStats AggregateBlobFileStats
 	// rewrite holds state and configuration in support of rewriting blob files
 	// to reclaim disk space.
 	rewrite struct {
@@ -623,6 +628,11 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit, h BlobRewriteHeuristic) 
 		s.stats.Count++
 		s.stats.PhysicalSize += pbf.Size
 		s.stats.ValueSize += pbf.ValueSize
+		if pbf.Tier == base.ColdTier {
+			s.coldStats.Count++
+			s.coldStats.PhysicalSize += pbf.Size
+			s.coldStats.ValueSize += pbf.ValueSize
+		}
 	}
 	// Record references to blob files from extant tables. Any referenced blob
 	// files should already exist in s.files.
@@ -641,6 +651,14 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit, h BlobRewriteHeuristic) 
 				cbf.referencedValueSize += ref.ValueSize
 				s.stats.ReferencedValueSize += ref.ValueSize
 				s.stats.ReferencesCount++
+				if ref.Tier != cbf.metadata.Physical.Tier {
+					panic(errors.AssertionFailedf("pebble: blob file %d has tier %s but reference from sstable %d has tier %s",
+						ref.FileID, cbf.metadata.Physical.Tier, ref.Tier))
+				}
+				if ref.Tier == base.ColdTier {
+					s.coldStats.ReferencedValueSize += ref.ValueSize
+					s.coldStats.ReferencesCount++
+				}
 			}
 		}
 	}
@@ -684,7 +702,11 @@ func (s *CurrentBlobFileSet) Init(bve *BulkVersionEdit, h BlobRewriteHeuristic) 
 
 // Stats returns the cumulative stats across all blob files in the set and the
 // stats for the rewrite heaps.
-func (s *CurrentBlobFileSet) Stats() (AggregateBlobFileStats, BlobRewriteHeuristicStats) {
+func (s *CurrentBlobFileSet) Stats() (
+	agg AggregateBlobFileStats,
+	cold AggregateBlobFileStats,
+	_ BlobRewriteHeuristicStats,
+) {
 	rewriteStats := BlobRewriteHeuristicStats{
 		CountFilesTooRecent:       len(s.rewrite.recentlyCreated.items),
 		CountFilesEligible:        len(s.rewrite.candidates.items),
@@ -700,16 +722,21 @@ func (s *CurrentBlobFileSet) Stats() (AggregateBlobFileStats, BlobRewriteHeurist
 		rewriteStats.NextEligibleLivePct = 100 * float64(s.rewrite.recentlyCreated.items[0].referencedValueSize) /
 			float64(s.rewrite.recentlyCreated.items[0].metadata.Physical.ValueSize)
 	}
-	return s.stats, rewriteStats
+	return s.stats, s.coldStats, rewriteStats
 }
 
 // String implements fmt.Stringer.
 func (s *CurrentBlobFileSet) String() string {
-	stats, rewriteStats := s.Stats()
+	stats, coldStats, rewriteStats := s.Stats()
 	var sb strings.Builder
 	sb.WriteString("CurrentBlobFileSet:\n")
 	sb.WriteString(stats.String())
 	sb.WriteString("\n")
+	if coldStats.Count > 0 {
+		sb.WriteString("Cold: ")
+		sb.WriteString(coldStats.String())
+		sb.WriteString("\n")
+	}
 	sb.WriteString(rewriteStats.String())
 	return sb.String()
 }
@@ -750,9 +777,17 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			// The file is being replaced. Update the statistics and cbf.Physical.
 			s.stats.PhysicalSize -= cbf.metadata.Physical.Size
 			s.stats.ValueSize -= cbf.metadata.Physical.ValueSize
+			if cbf.metadata.Physical.Tier == base.ColdTier {
+				s.coldStats.PhysicalSize -= cbf.metadata.Physical.Size
+				s.coldStats.ValueSize -= cbf.metadata.Physical.ValueSize
+			}
 			cbf.metadata.Physical = m.Physical
 			s.stats.PhysicalSize += m.Physical.Size
 			s.stats.ValueSize += m.Physical.ValueSize
+			if m.Physical.Tier == base.ColdTier {
+				s.coldStats.PhysicalSize += m.Physical.Size
+				s.coldStats.ValueSize += m.Physical.ValueSize
+			}
 			// Remove the blob file from the rewrite candidate heap.
 			if cbf.heapState.heap != nil {
 				heap.Remove(cbf.heapState.heap, cbf.heapState.index)
@@ -776,6 +811,11 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 		s.stats.Count++
 		s.stats.PhysicalSize += m.Physical.Size
 		s.stats.ValueSize += m.Physical.ValueSize
+		if m.Physical.Tier == base.ColdTier {
+			s.coldStats.Count++
+			s.coldStats.PhysicalSize += m.Physical.Size
+			s.coldStats.ValueSize += m.Physical.ValueSize
+		}
 	}
 
 	// Update references to blob files from new tables. Any referenced blob
@@ -796,6 +836,10 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			cbf.referencedValueSize += ref.ValueSize
 			s.stats.ReferencedValueSize += ref.ValueSize
 			s.stats.ReferencesCount++
+			if ref.Tier == base.ColdTier {
+				s.coldStats.ReferencedValueSize += ref.ValueSize
+				s.coldStats.ReferencesCount++
+			}
 		}
 	}
 
@@ -831,6 +875,10 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			cbf.referencedValueSize -= ref.ValueSize
 			s.stats.ReferencedValueSize -= ref.ValueSize
 			s.stats.ReferencesCount--
+			if ref.Tier == base.ColdTier {
+				s.coldStats.ReferencedValueSize -= ref.ValueSize
+				s.coldStats.ReferencesCount--
+			}
 			if _, ok := newTables[meta.TableNum]; ok {
 				// This table was added to a different level of the LSM in the
 				// same version edit. It's being moved. We can preserve the
@@ -868,6 +916,11 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				s.stats.Count--
 				s.stats.PhysicalSize -= cbf.metadata.Physical.Size
 				s.stats.ValueSize -= cbf.metadata.Physical.ValueSize
+				if cbf.metadata.Physical.Tier == base.ColdTier {
+					s.coldStats.Count--
+					s.coldStats.PhysicalSize -= cbf.metadata.Physical.Size
+					s.coldStats.ValueSize -= cbf.metadata.Physical.ValueSize
+				}
 				delete(s.files, cbf.metadata.FileID)
 				continue
 			}

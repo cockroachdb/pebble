@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compact"
+	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -59,7 +60,7 @@ func (d *DB) determineCompactionValueSeparation(
 	if !writeBlobs {
 		// This compaction should preserve existing blob references.
 		return newPreserveAllHotBlobReferences(
-			inputBlobPhysicalFiles, outputBlobReferenceDepth)
+			inputBlobPhysicalFiles, outputBlobReferenceDepth, cttRetriever)
 	}
 	// This compaction should write values to new blob files.
 	writerOpts := d.opts.MakeBlobWriterOptions(c.outputLevel.level, d.BlobFileFormat())
@@ -67,9 +68,9 @@ func (d *DB) determineCompactionValueSeparation(
 	return newWriteNewBlobFiles(
 		inputBlobPhysicalFiles,
 		d.opts.Comparer,
-		func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+		func(tier base.StorageTier) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 			return d.newCompactionOutputBlob(
-				jobID, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts)
+				jobID, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts, tier)
 		},
 		d.opts.Experimental.ShortAttributeExtractor,
 		writerOpts,
@@ -171,16 +172,22 @@ func shouldWriteBlobFiles(
 				continue
 			}
 			v := tieringSpansLTThreshold[k.TieringSpanID]
-			v.valueBytes += h.ColdBytes(v.coldLTThreshold)
+			v.valueBytes += h.ApproxColdBytes(v.coldLTThreshold)
 			tieringSpansLTThreshold[k.TieringSpanID] = v
 		}
 		for spanID, v := range tieringSpansLTThreshold {
-			if v.valueBytes > minColdWriteSizeForNewColdFile {
+			writeColdSpan := v.valueBytes > min(c.maxOutputFileSize, minColdWriteSizeForNewColdFile)
+			if writeColdSpan {
 				if coldWriteSpans == nil {
 					coldWriteSpans = make(map[base.TieringSpanID]struct{})
 				}
 				coldWriteSpans[spanID] = struct{}{}
 			}
+			c.logger.Infof("spanID=%d, %t: estimated cold bytes=%s, cold bytes threshold=%s, output file size limit=%s",
+				spanID, writeColdSpan, humanize.Bytes.Uint64(v.valueBytes),
+				humanize.Bytes.Uint64(minColdWriteSizeForNewColdFile),
+				humanize.Bytes.Uint64(c.maxOutputFileSize))
+
 		}
 	}
 	return true, 0, coldWriteSpans
@@ -628,6 +635,9 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 		// reflecting the worst-case overlap of referenced blob files. If this
 		// sstable references fewer unique blob files, reduce its depth to the
 		// count of unique files.
+		//
+		// TODO(sumeer): we are including cold blob references here, which seems a
+		// bit arbitrary. Though, this is a min and not a max, so it may be ok.
 		BlobReferenceDepth: min(vs.outputBlobReferenceDepth, manifest.BlobReferenceDepth(len(references))),
 	}, nil
 }
@@ -661,7 +671,7 @@ type generalizedValueSeparation struct {
 
 	comparer *base.Comparer
 	// newBlobObject constructs a new blob object for use in the compaction.
-	newBlobObject      func() (objstorage.Writable, objstorage.ObjectMetadata, error)
+	newBlobObject      func(base.StorageTier) (objstorage.Writable, objstorage.ObjectMetadata, error)
 	shortAttrExtractor ShortAttributeExtractor
 	// writerOpts is used to configure all constructed blob writers.
 	writerOpts blob.FileWriterOptions
@@ -707,18 +717,22 @@ var _ compact.ValueSeparation = &generalizedValueSeparation{}
 func newPreserveAllHotBlobReferences(
 	inputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile,
 	outputBlobReferenceDepth manifest.BlobReferenceDepth,
+	cttRetriever tieredmeta.ColdTierThresholdRetriever,
 ) *generalizedValueSeparation {
 	return &generalizedValueSeparation{
 		mode:                     preserveAllHotBlobReferences,
 		inputBlobPhysicalFiles:   inputBlobPhysicalFiles,
 		outputBlobReferenceDepth: outputBlobReferenceDepth,
+		writerOpts: blob.FileWriterOptions{
+			CTTRetriever: cttRetriever,
+		},
 	}
 }
 
 func newWriteNewBlobFiles(
 	inputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile,
 	comparer *base.Comparer,
-	newBlobObject func() (objstorage.Writable, objstorage.ObjectMetadata, error),
+	newBlobObject func(base.StorageTier) (objstorage.Writable, objstorage.ObjectMetadata, error),
 	shortAttrExtractor ShortAttributeExtractor,
 	writerOpts blob.FileWriterOptions,
 	globalMinimumSize int,
@@ -814,7 +828,11 @@ func (vs *generalizedValueSeparation) EstimatedHotReferenceSize() uint64 {
 	//
 	// Should we compute a compression ratio per blob file and scale the
 	// references appropriately?
-	return vs.EstimatedFileSize() + vs.totalPreservedValueSize[base.HotTier]
+	size := vs.totalPreservedValueSize[base.HotTier]
+	if vs.writers[base.HotTier].writer != nil {
+		size += vs.writers[base.HotTier].writer.EstimatedSize()
+	}
+	return size
 }
 
 // Add implements compact.ValueSeparation.
@@ -983,8 +1001,7 @@ func (vs *generalizedValueSeparation) getWriter(
 	if wnm.writer != nil {
 		return wnm, nil
 	}
-	// TODO(sumeer): use blobTier to create in the appropriate tier.
-	writable, objMeta, err := vs.newBlobObject()
+	writable, objMeta, err := vs.newBlobObject(blobTier)
 	if err != nil {
 		return nil, err
 	}

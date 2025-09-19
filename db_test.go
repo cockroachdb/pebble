@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"path/filepath"
 	"regexp"
@@ -2547,4 +2548,253 @@ func TestLoadBlockSema(t *testing.T) {
 			require.LessOrEqual(t, maxReadCount, int32(n))
 		})
 	}
+}
+
+// TestColdBlobs is a test that writes only cold data, to try to sanity check
+// the tiering behavior. Keys are 32 bit integers encoded as 10 byte strings,
+// and values are 1000 byte random strings. It writes 8M keys, which is approx
+// 8GB of data.
+//
+// A scale factor of 16 is applied to the various size options to make this
+// small in-memory LSM look like a larger LSM wrt shape.
+/*
+Non tiering output at the end:
+
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level  size(hot) | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+    0      2.8MB |     20  84KB |      0     0 |  2.8MB     0B |  7.9GB |      0    0B |   2  2.03
+    1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2      4.4MB |     27 125KB |      0     0 |  4.2MB     0B |  3.7GB |      0    0B |   1  0.04
+    3       27MB |    102 703KB |      0     0 |   26MB     0B |  7.6GB |      0    0B |   1  0.52
+    4      174MB |    308 4.1MB |      0     0 |  170MB     0B |  7.9GB |      0    0B |   1  1.31
+    5      1.1GB |    983  25MB |      0     0 |  1.1GB     0B |  7.6GB |      0    0B |   1  1.60
+    6      6.7GB |   2.7K 119MB |      0     0 |  6.6GB     0B |  6.8GB |      0    0B |   1  1.67
+total        8GB |   4.1K 149MB |      0     0 |  7.9GB     0B |  7.9GB |      0    0B |   7  7.81
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |  1.01  1.00  1.00 |      0    0B |    0B    0B    0B |     0B    0B |    53K  237MB   16GB
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -  0.99  0.99 |     27 109KB |    0B    0B    0B |  124MB  22MB |    30K  149MB   16MB
+    3 |  1.01  1.02  1.02 |    784 2.2MB |    0B    0B    0B |  614MB 6.9GB |    69K  424MB  3.6GB
+    4 |  1.01  1.01  1.01 |    926   2MB |  42MB 155MB  30MB |  1.1GB  16GB |    70K  664MB  9.7GB
+    5 |     -  1.00  1.00 |    481   1MB | 123MB 500MB 113MB |  1.2GB  16GB |    44K  718MB   11GB
+    6 |     -  0.93  0.93 |     23 107KB | 296MB 1.3GB 355MB |  1.2GB  14GB |    18K  483MB   11GB
+total |     -     -     - |   2.2K 5.4MB | 460MB 1.9GB 497MB |  4.2GB  53GB |   284K   11GB   51GB
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |     89K       0        0  2.2K     0     0        0     0   1.3K     0
+
+Tiering output at the end:
+
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level    size(hot) | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-------------------+--------------+--------------+---------------+--------+--------------+----------
+    0        3.9MB |     26 117KB |      0     0 |  3.8MB     0B |  7.9GB |      0    0B |   1  2.03
+    1           0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    2           0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    3           0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+    4        3.8MB |     27 118KB |      0     0 |  3.7MB     0B |  7.5GB |      0    0B |   1  0.06
+    5  479MB(29MB) |     98  11MB |      0     0 |  468MB     0B |  8.1GB |      0    0B |   1  1.52
+    6 7.6GB(258MB) |    345 151MB |      0     0 |  7.4GB     0B |  7.6GB |      0    0B |   1  0.51
+total 8.1GB(295MB) |    496 162MB |      0     0 |  7.9GB     0B |  7.9GB |      0    0B |   4  5.14
+
+COMPACTIONS               |     moved    |     multilevel    |     read     |       written
+level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
+------+-------------------+--------------+-------------------+--------------+---------------------
+    0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |    52K  248MB   16GB
+    1 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    2 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    3 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      0     0B     0B
+    4 |     -  0.96  0.96 |     21  88KB |    0B    0B    0B |  268MB 273MB |    58K  312MB  177MB
+    5 |     -  0.88  0.88 |     17  31KB |    0B    0B    0B |  5.2GB  16GB |    62K  4.8GB  7.5GB
+    6 |     -  0.97  0.97 |     20  93KB |  20MB 269MB  54MB |  1.9GB   4GB |   8.7K  1.8GB  2.1GB
+total |     -     -     - |     58 211KB |  20MB 269MB  54MB |  7.3GB  20GB |   181K   15GB   26GB
+
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
+count |     57K       0        0    58     0     0        0     0    134     0
+
+
+Note that the tiering LSM excludes the cold blob files in its calculation of
+level fullness, so Lbase=L4, while the non-tiering one has Lbase=L2. The
+overall write amp for tiering is lower: 5.14 vs 7.81. This is because the cold
+blob files are not being rewritten.
+
+File size stats:
+Non-tiering:
+FILES                 tables                       |       blob files        |     blob values     |     cold blobs
+   stats prog |    backing |                 zombie |         live |     zombie |  total |       refed |       live |      refed
+--------------+------------+------------------------+--------------+------------+--------+-------------+------------+-----------
+   all loaded |     0 (0B) | 89 (1.1MB local:1.1MB) | 9.2K (9.6GB) |     0 (0B) |  9.5GB | 82% (7.8GB) |            |
+
+Tiering:
+FILES                 tables                       |       blob files        |     blob values     |     cold blobs
+   stats prog |    backing |                zombie |       live |     zombie |  total |       refed |        live |        refed
+--------------+------------+-----------------------+------------+------------+--------+-------------+-------------+-------------
+   all loaded |     0 (0B) |       0 (0B local:0B) |  11K (8GB) |     0 (0B) |  7.9GB | 99% (7.8GB) | 10K (7.8GB) | 100% (7.7GB)
+
+Most of the blob files are cold blob files in the latter (7.8GiB out of 8GiB).
+The average blob file size is smaller in the tiering case, since the target
+file size for L5 and L6 is smaller due to the lower Lbase.
+*/
+func TestColdBlobs(t *testing.T) {
+	// Unskip to run.
+	t.Skip()
+	lel := MakeLoggingEventListener(nil)
+	lel.BlobFileDeleted = nil
+	lel.BlobFileCreated = nil
+	lel.TableDeleted = nil
+	lel.TableCreated = nil
+	lel.WALDeleted = nil
+	lel.WALCreated = nil
+	lel.WriteStallBegin = nil
+	lel.WriteStallEnd = nil
+	lel.CompactionEnd = func(info CompactionInfo) {
+		if len(info.OutputBlobs) == 0 {
+			return
+		}
+		hasColdBlobs := false
+		for _, blob := range info.OutputBlobs {
+			if blob.Tier == base.ColdTier {
+				hasColdBlobs = true
+				break
+			}
+		}
+		if !hasColdBlobs {
+			return
+		}
+		totalSSTableSize, totalBlobSize, totalColdBlobSize := uint64(0), uint64(0), uint64(0)
+		numBlobs, numColdBlobs := 0, 0
+		for _, blob := range info.OutputBlobs {
+			numBlobs++
+			totalBlobSize += blob.Size
+			if blob.Tier == base.ColdTier {
+				totalColdBlobSize += blob.Size
+				numColdBlobs++
+			}
+		}
+		for _, sst := range info.Output.Tables {
+			totalSSTableSize += sst.Size
+		}
+		t.Logf("compaction L%d %s: %s(%d) sstables, %s(%d) blobs, %s(%d) cold blobs",
+			info.Output.Level,
+			humanizeBytes(totalSSTableSize+totalBlobSize), humanizeBytes(totalSSTableSize), len(info.Output.Tables),
+			humanizeBytes(totalBlobSize), numBlobs, humanizeBytes(totalColdBlobSize), numColdBlobs)
+	}
+	opts := &Options{
+		FS:                          vfs.NewMem(),
+		EventListener:               &lel,
+		Logger:                      testutils.Logger{T: t},
+		MemTableSize:                64 << 20,
+		MemTableStopWritesThreshold: 2,
+		L0StopWritesThreshold:       4,
+		FormatMajorVersion:          FormatNewest,
+		// Try to ensure compactions keep up.
+		CompactionConcurrencyRange: func() (int, int) { return 6, 6 },
+	}
+	opts.Experimental.L0CompactionConcurrency = 1
+	opts.Experimental.CompactionDebtConcurrency = 1
+	opts.Experimental.EnableValueBlocks = func() bool { return true }
+	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+		return ValueSeparationPolicy{
+			Enabled:               true,
+			MinimumSize:           2,
+			MaxBlobReferenceDepth: 10,
+		}
+	}
+	if true {
+		opts.Experimental.SpanPolicyFunc =
+			func(bounds base.UserKeyBounds, breakAtShardEndBoundary bool) (policy SpanPolicy, err error) {
+				return SpanPolicy{
+					TieringPolicy: TieringPolicyAndExtractor{
+						Policy: TieringPolicy{
+							SpanID:              3,
+							ColdTierLTThreshold: math.MaxUint64 - 1000,
+						},
+						ExtractAttribute: func(userKey []byte, value []byte) (TieringAttribute, error) {
+							ts, err := strconv.ParseUint(string(userKey), 10, 64)
+							require.NoError(t, err)
+							return TieringAttribute(ts)/(TieringAttribute(time.Hour)*24) + 1, nil
+						},
+					},
+				}, nil
+			}
+	}
+	opts.Experimental.MinColdWriteSizeForNewColdFile = 16 << 20
+	opts.EnsureDefaults()
+	// scaleFactor is used to scale down various options to make this smaller
+	// in-memory LSM behave wrt shape like a larger LSM.
+	const scaleFactor = 16
+	opts.MemTableSize /= scaleFactor
+	opts.LBaseMaxBytes /= scaleFactor
+	for i := range opts.TargetFileSizes {
+		opts.TargetFileSizes[i] /= scaleFactor
+	}
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+
+	rng := rand.New(rand.NewPCG(123, 123))
+
+	numKeysWritten := 0
+	var buf [1000]byte
+	// 8GiB is approx 8M kv pairs
+	writeBatchFunc := func() {
+		b := d.NewBatch()
+		for i := 0; i < 100; i++ {
+			k := rng.Uint32()
+			key := fmt.Sprintf("%010d", k)
+			for i := range buf {
+				buf[i] = byte(rng.IntN(256))
+			}
+			b.Set([]byte(key), buf[:], nil)
+			numKeysWritten++
+		}
+		require.NoError(t, d.Apply(b, nil))
+	}
+	waitForLowScore := func(scoreThreshold float64) {
+		done := false
+		for !done {
+			m := d.Metrics()
+			done = true
+			for i := range m.Levels {
+				if m.Levels[i].Score > scoreThreshold {
+					time.Sleep(time.Second)
+					done = false
+					break
+				}
+			}
+		}
+	}
+	for numKeysWritten < 8<<20 {
+		before := numKeysWritten / (256 << 10)
+		writeBatchFunc()
+		after := numKeysWritten / (256 << 10)
+		if before != after {
+			metrics := d.Metrics()
+			fmt.Printf("keys: %d\n%s\n", numKeysWritten, metrics.String())
+		}
+		waitForLowScore(1.2)
+	}
+	metrics := d.Metrics()
+	fmt.Printf("keys: %d\n%s\n", numKeysWritten, metrics.String())
+
+	iter, err := d.NewIter(&IterOptions{KeyTypes: IterKeyTypePointsOnly})
+	require.NoError(t, err)
+	hasPoint := iter.First()
+	pointCount := 0
+	for hasPoint {
+		pointCount++
+		_, err := iter.ValueAndErr()
+		if err != nil {
+			d.opts.Logger.Fatalf("%s", err.Error())
+		}
+		hasPoint = iter.Next()
+	}
+	require.GreaterOrEqual(t, int(numKeysWritten), int(pointCount))
+	d.opts.Logger.Infof("%+v", iter.Stats())
+	iter.Close()
+	d.Close()
 }

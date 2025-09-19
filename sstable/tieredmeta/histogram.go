@@ -95,10 +95,18 @@ func (h *StatsHistogram) MeanSize() uint64 {
 	return h.TotalBytes() / h.Count
 }
 
-func (h *StatsHistogram) ColdBytes(coldTierLTThreshold base.TieringAttribute) uint64 {
+func (h *StatsHistogram) ApproxColdBytes(coldTierLTThreshold base.TieringAttribute) uint64 {
 	var b uint64
-	if h.BucketStart >= coldTierLTThreshold {
+	if h.BucketStart <= coldTierLTThreshold {
 		b = h.UnderflowBytes
+	} else {
+		// Else the coldTierLTThreshold is somewhere in the past. This is bad, in
+		// that we should have written them to cold storage already, but we
+		// haven't. And we have no way of knowing how many of those bytes are
+		// actually cold.
+		//
+		// TODO(sumeer): improve this hack when thinking of a better histogram.
+		b = h.UnderflowBytes / 2
 	}
 	for i := 0; i < numBuckets; i++ {
 		bucketEnd := h.BucketStart + (base.TieringAttribute(i)+1)*h.BucketLength

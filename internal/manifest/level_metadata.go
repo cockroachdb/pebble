@@ -57,7 +57,8 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 	lm.tree = makeBTree(bcmp, files)
 	for _, f := range files {
 		lm.totalTableSize += f.Size
-		lm.totalRefSize += f.EstimatedReferenceSize()
+		refSize, _ := f.EstimatedReferenceSize()
+		lm.totalRefSize += refSize
 		lm.totalHotRefSize += f.EstimatedHotReferenceSize()
 		if f.Virtual {
 			lm.NumVirtual++
@@ -92,7 +93,8 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 		return err
 	}
 	lm.totalTableSize += f.Size
-	lm.totalRefSize += f.EstimatedReferenceSize()
+	refSize, _ := f.EstimatedReferenceSize()
+	lm.totalRefSize += refSize
 	lm.totalHotRefSize += f.EstimatedHotReferenceSize()
 	if f.Virtual {
 		lm.NumVirtual++
@@ -103,7 +105,8 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 
 func (lm *LevelMetadata) remove(f *TableMetadata) {
 	lm.totalTableSize -= f.Size
-	lm.totalRefSize -= f.EstimatedReferenceSize()
+	refSize, _ := f.EstimatedReferenceSize()
+	lm.totalRefSize -= refSize
 	lm.totalHotRefSize -= f.EstimatedHotReferenceSize()
 	if f.Virtual {
 		lm.NumVirtual--
@@ -150,6 +153,10 @@ func (lm *LevelMetadata) TableSize() uint64 {
 // AggregateSize().
 func (lm *LevelMetadata) EstimatedReferenceSize() uint64 {
 	return lm.totalRefSize
+}
+
+func (lm *LevelMetadata) EstimatedColdReferenceSize() uint64 {
+	return lm.totalRefSize - lm.totalHotRefSize
 }
 
 // Iter constructs a LevelIterator over the entire level.
@@ -341,7 +348,8 @@ func (ls *LevelSlice) Len() int {
 func (ls *LevelSlice) AggregateSizeSum() uint64 {
 	var sum uint64
 	for f := range ls.All() {
-		sum += f.Size + f.EstimatedReferenceSize()
+		refSize, _ := f.EstimatedReferenceSize()
+		sum += f.Size + refSize
 	}
 	return sum
 }
