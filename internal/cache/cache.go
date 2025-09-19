@@ -17,19 +17,8 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/metricsutil"
 )
-
-// Metrics holds metrics for the cache.
-type Metrics struct {
-	// The number of bytes inuse by the cache.
-	Size int64
-	// The count of objects (blocks or tables) in the cache.
-	Count int64
-	// The number of cache hits.
-	Hits int64
-	// The number of cache misses.
-	Misses int64
-}
 
 // Cache implements Pebble's sharded block cache. The Clock-PRO algorithm is
 // used for page replacement
@@ -77,6 +66,8 @@ type Cache struct {
 	maxSize int64
 	idAlloc atomic.Uint64
 	shards  []shard
+
+	metricsWindow *metricsutil.Window[HitsAndMisses]
 
 	// Traces recorded by Cache.trace. Used for debugging.
 	tr struct {
@@ -136,6 +127,8 @@ func NewWithShards(size int64, shards int) *Cache {
 	for i := range c.shards {
 		c.shards[i].init(size / int64(len(c.shards)))
 	}
+	c.metricsWindow = metricsutil.NewWindow[HitsAndMisses](c.hitsAndMisses)
+	c.metricsWindow.Start()
 
 	// Note: this is a no-op if invariants are disabled or race is enabled.
 	invariants.SetFinalizer(c, func(c *Cache) {
@@ -171,10 +164,19 @@ func (c *Cache) Unref() {
 	case v < 0:
 		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
-		for i := range c.shards {
-			c.shards[i].Free()
-		}
+		c.destroy()
 	}
+}
+
+func (c *Cache) destroy() {
+	if c.metricsWindow != nil {
+		c.metricsWindow.Stop()
+		c.metricsWindow = nil
+	}
+	for i := range c.shards {
+		c.shards[i].Free()
+	}
+	c.shards = nil
 }
 
 func (c *Cache) NewHandle() *Handle {
@@ -205,21 +207,6 @@ func (c *Cache) Reserve(n int) func() {
 		}
 		shardN = -1
 	}
-}
-
-// Metrics returns the metrics for the cache.
-func (c *Cache) Metrics() Metrics {
-	var m Metrics
-	for i := range c.shards {
-		s := &c.shards[i]
-		s.mu.RLock()
-		m.Count += int64(s.blocks.Len())
-		m.Size += s.sizeHot + s.sizeCold
-		s.mu.RUnlock()
-		m.Hits += s.hits.Load()
-		m.Misses += s.misses.Load()
-	}
-	return m
 }
 
 // MaxSize returns the max size of the cache.
@@ -261,9 +248,9 @@ func (c *Handle) Cache() *Cache {
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
-func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64) *Value {
+func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64, category Category) *Value {
 	k := makeKey(c.id, fileNum, offset)
-	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, false /* desireReadEntry */)
+	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, category, false /* desireReadEntry */)
 	if invariants.Enabled && re != nil {
 		panic("readEntry should be nil")
 	}
@@ -294,7 +281,7 @@ func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64) *Value {
 // While waiting, someone else may successfully read the value, which results
 // in a valid Handle being returned. This is a case where cacheHit=false.
 func (c *Handle) GetWithReadHandle(
-	ctx context.Context, fileNum base.DiskFileNum, offset uint64,
+	ctx context.Context, fileNum base.DiskFileNum, offset uint64, category Category,
 ) (
 	cv *Value,
 	rh ReadHandle,
@@ -304,7 +291,7 @@ func (c *Handle) GetWithReadHandle(
 	err error,
 ) {
 	k := makeKey(c.id, fileNum, offset)
-	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, true /* desireReadEntry */)
+	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, category, true /* desireReadEntry */)
 	if cv != nil {
 		return cv, ReadHandle{}, 0, 0, true, nil
 	}
