@@ -2095,7 +2095,9 @@ func (d *DB) ingestApply(
 			}
 			levelMetrics.TablesCount++
 			levelMetrics.TablesSize += int64(m.Size)
-			levelMetrics.EstimatedReferencesSize += m.EstimatedReferenceSize()
+			refSize, coldRefSize := m.EstimatedReferenceSize()
+			levelMetrics.EstimatedReferencesSize += refSize
+			levelMetrics.EstimatedColdReferencesSize += coldRefSize
 			levelMetrics.TableBytesIngested += m.Size
 			levelMetrics.TablesIngested++
 		}
@@ -2114,11 +2116,15 @@ func (d *DB) ingestApply(
 			}
 			levelMetrics.TablesCount--
 			levelMetrics.TablesSize -= int64(m.Size)
-			levelMetrics.EstimatedReferencesSize -= m.EstimatedReferenceSize()
+			refSize, coldRefSize := m.EstimatedReferenceSize()
+			levelMetrics.EstimatedReferencesSize -= refSize
+			levelMetrics.EstimatedColdReferencesSize -= coldRefSize
 			for i := range added {
 				levelMetrics.TablesCount++
 				levelMetrics.TablesSize += int64(added[i].Meta.Size)
-				levelMetrics.EstimatedReferencesSize += added[i].Meta.EstimatedReferenceSize()
+				refSize, coldRefSize := added[i].Meta.EstimatedReferenceSize()
+				levelMetrics.EstimatedReferencesSize += refSize
+				levelMetrics.EstimatedColdReferencesSize += coldRefSize
 			}
 		}
 		var exciseBounds base.UserKeyBounds

@@ -406,7 +406,9 @@ func TestVirtualReadsWiring(t *testing.T) {
 			}
 			metrics[de.Level].TablesCount--
 			metrics[de.Level].TablesSize -= int64(f.Size)
-			metrics[de.Level].EstimatedReferencesSize -= f.EstimatedReferenceSize()
+			refSize, coldRefSize := f.EstimatedReferenceSize()
+			metrics[de.Level].EstimatedReferencesSize -= refSize
+			metrics[de.Level].EstimatedColdReferencesSize -= coldRefSize
 		}
 		return metrics
 	}

@@ -746,6 +746,7 @@ func (vs *versionSet) UpdateVersionLocked(
 		l.VirtualTablesSize = newVersion.Levels[i].VirtualTableSize
 		l.TablesSize = int64(newVersion.Levels[i].TableSize())
 		l.EstimatedReferencesSize = newVersion.Levels[i].EstimatedReferenceSize()
+		l.EstimatedColdReferencesSize = newVersion.Levels[i].EstimatedColdReferenceSize()
 		l.Sublevels = 0
 		if l.TablesCount > 0 {
 			l.Sublevels = 1
@@ -756,11 +757,17 @@ func (vs *versionSet) UpdateVersionLocked(
 				vs.opts.Logger.Fatalf("versionSet metrics L%d Size = %d, actual size = %d", i, l.TablesSize, size)
 			}
 			refSize := uint64(0)
+			coldRefSize := uint64(0)
 			for f := range levelFiles.All() {
-				refSize += f.EstimatedReferenceSize()
+				rs, crs := f.EstimatedReferenceSize()
+				refSize += rs
+				coldRefSize += crs
 			}
 			if refSize != l.EstimatedReferencesSize {
 				vs.opts.Logger.Fatalf("versionSet metrics L%d EstimatedReferencesSize = %d, recomputed size = %d", i, l.EstimatedReferencesSize, refSize)
+			}
+			if coldRefSize != l.EstimatedColdReferencesSize {
+				vs.opts.Logger.Fatalf("versionSet metrics L%d EstimatedColdReferencesSize = %d, recomputed size = %d", i, l.EstimatedColdReferencesSize, coldRefSize)
 			}
 
 			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTablesCount {
@@ -1266,7 +1273,9 @@ func newFileMetrics(newFiles []manifest.NewTableEntry) levelMetricsDelta {
 		}
 		lm.TablesCount++
 		lm.TablesSize += int64(nf.Meta.Size)
-		lm.EstimatedReferencesSize += nf.Meta.EstimatedReferenceSize()
+		refSize, coldRefSize := nf.Meta.EstimatedReferenceSize()
+		lm.EstimatedReferencesSize += refSize
+		lm.EstimatedColdReferencesSize += coldRefSize
 	}
 	return m
 }
