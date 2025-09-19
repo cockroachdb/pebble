@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -86,7 +87,8 @@ func TestValueSeparationPolicy(t *testing.T) {
 						fn = max(fn, bfm.Physical.FileNum)
 						inputBlobPhysicalFiles[bfm.FileID] = bfm.Physical
 					}
-					pbr := newPreserveAllHotBlobReferences(inputBlobPhysicalFiles, 0)
+					pbr := newPreserveAllHotBlobReferences(
+						inputBlobPhysicalFiles, 0, tieredmeta.NoopColdTierThresholdRetriever{})
 					vs = pbr
 				case "write-new-blob-files":
 					var minimumSize int
@@ -101,7 +103,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 						}
 					}
 					newSep := newWriteNewBlobFiles(nil, testkeys.Comparer,
-						func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+						func(_ base.StorageTier) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 							fn++
 							return objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
 						},

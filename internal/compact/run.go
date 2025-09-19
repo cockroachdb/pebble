@@ -107,6 +107,8 @@ type RunnerConfig struct {
 	// GrantHandle is used to perform accounting of resource consumption by the
 	// CompactionScheduler.
 	GrantHandle base.CompactionGrantHandle
+
+	Logger base.Logger
 }
 
 // ValueSeparationOverrideConfig is used to selectively override value
@@ -156,7 +158,7 @@ type ValueSeparation interface {
 	// StartOutput is called when a compaction is starting a new output sstable ...
 	StartOutput(config ValueSeparationOutputConfig)
 	// EstimatedFileSize returns an estimate of the disk space consumed by the
-	// current, pending blob file if it were closed now. If no blob file has
+	// current, pending blob files if they were closed now. If no blob file has
 	// been created, it returns 0.
 	EstimatedFileSize() uint64
 	// EstimatedHotReferenceSize returns an estimate of the disk space consumed
@@ -339,6 +341,8 @@ func (r *Runner) writeKeysToTable(
 		r.cmp, firstKey, limitKey,
 		r.cfg.TargetOutputFileSize, r.cfg.Grandparents.Iter(), r.iter.Frontiers(),
 	)
+	// r.cfg.Logger.Infof("splitter: first %x, limit %x, target %d, frontiers: %s, grandparents: %s",
+	// 	firstKey, limitKey, r.cfg.TargetOutputFileSize, r.iter.Frontiers().String(), r.cfg.Grandparents.String())
 	equalPrev := func(k []byte) bool {
 		return tw.ComparePrev(k) == 0
 	}
@@ -383,8 +387,14 @@ func (r *Runner) writeKeysToTable(
 		outputSize := tw.EstimatedSize()
 		// NB: only hot references are added to sstable size when deciding to
 		// split since we don't have to worry about huge compactions rewriting
-		// cold blob files, since they are never rewritten as part of sstable
-		// compactions.
+		// cold blob files, since they are (almost) never rewritten as part of
+		// sstable compactions.
+		//
+		// We will need to rarely rewrite cold blob references in a compaction,
+		// when the size of the cold blob file has shrunk to be much smaller than
+		// desired, (say we started off with the blob file being 32MiB, and it is
+		// now down to 2MiB because of many deletions). TODO(sumeer): figure out
+		// the details.
 		outputSize += valueSeparation.EstimatedHotReferenceSize()
 		if splitter.ShouldSplitBefore(kv.K.UserKey, outputSize, equalPrev) {
 			break

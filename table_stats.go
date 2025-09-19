@@ -519,7 +519,8 @@ func (d *DB) estimateSizesBeneath(
 		// resulting in a lower than expected avgValueLogicalSize. For an example of
 		// this effect see the estimate in testdata/compaction_picker_scores (search
 		// for "point-deletions-bytes-estimate: 163850").
-		fileSum    = meta.Size + meta.EstimatedReferenceSize()
+		refSize, _ = meta.EstimatedReferenceSize()
+		fileSum    = meta.Size + refSize
 		entryCount = fileProps.NumEntries
 		keySum     = fileProps.RawKeySize
 		valSum     = fileProps.RawValueSize
@@ -527,7 +528,8 @@ func (d *DB) estimateSizesBeneath(
 
 	for l := level + 1; l < numLevels; l++ {
 		for tableBeneath := range v.Overlaps(l, meta.UserKeyBounds()).All() {
-			fileSum += tableBeneath.Size + tableBeneath.EstimatedReferenceSize()
+			rs, _ := tableBeneath.EstimatedReferenceSize()
+			fileSum += tableBeneath.Size + rs
 			if stats, ok := tableBeneath.Stats(); ok {
 				entryCount += stats.NumEntries
 				keySum += stats.RawKeySize
@@ -896,7 +898,8 @@ func estimatePhysicalSizes(
 	//   -----------------------  ×  ----------
 	//   RawKeySize+RawValueSize     NumEntries
 	//
-	physicalSize := tableMeta.Size + tableMeta.EstimatedReferenceSize()
+	refSize, _ := tableMeta.EstimatedReferenceSize()
+	physicalSize := tableMeta.Size + refSize
 	uncompressedSum := props.RawKeySize + props.RawValueSize
 	compressionRatio = float64(physicalSize) / float64(uncompressedSum)
 	if compressionRatio > 1 {

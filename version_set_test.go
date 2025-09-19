@@ -156,7 +156,9 @@ func TestVersionSet(t *testing.T) {
 				}
 				lm.TablesCount--
 				lm.TablesSize -= int64(f.Size)
-				lm.EstimatedReferencesSize -= f.EstimatedReferenceSize()
+				refSize, coldRefSize := f.EstimatedReferenceSize()
+				lm.EstimatedReferencesSize -= refSize
+				lm.EstimatedColdReferencesSize -= coldRefSize
 			}
 
 			mu.Lock()

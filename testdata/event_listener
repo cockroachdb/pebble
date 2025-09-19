@@ -255,7 +255,7 @@ metrics
 ----
 ----
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
-level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+level  size(hot) | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
     0      1.5KB |      2 1.5KB |      0     0 |     0B     0B |    97B |      1  747B |   2 23.69
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
@@ -293,10 +293,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
     2 (850B) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-      loading |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 tables                       |       blob files        |     blob values     |     cold blobs
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed |       live |      refed
+--------------+------------+-----------------------+------------+------------+--------+------------+------------+-----------
+      loading |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B) |            |
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -422,7 +422,7 @@ metrics
 ----
 ----
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
-level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+level  size(hot) | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
     0        3KB |      4   3KB |      0     0 |     0B     0B |   132B |      2 1.5KB |   4 23.21
     1         0B |      0    0B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
@@ -460,10 +460,10 @@ ITERATORS
 -------------+-------------+--------------+-------------+--------------+-------------+------------
    6 (2.5KB) |        0.0% |       0 (0B) |       50.0% |         0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-      loading |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 tables                       |       blob files        |     blob values     |     cold blobs
+   stats prog |    backing |                zombie |       live |     zombie |  total |      refed |       live |      refed
+--------------+------------+-----------------------+------------+------------+--------+------------+------------+-----------
+      loading |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B) |            |
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
