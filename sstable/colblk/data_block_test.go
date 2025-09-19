@@ -218,3 +218,27 @@ func (g getInternalValuer) GetInternalValueForPrefixAndValueHandle(
 ) base.InternalValue {
 	return g(handle)
 }
+
+func BenchmarkDataBlockDecoderInit(b *testing.B) {
+	const targetBlockSize = 32 << 10
+	seed := uint64(20250919)
+	rng := rand.New(rand.NewPCG(0, seed))
+	keys, values := makeTestKeyRandomKVs(rng, 8, 8, targetBlockSize)
+
+	var w DataBlockEncoder
+	w.Init(&testKeysSchema)
+	for j := 0; w.Size() < targetBlockSize; j++ {
+		ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
+		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+		w.Add(ik, values[j], vp, kcmp, false /* isObsolete */)
+	}
+	finished, _ := w.Finish(w.Rows(), w.Size())
+
+	var md block.Metadata
+
+	b.ResetTimer()
+	for range b.N {
+		InitDataBlockMetadata(&testKeysSchema, &md, finished)
+	}
+}
