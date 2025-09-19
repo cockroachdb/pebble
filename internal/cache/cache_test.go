@@ -69,6 +69,46 @@ func setTestValue(c *Handle, fileNum base.DiskFileNum, offset uint64, s string, 
 	v.Release()
 }
 
+// TestCachePeek verifies that Peek does not update the recently accessed status
+// of an entry.
+func TestCachePeek(t *testing.T) {
+	const size = 10
+	cache := NewWithShards(size, 1)
+	defer cache.Unref()
+	h := cache.NewHandle()
+	defer h.Close()
+
+	for i := range size {
+		setTestValue(h, 0, uint64(i), "a", 1)
+	}
+	for i := range size / 2 {
+		v := h.Get(base.DiskFileNum(0), uint64(i))
+		if v == nil {
+			t.Fatalf("expected to find block %d", i)
+		}
+		v.Release()
+	}
+	for i := size / 2; i < size; i++ {
+		v := h.Peek(base.DiskFileNum(0), uint64(i))
+		if v == nil {
+			t.Fatalf("expected to find block %d", i)
+		}
+		v.Release()
+	}
+	// Now add more entries to cause eviction.
+	for i := range size / 4 {
+		setTestValue(h, 0, uint64(size+i), "a", 1)
+	}
+	// Verify that the Gets still find their values, despite the Peeks.
+	for i := range size / 2 {
+		v := h.Get(base.DiskFileNum(0), uint64(i))
+		if v == nil {
+			t.Fatalf("expected to find block %d", i)
+		}
+		v.Release()
+	}
+}
+
 func TestCacheDelete(t *testing.T) {
 	cache := NewWithShards(100, 1)
 	defer cache.Unref()
