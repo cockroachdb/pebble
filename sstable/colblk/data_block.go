@@ -44,7 +44,7 @@ type KeySchema struct {
 	// InitKeySeekerMetadata initializes the provided KeySeekerMetadata. This
 	// happens once when a block enters the block cache and can be used to save
 	// computation in NewKeySeeker.
-	InitKeySeekerMetadata func(meta *KeySeekerMetadata, d *DataBlockDecoder, bd *BlockDecoder)
+	InitKeySeekerMetadata func(meta *KeySeekerMetadata, d *DataBlockDecoder, bd BlockDecoder)
 
 	// KeySeeker returns a KeySeeker using metadata that was previously
 	// initialized with InitKeySeekerMetadata. The returned key seeker can be an
@@ -215,10 +215,10 @@ func DefaultKeySchema(comparer *base.Comparer, prefixBundleSize int) KeySchema {
 			kw.suffixes.Init()
 			return kw
 		},
-		InitKeySeekerMetadata: func(meta *KeySeekerMetadata, d *DataBlockDecoder, bd *BlockDecoder) {
+		InitKeySeekerMetadata: func(meta *KeySeekerMetadata, d *DataBlockDecoder, bd BlockDecoder) {
 			ks := (*defaultKeySeeker)(unsafe.Pointer(&meta[0]))
 			ks.comparer = comparer
-			ks.init(d, bd)
+			ks.init(d, &bd)
 		},
 		KeySeeker: func(meta *KeySeekerMetadata) KeySeeker {
 			ks := (*defaultKeySeeker)(unsafe.Pointer(&meta[0]))
@@ -892,7 +892,7 @@ func (d *DataBlockDecoder) PrefixChanged() Bitmap {
 }
 
 // Init initializes the data block reader with the given serialized data block.
-func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) *BlockDecoder {
+func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) BlockDecoder {
 	if uintptr(unsafe.Pointer(unsafe.SliceData(data)))&7 != 0 {
 		panic("data buffer not 8-byte aligned")
 	}
@@ -904,12 +904,12 @@ func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) *BlockDecoder {
 	d.isValueExternal = bd.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsValueExternal)
 	d.isObsolete = bd.Bitmap(len(schema.ColumnTypes) + dataBlockColumnIsObsolete)
 	d.maximumKeyLength = binary.LittleEndian.Uint32(data[schema.HeaderSize:])
-	return &bd
+	return bd
 }
 
 // Describe descirbes the binary format of the data block, assuming f.Offset()
 // is positioned at the beginning of the same data block described by d.
-func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node, bd *BlockDecoder) {
+func (d *DataBlockDecoder) Describe(f *binfmt.Formatter, tp treeprinter.Node, bd BlockDecoder) {
 	// Set the relative offset. When loaded into memory, the beginning of blocks
 	// are aligned. Padding that ensures alignment is done relative to the
 	// current offset. Setting the relative offset ensures that if we're
@@ -1051,7 +1051,7 @@ func (i *DataBlockIter) InitOnce(
 // Init initializes the data block iterator, configuring it to read from the
 // provided decoder.
 func (i *DataBlockIter) Init(
-	d *DataBlockDecoder, bd *BlockDecoder, transforms blockiter.Transforms,
+	d *DataBlockDecoder, bd BlockDecoder, transforms blockiter.Transforms,
 ) error {
 	i.d = d
 	// Leave i.h unchanged.

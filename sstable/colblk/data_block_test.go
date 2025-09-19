@@ -29,7 +29,7 @@ func TestDataBlock(t *testing.T) {
 	var buf bytes.Buffer
 	var w DataBlockEncoder
 	var r DataBlockDecoder
-	var bd *BlockDecoder
+	var bd BlockDecoder
 	var v DataBlockValidator
 	var it DataBlockIter
 	rw := NewDataBlockRewriter(&testKeysSchema, testkeys.Comparer.EnsureDefaults())

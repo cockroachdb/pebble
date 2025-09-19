@@ -498,7 +498,7 @@ var KeySchema = colblk.KeySchema{
 	NewKeyWriter: func() colblk.KeyWriter {
 		return makeCockroachKeyWriter()
 	},
-	InitKeySeekerMetadata: func(meta *colblk.KeySeekerMetadata, d *colblk.DataBlockDecoder, bd *colblk.BlockDecoder) {
+	InitKeySeekerMetadata: func(meta *colblk.KeySeekerMetadata, d *colblk.DataBlockDecoder, bd colblk.BlockDecoder) {
 		ks := (*cockroachKeySeeker)(unsafe.Pointer(meta))
 		ks.init(d, bd)
 	},
@@ -747,7 +747,7 @@ var _ uint = colblk.KeySeekerMetadataSize - uint(unsafe.Sizeof(cockroachKeySeeke
 
 var _ colblk.KeySeeker = (*cockroachKeySeeker)(nil)
 
-func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder, bd *colblk.BlockDecoder) {
+func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder, bd colblk.BlockDecoder) {
 	ks.roachKeys = bd.PrefixBytes(cockroachColRoachKey)
 	ks.roachKeyChanged = d.PrefixChanged()
 	ks.mvccWallTimes = bd.Uints(cockroachColMVCCWallTime)
