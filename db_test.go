@@ -858,7 +858,7 @@ func TestMemTableReservation(t *testing.T) {
 		t.Fatalf("expected 2 refs, but found %d", refs)
 	}
 	// Verify the memtable reservation has caused our test block to be evicted.
-	if cv := tmpHandle.Get(base.DiskFileNum(0), 0, cache.CategoryBackground); cv != nil {
+	if cv := tmpHandle.Get(base.DiskFileNum(0), 0, cache.MakeLevel(0), cache.CategoryBackground); cv != nil {
 		t.Fatalf("expected failure, but found success: %#v", cv)
 	}
 

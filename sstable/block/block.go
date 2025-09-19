@@ -255,6 +255,9 @@ var NoReadEnv = ReadEnv{}
 
 // ReadEnv contains arguments used when reading a block which apply to all
 // the block reads performed by a higher-level operation.
+//
+// ReadEnv can be copied by value; any copy will use the same statistics and
+// buffer pool.
 type ReadEnv struct {
 	// stats and iterStats are slightly different. stats is a shared struct
 	// supplied from the outside, and represents stats for the whole iterator
@@ -273,6 +276,10 @@ type ReadEnv struct {
 	// When BufferPool is non-nil, any block cache accesses use the background
 	// category.
 	BufferPool *BufferPool
+	// Level is the LSM level associated with the operation, when the operation
+	// applies to a (possibly virtual) sstable. It is used when interacting with
+	// the block cache.
+	Level cache.Level
 
 	// ReportCorruptionFn is called with ReportCorruptionArg and the error
 	// whenever an SSTable corruption is detected. The argument is used to avoid
@@ -382,7 +389,7 @@ func (r *Reader) Read(
 	// reading a block.
 	if r.opts.CacheOpts.CacheHandle == nil || env.BufferPool != nil {
 		if r.opts.CacheOpts.CacheHandle != nil {
-			if cv := r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset, cache.CategoryBackground); cv != nil {
+			if cv := r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset, env.Level, cache.CategoryBackground); cv != nil {
 				recordCacheHit(ctx, env, readHandle, bh, kind)
 				return CacheBufferHandle(cv), nil
 			}
@@ -395,7 +402,7 @@ func (r *Reader) Read(
 	}
 
 	cv, crh, errorDuration, waitDuration, hit, err := r.opts.CacheOpts.CacheHandle.GetWithReadHandle(
-		ctx, r.opts.CacheOpts.FileNum, bh.Offset, kindToCacheCategory[kind])
+		ctx, r.opts.CacheOpts.FileNum, bh.Offset, env.Level, kindToCacheCategory[kind])
 	const slowDur = 5 * time.Millisecond
 	if waitDuration > slowDur && r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		r.opts.LoggerAndTracer.Eventf(
@@ -548,8 +555,8 @@ func (r *Reader) Readable() objstorage.Readable {
 //
 // Users should prefer using Read, which handles reading from object storage on
 // a cache miss.
-func (r *Reader) GetFromCache(bh Handle) *cache.Value {
-	return r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset, cache.CategoryBackground)
+func (r *Reader) GetFromCache(bh Handle, level cache.Level) *cache.Value {
+	return r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset, level, cache.CategoryBackground)
 }
 
 // UsePreallocatedReadHandle returns a ReadHandle that reads from the reader and
