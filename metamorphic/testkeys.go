@@ -61,6 +61,16 @@ var TestkeysKeyFormat = KeyFormat{
 		}
 		return sstable.NewTestKeysBlockPropertyFilter(uint64(high), uint64(low))
 	},
+	ParseMaximumSuffixProperty: func(s string) pebble.MaximumSuffixProperty {
+		return sstable.MaxTestKeysSuffixProperty{}
+	},
+	FormatMaximumSuffixProperty: func(prop pebble.MaximumSuffixProperty) string {
+		if prop == nil {
+			return ""
+		}
+		return "maxsuffixprop"
+	},
+	MaximumSuffixProperty: sstable.MaxTestKeysSuffixProperty{},
 }
 
 type testkeyKeyGenerator struct {

@@ -93,9 +93,9 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newIndexedBatchOp:
 		return &t.dbID, &t.batchID, nil
 	case *newIterOp:
-		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.maximumSuffixProperty}
 	case *newIterUsingCloneOp:
-		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.maximumSuffixProperty}
 	case *newSnapshotOp:
 		return &t.dbID, &t.snapID, []interface{}{&t.bounds}
 	case *newExternalObjOp:
@@ -119,7 +119,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *iterSetBoundsOp:
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
 	case *iterSetOptionsOp:
-		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.maximumSuffixProperty}
 	case *singleDeleteOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
 	case *rangeKeyDeleteOp:
@@ -197,6 +197,7 @@ type parserOpts struct {
 	allowUndefinedObjs          bool
 	parseFormattedUserKey       func(string) UserKey
 	parseFormattedUserKeySuffix func(string) UserKeySuffix
+	parseMaximumSuffixProperty  func(string) pebble.MaximumSuffixProperty
 }
 
 func parse(src []byte, opts parserOpts) (_ []op, err error) {
@@ -319,6 +320,22 @@ func (p *parser) parseUserKeySuffix(pos token.Pos, lit string) UserKeySuffix {
 	return p.opts.parseFormattedUserKeySuffix(s)
 }
 
+func (p *parser) parseMaximumSuffixProperty(
+	pos token.Pos, lit string,
+) pebble.MaximumSuffixProperty {
+	s, err := strconv.Unquote(lit)
+	if err != nil {
+		panic(p.errorf(pos, "%s", err))
+	}
+	if len(s) == 0 {
+		return nil
+	}
+	if p.opts.parseMaximumSuffixProperty == nil {
+		return nil
+	}
+	return p.opts.parseMaximumSuffixProperty(s)
+}
+
 func unquoteBytes(lit string) []byte {
 	s, err := strconv.Unquote(lit)
 	if err != nil {
@@ -407,6 +424,10 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 				panic(p.errorf(elem.pos, "error parsing %q: %s", elem.lit, err))
 			}
 			*t = pebble.FormatMajorVersion(val)
+
+		case *pebble.MaximumSuffixProperty:
+			elem.expectToken(p, token.STRING)
+			*t = p.parseMaximumSuffixProperty(elem.pos, elem.lit)
 
 		default:
 			panic(p.errorf(pos, "%s: unsupported arg[%d] type: %T", methodName, i, args[i]))

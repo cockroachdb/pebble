@@ -374,6 +374,9 @@ type KeyFormat struct {
 	NewGenerator                 func(*keyManager, *rand.Rand, OpConfig) KeyGenerator
 	NewSuffixFilterMask          func() pebble.BlockPropertyFilterMask
 	NewSuffixBlockPropertyFilter func(min []byte, max []byte) sstable.BlockPropertyFilter
+	ParseMaximumSuffixProperty   func(string) pebble.MaximumSuffixProperty
+	FormatMaximumSuffixProperty  func(pebble.MaximumSuffixProperty) string
+	MaximumSuffixProperty        pebble.MaximumSuffixProperty
 }
 
 func (kf KeyFormat) apply(ro *runAndCompareOptions) { ro.keyFormat = kf }
