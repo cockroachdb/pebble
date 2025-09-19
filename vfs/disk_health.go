@@ -466,15 +466,20 @@ func (i DiskSlowInfo) String() string {
 
 // SafeFormat implements redact.SafeFormatter.
 func (i DiskSlowInfo) SafeFormat(w redact.SafePrinter, _ rune) {
+	fullPath, err := filepath.Abs(i.Path)
+	if err != nil {
+		w.Printf("failed to get absolute path %s: %s", redact.Safe(i.Path), err)
+		fullPath = i.Path
+	}
 	switch i.OpType {
 	// Operations for which i.WriteSize is meaningful.
 	case OpTypeWrite, OpTypeSyncTo, OpTypePreallocate:
 		w.Printf("disk slowness detected: %s on file %s (%d bytes) has been ongoing for %0.1fs",
-			redact.Safe(i.OpType.String()), redact.Safe(filepath.Base(i.Path)),
+			redact.Safe(i.OpType.String()), redact.Safe(fullPath),
 			redact.Safe(i.WriteSize), redact.Safe(i.Duration.Seconds()))
 	default:
 		w.Printf("disk slowness detected: %s on file %s has been ongoing for %0.1fs",
-			redact.Safe(i.OpType.String()), redact.Safe(filepath.Base(i.Path)),
+			redact.Safe(i.OpType.String()), redact.Safe(fullPath),
 			redact.Safe(i.Duration.Seconds()))
 	}
 }
