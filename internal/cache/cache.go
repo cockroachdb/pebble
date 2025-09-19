@@ -259,15 +259,19 @@ func (c *Handle) Cache() *Cache {
 	return c.cache
 }
 
+// Peek retrieves the cache value for the specified file and offset, returning
+// nil if no value is present. Peek does not affect the state of the cache (it
+// does not "count" as an access as far as the cache replacement is concerned).
+func (c *Handle) Peek(fileNum base.DiskFileNum, offset uint64) *Value {
+	k := makeKey(c.id, fileNum, offset)
+	return c.cache.getShard(k).get(k, true /* peekOnly */)
+}
+
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
 func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64) *Value {
 	k := makeKey(c.id, fileNum, offset)
-	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, false /* desireReadEntry */)
-	if invariants.Enabled && re != nil {
-		panic("readEntry should be nil")
-	}
-	return cv
+	return c.cache.getShard(k).get(k, false /* peekOnly */)
 }
 
 // GetWithReadHandle retrieves the cache value for the specified handleID, fileNum
@@ -304,7 +308,7 @@ func (c *Handle) GetWithReadHandle(
 	err error,
 ) {
 	k := makeKey(c.id, fileNum, offset)
-	cv, re := c.cache.getShard(k).getWithMaybeReadEntry(k, true /* desireReadEntry */)
+	cv, re := c.cache.getShard(k).getWithReadEntry(k)
 	if cv != nil {
 		return cv, ReadHandle{}, 0, 0, true, nil
 	}

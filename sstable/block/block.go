@@ -366,7 +366,7 @@ func (r *Reader) Read(
 	// reading a block.
 	if r.opts.CacheOpts.CacheHandle == nil || env.BufferPool != nil {
 		if r.opts.CacheOpts.CacheHandle != nil {
-			if cv := r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset); cv != nil {
+			if cv := r.opts.CacheOpts.CacheHandle.Peek(r.opts.CacheOpts.FileNum, bh.Offset); cv != nil {
 				recordCacheHit(ctx, env, readHandle, bh, kind)
 				return CacheBufferHandle(cv), nil
 			}
@@ -528,12 +528,13 @@ func (r *Reader) Readable() objstorage.Readable {
 	return r.readable
 }
 
-// GetFromCache retrieves the block from the cache, if it is present.
+// GetFromCache retrieves the block from the cache, if it is present. It does
+// not mark the block as recently used.
 //
 // Users should prefer using Read, which handles reading from object storage on
 // a cache miss.
 func (r *Reader) GetFromCache(bh Handle) *cache.Value {
-	return r.opts.CacheOpts.CacheHandle.Get(r.opts.CacheOpts.FileNum, bh.Offset)
+	return r.opts.CacheOpts.CacheHandle.Peek(r.opts.CacheOpts.FileNum, bh.Offset)
 }
 
 // UsePreallocatedReadHandle returns a ReadHandle that reads from the reader and
