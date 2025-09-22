@@ -418,6 +418,12 @@ type DB struct {
 			flushing bool
 			// The number of ongoing non-download compactions.
 			compactingCount int
+			// The number of calls to compact that have not yet finished. This is different
+			// from compactingCount, as calls to compact will attempt to schedule and run
+			// follow-up compactions after the current compaction finishes, dropping db.mu
+			// in between updating compactingCount and the scheduling operation. This value is
+			// used in tests in order to track when all compaction activity has finished.
+			compactProcesses int
 			// The number of download compactions.
 			downloadingCount int
 			// The list of deletion hints, suggesting ranges for delete-only
