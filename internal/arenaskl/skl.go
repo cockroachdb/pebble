@@ -385,9 +385,51 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 
 	var next *node
 	for level = level - 1; level >= 0; level-- {
+		prevLevelNext := next
+
 		for {
 			// Assume prev.key < key.
 			next = s.getNext(prev, level)
+
+			// Before performing a key comparison, check if the next pointer
+			// equals prevLevelNext. The pointer comparison is significantly
+			// cheaper than a key comparison.
+			//
+			// It's not unlikely for consecutive levels to have the same next
+			// pointer. We use [maxHeight]=20 levels, and with each higher
+			// height the probability a node extends one more rung of the tower
+			// is 1/e.
+			//
+			// The skiplist may contain nodes with keys between the (prev,next)
+			// pair of nodes that make up the previous level's splice. Let's
+			// divide these nodes into the L nodes with keys < key and the R
+			// nodes with keys > key. Only a subset of these nodes may have
+			// towers that reach [level].
+			//
+			// Of the nodes in R that reach [level], we only care about the one
+			// with the smallest key. If there are no nodes in R that reach
+			// [level], then this level's splice's next pointer will be the same
+			// as the level above's splice's next pointer. We can perform a
+			// cheap pointer comparison of [next] and [prevLevelNext] to
+			// determine this.
+			//
+			// (Note that we must still skip over any of the nodes in L that are
+			// high enough to reach [level], and each of these nodes will
+			// require a key comparison.)
+			//
+			//        (< key)                              (≥ key)
+			//         prev                              prevLevelNext
+			//      +---------+                          +---------+
+			//      |         |                          |         |
+			//      | level+1 |------------------------> |         |
+			//      |         |                          |         |
+			//      |         |          next            |         |
+			//      |         |       +--------+         |         |
+			//      | level   |--...--|        |--...--> |         |
+			//      |         |       |        |         |         |
+			if next == prevLevelNext {
+				break
+			}
 			if next == s.tail {
 				// Tail node, so done.
 				break
