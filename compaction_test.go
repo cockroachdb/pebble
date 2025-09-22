@@ -1688,7 +1688,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 	compactInfo = nil
 	compactionString := func() string {
-		for d.mu.compact.compactingCount > 0 {
+		for d.mu.compact.compactingCount > 0 || d.mu.compact.compactProcesses > 0 {
 			d.mu.compact.cond.Wait()
 		}
 		slices.SortFunc(compactInfo, func(a, b CompactionInfo) int {
