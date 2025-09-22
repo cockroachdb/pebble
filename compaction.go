@@ -2123,6 +2123,7 @@ func (d *DB) runPickedCompaction(pc pickedCompaction, grantHandle CompactionGran
 	}
 
 	d.mu.compact.compactingCount++
+	d.mu.compact.compactProcesses++
 	c := pc.ConstructCompaction(d, grantHandle)
 	c.AddInProgressLocked(d)
 	go func() {
@@ -2281,6 +2282,7 @@ func (d *DB) tryScheduleDeleteOnlyCompaction() bool {
 	if len(inputs) > 0 {
 		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow(), resolvedHints, exciseEnabled)
 		d.mu.compact.compactingCount++
+		d.mu.compact.compactProcesses++
 		c.AddInProgressLocked(d)
 		go d.compact(c, nil)
 		return true
@@ -2655,6 +2657,7 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			d.maybeScheduleCompaction()
+			d.mu.compact.compactProcesses--
 			d.mu.compact.cond.Broadcast()
 		}()
 	})
