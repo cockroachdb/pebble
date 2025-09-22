@@ -590,6 +590,9 @@ func (h *fileCacheHandle) newIters(
 	internalOpts.readEnv.Virtual = env.Virtual
 	internalOpts.readEnv.IsSharedIngested = env.IsSharedIngested
 	internalOpts.readEnv.InternalBounds = env.InternalBounds
+	if opts != nil && opts.layer.IsSet() && !opts.layer.IsFlushableIngests() {
+		internalOpts.readEnv.Block.Level = cache.MakeLevel(opts.layer.Level())
+	}
 
 	var iters iterSet
 	if kinds.RangeKey() && file.HasRangeKeys {
