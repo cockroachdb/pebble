@@ -385,9 +385,45 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 
 	var next *node
 	for level = level - 1; level >= 0; level-- {
+		prevLevelNext := next
+
 		for {
 			// Assume prev.key < key.
 			next = s.getNext(prev, level)
+
+			// Before performing a key comparison, check if the next pointer
+			// equals prevLevelNext. The pointer comparison is significantly
+			// cheaper than a key comparison.
+			//
+			// It's not unlikely for consecutive levels to have the same next
+			// pointer. We use [maxHeight]=20 levels, and with each higher
+			// height the probability a node extends one more rung of the tower
+			// is 1/e.
+			//
+			// There may be nodes between next and prevLevelNext. But if their
+			// towers don't rise to [level], the splice for this level can be
+			// decided without additional key comparisons.
+			//
+			// If there are nodes between next and prevLevelNext and their
+			// towers do rise to [level], this optimization may still succeed in
+			// conserving a single key comparison if all the keys between next
+			// and prevLevelNext have keys < key (in which case we'll iterate
+			// through all of them, eventually discovering prevLevelNext again
+			// on this level).
+			//
+			//        (< key)                              (≥ key)
+			//         prev                              prevLevelNext
+			//      +---------+                          +---------+
+			//      |         |                          |         |
+			//      | level+1 |------------------------> |         |
+			//      |         |                          |         |
+			//      |         |          next            |         |
+			//      |         |       +--------+         |         |
+			//      | level   |--...--|        |--...--> |         |
+			//      |         |       |        |         |         |
+			if next == prevLevelNext {
+				break
+			}
 			if next == s.tail {
 				// Tail node, so done.
 				break
