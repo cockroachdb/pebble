@@ -368,3 +368,33 @@ func benchmarkCockroachDataColBlockIter(
 		})
 	}
 }
+
+func BenchmarkInitDataBlockMetadata(b *testing.B) {
+	const targetBlockSize = 32 << 10
+	seed := uint64(20250919)
+	rng := rand.New(rand.NewPCG(0, seed))
+	keys, values := RandomKVs(rng, 10000, KeyGenConfig{
+		PrefixAlphabetLen: 8,
+		RoachKeyLen:       16,
+		PrefixLenShared:   4,
+		AvgKeysPerPrefix:  4,
+		PercentLogical:    10,
+	}, 8)
+
+	var w colblk.DataBlockEncoder
+	w.Init(&KeySchema)
+	for j := 0; w.Size() < targetBlockSize; j++ {
+		ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
+		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+		w.Add(ik, values[j], vp, kcmp, false /* isObsolete */)
+	}
+	finished, _ := w.Finish(w.Rows(), w.Size())
+
+	var md block.Metadata
+
+	b.ResetTimer()
+	for range b.N {
+		colblk.InitDataBlockMetadata(&KeySchema, &md, finished)
+	}
+}
