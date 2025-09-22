@@ -64,7 +64,7 @@ func init() {
 
 	var stats base.InternalIteratorStats
 	var bufferPool block.BufferPool
-	bufferPool.Init(5)
+	bufferPool.Init(5, block.ForCompaction)
 
 	benchIterOpts = IterOptions{
 		Transforms:           NoTransforms,
@@ -128,7 +128,7 @@ func BenchmarkIteratorSeekPrefixGE_Hit(b *testing.B) {
 	// Setup iterator options with bloom filter enabled
 	var stats base.InternalIteratorStats
 	var bufferPool block.BufferPool
-	bufferPool.Init(5)
+	bufferPool.Init(5, block.ForCompaction)
 	defer bufferPool.Release()
 
 	iterOpts := IterOptions{
@@ -160,7 +160,7 @@ func BenchmarkIteratorSeekPrefixGE_Hit(b *testing.B) {
 func BenchmarkIteratorSeekPrefixGE_NoHit(b *testing.B) {
 	var stats base.InternalIteratorStats
 	var bufferPool block.BufferPool
-	bufferPool.Init(5)
+	bufferPool.Init(5, block.ForCompaction)
 	defer bufferPool.Release()
 
 	iterOpts := IterOptions{

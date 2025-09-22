@@ -471,7 +471,7 @@ var metaBufferPools = sync.Pool{
 		// New pools are initialized with a capacity of 3 to accommodate the
 		// meta block (1), and both the compressed properties block (1) and
 		// decompressed properties block (1) simultaneously.
-		bp.Init(3)
+		bp.Init(3, block.ForSSTableMetadata)
 		return bp
 	},
 }
@@ -578,7 +578,7 @@ var propertiesBlockBufPools = sync.Pool{
 		// New pools are initialized with a capacity of 2 to accommodate
 		// both the compressed properties block (1) and decompressed
 		// properties block (1).
-		bp.Init(2)
+		bp.Init(2, block.ForSSTableMetadata)
 		return bp
 	},
 }

@@ -269,9 +269,6 @@ type ReadEnv struct {
 
 	// BufferPool is not-nil if we read blocks into a buffer pool and not into the
 	// cache. This is used during compactions and by the level checker.
-	//
-	// When BufferPool is non-nil, any block cache accesses use the background
-	// category.
 	BufferPool *BufferPool
 
 	// ReportCorruptionFn is called with ReportCorruptionArg and the error
@@ -382,7 +379,16 @@ func (r *Reader) Read(
 	// reading a block.
 	if r.opts.CacheOpts.CacheHandle == nil || env.BufferPool != nil {
 		if r.opts.CacheOpts.CacheHandle != nil {
-			if cv := r.opts.CacheOpts.CacheHandle.Peek(r.opts.CacheOpts.FileNum, bh.Offset, cache.CategoryBackground); cv != nil {
+			var category cache.Category
+			switch env.BufferPool.Reason() {
+			case ForLevelChecking:
+				category = cache.CategoryHidden
+			case ForCompaction, ForBlobFileRewrite:
+				category = cache.CategoryBackground
+			default:
+				category = kindToCacheCategory[kind]
+			}
+			if cv := r.opts.CacheOpts.CacheHandle.Peek(r.opts.CacheOpts.FileNum, bh.Offset, category); cv != nil {
 				recordCacheHit(ctx, env, readHandle, bh, kind)
 				return CacheBufferHandle(cv), nil
 			}

@@ -334,7 +334,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 	fch := fc.newHandle(ch, objStore, base.NoopLoggerAndTracer{}, sstable.ReaderOptions{}, nil)
 	defer fch.Close()
 	var bufferPool block.BufferPool
-	bufferPool.Init(4)
+	bufferPool.Init(4, block.ForBlobFileRewrite)
 	defer bufferPool.Release()
 	readEnv := block.ReadEnv{BufferPool: &bufferPool}
 

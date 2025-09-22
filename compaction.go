@@ -3376,7 +3376,7 @@ func (d *DB) compactAndWrite(
 	// a 18-buffer pool is expected to be within reason, even if all the buffers
 	// grow to the typical size of an index block (256 KiB) which would
 	// translate to 4.5 MiB per compaction.
-	c.iterationState.bufferPool.Init(18 + suggestedCacheReaders*2)
+	c.iterationState.bufferPool.Init(18+suggestedCacheReaders*2, block.ForCompaction)
 	defer c.iterationState.bufferPool.Release()
 	blockReadEnv := block.ReadEnv{
 		BufferPool: &c.iterationState.bufferPool,
