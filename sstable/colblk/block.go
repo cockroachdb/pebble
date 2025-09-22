@@ -285,7 +285,12 @@ func FinishBlock(rows int, writers []ColumnWriter) []byte {
 // DecodeColumn decodes the col'th column of the provided reader's block as a
 // column of dataType using decodeFunc.
 func DecodeColumn[V any](
-	d *BlockDecoder, col int, rows int, dataType DataType, decodeFunc DecodeFunc[V],
+	//gcassert:noescape
+	d *BlockDecoder,
+	col int,
+	rows int,
+	dataType DataType,
+	decodeFunc DecodeFunc[V],
 ) V {
 	if uint16(col) >= d.header.Columns {
 		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, d.header.Columns))
