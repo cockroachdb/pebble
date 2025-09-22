@@ -5,13 +5,17 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -134,4 +138,59 @@ func TestCleaner(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+func TestCleanupManagerCloseWithPacing(t *testing.T) {
+	mem := vfs.NewMem()
+	opts := &Options{
+		FS:                     mem,
+		TargetByteDeletionRate: 1024, // 1 KB/s - slow pacing
+	}
+	opts.EnsureDefaults()
+
+	objProvider, err := objstorageprovider.Open(objstorageprovider.Settings{
+		FS:        mem,
+		FSDirName: "",
+		FSCleaner: DeleteCleaner{},
+	})
+	require.NoError(t, err)
+	defer objProvider.Close()
+
+	getDeletePacerInfo := func() deletionPacerInfo {
+		return deletionPacerInfo{
+			freeBytes: 100 << 30,
+			liveBytes: 100 << 30,
+		}
+	}
+
+	cm := openCleanupManager(opts, objProvider, func(uint64) {}, getDeletePacerInfo)
+
+	// Create obsolete files that would normally take a long time to delete.
+	// At 1 KB/s, 100 files of 10 KB each would take 1000 seconds.
+	largeFiles := make([]obsoleteFile, 100)
+	for i := range largeFiles {
+		largeFiles[i] = obsoleteFile{
+			fileType: base.FileTypeTable,
+			dir:      "",
+			fileNum:  base.FileNum(i + 1).DiskFileNum(),
+			fileSize: 10 << 10,
+		}
+		w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, largeFiles[i].fileNum, objstorage.CreateOptions{})
+		require.NoError(t, err)
+		require.NoError(t, w.Finish())
+	}
+
+	cm.EnqueueJob(1, largeFiles)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		cm.Close()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("timed out waiting for cleanupManager.Close() to return")
+	}
 }

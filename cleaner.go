@@ -36,6 +36,8 @@ type cleanupManager struct {
 	jobsCh chan *cleanupJob
 	// waitGroup is used to wait for the background goroutine to exit.
 	waitGroup sync.WaitGroup
+	// stopCh is closed when the pacer is disabled after closing the cleanup manager.
+	stopCh chan struct{}
 
 	mu struct {
 		sync.Mutex
@@ -77,6 +79,7 @@ func openCleanupManager(
 		onTableDeleteFn: onTableDeleteFn,
 		deletePacer:     newDeletionPacer(time.Now(), int64(opts.TargetByteDeletionRate), getDeletePacerInfo),
 		jobsCh:          make(chan *cleanupJob, jobsQueueDepth),
+		stopCh:          make(chan struct{}),
 	}
 	cm.mu.completedJobsCond.L = &cm.mu.Mutex
 	cm.waitGroup.Add(1)
@@ -94,6 +97,7 @@ func openCleanupManager(
 // Delete pacing is disabled for the remaining jobs.
 func (cm *cleanupManager) Close() {
 	close(cm.jobsCh)
+	close(cm.stopCh)
 	cm.waitGroup.Wait()
 }
 
@@ -149,6 +153,9 @@ func (cm *cleanupManager) Wait() {
 func (cm *cleanupManager) mainLoop() {
 	defer cm.waitGroup.Done()
 
+	paceTimer := time.NewTimer(time.Duration(0))
+	defer paceTimer.Stop()
+
 	var tb tokenbucket.TokenBucket
 	// Use a token bucket with 1 token / second refill rate and 1 token burst.
 	tb.Init(1.0, 1.0)
@@ -158,7 +165,7 @@ func (cm *cleanupManager) mainLoop() {
 				path := base.MakeFilepath(cm.opts.FS, of.dir, of.fileType, of.fileNum)
 				cm.deleteObsoleteFile(of.fileType, job.jobID, path, of.fileNum, of.fileSize)
 			} else {
-				cm.maybePace(&tb, of.fileType, of.fileNum, of.fileSize)
+				cm.maybePace(&tb, of.fileType, of.fileNum, of.fileSize, paceTimer)
 				cm.onTableDeleteFn(of.fileSize)
 				cm.deleteObsoleteObject(fileTypeTable, job.jobID, of.fileNum)
 			}
@@ -188,7 +195,11 @@ func (cm *cleanupManager) needsPacing(fileType base.FileType, fileNum base.DiskF
 // maybePace sleeps before deleting an object if appropriate. It is always
 // called from the background goroutine.
 func (cm *cleanupManager) maybePace(
-	tb *tokenbucket.TokenBucket, fileType base.FileType, fileNum base.DiskFileNum, fileSize uint64,
+	tb *tokenbucket.TokenBucket,
+	fileType base.FileType,
+	fileNum base.DiskFileNum,
+	fileSize uint64,
+	paceTimer *time.Timer,
 ) {
 	if !cm.needsPacing(fileType, fileNum) {
 		return
@@ -208,7 +219,13 @@ func (cm *cleanupManager) maybePace(
 		if ok {
 			break
 		}
-		time.Sleep(d)
+		paceTimer.Reset(d)
+		select {
+		case <-paceTimer.C:
+		case <-cm.stopCh:
+			// The cleanup manager is being closed. Delete without pacing.
+			return
+		}
 	}
 }
 
