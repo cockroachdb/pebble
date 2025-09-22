@@ -383,11 +383,41 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 		}
 	}
 
+	var next *node
 	for level = level - 1; level >= 0; level-- {
-		var next *node
-		prev, next, found = s.findSpliceForLevel(key, level, prev)
-		if next == nil {
-			next = s.tail
+		for {
+			// Assume prev.key < key.
+			next = s.getNext(prev, level)
+			if next == s.tail {
+				// Tail node, so done.
+				break
+			} else if next == nil {
+				next = s.tail
+				break
+			}
+
+			offset, size := next.keyOffset, next.keySize
+			nextKey := s.arena.buf[offset : offset+size]
+			cmp := s.cmp(key.UserKey, nextKey)
+			if cmp < 0 {
+				// We are done for this level, since prev.key < key < next.key.
+				break
+			}
+			if cmp == 0 {
+				// User-key equality.
+				if key.Trailer == next.keyTrailer {
+					// Internal key equality.
+					found = true
+					break
+				}
+				if key.Trailer > next.keyTrailer {
+					// We are done for this level, since prev.key < key < next.key.
+					break
+				}
+			}
+
+			// Keep moving right on this level.
+			prev = next
 		}
 		ins.spl[level].init(prev, next)
 	}
