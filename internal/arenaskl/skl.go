@@ -386,9 +386,6 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 	for level = level - 1; level >= 0; level-- {
 		var next *node
 		prev, next, found = s.findSpliceForLevel(key, level, prev)
-		if next == nil {
-			next = s.tail
-		}
 		ins.spl[level].init(prev, next)
 	}
 
