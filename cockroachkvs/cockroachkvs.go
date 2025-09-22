@@ -747,12 +747,20 @@ var _ uint = colblk.KeySeekerMetadataSize - uint(unsafe.Sizeof(cockroachKeySeeke
 
 var _ colblk.KeySeeker = (*cockroachKeySeeker)(nil)
 
-func (ks *cockroachKeySeeker) init(d *colblk.DataBlockDecoder, bd colblk.BlockDecoder) {
-	ks.roachKeys = bd.PrefixBytes(cockroachColRoachKey)
+func (ks *cockroachKeySeeker) init(
+	d *colblk.DataBlockDecoder,
+	//gcassert:noescape
+	bd colblk.BlockDecoder,
+) {
+	// Note that we call DecodeColumn directly rather than using the
+	// BlockDecoder's type-specific convenience methods (e.g. PrefixBytes,
+	// Uints, etc) to avoid bd from escaping to the heap.
+	rows := int(bd.Rows())
+	ks.roachKeys = colblk.DecodeColumn(&bd, cockroachColRoachKey, rows, colblk.DataTypePrefixBytes, colblk.DecodePrefixBytes)
 	ks.roachKeyChanged = d.PrefixChanged()
-	ks.mvccWallTimes = bd.Uints(cockroachColMVCCWallTime)
-	ks.mvccLogical = bd.Uints(cockroachColMVCCLogical)
-	ks.untypedVersions = bd.RawBytes(cockroachColUntypedVersion)
+	ks.mvccWallTimes = colblk.DecodeColumn(&bd, cockroachColMVCCWallTime, rows, colblk.DataTypeUint, colblk.DecodeUnsafeUints)
+	ks.mvccLogical = colblk.DecodeColumn(&bd, cockroachColMVCCLogical, rows, colblk.DataTypeUint, colblk.DecodeUnsafeUints)
+	ks.untypedVersions = colblk.DecodeColumn(&bd, cockroachColUntypedVersion, rows, colblk.DataTypeBytes, colblk.DecodeRawBytes)
 	header := bd.Header()
 	header = header[:len(header)-colblk.DataBlockCustomHeaderSize]
 	if len(header) != 1 {
