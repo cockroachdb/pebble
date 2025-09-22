@@ -41,6 +41,8 @@ type cleanupManager struct {
 	jobsCh chan *cleanupJob
 	// waitGroup is used to wait for the background goroutine to exit.
 	waitGroup sync.WaitGroup
+	// disabledCh is closed when the pacer is disabled after closing the cleanup manager.
+	disabledCh chan struct{}
 
 	mu struct {
 		sync.Mutex
@@ -102,7 +104,8 @@ func openCleanupManager(
 			opts.ObsoleteBytesTimeframe,
 			getDeletePacerInfo,
 		),
-		jobsCh: make(chan *cleanupJob, jobsQueueDepth),
+		jobsCh:     make(chan *cleanupJob, jobsQueueDepth),
+		disabledCh: make(chan struct{}),
 	}
 	cm.mu.completedJobsCond.L = &cm.mu.Mutex
 	cm.waitGroup.Add(1)
@@ -120,6 +123,7 @@ func openCleanupManager(
 // Delete pacing is disabled for the remaining jobs.
 func (cm *cleanupManager) Close() {
 	close(cm.jobsCh)
+	close(cm.disabledCh)
 	cm.waitGroup.Wait()
 }
 
@@ -206,6 +210,13 @@ func (cm *cleanupManager) maybePace(tb *tokenbucket.TokenBucket, of *obsoleteFil
 		return
 	}
 
+	// Check if pacer is disabled.
+	select {
+	case <-cm.disabledCh:
+		return
+	default:
+	}
+
 	tokens := cm.deletePacer.PacingDelay(crtime.NowMono(), of.fileSize)
 	if tokens == 0.0 {
 		// The token bucket might be in debt; it could make us wait even for 0
@@ -220,7 +231,11 @@ func (cm *cleanupManager) maybePace(tb *tokenbucket.TokenBucket, of *obsoleteFil
 		if ok {
 			break
 		}
-		time.Sleep(d)
+		select {
+		case <-time.NewTicker(d).C:
+		case <-cm.disabledCh:
+			return
+		}
 	}
 }
 
