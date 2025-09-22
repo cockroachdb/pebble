@@ -41,6 +41,8 @@ type cleanupManager struct {
 	jobsCh chan *cleanupJob
 	// waitGroup is used to wait for the background goroutine to exit.
 	waitGroup sync.WaitGroup
+	// stopCh is closed when the pacer is disabled after closing the cleanup manager.
+	stopCh chan struct{}
 
 	mu struct {
 		sync.Mutex
@@ -103,6 +105,7 @@ func openCleanupManager(
 			getDeletePacerInfo,
 		),
 		jobsCh: make(chan *cleanupJob, jobsQueueDepth),
+		stopCh: make(chan struct{}),
 	}
 	cm.mu.completedJobsCond.L = &cm.mu.Mutex
 	cm.waitGroup.Add(1)
@@ -120,6 +123,7 @@ func openCleanupManager(
 // Delete pacing is disabled for the remaining jobs.
 func (cm *cleanupManager) Close() {
 	close(cm.jobsCh)
+	close(cm.stopCh)
 	cm.waitGroup.Wait()
 }
 
@@ -174,21 +178,18 @@ func (cm *cleanupManager) Wait() {
 func (cm *cleanupManager) mainLoop() {
 	defer cm.waitGroup.Done()
 
+	paceTimer := time.NewTimer(time.Duration(0))
+	defer paceTimer.Stop()
+
 	var tb tokenbucket.TokenBucket
 	// Use a token bucket with 1 token / second refill rate and 1 token burst.
 	tb.Init(1.0, 1.0)
 	for job := range cm.jobsCh {
-		for _, of := range job.obsoleteFiles {
-			switch of.fileType {
-			case base.FileTypeTable:
-				cm.maybePace(&tb, &of)
-				cm.deleteObsoleteObject(of.fileType, job.jobID, of.fileNum)
-			case base.FileTypeBlob:
-				cm.maybePace(&tb, &of)
-				cm.deleteObsoleteObject(of.fileType, job.jobID, of.fileNum)
-			default:
-				cm.deleteObsoleteFile(of.fs, of.fileType, job.jobID, of.path, of.fileNum)
-			}
+		select {
+		case <-cm.stopCh:
+			cm.deleteObsoleteFilesInJob(job, nil, nil)
+		default:
+			cm.deleteObsoleteFilesInJob(job, &tb, paceTimer)
 		}
 		cm.mu.Lock()
 		cm.mu.completedJobs++
@@ -199,9 +200,31 @@ func (cm *cleanupManager) mainLoop() {
 	}
 }
 
+// deleteObsoleteFilesInJob deletes all obsolete files in the given job. If tb
+// and paceTimer are provided, files that need pacing will be throttled
+// according to the deletion rate. If tb is nil, files are deleted immediately
+// without pacing (used when the cleanup manager is being closed).
+func (cm *cleanupManager) deleteObsoleteFilesInJob(
+	job *cleanupJob, tb *tokenbucket.TokenBucket, paceTimer *time.Timer,
+) {
+	for _, of := range job.obsoleteFiles {
+		switch of.fileType {
+		case base.FileTypeTable, base.FileTypeBlob:
+			if tb != nil {
+				cm.maybePace(tb, &of, paceTimer)
+			}
+			cm.deleteObsoleteObject(of.fileType, job.jobID, of.fileNum)
+		default:
+			cm.deleteObsoleteFile(of.fs, of.fileType, job.jobID, of.path, of.fileNum)
+		}
+	}
+}
+
 // maybePace sleeps before deleting an object if appropriate. It is always
 // called from the background goroutine.
-func (cm *cleanupManager) maybePace(tb *tokenbucket.TokenBucket, of *obsoleteFile) {
+func (cm *cleanupManager) maybePace(
+	tb *tokenbucket.TokenBucket, of *obsoleteFile, paceTimer *time.Timer,
+) {
 	if !of.needsPacing() {
 		return
 	}
@@ -220,7 +243,12 @@ func (cm *cleanupManager) maybePace(tb *tokenbucket.TokenBucket, of *obsoleteFil
 		if ok {
 			break
 		}
-		time.Sleep(d)
+		paceTimer.Reset(d)
+		select {
+		case <-paceTimer.C:
+		case <-cm.stopCh:
+			return
+		}
 	}
 }
 
