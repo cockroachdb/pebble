@@ -2603,6 +2603,7 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 		func() {
 			d.mu.Lock()
 			defer d.mu.Unlock()
+			d.mu.compact.compactProcesses++
 			jobID := d.newJobIDLocked()
 
 			compactErr := c.Execute(jobID, d)
@@ -2655,6 +2656,7 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			d.maybeScheduleCompaction()
+			d.mu.compact.compactProcesses--
 			d.mu.compact.cond.Broadcast()
 		}()
 	})

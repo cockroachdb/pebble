@@ -1226,23 +1226,14 @@ func runCompactionTest(
 			err := func() error {
 				d.mu.Lock()
 				defer d.mu.Unlock()
-				prevCount := d.mu.versions.metrics.Compact.Count
 				prev := d.opts.DisableAutomaticCompactions
 				d.opts.DisableAutomaticCompactions = false
-				err := try(100*time.Microsecond, 60*time.Second, func() error {
-					d.maybeScheduleCompaction()
-					for d.mu.compact.compactingCount > 0 {
-						d.mu.compact.cond.Wait()
-					}
-					compactions := d.mu.versions.metrics.Compact.Count - prevCount
-					if compactions < expectedCount {
-						return errors.Errorf("expectedCount at least %d automatic compaction(s), got %d, total: %d",
-							expectedCount, compactions, d.mu.versions.metrics.Compact.Count)
-					}
-					return nil
-				})
+				d.maybeScheduleCompaction()
+				for d.mu.compact.compactingCount > 0 || d.mu.compact.compactProcesses > 0 {
+					d.mu.compact.cond.Wait()
+				}
 				d.opts.DisableAutomaticCompactions = prev
-				return err
+				return nil
 			}()
 			if err != nil {
 				return err.Error() + "\n" + describeLSM(d, verbose)
@@ -1688,7 +1679,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 	compactInfo = nil
 	compactionString := func() string {
-		for d.mu.compact.compactingCount > 0 {
+		for d.mu.compact.compactingCount > 0 || d.mu.compact.compactProcesses > 0 {
 			d.mu.compact.cond.Wait()
 		}
 		slices.SortFunc(compactInfo, func(a, b CompactionInfo) int {
@@ -1939,7 +1930,7 @@ func TestCompactionTombstones(t *testing.T) {
 	var compactInfo []*CompactionInfo // protected by d.mu
 
 	compactionString := func() string {
-		for d.mu.compact.compactingCount > 0 {
+		for d.mu.compact.compactingCount > 0 || d.mu.compact.compactProcesses > 0 {
 			d.mu.compact.cond.Wait()
 		}
 

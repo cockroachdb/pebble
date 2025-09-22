@@ -24,7 +24,7 @@ L0.0:
   000009:[vhn@1#14977,SET-zzz@1#18287,SET]
 
 
-auto-compact count=3
+auto-compact
 ----
 L6:
   000006:[a@1#10,SET-hci@1#4995,SET]
