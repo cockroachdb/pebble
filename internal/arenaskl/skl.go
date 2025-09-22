@@ -387,8 +387,18 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 	for level = level - 1; level >= 0; level-- {
 		for {
 			// Assume prev.key < key.
-			next = s.getNext(prev, level)
-			if next == s.tail {
+			nextInLevel := s.getNext(prev, level)
+			// next is currently set to the previous level's `next`, the first
+			// node whose key is ≥ `key` within the previous level. If
+			// nextInLevel's equals the last level's `next`, then `next` is also
+			// the first node whose is key ≥ `key` within this level as well.
+			//
+			// This pointer comparison avoids an extra key comparison.
+			if nextInLevel == next {
+				break
+			}
+			next = nextInLevel
+			if nextInLevel == s.tail {
 				// Tail node, so done.
 				break
 			} else if next == nil {
