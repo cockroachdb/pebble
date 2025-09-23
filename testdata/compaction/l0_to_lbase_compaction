@@ -60,11 +60,17 @@ COMMIT PIPELINE
 ----------+--------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) | 160KB: 160KB |      0.0% |         1 |  1 (512KB) |  1 (512KB) |     328 K |      0 (0B)
 
+BLOCK CACHE: 0 entries (0B)
+                 miss rate [percentage of total misses] since start
+   all |  background |     sstdata |      sstval |     blobval |      filter |       index
+-------+-------------+-------------+-------------+-------------+-------------+------------
+  0.0% | 100% [100%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%]
+
 ITERATORS
-        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
-     entries |    hit rate |      entries |    hit rate |         util |        open |        open
--------------+-------------+--------------+-------------+--------------+-------------+------------
-  63 (251KB) |       78.0% |    4 (1.1KB) |       90.0% |         0.0% |           0 |           0
+        file cache        |    filter   |    open     |    open
+     entries |   hit rate | utilization |  sst iters  |  snapshots
+-------------+------------+-------------+-------------+------------
+   4 (1.1KB) |      90.0% |        0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed

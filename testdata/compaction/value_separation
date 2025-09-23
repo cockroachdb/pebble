@@ -151,11 +151,17 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   30B: 41B |     36.7% |         1 |  1 (256KB) |  1 (256KB) |        71 |      0 (0B)
 
+BLOCK CACHE: 4 entries (1.3KB)
+                 miss rate [percentage of total misses] since start
+   all |  background |     sstdata |      sstval |     blobval |      filter |       index
+-------+-------------+-------------+-------------+-------------+-------------+------------
+ 33.6% |   78% [91%] |  21% [3.3%] | 0.0% [0.0%] | 100% [1.1%] | 0.0% [0.0%] |  27% [4.4%]
+
 ITERATORS
-        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
-     entries |    hit rate |      entries |    hit rate |         util |        open |        open
--------------+-------------+--------------+-------------+--------------+-------------+------------
-   5 (1.6KB) |       81.8% |     1 (392B) |       89.6% |         0.0% |           0 |           0
+        file cache        |    filter   |    open     |    open
+     entries |   hit rate | utilization |  sst iters  |  snapshots
+-------------+------------+-------------+-------------+------------
+    1 (392B) |      89.6% |        0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -419,11 +425,17 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) | 126B: 156B |     23.8% |         2 |  1 (256KB) |  1 (256KB) |       282 |      0 (0B)
 
+BLOCK CACHE: 2 entries (766B)
+                 miss rate [percentage of total misses] since start
+   all |  background |     sstdata |      sstval |     blobval |      filter |       index
+-------+-------------+-------------+-------------+-------------+-------------+------------
+ 23.1% |   81% [85%] |  60% [7.5%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  60% [7.5%]
+
 ITERATORS
-        block cache        |         file cache         |    filter    |  sst iters  |  snapshots
-     entries |    hit rate |      entries |    hit rate |         util |        open |        open
--------------+-------------+--------------+-------------+--------------+-------------+------------
-   7 (2.3KB) |       59.6% |     1 (504B) |       78.6% |         0.0% |           0 |           0
+        file cache        |    filter   |    open     |    open
+     entries |   hit rate | utilization |  sst iters  |  snapshots
+-------------+------------+-------------+-------------+------------
+    1 (504B) |      78.6% |        0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -695,32 +707,32 @@ stats
 a: (hello, .)
 b: (helloworld, .)
 c: (helloworld!, .)
-stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 158B cached; points: 3 (3B keys, 26B values)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 158B not cached (read time: 0s); points: 3 (3B keys, 26B values)
 d: (hello, .)
 e: (helloworld, .)
 f: (helloworld!, .)
-stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 421B cached; points: 6 (6B keys, 43B values); separated: 1 (11B, 11B fetched)
+stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 196B cached, 225B not cached (read time: 0s); points: 6 (6B keys, 43B values); separated: 1 (11B, 11B fetched)
 g: (hello, .)
 h: (helloworld, .)
 i: (helloworld!, .)
-stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 421B cached; points: 9 (9B keys, 52B values); separated: 3 (32B, 32B fetched)
+stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 196B cached, 225B not cached (read time: 0s); points: 9 (9B keys, 52B values); separated: 3 (32B, 32B fetched)
 j: (hello, .)
 k: (helloworld, .)
 l: (helloworld!, .)
-stats: seeked 1 times (1 internal); stepped 11 times (11 internal); blocks: 421B cached; points: 12 (12B keys, 61B values); separated: 5 (53B, 53B fetched)
+stats: seeked 1 times (1 internal); stepped 11 times (11 internal); blocks: 196B cached, 225B not cached (read time: 0s); points: 12 (12B keys, 61B values); separated: 5 (53B, 53B fetched)
 m: (hello, .)
 n: (helloworld, .)
 o: (helloworld!, .)
-stats: seeked 1 times (1 internal); stepped 14 times (14 internal); blocks: 615B cached; points: 15 (15B keys, 79B values); separated: 6 (63B, 63B fetched)
+stats: seeked 1 times (1 internal); stepped 14 times (14 internal); blocks: 196B cached, 419B not cached (read time: 0s); points: 15 (15B keys, 79B values); separated: 6 (63B, 63B fetched)
 p: (hello, .)
 q: (helloworld, .)
 r: (helloworld!, .)
-stats: seeked 1 times (1 internal); stepped 17 times (17 internal); blocks: 615B cached; points: 18 (18B keys, 105B values); separated: 6 (63B, 63B fetched)
+stats: seeked 1 times (1 internal); stepped 17 times (17 internal); blocks: 196B cached, 419B not cached (read time: 0s); points: 18 (18B keys, 105B values); separated: 6 (63B, 63B fetched)
 s: (hello, .)
 t: (helloworld, .)
 u: (helloworld!, .)
-stats: seeked 1 times (1 internal); stepped 20 times (20 internal); blocks: 615B cached; points: 21 (21B keys, 131B values); separated: 6 (63B, 63B fetched)
+stats: seeked 1 times (1 internal); stepped 20 times (20 internal); blocks: 196B cached, 419B not cached (read time: 0s); points: 21 (21B keys, 131B values); separated: 6 (63B, 63B fetched)
 v: (hello, .)
 w: (helloworld, .)
 x: (helloworld!, .)
-stats: seeked 1 times (1 internal); stepped 23 times (23 internal); blocks: 615B cached; points: 24 (24B keys, 157B values); separated: 6 (63B, 63B fetched)
+stats: seeked 1 times (1 internal); stepped 23 times (23 internal); blocks: 196B cached, 419B not cached (read time: 0s); points: 24 (24B keys, 157B values); separated: 6 (63B, 63B fetched)
