@@ -6,10 +6,10 @@ package tieredmeta
 
 import (
 	"encoding/binary"
+	"math"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 type SpanIDStats struct {
@@ -24,13 +24,18 @@ const numBuckets = 10
 // axis, and a bucket value records the total size in bytes in that bucket.
 //
 // We desire the histogram to be concise, while having enough fidelity to
-// inform tiering decisions. Additionally, we need to sum and subtract
-// histograms for the same SpanID. We could design something sophisticated,
-// but instead of over-engineering here, we assume that the user has provided
-// an age threshold (assuming the tiering attribute is some kind of
-// timestamp), at which rows become cold. For now, to avoid plumbing, we
-// hardcode it to 40, whatever the units (say 40 days), for histogram
-// initialization.
+// inform tiering decisions. Additionally, we need to sum histograms for the
+// same SpanID. We could design something sophisticated, but instead of
+// over-engineering here, we assume that the user has provided an age
+// threshold (assuming the tiering attribute is some kind of timestamp), at
+// which rows become cold. This is a reasonable assumption since we are
+// planning to allow tiering to be specified on a TIMESTAMP/TIMESTAMPTZ column
+// with  an expression such as now() + '30 days'. So CockroachDB knows an age
+// threshold, and could provide that as an additional field in the
+// TieringPolicy.
+//
+// For now, to avoid plumbing via the TieringPolicy, we hardcode it to 40,
+// whatever the units (say 40 days), for histogram initialization.
 //
 // We break this up into 20% granularity buckets. So each bucket is 8 wide in
 // the above example.
@@ -54,11 +59,9 @@ const numBuckets = 10
 // then eventually become underflow, and we can't really track when that
 // happens, they are permanently in the unaccounted bucket.
 //
-// Age plumbing and age changes: TODO(sumeer): we will need to interpolate the
-// compute bucket counts, or reread all the old files in the background and
-// recompute their histograms. Given that these histograms are stored in the
-// files themselves, doing such a recomputation seems wasteful since the
-// result will be lost on restart.
+// Age plumbing and age changes: we do linear interpolation to compute the
+// bucket counts. Eventually, sstables will get recompacted and new histograms
+// will be computed.
 type StatsHistogram struct {
 	// A BucketStart with a zero value, does not actually start at zero.
 	// Instead, it is defined over the interval [1, BucketLength) and is the
@@ -201,12 +204,12 @@ func (h *StatsHistogram) Merge(other *StatsHistogram) {
 	var h2 *StatsHistogram
 	if other.BucketStart < h.BucketStart {
 		otherCopy := *other
-		otherCopy.ageTo(h.BucketStart)
+		otherCopy.ageTo(h.BucketStart, h.BucketLength)
 		h2 = &otherCopy
 	} else {
 		h2 = other
 		if other.BucketStart > h.BucketStart {
-			h.ageTo(other.BucketStart)
+			h.ageTo(other.BucketStart, other.BucketLength)
 		}
 	}
 	for i := 0; i < numBuckets; i++ {
@@ -218,49 +221,95 @@ func (h *StatsHistogram) Merge(other *StatsHistogram) {
 	h.Count += other.Count
 }
 
-// Subtract requires that h represents a histogram to which other was
-// previously added. It is used when a file corresponding to other has been
-// compacted away.
-func (h *StatsHistogram) Subtract(other *StatsHistogram) {
-	if h.BucketLength != other.BucketLength {
-		panic(errors.AssertionFailedf("bucket length %d != %d", h.BucketLength, other.BucketLength))
+type interval struct {
+	start base.TieringAttribute
+	end   base.TieringAttribute
+}
+
+func (a interval) intersect(b interval) interval {
+	if a.start >= b.end || a.end <= b.start {
+		return interval{0, 0}
 	}
-	var h2 *StatsHistogram
-	if other.BucketStart < h.BucketStart {
-		otherCopy := *other
-		otherCopy.ageTo(h.BucketStart)
-		h2 = &otherCopy
-	} else {
-		h2 = other
-		if other.BucketStart > h.BucketStart {
-			h.ageTo(other.BucketStart)
-		}
+	return interval{max(a.start, b.start), min(a.end, b.end)}
+}
+
+// REQUIRES: a is a subset of b.
+func (a interval) fractionOf(b interval) float64 {
+	if a.start == a.end {
+		return 0
 	}
-	for i := 0; i < numBuckets; i++ {
-		h.Buckets[i].Bytes = invariants.SafeSub(h.Buckets[i].Bytes, h2.Buckets[i].Bytes)
-	}
-	h.UnderflowBytes = invariants.SafeSub(h.UnderflowBytes, h2.UnderflowBytes)
-	h.UnaccountedBytes = invariants.SafeSub(h.UnaccountedBytes, h2.UnaccountedBytes)
-	h.ZeroBytes = invariants.SafeSub(h.ZeroBytes, h2.ZeroBytes)
-	h.Count = invariants.SafeSub(h.Count, h2.Count)
+	return float64(a.end-a.start) / float64(b.end-b.start)
 }
 
 // INVARIANT: bucketStart > h.BucketStart.
-func (h *StatsHistogram) ageTo(bucketStart base.TieringAttribute) {
-	offset := min((bucketStart-h.BucketStart)/h.BucketLength, numBuckets)
+func (h *StatsHistogram) ageTo(
+	bucketStart base.TieringAttribute, bucketLength base.TieringAttribute,
+) {
+	// INVARIANT: ageOffset >= 0.
+	ageOffset := bucketStart - h.BucketStart
+	numBucketsFullyInUnderflow := min(ageOffset / h.BucketLength)
+	offset := min(numBucketsFullyInUnderflow, numBuckets)
 	// Oldest buckets are moved to the underflow.
 	for i := base.TieringAttribute(0); i < offset; i++ {
 		h.UnderflowBytes += h.Buckets[i].Bytes
+		h.Buckets[i].Bytes = 0
 	}
-	// Newer buckets are shifted to be older.
-	for i := offset; i < numBuckets; i++ {
-		h.Buckets[i-offset].Bytes = h.Buckets[i].Bytes
+	if numBucketsFullyInUnderflow > 0 {
+		// Newer buckets are shifted to be older.
+		for i := offset; i < numBuckets; i++ {
+			h.Buckets[i-offset].Bytes = h.Buckets[i].Bytes
+		}
+		// Remaining buckets are zeroed out.
+		for i := numBuckets - offset; i < numBuckets; i++ {
+			h.Buckets[i] = Bucket{}
+		}
+		h.BucketStart += numBucketsFullyInUnderflow * h.BucketLength
+		// INVARIANT: h.BucketStart <= bucketStart
 	}
-	// Remaining buckets are zeroed out.
-	for i := numBuckets - offset; i < numBuckets; i++ {
-		h.Buckets[i] = Bucket{}
+	if h.BucketLength != bucketLength {
+		// Slow path. The age policy must have changed. Do linear interpolation.
+		//
+		// The first newInterval is the underflow.
+		newInterval := interval{1, bucketStart}
+		newIndex := -1
+		var newBuckets [numBuckets]Bucket
+		for i, oldb := range h.Buckets {
+			oldStart := h.BucketStart + base.TieringAttribute(i)*h.BucketLength
+			oldInterval := interval{oldStart, oldStart + h.BucketLength}
+			for {
+				interpolatedBytes :=
+					uint64(newInterval.intersect(oldInterval).fractionOf(newInterval) * float64(oldb.Bytes))
+				if newIndex < 0 {
+					h.UnderflowBytes += interpolatedBytes
+				} else if newIndex >= numBuckets {
+					h.UnaccountedBytes += interpolatedBytes
+				} else {
+					newBuckets[newIndex].Bytes += interpolatedBytes
+				}
+				if newInterval.end > oldInterval.end {
+					// Done with oldInterval. Break out of inner loop so that outer loop
+					// steps to next oldInterval.
+					//
+					// NB: When newInterval is the unaccounted "bucket", this condition
+					// will always be true.
+					break
+				}
+				// Step new interval.
+				newIndex++
+				if newIndex < numBuckets {
+					newStart := bucketStart + base.TieringAttribute(newIndex)*bucketLength
+					newInterval = interval{newStart, newStart + bucketLength}
+				} else {
+					// The last newInterval is the unaccounted bytes.
+					newInterval = interval{bucketStart + numBuckets*bucketLength, math.MaxUint64}
+				}
+			}
+		}
+		h.BucketStart = bucketStart
+		h.Buckets = newBuckets
+		h.BucketLength = bucketLength
 	}
-	h.BucketStart = bucketStart
+	// Else bucket lengths are equal and h.BucketStart == bucketStart.
 }
 
 func (h *StatsHistogram) Scale(factor float64) StatsHistogram {
@@ -285,6 +334,8 @@ type histogramWriter struct {
 	stats StatsHistogram
 }
 
+// TODO(sumeer): Remove tempAgeThreshold and make it a parameter passed by
+// TieringHistogramBlockWriter.
 func newHistogramWriter(curColdTierLTThreshold base.TieringAttribute) *histogramWriter {
 	cur := curColdTierLTThreshold + tempAgeThreshold
 	bucketLength := tempAgeThreshold / (numBuckets / 2) // 20% granularity
