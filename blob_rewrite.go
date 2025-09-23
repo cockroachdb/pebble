@@ -307,7 +307,7 @@ func (d *DB) runBlobFileRewriteLocked(
 	// the compaction finishes new iterators will read the new blob file, so it
 	// would be unlikely the cached blocks would be reused.
 	var bufferPool block.BufferPool
-	bufferPool.Init(4)
+	bufferPool.Init(4, block.ForBlobFileRewrite)
 	defer bufferPool.Release()
 	env := block.ReadEnv{
 		Stats:              &c.internalIteratorStats,

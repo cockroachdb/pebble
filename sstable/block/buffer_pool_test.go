@@ -52,7 +52,7 @@ func TestBufferPool(t *testing.T) {
 			}
 			var initialSize int
 			td.ScanArgs(t, "size", &initialSize)
-			bp.Init(initialSize)
+			bp.Init(initialSize, ForCompaction)
 			writeBufferPool(&buf, &bp)
 			return buf.String()
 		case "alloc":

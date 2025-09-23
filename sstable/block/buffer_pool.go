@@ -139,8 +139,25 @@ func (bh BufferHandle) Release() {
 type BufferPool struct {
 	// pool contains all the buffers held by the pool, including buffers that
 	// are in-use. For every i < len(pool): pool[i].v is non-nil.
-	pool []AllocedBuffer
+	pool   []AllocedBuffer
+	reason ReasonForBufferPool
 }
+
+// ReasonForBufferPool identifies the use case for th BufferPool. These are
+// exceptional use cases, as using a buffer pool does not populate the block
+// cache.
+//
+// The reason determines how the cache hit/miss metrics are updated.
+type ReasonForBufferPool int8
+
+const (
+	ForCompaction ReasonForBufferPool = iota
+	ForBlobFileRewrite
+	ForSSTableMetadata
+	ForBlobFileMetadata
+	ForExternalIter
+	ForLevelChecking
+)
 
 // AllocedBuffer is an allocated memory buffer.
 type AllocedBuffer struct {
@@ -155,19 +172,16 @@ type AllocedBuffer struct {
 
 // Init initializes the pool with an initial working set buffer size of
 // `initialSize`.
-func (p *BufferPool) Init(initialSize int) {
+func (p *BufferPool) Init(initialSize int, reason ReasonForBufferPool) {
 	*p = BufferPool{
-		pool: make([]AllocedBuffer, 0, initialSize),
+		pool:   make([]AllocedBuffer, 0, initialSize),
+		reason: reason,
 	}
 }
 
-// InitPreallocated is like Init but for internal sstable package use in
-// instances where a pre-allocated slice of []allocedBuffer already exists. It's
-// used to avoid an extra allocation initializing BufferPool.pool.
-func (p *BufferPool) InitPreallocated(pool []AllocedBuffer) {
-	*p = BufferPool{
-		pool: pool[:0],
-	}
+// Reason returns the reason passed to Init.
+func (p *BufferPool) Reason() ReasonForBufferPool {
+	return p.reason
 }
 
 // Release releases all buffers held by the pool and resets the pool to an

@@ -541,7 +541,7 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	seqNum := d.mu.versions.visibleSeqNum.Load()
 
 	bufferPool := new(block.BufferPool)
-	bufferPool.Init(10)
+	bufferPool.Init(10, block.ForLevelChecking)
 	defer bufferPool.Release()
 
 	checkConfig := &checkConfig{

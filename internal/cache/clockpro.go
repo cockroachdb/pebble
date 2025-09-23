@@ -147,12 +147,16 @@ func (c *shard) get(k key, category Category, peekOnly bool) *Value {
 				e.referenced.Store(true)
 			}
 			c.mu.RUnlock()
-			c.counters[category].hits.Add(1)
+			if category != CategoryHidden {
+				c.counters[category].hits.Add(1)
+			}
 			return value
 		}
 	}
 	c.mu.RUnlock()
-	c.counters[category].misses.Add(1)
+	if category != CategoryHidden {
+		c.counters[category].misses.Add(1)
+	}
 	return nil
 }
 

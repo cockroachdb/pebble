@@ -53,7 +53,7 @@ func TestIteratorErrorOnInit(t *testing.T) {
 	defer r.Close()
 
 	var pool block.BufferPool
-	pool.Init(5)
+	pool.Init(5, block.ForCompaction)
 	defer pool.Release()
 
 	toggle.On()
@@ -812,7 +812,7 @@ func TestBloomFilterOptimizationSingleLevel(t *testing.T) {
 		defer cleanup()
 
 		var pool block.BufferPool
-		pool.Init(5)
+		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
 
 		var stats base.InternalIteratorStats
@@ -856,7 +856,7 @@ func TestBloomFilterOptimizationSingleLevel(t *testing.T) {
 		defer cleanup()
 
 		var pool block.BufferPool
-		pool.Init(5)
+		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
 
 		var stats base.InternalIteratorStats
@@ -914,7 +914,7 @@ func TestBloomFilterOptimizationTwoLevel(t *testing.T) {
 			"Test requires two-level index structure to be created")
 
 		var pool block.BufferPool
-		pool.Init(5)
+		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
 
 		var stats base.InternalIteratorStats
@@ -965,7 +965,7 @@ func TestBloomFilterOptimizationTwoLevel(t *testing.T) {
 			"Test requires two-level index structure to be created")
 
 		var pool block.BufferPool
-		pool.Init(5)
+		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
 
 		var stats base.InternalIteratorStats
@@ -1013,7 +1013,7 @@ func TestBloomFilterOptimizationEdgeCases(t *testing.T) {
 		defer cleanup()
 
 		var pool block.BufferPool
-		pool.Init(5)
+		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
 
 		var stats base.InternalIteratorStats
@@ -1049,7 +1049,7 @@ func TestBloomFilterOptimizationEdgeCases(t *testing.T) {
 		defer cleanup()
 
 		var pool block.BufferPool
-		pool.Init(5)
+		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
 
 		var stats base.InternalIteratorStats
@@ -1089,7 +1089,7 @@ func TestBloomFilterOptimizationEdgeCases(t *testing.T) {
 		defer cleanup()
 
 		var pool block.BufferPool
-		pool.Init(5)
+		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
 
 		var stats base.InternalIteratorStats
