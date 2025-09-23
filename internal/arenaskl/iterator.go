@@ -114,7 +114,7 @@ func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 			return kv
 		}
 	}
-	_, it.nd, _ = it.seekForBaseSplice(key)
+	_, it.nd = it.seekForBaseSplice(key)
 	if it.nd == it.list.tail || it.nd == it.upperNode {
 		return nil
 	}
@@ -142,7 +142,7 @@ func (it *Iterator) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 func (it *Iterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	// NB: the top-level Iterator has already adjusted key based on
 	// the upper-bound.
-	it.nd, _, _ = it.seekForBaseSplice(key)
+	it.nd, _ = it.seekForBaseSplice(key)
 	if it.nd == it.list.head || it.nd == it.lowerNode {
 		return nil
 	}
@@ -259,16 +259,57 @@ func (it *Iterator) decodeKey() {
 	it.kv.K.Trailer = it.nd.keyTrailer
 }
 
-func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool) {
-	ikey := base.MakeSearchKey(key)
-
+func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node) {
 	prev = it.list.head
 	for level := int(it.list.Height() - 1); level >= 0; level-- {
 
 		// Search this level for the key.
+		prevLevelNext := next
 		for {
 			// Assume prev.key < key.
 			next = it.list.getNext(prev, level)
+
+			// Before performing a key comparison, check if the next pointer
+			// equals prevLevelNext. The pointer comparison is significantly
+			// cheaper than a key comparison.
+			//
+			// It's not unlikely for consecutive levels to have the same next
+			// pointer. We use [maxHeight]=20 levels, and with each higher
+			// height the probability a node extends one more rung of the tower
+			// is 1/e.
+			//
+			// The skiplist may contain nodes with keys between the (prev,next)
+			// pair of nodes that make up the previous level's splice. Let's
+			// divide these nodes into the L nodes with keys < key and the R
+			// nodes with keys > key. Only a subset of these nodes may have
+			// towers that reach [level].
+			//
+			// Of the nodes in R that reach [level], we only care about the one
+			// with the smallest key. If there are no nodes in R that reach
+			// [level], then this level's splice's next pointer will be the same
+			// as the level above's splice's next pointer. We can perform a
+			// cheap pointer comparison of [next] and [prevLevelNext] to
+			// determine this.
+			//
+			// (Note that we must still skip over any of the nodes in L that are
+			// high enough to reach [level], and each of these nodes will
+			// require a key comparison.)
+			//
+			//        (< key)                              (≥ key)
+			//         prev                              prevLevelNext
+			//      +---------+                          +---------+
+			//      |         |                          |         |
+			//      | level+1 |------------------------> |         |
+			//      |         |                          |         |
+			//      |         |          next            |         |
+			//      |         |       +--------+         |         |
+			//      | level   |--...--|        |--...--> |         |
+			//      |         |       |        |         |         |
+			//      |         |       |        |         |         |
+			//      +---------+       +--------+         +---------+
+			if next == prevLevelNext {
+				break
+			}
 			if next == it.list.tail {
 				// Tail node, so done.
 				break
@@ -276,36 +317,15 @@ func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool)
 
 			offset, size := next.keyOffset, next.keySize
 			nextKey := it.list.arena.buf[offset : offset+size]
-			cmp := it.list.cmp(ikey.UserKey, nextKey)
-			if cmp < 0 {
-				// We are done for this level, since prev.key < key < next.key.
+			cmp := it.list.cmp(key, nextKey)
+			if cmp <= 0 {
+				// We are done for this level, since prev.key < key <= next.key.
 				break
-			}
-			if cmp == 0 {
-				// User-key equality.
-				if ikey.Trailer == next.keyTrailer {
-					// Internal key equality.
-					found = true
-					break
-				}
-				if ikey.Trailer > next.keyTrailer {
-					// We are done for this level, since prev.key < key < next.key.
-					break
-				}
 			}
 			// Keep moving right on this level.
 			prev = next
 		}
-
-		if found {
-			if level != 0 {
-				// next is pointing at the target node, but we need to find previous on
-				// the bottom level.
-				prev = it.list.getPrev(next, 0)
-			}
-			break
-		}
 	}
 
-	return prev, next, found
+	return prev, next
 }
