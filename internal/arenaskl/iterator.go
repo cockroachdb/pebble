@@ -261,11 +261,41 @@ func (it *Iterator) decodeKey() {
 
 func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool) {
 	ikey := base.MakeSearchKey(key)
-	level := int(it.list.Height() - 1)
 
 	prev = it.list.head
-	for {
-		prev, next, found = it.list.findSpliceForLevel(ikey, level, prev)
+	for level := int(it.list.Height() - 1); level >= 0; level-- {
+
+		// Search this level for the key.
+		for {
+			// Assume prev.key < key.
+			next = it.list.getNext(prev, level)
+			if next == it.list.tail {
+				// Tail node, so done.
+				break
+			}
+
+			offset, size := next.keyOffset, next.keySize
+			nextKey := it.list.arena.buf[offset : offset+size]
+			cmp := it.list.cmp(ikey.UserKey, nextKey)
+			if cmp < 0 {
+				// We are done for this level, since prev.key < key < next.key.
+				break
+			}
+			if cmp == 0 {
+				// User-key equality.
+				if ikey.Trailer == next.keyTrailer {
+					// Internal key equality.
+					found = true
+					break
+				}
+				if ikey.Trailer > next.keyTrailer {
+					// We are done for this level, since prev.key < key < next.key.
+					break
+				}
+			}
+			// Keep moving right on this level.
+			prev = next
+		}
 
 		if found {
 			if level != 0 {
@@ -275,13 +305,7 @@ func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node, found bool)
 			}
 			break
 		}
-
-		if level == 0 {
-			break
-		}
-
-		level--
 	}
 
-	return
+	return prev, next, found
 }
