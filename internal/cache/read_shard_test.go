@@ -50,7 +50,7 @@ func newTestReader(
 }
 
 func (r *testReader) getAsync(shard *shard) *string {
-	v, re := shard.getWithReadEntry(r.key, CategorySSTableData)
+	v, re := shard.getWithReadEntry(r.key, MakeLevel(0), CategorySSTableData)
 	if v != nil {
 		str := string(v.RawBuffer())
 		v.Release()
@@ -285,7 +285,7 @@ func TestReadShardConcurrent(t *testing.T) {
 	for _, r := range differentReaders {
 		for j := 0; j < r.numReaders; j++ {
 			go func(r *testSyncReaders, index int) {
-				v, rh, _, _, _, err := r.handle.GetWithReadHandle(context.Background(), r.fileNum, r.offset, CategorySSTableData)
+				v, rh, _, _, _, err := r.handle.GetWithReadHandle(context.Background(), r.fileNum, r.offset, MakeLevel(0), CategorySSTableData)
 				require.NoError(t, err)
 				if v != nil {
 					require.Equal(t, r.val, v.RawBuffer())

@@ -2953,7 +2953,7 @@ func (d *DB) runCopyCompaction(
 			// TODO(radu): plumb a ReadEnv to CopySpan (it could use the buffer pool
 			// or update category stats).
 			wrote, err = sstable.CopySpan(ctx,
-				src, r, d.opts.MakeReaderOptions(),
+				src, r, c.startLevel.level,
 				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat()),
 				start, end,
 			)
