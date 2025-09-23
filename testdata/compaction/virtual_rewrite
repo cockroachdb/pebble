@@ -166,7 +166,7 @@ BLOCK CACHE: 2 entries (797B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
- 43.6% |   57% [91%] | 100% [4.5%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  33% [4.5%]
+ 35.7% | 0.0% [0.0%] |  100% [11%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   80% [89%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open

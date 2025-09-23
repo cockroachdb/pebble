@@ -92,7 +92,7 @@ func NewExternalIterWithContext(
 		},
 		seqNum: base.SeqNumMax,
 	}
-	dbi.externalIter.bufferPool.Init(2)
+	dbi.externalIter.bufferPool.Init(2, block.ForExternalIter)
 
 	if iterOpts != nil {
 		dbi.opts = *iterOpts

@@ -11,7 +11,7 @@ import (
 )
 
 // Category is used to maintain granular cache hit/miss statistics.
-type Category uint8
+type Category int8
 
 const (
 	// CategoryBackground is used for cache accesses made by compactions or

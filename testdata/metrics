@@ -129,7 +129,7 @@ BLOCK CACHE: 2 entries (683B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% |  100% [50%] |  100% [25%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  100% [25%]
+  0.0% | 0.0% [0.0%] |  100% [25%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  100% [75%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -229,7 +229,7 @@ BLOCK CACHE: 2 entries (683B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
- 33.3% |   75% [75%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   50% [12%]
+ 33.3% |   50% [25%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   83% [62%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -311,7 +311,7 @@ BLOCK CACHE: 2 entries (683B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
- 33.3% |   75% [75%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   50% [12%]
+ 33.3% |   50% [25%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   83% [62%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -390,7 +390,7 @@ BLOCK CACHE: 2 entries (683B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
- 33.3% |   75% [75%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   50% [12%]
+ 33.3% |   50% [25%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   83% [62%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -472,7 +472,7 @@ BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
- 33.3% |   75% [75%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   50% [12%]
+ 33.3% |   50% [25%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   83% [62%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -593,7 +593,7 @@ BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
- 33.3% |   75% [75%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   50% [12%]
+ 33.3% |   50% [25%] |   50% [12%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   83% [62%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -700,7 +700,7 @@ BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
- 10.0% |   94% [94%] |  50% [2.8%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  50% [2.8%]
+ 10.0% |   89% [44%] |  50% [2.8%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   95% [53%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -858,7 +858,7 @@ BLOCK CACHE: 6 entries (2KB)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
-  7.3% |   96% [84%] |  80% [7.8%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  80% [7.8%]
+  7.3% |   89% [31%] |  80% [7.8%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   97% [61%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -978,7 +978,7 @@ BLOCK CACHE: 6 entries (2KB)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
-  7.3% |   96% [84%] |  80% [7.8%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  80% [7.8%]
+  7.3% |   89% [31%] |  80% [7.8%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |   97% [61%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -1456,7 +1456,7 @@ BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% | 100% [100%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%]
+  0.0% |  100% [50%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  100% [50%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -1550,7 +1550,7 @@ BLOCK CACHE: 2 entries (675B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% |  100% [88%] | 100% [5.9%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 100% [5.9%]
+  0.0% |  100% [35%] | 100% [5.9%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  100% [59%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -1636,7 +1636,7 @@ BLOCK CACHE: 2 entries (675B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% |  100% [88%] | 100% [5.9%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 100% [5.9%]
+  0.0% |  100% [35%] | 100% [5.9%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  100% [59%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -1905,7 +1905,7 @@ BLOCK CACHE: 2 entries (662B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% |  100% [67%] |  100% [33%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%]
+  0.0% | 0.0% [0.0%] |  100% [33%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  100% [67%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open
@@ -1981,7 +1981,7 @@ BLOCK CACHE: 2 entries (662B)
                  miss rate [percentage of total misses] since start
    all |  background |     sstdata |      sstval |     blobval |      filter |       index
 -------+-------------+-------------+-------------+-------------+-------------+------------
-  0.0% |  100% [67%] |  100% [33%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%]
+  0.0% | 0.0% [0.0%] |  100% [33%] | 0.0% [0.0%] | 0.0% [0.0%] | 0.0% [0.0%] |  100% [67%]
 
 ITERATORS
         file cache        |    filter   |    open     |    open

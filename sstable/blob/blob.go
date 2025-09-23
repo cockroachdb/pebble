@@ -666,7 +666,7 @@ func (r *FileReader) ReadProperties(ctx context.Context) (FileProperties, error)
 	// We don't want the property block to go into the block cache, so we use a
 	// buffer pool.
 	var bufferPool block.BufferPool
-	bufferPool.Init(1)
+	bufferPool.Init(1, block.ForBlobFileMetadata)
 	defer bufferPool.Release()
 	b, err := r.r.Read(
 		ctx, block.ReadEnv{BufferPool: &bufferPool}, nil /* readHandle */, r.footer.propertiesHandle,

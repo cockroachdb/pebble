@@ -249,10 +249,16 @@ func (c *Handle) Cache() *Cache {
 // Peek retrieves the cache value for the specified file and offset, returning
 // nil if no value is present. Peek does not affect the state of the cache (it
 // does not "count" as an access as far as the cache replacement is concerned).
+//
+// Peek supports the special CategoryHidden category, in which case the hit or
+// miss is not recorded in metrics.
 func (c *Handle) Peek(fileNum base.DiskFileNum, offset uint64, category Category) *Value {
 	k := makeKey(c.id, fileNum, offset)
 	return c.cache.getShard(k).get(k, category, true /* peekOnly */)
 }
+
+// CategoryHidden can be used with Peek to avoid recording a cache hit or miss.
+const CategoryHidden Category = -1
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.

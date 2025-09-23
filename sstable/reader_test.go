@@ -170,7 +170,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 			if err != nil {
 				return err.Error()
 			}
-			bp.Init(5)
+			bp.Init(5, block.ForCompaction)
 			return formatWriterMetadata(td, wMeta)
 
 		case "virtualize":
@@ -941,7 +941,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				ch := c.NewHandle()
 				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, block.DefaultCompression, nil, ch)
 				var pool block.BufferPool
-				pool.Init(5)
+				pool.Init(5, block.ForCompaction)
 				citer, err := r.NewCompactionIter(
 					NoTransforms, ReadEnv{Block: block.ReadEnv{BufferPool: &pool}},
 					MakeTrivialReaderProvider(r), AssertNoBlobHandles)
@@ -1001,7 +1001,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	defer r.Close()
 	{
 		var pool block.BufferPool
-		pool.Init(5)
+		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
 		citer, err := r.NewCompactionIter(
 			NoTransforms, ReadEnv{Block: block.ReadEnv{BufferPool: &pool}},
