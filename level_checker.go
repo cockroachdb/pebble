@@ -694,11 +694,15 @@ type valuesInfo struct {
 // each blob.BlockID's referenced blob.BlockValueID for the `i`th blob reference.
 func gatherBlobHandles(
 	ctx context.Context,
+	readEnv block.ReadEnv,
 	r *sstable.Reader,
 	blobRefs manifest.BlobReferences,
 	valueFetcher base.ValueFetcher,
 ) ([]map[blob.BlockID]valuesInfo, error) {
 	iter, err := r.NewPointIter(ctx, sstable.IterOptions{
+		Env: sstable.ReadEnv{
+			Block: readEnv,
+		},
 		BlobContext: sstable.TableBlobContext{
 			ValueFetcher: valueFetcher,
 			References:   &blobRefs,
@@ -797,7 +801,7 @@ func validateBlobValueLiveness(
 			// For this sstable, gather all the blob handles -- tracking
 			// each base.BlobReferenceID + blob.BlockID's referenced
 			// blob.BlockValueIDs.
-			referenced, err := gatherBlobHandles(ctx, r, t.BlobReferences, valueFetcher)
+			referenced, err := gatherBlobHandles(ctx, readEnv.Block, r, t.BlobReferences, valueFetcher)
 			if err != nil {
 				return err
 			}

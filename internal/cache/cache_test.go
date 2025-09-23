@@ -41,7 +41,7 @@ func TestCache(t *testing.T) {
 		wantHit := fields[1][0] == 'h'
 
 		var hit bool
-		cv := h.Get(base.DiskFileNum(key), 0, CategorySSTableData)
+		cv := h.Get(base.DiskFileNum(key), 0, MakeLevel(0), CategorySSTableData)
 		if cv == nil {
 			cv = Alloc(1)
 			cv.RawBuffer()[0] = fields[0][0]
@@ -81,14 +81,14 @@ func TestCachePeek(t *testing.T) {
 		setTestValue(h, 0, uint64(i), "a", 1)
 	}
 	for i := range size / 2 {
-		v := h.Get(base.DiskFileNum(0), uint64(i), CategoryBackground)
+		v := h.Get(base.DiskFileNum(0), uint64(i), MakeLevel(0), CategoryBackground)
 		if v == nil {
 			t.Fatalf("expected to find block %d", i)
 		}
 		v.Release()
 	}
 	for i := size / 2; i < size; i++ {
-		v := h.Peek(base.DiskFileNum(0), uint64(i), CategoryBackground)
+		v := h.Peek(base.DiskFileNum(0), uint64(i), MakeLevel(0), CategoryBackground)
 		if v == nil {
 			t.Fatalf("expected to find block %d", i)
 		}
@@ -100,7 +100,7 @@ func TestCachePeek(t *testing.T) {
 	}
 	// Verify that the Gets still find their values, despite the Peeks.
 	for i := range size / 2 {
-		v := h.Get(base.DiskFileNum(0), uint64(i), CategoryBackground)
+		v := h.Get(base.DiskFileNum(0), uint64(i), MakeLevel(0), CategoryBackground)
 		if v == nil {
 			t.Fatalf("expected to find block %d", i)
 		}
@@ -124,12 +124,12 @@ func TestCacheDelete(t *testing.T) {
 	if expected, size := int64(10), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	if v := h.Get(base.DiskFileNum(0), 0, CategorySSTableData); v == nil {
+	if v := h.Get(base.DiskFileNum(0), 0, MakeLevel(0), CategorySSTableData); v == nil {
 		t.Fatalf("expected to find block 0/0")
 	} else {
 		v.Release()
 	}
-	if v := h.Get(base.DiskFileNum(1), 0, CategorySSTableData); v != nil {
+	if v := h.Get(base.DiskFileNum(1), 0, MakeLevel(0), CategorySSTableData); v != nil {
 		t.Fatalf("expected to not find block 1/0")
 	}
 	// Deleting a non-existing block does nothing.
@@ -196,11 +196,11 @@ func TestMultipleDBs(t *testing.T) {
 	if expected, size := int64(5), cache.Size(); expected != size {
 		t.Fatalf("expected cache size %d, but found %d", expected, size)
 	}
-	v := h1.Get(base.DiskFileNum(0), 0, CategorySSTableData)
+	v := h1.Get(base.DiskFileNum(0), 0, MakeLevel(0), CategorySSTableData)
 	if v != nil {
 		t.Fatalf("expected not present, but found %#v", v)
 	}
-	v = h2.Get(base.DiskFileNum(0), 0, CategorySSTableData)
+	v = h2.Get(base.DiskFileNum(0), 0, MakeLevel(0), CategorySSTableData)
 	if v := v.RawBuffer(); string(v) != "bbbbb" {
 		t.Fatalf("expected bbbbb, but found %s", v)
 	}
@@ -308,8 +308,9 @@ func BenchmarkCacheGet(b *testing.B) {
 		for pb.Next() {
 			randVal := pcg.Uint64()
 			offset := randVal % size
-			category := Category((randVal >> 32) % uint64(NumCategories))
-			v := h.Get(base.DiskFileNum(0), offset, category)
+			level := Level{levelPlusOne: int8((randVal >> 32) % NumLevels)}
+			category := Category((randVal >> 48) % uint64(NumCategories))
+			v := h.Get(base.DiskFileNum(0), offset, level, category)
 			if v == nil {
 				b.Fatal("failed to look up value")
 			}

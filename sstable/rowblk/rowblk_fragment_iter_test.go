@@ -96,7 +96,7 @@ func TestBlockFragmentIterator(t *testing.T) {
 				return d.Expected
 			}
 
-			blockHandle := block.CacheBufferHandle(cacheHandle.Get(0, 0, cache.CategorySSTableData))
+			blockHandle := block.CacheBufferHandle(cacheHandle.Get(0, 0, cache.MakeLevel(0), cache.CategorySSTableData))
 			require.True(t, blockHandle.Valid())
 			i, err := NewFragmentIter(0, comparer, blockHandle, transforms)
 			defer i.Close()

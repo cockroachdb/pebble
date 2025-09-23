@@ -76,7 +76,7 @@ func (k key) String() string {
 	return fmt.Sprintf("%d/%d/%d", k.id, k.fileNum, k.offset)
 }
 
-type counters [NumCategories]struct {
+type counters [NumLevels][NumCategories]struct {
 	hits   atomic.Int64
 	misses atomic.Int64
 }
@@ -138,7 +138,7 @@ func (c *shard) init(maxSize int64) {
 //
 // If peekOnly is true, the state of the cache is not modified to reflect the
 // access.
-func (c *shard) get(k key, category Category, peekOnly bool) *Value {
+func (c *shard) get(k key, level Level, category Category, peekOnly bool) *Value {
 	c.mu.RLock()
 	if e, _ := c.blocks.Get(k); e != nil {
 		if value := e.acquireValue(); value != nil {
@@ -148,14 +148,14 @@ func (c *shard) get(k key, category Category, peekOnly bool) *Value {
 			}
 			c.mu.RUnlock()
 			if category != CategoryHidden {
-				c.counters[category].hits.Add(1)
+				c.counters[level.index()][category].hits.Add(1)
 			}
 			return value
 		}
 	}
 	c.mu.RUnlock()
 	if category != CategoryHidden {
-		c.counters[category].misses.Add(1)
+		c.counters[level.index()][category].misses.Add(1)
 	}
 	return nil
 }
@@ -165,7 +165,7 @@ func (c *shard) get(k key, category Category, peekOnly bool) *Value {
 // is not in the cache (nil Value), a non-nil readEntry is returned (in which
 // case the caller is responsible to dereference the entry, via one of
 // unrefAndTryRemoveFromMap(), setReadValue(), setReadError()).
-func (c *shard) getWithReadEntry(k key, category Category) (*Value, *readEntry) {
+func (c *shard) getWithReadEntry(k key, level Level, category Category) (*Value, *readEntry) {
 	c.mu.RLock()
 	if e, _ := c.blocks.Get(k); e != nil {
 		if value := e.acquireValue(); value != nil {
@@ -174,13 +174,13 @@ func (c *shard) getWithReadEntry(k key, category Category) (*Value, *readEntry) 
 				e.referenced.Store(true)
 			}
 			c.mu.RUnlock()
-			c.counters[category].hits.Add(1)
+			c.counters[level.index()][category].hits.Add(1)
 			return value, nil
 		}
 	}
 	re := c.readShard.acquireReadEntry(k)
 	c.mu.RUnlock()
-	c.counters[category].misses.Add(1)
+	c.counters[level.index()][category].misses.Add(1)
 	return nil, re
 }
 

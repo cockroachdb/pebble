@@ -252,9 +252,11 @@ func (c *Handle) Cache() *Cache {
 //
 // Peek supports the special CategoryHidden category, in which case the hit or
 // miss is not recorded in metrics.
-func (c *Handle) Peek(fileNum base.DiskFileNum, offset uint64, category Category) *Value {
+func (c *Handle) Peek(
+	fileNum base.DiskFileNum, offset uint64, level Level, category Category,
+) *Value {
 	k := makeKey(c.id, fileNum, offset)
-	return c.cache.getShard(k).get(k, category, true /* peekOnly */)
+	return c.cache.getShard(k).get(k, level, category, true /* peekOnly */)
 }
 
 // CategoryHidden can be used with Peek to avoid recording a cache hit or miss.
@@ -262,9 +264,11 @@ const CategoryHidden Category = -1
 
 // Get retrieves the cache value for the specified file and offset, returning
 // nil if no value is present.
-func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64, category Category) *Value {
+func (c *Handle) Get(
+	fileNum base.DiskFileNum, offset uint64, level Level, category Category,
+) *Value {
 	k := makeKey(c.id, fileNum, offset)
-	return c.cache.getShard(k).get(k, category, false /* peekOnly */)
+	return c.cache.getShard(k).get(k, level, category, false /* peekOnly */)
 }
 
 // GetWithReadHandle retrieves the cache value for the specified handleID, fileNum
@@ -291,7 +295,7 @@ func (c *Handle) Get(fileNum base.DiskFileNum, offset uint64, category Category)
 // While waiting, someone else may successfully read the value, which results
 // in a valid Handle being returned. This is a case where cacheHit=false.
 func (c *Handle) GetWithReadHandle(
-	ctx context.Context, fileNum base.DiskFileNum, offset uint64, category Category,
+	ctx context.Context, fileNum base.DiskFileNum, offset uint64, level Level, category Category,
 ) (
 	cv *Value,
 	rh ReadHandle,
@@ -301,7 +305,7 @@ func (c *Handle) GetWithReadHandle(
 	err error,
 ) {
 	k := makeKey(c.id, fileNum, offset)
-	cv, re := c.cache.getShard(k).getWithReadEntry(k, category)
+	cv, re := c.cache.getShard(k).getWithReadEntry(k, level, category)
 	if cv != nil {
 		return cv, ReadHandle{}, 0, 0, true, nil
 	}

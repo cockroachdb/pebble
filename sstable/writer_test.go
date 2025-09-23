@@ -835,7 +835,7 @@ func TestWriterClearCache(t *testing.T) {
 
 	// Verify that the written blocks have been cleared from the cache.
 	check := func(bh block.Handle) {
-		cv := cacheOpts.CacheHandle.Get(cacheOpts.FileNum, bh.Offset, cache.CategorySSTableData)
+		cv := cacheOpts.CacheHandle.Get(cacheOpts.FileNum, bh.Offset, cache.MakeLevel(0), cache.CategorySSTableData)
 		if cv != nil {
 			t.Fatalf("%d: expected cache to be cleared, but found %#v", bh.Offset, cv)
 		}
