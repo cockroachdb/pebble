@@ -86,13 +86,20 @@ type Skiplist struct {
 	testing bool
 }
 
-// Inserter TODO(peter)
+// An Inserter holds state between consecutive insertions into a skiplist.
+//
+// Inserting a key into a skiplist requires finding the "splice" bracketing the
+// key at every level. The Inserter caches the most recently used splice between
+// inserts, avoiding recomputing the splice from scratch when inserts are
+// sequential. Many workloads commit batches of keys in-order, clustered
+// together within the keyspace, and the Inserter reduces work in these cases.
 type Inserter struct {
 	spl    [maxHeight]splice
 	height uint32
 }
 
-// Add TODO(peter)
+// Add inserts a key-value pair into the skiplist. Using an Inserter (rather
+// than calling Skiplist.Add) improves performance for sequential inserts.
 func (ins *Inserter) Add(list *Skiplist, key base.InternalKey, value []byte) error {
 	return list.addInternal(key, value, ins)
 }
@@ -338,15 +345,17 @@ func (s *Skiplist) newNode(
 
 func (s *Skiplist) randomHeight() uint32 {
 	rnd := rand.Uint32()
-
 	h := uint32(1)
 	for h < maxHeight && rnd <= probabilities[h] {
 		h++
 	}
-
 	return h
 }
 
+// findSplice finds the splice bracketing the given key at every level. The
+// splice is stored on the inserter. If the inserter has a cached splice from a
+// previous call to findSplice, it's used as a starting point for the search.
+// This improves performance for sequential inserts.
 func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) {
 	listHeight := s.Height()
 	var level int
@@ -359,29 +368,45 @@ func (s *Skiplist) findSplice(key base.InternalKey, ins *Inserter) (found bool) 
 		ins.height = listHeight
 		level = int(ins.height)
 	} else {
-		// Our cached height is equal to the list height.
+		// Our cached height is equal to the list height. We might be able to
+		// use our cached splice if the key is bracketed by the splice. We
+		// search for the lowest level with a cached splice that has not been
+		// invalidated due to a concurrent insert.
 		for ; level < int(listHeight); level++ {
 			spl := &ins.spl[level]
 			if s.getNext(spl.prev, level) != spl.next {
-				// One or more nodes have been inserted between the splice at this
-				// level.
+				// One or more nodes have been inserted between the splice at
+				// this level. Keep ascending because the cached splice may
+				// still be valid.
 				continue
 			}
-			if spl.prev != s.head && !s.keyIsAfterNode(spl.prev, key) {
+
+			// The splice at this level was NOT invalidated. We can stop
+			// ascending. If the splice brackets the key, we can reuse all the
+			// cached splices at higher levels. Otherwise, we reset the level to
+			// the height of the list and we'll descend the skiplist from the
+			// top.
+			switch {
+			case spl.prev != s.head && !s.keyIsAfterNode(spl.prev, key):
 				// Key lies before splice.
 				level = int(listHeight)
-				break
-			}
-			if spl.next != s.tail && s.keyIsAfterNode(spl.next, key) {
+			case spl.next != s.tail && s.keyIsAfterNode(spl.next, key):
 				// Key lies after splice.
 				level = int(listHeight)
-				break
+			default:
+				// The splice brackets the key! Set prev to the splice's
+				// previous node in this level and leave level unchanged.  We've
+				// avoided needing to search the levels between listHeight and
+				// level.
+				prev = spl.prev
 			}
-			// The splice brackets the key!
-			prev = spl.prev
 			break
 		}
 	}
+
+	// The inserter's cached splice is valid from listHeight to level. We now
+	// descend from level to the base level to find the splice in the remaining
+	// levels.
 
 	var next *node
 	for level = level - 1; level >= 0; level-- {
