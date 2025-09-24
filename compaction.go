@@ -248,8 +248,7 @@ type tableCompaction struct {
 	// b) rewrite blob files: The compaction will write eligible values to new
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
-	getValueSeparation func(
-		JobID, *tableCompaction, sstable.TableFormat, tieredmeta.ColdTierThresholdRetriever) compact.ValueSeparation
+	getValueSeparation getValueSeparation
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -538,7 +537,7 @@ func (c *tableCompaction) makeInfo(jobID JobID) CompactionInfo {
 }
 
 type getValueSeparation func(
-	JobID, *tableCompaction, sstable.TableFormat, tieredmeta.ColdTierThresholdRetriever) compact.ValueSeparation
+	JobID, *tableCompaction, sstable.TableFormat, *coldTierThresholdRetriever) compact.ValueSeparation
 
 // newCompaction constructs a compaction from the provided picked compaction.
 //
@@ -3823,8 +3822,13 @@ func getDiskWriteCategoryForCompaction(opts *Options, kind compactionKind) vfs.D
 	}
 }
 
+type attrAndShards struct {
+	coldTierLTThreshold base.TieringAttribute
+	numShards           int
+}
+
 type coldTierThresholdRetriever struct {
-	m map[base.TieringSpanID]base.TieringAttribute
+	m map[base.TieringSpanID]attrAndShards
 }
 
 var _ tieredmeta.ColdTierThresholdRetriever = &coldTierThresholdRetriever{}
@@ -3838,16 +3842,22 @@ func (c *coldTierThresholdRetriever) init(
 	}
 	// Iterate over the compaction bounds, retrieving the SpanPolicys.
 	for {
-		policy, err := f(bounds, false)
+		policy, err := f(bounds, true)
 		if err != nil {
 			return err
 		}
 		if !policy.TieringPolicy.IsEmpty() {
 			p := policy.TieringPolicy.Policy
 			if c.m == nil {
-				c.m = make(map[base.TieringSpanID]base.TieringAttribute)
+				c.m = make(map[base.TieringSpanID]attrAndShards)
 			}
-			c.m[p.SpanID] = p.ColdTierLTThreshold
+			v, ok := c.m[p.SpanID]
+			if ok {
+				v.numShards++
+			} else {
+				v = attrAndShards{coldTierLTThreshold: p.ColdTierLTThreshold, numShards: 1}
+			}
+			c.m[p.SpanID] = v
 		}
 		if len(policy.KeyRange.End) == 0 || !bounds.End.IsUpperBoundFor(cmp, policy.KeyRange.End) {
 			// Done iterating over the compaction bounds.
@@ -3861,7 +3871,11 @@ func (c *coldTierThresholdRetriever) init(
 func (c *coldTierThresholdRetriever) GetColdTierLTThreshold(
 	spanID base.TieringSpanID,
 ) base.TieringAttribute {
-	attr, ok := c.m[spanID]
+	return c.get(spanID).coldTierLTThreshold
+}
+
+func (c *coldTierThresholdRetriever) get(spanID base.TieringSpanID) attrAndShards {
+	v, ok := c.m[spanID]
 	if !ok {
 		// TODO(sumeer): we should be more graceful. If we return 0, then
 		// everything in this compaction will get classified as unaccounted bytes
@@ -3871,5 +3885,5 @@ func (c *coldTierThresholdRetriever) GetColdTierLTThreshold(
 		// the prototype.
 		panic(errors.AssertionFailedf("unknown compaction TieringSpanID %v", spanID))
 	}
-	return attr
+	return v
 }
