@@ -26,6 +26,12 @@ type Dir struct {
 	Lock    *base.DirLock
 	FS      vfs.FS
 	Dirname string
+	// ID is a stable UUID that uniquely identifies the directory. This
+	// identifier is persisted both in the OPTIONS file in the primary directory
+	// and in a file (failover_identifier) within the secondary directory to detect
+	// incorrectness/corruptions (e.g. when the wrong disk has been mounted at
+	// the expected path during recovery).
+	ID string
 }
 
 // NumWAL is the number of the virtual WAL. It can map to one or more physical
@@ -368,6 +374,8 @@ type Manager interface {
 	// Close the manager.
 	// REQUIRES: Writers and Readers have already been closed.
 	Close() error
+	// Opts returns the Options used to initialize the Manager.
+	Opts() Options
 
 	// RecyclerForTesting exposes the internal LogRecycler.
 	RecyclerForTesting() *LogRecycler

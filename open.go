@@ -350,6 +350,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	if opts.WALFailover != nil {
 		walOpts.Secondary = opts.WALFailover.Secondary
+		walOpts.Secondary.ID = opts.WALFailover.Secondary.ID
 		// Lock the secondary WAL directory, if distinct from the data directory
 		// and primary WAL directory.
 		if secondaryWalDirName != dirname && secondaryWalDirName != walDirname {
@@ -424,10 +425,19 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 	}
 
+	if opts.WALFailover != nil {
+		walDir, err := wal.ValidateOrInitWALDir(walOpts.Secondary)
+		if err != nil {
+			return nil, err
+		}
+		walOpts.Secondary = walDir
+		opts.WALFailover.Secondary.ID = walDir.ID
+	}
 	walManager, err := wal.Init(walOpts, retainedWALs)
 	if err != nil {
 		return nil, err
 	}
+
 	defer maybeCleanUp(walManager.Close)
 	d.mu.log.manager = walManager
 

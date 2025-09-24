@@ -257,6 +257,11 @@ func (m *StandaloneManager) Close() error {
 	return err
 }
 
+// Opts implements Manager.
+func (m *StandaloneManager) Opts() Options {
+	return m.o
+}
+
 // RecyclerForTesting implements Manager.
 func (m *StandaloneManager) RecyclerForTesting() *LogRecycler {
 	return &m.recycler
