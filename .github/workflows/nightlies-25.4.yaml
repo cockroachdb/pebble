@@ -1,0 +1,60 @@
+name: Nightlies (crl-release-25.4)
+
+on:
+  schedule:
+    - cron: '30 10 * * * ' # 10:30am UTC daily
+  workflow_dispatch:
+
+env:
+  BRANCH: crl-release-25.4
+
+jobs:
+  resolve-sha:
+    runs-on: ubuntu-latest
+    outputs:
+      # This output only exists so we can interpolate it.
+      branch: ${{ steps.get_sha.outputs.branch }}
+      sha: ${{ steps.get_sha.outputs.sha }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get SHA for ${{ env.BRANCH }}
+        id: get_sha
+        run: |
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse origin/$BRANCH)" >> "$GITHUB_OUTPUT"
+
+  tests:
+    needs: resolve-sha
+    uses: ./.github/workflows/tests.yaml
+    with:
+      sha: ${{ needs.resolve-sha.outputs.sha }}
+      file_issue_branch: ${{ needs.resolve-sha.outputs.branch }}
+      go_version: 1.23
+
+  s390x:
+    needs: resolve-sha
+    uses: ./.github/workflows/s390x.yaml
+    with:
+      sha: ${{ needs.resolve-sha.outputs.sha }}
+      file_issue_branch: ${{ needs.resolve-sha.outputs.branch }}
+      go_version: 1.23
+
+  stress:
+    needs: resolve-sha
+    uses: ./.github/workflows/stress.yaml
+    with:
+      sha: ${{ needs.resolve-sha.outputs.sha }}
+      file_issue_branch: ${{ needs.resolve-sha.outputs.branch }}
+      go_version: 1.23
+
+  instrumented:
+    needs: resolve-sha
+    uses: ./.github/workflows/instrumented.yaml
+    with:
+      sha: ${{ needs.resolve-sha.outputs.sha }}
+      file_issue_branch: ${{ needs.resolve-sha.outputs.branch }}
+      go_version: 1.23
