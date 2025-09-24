@@ -185,12 +185,7 @@ func (cm *cleanupManager) mainLoop() {
 	// Use a token bucket with 1 token / second refill rate and 1 token burst.
 	tb.Init(1.0, 1.0)
 	for job := range cm.jobsCh {
-		select {
-		case <-cm.stopCh:
-			cm.deleteObsoleteFilesInJob(job, nil, nil)
-		default:
-			cm.deleteObsoleteFilesInJob(job, &tb, paceTimer)
-		}
+		cm.deleteObsoleteFilesInJob(job, &tb, paceTimer)
 		cm.mu.Lock()
 		cm.mu.completedJobs++
 		cm.mu.completedStats.Add(job.stats)
@@ -247,6 +242,7 @@ func (cm *cleanupManager) maybePace(
 		select {
 		case <-paceTimer.C:
 		case <-cm.stopCh:
+			// The cleanup manager is being closed. Delete without pacing.
 			return
 		}
 	}

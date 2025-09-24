@@ -145,8 +145,9 @@ func TestCleaner(t *testing.T) {
 func TestCleanupManagerCloseWithPacing(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{
-		FS:                     mem,
-		TargetByteDeletionRate: 1024, // 1 KB/s - slow pacing
+		FS:                      mem,
+		FreeSpaceThresholdBytes: 1,
+		TargetByteDeletionRate:  1024, // 1 KB/s - slow pacing
 	}
 	opts.EnsureDefaults()
 
@@ -160,6 +161,7 @@ func TestCleanupManagerCloseWithPacing(t *testing.T) {
 	getDeletePacerInfo := func() deletionPacerInfo {
 		return deletionPacerInfo{
 			freeBytes: 10 << 30,
+			liveBytes: 10 << 30,
 		}
 	}
 
