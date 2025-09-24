@@ -33,20 +33,22 @@ import (
 // dbT implements db-level tools, including both configuration state and the
 // commands themselves.
 type dbT struct {
-	Root        *cobra.Command
-	Check       *cobra.Command
-	Upgrade     *cobra.Command
-	Checkpoint  *cobra.Command
-	Get         *cobra.Command
-	Logs        *cobra.Command
-	LSM         *cobra.Command
-	Properties  *cobra.Command
-	Scan        *cobra.Command
-	Set         *cobra.Command
-	Space       *cobra.Command
-	IOBench     *cobra.Command
-	Excise      *cobra.Command
-	AnalyzeData *cobra.Command
+	Root            *cobra.Command
+	Check           *cobra.Command
+	Upgrade         *cobra.Command
+	Checkpoint      *cobra.Command
+	Get             *cobra.Command
+	Inspect         *cobra.Command
+	InspectManifest *cobra.Command
+	Logs            *cobra.Command
+	LSM             *cobra.Command
+	Properties      *cobra.Command
+	Scan            *cobra.Command
+	Set             *cobra.Command
+	Space           *cobra.Command
+	IOBench         *cobra.Command
+	Excise          *cobra.Command
+	AnalyzeData     *cobra.Command
 
 	// Configuration.
 	opts            *pebble.Options
@@ -153,6 +155,13 @@ process.
 		Args: cobra.ExactArgs(2),
 		Run:  d.runGet,
 	}
+	d.Inspect = &cobra.Command{
+		Use:   "inspect <dir>",
+		Short: "inspect DB internals without opening",
+		Long: `
+Inspect the DB internals without opening the DB.
+`,
+	}
 	d.Logs = logs.NewCmd()
 	d.LSM = &cobra.Command{
 		Use:   "lsm <dir>",
@@ -235,7 +244,17 @@ experiments and produce a CSV file of the results.
 		Run:  d.runAnalyzeData,
 	}
 
-	d.Root.AddCommand(d.Check, d.Upgrade, d.Checkpoint, d.Get, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench, d.AnalyzeData)
+	d.Inspect.AddCommand(&cobra.Command{
+		Use:   "manifest <dir>",
+		Short: "Return the manifest filename",
+		Long: `
+Returns the filename of the current manifest file.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.inspectManifest,
+	})
+
+	d.Root.AddCommand(d.Check, d.Upgrade, d.Checkpoint, d.Get, d.Inspect, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench, d.AnalyzeData)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
 	for _, cmd := range []*cobra.Command{d.Check, d.Upgrade, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.AnalyzeData} {
@@ -429,6 +448,15 @@ func (d *dbT) closeDB(stderr io.Writer, db *pebble.DB) {
 	if err := db.Close(); err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)
 	}
+}
+
+func (d *dbT) inspectManifest(cmd *cobra.Command, args []string) {
+	desc, err := pebble.Peek(args[0], d.opts.FS)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", err)
+		return
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "%s\n", desc.ManifestFilename)
 }
 
 func (d *dbT) runCheck(cmd *cobra.Command, args []string) {

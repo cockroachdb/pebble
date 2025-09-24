@@ -1,0 +1,29 @@
+db inspect
+----
+----
+
+Inspect the DB internals without opening the DB.
+
+Usage:
+   db inspect [command]
+
+Available Commands:
+  manifest    Return the manifest filename
+
+Flags:
+  -h, --help   help for inspect
+
+Global Flags:
+  -v, --verbose   verbose output
+
+Use " db inspect [command] --help" for more information about a command.
+----
+----
+
+db inspect manifest
+----
+accepts 1 arg(s), received 0
+
+db inspect manifest ../testdata/db-stage-4
+----
+db-stage-4/MANIFEST-000006
