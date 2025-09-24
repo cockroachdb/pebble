@@ -1966,6 +1966,11 @@ func (w *RawRowWriter) setFilter(fw filterWriter) {
 	w.filter = fw
 }
 
+// SetValueSeparationProps implements RawWriter.
+func (w *RawRowWriter) SetValueSeparationProps(_kind ValueSeparationKind, _minValueSize uint64) {
+	// Value separation requires TableFormatPebblev7+ which uses column writers.
+}
+
 // SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
 // be used internally by Pebble.
 func (w *RawRowWriter) SetSnapshotPinnedProperties(
