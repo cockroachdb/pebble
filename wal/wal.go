@@ -21,11 +21,22 @@ import (
 
 // TODO(sumeer): write a high-level comment describing the approach.
 
+// StableIdentifierFilename is the name of the file within a WAL directory that
+// stores a stable ID identifying that directory. This is used to detect when
+// the wrong disk has been mounted at the expected path during recovery.
+const StableIdentifierFilename = "stable_identifier"
+
 // Dir is used for storing log files.
 type Dir struct {
 	Lock    *base.DirLock
 	FS      vfs.FS
 	Dirname string
+	// ID is a stable ID that uniquely identifies the directory. This
+	// identifier is persisted both in the OPTIONS file in the primary directory
+	// and in a file (stable_identifier) within the secondary directory to detect
+	// incorrectness/corruptions (e.g. when the wrong disk has been mounted at
+	// the expected path during recovery).
+	ID string
 }
 
 // NumWAL is the number of the virtual WAL. It can map to one or more physical
@@ -367,6 +378,8 @@ type Manager interface {
 	// Close the manager.
 	// REQUIRES: Writers and Readers have already been closed.
 	Close() error
+	// Opts returns the Options used to initialize the Manager.
+	Opts() Options
 
 	// RecyclerForTesting exposes the internal LogRecycler.
 	RecyclerForTesting() *LogRecycler
