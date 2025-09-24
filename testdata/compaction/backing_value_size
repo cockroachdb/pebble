@@ -13,15 +13,15 @@ set c coconut
 compact a-b
 ----
 L6:
-  000005:[a#10,SET-c#12,SET] seqnums:[10-12] points:[a#10,SET-c#12,SET] size:767 blobrefs:[(B000006: 18); depth:1]
+  000005:[a#10,SET-c#12,SET] seqnums:[10-12] points:[a#10,SET-c#12,SET] size:794 blobrefs:[(B000006: 18); depth:1]
 Blob files:
   B000006 physical:{000006 size:[194 (194B)] vals:[18 (18B)]}
 
 excise b ba
 ----
 L6:
-  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(767) blobrefs:[(B000006: 2/18); depth:1]
-  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(767) blobrefs:[(B000006: 2/18); depth:1]
+  000007(000005):[a#10,SET-a#10,SET] seqnums:[10-12] points:[a#10,SET-a#10,SET] size:104(794) blobrefs:[(B000006: 2/18); depth:1]
+  000008(000005):[c#12,SET-c#12,SET] seqnums:[10-12] points:[c#12,SET-c#12,SET] size:104(794) blobrefs:[(B000006: 2/18); depth:1]
 Blob files:
   B000006 physical:{000006 size:[194 (194B)] vals:[18 (18B)]}
 

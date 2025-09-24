@@ -224,6 +224,11 @@ func (vs *writeNewBlobFiles) SetNextOutputConfig(config compact.ValueSeparationO
 	vs.minimumSize = config.MinimumSize
 }
 
+// Kind implements the ValueSeparation interface.
+func (vs *writeNewBlobFiles) Kind() sstable.ValueSeparationKind {
+	return sstable.ValueSeparationNewBlobs
+}
+
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
 func (vs *writeNewBlobFiles) EstimatedFileSize() uint64 {
@@ -396,6 +401,11 @@ var _ compact.ValueSeparation = (*preserveBlobReferences)(nil)
 
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (vs *preserveBlobReferences) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
+
+// Kind implements the ValueSeparation interface.
+func (vs *preserveBlobReferences) Kind() sstable.ValueSeparationKind {
+	return sstable.ValueSeparationPreservedRefs
+}
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.

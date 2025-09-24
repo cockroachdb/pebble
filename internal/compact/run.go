@@ -124,6 +124,8 @@ type ValueSeparation interface {
 	// sstable. It can be used to configure value separation specifically for
 	// the next compaction output.
 	SetNextOutputConfig(config ValueSeparationOutputConfig)
+	// Kind returns the kind of value separation strategy being used.
+	Kind() sstable.ValueSeparationKind
 	// EstimatedFileSize returns an estimate of the disk space consumed by the
 	// current, pending blob file if it were closed now. If no blob file has
 	// been created, it returns 0.
@@ -233,6 +235,10 @@ func (r *Runner) WriteTable(
 	if r.err != nil {
 		panic("error already encountered")
 	}
+
+	// Set the value separation kind on the writer based on the strategy being used.
+	tw.SetValueSeparationKind(valueSeparation.Kind())
+
 	r.tables = append(r.tables, OutputTable{
 		CreationTime: time.Now(),
 		ObjMeta:      objMeta,
@@ -497,6 +503,11 @@ var _ ValueSeparation = NeverSeparateValues{}
 
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (NeverSeparateValues) SetNextOutputConfig(config ValueSeparationOutputConfig) {}
+
+// Kind implements the ValueSeparation interface.
+func (NeverSeparateValues) Kind() sstable.ValueSeparationKind {
+	return sstable.ValueSeparationNone
+}
 
 // EstimatedFileSize implements the ValueSeparation interface.
 func (NeverSeparateValues) EstimatedFileSize() uint64 { return 0 }

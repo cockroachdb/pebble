@@ -214,6 +214,11 @@ var _ compact.ValueSeparation = (*defineDBValueSeparator)(nil)
 // SetNextOutputConfig implements the compact.ValueSeparation interface.
 func (vs *defineDBValueSeparator) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
 
+// Kind implements the ValueSeparation interface.
+func (vs *defineDBValueSeparator) Kind() sstable.ValueSeparationKind {
+	return vs.pbr.Kind()
+}
+
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
 func (vs *defineDBValueSeparator) EstimatedFileSize() uint64 {
