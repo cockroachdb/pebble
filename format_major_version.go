@@ -417,13 +417,13 @@ func lookupFormatMajorVersion(
 	}
 	vers := FormatMajorVersion(v)
 	if vers == FormatDefault {
-		return 0, nil, errors.Newf("pebble: default format major version should not persisted", vers)
+		return 0, nil, errors.Newf("default format major version should not persisted", vers)
 	}
 	if vers > internalFormatNewest {
-		return 0, nil, errors.Newf("pebble: database %q written in unknown format major version %d", dirname, vers)
+		return 0, nil, errors.Newf("written in unknown format major version %d", vers)
 	}
 	if vers < FormatMinSupported {
-		return 0, nil, errors.Newf("pebble: database %q written in format major version %d which is no longer supported", dirname, vers)
+		return 0, nil, errors.Newf("format major version %d which is no longer supported", vers)
 	}
 	return vers, m, nil
 }

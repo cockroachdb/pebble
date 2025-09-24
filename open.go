@@ -33,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -117,22 +118,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	defer maybeCleanUp(fileLock.Close)
 
-	// List the directory contents. This also happens to include WAL log files, if
-	// they are in the same dir, but we will ignore those below. The provider is
-	// also given this list, but it ignores non sstable files.
-	ls, err := opts.FS.List(dirname)
+	rs, err := recoverState(opts, dirname)
 	if err != nil {
 		return nil, err
 	}
+	defer maybeCleanUp(rs.Close)
 
-	// Establish the format major version.
-	formatVersion, formatVersionMarker, err := lookupFormatMajorVersion(opts.FS, dirname, ls)
-	if err != nil {
-		return nil, err
-	}
-	defer maybeCleanUp(formatVersionMarker.Close)
-
-	noFormatVersionMarker := formatVersion == FormatDefault
+	formatVersion := rs.fmv
+	noFormatVersionMarker := rs.fmv == FormatDefault
 	if noFormatVersionMarker {
 		// We will initialize the store at the minimum possible format, then upgrade
 		// the format to the desired one. This helps test the format upgrade code.
@@ -159,20 +152,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}()
 	}
 
-	// Find the currently active manifest, if there is one.
-	manifestMarker, manifestFileNum, manifestExists, err := findCurrentManifest(opts.FS, dirname, ls)
-	if err != nil {
-		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
-	}
-	defer maybeCleanUp(manifestMarker.Close)
-
-	// Atomic markers may leave behind obsolete files if there's a crash
-	// mid-update. Clean these up if we're not in read-only mode.
 	if !opts.ReadOnly {
-		if err := formatVersionMarker.RemoveObsolete(); err != nil {
-			return nil, err
-		}
-		if err := manifestMarker.RemoveObsolete(); err != nil {
+		if err := rs.RemoveObsolete(); err != nil {
 			return nil, err
 		}
 	}
@@ -194,6 +175,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		largeBatchThreshold: (opts.MemTableSize - uint64(memTableEmptySize)) / 2,
 		dataDirLock:         fileLock,
 		dataDir:             dataDir,
+		objProvider:         rs.objProvider,
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
 	}
@@ -259,10 +241,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		write:         d.commitWrite,
 	})
 	d.mu.nextJobID = 1
-	d.mu.mem.nextSize = opts.MemTableSize
-	if d.mu.mem.nextSize > initialMemTableSize {
-		d.mu.mem.nextSize = initialMemTableSize
-	}
+	d.mu.mem.nextSize = min(opts.MemTableSize, initialMemTableSize)
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.inProgress = make(map[compaction]struct{})
 	d.mu.compact.noOngoingFlushStartTime = crtime.NowMono()
@@ -273,7 +252,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// SeqNumStart).
 	d.mu.versions.logSeqNum.Store(base.SeqNumStart)
 	d.mu.formatVers.vers.Store(uint64(formatVersion))
-	d.mu.formatVers.marker = formatVersionMarker
+	d.mu.formatVers.marker = rs.fmvMarker
 
 	d.timeNow = time.Now
 	d.openedAt = d.timeNow()
@@ -283,19 +262,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	jobID := d.newJobIDLocked()
 
-	providerSettings := opts.MakeObjStorageProviderSettings(dirname)
-	providerSettings.FSDirInitialListing = ls
-	d.objProvider, err = objstorageprovider.Open(providerSettings)
-	if err != nil {
-		return nil, err
-	}
-
 	blobRewriteHeuristic := manifest.BlobRewriteHeuristic{
 		CurrentTime: d.timeNow,
 		MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
 	}
 
-	if !manifestExists {
+	if !rs.manifestExists {
 		// DB does not exist.
 		if d.opts.ErrorIfNotExists || d.opts.ReadOnly {
 			return nil, errors.Wrapf(ErrDBDoesNotExist, "dirname=%q", dirname)
@@ -303,7 +275,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 		// Create the DB.
 		if err := d.mu.versions.create(
-			jobID, dirname, d.objProvider, opts, manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
+			jobID, dirname, d.objProvider, opts, rs.manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 	} else {
@@ -312,7 +284,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 		// Load the version set.
 		if err := d.mu.versions.load(
-			dirname, d.objProvider, opts, manifestFileNum, manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
+			dirname, d.objProvider, opts, rs.manifestFileNum, rs.manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
 		if opts.ErrorIfNotPristine {
@@ -464,7 +436,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.getDeletionPacerInfo)
 
-	if manifestExists && !opts.DisableConsistencyCheck {
+	if rs.manifestExists && !opts.DisableConsistencyCheck {
 		curVersion := d.mu.versions.currentVersion()
 		if err := checkConsistency(curVersion, d.objProvider); err != nil {
 			return nil, err
@@ -482,39 +454,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	d.fileSizeAnnotator = d.makeFileSizeAnnotator()
 
-	var previousOptionsFileNum base.DiskFileNum
-	var previousOptionsFilename string
-	for _, filename := range ls {
-		ft, fn, ok := base.ParseFilename(opts.FS, filename)
-		if !ok {
-			continue
-		}
-
-		// Don't reuse any obsolete file numbers to avoid modifying an
-		// ingested sstable's original external file.
-		d.mu.versions.markFileNumUsed(fn)
-
-		switch ft {
-		case base.FileTypeLog:
-			// Ignore.
-		case base.FileTypeOptions:
-			if previousOptionsFileNum < fn {
-				previousOptionsFileNum = fn
-				previousOptionsFilename = filename
-			}
-		case base.FileTypeTemp, base.FileTypeOldTemp:
-			if !d.opts.ReadOnly {
-				// Some codepaths write to a temporary file and then
-				// rename it to its final location when complete.  A
-				// temp file is leftover if a process exits before the
-				// rename.  Remove it.
-				err := opts.FS.Remove(opts.FS.PathJoin(dirname, filename))
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
+	d.mu.versions.markFileNumUsed(rs.maxFilenumUsed)
 	if n := len(wals); n > 0 {
 		// Don't reuse any obsolete file numbers to avoid modifying an
 		// ingested sstable's original external file.
@@ -529,8 +469,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	// Validate the most-recent OPTIONS file, if there is one.
-	if previousOptionsFilename != "" {
-		path := opts.FS.PathJoin(dirname, previousOptionsFilename)
+	if rs.previousOptionsFilename != "" {
+		path := opts.FS.PathJoin(dirname, rs.previousOptionsFilename)
 		previousOptions, err := readOptionsFile(opts, path)
 		if err != nil {
 			return nil, err
@@ -541,23 +481,19 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	// Replay any newer log files than the ones named in the manifest.
-	var replayWALs wal.Logs
-	for i, w := range wals {
-		if base.DiskFileNum(w.Num) >= d.mu.versions.minUnflushedLogNum {
-			replayWALs = wals[i:]
-			break
-		}
-	}
 	var flushableIngests []*ingestedFlushable
-	for i, lf := range replayWALs {
+	for i, w := range wals {
+		if base.DiskFileNum(w.Num) < d.mu.versions.minUnflushedLogNum {
+			continue
+		}
 		// WALs other than the last one would have been closed cleanly.
 		//
 		// Note: we used to never require strict WAL tails when reading from older
 		// versions: RocksDB 6.2.1 and the version of Pebble included in CockroachDB
 		// 20.1 do not guarantee that closed WALs end cleanly. But the earliest
 		// compatible Pebble format is newer and guarantees a clean EOF.
-		strictWALTail := i < len(replayWALs)-1
-		fi, maxSeqNum, err := d.replayWAL(jobID, lf, strictWALTail)
+		strictWALTail := i < len(wals)-1
+		fi, maxSeqNum, err := d.replayWAL(jobID, w, strictWALTail)
 		if err != nil {
 			return nil, err
 		}
@@ -1287,4 +1223,124 @@ func (l walEventListenerAdaptor) LogCreated(ci wal.CreateInfo) {
 		Err:             ci.Err,
 	}
 	l.l.WALCreated(wci)
+}
+
+// recoverState reads the named database directory and recovers the set of files
+// encoding the database state at the moment the previous process exited.
+// recoverState is read only and does not mutate the on-disk state.
+func recoverState(opts *Options, dirname string) (s *recoveredState, err error) {
+	rs := recoveredState{
+		dirname: dirname,
+		fs:      opts.FS,
+	}
+	defer func() {
+		// If we're returning nil, close any resources we opened by closing rs.
+		if s == nil {
+			err = errors.CombineErrors(err, rs.Close())
+		}
+	}()
+
+	// List the directory contents. This also happens to include WAL log files,
+	// if they are in the same dir.
+	if rs.ls, err = opts.FS.List(dirname); err != nil {
+		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
+	}
+	// Find the currently format major version and active manifest.
+	rs.fmv, rs.fmvMarker, err = lookupFormatMajorVersion(opts.FS, dirname, rs.ls)
+	if err != nil {
+		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
+	}
+	rs.manifestMarker, rs.manifestFileNum, rs.manifestExists, err = findCurrentManifest(opts.FS, dirname, rs.ls)
+	if err != nil {
+		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
+	}
+	// Open the object storage provider.
+	providerSettings := opts.MakeObjStorageProviderSettings(dirname)
+	providerSettings.FSDirInitialListing = rs.ls
+	rs.objProvider, err = objstorageprovider.Open(providerSettings)
+	if err != nil {
+		return nil, errors.Wrapf(err, "pebble: database %q", dirname)
+	}
+
+	// Identify the maximal file number in the directory. We do not want to
+	// reuse any existing file numbers even if they are obsolete file numbers to
+	// avoid modifying an ingested sstable's original external file.
+	//
+	// We also identify the most recent OPTIONS file, so we can validate our
+	// configured Options against the previous options, and we collect any
+	// orphaned temporary files that should be removed.
+	var previousOptionsFileNum base.DiskFileNum
+	for _, filename := range rs.ls {
+		ft, fn, ok := base.ParseFilename(opts.FS, filename)
+		if !ok {
+			continue
+		}
+		rs.maxFilenumUsed = max(rs.maxFilenumUsed, fn)
+		switch ft {
+		case base.FileTypeLog:
+			// Ignore.
+		case base.FileTypeOptions:
+			if previousOptionsFileNum < fn {
+				previousOptionsFileNum = fn
+				rs.previousOptionsFilename = filename
+			}
+		case base.FileTypeTemp, base.FileTypeOldTemp:
+			rs.obsoleteTempFilenames = append(rs.obsoleteTempFilenames, filename)
+		}
+	}
+
+	return &rs, nil
+}
+
+// recoveredState encapsulates state recovered from reading the database
+// directory.
+type recoveredState struct {
+	dirname                 string
+	fmv                     FormatMajorVersion
+	fmvMarker               *atomicfs.Marker
+	fs                      vfs.FS
+	ls                      []string
+	manifestMarker          *atomicfs.Marker
+	manifestFileNum         base.DiskFileNum
+	manifestExists          bool
+	maxFilenumUsed          base.DiskFileNum
+	obsoleteTempFilenames   []string
+	objProvider             objstorage.Provider
+	previousOptionsFilename string
+}
+
+// RemoveObsolete removes obsolete files uncovered during recovery.
+func (rs *recoveredState) RemoveObsolete() error {
+	var err error
+	// Atomic markers may leave behind obsolete files if there's a crash
+	// mid-update.
+	if rs.fmvMarker != nil {
+		err = errors.CombineErrors(err, rs.fmvMarker.RemoveObsolete())
+	}
+	if rs.manifestMarker != nil {
+		err = errors.CombineErrors(err, rs.manifestMarker.RemoveObsolete())
+	}
+	// Some codepaths write to a temporary file and then rename it to its final
+	// location when complete.  A temp file is leftover if a process exits
+	// before the rename. Remove any that were found.
+	for _, filename := range rs.obsoleteTempFilenames {
+		err = errors.CombineErrors(err, rs.fs.Remove(rs.fs.PathJoin(rs.dirname, filename)))
+	}
+	return err
+}
+
+// Close closes resources held by the RecoveredState, including open file
+// descriptors.
+func (rs *recoveredState) Close() error {
+	var err error
+	if rs.fmvMarker != nil {
+		err = errors.CombineErrors(err, rs.fmvMarker.Close())
+	}
+	if rs.manifestMarker != nil {
+		err = errors.CombineErrors(err, rs.manifestMarker.Close())
+	}
+	if rs.objProvider != nil {
+		err = errors.CombineErrors(err, rs.objProvider.Close())
+	}
+	return err
 }
