@@ -92,7 +92,7 @@ func TestRatchetFormat(t *testing.T) {
 	opts.WithFSDefaults()
 	_, err = Open("", opts)
 	require.Error(t, err)
-	require.EqualError(t, err, `pebble: database "" written in unknown format major version 999999`)
+	require.EqualError(t, err, `pebble: database "": written in unknown format major version 999999`)
 }
 
 func testBasicDB(d *DB) error {

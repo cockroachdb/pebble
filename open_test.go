@@ -1492,7 +1492,7 @@ func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
 		FormatMajorVersion: FormatMinSupported,
 	})
 	require.Error(t, err)
-	require.EqualError(t, err, `pebble: database "" written in unknown format major version 999999`)
+	require.EqualError(t, err, `pebble: database "": written in unknown format major version 999999`)
 }
 
 // ensureFilesClosed updates the provided Options to wrap the filesystem. It
