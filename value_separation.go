@@ -27,7 +27,7 @@ import (
 const latencyTolerantMinimumSize = 10
 
 var neverSeparateValues getValueSeparation = func(
-	JobID, *tableCompaction, sstable.TableFormat, tieredmeta.ColdTierThresholdRetriever) compact.ValueSeparation {
+	JobID, *tableCompaction, sstable.TableFormat, *coldTierThresholdRetriever) compact.ValueSeparation {
 	return compact.NeverSeparateValues{}
 }
 
@@ -38,7 +38,7 @@ func (d *DB) determineCompactionValueSeparation(
 	jobID JobID,
 	c *tableCompaction,
 	tableFormat sstable.TableFormat,
-	cttRetriever tieredmeta.ColdTierThresholdRetriever,
+	cttRetriever *coldTierThresholdRetriever,
 ) compact.ValueSeparation {
 	if tableFormat < sstable.TableFormatPebblev7 || d.FormatMajorVersion() < FormatValueSeparation ||
 		d.opts.Experimental.ValueSeparationPolicy == nil {
@@ -112,7 +112,7 @@ const minLevelForColdBlobFiles = 5
 func shouldWriteBlobFiles(
 	c *tableCompaction,
 	policy ValueSeparationPolicy,
-	cttRetriever tieredmeta.ColdTierThresholdRetriever,
+	cttRetriever *coldTierThresholdRetriever,
 	minColdWriteSizeForNewColdFile uint64,
 ) (
 	writeBlobs bool,
@@ -143,8 +143,9 @@ func shouldWriteBlobFiles(
 	if c.outputLevel != nil && c.outputLevel.level >= minLevelForColdBlobFiles {
 		hist := compactionTieringHistograms(c.inputs)
 		type coldAttrAndBytesEstimates struct {
-			coldLTThreshold base.TieringAttribute
-			valueBytes      uint64
+			attrAndShards
+			toColdValueBytes     uint64
+			stayingHotValueBytes uint64
 		}
 		var tieringSpansLTThreshold map[base.TieringSpanID]coldAttrAndBytesEstimates
 		for k := range hist.Histograms {
@@ -158,25 +159,47 @@ func shouldWriteBlobFiles(
 		}
 		for spanID := range tieringSpansLTThreshold {
 			tieringSpansLTThreshold[spanID] =
-				coldAttrAndBytesEstimates{coldLTThreshold: cttRetriever.GetColdTierLTThreshold(spanID)}
+				coldAttrAndBytesEstimates{attrAndShards: cttRetriever.get(spanID)}
 		}
 		for k, h := range hist.Histograms {
 			if k.TieringSpanID == 0 {
 				continue
 			}
-			if k.KindAndTier == base.SSTableKeyBytes ||
-				k.KindAndTier == base.SSTableBlobReferenceColdBytes {
-				continue
-			}
-			if k.KindAndTier == base.SSTableValueBytes && h.MeanSize() < uint64(policy.MinimumSize) {
-				continue
-			}
 			v := tieringSpansLTThreshold[k.TieringSpanID]
-			v.valueBytes += h.ApproxColdBytes(v.coldLTThreshold)
+			if k.KindAndTier == base.SSTableBlobReferenceColdBytes {
+				continue
+			}
+			if k.KindAndTier == base.SSTableKeyBytes ||
+				k.KindAndTier == base.SSTableValueBytes && h.MeanSize() < uint64(policy.MinimumSize) {
+				v.stayingHotValueBytes += h.TotalBytes()
+			}
+			// SSTableValueBytes that qualify from a size perspective to be in cold
+			// blob files, or SSTableBlobReferenceHotBytes, that may be movable to
+			// cold blob files.
+			totalValueBytes := h.TotalBytes()
+			toColdValueBytes := h.ApproxColdBytes(v.attrAndShards.coldTierLTThreshold)
+			v.toColdValueBytes += toColdValueBytes
+			if totalValueBytes < toColdValueBytes {
+				panic(errors.AssertionFailedf(
+					"totalValueBytes < toColdValueBytes", totalValueBytes, totalValueBytes))
+			}
+			v.stayingHotValueBytes += totalValueBytes - toColdValueBytes
 			tieringSpansLTThreshold[k.TieringSpanID] = v
 		}
 		for spanID, v := range tieringSpansLTThreshold {
-			writeColdSpan := v.valueBytes > min(c.maxOutputFileSize, minColdWriteSizeForNewColdFile)
+			// v.toColdValueBytes is the approx total bytes that can transition to
+			// the cold tier in this compaction. What we really care about is
+			// whether we will write large enough cold blob files, which is
+			// v.toColdValueBytes divided by the number of output sstables we will
+			// generate (approximately). We start a new output sstable based on
+			// grandparents, size, and shard boundaries. We ignore the rollovers
+			// due to grandparents in the estimation below.
+
+			// TODO(sumeer): use the compression ratio to scale down the numerator.
+			numSSTablesDueToHotBytes := v.stayingHotValueBytes / c.maxOutputFileSize
+			numSSTables := max(uint64(v.numShards), numSSTablesDueToHotBytes)
+			coldBytesPerSSTable := v.toColdValueBytes / numSSTables
+			writeColdSpan := coldBytesPerSSTable > min(c.maxOutputFileSize, minColdWriteSizeForNewColdFile)
 			if writeColdSpan {
 				if coldWriteSpans == nil {
 					coldWriteSpans = make(map[base.TieringSpanID]struct{})
@@ -184,7 +207,7 @@ func shouldWriteBlobFiles(
 				coldWriteSpans[spanID] = struct{}{}
 			}
 			c.logger.Infof("spanID=%d, %t: estimated cold bytes=%s, cold bytes threshold=%s, output file size limit=%s",
-				spanID, writeColdSpan, humanize.Bytes.Uint64(v.valueBytes),
+				spanID, writeColdSpan, humanize.Bytes.Uint64(coldBytesPerSSTable),
 				humanize.Bytes.Uint64(minColdWriteSizeForNewColdFile),
 				humanize.Bytes.Uint64(c.maxOutputFileSize))
 

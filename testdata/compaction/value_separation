@@ -406,13 +406,14 @@ Blob files:
   B000006 physical:{000006 size:[156 (156B)] vals:[60 (60B)]}
   B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
 
-auto-compact
-----
-L6:
-  000010:[a#0,SET-h#0,SET] seqnums:[0-0] points:[a#0,SET-h#0,SET] size:805 blobrefs:[(B000006: 53), (B000009: 6); depth:2]
-Blob files:
-  B000006 physical:{000011 size:[150 (150B)] vals:[53 (53B)]}
-  B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
+# Commented out since disabled blob file rewrite compactions.
+# auto-compact
+# ----
+# L6:
+#   000010:[a#0,SET-h#0,SET] seqnums:[0-0] points:[a#0,SET-h#0,SET] size:805 blobrefs:[(B000006: 53), (B000009: 6); depth:2]
+# Blob files:
+#   B000006 physical:{000011 size:[150 (150B)] vals:[53 (53B)]}
+#   B000009 physical:{000009 size:[95 (95B)] vals:[6 (6B)]}
 
 metrics
 ----
@@ -442,7 +443,7 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
 total |     -     -     - |      0    0B |    0B    0B    0B |   310B    0B |      3  2.5KB   502B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob
-count |       1       0        0     0     0     0        0     0      0     1
+count |       1       0        0     0     0     0        0     0      0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -454,12 +455,12 @@ ITERATORS
         block cache        |         file cache         |    filter    |  sst iters  |  snapshots
      entries |    hit rate |      entries |    hit rate |         util |        open |        open
 -------------+-------------+--------------+-------------+--------------+-------------+------------
-   7 (2.8KB) |       59.6% |     1 (552B) |       78.6% |         0.0% |           0 |           0
+   7 (2.8KB) |       52.5% |     1 (552B) |       76.2% |         0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values     |     cold blobs
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed |       live |      refed
 --------------+------------+-----------------------+------------+------------+--------+------------+------------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |   2 (245B) |     0 (0B) |    59B | 100% (59B) |            |
+   all loaded |     0 (0B) |       0 (0B local:0B) |   2 (251B) |     0 (0B) |    66B |  89% (59B) |            |
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
