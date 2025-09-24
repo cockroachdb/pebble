@@ -9,6 +9,7 @@ import (
 	stdcmp "cmp"
 	"container/heap"
 	"fmt"
+	"iter"
 	"maps"
 	"slices"
 
@@ -274,30 +275,20 @@ func (bv *VirtualBackings) Get(n base.DiskFileNum) (_ *TableBacking, ok bool) {
 }
 
 // ForEach calls fn on each backing, in unspecified order.
-func (bv *VirtualBackings) ForEach(fn func(backing *TableBacking)) {
-	for _, v := range bv.m {
-		fn(v.backing)
+func (bv *VirtualBackings) All() iter.Seq[*TableBacking] {
+	return func(yield func(*TableBacking) bool) {
+		for _, v := range bv.m {
+			if !yield(v.backing) {
+				return
+			}
+		}
 	}
 }
 
 // DiskFileNums returns disk file nums of all the backing in the set, in sorted
 // order.
 func (bv *VirtualBackings) DiskFileNums() []base.DiskFileNum {
-	res := make([]base.DiskFileNum, 0, len(bv.m))
-	for n := range bv.m {
-		res = append(res, n)
-	}
-	slices.Sort(res)
-	return res
-}
-
-// Backings returns all backings in the set, in unspecified order.
-func (bv *VirtualBackings) Backings() []*TableBacking {
-	res := make([]*TableBacking, 0, len(bv.m))
-	for _, v := range bv.m {
-		res = append(res, v.backing)
-	}
-	return res
+	return slices.Sorted(maps.Keys(bv.m))
 }
 
 // ReplacementCandidate returns the backing with the lowest ratio of data

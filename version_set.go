@@ -7,6 +7,7 @@ package pebble
 import (
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -369,13 +370,13 @@ func (vs *versionSet) load(
 			}
 		}
 	}
-	vs.latest.virtualBackings.ForEach(func(backing *manifest.TableBacking) {
+	for backing := range vs.latest.virtualBackings.All() {
 		isLocal, localSize := sizeIfLocal(backing, vs.provider)
 		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
 		if isLocal {
 			vs.metrics.Table.Local.LiveCount++
 		}
-	})
+	}
 
 	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, &vs.latest, vs.opts, nil))
 	return nil
@@ -578,7 +579,7 @@ func (vs *versionSet) UpdateVersionLocked(
 		// We want the virtual backings *before* applying the version edit, because
 		// the new manifest will contain the pre-apply version plus the last version
 		// edit.
-		newManifestVirtualBackings = vs.latest.virtualBackings.Backings()
+		newManifestVirtualBackings = slices.Collect(vs.latest.virtualBackings.All())
 	}
 
 	// Grab certain values before releasing vs.mu, in case createManifest() needs
@@ -1174,9 +1175,9 @@ func (vs *versionSet) addLiveFileNums(m map[base.DiskFileNum]struct{}) {
 	// are not but are still alive because of the protection mechanism (see
 	// manifset.VirtualBackings). This loop ensures the latter get added to the
 	// map.
-	vs.latest.virtualBackings.ForEach(func(b *manifest.TableBacking) {
+	for b := range vs.latest.virtualBackings.All() {
 		m[b.DiskFileNum] = struct{}{}
-	})
+	}
 }
 
 // addObsoleteLocked will add the fileInfo associated with obsolete backing
