@@ -372,6 +372,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	if opts.WALFailover != nil {
 		walOpts.Secondary = opts.WALFailover.Secondary
+		walOpts.SecondaryIdentifier = opts.WALFailover.SecondaryIdentifier
 		// Lock the secondary WAL directory, if distinct from the data directory
 		// and primary WAL directory.
 		if secondaryWalDirName != dirname && secondaryWalDirName != walDirname {
@@ -420,6 +421,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	walManager, err := wal.Init(walOpts, wals)
 	if err != nil {
 		return nil, err
+	}
+
+	// Update the pebble options with the secondary identifier if it was
+	// generated.
+	if opts.WALFailover != nil && walManager.Opts().SecondaryIdentifier != "" {
+		opts.WALFailover.SecondaryIdentifier = walManager.Opts().SecondaryIdentifier
 	}
 	defer maybeCleanUp(walManager.Close)
 	d.mu.log.manager = walManager
