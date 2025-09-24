@@ -198,9 +198,9 @@ func (d *DB) Checkpoint(
 	optionsFileNum := d.optionsFileNum
 
 	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
-	d.mu.versions.latest.virtualBackings.ForEach(func(backing *manifest.TableBacking) {
+	for backing := range d.mu.versions.latest.virtualBackings.All() {
 		virtualBackingFiles[backing.DiskFileNum] = struct{}{}
-	})
+	}
 	versionBlobFiles := d.mu.versions.latest.blobFiles.Metadatas()
 
 	// Acquire the logs while holding mutexes to ensure we don't race with a
