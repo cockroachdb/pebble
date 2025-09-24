@@ -266,6 +266,14 @@ func TestOpen_WALFailover(t *testing.T) {
 			if o.FS == nil {
 				return "no path"
 			}
+			// Use a counter for identifier generation so tests can detect bugs
+			// where we incorrectly generate a new identifier.
+			idCounter := 0
+			wal.SetGenerateStableIdentifierForTesting(func() string {
+				idCounter++
+				return fmt.Sprintf("test-identifier-%d", idCounter)
+			})
+			defer wal.ResetGenerateStableIdentifierForTesting()
 			d, err := Open(dataDir, o)
 			if err != nil {
 				return err.Error()
