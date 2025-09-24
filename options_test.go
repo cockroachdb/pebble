@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"runtime"
 	"strings"
@@ -280,7 +281,7 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 
 	// Check that an OPTIONS file that configured an explicit WALDir that will
 	// no longer be used errors if it's not also present in WALRecoveryDirs.
-	//require.Equal(t, ErrMissingWALRecoveryDir{Dir: "external-wal-dir"},
+	// require.Equal(t, ErrMissingWALRecoveryDir{Dir: "external-wal-dir"},
 	err := DefaultOptions().CheckCompatibility(storeDir, `
 [Options]
   wal_dir=external-wal-dir
@@ -358,6 +359,52 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 [WAL Failover]
   secondary_dir=failover-wal-dir
 `))
+}
+
+func TestWALRecoveryDirValidation(t *testing.T) {
+	storeDir := "/mnt/foo"
+	mem := vfs.NewMem()
+	recoveryDir := "/mnt/wrong-disk-dir"
+	err := mem.MkdirAll(recoveryDir, 0755)
+	require.NoError(t, err)
+
+	// Create stable_identifier file with different ID.
+	identifierFile := mem.PathJoin(recoveryDir, "stable_identifier")
+	wrongID := "11111111111111111111111111111111"
+	err = writeTestIdentifierToFile(mem, identifierFile, wrongID)
+	require.NoError(t, err)
+
+	opts := &Options{
+		FS: mem,
+		WALRecoveryDirs: []wal.Dir{
+			{
+				FS:      mem,
+				Dirname: recoveryDir,
+				ID:      "22222222222222222222222222222222",
+			},
+		},
+	}
+	opts.EnsureDefaults()
+
+	err = opts.checkWALDir(storeDir, recoveryDir, "test context")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "has identifier \"11111111111111111111111111111111\" but expected \"22222222222222222222222222222222\"")
+}
+
+// writeTestIdentifierToFile is a helper function to write an identifier to a file
+func writeTestIdentifierToFile(fs vfs.FS, filename, identifier string) error {
+	f, err := fs.Create(filename, "pebble-wal")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = io.WriteString(f, identifier)
+	if err != nil {
+		return err
+	}
+
+	return f.Sync()
 }
 
 type testCleaner struct{}
