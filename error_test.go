@@ -487,7 +487,7 @@ func TestDBCompactionCrash(t *testing.T) {
 		const valLength = 4 << 10
 		timestamps := []int{10, 5}
 		ks := testkeys.Alpha(maxKeyLength)
-		ks = ks.EveryN(10)
+		ks = testkeys.EveryN(ks, 10)
 		buf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
 		vbuf := make([]byte, valLength)
 		b := d.NewBatch()
