@@ -244,6 +244,7 @@ open-dir: db1
 open: db1/MANIFEST-000001
 close: db1/MANIFEST-000001
 lock: db1_wal/LOCK
+remove: db1_wal/000002.log
 open-dir: db1_wal
 open: db1/OPTIONS-000003
 close: db1/OPTIONS-000003
@@ -255,7 +256,6 @@ create: db1/marker.manifest.000002.MANIFEST-000458
 close: db1/marker.manifest.000002.MANIFEST-000458
 remove: db1/marker.manifest.000001.MANIFEST-000001
 sync: db1
-remove: db1_wal/000002.log
 remove: db1_wal/000004.log
 create: db1_wal/000459.log
 sync: db1_wal
