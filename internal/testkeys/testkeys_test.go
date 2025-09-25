@@ -205,7 +205,7 @@ func TestDivvy(t *testing.T) {
 
 			input := Alpha(alphaLen)
 			for _, ks := range Divvy(input, portions) {
-				fmt.Fprintln(&buf, keyspaceToString(ks))
+				fmt.Fprintf(&buf, "%s (%d keys)\n", keyspaceToString(ks), ks.Count())
 			}
 			return buf.String()
 		default:
