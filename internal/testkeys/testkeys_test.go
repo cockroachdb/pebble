@@ -18,7 +18,7 @@ import (
 
 func TestGenerateAlphabetKey(t *testing.T) {
 	testCases := []struct {
-		i     int64
+		i     uint64
 		depth int
 		want  string
 	}{
@@ -43,7 +43,7 @@ func TestGenerateAlphabetKey(t *testing.T) {
 		{11, 2, "cc"},
 	}
 	testAlphabet := []byte{byte('a'), byte('b'), byte('c')}
-	testInverseAlphabet := map[byte]int64{byte('a'): 0, byte('b'): 1, byte('c'): 2}
+	testInverseAlphabet := map[byte]uint64{byte('a'): 0, byte('b'): 1, byte('c'): 2}
 
 	buf := make([]byte, 10)
 	for _, tc := range testCases {
@@ -64,7 +64,7 @@ func TestKeyCount(t *testing.T) {
 	type params struct {
 		n, l int
 	}
-	testCases := map[params]int64{
+	testCases := map[params]uint64{
 		{26, 1}: 26,
 		{26, 2}: 702,
 		{26, 3}: 18278,
@@ -118,7 +118,7 @@ func TestFullKeyspaces(t *testing.T) {
 func TestSlice(t *testing.T) {
 	testCases := []struct {
 		orig Keyspace
-		i, j int64
+		i, j uint64
 		want string
 	}{
 		{Alpha(1), 1, 25, "b c d e f g h i j k l m n o p q r s t u v w x y"},
@@ -148,7 +148,7 @@ func TestSuffix(t *testing.T) {
 		}
 	}
 
-	for i := int64(1); i < ks.Count(); i++ {
+	for i := uint64(1); i < ks.Count(); i++ {
 		assertCmp(-1, KeyAt(ks, i-1, 1), KeyAt(ks, i, 1))
 		assertCmp(-1, Key(ks, i-1), Key(ks, i))
 		assertCmp(0, Key(ks, i), Key(ks, i))
@@ -199,7 +199,7 @@ func TestDivvy(t *testing.T) {
 		switch d.Cmd {
 		case "divvy":
 			var alphaLen int
-			var portions int64
+			var portions uint64
 			d.ScanArgs(t, "alpha", &alphaLen)
 			d.ScanArgs(t, "portions", &portions)
 
@@ -217,7 +217,7 @@ func TestDivvy(t *testing.T) {
 func keyspaceToString(ks Keyspace) string {
 	var buf bytes.Buffer
 	b := make([]byte, ks.MaxLen())
-	for i := int64(0); i < ks.Count(); i++ {
+	for i := uint64(0); i < ks.Count(); i++ {
 		n := ks.key(b, i)
 		if i > 0 {
 			buf.WriteRune(' ')

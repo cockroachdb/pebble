@@ -1441,13 +1441,13 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 			if rng.IntN(2) == 1 {
 				o.LowerBound = nil
 				if rng.IntN(2) == 1 {
-					o.LowerBound = testkeys.KeyAt(ks, rng.Int64N(ks.Count()), rng.Int64N(ks.Count()))
+					o.LowerBound = testkeys.KeyAt(ks, rng.Uint64N(ks.Count()), rng.Int64N(int64(ks.Count())))
 				}
 			}
 			if rng.IntN(2) == 1 {
 				o.UpperBound = nil
 				if rng.IntN(2) == 1 {
-					o.UpperBound = testkeys.KeyAt(ks, rng.Int64N(ks.Count()), rng.Int64N(ks.Count()))
+					o.UpperBound = testkeys.KeyAt(ks, rng.Uint64N(ks.Count()), rng.Int64N(int64(ks.Count())))
 				}
 			}
 			if testkeys.Comparer.Compare(o.LowerBound, o.UpperBound) > 0 {
@@ -1456,7 +1456,7 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 		}
 		o.RangeKeyMasking.Suffix = nil
 		if o.KeyTypes == IterKeyTypePointsAndRanges && rng.IntN(2) == 1 {
-			o.RangeKeyMasking.Suffix = testkeys.Suffix(rng.Int64N(ks.Count()))
+			o.RangeKeyMasking.Suffix = testkeys.Suffix(rng.Int64N(int64(ks.Count())))
 		}
 	}
 
@@ -1484,7 +1484,7 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 	positioningOps := []func() positioningOp{
 		// SeekGE
 		func() positioningOp {
-			k := testkeys.Key(ks, rng.Int64N(ks.Count()))
+			k := testkeys.Key(ks, rng.Uint64N(ks.Count()))
 			return positioningOp{
 				desc: fmt.Sprintf("SeekGE(%q)", k),
 				run: func(it *Iterator) IterValidityState {
@@ -1494,7 +1494,7 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 		},
 		// SeekLT
 		func() positioningOp {
-			k := testkeys.Key(ks, rng.Int64N(ks.Count()))
+			k := testkeys.Key(ks, rng.Uint64N(ks.Count()))
 			return positioningOp{
 				desc: fmt.Sprintf("SeekLT(%q)", k),
 				run: func(it *Iterator) IterValidityState {
@@ -1504,7 +1504,7 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 		},
 		// SeekPrefixGE
 		func() positioningOp {
-			k := testkeys.Key(ks, rng.Int64N(ks.Count()))
+			k := testkeys.Key(ks, rng.Uint64N(ks.Count()))
 			return positioningOp{
 				desc: fmt.Sprintf("SeekPrefixGE(%q)", k),
 				run: func(it *Iterator) IterValidityState {
@@ -1590,14 +1590,14 @@ func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace, rng *rand.Rand) *DB
 		const maxVersionsPerKey = 10
 		keyIndex := order[i]
 		for versions := rng.IntN(maxVersionsPerKey); versions > 0; versions-- {
-			n := testkeys.WriteKeyAt(keyBuf, ks, int64(keyIndex), rng.Int64N(maxVersionsPerKey))
+			n := testkeys.WriteKeyAt(keyBuf, ks, uint64(keyIndex), rng.Int64N(maxVersionsPerKey))
 			b.Set(keyBuf[:n], keyBuf[:n], nil)
 		}
 
 		// Sometimes add a range key too.
 		if rng.IntN(100) == 1 {
-			startIdx := rng.Int64N(ks.Count())
-			endIdx := rng.Int64N(ks.Count())
+			startIdx := rng.Uint64N(ks.Count())
+			endIdx := rng.Uint64N(ks.Count())
 			startLen := testkeys.WriteKey(keyBuf, ks, startIdx)
 			endLen := testkeys.WriteKey(keyBuf2, ks, endIdx)
 			suffixInt := rng.Int64N(maxVersionsPerKey)
@@ -1633,8 +1633,8 @@ func newPointTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
 
 	b := d.NewBatch()
 	keyBuf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
-	for i := int64(0); i < ks.Count(); i++ {
-		n := testkeys.WriteKeyAt(keyBuf, ks, i, i)
+	for i := uint64(0); i < ks.Count(); i++ {
+		n := testkeys.WriteKeyAt(keyBuf, ks, i, int64(i))
 		b.Set(keyBuf[:n], keyBuf[:n], nil)
 	}
 	require.NoError(t, b.Commit(nil))
@@ -2065,7 +2065,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 	for i := 0; i < numKeys; i++ {
 		keys[i] = make([]byte, 5+testkeys.MaxSuffixLen)
 		keyTimeStamps[i] = timestamps[rng.IntN(len(timestamps))]
-		n := testkeys.WriteKeyAt(keys[i], ks, rng.Int64N(ks.Count()), keyTimeStamps[i])
+		n := testkeys.WriteKeyAt(keys[i], ks, rng.Uint64N(ks.Count()), keyTimeStamps[i])
 		keys[i] = keys[i][:n]
 	}
 
@@ -2081,11 +2081,11 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 		rkeys[i].start = make([]byte, 5)
 		rkeys[i].end = make([]byte, 5)
 
-		testkeys.WriteKey(rkeys[i].start[:5], ks, rng.Int64N(ks.Count()))
-		testkeys.WriteKey(rkeys[i].end[:5], ks, rng.Int64N(ks.Count()))
+		testkeys.WriteKey(rkeys[i].start[:5], ks, rng.Uint64N(ks.Count()))
+		testkeys.WriteKey(rkeys[i].end[:5], ks, rng.Uint64N(ks.Count()))
 
 		for bytes.Equal(rkeys[i].start[:5], rkeys[i].end[:5]) {
-			testkeys.WriteKey(rkeys[i].end[:5], ks, rng.Int64N(ks.Count()))
+			testkeys.WriteKey(rkeys[i].end[:5], ks, rng.Uint64N(ks.Count()))
 		}
 
 		if bytes.Compare(rkeys[i].start[:5], rkeys[i].end[:5]) > 0 {
@@ -2290,7 +2290,7 @@ func TestIteratorSeekPrefixGERandomized(t *testing.T) {
 	// Perform a few seeks for random prefixes and ensure that result matches
 	// the map constructed.
 	for i := 0; i < 100; i++ {
-		k := testkeys.Key(ks, rng.Int64N(ks.Count()))
+		k := testkeys.Key(ks, rng.Uint64N(ks.Count()))
 		t.Logf("SeekPrefixGE(%q)", k)
 		exists := iter.SeekPrefixGE(k)
 		expectedKey, expectedOk := m[string(k)]
@@ -2453,7 +2453,7 @@ func BenchmarkIteratorScan(b *testing.B) {
 	keyBuf := make([]byte, maxPrefixLen+testkeys.MaxSuffixLen)
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
-	for _, keyCount := range []int64{100, 1000, 10000} {
+	for _, keyCount := range []uint64{100, 1000, 10000} {
 		for _, readAmp := range []int{1, 3, 7, 10} {
 			func() {
 				opts := &Options{
@@ -2475,9 +2475,9 @@ func BenchmarkIteratorScan(b *testing.B) {
 				}
 
 				// Portion the keys into `readAmp` overlapping key sets.
-				for _, ks := range testkeys.Divvy(keys, int64(readAmp)) {
+				for _, ks := range testkeys.Divvy(keys, uint64(readAmp)) {
 					batch := d.NewBatch()
-					for i := int64(0); i < ks.Count(); i++ {
+					for i := uint64(0); i < ks.Count(); i++ {
 						n := testkeys.WriteKeyAt(keyBuf[:], ks, i, rng.Int64N(100))
 						batch.Set(keyBuf[:n], keyBuf[:n], nil)
 					}
@@ -2531,15 +2531,15 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		//
 		for l := readAmp; l > 0; l-- {
 			ks := testkeys.Alpha(l)
-			if step := ks.Count() / int64(maxKeysPerLevel); step > 1 {
+			if step := ks.Count() / uint64(maxKeysPerLevel); step > 1 {
 				ks = ks.EveryN(step)
 			}
-			if ks.Count() > int64(maxKeysPerLevel) {
-				ks = ks.Slice(0, int64(maxKeysPerLevel))
+			if ks.Count() > uint64(maxKeysPerLevel) {
+				ks = ks.Slice(0, uint64(maxKeysPerLevel))
 			}
 
 			batch := d.NewBatch()
-			for i := int64(0); i < ks.Count(); i++ {
+			for i := uint64(0); i < ks.Count(); i++ {
 				for v := 0; v < versCount; v++ {
 					n := testkeys.WriteKeyAt(keyBuf[:], ks, i, int64(versCount-v+1))
 					batch.Set(keyBuf[:n], keyBuf[:n], nil)
@@ -2611,7 +2611,7 @@ func BenchmarkCombinedIteratorSeek(b *testing.B) {
 			defer func() { require.NoError(b, d.Close()) }()
 
 			keys := make([][]byte, ks.Count())
-			for i := int64(0); i < ks.Count(); i++ {
+			for i := uint64(0); i < ks.Count(); i++ {
 				keys[i] = testkeys.Key(ks, i)
 				var val [40]byte
 				for j := range val {
@@ -2717,7 +2717,7 @@ func buildFragmentedRangeKey(b testing.TB, seed uint64) (d *DB, keys [][]byte) {
 	require.NoError(b, err)
 
 	keys = make([][]byte, ks.Count())
-	for i := int64(0); i < ks.Count(); i++ {
+	for i := uint64(0); i < ks.Count(); i++ {
 		keys[i] = testkeys.Key(ks, i)
 	}
 	for i := 0; i < len(keys); i++ {
@@ -2768,7 +2768,7 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 	defer d.NewSnapshot().Close()
 
 	ks := testkeys.Alpha(2)
-	for i := int64(0); i < ks.Count()-1; i++ {
+	for i := uint64(0); i < ks.Count()-1; i++ {
 		func() {
 			filename := fmt.Sprintf("ext%2d", i)
 			f, err := o.FS.Create(filename, vfs.WriteCategoryUnspecified)
@@ -2831,13 +2831,13 @@ func BenchmarkPointDeletedSwath(b *testing.B) {
 	iterOps := []iteratorOp{
 		{
 			name: "seek-prefix-ge", fn: func(iter *Iterator, ks testkeys.Keyspace, rng *rand.Rand) {
-				n := testkeys.WriteKey(iterKeyBuf[:], ks, int64(rng.IntN(int(ks.Count()))))
+				n := testkeys.WriteKey(iterKeyBuf[:], ks, uint64(rng.IntN(int(ks.Count()))))
 				_ = iter.SeekPrefixGE(iterKeyBuf[:n])
 			},
 		},
 		{
 			name: "seek-ge", fn: func(iter *Iterator, ks testkeys.Keyspace, rng *rand.Rand) {
-				n := testkeys.WriteKey(iterKeyBuf[:], ks, int64(rng.IntN(int(ks.Count()))))
+				n := testkeys.WriteKey(iterKeyBuf[:], ks, uint64(rng.IntN(int(ks.Count()))))
 				_ = iter.SeekGE(iterKeyBuf[:n])
 			},
 		},
@@ -2912,7 +2912,7 @@ func populateKeyspaceSetup(ks testkeys.Keyspace) func(testing.TB, *DB) {
 				batch := d.NewBatch()
 				key := make([]byte, ks.MaxLen())
 				var val [valSize]byte
-				for i := int64(0); i < loadKeyspaces[l].Count(); i++ {
+				for i := uint64(0); i < loadKeyspaces[l].Count(); i++ {
 					for j := range val {
 						val[j] = byte(rng.Uint32())
 					}
@@ -2943,8 +2943,8 @@ func populateKeyspaceSetup(ks testkeys.Keyspace) func(testing.TB, *DB) {
 func deleteGapSetup(ks testkeys.Keyspace, gapLength int) func(testing.TB, *DB) {
 	return func(t testing.TB, d *DB) {
 		midpoint := ks.Count() / 2
-		gapStart := midpoint - int64(gapLength/2)
-		gapEnd := midpoint + int64(gapLength/2+(gapLength%2))
+		gapStart := midpoint - uint64(gapLength/2)
+		gapEnd := midpoint + uint64(gapLength/2+(gapLength%2))
 
 		batch := d.NewBatch()
 		key := make([]byte, ks.MaxLen())
@@ -2986,10 +2986,10 @@ func runBenchmarkQueueWorkload(b *testing.B, deleteRatio float32, initOps int, v
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
 	getKey := func(q int, i int) []byte {
-		n := testkeys.WriteKey(key, queueIDKeyspace, int64(q))
+		n := testkeys.WriteKey(key, queueIDKeyspace, uint64(q))
 		key[n] = '/'
 		prefixLen := n + 1
-		n = testkeys.WriteKey(key[prefixLen:], itemKeyspace, int64(i))
+		n = testkeys.WriteKey(key[prefixLen:], itemKeyspace, uint64(i))
 		return key[:prefixLen+n]
 	}
 

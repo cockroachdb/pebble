@@ -495,7 +495,7 @@ func TestDBCompactionCrash(t *testing.T) {
 	done:
 		for _, ts := range timestamps {
 			for _, i := range perm {
-				n := testkeys.WriteKeyAt(buf, ks, int64(i), int64(ts))
+				n := testkeys.WriteKeyAt(buf, ks, uint64(i), int64(ts))
 				for j := range vbuf {
 					vbuf[j] = byte(rng.Uint32())
 				}

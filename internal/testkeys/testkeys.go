@@ -30,7 +30,7 @@ const alpha = "abcdefghijklmnopqrstuvwxyz"
 
 const suffixDelim = '@'
 
-var inverseAlphabet = make(map[byte]int64, len(alpha))
+var inverseAlphabet = make(map[byte]uint64, len(alpha))
 
 var prefixRE = regexp.MustCompile("[" + alpha + "]+")
 
@@ -41,7 +41,7 @@ var ignoreTimestampSuffix = []byte("_synthetic")
 
 func init() {
 	for i := range alpha {
-		inverseAlphabet[alpha[i]] = int64(i)
+		inverseAlphabet[alpha[i]] = uint64(i)
 	}
 }
 
@@ -183,7 +183,7 @@ func compareSuffixes(a, b []byte) int {
 // Keyspace describes a finite keyspace of unsuffixed test keys.
 type Keyspace interface {
 	// Count returns the number of keys that exist within this keyspace.
-	Count() int64
+	Count() uint64
 
 	// MaxLen returns the maximum length, in bytes, of a key within this
 	// keyspace. This is only guaranteed to return an upper bound.
@@ -191,21 +191,21 @@ type Keyspace interface {
 
 	// Slice returns the sub-keyspace from index i, inclusive, to index j,
 	// exclusive. The receiver is unmodified.
-	Slice(i, j int64) Keyspace
+	Slice(i, j uint64) Keyspace
 
 	// EveryN returns a key space that includes 1 key for every N keys in the
 	// original keyspace. The receiver is unmodified.
-	EveryN(n int64) Keyspace
+	EveryN(n uint64) Keyspace
 
 	// key writes the i-th key to the buffer and returns the length.
-	key(buf []byte, i int64) int
+	key(buf []byte, i uint64) int
 }
 
 // Divvy divides the provided keyspace into N equal portions, containing
 // disjoint keys evenly distributed across the keyspace.
-func Divvy(ks Keyspace, n int64) []Keyspace {
+func Divvy(ks Keyspace, n uint64) []Keyspace {
 	ret := make([]Keyspace, n)
-	for i := int64(0); i < n; i++ {
+	for i := uint64(0); i < n; i++ {
 		ret[i] = ks.Slice(i, ks.Count()).EveryN(n)
 	}
 	return ret
@@ -223,7 +223,7 @@ func Alpha(maxLength int) Keyspace {
 
 // KeyAt returns the i-th key within the keyspace with a suffix encoding the
 // timestamp t.
-func KeyAt(k Keyspace, i int64, t int64) []byte {
+func KeyAt(k Keyspace, i uint64, t int64) []byte {
 	b := make([]byte, k.MaxLen()+MaxSuffixLen)
 	return b[:WriteKeyAt(b, k, i, t)]
 }
@@ -231,7 +231,7 @@ func KeyAt(k Keyspace, i int64, t int64) []byte {
 // WriteKeyAt writes the i-th key within the keyspace to the buffer dst, with a
 // suffix encoding the timestamp t suffix. It returns the number of bytes
 // written.
-func WriteKeyAt(dst []byte, k Keyspace, i int64, t int64) int {
+func WriteKeyAt(dst []byte, k Keyspace, i uint64, t int64) int {
 	n := WriteKey(dst, k, i)
 	n += WriteSuffix(dst[n:], t)
 	return n
@@ -271,26 +271,26 @@ func WriteSuffix(dst []byte, t int64) int {
 }
 
 // Key returns the i-th unsuffixed key within the keyspace.
-func Key(k Keyspace, i int64) []byte {
+func Key(k Keyspace, i uint64) []byte {
 	b := make([]byte, k.MaxLen())
 	return b[:k.key(b, i)]
 }
 
 // WriteKey writes the i-th unsuffixed key within the keyspace to the buffer dst. It
 // returns the number of bytes written.
-func WriteKey(dst []byte, k Keyspace, i int64) int {
+func WriteKey(dst []byte, k Keyspace, i uint64) int {
 	return k.key(dst, i)
 }
 
 type alphabet struct {
 	alphabet  []byte
 	maxLength int
-	headSkip  int64
-	tailSkip  int64
-	increment int64
+	headSkip  uint64
+	tailSkip  uint64
+	increment uint64
 }
 
-func (a alphabet) Count() int64 {
+func (a alphabet) Count() uint64 {
 	// Calculate the total number of keys, ignoring the increment.
 	total := keyCount(len(a.alphabet), a.maxLength) - a.headSkip - a.tailSkip
 
@@ -312,39 +312,39 @@ func (a alphabet) MaxLen() int {
 	return a.maxLength
 }
 
-func (a alphabet) Slice(i, j int64) Keyspace {
+func (a alphabet) Slice(i, j uint64) Keyspace {
 	s := a
 	s.headSkip += i
 	s.tailSkip += a.Count() - j
 	return s
 }
 
-func (a alphabet) EveryN(n int64) Keyspace {
+func (a alphabet) EveryN(n uint64) Keyspace {
 	s := a
 	s.increment *= n
 	return s
 }
 
-func keyCount(n, l int) int64 {
+func keyCount(n, l int) uint64 {
 	// The number of representable keys in the keyspace is a function of the
 	// length of the alphabet n and the max key length l:
 	//   n + n^2 + ... + n^l
-	x := int64(1)
-	res := int64(0)
+	x := uint64(1)
+	res := uint64(0)
 	for i := 1; i <= l; i++ {
-		if x >= math.MaxInt64/int64(n) {
+		if x >= math.MaxInt64/uint64(n) {
 			panic("overflow")
 		}
-		x *= int64(n)
+		x *= uint64(n)
 		res += x
-		if res < 0 {
+		if res < x {
 			panic("overflow")
 		}
 	}
 	return res
 }
 
-func (a alphabet) key(buf []byte, idx int64) int {
+func (a alphabet) key(buf []byte, idx uint64) int {
 	// This function generates keys of length 1..maxKeyLength, pulling
 	// characters from the alphabet. The idx determines which key to generate,
 	// generating the i-th lexicographically next key.
@@ -363,14 +363,14 @@ func (a alphabet) key(buf []byte, idx int64) int {
 		keyCount(len(a.alphabet), a.maxLength))
 }
 
-func generateAlphabetKey(buf, alphabet []byte, i, keyCount int64) int {
-	if keyCount == 0 || i > keyCount || i < 0 {
+func generateAlphabetKey(buf, alphabet []byte, i, keyCount uint64) int {
+	if keyCount == 0 || i > keyCount {
 		return 0
 	}
 
 	// Of the keyCount keys in the generative keyspace, how many are there
 	// starting with a particular character?
-	keysPerCharacter := keyCount / int64(len(alphabet))
+	keysPerCharacter := keyCount / uint64(len(alphabet))
 
 	// Find the character that the key at index i starts with and set it.
 	characterIdx := i / keysPerCharacter
@@ -408,7 +408,7 @@ func generateAlphabetKey(buf, alphabet []byte, i, keyCount int64) int {
 // length of a key.
 //
 // len(key) must be ≥ 1.
-func computeAlphabetKeyIndex(key []byte, alphabet map[byte]int64, n int) int64 {
+func computeAlphabetKeyIndex(key []byte, alphabet map[byte]uint64, n int) uint64 {
 	i, ok := alphabet[key[0]]
 	if !ok {
 		panic(fmt.Sprintf("unrecognized alphabet character %v", key[0]))
@@ -460,7 +460,7 @@ func RandomPrefixInRange(a, b []byte, rng *rand.Rand) []byte {
 	if bpIdx <= apIdx {
 		panic("unreachable")
 	}
-	generatedIdx := apIdx + rng.Int64N(bpIdx-apIdx)
+	generatedIdx := apIdx + rng.Uint64N(bpIdx-apIdx)
 	if generatedIdx == apIdx {
 		// Return key a. We handle this separately in case we trimmed aPiece above.
 		return append([]byte(nil), a...)

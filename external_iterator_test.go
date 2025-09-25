@@ -148,7 +148,7 @@ func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 						require.NoError(b, err)
 						w := sstable.NewWriter(objstorageprovider.NewFileWritable(wf), writeOpts)
 						for j := 0; j < keyCount/fileCount; j++ {
-							key := testkeys.Key(ks, int64(len(keys)))
+							key := testkeys.Key(ks, uint64(len(keys)))
 							keys = append(keys, key)
 							for i := range valBuf {
 								valBuf[i] = byte(prng.Uint32())
