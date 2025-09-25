@@ -904,6 +904,12 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	if i.useFilterBlock {
 		if !i.lastBloomFilterMatched {
 			// Iterator is not positioned based on last seek.
+			//
+			// TODO(jackson): Would it be worth keeping the
+			// TrySeekUsingNext optimization if the previous SeekPrefixGE call
+			// that hit the bloom filter exclusion case also had
+			// TrySeekUsingNext()=true (in which case the position from two
+			// operations ago transitively still holds)?
 			flags = flags.DisableTrySeekUsingNext()
 		}
 		i.lastBloomFilterMatched = false
