@@ -668,7 +668,7 @@ func buildHeavyWorkload(t *testing.T) vfs.FS {
 			for k := range bufVal {
 				bufVal[k] = byte(rng.Uint32())
 			}
-			n := testkeys.WriteKey(bufKey[:], ks, rng.Int64N(ks.Count()))
+			n := testkeys.WriteKey(bufKey[:], ks, rng.Uint64N(ks.Count()))
 			require.NoError(t, b.Set(bufKey[:n], bufVal[:], pebble.NoSync))
 		}
 		require.NoError(t, b.Commit(pebble.NoSync))

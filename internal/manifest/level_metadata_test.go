@@ -170,7 +170,7 @@ func makeTestTableMetadata() (tables []*TableMetadata, keys [][]byte) {
 	// The smallest and largest boundary keys of synthesized TableMetadata are
 	// identical, using the odd-indexed key as the user key and the index itself
 	// as the sequence number.
-	for i := int64(0); i < countTables; i++ {
+	for i := uint64(0); i < countTables; i++ {
 		var userKey []byte
 		var n int
 		// Generate a key. The first key is appended to `keys`, but doesn't

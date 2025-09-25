@@ -28,7 +28,7 @@ func setupTwoLevelBenchmarkData(b *testing.B, blockSize int) (*Reader, [][]byte)
 	// Generate keys that will create a two-level index
 	ks := testkeys.Alpha(5) // Use larger alphabet to support more keys
 	for i := 0; i < numKeys; i++ {
-		key := testkeys.Key(ks, int64(i))
+		key := testkeys.Key(ks, uint64(i))
 		keys[i] = []byte(key)
 	}
 
@@ -173,7 +173,7 @@ func setupBloomFilterData(b *testing.B) (*Reader, []string) {
 	var keys []string
 
 	// Generate many more keys to ensure two-level index
-	for i := range int64(10000) {
+	for i := range uint64(10000) {
 		// Use decreasing timestamps since testkeys.Comparer sorts them in reverse
 		timestamp := int64(10000 - i)
 		key := testkeys.KeyAt(ks, i%ks.Count(), timestamp)
@@ -585,7 +585,7 @@ func BenchmarkTwoLevelLazyLoadingTableFormats(b *testing.B) {
 
 			// Write enough keys to create two-level index
 			ks := testkeys.Alpha(5)
-			for i := range int64(10000) {
+			for i := range uint64(10000) {
 				key := testkeys.Key(ks, i)
 				require.NoError(b, w.Set(key, []byte(fmt.Sprintf("value-%d", i))))
 			}

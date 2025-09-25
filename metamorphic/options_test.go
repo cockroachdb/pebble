@@ -35,7 +35,7 @@ func TestSetupInitialState(t *testing.T) {
 		const maxKeyLen = 2
 		ks := testkeys.Alpha(maxKeyLen)
 		var key [maxKeyLen]byte
-		for i := int64(0); i < ks.Count(); i++ {
+		for i := uint64(0); i < ks.Count(); i++ {
 			n := testkeys.WriteKey(key[:], ks, i)
 			require.NoError(t, d.Set(key[:n], key[:n], pebble.NoSync))
 			if i%100 == 0 {

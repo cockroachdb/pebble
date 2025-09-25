@@ -1436,7 +1436,7 @@ func runPopulateCmd(t *testing.T, td *datadriven.TestData, b *Batch) {
 	ks := testkeys.Alpha(maxKeyLength)
 	buf := make([]byte, ks.MaxLen()+testkeys.MaxSuffixLen)
 	vbuf := make([]byte, valLength)
-	for i := int64(0); i < ks.Count(); i++ {
+	for i := uint64(0); i < ks.Count(); i++ {
 		for _, ts := range timestamps {
 			n := testkeys.WriteKeyAt(buf, ks, i, int64(ts))
 

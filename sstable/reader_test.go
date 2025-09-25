@@ -986,7 +986,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 	keys := testkeys.Alpha(1)
 	keyBuf := make([]byte, 1+testkeys.MaxSuffixLen)
 	// Write a few keys with multiple timestamps (MVCC versions).
-	for i := int64(0); i < 2; i++ {
+	for i := uint64(0); i < 2; i++ {
 		for j := int64(2); j >= 1; j-- {
 			n := testkeys.WriteKeyAt(keyBuf[:], keys, i, j)
 			key := keyBuf[:n]
@@ -1118,7 +1118,7 @@ func (rw *readerWorkload) setCallAfterInvalid() {
 		rw.t.Logf("Handle Invalid: Next/Prev")
 		return
 	}
-	idx := rw.rng.Int64N(rw.ks.Count())
+	idx := rw.rng.Uint64N(rw.ks.Count())
 	ts := rw.rng.Int64N(rw.maxTs)
 	key := testkeys.KeyAt(rw.ks, idx, ts)
 	rw.seekKeyAfterInvalid = append(rw.seekKeyAfterInvalid[:0], rw.prefix...)
@@ -1228,7 +1228,7 @@ func createReadWorkload(
 			callType = readCallType(rng.IntN(int(Last + 1)))
 		}
 		if callType == SeekLT || callType == SeekGE || callType == SeekPrefixGE {
-			idx := rng.Int64N(int64(ks.MaxLen()))
+			idx := rng.Uint64N(uint64(ks.MaxLen()))
 			ts := rng.Int64N(maxTS) + 1
 			key := testkeys.KeyAt(ks, idx, ts)
 			if prefix != nil && rng.IntN(10) != 0 {
@@ -1283,7 +1283,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 	restartInterval := restartIntervalCandidates[rng.IntN(len(restartIntervalCandidates))]
 	filterPolicy := filterPolicyCandidates[rng.IntN(len(filterPolicyCandidates))]
 	if rng.IntN(10) < 9 {
-		randKey := testkeys.Key(ks, rng.Int64N(ks.Count()))
+		randKey := testkeys.Key(ks, rng.Uint64N(ks.Count()))
 		// Choose from 3 prefix candidates: "_" sorts before all keys, randKey sorts
 		// somewhere between all keys, and "~" sorts after all keys
 		prefixCandidates := []string{"~", string(randKey) + "_", "_"}
@@ -1353,7 +1353,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 					FilterPolicy:         filterPolicy,
 				})
 
-				keyIdx := int64(0)
+				keyIdx := uint64(0)
 				maxIdx := ks.Count()
 				for keyIdx < maxIdx {
 					// We need to call rng here even if we don't actually use the ts
@@ -1375,7 +1375,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 						keyToWrite = key
 					}
 					require.NoError(t, w.Set(keyToWrite, []byte(fmt.Sprint(keyIdx))))
-					skipIdx := localRng.Int64N(5) + 1
+					skipIdx := localRng.Uint64N(5) + 1
 					keyIdx += skipIdx
 				}
 				require.NoError(t, w.Close())
@@ -2195,7 +2195,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
 		rng := rand.New(rand.NewPCG(0, 100))
-		for i := int64(0); i < keys.Count(); i++ {
+		for i := uint64(0); i < keys.Count(); i++ {
 			for v := 0; v < versionCount; v++ {
 				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, int64(versionCount-v+1))
 				key := keyBuf[:n+sharedPrefixLen]
@@ -2310,7 +2310,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		f0, err := mem.Create("bench", vfs.WriteCategoryUnspecified)
 		require.NoError(b, err)
 		w := NewWriter(objstorageprovider.NewFileWritable(f0), options)
-		for i := int64(0); i < keys.Count(); i++ {
+		for i := uint64(0); i < keys.Count(); i++ {
 			for v := 0; v < versCount; v++ {
 				n := testkeys.WriteKeyAt(keyBuf[sharedPrefixLen:], keys, i, int64(versCount-v+1))
 				key := keyBuf[:n+sharedPrefixLen]
@@ -2478,7 +2478,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 		w := NewRawWriter(objstorageprovider.NewFileWritable(f0), options)
 		val := make([]byte, 100)
 		rng := rand.New(rand.NewPCG(0, 100))
-		for i := int64(0); i < keys.Count(); i++ {
+		for i := uint64(0); i < keys.Count(); i++ {
 			n := testkeys.WriteKey(keyBuf, keys, i)
 			key := keyBuf[:n]
 			for j := range val {
@@ -2545,7 +2545,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 								require.NoError(b, err)
 								b.ResetTimer()
 								for i := 0; i < b.N; i++ {
-									count := int64(0)
+									count := uint64(0)
 									kv := iter.First()
 									for kv != nil {
 										count++
