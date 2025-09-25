@@ -156,7 +156,9 @@ type Options struct {
 }
 
 // Init constructs and initializes a WAL manager from the provided options and
-// the set of initial logs.
+// the set of initial logs. The initial parameter must contain all WAL files
+// that have not been deleted. It is only used to queue these up for deletion
+// and to ensure that they won't be recycled.
 func Init(o Options, initial Logs) (Manager, error) {
 	var m Manager
 	if o.Secondary == (Dir{}) {
