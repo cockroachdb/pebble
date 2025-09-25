@@ -2469,7 +2469,7 @@ func BenchmarkIteratorScan(b *testing.B) {
 				// characters of lengths up to `maxPrefixLen` and reduce it down
 				// to `keyCount` keys by picking every 1 key every `keyCount` keys.
 				keys := testkeys.Alpha(maxPrefixLen)
-				keys = keys.EveryN(keys.Count() / keyCount)
+				keys = testkeys.EveryN(keys, keys.Count()/keyCount)
 				if keys.Count() < keyCount {
 					b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
 				}
@@ -2532,10 +2532,10 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 		for l := readAmp; l > 0; l-- {
 			ks := testkeys.Alpha(l)
 			if step := ks.Count() / uint64(maxKeysPerLevel); step > 1 {
-				ks = ks.EveryN(step)
+				ks = testkeys.EveryN(ks, step)
 			}
 			if ks.Count() > uint64(maxKeysPerLevel) {
-				ks = ks.Slice(0, uint64(maxKeysPerLevel))
+				ks = testkeys.Slice(ks, 0, uint64(maxKeysPerLevel))
 			}
 
 			batch := d.NewBatch()

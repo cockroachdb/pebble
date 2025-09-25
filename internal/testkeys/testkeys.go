@@ -189,14 +189,6 @@ type Keyspace interface {
 	// keyspace. This is only guaranteed to return an upper bound.
 	MaxLen() int
 
-	// Slice returns the sub-keyspace from index i, inclusive, to index j,
-	// exclusive. The receiver is unmodified.
-	Slice(i, j uint64) Keyspace
-
-	// EveryN returns a key space that includes 1 key for every N keys in the
-	// original keyspace. The receiver is unmodified.
-	EveryN(n uint64) Keyspace
-
 	// key writes the i-th key to the buffer and returns the length.
 	key(buf []byte, i uint64) int
 }
@@ -205,8 +197,8 @@ type Keyspace interface {
 // disjoint keys evenly distributed across the keyspace.
 func Divvy(ks Keyspace, n uint64) []Keyspace {
 	ret := make([]Keyspace, n)
-	for i := uint64(0); i < n; i++ {
-		ret[i] = ks.Slice(i, ks.Count()).EveryN(n)
+	for i := range n {
+		ret[i] = EveryN(Slice(ks, i, ks.Count()), n)
 	}
 	return ret
 }
@@ -310,19 +302,6 @@ func (a alphabet) Count() uint64 {
 
 func (a alphabet) MaxLen() int {
 	return a.maxLength
-}
-
-func (a alphabet) Slice(i, j uint64) Keyspace {
-	s := a
-	s.headSkip += i
-	s.tailSkip += a.Count() - j
-	return s
-}
-
-func (a alphabet) EveryN(n uint64) Keyspace {
-	s := a
-	s.increment *= n
-	return s
 }
 
 func keyCount(n, l int) uint64 {
@@ -490,4 +469,71 @@ func assertLE(a, b []byte) {
 	if Comparer.Compare(a, b) > 0 {
 		panic(fmt.Sprintf("invalid key ordering: %q > %q", a, b))
 	}
+}
+
+// Slice returns the sub-keyspace from index i, inclusive, to index j,
+// exclusive. The receiver is unmodified.
+func Slice(ks Keyspace, i, j uint64) Keyspace {
+	if i >= ks.Count() || j > ks.Count() {
+		panic(errors.AssertionFailedf("invalid slice: [%d,%d) of keyspace with %d keys", i, j, ks.Count()))
+	}
+	return &sliceKeyspace{ks: ks, i: i, j: j}
+}
+
+type sliceKeyspace struct {
+	ks   Keyspace
+	i, j uint64
+}
+
+// Count returns the number of keys that exist within this keyspace.
+func (s *sliceKeyspace) Count() uint64 {
+	return s.j - s.i
+}
+
+// MaxLen returns the maximum length, in bytes, of a key within this
+// keyspace. This is only guaranteed to return an upper bound.
+func (s *sliceKeyspace) MaxLen() int {
+	return s.ks.MaxLen()
+}
+
+// key writes the i-th key to the buffer and returns the length.
+func (s *sliceKeyspace) key(buf []byte, i uint64) int {
+	return s.ks.key(buf, s.i+i)
+}
+
+// EveryN returns the keyspace consisting of every n-th key in the provided
+// keyspace.
+func EveryN(ks Keyspace, n uint64) Keyspace {
+	innerCount := ks.Count()
+	c := innerCount / n
+	// We are returning keys at index 0, n, 2n, ... up to cn (to be determined
+	// whether inclusive or exclusive), such that the last key is < innerCount.
+	// Since cn < innerCount, it becomes inclusive and we return c+1 keys (hence
+	// this increment).
+	if innerCount%n > 0 {
+		c++
+	}
+	return &everyNKeyspace{ks: ks, n: n, c: c}
+}
+
+type everyNKeyspace struct {
+	ks Keyspace
+	n  uint64
+	c  uint64
+}
+
+// Count returns the number of keys that exist within this keyspace.
+func (e everyNKeyspace) Count() uint64 {
+	return e.c
+}
+
+// MaxLen returns the maximum length, in bytes, of a key within this
+// keyspace. This is only guaranteed to return an upper bound.
+func (e everyNKeyspace) MaxLen() int {
+	return e.ks.MaxLen()
+}
+
+// key writes the i-th key to the buffer and returns the length.
+func (e everyNKeyspace) key(buf []byte, i uint64) int {
+	return e.ks.key(buf, i*e.n)
 }
