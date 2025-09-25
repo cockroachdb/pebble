@@ -365,7 +365,7 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 	// Constrain the space we generate keys to the middle 90% of the keyspace.
 	// This helps exercise code paths that are only run when a seek key is
 	// beyond or before all index block entries.
-	sstKeys := cfg.keys.Slice(cfg.keys.Count()/20, cfg.keys.Count()-cfg.keys.Count()/20)
+	sstKeys := testkeys.Slice(cfg.keys, cfg.keys.Count()/20, cfg.keys.Count()-cfg.keys.Count()/20)
 	randomKey := func() keyID {
 		k := keyID{
 			idx:    cfg.rng.Uint64N(sstKeys.Count()),

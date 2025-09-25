@@ -2177,7 +2177,7 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
 	// picking every 1 key every keyCount keys.
 	keys := testkeys.Alpha(unsharedPrefixLen)
-	keys = keys.EveryN(keys.Count() / keyCount)
+	keys = testkeys.EveryN(keys, keys.Count()/keyCount)
 	if keys.Count() < keyCount {
 		b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
 	}
@@ -2297,7 +2297,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
 	// picking every 1 key every keyCount keys.
 	keys := testkeys.Alpha(unsharedPrefixLen)
-	keys = keys.EveryN(keys.Count() / keyCount)
+	keys = testkeys.EveryN(keys, keys.Count()/keyCount)
 	if keys.Count() < keyCount {
 		b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
 	}
@@ -2464,7 +2464,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
 	// picking every 1 key every keyCount keys.
 	keys := testkeys.Alpha(keyLen)
-	keys = keys.EveryN(keys.Count() / keyCount)
+	keys = testkeys.EveryN(keys, keys.Count()/keyCount)
 	if keys.Count() < keyCount {
 		b.Fatalf("expected %d keys, found %d", keyCount, keys.Count())
 	}

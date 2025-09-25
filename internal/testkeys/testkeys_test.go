@@ -122,11 +122,11 @@ func TestSlice(t *testing.T) {
 		want string
 	}{
 		{Alpha(1), 1, 25, "b c d e f g h i j k l m n o p q r s t u v w x y"},
-		{Alpha(1).Slice(1, 25), 1, 23, "c d e f g h i j k l m n o p q r s t u v w x"},
-		{Alpha(1).Slice(1, 25).Slice(1, 23), 10, 22, "m n o p q r s t u v w x"},
+		{Slice(Alpha(1), 1, 25), 1, 23, "c d e f g h i j k l m n o p q r s t u v w x"},
+		{Slice(Slice(Alpha(1), 1, 25), 1, 23), 10, 22, "m n o p q r s t u v w x"},
 	}
 	for _, tc := range testCases {
-		got := keyspaceToString(tc.orig.Slice(tc.i, tc.j))
+		got := keyspaceToString(Slice(tc.orig, tc.i, tc.j))
 		if got != tc.want {
 			t.Errorf("(%q).Slice(%d, %d) = %q, want %q",
 				keyspaceToString(tc.orig), tc.i, tc.j, got, tc.want)
