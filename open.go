@@ -33,7 +33,6 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
-	"github.com/cockroachdb/redact"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -413,11 +412,40 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	if err != nil {
 		return nil, err
 	}
-	d.opts.Logger.Infof("Found %d WALs", redact.Safe(len(wals)))
-	for i := range wals {
-		d.opts.Logger.Infof("  - %s", wals[i])
+
+	// Remove obsolete WAL files now (as opposed to relying on asynchronous cleanup)
+	// to prevent crash loops due to no disk space (ENOSPC).
+	var retainedWALs wal.Logs
+	for _, w := range wals {
+		if base.DiskFileNum(w.Num) < d.mu.versions.minUnflushedLogNum {
+			// Log obsolete WALs that will be removed.
+			for i := range w.NumSegments() {
+				fs, path := w.SegmentLocation(i)
+				if err := fs.Remove(path); err != nil {
+					// It's not a big deal if we can't delete the file now.
+					// We'll try to remove it later in the cleanup process.
+					d.opts.EventListener.WALDeleted(WALDeleteInfo{
+						JobID:   0,
+						Path:    path,
+						FileNum: base.DiskFileNum(w.Num),
+						Err:     err,
+					})
+					retainedWALs = append(retainedWALs, w)
+				} else {
+					d.opts.EventListener.WALDeleted(WALDeleteInfo{
+						JobID:   0,
+						Path:    path,
+						FileNum: base.DiskFileNum(w.Num),
+						Err:     nil,
+					})
+				}
+			}
+		} else {
+			retainedWALs = append(retainedWALs, w)
+		}
 	}
-	walManager, err := wal.Init(walOpts, wals)
+
+	walManager, err := wal.Init(walOpts, retainedWALs)
 	if err != nil {
 		return nil, err
 	}
