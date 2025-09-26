@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/stretchr/testify/require"
 )
@@ -672,6 +674,99 @@ func randomKey(rng *rand.Rand, b []byte) base.InternalKey {
 	binary.LittleEndian.PutUint32(b, key)
 	binary.LittleEndian.PutUint32(b[4:], key2)
 	return base.InternalKey{UserKey: b}
+}
+
+// randomTestkeysSkiplist creates an arena skiplist of with an arena of the
+// given size. It fills the arena with random keys and values. It returns the
+// skiplist with n keys and a slice of 2n+1 sorted keys, alternating between
+// keys not in the skiplist and keys in the skiplist. The even-indexed keys can
+// be used as seek keys to test searches that do not find exact key matches.
+func randomTestkeysSkiplist(rng *rand.Rand, size int) (*Skiplist, [][]byte) {
+	ks := testkeys.Alpha(5)
+	keys := make([][]byte, 2*size+1)
+	for i := range keys {
+		keys[i] = testkeys.Key(ks, int64(i))
+	}
+	slices.SortFunc(keys, testkeys.Comparer.Compare)
+
+	l := NewSkiplist(newArena(uint32(size)), testkeys.Comparer.Compare)
+	var n int
+	for n = 1; n < len(keys); n += 2 {
+		value := testutils.RandBytes(rng, rng.IntN(90)+10)
+		k := base.MakeInternalKey(keys[n], base.SeqNum(n), base.InternalKeyKindSet)
+		err := l.Add(k, value)
+		if err == ErrArenaFull {
+			break
+		} else if err != nil {
+			panic(err)
+		}
+	}
+	return l, keys[:n]
+}
+
+func TestSkiplistFindSplice(t *testing.T) {
+	seed := int64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+	skl, keys := randomTestkeysSkiplist(rng, 4<<20)
+
+	// Build a slice of all the the nodes.
+	var nodes []*node
+	for n := skl.head; n != skl.tail; n = skl.getNext(n, 0) {
+		nodes = append(nodes, n)
+	}
+	nodes = append(nodes, skl.tail)
+
+	// Check that the nodes match the odd-indexed keys.
+	// NB: We skip the head and tail nodes.
+	for i, n := range nodes[1 : len(nodes)-1] {
+		require.Equal(t, keys[2*i+1], n.getKeyBytes(skl.arena))
+	}
+
+	var ins Inserter
+	for i, key := range keys {
+		// Only the odd-indexed keys are in the skiplist, so the index of the
+		// node we expect to find is i / 2.
+		ni := i / 2
+		skl.findSplice(base.MakeSearchKey(key), &ins)
+
+		// Check that the prev and next nodes match the expected adjacent nodes.
+		if nodes[ni] != ins.spl[0].prev {
+			t.Errorf("prev: %s != %s", nodes[ni].getKeyBytes(skl.arena),
+				ins.spl[0].prev.getKeyBytes(skl.arena))
+		}
+		if nodes[ni+1] != ins.spl[0].next {
+			t.Errorf("next: %s != %s", nodes[ni+1].getKeyBytes(skl.arena),
+				ins.spl[0].next.getKeyBytes(skl.arena))
+		}
+
+		// At every height, ensure that the splice brackets the key and is
+		// tight.
+		for j := 0; j < int(ins.height); j++ {
+			spl := &ins.spl[j]
+			if prevNext := skl.getNext(spl.prev, j); prevNext != spl.next {
+				t.Errorf("level %d; spl = (%q,%q); prevNext = %q", j,
+					spl.prev.getKeyBytes(skl.arena), spl.next.getKeyBytes(skl.arena), prevNext.getKeyBytes(skl.arena))
+			}
+			if nextPrev := skl.getPrev(spl.next, j); nextPrev != spl.prev {
+				t.Errorf("level %d; spl = (%q,%q); nextPrev = %q", j,
+					spl.prev.getKeyBytes(skl.arena), spl.next.getKeyBytes(skl.arena), nextPrev.getKeyBytes(skl.arena))
+			}
+			if spl.prev != skl.head && testkeys.Comparer.Compare(spl.prev.getKeyBytes(skl.arena), key) >= 0 {
+				t.Errorf("level %d; spl = (%q,%q); prev is not before key %q", j,
+					spl.prev.getKeyBytes(skl.arena), spl.next.getKeyBytes(skl.arena), key)
+			}
+			if spl.next != skl.tail && testkeys.Comparer.Compare(spl.next.getKeyBytes(skl.arena), key) < 0 {
+				t.Errorf("level %d; spl = (%q,%q); next is not after key %q", j,
+					spl.prev.getKeyBytes(skl.arena), spl.next.getKeyBytes(skl.arena), key)
+			}
+		}
+
+		// Sometimes reset the Inserter to test a non-cached splice.
+		if rng.IntN(2) == 1 {
+			ins = Inserter{}
+		}
+	}
 }
 
 // Standard test. Some fraction is read. Some fraction is write. Writes have
