@@ -1037,7 +1037,7 @@ wait-pending-table-stats
 num-entries: 3
 num-deletions: 3
 num-range-key-sets: 0
-point-deletions-bytes-estimate: 4641
+point-deletions-bytes-estimate: 4649
 range-deletions-bytes-estimate: 0
 compression: None:36,Snappy:73/84
 

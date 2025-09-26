@@ -362,6 +362,10 @@ type RawWriter interface {
 	// Must not be called after Writer is closed.
 	IsPrefixEqualPrev(k []byte) bool
 
+	// SetValueSeparationProps sets the value separation props that were used when
+	// writing this sstable. This is recorded in the sstable properties.
+	SetValueSeparationProps(kind ValueSeparationKind, minValueSize uint64)
+
 	// rewriteSuffixes rewrites the table's data blocks to all contain the
 	// provided suffix. It's specifically used for the implementation of
 	// RewriteKeySuffixesAndReturnFormat. See that function's documentation for

@@ -124,6 +124,11 @@ type ValueSeparation interface {
 	// sstable. It can be used to configure value separation specifically for
 	// the next compaction output.
 	SetNextOutputConfig(config ValueSeparationOutputConfig)
+	// Kind returns the kind of value separation strategy being used.
+	Kind() sstable.ValueSeparationKind
+	// MinimumSize returns the minimum size a value must be in order to be
+	// separated into a blob file.
+	MinimumSize() int
 	// EstimatedFileSize returns an estimate of the disk space consumed by the
 	// current, pending blob file if it were closed now. If no blob file has
 	// been created, it returns 0.
@@ -233,6 +238,10 @@ func (r *Runner) WriteTable(
 	if r.err != nil {
 		panic("error already encountered")
 	}
+
+	// Set the value separation kind on the writer based on the strategy being used.
+	tw.SetValueSeparationProps(valueSeparation.Kind(), uint64(valueSeparation.MinimumSize()))
+
 	r.tables = append(r.tables, OutputTable{
 		CreationTime: time.Now(),
 		ObjMeta:      objMeta,
@@ -497,6 +506,14 @@ var _ ValueSeparation = NeverSeparateValues{}
 
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (NeverSeparateValues) SetNextOutputConfig(config ValueSeparationOutputConfig) {}
+
+// Kind implements the ValueSeparation interface.
+func (NeverSeparateValues) Kind() sstable.ValueSeparationKind {
+	return sstable.ValueSeparationNone
+}
+
+// MinimumSize implements the ValueSeparation interface.
+func (v NeverSeparateValues) MinimumSize() int { return 0 }
 
 // EstimatedFileSize implements the ValueSeparation interface.
 func (NeverSeparateValues) EstimatedFileSize() uint64 { return 0 }

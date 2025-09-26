@@ -24,7 +24,7 @@ import (
 type Field struct {
 	Name        string // Go identifier
 	Tag         string // tag value
-	Kind        string // bool | uint32 | uint64 | string
+	Kind        string // bool | uint8 | uint32 | uint64 | string
 	EncodeEmpty bool   // whether to encode empty a zero value
 	Intern      bool   // whether to intern the string value
 }
@@ -56,6 +56,8 @@ func (p *Properties) load(i iter.Seq2[[]byte, []byte]) error {
       p.Loaded |= 1 << _bit_{{ .Name }}
   {{- if eq .Kind "bool" }}
       p.{{ .Name }} = len(v) == 1 && v[0] == '1'
+  {{- else if eq .Kind "uint8" }}
+      p.{{ .Name }} = v[0]
   {{- else if eq .Kind "uint32" }}
       p.{{ .Name }} = binary.LittleEndian.Uint32(v)
   {{- else if eq .Kind "uint64" }}
@@ -106,6 +108,9 @@ func (p *Properties) encodeAll() map[string][]byte {
     if p.{{ .Name }} {
       val[0] = '1'
     }
+{{- else if eq .Kind "uint8" }}
+    val := alloc(1)
+    val[0] = p.{{ .Name }}
 {{- else if eq .Kind "uint32" }}
     val := alloc(4)
     binary.LittleEndian.PutUint32(val, p.{{ .Name }})
@@ -163,7 +168,7 @@ func zeroVal(kind string) string {
 	switch kind {
 	case "bool":
 		return "false"
-	case "uint32", "uint64":
+	case "uint8", "uint32", "uint64":
 		return "0"
 	case "string":
 		return `""`
@@ -217,6 +222,8 @@ func main() {
 						switch typ {
 						case "bool":
 							kind = "bool"
+						case "uint8":
+							kind = "uint8"
 						case "uint32":
 							kind = "uint32"
 						case "uint64":

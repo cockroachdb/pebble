@@ -1272,6 +1272,12 @@ func (w *RawColumnWriter) copyProperties(props Properties) {
 	w.props.IndexType = 0
 }
 
+// SetValueSeparationProps implements RawWriter.
+func (w *RawColumnWriter) SetValueSeparationProps(kind ValueSeparationKind, minValueSize uint64) {
+	w.props.ValueSeparationKind = uint8(kind)
+	w.props.ValueSeparationMinSize = minValueSize
+}
+
 // IsLikelyMVCCGarbage determines whether the given user key is likely MVCC
 // garbage.
 //
