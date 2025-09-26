@@ -101,6 +101,11 @@ type Options struct {
 	// Secondary is used for failover. Optional. It must already be created and
 	// synced up to the root.
 	Secondary Dir
+	// SecondaryIdentifier is a stable UUID that uniquely identifies the secondary
+	// directory. This identifier is persisted both in the OPTIONS file and in a
+	// file within the secondary directory to detect when the wrong disk has been
+	// mounted at the expected path during recovery.
+	SecondaryIdentifier string
 
 	// MinUnflushedLogNum is the smallest WAL number corresponding to
 	// mutations that have not been flushed to a sstable.
@@ -365,6 +370,8 @@ type Manager interface {
 	// Close the manager.
 	// REQUIRES: Writers and Readers have already been closed.
 	Close() error
+	// Opts returns the Options used to initialize the Manager.
+	Opts() Options
 
 	// RecyclerForTesting exposes the internal LogRecycler.
 	RecyclerForTesting() *LogRecycler

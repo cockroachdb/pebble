@@ -1380,6 +1380,13 @@ type WALFailoverOptions struct {
 	// preacquire the lock on the secondary directory.
 	Secondary wal.Dir
 
+	// SecondaryIdentifier is a stable UUID that uniquely identifies the secondary
+	// directory. This identifier is persisted both in the OPTIONS file in the
+	// primary directory and in a file (failover_identifier) within the secondary
+	// directory to detect incorrectness/corruptions (e.g. when the wrong disk
+	// has been mounted at the expected path during recovery).
+	SecondaryIdentifier string
+
 	// FailoverOptions provides configuration of the thresholds and intervals
 	// involved in WAL failover. If any of its fields are left unspecified,
 	// reasonable defaults will be used.
@@ -1808,6 +1815,9 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "\n")
 		fmt.Fprintf(&buf, "[WAL Failover]\n")
 		fmt.Fprintf(&buf, "  secondary_dir=%s\n", o.WALFailover.Secondary.Dirname)
+		if o.WALFailover.SecondaryIdentifier != "" {
+			fmt.Fprintf(&buf, "  secondary_identifier=%s\n", o.WALFailover.SecondaryIdentifier)
+		}
 		fmt.Fprintf(&buf, "  primary_dir_probe_interval=%s\n", o.WALFailover.FailoverOptions.PrimaryDirProbeInterval)
 		fmt.Fprintf(&buf, "  healthy_probe_latency_threshold=%s\n", o.WALFailover.FailoverOptions.HealthyProbeLatencyThreshold)
 		fmt.Fprintf(&buf, "  healthy_interval=%s\n", o.WALFailover.FailoverOptions.HealthyInterval)
@@ -2258,6 +2268,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			switch key {
 			case "secondary_dir":
 				o.WALFailover.Secondary = wal.Dir{Dirname: value, FS: vfs.Default}
+			case "secondary_identifier":
+				o.WALFailover.SecondaryIdentifier = value
 			case "primary_dir_probe_interval":
 				o.WALFailover.PrimaryDirProbeInterval, err = time.ParseDuration(value)
 			case "healthy_probe_latency_threshold":
@@ -2374,6 +2386,21 @@ type ErrMissingWALRecoveryDir struct {
 // Error implements error.
 func (e ErrMissingWALRecoveryDir) Error() string {
 	return fmt.Sprintf("directory %q may contain relevant WALs but is not in WALRecoveryDirs%s", e.Dir, e.ExtraInfo)
+}
+
+// ErrSecondaryIdentifierMismatch is an error returned when the secondary directory
+// identifier doesn't match the expected identifier, indicating the wrong disk
+// may have been mounted at the expected path.
+type ErrSecondaryIdentifierMismatch struct {
+	ExpectedIdentifier string
+	ActualIdentifier   string
+	SecondaryDir       string
+}
+
+// Error implements error.
+func (e ErrSecondaryIdentifierMismatch) Error() string {
+	return fmt.Sprintf("secondary directory %q has identifier %q but expected %q - wrong disk may be mounted",
+		e.SecondaryDir, e.ActualIdentifier, e.ExpectedIdentifier)
 }
 
 // CheckCompatibility verifies the options are compatible with the previous options

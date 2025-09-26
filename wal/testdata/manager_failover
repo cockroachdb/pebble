@@ -42,6 +42,7 @@ ok
 list-fs
 ----
 pri/000001.log
+sec/failover_identifier
 sec/failover_source
 
 create-writer wal-num=2
@@ -60,6 +61,7 @@ list-fs
 ----
 pri/000001.log
 pri/000002.log
+sec/failover_identifier
 sec/failover_source
 
 close-manager
@@ -359,6 +361,7 @@ list-fs
 pri/000001-002.log
 pri/000002.log
 sec/000001-001.log
+sec/failover_identifier
 sec/failover_source
 
 # Test with dampening of switching based on latency and secondary errors.
@@ -424,6 +427,7 @@ now: 77ms
 
 list-fs
 ----
+sec/failover_identifier
 sec/failover_source
 
 # Wait until monitor sees the error and switches back to primary.
@@ -550,6 +554,7 @@ list-fs
 pri/000001-002.log
 pri/000001-004.log
 pri/000001.log
+sec/failover_identifier
 sec/failover_source
 
 # Test failback after primary is healthy.
@@ -673,6 +678,7 @@ list-fs
 pri/000001-002.log
 pri/probe-file
 sec/000001-001.log
+sec/failover_identifier
 sec/failover_source
 
 # Test that if UnhealthyOperationLatencyThreshold says not to allow failovers
@@ -714,4 +720,5 @@ ok
 
 list-fs
 ----
+sec/failover_identifier
 sec/failover_source
