@@ -233,7 +233,7 @@ func TestPrefixBytesBuilder_UnsafeGet(t *testing.T) {
 	var prevPrevKey []byte
 	for i := 0; i < int(ks.Count()); i++ {
 		versionCount := int(rng.Int64N(10))
-		k := testkeys.Key(ks, int64(i))
+		k := testkeys.Key(ks, uint64(i))
 		for j := 0; j < versionCount; j++ {
 			rows := pbb.Rows()
 			if rows >= 1 && string(prevKey) != string(pbb.UnsafeGet(rows-1)) {

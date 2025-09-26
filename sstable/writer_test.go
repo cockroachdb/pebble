@@ -1076,10 +1076,10 @@ func TestWriter_TableFormatCompatibility(t *testing.T) {
 func TestWriterRace(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	ks := testkeys.Alpha(5)
-	ks = ks.EveryN(ks.Count() / 1_000)
+	ks = testkeys.EveryN(ks, ks.Count()/1_000)
 	keys := make([][]byte, ks.Count())
 	for ki := 0; ki < len(keys); ki++ {
-		keys[ki] = testkeys.Key(ks, int64(ki))
+		keys[ki] = testkeys.Key(ks, uint64(ki))
 	}
 	readerOpts := ReaderOptions{
 		Comparer: testkeys.Comparer,

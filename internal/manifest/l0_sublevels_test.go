@@ -524,7 +524,7 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 			if rng.Float64() <= keyReusePct && len(inUseKeys) > 0 {
 				keys = append(keys, inUseKeys[rng.IntN(len(inUseKeys))])
 			} else {
-				newKey := testkeys.Key(keySpace, rng.Int64N(keySpace.Count()))
+				newKey := testkeys.Key(keySpace, rng.Uint64N(keySpace.Count()))
 				inUseKeys = append(inUseKeys, newKey)
 				keys = append(keys, newKey)
 			}

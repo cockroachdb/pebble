@@ -121,10 +121,10 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 	var original, fragmented []Span
 	numRangeKeys := 1 + rng.IntN(maxRangeKeys)
 	for i := 0; i < numRangeKeys; i++ {
-		startIdx := rng.Int64N(ks.Count())
-		endIdx := rng.Int64N(ks.Count())
+		startIdx := rng.Uint64N(ks.Count())
+		endIdx := rng.Uint64N(ks.Count())
 		for startIdx == endIdx {
-			endIdx = rng.Int64N(ks.Count())
+			endIdx = rng.Uint64N(ks.Count())
 		}
 		if startIdx > endIdx {
 			startIdx, endIdx = endIdx, startIdx
@@ -145,7 +145,7 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 		})
 
 		for startIdx < endIdx {
-			width := rng.Int64N(endIdx-startIdx) + 1
+			width := rng.Uint64N(endIdx-startIdx) + 1
 			fragmented = append(fragmented, Span{
 				Start: testkeys.Key(ks, startIdx),
 				End:   testkeys.Key(ks, startIdx+width),
@@ -176,11 +176,11 @@ func testDefragmentingIteRandomizedOnce(t *testing.T, seed int64) {
 		{weight: 50, fn: func() string { return "next" }},
 		{weight: 50, fn: func() string { return "prev" }},
 		{weight: 5, fn: func() string {
-			k := testkeys.Key(ks, rng.Int64N(ks.Count()))
+			k := testkeys.Key(ks, rng.Uint64N(ks.Count()))
 			return fmt.Sprintf("seekge(%s)", k)
 		}},
 		{weight: 5, fn: func() string {
-			k := testkeys.Key(ks, rng.Int64N(ks.Count()))
+			k := testkeys.Key(ks, rng.Uint64N(ks.Count()))
 			return fmt.Sprintf("seeklt(%s)", k)
 		}},
 	}

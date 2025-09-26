@@ -195,7 +195,7 @@ func makeTestkeySSTable(
 	f := &objstorage.MemObj{}
 	w := NewWriter(f, writerOpts)
 	for i := 0; i < keys; i++ {
-		n := testkeys.WriteKey(keyBuf[len(sharedPrefix):], alphabet, int64(i))
+		n := testkeys.WriteKey(keyBuf[len(sharedPrefix):], alphabet, uint64(i))
 		key := append(keyBuf[:len(sharedPrefix)+n], suffix...)
 		err := w.Raw().Add(
 			base.MakeInternalKey(key, 0, InternalKeyKindSet), key, false)
@@ -204,11 +204,11 @@ func makeTestkeySSTable(
 		}
 	}
 	for i := 0; i < rangeKeys; i++ {
-		n := testkeys.WriteKey(keyBuf[len(sharedPrefix):], alphabet, int64(i))
+		n := testkeys.WriteKey(keyBuf[len(sharedPrefix):], alphabet, uint64(i))
 		key := keyBuf[:len(sharedPrefix)+n]
 
 		// 16-byte shared prefix
-		n = testkeys.WriteKey(endKeyBuf[len(sharedPrefix):], alphabet, int64(i+1))
+		n = testkeys.WriteKey(endKeyBuf[len(sharedPrefix):], alphabet, uint64(i+1))
 		endKey := endKeyBuf[:len(sharedPrefix)+n]
 		if err := w.RangeKeySet(key, endKey, suffix, key); err != nil {
 			t.Fatal(err)

@@ -557,7 +557,7 @@ func TestMetricsWAmpDisableWAL(t *testing.T) {
 	wo := WriteOptions{Sync: false}
 	for i := 0; i < 5; i++ {
 		v := []byte(strconv.Itoa(i))
-		for j := int64(0); j < ks.Count(); j++ {
+		for j := uint64(0); j < ks.Count(); j++ {
 			require.NoError(t, d.Set(testkeys.Key(ks, j), v, &wo))
 		}
 		require.NoError(t, d.Flush())
@@ -608,7 +608,7 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 					return
 				default:
 				}
-				n := testkeys.WriteKey(buf, ks, int64(i)%ks.Count())
+				n := testkeys.WriteKey(buf, ks, uint64(i)%ks.Count())
 				require.NoError(t, d.Set(buf[:n], data, NoSync))
 			}
 		}()

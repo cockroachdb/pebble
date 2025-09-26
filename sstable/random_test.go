@@ -332,8 +332,8 @@ func (cfg *randomTableConfig) randomize() {
 func (cfg *randomTableConfig) randKey() []byte {
 	return testkeys.KeyAt(cfg.keys, cfg.randKeyIdx(), cfg.randSuffix())
 }
-func (cfg *randomTableConfig) randSuffix() int64 { return cfg.rng.Int64N(cfg.maxSuffix + 1) }
-func (cfg *randomTableConfig) randKeyIdx() int64 { return cfg.rng.Int64N(cfg.keys.Count()) }
+func (cfg *randomTableConfig) randSuffix() int64  { return cfg.rng.Int64N(cfg.maxSuffix + 1) }
+func (cfg *randomTableConfig) randKeyIdx() uint64 { return cfg.rng.Uint64N(cfg.keys.Count()) }
 
 func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, error) {
 	// Construct a weighted distribution of key kinds.
@@ -357,7 +357,7 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 	nextRandomKind := kinds.RandomDeck(randv1.New(randv1.NewSource(cfg.rng.Int64())))
 
 	type keyID struct {
-		idx    int64
+		idx    uint64
 		suffix int64
 		seqNum base.SeqNum
 	}
@@ -365,17 +365,17 @@ func buildRandomSSTable(f vfs.File, cfg randomTableConfig) (*WriterMetadata, err
 	// Constrain the space we generate keys to the middle 90% of the keyspace.
 	// This helps exercise code paths that are only run when a seek key is
 	// beyond or before all index block entries.
-	sstKeys := cfg.keys.Slice(cfg.keys.Count()/20, cfg.keys.Count()-cfg.keys.Count()/20)
+	sstKeys := testkeys.Slice(cfg.keys, cfg.keys.Count()/20, cfg.keys.Count()-cfg.keys.Count()/20)
 	randomKey := func() keyID {
 		k := keyID{
-			idx:    cfg.rng.Int64N(sstKeys.Count()),
+			idx:    cfg.rng.Uint64N(sstKeys.Count()),
 			suffix: cfg.rng.Int64N(cfg.maxSuffix + 1),
 			seqNum: base.SeqNum(cfg.rng.Int64N(cfg.maxSeqNum + 1)),
 		}
 		// If we've already generated this exact key, try again.
 		for keyMap[k] {
 			k = keyID{
-				idx:    cfg.rng.Int64N(sstKeys.Count()),
+				idx:    cfg.rng.Uint64N(sstKeys.Count()),
 				suffix: cfg.rng.Int64N(cfg.maxSuffix + 1),
 				seqNum: base.SeqNum(cfg.rng.Int64N(cfg.maxSeqNum + 1)),
 			}
