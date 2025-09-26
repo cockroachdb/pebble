@@ -21,6 +21,7 @@ func TestParser(t *testing.T) {
 			ops, err := parse([]byte(d.Input), parserOpts{
 				parseFormattedUserKey:       kf.ParseFormattedKey,
 				parseFormattedUserKeySuffix: kf.ParseFormattedKeySuffix,
+				parseMaximumSuffixProperty:  kf.ParseMaximumSuffixProperty,
 			})
 			if err != nil {
 				return err.Error()
@@ -46,7 +47,9 @@ func TestParserRandom(t *testing.T) {
 			ops := g.generate(10000)
 			src := formatOps(km.kf, ops)
 
-			parsedOps, err := parse([]byte(src), parserOpts{})
+			parsedOps, err := parse([]byte(src), parserOpts{
+				parseMaximumSuffixProperty: km.kf.ParseMaximumSuffixProperty,
+			})
 			if err != nil {
 				t.Fatalf("%s\n%s", err, src)
 			}
@@ -67,6 +70,7 @@ func TestParserNilBounds(t *testing.T) {
 	parsedOps, err := parse([]byte(formatted), parserOpts{
 		parseFormattedUserKey:       kf.ParseFormattedKey,
 		parseFormattedUserKeySuffix: kf.ParseFormattedKeySuffix,
+		parseMaximumSuffixProperty:  kf.ParseMaximumSuffixProperty,
 	})
 	require.NoError(t, err)
 	require.Equal(t, 1, len(parsedOps))
