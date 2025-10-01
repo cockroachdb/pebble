@@ -9,6 +9,7 @@ open p1 1
 <local fs> create: p1/REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
 <local fs> create: p1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+<local fs> sync: p1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> close: p1/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p1
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
@@ -77,6 +78,7 @@ open p2 2
 <local fs> create: p2/REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
 <local fs> create: p2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
+<local fs> sync: p2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> close: p2/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 <local fs> sync: p2
 <local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
