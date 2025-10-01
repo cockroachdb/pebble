@@ -324,9 +324,56 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 
-	d.mu.log.metrics.fsyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Buckets: FsyncLatencyBuckets,
-	})
+	// Create enhanced WAL metrics for comprehensive filesystem operation tracking
+	walFileMetrics := record.WALFileMetrics{
+		CreateLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: WALCreateLatencyBuckets,
+		}),
+		WriteLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: WALWriteLatencyBuckets,
+		}),
+		FsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: FsyncLatencyBuckets, // Reuse existing sync buckets
+		}),
+		CloseLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: FsyncLatencyBuckets, // Close is similar to sync in timing
+		}),
+		StatLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: WALStatLatencyBuckets,
+		}),
+		OpenDirLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: WALOpenDirLatencyBuckets,
+		}),
+	}
+
+	// Initialize enhanced LogWriter metrics structure
+	d.mu.log.metrics = WALMetrics{
+		Primary: struct {
+			CreateLatency  prometheus.Histogram
+			WriteLatency   prometheus.Histogram
+			FsyncLatency   prometheus.Histogram
+			CloseLatency   prometheus.Histogram
+			StatLatency    prometheus.Histogram
+			OpenDirLatency prometheus.Histogram
+		}{
+			CreateLatency:  walFileMetrics.CreateLatency,
+			WriteLatency:   walFileMetrics.WriteLatency,
+			FsyncLatency:   walFileMetrics.FsyncLatency,
+			CloseLatency:   walFileMetrics.CloseLatency,
+			StatLatency:    walFileMetrics.StatLatency,
+			OpenDirLatency: walFileMetrics.OpenDirLatency,
+		},
+		Secondary: struct {
+			CreateLatency  prometheus.Histogram
+			WriteLatency   prometheus.Histogram
+			FsyncLatency   prometheus.Histogram
+			CloseLatency   prometheus.Histogram
+			StatLatency    prometheus.Histogram
+			OpenDirLatency prometheus.Histogram
+		}{
+			// Empty for now, could be populated for failover scenarios
+		},
+	}
 
 	walOpts := wal.Options{
 		Primary:              wal.Dir{FS: opts.FS, Dirname: walDirname},
@@ -337,7 +384,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		BytesPerSync:         opts.WALBytesPerSync,
 		PreallocateSize:      d.walPreallocateSize,
 		MinSyncInterval:      opts.WALMinSyncInterval,
-		FsyncLatency:         d.mu.log.metrics.fsyncLatency,
+		WALFileMetrics:       walFileMetrics,
 		QueueSemChan:         d.commit.logSyncQSem,
 		Logger:               opts.Logger,
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},

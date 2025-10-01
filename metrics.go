@@ -481,10 +481,7 @@ type Metrics struct {
 		Failover wal.FailoverStats
 	}
 
-	LogWriter struct {
-		FsyncLatency prometheus.Histogram
-		record.LogWriterMetrics
-	}
+	WALMetrics WALMetrics
 
 	CategoryStats []block.CategoryStatsAggregate
 
@@ -539,12 +536,71 @@ func (cm *CompressionMetrics) MergeWith(o *CompressionMetrics) {
 	cm.Zstd.Add(o.Zstd)
 }
 
+// DirectoryContext identifies which WAL directory an operation targets
+type DirectoryContext int
+
+const (
+	// DirectoryPrimary indicates operation targets the primary WAL directory
+	DirectoryPrimary DirectoryContext = iota
+	// DirectorySecondary indicates operation targets the secondary WAL directory
+	DirectorySecondary
+	// DirectoryUnknown indicates directory context is unknown or not applicable
+	DirectoryUnknown
+)
+
+// WALMetrics contains directory-specific latency histograms for all WAL operations
+type WALMetrics struct {
+	// Directory-specific latency histograms for all filesystem operations
+	Primary struct {
+		CreateLatency  prometheus.Histogram // File creation operations
+		WriteLatency   prometheus.Histogram // Write operations
+		FsyncLatency   prometheus.Histogram // Fsync operations
+		CloseLatency   prometheus.Histogram // File close operations
+		StatLatency    prometheus.Histogram // File stat operations
+		OpenDirLatency prometheus.Histogram // Directory open operations
+	}
+	Secondary struct {
+		CreateLatency  prometheus.Histogram // File creation operations
+		WriteLatency   prometheus.Histogram // Write operations
+		FsyncLatency   prometheus.Histogram // Fsync operations
+		CloseLatency   prometheus.Histogram // File close operations
+		StatLatency    prometheus.Histogram // File stat operations
+		OpenDirLatency prometheus.Histogram // Directory open operations
+	}
+	// Embedded runtime metrics from record.LogWriterMetrics
+	record.LogWriterMetrics
+}
+
 var (
 	// FsyncLatencyBuckets are prometheus histogram buckets suitable for a histogram
 	// that records latencies for fsyncs.
 	FsyncLatencyBuckets = append(
 		prometheus.LinearBuckets(0.0, float64(time.Microsecond*100), 50),
 		prometheus.ExponentialBucketsRange(float64(time.Millisecond*5), float64(10*time.Second), 50)...,
+	)
+
+	// WALCreateLatencyBuckets are histogram buckets for file creation operations.
+	WALCreateLatencyBuckets = append(
+		prometheus.LinearBuckets(0.0, float64(time.Microsecond*50), 40),
+		prometheus.ExponentialBucketsRange(float64(time.Millisecond*2), float64(5*time.Second), 40)...,
+	)
+
+	// WALWriteLatencyBuckets are histogram buckets for write operations.
+	WALWriteLatencyBuckets = append(
+		prometheus.LinearBuckets(0.0, float64(time.Microsecond*10), 50),
+		prometheus.ExponentialBucketsRange(float64(time.Millisecond*1), float64(2*time.Second), 40)...,
+	)
+
+	// WALStatLatencyBuckets are histogram buckets for stat operations.
+	WALStatLatencyBuckets = append(
+		prometheus.LinearBuckets(0.0, float64(time.Microsecond*5), 20),
+		prometheus.ExponentialBucketsRange(float64(time.Microsecond*100), float64(200*time.Millisecond), 30)...,
+	)
+
+	// WALOpenDirLatencyBuckets are histogram buckets for directory open operations.
+	WALOpenDirLatencyBuckets = append(
+		prometheus.LinearBuckets(0.0, float64(time.Microsecond*20), 50),
+		prometheus.ExponentialBucketsRange(float64(time.Millisecond*1), float64(3*time.Second), 40)...,
 	)
 
 	// SecondaryCacheIOBuckets exported to enable exporting from package pebble to

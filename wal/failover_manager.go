@@ -13,9 +13,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -501,10 +503,17 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 	var dirs [numDirIndices]dirAndFileHandle
 	for i, dir := range []Dir{o.Primary, o.Secondary} {
 		dirs[i].Dir = dir
+
+		// measure directory open operation
+		openStart := crtime.NowMono()
 		f, err := dir.FS.OpenDir(dir.Dirname)
 		if err != nil {
 			return err
 		}
+		if openLatency := openStart.Elapsed(); o.WALFileMetrics.OpenDirLatency != nil {
+			o.WALFileMetrics.OpenDirLatency.Observe(float64(openLatency))
+		}
+
 		dirs[i].File = f
 	}
 	fmOpts := failoverMonitorOptions{
@@ -632,7 +641,8 @@ func (wm *failoverManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		bytesPerSync:                wm.opts.BytesPerSync,
 		preallocateSize:             wm.opts.PreallocateSize,
 		minSyncInterval:             wm.opts.MinSyncInterval,
-		fsyncLatency:                wm.opts.FsyncLatency,
+		walFileMetrics:              wm.opts.WALFileMetrics,
+		directoryType:               record.DirectoryUnknown,
 		queueSemChan:                wm.opts.QueueSemChan,
 		stopper:                     wm.stopper,
 		failoverWriteAndSyncLatency: wm.opts.FailoverWriteAndSyncLatency,
@@ -794,7 +804,12 @@ func (wm *failoverManager) logCreator(
 			// indicating whether or not the file was actually reused would allow us
 			// to skip the stat and use recycleLog.FileSize.
 			var finfo os.FileInfo
+			// Instrument file stat operation
+			statStart := crtime.NowMono()
 			finfo, err = logFile.Stat()
+			if statLatency := statStart.Elapsed(); wm.opts.WALFileMetrics.StatLatency != nil {
+				wm.opts.WALFileMetrics.StatLatency.Observe(float64(statLatency))
+			}
 			if err != nil {
 				logFile.Close()
 				return nil, 0, err
@@ -807,7 +822,11 @@ func (wm *failoverManager) logCreator(
 	//
 	// Create file.
 	r.writeStart()
+	createStart := crtime.NowMono()
 	logFile, err = dir.FS.Create(logFilename, "pebble-wal")
+	if createLatency := createStart.Elapsed(); wm.opts.WALFileMetrics.CreateLatency != nil {
+		wm.opts.WALFileMetrics.CreateLatency.Observe(float64(createLatency))
+	}
 	r.writeEnd(err)
 	return logFile, 0, err
 }
