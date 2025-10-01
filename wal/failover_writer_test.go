@@ -285,6 +285,7 @@ func TestFailoverWriter(t *testing.T) {
 						stopper:                     stopper,
 						failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 						writerClosed:                func(_ logicalLogWithSizesEtc) {},
+						segmentClosed:               func(_ NumWAL, _ segmentWithSizeEtc) {},
 						writerCreatedForTest:        logWriterCreated,
 					}, testDirs[dirIndex])
 					require.NoError(t, err)
@@ -649,6 +650,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		stopper:                     stopper,
 		failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		writerClosed:                func(_ logicalLogWithSizesEtc) {},
+		segmentClosed:               func(_ NumWAL, _ segmentWithSizeEtc) {},
 		writerCreatedForTest:        logWriterCreated,
 	}, dirs[dirIndex])
 	require.NoError(t, err)
@@ -751,6 +753,7 @@ func TestFailoverWriterManyRecords(t *testing.T) {
 		stopper:                     stopper,
 		failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		writerClosed:                func(_ logicalLogWithSizesEtc) {},
+		segmentClosed:               func(_ NumWAL, _ segmentWithSizeEtc) {},
 	}, dir)
 	require.NoError(t, err)
 	var buf [1]byte

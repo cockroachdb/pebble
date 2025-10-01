@@ -290,10 +290,11 @@ ok
 list-and-stats
 ----
 logs:
+  000001: {(sec,001)}
   000001: {(pri,002)}
 stats:
   obsolete: count 0 size 0
-  live: count 1 size 18
+  live: count 2 size 18
   failover: switches 2 pri-dur 77ms sec-dur 80ms
 
 advance-time dur=1s
@@ -318,6 +319,7 @@ obsolete min-unflushed=2
 ok
 recycler empty
 to delete:
+  wal 1: path: sec/000001-001.log size: 0
   wal 1: path: pri/000001-002.log size: 18
 
 create-writer wal-num=2
