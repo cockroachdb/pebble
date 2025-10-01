@@ -5,7 +5,7 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/RaduBerinde/axisds v0.0.0-20250419182453-5135a0650657
 	github.com/cespare/xxhash/v2 v2.2.0
-	github.com/cockroachdb/crlib v0.0.0-20250916151006-1094cb39adac
+	github.com/cockroachdb/crlib v0.0.0-20251001180057-2a49e1873587
 	github.com/cockroachdb/datadriven v1.0.3-0.20250911232732-d959cf14706c
 	github.com/cockroachdb/errors v1.11.3
 	github.com/cockroachdb/metamorphic v0.0.0-20231108215700-4ba948b56895
@@ -24,6 +24,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/prometheus/client_golang v1.16.0
 	github.com/prometheus/client_model v0.3.0
+	github.com/puzpuzpuz/xsync/v3 v3.5.1
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
