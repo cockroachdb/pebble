@@ -5,6 +5,7 @@
 package wal
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -537,26 +538,22 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 func (wm *failoverManager) List() Logs {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
-	n := len(wm.mu.closedWALs)
-	if wm.mu.ww != nil {
-		n++
-	}
-	wals := make(Logs, n)
-	setLogicalLog := func(index int, llse logicalLogWithSizesEtc) {
+	wals := make(Logs, 0, len(wm.mu.closedWALs)+1)
+	setLogicalLog := func(llse logicalLogWithSizesEtc) {
 		segments := make([]segment, len(llse.segments))
 		for j := range llse.segments {
 			segments[j] = llse.segments[j].segment
 		}
-		wals[index] = LogicalLog{
+		wals = append(wals, LogicalLog{
 			Num:      llse.num,
 			segments: segments,
-		}
+		})
 	}
-	for i, llse := range wm.mu.closedWALs {
-		setLogicalLog(i, llse)
+	for _, llse := range wm.mu.closedWALs {
+		setLogicalLog(llse)
 	}
 	if wm.mu.ww != nil {
-		setLogicalLog(n-1, wm.mu.ww.getLog())
+		setLogicalLog(wm.mu.ww.getLog())
 	}
 	return wals
 }
@@ -637,6 +634,7 @@ func (wm *failoverManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		stopper:                     wm.stopper,
 		failoverWriteAndSyncLatency: wm.opts.FailoverWriteAndSyncLatency,
 		writerClosed:                wm.writerClosed,
+		segmentClosed:               wm.segmentClosed,
 		writerCreatedForTest:        wm.opts.logWriterCreatedForTesting,
 		writeWALSyncOffsets:         wm.opts.WriteWALSyncOffsets,
 	}
@@ -669,6 +667,35 @@ func (wm *failoverManager) writerClosed(llse logicalLogWithSizesEtc) {
 	defer wm.mu.Unlock()
 	wm.mu.closedWALs = append(wm.mu.closedWALs, llse)
 	wm.mu.ww = nil
+}
+
+// segmentClosed is called by the failoverWriter; see
+// failoverWriterOpts.segmentClosed.
+func (wm *failoverManager) segmentClosed(num NumWAL, s segmentWithSizeEtc) {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+	// Find the closed WAL matching the logical WAL num, if one exists. If we
+	// find one, we append the segment to the list of segments if it's not
+	// already there.
+	i, found := slices.BinarySearchFunc(wm.mu.closedWALs, num, func(llse logicalLogWithSizesEtc, num NumWAL) int {
+		return cmp.Compare(llse.num, num)
+	})
+	if found {
+		segmentIndex, segmentFound := slices.BinarySearchFunc(wm.mu.closedWALs[i].segments, s.segment.logNameIndex,
+			func(s segmentWithSizeEtc, logNameIndex LogNameIndex) int {
+				return cmp.Compare(s.segment.logNameIndex, logNameIndex)
+			})
+		if !segmentFound {
+			wm.mu.closedWALs[i].segments = slices.Insert(wm.mu.closedWALs[i].segments, segmentIndex, s)
+		}
+		return
+	}
+	// If we didn't find an existing entry in closedWALs for the provided
+	// NumWAL, append a new entry.
+	wm.mu.closedWALs = slices.Insert(wm.mu.closedWALs, i, logicalLogWithSizesEtc{
+		num:      num,
+		segments: []segmentWithSizeEtc{s},
+	})
 }
 
 // Stats implements Manager.
@@ -889,8 +916,3 @@ func (t *defaultTicker) stop() {
 func (t *defaultTicker) ch() <-chan time.Time {
 	return (*time.Ticker)(t).C
 }
-
-// Make lint happy.
-var _ = (*failoverMonitor).noWriter
-var _ = (*failoverManager).writerClosed
-var _ = (&stopper{}).shouldQuiesce
