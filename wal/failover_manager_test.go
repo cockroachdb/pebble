@@ -5,8 +5,10 @@
 package wal
 
 import (
+	"bytes"
 	"container/list"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/prometheus/client_golang/prometheus"
@@ -617,3 +620,127 @@ func TestFailoverManager_SecondaryIsWritable(t *testing.T) {
 // are complete. Currently this is done by waiting on various channels etc.
 // which exposes implementation detail. See concurrency_test.monitor, in
 // CockroachDB, for an alternative.
+
+// TestFailoverManager_AllFilesDeletable is a randomized test that validates
+// that all the files that are created by the manager are eventually returned by
+// FailoverManager.Obsolete for deletion.
+func TestFailoverManager_AllFilesDeletable(t *testing.T) {
+	seed := time.Now().UnixNano()
+	memFS := vfs.NewMem()
+	require.NoError(t, memFS.MkdirAll("primary", os.ModePerm))
+	require.NoError(t, memFS.MkdirAll("secondary", os.ModePerm))
+	pcg := rand.NewPCG(0, uint64(seed))
+	rng := rand.New(pcg)
+	latencySeed := rng.Int64()
+	fs := errorfs.Wrap(memFS, errorfs.RandomLatency(
+		errorfs.Randomly(0.50, latencySeed), 10*time.Millisecond, latencySeed, 0 /* no limit */))
+
+	var m failoverManager
+	require.NoError(t, m.init(Options{
+		Primary:              Dir{FS: fs, Dirname: "primary"},
+		Secondary:            Dir{FS: fs, Dirname: "secondary"},
+		Logger:               testLogger{t: t},
+		MaxNumRecyclableLogs: 0,
+		PreallocateSize:      func() int { return 4 },
+		FailoverOptions: FailoverOptions{
+			PrimaryDirProbeInterval:            250 * time.Microsecond,
+			HealthyProbeLatencyThreshold:       time.Millisecond,
+			HealthyInterval:                    3 * time.Millisecond,
+			UnhealthySamplingInterval:          250 * time.Microsecond,
+			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Millisecond, true },
+		},
+		FailoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+		WriteWALSyncOffsets:         func() bool { return false },
+	}, nil /* initial  logs */))
+
+	// Repeatedly create a new log file, write some random data to it, and then
+	// maybe ratchet the minUnflushed log number, collecting the set of obsolete
+	// log files if we do.
+	const numIters = 20
+	minUnflushed := int64(0)
+	var allDeletableLogs []DeletableLog
+	for i := 1; i <= numIters; i++ {
+		// Create a new log file and write random data to it.
+		w, err := m.Create(NumWAL(i), i)
+		require.NoError(t, err)
+		for j := 0; j < testutils.RandIntInRange(rng, 1, 4); j++ {
+			data := testutils.RandBytes(rng, testutils.RandIntInRange(rng, 1, 1024))
+			_, err = w.WriteRecord(data, SyncOptions{}, nil)
+			require.NoError(t, err)
+		}
+		_, err = w.Close()
+		require.NoError(t, err)
+
+		// Ratchet the minUnflushed log number randomly, and call Obsolete to
+		// collect the set of deletable logs.
+		minUnflushed = rng.Int64N(int64(i)-minUnflushed+1) + minUnflushed
+		toDelete, err := m.Obsolete(NumWAL(minUnflushed), false)
+		require.NoError(t, err)
+		allDeletableLogs = append(allDeletableLogs, toDelete...)
+	}
+
+	var buf bytes.Buffer
+	defer func() {
+		if t.Failed() {
+			t.Log(buf.String())
+		}
+	}()
+
+	require.Eventually(t, func() bool {
+		toDelete, err := m.Obsolete(NumWAL(minUnflushed), false)
+		require.NoError(t, err)
+		allDeletableLogs = append(allDeletableLogs, toDelete...)
+		// Delete any of the obolsete log files that we collected.
+		for _, dl := range allDeletableLogs {
+			require.NoError(t, dl.FS.Remove(dl.Path))
+		}
+		allDeletableLogs = allDeletableLogs[:0]
+
+		// Find all the remaining log files in both the primary and secondary
+		// directories.
+		var fa FileAccumulator
+		ls, err := memFS.List(m.opts.Primary.Dirname)
+		require.NoError(t, err)
+		secondaryLS, err := memFS.List(m.opts.Secondary.Dirname)
+		require.NoError(t, err)
+		for _, f := range ls {
+			_, err := fa.MaybeAccumulate(memFS, memFS.PathJoin(m.opts.Primary.Dirname, f))
+			require.NoError(t, err)
+		}
+		for _, f := range secondaryLS {
+			_, err := fa.MaybeAccumulate(memFS, memFS.PathJoin(m.opts.Secondary.Dirname, f))
+			require.NoError(t, err)
+		}
+		logs := fa.Finish()
+
+		// Remove any logs that are above the minUnflushed log. These are to be
+		// expected.
+		logs = slices.DeleteFunc(logs, func(log LogicalLog) bool {
+			return log.Num >= NumWAL(minUnflushed)
+		})
+		if len(logs) > 0 {
+			buf.Reset()
+			fmt.Fprintf(&buf, "logs with numbers beneath %d remain on the filesystem:\n", minUnflushed)
+			for _, log := range logs {
+				fmt.Fprintf(&buf, "%s remains\n", log)
+			}
+		}
+		return len(logs) == 0
+	}, time.Second, 25*time.Millisecond)
+}
+
+type testLogger struct {
+	t testing.TB
+}
+
+func (l testLogger) Infof(format string, args ...interface{}) {
+	l.t.Logf(format, args...)
+}
+
+func (l testLogger) Errorf(format string, args ...interface{}) {
+	l.t.Logf(format, args...)
+}
+
+func (l testLogger) Fatalf(format string, args ...interface{}) {
+	l.t.Fatalf(format, args...)
+}
