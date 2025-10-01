@@ -685,7 +685,7 @@ func randomTestkeysSkiplist(rng *rand.Rand, size int) (*Skiplist, [][]byte) {
 	ks := testkeys.Alpha(5)
 	keys := make([][]byte, 2*size+1)
 	for i := range keys {
-		keys[i] = testkeys.Key(ks, int64(i))
+		keys[i] = testkeys.Key(ks, uint64(i))
 	}
 	slices.SortFunc(keys, testkeys.Comparer.Compare)
 
