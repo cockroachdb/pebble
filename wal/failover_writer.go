@@ -460,7 +460,23 @@ type failoverWriterOpts struct {
 	stopper         *stopper
 
 	failoverWriteAndSyncLatency prometheus.Histogram
-	writerClosed                func(logicalLogWithSizesEtc)
+	// writerClosed is a callback invoked by the FailoverWriter when it's
+	// closed. It notifies the FailoverManager that the writer is now closed and
+	// propagates information about the various physical segment files that have
+	// been created.
+	//
+	// Note that the asynchronous creation of physical segment files means that
+	// the writerClosed invocation is not guaranteed to include all physical
+	// segment files that will ultimately be created for this logical WAL. If a
+	// new segment file is created after writerClosed is inovked, it will be
+	// propagated to the FailoverManager via the segmentClosed callback.
+	writerClosed func(logicalLogWithSizesEtc)
+	// segmentClosed is a callback invoked by the FailoverWriter when a segment
+	// file creation completes but the writerClosed callback has already been
+	// invoked. It's used to ensure that we reclaim all physical segment files,
+	// including ones that did not complete creation before the Writer was
+	// closed.
+	segmentClosed func(NumWAL, segmentWithSizeEtc)
 
 	writerCreatedForTest chan<- struct{}
 
@@ -684,14 +700,18 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 			// returned error.
 			ww.opts.stopper.runAsync(func() {
 				_ = w.Close()
-				// TODO(sumeer): consider deleting this file too, since
-				// failoverWriter.Close may not wait for it. This is going to be
-				// extremely rare, so the risk of garbage empty files piling up is
-				// extremely low. Say failover happens daily and of those cases we
-				// have to be very unlucky and the close happens while a failover was
-				// ongoing and the previous LogWriter successfully wrote everything
-				// (say 1% probability if we want to be pessimistic). A garbage file
-				// every 100 days. Restarts will delete that garbage.
+				// Invoke the segmentClosed callback to propagate knowledge that
+				// there's an obsolete segment file we should clean up. Note
+				// that the file may be occupying non-negligible disk space even
+				// though we never wrote to it due to preallocation.
+				ww.opts.segmentClosed(ww.opts.wn, segmentWithSizeEtc{
+					segment: segment{
+						logNameIndex: LogNameIndex(writerIndex),
+						dir:          dir.Dir,
+					},
+					approxFileSize:      initialFileSize,
+					synchronouslyClosed: false,
+				})
 			})
 		}
 	})
