@@ -49,3 +49,34 @@ jobs:
       sha: ${{ github.sha }}
       file_issue_branch: 'master'
       go_version: ${{ matrix.go }}
+
+  linux-cockroach-go:
+    runs-on: ubuntu-latest
+    env:
+      GO_BRANCH: cockroach-go1.23.12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Step 1: Fetch the branch tip SHA for cache key
+      - name: Get cockroachdb/go commit hash
+        id: go-sha
+        run: |
+          SHA=$(git ls-remote https://github.com/cockroachdb/go.git refs/heads/$GO_BRANCH | cut -f1)
+          echo "GO_SHA=$SHA" >> $GITHUB_ENV
+
+      # Step 2: Restore cache (per branch + commit SHA)
+      - name: Cache custom Go toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cockroachdb-go/${{ env.GO_SHA }}
+          key: cockroachdb-${{ env.GO_SHA }}
+
+      # Step 3: Install bootstrap Go (needed to build fork)
+      - name: Install bootstrap Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      # Step 4: Run tests with custom Go
+      - run: ./scripts/run-tests-with-custom-go.sh -tags invariants ./...
