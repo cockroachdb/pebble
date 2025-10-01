@@ -20,6 +20,7 @@ open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
 create: db/marker.manifest.000001.MANIFEST-000001
+sync: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 1] MANIFEST created 000001
@@ -29,75 +30,90 @@ create: wal/000002.log
 sync: wal
 [JOB 1] WAL created 000002
 create: db/marker.format-version.000001.014
+sync: db/marker.format-version.000001.014
 close: db/marker.format-version.000001.014
 sync: db
 upgraded to format version: 014
 create: db/marker.format-version.000002.015
+sync: db/marker.format-version.000002.015
 close: db/marker.format-version.000002.015
 remove: db/marker.format-version.000001.014
 sync: db
 upgraded to format version: 015
 create: db/marker.format-version.000003.016
+sync: db/marker.format-version.000003.016
 close: db/marker.format-version.000003.016
 remove: db/marker.format-version.000002.015
 sync: db
 upgraded to format version: 016
 create: db/marker.format-version.000004.017
+sync: db/marker.format-version.000004.017
 close: db/marker.format-version.000004.017
 remove: db/marker.format-version.000003.016
 sync: db
 upgraded to format version: 017
 create: db/marker.format-version.000005.018
+sync: db/marker.format-version.000005.018
 close: db/marker.format-version.000005.018
 remove: db/marker.format-version.000004.017
 sync: db
 upgraded to format version: 018
 create: db/marker.format-version.000006.019
+sync: db/marker.format-version.000006.019
 close: db/marker.format-version.000006.019
 remove: db/marker.format-version.000005.018
 sync: db
 upgraded to format version: 019
 create: db/marker.format-version.000007.020
+sync: db/marker.format-version.000007.020
 close: db/marker.format-version.000007.020
 remove: db/marker.format-version.000006.019
 sync: db
 upgraded to format version: 020
 create: db/marker.format-version.000008.021
+sync: db/marker.format-version.000008.021
 close: db/marker.format-version.000008.021
 remove: db/marker.format-version.000007.020
 sync: db
 upgraded to format version: 021
 create: db/marker.format-version.000009.022
+sync: db/marker.format-version.000009.022
 close: db/marker.format-version.000009.022
 remove: db/marker.format-version.000008.021
 sync: db
 upgraded to format version: 022
 create: db/marker.format-version.000010.023
+sync: db/marker.format-version.000010.023
 close: db/marker.format-version.000010.023
 remove: db/marker.format-version.000009.022
 sync: db
 upgraded to format version: 023
 create: db/marker.format-version.000011.024
+sync: db/marker.format-version.000011.024
 close: db/marker.format-version.000011.024
 remove: db/marker.format-version.000010.023
 sync: db
 upgraded to format version: 024
 create: db/marker.format-version.000012.025
+sync: db/marker.format-version.000012.025
 close: db/marker.format-version.000012.025
 remove: db/marker.format-version.000011.024
 sync: db
 upgraded to format version: 025
 create: db/marker.format-version.000013.026
+sync: db/marker.format-version.000013.026
 close: db/marker.format-version.000013.026
 remove: db/marker.format-version.000012.025
 sync: db
 upgraded to format version: 026
 create: db/marker.format-version.000014.027
+sync: db/marker.format-version.000014.027
 close: db/marker.format-version.000014.027
 remove: db/marker.format-version.000013.026
 sync: db
 upgraded to format version: 027
 create: db/marker.format-version.000015.028
+sync: db/marker.format-version.000015.028
 close: db/marker.format-version.000015.028
 remove: db/marker.format-version.000014.027
 sync: db
@@ -126,6 +142,7 @@ create: db/MANIFEST-000006
 close: db/MANIFEST-000001
 sync: db/MANIFEST-000006
 create: db/marker.manifest.000002.MANIFEST-000006
+sync: db/marker.manifest.000002.MANIFEST-000006
 close: db/marker.manifest.000002.MANIFEST-000006
 remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
@@ -150,6 +167,7 @@ create: db/MANIFEST-000009
 close: db/MANIFEST-000006
 sync: db/MANIFEST-000009
 create: db/marker.manifest.000003.MANIFEST-000009
+sync: db/marker.manifest.000003.MANIFEST-000009
 close: db/marker.manifest.000003.MANIFEST-000009
 remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
@@ -183,6 +201,7 @@ create: db/MANIFEST-000011
 close: db/MANIFEST-000009
 sync: db/MANIFEST-000011
 create: db/marker.manifest.000004.MANIFEST-000011
+sync: db/marker.manifest.000004.MANIFEST-000011
 close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
@@ -218,6 +237,7 @@ create: db/MANIFEST-000014
 close: db/MANIFEST-000011
 sync: db/MANIFEST-000014
 create: db/marker.manifest.000005.MANIFEST-000014
+sync: db/marker.manifest.000005.MANIFEST-000014
 close: db/marker.manifest.000005.MANIFEST-000014
 remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
@@ -246,6 +266,7 @@ create: db/MANIFEST-000016
 close: db/MANIFEST-000014
 sync: db/MANIFEST-000016
 create: db/marker.manifest.000006.MANIFEST-000016
+sync: db/marker.manifest.000006.MANIFEST-000016
 close: db/marker.manifest.000006.MANIFEST-000016
 remove: db/marker.manifest.000005.MANIFEST-000014
 sync: db
@@ -386,6 +407,7 @@ create: db/MANIFEST-000023
 close: db/MANIFEST-000016
 sync: db/MANIFEST-000023
 create: db/marker.manifest.000007.MANIFEST-000023
+sync: db/marker.manifest.000007.MANIFEST-000023
 close: db/marker.manifest.000007.MANIFEST-000023
 remove: db/marker.manifest.000006.MANIFEST-000016
 sync: db

@@ -209,6 +209,13 @@ func (a *Marker) Move(newValue string) error {
 		return err
 	}
 	a.filename = dstFilename
+	// Sync the marker file to ensure it's persisted before making it visible
+	// via directory sync. This prevents a race condition where the marker
+	// could become visible before its content is fully written to disk.
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}
