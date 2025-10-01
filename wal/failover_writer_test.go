@@ -285,6 +285,7 @@ func TestFailoverWriter(t *testing.T) {
 						stopper:                     stopper,
 						failoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 						writerClosed:                func(_ logicalLogWithSizesEtc) {},
+						segmentClosed:               func(NumWAL, segmentWithSizeEtc) {},
 						writerCreatedForTest:        logWriterCreated,
 						writeWALSyncOffsets:         func() bool { return false },
 					}, testDirs[dirIndex])

@@ -5,6 +5,7 @@
 package wal
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -637,6 +638,7 @@ func (wm *failoverManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		stopper:                     wm.stopper,
 		failoverWriteAndSyncLatency: wm.opts.FailoverWriteAndSyncLatency,
 		writerClosed:                wm.writerClosed,
+		segmentClosed:               wm.segmentClosed,
 		writerCreatedForTest:        wm.opts.logWriterCreatedForTesting,
 		writeWALSyncOffsets:         wm.opts.WriteWALSyncOffsets,
 	}
@@ -669,6 +671,42 @@ func (wm *failoverManager) writerClosed(llse logicalLogWithSizesEtc) {
 	defer wm.mu.Unlock()
 	wm.mu.closedWALs = append(wm.mu.closedWALs, llse)
 	wm.mu.ww = nil
+}
+
+func (wm *failoverManager) segmentClosed(num NumWAL, s segmentWithSizeEtc) {
+	wm.mu.Lock()
+	defer wm.mu.Unlock()
+	// Iterate through the closed WALs to find one with a matching logical WAL
+	// num. If we find one, we append the segment to the list of segments if
+	// it's not already there.
+	for i, llse := range wm.mu.closedWALs {
+		if llse.num == num {
+			alreadyExists := slices.ContainsFunc(llse.segments, func(s segmentWithSizeEtc) bool {
+				return s.segment.logNameIndex == s.logNameIndex
+			})
+			if alreadyExists {
+				wm.mu.closedWALs[i].segments = append(wm.mu.closedWALs[i].segments, s)
+				slices.SortFunc(wm.mu.closedWALs[i].segments, func(a, b segmentWithSizeEtc) int {
+					return cmp.Compare(a.segment.logNameIndex, b.segment.logNameIndex)
+				})
+			}
+			return
+		}
+	}
+	// If we didn't find an existing entry in closedWALs for the provided
+	// NumWAL, append a new entry.
+	llse := logicalLogWithSizesEtc{
+		num:      num,
+		segments: []segmentWithSizeEtc{s},
+	}
+	i := slices.IndexFunc(wm.mu.closedWALs, func(llse logicalLogWithSizesEtc) bool {
+		return llse.num >= num
+	})
+	if i == -1 {
+		wm.mu.closedWALs = append(wm.mu.closedWALs, llse)
+	} else {
+		wm.mu.closedWALs = slices.Insert(wm.mu.closedWALs, i, llse)
+	}
 }
 
 // Stats implements Manager.
@@ -889,8 +927,3 @@ func (t *defaultTicker) stop() {
 func (t *defaultTicker) ch() <-chan time.Time {
 	return (*time.Ticker)(t).C
 }
-
-// Make lint happy.
-var _ = (*failoverMonitor).noWriter
-var _ = (*failoverManager).writerClosed
-var _ = (&stopper{}).shouldQuiesce
