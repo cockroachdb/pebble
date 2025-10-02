@@ -384,11 +384,8 @@ func TestNewSnapshotRace(t *testing.T) {
 	require.NoError(t, d.Close())
 }
 
-// Test for https://github.com/cockroachdb/pebble/issues/5390.
+// Test for fix to https://github.com/cockroachdb/pebble/issues/5390.
 func TestEFOSAndExciseRace(t *testing.T) {
-	// Skipping since: panic: unexpected excise of an
-	// EventuallyFileOnlySnapshot's bounds.
-	t.Skip("#5390")
 	o := &Options{
 		FS:                          vfs.NewMem(),
 		L0CompactionThreshold:       10,
@@ -414,25 +411,33 @@ func TestEFOSAndExciseRace(t *testing.T) {
 	<-beforeIngestApply
 	// IngestAndExcise is blocked, after waiting for memtable flush.
 	//
-	// Create a EFOS that overlaps with the excise.
-	snap := d.NewEventuallyFileOnlySnapshot([]KeyRange{{Start: []byte("a"), End: []byte("d")}})
-	defer snap.Close()
-	checkIter := func() {
-		iter, err := snap.NewIter(nil)
-		// The iter sees a and c, since it precedes the excise.
-		require.NoError(t, err)
-		require.True(t, iter.First())
-		require.Equal(t, []byte("a"), iter.Key())
-		require.True(t, iter.Next())
-		require.Equal(t, []byte("c"), iter.Key())
-		require.False(t, iter.Next())
-		require.NoError(t, iter.Close())
-	}
-	checkIter()
-	// Unblock the excise.
+	// Create a EFOS that overlaps with the excise. It will block due to the
+	// ongoing excise.
+	snapDone := make(chan struct{})
+	go func() {
+		snap := d.NewEventuallyFileOnlySnapshot([]KeyRange{{Start: []byte("a"), End: []byte("d")}})
+		defer func() {
+			require.NoError(t, snap.Close())
+			snapDone <- struct{}{}
+		}()
+		checkIter := func() {
+			iter, err := snap.NewIter(nil)
+			// The iter only sees a, since it comes after the excise.
+			require.NoError(t, err)
+			require.True(t, iter.First())
+			require.Equal(t, []byte("a"), iter.Key())
+			require.False(t, iter.Next())
+			require.NoError(t, iter.Close())
+		}
+		checkIter()
+		// Flush and transition to FOS.
+		require.NoError(t, d.Flush())
+		require.NoError(t, snap.WaitForFileOnlySnapshot(context.Background(), 0))
+		checkIter()
+	}()
+	time.Sleep(100 * time.Millisecond)
+	// Unblock the excise, which eventually unblocks the snapshot creation.
 	waitForCh <- struct{}{}
-	// Flush and transition to FOS.
-	require.NoError(t, d.Flush())
-	require.NoError(t, snap.WaitForFileOnlySnapshot(context.Background(), 0))
-	checkIter()
+	// Wait for the snapshot checking to finish.
+	<-snapDone
 }
