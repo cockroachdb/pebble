@@ -234,12 +234,83 @@ type EventuallyFileOnlySnapshot struct {
 }
 
 func (d *DB) makeEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFileOnlySnapshot {
-	isFileOnly := true
-
+	var snapshotSeqNum, exciseSeqNumToWaitFor base.SeqNum
+	// tryGetSnapshotSeqNum attempts to initialize a snapshotSeqNum. The
+	// snapshotSeqNum should be ignored if exciseSeqNumToWaitFor is > 0. In this
+	// case the caller should wait for this seqnum to become visible and call
+	// this function again.
+	tryGetSnapshotSeqNum := func() {
+		// In AllocateSeqNum, for an ingest-and-excise, some seqnums are
+		// allocated, say starting at N. Then AllocateSeqNum calls prepare, which
+		// acquires DB.mu and grabs all the existing EFOS that have not
+		// transitioned to FOS (which are in d.mu.snapshots.snapshotList) and
+		// overlap with the excise. After releasing DB.mu, in apply, the
+		// ingest-and-excise waits for all the previous EFOSs to transition to FOS
+		// (as a side effect of waiting for a memtable flush to complete). Note,
+		// the visible seqnum is still <= N-1, and will not be bumped to N until
+		// the ingest-and-excise completes. Any EFOS that gets created after
+		// prepare looked at the existing EFOSs, but before the ingest-and-excise
+		// completes, will be created with EventuallyFileOnlySnapshot.seqNum=N-1,
+		// and may not transition to FOS until after the excise, which is
+		// incorrect (the version at the transition to FOS has already experienced
+		// the excise). To avoid this incorrectness, tryGetSnapshotSeqNum is
+		// called in a loop, until there are no such ongoing excises. The loop can
+		// starve EFOS creation if the keyRanges keep overlapping with new ongoing
+		// ingest-and-excises. So EFOS should only be used when ingest-and-excises
+		// are rare over the keyRanges.
+		//
+		// Improving this starvation behavior would require this snapshot to
+		// register itself in a way that blocks future ingest-and-excises. The
+		// blocking would need to be done before allocating the seqnum, since
+		// blocking after can delay (latency sensitive) writes that get a seqnum
+		// later than the ingest-and-excise. Then the problem shifts to not
+		// starving the ingest-and-excise if EFOS creation is frequent. We observe
+		// that in the CockroachDB use case (a) ingest-and-excises are not very
+		// frequent, so EFOS starvation is unlikely, (b) EFOS creation is not
+		// latency sensitive. Hence, we ignore this starvation problem.
+		snapshotSeqNum = d.mu.versions.visibleSeqNum.Load()
+		// Check if any of the keyRanges overlap with an ongoing
+		// ingest-and-excise.
+		//
+		// NB: The zero seqnum cannot occur in practice, since base.SeqNumStart >
+		// 0.
+		exciseSeqNumToWaitFor = base.SeqNum(0)
+		for seqNum, span := range d.mu.snapshots.ongoingExcises {
+			if base.Visible(seqNum, snapshotSeqNum, base.SeqNumMax) {
+				// Skip this excise, since this is visible to the snapshot.
+				continue
+			}
+			// INVARIANT: seqNum >= snapshotSeqNum.
+			if seqNum <= exciseSeqNumToWaitFor {
+				// We are already waiting for a later excise.
+				continue
+			}
+			for i := range keyRanges {
+				if keyRanges[i].OverlapsKeyRange(d.cmp, span) {
+					exciseSeqNumToWaitFor = seqNum
+					break
+				}
+			}
+		}
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	seqNum := d.mu.versions.visibleSeqNum.Load()
-	// Check if any of the keyRanges overlap with a memtable.
+	for {
+		// This call updates snapshotSeqNum and exciseSeqNumToWaitFor.
+		tryGetSnapshotSeqNum()
+		if exciseSeqNumToWaitFor == 0 {
+			break
+		}
+		for !base.Visible(exciseSeqNumToWaitFor, d.mu.versions.visibleSeqNum.Load(), base.SeqNumMax) {
+			d.mu.snapshots.ongoingExcisesRemovedCond.Wait()
+		}
+	}
+	isFileOnly := true
+	// Check if any of the keyRanges overlap with a memtable. It is possible
+	// (with very low probability) that all these memtable have seqnums later
+	// than seqNum, and the overlap is a false positive. This is harmless, and
+	// this EFOS will transition to FOS, when the false positive memtable is
+	// flushed.
 	for i := range d.mu.mem.queue {
 		d.mu.mem.queue[i].computePossibleOverlaps(func(bounded) shouldContinue {
 			isFileOnly = false
@@ -248,7 +319,7 @@ func (d *DB) makeEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFil
 	}
 	es := &EventuallyFileOnlySnapshot{
 		db:              d,
-		seqNum:          seqNum,
+		seqNum:          snapshotSeqNum,
 		protectedRanges: keyRanges,
 		closed:          make(chan struct{}),
 	}
@@ -258,7 +329,7 @@ func (d *DB) makeEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFil
 	} else {
 		s := &Snapshot{
 			db:     d,
-			seqNum: seqNum,
+			seqNum: snapshotSeqNum,
 		}
 		s.efos = es
 		es.mu.snap = s
