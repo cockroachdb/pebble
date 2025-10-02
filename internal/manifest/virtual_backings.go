@@ -71,7 +71,7 @@ import (
 type VirtualBackings struct {
 	m map[base.DiskFileNum]*backingWithMetadata
 	// rewriteCandidates is a min heap of virtual backings ordered by
-	// referencedDataPct. Used to pick a candidate for rewriting.
+	// referencedDataFraction. Used to pick a candidate for rewriting.
 	rewriteCandidates virtualBackingRewriteCandidatesHeap
 
 	// unused are all the backings in m that are not inUse(). Used for
@@ -108,9 +108,14 @@ type backingWithMetadata struct {
 	heapIndex     int
 }
 
-func (bm *backingWithMetadata) referencedDataPct() float64 {
-	return float64(bm.virtualizedSize) /
-		float64(bm.backing.Size+bm.backing.ReferencedBlobValueSizeTotal)
+// referencedDataFraction returns the percentage of data in the backing that is
+// referenced by virtual tables.
+// TODO(xinhaoz): Note that the sizes here intentionally exclude referenced
+// blob value sizes of virtual tables and the backing table. When we are able
+// to track referenced blob values for virtual tables more accurately we should
+// include those sizes in this estimation.
+func (bm *backingWithMetadata) referencedDataFraction() float64 {
+	return float64(bm.virtualizedSize) / float64(bm.backing.Size)
 }
 
 // AddAndRef adds a new backing to the set and takes a reference on it. Another
@@ -295,18 +300,21 @@ func (bv *VirtualBackings) DiskFileNums() []base.DiskFileNum {
 // referenced by virtual tables to total size, along with the list of virtual
 // tables that use the backing. If there are no backings in the set, nil is
 // returned.
-func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, [NumLevels][]*TableMetadata) {
+func (bv *VirtualBackings) ReplacementCandidate() (
+	referencedDataFraction float64,
+	backing *TableBacking,
+	tables [NumLevels][]*TableMetadata,
+) {
 	if bv.rewriteCandidates.Len() == 0 {
-		return nil, [NumLevels][]*TableMetadata{}
+		return 0, nil, [NumLevels][]*TableMetadata{}
 	}
 	v := bv.rewriteCandidates.items[0]
-	var tables [NumLevels][]*TableMetadata
 	tableNums := slices.Sorted(maps.Keys(v.virtualTables))
 	for _, t := range tableNums {
 		tl := v.virtualTables[t]
 		tables[tl.level] = append(tables[tl.level], tl.meta)
 	}
-	return v.backing, tables
+	return v.referencedDataFraction(), v.backing, tables
 }
 
 func (bv *VirtualBackings) String() string {
@@ -332,7 +340,7 @@ func (bv *VirtualBackings) String() string {
 		if len(bv.rewriteCandidates.items) > 0 {
 			fmt.Fprint(&buf, "rewrite candidates heap: ")
 			for _, v := range bv.rewriteCandidates.items {
-				fmt.Fprintf(&buf, "%s(%.1f%%) ", v.backing.DiskFileNum, v.referencedDataPct()*100)
+				fmt.Fprintf(&buf, "%s(%.1f%%) ", v.backing.DiskFileNum, v.referencedDataFraction()*100)
 			}
 			fmt.Fprintf(&buf, "\n")
 		}
@@ -382,7 +390,7 @@ func (v *virtualBackingRewriteCandidatesHeap) Len() int {
 func (v *virtualBackingRewriteCandidatesHeap) Less(i, j int) bool {
 	// We want to rewrite backings with a high percentage of garbage first,
 	// so we order the heap by ratio of data referenced in virtual tables.
-	return v.items[i].referencedDataPct() < v.items[j].referencedDataPct()
+	return v.items[i].referencedDataFraction() < v.items[j].referencedDataFraction()
 }
 
 func (v *virtualBackingRewriteCandidatesHeap) Swap(i, j int) {

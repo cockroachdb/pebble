@@ -204,3 +204,48 @@ COMPRESSION
        snappy | 296B (CR=1.23) |
 ----
 ----
+
+# Test virtual table rewrite unreferenced fraction threshold (default 30%).
+# This test creates a backing with low unreferenced ratio and verifies
+# that virtual rewrite compaction does not trigger.
+
+define auto-compactions=off
+----
+
+# Create a backing table
+batch
+set a value_a
+set b value_b  
+set c value_c
+set d value_d
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:695
+
+compact a-d
+----
+L6:
+  000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:695
+
+# Excise only a small portion to create low unreferenced fraction (~0.1).
+excise a.5 b.5
+----
+L6:
+  000006(000005):[a#10,SET-a#10,SET] seqnums:[10-13] points:[a#10,SET-a#10,SET] size:113(695)
+  000007(000005):[c#12,SET-d#13,SET] seqnums:[10-13] points:[c#12,SET-d#13,SET] size:113(695)
+
+virtual-backings
+----
+1 virtual backings, total size 695:
+  000005:  size=695  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=226  tables: [000006 000007]
+rewrite candidates heap: 000005(32.5%) 
+
+# Should NOT trigger virtual rewrite (0.1 unreferenced fraction < default 0.3 threshold)
+run-virtual-rewrite-compaction
+----
+L6:
+  000008:[a#0,SET-a#0,SET] seqnums:[0-0] points:[a#0,SET-a#0,SET] size:658
+  000007(000005):[c#12,SET-d#13,SET] seqnums:[10-13] points:[c#12,SET-d#13,SET] size:113(695)
