@@ -38,8 +38,9 @@ import (
 )
 
 const (
-	cacheDefaultSize       = 8 << 20 // 8 MB
-	defaultLevelMultiplier = 10
+	cacheDefaultSize                        = 8 << 20 // 8 MB
+	defaultLevelMultiplier                  = 10
+	defaultVirtualTableUnreferencedFraction = 0.3
 )
 
 // FilterType exports the base.FilterType type.
@@ -782,6 +783,16 @@ type Options struct {
 
 		// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
 		SpanPolicyFunc SpanPolicyFunc
+
+		// VirtualTableRewriteUnreferencedFraction configures the minimum
+		// garbage ratio of a backing table required to trigger a virtual table
+		// rewrite compaction. Garbage ratio is calculated as the ratio of unreferenced
+		// data to total backing file size. A value of 0.0 triggers
+		// rewrites for any amount of unreferenced data. A value of 1.0 disables
+		// virtual table rewrite compactions entirely.
+		//
+		// The default value is 0.30 (rewrite when >= 30% of backing data is unreferenced).
+		VirtualTableRewriteUnreferencedFraction func() float64
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1630,6 +1641,9 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.SpanPolicyFunc == nil {
 		o.Experimental.SpanPolicyFunc = func(startKey []byte) (SpanPolicy, []byte, error) { return SpanPolicy{}, nil, nil }
+	}
+	if o.Experimental.VirtualTableRewriteUnreferencedFraction == nil {
+		o.Experimental.VirtualTableRewriteUnreferencedFraction = func() float64 { return defaultVirtualTableUnreferencedFraction }
 	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.
