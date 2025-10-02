@@ -934,6 +934,20 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		}
 	}
 
+	switch rand.IntN(2) {
+	case 0:
+		opts.Experimental.IteratorTracking.PollInterval = 100 * time.Millisecond
+		opts.Experimental.IteratorTracking.MaxAge = 10 * time.Second
+	case 1:
+		// Disable tracking.
+		opts.Experimental.IteratorTracking.PollInterval = -1
+		opts.Experimental.IteratorTracking.MaxAge = -1
+	case 2:
+		// Default settings.
+		opts.Experimental.IteratorTracking.PollInterval = 0
+		opts.Experimental.IteratorTracking.MaxAge = 0
+	}
+
 	testOpts.seedEFOS = rng.Uint64()
 	testOpts.ingestSplit = rng.IntN(2) == 0
 	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }

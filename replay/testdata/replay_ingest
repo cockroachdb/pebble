@@ -12,7 +12,7 @@ tree
        0      LOCK
      172      MANIFEST-000001
      209      MANIFEST-000008
-    2770      OPTIONS-000003
+    2842      OPTIONS-000003
        0      marker.format-version.000012.025
        0      marker.manifest.000002.MANIFEST-000008
             simple_ingest/
@@ -25,7 +25,7 @@ tree
      678        000004.sst
      661        000005.sst
      172        MANIFEST-000001
-    2770        OPTIONS-000003
+    2842        OPTIONS-000003
        0        marker.format-version.000001.025
        0        marker.manifest.000001.MANIFEST-000001
 
@@ -79,6 +79,8 @@ cat build/OPTIONS-000003
   wal_bytes_per_sync=0
   secondary_cache_size_bytes=0
   create_on_shared=0
+  iterator_tracking_poll_interval=5m0s
+  iterator_tracking_max_age=1m0s
 
 [Level "0"]
   block_restart_interval=16

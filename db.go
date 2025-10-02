@@ -1114,7 +1114,7 @@ func (d *DB) newIter(
 		dbi.batch.batch = batch
 		dbi.batch.batchSeqNum = batch.nextSeqNum()
 	}
-	if !dbi.batchOnlyIter {
+	if !dbi.batchOnlyIter && d.iterTracker != nil {
 		dbi.tracker = d.iterTracker
 		dbi.trackerHandle = d.iterTracker.Start()
 	}
@@ -1624,8 +1624,10 @@ func (d *DB) Close() error {
 		err = firstError(err, errors.Errorf("leaked snapshots: %d open snapshots on DB %p", v, d))
 	}
 
-	d.iterTracker.Close()
-	d.iterTracker = nil
+	if d.iterTracker != nil {
+		d.iterTracker.Close()
+		d.iterTracker = nil
+	}
 
 	return err
 }

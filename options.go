@@ -792,6 +792,21 @@ type Options struct {
 		// virtual table rewrite compactions entirely. The default value is 0.30
 		// (rewrite when >= 30% of backing data is unreferenced).
 		VirtualTableRewriteUnreferencedFraction func() float64
+
+		// IteratorTracking configures periodic logging of iterators held open for
+		// too long.
+		IteratorTracking struct {
+			// PollInterval is the interval at which to log a report of long-lived iterators.
+			// If negative, disables iterator tracking.
+			//
+			// The default value is 5 minutes.
+			PollInterval time.Duration
+			// MaxAge is the age above which iterators are considered long-lived. If
+			// negative, disables iterator tracking.
+			//
+			// The default value is 1 minute.
+			MaxAge time.Duration
+		}
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for
@@ -1644,6 +1659,12 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.VirtualTableRewriteUnreferencedFraction == nil {
 		o.Experimental.VirtualTableRewriteUnreferencedFraction = func() float64 { return defaultVirtualTableUnreferencedFraction }
 	}
+	if o.Experimental.IteratorTracking.PollInterval == 0 {
+		o.Experimental.IteratorTracking.PollInterval = 5 * time.Minute
+	}
+	if o.Experimental.IteratorTracking.MaxAge == 0 {
+		o.Experimental.IteratorTracking.MaxAge = time.Minute
+	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.
 
@@ -1785,6 +1806,13 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
 	fmt.Fprintf(&buf, "  secondary_cache_size_bytes=%d\n", o.Experimental.SecondaryCacheSizeBytes)
 	fmt.Fprintf(&buf, "  create_on_shared=%d\n", o.Experimental.CreateOnShared)
+
+	if o.Experimental.IteratorTracking.PollInterval != 0 {
+		fmt.Fprintf(&buf, "  iterator_tracking_poll_interval=%s\n", o.Experimental.IteratorTracking.PollInterval)
+	}
+	if o.Experimental.IteratorTracking.MaxAge != 0 {
+		fmt.Fprintf(&buf, "  iterator_tracking_max_age=%s\n", o.Experimental.IteratorTracking.MaxAge)
+	}
 
 	// Private options.
 	//
@@ -2228,6 +2256,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var createOnSharedInt int64
 				createOnSharedInt, err = strconv.ParseInt(value, 10, 64)
 				o.Experimental.CreateOnShared = remote.CreateOnSharedStrategy(createOnSharedInt)
+			case "iterator_tracking_poll_interval":
+				o.Experimental.IteratorTracking.PollInterval, err = time.ParseDuration(value)
+			case "iterator_tracking_max_age":
+				o.Experimental.IteratorTracking.MaxAge, err = time.ParseDuration(value)
 			default:
 				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
 					return nil
