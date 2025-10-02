@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -247,6 +248,9 @@ func TestMetrics(t *testing.T) {
 			// Large value for determinism.
 			MaxOpenFiles: 10000,
 		}
+		// Fix FileCacheShards to avoid non-determinism in disk usage (the option is
+		// written to the OPTIONS file).
+		opts.Experimental.FileCacheShards = 10
 		opts.Experimental.EnableValueBlocks = func() bool { return true }
 		opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 			return ValueSeparationPolicy{
@@ -508,7 +512,7 @@ func TestMetrics(t *testing.T) {
 			return buf.String()
 
 		case "disk-usage":
-			return humanize.Bytes.Uint64(d.Metrics().DiskSpaceUsage()).String()
+			return string(crhumanize.Bytes(d.Metrics().DiskSpaceUsage(), crhumanize.Compact, crhumanize.Exact))
 
 		case "additional-metrics":
 			// The asynchronous loading of table stats can change metrics, so
