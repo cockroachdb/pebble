@@ -16,10 +16,13 @@ import (
 )
 
 // NewRemoteReadable creates an objstorage.Readable out of a remote.ObjectReader.
-func NewRemoteReadable(objReader remote.ObjectReader, size int64) objstorage.Readable {
+func NewRemoteReadable(
+	objReader remote.ObjectReader, size int64, errIsNotExist func(error) bool,
+) objstorage.Readable {
 	return &remoteReadable{
-		objReader: objReader,
-		size:      size,
+		objReader:     objReader,
+		size:          size,
+		errIsNotExist: errIsNotExist,
 	}
 }
 
