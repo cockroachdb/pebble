@@ -259,7 +259,7 @@ func (r *remoteStorage) Open(name string) (objstorage.Readable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return objstorageprovider.NewRemoteReadable(objReader, size), nil
+	return objstorageprovider.NewRemoteReadable(objReader, size, r.storage.IsNotExistError), nil
 }
 
 // We avoid files that are very large to prevent excessive memory usage. Note

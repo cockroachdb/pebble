@@ -264,7 +264,7 @@ func openExternalObj(
 	opts := t.opts.MakeReaderOptions()
 	reader, err = sstable.NewReader(
 		context.Background(),
-		objstorageprovider.NewRemoteReadable(objReader, objSize),
+		objstorageprovider.NewRemoteReadable(objReader, objSize, t.externalStorage.IsNotExistError),
 		opts,
 	)
 	if err != nil {
