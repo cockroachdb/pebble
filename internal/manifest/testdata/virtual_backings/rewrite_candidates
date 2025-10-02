@@ -1,4 +1,5 @@
 # Test rewrite candidates heap with blob value sizes.
+# Blob value sizes should not be included in the unreferenced data.
 
 # Add backings with values in blob files.
 add n=1 size=100 blobValueSize=50
@@ -50,7 +51,7 @@ add-table n=1 size=50 table=1
   000003:  size=150  refBlobValueSize=75  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
   000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
   000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
-rewrite candidates heap: 000001(33.3%) 
+rewrite candidates heap: 000001(50.0%) 
 unused virtual backings: 000002 000003 000004 000005
 
 add-table n=2 size=10 table=2
@@ -61,7 +62,7 @@ add-table n=2 size=10 table=2
   000003:  size=150  refBlobValueSize=75  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
   000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
   000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
-rewrite candidates heap: 000002(3.3%) 000001(33.3%) 
+rewrite candidates heap: 000002(5.0%) 000001(50.0%) 
 unused virtual backings: 000003 000004 000005
 
 add-table n=3 size=90 table=3
@@ -72,7 +73,7 @@ add-table n=3 size=90 table=3
   000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
   000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
   000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
-rewrite candidates heap: 000002(3.3%) 000001(33.3%) 000003(40.0%) 
+rewrite candidates heap: 000002(5.0%) 000001(50.0%) 000003(60.0%) 
 unused virtual backings: 000004 000005
 
 add-table n=4 size=45 table=4
@@ -83,7 +84,7 @@ add-table n=4 size=45 table=4
   000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
   000004:  size=300  refBlobValueSize=150  useCount=1  protectionCount=0  virtualizedSize=45  tables: [000004]
   000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
-rewrite candidates heap: 000002(3.3%) 000004(10.0%) 000003(40.0%) 000001(33.3%) 
+rewrite candidates heap: 000002(5.0%) 000004(15.0%) 000003(60.0%) 000001(50.0%) 
 unused virtual backings: 000005
 
 add-table n=5 size=100 table=5
@@ -94,7 +95,7 @@ add-table n=5 size=100 table=5
   000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
   000004:  size=300  refBlobValueSize=150  useCount=1  protectionCount=0  virtualizedSize=45  tables: [000004]
   000005:  size=250  refBlobValueSize=125  useCount=1  protectionCount=0  virtualizedSize=100  tables: [000005]
-rewrite candidates heap: 000002(3.3%) 000004(10.0%) 000003(40.0%) 000001(33.3%) 000005(26.7%) 
+rewrite candidates heap: 000002(5.0%) 000004(15.0%) 000003(60.0%) 000001(50.0%) 000005(40.0%) 
 
 add-table n=2 size=80 table=6
 ----
@@ -104,7 +105,7 @@ add-table n=2 size=80 table=6
   000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
   000004:  size=300  refBlobValueSize=150  useCount=1  protectionCount=0  virtualizedSize=45  tables: [000004]
   000005:  size=250  refBlobValueSize=125  useCount=1  protectionCount=0  virtualizedSize=100  tables: [000005]
-rewrite candidates heap: 000004(10.0%) 000005(26.7%) 000003(40.0%) 000001(33.3%) 000002(30.0%) 
+rewrite candidates heap: 000004(15.0%) 000005(40.0%) 000003(60.0%) 000001(50.0%) 000002(45.0%) 
 
 # Remove some tables to demonstrate heap updates.
 remove-table n=5 table=5
@@ -115,7 +116,7 @@ remove-table n=5 table=5
   000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
   000004:  size=300  refBlobValueSize=150  useCount=1  protectionCount=0  virtualizedSize=45  tables: [000004]
   000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
-rewrite candidates heap: 000004(10.0%) 000002(30.0%) 000003(40.0%) 000001(33.3%) 
+rewrite candidates heap: 000004(15.0%) 000002(45.0%) 000003(60.0%) 000001(50.0%) 
 unused virtual backings: 000005
 
 # Remove backing 4's table. Should remove from heap since virtualizedSize=0.
@@ -127,5 +128,5 @@ remove-table n=4 table=4
   000003:  size=150  refBlobValueSize=75  useCount=1  protectionCount=0  virtualizedSize=90  tables: [000003]
   000004:  size=300  refBlobValueSize=150  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
   000005:  size=250  refBlobValueSize=125  useCount=0  protectionCount=0  virtualizedSize=0  tables: []
-rewrite candidates heap: 000002(30.0%) 000001(33.3%) 000003(40.0%) 
+rewrite candidates heap: 000002(45.0%) 000001(50.0%) 000003(60.0%) 
 unused virtual backings: 000004 000005
