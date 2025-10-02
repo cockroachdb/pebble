@@ -1526,7 +1526,10 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
 	var waitFlushStart crtime.Mono
+	var removeFromOngoingExcises bool
+	var assignedSeqNum SeqNum
 	prepare := func(seqNum base.SeqNum) {
+		assignedSeqNum = seqNum
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
 		// Determine the set of bounds we care about for the purpose of checking
@@ -1546,9 +1549,16 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			overlapBounds = append(overlapBounds, &args.ExciseSpan)
 		}
 
+		addToOngoingExcises := false
 		d.mu.Lock()
-		defer d.mu.Unlock()
-
+		defer func() {
+			if addToOngoingExcises {
+				d.mu.snapshots.ongoingExcises = append(d.mu.snapshots.ongoingExcises,
+					ongoingExcise{seqNum: seqNum, span: args.ExciseSpan})
+				removeFromOngoingExcises = true
+			}
+			d.mu.Unlock()
+		}()
 		if args.ExciseSpan.Valid() {
 			// Check if any of the currently-open EventuallyFileOnlySnapshots
 			// overlap in key ranges with the excise span. If so, we need to
@@ -1557,6 +1567,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			// bounds too.
 			overlapBounds = append(overlapBounds, exciseOverlapBounds(
 				d.cmp, &d.mu.snapshots.snapshotList, args.ExciseSpan, seqNum)...)
+			addToOngoingExcises = true
 		}
 
 		// Check to see if any files overlap with any of the memtables. The queue
@@ -1666,6 +1677,11 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			fileMetas[i] = loadResult.local[i].TableMetadata
 		}
 		err = d.handleIngestAsFlushable(fileMetas, seqNum, args.ExciseSpan)
+		if addToOngoingExcises {
+			// Ingested flushables do not destructively excise, so cannot harm a
+			// concurrent EFOS creation.
+			addToOngoingExcises = false
+		}
 	}
 
 	var ve *manifest.VersionEdit
@@ -1735,6 +1751,13 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	d.commit.ingestSem <- struct{}{}
 	d.commit.AllocateSeqNum(seqNumCount, prepare, apply)
 	<-d.commit.ingestSem
+	if removeFromOngoingExcises {
+		// NB: this must happen after the assignedSeqNum has become visible, so
+		// that any concurrent EFOS creation that acquires d.mu after the removal
+		// of this excise gets a visible seqnum after the excise. The
+		// assignedSeqNum becomes visible in AllocateSeqNum.
+		d.removeFromOngoingExcises(assignedSeqNum)
+	}
 
 	if err != nil {
 		if err2 := ingestCleanup(d.objProvider, loadResult.local); err2 != nil {
@@ -2369,4 +2392,9 @@ func (d *DB) validateSSTables() {
 	if d.shouldValidateSSTablesLocked() {
 		go d.validateSSTables()
 	}
+}
+
+type ongoingExcise struct {
+	seqNum SeqNum
+	span   KeyRange
 }

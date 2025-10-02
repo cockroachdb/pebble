@@ -500,6 +500,12 @@ type DB struct {
 			// sstables.
 			cumulativePinnedCount uint64
 			cumulativePinnedSize  uint64
+
+			// The ongoing excises. These are under snapshots since this is only
+			// needed to coordinate with EventuallyFileOnlySnapshot creation.
+			ongoingExcises []ongoingExcise
+			// Signalled when an ongoingExcise is removed.
+			ongoingExcisesRemovedCond *sync.Cond
 		}
 
 		tableStats struct {
@@ -2798,4 +2804,19 @@ func (d *DB) DebugCurrentVersion() *manifest.Version {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.mu.versions.currentVersion()
+}
+
+func (d *DB) removeFromOngoingExcises(seqNum base.SeqNum) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i := range d.mu.snapshots.ongoingExcises {
+		if d.mu.snapshots.ongoingExcises[i].seqNum == seqNum {
+			n := len(d.mu.snapshots.ongoingExcises)
+			d.mu.snapshots.ongoingExcises[i] = d.mu.snapshots.ongoingExcises[n-1]
+			d.mu.snapshots.ongoingExcises = d.mu.snapshots.ongoingExcises[:n-1]
+			d.mu.snapshots.ongoingExcisesRemovedCond.Broadcast()
+			return
+		}
+	}
+	panic(errors.AssertionFailedf("pebble: no ongoing excise for seqnum %d", seqNum))
 }

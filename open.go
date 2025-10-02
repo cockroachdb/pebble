@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -256,7 +257,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.compact.cond.L = &d.mu.Mutex
 	d.mu.compact.inProgress = make(map[compaction]struct{})
 	d.mu.compact.noOngoingFlushStartTime = crtime.NowMono()
-	d.mu.snapshots.init()
+	d.mu.snapshots.snapshotList.init()
+	d.mu.snapshots.ongoingExcisesRemovedCond = sync.NewCond(&d.mu.Mutex)
 	// logSeqNum is the next sequence number that will be assigned.
 	// Start assigning sequence numbers from base.SeqNumStart to leave
 	// room for reserved sequence numbers (see comments around
