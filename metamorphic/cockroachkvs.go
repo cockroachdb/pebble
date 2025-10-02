@@ -303,7 +303,9 @@ func (kg *cockroachKeyGenerator) randKey(
 		suffixIdx = kg.skewedSuffixInt(0.01)
 		if cockroachkvs.Equal(prefix, startPrefix) {
 			// We can't use a suffix which sorts before startSuffix.
-			for i := 0; suffixIdx > startSuffixIdx; i++ {
+			// N.B. Suffixes are sorted in descending order, but a zero suffix
+			// sorts before all non-zero suffixes.
+			for i := 0; suffixIdx == 0 || suffixIdx > startSuffixIdx; i++ {
 				if i > 10 {
 					suffixIdx = startSuffixIdx
 					break
