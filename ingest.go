@@ -1526,7 +1526,9 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	// asFlushable indicates whether the sstable was ingested as a flushable.
 	var asFlushable bool
 	var waitFlushStart crtime.Mono
+	var assignedSeqNum SeqNum
 	prepare := func(seqNum base.SeqNum) {
+		assignedSeqNum = seqNum
 		// Note that d.commit.mu is held by commitPipeline when calling prepare.
 
 		// Determine the set of bounds we care about for the purpose of checking
@@ -1547,14 +1549,35 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		}
 
 		d.mu.Lock()
-		defer d.mu.Unlock()
-
+		defer func() {
+			if args.ExciseSpan.Valid() && !asFlushable {
+				// This can conflict with a concurrent EFOS creation (unlike a
+				// flushable ingest, which does not destructively excise).
+				_, ok := d.mu.snapshots.ongoingExcises[seqNum]
+				if ok {
+					panic(errors.AssertionFailedf("pebble: excise with seqnum %s already in map", seqNum))
+				}
+				d.mu.snapshots.ongoingExcises[seqNum] = args.ExciseSpan
+			}
+			d.mu.Unlock()
+		}()
 		if args.ExciseSpan.Valid() {
 			// Check if any of the currently-open EventuallyFileOnlySnapshots
-			// overlap in key ranges with the excise span. If so, we need to
-			// check for memtable overlaps with all bounds of that
-			// EventuallyFileOnlySnapshot in addition to the ingestion's own
-			// bounds too.
+			// overlap in key ranges with the excise span. If so, we need to check
+			// for memtable overlaps with *all* bounds of that
+			// EventuallyFileOnlySnapshot in addition to the ingestion's own bounds
+			// too. This is needed because excise is a destructive operation that
+			// mutates the LSM in a non-additive way (unlike ingests and writes).
+			//
+			// Say there is an existing EFOS for the key-range [a, d) where a is in
+			// the memtable and visible to the EFOS, and a later excise wants to
+			// excise [c, g) and there is nothing overlapping with it in the
+			// memtable. By adding [a, d) to the overlap bounds, we ensure that the
+			// excise waits until all of that span is flushed from the memtables,
+			// which makes the EFOS transition to a FOS before the excise modifies
+			// the LSM. If the excise were to not wait, the [c, d) state that the
+			// EFOS needs in the LSM when transitioning to FOS will already have
+			// been excised.
 			overlapBounds = append(overlapBounds, exciseOverlapBounds(
 				d.cmp, &d.mu.snapshots.snapshotList, args.ExciseSpan, seqNum)...)
 		}
@@ -1735,6 +1758,13 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	d.commit.ingestSem <- struct{}{}
 	d.commit.AllocateSeqNum(seqNumCount, prepare, apply)
 	<-d.commit.ingestSem
+	if args.ExciseSpan.Valid() && !asFlushable {
+		// NB: this must happen after the assignedSeqNum has become visible, so
+		// that any concurrent EFOS creation that acquires d.mu after the removal
+		// of this excise gets a visible seqnum after the excise. The
+		// assignedSeqNum becomes visible in AllocateSeqNum.
+		d.removeFromOngoingExcises(assignedSeqNum)
+	}
 
 	if err != nil {
 		if err2 := ingestCleanup(d.objProvider, loadResult.local); err2 != nil {
