@@ -1718,7 +1718,12 @@ func (p *compactionPickerByScore) pickVirtualRewriteCompaction(
 	// or selecting files that aren't contiguous in a level. Successfully materializing
 	// one of the backing's virtual table will also make the backing more likely to be
 	// picked again, since the space amp will increase.
-	_, vtablesByLevel := p.latestVersionState.virtualBackings.ReplacementCandidate()
+	referencedDataPct, _, vtablesByLevel := p.latestVersionState.virtualBackings.ReplacementCandidate()
+
+	if 1-referencedDataPct < p.opts.Experimental.VirtualTableRewriteGarbageRatio() {
+		return nil
+	}
+
 	for level, tables := range vtablesByLevel {
 		for _, vt := range tables {
 			if vt.IsCompacting() {

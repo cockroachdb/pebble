@@ -108,9 +108,11 @@ type backingWithMetadata struct {
 	heapIndex     int
 }
 
+// referencedDataPct returns the percentage of data in the backing that is
+// referenced by virtual tables. For now, we assume all of the backing's
+// blob references remain within the virtual tables.
 func (bm *backingWithMetadata) referencedDataPct() float64 {
-	return float64(bm.virtualizedSize) /
-		float64(bm.backing.Size+bm.backing.ReferencedBlobValueSizeTotal)
+	return float64(bm.virtualizedSize) / float64(bm.backing.Size)
 }
 
 // AddAndRef adds a new backing to the set and takes a reference on it. Another
@@ -295,9 +297,13 @@ func (bv *VirtualBackings) DiskFileNums() []base.DiskFileNum {
 // referenced by virtual tables to total size, along with the list of virtual
 // tables that use the backing. If there are no backings in the set, nil is
 // returned.
-func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, [NumLevels][]*TableMetadata) {
+func (bv *VirtualBackings) ReplacementCandidate() (
+	float64,
+	*TableBacking,
+	[NumLevels][]*TableMetadata,
+) {
 	if bv.rewriteCandidates.Len() == 0 {
-		return nil, [NumLevels][]*TableMetadata{}
+		return 0, nil, [NumLevels][]*TableMetadata{}
 	}
 	v := bv.rewriteCandidates.items[0]
 	var tables [NumLevels][]*TableMetadata
@@ -306,7 +312,7 @@ func (bv *VirtualBackings) ReplacementCandidate() (*TableBacking, [NumLevels][]*
 		tl := v.virtualTables[t]
 		tables[tl.level] = append(tables[tl.level], tl.meta)
 	}
-	return v.backing, tables
+	return v.referencedDataPct(), v.backing, tables
 }
 
 func (bv *VirtualBackings) String() string {
