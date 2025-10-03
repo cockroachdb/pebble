@@ -59,9 +59,14 @@ var (
 	ZstdCompression   = simpleCompressionProfile("ZSTD", compression.ZstdLevel3)
 	MinLZCompression  = simpleCompressionProfile("MinLZ", compression.MinLZFastest)
 
+	// DefaultCompression is a legacy profile that uses Snappy.
 	DefaultCompression = SnappyCompression
+
+	// FastestCompression uses Snappy or MinLZ1.
 	FastestCompression = simpleCompressionProfile("Fastest", fastestCompression)
 
+	// FastCompression automatically chooses between Snappy/MinLZ1 and Zstd1 for
+	// sstable and blob file value blocks.
 	FastCompression = registerCompressionProfile(CompressionProfile{
 		Name:                           "Fast",
 		DataBlocks:                     fastestCompression,
@@ -71,25 +76,31 @@ var (
 		AdaptiveReductionCutoffPercent: 30,
 	})
 
+	// BalancedCompression automatically chooses between Snappy/MinLZ1 and Zstd1
+	// for data and value blocks.
 	BalancedCompression = registerCompressionProfile(CompressionProfile{
 		Name:                           "Balanced",
 		DataBlocks:                     compression.ZstdLevel1,
 		ValueBlocks:                    compression.ZstdLevel1,
 		OtherBlocks:                    fastestCompression,
 		MinReductionPercent:            5,
-		AdaptiveReductionCutoffPercent: 20,
+		AdaptiveReductionCutoffPercent: 15,
 	})
 
+	// GoodCompression uses Zstd1 for data and value blocks.
 	GoodCompression = registerCompressionProfile(CompressionProfile{
-		Name:                           "Good",
-		DataBlocks:                     compression.ZstdLevel3,
-		ValueBlocks:                    compression.ZstdLevel3,
-		OtherBlocks:                    fastestCompression,
-		MinReductionPercent:            5,
-		AdaptiveReductionCutoffPercent: 10,
+		Name: "Good",
+		// In practice, we have observed very little size benefit to using higher
+		// zstd levels like ZstdLevel3 while paying a significant compression
+		// performance cost.
+		DataBlocks:          compression.ZstdLevel1,
+		ValueBlocks:         compression.ZstdLevel1,
+		OtherBlocks:         fastestCompression,
+		MinReductionPercent: 3,
 	})
 )
 
+// fastestCompression is either Snappy or MinLZ1, depending on the architecture.
 var fastestCompression = func() compression.Setting {
 	if runtime.GOARCH == "arm64" {
 		// MinLZ is generally faster and better than Snappy except for arm64: Snappy

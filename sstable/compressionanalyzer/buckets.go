@@ -112,15 +112,6 @@ var Profiles = [...]*block.CompressionProfile{
 		OtherBlocks:         compression.MinLZFastest,
 		MinReductionPercent: 0,
 	},
-
-	{
-		Name:                "MinLZ2",
-		DataBlocks:          compression.MinLZBalanced,
-		ValueBlocks:         compression.MinLZBalanced,
-		OtherBlocks:         compression.MinLZBalanced,
-		MinReductionPercent: 0,
-	},
-
 	{
 		Name:                "Zstd1",
 		DataBlocks:          compression.ZstdLevel1,
@@ -130,11 +121,20 @@ var Profiles = [...]*block.CompressionProfile{
 	},
 
 	{
-		Name:                           "Auto1",
+		Name:                           "Auto1/30",
 		DataBlocks:                     compression.ZstdLevel1,
 		ValueBlocks:                    compression.ZstdLevel1,
 		OtherBlocks:                    compression.MinLZFastest,
 		AdaptiveReductionCutoffPercent: 30,
+		MinReductionPercent:            0,
+	},
+
+	{
+		Name:                           "Auto1/15",
+		DataBlocks:                     compression.ZstdLevel1,
+		ValueBlocks:                    compression.ZstdLevel1,
+		OtherBlocks:                    compression.MinLZFastest,
+		AdaptiveReductionCutoffPercent: 15,
 		MinReductionPercent:            0,
 	},
 
@@ -146,14 +146,6 @@ var Profiles = [...]*block.CompressionProfile{
 		MinReductionPercent: 0,
 	},
 
-	{
-		Name:                           "Auto3",
-		DataBlocks:                     compression.ZstdLevel3,
-		ValueBlocks:                    compression.ZstdLevel3,
-		OtherBlocks:                    compression.MinLZFastest,
-		AdaptiveReductionCutoffPercent: 30,
-		MinReductionPercent:            0,
-	},
 	// Zstd levels 5+ are too slow (on the order of 15-20MB/s to compress) and
 	// don't usually offer a very large benefit in terms of size vs. level 3.
 }
