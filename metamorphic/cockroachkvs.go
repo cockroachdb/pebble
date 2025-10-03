@@ -64,6 +64,16 @@ var CockroachKeyFormat = KeyFormat{
 		}
 		return cockroachkvs.NewMVCCTimeIntervalFilter(minWallTime, maxWallTime)
 	},
+	ParseMaximumSuffixProperty: func(s string) pebble.MaximumSuffixProperty {
+		return cockroachkvs.MaxMVCCTimestampProperty{}
+	},
+	FormatMaximumSuffixProperty: func(prop pebble.MaximumSuffixProperty) string {
+		if prop == nil {
+			return ""
+		}
+		return "maxsuffixprop"
+	},
+	MaximumSuffixProperty: cockroachkvs.MaxMVCCTimestampProperty{},
 }
 
 type cockroachKeyGenerator struct {

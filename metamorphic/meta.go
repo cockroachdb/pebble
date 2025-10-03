@@ -509,6 +509,7 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	ops, err := parse(opsData, parserOpts{
 		parseFormattedUserKey:       testOpts.KeyFormat.ParseFormattedKey,
 		parseFormattedUserKeySuffix: testOpts.KeyFormat.ParseFormattedKeySuffix,
+		parseMaximumSuffixProperty:  testOpts.KeyFormat.ParseMaximumSuffixProperty,
 	})
 	require.NoError(t, err)
 

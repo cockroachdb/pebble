@@ -15,6 +15,7 @@ func TryToGenerateDiagram(keyFormat KeyFormat, opsData []byte) (string, error) {
 	ops, err := parse(opsData, parserOpts{
 		parseFormattedUserKey:       keyFormat.ParseFormattedKey,
 		parseFormattedUserKeySuffix: keyFormat.ParseFormattedKeySuffix,
+		parseMaximumSuffixProperty:  keyFormat.ParseMaximumSuffixProperty,
 	})
 	if err != nil {
 		return "", err
