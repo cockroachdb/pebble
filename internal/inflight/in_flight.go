@@ -240,7 +240,7 @@ func (t *Tracker) olderThan(cutoff crtime.Mono) iter.Seq[entry] {
 // We use the high byte of Handle as a shard index. This limits us to 256 shards
 // (which is plenty).
 const maxShards = 256
-const mapPresize = 16
+const mapPresize = 1024
 
 // handleCounter is an atomic counter with padding to avoid false sharing.
 type handleCounter struct {
