@@ -1715,6 +1715,9 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			waitFlushDuration = waitFlushStart.Elapsed()
 		}
 
+		if d.opts.private.testingBeforeIngestApplyFunc != nil {
+			d.opts.private.testingBeforeIngestApplyFunc()
+		}
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
 		ve, manifestUpdateDuration, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, seqNum)

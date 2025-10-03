@@ -383,3 +383,56 @@ func TestNewSnapshotRace(t *testing.T) {
 	wg.Wait()
 	require.NoError(t, d.Close())
 }
+
+// Test for https://github.com/cockroachdb/pebble/issues/5390.
+func TestEFOSAndExciseRace(t *testing.T) {
+	// Skipping since: panic: unexpected excise of an
+	// EventuallyFileOnlySnapshot's bounds.
+	t.Skip("#5390")
+	o := &Options{
+		FS:                          vfs.NewMem(),
+		L0CompactionThreshold:       10,
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+	}
+	beforeIngestApply := make(chan struct{}, 1)
+	waitForCh := make(chan struct{}, 1)
+	o.private.testingBeforeIngestApplyFunc = func() {
+		beforeIngestApply <- struct{}{}
+		<-waitForCh
+	}
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer d.Close()
+	require.NoError(t, d.Set([]byte("c"), nil, nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Set([]byte("a"), nil, nil))
+	go func() {
+		_, err = d.IngestAndExcise(context.Background(), nil, nil, nil,
+			KeyRange{Start: []byte("b"), End: []byte("d")})
+	}()
+	<-beforeIngestApply
+	// IngestAndExcise is blocked, after waiting for memtable flush.
+	//
+	// Create a EFOS that overlaps with the excise.
+	snap := d.NewEventuallyFileOnlySnapshot([]KeyRange{{Start: []byte("a"), End: []byte("d")}})
+	defer snap.Close()
+	checkIter := func() {
+		iter, err := snap.NewIter(nil)
+		// The iter sees a and c, since it precedes the excise.
+		require.NoError(t, err)
+		require.True(t, iter.First())
+		require.Equal(t, []byte("a"), iter.Key())
+		require.True(t, iter.Next())
+		require.Equal(t, []byte("c"), iter.Key())
+		require.False(t, iter.Next())
+		require.NoError(t, iter.Close())
+	}
+	checkIter()
+	// Unblock the excise.
+	waitForCh <- struct{}{}
+	// Flush and transition to FOS.
+	require.NoError(t, d.Flush())
+	require.NoError(t, snap.WaitForFileOnlySnapshot(context.Background(), 0))
+	checkIter()
+}
