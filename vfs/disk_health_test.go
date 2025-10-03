@@ -635,3 +635,24 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestDiskSlowInfo(t *testing.T) {
+	info := DiskSlowInfo{
+		Path:      "/some/really/deep/path/to/wal/000123.log",
+		OpType:    OpTypeWrite,
+		WriteSize: 123,
+		Duration:  5 * time.Second,
+	}
+
+	result := info.String()
+
+	// Essential information should be present
+	require.Contains(t, result, "disk slowness detected")
+	require.Contains(t, result, "write")
+	require.Contains(t, result, "/some/really/deep/path/to/wal/000123.log")
+	require.Contains(t, result, "(123 bytes)")
+	require.Contains(t, result, "5.0s")
+
+	// Should not contain just the filename without full path
+	require.NotContains(t, result, " 000123.log ")
+}
