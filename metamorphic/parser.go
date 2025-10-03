@@ -62,6 +62,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.dbID, nil, []interface{}{&t.vers}
 	case *dbRestartOp:
 		return &t.dbID, nil, nil
+	case *dbUncleanRestartOp:
+		return &t.dbID, nil, nil
 	case *deleteOp:
 		return &t.writerID, nil, []interface{}{&t.key}
 	case *deleteRangeOp:
@@ -177,6 +179,7 @@ var methods = map[string]*methodInfo{
 	"RatchetFormatMajorVersion": makeMethod(dbRatchetFormatMajorVersionOp{}, dbTag),
 	"Replicate":                 makeMethod(replicateOp{}, dbTag),
 	"Restart":                   makeMethod(dbRestartOp{}, dbTag),
+	"RestartWithCrashClone":     makeMethod(dbUncleanRestartOp{}, dbTag),
 	"SeekGE":                    makeMethod(iterSeekGEOp{}, iterTag),
 	"SeekLT":                    makeMethod(iterSeekLTOp{}, iterTag),
 	"SeekPrefixGE":              makeMethod(iterSeekPrefixGEOp{}, iterTag),
@@ -740,6 +743,16 @@ func computeDerivedFields(ops []op) {
 				v.affectedObjects = objIDSlice{dbID}
 			}
 		case *dbRestartOp:
+			// Find all objects that use this db.
+			v.affectedObjects = nil
+			for obj, db := range objToDB {
+				if db == v.dbID {
+					v.affectedObjects = append(v.affectedObjects, obj)
+				}
+			}
+			// Sort so the output is deterministic.
+			slices.Sort(v.affectedObjects)
+		case *dbUncleanRestartOp:
 			// Find all objects that use this db.
 			v.affectedObjects = nil
 			for obj, db := range objToDB {
