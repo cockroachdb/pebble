@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/inflight"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
@@ -196,6 +197,9 @@ func (d *DB) newInternalIter(
 		newIterRangeKey: d.tableNewRangeKeyIter,
 		seqNum:          seqNum,
 		mergingIter:     &buf.iterAlloc.merging,
+	}
+	if d.iterTracker != nil {
+		dbi.trackerHandle = d.iterTracker.Start()
 	}
 	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache, block.ReadEnv{},
 		blob.SuggestedCachedReaders(vers.MaxReadAmp()))
@@ -578,6 +582,7 @@ type IteratorLevel struct {
 type scanInternalIterator struct {
 	ctx              context.Context
 	db               *DB
+	trackerHandle    inflight.Handle
 	opts             ScanInternalOptions
 	comparer         *base.Comparer
 	merge            Merge
@@ -1283,6 +1288,10 @@ func (i *scanInternalIterator) error() error {
 
 // Close closes this iterator, and releases any pooled objects.
 func (i *scanInternalIterator) Close() error {
+	if i.trackerHandle != 0 {
+		i.db.iterTracker.Stop(i.trackerHandle)
+		i.trackerHandle = 0
+	}
 	err := i.iter.Close()
 	err = errors.CombineErrors(err, i.blobValueFetcher.Close())
 	if i.readState != nil {

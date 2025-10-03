@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/inflight"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
@@ -209,12 +210,14 @@ type Iterator struct {
 	// short-lived (since they pin memtables and sstables), (b) plumbing a
 	// context into every method is very painful, (c) they do not (yet) respect
 	// context cancellation and are only used for tracing.
-	ctx       context.Context
-	opts      IterOptions
-	merge     Merge
-	comparer  *base.Comparer
-	iter      internalIterator
-	pointIter topLevelIterator
+	ctx           context.Context
+	tracker       *inflight.Tracker
+	trackerHandle inflight.Handle
+	opts          IterOptions
+	merge         Merge
+	comparer      *base.Comparer
+	iter          internalIterator
+	pointIter     topLevelIterator
 	// Either readState or version is set, but not both.
 	readState *readState
 	version   *manifest.Version
@@ -2362,6 +2365,9 @@ const maxKeyBufCacheSize = 4 << 10 // 4 KB
 // It is not valid to call any method, including Close, after the iterator
 // has been closed.
 func (i *Iterator) Close() error {
+	if i.tracker != nil {
+		i.tracker.Stop(i.trackerHandle)
+	}
 	// Close the child iterator before releasing the readState because when the
 	// readState is released sstables referenced by the readState may be deleted
 	// which will fail on Windows if the sstables are still open by the child
@@ -2894,6 +2900,10 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 		newIters:            i.newIters,
 		newIterRangeKey:     i.newIterRangeKey,
 		seqNum:              i.seqNum,
+	}
+	if i.tracker != nil {
+		dbi.tracker = i.tracker
+		dbi.trackerHandle = i.tracker.Start()
 	}
 	if i.batch != nil {
 		dbi.batch = &buf.batchState

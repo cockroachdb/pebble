@@ -140,6 +140,8 @@ func TestDefaultOptionsString(t *testing.T) {
   wal_bytes_per_sync=0
   secondary_cache_size_bytes=0
   create_on_shared=0
+  iterator_tracking_poll_interval=5m0s
+  iterator_tracking_max_age=1m0s
 
 [Level "0"]
   block_restart_interval=16

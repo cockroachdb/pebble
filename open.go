@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/inflight"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -204,6 +205,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	} else {
 		d.compactionScheduler = newConcurrencyLimitScheduler(defaultTimeSource{})
 	}
+	if iterTrackOpts := opts.Experimental.IteratorTracking; iterTrackOpts.PollInterval > 0 && iterTrackOpts.MaxAge > 0 {
+		d.iterTracker = inflight.NewPollingTracker(iterTrackOpts.PollInterval, iterTrackOpts.MaxAge, func(report string) {
+			d.opts.Logger.Infof("Long-lived iterators detected:\n%s", report)
+		})
+	}
 
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
@@ -235,6 +241,10 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			}
 			if d.mu.versions.manifestFile != nil {
 				_ = d.mu.versions.manifestFile.Close()
+			}
+			if d.iterTracker != nil {
+				d.iterTracker.Close()
+				d.iterTracker = nil
 			}
 			if r != nil {
 				panic(r)
