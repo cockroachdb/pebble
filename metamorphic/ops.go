@@ -1181,9 +1181,6 @@ const debugIterators = false
 func (o *newIterOp) run(t *Test, h historyRecorder) {
 	r := t.getReader(o.readerID)
 	opts := iterOptions(t.testOpts.KeyFormat, o.iterOpts)
-	if debugIterators {
-		opts.DebugRangeKeyStack = true
-	}
 
 	var i *pebble.Iterator
 	for {
@@ -1261,8 +1258,13 @@ type newIterUsingCloneOp struct {
 func (o *newIterUsingCloneOp) run(t *Test, h historyRecorder) {
 	iter := t.getIter(o.existingIterID)
 	cloneOpts := pebble.CloneOptions{
-		IterOptions:      iterOptions(t.testOpts.KeyFormat, o.iterOpts),
 		RefreshBatchView: o.refreshBatch,
+	}
+	// We treat the zero options as an indication that we want to keep the options
+	// of the original iterator. This way, we don't depend on iterOptions() and
+	// whether it returns nil or not.
+	if !o.iterOpts.IsZero() {
+		cloneOpts.IterOptions = iterOptions(t.testOpts.KeyFormat, o.iterOpts)
 	}
 	i, err := iter.iter.Clone(cloneOpts)
 	if err != nil {
@@ -1377,7 +1379,10 @@ func (o *iterSetOptionsOp) formattedString(kf KeyFormat) string {
 }
 
 func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
-	if o.IsZero() && !debugIterators {
+	// Sometimes exempt from tracking.
+	exemptFromTracking := rand.IntN(4) == 0
+	if o.IsZero() && !debugIterators && !exemptFromTracking && rand.IntN(2) == 0 {
+		// Sometimes return nil if we are using the default options.
 		return nil
 	}
 	var lower, upper []byte
@@ -1395,6 +1400,7 @@ func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
 			Suffix: o.maskSuffix,
 		},
 		UseL6Filters:       o.useL6Filters,
+		ExemptFromTracking: exemptFromTracking,
 		DebugRangeKeyStack: debugIterators,
 	}
 	if opts.RangeKeyMasking.Suffix != nil {

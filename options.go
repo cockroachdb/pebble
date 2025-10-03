@@ -207,6 +207,13 @@ type IterOptions struct {
 	// changed by calling SetOptions.
 	Category block.Category
 
+	// ExemptFromTracking indicates that we should not track the lifetime of the
+	// iterator (used to log information about long-lived iterators). Useful for
+	// hot paths where we know the iterator will be short-lived.
+	ExemptFromTracking bool
+
+	// DebugRangeKeyStack enables additional logging of the range key stack
+	// iterator, via keyspan.InjectLogging. Only used for debugging.
 	DebugRangeKeyStack bool
 
 	// Internal options.

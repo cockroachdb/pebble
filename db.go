@@ -1114,8 +1114,8 @@ func (d *DB) newIter(
 		dbi.batch.batch = batch
 		dbi.batch.batchSeqNum = batch.nextSeqNum()
 	}
-	if !dbi.batchOnlyIter && d.iterTracker != nil {
-		dbi.tracker = d.iterTracker
+	dbi.tracker = d.iterTracker
+	if !dbi.batchOnlyIter && d.iterTracker != nil && !dbi.opts.ExemptFromTracking {
 		dbi.trackerHandle = d.iterTracker.Start()
 	}
 	return finishInitializingIter(ctx, buf)

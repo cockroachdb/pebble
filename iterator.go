@@ -210,7 +210,9 @@ type Iterator struct {
 	// short-lived (since they pin memtables and sstables), (b) plumbing a
 	// context into every method is very painful, (c) they do not (yet) respect
 	// context cancellation and are only used for tracing.
-	ctx           context.Context
+	ctx context.Context
+	// TODO(radu): group fields that are always set from `db` fields (tracker,
+	// merge, comparer, fc) into a single struct we can point to.
 	tracker       *inflight.Tracker
 	trackerHandle inflight.Handle
 	opts          IterOptions
@@ -2365,8 +2367,9 @@ const maxKeyBufCacheSize = 4 << 10 // 4 KB
 // It is not valid to call any method, including Close, after the iterator
 // has been closed.
 func (i *Iterator) Close() error {
-	if i.tracker != nil {
+	if i.trackerHandle.IsValid() {
 		i.tracker.Stop(i.trackerHandle)
+		i.trackerHandle = 0
 	}
 	// Close the child iterator before releasing the readState because when the
 	// readState is released sstables referenced by the readState may be deleted
@@ -2900,9 +2903,9 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 		newIters:            i.newIters,
 		newIterRangeKey:     i.newIterRangeKey,
 		seqNum:              i.seqNum,
+		tracker:             i.tracker,
 	}
-	if i.tracker != nil {
-		dbi.tracker = i.tracker
+	if i.tracker != nil && !dbi.opts.ExemptFromTracking {
 		dbi.trackerHandle = i.tracker.Start()
 	}
 	if i.batch != nil {
