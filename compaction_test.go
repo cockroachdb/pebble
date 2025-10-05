@@ -585,7 +585,7 @@ func TestAutomaticFlush(t *testing.T) {
 		Logger:                testutils.Logger{T: t},
 		MemTableSize:          memTableSize,
 	}
-	opts = opts.testingRandomized(t)
+	opts.testingRandomized(t)
 	opts.WithFSDefaults()
 	d, err := Open("", opts)
 	if err != nil {
