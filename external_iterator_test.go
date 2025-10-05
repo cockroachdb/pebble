@@ -28,7 +28,7 @@ func TestExternalIterator(t *testing.T) {
 		FormatMajorVersion: internalFormatNewest,
 		Comparer:           testkeys.Comparer,
 	}
-	o.testingRandomized(t)
+	o.randomizeForTesting(t)
 	o.EnsureDefaults()
 	d, err := Open("", o)
 	require.NoError(t, err)

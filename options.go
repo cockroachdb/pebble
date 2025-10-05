@@ -2535,29 +2535,38 @@ func (o *Options) Validate() error {
 // MakeReaderOptions constructs sstable.ReaderOptions from the corresponding
 // options in the receiver.
 func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
-	var readerOpts sstable.ReaderOptions
-	if o != nil {
-		readerOpts.Comparer = o.Comparer
-		readerOpts.Filters = o.Filters
-		readerOpts.KeySchemas = o.KeySchemas
-		readerOpts.LoadBlockSema = o.LoadBlockSema
-		readerOpts.LoggerAndTracer = o.LoggerAndTracer
-		readerOpts.Merger = o.Merger
+	return sstable.ReaderOptions{
+		Comparer:   o.Comparer,
+		Filters:    o.Filters,
+		KeySchemas: o.KeySchemas,
+		Merger:     o.Merger,
+		ReaderOptions: block.ReaderOptions{
+			LoadBlockSema:   o.LoadBlockSema,
+			LoggerAndTracer: o.LoggerAndTracer,
+		},
 	}
-	return readerOpts
 }
 
 // MakeWriterOptions constructs sstable.WriterOptions for the specified level
 // from the corresponding options in the receiver.
 func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstable.WriterOptions {
-	var writerOpts sstable.WriterOptions
-	writerOpts.TableFormat = format
-	if o != nil {
-		writerOpts.Comparer = o.Comparer
-		if o.Merger != nil {
-			writerOpts.MergerName = o.Merger.Name
+	writerOpts := sstable.WriterOptions{
+		TableFormat:                format,
+		Comparer:                   o.Comparer,
+		BlockPropertyCollectors:    o.BlockPropertyCollectors,
+		AllocatorSizeClasses:       o.AllocatorSizeClasses,
+		NumDeletionsThreshold:      o.Experimental.NumDeletionsThreshold,
+		DeletionSizeRatioThreshold: o.Experimental.DeletionSizeRatioThreshold,
+	}
+	if o.Merger != nil {
+		writerOpts.MergerName = o.Merger.Name
+	}
+	if o.KeySchema != "" {
+		var ok bool
+		writerOpts.KeySchema, ok = o.KeySchemas[o.KeySchema]
+		if !ok {
+			panic(fmt.Sprintf("invalid schema %q", redact.Safe(o.KeySchema)))
 		}
-		writerOpts.BlockPropertyCollectors = o.BlockPropertyCollectors
 	}
 	if format >= sstable.TableFormatPebblev3 {
 		writerOpts.ShortAttributeExtractor = o.Experimental.ShortAttributeExtractor
@@ -2573,16 +2582,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
 	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
-	if o.KeySchema != "" {
-		var ok bool
-		writerOpts.KeySchema, ok = o.KeySchemas[o.KeySchema]
-		if !ok {
-			panic(fmt.Sprintf("invalid schema %q", redact.Safe(o.KeySchema)))
-		}
-	}
-	writerOpts.AllocatorSizeClasses = o.AllocatorSizeClasses
-	writerOpts.NumDeletionsThreshold = o.Experimental.NumDeletionsThreshold
-	writerOpts.DeletionSizeRatioThreshold = o.Experimental.DeletionSizeRatioThreshold
 	return writerOpts
 }
 

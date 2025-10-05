@@ -1342,7 +1342,7 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 		MemTableSize: memTableSize,
 		FS:           mem,
 	}
-	opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 	func() {
 		db, err := Open("", opts)
 		require.NoError(t, err)
@@ -1385,7 +1385,7 @@ func TestGetVersion(t *testing.T) {
 	opts := &Options{
 		FS: mem,
 	}
-	opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 
 	// Case 1: No options file.
 	version, err := GetVersion("", mem)

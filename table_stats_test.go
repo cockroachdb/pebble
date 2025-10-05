@@ -294,7 +294,7 @@ func TestStatsAfterReopen(t *testing.T) {
 	}
 	opts.Levels[0].BlockSize = 50
 	opts.TargetFileSizes[0] = 100
-	opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 	// We need at least FormatV2BlobFiles to retrieve blob file compression
 	// statistics.
 	opts.FormatMajorVersion = max(opts.FormatMajorVersion, FormatV2BlobFiles)
