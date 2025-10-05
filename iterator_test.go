@@ -1577,7 +1577,7 @@ func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace, rng *rand.Rand) *DB
 		FS:       vfs.NewMem(),
 		Logger:   panicLogger{},
 	}
-	dbOpts.testingRandomized(t)
+	dbOpts.randomizeForTesting(t)
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
 
@@ -1627,7 +1627,7 @@ func newPointTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
 		Comparer: testkeys.Comparer,
 		FS:       vfs.NewMem(),
 	}
-	dbOpts.testingRandomized(t)
+	dbOpts.randomizeForTesting(t)
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
 

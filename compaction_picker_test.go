@@ -38,7 +38,7 @@ func loadVersion(
 ) (*manifest.Version, *latestVersionState, *Options, string) {
 	var sizes [numLevels]int64
 	opts := &Options{}
-	opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 	opts.EnsureDefaults()
 	d.ScanArgs(t, "l-base-max-bytes", &opts.LBaseMaxBytes)
 	var files [numLevels][]*manifest.TableMetadata

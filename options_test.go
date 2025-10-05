@@ -25,12 +25,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testingRandomized randomizes some default options. Currently, it's
+// randomizeForTesting randomizes some default options. Currently, it's
 // used for testing under a random format major version in some tests.
-func (o *Options) testingRandomized(t testing.TB) *Options {
-	if o == nil {
-		o = &Options{}
-	}
+func (o *Options) randomizeForTesting(t testing.TB) {
 	if o.Logger == nil {
 		o.Logger = testutils.Logger{T: t}
 	}
@@ -56,11 +53,10 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
 	}
 	o.EnsureDefaults()
-	return o
 }
 
 func testingRandomized(t testing.TB, o *Options) *Options {
-	o.testingRandomized(t)
+	o.randomizeForTesting(t)
 	return o
 }
 
@@ -614,7 +610,7 @@ func TestKeyCategories(t *testing.T) {
 
 func TestApplyDBCompressionSettings(t *testing.T) {
 	var o Options
-	o.testingRandomized(t)
+	o.randomizeForTesting(t)
 
 	var profile DBCompressionSettings
 	o.ApplyCompressionSettings(func() DBCompressionSettings {

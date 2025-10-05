@@ -2179,7 +2179,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 
 	mem := vfs.NewMem()
 	o := &Options{FS: mem}
-	o.testingRandomized(t)
+	o.randomizeForTesting(t)
 	d, err := Open("", o)
 	require.NoError(t, err)
 

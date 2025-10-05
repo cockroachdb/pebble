@@ -830,7 +830,7 @@ func TestMemTableReservation(t *testing.T) {
 		FS:                vfs.NewMem(),
 	}
 	defer opts.Cache.Unref()
-	opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 	opts.EnsureDefaults()
 
 	// Add a block to the cache. Note that the memtable size is larger than the
@@ -974,7 +974,7 @@ func TestRollManifest(t *testing.T) {
 		NumPrevManifest:       int(toPreserve),
 	}
 	opts.DisableAutomaticCompactions = true
-	opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 	d, err := Open("", opts)
 	require.NoError(t, err)
 

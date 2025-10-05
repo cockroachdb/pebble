@@ -585,7 +585,7 @@ func TestAutomaticFlush(t *testing.T) {
 		Logger:                testutils.Logger{T: t},
 		MemTableSize:          memTableSize,
 	}
-	opts = opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 	opts.WithFSDefaults()
 	d, err := Open("", opts)
 	if err != nil {
@@ -2478,7 +2478,7 @@ func TestCompactionErrorCleanup(t *testing.T) {
 	for i := range opts.TargetFileSizes {
 		opts.TargetFileSizes[i] = 1
 	}
-	opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
@@ -3227,7 +3227,7 @@ func TestCompactionErrorStats(t *testing.T) {
 	for i := range opts.TargetFileSizes {
 		opts.TargetFileSizes[i] = 1
 	}
-	opts.testingRandomized(t)
+	opts.randomizeForTesting(t)
 	d, err := Open("", opts)
 	require.NoError(t, err)
 
