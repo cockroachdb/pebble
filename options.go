@@ -1418,15 +1418,23 @@ type DBCompressionSettings struct {
 
 // Predefined compression settings.
 var (
-	DBCompressionNone     = UniformDBCompressionSettings(block.NoCompression)
-	DBCompressionFastest  = UniformDBCompressionSettings(block.FastestCompression)
+	DBCompressionNone    = UniformDBCompressionSettings(block.NoCompression)
+	DBCompressionFastest = UniformDBCompressionSettings(block.FastestCompression)
+	DBCompressionFast    = func() DBCompressionSettings {
+		cs := DBCompressionSettings{Name: "Fast"}
+		for i := 0; i < manifest.NumLevels-1; i++ {
+			cs.Levels[i] = block.FastestCompression
+		}
+		cs.Levels[manifest.NumLevels-1] = block.FastCompression
+		return cs
+	}()
 	DBCompressionBalanced = func() DBCompressionSettings {
 		cs := DBCompressionSettings{Name: "Balanced"}
 		for i := 0; i < manifest.NumLevels-2; i++ {
 			cs.Levels[i] = block.FastestCompression
 		}
-		cs.Levels[manifest.NumLevels-2] = block.FastCompression     // Zstd1 for value blocks.
-		cs.Levels[manifest.NumLevels-1] = block.BalancedCompression // Zstd1 for data and value blocks.
+		cs.Levels[manifest.NumLevels-2] = block.FastCompression
+		cs.Levels[manifest.NumLevels-1] = block.BalancedCompression
 		return cs
 	}()
 	DBCompressionGood = func() DBCompressionSettings {
@@ -1434,8 +1442,8 @@ var (
 		for i := 0; i < manifest.NumLevels-2; i++ {
 			cs.Levels[i] = block.FastestCompression
 		}
-		cs.Levels[manifest.NumLevels-2] = block.BalancedCompression // Zstd1 for data and value blocks.
-		cs.Levels[manifest.NumLevels-1] = block.GoodCompression     // Zstd3 for data and value blocks.
+		cs.Levels[manifest.NumLevels-2] = block.BalancedCompression
+		cs.Levels[manifest.NumLevels-1] = block.GoodCompression
 		return cs
 	}()
 )

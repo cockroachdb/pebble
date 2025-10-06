@@ -827,6 +827,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	if rng.IntN(2) == 0 {
 		csList := []pebble.DBCompressionSettings{
 			pebble.DBCompressionNone,
+			pebble.DBCompressionFast,
 			pebble.DBCompressionFastest,
 			pebble.DBCompressionBalanced,
 			pebble.DBCompressionGood,
