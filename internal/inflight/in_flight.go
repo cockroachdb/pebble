@@ -72,6 +72,10 @@ type Tracker struct {
 // A zero Handle is not valid.
 type Handle uint64
 
+func (h Handle) IsValid() bool {
+	return h != 0
+}
+
 // ReportFn is called (typically periodically) with a formatted report that
 // describes entries older than some threshold. An empty string report is never
 // delivered by the polling tracker.

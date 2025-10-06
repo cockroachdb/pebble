@@ -52,6 +52,10 @@ func (o *Options) randomizeForTesting(t testing.TB) {
 		}
 		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
 	}
+	if rand.IntN(2) == 0 {
+		o.Experimental.IteratorTracking.PollInterval = 100 * time.Millisecond
+		o.Experimental.IteratorTracking.MaxAge = 10 * time.Second
+	}
 	o.EnsureDefaults()
 }
 

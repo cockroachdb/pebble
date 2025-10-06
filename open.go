@@ -205,11 +205,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	} else {
 		d.compactionScheduler = newConcurrencyLimitScheduler(defaultTimeSource{})
 	}
-	const iterTrackerPollInterval = 5 * time.Minute
-	const iterTrackerMaxAge = 1 * time.Minute
-	d.iterTracker = inflight.NewPollingTracker(iterTrackerPollInterval, iterTrackerMaxAge, func(report string) {
-		d.opts.Logger.Infof("Long-lived iterators detected:\n%s", report)
-	})
+	if iterTrackOpts := opts.Experimental.IteratorTracking; iterTrackOpts.PollInterval > 0 && iterTrackOpts.MaxAge > 0 {
+		d.iterTracker = inflight.NewPollingTracker(iterTrackOpts.PollInterval, iterTrackOpts.MaxAge, func(report string) {
+			d.opts.Logger.Infof("Long-lived iterators detected:\n%s", report)
+		})
+	}
 
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
@@ -242,7 +242,10 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			if d.mu.versions.manifestFile != nil {
 				_ = d.mu.versions.manifestFile.Close()
 			}
-			d.iterTracker.Close()
+			if d.iterTracker != nil {
+				d.iterTracker.Close()
+				d.iterTracker = nil
+			}
 			if r != nil {
 				panic(r)
 			}

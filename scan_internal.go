@@ -188,7 +188,6 @@ func (d *DB) newInternalIter(
 	*dbi = scanInternalIterator{
 		ctx:             ctx,
 		db:              d,
-		trackerHandle:   d.iterTracker.Start(),
 		comparer:        d.opts.Comparer,
 		merge:           d.opts.Merger.Merge,
 		readState:       readState,
@@ -198,6 +197,9 @@ func (d *DB) newInternalIter(
 		newIterRangeKey: d.tableNewRangeKeyIter,
 		seqNum:          seqNum,
 		mergingIter:     &buf.iterAlloc.merging,
+	}
+	if d.iterTracker != nil {
+		dbi.trackerHandle = d.iterTracker.Start()
 	}
 	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache, block.ReadEnv{},
 		blob.SuggestedCachedReaders(vers.MaxReadAmp()))
@@ -1286,7 +1288,10 @@ func (i *scanInternalIterator) error() error {
 
 // Close closes this iterator, and releases any pooled objects.
 func (i *scanInternalIterator) Close() error {
-	i.db.iterTracker.Stop(i.trackerHandle)
+	if i.trackerHandle != 0 {
+		i.db.iterTracker.Stop(i.trackerHandle)
+		i.trackerHandle = 0
+	}
 	err := i.iter.Close()
 	err = errors.CombineErrors(err, i.blobValueFetcher.Close())
 	if i.readState != nil {
