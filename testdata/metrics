@@ -702,15 +702,15 @@ LSM                             |    vtables   |   value sep   |        |   inge
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
    L0         0B |      0    0B |      0     0 |     0B     0B |   165B |      0    0B |   0 57.40
-   L6      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  0.98
+   L6        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  1.00
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |   165B |      0    0B |   1 100.1
+total        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |   165B |      0    0B |   1 100.6
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
    L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      9  6.8KB  2.4KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.7KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.8KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     18   14KB  2.4KB
 
@@ -863,15 +863,15 @@ LSM                             |    vtables   |   value sep   |        |   inge
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
    L0        4KB |      6   4KB |      0     0 |     0B     0B |   211B |      3 1.9KB |   2 54.94
-   L6      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  0.98
+   L6        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  1.00
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       12KB |     15  11KB |      0     0 |  1.2KB     0B |  2.1KB |      3 1.9KB |   3  9.49
+total       12KB |     15  11KB |      0     0 |  1.2KB     0B |  2.1KB |      3 1.9KB |   3  9.53
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
    L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     12  8.9KB  2.4KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.7KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.8KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     21   18KB  2.4KB
 
@@ -986,15 +986,15 @@ LSM                             |    vtables   |   value sep   |        |   inge
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
    L0      8.8KB |     13 8.8KB |      0     0 |     0B     0B |   277B |      3 1.9KB |   2 59.71
-   L6      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  0.98
+   L6        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  1.00
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       17KB |     22  16KB |      0     0 |  1.2KB     0B |  2.2KB |      3 1.9KB |   3 11.45
+total       17KB |     22  16KB |      0     0 |  1.2KB     0B |  2.2KB |      3 1.9KB |   3 11.49
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
    L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   14KB  2.4KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.7KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.8KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     28   23KB  2.4KB
 
@@ -1121,15 +1121,15 @@ LSM                             |    vtables   |   value sep   |        |   inge
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
    L0      7.4KB |     11 7.4KB |      0     0 |     0B     0B |   277B |      3 1.9KB |   2 59.71
-   L6      8.6KB |     10 7.4KB |      0     0 |  1.2KB     0B |  6.8KB |      1  655B |   1  0.98
+   L6      8.7KB |     10 7.4KB |      0     0 |  1.2KB     0B |  6.8KB |      1  655B |   1  1.00
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       16KB |     21  15KB |      0     0 |  1.2KB     0B |  2.8KB |      4 2.6KB |   3  9.09
+total       16KB |     21  15KB |      0     0 |  1.2KB     0B |  2.8KB |      4 2.6KB |   3  9.11
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
    L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   14KB  2.4KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.7KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.8KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     28   23KB  2.4KB
 
@@ -1299,7 +1299,7 @@ level       size | tables  size |  count  size |  refsz valblk |     in | tables
    L0         0B |      0    0B |      0     0 |     0B     0B |   277B |      3 1.9KB |   0 59.71
    L6       14KB |     18  13KB |      0     0 |  1.2KB     0B |   14KB |      2 1.3KB |   1  0.85
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       14KB |     18  13KB |      0     0 |  1.2KB     0B |  3.5KB |      5 3.2KB |   1  8.99
+total       14KB |     18  13KB |      0     0 |  1.2KB     0B |  3.5KB |      5 3.2KB |   1  9.01
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz

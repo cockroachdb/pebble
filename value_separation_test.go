@@ -220,7 +220,7 @@ func (vs *defineDBValueSeparator) Kind() sstable.ValueSeparationKind {
 }
 
 // MinimumSize implements the ValueSeparation interface.
-func (vs *defineDBValueSeparator) MinimumSize() int { return 0 }
+func (vs *defineDBValueSeparator) MinimumSize() int { return vs.pbr.MinimumSize() }
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
