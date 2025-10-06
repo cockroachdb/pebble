@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/inflight"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -545,6 +546,8 @@ type DB struct {
 	// the time at database Open; may be used to compute metrics like effective
 	// compaction concurrency
 	openedAt time.Time
+
+	iterTracker *inflight.Tracker
 }
 
 var _ Reader = (*DB)(nil)
@@ -1111,6 +1114,10 @@ func (d *DB) newIter(
 		dbi.batch.batch = batch
 		dbi.batch.batchSeqNum = batch.nextSeqNum()
 	}
+	if !dbi.batchOnlyIter {
+		dbi.tracker = d.iterTracker
+		dbi.trackerHandle = d.iterTracker.Start()
+	}
 	return finishInitializingIter(ctx, buf)
 }
 
@@ -1121,6 +1128,7 @@ func (d *DB) newIter(
 func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 	// Short-hand.
 	dbi := &buf.dbi
+
 	var memtables flushableList
 	if dbi.readState != nil {
 		memtables = dbi.readState.memtables
@@ -1615,6 +1623,9 @@ func (d *DB) Close() error {
 	if v := d.mu.snapshots.count(); v > 0 {
 		err = firstError(err, errors.Errorf("leaked snapshots: %d open snapshots on DB %p", v, d))
 	}
+
+	d.iterTracker.Close()
+	d.iterTracker = nil
 
 	return err
 }
