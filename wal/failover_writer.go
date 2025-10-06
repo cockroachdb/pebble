@@ -476,7 +476,7 @@ type failoverWriterOpts struct {
 	// invoked. It's used to ensure that we reclaim all physical segment files,
 	// including ones that did not complete creation before the Writer was
 	// closed.
-	segmentClosed func(NumWAL, segmentWithSizeEtc)
+	segmentClosed func(logicalLogWithSizesEtc)
 
 	writerCreatedForTest chan<- struct{}
 
@@ -704,13 +704,18 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 				// there's an obsolete segment file we should clean up. Note
 				// that the file may be occupying non-negligible disk space even
 				// though we never wrote to it due to preallocation.
-				ww.opts.segmentClosed(ww.opts.wn, segmentWithSizeEtc{
-					segment: segment{
-						logNameIndex: LogNameIndex(writerIndex),
-						dir:          dir.Dir,
+				ww.opts.segmentClosed(logicalLogWithSizesEtc{
+					num: ww.opts.wn,
+					segments: []segmentWithSizeEtc{
+						{
+							segment: segment{
+								logNameIndex: LogNameIndex(writerIndex),
+								dir:          dir.Dir,
+							},
+							approxFileSize:      initialFileSize,
+							synchronouslyClosed: false,
+						},
 					},
-					approxFileSize:      initialFileSize,
-					synchronouslyClosed: false,
 				})
 			})
 		}
