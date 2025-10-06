@@ -331,13 +331,13 @@ Blob files:
 scores wait-for-compaction=completion
 ----
 Level    Size     Score     Fill factor    Compensated fill factor
-L0       1.0KB    151.53    2.00           2.00
+L0       1.0KB    149.45    2.00           2.00
 L1       0B       0.00      0.00           0.00
 L2       0B       0.00      0.00           0.00
 L3       0B       0.00      0.00           0.00
 L4       0B       0.00      0.00           0.00
 L5       0B       0.00      0.00           0.00
-L6       865B     0.00      0.01           0.01
+L6       877B     0.00      0.01           0.01
 
 # This attempt to compact should chose to rewrite the blob file B000006 *AND*
 # compact out of L0.

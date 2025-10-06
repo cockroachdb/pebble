@@ -247,10 +247,6 @@ const (
 	// ValueSeparationSpanPolicy indicates that values were separated
 	// based on a span policy during writing.
 	ValueSeparationSpanPolicy
-
-	// ValueSeparationPreservedRefs indicates that existing blob references
-	// were preserved without creating new blob files.
-	ValueSeparationPreservedRefs
 )
 
 var (

@@ -250,7 +250,7 @@ type tableCompaction struct {
 	// b) rewrite blob files: The compaction will write eligible values to new
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
-	getValueSeparation func(JobID, *tableCompaction) compact.ValueSeparation
+	getValueSeparation func(JobID, *tableCompaction, ValueStoragePolicy) compact.ValueSeparation
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -542,7 +542,7 @@ func (c *tableCompaction) makeInfo(jobID JobID) CompactionInfo {
 	return info
 }
 
-type getValueSeparation func(JobID, *tableCompaction) compact.ValueSeparation
+type getValueSeparation func(JobID, *tableCompaction, ValueStoragePolicy) compact.ValueSeparation
 
 // newCompaction constructs a compaction from the provided picked compaction.
 //
@@ -3300,10 +3300,7 @@ func (d *DB) runDefaultTableCompaction(
 	d.mu.Unlock()
 	defer d.mu.Lock()
 
-	// Determine whether we should separate values into blob files.
-	valueSeparation := c.getValueSeparation(jobID, c)
-
-	result := d.compactAndWrite(jobID, c, snapshots, valueSeparation)
+	result := d.compactAndWrite(jobID, c, snapshots)
 	if result.Err == nil {
 		ve, result.Err = c.makeVersionEdit(result)
 	}
@@ -3344,10 +3341,7 @@ func (d *DB) runDefaultTableCompaction(
 // compactAndWrite runs the data part of a compaction, where we set up a
 // compaction iterator and use it to write output tables.
 func (d *DB) compactAndWrite(
-	jobID JobID,
-	c *tableCompaction,
-	snapshots compact.Snapshots,
-	valueSeparation compact.ValueSeparation,
+	jobID JobID, c *tableCompaction, snapshots compact.Snapshots,
 ) (result compact.Result) {
 	suggestedCacheReaders := blob.SuggestedCachedReaders(len(c.inputs))
 	// Compactions use a pool of buffers to read blocks, avoiding polluting the
@@ -3442,25 +3436,36 @@ func (d *DB) compactAndWrite(
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 
-	var spanPolicyValid bool
-	var spanPolicy SpanPolicy
-	// If spanPolicyValid is true and spanPolicyEndKey is empty, then spanPolicy
-	// applies for the rest of the keyspace.
+	// Determine the value separation policy for this compaction.
+	// We pass the value storage span policy if one applies for the entire
+	// compaction keyspace in order to preserve blob references.
+	// Note that the value storage policy may change per table if
+	// there are different span policies in effect for this output
+	// range.
+	var compactionValueStoragePolicy ValueStoragePolicy
 	var spanPolicyEndKey []byte
+	var spanPolicy SpanPolicy
+	spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(c.bounds.Start)
+	if err != nil {
+		return runner.Finish().WithError(err)
+	}
+	if len(spanPolicyEndKey) == 0 || d.cmp(c.bounds.End.Key, spanPolicyEndKey) < 0 {
+		compactionValueStoragePolicy = spanPolicy.ValueStoragePolicy
+	}
 
+	valueSeparation := c.getValueSeparation(jobID, c, compactionValueStoragePolicy)
 	for runner.MoreDataToWrite() {
 		if c.cancel.Load() {
 			return runner.Finish().WithError(ErrCancelledCompaction)
 		}
 		// Create a new table.
 		firstKey := runner.FirstKey()
-		if !spanPolicyValid || (len(spanPolicyEndKey) > 0 && d.cmp(firstKey, spanPolicyEndKey) >= 0) {
+		if len(spanPolicyEndKey) > 0 && d.cmp(firstKey, spanPolicyEndKey) >= 0 {
 			var err error
 			spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(firstKey)
 			if err != nil {
 				return runner.Finish().WithError(err)
 			}
-			spanPolicyValid = true
 		}
 
 		writerOpts := d.makeWriterOptions(c.outputLevel.level)

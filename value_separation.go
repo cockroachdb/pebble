@@ -24,7 +24,7 @@ import (
 // ValueStorageLatencyTolerant.
 const latencyTolerantMinimumSize = 10
 
-var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction) compact.ValueSeparation {
+var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, ValueStoragePolicy) compact.ValueSeparation {
 	return compact.NeverSeparateValues{}
 }
 
@@ -34,24 +34,32 @@ var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction) compa
 //
 // It assumes that the compaction will write tables at d.TableFormat() or above.
 func (d *DB) determineCompactionValueSeparation(
-	jobID JobID, c *tableCompaction,
+	jobID JobID, c *tableCompaction, valueStorage ValueStoragePolicy,
 ) compact.ValueSeparation {
 	if d.FormatMajorVersion() < FormatValueSeparation ||
 		d.opts.Experimental.ValueSeparationPolicy == nil {
 		return compact.NeverSeparateValues{}
 	}
 	policy := d.opts.Experimental.ValueSeparationPolicy()
-	if !policy.Enabled {
+	if !policy.Enabled || valueStorage == ValueStorageLowReadLatency {
 		return compact.NeverSeparateValues{}
 	}
 
 	// We're allowed to write blob references. Determine whether we should carry
 	// forward existing blob references, or write new ones.
-	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy); !writeBlobs {
+	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, valueStorage); !writeBlobs {
 		// This compaction should preserve existing blob references.
+		kind := sstable.ValueSeparationDefault
+		minSize := policy.MinimumSize
+		if valueStorage != ValueStorageDefault {
+			kind = sstable.ValueSeparationSpanPolicy
+			minSize = latencyTolerantMinimumSize
+		}
 		return &preserveBlobReferences{
-			inputBlobPhysicalFiles:   uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
-			outputBlobReferenceDepth: outputBlobReferenceDepth,
+			inputBlobPhysicalFiles:     uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
+			outputBlobReferenceDepth:   outputBlobReferenceDepth,
+			minimumValueSize:           minSize,
+			originalValueSeprationKind: kind,
 		}
 	}
 
@@ -84,7 +92,7 @@ func (d *DB) determineCompactionValueSeparation(
 // maximum blob reference depth to assign to output sstables (the actual value
 // may be lower iff the output table references fewer distinct blob files).
 func shouldWriteBlobFiles(
-	c *tableCompaction, policy ValueSeparationPolicy,
+	c *tableCompaction, policy ValueSeparationPolicy, valueStorage ValueStoragePolicy,
 ) (writeBlobs bool, referenceDepth manifest.BlobReferenceDepth) {
 	// Flushes will have no existing references to blob files and should write
 	// their values to new blob files.
@@ -113,6 +121,33 @@ func shouldWriteBlobFiles(
 	if inputReferenceDepth > manifest.BlobReferenceDepth(policy.MaxBlobReferenceDepth) {
 		return true, 0
 	}
+	// Compare policies used by each input file. If all input files have the
+	// same policy characteristics as the current one, then we can preserve
+	// existing blob references. This ensures that tables that were not written
+	// with value separation enabled will have their values written to new blob files.
+	for _, level := range c.inputs {
+		for t := range level.files.All() {
+			backingProps, backingPropsValid := t.TableBacking.Properties()
+			if !backingPropsValid {
+				continue
+			}
+			switch valueStorage {
+			case ValueStorageLowReadLatency:
+				// This case should be handled prior to calling this function,
+				// but include it here for completeness.
+				return false, inputReferenceDepth
+			case ValueStorageLatencyTolerant:
+				if backingProps.ValueSeparationMinSize != latencyTolerantMinimumSize {
+					return true, 0
+				}
+			default:
+				if int(backingProps.ValueSeparationMinSize) != policy.MinimumSize {
+					return true, 0
+				}
+			}
+		}
+	}
+
 	// Otherwise, we won't write any new blob files but will carry forward
 	// existing references.
 	return false, inputReferenceDepth
@@ -385,6 +420,13 @@ type preserveBlobReferences struct {
 	inputBlobPhysicalFiles   map[base.BlobFileID]*manifest.PhysicalBlobFile
 	outputBlobReferenceDepth manifest.BlobReferenceDepth
 
+	// minimumValueSize is the minimum size of values used by the value separation
+	// policy that was originally used to write the input sstables.
+	minimumValueSize int
+	// originalValueSeprationKind is the value separation policy that was originally used to
+	// write the input sstables.
+	originalValueSeprationKind sstable.ValueSeparationKind
+
 	// state
 	buf []byte
 	// currReferences holds the pending references that have been referenced by
@@ -412,11 +454,11 @@ func (vs *preserveBlobReferences) SetNextOutputConfig(config compact.ValueSepara
 
 // Kind implements the ValueSeparation interface.
 func (vs *preserveBlobReferences) Kind() sstable.ValueSeparationKind {
-	return sstable.ValueSeparationPreservedRefs
+	return vs.originalValueSeprationKind
 }
 
 // MinimumSize implements the ValueSeparation interface.
-func (vs *preserveBlobReferences) MinimumSize() int { return 0 }
+func (vs *preserveBlobReferences) MinimumSize() int { return vs.minimumValueSize }
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.
