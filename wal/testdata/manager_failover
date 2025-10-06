@@ -290,8 +290,7 @@ ok
 list-and-stats
 ----
 logs:
-  000001: {(sec,001)}
-  000001: {(pri,002)}
+  000001: {(sec,001), (pri,002)}
 stats:
   obsolete: count 0 size 0
   live: count 2 size 18

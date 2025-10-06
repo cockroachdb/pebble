@@ -440,6 +440,10 @@ type segmentWithSizeEtc struct {
 	synchronouslyClosed bool
 }
 
+func cmpSegmentWithSizeEtc(a, b segmentWithSizeEtc) int {
+	return cmp.Compare(a.segment.logNameIndex, b.segment.logNameIndex)
+}
+
 type failoverManager struct {
 	opts Options
 	// initialObsolete holds the set of DeletableLogs that formed the logs
@@ -655,41 +659,41 @@ func (wm *failoverManager) ElevateWriteStallThresholdForFailover() bool {
 	return wm.monitor.elevateWriteStallThresholdForFailover()
 }
 
+// writerClosed is called by the failoverWriter; see
+// failoverWriterOpts.writerClosed.
 func (wm *failoverManager) writerClosed(llse logicalLogWithSizesEtc) {
 	wm.monitor.noWriter()
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
-	wm.mu.closedWALs = append(wm.mu.closedWALs, llse)
+	wm.recordClosedWALLocked(llse)
 	wm.mu.ww = nil
 }
 
 // segmentClosed is called by the failoverWriter; see
 // failoverWriterOpts.segmentClosed.
-func (wm *failoverManager) segmentClosed(num NumWAL, s segmentWithSizeEtc) {
+func (wm *failoverManager) segmentClosed(llse logicalLogWithSizesEtc) {
 	wm.mu.Lock()
 	defer wm.mu.Unlock()
+	wm.recordClosedWALLocked(llse)
+}
+
+func (wm *failoverManager) recordClosedWALLocked(llse logicalLogWithSizesEtc) {
 	// Find the closed WAL matching the logical WAL num, if one exists. If we
-	// find one, we append the segment to the list of segments if it's not
-	// already there.
-	i, found := slices.BinarySearchFunc(wm.mu.closedWALs, num, func(llse logicalLogWithSizesEtc, num NumWAL) int {
-		return cmp.Compare(llse.num, num)
-	})
-	if found {
-		segmentIndex, segmentFound := slices.BinarySearchFunc(wm.mu.closedWALs[i].segments, s.segment.logNameIndex,
-			func(s segmentWithSizeEtc, logNameIndex LogNameIndex) int {
-				return cmp.Compare(s.segment.logNameIndex, logNameIndex)
-			})
-		if !segmentFound {
-			wm.mu.closedWALs[i].segments = slices.Insert(wm.mu.closedWALs[i].segments, segmentIndex, s)
-		}
+	// find one, we merge the segments into the existing list.
+	i, found := slices.BinarySearchFunc(wm.mu.closedWALs, llse.num,
+		func(llse logicalLogWithSizesEtc, num NumWAL) int {
+			return cmp.Compare(llse.num, num)
+		})
+	if !found {
+		// If we didn't find an existing entry in closedWALs for the provided
+		// NumWAL, append a new entry.
+		wm.mu.closedWALs = slices.Insert(wm.mu.closedWALs, i, llse)
 		return
 	}
-	// If we didn't find an existing entry in closedWALs for the provided
-	// NumWAL, append a new entry.
-	wm.mu.closedWALs = slices.Insert(wm.mu.closedWALs, i, logicalLogWithSizesEtc{
-		num:      num,
-		segments: []segmentWithSizeEtc{s},
-	})
+	wm.mu.closedWALs[i].segments = append(wm.mu.closedWALs[i].segments, llse.segments...)
+	slices.SortFunc(wm.mu.closedWALs[i].segments, cmpSegmentWithSizeEtc)
+	wm.mu.closedWALs[i].segments = slices.CompactFunc(wm.mu.closedWALs[i].segments,
+		func(a, b segmentWithSizeEtc) bool { return a.logNameIndex == b.logNameIndex })
 }
 
 // Stats implements Manager.

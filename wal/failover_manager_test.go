@@ -427,27 +427,29 @@ func TestManagerFailover(t *testing.T) {
 				return b.String()
 
 			case "list-and-stats":
-				logs := fm.List()
-				stats := fm.Stats()
-				var b strings.Builder
-				if len(logs) > 0 {
-					fmt.Fprintf(&b, "logs:\n")
-					for _, f := range logs {
-						fmt.Fprintf(&b, "  %s\n", f.String())
+				return td.Retry(t, func() string {
+					logs := fm.List()
+					stats := fm.Stats()
+					var b strings.Builder
+					if len(logs) > 0 {
+						fmt.Fprintf(&b, "logs:\n")
+						for _, f := range logs {
+							fmt.Fprintf(&b, "  %s\n", f.String())
+						}
 					}
-				}
-				fmt.Fprintf(&b, "stats:\n")
-				fmt.Fprintf(&b, "  obsolete: count %d size %d\n", stats.ObsoleteFileCount, stats.ObsoleteFileSize)
-				fmt.Fprintf(&b, "  live: count %d size %d\n", stats.LiveFileCount, stats.LiveFileSize)
-				fmt.Fprintf(&b, "  failover: switches %d pri-dur %s sec-dur %s\n", stats.Failover.DirSwitchCount,
-					stats.Failover.PrimaryWriteDuration.String(), stats.Failover.SecondaryWriteDuration.String())
-				var latencyProto io_prometheus_client.Metric
-				stats.Failover.FailoverWriteAndSyncLatency.Write(&latencyProto)
-				latencySampleCount := *latencyProto.Histogram.SampleCount
-				if latencySampleCount > 0 {
-					fmt.Fprintf(&b, "  latency sample count: %d\n", latencySampleCount)
-				}
-				return b.String()
+					fmt.Fprintf(&b, "stats:\n")
+					fmt.Fprintf(&b, "  obsolete: count %d size %d\n", stats.ObsoleteFileCount, stats.ObsoleteFileSize)
+					fmt.Fprintf(&b, "  live: count %d size %d\n", stats.LiveFileCount, stats.LiveFileSize)
+					fmt.Fprintf(&b, "  failover: switches %d pri-dur %s sec-dur %s\n", stats.Failover.DirSwitchCount,
+						stats.Failover.PrimaryWriteDuration.String(), stats.Failover.SecondaryWriteDuration.String())
+					var latencyProto io_prometheus_client.Metric
+					stats.Failover.FailoverWriteAndSyncLatency.Write(&latencyProto)
+					latencySampleCount := *latencyProto.Histogram.SampleCount
+					if latencySampleCount > 0 {
+						fmt.Fprintf(&b, "  latency sample count: %d\n", latencySampleCount)
+					}
+					return b.String()
+				})
 
 			case "write-record":
 				var value string
