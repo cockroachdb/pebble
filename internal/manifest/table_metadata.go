@@ -413,6 +413,13 @@ type TableBackingProperties struct {
 	TombstoneDenseBlocksRatio float64
 
 	CompressionStats block.CompressionStats
+
+	// ValueSeparationKind is the value separation policy used when writing the table.
+	ValueSeparationKind sstable.ValueSeparationKind
+	// ValueSeparationMinSize is the minimum value size for which values were
+	// separated when writing the table. This value is 0 if the policy used
+	// does not write blob files.
+	ValueSeparationMinSize uint64
 }
 
 // NumPointDeletions is the number of point deletions in the sstable. For virtual
@@ -447,6 +454,8 @@ func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBacki
 		NumRangeKeyDels:            props.NumRangeKeyDels,
 		NumRangeKeySets:            props.NumRangeKeySets,
 		ValueBlocksSize:            props.ValueBlocksSize,
+		ValueSeparationKind:        sstable.ValueSeparationKind(props.ValueSeparationKind),
+		ValueSeparationMinSize:     props.ValueSeparationMinSize,
 	}
 	if props.NumDataBlocks != 0 {
 		b.props.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)

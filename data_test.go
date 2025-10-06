@@ -912,7 +912,10 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	// all the tables, we can construct all the referenced blob files and add
 	// them to the final version edit.
 	valueSeparator := &defineDBValueSeparator{
-		pbr:   &preserveBlobReferences{},
+		pbr: &preserveBlobReferences{
+			originalValueSeprationKind: sstable.ValueSeparationDefault,
+			minimumValueSize:           d.opts.Experimental.ValueSeparationPolicy().MinimumSize,
+		},
 		metas: make(map[base.BlobFileID]*manifest.PhysicalBlobFile),
 	}
 
@@ -936,7 +939,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		if err != nil {
 			return err
 		}
-		c.getValueSeparation = func(JobID, *tableCompaction) compact.ValueSeparation {
+		c.getValueSeparation = func(JobID, *tableCompaction, ValueStoragePolicy) compact.ValueSeparation {
 			return valueSeparator
 		}
 		// NB: define allows the test to exactly specify which keys go
