@@ -591,7 +591,7 @@ func (h *fileCacheHandle) newIters(
 	internalOpts.readEnv.IsSharedIngested = env.IsSharedIngested
 	internalOpts.readEnv.InternalBounds = env.InternalBounds
 	if opts != nil && opts.layer.IsSet() && !opts.layer.IsFlushableIngests() {
-		internalOpts.readEnv.Block.Level = cache.MakeLevel(opts.layer.Level())
+		internalOpts.readEnv.Block.Level = base.MakeLevel(opts.layer.Level())
 	}
 
 	var iters iterSet

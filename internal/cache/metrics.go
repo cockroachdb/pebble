@@ -9,50 +9,33 @@ import (
 	"iter"
 
 	"github.com/cockroachdb/crlib/crtime"
-	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/base"
 )
-
-// Level is the LSM level associated with an accessed block. Used to maintain
-// granular cache hit/miss statistics.
-//
-// The zero value indicates that there is no level (e.g. flushable ingests) or
-// it is unknown.
-type Level struct {
-	levelPlusOne int8
-}
-
-func (l Level) String() string {
-	if l.levelPlusOne <= 0 {
-		return "n/a"
-	}
-	return fmt.Sprintf("L%d", l.levelPlusOne-1)
-}
-
-// index returns a value between [0, NumLevels).
-func (l Level) index() int8 {
-	return l.levelPlusOne
-}
-
-func MakeLevel(l int) Level {
-	if invariants.Enabled && (l < 0 || l >= NumLevels-1) {
-		panic(errors.AssertionFailedf("invalid level: %d", l))
-	}
-	return Level{levelPlusOne: int8(l + 1)}
-}
 
 const NumLevels = 1 /* unknown level */ + 7
 
-// Levels is an iter.Seq[Level].
-func Levels(yield func(l Level) bool) {
-	for i := range NumLevels {
-		if !yield(Level{levelPlusOne: int8(i)}) {
+// Levels is an iter.Seq[base.Level] that produces all the levels in the
+// HitsAndMisses array.
+func Levels(yield func(l base.Level) bool) {
+	if !yield(base.Level{}) {
+		return
+	}
+	for i := range NumLevels - 1 {
+		if !yield(base.MakeLevel(i)) {
 			return
 		}
 	}
 }
 
-var _ iter.Seq[Level] = Levels
+// levelIndex returns the index of level in the HitsAndMisses array.
+func levelIndex(level base.Level) int {
+	if l, ok := level.Get(); ok {
+		return l + 1
+	}
+	return 0
+}
+
+var _ iter.Seq[base.Level] = Levels
 
 // Category is used to maintain granular cache hit/miss statistics.
 type Category int8
@@ -117,17 +100,17 @@ type HitsAndMisses [NumLevels][NumCategories]struct {
 	Misses int64
 }
 
-func (hm *HitsAndMisses) Get(level Level, category Category) (hits, misses int64) {
-	v := hm[level.index()][category]
+func (hm *HitsAndMisses) Get(level base.Level, category Category) (hits, misses int64) {
+	v := hm[levelIndex(level)][category]
 	return v.Hits, v.Misses
 }
 
-func (hm *HitsAndMisses) Hits(level Level, category Category) int64 {
-	return hm[level.index()][category].Hits
+func (hm *HitsAndMisses) Hits(level base.Level, category Category) int64 {
+	return hm[levelIndex(level)][category].Hits
 }
 
-func (hm *HitsAndMisses) Misses(level Level, category Category) int64 {
-	return hm[level.index()][category].Misses
+func (hm *HitsAndMisses) Misses(level base.Level, category Category) int64 {
+	return hm[levelIndex(level)][category].Misses
 }
 
 // Aggregate returns the total hits and misses across all categories and levels.
@@ -143,8 +126,8 @@ func (hm *HitsAndMisses) Aggregate() (hits, misses int64) {
 
 // AggregateLevel returns the total hits and misses for a specific level (across
 // all categories).
-func (hm *HitsAndMisses) AggregateLevel(level Level) (hits, misses int64) {
-	for _, v := range hm[level.index()] {
+func (hm *HitsAndMisses) AggregateLevel(level base.Level) (hits, misses int64) {
+	for _, v := range hm[levelIndex(level)] {
 		hits += v.Hits
 		misses += v.Misses
 	}
