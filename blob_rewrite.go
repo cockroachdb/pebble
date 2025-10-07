@@ -310,9 +310,8 @@ func (d *DB) runBlobFileRewriteLocked(
 	bufferPool.Init(4, block.ForBlobFileRewrite)
 	defer bufferPool.Release()
 	env := block.ReadEnv{
-		Stats:              &c.internalIteratorStats,
-		BufferPool:         &bufferPool,
-		ReportCorruptionFn: d.reportCorruption,
+		Stats:      &c.internalIteratorStats,
+		BufferPool: &bufferPool,
 	}
 
 	// Create a new file for the rewritten blob file.
