@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -345,6 +346,11 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 			RewriteMinimumAge:        50 * time.Millisecond,
 			GarbageRatioLowPriority:  0.10, // 10% garbage
 			GarbageRatioHighPriority: 0.30, // 30% garbage
+		}
+	}
+	opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+		return compact.ValueSeparationOutputConfig{
+			MinimumSize: 10,
 		}
 	}
 
@@ -931,6 +937,11 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		}
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 			return policy
+		}
+		opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+			return compact.ValueSeparationOutputConfig{
+				MinimumSize: 1 + rng.IntN(14),
+			}
 		}
 	}
 

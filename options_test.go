@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -51,6 +52,11 @@ func (o *Options) randomizeForTesting(t testing.TB) {
 			GarbageRatioHighPriority: lowPri + rand.Float64()*(1.0-lowPri), // [lowPri, 1.0)
 		}
 		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
+		o.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+			return compact.ValueSeparationOutputConfig{
+				MinimumSize: 10,
+			}
+		}
 	}
 	if rand.IntN(2) == 0 {
 		o.Experimental.IteratorTracking.PollInterval = 100 * time.Millisecond
@@ -259,7 +265,6 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 
 	// Check that an OPTIONS file that configured an explicit WALDir that will
 	// no longer be used errors if it's not also present in WALRecoveryDirs.
-	//require.Equal(t, ErrMissingWALRecoveryDir{Dir: "external-wal-dir"},
 	err := DefaultOptions().CheckCompatibility(storeDir, `
 [Options]
   wal_dir=external-wal-dir

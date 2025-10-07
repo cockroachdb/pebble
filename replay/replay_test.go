@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/datatest"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -354,6 +355,11 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 					MinimumSize:           3,
 					MaxBlobReferenceDepth: 5,
 					RewriteMinimumAge:     15 * time.Minute,
+				}
+			}
+			opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+				return compact.ValueSeparationOutputConfig{
+					MinimumSize: 10,
 				}
 			}
 			setDefaultExperimentalOpts(opts)

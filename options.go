@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -815,6 +816,10 @@ type Options struct {
 			// The default value is 0 (disabled).
 			MaxAge time.Duration
 		}
+		// LatencyTolerantSpanPolicy controls the minimum size of a value that will
+		// be separated into a blob file when the value is likely MVCC garbage
+		// or a part of the latency tolerant span key range.
+		LatencyTolerantSpanPolicy func() compact.ValueSeparationOutputConfig
 	}
 
 	// Filters is a map from filter policy name to filter policy. It is used for

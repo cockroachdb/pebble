@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/problemspans"
@@ -1512,6 +1513,11 @@ func TestCompactionPickerScores(t *testing.T) {
 			}
 			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
+			}
+			opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+				return compact.ValueSeparationOutputConfig{
+					MinimumSize: 10,
+				}
 			}
 			var err error
 			d, err = runDBDefineCmd(td, opts)

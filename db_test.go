@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -306,10 +307,16 @@ func TestBasicWrites(t *testing.T) {
 }
 
 func TestRandomWrites(t *testing.T) {
-	d, err := Open("", testingRandomized(t, &Options{
+	opts := &Options{
 		FS:           vfs.NewMem(),
 		MemTableSize: 8 * 1024,
-	}))
+	}
+	opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+		return compact.ValueSeparationOutputConfig{
+			MinimumSize: 10,
+		}
+	}
+	d, err := Open("", testingRandomized(t, opts))
 	require.NoError(t, err)
 
 	keys := [64][]byte{}
@@ -697,10 +704,16 @@ func TestIterLeak(t *testing.T) {
 			for _, flush := range []bool{true, false} {
 				t.Run(fmt.Sprintf("flush=%t", flush), func(t *testing.T) {
 					fc := NewFileCache(10, 100)
-					d, err := Open("", testingRandomized(t, &Options{
+					opts := &Options{
 						FS:        vfs.NewMem(),
 						FileCache: fc,
-					}))
+					}
+					opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+						return compact.ValueSeparationOutputConfig{
+							MinimumSize: 10,
+						}
+					}
+					d, err := Open("", testingRandomized(t, opts))
 					require.NoError(t, err)
 
 					require.NoError(t, d.Set([]byte("a"), []byte("a"), nil))
@@ -1194,6 +1207,11 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 				return 1, 2
 			},
 		}
+		opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+			return compact.ValueSeparationOutputConfig{
+				MinimumSize: 10,
+			}
+		}
 		d, err := Open("", testingRandomized(t, opts))
 		require.NoError(t, err)
 
@@ -1265,7 +1283,13 @@ func TestDBApplyBatchMismatch(t *testing.T) {
 func TestCloseCleanerRace(t *testing.T) {
 	mem := vfs.NewMem()
 	for i := 0; i < 20; i++ {
-		db, err := Open("", testingRandomized(t, &Options{FS: mem}))
+		opts := &Options{FS: mem}
+		opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+			return compact.ValueSeparationOutputConfig{
+				MinimumSize: 10,
+			}
+		}
+		db, err := Open("", testingRandomized(t, opts))
 		require.NoError(t, err)
 		require.NoError(t, db.Set([]byte("a"), []byte("something"), Sync))
 		require.NoError(t, db.Flush())

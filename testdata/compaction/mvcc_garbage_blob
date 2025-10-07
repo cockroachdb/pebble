@@ -5,23 +5,24 @@ define value-separation=(enabled, min-size=5, max-ref-depth=3, garbage-ratios=1.
 
 batch
 set yay@3 a
-set yay@2 ab
+set yay@2 ababababab
 set zoo@4 b
-set zoo@3 ba
+set zoo@3 bababababa
 del zoo@2
-set zoo@2 bag
-set zoo@1 bah
+set zoo@2 baggyaggys
+set zoo@1 bahhumbugs
 ----
 
 # This flush *should* write a blob file for our MVCC garbage values, containing
-# 4 values: "ab", "ba", "bag", "bah" - totaling 10 bytes of logical values.
-# N.B. `del zoo@2, set zoo@2 bag` transforms into `setwithdel zoo@2 bag`.
+# 4 values: "ababababab", "bababababa", "baggyaggys", "bahhumbugs" - totaling 40
+# bytes of logical values.
+# N.B. `del zoo@2, set zoo@2 baggyaggys` transforms into `setwithdel zoo@2 baggyaggys`.
 flush
 ----
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:869 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:869 blobrefs:[(B000006: 40); depth:1]
 Blob files:
-  B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
+  B000006 physical:{000006 size:[121 (121B)] vals:[40 (40B)]}
 
 batch
 del yuumi@2
@@ -33,33 +34,33 @@ flush
 L0.1:
   000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[17-18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:745
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:869 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:869 blobrefs:[(B000006: 40); depth:1]
 Blob files:
-  B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
+  B000006 physical:{000006 size:[121 (121B)] vals:[40 (40B)]}
 
 flush-log
 ----
-[JOB 1] flushed 1 memtable (100B) to L0 [000005] (869B) blob [000006 (MVCCGarbage: 100%)] (102B), in 1.0s (1.0s total), output rate 869B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000005] (869B) blob [000006 (MVCCGarbage: 100%)] (121B), in 1.0s (1.0s total), output rate 869B/s
 [JOB 1] flushed 1 memtable (100B) to L0 [000008] (745B), in 1.0s (1.0s total), output rate 745B/s
 
 batch
 set yay@3 a
-set yay@2 ab
+set yay@2 ababababab
 set yuumi@1 poiandyaya
 ----
 
 flush
 ----
 L0.2:
-  000010:[yay@3#19,SET-yuumi@1#21,SET] seqnums:[19-21] points:[yay@3#19,SET-yuumi@1#21,SET] size:837 blobrefs:[(B000011: 12); depth:1]
+  000010:[yay@3#19,SET-yuumi@1#21,SET] seqnums:[19-21] points:[yay@3#19,SET-yuumi@1#21,SET] size:837 blobrefs:[(B000011: 20); depth:1]
 L0.1:
   000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[17-18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:745
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:869 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:869 blobrefs:[(B000006: 40); depth:1]
 Blob files:
-  B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
-  B000011 physical:{000011 size:[102 (102B)] vals:[12 (12B)]}
+  B000006 physical:{000006 size:[121 (121B)] vals:[40 (40B)]}
+  B000011 physical:{000011 size:[110 (110B)] vals:[20 (20B)]}
 
 flush-log
 ----
-[JOB 1] flushed 1 memtable (100B) to L0 [000010] (837B) blob [000011 (MVCCGarbage: 17%)] (102B), in 1.0s (1.0s total), output rate 837B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000010] (837B) blob [000011 (MVCCGarbage: 50%)] (110B), in 1.0s (1.0s total), output rate 837B/s

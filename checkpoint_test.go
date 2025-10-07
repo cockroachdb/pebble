@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -51,6 +52,11 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 		})
 		if createOnShared {
 			opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+		}
+		opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+			return compact.ValueSeparationOutputConfig{
+				MinimumSize: 10,
+			}
 		}
 		opts.DisableTableStats = true
 		opts.private.testingAlwaysWaitForCleanup = true

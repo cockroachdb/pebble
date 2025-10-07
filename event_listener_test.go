@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
@@ -636,6 +637,11 @@ func TestBlobCorruptionEvent(t *testing.T) {
 					Enabled:               true,
 					MinimumSize:           1,
 					MaxBlobReferenceDepth: 10,
+				}
+			}
+			opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+				return compact.ValueSeparationOutputConfig{
+					MinimumSize: 10,
 				}
 			}
 			d, err := Open("", opts)

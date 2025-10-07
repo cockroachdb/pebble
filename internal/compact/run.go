@@ -344,7 +344,8 @@ func (r *Runner) writeKeysToTable(
 		}
 
 		valueLen := kv.V.Len()
-		isLikelyMVCCGarbage := sstable.IsLikelyMVCCGarbage(kv.K.UserKey, prevKeyKind, kv.K.Kind(), valueLen, prefixEqual)
+		isLikelyMVCCGarbage := sstable.IsLikelyMVCCGarbage(kv.K.UserKey, prevKeyKind, kv.K.Kind(),
+			valueLen, prefixEqual)
 		// Add the value to the sstable, possibly separating its value into a
 		// blob file. The ValueSeparation implementation is responsible for
 		// writing the KV to the sstable.
