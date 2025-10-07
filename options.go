@@ -2589,19 +2589,25 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	return writerOpts
 }
 
-// MakeBlobWriterOptions constructs blob.FileWriterOptions from the corresponding
-// options in the receiver.
-func (o *Options) MakeBlobWriterOptions(level int, format blob.FileFormat) blob.FileWriterOptions {
-	lo := o.Levels[level]
+// makeWriterOptions constructs sstable.WriterOptions for the specified level
+// using the current DB options and format.
+func (d *DB) makeWriterOptions(level int) sstable.WriterOptions {
+	return d.opts.MakeWriterOptions(level, d.TableFormat())
+}
+
+// makeBlobWriterOptions constructs blob.FileWriterOptions using the current DB
+// options and format.
+func (d *DB) makeBlobWriterOptions(level int) blob.FileWriterOptions {
+	lo := &d.opts.Levels[level]
 	return blob.FileWriterOptions{
-		Format:       format,
+		Format:       d.BlobFileFormat(),
 		Compression:  lo.Compression(),
 		ChecksumType: block.ChecksumTypeCRC32c,
 		FlushGovernor: block.MakeFlushGovernor(
 			lo.BlockSize,
 			lo.BlockSizeThreshold,
 			base.SizeClassAwareBlockSizeThreshold,
-			o.AllocatorSizeClasses,
+			d.opts.AllocatorSizeClasses,
 		),
 	}
 }

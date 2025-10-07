@@ -545,7 +545,7 @@ func TestPickCompaction(t *testing.T) {
 		pc, got := vs.picker.pickAutoScore(compactionEnv{diskAvailBytes: math.MaxUint64}), ""
 		if pc != nil {
 			tableCompaction := pc.(*pickedTableCompaction)
-			c := newCompaction(tableCompaction, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+			c := newCompaction(tableCompaction, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 
 			gotStart := fileNums(c.startLevel.files)
 			gotML := ""
@@ -1609,7 +1609,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "start", &start)
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedTableCompaction(opts, version, l0Organizer, start, defaultOutputLevel(start, base), base)
-				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
 					c.outputLevel.level, c.maxOutputFileSize)
 
@@ -3551,7 +3551,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 
 	// Create the compaction.
 	tableCompaction := pc.(*pickedTableCompaction)
-	c := newCompaction(tableCompaction, opts, time.Now(), nil, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+	c := newCompaction(tableCompaction, opts, time.Now(), nil, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 
 	// The compaction should be converted to a move.
 	require.Equal(t, compactionKindMove, c.kind, "expected compaction to be optimized to a move")
@@ -3667,7 +3667,7 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 
 	// Create the compaction.
 	tableCompaction := pc.(*pickedTableCompaction)
-	c := newCompaction(tableCompaction, opts, time.Now(), nil, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+	c := newCompaction(tableCompaction, opts, time.Now(), nil, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 
 	// The compaction should NOT be converted to a move.
 	require.NotEqual(t, compactionKindMove, c.kind, "move optimization should NOT apply when there is overlap in output level")

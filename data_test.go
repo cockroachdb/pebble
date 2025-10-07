@@ -583,7 +583,7 @@ func runBuildRemoteCmd(td *datadriven.TestData, d *DB, storage remote.Storage) e
 	}
 	path := td.CmdArgs[0].String()
 
-	// Use TableFormatMax here and downgrade after, if necessary. This ensures
+	// Use d.TableFormat() here and downgrade after, if necessary. This ensures
 	// that all fields are set.
 	writeOpts := d.opts.MakeWriterOptions(0 /* level */, d.TableFormat())
 	if rand.IntN(4) == 0 {
@@ -648,7 +648,7 @@ func runBuildCmd(
 	}
 	path := td.CmdArgs[0].String()
 
-	writeOpts := d.opts.MakeWriterOptions(0 /* level */, d.TableFormat())
+	writeOpts := d.makeWriterOptions(0 /* level */)
 	if err := sstable.ParseWriterOptions(&writeOpts, td.CmdArgs[1:]...); err != nil {
 		return err
 	}
@@ -932,11 +932,11 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			flushed:   make(chan struct{}),
 		}}
 		c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.latest.l0Organizer,
-			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now(), d.TableFormat(), d.determineCompactionValueSeparation)
+			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now(), d.shouldCreateShared(0), d.determineCompactionValueSeparation)
 		if err != nil {
 			return err
 		}
-		c.getValueSeparation = func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation {
+		c.getValueSeparation = func(JobID, *tableCompaction) compact.ValueSeparation {
 			return valueSeparator
 		}
 		// NB: define allows the test to exactly specify which keys go
@@ -1163,7 +1163,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			writable, _, err := d.objProvider.Create(context.Background(), base.FileTypeBlob, fileNum, objstorage.CreateOptions{})
 			return writable, err
 		}
-		blobWriterOpts := d.opts.MakeBlobWriterOptions(0, d.BlobFileFormat())
+		blobWriterOpts := d.makeBlobWriterOptions(0)
 		fileStats, err := valueSeparator.bv.WriteFiles(newBlobObject, blobWriterOpts)
 		if err != nil {
 			return nil, err
