@@ -24,17 +24,19 @@ import (
 // ValueStorageLatencyTolerant.
 const latencyTolerantMinimumSize = 10
 
-var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation {
+var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction) compact.ValueSeparation {
 	return compact.NeverSeparateValues{}
 }
 
 // determineCompactionValueSeparation determines whether a compaction should
 // separate values into blob files. It returns a compact.ValueSeparation
 // implementation that should be used for the compaction.
+//
+// It assumes that the compaction will write tables at d.TableFormat() or above.
 func (d *DB) determineCompactionValueSeparation(
-	jobID JobID, c *tableCompaction, tableFormat sstable.TableFormat,
+	jobID JobID, c *tableCompaction,
 ) compact.ValueSeparation {
-	if tableFormat < sstable.TableFormatPebblev7 || d.FormatMajorVersion() < FormatValueSeparation ||
+	if d.FormatMajorVersion() < FormatValueSeparation ||
 		d.opts.Experimental.ValueSeparationPolicy == nil {
 		return compact.NeverSeparateValues{}
 	}
@@ -61,7 +63,7 @@ func (d *DB) determineCompactionValueSeparation(
 				jobID, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts)
 		},
 		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
-		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level, d.BlobFileFormat()),
+		writerOpts:         d.makeBlobWriterOptions(c.outputLevel.level),
 		minimumSize:        policy.MinimumSize,
 		globalMinimumSize:  policy.MinimumSize,
 		invalidValueCallback: func(userKey []byte, value []byte, err error) {

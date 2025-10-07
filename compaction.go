@@ -30,7 +30,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
-	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -251,7 +250,7 @@ type tableCompaction struct {
 	// b) rewrite blob files: The compaction will write eligible values to new
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
-	getValueSeparation func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation
+	getValueSeparation func(JobID, *tableCompaction) compact.ValueSeparation
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -336,7 +335,6 @@ type tableCompaction struct {
 
 	grantHandle CompactionGrantHandle
 
-	tableFormat   sstable.TableFormat
 	objCreateOpts objstorage.CreateOptions
 
 	annotations []string
@@ -544,7 +542,7 @@ func (c *tableCompaction) makeInfo(jobID JobID) CompactionInfo {
 	return info
 }
 
-type getValueSeparation func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation
+type getValueSeparation func(JobID, *tableCompaction) compact.ValueSeparation
 
 // newCompaction constructs a compaction from the provided picked compaction.
 //
@@ -556,7 +554,7 @@ func newCompaction(
 	beganAt time.Time,
 	provider objstorage.Provider,
 	grantHandle CompactionGrantHandle,
-	tableFormat sstable.TableFormat,
+	preferSharedStorage bool,
 	getValueSeparation getValueSeparation,
 ) *tableCompaction {
 	c := &tableCompaction{
@@ -574,7 +572,6 @@ func newCompaction(
 			picker:  pc.pickerMetrics,
 		},
 		grantHandle: grantHandle,
-		tableFormat: tableFormat,
 	}
 	// Acquire a reference to the version to ensure that files and in-memory
 	// version state necessary for reading files remain available. Ignoring
@@ -615,8 +612,6 @@ func newCompaction(
 	)
 	c.kind = pc.kind
 
-	preferSharedStorage := tableFormat >= FormatMinForSharedObjects.MaxTableFormat() &&
-		remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
 	c.maybeSwitchToMoveOrCopy(preferSharedStorage, provider)
 	c.objCreateOpts = objstorage.CreateOptions{
 		PreferSharedStorage: preferSharedStorage,
@@ -833,7 +828,7 @@ func newFlush(
 	baseLevel int,
 	flushing flushableList,
 	beganAt time.Time,
-	tableFormat sstable.TableFormat,
+	preferSharedStorage bool,
 	getValueSeparation getValueSeparation,
 ) (*tableCompaction, error) {
 	c := &tableCompaction{
@@ -845,7 +840,6 @@ func newFlush(
 		maxOutputFileSize:  math.MaxUint64,
 		maxOverlapBytes:    math.MaxUint64,
 		grantHandle:        noopGrantHandle{},
-		tableFormat:        tableFormat,
 		metrics: compactionMetrics{
 			beganAt: beganAt,
 		},
@@ -872,8 +866,6 @@ func newFlush(
 		}
 	}
 
-	preferSharedStorage := tableFormat >= FormatMinForSharedObjects.MaxTableFormat() &&
-		remote.ShouldCreateShared(opts.Experimental.CreateOnShared, c.outputLevel.level)
 	c.objCreateOpts = objstorage.CreateOptions{
 		PreferSharedStorage: preferSharedStorage,
 		WriteCategory:       getDiskWriteCategoryForCompaction(opts, c.kind),
@@ -1722,8 +1714,16 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		}
 	}
 
-	c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.latest.l0Organizer,
-		d.mu.versions.picker.getBaseLevel(), d.mu.mem.queue[:n], d.timeNow(), d.TableFormat(), d.determineCompactionValueSeparation)
+	c, err := newFlush(
+		d.opts,
+		d.mu.versions.currentVersion(),
+		d.mu.versions.latest.l0Organizer,
+		d.mu.versions.picker.getBaseLevel(),
+		d.mu.mem.queue[:n],
+		d.timeNow(),
+		d.shouldCreateShared(0),
+		d.determineCompactionValueSeparation,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -2921,12 +2921,7 @@ func (d *DB) runCopyCompaction(
 			}
 		}()
 
-		w, _, err := d.objProvider.Create(
-			ctx, base.FileTypeTable, newMeta.TableBacking.DiskFileNum,
-			objstorage.CreateOptions{
-				PreferSharedStorage: d.shouldCreateShared(c.outputLevel.level),
-			},
-		)
+		w, _, err := d.objProvider.Create(ctx, base.FileTypeTable, newMeta.TableBacking.DiskFileNum, c.objCreateOpts)
 		if err != nil {
 			return nil, compact.Stats{}, []compact.OutputBlob{}, err
 		}
@@ -2954,7 +2949,7 @@ func (d *DB) runCopyCompaction(
 			// or update category stats).
 			wrote, err = sstable.CopySpan(ctx,
 				src, r, c.startLevel.level,
-				w, d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat()),
+				w, d.makeWriterOptions(c.outputLevel.level),
 				start, end,
 			)
 			return err
@@ -3306,9 +3301,9 @@ func (d *DB) runDefaultTableCompaction(
 	defer d.mu.Lock()
 
 	// Determine whether we should separate values into blob files.
-	valueSeparation := c.getValueSeparation(jobID, c, c.tableFormat)
+	valueSeparation := c.getValueSeparation(jobID, c)
 
-	result := d.compactAndWrite(jobID, c, snapshots, c.tableFormat, valueSeparation)
+	result := d.compactAndWrite(jobID, c, snapshots, valueSeparation)
 	if result.Err == nil {
 		ve, result.Err = c.makeVersionEdit(result)
 	}
@@ -3352,7 +3347,6 @@ func (d *DB) compactAndWrite(
 	jobID JobID,
 	c *tableCompaction,
 	snapshots compact.Snapshots,
-	tableFormat sstable.TableFormat,
 	valueSeparation compact.ValueSeparation,
 ) (result compact.Result) {
 	suggestedCacheReaders := blob.SuggestedCachedReaders(len(c.inputs))
@@ -3469,7 +3463,7 @@ func (d *DB) compactAndWrite(
 			spanPolicyValid = true
 		}
 
-		writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, tableFormat)
+		writerOpts := d.makeWriterOptions(c.outputLevel.level)
 		if spanPolicy.DisableValueSeparationBySuffix {
 			writerOpts.DisableValueBlocks = true
 		}

@@ -671,7 +671,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			var result strings.Builder
 			if ptc != nil {
 				checkClone(t, ptc)
-				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 				fmt.Fprintf(&result, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
 				if !ptc.outputLevel.files.Empty() {
@@ -712,6 +712,8 @@ func TestCompactionPickerL0(t *testing.T) {
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
 	})
 }
+
+const noSharedStorage = false
 
 func TestCompactionPickerConcurrency(t *testing.T) {
 	opts := DefaultOptions()
@@ -803,7 +805,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			var result strings.Builder
 			fmt.Fprintf(&result, "picker.getCompactionConcurrency: %d\n", allowedCompactions)
 			if pc != nil {
-				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 				fmt.Fprintf(&result, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
 				if !ptc.outputLevel.files.Empty() {

@@ -248,7 +248,7 @@ func (pc *pickedTableCompaction) ConstructCompaction(
 		d.timeNow(),
 		d.ObjProvider(),
 		grantHandle,
-		d.TableFormat(),
+		d.shouldCreateShared(pc.outputLevel.level),
 		d.determineCompactionValueSeparation)
 }
 

@@ -320,7 +320,7 @@ func (d *DB) runBlobFileRewriteLocked(
 	if err != nil {
 		return objstorage.ObjectMetadata{}, nil, err
 	}
-	// Initialize a blob file rewriter. We pass L6 to MakeBlobWriterOptions.
+	// Initialize a blob file rewriter. We pass L6 to makeBlobWriterOptions.
 	// There's no single associated level with a blob file. A long-lived blob
 	// file that gets rewritten is likely to mostly be referenced from L6.
 	// TODO(jackson): Consider refactoring to remove the level association.
@@ -329,7 +329,7 @@ func (d *DB) runBlobFileRewriteLocked(
 		env,
 		objMeta.DiskFileNum,
 		writable,
-		d.opts.MakeBlobWriterOptions(6, d.BlobFileFormat()),
+		d.makeBlobWriterOptions(6),
 		c.referencingTables,
 		c.input,
 	)
