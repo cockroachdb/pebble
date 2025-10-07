@@ -2634,7 +2634,9 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 // makeWriterOptions constructs sstable.WriterOptions for the specified level
 // using the current DB options and format.
 func (d *DB) makeWriterOptions(level int) sstable.WriterOptions {
-	return d.opts.MakeWriterOptions(level, d.TableFormat())
+	o := d.opts.MakeWriterOptions(level, d.TableFormat())
+	o.CompressionCounters = d.compressionCounters.Compressed.ForLevel(base.MakeLevel(level))
+	return o
 }
 
 // makeBlobWriterOptions constructs blob.FileWriterOptions using the current DB
@@ -2642,9 +2644,10 @@ func (d *DB) makeWriterOptions(level int) sstable.WriterOptions {
 func (d *DB) makeBlobWriterOptions(level int) blob.FileWriterOptions {
 	lo := &d.opts.Levels[level]
 	return blob.FileWriterOptions{
-		Format:       d.BlobFileFormat(),
-		Compression:  lo.Compression(),
-		ChecksumType: block.ChecksumTypeCRC32c,
+		Format:              d.BlobFileFormat(),
+		Compression:         lo.Compression(),
+		CompressionCounters: d.compressionCounters.Compressed.ForLevel(base.MakeLevel(level)),
+		ChecksumType:        block.ChecksumTypeCRC32c,
 		FlushGovernor: block.MakeFlushGovernor(
 			lo.BlockSize,
 			lo.BlockSizeThreshold,

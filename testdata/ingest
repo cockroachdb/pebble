@@ -67,7 +67,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    1 (280B) |      50.0% |        0.0% |           0 |           0
+    1 (288B) |      50.0% |        0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -93,6 +93,11 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
       unknown |          463B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |   34B / 34B    |    0B / 0B     |  646B / 1.2KB
 ----
 ----
 

@@ -476,7 +476,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheSize)
 		defer opts.FileCache.Unref()
 	}
-	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts.LoggerAndTracer, d.opts.MakeReaderOptions(), d.reportCorruption)
+	fileCacheReaderOpts := d.opts.MakeReaderOptions()
+	fileCacheReaderOpts.CompressionCounters = &d.compressionCounters.Decompressed
+	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts.LoggerAndTracer, fileCacheReaderOpts, d.reportCorruption)
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
@@ -875,7 +877,7 @@ func (d *DB) replayIngestedFlushable(
 		}
 		// NB: ingestLoad1 will close readable.
 		meta[i], lastRangeKey, _, err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(),
-			readable, d.cacheHandle, base.PhysicalTableFileNum(n), disableRangeKeyChecks())
+			readable, d.cacheHandle, &d.compressionCounters, base.PhysicalTableFileNum(n), disableRangeKeyChecks())
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")
 		}

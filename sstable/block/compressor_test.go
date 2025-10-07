@@ -25,27 +25,29 @@ func TestCompressor(t *testing.T) {
 	dst := make([]byte, 0, 1024)
 	for runs := 0; runs < 100; runs++ {
 		profile := &CompressionProfile{
-			DataBlocks:          settings[rand.IntN(len(settings))],
-			ValueBlocks:         settings[rand.IntN(len(settings))],
-			OtherBlocks:         settings[rand.IntN(len(settings))],
+			Settings: ByKind[compression.Setting]{
+				DataBlocks:  settings[rand.IntN(len(settings))],
+				ValueBlocks: settings[rand.IntN(len(settings))],
+				OtherBlocks: settings[rand.IntN(len(settings))],
+			},
 			MinReductionPercent: 0,
 		}
 
 		compressor := MakeCompressor(profile)
 		ci, _ := compressor.Compress(dst, src, blockkind.SSTableData)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.DataBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(profile.Settings.DataBlocks.Algorithm), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.SSTableValue)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.ValueBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(profile.Settings.ValueBlocks.Algorithm), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.BlobValue)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.ValueBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(profile.Settings.ValueBlocks.Algorithm), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.SSTableIndex)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.OtherBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(profile.Settings.OtherBlocks.Algorithm), ci)
 
 		ci, _ = compressor.Compress(dst, src, blockkind.Metadata)
-		require.Equal(t, compressionIndicatorFromAlgorithm(profile.OtherBlocks.Algorithm), ci)
+		require.Equal(t, compressionIndicatorFromAlgorithm(profile.Settings.OtherBlocks.Algorithm), ci)
 
 		compressor.Close()
 	}

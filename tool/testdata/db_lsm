@@ -70,6 +70,9 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
       unknown |          709B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
 ----
 ----
 
@@ -136,6 +139,9 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
       unknown |          709B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
 LSM viewer: https://raduberinde.github.io/lsmview/decode.html#eJyE0EFLw0AQBeC7v2J4uU5lN42W7lHsrTe9SSgTOi2hm13NRqGV_HdJCaUWMXvaxzfMwPuG1y_1Ce5t_G6CNAqHtbk3YHRSeR1ZKvVwKMBI9UnhFmbJSI14r6nbHPQIZxhe2v0lW8ZWO6nPJ2CGVziqpM1swc-rNc1oF2Nm5_yyeh0XO1qY5dMQ9CN8NsmRzWlGdjj8HuvQpf820JWN8ZTZ_KI3wyFSK2GvtB1qKPuy59sm7HUPf3g-4fMJLyb8YcIff3vJOOjx3HclLRi7GFH2dz8BAAD__2dulBM=
 ----
 ----

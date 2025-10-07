@@ -98,5 +98,10 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |         234KB |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |   233KB / 0B   |    0B / 0B     |   569B / 0B
 ----
 ----

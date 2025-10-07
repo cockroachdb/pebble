@@ -257,6 +257,7 @@ func ingestLoad1(
 	fmv FormatMajorVersion,
 	readable objstorage.Readable,
 	cacheHandle *cache.Handle,
+	compressionCounters *block.CompressionCounters,
 	tableNum base.TableNum,
 	rangeKeyValidator rangeKeyIngestValidator,
 ) (
@@ -269,6 +270,9 @@ func ingestLoad1(
 	o.CacheOpts = sstableinternal.CacheOptions{
 		CacheHandle: cacheHandle,
 		FileNum:     base.PhysicalTableDiskFileNum(tableNum),
+	}
+	if compressionCounters != nil {
+		o.CompressionCounters = &compressionCounters.Decompressed
 	}
 	r, err := sstable.NewReader(ctx, readable, o)
 	if err != nil {
@@ -498,6 +502,7 @@ func ingestLoad(
 	shared []SharedSSTMeta,
 	external []ExternalFile,
 	cacheHandle *cache.Handle,
+	compressionCounters *block.CompressionCounters,
 	pending []base.TableNum,
 ) (ingestLoadResult, error) {
 	localFileNums := pending[:len(paths)]
@@ -531,7 +536,7 @@ func ingestLoad(
 		if !shouldDisableRangeKeyChecks {
 			rangeKeyValidator = validateSuffixedBoundaries(opts.Comparer, lastRangeKey)
 		}
-		m, lastRangeKey, blockReadStats, err = ingestLoad1(ctx, opts, fmv, readable, cacheHandle, localFileNums[i], rangeKeyValidator)
+		m, lastRangeKey, blockReadStats, err = ingestLoad1(ctx, opts, fmv, readable, cacheHandle, compressionCounters, localFileNums[i], rangeKeyValidator)
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -1480,7 +1485,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
 	loadResult, err := ingestLoad(ctx, d.opts, d.FormatMajorVersion(), paths, shared, external,
-		d.cacheHandle, pendingOutputs)
+		d.cacheHandle, &d.compressionCounters, pendingOutputs)
 	if err != nil {
 		return IngestOperationStats{}, err
 	}
