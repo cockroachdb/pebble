@@ -29,13 +29,20 @@ type CompressionProfile struct {
 	//
 	// Note that MinLZ is only supported with table formats v6+. Older formats
 	// fall back to Snappy.
-	DataBlocks  compression.Setting
-	ValueBlocks compression.Setting
+	DataBlocks  CompressionSetting
+	ValueBlocks CompressionSetting
 	OtherBlocks compression.Setting
 
 	// Blocks that are reduced by less than this percentage are stored
 	// uncompressed.
 	MinReductionPercent uint8
+}
+
+// CompressionSetting is a compression setting for value or data blocks. It
+// contains a compression.Setting and an optional percentage which enables
+// adaptive compression.
+type CompressionSetting struct {
+	compression.Setting
 
 	// AdaptiveReductionCutoffPercent (when set to a non-zero value) enables
 	// adaptive compressors for data and value blocks which fall back to the
@@ -43,6 +50,20 @@ type CompressionProfile struct {
 	// DataBlocks/ValueBlocks setting cannot achieve a further data reduction of
 	// at least AdaptiveReductionCutoffPercent%.
 	AdaptiveReductionCutoffPercent uint8
+}
+
+// SimpleCompressionSetting returns a CompressionSetting that always uses the
+// given compression.
+func SimpleCompressionSetting(s compression.Setting) CompressionSetting {
+	return CompressionSetting{Setting: s}
+}
+
+// AdaptiveCompressionSetting returns a CompressionSetting that adaptively
+// chooses between the enclosed setting or the "other blocks" setting.
+func AdaptiveCompressionSetting(
+	s compression.Setting, reductionCutoffPercent uint8,
+) CompressionSetting {
+	return CompressionSetting{Setting: s, AdaptiveReductionCutoffPercent: reductionCutoffPercent}
 }
 
 // UsesMinLZ returns true if the profile uses the MinLZ compression algorithm
@@ -68,33 +89,32 @@ var (
 	// FastCompression automatically chooses between Snappy/MinLZ1 and Zstd1 for
 	// sstable and blob file value blocks.
 	FastCompression = registerCompressionProfile(CompressionProfile{
-		Name:                           "Fast",
-		DataBlocks:                     fastestCompression,
-		ValueBlocks:                    compression.ZstdLevel1,
-		OtherBlocks:                    fastestCompression,
-		MinReductionPercent:            10,
-		AdaptiveReductionCutoffPercent: 30,
+		Name:                "Fast",
+		DataBlocks:          SimpleCompressionSetting(fastestCompression),
+		ValueBlocks:         AdaptiveCompressionSetting(compression.ZstdLevel1, 30),
+		OtherBlocks:         fastestCompression,
+		MinReductionPercent: 10,
 	})
 
 	// BalancedCompression automatically chooses between Snappy/MinLZ1 and Zstd1
 	// for data and value blocks.
 	BalancedCompression = registerCompressionProfile(CompressionProfile{
-		Name:                           "Balanced",
-		DataBlocks:                     compression.ZstdLevel1,
-		ValueBlocks:                    compression.ZstdLevel1,
-		OtherBlocks:                    fastestCompression,
-		MinReductionPercent:            5,
-		AdaptiveReductionCutoffPercent: 15,
+		Name:                "Balanced",
+		DataBlocks:          AdaptiveCompressionSetting(compression.ZstdLevel1, 30),
+		ValueBlocks:         AdaptiveCompressionSetting(compression.ZstdLevel1, 15),
+		OtherBlocks:         fastestCompression,
+		MinReductionPercent: 5,
 	})
 
 	// GoodCompression uses Zstd1 for data and value blocks.
+	//
+	// Note: in practice, we have observed very little size benefit to using
+	// higher zstd levels like ZstdLevel3 (while paying a significant compression
+	// performance cost).
 	GoodCompression = registerCompressionProfile(CompressionProfile{
-		Name: "Good",
-		// In practice, we have observed very little size benefit to using higher
-		// zstd levels like ZstdLevel3 while paying a significant compression
-		// performance cost.
-		DataBlocks:          compression.ZstdLevel1,
-		ValueBlocks:         compression.ZstdLevel1,
+		Name:                "Good",
+		DataBlocks:          SimpleCompressionSetting(compression.ZstdLevel1),
+		ValueBlocks:         SimpleCompressionSetting(compression.ZstdLevel1),
 		OtherBlocks:         fastestCompression,
 		MinReductionPercent: 3,
 	})
@@ -119,8 +139,8 @@ var fastestCompression = func() compression.Setting {
 func simpleCompressionProfile(name string, setting compression.Setting) *CompressionProfile {
 	return registerCompressionProfile(CompressionProfile{
 		Name:                name,
-		DataBlocks:          setting,
-		ValueBlocks:         setting,
+		DataBlocks:          SimpleCompressionSetting(setting),
+		ValueBlocks:         SimpleCompressionSetting(setting),
 		OtherBlocks:         setting,
 		MinReductionPercent: 12,
 	})

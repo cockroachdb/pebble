@@ -25,8 +25,8 @@ func TestCompressor(t *testing.T) {
 	dst := make([]byte, 0, 1024)
 	for runs := 0; runs < 100; runs++ {
 		profile := &CompressionProfile{
-			DataBlocks:          settings[rand.IntN(len(settings))],
-			ValueBlocks:         settings[rand.IntN(len(settings))],
+			DataBlocks:          SimpleCompressionSetting(settings[rand.IntN(len(settings))]),
+			ValueBlocks:         SimpleCompressionSetting(settings[rand.IntN(len(settings))]),
 			OtherBlocks:         settings[rand.IntN(len(settings))],
 			MinReductionPercent: 0,
 		}
