@@ -40,20 +40,20 @@ func MakeCompressor(profile *CompressionProfile) Compressor {
 }
 
 func maybeAdaptiveCompressor(
-	profile *CompressionProfile, setting compression.Setting,
+	profile *CompressionProfile, setting CompressionSetting,
 ) compression.Compressor {
-	if profile.AdaptiveReductionCutoffPercent != 0 && setting != profile.OtherBlocks {
+	if setting.AdaptiveReductionCutoffPercent != 0 && setting.Setting != profile.OtherBlocks {
 		params := compression.AdaptiveCompressorParams{
-			Slow:            setting,
+			Slow:            setting.Setting,
 			Fast:            profile.OtherBlocks,
-			ReductionCutoff: float64(profile.AdaptiveReductionCutoffPercent) * 0.01,
+			ReductionCutoff: float64(setting.AdaptiveReductionCutoffPercent) * 0.01,
 			SampleEvery:     10,
 			SampleHalfLife:  256 * 1024, // 256 KB
 			SamplingSeed:    rand.Uint64(),
 		}
 		return compression.NewAdaptiveCompressor(params)
 	}
-	return compression.GetCompressor(setting)
+	return compression.GetCompressor(setting.Setting)
 }
 
 // Close must be called when the Compressor is no longer needed.
