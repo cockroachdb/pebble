@@ -85,6 +85,13 @@ COMPRESSION
         minlz |    1GB (CR=3) |   10GB (CR=3)
          zstd |   10GB (CR=5) |  100GB (CR=5)
       unknown |         500MB |          50MB
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  10GB / 100GB  |  100GB / 1TB   |   1GB / 10GB
+   L5 |  50GB / 500GB  | 500GB / 4.9TB  |   5GB / 50GB
+   L6 |  60GB / 600GB  | 600GB / 5.9TB  |   6GB / 60GB
 ----
 ----
 
@@ -147,7 +154,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    1 (280B) |       0.0% |        0.0% |           1 |           0
+    1 (288B) |       0.0% |        0.0% |           1 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -174,6 +181,11 @@ COMPRESSION
 --------------+---------------+--------------
          none |           36B |
        snappy | 76B (CR=1.14) |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |   87B / 87B    |    0B / 0B     |  708B / 672B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -250,7 +262,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    2 (560B) |      66.7% |        0.0% |           2 |           0
+    2 (576B) |      66.7% |        0.0% |           2 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -276,6 +288,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          230B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  174B / 174B   |    0B / 0B     | 1.4KB / 1.3KB
+   L6 |   158B / 0B    |    0B / 0B     |   1.4KB / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -335,7 +353,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    2 (560B) |      66.7% |        0.0% |           2 |           0
+    2 (576B) |      66.7% |        0.0% |           2 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -361,6 +379,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          230B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  174B / 174B   |    0B / 0B     | 1.4KB / 1.3KB
+   L6 |   158B / 0B    |    0B / 0B     |   1.4KB / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -417,7 +441,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    1 (280B) |      66.7% |        0.0% |           1 |           0
+    1 (288B) |      66.7% |        0.0% |           1 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -443,6 +467,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          230B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  174B / 174B   |    0B / 0B     | 1.4KB / 1.3KB
+   L6 |   158B / 0B    |    0B / 0B     |   1.4KB / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -528,6 +558,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          230B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  174B / 174B   |    0B / 0B     | 1.4KB / 1.3KB
+   L6 |   158B / 0B    |    0B / 0B     |   1.4KB / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -654,6 +690,12 @@ COMPRESSION
          none |           622B |          308B
        snappy | 630B (CR=1.27) |
 
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  972B / 174B   |    0B / 0B     | 6.5KB / 1.3KB
+   L6 |   158B / 0B    |    0B / 0B     |   1.4KB / 0B
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -763,6 +805,12 @@ COMPRESSION
 --------------+---------------+--------------
          none |          622B |          308B
        snappy | 615B (CR=1.3) |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  972B / 972B   |    0B / 0B     | 6.5KB / 6.2KB
+   L6 |   956B / 0B    |    0B / 0B     |   6.2KB / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -925,6 +973,12 @@ COMPRESSION
          none |            1KB |          308B
        snappy | 843B (CR=1.26) |
 
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  1.4KB / 972B  |    0B / 0B     |  10KB / 9.6KB
+   L6 |   956B / 0B    |    0B / 0B     |   6.2KB / 0B
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1047,6 +1101,12 @@ COMPRESSION
 --------------+-----------------+--------------
          none |           1.3KB |          308B
        snappy | 1.3KB (CR=1.21) |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |   2KB / 972B   |    0B / 0B     |  15KB / 9.6KB
+   L6 |   956B / 0B    |    0B / 0B     |   6.2KB / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -1179,6 +1239,12 @@ COMPRESSION
 --------------+-----------------+--------------
          none |           1.3KB |          308B
        snappy | 1.2KB (CR=1.22) |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  2.1KB / 972B  |    0B / 0B     |  16KB / 11KB
+   L6 |   956B / 0B    |    0B / 0B     |   6.2KB / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -1356,6 +1422,12 @@ COMPRESSION
          none |         1.5KB |          308B
        snappy | 682B (CR=1.3) |
 
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 | 2.2KB / 1.6KB  |    0B / 0B     |  16KB / 18KB
+   L6 |   1.5KB / 0B   |    0B / 0B     |   11KB / 0B
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:11679 BlockBytesInCache:457 BlockReadDuration:330ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1447,6 +1519,11 @@ COMPRESSION
          none |           108B |
        snappy | 228B (CR=1.14) |
 
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |   261B / 0B    |    0B / 0B     |   2.1KB / 0B
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----
@@ -1527,6 +1604,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          345B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  261B / 261B   |    0B / 0B     |  2.1KB / 2KB
+   L6 |   237B / 0B    |    0B / 0B     |   1.8KB / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
@@ -1625,6 +1708,12 @@ COMPRESSION
 --------------+---------------+--------------
          none |          460B |
 
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  340B / 261B   |    0B / 0B     | 2.7KB / 3.1KB
+   L6 |   237B / 0B    |    0B / 0B     |   1.8KB / 0B
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
@@ -1715,6 +1804,12 @@ COMPRESSION
          none |          496B |
        snappy | 76B (CR=1.14) |
 
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  427B / 261B   |    0B / 0B     | 3.4KB / 3.1KB
+   L6 |   237B / 0B    |    0B / 0B     |   1.8KB / 0B
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
@@ -1791,6 +1886,11 @@ COMPRESSION
          none |          496B |
        snappy | 76B (CR=1.14) |
 
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |    0B / 0B     |    0B / 0B     |   0B / 5.9KB
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----
@@ -1866,6 +1966,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          345B |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |    0B / 87B    |    0B / 0B     |   0B / 5.9KB
+   L6 |    79B / 0B    |    0B / 0B     |   696B / 0B
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:342 BlockBytesInCache:0 BlockReadDuration:30ms}
@@ -1959,7 +2065,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    2 (560B) |       0.0% |        0.0% |           0 |           0
+    2 (576B) |       0.0% |        0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -1986,6 +2092,11 @@ COMPRESSION
 --------------+----------------+--------------
          none |           266B |
        snappy | 221B (CR=1.19) |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |   262B / 0B    |    0B / 0B     | 3.5KB / 1.3KB
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -2038,7 +2149,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    2 (560B) |       0.0% |        0.0% |           0 |           0
+    2 (576B) |       0.0% |        0.0% |           0 |           0
 
 FILES                 tables                       |       blob files        |     blob values
    stats prog |    backing |                zombie |       live |     zombie |  total |      refed
@@ -2065,6 +2176,11 @@ COMPRESSION
 --------------+----------------+--------------
          none |           266B |
        snappy | 221B (CR=1.19) |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |   262B / 0B    |    0B / 0B     | 3.5KB / 1.3KB
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}

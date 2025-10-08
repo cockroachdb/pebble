@@ -271,6 +271,9 @@ type WriterOptions struct {
 	// internal fragmentation when loaded into the block cache.
 	AllocatorSizeClasses []int
 
+	// CompressionCounters are updated by the writer (if not nil).
+	CompressionCounters *block.ByKind[block.LogicalBytesCompressed]
+
 	// internal options can only be used from within the pebble package.
 	internal sstableinternal.WriterOptions
 

@@ -106,7 +106,7 @@ func TestValueFetcher(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			printFileWriterStats(&buf, stats)
+			printFileWriterStats(&buf, stats, nil)
 
 			r, err := NewFileReader(ctx, obj, FileReaderOptions{
 				ReaderOptions: block.ReaderOptions{

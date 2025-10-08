@@ -4,7 +4,10 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable/block"
+)
 
 // SeqNum exports the base.SeqNum type.
 type SeqNum = base.SeqNum
@@ -80,3 +83,5 @@ type ShortAttribute = base.ShortAttribute
 // LazyValue.Clone requires a pointer to a LazyFetcher struct to avoid
 // allocations. No code outside Pebble needs to peer into a LazyFetcher.
 type LazyFetcher = base.LazyFetcher
+
+type CompressionCounters = block.CompressionCounters

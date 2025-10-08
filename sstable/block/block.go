@@ -276,7 +276,7 @@ type ReadEnv struct {
 	// Level is the LSM level associated with the operation, when the operation
 	// applies to a (possibly virtual) sstable. It is used when interacting with
 	// the block cache.
-	Level cache.Level
+	Level base.Level
 
 	// ReportCorruptionFn is called with ReportCorruptionArg and the error
 	// whenever an SSTable corruption is detected. The argument is used to avoid
@@ -339,6 +339,10 @@ type ReaderOptions struct {
 	LoadBlockSema *fifo.Semaphore
 	// LoggerAndTracer is an optional logger and tracer.
 	LoggerAndTracer base.LoggerAndTracer
+
+	// CompressionCounters, if non-nil, is used to keep track of how much data was
+	// decompressed.
+	CompressionCounters *ByLevel[ByKind[LogicalBytesDecompressed]]
 }
 
 // Init initializes the Reader to read blocks from the provided Readable.
@@ -546,6 +550,10 @@ func (r *Reader) doRead(
 			decompressed.Release()
 			return Value{}, base.MarkCorruptionError(err)
 		}
+
+		if r.opts.CompressionCounters != nil {
+			r.opts.CompressionCounters.ForLevel(env.Level).ForKind(kind).Add(uint64(decodedLen))
+		}
 	}
 	if err = initBlockMetadataFn(decompressed.BlockMetadata(), decompressed.BlockData()); err != nil {
 		decompressed.Release()
@@ -566,7 +574,7 @@ func (r *Reader) Readable() objstorage.Readable {
 //
 // Users should prefer using Read, which handles reading from object storage on
 // a cache miss.
-func (r *Reader) GetFromCache(bh Handle, level cache.Level) *cache.Value {
+func (r *Reader) GetFromCache(bh Handle, level base.Level) *cache.Value {
 	return r.opts.CacheOpts.CacheHandle.Peek(r.opts.CacheOpts.FileNum, bh.Offset, level, cache.CategoryBackground)
 }
 

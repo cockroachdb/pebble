@@ -58,7 +58,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
-		lr, err := ingestLoad(context.Background(), d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheHandle, pendingOutputs)
+		lr, err := ingestLoad(context.Background(), d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheHandle, &d.compressionCounters, pendingOutputs)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -20,7 +20,7 @@ func TestBufferRandomized(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, seed))
 
 	var physBlockMaker PhysicalBlockMaker
-	physBlockMaker.Init(SnappyCompression, ChecksumTypeCRC32c)
+	physBlockMaker.Init(SnappyCompression, ChecksumTypeCRC32c, nil)
 	defer physBlockMaker.Close()
 	b := NewTempBuffer()
 	defer b.Release()

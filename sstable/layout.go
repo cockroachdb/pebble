@@ -837,7 +837,7 @@ func (w *layoutWriter) Init(writable objstorage.Writable, opts WriterOptions) {
 	w.writable = writable
 	w.cacheOpts = opts.internal.CacheOpts
 	w.tableFormat = opts.TableFormat
-	w.physBlockMaker.Init(opts.Compression, opts.Checksum)
+	w.physBlockMaker.Init(opts.Compression, opts.Checksum, opts.CompressionCounters)
 }
 
 type metaIndexHandle struct {

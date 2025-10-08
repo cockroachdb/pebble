@@ -148,7 +148,7 @@ func TestIngestLoad(t *testing.T) {
 				FS:         mem,
 			}
 			opts.WithFSDefaults()
-			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, []base.TableNum{1})
+			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, nil, []base.TableNum{1})
 			if err != nil {
 				return err.Error()
 			}
@@ -247,7 +247,7 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 	opts.WithFSDefaults()
 	opts.EnsureDefaults()
-	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, nil, pending)
+	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, nil, nil, pending)
 	require.NoError(t, err)
 
 	// Reset flaky stats.
@@ -272,7 +272,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		FS:       mem,
 	}
 	opts.WithFSDefaults()
-	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, []base.TableNum{1}); err == nil {
+	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, nil, []base.TableNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }

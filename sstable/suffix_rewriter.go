@@ -168,7 +168,7 @@ func rewriteDataBlocksInParallel(
 			rw := newDataBlockRewriter()
 			var inputBlock, inputBlockBuf []byte
 			var physBlockMaker block.PhysicalBlockMaker
-			physBlockMaker.Init(opts.Compression, opts.Checksum)
+			physBlockMaker.Init(opts.Compression, opts.Checksum, nil)
 			defer physBlockMaker.Close()
 			// We'll assume all blocks are _roughly_ equal so round-robin static partition
 			// of each worker doing every ith block is probably enough.

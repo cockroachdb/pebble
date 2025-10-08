@@ -202,6 +202,12 @@ COMPRESSION
 --------------+----------------+--------------
          none |           116B |
        snappy | 296B (CR=1.23) |
+
+      |     logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  407B / 407B   |    0B / 0B     | 1.3KB / 5.4KB
+   L6 |   322B / 2KB   |    0B / 0B     |   1.9KB / 0B
 ----
 ----
 

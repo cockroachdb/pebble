@@ -114,8 +114,9 @@ func WriteAndReleasePhysicalBlock(
 //
 // It is not thread-safe and should not be used concurrently.
 type PhysicalBlockMaker struct {
-	Compressor  Compressor
-	Checksummer Checksummer
+	Compressor          Compressor
+	Checksummer         Checksummer
+	CompressionCounters *ByKind[LogicalBytesCompressed]
 }
 
 // PhysicalBlockFlags is a bitmask with flags used when making a physical block.
@@ -127,15 +128,26 @@ const (
 )
 
 // Init the physical block maker. Closed must be called when no longer needed.
-func (p *PhysicalBlockMaker) Init(profile *CompressionProfile, checksumType ChecksumType) {
+func (p *PhysicalBlockMaker) Init(
+	profile *CompressionProfile,
+	checksumType ChecksumType,
+	compressionCounters *ByKind[LogicalBytesCompressed],
+) {
 	p.Compressor = MakeCompressor(profile)
 	p.Checksummer.Init(checksumType)
+	p.CompressionCounters = compressionCounters
 }
 
 // Close must be called when the PhysicalBlockMaker is no longer needed. After
 // Close is called, the PhysicalBlockMaker must not be used again (unless it is
 // initialized again).
 func (p *PhysicalBlockMaker) Close() {
+	// Update the compression counters.
+	if p.CompressionCounters != nil {
+		for kind, bytes := range p.Compressor.InputBytes() {
+			p.CompressionCounters.ForKind(kind).Add(bytes)
+		}
+	}
 	p.Compressor.Close()
 }
 
