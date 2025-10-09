@@ -243,11 +243,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.snapshots.snapshotList.init()
 	d.mu.snapshots.ongoingExcises = make(map[SeqNum]KeyRange)
 	d.mu.snapshots.ongoingExcisesRemovedCond = sync.NewCond(&d.mu.Mutex)
-	// logSeqNum is the next sequence number that will be assigned.
-	// Start assigning sequence numbers from base.SeqNumStart to leave
-	// room for reserved sequence numbers (see comments around
-	// SeqNumStart).
-	d.mu.versions.logSeqNum.Store(base.SeqNumStart)
 	d.mu.formatVers.vers.Store(uint64(formatVersion))
 	d.mu.formatVers.marker = rs.fmvMarker
 	d.openedAt = d.opts.private.timeNow()
@@ -257,19 +252,17 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	jobID := d.newJobIDLocked()
 
-	blobRewriteHeuristic := manifest.BlobRewriteHeuristic{
-		CurrentTime: d.opts.private.timeNow,
-		MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
-	}
-
-	if !rs.manifestExists {
+	if rs.recoveredVersion == nil {
 		// DB does not exist.
 		if d.opts.ErrorIfNotExists || d.opts.ReadOnly {
 			return nil, errors.Wrapf(ErrDBDoesNotExist, "dirname=%q", dirname)
 		}
-
-		// Create the DB.
-		if err := d.mu.versions.create(
+		// Create a fresh version set and create an initial manifest file.
+		blobRewriteHeuristic := manifest.BlobRewriteHeuristic{
+			CurrentTime: d.opts.private.timeNow,
+			MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
+		}
+		if err := d.mu.versions.initNewDB(
 			jobID, dirname, d.objProvider, opts, rs.manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
 			return nil, err
 		}
@@ -277,9 +270,11 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		if opts.ErrorIfExists {
 			return nil, errors.Wrapf(ErrDBAlreadyExists, "dirname=%q", dirname)
 		}
-		// Load the version set.
-		if err := d.mu.versions.load(
-			dirname, d.objProvider, opts, rs.manifestFileNum, rs.manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
+		// Initialize the version set from the recovered version.
+		if err := d.mu.versions.initRecoveredDB(
+			dirname, d.objProvider, opts, rs.recoveredVersion, rs.manifestMarker,
+			d.FormatMajorVersion, &d.mu.Mutex,
+		); err != nil {
 			return nil, err
 		}
 		if opts.ErrorIfNotPristine {
@@ -436,13 +431,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.log.manager = walManager
 
 	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.getDeletionPacerInfo)
-
-	if rs.manifestExists && !opts.DisableConsistencyCheck {
-		curVersion := d.mu.versions.currentVersion()
-		if err := checkConsistency(curVersion, d.objProvider); err != nil {
-			return nil, err
-		}
-	}
 
 	fileCacheSize := FileCacheSize(opts.MaxOpenFiles)
 	if opts.FileCache == nil {

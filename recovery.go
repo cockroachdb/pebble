@@ -5,10 +5,15 @@
 package pebble
 
 import (
+	"io"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 )
@@ -39,16 +44,33 @@ func (rs *recoveredState) init(opts *Options, dirname string) error {
 	if err != nil {
 		return errors.Wrapf(err, "pebble: database %q", dirname)
 	}
-	rs.manifestMarker, rs.manifestFileNum, rs.manifestExists, err = findCurrentManifest(opts.FS, dirname, rs.ls)
-	if err != nil {
-		return errors.Wrapf(err, "pebble: database %q", dirname)
-	}
+
 	// Open the object storage provider.
 	providerSettings := opts.MakeObjStorageProviderSettings(dirname)
 	providerSettings.FSDirInitialListing = rs.ls
 	rs.objProvider, err = objstorageprovider.Open(providerSettings)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: database %q", dirname)
+	}
+
+	// Determine which manifest is current, and if one exists, replay it to
+	// recover the current Version of the LSM.
+	var manifestExists bool
+	rs.manifestMarker, rs.manifestFileNum, manifestExists, err = findCurrentManifest(opts.FS, dirname, rs.ls)
+	if err != nil {
+		return errors.Wrapf(err, "pebble: database %q", dirname)
+	}
+	if manifestExists {
+		recoveredVersion, err := recoverVersion(opts, dirname, rs.objProvider, rs.manifestFileNum)
+		if err != nil {
+			return err
+		}
+		if !opts.DisableConsistencyCheck {
+			if err := checkConsistency(recoveredVersion.version, rs.objProvider); err != nil {
+				return err
+			}
+		}
+		rs.recoveredVersion = recoveredVersion
 	}
 
 	// Identify the maximal file number in the directory. We do not want to
@@ -90,11 +112,11 @@ type recoveredState struct {
 	ls                      []string
 	manifestMarker          *atomicfs.Marker
 	manifestFileNum         base.DiskFileNum
-	manifestExists          bool
 	maxFilenumUsed          base.DiskFileNum
 	obsoleteTempFilenames   []string
 	objProvider             objstorage.Provider
 	previousOptionsFilename string
+	recoveredVersion        *recoveredVersion
 }
 
 // RemoveObsolete removes obsolete files uncovered during recovery.
@@ -131,4 +153,177 @@ func (rs *recoveredState) Close() error {
 		err = errors.CombineErrors(err, rs.objProvider.Close())
 	}
 	return err
+}
+
+// recoveredVersion describes the latest Version of the LSM recovered by
+// replaying a manifest file.
+type recoveredVersion struct {
+	manifestFileNum    base.DiskFileNum
+	minUnflushedLogNum base.DiskFileNum
+	nextFileNum        base.DiskFileNum
+	logSeqNum          base.SeqNum
+	latest             *latestVersionState
+	metrics            Metrics
+	version            *manifest.Version
+}
+
+// recoverVersion replays the named manifest file to recover the latest version
+// of the LSM from persisted state.
+func recoverVersion(
+	opts *Options, dirname string, provider objstorage.Provider, manifestFileNum base.DiskFileNum,
+) (*recoveredVersion, error) {
+	vs := &recoveredVersion{
+		manifestFileNum: manifestFileNum,
+		nextFileNum:     1,
+		logSeqNum:       base.SeqNumStart,
+		latest: &latestVersionState{
+			l0Organizer:     manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes),
+			virtualBackings: manifest.MakeVirtualBackings(),
+		},
+	}
+	manifestPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeManifest, vs.manifestFileNum)
+	manifestFilename := opts.FS.PathBase(manifestPath)
+
+	// Read the versionEdits in the manifest file.
+	var bve manifest.BulkVersionEdit
+	bve.AllAddedTables = make(map[base.TableNum]*manifest.TableMetadata)
+	manifestFile, err := opts.FS.Open(manifestPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
+			errors.Safe(manifestFilename), dirname)
+	}
+	defer manifestFile.Close()
+	rr := record.NewReader(manifestFile, 0 /* logNum */)
+	for {
+		r, err := rr.Next()
+		if err == io.EOF || record.IsInvalidRecord(err) {
+			break
+		}
+		if err != nil {
+			return nil, errors.Wrapf(err, "pebble: error when loading manifest file %q",
+				errors.Safe(manifestFilename))
+		}
+		var ve manifest.VersionEdit
+		err = ve.Decode(r)
+		if err != nil {
+			// Break instead of returning an error if the record is corrupted
+			// or invalid.
+			if err == io.EOF || record.IsInvalidRecord(err) {
+				break
+			}
+			return nil, err
+		}
+		if ve.ComparerName != "" {
+			if ve.ComparerName != opts.Comparer.Name {
+				return nil, errors.Errorf("pebble: manifest file %q for DB %q: "+
+					"comparer name from file %q != comparer name from Options %q",
+					errors.Safe(manifestFilename), dirname, errors.Safe(ve.ComparerName), errors.Safe(opts.Comparer.Name))
+			}
+		}
+		if err := bve.Accumulate(&ve); err != nil {
+			return nil, err
+		}
+		if ve.MinUnflushedLogNum != 0 {
+			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
+		}
+		if ve.NextFileNum != 0 {
+			vs.nextFileNum = base.DiskFileNum(ve.NextFileNum)
+		}
+		if ve.LastSeqNum != 0 {
+			// logSeqNum is the _next_ sequence number that will be assigned,
+			// while LastSeqNum is the last assigned sequence number. Note that
+			// this behaviour mimics that in RocksDB; the first sequence number
+			// assigned is one greater than the one present in the manifest
+			// (assuming no WALs contain higher sequence numbers than the
+			// manifest's LastSeqNum). Increment LastSeqNum by 1 to get the
+			// next sequence number that will be assigned.
+			//
+			// If LastSeqNum is less than SeqNumStart, increase it to at least
+			// SeqNumStart to leave ample room for reserved sequence numbers.
+			vs.logSeqNum = max(ve.LastSeqNum+1, base.SeqNumStart)
+		}
+	}
+
+	// We have already set vs.nextFileNum=1 at the beginning of the function and
+	// could have only updated it to some other non-zero value, so it cannot be
+	// 0 here.
+	if vs.minUnflushedLogNum == 0 {
+		if vs.nextFileNum >= 2 {
+			// We either have a freshly created DB, or a DB created by RocksDB
+			// that has not had a single flushed SSTable yet. This is because
+			// RocksDB bumps up nextFileNum in this case without bumping up
+			// minUnflushedLogNum, even if WALs with non-zero file numbers are
+			// present in the directory.
+		} else {
+			return nil, base.CorruptionErrorf("pebble: malformed manifest file %q for DB %q",
+				errors.Safe(manifestFilename), dirname)
+		}
+	}
+	vs.nextFileNum = max(vs.nextFileNum, vs.minUnflushedLogNum+1)
+
+	// Populate the virtual backings for virtual sstables since we have finished
+	// version edit accumulation.
+	for _, b := range bve.AddedFileBacking {
+		isLocal := objstorage.IsLocalTable(provider, b.DiskFileNum)
+		vs.latest.virtualBackings.AddAndRef(b, isLocal)
+	}
+	for l, addedLevel := range bve.AddedTables {
+		for _, m := range addedLevel {
+			if m.Virtual {
+				vs.latest.virtualBackings.AddTable(m, l)
+			}
+		}
+	}
+
+	if invariants.Enabled {
+		// There should be no deleted tables or backings, since we're starting
+		// from an empty state.
+		for _, deletedLevel := range bve.DeletedTables {
+			if len(deletedLevel) != 0 {
+				panic("deleted files after manifest replay")
+			}
+		}
+		if len(bve.RemovedFileBacking) > 0 {
+			panic("deleted backings after manifest replay")
+		}
+	}
+
+	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
+	newVersion, err := bve.Apply(emptyVersion, opts.Experimental.ReadCompactionRate)
+	if err != nil {
+		return nil, err
+	}
+	vs.latest.l0Organizer.PerformUpdate(vs.latest.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
+	vs.latest.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
+	vs.latest.blobFiles.Init(&bve, manifest.BlobRewriteHeuristic{
+		CurrentTime: opts.private.timeNow,
+		MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
+	})
+	vs.version = newVersion
+
+	for i := range vs.metrics.Levels {
+		l := &vs.metrics.Levels[i]
+		l.TablesCount = int64(newVersion.Levels[i].Len())
+		files := newVersion.Levels[i].Slice()
+		l.TablesSize = int64(files.TableSizeSum())
+	}
+	for _, l := range newVersion.Levels {
+		for f := range l.All() {
+			if !f.Virtual {
+				isLocal, localSize := sizeIfLocal(f.TableBacking, provider)
+				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
+				if isLocal {
+					vs.metrics.Table.Local.LiveCount++
+				}
+			}
+		}
+	}
+	for backing := range vs.latest.virtualBackings.All() {
+		isLocal, localSize := sizeIfLocal(backing, provider)
+		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
+		if isLocal {
+			vs.metrics.Table.Local.LiveCount++
+		}
+	}
+	return vs, nil
 }

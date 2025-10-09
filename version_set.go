@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"fmt"
-	"io"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -61,7 +60,7 @@ type versionSet struct {
 
 	// Mutable fields.
 	versions manifest.VersionList
-	latest   latestVersionState
+	latest   *latestVersionState
 	picker   compactionPicker
 	// curCompactionConcurrency is updated whenever picker is updated.
 	// INVARIANT: >= 1.
@@ -157,18 +156,18 @@ func (vs *versionSet) init(
 	vs.cmp = opts.Comparer
 	vs.dynamicBaseLevel = true
 	vs.versions.Init(mu)
-	vs.latest.l0Organizer = manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes)
-	vs.latest.virtualBackings = manifest.MakeVirtualBackings()
 	vs.obsoleteFn = vs.addObsoleteLocked
 	vs.zombieTables = makeZombieObjects()
 	vs.zombieBlobs = makeZombieObjects()
 	vs.nextFileNum.Store(1)
+	vs.logSeqNum.Store(base.SeqNumStart)
 	vs.manifestMarker = marker
 	vs.getFormatMajorVersion = getFMV
 }
 
-// create creates a version set for a fresh DB.
-func (vs *versionSet) create(
+// initNewDB creates a version set for a fresh database, persisting an initial
+// manifest file.
+func (vs *versionSet) initNewDB(
 	jobID JobID,
 	dirname string,
 	provider objstorage.Provider,
@@ -179,12 +178,16 @@ func (vs *versionSet) create(
 	mu *sync.Mutex,
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
+	vs.latest = &latestVersionState{
+		l0Organizer:     manifest.NewL0Organizer(opts.Comparer, opts.FlushSplitBytes),
+		virtualBackings: manifest.MakeVirtualBackings(),
+	}
 	vs.latest.blobFiles.Init(nil, blobRewriteHeuristic)
 	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
 	vs.append(emptyVersion)
 
 	vs.setCompactionPicker(
-		newCompactionPickerByScore(emptyVersion, &vs.latest, vs.opts, nil))
+		newCompactionPickerByScore(emptyVersion, vs.latest, vs.opts, nil))
 	// Note that a "snapshot" version edit is written to the manifest when it is
 	// created.
 	vs.manifestFileNum = vs.getNextDiskFileNum()
@@ -218,167 +221,27 @@ func (vs *versionSet) create(
 	return nil
 }
 
-// load loads the version set from the manifest file.
-func (vs *versionSet) load(
+// initRecoveredDB initializes the version set from the existing database state
+// recovered from an existing manifest file.
+func (vs *versionSet) initRecoveredDB(
 	dirname string,
 	provider objstorage.Provider,
 	opts *Options,
-	manifestFileNum base.DiskFileNum,
+	rv *recoveredVersion,
 	marker *atomicfs.Marker,
 	getFormatMajorVersion func() FormatMajorVersion,
-	blobRewriteHeuristic manifest.BlobRewriteHeuristic,
 	mu *sync.Mutex,
 ) error {
 	vs.init(dirname, provider, opts, marker, getFormatMajorVersion, mu)
-
-	vs.manifestFileNum = manifestFileNum
-	manifestPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeManifest, vs.manifestFileNum)
-	manifestFilename := opts.FS.PathBase(manifestPath)
-
-	// Read the versionEdits in the manifest file.
-	var bve manifest.BulkVersionEdit
-	bve.AllAddedTables = make(map[base.TableNum]*manifest.TableMetadata)
-	manifestFile, err := vs.fs.Open(manifestPath)
-	if err != nil {
-		return errors.Wrapf(err, "pebble: could not open manifest file %q for DB %q",
-			errors.Safe(manifestFilename), dirname)
-	}
-	defer manifestFile.Close()
-	rr := record.NewReader(manifestFile, 0 /* logNum */)
-	for {
-		r, err := rr.Next()
-		if err == io.EOF || record.IsInvalidRecord(err) {
-			break
-		}
-		if err != nil {
-			return errors.Wrapf(err, "pebble: error when loading manifest file %q",
-				errors.Safe(manifestFilename))
-		}
-		var ve manifest.VersionEdit
-		err = ve.Decode(r)
-		if err != nil {
-			// Break instead of returning an error if the record is corrupted
-			// or invalid.
-			if err == io.EOF || record.IsInvalidRecord(err) {
-				break
-			}
-			return err
-		}
-		if ve.ComparerName != "" {
-			if ve.ComparerName != vs.cmp.Name {
-				return errors.Errorf("pebble: manifest file %q for DB %q: "+
-					"comparer name from file %q != comparer name from Options %q",
-					errors.Safe(manifestFilename), dirname, errors.Safe(ve.ComparerName), errors.Safe(vs.cmp.Name))
-			}
-		}
-		if err := bve.Accumulate(&ve); err != nil {
-			return err
-		}
-		if ve.MinUnflushedLogNum != 0 {
-			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
-		}
-		if ve.NextFileNum != 0 {
-			vs.nextFileNum.Store(ve.NextFileNum)
-		}
-		if ve.LastSeqNum != 0 {
-			// logSeqNum is the _next_ sequence number that will be assigned,
-			// while LastSeqNum is the last assigned sequence number. Note that
-			// this behaviour mimics that in RocksDB; the first sequence number
-			// assigned is one greater than the one present in the manifest
-			// (assuming no WALs contain higher sequence numbers than the
-			// manifest's LastSeqNum). Increment LastSeqNum by 1 to get the
-			// next sequence number that will be assigned.
-			//
-			// If LastSeqNum is less than SeqNumStart, increase it to at least
-			// SeqNumStart to leave ample room for reserved sequence numbers.
-			if ve.LastSeqNum+1 < base.SeqNumStart {
-				vs.logSeqNum.Store(base.SeqNumStart)
-			} else {
-				vs.logSeqNum.Store(ve.LastSeqNum + 1)
-			}
-		}
-	}
-	// We have already set vs.nextFileNum = 2 at the beginning of the
-	// function and could have only updated it to some other non-zero value,
-	// so it cannot be 0 here.
-	if vs.minUnflushedLogNum == 0 {
-		if vs.nextFileNum.Load() >= 2 {
-			// We either have a freshly created DB, or a DB created by RocksDB
-			// that has not had a single flushed SSTable yet. This is because
-			// RocksDB bumps up nextFileNum in this case without bumping up
-			// minUnflushedLogNum, even if WALs with non-zero file numbers are
-			// present in the directory.
-		} else {
-			return base.CorruptionErrorf("pebble: malformed manifest file %q for DB %q",
-				errors.Safe(manifestFilename), dirname)
-		}
-	}
-	vs.markFileNumUsed(vs.minUnflushedLogNum)
-
-	// Populate the virtual backings for virtual sstables since we have finished
-	// version edit accumulation.
-	for _, b := range bve.AddedFileBacking {
-		isLocal := objstorage.IsLocalTable(provider, b.DiskFileNum)
-		vs.latest.virtualBackings.AddAndRef(b, isLocal)
-	}
-
-	for l, addedLevel := range bve.AddedTables {
-		for _, m := range addedLevel {
-			if m.Virtual {
-				vs.latest.virtualBackings.AddTable(m, l)
-			}
-		}
-	}
-
-	if invariants.Enabled {
-		// There should be no deleted tables or backings, since we're starting from
-		// an empty state.
-		for _, deletedLevel := range bve.DeletedTables {
-			if len(deletedLevel) != 0 {
-				panic("deleted files after manifest replay")
-			}
-		}
-		if len(bve.RemovedFileBacking) > 0 {
-			panic("deleted backings after manifest replay")
-		}
-	}
-
-	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
-	newVersion, err := bve.Apply(emptyVersion, opts.Experimental.ReadCompactionRate)
-	if err != nil {
-		return err
-	}
-	vs.latest.l0Organizer.PerformUpdate(vs.latest.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
-	vs.latest.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
-	vs.latest.blobFiles.Init(&bve, blobRewriteHeuristic)
-	vs.append(newVersion)
-
-	for i := range vs.metrics.Levels {
-		l := &vs.metrics.Levels[i]
-		l.TablesCount = int64(newVersion.Levels[i].Len())
-		files := newVersion.Levels[i].Slice()
-		l.TablesSize = int64(files.TableSizeSum())
-	}
-	for _, l := range newVersion.Levels {
-		for f := range l.All() {
-			if !f.Virtual {
-				isLocal, localSize := sizeIfLocal(f.TableBacking, vs.provider)
-				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
-				if isLocal {
-					vs.metrics.Table.Local.LiveCount++
-				}
-			}
-		}
-	}
-	for backing := range vs.latest.virtualBackings.All() {
-		isLocal, localSize := sizeIfLocal(backing, vs.provider)
-		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
-		if isLocal {
-			vs.metrics.Table.Local.LiveCount++
-		}
-	}
-
-	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, &vs.latest, vs.opts, nil))
+	vs.manifestFileNum = rv.manifestFileNum
+	vs.minUnflushedLogNum = rv.minUnflushedLogNum
+	vs.nextFileNum.Store(uint64(rv.nextFileNum))
+	vs.logSeqNum.Store(rv.logSeqNum)
+	vs.latest = rv.latest
+	vs.metrics = rv.metrics
+	vs.append(rv.version)
+	vs.setCompactionPicker(newCompactionPickerByScore(
+		rv.version, vs.latest, vs.opts, nil))
 	return nil
 }
 
@@ -785,7 +648,7 @@ func (vs *versionSet) UpdateVersionLocked(
 	vs.metrics.BlobFiles.Local.LiveSize = uint64(int64(vs.metrics.BlobFiles.Local.LiveSize) + localBlobLiveDelta.size)
 	vs.metrics.BlobFiles.Local.LiveCount = uint64(int64(vs.metrics.BlobFiles.Local.LiveCount) + localBlobLiveDelta.count)
 
-	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, &vs.latest, vs.opts, inProgress))
+	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, vs.latest, vs.opts, inProgress))
 	if !vs.dynamicBaseLevel {
 		vs.picker.forceBaseLevel1()
 	}

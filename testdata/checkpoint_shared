@@ -329,9 +329,9 @@ lock: checkpoints/checkpoint1/LOCK
 open-dir: checkpoints/checkpoint1
 open-dir: checkpoints/checkpoint1
 open-dir: checkpoints/checkpoint1
-open-dir: checkpoints/checkpoint1
 open: checkpoints/checkpoint1/REMOTE-OBJ-CATALOG-000001
 close: checkpoints/checkpoint1/REMOTE-OBJ-CATALOG-000001
+open-dir: checkpoints/checkpoint1
 open: checkpoints/checkpoint1/MANIFEST-000001
 close: checkpoints/checkpoint1/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
@@ -381,9 +381,9 @@ lock: checkpoints/checkpoint2/LOCK
 open-dir: checkpoints/checkpoint2
 open-dir: checkpoints/checkpoint2
 open-dir: checkpoints/checkpoint2
-open-dir: checkpoints/checkpoint2
 open: checkpoints/checkpoint2/REMOTE-OBJ-CATALOG-000001
 close: checkpoints/checkpoint2/REMOTE-OBJ-CATALOG-000001
+open-dir: checkpoints/checkpoint2
 open: checkpoints/checkpoint2/MANIFEST-000001
 close: checkpoints/checkpoint2/MANIFEST-000001
 open-dir: checkpoints/checkpoint2
