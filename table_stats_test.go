@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -30,7 +31,7 @@ func TestTableStats(t *testing.T) {
 	// loadedInfo is protected by d.mu.
 	var loadedInfo *TableStatsInfo
 	mkOpts := func() *Options {
-		return &Options{
+		opts := &Options{
 			Comparer:                    testkeys.Comparer,
 			DisableAutomaticCompactions: true,
 			FormatMajorVersion:          FormatMinSupported,
@@ -42,6 +43,12 @@ func TestTableStats(t *testing.T) {
 			},
 			Logger: testutils.Logger{T: t},
 		}
+		opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+			return compact.ValueSeparationOutputConfig{
+				MinimumSize: 10,
+			}
+		}
+		return opts
 	}
 
 	opts := mkOpts()

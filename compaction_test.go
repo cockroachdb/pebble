@@ -949,6 +949,11 @@ func runCompactionTest(
 		opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 			return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 		}
+		opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+			return compact.ValueSeparationOutputConfig{
+				MinimumSize: 10,
+			}
+		}
 		return opts
 	}
 	reset := func() {
@@ -2721,6 +2726,11 @@ func TestCompactFlushQueuedLargeBatch(t *testing.T) {
 	opts := &Options{
 		FS:     mem,
 		Logger: testutils.Logger{T: t},
+	}
+	opts.Experimental.LatencyTolerantSpanPolicy = func() compact.ValueSeparationOutputConfig {
+		return compact.ValueSeparationOutputConfig{
+			MinimumSize: 10,
+		}
 	}
 	opts.WithFSDefaults()
 	d, err := Open("", testingRandomized(t, opts))
