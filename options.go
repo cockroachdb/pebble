@@ -1214,6 +1214,10 @@ type Options struct {
 		// before calling DB.ingestApply.
 		testingBeforeIngestApplyFunc func()
 
+		// timeNow returns the current time. It defaults to time.Now. It's
+		// configurable here so that tests can mock the current time.
+		timeNow func() time.Time
+
 		// fsCloser holds a closer that should be invoked after a DB using these
 		// Options is closed. This is used to automatically stop the
 		// long-running goroutine associated with the disk-health-checking FS.
@@ -1682,6 +1686,9 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.VirtualTableRewriteUnreferencedFraction == nil {
 		o.Experimental.VirtualTableRewriteUnreferencedFraction = func() float64 { return defaultVirtualTableUnreferencedFraction }
+	}
+	if o.private.timeNow == nil {
+		o.private.timeNow = time.Now
 	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.

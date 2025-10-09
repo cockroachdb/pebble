@@ -1431,7 +1431,7 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable, dur time.Duration) {
 	if mem == nil || mem.flushForced {
 		return
 	}
-	deadline := d.timeNow().Add(dur)
+	deadline := d.opts.private.timeNow().Add(dur)
 	if !mem.delayedFlushForcedAt.IsZero() && deadline.After(mem.delayedFlushForcedAt) {
 		// Already scheduled to flush sooner than within `dur`.
 		return
@@ -1720,7 +1720,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		d.mu.versions.latest.l0Organizer,
 		d.mu.versions.picker.getBaseLevel(),
 		d.mu.mem.queue[:n],
-		d.timeNow(),
+		d.opts.private.timeNow(),
 		d.shouldCreateShared(0),
 		d.determineCompactionValueSeparation,
 	)
@@ -1738,7 +1738,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	}
 	d.opts.EventListener.FlushBegin(info)
 
-	startTime := d.timeNow()
+	startTime := d.opts.private.timeNow()
 
 	var ve *manifest.VersionEdit
 	var stats compact.Stats
@@ -1758,7 +1758,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		if c.kind == compactionKindIngestedFlushable {
 			ve, err = d.runIngestFlush(c)
 		}
-		info.Duration = d.timeNow().Sub(startTime)
+		info.Duration = d.opts.private.timeNow().Sub(startTime)
 		if err != nil {
 			return versionUpdate{}, err
 		}
@@ -1885,7 +1885,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		info.Err = errEmptyTable
 	}
 	info.Done = true
-	info.TotalDuration = d.timeNow().Sub(startTime)
+	info.TotalDuration = d.opts.private.timeNow().Sub(startTime)
 	d.opts.EventListener.FlushEnd(info)
 
 	// The order of these operations matters here for ease of testing.
@@ -2280,7 +2280,7 @@ func (d *DB) tryScheduleDeleteOnlyCompaction() bool {
 	d.mu.compact.deletionHints = unresolvedHints
 
 	if len(inputs) > 0 {
-		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.timeNow(), resolvedHints, exciseEnabled)
+		c := newDeleteOnlyCompaction(d.opts, v, inputs, d.opts.private.timeNow(), resolvedHints, exciseEnabled)
 		d.mu.compact.compactingCount++
 		d.mu.compact.compactProcesses++
 		c.AddInProgressLocked(d)
@@ -2635,7 +2635,7 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 			// must be atomic with the above removal of c from
 			// d.mu.compact.InProgress to ensure Metrics.Compact.Duration does not
 			// miss or double count a completing compaction's duration.
-			d.mu.compact.duration += d.timeNow().Sub(c.BeganAt())
+			d.mu.compact.duration += d.opts.private.timeNow().Sub(c.BeganAt())
 		}()
 		// Done must not be called while holding any lock that needs to be
 		// acquired by Schedule. Also, it must be called after new Version has
@@ -2737,12 +2737,12 @@ func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 	info := c.makeInfo(jobID)
 	d.opts.EventListener.CompactionBegin(info)
-	startTime := d.timeNow()
+	startTime := d.opts.private.timeNow()
 
 	ve, stats, outputBlobs, err := d.runCompaction(jobID, c)
 
 	info.Annotations = append(info.Annotations, c.annotations...)
-	info.Duration = d.timeNow().Sub(startTime)
+	info.Duration = d.opts.private.timeNow().Sub(startTime)
 	if err == nil {
 		validateVersionEdit(ve, d.opts.Comparer.ValidateKey, d.opts.Comparer.FormatKey, d.opts.Logger)
 		_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
@@ -2799,7 +2799,7 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 	d.mu.versions.incrementCompactions(c.kind, c.extraLevels, c.metrics.bytesWritten.Load(), err)
 	d.mu.versions.incrementCompactionBytes(-c.metrics.bytesWritten.Load())
 
-	info.TotalDuration = d.timeNow().Sub(c.metrics.beganAt)
+	info.TotalDuration = d.opts.private.timeNow().Sub(c.metrics.beganAt)
 	d.opts.EventListener.CompactionEnd(info)
 
 	// Update the read state before deleting obsolete files because the

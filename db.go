@@ -547,8 +547,6 @@ type DB struct {
 	// quickly.
 	problemSpans problemspans.ByLevel
 
-	// Normally equal to time.Now() but may be overridden in tests.
-	timeNow func() time.Time
 	// the time at database Open; may be used to compute metrics like effective
 	// compaction concurrency
 	openedAt time.Time
@@ -1901,7 +1899,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Compact.Duration = d.mu.compact.duration
 	for c := range d.mu.compact.inProgress {
 		if !c.IsFlush() {
-			metrics.Compact.Duration += d.timeNow().Sub(c.BeganAt())
+			metrics.Compact.Duration += d.opts.private.timeNow().Sub(c.BeganAt())
 		}
 	}
 	metrics.Compact.NumProblemSpans = d.problemSpans.Len()
@@ -2026,7 +2024,7 @@ func (d *DB) Metrics() *Metrics {
 
 	metrics.SecondaryCacheMetrics = d.objProvider.Metrics()
 
-	metrics.Uptime = d.timeNow().Sub(d.openedAt)
+	metrics.Uptime = d.opts.private.timeNow().Sub(d.openedAt)
 
 	metrics.manualMemory = manual.GetMetrics()
 

@@ -77,15 +77,15 @@ func TestEventListener(t *testing.T) {
 				L0CompactionThreshold: 10,
 				WALDir:                "wal",
 			}
+			t := time.Now()
+			opts.private.timeNow = func() time.Time {
+				t = t.Add(time.Second)
+				return t
+			}
 			var err error
 			d, err = Open("db", opts)
 			if err != nil {
 				return err.Error()
-			}
-			t := time.Now()
-			d.timeNow = func() time.Time {
-				t = t.Add(time.Second)
-				return t
 			}
 			d.opts.private.testingAlwaysWaitForCleanup = true
 			return memLog.String()
