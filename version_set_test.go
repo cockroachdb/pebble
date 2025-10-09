@@ -77,7 +77,7 @@ func TestVersionSet(t *testing.T) {
 	provider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(opts.FS, "" /* dirName */))
 	require.NoError(t, err)
 	var vs versionSet
-	require.NoError(t, vs.create(
+	require.NoError(t, vs.initNewDB(
 		0 /* jobID */, "" /* dirname */, provider, opts, marker,
 		func() FormatMajorVersion { return FormatVirtualSSTables },
 		blobRewriteHeuristic,
@@ -206,12 +206,14 @@ func TestVersionSet(t *testing.T) {
 			if !ok {
 				td.Fatalf(t, "invalid manifest file name %q", filename)
 			}
+			rv, err := recoverVersion(opts, "", provider, manifestNum)
+			if err != nil {
+				td.Fatalf(t, "error recovering version: %v", err)
+			}
 			vs = versionSet{}
-			err = vs.load(
-				"", provider, opts, manifestNum, marker,
-				func() FormatMajorVersion { return FormatVirtualSSTables },
-				blobRewriteHeuristic,
-				mu,
+			err = vs.initRecoveredDB(
+				"", provider, opts, rv, marker,
+				func() FormatMajorVersion { return FormatVirtualSSTables }, mu,
 			)
 			if err != nil {
 				td.Fatalf(t, "error loading manifest: %v", err)

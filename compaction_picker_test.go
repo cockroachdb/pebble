@@ -622,7 +622,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			latest.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
 			vs := &versionSet{
 				opts:   opts,
-				latest: *latest,
+				latest: latest,
 				cmp:    DefaultComparer,
 			}
 			vs.versions.Init(nil)
@@ -630,7 +630,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			picker = &compactionPickerByScore{
 				opts:               opts,
 				vers:               version,
-				latestVersionState: &vs.latest,
+				latestVersionState: vs.latest,
 				baseLevel:          baseLevel,
 			}
 			vs.picker = picker
@@ -861,7 +861,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			vs := &versionSet{
 				opts:   opts,
 				cmp:    DefaultComparer,
-				latest: *latest,
+				latest: latest,
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
@@ -1245,7 +1245,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 			vs := &versionSet{
 				opts:   opts,
 				cmp:    DefaultComparer,
-				latest: *latest,
+				latest: latest,
 			}
 			vs.versions.Init(nil)
 			vs.append(vers)
