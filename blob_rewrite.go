@@ -61,7 +61,7 @@ func (c *pickedBlobFileCompaction) ConstructCompaction(
 	// when it completes.
 	c.vers.Ref()
 	return &blobFileRewriteCompaction{
-		beganAt:           d.timeNow(),
+		beganAt:           d.opts.private.timeNow(),
 		grantHandle:       grantHandle,
 		version:           c.vers,
 		input:             c.file,
@@ -188,12 +188,12 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 		},
 	}
 	d.opts.EventListener.BlobFileRewriteBegin(info)
-	startTime := d.timeNow()
+	startTime := d.opts.private.timeNow()
 
 	// Run the blob file rewrite.
 	objMeta, ve, err := d.runBlobFileRewriteLocked(ctx, jobID, c)
 
-	info.Duration = d.timeNow().Sub(startTime)
+	info.Duration = d.opts.private.timeNow().Sub(startTime)
 
 	// Update the version with the remapped blob file.
 	if err == nil {
@@ -266,7 +266,7 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 	}
 
 	// Notify the event listener that the compaction has ended.
-	now := d.timeNow()
+	now := d.opts.private.timeNow()
 	info.TotalDuration = now.Sub(c.beganAt)
 	info.Done = true
 	info.Err = err
@@ -348,7 +348,7 @@ func (d *DB) runBlobFileRewriteLocked(
 		FileNum:      objMeta.DiskFileNum,
 		Size:         stats.FileLen,
 		ValueSize:    stats.UncompressedValueBytes,
-		CreationTime: uint64(d.timeNow().Unix()),
+		CreationTime: uint64(d.opts.private.timeNow().Unix()),
 	}
 	physical.PopulateProperties(&stats.Properties)
 

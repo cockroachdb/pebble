@@ -245,7 +245,7 @@ func (pc *pickedTableCompaction) ConstructCompaction(
 	return newCompaction(
 		pc,
 		d.opts,
-		d.timeNow(),
+		d.opts.private.timeNow(),
 		d.ObjProvider(),
 		grantHandle,
 		d.shouldCreateShared(pc.outputLevel.level),

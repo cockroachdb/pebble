@@ -67,12 +67,12 @@ func (d *DB) Download(ctx context.Context, spans []DownloadSpan) error {
 		JobID: int(d.newJobID()),
 		Spans: spans,
 	}
-	startTime := d.timeNow()
+	startTime := d.opts.private.timeNow()
 	d.opts.EventListener.DownloadBegin(info)
 
 	for info.RestartCount = 0; ; info.RestartCount++ {
 		tasks := d.createDownloadTasks(spans)
-		info.Duration = d.timeNow().Sub(startTime)
+		info.Duration = d.opts.private.timeNow().Sub(startTime)
 		if len(tasks) == 0 {
 			// We are done.
 			info.Done = true
@@ -96,7 +96,7 @@ func (d *DB) Download(ctx context.Context, spans []DownloadSpan) error {
 
 		if err != nil {
 			info.Err = err
-			info.Duration = d.timeNow().Sub(startTime)
+			info.Duration = d.opts.private.timeNow().Sub(startTime)
 			d.opts.EventListener.DownloadEnd(info)
 			return err
 		}
@@ -446,7 +446,8 @@ func (d *DB) tryLaunchDownloadForFile(
 
 	download.numLaunchedDownloads++
 	doneCh = make(chan error, 1)
-	c := newCompaction(pc, d.opts, d.timeNow(), d.objProvider, noopGrantHandle{}, d.shouldCreateShared(pc.outputLevel.level), d.determineCompactionValueSeparation)
+	c := newCompaction(pc, d.opts, d.opts.private.timeNow(), d.objProvider, noopGrantHandle{},
+		d.shouldCreateShared(pc.outputLevel.level), d.determineCompactionValueSeparation)
 	c.isDownload = true
 	d.mu.compact.downloadingCount++
 	c.AddInProgressLocked(d)

@@ -15,7 +15,6 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
@@ -253,9 +252,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.versions.logSeqNum.Store(base.SeqNumStart)
 	d.mu.formatVers.vers.Store(uint64(formatVersion))
 	d.mu.formatVers.marker = rs.fmvMarker
-
-	d.timeNow = time.Now
-	d.openedAt = d.timeNow()
+	d.openedAt = d.opts.private.timeNow()
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -263,7 +260,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	jobID := d.newJobIDLocked()
 
 	blobRewriteHeuristic := manifest.BlobRewriteHeuristic{
-		CurrentTime: d.timeNow,
+		CurrentTime: d.opts.private.timeNow,
 		MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
 	}
 
