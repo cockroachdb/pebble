@@ -395,35 +395,41 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		return nil, err
 	}
 
-	// Remove obsolete WAL files now (as opposed to relying on asynchronous cleanup)
-	// to prevent crash loops due to no disk space (ENOSPC).
+	// Remove obsolete WAL files now (as opposed to relying on asynchronous
+	// cleanup) to prevent crash loops due to no disk space (ENOSPC).
 	var retainedWALs wal.Logs
 	for _, w := range wals {
-		if base.DiskFileNum(w.Num) < d.mu.versions.minUnflushedLogNum {
-			// Log obsolete WALs that will be removed.
-			for i := range w.NumSegments() {
-				fs, path := w.SegmentLocation(i)
-				if err := fs.Remove(path); err != nil {
-					// It's not a big deal if we can't delete the file now.
-					// We'll try to remove it later in the cleanup process.
-					d.opts.EventListener.WALDeleted(WALDeleteInfo{
-						JobID:   0,
-						Path:    path,
-						FileNum: base.DiskFileNum(w.Num),
-						Err:     err,
-					})
-					retainedWALs = append(retainedWALs, w)
-				} else {
-					d.opts.EventListener.WALDeleted(WALDeleteInfo{
-						JobID:   0,
-						Path:    path,
-						FileNum: base.DiskFileNum(w.Num),
-						Err:     nil,
-					})
-				}
-			}
-		} else {
+		// Any WALs with file numbers ≥ minUnflushedLogNum must be replayed to
+		// recover the state.
+		if base.DiskFileNum(w.Num) >= d.mu.versions.minUnflushedLogNum {
 			retainedWALs = append(retainedWALs, w)
+			continue
+		}
+		// Skip removal of obsolete WALs in read-only mode.
+		if opts.ReadOnly {
+			continue
+		}
+		// Remove obsolete WALs, logging each removal.
+		for i := range w.NumSegments() {
+			fs, path := w.SegmentLocation(i)
+			if err := fs.Remove(path); err != nil {
+				// It's not a big deal if we can't delete the file now.
+				// We'll try to remove it later in the cleanup process.
+				d.opts.EventListener.WALDeleted(WALDeleteInfo{
+					JobID:   0,
+					Path:    path,
+					FileNum: base.DiskFileNum(w.Num),
+					Err:     err,
+				})
+				retainedWALs = append(retainedWALs, w)
+			} else {
+				d.opts.EventListener.WALDeleted(WALDeleteInfo{
+					JobID:   0,
+					Path:    path,
+					FileNum: base.DiskFileNum(w.Num),
+					Err:     nil,
+				})
+			}
 		}
 	}
 
