@@ -2890,6 +2890,11 @@ func TestMarkedForCompaction(t *testing.T) {
 				EventListener:               &eventListener,
 				Logger:                      testutils.Logger{T: t},
 			}
+			t := time.Now()
+			opts.private.timeNow = func() time.Time {
+				t = t.Add(time.Second)
+				return t
+			}
 			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 			}
@@ -2899,11 +2904,7 @@ func TestMarkedForCompaction(t *testing.T) {
 			}
 			d.mu.Lock()
 			defer d.mu.Unlock()
-			t := time.Now()
-			d.timeNow = func() time.Time {
-				t = t.Add(time.Second)
-				return t
-			}
+
 			s := d.mu.versions.currentVersion().DebugString()
 			return s
 
