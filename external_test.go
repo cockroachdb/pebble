@@ -411,6 +411,56 @@ func checkKVs(
 	}
 }
 
+func TestReadOnlyRecovery(t *testing.T) {
+	seed := time.Now().UnixNano()
+	t.Logf("Using seed %d", seed)
+	rng := rand.New(rand.NewPCG(0, uint64(seed)))
+
+	// Generate a random database by running the metamorphic test with the
+	// WriteOpConfig. We'll perform ~10,000 random operations that mutate the
+	// state of the database.
+	kf := metamorphic.TestkeysKeyFormat
+	testOpts := metamorphic.RandomOptions(rng, kf, metamorphic.RandomOptionsCfg{
+		AlwaysStrictFS:  true,
+		NoRemoteStorage: true,
+		NoWALFailover:   true,
+	})
+
+	// Run the metamorphic test grabbing a clone of the filesystem at a random
+	// time.
+	var cloneFS *vfs.MemFS
+	{
+		test, err := metamorphic.New(metamorphic.GenerateOps(
+			rng, 10000, kf, metamorphic.WriteOpConfig()),
+			testOpts, "" /* dir */, io.Discard)
+		require.NoError(t, err)
+		memFS := vfs.Root(testOpts.Opts.FS).(*vfs.MemFS)
+		cloneFS = memFS
+
+		for more := true; more; {
+			more, _, err = test.Step()
+			require.NoError(t, err)
+			if rng.IntN(100) == 1 {
+				cloneFS = memFS.CrashClone(vfs.CrashCloneCfg{
+					UnsyncedDataPercent: 50, RNG: rng})
+			}
+		}
+	}
+	t.Log("Constructed test database state")
+
+	// Re-open the cloned filesystem in read-only mode, asserting that the
+	// filesystem is unchanged afterwards.
+	before := cloneFS.String()
+	opts := testOpts.Opts.Clone()
+	opts.FS = cloneFS
+	opts.ReadOnly = true
+	db, err := pebble.Open("", opts)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	after := cloneFS.String()
+	require.Equal(t, before, after)
+}
+
 func TestOptionsClone(t *testing.T) {
 	seed := time.Now().UnixNano()
 	t.Logf("Using seed %d", seed)
