@@ -32,7 +32,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
-	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -40,7 +39,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/tokenbucket"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -377,13 +375,7 @@ type DB struct {
 			// commitPipeline.mu and DB.mu to be held when rotating the WAL/memtable
 			// (i.e. makeRoomForWrite). Can be nil.
 			writer  wal.Writer
-			metrics struct {
-				// fsyncLatency has its own internal synchronization, and is not
-				// protected by mu.
-				fsyncLatency prometheus.Histogram
-				// Updated whenever a wal.Writer is closed.
-				record.LogWriterMetrics
-			}
+			metrics WALMetrics
 		}
 
 		mem struct {
@@ -1987,8 +1979,7 @@ func (d *DB) Metrics() *Metrics {
 	metrics.BlobFiles.ReferencedValueSize = blobStats.ReferencedValueSize
 	metrics.BlobFiles.ReferencedBackingValueSize = blobStats.ReferencedBackingValueSize
 
-	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
-	if err := metrics.LogWriter.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
+	if err := metrics.WALMetrics.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
 		d.opts.Logger.Errorf("metrics error: %s", err)
 	}
 	metrics.Flush.WriteThroughput = d.mu.compact.flushWriteThroughput
