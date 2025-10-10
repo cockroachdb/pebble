@@ -46,6 +46,7 @@ list path=(a,data)
 grep-between path=(a,data/OPTIONS-000007) start=(\[WAL Failover\]) end=^$
 ----
   secondary_dir=secondary-wals
+  secondary_identifier=9f69f2c3ffb3c247767290a9b3215fc5
   primary_dir_probe_interval=1s
   healthy_probe_latency_threshold=25ms
   healthy_interval=15s

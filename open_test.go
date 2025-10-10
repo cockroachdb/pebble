@@ -256,6 +256,9 @@ func TestOpen_WALFailover(t *testing.T) {
 			if o.FS == nil {
 				return "no path"
 			}
+			// Set a constant identifier for testing to avoid flaky tests
+			wal.SetGenerateStableIdentifierForTesting("9f69f2c3ffb3c247767290a9b3215fc5")
+			defer wal.ResetGenerateStableIdentifierForTesting()
 			d, err := Open(dataDir, o)
 			if err != nil {
 				return err.Error()
