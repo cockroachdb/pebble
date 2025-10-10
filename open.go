@@ -351,7 +351,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			return nil, err
 		}
 	}
-	if opts.WALFailover != nil {
+	if !opts.ReadOnly && opts.WALFailover != nil {
 		walOpts.Secondary = opts.WALFailover.Secondary
 		// Lock the secondary WAL directory, if distinct from the data directory
 		// and primary WAL directory.
