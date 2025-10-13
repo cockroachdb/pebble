@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -249,7 +248,6 @@ func TestCommitPipelineWALClose(t *testing.T) {
 	}
 	p := newCommitPipeline(testEnv)
 	wal = record.NewLogWriter(sf, 0 /* logNum */, record.LogWriterConfig{
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		QueueSemChan:        p.logSyncQSem,
 		WriteWALSyncOffsets: func() bool { return false },
 	})
@@ -388,7 +386,6 @@ func BenchmarkCommitPipeline(b *testing.B) {
 					p := newCommitPipeline(nullCommitEnv)
 					wal = record.NewLogWriter(io.Discard, 0, /* logNum */
 						record.LogWriterConfig{
-							WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 							QueueSemChan:        p.logSyncQSem,
 							WriteWALSyncOffsets: func() bool { return false },
 						})

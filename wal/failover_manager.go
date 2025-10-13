@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -506,10 +507,20 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 	var dirs [numDirIndices]dirAndFileHandle
 	for i, dir := range []Dir{o.Primary, o.Secondary} {
 		dirs[i].Dir = dir
+
+		// measure directory open operation
+		openStart := crtime.NowMono()
 		f, err := dir.FS.OpenDir(dir.Dirname)
 		if err != nil {
 			return err
 		}
+		openLatency := openStart.Elapsed()
+		if dirIndex(i) == primaryDirIndex && o.PrimaryFileOpHistogram != nil {
+			o.PrimaryFileOpHistogram.Observe(float64(openLatency))
+		} else if dirIndex(i) == secondaryDirIndex && o.SecondaryFileOpHistogram != nil {
+			o.SecondaryFileOpHistogram.Observe(float64(openLatency))
+		}
+
 		dirs[i].File = f
 	}
 	fmOpts := failoverMonitorOptions{
@@ -631,7 +642,10 @@ func (wm *failoverManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		bytesPerSync:                wm.opts.BytesPerSync,
 		preallocateSize:             wm.opts.PreallocateSize,
 		minSyncInterval:             wm.opts.MinSyncInterval,
-		fsyncLatency:                wm.opts.FsyncLatency,
+		primaryDir:                  wm.opts.Primary,
+		secondaryDir:                wm.opts.Secondary,
+		primaryFileOpHistogram:      wm.opts.PrimaryFileOpHistogram,
+		secondaryFileOpHistogram:    wm.opts.SecondaryFileOpHistogram,
 		queueSemChan:                wm.opts.QueueSemChan,
 		stopper:                     wm.stopper,
 		failoverWriteAndSyncLatency: wm.opts.FailoverWriteAndSyncLatency,
@@ -796,7 +810,14 @@ func (wm *failoverManager) logCreator(
 			createInfo.RecycledFileNum = recycleLog.FileNum
 			recycleLogName := dir.FS.PathJoin(dir.Dirname, makeLogFilename(NumWAL(recycleLog.FileNum), 0))
 			r.writeStart()
+			reuseStart := crtime.NowMono()
 			logFile, err = dir.FS.ReuseForWrite(recycleLogName, logFilename, "pebble-wal")
+			reuseLatency := reuseStart.Elapsed()
+			if isPrimary && wm.opts.PrimaryFileOpHistogram != nil {
+				wm.opts.PrimaryFileOpHistogram.Observe(float64(reuseLatency))
+			} else if !isPrimary && wm.opts.SecondaryFileOpHistogram != nil {
+				wm.opts.SecondaryFileOpHistogram.Observe(float64(reuseLatency))
+			}
 			r.writeEnd(err)
 			// TODO(sumeer): should we fatal since primary dir? At some point it is
 			// better to fatal instead of continuing to failover.
@@ -817,7 +838,15 @@ func (wm *failoverManager) logCreator(
 			// indicating whether or not the file was actually reused would allow us
 			// to skip the stat and use recycleLog.FileSize.
 			var finfo os.FileInfo
+			// Instrument file stat operation
+			statStart := crtime.NowMono()
 			finfo, err = logFile.Stat()
+			statLatency := statStart.Elapsed()
+			if isPrimary && wm.opts.PrimaryFileOpHistogram != nil {
+				wm.opts.PrimaryFileOpHistogram.Observe(float64(statLatency))
+			} else if !isPrimary && wm.opts.SecondaryFileOpHistogram != nil {
+				wm.opts.SecondaryFileOpHistogram.Observe(float64(statLatency))
+			}
 			if err != nil {
 				logFile.Close()
 				return nil, 0, err
@@ -830,7 +859,14 @@ func (wm *failoverManager) logCreator(
 	//
 	// Create file.
 	r.writeStart()
+	createStart := crtime.NowMono()
 	logFile, err = dir.FS.Create(logFilename, "pebble-wal")
+	createLatency := createStart.Elapsed()
+	if isPrimary && wm.opts.PrimaryFileOpHistogram != nil {
+		wm.opts.PrimaryFileOpHistogram.Observe(float64(createLatency))
+	} else if !isPrimary && wm.opts.SecondaryFileOpHistogram != nil {
+		wm.opts.SecondaryFileOpHistogram.Observe(float64(createLatency))
+	}
 	r.writeEnd(err)
 	return logFile, 0, err
 }

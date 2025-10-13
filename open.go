@@ -274,9 +274,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 
-	d.mu.log.metrics.fsyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Buckets: FsyncLatencyBuckets,
-	})
+	// Initialize WAL metrics structure (histograms populated below)
+	d.mu.log.metrics = WALMetrics{}
 
 	walOpts := wal.Options{
 		Primary:              rs.dirs.WALPrimary,
@@ -287,17 +286,33 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		BytesPerSync:         opts.WALBytesPerSync,
 		PreallocateSize:      d.walPreallocateSize,
 		MinSyncInterval:      opts.WALMinSyncInterval,
-		FsyncLatency:         d.mu.log.metrics.fsyncLatency,
 		QueueSemChan:         d.commit.logSyncQSem,
 		Logger:               opts.Logger,
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
 		WriteWALSyncOffsets:  func() bool { return d.FormatMajorVersion() >= FormatWALSyncChunks },
 	}
+
+	// Create and assign WAL file operation histograms
+	walPrimaryFileOpHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Buckets: FsyncLatencyBuckets,
+	})
+	d.mu.log.metrics.PrimaryFileOpLatency = walPrimaryFileOpHistogram
+	walOpts.PrimaryFileOpHistogram = walPrimaryFileOpHistogram
+
+	// Configure failover-specific histograms and options
 	if !opts.ReadOnly && opts.WALFailover != nil {
-		walOpts.FailoverOptions = opts.WALFailover.FailoverOptions
-		walOpts.FailoverWriteAndSyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
+		walSecondaryFileOpHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
 			Buckets: FsyncLatencyBuckets,
 		})
+		d.mu.log.metrics.SecondaryFileOpLatency = walSecondaryFileOpHistogram
+		walOpts.SecondaryFileOpHistogram = walSecondaryFileOpHistogram
+
+		walFailoverWriteAndSyncHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
+			Buckets: FsyncLatencyBuckets,
+		})
+		walOpts.FailoverWriteAndSyncLatency = walFailoverWriteAndSyncHistogram
+
+		walOpts.FailoverOptions = opts.WALFailover.FailoverOptions
 	}
 
 	walManager, err := wal.Init(walOpts, rs.walsReplay)
