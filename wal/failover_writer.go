@@ -455,9 +455,15 @@ type failoverWriterOpts struct {
 
 	// Options for record.LogWriter.
 	minSyncInterval func() time.Duration
-	fsyncLatency    prometheus.Histogram
-	queueSemChan    chan struct{}
-	stopper         *stopper
+
+	// WAL file operation latency histograms
+	primaryDir               Dir
+	secondaryDir             Dir
+	primaryFileOpHistogram   record.WALFileOpHistogram
+	secondaryFileOpHistogram record.WALFileOpHistogram
+
+	queueSemChan chan struct{}
+	stopper      *stopper
 
 	failoverWriteAndSyncLatency prometheus.Histogram
 	// writerClosed is a callback invoked by the FailoverWriter when it's
@@ -648,10 +654,20 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 		// map to a single NumWAL, a file used for NumWAL n at index m will
 		// never get recycled for NumWAL n at a later index (since recycling
 		// happens when n as a whole is obsolete).
+
+		// Determine which directory we're using and select the appropriate histogram
+		var histogram record.WALFileOpHistogram
+		switch dir.Dir {
+		case ww.opts.primaryDir:
+			histogram = ww.opts.primaryFileOpHistogram
+		case ww.opts.secondaryDir:
+			histogram = ww.opts.secondaryFileOpHistogram
+		}
+
 		w := record.NewLogWriter(recorderAndWriter, base.DiskFileNum(ww.opts.wn),
 			record.LogWriterConfig{
 				WALMinSyncInterval:        ww.opts.minSyncInterval,
-				WALFsyncLatency:           ww.opts.fsyncLatency,
+				WALFileOpHistogram:        histogram,
 				QueueSemChan:              ww.opts.queueSemChan,
 				ExternalSyncQueueCallback: ww.doneSyncCallback,
 				WriteWALSyncOffsets:       ww.opts.writeWALSyncOffsets,
