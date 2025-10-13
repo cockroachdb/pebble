@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -53,8 +54,14 @@ func (m *StandaloneManager) init(o Options, initial Logs) error {
 	}
 	var err error
 	var walDir vfs.File
+
+	// measure directory open operation
+	openStart := crtime.NowMono()
 	if walDir, err = o.Primary.FS.OpenDir(o.Primary.Dirname); err != nil {
 		return err
+	}
+	if openLatency := openStart.Elapsed(); o.PrimaryFileOpHistogram != nil {
+		o.PrimaryFileOpHistogram.Observe(float64(openLatency))
 	}
 	*m = StandaloneManager{
 		o:      o,
@@ -147,10 +154,20 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 	recycleLog, recycleOK = m.recycler.Peek()
 	if recycleOK {
 		recycleLogName := m.o.Primary.FS.PathJoin(m.o.Primary.Dirname, makeLogFilename(NumWAL(recycleLog.FileNum), 0))
+		// measure file reuse operation
+		reuseStart := crtime.NowMono()
 		newLogFile, err = m.o.Primary.FS.ReuseForWrite(recycleLogName, newLogName, "pebble-wal")
+		if reuseLatency := reuseStart.Elapsed(); m.o.PrimaryFileOpHistogram != nil {
+			m.o.PrimaryFileOpHistogram.Observe(float64(reuseLatency))
+		}
 		base.MustExist(m.o.Primary.FS, newLogName, m.o.Logger, err)
 	} else {
+		// measure file creation operation
+		createStart := crtime.NowMono()
 		newLogFile, err = m.o.Primary.FS.Create(newLogName, "pebble-wal")
+		if createLatency := createStart.Elapsed(); m.o.PrimaryFileOpHistogram != nil {
+			m.o.PrimaryFileOpHistogram.Observe(float64(createLatency))
+		}
 		base.MustExist(m.o.Primary.FS, newLogName, m.o.Logger, err)
 	}
 	createInfo := CreateInfo{
@@ -163,7 +180,9 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 	}
 	defer func() {
 		createInfo.Err = err
-		m.o.EventListener.LogCreated(createInfo)
+		if m.o.EventListener != nil {
+			m.o.EventListener.LogCreated(createInfo)
+		}
 	}()
 
 	if err != nil {
@@ -180,7 +199,12 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		// reused would allow us to skip the stat and use
 		// recycleLog.FileSize.
 		var finfo os.FileInfo
+		// measure file stat operation
+		statStart := crtime.NowMono()
 		finfo, err = newLogFile.Stat()
+		if statLatency := statStart.Elapsed(); m.o.PrimaryFileOpHistogram != nil {
+			m.o.PrimaryFileOpHistogram.Observe(float64(statLatency))
+		}
 		if err == nil {
 			newLogSize = uint64(finfo.Size())
 		}
@@ -201,8 +225,8 @@ func (m *StandaloneManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		PreallocateSize: m.o.PreallocateSize(),
 	})
 	w := record.NewLogWriter(newLogFile, newLogNum, record.LogWriterConfig{
-		WALFsyncLatency:     m.o.FsyncLatency,
 		WALMinSyncInterval:  m.o.MinSyncInterval,
+		WALFileOpHistogram:  m.o.PrimaryFileOpHistogram,
 		QueueSemChan:        m.o.QueueSemChan,
 		WriteWALSyncOffsets: m.o.WriteWALSyncOffsets,
 	})
