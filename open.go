@@ -289,9 +289,18 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		d.mu.mem.queue = append(d.mu.mem.queue, entry)
 	}
 
-	d.mu.log.metrics.fsyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Buckets: FsyncLatencyBuckets,
+	// Create WAL file operation histogram for filesystem operation tracking
+	walFileOpHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pebble_wal_file_op_duration_nanoseconds",
+		Help:    "Histogram of WAL file operation latencies in nanoseconds",
+		Buckets: WALFileOpLatencyBuckets,
 	})
+
+	// Initialize WAL metrics structure
+	d.mu.log.metrics = WALMetrics{
+		PrimaryFileOpLatency: walFileOpHistogram,
+		// SecondaryFileOpLatency could be populated for failover scenarios
+	}
 
 	walOpts := wal.Options{
 		Primary:              dirs.WALPrimary,
@@ -302,7 +311,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		BytesPerSync:         opts.WALBytesPerSync,
 		PreallocateSize:      d.walPreallocateSize,
 		MinSyncInterval:      opts.WALMinSyncInterval,
-		FsyncLatency:         d.mu.log.metrics.fsyncLatency,
+		WALFileOpHistogram:   walFileOpHistogram,
 		QueueSemChan:         d.commit.logSyncQSem,
 		Logger:               opts.Logger,
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},

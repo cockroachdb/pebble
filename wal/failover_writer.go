@@ -455,9 +455,13 @@ type failoverWriterOpts struct {
 
 	// Options for record.LogWriter.
 	minSyncInterval func() time.Duration
-	fsyncLatency    prometheus.Histogram
-	queueSemChan    chan struct{}
-	stopper         *stopper
+
+	queueSemChan chan struct{}
+
+	// WAL file operation latency histogram
+	walFileOpHistogram record.WALFileOpHistogram
+	directoryType      record.DirectoryType
+	stopper            *stopper
 
 	failoverWriteAndSyncLatency prometheus.Histogram
 	// writerClosed is a callback invoked by the FailoverWriter when it's
@@ -651,7 +655,8 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 		w := record.NewLogWriter(recorderAndWriter, base.DiskFileNum(ww.opts.wn),
 			record.LogWriterConfig{
 				WALMinSyncInterval:        ww.opts.minSyncInterval,
-				WALFsyncLatency:           ww.opts.fsyncLatency,
+				DirectoryType:             ww.opts.directoryType,
+				WALFileOpHistogram:        ww.opts.walFileOpHistogram,
 				QueueSemChan:              ww.opts.queueSemChan,
 				ExternalSyncQueueCallback: ww.doneSyncCallback,
 				WriteWALSyncOffsets:       ww.opts.writeWALSyncOffsets,
