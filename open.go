@@ -1317,3 +1317,64 @@ func (l walEventListenerAdaptor) LogCreated(ci wal.CreateInfo) {
 	}
 	l.l.WALCreated(wci)
 }
+
+// RenameWALDir changes the value of previously set option WALDir to the new one.
+// Parameters:
+// dirname - path to the directory with DB files;
+// walDir - new value.
+func RenameWALDir(dirname, walDir string) error {
+	var opts *Options
+	opts = opts.Clone()
+	opts.EnsureDefaults()
+
+	ls, err := opts.FS.List(dirname)
+	if err != nil {
+		return err
+	}
+	var previousOptionsFileNum base.DiskFileNum
+	var previousOptionsFilename string
+	for _, filename := range ls {
+		ft, fn, ok := base.ParseFilename(opts.FS, filename)
+		if !ok {
+			continue
+		}
+		if ft == base.FileTypeOptions {
+			previousOptionsFileNum = fn
+			previousOptionsFilename = filename
+			break
+		}
+	}
+	path := opts.FS.PathJoin(dirname, previousOptionsFilename)
+
+	previousOptions, err := readOptionsFile(opts, path)
+	opts.Parse(previousOptions, nil)
+	opts.WALDir = walDir
+
+	serializedOpts := []byte(opts.String())
+	tmpPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeTemp, previousOptionsFileNum)
+	optionsFile, err := opts.FS.Create(tmpPath, vfs.WriteCategoryUnspecified)
+	if err != nil {
+		return err
+	}
+	if _, err := optionsFile.Write(serializedOpts); err != nil {
+		return errors.CombineErrors(err, optionsFile.Close())
+	}
+	if err := optionsFile.Sync(); err != nil {
+		return errors.CombineErrors(err, optionsFile.Close())
+	}
+	if err := optionsFile.Close(); err != nil {
+		return err
+	}
+	if err := opts.FS.Rename(tmpPath, previousOptionsFilename); err != nil {
+		return err
+	}
+	dataDir, err := opts.FS.OpenDir(dirname)
+	if err != nil {
+		return err
+	}
+	err = dataDir.Sync()
+	if err != nil {
+		return err
+	}
+	return dataDir.Close()
+}
