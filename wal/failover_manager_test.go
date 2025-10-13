@@ -347,7 +347,6 @@ func TestManagerFailover(t *testing.T) {
 					BytesPerSync:                0,
 					PreallocateSize:             func() int { return 0 },
 					MinSyncInterval:             nil,
-					FsyncLatency:                nil,
 					QueueSemChan:                nil,
 					Logger:                      nil,
 					EventListener:               nil,
