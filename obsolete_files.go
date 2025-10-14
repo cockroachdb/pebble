@@ -63,6 +63,8 @@ func (cm *cleanupManager) CompletedStats() obsoleteObjectStats {
 
 // We can queue this many jobs before we have to block EnqueueJob.
 const jobsQueueDepth = 1000
+const jobsQueueHighThreshold = jobsQueueDepth * 3 / 4
+const jobsQueueLowThreshold = jobsQueueDepth / 10
 
 // obsoleteFile holds information about a file that needs to be deleted soon.
 type obsoleteFile struct {
@@ -217,7 +219,11 @@ func (cm *cleanupManager) maybePace(
 	if !cm.needsPacing(fileType, fileNum) {
 		return
 	}
-
+	if len(cm.jobsCh) >= jobsQueueHighThreshold {
+		// If there are many jobs queued up, disable pacing. In this state, we
+		// execute deletion jobs at the same rate as new jobs get queued.
+		return
+	}
 	tokens := cm.deletePacer.PacingDelay(crtime.NowMono(), fileSize)
 	if tokens == 0.0 {
 		// The token bucket might be in debt; it could make us wait even for 0
@@ -303,19 +309,17 @@ func (cm *cleanupManager) deleteObsoleteObject(
 //
 // Must be called with cm.mu locked.
 func (cm *cleanupManager) maybeLogLocked() {
-	const highThreshold = jobsQueueDepth * 3 / 4
-	const lowThreshold = jobsQueueDepth / 10
 
 	jobsInQueue := cm.mu.totalJobs - cm.mu.completedJobs
 
-	if !cm.mu.jobsQueueWarningIssued && jobsInQueue > highThreshold {
+	if !cm.mu.jobsQueueWarningIssued && jobsInQueue > jobsQueueHighThreshold {
 		cm.mu.jobsQueueWarningIssued = true
-		cm.opts.Logger.Infof("cleanup falling behind; job queue has over %d jobs", highThreshold)
+		cm.opts.Logger.Infof("cleanup falling behind; job queue has over %d jobs", jobsQueueHighThreshold)
 	}
 
-	if cm.mu.jobsQueueWarningIssued && jobsInQueue < lowThreshold {
+	if cm.mu.jobsQueueWarningIssued && jobsInQueue < jobsQueueLowThreshold {
 		cm.mu.jobsQueueWarningIssued = false
-		cm.opts.Logger.Infof("cleanup back to normal; job queue has under %d jobs", lowThreshold)
+		cm.opts.Logger.Infof("cleanup back to normal; job queue has under %d jobs", jobsQueueLowThreshold)
 	}
 }
 
