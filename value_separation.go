@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"fmt"
 	"slices"
 	"time"
 
@@ -21,7 +22,7 @@ import (
 
 // latencyTolerantMinimumSize is the minimum size, in bytes, of a value that
 // will be separated into a blob file when the value storage policy is
-// ValueStorageLatencyTolerant.
+// Override.
 const latencyTolerantMinimumSize = 10
 
 var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, ValueStoragePolicy) compact.ValueSeparation {
@@ -41,7 +42,7 @@ func (d *DB) determineCompactionValueSeparation(
 		return compact.NeverSeparateValues{}
 	}
 	policy := d.opts.Experimental.ValueSeparationPolicy()
-	if !policy.Enabled || valueStorage == ValueStorageLowReadLatency {
+	if !policy.Enabled || valueStorage.PolicyAdjustment == NoValueSeparation {
 		return compact.NeverSeparateValues{}
 	}
 
@@ -51,9 +52,10 @@ func (d *DB) determineCompactionValueSeparation(
 		// This compaction should preserve existing blob references.
 		kind := sstable.ValueSeparationDefault
 		minSize := policy.MinimumSize
-		if valueStorage != ValueStorageDefault {
+		if valueStorage.PolicyAdjustment == Override {
+			fmt.Println("override amount", valueStorage.MinimumSize)
 			kind = sstable.ValueSeparationSpanPolicy
-			minSize = latencyTolerantMinimumSize
+			minSize = valueStorage.MinimumSize
 		}
 		return &preserveBlobReferences{
 			inputBlobPhysicalFiles:      uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
@@ -64,6 +66,12 @@ func (d *DB) determineCompactionValueSeparation(
 	}
 
 	// This compaction should write values to new blob files.
+	minSize := policy.MinimumSize
+	mvccMinimumSize := policy.MinimumMVCCGarbageSize
+	if valueStorage.PolicyAdjustment == Override {
+		minSize = valueStorage.MinimumSize
+		mvccMinimumSize = valueStorage.MinimumMVCCGarbageSize
+	}
 	return &writeNewBlobFiles{
 		comparer: d.opts.Comparer,
 		newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
@@ -72,8 +80,9 @@ func (d *DB) determineCompactionValueSeparation(
 		},
 		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
 		writerOpts:         d.makeBlobWriterOptions(c.outputLevel.level),
-		minimumSize:        policy.MinimumSize,
+		minimumSize:        minSize,
 		globalMinimumSize:  policy.MinimumSize,
+		mvccMinimumSize:    mvccMinimumSize,
 		invalidValueCallback: func(userKey []byte, value []byte, err error) {
 			// The value may not be safe, so it will be redacted when redaction
 			// is enabled.
@@ -131,13 +140,13 @@ func shouldWriteBlobFiles(
 			if !backingPropsValid {
 				continue
 			}
-			switch valueStorage {
-			case ValueStorageLowReadLatency:
+			switch valueStorage.PolicyAdjustment {
+			case NoValueSeparation:
 				// This case should be handled prior to calling this function,
 				// but include it here for completeness.
 				return false, inputReferenceDepth
-			case ValueStorageLatencyTolerant:
-				if backingProps.ValueSeparationMinSize != latencyTolerantMinimumSize {
+			case Override:
+				if backingProps.ValueSeparationMinSize != uint64(valueStorage.MinimumSize) {
 					return true, 0
 				}
 			default:
@@ -240,8 +249,12 @@ type writeNewBlobFiles struct {
 	minimumSize int
 	// globalMinimumSize is the size threshold for separating values into blob
 	// files globally across the keyspace. It may be overridden per-output by
-	// SetNextOutputConfig.
+	// SetNextOutputConfig if minimumSize is different.
 	globalMinimumSize int
+	// mvccMinimumSize is the minimum size of a value that will be separated into
+	// a blob file when the value is likely MVCC garbage; see comments in
+	// sstable.IsLikelyMVCCGarbage for the exact criteria we use.
+	mvccMinimumSize int
 	// invalidValueCallback is called when a value is encountered for which the
 	// short attribute extractor returns an error.
 	invalidValueCallback func(userKey []byte, value []byte, err error)
@@ -259,6 +272,7 @@ var _ compact.ValueSeparation = (*writeNewBlobFiles)(nil)
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (vs *writeNewBlobFiles) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {
 	vs.minimumSize = config.MinimumSize
+	vs.mvccMinimumSize = config.MinimumMVCCGarbageSize
 }
 
 // Kind implements the ValueSeparation interface.
@@ -306,8 +320,10 @@ func (vs *writeNewBlobFiles) Add(
 		vs.buf = v[:0]
 	}
 
+	isLikelyMVCCGarbage = len(v) >= vs.mvccMinimumSize && isLikelyMVCCGarbage
 	// Values that are too small are never separated; however, MVCC keys are
-	// separated if they are a SET key kind, as long as the value is not empty.
+	// separated if they are a SET key kind, as long as the value meets the
+	// mvccMinimumSize constraint.
 	if len(v) < vs.minimumSize && !isLikelyMVCCGarbage {
 		return tw.Add(kv.K, v, forceObsolete)
 	}

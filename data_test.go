@@ -1783,21 +1783,27 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			}
 			policy := SpanPolicy{
 				DisableValueSeparationBySuffix: true,
-				ValueStoragePolicy:             ValueStorageLowReadLatency,
+				ValueStoragePolicy: ValueStoragePolicy{
+					PolicyAdjustment: NoValueSeparation,
+				},
 			}
 			spanPolicies = append(spanPolicies, SpanAndPolicy{
 				KeyRange: span,
 				Policy:   policy,
 			})
-		case "latency-tolerant-span":
+		case "override-span":
 			if len(cmdArg.Vals) != 2 {
-				return errors.New("latency-tolerant-span expects 2 arguments: <start-key> <end-key>")
+				return errors.New("override-span expects 2 arguments: <start-key> <end-key>")
 			}
 			span := KeyRange{
 				Start: []byte(cmdArg.Vals[0]),
 				End:   []byte(cmdArg.Vals[1]),
 			}
-			policy := SpanPolicy{ValueStoragePolicy: ValueStorageLatencyTolerant}
+			policy := SpanPolicy{ValueStoragePolicy: ValueStoragePolicy{
+				PolicyAdjustment:       Override,
+				MinimumSize:            latencyTolerantMinimumSize,
+				MinimumMVCCGarbageSize: 1,
+			}}
 			spanPolicies = append(spanPolicies, SpanAndPolicy{
 				KeyRange: span,
 				Policy:   policy,
@@ -1843,6 +1849,9 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 					switch name {
 					case "enabled", "disabled":
 						policy.Enabled = name == "enabled"
+						if policy.Enabled {
+							policy.MinimumSize = latencyTolerantMinimumSize
+						}
 					case "min-size":
 						policy.MinimumSize, err = strconv.Atoi(value)
 						if err != nil {
@@ -1868,6 +1877,11 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 							return err
 						}
 						policy.GarbageRatioHighPriority, err = strconv.ParseFloat(value[i+1:], 64)
+						if err != nil {
+							return err
+						}
+					case "min-mvcc-garbage-size":
+						policy.MinimumMVCCGarbageSize, err = strconv.Atoi(value)
 						if err != nil {
 							return err
 						}
