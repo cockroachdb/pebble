@@ -73,6 +73,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"EventListener:",
 		"CompactionConcurrencyRange:",
 		"MaxConcurrentDownloads:",
+		"TargetByteDeletionRate:",
 		"Experimental.DisableIngestAsFlushable:",
 		"Experimental.EnableColumnarBlocks:",
 		"Experimental.EnableValueBlocks:",
@@ -117,6 +118,8 @@ func TestOptionsRoundtrip(t *testing.T) {
 		if o.Opts.Experimental.IngestSplit != nil && o.Opts.Experimental.IngestSplit() {
 			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
 		}
+		require.Equal(t, o.Opts.TargetByteDeletionRate(), parsed.Opts.TargetByteDeletionRate())
+
 
 		expBaseline, expUpper := o.Opts.CompactionConcurrencyRange()
 		parsedBaseline, parsedUpper := parsed.Opts.CompactionConcurrencyRange()
