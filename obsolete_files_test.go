@@ -9,10 +9,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -137,4 +140,78 @@ func TestCleaner(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+}
+
+// TestCleanupManagerFallingBehind verifies that we disable pacing when the jobs
+// channel reaches the high threshold.
+func TestCleanupManagerFallingBehind(t *testing.T) {
+	mem := vfs.NewMem()
+	var rate atomic.Int32
+	rate.Store(10 * MB) // 10MB/s
+	opts := &Options{
+		FS:                      mem,
+		FreeSpaceThresholdBytes: 1,
+		TargetByteDeletionRate:  func() int { return int(rate.Load()) }, // 10 MB/s
+	}
+	opts.EnsureDefaults()
+
+	objProvider, err := objstorageprovider.Open(objstorageprovider.Settings{
+		FS:        mem,
+		FSDirName: "/",
+	})
+	require.NoError(t, err)
+	defer objProvider.Close()
+
+	getDeletePacerInfo := func() deletionPacerInfo {
+		return deletionPacerInfo{
+			freeBytes: 10 * GB,
+			liveBytes: 10 * GB,
+		}
+	}
+
+	cm := openCleanupManager(opts, objProvider, getDeletePacerInfo)
+
+	x := 0
+	addJob := func(fileSize int) {
+		x++
+		cm.EnqueueJob(1, []obsoleteFile{{
+			fileType: base.FileTypeTable,
+			fs:       mem,
+			path:     fmt.Sprintf("test%02d.sst", x),
+			fileNum:  base.DiskFileNum(x),
+			fileSize: uint64(fileSize),
+			isLocal:  true,
+		}}, obsoleteObjectStats{})
+	}
+
+	for range jobsQueueLowThreshold {
+		addJob(1 * MB)
+	}
+	// At 1MB, each job will take 100ms each. Note that the rate increase based on
+	// history won't make much difference, since the enqueued size is averaged
+	// over 5 minutes.
+	time.Sleep(50 * time.Millisecond)
+	require.Greater(t, len(cm.jobsCh), jobsQueueLowThreshold/2)
+	t.Logf("%d", len(cm.jobsCh))
+
+	// Add enough jobs to exceed the high threshold. We add small jobs so that the
+	// historic rate doesn't grow significantly.
+	require.Greater(t, jobsQueueDepth, jobsQueueHighThreshold+jobsQueueLowThreshold)
+	t.Logf("B")
+	for range jobsQueueHighThreshold {
+		addJob(1)
+	}
+
+	for i := 0; ; i++ {
+		time.Sleep(10 * time.Millisecond)
+		if len(cm.jobsCh) <= jobsQueueHighThreshold {
+			break
+		}
+		if i == 1000 {
+			t.Fatalf("jobs channel length never dropped below high threshold (%d vs %d)", len(cm.jobsCh), jobsQueueHighThreshold)
+		}
+	}
+	// Set a high rate so the rest of the jobs finish quickly.
+	rate.Store(1 * GB)
+	cm.Close()
 }
