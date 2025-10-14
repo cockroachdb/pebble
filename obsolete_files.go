@@ -91,7 +91,7 @@ func openCleanupManager(
 		deletePacer: newDeletionPacer(
 			crtime.NowMono(),
 			opts.FreeSpaceThresholdBytes,
-			int64(opts.TargetByteDeletionRate),
+			opts.TargetByteDeletionRate,
 			opts.FreeSpaceTimeframe,
 			opts.ObsoleteBytesMaxRatio,
 			opts.ObsoleteBytesTimeframe,

@@ -2700,7 +2700,7 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 		"": remote.NewInMem(),
 	})
 	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
-	opts.TargetByteDeletionRate = 1
+	opts.TargetByteDeletionRate = func() int { return 1 }
 	opts.Logger = testLogger{t}
 
 	d, err := Open("", &opts)
