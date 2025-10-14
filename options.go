@@ -1238,6 +1238,13 @@ type ValueSeparationPolicy struct {
 	//
 	// MinimumSize must be > 0.
 	MinimumSize int
+	// MinimumMVCCGarbageSize specifies the minimum size of a value that can be
+	// separated into a blob file if said value is likely MVCC garbage. This
+	// applies only to SpanPolicies that permit separation of MVCC garbage,
+	// which is also the default.
+	//
+	// MinimumMVCCGarbageSize must be > 0.
+	MinimumMVCCGarbageSize int
 	// MaxBlobReferenceDepth limits the number of potentially overlapping (in
 	// the keyspace) blob files that can be referenced by a single sstable. If a
 	// compaction may produce an output sstable referencing more than this many
@@ -1311,36 +1318,51 @@ func (p SpanPolicy) String() string {
 	if p.DisableValueSeparationBySuffix {
 		sb.WriteString("disable-value-separation-by-suffix,")
 	}
-	switch p.ValueStoragePolicy {
-	case ValueStorageLowReadLatency:
-		sb.WriteString("low-read-latency,")
-	case ValueStorageLatencyTolerant:
-		sb.WriteString("latency-tolerant,")
+	switch p.ValueStoragePolicy.PolicyAdjustment {
+	case NoValueSeparation:
+		sb.WriteString("no-value-separation,")
+	case Override:
+		sb.WriteString("override,")
 	}
 	return strings.TrimSuffix(sb.String(), ",")
 }
 
-// ValueStoragePolicy is a hint used to determine where to store the values for
-// KVs.
-type ValueStoragePolicy uint8
+// ValueStoragePolicy is used to determine where to store the values for
+// KVs. If the PolicyAdjustment specified is Override, the remaining fields
+// are used to override the global configuration for value separation.
+type ValueStoragePolicy struct {
+	// PolicyAdjustment specifies the policy adjustment to apply.
+	PolicyAdjustment ValueStoragePolicyAdjustment
+	// Remaining fields are ignored, unless the PolicyAdjustment is Override.
+
+	// MinimumSize is the minimum size of the value.
+	MinimumSize int
+	// MinimumMVCCGarbageSize is the minimum size of the value that is likely
+	// MVCC garbage.
+	MinimumMVCCGarbageSize int
+}
+
+// ValueStoragePolicyAdjustment is a hint used to determine where to store the
+// values for KVs.
+type ValueStoragePolicyAdjustment uint8
 
 const (
-	// ValueStorageDefault is the default value; Pebble will respect global
-	// configuration for value blocks and value separation.
-	ValueStorageDefault ValueStoragePolicy = iota
+	// UseDefault is the default value; Pebble will respect global
+	// configuration for value separation.
+	UseDefault ValueStoragePolicyAdjustment = iota
 
-	// ValueStorageLowReadLatency indicates Pebble should prefer storing values
+	// NoValueSeparation indicates Pebble should prefer storing values
 	// in-place.
-	ValueStorageLowReadLatency
+	NoValueSeparation
 
-	// ValueStorageLatencyTolerant indicates value retrieval can tolerate
+	// Override indicates value retrieval can tolerate
 	// additional latency, so Pebble should aggressively prefer storing values
 	// separately if it can reduce write amplification.
 	//
 	// If the global Options' enable value separation, Pebble may choose to
-	// separate values under the LatencyTolerant policy even if they do not meet
+	// separate values under the Override policy even if they do not meet
 	// the minimum size threshold of the global Options' ValueSeparationPolicy.
-	ValueStorageLatencyTolerant
+	Override
 )
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.
@@ -1855,6 +1877,7 @@ func (o *Options) String() string {
 			fmt.Fprintln(&buf, "[Value Separation]")
 			fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
 			fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
+			fmt.Fprintf(&buf, "  minimum_mvcc_garbage_size=%d\n", policy.MinimumMVCCGarbageSize)
 			fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
 			fmt.Fprintf(&buf, "  rewrite_minimum_age=%s\n", policy.RewriteMinimumAge)
 			fmt.Fprintf(&buf, "  garbage_ratio_low_priority=%.2f\n", policy.GarbageRatioLowPriority)
@@ -2300,6 +2323,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var minimumSize int
 				minimumSize, err = strconv.Atoi(value)
 				valSepPolicy.MinimumSize = minimumSize
+			case "minimum_mvcc_garbage_size":
+				var minimumMVCCGarbageSize int
+				minimumMVCCGarbageSize, err = strconv.Atoi(value)
+				valSepPolicy.MinimumMVCCGarbageSize = minimumMVCCGarbageSize
 			case "max_blob_reference_depth":
 				valSepPolicy.MaxBlobReferenceDepth, err = strconv.Atoi(value)
 			case "rewrite_minimum_age":
@@ -2570,6 +2597,9 @@ func (o *Options) Validate() error {
 	if policy := o.Experimental.ValueSeparationPolicy(); policy.Enabled {
 		if policy.MinimumSize <= 0 {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.MinimumSize (%d) must be > 0\n", policy.MinimumSize)
+		}
+		if policy.MinimumMVCCGarbageSize <= 0 {
+			fmt.Fprintf(&buf, "ValueSeparationPolicy.MinimumMVCCGarbageSize (%d) must be > 0\n", policy.MinimumMVCCGarbageSize)
 		}
 		if policy.MaxBlobReferenceDepth <= 0 {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.MaxBlobReferenceDepth (%d) must be > 0\n", policy.MaxBlobReferenceDepth)

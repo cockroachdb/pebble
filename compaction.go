@@ -3476,14 +3476,15 @@ func (d *DB) compactAndWrite(
 			writerOpts.Compression = block.FastestCompression
 		}
 		vSep := valueSeparation
-		switch spanPolicy.ValueStoragePolicy {
-		case ValueStorageLowReadLatency:
+		switch spanPolicy.ValueStoragePolicy.PolicyAdjustment {
+		case NoValueSeparation:
 			vSep = compact.NeverSeparateValues{}
-		case ValueStorageLatencyTolerant:
+		case Override:
 			// This span of keyspace is more tolerant of latency, so set a more
 			// aggressive value separation policy for this output.
 			vSep.SetNextOutputConfig(compact.ValueSeparationOutputConfig{
-				MinimumSize: latencyTolerantMinimumSize,
+				MinimumSize:            spanPolicy.ValueStoragePolicy.MinimumSize,
+				MinimumMVCCGarbageSize: spanPolicy.ValueStoragePolicy.MinimumMVCCGarbageSize,
 			})
 		}
 		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts)

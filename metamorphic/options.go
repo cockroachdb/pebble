@@ -341,6 +341,7 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 		return pebble.ValueSeparationPolicy{
 			Enabled:                  true,
 			MinimumSize:              5,
+			MinimumMVCCGarbageSize:   1,
 			MaxBlobReferenceDepth:    3,
 			RewriteMinimumAge:        50 * time.Millisecond,
 			GarbageRatioLowPriority:  0.10, // 10% garbage
@@ -926,6 +927,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		policy := pebble.ValueSeparationPolicy{
 			Enabled:                  true,
 			MinimumSize:              1 + rng.IntN(maxValueSize),
+			MinimumMVCCGarbageSize:   1 + rng.IntN(10),                                  // [1, 11)
 			MaxBlobReferenceDepth:    2 + rng.IntN(9),                                   // 2-10
 			RewriteMinimumAge:        time.Duration(rng.IntN(90)+10) * time.Millisecond, // [10ms, 100ms)
 			GarbageRatioLowPriority:  lowPri,

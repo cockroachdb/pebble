@@ -1,7 +1,7 @@
 # Test a blob file rewrite compaction with virtual sstable references that
 # track backing value sizes do not trigger unnecessary blob file rewrites.
 
-define value-separation=(enabled=true, min-size=1, max-ref-depth=10, garbage-ratios=0.01:0.2)
+define value-separation=(enabled=true, min-size=1, max-ref-depth=10, garbage-ratios=0.01:0.2, min-mvcc-garbage-size=1)
 ----
 
 batch
