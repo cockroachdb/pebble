@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,9 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const MB = 1 << 20
+const GB = 1 << 30
+
 func TestDeletionPacer(t *testing.T) {
-	const MB = 1 << 20
-	const GB = 1 << 30
 	testCases := []struct {
 		freeBytes     uint64
 		obsoleteBytes uint64
@@ -126,7 +128,7 @@ func TestDeletionPacer(t *testing.T) {
 			pacer := newDeletionPacer(
 				start,
 				opts.FreeSpaceThresholdBytes,
-				100*MB,
+				func() int { return 100 * MB },
 				opts.FreeSpaceTimeframe,
 				opts.ObsoleteBytesMaxRatio,
 				opts.ObsoleteBytesTimeframe,
@@ -140,6 +142,37 @@ func TestDeletionPacer(t *testing.T) {
 			require.InDelta(t, tc.expected, result, 1e-7)
 		})
 	}
+}
+
+func TestDeletionPacerCfgChange(t *testing.T) {
+	getInfo := func() deletionPacerInfo {
+		return deletionPacerInfo{
+			freeBytes:     100 * GB,
+			liveBytes:     10 * GB,
+			obsoleteBytes: 10 * MB,
+		}
+	}
+
+	var targetRate atomic.Int32
+	targetRate.Store(100 * MB)
+
+	start := crtime.NowMono()
+	var opts Options
+	opts.EnsureDefaults()
+	pacer := newDeletionPacer(
+		start,
+		opts.FreeSpaceThresholdBytes,
+		func() int { return int(targetRate.Load()) },
+		opts.FreeSpaceTimeframe,
+		opts.ObsoleteBytesMaxRatio,
+		opts.ObsoleteBytesTimeframe,
+		getInfo,
+	)
+	require.InDelta(t, 1.0/100, pacer.PacingDelay(start, 1*MB), 1e-4)
+	targetRate.Store(200 * MB)
+	require.InDelta(t, 1.0/200, pacer.PacingDelay(start, 1*MB), 1e-4)
+	targetRate.Store(0)
+	require.Equal(t, 0.0, pacer.PacingDelay(start, 1*MB), 1e-4)
 }
 
 // TestDeletionPacerHistory tests the history helper by crosschecking Sum()

@@ -1152,8 +1152,8 @@ type Options struct {
 	// This value is only a best-effort target; the effective rate can be
 	// higher if deletions are falling behind or disk space is running low.
 	//
-	// Setting this to 0 disables deletion pacing, which is also the default.
-	TargetByteDeletionRate int
+	// A returned value of 0 disables deletion pacing (this is also the default).
+	TargetByteDeletionRate func() int
 
 	// FreeSpaceThresholdBytes specifies the minimum amount of free disk space that Pebble
 	// attempts to maintain. If free disk space drops below this threshold, deletions
@@ -1511,6 +1511,10 @@ func (o *Options) EnsureDefaults() {
 		o.Cleaner = DeleteCleaner{}
 	}
 
+	if o.TargetByteDeletionRate == nil {
+		o.TargetByteDeletionRate = func() int { return 0 }
+	}
+
 	if o.FreeSpaceThresholdBytes == 0 {
 		o.FreeSpaceThresholdBytes = 16 << 30 // 16 GB
 	}
@@ -1797,7 +1801,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
-	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.TargetByteDeletionRate)
+	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.TargetByteDeletionRate())
 	fmt.Fprintf(&buf, "  free_space_threshold_bytes=%d\n", o.FreeSpaceThresholdBytes)
 	fmt.Fprintf(&buf, "  free_space_timeframe=%s\n", o.FreeSpaceTimeframe.String())
 	fmt.Fprintf(&buf, "  obsolete_bytes_max_ratio=%f\n", o.ObsoleteBytesMaxRatio)
@@ -2168,7 +2172,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.
 			case "min_deletion_rate":
-				o.TargetByteDeletionRate, err = strconv.Atoi(value)
+				var rate int
+				rate, err = strconv.Atoi(value)
+				if err == nil {
+					o.TargetByteDeletionRate = func() int { return rate }
+				}
 			case "free_space_threshold_bytes":
 				o.FreeSpaceThresholdBytes, err = strconv.ParseUint(value, 10, 64)
 			case "free_space_timeframe":
