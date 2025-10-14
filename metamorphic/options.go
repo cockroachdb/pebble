@@ -689,7 +689,8 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.IntN(n + 1))
 	opts.Experimental.L0CompactionConcurrency = 1 + rng.IntN(4) // 1-4
 	opts.Experimental.LevelMultiplier = 5 << rng.IntN(7)        // 5 - 320
-	opts.TargetByteDeletionRate = 1 << uint(20+rng.IntN(10))    // 1MB - 1GB
+	targetByteDeletionRate := 1 << uint(20+rng.IntN(10))        // 1MB - 1GB
+	opts.TargetByteDeletionRate = func() int { return targetByteDeletionRate }
 	opts.Experimental.ValidateOnIngest = rng.IntN(2) != 0
 	opts.L0CompactionThreshold = 1 + rng.IntN(100)     // 1 - 100
 	opts.L0CompactionFileThreshold = 1 << rng.IntN(11) // 1 - 1024

@@ -146,7 +146,7 @@ func TestCleanupManagerCloseWithPacing(t *testing.T) {
 	mem := vfs.NewMem()
 	opts := &Options{
 		FS:                     mem,
-		TargetByteDeletionRate: 1024, // 1 KB/s - slow pacing
+		TargetByteDeletionRate: func() int { return 1024 }, // 1 KB/s - slow pacing
 	}
 	opts.EnsureDefaults()
 

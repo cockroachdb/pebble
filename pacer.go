@@ -46,7 +46,7 @@ type deletionPacer struct {
 		history history
 	}
 
-	targetByteDeletionRate int64
+	targetByteDeletionRate func() int
 
 	getInfo func() deletionPacerInfo
 }
@@ -62,7 +62,7 @@ const deletePacerHistory = 5 * time.Minute
 func newDeletionPacer(
 	now crtime.Mono,
 	freeSpaceThreshold uint64,
-	targetByteDeletionRate int64,
+	targetByteDeletionRate func() int,
 	freeSpaceTimeframe time.Duration,
 	obsoleteBytesMaxRatio float64,
 	obsoleteBytesTimeframe time.Duration,
@@ -99,12 +99,13 @@ func (p *deletionPacer) ReportDeletion(now crtime.Mono, bytesToDelete uint64) {
 //
 // PacingDelay is thread-safe.
 func (p *deletionPacer) PacingDelay(now crtime.Mono, bytesToDelete uint64) (waitSeconds float64) {
-	if p.targetByteDeletionRate == 0 {
+	targetByteDeletionRate := p.targetByteDeletionRate()
+	if targetByteDeletionRate == 0 {
 		// Pacing disabled.
 		return 0.0
 	}
 
-	baseRate := float64(p.targetByteDeletionRate)
+	baseRate := float64(targetByteDeletionRate)
 	// If recent deletion rate is more than our target, use that so that we don't
 	// fall behind.
 	historicRate := func() float64 {
