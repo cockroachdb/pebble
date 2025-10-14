@@ -322,7 +322,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.FlushDelayDeleteRange = 10 * time.Second
 			opts.FlushDelayRangeKey = 11 * time.Second
 			opts.Experimental.LevelMultiplier = 5
-			opts.TargetByteDeletionRate = 200
+			opts.TargetByteDeletionRate = func() int { return 200 }
 			opts.WALFailover = &WALFailoverOptions{
 				Secondary: wal.Dir{Dirname: "wal_secondary", FS: vfs.Default},
 			}
