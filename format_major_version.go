@@ -308,6 +308,13 @@ func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 
 // MinTableFormat returns the minimum sstable.TableFormat that can be used at
 // this FormatMajorVersion.
+//
+// WARNING: Do not bump this to a higher value without thinking through the
+// consequences in CockroachDB. Specifically, CockroachDB can have unapplied
+// raft log entries that correspond to sstable ingestions, and without a
+// CockroachDB-level below-Raft migration they can correspond to arbitrarily
+// old binary versions. Pebble needs to be able to successfully ingest such
+// sstables.
 func (v FormatMajorVersion) MinTableFormat() sstable.TableFormat {
 	_ = v.resolveDefault()
 	return sstable.TableFormatPebblev1

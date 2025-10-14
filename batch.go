@@ -151,6 +151,13 @@ func (d DeferredBatchOp) Finish() error {
 //
 // # Internal representation
 //
+// WARNING: Do not remove the ability to handle older internal
+// representations, without thinking through the consequences in CockroachDB.
+// Specifically, CockroachDB can have unapplied raft log entries that contain
+// encoded Pebble batches, and without a CockroachDB-level below-Raft
+// migration they can correspond to arbitrarily old binary versions. Pebble
+// needs to be able to successfully apply such batches.
+//
 // The internal batch representation is a contiguous byte buffer with a fixed
 // 12-byte header, followed by a series of records.
 //
