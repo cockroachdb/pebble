@@ -53,7 +53,7 @@ jobs:
   linux-cockroach-go:
     runs-on: ubuntu-latest
     env:
-      GO_BRANCH: cockroach-go1.23.12
+      GO_BRANCH: cockroach-go1.25.3
 
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +76,7 @@ jobs:
       - name: Install bootstrap Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23.x"
+          go-version: "1.25.x"
 
       # Step 4: Run tests with custom Go
       - run: ./scripts/run-tests-with-custom-go.sh -tags invariants ./...
