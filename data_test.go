@@ -913,8 +913,8 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	// them to the final version edit.
 	valueSeparator := &defineDBValueSeparator{
 		pbr: &preserveBlobReferences{
-			originalValueSeprationKind: sstable.ValueSeparationDefault,
-			minimumValueSize:           d.opts.Experimental.ValueSeparationPolicy().MinimumSize,
+			originalValueSeparationKind: sstable.ValueSeparationDefault,
+			minimumValueSize:            d.opts.Experimental.ValueSeparationPolicy().MinimumSize,
 		},
 		metas: make(map[base.BlobFileID]*manifest.PhysicalBlobFile),
 	}
