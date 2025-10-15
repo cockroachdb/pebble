@@ -56,10 +56,10 @@ func (d *DB) determineCompactionValueSeparation(
 			minSize = latencyTolerantMinimumSize
 		}
 		return &preserveBlobReferences{
-			inputBlobPhysicalFiles:     uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
-			outputBlobReferenceDepth:   outputBlobReferenceDepth,
-			minimumValueSize:           minSize,
-			originalValueSeprationKind: kind,
+			inputBlobPhysicalFiles:      uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
+			outputBlobReferenceDepth:    outputBlobReferenceDepth,
+			minimumValueSize:            minSize,
+			originalValueSeparationKind: kind,
 		}
 	}
 
@@ -423,9 +423,9 @@ type preserveBlobReferences struct {
 	// minimumValueSize is the minimum size of values used by the value separation
 	// policy that was originally used to write the input sstables.
 	minimumValueSize int
-	// originalValueSeprationKind is the value separation policy that was originally used to
+	// originalValueSeparationKind is the value separation policy that was originally used to
 	// write the input sstables.
-	originalValueSeprationKind sstable.ValueSeparationKind
+	originalValueSeparationKind sstable.ValueSeparationKind
 
 	// state
 	buf []byte
@@ -454,7 +454,7 @@ func (vs *preserveBlobReferences) SetNextOutputConfig(config compact.ValueSepara
 
 // Kind implements the ValueSeparation interface.
 func (vs *preserveBlobReferences) Kind() sstable.ValueSeparationKind {
-	return vs.originalValueSeprationKind
+	return vs.originalValueSeparationKind
 }
 
 // MinimumSize implements the ValueSeparation interface.
