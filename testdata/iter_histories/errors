@@ -51,7 +51,7 @@ next
 next
 next
 ----
-err=pebble: backing file 000005 error: injected error
+err=pebble: backing file 000006 error: injected error
 a: (a, .)
 b: (b, .)
 c: (c, .)

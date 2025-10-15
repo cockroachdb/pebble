@@ -1,0 +1,41 @@
+# Construct a database with a file in L0.
+
+define auto-compactions=off
+L0
+  e.SET.7:boo
+L5
+  b.SET.3:foo
+  c.SET.4:foo
+  d.SET.5:foo
+  e.SET.6:foo
+L6
+  c.SET.0:foo
+  d.SET.0:foo
+----
+L0.0:
+  000004:[e#7,SET-e#7,SET]
+L5:
+  000005:[b#3,SET-e#6,SET]
+L6:
+  000006:[c#0,SET-d#0,SET]
+
+# Commit a batch to the WAL; On recovery the WAL will be replayed and a flush
+# initiated.
+
+batch
+set e foo
+----
+
+# Close and re-open the database with automatic compactions enabled, and
+# injecting artifical latency into writes into sstables. During Open the replay
+# of the WAL and subsequent memtable flush will create sufficient L0 sublevels
+# to cause the scheduling of a compaction. This test helps guard against races
+# during Open that might mistake the in-flight compaction's outputs as obsolete
+# files.
+
+reopen auto-compactions=on inject-errors=((RandomLatency "5ms" 1 (And OpFileWrite (PathMatch "*.sst"))))
+----
+L5:
+  000012:[b#3,SET-e#10,SET]
+L6:
+  000006:[c#0,SET-d#0,SET]

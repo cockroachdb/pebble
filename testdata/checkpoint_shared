@@ -19,7 +19,12 @@ sync: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 open-dir: db
-create: db/000002.log
+create: db/temporary.000002.dbtmp
+sync: db/temporary.000002.dbtmp
+close: db/temporary.000002.dbtmp
+rename: db/temporary.000002.dbtmp -> db/OPTIONS-000002
+sync: db
+create: db/000003.log
 sync: db
 create: db/marker.format-version.000001.017
 sync: db/marker.format-version.000001.017
@@ -80,11 +85,6 @@ sync: db/marker.format-version.000012.028
 close: db/marker.format-version.000012.028
 remove: db/marker.format-version.000011.027
 sync: db
-create: db/temporary.000003.dbtmp
-sync: db/temporary.000003.dbtmp
-close: db/temporary.000003.dbtmp
-rename: db/temporary.000003.dbtmp -> db/OPTIONS-000003
-sync: db
 create: db/REMOTE-OBJ-CATALOG-000001
 sync: db/REMOTE-OBJ-CATALOG-000001
 create: db/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
@@ -98,12 +98,12 @@ set a 1
 set b 2
 set c 3
 ----
-sync-data: db/000002.log
+sync-data: db/000003.log
 
 flush db
 ----
-sync-data: db/000002.log
-close: db/000002.log
+sync-data: db/000003.log
+close: db/000003.log
 create: db/000004.log
 sync: db
 sync: db/REMOTE-OBJ-CATALOG-000001
@@ -120,7 +120,7 @@ flush db
 ----
 sync-data: db/000004.log
 close: db/000004.log
-reuseForWrite: db/000002.log -> db/000006.log
+reuseForWrite: db/000003.log -> db/000006.log
 sync: db
 sync: db/REMOTE-OBJ-CATALOG-000001
 sync: db/MANIFEST-000001
@@ -141,11 +141,11 @@ open-dir: .
 sync: .
 close: .
 open-dir: checkpoints/checkpoint1
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint1/OPTIONS-000003
-sync-data: checkpoints/checkpoint1/OPTIONS-000003
-close: checkpoints/checkpoint1/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint1/OPTIONS-000002
+sync-data: checkpoints/checkpoint1/OPTIONS-000002
+close: checkpoints/checkpoint1/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint1/marker.format-version.000001.028
@@ -194,11 +194,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint2
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint2/OPTIONS-000003
-sync-data: checkpoints/checkpoint2/OPTIONS-000003
-close: checkpoints/checkpoint2/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint2/OPTIONS-000002
+sync-data: checkpoints/checkpoint2/OPTIONS-000002
+close: checkpoints/checkpoint2/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint2
 create: checkpoints/checkpoint2/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint2/marker.format-version.000001.028
@@ -243,11 +243,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint3
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint3/OPTIONS-000003
-sync-data: checkpoints/checkpoint3/OPTIONS-000003
-close: checkpoints/checkpoint3/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint3/OPTIONS-000002
+sync-data: checkpoints/checkpoint3/OPTIONS-000002
+close: checkpoints/checkpoint3/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint3
 create: checkpoints/checkpoint3/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint3/marker.format-version.000001.028
@@ -306,7 +306,7 @@ list db
 000008.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 REMOTE-OBJ-CATALOG-000001
 marker.format-version.000012.028
 marker.manifest.000001.MANIFEST-000001
@@ -316,7 +316,7 @@ list checkpoints/checkpoint1
 ----
 000006.log
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 REMOTE-OBJ-CATALOG-000001
 marker.format-version.000001.028
 marker.manifest.000001.MANIFEST-000001
@@ -335,8 +335,8 @@ close: checkpoints/checkpoint1/REMOTE-OBJ-CATALOG-000001
 open: checkpoints/checkpoint1/MANIFEST-000001
 close: checkpoints/checkpoint1/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
-open: checkpoints/checkpoint1/OPTIONS-000003
-close: checkpoints/checkpoint1/OPTIONS-000003
+open: checkpoints/checkpoint1/OPTIONS-000002
+close: checkpoints/checkpoint1/OPTIONS-000002
 open: checkpoints/checkpoint1/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint1/000006.log
 
@@ -368,7 +368,7 @@ list checkpoints/checkpoint2
 ----
 000006.log
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 REMOTE-OBJ-CATALOG-000001
 marker.format-version.000001.028
 marker.manifest.000001.MANIFEST-000001
@@ -387,8 +387,8 @@ close: checkpoints/checkpoint2/REMOTE-OBJ-CATALOG-000001
 open: checkpoints/checkpoint2/MANIFEST-000001
 close: checkpoints/checkpoint2/MANIFEST-000001
 open-dir: checkpoints/checkpoint2
-open: checkpoints/checkpoint2/OPTIONS-000003
-close: checkpoints/checkpoint2/OPTIONS-000003
+open: checkpoints/checkpoint2/OPTIONS-000002
+close: checkpoints/checkpoint2/OPTIONS-000002
 open: checkpoints/checkpoint2/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint2/000006.log
 

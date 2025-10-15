@@ -4,10 +4,10 @@ open-ingest-excise
 list-files build
 ----
 build:
-  000002.log
+  000003.log
   LOCK
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000012.025
   marker.manifest.000001.MANIFEST-000001
 
@@ -34,12 +34,12 @@ ingest-and-excised
 list-files build
 ----
 build:
-  000002.log
+  000003.log
   000004.sst
   000005.sst
   LOCK
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000012.025
   marker.manifest.000001.MANIFEST-000001
 
@@ -55,11 +55,11 @@ simple_ingest:
 list-files simple_ingest/checkpoint
 ----
 simple_ingest/checkpoint:
-  000002.log
+  000003.log
   000004.sst
   000005.sst
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000001.025
   marker.manifest.000001.MANIFEST-000001
 

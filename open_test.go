@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/metamorphic"
@@ -278,6 +279,59 @@ func TestOpen_WALFailover(t *testing.T) {
 	})
 }
 
+func TestOpenRecovery(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	mkOpts := func(td *datadriven.TestData) *Options {
+		opts := &Options{FS: vfs.NewMem(), Logger: testutils.Logger{T: t}}
+		parseDBOptionsArgs(opts, td.CmdArgs)
+		return opts
+	}
+	var d *DB
+	var opts *Options
+	closeDB := func() {
+		if d != nil {
+			require.NoError(t, d.Close())
+			d = nil
+		}
+	}
+	defer closeDB()
+	datadriven.RunTestAny(t, "testdata/open_recovery", func(t testing.TB, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "batch":
+			writeBatch := newBatch(d)
+			if err := runBatchDefineCmd(td, writeBatch); err != nil {
+				return err.Error()
+			}
+			if err := writeBatch.Commit(nil); err != nil {
+				return err.Error()
+			}
+			return ""
+		case "define":
+			closeDB()
+			opts = mkOpts(td)
+			var err error
+			d, err = runDBDefineCmd(td, opts)
+			if err != nil {
+				return err.Error()
+			}
+			return runLSMCmd(td, d)
+		case "reopen":
+			closeDB()
+			var err error
+			require.NoError(t, parseDBOptionsArgs(opts, td.CmdArgs))
+			d, err = Open("", opts)
+			if err != nil {
+				return err.Error()
+			}
+			waitForCompactionsAndTableStats(d)
+			return runLSMCmd(td, d)
+		default:
+			return fmt.Sprintf("unrecognized command %q", td.Cmd)
+		}
+	})
+}
+
 // TestOpenAlreadyLocked verifies that we acquire the directory locks
 // required by the database during Open.
 // Each test case:
@@ -499,10 +553,10 @@ func TestOpenAlreadyLocked(t *testing.T) {
 func TestNewDBFilenames(t *testing.T) {
 	versions := map[FormatMajorVersion][]string{
 		internalFormatNewest: {
-			"000002.log",
+			"000003.log",
 			"LOCK",
 			"MANIFEST-000001",
-			"OPTIONS-000003",
+			"OPTIONS-000002",
 			"marker.format-version.000015.028",
 			"marker.manifest.000001.MANIFEST-000001",
 		},
