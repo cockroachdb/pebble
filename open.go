@@ -538,49 +538,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	d.mu.versions.visibleSeqNum.Store(d.mu.versions.logSeqNum.Load())
 
-	// Register with the CompactionScheduler before calling
-	// d.maybeScheduleFlush, since completion of the flush can trigger
-	// compactions.
-	d.compactionScheduler.Register(2, d)
 	if !d.opts.ReadOnly {
-		d.maybeScheduleFlush()
-		for d.mu.compact.flushing {
-			d.mu.compact.cond.Wait()
-		}
-
-		// Create an empty .log file for the mutable memtable.
-		newLogNum := d.mu.versions.getNextDiskFileNum()
-		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), int(jobID))
-		if err != nil {
-			return nil, err
-		}
-
-		// This isn't strictly necessary as we don't use the log number for
-		// memtables being flushed, only for the next unflushed memtable.
-		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = newLogNum
-	}
-	d.updateReadStateLocked(d.opts.DebugCheck)
-
-	if !d.opts.ReadOnly {
-		// If the Options specify a format major version higher than the
-		// loaded database's, upgrade it. If this is a new database, this
-		// code path also performs an initial upgrade from the starting
-		// implicit MinSupported version.
-		//
-		// We ratchet the version this far into Open so that migrations have a read
-		// state available. Note that this also results in creating/updating the
-		// format version marker file.
-		if opts.FormatMajorVersion > d.FormatMajorVersion() {
-			if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
-				return nil, err
-			}
-		} else if noFormatVersionMarker {
-			// We are creating a new store. Create the format version marker file.
-			if err := d.writeFormatVersionMarker(d.FormatMajorVersion()); err != nil {
-				return nil, err
-			}
-		}
-
 		// Write the current options to disk.
 		d.optionsFileNum = d.mu.versions.getNextDiskFileNum()
 		tmpPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeTemp, d.optionsFileNum)
@@ -613,19 +571,54 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		if err := d.dataDir.Sync(); err != nil {
 			return nil, err
 		}
-	}
 
-	if !d.opts.ReadOnly {
-		// Get a fresh list of files, in case some of the earlier flushes/compactions
-		// have deleted some files.
-		ls, err := opts.FS.List(dirname)
-		if err != nil {
-			return nil, err
-		}
+		// Delete any obsolete files.
 		d.scanObsoleteFiles(ls, flushableIngests)
 		d.deleteObsoleteFiles(jobID)
 	}
-	// Else, nothing is obsolete.
+
+	// Register with the CompactionScheduler before calling
+	// d.maybeScheduleFlush, since completion of the flush can trigger
+	// compactions.
+	d.compactionScheduler.Register(2, d)
+	if !d.opts.ReadOnly {
+		d.maybeScheduleFlush()
+		for d.mu.compact.flushing {
+			d.mu.compact.cond.Wait()
+		}
+
+		// Create an empty .log file for the mutable memtable.
+		newLogNum := d.mu.versions.getNextDiskFileNum()
+		d.mu.log.writer, err = d.mu.log.manager.Create(wal.NumWAL(newLogNum), int(jobID))
+		if err != nil {
+			return nil, err
+		}
+
+		// This isn't strictly necessary as we don't use the log number for
+		// memtables being flushed, only for the next unflushed memtable.
+		d.mu.mem.queue[len(d.mu.mem.queue)-1].logNum = newLogNum
+	}
+	d.updateReadStateLocked(d.opts.DebugCheck)
+	if !d.opts.ReadOnly {
+		// If the Options specify a format major version higher than the
+		// loaded database's, upgrade it. If this is a new database, this
+		// code path also performs an initial upgrade from the starting
+		// implicit MinSupported version.
+		//
+		// We ratchet the version this far into Open so that migrations have a read
+		// state available. Note that this also results in creating/updating the
+		// format version marker file.
+		if opts.FormatMajorVersion > d.FormatMajorVersion() {
+			if err := d.ratchetFormatMajorVersionLocked(opts.FormatMajorVersion); err != nil {
+				return nil, err
+			}
+		} else if noFormatVersionMarker {
+			// We are creating a new store. Create the format version marker file.
+			if err := d.writeFormatVersionMarker(d.FormatMajorVersion()); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	d.mu.tableStats.cond.L = &d.mu.Mutex
 	d.mu.tableValidation.cond.L = &d.mu.Mutex

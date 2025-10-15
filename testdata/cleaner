@@ -25,15 +25,15 @@ close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 lock: db_wal/LOCK
 open-dir: db_wal
-create: db_wal/000002.log
+create: db/temporary.000002.dbtmp
+sync: db/temporary.000002.dbtmp
+close: db/temporary.000002.dbtmp
+rename: db/temporary.000002.dbtmp -> db/OPTIONS-000002
+sync: db
+create: db_wal/000003.log
 sync: db_wal
 create: db/marker.format-version.000001.013
 close: db/marker.format-version.000001.013
-sync: db
-create: db/temporary.000003.dbtmp
-sync: db/temporary.000003.dbtmp
-close: db/temporary.000003.dbtmp
-rename: db/temporary.000003.dbtmp -> db/OPTIONS-000003
 sync: db
 
 batch db
@@ -41,12 +41,12 @@ set a 1
 set b 2
 set c 3
 ----
-sync-data: db_wal/000002.log
+sync-data: db_wal/000003.log
 
 flush db
 ----
-sync-data: db_wal/000002.log
-close: db_wal/000002.log
+sync-data: db_wal/000003.log
+close: db_wal/000003.log
 create: db_wal/000004.log
 sync: db_wal
 create: db/000005.sst
@@ -55,7 +55,7 @@ close: db/000005.sst
 sync: db
 sync: db/MANIFEST-000001
 mkdir-all: db_wal/archive 0755
-rename: db_wal/000002.log -> db_wal/archive/000002.log
+rename: db_wal/000003.log -> db_wal/archive/000003.log
 
 batch db
 set d 4
@@ -108,7 +108,7 @@ list db
 000008.sst
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 archive
 marker.format-version.000001.013
 marker.manifest.000001.MANIFEST-000001
@@ -126,7 +126,7 @@ list db/archive
 
 list db_wal/archive
 ----
-000002.log
+000003.log
 000004.log
 
 # Test cleanup of extra sstables on open.
@@ -156,15 +156,15 @@ close: db1/marker.manifest.000001.MANIFEST-000001
 sync: db1
 lock: db1_wal/LOCK
 open-dir: db1_wal
-create: db1_wal/000002.log
+create: db1/temporary.000002.dbtmp
+sync: db1/temporary.000002.dbtmp
+close: db1/temporary.000002.dbtmp
+rename: db1/temporary.000002.dbtmp -> db1/OPTIONS-000002
+sync: db1
+create: db1_wal/000003.log
 sync: db1_wal
 create: db1/marker.format-version.000001.013
 close: db1/marker.format-version.000001.013
-sync: db1
-create: db1/temporary.000003.dbtmp
-sync: db1/temporary.000003.dbtmp
-close: db1/temporary.000003.dbtmp
-rename: db1/temporary.000003.dbtmp -> db1/OPTIONS-000003
 sync: db1
 
 batch db1
@@ -172,12 +172,12 @@ set a 1
 set b 2
 set c 3
 ----
-sync-data: db1_wal/000002.log
+sync-data: db1_wal/000003.log
 
 flush db1
 ----
-sync-data: db1_wal/000002.log
-close: db1_wal/000002.log
+sync-data: db1_wal/000003.log
+close: db1_wal/000003.log
 create: db1_wal/000004.log
 sync: db1_wal
 create: db1/000005.sst
@@ -245,37 +245,38 @@ open: db1/MANIFEST-000001
 close: db1/MANIFEST-000001
 lock: db1_wal/LOCK
 open-dir: db1_wal
-open: db1/OPTIONS-000003
-close: db1/OPTIONS-000003
+open: db1/OPTIONS-000002
+close: db1/OPTIONS-000002
 open: db1_wal/000004.log (options: *vfs.sequentialReadsOption)
 close: db1_wal/000004.log
-create: db1/MANIFEST-000458
-sync: db1/MANIFEST-000458
-create: db1/marker.manifest.000002.MANIFEST-000458
-close: db1/marker.manifest.000002.MANIFEST-000458
-remove: db1/marker.manifest.000001.MANIFEST-000001
+create: db1/temporary.000458.dbtmp
+sync: db1/temporary.000458.dbtmp
+close: db1/temporary.000458.dbtmp
+rename: db1/temporary.000458.dbtmp -> db1/OPTIONS-000458
 sync: db1
-remove: db1_wal/000002.log
-remove: db1_wal/000004.log
-create: db1_wal/000459.log
-sync: db1_wal
-create: db1/temporary.000460.dbtmp
-sync: db1/temporary.000460.dbtmp
-close: db1/temporary.000460.dbtmp
-rename: db1/temporary.000460.dbtmp -> db1/OPTIONS-000460
-sync: db1
-remove: db1/OPTIONS-000003
+remove: db1/OPTIONS-000002
 remove: db1/000123.sst
 remove: db1/000456.sst
 remove: db1/000234.blob
 remove: db1/000345.blob
+remove: db1_wal/000003.log
+sync: db1
+create: db1/MANIFEST-000459
+sync: db1/MANIFEST-000459
+create: db1/marker.manifest.000002.MANIFEST-000459
+close: db1/marker.manifest.000002.MANIFEST-000459
+remove: db1/marker.manifest.000001.MANIFEST-000001
+sync: db1
+remove: db1_wal/000004.log
+create: db1_wal/000460.log
+sync: db1_wal
 
 list db1
 ----
 000005.sst
 LOCK
 MANIFEST-000001
-MANIFEST-000458
-OPTIONS-000460
+MANIFEST-000459
+OPTIONS-000458
 marker.format-version.000001.013
-marker.manifest.000002.MANIFEST-000458
+marker.manifest.000002.MANIFEST-000459

@@ -499,10 +499,10 @@ func TestOpenAlreadyLocked(t *testing.T) {
 func TestNewDBFilenames(t *testing.T) {
 	versions := map[FormatMajorVersion][]string{
 		internalFormatNewest: {
-			"000002.log",
+			"000003.log",
 			"LOCK",
 			"MANIFEST-000001",
-			"OPTIONS-000003",
+			"OPTIONS-000002",
 			"marker.format-version.000015.028",
 			"marker.manifest.000001.MANIFEST-000001",
 		},

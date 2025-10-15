@@ -17,7 +17,7 @@ tree
        0      LOCK
      152      MANIFEST-000010
      250      MANIFEST-000013
-    2947      OPTIONS-000003
+    2947      OPTIONS-000002
        0      marker.format-version.000011.024
        0      marker.manifest.000003.MANIFEST-000013
             simple_val_sep/
@@ -32,14 +32,14 @@ tree
       11        000011.log
      660        000012.sst
      187        MANIFEST-000013
-    2947        OPTIONS-000003
+    2947        OPTIONS-000002
        0        marker.format-version.000001.024
        0        marker.manifest.000001.MANIFEST-000013
 
 replay simple_val_sep unpaced
 ----
 
-cat build/OPTIONS-000003
+cat build/OPTIONS-000002
 ----
 ----
 [Version]
