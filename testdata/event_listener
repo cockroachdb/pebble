@@ -26,9 +26,14 @@ sync: db
 [JOB 1] MANIFEST created 000001
 lock: wal/LOCK
 open-dir: wal
-create: wal/000002.log
+create: db/temporary.000002.dbtmp
+sync: db/temporary.000002.dbtmp
+close: db/temporary.000002.dbtmp
+rename: db/temporary.000002.dbtmp -> db/OPTIONS-000002
+sync: db
+create: wal/000003.log
 sync: wal
-[JOB 1] WAL created 000002
+[JOB 1] WAL created 000003
 create: db/marker.format-version.000001.014
 sync: db/marker.format-version.000001.014
 close: db/marker.format-version.000001.014
@@ -118,17 +123,12 @@ close: db/marker.format-version.000015.028
 remove: db/marker.format-version.000014.027
 sync: db
 upgraded to format version: 028
-create: db/temporary.000003.dbtmp
-sync: db/temporary.000003.dbtmp
-close: db/temporary.000003.dbtmp
-rename: db/temporary.000003.dbtmp -> db/OPTIONS-000003
-sync: db
 
 flush
 ----
-sync-data: wal/000002.log
-sync-data: wal/000002.log
-close: wal/000002.log
+sync-data: wal/000003.log
+sync-data: wal/000003.log
+close: wal/000003.log
 create: wal/000004.log
 sync: wal
 [JOB 2] WAL created 000004
@@ -154,9 +154,9 @@ compact
 sync-data: wal/000004.log
 sync-data: wal/000004.log
 close: wal/000004.log
-reuseForWrite: wal/000002.log -> wal/000007.log
+reuseForWrite: wal/000003.log -> wal/000007.log
 sync: wal
-[JOB 4] WAL created 000007 (recycled 000002)
+[JOB 4] WAL created 000007 (recycled 000003)
 [JOB 5] flushing 1 memtable (100B) to L0
 create: db/000008.sst
 [JOB 5] flushing: sstable created 000008
@@ -508,11 +508,11 @@ open-dir: .
 sync: .
 close: .
 open-dir: checkpoint
-open: db/OPTIONS-000003
-create: checkpoint/OPTIONS-000003
-sync-data: checkpoint/OPTIONS-000003
-close: checkpoint/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoint/OPTIONS-000002
+sync-data: checkpoint/OPTIONS-000002
+close: checkpoint/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoint
 create: checkpoint/marker.format-version.000001.028
 sync-data: checkpoint/marker.format-version.000001.028

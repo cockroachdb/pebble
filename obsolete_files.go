@@ -352,23 +352,16 @@ func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
 	return pacerInfo
 }
 
-// scanObsoleteFiles scans the filesystem for files that are no longer needed
-// and adds those to the internal lists of obsolete files. Note that the files
-// are not actually deleted by this method. A subsequent call to
-// deleteObsoleteFiles must be performed. Must be not be called concurrently
-// with compactions and flushes. db.mu must be held when calling this function.
+// scanObsoleteFiles compares the provided directory listing to the set of
+// known, in-use files to find files no longer needed and adds those to the
+// internal lists of obsolete files. Note that the files are not actually
+// deleted by this method. A subsequent call to deleteObsoleteFiles must be
+// performed. Must be not be called concurrently with compactions and flushes
+// and will panic if any are in-progress. db.mu must be held when calling this
+// function.
 func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlushable) {
-	// Disable automatic compactions temporarily to avoid concurrent compactions /
-	// flushes from interfering. The original value is restored on completion.
-	disabledPrev := d.opts.DisableAutomaticCompactions
-	defer func() {
-		d.opts.DisableAutomaticCompactions = disabledPrev
-	}()
-	d.opts.DisableAutomaticCompactions = true
-
-	// Wait for any ongoing compaction to complete before continuing.
-	for d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.compact.flushing {
-		d.mu.compact.cond.Wait()
+	if d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.compact.flushing {
+		panic(errors.AssertionFailedf("compaction or flush in progress"))
 	}
 
 	liveFileNums := make(map[base.DiskFileNum]struct{})
