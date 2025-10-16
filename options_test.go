@@ -42,9 +42,10 @@ func (o *Options) randomizeForTesting(t testing.TB) {
 	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
 		lowPri := 0.1 + rand.Float64()*0.9 // [0.1, 1.0)
 		policy := ValueSeparationPolicy{
-			Enabled:               true,
-			MinimumSize:           1 << rand.IntN(10), // [1, 512]
-			MaxBlobReferenceDepth: rand.IntN(10) + 1,  // [1, 10)
+			Enabled:                true,
+			MinimumSize:            1 << rand.IntN(10), // [1, 512]
+			MinimumMVCCGarbageSize: 1 + rand.IntN(10),  // [1, 10]
+			MaxBlobReferenceDepth:  1 + rand.IntN(10),  // [1, 10]
 			// Constrain the rewrite minimum age to [0, 15s).
 			RewriteMinimumAge:        time.Duration(rand.IntN(15)) * time.Second,
 			GarbageRatioLowPriority:  lowPri,
@@ -259,7 +260,6 @@ func TestOptionsCheckCompatibility(t *testing.T) {
 
 	// Check that an OPTIONS file that configured an explicit WALDir that will
 	// no longer be used errors if it's not also present in WALRecoveryDirs.
-	//require.Equal(t, ErrMissingWALRecoveryDir{Dir: "external-wal-dir"},
 	err := DefaultOptions().CheckCompatibility(storeDir, `
 [Options]
   wal_dir=external-wal-dir
@@ -648,10 +648,10 @@ func TestStaticSpanPolicyFunc(t *testing.T) {
 			sap.KeyRange.End = []byte(p.Next())
 			p.Expect(":")
 			switch tok := p.Next(); tok {
-			case "lowlatency":
-				sap.Policy.ValueStoragePolicy = ValueStorageLowReadLatency
-			case "latencytolerant":
-				sap.Policy.ValueStoragePolicy = ValueStorageLatencyTolerant
+			case "novalueseparation":
+				sap.Policy.ValueStoragePolicy.PolicyAdjustment = NoValueSeparation
+			case "override":
+				sap.Policy.ValueStoragePolicy.PolicyAdjustment = Override
 			default:
 				t.Fatalf("unknown policy: %s", tok)
 			}

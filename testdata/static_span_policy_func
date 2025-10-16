@@ -1,59 +1,59 @@
 # A single policy.
 
-test d-f:lowlatency
+test d-f:novalueseparation
 a b c d e f g
 ----
 a ->  until d
 b ->  until d
 c ->  until d
-d -> low-read-latency until f
-e -> low-read-latency until f
+d -> no-value-separation until f
+e -> no-value-separation until f
 f -> none
 g -> none
 
 
 # A single encompassing policy.
 
-test a-z:lowlatency
+test a-z:novalueseparation
 a b c d e z
 ----
-a -> low-read-latency until z
-b -> low-read-latency until z
-c -> low-read-latency until z
-d -> low-read-latency until z
-e -> low-read-latency until z
+a -> no-value-separation until z
+b -> no-value-separation until z
+c -> no-value-separation until z
+d -> no-value-separation until z
+e -> no-value-separation until z
 z -> none
 
 # Abutting policies.
 
-test b-d:lowlatency d-f:latencytolerant f-h:lowlatency
+test b-d:novalueseparation d-f:override f-h:novalueseparation
 a b c d e f g h i z
 ----
 a ->  until b
-b -> low-read-latency until d
-c -> low-read-latency until d
-d -> latency-tolerant until f
-e -> latency-tolerant until f
-f -> low-read-latency until h
-g -> low-read-latency until h
+b -> no-value-separation until d
+c -> no-value-separation until d
+d -> override until f
+e -> override until f
+f -> no-value-separation until h
+g -> no-value-separation until h
 h -> none
 i -> none
 z -> none
 
 # Gaps between policies.
 
-test b-d:lowlatency h-j:latencytolerant
+test b-d:novalueseparation h-j:override
 a b c d e f g h i j k l
 ----
 a ->  until b
-b -> low-read-latency until d
-c -> low-read-latency until d
+b -> no-value-separation until d
+c -> no-value-separation until d
 d ->  until h
 e ->  until h
 f ->  until h
 g ->  until h
-h -> latency-tolerant until j
-i -> latency-tolerant until j
+h -> override until j
+i -> override until j
 j -> none
 k -> none
 l -> none

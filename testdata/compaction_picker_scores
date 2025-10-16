@@ -271,7 +271,7 @@ L6       898KB    0.00     0.97           0.97
 # it weren't for the high priority blob file rewrite compaction heuristic
 # triggering, we would pursue an automatic score compaction from L0 -> LBase.
 
-define l0-compaction-threshold=1 lbase-max-bytes=65536  enable-table-stats=true auto-compactions=off value-separation=(enabled, min-size=1, max-ref-depth=5, garbage-ratios=0.1:0.2)
+define l0-compaction-threshold=1 lbase-max-bytes=65536  enable-table-stats=true auto-compactions=off value-separation=(enabled, min-size=1, max-ref-depth=5, garbage-ratios=0.1:0.2, min-mvcc-garbage-size=1)
 ----
 
 batch

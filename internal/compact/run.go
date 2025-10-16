@@ -115,6 +115,9 @@ type ValueSeparationOutputConfig struct {
 	// MinimumSize is the minimum size of a value that will be separated into a
 	// blob file.
 	MinimumSize int
+	// MinimumMVCCGarbageSize is the minimum size of a value that will be
+	// separated into a blob file if the value is likely MVCC garbage.
+	MinimumMVCCGarbageSize int
 }
 
 // ValueSeparation defines an interface for writing some values to separate blob
@@ -344,7 +347,7 @@ func (r *Runner) writeKeysToTable(
 		}
 
 		valueLen := kv.V.Len()
-		isLikelyMVCCGarbage := sstable.IsLikelyMVCCGarbage(kv.K.UserKey, prevKeyKind, kv.K.Kind(), valueLen, prefixEqual)
+		isLikelyMVCCGarbage := sstable.IsLikelyMVCCGarbage(kv.K.UserKey, prevKeyKind, kv.K.Kind(), prefixEqual)
 		// Add the value to the sstable, possibly separating its value into a
 		// blob file. The ValueSeparation implementation is responsible for
 		// writing the KV to the sstable.

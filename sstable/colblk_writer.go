@@ -643,9 +643,17 @@ func (w *RawColumnWriter) evaluatePoint(
 	// We require:
 	//  . Value blocks to be enabled.
 	//  . IsLikelyMVCCGarbage to be true; see comment for MVCC garbage criteria.
+	//  . The value to be sufficiently large. (Currently we simply require a
+	//	  non-zero length, so all non-empty values are eligible for storage
+	//	  out-of-band in a value block.)
+	//
+	// Use of 0 here is somewhat arbitrary. Given the minimum 3 byte encoding of
+	// valueHandle, this should be > 3. But tiny values are common in test and
+	// unlikely in production, so we use 0 here for better test coverage.
 	useValueBlock := !w.opts.DisableValueBlocks &&
 		w.valueBlock != nil &&
-		IsLikelyMVCCGarbage(key.UserKey, prevKeyKind, keyKind, valueLen, prefixEqual)
+		valueLen > 0 &&
+		IsLikelyMVCCGarbage(key.UserKey, prevKeyKind, keyKind, prefixEqual)
 	if !useValueBlock {
 		return eval, nil
 	}
@@ -1285,26 +1293,14 @@ func (w *RawColumnWriter) SetValueSeparationProps(kind ValueSeparationKind, minV
 //
 //	. The previous key to be a SET/SETWITHDEL.
 //	. The current key to be a SET/SETWITHDEL.
-//	. The value to be sufficiently large. (Currently we simply require a
-//	  non-zero length, so all non-empty values are eligible for storage
-//	  out-of-band in a value block.)
 //	. The current key to have the same prefix as the previous key.
-//
-// Use of 0 here is somewhat arbitrary. Given the minimum 3 byte encoding of
-// valueHandle, this should be > 3. But tiny values are common in test and
-// unlikely in production, so we use 0 here for better test coverage.
 func IsLikelyMVCCGarbage(
-	k []byte,
-	prevKeyKind, keyKind base.InternalKeyKind,
-	valueLen int,
-	prefixEqual func(k []byte) bool,
+	k []byte, prevKeyKind, keyKind base.InternalKeyKind, prefixEqual func(k []byte) bool,
 ) bool {
-	const tinyValueThreshold = 0
 	isSetStarKind := func(k base.InternalKeyKind) bool {
 		return k == InternalKeyKindSet || k == InternalKeyKindSetWithDelete
 	}
 	return isSetStarKind(prevKeyKind) &&
 		isSetStarKind(keyKind) &&
-		valueLen > tinyValueThreshold &&
 		prefixEqual(k)
 }
