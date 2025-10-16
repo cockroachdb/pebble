@@ -41,24 +41,30 @@ func (d *DB) determineCompactionValueSeparation(
 		return compact.NeverSeparateValues{}
 	}
 	policy := d.opts.Experimental.ValueSeparationPolicy()
-	if !policy.Enabled || valueStorage == ValueStorageLowReadLatency {
+	if !policy.Enabled {
 		return compact.NeverSeparateValues{}
 	}
 
 	// We're allowed to write blob references. Determine whether we should carry
 	// forward existing blob references, or write new ones.
-	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, valueStorage); !writeBlobs {
+	minSize := uint64(policy.MinimumSize)
+	switch valueStorage {
+	case ValueStorageLowReadLatency:
+		return compact.NeverSeparateValues{}
+	case ValueStorageLatencyTolerant:
+		minSize = latencyTolerantMinimumSize
+	default:
+	}
+	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, minSize); !writeBlobs {
 		// This compaction should preserve existing blob references.
 		kind := sstable.ValueSeparationDefault
-		minSize := policy.MinimumSize
 		if valueStorage != ValueStorageDefault {
 			kind = sstable.ValueSeparationSpanPolicy
-			minSize = latencyTolerantMinimumSize
 		}
 		return &preserveBlobReferences{
 			inputBlobPhysicalFiles:      uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
 			outputBlobReferenceDepth:    outputBlobReferenceDepth,
-			minimumValueSize:            minSize,
+			minimumValueSize:            int(minSize),
 			originalValueSeparationKind: kind,
 		}
 	}
@@ -92,7 +98,7 @@ func (d *DB) determineCompactionValueSeparation(
 // maximum blob reference depth to assign to output sstables (the actual value
 // may be lower iff the output table references fewer distinct blob files).
 func shouldWriteBlobFiles(
-	c *tableCompaction, policy ValueSeparationPolicy, valueStorage ValueStoragePolicy,
+	c *tableCompaction, policy ValueSeparationPolicy, minimumValueSizeForCompaction uint64,
 ) (writeBlobs bool, referenceDepth manifest.BlobReferenceDepth) {
 	// Flushes will have no existing references to blob files and should write
 	// their values to new blob files.
@@ -131,19 +137,8 @@ func shouldWriteBlobFiles(
 			if !backingPropsValid {
 				continue
 			}
-			switch valueStorage {
-			case ValueStorageLowReadLatency:
-				// This case should be handled prior to calling this function,
-				// but include it here for completeness.
-				return false, inputReferenceDepth
-			case ValueStorageLatencyTolerant:
-				if backingProps.ValueSeparationMinSize != latencyTolerantMinimumSize {
-					return true, 0
-				}
-			default:
-				if int(backingProps.ValueSeparationMinSize) != policy.MinimumSize {
-					return true, 0
-				}
+			if backingProps.ValueSeparationMinSize != minimumValueSizeForCompaction {
+				return true, 0
 			}
 		}
 	}
