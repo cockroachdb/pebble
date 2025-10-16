@@ -18,13 +18,13 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
-	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/valsep"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +32,7 @@ import (
 func TestValueSeparationPolicy(t *testing.T) {
 	var (
 		bv  blobtest.Values
-		vs  compact.ValueSeparation
+		vs  valsep.ValueSeparation
 		tw  sstable.RawWriter
 		fn  base.DiskFileNum
 		buf bytes.Buffer
@@ -76,7 +76,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 				bv = blobtest.Values{}
 				switch x := d.CmdArgs[0].String(); x {
 				case "never-separate-values":
-					vs = compact.NeverSeparateValues{}
+					vs = valsep.NeverSeparateValues{}
 				case "preserve-blob-references":
 					pbr := &preserveBlobReferences{}
 					lines := crstrings.Lines(d.Input)
@@ -209,10 +209,10 @@ type defineDBValueSeparator struct {
 }
 
 // Assert that *defineDBValueSeparator implements the compact.ValueSeparation interface.
-var _ compact.ValueSeparation = (*defineDBValueSeparator)(nil)
+var _ valsep.ValueSeparation = (*defineDBValueSeparator)(nil)
 
 // SetNextOutputConfig implements the compact.ValueSeparation interface.
-func (vs *defineDBValueSeparator) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
+func (vs *defineDBValueSeparator) SetNextOutputConfig(config valsep.ValueSeparationOutputConfig) {}
 
 // Kind implements the ValueSeparation interface.
 func (vs *defineDBValueSeparator) Kind() sstable.ValueSeparationKind {
@@ -277,10 +277,10 @@ func (vs *defineDBValueSeparator) Add(
 }
 
 // FinishOutput implements compact.ValueSeparation.
-func (d *defineDBValueSeparator) FinishOutput() (compact.ValueSeparationMetadata, error) {
+func (d *defineDBValueSeparator) FinishOutput() (valsep.ValueSeparationMetadata, error) {
 	m, err := d.pbr.FinishOutput()
 	if err != nil {
-		return compact.ValueSeparationMetadata{}, err
+		return valsep.ValueSeparationMetadata{}, err
 	}
 	// TODO(jackson): Support setting a specific depth from the datadriven test.
 	m.BlobReferenceDepth = manifest.BlobReferenceDepth(len(m.BlobReferences))

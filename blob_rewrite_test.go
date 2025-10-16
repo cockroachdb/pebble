@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -30,6 +29,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/valsep"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +37,7 @@ import (
 func TestBlobRewrite(t *testing.T) {
 	var (
 		bv  blobtest.Values
-		vs  compact.ValueSeparation
+		vs  valsep.ValueSeparation
 		tw  sstable.RawWriter
 		fn  base.DiskFileNum
 		buf bytes.Buffer

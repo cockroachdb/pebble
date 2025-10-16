@@ -10,12 +10,12 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/compact"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/valsep"
 	"github.com/cockroachdb/redact"
 )
 
@@ -24,8 +24,8 @@ import (
 // ValueStorageLatencyTolerant.
 const latencyTolerantMinimumSize = 10
 
-var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, ValueStoragePolicy) compact.ValueSeparation {
-	return compact.NeverSeparateValues{}
+var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation {
+	return valsep.NeverSeparateValues{}
 }
 
 // determineCompactionValueSeparation determines whether a compaction should
@@ -35,14 +35,14 @@ var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, Value
 // It assumes that the compaction will write tables at d.TableFormat() or above.
 func (d *DB) determineCompactionValueSeparation(
 	jobID JobID, c *tableCompaction, valueStorage ValueStoragePolicy,
-) compact.ValueSeparation {
+) valsep.ValueSeparation {
 	if d.FormatMajorVersion() < FormatValueSeparation ||
 		d.opts.Experimental.ValueSeparationPolicy == nil {
-		return compact.NeverSeparateValues{}
+		return valsep.NeverSeparateValues{}
 	}
 	policy := d.opts.Experimental.ValueSeparationPolicy()
 	if !policy.Enabled {
-		return compact.NeverSeparateValues{}
+		return valsep.NeverSeparateValues{}
 	}
 
 	// We're allowed to write blob references. Determine whether we should carry
@@ -50,7 +50,7 @@ func (d *DB) determineCompactionValueSeparation(
 	minSize := uint64(policy.MinimumSize)
 	switch valueStorage {
 	case ValueStorageLowReadLatency:
-		return compact.NeverSeparateValues{}
+		return valsep.NeverSeparateValues{}
 	case ValueStorageLatencyTolerant:
 		minSize = latencyTolerantMinimumSize
 	default:
@@ -249,10 +249,10 @@ type writeNewBlobFiles struct {
 }
 
 // Assert that *writeNewBlobFiles implements the compact.ValueSeparation interface.
-var _ compact.ValueSeparation = (*writeNewBlobFiles)(nil)
+var _ valsep.ValueSeparation = (*writeNewBlobFiles)(nil)
 
 // SetNextOutputConfig implements the ValueSeparation interface.
-func (vs *writeNewBlobFiles) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {
+func (vs *writeNewBlobFiles) SetNextOutputConfig(config valsep.ValueSeparationOutputConfig) {
 	vs.minimumSize = config.MinimumSize
 }
 
@@ -372,13 +372,13 @@ func (vs *writeNewBlobFiles) Add(
 
 // FinishOutput closes the current blob file (if any). It returns the stats
 // and metadata of the now completed blob file.
-func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, error) {
+func (vs *writeNewBlobFiles) FinishOutput() (valsep.ValueSeparationMetadata, error) {
 	if vs.writer == nil {
-		return compact.ValueSeparationMetadata{}, nil
+		return valsep.ValueSeparationMetadata{}, nil
 	}
 	stats, err := vs.writer.Close()
 	if err != nil {
-		return compact.ValueSeparationMetadata{}, err
+		return valsep.ValueSeparationMetadata{}, err
 	}
 	vs.writer = nil
 	meta := &manifest.PhysicalBlobFile{
@@ -391,7 +391,7 @@ func (vs *writeNewBlobFiles) FinishOutput() (compact.ValueSeparationMetadata, er
 	// Reset the minimum size for the next output.
 	vs.minimumSize = vs.globalMinimumSize
 
-	return compact.ValueSeparationMetadata{
+	return valsep.ValueSeparationMetadata{
 		BlobReferences: manifest.BlobReferences{
 			manifest.MakeBlobReference(base.BlobFileID(vs.objMeta.DiskFileNum),
 				stats.UncompressedValueBytes, stats.UncompressedValueBytes, meta),
@@ -442,10 +442,10 @@ type pendingReference struct {
 
 // Assert that *preserveBlobReferences implements the compact.ValueSeparation
 // interface.
-var _ compact.ValueSeparation = (*preserveBlobReferences)(nil)
+var _ valsep.ValueSeparation = (*preserveBlobReferences)(nil)
 
 // SetNextOutputConfig implements the ValueSeparation interface.
-func (vs *preserveBlobReferences) SetNextOutputConfig(config compact.ValueSeparationOutputConfig) {}
+func (vs *preserveBlobReferences) SetNextOutputConfig(config valsep.ValueSeparationOutputConfig) {}
 
 // Kind implements the ValueSeparation interface.
 func (vs *preserveBlobReferences) Kind() sstable.ValueSeparationKind {
@@ -535,7 +535,7 @@ func (vs *preserveBlobReferences) Add(
 }
 
 // FinishOutput implements compact.ValueSeparation.
-func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadata, error) {
+func (vs *preserveBlobReferences) FinishOutput() (valsep.ValueSeparationMetadata, error) {
 	if invariants.Enabled {
 		// Assert that the incrementally-maintained totalValueSize matches the
 		// sum of all the reference value sizes.
@@ -544,7 +544,7 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 			totalValueSize += ref.valueSize
 		}
 		if totalValueSize != vs.totalValueSize {
-			return compact.ValueSeparationMetadata{},
+			return valsep.ValueSeparationMetadata{},
 				errors.AssertionFailedf("totalValueSize mismatch: %d != %d", totalValueSize, vs.totalValueSize)
 		}
 	}
@@ -554,7 +554,7 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 		ref := vs.currReferences[i]
 		phys, ok := vs.inputBlobPhysicalFiles[ref.blobFileID]
 		if !ok {
-			return compact.ValueSeparationMetadata{},
+			return valsep.ValueSeparationMetadata{},
 				errors.AssertionFailedf("pebble: blob file %s not found among input sstables", ref.blobFileID)
 		}
 		references[i] = manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, ref.valueSize, phys)
@@ -562,7 +562,7 @@ func (vs *preserveBlobReferences) FinishOutput() (compact.ValueSeparationMetadat
 	referenceSize := vs.totalValueSize
 	vs.currReferences = vs.currReferences[:0]
 	vs.totalValueSize = 0
-	return compact.ValueSeparationMetadata{
+	return valsep.ValueSeparationMetadata{
 		BlobReferences:    references,
 		BlobReferenceSize: referenceSize,
 		// The outputBlobReferenceDepth is computed from the input sstables,
