@@ -34,6 +34,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
+	"github.com/cockroachdb/pebble/valsep"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
 )
@@ -250,7 +251,7 @@ type tableCompaction struct {
 	// b) rewrite blob files: The compaction will write eligible values to new
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
-	getValueSeparation func(JobID, *tableCompaction, ValueStoragePolicy) compact.ValueSeparation
+	getValueSeparation func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -542,7 +543,7 @@ func (c *tableCompaction) makeInfo(jobID JobID) CompactionInfo {
 	return info
 }
 
-type getValueSeparation func(JobID, *tableCompaction, ValueStoragePolicy) compact.ValueSeparation
+type getValueSeparation func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation
 
 // newCompaction constructs a compaction from the provided picked compaction.
 //
@@ -3461,11 +3462,11 @@ func (d *DB) compactAndWrite(
 		vSep := valueSeparation
 		switch spanPolicy.ValueStoragePolicy {
 		case ValueStorageLowReadLatency:
-			vSep = compact.NeverSeparateValues{}
+			vSep = valsep.NeverSeparateValues{}
 		case ValueStorageLatencyTolerant:
 			// This span of keyspace is more tolerant of latency, so set a more
 			// aggressive value separation policy for this output.
-			vSep.SetNextOutputConfig(compact.ValueSeparationOutputConfig{
+			vSep.SetNextOutputConfig(valsep.ValueSeparationOutputConfig{
 				MinimumSize: latencyTolerantMinimumSize,
 			})
 		}
