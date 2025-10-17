@@ -75,7 +75,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"EventListener:",
 		"CompactionConcurrencyRange:",
 		"MaxConcurrentDownloads:",
-		"TargetByteDeletionRate:",
+		"DeletionPacing.BaselineRate:",
 		"Experimental.CompactionGarbageFractionForMaxConcurrency:",
 		"Experimental.DisableIngestAsFlushable:",
 		"Experimental.EnableColumnarBlocks:",
@@ -117,7 +117,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		expectEqualFn(t, o.Opts.Experimental.IngestSplit, parsed.Opts.Experimental.IngestSplit)
 		expectEqualFn(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency, parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency)
 		expectEqualFn(t, o.Opts.Experimental.ValueSeparationPolicy, parsed.Opts.Experimental.ValueSeparationPolicy)
-		expectEqualFn(t, o.Opts.TargetByteDeletionRate, parsed.Opts.TargetByteDeletionRate)
+		expectEqualFn(t, o.Opts.DeletionPacing.BaselineRate, parsed.Opts.DeletionPacing.BaselineRate)
 
 		expBaseline, expUpper := o.Opts.CompactionConcurrencyRange()
 		parsedBaseline, parsedUpper := parsed.Opts.CompactionConcurrencyRange()

@@ -21,10 +21,12 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
@@ -198,6 +200,18 @@ func exampleMetrics() Metrics {
 	m.WAL.Size = 24
 	m.WAL.BytesIn = 25
 	m.WAL.BytesWritten = 26
+
+	cs := func(n uint64) metrics.CountAndSize { return metrics.CountAndSize{Count: n, Bytes: n << 20} }
+	m.DeletePacer.InQueue.Tables.All = cs(100)
+	m.DeletePacer.InQueue.Tables.Local = cs(50)
+	m.DeletePacer.InQueue.BlobFiles.All = cs(200)
+	m.DeletePacer.InQueue.BlobFiles.Local = cs(100)
+	m.DeletePacer.InQueue.Other = cs(10)
+	m.DeletePacer.Deleted.Tables.All = cs(1000)
+	m.DeletePacer.Deleted.Tables.Local = cs(500)
+	m.DeletePacer.Deleted.BlobFiles.All = cs(2000)
+	m.DeletePacer.Deleted.BlobFiles.Local = cs(1000)
+	m.DeletePacer.Deleted.Other = cs(100)
 
 	for i := range m.manualMemory {
 		m.manualMemory[i].InUseBytes = uint64((i + 1) * 1024)
@@ -409,7 +423,7 @@ func TestMetrics(t *testing.T) {
 
 			// The deletion of obsolete files happens asynchronously when an iterator
 			// is closed. Wait for the obsolete tables to be deleted.
-			d.cleanupManager.Wait()
+			d.deletePacer.WaitForTesting()
 			return ""
 
 		case "iter-new":
@@ -451,6 +465,10 @@ func TestMetrics(t *testing.T) {
 				if len(m.CategoryStats) > 0 && m.CategoryStats[0].Category == block.CategoryUnknown {
 					m.CategoryStats[0].CategoryStats = block.CategoryStats{}
 				}
+			}
+			// Some subset of cases show non-determinism in cache hits/misses.
+			if td.HasArg("zero-delete-pacer") {
+				m.DeletePacer = deletepacer.Metrics{}
 			}
 			var buf strings.Builder
 			fmt.Fprintf(&buf, "%s\n", m.StringForTests())
