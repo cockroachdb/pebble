@@ -218,6 +218,12 @@ COMPRESSION
 --------------+----------------+--------------
          none |            56B |           64B
        snappy | 134B (CR=1.15) |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 ----
 ----
 
@@ -521,6 +527,12 @@ COMPRESSION
 --------------+----------------+--------------
          none |            61B |          149B
        snappy | 130B (CR=1.31) |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 ----
 ----
 

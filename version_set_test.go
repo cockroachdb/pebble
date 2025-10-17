@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -243,7 +244,7 @@ func TestVersionSet(t *testing.T) {
 			}
 		}
 		buf.WriteString(vs.latest.virtualBackings.String())
-		printObjectBreakdown := func(kind string, zombies zombieObjects, obsolete []obsoleteFile) {
+		printObjectBreakdown := func(kind string, zombies zombieObjects, obsolete []deletepacer.ObsoleteFile) {
 			if zombies.Count() == 0 {
 				buf.WriteString(fmt.Sprintf("no zombie %s\n", kind))
 			} else {
@@ -260,7 +261,7 @@ func TestVersionSet(t *testing.T) {
 			} else {
 				buf.WriteString(fmt.Sprintf("obsolete %s:", kind))
 				for _, fi := range obsolete {
-					fmt.Fprintf(&buf, " %s", fi.fileNum)
+					fmt.Fprintf(&buf, " %s", fi.FileNum)
 				}
 				buf.WriteString("\n")
 			}

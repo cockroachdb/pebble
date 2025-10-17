@@ -45,7 +45,6 @@ var errEmptyTable = errors.New("pebble: empty table")
 var ErrCancelledCompaction = errors.New("pebble: compaction cancelled by a concurrent operation, will retry compaction")
 
 var flushLabels = pprof.Labels("pebble", "flush", "output-level", "L0")
-var gcLabels = pprof.Labels("pebble", "gc")
 
 // expandedCompactionByteSizeLimit is the maximum number of bytes in all
 // compacted files. We avoid expanding the lower level file set of a compaction

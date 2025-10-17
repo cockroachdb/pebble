@@ -11,7 +11,7 @@ tree
      508      000007.sst
        0      LOCK
      133      MANIFEST-000001
-    2769      OPTIONS-000002
+    2733      OPTIONS-000002
        0      marker.format-version.000001.013
        0      marker.manifest.000001.MANIFEST-000001
             simple/
@@ -21,7 +21,7 @@ tree
       11        000004.log
      480        000005.sst
       85        MANIFEST-000001
-    2769        OPTIONS-000002
+    2733        OPTIONS-000002
        0        marker.format-version.000001.013
        0        marker.manifest.000001.MANIFEST-000001
 
@@ -59,7 +59,6 @@ cat build/OPTIONS-000002
   min_deletion_rate=0
   free_space_threshold_bytes=17179869184
   free_space_timeframe=10s
-  obsolete_bytes_max_ratio=0.200000
   obsolete_bytes_timeframe=5m0s
   merger=pebble.concatenate
   multilevel_compaction_heuristic=wamp(0.00, false)
