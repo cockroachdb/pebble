@@ -35,7 +35,11 @@ set e foo
 
 reopen auto-compactions=on inject-errors=((RandomLatency "5ms" 1 (And OpFileWrite (PathMatch "*.sst"))))
 ----
-L5:
-  000012:[b#3,SET-e#10,SET]
-L6:
-  000006:[c#0,SET-d#0,SET]
+ok
+
+# Ensure closing and re-opening again succeeds (and the previous reopen didn't
+# accidentally delete a necessary sstable).
+
+reopen
+----
+ok
