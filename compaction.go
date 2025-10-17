@@ -3448,10 +3448,6 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 	// TODO(jackson):  This BytesRead value does not include any blob files
 	// written. It either should, or we should add a separate metric.
 	outputMetrics.TableBytesRead = c.outputLevel.files.TableSizeSum()
-	outputMetrics.BlobBytesCompacted = result.Stats.CumulativeBlobFileSize
-	if c.flush.flushables != nil {
-		outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
-	}
 	if len(c.extraLevels) > 0 {
 		outputMetrics.TableBytesIn += c.extraLevels[0].files.TableSizeSum()
 	}
@@ -3459,6 +3455,9 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 
 	if len(c.flush.flushables) == 0 {
 		c.metrics.perLevel.level(c.startLevel.level)
+		outputMetrics.BlobBytesCompacted = result.Stats.CumulativeBlobFileSize
+	} else {
+		outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
 	}
 	if len(c.extraLevels) > 0 {
 		c.metrics.perLevel.level(c.extraLevels[0].level)
