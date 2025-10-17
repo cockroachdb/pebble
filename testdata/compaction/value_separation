@@ -150,15 +150,15 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |    41B |      0    0B |   0 24.27
+   L0         0B |      0    0B |      0     0 |     0B     0B |    41B |      0    0B |   0 21.83
    L6       966B |      1  854B |      0     0 |   112B     0B |   795B |      0    0B |   1  1.22
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       966B |      1  854B |      0     0 |   112B     0B |    41B |      0    0B |   1 48.83
+total       966B |      1  854B |      0     0 |   112B     0B |    41B |      0    0B |   1 46.39
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      1   795B   200B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      1   795B   100B
    L1 |     -     0     0 |      1  795B |    0B    0B    0B |     0B    0B |      0     0B     0B
    L2 |     -     0     0 |      1  795B |    0B    0B    0B |     0B    0B |      0     0B     0B
    L3 |     -     0     0 |      1  795B |    0B    0B    0B |     0B    0B |      0     0B     0B
@@ -166,7 +166,7 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
    L5 |     -     0     0 |      1  795B |    0B    0B    0B |     0B    0B |      0     0B     0B
    L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   372B   84B |      1   854B   112B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      5 3.9KB |    0B    0B    0B |   372B   84B |      2  1.7KB   312B
+total |     -     -     - |      5 3.9KB |    0B    0B    0B |   372B   84B |      2  1.7KB   212B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     5     0     0        0     0      0     0       0
@@ -459,18 +459,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |   156B |      0    0B |   0 13.92
+   L0         0B |      0    0B |      0     0 |     0B     0B |   156B |      0    0B |   0 12.31
    L6      1.1KB |      1  855B |      0     0 |   232B     0B |  1.6KB |      0    0B |   1  0.51
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      1.1KB |      1  855B |      0     0 |   232B     0B |   156B |      0    0B |   1 20.40
+total      1.1KB |      1  855B |      0     0 |   232B     0B |   156B |      0    0B |   1 18.79
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.6KB   502B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.6KB   251B
    L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   310B    0B |      1   855B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |   310B    0B |      3  2.6KB   502B
+total |     -     -     - |      0    0B |    0B    0B    0B |   310B    0B |      3  2.6KB   251B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     1       0

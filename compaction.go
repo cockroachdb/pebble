@@ -3534,10 +3534,6 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			outputMetrics.TableBytesRead += c.metrics.internalIterStats.BlockReads[i].BlockBytes
 		}
 	}
-	outputMetrics.BlobBytesCompacted = result.Stats.CumulativeBlobFileSize
-	if c.flush.flushables != nil {
-		outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
-	}
 	if len(c.extraLevels) > 0 {
 		outputMetrics.TableBytesIn += c.extraLevels[0].files.TableSizeSum()
 	}
@@ -3608,14 +3604,15 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			Level: c.outputLevel.level,
 			Meta:  fileMeta,
 		}
-
 		// Update metrics.
 		if c.flush.flushables == nil {
 			outputMetrics.TablesCompacted++
 			outputMetrics.TableBytesCompacted += fileMeta.Size
+			outputMetrics.BlobBytesCompacted = result.Stats.CumulativeBlobFileSize
 		} else {
 			outputMetrics.TablesFlushed++
 			outputMetrics.TableBytesFlushed += fileMeta.Size
+			outputMetrics.BlobBytesFlushed = result.Stats.CumulativeBlobFileSize
 		}
 		outputMetrics.EstimatedReferencesSize += fileMeta.EstimatedReferenceSize()
 		outputMetrics.TablesSize += int64(fileMeta.Size)
