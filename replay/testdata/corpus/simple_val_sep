@@ -4,10 +4,10 @@ open-val-sep
 list-files build
 ----
 build:
-  000002.log
+  000003.log
   LOCK
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000011.024
   marker.manifest.000001.MANIFEST-000001
 
@@ -51,7 +51,7 @@ build:
   LOCK
   MANIFEST-000010
   MANIFEST-000013
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000011.024
   marker.manifest.000003.MANIFEST-000013
 
@@ -74,7 +74,7 @@ simple_val_sep/checkpoint:
   000011.log
   000012.sst
   MANIFEST-000013
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000001.024
   marker.manifest.000001.MANIFEST-000013
 
