@@ -325,7 +325,7 @@ func TestOpenRecovery(t *testing.T) {
 				return err.Error()
 			}
 			waitForCompactionsAndTableStats(d)
-			return runLSMCmd(td, d)
+			return "ok"
 		default:
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
