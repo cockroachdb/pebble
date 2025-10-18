@@ -1,0 +1,124 @@
+simulate baseline-rate=1MiB/s
+0s recent=0B queued=0B
+1s recent=5MiB queued=5MiB
+2s recent=10MiB queued=10MiB
+3s recent=15MiB queued=15MiB
+add-debt 5MiB
+4s recent=10MiB queued=10MiB
+5s recent=10MiB queued=10MiB
+8s recent=10MiB queued=10MiB
+----
+0s: rate=1MiB/s debt=0B
+1s: rate=1MiB/s debt=0B
+2s: rate=1MiB/s debt=0B
+3s: rate=1MiB/s debt=0B
+4s: rate=1MiB/s debt=4MiB (wait 4s)
+5s: rate=1MiB/s debt=3MiB (wait 3s)
+8s: rate=1MiB/s debt=0B
+
+# Test backlog drain. Even as the backlog starts getting cleared, we should
+# maintain the 100MiB/s rate until it is fully cleared.
+simulate baseline-rate=10MiB/s backlog-timeframe=1m
+0s recent=10MiB queued=6010MiB
+add-debt 1000MiB
+4s recent=10MiB queued=5010MiB
+add-debt 1000MiB
+9s recent=10MiB queued=4010MiB
+add-debt 1000MiB
+15s recent=10MiB queued=3010MiB
+add-debt 3000MiB
+20s recent=10MiB queued=10MiB
+----
+0s: rate=110MiB/s (backlog=100MiB/s) debt=0B
+4s: rate=110MiB/s (backlog=100MiB/s) debt=560MiB (wait 5s)
+9s: rate=110MiB/s (backlog=100MiB/s) debt=474MiB (wait 4s)
+15s: rate=110MiB/s (backlog=100MiB/s) debt=364MiB (wait 3s)
+20s: rate=10MiB/s debt=474MiB (wait 47s)
+
+# If the backlog goes up, the backlog rate increases (and stays there).
+simulate baseline-rate=10MiB/s backlog-timeframe=1m
+0s recent=10MiB queued=6010MiB
+add-debt 1000MiB
+4s recent=10MiB queued=8010MiB
+add-debt 1000MiB
+9s recent=10MiB queued=2010MiB
+----
+0s: rate=110MiB/s (backlog=100MiB/s) debt=0B
+4s: rate=143MiB/s (backlog=133MiB/s) debt=560MiB (wait 4s)
+9s: rate=143MiB/s (backlog=133MiB/s) debt=307MiB (wait 2s)
+
+# Once we are running low on disk space, we calculate a free space rate that we
+# use until the free space goes back above the threshold.
+simulate baseline-rate=1MiB/s free-space-threshold=50GiB disk-free-space=40GB
+0s recent=0B queued=0B
+set-baseline-rate 1MiB/s
+set-free-space 40GiB
+2s recent=1MiB queued=1MiB
+3s recent=2MiB queued=3MiB
+add-debt 30GiB
+set-free-space 45GiB
+5s recent=3MiB queued=3MiB
+set-free-space 50GiB
+8s recent=3MiB queued=3MiB
+set-free-space 49GiB
+10s recent=3MiB queued=3MiB
+----
+0s: rate=1.3GiB/s (free-space=1.3GiB/s) debt=0B
+2s: rate=1.3GiB/s (free-space=1.3GiB/s) debt=0B
+3s: rate=1.3GiB/s (backlog=3.4KiB/s free-space=1.3GiB/s) debt=0B
+5s: rate=1.3GiB/s (free-space=1.3GiB/s) debt=0B
+8s: rate=1MiB/s debt=0B
+10s: rate=103MiB/s (free-space=102MiB/s) debt=0B
+
+simulate baseline-rate=1MiB/s
+0s recent=0B queued=0B
+add-debt 5MiB
+1s recent=0B queued=0B
+2s recent=0B queued=0B
+----
+0s: rate=1MiB/s debt=0B
+1s: rate=1MiB/s debt=4MiB (wait 4s)
+2s: rate=1MiB/s debt=3MiB (wait 3s)
+
+# Test disable pacing.
+simulate baseline-rate=10MiB/s
+0s recent=0B queued=0B
+1s recent=5MiB queued=5MiB disable-pacing
+2s recent=10MiB queued=15MiB
+----
+0s: rate=10MiB/s debt=0B
+1s: rate=0B/s debt=0B
+2s: rate=10MiB/s (backlog=17KiB/s) debt=0B
+
+# Test changing baseline rate.
+simulate baseline-rate=1MiB/s
+0s recent=0B queued=0B
+1s recent=1MiB queued=1MiB
+set-baseline-rate 5MiB/s
+3s recent=1MiB queued=1MiB
+4s recent=1MiB queued=1MiB
+set-baseline-rate 2MiB/s
+5s recent=1MiB queued=1MiB
+----
+0s: rate=1MiB/s debt=0B
+1s: rate=1MiB/s debt=0B
+3s: rate=5MiB/s debt=0B
+4s: rate=5MiB/s debt=0B
+5s: rate=2MiB/s debt=0B
+
+# Test changing free space.
+simulate baseline-rate=1MiB/s free-space-threshold=50GiB
+set-free-space 60GiB
+0s recent=0B queued=0B
+1s recent=1MiB queued=1MiB
+set-free-space 40GiB
+2s recent=1MiB queued=1MiB
+3s recent=1MiB queued=1MiB
+set-free-space 60GiB
+4s recent=1MiB queued=1MiB
+----
+0s: rate=1MiB/s debt=0B
+1s: rate=1MiB/s debt=0B
+2s: rate=1GiB/s (free-space=1GiB/s) debt=0B
+3s: rate=1GiB/s (free-space=1GiB/s) debt=0B
+4s: rate=1MiB/s debt=0B

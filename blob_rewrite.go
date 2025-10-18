@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/problemspans"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -249,17 +250,17 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 	// Ensure we clean up the blob file we created on failure.
 	if err != nil {
 		if objMeta.DiskFileNum != 0 {
-			d.mu.versions.obsoleteBlobs = mergeObsoleteFiles(d.mu.versions.obsoleteBlobs, []obsoleteFile{
+			d.mu.versions.obsoleteBlobs = mergeObsoleteFiles(d.mu.versions.obsoleteBlobs, []deletepacer.ObsoleteFile{
 				{
-					fileType: base.FileTypeBlob,
-					fs:       d.opts.FS,
-					path:     d.objProvider.Path(objMeta),
-					fileNum:  objMeta.DiskFileNum,
+					FileType: base.FileTypeBlob,
+					FS:       d.opts.FS,
+					Path:     d.objProvider.Path(objMeta),
+					FileNum:  objMeta.DiskFileNum,
 					// We don't know the size of the output blob file--it may have
 					// been half-written. We use the input blob file size as an
 					// approximation for deletion pacing.
-					fileSize: c.input.Physical.Size,
-					isLocal:  true,
+					FileSize: c.input.Physical.Size,
+					IsLocal:  true,
 				},
 			})
 		}

@@ -1,0 +1,64 @@
+run baseline-rate=1MiB/s free-space-threshold=10GiB
+free-space 20GiB
+del 256MB
+del 256MB
+del 256MB
+del 256MB
+sleep 30s
+del 256MB
+del 256MB
+del 256MB
+del 256MB
+sleep 30s
+del 256MB
+del 256MB
+del 256MB
+del 256MB
+sleep 30s
+free-space 5GiB
+del 256MB
+del 256MB
+del 256MB
+del 256MB
+sleep 30s
+del 256MB
+del 256MB
+del 256MB
+del 256MB
+sleep 30s
+del 256MB
+del 256MB
+del 256MB
+del 256MB
+sleep 30s
+free-space 10GiB
+del 256MB
+del 256MB
+del 256MB
+del 256MB
+sleep 30s
+----
+Enqueue:
+977MiB |•             •             •             •              •             •             •
+       |
+       |
+       |
+       |
+       |
+       |
+       |
+    0B |
+       +----------------------------------------------------------------------------------------------------
+        0s                                                                                             3m30s
+Delete:
+977MiB |                                                         •             •
+       |
+       |                                           •
+       |
+       |•
+       |
+       | ••           ••••          ••••          •                                          ••••
+       |
+    0B |
+       +----------------------------------------------------------------------------------------------------
+        0s                                                                                             3m30s
