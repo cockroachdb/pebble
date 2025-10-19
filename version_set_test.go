@@ -147,23 +147,10 @@ func TestVersionSet(t *testing.T) {
 				createFile(ve.CreatedBackingTables[i].DiskFileNum)
 			}
 
-			fileMetrics := newFileMetrics(ve.NewTables)
-			for de, f := range ve.DeletedTables {
-				lm := fileMetrics[de.Level]
-				if lm == nil {
-					lm = &LevelMetrics{}
-					fileMetrics[de.Level] = lm
-				}
-				lm.TablesCount--
-				lm.TablesSize -= int64(f.Size)
-				lm.EstimatedReferencesSize -= f.EstimatedReferenceSize()
-			}
-
 			mu.Lock()
 			_, err = vs.UpdateVersionLocked(func() (versionUpdate, error) {
 				return versionUpdate{
 					VE:                      ve,
-					Metrics:                 fileMetrics,
 					ForceManifestRotation:   rand.IntN(3) == 0,
 					InProgressCompactionsFn: func() []compactionInfo { return nil },
 				}, nil
