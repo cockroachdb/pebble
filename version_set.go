@@ -604,45 +604,7 @@ func (vs *versionSet) UpdateVersionLocked(
 	}
 
 	vs.metrics.updateLevelMetrics(vu.Metrics)
-	for i := range vs.metrics.Levels {
-		l := &vs.metrics.Levels[i]
-		l.TablesCount = int64(newVersion.Levels[i].Len())
-		l.VirtualTablesCount = newVersion.Levels[i].NumVirtual
-		l.VirtualTablesSize = newVersion.Levels[i].VirtualTableSize
-		l.TablesSize = int64(newVersion.Levels[i].TableSize())
-		l.EstimatedReferencesSize = newVersion.Levels[i].EstimatedReferenceSize()
-		l.Sublevels = 0
-		if l.TablesCount > 0 {
-			l.Sublevels = 1
-		}
-		if invariants.Enabled {
-			levelFiles := newVersion.Levels[i].Slice()
-			if size := int64(levelFiles.TableSizeSum()); l.TablesSize != size {
-				vs.opts.Logger.Fatalf("versionSet metrics L%d Size = %d, actual size = %d", i, l.TablesSize, size)
-			}
-			refSize := uint64(0)
-			for f := range levelFiles.All() {
-				refSize += f.EstimatedReferenceSize()
-			}
-			if refSize != l.EstimatedReferencesSize {
-				vs.opts.Logger.Fatalf("versionSet metrics L%d EstimatedReferencesSize = %d, recomputed size = %d", i, l.EstimatedReferencesSize, refSize)
-			}
-
-			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTablesCount {
-				vs.opts.Logger.Fatalf(
-					"versionSet metrics L%d NumVirtual = %d, actual NumVirtual = %d",
-					i, l.VirtualTablesCount, nVirtual,
-				)
-			}
-			if vSize := levelFiles.VirtualTableSizeSum(); vSize != l.VirtualTablesSize {
-				vs.opts.Logger.Fatalf(
-					"versionSet metrics L%d Virtual size = %d, actual size = %d",
-					i, l.VirtualTablesSize, vSize,
-				)
-			}
-		}
-	}
-	vs.metrics.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
+	setBasicLevelMetrics(&vs.metrics, newVersion)
 	vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localTablesLiveDelta.size)
 	vs.metrics.Table.Local.LiveCount = uint64(int64(vs.metrics.Table.Local.LiveCount) + localTablesLiveDelta.count)
 	vs.metrics.BlobFiles.Local.LiveSize = uint64(int64(vs.metrics.BlobFiles.Local.LiveSize) + localBlobLiveDelta.size)
@@ -1111,6 +1073,55 @@ func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
 	}
 }
 
+// This method sets the following fields of m.Levels[*]:
+//   - [Virtual]Tables{Count,Size}
+//   - Sublevels
+//   - EstimatedReferencesSize
+func setBasicLevelMetrics(m *Metrics, newVersion *manifest.Version) {
+	for i := range m.Levels {
+		l := &m.Levels[i]
+		l.TablesCount = int64(newVersion.Levels[i].Len())
+		l.TablesSize = int64(newVersion.Levels[i].TableSize())
+		l.VirtualTablesCount = newVersion.Levels[i].NumVirtual
+		l.VirtualTablesSize = newVersion.Levels[i].VirtualTableSize
+		l.EstimatedReferencesSize = newVersion.Levels[i].EstimatedReferenceSize()
+		l.Sublevels = 0
+		if l.TablesCount > 0 {
+			l.Sublevels = 1
+		}
+		if invariants.Enabled {
+			levelFiles := newVersion.Levels[i].Slice()
+			if size := int64(levelFiles.TableSizeSum()); l.TablesSize != size {
+				panic(fmt.Sprintf("versionSet metrics L%d Size = %d, actual size = %d", i, l.TablesSize, size))
+			}
+			refSize := uint64(0)
+			for f := range levelFiles.All() {
+				refSize += f.EstimatedReferenceSize()
+			}
+			if refSize != l.EstimatedReferencesSize {
+				panic(fmt.Sprintf(
+					"versionSet metrics L%d EstimatedReferencesSize = %d, recomputed size = %d",
+					i, l.EstimatedReferencesSize, refSize,
+				))
+			}
+
+			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTablesCount {
+				panic(fmt.Sprintf(
+					"versionSet metrics L%d NumVirtual = %d, actual NumVirtual = %d",
+					i, l.VirtualTablesCount, nVirtual,
+				))
+			}
+			if vSize := levelFiles.VirtualTableSizeSum(); vSize != l.VirtualTablesSize {
+				panic(fmt.Sprintf(
+					"versionSet metrics L%d Virtual size = %d, actual size = %d",
+					i, l.VirtualTablesSize, vSize,
+				))
+			}
+		}
+	}
+	m.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
+}
+
 func findCurrentManifest(
 	fs vfs.FS, dirname string, ls []string,
 ) (marker *atomicfs.Marker, manifestNum base.DiskFileNum, exists bool, err error) {
@@ -1132,19 +1143,4 @@ func findCurrentManifest(
 		return marker, 0, false, base.CorruptionErrorf("pebble: MANIFEST name %q is malformed", errors.Safe(filename))
 	}
 	return marker, manifestNum, true, nil
-}
-
-func newFileMetrics(newFiles []manifest.NewTableEntry) levelMetricsDelta {
-	var m levelMetricsDelta
-	for _, nf := range newFiles {
-		lm := m[nf.Level]
-		if lm == nil {
-			lm = &LevelMetrics{}
-			m[nf.Level] = lm
-		}
-		lm.TablesCount++
-		lm.TablesSize += int64(nf.Meta.Size)
-		lm.EstimatedReferencesSize += nf.Meta.EstimatedReferenceSize()
-	}
-	return m
 }

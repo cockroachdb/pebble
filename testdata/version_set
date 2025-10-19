@@ -423,6 +423,16 @@ obsolete tables: 000102
 no zombie blob files
 no obsolete blob files
 
+metrics
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+   L2       100B |      1  100B |      0     0 |     0B     0B |     0B |      0    0B |   1     0
+   L3       23KB |      3 2.9KB |      0     0 |   20KB     0B |     0B |      0    0B |   1     0
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+total       23KB |      4   3KB |      0     0 |   20KB     0B |     0B |      0    0B |   2     0
+
 reopen
 ----
 current version:
@@ -439,6 +449,16 @@ no zombie tables
 no obsolete tables
 no zombie blob files
 no obsolete blob files
+
+metrics
+----
+LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
+level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+   L2       100B |      1  100B |      0     0 |     0B     0B |     0B |      0    0B |   1     0
+   L3       23KB |      3 2.9KB |      0     0 |   20KB     0B |     0B |      0    0B |   1     0
+-----------------+--------------+--------------+---------------+--------+--------------+----------
+total       23KB |      4   3KB |      0     0 |   20KB     0B |     0B |      0    0B |   2     0
 
 # Delete the referencing table and the blob file. There is no reference to the
 # previous Version, so the files should all be immediately obsolete.

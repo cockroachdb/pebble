@@ -232,6 +232,9 @@ func TestVersionSet(t *testing.T) {
 				}
 			}
 
+		case "metrics":
+			return vs.metrics.LevelMetricsString()
+
 		default:
 			td.Fatalf(t, "unknown command: %s", td.Cmd)
 		}
@@ -572,4 +575,19 @@ func TestCrashDuringManifestWrite_LargeKeys(t *testing.T) {
 			require.NoError(t, d.Close())
 		}()
 	}
+}
+
+func newFileMetrics(newFiles []manifest.NewTableEntry) levelMetricsDelta {
+	var m levelMetricsDelta
+	for _, nf := range newFiles {
+		lm := m[nf.Level]
+		if lm == nil {
+			lm = &LevelMetrics{}
+			m[nf.Level] = lm
+		}
+		lm.TablesCount++
+		lm.TablesSize += int64(nf.Meta.Size)
+		lm.EstimatedReferencesSize += nf.Meta.EstimatedReferenceSize()
+	}
+	return m
 }
