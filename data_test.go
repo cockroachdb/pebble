@@ -1190,7 +1190,6 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		return versionUpdate{
 			VE:                      ve,
 			JobID:                   jobID,
-			Metrics:                 newFileMetrics(ve.NewTables),
 			InProgressCompactionsFn: func() []compactionInfo { return nil },
 		}, nil
 	})

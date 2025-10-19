@@ -1520,22 +1520,6 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 	var ingestSplitFiles []ingestSplitFile
 	ingestFlushable := c.flush.flushables[0].flushable.(*ingestedFlushable)
 
-	updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []manifest.NewTableEntry) {
-		levelMetrics := c.metrics.perLevel[level]
-		if levelMetrics == nil {
-			levelMetrics = &LevelMetrics{}
-			c.metrics.perLevel[level] = levelMetrics
-		}
-		levelMetrics.TablesCount--
-		levelMetrics.TablesSize -= int64(m.Size)
-		levelMetrics.EstimatedReferencesSize -= m.EstimatedReferenceSize()
-		for i := range added {
-			levelMetrics.TablesCount++
-			levelMetrics.TablesSize += int64(added[i].Meta.Size)
-			levelMetrics.EstimatedReferencesSize += added[i].Meta.EstimatedReferenceSize()
-		}
-	}
-
 	suggestSplit := d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit() &&
 		d.FormatMajorVersion() >= FormatVirtualSSTables
 
@@ -1609,13 +1593,12 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 				}
 				newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
 				replacedTables[m.TableNum] = newFiles
-				updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 			}
 		}
 	}
 
 	if len(ingestSplitFiles) > 0 {
-		if err := d.ingestSplit(context.TODO(), ve, updateLevelMetricsOnExcise, ingestSplitFiles, replacedTables); err != nil {
+		if err := d.ingestSplit(context.TODO(), ve, ingestSplitFiles, replacedTables); err != nil {
 			return nil, err
 		}
 	}
@@ -3617,9 +3600,6 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			outputMetrics.TablesFlushed++
 			outputMetrics.TableBytesFlushed += fileMeta.Size
 		}
-		outputMetrics.EstimatedReferencesSize += fileMeta.EstimatedReferenceSize()
-		outputMetrics.TablesSize += int64(fileMeta.Size)
-		outputMetrics.TablesCount++
 		outputMetrics.Additional.BytesWrittenDataBlocks += t.WriterMeta.Properties.DataSize
 		outputMetrics.Additional.BytesWrittenValueBlocks += t.WriterMeta.Properties.ValueBlocksSize
 	}

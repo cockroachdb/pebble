@@ -1869,7 +1869,6 @@ type ingestSplitFile struct {
 func (d *DB) ingestSplit(
 	ctx context.Context,
 	ve *manifest.VersionEdit,
-	updateMetrics func(*manifest.TableMetadata, int, []manifest.NewTableEntry),
 	files []ingestSplitFile,
 	replacedTables map[base.TableNum][]manifest.NewTableEntry,
 ) error {
@@ -1946,7 +1945,6 @@ func (d *DB) ingestSplit(
 				panic("ingest-time split produced a file that overlaps with ingested file")
 			}
 		}
-		updateMetrics(splitFile, s.level, added)
 	}
 	// Flatten the version edit by removing any entries from ve.NewFiles that
 	// are also in ve.DeletedFiles.
@@ -2113,14 +2111,7 @@ func (d *DB) ingestApply(
 					f.Level, sharedLevelsStart))
 			}
 			f.Meta = m
-			levelMetrics := metrics[f.Level]
-			if levelMetrics == nil {
-				levelMetrics = &LevelMetrics{}
-				metrics[f.Level] = levelMetrics
-			}
-			levelMetrics.TablesCount++
-			levelMetrics.TablesSize += int64(m.Size)
-			levelMetrics.EstimatedReferencesSize += m.EstimatedReferenceSize()
+			levelMetrics := metrics.level(f.Level)
 			levelMetrics.TableBytesIngested += m.Size
 			levelMetrics.TablesIngested++
 		}
@@ -2131,21 +2122,6 @@ func (d *DB) ingestApply(
 		// newer fileMetadata due to a split induced by another ingestion file, or an
 		// excise.
 		replacedTables := make(map[base.TableNum][]manifest.NewTableEntry)
-		updateLevelMetricsOnExcise := func(m *manifest.TableMetadata, level int, added []manifest.NewTableEntry) {
-			levelMetrics := metrics[level]
-			if levelMetrics == nil {
-				levelMetrics = &LevelMetrics{}
-				metrics[level] = levelMetrics
-			}
-			levelMetrics.TablesCount--
-			levelMetrics.TablesSize -= int64(m.Size)
-			levelMetrics.EstimatedReferencesSize -= m.EstimatedReferenceSize()
-			for i := range added {
-				levelMetrics.TablesCount++
-				levelMetrics.TablesSize += int64(added[i].Meta.Size)
-				levelMetrics.EstimatedReferencesSize += added[i].Meta.EstimatedReferenceSize()
-			}
-		}
 		var exciseBounds base.UserKeyBounds
 		if exciseSpan.Valid() {
 			exciseBounds = exciseSpan.UserKeyBounds()
@@ -2173,7 +2149,6 @@ func (d *DB) ingestApply(
 					}
 					newFiles := applyExciseToVersionEdit(ve, m, leftTable, rightTable, layer.Level())
 					replacedTables[m.TableNum] = newFiles
-					updateLevelMetricsOnExcise(m, layer.Level(), newFiles)
 				}
 			}
 			if d.FormatMajorVersion() >= FormatExciseBoundsRecord {
@@ -2186,7 +2161,7 @@ func (d *DB) ingestApply(
 		if len(filesToSplit) > 0 {
 			// For the same reasons as the above call to excise, we hold the db mutex
 			// while calling this method.
-			if err := d.ingestSplit(ctx, ve, updateLevelMetricsOnExcise, filesToSplit, replacedTables); err != nil {
+			if err := d.ingestSplit(ctx, ve, filesToSplit, replacedTables); err != nil {
 				return versionUpdate{}, err
 			}
 		}

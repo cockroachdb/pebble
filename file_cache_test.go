@@ -393,27 +393,11 @@ func TestVirtualReadsWiring(t *testing.T) {
 	d.checkVirtualBounds(v2)
 
 	// Write the version edit.
-	fileMetrics := func(ve *manifest.VersionEdit) levelMetricsDelta {
-		metrics := newFileMetrics(ve.NewTables)
-		for de, f := range ve.DeletedTables {
-			lm := metrics[de.Level]
-			if lm == nil {
-				lm = &LevelMetrics{}
-				metrics[de.Level] = lm
-			}
-			metrics[de.Level].TablesCount--
-			metrics[de.Level].TablesSize -= int64(f.Size)
-			metrics[de.Level].EstimatedReferencesSize -= f.EstimatedReferenceSize()
-		}
-		return metrics
-	}
-
 	applyVE := func(ve *manifest.VersionEdit) error {
 		_, err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 			return versionUpdate{
 				VE:                      ve,
 				JobID:                   d.newJobIDLocked(),
-				Metrics:                 fileMetrics(ve),
 				InProgressCompactionsFn: func() []compactionInfo { return d.getInProgressCompactionInfoLocked(nil) },
 			}, nil
 		})
