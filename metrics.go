@@ -978,19 +978,6 @@ func makeCompressionInfo(algorithm string, table, blob CompressionStatsForSettin
 // See testdata/metrics for an example.
 func (m *Metrics) String() string {
 	wb := ascii.Make(128 /* width */, 80 /* height */)
-	var total LevelMetrics
-	for l := range numLevels {
-		total.Add(&m.Levels[l])
-	}
-	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
-	total.TableBytesIn = m.WAL.BytesWritten + total.TableBytesIngested
-	// Add the total bytes-in to the total bytes-flushed. This is to account for
-	// the bytes written to the log and bytes written externally and then
-	// ingested.
-	total.TableBytesFlushed += total.TableBytesIn
-	total.Score = math.NaN()
-	total.FillFactor = math.NaN()
-	total.CompensatedFillFactor = math.NaN()
 
 	// LSM level metrics.
 	cur := wb.At(0, 0)
@@ -1162,6 +1149,18 @@ func (m *Metrics) String() string {
 	})
 	compressionTable.Render(cur, table.RenderOptions{}, compressionContents...)
 
+	return wb.String()
+}
+
+func (m *Metrics) LevelMetricsString() string {
+	wb := ascii.Make(128 /* width */, 80 /* height */)
+
+	// LSM level metrics.
+	cur := wb.At(0, 0)
+	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
+	levelMetricsTable.Render(cur, table.RenderOptions{
+		HorizontalDividers: table.MakeHorizontalDividers(0, -1),
+	}, slices.Collect(m.LevelMetricsIter())...)
 	return wb.String()
 }
 

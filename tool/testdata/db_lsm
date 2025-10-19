@@ -14,9 +14,9 @@ db lsm
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+   L0       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
@@ -80,9 +80,9 @@ db lsm --url
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+   L0       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   0     0
+total       709B |      1  709B |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz

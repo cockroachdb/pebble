@@ -300,13 +300,7 @@ func recoverVersion(
 		MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
 	})
 	vs.version = newVersion
-
-	for i := range vs.metrics.Levels {
-		l := &vs.metrics.Levels[i]
-		l.TablesCount = int64(newVersion.Levels[i].Len())
-		files := newVersion.Levels[i].Slice()
-		l.TablesSize = int64(files.TableSizeSum())
-	}
+	setBasicLevelMetrics(&vs.metrics, newVersion)
 	for _, l := range newVersion.Levels {
 		for f := range l.All() {
 			if !f.Virtual {
