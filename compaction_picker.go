@@ -1722,7 +1722,8 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCompaction(
 func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 	env compactionEnv,
 ) (pc *pickedTableCompaction) {
-	if p.opts.Experimental.TombstoneDenseCompactionThreshold <= 0 {
+	threshold := p.opts.Experimental.TombstoneDenseCompactionThreshold()
+	if threshold <= 0 {
 		// Tombstone density compactions are disabled.
 		return nil
 	}
@@ -1745,7 +1746,7 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 			if f.IsCompacting() || !f.StatsValid() || f.Size == 0 {
 				continue
 			}
-			if f.Stats.TombstoneDenseBlocksRatio < p.opts.Experimental.TombstoneDenseCompactionThreshold {
+			if f.Stats.TombstoneDenseBlocksRatio < threshold {
 				continue
 			}
 			overlaps := p.vers.Overlaps(lastNonEmptyLevel, f.UserKeyBounds())
