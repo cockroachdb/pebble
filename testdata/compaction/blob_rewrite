@@ -1,0 +1,51 @@
+# Test blob rewrite compactions.
+
+define value-separation=(enabled, min-size=1, max-ref-depth=3, rw-min-age=0, garbage-ratios=0.0:0.0)
+----
+
+batch
+set a apples
+set b blobs
+set c carrots
+set d daikons
+set e eagles
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:830 blobrefs:[(B000006: 31); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[209 (209B)] vals:[31 (31B)]}
+
+batch
+del e
+----
+
+flush
+----
+L0.1:
+  000008:[e#15,DEL-e#15,DEL] seqnums:[15-15] points:[e#15,DEL-e#15,DEL] size:730
+L0.0:
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:830 blobrefs:[(B000006: 31); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[209 (209B)] vals:[31 (31B)]}
+
+compact a-e
+----
+L6:
+  000009:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:812 blobrefs:[(B000006: 25); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[209 (209B)] vals:[31 (31B)]}
+
+run-blob-rewrite-compaction
+----
+L6:
+  000009:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:812 blobrefs:[(B000006: 25); depth:1]
+Blob files:
+  B000006 physical:{000010 size:[203 (203B)] vals:[25 (25B)]}
+
+blob-rewrite-log
+----
+[JOB 9] rewriting blob file B000006 (physical file 000006)
+[JOB 9] rewrote blob file (B000006, 000006) (209B) -> (B000006, 000010) (203B), in 1.0s (1.0s total)

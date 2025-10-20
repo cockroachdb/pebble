@@ -913,6 +913,7 @@ func runCompactionTest(
 	}()
 	var compactionLog bytes.Buffer
 	var flushLog bytes.Buffer
+	var blobRewriteLog bytes.Buffer
 	logEventListener := &EventListener{
 		CompactionEnd: func(info CompactionInfo) {
 			// Ensure determinism.
@@ -928,6 +929,20 @@ func runCompactionTest(
 			info.TotalDuration = time.Second
 			info.InputBytes = 100
 			fmt.Fprintln(&flushLog, info.String())
+		},
+		BlobFileRewriteBegin: func(info BlobFileRewriteInfo) {
+			// Ensure determinism.
+			info.JobID = 9
+			info.Duration = time.Second
+			info.TotalDuration = time.Second
+			fmt.Fprintln(&blobRewriteLog, info.String())
+		},
+		BlobFileRewriteEnd: func(info BlobFileRewriteInfo) {
+			// Ensure determinism.
+			info.JobID = 9
+			info.Duration = time.Second
+			info.TotalDuration = time.Second
+			fmt.Fprintln(&blobRewriteLog, info.String())
 		},
 	}
 	concurrencyLow, concurrencyHigh := 1, 1
@@ -958,6 +973,7 @@ func runCompactionTest(
 		}
 		dbLog.Reset()
 		compactionLog.Reset()
+		blobRewriteLog.Reset()
 		concurrencyLow, concurrencyHigh = 1, 1
 		var err error
 		d, err = Open("", mkOpts())
@@ -1047,6 +1063,7 @@ func runCompactionTest(
 
 			dbLog.Reset()
 			compactionLog.Reset()
+			blobRewriteLog.Reset()
 			var err error
 			if d, err = runDBDefineCmd(td, mkOpts()); err != nil {
 				return err.Error()
@@ -1485,6 +1502,11 @@ func runCompactionTest(
 			}
 			return s
 
+		case "blob-rewrite-log":
+			defer blobRewriteLog.Reset()
+			s := blobRewriteLog.String()
+			return s
+
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
@@ -1573,6 +1595,11 @@ func TestCompaction(t *testing.T) {
 			cmp:        DefaultComparer,
 		},
 		"virtual_rewrite": {
+			minVersion: FormatNewest,
+			maxVersion: FormatNewest,
+			verbose:    true,
+		},
+		"blob_rewrite": {
 			minVersion: FormatNewest,
 			maxVersion: FormatNewest,
 			verbose:    true,
