@@ -3506,7 +3506,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5 // Lower for test
+	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 } // Lower for test
 	opts.Experimental.NumDeletionsThreshold = 1
 	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -3608,7 +3608,7 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5 // Lower for test
+	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 } // Lower for test
 	opts.Experimental.NumDeletionsThreshold = 1
 	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -3692,7 +3692,7 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5
+	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 }
 	opts.Experimental.NumDeletionsThreshold = 1
 	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -3760,7 +3760,7 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = 0.9 // Set high threshold
+	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.9 } // Set high threshold
 	opts.Experimental.NumDeletionsThreshold = 1
 	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
@@ -3812,7 +3812,7 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = 0.5
+	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 }
 	opts.Experimental.NumDeletionsThreshold = 1
 	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
