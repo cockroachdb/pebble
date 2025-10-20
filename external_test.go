@@ -73,7 +73,10 @@ func TestIteratorErrors(t *testing.T) {
 		// Wrap it in both a counter and a toggle so that we a) know whether an
 		// error was injected over the course of an operation, and b) so that we
 		// can disable error injection during Open.
-		predicate := errorfs.And(errorfs.Reads, errorfs.Randomly(0.50, seed))
+		predicate := errorfs.And(
+			errorfs.OpKindIn("ReadsExceptGetDiskUsage", errorfs.ReadOps.Minus(errorfs.OpGetDiskUsage)),
+			errorfs.Randomly(0.50, seed),
+		)
 		counter := errorfs.Counter{Injector: errorfs.ErrInjected.If(predicate)}
 		toggle := errorfs.Toggle{Injector: &counter}
 		testOpts.Opts.FS = errorfs.Wrap(testOpts.Opts.FS, &toggle)
@@ -82,6 +85,8 @@ func TestIteratorErrors(t *testing.T) {
 		var logBuf bytes.Buffer
 		defer func() {
 			if t.Failed() {
+				// TODO(radu): we don't close the db, which could be emitting a log
+				// right now, causing a race here.
 				t.Log(logBuf.String())
 			}
 		}()

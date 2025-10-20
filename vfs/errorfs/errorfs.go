@@ -87,40 +87,52 @@ const (
 	OpFileSyncTo
 	// OpFileFlush describes a file flush operation.
 	OpFileFlush
+
+	numOpKinds
 )
 
-// ReadOrWrite returns the operation's kind.
-func (o OpKind) ReadOrWrite() OpReadWrite {
-	switch o {
-	case OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat:
-		return OpIsRead
-	case OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForWrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileSyncData, OpFileSyncTo, OpFileFlush, OpFilePreallocate:
-		return OpIsWrite
-	default:
-		panic(fmt.Sprintf("unrecognized op %v\n", o))
+func (o OpKind) IsRead() bool {
+	if o < 0 || o >= numOpKinds {
+		panic(fmt.Sprintf("invalid op kind: %d", o))
 	}
+	return ReadOps.Contains(o)
 }
 
-// OpReadWrite is an enum describing whether an operation is a read or write
-// operation.
-type OpReadWrite int
+func (o OpKind) IsWrite() bool {
+	if o < 0 || o >= numOpKinds {
+		panic(fmt.Sprintf("invalid op kind: %d", o))
+	}
+	return WriteOps.Contains(o)
+}
 
-const (
-	// OpIsRead describes read operations.
-	OpIsRead OpReadWrite = iota
-	// OpIsWrite describes write operations.
-	OpIsWrite
-)
+// OpKinds represents a set of OpKind values.
+type OpKinds uint64
 
-// String implements fmt.Stringer.
-func (kind OpReadWrite) String() string {
-	switch kind {
-	case OpIsRead:
-		return "Reads"
-	case OpIsWrite:
-		return "Writes"
-	default:
-		panic(fmt.Sprintf("unrecognized OpKind %d", kind))
+func MakeOpKinds(kinds ...OpKind) OpKinds {
+	var res OpKinds
+	for _, kind := range kinds {
+		res |= OpKinds(1) << kind
+	}
+	return res
+}
+
+func (k OpKinds) Minus(kind ...OpKind) OpKinds {
+	return k &^ MakeOpKinds(kind...)
+}
+
+func (k OpKinds) Contains(kind OpKind) bool {
+	return k&(OpKinds(1)<<kind) != 0
+}
+
+var ReadOps = MakeOpKinds(OpOpen, OpOpenDir, OpList, OpStat, OpGetDiskUsage, OpFileRead, OpFileReadAt, OpFileStat)
+var WriteOps = MakeOpKinds(OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, OpReuseForWrite, OpMkdirAll, OpLock, OpFileClose, OpFileWrite, OpFileWriteAt, OpFileSync, OpFileSyncData, OpFileSyncTo, OpFileFlush, OpFilePreallocate)
+
+func init() {
+	if ReadOps&WriteOps != 0 {
+		panic("some op is both read and write")
+	}
+	if ReadOps|WriteOps != (OpKinds(1)<<numOpKinds - 1) {
+		panic("some op is neither read nor write")
 	}
 }
 
