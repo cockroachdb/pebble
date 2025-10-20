@@ -9,14 +9,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -141,132 +138,4 @@ func TestCleaner(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
-}
-
-func TestCleanupManagerCloseWithPacing(t *testing.T) {
-	mem := vfs.NewMem()
-	opts := &Options{
-		FS:                      mem,
-		FreeSpaceThresholdBytes: 1,
-		TargetByteDeletionRate:  func() int { return 1024 }, // 1 KB/s - slow pacing
-	}
-	opts.EnsureDefaults()
-
-	objProvider, err := objstorageprovider.Open(objstorageprovider.Settings{
-		FS:        mem,
-		FSDirName: "/",
-	})
-	require.NoError(t, err)
-	defer objProvider.Close()
-
-	getDeletePacerInfo := func() deletionPacerInfo {
-		return deletionPacerInfo{
-			freeBytes: 10 << 30,
-			liveBytes: 10 << 30,
-		}
-	}
-
-	cm := openCleanupManager(opts, objProvider, getDeletePacerInfo)
-
-	// Create obsolete files that would normally take a long time to delete.
-	// At 1 KB/s, 100 files of 10 KB each would take 1000 seconds.
-	largeFiles := make([]obsoleteFile, 100)
-	for i := range largeFiles {
-		largeFiles[i] = obsoleteFile{
-			fileType: base.FileTypeTable,
-			fs:       mem,
-			path:     fmt.Sprintf("test%02d.sst", i+1),
-			fileNum:  base.DiskFileNum(i + 1),
-			fileSize: 10 << 10,
-			isLocal:  true,
-		}
-	}
-
-	cm.EnqueueJob(1, largeFiles, obsoleteObjectStats{})
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		cm.Close()
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		t.Fatalf("timed out waiting for cleanupManager.Close() to return")
-	}
-}
-
-// TestCleanupManagerFallingBehind verifies that we disable pacing when the jobs
-// channel reaches the high threshold.
-func TestCleanupManagerFallingBehind(t *testing.T) {
-	mem := vfs.NewMem()
-	var rate atomic.Int32
-	rate.Store(10 * MB) // 10MB/s
-	opts := &Options{
-		FS:                      mem,
-		FreeSpaceThresholdBytes: 1,
-		TargetByteDeletionRate:  func() int { return int(rate.Load()) }, // 10 MB/s
-	}
-	opts.EnsureDefaults()
-
-	objProvider, err := objstorageprovider.Open(objstorageprovider.Settings{
-		FS:        mem,
-		FSDirName: "/",
-	})
-	require.NoError(t, err)
-	defer objProvider.Close()
-
-	getDeletePacerInfo := func() deletionPacerInfo {
-		return deletionPacerInfo{
-			freeBytes: 10 * GB,
-			liveBytes: 10 * GB,
-		}
-	}
-
-	cm := openCleanupManager(opts, objProvider, getDeletePacerInfo)
-
-	x := 0
-	addJob := func(fileSize int) {
-		x++
-		cm.EnqueueJob(1, []obsoleteFile{{
-			fileType: base.FileTypeTable,
-			fs:       mem,
-			path:     fmt.Sprintf("test%02d.sst", x),
-			fileNum:  base.DiskFileNum(x),
-			fileSize: uint64(fileSize),
-			isLocal:  true,
-		}}, obsoleteObjectStats{})
-	}
-
-	for range jobsQueueLowThreshold {
-		addJob(1 * MB)
-	}
-	// At 1MB, each job will take 100ms each. Note that the rate increase based on
-	// history won't make much difference, since the enqueued size is averaged
-	// over 5 minutes.
-	time.Sleep(50 * time.Millisecond)
-	require.Greater(t, len(cm.jobsCh), jobsQueueLowThreshold/2)
-	t.Logf("%d", len(cm.jobsCh))
-
-	// Add enough jobs to exceed the high threshold. We add small jobs so that the
-	// historic rate doesn't grow significantly.
-	require.Greater(t, jobsQueueDepth, jobsQueueHighThreshold+jobsQueueLowThreshold)
-	t.Logf("B")
-	for range jobsQueueHighThreshold {
-		addJob(1)
-	}
-
-	for i := 0; ; i++ {
-		time.Sleep(10 * time.Millisecond)
-		if len(cm.jobsCh) <= jobsQueueHighThreshold {
-			break
-		}
-		if i == 1000 {
-			t.Fatalf("jobs channel length never dropped below high threshold (%d vs %d)", len(cm.jobsCh), jobsQueueHighThreshold)
-		}
-	}
-	// Set a high rate so the rest of the jobs finish quickly.
-	rate.Store(1 * GB)
-	cm.Close()
 }

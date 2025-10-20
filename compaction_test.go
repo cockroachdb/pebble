@@ -3099,7 +3099,7 @@ func TestCompaction_UpdateVersionFails(t *testing.T) {
 }
 
 // TestSharedObjectDeletePacing tests that we don't throttle shared object
-// deletes (see the TargetBytesDeletionRate option).
+// deletes (see the DeletePacer.BaselineRate option).
 func TestSharedObjectDeletePacing(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -3109,7 +3109,7 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 		"": remote.NewInMem(),
 	})
 	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
-	opts.TargetByteDeletionRate = func() int { return 1 }
+	opts.DeletionPacing.BaselineRate = func() uint64 { return 1 }
 	opts.Logger = testutils.Logger{T: t}
 
 	d, err := Open("", &opts)

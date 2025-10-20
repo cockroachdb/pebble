@@ -6,21 +6,16 @@ package pebble
 
 import (
 	"cmp"
-	"context"
-	"runtime/pprof"
 	"slices"
-	"sync"
-	"time"
 
-	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
-	"github.com/cockroachdb/tokenbucket"
 )
 
 // Cleaner exports the base.Cleaner type.
@@ -32,329 +27,80 @@ type DeleteCleaner = base.DeleteCleaner
 // ArchiveCleaner exports the base.ArchiveCleaner type.
 type ArchiveCleaner = base.ArchiveCleaner
 
-type cleanupManager struct {
-	opts        *Options
-	objProvider objstorage.Provider
-	deletePacer *deletionPacer
-
-	// jobsCh is used as the cleanup job queue.
-	jobsCh chan *cleanupJob
-	// waitGroup is used to wait for the background goroutine to exit.
-	waitGroup sync.WaitGroup
-	// stopCh is closed when the pacer is disabled after closing the cleanup manager.
-	stopCh chan struct{}
-
-	mu struct {
-		sync.Mutex
-		// totalJobs is the total number of enqueued jobs (completed or in progress).
-		totalJobs              int
-		completedStats         obsoleteObjectStats
-		completedJobs          int
-		completedJobsCond      sync.Cond
-		jobsQueueWarningIssued bool
-	}
+func openDeletePacer(
+	opts *Options, objProvider objstorage.Provider, diskFreeSpaceFn deletepacer.DiskFreeSpaceFn,
+) *deletepacer.DeletePacer {
+	return deletepacer.Open(
+		opts.DeletionPacing,
+		opts.Logger,
+		diskFreeSpaceFn,
+		func(of deletepacer.ObsoleteFile, jobID int) {
+			deleteObsoleteFile(opts.Cleaner, objProvider, opts.EventListener, of, jobID)
+		},
+	)
 }
 
-// CompletedStats returns the stats summarizing objects deleted. The returned
-// stats increase monotonically over the lifetime of the DB.
-func (m *cleanupManager) CompletedStats() obsoleteObjectStats {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.mu.completedStats
-}
-
-// We can queue this many jobs before we have to block EnqueueJob.
-const jobsQueueDepth = 1000
-const jobsQueueHighThreshold = jobsQueueDepth * 3 / 4
-const jobsQueueLowThreshold = jobsQueueDepth / 10
-
-// obsoleteFile holds information about a file that needs to be deleted soon.
-type obsoleteFile struct {
-	fileType base.FileType
-	fs       vfs.FS
-	path     string
-	fileNum  base.DiskFileNum
-	fileSize uint64 // approx for log files
-	isLocal  bool
-}
-
-func (of *obsoleteFile) needsPacing() bool {
-	// We only need to pace local objects--sstables and blob files.
-	return of.isLocal && (of.fileType == base.FileTypeTable || of.fileType == base.FileTypeBlob)
-}
-
-type cleanupJob struct {
-	jobID         JobID
-	obsoleteFiles []obsoleteFile
-	stats         obsoleteObjectStats
-}
-
-// openCleanupManager creates a cleanupManager and starts its background goroutine.
-// The cleanupManager must be Close()d.
-func openCleanupManager(
-	opts *Options, objProvider objstorage.Provider, getDeletePacerInfo func() deletionPacerInfo,
-) *cleanupManager {
-	cm := &cleanupManager{
-		opts:        opts,
-		objProvider: objProvider,
-		deletePacer: newDeletionPacer(
-			crtime.NowMono(),
-			opts.FreeSpaceThresholdBytes,
-			opts.TargetByteDeletionRate,
-			opts.FreeSpaceTimeframe,
-			opts.ObsoleteBytesMaxRatio,
-			opts.ObsoleteBytesTimeframe,
-			getDeletePacerInfo,
-		),
-		jobsCh: make(chan *cleanupJob, jobsQueueDepth),
-		stopCh: make(chan struct{}),
-	}
-	cm.mu.completedJobsCond.L = &cm.mu.Mutex
-	cm.waitGroup.Add(1)
-
-	go func() {
-		pprof.Do(context.Background(), gcLabels, func(context.Context) {
-			cm.mainLoop()
-		})
-	}()
-
-	return cm
-}
-
-// Close stops the background goroutine, waiting until all queued jobs are completed.
-// Delete pacing is disabled for the remaining jobs.
-func (cm *cleanupManager) Close() {
-	close(cm.jobsCh)
-	close(cm.stopCh)
-	cm.waitGroup.Wait()
-}
-
-// EnqueueJob adds a cleanup job to the manager's queue.
-func (cm *cleanupManager) EnqueueJob(
-	jobID JobID, obsoleteFiles []obsoleteFile, stats obsoleteObjectStats,
+// deleteObsoleteFile deletes a file or object, once the delete pacer decided it is time.
+func deleteObsoleteFile(
+	cleaner Cleaner,
+	objProvider objstorage.Provider,
+	eventListener *EventListener,
+	of deletepacer.ObsoleteFile,
+	jobID int,
 ) {
-	job := &cleanupJob{
-		jobID:         jobID,
-		obsoleteFiles: obsoleteFiles,
-		stats:         stats,
-	}
-
-	// Report deleted bytes to the pacer, which can use this data to potentially
-	// increase the deletion rate to keep up. We want to do this at enqueue time
-	// rather than when we get to the job, otherwise the reported bytes will be
-	// subject to the throttling rate which defeats the purpose.
-	var pacingBytes uint64
-	for _, of := range obsoleteFiles {
-		if of.needsPacing() {
-			pacingBytes += of.fileSize
+	path := of.Path
+	var err error
+	if of.FileType == base.FileTypeTable || of.FileType == base.FileTypeBlob {
+		var meta objstorage.ObjectMetadata
+		meta, err = objProvider.Lookup(of.FileType, of.FileNum)
+		if err != nil {
+			path = "<nil>"
+		} else {
+			path = objProvider.Path(meta)
+			err = objProvider.Remove(of.FileType, of.FileNum)
 		}
-	}
-	if pacingBytes > 0 {
-		cm.deletePacer.ReportDeletion(crtime.NowMono(), pacingBytes)
-	}
-
-	cm.mu.Lock()
-	cm.mu.totalJobs++
-	cm.maybeLogLocked()
-	cm.mu.Unlock()
-
-	cm.jobsCh <- job
-}
-
-// Wait until the completion of all jobs that were already queued.
-//
-// Does not wait for jobs that are enqueued during the call.
-//
-// Note that DB.mu should not be held while calling this method; the background
-// goroutine needs to acquire DB.mu to update deleted table metrics.
-func (cm *cleanupManager) Wait() {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	n := cm.mu.totalJobs
-	for cm.mu.completedJobs < n {
-		cm.mu.completedJobsCond.Wait()
-	}
-}
-
-// mainLoop runs the manager's background goroutine.
-func (cm *cleanupManager) mainLoop() {
-	defer cm.waitGroup.Done()
-
-	paceTimer := time.NewTimer(time.Duration(0))
-	defer paceTimer.Stop()
-
-	var tb tokenbucket.TokenBucket
-	// Use a token bucket with 1 token / second refill rate and 1 token burst.
-	tb.Init(1.0, 1.0)
-	for job := range cm.jobsCh {
-		cm.deleteObsoleteFilesInJob(job, &tb, paceTimer)
-		cm.mu.Lock()
-		cm.mu.completedJobs++
-		cm.mu.completedStats.Add(job.stats)
-		cm.mu.completedJobsCond.Broadcast()
-		cm.maybeLogLocked()
-		cm.mu.Unlock()
-	}
-}
-
-// deleteObsoleteFilesInJob deletes all obsolete files in the given job. If tb
-// and paceTimer are provided, files that need pacing will be throttled
-// according to the deletion rate. If tb is nil, files are deleted immediately
-// without pacing (used when the cleanup manager is being closed).
-func (cm *cleanupManager) deleteObsoleteFilesInJob(
-	job *cleanupJob, tb *tokenbucket.TokenBucket, paceTimer *time.Timer,
-) {
-	for _, of := range job.obsoleteFiles {
-		switch of.fileType {
-		case base.FileTypeTable, base.FileTypeBlob:
-			if tb != nil {
-				cm.maybePace(tb, &of, paceTimer)
-			}
-			cm.deleteObsoleteObject(of.fileType, job.jobID, of.fileNum)
-		default:
-			cm.deleteObsoleteFile(of.fs, of.fileType, job.jobID, of.path, of.fileNum)
+		if objProvider.IsNotExistError(err) {
+			return
 		}
-	}
-}
-
-// maybePace sleeps before deleting an object if appropriate. It is always
-// called from the background goroutine.
-func (cm *cleanupManager) maybePace(
-	tb *tokenbucket.TokenBucket, of *obsoleteFile, paceTimer *time.Timer,
-) {
-	if !of.needsPacing() {
-		return
-	}
-	if len(cm.jobsCh) >= jobsQueueHighThreshold {
-		// If there are many jobs queued up, disable pacing. In this state, we
-		// execute deletion jobs at the same rate as new jobs get queued.
-		return
-	}
-	tokens := cm.deletePacer.PacingDelay(crtime.NowMono(), of.fileSize)
-	if tokens == 0.0 {
-		// The token bucket might be in debt; it could make us wait even for 0
-		// tokens. We don't want that if the pacer decided throttling should be
-		// disabled.
-		return
-	}
-	// Wait for tokens. We use a token bucket instead of sleeping outright because
-	// the token bucket accumulates up to one second of unused tokens.
-	for {
-		ok, d := tb.TryToFulfill(tokenbucket.Tokens(tokens))
-		if ok {
-			break
-		}
-		paceTimer.Reset(d)
-		select {
-		case <-paceTimer.C:
-		case <-cm.stopCh:
-			// The cleanup manager is being closed. Delete without pacing.
+	} else {
+		// TODO(peter): need to handle this error, probably by re-adding the
+		// file that couldn't be deleted to one of the obsolete slices map.
+		err := cleaner.Clean(of.FS, of.FileType, path)
+		if oserror.IsNotExist(err) {
 			return
 		}
 	}
-}
 
-// deleteObsoleteFile deletes a (non-object) file that is no longer needed.
-func (cm *cleanupManager) deleteObsoleteFile(
-	fs vfs.FS, fileType base.FileType, jobID JobID, path string, fileNum base.DiskFileNum,
-) {
-	// TODO(peter): need to handle this error, probably by re-adding the
-	// file that couldn't be deleted to one of the obsolete slices map.
-	err := cm.opts.Cleaner.Clean(fs, fileType, path)
-	if oserror.IsNotExist(err) {
-		return
-	}
-
-	switch fileType {
-	case base.FileTypeLog:
-		cm.opts.EventListener.WALDeleted(WALDeleteInfo{
-			JobID:   int(jobID),
-			Path:    path,
-			FileNum: fileNum,
-			Err:     err,
-		})
-	case base.FileTypeManifest:
-		cm.opts.EventListener.ManifestDeleted(ManifestDeleteInfo{
-			JobID:   int(jobID),
-			Path:    path,
-			FileNum: fileNum,
-			Err:     err,
-		})
-	case base.FileTypeTable, base.FileTypeBlob:
-		panic("invalid deletion of object file")
-	}
-}
-
-func (cm *cleanupManager) deleteObsoleteObject(
-	fileType base.FileType, jobID JobID, fileNum base.DiskFileNum,
-) {
-	if fileType != base.FileTypeTable && fileType != base.FileTypeBlob {
-		panic("not an object")
-	}
-
-	var path string
-	meta, err := cm.objProvider.Lookup(fileType, fileNum)
-	if err != nil {
-		path = "<nil>"
-	} else {
-		path = cm.objProvider.Path(meta)
-		err = cm.objProvider.Remove(fileType, fileNum)
-	}
-	if cm.objProvider.IsNotExistError(err) {
-		return
-	}
-
-	switch fileType {
+	switch of.FileType {
 	case base.FileTypeTable:
-		cm.opts.EventListener.TableDeleted(TableDeleteInfo{
-			JobID:   int(jobID),
+		eventListener.TableDeleted(TableDeleteInfo{
+			JobID:   jobID,
 			Path:    path,
-			FileNum: fileNum,
+			FileNum: of.FileNum,
 			Err:     err,
 		})
 	case base.FileTypeBlob:
-		cm.opts.EventListener.BlobFileDeleted(BlobFileDeleteInfo{
-			JobID:   int(jobID),
+		eventListener.BlobFileDeleted(BlobFileDeleteInfo{
+			JobID:   jobID,
 			Path:    path,
-			FileNum: fileNum,
+			FileNum: of.FileNum,
+			Err:     err,
+		})
+	case base.FileTypeLog:
+		eventListener.WALDeleted(WALDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: of.FileNum,
+			Err:     err,
+		})
+	case base.FileTypeManifest:
+		eventListener.ManifestDeleted(ManifestDeleteInfo{
+			JobID:   jobID,
+			Path:    path,
+			FileNum: of.FileNum,
 			Err:     err,
 		})
 	}
-}
-
-// maybeLogLocked issues a log if the job queue gets 75% full and issues a log
-// when the job queue gets back to less than 10% full.
-//
-// Must be called with cm.mu locked.
-func (cm *cleanupManager) maybeLogLocked() {
-
-	jobsInQueue := cm.mu.totalJobs - cm.mu.completedJobs
-
-	if !cm.mu.jobsQueueWarningIssued && jobsInQueue > jobsQueueHighThreshold {
-		cm.mu.jobsQueueWarningIssued = true
-		cm.opts.Logger.Infof("cleanup falling behind; job queue has over %d jobs", jobsQueueHighThreshold)
-	}
-
-	if cm.mu.jobsQueueWarningIssued && jobsInQueue < jobsQueueLowThreshold {
-		cm.mu.jobsQueueWarningIssued = false
-		cm.opts.Logger.Infof("cleanup back to normal; job queue has under %d jobs", jobsQueueLowThreshold)
-	}
-}
-
-func (d *DB) getDeletionPacerInfo() deletionPacerInfo {
-	var pacerInfo deletionPacerInfo
-	// Call GetDiskUsage after every file deletion. This may seem inefficient,
-	// but in practice this was observed to take constant time, regardless of
-	// volume size used, at least on linux with ext4 and zfs. All invocations
-	// take 10 microseconds or less.
-	pacerInfo.freeBytes = d.calculateDiskAvailableBytes()
-	d.mu.Lock()
-	m := &d.mu.versions.metrics
-	pacerInfo.obsoleteBytes = m.Table.ObsoleteSize + m.BlobFiles.ObsoleteSize
-	total := m.Total()
-	d.mu.Unlock()
-	pacerInfo.liveBytes = uint64(total.AggregateSize())
-	return pacerInfo
 }
 
 // scanObsoleteFiles compares the provided directory listing to the set of
@@ -383,26 +129,26 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 
 	manifestFileNum := d.mu.versions.manifestFileNum
 
-	var obsoleteTables []obsoleteFile
-	var obsoleteBlobs []obsoleteFile
-	var obsoleteOptions []obsoleteFile
-	var obsoleteManifests []obsoleteFile
+	var obsoleteTables []deletepacer.ObsoleteFile
+	var obsoleteBlobs []deletepacer.ObsoleteFile
+	var obsoleteOptions []deletepacer.ObsoleteFile
+	var obsoleteManifests []deletepacer.ObsoleteFile
 
 	for _, filename := range list {
 		fileType, diskFileNum, ok := base.ParseFilename(d.opts.FS, filename)
 		if !ok {
 			continue
 		}
-		makeObsoleteFile := func() obsoleteFile {
-			of := obsoleteFile{
-				fileType: fileType,
-				fs:       d.opts.FS,
-				path:     d.opts.FS.PathJoin(d.dirname, filename),
-				fileNum:  diskFileNum,
-				isLocal:  true,
+		makeObsoleteFile := func() deletepacer.ObsoleteFile {
+			of := deletepacer.ObsoleteFile{
+				FileType: fileType,
+				FS:       d.opts.FS,
+				Path:     d.opts.FS.PathJoin(d.dirname, filename),
+				FileNum:  diskFileNum,
+				IsLocal:  true,
 			}
 			if stat, err := d.opts.FS.Stat(filename); err == nil {
-				of.fileSize = uint64(stat.Size())
+				of.FileSize = uint64(stat.Size())
 			}
 			return of
 		}
@@ -433,15 +179,15 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 			// Ignore object types we don't know about.
 			continue
 		}
-		of := obsoleteFile{
-			fileType: obj.FileType,
-			fs:       d.opts.FS,
-			path:     base.MakeFilepath(d.opts.FS, d.dirname, obj.FileType, obj.DiskFileNum),
-			fileNum:  obj.DiskFileNum,
-			isLocal:  true,
+		of := deletepacer.ObsoleteFile{
+			FileType: obj.FileType,
+			FS:       d.opts.FS,
+			Path:     base.MakeFilepath(d.opts.FS, d.dirname, obj.FileType, obj.DiskFileNum),
+			FileNum:  obj.DiskFileNum,
+			IsLocal:  true,
 		}
 		if size, err := d.objProvider.Size(obj); err == nil {
-			of.fileSize = uint64(size)
+			of.FileSize = uint64(size)
 		}
 		if obj.FileType == base.FileTypeTable {
 			obsoleteTables = append(obsoleteTables, of)
@@ -469,7 +215,7 @@ func (d *DB) disableFileDeletions() {
 	d.mu.fileDeletions.disableCount++
 	d.mu.Unlock()
 	defer d.mu.Lock()
-	d.cleanupManager.Wait()
+	d.deletePacer.WaitForTesting()
 }
 
 // enableFileDeletions enables previously disabled file deletions. A cleanup job
@@ -529,7 +275,7 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 		}
 	}
 
-	var obsoleteManifests []obsoleteFile
+	var obsoleteManifests []deletepacer.ObsoleteFile
 	manifestsToDelete := len(d.mu.versions.obsoleteManifests) - d.opts.NumPrevManifest
 	if manifestsToDelete > 0 {
 		obsoleteManifests = d.mu.versions.obsoleteManifests[:manifestsToDelete]
@@ -546,10 +292,6 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 	// the running total. These stats will be used during DB.Metrics() to
 	// calculate the count and size of pending obsolete files by diffing these
 	// stats and the stats reported by the cleanup manager.
-	var objectStats obsoleteObjectStats
-	objectStats.tablesAll, objectStats.tablesLocal = calculateObsoleteObjectStats(obsoleteTables)
-	objectStats.blobFilesAll, objectStats.blobFilesLocal = calculateObsoleteObjectStats(obsoleteBlobs)
-	d.mu.fileDeletions.queuedStats.Add(objectStats)
 	d.mu.versions.updateObsoleteObjectMetricsLocked()
 
 	// Release d.mu while preparing the cleanup job and possibly waiting.
@@ -558,32 +300,32 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 	defer d.mu.Lock()
 
 	n := len(obsoleteLogs) + len(obsoleteTables) + len(obsoleteBlobs) + len(obsoleteManifests) + len(obsoleteOptions)
-	filesToDelete := make([]obsoleteFile, 0, n)
+	filesToDelete := make([]deletepacer.ObsoleteFile, 0, n)
 	filesToDelete = append(filesToDelete, obsoleteManifests...)
 	filesToDelete = append(filesToDelete, obsoleteOptions...)
 	filesToDelete = append(filesToDelete, obsoleteTables...)
 	filesToDelete = append(filesToDelete, obsoleteBlobs...)
 	for _, f := range obsoleteLogs {
-		filesToDelete = append(filesToDelete, obsoleteFile{
-			fileType: base.FileTypeLog,
-			fs:       f.FS,
-			path:     f.Path,
-			fileNum:  base.DiskFileNum(f.NumWAL),
-			fileSize: f.ApproxFileSize,
-			isLocal:  true,
+		filesToDelete = append(filesToDelete, deletepacer.ObsoleteFile{
+			FileType: base.FileTypeLog,
+			FS:       f.FS,
+			Path:     f.Path,
+			FileNum:  base.DiskFileNum(f.NumWAL),
+			FileSize: f.ApproxFileSize,
+			IsLocal:  true,
 		})
 	}
 	for _, f := range obsoleteTables {
-		d.fileCache.Evict(f.fileNum, base.FileTypeTable)
+		d.fileCache.Evict(f.FileNum, base.FileTypeTable)
 	}
 	for _, f := range obsoleteBlobs {
-		d.fileCache.Evict(f.fileNum, base.FileTypeBlob)
+		d.fileCache.Evict(f.FileNum, base.FileTypeBlob)
 	}
 	if len(filesToDelete) > 0 {
-		d.cleanupManager.EnqueueJob(jobID, filesToDelete, objectStats)
+		d.deletePacer.Enqueue(int(jobID), filesToDelete...)
 	}
 	if d.opts.private.testingAlwaysWaitForCleanup {
-		d.cleanupManager.Wait()
+		d.deletePacer.WaitForTesting()
 	}
 }
 
@@ -595,20 +337,20 @@ func (d *DB) maybeScheduleObsoleteObjectDeletion() {
 	}
 }
 
-func mergeObsoleteFiles(a, b []obsoleteFile) []obsoleteFile {
+func mergeObsoleteFiles(a, b []deletepacer.ObsoleteFile) []deletepacer.ObsoleteFile {
 	if len(b) == 0 {
 		return a
 	}
 
 	a = append(a, b...)
 	slices.SortFunc(a, cmpObsoleteFileNumbers)
-	return slices.CompactFunc(a, func(a, b obsoleteFile) bool {
-		return a.fileNum == b.fileNum
+	return slices.CompactFunc(a, func(a, b deletepacer.ObsoleteFile) bool {
+		return a.FileNum == b.FileNum
 	})
 }
 
-func cmpObsoleteFileNumbers(a, b obsoleteFile) int {
-	return cmp.Compare(a.fileNum, b.fileNum)
+func cmpObsoleteFileNumbers(a, b deletepacer.ObsoleteFile) int {
+	return cmp.Compare(a.FileNum, b.FileNum)
 }
 
 // objectInfo describes an object in object storage (either a sstable or a blob
@@ -618,63 +360,17 @@ type objectInfo struct {
 	isLocal bool
 }
 
-func (o objectInfo) asObsoleteFile(fs vfs.FS, fileType base.FileType, dirname string) obsoleteFile {
-	return obsoleteFile{
-		fileType: fileType,
-		fs:       fs,
-		path:     base.MakeFilepath(fs, dirname, fileType, o.FileNum),
-		fileNum:  o.FileNum,
-		fileSize: o.FileSize,
-		isLocal:  o.isLocal,
+func (o objectInfo) asObsoleteFile(
+	fs vfs.FS, fileType base.FileType, dirname string,
+) deletepacer.ObsoleteFile {
+	return deletepacer.ObsoleteFile{
+		FileType: fileType,
+		FS:       fs,
+		Path:     base.MakeFilepath(fs, dirname, fileType, o.FileNum),
+		FileNum:  o.FileNum,
+		FileSize: o.FileSize,
+		IsLocal:  o.isLocal,
 	}
-}
-
-func calculateObsoleteObjectStats(files []obsoleteFile) (total, local countAndSize) {
-	for _, of := range files {
-		if of.isLocal {
-			local.count++
-			local.size += of.fileSize
-		}
-		total.count++
-		total.size += of.fileSize
-	}
-	return total, local
-}
-
-type obsoleteObjectStats struct {
-	tablesLocal    countAndSize
-	tablesAll      countAndSize
-	blobFilesLocal countAndSize
-	blobFilesAll   countAndSize
-}
-
-func (s *obsoleteObjectStats) Add(other obsoleteObjectStats) {
-	s.tablesLocal.Add(other.tablesLocal)
-	s.tablesAll.Add(other.tablesAll)
-	s.blobFilesLocal.Add(other.blobFilesLocal)
-	s.blobFilesAll.Add(other.blobFilesAll)
-}
-
-func (s *obsoleteObjectStats) Sub(other obsoleteObjectStats) {
-	s.tablesLocal.Sub(other.tablesLocal)
-	s.tablesAll.Sub(other.tablesAll)
-	s.blobFilesLocal.Sub(other.blobFilesLocal)
-	s.blobFilesAll.Sub(other.blobFilesAll)
-}
-
-type countAndSize struct {
-	count uint64
-	size  uint64
-}
-
-func (c *countAndSize) Add(other countAndSize) {
-	c.count += other.count
-	c.size += other.size
-}
-
-func (c *countAndSize) Sub(other countAndSize) {
-	c.count = invariants.SafeSub(c.count, other.count)
-	c.size = invariants.SafeSub(c.size, other.size)
 }
 
 func makeZombieObjects() zombieObjects {

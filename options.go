@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -1142,41 +1143,11 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
-	// The controls below manage deletion pacing, which slows down
-	// deletions when compactions finish or when readers close and
-	// obsolete files must be cleaned up. Rapid deletion of many
-	// files simultaneously can increase disk latency on certain
-	// SSDs, and this functionality helps protect against that.
-
-	// TargetByteDeletionRate is the rate (in bytes per second) at which sstable file
-	// deletions are limited to (under normal circumstances).
-	//
-	// This value is only a best-effort target; the effective rate can be
-	// higher if deletions are falling behind or disk space is running low.
-	//
-	// A returned value of 0 disables deletion pacing (this is also the default).
-	TargetByteDeletionRate func() int
-
-	// FreeSpaceThresholdBytes specifies the minimum amount of free disk space that Pebble
-	// attempts to maintain. If free disk space drops below this threshold, deletions
-	// are accelerated above TargetByteDeletionRate until the threshold is restored.
-	// Default is 16GB.
-	FreeSpaceThresholdBytes uint64
-
-	// FreeSpaceTimeframe sets the duration (in seconds) within which Pebble attempts
-	// to restore the free disk space back to FreeSpaceThreshold. A lower value means
-	// more aggressive deletions. Default is 10s.
-	FreeSpaceTimeframe time.Duration
-
-	// ObsoleteBytesMaxRatio specifies the maximum allowed ratio of obsolete files to
-	// live files. If this ratio is exceeded, Pebble speeds up deletions above the
-	// TargetByteDeletionRate until the ratio is restored. Default is 0.20.
-	ObsoleteBytesMaxRatio float64
-
-	// ObsoleteBytesTimeframe sets the duration (in seconds) within which Pebble aims
-	// to restore the obsolete-to-live bytes ratio below ObsoleteBytesMaxRatio. A lower
-	// value means more aggressive deletions. Default is 300s.
-	ObsoleteBytesTimeframe time.Duration
+	// DeletionPacing manage deletion pacing, which slows down deletions when
+	// compactions finish or when readers close and obsolete files must be cleaned
+	// up. Rapid deletion of many files simultaneously can increase disk latency
+	// on certain SSDs, and this functionality helps protect against that.
+	DeletionPacing deletepacer.Options
 
 	// EnableSQLRowSpillMetrics specifies whether the Pebble instance will only be used
 	// to temporarily persist data spilled to disk for row-oriented SQL query execution.
@@ -1516,26 +1487,7 @@ func (o *Options) EnsureDefaults() {
 	if o.Cleaner == nil {
 		o.Cleaner = DeleteCleaner{}
 	}
-
-	if o.TargetByteDeletionRate == nil {
-		o.TargetByteDeletionRate = func() int { return 0 }
-	}
-
-	if o.FreeSpaceThresholdBytes == 0 {
-		o.FreeSpaceThresholdBytes = 16 << 30 // 16 GB
-	}
-
-	if o.FreeSpaceTimeframe == 0 {
-		o.FreeSpaceTimeframe = 10 * time.Second
-	}
-
-	if o.ObsoleteBytesMaxRatio == 0 {
-		o.ObsoleteBytesMaxRatio = 0.20
-	}
-
-	if o.ObsoleteBytesTimeframe == 0 {
-		o.ObsoleteBytesTimeframe = 300 * time.Second
-	}
+	o.DeletionPacing.EnsureDefaults()
 
 	if o.Experimental.DisableIngestAsFlushable == nil {
 		o.Experimental.DisableIngestAsFlushable = func() bool { return false }
@@ -1810,11 +1762,10 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  max_open_files=%d\n", o.MaxOpenFiles)
 	fmt.Fprintf(&buf, "  mem_table_size=%d\n", o.MemTableSize)
 	fmt.Fprintf(&buf, "  mem_table_stop_writes_threshold=%d\n", o.MemTableStopWritesThreshold)
-	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.TargetByteDeletionRate())
-	fmt.Fprintf(&buf, "  free_space_threshold_bytes=%d\n", o.FreeSpaceThresholdBytes)
-	fmt.Fprintf(&buf, "  free_space_timeframe=%s\n", o.FreeSpaceTimeframe.String())
-	fmt.Fprintf(&buf, "  obsolete_bytes_max_ratio=%f\n", o.ObsoleteBytesMaxRatio)
-	fmt.Fprintf(&buf, "  obsolete_bytes_timeframe=%s\n", o.ObsoleteBytesTimeframe.String())
+	fmt.Fprintf(&buf, "  min_deletion_rate=%d\n", o.DeletionPacing.BaselineRate())
+	fmt.Fprintf(&buf, "  free_space_threshold_bytes=%d\n", o.DeletionPacing.FreeSpaceThresholdBytes)
+	fmt.Fprintf(&buf, "  free_space_timeframe=%s\n", o.DeletionPacing.FreeSpaceTimeframe.String())
+	fmt.Fprintf(&buf, "  obsolete_bytes_timeframe=%s\n", o.DeletionPacing.BacklogTimeframe.String())
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
 	if o.Experimental.MultiLevelCompactionHeuristic != nil {
 		fmt.Fprintf(&buf, "  multilevel_compaction_heuristic=%s\n", o.Experimental.MultiLevelCompactionHeuristic().String())
@@ -2181,19 +2132,17 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.
 			case "min_deletion_rate":
-				var rate int
-				rate, err = strconv.Atoi(value)
+				var rate uint64
+				rate, err = strconv.ParseUint(value, 10, 64)
 				if err == nil {
-					o.TargetByteDeletionRate = func() int { return rate }
+					o.DeletionPacing.BaselineRate = func() uint64 { return rate }
 				}
 			case "free_space_threshold_bytes":
-				o.FreeSpaceThresholdBytes, err = strconv.ParseUint(value, 10, 64)
+				o.DeletionPacing.FreeSpaceThresholdBytes, err = strconv.ParseUint(value, 10, 64)
 			case "free_space_timeframe":
-				o.FreeSpaceTimeframe, err = time.ParseDuration(value)
-			case "obsolete_bytes_max_ratio":
-				o.ObsoleteBytesMaxRatio, err = strconv.ParseFloat(value, 64)
+				o.DeletionPacing.FreeSpaceTimeframe, err = time.ParseDuration(value)
 			case "obsolete_bytes_timeframe":
-				o.ObsoleteBytesTimeframe, err = time.ParseDuration(value)
+				o.DeletionPacing.BacklogTimeframe, err = time.ParseDuration(value)
 			case "min_flush_rate":
 				// Do nothing; option existed in older versions of pebble, and
 				// may be meaningful again eventually.
