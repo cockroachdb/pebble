@@ -151,6 +151,27 @@ var (
 		/* Read amp */ `(?:^|\+)(?:\s{2}total|total \|).*?\s(?P<value>\d+)\s.{4,7}$`,
 	)
 	readAmpPatternValueIdx = readAmpPattern.SubexpIndex("value")
+
+	// Example blob file rewrite start and end log lines:
+	//   I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s5] 1216554  [JOB 284925] rewrote blob file (B000006, 000006) (209B) -> (B000006, 000010) (203B), in 0.2s (0.35s total)
+	blobRewritePattern = regexp.MustCompile(
+		`^.*` +
+			/* Job ID            */ `\[JOB (?P<job>\d+)]\s` +
+			/* Match rewrite end logs only */ `rewrote blob file\s` +
+			/* Physical file number before rewrite */
+			`\([^,]+,\s*(?P<physicalFileBefore>\d+)\)\s+` +
+			/* Size before rewrite */ `\((?P<sizeBefore>[0-9.]+(?: [BKMGTPE]|[KMGTPE]?B))\)\s*` +
+			`->\s*` +
+			/* Physical file number after rewrite */ `\([^,]+,\s*(?P<physicalFileAfter>\d+)\)\s+` +
+			/* Size after rewrite */ `\((?P<sizeAfter>[0-9.]+(?: [BKMGTPE]|[KMGTPE]?B))\)` +
+			/* Total time */ `(?:.*?in\s[0-9.]+s\s\((?P<totalTime>[0-9.]+)s\s+total\))?`,
+	)
+	blobRewritePatternJobIdx                = blobRewritePattern.SubexpIndex("job")
+	blobRewritePatternPhysicalFileBeforeIdx = blobRewritePattern.SubexpIndex("physicalFileBefore")
+	blobRewritePatternPhysicalFileAfterIdx  = blobRewritePattern.SubexpIndex("physicalFileAfter")
+	blobRewritePatternSizeBeforeIdx         = blobRewritePattern.SubexpIndex("sizeBefore")
+	blobRewritePatternSizeAfterIdx          = blobRewritePattern.SubexpIndex("sizeAfter")
+	blobRewritePatternTotalTimeIdx          = blobRewritePattern.SubexpIndex("totalTime")
 )
 
 const (
@@ -178,6 +199,7 @@ const (
 	compactionTypeDeleteOnly
 	compactionTypeElisionOnly
 	compactionTypeRead
+	compactionTypeBlobRewrite
 )
 
 // String implements fmt.Stringer.
@@ -193,6 +215,8 @@ func (c compactionType) String() string {
 		return "elision-only"
 	case compactionTypeRead:
 		return "read"
+	case compactionTypeBlobRewrite:
+		return "blob-rewrite"
 	default:
 		panic(errors.Newf("unknown compaction type: %s", c))
 	}
@@ -212,6 +236,8 @@ func parseCompactionType(s string) (t compactionType, err error) {
 		t = compactionTypeElisionOnly
 	case "read":
 		t = compactionTypeRead
+	case "blob-rewrite":
+		t = compactionTypeBlobRewrite
 	default:
 		err = errors.Newf("unknown compaction type: %s", s)
 	}
@@ -226,6 +252,9 @@ type compactionStart struct {
 	fromLevel  int
 	toLevel    int
 	inputBytes uint64
+
+	// Blob-specific fields (only used when cType == compactionTypeBlobRewrite).
+	physicalFileIDBefore int
 }
 
 // parseCompactionStart converts the given regular expression sub-matches for a
@@ -284,6 +313,10 @@ type compactionEnd struct {
 	// TODO(jackson): Parse and include the aggregate size of input
 	// sstables. It may be instructive, because compactions that drop
 	// keys write less data than they remove from the input level.
+
+	// Blob-specific fields (only used when cType == compactionTypeBlobRewrite).
+	physicalFileIDAfter int
+	duration            time.Duration
 }
 
 // parseCompactionEnd converts the given regular expression sub-matches for a
@@ -364,6 +397,11 @@ type compaction struct {
 	toLevel     int
 	inputBytes  uint64
 	outputBytes uint64
+
+	// Blob-specific fields (only used when cType == compactionTypeBlobRewrite).
+	physicalFileIDBefore int
+	physicalFileIDAfter  int
+	duration             time.Duration
 }
 
 // ingest describes the completion of an ingest.
@@ -449,19 +487,28 @@ func (c *logEventCollector) addCompactionEnd(end compactionEnd) {
 	// Remove the job from the collector once it has been matched.
 	delete(c.m, key)
 
+	comp := &compaction{
+		cType:       start.cType,
+		fromLevel:   start.fromLevel,
+		toLevel:     start.toLevel,
+		inputBytes:  start.inputBytes,
+		outputBytes: end.writtenBytes,
+	}
+
+	// Add blob-specific fields if this is a blob rewrite.
+	if start.cType == compactionTypeBlobRewrite {
+		comp.physicalFileIDBefore = start.physicalFileIDBefore
+		comp.physicalFileIDAfter = end.physicalFileIDAfter
+		comp.duration = end.duration
+	}
+
 	c.events = append(c.events, event{
-		nodeID:    start.ctx.node,
-		storeID:   start.ctx.store,
-		jobID:     start.jobID,
-		timeStart: start.ctx.timestamp,
-		timeEnd:   c.ctx.timestamp,
-		compaction: &compaction{
-			cType:       start.cType,
-			fromLevel:   start.fromLevel,
-			toLevel:     start.toLevel,
-			inputBytes:  start.inputBytes,
-			outputBytes: end.writtenBytes,
-		},
+		nodeID:     start.ctx.node,
+		storeID:    start.ctx.store,
+		jobID:      start.jobID,
+		timeStart:  start.ctx.timestamp,
+		timeEnd:    c.ctx.timestamp,
+		compaction: comp,
 	})
 }
 
@@ -489,6 +536,9 @@ type level int
 func (l level) String() string {
 	if l == -1 {
 		return "WAL"
+	}
+	if l == -2 {
+		return "BLOB"
 	}
 	return "L" + strconv.Itoa(int(l))
 }
@@ -613,8 +663,8 @@ func (s windowSummary) String() string {
 
 	// Print compactions statistics.
 	if len(s.compactionCounts) > 0 {
-		sb.WriteString("_kind______from______to___default____move___elide__delete___count___in(B)__out(B)__mov(B)__del(B)______time\n")
-		var totalDef, totalMove, totalElision, totalDel int
+		sb.WriteString("_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time\n")
+		var totalDef, totalMove, totalElision, totalDel, totalBlob int
 		var totalBytesIn, totalBytesOut, totalBytesMoved, totalBytesDel uint64
 		var totalTime time.Duration
 		for _, p := range pairs {
@@ -622,10 +672,11 @@ func (s windowSummary) String() string {
 			move := p.counts[compactionTypeMove]
 			elision := p.counts[compactionTypeElisionOnly]
 			del := p.counts[compactionTypeDeleteOnly]
-			total := def + move + elision + del
+			blob := p.counts[compactionTypeBlobRewrite]
+			total := def + move + elision + del + blob
 
-			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
-				"compact", p.ft.from, p.ft.to, def, move, elision, del, total,
+			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
+				"compact", p.ft.from, p.ft.to, def, move, elision, del, blob, total,
 				humanize.Bytes.Uint64(p.bytesIn), humanize.Bytes.Uint64(p.bytesOut),
 				humanize.Bytes.Uint64(p.bytesMoved), humanize.Bytes.Uint64(p.bytesDel),
 				p.duration.Truncate(time.Second))
@@ -635,14 +686,15 @@ func (s windowSummary) String() string {
 			totalMove += move
 			totalElision += elision
 			totalDel += del
+			totalBlob += blob
 			totalBytesIn += p.bytesIn
 			totalBytesOut += p.bytesOut
 			totalBytesMoved += p.bytesMoved
 			totalBytesDel += p.bytesDel
 			totalTime += p.duration
 		}
-		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
-			totalDef, totalMove, totalElision, totalDel, s.eventCount,
+		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
+			totalDef, totalMove, totalElision, totalDel, totalBlob, s.eventCount,
 			humanize.Bytes.Uint64(totalBytesIn), humanize.Bytes.Uint64(totalBytesOut),
 			humanize.Bytes.Uint64(totalBytesMoved), humanize.Bytes.Uint64(totalBytesDel),
 			totalTime.Truncate(time.Second)))
@@ -653,15 +705,19 @@ func (s windowSummary) String() string {
 		sb.WriteString("long-running events (descending runtime):\n")
 		sb.WriteString("_kind________from________to_______job______type_____start_______end____dur(s)_____bytes:\n")
 		for _, e := range s.longRunning {
-			c := e.compaction
-			kind := "compact"
-			if c.fromLevel == -1 {
-				kind = "flush"
+			if e.compaction != nil {
+				c := e.compaction
+				kind := "compact"
+				if c.fromLevel == -1 {
+					kind = "flush"
+				} else if c.fromLevel == -2 {
+					kind = "blob"
+				}
+				sb.WriteString(fmt.Sprintf("%-7s %9s %9s %9d %9s %9s %9s %9.0f %9s\n",
+					kind, level(c.fromLevel), level(c.toLevel), e.jobID, c.cType,
+					e.timeStart.Format(timeFmtHrMinSec), e.timeEnd.Format(timeFmtHrMinSec),
+					e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Bytes.Uint64(c.outputBytes)))
 			}
-			sb.WriteString(fmt.Sprintf("%-7s %9s %9s %9d %9s %9s %9s %9.0f %9s\n",
-				kind, level(c.fromLevel), level(c.toLevel), e.jobID, c.cType,
-				e.timeStart.Format(timeFmtHrMinSec), e.timeEnd.Format(timeFmtHrMinSec),
-				e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Bytes.Uint64(c.outputBytes)))
 		}
 	}
 
@@ -885,7 +941,13 @@ func (a *aggregator) aggregate() []windowSummary {
 			if !ok {
 				curWindow.compactionTime[ft] = 0
 			}
-			curWindow.compactionTime[ft] += e.timeEnd.Sub(e.timeStart)
+			// For blob rewrites, use the stored duration from the log.
+			// For other compaction types, use the timestamp difference.
+			if c.cType == compactionTypeBlobRewrite && c.duration > 0 {
+				curWindow.compactionTime[ft] += c.duration
+			} else {
+				curWindow.compactionTime[ft] += e.timeEnd.Sub(e.timeStart)
+			}
 
 		}
 		// Add "long-running" events. Those that start in this window
@@ -940,6 +1002,12 @@ func parseLog(path string, b *logEventCollector) error {
 			if err != nil {
 				b.addError(path, line, err)
 			}
+			continue
+		}
+
+		// Check for blob rewrite events.
+		if err = parseBlobRewrite(line, b); err != nil {
+			b.addError(path, line, err)
 			continue
 		}
 
@@ -1117,6 +1185,85 @@ func parseReadAmp(line string, b *logEventCollector) error {
 	b.addReadAmp(readAmp{
 		readAmp: val,
 	})
+	return nil
+}
+
+// parseBlobRewriteStartEnd converts the given regular expression sub-matches for a
+// blob rewrite log line into a compactionEnd and compactionStart event.
+func parseBlobRewriteStartEnd(matches []string) (compactionStart, compactionEnd, error) {
+	var start compactionStart
+	var end compactionEnd
+
+	jobID, err := strconv.Atoi(matches[blobRewritePatternJobIdx])
+	if err != nil {
+		return start, end, errors.Newf("could not parse jobID: %s", err)
+	}
+
+	var sizeBefore uint64
+	if matches[blobRewritePatternSizeBeforeIdx] != "" {
+		sizeBefore = unHumanize(matches[blobRewritePatternSizeBeforeIdx])
+	}
+
+	var sizeAfter uint64
+	if matches[blobRewritePatternSizeAfterIdx] != "" {
+		sizeAfter = unHumanize(matches[blobRewritePatternSizeAfterIdx])
+	}
+
+	physicalFileIDBefore, err := strconv.Atoi(matches[blobRewritePatternPhysicalFileBeforeIdx])
+	if err != nil {
+		return start, end, errors.Newf("could not parse physical file ID before: %s", err)
+	}
+
+	physicalFileIDAfter, err := strconv.Atoi(matches[blobRewritePatternPhysicalFileAfterIdx])
+	if err != nil {
+		return start, end, errors.Newf("could not parse physical file ID after: %s", err)
+	}
+
+	var duration time.Duration
+	if matches[blobRewritePatternTotalTimeIdx] != "" {
+		totalTimeStr := matches[blobRewritePatternTotalTimeIdx]
+		totalTimeFloat, err := strconv.ParseFloat(totalTimeStr, 64)
+		if err != nil {
+			return start, end, errors.Newf("could not parse total time: %s", err)
+		}
+		duration = time.Duration(totalTimeFloat * float64(time.Second))
+	}
+
+	start = compactionStart{
+		jobID:                jobID,
+		cType:                compactionTypeBlobRewrite,
+		fromLevel:            -2,
+		toLevel:              -2,
+		inputBytes:           sizeBefore,
+		physicalFileIDBefore: physicalFileIDBefore,
+	}
+
+	end = compactionEnd{
+		jobID:               jobID,
+		writtenBytes:        sizeAfter,
+		physicalFileIDAfter: physicalFileIDAfter,
+		duration:            duration,
+	}
+
+	return start, end, nil
+}
+
+// parseBlobRewrite parses and collects blob rewrite events.
+func parseBlobRewrite(line string, b *logEventCollector) error {
+	matches := blobRewritePattern.FindStringSubmatch(line)
+	if matches == nil {
+		return nil
+	}
+
+	start, end, err := parseBlobRewriteStartEnd(matches)
+	if err != nil {
+		return err
+	}
+
+	if err := b.addCompactionStart(start); err != nil {
+		return err
+	}
+	b.addCompactionEnd(end)
 	return nil
 }
 
