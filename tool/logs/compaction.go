@@ -200,6 +200,7 @@ const (
 	compactionTypeElisionOnly
 	compactionTypeRead
 	compactionTypeBlobRewrite
+	compactionTypeVirtualRewrite
 )
 
 // String implements fmt.Stringer.
@@ -217,6 +218,8 @@ func (c compactionType) String() string {
 		return "read"
 	case compactionTypeBlobRewrite:
 		return "blob-rewrite"
+	case compactionTypeVirtualRewrite:
+		return "virtual-sst-rewrite"
 	default:
 		panic(errors.Newf("unknown compaction type: %s", c))
 	}
@@ -238,6 +241,8 @@ func parseCompactionType(s string) (t compactionType, err error) {
 		t = compactionTypeRead
 	case "blob-rewrite":
 		t = compactionTypeBlobRewrite
+	case "virtual-sst-rewrite":
+		t = compactionTypeVirtualRewrite
 	default:
 		err = errors.Newf("unknown compaction type: %s", s)
 	}
@@ -663,8 +668,8 @@ func (s windowSummary) String() string {
 
 	// Print compactions statistics.
 	if len(s.compactionCounts) > 0 {
-		sb.WriteString("_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time\n")
-		var totalDef, totalMove, totalElision, totalDel, totalBlob int
+		sb.WriteString("_kind______from______to___default____move___elide__delete____blob___virtual___count___in(B)__out(B)__mov(B)__del(B)______time\n")
+		var totalDef, totalMove, totalElision, totalDel, totalBlob, totalVirtual int
 		var totalBytesIn, totalBytesOut, totalBytesMoved, totalBytesDel uint64
 		var totalTime time.Duration
 		for _, p := range pairs {
@@ -673,10 +678,11 @@ func (s windowSummary) String() string {
 			elision := p.counts[compactionTypeElisionOnly]
 			del := p.counts[compactionTypeDeleteOnly]
 			blob := p.counts[compactionTypeBlobRewrite]
-			total := def + move + elision + del + blob
+			virtual := p.counts[compactionTypeVirtualRewrite]
+			total := def + move + elision + del + blob + virtual
 
-			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
-				"compact", p.ft.from, p.ft.to, def, move, elision, del, blob, total,
+			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %9d %7d %7s %7s %7s %7s %9s\n",
+				"compact", p.ft.from, p.ft.to, def, move, elision, del, blob, virtual, total,
 				humanize.Bytes.Uint64(p.bytesIn), humanize.Bytes.Uint64(p.bytesOut),
 				humanize.Bytes.Uint64(p.bytesMoved), humanize.Bytes.Uint64(p.bytesDel),
 				p.duration.Truncate(time.Second))
@@ -687,14 +693,15 @@ func (s windowSummary) String() string {
 			totalElision += elision
 			totalDel += del
 			totalBlob += blob
+			totalVirtual += virtual
 			totalBytesIn += p.bytesIn
 			totalBytesOut += p.bytesOut
 			totalBytesMoved += p.bytesMoved
 			totalBytesDel += p.bytesDel
 			totalTime += p.duration
 		}
-		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
-			totalDef, totalMove, totalElision, totalDel, totalBlob, s.eventCount,
+		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d   %7d %7d %7s %7s %7s %7s %9s\n",
+			totalDef, totalMove, totalElision, totalDel, totalBlob, totalVirtual, s.eventCount,
 			humanize.Bytes.Uint64(totalBytesIn), humanize.Bytes.Uint64(totalBytesOut),
 			humanize.Bytes.Uint64(totalBytesMoved), humanize.Bytes.Uint64(totalBytesDel),
 			totalTime.Truncate(time.Second)))
@@ -712,6 +719,8 @@ func (s windowSummary) String() string {
 					kind = "flush"
 				} else if c.fromLevel == -2 {
 					kind = "blob"
+				} else if c.cType == compactionTypeVirtualRewrite {
+					kind = "virtual"
 				}
 				sb.WriteString(fmt.Sprintf("%-7s %9s %9s %9d %9s %9s %9s %9.0f %9s\n",
 					kind, level(c.fromLevel), level(c.toLevel), e.jobID, c.cType,
