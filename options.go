@@ -625,17 +625,19 @@ type Options struct {
 		// sstable writers. The default value is 0.5.
 		DeletionSizeRatioThreshold float32
 
-		// TombstoneDenseCompactionThreshold is the minimum percent of data
-		// blocks in a table that must be tombstone-dense for that table to be
-		// eligible for a tombstone density compaction. It should be defined as a
-		// ratio out of 1. The default value is 0.10.
+		// TombstoneDenseCompactionThreshold is a function that returns the minimum
+		// percent of data blocks in a table that must be tombstone-dense for that
+		// table to be eligible for a tombstone density compaction. The value should
+		// be defined as a ratio out of 1. The default value is 0.10.
 		//
 		// If multiple tables are eligible for a tombstone density compaction, then
 		// tables with a higher percent of tombstone-dense blocks are still
 		// prioritized for compaction.
 		//
-		// A zero or negative value disables tombstone density compactions.
-		TombstoneDenseCompactionThreshold float64
+		// Using a function allows for dynamic reconfiguration of the threshold based
+		// on workload characteristics. A zero or negative value disables tombstone
+		// density compactions.
+		TombstoneDenseCompactionThreshold func() float64
 
 		// TableCacheShards is the number of shards per table cache.
 		// Reducing the value can reduce the number of idle goroutines per DB
@@ -1357,8 +1359,8 @@ func (o *Options) EnsureDefaults() *Options {
 	if o.Experimental.DeletionSizeRatioThreshold == 0 {
 		o.Experimental.DeletionSizeRatioThreshold = sstable.DefaultDeletionSizeRatioThreshold
 	}
-	if o.Experimental.TombstoneDenseCompactionThreshold == 0 {
-		o.Experimental.TombstoneDenseCompactionThreshold = 0.10
+	if o.Experimental.TombstoneDenseCompactionThreshold == nil {
+		o.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.10 }
 	}
 	if o.Experimental.TableCacheShards <= 0 {
 		o.Experimental.TableCacheShards = runtime.GOMAXPROCS(0)
@@ -1495,7 +1497,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
 	fmt.Fprintf(&buf, "  num_deletions_threshold=%d\n", o.Experimental.NumDeletionsThreshold)
 	fmt.Fprintf(&buf, "  deletion_size_ratio_threshold=%f\n", o.Experimental.DeletionSizeRatioThreshold)
-	fmt.Fprintf(&buf, "  tombstone_dense_compaction_threshold=%f\n", o.Experimental.TombstoneDenseCompactionThreshold)
+	fmt.Fprintf(&buf, "  tombstone_dense_compaction_threshold=%f\n", o.Experimental.TombstoneDenseCompactionThreshold())
 	// We no longer care about strict_wal_tail, but set it to true in case an
 	// older version reads the options.
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", true)
@@ -1899,7 +1901,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.Experimental.DeletionSizeRatioThreshold = float32(val)
 				err = parseErr
 			case "tombstone_dense_compaction_threshold":
-				o.Experimental.TombstoneDenseCompactionThreshold, err = strconv.ParseFloat(value, 64)
+				var threshold float64
+				threshold, err = strconv.ParseFloat(value, 64)
+				if err == nil {
+					o.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return threshold }
+				}
 			case "table_cache_shards":
 				o.Experimental.TableCacheShards, err = strconv.Atoi(value)
 			case "table_format":
