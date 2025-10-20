@@ -360,7 +360,7 @@ func TestDBWALRotationCrash(t *testing.T) {
 	var crashFS *vfs.MemFS
 	var index atomic.Int32
 	inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
-		if op.Kind.ReadOrWrite() == errorfs.OpIsWrite && index.Add(-1) == -1 {
+		if op.Kind.IsWrite() && index.Add(-1) == -1 {
 			crashFS = memfs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 0})
 		}
 		return nil
@@ -435,7 +435,7 @@ func TestDBCompactionCrash(t *testing.T) {
 	mkFS := func() vfs.FS {
 		memfs := vfs.NewCrashableMem()
 		inj := errorfs.InjectorFunc(func(op errorfs.Op) error {
-			if op.Kind.ReadOrWrite() == errorfs.OpIsWrite && crashIndex.Add(-1) == -1 {
+			if op.Kind.IsWrite() && crashIndex.Add(-1) == -1 {
 				// Allow an arbitrary subset of non-synced state to survive beyond the
 				// crash point.
 				crashFS = memfs.CrashClone(vfs.CrashCloneCfg{UnsyncedDataPercent: 10, RNG: crashRNG})

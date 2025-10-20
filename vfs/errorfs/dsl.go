@@ -25,6 +25,11 @@ func And(operands ...Predicate) Predicate {
 	return dsl.And[Op](operands...)
 }
 
+// Not returns a predicate that evaluates to true if the operand evaluates to false.
+func Not(operand Predicate) Predicate {
+	return dsl.Not[Op](operand)
+}
+
 // PathMatch returns a predicate that returns true if an operation's file path
 // matches the provided pattern according to filepath.Match.
 func PathMatch(pattern string) Predicate {
@@ -52,16 +57,25 @@ func (pm *pathMatch) Evaluate(op Op) bool {
 var (
 	// Reads is a predicate that returns true iff an operation is a read
 	// operation.
-	Reads Predicate = opKindPred{kind: OpIsRead}
+	Reads Predicate = OpKindIn("Reads", ReadOps)
 	// Writes is a predicate that returns true iff an operation is a write
 	// operation.
-	Writes Predicate = opKindPred{kind: OpIsWrite}
+	Writes Predicate = OpKindIn("Writes", WriteOps)
 )
 
-type opFileWrite struct{}
+// OpKindIn returns a predicate that evaluates to true if an operation's kind is
+// in the given set.
+func OpKindIn(desc string, kinds OpKinds) Predicate {
+	return opKindPred{desc: desc, kinds: kinds}
+}
 
-func (o opFileWrite) String() string      { return "OpFileWrite" }
-func (o opFileWrite) Evaluate(op Op) bool { return op.Kind == OpFileWrite }
+type opKindPred struct {
+	desc  string
+	kinds OpKinds
+}
+
+func (p opKindPred) String() string      { return p.desc }
+func (p opKindPred) Evaluate(op Op) bool { return p.kinds.Contains(op.Kind) }
 
 type opFileReadAt struct {
 	// offset configures the predicate to evaluate to true only if the
@@ -76,13 +90,6 @@ func (o *opFileReadAt) String() string {
 func (o *opFileReadAt) Evaluate(op Op) bool {
 	return op.Kind == OpFileReadAt && o.offset == op.Offset
 }
-
-type opKindPred struct {
-	kind OpReadWrite
-}
-
-func (p opKindPred) String() string      { return p.kind.String() }
-func (p opKindPred) Evaluate(op Op) bool { return p.kind == op.Kind.ReadOrWrite() }
 
 // Randomly constructs a new predicate that pseudorandomly evaluates to true
 // with probability p using randomness determinstically derived from seed.
@@ -172,7 +179,7 @@ func NewParser() *Parser {
 	}
 	p.predicates.DefineConstant("Reads", func() dsl.Predicate[Op] { return Reads })
 	p.predicates.DefineConstant("Writes", func() dsl.Predicate[Op] { return Writes })
-	p.predicates.DefineConstant("OpFileWrite", func() dsl.Predicate[Op] { return opFileWrite{} })
+	p.predicates.DefineConstant("OpFileWrite", func() dsl.Predicate[Op] { return OpKindIn("OpFileWrite", MakeOpKinds(OpFileWrite)) })
 	p.predicates.DefineFunc("PathMatch",
 		func(p *dsl.Parser[dsl.Predicate[Op]], s *dsl.Scanner) dsl.Predicate[Op] {
 			pattern := s.ConsumeString()
