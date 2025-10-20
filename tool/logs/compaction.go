@@ -20,12 +20,117 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/ascii"
+	"github.com/cockroachdb/pebble/internal/ascii/table"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/spf13/cobra"
 )
 
 const numLevels = manifest.NumLevels
+
+var (
+	compactionTable = table.Define[compactionTableRow](
+		table.String("kind", 7, table.AlignLeft, func(r compactionTableRow) string { return r.Kind }),
+		table.Div(),
+		table.String("from", 4, table.AlignRight, func(r compactionTableRow) string { return r.From }),
+		table.Div(),
+		table.String("to", 3, table.AlignRight, func(r compactionTableRow) string { return r.To }),
+		table.Div(),
+		table.Int("def", 3, table.AlignRight, func(r compactionTableRow) int { return r.Default }),
+		table.Div(),
+		table.Int("move", 4, table.AlignRight, func(r compactionTableRow) int { return r.Move }),
+		table.Div(),
+		table.Int("elide", 5, table.AlignRight, func(r compactionTableRow) int { return r.Elide }),
+		table.Div(),
+		table.Int("del", 3, table.AlignRight, func(r compactionTableRow) int { return r.Delete }),
+		table.Div(),
+		table.Int("blob", 4, table.AlignRight, func(r compactionTableRow) int { return r.Blob }),
+		table.Div(),
+		table.Int("cnt", 3, table.AlignRight, func(r compactionTableRow) int { return r.Count }),
+		table.Div(),
+		table.Bytes("in(B)", 5, table.AlignRight, func(r compactionTableRow) uint64 { return r.BytesIn }),
+		table.Div(),
+		table.Bytes("out(B)", 6, table.AlignRight, func(r compactionTableRow) uint64 { return r.BytesOut }),
+		table.Div(),
+		table.Bytes("mov(B)", 6, table.AlignRight, func(r compactionTableRow) uint64 { return r.BytesMoved }),
+		table.Div(),
+		table.Bytes("del(B)", 6, table.AlignRight, func(r compactionTableRow) uint64 { return r.BytesDel }),
+		table.Div(),
+		table.String("time", 4, table.AlignRight, func(r compactionTableRow) string { return r.Duration }),
+	)
+
+	flushIngestTable = table.Define[flushIngestTableRow](
+		table.String("kind", 7, table.AlignLeft, func(r flushIngestTableRow) string { return r.Kind }),
+		table.Div(),
+		table.String("from", 4, table.AlignRight, func(r flushIngestTableRow) string { return r.From }),
+		table.Div(),
+		table.String("to", 3, table.AlignRight, func(r flushIngestTableRow) string { return r.To }),
+		table.Div(),
+		table.Int("cnt", 3, table.AlignRight, func(r flushIngestTableRow) int { return r.Count }),
+		table.Div(),
+		table.Bytes("bytes", 5, table.AlignRight, func(r flushIngestTableRow) uint64 { return r.Bytes }),
+		table.Div(),
+		table.String("time", 4, table.AlignRight, func(r flushIngestTableRow) string { return r.Duration }),
+	)
+
+	longRunningTable = table.Define[longRunningTableRow](
+		table.String("kind", 7, table.AlignLeft, func(r longRunningTableRow) string { return r.Kind }),
+		table.Div(),
+		table.String("from", 4, table.AlignRight, func(r longRunningTableRow) string { return r.From }),
+		table.Div(),
+		table.String("to", 3, table.AlignRight, func(r longRunningTableRow) string { return r.To }),
+		table.Div(),
+		table.Int("job", 4, table.AlignRight, func(r longRunningTableRow) int { return r.Job }),
+		table.Div(),
+		table.String("type", 6, table.AlignRight, func(r longRunningTableRow) string { return r.Type }),
+		table.Div(),
+		table.String("start", 7, table.AlignRight, func(r longRunningTableRow) string { return r.Start }),
+		table.Div(),
+		table.String("end", 7, table.AlignRight, func(r longRunningTableRow) string { return r.End }),
+		table.Div(),
+		table.Float("dur(s)", 7, table.AlignRight, func(r longRunningTableRow) float64 { return r.DurationSeconds }),
+		table.Div(),
+		table.Bytes("bytes", 5, table.AlignRight, func(r longRunningTableRow) uint64 { return r.Bytes }),
+	)
+)
+
+type compactionTableRow struct {
+	Kind       string
+	From       string
+	To         string
+	Default    int
+	Move       int
+	Elide      int
+	Delete     int
+	Blob       int
+	Count      int
+	BytesIn    uint64
+	BytesOut   uint64
+	BytesMoved uint64
+	BytesDel   uint64
+	Duration   string
+}
+
+type flushIngestTableRow struct {
+	Kind     string
+	From     string
+	To       string
+	Count    int
+	Bytes    uint64
+	Duration string
+}
+
+type longRunningTableRow struct {
+	Kind            string
+	From            string
+	To              string
+	Job             int
+	Type            string
+	Start           string
+	End             string
+	DurationSeconds float64
+	Bytes           uint64
+}
 
 var (
 	// Captures a common logging prefix that can be used as the context for the
@@ -623,50 +728,68 @@ func (s windowSummary) String() string {
 		sum += ra.readAmp
 	}
 	sb.WriteString(fmt.Sprintf("  r-amp: %.1f\n", float64(sum)/float64(count)))
+	sb.WriteString("\n")
 
 	// Print flush+ingest statistics.
 	{
-		var headerWritten bool
-		maybeWriteHeader := func() {
-			if !headerWritten {
-				sb.WriteString("_kind______from______to_____________________________________count___bytes______time\n")
-				headerWritten = true
-			}
-		}
+		var flushIngestRows []flushIngestTableRow
+		var totalCount, totalBytes int
+		var totalTime time.Duration
 
 		if s.flushedCount > 0 {
-			maybeWriteHeader()
-			fmt.Fprintf(&sb, "%-7s         %7s                                   %7d %7s %9s\n",
-				"flush", "L0", s.flushedCount, humanize.Bytes.Uint64(s.flushedBytes),
-				s.flushedTime.Truncate(time.Second))
+			flushIngestRows = append(flushIngestRows, flushIngestTableRow{
+				Kind:     "flush",
+				From:     "",
+				To:       "L0",
+				Count:    s.flushedCount,
+				Bytes:    s.flushedBytes,
+				Duration: s.flushedTime.Truncate(time.Second).String(),
+			})
+			totalCount += s.flushedCount
+			totalBytes += int(s.flushedBytes)
+			totalTime += s.flushedTime
 		}
 
-		count := s.flushedCount
-		sum := s.flushedBytes
-		totalTime := s.flushedTime
 		for l := 0; l < len(s.ingestedBytes); l++ {
 			if s.ingestedCount[l] == 0 {
 				continue
 			}
-			maybeWriteHeader()
-			fmt.Fprintf(&sb, "%-7s         %7s                                   %7d %7s\n",
-				"ingest", fmt.Sprintf("L%d", l), s.ingestedCount[l], humanize.Bytes.Uint64(s.ingestedBytes[l]))
-			count += s.ingestedCount[l]
-			sum += s.ingestedBytes[l]
+			flushIngestRows = append(flushIngestRows, flushIngestTableRow{
+				Kind:     "ingest",
+				From:     "",
+				To:       fmt.Sprintf("L%d", l),
+				Count:    s.ingestedCount[l],
+				Bytes:    s.ingestedBytes[l],
+				Duration: "",
+			})
+			totalCount += s.ingestedCount[l]
+			totalBytes += int(s.ingestedBytes[l])
 		}
-		if headerWritten {
-			fmt.Fprintf(&sb, "total                                                     %7d %7s %9s\n",
-				count, humanize.Bytes.Uint64(sum), totalTime.Truncate(time.Second),
-			)
+
+		if len(flushIngestRows) > 0 {
+			flushIngestRows = append(flushIngestRows, flushIngestTableRow{
+				Kind:     "total",
+				From:     "",
+				To:       "",
+				Count:    totalCount,
+				Bytes:    uint64(totalBytes),
+				Duration: totalTime.Truncate(time.Second).String(),
+			})
+
+			board := ascii.Make(20, 1)
+			flushIngestTable.Render(board.At(0, 0), table.RenderOptions{}, flushIngestRows...)
+			sb.WriteString(board.String())
+			sb.WriteString("\n")
 		}
 	}
 
 	// Print compactions statistics.
 	if len(s.compactionCounts) > 0 {
-		sb.WriteString("_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time\n")
+		var compactionRows []compactionTableRow
 		var totalDef, totalMove, totalElision, totalDel, totalBlob int
 		var totalBytesIn, totalBytesOut, totalBytesMoved, totalBytesDel uint64
 		var totalTime time.Duration
+
 		for _, p := range pairs {
 			def := p.counts[compactionTypeDefault]
 			move := p.counts[compactionTypeMove]
@@ -675,12 +798,22 @@ func (s windowSummary) String() string {
 			blob := p.counts[compactionTypeBlobRewrite]
 			total := def + move + elision + del + blob
 
-			str := fmt.Sprintf("%-7s %7s %7s   %7d %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
-				"compact", p.ft.from, p.ft.to, def, move, elision, del, blob, total,
-				humanize.Bytes.Uint64(p.bytesIn), humanize.Bytes.Uint64(p.bytesOut),
-				humanize.Bytes.Uint64(p.bytesMoved), humanize.Bytes.Uint64(p.bytesDel),
-				p.duration.Truncate(time.Second))
-			sb.WriteString(str)
+			compactionRows = append(compactionRows, compactionTableRow{
+				Kind:       "compact",
+				From:       p.ft.from.String(),
+				To:         p.ft.to.String(),
+				Default:    def,
+				Move:       move,
+				Elide:      elision,
+				Delete:     del,
+				Blob:       blob,
+				Count:      total,
+				BytesIn:    p.bytesIn,
+				BytesOut:   p.bytesOut,
+				BytesMoved: p.bytesMoved,
+				BytesDel:   p.bytesDel,
+				Duration:   p.duration.Truncate(time.Second).String(),
+			})
 
 			totalDef += def
 			totalMove += move
@@ -693,17 +826,34 @@ func (s windowSummary) String() string {
 			totalBytesDel += p.bytesDel
 			totalTime += p.duration
 		}
-		sb.WriteString(fmt.Sprintf("total         %19d %7d %7d %7d %7d %7d %7s %7s %7s %7s %9s\n",
-			totalDef, totalMove, totalElision, totalDel, totalBlob, s.eventCount,
-			humanize.Bytes.Uint64(totalBytesIn), humanize.Bytes.Uint64(totalBytesOut),
-			humanize.Bytes.Uint64(totalBytesMoved), humanize.Bytes.Uint64(totalBytesDel),
-			totalTime.Truncate(time.Second)))
+
+		compactionRows = append(compactionRows, compactionTableRow{
+			Kind:       "total",
+			From:       "",
+			To:         "",
+			Default:    totalDef,
+			Move:       totalMove,
+			Elide:      totalElision,
+			Delete:     totalDel,
+			Blob:       totalBlob,
+			Count:      s.eventCount,
+			BytesIn:    totalBytesIn,
+			BytesOut:   totalBytesOut,
+			BytesMoved: totalBytesMoved,
+			BytesDel:   totalBytesDel,
+			Duration:   totalTime.Truncate(time.Second).String(),
+		})
+
+		board := ascii.Make(20, 1)
+		compactionTable.Render(board.At(0, 0), table.RenderOptions{}, compactionRows...)
+		sb.WriteString(board.String())
+		sb.WriteString("\n\n")
 	}
 
 	// (Optional) Long running events.
 	if len(s.longRunning) > 0 {
 		sb.WriteString("long-running events (descending runtime):\n")
-		sb.WriteString("_kind________from________to_______job______type_____start_______end____dur(s)_____bytes:\n")
+		var longRunningRows []longRunningTableRow
 		for _, e := range s.longRunning {
 			if e.compaction != nil {
 				c := e.compaction
@@ -713,12 +863,23 @@ func (s windowSummary) String() string {
 				} else if c.fromLevel == -2 {
 					kind = "blob"
 				}
-				sb.WriteString(fmt.Sprintf("%-7s %9s %9s %9d %9s %9s %9s %9.0f %9s\n",
-					kind, level(c.fromLevel), level(c.toLevel), e.jobID, c.cType,
-					e.timeStart.Format(timeFmtHrMinSec), e.timeEnd.Format(timeFmtHrMinSec),
-					e.timeEnd.Sub(e.timeStart).Seconds(), humanize.Bytes.Uint64(c.outputBytes)))
+				longRunningRows = append(longRunningRows, longRunningTableRow{
+					Kind:            kind,
+					From:            level(c.fromLevel).String(),
+					To:              level(c.toLevel).String(),
+					Job:             e.jobID,
+					Type:            c.cType.String(),
+					Start:           e.timeStart.Format(timeFmtHrMinSec),
+					End:             e.timeEnd.Format(timeFmtHrMinSec),
+					DurationSeconds: e.timeEnd.Sub(e.timeStart).Seconds(),
+					Bytes:           c.outputBytes,
+				})
 			}
 		}
+		board := ascii.Make(20, 1)
+		longRunningTable.Render(board.At(0, 0), table.RenderOptions{}, longRunningRows...)
+		sb.WriteString(board.String())
+		sb.WriteString("\n")
 	}
 
 	return sb.String()
