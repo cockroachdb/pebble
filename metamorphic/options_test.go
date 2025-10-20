@@ -85,6 +85,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.RemoteStorage:",
 		"Experimental.SingleDeleteInvariantViolationCallback:",
 		"Experimental.EnableDeleteOnlyCompactionExcises:",
+		"Experimental.TombstoneDenseCompactionThreshold:",
 		"Experimental.ValueSeparationPolicy:",
 		"Levels[0].Compression:",
 		"Levels[1].Compression:",
@@ -115,6 +116,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		expectEqualFn(t, o.Opts.Experimental.DisableIngestAsFlushable, parsed.Opts.Experimental.DisableIngestAsFlushable)
 		expectEqualFn(t, o.Opts.Experimental.IngestSplit, parsed.Opts.Experimental.IngestSplit)
 		expectEqualFn(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency, parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency)
+		expectEqualFn(t, o.Opts.Experimental.TombstoneDenseCompactionThreshold, parsed.Opts.Experimental.TombstoneDenseCompactionThreshold)
 		expectEqualFn(t, o.Opts.Experimental.ValueSeparationPolicy, parsed.Opts.Experimental.ValueSeparationPolicy)
 		expectEqualFn(t, o.Opts.TargetByteDeletionRate, parsed.Opts.TargetByteDeletionRate)
 
