@@ -493,7 +493,11 @@ type DB struct {
 		}
 
 		snapshots struct {
-			// The list of active snapshots.
+			// The list of active snapshots, including EFOS snapshots that have not
+			// transitioned. An EFOS snapshot that transitions to FOS is removed
+			// from this list atomically with the transition (using DB.mu). A closed
+			// snapshot (including an EFOS snapshot) may still be in this list
+			// transiently, since the removal is not atomic with the close.
 			snapshotList
 
 			// The cumulative count and size of snapshot-pinned keys written to
