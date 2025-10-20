@@ -336,7 +336,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.Experimental.ReadSamplingMultiplier = 400
 			opts.Experimental.NumDeletionsThreshold = 500
 			opts.Experimental.DeletionSizeRatioThreshold = 0.7
-			opts.Experimental.TombstoneDenseCompactionThreshold = 0.2
+			opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.2 }
 			opts.Experimental.FileCacheShards = 500
 			opts.Experimental.MaxWriterConcurrency = 1
 			opts.Experimental.ForceWriterParallelism = true
