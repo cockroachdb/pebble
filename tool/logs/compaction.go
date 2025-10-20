@@ -46,6 +46,8 @@ var (
 		table.Div(),
 		table.Int("blob", 4, table.AlignRight, func(r compactionTableRow) int { return r.Blob }),
 		table.Div(),
+		table.Int("virt", 4, table.AlignRight, func(r compactionTableRow) int { return r.Virtual }),
+		table.Div(),
 		table.Int("cnt", 3, table.AlignRight, func(r compactionTableRow) int { return r.Count }),
 		table.Div(),
 		table.Bytes("in(B)", 5, table.AlignRight, func(r compactionTableRow) uint64 { return r.BytesIn }),
@@ -103,6 +105,7 @@ type compactionTableRow struct {
 	Elide      int
 	Delete     int
 	Blob       int
+	Virtual    int
 	Count      int
 	BytesIn    uint64
 	BytesOut   uint64
@@ -305,6 +308,7 @@ const (
 	compactionTypeElisionOnly
 	compactionTypeRead
 	compactionTypeBlobRewrite
+	compactionTypeVirtualRewrite
 )
 
 // String implements fmt.Stringer.
@@ -322,6 +326,8 @@ func (c compactionType) String() string {
 		return "read"
 	case compactionTypeBlobRewrite:
 		return "blob-rewrite"
+	case compactionTypeVirtualRewrite:
+		return "virtual-sst-rewrite"
 	default:
 		panic(errors.Newf("unknown compaction type: %s", c))
 	}
@@ -343,6 +349,8 @@ func parseCompactionType(s string) (t compactionType, err error) {
 		t = compactionTypeRead
 	case "blob-rewrite":
 		t = compactionTypeBlobRewrite
+	case "virtual-sst-rewrite":
+		t = compactionTypeVirtualRewrite
 	default:
 		err = errors.Newf("unknown compaction type: %s", s)
 	}
@@ -779,14 +787,14 @@ func (s windowSummary) String() string {
 			board := ascii.Make(20, 1)
 			flushIngestTable.Render(board.At(0, 0), table.RenderOptions{}, flushIngestRows...)
 			sb.WriteString(board.String())
-			sb.WriteString("\n")
+			sb.WriteString("\n\n")
 		}
 	}
 
 	// Print compactions statistics.
 	if len(s.compactionCounts) > 0 {
 		var compactionRows []compactionTableRow
-		var totalDef, totalMove, totalElision, totalDel, totalBlob int
+		var totalDef, totalMove, totalElision, totalDel, totalBlob, totalVirtual int
 		var totalBytesIn, totalBytesOut, totalBytesMoved, totalBytesDel uint64
 		var totalTime time.Duration
 
@@ -796,7 +804,8 @@ func (s windowSummary) String() string {
 			elision := p.counts[compactionTypeElisionOnly]
 			del := p.counts[compactionTypeDeleteOnly]
 			blob := p.counts[compactionTypeBlobRewrite]
-			total := def + move + elision + del + blob
+			virtual := p.counts[compactionTypeVirtualRewrite]
+			total := def + move + elision + del + blob + virtual
 
 			compactionRows = append(compactionRows, compactionTableRow{
 				Kind:       "compact",
@@ -807,6 +816,7 @@ func (s windowSummary) String() string {
 				Elide:      elision,
 				Delete:     del,
 				Blob:       blob,
+				Virtual:    virtual,
 				Count:      total,
 				BytesIn:    p.bytesIn,
 				BytesOut:   p.bytesOut,
@@ -820,6 +830,7 @@ func (s windowSummary) String() string {
 			totalElision += elision
 			totalDel += del
 			totalBlob += blob
+			totalVirtual += virtual
 			totalBytesIn += p.bytesIn
 			totalBytesOut += p.bytesOut
 			totalBytesMoved += p.bytesMoved
@@ -836,6 +847,7 @@ func (s windowSummary) String() string {
 			Elide:      totalElision,
 			Delete:     totalDel,
 			Blob:       totalBlob,
+			Virtual:    totalVirtual,
 			Count:      s.eventCount,
 			BytesIn:    totalBytesIn,
 			BytesOut:   totalBytesOut,
@@ -862,6 +874,8 @@ func (s windowSummary) String() string {
 					kind = "flush"
 				} else if c.fromLevel == -2 {
 					kind = "blob"
+				} else if c.cType == compactionTypeVirtualRewrite {
+					kind = "virtual"
 				}
 				longRunningRows = append(longRunningRows, longRunningTableRow{
 					Kind:            kind,
@@ -879,7 +893,7 @@ func (s windowSummary) String() string {
 		board := ascii.Make(20, 1)
 		longRunningTable.Render(board.At(0, 0), table.RenderOptions{}, longRunningRows...)
 		sb.WriteString(board.String())
-		sb.WriteString("\n")
+		sb.WriteString("\n\n")
 	}
 
 	return sb.String()
