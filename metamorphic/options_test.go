@@ -82,6 +82,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.RemoteStorage:",
 		"Experimental.SingleDeleteInvariantViolationCallback:",
 		"Experimental.EnableDeleteOnlyCompactionExcises:",
+		"Experimental.TombstoneDenseCompactionThreshold:",
 		"Levels[0].Compression:",
 		"Levels[1].Compression:",
 		"Levels[2].Compression:",
@@ -119,6 +120,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 			require.Equal(t, o.Opts.Experimental.IngestSplit(), parsed.Opts.Experimental.IngestSplit())
 		}
 		require.Equal(t, o.Opts.TargetByteDeletionRate(), parsed.Opts.TargetByteDeletionRate())
+		require.Equal(t, o.Opts.Experimental.TombstoneDenseCompactionThreshold(), parsed.Opts.Experimental.TombstoneDenseCompactionThreshold())
 
 		expBaseline, expUpper := o.Opts.CompactionConcurrencyRange()
 		parsedBaseline, parsedUpper := parsed.Opts.CompactionConcurrencyRange()
