@@ -2241,8 +2241,16 @@ func (d *DB) ingestApply(
 	if exciseSpan.Valid() {
 		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
 			// Skip non-EFOS snapshots, and also skip any EFOS that were created
-			// *after* the excise.
-			if s.efos == nil || base.Visible(exciseSeqNum, s.efos.seqNum, base.SeqNumMax) {
+			// *after* the excise, or are already closed.
+			//
+			// NB: this code can race with EventuallyFileOnlySnapshot.Close, which
+			// closes the channel that isClosed() reads, without holding DB.mu. This
+			// is harmless: if this code observes !isClosed, that means the EFOS was
+			// not closed until after the excise has already updated the LSM state.
+			// It is then fair to confirm that the EFOS did not overlap with the
+			// excise.
+			if s.efos == nil || base.Visible(exciseSeqNum, s.efos.seqNum, base.SeqNumMax) ||
+				s.efos.isClosed() {
 				continue
 			}
 			efos := s.efos
@@ -2252,7 +2260,13 @@ func (d *DB) ingestApply(
 			// snapshot.
 			for i := range efos.protectedRanges {
 				if efos.protectedRanges[i].OverlapsKeyRange(d.cmp, exciseSpan) {
-					panic("unexpected excise of an EventuallyFileOnlySnapshot's bounds")
+					panic(errors.AssertionFailedf(
+						"unexpected excise of an EventuallyFileOnlySnapshot's bounds: "+
+							"excise [%s, %s) seqnum: %s, efos [%s, %s) seqnum: %s transitioned: %t closed: %t visible: %s",
+						d.opts.Comparer.FormatKey(exciseSpan.Start), d.opts.Comparer.FormatKey(exciseSpan.End),
+						exciseSeqNum, d.opts.Comparer.FormatKey(efos.protectedRanges[i].Start),
+						d.opts.Comparer.FormatKey(efos.protectedRanges[i].End), efos.seqNum,
+						efos.hasTransitioned(), efos.isClosed(), d.mu.versions.visibleSeqNum.Load()))
 				}
 			}
 		}

@@ -377,6 +377,15 @@ func (es *EventuallyFileOnlySnapshot) hasTransitioned() bool {
 	return es.mu.vers != nil
 }
 
+func (es *EventuallyFileOnlySnapshot) isClosed() bool {
+	select {
+	case <-es.closed:
+		return true
+	default:
+		return false
+	}
+}
+
 // waitForFlush waits for a flush on any memtables that need to be flushed
 // before this EFOS can transition to a file-only snapshot. If this EFOS is
 // waiting on a flush of the mutable memtable, it forces a rotation within
