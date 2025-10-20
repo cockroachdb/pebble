@@ -15,20 +15,28 @@ I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:60
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to_____________________________________count___bytes______time
-flush                L0                                         1   1.3MB       10s
-total                                                           1   1.3MB       10s
+
+kind    | from |  to | cnt | bytes | time
+--------+------+-----+-----+-------+-----
+flush   |      |  L0 |   1 | 1.3MB |  10s
+total   |      |     |   1 | 1.3MB |  10s
+----
+----
 
 # Same as the previous case, except that the start and end events are are split
 # across multiple files (one log line per file).
@@ -58,20 +66,28 @@ I211215 00:01:20.000000 21136 3@vendor/github.com/cockroachdb/pebble/event.go:60
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to_____________________________________count___bytes______time
-flush                L0                                         1   1.3MB       10s
-total                                                           1   1.3MB       10s
+
+kind    | from |  to | cnt | bytes | time
+--------+------+-----+-----+-------+-----
+flush   |      |  L0 |   1 | 1.3MB |  10s
+total   |      |     |   1 | 1.3MB |  10s
+----
+----
 
 # Read amplification from the Cockroach log, one within an existing window,
 # another outside of the existing window. The latter is not included.
@@ -105,13 +121,19 @@ WAL: 1 files (54MB)  in: 65GB  written: 70B (8% overhead)
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: 5.0
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
+----
+----
 
 # Long running compaction.
 
@@ -126,16 +148,23 @@ I211215 00:03:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 summarize long-running=1m
 ----
+----
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B     2m10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B     2m10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) |  time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+------
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B | 2m10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B | 2m10s
+
 long-running events (descending runtime):
-_kind________from________to_______job______type_____start_______end____dur(s)_____bytes:
-compact        L2        L3         1   default  00:01:10  00:03:20       130      13MB
+kind    | from |  to |  job |    type |    start |      end |  dur(s) | bytes
+--------+------+-----+------+---------+----------+----------+---------+------
+compact |   L2 |  L3 |    1 | default | 00:01:10 | 00:03:20 |  130.00 |  13MB
+----
+----
 
 # Single node, multiple stores.
 
@@ -153,20 +182,29 @@ I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
 node: 1, store: 2
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L3      L4         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
+----
+----
 
 # Multiple nodes, single stores. Two separate pebble logs.
 
@@ -187,20 +225,29 @@ I211215 00:01:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
 node: 2, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L3      L4         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
+----
+----
 
 # Multiple nodes, multiple stores. Two separate pebble logs. Output is sorted by
 # (time, node, store).
@@ -228,34 +275,49 @@ I211215 00:02:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 summarize
 ----
+----
 node: 2, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L3      L4         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
 node: 1, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L1      L2         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L1 |  L2 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L4      L5         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L4 |  L5 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
+----
+----
 
 # Log lines with an absent node / store are aggregated.
 
@@ -288,13 +350,19 @@ WAL: 1 files (54MB)  in: 65GB  written: 70B (8% overhead)
 
 summarize
 ----
+----
 node: ?, store: ?
    from: 211215 00:01
      to: 211215 00:02
   r-amp: 5.0
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
+----
+----
 
 # The same Job ID interleaved for multiple nodes / stores.
 
@@ -311,20 +379,29 @@ I211215 00:02:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L4      L5         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L4 |  L5 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
+----
+----
 
 # Read amp matching should remain backwards compatible.
 
@@ -372,13 +449,19 @@ I220301 00:00:30.000000 315 kv/kvserver/store.go:2713 ⋮ [n1,s1] 78 +Ingestions
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 220301 00:00
      to: 220301 00:01
   r-amp: 1.0
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L2      L3         1       0       0       0       0       1    13MB    13MB      0B      0B       10s
-total                           1       0       0       0       0       1    13MB    13MB      0B      0B       10s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+
+----
+----
 
 reset
 ----
@@ -416,13 +499,18 @@ I220228 14:44:32.138686 18460916022 3@vendor/github.com/cockroachdb/pebble/compa
 
 summarize
 ----
+----
 node: 24, store: 24
    from: 220228 14:44
      to: 220228 14:45
   r-amp: NaN
-_kind______from______to_____________________________________count___bytes______time
-flush                L0                                         1    19MB        0s
-total                                                           1    19MB        0s
+
+kind    | from |  to | cnt | bytes | time
+--------+------+-----+-----+-------+-----
+flush   |      |  L0 |   1 |  19MB |   0s
+total   |      |     |   1 |  19MB |   0s
+----
+----
 
 reset
 ----
@@ -435,21 +523,28 @@ I220228 16:01:22.487906 18476248525 3@vendor/github.com/cockroachdb/pebble/inges
 
 summarize
 ----
+----
 node: 24, store: 24
    from: 220228 15:58
      to: 220228 15:59
   r-amp: NaN
-_kind______from______to_____________________________________count___bytes______time
-ingest               L0                                         3   140MB
-ingest               L5                                         3   3.6KB
-total                                                           6   140MB        0s
+
+kind    | from |  to | cnt | bytes | time
+--------+------+-----+-----+-------+-----
+ingest  |      |  L0 |   3 | 140MB |
+ingest  |      |  L5 |   3 | 3.6KB |
+total   |      |     |   6 | 140MB |   0s
 node: 24, store: 24
    from: 220228 16:01
      to: 220228 16:02
   r-amp: NaN
-_kind______from______to_____________________________________count___bytes______time
-ingest               L0                                         6   160MB
-total                                                           6   160MB        0s
+
+kind    | from |  to | cnt | bytes | time
+--------+------+-----+-----+-------+-----
+ingest  |      |  L0 |   6 | 160MB |
+total   |      |     |   6 | 160MB |   0s
+----
+----
 
 reset
 ----
@@ -468,14 +563,20 @@ I220907 00:27:21.631002 15082710354 3@vendor/github.com/cockroachdb/pebble/event
 
 summarize
 ----
+----
 node: 15, store: 15
    from: 220907 00:27
      to: 220907 00:28
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact      L5      L6         1       1       0       0       0       2   128MB   3.6MB   4.0MB      0B        1s
-compact      L6      L6         0       0       0       1       0       1      0B      0B      0B    11MB        0s
-total                           1       1       0       1       0       3   128MB   3.6MB   4.0MB    11MB        1s
+
+kind    | from |  to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact |   L5 |  L6 |   1 |    1 |     0 |   0 |    0 |   2 | 128MB |  3.6MB |    4MB |     0B |   1s
+compact |   L6 |  L6 |   0 |    0 |     0 |   1 |    0 |   1 |    0B |     0B |     0B |   11MB |   0s
+total   |      |     |   1 |    1 |     0 |   1 |    0 |   3 | 128MB |  3.6MB |    4MB |   11MB |   1s
+
+----
+----
 
 reset
 ----
@@ -489,14 +590,19 @@ I230831 04:13:28.689575 3717 3@pebble/event.go:685 ⋮ [n10,s10,pebble] 345  [JO
 
 summarize
 ----
+----
 node: 10, store: 10
    from: 230831 04:13
      to: 230831 04:14
   r-amp: NaN
-_kind______from______to_____________________________________count___bytes______time
-ingest               L0                                        10    77KB
-ingest               L2                                         2   2.2KB
-total                                                          12    79KB        0s
+
+kind    | from |  to | cnt | bytes | time
+--------+------+-----+-----+-------+-----
+ingest  |      |  L0 |  10 |  77KB |
+ingest  |      |  L2 |   2 | 2.2KB |
+total   |      |     |  12 |  79KB |   0s
+----
+----
 
 reset
 ----
@@ -514,14 +620,20 @@ I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compacti
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact    BLOB    BLOB         0       0       0       0       1       1    209B    203B      0B      0B        1s
-compact      L2      L3         1       0       0       0       0       1    314B    314B      0B      0B       10s
-total                           1       0       0       0       1       2    523B    517B      0B      0B       11s
+
+kind    | from |   to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+------+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact | BLOB | BLOB |   0 |    0 |     0 |   0 |    1 |   1 |  209B |   203B |     0B |     0B |   1s
+compact |   L2 |   L3 |   1 |    0 |     0 |   0 |    0 |   1 |  314B |   314B |     0B |     0B |  10s
+total   |      |      |   1 |    0 |     0 |   0 |    1 |   2 |  523B |   517B |     0B |     0B |  11s
+
+----
+----
 
 reset
 ----
@@ -540,10 +652,16 @@ I211215 00:00:07.000000 51831534 3@vendor/github.com/cockroachdb/pebble/compacti
 
 summarize
 ----
+----
 node: 1, store: 1
    from: 211215 00:00
      to: 211215 00:01
   r-amp: NaN
-_kind______from______to___default____move___elide__delete____blob___count___in(B)__out(B)__mov(B)__del(B)______time
-compact    BLOB    BLOB         0       0       0       0       2       2    300B    248B      0B      0B        3s
-total                           0       0       0       0       2       2    300B    248B      0B      0B        3s
+
+kind    | from |   to | def | move | elide | del | blob | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+------+-----+------+-------+-----+------+-----+-------+--------+--------+--------+-----
+compact | BLOB | BLOB |   0 |    0 |     0 |   0 |    2 |   2 |  300B |   248B |     0B |     0B |   3s
+total   |      |      |   0 |    0 |     0 |   0 |    2 |   2 |  300B |   248B |     0B |     0B |   3s
+
+----
+----
