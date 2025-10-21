@@ -109,8 +109,10 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 	defer maybeCleanUp(dataDir.Close)
 
+	var dirLocks base.DirLockSet
+
 	// Lock the database directory.
-	fileLock, err := base.AcquireOrValidateDirectoryLock(opts.Lock, dirname, opts.FS)
+	fileLock, err := dirLocks.AcquireOrValidate(opts.Lock, dirname, opts.FS)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +338,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	// Lock the dedicated WAL directory, if configured.
 	if walDirname != dirname {
-		walOpts.Primary.Lock, err = base.AcquireOrValidateDirectoryLock(opts.WALDirLock, walDirname, opts.FS)
+		walOpts.Primary.Lock, err = dirLocks.AcquireOrValidate(opts.WALDirLock, walDirname, opts.FS)
 		if err != nil {
 			return nil, err
 		}
@@ -346,7 +348,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		// Lock the secondary WAL directory, if distinct from the data directory
 		// and primary WAL directory.
 		if secondaryWalDirName != dirname && secondaryWalDirName != walDirname {
-			walOpts.Secondary.Lock, err = base.AcquireOrValidateDirectoryLock(
+			walOpts.Secondary.Lock, err = dirLocks.AcquireOrValidate(
 				opts.WALFailover.Secondary.Lock, secondaryWalDirName, opts.WALFailover.Secondary.FS)
 			if err != nil {
 				return nil, err
@@ -359,21 +361,13 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		})
 	}
 	walDirs := walOpts.Dirs()
-	walRecoveryLocks := make([]*base.DirLock, len(opts.WALRecoveryDirs))
-	defer func() {
-		// We only need the recovery WALs during Open, so we can release
-		// the locks after the WALs have been scanned.
-		for _, l := range walRecoveryLocks {
-			if l != nil {
-				_ = l.Close()
-			}
-		}
-	}()
-	for i, dir := range opts.WALRecoveryDirs {
+	var recoveryDirLocks base.DirLockSet
+	defer func() { _ = recoveryDirLocks.Close() }()
+	for _, dir := range opts.WALRecoveryDirs {
 		dir.Dirname = resolveStorePath(dirname, dir.Dirname)
 		if dir.Dirname != dirname {
 			// Acquire a lock on the WAL recovery directory.
-			walRecoveryLocks[i], err = base.AcquireOrValidateDirectoryLock(dir.Lock, dir.Dirname, dir.FS)
+			_, err = recoveryDirLocks.AcquireOrValidate(dir.Lock, dir.Dirname, dir.FS)
 			if err != nil {
 				return nil, errors.Wrapf(err, "error acquiring lock on WAL recovery directory %q", dir.Dirname)
 			}
