@@ -240,6 +240,12 @@ func TestOpen_WALFailover(t *testing.T) {
 				switch cmdArg.Key {
 				case "path":
 					o.FS, dataDir = extractFSAndPath(cmdArg)
+				case "wal-dir":
+					fs, dir := extractFSAndPath(cmdArg)
+					if fs != o.FS {
+						td.Fatalf(t, "WAL fs differs from data fs")
+					}
+					o.WALDir = dir
 				case "secondary":
 					fs, dir := extractFSAndPath(cmdArg)
 					o.WALFailover = &WALFailoverOptions{
@@ -248,6 +254,8 @@ func TestOpen_WALFailover(t *testing.T) {
 				case "wal-recovery-dir":
 					fs, dir := extractFSAndPath(cmdArg)
 					o.WALRecoveryDirs = append(o.WALRecoveryDirs, wal.Dir{FS: fs, Dirname: dir})
+				case "allow-missing-wal-dirs":
+					o.Unsafe.AllowMissingWALDirs = true
 				default:
 					return fmt.Sprintf("unrecognized cmdArg %q", cmdArg.Key)
 				}
