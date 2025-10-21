@@ -69,3 +69,52 @@ directory "secondary-wals" may contain relevant WALs but is not in WALRecoveryDi
 open path=(a,data) wal-recovery-dir=(b,secondary-wals)
 ----
 ok
+
+open path=(c,data) wal-dir=(c,wal1)
+----
+ok
+
+# We cannot change the WAL directory without providing the previous one as a recovery dir.
+open path=(c,data) wal-dir=(c,wal2)
+----
+directory "wal1" may contain relevant WALs but is not in WALRecoveryDirs
+  WALDir changed from previous options
+  o.WALDir: "wal2"
+  o.WALRecoveryDirs: 0
+
+open path=(c,data) wal-dir=(c,wal2) wal-recovery-dir=(c,wal1)
+----
+ok
+
+# Once we opened the database once (and thus replayed any WALs in the previous
+# WAL dir), we can open without a recovery dir.
+open path=(c,data) wal-dir=(c,wal2)
+----
+ok
+
+open path=(c,data) wal-dir=(c,wal3)
+----
+directory "wal2" may contain relevant WALs but is not in WALRecoveryDirs
+  WALDir changed from previous options
+  o.WALDir: "wal3"
+  o.WALRecoveryDirs: 0
+
+# Test the Unsafe.AllowMissingWALDirs option.
+open path=(c,data) wal-dir=(c,wal3) allow-missing-wal-dirs
+----
+ok
+
+open path=(c,data) wal-dir=(c,wal3) secondary=(d,secondary)
+----
+ok
+
+open path=(c,data) wal-dir=(c,wal3)
+----
+directory "secondary" may contain relevant WALs but is not in WALRecoveryDirs
+  WALFailover.Secondary changed from previous options
+  o.WALDir: "wal3"
+  o.WALRecoveryDirs: 0
+
+open path=(c,data) wal-dir=(c,wal3) allow-missing-wal-dirs
+----
+ok
