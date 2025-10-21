@@ -103,20 +103,13 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	// Open the database and WAL directories first.
-	walDirname, secondaryWalDirName, dataDir, err := prepareAndOpenDirs(dirname, opts)
+	dirs, err := prepareAndOpenDirs(dirname, opts)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error opening database at %q", dirname)
 	}
-	defer maybeCleanUp(dataDir.Close)
+	defer maybeCleanUp(dirs.Close)
 
 	var dirLocks base.DirLockSet
-
-	// Lock the database directory.
-	fileLock, err := dirLocks.AcquireOrValidate(opts.Lock, dirname, opts.FS)
-	if err != nil {
-		return nil, err
-	}
-	defer maybeCleanUp(fileLock.Close)
 
 	rs, err := recoverState(opts, dirname)
 	if err != nil {
@@ -173,8 +166,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
 		largeBatchThreshold: (opts.MemTableSize - uint64(memTableEmptySize)) / 2,
-		dataDirLock:         fileLock,
-		dataDir:             dataDir,
+		dirs:                dirs,
 		objProvider:         rs.objProvider,
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
@@ -302,7 +294,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	})
 
 	walOpts := wal.Options{
-		Primary:              wal.Dir{FS: opts.FS, Dirname: walDirname},
+		Primary:              wal.Dir{FS: opts.FS, Dirname: dirs.WALPrimary.Dirname},
 		Secondary:            wal.Dir{},
 		MinUnflushedWALNum:   wal.NumWAL(d.mu.versions.minUnflushedLogNum),
 		MaxNumRecyclableLogs: opts.MemTableStopWritesThreshold + 1,
@@ -337,8 +329,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	})
 
 	// Lock the dedicated WAL directory, if configured.
-	if walDirname != dirname {
-		walOpts.Primary.Lock, err = dirLocks.AcquireOrValidate(opts.WALDirLock, walDirname, opts.FS)
+	if dirs.WALPrimary.Dirname != dirname {
+		walOpts.Primary.Lock, err = dirLocks.AcquireOrValidate(opts.WALDirLock, dirs.WALPrimary.Dirname, opts.FS)
 		if err != nil {
 			return nil, err
 		}
@@ -347,14 +339,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		walOpts.Secondary = opts.WALFailover.Secondary
 		// Lock the secondary WAL directory, if distinct from the data directory
 		// and primary WAL directory.
-		if secondaryWalDirName != dirname && secondaryWalDirName != walDirname {
+		if dirs.WALSecondary.Dirname != dirname && dirs.WALSecondary.Dirname != dirs.WALPrimary.Dirname {
 			walOpts.Secondary.Lock, err = dirLocks.AcquireOrValidate(
-				opts.WALFailover.Secondary.Lock, secondaryWalDirName, opts.WALFailover.Secondary.FS)
+				opts.WALFailover.Secondary.Lock, dirs.WALSecondary.Dirname, opts.WALFailover.Secondary.FS)
 			if err != nil {
 				return nil, err
 			}
 		}
-		walOpts.Secondary.Dirname = secondaryWalDirName
+		walOpts.Secondary.Dirname = dirs.WALSecondary.Dirname
 		walOpts.FailoverOptions = opts.WALFailover.FailoverOptions
 		walOpts.FailoverWriteAndSyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
 			Buckets: FsyncLatencyBuckets,
@@ -525,7 +517,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		if err := opts.FS.Rename(tmpPath, optionsPath); err != nil {
 			return nil, err
 		}
-		if err := d.dataDir.Sync(); err != nil {
+		if err := d.dirs.DataDir.Sync(); err != nil {
 			return nil, err
 		}
 
@@ -615,62 +607,86 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	return d, nil
 }
 
-// prepareAndOpenDirs opens the directories for the store (and creates them if
-// necessary).
+// resolvedDirs is a set of resolved directory paths and locks.
+type resolvedDirs struct {
+	DirLocks     base.DirLockSet
+	DataDir      vfs.File
+	WALPrimary   wal.Dir
+	WALSecondary wal.Dir
+}
+
+// Close closes the data directory and the directory locks.
+func (d *resolvedDirs) Close() error {
+	return errors.CombineErrors(
+		d.DataDir.Close(),
+		d.DirLocks.Close(),
+	)
+}
+
+// prepareAndOpenDirs resolves the various directory paths indicated within
+// Options (substituting {store_path} relative paths as necessary), creates the
+// directories if they don't exist, and locks the database directory.
 //
 // Returns an error if ReadOnly is set and the directories don't exist.
-func prepareAndOpenDirs(
-	dirname string, opts *Options,
-) (walDirname string, secondaryWalDirName string, dataDir vfs.File, err error) {
-	walDirname = dirname
+func prepareAndOpenDirs(dirname string, opts *Options) (dirs *resolvedDirs, err error) {
+	dirs = &resolvedDirs{}
+	dirs.WALPrimary.Dirname = dirname
+	dirs.WALPrimary.FS = opts.FS
 	if opts.WALDir != "" {
-		walDirname = resolveStorePath(dirname, opts.WALDir)
+		dirs.WALPrimary.Dirname = resolveStorePath(dirname, opts.WALDir)
 	}
 	if opts.WALFailover != nil {
-		secondaryWalDirName = resolveStorePath(dirname, opts.WALFailover.Secondary.Dirname)
+		dirs.WALSecondary.Dirname = resolveStorePath(dirname, opts.WALFailover.Secondary.Dirname)
+		dirs.WALSecondary.FS = opts.WALFailover.Secondary.FS
 	}
 
 	// Create directories if needed.
 	if !opts.ReadOnly {
 		f, err := mkdirAllAndSyncParents(opts.FS, dirname)
 		if err != nil {
-			return "", "", nil, err
+			return dirs, err
 		}
 		f.Close()
-		if walDirname != dirname {
-			f, err := mkdirAllAndSyncParents(opts.FS, walDirname)
+		if dirs.WALPrimary.Dirname != dirname {
+			f, err := mkdirAllAndSyncParents(opts.FS, dirs.WALPrimary.Dirname)
 			if err != nil {
-				return "", "", nil, err
+				return dirs, err
 			}
 			f.Close()
 		}
 		if opts.WALFailover != nil {
-			f, err := mkdirAllAndSyncParents(opts.WALFailover.Secondary.FS, secondaryWalDirName)
+			f, err := mkdirAllAndSyncParents(opts.WALFailover.Secondary.FS, dirs.WALSecondary.Dirname)
 			if err != nil {
-				return "", "", nil, err
+				return dirs, err
 			}
 			f.Close()
 		}
 	}
 
-	dataDir, err = opts.FS.OpenDir(dirname)
+	dirs.DataDir, err = opts.FS.OpenDir(dirname)
 	if err != nil {
 		if opts.ReadOnly && oserror.IsNotExist(err) {
-			return "", "", nil, errors.Errorf("pebble: database %q does not exist", dirname)
+			return dirs, errors.Errorf("pebble: database %q does not exist", dirname)
 		}
-		return "", "", nil, err
+		return dirs, err
 	}
-	if opts.ReadOnly && walDirname != dirname {
+	if opts.ReadOnly && dirs.WALPrimary.Dirname != dirname {
 		// Check that the wal dir exists.
-		walDir, err := opts.FS.OpenDir(walDirname)
+		walDir, err := opts.FS.OpenDir(dirs.WALPrimary.Dirname)
 		if err != nil {
-			dataDir.Close()
-			return "", "", nil, err
+			dirs.DataDir.Close()
+			return dirs, err
 		}
 		walDir.Close()
 	}
 
-	return walDirname, secondaryWalDirName, dataDir, nil
+	// Lock the database directory.
+	_, err = dirs.DirLocks.AcquireOrValidate(opts.Lock, dirname, opts.FS)
+	if err != nil {
+		return dirs, err
+	}
+
+	return dirs, nil
 }
 
 // GetVersion returns the engine version string from the latest options

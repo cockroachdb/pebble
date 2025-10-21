@@ -36,7 +36,6 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/tokenbucket"
@@ -293,8 +292,7 @@ type DB struct {
 	// objProvider is used to access and manage SSTs.
 	objProvider objstorage.Provider
 
-	dataDirLock *base.DirLock
-	dataDir     vfs.File
+	dirs *resolvedDirs
 
 	fileCache            *fileCacheHandle
 	newIters             tableNewIters
@@ -1547,13 +1545,12 @@ func (d *DB) Close() error {
 		panic("pebble: log-writer should be nil in read-only mode")
 	}
 	err = firstError(err, d.mu.log.manager.Close())
-	err = firstError(err, d.dataDirLock.Close())
 
 	// Note that versionSet.close() only closes the MANIFEST. The versions list
 	// is still valid for the checks below.
 	err = firstError(err, d.mu.versions.close())
 
-	err = firstError(err, d.dataDir.Close())
+	err = firstError(err, d.dirs.Close())
 
 	d.readState.val.unrefLocked()
 
