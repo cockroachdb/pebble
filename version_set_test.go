@@ -563,18 +563,3 @@ func TestCrashDuringManifestWrite_LargeKeys(t *testing.T) {
 		}()
 	}
 }
-
-func newFileMetrics(newFiles []manifest.NewTableEntry) levelMetricsDelta {
-	var m levelMetricsDelta
-	for _, nf := range newFiles {
-		lm := m[nf.Level]
-		if lm == nil {
-			lm = &LevelMetrics{}
-			m[nf.Level] = lm
-		}
-		lm.TablesCount++
-		lm.TablesSize += int64(nf.Meta.Size)
-		lm.EstimatedReferencesSize += nf.Meta.EstimatedReferenceSize()
-	}
-	return m
-}
