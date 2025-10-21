@@ -1550,8 +1550,6 @@ func (d *DB) Close() error {
 	// is still valid for the checks below.
 	err = firstError(err, d.mu.versions.close())
 
-	err = firstError(err, d.dirs.Close())
-
 	d.readState.val.unrefLocked()
 
 	current := d.mu.versions.currentVersion()
@@ -1624,6 +1622,7 @@ func (d *DB) Close() error {
 	if v := d.mu.snapshots.count(); v > 0 {
 		err = firstError(err, errors.Errorf("leaked snapshots: %d open snapshots on DB %p", v, d))
 	}
+	err = firstError(err, d.dirs.Close())
 
 	if d.iterTracker != nil {
 		d.iterTracker.Close()
