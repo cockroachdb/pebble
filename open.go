@@ -103,13 +103,13 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	// Open the database and WAL directories first.
-	dirs, err := prepareAndOpenDirs(dirname, opts)
+	dirs, err := prepareOpenAndLockDirs(dirname, opts)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error opening database at %q", dirname)
+		err = errors.Wrapf(err, "error opening database at %q", dirname)
+		err = errors.CombineErrors(err, dirs.Close())
+		return nil, err
 	}
 	defer maybeCleanUp(dirs.Close)
-
-	var dirLocks base.DirLockSet
 
 	rs, err := recoverState(opts, dirname)
 	if err != nil {
@@ -294,8 +294,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	})
 
 	walOpts := wal.Options{
-		Primary:              wal.Dir{FS: opts.FS, Dirname: dirs.WALPrimary.Dirname},
-		Secondary:            wal.Dir{},
+		Primary:              dirs.WALPrimary,
+		Secondary:            dirs.WALSecondary,
 		MinUnflushedWALNum:   wal.NumWAL(d.mu.versions.minUnflushedLogNum),
 		MaxNumRecyclableLogs: opts.MemTableStopWritesThreshold + 1,
 		NoSyncOnClose:        opts.NoSyncOnClose,
@@ -308,45 +308,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		EventListener:        walEventListenerAdaptor{l: opts.EventListener},
 		WriteWALSyncOffsets:  func() bool { return d.FormatMajorVersion() >= FormatWALSyncChunks },
 	}
-	// Ensure we release the WAL directory locks if we fail to open the
-	// database. If we fail before initializing the WAL manager, this defer is
-	// responsible for releasing the locks. If we fail after initializing the
-	// WAL manager, closing the WAL manager will release the locks.
-	//
-	// TODO(jackson): Open's cleanup error handling logic is convoluted; can we
-	// simplify it?
-	defer maybeCleanUp(func() (err error) {
-		if d.mu.log.manager == nil {
-			if walOpts.Primary.Lock != nil {
-				err = errors.CombineErrors(err, walOpts.Primary.Lock.Close())
-			}
-			if walOpts.Secondary.Lock != nil {
-				err = errors.CombineErrors(err, walOpts.Secondary.Lock.Close())
-			}
-			return err
-		}
-		return nil
-	})
-
-	// Lock the dedicated WAL directory, if configured.
-	if dirs.WALPrimary.Dirname != dirname {
-		walOpts.Primary.Lock, err = dirLocks.AcquireOrValidate(opts.WALDirLock, dirs.WALPrimary.Dirname, opts.FS)
-		if err != nil {
-			return nil, err
-		}
-	}
 	if !opts.ReadOnly && opts.WALFailover != nil {
-		walOpts.Secondary = opts.WALFailover.Secondary
-		// Lock the secondary WAL directory, if distinct from the data directory
-		// and primary WAL directory.
-		if dirs.WALSecondary.Dirname != dirname && dirs.WALSecondary.Dirname != dirs.WALPrimary.Dirname {
-			walOpts.Secondary.Lock, err = dirLocks.AcquireOrValidate(
-				opts.WALFailover.Secondary.Lock, dirs.WALSecondary.Dirname, opts.WALFailover.Secondary.FS)
-			if err != nil {
-				return nil, err
-			}
-		}
-		walOpts.Secondary.Dirname = dirs.WALSecondary.Dirname
 		walOpts.FailoverOptions = opts.WALFailover.FailoverOptions
 		walOpts.FailoverWriteAndSyncLatency = prometheus.NewHistogram(prometheus.HistogramOpts{
 			Buckets: FsyncLatencyBuckets,
@@ -617,20 +579,23 @@ type resolvedDirs struct {
 
 // Close closes the data directory and the directory locks.
 func (d *resolvedDirs) Close() error {
-	err := errors.CombineErrors(
-		d.DataDir.Close(),
-		d.DirLocks.Close(),
-	)
+	var err error
+	if d.DataDir != nil {
+		err = errors.CombineErrors(err, d.DataDir.Close())
+	}
+	err = errors.CombineErrors(err, d.DirLocks.Close())
 	*d = resolvedDirs{}
 	return err
 }
 
-// prepareAndOpenDirs resolves the various directory paths indicated within
+// prepareOpenAndLockDirs resolves the various directory paths indicated within
 // Options (substituting {store_path} relative paths as necessary), creates the
-// directories if they don't exist, and locks the database directory.
+// directories if they don't exist, and acquires directory locks as necessary.
 //
-// Returns an error if ReadOnly is set and the directories don't exist.
-func prepareAndOpenDirs(dirname string, opts *Options) (dirs *resolvedDirs, err error) {
+// Returns an error if ReadOnly is set and the directories don't exist. Always
+// returns a non-nil resolvedDirs that may be closed to release all resources
+// acquired before any error was encountered.
+func prepareOpenAndLockDirs(dirname string, opts *Options) (dirs *resolvedDirs, err error) {
 	dirs = &resolvedDirs{}
 	dirs.WALPrimary.Dirname = dirname
 	dirs.WALPrimary.FS = opts.FS
@@ -676,7 +641,6 @@ func prepareAndOpenDirs(dirname string, opts *Options) (dirs *resolvedDirs, err 
 		// Check that the wal dir exists.
 		walDir, err := opts.FS.OpenDir(dirs.WALPrimary.Dirname)
 		if err != nil {
-			dirs.DataDir.Close()
 			return dirs, err
 		}
 		walDir.Close()
@@ -685,10 +649,24 @@ func prepareAndOpenDirs(dirname string, opts *Options) (dirs *resolvedDirs, err 
 	// Lock the database directory.
 	_, err = dirs.DirLocks.AcquireOrValidate(opts.Lock, dirname, opts.FS)
 	if err != nil {
-		dirs.DataDir.Close()
 		return dirs, err
 	}
-
+	// Lock the dedicated WAL directory, if configured.
+	if dirs.WALPrimary.Dirname != dirname {
+		dirs.WALPrimary.Lock, err = dirs.DirLocks.AcquireOrValidate(opts.WALDirLock, dirs.WALPrimary.Dirname, opts.FS)
+		if err != nil {
+			return dirs, err
+		}
+	}
+	// Lock the secondary WAL directory, if distinct from the data directory
+	// and primary WAL directory.
+	if opts.WALFailover != nil && dirs.WALSecondary.Dirname != dirname && dirs.WALSecondary.Dirname != dirs.WALPrimary.Dirname {
+		dirs.WALSecondary.Lock, err = dirs.DirLocks.AcquireOrValidate(
+			opts.WALFailover.Secondary.Lock, dirs.WALSecondary.Dirname, dirs.WALSecondary.FS)
+		if err != nil {
+			return dirs, err
+		}
+	}
 	return dirs, nil
 }
 

@@ -251,9 +251,6 @@ func (m *StandaloneManager) Close() error {
 		_, err = m.w.Close()
 	}
 	err = firstError(err, m.walDir.Close())
-	if m.o.Primary.Lock != nil {
-		err = firstError(err, m.o.Primary.Lock.Close())
-	}
 	return err
 }
 

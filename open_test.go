@@ -501,13 +501,15 @@ func TestOpenAlreadyLocked(t *testing.T) {
 	// Run tests for different filesystems.
 	t.Run("memfs", func(t *testing.T) {
 		for _, tc := range testCases {
-			mem := vfs.NewMem()
-			var tmpDirs [4]string
-			for i := range tmpDirs {
-				tmpDirs[i] = mem.PathJoin("dir", fmt.Sprintf("%d", i))
-				require.NoError(t, mem.MkdirAll(tmpDirs[i], 0755), "Failed to create temp dir %s", tmpDirs[i])
-			}
-			runTest(t, tmpDirs, tc.setupLocks, mem)
+			t.Run(tc.name, func(t *testing.T) {
+				tmpDirs := [4]string{"dir/0", "dir/1", "dir/2", "dir/3"}
+				mem := vfs.NewMem()
+				for i := range tmpDirs {
+					require.NoError(t, mem.MkdirAll(tmpDirs[i], 0755),
+						"Failed to create temp dir %s", tmpDirs[i])
+				}
+				runTest(t, tmpDirs, tc.setupLocks, mem)
+			})
 		}
 	})
 

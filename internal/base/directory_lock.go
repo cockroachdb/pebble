@@ -5,8 +5,10 @@
 package base
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
@@ -17,6 +19,19 @@ import (
 // DirLockSet is a set of directory locks that have been acquired.
 type DirLockSet struct {
 	acquired []*DirLock
+}
+
+func (s *DirLockSet) String() string {
+	var buf strings.Builder
+	buf.WriteString("{")
+	for i, l := range s.acquired {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		fmt.Fprint(&buf, l.dirname)
+	}
+	buf.WriteString("}")
+	return buf.String()
 }
 
 // Close releases all of the directory locks in the set.

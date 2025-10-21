@@ -14,6 +14,7 @@ open-dir: wal
 close: wal
 open-dir: db
 lock: db/LOCK
+lock: wal/LOCK
 open-dir: db
 open-dir: db
 open-dir: db
@@ -24,7 +25,6 @@ sync: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 1] MANIFEST created 000001
-lock: wal/LOCK
 open-dir: wal
 create: db/temporary.000002.dbtmp
 sync: db/temporary.000002.dbtmp
