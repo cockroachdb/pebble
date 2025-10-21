@@ -14,9 +14,24 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// AcquireOrValidateDirectoryLock attempts to acquire a lock on the
-// provided directory, or validates a pre-acquired DirLock.
-func AcquireOrValidateDirectoryLock(
+// DirLockSet is a set of directory locks that have been acquired.
+type DirLockSet struct {
+	acquired []*DirLock
+}
+
+// Close releases all of the directory locks in the set.
+func (s *DirLockSet) Close() error {
+	var err error
+	for _, l := range s.acquired {
+		err = errors.CombineErrors(err, l.Close())
+	}
+	s.acquired = nil
+	return err
+}
+
+// AcquireOrValidate attempts to acquire a lock on the provided directory, or
+// validates a pre-acquired DirLock.
+func (s *DirLockSet) AcquireOrValidate(
 	preAcquiredLock *DirLock, dirname string, fs vfs.FS,
 ) (*DirLock, error) {
 	// If a pre-acquired lock is provided, check that it matches the directory
@@ -25,11 +40,20 @@ func AcquireOrValidateDirectoryLock(
 		if err := preAcquiredLock.pathMatches(dirname); err != nil {
 			return preAcquiredLock, err
 		}
-		return preAcquiredLock, preAcquiredLock.refForOpen()
+		if err := preAcquiredLock.refForOpen(); err != nil {
+			return preAcquiredLock, err
+		}
+		s.acquired = append(s.acquired, preAcquiredLock)
+		return preAcquiredLock, nil
 	}
 
 	// Otherwise, acquire the lock for the directory.
-	return LockDirectory(dirname, fs)
+	l, err := LockDirectory(dirname, fs)
+	if err != nil {
+		return nil, err
+	}
+	s.acquired = append(s.acquired, l)
+	return l, nil
 }
 
 // LockDirectory acquires the directory lock in the named directory, preventing
