@@ -1128,7 +1128,8 @@ type Options struct {
 	// the current database state.
 	//
 	// If a previous WAL configuration may have stored WALs elsewhere but there
-	// is not a corresponding entry in WALRecoveryDirs, Open will error.
+	// is not a corresponding entry in WALRecoveryDirs, Open will error (unless
+	// Unsafe.AllowMissingWALDirs is true).
 	WALRecoveryDirs []wal.Dir
 
 	// WALMinSyncInterval is the minimum duration between syncs of the WAL. If
@@ -1158,6 +1159,19 @@ type Options struct {
 	// sstable block writer's flushing policy to select block sizes that
 	// preemptively reduce internal fragmentation when loaded into the block cache.
 	AllocatorSizeClasses []int
+
+	// Unsafe contains options that must be used very carefully and in exceptional
+	// circumstances.
+	Unsafe struct {
+		// AllowMissingWALDirs, if set to true, allows opening a DB when the WAL or
+		// WAL secondary directory was changed and the previous directory is not in
+		// WALRecoveryDirs. This can be used to move WALs without having to keep the
+		// previous directory in the options forever.
+		//
+		// CAUTION: Enabling this option will lead to data loss if the missing
+		// directory contained any WAL files that were not flushed to sstables.
+		AllowMissingWALDirs bool
+	}
 
 	// private options are only used by internal tests or are used internally
 	// for facilitating upgrade paths of unconfigurable functionality.
@@ -2482,6 +2496,11 @@ func (o *Options) checkWALDir(storeDir, walDir, errContext string) error {
 		}
 	}
 
+	if o.Unsafe.AllowMissingWALDirs {
+		o.Logger.Infof("directory %q may contain relevant WALs but is not in WALRecoveryDirs (AllowMissingWALDirs enabled)", walDir)
+		return nil
+	}
+
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "\n  %s\n", errContext)
 	fmt.Fprintf(&buf, "  o.WALDir: %q\n", o.WALDir)
@@ -2492,6 +2511,7 @@ func (o *Options) checkWALDir(storeDir, walDir, errContext string) error {
 	for _, d := range o.WALRecoveryDirs {
 		fmt.Fprintf(&buf, "\n    %q", d.Dirname)
 	}
+
 	return ErrMissingWALRecoveryDir{Dir: walPath, ExtraInfo: buf.String()}
 }
 
