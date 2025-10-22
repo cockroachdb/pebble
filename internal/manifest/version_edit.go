@@ -1358,7 +1358,11 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 			// counts.  However, because we cloned the previous level's B-Tree,
 			// this should never result in a file's reference count dropping to
 			// zero. The remove call will panic if this happens.
-			v.Levels[level].remove(f)
+			if !v.Levels[level].remove(f) {
+				if invariants.Enabled {
+					panic(errors.AssertionFailedf("deleted table %f not in level", f))
+				}
+			}
 			v.RangeKeyLevels[level].remove(f)
 			v.MarkedForCompaction.Delete(f, level)
 		}

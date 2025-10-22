@@ -1082,8 +1082,8 @@ func setBasicLevelMetrics(m *Metrics, newVersion *manifest.Version) {
 		l := &m.Levels[i]
 		l.TablesCount = int64(newVersion.Levels[i].Len())
 		l.TablesSize = int64(newVersion.Levels[i].TableSize())
-		l.VirtualTablesCount = newVersion.Levels[i].NumVirtual
-		l.VirtualTablesSize = newVersion.Levels[i].VirtualTableSize
+		l.VirtualTablesCount = newVersion.Levels[i].VirtualTables().Count
+		l.VirtualTablesSize = newVersion.Levels[i].VirtualTables().Bytes
 		l.EstimatedReferencesSize = newVersion.Levels[i].EstimatedReferenceSize()
 		l.Sublevels = 0
 		if l.TablesCount > 0 {

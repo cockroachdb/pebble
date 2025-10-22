@@ -102,6 +102,10 @@ func NewVersionForTesting(
 		}
 		for _, f := range files[l] {
 			v.Levels[l].totalTableSize += f.Size
+			v.Levels[l].totalRefSize += f.EstimatedReferenceSize()
+			if f.Virtual {
+				v.Levels[l].virtualTables.Inc(f.Size)
+			}
 		}
 	}
 	l0Organizer.ResetForTesting(v)
