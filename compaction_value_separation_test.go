@@ -89,26 +89,32 @@ func TestValueSeparationPolicy(t *testing.T) {
 					}
 					vs = pbr
 				case "write-new-blob-files":
-					newSep := &writeNewBlobFiles{
-						comparer: testkeys.Comparer,
-						newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
-							fn++
-							return objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
-						},
-						invalidValueCallback: func(userKey []byte, value []byte, err error) {
-							fmt.Fprintf(&buf, "# invalid value for key %q, value: %q: %s\n", userKey, value, err)
-						},
-					}
-					d.MaybeScanArgs(t, "minimum-size", &newSep.minimumSize)
-					newSep.globalMinimumSize = newSep.minimumSize
+					var minimumSize int
+					var shortAttrExtractor base.ShortAttributeExtractor
+					d.MaybeScanArgs(t, "minimum-size", &minimumSize)
 					if arg, ok := d.Arg("short-attr-extractor"); ok {
 						switch arg.SingleVal(t) {
 						case "error":
-							newSep.shortAttrExtractor = errShortAttrExtractor
+							shortAttrExtractor = errShortAttrExtractor
 						default:
 							t.Fatalf("unknown short attribute extractor: %s", arg.String())
 						}
 					}
+					newSep := valsep.NewWriteNewBlobFiles(
+						testkeys.Comparer,
+						func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+							fn++
+							return objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
+						},
+						blob.FileWriterOptions{},
+						minimumSize,
+						valsep.WriteNewBlobFilesOptions{
+							ShortAttrExtractor: shortAttrExtractor,
+							InvalidValueCallback: func(userKey []byte, value []byte, err error) {
+								fmt.Fprintf(&buf, "# invalid value for key %q, value: %q: %s\n", userKey, value, err)
+							},
+						},
+					)
 					vs = newSep
 				default:
 					t.Fatalf("unknown value separation policy: %s", x)

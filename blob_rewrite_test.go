@@ -92,14 +92,18 @@ func TestBlobRewrite(t *testing.T) {
 					}
 					vs = pbr
 				case "write-new-blob-files":
-					newSep := &writeNewBlobFiles{
-						comparer: testkeys.Comparer,
-						newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+					var minimumSize int
+					d.MaybeScanArgs(t, "minimum-size", &minimumSize)
+					newSep := valsep.NewWriteNewBlobFiles(
+						testkeys.Comparer,
+						func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
 							fn++
 							return objStore.Create(ctx, base.FileTypeBlob, fn, objstorage.CreateOptions{})
 						},
-					}
-					d.MaybeScanArgs(t, "minimum-size", &newSep.minimumSize)
+						blob.FileWriterOptions{},
+						minimumSize,
+						valsep.WriteNewBlobFilesOptions{},
+					)
 					vs = newSep
 				default:
 					t.Fatalf("unknown value separation policy: %s", x)

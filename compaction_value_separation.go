@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"slices"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -47,6 +46,12 @@ func (d *DB) determineCompactionValueSeparation(
 
 	// We're allowed to write blob references. Determine whether we should carry
 	// forward existing blob references, or write new ones.
+
+	var blobFileSet map[base.BlobFileID]*manifest.PhysicalBlobFile
+	if c.version != nil {
+		// For flushes, c.version is nil.
+		blobFileSet = uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs)
+	}
 	minSize := uint64(policy.MinimumSize)
 	switch valueStorage {
 	case ValueStorageLowReadLatency:
@@ -62,7 +67,7 @@ func (d *DB) determineCompactionValueSeparation(
 			kind = sstable.ValueSeparationSpanPolicy
 		}
 		return &preserveBlobReferences{
-			inputBlobPhysicalFiles:      uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs),
+			inputBlobPhysicalFiles:      blobFileSet,
 			outputBlobReferenceDepth:    outputBlobReferenceDepth,
 			minimumValueSize:            int(minSize),
 			originalValueSeparationKind: kind,
@@ -70,27 +75,29 @@ func (d *DB) determineCompactionValueSeparation(
 	}
 
 	// This compaction should write values to new blob files.
-	return &writeNewBlobFiles{
-		comparer: d.opts.Comparer,
-		newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
+	return valsep.NewWriteNewBlobFiles(
+		d.opts.Comparer,
+		func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
 			return d.newCompactionOutputBlob(
 				jobID, c.kind, c.outputLevel.level, &c.metrics.bytesWritten, c.objCreateOpts)
 		},
-		shortAttrExtractor: d.opts.Experimental.ShortAttributeExtractor,
-		writerOpts:         d.makeBlobWriterOptions(c.outputLevel.level),
-		minimumSize:        policy.MinimumSize,
-		globalMinimumSize:  policy.MinimumSize,
-		invalidValueCallback: func(userKey []byte, value []byte, err error) {
-			// The value may not be safe, so it will be redacted when redaction
-			// is enabled.
-			d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
-				Kind:    InvalidValue,
-				UserKey: userKey,
-				ExtraInfo: redact.Sprintf("callback=ShortAttributeExtractor,value=%x,err=%q",
-					value, err),
-			})
+		d.makeBlobWriterOptions(c.outputLevel.level),
+		policy.MinimumSize,
+		valsep.WriteNewBlobFilesOptions{
+			InputBlobPhysicalFiles: blobFileSet,
+			ShortAttrExtractor:     d.opts.Experimental.ShortAttributeExtractor,
+			InvalidValueCallback: func(userKey []byte, value []byte, err error) {
+				// The value may not be safe, so it will be redacted when redaction
+				// is enabled.
+				d.opts.EventListener.PossibleAPIMisuse(PossibleAPIMisuseInfo{
+					Kind:    InvalidValue,
+					UserKey: userKey,
+					ExtraInfo: redact.Sprintf("callback=ShortAttributeExtractor,value=%x,err=%q",
+						value, err),
+				})
+			},
 		},
-	}
+	)
 }
 
 // shouldWriteBlobFiles returns true if the compaction should write new blob
@@ -210,200 +217,6 @@ func uniqueInputBlobMetadatas(
 		}
 	}
 	return m
-}
-
-// writeNewBlobFiles implements the strategy and mechanics for separating values
-// into external blob files. We will always separate potential MVCC garbage
-// values into this external blob file. MVCC garbage values are determined on a
-// best-effort basis; see comments in sstable.IsLikelyMVCCGarbage for the
-// exact criteria we use.
-type writeNewBlobFiles struct {
-	comparer *base.Comparer
-	// newBlobObject constructs a new blob object for use in the compaction.
-	newBlobObject      func() (objstorage.Writable, objstorage.ObjectMetadata, error)
-	shortAttrExtractor ShortAttributeExtractor
-	// writerOpts is used to configure all constructed blob writers.
-	writerOpts blob.FileWriterOptions
-	// minimumSize imposes a lower bound on the size of values that can be
-	// separated into a blob file. Values smaller than this are always written
-	// to the sstable (but may still be written to a value block within the
-	// sstable).
-	//
-	// minimumSize is set to globalMinimumSize by default and on every call to
-	// FinishOutput. It may be overriden by SetNextOutputConfig (i.e, if a
-	// SpanPolicy dictates a different minimum size for a span of the keyspace).
-	minimumSize int
-	// globalMinimumSize is the size threshold for separating values into blob
-	// files globally across the keyspace. It may be overridden per-output by
-	// SetNextOutputConfig.
-	globalMinimumSize int
-	// invalidValueCallback is called when a value is encountered for which the
-	// short attribute extractor returns an error.
-	invalidValueCallback func(userKey []byte, value []byte, err error)
-
-	// Current blob writer state.
-	writer  *blob.FileWriter
-	objMeta objstorage.ObjectMetadata
-
-	buf []byte
-}
-
-// Assert that *writeNewBlobFiles implements the compact.ValueSeparation interface.
-var _ valsep.ValueSeparation = (*writeNewBlobFiles)(nil)
-
-// SetNextOutputConfig implements the ValueSeparation interface.
-func (vs *writeNewBlobFiles) SetNextOutputConfig(config valsep.ValueSeparationOutputConfig) {
-	vs.minimumSize = config.MinimumSize
-}
-
-// Kind implements the ValueSeparation interface.
-func (vs *writeNewBlobFiles) Kind() sstable.ValueSeparationKind {
-	if vs.minimumSize != vs.globalMinimumSize {
-		return sstable.ValueSeparationSpanPolicy
-	}
-	return sstable.ValueSeparationDefault
-}
-
-// MinimumSize implements the ValueSeparation interface.
-func (vs *writeNewBlobFiles) MinimumSize() int { return vs.minimumSize }
-
-// EstimatedFileSize returns an estimate of the disk space consumed by the current
-// blob file if it were closed now.
-func (vs *writeNewBlobFiles) EstimatedFileSize() uint64 {
-	if vs.writer == nil {
-		return 0
-	}
-	return vs.writer.EstimatedSize()
-}
-
-// EstimatedReferenceSize returns an estimate of the disk space consumed by the
-// current output sstable's blob references so far.
-func (vs *writeNewBlobFiles) EstimatedReferenceSize() uint64 {
-	// When we're writing to new blob files, the size of the blob file itself is
-	// a better estimate of the disk space consumed than the uncompressed value
-	// sizes.
-	return vs.EstimatedFileSize()
-}
-
-// Add adds the provided key-value pair to the sstable, possibly separating the
-// value into a blob file.
-func (vs *writeNewBlobFiles) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage bool,
-) error {
-	// We always fetch the value if we're rewriting blob files. We want to
-	// replace any references to existing blob files with references to new blob
-	// files that we write during the compaction.
-	v, callerOwned, err := kv.Value(vs.buf)
-	if err != nil {
-		return err
-	}
-	if callerOwned {
-		vs.buf = v[:0]
-	}
-
-	// Values that are too small are never separated; however, MVCC keys are
-	// separated if they are a SET key kind, as long as the value is not empty.
-	if len(v) < vs.minimumSize && !isLikelyMVCCGarbage {
-		return tw.Add(kv.K, v, forceObsolete)
-	}
-
-	// Merge and deletesized keys are never separated.
-	switch kv.K.Kind() {
-	case base.InternalKeyKindMerge, base.InternalKeyKindDeleteSized:
-		return tw.Add(kv.K, v, forceObsolete)
-	}
-
-	// This KV met all the criteria and its value will be separated.
-	// If there's a configured short attribute extractor, extract the value's
-	// short attribute.
-	var shortAttr base.ShortAttribute
-	if vs.shortAttrExtractor != nil {
-		keyPrefixLen := vs.comparer.Split(kv.K.UserKey)
-		shortAttr, err = vs.shortAttrExtractor(kv.K.UserKey, keyPrefixLen, v)
-		if err != nil {
-			// Report that there was a value for which the short attribute
-			// extractor was unable to extract a short attribute.
-			vs.invalidValueCallback(kv.K.UserKey, v, err)
-
-			// Rather than erroring out and aborting the flush or compaction, we
-			// fallback to writing the value verbatim to the sstable. Otherwise
-			// a flush could busy loop, repeatedly attempting to write the same
-			// memtable and repeatedly unable to extract a key's short attribute.
-			return tw.Add(kv.K, v, forceObsolete)
-		}
-	}
-
-	// If we don't have an open blob writer, create one. We create blob objects
-	// lazily so that we don't create them unless a compaction will actually
-	// write to a blob file. This avoids creating and deleting empty blob files
-	// on every compaction in parts of the keyspace that a) are required to be
-	// in-place or b) have small values.
-	if vs.writer == nil {
-		writable, objMeta, err := vs.newBlobObject()
-		if err != nil {
-			return err
-		}
-		vs.objMeta = objMeta
-		vs.writer = blob.NewFileWriter(objMeta.DiskFileNum, writable, vs.writerOpts)
-	}
-
-	// Append the value to the blob file.
-	handle := vs.writer.AddValue(v, isLikelyMVCCGarbage)
-
-	// Write the key and the handle to the sstable. We need to map the
-	// blob.Handle into a blob.InlineHandle. Everything is copied verbatim,
-	// except the FileNum is translated into a reference index.
-	inlineHandle := blob.InlineHandle{
-		InlineHandlePreface: blob.InlineHandlePreface{
-			// Since we're writing blob files and maintaining a 1:1 mapping
-			// between sstables and blob files, the reference index is always 0
-			// here. Only compactions that don't rewrite blob files will produce
-			// handles with nonzero reference indices.
-			ReferenceID: 0,
-			ValueLen:    handle.ValueLen,
-		},
-		HandleSuffix: blob.HandleSuffix{
-			BlockID: handle.BlockID,
-			ValueID: handle.ValueID,
-		},
-	}
-	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete)
-}
-
-// FinishOutput closes the current blob file (if any). It returns the stats
-// and metadata of the now completed blob file.
-func (vs *writeNewBlobFiles) FinishOutput() (valsep.ValueSeparationMetadata, error) {
-	if vs.writer == nil {
-		return valsep.ValueSeparationMetadata{}, nil
-	}
-	stats, err := vs.writer.Close()
-	if err != nil {
-		return valsep.ValueSeparationMetadata{}, err
-	}
-	vs.writer = nil
-	meta := &manifest.PhysicalBlobFile{
-		FileNum:      vs.objMeta.DiskFileNum,
-		Size:         stats.FileLen,
-		ValueSize:    stats.UncompressedValueBytes,
-		CreationTime: uint64(time.Now().Unix()),
-	}
-	meta.PopulateProperties(&stats.Properties)
-	// Reset the minimum size for the next output.
-	vs.minimumSize = vs.globalMinimumSize
-
-	return valsep.ValueSeparationMetadata{
-		BlobReferences: manifest.BlobReferences{
-			manifest.MakeBlobReference(base.BlobFileID(vs.objMeta.DiskFileNum),
-				stats.UncompressedValueBytes, stats.UncompressedValueBytes, meta),
-		},
-		BlobReferenceSize:  stats.UncompressedValueBytes,
-		BlobReferenceDepth: 1,
-		NewBlobFiles: []valsep.NewBlobFileInfo{{
-			FileStats:    stats,
-			FileObject:   vs.objMeta,
-			FileMetadata: meta,
-		}},
-	}, nil
 }
 
 // preserveBlobReferences implements the compact.ValueSeparation interface. When
