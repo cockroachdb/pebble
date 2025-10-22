@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
@@ -55,16 +56,16 @@ type LevelMetrics struct {
 	// sublevel count of 0, implying no read amplification. Only L0 will have
 	// a sublevel count other than 0 or 1.
 	Sublevels int32
-	// The total count of sstables in the level.
-	TablesCount int64
-	// The total size in bytes of the sstables in the level. Note that if tables
-	// contain references to blob files, this quantity does not include the the
-	// size of the blob files or the referenced values.
-	TablesSize int64
-	// The total number of virtual sstables in the level.
-	VirtualTablesCount uint64
-	// The total size of the virtual sstables in the level.
-	VirtualTablesSize uint64
+
+	// The total count and size of sstables in the level.
+	//
+	// Note that if tables contain references to blob files, the size does
+	// not include the size of the blob files or the referenced values.
+	Tables metrics.CountAndSize
+
+	// The total count and size of virtual sstables in the level.
+	VirtualTables metrics.CountAndSize
+
 	// The estimated total physical size of all blob references across all
 	// sstables in the level. The physical size is estimated based on the size
 	// of referenced values and the values' blob file's compression ratios.
@@ -77,35 +78,24 @@ type LevelMetrics struct {
 	FillFactor float64
 	// The level's compensated fill factor. See candidateLevelInfo.
 	CompensatedFillFactor float64
+
+	// The count and total size of sstable tables ingested into this level.
+	TablesIngested metrics.CountAndSize
+	// The count and total size of sstable tables compacted to this level.
+	TablesCompacted metrics.CountAndSize
+	// The count and total size of sstables flushed to this level.
+	TablesFlushed metrics.CountAndSize
+	// The count and total size of sstables moved to this level by a "move"
+	// compaction.
+	TablesMoved metrics.CountAndSize
+
 	// The number of incoming bytes from other levels' sstables read during
 	// compactions. This excludes bytes moved and bytes ingested. For L0 this is
 	// the bytes written to the WAL.
 	TableBytesIn uint64
-	// The number of sstable bytes ingested. The sibling metric for tables is
-	// TablesIngested.
-	TableBytesIngested uint64
-	// The number of sstable bytes moved into the level by a "move" compaction.
-	// The sibling metric for tables is TablesMoved.
-	TableBytesMoved uint64
 	// The number of bytes read for compactions at the level. This includes bytes
 	// read from other levels (BytesIn), as well as bytes read for the level.
 	TableBytesRead uint64
-	// The number of bytes written to sstables during compactions. The sibling
-	// metric for tables is TablesCompacted. This metric may be summed with
-	// BytesFlushed to compute the total bytes written for the level.
-	TableBytesCompacted uint64
-	// The number of bytes written to sstables during flushes. The sibling
-	// metrics for tables is TablesFlushed. This metric is always zero for all
-	// levels other than L0.
-	TableBytesFlushed uint64
-	// The number of sstables compacted to this level.
-	TablesCompacted uint64
-	// The number of sstables flushed to this level.
-	TablesFlushed uint64
-	// The number of sstables ingested into the level.
-	TablesIngested uint64
-	// The number of sstables moved to this level by a "move" compaction.
-	TablesMoved uint64
 	// The number of sstables deleted in a level by a delete-only compaction.
 	TablesDeleted uint64
 	// The number of sstables excised in a level by a delete-only compaction.
@@ -152,28 +142,22 @@ type LevelMetrics struct {
 // is exactly known. Virtual sstables' sizes are estimated, and the size of
 // values stored in blob files is estimated based on the volume of referenced
 // data and the blob file's compression ratio.
-func (m *LevelMetrics) AggregateSize() int64 {
-	return m.TablesSize + int64(m.EstimatedReferencesSize)
+func (m *LevelMetrics) AggregateSize() uint64 {
+	return m.Tables.Bytes + m.EstimatedReferencesSize
 }
 
 // Add updates the counter metrics for the level.
 func (m *LevelMetrics) Add(u *LevelMetrics) {
 	m.Sublevels += u.Sublevels
-	m.TablesCount += u.TablesCount
-	m.TablesSize += u.TablesSize
-	m.VirtualTablesCount += u.VirtualTablesCount
-	m.VirtualTablesSize += u.VirtualTablesSize
+	m.Tables.Accumulate(u.Tables)
+	m.VirtualTables.Accumulate(u.VirtualTables)
 	m.EstimatedReferencesSize += u.EstimatedReferencesSize
+	m.TablesIngested.Accumulate(u.TablesIngested)
+	m.TablesCompacted.Accumulate(u.TablesCompacted)
+	m.TablesFlushed.Accumulate(u.TablesFlushed)
+	m.TablesMoved.Accumulate(u.TablesMoved)
 	m.TableBytesIn += u.TableBytesIn
-	m.TableBytesIngested += u.TableBytesIngested
-	m.TableBytesMoved += u.TableBytesMoved
 	m.TableBytesRead += u.TableBytesRead
-	m.TableBytesCompacted += u.TableBytesCompacted
-	m.TableBytesFlushed += u.TableBytesFlushed
-	m.TablesCompacted += u.TablesCompacted
-	m.TablesFlushed += u.TablesFlushed
-	m.TablesIngested += u.TablesIngested
-	m.TablesMoved += u.TablesMoved
 	m.BlobBytesCompacted += u.BlobBytesCompacted
 	m.BlobBytesFlushed += u.BlobBytesFlushed
 	m.BlobBytesRead += u.BlobBytesRead
@@ -200,7 +184,7 @@ func (m *LevelMetrics) WriteAmp() float64 {
 	if m.TableBytesIn == 0 {
 		return 0
 	}
-	return float64(m.TableBytesFlushed+m.TableBytesCompacted+m.BlobBytesFlushed+m.BlobBytesCompacted) /
+	return float64(m.TablesFlushed.Bytes+m.TablesCompacted.Bytes+m.BlobBytesFlushed+m.BlobBytesCompacted) /
 		float64(m.TableBytesIn)
 }
 
@@ -586,7 +570,7 @@ func (m *Metrics) DiskSpaceUsage() uint64 {
 func (m *Metrics) NumVirtual() uint64 {
 	var n uint64
 	for _, level := range m.Levels {
-		n += level.VirtualTablesCount
+		n += level.VirtualTables.Count
 	}
 	return n
 }
@@ -597,7 +581,7 @@ func (m *Metrics) NumVirtual() uint64 {
 func (m *Metrics) VirtualSize() uint64 {
 	var size uint64
 	for _, level := range m.Levels {
-		size += level.VirtualTablesSize
+		size += level.VirtualTables.Bytes
 	}
 	return size
 }
@@ -621,32 +605,31 @@ func (m *Metrics) Total() LevelMetrics {
 		total.Add(l)
 	}
 	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
-	total.TableBytesIn = m.WAL.BytesWritten + total.TableBytesIngested
+	total.TableBytesIn = m.WAL.BytesWritten + total.TablesIngested.Bytes
 	// Add the total bytes-in to the total bytes-flushed. This is to account for
 	// the bytes written to the log and bytes written externally and then
 	// ingested.
-	total.TableBytesFlushed += total.TableBytesIn
+	total.TablesFlushed.Bytes += total.TableBytesIn
 	return total
 }
 
 // RemoteTablesTotal returns the total number of remote tables and their total
 // size. Remote tables are computed as the difference between total tables
 // (live + obsolete + zombie) and local tables.
-func (m *Metrics) RemoteTablesTotal() (count uint64, size uint64) {
-	var liveTables, liveTableBytes int64
+func (m *Metrics) RemoteTablesTotal() metrics.CountAndSize {
+	var liveTables metrics.CountAndSize
 	for level := 0; level < numLevels; level++ {
-		liveTables += m.Levels[level].TablesCount
-		liveTableBytes += m.Levels[level].TablesSize
+		liveTables.Accumulate(m.Levels[level].Tables)
 	}
-	totalCount := liveTables + m.Table.ObsoleteCount + m.Table.ZombieCount
+	totalCount := int64(liveTables.Count) + m.Table.ObsoleteCount + m.Table.ZombieCount
 	localCount := m.Table.Local.LiveCount + m.Table.Local.ObsoleteCount + m.Table.Local.ZombieCount
 	remoteCount := uint64(totalCount) - localCount
 
-	totalSize := uint64(liveTableBytes) + m.Table.ObsoleteSize + m.Table.ZombieSize
+	totalSize := uint64(liveTables.Bytes) + m.Table.ObsoleteSize + m.Table.ZombieSize
 	localSize := m.Table.Local.LiveSize + m.Table.Local.ObsoleteSize + m.Table.Local.ZombieSize
 	remoteSize := totalSize - localSize
 
-	return remoteCount, remoteSize
+	return metrics.CountAndSize{Count: remoteCount, Bytes: remoteSize}
 }
 
 // Assert that Metrics implements redact.SafeFormatter.
@@ -667,27 +650,27 @@ var (
 				}
 				return fmt.Sprintf("L%d", tupleIndex)
 			}),
-			table.Bytes("size", 10, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.TablesSize) + m.EstimatedReferencesSize }),
+			table.Bytes("size", 10, table.AlignRight, func(m *LevelMetrics) uint64 { return uint64(m.Tables.Bytes) + m.EstimatedReferencesSize }),
 			table.Div(),
-			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesCount }),
-			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) int64 { return m.TablesSize }),
+			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.Tables.Count }),
+			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.Tables.Bytes }),
 			table.Div(),
-			table.Count("count", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesCount }),
-			table.Count("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTablesSize }),
+			table.Count("count", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTables.Count }),
+			table.Count("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.VirtualTables.Bytes }),
 			table.Div(),
 			table.Bytes("refsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.EstimatedReferencesSize }),
 			table.Bytes("valblk", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.Additional.ValueBlocksSize }),
 			table.Div(),
 			table.Bytes("in", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIn }),
 			table.Div(),
-			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesIngested }),
-			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesIngested }),
+			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesIngested.Count }),
+			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesIngested.Bytes }),
 			table.Div(),
 			table.Int("r", 3, table.AlignRight, func(m *LevelMetrics) int { return int(m.Sublevels) }),
 			table.Float("w", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.WriteAmp() }),
 		)
 		def.FilterFn = func(tupleIndex int, m *LevelMetrics) (passed bool) {
-			return m.TablesCount != 0 || m.VirtualTablesCount != 0 || m.TableBytesIn != 0 || m.TablesIngested != 0
+			return m.Tables.Count != 0 || m.VirtualTables.Count != 0 || m.TableBytesIn != 0 || m.TablesIngested.Count != 0
 		}
 		return def
 	}()
@@ -705,8 +688,8 @@ var (
 			table.Float("ff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.FillFactor }),
 			table.Float("cff", 5, table.AlignRight, func(m *LevelMetrics) float64 { return m.CompensatedFillFactor }),
 			table.Div(),
-			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesMoved }),
-			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesMoved }),
+			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesMoved.Count }),
+			table.Bytes("size", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesMoved.Bytes }),
 			table.Div(),
 			table.Bytes("top", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesInTop }),
 			table.Bytes("in", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.MultiLevel.TableBytesIn }),
@@ -715,14 +698,14 @@ var (
 			table.Bytes("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesRead }),
 			table.Bytes("blob", 5, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesRead }),
 			table.Div(),
-			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesFlushed + m.TablesCompacted }),
-			table.Bytes("sstsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TableBytesFlushed + m.TableBytesCompacted }),
+			table.Count("tables", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesFlushed.Count + m.TablesCompacted.Count }),
+			table.Bytes("sstsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.TablesFlushed.Bytes + m.TablesCompacted.Bytes }),
 			table.Bytes("blobsz", 6, table.AlignRight, func(m *LevelMetrics) uint64 { return m.BlobBytesFlushed + m.BlobBytesCompacted }),
 		)
 		def.FilterFn = func(tupleIndex int, m *LevelMetrics) (passed bool) {
-			return !math.IsNaN(m.Score) || m.FillFactor != 0 || m.TablesMoved != 0 || m.MultiLevel.TableBytesInTop != 0 ||
+			return !math.IsNaN(m.Score) || m.FillFactor != 0 || m.TablesMoved.Count != 0 || m.MultiLevel.TableBytesInTop != 0 ||
 				m.MultiLevel.TableBytesIn != 0 || m.MultiLevel.TableBytesRead != 0 || m.BlobBytesRead != 0 ||
-				m.TablesFlushed != 0 || m.TablesCompacted != 0 || m.BlobBytesFlushed != 0 || m.BlobBytesCompacted != 0
+				m.TablesFlushed.Count != 0 || m.TablesCompacted.Count != 0 || m.BlobBytesFlushed != 0 || m.BlobBytesCompacted != 0
 		}
 		return def
 	}()

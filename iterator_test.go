@@ -2781,7 +2781,7 @@ func BenchmarkSeekPrefixTombstones(b *testing.B) {
 	}
 
 	d.mu.Lock()
-	require.Equal(b, int64(ks.Count()-1), d.mu.versions.metrics.Levels[numLevels-1].TablesCount)
+	require.Equal(b, int64(ks.Count()-1), d.mu.versions.metrics.Levels[numLevels-1].Tables.Count)
 	d.mu.Unlock()
 
 	seekKey := testkeys.Key(ks, 1)
@@ -3070,7 +3070,7 @@ func runBenchmarkQueueWorkload(b *testing.B, deleteRatio float32, initOps int, v
 	for i := 0; i < numLevels; i++ {
 		numTombstones := stats.Levels[i].KindsCount[base.InternalKeyKindDelete]
 		numSets := stats.Levels[i].KindsCount[base.InternalKeyKindSet]
-		numTables := metrics.Levels[i].TablesCount
+		numTables := metrics.Levels[i].Tables.Count
 		if numSets > 0 {
 			b.Logf("L%d: %d tombstones, %d sets, %d sstables\n", i, numTombstones, numSets, numTables)
 		}

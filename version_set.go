@@ -429,7 +429,7 @@ func (vs *versionSet) UpdateVersionLocked(
 
 	var nextSnapshotFilecount int64
 	for i := range vs.metrics.Levels {
-		nextSnapshotFilecount += vs.metrics.Levels[i].TablesCount
+		nextSnapshotFilecount += int64(vs.metrics.Levels[i].Tables.Count)
 	}
 	if sizeExceeded && !requireRotation {
 		requireRotation = vs.rotationHelper.ShouldRotate(nextSnapshotFilecount)
@@ -1080,19 +1080,19 @@ func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
 func setBasicLevelMetrics(m *Metrics, newVersion *manifest.Version) {
 	for i := range m.Levels {
 		l := &m.Levels[i]
-		l.TablesCount = int64(newVersion.Levels[i].Len())
-		l.TablesSize = int64(newVersion.Levels[i].TableSize())
-		l.VirtualTablesCount = newVersion.Levels[i].NumVirtual
-		l.VirtualTablesSize = newVersion.Levels[i].VirtualTableSize
+		l.Tables.Count = uint64(newVersion.Levels[i].Len())
+		l.Tables.Bytes = newVersion.Levels[i].TableSize()
+		l.VirtualTables.Count = newVersion.Levels[i].NumVirtual
+		l.VirtualTables.Bytes = newVersion.Levels[i].VirtualTableSize
 		l.EstimatedReferencesSize = newVersion.Levels[i].EstimatedReferenceSize()
 		l.Sublevels = 0
-		if l.TablesCount > 0 {
+		if l.Tables.Count > 0 {
 			l.Sublevels = 1
 		}
 		if invariants.Enabled {
 			levelFiles := newVersion.Levels[i].Slice()
-			if size := int64(levelFiles.TableSizeSum()); l.TablesSize != size {
-				panic(fmt.Sprintf("versionSet metrics L%d Size = %d, actual size = %d", i, l.TablesSize, size))
+			if size := levelFiles.TableSizeSum(); l.Tables.Bytes != size {
+				panic(fmt.Sprintf("versionSet metrics L%d Size = %d, actual size = %d", i, l.Tables.Bytes, size))
 			}
 			refSize := uint64(0)
 			for f := range levelFiles.All() {
@@ -1105,16 +1105,16 @@ func setBasicLevelMetrics(m *Metrics, newVersion *manifest.Version) {
 				))
 			}
 
-			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTablesCount {
+			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTables.Count {
 				panic(fmt.Sprintf(
 					"versionSet metrics L%d NumVirtual = %d, actual NumVirtual = %d",
-					i, l.VirtualTablesCount, nVirtual,
+					i, l.VirtualTables.Count, nVirtual,
 				))
 			}
-			if vSize := levelFiles.VirtualTableSizeSum(); vSize != l.VirtualTablesSize {
+			if vSize := levelFiles.VirtualTableSizeSum(); vSize != l.VirtualTables.Bytes {
 				panic(fmt.Sprintf(
 					"versionSet metrics L%d Virtual size = %d, actual size = %d",
-					i, l.VirtualTablesSize, vSize,
+					i, l.VirtualTables.Bytes, vSize,
 				))
 			}
 		}
