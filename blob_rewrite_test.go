@@ -81,15 +81,20 @@ func TestBlobRewrite(t *testing.T) {
 				bv = blobtest.Values{}
 				switch x := d.CmdArgs[0].String(); x {
 				case "preserve-blob-references":
-					pbr := &preserveBlobReferences{}
 					lines := crstrings.Lines(d.Input)
-					pbr.inputBlobPhysicalFiles = make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(lines))
+					inputBlobPhysicalFiles := make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(lines))
 					for _, line := range lines {
 						bfm, err := manifest.ParseBlobFileMetadataDebug(line)
 						require.NoError(t, err)
 						fn = max(fn, bfm.Physical.FileNum)
-						pbr.inputBlobPhysicalFiles[bfm.FileID] = bfm.Physical
+						inputBlobPhysicalFiles[bfm.FileID] = bfm.Physical
 					}
+					pbr := valsep.NewPreserveAllHotBlobReferences(
+						inputBlobPhysicalFiles,
+						0, /* outputBlobReferenceDepth */
+						sstable.ValueSeparationDefault,
+						0, /* original minimumSize */
+					)
 					vs = pbr
 				case "write-new-blob-files":
 					var minimumSize int
