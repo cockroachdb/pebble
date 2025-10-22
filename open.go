@@ -207,8 +207,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 					t.arenaBuf = manual.Buf{}
 				}
 			}
-			if d.cleanupManager != nil {
-				d.cleanupManager.Close()
+			if d.deletePacer != nil {
+				d.deletePacer.Close()
 			}
 			if d.mu.versions.manifestFile != nil {
 				_ = d.mu.versions.manifestFile.Close()
@@ -378,7 +378,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	defer maybeCleanUp(walManager.Close)
 	d.mu.log.manager = walManager
 
-	d.cleanupManager = openCleanupManager(opts, d.objProvider, d.getDeletionPacerInfo)
+	// The delete pacer will call calculateDiskAvailableBytes (and thus
+	// GetDiskUsage) O(number of file deletions) times. This may seem inefficient,
+	// but in practice this was observed to take constant time, regardless of
+	// volume size used, at least on linux with ext4 and zfs. All invocations take
+	// 10 microseconds or less.
+	d.deletePacer = openDeletePacer(d.opts, d.objProvider, d.calculateDiskAvailableBytes)
 
 	fileCacheSize := FileCacheSize(opts.MaxOpenFiles)
 	if opts.FileCache == nil {

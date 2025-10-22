@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/compression"
+	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
@@ -481,6 +482,10 @@ type Metrics struct {
 		Failover wal.FailoverStats
 	}
 
+	// DeletePacer are metrics from the delete pacer, which manages obsolete file
+	// deletion. These can be relevant if free disk space is unexplainably low.
+	DeletePacer deletepacer.Metrics
+
 	LogWriter struct {
 		FsyncLatency prometheus.Histogram
 		record.LogWriterMetrics
@@ -845,6 +850,14 @@ var (
 		table.Div(),
 		table.String("blob files", 13, table.AlignRight, func(i compressionInfo) string { return i.blobFiles }),
 	)
+	deletePacerTableHeader = `DELETE PACER`
+	deletePacerTable       = table.Define[deletePacerInfo](
+		table.String("", 14, table.AlignRight, func(i deletePacerInfo) string { return i.label }),
+		table.Div(),
+		table.String("in queue", 12, table.AlignCenter, func(i deletePacerInfo) string { return i.inQueue }),
+		table.Div(),
+		table.String("deleted", 12, table.AlignCenter, func(i deletePacerInfo) string { return i.deleted }),
+	)
 )
 
 type commitPipelineInfo struct {
@@ -960,6 +973,12 @@ type compressionInfo struct {
 	algorithm string
 	tables    string
 	blobFiles string
+}
+
+type deletePacerInfo struct {
+	label   string
+	inQueue string
+	deleted string
 }
 
 func makeCompressionInfo(algorithm string, table, blob CompressionStatsForSetting) compressionInfo {
@@ -1147,8 +1166,30 @@ func (m *Metrics) String() string {
 	compressionContents = slices.DeleteFunc(compressionContents, func(i compressionInfo) bool {
 		return i.tables == "" && i.blobFiles == ""
 	})
-	compressionTable.Render(cur, table.RenderOptions{}, compressionContents...)
+	cur = compressionTable.Render(cur, table.RenderOptions{}, compressionContents...)
 
+	cur = cur.NewlineReturn()
+	cur.WriteString(deletePacerTableHeader)
+	deletePacerContents := []deletePacerInfo{
+		{
+			label:   "tables",
+			inQueue: m.DeletePacer.InQueue.Tables.String(),
+			deleted: m.DeletePacer.Deleted.Tables.String(),
+		},
+		{
+			label:   "blob files",
+			inQueue: m.DeletePacer.InQueue.BlobFiles.String(),
+			deleted: m.DeletePacer.Deleted.BlobFiles.String(),
+		},
+		{
+			label:   "other files",
+			inQueue: m.DeletePacer.InQueue.Other.String(),
+			deleted: m.DeletePacer.Deleted.Other.String(),
+		},
+	}
+	cur = deletePacerTable.Render(cur, table.RenderOptions{}, deletePacerContents...)
+
+	_ = cur
 	return wb.String()
 }
 
@@ -1210,6 +1251,8 @@ func (m *Metrics) StringForTests() string {
 		mCopy.BlockCache.Recent[i].HitsAndMisses = cache.HitsAndMisses{}
 		mCopy.BlockCache.Recent[i].Since = 0
 	}
+	// Clear the delete pacer stats as they can vary based on timing.
+	mCopy.DeletePacer = deletepacer.Metrics{}
 	return redact.StringWithoutMarkers(&mCopy)
 }
 

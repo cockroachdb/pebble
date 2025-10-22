@@ -124,7 +124,6 @@ func TestDefaultOptionsString(t *testing.T) {
   min_deletion_rate=0
   free_space_threshold_bytes=17179869184
   free_space_timeframe=10s
-  obsolete_bytes_max_ratio=0.200000
   obsolete_bytes_timeframe=5m0s
   merger=pebble.concatenate
   multilevel_compaction_heuristic=wamp(0.00, false)
@@ -398,7 +397,7 @@ func TestOptionsParse(t *testing.T) {
 			opts.FlushDelayDeleteRange = 10 * time.Second
 			opts.FlushDelayRangeKey = 11 * time.Second
 			opts.Experimental.LevelMultiplier = 5
-			opts.TargetByteDeletionRate = func() int { return 200 }
+			opts.DeletionPacing.BaselineRate = func() uint64 { return 200 }
 			opts.WALFailover = &WALFailoverOptions{
 				Secondary: wal.Dir{Dirname: "wal_secondary", FS: vfs.Default},
 			}

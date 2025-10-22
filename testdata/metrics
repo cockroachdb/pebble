@@ -85,6 +85,12 @@ COMPRESSION
         minlz |    1GB (CR=3) |   10GB (CR=3)
          zstd |   10GB (CR=5) |  100GB (CR=5)
       unknown |         500MB |          50MB
+
+DELETE PACER   |             in queue             |            deleted
+---------------+----------------------------------+------------------------------
+        tables |  100 (100MB) [local: 50 (50MB)]  | 1K (1GB) [local: 500 (500MB)]
+    blob files | 200 (200MB) [local: 100 (100MB)] |  2K (2GB) [local: 1K (1GB)]
+   other files |            10 (10MB)             |          100 (100MB)
 ----
 ----
 
@@ -175,6 +181,12 @@ COMPRESSION
          none |           36B |
        snappy | 76B (CR=1.14) |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -184,7 +196,7 @@ Iter category stats:
 
 disk-usage
 ----
-3,709B
+3,673B
 
 batch
 set b 2
@@ -277,6 +289,12 @@ COMPRESSION
 --------------+---------------+--------------
          none |          230B |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -287,7 +305,7 @@ Iter category stats:
 
 disk-usage
 ----
-6,002B
+5,966B
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -361,6 +379,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          230B |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
@@ -444,6 +468,12 @@ COMPRESSION
 --------------+---------------+--------------
          none |          230B |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -454,7 +484,7 @@ Iter category stats:
 
 disk-usage
 ----
-5,295B
+5,259B
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
@@ -529,6 +559,12 @@ COMPRESSION
 --------------+---------------+--------------
          none |          230B |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -539,7 +575,7 @@ Iter category stats:
 
 disk-usage
 ----
-4,588B
+4,552B
 
 additional-metrics
 ----
@@ -654,6 +690,12 @@ COMPRESSION
          none |           622B |          308B
        snappy | 630B (CR=1.27) |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -763,6 +805,12 @@ COMPRESSION
 --------------+---------------+--------------
          none |          622B |          308B
        snappy | 615B (CR=1.3) |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -925,6 +973,12 @@ COMPRESSION
          none |            1KB |          308B
        snappy | 843B (CR=1.26) |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1048,6 +1102,12 @@ COMPRESSION
          none |           1.3KB |          308B
        snappy | 1.3KB (CR=1.21) |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
@@ -1114,7 +1174,7 @@ virtual-size
 0
 0B
 
-metrics zero-cache-hits-misses
+metrics zero-cache-hits-misses zero-delete-pacer
 ----
 ----
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
@@ -1179,6 +1239,12 @@ COMPRESSION
 --------------+-----------------+--------------
          none |           1.3KB |          308B
        snappy | 1.2KB (CR=1.22) |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
@@ -1290,7 +1356,7 @@ virtual-size
 0
 0B
 
-metrics zero-cache-hits-misses
+metrics zero-cache-hits-misses zero-delete-pacer
 ----
 ----
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
@@ -1355,6 +1421,12 @@ COMPRESSION
 --------------+---------------+--------------
          none |         1.5KB |          308B
        snappy | 682B (CR=1.3) |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:11679 BlockBytesInCache:457 BlockReadDuration:330ms}
@@ -1447,6 +1519,12 @@ COMPRESSION
          none |           108B |
        snappy | 228B (CR=1.14) |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----
@@ -1527,6 +1605,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          345B |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
@@ -1625,6 +1709,12 @@ COMPRESSION
 --------------+---------------+--------------
          none |          460B |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
@@ -1715,6 +1805,12 @@ COMPRESSION
          none |          496B |
        snappy | 76B (CR=1.14) |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
@@ -1725,7 +1821,7 @@ Iter category stats:
 init reopen
 ----
 
-metrics zero-cache-hits-misses
+metrics zero-cache-hits-misses zero-delete-pacer
 ----
 ----
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
@@ -1791,6 +1887,12 @@ COMPRESSION
          none |          496B |
        snappy | 76B (CR=1.14) |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----
@@ -1804,7 +1906,7 @@ L6:
   000010:[c#0,SET-c#0,SET]
 
 # All tables are local after compaction.
-metrics zero-cache-hits-misses
+metrics zero-cache-hits-misses zero-delete-pacer
 ----
 ----
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
@@ -1866,6 +1968,12 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
          none |          345B |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:342 BlockBytesInCache:0 BlockReadDuration:30ms}
@@ -1987,6 +2095,12 @@ COMPRESSION
          none |           266B |
        snappy | 221B (CR=1.19) |
 
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
+
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
 ----
@@ -2065,6 +2179,12 @@ COMPRESSION
 --------------+----------------+--------------
          none |           266B |
        snappy | 221B (CR=1.19) |
+
+DELETE PACER   |   in queue   |   deleted
+---------------+--------------+-------------
+        tables |    0 (0B)    |    0 (0B)
+    blob files |    0 (0B)    |    0 (0B)
+   other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
