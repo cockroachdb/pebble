@@ -135,12 +135,11 @@ func exampleMetrics() Metrics {
 	m.Snapshots.PinnedKeys = 1234
 	m.Snapshots.PinnedSize = 3 * GB
 
-	m.Table.ObsoleteSize = 15 * MB
-	m.Table.ObsoleteCount = 16
-	m.Table.ZombieSize = 17 * MB
-	m.Table.ZombieCount = 18
-	m.Table.BackingTableCount = 1
-	m.Table.BackingTableSize = 2 * MB
+	m.Table.Obsolete.All = metrics.CountAndSize{Count: 16, Bytes: 15 * MB}
+	m.Table.Obsolete.Local = metrics.CountAndSize{Count: 13, Bytes: 29 * MB}
+	m.Table.Zombie.All = metrics.CountAndSize{Count: 18, Bytes: 17 * MB}
+	m.Table.Zombie.Local = metrics.CountAndSize{Count: 14, Bytes: 30 * MB}
+	m.Table.BackingTable = metrics.CountAndSize{Count: 1, Bytes: 2 * MB}
 	m.Table.Compression.NoCompressionBytes = 100 * MB
 	m.Table.Compression.CompressedBytesWithoutStats = 500 * MB
 	m.Table.Compression.Snappy.CompressedBytes = 1 * GB
@@ -149,32 +148,24 @@ func exampleMetrics() Metrics {
 	m.Table.Compression.MinLZ.UncompressedBytes = 3 * GB
 	m.Table.Compression.Zstd.CompressedBytes = 10 * GB
 	m.Table.Compression.Zstd.UncompressedBytes = 50 * GB
-	m.Table.Local.LiveSize = 28 * GB
-	m.Table.Local.LiveCount = 10_000
-	m.Table.Local.ObsoleteSize = 29 * MB
-	m.Table.Local.ObsoleteCount = 13
-	m.Table.Local.ZombieSize = 30 * MB
-	m.Table.Local.ZombieCount = 14
+	m.Table.Live.Local.Bytes = 28 * GB
+	m.Table.Live.Local.Count = 10_000
 	m.Table.Garbage.PointDeletionsBytesEstimate = 1 * MB
 	m.Table.Garbage.RangeDeletionsBytesEstimate = 2 * MB
 	m.Table.InitialStatsCollectionComplete = true
 	m.Table.PendingStatsCollectionCount = 31
 
-	m.BlobFiles.LiveCount = 1234
-	m.BlobFiles.LiveSize = 15 * GB
+	m.BlobFiles.Live.All.Count = 1234
+	m.BlobFiles.Live.All.Bytes = 15 * GB
 	m.BlobFiles.ValueSize = 14 * GB
 	m.BlobFiles.ReferencedValueSize = 11 * GB
 	m.BlobFiles.ReferencedBackingValueSize = 12 * GB
-	m.BlobFiles.ObsoleteCount = 13
-	m.BlobFiles.ObsoleteSize = 29 * MB
-	m.BlobFiles.ZombieCount = 14
-	m.BlobFiles.ZombieSize = 30 * MB
-	m.BlobFiles.Local.LiveSize = 28 * GB
-	m.BlobFiles.Local.LiveCount = 10_000
-	m.BlobFiles.Local.ObsoleteSize = 29 * MB
-	m.BlobFiles.Local.ObsoleteCount = 13
-	m.BlobFiles.Local.ZombieSize = 30 * MB
-	m.BlobFiles.Local.ZombieCount = 14
+	m.BlobFiles.Obsolete.All = metrics.CountAndSize{Count: 13, Bytes: 29 * MB}
+	m.BlobFiles.Obsolete.Local = metrics.CountAndSize{Count: 13, Bytes: 29 * MB}
+	m.BlobFiles.Zombie.All = metrics.CountAndSize{Count: 14, Bytes: 30 * MB}
+	m.BlobFiles.Zombie.Local = metrics.CountAndSize{Count: 14, Bytes: 30 * MB}
+	m.BlobFiles.Live.Local.Bytes = 28 * GB
+	m.BlobFiles.Live.Local.Count = 10_000
 	m.BlobFiles.Compression.NoCompressionBytes = 10 * MB
 	m.BlobFiles.Compression.CompressedBytesWithoutStats = 50 * MB
 	m.BlobFiles.Compression.Snappy.CompressedBytes = 10 * GB
@@ -494,9 +485,9 @@ func TestMetrics(t *testing.T) {
 			for i := range lines {
 				line := lines[i]
 				if line == "num-backing" {
-					buf.WriteString(fmt.Sprintf("%d\n", m.Table.BackingTableCount))
+					buf.WriteString(fmt.Sprintf("%d\n", m.Table.BackingTable.Count))
 				} else if line == "backing-size" {
-					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.Table.BackingTableSize)))
+					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.Table.BackingTable.Bytes)))
 				} else if line == "virtual-size" {
 					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.VirtualSize())))
 				} else if strings.HasPrefix(line, "num-virtual") {
