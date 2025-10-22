@@ -912,12 +912,14 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	// all the tables, we can construct all the referenced blob files and add
 	// them to the final version edit.
 	valueSeparator := &defineDBValueSeparator{
-		pbr: &preserveBlobReferences{
-			originalValueSeparationKind: sstable.ValueSeparationDefault,
-			minimumValueSize:            d.opts.Experimental.ValueSeparationPolicy().MinimumSize,
-		},
 		metas: make(map[base.BlobFileID]*manifest.PhysicalBlobFile),
 	}
+	valueSeparator.pbr = valsep.NewPreserveAllHotBlobReferences(
+		valueSeparator.metas,
+		0, /* outputreference depth */
+		sstable.ValueSeparationDefault,
+		d.opts.Experimental.ValueSeparationPolicy().MinimumSize,
+	)
 
 	var mem *memTable
 	var start, end *base.InternalKey
@@ -934,13 +936,13 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			flushable: mem,
 			flushed:   make(chan struct{}),
 		}}
+		getValueSeparator := func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation {
+			return valueSeparator
+		}
 		c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.latest.l0Organizer,
-			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now(), d.shouldCreateShared(0), d.determineCompactionValueSeparation)
+			d.mu.versions.picker.getBaseLevel(), toFlush, time.Now(), d.shouldCreateShared(0), getValueSeparator)
 		if err != nil {
 			return err
-		}
-		c.getValueSeparation = func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation {
-			return valueSeparator
 		}
 		// NB: define allows the test to exactly specify which keys go
 		// into which sstables. If the test has a small target file
