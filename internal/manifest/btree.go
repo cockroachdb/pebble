@@ -736,13 +736,15 @@ func (t *btree[M]) Clone() btree[M] {
 // Delete removes the provided table from the tree, unrefing the table's files
 // if it's found. If any files are unreferenced to zero, they're added to the
 // provided obsoleteFiles.
-func (t *btree[M]) Delete(item M, of ObsoleteFilesSet) {
+func (t *btree[M]) Delete(item M, of ObsoleteFilesSet) (found bool) {
 	if t.root == nil || t.root.count == 0 {
-		return
+		return false
 	}
-	if out, found := mut(&t.root).Remove(t.bcmp, item); found {
+	out, found := mut(&t.root).Remove(t.bcmp, item)
+	if found {
 		out.Unref(of)
 	}
+	// Note that even if the item was not found, we could have rebalanced a node.
 	if invariants.Enabled {
 		t.root.verifyInvariants()
 	}
@@ -755,6 +757,7 @@ func (t *btree[M]) Delete(item M, of ObsoleteFilesSet) {
 		}
 		old.decRef(false /* contentsToo */, assertNoObsoleteFiles{})
 	}
+	return found
 }
 
 // Insert adds the given item to the tree. If a item in the tree already

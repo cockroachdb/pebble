@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/metrics"
 )
 
 // LevelMetadata contains metadata for all of the files within
@@ -20,23 +21,19 @@ type LevelMetadata struct {
 	level          int
 	totalTableSize uint64
 	totalRefSize   uint64
-	// NumVirtual is the number of virtual sstables in the level.
-	NumVirtual uint64
-	// VirtualTableSize is the size of the virtual sstables in the level.
-	VirtualTableSize uint64
-	tree             btree[*TableMetadata]
+	virtualTables  metrics.CountAndSize
+	tree           btree[*TableMetadata]
 }
 
 // clone makes a copy of the level metadata, implicitly increasing the ref
 // count of every file contained within lm.
 func (lm *LevelMetadata) clone() LevelMetadata {
 	return LevelMetadata{
-		level:            lm.level,
-		totalTableSize:   lm.totalTableSize,
-		totalRefSize:     lm.totalRefSize,
-		NumVirtual:       lm.NumVirtual,
-		VirtualTableSize: lm.VirtualTableSize,
-		tree:             lm.tree.Clone(),
+		level:          lm.level,
+		totalTableSize: lm.totalTableSize,
+		totalRefSize:   lm.totalRefSize,
+		virtualTables:  lm.virtualTables,
+		tree:           lm.tree.Clone(),
 	}
 }
 
@@ -57,8 +54,7 @@ func MakeLevelMetadata(cmp Compare, level int, files []*TableMetadata) LevelMeta
 		lm.totalTableSize += f.Size
 		lm.totalRefSize += f.EstimatedReferenceSize()
 		if f.Virtual {
-			lm.NumVirtual++
-			lm.VirtualTableSize += f.Size
+			lm.virtualTables.Inc(f.Size)
 		}
 	}
 	return lm
@@ -91,20 +87,21 @@ func (lm *LevelMetadata) insert(f *TableMetadata) error {
 	lm.totalTableSize += f.Size
 	lm.totalRefSize += f.EstimatedReferenceSize()
 	if f.Virtual {
-		lm.NumVirtual++
-		lm.VirtualTableSize += f.Size
+		lm.virtualTables.Inc(f.Size)
 	}
 	return nil
 }
 
-func (lm *LevelMetadata) remove(f *TableMetadata) {
-	lm.totalTableSize -= f.Size
-	lm.totalRefSize -= f.EstimatedReferenceSize()
-	if f.Virtual {
-		lm.NumVirtual--
-		lm.VirtualTableSize -= f.Size
+func (lm *LevelMetadata) remove(f *TableMetadata) (found bool) {
+	if !lm.tree.Delete(f, assertNoObsoleteFiles{}) {
+		return false
 	}
-	lm.tree.Delete(f, assertNoObsoleteFiles{})
+	lm.totalTableSize = invariants.SafeSub(lm.totalTableSize, f.Size)
+	lm.totalRefSize = invariants.SafeSub(lm.totalRefSize, f.EstimatedReferenceSize())
+	if f.Virtual {
+		lm.virtualTables.Dec(f.Size)
+	}
+	return true
 }
 
 // Empty indicates whether there are any files in the level.
@@ -135,6 +132,12 @@ func (lm *LevelMetadata) TableSize() uint64 {
 // AggregateSize().
 func (lm *LevelMetadata) EstimatedReferenceSize() uint64 {
 	return lm.totalRefSize
+}
+
+// VirtualTables returns the count and total size of the virtual tables in the
+// level.
+func (lm *LevelMetadata) VirtualTables() metrics.CountAndSize {
+	return lm.virtualTables
 }
 
 // Iter constructs a LevelIterator over the entire level.
