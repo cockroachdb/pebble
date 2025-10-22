@@ -5,15 +5,11 @@
 package pebble
 
 import (
-	"slices"
-
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/valsep"
 	"github.com/cockroachdb/redact"
 )
@@ -52,7 +48,7 @@ func (d *DB) determineCompactionValueSeparation(
 		// For flushes, c.version is nil.
 		blobFileSet = uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs)
 	}
-	minSize := uint64(policy.MinimumSize)
+	minSize := policy.MinimumSize
 	switch valueStorage {
 	case ValueStorageLowReadLatency:
 		return valsep.NeverSeparateValues{}
@@ -60,18 +56,18 @@ func (d *DB) determineCompactionValueSeparation(
 		minSize = latencyTolerantMinimumSize
 	default:
 	}
-	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, minSize); !writeBlobs {
+	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, uint64(minSize)); !writeBlobs {
 		// This compaction should preserve existing blob references.
 		kind := sstable.ValueSeparationDefault
 		if valueStorage != ValueStorageDefault {
 			kind = sstable.ValueSeparationSpanPolicy
 		}
-		return &preserveBlobReferences{
-			inputBlobPhysicalFiles:      blobFileSet,
-			outputBlobReferenceDepth:    outputBlobReferenceDepth,
-			minimumValueSize:            int(minSize),
-			originalValueSeparationKind: kind,
-		}
+		return valsep.NewPreserveAllHotBlobReferences(
+			blobFileSet,
+			outputBlobReferenceDepth,
+			kind,
+			minSize,
+		)
 	}
 
 	// This compaction should write values to new blob files.
@@ -217,173 +213,4 @@ func uniqueInputBlobMetadatas(
 		}
 	}
 	return m
-}
-
-// preserveBlobReferences implements the compact.ValueSeparation interface. When
-// a compaction is configured with preserveBlobReferences, the compaction will
-// not create any new blob files. However, input references to existing blob
-// references will be preserved and metadata about the table's blob references
-// will be collected.
-type preserveBlobReferences struct {
-	// inputBlobPhysicalFiles holds the *PhysicalBlobFile for every unique blob
-	// file referenced by input sstables.
-	inputBlobPhysicalFiles   map[base.BlobFileID]*manifest.PhysicalBlobFile
-	outputBlobReferenceDepth manifest.BlobReferenceDepth
-
-	// minimumValueSize is the minimum size of values used by the value separation
-	// policy that was originally used to write the input sstables.
-	minimumValueSize int
-	// originalValueSeparationKind is the value separation policy that was originally used to
-	// write the input sstables.
-	originalValueSeparationKind sstable.ValueSeparationKind
-
-	// state
-	buf []byte
-	// currReferences holds the pending references that have been referenced by
-	// the current output sstable. The index of a reference with a given blob
-	// file ID is the value of the base.BlobReferenceID used by its value handles
-	// within the output sstable.
-	currReferences []pendingReference
-	// totalValueSize is the sum of currReferenceValueSizes.
-	//
-	// INVARIANT: totalValueSize == sum(currReferenceValueSizes)
-	totalValueSize uint64
-}
-
-type pendingReference struct {
-	blobFileID base.BlobFileID
-	valueSize  uint64
-}
-
-// Assert that *preserveBlobReferences implements the compact.ValueSeparation
-// interface.
-var _ valsep.ValueSeparation = (*preserveBlobReferences)(nil)
-
-// SetNextOutputConfig implements the ValueSeparation interface.
-func (vs *preserveBlobReferences) SetNextOutputConfig(config valsep.ValueSeparationOutputConfig) {}
-
-// Kind implements the ValueSeparation interface.
-func (vs *preserveBlobReferences) Kind() sstable.ValueSeparationKind {
-	return vs.originalValueSeparationKind
-}
-
-// MinimumSize implements the ValueSeparation interface.
-func (vs *preserveBlobReferences) MinimumSize() int { return vs.minimumValueSize }
-
-// EstimatedFileSize returns an estimate of the disk space consumed by the current
-// blob file if it were closed now.
-func (vs *preserveBlobReferences) EstimatedFileSize() uint64 {
-	return 0
-}
-
-// EstimatedReferenceSize returns an estimate of the disk space consumed by the
-// current output sstable's blob references so far.
-func (vs *preserveBlobReferences) EstimatedReferenceSize() uint64 {
-	// TODO(jackson): The totalValueSize is the uncompressed value sizes. With
-	// compressible data, it overestimates the disk space consumed by the blob
-	// references. It also does not include the blob file's index block or
-	// footer, so it can underestimate if values are completely incompressible.
-	//
-	// Should we compute a compression ratio per blob file and scale the
-	// references appropriately?
-	return vs.totalValueSize
-}
-
-// Add implements compact.ValueSeparation. This implementation will write
-// existing blob references to the output table.
-func (vs *preserveBlobReferences) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
-) error {
-	if !kv.V.IsBlobValueHandle() {
-		// If the value is not already a blob handle (either it's in-place or in
-		// a value block), we retrieve the value and write it through Add. The
-		// sstable writer may still decide to put the value in a value block,
-		// but regardless the value will be written to the sstable itself and
-		// not a blob file.
-		v, callerOwned, err := kv.Value(vs.buf)
-		if err != nil {
-			return err
-		}
-		if callerOwned {
-			vs.buf = v[:0]
-		}
-		return tw.Add(kv.K, v, forceObsolete)
-	}
-
-	// The value is an existing blob handle. We can copy it into the output
-	// sstable, taking note of the reference for the table metadata.
-	lv := kv.V.LazyValue()
-	fileID := lv.Fetcher.BlobFileID
-
-	var refID base.BlobReferenceID
-	if refIdx := slices.IndexFunc(vs.currReferences, func(ref pendingReference) bool {
-		return ref.blobFileID == fileID
-	}); refIdx != -1 {
-		refID = base.BlobReferenceID(refIdx)
-	} else {
-		refID = base.BlobReferenceID(len(vs.currReferences))
-		vs.currReferences = append(vs.currReferences, pendingReference{
-			blobFileID: fileID,
-			valueSize:  0,
-		})
-	}
-
-	if invariants.Enabled && vs.currReferences[refID].blobFileID != fileID {
-		panic("wrong reference index")
-	}
-
-	handleSuffix := blob.DecodeHandleSuffix(lv.ValueOrHandle)
-	inlineHandle := blob.InlineHandle{
-		InlineHandlePreface: blob.InlineHandlePreface{
-			ReferenceID: refID,
-			ValueLen:    lv.Fetcher.Attribute.ValueLen,
-		},
-		HandleSuffix: handleSuffix,
-	}
-	err := tw.AddWithBlobHandle(kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete)
-	if err != nil {
-		return err
-	}
-	vs.currReferences[refID].valueSize += uint64(lv.Fetcher.Attribute.ValueLen)
-	vs.totalValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
-	return nil
-}
-
-// FinishOutput implements compact.ValueSeparation.
-func (vs *preserveBlobReferences) FinishOutput() (valsep.ValueSeparationMetadata, error) {
-	if invariants.Enabled {
-		// Assert that the incrementally-maintained totalValueSize matches the
-		// sum of all the reference value sizes.
-		totalValueSize := uint64(0)
-		for _, ref := range vs.currReferences {
-			totalValueSize += ref.valueSize
-		}
-		if totalValueSize != vs.totalValueSize {
-			return valsep.ValueSeparationMetadata{},
-				errors.AssertionFailedf("totalValueSize mismatch: %d != %d", totalValueSize, vs.totalValueSize)
-		}
-	}
-
-	references := make(manifest.BlobReferences, len(vs.currReferences))
-	for i := range vs.currReferences {
-		ref := vs.currReferences[i]
-		phys, ok := vs.inputBlobPhysicalFiles[ref.blobFileID]
-		if !ok {
-			return valsep.ValueSeparationMetadata{},
-				errors.AssertionFailedf("pebble: blob file %s not found among input sstables", ref.blobFileID)
-		}
-		references[i] = manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, ref.valueSize, phys)
-	}
-	referenceSize := vs.totalValueSize
-	vs.currReferences = vs.currReferences[:0]
-	vs.totalValueSize = 0
-	return valsep.ValueSeparationMetadata{
-		BlobReferences:    references,
-		BlobReferenceSize: referenceSize,
-		// The outputBlobReferenceDepth is computed from the input sstables,
-		// reflecting the worst-case overlap of referenced blob files. If this
-		// sstable references fewer unique blob files, reduce its depth to the
-		// count of unique files.
-		BlobReferenceDepth: min(vs.outputBlobReferenceDepth, manifest.BlobReferenceDepth(len(references))),
-	}, nil
 }
