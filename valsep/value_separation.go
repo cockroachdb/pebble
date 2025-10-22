@@ -49,6 +49,15 @@ type ValueSeparation interface {
 	FinishOutput() (ValueSeparationMetadata, error)
 }
 
+// NewBlobFileInfo describes a newly written blob file
+// created by value separation. This is returned by
+// ValueSeparation.FinishOutput.
+type NewBlobFileInfo struct {
+	FileStats    blob.FileWriterStats
+	FileObject   objstorage.ObjectMetadata
+	FileMetadata *manifest.PhysicalBlobFile
+}
+
 // ValueSeparationMetadata describes metadata about a table's blob references,
 // and optionally a newly constructed blob file.
 type ValueSeparationMetadata struct {
@@ -57,9 +66,7 @@ type ValueSeparationMetadata struct {
 	BlobReferenceDepth manifest.BlobReferenceDepth
 
 	// The below fields are only populated if a new blob file was created.
-	BlobFileStats    blob.FileWriterStats
-	BlobFileObject   objstorage.ObjectMetadata
-	BlobFileMetadata *manifest.PhysicalBlobFile
+	NewBlobFiles []NewBlobFileInfo
 }
 
 // NeverSeparateValues is a ValueSeparation implementation that never separates

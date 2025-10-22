@@ -202,16 +202,18 @@ func (r *Runner) WriteTable(
 	// Inform the value separation policy that the table is finished.
 	valSepMeta, valSepErr := valueSeparation.FinishOutput()
 	if valSepErr != nil {
-		r.err = errors.CombineErrors(r.err, valSepErr)
+		err = errors.CombineErrors(err, valSepErr)
 	} else {
 		r.tables[len(r.tables)-1].BlobReferences = valSepMeta.BlobReferences
 		r.tables[len(r.tables)-1].BlobReferenceDepth = valSepMeta.BlobReferenceDepth
-		if valSepMeta.BlobFileObject.DiskFileNum != 0 {
-			r.blobs = append(r.blobs, OutputBlob{
-				Stats:    valSepMeta.BlobFileStats,
-				ObjMeta:  valSepMeta.BlobFileObject,
-				Metadata: valSepMeta.BlobFileMetadata,
-			})
+		if len(valSepMeta.NewBlobFiles) != 0 {
+			for _, bf := range valSepMeta.NewBlobFiles {
+				r.blobs = append(r.blobs, OutputBlob{
+					Stats:    bf.FileStats,
+					ObjMeta:  bf.FileObject,
+					Metadata: bf.FileMetadata,
+				})
+			}
 		}
 	}
 
@@ -231,9 +233,12 @@ func (r *Runner) WriteTable(
 		return
 	}
 	r.tables[len(r.tables)-1].WriterMeta = *writerMeta
-	r.stats.CumulativeWrittenSize += writerMeta.Size + valSepMeta.BlobFileStats.FileLen
+	r.stats.CumulativeWrittenSize += writerMeta.Size
 	r.stats.CumulativeBlobReferenceSize += valSepMeta.BlobReferenceSize
-	r.stats.CumulativeBlobFileSize += valSepMeta.BlobFileStats.FileLen
+	for _, bf := range valSepMeta.NewBlobFiles {
+		r.stats.CumulativeWrittenSize += bf.FileStats.FileLen
+		r.stats.CumulativeBlobFileSize += bf.FileStats.FileLen
+	}
 }
 
 func (r *Runner) writeKeysToTable(
