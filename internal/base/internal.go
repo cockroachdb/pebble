@@ -762,3 +762,10 @@ func (ikr *InternalKeyBounds) SetLargest(ik InternalKey) {
 	ikr.largestTrailer = ik.Trailer
 	ikr.userKeySeparatorIdx = len(smallestUserKey)
 }
+
+type StorageTier uint8
+
+const (
+	HotTier StorageTier = iota
+	NumStorageTiers
+)
