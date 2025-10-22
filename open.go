@@ -109,6 +109,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		err = errors.CombineErrors(err, dirs.Close())
 		return nil, err
 	}
+	// Locks in RecoveryDirLocks can be closed as soon as we've finished opening
+	// the database.
+	defer func() { _ = dirs.RecoveryDirLocks.Close() }()
 	defer maybeCleanUp(dirs.Close)
 
 	rs, err := recoverState(opts, dirname)
@@ -314,20 +317,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			Buckets: FsyncLatencyBuckets,
 		})
 	}
-	walDirs := walOpts.Dirs()
-	var recoveryDirLocks base.DirLockSet
-	defer func() { _ = recoveryDirLocks.Close() }()
-	for _, dir := range opts.WALRecoveryDirs {
-		dir.Dirname = resolveStorePath(dirname, dir.Dirname)
-		if dir.Dirname != dirname {
-			// Acquire a lock on the WAL recovery directory.
-			_, err = recoveryDirLocks.AcquireOrValidate(dir.Lock, dir.Dirname, dir.FS)
-			if err != nil {
-				return nil, errors.Wrapf(err, "error acquiring lock on WAL recovery directory %q", dir.Dirname)
-			}
-		}
-		walDirs = append(walDirs, dir)
-	}
+	walDirs := d.dirs.WALDirs()
 	wals, err := wal.Scan(walDirs...)
 	if err != nil {
 		return nil, err
@@ -576,10 +566,23 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 // resolvedDirs is a set of resolved directory paths and locks.
 type resolvedDirs struct {
-	DirLocks     base.DirLockSet
-	DataDir      vfs.File
-	WALPrimary   wal.Dir
-	WALSecondary wal.Dir
+	DirLocks         base.DirLockSet
+	RecoveryDirLocks base.DirLockSet
+	DataDir          vfs.File
+	WALPrimary       wal.Dir
+	WALSecondary     wal.Dir
+	WALRecovery      []wal.Dir
+}
+
+// WALDirs returns the set of resolved directories that may contain WAL files
+// relevant to recovery.
+func (d *resolvedDirs) WALDirs() []wal.Dir {
+	dirs := []wal.Dir{d.WALPrimary}
+	if d.WALSecondary.Dirname != "" {
+		dirs = append(dirs, d.WALSecondary)
+	}
+	dirs = append(dirs, d.WALRecovery...)
+	return dirs
 }
 
 // Close closes the data directory and the directory locks.
@@ -589,6 +592,7 @@ func (d *resolvedDirs) Close() error {
 		err = errors.CombineErrors(err, d.DataDir.Close())
 	}
 	err = errors.CombineErrors(err, d.DirLocks.Close())
+	err = errors.CombineErrors(err, d.RecoveryDirLocks.Close())
 	*d = resolvedDirs{}
 	return err
 }
@@ -671,6 +675,19 @@ func prepareOpenAndLockDirs(dirname string, opts *Options) (dirs *resolvedDirs, 
 		if err != nil {
 			return dirs, err
 		}
+	}
+
+	// Resolve path names and acquire locks for the WAL recovery directories.
+	for _, dir := range opts.WALRecoveryDirs {
+		dir.Dirname = resolveStorePath(dirname, dir.Dirname)
+		if dir.Dirname != dirname {
+			// Acquire a lock on the WAL recovery directory.
+			dir.Lock, err = dirs.RecoveryDirLocks.AcquireOrValidate(dir.Lock, dir.Dirname, dir.FS)
+			if err != nil {
+				return dirs, errors.Wrapf(err, "error acquiring lock on WAL recovery directory %q", dir.Dirname)
+			}
+		}
+		dirs.WALRecovery = append(dirs.WALRecovery, dir)
 	}
 	return dirs, nil
 }
