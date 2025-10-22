@@ -143,11 +143,13 @@ func TestValueSeparationPolicy(t *testing.T) {
 
 				meta, err := vs.FinishOutput()
 				require.NoError(t, err)
-				if meta.BlobFileObject.DiskFileNum == 0 {
+				if len(meta.NewBlobFiles) == 0 {
 					fmt.Fprintln(&buf, "no blob file created")
 				} else {
-					fmt.Fprintf(&buf, "Blob file created: %s\n", meta.BlobFileMetadata)
-					fmt.Fprintln(&buf, meta.BlobFileStats)
+					for _, bf := range meta.NewBlobFiles {
+						fmt.Fprintf(&buf, "Blob file created: %s\n", bf.FileMetadata)
+						fmt.Fprintln(&buf, bf.FileStats)
+					}
 				}
 				if len(meta.BlobReferences) == 0 {
 					fmt.Fprintln(&buf, "blobrefs:[]")

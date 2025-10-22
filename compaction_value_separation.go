@@ -398,9 +398,11 @@ func (vs *writeNewBlobFiles) FinishOutput() (valsep.ValueSeparationMetadata, err
 		},
 		BlobReferenceSize:  stats.UncompressedValueBytes,
 		BlobReferenceDepth: 1,
-		BlobFileStats:      stats,
-		BlobFileObject:     vs.objMeta,
-		BlobFileMetadata:   meta,
+		NewBlobFiles: []valsep.NewBlobFileInfo{{
+			FileStats:    stats,
+			FileObject:   vs.objMeta,
+			FileMetadata: meta,
+		}},
 	}, nil
 }
 
