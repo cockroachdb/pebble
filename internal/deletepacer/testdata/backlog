@@ -1,0 +1,103 @@
+# This test artificially puts the pacer in a condition where there are not many
+# recent deletions, but there is a large backlog. Once we unblock deletes (about
+# halfway through the test), we should see the backlog worked down within 5
+# minutes.
+run
+baseline-rate 1MiB/s
+block-deletes
+del 1MiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 5m
+unblock-deletes
+sleep 4m
+----
+Enqueue:
+10GiB | • •• • ••
+      |
+      |
+      |
+      |
+      |
+      |
+      |
+   0B |•
+      +----------------------------------------------------------------------------------------------------
+       0s                                                                                             10m0s
+Delete:
+10GiB |                                                           •       •       •       •       •       •
+      |
+      |
+      |
+      |
+      |
+      |
+      |
+   0B |
+      +----------------------------------------------------------------------------------------------------
+       0s                                                                                             10m0s
+
+
+# Repeat the same test but add a free-space condition that temporarily increases
+# the rate during backlog drain. We want to see more frequent deletions during
+# that period, and then a return to the previous frequency.
+run free-space-threshold=100GiB
+baseline-rate 1MiB/s
+block-deletes
+del 1MiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 10s
+del 10GiB
+sleep 5m
+unblock-deletes
+sleep 30s
+free-space 99GiB
+del 1GiB
+sleep 30s
+free-space 100GiB
+del 1GiB
+sleep 3m
+----
+Enqueue:
+10GiB | • •• • ••
+      |
+      |
+      |
+      |
+      |
+      |
+      |                                                                •    •
+   0B |•
+      +----------------------------------------------------------------------------------------------------
+       0s                                                                                             10m0s
+Delete:
+10GiB |                                                           •     • ••  •     •
+      |
+      |
+      |
+      |
+      |
+      |
+      |
+   0B |
+      +----------------------------------------------------------------------------------------------------
+       0s                                                                                             10m0s

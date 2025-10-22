@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
+	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/inflight"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -312,7 +313,7 @@ type DB struct {
 	closed   *atomic.Value
 	closedCh chan struct{}
 
-	cleanupManager *cleanupManager
+	deletePacer *deletepacer.DeletePacer
 
 	compactionScheduler CompactionScheduler
 
@@ -487,10 +488,6 @@ type DB struct {
 			// count acts as a reference count to prohibit file cleaning. See
 			// DB.{disable,enable}FileDeletions().
 			disableCount int
-			// queuedStats holds cumulative stats for files that have been
-			// queued for deletion by the cleanup manager. These stats are
-			// monotonically increasing for the *DB's lifetime.
-			queuedStats obsoleteObjectStats
 		}
 
 		snapshots struct {
@@ -563,7 +560,7 @@ var _ Writer = (*DB)(nil)
 
 // TestOnlyWaitForCleaning MUST only be used in tests.
 func (d *DB) TestOnlyWaitForCleaning() {
-	d.cleanupManager.Wait()
+	d.deletePacer.WaitForTesting()
 }
 
 // Set sets the value for the given key. It overwrites any previous value
@@ -1599,7 +1596,7 @@ func (d *DB) Close() error {
 	d.mu.Unlock()
 
 	// Wait for all cleaning jobs to finish.
-	d.cleanupManager.Close()
+	d.deletePacer.Close()
 
 	d.mu.Lock()
 	// Sanity check compaction metrics.
@@ -1887,7 +1884,7 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
 	walStats := d.mu.log.manager.Stats()
-	completedObsoleteFileStats := d.cleanupManager.CompletedStats()
+	deletePacerMetrics := d.deletePacer.Metrics()
 
 	d.mu.Lock()
 	vers := d.mu.versions.currentVersion()
@@ -1951,29 +1948,19 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Table.ZombieSize = d.mu.versions.zombieTables.TotalSize()
 	metrics.Table.Local.ZombieCount, metrics.Table.Local.ZombieSize = d.mu.versions.zombieTables.LocalStats()
 
-	// The obsolete blob/table metrics have a subtle calculation:
-	//
-	// (A) The vs.metrics.{Table,BlobFiles}.[Local.]{ObsoleteCount,ObsoleteSize}
-	// fields reflect the set of files currently sitting in
-	// vs.obsolete{Tables,Blobs} but not yet enqueued to the cleanup manager.
-	//
-	// (B) The d.mu.fileDeletions.queuedStats field holds the set of files that have
-	// been queued for deletion by the cleanup manager.
-	//
-	// (C) The cleanup manager also maintains cumulative stats for the set of
-	// files that have been deleted.
-	//
-	// The value of currently pending obsolete files is (A) + (B) - (C).
-	pendingObsoleteFileStats := d.mu.fileDeletions.queuedStats
-	pendingObsoleteFileStats.Sub(completedObsoleteFileStats)
-	metrics.Table.Local.ObsoleteCount += pendingObsoleteFileStats.tablesLocal.count
-	metrics.Table.Local.ObsoleteSize += pendingObsoleteFileStats.tablesLocal.size
-	metrics.Table.ObsoleteCount += int64(pendingObsoleteFileStats.tablesAll.count)
-	metrics.Table.ObsoleteSize += pendingObsoleteFileStats.tablesAll.size
-	metrics.BlobFiles.Local.ObsoleteCount += pendingObsoleteFileStats.blobFilesLocal.count
-	metrics.BlobFiles.Local.ObsoleteSize += pendingObsoleteFileStats.blobFilesLocal.size
-	metrics.BlobFiles.ObsoleteCount += pendingObsoleteFileStats.blobFilesAll.count
-	metrics.BlobFiles.ObsoleteSize += pendingObsoleteFileStats.blobFilesAll.size
+	// The obsolete blob/table metrics have a subtle calculation: the initial
+	// metrics we copied from vs.metrics reflect (in
+	// {Table,BlobFiles}.[Local.]{ObsoleteCount,ObsoleteSize}) the set of files
+	// currently sitting in vs.obsolete{Tables,Blobs} but not yet enqueued to the
+	// delete pacer. To complete the metrics, we add the currently enqueued files.
+	metrics.Table.Local.ObsoleteCount += deletePacerMetrics.InQueue.Tables.Local.Count
+	metrics.Table.Local.ObsoleteSize += deletePacerMetrics.InQueue.Tables.Local.Bytes
+	metrics.Table.ObsoleteCount += int64(deletePacerMetrics.InQueue.Tables.All.Count)
+	metrics.Table.ObsoleteSize += deletePacerMetrics.InQueue.Tables.All.Bytes
+	metrics.BlobFiles.Local.ObsoleteCount += deletePacerMetrics.InQueue.BlobFiles.Local.Count
+	metrics.BlobFiles.Local.ObsoleteSize += deletePacerMetrics.InQueue.BlobFiles.Local.Bytes
+	metrics.BlobFiles.ObsoleteCount += deletePacerMetrics.InQueue.BlobFiles.All.Count
+	metrics.BlobFiles.ObsoleteSize += deletePacerMetrics.InQueue.BlobFiles.All.Bytes
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	d.mu.versions.logLock()
@@ -2025,6 +2012,8 @@ func (d *DB) Metrics() *Metrics {
 	metrics.FileCache, metrics.Filter = d.fileCache.Metrics()
 	metrics.TableIters = d.fileCache.IterCount()
 	metrics.CategoryStats = d.fileCache.SSTStatsCollector().GetStats()
+
+	metrics.DeletePacer = deletePacerMetrics
 
 	metrics.SecondaryCacheMetrics = d.objProvider.Metrics()
 

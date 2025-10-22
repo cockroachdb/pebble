@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -67,16 +68,17 @@ type versionSet struct {
 	curCompactionConcurrency atomic.Int32
 
 	// Not all metrics are kept here. See DB.Metrics().
+	// TODO(radu): replace with only the metrics that are actually maintained.
 	metrics Metrics
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
 	obsoleteFn func(manifest.ObsoleteFiles)
 	// obsolete{Tables,Blobs,Manifests,Options} are sorted by file number ascending.
-	obsoleteTables    []obsoleteFile
-	obsoleteBlobs     []obsoleteFile
-	obsoleteManifests []obsoleteFile
-	obsoleteOptions   []obsoleteFile
+	obsoleteTables    []deletepacer.ObsoleteFile
+	obsoleteBlobs     []deletepacer.ObsoleteFile
+	obsoleteManifests []deletepacer.ObsoleteFile
+	obsoleteOptions   []deletepacer.ObsoleteFile
 
 	// Zombie tables which have been removed from the current version but are
 	// still referenced by an inuse iterator.
@@ -591,13 +593,13 @@ func (vs *versionSet) UpdateVersionLocked(
 	}
 	if newManifestFileNum != 0 {
 		if vs.manifestFileNum != 0 {
-			vs.obsoleteManifests = append(vs.obsoleteManifests, obsoleteFile{
-				fileType: base.FileTypeManifest,
-				fs:       vs.fs,
-				path:     base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, vs.manifestFileNum),
-				fileNum:  vs.manifestFileNum,
-				fileSize: prevManifestFileSize,
-				isLocal:  true,
+			vs.obsoleteManifests = append(vs.obsoleteManifests, deletepacer.ObsoleteFile{
+				FileType: base.FileTypeManifest,
+				FS:       vs.fs,
+				Path:     base.MakeFilepath(vs.fs, vs.dirname, base.FileTypeManifest, vs.manifestFileNum),
+				FileNum:  vs.manifestFileNum,
+				FileSize: prevManifestFileSize,
+				IsLocal:  true,
 			})
 		}
 		vs.manifestFileNum = newManifestFileNum
@@ -1019,14 +1021,14 @@ func (vs *versionSet) addObsoleteLocked(obsolete manifest.ObsoleteFiles) {
 	// Note that the zombie objects transition from zombie *to* obsolete, and
 	// will no longer be considered zombie.
 
-	newlyObsoleteTables := make([]obsoleteFile, len(obsolete.TableBackings))
+	newlyObsoleteTables := make([]deletepacer.ObsoleteFile, len(obsolete.TableBackings))
 	for i, bs := range obsolete.TableBackings {
 		newlyObsoleteTables[i] = vs.zombieTables.Extract(bs.DiskFileNum).
 			asObsoleteFile(vs.fs, base.FileTypeTable, vs.dirname)
 	}
 	vs.obsoleteTables = mergeObsoleteFiles(vs.obsoleteTables, newlyObsoleteTables)
 
-	newlyObsoleteBlobFiles := make([]obsoleteFile, len(obsolete.BlobFiles))
+	newlyObsoleteBlobFiles := make([]deletepacer.ObsoleteFile, len(obsolete.BlobFiles))
 	for i, bf := range obsolete.BlobFiles {
 		newlyObsoleteBlobFiles[i] = vs.zombieBlobs.Extract(bf.FileNum).
 			asObsoleteFile(vs.fs, base.FileTypeBlob, vs.dirname)
@@ -1044,19 +1046,17 @@ func (vs *versionSet) addObsolete(obsolete manifest.ObsoleteFiles) {
 }
 
 func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
-	// TODO(jackson): Ideally we would update vs.fileDeletions.queuedStats to
-	// include the files on vs.obsolete{Tables,Blobs}, but there's subtlety in
-	// deduplicating the files before computing the stats. It might also be
-	// possible to refactor to remove the vs.obsolete{Tables,Blobs} intermediary
-	// step. Revisit this.
+	// TODO(jackson, radu): Investigate if we still need the
+	// vs.obsolete{Tables,Blobs} intermediary step or we can directly enqueue all
+	// deletions.
 	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
 	vs.metrics.Table.ObsoleteSize = 0
 	vs.metrics.Table.Local.ObsoleteSize = 0
 	vs.metrics.Table.Local.ObsoleteCount = 0
 	for _, fi := range vs.obsoleteTables {
-		vs.metrics.Table.ObsoleteSize += fi.fileSize
-		if fi.isLocal {
-			vs.metrics.Table.Local.ObsoleteSize += fi.fileSize
+		vs.metrics.Table.ObsoleteSize += fi.FileSize
+		if fi.IsLocal {
+			vs.metrics.Table.Local.ObsoleteSize += fi.FileSize
 			vs.metrics.Table.Local.ObsoleteCount++
 		}
 	}
@@ -1065,9 +1065,9 @@ func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
 	vs.metrics.BlobFiles.Local.ObsoleteSize = 0
 	vs.metrics.BlobFiles.Local.ObsoleteCount = 0
 	for _, fi := range vs.obsoleteBlobs {
-		vs.metrics.BlobFiles.ObsoleteSize += fi.fileSize
-		if fi.isLocal {
-			vs.metrics.BlobFiles.Local.ObsoleteSize += fi.fileSize
+		vs.metrics.BlobFiles.ObsoleteSize += fi.FileSize
+		if fi.IsLocal {
+			vs.metrics.BlobFiles.Local.ObsoleteSize += fi.FileSize
 			vs.metrics.BlobFiles.Local.ObsoleteCount++
 		}
 	}
