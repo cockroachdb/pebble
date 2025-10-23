@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
+	"github.com/cockroachdb/pebble/wal"
 )
 
 // recoverState reads the named database directory and recovers the set of files
@@ -34,9 +35,16 @@ func recoverState(opts *Options, dirname string) (s *recoveredState, err error) 
 }
 
 func (rs *recoveredState) init(opts *Options, dirname string) error {
+	dirs, err := prepareOpenAndLockDirs(dirname, opts)
+	if err != nil {
+		err = errors.Wrapf(err, "error opening database at %q", dirname)
+		err = errors.CombineErrors(err, dirs.Close())
+		return err
+	}
+	rs.dirs = dirs
+
 	// List the directory contents. This also happens to include WAL log files,
 	// if they are in the same dir.
-	var err error
 	if rs.ls, err = opts.FS.List(dirname); err != nil {
 		return errors.Wrapf(err, "pebble: database %q", dirname)
 	}
@@ -100,6 +108,19 @@ func (rs *recoveredState) init(opts *Options, dirname string) error {
 			rs.obsoleteTempFilenames = append(rs.obsoleteTempFilenames, filename)
 		}
 	}
+
+	// Find all the WAL files across the various WAL directories.
+	wals, err := wal.Scan(rs.dirs.WALDirs()...)
+	if err != nil {
+		return err
+	}
+	for _, w := range wals {
+		if rs.recoveredVersion == nil || base.DiskFileNum(w.Num) >= rs.recoveredVersion.minUnflushedLogNum {
+			rs.walsReplay = append(rs.walsReplay, w)
+		} else {
+			rs.walsObsolete = append(rs.walsObsolete, w)
+		}
+	}
 	return nil
 }
 
@@ -107,6 +128,7 @@ func (rs *recoveredState) init(opts *Options, dirname string) error {
 // directory.
 type recoveredState struct {
 	dirname                 string
+	dirs                    *resolvedDirs
 	fmv                     FormatMajorVersion
 	fmvMarker               *atomicfs.Marker
 	fs                      vfs.FS
@@ -118,10 +140,12 @@ type recoveredState struct {
 	objProvider             objstorage.Provider
 	previousOptionsFilename string
 	recoveredVersion        *recoveredVersion
+	walsObsolete            wal.Logs
+	walsReplay              wal.Logs
 }
 
 // RemoveObsolete removes obsolete files uncovered during recovery.
-func (rs *recoveredState) RemoveObsolete() error {
+func (rs *recoveredState) RemoveObsolete(opts *Options) error {
 	var err error
 	// Atomic markers may leave behind obsolete files if there's a crash
 	// mid-update.
@@ -136,6 +160,20 @@ func (rs *recoveredState) RemoveObsolete() error {
 	// before the rename. Remove any that were found.
 	for _, filename := range rs.obsoleteTempFilenames {
 		err = errors.CombineErrors(err, rs.fs.Remove(rs.fs.PathJoin(rs.dirname, filename)))
+	}
+	// Remove any WAL files that are already obsolete. Pebble keeps some old WAL
+	// files around for recycling.
+	for _, w := range rs.walsObsolete {
+		for i := range w.NumSegments() {
+			fs, path := w.SegmentLocation(i)
+			rmErr := fs.Remove(path)
+			opts.EventListener.WALDeleted(WALDeleteInfo{
+				JobID:   0,
+				Path:    path,
+				FileNum: base.DiskFileNum(w.Num),
+				Err:     rmErr,
+			})
+		}
 	}
 	return err
 }
@@ -152,6 +190,9 @@ func (rs *recoveredState) Close() error {
 	}
 	if rs.objProvider != nil {
 		err = errors.CombineErrors(err, rs.objProvider.Close())
+	}
+	if rs.dirs != nil {
+		err = errors.CombineErrors(err, rs.dirs.Close())
 	}
 	return err
 }
