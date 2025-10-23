@@ -1147,7 +1147,7 @@ type Options struct {
 	// compactions finish or when readers close and obsolete files must be cleaned
 	// up. Rapid deletion of many files simultaneously can increase disk latency
 	// on certain SSDs, and this functionality helps protect against that.
-	DeletionPacing deletepacer.Options
+	DeletionPacing DeletionPacingOptions
 
 	// EnableSQLRowSpillMetrics specifies whether the Pebble instance will only be used
 	// to temporarily persist data spilled to disk for row-oriented SQL query execution.
@@ -1202,6 +1202,10 @@ type Options struct {
 		fsCloser io.Closer
 	}
 }
+
+// DeletionPacingOptions contains configuration options contorlling the pacing
+// of deletion of obsolete files.
+type DeletionPacingOptions = deletepacer.Options
 
 // ValueSeparationPolicy controls the policy for separating values into
 // external blob files.
