@@ -1572,8 +1572,7 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 			})
 		}
 		levelMetrics := c.metrics.perLevel.level(level)
-		levelMetrics.TableBytesIngested += file.Size
-		levelMetrics.TablesIngested++
+		levelMetrics.TablesIngested.Inc(file.Size)
 	}
 	if ingestFlushable.exciseSpan.Valid() {
 		exciseBounds := ingestFlushable.exciseSpan.UserKeyBounds()
@@ -1779,7 +1778,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// resulting in zero bytes in. Instead, use the number of bytes we
 				// flushed as the BytesIn. This ensures we get a reasonable w-amp
 				// calculation even when the WAL is disabled.
-				l0Metrics.TableBytesIn = l0Metrics.TableBytesFlushed + l0Metrics.BlobBytesFlushed
+				l0Metrics.TableBytesIn = l0Metrics.TablesFlushed.Bytes + l0Metrics.BlobBytesFlushed
 			} else {
 				for i := 0; i < n; i++ {
 					l0Metrics.TableBytesIn += d.mu.mem.queue[i].logSize
@@ -1853,8 +1852,8 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			d.mu.versions.metrics.Flush.AsIngestCount++
 			for _, l := range c.metrics.perLevel {
 				if l != nil {
-					d.mu.versions.metrics.Flush.AsIngestBytes += l.TableBytesIngested
-					d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested
+					d.mu.versions.metrics.Flush.AsIngestBytes += l.TablesIngested.Bytes
+					d.mu.versions.metrics.Flush.AsIngestTableCount += l.TablesIngested.Count
 				}
 			}
 		}
@@ -2970,8 +2969,7 @@ func (d *DB) runCopyCompaction(
 	}
 	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
 	outputMetrics.TableBytesIn = inputMeta.Size
-	outputMetrics.TableBytesCompacted = newMeta.Size
-	outputMetrics.TablesCompacted = 1
+	outputMetrics.TablesCompacted.Inc(newMeta.Size)
 
 	if err := d.objProvider.Sync(); err != nil {
 		return nil, compact.Stats{}, []compact.OutputBlob{}, err
@@ -3218,8 +3216,7 @@ func (d *DB) runMoveCompaction(
 		return ve, stats, blobs, ErrCancelledCompaction
 	}
 	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
-	outputMetrics.TableBytesMoved = meta.Size
-	outputMetrics.TablesMoved = 1
+	outputMetrics.TablesMoved.Inc(meta.Size)
 	ve = &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
 			{Level: c.startLevel.level, FileNum: meta.TableNum}: meta,
@@ -3592,11 +3589,9 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 		}
 		// Update metrics.
 		if c.flush.flushables == nil {
-			outputMetrics.TablesCompacted++
-			outputMetrics.TableBytesCompacted += fileMeta.Size
+			outputMetrics.TablesCompacted.Inc(fileMeta.Size)
 		} else {
-			outputMetrics.TablesFlushed++
-			outputMetrics.TableBytesFlushed += fileMeta.Size
+			outputMetrics.TablesFlushed.Inc(fileMeta.Size)
 		}
 		outputMetrics.Additional.BytesWrittenDataBlocks += t.WriterMeta.Properties.DataSize
 		outputMetrics.Additional.BytesWrittenValueBlocks += t.WriterMeta.Properties.ValueBlocksSize

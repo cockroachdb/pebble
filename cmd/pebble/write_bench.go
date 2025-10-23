@@ -293,7 +293,7 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 			}
 
 			// Print the current stats.
-			l0Files := m.Levels[0].TablesCount
+			l0Files := m.Levels[0].Tables.Count
 			l0Sublevels := m.Levels[0].Sublevels
 			nLevels := 0
 			for _, l := range m.Levels {

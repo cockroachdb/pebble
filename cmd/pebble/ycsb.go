@@ -622,7 +622,7 @@ func (y *ycsb) done(elapsed time.Duration) {
 		resultHist.TotalCount(),
 		float64(resultHist.TotalCount())/elapsed.Seconds(),
 		total.TableBytesRead,
-		total.TableBytesFlushed+total.TableBytesCompacted+total.BlobBytesFlushed+total.BlobBytesCompacted,
+		total.TablesFlushed.Bytes+total.TablesCompacted.Bytes+total.BlobBytesFlushed+total.BlobBytesCompacted,
 		float64(readAmpSum)/float64(readAmpCount),
 		total.WriteAmp(),
 	)
