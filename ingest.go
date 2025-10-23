@@ -2112,8 +2112,7 @@ func (d *DB) ingestApply(
 			}
 			f.Meta = m
 			levelMetrics := metrics.level(f.Level)
-			levelMetrics.TableBytesIngested += m.Size
-			levelMetrics.TablesIngested++
+			levelMetrics.TablesIngested.Inc(m.Size)
 		}
 		// replacedTables maps files excised due to exciseSpan (or splitFiles returned
 		// by ingestTargetLevel), to files that were created to replace it. This map

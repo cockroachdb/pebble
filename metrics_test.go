@@ -38,6 +38,7 @@ import (
 func exampleMetrics() Metrics {
 	const MB = 1 << 20
 	const GB = 1 << 30
+	cs := func(n uint64) metrics.CountAndSize { return metrics.CountAndSize{Count: n, Bytes: n << 20} }
 
 	var m Metrics
 	m.BlockCache.Size = 1 * GB
@@ -94,10 +95,8 @@ func exampleMetrics() Metrics {
 		l := &m.Levels[i]
 		base := uint64((i + 1) * 100)
 		l.Sublevels = int32(i + 1)
-		l.TablesCount = int64(base) + 1
-		l.VirtualTablesCount = uint64(base) + 1
-		l.VirtualTablesSize = base + 3
-		l.TablesSize = int64(base) + 2
+		l.Tables = cs(uint64(base) + 1)
+		l.VirtualTables = cs(uint64(base) + 2)
 		l.EstimatedReferencesSize = base + 14
 		if i < numLevels-1 {
 			l.Score = 1.0 + float64(i+1)*0.1
@@ -105,22 +104,21 @@ func exampleMetrics() Metrics {
 		l.FillFactor = 2.0 + float64(i+1)*0.1
 		l.CompensatedFillFactor = 3.0 * +float64(i+1) * 0.1
 		l.TableBytesIn = base + 4
-		l.TableBytesIngested = base + 4
-		l.TableBytesMoved = base + 6
+		l.TablesIngested = cs(base + 5)
+		l.TablesMoved = cs(base + 6)
 		l.TableBytesRead = base + 7
-		l.TableBytesCompacted = base + 8
-		l.TableBytesFlushed = base + 9
-		l.TablesCompacted = base + 10
-		l.TablesFlushed = base + 11
-		l.TablesIngested = base + 12
-		l.TablesMoved = base + 13
+		l.TablesCompacted = cs(base + 8)
+		l.TablesFlushed = cs(base + 9)
+		l.Additional.ValueBlocksSize = base + 10
+		l.BlobBytesCompacted = base + 11
+		l.BlobBytesFlushed = base + 12
+		l.BlobBytesRead = base + 13
 		l.Additional.ValueBlocksSize = base + 14
-		l.BlobBytesCompacted = base + 15
-		l.BlobBytesFlushed = base + 16
-		l.BlobBytesRead = base + 17
-		l.MultiLevel.TableBytesInTop = base + 4
-		l.MultiLevel.TableBytesIn = base + 4
-		l.MultiLevel.TableBytesRead = base + 4
+		l.Additional.BytesWrittenDataBlocks = base + 15
+		l.Additional.BytesWrittenValueBlocks = base + 16
+		l.MultiLevel.TableBytesInTop = base + 16
+		l.MultiLevel.TableBytesIn = base + 17
+		l.MultiLevel.TableBytesRead = base + 18
 	}
 
 	m.MemTable.Size = 2 * GB
@@ -201,7 +199,6 @@ func exampleMetrics() Metrics {
 	m.WAL.BytesIn = 25
 	m.WAL.BytesWritten = 26
 
-	cs := func(n uint64) metrics.CountAndSize { return metrics.CountAndSize{Count: n, Bytes: n << 20} }
 	m.DeletePacer.InQueue.Tables.All = cs(100)
 	m.DeletePacer.InQueue.Tables.Local = cs(50)
 	m.DeletePacer.InQueue.BlobFiles.All = cs(200)
@@ -516,13 +513,13 @@ func TestMetrics(t *testing.T) {
 					if l >= numLevels {
 						panic(fmt.Sprintf("invalid level %d", l))
 					}
-					buf.WriteString(fmt.Sprintf("%d\n", m.Levels[l].VirtualTablesCount))
+					buf.WriteString(fmt.Sprintf("%d\n", m.Levels[l].VirtualTables.Count))
 				} else if line == "remote-count" {
-					count, _ := m.RemoteTablesTotal()
-					buf.WriteString(fmt.Sprintf("%d\n", count))
+					cs := m.RemoteTablesTotal()
+					buf.WriteString(fmt.Sprintf("%d\n", cs.Count))
 				} else if line == "remote-size" {
-					_, size := m.RemoteTablesTotal()
-					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(size)))
+					cs := m.RemoteTablesTotal()
+					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(cs.Bytes)))
 				} else {
 					panic(fmt.Sprintf("invalid field: %s", line))
 				}

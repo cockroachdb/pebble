@@ -1621,7 +1621,7 @@ func TestCompactionPickerScores(t *testing.T) {
 			tw := tabwriter.NewWriter(&buf, 2, 1, 4, ' ', 0)
 			fmt.Fprintf(tw, "Level\tSize\tScore\tFill factor\tCompensated fill factor\n")
 			for l, lm := range d.Metrics().Levels {
-				fmt.Fprintf(tw, "L%d\t%s\t%.2f\t%.2f\t%.2f\n", l, humanize.Bytes.Int64(lm.AggregateSize()).String(),
+				fmt.Fprintf(tw, "L%d\t%s\t%.2f\t%.2f\t%.2f\n", l, humanize.Bytes.Uint64(lm.AggregateSize()).String(),
 					lm.Score, lm.FillFactor, lm.CompensatedFillFactor)
 			}
 			tw.Flush()
