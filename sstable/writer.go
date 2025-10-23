@@ -6,6 +6,8 @@ package sstable
 
 import (
 	"context"
+	"fmt"
+	"io"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -469,4 +471,24 @@ func (m *WriterMetadata) updateSeqNum(seqNum base.SeqNum) {
 	if m.LargestSeqNum < seqNum {
 		m.LargestSeqNum = seqNum
 	}
+}
+
+// LoggingRawWriter wraps a sstable.RawWriter and logs calls to Add and
+// AddWithBlobHandle to provide observability into the separation of values into
+// blob files. This is intended for testing.
+type LoggingRawWriter struct {
+	LogWriter io.Writer
+	RawWriter
+}
+
+func (w *LoggingRawWriter) Add(key base.InternalKey, value []byte, forceObsolete bool) error {
+	fmt.Fprintf(w.LogWriter, "RawWriter.Add(%q, %q, %t)\n", key, value, forceObsolete)
+	return w.RawWriter.Add(key, value, forceObsolete)
+}
+
+func (w *LoggingRawWriter) AddWithBlobHandle(
+	key base.InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool,
+) error {
+	fmt.Fprintf(w.LogWriter, "RawWriter.AddWithBlobHandle(%q, %q, %x, %t)\n", key, h, attr, forceObsolete)
+	return w.RawWriter.AddWithBlobHandle(key, h, attr, forceObsolete)
 }
