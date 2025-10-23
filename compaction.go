@@ -235,7 +235,7 @@ type tableCompaction struct {
 	// resulting version has been installed (if successful), but the compaction
 	// goroutine is still cleaning up (eg, deleting obsolete files).
 	versionEditApplied bool
-	// getValueSeparation constructs a compact.ValueSeparation for use in a
+	// getValueSeparation constructs a valsep.ValueSeparation for use in a
 	// compaction. It implements heuristics around choosing whether a compaction
 	// should:
 	//

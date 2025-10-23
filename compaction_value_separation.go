@@ -24,7 +24,7 @@ var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, Value
 }
 
 // determineCompactionValueSeparation determines whether a compaction should
-// separate values into blob files. It returns a compact.ValueSeparation
+// separate values into blob files. It returns a valsep.ValueSeparation
 // implementation that should be used for the compaction.
 //
 // It assumes that the compaction will write tables at d.TableFormat() or above.

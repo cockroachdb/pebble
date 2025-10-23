@@ -67,7 +67,7 @@ func TestBlobRewrite(t *testing.T) {
 		tw = sstable.NewRawWriter(w, sstable.WriterOptions{
 			TableFormat: sstable.TableFormatMax,
 		})
-		tw = &loggingRawWriter{w: &buf, RawWriter: tw}
+		tw = &sstable.LoggingRawWriter{LogWriter: &buf, RawWriter: tw}
 	}
 
 	datadriven.RunTest(t, "testdata/blob_rewrite",
