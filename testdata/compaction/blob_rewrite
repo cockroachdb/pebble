@@ -1,6 +1,6 @@
 # Test blob rewrite compactions.
 
-define value-separation=(enabled, min-size=1, max-ref-depth=3, rw-min-age=0, garbage-ratios=0.0:0.0)
+define value-separation=(enabled, min-size=1, max-ref-depth=3, rw-min-age=0, garbage-ratios=0.0:0.0, latency-tolerant-min-size=1)
 ----
 
 batch

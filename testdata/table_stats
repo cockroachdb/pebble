@@ -980,7 +980,7 @@ range-deletions-bytes-estimate: 482
 
 # Create a database with value separation enabled.
 
-define format-major-version=24 value-separation=(enabled, min-size=1, max-ref-depth=10, rw-min-age=1m, garbage-ratios=0.1:0.3) target-file-sizes=(100000) block-size=32768
+define format-major-version=24 value-separation=(enabled, min-size=1, max-ref-depth=10, rw-min-age=1m, garbage-ratios=0.1:0.3, latency-tolerant-min-size=1) target-file-sizes=(100000) block-size=32768
 ----
 
 batch
