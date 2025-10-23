@@ -19,11 +19,6 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
-// latencyTolerantMinimumSize is the minimum size, in bytes, of a value that
-// will be separated into a blob file when the value storage policy is
-// ValueStorageLatencyTolerant.
-const latencyTolerantMinimumSize = 10
-
 var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, sstable.TableFormat) compact.ValueSeparation {
 	return compact.NeverSeparateValues{}
 }
@@ -54,6 +49,7 @@ func (d *DB) determineCompactionValueSeparation(
 	}
 
 	// This compaction should write values to new blob files.
+	mvccMinimumSize := policy.MinimumLatencyTolerantSize
 	return &writeNewBlobFiles{
 		comparer: d.opts.Comparer,
 		newBlobObject: func() (objstorage.Writable, objstorage.ObjectMetadata, error) {
@@ -64,6 +60,7 @@ func (d *DB) determineCompactionValueSeparation(
 		writerOpts:         d.opts.MakeBlobWriterOptions(c.outputLevel.level, d.BlobFileFormat()),
 		minimumSize:        policy.MinimumSize,
 		globalMinimumSize:  policy.MinimumSize,
+		mvccMinimumSize:    mvccMinimumSize,
 		invalidValueCallback: func(userKey []byte, value []byte, err error) {
 			// The value may not be safe, so it will be redacted when redaction
 			// is enabled.
@@ -203,8 +200,12 @@ type writeNewBlobFiles struct {
 	minimumSize int
 	// globalMinimumSize is the size threshold for separating values into blob
 	// files globally across the keyspace. It may be overridden per-output by
-	// SetNextOutputConfig.
+	// SetNextOutputConfig if minimumSize is different.
 	globalMinimumSize int
+	// mvccMinimumSize is the minimum size of a value that will be separated into
+	// a blob file when the value is likely MVCC garbage; see comments in
+	// sstable.IsLikelyMVCCGarbage for the exact criteria we use.
+	mvccMinimumSize int
 	// invalidValueCallback is called when a value is encountered for which the
 	// short attribute extractor returns an error.
 	invalidValueCallback func(userKey []byte, value []byte, err error)
@@ -258,8 +259,10 @@ func (vs *writeNewBlobFiles) Add(
 		vs.buf = v[:0]
 	}
 
+	isLikelyMVCCGarbage = isLikelyMVCCGarbage && len(v) >= vs.mvccMinimumSize
 	// Values that are too small are never separated; however, MVCC keys are
-	// separated if they are a SET key kind, as long as the value is not empty.
+	// separated if they are a SET key kind, as long as the value meets the
+	// mvccMinimumSize constraint.
 	if len(v) < vs.minimumSize && !isLikelyMVCCGarbage {
 		return tw.Add(kv.K, v, forceObsolete)
 	}
