@@ -1922,3 +1922,89 @@ func streamFilterBetweenGrep(start, end string) stream.Filter {
 		return nil
 	})
 }
+
+// defineDBValueSeparator is a valsep.ValueSeparation implementation used by
+// datadriven tests when defining a database state. It is a wrapper around
+// preserveBlobReferences that also parses string representations of blob
+// references from values.
+type defineDBValueSeparator struct {
+	bv    blobtest.Values
+	metas map[base.BlobFileID]*manifest.PhysicalBlobFile
+	pbr   valsep.ValueSeparation
+	kv    base.InternalKV
+}
+
+// Assert that *defineDBValueSeparator implements the compact.ValueSeparation interface.
+var _ valsep.ValueSeparation = (*defineDBValueSeparator)(nil)
+
+// SetNextOutputConfig implements the compact.ValueSeparation interface.
+func (vs *defineDBValueSeparator) SetNextOutputConfig(config valsep.ValueSeparationOutputConfig) {}
+
+// Kind implements the ValueSeparation interface.
+func (vs *defineDBValueSeparator) Kind() sstable.ValueSeparationKind {
+	return vs.pbr.Kind()
+}
+
+// MinimumSize implements the ValueSeparation interface.
+func (vs *defineDBValueSeparator) MinimumSize() int { return vs.pbr.MinimumSize() }
+
+// EstimatedFileSize returns an estimate of the disk space consumed by the current
+// blob file if it were closed now.
+func (vs *defineDBValueSeparator) EstimatedFileSize() uint64 {
+	return vs.pbr.EstimatedFileSize()
+}
+
+// EstimatedReferenceSize returns an estimate of the disk space consumed by the
+// current output sstable's blob references so far.
+func (vs *defineDBValueSeparator) EstimatedReferenceSize() uint64 {
+	return vs.pbr.EstimatedReferenceSize()
+}
+
+// Add adds the provided key-value pair to the sstable, possibly separating the
+// value into a blob file.
+func (vs *defineDBValueSeparator) Add(
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
+) error {
+	// In datadriven tests, all defined values are in-place initially. See
+	// runDBDefineCmdReuseFS.
+	v := kv.V.InPlaceValue()
+	// If the value doesn't begin with "blob", don't separate it.
+	if !bytes.HasPrefix(v, []byte("blob")) {
+		return tw.Add(kv.K, v, forceObsolete)
+	}
+
+	// This looks like a blob reference. Parse it.
+	iv, err := vs.bv.ParseInternalValue(string(v))
+	if err != nil {
+		return err
+	}
+	lv := iv.LazyValue()
+	// If we haven't seen this blob file before, fabricate a metadata for it.
+	fileID := lv.Fetcher.BlobFileID
+	meta, ok := vs.metas[fileID]
+	if !ok {
+		meta = &manifest.PhysicalBlobFile{
+			FileNum:      base.DiskFileNum(fileID),
+			CreationTime: uint64(time.Now().Unix()),
+		}
+		vs.metas[fileID] = meta
+	}
+	meta.Size += uint64(lv.Fetcher.Attribute.ValueLen)
+	meta.ValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
+
+	// Return a KV that uses the original key but our constructed blob reference.
+	vs.kv.K = kv.K
+	vs.kv.V = iv
+	return vs.pbr.Add(tw, &vs.kv, forceObsolete, false /* isLikelyMVCCGarbage */)
+}
+
+// FinishOutput implements compact.ValueSeparation.
+func (d *defineDBValueSeparator) FinishOutput() (valsep.ValueSeparationMetadata, error) {
+	m, err := d.pbr.FinishOutput()
+	if err != nil {
+		return valsep.ValueSeparationMetadata{}, err
+	}
+	// TODO(jackson): Support setting a specific depth from the datadriven test.
+	m.BlobReferenceDepth = manifest.BlobReferenceDepth(len(m.BlobReferences))
+	return m, nil
+}
