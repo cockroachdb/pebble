@@ -102,18 +102,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 	}
 
-	// Open the database and WAL directories first.
-	dirs, err := prepareOpenAndLockDirs(dirname, opts)
-	if err != nil {
-		err = errors.Wrapf(err, "error opening database at %q", dirname)
-		err = errors.CombineErrors(err, dirs.Close())
-		return nil, err
-	}
-	// Locks in RecoveryDirLocks can be closed as soon as we've finished opening
-	// the database.
-	defer func() { _ = dirs.RecoveryDirLocks.Close() }()
-	defer maybeCleanUp(dirs.Close)
-
+	// Recover the current database state.
 	rs, err := recoverState(opts, dirname)
 	if err != nil {
 		return nil, err
@@ -149,7 +138,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	if !opts.ReadOnly {
-		if err := rs.RemoveObsolete(); err != nil {
+		if err := rs.RemoveObsolete(opts); err != nil {
 			return nil, err
 		}
 	}
@@ -169,7 +158,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
 		largeBatchThreshold: (opts.MemTableSize - uint64(memTableEmptySize)) / 2,
-		dirs:                dirs,
+		dirs:                rs.dirs,
 		objProvider:         rs.objProvider,
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
@@ -297,8 +286,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	})
 
 	walOpts := wal.Options{
-		Primary:              dirs.WALPrimary,
-		Secondary:            dirs.WALSecondary,
+		Primary:              rs.dirs.WALPrimary,
+		Secondary:            rs.dirs.WALSecondary,
 		MinUnflushedWALNum:   wal.NumWAL(d.mu.versions.minUnflushedLogNum),
 		MaxNumRecyclableLogs: opts.MemTableStopWritesThreshold + 1,
 		NoSyncOnClose:        opts.NoSyncOnClose,
@@ -323,45 +312,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		return nil, err
 	}
 
-	// Remove obsolete WAL files now (as opposed to relying on asynchronous
-	// cleanup) to prevent crash loops due to no disk space (ENOSPC).
-	var retainedWALs wal.Logs
-	for _, w := range wals {
-		// Any WALs with file numbers ≥ minUnflushedLogNum must be replayed to
-		// recover the state.
-		if base.DiskFileNum(w.Num) >= d.mu.versions.minUnflushedLogNum {
-			retainedWALs = append(retainedWALs, w)
-			continue
-		}
-		// Skip removal of obsolete WALs in read-only mode.
-		if opts.ReadOnly {
-			continue
-		}
-		// Remove obsolete WALs, logging each removal.
-		for i := range w.NumSegments() {
-			fs, path := w.SegmentLocation(i)
-			if err := fs.Remove(path); err != nil {
-				// It's not a big deal if we can't delete the file now.
-				// We'll try to remove it later in the cleanup process.
-				d.opts.EventListener.WALDeleted(WALDeleteInfo{
-					JobID:   0,
-					Path:    path,
-					FileNum: base.DiskFileNum(w.Num),
-					Err:     err,
-				})
-				retainedWALs = append(retainedWALs, w)
-			} else {
-				d.opts.EventListener.WALDeleted(WALDeleteInfo{
-					JobID:   0,
-					Path:    path,
-					FileNum: base.DiskFileNum(w.Num),
-					Err:     nil,
-				})
-			}
-		}
-	}
-
-	walManager, err := wal.Init(walOpts, retainedWALs)
+	walManager, err := wal.Init(walOpts, rs.walsReplay)
 	if err != nil {
 		return nil, err
 	}
@@ -535,6 +486,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
+
+	// Locks in RecoveryDirLocks can be closed as soon as we've finished opening
+	// the database.
+	if err = rs.dirs.RecoveryDirLocks.Close(); err != nil {
+		return nil, err
+	}
 
 	// Note: this is a no-op if invariants are disabled or race is enabled.
 	//
