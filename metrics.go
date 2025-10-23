@@ -320,38 +320,18 @@ type Metrics struct {
 	}
 
 	Table struct {
-		// The number of bytes present in obsolete tables which are no longer
-		// referenced by the current DB state or any open iterators.
-		ObsoleteSize uint64
-		// The count of obsolete tables.
-		ObsoleteCount int64
-		// The number of bytes present in zombie tables which are no longer
-		// referenced by the current DB state but are still in use by an iterator.
-		ZombieSize uint64
-		// The count of zombie tables.
-		ZombieCount int64
-		// The count of sstables backing virtual tables.
-		BackingTableCount uint64
-		// The sum of the sizes of the BackingTableCount sstables that are backing virtual tables.
-		BackingTableSize uint64
+		// The count and total size of live tables.
+		Live metrics.TableCountsAndSizes
+		// The count and total size of obsolete tables; these are tables which are
+		// no longer referenced by the current DB state or any open iterators.
+		Obsolete metrics.TableCountsAndSizes
+		// The count and total size of zombie tables; these are tables which are
+		// no longer referenced by the current DB state but are still in use by an iterator.
+		Zombie metrics.TableCountsAndSizes
+		// The count and total size of sstables backing virtual tables.
+		BackingTable metrics.CountAndSize
 		// Compression statistics for sstable data (does not include blob files).
 		Compression CompressionMetrics
-
-		// Local file sizes.
-		Local struct {
-			// LiveSize is the number of bytes in live tables.
-			LiveSize uint64
-			// LiveCount is the number of live tables.
-			LiveCount uint64
-			// ObsoleteSize is the number of bytes in obsolete tables.
-			ObsoleteSize uint64
-			// ObsoleteCount is the number of obsolete tables.
-			ObsoleteCount uint64
-			// ZombieSize is the number of bytes in zombie tables.
-			ZombieSize uint64
-			// ZombieCount is the number of zombie tables.
-			ZombieCount uint64
-		}
 
 		// Garbage bytes.
 		Garbage struct {
@@ -377,10 +357,8 @@ type Metrics struct {
 	}
 
 	BlobFiles struct {
-		// The count of all live blob files.
-		LiveCount uint64
-		// The physical file size of all live blob files.
-		LiveSize uint64
+		// The count and total physical size of blob files.
+		Live metrics.TableCountsAndSizes
 		// ValueSize is the sum of the length of the uncompressed values in all
 		// live (referenced by some sstable(s) within the current version) blob
 		// files. ValueSize may be greater than LiveSize when compression is
@@ -408,29 +386,14 @@ type Metrics struct {
 		// each virtual table will contribute their backing table's referenced
 		// value sizes.
 		ReferencedBackingValueSize uint64
-		// The count of all obsolete blob files.
-		ObsoleteCount uint64
-		// The physical size of all obsolete blob files.
-		ObsoleteSize uint64
-		// The count of all zombie blob files.
-		ZombieCount uint64
-		// The physical size of all zombie blob files.
-		ZombieSize uint64
-		// Local file sizes.
-		Local struct {
-			// LiveSize is the physical size of local live blob files.
-			LiveSize uint64
-			// LiveCount is the number of local live blob files.
-			LiveCount uint64
-			// ObsoleteSize is the physical size of local obsolete blob files.
-			ObsoleteSize uint64
-			// ObsoleteCount is the number of local obsolete blob files.
-			ObsoleteCount uint64
-			// ZombieSize is the physical size of local zombie blob files.
-			ZombieSize uint64
-			// ZombieCount is the number of local zombie blob files.
-			ZombieCount uint64
-		}
+		// The count and total physical size of obsolete blob files; these are blob
+		// files which are no longer referenced by the current DB state or any open
+		// iterators.
+		Obsolete metrics.BlobFileCountsAndSizes
+		// The count and total physical size of zombie blob files; these are blob
+		// files which are no longer referenced by the current DB state but are
+		// still in use by an iterator.
+		Zombie metrics.BlobFileCountsAndSizes
 
 		Compression CompressionMetrics
 	}
@@ -551,12 +514,12 @@ func (m *Metrics) DiskSpaceUsage() uint64 {
 	var usageBytes uint64
 	usageBytes += m.WAL.PhysicalSize
 	usageBytes += m.WAL.ObsoletePhysicalSize
-	usageBytes += m.Table.Local.LiveSize
-	usageBytes += m.Table.Local.ObsoleteSize
-	usageBytes += m.Table.Local.ZombieSize
-	usageBytes += m.BlobFiles.Local.LiveSize
-	usageBytes += m.BlobFiles.Local.ObsoleteSize
-	usageBytes += m.BlobFiles.Local.ZombieSize
+	usageBytes += m.Table.Live.Local.Bytes
+	usageBytes += m.Table.Obsolete.Local.Bytes
+	usageBytes += m.Table.Zombie.Local.Bytes
+	usageBytes += m.BlobFiles.Live.Local.Bytes
+	usageBytes += m.BlobFiles.Obsolete.Local.Bytes
+	usageBytes += m.BlobFiles.Zombie.Local.Bytes
 	usageBytes += m.private.optionsFileSize
 	usageBytes += m.private.manifestFileSize
 	// TODO(sumeer): InProgressBytes does not distinguish between local and
@@ -576,7 +539,7 @@ func (m *Metrics) NumVirtual() uint64 {
 }
 
 // VirtualSize is the sum of the sizes of the virtual sstables in the
-// latest version. BackingTableSize - VirtualSize gives an estimate for
+// latest version. BackingTable.Bytes - VirtualSize gives an estimate for
 // the space amplification caused by not compacting virtual sstables.
 func (m *Metrics) VirtualSize() uint64 {
 	var size uint64
@@ -621,12 +584,12 @@ func (m *Metrics) RemoteTablesTotal() metrics.CountAndSize {
 	for level := 0; level < numLevels; level++ {
 		liveTables.Accumulate(m.Levels[level].Tables)
 	}
-	totalCount := int64(liveTables.Count) + m.Table.ObsoleteCount + m.Table.ZombieCount
-	localCount := m.Table.Local.LiveCount + m.Table.Local.ObsoleteCount + m.Table.Local.ZombieCount
+	totalCount := int64(liveTables.Count) + int64(m.Table.Obsolete.All.Count) + int64(m.Table.Zombie.All.Count)
+	localCount := m.Table.Live.Local.Count + m.Table.Obsolete.Local.Count + m.Table.Zombie.Local.Count
 	remoteCount := uint64(totalCount) - localCount
 
-	totalSize := uint64(liveTables.Bytes) + m.Table.ObsoleteSize + m.Table.ZombieSize
-	localSize := m.Table.Local.LiveSize + m.Table.Local.ObsoleteSize + m.Table.Local.ZombieSize
+	totalSize := uint64(liveTables.Bytes) + m.Table.Obsolete.All.Bytes + m.Table.Zombie.All.Bytes
+	localSize := m.Table.Live.Local.Bytes + m.Table.Obsolete.Local.Bytes + m.Table.Zombie.Local.Bytes
 	remoteSize := totalSize - localSize
 
 	return metrics.CountAndSize{Count: remoteCount, Bytes: remoteSize}
@@ -1068,12 +1031,12 @@ func (m *Metrics) String() string {
 	}
 	tableInfoContents := tableInfo{
 		stats:   status,
-		backing: fmt.Sprintf("%s (%s)", humanizeCount(m.Table.BackingTableCount), humanizeBytes(m.Table.BackingTableSize)),
-		zombie:  fmt.Sprintf("%s (%s local:%s)", humanizeCount(m.Table.ZombieCount), humanizeBytes(m.Table.ZombieSize), humanizeBytes(m.Table.Local.ZombieSize)),
+		backing: fmt.Sprintf("%s (%s)", humanizeCount(m.Table.BackingTable.Count), humanizeBytes(m.Table.BackingTable.Bytes)),
+		zombie:  fmt.Sprintf("%s (%s local:%s)", humanizeCount(m.Table.Zombie.All.Count), humanizeBytes(m.Table.Zombie.All.Bytes), humanizeBytes(m.Table.Zombie.Local.Bytes)),
 	}
 	blobInfoContents := blobInfo{
-		live:       fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.LiveCount), humanizeBytes(m.BlobFiles.LiveSize)),
-		zombie:     fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.ZombieCount), humanizeBytes(m.BlobFiles.ZombieSize)),
+		live:       fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.Live.All.Count), humanizeBytes(m.BlobFiles.Live.All.Bytes)),
+		zombie:     fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.Zombie.All.Count), humanizeBytes(m.BlobFiles.Zombie.All.Bytes)),
 		total:      humanizeBytes(m.BlobFiles.ValueSize),
 		referenced: fmt.Sprintf("%.0f%% (%s)", percent(m.BlobFiles.ReferencedValueSize, m.BlobFiles.ValueSize), humanizeBytes(m.BlobFiles.ReferencedValueSize)),
 	}

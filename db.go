@@ -1940,34 +1940,28 @@ func (d *DB) Metrics() *Metrics {
 			metrics.Levels[level].CompensatedFillFactor = lm.compensatedFillFactor
 		}
 	}
-	metrics.Table.ZombieCount = int64(d.mu.versions.zombieTables.Count())
-	metrics.Table.ZombieSize = d.mu.versions.zombieTables.TotalSize()
-	metrics.Table.Local.ZombieCount, metrics.Table.Local.ZombieSize = d.mu.versions.zombieTables.LocalStats()
+	metrics.Table.Zombie.All.Count = uint64(d.mu.versions.zombieTables.Count())
+	metrics.Table.Zombie.All.Bytes = d.mu.versions.zombieTables.TotalSize()
+	metrics.Table.Zombie.Local.Count, metrics.Table.Zombie.Local.Bytes = d.mu.versions.zombieTables.LocalStats()
 
 	// The obsolete blob/table metrics have a subtle calculation: the initial
-	// metrics we copied from vs.metrics reflect (in
-	// {Table,BlobFiles}.[Local.]{ObsoleteCount,ObsoleteSize}) the set of files
-	// currently sitting in vs.obsolete{Tables,Blobs} but not yet enqueued to the
-	// delete pacer. To complete the metrics, we add the currently enqueued files.
-	metrics.Table.Local.ObsoleteCount += deletePacerMetrics.InQueue.Tables.Local.Count
-	metrics.Table.Local.ObsoleteSize += deletePacerMetrics.InQueue.Tables.Local.Bytes
-	metrics.Table.ObsoleteCount += int64(deletePacerMetrics.InQueue.Tables.All.Count)
-	metrics.Table.ObsoleteSize += deletePacerMetrics.InQueue.Tables.All.Bytes
-	metrics.BlobFiles.Local.ObsoleteCount += deletePacerMetrics.InQueue.BlobFiles.Local.Count
-	metrics.BlobFiles.Local.ObsoleteSize += deletePacerMetrics.InQueue.BlobFiles.Local.Bytes
-	metrics.BlobFiles.ObsoleteCount += deletePacerMetrics.InQueue.BlobFiles.All.Count
-	metrics.BlobFiles.ObsoleteSize += deletePacerMetrics.InQueue.BlobFiles.All.Bytes
+	// metrics we copied from vs.metrics reflect (in {Table,BlobFiles}.Obsolete
+	// the set of files currently sitting in vs.obsolete{Tables,Blobs} but not yet
+	// enqueued to the delete pacer. To complete the metrics, we add the currently
+	// enqueued files.
+	metrics.Table.Obsolete.Accumulate(deletePacerMetrics.InQueue.Tables)
+	metrics.BlobFiles.Obsolete.Accumulate(deletePacerMetrics.InQueue.BlobFiles)
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
 	backingCount, backingTotalSize := d.mu.versions.latest.virtualBackings.Stats()
-	metrics.Table.BackingTableCount = uint64(backingCount)
-	metrics.Table.BackingTableSize = backingTotalSize
+	metrics.Table.BackingTable.Count = uint64(backingCount)
+	metrics.Table.BackingTable.Bytes = backingTotalSize
 	blobStats, _ := d.mu.versions.latest.blobFiles.Stats()
 	d.mu.versions.logUnlock()
-	metrics.BlobFiles.LiveCount = blobStats.Count
-	metrics.BlobFiles.LiveSize = blobStats.PhysicalSize
+	metrics.BlobFiles.Live.All.Count = blobStats.Count
+	metrics.BlobFiles.Live.All.Bytes = blobStats.PhysicalSize
 	metrics.BlobFiles.ValueSize = blobStats.ValueSize
 	metrics.BlobFiles.ReferencedValueSize = blobStats.ReferencedValueSize
 	metrics.BlobFiles.ReferencedBackingValueSize = blobStats.ReferencedBackingValueSize
