@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -382,7 +383,9 @@ func makeZombieObjects() zombieObjects {
 // iterator. Such objects are 'dead,' but cannot be deleted until iterators that
 // may access them are closed.
 type zombieObjects struct {
-	objs       map[base.DiskFileNum]objectInfo
+	objs map[base.DiskFileNum]objectInfo
+
+	metrics.TableCountsAndSizes
 	totalSize  uint64
 	localSize  uint64
 	localCount uint64

@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -607,10 +608,14 @@ func (vs *versionSet) UpdateVersionLocked(
 
 	vs.metrics.updateLevelMetrics(vu.Metrics)
 	setBasicLevelMetrics(&vs.metrics, newVersion)
-	vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localTablesLiveDelta.size)
-	vs.metrics.Table.Local.LiveCount = uint64(int64(vs.metrics.Table.Local.LiveCount) + localTablesLiveDelta.count)
-	vs.metrics.BlobFiles.Local.LiveSize = uint64(int64(vs.metrics.BlobFiles.Local.LiveSize) + localBlobLiveDelta.size)
-	vs.metrics.BlobFiles.Local.LiveCount = uint64(int64(vs.metrics.BlobFiles.Local.LiveCount) + localBlobLiveDelta.count)
+	vs.metrics.Table.Live.All = metrics.CountAndSize{}
+	for i := range vs.metrics.Levels {
+		vs.metrics.Table.Live.All.Accumulate(vs.metrics.Levels[i].Tables)
+	}
+	vs.metrics.Table.Live.Local.Bytes = uint64(int64(vs.metrics.Table.Live.Local.Bytes) + localTablesLiveDelta.size)
+	vs.metrics.Table.Live.Local.Count = uint64(int64(vs.metrics.Table.Live.Local.Count) + localTablesLiveDelta.count)
+	vs.metrics.BlobFiles.Live.Local.Bytes = uint64(int64(vs.metrics.BlobFiles.Live.Local.Bytes) + localBlobLiveDelta.size)
+	vs.metrics.BlobFiles.Live.Local.Count = uint64(int64(vs.metrics.BlobFiles.Live.Local.Count) + localBlobLiveDelta.count)
 
 	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, vs.latest, vs.opts, inProgress))
 	if !vs.dynamicBaseLevel {
@@ -658,10 +663,9 @@ func getZombieTablesAndUpdateVirtualBackings(
 	for _, nf := range ve.NewTables {
 		if !nf.Meta.Virtual {
 			stillUsed[nf.Meta.TableBacking.DiskFileNum] = struct{}{}
-			isLocal, localFileDelta := sizeIfLocal(nf.Meta.TableBacking, provider)
-			localLiveDelta.size += localFileDelta
-			if isLocal {
+			if isLocal, localFileDelta := sizeIfLocal(nf.Meta.TableBacking, provider); isLocal {
 				localLiveDelta.count++
+				localLiveDelta.size += int64(localFileDelta)
 			}
 		}
 	}
@@ -676,9 +680,9 @@ func getZombieTablesAndUpdateVirtualBackings(
 			// file in the localLiveSizeDelta -- the subtraction below compensates
 			// for the addition.
 			isLocal, localFileDelta := sizeIfLocal(m.TableBacking, provider)
-			localLiveDelta.size -= localFileDelta
 			if isLocal {
 				localLiveDelta.count--
+				localLiveDelta.size -= int64(localFileDelta)
 			}
 			if _, ok := stillUsed[m.TableBacking.DiskFileNum]; !ok {
 				zombieBackings = append(zombieBackings, tableBackingInfo{
@@ -696,9 +700,9 @@ func getZombieTablesAndUpdateVirtualBackings(
 	for _, b := range ve.CreatedBackingTables {
 		isLocal, localFileDelta := sizeIfLocal(b, provider)
 		virtualBackings.AddAndRef(b, isLocal)
-		localLiveDelta.size += localFileDelta
 		if isLocal {
 			localLiveDelta.count++
+			localLiveDelta.size += int64(localFileDelta)
 		}
 	}
 	for _, m := range ve.DeletedTables {
@@ -718,9 +722,9 @@ func getZombieTablesAndUpdateVirtualBackings(
 		ve.RemovedBackingTables = make([]base.DiskFileNum, len(unused))
 		for i, b := range unused {
 			isLocal, localFileDelta := sizeIfLocal(b, provider)
-			localLiveDelta.size -= localFileDelta
 			if isLocal {
 				localLiveDelta.count--
+				localLiveDelta.size -= int64(localFileDelta)
 			}
 			ve.RemovedBackingTables[i] = b.DiskFileNum
 			zombieBackings = append(zombieBackings, tableBackingInfo{
@@ -767,10 +771,10 @@ func getZombieBlobFilesAndComputeLocalMetrics(
 // sizeIfLocal returns backing.Size if the backing is a local file, else 0.
 func sizeIfLocal(
 	backing *manifest.TableBacking, provider objstorage.Provider,
-) (isLocal bool, localSize int64) {
+) (isLocal bool, localSize uint64) {
 	isLocal = objstorage.IsLocalTable(provider, backing.DiskFileNum)
 	if isLocal {
-		return true, int64(backing.Size)
+		return true, backing.Size
 	}
 	return false, 0
 }
@@ -1049,27 +1053,13 @@ func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
 	// TODO(jackson, radu): Investigate if we still need the
 	// vs.obsolete{Tables,Blobs} intermediary step or we can directly enqueue all
 	// deletions.
-	vs.metrics.Table.ObsoleteCount = int64(len(vs.obsoleteTables))
-	vs.metrics.Table.ObsoleteSize = 0
-	vs.metrics.Table.Local.ObsoleteSize = 0
-	vs.metrics.Table.Local.ObsoleteCount = 0
+	vs.metrics.Table.Obsolete = metrics.TableCountsAndSizes{}
 	for _, fi := range vs.obsoleteTables {
-		vs.metrics.Table.ObsoleteSize += fi.FileSize
-		if fi.IsLocal {
-			vs.metrics.Table.Local.ObsoleteSize += fi.FileSize
-			vs.metrics.Table.Local.ObsoleteCount++
-		}
+		vs.metrics.Table.Obsolete.Inc(fi.FileSize, fi.IsLocal)
 	}
-	vs.metrics.BlobFiles.ObsoleteCount = uint64(len(vs.obsoleteBlobs))
-	vs.metrics.BlobFiles.ObsoleteSize = 0
-	vs.metrics.BlobFiles.Local.ObsoleteSize = 0
-	vs.metrics.BlobFiles.Local.ObsoleteCount = 0
+	vs.metrics.BlobFiles.Obsolete = metrics.BlobFileCountsAndSizes{}
 	for _, fi := range vs.obsoleteBlobs {
-		vs.metrics.BlobFiles.ObsoleteSize += fi.FileSize
-		if fi.IsLocal {
-			vs.metrics.BlobFiles.Local.ObsoleteSize += fi.FileSize
-			vs.metrics.BlobFiles.Local.ObsoleteCount++
-		}
+		vs.metrics.BlobFiles.Obsolete.Inc(fi.FileSize, fi.IsLocal)
 	}
 }
 
@@ -1080,8 +1070,8 @@ func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
 func setBasicLevelMetrics(m *Metrics, newVersion *manifest.Version) {
 	for i := range m.Levels {
 		l := &m.Levels[i]
-		l.Tables.Count = int64(newVersion.Levels[i].Len())
-		l.Tables.Size = int64(newVersion.Levels[i].TableSize())
+		l.Tables.Count = uint64(newVersion.Levels[i].Len())
+		l.Tables.Bytes = newVersion.Levels[i].TableSize()
 		l.VirtualTables = newVersion.Levels[i].VirtualTables()
 		l.EstimatedReferencesSize = newVersion.Levels[i].EstimatedReferenceSize()
 		l.Sublevels = 0

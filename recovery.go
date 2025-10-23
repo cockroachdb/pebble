@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
@@ -301,22 +302,22 @@ func recoverVersion(
 	})
 	vs.version = newVersion
 	setBasicLevelMetrics(&vs.metrics, newVersion)
+	vs.metrics.Table.Live.All = metrics.CountAndSize{}
+	for i := range vs.metrics.Levels {
+		vs.metrics.Table.Live.All.Accumulate(vs.metrics.Levels[i].Tables)
+	}
 	for _, l := range newVersion.Levels {
 		for f := range l.All() {
 			if !f.Virtual {
-				isLocal, localSize := sizeIfLocal(f.TableBacking, provider)
-				vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
-				if isLocal {
-					vs.metrics.Table.Local.LiveCount++
+				if isLocal, localSize := sizeIfLocal(f.TableBacking, provider); isLocal {
+					vs.metrics.Table.Live.Local.Inc(localSize)
 				}
 			}
 		}
 	}
 	for backing := range vs.latest.virtualBackings.All() {
-		isLocal, localSize := sizeIfLocal(backing, provider)
-		vs.metrics.Table.Local.LiveSize = uint64(int64(vs.metrics.Table.Local.LiveSize) + localSize)
-		if isLocal {
-			vs.metrics.Table.Local.LiveCount++
+		if isLocal, localSize := sizeIfLocal(backing, provider); isLocal {
+			vs.metrics.Table.Live.Local.Inc(localSize)
 		}
 	}
 	return vs, nil
