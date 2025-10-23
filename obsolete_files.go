@@ -201,7 +201,6 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 	d.mu.versions.obsoleteBlobs = mergeObsoleteFiles(d.mu.versions.obsoleteBlobs, obsoleteBlobs)
 	d.mu.versions.obsoleteManifests = mergeObsoleteFiles(d.mu.versions.obsoleteManifests, obsoleteManifests)
 	d.mu.versions.obsoleteOptions = mergeObsoleteFiles(d.mu.versions.obsoleteOptions, obsoleteOptions)
-	d.mu.versions.updateObsoleteObjectMetricsLocked()
 }
 
 // disableFileDeletions disables file deletions and then waits for any
@@ -288,10 +287,6 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 
 	obsoleteOptions := d.mu.versions.obsoleteOptions
 	d.mu.versions.obsoleteOptions = nil
-
-	// Update the obsolete object metrics in d.mu.versions.metrics. These metrics
-	// will be combined with the metrics from the delete pacer in DB.Metrics().
-	d.mu.versions.updateObsoleteObjectMetricsLocked()
 
 	// Release d.mu while preparing the cleanup job and possibly waiting.
 	// Note the unusual order: Unlock and then Lock.

@@ -1944,13 +1944,17 @@ func (d *DB) Metrics() *Metrics {
 	metrics.Table.Zombie.All.Bytes = d.mu.versions.zombieTables.TotalSize()
 	metrics.Table.Zombie.Local.Count, metrics.Table.Zombie.Local.Bytes = d.mu.versions.zombieTables.LocalStats()
 
-	// The obsolete blob/table metrics have a subtle calculation: the initial
-	// metrics we copied from vs.metrics reflect (in {Table,BlobFiles}.Obsolete
-	// the set of files currently sitting in vs.obsolete{Tables,Blobs} but not yet
-	// enqueued to the delete pacer. To complete the metrics, we add the currently
-	// enqueued files.
-	metrics.Table.Obsolete.Accumulate(deletePacerMetrics.InQueue.Tables)
-	metrics.BlobFiles.Obsolete.Accumulate(deletePacerMetrics.InQueue.BlobFiles)
+	// Populate obsolete blob/table metrics from both the not-yet-enqueued lists
+	// in the versionSet, and what is already in the delete pacer queue.
+	metrics.Table.Obsolete = deletePacerMetrics.InQueue.Tables
+	for _, fi := range d.mu.versions.obsoleteTables {
+		metrics.Table.Obsolete.Inc(fi.FileSize, fi.IsLocal)
+	}
+	metrics.BlobFiles.Obsolete = deletePacerMetrics.InQueue.BlobFiles
+	for _, fi := range d.mu.versions.obsoleteBlobs {
+		metrics.BlobFiles.Obsolete.Inc(fi.FileSize, fi.IsLocal)
+	}
+
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	d.mu.versions.logLock()

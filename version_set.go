@@ -76,6 +76,8 @@ type versionSet struct {
 	// on the creation of every version.
 	obsoleteFn func(manifest.ObsoleteFiles)
 	// obsolete{Tables,Blobs,Manifests,Options} are sorted by file number ascending.
+	// TODO(jackson, radu): Investigate if we still need this intermediary step or
+	// we can directly enqueue all deletions.
 	obsoleteTables    []deletepacer.ObsoleteFile
 	obsoleteBlobs     []deletepacer.ObsoleteFile
 	obsoleteManifests []deletepacer.ObsoleteFile
@@ -1038,7 +1040,6 @@ func (vs *versionSet) addObsoleteLocked(obsolete manifest.ObsoleteFiles) {
 			asObsoleteFile(vs.fs, base.FileTypeBlob, vs.dirname)
 	}
 	vs.obsoleteBlobs = mergeObsoleteFiles(vs.obsoleteBlobs, newlyObsoleteBlobFiles)
-	vs.updateObsoleteObjectMetricsLocked()
 }
 
 // addObsolete will acquire DB.mu, so DB.mu must not be held when this is
@@ -1047,20 +1048,6 @@ func (vs *versionSet) addObsolete(obsolete manifest.ObsoleteFiles) {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 	vs.addObsoleteLocked(obsolete)
-}
-
-func (vs *versionSet) updateObsoleteObjectMetricsLocked() {
-	// TODO(jackson, radu): Investigate if we still need the
-	// vs.obsolete{Tables,Blobs} intermediary step or we can directly enqueue all
-	// deletions.
-	vs.metrics.Table.Obsolete = metrics.TableCountsAndSizes{}
-	for _, fi := range vs.obsoleteTables {
-		vs.metrics.Table.Obsolete.Inc(fi.FileSize, fi.IsLocal)
-	}
-	vs.metrics.BlobFiles.Obsolete = metrics.BlobFileCountsAndSizes{}
-	for _, fi := range vs.obsoleteBlobs {
-		vs.metrics.BlobFiles.Obsolete.Inc(fi.FileSize, fi.IsLocal)
-	}
 }
 
 // This method sets the following fields of m.Levels[*]:
