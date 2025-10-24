@@ -1022,7 +1022,7 @@ func (m *Metrics) String() string {
 		live:    fmt.Sprintf("%s (%s)", humanizeCount(m.MemTable.Count), humanizeBytes(m.MemTable.Size)),
 		zombie:  fmt.Sprintf("%s (%s)", humanizeCount(m.MemTable.ZombieCount), humanizeBytes(m.MemTable.ZombieSize)),
 		// ingestions.
-		total:     crhumanize.Count(m.WAL.BytesIn + m.WAL.BytesWritten).String(),
+		total:     crhumanize.Count(m.Ingest.Count).String(),
 		flushable: fmt.Sprintf("%s (%s)", humanizeCount(m.Flush.AsIngestCount), humanizeBytes(m.Flush.AsIngestBytes)),
 	}
 	cur = cur.WriteString(commitPipelineInfoTableTopHeader).NewlineReturn()
