@@ -45,9 +45,10 @@ func (o *Options) testingRandomized(t testing.TB) *Options {
 	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
 		lowPri := 0.1 + rand.Float64()*0.9 // [0.1, 1.0)
 		policy := ValueSeparationPolicy{
-			Enabled:               true,
-			MinimumSize:           1 << rand.IntN(10), // [1, 512]
-			MaxBlobReferenceDepth: rand.IntN(10) + 1,  // [1, 10)
+			Enabled:                    true,
+			MinimumSize:                1 << rand.IntN(10), // [1, 512]
+			MinimumLatencyTolerantSize: 5 + rand.IntN(11),  // [5, 15]
+			MaxBlobReferenceDepth:      rand.IntN(10) + 1,  // [1, 10]
 			// Constrain the rewrite minimum age to [0, 15s).
 			RewriteMinimumAge:        time.Duration(rand.IntN(15)) * time.Second,
 			GarbageRatioLowPriority:  lowPri,

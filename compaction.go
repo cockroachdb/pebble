@@ -3484,7 +3484,7 @@ func (d *DB) compactAndWrite(
 			// This span of keyspace is more tolerant of latency, so set a more
 			// aggressive value separation policy for this output.
 			vSep.SetNextOutputConfig(compact.ValueSeparationOutputConfig{
-				MinimumSize: latencyTolerantMinimumSize,
+				MinimumSize: d.opts.Experimental.ValueSeparationPolicy().MinimumLatencyTolerantSize,
 			})
 		}
 		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts)

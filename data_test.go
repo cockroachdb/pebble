@@ -1868,6 +1868,11 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 						if err != nil {
 							return err
 						}
+					case "latency-tolerant-min-size":
+						policy.MinimumLatencyTolerantSize, err = strconv.Atoi(value)
+						if err != nil {
+							return err
+						}
 					default:
 						return errors.Newf("unrecognized value-separation argument %q", name)
 					}

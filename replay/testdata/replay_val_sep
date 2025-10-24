@@ -17,7 +17,7 @@ tree
        0      LOCK
      152      MANIFEST-000010
      250      MANIFEST-000013
-    2947      OPTIONS-000003
+    2982      OPTIONS-000003
        0      marker.format-version.000011.024
        0      marker.manifest.000003.MANIFEST-000013
             simple_val_sep/
@@ -32,7 +32,7 @@ tree
       11        000011.log
      660        000012.sst
      187        MANIFEST-000013
-    2947        OPTIONS-000003
+    2982        OPTIONS-000003
        0        marker.format-version.000001.024
        0        marker.manifest.000001.MANIFEST-000013
 
@@ -93,6 +93,7 @@ cat build/OPTIONS-000003
 [Value Separation]
   enabled=true
   minimum_size=3
+  minimum_latency_tolerant_size=10
   max_blob_reference_depth=5
   rewrite_minimum_age=15m0s
   garbage_ratio_low_priority=0.00
