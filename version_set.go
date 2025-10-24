@@ -374,6 +374,13 @@ func (vs *versionSet) load(
 		}
 	})
 
+	for blobFile := range newVersion.BlobFiles.All() {
+		if objstorage.IsLocalBlobFile(provider, blobFile.Physical.FileNum) {
+			vs.metrics.BlobFiles.Local.LiveSize += blobFile.Physical.Size
+			vs.metrics.BlobFiles.Local.LiveCount++
+		}
+	}
+
 	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, &vs.latest, vs.opts, nil))
 	return nil
 }
