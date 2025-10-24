@@ -59,7 +59,9 @@ jobs:
 
   linux-asan:
     name: linux-asan
-    runs-on: ubuntu-latest
+    # We have seen crashes with 24.04 that don't reproduce with 22.04 and are
+    # likely some asan bug triggered by a specific kernel (#5342).
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
