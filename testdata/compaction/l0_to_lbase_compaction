@@ -58,7 +58,7 @@ COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |      written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+--------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) | 160KB: 160KB |      0.0% |         1 |  1 (512KB) |  1 (512KB) |     328 K |      0 (0B)
+   1 (0B) | 160KB: 160KB |      0.0% |         1 |  1 (512KB) |  1 (512KB) |         0 |      0 (0B)
 
 BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start

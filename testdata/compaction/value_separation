@@ -175,7 +175,7 @@ COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) |   30B: 41B |     36.7% |         1 |  1 (256KB) |  1 (256KB) |        71 |      0 (0B)
+   1 (0B) |   30B: 41B |     36.7% |         1 |  1 (256KB) |  1 (256KB) |         0 |      0 (0B)
 
 BLOCK CACHE: 4 entries (1.3KB)
                  miss rate [percentage of total misses] since start
@@ -485,7 +485,7 @@ COMMIT PIPELINE
                wals                |              memtables              |       ingestions
     files |    written |  overhead |   flushes |       live |     zombie |     total |   flushable
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
-   1 (0B) | 126B: 156B |     23.8% |         2 |  1 (256KB) |  1 (256KB) |       282 |      0 (0B)
+   1 (0B) | 126B: 156B |     23.8% |         2 |  1 (256KB) |  1 (256KB) |         0 |      0 (0B)
 
 BLOCK CACHE: 0 entries (0B)
                  miss rate [percentage of total misses] since start
