@@ -320,5 +320,10 @@ func recoverVersion(
 			vs.metrics.Table.Live.Local.Inc(localSize)
 		}
 	}
+	for blobFile := range newVersion.BlobFiles.All() {
+		if objstorage.IsLocalBlobFile(provider, blobFile.Physical.FileNum) {
+			vs.metrics.BlobFiles.Live.Local.Inc(blobFile.Physical.Size)
+		}
+	}
 	return vs, nil
 }
