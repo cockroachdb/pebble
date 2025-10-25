@@ -547,6 +547,14 @@ func TestOptionsValidate(t *testing.T) {
 			}
 		})
 	}
+	t.Run("wal-failover", func(t *testing.T) {
+		var opts Options
+		opts.EnsureDefaults()
+		opts.WALFailover = &WALFailoverOptions{}
+		err := opts.Validate()
+		require.Error(t, err)
+		require.Regexp(t, "Secondary.FS is required", err.Error())
+	})
 }
 
 func TestKeyCategories(t *testing.T) {
