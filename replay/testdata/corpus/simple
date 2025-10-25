@@ -4,10 +4,10 @@ open
 list-files build
 ----
 build:
-  000002.log
+  000003.log
   LOCK
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
@@ -23,12 +23,12 @@ flush
 list-files build
 ----
 build:
-  000002.log
+  000003.log
   000004.log
   000005.sst
   LOCK
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
@@ -47,7 +47,7 @@ simple/checkpoint:
   000004.log
   000005.sst
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 

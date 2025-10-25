@@ -58,6 +58,11 @@ var (
 	Writes Predicate = opKindPred{kind: OpIsWrite}
 )
 
+type opFileWrite struct{}
+
+func (o opFileWrite) String() string      { return "OpFileWrite" }
+func (o opFileWrite) Evaluate(op Op) bool { return op.Kind == OpFileWrite }
+
 type opFileReadAt struct {
 	// offset configures the predicate to evaluate to true only if the
 	// operation's offset exactly matches offset.
@@ -167,6 +172,7 @@ func NewParser() *Parser {
 	}
 	p.predicates.DefineConstant("Reads", func() dsl.Predicate[Op] { return Reads })
 	p.predicates.DefineConstant("Writes", func() dsl.Predicate[Op] { return Writes })
+	p.predicates.DefineConstant("OpFileWrite", func() dsl.Predicate[Op] { return opFileWrite{} })
 	p.predicates.DefineFunc("PathMatch",
 		func(p *dsl.Parser[dsl.Predicate[Op]], s *dsl.Scanner) dsl.Predicate[Op] {
 			pattern := s.ConsumeString()

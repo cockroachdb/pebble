@@ -18,7 +18,12 @@ create: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 open-dir: db
-create: db/000002.log
+create: db/temporary.000002.dbtmp
+sync: db/temporary.000002.dbtmp
+close: db/temporary.000002.dbtmp
+rename: db/temporary.000002.dbtmp -> db/OPTIONS-000002
+sync: db
+create: db/000003.log
 sync: db
 create: db/marker.format-version.000001.014
 close: db/marker.format-version.000001.014
@@ -79,23 +84,18 @@ create: db/marker.format-version.000015.028
 close: db/marker.format-version.000015.028
 remove: db/marker.format-version.000014.027
 sync: db
-create: db/temporary.000003.dbtmp
-sync: db/temporary.000003.dbtmp
-close: db/temporary.000003.dbtmp
-rename: db/temporary.000003.dbtmp -> db/OPTIONS-000003
-sync: db
 
 batch db
 set a 1
 set b 2
 set c 3
 ----
-sync-data: db/000002.log
+sync-data: db/000003.log
 
 flush db
 ----
-sync-data: db/000002.log
-close: db/000002.log
+sync-data: db/000003.log
+close: db/000003.log
 create: db/000004.log
 sync: db
 create: db/000005.sst
@@ -115,7 +115,7 @@ flush db
 ----
 sync-data: db/000004.log
 close: db/000004.log
-reuseForWrite: db/000002.log -> db/000006.log
+reuseForWrite: db/000003.log -> db/000006.log
 sync: db
 create: db/000007.sst
 sync-data: db/000007.sst
@@ -139,11 +139,11 @@ open-dir: .
 sync: .
 close: .
 open-dir: checkpoints/checkpoint1
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint1/OPTIONS-000003
-sync-data: checkpoints/checkpoint1/OPTIONS-000003
-close: checkpoints/checkpoint1/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint1/OPTIONS-000002
+sync-data: checkpoints/checkpoint1/OPTIONS-000002
+close: checkpoints/checkpoint1/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint1/marker.format-version.000001.028
@@ -183,11 +183,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint2
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint2/OPTIONS-000003
-sync-data: checkpoints/checkpoint2/OPTIONS-000003
-close: checkpoints/checkpoint2/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint2/OPTIONS-000002
+sync-data: checkpoints/checkpoint2/OPTIONS-000002
+close: checkpoints/checkpoint2/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint2
 create: checkpoints/checkpoint2/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint2/marker.format-version.000001.028
@@ -222,11 +222,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint3
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint3/OPTIONS-000003
-sync-data: checkpoints/checkpoint3/OPTIONS-000003
-close: checkpoints/checkpoint3/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint3/OPTIONS-000002
+sync-data: checkpoints/checkpoint3/OPTIONS-000002
+close: checkpoints/checkpoint3/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint3
 create: checkpoints/checkpoint3/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint3/marker.format-version.000001.028
@@ -313,7 +313,7 @@ list db
 000010.sst
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 marker.format-version.000015.028
 marker.manifest.000001.MANIFEST-000001
 
@@ -323,7 +323,7 @@ list checkpoints/checkpoint1
 000006.log
 000007.sst
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 marker.format-version.000001.028
 marker.manifest.000001.MANIFEST-000001
 
@@ -338,8 +338,8 @@ open-dir: checkpoints/checkpoint1
 open: checkpoints/checkpoint1/MANIFEST-000001
 close: checkpoints/checkpoint1/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
-open: checkpoints/checkpoint1/OPTIONS-000003
-close: checkpoints/checkpoint1/OPTIONS-000003
+open: checkpoints/checkpoint1/OPTIONS-000002
+close: checkpoints/checkpoint1/OPTIONS-000002
 open: checkpoints/checkpoint1/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint1/000006.log
 
@@ -390,7 +390,7 @@ list checkpoints/checkpoint2
 000006.log
 000007.sst
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 marker.format-version.000001.028
 marker.manifest.000001.MANIFEST-000001
 
@@ -405,8 +405,8 @@ open-dir: checkpoints/checkpoint2
 open: checkpoints/checkpoint2/MANIFEST-000001
 close: checkpoints/checkpoint2/MANIFEST-000001
 open-dir: checkpoints/checkpoint2
-open: checkpoints/checkpoint2/OPTIONS-000003
-close: checkpoints/checkpoint2/OPTIONS-000003
+open: checkpoints/checkpoint2/OPTIONS-000002
+close: checkpoints/checkpoint2/OPTIONS-000002
 open: checkpoints/checkpoint2/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint2/000006.log
 
@@ -432,7 +432,7 @@ list checkpoints/checkpoint3
 000006.log
 000007.sst
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 marker.format-version.000001.028
 marker.manifest.000001.MANIFEST-000001
 
@@ -447,8 +447,8 @@ open-dir: checkpoints/checkpoint3
 open: checkpoints/checkpoint3/MANIFEST-000001
 close: checkpoints/checkpoint3/MANIFEST-000001
 open-dir: checkpoints/checkpoint3
-open: checkpoints/checkpoint3/OPTIONS-000003
-close: checkpoints/checkpoint3/OPTIONS-000003
+open: checkpoints/checkpoint3/OPTIONS-000002
+close: checkpoints/checkpoint3/OPTIONS-000002
 open: checkpoints/checkpoint3/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint3/000006.log
 
@@ -546,11 +546,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint4
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint4/OPTIONS-000003
-sync-data: checkpoints/checkpoint4/OPTIONS-000003
-close: checkpoints/checkpoint4/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint4/OPTIONS-000002
+sync-data: checkpoints/checkpoint4/OPTIONS-000002
+close: checkpoints/checkpoint4/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint4
 create: checkpoints/checkpoint4/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint4/marker.format-version.000001.028
@@ -590,8 +590,8 @@ open-dir: checkpoints/checkpoint4
 open: checkpoints/checkpoint4/MANIFEST-000001
 close: checkpoints/checkpoint4/MANIFEST-000001
 open-dir: checkpoints/checkpoint4
-open: checkpoints/checkpoint4/OPTIONS-000003
-close: checkpoints/checkpoint4/OPTIONS-000003
+open: checkpoints/checkpoint4/OPTIONS-000002
+close: checkpoints/checkpoint4/OPTIONS-000002
 open: checkpoints/checkpoint4/000008.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint4/000008.log
 
@@ -641,7 +641,7 @@ list db
 000014.sst
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 marker.format-version.000015.028
 marker.manifest.000001.MANIFEST-000001
 
@@ -655,11 +655,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint5
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint5/OPTIONS-000003
-sync-data: checkpoints/checkpoint5/OPTIONS-000003
-close: checkpoints/checkpoint5/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint5/OPTIONS-000002
+sync-data: checkpoints/checkpoint5/OPTIONS-000002
+close: checkpoints/checkpoint5/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint5
 create: checkpoints/checkpoint5/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint5/marker.format-version.000001.028
@@ -705,29 +705,29 @@ open-dir: checkpoints/checkpoint5
 open: checkpoints/checkpoint5/MANIFEST-000001
 close: checkpoints/checkpoint5/MANIFEST-000001
 open-dir: checkpoints/checkpoint5
-open: checkpoints/checkpoint5/OPTIONS-000003
-close: checkpoints/checkpoint5/OPTIONS-000003
+open: checkpoints/checkpoint5/OPTIONS-000002
+close: checkpoints/checkpoint5/OPTIONS-000002
 open: checkpoints/checkpoint5/000008.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint5/000008.log
-create: checkpoints/checkpoint5/000018.sst
-sync-data: checkpoints/checkpoint5/000018.sst
-close: checkpoints/checkpoint5/000018.sst
+create: checkpoints/checkpoint5/temporary.000018.dbtmp
+sync: checkpoints/checkpoint5/temporary.000018.dbtmp
+close: checkpoints/checkpoint5/temporary.000018.dbtmp
+rename: checkpoints/checkpoint5/temporary.000018.dbtmp -> checkpoints/checkpoint5/OPTIONS-000018
 sync: checkpoints/checkpoint5
-create: checkpoints/checkpoint5/MANIFEST-000019
-sync: checkpoints/checkpoint5/MANIFEST-000019
-create: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000019
-close: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000019
+remove: checkpoints/checkpoint5/OPTIONS-000002
+create: checkpoints/checkpoint5/000019.sst
+sync-data: checkpoints/checkpoint5/000019.sst
+close: checkpoints/checkpoint5/000019.sst
+sync: checkpoints/checkpoint5
+create: checkpoints/checkpoint5/MANIFEST-000020
+sync: checkpoints/checkpoint5/MANIFEST-000020
+create: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000020
+close: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000020
 remove: checkpoints/checkpoint5/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint5
 remove: checkpoints/checkpoint5/000008.log
-create: checkpoints/checkpoint5/000020.log
+create: checkpoints/checkpoint5/000021.log
 sync: checkpoints/checkpoint5
-create: checkpoints/checkpoint5/temporary.000021.dbtmp
-sync: checkpoints/checkpoint5/temporary.000021.dbtmp
-close: checkpoints/checkpoint5/temporary.000021.dbtmp
-rename: checkpoints/checkpoint5/temporary.000021.dbtmp -> checkpoints/checkpoint5/OPTIONS-000021
-sync: checkpoints/checkpoint5
-remove: checkpoints/checkpoint5/OPTIONS-000003
 
 print-backing checkpoints/checkpoint5
 ----
@@ -738,7 +738,7 @@ print-backing checkpoints/checkpoint5
 lsm checkpoints/checkpoint5
 ----
 L0.0:
-  000018:[h#18,SET-h#18,SET]
+  000019:[h#18,SET-h#18,SET]
 L6:
   000013(000010):[d#0,SET-g#0,SET]
   000015(000011):[i#20,SET-i#20,SET]
@@ -757,11 +757,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint6
-open: db/OPTIONS-000003
-create: checkpoints/checkpoint6/OPTIONS-000003
-sync-data: checkpoints/checkpoint6/OPTIONS-000003
-close: checkpoints/checkpoint6/OPTIONS-000003
-close: db/OPTIONS-000003
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint6/OPTIONS-000002
+sync-data: checkpoints/checkpoint6/OPTIONS-000002
+close: checkpoints/checkpoint6/OPTIONS-000002
+close: db/OPTIONS-000002
 open-dir: checkpoints/checkpoint6
 create: checkpoints/checkpoint6/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint6/marker.format-version.000001.028
@@ -806,29 +806,29 @@ open-dir: checkpoints/checkpoint6
 open: checkpoints/checkpoint6/MANIFEST-000001
 close: checkpoints/checkpoint6/MANIFEST-000001
 open-dir: checkpoints/checkpoint6
-open: checkpoints/checkpoint6/OPTIONS-000003
-close: checkpoints/checkpoint6/OPTIONS-000003
+open: checkpoints/checkpoint6/OPTIONS-000002
+close: checkpoints/checkpoint6/OPTIONS-000002
 open: checkpoints/checkpoint6/000008.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint6/000008.log
-create: checkpoints/checkpoint6/000018.sst
-sync-data: checkpoints/checkpoint6/000018.sst
-close: checkpoints/checkpoint6/000018.sst
+create: checkpoints/checkpoint6/temporary.000018.dbtmp
+sync: checkpoints/checkpoint6/temporary.000018.dbtmp
+close: checkpoints/checkpoint6/temporary.000018.dbtmp
+rename: checkpoints/checkpoint6/temporary.000018.dbtmp -> checkpoints/checkpoint6/OPTIONS-000018
 sync: checkpoints/checkpoint6
-create: checkpoints/checkpoint6/MANIFEST-000019
-sync: checkpoints/checkpoint6/MANIFEST-000019
-create: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000019
-close: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000019
+remove: checkpoints/checkpoint6/OPTIONS-000002
+create: checkpoints/checkpoint6/000019.sst
+sync-data: checkpoints/checkpoint6/000019.sst
+close: checkpoints/checkpoint6/000019.sst
+sync: checkpoints/checkpoint6
+create: checkpoints/checkpoint6/MANIFEST-000020
+sync: checkpoints/checkpoint6/MANIFEST-000020
+create: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000020
+close: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000020
 remove: checkpoints/checkpoint6/marker.manifest.000001.MANIFEST-000001
 sync: checkpoints/checkpoint6
 remove: checkpoints/checkpoint6/000008.log
-create: checkpoints/checkpoint6/000020.log
+create: checkpoints/checkpoint6/000021.log
 sync: checkpoints/checkpoint6
-create: checkpoints/checkpoint6/temporary.000021.dbtmp
-sync: checkpoints/checkpoint6/temporary.000021.dbtmp
-close: checkpoints/checkpoint6/temporary.000021.dbtmp
-rename: checkpoints/checkpoint6/temporary.000021.dbtmp -> checkpoints/checkpoint6/OPTIONS-000021
-sync: checkpoints/checkpoint6
-remove: checkpoints/checkpoint6/OPTIONS-000003
 
 print-backing checkpoints/checkpoint6
 ----
@@ -837,7 +837,7 @@ print-backing checkpoints/checkpoint6
 lsm checkpoints/checkpoint6
 ----
 L0.0:
-  000018:[h#18,SET-h#18,SET]
+  000019:[h#18,SET-h#18,SET]
 L6:
   000015(000011):[i#20,SET-i#20,SET]
   000016(000011):[k#20,SET-k#20,SET]
@@ -866,7 +866,7 @@ open checkpoints/checkpoint7 readonly nondeterministic
 lsm checkpoints/checkpoint7
 ----
 L0.0:
-  000018:[h#18,SET-h#18,SET]
+  000019:[h#18,SET-h#18,SET]
 L6:
   000012(000010):[a#0,SET-b#0,SET]
   000013(000010):[d#0,SET-g#0,SET]
@@ -897,7 +897,12 @@ create: valsepdb/marker.manifest.000001.MANIFEST-000001
 close: valsepdb/marker.manifest.000001.MANIFEST-000001
 sync: valsepdb
 open-dir: valsepdb
-create: valsepdb/000002.log
+create: valsepdb/temporary.000002.dbtmp
+sync: valsepdb/temporary.000002.dbtmp
+close: valsepdb/temporary.000002.dbtmp
+rename: valsepdb/temporary.000002.dbtmp -> valsepdb/OPTIONS-000002
+sync: valsepdb
+create: valsepdb/000003.log
 sync: valsepdb
 create: valsepdb/marker.format-version.000001.014
 close: valsepdb/marker.format-version.000001.014
@@ -958,11 +963,6 @@ create: valsepdb/marker.format-version.000015.028
 close: valsepdb/marker.format-version.000015.028
 remove: valsepdb/marker.format-version.000014.027
 sync: valsepdb
-create: valsepdb/temporary.000003.dbtmp
-sync: valsepdb/temporary.000003.dbtmp
-close: valsepdb/temporary.000003.dbtmp
-rename: valsepdb/temporary.000003.dbtmp -> valsepdb/OPTIONS-000003
-sync: valsepdb
 
 batch valsepdb
 set a a
@@ -972,14 +972,14 @@ set d d
 set e e
 set f f
 ----
-sync-data: valsepdb/000002.log
+sync-data: valsepdb/000003.log
 
 # The flush creates a blob file.
 
 flush valsepdb
 ----
-sync-data: valsepdb/000002.log
-close: valsepdb/000002.log
+sync-data: valsepdb/000003.log
+close: valsepdb/000003.log
 create: valsepdb/000004.log
 sync: valsepdb
 create: valsepdb/000005.sst
@@ -1000,11 +1000,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint8
-open: valsepdb/OPTIONS-000003
-create: checkpoints/checkpoint8/OPTIONS-000003
-sync-data: checkpoints/checkpoint8/OPTIONS-000003
-close: checkpoints/checkpoint8/OPTIONS-000003
-close: valsepdb/OPTIONS-000003
+open: valsepdb/OPTIONS-000002
+create: checkpoints/checkpoint8/OPTIONS-000002
+sync-data: checkpoints/checkpoint8/OPTIONS-000002
+close: checkpoints/checkpoint8/OPTIONS-000002
+close: valsepdb/OPTIONS-000002
 open-dir: checkpoints/checkpoint8
 create: checkpoints/checkpoint8/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint8/marker.format-version.000001.028
@@ -1045,8 +1045,8 @@ open-dir: checkpoints/checkpoint8
 open: checkpoints/checkpoint8/MANIFEST-000001
 close: checkpoints/checkpoint8/MANIFEST-000001
 open-dir: checkpoints/checkpoint8
-open: checkpoints/checkpoint8/OPTIONS-000003
-close: checkpoints/checkpoint8/OPTIONS-000003
+open: checkpoints/checkpoint8/OPTIONS-000002
+close: checkpoints/checkpoint8/OPTIONS-000002
 open: checkpoints/checkpoint8/000004.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint8/000004.log
 
@@ -1091,7 +1091,7 @@ flush valsepdb
 ----
 sync-data: valsepdb/000004.log
 close: valsepdb/000004.log
-reuseForWrite: valsepdb/000002.log -> valsepdb/000007.log
+reuseForWrite: valsepdb/000003.log -> valsepdb/000007.log
 sync: valsepdb
 create: valsepdb/000008.sst
 create: valsepdb/000009.blob
@@ -1114,11 +1114,11 @@ open-dir: checkpoints
 sync: checkpoints
 close: checkpoints
 open-dir: checkpoints/checkpoint9
-open: valsepdb/OPTIONS-000003
-create: checkpoints/checkpoint9/OPTIONS-000003
-sync-data: checkpoints/checkpoint9/OPTIONS-000003
-close: checkpoints/checkpoint9/OPTIONS-000003
-close: valsepdb/OPTIONS-000003
+open: valsepdb/OPTIONS-000002
+create: checkpoints/checkpoint9/OPTIONS-000002
+sync-data: checkpoints/checkpoint9/OPTIONS-000002
+close: checkpoints/checkpoint9/OPTIONS-000002
+close: valsepdb/OPTIONS-000002
 open-dir: checkpoints/checkpoint9
 create: checkpoints/checkpoint9/marker.format-version.000001.028
 sync-data: checkpoints/checkpoint9/marker.format-version.000001.028
@@ -1157,8 +1157,8 @@ open-dir: checkpoints/checkpoint9
 open: checkpoints/checkpoint9/MANIFEST-000001
 close: checkpoints/checkpoint9/MANIFEST-000001
 open-dir: checkpoints/checkpoint9
-open: checkpoints/checkpoint9/OPTIONS-000003
-close: checkpoints/checkpoint9/OPTIONS-000003
+open: checkpoints/checkpoint9/OPTIONS-000002
+close: checkpoints/checkpoint9/OPTIONS-000002
 open: checkpoints/checkpoint9/000007.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint9/000007.log
 
