@@ -102,19 +102,14 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 	}
 
-	// Open the database and WAL directories first.
-	dirs, err := prepareOpenAndLockDirs(dirname, opts)
-	if err != nil {
-		err = errors.Wrapf(err, "error opening database at %q", dirname)
-		err = errors.CombineErrors(err, dirs.Close())
-		return nil, err
-	}
-	defer maybeCleanUp(dirs.Close)
-
+	// Recover the current database state.
 	rs, err := recoverState(opts, dirname)
 	if err != nil {
 		return nil, err
 	}
+	// Locks in RecoveryDirLocks can be closed as soon as we've finished opening
+	// the database.
+	defer func() { _ = rs.dirs.RecoveryDirLocks.Close() }()
 	defer maybeCleanUp(rs.Close)
 
 	formatVersion := rs.fmv
@@ -146,7 +141,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}
 
 	if !opts.ReadOnly {
-		if err := rs.RemoveObsolete(); err != nil {
+		if err := rs.RemoveObsolete(opts); err != nil {
 			return nil, err
 		}
 	}
@@ -166,7 +161,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		split:               opts.Comparer.Split,
 		abbreviatedKey:      opts.Comparer.AbbreviatedKey,
 		largeBatchThreshold: (opts.MemTableSize - uint64(memTableEmptySize)) / 2,
-		dirs:                dirs,
+		dirs:                rs.dirs,
 		objProvider:         rs.objProvider,
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
@@ -294,8 +289,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	})
 
 	walOpts := wal.Options{
-		Primary:              dirs.WALPrimary,
-		Secondary:            dirs.WALSecondary,
+		Primary:              rs.dirs.WALPrimary,
+		Secondary:            rs.dirs.WALSecondary,
 		MinUnflushedWALNum:   wal.NumWAL(d.mu.versions.minUnflushedLogNum),
 		MaxNumRecyclableLogs: opts.MemTableStopWritesThreshold + 1,
 		NoSyncOnClose:        opts.NoSyncOnClose,
@@ -314,64 +309,13 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			Buckets: FsyncLatencyBuckets,
 		})
 	}
-	walDirs := walOpts.Dirs()
-	var recoveryDirLocks base.DirLockSet
-	defer func() { _ = recoveryDirLocks.Close() }()
-	for _, dir := range opts.WALRecoveryDirs {
-		dir.Dirname = resolveStorePath(dirname, dir.Dirname)
-		if dir.Dirname != dirname {
-			// Acquire a lock on the WAL recovery directory.
-			_, err = recoveryDirLocks.AcquireOrValidate(dir.Lock, dir.Dirname, dir.FS)
-			if err != nil {
-				return nil, errors.Wrapf(err, "error acquiring lock on WAL recovery directory %q", dir.Dirname)
-			}
-		}
-		walDirs = append(walDirs, dir)
-	}
+	walDirs := d.dirs.WALDirs()
 	wals, err := wal.Scan(walDirs...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Remove obsolete WAL files now (as opposed to relying on asynchronous
-	// cleanup) to prevent crash loops due to no disk space (ENOSPC).
-	var retainedWALs wal.Logs
-	for _, w := range wals {
-		// Any WALs with file numbers ≥ minUnflushedLogNum must be replayed to
-		// recover the state.
-		if base.DiskFileNum(w.Num) >= d.mu.versions.minUnflushedLogNum {
-			retainedWALs = append(retainedWALs, w)
-			continue
-		}
-		// Skip removal of obsolete WALs in read-only mode.
-		if opts.ReadOnly {
-			continue
-		}
-		// Remove obsolete WALs, logging each removal.
-		for i := range w.NumSegments() {
-			fs, path := w.SegmentLocation(i)
-			if err := fs.Remove(path); err != nil {
-				// It's not a big deal if we can't delete the file now.
-				// We'll try to remove it later in the cleanup process.
-				d.opts.EventListener.WALDeleted(WALDeleteInfo{
-					JobID:   0,
-					Path:    path,
-					FileNum: base.DiskFileNum(w.Num),
-					Err:     err,
-				})
-				retainedWALs = append(retainedWALs, w)
-			} else {
-				d.opts.EventListener.WALDeleted(WALDeleteInfo{
-					JobID:   0,
-					Path:    path,
-					FileNum: base.DiskFileNum(w.Num),
-					Err:     nil,
-				})
-			}
-		}
-	}
-
-	walManager, err := wal.Init(walOpts, retainedWALs)
+	walManager, err := wal.Init(walOpts, rs.walsReplay)
 	if err != nil {
 		return nil, err
 	}
@@ -576,10 +520,23 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 // resolvedDirs is a set of resolved directory paths and locks.
 type resolvedDirs struct {
-	DirLocks     base.DirLockSet
-	DataDir      vfs.File
-	WALPrimary   wal.Dir
-	WALSecondary wal.Dir
+	DirLocks         base.DirLockSet
+	RecoveryDirLocks base.DirLockSet
+	DataDir          vfs.File
+	WALPrimary       wal.Dir
+	WALSecondary     wal.Dir
+	WALRecovery      []wal.Dir
+}
+
+// WALDirs returns the set of resolved directories that may contain WAL files
+// relevant to recovery.
+func (d *resolvedDirs) WALDirs() []wal.Dir {
+	dirs := []wal.Dir{d.WALPrimary}
+	if d.WALSecondary.Dirname != "" {
+		dirs = append(dirs, d.WALSecondary)
+	}
+	dirs = append(dirs, d.WALRecovery...)
+	return dirs
 }
 
 // Close closes the data directory and the directory locks.
@@ -589,6 +546,7 @@ func (d *resolvedDirs) Close() error {
 		err = errors.CombineErrors(err, d.DataDir.Close())
 	}
 	err = errors.CombineErrors(err, d.DirLocks.Close())
+	err = errors.CombineErrors(err, d.RecoveryDirLocks.Close())
 	*d = resolvedDirs{}
 	return err
 }
@@ -671,6 +629,19 @@ func prepareOpenAndLockDirs(dirname string, opts *Options) (dirs *resolvedDirs, 
 		if err != nil {
 			return dirs, err
 		}
+	}
+
+	// Resolve path names and acquire locks for the WAL recovery directories.
+	for _, dir := range opts.WALRecoveryDirs {
+		dir.Dirname = resolveStorePath(dirname, dir.Dirname)
+		if dir.Dirname != dirname {
+			// Acquire a lock on the WAL recovery directory.
+			dir.Lock, err = dirs.RecoveryDirLocks.AcquireOrValidate(dir.Lock, dir.Dirname, dir.FS)
+			if err != nil {
+				return dirs, errors.Wrapf(err, "error acquiring lock on WAL recovery directory %q", dir.Dirname)
+			}
+		}
+		dirs.WALRecovery = append(dirs.WALRecovery, dir)
 	}
 	return dirs, nil
 }
