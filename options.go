@@ -1418,6 +1418,13 @@ type WALFailoverOptions struct {
 	wal.FailoverOptions
 }
 
+func (o *WALFailoverOptions) Validate() error {
+	if o.Secondary.FS == nil {
+		return errors.New("Secondary.FS is required")
+	}
+	return nil
+}
+
 // ReadaheadConfig controls the use of read-ahead.
 type ReadaheadConfig = objstorageprovider.ReadaheadConfig
 
@@ -2565,6 +2572,12 @@ func (o *Options) Validate() error {
 		if policy.GarbageRatioHighPriority < policy.GarbageRatioLowPriority {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.GarbageRatioHighPriority (%f) must be >= ValueSeparationPolicy.GarbageRatioLowPriority (%f)\n",
 				policy.GarbageRatioHighPriority, policy.GarbageRatioLowPriority)
+		}
+	}
+
+	if o.WALFailover != nil {
+		if err := o.WALFailover.Validate(); err != nil {
+			fmt.Fprintf(&buf, "WALFailover validation failed: %v\n", err)
 		}
 	}
 
