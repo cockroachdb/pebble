@@ -219,7 +219,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 		}
 		tw := sstable.NewWriter(w, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 		ik := base.MakeInternalKey([]byte("k"), base.SeqNum(i), InternalKeyKindSet)
-		if err := tw.Raw().Add(ik, xxx[:i], false); err != nil {
+		if err := tw.Raw().Add(ik, xxx[:i], false, base.KVMeta{}); err != nil {
 			t.Fatal(err)
 		}
 		if err := tw.RangeKeySet([]byte("k"), []byte("l"), nil, xxx[:i]); err != nil {
