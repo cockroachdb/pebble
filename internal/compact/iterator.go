@@ -18,6 +18,14 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
+// MetaIterator is an interface for iterators that support metadata extraction.
+type MetaIterator interface {
+	base.InternalIterator
+	base.MetaDecoder
+	FirstWithMeta() (*base.InternalKV, base.KVMeta)
+	NextWithMeta() (*base.InternalKV, base.KVMeta)
+}
+
 // Iter provides a forward-only iterator that encapsulates the logic for
 // collapsing entries during compaction. It wraps an internal iterator and
 // collapses entries that are no longer necessary because they are shadowed by

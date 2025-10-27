@@ -626,6 +626,29 @@ type InternalKV struct {
 	V InternalValue
 }
 
+type TieringAttribute uint64
+
+// KVMeta describes optional metadata associated with an `InternalKV`.
+// It's currently produced only by sstable-backed iterators and is not embedded
+// within `InternalKV` to avoid overhead on the common iteration path.
+// Instead, select iterators expose methods that return the metadata alongside
+// the key/value:
+//   - `levelIter.FirstWithMeta` / `levelIter.NextWithMeta`
+//   - sstable iterators' `FirstWithMeta` / `NextWithMeta`
+//
+// These methods exist to support compaction-only logic (eg, `compaction.Iter`).
+// Regular iteration should use the standard methods that do not surface metadata.
+type KVMeta struct {
+	TieringSpanID uint64
+	// TieringAttribute is a user-specified attribute for the key-value pair.
+	//
+	// TODO(sumeer): For CockroachDB decide on units for this attribute, which
+	// will be a timestamp, since unix nanos is unnecessarily large.
+	// log2(24*365*100) = 19.74, i.e., number of hours in 100 years fits in 3
+	// bytes.
+	TieringAttribute TieringAttribute
+}
+
 // Kind returns the KV's internal key kind.
 func (kv *InternalKV) Kind() InternalKeyKind {
 	return kv.K.Kind()

@@ -729,6 +729,37 @@ func (l *levelIter) First() *base.InternalKV {
 	return l.verify(l.skipEmptyFileForward())
 }
 
+// FirstWithMeta moves the iterator to the first key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (l *levelIter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	return l.First(), l.extractMetaFromCurrentPosition()
+}
+
+// NextWithMeta moves the iterator to the next key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (l *levelIter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	return l.Next(), l.extractMetaFromCurrentPosition()
+}
+
+// extractMetaFromCurrentPosition extracts KVMeta from the current iterator
+// position. This method delegates to the underlying iterator if it supports the
+// specialized methods.
+func (l *levelIter) extractMetaFromCurrentPosition() base.KVMeta {
+	if l.iter == nil {
+		return base.KVMeta{}
+	}
+
+	if metaDecoder, ok := l.iter.(base.MetaDecoder); ok {
+		return metaDecoder.DecodeMeta()
+	}
+
+	return base.KVMeta{}
+}
+
 func (l *levelIter) Last() *base.InternalKV {
 	if invariants.Enabled && l.upper != nil {
 		panic(errors.AssertionFailedf("levelIter Last called while upper bound %q is set", l.upper))
