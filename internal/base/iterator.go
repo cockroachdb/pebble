@@ -223,6 +223,24 @@ type InternalIterator interface {
 	treesteps.Node
 }
 
+// InternalIteratorWithKVMeta is an interface for iterators that support metadata
+// extraction. This interface is used by compaction iterators that need access
+// to tiering metadata without adding overhead to the common iteration path.
+type InternalIteratorWithKVMeta interface {
+	InternalIterator
+	// FirstWithMeta moves the iterator to the first key/value pair and returns
+	// both the key/value and the associated metadata.
+	FirstWithMeta() (*InternalKV, KVMeta)
+	// NextWithMeta moves the iterator to the next key/value pair and returns
+	// both the key/value and the associated metadata.
+	NextWithMeta() (*InternalKV, KVMeta)
+	// SeekGEWithMeta implements internalIterator.SeekGE, as documented in the
+	// pebble package - returning both the key/value and the associated metadata.
+	// Note that SeekGEWithMeta only checks the upper bound. It is up to the
+	// caller to ensure that key is greater than or equal to the lower bound.
+	SeekGEWithMeta(key []byte, flags SeekGEFlags) (*InternalKV, KVMeta)
+}
+
 // TopLevelIterator extends InternalIterator to include an additional absolute
 // positioning method, SeekPrefixGEStrict.
 type TopLevelIterator interface {

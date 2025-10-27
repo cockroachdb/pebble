@@ -1268,6 +1268,42 @@ func (i *DataBlockIter) First() *base.InternalKV {
 	return i.decodeRow()
 }
 
+// FirstWithMeta implements the base.MetaIterator interface.
+func (i *DataBlockIter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	kv := i.First()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	return kv, i.decodeMeta()
+}
+
+// NextWithMeta implements the base.MetaIterator interface.
+func (i *DataBlockIter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	kv := i.Next()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	return kv, i.decodeMeta()
+}
+
+// SeekGEWithMeta implements the base.MetaIterator interface.
+func (i *DataBlockIter) SeekGEWithMeta(
+	key []byte, flags base.SeekGEFlags,
+) (*base.InternalKV, base.KVMeta) {
+	kv := i.SeekGE(key, flags)
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	return kv, i.decodeMeta()
+}
+
+// decodeMeta extracts the KVMeta for the current row.
+func (i *DataBlockIter) decodeMeta() base.KVMeta {
+	// TODO (annie): Implement tiering metadata extraction when the fields are
+	// available.
+	return base.KVMeta{}
+}
+
 // Last implements the base.InternalIterator interface.
 func (i *DataBlockIter) Last() *base.InternalKV {
 	if i.d == nil {

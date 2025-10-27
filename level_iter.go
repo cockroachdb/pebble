@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -636,8 +637,21 @@ func (l *levelIter) verify(kv *base.InternalKV) *base.InternalKV {
 }
 
 func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.InternalKV) {
+	kv, _ = l.internalSeekGE(key, flags, false /* shouldReturnMeta */)
+	return kv
+}
+
+func (l *levelIter) SeekGEWithMeta(
+	key []byte, flags base.SeekGEFlags,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
+	return l.internalSeekGE(key, flags, true /* shouldReturnMeta */)
+}
+
+func (l *levelIter) internalSeekGE(
+	key []byte, flags base.SeekGEFlags, shouldReturnMeta bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(l) {
-		op := treesteps.StartOpf(l, "SeekGE(%q, %d)", key, flags)
+		op := treesteps.StartOpf(l, "SeekGE%s(%q, %d)", crstrings.If(shouldReturnMeta, "WithMeta"), key, flags)
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -654,17 +668,27 @@ func (l *levelIter) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Interna
 	loadFileIndicator := l.loadFile(l.findFileGE(key, flags), +1)
 	if loadFileIndicator == noFileLoaded {
 		l.exhaustedForward()
-		return nil
+		return nil, base.KVMeta{}
 	}
 	if loadFileIndicator == newFileLoaded {
 		// File changed, so l.iter has changed, and that iterator is not
 		// positioned appropriately.
 		flags = flags.DisableTrySeekUsingNext()
 	}
-	if kv := l.iter.SeekGE(key, flags); kv != nil {
-		return l.verify(kv)
+	if shouldReturnMeta {
+		if metaIter, ok := l.iter.(base.InternalIteratorWithKVMeta); ok {
+			kv, kvMeta = metaIter.SeekGEWithMeta(key, flags)
+		} else {
+			kv = l.iter.SeekGE(key, flags)
+		}
+	} else {
+		kv = l.iter.SeekGE(key, flags)
 	}
-	return l.verify(l.skipEmptyFileForward())
+	if kv != nil {
+		return l.verify(kv), kvMeta
+	}
+	kv, kvMeta = l.skipEmptyFileForward(shouldReturnMeta)
+	return l.verify(kv), kvMeta
 }
 
 func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) (kv *base.InternalKV) {
@@ -699,7 +723,8 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) (kv
 	if err := l.iter.Error(); err != nil {
 		return nil
 	}
-	return l.verify(l.skipEmptyFileForward())
+	kv, _ = l.skipEmptyFileForward(false /* shouldReturnMeta */)
+	return l.verify(kv)
 }
 
 func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) (kv *base.InternalKV) {
@@ -730,8 +755,13 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) (kv *base.Interna
 }
 
 func (l *levelIter) First() (kv *base.InternalKV) {
+	kv, _ = l.internalFirst(false /* shouldReturnMeta */)
+	return kv
+}
+
+func (l *levelIter) internalFirst(shouldReturnMeta bool) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(l) {
-		op := treesteps.StartOpf(l, "First()")
+		op := treesteps.StartOpf(l, "First%s()", crstrings.If(shouldReturnMeta, "WithMeta"))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -748,12 +778,22 @@ func (l *levelIter) First() (kv *base.InternalKV) {
 	// set.
 	if l.loadFile(l.files.First(), +1) == noFileLoaded {
 		l.exhaustedForward()
-		return nil
+		return nil, base.KVMeta{}
 	}
-	if kv := l.iter.First(); kv != nil {
-		return l.verify(kv)
+	if shouldReturnMeta {
+		if metaIter, ok := l.iter.(base.InternalIteratorWithKVMeta); ok {
+			kv, kvMeta = metaIter.FirstWithMeta()
+		} else {
+			kv = l.iter.First()
+		}
+	} else {
+		kv = l.iter.First()
 	}
-	return l.verify(l.skipEmptyFileForward())
+	if kv != nil {
+		return l.verify(kv), kvMeta
+	}
+	kv, kvMeta = l.skipEmptyFileForward(shouldReturnMeta)
+	return l.verify(kv), kvMeta
 }
 
 func (l *levelIter) Last() (kv *base.InternalKV) {
@@ -784,25 +824,48 @@ func (l *levelIter) Last() (kv *base.InternalKV) {
 }
 
 func (l *levelIter) Next() (kv *base.InternalKV) {
+	kv, _ = l.internalNext(false /* shouldReturnMeta */)
+	return kv
+}
+
+func (l *levelIter) internalNext(shouldReturnMeta bool) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(l) {
-		op := treesteps.StartOpf(l, "Next()")
+		op := treesteps.StartOpf(l, "Next%s()", crstrings.If(shouldReturnMeta, "WithMeta"))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
 	}
 	if l.exhaustedDir == -1 {
 		if l.lower != nil {
-			return l.SeekGE(l.lower, base.SeekGEFlagsNone)
+			if shouldReturnMeta {
+				return l.SeekGEWithMeta(l.lower, base.SeekGEFlagsNone)
+			} else {
+				return l.SeekGE(l.lower, base.SeekGEFlagsNone), base.KVMeta{}
+			}
 		}
-		return l.First()
+		if shouldReturnMeta {
+			return l.FirstWithMeta()
+		} else {
+			return l.First(), base.KVMeta{}
+		}
 	}
 	if l.err != nil || l.iter == nil {
-		return nil
+		return nil, base.KVMeta{}
 	}
-	if kv := l.iter.Next(); kv != nil {
-		return l.verify(kv)
+	if shouldReturnMeta {
+		if metaIter, ok := l.iter.(base.InternalIteratorWithKVMeta); ok {
+			kv, kvMeta = metaIter.NextWithMeta()
+		} else {
+			kv = l.iter.Next()
+		}
+	} else {
+		kv = l.iter.Next()
 	}
-	return l.verify(l.skipEmptyFileForward())
+	if kv != nil {
+		return l.verify(kv), kvMeta
+	}
+	kv, kvMeta = l.skipEmptyFileForward(shouldReturnMeta)
+	return l.verify(kv), kvMeta
 }
 
 func (l *levelIter) NextPrefix(succKey []byte) (kv *base.InternalKV) {
@@ -838,7 +901,8 @@ func (l *levelIter) NextPrefix(succKey []byte) (kv *base.InternalKV) {
 		if kv := l.iter.SeekGE(succKey, base.SeekGEFlagsNone); kv != nil {
 			return l.verify(kv)
 		}
-		return l.verify(l.skipEmptyFileForward())
+		kv, _ = l.skipEmptyFileForward(false /* shouldReturnMeta */)
+		return l.verify(kv)
 	}
 	l.exhaustedForward()
 	return nil
@@ -866,8 +930,9 @@ func (l *levelIter) Prev() (kv *base.InternalKV) {
 	return l.verify(l.skipEmptyFileBackward())
 }
 
-func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
-	var kv *base.InternalKV
+func (l *levelIter) skipEmptyFileForward(
+	shouldReturnMeta bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	// The first iteration of this loop starts with an already exhausted l.iter.
 	// The reason for the exhaustion is either that we iterated to the end of
 	// the sstable, or our iteration was terminated early due to the presence of
@@ -876,16 +941,24 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 	// Subsequent iterations will examine consecutive files such that the first
 	// file that does not have an exhausted iterator causes the code to return
 	// that key.
-	for ; kv == nil; kv = l.iter.First() {
+	firstFn := func() (*base.InternalKV, base.KVMeta) {
+		if shouldReturnMeta {
+			if metaIter, ok := l.iter.(base.InternalIteratorWithKVMeta); ok {
+				return metaIter.FirstWithMeta()
+			}
+		}
+		return l.iter.First(), base.KVMeta{}
+	}
+	for ; kv == nil; kv, kvMeta = firstFn() {
 		if l.iter.Error() != nil {
-			return nil
+			return nil, base.KVMeta{}
 		}
 		// If an upper bound is present and the upper bound lies within the
 		// current sstable, then we will have reached the upper bound rather
 		// than the end of the sstable.
 		if l.tableOpts.UpperBound != nil {
 			l.exhaustedForward()
-			return nil
+			return nil, base.KVMeta{}
 		}
 
 		// If the iterator is in prefix iteration mode, it's possible that we
@@ -903,17 +976,17 @@ func (l *levelIter) skipEmptyFileForward() *base.InternalKV {
 		if l.prefix != nil {
 			if l.comparer.Compare(l.comparer.Split.Prefix(l.iterFile.PointKeyBounds.LargestUserKey()), l.prefix) > 0 {
 				l.exhaustedForward()
-				return nil
+				return nil, base.KVMeta{}
 			}
 		}
 
 		// Current file was exhausted. Move to the next file.
 		if l.loadFile(l.files.Next(), +1) == noFileLoaded {
 			l.exhaustedForward()
-			return nil
+			return nil, base.KVMeta{}
 		}
 	}
-	return kv
+	return kv, kvMeta
 }
 
 func (l *levelIter) skipEmptyFileBackward() *base.InternalKV {
@@ -1019,3 +1092,13 @@ func (l *levelIter) String() string {
 }
 
 var _ internalIterator = &levelIter{}
+
+// FirstWithMeta implements the base.MetaIterator interface.
+func (l *levelIter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	return l.internalFirst(true /* shouldReturnMeta */)
+}
+
+// NextWithMeta implements the base.MetaIterator interface.
+func (l *levelIter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	return l.internalNext(true /* shouldReturnMeta */)
+}

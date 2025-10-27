@@ -545,6 +545,13 @@ func (i *Iter) IsLowerBound(k []byte) bool {
 	return i.cmp(i.firstUserKey, k) >= 0
 }
 
+// SeekGEWithMeta implements the base.MetaIterator interface.
+// Row format does not support additional KV metadata; so, we return an empty
+// KVMeta and just call the non-metadata version of SeekGE.
+func (i *Iter) SeekGEWithMeta(key []byte, flags base.SeekGEFlags) (*base.InternalKV, base.KVMeta) {
+	return i.SeekGE(key, flags), base.KVMeta{}
+}
+
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
@@ -999,6 +1006,13 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	return &i.ikv
 }
 
+// FirstWithMeta implements the base.MetaIterator interface.
+// Row format does not support additional KV metadata, so we return an empty
+// KVMeta and just call the non-metadata version of First.
+func (i *Iter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.First(), base.KVMeta{}
+}
+
 // First implements internalIterator.First, as documented in the pebble
 // package.
 func (i *Iter) First() *base.InternalKV {
@@ -1072,6 +1086,13 @@ func (i *Iter) Last() *base.InternalKV {
 		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
+}
+
+// NextWithMeta implements the base.MetaIterator interface.
+// Row format does not support additional KV metadata; so, we return an empty
+// KVMeta and just call the non-metadata version of Next.
+func (i *Iter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.Next(), base.KVMeta{}
 }
 
 // Next implements internalIterator.Next, as documented in the pebble

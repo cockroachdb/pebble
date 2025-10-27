@@ -631,6 +631,28 @@ type InternalKV struct {
 	V InternalValue
 }
 
+// TieringAttribute is a user-specified attribute for the key-value pair.
+//
+// Currently, the value is always a unix timestamp in seconds (what
+// time.Time.Unix() returns), but this could be extended in the future.
+// and should be opaque to most of the Pebble code.
+type TieringAttribute uint64
+
+// KVMeta describes optional metadata associated with an `InternalKV`.
+// It's currently produced only by sstable-backed iterators and is not embedded
+// within `InternalKV` to avoid overhead on the common iteration path.
+// Instead, select iterators expose methods that return the metadata alongside
+// the key/value:
+//   - `levelIter.FirstWithMeta` / `levelIter.NextWithMeta` / `levelIter.SeekGEWithMeta`
+//   - sstable iterators' `FirstWithMeta` / `NextWithMeta` / `SeekGEWithMeta`
+//
+// These methods exist to support compaction-only logic (eg, `compaction.Iter`).
+// Regular iteration should use the standard methods that do not surface metadata.
+type KVMeta struct {
+	TieringSpanID    uint64
+	TieringAttribute TieringAttribute
+}
+
 // Kind returns the KV's internal key kind.
 func (kv *InternalKV) Kind() InternalKeyKind {
 	return kv.K.Kind()
