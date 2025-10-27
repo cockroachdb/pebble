@@ -140,7 +140,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 					} else {
 						ikv.V = base.MakeInPlaceValue([]byte(parts[1]))
 					}
-					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isLikelyMVCCGarbage */))
+					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isLikelyMVCCGarbage */, base.KVMeta{}))
 				}
 				return buf.String()
 			case "estimated-sizes":
@@ -198,16 +198,22 @@ type loggingRawWriter struct {
 	sstable.RawWriter
 }
 
-func (w *loggingRawWriter) Add(key InternalKey, value []byte, forceObsolete bool) error {
+func (w *loggingRawWriter) Add(
+	key InternalKey, value []byte, forceObsolete bool, meta base.KVMeta,
+) error {
 	fmt.Fprintf(w.w, "RawWriter.Add(%q, %q, %t)\n", key, value, forceObsolete)
-	return w.RawWriter.Add(key, value, forceObsolete)
+	return w.RawWriter.Add(key, value, forceObsolete, meta)
 }
 
 func (w *loggingRawWriter) AddWithBlobHandle(
-	key InternalKey, h blob.InlineHandle, attr base.ShortAttribute, forceObsolete bool,
+	key InternalKey,
+	h blob.InlineHandle,
+	attr base.ShortAttribute,
+	forceObsolete bool,
+	meta base.KVMeta,
 ) error {
 	fmt.Fprintf(w.w, "RawWriter.AddWithBlobHandle(%q, %q, %x, %t)\n", key, h, attr, forceObsolete)
-	return w.RawWriter.AddWithBlobHandle(key, h, attr, forceObsolete)
+	return w.RawWriter.AddWithBlobHandle(key, h, attr, forceObsolete, meta)
 }
 
 // defineDBValueSeparator is a compact.ValueSeparation implementation used by
@@ -250,14 +256,14 @@ func (vs *defineDBValueSeparator) EstimatedReferenceSize() uint64 {
 // Add adds the provided key-value pair to the sstable, possibly separating the
 // value into a blob file.
 func (vs *defineDBValueSeparator) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool, kvMeta base.KVMeta,
 ) error {
 	// In datadriven tests, all defined values are in-place initially. See
 	// runDBDefineCmdReuseFS.
 	v := kv.V.InPlaceValue()
 	// If the value doesn't begin with "blob", don't separate it.
 	if !bytes.HasPrefix(v, []byte("blob")) {
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, kvMeta)
 	}
 
 	// This looks like a blob reference. Parse it.
@@ -282,7 +288,7 @@ func (vs *defineDBValueSeparator) Add(
 	// Return a KV that uses the original key but our constructed blob reference.
 	vs.kv.K = kv.K
 	vs.kv.V = iv
-	return vs.pbr.Add(tw, &vs.kv, forceObsolete, false /* isLikelyMVCCGarbage */)
+	return vs.pbr.Add(tw, &vs.kv, forceObsolete, false /* isLikelyMVCCGarbage */, kvMeta)
 }
 
 // FinishOutput implements compact.ValueSeparation.

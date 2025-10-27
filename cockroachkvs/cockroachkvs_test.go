@@ -207,7 +207,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 	var bd colblk.BlockDecoder
 	var ks colblk.KeySeeker
 	var maxKeyLen int
-	enc.Init(&KeySchema)
+	enc.Init(colblk.ColumnFormatv1, &KeySchema)
 
 	initKeySeeker := func() {
 		ksPointer := &cockroachKeySeeker{}
@@ -231,11 +231,11 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 					UserKey: k,
 					Trailer: pebble.MakeInternalKeyTrailer(0, base.InternalKeyKindSet),
 				}
-				enc.Add(ikey, k, block.InPlaceValuePrefix(false), kcmp, false /* isObsolete */)
+				enc.Add(ikey, k, block.InPlaceValuePrefix(false), kcmp, false /* isObsolete */, base.KVMeta{})
 				rows++
 			}
 			blk, _ := enc.Finish(rows, enc.Size())
-			bd = dec.Init(&KeySchema, blk)
+			bd = dec.Init(colblk.ColumnFormatv1, &KeySchema, blk)
 			return buf.String()
 		case "is-lower-bound":
 			initKeySeeker()
@@ -410,10 +410,10 @@ func testCockroachDataColBlock(t *testing.T, seed uint64, keyCfg KeyGenConfig) {
 
 	var decoder colblk.DataBlockDecoder
 	var it colblk.DataBlockIter
-	it.InitOnce(&KeySchema, &Comparer, getInternalValuer(func([]byte) base.InternalValue {
+	it.InitOnce(colblk.ColumnFormatv1, &KeySchema, &Comparer, getInternalValuer(func([]byte) base.InternalValue {
 		return base.MakeInPlaceValue([]byte("mock external value"))
 	}))
-	bd := decoder.Init(&KeySchema, serializedBlock)
+	bd := decoder.Init(colblk.ColumnFormatv1, &KeySchema, serializedBlock)
 	if err := it.Init(&decoder, bd, blockiter.Transforms{}); err != nil {
 		t.Fatal(err)
 	}
@@ -460,12 +460,12 @@ func generateDataBlock(
 	keys, values = RandomKVs(rng, targetBlockSize/valueLen, cfg, valueLen)
 
 	var w colblk.DataBlockEncoder
-	w.Init(&KeySchema)
+	w.Init(colblk.ColumnFormatv1, &KeySchema)
 	count := 0
 	for w.Size() < targetBlockSize {
 		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
+		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */, base.KVMeta{})
 		count++
 	}
 	data, _ = w.Finish(w.Rows(), w.Size())

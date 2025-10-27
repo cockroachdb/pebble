@@ -227,7 +227,7 @@ func newColumnBlockSingleLevelIterator(
 			i, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats, opts.Env.Block.IterStats)
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
-	i.data.InitOnce(r.keySchema, r.Comparer, &i.internalValueConstructor)
+	i.data.InitOnce(sstableFormatToColumnarFormat(r.tableFormat), r.keySchema, r.Comparer, &i.internalValueConstructor)
 
 	return i, nil
 }
@@ -1244,18 +1244,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) FirstWithMeta() (*base.InternalKV, b
 		if kv == nil {
 			return nil, base.KVMeta{}
 		}
-		meta := i.extractMetaFromCurrentPosition()
-		return kv, meta
+		return kv, i.extractMetaFromCurrentPosition()
 	}
-
 	i.positionedUsingLatestBounds = true
 
-	kv := i.firstInternal()
-	if kv == nil {
-		return nil, base.KVMeta{}
-	}
-	meta := i.extractMetaFromCurrentPosition()
-	return kv, meta
+	return i.firstInternal(), i.extractMetaFromCurrentPosition()
 }
 
 // NextWithMeta moves the iterator to the next key/value pair and returns
@@ -1263,12 +1256,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) FirstWithMeta() (*base.InternalKV, b
 // compaction iterators that need access to tiering metadata without adding
 // overhead to the common iteration path.
 func (i *singleLevelIterator[I, PI, D, PD]) NextWithMeta() (*base.InternalKV, base.KVMeta) {
-	kv := i.Next()
-	if kv == nil {
-		return nil, base.KVMeta{}
-	}
-	meta := i.extractMetaFromCurrentPosition()
-	return kv, meta
+	return i.Next(), i.extractMetaFromCurrentPosition()
 }
 
 // extractMetaFromCurrentPosition extracts KVMeta from the current iterator position.
