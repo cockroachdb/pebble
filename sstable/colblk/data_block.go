@@ -993,6 +993,7 @@ func (v *DataBlockValidator) Validate(
 }
 
 var _ blockiter.Data = (*DataBlockIter)(nil)
+var _ base.MetaDecoder = (*DataBlockIter)(nil)
 
 // DataBlockIter iterates over a columnar data block.
 type DataBlockIter struct {
@@ -1265,6 +1266,42 @@ func (i *DataBlockIter) First() *base.InternalKV {
 		}
 	}
 	return i.decodeRow()
+}
+
+// FirstWithMeta moves the iterator to the first key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *DataBlockIter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	kv := i.First()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	return kv, i.decodeMeta()
+}
+
+// NextWithMeta moves the iterator to the next key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *DataBlockIter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	kv := i.Next()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	return kv, i.decodeMeta()
+}
+
+// decodeMeta extracts the KVMeta for the current row.
+func (i *DataBlockIter) decodeMeta() base.KVMeta {
+	// TODO (annie): Implement tiering metadata extraction when the fields are
+	// available.
+	return base.KVMeta{}
+}
+
+// DecodeMeta implements the base.MetaDecoder interface.
+func (i *DataBlockIter) DecodeMeta() base.KVMeta {
+	return i.decodeMeta()
 }
 
 // Last implements the base.InternalIterator interface.
