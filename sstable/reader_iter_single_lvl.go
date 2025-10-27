@@ -11,6 +11,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -653,13 +654,27 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
+	kv, _ = i.internalSeekGE(key, flags, false /* shouldReturnMeta */)
+	return kv
+}
+
+func (i *singleLevelIterator[I, PI, D, PD]) SeekGEWithMeta(
+	key []byte, flags base.SeekGEFlags,
+) (*base.InternalKV, base.KVMeta) {
+	return i.internalSeekGE(key, flags, true /* shouldReturnMeta */)
+}
+
+func (i *singleLevelIterator[I, PI, D, PD]) internalSeekGE(
+	key []byte, flags base.SeekGEFlags, shouldReturnMeta bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(i) {
-		op := treesteps.StartOpf(i, "SeekGE(%q, %d)", key, flags)
+		op := treesteps.StartOpf(i, "SeekGE%s(%q, %d)", crstrings.If(shouldReturnMeta, "WithMeta"),
+			key, flags)
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
 	}
-	// Clear the tracking flag since this is a new absolute positioning operation
+	// Clear the tracking flag since this is a new absolute positioning operation.
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
@@ -681,7 +696,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 		// exhausted.
 		if (i.exhaustedBounds == +1 || PD(&i.data).IsDataInvalidated()) && i.err == nil {
 			// Already exhausted, so return nil.
-			return nil
+			return nil, base.KVMeta{}
 		}
 		if i.err != nil {
 			// The current iterator position cannot be used.
@@ -700,21 +715,22 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
-	return i.seekGEHelper(key, boundsCmp, flags)
+	return i.seekGEHelper(key, boundsCmp, flags, shouldReturnMeta)
 }
 
 // seekGEHelper contains the common functionality for SeekGE and SeekPrefixGE.
 func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
-	key []byte, boundsCmp int, flags base.SeekGEFlags,
-) (kv *base.InternalKV) {
+	key []byte, boundsCmp int, flags base.SeekGEFlags, shouldReturnMeta bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(i) {
-		op := treesteps.StartOpf(i, "seekGEHelper(%q, %d, %d)", key, boundsCmp, flags)
+		op := treesteps.StartOpf(i, "seekGEHelper%s(%q, %d, %d)",
+			crstrings.If(shouldReturnMeta, "WithMeta"), key, boundsCmp, flags)
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
 	}
 	if !i.ensureIndexLoaded() {
-		return nil
+		return nil, base.KVMeta{}
 	}
 	// Invariant: trySeekUsingNext => !i.data.isDataInvalidated() && i.exhaustedBounds != +1
 
@@ -736,7 +752,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 		i.initBoundsForAlreadyLoadedBlock()
 		kv, done := i.trySeekGEUsingNextWithinBlock(key)
 		if done {
-			return kv
+			return kv, base.KVMeta{}
 		}
 		if kv == nil {
 			// Done with this block.
@@ -758,7 +774,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 			for j := 0; less && j < numStepsBeforeSeek; j++ {
 				curr = i.Next()
 				if curr == nil {
-					return nil
+					return nil, base.KVMeta{}
 				}
 				less = i.cmp(curr.K.UserKey, key) < 0
 			}
@@ -767,10 +783,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 					cmp := i.cmp(curr.K.UserKey, i.blockUpper)
 					if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 						i.exhaustedBounds = +1
-						return nil
+						return nil, base.KVMeta{}
 					}
 				}
-				return curr
+				return curr, base.KVMeta{}
 			}
 		}
 
@@ -781,11 +797,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 			// Invalidate the block iterator so that a subsequent call to Prev()
 			// will return the last key in the table.
 			PD(&i.data).Invalidate()
-			return nil
+			return nil, base.KVMeta{}
 		}
 		result := i.loadDataBlock(+1)
 		if result == loadBlockFailed {
-			return nil
+			return nil, base.KVMeta{}
 		}
 		if result == loadBlockIrrelevant {
 			// Enforce the upper bound here since don't want to bother moving to
@@ -797,25 +813,30 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 			// upper.
 			if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
 				i.exhaustedBounds = +1
-				return nil
+				return nil, base.KVMeta{}
 			}
 			// Want to skip to the next block.
 			dontSeekWithinBlock = true
 		}
 	}
 	if !dontSeekWithinBlock {
-		if ikv := PD(&i.data).SeekGE(key, flags.DisableTrySeekUsingNext()); ikv != nil {
+		if shouldReturnMeta {
+			kv, kvMeta = PD(&i.data).SeekGEWithMeta(key, flags.DisableTrySeekUsingNext())
+		} else {
+			kv = PD(&i.data).SeekGE(key, flags.DisableTrySeekUsingNext())
+		}
+		if kv != nil {
 			if i.blockUpper != nil {
-				cmp := i.cmp(ikv.K.UserKey, i.blockUpper)
+				cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
-					return nil
+					return nil, base.KVMeta{}
 				}
 			}
-			return ikv
+			return kv, kvMeta
 		}
 	}
-	return i.skipForward()
+	return i.skipForward(shouldReturnMeta)
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -907,13 +928,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 			}
 		}
 	}
-
-	return i.seekPrefixGE(prefix, key, flags)
+	kv, _ = i.seekPrefixGE(prefix, key, flags, false /* shouldReturnMeta */)
+	return kv
 }
 
 func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags,
-) (kv *base.InternalKV) {
+	prefix, key []byte, flags base.SeekGEFlags, shouldReturnMeta bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	// NOTE: prefix is only used for bloom filter checking and not later work in
 	// this method. Hence, we can use the existing iterator position if the last
 	// SeekPrefixGE did not fail bloom filter matching.
@@ -939,7 +960,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		mayContain, i.err = i.bloomFilterMayContain(prefix)
 		if i.err != nil {
 			PD(&i.data).Invalidate()
-			return nil
+			return nil, base.KVMeta{}
 		}
 		if !mayContain {
 			if treesteps.Enabled && treesteps.IsRecording(i) {
@@ -949,7 +970,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 			// We can avoid invalidating the already loaded block since the caller is
 			// not allowed to call Next when SeekPrefixGE returns nil.
 			i.lastOpWasSeekPrefixGE.Set(true)
-			return nil
+			return nil, base.KVMeta{}
 		}
 		treesteps.UpdateLastOpf(i, "bloom filter matched")
 		i.lastBloomFilterMatched = true
@@ -960,7 +981,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		// exhausted.
 		if (i.exhaustedBounds == +1 || PD(&i.data).IsDataInvalidated()) && err == nil {
 			// Already exhausted, so return nil.
-			return nil
+			return nil, base.KVMeta{}
 		}
 		if err != nil {
 			// The current iterator position cannot be used.
@@ -979,7 +1000,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
-	return i.maybeVerifyKey(i.seekGEHelper(key, boundsCmp, flags))
+	kv, kvMeta = i.seekGEHelper(key, boundsCmp, flags, shouldReturnMeta)
+	return i.maybeVerifyKey(kv), kvMeta
 }
 
 // shouldUseFilterBlock returns whether we should use the filter block, based on
@@ -1246,7 +1268,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 			op.Finishf("= %s", kv.String())
 		}()
 	}
-	// Clear the tracking flag since this is a new absolute positioning operation
+	// Clear the tracking flag since this is a new absolute positioning
+	// operation.
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
@@ -1260,41 +1283,83 @@ func (i *singleLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 
 	i.positionedUsingLatestBounds = true
 
-	return i.firstInternal()
+	kv, _ = i.firstInternal(false /* shouldReturnMeta */)
+	return kv
+}
+
+// FirstWithMeta implements the base.MetaIterator interface.
+func (i *singleLevelIterator[I, PI, D, PD]) FirstWithMeta() (
+	kv *base.InternalKV,
+	kvMeta base.KVMeta,
+) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "FirstWithMeta()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
+	// Clear the tracking flag since this is a new absolute positioning
+	// operation.
+	i.lastOpWasSeekPrefixGE.Set(false)
+	// The synthetic key is no longer relevant and must be cleared.
+	i.synthetic.atSyntheticKey = false
+
+	// If we have a lower bound, use SeekGE. Note that in general this is not
+	// supported usage, except when the lower bound is there because the table is
+	// virtual.
+	if i.lower != nil {
+		return i.SeekGEWithMeta(i.lower, base.SeekGEFlagsNone)
+	}
+
+	i.positionedUsingLatestBounds = true
+
+	return i.firstInternal(true /* shouldReturnMeta */)
+}
+
+// NextWithMeta implements the base.MetaIterator interface.
+func (i *singleLevelIterator[I, PI, D, PD]) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.nextInternal(true /* shouldReturnMeta */)
 }
 
 // firstInternal is a helper used for absolute positioning in a single-level
 // index file, or for positioning in the second-level index in a two-level
 // index file. For the latter, one cannot make any claims about absolute
 // positioning.
-func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) firstInternal(
+	shouldReturnMeta bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
 	if !i.ensureIndexLoaded() {
-		return nil
+		return nil, base.KVMeta{}
 	}
 
 	if !PI(&i.index).First() {
 		PD(&i.data).Invalidate()
-		return nil
+		return nil, base.KVMeta{}
 	}
 	result := i.loadDataBlock(+1)
 	if result == loadBlockFailed {
-		return nil
+		return nil, base.KVMeta{}
 	}
 	if result == loadBlockOK {
-		if kv := PD(&i.data).First(); kv != nil {
+		if shouldReturnMeta {
+			kv, kvMeta = PD(&i.data).FirstWithMeta()
+		} else {
+			kv = PD(&i.data).First()
+		}
+		if kv != nil {
 			if i.blockUpper != nil {
 				cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
-					return nil
+					return nil, base.KVMeta{}
 				}
 			}
-			return kv
+			return kv, kvMeta
 		}
 		// Else fall through to skipForward.
 	} else {
@@ -1307,12 +1372,12 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 		// greater than upper.
 		if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
 			i.exhaustedBounds = +1
-			return nil
+			return nil, base.KVMeta{}
 		}
 		// Else fall through to skipForward.
 	}
 
-	return i.skipForward()
+	return i.skipForward(shouldReturnMeta)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -1393,8 +1458,15 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 // Note: compactionIterator.Next mirrors the implementation of Iterator.Next
 // due to performance. Keep the two in sync.
 func (i *singleLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
+	kv, _ = i.nextInternal(false /* shouldReturnMeta */)
+	return kv
+}
+
+func (i *singleLevelIterator[I, PI, D, PD]) nextInternal(
+	shouldReturnMeta bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(i) {
-		op := treesteps.StartOpf(i, "Next()")
+		op := treesteps.StartOpf(i, "Next%s()", crstrings.If(shouldReturnMeta, "WithMeta"))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -1407,7 +1479,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
 		// The synthetic key is no longer relevant and must be cleared.
 		// Perform the actual seek since the synthetic key is on top of the heap and must be resolved.
 		i.synthetic.atSyntheticKey = false
-		return i.seekPrefixGE(i.reader.Comparer.Split.Prefix(i.synthetic.seekKey), i.synthetic.seekKey, base.SeekGEFlagsNone)
+		return i.seekPrefixGE(i.reader.Comparer.Split.Prefix(i.synthetic.seekKey), i.synthetic.seekKey, base.SeekGEFlagsNone, shouldReturnMeta)
 	}
 
 	if invariants.Enabled && i.lastOpWasSeekPrefixGE.Get() {
@@ -1431,19 +1503,24 @@ func (i *singleLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
 	if i.err != nil {
 		// TODO(jackson): Can this case be turned into a panic? Once an error is
 		// encountered, the iterator must be re-seeked.
-		return nil
+		return nil, base.KVMeta{}
 	}
-	if kv := PD(&i.data).Next(); kv != nil {
+	if shouldReturnMeta {
+		kv, kvMeta = PD(&i.data).NextWithMeta()
+	} else {
+		kv = PD(&i.data).Next()
+	}
+	if kv != nil {
 		if i.blockUpper != nil {
 			cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 				i.exhaustedBounds = +1
-				return nil
+				return nil, base.KVMeta{}
 			}
 		}
-		return kv
+		return kv, kvMeta
 	}
-	return i.skipForward()
+	return i.skipForward(shouldReturnMeta)
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
@@ -1527,7 +1604,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base
 		return i.maybeVerifyKey(kv)
 	}
 
-	return i.skipForward()
+	kv, _ = i.skipForward(false /* shouldReturnMeta */)
+	return kv
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -1561,11 +1639,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) Prev() (kv *base.InternalKV) {
 	return i.skipBackward()
 }
 
-func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) skipForward(
+	shouldReturnMeta bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	for {
 		if !i.indexLoaded {
 			i.err = errors.AssertionFailedf("index block is not loaded")
-			return nil
+			return nil, base.KVMeta{}
 		}
 		if !PI(&i.index).Next() {
 			PD(&i.data).Invalidate()
@@ -1591,7 +1671,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 			// strictly greater than upper.
 			if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
 				i.exhaustedBounds = +1
-				return nil
+				return nil, base.KVMeta{}
 			}
 			continue
 		}
@@ -1625,22 +1705,30 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 		// guarantees wrt an iterator lower bound when we iterate forward. But we
 		// must never return keys that are not inside the virtual table.
 		if i.readEnv.Virtual != nil && i.blockLower != nil {
-			kv = PD(&i.data).SeekGE(i.lower, base.SeekGEFlagsNone)
+			if shouldReturnMeta {
+				kv, kvMeta = PD(&i.data).SeekGEWithMeta(i.lower, base.SeekGEFlagsNone)
+			} else {
+				kv = PD(&i.data).SeekGE(i.lower, base.SeekGEFlagsNone)
+			}
 		} else {
-			kv = PD(&i.data).First()
+			if shouldReturnMeta {
+				kv, kvMeta = PD(&i.data).FirstWithMeta()
+			} else {
+				kv = PD(&i.data).First()
+			}
 		}
 		if kv != nil {
 			if i.blockUpper != nil {
 				cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
-					return nil
+					return nil, base.KVMeta{}
 				}
 			}
-			return i.maybeVerifyKey(kv)
+			return i.maybeVerifyKey(kv), kvMeta
 		}
 	}
-	return nil
+	return nil, base.KVMeta{}
 }
 
 func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
