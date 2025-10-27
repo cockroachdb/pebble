@@ -309,7 +309,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   48B: 97B |    102.1% |         3 |  1 (256KB) |  1 (256KB) |         1 |      0 (0B)
 
-BLOCK CACHE: 2 entries (672B)
+BLOCK CACHE: 2 entries (768B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -480,7 +480,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |  82B: 132B |     61.0% |         6 |  1 (512KB) |  1 (512KB) |         2 |   1 (1.3KB)
 
-BLOCK CACHE: 6 entries (2KB)
+BLOCK CACHE: 6 entries (2.2KB)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------

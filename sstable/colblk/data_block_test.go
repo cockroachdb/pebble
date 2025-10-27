@@ -33,9 +33,10 @@ func TestDataBlock(t *testing.T) {
 	var bd BlockDecoder
 	var v DataBlockValidator
 	var it DataBlockIter
-	rw := NewDataBlockRewriter(&testKeysSchema, testkeys.Comparer.EnsureDefaults())
+	colFmt := ColumnFormatv1
+	rw := NewDataBlockRewriter(colFmt, &testKeysSchema, testkeys.Comparer.EnsureDefaults())
 	var sizes []int
-	it.InitOnce(&testKeysSchema, testkeys.Comparer,
+	it.InitOnce(colFmt, &testKeysSchema, testkeys.Comparer,
 		getInternalValuer(func([]byte) base.InternalValue {
 			return base.MakeInPlaceValue([]byte("mock external value"))
 		}))
@@ -48,9 +49,9 @@ func TestDataBlock(t *testing.T) {
 				var bundleSize int
 				if td.MaybeScanArgs(t, "bundle-size", &bundleSize) {
 					s := DefaultKeySchema(testkeys.Comparer, bundleSize)
-					w.Init(&s)
+					w.Init(colFmt, &s)
 				} else {
-					w.Init(&testKeysSchema)
+					w.Init(colFmt, &testKeysSchema)
 				}
 				fmt.Fprint(&buf, &w)
 				sizes = sizes[:0]
@@ -59,7 +60,7 @@ func TestDataBlock(t *testing.T) {
 				// write-block does init/write/finish in a single command, and doesn't
 				// print anything.
 				if td.Cmd == "write-block" {
-					w.Init(&testKeysSchema)
+					w.Init(colFmt, &testKeysSchema)
 				}
 				var prevKey base.InternalKey
 				for line := range crstrings.LinesSeq(td.Input) {
@@ -80,13 +81,13 @@ func TestDataBlock(t *testing.T) {
 						isObsolete = true
 					}
 					v := []byte(line[j+1:])
-					w.Add(ik, v, vp, kcmp, isObsolete)
+					w.Add(ik, v, vp, kcmp, isObsolete, base.KVMeta{})
 					prevKey = ik
 					sizes = append(sizes, w.Size())
 				}
 				if td.Cmd == "write-block" {
 					block, _ := w.Finish(w.Rows(), w.Size())
-					bd = r.Init(&testKeysSchema, block)
+					bd = r.Init(colFmt, &testKeysSchema, block)
 					return ""
 				}
 				fmt.Fprint(&buf, &w)
@@ -99,7 +100,7 @@ func TestDataBlock(t *testing.T) {
 				if err != nil {
 					return fmt.Sprintf("error: %s", err)
 				}
-				bd = r.Init(&testKeysSchema, rewrittenBlock)
+				bd = r.Init(colFmt, &testKeysSchema, rewrittenBlock)
 				f := binfmt.New(bd.Data()).LineWidth(20)
 				tp := treeprinter.New()
 				r.Describe(f, tp, bd)
@@ -112,12 +113,12 @@ func TestDataBlock(t *testing.T) {
 				rows := w.Rows()
 				td.MaybeScanArgs(t, "rows", &rows)
 				block, lastKey := w.Finish(rows, sizes[rows-1])
-				bd = r.Init(&testKeysSchema, block)
+				bd = r.Init(colFmt, &testKeysSchema, block)
 				f := binfmt.New(bd.Data()).LineWidth(20)
 				tp := treeprinter.New()
 				r.Describe(f, tp, bd)
 				fmt.Fprintf(&buf, "LastKey: %s\n%s", lastKey.Pretty(testkeys.Comparer.FormatKey), tp.String())
-				if err := v.Validate(block, testkeys.Comparer, &testKeysSchema); err != nil {
+				if err := v.Validate(colFmt, block, testkeys.Comparer, &testKeysSchema); err != nil {
 					fmt.Fprintln(&buf, err)
 				}
 				return buf.String()
@@ -168,7 +169,7 @@ func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 	keys, values := makeTestKeyRandomKVs(rng, prefixSize, valueSize, targetBlockSize)
 
 	var w DataBlockEncoder
-	w.Init(&testKeysSchema)
+	w.Init(ColumnFormatv1, &testKeysSchema)
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
@@ -178,7 +179,7 @@ func benchmarkDataBlockWriter(b *testing.B, prefixSize, valueSize int) {
 			ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
 			vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
-			w.Add(ik, values[j], vp, kcmp, false /* isObsolete */)
+			w.Add(ik, values[j], vp, kcmp, false /* isObsolete */, base.KVMeta{})
 			j++
 		}
 		w.Finish(w.Rows(), w.Size())
@@ -227,12 +228,12 @@ func BenchmarkDataBlockDecoderInit(b *testing.B) {
 	keys, values := makeTestKeyRandomKVs(rng, 8, 8, targetBlockSize)
 
 	var w DataBlockEncoder
-	w.Init(&testKeysSchema)
+	w.Init(ColumnFormatv1, &testKeysSchema)
 	for j := 0; w.Size() < targetBlockSize; j++ {
 		ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
 		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
-		w.Add(ik, values[j], vp, kcmp, false /* isObsolete */)
+		w.Add(ik, values[j], vp, kcmp, false /* isObsolete */, base.KVMeta{})
 	}
 	finished, _ := w.Finish(w.Rows(), w.Size())
 
@@ -240,6 +241,6 @@ func BenchmarkDataBlockDecoderInit(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		InitDataBlockMetadata(&testKeysSchema, &md, finished)
+		InitDataBlockMetadata(ColumnFormatv1, &testKeysSchema, &md, finished)
 	}
 }
