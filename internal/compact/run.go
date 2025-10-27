@@ -308,7 +308,7 @@ func (r *Runner) writeKeysToTable(
 		// If the key might be garbage (all requirements of
 		// sstable.IsLikelyMVCCGarbage are met), we eagerly separate the value
 		// into a blob file.
-		if err := valueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel(), isLikelyMVCCGarbage); err != nil {
+		if err := valueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel(), isLikelyMVCCGarbage, r.iter.GetCurrentMeta()); err != nil {
 			return nil, err
 		}
 		prevKeyKind = kv.K.Kind()

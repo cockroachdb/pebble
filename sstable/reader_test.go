@@ -1851,7 +1851,7 @@ func buildTestTableWithProvider(
 		value := make([]byte, i%100)
 		key = binary.BigEndian.AppendUint64(key, i)
 		ikey.UserKey = key
-		require.NoError(t, w.Add(ikey, value, false /* forceObsolete */))
+		require.NoError(t, w.Add(ikey, value, false /* forceObsolete */, base.KVMeta{}))
 	}
 
 	require.NoError(t, w.Close())
@@ -1889,7 +1889,7 @@ func buildBenchmarkTable(
 		binary.BigEndian.PutUint64(key, i+uint64(offset))
 		keys = append(keys, key)
 		ikey.UserKey = key
-		require.NoError(b, w.Add(ikey, nil, false /* forceObsolete */))
+		require.NoError(b, w.Add(ikey, nil, false /* forceObsolete */, base.KVMeta{}))
 	}
 
 	if err := w.Close(); err != nil {
@@ -2489,7 +2489,7 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 				forceObsolete = false
 			}
 			require.NoError(b, w.Add(
-				base.MakeInternalKey(key, 0, InternalKeyKindSet), val, forceObsolete))
+				base.MakeInternalKey(key, 0, InternalKeyKindSet), val, forceObsolete, base.KVMeta{}))
 		}
 		require.NoError(b, w.Close())
 		// Re-open the Filename for reading.

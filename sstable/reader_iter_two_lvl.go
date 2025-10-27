@@ -197,7 +197,8 @@ func newColumnBlockTwoLevelIterator(
 		i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
-	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, &i.secondLevel.internalValueConstructor)
+	i.secondLevel.data.InitOnce(sstableFormatToColumnarFormat(r.tableFormat), r.keySchema,
+		r.Comparer, &i.secondLevel.internalValueConstructor)
 
 	return i, nil
 }

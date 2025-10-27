@@ -227,7 +227,7 @@ func newColumnBlockSingleLevelIterator(
 			i, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats, opts.Env.Block.IterStats)
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
-	i.data.InitOnce(r.keySchema, r.Comparer, &i.internalValueConstructor)
+	i.data.InitOnce(sstableFormatToColumnarFormat(r.tableFormat), r.keySchema, r.Comparer, &i.internalValueConstructor)
 
 	return i, nil
 }

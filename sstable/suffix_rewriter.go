@@ -356,7 +356,7 @@ func RewriteKeySuffixesViaWriter(
 		if err != nil {
 			return nil, err
 		}
-		if err := w.Add(scratch, val, false); err != nil {
+		if err := w.Add(scratch, val, false, base.KVMeta{}); err != nil {
 			return nil, err
 		}
 		kv = i.Next()
