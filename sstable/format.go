@@ -56,6 +56,10 @@ const (
 	// Supported by CockroachDB v25.3 and later.
 	TableFormatPebblev7
 
+	// TableFormatPebblev8 adds:
+	//  - support for tiering metadata (spanID, key).
+	TableFormatPebblev8
+
 	NumTableFormats
 
 	TableFormatMax = NumTableFormats - 1
@@ -76,6 +80,7 @@ var footerSizes [NumTableFormats]int = [NumTableFormats]int{
 	TableFormatPebblev5:  rocksDBFooterLen,
 	TableFormatPebblev6:  checkedPebbleDBFooterLen,
 	TableFormatPebblev7:  pebbleDBv7FooterLen,
+	TableFormatPebblev8:  pebbleDBv7FooterLen,
 }
 
 // TableFormatPebblev4, in addition to DELSIZED, introduces the use of
@@ -279,6 +284,8 @@ func parseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 			return TableFormatPebblev6, nil
 		case 7:
 			return TableFormatPebblev7, nil
+		case 8:
+			return TableFormatPebblev8, nil
 		default:
 			return TableFormatUnspecified, base.CorruptionErrorf(
 				"(unsupported pebble format version %d)", errors.Safe(version))
@@ -293,6 +300,19 @@ func parseTableFormat(magic []byte, version uint32) (TableFormat, error) {
 // data, index and keyspan blocks.
 func (f TableFormat) BlockColumnar() bool {
 	return f >= TableFormatPebblev5
+}
+
+// TieringMetadata returns true iff the table format supports tiering metadata.
+func (f TableFormat) TieringMetadata() bool {
+	return f >= TableFormatPebblev8
+}
+
+// TieringColumnConfig returns the TieringColumnConfig for this table format.
+func (f TableFormat) TieringColumnConfig() colblk.OptionalColumnConfig {
+	if f.TieringMetadata() {
+		return colblk.WithTieringColumns()
+	}
+	return colblk.NoTieringColumns()
 }
 
 // FooterSize returns the maximum size of the footer for the table format.
@@ -328,6 +348,8 @@ func (f TableFormat) AsTuple() (string, uint32) {
 		return pebbleDBMagic, 6
 	case TableFormatPebblev7:
 		return pebbleDBMagic, 7
+	case TableFormatPebblev8:
+		return pebbleDBMagic, 8
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
@@ -356,6 +378,8 @@ func (f TableFormat) String() string {
 		return "(Pebble,v6)"
 	case TableFormatPebblev7:
 		return "(Pebble,v7)"
+	case TableFormatPebblev8:
+		return "(Pebble,v8)"
 	default:
 		panic("sstable: unknown table format version tuple")
 	}
@@ -377,4 +401,14 @@ func ParseTableFormatString(s string) (TableFormat, error) {
 		return TableFormatUnspecified, errors.Errorf("unknown table format %q", s)
 	}
 	return f, nil
+}
+
+// Must only be called for a TableFormat that is known to be columnar.
+func sstableFormatToColumnarFormat(f TableFormat) colblk.ColumnarFormat {
+	switch {
+	case f >= TableFormatPebblev5:
+		return colblk.ColumnarFormatWithTiering
+	default:
+		panic(errors.AssertionFailedf("unsupported table format %s", f))
+	}
 }

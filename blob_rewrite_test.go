@@ -125,7 +125,7 @@ func TestBlobRewrite(t *testing.T) {
 						ikv.V, err = bv.ParseInternalValue(value)
 						require.NoError(t, err)
 					}
-					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isLikeyMVCCGarbage */))
+					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isLikelyMVCCGarbage */, base.KVMeta{}))
 				}
 				return buf.String()
 			case "close-output":
@@ -317,6 +317,7 @@ func TestBlobRewriteRandomized(t *testing.T) {
 			},
 			base.ShortAttribute(0),
 			false, /* forceObsolete */
+			base.KVMeta{},
 		))
 		require.NoError(t, tw.Close())
 		originalValueIndices[i] = i

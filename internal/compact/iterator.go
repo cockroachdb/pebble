@@ -163,6 +163,10 @@ type Iter struct {
 	// keys.
 	iter base.InternalIterator
 
+	// metaIter is the MetaIterator version of iter, if available. This allows
+	// access to tiering metadata without adding overhead to the common iteration path.
+	metaIter base.InternalIteratorWithKVMeta
+
 	delElider         pointTombstoneElider
 	rangeDelCompactor RangeDelSpanCompactor
 	rangeKeyCompactor RangeKeySpanCompactor
@@ -181,6 +185,13 @@ type Iter struct {
 	// when moving to the next key so it can determine whether the user key has
 	// changed from the previous key.
 	kv base.InternalKV
+	// currentMeta holds the metadata for the key-value pair in i.kv (the key that
+	// will be returned to the caller). This is updated when saveKey() is called
+	// to ensure GetCurrentMeta() returns the metadata for the returned key.
+	currentMeta base.KVMeta
+	// nextMeta holds the metadata for i.iterKV (the next key being peeked at).
+	// This is updated by iterNext() and then copied to currentMeta when saveKey() is called.
+	nextMeta base.KVMeta
 	// keyTrailer is updated when `i.kv` is updated and holds the key's original
 	// trailer (eg, before any sequence-number zeroing or changes to key kind).
 	keyTrailer  base.InternalKeyTrailer
@@ -356,6 +367,10 @@ func NewIter(
 	}
 	i.iter = invalidating.MaybeWrapIfInvariants(iter)
 
+	if metaIter, ok := i.iter.(base.InternalIteratorWithKVMeta); ok {
+		i.metaIter = metaIter
+	}
+
 	i.frontiers.Init(i.cmp)
 	i.delElider.Init(i.cmp, cfg.TombstoneElision)
 	i.rangeDelCompactor = MakeRangeDelSpanCompactor(i.cmp, i.cfg.Comparer.Equal, cfg.Snapshots, cfg.TombstoneElision)
@@ -389,12 +404,26 @@ func (i *Iter) Stats() IterStats {
 	return i.stats
 }
 
+// GetCurrentMeta returns the metadata for the current key-value pair, if available.
+// This method provides access to tiering metadata without adding overhead to the
+// common iteration path.
+func (i *Iter) GetCurrentMeta() base.KVMeta {
+	return i.currentMeta
+}
+
 // First has the same semantics as InternalIterator.First.
 func (i *Iter) First() *base.InternalKV {
 	if i.err != nil {
 		return nil
 	}
-	i.iterKV = i.iter.First()
+
+	if i.metaIter != nil {
+		i.iterKV, i.nextMeta = i.metaIter.FirstWithMeta()
+	} else {
+		i.iterKV = i.iter.First()
+		i.nextMeta = base.KVMeta{}
+	}
+
 	if i.iterKV != nil {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = i.cfg.Snapshots.IndexAndSeqNum(i.iterKV.SeqNum())
 	}
@@ -707,7 +736,12 @@ func (i *Iter) skipInStripe() {
 }
 
 func (i *Iter) iterNext() bool {
-	i.iterKV = i.iter.Next()
+	if i.metaIter != nil {
+		i.iterKV, i.nextMeta = i.metaIter.NextWithMeta()
+	} else {
+		i.iterKV = i.iter.Next()
+		i.nextMeta = base.KVMeta{}
+	}
 	if i.iterKV == nil {
 		i.err = i.iter.Error()
 	}
@@ -1328,6 +1362,8 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 }
 
 // saveKey saves the key in iterKV to i.kv.K using i.keyBuf's memory.
+// It also updates currentMeta to nextMeta so that GetCurrentMeta()
+// returns the metadata for the returned key.
 func (i *Iter) saveKey() {
 	i.keyBuf = append(i.keyBuf[:0], i.iterKV.K.UserKey...)
 	i.kv.K = base.InternalKey{
@@ -1335,6 +1371,7 @@ func (i *Iter) saveKey() {
 		Trailer: i.iterKV.K.Trailer,
 	}
 	i.keyTrailer = i.kv.K.Trailer
+	i.currentMeta = i.nextMeta
 }
 
 // saveValue saves the value in iterKV to i.kv. It must be called before

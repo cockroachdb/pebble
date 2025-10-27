@@ -673,13 +673,13 @@ func runBuildCmd(
 			if err != nil {
 				return err
 			}
-			if err := w.Raw().AddWithBlobHandle(tmp, handle, base.ShortAttribute(0), false); err != nil {
+			if err := w.Raw().AddWithBlobHandle(tmp, handle, base.ShortAttribute(0), false, base.KVMeta{}); err != nil {
 				return err
 			}
 			continue
 		}
 		// Otherwise add it as an ordinary value.
-		if err := w.Raw().Add(tmp, v, false); err != nil {
+		if err := w.Raw().Add(tmp, v, false, base.KVMeta{}); err != nil {
 			return err
 		}
 	}
@@ -1970,14 +1970,14 @@ func (vs *defineDBValueSeparator) EstimatedReferenceSize() uint64 {
 // Add adds the provided key-value pair to the sstable, possibly separating the
 // value into a blob file.
 func (vs *defineDBValueSeparator) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool, kvMeta base.KVMeta,
 ) error {
 	// In datadriven tests, all defined values are in-place initially. See
 	// runDBDefineCmdReuseFS.
 	v := kv.V.InPlaceValue()
 	// If the value doesn't begin with "blob", don't separate it.
 	if !bytes.HasPrefix(v, []byte("blob")) {
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, kvMeta)
 	}
 
 	// This looks like a blob reference. Parse it.
@@ -2002,7 +2002,7 @@ func (vs *defineDBValueSeparator) Add(
 	// Return a KV that uses the original key but our constructed blob reference.
 	vs.kv.K = kv.K
 	vs.kv.V = iv
-	return vs.pbr.Add(tw, &vs.kv, forceObsolete, false /* isLikelyMVCCGarbage */)
+	return vs.pbr.Add(tw, &vs.kv, forceObsolete, false /* isLikelyMVCCGarbage */, kvMeta)
 }
 
 // FinishOutput implements valsep.ValueSeparation.
