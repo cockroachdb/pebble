@@ -48,8 +48,9 @@ type ValueSeparation interface {
 	// the current output sstable's blob references so far.
 	EstimatedReferenceSize() uint64
 	// Add adds the provided key-value pair to the provided sstable writer,
-	// possibly separating the value into a blob file.
-	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage bool) error
+	// possibly separating the value into a blob file. The provided meta is
+	// the iterator-derived KV metadata associated with the current key/value.
+	Add(tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage bool, meta base.KVMeta) error
 	// FinishOutput is called when a compaction is finishing an output sstable.
 	// It returns the table's blob references, which will be added to the
 	// table's TableMetadata, and stats and metadata describing a newly
@@ -103,13 +104,13 @@ func (NeverSeparateValues) EstimatedReferenceSize() uint64 { return 0 }
 
 // Add implements the ValueSeparation interface.
 func (NeverSeparateValues) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool,
+	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, _ bool, meta base.KVMeta,
 ) error {
 	v, _, err := kv.Value(nil)
 	if err != nil {
 		return err
 	}
-	return tw.Add(kv.K, v, forceObsolete)
+	return tw.Add(kv.K, v, forceObsolete, meta)
 }
 
 // FinishOutput implements the ValueSeparation interface.

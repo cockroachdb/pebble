@@ -444,13 +444,14 @@ func formatColblkDataBlock(
 	fmtKV func(key *base.InternalKey, value []byte) string,
 ) error {
 	var decoder colblk.DataBlockDecoder
-	bd := decoder.Init(r.keySchema, data)
+	fmt := sstableFormatToColumnarFormat(r.tableFormat)
+	bd := decoder.Init(fmt, r.keySchema, data)
 	f := binfmt.New(data)
 	decoder.Describe(f, tp, bd)
 
 	if fmtKV != nil {
 		var iter colblk.DataBlockIter
-		iter.InitOnce(r.keySchema, r.Comparer, describingLazyValueHandler{})
+		iter.InitOnce(fmt, r.keySchema, r.Comparer, describingLazyValueHandler{})
 		if err := iter.Init(&decoder, bd, blockiter.Transforms{}); err != nil {
 			return err
 		}

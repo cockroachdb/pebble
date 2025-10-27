@@ -263,7 +263,7 @@ seqnums:  [1-1]
 virtualize lower=a#1,DEL upper=a0#1,SET show-size
 ----
 bounds:  [a#1,DEL-a0#1,SET]
-size: 89 B / backing size: 840 B
+size: 99 B / backing size: 850 B
 
 # Test virtual sstable with a synthetic prefix.
 build
@@ -278,4 +278,4 @@ seqnums:  [1-1]
 virtualize lower=poi-b#1,SET upper=poi-c#1,SET prefix=poi- show-size
 ----
 bounds:  [poi-b#1,SET-poi-c#1,SET]
-size: 87 B / backing size: 719 B
+size: 100 B / backing size: 732 B

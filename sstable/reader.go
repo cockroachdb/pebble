@@ -395,7 +395,7 @@ func (r *Reader) readDataBlock(
 // later be used (and reused) when reading from the block.
 func (r *Reader) initDataBlockMetadata(metadata *block.Metadata, data []byte) error {
 	if r.tableFormat.BlockColumnar() {
-		return colblk.InitDataBlockMetadata(r.keySchema, metadata, data)
+		return colblk.InitDataBlockMetadata(sstableFormatToColumnarFormat(r.tableFormat), r.keySchema, metadata, data)
 	}
 	return nil
 }

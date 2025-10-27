@@ -269,7 +269,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 				return err.Error()
 			}
 		default:
-			if err := w.Add(ikey, value, false /* forceObsolete */); err != nil {
+			if err := w.Add(ikey, value, false /* forceObsolete */, base.KVMeta{}); err != nil {
 				return err.Error()
 			}
 		}
@@ -544,7 +544,7 @@ func buildLevelIterTables(
 			key := []byte(fmt.Sprintf("%08d", i))
 			keys = append(keys, key)
 			ikey := base.MakeInternalKey(key, 0, InternalKeyKindSet)
-			require.NoError(b, w.Add(ikey, nil, false /* forceObsolete */))
+			require.NoError(b, w.Add(ikey, nil, false /* forceObsolete */, base.KVMeta{}))
 		}
 		if err := w.Close(); err != nil {
 			b.Fatal(err)

@@ -31,6 +31,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func iterateWithMeta(
+	iter base.InternalIterator, fn func(kv *base.InternalKV, meta base.KVMeta) bool,
+) {
+	if metaIter, ok := iter.(base.InternalIteratorWithKVMeta); ok {
+		kv, meta := metaIter.FirstWithMeta()
+		for kv != nil && fn(kv, meta) {
+			kv, meta = metaIter.NextWithMeta()
+		}
+	} else {
+		kv := iter.First()
+		for kv != nil && fn(kv, base.KVMeta{}) {
+			kv = iter.Next()
+		}
+	}
+}
+
 func TestScanStatistics(t *testing.T) {
 	var d *DB
 	type scanInternalReader interface {
@@ -428,14 +444,15 @@ func TestScanInternal(t *testing.T) {
 					require.NoError(t, err)
 				}
 				rangeKeys.Close()
-				for kv := points.First(); kv != nil; kv = points.Next() {
+				iterateWithMeta(points, func(kv *base.InternalKV, meta base.KVMeta) bool {
 					t.Logf("writing %s", kv.K)
 					var value []byte
 					var err error
 					value, _, err = kv.Value(value)
 					require.NoError(t, err)
-					require.NoError(t, w.Raw().Add(kv.K, value, false))
-				}
+					require.NoError(t, w.Raw().Add(kv.K, value, false /* forceObsolete */, meta))
+					return true
+				})
 				points.Close()
 				require.NoError(t, w.Close())
 			}
