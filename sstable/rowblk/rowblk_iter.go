@@ -1573,6 +1573,12 @@ func (i *Iter) Error() error {
 	return nil // infallible
 }
 
+// DecodeMeta implements the base.MetaDecoder interface.
+// Row-oriented blocks don't have tiering metadata, so this always returns empty metadata.
+func (i *Iter) DecodeMeta() base.KVMeta {
+	return base.KVMeta{}
+}
+
 // Close implements internalIterator.Close, as documented in the pebble
 // package.
 func (i *Iter) Close() error {

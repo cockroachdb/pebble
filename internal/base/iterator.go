@@ -517,6 +517,13 @@ func (s *InternalIteratorStats) SafeFormat(p redact.SafePrinter, verb rune) {
 	}
 }
 
+// MetaDecoder is an optional interface that can be implemented by iterators
+// to provide metadata about the current key-value pair.
+type MetaDecoder interface {
+	// DecodeMeta returns metadata for the current iterator position.
+	DecodeMeta() KVMeta
+}
+
 // IteratorDebug is an interface implemented by all internal iterators and
 // fragment iterators.
 type IteratorDebug interface {

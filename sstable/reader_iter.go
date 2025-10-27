@@ -25,6 +25,7 @@ import (
 // https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
 type dataBlockIterator[D any] interface {
 	blockiter.Data
+	base.MetaDecoder
 
 	*D // non-interface type constraint element
 }
