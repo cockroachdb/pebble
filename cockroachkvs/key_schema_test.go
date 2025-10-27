@@ -40,9 +40,9 @@ func TestKeySchema(t *testing.T) {
 func runDataDrivenTest(t *testing.T, path string) {
 	var blockData []byte
 	var e colblk.DataBlockEncoder
-	e.Init(&KeySchema)
+	e.Init(&KeySchema, colblk.NoTieringColumns())
 	var iter colblk.DataBlockIter
-	iter.InitOnce(&KeySchema, &Comparer, nil)
+	iter.InitOnce(&KeySchema, &Comparer, nil, colblk.NoTieringColumns())
 
 	datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -52,7 +52,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 			for l := range crstrings.LinesSeq(td.Input) {
 				key, value := parseInternalKV(l)
 				kcmp := e.KeyWriter.ComparePrev(key.UserKey)
-				e.Add(key, value, 0, kcmp, false /* isObsolete */)
+				e.Add(key, value, 0, kcmp, false /* isObsolete */, base.KVMeta{})
 				buf = e.MaterializeLastUserKey(buf[:0])
 				if !Comparer.Equal(key.UserKey, buf) {
 					td.Fatalf(t, "incorrect MaterializeLastKey: %s instead of %s", formatUserKey(buf), formatUserKey(key.UserKey))
@@ -82,7 +82,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 		case "keys":
 			var d colblk.DataBlockDecoder
 			bd := d.Init(&KeySchema, blockData)
-			require.NoError(t, iter.Init(&d, bd, blockiter.Transforms{}))
+			require.NoError(t, iter.Init(&d, bd, blockiter.Transforms{}, colblk.NoTieringColumns()))
 			defer iter.Close()
 			var buf bytes.Buffer
 			var prevKey base.InternalKey
@@ -99,7 +99,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 		case "seek":
 			var d colblk.DataBlockDecoder
 			bd := d.Init(&KeySchema, blockData)
-			require.NoError(t, iter.Init(&d, bd, blockiter.Transforms{}))
+			require.NoError(t, iter.Init(&d, bd, blockiter.Transforms{}, colblk.NoTieringColumns()))
 			defer iter.Close()
 			var buf strings.Builder
 			for l := range crstrings.LinesSeq(td.Input) {
@@ -133,13 +133,13 @@ func TestKeySchema_RandomKeys(t *testing.T) {
 	slices.SortFunc(keys, Compare)
 
 	var enc colblk.DataBlockEncoder
-	enc.Init(&KeySchema)
+	enc.Init(&KeySchema, colblk.NoTieringColumns())
 	for i := range keys {
 		ikey := pebble.InternalKey{
 			UserKey: keys[i],
 			Trailer: pebble.MakeInternalKeyTrailer(0, pebble.InternalKeyKindSet),
 		}
-		enc.Add(ikey, keys[i], block.InPlaceValuePrefix(false), enc.KeyWriter.ComparePrev(keys[i]), false /* isObsolete */)
+		enc.Add(ikey, keys[i], block.InPlaceValuePrefix(false), enc.KeyWriter.ComparePrev(keys[i]), false /* isObsolete */, base.KVMeta{})
 	}
 	blk, _ := enc.Finish(len(keys), enc.Size())
 	blk = crbytes.CopyAligned(blk)
@@ -147,8 +147,8 @@ func TestKeySchema_RandomKeys(t *testing.T) {
 	var dec colblk.DataBlockDecoder
 	bd := dec.Init(&KeySchema, blk)
 	var it colblk.DataBlockIter
-	it.InitOnce(&KeySchema, &Comparer, nil)
-	require.NoError(t, it.Init(&dec, bd, blockiter.NoTransforms))
+	it.InitOnce(&KeySchema, &Comparer, nil, colblk.NoTieringColumns())
+	require.NoError(t, it.Init(&dec, bd, blockiter.NoTransforms, colblk.NoTieringColumns()))
 	// Ensure that a scan across the block finds all the relevant keys.
 	var valBuf []byte
 	for k, kv := 0, it.First(); kv != nil; k, kv = k+1, it.Next() {

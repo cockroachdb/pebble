@@ -130,12 +130,12 @@ func TestIngestLoad(t *testing.T) {
 				if blobtest.IsBlobHandle(data[j+1:]) {
 					ih, _, err := bv.ParseInlineHandle(data[j+1:])
 					require.NoError(t, err)
-					if err := w.AddWithBlobHandle(key, ih, base.ShortAttribute(0), false /* forceObsolete */); err != nil {
+					if err := w.AddWithBlobHandle(key, ih, base.ShortAttribute(0), false /* forceObsolete */, base.KVMeta{}); err != nil {
 						return err.Error()
 					}
 				} else {
 					value := []byte(data[j+1:])
-					if err := w.Add(key, value, false /* forceObsolete */); err != nil {
+					if err := w.Add(key, value, false /* forceObsolete */, base.KVMeta{}); err != nil {
 						return err.Error()
 					}
 				}
@@ -237,7 +237,7 @@ func TestIngestLoadRand(t *testing.T) {
 					// Duplicate key, ignore.
 					continue
 				}
-				require.NoError(t, w.Add(keys[i], nil, false /* forceObsolete */))
+				require.NoError(t, w.Add(keys[i], nil, false /* forceObsolete */, base.KVMeta{}))
 				count++
 				rawKeySize += uint64(keys[i].Size())
 			}
@@ -316,7 +316,7 @@ func TestIngestLocalWithBlobs(t *testing.T) {
 			sstWriterOpts := sstable.WriterOptions{
 				Comparer:    testkeys.Comparer,
 				KeySchema:   &keySchema,
-				TableFormat: sstable.TableFormatMax,
+				TableFormat: internalFormatNewest.MaxTableFormat(),
 			}
 			sstFileName := td.CmdArgs[0].Key
 			if sstFileName == "" {
@@ -1046,7 +1046,7 @@ func testIngestSharedImpl(
 				VisitPointKey: func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
-					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */, base.KVMeta{}))
 					return nil
 				},
 				VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
@@ -1566,7 +1566,7 @@ func TestIngestExternal(t *testing.T) {
 				VisitPointKey: func(key *InternalKey, value LazyValue, _ IteratorLevel) error {
 					val, _, err := value.Value(nil)
 					require.NoError(t, err)
-					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */))
+					require.NoError(t, w.Add(base.MakeInternalKey(key.UserKey, 0, key.Kind()), val, false /* forceObsolete */, base.KVMeta{}))
 					return nil
 				},
 				VisitRangeDel: func(start, end []byte, seqNum base.SeqNum) error {
@@ -2178,7 +2178,7 @@ func TestIngestCompact(t *testing.T) {
 
 	w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 	key := []byte("a")
-	require.NoError(t, w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil, false /* forceObsolete */))
+	require.NoError(t, w.Add(base.MakeInternalKey(key, 0, InternalKeyKindSet), nil, false /* forceObsolete */, base.KVMeta{}))
 	require.NoError(t, w.Close())
 
 	// Make N copies of the sstable.
@@ -2815,7 +2815,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			}
 			key := base.ParseInternalKey(data[:j])
 			value := []byte(data[j+1:])
-			if err := w.Add(key, value, false /* forceObsolete */); err != nil {
+			if err := w.Add(key, value, false /* forceObsolete */, base.KVMeta{}); err != nil {
 				return nil, err
 			}
 		}

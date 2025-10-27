@@ -240,7 +240,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 	var bd colblk.BlockDecoder
 	var ks colblk.KeySeeker
 	var maxKeyLen int
-	enc.Init(&KeySchema)
+	enc.Init(&KeySchema, colblk.NoTieringColumns())
 
 	initKeySeeker := func() {
 		ksPointer := &cockroachKeySeeker{}
@@ -264,7 +264,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 					UserKey: k,
 					Trailer: pebble.MakeInternalKeyTrailer(0, base.InternalKeyKindSet),
 				}
-				enc.Add(ikey, k, block.InPlaceValuePrefix(false), kcmp, false /* isObsolete */)
+				enc.Add(ikey, k, block.InPlaceValuePrefix(false), kcmp, false /* isObsolete */, base.KVMeta{})
 				rows++
 			}
 			blk, _ := enc.Finish(rows, enc.Size())
@@ -335,7 +335,7 @@ func TestKeySeekerIsLowerBound(t *testing.T) {
 		}
 	}
 	var enc colblk.DataBlockEncoder
-	enc.Init(&KeySchema)
+	enc.Init(&KeySchema, colblk.NoTieringColumns())
 	for _, k := range keys {
 		enc.Reset()
 		kcmp := enc.KeyWriter.ComparePrev(k)
@@ -343,7 +343,7 @@ func TestKeySeekerIsLowerBound(t *testing.T) {
 			UserKey: k,
 			Trailer: pebble.MakeInternalKeyTrailer(0, base.InternalKeyKindSet),
 		}
-		enc.Add(ikey, k, block.InPlaceValuePrefix(false), kcmp, false /* isObsolete */)
+		enc.Add(ikey, k, block.InPlaceValuePrefix(false), kcmp, false /* isObsolete */, base.KVMeta{})
 		blk, _ := enc.Finish(1, enc.Size())
 		var dec colblk.DataBlockDecoder
 		bd := dec.Init(&KeySchema, blk)
@@ -480,9 +480,9 @@ func testCockroachDataColBlock(t *testing.T, seed uint64, keyCfg KeyGenConfig) {
 	var it colblk.DataBlockIter
 	it.InitOnce(&KeySchema, &Comparer, getInternalValuer(func([]byte) base.InternalValue {
 		return base.MakeInPlaceValue([]byte("mock external value"))
-	}))
+	}), colblk.NoTieringColumns())
 	bd := decoder.Init(&KeySchema, serializedBlock)
-	if err := it.Init(&decoder, bd, blockiter.Transforms{}); err != nil {
+	if err := it.Init(&decoder, bd, blockiter.Transforms{}, colblk.NoTieringColumns()); err != nil {
 		t.Fatal(err)
 	}
 	// Scan the block using Next and ensure that all the keys values match.
@@ -528,12 +528,12 @@ func generateDataBlock(
 	keys, values = RandomKVs(rng, targetBlockSize/valueLen, cfg, valueLen)
 
 	var w colblk.DataBlockEncoder
-	w.Init(&KeySchema)
+	w.Init(&KeySchema, colblk.NoTieringColumns())
 	count := 0
 	for w.Size() < targetBlockSize {
 		ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
+		w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */, base.KVMeta{})
 		count++
 	}
 	data, _ = w.Finish(w.Rows(), w.Size())

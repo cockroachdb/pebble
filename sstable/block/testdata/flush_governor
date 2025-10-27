@@ -25,7 +25,7 @@ should-flush size-before=899 size-after=10000
 ----
 should not flush
 
-# Size classes. Note that the block allocation overhead is 360.
+# Size classes. Note that the block allocation overhead is 312.
 init target-block-size=800 size-class-aware-threshold=60 size-classes=(820, 1020, 1320, 1820)
 ----
 low watermark: 480
