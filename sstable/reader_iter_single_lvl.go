@@ -1226,6 +1226,63 @@ func (i *singleLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 	return i.firstInternal()
 }
 
+// FirstWithMeta moves the iterator to the first key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *singleLevelIterator[I, PI, D, PD]) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	// Clear the tracking flag since this is a new absolute positioning operation
+	i.lastOpWasSeekPrefixGE.Set(false)
+	// The synthetic key is no longer relevant and must be cleared.
+	i.synthetic.atSyntheticKey = false
+
+	// If we have a lower bound, use SeekGE. Note that in general this is not
+	// supported usage, except when the lower bound is there because the table is
+	// virtual.
+	if i.lower != nil {
+		kv := i.SeekGE(i.lower, base.SeekGEFlagsNone)
+		if kv == nil {
+			return nil, base.KVMeta{}
+		}
+		meta := i.extractMetaFromCurrentPosition()
+		return kv, meta
+	}
+
+	i.positionedUsingLatestBounds = true
+
+	kv := i.firstInternal()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	meta := i.extractMetaFromCurrentPosition()
+	return kv, meta
+}
+
+// NextWithMeta moves the iterator to the next key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *singleLevelIterator[I, PI, D, PD]) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	kv := i.Next()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	meta := i.extractMetaFromCurrentPosition()
+	return kv, meta
+}
+
+// extractMetaFromCurrentPosition extracts KVMeta from the current iterator position.
+// This method delegates to the underlying data block iterator if it supports
+// the specialized methods.
+func (i *singleLevelIterator[I, PI, D, PD]) extractMetaFromCurrentPosition() base.KVMeta {
+	if PD(&i.data).IsDataInvalidated() {
+		return base.KVMeta{}
+	}
+
+	// The dataBlockIterator constraint guarantees that PD(&i.data) implements MetaDecoder
+	return PD(&i.data).DecodeMeta()
+}
+
 // firstInternal is a helper used for absolute positioning in a single-level
 // index file, or for positioning in the second-level index in a two-level
 // index file. For the latter, one cannot make any claims about absolute

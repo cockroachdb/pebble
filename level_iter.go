@@ -729,6 +729,67 @@ func (l *levelIter) First() *base.InternalKV {
 	return l.verify(l.skipEmptyFileForward())
 }
 
+// FirstWithMeta moves the iterator to the first key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (l *levelIter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	if invariants.Enabled && l.lower != nil {
+		panic(errors.AssertionFailedf(
+			"levelIter FirstWithMeta called while lower bound %q is set", l.lower))
+	}
+
+	l.err = nil // clear cached iteration error
+	l.exhaustedDir = 0
+	l.prefix = nil
+
+	// NB: the top-level Iterator will call SeekGE if IterOptions.LowerBound is
+	// set.
+	if l.loadFile(l.files.First(), +1) == noFileLoaded {
+		l.exhaustedForward()
+		return nil, base.KVMeta{}
+	}
+	if kv := l.iter.First(); kv != nil {
+		return l.verify(kv), l.extractMetaFromCurrentPosition()
+	}
+	return l.verify(l.skipEmptyFileForward()), l.extractMetaFromCurrentPosition()
+}
+
+// NextWithMeta moves the iterator to the next key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (l *levelIter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	if l.exhaustedDir == -1 {
+		if l.lower != nil {
+			return l.SeekGE(l.lower, base.SeekGEFlagsNone), l.extractMetaFromCurrentPosition()
+		}
+		return l.FirstWithMeta()
+	}
+	if l.err != nil || l.iter == nil {
+		return nil, base.KVMeta{}
+	}
+	if kv := l.iter.Next(); kv != nil {
+		return l.verify(kv), l.extractMetaFromCurrentPosition()
+	}
+	return l.verify(l.skipEmptyFileForward()), l.extractMetaFromCurrentPosition()
+}
+
+// extractMetaFromCurrentPosition extracts KVMeta from the current iterator
+// position. This method delegates to the underlying iterator if it supports the
+// specialized methods.
+func (l *levelIter) extractMetaFromCurrentPosition() base.KVMeta {
+	if l.iter == nil {
+		return base.KVMeta{}
+	}
+
+	if metaDecoder, ok := l.iter.(base.MetaDecoder); ok {
+		return metaDecoder.DecodeMeta()
+	}
+
+	return base.KVMeta{}
+}
+
 func (l *levelIter) Last() *base.InternalKV {
 	if invariants.Enabled && l.upper != nil {
 		panic(errors.AssertionFailedf("levelIter Last called while upper bound %q is set", l.upper))
