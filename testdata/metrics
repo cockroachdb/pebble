@@ -161,7 +161,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   17B: 28B |     64.7% |         1 |  1 (256KB) |  1 (256KB) |         0 |      0 (0B)
 
-BLOCK CACHE: 2 entries (683B)
+BLOCK CACHE: 2 entries (779B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -289,7 +289,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   34B: 64B |     88.2% |         2 |  1 (256KB) |  2 (512KB) |         0 |      0 (0B)
 
-BLOCK CACHE: 2 entries (683B)
+BLOCK CACHE: 2 entries (779B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -400,7 +400,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   34B: 64B |     88.2% |         2 |  1 (256KB) |  2 (512KB) |         0 |      0 (0B)
 
-BLOCK CACHE: 2 entries (683B)
+BLOCK CACHE: 2 entries (779B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -508,7 +508,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   34B: 64B |     88.2% |         2 |  1 (256KB) |  2 (512KB) |         0 |      0 (0B)
 
-BLOCK CACHE: 2 entries (683B)
+BLOCK CACHE: 2 entries (779B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -1092,7 +1092,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) | 176B: 211B |     19.9% |         8 |    1 (1MB) |    1 (1MB) |         2 |   2 (1.9KB)
 
-BLOCK CACHE: 6 entries (2KB)
+BLOCK CACHE: 6 entries (2.3KB)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -1241,7 +1241,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) | 223B: 277B |     24.2% |         9 |    1 (1MB) |    1 (1MB) |         2 |   2 (1.9KB)
 
-BLOCK CACHE: 6 entries (2KB)
+BLOCK CACHE: 6 entries (2.3KB)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -1936,7 +1936,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   27B: 38B |     40.7% |         1 |  1 (256KB) |  1 (256KB) |         1 |      0 (0B)
 
-BLOCK CACHE: 2 entries (675B)
+BLOCK CACHE: 2 entries (771B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -2051,7 +2051,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |   44B: 74B |     68.2% |         2 |  1 (256KB) |  1 (256KB) |         1 |      0 (0B)
 
-BLOCK CACHE: 2 entries (675B)
+BLOCK CACHE: 2 entries (771B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -2400,7 +2400,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |  57B: 106B |     86.0% |         3 |  1 (256KB) |  1 (256KB) |         0 |      0 (0B)
 
-BLOCK CACHE: 2 entries (662B)
+BLOCK CACHE: 2 entries (758B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------
@@ -2504,7 +2504,7 @@ COMMIT PIPELINE
 ----------+------------+-----------+-----------+------------+------------+-----------+------------
    1 (0B) |  57B: 106B |     86.0% |         3 |  1 (256KB) |  1 (256KB) |         0 |      0 (0B)
 
-BLOCK CACHE: 2 entries (662B)
+BLOCK CACHE: 2 entries (758B)
                  miss rate [percentage of total misses] since start
 level      all     |  background    sstdata       sstval      blobval       filter       index
 -------------------+------------------------------------------------------------------------------

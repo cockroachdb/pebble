@@ -136,7 +136,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 					} else {
 						ikv.V = base.MakeInPlaceValue([]byte(parts[1]))
 					}
-					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isLikelyMVCCGarbage */))
+					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isLikelyMVCCGarbage */, base.KVMeta{}))
 				}
 				return buf.String()
 			case "estimated-sizes":
@@ -185,5 +185,5 @@ func errShortAttrExtractor(
 	return 0, errors.New("short attribute extractor error")
 }
 
-// Assert that errShortAttrExtractor implements the ShortAttributeExtractor
+// Assert that errShortAttrExtractor implements the ShortAttributeExtractor.
 var _ base.ShortAttributeExtractor = errShortAttrExtractor

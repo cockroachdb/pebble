@@ -211,7 +211,11 @@ func (vs *ValueSeparator) EstimatedReferenceSize() uint64 {
 
 // Add implements ValueSeparation.
 func (vs *ValueSeparator) Add(
-	tw sstable.RawWriter, kv *base.InternalKV, forceObsolete bool, isLikelyMVCCGarbage bool,
+	tw sstable.RawWriter,
+	kv *base.InternalKV,
+	forceObsolete bool,
+	isLikelyMVCCGarbage bool,
+	meta base.KVMeta,
 ) error {
 	if kv.V.IsBlobValueHandle() && vs.mode == preserveAllHotBlobReferences {
 		return vs.preserveBlobReference(tw, kv, forceObsolete)
@@ -232,7 +236,7 @@ func (vs *ValueSeparator) Add(
 		// sstable fileWriter may still decide to put the value in a value block,
 		// but regardless the value will be written to the sstable itself and
 		// not a blob file.
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, meta)
 	}
 	// We are rewriting all hot blob references. Check that the value meets the criteria
 	// for separation.
@@ -241,17 +245,17 @@ func (vs *ValueSeparator) Add(
 	keyKind := kv.K.Kind()
 	if keyKind != base.InternalKeyKindSet && keyKind != base.InternalKeyKindSetWithDelete {
 		// Only SET and SETWITHDEL can be separated.
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, meta)
 	}
 
 	// Values that are too small are never separated; however, MVCC keys are
 	// separated if they are a SET key kind, as long as the value is not empty.
 	if len(v) < vs.currentConfig.MinimumSize && (vs.currentConfig.DisableValueSeparationBySuffix || !isLikelyMVCCGarbage) {
-		return tw.Add(kv.K, v, forceObsolete)
+		return tw.Add(kv.K, v, forceObsolete, meta)
 	}
 
 	// This KV met all the criteria and its value will be separated.
-	return vs.separateValue(tw, kv, v, forceObsolete, isLikelyMVCCGarbage)
+	return vs.separateValue(tw, kv, v, forceObsolete, isLikelyMVCCGarbage, meta)
 }
 
 // separateValue separates the value into a blob file and writes a blob handle
@@ -263,6 +267,7 @@ func (vs *ValueSeparator) separateValue(
 	rawValue []byte,
 	forceObsolete bool,
 	isLikelyMVCCGarbage bool,
+	meta base.KVMeta,
 ) (err error) {
 	if vs.mode == preserveAllHotBlobReferences {
 		return errors.AssertionFailedf("separateValue called in preserveAllHotBlobReferences mode")
@@ -285,7 +290,7 @@ func (vs *ValueSeparator) separateValue(
 			// fallback to writing the value verbatim to the sstable. Otherwise
 			// a flush could busy loop, repeatedly attempting to write the same
 			// memtable and repeatedly unable to extract a key's short attribute.
-			return tw.Add(kv.K, rawValue, forceObsolete)
+			return tw.Add(kv.K, rawValue, forceObsolete, meta)
 		}
 	}
 
@@ -308,7 +313,7 @@ func (vs *ValueSeparator) separateValue(
 			ValueID: handle.ValueID,
 		},
 	}
-	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete)
+	return tw.AddWithBlobHandle(kv.K, inlineHandle, shortAttr, forceObsolete, meta)
 }
 
 // preserveBlobReference preserves an existing blob reference by copying it
@@ -348,7 +353,8 @@ func (vs *ValueSeparator) preserveBlobReference(
 		},
 		HandleSuffix: handleSuffix,
 	}
-	err := tw.AddWithBlobHandle(kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute, forceObsolete)
+	err := tw.AddWithBlobHandle(kv.K, inlineHandle, lv.Fetcher.Attribute.ShortAttribute,
+		forceObsolete, base.KVMeta{})
 	if err != nil {
 		return err
 	}
