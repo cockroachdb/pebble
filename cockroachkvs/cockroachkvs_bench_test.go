@@ -193,7 +193,7 @@ func benchmarkCockroachDataColBlockWriter(b *testing.B, keyConfig KeyGenConfig, 
 	_, keys, values := generateDataBlock(rng, targetBlockSize, keyConfig, valueLen)
 
 	var w colblk.DataBlockEncoder
-	w.Init(&KeySchema)
+	w.Init(&KeySchema, colblk.NoTieringColumns())
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -202,7 +202,8 @@ func benchmarkCockroachDataColBlockWriter(b *testing.B, keyConfig KeyGenConfig, 
 		for w.Size() < targetBlockSize {
 			ik := base.MakeInternalKey(keys[count], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 			kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
-			w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false /* isObsolete */)
+			w.Add(ik, values[count], block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp,
+				false /* isObsolete */, base.KVMeta{})
 			count++
 		}
 		_, _ = w.Finish(w.Rows(), w.Size())
@@ -317,9 +318,9 @@ func benchmarkCockroachDataColBlockIter(
 	var it colblk.DataBlockIter
 	it.InitOnce(&KeySchema, &Comparer, getInternalValuer(func([]byte) base.InternalValue {
 		return base.MakeInPlaceValue([]byte("mock external value"))
-	}))
+	}), colblk.NoTieringColumns())
 	bd := decoder.Init(&KeySchema, serializedBlock)
-	if err := it.Init(&decoder, bd, transforms); err != nil {
+	if err := it.Init(&decoder, bd, transforms, colblk.NoTieringColumns()); err != nil {
 		b.Fatal(err)
 	}
 	avgRowSize := float64(len(serializedBlock)) / float64(len(keys))
@@ -382,12 +383,12 @@ func BenchmarkInitDataBlockMetadata(b *testing.B) {
 	}, 8)
 
 	var w colblk.DataBlockEncoder
-	w.Init(&KeySchema)
+	w.Init(&KeySchema, colblk.NoTieringColumns())
 	for j := 0; w.Size() < targetBlockSize; j++ {
 		ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
 		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
 		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
-		w.Add(ik, values[j], vp, kcmp, false /* isObsolete */)
+		w.Add(ik, values[j], vp, kcmp, false /* isObsolete */, base.KVMeta{})
 	}
 	finished, _ := w.Finish(w.Rows(), w.Size())
 

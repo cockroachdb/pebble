@@ -450,8 +450,9 @@ func formatColblkDataBlock(
 
 	if fmtKV != nil {
 		var iter colblk.DataBlockIter
-		iter.InitOnce(r.keySchema, r.Comparer, describingLazyValueHandler{})
-		if err := iter.Init(&decoder, bd, blockiter.Transforms{}); err != nil {
+		tieringConfig := r.tableFormat.TieringColumnConfig()
+		iter.InitOnce(r.keySchema, r.Comparer, describingLazyValueHandler{}, tieringConfig)
+		if err := iter.Init(&decoder, bd, blockiter.Transforms{}, tieringConfig); err != nil {
 			return err
 		}
 		defer func() { _ = iter.Close() }()

@@ -42,6 +42,12 @@ type FlushGovernor struct {
 // within a 1024B class. However, when loaded into the block cache we also
 // allocate space for the cache entry metadata. The new allocation may now only
 // fit within a 2048B class, which increases internal fragmentation.
+//
+// TODO: Consider adding extra slack here for future metadata growth (tradeoff:
+// wasted memory). Metadata size increases can cause internal fragmentation when
+// reading blocks written by older versions that were aligned to size classes
+// according to the old metadata size. An alternative design (e.g. a separate
+// slab allocator for metadata) could also avoid this issue.
 const blockAllocationOverhead = cache.ValueMetadataSize + MetadataSize
 
 // MakeFlushGovernor initializes a flush controller.

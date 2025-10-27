@@ -213,7 +213,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 						}
 						continue
 					}
-					err = w.Add(kv.Key, kv.Value, false /* forceObsolete */)
+					err = w.Add(kv.Key, kv.Value, false /* forceObsolete */, base.KVMeta{})
 					if err != nil {
 						return err.Error()
 					}
