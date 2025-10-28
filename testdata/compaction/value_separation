@@ -576,4 +576,4 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 882
+range-deletions-bytes-estimate: 5072

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/cockroachdb/crlib/crmath"
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -440,7 +441,7 @@ func (d *DB) loadTableRangeDelStats(
 		// the size of the range key block relative to the overall size of the
 		// table is expected to be small.
 		if level == numLevels-1 && meta.SmallestSeqNum < maxRangeDeleteSeqNum {
-			size, err := r.EstimateDiskUsage(start, end, env)
+			size, err := estimateDiskUsageInTableAndBlobReferences(r, start, end, env, meta)
 			if err != nil {
 				return nil, err
 			}
@@ -633,7 +634,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				// The range fully contains the file, so skip looking it up in table
 				// cache/looking at its indexes and add the full file size.
 				if updateEstimates {
-					estimate += file.Size
+					estimate += file.Size + file.EstimatedReferenceSize()
 				}
 				if updateHints && hintSeqNum > file.SmallestSeqNum {
 					hintSeqNum = file.SmallestSeqNum
@@ -649,7 +650,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				var size uint64
 				err := d.fileCache.withReader(ctx, block.NoReadEnv, file,
 					func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
-						size, err = r.EstimateDiskUsage(start, end, env)
+						size, err = estimateDiskUsageInTableAndBlobReferences(r, start, end, env, file)
 						return err
 					})
 				if err != nil {
@@ -692,6 +693,24 @@ func sanityCheckStats(meta *manifest.TableMetadata, logger Logger, info string) 
 			lastSanityCheckStatsLog.Store(crtime.NowMono())
 		}
 	}
+}
+
+// estimateDiskUsageInTableAndBlobReferences estimates the disk usage within a
+// sstable and its referenced values. The size of blob files is computed using
+// linear interpolation.
+func estimateDiskUsageInTableAndBlobReferences(
+	r *sstable.Reader, start, end []byte, env sstable.ReadEnv, meta *manifest.TableMetadata,
+) (uint64, error) {
+	size, err := r.EstimateDiskUsage(start, end, env)
+	if err != nil {
+		return 0, err
+	}
+
+	estimatedTableSize := max(size, 1)
+	originalTableSize := max(meta.Size, 1)
+	referenceSize := crmath.ScaleUint64(meta.EstimatedReferenceSize(),
+		estimatedTableSize, originalTableSize)
+	return size + referenceSize, nil
 }
 
 func maybeSetStatsFromProperties(
