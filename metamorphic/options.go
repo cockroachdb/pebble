@@ -66,47 +66,37 @@ func parseOptions(
 			}
 			return pebble.KeySchema{}, errors.Newf("unknown key schema %q", name)
 		},
-		SkipUnknown: func(name, value string) bool {
+		OnUnknown: func(name, value string) {
 			if strings.EqualFold(value, "false") {
 				// TODO(radu): audit all settings and use ParseBool wherever necessary.
 				panic(fmt.Sprintf("%s: boolean options can only be set to true", name))
 			}
 			switch name {
 			case "TestOptions":
-				return true
 			case "TestOptions.strictfs":
 				opts.strictFS = true
 				opts.Opts.FS = vfs.NewCrashableMem()
-				return true
 			case "TestOptions.key_format":
 				opts.KeyFormat = keyFormatsByName[value]
-				return true
 			case "TestOptions.ingest_using_apply":
 				opts.ingestUsingApply = true
-				return true
 			case "TestOptions.delete_sized":
 				opts.deleteSized = true
-				return true
 			case "TestOptions.replace_single_delete":
 				opts.replaceSingleDelete = true
-				return true
 			case "TestOptions.use_disk":
 				opts.useDisk = true
 				opts.Opts.FS = vfs.Default
-				return true
 			case "TestOptions.initial_state_desc":
 				opts.initialStateDesc = value
-				return true
 			case "TestOptions.initial_state_path":
 				opts.initialStatePath = value
-				return true
 			case "TestOptions.threads":
 				v, err := strconv.Atoi(value)
 				if err != nil {
 					panic(err)
 				}
 				opts.Threads = v
-				return true
 			case "TestOptions.disable_block_property_collector":
 				v, err := strconv.ParseBool(value)
 				if err != nil {
@@ -116,99 +106,81 @@ func parseOptions(
 				if v {
 					opts.Opts.BlockPropertyCollectors = nil
 				}
-				return true
 			case "TestOptions.enable_value_blocks":
 				opts.enableValueBlocks = true
 				opts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
-				return true
 			case "TestOptions.disable_value_blocks_for_ingest_sstables":
 				opts.disableValueBlocksForIngestSSTables = true
-				return true
 			case "TestOptions.async_apply_to_db":
 				opts.asyncApplyToDB = true
-				return true
 			case "TestOptions.shared_storage_enabled":
 				opts.sharedStorageEnabled = true
 				if opts.Opts.Experimental.CreateOnShared == remote.CreateOnSharedNone {
 					opts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 				}
-				return true
 			case "TestOptions.external_storage_enabled":
 				opts.externalStorageEnabled = true
-				return true
 			case "TestOptions.secondary_cache_enabled":
 				opts.secondaryCacheEnabled = true
 				opts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
-				return true
 			case "TestOptions.seed_efos":
 				v, err := strconv.ParseUint(value, 10, 64)
 				if err != nil {
 					panic(err)
 				}
 				opts.seedEFOS = v
-				return true
 			case "TestOptions.io_latency_mean":
 				v, err := time.ParseDuration(value)
 				if err != nil {
 					panic(err)
 				}
 				opts.ioLatencyMean = v
-				return true
 			case "TestOptions.io_latency_probability":
 				v, err := strconv.ParseFloat(value, 64)
 				if err != nil {
 					panic(err)
 				}
 				opts.ioLatencyProbability = v
-				return true
 			case "TestOptions.io_latency_seed":
 				v, err := strconv.ParseInt(value, 10, 64)
 				if err != nil {
 					panic(err)
 				}
 				opts.ioLatencySeed = v
-				return true
 			case "TestOptions.ingest_split":
 				// TODO(radu): this should be on by default.
 				opts.ingestSplit = true
 				opts.Opts.Experimental.IngestSplit = func() bool {
 					return true
 				}
-				return true
 			case "TestOptions.use_shared_replicate":
 				opts.useSharedReplicate = true
-				return true
 			case "TestOptions.use_external_replicate":
 				opts.useExternalReplicate = true
-				return true
 			case "TestOptions.use_excise":
 				// TODO(radu): this should be on by default.
 				opts.useExcise = true
-				return true
 			case "TestOptions.use_delete_only_compaction_excises":
 				opts.useDeleteOnlyCompactionExcises = true
 				opts.Opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool {
 					return opts.useDeleteOnlyCompactionExcises
 				}
-				return true
 			case "TestOptions.disable_downloads":
 				opts.disableDownloads = true
-				return true
 			case "TestOptions.use_jemalloc_size_classes":
 				opts.Opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
-				return true
 			default:
 				if customOptionParsers == nil {
-					return false
+					return
 				}
 				name = strings.TrimPrefix(name, "TestOptions.")
 				if p, ok := customOptionParsers[name]; ok {
 					if customOpt, ok := p(value); ok {
 						opts.CustomOpts = append(opts.CustomOpts, customOpt)
-						return true
+						return
 					}
 				}
-				return false
+				return
 			}
 		},
 	}

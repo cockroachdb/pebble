@@ -362,9 +362,6 @@ func (d *dbT) loadOptions(dir string) error {
 			}
 			return nil, errors.Errorf("unknown merger %q", errors.Safe(name))
 		},
-		SkipUnknown: func(name, value string) bool {
-			return true
-		},
 	}
 
 	// TODO(peter): RocksDB sometimes leaves multiple OPTIONS files in
