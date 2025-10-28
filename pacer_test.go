@@ -29,7 +29,8 @@ func TestDeletionPacer(t *testing.T) {
 		// history of deletion reporting; first value in the pair is the time,
 		// second value is the deleted bytes. The time of pacing is the same as the
 		// last time in the history.
-		history [][2]int64
+		history      [][2]int64
+		bytesInQueue uint64
 		// expected pacing rate in MB/s.
 		expected float64
 	}{
@@ -73,7 +74,7 @@ func TestDeletionPacer(t *testing.T) {
 		{
 			freeBytes:     160 * GB,
 			obsoleteBytes: 1 * MB,
-			liveBytes:     160 * MB,
+			liveBytes:     1000 * GB,
 			history:       [][2]int64{{0, 5 * 60 * 200 * MB}},
 			expected:      200.0,
 		},
@@ -82,7 +83,7 @@ func TestDeletionPacer(t *testing.T) {
 		{
 			freeBytes:     6 * GB,
 			obsoleteBytes: 1 * MB,
-			liveBytes:     160 * MB,
+			liveBytes:     100 * GB,
 			history:       [][2]int64{{0, 5 * 60 * 200 * MB}},
 			expected:      1224.0,
 		},
@@ -93,6 +94,27 @@ func TestDeletionPacer(t *testing.T) {
 			obsoleteBytes: 50 * GB,
 			liveBytes:     100 * GB,
 			history:       [][2]int64{{0, 5 * 60 * 200 * MB}},
+			expected:      302.4,
+		},
+		// History shows 200MB/sec deletions on average over last 5 minutes and
+		// obsoleteBytesRatio is 50%, from bytes still in queue.
+		{
+			freeBytes:     500 * GB,
+			obsoleteBytes: 0 * GB,
+			liveBytes:     100 * GB,
+			history:       [][2]int64{{0, 5 * 60 * 200 * MB}},
+			bytesInQueue:  50 * GB,
+			expected:      302.4,
+		},
+		// History shows 200MB/sec deletions on average over last 5 minutes and
+		// obsoleteBytesRatio is 50%, from a combination of obsoleteBytes and bytes
+		// still in queue.
+		{
+			freeBytes:     500 * GB,
+			obsoleteBytes: 25 * GB,
+			liveBytes:     100 * GB,
+			history:       [][2]int64{{0, 5 * 60 * 200 * MB}},
+			bytesInQueue:  25 * GB,
 			expected:      302.4,
 		},
 		// History shows 1000MB/sec deletions on average over last 5 minutes.
@@ -134,10 +156,13 @@ func TestDeletionPacer(t *testing.T) {
 				opts.ObsoleteBytesTimeframe,
 				getInfo,
 			)
+			var inQueue uint64
 			for _, h := range tc.history {
 				last = start + crtime.Mono(time.Second*time.Duration(h[0]))
-				pacer.ReportDeletion(last, uint64(h[1]))
+				pacer.DeletionEnqueued(last, uint64(h[1]))
+				inQueue += uint64(h[1])
 			}
+			pacer.DeletionPerformed(inQueue - tc.bytesInQueue)
 			result := 1.0 / pacer.PacingDelay(last, 1*MB)
 			require.InDelta(t, tc.expected, result, 1e-7)
 		})

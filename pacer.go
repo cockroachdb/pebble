@@ -9,13 +9,16 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // deletionPacerInfo contains any info from the db necessary to make deletion
 // pacing decisions (to limit background IO usage so that it does not contend
 // with foreground traffic).
 type deletionPacerInfo struct {
-	freeBytes     uint64
+	freeBytes uint64
+	// obsoleteBytes is the total size of obsolete files in the latest version;
+	// these are files that have not yet been enqueued for deletion.
 	obsoleteBytes uint64
 	liveBytes     uint64
 }
@@ -44,6 +47,10 @@ type deletionPacer struct {
 		// history keeps rack of recent deletion history; it used to increase the
 		// deletion rate to match the pace of deletions.
 		history history
+
+		// bytesToDelete is the sum of pacing bytes for all deletions that were
+		// reported but not yet performed.
+		bytesToDelete uint64
 	}
 
 	targetByteDeletionRate func() int
@@ -83,15 +90,31 @@ func newDeletionPacer(
 	return d
 }
 
-// ReportDeletion is used to report a deletion to the pacer. The pacer uses it
-// to keep track of the recent rate of deletions and potentially increase the
-// deletion rate accordingly.
+// DeletionEnqueued is used to report a new deletion request to the pacer. The
+// pacer uses it to keep track of the recent rate of deletions and potentially
+// increase the deletion rate accordingly.
 //
-// ReportDeletion is thread-safe.
-func (p *deletionPacer) ReportDeletion(now crtime.Mono, bytesToDelete uint64) {
+// DeletionEnqueued is thread-safe.
+func (p *deletionPacer) DeletionEnqueued(now crtime.Mono, bytesToDelete uint64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.mu.bytesToDelete += bytesToDelete
 	p.mu.history.Add(now, int64(bytesToDelete))
+}
+
+// DeletionPerformed is used to report that a deletion was performed. The pacer
+// uses it to keep track of how many bytes are in the queue.
+func (p *deletionPacer) DeletionPerformed(bytesToDelete uint64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.mu.bytesToDelete < bytesToDelete {
+		if invariants.Enabled {
+			panic("underflow")
+		}
+		p.mu.bytesToDelete = 0
+	} else {
+		p.mu.bytesToDelete -= bytesToDelete
+	}
 }
 
 // PacingDelay returns the recommended pacing wait time (in seconds) for
@@ -108,10 +131,10 @@ func (p *deletionPacer) PacingDelay(now crtime.Mono, bytesToDelete uint64) (wait
 	baseRate := float64(targetByteDeletionRate)
 	// If recent deletion rate is more than our target, use that so that we don't
 	// fall behind.
-	historicRate := func() float64 {
+	historicRate, totalBytesToDelete := func() (float64, uint64) {
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		return float64(p.mu.history.Sum(now)) / deletePacerHistory.Seconds()
+		return float64(p.mu.history.Sum(now)) / deletePacerHistory.Seconds(), p.mu.bytesToDelete
 	}()
 	if historicRate > baseRate {
 		baseRate = historicRate
@@ -128,7 +151,7 @@ func (p *deletionPacer) PacingDelay(now crtime.Mono, bytesToDelete uint64) (wait
 		// We don't know the obsolete bytes ratio. Disable pacing altogether.
 		return 0.0
 	}
-	obsoleteBytesRatio := float64(info.obsoleteBytes) / float64(info.liveBytes)
+	obsoleteBytesRatio := float64(info.obsoleteBytes+totalBytesToDelete) / float64(info.liveBytes)
 	if obsoleteBytesRatio >= p.obsoleteBytesMaxRatio {
 		// Increase the rate so that we can free up enough bytes within the timeframe.
 		r := (obsoleteBytesRatio - p.obsoleteBytesMaxRatio) * float64(info.liveBytes) / p.obsoleteBytesTimeframe.Seconds()
