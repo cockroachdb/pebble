@@ -146,7 +146,7 @@ func (cm *cleanupManager) EnqueueJob(
 		}
 	}
 	if pacingBytes > 0 {
-		cm.deletePacer.ReportDeletion(crtime.NowMono(), pacingBytes)
+		cm.deletePacer.DeletionEnqueued(crtime.NowMono(), pacingBytes)
 	}
 
 	cm.mu.Lock()
@@ -188,6 +188,9 @@ func (cm *cleanupManager) mainLoop() {
 			case base.FileTypeBlob:
 				cm.maybePace(&tb, &of)
 				cm.deleteObsoleteObject(of.fileType, job.jobID, of.fileNum)
+				if of.needsPacing() {
+					cm.deletePacer.DeletionPerformed(of.fileSize)
+				}
 			default:
 				cm.deleteObsoleteFile(of.fs, of.fileType, job.jobID, of.path, of.fileNum)
 			}
