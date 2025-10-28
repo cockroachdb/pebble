@@ -893,7 +893,6 @@ L6:
 Blob files:
   B000016 physical:{000016 size:[121 (121B)] vals:[42 (42B)]}
 
-
 sstable-properties file=000015
 ----
 rocksdb.num.entries: 9
@@ -918,7 +917,6 @@ pebble.value-separation.kind: 2
 pebble.value-separation.min-size: 10
 obsolete-key: hex:00
 
-
 sstable-properties file=000017
 ----
 rocksdb.num.entries: 12
@@ -941,3 +939,47 @@ pebble.compression_stats: None:36,Snappy:132/225
 pebble.value-separation.kind: 1
 pebble.value-separation.min-size: 1024
 obsolete-key: hex:00
+
+define value-separation=(enabled, min-size=8, max-ref-depth=10, rw-min-age=0s, garbage-ratios=1.0:1.0)
+----
+
+batch
+set foo <rand-bytes=4096>
+----
+
+flush
+----
+L0.0:
+  000005:[foo#10,SET-foo#10,SET] seqnums:[10-10] points:[foo#10,SET-foo#10,SET] size:797 blobrefs:[(B000006: 4096); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[4190 (4.1KB)] vals:[4096 (4.0KB)]}
+
+compact a-z
+----
+L6:
+  000005:[foo#10,SET-foo#10,SET] seqnums:[10-10] points:[foo#10,SET-foo#10,SET] size:797 blobrefs:[(B000006: 4096); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[4190 (4.1KB)] vals:[4096 (4.0KB)]}
+
+batch
+del-range a z
+----
+
+flush
+----
+L0.0:
+  000008:[a#11,RANGEDEL-z#inf,RANGEDEL] seqnums:[11-11] points:[a#11,RANGEDEL-z#inf,RANGEDEL] size:685
+L6:
+  000005:[foo#10,SET-foo#10,SET] seqnums:[10-10] points:[foo#10,SET-foo#10,SET] size:797 blobrefs:[(B000006: 4096); depth:1]
+Blob files:
+  B000006 physical:{000006 size:[4190 (4.1KB)] vals:[4096 (4.0KB)]}
+
+wait-pending-table-stats
+000008
+----
+num-entries: 1
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 797
+compression: None:79
