@@ -1960,7 +1960,7 @@ type ParseHooks struct {
 	NewFilterPolicy func(name string) (FilterPolicy, error)
 	NewKeySchema    func(name string) (KeySchema, error)
 	NewMerger       func(name string) (*Merger, error)
-	SkipUnknown     func(name, value string) bool
+	OnUnknown       func(name, value string)
 }
 
 // Parse parses the options from the specified string. Note that certain
@@ -1976,11 +1976,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	}
 
 	visitKeyValue := func(i, j int, section, key, value string) error {
-		// WARNING: DO NOT remove entries from the switches below because doing so
-		// causes a key previously written to the OPTIONS file to be considered unknown,
-		// a backwards incompatible change. Instead, leave in support for parsing the
-		// key but simply don't parse the value.
-
 		parseComparer := func(name string) (*Comparer, error) {
 			switch name {
 			case DefaultComparer.Name:
@@ -2000,11 +1995,15 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			switch key {
 			case "pebble_version":
 			default:
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+				if hooks != nil && hooks.OnUnknown != nil {
+					hooks.OnUnknown(section+"."+key, value)
 					return nil
 				}
-				return errors.Errorf("pebble: unknown option: %s.%s",
-					errors.Safe(section), errors.Safe(key))
+				// Tolerate unknown options, but log them.
+				if o.Logger != nil {
+					o.Logger.Infof("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
+				}
+				return nil
 			}
 			return nil
 
@@ -2059,8 +2058,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
-			case "enable_columnar_blocks":
-				// Do nothing; option existed in older versions of pebble.
 			case "flush_delay_delete_range":
 				o.FlushDelayDeleteRange, err = time.ParseDuration(value)
 			case "flush_delay_range_key":
@@ -2074,7 +2071,18 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				// version is valid right here.
 				var v uint64
 				v, err = strconv.ParseUint(value, 10, 64)
-				if vers := FormatMajorVersion(v); vers > internalFormatNewest || vers == FormatDefault {
+				vers := FormatMajorVersion(v)
+				if vers > internalFormatNewest {
+					// Tolerate new unknown format versions in OPTIONS file (they
+					// may be stale if a format upgrade was reverted before
+					// finalization). The actual format version is determined by
+					// the format version marker file.
+					if o.Logger != nil {
+						o.Logger.Infof(
+							"pebble: format major version %d in OPTIONS file is newer than supported (%d), ignoring",
+							vers, internalFormatNewest)
+					}
+				} else if vers == FormatDefault {
 					err = errors.Newf("unsupported format major version %d", o.FormatMajorVersion)
 				}
 				if err == nil {
@@ -2118,8 +2126,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.L0CompactionThreshold, err = strconv.Atoi(value)
 			case "l0_stop_writes_threshold":
 				o.L0StopWritesThreshold, err = strconv.Atoi(value)
-			case "l0_sublevel_compactions":
-				// Do nothing; option existed in older versions of pebble.
 			case "lbase_max_bytes":
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
 			case "level_multiplier":
@@ -2146,9 +2152,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.MemTableSize, err = strconv.ParseUint(value, 10, 64)
 			case "mem_table_stop_writes_threshold":
 				o.MemTableStopWritesThreshold, err = strconv.Atoi(value)
-			case "min_compaction_rate":
-				// Do nothing; option existed in older versions of pebble, and
-				// may be meaningful again eventually.
 			case "min_deletion_rate":
 				var rate uint64
 				rate, err = strconv.ParseUint(value, 10, 64)
@@ -2159,13 +2162,8 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.DeletionPacing.FreeSpaceThresholdBytes, err = strconv.ParseUint(value, 10, 64)
 			case "free_space_timeframe":
 				o.DeletionPacing.FreeSpaceTimeframe, err = time.ParseDuration(value)
-			case "obsolete_bytes_max_ratio":
-				// No longer used.
 			case "obsolete_bytes_timeframe":
 				o.DeletionPacing.BacklogTimeframe, err = time.ParseDuration(value)
-			case "min_flush_rate":
-				// Do nothing; option existed in older versions of pebble, and
-				// may be meaningful again eventually.
 			case "multilevel_compaction_heuristic":
 				switch {
 				case value == "none":
@@ -2196,10 +2194,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						err = errors.Wrapf(err, "unexpected wamp heuristic arguments: %s", value)
 					}
 				default:
-					err = errors.Newf("unrecognized multilevel compaction heuristic: %s", value)
+					// Tolerate unknown options, but log them.
+					if o.Logger != nil {
+						o.Logger.Infof("pebble: unrecognized multilevel compaction heuristic: %s", value)
+					}
 				}
-			case "point_tombstone_weight":
-				// Do nothing; deprecated.
 			case "strict_wal_tail":
 				var strictWALTail bool
 				strictWALTail, err = strconv.ParseBool(value)
@@ -2240,20 +2239,18 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				case "leveldb":
 				case "rocksdbv2":
 				default:
-					return errors.Errorf("pebble: unknown table format: %q", errors.Safe(value))
+					// Tolerate unknown options, but log them.
+					if o.Logger != nil {
+						o.Logger.Infof("pebble: unknown table format: %q", errors.Safe(value))
+					}
+					return nil
 				}
-			case "table_property_collectors":
-				// No longer implemented; ignore.
 			case "validate_on_ingest":
 				o.Experimental.ValidateOnIngest, err = strconv.ParseBool(value)
 			case "wal_dir":
 				o.WALDir = value
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
-			case "max_writer_concurrency":
-				// No longer implemented; ignore.
-			case "force_writer_parallelism":
-				// No longer implemented; ignore.
 			case "secondary_cache_size_bytes":
 				o.Experimental.SecondaryCacheSizeBytes, err = strconv.ParseInt(value, 10, 64)
 			case "create_on_shared":
@@ -2265,11 +2262,15 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "iterator_tracking_max_age":
 				o.Experimental.IteratorTracking.MaxAge, err = time.ParseDuration(value)
 			default:
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+				if hooks != nil && hooks.OnUnknown != nil {
+					hooks.OnUnknown(section+"."+key, value)
 					return nil
 				}
-				return errors.Errorf("pebble: unknown option: %s.%s",
-					errors.Safe(section), errors.Safe(key))
+				// Tolerate unknown options, but log them.
+				if o.Logger != nil {
+					o.Logger.Infof("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
+				}
+				return nil
 			}
 			return err
 
@@ -2292,10 +2293,15 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "garbage_ratio_high_priority":
 				valSepPolicy.GarbageRatioHighPriority, err = strconv.ParseFloat(value, 64)
 			default:
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+				if hooks != nil && hooks.OnUnknown != nil {
+					hooks.OnUnknown(section+"."+key, value)
 					return nil
 				}
-				return errors.Errorf("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
+				// Tolerate unknown options, but log them.
+				if o.Logger != nil {
+					o.Logger.Infof("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
+				}
+				return nil
 			}
 			return err
 
@@ -2324,11 +2330,15 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "elevated_write_stall_threshold_lag":
 				o.WALFailover.ElevatedWriteStallThresholdLag, err = time.ParseDuration(value)
 			default:
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+				if hooks != nil && hooks.OnUnknown != nil {
+					hooks.OnUnknown(section+"."+key, value)
 					return nil
 				}
-				return errors.Errorf("pebble: unknown option: %s.%s",
-					errors.Safe(section), errors.Safe(key))
+				// Tolerate unknown options, but log them.
+				if o.Logger != nil {
+					o.Logger.Infof("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
+				}
+				return nil
 			}
 			return err
 
@@ -2368,24 +2378,38 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				case "table":
 					l.FilterType = TableFilter
 				default:
-					return errors.Errorf("pebble: unknown filter type: %q", errors.Safe(value))
+					// Tolerate unknown options, but log them.
+					if o.Logger != nil {
+						o.Logger.Infof("pebble: unknown filter type: %q", errors.Safe(value))
+					}
+					return nil
 				}
 			case "index_block_size":
 				l.IndexBlockSize, err = strconv.Atoi(value)
 			case "target_file_size":
 				o.TargetFileSizes[index], err = strconv.ParseInt(value, 10, 64)
 			default:
-				if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+				if hooks != nil && hooks.OnUnknown != nil {
+					hooks.OnUnknown(section+"."+key, value)
 					return nil
 				}
-				return errors.Errorf("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
+				// Tolerate unknown options, but log them.
+				if o.Logger != nil {
+					o.Logger.Infof("pebble: unknown option: %s.%s", errors.Safe(section), errors.Safe(key))
+				}
+				return nil
 			}
 			return err
 		}
-		if hooks != nil && hooks.SkipUnknown != nil && hooks.SkipUnknown(section+"."+key, value) {
+		if hooks != nil && hooks.OnUnknown != nil {
+			hooks.OnUnknown(section+"."+key, value)
 			return nil
 		}
-		return errors.Errorf("pebble: unknown section %q or key %q", errors.Safe(section), errors.Safe(key))
+		// Tolerate unknown sections and keys, but log them.
+		if o.Logger != nil {
+			o.Logger.Infof("pebble: unknown section %q or key %q", errors.Safe(section), errors.Safe(key))
+		}
+		return nil
 	}
 	err := parseOptions(s, parseOptionsFuncs{
 		visitKeyValue: visitKeyValue,
