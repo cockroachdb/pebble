@@ -5,7 +5,7 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/RaduBerinde/axisds v0.0.0-20250419182453-5135a0650657
 	github.com/cespare/xxhash/v2 v2.2.0
-	github.com/cockroachdb/crlib v0.0.0-20241112164430-1264a2edc35b
+	github.com/cockroachdb/crlib v0.0.0-20251024155502-a2e0a212ef05
 	github.com/cockroachdb/datadriven v1.0.3-0.20250407164829-2945557346d5
 	github.com/cockroachdb/errors v1.11.3
 	github.com/cockroachdb/metamorphic v0.0.0-20231108215700-4ba948b56895
