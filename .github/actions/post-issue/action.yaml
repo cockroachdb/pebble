@@ -12,8 +12,8 @@ inputs:
     description: "The body of the issue or comment"
     required: true
   unique-title-includes:
-    description: "The unique title to search for in the repository; if found, a comment will be posted"
-    required: true
+    description: "The unique title to search for in the repository; if found, a comment will be posted. Defaults to title"
+    required: false
   labels:
     description: "Labels to use when creating an issue"
     required: false
@@ -32,18 +32,20 @@ runs:
       with:
         token: ${{ inputs.token }}
         actions: "find-issues"
-        title-includes: ${{ inputs.unique-title-includes }}
+        title-includes: ${{ inputs.unique-title-includes || inputs.title}}
 
     - name: Get issue number
       shell: bash
       id: get-issue-number
       run: |
-        issues=$(cat <<EOF
+        if num=$(jq -re '.[0].number' <<'EOF'
         ${{ steps.find-issue.outputs.issues }}
         EOF
-        )
-        if [ "$issues" != "[]" ]; then
-          echo "issue-number=$(echo $issues | jq -r '.[0].number')" >> $GITHUB_OUTPUT
+        ); then
+          echo "Found existing issue #$num"
+          echo "issue-number=$num" >> $GITHUB_OUTPUT
+        else
+          echo "No existing issue found"
         fi
 
     - name: Create issue
