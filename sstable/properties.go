@@ -241,7 +241,8 @@ const (
 	ValueSeparationNone ValueSeparationKind = iota
 
 	// ValueSeparationDefault indicates that values were separated into
-	// new blob files during writing.
+	// new blob files during writing using the default value separation
+	// policy settings for minimum sizes.
 	ValueSeparationDefault
 
 	// ValueSeparationSpanPolicy indicates that values were separated

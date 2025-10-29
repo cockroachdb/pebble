@@ -889,11 +889,14 @@ Blob files:
   B000007 physical:{000007 size:[115 (115B)] vals:[63 (63B)]}
   B000011 physical:{000011 size:[111 (111B)] vals:[21 (21B)]}
 
-# Compacting key range with a mix of value separation span policies should rewrite blob references.
-# Note that this should not occur in practice because L0 compactions are built around table bounds.
+# Compacting key range with a mix of value separation span policies should preserve
+# blob references if the maximum output reference depth is not exceeded and the value
+# separation policies used by all input tables have not changed. Here, we have input tables
+# using either the f-o span policy or the default policy, but we can still preserve blob
+# references because the default policy and span policies have not been reconfigured.
+
 batch
-set f frolick
-set g garden
+set f frolicking
 set h holiday
 ----
 
@@ -901,44 +904,47 @@ flush
 ----
 L0.0:
   000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:773
-  000014:[f#38,SET-h#40,SET] seqnums:[38-40] points:[f#38,SET-h#40,SET] size:735
+  000014:[f#38,SET-h#39,SET] seqnums:[38-39] points:[f#38,SET-h#39,SET] size:808 blobrefs:[(B000015: 10); depth:1]
   000008:[o#24,SET-z#35,SET] seqnums:[24-35] points:[o#24,SET-z#35,SET] size:818
 L6:
   000012:[f#0,SET-n#0,SET] seqnums:[0-0] points:[f#0,SET-n#0,SET] size:872 blobrefs:[(B000011: 21), (B000007: 52); depth:2]
 Blob files:
   B000007 physical:{000007 size:[115 (115B)] vals:[63 (63B)]}
   B000011 physical:{000011 size:[111 (111B)] vals:[21 (21B)]}
+  B000015 physical:{000015 size:[99 (99B)] vals:[10 (10B)]}
 
 compact f-z
 ----
 L0.0:
   000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:773
 L6:
-  000015:[f#0,SET-n#0,SET] seqnums:[0-0] points:[f#0,SET-n#0,SET] size:871 blobrefs:[(B000016: 42); depth:1]
+  000016:[f#0,SET-n#0,SET] seqnums:[0-0] points:[f#0,SET-n#0,SET] size:885 blobrefs:[(B000015: 10), (B000011: 11), (B000007: 42); depth:3]
   000017:[o#0,SET-z#0,SET] seqnums:[0-0] points:[o#0,SET-z#0,SET] size:792
 Blob files:
-  B000016 physical:{000016 size:[121 (121B)] vals:[42 (42B)]}
+  B000007 physical:{000007 size:[115 (115B)] vals:[63 (63B)]}
+  B000011 physical:{000011 size:[111 (111B)] vals:[21 (21B)]}
+  B000015 physical:{000015 size:[99 (99B)] vals:[10 (10B)]}
 
-sstable-properties file=000015
+sstable-properties file=000016
 ----
 rocksdb.num.entries: 9
 rocksdb.raw.key.size: 81
-rocksdb.raw.value.size: 72
+rocksdb.raw.value.size: 80
 rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 1
 rocksdb.comparator: leveldb.BytewiseComparator
-rocksdb.data.size: 156
+rocksdb.data.size: 160
 rocksdb.filter.size: 0
 rocksdb.index.size: 36
 rocksdb.block.based.table.index.type: 0
 pebble.colblk.schema: DefaultKeySchema(leveldb.BytewiseComparator,16)
 rocksdb.merge.operator: pebble.concatenate
 rocksdb.merge.operands: 0
-pebble.num.values.in.blob-files: 4
+pebble.num.values.in.blob-files: 6
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.compression: Snappy
-pebble.compression_stats: None:56,Snappy:151/178
+pebble.compression_stats: None:66,Snappy:155/178
 pebble.value-separation.kind: 2
 pebble.value-separation.min-size: 10
 obsolete-key: hex:00
@@ -1009,3 +1015,176 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 4987
 compression: None:79
+
+
+# More tests compacting tables with mixed value separation policies.
+# After changing span policies, blob references should no longer
+# be preserved.
+define value-separation=(enabled, min-size=1, max-ref-depth=3, rw-min-age=0, garbage-ratios=1.0:1.0)
+----
+
+# With these span policies, only values for keys n-z will be separated.
+set-span-policies
+a,f val-sep-minimum-size=100
+f,o val-sep-minimum-size=0
+----
+
+batch
+set a aa
+set b bb
+set f ff
+set g gg
+set o oo
+set p pp
+----
+
+flush
+----
+L0.0:
+  000005:[a#10,SET-b#11,SET] seqnums:[10-11] points:[a#10,SET-b#11,SET] size:715
+  000006:[f#12,SET-g#13,SET] seqnums:[12-13] points:[f#12,SET-g#13,SET] size:668
+  000007:[o#14,SET-p#15,SET] seqnums:[14-15] points:[o#14,SET-p#15,SET] size:793 blobrefs:[(B000008: 4); depth:1]
+Blob files:
+  B000008 physical:{000008 size:[94 (94B)] vals:[4 (4B)]}
+
+compact a-z
+----
+L6:
+  000009:[a#0,SET-b#0,SET] seqnums:[0-0] points:[a#0,SET-b#0,SET] size:710
+  000010:[f#0,SET-g#0,SET] seqnums:[0-0] points:[f#0,SET-g#0,SET] size:663
+  000011:[o#0,SET-p#0,SET] seqnums:[0-0] points:[o#0,SET-p#0,SET] size:792 blobrefs:[(B000008: 4); depth:1]
+Blob files:
+  B000008 physical:{000008 size:[94 (94B)] vals:[4 (4B)]}
+
+# Adjust the span policies. The first span policy is truncated to only cover d-f.
+# The second span policy's minimum size changes from 0 to 10 bytes.
+set-span-policies
+d,f val-sep-minimum-size=100
+f,o val-sep-minimum-size=10
+----
+
+
+batch
+set b bb
+set f ff
+set o oo
+----
+
+flush
+----
+L0.0:
+  000013:[b#16,SET-b#16,SET] seqnums:[16-16] points:[b#16,SET-b#16,SET] size:792 blobrefs:[(B000014: 2); depth:1]
+  000015:[f#17,SET-f#17,SET] seqnums:[17-17] points:[f#17,SET-f#17,SET] size:700
+  000016:[o#18,SET-o#18,SET] seqnums:[18-18] points:[o#18,SET-o#18,SET] size:792 blobrefs:[(B000017: 2); depth:1]
+L6:
+  000009:[a#0,SET-b#0,SET] seqnums:[0-0] points:[a#0,SET-b#0,SET] size:710
+  000010:[f#0,SET-g#0,SET] seqnums:[0-0] points:[f#0,SET-g#0,SET] size:663
+  000011:[o#0,SET-p#0,SET] seqnums:[0-0] points:[o#0,SET-p#0,SET] size:792 blobrefs:[(B000008: 4); depth:1]
+Blob files:
+  B000008 physical:{000008 size:[94 (94B)] vals:[4 (4B)]}
+  B000014 physical:{000014 size:[91 (91B)] vals:[2 (2B)]}
+  B000017 physical:{000017 size:[91 (91B)] vals:[2 (2B)]}
+
+
+# This should rewrite blob references for input tables, since the span policies changed
+# so the table's key range is longer covered by a span policy.
+compact a-e
+----
+L0.0:
+  000015:[f#17,SET-f#17,SET] seqnums:[17-17] points:[f#17,SET-f#17,SET] size:700
+  000016:[o#18,SET-o#18,SET] seqnums:[18-18] points:[o#18,SET-o#18,SET] size:792 blobrefs:[(B000017: 2); depth:1]
+L6:
+  000018:[a#0,SET-b#0,SET] seqnums:[0-0] points:[a#0,SET-b#0,SET] size:792 blobrefs:[(B000019: 4); depth:1]
+  000010:[f#0,SET-g#0,SET] seqnums:[0-0] points:[f#0,SET-g#0,SET] size:663
+  000011:[o#0,SET-p#0,SET] seqnums:[0-0] points:[o#0,SET-p#0,SET] size:792 blobrefs:[(B000008: 4); depth:1]
+Blob files:
+  B000008 physical:{000008 size:[94 (94B)] vals:[4 (4B)]}
+  B000017 physical:{000017 size:[91 (91B)] vals:[2 (2B)]}
+  B000019 physical:{000019 size:[94 (94B)] vals:[4 (4B)]}
+
+# Compacting key range f-z should also rewrite blob references, even though the o-z input range
+# is using the same value separation settings, since the f-o span policy changed.
+compact f-z
+----
+L6:
+  000018:[a#0,SET-b#0,SET] seqnums:[0-0] points:[a#0,SET-b#0,SET] size:792 blobrefs:[(B000019: 4); depth:1]
+  000020:[f#0,SET-g#0,SET] seqnums:[0-0] points:[f#0,SET-g#0,SET] size:710
+  000021:[o#0,SET-p#0,SET] seqnums:[0-0] points:[o#0,SET-p#0,SET] size:792 blobrefs:[(B000022: 4); depth:1]
+Blob files:
+  B000019 physical:{000019 size:[94 (94B)] vals:[4 (4B)]}
+  B000022 physical:{000022 size:[94 (94B)] vals:[4 (4B)]}
+
+# Default value separation.
+sstable-properties file=000018
+----
+rocksdb.num.entries: 2
+rocksdb.raw.key.size: 18
+rocksdb.raw.value.size: 4
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 1
+rocksdb.comparator: leveldb.BytewiseComparator
+rocksdb.data.size: 87
+rocksdb.filter.size: 0
+rocksdb.index.size: 36
+rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(leveldb.BytewiseComparator,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+pebble.num.values.in.blob-files: 2
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+pebble.compression_stats: None:56,Snappy:82/114
+pebble.value-separation.kind: 1
+pebble.value-separation.min-size: 1
+obsolete-key: hex:00
+
+# Overridden value separation.
+sstable-properties file=000020
+----
+rocksdb.num.entries: 2
+rocksdb.raw.key.size: 18
+rocksdb.raw.value.size: 4
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 1
+rocksdb.comparator: leveldb.BytewiseComparator
+rocksdb.data.size: 84
+rocksdb.filter.size: 0
+rocksdb.index.size: 36
+rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(leveldb.BytewiseComparator,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+pebble.compression_stats: None:36,Snappy:79/91
+pebble.value-separation.kind: 2
+pebble.value-separation.min-size: 10
+obsolete-key: hex:00
+
+
+# Default value separation.
+sstable-properties file=000021
+----
+rocksdb.num.entries: 2
+rocksdb.raw.key.size: 18
+rocksdb.raw.value.size: 4
+rocksdb.deleted.keys: 0
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 1
+rocksdb.comparator: leveldb.BytewiseComparator
+rocksdb.data.size: 87
+rocksdb.filter.size: 0
+rocksdb.index.size: 36
+rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(leveldb.BytewiseComparator,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+pebble.num.values.in.blob-files: 2
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+pebble.compression_stats: None:56,Snappy:82/114
+pebble.value-separation.kind: 1
+pebble.value-separation.min-size: 1
+obsolete-key: hex:00
