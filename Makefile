@@ -84,7 +84,7 @@ stress-crossversion:
 
 .PHONY: test-s390x-qemu
 test-s390x-qemu: TAGS += slowbuild
-test-s390x-qemu: S390X_GOVERSION := 1.23
+test-s390x-qemu: S390X_GOVERSION := 1.25
 test-s390x-qemu:
 	@echo "Running tests on s390x using QEMU"
 	@echo "Requires a recent linux with docker and qemu-user-static installed"
