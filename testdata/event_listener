@@ -123,6 +123,7 @@ close: db/marker.format-version.000015.028
 remove: db/marker.format-version.000014.027
 sync: db
 upgraded to format version: 028
+get-disk-usage: db
 
 flush
 ----
@@ -138,6 +139,7 @@ create: db/000005.sst
 sync-data: db/000005.sst
 close: db/000005.sst
 sync: db
+get-disk-usage: db
 create: db/MANIFEST-000006
 close: db/MANIFEST-000001
 sync: db/MANIFEST-000006
@@ -163,6 +165,7 @@ create: db/000008.sst
 sync-data: db/000008.sst
 close: db/000008.sst
 sync: db
+get-disk-usage: db
 create: db/MANIFEST-000009
 close: db/MANIFEST-000006
 sync: db/MANIFEST-000009
@@ -197,6 +200,7 @@ create: db/000010.sst
 sync-data: db/000010.sst
 close: db/000010.sst
 sync: db
+get-disk-usage: db
 create: db/MANIFEST-000011
 close: db/MANIFEST-000009
 sync: db/MANIFEST-000011
@@ -233,6 +237,7 @@ create: db/000013.sst
 sync-data: db/000013.sst
 close: db/000013.sst
 sync: db
+get-disk-usage: db
 create: db/MANIFEST-000014
 close: db/MANIFEST-000011
 sync: db/MANIFEST-000014
@@ -406,6 +411,7 @@ create: db/000022.sst
 sync-data: db/000022.sst
 close: db/000022.sst
 sync: db
+get-disk-usage: db
 sync: db/MANIFEST-000016
 [JOB 15] flushed 1 memtable (100B) to L0 [000022] (657B), in 1.0s (3.0s total), output rate 657B/s
 [JOB 16] flushing 2 ingested tables
@@ -422,6 +428,7 @@ sync: db
 remove: db/MANIFEST-000014
 [JOB 16] MANIFEST deleted 000014
 [JOB 17] flushing 1 memtable (100B) to L0
+get-disk-usage: db
 sync: db/MANIFEST-000023
 [JOB 17] flush error: pebble: empty table
 

@@ -85,6 +85,7 @@ sync: db/marker.format-version.000012.028
 close: db/marker.format-version.000012.028
 remove: db/marker.format-version.000011.027
 sync: db
+get-disk-usage: db
 create: db/REMOTE-OBJ-CATALOG-000001
 sync: db/REMOTE-OBJ-CATALOG-000001
 create: db/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
@@ -107,6 +108,7 @@ close: db/000003.log
 create: db/000004.log
 sync: db
 sync: db/REMOTE-OBJ-CATALOG-000001
+get-disk-usage: db
 sync: db/MANIFEST-000001
 
 batch db
@@ -123,6 +125,7 @@ close: db/000004.log
 reuseForWrite: db/000003.log -> db/000006.log
 sync: db
 sync: db/REMOTE-OBJ-CATALOG-000001
+get-disk-usage: db
 sync: db/MANIFEST-000001
 
 batch db
@@ -291,8 +294,10 @@ close: db/000006.log
 reuseForWrite: db/000004.log -> db/000008.log
 sync: db
 sync: db/REMOTE-OBJ-CATALOG-000001
+get-disk-usage: db
 sync: db/MANIFEST-000001
 sync: db/REMOTE-OBJ-CATALOG-000001
+get-disk-usage: db
 sync: db/MANIFEST-000001
 
 batch db
@@ -339,6 +344,7 @@ open: checkpoints/checkpoint1/OPTIONS-000002
 close: checkpoints/checkpoint1/OPTIONS-000002
 open: checkpoints/checkpoint1/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint1/000006.log
+get-disk-usage: checkpoints/checkpoint1
 
 scan checkpoints/checkpoint1
 ----
@@ -391,6 +397,7 @@ open: checkpoints/checkpoint2/OPTIONS-000002
 close: checkpoints/checkpoint2/OPTIONS-000002
 open: checkpoints/checkpoint2/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint2/000006.log
+get-disk-usage: checkpoints/checkpoint2
 
 scan checkpoints/checkpoint2
 ----

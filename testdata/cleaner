@@ -37,6 +37,7 @@ create: db/marker.format-version.000001.013
 sync: db/marker.format-version.000001.013
 close: db/marker.format-version.000001.013
 sync: db
+get-disk-usage: db
 
 batch db
 set a 1
@@ -55,6 +56,7 @@ create: db/000005.sst
 sync-data: db/000005.sst
 close: db/000005.sst
 sync: db
+get-disk-usage: db
 sync: db/MANIFEST-000001
 mkdir-all: db_wal/archive 0755
 rename: db_wal/000003.log -> db_wal/archive/000003.log
@@ -74,6 +76,7 @@ create: db/000007.sst
 sync-data: db/000007.sst
 close: db/000007.sst
 sync: db
+get-disk-usage: db
 sync: db/MANIFEST-000001
 mkdir-all: db_wal/archive 0755
 rename: db_wal/000004.log -> db_wal/archive/000004.log
@@ -97,6 +100,7 @@ close: db/000007.sst
 sync-data: db/000008.sst
 close: db/000008.sst
 sync: db
+get-disk-usage: db
 sync: db/MANIFEST-000001
 close: db/000005.sst
 close: db/000007.sst
@@ -170,6 +174,7 @@ create: db1/marker.format-version.000001.013
 sync: db1/marker.format-version.000001.013
 close: db1/marker.format-version.000001.013
 sync: db1
+get-disk-usage: db1
 
 batch db1
 set a 1
@@ -188,6 +193,7 @@ create: db1/000005.sst
 sync-data: db1/000005.sst
 close: db1/000005.sst
 sync: db1
+get-disk-usage: db1
 sync: db1/MANIFEST-000001
 
 close db1
@@ -265,6 +271,7 @@ remove: db1/000456.sst
 remove: db1/000234.blob
 remove: db1/000345.blob
 sync: db1
+get-disk-usage: db1
 create: db1/MANIFEST-000459
 sync: db1/MANIFEST-000459
 create: db1/marker.manifest.000002.MANIFEST-000459
@@ -275,6 +282,7 @@ sync: db1
 remove: db1_wal/000004.log
 create: db1_wal/000460.log
 sync: db1_wal
+get-disk-usage: db1
 
 list db1
 ----

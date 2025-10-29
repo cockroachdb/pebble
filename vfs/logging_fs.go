@@ -118,6 +118,11 @@ func (fs loggingFS) RemoveAll(name string) error {
 	return err
 }
 
+func (fs loggingFS) GetDiskUsage(path string) (DiskUsage, error) {
+	fs.logFn("get-disk-usage: %s", path)
+	return fs.FS.GetDiskUsage(path)
+}
+
 func (fs loggingFS) Unwrap() FS {
 	return fs.FS
 }
