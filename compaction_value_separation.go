@@ -9,17 +9,11 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/objstorage"
-	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/valsep"
 	"github.com/cockroachdb/redact"
 )
 
-// latencyTolerantMinimumSize is the minimum size, in bytes, of a value that
-// will be separated into a blob file when the value storage policy is
-// ValueStorageLatencyTolerant.
-const latencyTolerantMinimumSize = 10
-
-var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation {
+var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction) valsep.ValueSeparation {
 	return valsep.NeverSeparateValues{}
 }
 
@@ -29,7 +23,7 @@ var neverSeparateValues getValueSeparation = func(JobID, *tableCompaction, Value
 //
 // It assumes that the compaction will write tables at d.TableFormat() or above.
 func (d *DB) determineCompactionValueSeparation(
-	jobID JobID, c *tableCompaction, valueStorage ValueStoragePolicy,
+	jobID JobID, c *tableCompaction,
 ) valsep.ValueSeparation {
 	if d.FormatMajorVersion() < FormatValueSeparation ||
 		d.opts.Experimental.ValueSeparationPolicy == nil {
@@ -48,25 +42,12 @@ func (d *DB) determineCompactionValueSeparation(
 		// For flushes, c.version is nil.
 		blobFileSet = uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs)
 	}
-	minSize := policy.MinimumSize
-	switch valueStorage {
-	case ValueStorageLowReadLatency:
-		return valsep.NeverSeparateValues{}
-	case ValueStorageLatencyTolerant:
-		minSize = latencyTolerantMinimumSize
-	default:
-	}
-	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, uint64(minSize)); !writeBlobs {
+	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, d.opts.Experimental.SpanPolicyFunc, d.cmp); !writeBlobs {
 		// This compaction should preserve existing blob references.
-		kind := sstable.ValueSeparationDefault
-		if valueStorage != ValueStorageDefault {
-			kind = sstable.ValueSeparationSpanPolicy
-		}
 		return valsep.NewPreserveAllHotBlobReferences(
 			blobFileSet,
 			outputBlobReferenceDepth,
-			kind,
-			minSize,
+			policy.MinimumSize,
 		)
 	}
 
@@ -101,7 +82,7 @@ func (d *DB) determineCompactionValueSeparation(
 // maximum blob reference depth to assign to output sstables (the actual value
 // may be lower iff the output table references fewer distinct blob files).
 func shouldWriteBlobFiles(
-	c *tableCompaction, policy ValueSeparationPolicy, minimumValueSizeForCompaction uint64,
+	c *tableCompaction, policy ValueSeparationPolicy, spanPolicyFunc SpanPolicyFunc, cmp Compare,
 ) (writeBlobs bool, referenceDepth manifest.BlobReferenceDepth) {
 	// Flushes will have no existing references to blob files and should write
 	// their values to new blob files.
@@ -124,6 +105,7 @@ func shouldWriteBlobFiles(
 		// We should try to write to new blob files.
 		return true, 0
 	}
+
 	// If the compaction's output blob reference depth would be greater than the
 	// configured max, we should rewrite the values into new blob files to
 	// restore locality.
@@ -140,7 +122,32 @@ func shouldWriteBlobFiles(
 			if !backingPropsValid {
 				continue
 			}
-			if backingProps.ValueSeparationMinSize != minimumValueSizeForCompaction {
+
+			var expectedMinSize int
+			bounds := t.UserKeyBounds()
+			spanPolicy, spanPolicyEndKey, err := spanPolicyFunc(bounds.Start)
+			if err != nil {
+				// For now, if we can't determine the span policy, we should just assume
+				// the default policy is in effect for this table.
+				expectedMinSize = policy.MinimumSize
+			} else {
+				if len(spanPolicyEndKey) > 0 && cmp(bounds.End.Key, spanPolicyEndKey) >= 0 {
+					// The table's key range now uses multiple span policies. Rewrite to new
+					// blob files so values are stored according to the current policy.
+					return true, 0
+				}
+				switch spanPolicy.ValueStoragePolicy.PolicyAdjustment {
+				case UseDefaultValueStorage:
+					// Use the global policy's minimum size.
+					expectedMinSize = policy.MinimumSize
+				case OverrideValueStorage:
+					expectedMinSize = spanPolicy.ValueStoragePolicy.MinimumSize
+				case NoValueSeparation:
+					expectedMinSize = 0
+				}
+			}
+
+			if int(backingProps.ValueSeparationMinSize) != expectedMinSize {
 				return true, 0
 			}
 		}

@@ -92,8 +92,7 @@ func TestBlobRewrite(t *testing.T) {
 					pbr := valsep.NewPreserveAllHotBlobReferences(
 						inputBlobPhysicalFiles,
 						0, /* outputBlobReferenceDepth */
-						sstable.ValueSeparationDefault,
-						0, /* original minimumSize */
+						0, /* minimumSize */
 					)
 					vs = pbr
 				case "write-new-blob-files":
