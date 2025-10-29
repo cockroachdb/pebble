@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/problemspans"
+	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
@@ -539,7 +540,8 @@ type DB struct {
 		}
 	}
 
-	fileSizeAnnotator manifest.TableAnnotator[fileSizeByBacking]
+	tableDiskUsageAnnotator    manifest.TableAnnotator[TableUsageByPlacement]
+	blobFileDiskUsageAnnotator manifest.BlobFileAnnotator[metrics.CountAndSizeByPlacement]
 
 	// problemSpans keeps track of spans of keys within LSM levels where
 	// compactions have failed; used to avoid retrying these compactions too
@@ -1880,7 +1882,6 @@ func (d *DB) AsyncFlush() (<-chan struct{}, error) {
 func (d *DB) Metrics() *Metrics {
 	metrics := &Metrics{}
 	walStats := d.mu.log.manager.Stats()
-	deletePacerMetrics := d.deletePacer.Metrics()
 
 	d.mu.Lock()
 	vers := d.mu.versions.currentVersion()
@@ -1940,35 +1941,28 @@ func (d *DB) Metrics() *Metrics {
 			metrics.Levels[level].CompensatedFillFactor = lm.compensatedFillFactor
 		}
 	}
-	metrics.Table.Zombie.All.Count = uint64(d.mu.versions.zombieTables.Count())
-	metrics.Table.Zombie.All.Bytes = d.mu.versions.zombieTables.TotalSize()
-	metrics.Table.Zombie.Local.Count, metrics.Table.Zombie.Local.Bytes = d.mu.versions.zombieTables.LocalStats()
+	metrics.Table.Physical.Zombie = d.mu.versions.zombieTables.Metrics()
+	metrics.BlobFiles.Zombie = d.mu.versions.zombieBlobs.Metrics()
 
 	// Populate obsolete blob/table metrics from both the not-yet-enqueued lists
 	// in the versionSet, and what is already in the delete pacer queue.
-	metrics.Table.Obsolete = deletePacerMetrics.InQueue.Tables
+	deletePacerMetrics := d.deletePacer.Metrics()
+	metrics.Table.Physical.Obsolete = deletePacerMetrics.InQueue.Tables
 	for _, fi := range d.mu.versions.obsoleteTables {
-		metrics.Table.Obsolete.Inc(fi.FileSize, fi.IsLocal)
+		metrics.Table.Physical.Obsolete.Inc(fi.FileSize, fi.Placement)
 	}
 	metrics.BlobFiles.Obsolete = deletePacerMetrics.InQueue.BlobFiles
 	for _, fi := range d.mu.versions.obsoleteBlobs {
-		metrics.BlobFiles.Obsolete.Inc(fi.FileSize, fi.IsLocal)
+		metrics.BlobFiles.Obsolete.Inc(fi.FileSize, fi.Placement)
 	}
 
 	metrics.private.optionsFileSize = d.optionsFileSize
 
 	d.mu.versions.logLock()
 	metrics.private.manifestFileSize = uint64(d.mu.versions.manifest.Size())
-	backingCount, backingTotalSize := d.mu.versions.latest.virtualBackings.Stats()
-	metrics.Table.BackingTable.Count = uint64(backingCount)
-	metrics.Table.BackingTable.Bytes = backingTotalSize
+	backingStats := d.mu.versions.latest.virtualBackings.Stats()
 	blobStats, _ := d.mu.versions.latest.blobFiles.Stats()
 	d.mu.versions.logUnlock()
-	metrics.BlobFiles.Live.All.Count = blobStats.Count
-	metrics.BlobFiles.Live.All.Bytes = blobStats.PhysicalSize
-	metrics.BlobFiles.ValueSize = blobStats.ValueSize
-	metrics.BlobFiles.ReferencedValueSize = blobStats.ReferencedValueSize
-	metrics.BlobFiles.ReferencedBackingValueSize = blobStats.ReferencedBackingValueSize
 
 	metrics.LogWriter.FsyncLatency = d.mu.log.metrics.fsyncLatency
 	if err := metrics.LogWriter.Merge(&d.mu.log.metrics.LogWriterMetrics); err != nil {
@@ -1984,6 +1978,13 @@ func (d *DB) Metrics() *Metrics {
 
 	d.mu.Unlock()
 
+	// The table disk usage is due to physical tables plus backings for virtual tables.
+	tableDiskUsage := d.tableDiskUsageAnnotator.MultiLevelAnnotation(vers.Levels[:])
+	metrics.Table.Physical.Live.Local = tableDiskUsage.Local.Physical
+	metrics.Table.Physical.Live.Shared = tableDiskUsage.Shared.Physical
+	metrics.Table.Physical.Live.External = tableDiskUsage.External.Physical
+	metrics.Table.Physical.Live.Accumulate(backingStats)
+
 	// TODO(jackson): Consider making these metrics optional.
 	aggProps := tablePropsAnnotator.MultiLevelAnnotation(vers.Levels[:])
 	metrics.Keys.RangeKeySetsCount = aggProps.NumRangeKeySets
@@ -1998,6 +1999,12 @@ func (d *DB) Metrics() *Metrics {
 		metrics.Levels[i].Additional.ValueBlocksSize = aggProps.ValueBlocksSize
 		metrics.Table.Compression.MergeWith(&aggProps.CompressionMetrics)
 	}
+
+	metrics.BlobFiles.Live = d.blobFileDiskUsageAnnotator.Annotation(&vers.BlobFiles)
+
+	metrics.BlobFiles.ValueSize = blobStats.ValueSize
+	metrics.BlobFiles.ReferencedValueSize = blobStats.ReferencedValueSize
+	metrics.BlobFiles.ReferencedBackingValueSize = blobStats.ReferencedBackingValueSize
 
 	blobCompressionMetrics := blobCompressionStatsAnnotator.Annotation(&vers.BlobFiles)
 	metrics.BlobFiles.Compression.MergeWith(&blobCompressionMetrics)

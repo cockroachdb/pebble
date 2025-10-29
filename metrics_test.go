@@ -39,6 +39,13 @@ func exampleMetrics() Metrics {
 	const MB = 1 << 20
 	const GB = 1 << 30
 	cs := func(n uint64) metrics.CountAndSize { return metrics.CountAndSize{Count: n, Bytes: n << 20} }
+	csp := func(n uint64) metrics.CountAndSizeByPlacement {
+		return metrics.CountAndSizeByPlacement{ByPlacement: metrics.ByPlacement[metrics.CountAndSize]{
+			Local:    cs(n * 10),
+			Shared:   cs(n * 2),
+			External: cs(n),
+		}}
+	}
 
 	var m Metrics
 	m.BlockCache.Size = 1 * GB
@@ -135,11 +142,10 @@ func exampleMetrics() Metrics {
 	m.Snapshots.PinnedKeys = 1234
 	m.Snapshots.PinnedSize = 3 * GB
 
-	m.Table.Obsolete.All = metrics.CountAndSize{Count: 16, Bytes: 15 * MB}
-	m.Table.Obsolete.Local = metrics.CountAndSize{Count: 13, Bytes: 29 * MB}
-	m.Table.Zombie.All = metrics.CountAndSize{Count: 18, Bytes: 17 * MB}
-	m.Table.Zombie.Local = metrics.CountAndSize{Count: 14, Bytes: 30 * MB}
-	m.Table.BackingTable = metrics.CountAndSize{Count: 1, Bytes: 2 * MB}
+	m.Table.Physical.Live = csp(120)
+	m.Table.Physical.Zombie = csp(10)
+	m.Table.Physical.Obsolete = csp(2)
+
 	m.Table.Compression.NoCompressionBytes = 100 * MB
 	m.Table.Compression.CompressedBytesWithoutStats = 500 * MB
 	m.Table.Compression.Snappy.CompressedBytes = 1 * GB
@@ -148,24 +154,17 @@ func exampleMetrics() Metrics {
 	m.Table.Compression.MinLZ.UncompressedBytes = 3 * GB
 	m.Table.Compression.Zstd.CompressedBytes = 10 * GB
 	m.Table.Compression.Zstd.UncompressedBytes = 50 * GB
-	m.Table.Live.Local.Bytes = 28 * GB
-	m.Table.Live.Local.Count = 10_000
 	m.Table.Garbage.PointDeletionsBytesEstimate = 1 * MB
 	m.Table.Garbage.RangeDeletionsBytesEstimate = 2 * MB
 	m.Table.InitialStatsCollectionComplete = true
 	m.Table.PendingStatsCollectionCount = 31
 
-	m.BlobFiles.Live.All.Count = 1234
-	m.BlobFiles.Live.All.Bytes = 15 * GB
+	m.BlobFiles.Live = csp(240)
+	m.BlobFiles.Obsolete = csp(14)
+	m.BlobFiles.Zombie = csp(3)
 	m.BlobFiles.ValueSize = 14 * GB
 	m.BlobFiles.ReferencedValueSize = 11 * GB
 	m.BlobFiles.ReferencedBackingValueSize = 12 * GB
-	m.BlobFiles.Obsolete.All = metrics.CountAndSize{Count: 13, Bytes: 29 * MB}
-	m.BlobFiles.Obsolete.Local = metrics.CountAndSize{Count: 13, Bytes: 29 * MB}
-	m.BlobFiles.Zombie.All = metrics.CountAndSize{Count: 14, Bytes: 30 * MB}
-	m.BlobFiles.Zombie.Local = metrics.CountAndSize{Count: 14, Bytes: 30 * MB}
-	m.BlobFiles.Live.Local.Bytes = 28 * GB
-	m.BlobFiles.Live.Local.Count = 10_000
 	m.BlobFiles.Compression.NoCompressionBytes = 10 * MB
 	m.BlobFiles.Compression.CompressedBytesWithoutStats = 50 * MB
 	m.BlobFiles.Compression.Snappy.CompressedBytes = 10 * GB
@@ -190,15 +189,11 @@ func exampleMetrics() Metrics {
 	m.WAL.BytesIn = 25
 	m.WAL.BytesWritten = 26
 
-	m.DeletePacer.InQueue.Tables.All = cs(100)
-	m.DeletePacer.InQueue.Tables.Local = cs(50)
-	m.DeletePacer.InQueue.BlobFiles.All = cs(200)
-	m.DeletePacer.InQueue.BlobFiles.Local = cs(100)
+	m.DeletePacer.InQueue.Tables = csp(100)
+	m.DeletePacer.InQueue.BlobFiles = csp(200)
 	m.DeletePacer.InQueue.Other = cs(10)
-	m.DeletePacer.Deleted.Tables.All = cs(1000)
-	m.DeletePacer.Deleted.Tables.Local = cs(500)
-	m.DeletePacer.Deleted.BlobFiles.All = cs(2000)
-	m.DeletePacer.Deleted.BlobFiles.Local = cs(1000)
+	m.DeletePacer.Deleted.Tables = csp(1000)
+	m.DeletePacer.Deleted.BlobFiles = csp(2000)
 	m.DeletePacer.Deleted.Other = cs(100)
 
 	for i := range m.manualMemory {
@@ -484,11 +479,7 @@ func TestMetrics(t *testing.T) {
 			var buf bytes.Buffer
 			for i := range lines {
 				line := lines[i]
-				if line == "num-backing" {
-					buf.WriteString(fmt.Sprintf("%d\n", m.Table.BackingTable.Count))
-				} else if line == "backing-size" {
-					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.Table.BackingTable.Bytes)))
-				} else if line == "virtual-size" {
+				if line == "virtual-size" {
 					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(m.VirtualSize())))
 				} else if strings.HasPrefix(line, "num-virtual") {
 					splits := strings.Split(line, " ")

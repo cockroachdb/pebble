@@ -259,8 +259,8 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 					// We don't know the size of the output blob file--it may have
 					// been half-written. We use the input blob file size as an
 					// approximation for deletion pacing.
-					FileSize: c.input.Physical.Size,
-					IsLocal:  true,
+					FileSize:  c.input.Physical.Size,
+					Placement: base.Local,
 				},
 			})
 		}

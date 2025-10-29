@@ -2677,7 +2677,7 @@ func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 				FileNum:  ve.NewBlobFiles[i].Physical.FileNum,
 				FileSize: ve.NewBlobFiles[i].Physical.Size,
 			},
-			isLocal: objstorage.IsLocalBlobFile(d.objProvider, ve.NewBlobFiles[i].Physical.FileNum),
+			placement: objstorage.Placement(d.objProvider, base.FileTypeBlob, ve.NewBlobFiles[i].Physical.FileNum),
 		})
 	}
 	for i := range ve.NewTables {
@@ -2706,7 +2706,7 @@ func (d *DB) cleanupVersionEdit(ve *manifest.VersionEdit) {
 				FileNum:  of.DiskFileNum,
 				FileSize: of.Size,
 			},
-			isLocal: objstorage.IsLocalTable(d.objProvider, of.DiskFileNum),
+			placement: objstorage.Placement(d.objProvider, base.FileTypeTable, of.DiskFileNum),
 		})
 	}
 	d.mu.versions.addObsoleteLocked(obsoleteFiles)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/metrics"
 )
 
 // VirtualBackings maintains information about the set of backings that support
@@ -78,7 +79,7 @@ type VirtualBackings struct {
 	// implementing Unused() efficiently.
 	unused map[*TableBacking]struct{}
 
-	totalSize uint64
+	stats metrics.CountAndSizeByPlacement
 }
 
 // MakeVirtualBackings returns empty initialized VirtualBackings.
@@ -92,8 +93,8 @@ func MakeVirtualBackings() VirtualBackings {
 type backingWithMetadata struct {
 	backing *TableBacking
 
-	// isLocal is true if the backing's fileNum is local to the file system.
-	isLocal bool
+	// placement of the backing.
+	placement base.Placement
 
 	// protectionCount is used by Protect to temporarily prevent a backing from
 	// being reported as unused.
@@ -123,19 +124,19 @@ func (bm *backingWithMetadata) referencedDataFraction() float64 {
 //
 // The added backing is unused until it is associated with a table via AddTable
 // or protected via Protect.
-func (bv *VirtualBackings) AddAndRef(backing *TableBacking, isLocal bool) {
+func (bv *VirtualBackings) AddAndRef(backing *TableBacking, placement base.Placement) {
 	// We take a reference on the backing because in case of protected backings
 	// (see Protect), we might be the only ones holding on to a backing.
 	backing.Ref()
 	bm := &backingWithMetadata{
 		backing:       backing,
-		isLocal:       isLocal,
+		placement:     placement,
 		virtualTables: make(map[base.TableNum]tableAndLevel),
 		heapIndex:     -1,
 	}
 	bv.mustAdd(bm)
 	bv.unused[backing] = struct{}{}
-	bv.totalSize += backing.Size
+	bv.stats.Inc(backing.Size, placement)
 }
 
 // Remove removes a backing. The backing must not be in use; normally backings
@@ -155,7 +156,7 @@ func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 	}
 	delete(bv.m, n)
 	delete(bv.unused, v.backing)
-	bv.totalSize -= v.backing.Size
+	bv.stats.Dec(v.backing.Size, v.placement)
 }
 
 // AddTable is used when a new table is using an existing backing. The backing
@@ -177,7 +178,7 @@ func (bv *VirtualBackings) AddTable(m *TableMetadata, level int) {
 		level: level,
 	}
 	// Update candidates heap.
-	if v.isLocal {
+	if v.placement == base.Local {
 		if v.heapIndex == -1 {
 			heap.Push(&bv.rewriteCandidates, v)
 		} else {
@@ -237,9 +238,10 @@ func (bv *VirtualBackings) Unprotect(n base.DiskFileNum) {
 	}
 }
 
-// Stats returns the number and total size of all the virtual backings.
-func (bv *VirtualBackings) Stats() (count int, totalSize uint64) {
-	return len(bv.m), bv.totalSize
+// Stats returns the number and total size of all the virtual backings, broken
+// down by placement.
+func (bv *VirtualBackings) Stats() metrics.CountAndSizeByPlacement {
+	return bv.stats
 }
 
 // Usage returns information about the usage of a backing, specifically:
@@ -321,16 +323,16 @@ func (bv *VirtualBackings) String() string {
 	nums := bv.DiskFileNums()
 
 	var buf bytes.Buffer
-	count, totalSize := bv.Stats()
-	if count == 0 {
+	stats := bv.Stats().Total()
+	if stats.Count == 0 {
 		fmt.Fprintf(&buf, "no virtual backings\n")
 	} else {
-		fmt.Fprintf(&buf, "%d virtual backings, total size %d:\n", count, totalSize)
+		fmt.Fprintf(&buf, "%d virtual backings, total size %d:\n", stats.Count, stats.Bytes)
 		for _, n := range nums {
 			v := bv.m[n]
 			fmt.Fprintf(&buf, "  %s:  size=%d  refBlobValueSize=%d  useCount=%d  protectionCount=%d  virtualizedSize=%d",
 				n, v.backing.Size, v.backing.ReferencedBlobValueSizeTotal, len(v.virtualTables), v.protectionCount, v.virtualizedSize)
-			if !v.isLocal {
+			if v.placement != base.Local {
 				fmt.Fprintf(&buf, "  (remote)")
 			}
 			tableNums := slices.Sorted(maps.Keys(v.virtualTables))

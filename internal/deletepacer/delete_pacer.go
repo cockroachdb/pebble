@@ -214,8 +214,8 @@ func (dp *DeletePacer) mainLoop() {
 				defer dp.mu.Lock()
 				dp.deleteFn(file.ObsoleteFile, file.JobID)
 			}()
-			dp.mu.metrics.InQueue.Dec(file.FileType, file.FileSize, file.IsLocal)
-			dp.mu.metrics.Deleted.Inc(file.FileType, file.FileSize, file.IsLocal)
+			dp.mu.metrics.InQueue.Dec(file.FileType, file.FileSize, file.Placement)
+			dp.mu.metrics.Deleted.Inc(file.FileType, file.FileSize, file.Placement)
 			dp.mu.deletedCond.Broadcast()
 		}
 	}
@@ -237,7 +237,7 @@ func (dp *DeletePacer) Enqueue(jobID int, files ...ObsoleteFile) {
 			dp.mu.queuedPacingBytes += b
 			dp.mu.queuedHistory.Add(now, b)
 		}
-		dp.mu.metrics.InQueue.Inc(file.FileType, file.FileSize, file.IsLocal)
+		dp.mu.metrics.InQueue.Inc(file.FileType, file.FileSize, file.Placement)
 		dp.mu.queue.PushBack(queueEntry{
 			ObsoleteFile: file,
 			JobID:        jobID,
@@ -276,8 +276,8 @@ func (dp *DeletePacer) WaitForTesting() {
 	dp.mu.Lock()
 	defer dp.mu.Unlock()
 
-	n := dp.mu.metrics.Deleted.Totals().Count + dp.mu.metrics.InQueue.Totals().Count
-	for dp.mu.metrics.Deleted.Totals().Count < n {
+	n := dp.mu.metrics.Deleted.Total().Count + dp.mu.metrics.InQueue.Total().Count
+	for dp.mu.metrics.Deleted.Total().Count < n {
 		dp.mu.deletedCond.Wait()
 	}
 }

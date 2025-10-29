@@ -57,10 +57,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
    180 (1MB) |      48.7% |       47.4% |          21 |           4
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |        live |     zombie |  total |      refed
---------------+------------+-----------------------+-------------+------------+--------+-----------
-   31 pending |    1 (2MB) |  18 (17MB local:30MB) | 1.2K (15GB) |  14 (30MB) |   14GB | 79% (11GB)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live | 1.2K (1.2GB)   240 (240MB)   120 (120MB)  | 2.4K (2.3GB)   480 (480MB)   240 (240MB)
+   zombie |  100 (100MB)    20 (20MB)     10 (10MB)   |   30 (30MB)      6 (6MB)       3 (3MB)
+ obsolete |   20 (20MB)      4 (4MB)       2 (2MB)    |  140 (140MB)    28 (28MB)     14 (14MB)
+
+MISC            |
+----------------+-----------
+table stats     | 31 pending
+table garbage   |
+  point del     | 1MB
+  range del     | 2MB
+blob values     |
+  total         | 14GB
+  refed         | 11GB (79%)
+  backing-refed | 12GB (86%)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -86,11 +99,11 @@ COMPRESSION
          zstd |   10GB (CR=5) |  100GB (CR=5)
       unknown |         500MB |          50MB
 
-DELETE PACER   |             in queue             |            deleted
----------------+----------------------------------+------------------------------
-        tables |  100 (100MB) [local: 50 (50MB)]  | 1K (1GB) [local: 500 (500MB)]
-    blob files | 200 (200MB) [local: 100 (100MB)] |  2K (2GB) [local: 1K (1GB)]
-   other files |            10 (10MB)             |          100 (100MB)
+DELETE PACER   |            in queue            |             deleted
+---------------+--------------------------------+--------------------------------
+        tables | 1.3K (1.3GB) [local: 1K (1GB)] | 13K (13GB) [local: 10K (9.8GB)]
+    blob files | 2.6K (2.5GB) [local: 2K (2GB)] | 26K (25GB) [local: 20K (20GB)]
+   other files |           10 (10MB)            |           100 (100MB)
 ----
 ----
 
@@ -155,10 +168,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
     1 (280B) |       0.0% |        0.0% |           1 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   1 (707B)       0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -264,10 +290,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
     2 (560B) |      66.7% |        0.0% |           2 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) | 2 (1.4KB local:1.4KB) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -355,10 +394,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
     2 (560B) |      66.7% |        0.0% |           2 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) | 2 (1.4KB local:1.4KB) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -443,10 +495,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
     1 (280B) |      66.7% |        0.0% |           1 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |   1 (707B local:707B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |   1 (707B)       0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -534,10 +599,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |      66.7% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -664,10 +742,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |      66.7% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.2KB) |     0 (0B) |    21B | 100% (21B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   9 (6.8KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 21B
+  refed         | 21B (100%)
+  backing-refed | 21B (100%)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -780,10 +871,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |      55.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.2KB) |     0 (0B) |    21B | 100% (21B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   9 (6.8KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 21B
+  refed         | 21B (100%)
+  backing-refed | 21B (100%)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -947,10 +1051,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |      55.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.2KB) |     0 (0B) |    21B | 100% (21B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   15 (11KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 21B
+  refed         | 21B (100%)
+  backing-refed | 21B (100%)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1076,10 +1193,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |      55.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.2KB) |     0 (0B) |    21B | 100% (21B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   22 (16KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 21B
+  refed         | 21B (100%)
+  backing-refed | 21B (100%)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1162,14 +1292,10 @@ Blob files:
 # There should be 2 backing tables. Note that tiny sstables have inaccurate
 # virtual sstable sizes.
 metrics-value
-num-backing
-backing-size
 num-virtual
 num-virtual 0
 virtual-size
 ----
-0
-0B
 0
 0
 0B
@@ -1214,10 +1340,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |       0.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.2KB) |     0 (0B) |    21B | 100% (21B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   21 (15KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 21B
+  refed         | 21B (100%)
+  backing-refed | 21B (100%)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1300,14 +1439,10 @@ Blob files:
   B000024 physical:{000024 size:[177 (177B)] vals:[3 (3B)]}
 
 metrics-value
-num-backing
-backing-size
 num-virtual
 num-virtual 0
 virtual-size
 ----
-0
-0B
 0
 0
 0B
@@ -1344,14 +1479,10 @@ Blob files:
 
 # Virtual sstables metrics should be gone after the compaction.
 metrics-value
-num-backing
-backing-size
 num-virtual
 num-virtual 0
 virtual-size
 ----
-0
-0B
 0
 0
 0B
@@ -1396,10 +1527,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |       0.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |  7 (1.2KB) |     0 (0B) |    21B | 100% (21B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   18 (13KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 21B
+  refed         | 21B (100%)
+  backing-refed | 21B (100%)
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1493,10 +1637,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |       0.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   3 (2.1KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1581,10 +1738,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |      50.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |    0 (0B)       3 (1.9KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1684,10 +1854,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |      50.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |    0 (0B)       4 (2.6KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1779,10 +1962,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |      50.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   1 (707B)      4 (2.6KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1861,10 +2057,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |       0.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   1 (707B)      4 (2.6KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -1944,10 +2153,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
       0 (0B) |       0.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   1 (702B)      2 (1.3KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 0B
+  range del     | 0B
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -2069,10 +2291,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
     2 (560B) |       0.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   5 (3.5KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 502B
+  range del     | 1.4KB
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot
@@ -2154,10 +2389,23 @@ ITERATORS
 -------------+------------+-------------+-------------+------------
     2 (560B) |       0.0% |        0.0% |           0 |           0
 
-FILES                 tables                       |       blob files        |     blob values
-   stats prog |    backing |                zombie |       live |     zombie |  total |      refed
---------------+------------+-----------------------+------------+------------+--------+-----------
-   all loaded |     0 (0B) |       0 (0B local:0B) |     0 (0B) |     0 (0B) |     0B |    0% (0B)
+FILES                 physical tables                 |                blob files
+          |     local        shared        remote     |     local        shared        remote
+----------+-------------------------------------------+------------------------------------------
+     live |   5 (3.5KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+ obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+
+MISC            |
+----------------+-----------
+table stats     | all loaded
+table garbage   |
+  point del     | 502B
+  range del     | 1.4KB
+blob values     |
+  total         | 0B
+  refed         | 0B
+  backing-refed | 0B
 
 CGO MEMORY    |          block cache           |                     memtables
           tot |           tot |           data |            maps |            ents |           tot

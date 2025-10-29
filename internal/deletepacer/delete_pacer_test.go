@@ -100,9 +100,9 @@ func executeTest(t *testing.T, td *datadriven.TestData, ts *testState) {
 			fileSize, err := crhumanize.ParseBytes[uint64](words[1])
 			require.NoErrorf(t, err, "%s: %q", td.Pos, l)
 			ts.dp.Enqueue(0, ObsoleteFile{
-				FileType: base.FileTypeTable,
-				FileSize: fileSize,
-				IsLocal:  true,
+				FileType:  base.FileTypeTable,
+				FileSize:  fileSize,
+				Placement: base.Local,
 			})
 			ts.adds = append(ts.adds, logEntry{
 				timestamp: time.Now(),
@@ -194,9 +194,9 @@ func TestCloseWithPacing(t *testing.T) {
 	largeFiles := make([]ObsoleteFile, 100)
 	for i := range largeFiles {
 		largeFiles[i] = ObsoleteFile{
-			FileType: base.FileTypeTable,
-			FileSize: 10 * 1024,
-			IsLocal:  true,
+			FileType:  base.FileTypeTable,
+			FileSize:  10 * 1024,
+			Placement: base.Local,
 		}
 	}
 
@@ -235,9 +235,9 @@ func TestFallingBehind(t *testing.T) {
 	addJob := func(fileSize int) {
 		x++
 		dp.Enqueue(1, ObsoleteFile{
-			FileType: base.FileTypeTable,
-			FileSize: uint64(fileSize),
-			IsLocal:  true,
+			FileType:  base.FileTypeTable,
+			FileSize:  uint64(fileSize),
+			Placement: base.Local,
 		})
 	}
 

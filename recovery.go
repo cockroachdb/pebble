@@ -11,7 +11,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
@@ -306,8 +305,8 @@ func recoverVersion(
 	// Populate the virtual backings for virtual sstables since we have finished
 	// version edit accumulation.
 	for _, b := range bve.AddedFileBacking {
-		isLocal := objstorage.IsLocalTable(provider, b.DiskFileNum)
-		vs.latest.virtualBackings.AddAndRef(b, isLocal)
+		placement := objstorage.Placement(provider, base.FileTypeTable, b.DiskFileNum)
+		vs.latest.virtualBackings.AddAndRef(b, placement)
 	}
 	for l, addedLevel := range bve.AddedTables {
 		for _, m := range addedLevel {
@@ -343,28 +342,5 @@ func recoverVersion(
 	})
 	vs.version = newVersion
 	setBasicLevelMetrics(&vs.metrics, newVersion)
-	vs.metrics.Table.Live.All = metrics.CountAndSize{}
-	for i := range vs.metrics.Levels {
-		vs.metrics.Table.Live.All.Accumulate(vs.metrics.Levels[i].Tables)
-	}
-	for _, l := range newVersion.Levels {
-		for f := range l.All() {
-			if !f.Virtual {
-				if isLocal, localSize := sizeIfLocal(f.TableBacking, provider); isLocal {
-					vs.metrics.Table.Live.Local.Inc(localSize)
-				}
-			}
-		}
-	}
-	for backing := range vs.latest.virtualBackings.All() {
-		if isLocal, localSize := sizeIfLocal(backing, provider); isLocal {
-			vs.metrics.Table.Live.Local.Inc(localSize)
-		}
-	}
-	for blobFile := range newVersion.BlobFiles.All() {
-		if objstorage.IsLocalBlobFile(provider, blobFile.Physical.FileNum) {
-			vs.metrics.BlobFiles.Live.Local.Inc(blobFile.Physical.Size)
-		}
-	}
 	return vs, nil
 }
