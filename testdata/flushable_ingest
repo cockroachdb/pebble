@@ -30,10 +30,10 @@ blockFlush
 # One WAL, corresponding to the mutable memtable containing the set.
 ls
 ----
-000002.log
+000003.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 ext1
 ext2
@@ -52,7 +52,7 @@ lsm
 # memtable.
 ls
 ----
-000002.log
+000003.log
 000004.sst
 000005.sst
 000006.sst
@@ -60,7 +60,7 @@ ls
 000008.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 marker.format-version.000015.028
 marker.manifest.000001.MANIFEST-000001
@@ -86,7 +86,7 @@ d:1
 # flush completes.
 ls
 ----
-000002.log
+000003.log
 000004.sst
 000005.sst
 000006.sst
@@ -94,7 +94,7 @@ ls
 000008.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 marker.format-version.000015.028
 marker.manifest.000001.MANIFEST-000001
@@ -107,7 +107,7 @@ close
 # after the DB is closed, those sstables should still be hanging around.
 ls
 ----
-000002.log
+000003.log
 000004.sst
 000005.sst
 000006.sst
@@ -115,7 +115,7 @@ ls
 000008.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 marker.format-version.000015.028
 marker.manifest.000001.MANIFEST-000001
@@ -129,7 +129,7 @@ lsm
 L0.1:
   000004:[a#11,SET-a#11,SET]
 L0.0:
-  000010:[a#10,SET-a#10,SET]
+  000011:[a#10,SET-a#10,SET]
 L6:
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
@@ -201,13 +201,13 @@ ingest ext4
 
 ls
 ----
-000002.log
+000003.log
 000004.sst
 000005.log
 000006.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 ext5
 marker.format-version.000015.028
@@ -430,7 +430,7 @@ f:1
 # ingested files.
 ls
 ----
-000002.log
+000003.log
 000004.sst
 000005.sst
 000006.sst
@@ -438,7 +438,7 @@ ls
 000008.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 marker.format-version.000015.028
 marker.manifest.000001.MANIFEST-000001
@@ -450,7 +450,7 @@ close
 # after the DB is closed, those memtables should still be hanging around.
 ls
 ----
-000002.log
+000003.log
 000004.sst
 000005.sst
 000006.sst
@@ -458,7 +458,7 @@ ls
 000008.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 marker.format-version.000015.028
 marker.manifest.000001.MANIFEST-000001
@@ -472,8 +472,8 @@ lsm
 L0.1:
   000004:[a#11,SET-a#11,SET]
 L0.0:
-  000010:[a#10,SET-a#10,SET]
-  000012:[f#14,SET-f#14,SET]
+  000011:[a#10,SET-a#10,SET]
+  000013:[f#14,SET-f#14,SET]
 L6:
   000005:[b#12,SET-b#12,SET]
   000006:[d#13,SET-d#13,SET]
@@ -485,16 +485,16 @@ ls
 000004.sst
 000005.sst
 000006.sst
-000010.sst
-000012.sst
-000013.log
+000011.sst
+000013.sst
+000014.log
 LOCK
 MANIFEST-000001
-MANIFEST-000011
-OPTIONS-000014
+MANIFEST-000012
+OPTIONS-000010
 ext
 marker.format-version.000015.028
-marker.manifest.000002.MANIFEST-000011
+marker.manifest.000002.MANIFEST-000012
 
 # Make sure that the new mutable memtable can accept writes.
 batch
@@ -627,14 +627,14 @@ L0.0:
 
 ls
 ----
-000002.log
+000003.log
 000004.sst
 000005.log
 000006.log
 000007.sst
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 marker.format-version.000015.028
 marker.manifest.000001.MANIFEST-000001
@@ -646,13 +646,13 @@ close
 # is gone because that file was never synced.
 reset-to-crash-clone
 ----
-000002.log
+000003.log
 000004.sst
 000005.log
 000006.log
 LOCK
 MANIFEST-000001
-OPTIONS-000003
+OPTIONS-000002
 ext
 ext1
 marker.format-version.000015.028

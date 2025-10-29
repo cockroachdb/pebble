@@ -37,10 +37,10 @@ open
 list-files build
 ----
 build:
-  000002.log
+  000003.log
   LOCK
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
@@ -56,12 +56,12 @@ flush
 list-files build
 ----
 build:
-  000002.log
+  000003.log
   000004.log
   000005.sst
   LOCK
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
@@ -76,20 +76,20 @@ list-files build
 ----
 build:
   000005.sst
-  000008.log
+  000009.log
   LOCK
   MANIFEST-000001
-  MANIFEST-000007
-  OPTIONS-000009
+  MANIFEST-000008
+  OPTIONS-000007
   marker.format-version.000001.013
-  marker.manifest.000002.MANIFEST-000007
+  marker.manifest.000002.MANIFEST-000008
 
 delete-all build/MANIFEST-000007
 ----
 
 find-manifest-start build
 ----
-index: 0, offset: 0, error: nil
+index: 1, offset: 87, error: nil
 
 make-file build manifest 7
 bf13d7161a00010114636f636b726f6163685f636f6d70617261746f7203
@@ -122,4 +122,4 @@ created
 
 find-manifest-start build
 ----
-index: 1, offset: 739, error: nil
+index: 2, offset: 87, error: nil

@@ -5,14 +5,14 @@ tree
 ----
           /
             build/
-      36      000002.log
+      36      000003.log
      661      000005.sst
      661      000007.sst
      655      000009.sst
        0      LOCK
      172      MANIFEST-000001
      209      MANIFEST-000008
-    2770      OPTIONS-000003
+    2770      OPTIONS-000002
        0      marker.format-version.000012.025
        0      marker.manifest.000002.MANIFEST-000008
             simple_ingest/
@@ -21,15 +21,15 @@ tree
      172      MANIFEST-000001
      209      MANIFEST-000008
               checkpoint/
-      11        000002.log
+      11        000003.log
      678        000004.sst
      661        000005.sst
      172        MANIFEST-000001
-    2770        OPTIONS-000003
+    2770        OPTIONS-000002
        0        marker.format-version.000001.025
        0        marker.manifest.000001.MANIFEST-000001
 
-cat build/OPTIONS-000003
+cat build/OPTIONS-000002
 ----
 ----
 [Version]

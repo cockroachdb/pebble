@@ -6,16 +6,16 @@ ok
 
 list path=(a,data)
 ----
-  000002.log
+  000003.log
   LOCK
   MANIFEST-000001
-  OPTIONS-000003
+  OPTIONS-000002
   marker.format-version.000001.013
   marker.manifest.000001.MANIFEST-000001
 
 # The OPTIONS file should not include a [WAL Failover] stanza.
 
-grep-between path=(a,data/OPTIONS-000003) start=(\[WAL Failover\]) end=^$
+grep-between path=(a,data/OPTIONS-000002) start=(\[WAL Failover\]) end=^$
 ----
 
 # Open the same database with WAL failover configured, but pointing to a
@@ -33,17 +33,17 @@ list path=(b,)
 
 list path=(a,data)
 ----
-  000006.log
+  000007.log
   LOCK
   MANIFEST-000001
-  MANIFEST-000005
-  OPTIONS-000007
+  MANIFEST-000006
+  OPTIONS-000005
   marker.format-version.000001.013
-  marker.manifest.000002.MANIFEST-000005
+  marker.manifest.000002.MANIFEST-000006
 
 # The new OPTIONS file should declare the secondary WAL path.
 
-grep-between path=(a,data/OPTIONS-000007) start=(\[WAL Failover\]) end=^$
+grep-between path=(a,data/OPTIONS-000005) start=(\[WAL Failover\]) end=^$
 ----
   secondary_dir=secondary-wals
   primary_dir_probe_interval=1s
