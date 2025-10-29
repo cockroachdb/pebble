@@ -1306,37 +1306,63 @@ func (p SpanPolicy) String() string {
 	if p.DisableValueSeparationBySuffix {
 		sb.WriteString("disable-value-separation-by-suffix,")
 	}
-	switch p.ValueStoragePolicy {
-	case ValueStorageLowReadLatency:
-		sb.WriteString("low-read-latency,")
-	case ValueStorageLatencyTolerant:
-		sb.WriteString("latency-tolerant,")
+	switch p.ValueStoragePolicy.PolicyAdjustment {
+	case NoValueSeparation:
+		sb.WriteString("no-value-separation,")
+	case OverrideValueStorage:
+		sb.WriteString("override,")
 	}
 	return strings.TrimSuffix(sb.String(), ",")
 }
 
-// ValueStoragePolicy is a hint used to determine where to store the values for
-// KVs.
-type ValueStoragePolicy uint8
+// ValueStoragePolicy is used to determine where to store the values for
+// KVs. If the PolicyAdjustment specified is OverrideValueStorage, the remaining fields
+// are used to override the global configuration for value separation.
+type ValueStoragePolicy struct {
+	// PolicyAdjustment specifies the policy adjustment to apply.
+	PolicyAdjustment ValueStoragePolicyAdjustment
+
+	// Remaining fields are ignored, unless the PolicyAdjustment is OverrideValueStorage.
+
+	// MinimumSize is the minimum size of the value.
+	MinimumSize int
+}
+
+// ValueStoragePolicyAdjustment is a hint used to determine where to store the
+// values for KVs.
+type ValueStoragePolicyAdjustment uint8
 
 const (
-	// ValueStorageDefault is the default value; Pebble will respect global
-	// configuration for value blocks and value separation.
-	ValueStorageDefault ValueStoragePolicy = iota
+	// UseDefaultValueStorage is the default value; Pebble will respect global
+	// configuration for value separation.
+	UseDefaultValueStorage ValueStoragePolicyAdjustment = iota
 
-	// ValueStorageLowReadLatency indicates Pebble should prefer storing values
+	// NoValueSeparation indicates Pebble should prefer storing values
 	// in-place.
-	ValueStorageLowReadLatency
+	NoValueSeparation
 
-	// ValueStorageLatencyTolerant indicates value retrieval can tolerate
-	// additional latency, so Pebble should aggressively prefer storing values
-	// separately if it can reduce write amplification.
-	//
-	// If the global Options' enable value separation, Pebble may choose to
-	// separate values under the LatencyTolerant policy even if they do not meet
-	// the minimum size threshold of the global Options' ValueSeparationPolicy.
-	ValueStorageLatencyTolerant
+	// OverrideValueStorage indicates that value separation thresholds (see
+	// valsep.ValueSeparationOutputConfig) for this key range are being
+	// overridden from a SpanPolicy. If the global Options' enable value
+	// separation, Pebble may choose to separate values under the
+	// OverrideValueStorage policy even if they do not meet the minimum size
+	// threshold of the global Options' ValueSeparationPolicy.
+	OverrideValueStorage
 )
+
+// ValueStorageLatencyTolerant is the suggested ValueStoragePolicy
+// to use for key ranges that can tolerate higher value retrieval
+// latency.
+var ValueStorageLatencyTolerant = ValueStoragePolicy{
+	PolicyAdjustment: OverrideValueStorage,
+	MinimumSize:      10,
+}
+
+// ValueStorageLowReadLatency is the suggested ValueStoragePolicy
+// to use for key ranges that require low value retrieval latency.
+var ValueStorageLowReadLatency = ValueStoragePolicy{
+	PolicyAdjustment: NoValueSeparation,
+}
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.
 //

@@ -43,9 +43,6 @@ type ValueSeparator struct {
 	inputBlobPhysicalFiles   map[base.BlobFileID]*manifest.PhysicalBlobFile
 	outputBlobReferenceDepth manifest.BlobReferenceDepth
 	comparer                 *base.Comparer
-	// originalValueSeparationPolicy is the value separation policy that was
-	// originally used for existing blob references.
-	originalValueSeparationPolicy sstable.ValueSeparationKind
 	// newBlobObject constructs a new blob object for use in the compaction.
 	newBlobObject      func() (objstorage.Writable, objstorage.ObjectMetadata, error)
 	shortAttrExtractor base.ShortAttributeExtractor
@@ -110,16 +107,14 @@ var _ ValueSeparation = &ValueSeparator{}
 func NewPreserveAllHotBlobReferences(
 	inputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile,
 	outputBlobReferenceDepth manifest.BlobReferenceDepth,
-	originalValueSeparationPolicy sstable.ValueSeparationKind,
-	originalMinimumSize int,
+	globalMinimumSize int,
 ) *ValueSeparator {
 	return &ValueSeparator{
-		mode:                          preserveAllHotBlobReferences,
-		inputBlobPhysicalFiles:        inputBlobPhysicalFiles,
-		outputBlobReferenceDepth:      outputBlobReferenceDepth,
-		originalValueSeparationPolicy: originalValueSeparationPolicy,
-		minimumSize:                   originalMinimumSize,
-		globalMinimumSize:             originalMinimumSize,
+		mode:                     preserveAllHotBlobReferences,
+		inputBlobPhysicalFiles:   inputBlobPhysicalFiles,
+		outputBlobReferenceDepth: outputBlobReferenceDepth,
+		minimumSize:              globalMinimumSize,
+		globalMinimumSize:        globalMinimumSize,
 	}
 }
 
@@ -159,19 +154,10 @@ func NewWriteNewBlobFiles(
 
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (vs *ValueSeparator) SetNextOutputConfig(config ValueSeparationOutputConfig) {
-	if vs.mode == preserveAllHotBlobReferences {
-		// When preserving all hot blob references, value separation policy
-		// overrides are ignored. We should preserve the value separation
-		// characteristics that existed in the input sstables.
-		return
-	}
 	vs.minimumSize = config.MinimumSize
 }
 
 func (vs *ValueSeparator) Kind() sstable.ValueSeparationKind {
-	if vs.mode == preserveAllHotBlobReferences {
-		return vs.originalValueSeparationPolicy
-	}
 	if vs.minimumSize != vs.globalMinimumSize {
 		return sstable.ValueSeparationSpanPolicy
 	}
