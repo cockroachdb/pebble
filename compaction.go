@@ -250,7 +250,7 @@ type tableCompaction struct {
 	// b) rewrite blob files: The compaction will write eligible values to new
 	// blob files. This consumes more write bandwidth because all values are
 	// rewritten. However it restores locality.
-	getValueSeparation func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation
+	getValueSeparation func(JobID, *tableCompaction) valsep.ValueSeparation
 
 	// startLevel is the level that is being compacted. Inputs from startLevel
 	// and outputLevel will be merged to produce a set of outputLevel files.
@@ -542,7 +542,7 @@ func (c *tableCompaction) makeInfo(jobID JobID) CompactionInfo {
 	return info
 }
 
-type getValueSeparation func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation
+type getValueSeparation func(JobID, *tableCompaction) valsep.ValueSeparation
 
 // newCompaction constructs a compaction from the provided picked compaction.
 //
@@ -3416,38 +3416,27 @@ func (d *DB) compactAndWrite(
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 
-	// Determine the value separation policy for this compaction.
-	// We pass the value storage span policy if one applies for the entire
-	// compaction keyspace in order to preserve blob references.
-	// Note that the value storage policy may change per table if
-	// there are different span policies in effect for this output
-	// range.
-	var compactionValueStoragePolicy ValueStoragePolicy
-	var spanPolicyEndKey []byte
+	var spanPolicyValid bool
 	var spanPolicy SpanPolicy
-	spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(c.bounds.Start)
-	if err != nil {
-		return runner.Finish().WithError(err)
-	}
-	if len(spanPolicyEndKey) == 0 || d.cmp(c.bounds.End.Key, spanPolicyEndKey) < 0 {
-		compactionValueStoragePolicy = spanPolicy.ValueStoragePolicy
-	}
+	// If spanPolicyValid is true and spanPolicyEndKey is empty, then spanPolicy
+	// applies for the rest of the keyspace.
+	var spanPolicyEndKey []byte
 
-	valueSeparation := c.getValueSeparation(jobID, c, compactionValueStoragePolicy)
+	valueSeparation := c.getValueSeparation(jobID, c)
 	for runner.MoreDataToWrite() {
 		if c.cancel.Load() {
 			return runner.Finish().WithError(ErrCancelledCompaction)
 		}
 		// Create a new table.
 		firstKey := runner.FirstKey()
-		if len(spanPolicyEndKey) > 0 && d.cmp(firstKey, spanPolicyEndKey) >= 0 {
+		if !spanPolicyValid || (len(spanPolicyEndKey) > 0 && d.cmp(firstKey, spanPolicyEndKey) >= 0) {
 			var err error
 			spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(firstKey)
 			if err != nil {
 				return runner.Finish().WithError(err)
 			}
+			spanPolicyValid = true
 		}
-
 		writerOpts := d.makeWriterOptions(c.outputLevel.level)
 		if spanPolicy.DisableValueSeparationBySuffix {
 			writerOpts.DisableValueBlocks = true
@@ -3456,14 +3445,16 @@ func (d *DB) compactAndWrite(
 			writerOpts.Compression = block.FastestCompression
 		}
 		vSep := valueSeparation
-		switch spanPolicy.ValueStoragePolicy {
-		case ValueStorageLowReadLatency:
+		switch spanPolicy.ValueStoragePolicy.PolicyAdjustment {
+		case UseDefault:
+			// No change to value separation.
+		case NoValueSeparation:
 			vSep = valsep.NeverSeparateValues{}
-		case ValueStorageLatencyTolerant:
+		case Override:
 			// This span of keyspace is more tolerant of latency, so set a more
 			// aggressive value separation policy for this output.
 			vSep.SetNextOutputConfig(valsep.ValueSeparationOutputConfig{
-				MinimumSize: latencyTolerantMinimumSize,
+				MinimumSize: spanPolicy.ValueStoragePolicy.MinimumSize,
 			})
 		}
 		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts)

@@ -1507,6 +1507,49 @@ func runCompactionTest(
 			s := blobRewriteLog.String()
 			return s
 
+		case "set-span-policies":
+			var spanPolicies []SpanAndPolicy
+			for _, line := range strings.Split(td.Input, "\n") {
+				line = strings.TrimSpace(line)
+				args := strings.Fields(line)
+				if len(args) < 2 {
+					td.Fatalf(t, "expected span and policy, got: %s", line)
+				}
+				// First arg should be keys in the form <start>,<end>
+				keys := strings.Split(args[0], ",")
+				keyRange := KeyRange{
+					Start: []byte(keys[0]),
+					End:   []byte(keys[1]),
+				}
+				policy := SpanPolicy{}
+				args = args[1:]
+				for _, arg := range args {
+					parts := strings.Split(arg, "=")
+					switch parts[0] {
+					case "value-storage-policy":
+					case "val-sep-minimum-size":
+						if len(parts) != 2 {
+							td.Fatalf(t, "expected val-sep-minimum-size=<size>, got: %s", arg)
+						}
+						size, err := strconv.ParseUint(parts[1], 10, 64)
+						if err != nil {
+							td.Fatalf(t, "parsing value-minimum-size: %s", err)
+						}
+						policy.ValueStoragePolicy.MinimumSize = int(size)
+						if size == 0 {
+							policy.ValueStoragePolicy.PolicyAdjustment = NoValueSeparation
+						} else if int(size) != d.opts.Experimental.ValueSeparationPolicy().MinimumSize {
+							policy.ValueStoragePolicy.PolicyAdjustment = Override
+						}
+					}
+				}
+				spanPolicies = append(spanPolicies, SpanAndPolicy{
+					KeyRange: keyRange,
+					Policy:   policy,
+				})
+			}
+			d.opts.Experimental.SpanPolicyFunc = MakeStaticSpanPolicyFunc(d.cmp, spanPolicies...)
+			return ""
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}

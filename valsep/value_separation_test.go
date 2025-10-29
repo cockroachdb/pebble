@@ -86,7 +86,6 @@ func TestValueSeparationPolicy(t *testing.T) {
 					pbr := NewPreserveAllHotBlobReferences(
 						inputBlobPhysicalFiles, /* blob file set */
 						manifest.BlobReferenceDepth(0),
-						sstable.ValueSeparationDefault,
 						0, /* minimum size */
 					)
 					vs = pbr

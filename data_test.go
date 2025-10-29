@@ -918,7 +918,6 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	valueSeparator.pbr = valsep.NewPreserveAllHotBlobReferences(
 		valueSeparator.metas,
 		0, /* outputreference depth */
-		sstable.ValueSeparationDefault,
 		d.opts.Experimental.ValueSeparationPolicy().MinimumSize,
 	)
 
@@ -937,7 +936,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			flushable: mem,
 			flushed:   make(chan struct{}),
 		}}
-		getValueSeparator := func(JobID, *tableCompaction, ValueStoragePolicy) valsep.ValueSeparation {
+		getValueSeparator := func(JobID, *tableCompaction) valsep.ValueSeparation {
 			return valueSeparator
 		}
 		c, err := newFlush(d.opts, d.mu.versions.currentVersion(), d.mu.versions.latest.l0Organizer,
