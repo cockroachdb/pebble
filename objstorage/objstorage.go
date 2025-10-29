@@ -162,6 +162,17 @@ func (meta *ObjectMetadata) IsShared() bool {
 	return meta.Remote.CreatorID.IsSet()
 }
 
+func (meta *ObjectMetadata) Placement() base.Placement {
+	switch {
+	case meta.IsShared():
+		return base.Shared
+	case meta.IsExternal():
+		return base.External
+	default:
+		return base.Local
+	}
+}
+
 // AssertValid checks that the metadata is sane.
 func (meta *ObjectMetadata) AssertValid() {
 	if !meta.IsRemote() {
@@ -395,23 +406,26 @@ func Copy(ctx context.Context, r ReadHandle, out Writable, offset, length uint64
 	return nil
 }
 
-// IsLocalBlobFile returns true if a blob file with the given fileNum exists and is
-// local.
-func IsLocalBlobFile(provider Provider, fileNum base.DiskFileNum) bool {
-	meta, err := provider.Lookup(base.FileTypeBlob, fileNum)
-	return err == nil && !meta.IsRemote()
-}
-
 // IsLocalTable returns true if a table with the given fileNum exists and is
 // local.
 func IsLocalTable(provider Provider, fileNum base.DiskFileNum) bool {
-	meta, err := provider.Lookup(base.FileTypeTable, fileNum)
-	return err == nil && !meta.IsRemote()
+	return Placement(provider, base.FileTypeTable, fileNum) == base.Local
 }
 
 // IsExternalTable returns true if a table with the given fileNum exists and is
 // external.
 func IsExternalTable(provider Provider, fileNum base.DiskFileNum) bool {
-	meta, err := provider.Lookup(base.FileTypeTable, fileNum)
-	return err == nil && meta.IsExternal()
+	return Placement(provider, base.FileTypeTable, fileNum) == base.External
+}
+
+// Placement returns the placement for a given object. The object must be known
+// to the provider.
+func Placement(provider Provider, fileType base.FileType, fileNum base.DiskFileNum) base.Placement {
+	meta, err := provider.Lookup(fileType, fileNum)
+	if err != nil {
+		// If an object is unknown to the provider, it must be a local object that
+		// disappeared before we reopened a store.
+		return base.Local
+	}
+	return meta.Placement()
 }
