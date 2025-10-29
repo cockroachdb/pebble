@@ -100,6 +100,7 @@ sync: db/marker.format-version.000015.028
 close: db/marker.format-version.000015.028
 remove: db/marker.format-version.000014.027
 sync: db
+get-disk-usage: db
 
 batch db
 set a 1
@@ -118,6 +119,7 @@ create: db/000005.sst
 sync-data: db/000005.sst
 close: db/000005.sst
 sync: db
+get-disk-usage: db
 sync: db/MANIFEST-000001
 
 batch db
@@ -137,6 +139,7 @@ create: db/000007.sst
 sync-data: db/000007.sst
 close: db/000007.sst
 sync: db
+get-disk-usage: db
 sync: db/MANIFEST-000001
 
 batch db
@@ -280,6 +283,7 @@ create: db/000009.sst
 sync-data: db/000009.sst
 close: db/000009.sst
 sync: db
+get-disk-usage: db
 sync: db/MANIFEST-000001
 open: db/000005.sst (options: *vfs.randomReadsOption)
 read-at(610, 61): db/000005.sst
@@ -309,6 +313,7 @@ close: db/000009.sst
 sync-data: db/000010.sst
 close: db/000010.sst
 sync: db
+get-disk-usage: db
 sync: db/MANIFEST-000001
 close: db/000005.sst
 close: db/000007.sst
@@ -358,6 +363,7 @@ open: checkpoints/checkpoint1/OPTIONS-000002
 close: checkpoints/checkpoint1/OPTIONS-000002
 open: checkpoints/checkpoint1/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint1/000006.log
+get-disk-usage: checkpoints/checkpoint1
 
 scan checkpoints/checkpoint1
 ----
@@ -425,6 +431,7 @@ open: checkpoints/checkpoint2/OPTIONS-000002
 close: checkpoints/checkpoint2/OPTIONS-000002
 open: checkpoints/checkpoint2/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint2/000006.log
+get-disk-usage: checkpoints/checkpoint2
 
 scan checkpoints/checkpoint2
 ----
@@ -467,6 +474,7 @@ open: checkpoints/checkpoint3/OPTIONS-000002
 close: checkpoints/checkpoint3/OPTIONS-000002
 open: checkpoints/checkpoint3/000006.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint3/000006.log
+get-disk-usage: checkpoints/checkpoint3
 
 scan checkpoints/checkpoint3
 ----
@@ -610,6 +618,7 @@ open: checkpoints/checkpoint4/OPTIONS-000002
 close: checkpoints/checkpoint4/OPTIONS-000002
 open: checkpoints/checkpoint4/000008.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint4/000008.log
+get-disk-usage: checkpoints/checkpoint4
 
 scan checkpoints/checkpoint4
 ----
@@ -735,6 +744,7 @@ create: checkpoints/checkpoint5/000019.sst
 sync-data: checkpoints/checkpoint5/000019.sst
 close: checkpoints/checkpoint5/000019.sst
 sync: checkpoints/checkpoint5
+get-disk-usage: checkpoints/checkpoint5
 create: checkpoints/checkpoint5/MANIFEST-000020
 sync: checkpoints/checkpoint5/MANIFEST-000020
 create: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000020
@@ -745,6 +755,7 @@ sync: checkpoints/checkpoint5
 remove: checkpoints/checkpoint5/000008.log
 create: checkpoints/checkpoint5/000021.log
 sync: checkpoints/checkpoint5
+get-disk-usage: checkpoints/checkpoint5
 
 print-backing checkpoints/checkpoint5
 ----
@@ -837,6 +848,7 @@ create: checkpoints/checkpoint6/000019.sst
 sync-data: checkpoints/checkpoint6/000019.sst
 close: checkpoints/checkpoint6/000019.sst
 sync: checkpoints/checkpoint6
+get-disk-usage: checkpoints/checkpoint6
 create: checkpoints/checkpoint6/MANIFEST-000020
 sync: checkpoints/checkpoint6/MANIFEST-000020
 create: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000020
@@ -847,6 +859,7 @@ sync: checkpoints/checkpoint6
 remove: checkpoints/checkpoint6/000008.log
 create: checkpoints/checkpoint6/000021.log
 sync: checkpoints/checkpoint6
+get-disk-usage: checkpoints/checkpoint6
 
 print-backing checkpoints/checkpoint6
 ----
@@ -997,6 +1010,7 @@ sync: valsepdb/marker.format-version.000015.028
 close: valsepdb/marker.format-version.000015.028
 remove: valsepdb/marker.format-version.000014.027
 sync: valsepdb
+get-disk-usage: valsepdb
 
 batch valsepdb
 set a a
@@ -1023,6 +1037,7 @@ close: valsepdb/000006.blob
 sync-data: valsepdb/000005.sst
 close: valsepdb/000005.sst
 sync: valsepdb
+get-disk-usage: valsepdb
 sync: valsepdb/MANIFEST-000001
 
 # Perform a checkpoint. It should include the blob file.
@@ -1083,6 +1098,7 @@ open: checkpoints/checkpoint8/OPTIONS-000002
 close: checkpoints/checkpoint8/OPTIONS-000002
 open: checkpoints/checkpoint8/000004.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint8/000004.log
+get-disk-usage: checkpoints/checkpoint8
 
 # Ensure that we can read values contained in the blob file.
 
@@ -1134,6 +1150,7 @@ close: valsepdb/000009.blob
 sync-data: valsepdb/000008.sst
 close: valsepdb/000008.sst
 sync: valsepdb
+get-disk-usage: valsepdb
 sync: valsepdb/MANIFEST-000001
 
 
@@ -1195,6 +1212,7 @@ open: checkpoints/checkpoint9/OPTIONS-000002
 close: checkpoints/checkpoint9/OPTIONS-000002
 open: checkpoints/checkpoint9/000007.log (options: *vfs.sequentialReadsOption)
 close: checkpoints/checkpoint9/000007.log
+get-disk-usage: checkpoints/checkpoint9
 
 scan checkpoints/checkpoint9
 ----
