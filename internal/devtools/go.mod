@@ -1,6 +1,6 @@
 module github.com/cockroachdb/pebble/internal/devtools
 
-go 1.23.6
+go 1.25.3
 
 require (
 	github.com/cockroachdb/cockroach v0.0.0-20250225003441-0fd08b1c5cc1
