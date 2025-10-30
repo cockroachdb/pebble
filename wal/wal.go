@@ -123,11 +123,10 @@ type Options struct {
 
 	// MinSyncInterval is documented in Options.WALMinSyncInterval.
 	MinSyncInterval func() time.Duration
-	// FsyncLatency records fsync latency. This doesn't differentiate between
-	// fsyncs on the primary and secondary dir.
-	//
-	// TODO(sumeer): consider separating out into two histograms.
-	FsyncLatency prometheus.Histogram
+
+	// WAL file operation latency histograms
+	PrimaryFileOpHistogram   record.WALFileOpHistogram
+	SecondaryFileOpHistogram record.WALFileOpHistogram
 	// QueueSemChan is the channel to pop from when popping from queued records
 	// that have requested a sync. It's original purpose was to function as a
 	// semaphore that prevents the record.LogWriter.flusher.syncQueue from

@@ -455,8 +455,10 @@ type LogWriter struct {
 		err error
 		// minSyncInterval is the minimum duration between syncs.
 		minSyncInterval durationFunc
-		fsyncLatency    prometheus.Histogram
-		pending         []*block
+
+		// WAL file operation latency histogram
+		walFileOpHistogram WALFileOpHistogram
+		pending            []*block
 		// Pushing and popping from pendingSyncs does not require flusher mutex to
 		// be held.
 		pendingSyncs pendingSyncs
@@ -486,10 +488,17 @@ type LogWriter struct {
 	emitFragment func(n int, p []byte) (remainingP []byte)
 }
 
+// WALFileOpHistogram is a prometheus histogram for tracking WAL file operation latencies
+// (create, write, fsync, close, stat, opendir).
+type WALFileOpHistogram = prometheus.Histogram
+
 // LogWriterConfig is a struct used for configuring new LogWriters
 type LogWriterConfig struct {
 	WALMinSyncInterval durationFunc
-	WALFsyncLatency    prometheus.Histogram
+
+	// WAL file operation latency histogram for this directory
+	WALFileOpHistogram WALFileOpHistogram
+
 	// QueueSemChan is an optional channel to pop from when popping from
 	// LogWriter.flusher.syncQueue. It functions as a semaphore that prevents
 	// the syncQueue from overflowing (which will cause a panic). All production
@@ -581,7 +590,7 @@ func NewLogWriter(
 
 	f := &r.flusher
 	f.minSyncInterval = logWriterConfig.WALMinSyncInterval
-	f.fsyncLatency = logWriterConfig.WALFsyncLatency
+	f.walFileOpHistogram = logWriterConfig.WALFileOpHistogram
 
 	go func() {
 		pprof.Do(context.Background(), walSyncLabels, r.flushLoop)
@@ -725,9 +734,9 @@ func (w *LogWriter) flushLoop(context.Context) {
 		writtenOffset += uint64(len(data))
 		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, snap)
 		f.Lock()
-		if synced && f.fsyncLatency != nil {
+		if synced && f.walFileOpHistogram != nil {
 			w.syncedOffset.Store(writtenOffset)
-			f.fsyncLatency.Observe(float64(syncLatency))
+			f.walFileOpHistogram.Observe(float64(syncLatency))
 		}
 		f.err = err
 		if f.err != nil {
@@ -784,7 +793,12 @@ func (w *LogWriter) flushPending(
 	}
 	if n := len(data); err == nil && n > 0 {
 		bytesWritten += int64(n)
+		// Measure write latency
+		writeStart := crtime.NowMono()
 		_, err = w.w.Write(data)
+		if writeLatency := writeStart.Elapsed(); w.flusher.walFileOpHistogram != nil {
+			w.flusher.walFileOpHistogram.Observe(float64(writeLatency))
+		}
 	}
 
 	synced = !snap.empty()
@@ -811,7 +825,13 @@ func (w *LogWriter) syncWithLatency() (time.Duration, error) {
 }
 
 func (w *LogWriter) flushBlock(b *block) error {
-	if _, err := w.w.Write(b.buf[b.flushed:]); err != nil {
+	// Measure write latency for block flush
+	writeStart := crtime.NowMono()
+	_, err := w.w.Write(b.buf[b.flushed:])
+	if writeLatency := writeStart.Elapsed(); w.flusher.walFileOpHistogram != nil {
+		w.flusher.walFileOpHistogram.Observe(float64(writeLatency))
+	}
+	if err != nil {
 		return err
 	}
 	b.written.Store(0)
@@ -885,8 +905,8 @@ func (w *LogWriter) closeInternal(lastQueuedRecord PendingSyncIndex) error {
 		syncLatency, err = w.syncWithLatency()
 	}
 	f.Lock()
-	if err == nil && f.fsyncLatency != nil {
-		f.fsyncLatency.Observe(float64(syncLatency))
+	if err == nil && f.walFileOpHistogram != nil {
+		f.walFileOpHistogram.Observe(float64(syncLatency))
 	}
 	free := w.free.blocks
 	f.Unlock()
@@ -897,7 +917,12 @@ func (w *LogWriter) closeInternal(lastQueuedRecord PendingSyncIndex) error {
 		w.pendingSyncsBackingIndex.externalSyncQueueCallback(lastQueuedRecord, err)
 	}
 	if w.c != nil {
+		// Measure close latency
+		closeStart := crtime.NowMono()
 		cerr := w.c.Close()
+		if closeLatency := closeStart.Elapsed(); w.flusher.walFileOpHistogram != nil {
+			w.flusher.walFileOpHistogram.Observe(float64(closeLatency))
+		}
 		w.c = nil
 		err = firstError(err, cerr)
 	}
