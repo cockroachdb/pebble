@@ -883,6 +883,7 @@ func opWrittenKeys(untypedOp op) [][]byte {
 	case *closeOp:
 	case *compactOp:
 	case *dbRestartOp:
+	case *dbUncleanRestartOp:
 	case *deleteOp:
 		return [][]byte{t.key}
 	case *deleteRangeOp:
