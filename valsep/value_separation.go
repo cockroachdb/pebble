@@ -15,9 +15,15 @@ import (
 // ValueSeparationOutputConfig is used to configure value separation for an
 // individual compaction output.
 type ValueSeparationOutputConfig struct {
-	// MinimumSize is the minimum size of a value that will be separated into a
-	// blob file.
+	// MinimumSize imposes a lower bound on the size of values that can be
+	// separated into a blob file. Values smaller than this are always written
+	// to the sstable (but may still be written to a value block within the
+	// sstable).
 	MinimumSize int
+	// DisableValueSeparationBySuffix indicates whether we should consider the
+	// KV suffix when separating values (e.g. for MVCC garbage). See
+	// pebble.ValueStoragePolicyAdjustment for details.
+	DisableValueSeparationBySuffix bool
 }
 
 // ValueSeparation defines an interface for writing some values to separate blob

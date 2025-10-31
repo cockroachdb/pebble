@@ -63,3 +63,40 @@ Blob files:
 flush-log
 ----
 [JOB 1] flushed 1 memtable (100B) to L0 [000010] (837B) blob [000011 (MVCCGarbage: 17%)] (102B), in 1.0s (1.0s total), output rate 837B/s
+
+
+# Another test with the same value separation config, but this time we set a span
+# policy for the span y-zz that disables value separation by suffix. This should
+# prevent MVCC garbage from being written to blob files.
+
+define value-separation=(enabled, min-size=5, max-ref-depth=3, garbage-ratios=1.0:1.0)
+----
+
+
+# Unspecified minimum value size should result in using the global min size of 5.
+set-span-policies
+y,zz disable-separation-by-suffix
+----
+
+
+batch
+set apple@3 a
+set apple@2 ab
+set yay@3 a
+set yay@2 ab
+set zoo@4 b
+set zoo@3 ba
+del zoo@2
+set zoo@2 bag
+set zoo@1 bah
+----
+
+# We expect 1 blob file to be created for the MVCC garbage values from  apple but not
+# for the values from y-z.
+flush
+----
+L0.0:
+  000005:[apple@3#10,SET-apple@2#11,SET] seqnums:[10-11] points:[apple@3#10,SET-apple@2#11,SET] size:809 blobrefs:[(B000006: 2); depth:1]
+  000007:[yay@3#12,SET-zoo@1#18,SET] seqnums:[12-18] points:[yay@3#12,SET-zoo@1#18,SET] size:768
+Blob files:
+  B000006 physical:{000006 size:[91 (91B)] vals:[2 (2B)]}

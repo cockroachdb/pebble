@@ -33,8 +33,11 @@ const (
 	rewriteAllHotBlobReferences
 )
 
-// ValueSeparator can function in any of the valueSeparationModes,
-// It will be extended in the future to support the writing of hot and cold
+// ValueSeparator can function in any of the valueSeparationModes to write
+// new or preserve blob references when writing an sstable. FinishOutput
+// should be called when the output sstable is complete. The ValueSeparator
+// can then be reused for the next output sstable.
+// This will be extended in the future to support the writing of hot and cold
 // blob files. All blob references are currently written to the hot tier.
 type ValueSeparator struct {
 	mode valueSeparationMode
@@ -48,24 +51,21 @@ type ValueSeparator struct {
 	shortAttrExtractor base.ShortAttributeExtractor
 	// writerOpts is used to configure all constructed blob writers.
 	writerOpts blob.FileWriterOptions
-	// minimumSize imposes a lower bound on the size of values that can be
-	// separated into a blob file. Values smaller than this are always written
-	// to the sstable (but may still be written to a value block within the
-	// sstable).
 	//
-	// minimumSize is set to globalMinimumSize by default and on every call to
-	// FinishOutput. It may be overriden by SetNextOutputConfig (i.e, if a
-	// SpanPolicy dictates a different minimum size for a span of the keyspace).
-	minimumSize int
-	// globalMinimumSize is the size threshold for separating values into blob
-	// files globally across the keyspace.
-	globalMinimumSize int
+	// currentConfig holds the configuration for the current output sstable.
+	// It is set to globalConfig by default and on every call to FinishOutput.
+	// It may be overridden by SetNextOutputConfig (i.e, if a SpanPolicy
+	// dictates a different minimum size for a span of the keyspace).
+	currentConfig ValueSeparationOutputConfig
+	// globalConfig holds settings that are applied globally across all outputs.
+	globalConfig ValueSeparationOutputConfig
 	// invalidValueCallback is called when a value is encountered for which the
 	// short attribute extractor returns an error.
 	invalidValueCallback func(userKey []byte, value []byte, err error)
 
 	// state.
 	buf []byte
+
 	// currPendingReferences holds the pending references that have been referenced by
 	// the current output sstable. The index of a reference with a given blob
 	// file ID is the value of the base.BlobReferenceID used by its value handles
@@ -109,12 +109,15 @@ func NewPreserveAllHotBlobReferences(
 	outputBlobReferenceDepth manifest.BlobReferenceDepth,
 	globalMinimumSize int,
 ) *ValueSeparator {
+	config := ValueSeparationOutputConfig{
+		MinimumSize: globalMinimumSize,
+	}
 	return &ValueSeparator{
 		mode:                     preserveAllHotBlobReferences,
 		inputBlobPhysicalFiles:   inputBlobPhysicalFiles,
 		outputBlobReferenceDepth: outputBlobReferenceDepth,
-		minimumSize:              globalMinimumSize,
-		globalMinimumSize:        globalMinimumSize,
+		globalConfig:             config,
+		currentConfig:            config,
 	}
 }
 
@@ -122,9 +125,10 @@ type WriteNewBlobFilesOptions struct {
 	// InputBlobPhysicalFiles holds the *PhysicalBlobFile for every unique blob
 	// file referenced by input sstables. This may be nil if there are no input
 	// blob files to preserve.
-	InputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile
-	ShortAttrExtractor     base.ShortAttributeExtractor
-	InvalidValueCallback   func(userKey []byte, value []byte, err error)
+	InputBlobPhysicalFiles         map[base.BlobFileID]*manifest.PhysicalBlobFile
+	ShortAttrExtractor             base.ShortAttributeExtractor
+	InvalidValueCallback           func(userKey []byte, value []byte, err error)
+	DisableValueSeparationBySuffix bool
 }
 
 func NewWriteNewBlobFiles(
@@ -138,6 +142,10 @@ func NewWriteNewBlobFiles(
 	if inputBlobPhysicalFiles == nil {
 		inputBlobPhysicalFiles = make(map[base.BlobFileID]*manifest.PhysicalBlobFile)
 	}
+	config := ValueSeparationOutputConfig{
+		MinimumSize:                    globalMinimumSize,
+		DisableValueSeparationBySuffix: opts.DisableValueSeparationBySuffix,
+	}
 	return &ValueSeparator{
 		mode:                     rewriteAllHotBlobReferences,
 		inputBlobPhysicalFiles:   inputBlobPhysicalFiles,
@@ -146,26 +154,31 @@ func NewWriteNewBlobFiles(
 		newBlobObject:            newBlobObject,
 		shortAttrExtractor:       opts.ShortAttrExtractor,
 		writerOpts:               writerOpts,
-		minimumSize:              globalMinimumSize,
-		globalMinimumSize:        globalMinimumSize,
+		globalConfig:             config,
+		currentConfig:            config,
 		invalidValueCallback:     opts.InvalidValueCallback,
 	}
 }
 
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (vs *ValueSeparator) SetNextOutputConfig(config ValueSeparationOutputConfig) {
-	vs.minimumSize = config.MinimumSize
+	if config.MinimumSize == 0 {
+		// This indicates that MinimumSize was unset, so fall back
+		// to the global minimum size.
+		config.MinimumSize = vs.globalConfig.MinimumSize
+	}
+	vs.currentConfig = config
 }
 
 func (vs *ValueSeparator) Kind() sstable.ValueSeparationKind {
-	if vs.minimumSize != vs.globalMinimumSize {
+	if vs.currentConfig != vs.globalConfig {
 		return sstable.ValueSeparationSpanPolicy
 	}
 	return sstable.ValueSeparationDefault
 }
 
 func (vs *ValueSeparator) MinimumSize() int {
-	return vs.minimumSize
+	return vs.currentConfig.MinimumSize
 }
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
@@ -241,9 +254,7 @@ func (vs *ValueSeparator) Add(
 
 	// Values that are too small are never separated; however, MVCC keys are
 	// separated if they are a SET key kind, as long as the value is not empty.
-	// TODO(xinhaoz): Handle the case where DisableValueSeparationBySuffix=true,
-	// for which do not want to separate MVCC garbage values.
-	if len(v) < vs.minimumSize && !isLikelyMVCCGarbage {
+	if len(v) < vs.currentConfig.MinimumSize && (vs.currentConfig.DisableValueSeparationBySuffix || !isLikelyMVCCGarbage) {
 		return tw.Add(kv.K, v, forceObsolete)
 	}
 
@@ -462,7 +473,7 @@ func (vs *ValueSeparator) FinishOutput() (ValueSeparationMetadata, error) {
 	referenceSize := vs.blobTiers[base.HotTier].totalPreservedValueSize + newReferencedValueSize
 
 	// Reset the minimum size for the next output.
-	vs.minimumSize = vs.globalMinimumSize
+	vs.currentConfig = vs.globalConfig
 	// Reset the remaining state.
 	vs.currPendingReferences = vs.currPendingReferences[:0]
 	for i := range vs.blobTiers {
