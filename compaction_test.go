@@ -1526,6 +1526,15 @@ func runCompactionTest(
 				for _, arg := range args {
 					parts := strings.Split(arg, "=")
 					switch parts[0] {
+					case "disable-separation-by-suffix":
+						if len(parts) != 1 {
+							td.Fatalf(t, "expected disable-separation-by-suffix with no value, got: %s", arg)
+						}
+						if policy.ValueStoragePolicy.PolicyAdjustment == NoValueSeparation {
+							td.Fatalf(t, "conflicting value storage policies for span: %s", line)
+						}
+						policy.ValueStoragePolicy.PolicyAdjustment = OverrideValueStorage
+						policy.ValueStoragePolicy.DisableSeparationBySuffix = true
 					case "val-sep-minimum-size":
 						if len(parts) != 2 {
 							td.Fatalf(t, "expected val-sep-minimum-size=<size>, got: %s", arg)
@@ -1540,6 +1549,8 @@ func runCompactionTest(
 						} else if int(size) != d.opts.Experimental.ValueSeparationPolicy().MinimumSize {
 							policy.ValueStoragePolicy.PolicyAdjustment = OverrideValueStorage
 						}
+					default:
+						td.Fatalf(t, "unknown span policy arg: %s", arg)
 					}
 				}
 				spanPolicies = append(spanPolicies, SpanAndPolicy{
