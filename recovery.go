@@ -108,12 +108,34 @@ func (rs *recoveredState) init(opts *Options, dirname string) error {
 		}
 	}
 
+	// Validate the most-recent OPTIONS file, if there is one.
+	if rs.previousOptionsFilename != "" {
+		path := opts.FS.PathJoin(dirname, rs.previousOptionsFilename)
+		previousOptions, err := readOptionsFile(opts, path)
+		if err != nil {
+			return err
+		}
+		if err := opts.CheckCompatibility(dirname, previousOptions); err != nil {
+			return err
+		}
+	}
+
+	// Ratchet rs.maxFilenumUsed ahead of all known objects in the objProvider.
+	// This avoids FileNum collisions with obsolete sstables.
+	objects := rs.objProvider.List()
+	for _, obj := range objects {
+		rs.maxFilenumUsed = max(rs.maxFilenumUsed, obj.DiskFileNum)
+	}
+
 	// Find all the WAL files across the various WAL directories.
 	wals, err := wal.Scan(rs.dirs.WALDirs()...)
 	if err != nil {
 		return err
 	}
 	for _, w := range wals {
+		// Don't reuse any obsolete file numbers to avoid modifying an ingested
+		// sstable's original external file.
+		rs.maxFilenumUsed = max(rs.maxFilenumUsed, base.DiskFileNum(w.Num))
 		if rs.recoveredVersion == nil || base.DiskFileNum(w.Num) >= rs.recoveredVersion.minUnflushedLogNum {
 			rs.walsReplay = append(rs.walsReplay, w)
 		} else {
