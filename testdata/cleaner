@@ -254,10 +254,10 @@ open-dir: db1
 open-dir: db1
 open: db1/MANIFEST-000001
 close: db1/MANIFEST-000001
-remove: db1_wal/000003.log
-open-dir: db1_wal
 open: db1/OPTIONS-000002
 close: db1/OPTIONS-000002
+remove: db1_wal/000003.log
+open-dir: db1_wal
 open: db1_wal/000004.log (options: *vfs.sequentialReadsOption)
 close: db1_wal/000004.log
 create: db1/temporary.000458.dbtmp

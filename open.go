@@ -306,11 +306,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			Buckets: FsyncLatencyBuckets,
 		})
 	}
-	walDirs := d.dirs.WALDirs()
-	wals, err := wal.Scan(walDirs...)
-	if err != nil {
-		return nil, err
-	}
 
 	walManager, err := wal.Init(walOpts, rs.walsReplay)
 	if err != nil {
@@ -338,44 +333,17 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.fileSizeAnnotator = d.makeFileSizeAnnotator()
 
 	d.mu.versions.markFileNumUsed(rs.maxFilenumUsed)
-	if n := len(wals); n > 0 {
-		// Don't reuse any obsolete file numbers to avoid modifying an
-		// ingested sstable's original external file.
-		d.mu.versions.markFileNumUsed(base.DiskFileNum(wals[n-1].Num))
-	}
-
-	// Ratchet d.mu.versions.nextFileNum ahead of all known objects in the
-	// objProvider. This avoids FileNum collisions with obsolete sstables.
-	objects := d.objProvider.List()
-	for _, obj := range objects {
-		d.mu.versions.markFileNumUsed(obj.DiskFileNum)
-	}
-
-	// Validate the most-recent OPTIONS file, if there is one.
-	if rs.previousOptionsFilename != "" {
-		path := opts.FS.PathJoin(dirname, rs.previousOptionsFilename)
-		previousOptions, err := readOptionsFile(opts, path)
-		if err != nil {
-			return nil, err
-		}
-		if err := opts.CheckCompatibility(dirname, previousOptions); err != nil {
-			return nil, err
-		}
-	}
 
 	// Replay any newer log files than the ones named in the manifest.
 	var flushableIngests []*ingestedFlushable
-	for i, w := range wals {
-		if base.DiskFileNum(w.Num) < d.mu.versions.minUnflushedLogNum {
-			continue
-		}
+	for i, w := range rs.walsReplay {
 		// WALs other than the last one would have been closed cleanly.
 		//
 		// Note: we used to never require strict WAL tails when reading from older
 		// versions: RocksDB 6.2.1 and the version of Pebble included in CockroachDB
 		// 20.1 do not guarantee that closed WALs end cleanly. But the earliest
 		// compatible Pebble format is newer and guarantees a clean EOF.
-		strictWALTail := i < len(wals)-1
+		strictWALTail := i < len(rs.walsReplay)-1
 		fi, maxSeqNum, err := d.replayWAL(jobID, w, strictWALTail)
 		if err != nil {
 			return nil, err
