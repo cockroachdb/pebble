@@ -1283,15 +1283,6 @@ type SpanPolicy struct {
 	// amount to a significant amount of space.
 	PreferFastCompression bool
 
-	// DisableValueSeparationBySuffix disables discriminating KVs depending on
-	// suffix.
-	//
-	// Among a set of keys with the same prefix, Pebble's default heuristics
-	// optimize access to the KV with the smallest suffix. This is useful for MVCC
-	// keys (where the smallest suffix is the latest version), but should be
-	// disabled for keys where the suffix does not correspond to a version.
-	DisableValueSeparationBySuffix bool
-
 	// ValueStoragePolicy is a hint used to determine where to store the values
 	// for KVs.
 	ValueStoragePolicy ValueStoragePolicy
@@ -1303,7 +1294,7 @@ func (p SpanPolicy) String() string {
 	if p.PreferFastCompression {
 		sb.WriteString("fast-compression,")
 	}
-	if p.DisableValueSeparationBySuffix {
+	if p.ValueStoragePolicy.DisableSeparationBySuffix {
 		sb.WriteString("disable-value-separation-by-suffix,")
 	}
 	switch p.ValueStoragePolicy.PolicyAdjustment {
@@ -1321,6 +1312,15 @@ func (p SpanPolicy) String() string {
 type ValueStoragePolicy struct {
 	// PolicyAdjustment specifies the policy adjustment to apply.
 	PolicyAdjustment ValueStoragePolicyAdjustment
+
+	// DisableSeparationBySuffix disables discriminating KVs depending on
+	// suffix.
+	//
+	// Among a set of keys with the same prefix, Pebble's default heuristics
+	// optimize access to the KV with the smallest suffix. This is useful for MVCC
+	// keys (where the smallest suffix is the latest version), but should be
+	// disabled for keys where the suffix does not correspond to a version.
+	DisableSeparationBySuffix bool
 
 	// Remaining fields are ignored, unless the PolicyAdjustment is Override.
 
@@ -1362,7 +1362,8 @@ var ValueStorageLatencyTolerant = ValueStoragePolicy{
 // ValueStorageLowReadLatency is the suggested ValueStoragePolicy
 // to use for key ranges that require low value retrieval latency.
 var ValueStorageLowReadLatency = ValueStoragePolicy{
-	PolicyAdjustment: NoValueSeparation,
+	PolicyAdjustment:          NoValueSeparation,
+	DisableSeparationBySuffix: true,
 }
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.

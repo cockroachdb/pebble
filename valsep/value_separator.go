@@ -33,8 +33,11 @@ const (
 	rewriteAllHotBlobReferences
 )
 
-// ValueSeparator can function in any of the valueSeparationModes,
-// It will be extended in the future to support the writing of hot and cold
+// ValueSeparator can function in any of the valueSeparationModes to write
+// new or preserve blob references when writing an sstable. FinishOutput
+// should be called when the output sstable is complete. The ValueSeparator
+// can then be reused for the next output sstable.
+// This will be extended in the future to support the writing of hot and cold
 // blob files. All blob references are currently written to the hot tier.
 type ValueSeparator struct {
 	mode valueSeparationMode
@@ -66,6 +69,11 @@ type ValueSeparator struct {
 
 	// state.
 	buf []byte
+	// disableValueSeparationBySuffix indicates whether value separation should be
+	// disabled for values with certain suffixes. This is only applicable when
+	// rewriting all hot blob references.
+	disableValueSeparationBySuffix bool
+
 	// currPendingReferences holds the pending references that have been referenced by
 	// the current output sstable. The index of a reference with a given blob
 	// file ID is the value of the base.BlobReferenceID used by its value handles
@@ -122,9 +130,10 @@ type WriteNewBlobFilesOptions struct {
 	// InputBlobPhysicalFiles holds the *PhysicalBlobFile for every unique blob
 	// file referenced by input sstables. This may be nil if there are no input
 	// blob files to preserve.
-	InputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile
-	ShortAttrExtractor     base.ShortAttributeExtractor
-	InvalidValueCallback   func(userKey []byte, value []byte, err error)
+	InputBlobPhysicalFiles         map[base.BlobFileID]*manifest.PhysicalBlobFile
+	ShortAttrExtractor             base.ShortAttributeExtractor
+	InvalidValueCallback           func(userKey []byte, value []byte, err error)
+	DisableValueSeparationBySuffix bool
 }
 
 func NewWriteNewBlobFiles(
@@ -139,22 +148,24 @@ func NewWriteNewBlobFiles(
 		inputBlobPhysicalFiles = make(map[base.BlobFileID]*manifest.PhysicalBlobFile)
 	}
 	return &ValueSeparator{
-		mode:                     rewriteAllHotBlobReferences,
-		inputBlobPhysicalFiles:   inputBlobPhysicalFiles,
-		outputBlobReferenceDepth: 1,
-		comparer:                 comparer,
-		newBlobObject:            newBlobObject,
-		shortAttrExtractor:       opts.ShortAttrExtractor,
-		writerOpts:               writerOpts,
-		minimumSize:              globalMinimumSize,
-		globalMinimumSize:        globalMinimumSize,
-		invalidValueCallback:     opts.InvalidValueCallback,
+		mode:                           rewriteAllHotBlobReferences,
+		inputBlobPhysicalFiles:         inputBlobPhysicalFiles,
+		outputBlobReferenceDepth:       1,
+		comparer:                       comparer,
+		newBlobObject:                  newBlobObject,
+		shortAttrExtractor:             opts.ShortAttrExtractor,
+		writerOpts:                     writerOpts,
+		minimumSize:                    globalMinimumSize,
+		globalMinimumSize:              globalMinimumSize,
+		invalidValueCallback:           opts.InvalidValueCallback,
+		disableValueSeparationBySuffix: opts.DisableValueSeparationBySuffix,
 	}
 }
 
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (vs *ValueSeparator) SetNextOutputConfig(config ValueSeparationOutputConfig) {
 	vs.minimumSize = config.MinimumSize
+	vs.disableValueSeparationBySuffix = config.DisableValueSeparationBySuffix
 }
 
 func (vs *ValueSeparator) Kind() sstable.ValueSeparationKind {
@@ -241,9 +252,7 @@ func (vs *ValueSeparator) Add(
 
 	// Values that are too small are never separated; however, MVCC keys are
 	// separated if they are a SET key kind, as long as the value is not empty.
-	// TODO(xinhaoz): Handle the case where DisableValueSeparationBySuffix=true,
-	// for which do not want to separate MVCC garbage values.
-	if len(v) < vs.minimumSize && !isLikelyMVCCGarbage {
+	if len(v) < vs.minimumSize && (vs.disableValueSeparationBySuffix || !isLikelyMVCCGarbage) {
 		return tw.Add(kv.K, v, forceObsolete)
 	}
 

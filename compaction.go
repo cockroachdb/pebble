@@ -3438,7 +3438,7 @@ func (d *DB) compactAndWrite(
 			spanPolicyValid = true
 		}
 		writerOpts := d.makeWriterOptions(c.outputLevel.level)
-		if spanPolicy.DisableValueSeparationBySuffix {
+		if spanPolicy.ValueStoragePolicy.DisableSeparationBySuffix {
 			writerOpts.DisableValueBlocks = true
 		}
 		if spanPolicy.PreferFastCompression && writerOpts.Compression != block.NoCompression {
@@ -3454,7 +3454,8 @@ func (d *DB) compactAndWrite(
 			// This span of keyspace is more tolerant of latency, so set a more
 			// aggressive value separation policy for this output.
 			vSep.SetNextOutputConfig(valsep.ValueSeparationOutputConfig{
-				MinimumSize: spanPolicy.ValueStoragePolicy.MinimumSize,
+				MinimumSize:                    spanPolicy.ValueStoragePolicy.MinimumSize,
+				DisableValueSeparationBySuffix: spanPolicy.ValueStoragePolicy.DisableSeparationBySuffix,
 			})
 		}
 		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts)

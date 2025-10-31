@@ -17,7 +17,8 @@ import (
 type ValueSeparationOutputConfig struct {
 	// MinimumSize is the minimum size of a value that will be separated into a
 	// blob file.
-	MinimumSize int
+	MinimumSize                    int
+	DisableValueSeparationBySuffix bool
 }
 
 // ValueSeparation defines an interface for writing some values to separate blob
