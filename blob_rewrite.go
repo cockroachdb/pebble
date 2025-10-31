@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 )
 
@@ -242,8 +243,15 @@ func (c *blobFileRewriteCompaction) Execute(jobID JobID, d *DB) error {
 	d.mu.versions.incrementCompactions(compactionKindBlobFileRewrite, nil, c.bytesWritten.Load(), err)
 	d.mu.versions.incrementCompactionBytes(-c.bytesWritten.Load())
 
-	// Update the read state to publish the new version.
 	if err == nil {
+		// Record bytes read and written for blob file rewrite compactions.
+		// These metrics are separate from per-level metrics since blob file
+		// rewrites don't contribute to per-level compacted bytes.
+		bytesRead := c.internalIteratorStats.BlockReads[blockkind.BlobValue].BlockBytes
+		d.mu.versions.metrics.Compact.BlobFileRewrite.BytesRead += int64(bytesRead)
+		d.mu.versions.metrics.Compact.BlobFileRewrite.BytesWritten += c.bytesWritten.Load()
+
+		// Update the read state to publish the new version.
 		d.updateReadStateLocked(d.opts.DebugCheck)
 	}
 

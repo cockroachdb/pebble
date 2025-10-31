@@ -70,9 +70,10 @@ CGO MEMORY    |          block cache           |                     memtables
            0B |            0B |             0B |              0B |              0B |            0B
 
 COMPACTIONS
-   estimated debt |       in progress |         cancelled |            failed |      problem spans
-------------------+-------------------+-------------------+-------------------+-------------------
-               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+                                                                         |      blob rewrites
+    est. debt |   in progress |  cancelled |   failed |    problem spans |       read |    written
+--------------+---------------+------------+----------+------------------+------------+-----------
+           0B |        0 (0B) |     0 (0B) |        0 |                0 |         0B |         0B
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
@@ -158,9 +159,10 @@ CGO MEMORY    |          block cache           |                     memtables
            0B |            0B |             0B |              0B |              0B |            0B
 
 COMPACTIONS
-   estimated debt |       in progress |         cancelled |            failed |      problem spans
-------------------+-------------------+-------------------+-------------------+-------------------
-               0B |            0 (0B) |            0 (0B) |                 0 |                  0
+                                                                         |      blob rewrites
+    est. debt |   in progress |  cancelled |   failed |    problem spans |       read |    written
+--------------+---------------+------------+----------+------------------+------------+-----------
+           0B |        0 (0B) |     0 (0B) |        0 |                0 |         0B |         0B
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
