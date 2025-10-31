@@ -1783,8 +1783,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				End:   []byte(cmdArg.Vals[1]),
 			}
 			policy := SpanPolicy{
-				DisableValueSeparationBySuffix: true,
-				ValueStoragePolicy:             ValueStorageLowReadLatency,
+				ValueStoragePolicy: ValueStorageLowReadLatency,
 			}
 			spanPolicies = append(spanPolicies, SpanAndPolicy{
 				KeyRange: span,
