@@ -418,6 +418,20 @@ type CompactMetrics struct {
 	// Duration records the cumulative duration of all compactions since the
 	// database was opened.
 	Duration time.Duration
+	// BlobFileRewrite contains metrics for blob file rewrite compactions.
+	BlobFileRewrite struct {
+		// The total number of bytes read during blob file rewrite compactions.
+		// This only counts blob value blocks (data blocks) that are read from
+		// the input blob file. The index block is read but tracked as
+		// blockkind.Metadata, not blockkind.BlobValue. As a result, BytesRead
+		// can be smaller than BytesWritten.
+		BytesRead int64
+		// The total number of bytes written during blob file rewrite compactions.
+		// This counts all bytes written to the output blob file, including blob
+		// value blocks, index block, properties block, and footer. As a result,
+		// BytesWritten can be larger than BytesRead.
+		BytesWritten int64
+	}
 }
 
 // IngestMetrics contains metrics related to ingestions.
@@ -759,16 +773,21 @@ var (
 		table.String("tot", 13, table.AlignRight, func(i cgoMemInfo) string { return i.memtablesTot }),
 	)
 	compactionInfoTableTopHeader = `COMPACTIONS`
+	compactionInfoTableSubHeader = `                                                                         |      blob rewrites`
 	compactionInfoTable          = table.Define[compactionMetricsInfo](
-		table.String("estimated debt", 17, table.AlignRight, func(i compactionMetricsInfo) string { return i.estimatedDebt }),
+		table.String("est. debt", 13, table.AlignRight, func(i compactionMetricsInfo) string { return i.estimatedDebt }),
 		table.Div(),
-		table.String("in progress", 17, table.AlignRight, func(i compactionMetricsInfo) string { return i.inProgress }),
+		table.String("in progress", 13, table.AlignRight, func(i compactionMetricsInfo) string { return i.inProgress }),
 		table.Div(),
-		table.String("cancelled", 17, table.AlignRight, func(i compactionMetricsInfo) string { return i.cancelled }),
+		table.String("cancelled", 10, table.AlignRight, func(i compactionMetricsInfo) string { return i.cancelled }),
 		table.Div(),
-		table.String("failed", 17, table.AlignRight, func(i compactionMetricsInfo) string { return fmt.Sprint(i.failed) }),
+		table.String("failed", 8, table.AlignRight, func(i compactionMetricsInfo) string { return fmt.Sprint(i.failed) }),
 		table.Div(),
-		table.String("problem spans", 18, table.AlignRight, func(i compactionMetricsInfo) string { return i.problemSpans }),
+		table.String("problem spans", 16, table.AlignRight, func(i compactionMetricsInfo) string { return i.problemSpans }),
+		table.Div(),
+		table.String("read", 10, table.AlignRight, func(i compactionMetricsInfo) string { return i.blobFileRewriteBytesRead }),
+		table.Div(),
+		table.String("written", 10, table.AlignRight, func(i compactionMetricsInfo) string { return i.blobFileRewriteBytesWritten }),
 	)
 	keysInfoTableTopHeader = `KEYS`
 	keysInfoTable          = table.Define[keysInfo](
@@ -883,11 +902,13 @@ type cgoMemInfo struct {
 }
 
 type compactionMetricsInfo struct {
-	estimatedDebt string
-	inProgress    string
-	cancelled     string
-	failed        int64
-	problemSpans  string
+	estimatedDebt               string
+	inProgress                  string
+	cancelled                   string
+	failed                      int64
+	problemSpans                string
+	blobFileRewriteBytesRead    string
+	blobFileRewriteBytesWritten string
 }
 
 type keysInfo struct {
@@ -1072,10 +1093,13 @@ func (m *Metrics) String() string {
 			humanizeBytes(m.Compact.InProgressBytes)),
 		cancelled: fmt.Sprintf("%s (%s)", humanizeCount(m.Compact.CancelledCount),
 			humanizeBytes(m.Compact.CancelledBytes)),
-		failed:       m.Compact.FailedCount,
-		problemSpans: fmt.Sprintf("%d%s", m.Compact.NumProblemSpans, ifNonZero(m.Compact.NumProblemSpans, "!!")),
+		failed:                      m.Compact.FailedCount,
+		problemSpans:                fmt.Sprintf("%d%s", m.Compact.NumProblemSpans, ifNonZero(m.Compact.NumProblemSpans, "!!")),
+		blobFileRewriteBytesRead:    humanizeBytes(m.Compact.BlobFileRewrite.BytesRead),
+		blobFileRewriteBytesWritten: humanizeBytes(m.Compact.BlobFileRewrite.BytesWritten),
 	}
 	cur = cur.WriteString(compactionInfoTableTopHeader).NewlineReturn()
+	cur = cur.WriteString(compactionInfoTableSubHeader).NewlineReturn()
 	cur = compactionInfoTable.Render(cur, table.RenderOptions{}, compactionMetricsInfoContents)
 	cur = cur.NewlineReturn()
 
