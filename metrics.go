@@ -48,6 +48,9 @@ type ThroughputMetric = base.ThroughputMetric
 // file system.
 type SecondaryCacheMetrics = sharedcache.Metrics
 
+// AllLevelMetrics contains LevelMetrics for each level.
+type AllLevelMetrics [manifest.NumLevels]LevelMetrics
+
 // LevelMetrics holds per-level metrics such as the number of files and total
 // size of the files, and compaction related metrics.
 type LevelMetrics struct {
@@ -200,82 +203,11 @@ var categoryGet = block.RegisterCategory("pebble-get", block.LatencySensitiveQoS
 // metrics reflect those operations.
 type Metrics struct {
 	BlockCache CacheMetrics
-
-	Compact struct {
-		// The total number of compactions, and per-compaction type counts.
-		Count                 int64
-		DefaultCount          int64
-		DeleteOnlyCount       int64
-		ElisionOnlyCount      int64
-		CopyCount             int64
-		MoveCount             int64
-		ReadCount             int64
-		TombstoneDensityCount int64
-		RewriteCount          int64
-		MultiLevelCount       int64
-		BlobFileRewriteCount  int64
-		VirtualRewriteCount   int64
-		// An estimate of the number of bytes that need to be compacted for the LSM
-		// to reach a stable state.
-		EstimatedDebt uint64
-		// Number of bytes present in sstables being written by in-progress
-		// compactions. This value will be zero if there are no in-progress
-		// compactions.
-		InProgressBytes int64
-		// Number of compactions that are in-progress.
-		NumInProgress int64
-		// Number of compactions that were cancelled.
-		CancelledCount int64
-		// CancelledBytes the number of bytes written by compactions that were
-		// cancelled.
-		CancelledBytes int64
-		// Total number of compactions that hit an error.
-		FailedCount int64
-		// NumProblemSpans is the current (instantaneous) count of "problem spans"
-		// which temporarily block compactions.
-		NumProblemSpans int
-		// MarkedFiles is a count of files that are marked for
-		// compaction. Such files are compacted in a rewrite compaction
-		// when no other compactions are picked.
-		MarkedFiles int
-		// Duration records the cumulative duration of all compactions since the
-		// database was opened.
-		Duration time.Duration
-	}
-
-	Ingest struct {
-		// The total number of ingestions
-		Count uint64
-		// The number of excise operations during ingestion
-		ExciseIngestCount int64
-	}
-
-	Flush struct {
-		// The total number of flushes.
-		Count int64
-		// TODO(sumeer): the IdleDuration in this metric is flawed. It only
-		// measures idle duration when a flush finishes, representing the idleness
-		// before the start of a flush. So computing deltas over this metric over
-		// some time interval D may observe the sum of IdleDuration+WorkDuration
-		// to be either much smaller or much larger than D.
-		WriteThroughput ThroughputMetric
-		// Number of flushes that are in-progress. In the current implementation
-		// this will always be zero or one.
-		NumInProgress int64
-		// AsIngestCount is a monotonically increasing counter of flush operations
-		// handling ingested tables.
-		AsIngestCount uint64
-		// AsIngestCount is a monotonically increasing counter of tables ingested as
-		// flushables.
-		AsIngestTableCount uint64
-		// AsIngestBytes is a monotonically increasing counter of the bytes flushed
-		// for flushables that originated as ingestion operations.
-		AsIngestBytes uint64
-	}
-
-	Filter FilterMetrics
-
-	Levels [numLevels]LevelMetrics
+	Compact    CompactMetrics
+	Ingest     IngestMetrics
+	Flush      FlushMetrics
+	Filter     FilterMetrics
+	Levels     AllLevelMetrics
 
 	MemTable struct {
 		// The number of bytes allocated by memtables and large (flushable)
@@ -293,16 +225,7 @@ type Metrics struct {
 		ZombieCount int64
 	}
 
-	Keys struct {
-		// The approximate count of internal range key set keys in the database.
-		RangeKeySetsCount uint64
-		// The approximate count of internal tombstones (DEL, SINGLEDEL and
-		// RANGEDEL key kinds) within the database.
-		TombstoneCount uint64
-		// A cumulative total number of missized DELSIZED keys encountered by
-		// compactions since the database was opened.
-		MissizedTombstonesCount uint64
-	}
+	Keys KeysMetrics
 
 	Snapshots struct {
 		// The number of currently open snapshots.
@@ -454,6 +377,92 @@ type Metrics struct {
 	manualMemory manual.Metrics
 }
 
+// CompactMetrics contains metric related to compaction activity.
+type CompactMetrics struct {
+	// The total number of compactions, and per-compaction type counts.
+	Count                 int64
+	DefaultCount          int64
+	DeleteOnlyCount       int64
+	ElisionOnlyCount      int64
+	CopyCount             int64
+	MoveCount             int64
+	ReadCount             int64
+	TombstoneDensityCount int64
+	RewriteCount          int64
+	MultiLevelCount       int64
+	BlobFileRewriteCount  int64
+	VirtualRewriteCount   int64
+	// An estimate of the number of bytes that need to be compacted for the LSM
+	// to reach a stable state.
+	EstimatedDebt uint64
+	// Number of bytes present in sstables being written by in-progress
+	// compactions. This value will be zero if there are no in-progress
+	// compactions.
+	InProgressBytes int64
+	// Number of compactions that are in-progress.
+	NumInProgress int64
+	// Number of compactions that were cancelled.
+	CancelledCount int64
+	// CancelledBytes the number of bytes written by compactions that were
+	// cancelled.
+	CancelledBytes int64
+	// Total number of compactions that hit an error.
+	FailedCount int64
+	// NumProblemSpans is the current (instantaneous) count of "problem spans"
+	// which temporarily block compactions.
+	NumProblemSpans int
+	// MarkedFiles is a count of files that are marked for
+	// compaction. Such files are compacted in a rewrite compaction
+	// when no other compactions are picked.
+	MarkedFiles int
+	// Duration records the cumulative duration of all compactions since the
+	// database was opened.
+	Duration time.Duration
+}
+
+// IngestMetrics contains metrics related to ingestions.
+type IngestMetrics struct {
+	// The total number of ingestions
+	Count uint64
+	// The number of excise operations during ingestion
+	ExciseIngestCount int64
+}
+
+// FlushMetrics contains metrics related to flush activity.
+type FlushMetrics struct {
+	// The total number of flushes.
+	Count int64
+	// TODO(sumeer): the IdleDuration in this metric is flawed. It only
+	// measures idle duration when a flush finishes, representing the idleness
+	// before the start of a flush. So computing deltas over this metric over
+	// some time interval D may observe the sum of IdleDuration+WorkDuration
+	// to be either much smaller or much larger than D.
+	WriteThroughput ThroughputMetric
+	// Number of flushes that are in-progress. In the current implementation
+	// this will always be zero or one.
+	NumInProgress int64
+	// AsIngestCount is a monotonically increasing counter of flush operations
+	// handling ingested tables.
+	AsIngestCount uint64
+	// AsIngestCount is a monotonically increasing counter of tables ingested as
+	// flushables.
+	AsIngestTableCount uint64
+	// AsIngestBytes is a monotonically increasing counter of the bytes flushed
+	// for flushables that originated as ingestion operations.
+	AsIngestBytes uint64
+}
+
+type KeysMetrics struct {
+	// The approximate count of internal range key set keys in the database.
+	RangeKeySetsCount uint64
+	// The approximate count of internal tombstones (DEL, SINGLEDEL and
+	// RANGEDEL key kinds) within the database.
+	TombstoneCount uint64
+	// A cumulative total number of missized DELSIZED keys encountered by
+	// compactions since the database was opened.
+	MissizedTombstonesCount uint64
+}
+
 // CompressionMetrics contains compression metrics for sstables or blob files.
 type CompressionMetrics struct {
 	// NoCompressionBytes is the total number of bytes in files that do are not
@@ -566,18 +575,7 @@ func (m *Metrics) ReadAmp() int {
 
 // Total returns the sum of the per-level metrics and WAL metrics.
 func (m *Metrics) Total() LevelMetrics {
-	var total LevelMetrics
-	for level := 0; level < numLevels; level++ {
-		l := &m.Levels[level]
-		total.Add(l)
-	}
-	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
-	total.TableBytesIn = m.WAL.BytesWritten + total.TablesIngested.Bytes
-	// Add the total bytes-in to the total bytes-flushed. This is to account for
-	// the bytes written to the log and bytes written externally and then
-	// ingested.
-	total.TablesFlushed.Bytes += total.TableBytesIn
-	return total
+	return m.Levels.Total(m.WAL.BytesWritten)
 }
 
 // RemoteTablesTotal returns the total number of remote tables and their total
@@ -934,14 +932,14 @@ func (m *Metrics) String() string {
 	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
 	cur = levelMetricsTable.Render(cur, table.RenderOptions{
 		HorizontalDividers: table.MakeHorizontalDividers(0, -1),
-	}, slices.Collect(m.LevelMetricsIter())...)
+	}, slices.Collect(m.Levels.Iter(m.WAL.BytesWritten))...)
 	cur = cur.NewlineReturn()
 
 	// Compaction level metrics.
 	cur = cur.WriteString(levelCompactionMetricsTableTopHeader).NewlineReturn()
 	cur = compactionLevelMetricsTable.Render(cur, table.RenderOptions{
 		HorizontalDividers: table.MakeHorizontalDividers(0, -1),
-	}, slices.Collect(m.LevelMetricsIter())...)
+	}, slices.Collect(m.Levels.Iter(m.WAL.BytesWritten))...)
 
 	cur = cur.NewlineReturn()
 	cur = compactionKindTable.Render(cur, table.RenderOptions{
@@ -1139,18 +1137,6 @@ func (m *Metrics) String() string {
 	return wb.String()
 }
 
-func (m *Metrics) LevelMetricsString() string {
-	wb := ascii.Make(128 /* width */, 80 /* height */)
-
-	// LSM level metrics.
-	cur := wb.At(0, 0)
-	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
-	levelMetricsTable.Render(cur, table.RenderOptions{
-		HorizontalDividers: table.MakeHorizontalDividers(0, -1),
-	}, slices.Collect(m.LevelMetricsIter())...)
-	return wb.String()
-}
-
 func ifNonZero[T constraints.Integer](v T, s string) string {
 	if v > 0 {
 		return s
@@ -1205,12 +1191,27 @@ func (m *Metrics) StringForTests() string {
 	return redact.StringWithoutMarkers(&mCopy)
 }
 
-// LevelMetricsIter returns an iterator over all level metrics - including the
-// total for all levels.
-func (m *Metrics) LevelMetricsIter() iter.Seq[*LevelMetrics] {
+// Total returns the sum of the per-level metrics and WAL metrics.
+func (lm *AllLevelMetrics) Total(walBytesWritten uint64) LevelMetrics {
+	var total LevelMetrics
+	for level := range lm {
+		total.Add(&lm[level])
+	}
+	// Compute total bytes-in as the bytes written to the WAL + bytes ingested.
+	total.TableBytesIn = walBytesWritten + total.TablesIngested.Bytes
+	// Add the total bytes-in to the total bytes-flushed. This is to account for
+	// the bytes written to the log and bytes written externally and then
+	// ingested.
+	total.TablesFlushed.Bytes += total.TableBytesIn
+	return total
+}
+
+// Iter returns an iterator over all level metrics - including the total for all
+// levels.
+func (lm *AllLevelMetrics) Iter(walBytesWritten uint64) iter.Seq[*LevelMetrics] {
 	return func(yield func(*LevelMetrics) bool) {
-		for i := range m.Levels {
-			lvlMetric := m.Levels[i]
+		for i := range lm {
+			lvlMetric := lm[i]
 			if lvlMetric.Score == 0 {
 				lvlMetric.Score = math.NaN()
 			}
@@ -1218,10 +1219,22 @@ func (m *Metrics) LevelMetricsIter() iter.Seq[*LevelMetrics] {
 				break
 			}
 		}
-		t := m.Total()
+		t := lm.Total(walBytesWritten)
 		t.Score, t.FillFactor, t.CompensatedFillFactor = math.NaN(), math.NaN(), math.NaN()
 		yield(&t)
 	}
+}
+
+func (lm *AllLevelMetrics) String() string {
+	wb := ascii.Make(128 /* width */, 80 /* height */)
+
+	// LSM level metrics.
+	cur := wb.At(0, 0)
+	cur = cur.WriteString(levelMetricsTableTopHeader).NewlineReturn()
+	levelMetricsTable.Render(cur, table.RenderOptions{
+		HorizontalDividers: table.MakeHorizontalDividers(0, -1),
+	}, slices.Collect(lm.Iter(0))...)
+	return wb.String()
 }
 
 // levelMetricsDelta accumulates incremental ("delta") level metric updates
@@ -1235,10 +1248,10 @@ func (m *levelMetricsDelta) level(level int) *LevelMetrics {
 	return m[level]
 }
 
-func (m *Metrics) updateLevelMetrics(updates levelMetricsDelta) {
+func (lm *AllLevelMetrics) update(updates levelMetricsDelta) {
 	for i, u := range updates {
 		if u != nil {
-			m.Levels[i].Add(u)
+			lm[i].Add(u)
 		}
 	}
 }

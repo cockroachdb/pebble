@@ -67,9 +67,15 @@ type versionSet struct {
 	// INVARIANT: >= 1.
 	curCompactionConcurrency atomic.Int32
 
-	// Not all metrics are kept here. See DB.Metrics().
-	// TODO(radu): replace with only the metrics that are actually maintained.
-	metrics Metrics
+	// metrics contains the subset of Metrics that are maintained by the version
+	// set. The rest of the metrics are computed in DB.Metrics().
+	metrics struct {
+		Levels  AllLevelMetrics
+		Compact CompactMetrics
+		Ingest  IngestMetrics
+		Flush   FlushMetrics
+		Keys    KeysMetrics
+	}
 
 	// A pointer to versionSet.addObsoleteLocked. Avoids allocating a new closure
 	// on the creation of every version.
@@ -242,7 +248,7 @@ func (vs *versionSet) initRecoveredDB(
 	vs.nextFileNum.Store(uint64(rv.nextFileNum))
 	vs.logSeqNum.Store(rv.logSeqNum)
 	vs.latest = rv.latest
-	vs.metrics = rv.metrics
+	setBasicLevelMetrics(&vs.metrics.Levels, rv.version)
 	vs.append(rv.version)
 	vs.setCompactionPicker(newCompactionPickerByScore(
 		rv.version, vs.latest, vs.opts, nil))
@@ -607,8 +613,8 @@ func (vs *versionSet) UpdateVersionLocked(
 		vs.manifestFileNum = newManifestFileNum
 	}
 
-	vs.metrics.updateLevelMetrics(vu.Metrics)
-	setBasicLevelMetrics(&vs.metrics, newVersion)
+	vs.metrics.Levels.update(vu.Metrics)
+	setBasicLevelMetrics(&vs.metrics.Levels, newVersion)
 
 	vs.setCompactionPicker(newCompactionPickerByScore(newVersion, vs.latest, vs.opts, inProgress))
 	if !vs.dynamicBaseLevel {
@@ -994,9 +1000,9 @@ func (vs *versionSet) addObsolete(obsolete manifest.ObsoleteFiles) {
 //   - [Virtual]Tables{Count,Size}
 //   - Sublevels
 //   - EstimatedReferencesSize
-func setBasicLevelMetrics(m *Metrics, newVersion *manifest.Version) {
-	for i := range m.Levels {
-		l := &m.Levels[i]
+func setBasicLevelMetrics(lm *AllLevelMetrics, newVersion *manifest.Version) {
+	for i := range lm {
+		l := &lm[i]
 		l.Tables.Count = uint64(newVersion.Levels[i].Len())
 		l.Tables.Bytes = newVersion.Levels[i].TableSize()
 		l.VirtualTables = newVersion.Levels[i].VirtualTables()
@@ -1035,7 +1041,7 @@ func setBasicLevelMetrics(m *Metrics, newVersion *manifest.Version) {
 			}
 		}
 	}
-	m.Levels[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
+	lm[0].Sublevels = int32(len(newVersion.L0SublevelFiles))
 }
 
 func findCurrentManifest(

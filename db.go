@@ -1888,7 +1888,12 @@ func (d *DB) Metrics() *Metrics {
 	vers.Ref()
 	defer vers.Unref()
 
-	*metrics = d.mu.versions.metrics
+	metrics.Levels = d.mu.versions.metrics.Levels
+	metrics.Compact = d.mu.versions.metrics.Compact
+	metrics.Ingest = d.mu.versions.metrics.Ingest
+	metrics.Flush = d.mu.versions.metrics.Flush
+	metrics.Keys = d.mu.versions.metrics.Keys
+
 	metrics.Compact.EstimatedDebt = d.mu.versions.picker.estimatedCompactionDebt()
 	metrics.Compact.InProgressBytes = d.mu.versions.atomicInProgressBytes.Load()
 	// TODO(radu): split this to separate the download compactions.
