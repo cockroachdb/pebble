@@ -57,13 +57,13 @@ type LevelMetrics struct {
 	// a sublevel count other than 0 or 1.
 	Sublevels int32
 
-	// The total count and size of sstables in the level.
-	//
-	// Note that if tables contain references to blob files, the size does
-	// not include the size of the blob files or the referenced values.
+	// The total count and size of sstables in the level. The size does not
+	// include the size of the blob files or the referenced values.
 	Tables metrics.CountAndSize
 
-	// The total count and size of virtual sstables in the level.
+	// The total count and total estimated size of virtual sstables in the level.
+	// The size does not include the size of the blob files or the referenced
+	// values.
 	VirtualTables metrics.CountAndSize
 
 	// The estimated total physical size of all blob references across all
@@ -320,30 +320,33 @@ type Metrics struct {
 	}
 
 	Table struct {
-		// The count and total size of live tables.
-		Live metrics.TableCountsAndSizes
-		// The count and total size of obsolete tables; these are tables which are
-		// no longer referenced by the current DB state or any open iterators.
-		Obsolete metrics.TableCountsAndSizes
-		// The count and total size of zombie tables; these are tables which are
-		// no longer referenced by the current DB state but are still in use by an iterator.
-		Zombie metrics.TableCountsAndSizes
-		// The count and total size of sstables backing virtual tables.
-		BackingTable metrics.CountAndSize
+		// Physical contains space usage metrics for physical tables and backings
+		// for virtual tables. These metrics do not include blob reference sizes.
+		Physical struct {
+			// The counts and total sizes of live tables.
+			Live metrics.CountAndSizeByPlacement
+			// The counts and total sizes of obsolete tables; these are tables which are
+			// no longer referenced by the current DB state or any open iterators.
+			Obsolete metrics.CountAndSizeByPlacement
+			// The counts and total sizes of zombie tables; these are tables which are
+			// no longer referenced by the current DB state but are still in use by an iterator.
+			Zombie metrics.CountAndSizeByPlacement
+		}
+
 		// Compression statistics for sstable data (does not include blob files).
 		Compression CompressionMetrics
 
 		// Garbage bytes.
 		Garbage struct {
-			// PointDeletionsBytesEstimate is the estimated file bytes that will be
-			// saved by compacting all point deletions. This is dependent on table
-			// stats collection, so can be very incomplete until
-			// InitialStatsCollectionComplete becomes true.
+			// PointDeletionsBytesEstimate is the estimated file bytes (sstables plus
+			// blob file references) that will be saved by compacting all point
+			// deletions. This is dependent on table stats collection, so can be very
+			// incomplete until InitialStatsCollectionComplete becomes true.
 			PointDeletionsBytesEstimate uint64
-			// RangeDeletionsBytesEstimate is the estimated file bytes that will be
-			// saved by compacting all range deletions. This is dependent on table
-			// stats collection, so can be very incomplete until
-			// InitialStatsCollectionComplete becomes true.
+			// RangeDeletionsBytesEstimate is the estimated file bytes (sstables plus
+			// blob file references) that will be saved by compacting all range
+			// deletions. This is dependent on table stats collection, so can be very
+			// incomplete until InitialStatsCollectionComplete becomes true.
 			RangeDeletionsBytesEstimate uint64
 		}
 
@@ -357,15 +360,24 @@ type Metrics struct {
 	}
 
 	BlobFiles struct {
-		// The count and total physical size of blob files.
-		Live metrics.TableCountsAndSizes
-		// ValueSize is the sum of the length of the uncompressed values in all
-		// live (referenced by some sstable(s) within the current version) blob
-		// files. ValueSize may be greater than LiveSize when compression is
+		// The counts and total physical sizes of blob files.
+		Live metrics.CountAndSizeByPlacement
+		// The counts and total physical sizes of obsolete blob files; these are blob
+		// files which are no longer referenced by the current DB state or any open
+		// iterators.
+		Obsolete metrics.CountAndSizeByPlacement
+		// The count and total physical size of zombie blob files; these are blob
+		// files which are no longer referenced by the current DB state but are
+		// still in use by an iterator.
+		Zombie metrics.CountAndSizeByPlacement
+
+		// ValueSize is the sum of the length of the uncompressed values in all live
+		// (referenced by some sstable(s) within the current version) blob files.
+		// ValueSize may be greater than Live.Total().Size when compression is
 		// effective. ValueSize includes bytes in live blob files that are not
-		// actually reachable by any sstable key. If any value within the blob
-		// file is reachable by a key in a live sstable, then the entirety of
-		// the blob file's values are included within ValueSize.
+		// actually reachable by any sstable key. If every value within the blob
+		// file is reachable by a key in a live sstable, then the entirety of the
+		// blob file's values are included within ValueSize.
 		ValueSize uint64
 		// ReferencedValueSize is the sum of the length of the uncompressed
 		// values (in all live blob files) that are still referenced by keys
@@ -386,14 +398,6 @@ type Metrics struct {
 		// each virtual table will contribute their backing table's referenced
 		// value sizes.
 		ReferencedBackingValueSize uint64
-		// The count and total physical size of obsolete blob files; these are blob
-		// files which are no longer referenced by the current DB state or any open
-		// iterators.
-		Obsolete metrics.BlobFileCountsAndSizes
-		// The count and total physical size of zombie blob files; these are blob
-		// files which are no longer referenced by the current DB state but are
-		// still in use by an iterator.
-		Zombie metrics.BlobFileCountsAndSizes
 
 		Compression CompressionMetrics
 	}
@@ -514,9 +518,9 @@ func (m *Metrics) DiskSpaceUsage() uint64 {
 	var usageBytes uint64
 	usageBytes += m.WAL.PhysicalSize
 	usageBytes += m.WAL.ObsoletePhysicalSize
-	usageBytes += m.Table.Live.Local.Bytes
-	usageBytes += m.Table.Obsolete.Local.Bytes
-	usageBytes += m.Table.Zombie.Local.Bytes
+	usageBytes += m.Table.Physical.Live.Local.Bytes
+	usageBytes += m.Table.Physical.Obsolete.Local.Bytes
+	usageBytes += m.Table.Physical.Zombie.Local.Bytes
 	usageBytes += m.BlobFiles.Live.Local.Bytes
 	usageBytes += m.BlobFiles.Obsolete.Local.Bytes
 	usageBytes += m.BlobFiles.Zombie.Local.Bytes
@@ -580,19 +584,10 @@ func (m *Metrics) Total() LevelMetrics {
 // size. Remote tables are computed as the difference between total tables
 // (live + obsolete + zombie) and local tables.
 func (m *Metrics) RemoteTablesTotal() metrics.CountAndSize {
-	var liveTables metrics.CountAndSize
-	for level := 0; level < numLevels; level++ {
-		liveTables.Accumulate(m.Levels[level].Tables)
-	}
-	totalCount := int64(liveTables.Count) + int64(m.Table.Obsolete.All.Count) + int64(m.Table.Zombie.All.Count)
-	localCount := m.Table.Live.Local.Count + m.Table.Obsolete.Local.Count + m.Table.Zombie.Local.Count
-	remoteCount := uint64(totalCount) - localCount
-
-	totalSize := uint64(liveTables.Bytes) + m.Table.Obsolete.All.Bytes + m.Table.Zombie.All.Bytes
-	localSize := m.Table.Live.Local.Bytes + m.Table.Obsolete.Local.Bytes + m.Table.Zombie.Local.Bytes
-	remoteSize := totalSize - localSize
-
-	return metrics.CountAndSize{Count: remoteCount, Bytes: remoteSize}
+	cs := m.Table.Physical.Live
+	cs.Accumulate(m.Table.Physical.Obsolete)
+	cs.Accumulate(m.Table.Physical.Zombie)
+	return cs.Shared.Sum(cs.External)
 }
 
 // Assert that Metrics implements redact.SafeFormatter.
@@ -734,21 +729,22 @@ var (
 		table.Div(),
 		table.String("snapshots ", 11, table.AlignRight, func(i iteratorInfo) string { return i.snapshotsOpen }),
 	)
-	fileInfoTableHeader = `FILES                 tables                       |       blob files        |     blob values`
-	fileInfoTable       = table.Define[tableAndBlobInfo](
-		table.String("stats prog", 13, table.AlignRight, func(i tableAndBlobInfo) string { return i.tableInfo.stats }),
+	diskUsageTableHeader = `FILES                 physical tables                 |                blob files`
+	diskUsageTable       = table.Define[diskUsageInfo](
+		table.String("", 9, table.AlignRight, func(i diskUsageInfo) string { return i.header }),
 		table.Div(),
-		table.String("backing", 10, table.AlignRight, func(i tableAndBlobInfo) string { return i.tableInfo.backing }),
+		table.String("local", 13, table.AlignCenter, func(i diskUsageInfo) string { return i.tables.Local.String() }),
+		table.String("shared", 13, table.AlignCenter, func(i diskUsageInfo) string { return i.tables.Shared.String() }),
+		table.String("remote", 13, table.AlignCenter, func(i diskUsageInfo) string { return i.tables.External.String() }),
 		table.Div(),
-		table.String("zombie", 21, table.AlignRight, func(i tableAndBlobInfo) string { return i.tableInfo.zombie }),
+		table.String("local", 13, table.AlignCenter, func(i diskUsageInfo) string { return i.blobFiles.Local.String() }),
+		table.String("shared", 13, table.AlignCenter, func(i diskUsageInfo) string { return i.blobFiles.Shared.String() }),
+		table.String("remote", 13, table.AlignCenter, func(i diskUsageInfo) string { return i.blobFiles.External.String() }),
+	)
+	miscInfoTable = table.Define[[2]string](
+		table.String("MISC", 5, table.AlignLeft, func(i [2]string) string { return i[0] }),
 		table.Div(),
-		table.String("live", 10, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.live }),
-		table.Div(),
-		table.String("zombie", 10, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.zombie }),
-		table.Div(),
-		table.String("total", 6, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.total }),
-		table.Div(),
-		table.String("refed", 10, table.AlignRight, func(i tableAndBlobInfo) string { return i.blobInfo.referenced }),
+		table.String("", 5, table.AlignLeft, func(i [2]string) string { return i[1] }),
 	)
 	cgoMemInfoTableHeader = `CGO MEMORY    |          block cache           |                     memtables`
 	cgoMemInfoTable       = table.Define[cgoMemInfo](
@@ -872,22 +868,11 @@ type iteratorInfo struct {
 	sstableItersOpen string
 	snapshotsOpen    string
 }
-type tableInfo struct {
-	stats   string
-	backing string
-	zombie  string
-}
 
-type blobInfo struct {
-	live       string
-	zombie     string
-	total      string
-	referenced string
-}
-
-type tableAndBlobInfo struct {
-	tableInfo tableInfo
-	blobInfo  blobInfo
+type diskUsageInfo struct {
+	header    string
+	tables    metrics.CountAndSizeByPlacement
+	blobFiles metrics.CountAndSizeByPlacement
 }
 
 type cgoMemInfo struct {
@@ -1023,29 +1008,44 @@ func (m *Metrics) String() string {
 	cur = iteratorInfoTable.Render(cur, table.RenderOptions{}, iteratorInfoContents)
 	cur = cur.NewlineReturn()
 
-	status := fmt.Sprintf("%s pending", humanizeCount(m.Table.PendingStatsCollectionCount))
-	if !m.Table.InitialStatsCollectionComplete {
-		status = "loading"
-	} else if m.Table.PendingStatsCollectionCount == 0 {
-		status = "all loaded"
+	diskUsageContents := []diskUsageInfo{
+		{header: "live", tables: m.Table.Physical.Live, blobFiles: m.BlobFiles.Live},
+		{header: "zombie", tables: m.Table.Physical.Zombie, blobFiles: m.BlobFiles.Zombie},
+		{header: "obsolete", tables: m.Table.Physical.Obsolete, blobFiles: m.BlobFiles.Obsolete},
 	}
-	tableInfoContents := tableInfo{
-		stats:   status,
-		backing: fmt.Sprintf("%s (%s)", humanizeCount(m.Table.BackingTable.Count), humanizeBytes(m.Table.BackingTable.Bytes)),
-		zombie:  fmt.Sprintf("%s (%s local:%s)", humanizeCount(m.Table.Zombie.All.Count), humanizeBytes(m.Table.Zombie.All.Bytes), humanizeBytes(m.Table.Zombie.Local.Bytes)),
+	cur = cur.WriteString(diskUsageTableHeader).NewlineReturn()
+	cur = diskUsageTable.Render(cur, table.RenderOptions{}, diskUsageContents...)
+	cur = cur.NewlineReturn()
+
+	tableStatsStatus := func() string {
+		switch {
+		case !m.Table.InitialStatsCollectionComplete:
+			return "loading"
+		case m.Table.PendingStatsCollectionCount > 0:
+			return fmt.Sprintf("%s pending", humanizeCount(m.Table.PendingStatsCollectionCount))
+		default:
+			return "all loaded"
+		}
 	}
-	blobInfoContents := blobInfo{
-		live:       fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.Live.All.Count), humanizeBytes(m.BlobFiles.Live.All.Bytes)),
-		zombie:     fmt.Sprintf("%s (%s)", humanizeCount(m.BlobFiles.Zombie.All.Count), humanizeBytes(m.BlobFiles.Zombie.All.Bytes)),
-		total:      humanizeBytes(m.BlobFiles.ValueSize),
-		referenced: fmt.Sprintf("%.0f%% (%s)", percent(m.BlobFiles.ReferencedValueSize, m.BlobFiles.ValueSize), humanizeBytes(m.BlobFiles.ReferencedValueSize)),
+
+	bytesAndPercent := func(value, denominator uint64) string {
+		if denominator == 0 || value == 0 {
+			return humanizeBytes(value)
+		}
+		return fmt.Sprintf("%s (%s)", humanizeBytes(value), crhumanize.Percent(value, denominator))
 	}
-	fileInfoContents := tableAndBlobInfo{
-		tableInfo: tableInfoContents,
-		blobInfo:  blobInfoContents,
+
+	miscContents := [][2]string{
+		{"table stats", tableStatsStatus()},
+		{"table garbage", ""},
+		{"  point del", humanizeBytes(m.Table.Garbage.PointDeletionsBytesEstimate)},
+		{"  range del", humanizeBytes(m.Table.Garbage.RangeDeletionsBytesEstimate)},
+		{"blob values", ""},
+		{"  total", humanizeBytes(m.BlobFiles.ValueSize)},
+		{"  refed", bytesAndPercent(m.BlobFiles.ReferencedValueSize, m.BlobFiles.ValueSize)},
+		{"  backing-refed", bytesAndPercent(m.BlobFiles.ReferencedBackingValueSize, m.BlobFiles.ValueSize)},
 	}
-	cur = cur.WriteString(fileInfoTableHeader).NewlineReturn()
-	cur = fileInfoTable.Render(cur, table.RenderOptions{}, fileInfoContents)
+	cur = miscInfoTable.Render(cur, table.RenderOptions{}, miscContents...)
 	cur = cur.NewlineReturn()
 
 	var inUseTotal uint64
@@ -1197,7 +1197,10 @@ func (m *Metrics) StringForTests() string {
 		mCopy.BlockCache.Recent[i].HitsAndMisses = cache.HitsAndMisses{}
 		mCopy.BlockCache.Recent[i].Since = 0
 	}
-	// Clear the delete pacer stats as they can vary based on timing.
+	// Clear the obsolete stats and delete pacer stats as they can vary based on
+	// timing.
+	mCopy.Table.Physical.Obsolete = metrics.CountAndSizeByPlacement{}
+	mCopy.BlobFiles.Obsolete = metrics.CountAndSizeByPlacement{}
 	mCopy.DeletePacer = deletepacer.Metrics{}
 	return redact.StringWithoutMarkers(&mCopy)
 }

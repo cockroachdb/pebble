@@ -8,6 +8,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/metrics"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // EstimateDiskUsage returns the estimated filesystem space used in bytes for
@@ -48,71 +50,115 @@ func (d *DB) EstimateDiskUsageByBackingType(
 	readState := d.loadReadState()
 	defer readState.unref()
 
-	sizes := d.fileSizeAnnotator.VersionRangeAnnotation(readState.current, bounds)
-	return sizes.totalSize, sizes.remoteSize, sizes.externalSize, nil
+	sizes := d.tableDiskUsageAnnotator.VersionRangeAnnotation(readState.current, bounds)
+	externalSize = sizes.External.TotalBytes()
+	remoteSize = externalSize + sizes.Shared.TotalBytes()
+	totalSize = remoteSize + sizes.Local.TotalBytes()
+	return totalSize, remoteSize, externalSize, nil
 }
 
-// fileSizeByBacking contains the estimated file size for LSM data within some
-// bounds. It is broken down by backing type. The file size refers to both the
-// sstable size and an estimate of the referenced blob sizes.
-type fileSizeByBacking struct {
-	// totalSize is the estimated size of all files for the given bounds.
-	totalSize uint64
-	// remoteSize is the estimated size of remote files for the given bounds.
-	remoteSize uint64
-	// externalSize is the estimated size of external files for the given bounds.
-	externalSize uint64
+// TableUsageByPlacement contains space usage information for tables, broken
+// down by where they are stored.
+//
+// Depending on context, this can refer to all tables in the LSM, all tables on
+// a level, or tables within some specified bounds (in the latter case, for
+// tables overlapping the bounds, the usage is a best-effort estimation).
+type TableUsageByPlacement struct {
+	metrics.ByPlacement[TableDiskUsage]
 }
 
-func (d *DB) singleFileSizeByBacking(
-	fileSize uint64, t *manifest.TableMetadata,
-) (_ fileSizeByBacking, ok bool) {
-	res := fileSizeByBacking{
-		totalSize: fileSize,
-	}
-
-	objMeta, err := d.objProvider.Lookup(base.FileTypeTable, t.TableBacking.DiskFileNum)
-	if err != nil {
-		return res, false
-	}
-	if objMeta.IsRemote() {
-		res.remoteSize += fileSize
-		if objMeta.IsExternal() {
-			res.externalSize += fileSize
-		}
-	}
-	return res, true
+// Accumulate adds the rhs counts and sizes to the receiver.
+func (u *TableUsageByPlacement) Accumulate(rhs TableUsageByPlacement) {
+	u.Local.Accumulate(rhs.Local)
+	u.Shared.Accumulate(rhs.Shared)
+	u.External.Accumulate(rhs.External)
 }
 
-var fileSizeAnnotatorIdx = manifest.NewTableAnnotationIdx()
+// TableDiskUsage contains space usage information for a set of sstables.
+type TableDiskUsage struct {
+	// Physical contains the count and total size of physical tables in the set.
+	Physical metrics.CountAndSize
 
-// makeFileSizeAnnotator returns an annotator that computes the storage size of
-// files. When applicable, this includes both the sstable size and the size of
-// any referenced blob files.
-func (d *DB) makeFileSizeAnnotator() manifest.TableAnnotator[fileSizeByBacking] {
-	return manifest.MakeTableAnnotator[fileSizeByBacking](
-		fileSizeAnnotatorIdx,
-		manifest.TableAnnotatorFuncs[fileSizeByBacking]{
-			Merge: func(dst *fileSizeByBacking, src fileSizeByBacking) {
-				dst.totalSize += src.totalSize
-				dst.remoteSize += src.remoteSize
-				dst.externalSize += src.externalSize
+	// Virtual contains the count and total estimated referenced bytes of virtual
+	// tables in the set.
+	Virtual metrics.CountAndSize
+
+	// ReferencedBytes contains the total estimated size of values stored in blob
+	// files referenced by tables in this set (either physical or virtual).
+	ReferencedBytes uint64
+}
+
+// TotalBytes returns the sum of all the byte fields.
+func (u TableDiskUsage) TotalBytes() uint64 {
+	return u.Physical.Bytes + u.Virtual.Bytes + u.ReferencedBytes
+}
+
+// Accumulate adds the rhs counts and sizes to the receiver.
+func (u *TableDiskUsage) Accumulate(rhs TableDiskUsage) {
+	u.Physical.Accumulate(rhs.Physical)
+	u.Virtual.Accumulate(rhs.Virtual)
+	u.ReferencedBytes += rhs.ReferencedBytes
+}
+
+func (d *DB) singleTableDiskUsage(
+	fileSize uint64, referencedSize uint64, fileNum base.DiskFileNum, isVirtual bool,
+) TableUsageByPlacement {
+	u := TableDiskUsage{
+		ReferencedBytes: referencedSize,
+	}
+	if isVirtual {
+		u.Virtual.Inc(fileSize)
+	} else {
+		u.Physical.Inc(fileSize)
+	}
+	placement := objstorage.Placement(d.objProvider, base.FileTypeTable, fileNum)
+	var res TableUsageByPlacement
+	res.Set(placement, u)
+	return res
+}
+
+var tableDiskUsageAnnotatorIdx = manifest.NewTableAnnotationIdx()
+
+// makeTableDiskSpaceUsageAnnotator returns an annotator that computes the
+// storage size of files. When applicable, this includes both the sstable size
+// and the size of any referenced blob files.
+func (d *DB) makeTableDiskSpaceUsageAnnotator() manifest.TableAnnotator[TableUsageByPlacement] {
+	return manifest.MakeTableAnnotator[TableUsageByPlacement](
+		tableDiskUsageAnnotatorIdx,
+		manifest.TableAnnotatorFuncs[TableUsageByPlacement]{
+			Merge: (*TableUsageByPlacement).Accumulate,
+			Table: func(f *manifest.TableMetadata) (v TableUsageByPlacement, cacheOK bool) {
+				return d.singleTableDiskUsage(f.Size, f.EstimatedReferenceSize(), f.TableBacking.DiskFileNum, f.Virtual), true
 			},
-			Table: func(f *manifest.TableMetadata) (v fileSizeByBacking, cacheOK bool) {
-				return d.singleFileSizeByBacking(f.Size+f.EstimatedReferenceSize(), f)
-			},
-			PartialOverlap: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) fileSizeByBacking {
+			PartialOverlap: func(f *manifest.TableMetadata, bounds base.UserKeyBounds) TableUsageByPlacement {
 				overlappingFileSize, err := d.fileCache.estimateSize(f, bounds.Start, bounds.End.Key)
 				if err != nil {
-					return fileSizeByBacking{}
+					return TableUsageByPlacement{}
 				}
 				overlapFraction := float64(overlappingFileSize) / float64(f.Size)
 				// Scale the blob reference size proportionally to the file
 				// overlap from the bounds to approximate only the blob
 				// references that overlap with the requested bounds.
-				size := overlappingFileSize + uint64(float64(f.EstimatedReferenceSize())*overlapFraction)
-				res, _ := d.singleFileSizeByBacking(size, f)
-				return res
+				referencedSize := uint64(float64(f.EstimatedReferenceSize()) * overlapFraction)
+				return d.singleTableDiskUsage(overlappingFileSize, referencedSize, f.TableBacking.DiskFileNum, f.Virtual)
+			},
+		})
+}
+
+var blobFileDiskUsageAnnotatorIdx = manifest.NewBlobAnnotationIdx()
+
+// makeDiskSpaceUsageAnnotator returns an annotator that computes the storage size of
+// files. When applicable, this includes both the sstable size and the size of
+// any referenced blob files.
+func (d *DB) makeBlobFileDiskSpaceUsageAnnotator() manifest.BlobFileAnnotator[metrics.CountAndSizeByPlacement] {
+	return manifest.MakeBlobFileAnnotator[metrics.CountAndSizeByPlacement](
+		blobFileDiskUsageAnnotatorIdx,
+		manifest.BlobFileAnnotatorFuncs[metrics.CountAndSizeByPlacement]{
+			Merge: (*metrics.CountAndSizeByPlacement).Accumulate,
+			BlobFile: func(m manifest.BlobFileMetadata) (res metrics.CountAndSizeByPlacement, cacheOK bool) {
+				placement := objstorage.Placement(d.objProvider, base.FileTypeBlob, m.Physical.FileNum)
+				res.Ptr(placement).Inc(m.Physical.Size)
+				return res, true
 			},
 		})
 }

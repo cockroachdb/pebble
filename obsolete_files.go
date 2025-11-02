@@ -142,11 +142,11 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 		}
 		makeObsoleteFile := func() deletepacer.ObsoleteFile {
 			of := deletepacer.ObsoleteFile{
-				FileType: fileType,
-				FS:       d.opts.FS,
-				Path:     d.opts.FS.PathJoin(d.dirname, filename),
-				FileNum:  diskFileNum,
-				IsLocal:  true,
+				FileType:  fileType,
+				FS:        d.opts.FS,
+				Path:      d.opts.FS.PathJoin(d.dirname, filename),
+				FileNum:   diskFileNum,
+				Placement: base.Local,
 			}
 			if stat, err := d.opts.FS.Stat(filename); err == nil {
 				of.FileSize = uint64(stat.Size())
@@ -181,11 +181,11 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 			continue
 		}
 		of := deletepacer.ObsoleteFile{
-			FileType: obj.FileType,
-			FS:       d.opts.FS,
-			Path:     base.MakeFilepath(d.opts.FS, d.dirname, obj.FileType, obj.DiskFileNum),
-			FileNum:  obj.DiskFileNum,
-			IsLocal:  true,
+			FileType:  obj.FileType,
+			FS:        d.opts.FS,
+			Path:      base.MakeFilepath(d.opts.FS, d.dirname, obj.FileType, obj.DiskFileNum),
+			FileNum:   obj.DiskFileNum,
+			Placement: obj.Placement(),
 		}
 		if size, err := d.objProvider.Size(obj); err == nil {
 			of.FileSize = uint64(size)
@@ -301,12 +301,12 @@ func (d *DB) deleteObsoleteFiles(jobID JobID) {
 	filesToDelete = append(filesToDelete, obsoleteBlobs...)
 	for _, f := range obsoleteLogs {
 		filesToDelete = append(filesToDelete, deletepacer.ObsoleteFile{
-			FileType: base.FileTypeLog,
-			FS:       f.FS,
-			Path:     f.Path,
-			FileNum:  base.DiskFileNum(f.NumWAL),
-			FileSize: f.ApproxFileSize,
-			IsLocal:  true,
+			FileType:  base.FileTypeLog,
+			FS:        f.FS,
+			Path:      f.Path,
+			FileNum:   base.DiskFileNum(f.NumWAL),
+			FileSize:  f.ApproxFileSize,
+			Placement: base.Local,
 		})
 	}
 	for _, f := range obsoleteTables {
@@ -351,19 +351,19 @@ func cmpObsoleteFileNumbers(a, b deletepacer.ObsoleteFile) int {
 // file).
 type objectInfo struct {
 	fileInfo
-	isLocal bool
+	placement base.Placement
 }
 
 func (o objectInfo) asObsoleteFile(
 	fs vfs.FS, fileType base.FileType, dirname string,
 ) deletepacer.ObsoleteFile {
 	return deletepacer.ObsoleteFile{
-		FileType: fileType,
-		FS:       fs,
-		Path:     base.MakeFilepath(fs, dirname, fileType, o.FileNum),
-		FileNum:  o.FileNum,
-		FileSize: o.FileSize,
-		IsLocal:  o.isLocal,
+		FileType:  fileType,
+		FS:        fs,
+		Path:      base.MakeFilepath(fs, dirname, fileType, o.FileNum),
+		FileNum:   o.FileNum,
+		FileSize:  o.FileSize,
+		Placement: o.placement,
 	}
 }
 
@@ -379,11 +379,6 @@ func makeZombieObjects() zombieObjects {
 // may access them are closed.
 type zombieObjects struct {
 	objs map[base.DiskFileNum]objectInfo
-
-	metrics.TableCountsAndSizes
-	totalSize  uint64
-	localSize  uint64
-	localCount uint64
 }
 
 // Add adds an object to the set of zombie objects.
@@ -392,11 +387,6 @@ func (z *zombieObjects) Add(obj objectInfo) {
 		panic(errors.AssertionFailedf("zombie object %s already exists", obj.FileNum))
 	}
 	z.objs[obj.FileNum] = obj
-	z.totalSize += obj.FileSize
-	if obj.isLocal {
-		z.localSize += obj.FileSize
-		z.localCount++
-	}
 }
 
 // AddMetadata is like Add, but takes an ObjectMetadata and the object's size.
@@ -406,7 +396,7 @@ func (z *zombieObjects) AddMetadata(meta *objstorage.ObjectMetadata, size uint64
 			FileNum:  meta.DiskFileNum,
 			FileSize: size,
 		},
-		isLocal: !meta.IsRemote(),
+		placement: meta.Placement(),
 	})
 }
 
@@ -423,30 +413,14 @@ func (z *zombieObjects) Extract(fileNum base.DiskFileNum) objectInfo {
 		panic(errors.AssertionFailedf("zombie object %s not found", fileNum))
 	}
 	delete(z.objs, fileNum)
-
-	// Detect underflow in case we have a bug that causes an object's size to be
-	// mutated.
-	if z.totalSize < obj.FileSize {
-		panic(errors.AssertionFailedf("zombie object %s size %d is greater than total size %d", fileNum, obj.FileSize, z.totalSize))
-	}
-	if obj.isLocal && z.localSize < obj.FileSize {
-		panic(errors.AssertionFailedf("zombie object %s size %d is greater than local size %d", fileNum, obj.FileSize, z.localSize))
-	}
-
-	z.totalSize -= obj.FileSize
-	if obj.isLocal {
-		z.localSize -= obj.FileSize
-		z.localCount--
-	}
 	return obj
 }
 
-// TotalSize returns the size of all objects in the set.
-func (z *zombieObjects) TotalSize() uint64 {
-	return z.totalSize
-}
-
-// LocalStats returns the count and size of all local objects in the set.
-func (z *zombieObjects) LocalStats() (count uint64, size uint64) {
-	return z.localCount, z.localSize
+// Metrics returns the count and size of all objects in the set, broken down by placement.
+func (z *zombieObjects) Metrics() metrics.CountAndSizeByPlacement {
+	var res metrics.CountAndSizeByPlacement
+	for _, obj := range z.objs {
+		res.Inc(obj.FileSize, obj.placement)
+	}
+	return res
 }
