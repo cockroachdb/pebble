@@ -335,7 +335,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 
-	d.fileSizeAnnotator = d.makeFileSizeAnnotator()
+	d.tableDiskUsageAnnotator = d.makeTableDiskSpaceUsageAnnotator()
+	d.blobFileDiskUsageAnnotator = d.makeBlobFileDiskSpaceUsageAnnotator()
 
 	d.mu.versions.markFileNumUsed(rs.maxFilenumUsed)
 	if n := len(wals); n > 0 {

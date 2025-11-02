@@ -11,19 +11,19 @@ import (
 
 // ObsoleteFile describes a file that is to be deleted.
 type ObsoleteFile struct {
-	FileType base.FileType
-	FS       vfs.FS
-	Path     string
-	FileNum  base.DiskFileNum
-	FileSize uint64 // approx for log files
-	IsLocal  bool
+	FileType  base.FileType
+	FS        vfs.FS
+	Path      string
+	FileNum   base.DiskFileNum
+	FileSize  uint64 // approx for log files
+	Placement base.Placement
 }
 
 // pacingBytes returns the size of the file, or 0 if deleting the file does not
 // require pacing.
 func (of ObsoleteFile) pacingBytes() uint64 {
 	// We only need to pace local objects--sstables and blob files.
-	if of.IsLocal && (of.FileType == base.FileTypeTable || of.FileType == base.FileTypeBlob) {
+	if of.Placement == base.Local && (of.FileType == base.FileTypeTable || of.FileType == base.FileTypeBlob) {
 		return of.FileSize
 	}
 	return 0
