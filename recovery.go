@@ -204,7 +204,6 @@ type recoveredVersion struct {
 	nextFileNum        base.DiskFileNum
 	logSeqNum          base.SeqNum
 	latest             *latestVersionState
-	metrics            Metrics
 	version            *manifest.Version
 }
 
@@ -213,7 +212,7 @@ type recoveredVersion struct {
 func recoverVersion(
 	opts *Options, dirname string, provider objstorage.Provider, manifestFileNum base.DiskFileNum,
 ) (*recoveredVersion, error) {
-	vs := &recoveredVersion{
+	rv := &recoveredVersion{
 		manifestFileNum: manifestFileNum,
 		nextFileNum:     1,
 		logSeqNum:       base.SeqNumStart,
@@ -222,7 +221,7 @@ func recoverVersion(
 			virtualBackings: manifest.MakeVirtualBackings(),
 		},
 	}
-	manifestPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeManifest, vs.manifestFileNum)
+	manifestPath := base.MakeFilepath(opts.FS, dirname, base.FileTypeManifest, rv.manifestFileNum)
 	manifestFilename := opts.FS.PathBase(manifestPath)
 
 	// Read the versionEdits in the manifest file.
@@ -265,10 +264,10 @@ func recoverVersion(
 			return nil, err
 		}
 		if ve.MinUnflushedLogNum != 0 {
-			vs.minUnflushedLogNum = ve.MinUnflushedLogNum
+			rv.minUnflushedLogNum = ve.MinUnflushedLogNum
 		}
 		if ve.NextFileNum != 0 {
-			vs.nextFileNum = base.DiskFileNum(ve.NextFileNum)
+			rv.nextFileNum = base.DiskFileNum(ve.NextFileNum)
 		}
 		if ve.LastSeqNum != 0 {
 			// logSeqNum is the _next_ sequence number that will be assigned,
@@ -281,15 +280,15 @@ func recoverVersion(
 			//
 			// If LastSeqNum is less than SeqNumStart, increase it to at least
 			// SeqNumStart to leave ample room for reserved sequence numbers.
-			vs.logSeqNum = max(ve.LastSeqNum+1, base.SeqNumStart)
+			rv.logSeqNum = max(ve.LastSeqNum+1, base.SeqNumStart)
 		}
 	}
 
 	// We have already set vs.nextFileNum=1 at the beginning of the function and
 	// could have only updated it to some other non-zero value, so it cannot be
 	// 0 here.
-	if vs.minUnflushedLogNum == 0 {
-		if vs.nextFileNum >= 2 {
+	if rv.minUnflushedLogNum == 0 {
+		if rv.nextFileNum >= 2 {
 			// We either have a freshly created DB, or a DB created by RocksDB
 			// that has not had a single flushed SSTable yet. This is because
 			// RocksDB bumps up nextFileNum in this case without bumping up
@@ -300,18 +299,18 @@ func recoverVersion(
 				errors.Safe(manifestFilename), dirname)
 		}
 	}
-	vs.nextFileNum = max(vs.nextFileNum, vs.minUnflushedLogNum+1)
+	rv.nextFileNum = max(rv.nextFileNum, rv.minUnflushedLogNum+1)
 
 	// Populate the virtual backings for virtual sstables since we have finished
 	// version edit accumulation.
 	for _, b := range bve.AddedFileBacking {
 		placement := objstorage.Placement(provider, base.FileTypeTable, b.DiskFileNum)
-		vs.latest.virtualBackings.AddAndRef(b, placement)
+		rv.latest.virtualBackings.AddAndRef(b, placement)
 	}
 	for l, addedLevel := range bve.AddedTables {
 		for _, m := range addedLevel {
 			if m.Virtual {
-				vs.latest.virtualBackings.AddTable(m, l)
+				rv.latest.virtualBackings.AddTable(m, l)
 			}
 		}
 	}
@@ -334,13 +333,12 @@ func recoverVersion(
 	if err != nil {
 		return nil, err
 	}
-	vs.latest.l0Organizer.PerformUpdate(vs.latest.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
-	vs.latest.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
-	vs.latest.blobFiles.Init(&bve, manifest.BlobRewriteHeuristic{
+	rv.latest.l0Organizer.PerformUpdate(rv.latest.l0Organizer.PrepareUpdate(&bve, newVersion), newVersion)
+	rv.latest.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
+	rv.latest.blobFiles.Init(&bve, manifest.BlobRewriteHeuristic{
 		CurrentTime: opts.private.timeNow,
 		MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
 	})
-	vs.version = newVersion
-	setBasicLevelMetrics(&vs.metrics, newVersion)
-	return vs, nil
+	rv.version = newVersion
+	return rv, nil
 }

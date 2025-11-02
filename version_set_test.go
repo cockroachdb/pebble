@@ -221,7 +221,7 @@ func TestVersionSet(t *testing.T) {
 			}
 
 		case "metrics":
-			return vs.metrics.LevelMetricsString()
+			return vs.metrics.Levels.String()
 
 		default:
 			td.Fatalf(t, "unknown command: %s", td.Cmd)
