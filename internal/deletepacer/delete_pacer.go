@@ -7,11 +7,11 @@ package deletepacer
 import (
 	"context"
 	"runtime/pprof"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
-	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/metrics"
@@ -54,7 +54,7 @@ type DeletePacer struct {
 	mu struct {
 		sync.Mutex
 
-		queue             fifo.Queue[queueEntry]
+		queue             []queueEntry
 		queuedPacingBytes uint64
 		// queuedHistory keeps track of pacing bytes added to the queue within the
 		// last 5 minutes.
@@ -100,7 +100,6 @@ func Open(
 		deleteFn:        deleteFn,
 		notifyCh:        make(chan struct{}, 1),
 	}
-	dp.mu.queue = fifo.MakeQueue(&queueBackingPool)
 	dp.mu.queuedHistory.Init(crtime.NowMono(), RecentRateWindow)
 	dp.mu.deletedCond.L = &dp.mu.Mutex
 	dp.waitGroup.Add(1)
@@ -111,8 +110,6 @@ func Open(
 	}()
 	return dp
 }
-
-var queueBackingPool = fifo.MakeQueueBackingPool[queueEntry]()
 
 type queueEntry struct {
 	ObsoleteFile
@@ -159,17 +156,17 @@ func (dp *DeletePacer) mainLoop() {
 	dp.mu.Lock()
 	defer dp.mu.Unlock()
 	for {
-		if dp.mu.closed && dp.mu.queue.Len() == 0 {
+		if dp.mu.closed && len(dp.mu.queue) == 0 {
 			return
 		}
 		now := crtime.NowMono()
 		disablePacing := dp.mu.closed
-		if dp.mu.queue.Len() > maxQueueSize {
+		if len(dp.mu.queue) > maxQueueSize {
 			// The queue is getting out of hand; disable pacing.
 			disablePacing = true
 			if lastMaxQueueLog == 0 || now.Sub(lastMaxQueueLog) > time.Minute {
 				lastMaxQueueLog = now
-				dp.logger.Errorf("excessive delete pacer queue size %d; pacing temporarily disabled", dp.mu.queue.Len())
+				dp.logger.Errorf("excessive delete pacer queue size %d; pacing temporarily disabled", len(dp.mu.queue))
 			}
 		}
 
@@ -180,7 +177,7 @@ func (dp *DeletePacer) mainLoop() {
 		//   2. Wait for pacing debt to clear;
 		//   3. Otherwise, delete next file.
 		switch {
-		case dp.mu.queue.Len() == 0:
+		case len(dp.mu.queue) == 0:
 			// Nothing to do.
 			dp.mu.Unlock()
 			<-dp.notifyCh
@@ -203,8 +200,8 @@ func (dp *DeletePacer) mainLoop() {
 
 		default:
 			// Delete a file.
-			file := *dp.mu.queue.PeekFront()
-			dp.mu.queue.PopFront()
+			file := dp.mu.queue[0]
+			dp.mu.queue = dp.mu.queue[1:]
 			if b := file.pacingBytes(); b != 0 {
 				dp.mu.queuedPacingBytes = invariants.SafeSub(dp.mu.queuedPacingBytes, b)
 				rateCalc.AddDebt(b)
@@ -238,7 +235,12 @@ func (dp *DeletePacer) Enqueue(jobID int, files ...ObsoleteFile) {
 			dp.mu.queuedHistory.Add(now, b)
 		}
 		dp.mu.metrics.InQueue.Inc(file.FileType, file.FileSize, file.Placement)
-		dp.mu.queue.PushBack(queueEntry{
+		if len(dp.mu.queue) == cap(dp.mu.queue) {
+			// If we have to allocate, make sure we don't have to allocate again for a
+			// while.
+			dp.mu.queue = slices.Grow(dp.mu.queue, 1000)
+		}
+		dp.mu.queue = append(dp.mu.queue, queueEntry{
 			ObsoleteFile: file,
 			JobID:        jobID,
 		})
