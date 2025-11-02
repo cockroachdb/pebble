@@ -248,7 +248,7 @@ func TestFallingBehind(t *testing.T) {
 	queueSize := func() int {
 		dp.mu.Lock()
 		defer dp.mu.Unlock()
-		return dp.mu.queue.Len()
+		return len(dp.mu.queue)
 	}
 	// At 1MB, each job will take 100ms each. Note that the rate increase based on
 	// history won't make much difference, since the enqueued size is averaged
