@@ -1408,6 +1408,14 @@ func (w *RawRowWriter) IsPrefixEqualPrev(k []byte) bool {
 	return bytes.Equal(w.split.Prefix(k), w.split.Prefix(w.dataBlockBuf.dataBlock.CurUserKey()))
 }
 
+// PrevPointKeyKind implements the RawWriter interface.
+func (w *RawRowWriter) PrevPointKeyKind() base.InternalKeyKind {
+	if w == nil || w.dataBlockBuf.dataBlock.EntryCount() == 0 {
+		return base.InternalKeyKindInvalid
+	}
+	return w.dataBlockBuf.dataBlock.CurKey().Kind()
+}
+
 // EncodeSpan encodes the keys in the given span. The span can contain either
 // only RANGEDEL keys or only range keys.
 //
