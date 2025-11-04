@@ -1939,13 +1939,10 @@ var _ valsep.ValueSeparation = (*defineDBValueSeparator)(nil)
 // SetNextOutputConfig implements the valsep.ValueSeparation interface.
 func (vs *defineDBValueSeparator) SetNextOutputConfig(config valsep.ValueSeparationOutputConfig) {}
 
-// Kind implements the ValueSeparation interface.
-func (vs *defineDBValueSeparator) Kind() sstable.ValueSeparationKind {
-	return vs.pbr.Kind()
+// OutputConfig implements the valsep.ValueSeparation interface.
+func (vs *defineDBValueSeparator) OutputConfig() valsep.ValueSeparationOutputConfig {
+	return vs.pbr.OutputConfig()
 }
-
-// MinimumSize implements the ValueSeparation interface.
-func (vs *defineDBValueSeparator) MinimumSize() int { return vs.pbr.MinimumSize() }
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current
 // blob file if it were closed now.

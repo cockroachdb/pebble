@@ -170,15 +170,8 @@ func (vs *ValueSeparator) SetNextOutputConfig(config ValueSeparationOutputConfig
 	vs.currentConfig = config
 }
 
-func (vs *ValueSeparator) Kind() sstable.ValueSeparationKind {
-	if vs.currentConfig != vs.globalConfig {
-		return sstable.ValueSeparationSpanPolicy
-	}
-	return sstable.ValueSeparationDefault
-}
-
-func (vs *ValueSeparator) MinimumSize() int {
-	return vs.currentConfig.MinimumSize
+func (vs *ValueSeparator) OutputConfig() ValueSeparationOutputConfig {
+	return vs.currentConfig
 }
 
 // EstimatedFileSize returns an estimate of the disk space consumed by the current

@@ -414,12 +414,14 @@ type TableBackingProperties struct {
 
 	CompressionStats block.CompressionStats
 
-	// ValueSeparationKind is the value separation policy used when writing the table.
-	ValueSeparationKind sstable.ValueSeparationKind
 	// ValueSeparationMinSize is the minimum value size for which values were
 	// separated when writing the table. This value is 0 if the policy used
 	// does not write blob files.
 	ValueSeparationMinSize uint64
+	// ValueSeparationBySuffixDisabled indicates if disabled applying special
+	// value separation rules by KV suffix when writing the table. Note that
+	// if value separation was disabled, this field is not meaningful.
+	ValueSeparationBySuffixDisabled bool
 }
 
 // NumPointDeletions is the number of point deletions in the sstable. For virtual
@@ -443,19 +445,19 @@ func (b *TableBacking) Properties() (_ *TableBackingProperties, ok bool) {
 // TableBacking.
 func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBackingProperties {
 	b.props = TableBackingProperties{
-		NumEntries:                 props.NumEntries,
-		RawKeySize:                 props.RawKeySize,
-		RawValueSize:               props.RawValueSize,
-		RawPointTombstoneKeySize:   props.RawPointTombstoneKeySize,
-		RawPointTombstoneValueSize: props.RawPointTombstoneValueSize,
-		NumSizedDeletions:          props.NumSizedDeletions,
-		NumDeletions:               props.NumDeletions,
-		NumRangeDeletions:          props.NumRangeDeletions,
-		NumRangeKeyDels:            props.NumRangeKeyDels,
-		NumRangeKeySets:            props.NumRangeKeySets,
-		ValueBlocksSize:            props.ValueBlocksSize,
-		ValueSeparationKind:        sstable.ValueSeparationKind(props.ValueSeparationKind),
-		ValueSeparationMinSize:     props.ValueSeparationMinSize,
+		NumEntries:                      props.NumEntries,
+		RawKeySize:                      props.RawKeySize,
+		RawValueSize:                    props.RawValueSize,
+		RawPointTombstoneKeySize:        props.RawPointTombstoneKeySize,
+		RawPointTombstoneValueSize:      props.RawPointTombstoneValueSize,
+		NumSizedDeletions:               props.NumSizedDeletions,
+		NumDeletions:                    props.NumDeletions,
+		NumRangeDeletions:               props.NumRangeDeletions,
+		NumRangeKeyDels:                 props.NumRangeKeyDels,
+		NumRangeKeySets:                 props.NumRangeKeySets,
+		ValueBlocksSize:                 props.ValueBlocksSize,
+		ValueSeparationMinSize:          props.ValueSeparationMinSize,
+		ValueSeparationBySuffixDisabled: props.ValueSeparationBySuffixDisabled,
 	}
 	if props.NumDataBlocks != 0 {
 		b.props.TombstoneDenseBlocksRatio = float64(props.NumTombstoneDenseBlocks) / float64(props.NumDataBlocks)
