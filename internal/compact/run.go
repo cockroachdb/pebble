@@ -190,8 +190,9 @@ func (r *Runner) WriteTable(
 		panic("error already encountered")
 	}
 
-	// Set the value separation kind on the writer based on the strategy being used.
-	tw.SetValueSeparationProps(valueSeparation.Kind(), uint64(valueSeparation.MinimumSize()))
+	// Set the value separation props on the writer.
+	config := valueSeparation.OutputConfig()
+	tw.SetValueSeparationProps(uint64(config.MinimumSize), config.DisableValueSeparationBySuffix)
 
 	r.tables = append(r.tables, OutputTable{
 		CreationTime: time.Now(),
