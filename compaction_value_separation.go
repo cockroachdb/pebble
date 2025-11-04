@@ -123,14 +123,15 @@ func shouldWriteBlobFiles(
 				continue
 			}
 
-			var expectedMinSize int
+			// Set expected policy to global policy values to start, and
+			// extract the expected values from the span policy.
+			expectedMinSize := policy.MinimumSize
+			expectedValSepBySuffixDisabled := false
 			bounds := t.UserKeyBounds()
 			spanPolicy, spanPolicyEndKey, err := spanPolicyFunc(bounds.Start)
-			if err != nil {
-				// For now, if we can't determine the span policy, we should just assume
-				// the default policy is in effect for this table.
-				expectedMinSize = policy.MinimumSize
-			} else {
+			// For now, if we can't determine the span policy, we should just assume
+			// the default policy is in effect for this table.
+			if err == nil {
 				if len(spanPolicyEndKey) > 0 && cmp(bounds.End.Key, spanPolicyEndKey) >= 0 {
 					// The table's key range now uses multiple span policies. Rewrite to new
 					// blob files so values are stored according to the current policy.
@@ -138,16 +139,23 @@ func shouldWriteBlobFiles(
 				}
 				switch spanPolicy.ValueStoragePolicy.PolicyAdjustment {
 				case UseDefaultValueStorage:
-					// Use the global policy's minimum size.
-					expectedMinSize = policy.MinimumSize
+					// Use the global policy.
 				case OverrideValueStorage:
 					expectedMinSize = spanPolicy.ValueStoragePolicy.MinimumSize
+					if expectedMinSize == 0 {
+						// A 0 minimum value size on the span policy indicates the field
+						// was unset, but other parts of value separation are being
+						// overridden. Use the default min size.
+						expectedMinSize = policy.MinimumSize
+					}
+					expectedValSepBySuffixDisabled = spanPolicy.ValueStoragePolicy.DisableSeparationBySuffix
 				case NoValueSeparation:
 					expectedMinSize = 0
 				}
 			}
 
-			if int(backingProps.ValueSeparationMinSize) != expectedMinSize {
+			if int(backingProps.ValueSeparationMinSize) != expectedMinSize ||
+				(expectedMinSize > 0 && backingProps.ValueSeparationBySuffixDisabled != expectedValSepBySuffixDisabled) {
 				return true, 0
 			}
 		}

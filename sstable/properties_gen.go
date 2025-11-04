@@ -158,13 +158,13 @@ func (p *Properties) load(i iter.Seq2[[]byte, []byte]) error {
 		case "pebble.compression_stats":
 			p.Loaded |= 1 << _bit_CompressionStats
 			p.CompressionStats = string(v)
-		case "pebble.value-separation.kind":
-			p.Loaded |= 1 << _bit_ValueSeparationKind
-			p.ValueSeparationKind = v[0]
 		case "pebble.value-separation.min-size":
 			p.Loaded |= 1 << _bit_ValueSeparationMinSize
 			n, _ := binary.Uvarint(v)
 			p.ValueSeparationMinSize = n
+		case "pebble.value-separation.by-suffix.disabled":
+			p.Loaded |= 1 << _bit_ValueSeparationBySuffixDisabled
+			p.ValueSeparationBySuffixDisabled = len(v) == 1 && v[0] == '1'
 		default:
 			if _, denied := ignoredInternalProperties[string(k)]; !denied {
 				if p.UserProperties == nil {
@@ -405,16 +405,19 @@ func (p *Properties) encodeAll() map[string][]byte {
 		copy(val, p.CompressionStats)
 		m["pebble.compression_stats"] = val
 	}
-	if p.ValueSeparationKind != 0 {
-		val := alloc(1)
-		val[0] = p.ValueSeparationKind
-		m["pebble.value-separation.kind"] = val
-	}
 	if p.ValueSeparationMinSize != 0 {
 		val := alloc(10)
 		n := binary.PutUvarint(val, p.ValueSeparationMinSize)
 		val = val[:n]
 		m["pebble.value-separation.min-size"] = val
+	}
+	if p.ValueSeparationBySuffixDisabled != false {
+		val := alloc(1)
+		val[0] = '0'
+		if p.ValueSeparationBySuffixDisabled {
+			val[0] = '1'
+		}
+		m["pebble.value-separation.by-suffix.disabled"] = val
 	}
 	return m
 }
@@ -537,11 +540,11 @@ func (p *Properties) String() string {
 	if p.CompressionStats != "" || p.isLoaded(_bit_CompressionStats) {
 		fmt.Fprintf(&buf, "%s: %v\n", "pebble.compression_stats", p.CompressionStats)
 	}
-	if p.ValueSeparationKind != 0 || p.isLoaded(_bit_ValueSeparationKind) {
-		fmt.Fprintf(&buf, "%s: %v\n", "pebble.value-separation.kind", p.ValueSeparationKind)
-	}
 	if p.ValueSeparationMinSize != 0 || p.isLoaded(_bit_ValueSeparationMinSize) {
 		fmt.Fprintf(&buf, "%s: %v\n", "pebble.value-separation.min-size", p.ValueSeparationMinSize)
+	}
+	if p.ValueSeparationBySuffixDisabled != false || p.isLoaded(_bit_ValueSeparationBySuffixDisabled) {
+		fmt.Fprintf(&buf, "%s: %v\n", "pebble.value-separation.by-suffix.disabled", p.ValueSeparationBySuffixDisabled)
 	}
 	if len(p.UserProperties) > 0 {
 		// Print the user properties in alphabetical order.
@@ -559,44 +562,44 @@ func (p *Properties) String() string {
 
 // Bit positions for property field.
 const (
-	_bit_NumEntries                 = 0
-	_bit_RawKeySize                 = 1
-	_bit_RawValueSize               = 2
-	_bit_RawPointTombstoneKeySize   = 3
-	_bit_RawPointTombstoneValueSize = 4
-	_bit_NumSizedDeletions          = 5
-	_bit_NumDeletions               = 6
-	_bit_NumRangeDeletions          = 7
-	_bit_NumRangeKeyDels            = 8
-	_bit_NumRangeKeySets            = 9
-	_bit_ValueBlocksSize            = 10
-	_bit_NumDataBlocks              = 11
-	_bit_NumTombstoneDenseBlocks    = 12
-	_bit_ComparerName               = 13
-	_bit_DataSize                   = 14
-	_bit_FilterPolicyName           = 15
-	_bit_FilterSize                 = 16
-	_bit_IndexPartitions            = 17
-	_bit_IndexSize                  = 18
-	_bit_IndexType                  = 19
-	_bit_IsStrictObsolete           = 20
-	_bit_KeySchemaName              = 21
-	_bit_MergerName                 = 22
-	_bit_NumMergeOperands           = 23
-	_bit_NumRangeKeyUnsets          = 24
-	_bit_NumValueBlocks             = 25
-	_bit_NumValuesInValueBlocks     = 26
-	_bit_NumValuesInBlobFiles       = 27
-	_bit_PropertyCollectorNames     = 28
-	_bit_RawRangeKeyKeySize         = 29
-	_bit_RawRangeKeyValueSize       = 30
-	_bit_SnapshotPinnedKeys         = 31
-	_bit_SnapshotPinnedKeySize      = 32
-	_bit_SnapshotPinnedValueSize    = 33
-	_bit_TopLevelIndexSize          = 34
-	_bit_CompressionName            = 35
-	_bit_CompressionStats           = 36
-	_bit_ValueSeparationKind        = 37
-	_bit_ValueSeparationMinSize     = 38
-	_numPropBits                    = 39
+	_bit_NumEntries                      = 0
+	_bit_RawKeySize                      = 1
+	_bit_RawValueSize                    = 2
+	_bit_RawPointTombstoneKeySize        = 3
+	_bit_RawPointTombstoneValueSize      = 4
+	_bit_NumSizedDeletions               = 5
+	_bit_NumDeletions                    = 6
+	_bit_NumRangeDeletions               = 7
+	_bit_NumRangeKeyDels                 = 8
+	_bit_NumRangeKeySets                 = 9
+	_bit_ValueBlocksSize                 = 10
+	_bit_NumDataBlocks                   = 11
+	_bit_NumTombstoneDenseBlocks         = 12
+	_bit_ComparerName                    = 13
+	_bit_DataSize                        = 14
+	_bit_FilterPolicyName                = 15
+	_bit_FilterSize                      = 16
+	_bit_IndexPartitions                 = 17
+	_bit_IndexSize                       = 18
+	_bit_IndexType                       = 19
+	_bit_IsStrictObsolete                = 20
+	_bit_KeySchemaName                   = 21
+	_bit_MergerName                      = 22
+	_bit_NumMergeOperands                = 23
+	_bit_NumRangeKeyUnsets               = 24
+	_bit_NumValueBlocks                  = 25
+	_bit_NumValuesInValueBlocks          = 26
+	_bit_NumValuesInBlobFiles            = 27
+	_bit_PropertyCollectorNames          = 28
+	_bit_RawRangeKeyKeySize              = 29
+	_bit_RawRangeKeyValueSize            = 30
+	_bit_SnapshotPinnedKeys              = 31
+	_bit_SnapshotPinnedKeySize           = 32
+	_bit_SnapshotPinnedValueSize         = 33
+	_bit_TopLevelIndexSize               = 34
+	_bit_CompressionName                 = 35
+	_bit_CompressionStats                = 36
+	_bit_ValueSeparationMinSize          = 37
+	_bit_ValueSeparationBySuffixDisabled = 38
+	_numPropBits                         = 39
 )

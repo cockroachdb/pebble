@@ -1967,7 +1967,7 @@ func (w *RawRowWriter) setFilter(fw filterWriter) {
 }
 
 // SetValueSeparationProps implements RawWriter.
-func (w *RawRowWriter) SetValueSeparationProps(_kind ValueSeparationKind, _minValueSize uint64) {
+func (w *RawRowWriter) SetValueSeparationProps(_ uint64, _ bool) {
 	// Value separation requires TableFormatPebblev7+ which uses column writers.
 }
 

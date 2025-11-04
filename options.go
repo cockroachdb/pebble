@@ -1322,10 +1322,6 @@ type ValueStoragePolicyAdjustment struct {
 	// optimize access to the KV with the smallest suffix. This is useful for MVCC
 	// keys (where the smallest suffix is the latest version), but should be
 	// disabled for keys where the suffix does not correspond to a version.
-	//
-	// TODO(xinhaoz): Persist this setting when writing sstables so we can
-	// compare against current span policy configs during compaction to determine
-	// whether we can preserve blob references.
 	DisableSeparationBySuffix bool
 	// MinimumSize is the minimum size of the value.
 	MinimumSize int

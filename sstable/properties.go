@@ -122,13 +122,12 @@ type Properties struct {
 	// The compression statistics encoded as a string. The format is:
 	// "<setting1>:<compressed1>/<uncompressed1>,<setting2>:<compressed2>/<uncompressed2>,..."
 	CompressionStats string `prop:"pebble.compression_stats"`
-	// The value separation policy that was used when writing this sstable.
-	// This indicates how values were handled during writing (separated into
-	// blob files, preserved references, or kept in-place). See ValueSeparationKind type
-	// for possible values.
-	ValueSeparationKind uint8 `prop:"pebble.value-separation.kind"`
 	// The minimum size a value must be to be separated into a blob file during writing.
 	ValueSeparationMinSize uint64 `prop:"pebble.value-separation.min-size"`
+	// ValueSeparationBySuffixDisabled indicates if special value separation rules were
+	// applied based on the KV suffix when writing. Pebble attempts to optimize writing of
+	// MVCC garbage values into blob files, which are recognized by the key suffix.
+	ValueSeparationBySuffixDisabled bool `prop:"pebble.value-separation.by-suffix.disabled"`
 	// User collected properties. Currently, we only use them to store block
 	// properties aggregated at the table level.
 	UserProperties map[string]string
@@ -230,25 +229,6 @@ func (p *Properties) toAttributes() Attributes {
 
 	return attributes
 }
-
-// ValueSeparationKind indicates the value separation policy that was used
-// when writing an sstable.
-type ValueSeparationKind uint8
-
-const (
-	// ValueSeparationNone indicates that no value separation was used.
-	// All values are stored in-place within the sstable.
-	ValueSeparationNone ValueSeparationKind = iota
-
-	// ValueSeparationDefault indicates that values were separated into
-	// new blob files during writing using the default value separation
-	// policy settings for minimum sizes.
-	ValueSeparationDefault
-
-	// ValueSeparationSpanPolicy indicates that values were separated
-	// based on a span policy during writing.
-	ValueSeparationSpanPolicy
-)
 
 var (
 	singleZeroSlice = []byte{0x00}

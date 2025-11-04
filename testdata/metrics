@@ -133,16 +133,16 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0       707B |      1  707B |      0     0 |     0B     0B |    28B |      0    0B |   1 25.25
+   L0       687B |      1  687B |      0     0 |     0B     0B |    28B |      0    0B |   1 24.54
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       707B |      1  707B |      0     0 |     0B     0B |    28B |      0    0B |   1 26.25
+total       687B |      1  687B |      0     0 |     0B     0B |    28B |      0    0B |   1 25.54
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      1   707B     0B
+   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      1   687B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      1   735B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      1   715B     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       0       0        0     0     0     0        0     0      0     0       0
@@ -171,7 +171,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   1 (707B)       0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   1 (687B)       0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -216,13 +216,13 @@ DELETE PACER   |   in queue   |   deleted
 Iter category stats:
    pebble-compaction, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
 ----
 ----
 
 disk-usage
 ----
-3,673B
+3,653B
 
 batch
 set b 2
@@ -253,18 +253,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |    64B |      0    0B |   0 22.09
-   L6      1.4KB |      2 1.4KB |      0     0 |     0B     0B |  1.4KB |      0    0B |   1  0.99
+   L0         0B |      0    0B |      0     0 |     0B     0B |    64B |      0    0B |   0 21.47
+   L6      1.3KB |      2 1.3KB |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.99
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      1.4KB |      2 1.4KB |      0     0 |     0B     0B |    64B |      0    0B |   1 45.03
+total      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    64B |      0    0B |   1 43.78
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.4KB     0B
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   738B    0B |      2  1.4KB     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.3KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   718B    0B |      2  1.3KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |   738B    0B |      4  2.8KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   718B    0B |      4  2.7KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -293,8 +293,8 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
-   zombie |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   2 (1.3KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |   2 (1.3KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
 MISC            |
@@ -335,16 +335,16 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
+   pebble-compaction, non-latency: {BlockBytes:718 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
 
 disk-usage
 ----
-5,966B
+5,886B
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -357,18 +357,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |    64B |      0    0B |   0 22.09
-   L6      1.4KB |      2 1.4KB |      0     0 |     0B     0B |  1.4KB |      0    0B |   1  0.99
+   L0         0B |      0    0B |      0     0 |     0B     0B |    64B |      0    0B |   0 21.47
+   L6      1.3KB |      2 1.3KB |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.99
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      1.4KB |      2 1.4KB |      0     0 |     0B     0B |    64B |      0    0B |   1 45.03
+total      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    64B |      0    0B |   1 43.78
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.4KB     0B
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   738B    0B |      2  1.4KB     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.3KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   718B    0B |      2  1.3KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |   738B    0B |      4  2.8KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   718B    0B |      4  2.7KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -397,8 +397,8 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
-   zombie |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   2 (1.3KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |   2 (1.3KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
 MISC            |
@@ -439,9 +439,9 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
+   pebble-compaction, non-latency: {BlockBytes:718 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -458,18 +458,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |    64B |      0    0B |   0 22.09
-   L6      1.4KB |      2 1.4KB |      0     0 |     0B     0B |  1.4KB |      0    0B |   1  0.99
+   L0         0B |      0    0B |      0     0 |     0B     0B |    64B |      0    0B |   0 21.47
+   L6      1.3KB |      2 1.3KB |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.99
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      1.4KB |      2 1.4KB |      0     0 |     0B     0B |    64B |      0    0B |   1 45.03
+total      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    64B |      0    0B |   1 43.78
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.4KB     0B
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   738B    0B |      2  1.4KB     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.3KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   718B    0B |      2  1.3KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |   738B    0B |      4  2.8KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   718B    0B |      4  2.7KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -498,8 +498,8 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
-   zombie |   1 (707B)       0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   2 (1.3KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+   zombie |   1 (687B)       0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
 MISC            |
@@ -540,16 +540,16 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
+   pebble-compaction, non-latency: {BlockBytes:718 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
 
 disk-usage
 ----
-5,259B
+5,199B
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
@@ -562,18 +562,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |    64B |      0    0B |   0 22.09
-   L6      1.4KB |      2 1.4KB |      0     0 |     0B     0B |  1.4KB |      0    0B |   1  0.99
+   L0         0B |      0    0B |      0     0 |     0B     0B |    64B |      0    0B |   0 21.47
+   L6      1.3KB |      2 1.3KB |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.99
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      1.4KB |      2 1.4KB |      0     0 |     0B     0B |    64B |      0    0B |   1 45.03
+total      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    64B |      0    0B |   1 43.78
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.4KB     0B
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   738B    0B |      2  1.4KB     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.3KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   718B    0B |      2  1.3KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |   738B    0B |      4  2.8KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   718B    0B |      4  2.7KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -602,7 +602,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   2 (1.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   2 (1.3KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -644,16 +644,16 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
+   pebble-compaction, non-latency: {BlockBytes:718 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
 
 disk-usage
 ----
-4,552B
+4,512B
 
 additional-metrics
 ----
@@ -705,18 +705,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      6.7KB |      7 5.4KB |      0     0 |  1.2KB     0B |   165B |      0    0B |   1 49.89
-   L6      1.4KB |      2 1.4KB |      0     0 |     0B     0B |  1.4KB |      0    0B |   1  0.99
+   L0      6.6KB |      7 5.4KB |      0     0 |  1.2KB     0B |   165B |      0    0B |   1 49.22
+   L6      1.3KB |      2 1.3KB |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.99
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |   165B |      0    0B |   2 59.40
+total      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |   165B |      0    0B |   2 58.49
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      9  6.8KB  1.2KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   738B    0B |      2  1.4KB     0B
+   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      9  6.7KB  1.2KB
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   718B    0B |      2  1.3KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |   738B    0B |     11  8.4KB  1.2KB
+total |     -     -     - |      0    0B |    0B    0B    0B |   718B    0B |     11  8.2KB  1.2KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -745,7 +745,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   9 (6.8KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+     live |   9 (6.7KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -768,7 +768,7 @@ CGO MEMORY    |          block cache           |                     memtables
 COMPACTIONS
    estimated debt |       in progress |         cancelled |            failed |      problem spans
 ------------------+-------------------+-------------------+-------------------+-------------------
-              8KB |            0 (0B) |            0 (0B) |                 0 |                  0
+            7.9KB |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
@@ -788,9 +788,9 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:738 BlockBytesInCache:112 BlockReadDuration:20ms}
+   pebble-compaction, non-latency: {BlockBytes:718 BlockBytesInCache:112 BlockReadDuration:20ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -834,16 +834,16 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |   165B |      0    0B |   0 49.89
-   L6        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  1.00
+   L0         0B |      0    0B |      0     0 |     0B     0B |   165B |      0    0B |   0 49.22
+   L6      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |  6.7KB |      0    0B |   1  1.00
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |   165B |      0    0B |   1 93.12
+total      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |   165B |      0    0B |   1 91.79
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      9  6.8KB  1.2KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.8KB     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      9  6.7KB  1.2KB
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.7KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     18   14KB  1.2KB
 
@@ -874,7 +874,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   9 (6.8KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+     live |   9 (6.7KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -917,9 +917,9 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
+   pebble-compaction, non-latency: {BlockBytes:5485 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1014,16 +1014,16 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0        4KB |      6   4KB |      0     0 |     0B     0B |   211B |      3 1.9KB |   2 49.07
-   L6        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  1.00
+   L0      3.9KB |      6 3.9KB |      0     0 |     0B     0B |   211B |      3 1.9KB |   2 48.26
+   L6      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |  6.7KB |      0    0B |   1  1.00
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       12KB |     15  11KB |      0     0 |  1.2KB     0B |  2.1KB |      3 1.9KB |   3  8.96
+total       12KB |     15  11KB |      0     0 |  1.2KB     0B |  2.1KB |      3 1.9KB |   3  8.83
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     12  8.9KB  1.2KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.8KB     0B
+   L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     12  8.7KB  1.2KB
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.7KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     21   18KB  1.2KB
 
@@ -1097,9 +1097,9 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
+   pebble-compaction, non-latency: {BlockBytes:5485 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1156,18 +1156,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      8.8KB |     13 8.8KB |      0     0 |     0B     0B |   277B |      3 1.9KB |   2 55.24
-   L6        8KB |      9 6.8KB |      0     0 |  1.2KB     0B |  6.8KB |      0    0B |   1  1.00
+   L0      8.6KB |     13 8.6KB |      0     0 |     0B     0B |   277B |      3 1.9KB |   2 54.12
+   L6      7.9KB |      9 6.7KB |      0     0 |  1.2KB     0B |  6.7KB |      0    0B |   1  1.00
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       17KB |     22  16KB |      0     0 |  1.2KB     0B |  2.2KB |      3 1.9KB |   3 10.93
+total       17KB |     22  15KB |      0     0 |  1.2KB     0B |  2.2KB |      3 1.9KB |   3 10.75
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   14KB  1.2KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.8KB     0B
+   L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   13KB  1.2KB
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.7KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     28   23KB  1.2KB
+total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     28   22KB  1.2KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       2       0        0     0     0     0        0     0      0     0       0
@@ -1196,7 +1196,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   22 (16KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
+     live |   22 (15KB)      0 (0B)        0 (0B)     |   7 (1.2KB)      0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -1239,9 +1239,9 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
+   pebble-compaction, non-latency: {BlockBytes:5485 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1306,16 +1306,16 @@ metrics zero-cache-hits-misses zero-delete-pacer
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      7.4KB |     11 7.4KB |      0     0 |     0B     0B |   277B |      3 1.9KB |   2 55.24
-   L6      8.7KB |     10 7.4KB |      0     0 |  1.2KB     0B |  6.8KB |      1  655B |   1  1.00
+   L0      7.3KB |     11 7.3KB |      0     0 |     0B     0B |   277B |      3 1.9KB |   2 54.12
+   L6      8.5KB |     10 7.3KB |      0     0 |  1.2KB     0B |  6.7KB |      1  655B |   1  1.00
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       16KB |     21  15KB |      0     0 |  1.2KB     0B |  2.8KB |      4 2.6KB |   3  8.69
+total       16KB |     21  15KB |      0     0 |  1.2KB     0B |  2.8KB |      4 2.6KB |   3  8.54
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   14KB  1.2KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.8KB     0B
+   L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |     19   13KB  1.2KB
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  5.4KB    0B |      9  6.7KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  5.4KB    0B |     28   23KB  1.2KB
 
@@ -1386,9 +1386,9 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:5575 BlockBytesInCache:112 BlockReadDuration:160ms}
+   pebble-compaction, non-latency: {BlockBytes:5485 BlockBytesInCache:112 BlockReadDuration:160ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1493,18 +1493,18 @@ metrics zero-cache-hits-misses zero-delete-pacer
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |   277B |      3 1.9KB |   0 55.24
-   L6       14KB |     18  13KB |      0     0 |  1.2KB     0B |   14KB |      2 1.3KB |   1  0.85
+   L0         0B |      0    0B |      0     0 |     0B     0B |   277B |      3 1.9KB |   0 54.12
+   L6       14KB |     18  13KB |      0     0 |  1.2KB     0B |   13KB |      2 1.3KB |   1  0.85
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total       14KB |     18  13KB |      0     0 |  1.2KB     0B |  3.5KB |      5 3.2KB |   1  8.66
+total       14KB |     18  13KB |      0     0 |  1.2KB     0B |  3.5KB |      5 3.2KB |   1  8.50
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |     19   14KB  1.2KB
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   11KB    0B |     16   12KB     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |     19   13KB  1.2KB
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   11KB    0B |     16   11KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |   11KB    0B |     35   29KB  1.2KB
+total |     -     -     - |      0    0B |    0B    0B    0B |   11KB    0B |     35   28KB  1.2KB
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       3       0        0     0     0     0        0     0      0     0       0
@@ -1573,9 +1573,9 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:11679 BlockBytesInCache:457 BlockReadDuration:330ms}
+   pebble-compaction, non-latency: {BlockBytes:11449 BlockBytesInCache:457 BlockReadDuration:330ms}
                    a, non-latency: {BlockBytes:0 BlockBytesInCache:0 BlockReadDuration:0s}
-                   b,     latency: {BlockBytes:626 BlockBytesInCache:0 BlockReadDuration:30ms}
+                   b,     latency: {BlockBytes:606 BlockBytesInCache:0 BlockReadDuration:30ms}
                    c, non-latency: {BlockBytes:112 BlockBytesInCache:112 BlockReadDuration:0s}
 ----
 ----
@@ -1605,16 +1605,16 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      2.1KB |      3 2.1KB |      0     0 |     0B     0B |    38B |      0    0B |   1 55.82
+   L0        2KB |      3   2KB |      0     0 |     0B     0B |    38B |      0    0B |   1 54.24
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      2.1KB |      3 2.1KB |      0     0 |     0B     0B |    38B |      0    0B |   1 56.82
+total        2KB |      3   2KB |      0     0 |     0B     0B |    38B |      0    0B |   1 55.24
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      3  2.1KB     0B
+   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      3    2KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      3  2.1KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |     0B    0B |      3    2KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       0       0        0     0     0     0        0     0      0     0       0
@@ -1640,7 +1640,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   3 (2.1KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |    3 (2KB)       0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -1701,15 +1701,15 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |    38B |      0    0B |   0 55.82
-   L6      1.9KB |      3 1.9KB |      0     0 |     0B     0B |  2.1KB |      0    0B |   1  0.93
+   L0         0B |      0    0B |      0     0 |     0B     0B |    38B |      0    0B |   0 54.24
+   L6      1.9KB |      3 1.9KB |      0     0 |     0B     0B |    2KB |      0    0B |   1  0.95
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      1.9KB |      3 1.9KB |      0     0 |     0B     0B |    38B |      0    0B |   1 108.5
+total      1.9KB |      3 1.9KB |      0     0 |     0B     0B |    38B |      0    0B |   1 106.9
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      3  2.1KB     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      3    2KB     0B
    L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.8KB    0B |      3  1.9KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  1.8KB    0B |      6    4KB     0B
@@ -1783,7 +1783,7 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
+   pebble-compaction, non-latency: {BlockBytes:1818 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
 ----
 
@@ -1817,18 +1817,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0       655B |      1  655B |      0     0 |     0B     0B |    38B |      1  655B |   1 55.82
-   L6      1.9KB |      3 1.9KB |      0     0 |     0B     0B |  2.1KB |      0    0B |   1  0.93
+   L0       655B |      1  655B |      0     0 |     0B     0B |    38B |      1  655B |   1 54.24
+   L6      1.9KB |      3 1.9KB |      0     0 |     0B     0B |    2KB |      0    0B |   1  0.95
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      2.6KB |      4 2.6KB |      0     0 |     0B     0B |   693B |      1  655B |   2  6.90
+total      2.6KB |      4 2.6KB |      0     0 |     0B     0B |   693B |      1  655B |   2  6.81
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      3  2.1KB     0B
+   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      3    2KB     0B
    L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.8KB    0B |      3  1.9KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.8KB    0B |      6  4.7KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.8KB    0B |      6  4.6KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -1899,7 +1899,7 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
+   pebble-compaction, non-latency: {BlockBytes:1818 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
 ----
 
@@ -1925,18 +1925,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    74B |      1  655B |   2 38.22
-   L6      1.9KB |      3 1.9KB |      0     0 |     0B     0B |  2.1KB |      0    0B |   1  0.93
+   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    74B |      1  655B |   2 37.14
+   L6      1.9KB |      3 1.9KB |      0     0 |     0B     0B |    2KB |      0    0B |   1  0.95
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      3.2KB |      5 3.2KB |      0     0 |     0B     0B |   729B |      1  655B |   3  7.57
+total      3.2KB |      5 3.2KB |      0     0 |     0B     0B |   729B |      1  655B |   3  7.47
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      4  2.8KB     0B
+   L0 |     -  0.50  0.50 |      0    0B |    0B    0B    0B |     0B    0B |      4  2.7KB     0B
    L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.8KB    0B |      3  1.9KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.8KB    0B |      7  5.4KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.8KB    0B |      7  5.3KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -1965,7 +1965,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   1 (707B)      4 (2.6KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   1 (687B)      4 (2.6KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -2008,7 +2008,7 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 
 Iter category stats:
-   pebble-compaction, non-latency: {BlockBytes:1878 BlockBytesInCache:0 BlockReadDuration:60ms}
+   pebble-compaction, non-latency: {BlockBytes:1818 BlockBytesInCache:0 BlockReadDuration:60ms}
 ----
 ----
 
@@ -2060,7 +2060,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   1 (707B)      4 (2.6KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   1 (687B)      4 (2.6KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -2121,16 +2121,16 @@ metrics zero-cache-hits-misses zero-delete-pacer
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L6        2KB |      3   2KB |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.52
+   L6      1.9KB |      3 1.9KB |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.51
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total        2KB |      3   2KB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
+total      1.9KB |      3 1.9KB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   342B    0B |      1   702B     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |   342B    0B |      1   682B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |   342B    0B |      1   702B     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |   342B    0B |      1   682B     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -2156,7 +2156,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   1 (702B)      2 (1.3KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   1 (682B)      2 (1.3KB)      0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -2254,18 +2254,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |   106B |      0    0B |   1 33.37
+   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |   106B |      0    0B |   1 32.71
    L6      2.1KB |      3 2.1KB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      3.5KB |      5 3.5KB |      0     0 |     0B     0B |   106B |      0    0B |   2 34.37
+total      3.4KB |      5 3.4KB |      0     0 |     0B     0B |   106B |      0    0B |   2 33.71
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      5  3.5KB     0B
+   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      5  3.4KB     0B
    L6 |     -  0.00  0.00 |      3 2.1KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      3 2.1KB |    0B    0B    0B |     0B    0B |      5  3.6KB     0B
+total |     -     -     - |      3 2.1KB |    0B    0B    0B |     0B    0B |      5  3.5KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       0       0        0     3     0     0        0     0      0     0       0
@@ -2294,7 +2294,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   5 (3.5KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   5 (3.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -2303,7 +2303,7 @@ MISC            |
 table stats     | all loaded
 table garbage   |
   point del     | 502B
-  range del     | 1.4KB
+  range del     | 1.3KB
 blob values     |
   total         | 0B
   refed         | 0B
@@ -2317,12 +2317,12 @@ CGO MEMORY    |          block cache           |                     memtables
 COMPACTIONS
    estimated debt |       in progress |         cancelled |            failed |      problem spans
 ------------------+-------------------+-------------------+-------------------+-------------------
-            3.5KB |            0 (0B) |            0 (0B) |                 0 |                  0
+            3.4KB |            0 (0B) |            0 (0B) |                 0 |                  0
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
 -----------------+------------------+--------------------------+-----------------+----------------
-               0 |                3 |                        0 |            502B |           1.4KB
+               0 |                3 |                        0 |            502B |           1.3KB
 
 COMPRESSION
     algorithm |         tables |    blob files
@@ -2352,18 +2352,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |   106B |      0    0B |   1 33.37
+   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |   106B |      0    0B |   1 32.71
    L6      2.1KB |      3 2.1KB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      3.5KB |      5 3.5KB |      0     0 |     0B     0B |   106B |      0    0B |   2 34.37
+total      3.4KB |      5 3.4KB |      0     0 |     0B     0B |   106B |      0    0B |   2 33.71
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      5  3.5KB     0B
+   L0 |     -  0.25  0.25 |      0    0B |    0B    0B    0B |     0B    0B |      5  3.4KB     0B
    L6 |     -  0.00  0.00 |      3 2.1KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      3 2.1KB |    0B    0B    0B |     0B    0B |      5  3.6KB     0B
+total |     -     -     - |      3 2.1KB |    0B    0B    0B |     0B    0B |      5  3.5KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       0       0        0     3     0     0        0     0      0     0       0
@@ -2392,7 +2392,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   5 (3.5KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   5 (3.4KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -2401,7 +2401,7 @@ MISC            |
 table stats     | all loaded
 table garbage   |
   point del     | 502B
-  range del     | 1.4KB
+  range del     | 1.3KB
 blob values     |
   total         | 0B
   refed         | 0B
@@ -2415,12 +2415,12 @@ CGO MEMORY    |          block cache           |                     memtables
 COMPACTIONS
    estimated debt |       in progress |         cancelled |            failed |      problem spans
 ------------------+-------------------+-------------------+-------------------+-------------------
-            3.5KB |            0 (0B) |            0 (0B) |                 0 |                2!!
+            3.4KB |            0 (0B) |            0 (0B) |                 0 |                2!!
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
 -----------------+------------------+--------------------------+-----------------+----------------
-               0 |                3 |                        0 |            502B |           1.4KB
+               0 |                3 |                        0 |            502B |           1.3KB
 
 COMPRESSION
     algorithm |         tables |    blob files
@@ -2464,7 +2464,7 @@ Blob files:
 
 disk-usage
 ----
-7,614B
+7,574B
 
 init reopen
 ----
@@ -2472,4 +2472,4 @@ init reopen
 # The disk usage is expected to go down a bit because we remove the WALs.
 disk-usage
 ----
-7,097B
+7,057B
