@@ -6,6 +6,8 @@ package pebble
 
 import (
 	"bytes"
+	"context"
+	"encoding/binary"
 	"io"
 	"slices"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -618,4 +621,79 @@ func (d *DB) replayWAL(
 
 	// mem is nil here, if !ReadOnly.
 	return flushableIngests, maxSeqNum, err
+}
+
+func (d *DB) replayIngestedFlushable(
+	b *Batch, logNum base.DiskFileNum,
+) (entry *flushableEntry, err error) {
+	br := b.Reader()
+	seqNum := b.SeqNum()
+
+	fileNums := make([]base.DiskFileNum, 0, b.Count())
+	var exciseSpan KeyRange
+	addFileNum := func(encodedFileNum []byte) {
+		fileNum, n := binary.Uvarint(encodedFileNum)
+		if n <= 0 {
+			panic("pebble: ingest sstable file num is invalid")
+		}
+		fileNums = append(fileNums, base.DiskFileNum(fileNum))
+	}
+
+	for i := 0; i < int(b.Count()); i++ {
+		kind, key, val, ok, err := br.Next()
+		if err != nil {
+			return nil, err
+		}
+		if kind != InternalKeyKindIngestSST && kind != InternalKeyKindExcise {
+			panic("pebble: invalid batch key kind")
+		}
+		if !ok {
+			panic("pebble: invalid batch count")
+		}
+		if kind == base.InternalKeyKindExcise {
+			if exciseSpan.Valid() {
+				panic("pebble: multiple excise spans in a single batch")
+			}
+			exciseSpan.Start = slices.Clone(key)
+			exciseSpan.End = slices.Clone(val)
+			continue
+		}
+		addFileNum(key)
+	}
+
+	if _, _, _, ok, err := br.Next(); err != nil {
+		return nil, err
+	} else if ok {
+		panic("pebble: invalid number of entries in batch")
+	}
+
+	meta := make([]*manifest.TableMetadata, len(fileNums))
+	var lastRangeKey keyspan.Span
+	for i, n := range fileNums {
+		readable, err := d.objProvider.OpenForReading(context.TODO(), base.FileTypeTable, n,
+			objstorage.OpenOptions{MustExist: true})
+		if err != nil {
+			return nil, errors.Wrap(err, "pebble: error when opening flushable ingest files")
+		}
+		// NB: ingestLoad1 will close readable.
+		meta[i], lastRangeKey, _, err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(),
+			readable, d.cacheHandle, base.PhysicalTableFileNum(n), disableRangeKeyChecks())
+		if err != nil {
+			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")
+		}
+	}
+	if lastRangeKey.Valid() && d.opts.Comparer.Split.HasSuffix(lastRangeKey.End) {
+		return nil, errors.AssertionFailedf("pebble: last ingest sstable has suffixed range key end %s",
+			d.opts.Comparer.FormatKey(lastRangeKey.End))
+	}
+
+	numFiles := len(meta)
+	if exciseSpan.Valid() {
+		numFiles++
+	}
+	if uint32(numFiles) != b.Count() {
+		panic("pebble: couldn't load all files in WAL entry")
+	}
+
+	return d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
 }
