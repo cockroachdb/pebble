@@ -1297,24 +1297,19 @@ func (p SpanPolicy) String() string {
 	if p.ValueStoragePolicy.DisableSeparationBySuffix {
 		sb.WriteString("disable-value-separation-by-suffix,")
 	}
-	switch p.ValueStoragePolicy.PolicyAdjustment {
-	case NoValueSeparation:
-		sb.WriteString("no-value-separation,")
-	case OverrideValueStorage:
-		sb.WriteString("override,")
+	if p.ValueStoragePolicy.DisableBlobSeparation {
+		sb.WriteString("no-blob-value-separation,")
+	}
+	if p.ValueStoragePolicy.OverrideBlobSeparationMinimumSize > 0 {
+		sb.WriteString("override-value-separation-min-size")
 	}
 	return strings.TrimSuffix(sb.String(), ",")
 }
 
 // ValueStoragePolicyAdjustment is used to determine where to store the values for
-// KVs. If the PolicyAdjustment specified is OverrideValueStorage, the remaining fields
-// are used to override the global configuration for value separation.
+// KVs, overriding global policies. Values can be configured to be stored in-place,
+// in value blocks, or in blob files.
 type ValueStoragePolicyAdjustment struct {
-	// PolicyAdjustment specifies the policy adjustment to apply.
-	PolicyAdjustment ValueStoragePolicyAdjustmentType
-
-	// Remaining fields are ignored, unless the PolicyAdjustment is OverrideValueStorage.
-
 	// DisableSeparationBySuffix disables discriminating KVs depending on
 	// suffix.
 	//
@@ -1322,45 +1317,43 @@ type ValueStoragePolicyAdjustment struct {
 	// optimize access to the KV with the smallest suffix. This is useful for MVCC
 	// keys (where the smallest suffix is the latest version), but should be
 	// disabled for keys where the suffix does not correspond to a version.
+	// See sstable.IsLikelyMVCCGarbage for the exact criteria we use to
+	// determine whether a value is likely MVCC garbage.
+	//
+	// If separation by suffix is enabled, KVs with older suffix values will be
+	// written according to the following rules:
+	// - If the value is empty, no separation is performed.
+	// - If blob separation is enabled the value will be separated into a blob
+	// file even if its size is smaller than the minimum value size.
+	// - If blob separation is disabled, the value will be written to a value
+	// block within the sstable.
 	DisableSeparationBySuffix bool
-	// MinimumSize is the minimum size of the value.
-	MinimumSize int
+
+	// DisableBlobSeparation disables separating values into blob files.
+	DisableBlobSeparation bool
+
+	// OverrideBlobSeparationMinimumSize overrides the minimum size required
+	// for value separation into a blob file. Note that value separation must
+	// be enabled globally for this to take effect.
+	OverrideBlobSeparationMinimumSize int
 }
 
-// ValueStoragePolicyAdjustmentType is a hint used to determine where to store the
-// values for KVs.
-type ValueStoragePolicyAdjustmentType uint8
-
-const (
-	// UseDefaultValueStorage is the default value; Pebble will respect global
-	// configuration for value separation.
-	UseDefaultValueStorage ValueStoragePolicyAdjustmentType = iota
-
-	// NoValueSeparation indicates Pebble should prefer storing values
-	// in-place.
-	NoValueSeparation
-
-	// OverrideValueStorage indicates that value separation thresholds (see
-	// valsep.ValueSeparationOutputConfig) for this key range are being
-	// overridden from a SpanPolicy. If the global Options enable value
-	// separation, Pebble will separate values under the OverrideValueStorage
-	// policy even if they do not meet the minimum size threshold of the
-	// global Options' ValueSeparationPolicy.
-	OverrideValueStorage
-)
+func (vsp *ValueStoragePolicyAdjustment) ContainsOverrides() bool {
+	return vsp.OverrideBlobSeparationMinimumSize > 0 || vsp.DisableSeparationBySuffix
+}
 
 // ValueStorageLatencyTolerant is the suggested ValueStoragePolicyAdjustment
 // to use for key ranges that can tolerate higher value retrieval
 // latency.
 var ValueStorageLatencyTolerant = ValueStoragePolicyAdjustment{
-	PolicyAdjustment: OverrideValueStorage,
-	MinimumSize:      10,
+	OverrideBlobSeparationMinimumSize: 10,
 }
 
 // ValueStorageLowReadLatency is the suggested ValueStoragePolicyAdjustment
 // to use for key ranges that require low value retrieval latency.
 var ValueStorageLowReadLatency = ValueStoragePolicyAdjustment{
-	PolicyAdjustment: NoValueSeparation,
+	DisableBlobSeparation:     true,
+	DisableSeparationBySuffix: true,
 }
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.

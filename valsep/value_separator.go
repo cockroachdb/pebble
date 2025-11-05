@@ -163,8 +163,7 @@ func NewWriteNewBlobFiles(
 // SetNextOutputConfig implements the ValueSeparation interface.
 func (vs *ValueSeparator) SetNextOutputConfig(config ValueSeparationOutputConfig) {
 	if config.MinimumSize == 0 {
-		// This indicates that MinimumSize was unset, so fall back
-		// to the global minimum size.
+		// No override, so fall back to the global minimum size.
 		config.MinimumSize = vs.globalConfig.MinimumSize
 	}
 	vs.currentConfig = config
