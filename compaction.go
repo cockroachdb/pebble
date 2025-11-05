@@ -3479,16 +3479,11 @@ func (d *DB) compactAndWrite(
 			writerOpts.Compression = block.FastestCompression
 		}
 		vSep := valueSeparation
-		switch spanPolicy.ValueStoragePolicy.PolicyAdjustment {
-		case UseDefaultValueStorage:
-			// No change to value separation.
-		case NoValueSeparation:
+		if spanPolicy.ValueStoragePolicy.DisableBlobSeparation {
 			vSep = valsep.NeverSeparateValues{}
-		case OverrideValueStorage:
-			// This span of keyspace is more tolerant of latency, so set a more
-			// aggressive value separation policy for this output.
+		} else if spanPolicy.ValueStoragePolicy.ContainsOverrides() {
 			vSep.SetNextOutputConfig(valsep.ValueSeparationOutputConfig{
-				MinimumSize:                    spanPolicy.ValueStoragePolicy.MinimumSize,
+				MinimumSize:                    spanPolicy.ValueStoragePolicy.OverrideBlobSeparationMinimumSize,
 				DisableValueSeparationBySuffix: spanPolicy.ValueStoragePolicy.DisableSeparationBySuffix,
 			})
 		}
