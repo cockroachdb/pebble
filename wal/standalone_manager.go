@@ -67,9 +67,7 @@ func (m *StandaloneManager) init(o Options, initial Logs) error {
 		return err
 	}
 	for _, ll := range initial {
-		if m.recycler.MinRecycleLogNum() <= ll.Num {
-			m.recycler.SetMinRecycleLogNum(ll.Num + 1)
-		}
+		m.recycler.RatchetMinRecycleLogNum(ll.Num + 1)
 		m.initialObsolete, err = appendDeletableLogs(m.initialObsolete, ll)
 		if err != nil {
 			return closeAndReturnErr(err)
