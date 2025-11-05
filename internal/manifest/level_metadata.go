@@ -415,6 +415,13 @@ func (ls LevelSlice) Overlaps(cmp Compare, bounds base.UserKeyBounds) LevelSlice
 	return newBoundedLevelSlice(startIter.iter.clone(), &startIter.iter, &endIter.iter)
 }
 
+// HasOverlap is equivalent to ls.Overlaps(cmp, bounds).Len() > 0 but is more efficient.
+func (ls LevelSlice) HasOverlap(cmp Compare, bounds base.UserKeyBounds) bool {
+	iter := ls.Iter()
+	t := iter.SeekGE(cmp, bounds.Start)
+	return t != nil && bounds.End.IsUpperBoundFor(cmp, t.Smallest().UserKey)
+}
+
 // KeyType is used to specify the type of keys we're looking for in
 // LevelIterator positioning operations. Files not containing any keys of the
 // desired type are skipped.

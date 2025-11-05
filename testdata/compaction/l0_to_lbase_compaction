@@ -119,3 +119,46 @@ DELETE PACER   |   in queue   |   deleted
    other files |    0 (0B)    |    0 (0B)
 ----
 ----
+
+define target-file-sizes=(1, 1, 1, 1000) hide-size
+L0
+  ba#2,SET:v
+L0
+  bb#2,SET:v
+L0
+  ba#1,SET:v
+L0
+  bb#1,SET:v
+L4
+  a#3,SET:v
+L5
+  a#2,SET:v
+L6
+  a#1,SET:v
+----
+L0.1:
+  000004:[ba#2,SET-ba#2,SET]
+  000005:[bb#2,SET-bb#2,SET]
+L0.0:
+  000006:[ba#1,SET-ba#1,SET]
+  000007:[bb#1,SET-bb#1,SET]
+L4:
+  000008:[a#3,SET-a#3,SET]
+L5:
+  000009:[a#2,SET-a#2,SET]
+L6:
+  000010:[a#1,SET-a#1,SET]
+
+# The result of this compaction requires two files on all levels except L6. Even
+# though we are compacting into L1, we are using the L6 target file size,
+# knowing that the result will eventually be moved.
+compact b-c
+----
+L1:
+  000011:[ba#0,SET-bb#0,SET]
+L4:
+  000008:[a#3,SET-a#3,SET]
+L5:
+  000009:[a#2,SET-a#2,SET]
+L6:
+  000010:[a#1,SET-a#1,SET]
