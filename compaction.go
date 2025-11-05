@@ -3480,11 +3480,11 @@ func (d *DB) compactAndWrite(
 		}
 		vSep := valueSeparation
 		switch spanPolicy.ValueStoragePolicy.PolicyAdjustment {
-		case UseDefaultValueStorage:
+		case UseDefaultValueSeparation:
 			// No change to value separation.
-		case NoValueSeparation:
+		case NoBlobHandles:
 			vSep = valsep.NeverSeparateValues{}
-		case OverrideValueStorage:
+		case OverrideValueSeparation:
 			// This span of keyspace is more tolerant of latency, so set a more
 			// aggressive value separation policy for this output.
 			vSep.SetNextOutputConfig(valsep.ValueSeparationOutputConfig{

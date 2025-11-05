@@ -1298,23 +1298,18 @@ func (p SpanPolicy) String() string {
 		sb.WriteString("disable-value-separation-by-suffix,")
 	}
 	switch p.ValueStoragePolicy.PolicyAdjustment {
-	case NoValueSeparation:
-		sb.WriteString("no-value-separation,")
-	case OverrideValueStorage:
-		sb.WriteString("override,")
+	case NoBlobHandles:
+		sb.WriteString("no-blob-value-separation,")
+	case OverrideValueSeparation:
+		sb.WriteString("override-value-separation,")
 	}
 	return strings.TrimSuffix(sb.String(), ",")
 }
 
 // ValueStoragePolicyAdjustment is used to determine where to store the values for
-// KVs. If the PolicyAdjustment specified is OverrideValueStorage, the remaining fields
-// are used to override the global configuration for value separation.
+// KVs, overriding global policies. Values can be configured to be stored in-place,
+// in value blocks, or in blob files.
 type ValueStoragePolicyAdjustment struct {
-	// PolicyAdjustment specifies the policy adjustment to apply.
-	PolicyAdjustment ValueStoragePolicyAdjustmentType
-
-	// Remaining fields are ignored, unless the PolicyAdjustment is OverrideValueStorage.
-
 	// DisableSeparationBySuffix disables discriminating KVs depending on
 	// suffix.
 	//
@@ -1323,6 +1318,13 @@ type ValueStoragePolicyAdjustment struct {
 	// keys (where the smallest suffix is the latest version), but should be
 	// disabled for keys where the suffix does not correspond to a version.
 	DisableSeparationBySuffix bool
+
+	// PolicyAdjustment specifies the policy adjustment to apply for value separation
+	// into blob files.
+	PolicyAdjustment ValueStoragePolicyAdjustmentType
+
+	// Remaining fields are ignored, unless the PolicyAdjustment is OverrideValueSeparation.
+
 	// MinimumSize is the minimum size of the value.
 	MinimumSize int
 }
@@ -1332,35 +1334,36 @@ type ValueStoragePolicyAdjustment struct {
 type ValueStoragePolicyAdjustmentType uint8
 
 const (
-	// UseDefaultValueStorage is the default value; Pebble will respect global
-	// configuration for value separation.
-	UseDefaultValueStorage ValueStoragePolicyAdjustmentType = iota
+	// UseDefaultValueSeparation is the default value; Pebble will respect global
+	// configuration for value separation into blob files.
+	UseDefaultValueSeparation ValueStoragePolicyAdjustmentType = iota
 
-	// NoValueSeparation indicates Pebble should prefer storing values
-	// in-place.
-	NoValueSeparation
+	// NoBlobHandles indicates Pebble should prefer storing values in
+	// the same sstable (either in-place or in a value block).
+	NoBlobHandles
 
-	// OverrideValueStorage indicates that value separation thresholds (see
+	// OverrideValueSeparation indicates that value separation thresholds (see
 	// valsep.ValueSeparationOutputConfig) for this key range are being
 	// overridden from a SpanPolicy. If the global Options enable value
-	// separation, Pebble will separate values under the OverrideValueStorage
+	// separation, Pebble will separate values under the OverrideValueSeparation
 	// policy even if they do not meet the minimum size threshold of the
 	// global Options' ValueSeparationPolicy.
-	OverrideValueStorage
+	OverrideValueSeparation
 )
 
 // ValueStorageLatencyTolerant is the suggested ValueStoragePolicyAdjustment
 // to use for key ranges that can tolerate higher value retrieval
 // latency.
 var ValueStorageLatencyTolerant = ValueStoragePolicyAdjustment{
-	PolicyAdjustment: OverrideValueStorage,
+	PolicyAdjustment: OverrideValueSeparation,
 	MinimumSize:      10,
 }
 
 // ValueStorageLowReadLatency is the suggested ValueStoragePolicyAdjustment
 // to use for key ranges that require low value retrieval latency.
 var ValueStorageLowReadLatency = ValueStoragePolicyAdjustment{
-	PolicyAdjustment: NoValueSeparation,
+	PolicyAdjustment:          NoBlobHandles,
+	DisableSeparationBySuffix: true,
 }
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.

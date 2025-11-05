@@ -6,8 +6,8 @@ a b c d e f g
 a ->  until d
 b ->  until d
 c ->  until d
-d -> no-value-separation until f
-e -> no-value-separation until f
+d -> disable-value-separation-by-suffix,no-blob-value-separation until f
+e -> disable-value-separation-by-suffix,no-blob-value-separation until f
 f -> none
 g -> none
 
@@ -17,11 +17,11 @@ g -> none
 test a-z:lowlatency
 a b c d e z
 ----
-a -> no-value-separation until z
-b -> no-value-separation until z
-c -> no-value-separation until z
-d -> no-value-separation until z
-e -> no-value-separation until z
+a -> disable-value-separation-by-suffix,no-blob-value-separation until z
+b -> disable-value-separation-by-suffix,no-blob-value-separation until z
+c -> disable-value-separation-by-suffix,no-blob-value-separation until z
+d -> disable-value-separation-by-suffix,no-blob-value-separation until z
+e -> disable-value-separation-by-suffix,no-blob-value-separation until z
 z -> none
 
 # Abutting policies.
@@ -30,12 +30,12 @@ test b-d:lowlatency d-f:latencytolerant f-h:lowlatency
 a b c d e f g h i z
 ----
 a ->  until b
-b -> no-value-separation until d
-c -> no-value-separation until d
-d -> override until f
-e -> override until f
-f -> no-value-separation until h
-g -> no-value-separation until h
+b -> disable-value-separation-by-suffix,no-blob-value-separation until d
+c -> disable-value-separation-by-suffix,no-blob-value-separation until d
+d -> override-value-separation until f
+e -> override-value-separation until f
+f -> disable-value-separation-by-suffix,no-blob-value-separation until h
+g -> disable-value-separation-by-suffix,no-blob-value-separation until h
 h -> none
 i -> none
 z -> none
@@ -46,14 +46,14 @@ test b-d:lowlatency h-j:latencytolerant
 a b c d e f g h i j k l
 ----
 a ->  until b
-b -> no-value-separation until d
-c -> no-value-separation until d
+b -> disable-value-separation-by-suffix,no-blob-value-separation until d
+c -> disable-value-separation-by-suffix,no-blob-value-separation until d
 d ->  until h
 e ->  until h
 f ->  until h
 g ->  until h
-h -> override until j
-i -> override until j
+h -> override-value-separation until j
+i -> override-value-separation until j
 j -> none
 k -> none
 l -> none

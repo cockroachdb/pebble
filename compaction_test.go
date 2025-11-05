@@ -1530,10 +1530,9 @@ func runCompactionTest(
 						if len(parts) != 1 {
 							td.Fatalf(t, "expected disable-separation-by-suffix with no value, got: %s", arg)
 						}
-						if policy.ValueStoragePolicy.PolicyAdjustment == NoValueSeparation {
-							td.Fatalf(t, "conflicting value storage policies for span: %s", line)
+						if policy.ValueStoragePolicy.PolicyAdjustment == UseDefaultValueSeparation {
+							policy.ValueStoragePolicy.PolicyAdjustment = OverrideValueSeparation
 						}
-						policy.ValueStoragePolicy.PolicyAdjustment = OverrideValueStorage
 						policy.ValueStoragePolicy.DisableSeparationBySuffix = true
 					case "val-sep-minimum-size":
 						if len(parts) != 2 {
@@ -1541,13 +1540,13 @@ func runCompactionTest(
 						}
 						size, err := strconv.ParseUint(parts[1], 10, 64)
 						if err != nil {
-							td.Fatalf(t, "parsing value-minimum-size: %s", err)
+							td.Fatalf(t, "parsing val-sep-minimum-size: %s", err)
 						}
 						policy.ValueStoragePolicy.MinimumSize = int(size)
 						if size == 0 {
-							policy.ValueStoragePolicy.PolicyAdjustment = NoValueSeparation
+							policy.ValueStoragePolicy.PolicyAdjustment = NoBlobHandles
 						} else if int(size) != d.opts.Experimental.ValueSeparationPolicy().MinimumSize {
-							policy.ValueStoragePolicy.PolicyAdjustment = OverrideValueStorage
+							policy.ValueStoragePolicy.PolicyAdjustment = OverrideValueSeparation
 						}
 					default:
 						td.Fatalf(t, "unknown span policy arg: %s", arg)

@@ -138,9 +138,9 @@ func shouldWriteBlobFiles(
 					return true, 0
 				}
 				switch spanPolicy.ValueStoragePolicy.PolicyAdjustment {
-				case UseDefaultValueStorage:
+				case UseDefaultValueSeparation:
 					// Use the global policy.
-				case OverrideValueStorage:
+				case OverrideValueSeparation:
 					expectedMinSize = spanPolicy.ValueStoragePolicy.MinimumSize
 					if expectedMinSize == 0 {
 						// A 0 minimum value size on the span policy indicates the field
@@ -149,7 +149,7 @@ func shouldWriteBlobFiles(
 						expectedMinSize = policy.MinimumSize
 					}
 					expectedValSepBySuffixDisabled = spanPolicy.ValueStoragePolicy.DisableSeparationBySuffix
-				case NoValueSeparation:
+				case NoBlobHandles:
 					expectedMinSize = 0
 				}
 			}
