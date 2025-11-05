@@ -7,15 +7,24 @@ package block
 import (
 	"runtime"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/compression"
+	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
 
 // CompressionProfile contains the parameters for compressing blocks in an
 // sstable or blob file.
 //
 // CompressionProfile is a more advanced successor to Compression.
+//
+// Some blocks (like rangedel) never use compression; this is at the
+// discretion of the sstable or blob file writer.
+//
+// Note that MinLZ is only supported with table formats v6+. Older formats
+// fall back to Snappy.
 type CompressionProfile struct {
 	Name string
 
@@ -244,5 +253,111 @@ func compressionIndicatorFromAlgorithm(algo compression.Algorithm) CompressionIn
 		return MinLZCompressionIndicator
 	default:
 		panic("invalid algorithm")
+	}
+}
+
+// CompressionCounters holds running counters for the number of bytes compressed
+// and decompressed. Counters are separated by L5 vs L6 vs other levels, and by
+// data blocks vs value blocks vs other blocks. These are the same categories
+// for which compression profiles can vary.
+//
+// The main purpose for these metrics is to allow estimating how overall CPU
+// usage would change with a different compression algorithm (in conjunction
+// with performance information about the algorithms, like that produced by the
+// compression analyzer).
+//
+// In all cases, the figures refer to the uncompressed ("logical") size; i.e.
+// the *input* size for compression and the *output* size for decompression.
+//
+// Note that even if the compressor does not use the result of a compression
+// (because the block didn't compress), those bytes are still counted (they are
+// relevant for CPU usage).
+//
+// Blocks for which compression is disabled upfront (e.g. filter blocks) are not
+// counted.
+type CompressionCounters struct {
+	Compressed   ByLevel[ByKind[LogicalBytesCompressed]]
+	Decompressed ByLevel[ByKind[LogicalBytesDecompressed]]
+}
+
+func (c *CompressionCounters) LoadCompressed() ByLevel[ByKind[uint64]] {
+	return mapByLevel(&c.Compressed, func(k *ByKind[LogicalBytesCompressed]) ByKind[uint64] {
+		return mapByKind(k, func(v *LogicalBytesCompressed) uint64 {
+			return v.Load()
+		})
+	})
+}
+
+func (c *CompressionCounters) LoadDecompressed() ByLevel[ByKind[uint64]] {
+	return mapByLevel(&c.Decompressed, func(k *ByKind[LogicalBytesDecompressed]) ByKind[uint64] {
+		return mapByKind(k, func(v *LogicalBytesDecompressed) uint64 {
+			return v.Load()
+		})
+	})
+}
+
+// LogicalBytesCompressed keeps a count of the logical bytes that were compressed.
+type LogicalBytesCompressed struct {
+	atomic.Uint64
+}
+
+// LogicalBytesDecompressed keeps a count of the logical bytes that were decompressed.
+type LogicalBytesDecompressed struct {
+	atomic.Uint64
+}
+
+// ByKind stores three different instances of T, one for sstable data
+// blocks, one for sstable and blob file value blocks, and one for all other
+// blocks.
+type ByKind[T any] struct {
+	DataBlocks  T
+	ValueBlocks T
+	OtherBlocks T
+}
+
+func (b *ByKind[T]) ForKind(kind Kind) *T {
+	switch kind {
+	case blockkind.SSTableValue, blockkind.BlobValue:
+		return &b.ValueBlocks
+	case blockkind.SSTableData:
+		return &b.DataBlocks
+	default:
+		return &b.OtherBlocks
+	}
+}
+
+func mapByKind[T, U any](b *ByKind[T], f func(*T) U) ByKind[U] {
+	return ByKind[U]{
+		DataBlocks:  f(&b.DataBlocks),
+		ValueBlocks: f(&b.ValueBlocks),
+		OtherBlocks: f(&b.OtherBlocks),
+	}
+}
+
+// ByLevel stores three different instance of T, one for L5, one for L6, and one
+// for all other levels.
+type ByLevel[T any] struct {
+	L5          T
+	L6          T
+	OtherLevels T
+}
+
+func (b *ByLevel[T]) ForLevel(level base.Level) *T {
+	if l, ok := level.Get(); ok {
+		switch l {
+		case 5:
+			return &b.L5
+		case 6:
+			return &b.L6
+		}
+	}
+	return &b.OtherLevels
+}
+
+func mapByLevel[T, U any](b *ByLevel[T], f func(*T) U) ByLevel[U] {
+	return ByLevel[U]{
+		L5:          f(&b.L5),
+		L6:          f(&b.L6),
+		OtherLevels: f(&b.OtherLevels),
 	}
 }

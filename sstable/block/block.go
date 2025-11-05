@@ -339,6 +339,10 @@ type ReaderOptions struct {
 	LoadBlockSema *fifo.Semaphore
 	// LoggerAndTracer is an optional logger and tracer.
 	LoggerAndTracer base.LoggerAndTracer
+
+	// CompressionCounters, if non-nil, is used to keep track of how much data was
+	// decompressed.
+	CompressionCounters *ByLevel[ByKind[LogicalBytesDecompressed]]
 }
 
 // Init initializes the Reader to read blocks from the provided Readable.
@@ -545,6 +549,10 @@ func (r *Reader) doRead(
 		if err != nil {
 			decompressed.Release()
 			return Value{}, base.MarkCorruptionError(err)
+		}
+
+		if r.opts.CompressionCounters != nil {
+			r.opts.CompressionCounters.ForLevel(env.Level).ForKind(kind).Add(uint64(decodedLen))
 		}
 	}
 	if err = initBlockMetadataFn(decompressed.BlockMetadata(), decompressed.BlockData()); err != nil {

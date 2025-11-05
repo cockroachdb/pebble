@@ -174,6 +174,24 @@ func exampleMetrics() Metrics {
 	m.BlobFiles.Compression.Zstd.CompressedBytes = 100 * GB
 	m.BlobFiles.Compression.Zstd.UncompressedBytes = 500 * GB
 
+	byKind := func(n uint64) block.ByKind[uint64] {
+		return block.ByKind[uint64]{
+			DataBlocks:  n * 10 * GB,
+			ValueBlocks: n * 100 * GB,
+			OtherBlocks: n * GB,
+		}
+	}
+	m.CompressionCounters.LogicalBytesCompressed = block.ByLevel[block.ByKind[uint64]]{
+		L5:          byKind(5),
+		L6:          byKind(6),
+		OtherLevels: byKind(1),
+	}
+	m.CompressionCounters.LogicalBytesDecompressed = block.ByLevel[block.ByKind[uint64]]{
+		L5:          byKind(50),
+		L6:          byKind(60),
+		OtherLevels: byKind(10),
+	}
+
 	m.FileCache.Size = 1 * MB
 	m.FileCache.TableCount = 180
 	m.FileCache.BlobFileCount = 181

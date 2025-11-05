@@ -112,6 +112,11 @@ COMPRESSION
 --------------+---------------+--------------
          none |         234KB |
 
+        Logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |   233KB / 0B   |    0B / 0B     |   569B / 0B
+
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------
         tables |    0 (0B)    |    0 (0B)
