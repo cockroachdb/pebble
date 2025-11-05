@@ -34,6 +34,12 @@ const manifestMarkerName = `manifest`
 // to the MANIFEST file, which is replayed at startup.
 type versionSet struct {
 	// Next seqNum to use for WAL writes.
+	//
+	// Note that unflushed WALs may contain sequence numbers less than, equal
+	// to, or greater than logSeqNum. This is because every version edit
+	// includes the current logSeqNum, so any version edits applied after a
+	// write and before the flush of the write to a sstable will update
+	// logSeqNum beyond the write's sequence number.
 	logSeqNum base.AtomicSeqNum
 
 	// The upper bound on sequence numbers that have been assigned so far. A
