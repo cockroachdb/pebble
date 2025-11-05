@@ -150,7 +150,8 @@ type VersionEdit struct {
 
 	// LastSeqNum is an upper bound on the sequence numbers that have been
 	// assigned in flushed WALs. Unflushed WALs (that will be replayed during
-	// recovery) may contain sequence numbers greater than this value.
+	// recovery) may contain sequence numbers greater than this value. They're
+	// also allowed to contain sequence numbers less than or equal to this value.
 	LastSeqNum base.SeqNum
 
 	// A file num may be present in both deleted files and new files when it
