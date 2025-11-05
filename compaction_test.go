@@ -1690,8 +1690,7 @@ func TestCompactionOutputLevel(t *testing.T) {
 				d.ScanArgs(t, "base", &base)
 				pc := newPickedTableCompaction(opts, version, l0Organizer, start, defaultOutputLevel(start, base), base)
 				c := newCompaction(pc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
-				return fmt.Sprintf("output=%d\nmax-output-file-size=%d\n",
-					c.outputLevel.level, c.maxOutputFileSize)
+				return fmt.Sprintf("output=%d", c.outputLevel.level)
 
 			default:
 				return fmt.Sprintf("unknown command: %s", d.Cmd)

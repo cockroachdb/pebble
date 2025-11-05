@@ -565,14 +565,17 @@ func newCompaction(
 		logger:             opts.Logger,
 		version:            pc.version,
 		getValueSeparation: getValueSeparation,
-		maxOutputFileSize:  pc.maxOutputFileSize,
-		maxOverlapBytes:    pc.maxOverlapBytes,
 		metrics: compactionMetrics{
 			beganAt: beganAt,
 			picker:  pc.pickerMetrics,
 		},
 		grantHandle: grantHandle,
 	}
+
+	targetFileSize := opts.TargetFileSize(pc.outputLevel.level, pc.baseLevel)
+	c.maxOutputFileSize = uint64(targetFileSize)
+	c.maxOverlapBytes = maxGrandparentOverlapBytes(targetFileSize)
+
 	// Acquire a reference to the version to ensure that files and in-memory
 	// version state necessary for reading files remain available. Ignoring
 	// excises, this isn't strictly necessary for reading the sstables that are
