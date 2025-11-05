@@ -5,6 +5,7 @@
 package block
 
 import (
+	"iter"
 	"math/rand"
 
 	"github.com/cockroachdb/pebble/internal/compression"
@@ -18,12 +19,15 @@ import (
 //	.. = c.Compress(..)
 //	c.Close()
 type Compressor struct {
-	minReductionPercent   uint8
-	dataBlocksCompressor  compression.Compressor
-	valueBlocksCompressor compression.Compressor
-	otherBlocksCompressor compression.Compressor
+	minReductionPercent uint8
+
+	compressors ByKind[compression.Compressor]
 
 	stats CompressionStats
+
+	// inputBytes keeps track of the total number of bytes passed to the
+	// compressor, by block kind.
+	inputBytes [blockkind.NumKinds]uint64
 }
 
 // MakeCompressor returns a Compressor that applies the given compression
@@ -33,9 +37,9 @@ func MakeCompressor(profile *CompressionProfile) Compressor {
 		minReductionPercent: profile.MinReductionPercent,
 	}
 
-	c.dataBlocksCompressor = maybeAdaptiveCompressor(profile, profile.DataBlocks)
-	c.valueBlocksCompressor = maybeAdaptiveCompressor(profile, profile.ValueBlocks)
-	c.otherBlocksCompressor = compression.GetCompressor(profile.OtherBlocks)
+	c.compressors.DataBlocks = maybeAdaptiveCompressor(profile, profile.DataBlocks)
+	c.compressors.ValueBlocks = maybeAdaptiveCompressor(profile, profile.ValueBlocks)
+	c.compressors.OtherBlocks = compression.GetCompressor(profile.OtherBlocks)
 	return c
 }
 
@@ -59,9 +63,9 @@ func maybeAdaptiveCompressor(
 // Close must be called when the Compressor is no longer needed.
 // After Close is called, the Compressor must not be used again.
 func (c *Compressor) Close() {
-	c.dataBlocksCompressor.Close()
-	c.valueBlocksCompressor.Close()
-	c.otherBlocksCompressor.Close()
+	c.compressors.DataBlocks.Close()
+	c.compressors.ValueBlocks.Close()
+	c.compressors.OtherBlocks.Close()
 	*c = Compressor{}
 }
 
@@ -69,15 +73,9 @@ func (c *Compressor) Close() {
 //
 // In addition to the buffer, returns the algorithm that was used.
 func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator, []byte) {
-	var compressor compression.Compressor
-	switch kind {
-	case blockkind.SSTableData:
-		compressor = c.dataBlocksCompressor
-	case blockkind.SSTableValue, blockkind.BlobValue:
-		compressor = c.valueBlocksCompressor
-	default:
-		compressor = c.otherBlocksCompressor
-	}
+	c.inputBytes[kind] += uint64(len(src))
+
+	compressor := *c.compressors.ForKind(kind)
 
 	out, setting := compressor.Compress(dst, src)
 
@@ -113,6 +111,18 @@ func (c *Compressor) UncompressedBlock(size int, kind Kind) {
 // next call to the Compressor.
 func (c *Compressor) Stats() *CompressionStats {
 	return &c.stats
+}
+
+// InputBytes returns an iterator over the total number of input bytes passed
+// through the compressor, by block kind.
+func (c *Compressor) InputBytes() iter.Seq2[Kind, uint64] {
+	return func(yield func(blockkind.Kind, uint64) bool) {
+		for k, v := range c.inputBytes {
+			if v != 0 && !yield(blockkind.Kind(k), v) {
+				return
+			}
+		}
+	}
 }
 
 type Decompressor = compression.Decompressor

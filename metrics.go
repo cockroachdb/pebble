@@ -256,7 +256,7 @@ type Metrics struct {
 			Zombie metrics.CountAndSizeByPlacement
 		}
 
-		// Compression statistics for sstable data (does not include blob files).
+		// Compression statistics for the live sstables.
 		Compression CompressionMetrics
 
 		// Garbage bytes.
@@ -322,7 +322,15 @@ type Metrics struct {
 		// value sizes.
 		ReferencedBackingValueSize uint64
 
+		// Compression statistics for the live blob files.
 		Compression CompressionMetrics
+	}
+
+	// CompressionCounters are cumulative counters for the number of logical
+	// (uncompressed) bytes that went through compression and decompression.
+	CompressionCounters struct {
+		LogicalBytesCompressed   block.ByLevel[block.ByKind[uint64]]
+		LogicalBytesDecompressed block.ByLevel[block.ByKind[uint64]]
 	}
 
 	FileCache FileCacheMetrics
@@ -465,7 +473,7 @@ type KeysMetrics struct {
 
 // CompressionMetrics contains compression metrics for sstables or blob files.
 type CompressionMetrics struct {
-	// NoCompressionBytes is the total number of bytes in files that do are not
+	// NoCompressionBytes is the total number of bytes in files that are not
 	// compressed. Data can be uncompressed when 1) compression is disabled; 2)
 	// for certain special types of blocks; and 3) for blocks that are not
 	// compressible.
@@ -790,6 +798,17 @@ var (
 		table.Div(),
 		table.String("blob files", 13, table.AlignRight, func(i compressionInfo) string { return i.blobFiles }),
 	)
+	compressionCountersTableHeader = `        Logical bytes compressed / decompressed`
+
+	compressionCountersTable = table.Define[compressionCountersInfo](
+		table.String("level", 5, table.AlignRight, func(i compressionCountersInfo) string { return i.level }),
+		table.Div(),
+		table.String("data blocks", 14, table.AlignCenter, func(i compressionCountersInfo) string { return i.DataBlocks }),
+		table.Div(),
+		table.String("value blocks", 14, table.AlignCenter, func(i compressionCountersInfo) string { return i.ValueBlocks }),
+		table.Div(),
+		table.String("other blocks", 14, table.AlignCenter, func(i compressionCountersInfo) string { return i.OtherBlocks }),
+	)
 	deletePacerTableHeader = `DELETE PACER`
 	deletePacerTable       = table.Define[deletePacerInfo](
 		table.String("", 14, table.AlignRight, func(i deletePacerInfo) string { return i.label }),
@@ -919,6 +938,34 @@ func makeCompressionInfo(algorithm string, table, blob CompressionStatsForSettin
 		i.blobFiles = fmt.Sprintf("%s (CR=%s)", humanizeBytes(blob.CompressedBytes), crhumanize.Float(blob.CompressionRatio(), 2 /* precision */))
 	}
 	return i
+}
+
+type compressionCountersInfo struct {
+	level string
+	block.ByKind[string]
+}
+
+func makeCompressionCountersInfo(m *Metrics) []compressionCountersInfo {
+	var result []compressionCountersInfo
+	isZero := func(c *block.ByKind[uint64]) bool {
+		return c.DataBlocks == 0 && c.ValueBlocks == 0 && c.OtherBlocks == 0
+	}
+	addLevel := func(level string, compressed, decompressed *block.ByKind[uint64]) {
+		if isZero(compressed) && isZero(decompressed) {
+			return
+		}
+		result = append(result, compressionCountersInfo{
+			level: level,
+			ByKind: block.ByKind[string]{
+				DataBlocks:  humanizeBytes(compressed.DataBlocks) + " / " + humanizeBytes(decompressed.DataBlocks),
+				ValueBlocks: humanizeBytes(compressed.ValueBlocks) + " / " + humanizeBytes(decompressed.ValueBlocks),
+				OtherBlocks: humanizeBytes(compressed.OtherBlocks) + " / " + humanizeBytes(decompressed.OtherBlocks)},
+		})
+	}
+	addLevel("L0-L4", &m.CompressionCounters.LogicalBytesCompressed.OtherLevels, &m.CompressionCounters.LogicalBytesDecompressed.OtherLevels)
+	addLevel("L5", &m.CompressionCounters.LogicalBytesCompressed.L5, &m.CompressionCounters.LogicalBytesDecompressed.L5)
+	addLevel("L6", &m.CompressionCounters.LogicalBytesCompressed.L6, &m.CompressionCounters.LogicalBytesDecompressed.L6)
+	return result
 }
 
 // String pretty-prints the metrics.
@@ -1113,6 +1160,10 @@ func (m *Metrics) String() string {
 	cur = compressionTable.Render(cur, table.RenderOptions{}, compressionContents...)
 
 	cur = cur.NewlineReturn()
+	cur = cur.WriteString(compressionCountersTableHeader).NewlineReturn()
+	cur = compressionCountersTable.Render(cur, table.RenderOptions{}, makeCompressionCountersInfo(m)...)
+
+	cur = cur.NewlineReturn()
 	cur.WriteString(deletePacerTableHeader)
 	deletePacerContents := []deletePacerInfo{
 		{
@@ -1162,8 +1213,8 @@ func (m *Metrics) StringForTests() string {
 
 	// We recalculate the file cache size using the 64-bit sizes, and we ignore
 	// the genericcache metadata size which is harder to adjust.
-	const sstableReaderSize64bit = 280
-	const blobFileReaderSize64bit = 112
+	const sstableReaderSize64bit = 288
+	const blobFileReaderSize64bit = 120
 	mCopy.FileCache.Size = mCopy.FileCache.TableCount*sstableReaderSize64bit + mCopy.FileCache.BlobFileCount*blobFileReaderSize64bit
 	if math.MaxInt == math.MaxInt64 {
 		// Verify the 64-bit sizes, so they are kept updated.

@@ -55,8 +55,9 @@ nectarine
 Stats:
   BlockCount: 5
   ValueCount: 26
-  UncompressedValueBytes: 182
-  FileLen: 386
+  UncompressedValueBytes: 182B
+  FileLen: 386B
+Compression counters: value: 0B  other: 0B
 
 open
 ----
@@ -121,8 +122,9 @@ nectarine
 Stats:
   BlockCount: 5
   ValueCount: 26
-  UncompressedValueBytes: 182
-  FileLen: 472
+  UncompressedValueBytes: 182B
+  FileLen: 472B
+Compression counters: value: 0B  other: 0B
 
 open
 ----
@@ -167,8 +169,9 @@ nectarine
 Stats:
   BlockCount: 3
   ValueCount: 10
-  UncompressedValueBytes: 60
-  FileLen: 206
+  UncompressedValueBytes: 60B
+  FileLen: 206B
+Compression counters: value: 0B  other: 0B
 
 open
 ----

@@ -319,7 +319,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheSize)
 		defer opts.FileCache.Unref()
 	}
-	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts.LoggerAndTracer, d.opts.MakeReaderOptions(), d.reportCorruption)
+	fileCacheReaderOpts := d.opts.MakeReaderOptions()
+	fileCacheReaderOpts.CompressionCounters = &d.compressionCounters.Decompressed
+	d.fileCache = opts.FileCache.newHandle(d.cacheHandle, d.objProvider, d.opts.LoggerAndTracer, fileCacheReaderOpts, d.reportCorruption)
 	d.newIters = d.fileCache.newIters
 	d.tableNewRangeKeyIter = tableNewRangeKeyIter(d.newIters)
 

@@ -84,6 +84,9 @@ COMPRESSION
 --------------+---------------+--------------
       unknown |          709B |
 
+        Logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------
         tables |    0 (0B)    |    0 (0B)
@@ -168,6 +171,9 @@ COMPRESSION
     algorithm |        tables |    blob files
 --------------+---------------+--------------
       unknown |          709B |
+
+        Logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
 
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------

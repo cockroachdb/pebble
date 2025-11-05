@@ -88,10 +88,11 @@ const (
 
 // FileWriterOptions are used to configure the FileWriter.
 type FileWriterOptions struct {
-	Format        FileFormat
-	Compression   *block.CompressionProfile
-	ChecksumType  block.ChecksumType
-	FlushGovernor block.FlushGovernor
+	Format              FileFormat
+	Compression         *block.CompressionProfile
+	CompressionCounters *block.ByKind[block.LogicalBytesCompressed]
+	ChecksumType        block.ChecksumType
+	FlushGovernor       block.FlushGovernor
 	// Only CPUMeasurer.MeasureCPUBlobFileSecondary is used.
 	CpuMeasurer base.CPUMeasurer
 }
@@ -175,7 +176,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.valuesEncoder.Init()
 	fw.flushGov = opts.FlushGovernor
 	fw.indexEncoder.Init()
-	fw.physBlockMaker.Init(opts.Compression, opts.ChecksumType)
+	fw.physBlockMaker.Init(opts.Compression, opts.ChecksumType, opts.CompressionCounters)
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
 	fw.writeQueue.wg.Add(1)

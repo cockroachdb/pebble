@@ -2959,6 +2959,8 @@ func (d *DB) runCopyCompaction(
 		var wrote uint64
 		err = d.fileCache.withReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r *sstable.Reader, env sstable.ReadEnv) error {
 			var err error
+			writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat())
+			writerOpts.CompressionCounters = d.compressionCounters.Compressed.ForLevel(base.MakeLevel(c.outputLevel.level))
 			// TODO(radu): plumb a ReadEnv to CopySpan (it could use the buffer pool
 			// or update category stats).
 			wrote, err = sstable.CopySpan(ctx,

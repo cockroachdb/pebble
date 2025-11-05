@@ -190,7 +190,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    1 (392B) |      89.6% |        0.0% |           0 |           0
+    1 (408B) |      89.6% |        0.0% |           0 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
@@ -230,6 +230,13 @@ COMPRESSION
 --------------+----------------+--------------
          none |            56B |           64B
        snappy | 134B (CR=1.15) |
+
+        Logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  252B / 2.2KB  |    0B / 0B     |  1.4KB / 2KB
+   L5 |   0B / 228B    |    0B / 0B     |    0B / 0B
+   L6 |  154B / 1.2KB  |    0B / 0B     |   718B / 0B
 
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------
@@ -511,7 +518,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    1 (504B) |      78.6% |        0.0% |           0 |           0
+    1 (528B) |      78.6% |        0.0% |           0 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
@@ -551,6 +558,12 @@ COMPRESSION
 --------------+----------------+--------------
          none |            61B |          149B
        snappy | 130B (CR=1.31) |
+
+        Logical bytes compressed / decompressed
+level |  data blocks   |  value blocks  |  other blocks
+------+----------------+----------------+---------------
+L0-L4 |  292B / 1.5KB  |    0B / 0B     |  1.4KB / 2KB
+   L6 |  170B / 340B   |    0B / 0B     |   718B / 0B
 
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------

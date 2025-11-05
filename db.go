@@ -552,6 +552,8 @@ type DB struct {
 	// compaction concurrency
 	openedAt time.Time
 
+	compressionCounters block.CompressionCounters
+
 	iterTracker *inflight.Tracker
 }
 
@@ -2013,6 +2015,9 @@ func (d *DB) Metrics() *Metrics {
 
 	blobCompressionMetrics := blobCompressionStatsAnnotator.Annotation(&vers.BlobFiles)
 	metrics.BlobFiles.Compression.MergeWith(&blobCompressionMetrics)
+
+	metrics.CompressionCounters.LogicalBytesCompressed = d.compressionCounters.LoadCompressed()
+	metrics.CompressionCounters.LogicalBytesDecompressed = d.compressionCounters.LoadDecompressed()
 
 	metrics.BlockCache = d.opts.Cache.Metrics()
 	metrics.FileCache, metrics.Filter = d.fileCache.Metrics()
