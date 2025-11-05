@@ -526,9 +526,7 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 	}
 	wm.recycler.Init(o.MaxNumRecyclableLogs)
 	for _, ll := range initial {
-		if wm.recycler.MinRecycleLogNum() <= ll.Num {
-			wm.recycler.SetMinRecycleLogNum(ll.Num + 1)
-		}
+		wm.recycler.RatchetMinRecycleLogNum(ll.Num + 1)
 		var err error
 		wm.initialObsolete, err = appendDeletableLogs(wm.initialObsolete, ll)
 		if err != nil {

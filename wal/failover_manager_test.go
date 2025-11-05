@@ -382,7 +382,7 @@ func TestManagerFailover(t *testing.T) {
 				var b strings.Builder
 				fmt.Fprintf(&b, "%s\n", errorToStr(err))
 				if err == nil {
-					fmt.Fprintf(&b, "recycler min-log-num: %d\n", fm.recycler.MinRecycleLogNum())
+					fmt.Fprintf(&b, "recycler min-log-num: %d\n", fm.recycler.minRecycleLogNum)
 				}
 				return b.String()
 
