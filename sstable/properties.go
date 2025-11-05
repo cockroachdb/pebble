@@ -125,8 +125,9 @@ type Properties struct {
 	// The minimum size a value must be to be separated into a blob file during writing.
 	ValueSeparationMinSize uint64 `prop:"pebble.value-separation.min-size"`
 	// ValueSeparationBySuffixDisabled indicates if special value separation rules were
-	// applied based on the KV suffix when writing. Pebble attempts to optimize writing of
-	// MVCC garbage values into blob files, which are recognized by the key suffix.
+	// applied based on the KV suffix when writing blob files. Pebble attempts to optimize
+	// separating MVCC garbage, which are recognized by the key suffix. Note that this
+	// value corresponds only for blob file writing and not value blocks.
 	ValueSeparationBySuffixDisabled bool `prop:"pebble.value-separation.by-suffix.disabled"`
 	// User collected properties. Currently, we only use them to store block
 	// properties aggregated at the table level.

@@ -67,7 +67,7 @@ flush-log
 
 # Another test with the same value separation config, but this time we set a span
 # policy for the span y-zz that disables value separation by suffix. This should
-# prevent MVCC garbage from being written to blob files.
+# prevent MVCC garbage from being separeted (both into blob files and value blocks).
 
 define value-separation=(enabled, min-size=5, max-ref-depth=3, garbage-ratios=1.0:1.0)
 ----
@@ -126,4 +126,100 @@ rocksdb.compression: Snappy
 pebble.compression_stats: None:234
 pebble.value-separation.min-size: 5
 pebble.value-separation.by-suffix.disabled: true
+obsolete-key: hex:00
+
+define value-separation=(enabled, min-size=5, max-ref-depth=3, garbage-ratios=1.0:1.0)
+----
+
+set-span-policies
+a,c val-sep-minimum-size=0
+----
+
+
+batch
+set a@2 a2
+set b@5 b5
+del b@4
+set b@3 bat3
+set b@2 bat2
+del b@1
+set b@1 bat1
+set b@0 bat0
+----
+
+# Although we've disabled value separation into blob files, writing to 
+# value blocks should still be enabled.
+flush
+----
+L0.0:
+  000005:[a@2#10,SET-b@0#17,SET] seqnums:[10-17] points:[a@2#10,SET-b@0#17,SET] size:880
+
+sstable-properties file=000005
+----
+rocksdb.num.entries: 7
+rocksdb.raw.key.size: 77
+rocksdb.raw.value.size: 20
+pebble.raw.point-tombstone.key.size: 3
+rocksdb.deleted.keys: 1
+rocksdb.num.range-deletions: 0
+pebble.value-blocks.size: 25
+rocksdb.num.data.blocks: 1
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 175
+rocksdb.filter.size: 0
+rocksdb.index.size: 36
+rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+pebble.num.value-blocks: 1
+pebble.num.values.in.value-blocks: 3
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+pebble.compression_stats: None:221
+obsolete-key: hex:00
+
+batch
+set a@2 a2
+set b@5 b5
+del b@4
+set b@3 bat3
+set b@2 bat2
+del b@1
+set b@1 bat1
+set b@0 bat0
+----
+
+# Disabling value separation by suffix should also disable writing to value blocks.
+set-span-policies
+a,c val-sep-minimum-size=0 disable-separation-by-suffix
+----
+
+flush
+----
+L0.1:
+  000007:[a@2#18,SET-b@0#25,SET] seqnums:[18-25] points:[a@2#18,SET-b@0#25,SET] size:770
+L0.0:
+  000005:[a@2#10,SET-b@0#17,SET] seqnums:[10-17] points:[a@2#10,SET-b@0#17,SET] size:880
+
+sstable-properties file=000007
+----
+rocksdb.num.entries: 7
+rocksdb.raw.key.size: 77
+rocksdb.raw.value.size: 20
+pebble.raw.point-tombstone.key.size: 3
+rocksdb.deleted.keys: 1
+rocksdb.num.range-deletions: 0
+rocksdb.num.data.blocks: 1
+rocksdb.comparator: pebble.internal.testkeys
+rocksdb.data.size: 157
+rocksdb.filter.size: 0
+rocksdb.index.size: 36
+rocksdb.block.based.table.index.type: 0
+pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
+rocksdb.merge.operator: pebble.concatenate
+rocksdb.merge.operands: 0
+rocksdb.property.collectors: [obsolete-key]
+rocksdb.compression: Snappy
+pebble.compression_stats: None:188
 obsolete-key: hex:00
