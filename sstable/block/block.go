@@ -276,7 +276,7 @@ type ReadEnv struct {
 	// Level is the LSM level associated with the operation, when the operation
 	// applies to a (possibly virtual) sstable. It is used when interacting with
 	// the block cache.
-	Level cache.Level
+	Level base.Level
 
 	// ReportCorruptionFn is called with ReportCorruptionArg and the error
 	// whenever an SSTable corruption is detected. The argument is used to avoid
@@ -566,7 +566,7 @@ func (r *Reader) Readable() objstorage.Readable {
 //
 // Users should prefer using Read, which handles reading from object storage on
 // a cache miss.
-func (r *Reader) GetFromCache(bh Handle, level cache.Level) *cache.Value {
+func (r *Reader) GetFromCache(bh Handle, level base.Level) *cache.Value {
 	return r.opts.CacheOpts.CacheHandle.Peek(r.opts.CacheOpts.FileNum, bh.Offset, level, cache.CategoryBackground)
 }
 

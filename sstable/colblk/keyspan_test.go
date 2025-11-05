@@ -94,7 +94,7 @@ func TestKeyspanBlockPooling(t *testing.T) {
 	v.SetInCacheForTesting(ch, base.DiskFileNum(1), 0)
 
 	getBlockAndIterate := func() {
-		cv := ch.Get(base.DiskFileNum(1), 0, cache.MakeLevel(0), cache.CategorySSTableData)
+		cv := ch.Get(base.DiskFileNum(1), 0, base.MakeLevel(0), cache.CategorySSTableData)
 		require.NotNil(t, cv)
 		it := NewKeyspanIter(testkeys.Comparer.Compare, block.CacheBufferHandle(cv), blockiter.NoFragmentTransforms)
 		defer it.Close()

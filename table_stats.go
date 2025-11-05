@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
@@ -352,7 +351,7 @@ func (d *DB) loadTableStats(
 	backingProps, backingPropsOk := meta.TableBacking.Properties()
 
 	blockReadEnv := block.ReadEnv{
-		Level: cache.MakeLevel(level),
+		Level: base.MakeLevel(level),
 	}
 	// If the stats are already available (always the case other than after
 	// initial startup), and there are no range deletions or range key deletions,
