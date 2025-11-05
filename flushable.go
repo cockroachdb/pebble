@@ -79,7 +79,20 @@ type flushableEntry struct {
 	// Holds the timestamp of when the flush will be issued.
 	delayedFlushForcedAt time.Time
 	// logNum corresponds to the WAL that contains the records present in the
-	// receiver.
+	// receiver. It is possible for multiple flushable entries to have the same
+	// logNum:
+	// 1. When a large batch is committed, it is not appended to the WAL.
+	// Instead, the memtable is rotated, and the large batch is appended to the
+	// flushable queue with a logNum that matches the newly immutable memtable.
+	// Care is taken in DB.flush1 to ensure that the large batch is always
+	// flushed alongside the memtable with the same logNum.
+	// 2. During recovery, we replay WAL entries into the mutable memtable. The
+	// memtable we allocate during recovery may be smaller than the memtable
+	// that corresponded to the original WAL at the time it was written. This
+	// means we may fill the memtable before finishing replaying the WAL,
+	// resulting in multiple consecutive flushable entries all with the same
+	// logNum. This is okay because we take care to flush all the flushables
+	// during Open.
 	logNum base.DiskFileNum
 	// logSize is the size in bytes of the associated WAL. Protected by DB.mu.
 	logSize uint64
