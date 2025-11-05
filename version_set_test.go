@@ -296,11 +296,25 @@ func TestVersionSetCheckpoint(t *testing.T) {
 }
 
 func TestVersionSetSeqNums(t *testing.T) {
-	mem := vfs.NewMem()
-	require.NoError(t, mem.MkdirAll("ext", 0755))
+	var buf struct {
+		sync.Mutex
+		bytes.Buffer
+	}
+	fs := vfs.WithLogging(vfs.NewMem(), func(format string, args ...interface{}) {
+		buf.Mutex.Lock()
+		defer buf.Mutex.Unlock()
+		fmt.Fprintf(&buf.Buffer, format, args...)
+		fmt.Fprintln(&buf)
+	})
+	defer func() {
+		if t.Failed() {
+			t.Logf("fs log:\n%s", buf.String())
+		}
+	}()
+	require.NoError(t, fs.MkdirAll("ext", 0755))
 
 	opts := &Options{
-		FS:                  mem,
+		FS:                  fs,
 		MaxManifestFileSize: 1,
 		Logger:              testutils.Logger{T: t},
 	}
@@ -308,49 +322,44 @@ func TestVersionSetSeqNums(t *testing.T) {
 	require.NoError(t, err)
 
 	// Snapshot has no files, so first edit will cause manifest rotation.
-	writeAndIngest(t, mem, d, base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), []byte("b"), "a")
+	writeAndIngest(t, fs, d, base.MakeInternalKey([]byte("a"), 0, InternalKeyKindSet), []byte("b"), "a")
 	// Snapshot has no files, and manifest has an edit from the previous ingest,
 	// so this second ingest will cause manifest rotation.
-	writeAndIngest(t, mem, d, base.MakeInternalKey([]byte("c"), 0, InternalKeyKindSet), []byte("d"), "c")
+	writeAndIngest(t, fs, d, base.MakeInternalKey([]byte("c"), 0, InternalKeyKindSet), []byte("d"), "c")
 	require.NoError(t, d.Close())
 	d, err = Open("", opts)
 	require.NoError(t, err)
 	defer d.Close()
 	d.TestOnlyWaitForCleaning()
 
-	// Check that the manifest has the correct LastSeqNum, equalling the highest
-	// observed SeqNum.
-	filenames, err := mem.List("")
+	// Check that the current manifest has the correct LastSeqNum, equalling the
+	// highest observed SeqNum.
+	desc, err := Peek("", fs)
 	require.NoError(t, err)
-	var manifestFile vfs.File
-	for _, filename := range filenames {
-		fileType, _, ok := base.ParseFilename(mem, filename)
-		if ok && fileType == base.FileTypeManifest {
-			manifestFile, err = mem.Open(filename)
+	require.True(t, desc.Exists)
+	func() {
+		manifestFile, err := fs.Open(desc.ManifestFilename)
+		require.NoError(t, err)
+		defer manifestFile.Close()
+		rr := record.NewReader(manifestFile, 0 /* logNum */)
+		var lastSeqNum base.SeqNum
+		for {
+			r, err := rr.Next()
+			if err == io.EOF {
+				break
+			}
 			require.NoError(t, err)
+			var ve manifest.VersionEdit
+			require.NoError(t, ve.Decode(r))
+			if ve.LastSeqNum != 0 {
+				lastSeqNum = ve.LastSeqNum
+			}
 		}
-	}
-	require.NotNil(t, manifestFile)
-	defer manifestFile.Close()
-	rr := record.NewReader(manifestFile, 0 /* logNum */)
-	var lastSeqNum base.SeqNum
-	for {
-		r, err := rr.Next()
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		var ve manifest.VersionEdit
-		err = ve.Decode(r)
-		require.NoError(t, err)
-		if ve.LastSeqNum != 0 {
-			lastSeqNum = ve.LastSeqNum
-		}
-	}
-	// 2 ingestions happened, so LastSeqNum should equal base.SeqNumStart + 1.
-	require.Equal(t, base.SeqNum(11), lastSeqNum)
-	// logSeqNum is always one greater than the last assigned sequence number.
-	require.Equal(t, d.mu.versions.logSeqNum.Load(), lastSeqNum+1)
+		// 2 ingestions happened, so LastSeqNum should equal base.SeqNumStart + 1.
+		require.Equal(t, base.SeqNum(11), lastSeqNum)
+		// logSeqNum is always one greater than the last assigned sequence number.
+		require.Equal(t, d.mu.versions.logSeqNum.Load(), lastSeqNum+1)
+	}()
 }
 
 // TestLargeKeys is a datadriven test that exercises large keys with shared
