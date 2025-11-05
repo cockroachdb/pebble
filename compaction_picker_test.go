@@ -702,13 +702,13 @@ func TestCompactionPickerL0(t *testing.T) {
 			if ptc == nil {
 				return "no compaction"
 			}
-			c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+			c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 			return fmt.Sprintf("%d", c.maxOutputFileSize)
 		case "max-overlap-bytes":
 			if ptc == nil {
 				return "no compaction"
 			}
-			c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+			c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 			return fmt.Sprintf("%d", c.maxOverlapBytes)
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
@@ -1269,7 +1269,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 				ptc := pc.(*pickedTableCompaction)
 				fmt.Fprintf(&buf, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
 				fmt.Fprintf(&buf, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
-				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, sstable.TableFormatMinSupported, neverSeparateValues)
+				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 				fmt.Fprintf(&buf, "maxOutputFileSize: %d\n", c.maxOutputFileSize)
 			} else {
 				return "nil"
