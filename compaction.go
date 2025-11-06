@@ -3469,7 +3469,7 @@ func (d *DB) compactAndWrite(
 	runner := compact.NewRunner(runnerCfg, iter)
 
 	var spanPolicyValid bool
-	var spanPolicy SpanPolicy
+	var spanPolicy base.SpanPolicy
 	// If spanPolicyValid is true and spanPolicyEndKey is empty, then spanPolicy
 	// applies for the rest of the keyspace.
 	var spanPolicyEndKey []byte
