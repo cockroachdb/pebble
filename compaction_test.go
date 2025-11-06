@@ -1521,7 +1521,7 @@ func runCompactionTest(
 					Start: []byte(keys[0]),
 					End:   []byte(keys[1]),
 				}
-				policy := SpanPolicy{}
+				policy := base.SpanPolicy{}
 				args = args[1:]
 				for _, arg := range args {
 					parts := strings.Split(arg, "=")
