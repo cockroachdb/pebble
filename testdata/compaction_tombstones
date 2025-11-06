@@ -61,7 +61,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
 range-deletions-bytes-estimate: 0
-compression: None:87,Snappy:76/87
+compression: None:87,Snappy:79/97
 
 maybe-compact
 ----
@@ -85,11 +85,11 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 3
 range-deletions-bytes-estimate: 0
-compression: None:124
+compression: None:134
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (700B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(elision-only) L6 [000004] (710B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (660B), in 1.0s (2.0s total), output rate 660B/s
 
 version
 ----
@@ -124,8 +124,8 @@ num-entries: 6
 num-deletions: 2
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 3
-range-deletions-bytes-estimate: 101
-compression: None:87,Snappy:96/129
+range-deletions-bytes-estimate: 113
+compression: None:87,Snappy:108/139
 
 maybe-compact
 ----
@@ -139,7 +139,7 @@ close-snapshot
 close-snapshot
 103
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (861B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(elision-only) L6 [000004] (858B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # Test a table that contains both deletions and non-deletions, but whose
 # non-deletions well outnumber its deletions. The table should not be
@@ -159,7 +159,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 3
 range-deletions-bytes-estimate: 0
-compression: None:36,Snappy:131/169
+compression: None:36,Snappy:141/179
 
 close-snapshot
 15
@@ -203,8 +203,8 @@ num-entries: 5
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 16824
-compression: None:16929
+range-deletions-bytes-estimate: 16864
+compression: None:16969
 
 # Because we set max bytes low, maybe-compact will trigger an automatic
 # compaction in preference over an elision-only compaction.
@@ -215,7 +215,7 @@ compression: None:16929
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000004 000005] (26KB) Score=88.39 + L6 [000007] (17KB) Score=0.00 -> L6 [000009] (25KB), in 1.0s (2.0s total), output rate 25KB/s
+[JOB 100] compacted(default) L5 [000004 000005] (26KB) Score=88.65 + L6 [000007] (17KB) Score=0.00 -> L6 [000009] (25KB), in 1.0s (2.0s total), output rate 25KB/s
 
 define level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
@@ -242,7 +242,7 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 12294
 range-deletions-bytes-estimate: 0
-compression: None:128
+compression: None:138
 
 # By plain file size, 000005 should be picked because it is larger and
 # overlaps the same amount of data in L6. However, 000004 has a high
@@ -251,7 +251,7 @@ compression: None:128
 
 maybe-compact
 ----
-[JOB 100] compacted(default) L5 [000004] (704B) Score=5.95 + L6 [000006] (13KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(default) L5 [000004] (714B) Score=5.97 + L6 [000006] (13KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # A table containing only range keys is not eligible for elision.
 # RANGEKEYDEL or RANGEKEYUNSET.
@@ -330,12 +330,12 @@ num-entries: 3
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 94
-compression: None:227
+range-deletions-bytes-estimate: 104
+compression: None:237
 
 maybe-compact
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (859B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (661B), in 1.0s (2.0s total), output rate 661B/s
+[JOB 100] compacted(elision-only) L6 [000004] (869B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (676B), in 1.0s (2.0s total), output rate 676B/s
 
 # Close the DB, asserting that the reference counts balance.
 close
@@ -373,7 +373,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 3074
 range-deletions-bytes-estimate: 0
-compression: None:120
+compression: None:130
 
 wait-pending-table-stats
 000005
@@ -382,16 +382,16 @@ num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 8380
-compression: None:87,Snappy:73/84
+range-deletions-bytes-estimate: 8400
+compression: None:181
 
 # With multiple compactions, there is non-determinism in the output table
 # numbers, so the test overwrites them to 0.
 maybe-compact
 ----
-[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (8.2KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (8.7KB), in 1.0s (2.0s total), output rate 8.7KB/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (8.2KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (8.8KB), in 1.0s (2.0s total), output rate 8.8KB/s
 [JOB 101] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
-[JOB 102] compacted(default) L5 [000004] (696B) Score=2.72 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
+[JOB 102] compacted(default) L5 [000004] (706B) Score=2.77 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
 
 # The same LSM as above. However, this time, with point tombstone weighting at
 # 2x, the table with the point tombstone (000004) will be selected as the
@@ -422,7 +422,7 @@ num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 3074
 range-deletions-bytes-estimate: 0
-compression: None:120
+compression: None:130
 
 wait-pending-table-stats
 000005
@@ -431,16 +431,16 @@ num-entries: 2
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 8380
-compression: None:87,Snappy:73/84
+range-deletions-bytes-estimate: 8400
+compression: None:181
 
 # With multiple compactions, there is non-determinism in the output table
 # numbers, so the test overwrites them to 0.
 maybe-compact
 ----
-[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (8.2KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (8.7KB), in 1.0s (2.0s total), output rate 8.7KB/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (8.2KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (8.8KB), in 1.0s (2.0s total), output rate 8.8KB/s
 [JOB 101] compacted(delete-only) (excised: 000007) L6 [000007] (13KB) Score=0.00 -> L6 [000000] (8.2KB), in 1.0s (2.0s total), output rate 8.2KB/s
-[JOB 102] compacted(default) L5 [000004] (696B) Score=2.72 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
+[JOB 102] compacted(default) L5 [000004] (706B) Score=2.77 + L6 [000006] (13KB) Score=0.00 -> L6 [000000] (4.7KB), in 1.0s (2.0s total), output rate 4.7KB/s
 
 
 # These tests demonstrate the behavior of the tombstone density compaction feature
@@ -497,7 +497,7 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 9
 range-deletions-bytes-estimate: 0
-compression: None:36,Snappy:95/108
+compression: None:154
 
 # Force a high tombstone density ratio to trigger the compaction
 # In a real scenario, this would be calculated based on the actual
@@ -511,15 +511,15 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 9
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
-compression: None:36,Snappy:95/108
+compression: None:154
 
 # Now the compaction should be triggered with tombstone-density type
 # since the file has a high tombstone density. The compaction log
 # should indicate "move" as the compaction type.
 maybe-compact
 ----
-[JOB 100] compacted(tombstone-density) L5 [000004] (716B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (661B), in 1.0s (2.0s total), output rate 661B/s
-[JOB 101] compacted(move) L4 [000004] (716B) Score=0.00 + L5 [] (0B) Score=0.00 -> L5 [000000] (716B), in 1.0s (2.0s total), output rate 716B/s
+[JOB 100] compacted(tombstone-density) L5 [000004] (730B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (676B), in 1.0s (2.0s total), output rate 676B/s
+[JOB 101] compacted(move) L4 [000004] (730B) Score=0.00 + L5 [] (0B) Score=0.00 -> L5 [000000] (730B), in 1.0s (2.0s total), output rate 730B/s
 
 # Verify the result - the file should now be in L5
 # The file should maintain its original content since it was just moved rather than recompacted
@@ -561,7 +561,7 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 9
 range-deletions-bytes-estimate: 0
-compression: None:36,Snappy:95/108
+compression: None:154
 
 # Force a high tombstone density ratio to trigger the compaction
 wait-pending-table-stats force-tombstone-density-ratio=0.9
@@ -573,13 +573,13 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 9
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
-compression: None:36,Snappy:95/108
+compression: None:154
 
 # A regular tombstone density compaction should be triggered (not a move optimization)
 # because there are overlapping files in L5 that prevent the optimization
 maybe-compact
 ----
-[JOB 100] compacted(tombstone-density) L4 [000004] (716B) Score=0.00 + L5 [000005] (666B) Score=0.00 -> L5 [000007] (661B), in 1.0s (2.0s total), output rate 661B/s
+[JOB 100] compacted(tombstone-density) L4 [000004] (730B) Score=0.00 + L5 [000005] (676B) Score=0.00 -> L5 [000007] (676B), in 1.0s (2.0s total), output rate 676B/s
 
 # Verify the result - the file was recompacted with the overlapping L5 file
 # The output file should be different from the input files
@@ -622,7 +622,7 @@ num-deletions: 3
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 1500007
 range-deletions-bytes-estimate: 0
-compression: None:36,Snappy:95/108
+compression: None:154
 
 # Force a high tombstone density ratio to trigger the compaction
 wait-pending-table-stats force-tombstone-density-ratio=0.9
@@ -634,7 +634,7 @@ num-range-key-sets: 0
 point-deletions-bytes-estimate: 1500007
 range-deletions-bytes-estimate: 0
 tombstone-dense-blocks-ratio: 0.9
-compression: None:36,Snappy:95/108
+compression: None:154
 
 # No compaction is triggered because the overlapping bytes in L6 exceed MaxOverlapBytes.
 # Pebble avoids triggering a compaction in this case to prevent excessive overlap in the

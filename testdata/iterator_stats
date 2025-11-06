@@ -17,7 +17,7 @@ stats
 a: (1, .)
 c: (2, .)
 .
-stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 113B cached, 468B not cached (read time: 0s); points: 2 (2B keys, 2B values)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 135B cached, 461B not cached (read time: 0s); points: 2 (2B keys, 2B values)
 
 # Perform the same operation again with a new iterator. It should yield
 # identical statistics.
@@ -31,7 +31,7 @@ stats
 a: (1, .)
 c: (2, .)
 .
-stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 113B cached; points: 2 (2B keys, 2B values)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 135B cached; points: 2 (2B keys, 2B values)
 
 build ext2
 set d@10 d10
@@ -61,13 +61,13 @@ next
 stats
 ----
 c: (2, .)
-stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 113B cached; points: 1 (1B keys, 1B values)
+stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 135B cached; points: 1 (1B keys, 1B values)
 d@10: (d10, .)
 d@9: (d9, .)
-stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 303B cached, 540B not cached (read time: 0s); points: 3 (8B keys, 6B values); separated: 1 (2B, 2B fetched)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 335B cached, 540B not cached (read time: 0s); points: 3 (8B keys, 6B values); separated: 1 (2B, 2B fetched)
 d@8: (d8, .)
-stats: seeked 1 times (1 internal); stepped 3 times (3 internal); blocks: 303B cached, 540B not cached (read time: 0s); points: 4 (11B keys, 8B values); separated: 2 (4B, 4B fetched)
+stats: seeked 1 times (1 internal); stepped 3 times (3 internal); blocks: 335B cached, 540B not cached (read time: 0s); points: 4 (11B keys, 8B values); separated: 2 (4B, 4B fetched)
 e@20: (e20, .)
-stats: seeked 1 times (1 internal); stepped 4 times (4 internal); blocks: 303B cached, 540B not cached (read time: 0s); points: 5 (15B keys, 11B values); separated: 2 (4B, 4B fetched)
+stats: seeked 1 times (1 internal); stepped 4 times (4 internal); blocks: 335B cached, 540B not cached (read time: 0s); points: 5 (15B keys, 11B values); separated: 2 (4B, 4B fetched)
 e@18: (e18, .)
-stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 303B cached, 540B not cached (read time: 0s); points: 6 (19B keys, 13B values); separated: 3 (7B, 7B fetched)
+stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 335B cached, 540B not cached (read time: 0s); points: 6 (19B keys, 13B values); separated: 3 (7B, 7B fetched)

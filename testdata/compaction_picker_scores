@@ -37,7 +37,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 328795
+range-deletions-bytes-estimate: 328845
 compression: None:79
 
 scores
@@ -81,7 +81,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       709B     0.00     0.01           0.01
+L5       712B     0.00     0.01           0.01
 L6       321KB    1.11     1.11           1.11
 
 enable-table-stats
@@ -95,7 +95,7 @@ num-deletions: 5
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 327690
 range-deletions-bytes-estimate: 0
-compression: None:128
+compression: None:36,Snappy:92/110
 
 scores
 ----
@@ -105,7 +105,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       709B     0.01     0.01           5.01
+L5       712B     0.01     0.01           5.01
 L6       321KB    1.11     1.11           1.11
 
 # Run a similar test as above, but this time the table containing the DELs is
@@ -149,7 +149,7 @@ num-deletions: 5
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 327700
 range-deletions-bytes-estimate: 0
-compression: None:129
+compression: None:139
 
 maybe-compact
 ----
@@ -215,11 +215,11 @@ L6       386KB    0.00     0.42           0.42
 lsm verbose
 ----
 L5:
-  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET] size:525303
-  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET] size:131758
+  000004:[aa#2,SET-dd#2,SET] seqnums:[2-2] points:[aa#2,SET-dd#2,SET] size:525343
+  000005:[e#2,SET-e#2,SET] seqnums:[2-2] points:[e#2,SET-e#2,SET] size:131768
 L6:
-  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET] size:263155
-  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET] size:131758
+  000006:[a#1,SET-d#1,SET] seqnums:[1-1] points:[a#1,SET-d#1,SET] size:263195
+  000007:[e#1,SET-e#1,SET] seqnums:[1-1] points:[e#1,SET-e#1,SET] size:131768
 
 # Attempting to schedule a compaction should begin a L5->L6 compaction.
 
@@ -331,13 +331,13 @@ Blob files:
 scores wait-for-compaction=completion
 ----
 Level    Size     Score     Fill factor    Compensated fill factor
-L0       1020B    151.18    2.00           2.00
+L0       1.0KB    149.45    2.00           2.00
 L1       0B       0.00      0.00           0.00
 L2       0B       0.00      0.00           0.00
 L3       0B       0.00      0.00           0.00
 L4       0B       0.00      0.00           0.00
 L5       0B       0.00      0.00           0.00
-L6       867B     0.00      0.01           0.01
+L6       877B     0.00      0.01           0.01
 
 # This attempt to compact should chose to rewrite the blob file B000006 *AND*
 # compact out of L0.
