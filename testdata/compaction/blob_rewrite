@@ -14,7 +14,7 @@ set e eagles
 flush
 ----
 L0.0:
-  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:817 blobrefs:[(B000006: 31); depth:1]
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:832 blobrefs:[(B000006: 31); depth:1]
 Blob files:
   B000006 physical:{000006 size:[209 (209B)] vals:[31 (31B)]}
 
@@ -25,23 +25,23 @@ del e
 flush
 ----
 L0.1:
-  000008:[e#15,DEL-e#15,DEL] seqnums:[15-15] points:[e#15,DEL-e#15,DEL] size:727
+  000008:[e#15,DEL-e#15,DEL] seqnums:[15-15] points:[e#15,DEL-e#15,DEL] size:741
 L0.0:
-  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:817 blobrefs:[(B000006: 31); depth:1]
+  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:832 blobrefs:[(B000006: 31); depth:1]
 Blob files:
   B000006 physical:{000006 size:[209 (209B)] vals:[31 (31B)]}
 
 compact a-e
 ----
 L6:
-  000009:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:799 blobrefs:[(B000006: 25); depth:1]
+  000009:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:814 blobrefs:[(B000006: 25); depth:1]
 Blob files:
   B000006 physical:{000006 size:[209 (209B)] vals:[31 (31B)]}
 
 run-blob-rewrite-compaction
 ----
 L6:
-  000009:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:799 blobrefs:[(B000006: 25); depth:1]
+  000009:[a#0,SET-d#0,SET] seqnums:[0-0] points:[a#0,SET-d#0,SET] size:814 blobrefs:[(B000006: 25); depth:1]
 Blob files:
   B000006 physical:{000010 size:[203 (203B)] vals:[25 (25B)]}
 
