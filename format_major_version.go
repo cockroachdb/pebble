@@ -253,6 +253,12 @@ const (
 	// Previously, marking for compaction required a manifest rotation.
 	FormatMarkForCompactionInVersionEdit
 
+	// FormatTieredStorage is a format major version that adds support for
+	// tiered storage based on the age of a key-value pair. It introduces a new
+	// columnar block format (among other things) that is required for tracking
+	// the attribute used to derive the age.
+	FormatTieredStorage
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
@@ -293,6 +299,8 @@ func (v FormatMajorVersion) resolveDefault() FormatMajorVersion {
 func (v FormatMajorVersion) MaxTableFormat() sstable.TableFormat {
 	v = v.resolveDefault()
 	switch {
+	case v >= FormatTieredStorage:
+		return sstable.TableFormatPebblev8
 	case v >= formatFooterAttributes:
 		return sstable.TableFormatPebblev7
 	case v >= FormatTableFormatV6:
@@ -397,6 +405,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatMarkForCompactionInVersionEdit: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatMarkForCompactionInVersionEdit)
+	},
+	FormatTieredStorage: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatTieredStorage)
 	},
 }
 
@@ -511,7 +522,11 @@ func (d *DB) ratchetFormatMajorVersionLocked(formatVers FormatMajorVersion) erro
 	defer func() { d.mu.formatVers.ratcheting = false }()
 
 	for nextVers := d.FormatMajorVersion() + 1; nextVers <= formatVers; nextVers++ {
-		if err := formatMajorVersionMigrations[nextVers](d); err != nil {
+		migration, ok := formatMajorVersionMigrations[nextVers]
+		if !ok || migration == nil {
+			return errors.Errorf("pebble: no migration function defined for format version %d", nextVers)
+		}
+		if err := migration(d); err != nil {
 			return errors.Wrapf(err, "migrating to version %d", nextVers)
 		}
 

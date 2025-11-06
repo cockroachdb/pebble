@@ -50,6 +50,7 @@ func TestWriter(t *testing.T) {
 		{TableFormat: TableFormatPebblev5, File: "testdata/writer_v5"},
 		{TableFormat: TableFormatPebblev6, File: "testdata/writer_v6"},
 		{TableFormat: TableFormatPebblev7, File: "testdata/writer_v7"},
+		{TableFormat: TableFormatPebblev8, File: "testdata/writer_v8"},
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
@@ -66,6 +67,7 @@ func TestRewriter(t *testing.T) {
 		{TableFormat: TableFormatPebblev5, File: "testdata/rewriter_v5"},
 		{TableFormat: TableFormatPebblev6, File: "testdata/rewriter_v6"},
 		{TableFormat: TableFormatPebblev7, File: "testdata/rewriter_v7"},
+		{TableFormat: TableFormatPebblev8, File: "testdata/writer_v8"},
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
