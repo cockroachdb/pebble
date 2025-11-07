@@ -49,7 +49,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 	}
 	reset()
 
-	loadFileMeta := func(paths []string, exciseSpan KeyRange, seqNum base.SeqNum) []*manifest.TableMetadata {
+	loadFileMeta := func(paths LocalSSTables, exciseSpan KeyRange, seqNum base.SeqNum) []*manifest.TableMetadata {
 		jobID := d.newJobID()
 
 		// We can reuse the ingestLoad function for this test even if we're
@@ -116,7 +116,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 			return ""
 		case "flushable":
 			// Creates an ingestedFlushable over the input files.
-			paths := make([]string, 0, len(td.CmdArgs))
+			var sstPaths []string
 			var exciseSpan KeyRange
 			startSeqNum := base.SeqNum(seqNum)
 			for _, arg := range td.CmdArgs {
@@ -130,11 +130,16 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 					exciseSpan.End = []byte(parts[1])
 					seqNum++
 				default:
-					paths = append(paths, arg.String())
+					sstPaths = append(sstPaths, arg.String())
 					seqNum++
 				}
 			}
 
+			localSSTs := make([]LocalSST, len(sstPaths))
+			for i, path := range sstPaths {
+				localSSTs[i] = LocalSST{Path: path}
+			}
+			paths := LocalSSTables(localSSTs)
 			meta := loadFileMeta(paths, exciseSpan, startSeqNum)
 			flushable = newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan, base.SeqNum(startSeqNum))
 			return ""
