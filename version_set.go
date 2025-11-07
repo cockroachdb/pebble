@@ -106,7 +106,7 @@ type versionSet struct {
 	minUnflushedLogNum base.DiskFileNum
 
 	// The next file number. A single counter is used to assign file
-	// numbers for the WAL, MANIFEST, sstable, and OPTIONS files.
+	// numbers for the WAL, MANIFEST, sstable, blob and OPTIONS files.
 	nextFileNum atomic.Uint64
 
 	// The current manifest file number.
