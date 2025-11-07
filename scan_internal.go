@@ -201,7 +201,8 @@ func (d *DB) newInternalIter(
 	if d.iterTracker != nil {
 		dbi.trackerHandle = d.iterTracker.Start()
 	}
-	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache, block.ReadEnv{},
+	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache,
+		block.ReadEnv{ValueRetrievalProfile: d.valueRetrievalProfile.Load()},
 		blob.SuggestedCachedReaders(vers.MaxReadAmp()))
 
 	dbi.opts = *o

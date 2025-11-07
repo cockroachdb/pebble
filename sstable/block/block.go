@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bitflip"
+	"github.com/cockroachdb/pebble/internal/bytesprofile"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/crc"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -284,6 +285,10 @@ type ReadEnv struct {
 	// more details.
 	ReportCorruptionFn  func(base.ObjectInfo, error) error
 	ReportCorruptionArg base.ObjectInfo
+
+	// ValueRetrievalProfile, if non-nil, is used to record stack traces of
+	// retrievals of separated values. It's only used by the blob.ValueFetcher.
+	ValueRetrievalProfile *bytesprofile.Profile
 }
 
 // BlockServedFromCache updates the stats when a block was found in the cache.

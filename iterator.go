@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
+	"github.com/cockroachdb/pebble/internal/bytesprofile"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/inflight"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -260,11 +261,12 @@ type Iterator struct {
 	externalIter        *externalIterState
 	// Following fields used when constructing an iterator stack, eg, in Clone
 	// and SetOptions or when re-fragmenting a batch's range keys/range dels.
-	fc               *fileCacheHandle
-	newIters         tableNewIters
-	newIterRangeKey  keyspanimpl.TableNewSpanIter
-	lazyCombinedIter lazyCombinedIter
-	seqNum           base.SeqNum
+	fc                    *fileCacheHandle
+	newIters              tableNewIters
+	newIterRangeKey       keyspanimpl.TableNewSpanIter
+	valueRetrievalProfile *bytesprofile.Profile
+	lazyCombinedIter      lazyCombinedIter
+	seqNum                base.SeqNum
 	// batch is non-nil if this Iterator includes an indexed batch. Batch
 	// contains all the state pertaining to iterating over the indexed batch.
 	// The iteratorBatchState struct is bundled within the iterAlloc struct to
@@ -2889,21 +2891,22 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	buf := newIterAlloc()
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		ctx:                 ctx,
-		opts:                *opts.IterOptions,
-		alloc:               buf,
-		merge:               i.merge,
-		comparer:            i.comparer,
-		readState:           readState,
-		version:             vers,
-		keyBuf:              buf.keyBuf,
-		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
-		boundsBuf:           buf.boundsBuf,
-		fc:                  i.fc,
-		newIters:            i.newIters,
-		newIterRangeKey:     i.newIterRangeKey,
-		seqNum:              i.seqNum,
-		tracker:             i.tracker,
+		ctx:                   ctx,
+		opts:                  *opts.IterOptions,
+		alloc:                 buf,
+		merge:                 i.merge,
+		comparer:              i.comparer,
+		readState:             readState,
+		version:               vers,
+		keyBuf:                buf.keyBuf,
+		prefixOrFullSeekKey:   buf.prefixOrFullSeekKey,
+		boundsBuf:             buf.boundsBuf,
+		fc:                    i.fc,
+		newIters:              i.newIters,
+		newIterRangeKey:       i.newIterRangeKey,
+		valueRetrievalProfile: i.valueRetrievalProfile,
+		seqNum:                i.seqNum,
+		tracker:               i.tracker,
 	}
 	if i.tracker != nil && !dbi.opts.ExemptFromTracking {
 		dbi.trackerHandle = i.tracker.Start()

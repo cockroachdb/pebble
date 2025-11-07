@@ -1415,6 +1415,39 @@ func TestIteratorStatsMerge(t *testing.T) {
 	require.Equal(t, expected, s)
 }
 
+func TestIteratorValueRetrievalProfile(t *testing.T) {
+	opts := &Options{}
+	opts.FormatMajorVersion = internalFormatNewest
+	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+		return ValueSeparationPolicy{
+			Enabled:               true,
+			MinimumSize:           1,
+			MaxBlobReferenceDepth: 5,
+		}
+	}
+	d := newTestkeysDatabase(t, opts, testkeys.Alpha(2), rand.New(rand.NewPCG(1, 1)))
+	defer func() { require.NoError(t, d.Close()) }()
+	require.NoError(t, d.Flush())
+	stop, err := d.RecordSeparatedValueRetrievals()
+	require.NoError(t, err)
+	{
+		_, err := d.RecordSeparatedValueRetrievals()
+		require.Error(t, err, "should not be able to start a second profile")
+	}
+	it, err := d.NewIter(nil)
+	require.NoError(t, err)
+	defer it.Close()
+	require.True(t, it.SeekGE([]byte("a")))
+	val, err := it.ValueAndErr()
+	require.NoError(t, err)
+	require.NotNil(t, val)
+	p := stop()
+	require.NotNil(t, p)
+	s := p.String()
+	require.NotEmpty(t, s)
+	t.Log(s)
+}
+
 // TestSetOptionsEquivalence tests equivalence between SetOptions to mutate an
 // iterator and constructing a new iterator with NewIter. The long-lived
 // iterator and the new iterator should surface identical iterator states.
@@ -1428,7 +1461,7 @@ func TestSetOptionsEquivalence(t *testing.T) {
 func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 	rng := rand.New(rand.NewPCG(seed, seed))
 	ks := testkeys.Alpha(2)
-	d := newTestkeysDatabase(t, ks, rng)
+	d := newTestkeysDatabase(t, nil /* dbOpts */, ks, rng)
 	defer func() { require.NoError(t, d.Close()) }()
 
 	var o IterOptions
@@ -1571,12 +1604,13 @@ func iterOptionsString(o *IterOptions) string {
 	return buf.String()
 }
 
-func newTestkeysDatabase(t *testing.T, ks testkeys.Keyspace, rng *rand.Rand) *DB {
-	dbOpts := &Options{
-		Comparer: testkeys.Comparer,
-		FS:       vfs.NewMem(),
-		Logger:   panicLogger{},
+func newTestkeysDatabase(t *testing.T, dbOpts *Options, ks testkeys.Keyspace, rng *rand.Rand) *DB {
+	if dbOpts == nil {
+		dbOpts = &Options{}
 	}
+	dbOpts.Comparer = testkeys.Comparer
+	dbOpts.FS = vfs.NewMem()
+	dbOpts.Logger = panicLogger{}
 	dbOpts.randomizeForTesting(t)
 	d, err := Open("", dbOpts)
 	require.NoError(t, err)
@@ -2272,7 +2306,7 @@ func TestIteratorSeekPrefixGERandomized(t *testing.T) {
 	t.Logf("seed: %d", seed)
 	rng := rand.New(rand.NewPCG(seed, seed))
 	ks := testkeys.Alpha(2)
-	d := newTestkeysDatabase(t, ks, rng)
+	d := newTestkeysDatabase(t, nil /* dbOpts */, ks, rng)
 	defer func() { require.NoError(t, d.Close()) }()
 
 	// Scan through the keys and construct a map from unique prefix to the

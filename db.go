@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/bytesprofile"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/inflight"
@@ -554,7 +555,8 @@ type DB struct {
 
 	compressionCounters block.CompressionCounters
 
-	iterTracker *inflight.Tracker
+	iterTracker           *inflight.Tracker
+	valueRetrievalProfile atomic.Pointer[bytesprofile.Profile]
 }
 
 var _ Reader = (*DB)(nil)
@@ -563,6 +565,27 @@ var _ Writer = (*DB)(nil)
 // TestOnlyWaitForCleaning MUST only be used in tests.
 func (d *DB) TestOnlyWaitForCleaning() {
 	d.deletePacer.WaitForTesting()
+}
+
+// RecordSeparatedValueRetrievals begins collection of stack traces that are
+// retrieving separated values. If a profile has already begun, an error is
+// returned. If successful, the stop function must be called to stop the
+// collection and return the resulting profile.
+func (d *DB) RecordSeparatedValueRetrievals() (
+	stop func() *metrics.ValueRetrievalProfile,
+	err error,
+) {
+	p := bytesprofile.NewProfile()
+	swapped := d.valueRetrievalProfile.CompareAndSwap(nil, p)
+	if !swapped {
+		return nil, errors.New("separated value retrieval profile is already in progress")
+	}
+	return func() *metrics.ValueRetrievalProfile {
+		if !d.valueRetrievalProfile.CompareAndSwap(p, nil) {
+			panic(errors.AssertionFailedf("profile already stopped"))
+		}
+		return p
+	}, nil
 }
 
 // Set sets the value for the given key. It overwrites any previous value
@@ -1106,6 +1129,7 @@ func (d *DB) newIter(
 	dbi.fc = d.fileCache
 	dbi.newIters = newIters
 	dbi.newIterRangeKey = newIterRangeKey
+	dbi.valueRetrievalProfile = d.valueRetrievalProfile.Load()
 	dbi.seqNum = seqNum
 	dbi.batchOnlyIter = newIterOpts.batch.batchOnly
 	if o != nil {
@@ -1255,6 +1279,7 @@ func (i *Iterator) constructPointIter(
 			uint64(uintptr(unsafe.Pointer(i))),
 			i.opts.Category,
 		),
+		ValueRetrievalProfile: i.valueRetrievalProfile,
 	}
 	if i.readState != nil {
 		i.blobValueFetcher.Init(&i.readState.current.BlobFiles, i.fc, readEnv,
