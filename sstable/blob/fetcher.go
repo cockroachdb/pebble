@@ -340,6 +340,14 @@ func (cr *cachedReader) GetUnsafeValue(
 		cr.currentValueBlock.loaded = true
 	}
 
+	// If the ReadEnv is configured with a value-retrieval profile, record the
+	// value retrieval to it. This is used to allow runtime profiling of value
+	// retrievals, providing observability into which codepaths are responsible
+	// for the comparatively expensive value retrievals.
+	if env.ValueRetrievalProfile != nil {
+		env.ValueRetrievalProfile.Record(int64(vh.ValueLen))
+	}
+
 	// Convert the ValueID to an index into the block's values. When a blob file
 	// is first constructed, the ValueID == the index. However when a blob file
 	// is rewritten, multiple blocks from the original blob file may be combined
