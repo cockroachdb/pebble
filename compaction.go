@@ -3390,6 +3390,7 @@ func (d *DB) compactAndWrite(
 			uint64(uintptr(unsafe.Pointer(c))),
 			categoryCompaction,
 		),
+		ValueRetrievalProfile: d.valueRetrievalProfile.Load(),
 	}
 	if c.version != nil {
 		c.iterationState.valueFetcher.Init(&c.version.BlobFiles, d.fileCache, blockReadEnv, suggestedCacheReaders)
