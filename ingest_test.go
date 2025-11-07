@@ -150,7 +150,8 @@ func TestIngestLoad(t *testing.T) {
 			}
 			opts.WithFSDefaults()
 			getNextFileNum := func() base.DiskFileNum { return 1 }
-			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, nil, getNextFileNum)
+			localFiles := LocalSSTables([]LocalSST{{Path: "ext"}})
+			lr, err := ingestLoad(context.Background(), opts, dbVersion, localFiles, nil, nil, nil, nil, getNextFileNum)
 			if err != nil {
 				return err.Error()
 			}
@@ -184,7 +185,14 @@ func TestIngestLoadRand(t *testing.T) {
 		return data
 	}
 
-	paths := make([]string, 1+rng.IntN(10))
+	sstPaths := make([]string, 1+rng.IntN(10))
+	for i := range sstPaths {
+		sstPaths[i] = fmt.Sprint(i)
+	}
+	paths := make(LocalSSTables, len(sstPaths))
+	for i, path := range sstPaths {
+		paths[i] = LocalSST{Path: path}
+	}
 	expected := make([]ingestLocalMeta, len(paths))
 	pending := make([]base.DiskFileNum, len(expected))
 	for i := range expected {
@@ -193,17 +201,16 @@ func TestIngestLoadRand(t *testing.T) {
 	fileNumAllocator := testFileNumAllocator{
 		fileNums: pending,
 	}
-	for i := range paths {
-		paths[i] = fmt.Sprint(i)
+	for i := range sstPaths {
 		expected[i] = ingestLocalMeta{
 			TableMetadata: &manifest.TableMetadata{
 				TableNum: base.TableNum(pending[i]),
 			},
-			path: paths[i],
+			path: sstPaths[i],
 		}
 
 		func() {
-			f, err := mem.Create(paths[i], vfs.WriteCategoryUnspecified)
+			f, err := mem.Create(sstPaths[i], vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 
 			keys := make([]InternalKey, 1+rng.IntN(100))
@@ -280,7 +287,8 @@ func TestIngestLoadInvalid(t *testing.T) {
 	}
 	opts.WithFSDefaults()
 	getNextFileNum := func() base.DiskFileNum { return 1 }
-	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, nil, getNextFileNum); err == nil {
+	localFiles := LocalSSTables([]LocalSST{{Path: "invalid"}})
+	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, localFiles, nil, nil, nil, nil, getNextFileNum); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }

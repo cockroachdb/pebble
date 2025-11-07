@@ -269,7 +269,7 @@ func ingestLoad1(
 	o := opts.MakeReaderOptions()
 	o.CacheOpts = sstableinternal.CacheOptions{
 		CacheHandle: cacheHandle,
-		FileNum:     base.PhysicalTableDiskFileNum(tableNum),
+		FileNum:     base.DiskFileNum(tableNum),
 	}
 	if compressionCounters != nil {
 		o.CompressionCounters = &compressionCounters.Decompressed
@@ -499,7 +499,7 @@ func ingestLoad(
 	ctx context.Context,
 	opts *Options,
 	fmv FormatMajorVersion,
-	paths []string,
+	local LocalSSTables,
 	shared []SharedSSTMeta,
 	external []ExternalFile,
 	cacheHandle *cache.Handle,
@@ -507,7 +507,7 @@ func ingestLoad(
 	getNextFileNum func() base.DiskFileNum,
 ) (ingestLoadResult, error) {
 	var result ingestLoadResult
-	result.local = make([]ingestLocalMeta, 0, len(paths))
+	result.local = make([]ingestLocalMeta, 0, len(local))
 	var lastRangeKey keyspan.Span
 	var blockReadStats base.BlockReadStats
 	// NB: we disable range key boundary assertions if we have shared or external files
@@ -518,8 +518,8 @@ func ingestLoad(
 	// files that won't ever be surfaced, even if there are no shared or external files
 	// in the ingestion.
 	shouldDisableRangeKeyChecks := len(shared) > 0 || len(external) > 0 || opts.Experimental.CreateOnShared != remote.CreateOnSharedNone
-	for i := range paths {
-		f, err := opts.FS.Open(paths[i])
+	for _, p := range local {
+		f, err := opts.FS.Open(p.Path)
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -541,7 +541,7 @@ func ingestLoad(
 		if m != nil {
 			result.local = append(result.local, ingestLocalMeta{
 				TableMetadata: m,
-				path:          paths[i],
+				path:          p.Path,
 			})
 			result.blockReadStats = blockReadStats
 		}
@@ -1143,7 +1143,11 @@ func (d *DB) Ingest(ctx context.Context, paths []string) error {
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
-	_, err := d.ingest(ctx, ingestArgs{Local: paths})
+	localSSTs := make([]LocalSST, len(paths))
+	for i, path := range paths {
+		localSSTs[i] = LocalSST{Path: path}
+	}
+	_, err := d.ingest(ctx, ingestArgs{Local: localSSTs})
 	return err
 }
 
@@ -1231,7 +1235,11 @@ func (d *DB) IngestWithStats(ctx context.Context, paths []string) (IngestOperati
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	return d.ingest(ctx, ingestArgs{Local: paths})
+	localSSTs := make([]LocalSST, len(paths))
+	for i, path := range paths {
+		localSSTs[i] = LocalSST{Path: path}
+	}
+	return d.ingest(ctx, ingestArgs{Local: localSSTs})
 }
 
 // IngestExternalFiles does the same as IngestWithStats, and additionally
@@ -1290,8 +1298,12 @@ func (d *DB) IngestAndExcise(
 			v, FormatMinForSharedObjects,
 		)
 	}
+	localSSTs := make([]LocalSST, len(paths))
+	for i, path := range paths {
+		localSSTs[i] = LocalSST{Path: path}
+	}
 	args := ingestArgs{
-		Local:              paths,
+		Local:              localSSTs,
 		Shared:             shared,
 		External:           external,
 		ExciseSpan:         exciseSpan,
@@ -1437,7 +1449,7 @@ func (d *DB) handleIngestAsFlushable(
 
 type ingestArgs struct {
 	// Local sstables to ingest.
-	Local []string
+	Local LocalSSTables
 	// Shared sstables to ingest.
 	Shared []SharedSSTMeta
 	// External sstables to ingest.
@@ -1449,7 +1461,7 @@ type ingestArgs struct {
 
 // See comment at Ingest() for details on how this works.
 func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats, error) {
-	paths := args.Local
+	local := args.Local
 	shared := args.Shared
 	external := args.External
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
@@ -1472,7 +1484,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 
 	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
-	loadResult, err := ingestLoad(ctx, d.opts, d.FormatMajorVersion(), paths, shared, external,
+	loadResult, err := ingestLoad(ctx, d.opts, d.FormatMajorVersion(), local, shared, external,
 		d.cacheHandle, &d.compressionCounters, d.mu.versions.getNextDiskFileNum)
 	if err != nil {
 		return IngestOperationStats{}, err
