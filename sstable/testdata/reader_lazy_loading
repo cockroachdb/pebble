@@ -11,41 +11,41 @@ e.SET.5:E
 iter-lazy
 check-index-loaded
 ----
-index-loaded: false
+check-index-loaded: false
 
 iter-lazy
 first
 check-index-loaded
 ----
-first: <a:1>:A
-index-loaded: true
+             first: <a:1>:A
+check-index-loaded: true
 
 iter-lazy
 check-index-loaded
 seek-ge c
 check-index-loaded
 ----
-index-loaded: false
-seek-ge c: <c:3>:C
-index-loaded: true
+check-index-loaded: false
+         seek-ge c: <c:3>:C
+check-index-loaded: true
 
 iter-lazy
 check-index-loaded
 last
 check-index-loaded
 ----
-index-loaded: false
-last: <e:5>:E
-index-loaded: true
+check-index-loaded: false
+              last: <e:5>:E
+check-index-loaded: true
 
 iter-lazy
 check-index-loaded
 seek-lt d
 check-index-loaded
 ----
-index-loaded: false
-seek-lt d: <c:3>:C
-index-loaded: true
+check-index-loaded: false
+         seek-lt d: <c:3>:C
+check-index-loaded: true
 
 # Test with column blocks format
 build table-format=Pebble,v5 bloom-filter
@@ -59,23 +59,23 @@ j.SET.10:J
 iter-lazy
 check-index-loaded
 ----
-index-loaded: false
+check-index-loaded: false
 
 iter-lazy
 first
 check-index-loaded
 ----
-first: <f:6>:F
-index-loaded: true
+             first: <f:6>:F
+check-index-loaded: true
 
 iter-lazy
 check-index-loaded
 seek-ge h
 check-index-loaded
 ----
-index-loaded: false
-seek-ge h: <h:8>:H
-index-loaded: true
+check-index-loaded: false
+         seek-ge h: <h:8>:H
+check-index-loaded: true
 
 # Test bloom filter optimization - index might not be loaded for misses
 build table-format=Pebble,v3 bloom-filter
@@ -86,18 +86,18 @@ m.SET.13:M
 
 iter-lazy
 check-index-loaded
-seek-prefix-ge nonexistent_key nonexistent_key
+seek-prefix-ge nonexistent_key
 check-index-loaded
 ----
-index-loaded: false
+check-index-loaded: false
 seek-prefix-ge nonexistent_key: .
-index-loaded: false
+check-index-loaded: false
 
 iter-lazy
 check-index-loaded
-seek-prefix-ge k k
+seek-prefix-ge k
 check-index-loaded
 ----
-index-loaded: false
-seek-prefix-ge k: <k:11>:K
-index-loaded: true
+check-index-loaded: false
+  seek-prefix-ge k: <k:11>:K
+check-index-loaded: true
