@@ -325,6 +325,10 @@ func runIterCmd(
 			}
 			iter.SetBounds(lower, upper)
 			kv = nil
+		case "check-index-loaded":
+			loaded := isLazyIndexLoaded(iter)
+			fmt.Fprintf(&b, "check-index-loaded: %v\n", loaded)
+			continue
 		case "stats":
 			// The timing is non-deterministic, so set to 0.
 			for i := range blockkind.NumKinds {

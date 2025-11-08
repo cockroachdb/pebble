@@ -7,12 +7,12 @@ package sstable
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/stretchr/testify/require"
 )
 
 // TestReaderLazyLoading tests the lazy loading functionality using data-driven tests.
@@ -21,34 +21,31 @@ import (
 func TestReaderLazyLoading(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
+	var r *Reader
+	defer func() {
+		if r != nil {
+			r.Close()
+			r = nil
+		}
+	}()
 	datadriven.RunTest(t, "testdata/reader_lazy_loading", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "build":
-			return runBuildForLazyTest(t, td)
+			if r != nil {
+				r.Close()
+				r = nil
+			}
+			r = runBuildForLazyTest(t, td)
+			return ""
 		case "iter-lazy":
-			return runIterLazyCmd(t, td)
+			return runIterLazyCmd(t, td, r)
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
 }
 
-var (
-	lazyTestReader *Reader
-	lazyTestIter   Iterator
-)
-
-func runBuildForLazyTest(t *testing.T, td *datadriven.TestData) string {
-	// Close existing reader if any
-	if lazyTestReader != nil {
-		lazyTestReader.Close()
-		lazyTestReader = nil
-	}
-	if lazyTestIter != nil {
-		lazyTestIter.Close()
-		lazyTestIter = nil
-	}
-
+func runBuildForLazyTest(t *testing.T, td *datadriven.TestData) *Reader {
 	// Build writer options with defaults
 	writerOpts := WriterOptions{
 		Comparer:       base.DefaultComparer,
@@ -60,7 +57,7 @@ func runBuildForLazyTest(t *testing.T, td *datadriven.TestData) string {
 
 	// Parse command arguments
 	if err := ParseWriterOptions(&writerOpts, td.CmdArgs...); err != nil {
-		return err.Error()
+		t.Fatal(err)
 	}
 
 	// Add bloom filter if specified
@@ -71,129 +68,27 @@ func runBuildForLazyTest(t *testing.T, td *datadriven.TestData) string {
 	// Build the table
 	_, reader, err := runBuildCmd(td, &writerOpts, nil)
 	if err != nil {
-		return err.Error()
+		t.Fatal(err)
 	}
-
-	lazyTestReader = reader
-	return ""
+	return reader
 }
 
-func runIterLazyCmd(t *testing.T, td *datadriven.TestData) string {
-	if lazyTestReader == nil {
+func runIterLazyCmd(t *testing.T, td *datadriven.TestData, r *Reader) string {
+	if r == nil {
 		return "build must be called before iter-lazy"
 	}
 
-	// Close existing iterator if any
-	if lazyTestIter != nil {
-		lazyTestIter.Close()
-		lazyTestIter = nil
-	}
-
 	// Create new iterator
-	iter, err := lazyTestReader.NewPointIter(context.Background(), IterOptions{
+	iter, err := r.NewPointIter(context.Background(), IterOptions{
 		Transforms:           NoTransforms,
 		FilterBlockSizeLimit: AlwaysUseFilterBlock,
 		Env:                  NoReadEnv,
-		ReaderProvider:       MakeTrivialReaderProvider(lazyTestReader),
+		ReaderProvider:       MakeTrivialReaderProvider(r),
 		BlobContext:          AssertNoBlobHandles,
 	})
-	if err != nil {
-		return err.Error()
-	}
-	lazyTestIter = iter
+	require.NoError(t, err)
 
-	// Process the operations
-	var output strings.Builder
-	lines := strings.Split(strings.TrimSpace(td.Input), "\n")
-
-	for i, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if i > 0 {
-			output.WriteString("\n")
-		}
-
-		switch {
-		case line == "check-index-loaded":
-			loaded := isLazyIndexLoaded(iter)
-			output.WriteString(fmt.Sprintf("index-loaded: %v", loaded))
-
-		case line == "first":
-			kv := iter.First()
-			if kv != nil {
-				output.WriteString(fmt.Sprintf("first: <%s:%d>:%s", kv.K.UserKey, kv.K.SeqNum(), kv.InPlaceValue()))
-			} else {
-				output.WriteString("first: .")
-			}
-
-		case line == "last":
-			kv := iter.Last()
-			if kv != nil {
-				output.WriteString(fmt.Sprintf("last: <%s:%d>:%s", kv.K.UserKey, kv.K.SeqNum(), kv.InPlaceValue()))
-			} else {
-				output.WriteString("last: .")
-			}
-
-		case strings.HasPrefix(line, "seek-ge "):
-			key := strings.TrimPrefix(line, "seek-ge ")
-			kv := iter.SeekGE([]byte(key), base.SeekGEFlagsNone)
-			if kv != nil {
-				output.WriteString(fmt.Sprintf("seek-ge %s: <%s:%d>:%s", key, kv.K.UserKey, kv.K.SeqNum(), kv.InPlaceValue()))
-			} else {
-				output.WriteString(fmt.Sprintf("seek-ge %s: .", key))
-			}
-
-		case strings.HasPrefix(line, "seek-lt "):
-			key := strings.TrimPrefix(line, "seek-lt ")
-			kv := iter.SeekLT([]byte(key), base.SeekLTFlagsNone)
-			if kv != nil {
-				output.WriteString(fmt.Sprintf("seek-lt %s: <%s:%d>:%s", key, kv.K.UserKey, kv.K.SeqNum(), kv.InPlaceValue()))
-			} else {
-				output.WriteString(fmt.Sprintf("seek-lt %s: .", key))
-			}
-
-		case strings.HasPrefix(line, "seek-prefix-ge "):
-			parts := strings.Fields(line)
-			if len(parts) != 3 {
-				return fmt.Sprintf("seek-prefix-ge requires prefix and key: %s", line)
-			}
-			prefix, key := parts[1], parts[2]
-			kv := iter.SeekPrefixGE([]byte(prefix), []byte(key), base.SeekGEFlagsNone)
-			if kv != nil {
-				output.WriteString(fmt.Sprintf("seek-prefix-ge %s: <%s:%d>:%s", key, kv.K.UserKey, kv.K.SeqNum(), kv.InPlaceValue()))
-			} else {
-				output.WriteString(fmt.Sprintf("seek-prefix-ge %s: .", key))
-			}
-
-		case line == "next":
-			kv := iter.Next()
-			if kv != nil {
-				output.WriteString(fmt.Sprintf("next: <%s:%d>:%s", kv.K.UserKey, kv.K.SeqNum(), kv.InPlaceValue()))
-			} else {
-				output.WriteString("next: .")
-			}
-
-		case line == "prev":
-			kv := iter.Prev()
-			if kv != nil {
-				output.WriteString(fmt.Sprintf("prev: <%s:%d>:%s", kv.K.UserKey, kv.K.SeqNum(), kv.InPlaceValue()))
-			} else {
-				output.WriteString("prev: .")
-			}
-
-		default:
-			return fmt.Sprintf("unknown iter-lazy operation: %s", line)
-		}
-
-		if err := iter.Error(); err != nil {
-			output.WriteString(fmt.Sprintf(" <err: %s>", err))
-		}
-	}
-
-	return output.String()
+	return runIterCmd(td, iter, true /* printValue */, runIterCmdShowCommands)
 }
 
 // isLazyIndexLoaded checks if the index block has been loaded for lazy iterators
