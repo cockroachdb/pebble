@@ -1,8 +1,8 @@
 build
-a.SET.1:A
-aa.SET.2:AA
-c.SET.3:C
-d.SET.4:D
+a#1,SET:A
+aa#2,SET:AA
+c#3,SET:C
+d#4,SET:D
 ----
 
 iter

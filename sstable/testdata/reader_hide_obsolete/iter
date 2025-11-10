@@ -1,11 +1,11 @@
 build
-a.SET.1:A
-b.SINGLEDEL.4:
-b.SET.2:B
-c.DEL.5:
-c.SET.3:C
-d.SET.4:D4
-d.SET.2:D2
+a#1,SET:A
+b#4,SINGLEDEL:
+b#2,SET:B
+c#5,DEL:
+c#3,SET:C
+d#4,SET:D4
+d#2,SET:D2
 ----
 
 iter
@@ -90,15 +90,15 @@ seek-lt c: <b:4>:
      prev: <a:1>:A
 
 build
-a.SET.3:A
-a.MERGE.2:A2
-b.MERGE.20:B20
-b.MERGE.18:B18
-b.SET.16:B16
-b.SET.14:B14
-c.MERGE.30:C30
-c.MERGE.28:C28
-c.DEL.26:
+a#3,SET:A
+a#2,MERGE:A2
+b#20,MERGE:B20
+b#18,MERGE:B18
+b#16,SET:B16
+b#14,SET:B14
+c#30,MERGE:C30
+c#28,MERGE:C28
+c#26,DEL:
 ----
 
 iter
@@ -152,12 +152,12 @@ first: <a:3>:A
  prev: <a:3>:A
 
 build
-b.MERGE.20:B20
-b.SETWITHDEL.16:B16
-b.SETWITHDEL.14:B14
-c.MERGE.30:C30
-c.DELSIZED.28:
-c.DEL.26:
+b#20,MERGE:B20
+b#16,SETWITHDEL:B16
+b#14,SETWITHDEL:B14
+c#30,MERGE:C30
+c#28,DELSIZED:
+c#26,DEL:
 ----
 
 iter
@@ -191,10 +191,10 @@ first: <b:20>:B20
  next: .
 
 build
-b.SETWITHDEL.20:B20
-b.MERGE.16:B16
-b.MERGE.14:B14
-b.SET.12:B12
+b#20,SETWITHDEL:B20
+b#16,MERGE:B16
+b#14,MERGE:B14
+b#12,SET:B12
 ----
 
 iter
@@ -218,11 +218,11 @@ first: <b:20>:B20
  next: .
 
 build writing-to-lowest-level
-a.SET.10:A10
-b.DEL.20:
-b.MERGE.16:B16
-b.MERGE.14:B14
-b.SET.12:B12
+a#10,SET:A10
+b#20,DEL:
+b#16,MERGE:B16
+b#14,MERGE:B14
+b#12,SET:B12
 ----
 
 iter
@@ -248,13 +248,13 @@ first: <a:10>:A10
  next: .
 
 build writing-to-lowest-level
-a.SET.10:A10
-b.DEL.16:B16
-b.SETWITHDEL.14:B14
-c.DELSIZED.30:
-c.SET.28:C28
-d.SINGLEDEL.40:
-d.MERGE.30:D30
+a#10,SET:A10
+b#16,DEL:B16
+b#14,SETWITHDEL:B14
+c#30,DELSIZED:
+c#28,SET:C28
+d#40,SINGLEDEL:
+d#30,MERGE:D30
 ----
 
 iter
@@ -284,11 +284,11 @@ first: <a:10>:A10
  next: .
 
 build writing-to-lowest-level
-force-obsolete: a.SET.1:A
-force-obsolete: b.SINGLEDEL.4:
-force-obsolete: b.SET.2:B
-c.DEL.5:
-force-obsolete: d.SET.10:D10
+force-obsolete: a#1,SET:A
+force-obsolete: b#4,SINGLEDEL:
+force-obsolete: b#2,SET:B
+c#5,DEL:
+force-obsolete: d#10,SET:D10
 ----
 
 iter
@@ -312,8 +312,8 @@ first
 table does not intersect BlockPropertyFilter
 
 build is-strict-obsolete
-d.SINGLEDEL.40:
-d.MERGE.30:D30
+d#40,SINGLEDEL:
+d#30,MERGE:D30
 ----
 failed to write d#30,MERGE = D30: MERGE not supported in a strict-obsolete sstable
 
@@ -321,11 +321,11 @@ failed to write d#30,MERGE = D30: MERGE not supported in a strict-obsolete sstab
 # skipBackward should still skip to blocks earlier in the sstable.
 
 build writing-to-lowest-level
-a.SET.10:A10
-force-obsolete: b.DEL.5:
-force-obsolete: b.SETWITHDEL.2:foo
-force-obsolete: c.DEL.0:
-force-obsolete: cc.DEL.5:
+a#10,SET:A10
+force-obsolete: b#5,DEL:
+force-obsolete: b#2,SETWITHDEL:foo
+force-obsolete: c#0,DEL:
+force-obsolete: cc#5,DEL:
 ----
 
 iter hide-obsolete-points-without-filter=true

@@ -1,9 +1,9 @@
 build table-format=Pebble,v6
-a@2.SET.1:blob{fileNum=1 valueID=0 valueLen=10}attr=7
-b@5.SET.7:blob{fileNum=1 valueID=200 valueLen=200}attr=7
-b@4.DEL.3:
-b@3.SET.2:blob{fileNum=2 valueID=300 valueLen=200}attr=7
-b@2.SET.1:blob{fileNum=2 valueID=400 valueLen=103}attr=7
+a@2#1,SET:blob{fileNum=1 valueID=0 valueLen=10}attr=7
+b@5#7,SET:blob{fileNum=1 valueID=200 valueLen=200}attr=7
+b@4#3,DEL:
+b@3#2,SET:blob{fileNum=2 valueID=300 valueLen=200}attr=7
+b@2#1,SET:blob{fileNum=2 valueID=400 valueLen=103}attr=7
 ----
 blob-separated-values: num-values 4
 
@@ -156,11 +156,11 @@ sstable
       └── 049  magic number: 0xf09faab3f09faab3
 
 build table-format=Pebble,v7
-a@2.SET.1:blob{fileNum=1 valueID=0 valueLen=10}attr=7
-b@5.SET.7:blob{fileNum=1 valueID=200 valueLen=200}attr=7
-b@4.DEL.3:
-b@3.SET.2:blob{fileNum=2 valueID=300 valueLen=200}attr=7
-b@2.SET.1:blob{fileNum=2 valueID=400 valueLen=103}attr=7
+a@2#1,SET:blob{fileNum=1 valueID=0 valueLen=10}attr=7
+b@5#7,SET:blob{fileNum=1 valueID=200 valueLen=200}attr=7
+b@4#3,DEL:
+b@3#2,SET:blob{fileNum=2 valueID=300 valueLen=200}attr=7
+b@2#1,SET:blob{fileNum=2 valueID=400 valueLen=103}attr=7
 ----
 blob-separated-values: num-values 4
 

@@ -1,7 +1,7 @@
 build block-size=1 index-block-size=1 filter
-a_xyz.SET.1:a
-b_xyz.SET.1:b
-c_xyz.SET.1:c
+a_xyz#1,SET:a
+b_xyz#1,SET:b
+c_xyz#1,SET:c
 ----
 point:    [a_xyz#1,SET-c_xyz#1,SET]
 seqnums:  [1-1]
@@ -11,9 +11,9 @@ rewrite from=xyz to=123 block-size=1 index-block-size=1 filter comparer=split-4b
 rewrite failed: mismatched Comparer pebble.internal.testkeys vs comparer-split-4b-suffix, replacement requires same splitter to copy filters
 
 build block-size=1 index-block-size=1 filter comparer=split-4b-suffix
-aa_xyz.SET.1:a
-ba_xyz.SET.1:b
-ca_xyz.SET.1:c
+aa_xyz#1,SET:a
+ba_xyz#1,SET:b
+ca_xyz#1,SET:c
 ----
 point:    [aa_xyz#1,SET-ca_xyz#1,SET]
 seqnums:  [1-1]
@@ -27,9 +27,9 @@ rewrite from=a_xyz to=a_123 block-size=1 index-block-size=1 filter comparer=spli
 rewrite failed: rewriting data blocks: key has suffix "_xyz", expected "a_xyz"
 
 build block-size=1 index-block-size=1 filter comparer=split-4b-suffix
-a_xyz.SET.1:a
-b_xyz.SET.1:b
-c_xyz.SET.1:c
+a_xyz#1,SET:a
+b_xyz#1,SET:b
+c_xyz#1,SET:c
 ----
 point:    [a_xyz#1,SET-c_xyz#1,SET]
 seqnums:  [1-1]

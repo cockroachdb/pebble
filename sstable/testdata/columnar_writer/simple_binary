@@ -1,6 +1,6 @@
 build
-a.SET.1:a
-b.DEL.2:
+a#1,SET:a
+b#2,DEL:
 ----
 point:    [a#1,SET-b#2,DEL]
 seqnums:  [1-2]
@@ -140,9 +140,9 @@ obsolete-key: hex:01
 pebble.internal.testkeys.suffixes: hex:0000ffffffffffffffffff01
 
 build block-size=310
-a.SET.1:apple
-b.SET.1:banana
-c.SET.1:cantelope
+a#1,SET:apple
+b#1,SET:banana
+c#1,SET:cantelope
 ----
 point:    [a#1,SET-c#1,SET]
 seqnums:  [1-1]
@@ -264,27 +264,27 @@ sstable
       └── 045  magic number: 0xf09faab3f09faab3
 
 build block-size=150
-a.SET.1:apple
-b.SET.1:banana
-c.SET.1:cantelope
-d.SET.1:dragonfruit
-e.SET.1:elderberry
-f.SET.1:fig
-g.SET.1:grapefruit
-h.SET.1:honeydew
-i.SET.1:imbe
-j.SET.1:jackfruit
-k.SET.1:kiwi
-l.SET.1:lemon
-m.SET.1:mango
-n.SET.1:nectarine
-o.SET.1:orange
-p.SET.1:pamplemousse
-q.SET.1:quince
-r.SET.1:raspberry
-s.SET.1:strawberry
-t.SET.1:tangerine
-u.SET.1:ume
+a#1,SET:apple
+b#1,SET:banana
+c#1,SET:cantelope
+d#1,SET:dragonfruit
+e#1,SET:elderberry
+f#1,SET:fig
+g#1,SET:grapefruit
+h#1,SET:honeydew
+i#1,SET:imbe
+j#1,SET:jackfruit
+k#1,SET:kiwi
+l#1,SET:lemon
+m#1,SET:mango
+n#1,SET:nectarine
+o#1,SET:orange
+p#1,SET:pamplemousse
+q#1,SET:quince
+r#1,SET:raspberry
+s#1,SET:strawberry
+t#1,SET:tangerine
+u#1,SET:ume
 ----
 point:    [a#1,SET-u#1,SET]
 seqnums:  [1-1]

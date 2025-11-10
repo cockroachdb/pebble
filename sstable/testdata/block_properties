@@ -9,9 +9,9 @@
 # Single collector.
 
 build collectors=(value-first)
-a.SET.1:10
-b.SET.2:20
-c.SET.3:30
+a#1,SET:10
+b#2,SET:20
+c#3,SET:30
 ----
 point:    [a#1,SET-c#3,SET]
 seqnums:  [1-3]
@@ -37,9 +37,9 @@ c:
 # Multiple collectors.
 
 build collectors=(value-first,value-last)
-a.SET.1:17
-b.SET.2:29
-c.SET.3:38
+a#1,SET:17
+b#2,SET:29
+c#3,SET:38
 ----
 point:    [a#1,SET-c#3,SET]
 seqnums:  [1-3]
@@ -64,14 +64,14 @@ c:
 # pairs.
 
 build block-size=25 collectors=(value-first,value-last)
-a.SET.1:15
-b.SET.2:86
-c.SET.3:72
-d.SET.4:21
-e.SET.5:47
-f.SET.6:54
-g.SET.7:63
-h.SET.8:38
+a#1,SET:15
+b#2,SET:86
+c#3,SET:72
+d#4,SET:21
+e#5,SET:47
+f#6,SET:54
+g#7,SET:63
+h#8,SET:38
 ----
 point:    [a#1,SET-h#8,SET]
 seqnums:  [1-8]
@@ -105,9 +105,9 @@ h:
 # data blocks.
 
 build collectors=(suffix)
-a@5.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
+a@5#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
 Span: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
 Span: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
 Span: f@20-z@25:{(#6,RANGEKEYDEL)}
@@ -132,9 +132,9 @@ table-props
 # Same as the above, but only collect point key properties.
 
 build collectors=(suffix-point-keys-only)
-a@5.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
+a@5#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
 Span: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
 Span: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
 Span: f@20-z@25:{(#6,RANGEKEYDEL)}
@@ -159,9 +159,9 @@ table-props
 # Same as the above, but only collect range key properties.
 
 build collectors=(suffix-range-keys-only)
-a@5.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
+a@5#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
 Span: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
 Span: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
 Span: f@20-z@25:{(#6,RANGEKEYDEL)}
@@ -187,9 +187,9 @@ table-props
 # acting independently.
 
 build block-size=1 collectors=(suffix-point-keys-only,suffix-range-keys-only)
-a@5.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
+a@5#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
 Span: d@10-e@15:{(#4,RANGEKEYSET,@20,foo)}
 Span: e@15-f@20:{(#5,RANGEKEYUNSET,@25)}
 Span: f@20-z@25:{(#6,RANGEKEYDEL)}
@@ -283,12 +283,12 @@ mapper must be provided
 # and every index block points to one data block.
 
 build collectors=(suffix-point-keys-only) index-block-size=1 block-size=1
-a@1.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
-d@25.SET.4:bax
-e@3.SET.5:box
-f@5.SET.3:mop
+a@1#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
+d@25#4,SET:bax
+e@3#5,SET:box
+f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
 seqnums:  [1-5]
@@ -337,12 +337,12 @@ g:
 # of all the data blocks' properties.
 
 build collectors=(suffix-point-keys-only) index-block-size=64 block-size=1
-a@1.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
-d@25.SET.4:bax
-e@3.SET.5:box
-f@5.SET.3:mop
+a@1#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
+d@25#4,SET:bax
+e@3#5,SET:box
+f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
 seqnums:  [1-5]
@@ -392,12 +392,12 @@ last
 # instead of within SeekLT and Last.
 
 build collectors=(suffix-point-keys-only) index-block-size=48 block-size=1
-a@1.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
-d@25.SET.4:bax
-e@3.SET.5:box
-f@5.SET.3:mop
+a@1#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
+d@25#4,SET:bax
+e@3#5,SET:box
+f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
 seqnums:  [1-5]
@@ -588,12 +588,12 @@ seek-ge c@19 true
 # subsequent seek must return MaybeFilteredKeys=true when keys were filtered.
 
 build collectors=(suffix-point-keys-only) index-block-size=1 block-size=64
-a@1.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
-d@25.SET.4:bax
-e@3.SET.5:box
-f@5.SET.3:mop
+a@1#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
+d@25#4,SET:bax
+e@3#5,SET:box
+f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
 seqnums:  [1-5]
@@ -627,12 +627,12 @@ seek-ge ee
 # filtered.
 
 build collectors=(suffix-point-keys-only) block-size=32
-a@1.SET.1:foo
-b@10.SET.2:bar
-c@15.SET.3:baz
-d@25.SET.4:bax
-e@3.SET.5:box
-f@5.SET.3:mop
+a@1#1,SET:foo
+b@10#2,SET:bar
+c@15#3,SET:baz
+d@25#4,SET:bax
+e@3#5,SET:box
+f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
 seqnums:  [1-5]
@@ -661,9 +661,9 @@ seek-ge ee
 # injection during block property filtering
 
 build block-size=1 collectors=(suffix-point-keys-only)
-a@5.SET.1:foo
-b@8.SET.2:bar
-c@7.SET.3:baz
+a@5#1,SET:foo
+b@8#2,SET:bar
+c@7#3,SET:baz
 ----
 point:    [a@5#1,SET-c@7#3,SET]
 seqnums:  [1-3]
@@ -698,13 +698,13 @@ points: false
 ranges: true (no filters provided)
 
 build collectors=(suffix-point-keys-only) index-block-size=48 block-size=1
-a@10.SET.1:foo
-a@9.SET.2:bar
-a@8.SET.2:baz
-a@7.SET.2:bax
-aa@9.SET.3:mop
-aa@8.SET.3:box
-f@5.SET.3:mop
+a@10#1,SET:foo
+a@9#2,SET:bar
+a@8#2,SET:baz
+a@7#2,SET:bax
+aa@9#3,SET:mop
+aa@8#3,SET:box
+f@5#3,SET:mop
 ----
 point:    [a@10#1,SET-f@5#3,SET]
 seqnums:  [1-3]

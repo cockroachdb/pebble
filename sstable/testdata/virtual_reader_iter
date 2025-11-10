@@ -2,15 +2,15 @@
 # the backing iterator for the sstable. This will also test the compaction
 # iterator since it's the simplest.
 build
-a.SET.1:a
-b.SET.1:b
-c.SET.1:c
-d.SET.1:d
+a#1,SET:a
+b#1,SET:b
+c#1,SET:c
+d#1,SET:d
 ----
 point:    [a#1,SET-d#1,SET]
 seqnums:  [1-1]
 
-virtualize lower=b.SET.1 upper=c.SET.1
+virtualize lower=b#1,SET upper=c#1,SET
 ----
 bounds:  [b#1,SET-c#1,SET]
 
@@ -28,9 +28,9 @@ scan-range-key
 # Test raw range key/range del iterators, and make sure that they
 # respect virtual bounds.
 build block-size=1 index-block-size=1
-a.SET.1:a
-d.SET.2:d
-f.SET.3:f
+a#1,SET:a
+d#2,SET:d
+f#3,SET:f
 Span: d-e:{(#4,RANGEDEL)}
 Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
 Span: g-l:{(#5,RANGEDEL)}
@@ -43,7 +43,7 @@ seqnums:  [1-12]
 
 # Note that we shouldn't have range del spans which cross virtual sstable
 # boundaries. NumRangeKeySets must be > 1.
-virtualize lower=a.SET.1 upper=f.SET.1
+virtualize lower=a#1,SET upper=f#1,SET
 ----
 bounds:  [a#1,SET-f#1,SET]
 
@@ -58,19 +58,19 @@ a-d:{(#11,RANGEKEYSET,@10,foo)}
 # Test iterators with various bounds, and various operations. This creates a new
 # iterator using the virtual reader and performs various operations on those.
 build
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
-d.SET.4:d
-dd.SET.5:dd
-ddd.SET.6:ddd
-g.SET.8:g
-h.SET.9:h
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
+d#4,SET:d
+dd#5,SET:dd
+ddd#6,SET:ddd
+g#8,SET:g
+h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize lower=dd.SET.5 upper=ddd.SET.6
+virtualize lower=dd#5,SET upper=ddd#6,SET
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
 
@@ -86,20 +86,20 @@ next
 
 # Build a simpler sstable for the rest of the tests.
 build
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
-d.SET.4:d
-e.SET.5:e
-f.SET.6:f
-g.SET.8:g
-h.SET.9:h
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
+d#4,SET:d
+e#5,SET:e
+f#6,SET:f
+g#8,SET:g
+h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
 # Set bounds c-f for the virtual sstable.
-virtualize lower=c.SET.3 upper=f.SET.6
+virtualize lower=c#3,SET upper=f#6,SET
 ----
 bounds:  [c#3,SET-f#6,SET]
 
@@ -184,20 +184,20 @@ prev
 
 # Test SeekLT
 build
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
-d.SET.4:d
-e.SET.5:e
-f.SET.6:f
-f.SET.1:ff
-g.SET.8:g
-h.SET.9:h
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
+d#4,SET:d
+e#5,SET:e
+f#6,SET:f
+f#1,SET:ff
+g#8,SET:g
+h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize lower=c.SET.3 upper=f.SET.1
+virtualize lower=c#3,SET upper=f#1,SET
 ----
 bounds:  [c#3,SET-f#1,SET]
 
@@ -248,7 +248,7 @@ last
 ----
 <f:1>:ff
 
-virtualize lower=f.SET.6 upper=h.SET.9
+virtualize lower=f#6,SET upper=h#9,SET
 ----
 bounds:  [f#6,SET-h#9,SET]
 
@@ -273,19 +273,19 @@ last
 
 # Test 5: Same as test 4, but force two level iterators.
 build block-size=1 index-block-size=1
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
-d.SET.4:d
-dd.SET.5:dd
-ddd.SET.6:ddd
-g.SET.8:g
-h.SET.9:h
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
+d#4,SET:d
+dd#5,SET:dd
+ddd#6,SET:ddd
+g#8,SET:g
+h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize lower=dd.SET.5 upper=ddd.SET.6
+virtualize lower=dd#5,SET upper=ddd#6,SET
 ----
 bounds:  [dd#5,SET-ddd#6,SET]
 
@@ -301,20 +301,20 @@ next
 
 # Build a simpler sstable for the rest of the tests.
 build block-size=1 index-block-size=1
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
-d.SET.4:d
-e.SET.5:e
-f.SET.6:f
-g.SET.8:g
-h.SET.9:h
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
+d#4,SET:d
+e#5,SET:e
+f#6,SET:f
+g#8,SET:g
+h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
 # Set bounds c-f for the virtual sstable.
-virtualize lower=c.SET.3 upper=f.SET.6
+virtualize lower=c#3,SET upper=f#6,SET
 ----
 bounds:  [c#3,SET-f#6,SET]
 
@@ -399,20 +399,20 @@ prev
 
 # Test SeekLT
 build block-size=1 index-block-size=1
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
-d.SET.4:d
-e.SET.5:e
-f.SET.6:f
-f.SET.1:ff
-g.SET.8:g
-h.SET.9:h
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
+d#4,SET:d
+e#5,SET:e
+f#6,SET:f
+f#1,SET:ff
+g#8,SET:g
+h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
 seqnums:  [1-9]
 
-virtualize lower=c.SET.3 upper=f.SET.1
+virtualize lower=c#3,SET upper=f#1,SET
 ----
 bounds:  [c#3,SET-f#1,SET]
 
@@ -463,7 +463,7 @@ last
 ----
 <f:1>:ff
 
-virtualize lower=f.SET.6 upper=h.SET.9
+virtualize lower=f#6,SET upper=h#9,SET
 ----
 bounds:  [f#6,SET-h#9,SET]
 
@@ -490,17 +490,17 @@ last
 # exclusive sentinel handling is correct for some code path, but not all of
 # them, in the iterators. Consider a randomized test.
 build
-a.SET.1:a
-d.SET.2:d
-e.SET.3:e
+a#1,SET:a
+d#2,SET:d
+e#3,SET:e
 Span: d-e:{(#4,RANGEDEL)}
-f.SET.5:f
+f#5,SET:f
 ----
 point:    [a#1,SET-f#5,SET]
 rangedel: [d#4,RANGEDEL-e#inf,RANGEDEL]
 seqnums:  [1-5]
 
-virtualize lower=a.SET.1 upper=e.RANGEDEL.inf
+virtualize lower=a#1,SET upper=e#inf,RANGEDEL
 ----
 bounds:  [a#1,SET-e#inf,RANGEDEL]
 
@@ -527,17 +527,17 @@ d-e:{(#4,RANGEDEL)}
 
 
 build block-size=1 index-block-size=1
-a.SET.1:a
-d.SET.2:d
-e.SET.3:e
+a#1,SET:a
+d#2,SET:d
+e#3,SET:e
 Span: d-e:{(#4,RANGEDEL)}
-f.SET.5:f
+f#5,SET:f
 ----
 point:    [a#1,SET-f#5,SET]
 rangedel: [d#4,RANGEDEL-e#inf,RANGEDEL]
 seqnums:  [1-5]
 
-virtualize lower=a.SET.1 upper=e.RANGEDEL.inf
+virtualize lower=a#1,SET upper=e#inf,RANGEDEL
 ----
 bounds:  [a#1,SET-e#inf,RANGEDEL]
 
@@ -564,10 +564,10 @@ d-e:{(#4,RANGEDEL)}
 
 # Test NumRangeKeySets.
 build block-size=1 index-block-size=1
-a.SET.1:a
-b.SET.5:b
-d.SET.2:d
-f.SET.3:f
+a#1,SET:a
+b#5,SET:b
+d#2,SET:d
+f#3,SET:f
 Span: d-e:{(#4,RANGEDEL)}
 Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
 Span: g-l:{(#5,RANGEDEL)}
@@ -580,21 +580,21 @@ seqnums:  [1-12]
 
 # Virtual sstable doesn't contain range key set, but NumRangeKeySets in the
 # properties must be > 0.
-virtualize lower=a.SET.1 upper=b.SET.5
+virtualize lower=a#1,SET upper=b#5,SET
 ----
 bounds:  [a#1,SET-b#5,SET]
 
 # Test that a virtual reader with a suffix replacement rule replaces the
 # suffixes from the backing file during iteration.
 build
-a@2.SET.1:a
-b@4.SET.2:b
-c@3.SET.3:c
-d@5.SET.4:d
-e@1.SET.5:e
-f@2.SET.6:f
-g@2.SET.8:g
-h@3.SET.9:h
+a@2#1,SET:a
+b@4#2,SET:b
+c@3#3,SET:c
+d@5#4,SET:d
+e@1#5,SET:e
+f@2#6,SET:f
+g@2#8,SET:g
+h@3#9,SET:h
 ----
 point:    [a@2#1,SET-h@3#9,SET]
 seqnums:  [1-9]
@@ -602,7 +602,7 @@ seqnums:  [1-9]
 # Set bounds c@7-f@2 for the virtual sstable. Notice that we correctly elide c
 # because post suffix replacement, it is not in the bounds. Further, notice that
 # we do surface f because post suffix replacement, it is within the bounds.
-virtualize lower=c@7.SET.3 upper=f@4.SET.8 suffix=@8
+virtualize lower=c@7#3,SET upper=f@4#8,SET suffix=@8
 ----
 bounds:  [c@7#3,SET-f@4#8,SET]
 
@@ -619,29 +619,29 @@ next
 .
 
 build
-aa@2.SET.1:aa
-ab@1.SET.1:ab
-ac@1.SET.1:ac
-ad@1.SET.1:ad
-ae@1.SET.1:ae
-af@1.SET.1:af
-ba@1.SET.1:ba
-bb@1.SET.1:bb
-bc@2.SET.1:bc
-bd@1.SET.1:bd
-be@3.SET.1:be
-bf@1.SET.1:bf
-ca@1.SET.1:ca
-cb@1.SET.1:cb
-cc@1.SET.1:cc
-cd@1.SET.1:cd
-ce@1.SET.1:ce
-cf@1.SET.1:cf
+aa@2#1,SET:aa
+ab@1#1,SET:ab
+ac@1#1,SET:ac
+ad@1#1,SET:ad
+ae@1#1,SET:ae
+af@1#1,SET:af
+ba@1#1,SET:ba
+bb@1#1,SET:bb
+bc@2#1,SET:bc
+bd@1#1,SET:bd
+be@3#1,SET:be
+bf@1#1,SET:bf
+ca@1#1,SET:ca
+cb@1#1,SET:cb
+cc@1#1,SET:cc
+cd@1#1,SET:cd
+ce@1#1,SET:ce
+cf@1#1,SET:cf
 ----
 point:    [aa@2#1,SET-cf@1#1,SET]
 seqnums:  [1-1]
 
-virtualize lower=ae1.SET.1 upper=ca@1.SET.1
+virtualize lower=ae1#1,SET upper=ca@1#1,SET
 ----
 bounds:  [ae1#1,SET-ca@1#1,SET]
 
