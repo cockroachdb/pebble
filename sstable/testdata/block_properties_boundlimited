@@ -1,12 +1,12 @@
 build block-size=28 collectors=(suffix)
-a@5.SET.1:15
-b@2.SET.2:86
-c@9.SET.3:72
-d@3.SET.4:21
-e@2.SET.5:47
-f@0.SET.6:54
-g@8.SET.7:63
-h@3.SET.8:38
+a@5#1,SET:15
+b@2#2,SET:86
+c@9#3,SET:72
+d@3#4,SET:21
+e@2#5,SET:47
+f@0#6,SET:54
+g@8#7,SET:63
+h@3#8,SET:38
 ----
 point:    [a@5#1,SET-h@3#8,SET]
 seqnums:  [1-8]

@@ -86,13 +86,8 @@ func TestCopySpan(t *testing.T) {
 				t.Fatal(err)
 			}
 			w := NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
-			for _, key := range strings.Split(d.Input, "\n") {
-				j := strings.Index(key, ":")
-				ikey := base.ParseInternalKey(key[:j])
-				value := []byte(key[j+1:])
-				if err := w.Set(ikey.UserKey, value); err != nil {
-					return err.Error()
-				}
+			if err := ParseTestSST(w.rw, d.Input, nil /* bv */); err != nil {
+				t.Fatal(err)
 			}
 			if err := w.Close(); err != nil {
 				return err.Error()

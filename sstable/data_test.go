@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/cache"
-	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -130,21 +129,8 @@ func runBuildRawCmd(
 			_ = w.Close()
 		}
 	}()
-	for _, data := range strings.Split(td.Input, "\n") {
-		if strings.HasPrefix(data, "Span:") {
-			data = strings.TrimPrefix(data, "Span:")
-			if err := w.EncodeSpan(keyspan.ParseSpan(data)); err != nil {
-				return nil, nil, err
-			}
-			continue
-		}
-
-		j := strings.Index(data, ":")
-		key := base.ParseInternalKey(data[:j])
-		value := []byte(data[j+1:])
-		if err := w.Add(key, value, false); err != nil {
-			return nil, nil, err
-		}
+	if err := ParseTestSST(w, td.Input, nil /* bv */); err != nil {
+		return nil, nil, err
 	}
 	if err := w.Close(); err != nil {
 		return nil, nil, err

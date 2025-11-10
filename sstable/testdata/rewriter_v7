@@ -1,7 +1,7 @@
 build block-size=1 index-block-size=1 filter
-a@xyz.SET.1:a
-b@xyz.SET.1:b
-c@xyz.SET.1:c
+a@xyz#1,SET:a
+b@xyz#1,SET:b
+c@xyz#1,SET:c
 ----
 point:    [a@xyz#1,SET-c@xyz#1,SET]
 seqnums:  [1-1]
@@ -11,9 +11,9 @@ rewrite from=@xyz to=@123 block-size=1 index-block-size=1 filter comparer=split-
 rewrite failed: mismatched Comparer pebble.internal.testkeys vs comparer-split-4b-suffix, replacement requires same splitter to copy filters
 
 build block-size=1 index-block-size=1 filter
-aa@xyz.SET.1:a
-ba@xyz.SET.1:b
-ca@xyz.SET.1:c
+aa@xyz#1,SET:a
+ba@xyz#1,SET:b
+ca@xyz#1,SET:c
 ----
 point:    [aa@xyz#1,SET-ca@xyz#1,SET]
 seqnums:  [1-1]
@@ -27,9 +27,9 @@ rewrite from=a@xyz to=a@123 block-size=1 index-block-size=1 filter
 rewrite failed: rewriting data blocks: key aa@xyz#1,SET has suffix 0x4078797a; require 0x614078797a
 
 build block-size=1 index-block-size=1 filter
-a@0.SET.1:a
-b@0.SET.1:b
-c@0.SET.1:c
+a@0#1,SET:a
+b@0#1,SET:b
+c@0#1,SET:c
 ----
 point:    [a@0#1,SET-c@0#1,SET]
 seqnums:  [1-1]
@@ -233,9 +233,9 @@ b-c:{(#1,RANGEKEYSET,@123)}
 c-d:{(#1,RANGEKEYSET,@123)}
 
 build block-size=1 index-block-size=1 filter
-a.SET.1:a
-b.SET.1:b
-c.SET.1:c
+a#1,SET:a
+b#1,SET:b
+c#1,SET:c
 ----
 point:    [a#1,SET-c#1,SET]
 seqnums:  [1-1]

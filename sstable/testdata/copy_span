@@ -2,277 +2,277 @@
 # Simple test case with row blocks.
 
 build test1 table-format=Pebble,v4
-a.SET.5:foo
-b.SET.3:bar
-c.SET.4:baz
-d.SET.5:foobar
+a#5,SET:foo
+b#3,SET:bar
+c#4,SET:baz
+d#5,SET:foobar
 ----
 
 iter test1
 ----
-a#0,SET: foo
-b#0,SET: bar
-c#0,SET: baz
-d#0,SET: foobar
+a#5,SET: foo
+b#3,SET: bar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test1 test2 b.SET.10 cc.SET.0
+copy-span test1 test2 b#10,SET cc#0,SET
 ----
 copied 555 bytes
 
 iter test2
 ----
-b#0,SET: bar
-c#0,SET: baz
-d#0,SET: foobar
+b#3,SET: bar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test1 test21 a.SET.10 bb.SET.0
+copy-span test1 test21 a#10,SET bb#0,SET
 ----
 copied 552 bytes
 
 iter test21
 ----
-a#0,SET: foo
-b#0,SET: bar
-c#0,SET: baz
+a#5,SET: foo
+b#3,SET: bar
+c#4,SET: baz
 
 
 # Try the above with small blocks.
 build test22 table-format=Pebble,v4 block_size=1 index_block_size=1
-a.SET.5:foo
-b.SET.3:bar
-c.SET.4:baz
-d.SET.5:foobar
-e.SET.5:foo
-f.SET.5:foo
-g.SET.5:foo
-h.SET.5:foo
-i.SET.5:foo
-j.SET.5:foo
+a#5,SET:foo
+b#3,SET:bar
+c#4,SET:baz
+d#5,SET:foobar
+e#5,SET:foo
+f#5,SET:foo
+g#5,SET:foo
+h#5,SET:foo
+i#5,SET:foo
+j#5,SET:foo
 ----
 
 iter test22
 ----
-a#0,SET: foo
-b#0,SET: bar
-c#0,SET: baz
-d#0,SET: foobar
-e#0,SET: foo
-f#0,SET: foo
-g#0,SET: foo
-h#0,SET: foo
-i#0,SET: foo
-j#0,SET: foo
+a#5,SET: foo
+b#3,SET: bar
+c#4,SET: baz
+d#5,SET: foobar
+e#5,SET: foo
+f#5,SET: foo
+g#5,SET: foo
+h#5,SET: foo
+i#5,SET: foo
+j#5,SET: foo
 
-copy-span test22 test23 b.SET.10 cc.SET.0
+copy-span test22 test23 b#10,SET cc#0,SET
 ----
 copied 555 bytes
 
 iter test23
 ----
-b#0,SET: bar
-c#0,SET: baz
-d#0,SET: foobar
+b#3,SET: bar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test22 test24 a.SET.10 bb.SET.0
+copy-span test22 test24 a#10,SET bb#0,SET
 ----
 copied 552 bytes
 
 iter test24
 ----
-a#0,SET: foo
-b#0,SET: bar
-c#0,SET: baz
+a#5,SET: foo
+b#3,SET: bar
+c#4,SET: baz
 
 # Try the above with columnar blocks.
 
 build test3 table-format=Pebble,v5
-a.SET.5:foo
-b.SET.3:bar
-c.SET.4:baz
-d.SET.5:foobar
+a#5,SET:foo
+b#3,SET:bar
+c#4,SET:baz
+d#5,SET:foobar
 ----
 
 iter test3 start=c
 ----
-c#0,SET: baz
-d#0,SET: foobar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test3 test4 b.SET.10 cc.SET.0
+copy-span test3 test4 b#10,SET cc#0,SET
 ----
-copied 822 bytes
+copied 801 bytes
 
 iter test4
 ----
-b#0,SET: bar
-c#0,SET: baz
-d#0,SET: foobar
+b#3,SET: bar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test3 test5 a.SET.10 bb.SET.0
+copy-span test3 test5 a#10,SET bb#0,SET
 ----
-copied 817 bytes
+copied 796 bytes
 
 iter test5
 ----
-a#0,SET: foo
-b#0,SET: bar
-c#0,SET: baz
+a#5,SET: foo
+b#3,SET: bar
+c#4,SET: baz
 
 
 # Try the above with small blocks.
 build test32 table-format=Pebble,v5 block_size=1 index_block_size=1
-a.SET.5:foo
-b.SET.3:bar
-c.SET.4:baz
-d.SET.5:foobar
-e.SET.5:foo
-f.SET.5:foo
-g.SET.5:foo
-h.SET.5:foo
-i.SET.5:foo
-j.SET.5:foo
+a#5,SET:foo
+b#3,SET:bar
+c#4,SET:baz
+d#5,SET:foobar
+e#5,SET:foo
+f#5,SET:foo
+g#5,SET:foo
+h#5,SET:foo
+i#5,SET:foo
+j#5,SET:foo
 ----
 
 iter test32 start=c end=e
 ----
-c#0,SET: baz
-d#0,SET: foobar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test32 test33 b.SET.10 cc.SET.0
+copy-span test32 test33 b#10,SET cc#0,SET
 ----
-copied 822 bytes
+copied 801 bytes
 
 iter test33
 ----
-b#0,SET: bar
-c#0,SET: baz
-d#0,SET: foobar
+b#3,SET: bar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test32 test34 a.SET.10 bb.SET.0
+copy-span test32 test34 a#10,SET bb#0,SET
 ----
-copied 817 bytes
+copied 796 bytes
 
 iter test34
 ----
-a#0,SET: foo
-b#0,SET: bar
-c#0,SET: baz
+a#5,SET: foo
+b#3,SET: bar
+c#4,SET: baz
 
 # Try the above with checksummed columnar blocks.
 
 build test3 table-format=Pebble,v6
-a.SET.5:foo
-b.SET.3:bar
-c.SET.4:baz
-d.SET.5:foobar
+a#5,SET:foo
+b#3,SET:bar
+c#4,SET:baz
+d#5,SET:foobar
 ----
 
 iter test3 start=c
 ----
-c#0,SET: baz
-d#0,SET: foobar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test3 test4 b.SET.10 cc.SET.0
+copy-span test3 test4 b#10,SET cc#0,SET
 ----
-copied 839 bytes
+copied 818 bytes
 
 iter test4
 ----
-b#0,SET: bar
-c#0,SET: baz
-d#0,SET: foobar
+b#3,SET: bar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test3 test5 a.SET.10 bb.SET.0
+copy-span test3 test5 a#10,SET bb#0,SET
 ----
-copied 834 bytes
+copied 813 bytes
 
 iter test5
 ----
-a#0,SET: foo
-b#0,SET: bar
-c#0,SET: baz
+a#5,SET: foo
+b#3,SET: bar
+c#4,SET: baz
 
 
 # Try the above with small blocks.
 build test32 table-format=Pebble,v6 block_size=1 index_block_size=1
-a.SET.5:foo
-b.SET.3:bar
-c.SET.4:baz
-d.SET.5:foobar
-e.SET.5:foo
-f.SET.5:foo
-g.SET.5:foo
-h.SET.5:foo
-i.SET.5:foo
-j.SET.5:foo
+a#5,SET:foo
+b#3,SET:bar
+c#4,SET:baz
+d#5,SET:foobar
+e#5,SET:foo
+f#5,SET:foo
+g#5,SET:foo
+h#5,SET:foo
+i#5,SET:foo
+j#5,SET:foo
 ----
 
 iter test32 start=c end=e
 ----
-c#0,SET: baz
-d#0,SET: foobar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test32 test33 b.SET.10 cc.SET.0
+copy-span test32 test33 b#10,SET cc#0,SET
 ----
-copied 839 bytes
+copied 818 bytes
 
 iter test33
 ----
-b#0,SET: bar
-c#0,SET: baz
-d#0,SET: foobar
+b#3,SET: bar
+c#4,SET: baz
+d#5,SET: foobar
 
-copy-span test32 test34 a.SET.10 bb.SET.0
+copy-span test32 test34 a#10,SET bb#0,SET
 ----
-copied 834 bytes
+copied 813 bytes
 
 iter test34
 ----
-a#0,SET: foo
-b#0,SET: bar
-c#0,SET: baz
+a#5,SET: foo
+b#3,SET: bar
+c#4,SET: baz
 
 # Create a table with a filter.
 build bloom-sst table-format=Pebble,v6 filter=rocksdb.BuiltinBloomFilter/bloom(10)
-a.SET.5:foo
-b.SET.3:bar
-c.SET.4:baz
-d.SET.5:foobar
-e.SET.5:foo
-f.SET.5:foo
-g.SET.5:foo
-h.SET.5:foo
-i.SET.5:foo
-j.SET.5:foo
+a#5,SET:foo
+b#3,SET:bar
+c#4,SET:baz
+d#5,SET:foobar
+e#5,SET:foo
+f#5,SET:foo
+g#5,SET:foo
+h#5,SET:foo
+i#5,SET:foo
+j#5,SET:foo
 ----
 
 describe bloom-sst
 ----
 sstable
- ├── data  offset: 0  length: 81
- ├── data  offset: 86  length: 81
- ├── data  offset: 172  length: 81
- ├── data  offset: 258  length: 73
- ├── data  offset: 336  length: 81
- ├── data  offset: 422  length: 81
- ├── data  offset: 508  length: 81
- ├── data  offset: 594  length: 81
- ├── data  offset: 680  length: 81
- ├── data  offset: 766  length: 81
- ├── index  offset: 852  length: 36
- ├── index  offset: 893  length: 37
- ├── index  offset: 935  length: 37
- ├── index  offset: 977  length: 38
- ├── index  offset: 1020  length: 38
- ├── index  offset: 1063  length: 38
- ├── index  offset: 1106  length: 38
- ├── index  offset: 1149  length: 38
- ├── index  offset: 1192  length: 38
- ├── index  offset: 1235  length: 38
- ├── top-index  offset: 1278  length: 83
- ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 1366  length: 69
- ├── properties  offset: 1440  length: 517
- ├── meta-index  offset: 1962  length: 88
- └── footer  offset: 2055  length: 57
+ ├── data  offset: 0  length: 70
+ ├── data  offset: 75  length: 70
+ ├── data  offset: 150  length: 70
+ ├── data  offset: 225  length: 73
+ ├── data  offset: 303  length: 70
+ ├── data  offset: 378  length: 70
+ ├── data  offset: 453  length: 70
+ ├── data  offset: 528  length: 70
+ ├── data  offset: 603  length: 70
+ ├── data  offset: 678  length: 70
+ ├── index  offset: 753  length: 36
+ ├── index  offset: 794  length: 37
+ ├── index  offset: 836  length: 37
+ ├── index  offset: 878  length: 37
+ ├── index  offset: 920  length: 38
+ ├── index  offset: 963  length: 38
+ ├── index  offset: 1006  length: 38
+ ├── index  offset: 1049  length: 38
+ ├── index  offset: 1092  length: 38
+ ├── index  offset: 1135  length: 38
+ ├── top-index  offset: 1178  length: 83
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 1266  length: 69
+ ├── properties  offset: 1340  length: 518
+ ├── meta-index  offset: 1863  length: 88
+ └── footer  offset: 1956  length: 57
 
 props bloom-sst
 ----
@@ -283,11 +283,11 @@ rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 10
 rocksdb.comparator: pebble.internal.testkeys
-rocksdb.data.size: 852
+rocksdb.data.size: 753
 rocksdb.filter.policy: rocksdb.BuiltinBloomFilter
 rocksdb.filter.size: 69
 rocksdb.index.partitions: 10
-rocksdb.index.size: 459
+rocksdb.index.size: 458
 rocksdb.block.based.table.index.type: 2
 pebble.colblk.schema: DefaultKeySchema(pebble.internal.testkeys,16)
 rocksdb.merge.operator: pebble.concatenate
@@ -295,24 +295,24 @@ rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 83
 rocksdb.compression: Snappy
-pebble.compression_stats: None:1257,Snappy:73/84
+pebble.compression_stats: None:527,Snappy:703/893
 obsolete-key: hex:00
 
 # Ensure that CopySpan copies over a filter block even if the writer options are
 # configured with a different filter policy.
 
-copy-span bloom-sst bloom-sst-copy b.SET.10 cc.SET.0 filter=my-custom-filter/bloom(10)
+copy-span bloom-sst bloom-sst-copy b#10,SET cc#0,SET filter=my-custom-filter/bloom(10)
 ----
-copied 977 bytes
+copied 955 bytes
 
 describe bloom-sst-copy
 ----
 sstable
- ├── data  offset: 0  length: 81
- ├── data  offset: 86  length: 81
- ├── data  offset: 172  length: 73
- ├── index  offset: 250  length: 45
- ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 300  length: 69
- ├── properties  offset: 374  length: 448
- ├── meta-index  offset: 827  length: 88
- └── footer  offset: 920  length: 57
+ ├── data  offset: 0  length: 70
+ ├── data  offset: 75  length: 70
+ ├── data  offset: 150  length: 73
+ ├── index  offset: 228  length: 45
+ ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 278  length: 69
+ ├── properties  offset: 352  length: 448
+ ├── meta-index  offset: 805  length: 88
+ └── footer  offset: 898  length: 57

@@ -1,9 +1,9 @@
 # Two keys in each data block.
 build block-size=30 index-block-size=30 cache-size=10000
-a.SET.1:A
-b.SET.2:B
-c.SET.3:C
-d.SET.4:D
+a#1,SET:A
+b#2,SET:B
+c#3,SET:C
+d#4,SET:D
 ----
 
 # The first iteration has cache misses for both blocks. The second iteration

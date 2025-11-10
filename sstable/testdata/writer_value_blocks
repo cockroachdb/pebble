@@ -1,15 +1,15 @@
-# Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
-# block and value index block. So size 17 - 13 = 4 size of the value in the
+# Size of value index is 3 bytes plus 5 + 5:10 bytes of trailer of the value
+# block and value index block. So size 17 - 13:4 size of the value in the
 # value block.
 # N.B. The only key kind eligible for separation is `SET`.
 build table-format=Pebble,v4
-a@2.SET.1:a2
-b@5.SET.7:b5
-b@4.DEL.3:
-b@3.SET.2:bat3
-b@2.SETWITHDEL.1:bat2
-b@1.SET.1:bat1
-b@0.SET.0:bat0
+a@2#1,SET:a2
+b@5#7,SET:b5
+b@4#3,DEL:
+b@3#2,SET:bat3
+b@2#1,SETWITHDEL:bat2
+b@1#1,SET:bat1
+b@0#0,SET:bat0
 ----
 value-blocks: num-values 1, num-blocks: 1, size: 17
 
@@ -51,13 +51,13 @@ scan-cloned-lazy-values
 # stored (each with a 4 byte value). This increases the size of the value block
 # by 8 bytes, making the total size 25.
 build table-format=Pebble,v5
-a@2.SET.1:a2
-b@5.SET.7:b5
-b@4.DEL.3:
-b@3.SET.2:bat3
-b@2.SETWITHDEL.1:bat2
-b@1.SET.1:bat1
-b@0.SET.0:bat0
+a@2#1,SET:a2
+b@5#7,SET:b5
+b@4#3,DEL:
+b@3#2,SET:bat3
+b@2#1,SETWITHDEL:bat2
+b@1#1,SET:bat1
+b@0#0,SET:bat0
 ----
 value-blocks: num-values 3, num-blocks: 1, size: 25
 
@@ -83,13 +83,13 @@ scan-cloned-lazy-values
 
 # Same data as previous, with disable-value-blocks set to true
 build disable-value-blocks=true table-format=Pebble,v4
-a@2.SET.1:a2
-b@5.SET.7:b5
-b@4.DEL.3:
-b@3.SET.2:bat3
-b@2.SETWITHDEL.1:bat2
-b@1.SET.1:bat1
-b@0.SET.0:bat0
+a@2#1,SET:a2
+b@5#7,SET:b5
+b@4#3,DEL:
+b@3#2,SET:bat3
+b@2#1,SETWITHDEL:bat2
+b@1#1,SET:bat1
+b@0#0,SET:bat0
 ----
 value-blocks: num-values 0, num-blocks: 0, size: 0
 
@@ -116,13 +116,13 @@ b@0#0,SET:bat0
 # Same as above but with (Pebble,v5) [columnar blocks].
 
 build disable-value-blocks=true table-format=Pebble,v5
-a@2.SET.1:a2
-b@5.SET.7:b5
-b@4.DEL.3:
-b@3.SET.2:bat3
-b@2.SETWITHDEL.1:bat2
-b@1.SET.1:bat1
-b@0.SET.0:bat0
+a@2#1,SET:a2
+b@5#7,SET:b5
+b@4#3,DEL:
+b@3#2,SET:bat3
+b@2#1,SETWITHDEL:bat2
+b@1#1,SET:bat1
+b@0#0,SET:bat0
 ----
 value-blocks: num-values 0, num-blocks: 0, size: 0
 
@@ -136,18 +136,18 @@ b@2#1,SETWITHDEL:bat2
 b@1#1,SET:bat1
 b@0#0,SET:bat0
 
-# Size of value index is 3 bytes plus 5 + 5 = 10 bytes of trailer of the value
-# block and value index block. So size 33 - 13 = 20 is the total size of the
+# Size of value index is 3 bytes plus 5 + 5:10 bytes of trailer of the value
+# block and value index block. So size 33 - 13:20 is the total size of the
 # values in the value block.
 build table-format=Pebble,v4
-blue@10.SET.20:blue10
-blue@8.SET.18:blue8
-blue@8.SET.16:blue8s
-blue@6.DEL.14:
-blue@4.SET.12:blue4
-blue@3.SET.10:blue3
-red@9.SET.18:red9
-red@7.SET.8:red7
+blue@10#20,SET:blue10
+blue@8#18,SET:blue8
+blue@8#16,SET:blue8s
+blue@6#14,DEL:
+blue@4#12,SET:blue4
+blue@3#10,SET:blue3
+red@9#18,SET:red9
+red@7#8,SET:red7
 ----
 value-blocks: num-values 4, num-blocks: 1, size: 33
 
@@ -187,14 +187,14 @@ scan-cloned-lazy-values
 # Same as above but with (Pebble,v5) [columnar blocks].
 
 build table-format=Pebble,v5
-blue@10.SET.20:blue10
-blue@8.SET.18:blue8
-blue@8.SET.16:blue8s
-blue@6.DEL.14:
-blue@4.SET.12:blue4
-blue@3.SET.10:blue3
-red@9.SET.18:red9
-red@7.SET.8:red7
+blue@10#20,SET:blue10
+blue@8#18,SET:blue8
+blue@8#16,SET:blue8s
+blue@6#14,DEL:
+blue@4#12,SET:blue4
+blue@3#10,SET:blue3
+red@9#18,SET:red9
+red@7#8,SET:red7
 ----
 value-blocks: num-values 4, num-blocks: 1, size: 33
 
@@ -226,10 +226,10 @@ scan-cloned-lazy-values
 # blockOffsetByteLength=2, blockLengthByteLength=1), so 2*4=8. The total is
 # 15+26+8=49 bytes, which corresponds to "size: 49" below.
 build block-size=8 table-format=Pebble,v4
-blue@10.SET.20:blue10
-blue@8.SET.18:blue8
-blue@8.SET.16:blue8s
-blue@6.SET.16:blue6isverylong
+blue@10#20,SET:blue10
+blue@8#18,SET:blue8
+blue@8#16,SET:blue8s
+blue@6#16,SET:blue6isverylong
 ----
 value-blocks: num-values 3, num-blocks: 2, size: 49
 
@@ -360,10 +360,10 @@ sstable
 # Same as above but with (Pebble,v5) [columnar blocks].
 
 build block-size=8 table-format=Pebble,v5
-blue@10.SET.20:blue10
-blue@8.SET.18:blue8
-blue@8.SET.16:blue8s
-blue@6.SET.16:blue6isverylong
+blue@10#20,SET:blue10
+blue@8#18,SET:blue8
+blue@8#16,SET:blue8s
+blue@6#16,SET:blue6isverylong
 ----
 value-blocks: num-values 3, num-blocks: 2, size: 49
 
@@ -715,10 +715,10 @@ sstable
 
 # Try write empty values to value blocks.
 build table-format=Pebble,v4
-b@5.SET.7:b5
-b@3.SET.2:
-c@6.DEL.7:
-c@5.DEL.6:
+b@5#7,SET:b5
+b@3#2,SET:
+c@6#7,DEL:
+c@5#6,DEL:
 ----
 value-blocks: num-values 0, num-blocks: 0, size: 0
 
@@ -792,10 +792,10 @@ sstable
 # Same as above but with (Pebble,v5) [columnar blocks].
 
 build table-format=Pebble,v5
-b@5.SET.7:b5
-b@3.SET.2:
-c@6.DEL.7:
-c@5.DEL.6:
+b@5#7,SET:b5
+b@3#2,SET:
+c@6#7,DEL:
+c@5#6,DEL:
 ----
 value-blocks: num-values 0, num-blocks: 0, size: 0
 
@@ -936,10 +936,10 @@ sstable
 
 # Same as above but with (Pebble,v6) [footer checksum blocks].
 build table-format=Pebble,v6
-b@5.SET.7:b5
-b@3.SET.2:
-c@6.DEL.7:
-c@5.DEL.6:
+b@5#7,SET:b5
+b@3#2,SET:
+c@6#7,DEL:
+c@5#6,DEL:
 ----
 value-blocks: num-values 0, num-blocks: 0, size: 0
 
@@ -1080,14 +1080,14 @@ sstable
 
 # Same as above but with (Pebble,v7) [footer attributes].
 build table-format=Pebble,v7
-blue@10.SET.20:blue10
-blue@8.SET.18:blue8
-blue@8.SET.16:blue8s
-blue@6.DEL.14:
-blue@4.SET.12:blue4
-blue@3.SET.10:blue3
-red@9.SET.18:red9
-red@7.SET.8:red7
+blue@10#20,SET:blue10
+blue@8#18,SET:blue8
+blue@8#16,SET:blue8s
+blue@6#14,DEL:
+blue@4#12,SET:blue4
+blue@3#10,SET:blue3
+red@9#18,SET:red9
+red@7#8,SET:red7
 ----
 value-blocks: num-values 4, num-blocks: 1, size: 33
 
@@ -1289,10 +1289,10 @@ sstable
 
 
 build table-format=Pebble,v7
-b@5.SET.7:b5
-b@3.SET.2:
-c@6.DEL.7:
-c@5.DEL.6:
+b@5#7,SET:b5
+b@3#2,SET:
+c@6#7,DEL:
+c@5#6,DEL:
 ----
 value-blocks: num-values 0, num-blocks: 0, size: 0
 

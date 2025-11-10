@@ -2,10 +2,10 @@
 # sstable with two-level index, with two data blocks in each lower-level index
 # block.
 build block-size=1 index-block-size=40 print-layout=true
-c@10.SET.10:cAT10
-d@7.SET.9:dAT7
-e@15.SET.8:eAT15
-f@7.SET.5:fAT7
+c@10#10,SET:cAT10
+d@7#9,SET:dAT7
+e@15#8,SET:eAT15
+f@7#5,SET:fAT7
 ----
 index entries:
  d@7: size 53
