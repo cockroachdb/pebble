@@ -761,11 +761,9 @@ func TestConcurrentExcise(t *testing.T) {
 					return err.Error()
 				}
 			} else {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					_ = runCompactCmd(t, &tdClone, d)
-				}()
+				})
 				<-bc.startBlock
 				return "spun off in separate goroutine"
 			}

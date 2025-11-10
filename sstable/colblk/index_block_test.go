@@ -152,15 +152,13 @@ func TestIndexIterInitHandle(t *testing.T) {
 
 	const workers = 8
 	var wg sync.WaitGroup
-	wg.Add(workers)
 	for w := 0; w < workers; w++ {
-		go func() {
+		wg.Go(func() {
 			var iter IndexIter
-			defer wg.Done()
 			for i := 0; i < 10; i++ {
 				getBlockAndIterate(&iter)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

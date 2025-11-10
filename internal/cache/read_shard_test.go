@@ -266,7 +266,7 @@ func TestReadShardConcurrent(t *testing.T) {
 
 	var differentReaders []*testSyncReaders
 	// 50 blocks are read.
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		valLen := rand.Intn(100) + 1
 		val := make([]byte, valLen)
 		crand.Read(val)

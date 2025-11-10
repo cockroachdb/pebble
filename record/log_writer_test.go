@@ -42,9 +42,7 @@ func TestSyncQueue(t *testing.T) {
 	var closed atomic.Bool
 
 	var flusherWG sync.WaitGroup
-	flusherWG.Add(1)
-	go func() {
-		defer flusherWG.Done()
+	flusherWG.Go(func() {
 		for {
 			if closed.Load() {
 				return
@@ -52,15 +50,13 @@ func TestSyncQueue(t *testing.T) {
 			head, tail, _ := q.load()
 			q.pop(head, tail, nil, nil)
 		}
-	}()
+	})
 
 	var commitMu sync.Mutex
 	var doneWG sync.WaitGroup
-	for i := 0; i < SyncConcurrency; i++ {
-		doneWG.Add(1)
-		go func(i int) {
-			defer doneWG.Done()
-			for j := 0; j < 1000; j++ {
+	for range SyncConcurrency {
+		doneWG.Go(func() {
+			for range 1000 {
 				wg := &sync.WaitGroup{}
 				wg.Add(1)
 				// syncQueue is a single-producer, single-consumer queue. We need to
@@ -70,7 +66,7 @@ func TestSyncQueue(t *testing.T) {
 				commitMu.Unlock()
 				wg.Wait()
 			}
-		}(i)
+		})
 	}
 	doneWG.Wait()
 
@@ -88,10 +84,7 @@ func TestFlusherCond(t *testing.T) {
 	q := &psq.syncQueue
 
 	var flusherWG sync.WaitGroup
-	flusherWG.Add(1)
-	go func() {
-		defer flusherWG.Done()
-
+	flusherWG.Go(func() {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -109,19 +102,17 @@ func TestFlusherCond(t *testing.T) {
 			head, tail, _ := q.load()
 			q.pop(head, tail, nil, nil)
 		}
-	}()
+	})
 
 	var commitMu sync.Mutex
-	var doneWG sync.WaitGroup
 	// NB: we're testing with low concurrency here, because what we want to
 	// stress is that signalling of the flusherCond works
 	// correctly. Specifically, we want to make sure that a signal is "lost",
 	// causing the test to wedge.
-	for i := 0; i < 2; i++ {
-		doneWG.Add(1)
-		go func(i int) {
-			defer doneWG.Done()
-			for j := 0; j < 10000; j++ {
+	var doneWG sync.WaitGroup
+	for range 2 {
+		doneWG.Go(func() {
+			for range 10000 {
 				wg := &sync.WaitGroup{}
 				wg.Add(1)
 				// syncQueue is a single-producer, single-consumer queue. We need to
@@ -132,7 +123,7 @@ func TestFlusherCond(t *testing.T) {
 				c.Signal()
 				wg.Wait()
 			}
-		}(i)
+		})
 	}
 	doneWG.Wait()
 
@@ -606,10 +597,9 @@ func TestPendingSyncsWithHighestSyncIndex(t *testing.T) {
 
 	const highestIndex = 100
 	testErr := errors.New("test error")
-	var popDone sync.WaitGroup
-	popDone.Add(1)
 	// Goroutine that pops.
-	go func() {
+	var popDone sync.WaitGroup
+	popDone.Go(func() {
 		var poppedIndex int64
 		for poppedIndex != highestIndex {
 			if !q.empty() {
@@ -625,8 +615,7 @@ func TestPendingSyncsWithHighestSyncIndex(t *testing.T) {
 				require.NoError(t, q.pop(snap, err))
 			}
 		}
-		popDone.Done()
-	}()
+	})
 	// Goroutine that pushes.
 	go func() {
 		// Already pushed 0, so start at index 1.

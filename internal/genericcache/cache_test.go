@@ -205,17 +205,15 @@ func TestErrorHandling(t *testing.T) {
 		*v = -1
 	}
 	c := New[intKey, int](20, 4, initFn, releaseFn)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	fail.Store(1)
 	var wg sync.WaitGroup
-	wg.Add(3)
-	for i := 0; i < 3; i++ {
-		go func() {
-			defer wg.Done()
+	for range 3 {
+		wg.Go(func() {
 			_, err := c.FindOrCreate(ctx, 1, struct{}{})
 			require.ErrorContains(t, err, "1")
-		}()
+		})
 	}
 	wg.Wait()
 

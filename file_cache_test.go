@@ -613,9 +613,6 @@ func TestSharedTableConcurrent(t *testing.T) {
 		require.NoError(t, db2.Close())
 	}()
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
 	// Now that both dbs have a reference to the file cache,
 	// we'll run go routines which will use the DBs concurrently.
 	concFunc := func(db *DB) {
@@ -625,14 +622,13 @@ func TestSharedTableConcurrent(t *testing.T) {
 			require.NoError(t, db.Set(start, nil, nil))
 			require.NoError(t, db.Flush())
 			require.NoError(t, db.DeleteRange(start, end, nil))
-			require.NoError(t, db.Compact(context.Background(), start, end, false))
+			require.NoError(t, db.Compact(t.Context(), start, end, false))
 		}
-		wg.Done()
 	}
 
-	go concFunc(db1)
-	go concFunc(db2)
-
+	var wg sync.WaitGroup
+	wg.Go(func() { concFunc(db1) })
+	wg.Go(func() { concFunc(db2) })
 	wg.Wait()
 }
 

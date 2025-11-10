@@ -610,10 +610,8 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 	ks := testkeys.Alpha(3)
 	var wg sync.WaitGroup
 	const concurrentWriters = 5
-	wg.Add(concurrentWriters)
-	for w := 0; w < concurrentWriters; w++ {
-		go func() {
-			defer wg.Done()
+	for range concurrentWriters {
+		wg.Go(func() {
 			data := make([]byte, 1<<10) // 1 KiB
 			rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 			for i := range data {
@@ -630,7 +628,7 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 				n := testkeys.WriteKey(buf, ks, uint64(i)%ks.Count())
 				require.NoError(t, d.Set(buf[:n], data, NoSync))
 			}
-		}()
+		})
 	}
 
 	func() {

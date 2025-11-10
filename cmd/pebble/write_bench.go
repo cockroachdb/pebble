@@ -224,11 +224,7 @@ func runWriteBenchmark(_ *cobra.Command, args []string) error {
 			// take a material amount of time. Instead, pause the
 			// writers in parallel in the background, and wait for all
 			// to complete before continuing.
-			wg.Add(1)
-			go func(writer *pauseWriter) {
-				writer.pause()
-				wg.Done()
-			}(w)
+			wg.Go(func() { w.pause() })
 		}
 		wg.Wait()
 

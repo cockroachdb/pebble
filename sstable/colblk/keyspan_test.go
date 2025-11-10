@@ -113,14 +113,12 @@ func TestKeyspanBlockPooling(t *testing.T) {
 
 	const workers = 8
 	var wg sync.WaitGroup
-	wg.Add(workers)
-	for w := 0; w < workers; w++ {
-		go func() {
-			defer wg.Done()
-			for i := 0; i < 10; i++ {
+	for range workers {
+		wg.Go(func() {
+			for range 10 {
 				getBlockAndIterate()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

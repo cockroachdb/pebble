@@ -274,15 +274,13 @@ func TestCacheStressSetExisting(t *testing.T) {
 	defer h.Close()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			for j := 0; j < 10000; j++ {
+	for i := range 10 {
+		wg.Go(func() {
+			for range 10000 {
 				setTestValue(h, 0, uint64(i), "a", 1)
 				runtime.Gosched()
 			}
-		}(i)
+		})
 	}
 	wg.Wait()
 }
