@@ -24,10 +24,10 @@ m-q:{(#1,RANGEKEYSET,@6,bax)}
 OK
 
 define-pointkeys
-b@2.SET.1
-h@5.SET.1
-l@8.SET.1
-n@4.SET.1
+b@2#1,SET
+h@5#1,SET
+l@8#1,SET
+n@4#1,SET
 ----
 OK
 
@@ -214,10 +214,10 @@ a-c:{(#1,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@2,bananas)}
 OK
 
 define-pointkeys
-a.SET.1
-a@3.SET.1
-a@12.SET.1
-b@2.SET.1
+a#1,SET
+a@3#1,SET
+a@12#1,SET
+b@2#1,SET
 ----
 OK
 
@@ -394,9 +394,9 @@ c-z:{(#1,RANGEKEYSET,@10,bananas)}
 OK
 
 define-pointkeys
-b@3.SET.2
-d@9.SET.4
-j@11.SET.3
+b@3#2,SET
+d@9#4,SET
+j@11#3,SET
 ----
 OK
 
@@ -447,9 +447,9 @@ e-f:{(#1,RANGEKEYSET,@5,bananas)}
 OK
 
 define-pointkeys
-a@2.SET.4
-b@9.SET.2
-d@9.SET.3
+a@2#4,SET
+b@9#2,SET
+d@9#3,SET
 ----
 OK
 

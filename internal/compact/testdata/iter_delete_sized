@@ -1,5 +1,5 @@
 define
-a.SET.1:b
+a#1,SET:b
 ----
 
 iter
@@ -10,8 +10,8 @@ a#1,SET:b
 .
 
 define
-a.SET.2:c
-a.SET.1:b
+a#2,SET:c
+a#1,SET:b
 ----
 
 iter
@@ -45,8 +45,8 @@ a#1,SET:b
 .
 
 define
-a.DEL.2:
-a.SET.1:b
+a#2,DEL:
+a#1,SET:b
 ----
 
 iter
@@ -78,9 +78,9 @@ a#2,DEL:
 .
 
 define
-a.DEL.2:
-a.SET.1:b
-b.SET.3:c
+a#2,DEL:
+a#1,SET:b
+b#3,SET:c
 ----
 
 iter
@@ -113,9 +113,9 @@ b#3,SET:c
 .
 
 define
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
 ----
 
 iter
@@ -130,11 +130,11 @@ c#3,SET:c
 .
 
 define
-a.MERGE.3:d
-a.MERGE.2:c
-a.SET.1:b
-b.MERGE.2:b
-b.MERGE.1:a
+a#3,MERGE:d
+a#2,MERGE:c
+a#1,SET:b
+b#2,MERGE:b
+b#1,MERGE:a
 ----
 
 iter
@@ -158,11 +158,11 @@ b#2,MERGE:ab (not pinned) (not force obsolete)
 .
 
 define
-a.SET.9:b
-a.DEL.8:
-a.SET.7:d
-a.DEL.6:
-a.SET.5:f
+a#9,SET:b
+a#8,DEL:
+a#7,SET:d
+a#6,DEL:
+a#5,SET:f
 ----
 
 iter
@@ -231,8 +231,8 @@ a#5,SET:f
 .
 
 define
-a.INVALID.2:b
-a.SET.1:c
+a#2,INVALID:b
+a#1,SET:c
 ----
 
 iter
@@ -241,8 +241,8 @@ first
 err=invalid internal key kind: INVALID
 
 define
-a.SET.2:b
-a.INVALID.1:c
+a#2,SET:b
+a#1,INVALID:c
 ----
 
 iter
@@ -251,8 +251,8 @@ first
 err=invalid internal key kind: INVALID
 
 define
-a.MERGE.2:b
-a.INVALID.1:c
+a#2,MERGE:b
+a#1,INVALID:c
 ----
 
 iter
@@ -261,8 +261,8 @@ first
 err=invalid internal key kind: INVALID
 
 define
-a.INVALID.2:c
-a.RANGEDEL.1:d
+a#2,INVALID:c
+a#1,RANGEDEL:d
 ----
 
 iter
@@ -273,9 +273,9 @@ a#inf,RANGEDEL:; Span() = a-d:{(#1,RANGEDEL)}
 err=invalid internal key kind: INVALID
 
 define
-a.MERGE.2:b
-a.MERGE.1:c
-a.MERGE.0:d
+a#2,MERGE:b
+a#1,MERGE:c
+a#0,MERGE:d
 ----
 
 iter snapshots=(1,2) print-snapshot-pinned print-force-obsolete
@@ -290,11 +290,11 @@ a#0,MERGE:d (pinned) (not force obsolete)
 .
 
 define
-a.SET.2:b
-a.RANGEDEL.1:c
-b.RANGEDEL.4:d
-b.SET.2:e
-c.SET.3:f
+a#2,SET:b
+a#1,RANGEDEL:c
+b#4,RANGEDEL:d
+b#2,SET:e
+c#3,SET:f
 ----
 
 iter
@@ -356,11 +356,11 @@ c#3,SET:f (pinned) (force obsolete)
 .
 
 define
-a.RANGEDEL.3:e
-b.SET.4:b
-c.SET.3:c
-d.SET.2:d
-e.SET.1:e
+a#3,RANGEDEL:e
+b#4,SET:b
+c#3,SET:c
+d#2,SET:d
+e#1,SET:e
 ----
 
 iter
@@ -377,11 +377,11 @@ e#1,SET:e
 .
 
 define
-a.RANGEDEL.3:e
-b.MERGE.4:b
-c.MERGE.3:c
-d.MERGE.2:d
-e.MERGE.1:e
+a#3,RANGEDEL:e
+b#4,MERGE:b
+c#3,MERGE:c
+d#2,MERGE:d
+e#1,MERGE:e
 ----
 
 iter
@@ -398,16 +398,16 @@ e#1,MERGE:e
 .
 
 define
-a.RANGEDEL.3:c
-b.MERGE.5:e
-b.MERGE.4:d
-b.MERGE.2:c
-b.MERGE.1:b
-d.MERGE.5:c
-d.MERGE.4:b
-d.RANGEDEL.3:f
-d.MERGE.2:e
-d.MERGE.1:d
+a#3,RANGEDEL:c
+b#5,MERGE:e
+b#4,MERGE:d
+b#2,MERGE:c
+b#1,MERGE:b
+d#5,MERGE:c
+d#4,MERGE:b
+d#3,RANGEDEL:f
+d#2,MERGE:e
+d#1,MERGE:d
 ----
 
 iter
@@ -424,9 +424,9 @@ d#5,MERGE:bc
 .
 
 define
-a.RANGEDEL.3:d
-b.RANGEDEL.2:e
-c.RANGEDEL.1:f
+a#3,RANGEDEL:d
+b#2,RANGEDEL:e
+c#1,RANGEDEL:f
 ----
 
 iter
@@ -486,9 +486,9 @@ e#inf,RANGEDEL:; Span() = e-f:{(#1,RANGEDEL)}
 .
 
 define
-a.RANGEDEL.10:k
-f.SET.9:f
-f.SET.8:f
+a#10,RANGEDEL:k
+f#9,SET:f
+f#8,SET:f
 ----
 
 iter snapshots=(9,10) print-snapshot-pinned print-force-obsolete
@@ -501,9 +501,9 @@ f#9,SET:f (pinned) (force obsolete)
 f#8,SET:f (pinned) (force obsolete)
 
 define
-f.RANGEDEL.10:k
-f.SET.9:f
-f.SET.8:f
+f#10,RANGEDEL:k
+f#9,SET:f
+f#8,SET:f
 ----
 
 iter snapshots=(9,10)
@@ -516,10 +516,10 @@ f#9,SET:f
 f#8,SET:f
 
 define
-a.SET.1:a
-b.RANGEDEL.2:d
-c.RANGEDEL.3:e
-d.SET.4:d
+a#1,SET:a
+b#2,RANGEDEL:d
+c#3,RANGEDEL:e
+d#4,SET:d
 ----
 
 iter
@@ -553,9 +553,9 @@ d#4,SET:d
 .
 
 define
-a.SET.1:a
-b.RANGEDEL.2:d
-c.SET.4:d
+a#1,SET:a
+b#2,RANGEDEL:d
+c#4,SET:d
 ----
 
 iter
@@ -570,10 +570,10 @@ c#4,SET:d
 .
 
 define
-a.RANGEDEL.2:d
-a.SET.2:a
-b.SET.2:b
-c.SET.2:c
+a#2,RANGEDEL:d
+a#2,SET:a
+b#2,SET:b
+c#2,SET:c
 ----
 
 iter
@@ -590,7 +590,7 @@ c#2,SET:c
 .
 
 define
-a.SINGLEDEL.1:
+a#1,SINGLEDEL:
 ----
 
 iter
@@ -607,8 +607,8 @@ first
 ineffectual-single-deletes: a
 
 define
-a.SINGLEDEL.2:
-a.SINGLEDEL.1:
+a#2,SINGLEDEL:
+a#1,SINGLEDEL:
 ----
 
 iter
@@ -620,9 +620,9 @@ a#2,SINGLEDEL:
 ineffectual-single-deletes: a
 
 define
-a.SINGLEDEL.3:
-a.SINGLEDEL.2:
-a.SET.1:a
+a#3,SINGLEDEL:
+a#2,SINGLEDEL:
+a#1,SET:a
 ----
 
 iter
@@ -632,9 +632,9 @@ first
 ineffectual-single-deletes: a
 
 define
-a.SET.3:a
-b.SINGLEDEL.2:
-b.DEL.1:
+a#3,SET:a
+b#2,SINGLEDEL:
+b#1,DEL:
 ----
 
 iter
@@ -648,8 +648,8 @@ b#2,DEL:
 ineffectual-single-deletes: b
 
 define
-a.SINGLEDEL.2:
-a.DEL.1:
+a#2,SINGLEDEL:
+a#1,DEL:
 ----
 
 iter
@@ -667,8 +667,8 @@ first
 ineffectual-single-deletes: a
 
 define
-a.SINGLEDEL.2:
-a.MERGE.1:
+a#2,SINGLEDEL:
+a#1,MERGE:a
 ----
 
 iter
@@ -682,8 +682,8 @@ first
 .
 
 define
-a.SINGLEDEL.2:
-a.SET.1:b
+a#2,SINGLEDEL:
+a#1,SET:b
 ----
 
 iter
@@ -694,8 +694,8 @@ first
 # SET that meets a SINGLEDEL is transformed into a SETWITHDEL.
 
 define
-a.SET.2:b
-a.SINGLEDEL.1:
+a#2,SET:b
+a#1,SINGLEDEL:
 ----
 
 iter
@@ -715,9 +715,9 @@ a#2,SETWITHDEL:b
 .
 
 define
-a.MERGE.6:b
-a.SINGLEDEL.5:
-a.SET.4:a
+a#6,MERGE:b
+a#5,SINGLEDEL:
+a#4,SET:a
 ----
 
 iter
@@ -731,10 +731,10 @@ a#6,SETWITHDEL:b[base]
 # not been deleted or single deleted. It is permitted to shadow both, since
 # MERGE turns into a SETWITHDELETE when it meets the SINGLEDEL.
 define
-a.MERGE.6:b
-a.SINGLEDEL.5:
-a.SET.4:a
-a.SET.3:a
+a#6,MERGE:b
+a#5,SINGLEDEL:
+a#4,SET:a
+a#3,SET:a
 ----
 
 iter
@@ -745,9 +745,9 @@ a#6,SETWITHDEL:b[base]
 .
 
 define
-a.SINGLEDEL.2:
-a.SET.1:b
-b.SET.3:c
+a#2,SINGLEDEL:
+a#1,SET:b
+b#3,SET:c
 ----
 
 iter
@@ -758,9 +758,9 @@ b#3,SET:c
 .
 
 define
-a.SINGLEDEL.3:
-a.SET.2:b
-a.SET.1:a
+a#3,SINGLEDEL:
+a#2,SET:b
+a#1,SET:a
 ----
 
 iter
@@ -772,9 +772,9 @@ a#1,SET:a
 invariant-violation-single-deletes: a
 
 define
-a.SINGLEDEL.3:
-a.MERGE.2:b
-a.MERGE.1:a
+a#3,SINGLEDEL:
+a#2,MERGE:b
+a#1,MERGE:a
 ----
 
 # SINGLEDEL consumes the first MERGE.
@@ -787,10 +787,10 @@ a#1,MERGE:a
 invariant-violation-single-deletes: a
 
 define
-a.SINGLEDEL.4:
-a.SET.3:val
-a.SINGLEDEL.2:
-a.SET.1:val
+a#4,SINGLEDEL:
+a#3,SET:val
+a#2,SINGLEDEL:
+a#1,SET:val
 ----
 
 iter
@@ -808,10 +808,10 @@ a#1,SET:val
 .
 
 define
-a.SINGLEDEL.4:
-a.SET.3:val
-a.DEL.2:
-a.SET.1:val
+a#4,SINGLEDEL:
+a#3,SET:val
+a#2,DEL:
+a#1,SET:val
 ----
 
 iter
@@ -847,10 +847,10 @@ a#1,SET:val
 .
 
 define
-a.SINGLEDEL.4:
-a.SET.3:c
-a.MERGE.2:b
-a.SET.1:a
+a#4,SINGLEDEL:
+a#3,SET:c
+a#2,MERGE:b
+a#1,SET:a
 ----
 
 iter
@@ -893,9 +893,9 @@ a#1,SET:a
 .
 
 define
-a.SINGLEDEL.3:
-a.RANGEDEL.2:c
-a.SET.1:val
+a#3,SINGLEDEL:
+a#2,RANGEDEL:c
+a#1,SET:val
 ----
 
 iter
@@ -908,10 +908,10 @@ a#3,SINGLEDEL:
 .
 
 define
-a.RANGEDEL.3:d
-a.DEL.2:
-a.SET.1:a
-d.DEL.2:
+a#3,RANGEDEL:d
+a#2,DEL:
+a#1,SET:a
+d#2,DEL:
 ----
 
 iter
@@ -955,8 +955,8 @@ d#2,DEL:
 .
 
 define
-a.MERGE.2:a
-b.RANGEDEL.1:c
+a#2,MERGE:a
+b#1,RANGEDEL:c
 ----
 
 iter
@@ -969,9 +969,9 @@ b#inf,RANGEDEL:; Span() = b-c:{(#1,RANGEDEL)}
 .
 
 define
-a.MERGE.2:v2
-a.RANGEDEL.1:b
-a.MERGE.1:v1
+a#2,MERGE:v2
+a#1,RANGEDEL:b
+a#1,MERGE:v1
 ----
 
 iter is-bottommost-layer=true
@@ -986,9 +986,9 @@ a#0,SET:v1v2[base]
 # Verify that we transform merge+del -> set.
 
 define
-a.MERGE.5:5
-a.DEL.3:
-a.MERGE.1:1
+a#5,MERGE:5
+a#3,DEL:
+a#1,MERGE:1
 ----
 
 iter
@@ -1033,10 +1033,10 @@ a#1,MERGE:1
 # Verify that merge+rangedel -> merge.
 
 define
-a.RANGEDEL.3:c
-b.MERGE.5:5
-b.SET.2:2
-b.MERGE.1:1
+a#3,RANGEDEL:c
+b#5,MERGE:5
+b#2,SET:2
+b#1,MERGE:1
 ----
 
 iter
@@ -1069,10 +1069,10 @@ b#1,MERGE:1
 .
 
 define
-a.RANGEDEL.3:c
-b.MERGE.5:5
-b.MERGE.2:2
-b.MERGE.1:1
+a#3,RANGEDEL:c
+b#5,MERGE:5
+b#2,MERGE:2
+b#1,MERGE:1
 ----
 
 iter
@@ -1098,8 +1098,8 @@ b#1,MERGE:1
 # SET that meets a DEL is transformed into a SETWITHDEL.
 
 define
-a.SET.2:b
-a.DEL.1:
+a#2,SET:b
+a#1,DEL:
 ----
 
 iter
@@ -1119,9 +1119,9 @@ a#1,DEL:
 .
 
 define
-a.SET.3:c
-a.DEL.2:
-a.SET.1:b
+a#3,SET:c
+a#2,DEL:
+a#1,SET:b
 ----
 
 iter
@@ -1141,9 +1141,9 @@ a#1,SET:b
 .
 
 define
-a.SET.3:c
-a.SET.2:b
-a.DEL.1:
+a#3,SET:c
+a#2,SET:b
+a#1,DEL:
 ----
 
 iter
@@ -1172,9 +1172,9 @@ a#1,DEL:
 .
 
 define
-a.DEL.3:
-a.SET.2:b
-a.DEL.1:
+a#3,DEL:
+a#2,SET:b
+a#1,DEL:
 ----
 
 iter
@@ -1205,10 +1205,10 @@ a#1,DEL:
 # SETWITHDEL-eligible entries at or under a RANGEDEL at the same user key should
 # be skipped.
 define
-a.SET.3:c
-a.RANGEDEL.2:z
-a.SET.2:b
-a.DEL.1:
+a#3,SET:c
+a#2,RANGEDEL:z
+a#2,SET:b
+a#1,DEL:
 ----
 
 iter is-bottommost-layer=true
@@ -1243,10 +1243,10 @@ a#1,DEL:
 .
 
 define
-a.SET.4:c
-a.RANGEDEL.3:z
-a.SET.2:b
-a.DEL.1:
+a#4,SET:c
+a#3,RANGEDEL:z
+a#2,SET:b
+a#1,DEL:
 ----
 
 iter
@@ -1261,8 +1261,8 @@ a#4,SET:c
 # Invalid keys are emitted under SETWITHDEL.
 
 define
-a.SET.2:b
-a.INVALID.1:
+a#2,SET:b
+a#1,INVALID:c
 ----
 
 iter
@@ -1271,9 +1271,9 @@ first
 err=invalid internal key kind: INVALID
 
 define
-a.SET.3:c
-a.INVALID.2:
-a.SET.1:b
+a#3,SET:c
+a#2,INVALID:c
+a#1,SET:b
 ----
 
 iter
@@ -1284,9 +1284,9 @@ err=invalid internal key kind: INVALID
 # SINGLEDEL that meets a SETWITHDEL is transformed into a DEL.
 
 define
-a.SINGLEDEL.3:
-a.SETWITHDEL.2:d
-b.SET.1:c
+a#3,SINGLEDEL:
+a#2,SETWITHDEL:d
+b#1,SET:c
 ----
 
 iter
@@ -1319,9 +1319,9 @@ b#1,SET:c
 .
 
 define
-a.SETWITHDEL.3:3
-a.SET.2:d
-b.SET.1:c
+a#3,SETWITHDEL:3
+a#2,SET:d
+b#1,SET:c
 ----
 
 iter print-missized-dels
@@ -1350,10 +1350,10 @@ b#1,SET:c
 # dropped the key that it was expected to drop.
 
 define
-a.SET.9:foo
-b.DELSIZED.8:varint(11)
-b.SET.5:helloworld
-c.SET.2:bar
+a#9,SET:foo
+b#8,DELSIZED:varint(11)
+b#5,SET:helloworld
+c#2,SET:bar
 ----
 
 iter print-missized-dels
@@ -1371,10 +1371,10 @@ missized-dels=0
 # missized: It never found the key it was supposed to delete.
 
 define
-a.SET.9:foo
-b.DELSIZED.9:varint(20)
-b.DELSIZED.8:varint(10)
-c.SET.2:bar
+a#9,SET:foo
+b#9,DELSIZED:varint(20)
+b#8,DELSIZED:varint(10)
+c#2,SET:bar
 ----
 
 iter print-missized-dels
@@ -1392,10 +1392,10 @@ missized-dels=1
 # number.
 
 define
-a.SET.2:foo
-b.DELSIZED.8:varint(25)
-b.SET.3:hello
-c.SET.9:bar
+a#2,SET:foo
+b#8,DELSIZED:varint(25)
+b#3,SET:hello
+c#9,SET:bar
 ----
 
 iter print-missized-dels
@@ -1411,10 +1411,10 @@ missized-dels=1
 # Test two DELSIZED at the same user key, but with correctly sized deleted keys.
 
 define
-a.DELSIZED.9:varint(4)
-a.SET.8:foo
-a.DELSIZED.8:varint(6)
-a.SET.5:hello
+a#9,DELSIZED:varint(4)
+a#8,SET:foo
+a#8,DELSIZED:varint(6)
+a#5,SET:hello
 ----
 
 iter print-missized-dels
@@ -1429,10 +1429,10 @@ missized-dels=0
 # still count as missized.
 
 define
-a.DELSIZED.9:varint(4)
-a.SET.8:foo
-a.DELSIZED.8:varint(1)
-a.SET.5:hello
+a#9,DELSIZED:varint(4)
+a#8,SET:foo
+a#8,DELSIZED:varint(1)
+a#5,SET:hello
 ----
 
 iter print-missized-dels
@@ -1447,10 +1447,10 @@ missized-dels=1
 # NOT count as missized.
 
 define
-a.DELSIZED.9:varint(4)
-a.SET.8:foo
-a.DEL.8:
-a.SET.5:hello
+a#9,DELSIZED:varint(4)
+a#8,SET:foo
+a#8,DEL:
+a#5,SET:hello
 ----
 
 iter print-missized-dels
@@ -1465,15 +1465,15 @@ missized-dels=0
 # SETWITHDELs when they meet a DELSIZED.
 
 define
-a.SET.7:foo
-a.DELSIZED.5:varint(5)
-b.SET.4:bar
-b.DELSIZED.2:varint(4)
-b.SET.1:bax
-c.SET.9:coconut
-c.DEL.8:del
-c.DELSIZED.5:varint(2)
-d.SET.8:dragonfruit
+a#7,SET:foo
+a#5,DELSIZED:varint(5)
+b#4,SET:bar
+b#2,DELSIZED:varint(4)
+b#1,SET:bax
+c#9,SET:coconut
+c#8,DEL:del
+c#5,DELSIZED:varint(2)
+d#8,SET:dragonfruit
 ----
 
 iter print-missized-dels
@@ -1494,9 +1494,9 @@ missized-dels=0
 # know the value of the most recent MERGE since it's dependent on LSM state.
 
 define
-a.DELSIZED.9:varint(4)
-a.MERGE.8:fo
-a.MERGE.7:o
+a#9,DELSIZED:varint(4)
+a#8,MERGE:fo
+a#7,MERGE:o
 ----
 
 iter print-missized-dels
@@ -1510,9 +1510,9 @@ missized-dels=1
 # Test a DELSIZED that shadows a SINGLEDEL'd key.
 
 define
-a.DELSIZED.4:varint(4)
-b.SINGLEDEL.3:
-b.SET.1:val
+a#4,DELSIZED:varint(4)
+b#3,SINGLEDEL:
+b#1,SET:val
 ----
 
 iter
@@ -1532,10 +1532,10 @@ first
 # Test DELSIZED shadowing SINGLEDEL.
 
 define
-a.DELSIZED.4:varint(4)
-a.SET.2:foo
-b.SINGLEDEL.3:
-b.SET.1:val
+a#4,DELSIZED:varint(4)
+a#2,SET:foo
+b#3,SINGLEDEL:
+b#1,SET:val
 ----
 
 iter
@@ -1559,9 +1559,9 @@ first
 # snapshot stripe.
 
 define
-a.DELSIZED.5:varint(4)
-a.RANGEDEL.4:d
-a.SET.3:foo
+a#5,DELSIZED:varint(4)
+a#4,RANGEDEL:d
+a#3,SET:foo
 ----
 
 iter elide-tombstones=t
@@ -1583,9 +1583,9 @@ next
 # Perform a variant of the above test but with a DEL key.
 
 define
-a.DEL.5:
-a.RANGEDEL.4:d
-a.SET.3:foo
+a#5,DEL:
+a#4,RANGEDEL:d
+a#3,SET:foo
 ----
 
 iter elide-tombstones=t
@@ -1598,9 +1598,9 @@ next
 # Perform a variant of the above test but with a SINGLEDEL key.
 
 define
-a.SINGLEDEL.5:
-a.RANGEDEL.4:d
-a.SET.3:foo
+a#5,SINGLEDEL:
+a#4,RANGEDEL:d
+a#3,SET:foo
 ----
 
 iter elide-tombstones=t
@@ -1620,10 +1620,10 @@ ineffectual-single-deletes: a
 # compaction iterator should always observe them first.
 
 define
-a-z:{(#5,RANGEKEYDEL)}
-a.SINGLEDEL.6:
-a.SETWITHDEL.5:foo
-a.RANGEDEL.5:z
+Span: a-z:{(#5,RANGEKEYDEL)}
+a#6,SINGLEDEL:
+a#5,SETWITHDEL:foo
+a#5,RANGEDEL:z
 ----
 
 # In the following case, the SINGLEDEL meets a SETWITHDEL, promoting the
@@ -1653,9 +1653,9 @@ next
 .
 
 define
-a.SINGLEDEL.6:
-a.RANGEDEL.5:d
-a.SET.5:foo
+a#6,SINGLEDEL:
+a#5,RANGEDEL:d
+a#5,SET:foo
 ----
 
 # NB: In this case, in previous versions of the code, the RANGEDEL acted as an
@@ -1678,14 +1678,14 @@ next
 .
 
 define
-a.SINGLEDEL.6:
-a.SET.5:foo
-a.RANGEDEL.4:d
-a.SET.4:bar
+a#6,SINGLEDEL:
+a#5,SET:foo
+a#4,RANGEDEL:d
+a#4,SET:bar
 ----
 
 # In previous versions of the code, the SINGLEDEL invariant checking could not
-# see past the RANGEDEL and see that the a.SET.4 violates the invariant. This
+# see past the RANGEDEL and see that the a#4,SET violates the invariant. This
 # was a code artifact that has been improved when we began interleaving range
 # deletes at the maximal sequence number
 
@@ -1700,9 +1700,9 @@ a#4,SET:bar
 invariant-violation-single-deletes: a
 
 define
-a.SINGLEDEL.6:
-a.SETWITHDEL.5:foo
-a.RANGEDEL.5:d
+a#6,SINGLEDEL:
+a#5,SETWITHDEL:foo
+a#5,RANGEDEL:d
 ----
 
 # When the SINGLEDEL and SETWITHDEL meet, the SINGLEDEL is promoted into a DEL.
@@ -1722,9 +1722,9 @@ next
 .
 
 define
-a.DELSIZED.6:varint(3)
-a.RANGEDEL.5:d
-a.SET.5:foo
+a#6,DELSIZED:varint(3)
+a#5,RANGEDEL:d
+a#5,SET:foo
 ----
 
 iter
@@ -1746,8 +1746,8 @@ next
 # Test a DELSIZED with a value that fails to decode.
 
 define
-a.DELSIZED.5:notavarint
-a.SET.4:foo
+a#5,DELSIZED:notavarint
+a#4,SET:foo
 ----
 
 iter
@@ -1758,9 +1758,9 @@ err=DELSIZED holds invalid value: 6e6f7461766172696e74
 # Test a value-less DELSIZED.
 
 define
-a.DELSIZED.5:
-a.SET.4:foo
-a.SET.3:bar
+a#5,DELSIZED:
+a#4,SET:foo
+a#3,SET:bar
 ----
 
 iter print-missized-dels
@@ -1777,10 +1777,10 @@ missized-dels=0
 # emitted.
 
 define
-a.DELSIZED.5:
-a.SINGLEDEL.3:
-a.SET.2:foo
-a.SET.1:bar
+a#5,DELSIZED:
+a#3,SINGLEDEL:
+a#2,SET:foo
+a#1,SET:bar
 ----
 
 iter
@@ -1795,8 +1795,8 @@ a#5,DEL:
 # SET could result in the SET re-appearing.
 
 define
-a.MERGE.5:foo
-a.DEL.3:
+a#5,MERGE:foo
+a#3,DEL:
 ----
 
 iter
@@ -1807,12 +1807,12 @@ a#5,SETWITHDEL:foo[base]
 .
 
 define
-a.SINGLEDEL.4:
-a.MERGE.3:a3
-a.SET.2:a2
-b.SINGLEDEL.6:
-b.SET.5:b5
-b.SETWITHDEL.4:b4
+a#4,SINGLEDEL:
+a#3,MERGE:a3
+a#2,SET:a2
+b#6,SINGLEDEL:
+b#5,SET:b5
+b#4,SETWITHDEL:b4
 ----
 
 iter
@@ -1830,8 +1830,8 @@ invariant-violation-single-deletes: a,b
 # doesn't match the actual size of the deleted entry.
 
 define
-a.DELSIZED.8:varint(25)
-a.SET.5:hello
+a#8,DELSIZED:varint(25)
+a#5,SET:hello
 ----
 
 iter print-missized-dels print-missized-del-info
@@ -1845,8 +1845,8 @@ missized-delete-info: a (elided=6, expected=25)
 
 # Test a DELSIZED that never deletes a key (key doesn't exist)
 define
-a.DELSIZED.8:varint(10)
-b.SET.5:hello
+a#8,DELSIZED:varint(10)
+b#5,SET:hello
 ----
 
 iter print-missized-dels print-missized-del-info
@@ -1859,12 +1859,12 @@ missized-dels=0
 
 # Test multiple missized DELSIZEDs in the same run
 define
-a.DELSIZED.9:varint(20)
-a.SET.8:foo
-b.DELSIZED.7:varint(15)
-b.SET.5:bar
-c.DELSIZED.6:varint(4)
-c.SET.3:xyz
+a#9,DELSIZED:varint(20)
+a#8,SET:foo
+b#7,DELSIZED:varint(15)
+b#5,SET:bar
+c#6,DELSIZED:varint(4)
+c#3,SET:xyz
 ----
 
 iter print-missized-dels print-missized-del-info
@@ -1882,10 +1882,10 @@ missized-delete-info: a (elided=4, expected=20); b (elided=4, expected=15)
 # tombstone.
 
 define
-a.SET.1:hello
-b.DELSIZED.9:varint(6)
-b.DELSIZED.4:varint(6)
-b.SET.2:world
+a#1,SET:hello
+b#9,DELSIZED:varint(6)
+b#4,DELSIZED:varint(6)
+b#2,SET:world
 ----
 
 iter print-missized-dels print-missized-del-info

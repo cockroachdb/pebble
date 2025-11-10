@@ -133,21 +133,21 @@ func TestInternalKeySeparator(t *testing.T) {
 		b        string
 		expected string
 	}{
-		{"foo.SET.100", "foo.SET.99", "foo.SET.100"},
-		{"foo.SET.100", "foo.SET.100", "foo.SET.100"},
-		{"foo.SET.100", "foo.DEL.100", "foo.SET.100"},
-		{"foo.SET.100", "foo.SET.101", "foo.SET.100"},
-		{"foo.SET.100", "bar.SET.99", "foo.SET.100"},
-		{"foo.SET.100", "hello.SET.200", "g.SEPARATOR.72057594037927935"},
-		{"ABC1AAAAA.SET.100", "ABC2ABB.SET.200", "ABC2.SEPARATOR.72057594037927935"},
-		{"AAA1AAA.SET.100", "AAA2AA.SET.200", "AAA2.SEPARATOR.72057594037927935"},
-		{"AAA1AAA.SET.100", "AAA4.SET.200", "AAA2.SEPARATOR.72057594037927935"},
-		{"AAA1AAA.SET.100", "AAA2.SET.200", "AAA1B.SEPARATOR.72057594037927935"},
-		{"AAA1AAA.SET.100", "AAA2A.SET.200", "AAA2.SEPARATOR.72057594037927935"},
-		{"AAA1.SET.100", "AAA2.SET.200", "AAA1.SET.100"},
-		{"foo.SET.100", "foobar.SET.200", "foo.SET.100"},
-		{"foobar.SET.100", "foo.SET.200", "foobar.SET.100"},
-		{"foo.INGESTSST.100", "foo.INGESTSST.99", "foo.INGESTSST.100"},
+		{"foo#100,SET", "foo#99,SET", "foo#100,SET"},
+		{"foo#100,SET", "foo#100,SET", "foo#100,SET"},
+		{"foo#100,SET", "foo#100,DEL", "foo#100,SET"},
+		{"foo#100,SET", "foo#101,SET", "foo#100,SET"},
+		{"foo#100,SET", "bar#99,SET", "foo#100,SET"},
+		{"foo#100,SET", "hello#200,SET", "g#72057594037927935,SEPARATOR"},
+		{"ABC1AAAAA#100,SET", "ABC2ABB#200,SET", "ABC2#72057594037927935,SEPARATOR"},
+		{"AAA1AAA#100,SET", "AAA2AA#200,SET", "AAA2#72057594037927935,SEPARATOR"},
+		{"AAA1AAA#100,SET", "AAA4#200,SET", "AAA2#72057594037927935,SEPARATOR"},
+		{"AAA1AAA#100,SET", "AAA2#200,SET", "AAA1B#72057594037927935,SEPARATOR"},
+		{"AAA1AAA#100,SET", "AAA2A#200,SET", "AAA2#72057594037927935,SEPARATOR"},
+		{"AAA1#100,SET", "AAA2#200,SET", "AAA1#100,SET"},
+		{"foo#100,SET", "foobar#200,SET", "foo#100,SET"},
+		{"foobar#100,SET", "foo#200,SET", "foobar#100,SET"},
+		{"foo#100,INGESTSST", "foo#99,INGESTSST", "foo#100,INGESTSST"},
 	}
 	d := DefaultComparer
 	for _, c := range testCases {

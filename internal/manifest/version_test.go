@@ -138,81 +138,81 @@ func TestContains(t *testing.T) {
 	m00 := newFileMeta(
 		700,
 		1,
-		base.ParseInternalKey("b.SET.7008"),
-		base.ParseInternalKey("e.SET.7009"),
+		base.ParseInternalKey("b#7008,SET"),
+		base.ParseInternalKey("e#7009,SET"),
 	)
 	m01 := newFileMeta(
 		701,
 		1,
-		base.ParseInternalKey("c.SET.7018"),
-		base.ParseInternalKey("f.SET.7019"),
+		base.ParseInternalKey("c#7018,SET"),
+		base.ParseInternalKey("f#7019,SET"),
 	)
 	m02 := newFileMeta(
 		702,
 		1,
-		base.ParseInternalKey("f.SET.7028"),
-		base.ParseInternalKey("g.SET.7029"),
+		base.ParseInternalKey("f#7028,SET"),
+		base.ParseInternalKey("g#7029,SET"),
 	)
 	m03 := newFileMeta(
 		703,
 		1,
-		base.ParseInternalKey("x.SET.7038"),
-		base.ParseInternalKey("y.SET.7039"),
+		base.ParseInternalKey("x#7038,SET"),
+		base.ParseInternalKey("y#7039,SET"),
 	)
 	m04 := newFileMeta(
 		704,
 		1,
-		base.ParseInternalKey("n.SET.7048"),
-		base.ParseInternalKey("p.SET.7049"),
+		base.ParseInternalKey("n#7048,SET"),
+		base.ParseInternalKey("p#7049,SET"),
 	)
 	m05 := newFileMeta(
 		705,
 		1,
-		base.ParseInternalKey("p.SET.7058"),
-		base.ParseInternalKey("p.SET.7059"),
+		base.ParseInternalKey("p#7058,SET"),
+		base.ParseInternalKey("p#7059,SET"),
 	)
 	m06 := newFileMeta(
 		706,
 		1,
-		base.ParseInternalKey("p.SET.7068"),
-		base.ParseInternalKey("u.SET.7069"),
+		base.ParseInternalKey("p#7068,SET"),
+		base.ParseInternalKey("u#7069,SET"),
 	)
 	m07 := newFileMeta(
 		707,
 		1,
-		base.ParseInternalKey("r.SET.7078"),
-		base.ParseInternalKey("s.SET.7079"),
+		base.ParseInternalKey("r#7078,SET"),
+		base.ParseInternalKey("s#7079,SET"),
 	)
 
 	m10 := newFileMeta(
 		710,
 		1,
-		base.ParseInternalKey("d.SET.7108"),
-		base.ParseInternalKey("g.SET.7109"),
+		base.ParseInternalKey("d#7108,SET"),
+		base.ParseInternalKey("g#7109,SET"),
 	)
 	m11 := newFileMeta(
 		711,
 		1,
-		base.ParseInternalKey("h.SET.7118"),
-		base.ParseInternalKey("j.SET.7119"),
+		base.ParseInternalKey("h#7118,SET"),
+		base.ParseInternalKey("j#7119,SET"),
 	)
 	m12 := newFileMeta(
 		712,
 		1,
-		base.ParseInternalKey("n.SET.7128"),
-		base.ParseInternalKey("o.SET.7129"),
+		base.ParseInternalKey("n#7128,SET"),
+		base.ParseInternalKey("o#7129,SET"),
 	)
 	m13 := newFileMeta(
 		713,
 		1,
-		base.ParseInternalKey("p.SET.7149"),
-		base.ParseInternalKey("p.SET.7148"),
+		base.ParseInternalKey("p#7149,SET"),
+		base.ParseInternalKey("p#7148,SET"),
 	)
 	m14 := newFileMeta(
 		714,
 		1,
-		base.ParseInternalKey("q.SET.7138"),
-		base.ParseInternalKey("u.SET.7139"),
+		base.ParseInternalKey("q#7138,SET"),
+		base.ParseInternalKey("u#7139,SET"),
 	)
 
 	v := Version{
@@ -342,14 +342,14 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 					newFileMeta(
 						1,
 						1,
-						base.ParseInternalKey("a.SET.2"),
-						base.ParseInternalKey("c.SET.2"),
+						base.ParseInternalKey("a#2,SET"),
+						base.ParseInternalKey("c#2,SET"),
 					),
 					newFileMeta(
 						2,
 						1,
-						base.ParseInternalKey("d.SET.2"),
-						base.ParseInternalKey("e.SET.2"),
+						base.ParseInternalKey("d#2,SET"),
+						base.ParseInternalKey("e#2,SET"),
 					),
 				},
 			},
@@ -369,28 +369,28 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 					newFileMeta(
 						1,
 						1,
-						base.ParseInternalKey("a.SET.1"),
-						base.ParseInternalKey("c.SET.1"),
+						base.ParseInternalKey("a#1,SET"),
+						base.ParseInternalKey("c#1,SET"),
 					),
 					newFileMeta(
 						2,
 						1,
-						base.ParseInternalKey("l.SET.1"),
-						base.ParseInternalKey("p.SET.1"),
+						base.ParseInternalKey("l#1,SET"),
+						base.ParseInternalKey("p#1,SET"),
 					),
 				},
 				2: {
 					newFileMeta(
 						3,
 						1,
-						base.ParseInternalKey("d.SET.1"),
-						base.ParseInternalKey("i.SET.1"),
+						base.ParseInternalKey("d#1,SET"),
+						base.ParseInternalKey("i#1,SET"),
 					),
 					newFileMeta(
 						4,
 						1,
-						base.ParseInternalKey("s.SET.1"),
-						base.ParseInternalKey("w.SET.1"),
+						base.ParseInternalKey("s#1,SET"),
+						base.ParseInternalKey("w#1,SET"),
 					),
 				},
 			},
@@ -412,40 +412,40 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 					newFileMeta(
 						1,
 						1,
-						base.ParseInternalKey("a.SET.1"),
-						base.ParseInternalKey("c.SET.1"),
+						base.ParseInternalKey("a#1,SET"),
+						base.ParseInternalKey("c#1,SET"),
 					),
 					newFileMeta(
 						2,
 						1,
-						base.ParseInternalKey("d.SET.1"),
-						base.ParseInternalKey("e.SET.1"),
+						base.ParseInternalKey("d#1,SET"),
+						base.ParseInternalKey("e#1,SET"),
 					),
 					newFileMeta(
 						3,
 						1,
-						base.ParseInternalKey("n.SET.1"),
-						base.ParseInternalKey("o.SET.1"),
+						base.ParseInternalKey("n#1,SET"),
+						base.ParseInternalKey("o#1,SET"),
 					),
 					newFileMeta(
 						4,
 						1,
-						base.ParseInternalKey("p.SET.1"),
-						base.ParseInternalKey("q.SET.1"),
+						base.ParseInternalKey("p#1,SET"),
+						base.ParseInternalKey("q#1,SET"),
 					),
 				},
 				2: {
 					newFileMeta(
 						5,
 						1,
-						base.ParseInternalKey("m.SET.1"),
-						base.ParseInternalKey("q.SET.1"),
+						base.ParseInternalKey("m#1,SET"),
+						base.ParseInternalKey("q#1,SET"),
 					),
 					newFileMeta(
 						6,
 						1,
-						base.ParseInternalKey("s.SET.1"),
-						base.ParseInternalKey("w.SET.1"),
+						base.ParseInternalKey("s#1,SET"),
+						base.ParseInternalKey("w#1,SET"),
 					),
 				},
 			},
@@ -467,34 +467,34 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 					newFileMeta(
 						1,
 						1,
-						base.ParseInternalKey("d.SET.1"),
-						base.ParseInternalKey("e.SET.1"),
+						base.ParseInternalKey("d#1,SET"),
+						base.ParseInternalKey("e#1,SET"),
 					),
 					newFileMeta(
 						2,
 						1,
-						base.ParseInternalKey("n.SET.1"),
-						base.ParseInternalKey("o.SET.1"),
+						base.ParseInternalKey("n#1,SET"),
+						base.ParseInternalKey("o#1,SET"),
 					),
 					newFileMeta(
 						3,
 						1,
-						base.ParseInternalKey("p.SET.1"),
-						base.ParseInternalKey("q.SET.1"),
+						base.ParseInternalKey("p#1,SET"),
+						base.ParseInternalKey("q#1,SET"),
 					),
 				},
 				2: {
 					newFileMeta(
 						4,
 						1,
-						base.ParseInternalKey("a.SET.1"),
-						base.ParseInternalKey("c.SET.1"),
+						base.ParseInternalKey("a#1,SET"),
+						base.ParseInternalKey("c#1,SET"),
 					),
 					newFileMeta(
 						5,
 						1,
-						base.ParseInternalKey("d.SET.1"),
-						base.ParseInternalKey("w.SET.1"),
+						base.ParseInternalKey("d#1,SET"),
+						base.ParseInternalKey("w#1,SET"),
 					),
 				},
 			},
@@ -514,16 +514,16 @@ func TestCalculateInuseKeyRanges(t *testing.T) {
 					newFileMeta(
 						1,
 						1,
-						base.ParseInternalKey("a.SET.1"),
-						base.ParseInternalKey("b.RANGEDEL.inf"),
+						base.ParseInternalKey("a#1,SET"),
+						base.ParseInternalKey("b#inf,RANGEDEL"),
 					),
 				},
 				2: {
 					newFileMeta(
 						4,
 						1,
-						base.ParseInternalKey("b.SET.1"),
-						base.ParseInternalKey("c.SET.1"),
+						base.ParseInternalKey("b#1,SET"),
+						base.ParseInternalKey("c#1,SET"),
 					),
 				},
 			},

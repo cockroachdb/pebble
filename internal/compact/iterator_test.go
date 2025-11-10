@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/stretchr/testify/require"
 )
@@ -112,6 +113,10 @@ func TestCompactionIter(t *testing.T) {
 				kvs = kvs[:0]
 				rangeKeys = rangeKeys[:0]
 				rangeDels = rangeDels[:0]
+
+				parsed, err := sstable.ParseTestKVsAndSpans(d.Input, nil /* bv */)
+				require.NoError(t, err)
+
 				rangeDelFragmenter := keyspan.Fragmenter{
 					Cmp:    base.DefaultComparer.Compare,
 					Format: base.DefaultComparer.FormatKey,
@@ -119,40 +124,46 @@ func TestCompactionIter(t *testing.T) {
 						rangeDels = append(rangeDels, s)
 					},
 				}
-				for _, key := range strings.Split(d.Input, "\n") {
-					// If the line ends in a '}' assume it's a span.
-					if strings.HasSuffix(key, "}") {
-						s := keyspan.ParseSpan(strings.TrimSpace(key))
-						rangeKeys = append(rangeKeys, s)
+
+				for _, kv := range parsed {
+					if kv.IsKeySpan() {
+						// Pre-fragmented range key span
+						if rangekey.IsRangeKey(kv.Span.Keys[0].Kind()) {
+							rangeKeys = append(rangeKeys, *kv.Span)
+						} else {
+							// Range delete - add to fragmenter.
+							rangeDelFragmenter.Add(*kv.Span)
+						}
 						continue
 					}
 
-					j := strings.Index(key, ":")
-					ik := base.ParseInternalKey(key[:j])
-					if rangekey.IsRangeKey(ik.Kind()) {
+					// Point key - check for range keys and range deletes
+					if rangekey.IsRangeKey(kv.Key.Kind()) {
 						panic("range keys must be pre-fragmented and formatted as spans")
 					}
-					if ik.Kind() == base.InternalKeyKindRangeDelete {
+
+					if kv.Key.Kind() == base.InternalKeyKindRangeDelete {
+						// Range delete in old format: key#seq,RANGEDEL = endKey
 						rangeDelFragmenter.Add(keyspan.Span{
-							Start: ik.UserKey,
-							End:   []byte(key[j+1:]),
-							Keys:  []keyspan.Key{{Trailer: ik.Trailer}},
+							Start: kv.Key.UserKey,
+							End:   kv.Value,
+							Keys:  []keyspan.Key{{Trailer: kv.Key.Trailer}},
 						})
 						continue
 					}
 
 					var iv base.InternalValue
-					if strings.HasPrefix(key[j+1:], "varint(") {
-						valueStr := strings.TrimSuffix(strings.TrimPrefix(key[j+1:], "varint("), ")")
-						v, err := strconv.ParseUint(valueStr, 10, 64)
+					valueStr := string(kv.Value)
+					if strings.HasPrefix(valueStr, "varint(") {
+						v, err := strconv.ParseUint(strings.TrimSuffix(strings.TrimPrefix(valueStr, "varint("), ")"), 10, 64)
 						require.NoError(t, err)
 						iv = base.MakeInPlaceValue(binary.AppendUvarint([]byte(nil), v))
-					} else if strings.HasPrefix(key[j+1:], "blobref(") {
-						iv = decodeBlobReference(t, key[j+1:])
+					} else if strings.HasPrefix(valueStr, "blobref(") {
+						iv = decodeBlobReference(t, valueStr)
 					} else {
-						iv = base.MakeInPlaceValue([]byte(key[j+1:]))
+						iv = base.MakeInPlaceValue(kv.Value)
 					}
-					kvs = append(kvs, base.InternalKV{K: ik, V: iv})
+					kvs = append(kvs, base.InternalKV{K: kv.Key, V: iv})
 				}
 				rangeDelFragmenter.Finish()
 				return ""
