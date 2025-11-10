@@ -21,5 +21,12 @@ func TestBytesProfile(t *testing.T) {
 	s := p.String()
 	require.Contains(t, s, "0: Count: 100 (100), Bytes: 4950 (4.8KB)")
 	require.Contains(t, s, "1: Count: 10 (10), Bytes: 495 (495B)")
+
+	stacks := p.Collect()
+	require.Len(t, stacks, 2)
+	require.Equal(t, stacks[0].Bytes, int64(4950))
+	require.Equal(t, stacks[0].Count, int64(100))
+	require.Equal(t, stacks[1].Bytes, int64(495))
+	require.Equal(t, stacks[1].Count, int64(10))
 	t.Log(s)
 }
