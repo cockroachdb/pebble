@@ -1,9 +1,9 @@
 # A simple case of read compaction, 2 files in different levels with overlapping ranges
 define
 L5
-a.SET.55:a b.SET.5:b
+a#55,SET:a b#5,SET:b
 L6
-a.SET.54:a b.SET.4:b
+a#54,SET:a b#4,SET:b
 ----
 L5:
   000004:[a#55,SET-b#5,SET]
@@ -40,9 +40,9 @@ maybe-compact
 # Case where there is an in-progress flush. No compaction should occur while flushing is true.
 define
 L5
-a.SET.55:a b.SET.5:b
+a#55,SET:a b#5,SET:b
 L6
-a.SET.54:a b.SET.4:b
+a#54,SET:a b#4,SET:b
 ----
 L5:
   000004:[a#55,SET-b#5,SET]
@@ -96,9 +96,9 @@ L6:
 # In this case, we skip the compaction.
 define
 L5
-a.SET.55:a b.SET.5:b
+a#55,SET:a b#5,SET:b
 L6
-a.SET.55:a b.SET.5:b
+a#55,SET:a b#5,SET:b
 ----
 L5:
   000004:[a#55,SET-b#5,SET]
@@ -133,9 +133,9 @@ L6:
 # So, we skip the compaction.
 define
 L5
-a.SET.55:a b.SET.5:b
+a#55,SET:a b#5,SET:b
 L6
-a.SET.55:a b.SET.5:b
+a#55,SET:a b#5,SET:b
 ----
 L5:
   000004:[a#55,SET-b#5,SET]

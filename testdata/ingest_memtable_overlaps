@@ -126,18 +126,18 @@ set b 1
 ----
 
 overlaps
-a.RANGEDEL.2-b.RANGEDEL.inf
+a#2,RANGEDEL-b#inf,RANGEDEL:
 ----
-false
+true
 
 define default
 del-range b c
 ----
 
 overlaps
-a.RANGEDEL.2-b.RANGEDEL.inf
+a#2,RANGEDEL-b#inf,RANGEDEL:
 ----
-false
+true
 
 define default
 del-range a f
@@ -145,7 +145,7 @@ del-range b c
 ----
 
 overlaps
-d.RANGEDEL.2-e.RANGEDEL.inf
+d#2,RANGEDEL-e#inf,RANGEDEL:
 ----
 true
 
@@ -166,7 +166,7 @@ range-key-set a c 1 val1
 overlaps
 a-c
 b-c
-a.RANGEDEL.2-b.RANGEDEL.inf
+a#2,RANGEDEL-b#inf,RANGEDEL:
 d-e
 ----
 true

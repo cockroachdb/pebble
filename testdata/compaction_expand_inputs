@@ -1,5 +1,5 @@
 define
-a.SET.1-b.SET.2
+a#1,SET-b#2,SET
 ----
 
 expand-inputs 0
@@ -7,9 +7,9 @@ expand-inputs 0
 0: a#1,SET-b#2,SET
 
 define
-a.SET.1-b.SET.2
-c.SET.3-d.SET.4
-e.SET.5-f.SET.6
+a#1,SET-b#2,SET
+c#3,SET-d#4,SET
+e#5,SET-f#6,SET
 ----
 
 expand-inputs 0
@@ -25,9 +25,9 @@ expand-inputs 2
 2: e#5,SET-f#6,SET
 
 define
-a.SET.1-b.RANGEDEL.inf
-b.SET.1-d.SET.4
-e.SET.2-f.SET.6
+a#1,SET-b#inf,RANGEDEL
+b#1,SET-d#4,SET
+e#2,SET-f#6,SET
 ----
 
 expand-inputs 0

@@ -43,9 +43,9 @@ compact a-d
 
 define target-file-sizes=(100, 1)
 L0
-  b.SET.1:v
+  b#1,SET:v
 L0
-  a.SET.2:v
+  a#2,SET:v
 ----
 L0.0:
   000005:[a#2,SET-a#2,SET]
@@ -63,15 +63,15 @@ L1:
 
 define target-file-sizes=(1, 1, 1, 1)
 L1
-  a.SET.3:v
+  a#3,SET:v
 L2
-  a.RANGEDEL.2:e
+  a#2,RANGEDEL:e
 L3
-  a.SET.0:v
-  b.SET.0:v
+  a#0,SET:v
+  b#0,SET:v
 L3
-  c.SET.0:v
-  d.SET.0:v
+  c#0,SET:v
+  d#0,SET:v
 ----
 L1:
   000004:[a#3,SET-a#3,SET]
@@ -114,21 +114,21 @@ compression: None:87,Snappy:76/87
 
 define target-file-sizes=(1, 1, 1, 1)
 L1
-  a.SET.3:v
+  a#3,SET:v
 L2
-  a.RANGEDEL.2:g
+  a#2,RANGEDEL:g
 L3
-  a.SET.0:v
-  b.SET.0:v
+  a#0,SET:v
+  b#0,SET:v
 L3
-  c.SET.0:v
-  d.SET.0:v
+  c#0,SET:v
+  d#0,SET:v
 L3
-  e.SET.0:v
-  f.SET.1:v
+  e#0,SET:v
+  f#1,SET:v
 L3
-  g.SET.1:v
-  g.SET.0:v
+  g#1,SET:v
+  g#0,SET:v
 ----
 L1:
   000004:[a#3,SET-a#3,SET]
@@ -157,19 +157,19 @@ L3:
 
 define target-file-sizes=(1, 1, 1, 1)
 L1
-  a.SET.3:v
-  h.SET.3:v
+  a#3,SET:v
+  h#3,SET:v
 L2
-  a.RANGEDEL.2:g
+  a#2,RANGEDEL:g
 L3
-  a.SET.0:v
-  b.SET.0:v
+  a#0,SET:v
+  b#0,SET:v
 L3
-  c.SET.0:v
-  d.SET.0:v
+  c#0,SET:v
+  d#0,SET:v
 L3
-  e.SET.0:v
-  f.SET.1:v
+  e#0,SET:v
+  f#1,SET:v
 ----
 L1:
   000004:[a#3,SET-h#3,SET]
@@ -198,15 +198,15 @@ L3:
 
 define target-file-sizes=(1, 1, 1, 1)
 L1
-  a.RANGEDEL.3:e
+  a#3,RANGEDEL:e
 L2
-  a.SET.2:v
+  a#2,SET:v
 L3
-  a.SET.0:v
-  b.SET.0:v
+  a#0,SET:v
+  b#0,SET:v
 L3
-  c.SET.0:v
-  d.SET.0:v
+  c#0,SET:v
+  d#0,SET:v
 ----
 L1:
   000004:[a#3,RANGEDEL-e#inf,RANGEDEL]
@@ -232,16 +232,16 @@ L3:
 
 define target-file-sizes=(100, 100, 100, 100)
 L1
-  a.RANGEDEL.4:d
+  a#4,RANGEDEL:d
 L1
-  grandparent.RANGEDEL.2:z
-  h.SET.3:v
+  grandparent#2,RANGEDEL:z
+  h#3,SET:v
 L2
-  grandparent.SET.1:v
+  grandparent#1,SET:v
 L3
-  grandparent.SET.0:v
+  grandparent#0,SET:v
 L3
-  m.SET.0:v
+  m#0,SET:v
 ----
 L1:
   000004:[a#4,RANGEDEL-d#inf,RANGEDEL]
@@ -336,13 +336,13 @@ z: (1, .)
 
 define target-file-sizes=(1, 1, 1, 1)
 L0
-  c.SET.4:4
+  c#4,SET:4
 L1
-  a.SET.3:3
+  a#3,SET:3
 L2
-  a.RANGEDEL.2:e
+  a#2,RANGEDEL:e
 L3
-  b.SET.1:1
+  b#1,SET:1
 ----
 L0.0:
   000004:[c#4,SET-c#4,SET]
@@ -395,12 +395,12 @@ a: (3, .)
 
 define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
 L1
-  a.SET.4:4
+  a#4,SET:4
 L1
-  b.SET.2:2
-  b.RANGEDEL.3:e
+  b#2,SET:2
+  b#3,RANGEDEL:e
 L3
-  b.SET.1:1
+  b#1,SET:1
 ----
 L1:
   000004:[a#4,SET-a#4,SET]
@@ -432,12 +432,12 @@ a: (4, .)
 
 define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
 L1
-  a.SET.4:4
+  a#4,SET:4
 L1
-  b.SET.3:3
-  b.RANGEDEL.3:e
+  b#3,SET:3
+  b#3,RANGEDEL:e
 L3
-  b.SET.1:1
+  b#1,SET:1
 ----
 L1:
   000004:[a#4,SET-a#4,SET]
@@ -473,12 +473,12 @@ a: (4, .)
 
 define target-file-sizes=(26, 26, 26, 26) snapshots=(1, 2, 3)
 L1
-  a.SET.4:4
+  a#4,SET:4
 L1
-  b.SET.4:4
-  b.RANGEDEL.2:e
+  b#4,SET:4
+  b#2,RANGEDEL:e
 L3
-  b.SET.1:1
+  b#1,SET:1
 ----
 L1:
   000004:[a#4,SET-a#4,SET]
@@ -514,14 +514,14 @@ a: (4, .)
 
 define target-file-sizes=(1, 1, 26) snapshots=(2)
 L1
-  a.SET.3:3
-  b.RANGEDEL.3:e
-  b.SET.0:0
+  a#3,SET:3
+  b#3,RANGEDEL:e
+  b#0,SET:0
 L3
-  a.RANGEDEL.2:b
+  a#2,RANGEDEL:b
 L3
-  c.SET.0:0
-  d.SET.0:0
+  c#0,SET:0
+  d#0,SET:0
 ----
 L1:
   000004:[a#3,SET-e#inf,RANGEDEL]
@@ -560,13 +560,13 @@ a: (3, .)
 
 define target-file-sizes=(100, 1, 52) snapshots=(2)
 L1
-  a.SET.3:3
-  b.RANGEDEL.3:e
-  b.SET.0:0
-  c.SET.3:1
-  d.SET.1:1
+  a#3,SET:3
+  b#3,RANGEDEL:e
+  b#0,SET:0
+  c#3,SET:1
+  d#1,SET:1
 L3
-  c.RANGEDEL.2:d
+  c#2,RANGEDEL:d
 ----
 L1:
   000004:[a#3,SET-e#inf,RANGEDEL]
@@ -591,10 +591,10 @@ L3:
 
 define target-file-sizes=(1, 1, 1)
 L1
-  a.SET.0:0
-  c.RANGEDEL.1:d
+  a#0,SET:0
+  c#1,RANGEDEL:d
 L3
-  b.SET.0:0
+  b#0,SET:0
 ----
 L1:
   000004:[a#0,SET-d#inf,RANGEDEL]
@@ -610,9 +610,9 @@ L3:
 
 define target-file-sizes=(1, 1, 1, 1)
 L0
-  b.SET.1:v
+  b#1,SET:v
 L0
-  a.SET.2:v
+  a#2,SET:v
 ----
 L0.0:
   000005:[a#2,SET-a#2,SET]
@@ -681,24 +681,24 @@ concurrency set to [1, 1]
 
 define target-file-sizes=(1, 1, 1, 1)
 L1
-  a.RANGEDEL.4:b
-  c.RANGEDEL.4:d
-  e.RANGEDEL.4:f
+  a#4,RANGEDEL:b
+  c#4,RANGEDEL:d
+  e#4,RANGEDEL:f
 L1
-  g.RANGEDEL.6:h
-  i.RANGEDEL.4:j
+  g#6,RANGEDEL:h
+  i#4,RANGEDEL:j
 L1
-  k.RANGEDEL.5:q
-  m.RANGEDEL.4:q
+  k#5,RANGEDEL:q
+  m#4,RANGEDEL:q
 L2
-  a.SET.2:foo
+  a#2,SET:foo
 L3
-  a.SET.1:foo
-  c.SET.1:foo
+  a#1,SET:foo
+  c#1,SET:foo
 L3
-  ff.SET.1:v
+  ff#1,SET:v
 L3
-  k.SET.1:foo
+  k#1,SET:foo
 ----
 L1:
   000004:[a#4,RANGEDEL-f#inf,RANGEDEL]
@@ -727,13 +727,13 @@ L3:
 # is non-empty.
 define target-file-sizes=(1, 1, 1)
 L1
-  a.RANGEDEL.10:b
-  d.RANGEDEL.9:e
-  q.RANGEDEL.8:r
+  a#10,RANGEDEL:b
+  d#9,RANGEDEL:e
+  q#8,RANGEDEL:r
 L2
-  g.RANGEDEL.7:h
+  g#7,RANGEDEL:h
 L3
-  q.SET.6:6
+  q#6,SET:6
 ----
 L1:
   000004:[a#10,RANGEDEL-r#inf,RANGEDEL]
@@ -755,12 +755,12 @@ L3:
 
 define target-file-sizes=(1, 1, 1) snapshots=(14)
 L1
-  a.RANGEDEL.15:z
-  b.SET.11:foo
-  c.SET.11:foo
+  a#15,RANGEDEL:z
+  b#11,SET:foo
+  c#11,SET:foo
 L2
-  c.SET.0:foo
-  d.SET.0:foo
+  c#0,SET:foo
+  d#0,SET:foo
 ----
 L1:
   000004:[a#15,RANGEDEL-z#inf,RANGEDEL]
@@ -782,12 +782,12 @@ L2:
 
 define target-file-sizes=(1, 1, 1)
 L1
-  a.RANGEDEL.10:z
-  b.SET.11:foo
-  c.SET.11:foo
+  a#10,RANGEDEL:z
+  b#11,SET:foo
+  c#11,SET:foo
 L2
-  c.SET.0:foo
-  d.SET.0:foo
+  c#0,SET:foo
+  d#0,SET:foo
 ----
 L1:
   000004:[a#10,RANGEDEL-z#inf,RANGEDEL]
@@ -802,9 +802,9 @@ L2:
 
 define snapshots=(10)
 L1
-  a.MERGE.15:a15
+  a#15,MERGE:a15
 L2
-  a.SET.5:a5
+  a#5,SET:a5
 ----
 L1:
   000004:[a#15,MERGE-a#15,MERGE]

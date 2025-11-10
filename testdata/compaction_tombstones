@@ -3,7 +3,7 @@
 # compaction is pursued.
 define snapshots=(70, 100, 180, 210)
 L6
-b.RANGEDEL.230:h h.RANGEDEL.200:r
+b#230,RANGEDEL:h h#200,RANGEDEL:r
 ----
 L6:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
@@ -26,7 +26,7 @@ maybe-compact
 # only contains deletes, no new sstable is written.
 define snapshots=(270, 300, 380, 410)
 L6
-b.RANGEDEL.230:h h.RANGEDEL.200:r
+b#230,RANGEDEL:h h#200,RANGEDEL:r
 ----
 L6:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
@@ -48,7 +48,7 @@ maybe-compact
 # Test a table that straddles a snapshot. It should not be compacted.
 define snapshots=(50) auto-compactions=off
 L6
-a.SET.55:a b.RANGEDEL.5:h
+a#55,SET:a b#5,RANGEDEL:h
 ----
 L6:
   000004:[a#55,SET-h#inf,RANGEDEL]
@@ -72,7 +72,7 @@ maybe-compact
 # written.
 define auto-compactions=off
 L6
-a.SET.55:a b.DEL.5:
+a#55,SET:a b#5,DEL:
 ----
 L6:
   000004:[a#55,SET-b#5,DEL]
@@ -112,7 +112,7 @@ maybe-compact
 # table, but shouldn't happen until the snapshots are removed.
 define snapshots=(59, 103) auto-compactions=off
 L6
-a.DEL.60: a.SET.55:a b.SET.100:b c.SET.101:c d.SET.102:d b.RANGEDEL.103:z
+a#60,DEL: a#55,SET:a b#100,SET:b c#101,SET:c d#102,SET:d b#103,RANGEDEL:z
 ----
 L6:
   000004:[a#60,DEL-z#inf,RANGEDEL]
@@ -146,7 +146,7 @@ close-snapshot
 # compacted because it falls beneath the threshold.
 define snapshots=(15) auto-compactions=off
 L6
-a.DEL.20: a.SET.1:a b.SET.2:b c.SET.3:c d.SET.4:d e.SET.5:e f.SET.6:f g.SET.7:g h.SET.8:h i.SET.9:i j.SET.10:j
+a#20,DEL: a#1,SET:a b#2,SET:b c#3,SET:c d#4,SET:d e#5,SET:e f#6,SET:f g#7,SET:g h#8,SET:h i#9,SET:i j#10,SET:j
 ----
 L6:
   000004:[a#20,DEL-j#10,SET]
@@ -173,15 +173,15 @@ close-snapshot
 # automatic compaction compacts before we've closen the snapshot.
 define snapshots=(103) level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
-b.SET.200:<rand-bytes=4096> bb.SET.203:<rand-bytes=4096> cc.SET.204:<rand-bytes=4096>
+b#200,SET:<rand-bytes=4096> bb#203,SET:<rand-bytes=4096> cc#204,SET:<rand-bytes=4096>
 L5
-d.SET.302:<rand-bytes=4096> dd.SET.303:<rand-bytes=4096> de.SET.303:<rand-bytes=4096>
+d#302,SET:<rand-bytes=4096> dd#303,SET:<rand-bytes=4096> de#303,SET:<rand-bytes=4096>
 L5
-m.SET.320:<rand-bytes=4096> n.SET.330:<rand-bytes=4096> o.SET.340:<rand-bytes=4096>
+m#320,SET:<rand-bytes=4096> n#330,SET:<rand-bytes=4096> o#340,SET:<rand-bytes=4096>
 L6
-a.SET.55:<rand-bytes=4096> b.SET.100:<rand-bytes=4096> c.SET.101:<rand-bytes=4096> d.SET.102:<rand-bytes=4096> a.RANGEDEL.103:e
+a#55,SET:<rand-bytes=4096> b#100,SET:<rand-bytes=4096> c#101,SET:<rand-bytes=4096> d#102,SET:<rand-bytes=4096> a#103,RANGEDEL:e
 L6
-f.SET.30:<rand-bytes=4096> z.SET.31:<rand-bytes=4096>
+f#30,SET:<rand-bytes=4096> z#31,SET:<rand-bytes=4096>
 ----
 L5:
   000004:[b#200,SET-cc#204,SET]
@@ -219,13 +219,13 @@ maybe-compact
 
 define level-max-bytes=(L5 : 1000) auto-compactions=off
 L5
-a.DEL.101: b.DEL.102: c.DEL.103:
+a#101,DEL: b#102,DEL: c#103,DEL:
 L5
-m.SET.107:<rand-bytes=4096>
+m#107,SET:<rand-bytes=4096>
 L6
-a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
+a#001,SET:<rand-bytes=4096> b#002,SET:<rand-bytes=4096> c#003,SET:<rand-bytes=4096>
 L6
-f.SET.007:<rand-bytes=4096> x.SET.008:<rand-bytes=4096> z.SET.009:<rand-bytes=4096>
+f#007,SET:<rand-bytes=4096> x#008,SET:<rand-bytes=4096> z#009,SET:<rand-bytes=4096>
 ----
 L5:
   000004:[a#101,DEL-c#103,DEL]
@@ -315,10 +315,10 @@ maybe-compact
 define auto-compactions=off
 L6
   rangekey:a-b:{(#1,RANGEKEYDEL)}
-  a.SET.2:a
-  b.SET.3:b
-  c.SET.4:c
-  c.RANGEDEL.5:z
+  a#2,SET:a
+  b#3,SET:b
+  c#4,SET:c
+  c#5,RANGEDEL:z
 ----
 L6:
   000004:[a#2,SET-z#inf,RANGEDEL]
@@ -350,13 +350,13 @@ close
 
 define auto-compactions=off level-max-bytes=(L5 : 1000)
 L5
-a.DEL.101: b.SET.102:
+a#101,DEL: b#102,SET:
 L5
-e.RANGEDEL.107:f f.SET.108:
+e#107,RANGEDEL:f f#108,SET:
 L6
-a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
+a#001,SET:<rand-bytes=4096> b#002,SET:<rand-bytes=4096> c#003,SET:<rand-bytes=4096>
 L6
-e.SET.007:<rand-bytes=4096> f.SET.008:<rand-bytes=4096> g.SET.009:<rand-bytes=4096>
+e#007,SET:<rand-bytes=4096> f#008,SET:<rand-bytes=4096> g#009,SET:<rand-bytes=4096>
 ----
 L5:
   000004:[a#101,DEL-b#102,SET]
@@ -399,13 +399,13 @@ maybe-compact
 
 define auto-compactions=off level-max-bytes=(L5 : 1000) point-tombstone-weight=2
 L5
-a.DEL.101: b.SET.102:
+a#101,DEL: b#102,SET:
 L5
-e.RANGEDEL.107:f f.SET.108:
+e#107,RANGEDEL:f f#108,SET:
 L6
-a.SET.001:<rand-bytes=4096> b.SET.002:<rand-bytes=4096> c.SET.003:<rand-bytes=4096>
+a#001,SET:<rand-bytes=4096> b#002,SET:<rand-bytes=4096> c#003,SET:<rand-bytes=4096>
 L6
-e.SET.007:<rand-bytes=4096> f.SET.008:<rand-bytes=4096> g.SET.009:<rand-bytes=4096>
+e#007,SET:<rand-bytes=4096> f#008,SET:<rand-bytes=4096> g#009,SET:<rand-bytes=4096>
 ----
 L5:
   000004:[a#101,DEL-b#102,SET]
@@ -480,9 +480,9 @@ maybe-compact
 
 define auto-compactions=off
 L4
-a.DEL.101: b.DEL.102: c.DEL.103: d.SET.104:d e.SET.105:e
+a#101,DEL: b#102,DEL: c#103,DEL: d#104,SET:d e#105,SET:e
 L6
-x.SET.001:x y.SET.002:y z.SET.003:z
+x#001,SET:x y#002,SET:y z#003,SET:z
 ----
 L4:
   000004:[a#101,DEL-e#105,SET]
@@ -540,11 +540,11 @@ L6:
 
 define auto-compactions=off
 L4
-a.DEL.101: b.DEL.102: c.DEL.103: d.SET.104:d e.SET.105:e
+a#101,DEL: b#102,DEL: c#103,DEL: d#104,SET:d e#105,SET:e
 L5
-c.SET.50:c d.SET.51:d
+c#50,SET:c d#51,SET:d
 L6
-x.SET.001:x y.SET.002:y z.SET.003:z
+x#001,SET:x y#002,SET:y z#003,SET:z
 ----
 L4:
   000004:[a#101,DEL-e#105,SET]
@@ -605,9 +605,9 @@ L6:
 
 define auto-compactions=off
 L4
-a.DEL.101: b.DEL.102: c.DEL.103: d.SET.104:d e.SET.105:e
+a#101,DEL: b#102,DEL: c#103,DEL: d#104,SET:d e#105,SET:e
 L6
-a.SET.001:<rand-bytes=1000000> e.SET.002:<rand-bytes=1000000>
+a#001,SET:<rand-bytes=1000000> e#002,SET:<rand-bytes=1000000>
 ----
 L4:
   000004:[a#101,DEL-e#105,SET]

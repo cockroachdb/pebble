@@ -325,14 +325,14 @@ b@4: (b@4, .)
 
 define snapshots=(4)
 L5
-  b.RANGEDEL.3:d
-  b@9.SET.9:v
-  c@9.SET.9:v
-  d@9.SET.9:v
+  b#3,RANGEDEL:d
+  b@9#9,SET:v
+  c@9#9,SET:v
+  d@9#9,SET:v
 L6
-  b@2.SET.2:v
-  c@2.SET.2:v
-  d@2.SET.2:v
+  b@2#2,SET:v
+  c@2#2,SET:v
+  d@2#2,SET:v
 ----
 L5:
   000004:[b#3,RANGEDEL-d@9#9,SET]
@@ -355,10 +355,10 @@ seek-prefix-ge c@9
 
 define bloom-bits-per-key=100
 L4
-  b@0.SET.10:b@0
+  b@0#10,SET:b@0
 L5
-  b@8.RANGEDEL.3:b@1
-  c@3.SET.0:c@3
+  b@8#3,RANGEDEL:b@1
+  c@3#0,SET:c@3
 ----
 L4:
   000004:[b@0#10,SET-b@0#10,SET]
@@ -377,9 +377,9 @@ c@3: (c@3, .)
 
 define bloom-bits-per-key=100
 L4
-  b@0.SET.10:b@0
+  b@0#10,SET:b@0
 L4
-  d@3.SET.10:d@3
+  d@3#10,SET:d@3
 ----
 L4:
   000004:[b@0#10,SET-b@0#10,SET]

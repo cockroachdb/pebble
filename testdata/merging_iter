@@ -513,7 +513,7 @@ L
     b#90,SET:90 cat#70,SET:70 g#80,SET:80 o#65,SET:65
 L
   000021:[a#41,SET-z#inf,RANGEDEL]
-    a#41,SET:41 koujdlp.MERGE.37:37 ok#46,SET:46 v#43,SET:43
+    a#41,SET:41 koujdlp#37,MERGE:37 ok#46,SET:46 v#43,SET:43
     v#19,RANGEDEL:z
 ----
 L1:

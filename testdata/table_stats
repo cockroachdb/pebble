@@ -134,19 +134,19 @@ wait-pending-table-stats
 
 define target-file-sizes=(100, 1)
 L4
-  a.RANGEDEL.8:f
+  a#8,RANGEDEL:f
 L5
-  b.SET.7:v
+  b#7,SET:v
 L6
-  a.SET.1:v
+  a#1,SET:v
 L6
-  b.SET.2:v
+  b#2,SET:v
 L6
-  c.SET.3:v
+  c#3,SET:v
 L6
-  d.SET.4:v
+  d#4,SET:v
 L6
-  e.SET.5:v
+  e#5,SET:v
 ----
 L4:
   000004:[a#8,RANGEDEL-f#inf,RANGEDEL]
@@ -197,7 +197,7 @@ range-deletions-bytes-estimate: 454
 # blocks. Note that the snapshot is required to allow the hint to be computed.
 define block-size=1 snapshots=(10)
 L6
-  e.SET.5:e a.RANGEDEL.15:f m.SET.5:m g.RANGEDEL.15:z
+  e#5,SET:e a#15,RANGEDEL:f m#5,SET:m g#15,RANGEDEL:z
 ----
 L6:
   000004:[a#15,RANGEDEL-z#inf,RANGEDEL]
@@ -223,13 +223,13 @@ range-deletions-bytes-estimate: 78
 
 define block-size=1
 L0
-  a.RANGEDEL.2:b
+  a#2,RANGEDEL:b
 L1
-  d.RANGEDEL.1:f
+  d#1,RANGEDEL:f
 L2
-  a.SET.0:a d.SET.0:d
+  a#0,SET:a d#0,SET:d
 L2
-  e.SET.0:e h.SET.0:h
+  e#0,SET:e h#0,SET:h
 ----
 L0.0:
   000004:[a#2,RANGEDEL-b#inf,RANGEDEL]
@@ -453,10 +453,10 @@ range-deletions-bytes-estimate: 0
 
 define block-size=1 target-file-sizes=(100, 1)
 L4
-  a.RANGEDEL.4:c
+  a#4,RANGEDEL:c
 L5
-  a.RANGEDEL.2:e
-  b.SET.3:b
+  a#2,RANGEDEL:e
+  b#3,SET:b
 L6
   rangekey:c-d:{(#1,RANGEKEYSET,@1,foo)}
 ----
@@ -493,10 +493,10 @@ range-deletions-bytes-estimate: 26
 
 define format-major-version=15 block-size=32768
 L6
-  bar.SET.0:<rand-bytes=10>
-  bax.SET.0:<rand-bytes=10>
-  foo.SET.0:<rand-bytes=100000>
-  moo.SET.0:<rand-bytes=1>
+  bar#0,SET:<rand-bytes=10>
+  bax#0,SET:<rand-bytes=10>
+  foo#0,SET:<rand-bytes=100000>
+  moo#0,SET:<rand-bytes=1>
 ----
 L6:
   000004:[bar#0,SET-moo#0,SET]

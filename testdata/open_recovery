@@ -2,15 +2,15 @@
 
 define auto-compactions=off
 L0
-  e.SET.7:boo
+  e#7,SET:boo
 L5
-  b.SET.3:foo
-  c.SET.4:foo
-  d.SET.5:foo
-  e.SET.6:foo
+  b#3,SET:foo
+  c#4,SET:foo
+  d#5,SET:foo
+  e#6,SET:foo
 L6
-  c.SET.0:foo
-  d.SET.0:foo
+  c#0,SET:foo
+  d#0,SET:foo
 ----
 L0.0:
   000004:[e#7,SET-e#7,SET]

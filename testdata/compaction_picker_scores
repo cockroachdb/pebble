@@ -3,13 +3,13 @@
 
 define lbase-max-bytes=65536 enable-table-stats=false
 L5
-  a.RANGEDEL.2:f
+  a#2,RANGEDEL:f
 L6
-  a.SET.1:<rand-bytes=65536>
-  b.SET.1:<rand-bytes=65536>
-  c.SET.1:<rand-bytes=65536>
-  d.SET.1:<rand-bytes=65536>
-  e.SET.1:<rand-bytes=65536>
+  a#1,SET:<rand-bytes=65536>
+  b#1,SET:<rand-bytes=65536>
+  c#1,SET:<rand-bytes=65536>
+  d#1,SET:<rand-bytes=65536>
+  e#1,SET:<rand-bytes=65536>
 ----
 L5:
   000004:[a#2,RANGEDEL-f#inf,RANGEDEL]
@@ -56,17 +56,17 @@ L6       321KB    1.11     1.11           1.11
 
 define lbase-max-bytes=65536  enable-table-stats=false
 L5
-  a.DEL.2:
-  b.DEL.2:
-  c.DEL.2:
-  d.DEL.2:
-  e.DEL.2:
+  a#2,DEL:
+  b#2,DEL:
+  c#2,DEL:
+  d#2,DEL:
+  e#2,DEL:
 L6
-  a.SET.1:<rand-bytes=65536>
-  b.SET.1:<rand-bytes=65536>
-  c.SET.1:<rand-bytes=65536>
-  d.SET.1:<rand-bytes=65536>
-  e.SET.1:<rand-bytes=65536>
+  a#1,SET:<rand-bytes=65536>
+  b#1,SET:<rand-bytes=65536>
+  c#1,SET:<rand-bytes=65536>
+  d#1,SET:<rand-bytes=65536>
+  e#1,SET:<rand-bytes=65536>
 ----
 L5:
   000004:[a#2,DEL-e#2,DEL]
@@ -120,11 +120,11 @@ L6       321KB    1.11     1.11           1.11
 
 define lbase-max-bytes=65536  enable-table-stats=true auto-compactions=off
 L6
-  a.SET.1:<rand-bytes=65536>
-  b.SET.1:<rand-bytes=65536>
-  c.SET.1:<rand-bytes=65536>
-  d.SET.1:<rand-bytes=65536>
-  e.SET.1:<rand-bytes=65536>
+  a#1,SET:<rand-bytes=65536>
+  b#1,SET:<rand-bytes=65536>
+  c#1,SET:<rand-bytes=65536>
+  d#1,SET:<rand-bytes=65536>
+  e#1,SET:<rand-bytes=65536>
 ----
 L6:
   000004:[a#1,SET-e#1,SET]
@@ -180,19 +180,19 @@ L6:
 
 define lbase-max-bytes=65536  enable-table-stats=false auto-compactions=on pause-cleaning
 L5
-  aa.SET.2:<rand-bytes=131072>
-  bb.SET.2:<rand-bytes=131072>
-  cc.SET.2:<rand-bytes=131072>
-  dd.SET.2:<rand-bytes=131072>
+  aa#2,SET:<rand-bytes=131072>
+  bb#2,SET:<rand-bytes=131072>
+  cc#2,SET:<rand-bytes=131072>
+  dd#2,SET:<rand-bytes=131072>
 L5
-  e.SET.2:<rand-bytes=131072>
+  e#2,SET:<rand-bytes=131072>
 L6
-  a.SET.1:<rand-bytes=65536>
-  b.SET.1:<rand-bytes=65536>
-  c.SET.1:<rand-bytes=65536>
-  d.SET.1:<rand-bytes=65536>
+  a#1,SET:<rand-bytes=65536>
+  b#1,SET:<rand-bytes=65536>
+  c#1,SET:<rand-bytes=65536>
+  d#1,SET:<rand-bytes=65536>
 L6
-  e.SET.1:<rand-bytes=131072>
+  e#1,SET:<rand-bytes=131072>
 ----
 L5:
   000004:[aa#2,SET-dd#2,SET]

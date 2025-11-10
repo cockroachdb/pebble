@@ -15,11 +15,11 @@
 # we consider the file boundaries, which is why its lower sequence number is ok.
 define
 L
-a.SET.30 e.RANGEDEL.inf
-a.SET.30:30 c.SET.27:27 Span:a-f:{(#8,RANGEDEL)}
+a#30,SET e#inf,RANGEDEL
+a#30,SET:30 c#27,SET:27 Span:a-f:{(#8,RANGEDEL)}
 L
-e.SET.10 g.SET.20
-e.SET.10:10 g.SET.20:20 Span:e-f:{(#8,RANGEDEL)}
+e#10,SET g#20,SET
+e#10,SET:10 g#20,SET:20 Span:e-f:{(#8,RANGEDEL)}
 ----
 Level 1
   file 0: [a#30,SET-e#inf,RANGEDEL]
@@ -33,11 +33,11 @@ check
 # lower level once we consider the file boundaries, which is why its lower sequence number is ok.
 define
 L
-a.SET.15 f.SET.16
-a.SET.15:15 c.SET.13:13 f.SET.16:16 Span:a-h:{(#12,RANGEDEL)}
+a#15,SET f#16,SET
+a#15,SET:15 c#13,SET:13 f#16,SET:16 Span:a-h:{(#12,RANGEDEL)}
 L
-e.SET.10 g.SET.15
-e.SET.10:10 g.SET.15:15
+e#10,SET g#15,SET
+e#10,SET:10 g#15,SET:15
 ----
 Level 1
   file 0: [a#15,SET-f#16,SET]
@@ -51,11 +51,11 @@ check
 # boundaries (which are non-overlapping).
 define
 L
-c.SET.30 f.RANGEDEL.0
-c.SET.30:30 d.SET.27:27 Span:a-f:{(#8,RANGEDEL)}
+c#30,SET f#0,RANGEDEL
+c#30,SET:30 d#27,SET:27 Span:a-f:{(#8,RANGEDEL)}
 L
-a.SET.10 c.RANGEDEL.inf
-a.SET.10:10 b.SET.12:12 Span:a-f:{(#8,RANGEDEL)}
+a#10,SET c#inf,RANGEDEL
+a#10,SET:10 b#12,SET:12 Span:a-f:{(#8,RANGEDEL)}
 ----
 Level 1
   file 0: [c#30,SET-f#0,RANGEDEL]
@@ -69,11 +69,11 @@ check
 # which has a higher sequence number, when we consider the file boundaries.
 define
 L
-c.SET.15 g.SET.16
-c.SET.15:15 f.SET.13:13 g.SET.16:16 Span:a-h:{(#12,RANGEDEL)}
+c#15,SET g#16,SET
+c#15,SET:15 f#13,SET:13 g#16,SET:16 Span:a-h:{(#12,RANGEDEL)}
 L
-b.SET.14 d.SET.10
-b.SET.14:14 d.SET.10:10
+b#14,SET d#10,SET
+b#14,SET:14 d#10,SET:10
 ----
 Level 1
   file 0: [c#15,SET-g#16,SET]
@@ -86,11 +86,11 @@ check
 # The two files do not overlap despite the seeming overlap of the range tombstones.
 define
 L
-a.SET.30 e.RANGEDEL.inf
-a.SET.30:30 c.SET.27:27 Span:a-g:{(#8,RANGEDEL)}
+a#30,SET e#inf,RANGEDEL
+a#30,SET:30 c#27,SET:27 Span:a-g:{(#8,RANGEDEL)}
 L
-e.SET.10 g.SET.20
-e.SET.10:10 g.SET.20:20 Span:e-g:{(#8,RANGEDEL)}
+e#10,SET g#20,SET
+e#10,SET:10 g#20,SET:20 Span:e-g:{(#8,RANGEDEL)}
 ----
 Level 1
   file 0: [a#30,SET-e#inf,RANGEDEL]
@@ -102,11 +102,11 @@ check
 
 define
 L
-a.SET.30 e.RANGEDEL.inf
-a.SET.30:30 c.SET.27:27 Span:a-g:{(#8,RANGEDEL)}
+a#30,SET e#inf,RANGEDEL
+a#30,SET:30 c#27,SET:27 Span:a-g:{(#8,RANGEDEL)}
 L
-a.SET.10 g.SET.20
-a.SET.10:10 c.SET.28:28 g.SET.20:20
+a#10,SET g#20,SET
+a#10,SET:10 c#28,SET:28 g#20,SET:20
 ----
 Level 1
   file 0: [a#30,SET-e#inf,RANGEDEL]
@@ -121,11 +121,11 @@ found InternalKey c#27,SET in L1: fileNum=000010 and InternalKey c#28,SET in L2:
 # lower level.
 define
 L
-a.SET.30 g.RANGEDEL.inf
-a.SET.30:30 c.SET.27:27 Span:a-g:{(#8,RANGEDEL)}
+a#30,SET g#inf,RANGEDEL
+a#30,SET:30 c#27,SET:27 Span:a-g:{(#8,RANGEDEL)}
 L
-g.SET.10 j.SET.20
-g.SET.10:10 j.SET.20:20
+g#10,SET j#20,SET
+g#10,SET:10 j#20,SET:20
 ----
 Level 1
   file 0: [a#30,SET-g#inf,RANGEDEL]
@@ -137,11 +137,11 @@ check
 
 define
 L
-a.SET.30 g.SET.8
-a.SET.30:30 c.SET.27:27 Span:a-g:{(#8,RANGEDEL)} g.SET.8:8
+a#30,SET g#8,SET
+a#30,SET:30 c#27,SET:27 Span:a-g:{(#8,RANGEDEL)} g#8,SET:8
 L
-g.SET.10 j.SET.20
-g.SET.10:10 j.SET.20:20
+g#10,SET j#20,SET
+g#10,SET:10 j#20,SET:20
 ----
 Level 1
   file 0: [a#30,SET-g#8,SET]
@@ -154,11 +154,11 @@ found InternalKey g#8,SET in L1: fileNum=000014 and InternalKey g#10,SET in L2: 
 
 define
 L
-a.SET.30 g.SET.30
-a.SET.30:30 c.SET.8:8 g.SET.30:30
+a#30,SET g#30,SET
+a#30,SET:30 c#8,SET:8 g#30,SET:30
 L
-a.SET.10 j.SET.20
-a.SET.10:10 j.SET.20:20 Span:b-g:{(#10,RANGEDEL)}
+a#10,SET j#20,SET
+a#10,SET:10 j#20,SET:20 Span:b-g:{(#10,RANGEDEL)}
 ----
 Level 1
   file 0: [a#30,SET-g#30,SET]
@@ -171,10 +171,10 @@ tombstone b-g:{(#10,RANGEDEL)} in L2: fileNum=000017 deletes key c#8,SET in L1: 
 
 define
 L
-a.RANGEDEL.8 c.RANGEDEL.inf
+a#8,RANGEDEL c#inf,RANGEDEL
 Span:a-c:{(#8,RANGEDEL)}
 L
-a.RANGEDEL.6 d.RANGEDEL.inf
+a#6,RANGEDEL d#inf,RANGEDEL
 Span:a-d:{(#6,RANGEDEL)} Span:b-c:{(#10,RANGEDEL)}
 ----
 Level 1
@@ -189,11 +189,11 @@ encountered tombstone b-c:{(#8,RANGEDEL)} in L1: fileNum=000018 that has a lower
 # Check incorrect ordering of point keys in an sstable.
 define disable-key-order-checks
 L
-a.SET.3 e.SET.4
-e.SET.4:e a.SET.3:a
+a#3,SET e#4,SET
+e#4,SET:e a#3,SET:a
 L
-d.SET.1 f.SET.2
-d.SET.1:d f.SET.2:f
+d#1,SET f#2,SET
+d#1,SET:d f#2,SET:f
 ----
 Level 1
   file 0: [a#3,SET-e#4,SET]
@@ -207,10 +207,10 @@ out of order keys e#4,SET >= a#3,SET in L1: fileNum=000020
 # Check successive sstables on a level are ordered.
 define disable-key-order-checks
 L
-a.SET.1 b.SET.2
-a.SET.1:a b.SET.2:b
-b.SET.3 c.SET.4
-b.SET.3:b c.SET.4:c
+a#1,SET b#2,SET
+a#1,SET:a b#2,SET:b
+b#3,SET c#4,SET
+b#3,SET:b c#4,SET:c
 ----
 Level 1
   file 0: [a#1,SET-b#2,SET]
@@ -226,7 +226,7 @@ out of order keys b#2,SET >= b#3,SET in L1: fileNum=000023
 # Case 1: Fragmented but not ordered.
 define write-unfragmented disable-key-order-checks
 L
-a.RANGEDEL.1 g.RANGEDEL.inf
+a#1,RANGEDEL g#inf,RANGEDEL
 Span:d-e:{(#2,RANGEDEL)-(#1,RANGEDEL)} Span:f-g:{(#3,RANGEDEL)} Span:a-b:{(#4,RANGEDEL)}
 ----
 Level 1
@@ -239,7 +239,7 @@ unordered or unfragmented range delete tombstones f-g:{(#3,RANGEDEL)}, a-b:{(#4,
 # Case 2: Ordered but not fragmented.
 define write-unfragmented disable-key-order-checks
 L
-a.RANGEDEL.1 d.RANGEDEL.inf
+a#1,RANGEDEL d#inf,RANGEDEL
 Span:a-d:{(#1,RANGEDEL)} Span:b-c:{(#2,RANGEDEL)}
 ----
 Level 1
@@ -252,7 +252,7 @@ unordered or unfragmented range delete tombstones a-d:{(#1,RANGEDEL)}, b-c:{(#2,
 # Case 3: Verify check is done before truncation.
 define write-unfragmented disable-key-order-checks
 L
-a.RANGEDEL.1 b.RANGEDEL.inf
+a#1,RANGEDEL b#inf,RANGEDEL
 Span:a-z:{(#1,RANGEDEL)} Span:d-e:{(#2,RANGEDEL)}
 ----
 Level 1
@@ -268,8 +268,8 @@ unordered or unfragmented range delete tombstones a-z:{(#1,RANGEDEL)}, d-e:{(#2,
 # them fails.
 define
 L
-a.MERGE.10 a.MERGE.9
-a.MERGE.10:10 a.MERGE.9:fail-merge
+a#10,MERGE a#9,MERGE
+a#10,MERGE:10 a#9,MERGE:fail-merge
 ----
 Level 1
   file 0: [a#10,MERGE-a#9,MERGE]
@@ -281,8 +281,8 @@ merge processing error on key a#9,MERGE in L1: fileNum=000027: merge failed
 # Case 2: Last checked key is a MERGE record.
 define
 L
-a.MERGE.10 a.MERGE.9
-a.MERGE.10:10 a.MERGE.9:fail-finish
+a#10,MERGE a#9,MERGE
+a#10,MERGE:10 a#9,MERGE:fail-finish
 ----
 Level 1
   file 0: [a#10,MERGE-a#9,MERGE]
@@ -295,8 +295,8 @@ merge processing error on key a#9,MERGE in L1: fileNum=000028: finish failed
 # processed.
 define
 L
-a.MERGE.10 a.SINGLEDEL.3
-a.MERGE.10:10 a.MERGE.9:9 a.SET.8:8 a.MERGE.7:7 a.MERGE.6:6 a.DEL.5: a.MERGE.4:fail-finish a.SINGLEDEL.3:
+a#10,MERGE a#3,SINGLEDEL
+a#10,MERGE:10 a#9,MERGE:9 a#8,SET:8 a#7,MERGE:7 a#6,MERGE:6 a#5,DEL: a#4,MERGE:fail-finish a#3,SINGLEDEL:
 ----
 Level 1
   file 0: [a#10,MERGE-a#3,SINGLEDEL]
@@ -308,8 +308,8 @@ merge processing error on key a#3,SINGLEDEL in L1: fileNum=000029: finish failed
 # Case 4: Finish processing on key change.
 define
 L
-a.MERGE.10 b.SET.11
-a.MERGE.10:10 a.MERGE.9:fail-finish b.SET.11:11
+a#10,MERGE b#11,SET
+a#10,MERGE:10 a#9,MERGE:fail-finish b#11,SET:11
 ----
 Level 1
   file 0: [a#10,MERGE-b#11,SET]
@@ -321,8 +321,8 @@ merge processing error on key b#11,SET in L1: fileNum=000030: finish failed
 # Case 5: SET finishes MERGE record processing.
 define
 L
-a.MERGE.10 a.SET.9
-a.MERGE.10:10 a.SET.9:fail-finish
+a#10,MERGE a#9,SET
+a#10,MERGE:10 a#9,SET:fail-finish
 ----
 Level 1
   file 0: [a#10,MERGE-a#9,SET]
@@ -334,8 +334,8 @@ merge processing error on key a#9,SET in L1: fileNum=000031: finish failed
 # Case 6: DEL finishes MERGE record processing.
 define
 L
-a.MERGE.10 a.DEL.9
-a.MERGE.10:fail-finish a.DEL.9:
+a#10,MERGE a#9,DEL
+a#10,MERGE:fail-finish a#9,DEL:
 ----
 Level 1
   file 0: [a#10,MERGE-a#9,DEL]
@@ -347,8 +347,8 @@ merge processing error on key a#9,DEL in L1: fileNum=000032: finish failed
 # Case 7: SINGLEDEL finishes MERGE record processing.
 define
 L
-a.MERGE.10 a.SINGLEDEL.9
-a.MERGE.10:fail-finish a.SINGLEDEL.9:
+a#10,MERGE a#9,SINGLEDEL
+a#10,MERGE:fail-finish a#9,SINGLEDEL:
 ----
 Level 1
   file 0: [a#10,MERGE-a#9,SINGLEDEL]
@@ -363,10 +363,10 @@ merge processing error on key a#9,SINGLEDEL in L1: fileNum=000033: finish failed
 
 define
 L
-a@9.SET.9 f.RANGEDEL.inf
-a@9.SET.9:a9 a@6.SET.6:a6 Span:a-f:{(#5,RANGEDEL)}
-f@6.SET.6 f@6.SET.6
-f@6.SET.6:f6
+a@9#9,SET f#inf,RANGEDEL
+a@9#9,SET:a9 a@6#6,SET:a6 Span:a-f:{(#5,RANGEDEL)}
+f@6#6,SET f@6#6,SET
+f@6#6,SET:f6
 ----
 Level 1
   file 0: [a@9#9,SET-f#inf,RANGEDEL]

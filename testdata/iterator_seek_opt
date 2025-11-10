@@ -1,16 +1,16 @@
 
 define auto-compactions=off
 L0
-  a.SET.4:4
+  a#4,SET:4
 L1
-  a.SET.3:3
+  a#3,SET:3
 L2
-  d.SET.2:2
+  d#2,SET:2
 L3
-  b.SET.1:1
-  c.SET.1:1
-  d.SET.1:1
-  e.SET.1:1
+  b#1,SET:1
+  c#1,SET:1
+  d#1,SET:1
+  e#1,SET:1
 ----
 L0.0:
   000004:[a#4,SET-a#4,SET]
