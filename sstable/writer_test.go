@@ -1087,16 +1087,14 @@ func TestWriterRace(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 16; i++ {
-		wg.Add(1)
-		go func() {
+	for range 16 {
+		wg.Go(func() {
 			val := make([]byte, rand.IntN(1000))
 			opts := WriterOptions{
 				Comparer:    testkeys.Comparer,
 				BlockSize:   rand.IntN(1 << 10),
 				Compression: block.NoCompression,
 			}
-			defer wg.Done()
 			f := &objstorage.MemObj{}
 			w := newRowWriter(f, opts)
 			for ki := 0; ki < len(keys); ki++ {
@@ -1122,7 +1120,7 @@ func TestWriterRace(t *testing.T) {
 				require.Equal(t, vBytes, val)
 				ki++
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

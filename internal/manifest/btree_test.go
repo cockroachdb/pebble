@@ -472,13 +472,11 @@ func TestBTreeCloneConcurrentOperations(t *testing.T) {
 	toRemove := want[cloneTestSize/2:]
 	for i := 0; i < len(trees)/2; i++ {
 		tree := trees[i]
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			for _, item := range toRemove {
 				tree.Delete(item, ignoreObsoleteFiles{})
 			}
-			wg.Done()
-		}()
+		})
 	}
 	wg.Wait()
 

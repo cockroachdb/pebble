@@ -179,8 +179,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 	fw.physBlockMaker.Init(opts.Compression, opts.ChecksumType, opts.CompressionCounters)
 	fw.cpuMeasurer = opts.CpuMeasurer
 	fw.writeQueue.ch = make(chan compressedBlock)
-	fw.writeQueue.wg.Add(1)
-	go fw.drainWriteQueue()
+	fw.writeQueue.wg.Go(fw.drainWriteQueue)
 	return fw
 }
 
@@ -280,7 +279,6 @@ func (w *FileWriter) flush() {
 // finished, compressed data blocks to the writable. It reads from w.writeQueue
 // until the channel is closed. All value blocks are written by this goroutine.
 func (w *FileWriter) drainWriteQueue() {
-	defer w.writeQueue.wg.Done()
 	// Call once to initialize the CPU measurer.
 	w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineBlobFileSecondary)
 	for cb := range w.writeQueue.ch {

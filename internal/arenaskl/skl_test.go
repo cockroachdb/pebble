@@ -205,32 +205,28 @@ func TestConcurrentBasic(t *testing.T) {
 			l.testing = true
 
 			var wg sync.WaitGroup
-			for i := 0; i < n; i++ {
-				wg.Add(1)
-				go func(i int) {
-					defer wg.Done()
-
+			for i := range n {
+				i := i
+				wg.Go(func() {
 					if inserter {
 						var ins Inserter
 						ins.Add(l, makeIntKey(i), makeValue(i))
 					} else {
 						l.Add(makeIntKey(i), makeValue(i))
 					}
-				}(i)
+				})
 			}
 			wg.Wait()
 
 			// Check values. Concurrent reads.
-			for i := 0; i < n; i++ {
-				wg.Add(1)
-				go func(i int) {
-					defer wg.Done()
-
+			for i := range n {
+				i := i
+				wg.Go(func() {
 					it := l.NewIter(nil, nil)
 					kv := it.SeekGE(makeKey(fmt.Sprintf("%05d", i)), base.SeekGEFlagsNone)
 					require.NotNil(t, kv)
 					require.EqualValues(t, fmt.Sprintf("%05d", i), kv.K.UserKey)
-				}(i)
+				})
 			}
 			wg.Wait()
 			require.Equal(t, n, length(l))
@@ -253,11 +249,10 @@ func TestConcurrentOneKey(t *testing.T) {
 
 			var wg sync.WaitGroup
 			writeDone := make(chan struct{}, 1)
-			for i := 0; i < n; i++ {
-				wg.Add(1)
-				go func(i int) {
+			for i := range n {
+				i := i
+				wg.Go(func() {
 					defer func() {
-						wg.Done()
 						select {
 						case writeDone <- struct{}{}:
 						default:
@@ -270,16 +265,13 @@ func TestConcurrentOneKey(t *testing.T) {
 					} else {
 						l.Add(ikey, makeValue(i))
 					}
-				}(i)
+				})
 			}
 			// Wait until at least some write made it such that reads return a value.
 			<-writeDone
 			var sawValue atomic.Int32
-			for i := 0; i < n; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-
+			for range n {
+				wg.Go(func() {
 					it := l.NewIter(nil, nil)
 					kv := it.SeekGE(key, base.SeekGEFlagsNone)
 					require.NotNil(t, kv)
@@ -289,7 +281,7 @@ func TestConcurrentOneKey(t *testing.T) {
 					v, err := strconv.Atoi(string(mustGetValue(t, kv.V)[1:]))
 					require.NoError(t, err)
 					require.True(t, 0 <= v && v < n)
-				}()
+				})
 			}
 			wg.Wait()
 			require.Equal(t, int32(n), sawValue.Load())

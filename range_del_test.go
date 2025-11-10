@@ -222,15 +222,13 @@ func TestFlushDelayStress(t *testing.T) {
 		now := time.Now().UnixNano()
 		writers := runtime.GOMAXPROCS(0)
 		var wg sync.WaitGroup
-		wg.Add(writers)
-		for i := 0; i < writers; i++ {
+		for i := range writers {
 			rng := rand.New(rand.NewPCG(0, uint64(now)+uint64(i)))
-			go func() {
+			wg.Go(func() {
 				const ops = 100
-				defer wg.Done()
 
 				var k1, k2 [32]byte
-				for j := 0; j < ops; j++ {
+				for range ops {
 					switch rng.IntN(3) {
 					case 0:
 						randStr(k1[:], rng)
@@ -248,7 +246,7 @@ func TestFlushDelayStress(t *testing.T) {
 						panic("unreachable")
 					}
 				}
-			}()
+			})
 		}
 		wg.Wait()
 		time.Sleep(time.Duration(rng.IntN(10)+1) * time.Millisecond)

@@ -311,21 +311,18 @@ func TestLazyLoadingConcurrentAccess(t *testing.T) {
 	const numGoroutines = 10
 	const operationsPerGoroutine = 50
 
-	var wg sync.WaitGroup
 	errorCh := make(chan error, numGoroutines)
 
 	// Launch concurrent goroutines performing iterator operations
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(goroutineID int) {
-			defer wg.Done()
-
+	var wg sync.WaitGroup
+	for goroutineID := range numGoroutines {
+		goroutineID := goroutineID
+		wg.Go(func() {
 			if err := performConcurrentOps(reader, keys, operationsPerGoroutine, goroutineID); err != nil {
 				errorCh <- err
 			}
-		}(i)
+		})
 	}
-
 	wg.Wait()
 	close(errorCh)
 

@@ -1161,10 +1161,9 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 	// those operations.
 	const n = 1000
 	var wg sync.WaitGroup
-	wg.Add(n)
-	for i := 0; i < n; i++ {
-		go func(i int) {
-			defer wg.Done()
+	for i := range n {
+		i := i
+		wg.Go(func() {
 			_ = d.Set([]byte(fmt.Sprint(i)), nil, nil)
 			var err error
 			switch i % 3 {
@@ -1176,7 +1175,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 				_, err = d.AsyncFlush()
 			}
 			require.NoError(t, err)
-		}(i)
+		})
 	}
 	wg.Wait()
 
@@ -2495,12 +2494,11 @@ type parallel []orderingNode
 
 func (p parallel) visit(fn func(int)) {
 	var wg sync.WaitGroup
-	wg.Add(len(p))
 	for i := range p {
-		go func(i int) {
-			defer wg.Done()
+		i := i
+		wg.Go(func() {
 			p[i].visit(fn)
-		}(i)
+		})
 	}
 	wg.Wait()
 }
@@ -2617,7 +2615,7 @@ func TestLoadBlockSema(t *testing.T) {
 	}
 
 	// Read all regions to warm up the file cache.
-	for i := 0; i < numRegions; i++ {
+	for i := range numRegions {
 		val, closer, err := db.Get(key(i, 1))
 		require.NoError(t, err)
 		require.Equal(t, []byte("value"), val)
@@ -2633,12 +2631,10 @@ func TestLoadBlockSema(t *testing.T) {
 			var wg sync.WaitGroup
 			// Spin up workers that perform random reads.
 			const numWorkers = 20
-			for i := 0; i < numWorkers; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+			for range numWorkers {
+				wg.Go(func() {
 					const numQueries = 100
-					for i := 0; i < numQueries; i++ {
+					for range numQueries {
 						val, closer, err := db.Get(key(rand.IntN(numRegions), rand.IntN(numKeys)))
 						require.NoError(t, err)
 						require.Equal(t, []byte("value"), val)
@@ -2647,7 +2643,7 @@ func TestLoadBlockSema(t *testing.T) {
 						}
 						runtime.Gosched()
 					}
-				}()
+				})
 			}
 			wg.Wait()
 			// Verify the maximum read count did not exceed the limit.

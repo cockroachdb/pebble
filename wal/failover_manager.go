@@ -847,11 +847,7 @@ func newStopper() *stopper {
 }
 
 func (s *stopper) runAsync(f func()) {
-	s.wg.Add(1)
-	go func() {
-		f()
-		s.wg.Done()
-	}()
+	s.wg.Go(f)
 }
 
 // shouldQuiesce returns a channel which will be closed when stop() has been

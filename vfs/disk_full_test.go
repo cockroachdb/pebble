@@ -118,14 +118,12 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 	})
 
 	var wg sync.WaitGroup
-	wg.Add(concurrentWriters)
 	for range concurrentWriters {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, err := fs.Create("foo", WriteCategoryUnspecified)
 			// They all should succeed on retry.
 			require.NoError(t, err)
-		}()
+		})
 	}
 	wg.Wait()
 	// Since all operations should start before the first one returns an

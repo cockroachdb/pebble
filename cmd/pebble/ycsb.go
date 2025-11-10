@@ -365,23 +365,18 @@ func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
 
 	y.limiter = maxOpsPerSec.newRateLimiter()
 
-	wg.Add(concurrency)
-
 	// If this workload doesn't produce reads, sample the worst case read-amp
 	// from Metrics() periodically.
 	if y.weights.get(ycsbRead) == 0 && y.weights.get(ycsbScan) == 0 && y.weights.get(ycsbReverseScan) == 0 {
-		wg.Add(1)
-		go y.sampleReadAmp(db, wg)
+		wg.Go(func() { y.sampleReadAmp(db) })
 	}
 
-	for i := 0; i < concurrency; i++ {
-		go y.run(db, wg)
+	for range concurrency {
+		wg.Go(func() { y.run(db) })
 	}
 }
 
-func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func (y *ycsb) run(db DB) {
 	var latency [ycsbNumOps]*namedHistogram
 	for name, op := range y.opsMap {
 		latency[op] = y.reg.Register(name)
@@ -418,9 +413,7 @@ func (y *ycsb) run(db DB, wg *sync.WaitGroup) {
 	}
 }
 
-func (y *ycsb) sampleReadAmp(db DB, wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func (y *ycsb) sampleReadAmp(db DB) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
