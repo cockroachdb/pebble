@@ -9,60 +9,60 @@
 
 define target-file-sizes=(5000, 5000, 5000, 5000)
 L2
-  a.SET.101:<rand-bytes=1000>
-  z.SET.102:<rand-bytes=1000>
+  a#101,SET:<rand-bytes=1000>
+  z#102,SET:<rand-bytes=1000>
 L3
-  a.SET.001:<rand-bytes=10000>
+  a#001,SET:<rand-bytes=10000>
 L3
-  b.SET.002:<rand-bytes=10000>
+  b#002,SET:<rand-bytes=10000>
 L3
-  c.SET.003:<rand-bytes=10000>
+  c#003,SET:<rand-bytes=10000>
 L3
-  d.SET.004:<rand-bytes=10000>
+  d#004,SET:<rand-bytes=10000>
 L3
-  e.SET.005:<rand-bytes=10000>
+  e#005,SET:<rand-bytes=10000>
 L3
-  f.SET.006:<rand-bytes=10000>
+  f#006,SET:<rand-bytes=10000>
 L3
-  g.SET.007:<rand-bytes=10000>
+  g#007,SET:<rand-bytes=10000>
 L3
-  h.SET.008:<rand-bytes=10000>
+  h#008,SET:<rand-bytes=10000>
 L3
-  i.SET.009:<rand-bytes=10000>
+  i#009,SET:<rand-bytes=10000>
 L3
-  j.SET.010:<rand-bytes=10000>
+  j#010,SET:<rand-bytes=10000>
 L3
-  k.SET.011:<rand-bytes=10000>
+  k#011,SET:<rand-bytes=10000>
 L3
-  l.SET.012:<rand-bytes=10000>
+  l#012,SET:<rand-bytes=10000>
 L3
-  m.SET.013:<rand-bytes=10000>
+  m#013,SET:<rand-bytes=10000>
 L3
-  n.SET.014:<rand-bytes=10000>
+  n#014,SET:<rand-bytes=10000>
 L3
-  o.SET.015:<rand-bytes=10000>
+  o#015,SET:<rand-bytes=10000>
 L3
-  p.SET.016:<rand-bytes=10000>
+  p#016,SET:<rand-bytes=10000>
 L3
-  q.SET.017:<rand-bytes=10000>
+  q#017,SET:<rand-bytes=10000>
 L3
-  r.SET.018:<rand-bytes=10000>
+  r#018,SET:<rand-bytes=10000>
 L3
-  s.SET.019:<rand-bytes=10000>
+  s#019,SET:<rand-bytes=10000>
 L3
-  t.SET.020:<rand-bytes=10000>
+  t#020,SET:<rand-bytes=10000>
 L3
-  u.SET.021:<rand-bytes=10000>
+  u#021,SET:<rand-bytes=10000>
 L3
-  v.SET.022:<rand-bytes=10000>
+  v#022,SET:<rand-bytes=10000>
 L3
-  w.SET.023:<rand-bytes=10000>
+  w#023,SET:<rand-bytes=10000>
 L3
-  x.SET.024:<rand-bytes=10000>
+  x#024,SET:<rand-bytes=10000>
 L3
-  y.SET.025:<rand-bytes=10000>
+  y#025,SET:<rand-bytes=10000>
 L3
-  z.SET.026:<rand-bytes=10000>
+  z#026,SET:<rand-bytes=10000>
 ----
 L2:
   000004:[a#101,SET-z#102,SET]
@@ -359,26 +359,26 @@ L3:
 
 define target-file-sizes=(5000, 5000, 5000, 5000)
 L1
-  a.SET.201:<rand-bytes=1000>
-  b.SET.202:<rand-bytes=1000>
-  c.SET.203:<rand-bytes=1000>
-  d.SET.204:<rand-bytes=1000>
-  e.SET.205:<rand-bytes=1000>
-  f.SET.206:<rand-bytes=1000>
-  g.SET.207:<rand-bytes=1000>
-  h.SET.208:<rand-bytes=1000>
-  i.SET.209:<rand-bytes=1000>
-  j.SET.210:<rand-bytes=1000>
-  k.SET.211:<rand-bytes=1000>
-  l.SET.212:<rand-bytes=1000>
-  m.SET.213:<rand-bytes=1000>
-  n.SET.214:<rand-bytes=1000>
-  o.SET.215:<rand-bytes=1000>
+  a#201,SET:<rand-bytes=1000>
+  b#202,SET:<rand-bytes=1000>
+  c#203,SET:<rand-bytes=1000>
+  d#204,SET:<rand-bytes=1000>
+  e#205,SET:<rand-bytes=1000>
+  f#206,SET:<rand-bytes=1000>
+  g#207,SET:<rand-bytes=1000>
+  h#208,SET:<rand-bytes=1000>
+  i#209,SET:<rand-bytes=1000>
+  j#210,SET:<rand-bytes=1000>
+  k#211,SET:<rand-bytes=1000>
+  l#212,SET:<rand-bytes=1000>
+  m#213,SET:<rand-bytes=1000>
+  n#214,SET:<rand-bytes=1000>
+  o#215,SET:<rand-bytes=1000>
 L2
-  a.SET.101:<rand-bytes=10>
-  z.SET.102:<rand-bytes=10>
+  a#101,SET:<rand-bytes=10>
+  z#102,SET:<rand-bytes=10>
 L3
-  m.SET.001:<rand-bytes=10000>
+  m#001,SET:<rand-bytes=10000>
 ----
 L1:
   000004:[a#201,SET-o#215,SET]
@@ -413,50 +413,50 @@ L3:
 
 define target-file-sizes=(5000, 5000, 5000, 5000)
 L1
-  a.SET.201:<rand-bytes=1000>
-  b.SET.202:<rand-bytes=1000>
-  c.SET.203:<rand-bytes=1000>
-  d.SET.204:<rand-bytes=1000>
-  e.SET.205:<rand-bytes=1000>
-  f.SET.206:<rand-bytes=1000>
-  g.SET.207:<rand-bytes=1000>
-  h.SET.208:<rand-bytes=1000>
-  i.SET.209:<rand-bytes=1000>
-  j.SET.210:<rand-bytes=1000>
-  k.SET.211:<rand-bytes=1000>
-  l.SET.212:<rand-bytes=1000>
-  m.SET.213:<rand-bytes=1000>
-  n.SET.214:<rand-bytes=1000>
-  o.SET.215:<rand-bytes=1000>
+  a#201,SET:<rand-bytes=1000>
+  b#202,SET:<rand-bytes=1000>
+  c#203,SET:<rand-bytes=1000>
+  d#204,SET:<rand-bytes=1000>
+  e#205,SET:<rand-bytes=1000>
+  f#206,SET:<rand-bytes=1000>
+  g#207,SET:<rand-bytes=1000>
+  h#208,SET:<rand-bytes=1000>
+  i#209,SET:<rand-bytes=1000>
+  j#210,SET:<rand-bytes=1000>
+  k#211,SET:<rand-bytes=1000>
+  l#212,SET:<rand-bytes=1000>
+  m#213,SET:<rand-bytes=1000>
+  n#214,SET:<rand-bytes=1000>
+  o#215,SET:<rand-bytes=1000>
 L2
-  a.SET.101:<rand-bytes=10>
-  z.SET.102:<rand-bytes=10>
+  a#101,SET:<rand-bytes=10>
+  z#102,SET:<rand-bytes=10>
 L3
-  a.SET.001:<rand-bytes=1000>
+  a#001,SET:<rand-bytes=1000>
 L3
-  ab.SET.002:<rand-bytes=1000>
+  ab#002,SET:<rand-bytes=1000>
 L3
-  ac.SET.003:<rand-bytes=1000>
+  ac#003,SET:<rand-bytes=1000>
 L3
-  ad.SET.004:<rand-bytes=1000>
+  ad#004,SET:<rand-bytes=1000>
 L3
-  ae.SET.005:<rand-bytes=1000>
+  ae#005,SET:<rand-bytes=1000>
 L3
-  af.SET.006:<rand-bytes=1000>
+  af#006,SET:<rand-bytes=1000>
 L3
-  ag.SET.007:<rand-bytes=1000>
+  ag#007,SET:<rand-bytes=1000>
 L3
-  ah.SET.008:<rand-bytes=1000>
+  ah#008,SET:<rand-bytes=1000>
 L3
-  c.SET.009:<rand-bytes=1000>
+  c#009,SET:<rand-bytes=1000>
 L3
-  d.SET.010:<rand-bytes=1000>
+  d#010,SET:<rand-bytes=1000>
 L3
-  e.SET.011:<rand-bytes=1000>
+  e#011,SET:<rand-bytes=1000>
 L3
-  f.SET.012:<rand-bytes=1000>
+  f#012,SET:<rand-bytes=1000>
 L3
-  m.SET.013:<rand-bytes=1000>
+  m#013,SET:<rand-bytes=1000>
 ----
 L1:
   000004:[a#201,SET-o#215,SET]

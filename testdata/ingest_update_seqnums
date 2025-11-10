@@ -7,9 +7,9 @@ starting-seqnum
 # Point keys only (no range dels).
 
 load
-a.SET.0:
-b.SET.0:
-c.SET.0:
+a#0,SET:
+b#0,SET:
+c#0,SET:
 ----
 file 0
 
@@ -17,14 +17,14 @@ file 0
 
 load
 Span: a-b:{(#0,RANGEDEL)}
-c.SET.0:
+c#0,SET:
 ----
 file 1
 
 # Point keys only (range del upper bound).
 
 load
-a.SET.0:
+a#0,SET:
 Span: b-c:{(#0,RANGEDEL)}
 ----
 file 2
@@ -71,9 +71,9 @@ reset
 ----
 
 load
-a.SET.0:
+a#0,SET:
 Span: b-c:{#0,RANGEKEYSET,@1,foo)}
-d.SET.0:
+d#0,SET:
 ----
 file 0
 
@@ -90,7 +90,7 @@ reset
 ----
 
 load
-a.SET.0:
+a#0,SET:
 Span: b-c:{(#0,RANGEKEYSET,@1,foo)}
 ----
 file 0
@@ -109,7 +109,7 @@ reset
 
 load
 Span: a-c:{#0,RANGEKEYSET,@1,foo)}
-d.SET.0:
+d#0,SET:
 ----
 file 0
 
@@ -127,7 +127,7 @@ reset
 
 load
 Span: a-d:{#0,RANGEKEYSET,@1,foo)}
-c.SET.0:
+c#0,SET:
 ----
 file 0
 

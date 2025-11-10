@@ -1,7 +1,7 @@
 define
-a.SET.1:1 b.SET.2:2
-c.SET.3:3 d.SET.4:4
-dd.SET.5:5
+a#1,SET:1 b#2,SET:2
+c#3,SET:3 d#4,SET:4
+dd#5,SET:5
 ----
 
 iter

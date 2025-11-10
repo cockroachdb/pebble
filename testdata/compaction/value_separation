@@ -82,11 +82,11 @@ compact a-d
 
 define verbose value-separation=(enabled, min-size=3, max-ref-depth=3, rw-min-age=0s, garbage-ratios=1.0:1.0)
 L6 blob-depth=3
-  a.SET.0:a
-  b.SET.0:blob{fileNum=100002 value=bar}
-  f.SET.0:blob{fileNum=100003 value=foo}
-  k.SET.0:k
-  z.SET.0:blob{fileNum=100004 value=zoo}
+  a#0,SET:a
+  b#0,SET:blob{fileNum=100002 value=bar}
+  f#0,SET:blob{fileNum=100003 value=foo}
+  k#0,SET:k
+  z#0,SET:blob{fileNum=100004 value=zoo}
 ----
 L6:
   000004:[a#0,SET-z#0,SET] seqnums:[0-0] points:[a#0,SET-z#0,SET] size:823 blobrefs:[(B100002: 3), (B100003: 3), (B100004: 3); depth:3]
@@ -328,14 +328,14 @@ Blob files:
 
 define value-separation=(enabled, min-size=1, max-ref-depth=5, rw-min-age=0s, garbage-ratios=1.0:1.0) l0-compaction-threshold=2
 L0 blob-depth=1
-  a.SET.9:a
-  d.SET.9:blob{fileNum=100001 value=d}
+  a#9,SET:a
+  d#9,SET:blob{fileNum=100001 value=d}
 L0 blob-depth=3
-  a.SET.1:a
-  b.SET.1:blob{fileNum=100002 value=bar}
-  f.SET.1:blob{fileNum=100003 value=foo}
-  k.SET.1:k
-  z.SET.1:blob{fileNum=100004 value=zoo}
+  a#1,SET:a
+  b#1,SET:blob{fileNum=100002 value=bar}
+  f#1,SET:blob{fileNum=100003 value=foo}
+  k#1,SET:k
+  z#1,SET:blob{fileNum=100004 value=zoo}
 ----
 L0.1:
   000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:792 blobrefs:[(B100001: 1); depth:1]
@@ -389,14 +389,14 @@ obsolete-key: hex:00
 
 define value-separation=(enabled, min-size=1, max-ref-depth=5, rw-min-age=0s, garbage-ratios=1.0:1.0) l0-compaction-threshold=2
 L0 blob-depth=1
-  a.SET.9:a
-  d.SET.9:blob{fileNum=100001 value=d}
+  a#9,SET:a
+  d#9,SET:blob{fileNum=100001 value=d}
 L0 blob-depth=3
-  e.SET.1:a
-  f.SET.1:blob{fileNum=100002 value=bar}
-  g.SET.1:blob{fileNum=100003 value=foo}
-  k.SET.1:k
-  z.SET.1:blob{fileNum=100004 value=zoo}
+  e#1,SET:a
+  f#1,SET:blob{fileNum=100002 value=bar}
+  g#1,SET:blob{fileNum=100003 value=foo}
+  k#1,SET:k
+  z#1,SET:blob{fileNum=100004 value=zoo}
 ----
 L0.0:
   000004:[a#9,SET-d#9,SET] seqnums:[9-9] points:[a#9,SET-d#9,SET] size:792 blobrefs:[(B100001: 1); depth:1]

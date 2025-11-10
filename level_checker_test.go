@@ -197,26 +197,22 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 						tombstones = append(tombstones, fragmented)
 					},
 				}
-				keyValues := strings.Fields(line)
-				for _, kv := range keyValues {
-					if strings.HasPrefix(kv, "Span:") {
-						kv = kv[len("Span:"):]
-						s := keyspan.ParseSpan(kv)
+				kvs, err := sstable.ParseTestKVsAndSpans(strings.Join(strings.Fields(line), "\n"), nil /* bv */)
+				require.NoError(t, err)
+				for _, kv := range kvs {
+					if kv.IsKeySpan() {
 						if writeUnfragmented {
-							if err = w.EncodeSpan(s); err != nil {
+							if err = w.EncodeSpan(*kv.Span); err != nil {
 								return err.Error()
 							}
-						} else if s.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
-							frag.Add(s)
+						} else if kv.Span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
+							frag.Add(*kv.Span)
 						} else {
-							t.Fatalf("unexpected span: %s", s.Pretty(testkeys.Comparer.FormatKey))
+							t.Fatalf("unexpected span: %s", kv.Span.Pretty(testkeys.Comparer.FormatKey))
 						}
 						continue
 					}
-					j := strings.Index(kv, ":")
-					ikey := base.ParseInternalKey(kv[:j])
-					value := []byte(kv[j+1:])
-					err = w.Add(ikey, value, false /* forceObsolete */)
+					err = w.Add(kv.Key, kv.Value, false /* forceObsolete */)
 					if err != nil {
 						return err.Error()
 					}

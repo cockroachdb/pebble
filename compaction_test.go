@@ -166,8 +166,8 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
-						base.ParseInternalKey("j.SET.102"),
+						base.ParseInternalKey("i#101,SET"),
+						base.ParseInternalKey("j#102,SET"),
 					),
 				},
 			},
@@ -181,8 +181,8 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
-						base.ParseInternalKey("j.SET.102"),
+						base.ParseInternalKey("i#101,SET"),
+						base.ParseInternalKey("j#102,SET"),
 					),
 				},
 			},
@@ -201,14 +201,14 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
-						base.ParseInternalKey("j.SET.102"),
+						base.ParseInternalKey("i#101,SET"),
+						base.ParseInternalKey("j#102,SET"),
 					),
 					newFileMeta(
 						110,
 						1,
-						base.ParseInternalKey("k.SET.111"),
-						base.ParseInternalKey("l.SET.112"),
+						base.ParseInternalKey("k#111,SET"),
+						base.ParseInternalKey("l#112,SET"),
 					),
 				},
 			},
@@ -227,14 +227,14 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.101"),
-						base.ParseInternalKey("p.SET.102"),
+						base.ParseInternalKey("i#101,SET"),
+						base.ParseInternalKey("p#102,SET"),
 					),
 					newFileMeta(
 						110,
 						1,
-						base.ParseInternalKey("j.SET.111"),
-						base.ParseInternalKey("q.SET.112"),
+						base.ParseInternalKey("j#111,SET"),
+						base.ParseInternalKey("q#112,SET"),
 					),
 				},
 			},
@@ -253,14 +253,14 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.102"),
-						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("i#102,SET"),
+						base.ParseInternalKey("i#101,SET"),
 					),
 					newFileMeta(
 						110,
 						1,
-						base.ParseInternalKey("i.SET.112"),
-						base.ParseInternalKey("i.SET.111"),
+						base.ParseInternalKey("i#112,SET"),
+						base.ParseInternalKey("i#111,SET"),
 					),
 				},
 			},
@@ -279,22 +279,22 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.102"),
-						base.ParseInternalKey("i.SET.101"),
+						base.ParseInternalKey("i#102,SET"),
+						base.ParseInternalKey("i#101,SET"),
 					),
 				},
 				1: {
 					newFileMeta(
 						200,
 						1,
-						base.ParseInternalKey("a.SET.201"),
-						base.ParseInternalKey("b.SET.202"),
+						base.ParseInternalKey("a#201,SET"),
+						base.ParseInternalKey("b#202,SET"),
 					),
 					newFileMeta(
 						210,
 						1,
-						base.ParseInternalKey("y.SET.211"),
-						base.ParseInternalKey("z.SET.212"),
+						base.ParseInternalKey("y#211,SET"),
+						base.ParseInternalKey("z#212,SET"),
 					),
 				},
 			},
@@ -313,48 +313,48 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						100,
 						1,
-						base.ParseInternalKey("i.SET.102"),
-						base.ParseInternalKey("t.SET.101"),
+						base.ParseInternalKey("i#102,SET"),
+						base.ParseInternalKey("t#101,SET"),
 					),
 				},
 				1: {
 					newFileMeta(
 						200,
 						1,
-						base.ParseInternalKey("a.SET.201"),
-						base.ParseInternalKey("e.SET.202"),
+						base.ParseInternalKey("a#201,SET"),
+						base.ParseInternalKey("e#202,SET"),
 					),
 					newFileMeta(
 						210,
 						1,
-						base.ParseInternalKey("f.SET.211"),
-						base.ParseInternalKey("j.SET.212"),
+						base.ParseInternalKey("f#211,SET"),
+						base.ParseInternalKey("j#212,SET"),
 					),
 				},
 				2: {
 					newFileMeta(
 						300,
 						1,
-						base.ParseInternalKey("a.SET.301"),
-						base.ParseInternalKey("b.SET.302"),
+						base.ParseInternalKey("a#301,SET"),
+						base.ParseInternalKey("b#302,SET"),
 					),
 					newFileMeta(
 						310,
 						1,
-						base.ParseInternalKey("c.SET.311"),
-						base.ParseInternalKey("g.SET.312"),
+						base.ParseInternalKey("c#311,SET"),
+						base.ParseInternalKey("g#312,SET"),
 					),
 					newFileMeta(
 						320,
 						1,
-						base.ParseInternalKey("h.SET.321"),
-						base.ParseInternalKey("m.SET.322"),
+						base.ParseInternalKey("h#321,SET"),
+						base.ParseInternalKey("m#322,SET"),
 					),
 					newFileMeta(
 						330,
 						1,
-						base.ParseInternalKey("n.SET.331"),
-						base.ParseInternalKey("z.SET.332"),
+						base.ParseInternalKey("n#331,SET"),
+						base.ParseInternalKey("z#332,SET"),
 					),
 				},
 			},
@@ -373,40 +373,40 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						200,
 						1,
-						base.ParseInternalKey("i1.SET.201"),
-						base.ParseInternalKey("i2.SET.202"),
+						base.ParseInternalKey("i1#201,SET"),
+						base.ParseInternalKey("i2#202,SET"),
 					),
 					newFileMeta(
 						210,
 						1,
-						base.ParseInternalKey("j1.SET.211"),
-						base.ParseInternalKey("j2.SET.212"),
+						base.ParseInternalKey("j1#211,SET"),
+						base.ParseInternalKey("j2#212,SET"),
 					),
 					newFileMeta(
 						220,
 						1,
-						base.ParseInternalKey("k1.SET.221"),
-						base.ParseInternalKey("k2.SET.222"),
+						base.ParseInternalKey("k1#221,SET"),
+						base.ParseInternalKey("k2#222,SET"),
 					),
 					newFileMeta(
 						230,
 						1,
-						base.ParseInternalKey("l1.SET.231"),
-						base.ParseInternalKey("l2.SET.232"),
+						base.ParseInternalKey("l1#231,SET"),
+						base.ParseInternalKey("l2#232,SET"),
 					),
 				},
 				2: {
 					newFileMeta(
 						300,
 						1,
-						base.ParseInternalKey("a0.SET.301"),
-						base.ParseInternalKey("l0.SET.302"),
+						base.ParseInternalKey("a0#301,SET"),
+						base.ParseInternalKey("l0#302,SET"),
 					),
 					newFileMeta(
 						310,
 						1,
-						base.ParseInternalKey("l2.SET.311"),
-						base.ParseInternalKey("z2.SET.312"),
+						base.ParseInternalKey("l2#311,SET"),
+						base.ParseInternalKey("z2#312,SET"),
 					),
 				},
 			},
@@ -426,40 +426,40 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						200,
 						1,
-						base.ParseInternalKey("i1.SET.201"),
-						base.ParseInternalKey("i2.SET.202"),
+						base.ParseInternalKey("i1#201,SET"),
+						base.ParseInternalKey("i2#202,SET"),
 					),
 					newFileMeta(
 						210,
 						1,
-						base.ParseInternalKey("j1.SET.211"),
-						base.ParseInternalKey("j2.SET.212"),
+						base.ParseInternalKey("j1#211,SET"),
+						base.ParseInternalKey("j2#212,SET"),
 					),
 					newFileMeta(
 						220,
 						1,
-						base.ParseInternalKey("k1.SET.221"),
-						base.ParseInternalKey("k2.SET.222"),
+						base.ParseInternalKey("k1#221,SET"),
+						base.ParseInternalKey("k2#222,SET"),
 					),
 					newFileMeta(
 						230,
 						1,
-						base.ParseInternalKey("l1.SET.231"),
-						base.ParseInternalKey("l2.SET.232"),
+						base.ParseInternalKey("l1#231,SET"),
+						base.ParseInternalKey("l2#232,SET"),
 					),
 				},
 				2: {
 					newFileMeta(
 						300,
 						1,
-						base.ParseInternalKey("a0.SET.301"),
-						base.ParseInternalKey("j0.SET.302"),
+						base.ParseInternalKey("a0#301,SET"),
+						base.ParseInternalKey("j0#302,SET"),
 					),
 					newFileMeta(
 						310,
 						1,
-						base.ParseInternalKey("j2.SET.311"),
-						base.ParseInternalKey("z2.SET.312"),
+						base.ParseInternalKey("j2#311,SET"),
+						base.ParseInternalKey("z2#312,SET"),
 					),
 				},
 			},
@@ -479,40 +479,40 @@ func TestPickCompaction(t *testing.T) {
 					newFileMeta(
 						200,
 						expandedCompactionByteSizeLimit(opts, 4<<20, math.MaxUint64)-1,
-						base.ParseInternalKey("i1.SET.201"),
-						base.ParseInternalKey("i2.SET.202"),
+						base.ParseInternalKey("i1#201,SET"),
+						base.ParseInternalKey("i2#202,SET"),
 					),
 					newFileMeta(
 						210,
 						expandedCompactionByteSizeLimit(opts, 4<<20, math.MaxUint64)-1,
-						base.ParseInternalKey("j1.SET.211"),
-						base.ParseInternalKey("j2.SET.212"),
+						base.ParseInternalKey("j1#211,SET"),
+						base.ParseInternalKey("j2#212,SET"),
 					),
 					newFileMeta(
 						220,
 						expandedCompactionByteSizeLimit(opts, 4<<20, math.MaxUint64)-1,
-						base.ParseInternalKey("k1.SET.221"),
-						base.ParseInternalKey("k2.SET.222"),
+						base.ParseInternalKey("k1#221,SET"),
+						base.ParseInternalKey("k2#222,SET"),
 					),
 					newFileMeta(
 						230,
 						expandedCompactionByteSizeLimit(opts, 4<<20, math.MaxUint64)-1,
-						base.ParseInternalKey("l1.SET.231"),
-						base.ParseInternalKey("l2.SET.232"),
+						base.ParseInternalKey("l1#231,SET"),
+						base.ParseInternalKey("l2#232,SET"),
 					),
 				},
 				2: {
 					newFileMeta(
 						300,
 						expandedCompactionByteSizeLimit(opts, 8<<20, math.MaxUint64)-1,
-						base.ParseInternalKey("a0.SET.301"),
-						base.ParseInternalKey("l0.SET.302"),
+						base.ParseInternalKey("a0#301,SET"),
+						base.ParseInternalKey("l0#302,SET"),
 					),
 					newFileMeta(
 						310,
 						expandedCompactionByteSizeLimit(opts, 8<<20, math.MaxUint64)-1,
-						base.ParseInternalKey("l2.SET.311"),
-						base.ParseInternalKey("z2.SET.312"),
+						base.ParseInternalKey("l2#311,SET"),
+						base.ParseInternalKey("z2#312,SET"),
 					),
 				},
 			},
@@ -3599,8 +3599,8 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	})
 	meta.PopulateStats(&manifest.TableStats{})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
-		base.ParseInternalKey("a.SET.1"),
-		base.ParseInternalKey("z.SET.2"),
+		base.ParseInternalKey("a#1,SET"),
+		base.ParseInternalKey("z#2,SET"),
 	)
 
 	// Set up the version: L4 has the file, L5 and L6 are empty.
@@ -3702,8 +3702,8 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	})
 	metaL4.PopulateStats(&manifest.TableStats{})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
-		base.ParseInternalKey("a.SET.1"),
-		base.ParseInternalKey("z.SET.2"),
+		base.ParseInternalKey("a#1,SET"),
+		base.ParseInternalKey("z#2,SET"),
 	)
 
 	// Create an overlapping file in L5.
@@ -3712,8 +3712,8 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 		Size:     1024,
 	}
 	metaL5.ExtendPointKeyBounds(opts.Comparer.Compare,
-		base.ParseInternalKey("m.SET.1"),
-		base.ParseInternalKey("z.SET.3"),
+		base.ParseInternalKey("m#1,SET"),
+		base.ParseInternalKey("z#3,SET"),
 	)
 	metaL5.InitPhysicalBacking()
 	metaL5.PopulateStats(&manifest.TableStats{})
@@ -3786,8 +3786,8 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	})
 	metaL4.PopulateStats(&manifest.TableStats{})
 	metaL4.ExtendPointKeyBounds(opts.Comparer.Compare,
-		base.ParseInternalKey("a.SET.1"),
-		base.ParseInternalKey("z.SET.2"),
+		base.ParseInternalKey("a#1,SET"),
+		base.ParseInternalKey("z#2,SET"),
 	)
 
 	// Large overlapping file in L6 (grandparent level).
@@ -3796,8 +3796,8 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 		Size:     1 << 30, // 1GB, exceeds overlap threshold
 	}
 	metaL6.ExtendPointKeyBounds(opts.Comparer.Compare,
-		base.ParseInternalKey("a.SET.1"),
-		base.ParseInternalKey("z.SET.3"),
+		base.ParseInternalKey("a#1,SET"),
+		base.ParseInternalKey("z#3,SET"),
 	)
 	metaL6.InitPhysicalBacking()
 	metaL6.TableBacking.PopulateProperties(&sstable.Properties{})
@@ -3853,8 +3853,8 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	})
 	meta.PopulateStats(&manifest.TableStats{})
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
-		base.ParseInternalKey("a.SET.1"),
-		base.ParseInternalKey("z.SET.2"),
+		base.ParseInternalKey("a#1,SET"),
+		base.ParseInternalKey("z#2,SET"),
 	)
 
 	var files [numLevels][]*manifest.TableMetadata
@@ -3897,8 +3897,8 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 		// No stats set, or stats are invalid
 	}
 	meta.ExtendPointKeyBounds(opts.Comparer.Compare,
-		base.ParseInternalKey("a.SET.1"),
-		base.ParseInternalKey("z.SET.2"),
+		base.ParseInternalKey("a#1,SET"),
+		base.ParseInternalKey("z#2,SET"),
 	)
 	meta.InitPhysicalBacking()
 	// meta.StatsMarkValid() is NOT called

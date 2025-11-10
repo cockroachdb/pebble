@@ -68,9 +68,9 @@ d: (d, .)
 
 define auto-compactions=off
 L0
-  a.SET.9:a
+  a#9,SET:a
   rangekey:c-d:{(#0,RANGEKEYSET,@1,foo)}
-  e@2.SET.2:e@2
+  e@2#2,SET:e@2
 ----
 L0.0:
   000004:[a#9,SET-e@2#2,SET]
@@ -100,20 +100,20 @@ a: (a, .)
 
 # Test a scenario where an error occurs while the top-level Iterator is
 # Prev()-ing backwards through many versions of the same user key. In the below
-# test, reading the first block of the sstable (containing c.SET.13) fails. The
+# test, reading the first block of the sstable (containing c#13,SET) fails. The
 # iterator must surface the error. Previously a bug existed that would allow the
-# iterator to mistakenly surface c.SET.12.
+# iterator to mistakenly surface c#12,SET.
 
 define auto-compactions=off block-size=1 snapshots=(10,11,12,13)
 L1
-  c.SET.13:c13
-  c.SET.12:c12
-  c.SET.11:c11
-  c.SET.10:c10
-  c.SET.9:c9
-  c.SET.8:c8
-  d.SET.9:d9
-  e.SET.9:e9
+  c#13,SET:c13
+  c#12,SET:c12
+  c#11,SET:c11
+  c#10,SET:c10
+  c#9,SET:c9
+  c#8,SET:c8
+  d#9,SET:d9
+  e#9,SET:e9
 ----
 L1:
   000004:[c#13,SET-e#9,SET]
@@ -165,11 +165,11 @@ reset
 
 define auto-compactions=off cache-size=1 block-size=1
 L1
-  a.SET.1:a1
-  b.SET.1:b1
-  c.SET.1:c1
-  d.SET.1:d1
-  e.SET.1:e1
+  a#1,SET:a1
+  b#1,SET:b1
+  c#1,SET:c1
+  d#1,SET:d1
+  e#1,SET:e1
 ----
 L1:
   000004:[a#1,SET-e#1,SET]
@@ -228,10 +228,10 @@ err=injected error
 
 define auto-compactions=off block-size=1 snapshots=(1,2,3,4)
 L1
-    a.MERGE.1:a1
-    a.MERGE.2:a2
-    a.MERGE.3:a3
-    a.MERGE.4:a4
+    a#1,MERGE:a1
+    a#2,MERGE:a2
+    a#3,MERGE:a3
+    a#4,MERGE:a4
 ----
 L1:
   000004:[a#4,MERGE-a#1,MERGE]

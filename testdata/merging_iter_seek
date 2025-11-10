@@ -1,7 +1,7 @@
 define
-a0.SET.0:0
-a1.SET.1:1
-a2.SET.2:2
+a0#0,SET:0
+a1#1,SET:1
+a2#2,SET:2
 ----
 
 iter
@@ -151,9 +151,9 @@ a0:0
 .
 
 define
-a0.SET.0:0 b3.SET.3:3
-a1.SET.1:1
-a2.SET.2:2
+a0#0,SET:0 b3#3,SET:3
+a1#1,SET:1
+a2#2,SET:2
 ----
 
 iter
@@ -175,9 +175,9 @@ a0:0
 .
 
 define
-a.SET.0:0 b.SET.3:3
-aa.SET.1:1
-aaa.SET.2:2
+a#0,SET:0 b#3,SET:3
+aa#1,SET:1
+aaa#2,SET:2
 ----
 
 iter

@@ -2,11 +2,11 @@
 
 define
 L1
-  b.SET.11:foo
-  c.SET.11:foo
+  b#11,SET:foo
+  c#11,SET:foo
 L2
-  c.SET.0:foo
-  d.SET.0:foo
+  c#0,SET:foo
+  d#0,SET:foo
 ----
 L1:
   000004:[b#11,SET-c#11,SET]
@@ -34,13 +34,13 @@ pick-file L2
 
 define
 L5
-  b.SET.11:<rand-bytes=65536>
-  c.SET.11:<rand-bytes=65536>
+  b#11,SET:<rand-bytes=65536>
+  c#11,SET:<rand-bytes=65536>
 L5
-  e.SET.11:<rand-bytes=2>
+  e#11,SET:<rand-bytes=2>
 L6
-  a.SET.0:foo
-  d.SET.0:foo
+  a#0,SET:foo
+  d#0,SET:foo
 ----
 L5:
   000004:[b#11,SET-c#11,SET]
@@ -57,13 +57,13 @@ pick-file L5
 
 define
 L5
-  c.SET.11:<rand-bytes=65536>
-  d.SET.11:<rand-bytes=65536>
+  c#11,SET:<rand-bytes=65536>
+  d#11,SET:<rand-bytes=65536>
 L5
-  e.SET.11:<rand-bytes=2>
+  e#11,SET:<rand-bytes=2>
 L6
-  a.SET.0:foo
-  c.SET.0:foo
+  a#0,SET:foo
+  c#0,SET:foo
 ----
 L5:
   000004:[c#11,SET-d#11,SET]
@@ -76,23 +76,23 @@ pick-file L5
 000005:[e#11,SET-e#11,SET]
 
 
-# Test a scenario where the file containing e.SET.11 overlaps an L6 file
-# containing e.SET.0. These files should be considered overlapping, despite the
+# Test a scenario where the file containing e#11,SET overlaps an L6 file
+# containing e#0,SET. These files should be considered overlapping, despite the
 # fact that they don't overlap within the internal key keyspace. The overlap
 # should then cause the larger file (with a lower overlapping ratio) to be
 # picked.
 
 define
 L5
-  c.SET.11:<rand-bytes=65536>
-  d.SET.11:<rand-bytes=65536>
+  c#11,SET:<rand-bytes=65536>
+  d#11,SET:<rand-bytes=65536>
 L5
-  e.SET.11:<rand-bytes=2>
+  e#11,SET:<rand-bytes=2>
 L6
-  a.SET.0:foo
-  c.SET.0:foo
+  a#0,SET:foo
+  c#0,SET:foo
 L6
-  e.SET.0:foo
+  e#0,SET:foo
 ----
 L5:
   000004:[c#11,SET-d#11,SET]
@@ -108,17 +108,17 @@ pick-file L5
 # Test with virtual ssts.
 define
 L5
-  c.SET.11:<rand-bytes=32768>
-  d.SET.11:<rand-bytes=65536>
-  e.SET.11:<rand-bytes=100>
+  c#11,SET:<rand-bytes=32768>
+  d#11,SET:<rand-bytes=65536>
+  e#11,SET:<rand-bytes=100>
 L5
-  f.SET.11:<rand-bytes=57344>
+  f#11,SET:<rand-bytes=57344>
 L6
-  c.SET.0:<rand-bytes=65536>
+  c#0,SET:<rand-bytes=65536>
 L6
-  e.SET.0:<rand-bytes=65536>
+  e#0,SET:<rand-bytes=65536>
 L6
-  f.SET.0:<rand-bytes=65536>
+  f#0,SET:<rand-bytes=65536>
 ----
 L5:
   000004:[c#11,SET-e#11,SET]
@@ -223,11 +223,11 @@ pick-file L5
 
 define
 L1
-  b.SET.11:foo
-  c.SET.11:foo
+  b#11,SET:foo
+  c#11,SET:foo
 L2
-  c.SET.0:foo
-  d.SET.0:foo
+  c#0,SET:foo
+  d#0,SET:foo
 ----
 L1:
   000004:[b#11,SET-c#11,SET]
@@ -260,17 +260,17 @@ pick-file L2
 
 define
 L1
-  b.SET.11:foo
-  c.SET.11:foo
+  b#11,SET:foo
+  c#11,SET:foo
 L1
-  d.SET.11:foo
-  e.SET.11:foo
+  d#11,SET:foo
+  e#11,SET:foo
 L1
-  f.SET.11:foo
-  g.SET.11:foo
+  f#11,SET:foo
+  g#11,SET:foo
 L2
-  a.SET.0:foo
-  z.SET.0:foo
+  a#0,SET:foo
+  z#0,SET:foo
 ----
 L1:
   000004:[b#11,SET-c#11,SET]

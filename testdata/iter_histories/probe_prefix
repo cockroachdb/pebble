@@ -2,8 +2,8 @@
 
 define
 L6
-  a@5.SET.10:10 a@3.SET.8:8 a@1.SET.5:5 b@2.SET.7:7 c@10.SET.2:2 c@5.SET.1:1
-  a@2.RANGEDEL.10:b@3
+  a@5#10,SET:10 a@3#8,SET:8 a@1#5,SET:5 b@2#7,SET:7 c@10#2,SET:2 c@5#1,SET:1
+  a@2#10,RANGEDEL:b@3
 ----
 L6:
   000004:[a@5#10,SET-c@5#1,SET]

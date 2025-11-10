@@ -10,22 +10,22 @@
 # the presence of range tombstones.
 
 build
-a.SET.9:a
-b.SET.8:b
+a#9,SET:a
+b#8,SET:b
 ----
 0: a#9,SET-b#8,SET
 
 build
-c.SET.7:c
-d.RANGEDEL.6:e
-f.SET.5:f
+c#7,SET:c
+d#6,RANGEDEL:e
+f#5,SET:f
 ----
 0: a#9,SET-b#8,SET
 1: c#7,SET-f#5,SET
 
 build
-g.SET.4:g
-h.SET.3:h
+g#4,SET:g
+h#3,SET:h
 ----
 0: a#9,SET-b#8,SET
 1: c#7,SET-f#5,SET
@@ -168,8 +168,8 @@ clear
 ----
 
 build
-d.RANGEDEL.6:e
-f.SET.5:f
+d#6,RANGEDEL:e
+f#5,SET:f
 ----
 0: d#6,RANGEDEL-f#5,SET
 
@@ -186,8 +186,8 @@ clear
 ----
 
 build
-c.SET.7:c
-d.RANGEDEL.6:e
+c#7,SET:c
+d#6,RANGEDEL:e
 ----
 0: c#7,SET-e#inf,RANGEDEL
 
@@ -208,15 +208,15 @@ clear
 ----
 
 build
-a.RANGEDEL.5:b
-c.SET.7:c
-d.RANGEDEL.6:e
+a#5,RANGEDEL:b
+c#7,SET:c
+d#6,RANGEDEL:e
 ----
 0: a#5,RANGEDEL-e#inf,RANGEDEL
 
 build
-f.SET.8:f
-g.SET.9:g
+f#8,SET:f
+g#9,SET:g
 ----
 0: a#5,RANGEDEL-e#inf,RANGEDEL
 1: f#8,SET-g#9,SET
@@ -254,9 +254,9 @@ clear
 ----
 
 build
-a.SET.1:a
-b.SET.1:b
-d.RANGEDEL.2:e
+a#1,SET:a
+b#1,SET:b
+d#2,RANGEDEL:e
 ----
 0: a#1,SET-e#inf,RANGEDEL
 
@@ -276,9 +276,9 @@ clear
 ----
 
 build
-a.RANGEDEL.1:b
-d.SET.2:d
-e.SET.2:e
+a#1,RANGEDEL:b
+d#2,SET:d
+e#2,SET:e
 ----
 0: a#1,RANGEDEL-e#2,SET
 
@@ -296,32 +296,32 @@ clear
 ----
 
 build
-a.SET.1:a
-b.SET.2:b
-c.RANGEDEL.4:e
+a#1,SET:a
+b#2,SET:b
+c#4,RANGEDEL:e
 ----
 0: a#1,SET-e#inf,RANGEDEL
 
 build
-e.SET.4:e
-f.SINGLEDEL.5:
-f.SET.4:f
-g.SET.6:g
-h.SINGLEDEL.7:
+e#4,SET:e
+f#5,SINGLEDEL:
+f#4,SET:f
+g#6,SET:g
+h#7,SINGLEDEL:
 ----
 0: a#1,SET-e#inf,RANGEDEL
 1: e#4,SET-h#7,SINGLEDEL
 
 build
-h.SET.6:h
-i.SET.6:i
+h#6,SET:h
+i#6,SET:i
 ----
 0: a#1,SET-e#inf,RANGEDEL
 1: e#4,SET-h#7,SINGLEDEL
 2: h#6,SET-i#6,SET
 
 build
-j.SET.7:j
+j#7,SET:j
 ----
 0: a#1,SET-e#inf,RANGEDEL
 1: e#4,SET-h#7,SINGLEDEL
@@ -372,29 +372,29 @@ clear
 ----
 
 build
-a.SET.9:a
-b.SET.8:b
+a#9,SET:a
+b#8,SET:b
 ----
 0: a#9,SET-b#8,SET
 
 build
-c.SET.7:c
-d.RANGEDEL.6:e
-f.SET.5:f
+c#7,SET:c
+d#6,RANGEDEL:e
+f#5,SET:f
 ----
 0: a#9,SET-b#8,SET
 1: c#7,SET-f#5,SET
 
 build table-format=Pebble,v2
-g.RANGEKEYDEL.6:h
+g#6,RANGEKEYDEL:h
 ----
 0: a#9,SET-b#8,SET
 1: c#7,SET-f#5,SET
 2: g#6,RANGEKEYDEL-h#inf,RANGEKEYDEL
 
 build
-i.SET.4:i
-j.SET.3:j
+i#4,SET:i
+j#3,SET:j
 ----
 0: a#9,SET-b#8,SET
 1: c#7,SET-f#5,SET

@@ -1,7 +1,7 @@
 # Do a manual compaction when auto compaction is disabled.
 define disable-multi-level lbase-max-bytes=1
 L5
-  a.SET.2:v c.SET.4:v
+  a#2,SET:v c#4,SET:v
 ----
 L5:
   000004:[a#2,SET-c#4,SET]
@@ -20,7 +20,7 @@ compaction-log
 # Do an auto score-based compaction with the same LSM as the previous test.
 define disable-multi-level lbase-max-bytes=1 auto-compactions=off
 L5
-  a.SET.2:v c.SET.4:v
+  a#2,SET:v c#4,SET:v
 ----
 L5:
   000004:[a#2,SET-c#4,SET]
@@ -39,7 +39,7 @@ compaction-log
 # score-based compaction. The score-based compaction runs first.
 define disable-multi-level lbase-max-bytes=1
 L5
-  a.SET.2:v c.SET.4:v
+  a#2,SET:v c#4,SET:v
 ----
 L5:
   000004:[a#2,SET-c#4,SET]

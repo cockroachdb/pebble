@@ -6,15 +6,15 @@
 # Define a sequence of SET=>SET=>DEL=>SET=>SINGLEDEL.
 define target-file-sizes=(1, 1, 1, 1, 1)
 L1
-  a.SINGLEDEL.10:
+  a#10,SINGLEDEL:
 L2
-  a.SET.9:v3
+  a#9,SET:v3
 L3
-  a.DEL.8:
+  a#8,DEL:
 L4
-  a.SET.7:v2
+  a#7,SET:v2
 L5
-  a.SET.6:v1
+  a#6,SET:v1
 ----
 1:
   000004:[a#10,SINGLEDEL-a#10,SINGLEDEL]

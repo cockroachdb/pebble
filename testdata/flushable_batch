@@ -1,14 +1,14 @@
 define
-a.SET.1:1
-a.SET.2:2
-b.SET.1:1
-b.DEL.2:
-c.SET.1:1
-c.MERGE.2:2
-1.RANGEDEL.3:
-2.RANGEKEYSET.4:
-1.RANGEKEYDEL.3:
-2.RANGEKEYUNSET.3:
+a#1,SET:1
+a#2,SET:2
+b#1,SET:1
+b#2,DEL:
+c#1,SET:1
+c#2,MERGE:2
+1#3,RANGEDEL:
+2#4,RANGEKEYSET:
+1#3,RANGEKEYDEL:
+2#3,RANGEKEYUNSET:
 ----
 
 # NB: The range keys get fragmented.
@@ -40,9 +40,9 @@ c#104,SET:1
 3-4:{(#107,RANGEKEYSET,4,4)}
 
 define
-c.SET.1:1
-b.SET.1:1
-a.SET.1:1
+c#1,SET:1
+b#1,SET:1
+a#1,SET:1
 ----
 
 dump seq=1000
@@ -159,17 +159,17 @@ a:1
 # assigned a sequence number or appear within the iterator output.
 
 define
-b.SET.1:
-a.SET.1:
-c.SET.1:
-b.LOGDATA.2:
-1.RANGEDEL.3:
-a.SET.2:
-2.RANGEKEYSET.4:
-1.RANGEKEYDEL.3:
-c.MERGE.2:
-b.DEL.3:
-2.RANGEKEYUNSET.3:
+b#1,SET:
+a#1,SET:
+c#1,SET:
+b#2,LOGDATA:
+1#3,RANGEDEL:
+a#2,SET:
+2#4,RANGEKEYSET:
+1#3,RANGEKEYDEL:
+c#2,MERGE:
+b#3,DEL:
+2#3,RANGEKEYUNSET:
 ----
 
 dump seq=0

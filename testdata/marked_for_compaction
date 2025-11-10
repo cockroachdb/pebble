@@ -1,9 +1,9 @@
 define
 L0
-  c.SET.11:foo
+  c#11,SET:foo
 L1
-  c.SET.0:foo
-  d.SET.0:foo
+  c#0,SET:foo
+  d#0,SET:foo
 ----
 L0.0:
   000004:[c#11,SET-c#11,SET] seqnums:[11-11] points:[c#11,SET-c#11,SET] size:654

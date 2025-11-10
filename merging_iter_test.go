@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -62,11 +63,13 @@ func TestMergingIterSeek(t *testing.T) {
 
 		case "iter":
 			var iters []internalIterator
-			for _, line := range strings.Split(def, "\n") {
+			for _, line := range crstrings.Lines(def) {
 				var kvs []base.InternalKV
-				for _, key := range strings.Fields(line) {
-					j := strings.Index(key, ":")
-					kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
+				// Parse space-separated key-value pairs, handling "key = value" format
+				fields := strings.Fields(line)
+				for _, f := range fields {
+					kv := base.ParseInternalKV(f)
+					kvs = append(kvs, kv)
 				}
 				iters = append(iters, base.NewFakeIter(kvs))
 			}
@@ -89,24 +92,24 @@ func TestMergingIterNextPrev(t *testing.T) {
 	// testdata/internal_iter_next.
 	iterCases := [][]string{
 		{
-			"a.SET.2:2 a.SET.1:1 b.SET.2:2 b.SET.1:1 c.SET.2:2 c.SET.1:1",
+			"a#2,SET:2 a#1,SET:1 b#2,SET:2 b#1,SET:1 c#2,SET:2 c#1,SET:1",
 		},
 		{
-			"a.SET.2:2 b.SET.2:2 c.SET.2:2",
-			"a.SET.1:1 b.SET.1:1 c.SET.1:1",
+			"a#2,SET:2 b#2,SET:2 c#2,SET:2",
+			"a#1,SET:1 b#1,SET:1 c#1,SET:1",
 		},
 		{
-			"a.SET.2:2 b.SET.2:2",
-			"a.SET.1:1 b.SET.1:1",
-			"c.SET.2:2 c.SET.1:1",
+			"a#2,SET:2 b#2,SET:2",
+			"a#1,SET:1 b#1,SET:1",
+			"c#2,SET:2 c#1,SET:1",
 		},
 		{
-			"a.SET.2:2",
-			"a.SET.1:1",
-			"b.SET.2:2",
-			"b.SET.1:1",
-			"c.SET.2:2",
-			"c.SET.1:1",
+			"a#2,SET:2",
+			"a#1,SET:1",
+			"b#2,SET:2",
+			"b#1,SET:1",
+			"c#2,SET:2",
+			"c#1,SET:1",
 		},
 	}
 

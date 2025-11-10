@@ -225,7 +225,7 @@ q@100: (q@100, [p-r) @1=foo)
 
 # Test switching directions via NextPrefix when the internal iterator is
 # exhausted (in the reverse direction), but the Iterator is not.
-#  eg, i.pos = iterPosPrev and i.iterKey == nil.
+#  eg, i.pos == iterPosPrev and i.iterKey == nil.
 combined-iter
 seek-ge a@10
 prev

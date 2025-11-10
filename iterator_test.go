@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -204,9 +205,8 @@ func TestIterator(t *testing.T) {
 				merge = base.NewDeletableSumValueMerger
 			}
 			kvs = kvs[:0]
-			for _, key := range strings.Split(d.Input, "\n") {
-				j := strings.Index(key, ":")
-				kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
+			for _, line := range crstrings.Lines(d.Input) {
+				kvs = append(kvs, base.ParseInternalKV(line))
 			}
 			return ""
 

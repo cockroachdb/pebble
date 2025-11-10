@@ -1,12 +1,12 @@
 define
 L0
-  a.SET.4:4
+  a#4,SET:4
 L1
-  a.SET.3:3
+  a#3,SET:3
 L2
-  a.SET.2:2
+  a#2,SET:2
 L3
-  a.SET.1:1
+  a#1,SET:1
 ----
 L0.0:
   000004:[a#4,SET-a#4,SET]

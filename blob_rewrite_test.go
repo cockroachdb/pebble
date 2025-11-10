@@ -117,16 +117,11 @@ func TestBlobRewrite(t *testing.T) {
 				if tw == nil {
 					initRawWriter()
 				}
-				var ikv base.InternalKV
 				for _, line := range crstrings.Lines(d.Input) {
-					parts := strings.SplitN(line, ":", 2)
-					ik := base.ParseInternalKey(parts[0])
-					ikv.K = ik
-					if strings.HasPrefix(parts[1], "blob") {
-						ikv.V, err = bv.ParseInternalValue(parts[1])
+					ikv := base.ParseInternalKV(line)
+					if value := string(ikv.InPlaceValue()); strings.HasPrefix(value, "blob") {
+						ikv.V, err = bv.ParseInternalValue(value)
 						require.NoError(t, err)
-					} else {
-						ikv.V = base.MakeInPlaceValue([]byte(parts[1]))
 					}
 					require.NoError(t, vs.Add(tw, &ikv, false /* forceObsolete */, false /* isLikeyMVCCGarbage */))
 				}

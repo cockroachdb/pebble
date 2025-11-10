@@ -1,10 +1,10 @@
 
 define
-a.SET.5:foo
-b.SET.6:foo
-b.DEL.4:
-c.SET.7:bar
-c.SET.5:foo
+a#5,SET:foo
+b#6,SET:foo
+b#4,DEL:
+c#7,SET:bar
+c#5,SET:foo
 ----
 
 iter
@@ -23,13 +23,13 @@ c#7,SET:bar
 # Ensure that we pause at (and return) rangedel start points correctly.
 
 define
-a.RANGEDEL.4:b
-a.SET.5:foo
-b.RANGEDEL.3:c
-b.SET.6:foo
-b.DEL.4:
-c.SET.7:bar
-c.SET.5:foo
+a#4,RANGEDEL:b
+a#5,SET:foo
+b#3,RANGEDEL:c
+b#6,SET:foo
+b#4,DEL:
+c#7,SET:bar
+c#5,SET:foo
 ----
 
 iter
@@ -44,13 +44,13 @@ c#7,SET:bar
 # More rangedel elision tests
 
 define
-a.RANGEDEL.4:b
-a.SET.5:foo
-b.RANGEDEL.4:c
-b.SET.3:foo
-b.DEL.2:
-c.SET.7:bar
-c.SET.5:foo
+a#4,RANGEDEL:b
+a#5,SET:foo
+b#4,RANGEDEL:c
+b#3,SET:foo
+b#2,DEL:
+c#7,SET:bar
+c#5,SET:foo
 ----
 
 iter

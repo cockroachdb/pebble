@@ -1,20 +1,20 @@
 setup-inputs a a
 L0
-  a.SET.1-b.SET.2
+  a#1,SET-b#2,SET
 ----
 L0
   000001:[a#1,SET-b#2,SET]
 
 setup-inputs c c
 L0
-  a.SET.1-b.SET.2
+  a#1,SET-b#2,SET
 ----
 
 # The range deletion sentinel acts as a clean cut boundary.
 setup-inputs a a
 L1
-  a.SET.1-b.RANGEDEL.inf
-  b.SET.1-c.SET.2
+  a#1,SET-b#inf,RANGEDEL
+  b#1,SET-c#2,SET
 ----
 L1
   000001:[a#1,SET-b#inf,RANGEDEL]
@@ -22,10 +22,10 @@ L1
 # Verify we expand the output level inputs to a clean cut.
 setup-inputs a a
 L1
-  a.SET.5-b.SET.6
+  a#5,SET-b#6,SET
 L2
-  a.SET.3-c.RANGEDEL.inf
-  c.SET.3-d.SET.2
+  a#3,SET-c#inf,RANGEDEL
+  c#3,SET-d#2,SET
 ----
 L1
   000001:[a#5,SET-b#6,SET]
@@ -36,10 +36,10 @@ L2
 # lie within the output level bounds.
 setup-inputs a a
 L1
-  a.SET.5-b.SET.6
-  c.SET.4-e.SET.3
+  a#5,SET-b#6,SET
+  c#4,SET-e#3,SET
 L2
-  a.SET.3-d.SET.4
+  a#3,SET-d#4,SET
 ----
 L1
   000001:[a#5,SET-b#6,SET]
@@ -51,10 +51,10 @@ L2
 # disk capacity.
 setup-inputs avail-bytes=10 a a
 L1
-  a.SET.5-b.SET.6 size=2
-  c.SET.4-e.SET.3 size=1
+  a#5,SET-b#6,SET size=2
+  c#4,SET-e#3,SET size=1
 L2
-  a.SET.3-d.SET.4 size=3
+  a#3,SET-d#4,SET size=3
 ----
 L1
   000001:[a#5,SET-b#6,SET]
@@ -65,11 +65,11 @@ L2
 # output level inputs.
 setup-inputs a a
 L1
-  a.SET.5-b.SET.6
-  c.SET.4-e.SET.3
+  a#5,SET-b#6,SET
+  c#4,SET-e#3,SET
 L2
-  a.SET.3-d.SET.4
-  e.SET.2-f.SET.1
+  a#3,SET-d#4,SET
+  e#2,SET-f#1,SET
 ----
 L1
   000001:[a#5,SET-b#6,SET]
@@ -79,11 +79,11 @@ L2
 # Verify setup inputs can identify compacting files in range
 setup-inputs a d
 L1
-  000001:a.SET.5-f.SET.6
+  000001:a#5,SET-f#6,SET
 L2
-  000002:a.SET.3-c.SET.4
-  000003:d.SET.3-e.SET.2
-  000004:f.SET.3-g.SET.6
+  000002:a#3,SET-c#4,SET
+  000003:d#3,SET-e#2,SET
+  000004:f#3,SET-g#6,SET
 compactions
   L2 000003 -> L3
 ----
@@ -100,8 +100,8 @@ compactions
 # Verify when there is one file in range and it is compacting
 setup-inputs a a
 L2
-  000001:a.SET.3-c.SET.4
-  000002:d.SET.3-e.SET.2
+  000001:a#3,SET-c#4,SET
+  000002:d#3,SET-e#2,SET
 compactions
   L2 000001 -> L3
 ----
@@ -114,7 +114,7 @@ compactions
 # Verify when there is one file in level and is compacting
 setup-inputs a a
 L2
-   000001:a.SET.3-c.SET.4 compacting
+   000001:a#3,SET-c#4,SET compacting
 compactions
   L2 000001 -> L3
 ----
@@ -130,11 +130,11 @@ compactions
 
 setup-inputs e f
 L1
-  000001:a.SET.5-b.SET.6
-  000003:e.SET.7-f.SET.8
-  000002:v.SET.3-z.SET.4
+  000001:a#5,SET-b#6,SET
+  000003:e#7,SET-f#8,SET
+  000002:v#3,SET-z#4,SET
 L2
-  000004:a.SET.1-c.SET.2
+  000004:a#1,SET-c#2,SET
 compactions
   L1 000001 000002 -> L2
 ----
