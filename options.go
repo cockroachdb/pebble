@@ -1399,6 +1399,14 @@ func (o *Options) Clone() *Options {
 		c := *o.WALFailover
 		n.WALFailover = &c
 	}
+	// Clone the Levels slice. Since Levels is a slice (not an array), copying
+	// the Options struct only copies the slice header, causing the original and
+	// clone to share the same backing array. Allocate a new slice and copy the
+	// LevelOptions structs to ensure independence.
+	if o.Levels != nil {
+		n.Levels = make([]LevelOptions, len(o.Levels))
+		copy(n.Levels, o.Levels)
+	}
 	return &n
 }
 
