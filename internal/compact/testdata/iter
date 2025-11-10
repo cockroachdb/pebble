@@ -1,5 +1,5 @@
 define
-a.SET.1:b
+a#1,SET:b
 ----
 
 iter print-snapshot-pinned
@@ -10,8 +10,8 @@ a#1,SET:b (not pinned)
 .
 
 define
-a.SET.2:c
-a.SET.1:b
+a#2,SET:c
+a#1,SET:b
 ----
 
 iter print-snapshot-pinned
@@ -45,8 +45,8 @@ a#1,SET:b (pinned)
 .
 
 define
-a.DEL.2:
-a.SET.1:b
+a#2,DEL:
+a#1,SET:b
 ----
 
 iter
@@ -78,9 +78,9 @@ a#2,DEL: (pinned)
 .
 
 define
-a.DEL.2:
-a.SET.1:b
-b.SET.3:c
+a#2,DEL:
+a#1,SET:b
+b#3,SET:c
 ----
 
 iter print-snapshot-pinned
@@ -113,9 +113,9 @@ b#3,SET:c
 .
 
 define
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
 ----
 
 iter
@@ -130,11 +130,11 @@ c#3,SET:c
 .
 
 define
-a.MERGE.3:d
-a.MERGE.2:c
-a.SET.1:b
-b.MERGE.2:b
-b.MERGE.1:a
+a#3,MERGE:d
+a#2,MERGE:c
+a#1,SET:b
+b#2,MERGE:b
+b#1,MERGE:a
 ----
 
 iter
@@ -158,11 +158,11 @@ b#2,MERGE:ab (not pinned)
 .
 
 define
-a.SET.9:b
-a.DEL.8:
-a.SET.7:d
-a.DEL.6:
-a.SET.5:f
+a#9,SET:b
+a#8,DEL:
+a#7,SET:d
+a#6,DEL:
+a#5,SET:f
 ----
 
 iter
@@ -231,8 +231,8 @@ a#5,SET:f (pinned)
 .
 
 define
-a.INVALID.2:b
-a.SET.1:c
+a#2,INVALID:b
+a#1,SET:c
 ----
 
 iter
@@ -241,20 +241,8 @@ first
 err=invalid internal key kind: INVALID
 
 define
-a.SET.2:b
-a.INVALID.1:c
-----
-
-iter
-first
-next
-----
-err=invalid internal key kind: INVALID
-err=invalid internal key kind: INVALID
-
-define
-a.MERGE.2:b
-a.INVALID.1:c
+a#2,SET:b
+a#1,INVALID:c
 ----
 
 iter
@@ -265,8 +253,20 @@ err=invalid internal key kind: INVALID
 err=invalid internal key kind: INVALID
 
 define
-a.INVALID.2:c
-a.RANGEDEL.1:d
+a#2,MERGE:b
+a#1,INVALID:c
+----
+
+iter
+first
+next
+----
+err=invalid internal key kind: INVALID
+err=invalid internal key kind: INVALID
+
+define
+a#2,INVALID:c
+a#1,RANGEDEL:d
 ----
 
 iter
@@ -275,9 +275,9 @@ first
 a#inf,RANGEDEL:; Span() = a-d:{(#1,RANGEDEL)}
 
 define
-a.MERGE.2:b
-a.MERGE.1:c
-a.MERGE.0:d
+a#2,MERGE:b
+a#1,MERGE:c
+a#0,MERGE:d
 ----
 
 iter snapshots=(1,2) print-snapshot-pinned
@@ -292,11 +292,11 @@ a#0,MERGE:d (pinned)
 .
 
 define
-a.SET.2:b
-a.RANGEDEL.1:c
-b.RANGEDEL.4:d
-b.SET.2:e
-c.SET.3:f
+a#2,SET:b
+a#1,RANGEDEL:c
+b#4,RANGEDEL:d
+b#2,SET:e
+c#3,SET:f
 ----
 
 # NB: Range deletions are always marked as 'not pinned' currently. Extending
@@ -353,11 +353,11 @@ c#inf,RANGEDEL: (not pinned); Span() = c-d:{(#4,RANGEDEL)}
 c#3,SET:f (pinned)
 
 define
-a.RANGEDEL.3:e
-b.SET.4:b
-c.SET.3:c
-d.SET.2:d
-e.SET.1:e
+a#3,RANGEDEL:e
+b#4,SET:b
+c#3,SET:c
+d#2,SET:d
+e#1,SET:e
 ----
 
 iter
@@ -374,11 +374,11 @@ e#1,SET:e
 .
 
 define
-a.RANGEDEL.3:e
-b.MERGE.4:b
-c.MERGE.3:c
-d.MERGE.2:d
-e.MERGE.1:e
+a#3,RANGEDEL:e
+b#4,MERGE:b
+c#3,MERGE:c
+d#2,MERGE:d
+e#1,MERGE:e
 ----
 
 iter
@@ -395,16 +395,16 @@ e#1,MERGE:e
 .
 
 define
-a.RANGEDEL.3:c
-b.MERGE.5:e
-b.MERGE.4:d
-b.MERGE.2:c
-b.MERGE.1:b
-d.MERGE.5:c
-d.MERGE.4:b
-d.RANGEDEL.3:f
-d.MERGE.2:e
-d.MERGE.1:d
+a#3,RANGEDEL:c
+b#5,MERGE:e
+b#4,MERGE:d
+b#2,MERGE:c
+b#1,MERGE:b
+d#5,MERGE:c
+d#4,MERGE:b
+d#3,RANGEDEL:f
+d#2,MERGE:e
+d#1,MERGE:d
 ----
 
 iter
@@ -421,9 +421,9 @@ d#5,MERGE:bc
 .
 
 define
-a.RANGEDEL.3:d
-b.RANGEDEL.2:e
-c.RANGEDEL.1:f
+a#3,RANGEDEL:d
+b#2,RANGEDEL:e
+c#1,RANGEDEL:f
 ----
 
 iter
@@ -471,9 +471,9 @@ c#inf,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL) (#1,RANGEDEL)}
 d#inf,RANGEDEL:; Span() = d-e:{(#2,RANGEDEL) (#1,RANGEDEL)}
 
 define
-a.RANGEDEL.10:k
-f.SET.9:f
-f.SET.8:f
+a#10,RANGEDEL:k
+f#9,SET:f
+f#8,SET:f
 ----
 
 iter snapshots=(9,10)
@@ -486,9 +486,9 @@ f#9,SET:f
 f#8,SET:f
 
 define
-f.RANGEDEL.10:k
-f.SET.9:f
-f.SET.8:f
+f#10,RANGEDEL:k
+f#9,SET:f
+f#8,SET:f
 ----
 
 iter snapshots=(9,10)
@@ -501,10 +501,10 @@ f#9,SET:f
 f#8,SET:f
 
 define
-a.SET.1:a
-b.RANGEDEL.2:d
-c.RANGEDEL.3:e
-d.SET.4:d
+a#1,SET:a
+b#2,RANGEDEL:d
+c#3,RANGEDEL:e
+d#4,SET:d
 ----
 
 iter
@@ -530,9 +530,9 @@ c#inf,RANGEDEL:; Span() = c-d:{(#3,RANGEDEL) (#2,RANGEDEL)}
 d#inf,RANGEDEL:; Span() = d-e:{(#3,RANGEDEL)}
 
 define
-a.SET.1:a
-b.RANGEDEL.2:d
-c.SET.4:d
+a#1,SET:a
+b#2,RANGEDEL:d
+c#4,SET:d
 ----
 
 iter
@@ -545,10 +545,10 @@ b#inf,RANGEDEL:; Span() = b-d:{(#2,RANGEDEL)}
 c#4,SET:d
 
 define
-a.RANGEDEL.2:d
-a.SET.2:a
-b.SET.2:b
-c.SET.2:c
+a#2,RANGEDEL:d
+a#2,SET:a
+b#2,SET:b
+c#2,SET:c
 ----
 
 iter
@@ -565,7 +565,7 @@ c#2,SET:c
 .
 
 define
-a.SINGLEDEL.1:
+a#1,SINGLEDEL:
 ----
 
 iter
@@ -582,8 +582,8 @@ first
 ineffectual-single-deletes: a
 
 define
-a.SINGLEDEL.2:
-a.SINGLEDEL.1:
+a#2,SINGLEDEL:
+a#1,SINGLEDEL:
 ----
 
 iter
@@ -595,9 +595,9 @@ a#2,SINGLEDEL:
 ineffectual-single-deletes: a
 
 define
-a.SINGLEDEL.3:
-a.SINGLEDEL.2:
-a.SET.1:a
+a#3,SINGLEDEL:
+a#2,SINGLEDEL:
+a#1,SET:a
 ----
 
 iter
@@ -607,9 +607,9 @@ first
 ineffectual-single-deletes: a
 
 define
-a.SET.3:a
-b.SINGLEDEL.2:
-b.DEL.1:
+a#3,SET:a
+b#2,SINGLEDEL:
+b#1,DEL:
 ----
 
 iter
@@ -623,8 +623,8 @@ b#2,DEL:
 ineffectual-single-deletes: b
 
 define
-a.SINGLEDEL.2:
-a.DEL.1:
+a#2,SINGLEDEL:
+a#1,DEL:
 ----
 
 iter
@@ -642,8 +642,8 @@ first
 ineffectual-single-deletes: a
 
 define
-a.SINGLEDEL.2:
-a.MERGE.1:
+a#2,SINGLEDEL:
+a#1,MERGE:a
 ----
 
 iter
@@ -657,8 +657,8 @@ first
 .
 
 define
-a.SINGLEDEL.2:
-a.SET.1:b
+a#2,SINGLEDEL:
+a#1,SET:b
 ----
 
 iter
@@ -667,8 +667,8 @@ first
 .
 
 define
-a.SET.2:b
-a.SINGLEDEL.1:
+a#2,SET:b
+a#1,SINGLEDEL:
 ----
 
 iter
@@ -688,9 +688,9 @@ a#2,SETWITHDEL:b
 .
 
 define
-a.MERGE.6:b
-a.SINGLEDEL.5:
-a.SET.4:a
+a#6,MERGE:b
+a#5,SINGLEDEL:
+a#4,SET:a
 ----
 
 iter
@@ -704,10 +704,10 @@ a#6,SETWITHDEL:b[base]
 # not been deleted or single deleted. It is permitted to shadow both, since
 # MERGE turns into a SETWITHDELETE when it meets the SINGLEDEL.
 define
-a.MERGE.6:b
-a.SINGLEDEL.5:
-a.SET.4:a
-a.SET.3:a
+a#6,MERGE:b
+a#5,SINGLEDEL:
+a#4,SET:a
+a#3,SET:a
 ----
 
 iter
@@ -718,9 +718,9 @@ a#6,SETWITHDEL:b[base]
 .
 
 define
-a.SINGLEDEL.2:
-a.SET.1:b
-b.SET.3:c
+a#2,SINGLEDEL:
+a#1,SET:b
+b#3,SET:c
 ----
 
 iter
@@ -731,9 +731,9 @@ b#3,SET:c
 .
 
 define
-a.SINGLEDEL.3:
-a.SET.2:b
-a.SET.1:a
+a#3,SINGLEDEL:
+a#2,SET:b
+a#1,SET:a
 ----
 
 iter
@@ -745,9 +745,9 @@ a#1,SET:a
 invariant-violation-single-deletes: a
 
 define
-a.SINGLEDEL.3:
-a.MERGE.2:b
-a.MERGE.1:a
+a#3,SINGLEDEL:
+a#2,MERGE:b
+a#1,MERGE:a
 ----
 
 # SINGLEDEL consumes the first MERGE.
@@ -760,10 +760,10 @@ a#1,MERGE:a
 invariant-violation-single-deletes: a
 
 define
-a.SINGLEDEL.4:
-a.SET.3:val
-a.SINGLEDEL.2:
-a.SET.1:val
+a#4,SINGLEDEL:
+a#3,SET:val
+a#2,SINGLEDEL:
+a#1,SET:val
 ----
 
 iter
@@ -781,10 +781,10 @@ a#1,SET:val
 .
 
 define
-a.SINGLEDEL.4:
-a.SET.3:val
-a.DEL.2:
-a.SET.1:val
+a#4,SINGLEDEL:
+a#3,SET:val
+a#2,DEL:
+a#1,SET:val
 ----
 
 iter
@@ -820,10 +820,10 @@ a#1,SET:val
 .
 
 define
-a.SINGLEDEL.4:
-a.SET.3:c
-a.MERGE.2:b
-a.SET.1:a
+a#4,SINGLEDEL:
+a#3,SET:c
+a#2,MERGE:b
+a#1,SET:a
 ----
 
 iter
@@ -866,9 +866,9 @@ a#1,SET:a
 .
 
 define
-a.SINGLEDEL.3:
-a.RANGEDEL.2:c
-a.SET.1:val
+a#3,SINGLEDEL:
+a#2,RANGEDEL:c
+a#1,SET:val
 ----
 
 iter
@@ -881,10 +881,10 @@ a#3,SINGLEDEL:
 .
 
 define
-a.RANGEDEL.3:d
-a.DEL.2:
-a.SET.1:a
-d.DEL.2:
+a#3,RANGEDEL:d
+a#2,DEL:
+a#1,SET:a
+d#2,DEL:
 ----
 
 iter
@@ -928,8 +928,8 @@ d#2,DEL:
 .
 
 define
-a.MERGE.2:a
-b.RANGEDEL.1:c
+a#2,MERGE:a
+b#1,RANGEDEL:c
 ----
 
 iter
@@ -942,9 +942,9 @@ b#inf,RANGEDEL:; Span() = b-c:{(#1,RANGEDEL)}
 .
 
 define
-a.MERGE.2:v2
-a.RANGEDEL.1:b
-a.MERGE.1:v1
+a#2,MERGE:v2
+a#1,RANGEDEL:b
+a#1,MERGE:v1
 ----
 
 iter is-bottommost-layer=true
@@ -961,9 +961,9 @@ a#0,SET:v1v2[base]
 # Verify that we transform merge+del -> set.
 
 define
-a.MERGE.5:5
-a.DEL.3:
-a.MERGE.1:1
+a#5,MERGE:5
+a#3,DEL:
+a#1,MERGE:1
 ----
 
 iter
@@ -1008,10 +1008,10 @@ a#1,MERGE:1
 # Verify that merge+rangedel -> merge.
 
 define
-a.RANGEDEL.3:c
-b.MERGE.5:5
-b.SET.2:2
-b.MERGE.1:1
+a#3,RANGEDEL:c
+b#5,MERGE:5
+b#2,SET:2
+b#1,MERGE:1
 ----
 
 iter
@@ -1042,10 +1042,10 @@ b#5,MERGE:5
 b#1,MERGE:1
 
 define
-a.RANGEDEL.3:c
-b.MERGE.5:5
-b.MERGE.2:2
-b.MERGE.1:1
+a#3,RANGEDEL:c
+b#5,MERGE:5
+b#2,MERGE:2
+b#1,MERGE:1
 ----
 
 iter
@@ -1068,14 +1068,14 @@ b#1,MERGE:1
 
 # NB: Zero values are skipped by deletable merger.
 define merger=deletable
-a.MERGE.4:-2
-a.MERGE.3:-1
-a.MERGE.2:2
-a.MERGE.1:1
-b.MERGE.4:-3
-b.MERGE.3:3
-b.MERGE.2:2
-b.MERGE.1:-2
+a#4,MERGE:-2
+a#3,MERGE:-1
+a#2,MERGE:2
+a#1,MERGE:1
+b#4,MERGE:-3
+b#3,MERGE:3
+b#2,MERGE:2
+b#1,MERGE:-2
 ----
 
 iter
@@ -1089,13 +1089,13 @@ next
 
 # Test that range keys are interleaved and exposed by the iterator.
 define
-a.SINGLEDEL.4:
-a.SET.3:val
-a.DEL.2:
-a.SET.1:val
-c.SET.3:val
-a-b:{(#3,RANGEKEYSET,@2,foo)}
-d-e:{(#3,RANGEKEYSET,@2,foo)}
+a#4,SINGLEDEL:
+a#3,SET:val
+a#2,DEL:
+a#1,SET:val
+c#3,SET:val
+Span: a-b:{(#3,RANGEKEYSET,@2,foo)}
+Span: d-e:{(#3,RANGEKEYSET,@2,foo)}
 ----
 
 iter
@@ -1114,8 +1114,8 @@ d#inf,RANGEKEYSET:; Span() = d-e:{(#3,RANGEKEYSET,@2,foo)}
 # Verify that a span boundary doesn't incorrectly cause a key with the same user
 # key to be skipped.
 define
-a-b:{(#5,RANGEKEYDEL)}
-a.SET.3:val
+Span: a-b:{(#5,RANGEKEYDEL)}
+a#3,SET:val
 ----
 
 iter elide-tombstones=true
@@ -1129,10 +1129,10 @@ a#3,SET:val
 # blob file block.
 
 define
-a.SET.9:blobref(000294, blk2, 10, 20)
-b.SET.3:blobref(000294, blk2, 30, 5)
-c.SETWITHDEL.8:blobref(000294, blk2, 35, 100)
-d.SET.2:blobref(000294, blk2, 135, 4)
+a#9,SET:blobref(000294, blk2, 10, 20)
+b#3,SET:blobref(000294, blk2, 30, 5)
+c#8,SETWITHDEL:blobref(000294, blk2, 35, 100)
+d#2,SET:blobref(000294, blk2, 135, 4)
 ----
 
 # An iterator should preserve blob references.
@@ -1152,9 +1152,9 @@ d#2,SET:<blobref(B000294, encodedHandle=028701, valLen=4)>
 # operator.
 
 define
-a.SET.3:blobref(000294, blk2, 10, 20)
-b.MERGE.9:mergekeyvalue
-b.SETWITHDEL.8:blobref(000294, blk2, 35, 100)
+a#3,SET:blobref(000294, blk2, 10, 20)
+b#9,MERGE:mergekeyvalue
+b#8,SETWITHDEL:blobref(000294, blk2, 35, 100)
 ----
 
 iter

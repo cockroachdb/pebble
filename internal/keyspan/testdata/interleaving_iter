@@ -9,13 +9,13 @@ q-z:{(#14,RANGEKEYSET,@9,mangos)}
 OK
 
 define-pointkeys
-artichoke.SET.10
-artichoke.SET.8
-carrot.SET.13
-cauliflower.DEL.9
-parsnip.SET.3
-tomato.SET.2
-zucchini.MERGE.12
+artichoke#10,SET
+artichoke#8,SET
+carrot#13,SET
+cauliflower#9,DEL
+parsnip#3,SET
+tomato#2,SET
+zucchini#12,MERGE
 ----
 OK
 
@@ -366,12 +366,12 @@ q-z:{(#14,RANGEKEYSET,@9,mangos)}
 OK
 
 define-pointkeys
-a.SET.10
-a.SET.8
-b.SET.13
-c.DEL.9
-d.SET.3
-e.SET.2
+a#10,SET
+a#8,SET
+b#13,SET
+c#9,DEL
+d#3,SET
+e#2,SET
 ----
 OK
 
@@ -450,12 +450,12 @@ a-z:{(#5,RANGEKEYSET,@5,apples)}
 OK
 
 define-pointkeys
-a.SET.10
-a.SET.8
-b.SET.13
-c.DEL.9
-d.SET.3
-e.SET.2
+a#10,SET
+a#8,SET
+b#13,SET
+c#9,DEL
+d#3,SET
+e#2,SET
 ----
 OK
 
@@ -582,15 +582,15 @@ x-z:{(#6,RANGEKEYSET,@6,v5)}
 OK
 
 define-pointkeys
-a.SET.9
-b.SET.13
-c.DEL.9
-d.SET.18
-m.SET.4
-o.MERGE.3
-r.SET.22
-y.SET.3
-z.SET.3
+a#9,SET
+b#13,SET
+c#9,DEL
+d#18,SET
+m#4,SET
+o#3,MERGE
+r#22,SET
+y#3,SET
+z#3,SET
 ----
 OK
 
@@ -703,7 +703,7 @@ f-g:{(#6,RANGEKEYDEL)}
 OK
 
 define-pointkeys
-c.SET.8
+c#8,SET
 ----
 OK
 
@@ -744,7 +744,7 @@ y-z:{(#5,RANGEKEYDEL)}
 OK
 
 define-pointkeys
-x.SET.8
+x#8,SET
 ----
 OK
 
@@ -787,7 +787,7 @@ a-z:{(#5,RANGEKEYSET,@1,v1)}
 OK
 
 define-pointkeys
-z.SET.8
+z#8,SET
 ----
 OK
 
@@ -846,11 +846,11 @@ j-l:{(#3,RANGEKEYSET,@1,v0)}
 OK
 
 define-pointkeys
-g.SET.1
-s.SET.1
-v.SET.2
-v.SET.1
-z.SET.1
+g#1,SET
+s#1,SET
+v#2,SET
+v#1,SET
+z#1,SET
 ----
 OK
 
@@ -903,9 +903,9 @@ j-l:{(#3,RANGEKEYSET,@1,v0)}
 OK
 
 define-pointkeys
-a.SET.1
-k.SET.1
-m.SET.1
+a#1,SET
+k#1,SET
+m#1,SET
 ----
 OK
 
@@ -946,7 +946,7 @@ a-d:{(#10,RANGEKEYSET,@5,apples)}
 OK
 
 define-pointkeys
-b.SET.8
+b#8,SET
 ----
 OK
 
@@ -978,7 +978,7 @@ b-f:{(#1,RANGEKEYSET,@1,foo)}
 OK
 
 define-pointkeys
-f.SET.3
+f#3,SET
 ----
 OK
 
@@ -999,7 +999,7 @@ f-g:{(#6,RANGEKEYSET,@1,foo)}
 OK
 
 define-pointkeys
-c.SET.8
+c#8,SET
 ----
 OK
 
@@ -1041,12 +1041,12 @@ f-g:{(#6,RANGEKEYSET,@9,foo)}
 OK
 
 define-pointkeys
-a@4.SET.8
-c@11.SET.8
-c@3.SET.8
-c@1.SET.4
-d@5.SET.3
-e@9.SET.2
+a@4#8,SET
+c@11#8,SET
+c@3#8,SET
+c@1#4,SET
+d@5#3,SET
+e@9#2,SET
 ----
 OK
 
@@ -1092,12 +1092,12 @@ f-g:{(#6,RANGEDEL)}
 OK
 
 define-pointkeys
-a@4.SET.8
-c@11.SET.8
-c@3.SET.8
-c@1.SET.4
-d@5.SET.3
-e@9.SET.2
+a@4#8,SET
+c@11#8,SET
+c@3#8,SET
+c@1#4,SET
+d@5#3,SET
+e@9#2,SET
 ----
 OK
 
@@ -1238,10 +1238,10 @@ b-c:{(#6,RANGEDEL)}
 OK
 
 define-pointkeys
-a@4.SET.8
-b@9.DEL.2
-c@11.SET.8
-c@3.SET.8
+a@4#8,SET
+b@9#2,DEL
+c@11#8,SET
+c@3#8,SET
 ----
 OK
 

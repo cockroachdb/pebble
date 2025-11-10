@@ -1,9 +1,9 @@
 
 define
 L0
-  000009:a.SET.10-b.SET.10
-  000007:c.SET.6-d.SET.8
-  000003:e.SET.5-j.SET.7
+  000009:a#10,SET-b#10,SET
+  000007:c#6,SET-d#8,SET
+  000003:e#5,SET-j#7,SET
 ----
 file count: 3, sublevels: 1, intervals: 6
 flush split keys(3): [b, d, j]
@@ -30,9 +30,9 @@ e-j
 
 define
 L0
-  000009:a.SET.10-b.SET.10
-  000007:b.SET.6-j.SET.8
-  000003:e.SET.5-j.SET.7
+  000009:a#10,SET-b#10,SET
+  000007:b#6,SET-j#8,SET
+  000003:e#5,SET-j#7,SET
 ----
 file count: 3, sublevels: 3, intervals: 5
 flush split keys(2): [b, j]
@@ -65,11 +65,11 @@ e-j
 
 define no_initialize
 L0.2
-  000009:a.SET.10-b.SET.10
+  000009:a#10,SET-b#10,SET
 L0.1
-  000003:e.SET.5-j.SET.7
+  000003:e#5,SET-j#7,SET
 L0.0
-  000007:b.SET.6-j.SET.8
+  000007:b#6,SET-j#8,SET
 ----
 file count: 3, sublevels: 3, intervals: 0
 flush split keys(0): []
@@ -91,10 +91,10 @@ OK
 
 define no_initialize
 L0.1
-  000009:a.SET.10-b.SET.10
+  000009:a#10,SET-b#10,SET
 L0.0
-  000007:b.SET.6-j.SET.8
-  000003:e.SET.5-j.SET.7
+  000007:b#6,SET-j#8,SET
+  000003:e#5,SET-j#7,SET
 ----
 file count: 3, sublevels: 2, intervals: 0
 flush split keys(0): []
@@ -114,16 +114,16 @@ L0.0 files 000007 and 000003 have overlapping ranges: [b#6,SET-j#8,SET] vs [e#5,
 
 define
 L0
-  000001:a.SET.2-b.SET.3
-  000002:c.SET.3-d.SET.5
-  000003:e.SET.5-f.SET.7
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.10-i.SET.10
-  000010:f.SET.11-g.SET.11
+  000001:a#2,SET-b#3,SET
+  000002:c#3,SET-d#5,SET
+  000003:e#5,SET-f#7,SET
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#10,SET-i#10,SET
+  000010:f#11,SET-g#11,SET
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 7, sublevels: 5, intervals: 10
 flush split keys(3): [d, f, g]
@@ -177,16 +177,16 @@ a-b, c-d, e-i
 
 define
 L0
-  000001:a.SET.2-b.SET.3
-  000002:c.SET.3-d.SET.5 intra_l0_compacting
-  000003:e.SET.5-f.SET.7
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.10-i.SET.10
-  000010:f.SET.11-g.SET.11
+  000001:a#2,SET-b#3,SET
+  000002:c#3,SET-d#5,SET intra_l0_compacting
+  000003:e#5,SET-f#7,SET
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#10,SET-i#10,SET
+  000010:f#11,SET-g#11,SET
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 7, sublevels: 5, intervals: 10
 flush split keys(3): [d, f, g]
@@ -265,14 +265,14 @@ no compaction picked
 
 define
 L0
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.10-p.SET.10
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#10,SET-p#10,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 5, sublevels: 4, intervals: 5
 flush split keys(2): [g, p]
@@ -315,14 +315,14 @@ L6:    a---------------f g------------------------------------s
 
 define
 L0
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.10-p.SET.10
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.9 base_compacting
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#10,SET-p#10,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#9,SET base_compacting
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 5, sublevels: 4, intervals: 5
 flush split keys(2): [g, p]
@@ -364,14 +364,14 @@ L6:    a---------------f g------------------------------------s
 
 define
 L0
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.12-p.SET.12
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10 base_compacting
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#12,SET-p#12,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET base_compacting
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 5, sublevels: 4, intervals: 5
 flush split keys(2): [g, p]
@@ -425,14 +425,14 @@ max-depth-after-ongoing-compactions
 
 define
 L0
-  000005:f.SET.6-h.SET.9 base_compacting
-  000006:f.SET.4-g.SET.5 base_compacting
-  000009:f.SET.12-p.SET.12
-  000010:f.SET.11-g.SET.11 base_compacting
-  000011:n.SET.8-p.SET.10 base_compacting
+  000005:f#6,SET-h#9,SET base_compacting
+  000006:f#4,SET-g#5,SET base_compacting
+  000009:f#12,SET-p#12,SET
+  000010:f#11,SET-g#11,SET base_compacting
+  000011:n#8,SET-p#10,SET base_compacting
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 5, sublevels: 4, intervals: 5
 flush split keys(2): [g, p]
@@ -470,14 +470,14 @@ max-depth-after-ongoing-compactions
 
 define
 L0
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.12-p.SET.12
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#12,SET-p#12,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 5, sublevels: 4, intervals: 5
 flush split keys(2): [g, p]
@@ -527,14 +527,14 @@ L6:    a---------------f g------------------------------------s
 
 define
 L0
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.12-p.SET.12
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#12,SET-p#12,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0 compacting
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET compacting
 ----
 file count: 5, sublevels: 4, intervals: 5
 flush split keys(2): [g, p]
@@ -564,14 +564,14 @@ no compaction picked
 
 define
 L0
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.12-p.SET.12 size=104859600
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#12,SET-p#12,SET size=104859600
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 5, sublevels: 4, intervals: 5
 flush split keys(4): [g, h, n, p]
@@ -622,14 +622,14 @@ L6:    a---------------f g------------------------------------s
 
 define
 L0
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000009:f.SET.12-p.SET.12
-  000010:f.SET.11-g.SET.11 size=104859600
-  000011:n.SET.8-p.SET.10
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000009:f#12,SET-p#12,SET
+  000010:f#11,SET-g#11,SET size=104859600
+  000011:n#8,SET-p#10,SET
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 5, sublevels: 4, intervals: 5
 flush split keys(2): [g, p]
@@ -684,16 +684,16 @@ read-amp
 
 define
 L0
-  000004:h.SET.2-j.SET.4
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000007:k.SET.2-l.SET.4 base_compacting
-  000009:f.SET.12-p.SET.12
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10
+  000004:h#2,SET-j#4,SET
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000007:k#2,SET-l#4,SET base_compacting
+  000009:f#12,SET-p#12,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET
 L6
-  000012:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000012:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 7, sublevels: 4, intervals: 9
 flush split keys(4): [g, h, l, p]
@@ -747,16 +747,16 @@ L6:    a---------------f g------------------------------------s
 
 define
 L0
-  000004:h.SET.2-j.SET.4 base_compacting
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000007:k.SET.2-l.SET.4
-  000009:f.SET.12-p.SET.12
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10
+  000004:h#2,SET-j#4,SET base_compacting
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000007:k#2,SET-l#4,SET
+  000009:f#12,SET-p#12,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET
 L6
-  000012:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000012:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 7, sublevels: 4, intervals: 9
 flush split keys(4): [g, h, l, p]
@@ -796,16 +796,16 @@ L6:    a---------------f g------------------------------------s
 
 define
 L0
-  000004:h.SET.2-j.SET.4
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000007:k.SET.2-l.SET.4
-  000009:f.SET.12-p.SET.12
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10
+  000004:h#2,SET-j#4,SET
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000007:k#2,SET-l#4,SET
+  000009:f#12,SET-p#12,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET
 L6
-  000012:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000012:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 7, sublevels: 4, intervals: 9
 flush split keys(4): [g, h, l, p]
@@ -842,12 +842,12 @@ L6:    a---------------f g------------------------------------s
 
 define flush_split_max_bytes=32
 L0
-  000001:a.SET.2-e.SET.5 size=64
-  000002:c.SET.6-g.SET.8 size=16
-  000003:f.SET.9-j.SET.11 size=16
+  000001:a#2,SET-e#5,SET size=64
+  000002:c#6,SET-g#8,SET size=16
+  000003:f#9,SET-j#11,SET size=16
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 3, sublevels: 3, intervals: 6
 flush split keys(0): []
@@ -888,12 +888,12 @@ flush user split keys: none
 
 define flush_split_max_bytes=31
 L0
-  000001:a.SET.2-e.SET.5 size=64
-  000002:c.SET.6-g.SET.8 size=16
-  000003:f.SET.9-j.SET.11 size=16
+  000001:a#2,SET-e#5,SET size=64
+  000002:c#6,SET-g#8,SET size=16
+  000003:f#9,SET-j#11,SET size=16
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 3, sublevels: 3, intervals: 6
 flush split keys(1): [j]
@@ -920,12 +920,12 @@ max-depth-after-ongoing-compactions
 
 define flush_split_max_bytes=64
 L0
-  000001:a.SET.2-d.SET.5 size=64
-  000002:e.SET.6-g.SET.8 size=64
-  000003:h.SET.9-j.SET.11 size=16
+  000001:a#2,SET-d#5,SET size=64
+  000002:e#6,SET-g#8,SET size=64
+  000003:h#9,SET-j#11,SET size=16
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 3, sublevels: 1, intervals: 6
 flush split keys(1): [g]
@@ -950,13 +950,13 @@ flush user split keys: g
 
 define flush_split_max_bytes=64
 L0
-  000001:a.SET.2-d.SET.5 size=64
-  000004:d.SET.12-e.SET.12 size=64
-  000002:e.SET.6-g.SET.8 size=64
-  000003:h.SET.9-j.SET.11 size=16
+  000001:a#2,SET-d#5,SET size=64
+  000004:d#12,SET-e#12,SET size=64
+  000002:e#6,SET-g#8,SET size=64
+  000003:h#9,SET-j#11,SET size=16
 L6
-  000007:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000007:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 4, sublevels: 2, intervals: 8
 flush split keys(1): [e]
@@ -996,16 +996,16 @@ flush user split keys: e
 
 define
 L0
-  000004:h.SET.2-j.SET.4    base_compacting
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5    base_compacting
-  000007:k.SET.2-l.SET.4    base_compacting
-  000009:f.SET.12-p.SET.12  intra_l0_compacting
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-p.SET.10   base_compacting
+  000004:h#2,SET-j#4,SET    base_compacting
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET    base_compacting
+  000007:k#2,SET-l#4,SET    base_compacting
+  000009:f#12,SET-p#12,SET  intra_l0_compacting
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-p#10,SET   base_compacting
 L6
-  000012:a.SET.0-f.SET.0
-  000008:g.SET.0-s.SET.0
+  000012:a#0,SET-f#0,SET
+  000008:g#0,SET-s#0,SET
 ----
 file count: 7, sublevels: 4, intervals: 9
 flush split keys(4): [g, h, l, p]
@@ -1047,16 +1047,16 @@ no compaction picked
 
 define
 L0
-  000004:h.SET.2-j.SET.4
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000007:k.SET.2-l.SET.4
-  000009:n.SET.12-o.SET.12
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-o.SET.10
+  000004:h#2,SET-j#4,SET
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000007:k#2,SET-l#4,SET
+  000009:n#12,SET-o#12,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-o#10,SET
 L6
-  000001:a.SET.0-o.SET.0
-  000008:p.SET.0-s.SET.0
+  000001:a#0,SET-o#0,SET
+  000008:p#0,SET-s#0,SET
 ----
 file count: 7, sublevels: 3, intervals: 9
 flush split keys(4): [g, h, l, o]
@@ -1090,16 +1090,16 @@ L6:    a------------------------------------------o p---------s
 
 define
 L0
-  000004:h.SET.2-j.SET.4
-  000005:f.SET.6-h.SET.9
-  000006:f.SET.4-g.SET.5
-  000007:k.SET.2-l.SET.4
-  000009:n.SET.12-o.SET.12
-  000010:f.SET.11-g.SET.11
-  000011:n.SET.8-o.SET.10
+  000004:h#2,SET-j#4,SET
+  000005:f#6,SET-h#9,SET
+  000006:f#4,SET-g#5,SET
+  000007:k#2,SET-l#4,SET
+  000009:n#12,SET-o#12,SET
+  000010:f#11,SET-g#11,SET
+  000011:n#8,SET-o#10,SET
 L6
-  000001:a.SET.0-o.RANGEDEL.72057594037927935
-  000008:p.SET.0-s.SET.0
+  000001:a#0,SET-o#72057594037927935,RANGEDEL
+  000008:p#0,SET-s#0,SET
 ----
 file count: 7, sublevels: 3, intervals: 9
 flush split keys(4): [g, h, l, o]
@@ -1143,11 +1143,11 @@ n-o
 
 define
 L0
-  000004:a.SET.2-d.RANGEDEL.72057594037927935
-  000005:d.SET.3-g.SET.5
+  000004:a#2,SET-d#72057594037927935,RANGEDEL
+  000005:d#3,SET-g#5,SET
 L6
-  000001:a.SET.0-o.SET.0
-  000008:p.SET.0-s.SET.0
+  000001:a#0,SET-o#0,SET
+  000008:p#0,SET-s#0,SET
 ----
 file count: 2, sublevels: 1, intervals: 3
 flush split keys(2): [d, g]
@@ -1170,12 +1170,12 @@ a-d
 
 define
 L0
-  000004:a.SET.2-d.RANGEDEL.72057594037927935
-  000005:d.SET.3-g.SET.5
-  000006:f.SET.6-i.SET.6
-  000007:h.SET.7-m.SET.7
-  000009:q.SET.7-r.SET.7
-  000010:g.SET.10-i.SET.10
+  000004:a#2,SET-d#72057594037927935,RANGEDEL
+  000005:d#3,SET-g#5,SET
+  000006:f#6,SET-i#6,SET
+  000007:h#7,SET-m#7,SET
+  000009:q#7,SET-r#7,SET
+  000010:g#10,SET-i#10,SET
 ----
 file count: 6, sublevels: 4, intervals: 10
 flush split keys(4): [f, g, i, r]
@@ -1243,7 +1243,7 @@ d-g
 
 define
 L0
-  000004:a.SET.2-d.RANGEDEL.72057594037927935
+  000004:a#2,SET-d#72057594037927935,RANGEDEL
 ----
 file count: 1, sublevels: 1, intervals: 2
 flush split keys(1): [d]
@@ -1254,7 +1254,7 @@ L0.0:  a---------d
        aa bb cc dd
 
 add-l0-files
-  000005:d.SET.3-g.SET.5
+  000005:d#3,SET-g#5,SET
 ----
 file count: 2, sublevels: 1, intervals: 3
 flush split keys(2): [d, g]
@@ -1266,7 +1266,7 @@ L0.0:  a--------d---------g
        aa bb cc dd ee ff gg
 
 add-l0-files
-  000006:f.SET.6-i.SET.6
+  000006:f#6,SET-i#6,SET
 ----
 file count: 3, sublevels: 2, intervals: 5
 flush split keys(2): [d, g]
@@ -1281,8 +1281,8 @@ L0.0:  a--------d---------g
        aa bb cc dd ee ff gg hh ii
 
 add-l0-files
-  000007:h.SET.7-m.SET.7
-  000009:q.SET.8-r.SET.8
+  000007:h#7,SET-m#7,SET
+  000009:q#8,SET-r#8,SET
 ----
 file count: 5, sublevels: 3, intervals: 9
 flush split keys(4): [d, g, i, r]
@@ -1303,7 +1303,7 @@ L0.0:  a--------d---------g                            q---r
 # The output below should exactly match the output of the second last define.
 
 add-l0-files
-  000010:g.SET.10-i.SET.10
+  000010:g#10,SET-i#10,SET
 ----
 file count: 6, sublevels: 4, intervals: 10
 flush split keys(4): [f, g, i, r]
@@ -1381,8 +1381,8 @@ L0.0:  a++++++++d+++++++++g                            q+++r
 # in sequence number ranges.
 
 add-l0-files
-  000011:b.SET.13-e.SET.15
-  000012:c.SET.16-e.SET.17
+  000011:b#13,SET-e#15,SET
+  000012:c#16,SET-e#17,SET
 ----
 file count: 8, sublevels: 4, intervals: 13
 flush split keys(5): [d, e, g, i, r]
@@ -1408,8 +1408,8 @@ L0.0:  a--------d---------g                            q---r
 # Multiple sublevels can also be added in one add-l0-files.
 
 add-l0-files
-  000013:h.SET.18-i.SET.19
-  000014:g.SET.20-i.SET.21
+  000013:h#18,SET-i#19,SET
+  000014:g#20,SET-i#21,SET
 ----
 file count: 10, sublevels: 6, intervals: 13
 flush split keys(4): [d, g, h, i]
@@ -1441,7 +1441,7 @@ L0.0:  a--------d---------g                            q---r
 # Adding an old L0 file returns an error.
 
 add-l0-files
-  000015:h.SET.17-i.SET.17
+  000015:h#17,SET-i#17,SET
 ----
 pebble: L0 sublevel generation optimization cannot be used
 
@@ -1453,22 +1453,22 @@ pebble: L0 sublevel generation optimization cannot be used
 
 define
 L0.3
-  000011:a.SET.18-d.SET.19
-  000012:g.SET.20-j.SET.21
+  000011:a#18,SET-d#19,SET
+  000012:g#20,SET-j#21,SET
 L0.2
-  000009:f.SET.14-j.SET.15
-  000010:r.SET.16-t.SET.17
+  000009:f#14,SET-j#15,SET
+  000010:r#16,SET-t#17,SET
 L0.1
-  000007:b.SET.10-d.SET.11
-  000008:e.SET.12-j.SET.13
+  000007:b#10,SET-d#11,SET
+  000008:e#12,SET-j#13,SET
 L0.0
-  000003:a.SET.2-d.SET.3
-  000004:f.SET.4-j.SET.5
-  000005:l.SET.6-o.SET.7
-  000006:p.SET.8-x.SET.9
+  000003:a#2,SET-d#3,SET
+  000004:f#4,SET-j#5,SET
+  000005:l#6,SET-o#7,SET
+  000006:p#8,SET-x#9,SET
 L6
-  000001:a.SET.0-i.SET.0
-  000002:m.SET.0-w.SET.0
+  000001:a#0,SET-i#0,SET
+  000002:m#0,SET-w#0,SET
 ----
 file count: 10, sublevels: 4, intervals: 13
 flush split keys(5): [d, g, j, r, t]
@@ -1511,22 +1511,22 @@ L6:    a------------------------i          m------------------------------w
 
 define
 L0.3
-  000011:a.SET.18-d.SET.19 base_compacting
-  000012:g.SET.20-j.SET.21 base_compacting
+  000011:a#18,SET-d#19,SET base_compacting
+  000012:g#20,SET-j#21,SET base_compacting
 L0.2
-  000009:f.SET.14-j.SET.15 base_compacting
-  000010:r.SET.16-t.SET.17
+  000009:f#14,SET-j#15,SET base_compacting
+  000010:r#16,SET-t#17,SET
 L0.1
-  000007:b.SET.10-d.SET.11 base_compacting
-  000008:e.SET.12-j.SET.13 base_compacting
+  000007:b#10,SET-d#11,SET base_compacting
+  000008:e#12,SET-j#13,SET base_compacting
 L0.0
-  000003:a.SET.2-d.SET.3 base_compacting
-  000004:f.SET.4-j.SET.5 base_compacting
-  000005:l.SET.6-o.SET.7
-  000006:p.SET.8-x.SET.9
+  000003:a#2,SET-d#3,SET base_compacting
+  000004:f#4,SET-j#5,SET base_compacting
+  000005:l#6,SET-o#7,SET
+  000006:p#8,SET-x#9,SET
 L6
-  000001:a.SET.0-i.SET.0
-  000002:m.SET.0-w.SET.0
+  000001:a#0,SET-i#0,SET
+  000002:m#0,SET-w#0,SET
 ----
 file count: 10, sublevels: 4, intervals: 13
 flush split keys(5): [d, g, j, r, t]
@@ -1573,23 +1573,23 @@ L6:    a------------------------i          m------------------------------w
 
 define
 L0.3
-  000011:a.SET.18-d.SET.19 base_compacting
-  000012:g.SET.20-j.SET.21 base_compacting
+  000011:a#18,SET-d#19,SET base_compacting
+  000012:g#20,SET-j#21,SET base_compacting
 L0.2
-  000009:f.SET.14-j.SET.15 base_compacting
-  000010:r.SET.16-t.SET.17
+  000009:f#14,SET-j#15,SET base_compacting
+  000010:r#16,SET-t#17,SET
 L0.1
-  000007:b.SET.10-d.SET.11 base_compacting
-  000008:e.SET.12-j.SET.13 base_compacting
+  000007:b#10,SET-d#11,SET base_compacting
+  000008:e#12,SET-j#13,SET base_compacting
 L0.0
-  000003:a.SET.2-d.SET.3 base_compacting
-  000004:f.SET.4-j.SET.5 base_compacting
-  000005:l.SET.6-o.SET.7
-  000006:p.SET.8-x.SET.9
+  000003:a#2,SET-d#3,SET base_compacting
+  000004:f#4,SET-j#5,SET base_compacting
+  000005:l#6,SET-o#7,SET
+  000006:p#8,SET-x#9,SET
 L6
-  000001:a.SET.0-i.SET.0
-  000013:j.SET.0-l.SET.0
-  000002:m.SET.0-w.SET.0
+  000001:a#0,SET-i#0,SET
+  000013:j#0,SET-l#0,SET
+  000002:m#0,SET-w#0,SET
 ----
 file count: 10, sublevels: 4, intervals: 13
 flush split keys(5): [d, g, j, r, t]
@@ -1631,22 +1631,22 @@ L6:    a------------------------i j------l m------------------------------w
 
 define
 L0.3
-  000011:a.SET.18-d.SET.19
-  000012:g.SET.20-j.SET.21 base_compacting
+  000011:a#18,SET-d#19,SET
+  000012:g#20,SET-j#21,SET base_compacting
 L0.2
-  000009:f.SET.14-j.SET.15 base_compacting
-  000010:r.SET.16-t.SET.17 base_compacting
+  000009:f#14,SET-j#15,SET base_compacting
+  000010:r#16,SET-t#17,SET base_compacting
 L0.1
-  000007:b.SET.10-d.SET.11
-  000008:e.SET.12-j.SET.13 base_compacting
+  000007:b#10,SET-d#11,SET
+  000008:e#12,SET-j#13,SET base_compacting
 L0.0
-  000003:a.SET.2-d.SET.3
-  000004:f.SET.4-j.SET.5 base_compacting
-  000005:l.SET.6-o.SET.7
-  000006:p.SET.8-x.SET.9 base_compacting
+  000003:a#2,SET-d#3,SET
+  000004:f#4,SET-j#5,SET base_compacting
+  000005:l#6,SET-o#7,SET
+  000006:p#8,SET-x#9,SET base_compacting
 L6
-  000001:a.SET.0-i.SET.0
-  000002:m.SET.0-w.SET.0
+  000001:a#0,SET-i#0,SET
+  000002:m#0,SET-w#0,SET
 ----
 file count: 10, sublevels: 4, intervals: 13
 flush split keys(5): [d, g, j, r, t]
@@ -1690,9 +1690,9 @@ L6:    a------------------------i          m------------------------------w
 
 define
 L0
-  000004:a.SET.2-e.SET.3
-  000006:a.SET.7-b.SET.8
-  000007:d.SET.12-f.SET.12
+  000004:a#2,SET-e#3,SET
+  000006:a#7,SET-b#8,SET
+  000007:d#12,SET-f#12,SET
 ----
 file count: 3, sublevels: 2, intervals: 5
 flush split keys(2): [b, e]
@@ -1710,7 +1710,7 @@ L0.0:  a------------e
 # should still realize that it's slotting below 000007 and return an error.
 
 add-l0-files
-  000015:a.SET.9-g.SET.10
+  000015:a#9,SET-g#10,SET
 ----
 pebble: L0 sublevel generation optimization cannot be used
 
@@ -1719,10 +1719,10 @@ pebble: L0 sublevel generation optimization cannot be used
 
 define
 L0
-  000004:a.SET.2-e.SET.3
-  000006:a.SET.7-b.SET.8
-  000007:d.SET.12-f.SET.12
-  000015:a.SET.9-g.SET.10
+  000004:a#2,SET-e#3,SET
+  000006:a#7,SET-b#8,SET
+  000007:d#12,SET-f#12,SET
+  000015:a#9,SET-g#10,SET
 ----
 file count: 4, sublevels: 4, intervals: 6
 flush split keys(2): [b, e]

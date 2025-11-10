@@ -17,19 +17,19 @@ z
 lower bound "b" violated by span a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}; wraps *keyspan.Iter
 
 assert-bounds
-a.SET.1
+a#1,SET
 z
 ----
 lower bound a#1,SET violated by key a#3,RANGEKEYUNSET; wraps *keyspan.Iter
 
 assert-bounds
-a.SET.5
+a#5,SET
 z
 ----
 OK
 
 assert-bounds
-b.SET.1
+b#1,SET
 z
 ----
 lower bound "b" violated by span a-c:{(#3,RANGEKEYUNSET,@5) (#2,RANGEKEYSET,@5,apples) (#1,RANGEKEYSET,@3,bananas)}; wraps *keyspan.Iter

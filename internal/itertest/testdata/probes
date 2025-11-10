@@ -3,7 +3,7 @@
 # iterator operations because there's no conditional logic.
 
 new
-(ReturnKV "bar.SET.2" "value")
+(ReturnKV "bar#2,SET" "value")
 ----
 
 iter
@@ -27,8 +27,8 @@ bar#2,SET:value
 # In this case "ok"
 
 new
-(If (And OpSeekGE (OnIndex 2)) (ReturnKV "bar.SET.2" "value") (ReturnKV "foo.SET.1" "value"))
-(If (UserKey "bar") (ReturnKV "ok.SET.1" "ok") noop)
+(If (And OpSeekGE (OnIndex 2)) (ReturnKV "bar#2,SET" "value") (ReturnKV "foo#1,SET" "value"))
+(If (UserKey "bar") (ReturnKV "ok#1,SET" "ok") noop)
 ----
 
 iter
@@ -53,7 +53,7 @@ ok#1,SET:ok
 # verbatim, so the iteration results should be the same.
 
 new
-(ReturnKV "bar.SET.2" "value")
+(ReturnKV "bar#2,SET" "value")
 noop
 ----
 
@@ -76,7 +76,7 @@ bar#2,SET:value
 # probe level that ignores the inner return values and injects errors.
 
 new
-(ReturnKV "bar.SET.2" "value")
+(ReturnKV "bar#2,SET" "value")
 noop
 ErrInjected
 ----
@@ -100,7 +100,7 @@ err=injected error
 # Next and Prev.
 
 new
-(If (Or OpNext OpPrev) ErrInjected (ReturnKV "bar.SET.2" "value"))
+(If (Or OpNext OpPrev) ErrInjected (ReturnKV "bar#2,SET" "value"))
 ----
 
 iter
@@ -121,7 +121,7 @@ err=injected error
 # Create a probe that returns an error on the 3rd seek-ge.
 
 new
-(If (And OpSeekGE (OnIndex 2)) ErrInjected (ReturnKV "ok.SET.1" "ok"))
+(If (And OpSeekGE (OnIndex 2)) ErrInjected (ReturnKV "ok#1,SET" "ok"))
 ----
 
 iter
@@ -148,7 +148,7 @@ ok#1,SET:ok
 # Create a probe that always returns nil, except for on the 3rd seek-ge.
 
 new
-(If (And OpSeekGE (OnIndex 2)) (ReturnKV "ok.SET.1" "ok") Nil)
+(If (And OpSeekGE (OnIndex 2)) (ReturnKV "ok#1,SET" "ok") Nil)
 ----
 
 iter

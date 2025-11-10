@@ -1,8 +1,8 @@
 define t1
 points:
-  b.SET.1
-  d.SET.1
-  u.SET.1
+  b#1,SET
+  d#1,SET
+  u#1,SET
 ----
 
 overlap t1
@@ -79,8 +79,8 @@ overlap t3
 
 define tBE
 points:
-  b.SET.1
-  d.SET.1
+  b#1,SET
+  d#1,SET
 range-keys:
   c-e:{#1,RANGEKEYDEL}
 ----
@@ -88,15 +88,15 @@ range-keys:
 define tFM
 override-bounds: [f, m)
 points:
-  g.SET.1
-  j.SET.1
+  g#1,SET
+  j#1,SET
 ----
 
 define tMP
 override-bounds: [m, p)
 points:
-  n.SET.1
-  o.SET.1
+  n#1,SET
+  o#1,SET
 ----
 
 overlap tBE tFM tMP
