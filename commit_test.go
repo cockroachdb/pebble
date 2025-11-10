@@ -98,14 +98,12 @@ func TestCommitPipeline(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(n)
-	for i := 0; i < n; i++ {
-		go func(i int) {
-			defer wg.Done()
+	for i := range n {
+		wg.Go(func() {
 			var b Batch
 			_ = b.Set([]byte(fmt.Sprint(i)), nil, nil)
 			_ = p.Commit(&b, false, false)
-		}(i)
+		})
 	}
 	wg.Wait()
 
@@ -141,17 +139,15 @@ func TestCommitPipelineSync(t *testing.T) {
 			e.queueSemChan = p.logSyncQSem
 
 			var wg sync.WaitGroup
-			wg.Add(n)
-			for i := 0; i < n; i++ {
-				go func(i int) {
-					defer wg.Done()
+			for i := range n {
+				wg.Go(func() {
 					var b Batch
 					require.NoError(t, b.Set([]byte(fmt.Sprint(i)), nil, nil))
 					require.NoError(t, p.Commit(&b, true, noSyncWait))
 					if noSyncWait {
 						require.NoError(t, b.SyncWait())
 					}
-				}(i)
+				})
 			}
 			wg.Wait()
 			if s := e.writeCount.Load(); uint64(n) != s {
@@ -340,19 +336,16 @@ func TestCommitPipelineLogDataSeqNum(t *testing.T) {
 	p := newCommitPipeline(testEnv)
 
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		b := &Batch{}
 		require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
 		require.NoError(t, p.Commit(b, false /* sync */, false))
-	}()
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		b := &Batch{}
 		require.NoError(t, b.LogData([]byte("foo"), nil))
 		require.NoError(t, p.Commit(b, false /* sync */, false))
-	}()
+	})
 	wg.Wait()
 }
 

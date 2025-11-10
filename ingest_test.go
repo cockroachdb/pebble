@@ -2152,12 +2152,10 @@ L6:
 			case 1:
 				// Ingest, then compact
 				var wg sync.WaitGroup
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					close(compactionBegin)
 					compact("a", "z")
-				}()
+				})
 
 				ingest("b")
 				wg.Wait()
@@ -2326,7 +2324,6 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(2)
 
 	// First, Set('c') begins. This call will:
 	//
@@ -2335,23 +2332,21 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 	// * write the batch to the WAL.
 	//
 	// and then block until we read from the `applyBatch` channel down below.
-	go func() {
+	wg.Go(func() {
 		err := d.Set([]byte("c"), nil, nil)
 		if err != nil {
 			t.Error(err)
 		}
-		wg.Done()
-	}()
+	})
 
 	// When the above Set('c') is ready to apply, it sends on the
 	// `assignedBatch` channel. Once that happens, we start Ingest('a', 'c').
 	// The Ingest('a', 'c') allocates sequence number `x + 1`.
-	go func() {
+	wg.Go(func() {
 		// Wait until the Set has grabbed a sequence number before ingesting.
 		<-assignedBatch
 		ingest("a", "c")
-		wg.Done()
-	}()
+	})
 
 	// The Set('c')#1 and Ingest('a', 'c')#2 are both pending. To maintain
 	// sequence number invariants, the Set needs to be applied and flushed
@@ -2417,21 +2412,21 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 	var done atomic.Bool
 	const numSetters = 2
 	var wg sync.WaitGroup
-	wg.Add(numSetters + 1)
 
-	untilDone := func(fn func()) {
-		defer wg.Done()
-		for !done.Load() {
-			fn()
-		}
+	goUntilDone := func(fn func()) {
+		wg.Go(func() {
+			for !done.Load() {
+				fn()
+			}
+		})
 	}
 
 	// Ingest in the background.
 	totalIngests := 0
-	go untilDone(func() {
+	goUntilDone(func() {
 		filename := fmt.Sprintf("ext%d", totalIngests)
 		require.NoError(t, mem.Link("ext", filename))
-		require.NoError(t, d.Ingest(context.Background(), []string{filename}))
+		require.NoError(t, d.Ingest(t.Context(), []string{filename}))
 		totalIngests++
 	})
 
@@ -2439,9 +2434,8 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 	wo := &WriteOptions{Sync: false}
 	var localCommits [numSetters]int
 	for i := 0; i < numSetters; i++ {
-		i := i
 		v := []byte(fmt.Sprintf("v%d", i+1))
-		go untilDone(func() {
+		goUntilDone(func() {
 			// Commit a batch setting foo=vN.
 			b := d.NewBatch()
 			require.NoError(t, b.Set([]byte("foo"), v, nil))
@@ -2571,7 +2565,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 	for _, f := range files {
 		func() {
 			defer func() { err = recover().(error) }()
-			err = d.Ingest(context.Background(), []string{fs.PathJoin(dir, f)})
+			err = d.Ingest(t.Context(), []string{fs.PathJoin(dir, f)})
 		}()
 		if err == nil || !errors.Is(err, errorfs.ErrInjected) {
 			t.Fatalf("expected injected error, got %v", err)
@@ -2781,7 +2775,7 @@ func TestIngestCleanup(t *testing.T) {
 			// Create the files in the VFS.
 			metaMap := make(map[base.TableNum]objstorage.Writable)
 			for _, fn := range fns {
-				w, _, err := objProvider.Create(context.Background(), base.FileTypeTable, base.PhysicalTableDiskFileNum(fn), objstorage.CreateOptions{})
+				w, _, err := objProvider.Create(t.Context(), base.FileTypeTable, base.PhysicalTableDiskFileNum(fn), objstorage.CreateOptions{})
 				require.NoError(t, err)
 
 				metaMap[fn] = w
@@ -2975,7 +2969,7 @@ func TestIngestValidation(t *testing.T) {
 				require.NoError(t, err)
 				// Compute the layout of the sstable in order to find the
 				// appropriate block locations to corrupt.
-				r, err := sstable.NewReader(context.Background(), readable, opts.MakeReaderOptions())
+				r, err := sstable.NewReader(t.Context(), readable, opts.MakeReaderOptions())
 				require.NoError(t, err)
 				l, err := r.Layout()
 				require.NoError(t, err)
@@ -3032,7 +3026,7 @@ func TestIngestValidation(t *testing.T) {
 				}
 
 				// Ingest the external table.
-				err = d.Ingest(context.Background(), []string{ingestTableName})
+				err = d.Ingest(t.Context(), []string{ingestTableName})
 				if err != nil {
 					et.errLoc = errReportLocationIngest
 					et.err = err
@@ -3124,7 +3118,7 @@ func BenchmarkManySSTables(b *testing.B) {
 						require.NoError(b, w.Close())
 						paths = append(paths, n)
 					}
-					require.NoError(b, d.Ingest(context.Background(), paths))
+					require.NoError(b, d.Ingest(b.Context(), paths))
 
 					{
 						const broadIngest = "broad.sst"
@@ -3134,7 +3128,7 @@ func BenchmarkManySSTables(b *testing.B) {
 						require.NoError(b, w.Set([]byte("0"), nil))
 						require.NoError(b, w.Set([]byte("Z"), nil))
 						require.NoError(b, w.Close())
-						require.NoError(b, d.Ingest(context.Background(), []string{broadIngest}))
+						require.NoError(b, d.Ingest(b.Context(), []string{broadIngest}))
 					}
 
 					switch op {
@@ -3159,7 +3153,7 @@ func runBenchmarkManySSTablesIngest(b *testing.B, d *DB, fs vfs.FS, count int) {
 		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
 		require.NoError(b, w.Set([]byte(n), nil))
 		require.NoError(b, w.Close())
-		require.NoError(b, d.Ingest(context.Background(), []string{n}))
+		require.NoError(b, d.Ingest(b.Context(), []string{n}))
 	}
 }
 

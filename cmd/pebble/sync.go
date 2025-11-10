@@ -61,12 +61,9 @@ func runSync(cmd *cobra.Command, args []string) {
 		init: func(d DB, wg *sync.WaitGroup) {
 			limiter := maxOpsPerSec.newRateLimiter()
 
-			wg.Add(concurrency)
-			for i := 0; i < concurrency; i++ {
+			for range concurrency {
 				latency := reg.Register("ops")
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					rand := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 					var raw []byte
 					var buf []byte
@@ -78,7 +75,7 @@ func runSync(cmd *cobra.Command, args []string) {
 						b := d.NewBatch()
 						var n uint64
 						count := int(batchDist.Uint64(rand))
-						for j := 0; j < count; j++ {
+						for range count {
 							block = syncConfig.values.Bytes(rand, block)
 
 							if syncConfig.walOnly {
@@ -101,7 +98,7 @@ func runSync(cmd *cobra.Command, args []string) {
 						latency.Record(time.Since(start))
 						bytes.Add(n)
 					}
-				}()
+				})
 			}
 		},
 

@@ -291,35 +291,31 @@ func TestCheckpointCompaction(t *testing.T) {
 	d, err := Open("", &Options{FS: fs, Logger: testutils.Logger{T: t}})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	var wg sync.WaitGroup
-	wg.Add(4)
-	go func() {
+	wg.Go(func() {
 		defer cancel()
-		defer wg.Done()
 		for i := 0; ctx.Err() == nil; i++ {
 			if err := d.Set([]byte(fmt.Sprintf("key%06d", i)), nil, nil); err != nil {
 				t.Error(err)
 				return
 			}
 		}
-	}()
-	go func() {
+	})
+	wg.Go(func() {
 		defer cancel()
-		defer wg.Done()
 		for ctx.Err() == nil {
-			if err := d.Compact(context.Background(), []byte("key"), []byte("key999999"), false); err != nil {
+			if err := d.Compact(t.Context(), []byte("key"), []byte("key999999"), false); err != nil {
 				t.Error(err)
 				return
 			}
 		}
-	}()
+	})
 	check := make(chan string, 100)
-	go func() {
+	wg.Go(func() {
 		defer cancel()
 		defer close(check)
-		defer wg.Done()
 		for i := 0; ctx.Err() == nil && i < 200; i++ {
 			dir := fmt.Sprintf("checkpoint%06d", i)
 			if err := d.Checkpoint(dir); err != nil {
@@ -332,11 +328,10 @@ func TestCheckpointCompaction(t *testing.T) {
 			case check <- dir:
 			}
 		}
-	}()
-	go func() {
+	})
+	wg.Go(func() {
 		opts := &Options{FS: fs, Logger: testutils.Logger{T: t}}
 		defer cancel()
-		defer wg.Done()
 		for dir := range check {
 			d2, err := Open(dir, opts)
 			if err != nil {
@@ -362,7 +357,7 @@ func TestCheckpointCompaction(t *testing.T) {
 				return
 			}
 		}
-	}()
+	})
 	<-ctx.Done()
 	wg.Wait()
 	require.NoError(t, d.Close())

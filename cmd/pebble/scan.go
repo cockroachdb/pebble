@@ -90,11 +90,8 @@ func runScan(cmd *cobra.Command, args []string) {
 
 			limiter := maxOpsPerSec.newRateLimiter()
 
-			wg.Add(concurrency)
-			for i := 0; i < concurrency; i++ {
-				go func(i int) {
-					defer wg.Done()
-
+			for i := range concurrency {
+				wg.Go(func() {
 					rng := rand.New(rand.NewPCG(0, uint64(i)))
 					startKeyBuf := append(make([]byte, 0, 64), []byte("key-")...)
 					endKeyBuf := append(make([]byte, 0, 64), []byte("key-")...)
@@ -123,7 +120,7 @@ func runScan(cmd *cobra.Command, args []string) {
 						bytes.Add(nbytes)
 						scanned.Add(int64(count))
 					}
-				}(i)
+				})
 			}
 		},
 

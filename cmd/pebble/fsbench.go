@@ -612,13 +612,10 @@ func (bench *fsBench) init(wg *sync.WaitGroup) {
 	fmt.Println("Running benchmark:", bench.name)
 	fmt.Println("Description:", bench.description)
 
-	wg.Add(1)
-	go bench.execute(wg)
+	wg.Go(bench.execute)
 }
 
-func (bench *fsBench) execute(wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func (bench *fsBench) execute() {
 	latencyHist := bench.reg.Register(bench.name)
 
 	for {

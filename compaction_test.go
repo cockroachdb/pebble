@@ -3412,9 +3412,7 @@ func TestCompactionCorruption(t *testing.T) {
 	startWorkload := func(minKey, maxKey byte) (stop func()) {
 		var shouldStop atomic.Bool
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			var valSeed [32]byte
 			for i := range valSeed {
 				valSeed[i] = byte(rand.Uint32())
@@ -3443,7 +3441,7 @@ func TestCompactionCorruption(t *testing.T) {
 					panic(err)
 				}
 			}
-		}()
+		})
 		return func() {
 			shouldStop.Store(true)
 			wg.Wait()

@@ -190,9 +190,8 @@ func newColumnarWriter(
 	w.props.MergerName = o.MergerName
 
 	w.writeQueue.ch = make(chan block.OwnedPhysicalBlock)
-	w.writeQueue.wg.Add(1)
 	w.cpuMeasurer = cpuMeasurer
-	go w.drainWriteQueue()
+	w.writeQueue.wg.Go(w.drainWriteQueue)
 
 	return w
 }
@@ -877,7 +876,6 @@ func (w *RawColumnWriter) flushBufferedIndexBlocks() (rootIndex block.Handle, er
 // until the channel is closed. All data blocks are written by this goroutine.
 // Other blocks are written directly by the client goroutine. See Close.
 func (w *RawColumnWriter) drainWriteQueue() {
-	defer w.writeQueue.wg.Done()
 	// Call once to initialize the CPU measurer.
 	w.cpuMeasurer.MeasureCPU(base.CompactionGoroutineSSTableSecondary)
 	for pb := range w.writeQueue.ch {

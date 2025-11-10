@@ -62,10 +62,7 @@ func queueTest() (test, *atomic.Int64) {
 			}
 
 			limiter := maxOpsPerSec.newRateLimiter()
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-
+			wg.Go(func() {
 				for i := queueConfig.size; ; i++ {
 					idx := i % queueConfig.size
 
@@ -94,7 +91,7 @@ func queueTest() (test, *atomic.Int64) {
 					wait(limiter)
 					ops.Add(1)
 				}
-			}()
+			})
 		},
 		tick: func(elapsed time.Duration, i int) {
 			if i%20 == 0 {
