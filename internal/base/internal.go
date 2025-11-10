@@ -564,27 +564,11 @@ func (k prettyInternalKey) Format(s fmt.State, c rune) {
 }
 
 // ParseInternalKey parses the string representation of an internal key. The
-// format is <user-key>#<seq-num>,<kind>. The older format
-// <user-key>.<kind>.<seq-num> is also supported (for now).
+// format is `<user-key>#<seq-num>,<kind>`.
 //
 // If the seq-num starts with a "b" it is marked as a batch-seq-num (i.e. the
 // SeqNumBatchBit bit is set).
 func ParseInternalKey(s string) InternalKey {
-	if !strings.Contains(s, "#") {
-		// Parse the old format: <user-key>.<kind>.<seq-num>
-		// TODO(radu): get rid of this.
-		x := strings.Split(s, ".")
-		if len(x) != 3 {
-			panic(fmt.Sprintf("invalid internal key %q", s))
-		}
-		ukey := x[0]
-		kind, ok := kindsMap[x[1]]
-		if !ok {
-			panic(fmt.Sprintf("unknown kind: %q", x[1]))
-		}
-		seqNum := ParseSeqNum(x[2])
-		return MakeInternalKey([]byte(ukey), seqNum, kind)
-	}
 	sep1 := strings.Index(s, "#")
 	sep2 := strings.Index(s, ",")
 	if sep1 == -1 || sep2 == -1 || sep2 < sep1 {
