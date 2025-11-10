@@ -92,11 +92,11 @@ total: 1358, remote: 0, external: 0
 
 # Test with remote files and external files
 build-remote ext2 block-size=10 index-block-size=10
-k#0,SET = foo
-l#0,SET = foo
-m#0,SET = foo
-n#0,SET = foo
-o#0,SET = foo
+k#0,SET:foo
+l#0,SET:foo
+m#0,SET:foo
+n#0,SET:foo
+o#0,SET:foo
 ----
 
 estimate-disk-usage-by-backing-type a z

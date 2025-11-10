@@ -737,9 +737,9 @@ L6:
 # We set the block size to prevent randomization of block sizes (which affects
 # the size).
 build-remote remote1 block-size=1024 index-block-size=1024
-g#0,SET = foo
-h#0,SET = bar
-i#0,SET = foobar
+g#0,SET:foo
+h#0,SET:bar
+i#0,SET:foobar
 ----
 
 ingest-external
@@ -776,9 +776,9 @@ L6:
 # Non-local tables are excised without data access.
 
 build-remote remote2
-u#0,SET = foo
-v#0,SET = bar
-w#0,SET = foobar
+u#0,SET:foo
+v#0,SET:bar
+w#0,SET:foobar
 ----
 
 ingest-external

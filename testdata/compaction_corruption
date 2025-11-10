@@ -1,7 +1,7 @@
 build-remote file-not-there
-d#0,SET = dvalue
-q#0,SET = qvalue
-w#0,SET = wvalue
+d#0,SET:dvalue
+q#0,SET:qvalue
+w#0,SET:wvalue
 ----
 
 ingest-external
@@ -31,9 +31,9 @@ wait-for-no-external-files workload=(d,w)
 ----
 
 build-remote file2-not-there
-a#0,SET = avalue
-u#0,SET = uvalue
-z#0,SET = zvalue
+a#0,SET:avalue
+u#0,SET:uvalue
+z#0,SET:zvalue
 ----
 
 ingest-external
