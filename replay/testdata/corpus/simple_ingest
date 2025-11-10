@@ -12,10 +12,10 @@ build:
   marker.manifest.000001.MANIFEST-000001
 
 build-sst foo.sst
-a#0,SET = a
-b#0,SET = byaya
-c#0,SET = cyuumi
-d#0,SET = d
+a#0,SET:a
+b#0,SET:byaya
+c#0,SET:cyuumi
+d#0,SET:d
 ----
 
 ingest foo.sst
@@ -23,8 +23,8 @@ ingest foo.sst
 ingested
 
 build-sst f.sst
-p#0,SET = p
-q#0,SET = q
+p#0,SET:p
+q#0,SET:q
 ----
 
 ingest-and-excise f.sst excise=a-d
@@ -64,8 +64,8 @@ simple_ingest/checkpoint:
   marker.manifest.000001.MANIFEST-000001
 
 build-sst loo.sst
-x#0,SET = x
-y#0,SET = y
+x#0,SET:x
+y#0,SET:y
 ----
 
 ingest loo.sst
@@ -73,7 +73,7 @@ ingest loo.sst
 ingested
 
 build-sst l.sst
-z#0,SET = z
+z#0,SET:z
 ----
 
 ingest-and-excise l.sst excise=d-p

@@ -130,23 +130,25 @@ func (kv ParsedKVOrSpan) String() string {
 	return fmt.Sprintf("%s%s = blob:%s attr=%d", prefix, kv.Key, kv.BlobHandle, kv.Attr)
 }
 
-// ParseTestKVsAndSpans parses a multi-line string that defines SSTable contents.
+// ParseTestKVsAndSpans parses a multi-line string that defines SSTable
+// contents.
 //
-// The blobtest.Values argument can be nil if there are no blob references in the input.
+// The blobtest.Values argument can be nil if there are no blob references in
+// the input.
 //
 // Each input line can be either a key-value pair or a key spans Sample input
 // showing the format:
 //
-//	a#1,SET = a
-//	force-obsolete: d#2,SET = d
-//	f#3,SET = blob{fileNum=1 blockNum=2 offset=110 valueLen=200}attr=7
+//	a#1,SET:a
+//	force-obsolete: d#2,SET:d
+//	f#3,SET:blob{fileNum=1 blockNum=2 offset=110 valueLen=200}attr=7
 //	Span: d-e:{(#4,RANGEDEL)}
 //	Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
 //	Span: g-l:{(#5,RANGEDEL)}
 //	Span: y-z:{(#12,RANGEKEYSET,@11,foo)}
 //
-// Note that the older KV format "<user-key>.<kind>.<seq-num> : <value>" is also supported
-// (for now).
+// Note that the older key format "<user-key>.<kind>.<seq-num>" is also
+// supported (for now).
 func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -163,10 +165,10 @@ func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan
 
 		var kv ParsedKVOrSpan
 		line, kv.ForceObsolete = strings.CutPrefix(line, "force-obsolete:")
-		// Cut the key at the first ":" or "=".
-		sepIdx := strings.IndexAny(line, "=:")
+		// Cut the key at the first ":".
+		sepIdx := strings.Index(line, ":")
 		if sepIdx == -1 {
-			return nil, errors.Newf("KV format is [force-obsolete:] <key>=<value> (or <key>:<value>): %q", line)
+			return nil, errors.Newf("KV format is \"[force-obsolete:] <key>:<value>\": %q", line)
 		}
 		keyStr := strings.TrimSpace(line[:sepIdx])
 		valStr := strings.TrimSpace(line[sepIdx+1:])

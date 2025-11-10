@@ -1,8 +1,8 @@
 build-sst
-b#1,SET = b
-c#1,SET = c
-d#1,SET = d
-e#1,SET = e
+b#1,SET:b
+c#1,SET:c
+d#1,SET:d
+e#1,SET:e
 ----
 Bounds:
   overall: b#1,SET - e#1,SET
@@ -135,9 +135,9 @@ Right table bounds (loose):
 
 # Test with a RANGEDEL.
 build-sst
-b#1,SET = b
-cc#1,SET = cc
-e#1,SET = e
+b#1,SET:b
+cc#1,SET:cc
+e#1,SET:e
 Span: c-d:{(#2,RANGEDEL)}
 ----
 Bounds:
@@ -198,9 +198,9 @@ Left table bounds (loose):
 # Test with range keys.
 
 build-sst
-b#1,SET = b
-cc#1,SET = cc
-e#1,SET = e
+b#1,SET:b
+cc#1,SET:cc
+e#1,SET:e
 Span: c-d:{(#2,RANGEKEYSET,@10,foo)}
 ----
 Bounds:
