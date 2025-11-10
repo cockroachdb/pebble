@@ -535,15 +535,11 @@ func TestOpenAlreadyLocked(t *testing.T) {
 		})
 
 		t.Run("relative", func(t *testing.T) {
-			original, err := os.Getwd()
-			require.NoError(t, err)
-
 			for _, tc := range testCases {
 				t.Run(tc.name, func(t *testing.T) {
 					// Create a temporary directory structure for relative paths.
 					tempRoot := t.TempDir()
-					require.NoError(t, os.Chdir(tempRoot))
-					defer func() { require.NoError(t, os.Chdir(original)) }()
+					t.Chdir(tempRoot)
 
 					var tmpDirs [4]string
 					for i := range tmpDirs {
@@ -1790,9 +1786,6 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 	if filepath.Separator != '/' {
 		t.Skip("skipping due to path separator")
 	}
-	pwd, err := os.Getwd()
-	require.NoError(t, err)
-	defer func() { os.Chdir(pwd) }()
 
 	filesystems := map[string]vfs.FS{}
 	rootPaths := map[string]string{}
@@ -1815,7 +1808,7 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 			td.ScanArgs(t, "fs", &fsName)
 			td.ScanArgs(t, "path", &path)
 			if p, ok := rootPaths[fsName]; ok {
-				require.NoError(t, os.Chdir(p))
+				t.Chdir(p)
 			}
 			fs := vfs.WithLogging(filesystems[fsName], func(format string, args ...interface{}) {
 				fmt.Fprintf(&buf, format+"\n", args...)
