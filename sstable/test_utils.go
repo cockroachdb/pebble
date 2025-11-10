@@ -165,27 +165,23 @@ func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan
 
 		var kv ParsedKVOrSpan
 		line, kv.ForceObsolete = strings.CutPrefix(line, "force-obsolete:")
-		// Cut the key at the first ":".
-		sepIdx := strings.Index(line, ":")
-		if sepIdx == -1 {
-			return nil, errors.Newf("KV format is \"[force-obsolete:] <key>:<value>\": %q", line)
-		}
-		keyStr := strings.TrimSpace(line[:sepIdx])
-		valStr := strings.TrimSpace(line[sepIdx+1:])
-		kv.Key = base.ParseInternalKey(keyStr)
+		internalKV := base.ParseInternalKV(line)
+		kv.Key = internalKV.K
+		kv.Value = internalKV.InPlaceValue()
 
 		if kv.ForceObsolete && kv.Key.Kind() == InternalKeyKindRangeDelete {
 			return nil, errors.Errorf("force-obsolete is not allowed for RANGEDEL")
 		}
 
-		if blobtest.IsBlobHandle(valStr) {
+		if blobtest.IsBlobHandle(string(kv.Value)) {
 			if bv == nil {
 				return nil, errors.Errorf("test not set up to support blob handles")
 			}
-			handle, remaining, err := bv.ParseInlineHandle(valStr)
+			handle, remaining, err := bv.ParseInlineHandle(string(kv.Value))
 			if err != nil {
 				return nil, errors.Wrapf(err, "parsing blob handle")
 			}
+			kv.Value = nil
 			kv.BlobHandle = handle
 			if remaining != "" {
 				p := strparse.MakeParser("=", remaining)
@@ -196,8 +192,6 @@ func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan
 					return nil, errors.Newf("unexpected trailing input %q", p.Remaining())
 				}
 			}
-		} else {
-			kv.Value = []byte(valStr)
 		}
 		result = append(result, kv)
 	}

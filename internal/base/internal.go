@@ -585,17 +585,33 @@ func ParseInternalKey(s string) InternalKey {
 		seqNum := ParseSeqNum(x[2])
 		return MakeInternalKey([]byte(ukey), seqNum, kind)
 	}
-	x := strings.FieldsFunc(s, func(c rune) bool { return c == '#' || c == ',' })
-	if len(x) != 3 {
-		panic(fmt.Sprintf("invalid key internal %q", s))
+	sep1 := strings.Index(s, "#")
+	sep2 := strings.Index(s, ",")
+	if sep1 == -1 || sep2 == -1 || sep2 < sep1 {
+		panic(fmt.Sprintf("invalid internal key %q", s))
 	}
-	userKey := []byte(x[0])
-	seqNum := ParseSeqNum(x[1])
-	kind, ok := kindsMap[x[2]]
+
+	userKey := []byte(s[:sep1])
+	seqNum := ParseSeqNum(s[sep1+1 : sep2])
+	kind, ok := kindsMap[s[sep2+1:]]
 	if !ok {
-		panic(fmt.Sprintf("unknown kind: %q", x[2]))
+		panic(fmt.Sprintf("unknown kind: %q", s[sep2+1:]))
 	}
 	return MakeInternalKey(userKey, seqNum, kind)
+}
+
+// ParseInternalKV parses the string representation of an internal KV. The
+// format is "<user-key>#<seq-num>,<kind>:value". The value is encoded in-place.
+func ParseInternalKV(s string) InternalKV {
+	// Cut the key at the first ":".
+	sepIdx := strings.Index(s, ":")
+	if sepIdx == -1 {
+		panic(fmt.Sprintf("invalid KV %q", s))
+	}
+	keyStr := strings.TrimSpace(s[:sepIdx])
+	valStr := strings.TrimSpace(s[sepIdx+1:])
+	key := ParseInternalKey(keyStr)
+	return MakeInternalKV(key, []byte(valStr))
 }
 
 // ParseInternalKeyRange parses a string of the form:
