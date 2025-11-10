@@ -2,13 +2,13 @@
 # Verify that Iterator.First(), Iterator.SeekGE() and Iterator.Next() call maybe sample read.
 define auto-compactions=off
 L0
-  a.SET.4:4
+  a#4,SET:4
 L1
-  a.SET.3:3
+  a#3,SET:3
 L2
-  d.SET.2:2
+  d#2,SET:2
 L3
-  d.SET.1:1
+  d#1,SET:1
 ----
 L0.0:
   000004:[a#4,SET-a#4,SET]
@@ -84,17 +84,17 @@ read-compactions
 # Verify that Iterator.Last(), Iterator.SeekLT() and Iterator.Prev() call maybe sample read.
 define auto-compactions=off
 L0
-  a.SET.4:4
-  c.SET.8:8
+  a#4,SET:4
+  c#8,SET:8
 L1
-  a.SET.3:3
-  c.SET.9:9
+  a#3,SET:3
+  c#9,SET:9
 L2
-  d.SET.2:2
-  l.SET.7:7
+  d#2,SET:2
+  l#7,SET:7
 L3
-  d.SET.1:1
-  l.SET.8:8
+  d#1,SET:1
+  l#8,SET:8
 ----
 L0.0:
   000004:[a#4,SET-c#8,SET]
@@ -170,13 +170,13 @@ read-compactions
 # the only key, sampling skips it because the iterator has already moved past it.
 define auto-compactions=off
 L0
-  a.SET.4:4
+  a#4,SET:4
 L1
-  a.SET.3:3
+  a#3,SET:3
 L2
-  d.SET.2:2
+  d#2,SET:2
 L3
-  d.SET.1:1
+  d#1,SET:1
 ----
 L0.0:
   000004:[a#4,SET-a#4,SET]
@@ -252,13 +252,13 @@ read-compactions
 # Test with no overlapping keys across levels, should not pick any compaction
 define auto-compactions=off
 L0
-  a.SET.4:4
+  a#4,SET:4
 L1
-  b.SET.3:3
+  b#3,SET:3
 L2
-  c.SET.2:2
+  c#2,SET:2
 L3
-  d.SET.1:1
+  d#1,SET:1
 ----
 L0.0:
   000004:[a#4,SET-a#4,SET]
@@ -302,17 +302,17 @@ read-compactions
 # is reset once it hits 0.
 define auto-compactions=off
 L0
-  a.SET.4:4
-  c.SET.8:8
+  a#4,SET:4
+  c#8,SET:8
 L1
-  a.SET.3:3
-  c.SET.9:9
+  a#3,SET:3
+  c#9,SET:9
 L2
-  d.SET.2:2
-  l.SET.7:7
+  d#2,SET:2
+  l#7,SET:7
 L3
-  d.SET.1:1
-  l.SET.8:8
+  d#1,SET:1
+  l#8,SET:8
 ----
 L0.0:
   000004:[a#4,SET-c#8,SET]

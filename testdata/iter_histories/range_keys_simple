@@ -444,7 +444,7 @@ b: (., [b-e) @1=foo)
 
 define
 L6
-a.RANGEDEL.3:z
+a#3,RANGEDEL:z
 rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
 ----
 L6:

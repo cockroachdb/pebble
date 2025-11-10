@@ -1,6 +1,6 @@
 define
 L2
-  c.SET.2:2
+  c#2,SET:2
 ----
 L2:
   000004:[c#2,SET-c#2,SET]
@@ -41,10 +41,10 @@ true
 
 define
 mem
-  a.SET.2:2
-  b.SET.3:3
+  a#2,SET:2
+  b#3,SET:3
 L1
-  a.SET.0:0
+  a#0,SET:0
 ----
 L1:
   000004:[a#0,SET-a#0,SET]
@@ -62,8 +62,8 @@ false
 
 define
 mem
-  a.SET.2:2
-  b.SET.3:3
+  a#2,SET:2
+  b#3,SET:3
 ----
 
 allow-zero-seqnum

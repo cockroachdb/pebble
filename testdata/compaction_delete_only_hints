@@ -7,7 +7,7 @@
 #       V                                |
 #       |-b...230:h-|                    |
 # _______________________________________V_____________ snapshot #210
-# 200               |--h.RANGEDEL.200:r--|
+# 200               |--h#200,RANGEDEL:r--|
 #
 # _____________________________________________________ snapshot #180
 #
@@ -27,13 +27,13 @@
 
 define snapshots=(70, 100, 180, 210)
 L0
-b.RANGEDEL.230:h h.RANGEDEL.200:r
+b#230,RANGEDEL:h h#200,RANGEDEL:r
 L2
-d.SET.110:d i.SET.140:i
+d#110,SET:d i#140,SET:i
 L3
-k.SET.90:k o.SET.150:o
+k#90,SET:k o#150,SET:o
 L4
-m.SET.30:m u.SET.60:u
+m#30,SET:m u#60,SET:u
 ----
 L0.0:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
@@ -62,13 +62,13 @@ Compactions:
 
 define snapshots=(70)
 L0
-b.RANGEDEL.230:h h.RANGEDEL.200:r
+b#230,RANGEDEL:h h#200,RANGEDEL:r
 L2
-d.SET.110:d i.SET.140:i
+d#110,SET:d i#140,SET:i
 L3
-k.SET.90:k o.SET.150:o
+k#90,SET:k o#150,SET:o
 L4
-m.SET.30:m u.SET.60:u
+m#30,SET:m u#60,SET:u
 ----
 L0.0:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
@@ -96,15 +96,15 @@ Compactions:
 
 define snapshots=(70)
 L0
-a.RANGEDEL.300:k
+a#300,RANGEDEL:k
 L1
-b.RANGEDEL.230:h h.RANGEDEL.200:r
+b#230,RANGEDEL:h h#200,RANGEDEL:r
 L2
-d.SET.110:d i.SET.140:i
+d#110,SET:d i#140,SET:i
 L3
-k.SET.90:k o.SET.150:o
+k#90,SET:k o#150,SET:o
 L4
-m.SET.30:m u.SET.60:u
+m#30,SET:m u#60,SET:u
 ----
 L0.0:
   000004:[a#300,RANGEDEL-k#inf,RANGEDEL]
@@ -134,13 +134,13 @@ Compactions:
 
 define snapshots=(70)
 L0
-m.SET.300:m b.RANGEDEL.230:h h.RANGEDEL.200:r
+m#300,SET:m b#230,RANGEDEL:h h#200,RANGEDEL:r
 L2
-d.SET.110:d i.SET.140:i
+d#110,SET:d i#140,SET:i
 L3
-k.SET.90:k o.SET.150:o
+k#90,SET:k o#150,SET:o
 L4
-m.SET.30:m u.SET.60:u
+m#30,SET:m u#60,SET:u
 ----
 L0.0:
   000004:[b#230,RANGEDEL-r#inf,RANGEDEL]
@@ -172,15 +172,15 @@ Compactions:
 
 define
 L1
-b.RANGEDEL.230:h h.RANGEDEL.200:r
+b#230,RANGEDEL:h h#200,RANGEDEL:r
 L2
-d.SET.110:d i.SET.140:i
+d#110,SET:d i#140,SET:i
 L3
-k.SET.90:k o.SET.150:o
+k#90,SET:k o#150,SET:o
 L4
-m.SET.30:m u.SET.60:u
+m#30,SET:m u#60,SET:u
 L0
-e.SET.240:e m.SET.260:m
+e#240,SET:e m#260,SET:m
 ----
 L0.0:
   000008:[e#240,SET-m#260,SET]
@@ -220,7 +220,7 @@ Compactions:
 # sequence of compactions.
 define snapshots=(10, 25)
 L6
-a.SET.20:b a.RANGEDEL.15:z
+a#20,SET:b a#15,RANGEDEL:z
 ----
 L6:
   000004:[a#20,SET-z#inf,RANGEDEL]
@@ -438,15 +438,15 @@ Compactions:
 
 define
 L0
-a.RANGEDEL.300:k
+a#300,RANGEDEL:k
 L1
-b.RANGEDEL.230:h h.RANGEDEL.200:r
+b#230,RANGEDEL:h h#200,RANGEDEL:r
 L2
-d.SET.110:d i.SET.140:i
+d#110,SET:d i#140,SET:i
 L3
-k.SET.90:k o.SET.150:o
+k#90,SET:k o#150,SET:o
 L4
-m.SET.30:m u.SET.60:u
+m#30,SET:m u#60,SET:u
 ----
 L0.0:
   000004:[a#300,RANGEDEL-k#inf,RANGEDEL]

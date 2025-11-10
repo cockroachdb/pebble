@@ -2,17 +2,17 @@
 
 define
 mem
-  a.SET.10:b
-  a.SET.12:c
-  a.SET.14:d
-  b.MERGE.10:b
-  b.MERGE.12:c
-  b.MERGE.14:d
-  b.RANGEDEL.15:c
-  b.MERGE.16:e
-  c.SET.10:b
-  c.SET.12:c
-  c.SET.14:d
+  a#10,SET:b
+  a#12,SET:c
+  a#14,SET:d
+  b#10,MERGE:b
+  b#12,MERGE:c
+  b#14,MERGE:d
+  b#15,RANGEDEL:c
+  b#16,MERGE:e
+  c#10,SET:b
+  c#12,SET:c
+  c#14,SET:d
 ----
 mem: 1
 
@@ -140,21 +140,21 @@ c: (d, .)
 
 define
 mem
-  a.SET.10:b
-  b.MERGE.10:b
-  c.SET.10:b
+  a#10,SET:b
+  b#10,MERGE:b
+  c#10,SET:b
 mem
-  a.SET.12:c
-  b.MERGE.12:c
-  c.SET.12:c
+  a#12,SET:c
+  b#12,MERGE:c
+  c#12,SET:c
 mem
-  a.SET.14:d
-  b.MERGE.14:d
-  c.SET.14:d
+  a#14,SET:d
+  b#14,MERGE:d
+  c#14,SET:d
 mem
-  b.RANGEDEL.15:c
+  b#15,RANGEDEL:c
 mem
-  b.MERGE.16:e
+  b#16,MERGE:e
 ----
 mem: 5
 
@@ -282,28 +282,28 @@ c: (d, .)
 
 define
 mem
-  a.SET.10:1
-  a.SET.12:2
-  a.SET.14:3
-  a.SET.16:4
-  b.SET.10:1
-  b.SET.12:2
-  b.SET.14:3
-  b.SET.16:4
-  c.SET.10:1
-  c.SET.12:2
-  c.SET.14:3
-  c.SET.16:4
-  d.SET.10:1
-  d.SET.12:2
-  d.SET.14:3
-  d.SET.16:4
-  a.RANGEDEL.11:b
-  b.RANGEDEL.13:c
-  b.RANGEDEL.11:c
-  c.RANGEDEL.15:d
-  c.RANGEDEL.13:d
-  c.RANGEDEL.11:d
+  a#10,SET:1
+  a#12,SET:2
+  a#14,SET:3
+  a#16,SET:4
+  b#10,SET:1
+  b#12,SET:2
+  b#14,SET:3
+  b#16,SET:4
+  c#10,SET:1
+  c#12,SET:2
+  c#14,SET:3
+  c#16,SET:4
+  d#10,SET:1
+  d#12,SET:2
+  d#14,SET:3
+  d#16,SET:4
+  a#11,RANGEDEL:b
+  b#13,RANGEDEL:c
+  b#11,RANGEDEL:c
+  c#15,RANGEDEL:d
+  c#13,RANGEDEL:d
+  c#11,RANGEDEL:d
 ----
 mem: 1
 
@@ -458,28 +458,28 @@ a: (4, .)
 
 define
 mem
-  a.SET.10:1
-  b.SET.10:1
-  c.SET.10:1
-  d.SET.10:1
+  a#10,SET:1
+  b#10,SET:1
+  c#10,SET:1
+  d#10,SET:1
 mem
-  a.SET.12:2
-  b.SET.12:2
-  c.SET.12:2
-  d.SET.12:2
-  a.RANGEDEL.11:d
+  a#12,SET:2
+  b#12,SET:2
+  c#12,SET:2
+  d#12,SET:2
+  a#11,RANGEDEL:d
 mem
-  a.SET.14:3
-  b.SET.14:3
-  c.SET.14:3
-  d.SET.14:3
-  b.RANGEDEL.13:d
+  a#14,SET:3
+  b#14,SET:3
+  c#14,SET:3
+  d#14,SET:3
+  b#13,RANGEDEL:d
 mem
-  a.SET.16:4
-  b.SET.16:4
-  c.SET.16:4
-  d.SET.16:4
-  c.RANGEDEL.13:d
+  a#16,SET:4
+  b#16,SET:4
+  c#16,SET:4
+  d#16,SET:4
+  c#13,RANGEDEL:d
 ----
 mem: 4
 
@@ -633,13 +633,13 @@ a: (4, .)
 
 define
 mem
-  a.MERGE.13:4
+  a#13,MERGE:4
 L1
-  a.MERGE.12:3
+  a#12,MERGE:3
 L2
-  a.MERGE.11:2
+  a#11,MERGE:2
 L3
-  a.MERGE.10:1
+  a#10,MERGE:1
 ----
 mem: 1
 L1:
@@ -737,22 +737,22 @@ a: (1234, .)
 # Range deletions on multiple levels.
 define
 L0
-  a.SET.13:4
-  b.SET.13:4
-  d.SET.13:4
-  c.RANGEDEL.13:d
+  a#13,SET:4
+  b#13,SET:4
+  d#13,SET:4
+  c#13,RANGEDEL:d
 L1
-  a.SET.12:3
-  d.SET.12:3
-  b.RANGEDEL.12:d
+  a#12,SET:3
+  d#12,SET:3
+  b#12,RANGEDEL:d
 L2
-  d.SET.11:2
-  a.RANGEDEL.11:d
+  d#11,SET:2
+  a#11,RANGEDEL:d
 L3
-  a.SET.10:1
-  b.SET.10:1
-  c.SET.10:1
-  d.SET.10:1
+  a#10,SET:1
+  b#10,SET:1
+  c#10,SET:1
+  d#10,SET:1
 ----
 mem: 1
 L0.0:
@@ -864,21 +864,21 @@ a: (4, .)
 
 define
 mem
-  a.SET.12:3
-  b.SET.12:3
-  c.SET.12:3
-  d.SET.12:3
+  a#12,SET:3
+  b#12,SET:3
+  c#12,SET:3
+  d#12,SET:3
 L1
-  a.RANGEDEL.11:b
+  a#11,RANGEDEL:b
 L1
-  b.RANGEDEL.11:c
+  b#11,RANGEDEL:c
 L1
-  c.RANGEDEL.11:d
+  c#11,RANGEDEL:d
 L2
-  a.SET.10:1
-  b.SET.10:1
-  c.SET.10:1
-  d.SET.10:1
+  a#10,SET:1
+  b#10,SET:1
+  c#10,SET:1
+  d#10,SET:1
 ----
 mem: 1
 L1:
@@ -972,9 +972,9 @@ a: (3, .)
 
 define
 L1
-  a.RANGEDEL.10:b
+  a#10,RANGEDEL:b
 L2
-  a.SET.11:2
+  a#11,SET:2
 ----
 mem: 1
 L1:
@@ -995,11 +995,11 @@ a: pebble: not found
 
 define target-file-sizes=(100, 1) snapshots=(1)
 L0
-  a.RANGEDEL.10:e
+  a#10,RANGEDEL:e
 L0
-  a.SET.11:v
+  a#11,SET:v
 L0
-  c.SET.12:v
+  c#12,SET:v
 ----
 mem: 1
 L0.1:
@@ -1033,11 +1033,11 @@ c: (v, .)
 
 define target-file-sizes=(100, 1) snapshots=(1)
 L0
-  a.RANGEDEL.10:e
+  a#10,RANGEDEL:e
 L0
-  a.SET.11:v
+  a#11,SET:v
 L0
-  c.SET.12:v
+  c#12,SET:v
 ----
 mem: 1
 L0.1:
@@ -1077,13 +1077,13 @@ a: (v, .)
 
 define target-file-sizes=(100, 1) snapshots=(1)
 L0
-  a.RANGEDEL.10:e
+  a#10,RANGEDEL:e
 L0
-  a.SET.11:v
+  a#11,SET:v
 L0
-  c.SET.12:v
+  c#12,SET:v
 L2
-  d.SET.0:v
+  d#0,SET:v
 ----
 mem: 1
 L0.1:
@@ -1135,15 +1135,15 @@ c:v
 
 define target-file-sizes=(100, 1) snapshots=(1)
 L0
-  a.RANGEDEL.10:e
+  a#10,RANGEDEL:e
 L0
-  a.SET.11:v
+  a#11,SET:v
 L0
-  c.SET.12:v
+  c#12,SET:v
 L0
-  f.SET.13:v
+  f#13,SET:v
 L2
-  d.SET.0:v
+  d#0,SET:v
 ----
 mem: 1
 L0.1:
@@ -1206,14 +1206,14 @@ c:v
 
 define
 L0
-  a.RANGEDEL.12:f
+  a#12,RANGEDEL:f
 L0
-  a.RANGEDEL.13:c
-  c.RANGEDEL.13:f
+  a#13,RANGEDEL:c
+  c#13,RANGEDEL:f
 L1
-  b.RANGEDEL.11:e
+  b#11,RANGEDEL:e
 L2
-  c.RANGEDEL.10:d
+  c#10,RANGEDEL:d
 ----
 mem: 1
 L0.1:
@@ -1265,22 +1265,22 @@ range-deletions-bytes-estimate: 990
 # Range deletions with varying overlap.
 define
 L0
-  a.SET.13:4
-  b.SET.13:4
-  d.SET.13:4
-  c.RANGEDEL.13:d
+  a#13,SET:4
+  b#13,SET:4
+  d#13,SET:4
+  c#13,RANGEDEL:d
 L1
-  a.SET.12:3
-  d.SET.12:3
-  b.RANGEDEL.12:d
+  a#12,SET:3
+  d#12,SET:3
+  b#12,RANGEDEL:d
 L2
-  d.SET.11:2
-  a.RANGEDEL.11:d
+  d#11,SET:2
+  a#11,RANGEDEL:d
 L3
-  a.SET.10:1
-  b.SET.10:1
-  c.SET.10:1
-  d.SET.10:1
+  a#10,SET:1
+  b#10,SET:1
+  c#10,SET:1
+  d#10,SET:1
 ----
 mem: 1
 L0.0:
@@ -1331,18 +1331,18 @@ range-deletions-bytes-estimate: 100
 # Multiple Range deletions in a table.
 define
 L0
-  a.RANGEDEL.15:d
-  e.RANGEDEL.15:z
+  a#15,RANGEDEL:d
+  e#15,RANGEDEL:z
 L0
-  a.RANGEDEL.14:d
+  a#14,RANGEDEL:d
 L0
-  e.RANGEDEL.13:z
+  e#13,RANGEDEL:z
 L1
-  a.SET.11:1
-  b.SET.11:1
-  c.SET.11:1
+  a#11,SET:1
+  b#11,SET:1
+  c#11,SET:1
 L2
-  x.SET.10:2
+  x#10,SET:2
 ----
 mem: 1
 L0.1:
@@ -1384,11 +1384,11 @@ range-deletions-bytes-estimate: 923
 
 define
 L1
-  a.RANGEDEL.11:d
-  a.MERGE.11:1
-  a.SET.10:2
-  b.SET.11:1
-  c.SET.11:1
+  a#11,RANGEDEL:d
+  a#11,MERGE:1
+  a#10,SET:2
+  b#11,SET:1
+  c#11,SET:1
 ----
 mem: 1
 L1:

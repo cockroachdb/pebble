@@ -1,8 +1,8 @@
 define
-a.SET.1:a
-b.SET.1:b
-c.SET.1:c
-d.SET.1:d
+a#1,SET:a
+b#1,SET:b
+c#1,SET:c
+d#1,SET:d
 ----
 
 # Exercise noop optimization with no errors

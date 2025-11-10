@@ -1,6 +1,6 @@
 build
-a.RANGEDEL.1:c
-b.RANGEDEL.2:d
+a#1,RANGEDEL:c
+b#2,RANGEDEL:d
 ----
 0: a#1,RANGEDEL-d#inf,RANGEDEL
 
@@ -75,18 +75,18 @@ clear
 ----
 
 build
-a.SET.1:a
+a#1,SET:a
 ----
 0: a#1,SET-a#1,SET
 
 build
-b.RANGEDEL.2:c
+b#2,RANGEDEL:c
 ----
 0: a#1,SET-a#1,SET
 1: b#2,RANGEDEL-c#inf,RANGEDEL
 
 build
-c.SET.3:c
+c#3,SET:c
 ----
 0: a#1,SET-a#1,SET
 1: b#2,RANGEDEL-c#inf,RANGEDEL
@@ -122,8 +122,8 @@ clear
 ----
 
 build
-a.SET.1:b
-b.RANGEDEL.2:c
+a#1,SET:b
+b#2,RANGEDEL:c
 ----
 0: a#1,SET-c#inf,RANGEDEL
 
@@ -153,8 +153,8 @@ clear
 ----
 
 build
-a.RANGEDEL.1:b
-c.SET.2:c
+a#1,RANGEDEL:b
+c#2,SET:c
 ----
 0: a#1,RANGEDEL-c#2,SET
 
@@ -187,8 +187,8 @@ clear
 ----
 
 build
-d.SET.3:d
-c.RANGEDEL.2:e
+d#3,SET:d
+c#2,RANGEDEL:e
 ----
 0: c#2,RANGEDEL-e#inf,RANGEDEL
 
@@ -224,8 +224,8 @@ clear
 ----
 
 build
-b.SET.4:b
-d.SET.3:d
+b#4,SET:b
+d#3,SET:d
 ----
 0: b#4,SET-d#3,SET
 
@@ -271,21 +271,21 @@ clear
 ----
 
 build
-a.SET.3:z
-d.SET.4:z
+a#3,SET:z
+d#4,SET:z
 ----
 0: a#3,SET-d#4,SET
 
 build
-e.SET.5:z
-f.SET.6:z
-g.RANGEDEL.2:h
+e#5,SET:z
+f#6,SET:z
+g#2,RANGEDEL:h
 ----
 0: a#3,SET-d#4,SET
 1: e#5,SET-h#inf,RANGEDEL
 
 build
-j.SET.6:z
+j#6,SET:z
 ----
 0: a#3,SET-d#4,SET
 1: e#5,SET-h#inf,RANGEDEL

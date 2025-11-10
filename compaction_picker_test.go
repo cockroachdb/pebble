@@ -125,8 +125,8 @@ func loadVersion(
 // parseTableMeta parses a table number from a string. The string is expected to
 // be in the form of one of the following:
 //
-//	start.SET.1-end.SET.2
-//	<table-num>:start.SET.1-end.SET.2
+//	start#1,SET-end#2,SET
+//	<table-num>:start#1,SET-end#2,SET
 func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetadata, error) {
 	parts := strings.Split(s, ":")
 	var tableNum base.TableNum
@@ -137,7 +137,7 @@ func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetad
 	fields := strings.Fields(parts[0])
 	parts = strings.Split(fields[0], "-")
 	if len(parts) != 2 {
-		return nil, errors.Errorf("malformed table spec: %s. usage: <optional-file-num>:start.SET.1-end.SET.2", s)
+		return nil, errors.Errorf("malformed table spec: %s. usage: <optional-file-num>:start#1,SET-end#2,SET", s)
 	}
 	m := &manifest.TableMetadata{
 		TableNum: tableNum,

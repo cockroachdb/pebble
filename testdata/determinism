@@ -5,12 +5,12 @@
 
 define
 L0
-  a.SET.3:v
-  apple.SET.3:v
-  b.SET.3:v
+  a#3,SET:v
+  apple#3,SET:v
+  b#3,SET:v
 L0
-  a.SET.2:v
-  avocado.SET.3:v
+  a#2,SET:v
+  avocado#3,SET:v
 ----
 L0.1:
   000004:[a#3,SET-b#3,SET]

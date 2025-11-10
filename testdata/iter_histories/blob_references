@@ -3,13 +3,13 @@
 
 define verbose format-major-version=24
 L5
-  b@9.SET.9:v
-  c@9.SET.9:blob{fileNum=000921 value=helloworld}
-  d@9.SET.9:v
+  b@9#9,SET:v
+  c@9#9,SET:blob{fileNum=000921 value=helloworld}
+  d@9#9,SET:v
 L6
-  b@2.SET.2:v
-  c@2.SET.2:blob{fileNum=000921 value=foobar}
-  d@2.SET.2:v
+  b@2#2,SET:v
+  c@2#2,SET:blob{fileNum=000921 value=foobar}
+  d@2#2,SET:v
 ----
 L5:
   000004:[b@9#9,SET-d@9#9,SET] seqnums:[9-9] points:[b@9#9,SET-d@9#9,SET] size:817 blobrefs:[(B000921: 10); depth:1]
@@ -61,15 +61,15 @@ stats: seeked 1 times (1 internal); stepped 5 times (6 internal); blocks: 365B c
 
 define verbose format-major-version=24
 L5
-  b@9.SETWITHDEL.9:blob{fileNum=000039 value=orange}
-  c@9.SETWITHDEL.9:blob{fileNum=000921 value=canteloupe}
-  d@9.SETWITHDEL.9:blob{fileNum=000039 value=honeydew}
-  e@1.SETWITHDEL.9:blob{fileNum=000921 value=watermelon}
+  b@9#9,SETWITHDEL:blob{fileNum=000039 value=orange}
+  c@9#9,SETWITHDEL:blob{fileNum=000921 value=canteloupe}
+  d@9#9,SETWITHDEL:blob{fileNum=000039 value=honeydew}
+  e@1#9,SETWITHDEL:blob{fileNum=000921 value=watermelon}
 L6
-  b@2.SETWITHDEL.9:blob{fileNum=000039 value=lemon}
-  c@2.SETWITHDEL.2:blob{fileNum=000921 value=kiwi}
-  d@2.SETWITHDEL.2:blob{fileNum=000921 value=tangerine}
-  f@2.SETWITHDEL.3:blob{fileNum=000039 value=grapes}
+  b@2#9,SETWITHDEL:blob{fileNum=000039 value=lemon}
+  c@2#2,SETWITHDEL:blob{fileNum=000921 value=kiwi}
+  d@2#2,SETWITHDEL:blob{fileNum=000921 value=tangerine}
+  f@2#3,SETWITHDEL:blob{fileNum=000039 value=grapes}
 ----
 L5:
   000004:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] seqnums:[9-9] points:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] size:818 blobrefs:[(B000039: 14), (B000921: 20); depth:2]
@@ -123,18 +123,18 @@ stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cac
 
 define verbose format-major-version=24
 L6
-  a.SETWITHDEL.2:blob{fileNum=000009 value=lemonmeringue}
-  b.SETWITHDEL.2:blob{fileNum=000009 value=keylime}
-  c.SETWITHDEL.2:blob{fileNum=000009 value=pecan blockID=1 valueID=0}
-  d.SETWITHDEL.2:blob{fileNum=000009 value=cherry}
-  e.SETWITHDEL.2:blob{fileNum=000009 value=apple}
-  f.SETWITHDEL.2:blob{fileNum=000009 value=bananacream blockID=2 valueID=0}
-  g.SETWITHDEL.2:blob{fileNum=000009 value=chocolate}
-  h.SETWITHDEL.2:blob{fileNum=000009 value=strawberry blockID=3 valueID=0}
-  i.SETWITHDEL.2:blob{fileNum=000009 value=custard}
-  j.SETWITHDEL.2:blob{fileNum=000009 value=blueberry blockID=4 valueID=0}
-  k.SETWITHDEL.2:blob{fileNum=000009 value=raspberry blockID=5 valueID=0}
-  l.SETWITHDEL.2:blob{fileNum=000009 value=peach blockID=6 valueID=0}
+  a#2,SETWITHDEL:blob{fileNum=000009 value=lemonmeringue}
+  b#2,SETWITHDEL:blob{fileNum=000009 value=keylime}
+  c#2,SETWITHDEL:blob{fileNum=000009 value=pecan blockID=1 valueID=0}
+  d#2,SETWITHDEL:blob{fileNum=000009 value=cherry}
+  e#2,SETWITHDEL:blob{fileNum=000009 value=apple}
+  f#2,SETWITHDEL:blob{fileNum=000009 value=bananacream blockID=2 valueID=0}
+  g#2,SETWITHDEL:blob{fileNum=000009 value=chocolate}
+  h#2,SETWITHDEL:blob{fileNum=000009 value=strawberry blockID=3 valueID=0}
+  i#2,SETWITHDEL:blob{fileNum=000009 value=custard}
+  j#2,SETWITHDEL:blob{fileNum=000009 value=blueberry blockID=4 valueID=0}
+  k#2,SETWITHDEL:blob{fileNum=000009 value=raspberry blockID=5 valueID=0}
+  l#2,SETWITHDEL:blob{fileNum=000009 value=peach blockID=6 valueID=0}
 ----
 L6:
   000004:[a#2,SETWITHDEL-l#2,SETWITHDEL] seqnums:[2-2] points:[a#2,SETWITHDEL-l#2,SETWITHDEL] size:912 blobrefs:[(B000009: 96); depth:1]
@@ -207,7 +207,7 @@ stats: seeked 1 times (1 internal); stepped 12 times (12 internal); blocks: 0B c
 define verbose format-major-version=24
 L6
   rangekey:a-d:{(#5,RANGEKEYSET,@2,foo)}
-  b.SETWITHDEL.2:blob{fileNum=000009 value=keylime}
+  b#2,SETWITHDEL:blob{fileNum=000009 value=keylime}
 ----
 L6:
   000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[2-5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:931 blobrefs:[(B000009: 7); depth:1]

@@ -1,11 +1,11 @@
 # init a multi-level compaction with dummy hueristic
 setup-inputs a a
 L1
-  a.SET.1-b.SET.2 size=1
+  a#1,SET-b#2,SET size=1
 L2
-  a.SET.3-c.SET.4 size=1
+  a#3,SET-c#4,SET size=1
 L3
-  c.SET.3-d.SET.2 size=1
+  c#3,SET-d#2,SET size=1
 ----
 L1
   000001:[a#1,SET-b#2,SET]

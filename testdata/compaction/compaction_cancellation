@@ -3,11 +3,11 @@
 # one to run a manual compaction.
 define auto-compactions=off disable-multi-level max-concurrent-compactions=2
 L2
-  a.SET.2:v c.SET.4:v
+  a#2,SET:v c#4,SET:v
 L2
-  d.SET.3:v e.SET.2:v
+  d#3,SET:v e#2,SET:v
 L2
-  f.SET.2:v g.SET.1:v
+  f#2,SET:v g#1,SET:v
 ----
 L2:
   000004:[a#2,SET-c#4,SET]

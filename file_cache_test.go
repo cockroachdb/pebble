@@ -218,7 +218,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 			t.Fatal(err)
 		}
 		tw := sstable.NewWriter(w, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
-		ik := base.ParseInternalKey(fmt.Sprintf("k.SET.%d", i))
+		ik := base.MakeInternalKey([]byte("k"), base.SeqNum(i), InternalKeyKindSet)
 		if err := tw.Raw().Add(ik, xxx[:i], false); err != nil {
 			t.Fatal(err)
 		}

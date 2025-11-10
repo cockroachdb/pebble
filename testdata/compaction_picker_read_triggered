@@ -3,11 +3,11 @@
 # within the range set in a readCompaction are chosen for compaction.
 define
 L5
-  000101:a.SET.11-f.SET.12 size=10
-  000102:g.SET.11-l.SET.12 size=10
+  000101:a#11,SET-f#12,SET size=10
+  000102:g#11,SET-l#12,SET size=10
 L6
-  000010:a.SET.1-f.SET.2 size=100
-  000011:g.SET.1-l.SET.2 size=100
+  000010:a#1,SET-f#2,SET size=100
+  000011:g#1,SET-l#2,SET size=100
 ----
 L5:
   000101:[a#11,SET-f#12,SET]
@@ -44,9 +44,9 @@ show-read-compactions
 # score-based one.
 define
 L5
-  000101:a.SET.11-f.SET.12 size=1000000000
+  000101:a#11,SET-f#12,SET size=1000000000
 L6
-  000010:a.SET.1-f.SET.2 size=1000000000
+  000010:a#1,SET-f#2,SET size=1000000000
 ----
 L5:
   000101:[a#11,SET-f#12,SET]
@@ -77,11 +77,11 @@ show-read-compactions
 # is higher than what we want.
 define
 L5
-  000101:a.SET.11-f.SET.12 size=10
-  000102:g.SET.11-l.SET.12 size=10
+  000101:a#11,SET-f#12,SET size=10
+  000102:g#11,SET-l#12,SET size=10
 L6
-  000010:a.SET.1-f.SET.2 size=100000000
-  000012:g.SET.1-l.SET.2 size=100
+  000010:a#1,SET-f#2,SET size=100000000
+  000012:g#1,SET-l#2,SET size=100
 ----
 L5:
   000101:[a#11,SET-f#12,SET]
@@ -113,11 +113,11 @@ show-read-compactions
 # Verify that wide read compactions are disabled.
 define
 L5
-  000101:a.SET.11-f.SET.12 size=5000000
-  000102:g.SET.11-l.SET.12 size=10
+  000101:a#11,SET-f#12,SET size=5000000
+  000102:g#11,SET-l#12,SET size=10
 L6
-  000010:a.SET.1-f.SET.2 size=100000000
-  000012:g.SET.1-l.SET.2 size=100
+  000010:a#1,SET-f#2,SET size=100000000
+  000012:g#1,SET-l#2,SET size=100
 ----
 L5:
   000101:[a#11,SET-f#12,SET]

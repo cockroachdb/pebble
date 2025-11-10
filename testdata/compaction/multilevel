@@ -7,13 +7,13 @@
 
 define level-max-bytes=(L2 : 5) auto-compactions=off
 L1
-  a.SET.3:v b.SET.2:v
+  a#3,SET:v b#2,SET:v
 L2
-  a.SET.2:v c.SET.4:v
+  a#2,SET:v c#4,SET:v
 L3
-  c.SET.3:v d.SET.2:v
+  c#3,SET:v d#2,SET:v
 L4
-  c.SET.2:v d.SET.1:v
+  c#2,SET:v d#1,SET:v
 ----
 L1:
   000004:[a#3,SET-b#2,SET]
@@ -42,13 +42,13 @@ concurrency set to [1, 2]
 
 define level-max-bytes=(L2 : 5) auto-compactions=off
 L1
-  a.SET.3:v b.SET.2:v
+  a#3,SET:v b#2,SET:v
 L2
-  a.SET.2:v c.SET.4:v
+  a#2,SET:v c#4,SET:v
 L3
-  c.SET.3:v d.SET.2:v
+  c#3,SET:v d#2,SET:v
 L4
-  c.SET.2:v d.SET.1:v
+  c#2,SET:v d#1,SET:v
 ----
 L1:
   000004:[a#3,SET-b#2,SET]
@@ -69,11 +69,11 @@ L4:
 # Conduct a multi level compaction with no output level files
 define level-max-bytes=(L2 : 5) auto-compactions=off
 L1
-  a.SET.3:v b.SET.2:v
+  a#3,SET:v b#2,SET:v
 L2
-  a.SET.2:v c.SET.4:v
+  a#2,SET:v c#4,SET:v
 L4
-  c.SET.2:v d.SET.1:v
+  c#2,SET:v d#1,SET:v
 ----
 L1:
   000004:[a#3,SET-b#2,SET]
@@ -93,11 +93,11 @@ L4:
 # which includes the file in L3.
 define level-max-bytes=(L2 : 5) auto-compactions=off
 L1
-  a.SET.3:v b.SET.2:v
+  a#3,SET:v b#2,SET:v
 L3
-  a.SET.2:v c.SET.4:v
+  a#2,SET:v c#4,SET:v
 L4
-  c.SET.2:v d.SET.1:v
+  c#2,SET:v d#1,SET:v
 ----
 L1:
   000004:[a#3,SET-b#2,SET]
@@ -118,9 +118,9 @@ L4:
 # Conduct a multi input compaction without intermediate or output level, basically a move.
 define level-max-bytes=(L2 : 5) auto-compactions=off
 L1
-  a.SET.3:v b.SET.2:v
+  a#3,SET:v b#2,SET:v
 L4
-  c.SET.2:v d.SET.1:v
+  c#2,SET:v d#1,SET:v
 ----
 L1:
   000004:[a#3,SET-b#2,SET]
@@ -137,11 +137,11 @@ L4:
 # Don't conduct a multi level compaction on L0.
 define level-max-bytes=(L1 : 5) auto-compactions=off
 L0
-  a.SET.1:v b.SET.2:v
+  a#1,SET:v b#2,SET:v
 L1
-  a.SET.3:v c.SET.4:v
+  a#3,SET:v c#4,SET:v
 L2
-  c.SET.2:v d.SET.2:v
+  c#2,SET:v d#2,SET:v
 ----
 L0.0:
   000004:[a#1,SET-b#2,SET]
@@ -161,17 +161,17 @@ L2:
 # Only one multiLevel compaction should be picked at a time.
 define auto-compactions=off
 L1
-  a.SET.21:v f.SET.22:v
+  a#21,SET:v f#22,SET:v
 L1
-  k.SET.25:v n.SET.26:v
+  k#25,SET:v n#26,SET:v
 L2
-  k.SET.7:v m.SET.10:v
+  k#7,SET:v m#10,SET:v
 L2
-  a.SET.11:v d.SET.13:v
+  a#11,SET:v d#13,SET:v
 L3
-  a.SET.1:v f.SET.2:v
+  a#1,SET:v f#2,SET:v
 L3
-  k.SET.3:v n.SET.5:v
+  k#3,SET:v n#5,SET:v
 ----
 L1:
   000004:[a#21,SET-f#22,SET]
@@ -209,17 +209,17 @@ remove-ongoing-compaction
 
 define auto-compactions=off
 L1
-  a.SET.21:v f.SET.22:v
+  a#21,SET:v f#22,SET:v
 L1
-  k.SET.25:v n.SET.26:v
+  k#25,SET:v n#26,SET:v
 L2
-  k.SET.7:v m.SET.10:v
+  k#7,SET:v m#10,SET:v
 L2
-  a.SET.11:v d.SET.13:v
+  a#11,SET:v d#13,SET:v
 L3
-  a.SET.1:v f.SET.2:v
+  a#1,SET:v f#2,SET:v
 L3
-  k.SET.3:v n.SET.5:v
+  k#3,SET:v n#5,SET:v
 ----
 L1:
   000004:[a#21,SET-f#22,SET]

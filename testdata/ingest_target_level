@@ -9,8 +9,8 @@ target
 
 define
 L5
-  b.SET.1:1
-  c.SET.2:2
+  b#1,SET:1
+  c#2,SET:2
 ----
 L5:
   000004:[b#1,SET-c#2,SET]
@@ -41,17 +41,17 @@ target
 
 define
 L0
-  b.SET.3:3
-  e.SET.4:4
+  b#3,SET:3
+  e#4,SET:4
 L0
-  d.SET.5:5
-  f.SET.6:6
+  d#5,SET:5
+  f#6,SET:6
 L0
-  x.SET.7:7
-  y.SET.8:8
+  x#7,SET:7
+  y#8,SET:8
 L3
-  g.SET.1:1
-  h.SET.2:2
+  g#1,SET:1
+  h#2,SET:2
 ----
 L0.1:
   000005:[d#5,SET-f#6,SET]
@@ -85,13 +85,13 @@ target
 
 define
 L5
-  a.SET.4:4
+  a#4,SET:4
 L5
-  c.SET.3:3
+  c#3,SET:3
 L6
-  a.SET.2:2
+  a#2,SET:2
 L6
-  c.SET.1:1
+  c#1,SET:1
 ----
 L5:
   000004:[a#4,SET-a#4,SET]
@@ -108,13 +108,13 @@ target
 
 define
 L5
-  a.SET.4:4
+  a#4,SET:4
 L5
-  c.SET.3:3
+  c#3,SET:3
 L6
-  a.SET.2:2
+  a#2,SET:2
 L6
-  c.SET.1:1
+  c#1,SET:1
   compact:a-c
 ----
 L5:
@@ -133,11 +133,11 @@ target
 
 define
 L0
-  c.SET.4:4
-  d.SET.3:3
-  d.RANGEDEL.2:g
+  c#4,SET:4
+  d#3,SET:3
+  d#2,RANGEDEL:g
 L2
-  a.RANGEDEL.1:g
+  a#1,RANGEDEL:g
 ----
 L0.0:
   000004:[c#4,SET-g#inf,RANGEDEL]
@@ -181,11 +181,11 @@ target
 #   a  b  c  d  e  f  g
 define
 L1
-  a.SET.0:a
-  b.SET.0:b
-  c.SET.0:c
-  dd.SET.0:dd
-  g.SET.0:g
+  a#0,SET:a
+  b#0,SET:b
+  c#0,SET:c
+  dd#0,SET:dd
+  g#0,SET:g
 ----
 L1:
   000004:[a#0,SET-g#0,SET]
@@ -209,9 +209,9 @@ target
 # to determine overlap and don't check the data within the ingested file.
 define
 L5
-  a.SET.0:a
-  b.SET.0:b
-  c.SET.0:c
+  a#0,SET:a
+  b#0,SET:b
+  c#0,SET:c
 ----
 L5:
   000004:[a#0,SET-c#0,SET]
@@ -253,11 +253,11 @@ target
 
 define
 L6
-  a.SET.2:2
-  d.SET.3:3
+  a#2,SET:2
+  d#3,SET:3
 L6
-  f.SET.4:4
-  k.SET.6:6
+  f#4,SET:4
+  k#6,SET:6
 ----
 L6:
   000004:[a#2,SET-d#3,SET]
@@ -286,11 +286,11 @@ target suggest-split
 
 define
 L6
-  a.SET.2:2
-  d.SET.3:3
+  a#2,SET:2
+  d#3,SET:3
 L6
-  f.SET.4:4
-  k.SET.6:6
+  f#4,SET:4
+  k#6,SET:6
   compact:f-k
 ----
 L6:
@@ -307,11 +307,11 @@ target suggest-split
 
 define
 L5
-  a.SET.2:2
-  e.SET.3:3
+  a#2,SET:2
+  e#3,SET:3
 L6
-  c.SET.1:1
-  k.SET.1:1
+  c#1,SET:1
+  k#1,SET:1
 ----
 L5:
   000004:[a#2,SET-e#3,SET]
@@ -327,11 +327,11 @@ target suggest-split
 
 define
 L0
-  a.SET.22:22
-  g.SET.22:22
+  a#22,SET:22
+  g#22,SET:22
 L0
-  j.RANGEDEL.21:k
-  m.SET.21:21
+  j#21,RANGEDEL:k
+  m#21,SET:21
 ----
 L0.0:
   000004:[a#22,SET-g#22,SET]

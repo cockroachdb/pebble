@@ -1,10 +1,10 @@
 define
-a.SET.1:1
-a.SET.2:2
-b.SET.1:1
-b.SET.2:2
-c.SET.1:1
-c.SET.2:2
+a#1,SET:1
+a#2,SET:2
+b#1,SET:1
+b#2,SET:2
+c#1,SET:1
+c#2,SET:2
 ----
 
 iter

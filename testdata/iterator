@@ -1,7 +1,7 @@
 define
-a.DEL.2:
-a.SET.1:b
-b.SET.3:c
+a#2,DEL:
+a#1,SET:b
+b#3,SET:c
 ----
 
 iter seq=4
@@ -11,7 +11,7 @@ seek-prefix-ge a
 stats: seeked 1 times (1 internal); stepped 0 times (2 internal); blocks: 0B cached; points: 2 (2B keys, 1B values)
 
 define
-a.SET.1:b
+a#1,SET:b
 ----
 
 iter seq=2
@@ -38,8 +38,8 @@ stats: seeked 1 times (0 fwd/1 rev, internal: 0 fwd/1 rev); stepped 0 times (0 i
 
 
 define
-a.SET.2:c
-a.SET.1:b
+a#2,SET:c
+a#1,SET:b
 ----
 
 iter seq=2
@@ -83,8 +83,8 @@ a: (c, .)
 stats: seeked 1 times (1 internal); stepped 1 times (2 internal); blocks: 0B cached; points: 2 (2B keys, 2B values)
 
 define
-a.DEL.2:
-a.SET.1:b
+a#2,DEL:
+a#1,SET:b
 ----
 
 iter seq=3
@@ -130,9 +130,9 @@ seek-prefix-ge 1
 stats: seeked 1 times (1 internal); stepped 0 times (0 internal)
 
 define
-a.DEL.2:
-a.SET.1:b
-b.SET.3:c
+a#2,DEL:
+a#1,SET:b
+b#3,SET:c
 ----
 
 iter seq=4
@@ -182,11 +182,11 @@ a: (b, .)
 stats: seeked 2 times (2 internal); stepped 0 times (0 internal); blocks: 0B cached; points: 3 (3B keys, 2B values)
 
 define
-a.DEL.3:
-a.SET.1:b
-b.DEL.3:
-b.SET.2:c
-c.SET.3:d
+a#3,DEL:
+a#1,SET:b
+b#3,DEL:
+b#2,SET:c
+c#3,SET:d
 ----
 
 iter seq=4
@@ -220,9 +220,9 @@ b: (c, .)
 stats: seeked 3 times (3 internal); stepped 0 times (0 internal); blocks: 0B cached; points: 5 (5B keys, 3B values)
 
 define
-a.SET.1:a
-b.SET.2:b
-c.SET.3:c
+a#1,SET:a
+b#2,SET:b
+c#3,SET:c
 ----
 
 iter seq=4
@@ -337,8 +337,8 @@ b: (b, .)
 stats: seeked 3 times (3 internal); stepped 0 times (0 internal); blocks: 0B cached; points: 3 (3B keys, 3B values)
 
 define
-a.SET.b2:b
-b.SET.2:c
+a#b2,SET:b
+b#2,SET:c
 ----
 
 iter seq=2
@@ -399,10 +399,10 @@ stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cac
 
 
 define
-a.SET.1:a
-aa.SET.2:aa
-aaa.SET.3:aaa
-b.SET.4:b
+a#1,SET:a
+aa#2,SET:aa
+aaa#3,SET:aaa
+b#4,SET:b
 ----
 
 iter seq=5
@@ -579,9 +579,9 @@ aa: (aa, .)
 stats: seeked 5 times (5 internal); stepped 0 times (0 internal); blocks: 0B cached; points: 5 (10B keys, 10B values)
 
 define
-bb.DEL.2:
-bb.SET.1:1
-bb2.SET.3:2
+bb#2,DEL:
+bb#1,SET:1
+bb2#3,SET:2
 ----
 
 iter seq=4
@@ -592,11 +592,11 @@ stats: seeked 1 times (1 internal); stepped 0 times (2 internal); blocks: 0B cac
 
 
 define
-a.MERGE.3:d
-a.MERGE.2:c
-a.SET.1:b
-b.MERGE.2:b
-b.MERGE.1:a
+a#3,MERGE:d
+a#2,MERGE:c
+a#1,SET:b
+b#2,MERGE:b
+b#1,MERGE:a
 ----
 
 iter seq=4
@@ -787,13 +787,13 @@ stats: seeked 1 times (1 internal); stepped 0 times (1 internal); blocks: 0B cac
 
 
 define
-a.MERGE.3:d
-a.MERGE.2:c
-a.MERGE.1:b
-aa.MERGE.2:b
-aa.MERGE.1:a
-b.MERGE.2:b
-b.MERGE.1:a
+a#3,MERGE:d
+a#2,MERGE:c
+a#1,MERGE:b
+aa#2,MERGE:b
+aa#1,MERGE:a
+b#2,MERGE:b
+b#1,MERGE:a
 ----
 
 iter seq=3
@@ -847,10 +847,10 @@ aa: (ab, .)
 stats: seeked 1 times (1 internal); stepped 0 times (2 internal); blocks: 0B cached; points: 2 (4B keys, 2B values)
 
 define
-a.SET.1:a
-b.SET.1:b
-c.SET.1:c
-d.SET.1:d
+a#1,SET:a
+b#1,SET:b
+c#1,SET:c
+d#1,SET:d
 ----
 
 iter seq=2 lower=a
@@ -1186,10 +1186,10 @@ b: (b, .)
 stats: seeked 1 times (1 internal); stepped 1 times (0 fwd/1 rev, internal: 0 fwd/2 rev); blocks: 0B cached; points: 3 (3B keys, 3B values)
 
 define
-a.SET.1:a
-aa.SET.1:aa
-aaa.SET.1:aaa
-b.SET.1:b
+a#1,SET:a
+aa#1,SET:aa
+aaa#1,SET:aaa
+b#1,SET:b
 ----
 
 iter seq=2 lower=a
@@ -1256,8 +1256,8 @@ aa: (aa, .)
 stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached; points: 1 (2B keys, 2B values)
 
 define
-a.SET.1:a
-b.SET.2:b
+a#1,SET:a
+b#2,SET:b
 ----
 
 iter seq=4
@@ -1271,8 +1271,8 @@ b: (b, .)
 stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached; points: 2 (2B keys, 2B values)
 
 define
-a.SET.2:a
-b.SET.1:b
+a#2,SET:a
+b#1,SET:b
 ----
 
 iter seq=2
@@ -1282,7 +1282,7 @@ seek-prefix-ge a
 stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cached; points: 1 (1B keys, 1B values)
 
 define
-a.SINGLEDEL.1:
+a#1,SINGLEDEL:
 ----
 
 iter seq=2
@@ -1292,8 +1292,8 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (1 internal); blocks: 0B cached; points: 1 (1B keys, 0B values)
 
 define
-a.SINGLEDEL.2:
-a.SINGLEDEL.1:
+a#2,SINGLEDEL:
+a#1,SINGLEDEL:
 ----
 
 iter seq=3
@@ -1303,8 +1303,8 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (2 internal); blocks: 0B cached; points: 2 (2B keys, 0B values)
 
 define
-a.SINGLEDEL.2:
-a.DEL.1:
+a#2,SINGLEDEL:
+a#1,DEL:
 ----
 
 iter seq=3
@@ -1314,8 +1314,8 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (2 internal); blocks: 0B cached; points: 2 (2B keys, 0B values)
 
 define
-a.SINGLEDEL.2:
-a.MERGE.1:
+a#2,SINGLEDEL:
+a#1,MERGE:
 ----
 
 iter seq=3
@@ -1325,8 +1325,8 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (2 internal); blocks: 0B cached; points: 2 (2B keys, 0B values)
 
 define
-a.SINGLEDEL.2:
-a.SET.1:b
+a#2,SINGLEDEL:
+a#1,SET:b
 ----
 
 iter seq=3
@@ -1336,8 +1336,8 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (2 internal); blocks: 0B cached; points: 2 (2B keys, 1B values)
 
 define
-a.SET.2:b
-a.SINGLEDEL.1:
+a#2,SET:b
+a#1,SINGLEDEL:
 ----
 
 iter seq=3
@@ -1349,9 +1349,9 @@ a: (b, .)
 stats: seeked 1 times (1 internal); stepped 1 times (2 internal); blocks: 0B cached; points: 2 (2B keys, 1B values)
 
 define
-a.SINGLEDEL.2:
-a.SET.1:b
-b.SET.3:c
+a#2,SINGLEDEL:
+a#1,SET:b
+b#3,SET:c
 ----
 
 iter seq=4
@@ -1363,9 +1363,9 @@ b: (c, .)
 stats: seeked 1 times (1 internal); stepped 1 times (3 internal); blocks: 0B cached; points: 3 (3B keys, 2B values)
 
 define
-a.SINGLEDEL.3:
-a.SET.2:b
-a.SET.1:a
+a#3,SINGLEDEL:
+a#2,SET:b
+a#1,SET:a
 ----
 
 iter
@@ -1375,9 +1375,9 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cached; points: 3 (3B keys, 2B values)
 
 define
-a.SINGLEDEL.3:
-a.MERGE.2:b
-a.MERGE.1:a
+a#3,SINGLEDEL:
+a#2,MERGE:b
+a#1,MERGE:a
 ----
 
 iter seq=4
@@ -1387,10 +1387,10 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (3 internal); blocks: 0B cached; points: 3 (3B keys, 2B values)
 
 define
-a.SINGLEDEL.4:
-a.SET.3:val
-a.SINGLEDEL.2:
-a.SET.1:val
+a#4,SINGLEDEL:
+a#3,SET:val
+a#2,SINGLEDEL:
+a#1,SET:val
 ----
 
 iter seq=5
@@ -1400,10 +1400,10 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (4 internal); blocks: 0B cached; points: 4 (4B keys, 6B values)
 
 define
-a.SINGLEDEL.4:
-a.SET.3:val
-a.DEL.2:
-a.SET.1:val
+a#4,SINGLEDEL:
+a#3,SET:val
+a#2,DEL:
+a#1,SET:val
 ----
 
 iter seq=5
@@ -1413,10 +1413,10 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (4 internal); blocks: 0B cached; points: 4 (4B keys, 6B values)
 
 define
-a.SINGLEDEL.4:
-a.SET.3:c
-a.MERGE.2:b
-a.SET.1:a
+a#4,SINGLEDEL:
+a#3,SET:c
+a#2,MERGE:b
+a#1,SET:a
 ----
 
 iter seq=5
@@ -1426,8 +1426,8 @@ first
 stats: seeked 1 times (1 internal); stepped 0 times (4 internal); blocks: 0B cached; points: 4 (4B keys, 3B values)
 
 define
-a.SINGLEDEL.3:
-a.SET.1:val
+a#3,SINGLEDEL:
+a#1,SET:val
 ----
 
 iter seq=4
@@ -1438,10 +1438,10 @@ stats: seeked 1 times (1 internal); stepped 0 times (2 internal); blocks: 0B cac
 
 # Exercise iteration with limits, when there are no deletes.
 define
-a.SET.1:a
-b.SET.1:b
-c.SET.1:c
-d.SET.1:d
+a#1,SET:a
+b#1,SET:b
+c#1,SET:c
+d#1,SET:d
 ----
 
 iter seq=2
@@ -1481,12 +1481,12 @@ stats: seeked 2 times (1 fwd/1 rev, internal: 3 fwd/1 rev); stepped 13 times (6 
 # Exercise iteration with limits when we have deletes.
 
 define
-a.SET.1:a
-b.DEL.3:
-b.SET.2:b
-c.DEL.3:
-c.SET.2:c
-d.SET.1:d
+a#1,SET:a
+b#3,DEL:
+b#2,SET:b
+c#3,DEL:
+c#2,SET:c
+d#1,SET:d
 ----
 
 iter seq=4
@@ -1555,14 +1555,14 @@ stats: seeked 1 times (0 fwd/1 rev, internal: 1 fwd/1 rev); stepped 5 times (1 f
 
 # NB: Zero values are skipped by deletable merger.
 define merger=deletable
-a.MERGE.1:1
-a.MERGE.2:2
-a.MERGE.3:-1
-a.MERGE.4:-2
-b.MERGE.4:-3
-b.MERGE.3:3
-b.MERGE.2:2
-b.MERGE.1:-2
+a#1,MERGE:1
+a#2,MERGE:2
+a#3,MERGE:-1
+a#4,MERGE:-2
+b#4,MERGE:-3
+b#3,MERGE:3
+b#2,MERGE:2
+b#1,MERGE:-2
 ----
 
 iter seq=5

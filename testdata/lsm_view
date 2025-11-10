@@ -1,15 +1,15 @@
 define
 L0
-  b.SET.3:3
-  e.SET.4:4
+  b#3,SET:3
+  e#4,SET:4
 L0
-  d.SET.5:5
-  f.SET.6:6
+  d#5,SET:5
+  f#6,SET:6
 L0
-  x.SET.7:7
-  y.SET.8:8
+  x#7,SET:7
+  y#8,SET:8
 L3
-  g.SET.1:1
-  h.SET.2:2
+  g#1,SET:1
+  h#2,SET:2
 ----
 https://raduberinde.github.io/lsmview/decode.html#eJyMkk9vozAUxO_7KZ7G18eKP8YkPq60t71tbxWKQDgkCiFtoFVole9egaAlYJFwGs_ogX_z-ERh3k1RQT_3clMmRwONf-5vD4w6SQvTx0lqCmiEYFT7DwMt1ZpRHZOiMFW9OZgG2mMUyTn_PgeMzNTJvvsE3PYJNWUi5P9_n8ihrVCt6l-pSar1n_ZgXsu3Y6UpJIcUGC-nfVlX9kka3E6P_fJE56TMDWUtY3yNrzzHdO2YcgnTnWD6c0ypKRVBf1kj5CJmQA7JEaZtkga302N_isk_FGqJQk0oojmF0nQRUX-XRqwWKSJyaDWisE3S4HZ67D-wrJs_0pL7d_LAvupoqSQ5KSmclxRpyoXXo-6Ev1iSRw75o5JskzS4nR77D5Qk75QQ3snVbR4zDqbpYFMwMjAMGFswcjB2YFzAaBBff30FAAD__-zlPP8=

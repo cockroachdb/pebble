@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/batchrepr"
@@ -965,17 +966,15 @@ func TestBatchIter(t *testing.T) {
 							b = newBatch(nil)
 						}
 
-						for _, key := range strings.Split(d.Input, "\n") {
-							j := strings.Index(key, ":")
-							ikey := base.ParseInternalKey(key[:j])
-							value := []byte(key[j+1:])
-							b.Set(ikey.UserKey, value, nil)
+						for _, line := range crstrings.Lines(d.Input) {
+							kv := base.ParseInternalKV(line)
+							require.NoError(t, b.Set(kv.K.UserKey, kv.InPlaceValue(), nil))
 						}
 
 						switch method {
 						case "apply":
 							tmp := newIndexedBatch(nil, DefaultComparer)
-							tmp.Apply(b, nil)
+							require.NoError(t, tmp.Apply(b, nil))
 							b = tmp
 						}
 						return ""
@@ -1111,11 +1110,11 @@ func TestFlushableBatchIter(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			batch := newBatch(nil)
-			for _, key := range strings.Split(d.Input, "\n") {
-				j := strings.Index(key, ":")
-				ikey := base.ParseInternalKey(key[:j])
-				value := []byte(fmt.Sprint(ikey.SeqNum()))
-				batch.Set(ikey.UserKey, value, nil)
+			for _, line := range crstrings.Lines(d.Input) {
+				kv := base.ParseInternalKV(line)
+				// Ignore any value in the test.
+				value := []byte(kv.K.SeqNum().String())
+				require.NoError(t, batch.Set(kv.K.UserKey, value, nil))
 			}
 			var err error
 			b, err = newFlushableBatch(batch, DefaultComparer)
@@ -1139,30 +1138,29 @@ func TestFlushableBatch(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			batch := newBatch(nil)
-			for _, key := range strings.Split(d.Input, "\n") {
-				j := strings.Index(key, ":")
-				ikey := base.ParseInternalKey(key[:j])
-				value := []byte(key[j+1:])
+			for _, line := range crstrings.Lines(d.Input) {
+				kv := base.ParseInternalKV(line)
+				value := kv.InPlaceValue()
 				if len(value) == 0 {
-					value = []byte(fmt.Sprintf("%d", ikey.SeqNum()))
+					value = []byte(kv.K.SeqNum().String())
 				}
-				switch ikey.Kind() {
+				switch kv.K.Kind() {
 				case InternalKeyKindDelete:
-					require.NoError(t, batch.Delete(ikey.UserKey, nil))
+					require.NoError(t, batch.Delete(kv.K.UserKey, nil))
 				case InternalKeyKindSet:
-					require.NoError(t, batch.Set(ikey.UserKey, value, nil))
+					require.NoError(t, batch.Set(kv.K.UserKey, value, nil))
 				case InternalKeyKindMerge:
-					require.NoError(t, batch.Merge(ikey.UserKey, value, nil))
+					require.NoError(t, batch.Merge(kv.K.UserKey, value, nil))
 				case InternalKeyKindLogData:
-					require.NoError(t, batch.LogData(ikey.UserKey, nil))
+					require.NoError(t, batch.LogData(kv.K.UserKey, nil))
 				case InternalKeyKindRangeDelete:
-					require.NoError(t, batch.DeleteRange(ikey.UserKey, value, nil))
+					require.NoError(t, batch.DeleteRange(kv.K.UserKey, value, nil))
 				case InternalKeyKindRangeKeyDelete:
-					require.NoError(t, batch.RangeKeyDelete(ikey.UserKey, value, nil))
+					require.NoError(t, batch.RangeKeyDelete(kv.K.UserKey, value, nil))
 				case InternalKeyKindRangeKeySet:
-					require.NoError(t, batch.RangeKeySet(ikey.UserKey, value, value, value, nil))
+					require.NoError(t, batch.RangeKeySet(kv.K.UserKey, value, value, value, nil))
 				case InternalKeyKindRangeKeyUnset:
-					require.NoError(t, batch.RangeKeyUnset(ikey.UserKey, value, value, nil))
+					require.NoError(t, batch.RangeKeyUnset(kv.K.UserKey, value, value, nil))
 				}
 			}
 			var err error

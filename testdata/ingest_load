@@ -3,50 +3,50 @@ load
 malformed input: 
 
 load
-a.SET.1:
+a#1,SET:
 ----
 pebble: external sstable has non-zero seqnum: a#1,SET
 
 load
-a.INVALID.0:
+a#0,INVALID:
 ----
 pebble: external sstable has corrupted key: a#0,INVALID
 
 load
-a.SET.0:
+a#0,SET:
 ----
 1: a#0,SET-a#0,SET
   points: a#0,SET-a#0,SET
 
 load
-a.SET.0:
-b.SET.0:
+a#0,SET:
+b#0,SET:
 ----
 1: a#0,SET-b#0,SET
   points: a#0,SET-b#0,SET
 
 load
-a.DEL.0:
+a#0,DEL:
 ----
 1: a#0,DEL-a#0,DEL
   points: a#0,DEL-a#0,DEL
 
 load
-a.DEL.0:
-b.DEL.0:
+a#0,DEL:
+b#0,DEL:
 ----
 1: a#0,DEL-b#0,DEL
   points: a#0,DEL-b#0,DEL
 
 load
-a.MERGE.0:
+a#0,MERGE:
 ----
 1: a#0,MERGE-a#0,MERGE
   points: a#0,MERGE-a#0,MERGE
 
 load
-a.MERGE.0:
-b.MERGE.0:
+a#0,MERGE:
+b#0,MERGE:
 ----
 1: a#0,MERGE-b#0,MERGE
   points: a#0,MERGE-b#0,MERGE
@@ -58,21 +58,21 @@ Span: a-b:{(#0,RANGEDEL)}
   points: a#0,RANGEDEL-b#inf,RANGEDEL
 
 load
-a.SET.0:
+a#0,SET:
 Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#inf,RANGEDEL
   points: a#0,RANGEDEL-b#inf,RANGEDEL
 
 load
-a.SET.0:
+a#0,SET:
 Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#inf,RANGEDEL
   points: a#0,RANGEDEL-b#inf,RANGEDEL
 
 load
-b.SET.0:
+b#0,SET:
 Span: a-b:{(#0,RANGEDEL)}
 ----
 1: a#0,RANGEDEL-b#0,SET
@@ -81,7 +81,7 @@ Span: a-b:{(#0,RANGEDEL)}
 # Loading tables at an unsupported table format results in an error.
 # Write a table at version 15 (Pebble,v4) into a DB at version 14 (Pebble,v3).
 load writer-version=15 db-version=14
-a.SET.1:
+a#1,SET:
 ----
 pebble: table format (Pebble,v4) is not within range supported at DB format major version 14, ((Pebble,v1),(Pebble,v3))
 
@@ -97,9 +97,9 @@ Span: a-z:{(#0,RANGEKEYSET,@1,foo)}
 # Tables with a mixture of point and range keys.
 
 load writer-version=16 db-version=16
-a.SET.0:
-b.SET.0:
-c.SET.0:
+a#0,SET:
+b#0,SET:
+c#0,SET:
 Span: w-x:{(#0,RANGEKEYSET,@1,foo)}
 Span: x-y:{(#0,RANGEKEYSET,@2,bar)}
 Span: y-z:{(#0,RANGEKEYSET,@3,baz)}
@@ -109,7 +109,7 @@ Span: y-z:{(#0,RANGEKEYSET,@3,baz)}
   ranges: w#0,RANGEKEYSET-z#inf,RANGEKEYSET
 
 load writer-version=16 db-version=16
-c.SET.0:d
+c#0,SET:d
 Span: a-z:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
@@ -117,7 +117,7 @@ Span: a-z:{(#0,RANGEKEYSET,@1,foo)}
   ranges: a#0,RANGEKEYSET-z#inf,RANGEKEYSET
 
 load writer-version=16 db-version=16
-a.SET.0:z
+a#0,SET:z
 Span: c-d:{(#0,RANGEKEYSET,@1,foo)}
 ----
 1: a#0,SET-d#inf,RANGEKEYSET
@@ -137,11 +137,11 @@ Span: a-z:{(#0,RANGEKEYSET,@1,foo)}
 # Loading tables at an unsupported table format results in an error.
 
 load writer-version=15 db-version=14
-a.SET.0:
+a#0,SET:
 ----
 pebble: table format (Pebble,v4) is not within range supported at DB format major version 14, ((Pebble,v1),(Pebble,v3))
 
 load writer-version=21 db-version=21
-d.SET.0:blob{fileNum=2952 value=foo}
+d#0,SET:blob{fileNum=2952 value=foo}
 ----
 pebble: ingesting tables with blob references is not supported
