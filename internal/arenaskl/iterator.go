@@ -97,22 +97,27 @@ func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 			return nil
 		}
 		less := it.list.cmp(it.kv.K.UserKey, key) < 0
-		// Arbitrary constant. By measuring the seek cost as a function of the
-		// number of elements in the skip list, and fitting to a model, we
-		// could adjust the number of nexts based on the current size of the
-		// skip list.
-		const numNexts = 5
-		kv := &it.kv
-		for i := 0; less && i < numNexts; i++ {
-			if kv = it.Next(); kv == nil {
-				// Iterator is done.
+		// Use a more efficient algorithm that takes advantage of the skiplist
+		// tower structure. Instead of just doing Next operations at level 0,
+		// we climb up levels when possible to skip over more nodes.
+		const maxSteps = 5
+		if less && it.trySeekUsingNextWithLevels(key, maxSteps) {
+			// Found the key or determined we're positioned correctly.
+			if it.nd == it.list.tail || it.nd == it.upperNode {
 				return nil
 			}
-			less = it.list.cmp(kv.K.UserKey, key) < 0
+			it.decodeKey()
+			if it.upper != nil && it.list.cmp(it.upper, it.kv.K.UserKey) <= 0 {
+				it.upperNode = it.nd
+				return nil
+			}
+			it.kv.V = base.MakeInPlaceValue(it.value())
+			return &it.kv
+		} else if !less {
+			// Current position already satisfies the seek.
+			return &it.kv
 		}
-		if !less {
-			return kv
-		}
+		// Fall through to full seek if we didn't find it quickly.
 	}
 	_, it.nd = it.seekForBaseSplice(key)
 	if it.nd == it.list.tail || it.nd == it.upperNode {
@@ -257,6 +262,132 @@ func (it *Iterator) DebugTree(tp treeprinter.Node) {
 func (it *Iterator) decodeKey() {
 	it.kv.K.UserKey = it.list.arena.getBytes(it.nd.keyOffset, it.nd.keySize)
 	it.kv.K.Trailer = it.nd.keyTrailer
+}
+
+// trySeekUsingNextWithLevels implements a fast path for SeekGE when the
+// TrySeekUsingNext flag is set. It capitalizes on the assumption that for
+// sequential access patterns, the target 'key' is likely located shortly after
+// the iterator's current position 'it.nd'. Instead of initiating a full O(log N)
+// seek from the head of the skiplist, this function performs a bounded search
+// forward from the current node.
+func (it *Iterator) trySeekUsingNextWithLevels(key []byte, maxSteps int) bool {
+	nd := it.nd
+	level := 0
+	maxLevel := int(it.list.Height()) - 1
+
+	// The strategy is a two-phase process:
+	//  1. Advance using upper levels: The function attempts to "climb" the skiplist
+	//     tower from the current node, using the "express lanes" of higher levels to
+	//     skip over many nodes at once. It continues advancing the current node 'nd'
+	//     as long as the next node at a given level is less than the target key.
+	//  2. Descend for precision: Once a 'next' node is found on an upper level that
+	//     is >= key (an "overshoot"), we know the target lies between the current 'nd'
+	//     and that 'next' node. The function then switches to a top-down search
+	//     ('searchDownToLevel0') from the current 'nd' to pinpoint the exact first
+	//     node >= key at level 0.
+	//
+	// This approach avoids the cost of a full seek for workloads that exhibit good
+	// locality, turning a potential O(log N) operation into a near O(1) one. The
+	// search is bounded by 'maxSteps' to prevent excessive work if the key is far away.
+	//
+	// Example: it.nd=(10), seek for key=(40)
+	//
+	//	     (1) Find overshoot at L2
+	//	nd=(10) -----------------------------> next=(50)  (50 >= 40, overshoot!)
+	// L2 o--->+-------+                     +-------+<---o
+	//	|  10   |                            |  50   |
+	// L1 o--->+-------+------>+-------+------------>+-------+<---o
+	//	|       |       |  20   |           |       |
+	// L0 o-..->+-------+->..-->+-------+->..->+------>+-------+<---o
+	//	                     (2) Begin searchDownToLevel0 from nd=(10), startLevel=2
+	//
+	//	(3) Descend to L1. From (10), next is (20). (20 < 40), so advance nd to (20).
+	//
+	//	                           nd=(20) ------------> next=(50) (50 >= 40)
+	// L1 o--->+-------+------>+-------+------------>+-------+<---o
+	//	|  10   |       |  20   |             |  50   |
+	// L0 o-..->+-------+->..-->+-------+->..->+------>+-------+<---o
+	//	                           (4) Cannot advance on L1. Descend to L0 from (20).
+	//
+	//	(5) At L0, advance nd from (20) -> (25) -> (30).
+	//	(6) At nd=(30), next is (40). (40 >= 40). Stop.
+	//	(7) Return 'next', which is the target node (40).
+	for step := 0; step < maxSteps; step++ {
+		// Try to advance at the current level or higher levels.
+		advanced := false
+		for candidateLevel := level; candidateLevel <= maxLevel; candidateLevel++ {
+			next := it.list.getNext(nd, candidateLevel)
+			if next == it.list.tail {
+				// Can't advance at this level, try next higher level.
+				continue
+			}
+
+			// Check if next.key >= key.
+			offset, size := next.keyOffset, next.keySize
+			nextKey := it.list.arena.buf[offset : offset+size]
+			cmp := it.list.cmp(key, nextKey)
+
+			if cmp <= 0 {
+				// Found a node >= key at candidateLevel.
+				// Descend to level 0 to find the exact first node >= key.
+				if candidateLevel == 0 {
+					it.nd = next
+					return true
+				}
+				// Search down from nd (which is < key) to find first node >= key.
+				it.nd = it.searchDownToLevel0(nd, candidateLevel, key)
+				return true
+			}
+
+			// next.key < key at candidateLevel. If we're at a higher level,
+			// this means we can skip many nodes at level 0. Advance and stay
+			// at this higher level.
+			nd = next
+			level = candidateLevel
+			advanced = true
+			break
+		}
+
+		// If we couldn't advance at any level, we're done.
+		if !advanced {
+			break
+		}
+	}
+
+	// Didn't find the key within maxSteps, but update position.
+	it.nd = nd
+	return false
+}
+
+// searchDownToLevel0 descends from the given node and level down to level 0,
+// searching for the first node >= key. It starts at 'nd' which is known to be < key,
+// and searches forward at progressively lower levels.
+func (it *Iterator) searchDownToLevel0(nd *node, startLevel int, key []byte) *node {
+	for level := startLevel - 1; level >= 0; level-- {
+		for {
+			next := it.list.getNext(nd, level)
+			if next == it.list.tail {
+				// Reached end at this level, move down.
+				break
+			}
+
+			offset, size := next.keyOffset, next.keySize
+			nextKey := it.list.arena.buf[offset : offset+size]
+			cmp := it.list.cmp(key, nextKey)
+			if cmp <= 0 {
+				// Found a node >= key at this level. If we're at level 0, return it.
+				if level == 0 {
+					return next
+				}
+				// Otherwise, move down to continue searching.
+				break
+			}
+			// next.key < key, keep advancing at this level.
+			nd = next
+		}
+	}
+	// If we get here, nd is the last node < key, so return the next node at level 0.
+	return it.list.getNext(nd, 0)
 }
 
 func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node) {
