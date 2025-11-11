@@ -2,6 +2,8 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
+//go:build invariants
+
 package treesteps
 
 import (
@@ -9,10 +11,14 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
+
+const Enabled = true
 
 // StartRecording starts a new recording that captures step-by-step propagation
 // of operations and changes in a hierarchical structure.
@@ -100,7 +106,7 @@ func NodeUpdated(n Node, reason string) {
 	}
 }
 
-// Node must be implemnented by every node in the hierarchy.
+// Node must be implemented by every node in the hierarchy.
 type Node interface {
 	TreeStepsNode() NodeInfo
 }
@@ -272,4 +278,61 @@ func treePrint(n Node, tp treeprinter.Node) {
 	for _, child := range ni.children {
 		treePrint(child, tpNode)
 	}
+}
+
+type nodeState struct {
+	recording *Recording
+	depth     int
+	node      Node
+	name      string
+
+	// ops currently running for this node.
+	ops []*Op
+}
+
+var mu struct {
+	sync.Mutex
+
+	recordingInProgress atomic.Bool
+	nodeMap             map[Node]*nodeState
+}
+
+func buildTree(n *nodeState) TreeNode {
+	var t TreeNode
+	info := n.node.TreeStepsNode()
+	n.name = info.name
+	t.Name = info.name
+	t.Properties = info.properties
+	if len(n.ops) > 0 {
+		t.Ops = make([]string, len(n.ops))
+		for i := range t.Ops {
+			t.Ops[i] = n.ops[i].details
+			if n.ops[i].state != "" {
+				t.Ops[i] += " " + n.ops[i].state
+			}
+		}
+	}
+	if n.depth < n.recording.maxTreeDepth {
+		for i := range info.children {
+			c := nodeStateLocked(n.recording, info.children[i])
+			c.depth = n.depth + 1
+			t.Children = append(t.Children, buildTree(c))
+		}
+	} else {
+		for range info.children {
+			t.Children = append(t.Children, TreeNode{Name: "..."})
+		}
+	}
+	return t
+}
+
+func nodeStateLocked(w *Recording, n Node) *nodeState {
+	ns, ok := mu.nodeMap[n]
+	if !ok {
+		ns = &nodeState{recording: w, node: n}
+		mu.nodeMap[n] = ns
+	} else if w != ns.recording {
+		panic(fmt.Sprintf("node %v part of multiple recordings", n))
+	}
+	return ns
 }
