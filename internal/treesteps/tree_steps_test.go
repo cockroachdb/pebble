@@ -130,6 +130,9 @@ func (t *SegmentTree) sum(nodeIdx int, x1, x2 int) (result int) {
 }
 
 func TestSegmentTree(t *testing.T) {
+	if !Enabled {
+		t.Skip("treesteps not available in this build")
+	}
 	var tree *SegmentTree
 	datadriven.RunTest(t, "testdata/segment_tree", func(t *testing.T, td *datadriven.TestData) string {
 		var r *Recording
