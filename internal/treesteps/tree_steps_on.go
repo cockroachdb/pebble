@@ -14,8 +14,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"unicode"
-
-	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
 const Enabled = true
@@ -281,20 +279,19 @@ func firstWord(str string) string {
 // TreeToString returns a string representation of the current state of a Node
 // tree.
 func TreeToString(n Node) string {
-	tp := treeprinter.New()
-	treePrint(n, tp)
-	return tp.String()
-}
-
-func treePrint(n Node, tp treeprinter.Node) {
-	ni := n.TreeStepsNode()
-	tpNode := tp.Child(ni.name)
-	for _, prop := range ni.properties {
-		tpNode.Childf("%s: %s", prop[0], prop[1])
+	var buildTree func(n Node) TreeNode
+	buildTree = func(n Node) TreeNode {
+		var t TreeNode
+		info := n.TreeStepsNode()
+		t.Name = info.name
+		t.Properties = info.properties
+		for _, child := range info.children {
+			t.Children = append(t.Children, buildTree(child))
+		}
+		return t
 	}
-	for _, child := range ni.children {
-		treePrint(child, tpNode)
-	}
+	t := buildTree(n)
+	return t.String()
 }
 
 type nodeState struct {
