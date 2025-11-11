@@ -227,13 +227,30 @@ func StartOpf(node Node, format string, args ...any) *Op {
 }
 
 // Updatef changes the state of the operation and emits a step. The state of the
-// // operation shows up after the details that were provided in StartOpf.
+// operation shows up after the details that were provided in StartOpf.
 func (op *Op) Updatef(format string, args ...any) {
 	if op == nil {
 		return
 	}
 	mu.Lock()
 	defer mu.Unlock()
+	op.state = fmt.Sprintf(format, args...)
+	op.nodeState.recording.stepLockedf("%s on %s updated", firstWord(op.details), firstWord(op.nodeState.name))
+}
+
+// UpdateLastOpf calls Updatef on the most recently started operation for this
+// node.
+func UpdateLastOpf(node Node, format string, args ...any) {
+	if !mu.recordingInProgress.Load() {
+		return
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	state, ok := mu.nodeMap[node]
+	if !ok || len(state.ops) == 0 {
+		return
+	}
+	op := state.ops[len(state.ops)-1]
 	op.state = fmt.Sprintf(format, args...)
 	op.nodeState.recording.stepLockedf("%s on %s updated", firstWord(op.details), firstWord(op.nodeState.name))
 }
