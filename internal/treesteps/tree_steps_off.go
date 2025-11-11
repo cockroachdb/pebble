@@ -35,8 +35,9 @@ func IsRecording(n Node) bool { return false }
 
 type Op struct{}
 
-func StartOpf(node Node, format string, args ...any) *Op { return nil }
-func (op *Op) Updatef(format string, args ...any)        {}
-func (op *Op) Finishf(format string, args ...any)        {}
+func StartOpf(node Node, format string, args ...any) *Op  { return nil }
+func (op *Op) Updatef(format string, args ...any)         {}
+func UpdateLastOpf(node Node, format string, args ...any) {}
+func (op *Op) Finishf(format string, args ...any)         {}
 
 func TreeToString(n Node) string { return "treesteps not supported in this build" }
