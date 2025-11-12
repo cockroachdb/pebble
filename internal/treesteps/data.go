@@ -104,7 +104,10 @@ func (s Steps) URL() url.URL {
 	}
 	var compressed bytes.Buffer
 	encoder := base64.NewEncoder(base64.URLEncoding, &compressed)
-	compressor := zlib.NewWriter(encoder)
+	compressor, err := zlib.NewWriterLevel(encoder, zlib.BestCompression)
+	if err != nil {
+		panic(err)
+	}
 	if _, err := jsonBuf.WriteTo(compressor); err != nil {
 		panic(err)
 	}
