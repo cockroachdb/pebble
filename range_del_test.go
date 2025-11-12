@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/cockroachdb/datadriven"
@@ -101,157 +102,161 @@ func TestRangeDel(t *testing.T) {
 }
 
 func TestFlushDelay(t *testing.T) {
-	opts := &Options{
-		FS:                    vfs.NewMem(),
-		Comparer:              testkeys.Comparer,
-		FlushDelayDeleteRange: 10 * time.Millisecond,
-		FlushDelayRangeKey:    10 * time.Millisecond,
-		FormatMajorVersion:    internalFormatNewest,
-		Logger:                testutils.Logger{T: t},
-	}
-	d, err := Open("", opts)
-	require.NoError(t, err)
-
-	// Ensure that all the various means of writing a rangedel or range key
-	// trigger their respective flush delays.
-	cases := []func(){
-		func() {
-			require.NoError(t, d.DeleteRange([]byte("a"), []byte("z"), nil))
-		},
-		func() {
-			b := d.NewBatch()
-			require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
-			require.NoError(t, b.Commit(nil))
-		},
-		func() {
-			b := d.NewBatch()
-			op := b.DeleteRangeDeferred(1, 1)
-			op.Key[0] = 'a'
-			op.Value[0] = 'z'
-			op.Finish()
-			require.NoError(t, b.Commit(nil))
-		},
-		func() {
-			b := d.NewBatch()
-			b2 := d.NewBatch()
-			require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
-			require.NoError(t, b2.SetRepr(b.Repr()))
-			require.NoError(t, b2.Commit(nil))
-			require.NoError(t, b.Close())
-		},
-		func() {
-			b := d.NewBatch()
-			b2 := d.NewBatch()
-			require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
-			require.NoError(t, b2.Apply(b, nil))
-			require.NoError(t, b2.Commit(nil))
-			require.NoError(t, b.Close())
-		},
-		func() {
-			require.NoError(t, d.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
-		},
-		func() {
-			require.NoError(t, d.RangeKeyUnset([]byte("a"), []byte("z"), nil, nil))
-		},
-		func() {
-			require.NoError(t, d.RangeKeyDelete([]byte("a"), []byte("z"), nil))
-		},
-		func() {
-			b := d.NewBatch()
-			require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
-			require.NoError(t, b.Commit(nil))
-		},
-		func() {
-			b := d.NewBatch()
-			require.NoError(t, b.RangeKeyUnset([]byte("a"), []byte("z"), nil, nil))
-			require.NoError(t, b.Commit(nil))
-		},
-		func() {
-			b := d.NewBatch()
-			require.NoError(t, b.RangeKeyDelete([]byte("a"), []byte("z"), nil))
-			require.NoError(t, b.Commit(nil))
-		},
-		func() {
-			b := d.NewBatch()
-			b2 := d.NewBatch()
-			require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
-			require.NoError(t, b2.SetRepr(b.Repr()))
-			require.NoError(t, b2.Commit(nil))
-			require.NoError(t, b.Close())
-		},
-		func() {
-			b := d.NewBatch()
-			b2 := d.NewBatch()
-			require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
-			require.NoError(t, b2.Apply(b, nil))
-			require.NoError(t, b2.Commit(nil))
-			require.NoError(t, b.Close())
-		},
-	}
-
-	for _, f := range cases {
-		d.mu.Lock()
-		flushed := d.mu.mem.queue[len(d.mu.mem.queue)-1].flushed
-		d.mu.Unlock()
-		f()
-		<-flushed
-	}
-	require.NoError(t, d.Close())
-}
-
-func TestFlushDelayStress(t *testing.T) {
-	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
-	opts := &Options{
-		FS:                    vfs.NewMem(),
-		Comparer:              testkeys.Comparer,
-		FlushDelayDeleteRange: time.Duration(rng.IntN(10)+1) * time.Millisecond,
-		FlushDelayRangeKey:    time.Duration(rng.IntN(10)+1) * time.Millisecond,
-		FormatMajorVersion:    internalFormatNewest,
-		MemTableSize:          8192,
-		Logger:                testutils.Logger{T: t},
-	}
-
-	runs := 100
-	if buildtags.SlowBuild {
-		runs = 5
-	}
-	for run := 0; run < runs; run++ {
+	synctest.Test(t, func(t *testing.T) {
+		opts := &Options{
+			FS:                    vfs.NewMem(),
+			Comparer:              testkeys.Comparer,
+			FlushDelayDeleteRange: 10 * time.Millisecond,
+			FlushDelayRangeKey:    10 * time.Millisecond,
+			FormatMajorVersion:    internalFormatNewest,
+			Logger:                testutils.Logger{T: t},
+		}
 		d, err := Open("", opts)
 		require.NoError(t, err)
 
-		now := time.Now().UnixNano()
-		writers := runtime.GOMAXPROCS(0)
-		var wg sync.WaitGroup
-		for i := range writers {
-			rng := rand.New(rand.NewPCG(0, uint64(now)+uint64(i)))
-			wg.Go(func() {
-				const ops = 100
-
-				var k1, k2 [32]byte
-				for range ops {
-					switch rng.IntN(3) {
-					case 0:
-						randStr(k1[:], rng)
-						randStr(k2[:], rng)
-						require.NoError(t, d.DeleteRange(k1[:], k2[:], nil))
-					case 1:
-						randStr(k1[:], rng)
-						randStr(k2[:], rng)
-						require.NoError(t, d.RangeKeySet(k1[:], k2[:], []byte("@2"), nil, nil))
-					case 2:
-						randStr(k1[:], rng)
-						randStr(k2[:], rng)
-						require.NoError(t, d.Set(k1[:], k2[:], nil))
-					default:
-						panic("unreachable")
-					}
-				}
-			})
+		// Ensure that all the various means of writing a rangedel or range key
+		// trigger their respective flush delays.
+		cases := []func(){
+			func() {
+				require.NoError(t, d.DeleteRange([]byte("a"), []byte("z"), nil))
+			},
+			func() {
+				b := d.NewBatch()
+				require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
+				require.NoError(t, b.Commit(nil))
+			},
+			func() {
+				b := d.NewBatch()
+				op := b.DeleteRangeDeferred(1, 1)
+				op.Key[0] = 'a'
+				op.Value[0] = 'z'
+				op.Finish()
+				require.NoError(t, b.Commit(nil))
+			},
+			func() {
+				b := d.NewBatch()
+				b2 := d.NewBatch()
+				require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
+				require.NoError(t, b2.SetRepr(b.Repr()))
+				require.NoError(t, b2.Commit(nil))
+				require.NoError(t, b.Close())
+			},
+			func() {
+				b := d.NewBatch()
+				b2 := d.NewBatch()
+				require.NoError(t, b.DeleteRange([]byte("a"), []byte("z"), nil))
+				require.NoError(t, b2.Apply(b, nil))
+				require.NoError(t, b2.Commit(nil))
+				require.NoError(t, b.Close())
+			},
+			func() {
+				require.NoError(t, d.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
+			},
+			func() {
+				require.NoError(t, d.RangeKeyUnset([]byte("a"), []byte("z"), nil, nil))
+			},
+			func() {
+				require.NoError(t, d.RangeKeyDelete([]byte("a"), []byte("z"), nil))
+			},
+			func() {
+				b := d.NewBatch()
+				require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
+				require.NoError(t, b.Commit(nil))
+			},
+			func() {
+				b := d.NewBatch()
+				require.NoError(t, b.RangeKeyUnset([]byte("a"), []byte("z"), nil, nil))
+				require.NoError(t, b.Commit(nil))
+			},
+			func() {
+				b := d.NewBatch()
+				require.NoError(t, b.RangeKeyDelete([]byte("a"), []byte("z"), nil))
+				require.NoError(t, b.Commit(nil))
+			},
+			func() {
+				b := d.NewBatch()
+				b2 := d.NewBatch()
+				require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
+				require.NoError(t, b2.SetRepr(b.Repr()))
+				require.NoError(t, b2.Commit(nil))
+				require.NoError(t, b.Close())
+			},
+			func() {
+				b := d.NewBatch()
+				b2 := d.NewBatch()
+				require.NoError(t, b.RangeKeySet([]byte("a"), []byte("z"), nil, nil, nil))
+				require.NoError(t, b2.Apply(b, nil))
+				require.NoError(t, b2.Commit(nil))
+				require.NoError(t, b.Close())
+			},
 		}
-		wg.Wait()
-		time.Sleep(time.Duration(rng.IntN(10)+1) * time.Millisecond)
+
+		for _, f := range cases {
+			d.mu.Lock()
+			flushed := d.mu.mem.queue[len(d.mu.mem.queue)-1].flushed
+			d.mu.Unlock()
+			f()
+			<-flushed
+		}
 		require.NoError(t, d.Close())
-	}
+	})
+}
+
+func TestFlushDelayStress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
+		opts := &Options{
+			FS:                    vfs.NewMem(),
+			Comparer:              testkeys.Comparer,
+			FlushDelayDeleteRange: time.Duration(rng.IntN(10)+1) * time.Millisecond,
+			FlushDelayRangeKey:    time.Duration(rng.IntN(10)+1) * time.Millisecond,
+			FormatMajorVersion:    internalFormatNewest,
+			MemTableSize:          8192,
+			Logger:                testutils.Logger{T: t},
+		}
+
+		runs := 100
+		if buildtags.SlowBuild {
+			runs = 5
+		}
+		for run := 0; run < runs; run++ {
+			d, err := Open("", opts)
+			require.NoError(t, err)
+
+			now := time.Now().UnixNano()
+			writers := runtime.GOMAXPROCS(0)
+			var wg sync.WaitGroup
+			for i := range writers {
+				rng := rand.New(rand.NewPCG(0, uint64(now)+uint64(i)))
+				wg.Go(func() {
+					const ops = 100
+
+					var k1, k2 [32]byte
+					for range ops {
+						switch rng.IntN(3) {
+						case 0:
+							randStr(k1[:], rng)
+							randStr(k2[:], rng)
+							require.NoError(t, d.DeleteRange(k1[:], k2[:], nil))
+						case 1:
+							randStr(k1[:], rng)
+							randStr(k2[:], rng)
+							require.NoError(t, d.RangeKeySet(k1[:], k2[:], []byte("@2"), nil, nil))
+						case 2:
+							randStr(k1[:], rng)
+							randStr(k2[:], rng)
+							require.NoError(t, d.Set(k1[:], k2[:], nil))
+						default:
+							panic("unreachable")
+						}
+					}
+				})
+			}
+			time.Sleep(time.Duration(rng.IntN(10)+1) * time.Millisecond)
+			wg.Wait()
+			require.NoError(t, d.Close())
+		}
+	})
 }
 
 // Verify that range tombstones at higher levels do not unintentionally delete
