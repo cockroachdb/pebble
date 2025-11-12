@@ -89,10 +89,10 @@ func NodeUpdated(n Node, reason string) {
 	mu.Lock()
 	defer mu.Unlock()
 	if ns, ok := mu.nodeMap[n]; ok {
-		if ns.depth > ns.recording.maxOpDepth {
-			// Ignore node updates below the op depth (if we are not stepping through
-			// operations on these nodes, we should not step through their updates
-			// either).
+		if ns.depth >= ns.recording.maxOpDepth {
+			// Ignore node updates at or below the op depth (if we are not stepping
+			// through operations on these nodes). This allows us to see the final
+			// result of the operation without its internal steps.
 			return
 		}
 		if reason == "" {
@@ -194,6 +194,10 @@ type Op struct {
 	details   string
 	state     string
 	nodeState *nodeState
+	// atMaxDepth is true when the operation is at the limit of maxOpDepth. For
+	// these operations, we don't want to show the starting or intermediary
+	// states, just the final state.
+	atMaxDepth bool
 }
 
 // StartOpf registers the start of a new operation on a node and emits a step.
@@ -215,12 +219,21 @@ func StartOpf(node Node, format string, args ...any) *Op {
 		// Ignore any ops for nodes below maxOpDepth.
 		return nil
 	}
+	atMaxDepth := ns.depth == ns.recording.maxOpDepth
+	if atMaxDepth && len(ns.ops) > 0 {
+		// For nodes at maxOpDepth, we only show the result of the outermost
+		// operation.
+		return nil
+	}
 	op := &Op{
-		details:   fmt.Sprintf(format, args...),
-		nodeState: ns,
+		details:    fmt.Sprintf(format, args...),
+		nodeState:  ns,
+		atMaxDepth: ns.depth == ns.recording.maxOpDepth,
 	}
 	ns.ops = append(ns.ops, op)
-	ns.recording.stepLockedf("%s on %s started", firstWord(op.details), firstWord(op.nodeState.name))
+	if !op.atMaxDepth {
+		ns.recording.stepLockedf("%s on %s started", firstWord(op.details), firstWord(op.nodeState.name))
+	}
 	return op
 }
 
@@ -233,7 +246,9 @@ func (op *Op) Updatef(format string, args ...any) {
 	mu.Lock()
 	defer mu.Unlock()
 	op.state = fmt.Sprintf(format, args...)
-	op.nodeState.recording.stepLockedf("%s on %s updated", firstWord(op.details), firstWord(op.nodeState.name))
+	if !op.atMaxDepth {
+		op.nodeState.recording.stepLockedf("%s on %s updated", firstWord(op.details), firstWord(op.nodeState.name))
+	}
 }
 
 // UpdateLastOpf calls Updatef on the most recently started operation for this
@@ -250,7 +265,9 @@ func UpdateLastOpf(node Node, format string, args ...any) {
 	}
 	op := state.ops[len(state.ops)-1]
 	op.state = fmt.Sprintf(format, args...)
-	op.nodeState.recording.stepLockedf("%s on %s updated", firstWord(op.details), firstWord(op.nodeState.name))
+	if !op.atMaxDepth {
+		op.nodeState.recording.stepLockedf("%s on %s updated", firstWord(op.details), firstWord(op.nodeState.name))
+	}
 }
 
 // Finishf changes the state of the operation, emits a step, and cleans up the
@@ -332,10 +349,8 @@ func buildTree(n *nodeState) TreeNode {
 			c.depth = n.depth + 1
 			t.Children = append(t.Children, buildTree(c))
 		}
-	} else {
-		for range info.children {
-			t.Children = append(t.Children, TreeNode{Name: "..."})
-		}
+	} else if len(info.children) > 0 {
+		t.HasHiddenChildren = true
 	}
 	return t
 }

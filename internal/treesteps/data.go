@@ -31,10 +31,11 @@ type Step struct {
 
 // TreeNode is a node in the tree for a step in a recording.
 type TreeNode struct {
-	Name       string      `json:"name"`
-	Properties [][2]string `json:"props"`
-	Ops        []string    `json:"ops"`
-	Children   []TreeNode  `json:"children"`
+	Name              string      `json:"name"`
+	Properties        [][2]string `json:"props"`
+	Ops               []string    `json:"ops"`
+	Children          []TreeNode  `json:"children"`
+	HasHiddenChildren bool        `json:"hasHiddenChildren"`
 }
 
 // String returns the steps as a string (using treeprinter).
@@ -69,10 +70,13 @@ func (t *TreeNode) print(parent treeprinter.Node) {
 	}
 	n := parent.Child(name)
 	for _, p := range t.Properties {
-		n.Childf("%s: %s", p[0], p[1])
+		n.AddLine(fmt.Sprintf("   %s: %s", p[0], p[1]))
 	}
 	for i := range t.Children {
 		t.Children[i].print(n)
+	}
+	if t.HasHiddenChildren {
+		n.DotDotDot()
 	}
 }
 
