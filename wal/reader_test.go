@@ -17,6 +17,7 @@ import (
 	"testing"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -98,6 +99,8 @@ func TestList(t *testing.T) {
 // TestReader tests the virtual WAL reader that merges across multiple physical
 // log files.
 func TestReader(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	rng := rand.New(rand.NewPCG(1, 1))
 	var buf bytes.Buffer
 	var fs vfs.FS

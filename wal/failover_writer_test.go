@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -37,6 +38,8 @@ const (
 )
 
 func TestFailoverWriter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	datadriven.Walk(t, "testdata/failover_writer", func(t *testing.T, path string) {
 		memFS := vfs.NewCrashableMem()
 		dirs := [numDirIndices]dirAndFileHandle{
@@ -417,7 +420,7 @@ func TestFailoverWriter(t *testing.T) {
 						return "no ongoing"
 					}
 					// Timeout eventually, if the state is unexpected.
-					for i := 0; i < 4000; i++ {
+					for range 4000 {
 						d, _ = w.mu.writers[index].r.ongoingLatencyOrError()
 						if (d > 0) == expectedOngoing {
 							return returnStr()
@@ -598,6 +601,8 @@ func (f blockingFile) Close() error {
 // with CAS failure, and resulting retries. (c) is observable in this test by
 // adding print statements in recordQueue.pop.
 func TestConcurrentWritersWithManyRecords(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	seed := *seed
 	if seed == 0 {
 		seed = time.Now().UnixNano()
@@ -673,14 +678,14 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		}
 	}
 	time.Sleep(5 * time.Millisecond)
-	for i := 0; i < numLogWriters; i++ {
+	for i := range numLogWriters {
 		bFS.setConf(makeLogFilename(0, LogNameIndex(i)), 0)
 	}
 	_, err = ww.Close()
 	require.NoError(t, err)
 	wg.Wait()
 	func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			if len(queueSemChan) == 0 {
 				return
 			}
@@ -691,7 +696,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	type indexInterval struct {
 		first, last int
 	}
-	for i := 0; i < numLogWriters; i++ {
+	for i := range numLogWriters {
 		func() {
 			f, err := memFS.Open(memFS.PathJoin(dirs[i%2].Dirname, makeLogFilename(0, LogNameIndex(i))))
 			if err != nil {
@@ -739,6 +744,8 @@ func randStr(fill []byte, rng *rand.Rand) {
 }
 
 func TestFailoverWriterManyRecords(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	stopper := newStopper()
 	memFS := vfs.NewMem()
 	f, err := memFS.OpenDir("")
@@ -763,7 +770,7 @@ func TestFailoverWriterManyRecords(t *testing.T) {
 	const count = 4 * initialBufferLen
 	wg := &sync.WaitGroup{}
 	wg.Add(count)
-	for i := 0; i < count; i++ {
+	for range count {
 		_, err := w.WriteRecord(buf[:], SyncOptions{Done: wg, Err: new(error)}, nil)
 		require.NoError(t, err)
 	}

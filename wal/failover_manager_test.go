@@ -14,8 +14,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
@@ -572,41 +574,45 @@ func recvWithDeadline(t *testing.T, td *datadriven.TestData, waitStr string, ch 
 }
 
 func TestFailoverManager_Quiesce(t *testing.T) {
-	seed := time.Now().UnixNano()
-	memFS := vfs.NewMem()
-	require.NoError(t, memFS.MkdirAll("primary", os.ModePerm))
-	require.NoError(t, memFS.MkdirAll("secondary", os.ModePerm))
-	fs := errorfs.Wrap(memFS, errorfs.RandomLatency(
-		errorfs.Randomly(0.50, seed), 10*time.Millisecond, seed, 0 /* no limit */))
+	synctest.Test(t, func(t *testing.T) {
+		seed := time.Now().UnixNano()
+		memFS := vfs.NewMem()
+		require.NoError(t, memFS.MkdirAll("primary", os.ModePerm))
+		require.NoError(t, memFS.MkdirAll("secondary", os.ModePerm))
+		fs := errorfs.Wrap(memFS, errorfs.RandomLatency(
+			errorfs.Randomly(0.50, seed), 10*time.Millisecond, seed, 0 /* no limit */))
 
-	var m failoverManager
-	require.NoError(t, m.init(Options{
-		Primary:              Dir{FS: fs, Dirname: "primary"},
-		Secondary:            Dir{FS: fs, Dirname: "secondary"},
-		MaxNumRecyclableLogs: 2,
-		PreallocateSize:      func() int { return 4 },
-		FailoverOptions: FailoverOptions{
-			PrimaryDirProbeInterval:            250 * time.Microsecond,
-			HealthyProbeLatencyThreshold:       time.Millisecond,
-			HealthyInterval:                    3 * time.Millisecond,
-			UnhealthySamplingInterval:          250 * time.Microsecond,
-			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Millisecond, true },
-		},
-		FailoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
-		WriteWALSyncOffsets:         func() bool { return false },
-	}, nil /* initial  logs */))
-	for i := 0; i < 3; i++ {
-		w, err := m.Create(NumWAL(i), i)
-		require.NoError(t, err)
-		_, err = w.WriteRecord([]byte("hello world"), SyncOptions{}, nil)
-		require.NoError(t, err)
-		_, err = w.Close()
-		require.NoError(t, err)
-	}
-	require.NoError(t, m.Close())
+		var m failoverManager
+		require.NoError(t, m.init(Options{
+			Primary:              Dir{FS: fs, Dirname: "primary"},
+			Secondary:            Dir{FS: fs, Dirname: "secondary"},
+			MaxNumRecyclableLogs: 2,
+			PreallocateSize:      func() int { return 4 },
+			FailoverOptions: FailoverOptions{
+				PrimaryDirProbeInterval:            250 * time.Microsecond,
+				HealthyProbeLatencyThreshold:       time.Millisecond,
+				HealthyInterval:                    3 * time.Millisecond,
+				UnhealthySamplingInterval:          250 * time.Microsecond,
+				UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Millisecond, true },
+			},
+			FailoverWriteAndSyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
+			WriteWALSyncOffsets:         func() bool { return false },
+		}, nil /* initial  logs */))
+		for i := range 3 {
+			w, err := m.Create(NumWAL(i), i)
+			require.NoError(t, err)
+			_, err = w.WriteRecord([]byte("hello world"), SyncOptions{}, nil)
+			require.NoError(t, err)
+			_, err = w.Close()
+			require.NoError(t, err)
+		}
+		require.NoError(t, m.Close())
+	})
 }
 
 func TestFailoverManager_SecondaryIsWritable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	var m failoverManager
 	require.EqualError(t, m.init(Options{
 		Primary:         Dir{FS: vfs.NewMem(), Dirname: "primary"},
@@ -627,6 +633,8 @@ func TestFailoverManager_SecondaryIsWritable(t *testing.T) {
 // that all the files that are created by the manager are eventually returned by
 // FailoverManager.Obsolete for deletion.
 func TestFailoverManager_AllFilesDeletable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
 	seed := time.Now().UnixNano()
 	memFS := vfs.NewMem()
 	require.NoError(t, memFS.MkdirAll("primary", os.ModePerm))
@@ -638,6 +646,7 @@ func TestFailoverManager_AllFilesDeletable(t *testing.T) {
 		errorfs.Randomly(0.50, latencySeed), 10*time.Millisecond, latencySeed, 0 /* no limit */))
 
 	var m failoverManager
+	defer func() { require.NoError(t, m.Close()) }()
 	require.NoError(t, m.init(Options{
 		Primary:              Dir{FS: fs, Dirname: "primary"},
 		Secondary:            Dir{FS: fs, Dirname: "secondary"},
