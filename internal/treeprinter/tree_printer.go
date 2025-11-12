@@ -257,7 +257,10 @@ func (n Node) AddLine(text string) {
 		text = "  " + text
 	}
 	rowIdx := t.addRow(n.level-1, text)
-	if t.style != BulletStyle {
+	// We have to start the line for the first child later, unless we are using
+	// the bullet style or the text starts with spaces.
+	if (t.style == CompactStyle && !strings.HasPrefix(text, " ")) ||
+		(t.style == DefaultStyle && !strings.HasPrefix(text, "   ")) {
 		t.stack[n.level-1].firstChildConnectRow = rowIdx
 	}
 }
