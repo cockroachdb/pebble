@@ -11,11 +11,12 @@ import (
 )
 
 var (
-	edgeLinkChr = rune('│')
-	edgeMidChr  = rune('├')
-	edgeLastChr = rune('└')
-	horLineChr  = rune('─')
-	bulletChr   = rune('•')
+	edgeLinkChr  = rune('│')
+	edgeMidChr   = rune('├')
+	edgeLastChr  = rune('└')
+	horLineChr   = rune('─')
+	bulletChr    = rune('•')
+	dotDotDotChr = rune('⋮')
 )
 
 // Node is a handle associated with a specific depth in a tree. See below for
@@ -248,6 +249,33 @@ func (n Node) Child(text string) Node {
 		return node
 	}
 	return n.childLine(text)
+}
+
+// DotDotDot adds an indication that this node has children that are not shown.
+func (n Node) DotDotDot() {
+	t := n.tree
+	t.rows = append(t.rows, nil)
+	rowIdx := len(t.rows) - 1
+	edgePos := (n.level - 1) * len(t.edgeLast)
+	if len(t.stack) <= n.level {
+		// No siblings; Connect to parent.
+		if len(t.stack) != n.level {
+			panic("misuse of node")
+		}
+		parentRow := t.stack[n.level-1].firstChildConnectRow
+		for i := parentRow + 1; i < rowIdx; i++ {
+			t.set(i, edgePos, t.edgeLink)
+		}
+		t.set(rowIdx, edgePos, []rune{' ', dotDotDotChr})
+	} else {
+		// Case 3: non-first child. Connect to sibling.
+		siblingRow := t.stack[n.level].nextSiblingConnectRow
+		t.set(siblingRow, edgePos, t.edgeMid)
+		for i := siblingRow + 1; i < rowIdx; i++ {
+			t.set(i, edgePos, t.edgeLink)
+		}
+		t.set(rowIdx, edgePos, []rune{' ', dotDotDotChr})
+	}
 }
 
 // AddLine adds a new line to a node without an edge.

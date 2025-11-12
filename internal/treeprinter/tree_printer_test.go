@@ -227,3 +227,35 @@ tree of trees
 		t.Errorf("incorrect result:\n%s", res)
 	}
 }
+
+func TestTreePrinterDotDotDot(t *testing.T) {
+	tp := New()
+	r1 := tp.Child("root")
+	r11 := r1.Child("1.1")
+	r11.DotDotDot()
+	r12 := r1.Child("1.2")
+	r12.Child("1.2.1")
+	r122 := r12.Child("1.2.2")
+	r122.Child("1.2.2.1")
+	r122.Child("1.2.2.2")
+	r122.Child("1.2.2.3")
+	r12.DotDotDot()
+	res := tp.String()
+
+	exp := `
+root
+ ├── 1.1
+ │    ⋮
+ └── 1.2
+      ├── 1.2.1
+      ├── 1.2.2
+      │    ├── 1.2.2.1
+      │    ├── 1.2.2.2
+      │    └── 1.2.2.3
+      ⋮
+`
+	exp = strings.TrimLeft(exp, "\n")
+	if res != exp {
+		t.Errorf("incorrect result:\n%s", res)
+	}
+}
