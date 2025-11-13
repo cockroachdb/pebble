@@ -269,9 +269,10 @@ func TestMetrics(t *testing.T) {
 		opts.Experimental.EnableValueBlocks = func() bool { return true }
 		opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 			return ValueSeparationPolicy{
-				Enabled:               true,
-				MinimumSize:           3,
-				MaxBlobReferenceDepth: 5,
+				Enabled:                    true,
+				MinimumSize:                3,
+				MinimumLatencyTolerantSize: 10,
+				MaxBlobReferenceDepth:      5,
 			}
 		}
 		opts.TargetFileSizes[0] = 50

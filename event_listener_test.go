@@ -633,9 +633,10 @@ func TestBlobCorruptionEvent(t *testing.T) {
 			}
 			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 				return ValueSeparationPolicy{
-					Enabled:               true,
-					MinimumSize:           1,
-					MaxBlobReferenceDepth: 10,
+					Enabled:                    true,
+					MinimumSize:                1,
+					MinimumLatencyTolerantSize: 10,
+					MaxBlobReferenceDepth:      10,
 				}
 			}
 			d, err := Open("", opts)
