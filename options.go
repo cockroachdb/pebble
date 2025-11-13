@@ -1233,6 +1233,12 @@ type ValueSeparationPolicy struct {
 	//
 	// MinimumSize must be > 0.
 	MinimumSize int
+	// MinimumLatencyTolerantSize specifies the minimum size of a value that can
+	// be separated into a blob file if said value is a part of a latency tolerant
+	// span.
+	//
+	// MinimumLatencyTolerantSize must be > 0.
+	MinimumLatencyTolerantSize int
 	// MaxBlobReferenceDepth limits the number of potentially overlapping (in
 	// the keyspace) blob files that can be referenced by a single sstable. If a
 	// compaction may produce an output sstable referencing more than this many
@@ -1274,8 +1280,7 @@ type ValueSeparationPolicy struct {
 	GarbageRatioHighPriority float64
 }
 
-// SpanPolicy contains policies that can vary by key range. The zero value is
-// the default value.
+// SpanPolicy contains policies that can vary by key range.
 type SpanPolicy struct {
 	// Prefer a faster compression algorithm for the keys in this span.
 	//
@@ -1340,13 +1345,6 @@ type ValueStoragePolicyAdjustment struct {
 
 func (vsp *ValueStoragePolicyAdjustment) ContainsOverrides() bool {
 	return vsp.OverrideBlobSeparationMinimumSize > 0 || vsp.DisableSeparationBySuffix
-}
-
-// ValueStorageLatencyTolerant is the suggested ValueStoragePolicyAdjustment
-// to use for key ranges that can tolerate higher value retrieval
-// latency.
-var ValueStorageLatencyTolerant = ValueStoragePolicyAdjustment{
-	OverrideBlobSeparationMinimumSize: 10,
 }
 
 // ValueStorageLowReadLatency is the suggested ValueStoragePolicyAdjustment
@@ -1858,6 +1856,7 @@ func (o *Options) String() string {
 			fmt.Fprintln(&buf, "[Value Separation]")
 			fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
 			fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
+			fmt.Fprintf(&buf, "  minimum_latency_tolerant_size=%d\n", policy.MinimumLatencyTolerantSize)
 			fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
 			fmt.Fprintf(&buf, "  rewrite_minimum_age=%s\n", policy.RewriteMinimumAge)
 			fmt.Fprintf(&buf, "  garbage_ratio_low_priority=%.2f\n", policy.GarbageRatioLowPriority)
@@ -2308,6 +2307,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var minimumSize int
 				minimumSize, err = strconv.Atoi(value)
 				valSepPolicy.MinimumSize = minimumSize
+			case "minimum_latency_tolerant_size":
+				var minimumLatencyTolerantSize int
+				minimumLatencyTolerantSize, err = strconv.Atoi(value)
+				valSepPolicy.MinimumLatencyTolerantSize = minimumLatencyTolerantSize
 			case "max_blob_reference_depth":
 				valSepPolicy.MaxBlobReferenceDepth, err = strconv.Atoi(value)
 			case "rewrite_minimum_age":
@@ -2607,6 +2610,9 @@ func (o *Options) Validate() error {
 	if policy := o.Experimental.ValueSeparationPolicy(); policy.Enabled {
 		if policy.MinimumSize <= 0 {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.MinimumSize (%d) must be > 0\n", policy.MinimumSize)
+		}
+		if policy.MinimumLatencyTolerantSize <= 0 {
+			fmt.Fprintf(&buf, "ValueSeparationPolicy.MinimumLatencyTolerantSize (%d) must be > 0\n", policy.MinimumLatencyTolerantSize)
 		}
 		if policy.MaxBlobReferenceDepth <= 0 {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.MaxBlobReferenceDepth (%d) must be > 0\n", policy.MaxBlobReferenceDepth)
