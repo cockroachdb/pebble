@@ -1672,6 +1672,7 @@ func describeLSM(d *DB, verbose bool) string {
 
 func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 	var spanPolicies []SpanAndPolicy
+	var policy ValueSeparationPolicy
 	for _, cmdArg := range args {
 		switch cmdArg.Key {
 		case "auto-compactions":
@@ -1801,10 +1802,13 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				Start: []byte(cmdArg.Vals[0]),
 				End:   []byte(cmdArg.Vals[1]),
 			}
-			policy := SpanPolicy{ValueStoragePolicy: ValueStorageLatencyTolerant}
+			policyAdjustment := ValueStoragePolicyAdjustment{
+				OverrideBlobSeparationMinimumSize: policy.MinimumLatencyTolerantSize,
+			}
+			spanPolicy := SpanPolicy{ValueStoragePolicy: policyAdjustment}
 			spanPolicies = append(spanPolicies, SpanAndPolicy{
 				KeyRange: span,
-				Policy:   policy,
+				Policy:   spanPolicy,
 			})
 		case "target-file-sizes":
 			if len(cmdArg.Vals) > len(opts.Levels) {
@@ -1831,7 +1835,6 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			opts.FlushSplitBytes = flushSplitBytes
 
 		case "value-separation":
-			var policy ValueSeparationPolicy
 			if len(cmdArg.Vals) == 1 && cmdArg.Vals[0] == "off" || cmdArg.Vals[0] == "disabled" {
 				policy.Enabled = false
 			} else {
@@ -1843,12 +1846,18 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 						name = arg[:i]
 						value = arg[i+1:]
 					}
+					policy.MinimumLatencyTolerantSize = 10
 					var err error
 					switch name {
 					case "enabled", "disabled":
 						policy.Enabled = name == "enabled"
 					case "min-size":
 						policy.MinimumSize, err = strconv.Atoi(value)
+						if err != nil {
+							return err
+						}
+					case "min-latency-tolerant-size":
+						policy.MinimumLatencyTolerantSize, err = strconv.Atoi(value)
 						if err != nil {
 							return err
 						}
