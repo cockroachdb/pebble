@@ -272,6 +272,7 @@ func TestMetrics(t *testing.T) {
 				Enabled:                    true,
 				MinimumSize:                3,
 				MinimumLatencyTolerantSize: 10,
+				MinimumMVCCGarbageSize:     10,
 				MaxBlobReferenceDepth:      5,
 			}
 		}

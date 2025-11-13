@@ -48,6 +48,7 @@ func (d *DB) determineCompactionValueSeparation(
 			blobFileSet,
 			outputBlobReferenceDepth,
 			policy.MinimumSize,
+			policy.MinimumMVCCGarbageSize,
 		)
 	}
 
@@ -60,6 +61,7 @@ func (d *DB) determineCompactionValueSeparation(
 		},
 		d.makeBlobWriterOptions(c.outputLevel.level),
 		policy.MinimumSize,
+		policy.MinimumMVCCGarbageSize,
 		valsep.WriteNewBlobFilesOptions{
 			InputBlobPhysicalFiles: blobFileSet,
 			ShortAttrExtractor:     d.opts.Experimental.ShortAttributeExtractor,

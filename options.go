@@ -1239,6 +1239,13 @@ type ValueSeparationPolicy struct {
 	//
 	// MinimumLatencyTolerantSize must be > 0.
 	MinimumLatencyTolerantSize int
+	// MinimumMVCCGarbageSize specifies the minimum size of a value that can be
+	// separated into a blob file if said value is likely to be MVCC garbage.
+	// See sstable.IsLikelyMVCCGarbage for the exact criteria we use to
+	// determine whether a value is likely MVCC garbage.
+	//
+	// MinimumMVCCGarbageSize must be > 0.
+	MinimumMVCCGarbageSize int
 	// MaxBlobReferenceDepth limits the number of potentially overlapping (in
 	// the keyspace) blob files that can be referenced by a single sstable. If a
 	// compaction may produce an output sstable referencing more than this many
@@ -1306,7 +1313,10 @@ func (p SpanPolicy) String() string {
 		sb.WriteString("no-blob-value-separation,")
 	}
 	if p.ValueStoragePolicy.OverrideBlobSeparationMinimumSize > 0 {
-		sb.WriteString("override-value-separation-min-size")
+		sb.WriteString("override-value-separation-min-size,")
+	}
+	if p.ValueStoragePolicy.MinimumMVCCGarbageSize > 0 {
+		sb.WriteString("minimum-mvcc-garbage-size")
 	}
 	return strings.TrimSuffix(sb.String(), ",")
 }
@@ -1341,10 +1351,17 @@ type ValueStoragePolicyAdjustment struct {
 	// for value separation into a blob file. Note that value separation must
 	// be enabled globally for this to take effect.
 	OverrideBlobSeparationMinimumSize int
+
+	// MinimumMVCCGarbageSize imposes a new minimum size required for value
+	// separation into a blob file only if the value is likely MVCC garbage.
+	// Note that value separation must be enabled globally for this to take
+	// effect.
+	MinimumMVCCGarbageSize int
 }
 
 func (vsp *ValueStoragePolicyAdjustment) ContainsOverrides() bool {
-	return vsp.OverrideBlobSeparationMinimumSize > 0 || vsp.DisableSeparationBySuffix
+	return vsp.OverrideBlobSeparationMinimumSize > 0 || vsp.DisableSeparationBySuffix ||
+		vsp.MinimumMVCCGarbageSize > 0
 }
 
 // ValueStorageLowReadLatency is the suggested ValueStoragePolicyAdjustment
@@ -1857,6 +1874,7 @@ func (o *Options) String() string {
 			fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
 			fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
 			fmt.Fprintf(&buf, "  minimum_latency_tolerant_size=%d\n", policy.MinimumLatencyTolerantSize)
+			fmt.Fprintf(&buf, "  minimum_mvcc_garbage_size=%d\n", policy.MinimumMVCCGarbageSize)
 			fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
 			fmt.Fprintf(&buf, "  rewrite_minimum_age=%s\n", policy.RewriteMinimumAge)
 			fmt.Fprintf(&buf, "  garbage_ratio_low_priority=%.2f\n", policy.GarbageRatioLowPriority)
@@ -2311,6 +2329,10 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var minimumLatencyTolerantSize int
 				minimumLatencyTolerantSize, err = strconv.Atoi(value)
 				valSepPolicy.MinimumLatencyTolerantSize = minimumLatencyTolerantSize
+			case "minimum_mvcc_garbage_size":
+				var minimumMVCCGarbageSize int
+				minimumMVCCGarbageSize, err = strconv.Atoi(value)
+				valSepPolicy.MinimumMVCCGarbageSize = minimumMVCCGarbageSize
 			case "max_blob_reference_depth":
 				valSepPolicy.MaxBlobReferenceDepth, err = strconv.Atoi(value)
 			case "rewrite_minimum_age":
@@ -2613,6 +2635,9 @@ func (o *Options) Validate() error {
 		}
 		if policy.MinimumLatencyTolerantSize <= 0 {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.MinimumLatencyTolerantSize (%d) must be > 0\n", policy.MinimumLatencyTolerantSize)
+		}
+		if policy.MinimumMVCCGarbageSize <= 0 {
+			fmt.Fprintf(&buf, "ValueSeparationPolicy.MinimumMVCCGarbageSize (%d) must be > 0\n", policy.MinimumMVCCGarbageSize)
 		}
 		if policy.MaxBlobReferenceDepth <= 0 {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.MaxBlobReferenceDepth (%d) must be > 0\n", policy.MaxBlobReferenceDepth)

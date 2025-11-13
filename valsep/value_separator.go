@@ -108,9 +108,11 @@ func NewPreserveAllHotBlobReferences(
 	inputBlobPhysicalFiles map[base.BlobFileID]*manifest.PhysicalBlobFile,
 	outputBlobReferenceDepth manifest.BlobReferenceDepth,
 	globalMinimumSize int,
+	globalMinimumMVCCGarbageSize int,
 ) *ValueSeparator {
 	config := ValueSeparationOutputConfig{
-		MinimumSize: globalMinimumSize,
+		MinimumSize:            globalMinimumSize,
+		MinimumMVCCGarbageSize: globalMinimumMVCCGarbageSize,
 	}
 	return &ValueSeparator{
 		mode:                     preserveAllHotBlobReferences,
@@ -136,6 +138,7 @@ func NewWriteNewBlobFiles(
 	newBlobObject func() (objstorage.Writable, objstorage.ObjectMetadata, error),
 	writerOpts blob.FileWriterOptions,
 	globalMinimumSize int,
+	globalMinimumMVCCGarbageSize int,
 	opts WriteNewBlobFilesOptions,
 ) *ValueSeparator {
 	inputBlobPhysicalFiles := opts.InputBlobPhysicalFiles
@@ -144,6 +147,7 @@ func NewWriteNewBlobFiles(
 	}
 	config := ValueSeparationOutputConfig{
 		MinimumSize:                    globalMinimumSize,
+		MinimumMVCCGarbageSize:         globalMinimumMVCCGarbageSize,
 		DisableValueSeparationBySuffix: opts.DisableValueSeparationBySuffix,
 	}
 	return &ValueSeparator{
@@ -165,6 +169,10 @@ func (vs *ValueSeparator) SetNextOutputConfig(config ValueSeparationOutputConfig
 	if config.MinimumSize == 0 {
 		// No override, so fall back to the global minimum size.
 		config.MinimumSize = vs.globalConfig.MinimumSize
+	}
+	if config.MinimumMVCCGarbageSize == 0 {
+		// No override, so fall back to the global minimum MVCC garbage size.
+		config.MinimumMVCCGarbageSize = vs.globalConfig.MinimumMVCCGarbageSize
 	}
 	vs.currentConfig = config
 }
@@ -244,8 +252,9 @@ func (vs *ValueSeparator) Add(
 		return tw.Add(kv.K, v, forceObsolete)
 	}
 
-	// Values that are too small are never separated; however, MVCC keys are
-	// separated if they are a SET key kind, as long as the value is not empty.
+	// Values that are too small are never separated; however, likely MVCC
+	// garbage (determined by sstable.IsLikelyMVCCGarbage) is separated as long
+	// as DisableValueSeparationBySuffix is not enabled.
 	if len(v) < vs.currentConfig.MinimumSize && (vs.currentConfig.DisableValueSeparationBySuffix || !isLikelyMVCCGarbage) {
 		return tw.Add(kv.K, v, forceObsolete)
 	}

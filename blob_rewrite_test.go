@@ -93,6 +93,7 @@ func TestBlobRewrite(t *testing.T) {
 						inputBlobPhysicalFiles,
 						0, /* outputBlobReferenceDepth */
 						0, /* minimumSize */
+						0, /* minimum MVCC garbage size */
 					)
 					vs = pbr
 				case "write-new-blob-files":
@@ -106,6 +107,7 @@ func TestBlobRewrite(t *testing.T) {
 						},
 						blob.FileWriterOptions{},
 						minimumSize,
+						0, /* minimum MVCC garbage size */
 						valsep.WriteNewBlobFilesOptions{},
 					)
 					vs = newSep

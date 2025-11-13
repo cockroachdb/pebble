@@ -24,6 +24,11 @@ type ValueSeparationOutputConfig struct {
 	// KV suffix when separating values (e.g. for MVCC garbage). See
 	// pebble.ValueStoragePolicyAdjustment for details.
 	DisableValueSeparationBySuffix bool
+	// MinimumMVCCGarbageSize imposes a new minimum size required for value
+	// separation into a blob file only if the value is likely MVCC garbage.
+	// See sstable.IsLikelyMVCCGarbage for the exact criteria we use to
+	// determine whether a value is likely MVCC garbage.
+	MinimumMVCCGarbageSize int
 }
 
 // ValueSeparation defines an interface for writing some values to separate blob
