@@ -3486,6 +3486,7 @@ func (d *DB) compactAndWrite(
 			vSep.SetNextOutputConfig(valsep.ValueSeparationOutputConfig{
 				MinimumSize:                    spanPolicy.ValueStoragePolicy.OverrideBlobSeparationMinimumSize,
 				DisableValueSeparationBySuffix: spanPolicy.ValueStoragePolicy.DisableSeparationBySuffix,
+				MinimumMVCCGarbageSize:         spanPolicy.ValueStoragePolicy.MinimumMVCCGarbageSize,
 			})
 		}
 		objMeta, tw, err := d.newCompactionOutputTable(jobID, c, writerOpts)

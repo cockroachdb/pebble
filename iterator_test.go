@@ -1423,6 +1423,7 @@ func TestIteratorValueRetrievalProfile(t *testing.T) {
 			Enabled:                    true,
 			MinimumSize:                1,
 			MinimumLatencyTolerantSize: 10,
+			MinimumMVCCGarbageSize:     10,
 			MaxBlobReferenceDepth:      5,
 		}
 	}

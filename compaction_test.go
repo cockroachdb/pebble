@@ -1543,6 +1543,15 @@ func runCompactionTest(
 						if size == 0 {
 							policy.ValueStoragePolicy.DisableBlobSeparation = true
 						}
+					case "minimum-mvcc-garbage-size":
+						if len(parts) != 2 {
+							td.Fatalf(t, "expected minimum-mvcc-garbage-size=<size>, got: %s", arg)
+						}
+						size, err := strconv.ParseUint(parts[1], 10, 64)
+						if err != nil {
+							td.Fatalf(t, "parsing minimum-mvcc-garbage-size: %s", err)
+						}
+						policy.ValueStoragePolicy.MinimumMVCCGarbageSize = int(size)
 					default:
 						td.Fatalf(t, "unknown span policy arg: %s", arg)
 					}

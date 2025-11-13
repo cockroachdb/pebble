@@ -87,6 +87,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 						inputBlobPhysicalFiles, /* blob file set */
 						manifest.BlobReferenceDepth(0),
 						0, /* minimum size */
+						0, /* minimum MVCC garbage size */
 					)
 					vs = pbr
 				case "write-new-blob-files":
@@ -109,6 +110,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 						},
 						blob.FileWriterOptions{},
 						minimumSize,
+						0, /* minimum MVCC garbage size */
 						WriteNewBlobFilesOptions{
 							ShortAttrExtractor: shortAttrExtractor,
 							InvalidValueCallback: func(userKey []byte, value []byte, err error) {

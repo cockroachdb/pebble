@@ -45,6 +45,7 @@ func (o *Options) randomizeForTesting(t testing.TB) {
 			Enabled:                    true,
 			MinimumSize:                1 << rand.IntN(10), // [1, 512]
 			MinimumLatencyTolerantSize: 5 + rand.IntN(11),  // [5, 15]
+			MinimumMVCCGarbageSize:     5 + rand.IntN(11),  // [5, 15]
 			MaxBlobReferenceDepth:      1 + rand.IntN(10),  // [1, 10]
 			// Constrain the rewrite minimum age to [0, 15s).
 			RewriteMinimumAge:        time.Duration(rand.IntN(15)) * time.Second,

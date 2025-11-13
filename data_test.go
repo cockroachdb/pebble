@@ -919,6 +919,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		valueSeparator.metas,
 		0, /* outputreference depth */
 		d.opts.Experimental.ValueSeparationPolicy().MinimumSize,
+		d.opts.Experimental.ValueSeparationPolicy().MinimumMVCCGarbageSize,
 	)
 
 	var mem *memTable
@@ -1847,6 +1848,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 						value = arg[i+1:]
 					}
 					policy.MinimumLatencyTolerantSize = 10
+					policy.MinimumMVCCGarbageSize = 1
 					var err error
 					switch name {
 					case "enabled", "disabled":
@@ -1858,6 +1860,11 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 						}
 					case "min-latency-tolerant-size":
 						policy.MinimumLatencyTolerantSize, err = strconv.Atoi(value)
+						if err != nil {
+							return err
+						}
+					case "min-mvcc-garbage-size":
+						policy.MinimumMVCCGarbageSize, err = strconv.Atoi(value)
 						if err != nil {
 							return err
 						}
