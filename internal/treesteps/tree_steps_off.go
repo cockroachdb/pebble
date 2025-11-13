@@ -23,7 +23,7 @@ type Node interface {
 }
 type NodeInfo struct{}
 
-func NodeInfof(format string, args ...any) NodeInfo                  { return NodeInfo{} }
+func NodeInfof(node Node, format string, args ...any) NodeInfo       { return NodeInfo{} }
 func (ni *NodeInfo) AddPropf(key string, format string, args ...any) {}
 func (ni *NodeInfo) AddChildren(nodes ...Node)                       {}
 

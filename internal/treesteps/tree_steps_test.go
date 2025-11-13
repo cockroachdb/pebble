@@ -70,7 +70,7 @@ var _ Node = (*SegmentNode)(nil)
 
 // TreeStepsNode implements the Node interface.
 func (n *SegmentNode) TreeStepsNode() NodeInfo {
-	info := NodeInfof("n%d", n.Index)
+	info := NodeInfof(n, "n%d", n.Index)
 	info.AddPropf("range", "[%d, %d]", n.Start, n.End)
 	info.AddPropf("sum", "%d", n.Sum)
 	if n.Start < n.End {
@@ -177,4 +177,60 @@ func TestSegmentTree(t *testing.T) {
 		}
 		return ""
 	})
+}
+
+// TestSegmentTreePassthrough verifies that operations work as expected when the
+// hierarchy has passthrough nodes.
+func TestSegmentTreePassthrough(t *testing.T) {
+	if !Enabled {
+		t.Skip("treesteps not available in this build")
+	}
+	datadriven.RunTest(t, "testdata/passthrough", func(t *testing.T, td *datadriven.TestData) string {
+		a := &nodeA{child: &nodeBWrapper{}}
+		r := StartRecording(a, "foo")
+		a.Op()
+		steps := r.Finish()
+		return steps.String()
+	})
+}
+
+type nodeA struct {
+	child interface {
+		Node
+		Op()
+	}
+}
+
+func (n *nodeA) TreeStepsNode() NodeInfo {
+	ni := NodeInfof(n, "A")
+	ni.AddChildren(n.child)
+	return ni
+}
+
+func (n *nodeA) Op() {
+	if IsRecording(n) {
+		op := StartOpf(n, "Op")
+		defer op.Finishf("done")
+	}
+	n.child.Op()
+}
+
+type nodeB struct{}
+
+// nodeBWrapper is a passthrough node. When `(*nodeBWrapper).TreeStepsNode()` is called,
+// it is executed on `(*nodeB)`. Operations in `nodeB` would be associated with
+// the `*nodeB` node, not the `(*nodeBWrapper)` node.
+type nodeBWrapper struct {
+	nodeB
+}
+
+func (n *nodeB) Op() {
+	if IsRecording(n) {
+		op := StartOpf(n, "Op")
+		defer op.Finishf("done")
+	}
+}
+
+func (n *nodeB) TreeStepsNode() NodeInfo {
+	return NodeInfof(n, "B")
 }
