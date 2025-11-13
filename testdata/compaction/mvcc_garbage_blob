@@ -223,3 +223,22 @@ rocksdb.property.collectors: [obsolete-key]
 rocksdb.compression: Snappy
 pebble.compression_stats: None:188
 obsolete-key: hex:00
+
+define value-separation=(enabled, min-size=5, max-ref-depth=3, garbage-ratios=1.0:1.0, min-mvcc-garbage-size=5)
+----
+
+batch
+set yay@3 a
+set yay@2 ab
+set zoo@4 b
+set zoo@3 ba
+del zoo@2
+set zoo@2 bag
+set zoo@1 bah
+----
+
+# This flush should *not* write any blob files because the values are too small.
+flush
+----
+L0.0:
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:870

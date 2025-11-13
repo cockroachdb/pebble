@@ -314,6 +314,7 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 			Enabled:                    true,
 			MinimumSize:                5,
 			MinimumLatencyTolerantSize: 10,
+			MinimumMVCCGarbageSize:     10,
 			MaxBlobReferenceDepth:      3,
 			RewriteMinimumAge:          50 * time.Millisecond,
 			GarbageRatioLowPriority:    0.10, // 10% garbage
@@ -900,6 +901,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 			Enabled:                    true,
 			MinimumSize:                1 + rng.IntN(maxValueSize),
 			MinimumLatencyTolerantSize: 5 + rng.IntN(11),                                  // [5, 15] bytes
+			MinimumMVCCGarbageSize:     5 + rng.IntN(11),                                  // [5, 15] bytes
 			MaxBlobReferenceDepth:      2 + rng.IntN(9),                                   // 2-10
 			RewriteMinimumAge:          time.Duration(rng.IntN(90)+10) * time.Millisecond, // [10ms, 100ms)
 			GarbageRatioLowPriority:    lowPri,
