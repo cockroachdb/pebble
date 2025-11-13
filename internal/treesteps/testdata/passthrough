@@ -1,0 +1,18 @@
+# Here B is wrapped inside an invisible node; verify that we see the B op.
+run
+----
+step 1/5:
+  A
+   └── B
+step 2/5:
+  A  ← Op
+   └── B
+step 3/5:
+  A  ← Op
+   └── B  ← Op
+step 4/5:
+  A  ← Op
+   └── B  ← Op done
+step 5/5:
+  A  ← Op done
+   └── B

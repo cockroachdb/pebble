@@ -36,21 +36,21 @@ func StartRecording(root Node, name string, opts ...RecordingOption) *Recording 
 	mu.Lock()
 	defer mu.Unlock()
 	mu.recordingInProgress.Store(true)
-	w := &Recording{
+	rec := &Recording{
 		name:         name,
 		maxTreeDepth: 20,
 		maxOpDepth:   10,
+		root:         root,
 	}
 	for _, o := range opts {
-		o(w)
+		o(rec)
 	}
 
 	if mu.nodeMap == nil {
 		mu.nodeMap = make(map[Node]*nodeState)
 	}
-	w.root = nodeStateLocked(w, root)
-	w.stepLockedf("initial")
-	return w
+	rec.stepLockedf("initial")
+	return rec
 }
 
 // RecordingOption is an optional argument to StartRecording.
@@ -106,11 +106,15 @@ func NodeUpdated(n Node, reason string) {
 
 // Node must be implemented by every node in the hierarchy.
 type Node interface {
+	// TreeStepsNode returns the information about the current state of the node.
+	// The NodeInfo normally has the receiver as the Node; but it can be a
+	// descendant in the case of passthrough nodes.
 	TreeStepsNode() NodeInfo
 }
 
 // NodeInfo contains the information that we present for each node.
 type NodeInfo struct {
+	node       Node
 	name       string
 	properties [][2]string
 	children   []Node
@@ -118,8 +122,11 @@ type NodeInfo struct {
 
 // NodeInfof returns a NodeInfo with the name initialized with a formatted
 // string.
-func NodeInfof(format string, args ...any) NodeInfo {
-	return NodeInfo{name: fmt.Sprintf(format, args...)}
+func NodeInfof(node Node, format string, args ...any) NodeInfo {
+	return NodeInfo{
+		node: node,
+		name: fmt.Sprintf(format, args...),
+	}
 }
 
 // AddPropf adds a property to the NodeInfo.
@@ -148,7 +155,7 @@ type Recording struct {
 	name         string
 	maxTreeDepth int
 	maxOpDepth   int
-	root         *nodeState
+	root         Node
 	steps        []Step
 }
 
@@ -173,7 +180,7 @@ func (r *Recording) Finish() Steps {
 func (r *Recording) stepLockedf(format string, args ...any) {
 	r.steps = append(r.steps, Step{
 		Name: fmt.Sprintf(format, args...),
-		Root: buildTree(r.root),
+		Root: buildTree(r, r.root, 0),
 	})
 }
 
@@ -328,26 +335,30 @@ var mu struct {
 	nodeMap             map[Node]*nodeState
 }
 
-func buildTree(n *nodeState) TreeNode {
-	var t TreeNode
-	info := n.node.TreeStepsNode()
-	n.name = info.name
-	t.Name = info.name
-	t.Properties = info.properties
-	if len(n.ops) > 0 {
-		t.Ops = make([]string, len(n.ops))
+func buildTree(rec *Recording, n Node, depth int) TreeNode {
+	info := n.TreeStepsNode()
+	// Normally these are the same; they differ n is a "passthrough" node.
+	n = info.node
+	ns := nodeStateLocked(rec, n)
+	ns.name = info.name
+	ns.depth = depth
+
+	t := TreeNode{
+		Name:       info.name,
+		Properties: info.properties,
+	}
+	if len(ns.ops) > 0 {
+		t.Ops = make([]string, len(ns.ops))
 		for i := range t.Ops {
-			t.Ops[i] = n.ops[i].details
-			if n.ops[i].state != "" {
-				t.Ops[i] += " " + n.ops[i].state
+			t.Ops[i] = ns.ops[i].details
+			if ns.ops[i].state != "" {
+				t.Ops[i] += " " + ns.ops[i].state
 			}
 		}
 	}
-	if n.depth < n.recording.maxTreeDepth {
-		for i := range info.children {
-			c := nodeStateLocked(n.recording, info.children[i])
-			c.depth = n.depth + 1
-			t.Children = append(t.Children, buildTree(c))
+	if depth < rec.maxTreeDepth {
+		for _, c := range info.children {
+			t.Children = append(t.Children, buildTree(rec, c, depth+1))
 		}
 	} else if len(info.children) > 0 {
 		t.HasHiddenChildren = true
@@ -355,12 +366,12 @@ func buildTree(n *nodeState) TreeNode {
 	return t
 }
 
-func nodeStateLocked(w *Recording, n Node) *nodeState {
+func nodeStateLocked(rec *Recording, n Node) *nodeState {
 	ns, ok := mu.nodeMap[n]
 	if !ok {
-		ns = &nodeState{recording: w, node: n}
+		ns = &nodeState{recording: rec, node: n}
 		mu.nodeMap[n] = ns
-	} else if w != ns.recording {
+	} else if rec != ns.recording {
 		panic(fmt.Sprintf("node %v part of multiple recordings", n))
 	}
 	return ns
