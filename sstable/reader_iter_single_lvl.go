@@ -227,7 +227,7 @@ func newColumnBlockSingleLevelIterator(
 			i, opts.ReaderProvider, r.valueBIH, opts.Env.Block.Stats, opts.Env.Block.IterStats)
 		i.vbRH = r.blockReader.UsePreallocatedReadHandle(objstorage.NoReadBefore, &i.vbRHPrealloc)
 	}
-	i.data.InitOnce(r.keySchema, r.Comparer, &i.internalValueConstructor)
+	i.data.InitOnce(sstableFormatToColumnarFormat(r.tableFormat), r.keySchema, r.Comparer, &i.internalValueConstructor)
 
 	return i, nil
 }
@@ -1224,6 +1224,33 @@ func (i *singleLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 	i.positionedUsingLatestBounds = true
 
 	return i.firstInternal()
+}
+
+// FirstWithMeta moves the iterator to the first key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *singleLevelIterator[I, PI, D, PD]) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.First(), i.extractMetaFromCurrentPosition()
+}
+
+// NextWithMeta moves the iterator to the next key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *singleLevelIterator[I, PI, D, PD]) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.Next(), i.extractMetaFromCurrentPosition()
+}
+
+// extractMetaFromCurrentPosition extracts KVMeta from the current iterator position.
+// This method delegates to the underlying data block iterator if it supports
+// the specialized methods.
+func (i *singleLevelIterator[I, PI, D, PD]) extractMetaFromCurrentPosition() base.KVMeta {
+	if PD(&i.data).IsDataInvalidated() {
+		return base.KVMeta{}
+	}
+
+	return PD(&i.data).DecodeMeta()
 }
 
 // firstInternal is a helper used for absolute positioning in a single-level

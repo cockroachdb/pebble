@@ -27,7 +27,7 @@ db get foo yellow
 db upgrade foo
 ----
 ----
-Upgrading DB from internal version 16 to 28.
+Upgrading DB from internal version 16 to 29.
 WARNING!!!
 This DB will not be usable with older versions of Pebble!
 
@@ -43,7 +43,7 @@ Continue? [Y/N] Error: EOF
 
 db upgrade foo --yes
 ----
-Upgrading DB from internal version 16 to 28.
+Upgrading DB from internal version 16 to 29.
 Upgrade complete.
 
 db get foo blue

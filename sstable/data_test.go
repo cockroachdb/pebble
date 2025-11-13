@@ -142,7 +142,7 @@ func runBuildRawCmd(
 		j := strings.Index(data, ":")
 		key := base.ParseInternalKey(data[:j])
 		value := []byte(data[j+1:])
-		if err := w.Add(key, value, false); err != nil {
+		if err := w.Add(key, value, false, base.KVMeta{}); err != nil {
 			return nil, nil, err
 		}
 	}

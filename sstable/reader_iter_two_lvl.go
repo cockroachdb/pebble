@@ -197,7 +197,8 @@ func newColumnBlockTwoLevelIterator(
 		i.secondLevel.vbRH = r.blockReader.UsePreallocatedReadHandle(
 			objstorage.NoReadBefore, &i.secondLevel.vbRHPrealloc)
 	}
-	i.secondLevel.data.InitOnce(r.keySchema, r.Comparer, &i.secondLevel.internalValueConstructor)
+	i.secondLevel.data.InitOnce(sstableFormatToColumnarFormat(r.tableFormat), r.keySchema,
+		r.Comparer, &i.secondLevel.internalValueConstructor)
 
 	return i, nil
 }
@@ -854,6 +855,95 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
 	return i.skipForward()
+}
+
+// FirstWithMeta moves the iterator to the first key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *twoLevelIterator[I, PI, D, PD]) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	i.lastOpWasSeekPrefixGE.Set(false)
+	// The synthetic key is no longer relevant and must be cleared.
+	i.secondLevel.synthetic.atSyntheticKey = false
+
+	// If we have a lower bound, use SeekGE. Note that in general this is not
+	// supported usage, except when the lower bound is there because the table is
+	// virtual.
+	if i.secondLevel.lower != nil {
+		kv := i.SeekGE(i.secondLevel.lower, base.SeekGEFlagsNone)
+		if kv == nil {
+			return nil, base.KVMeta{}
+		}
+		meta := i.extractMetaFromCurrentPosition()
+		return kv, meta
+	}
+	i.secondLevel.exhaustedBounds = 0
+	i.secondLevel.err = nil // clear cached iteration error
+	// Seek optimization only applies until iterator is first positioned after SetBounds.
+	i.secondLevel.boundsCmp = 0
+
+	if !i.ensureTopLevelIndexLoaded() {
+		return nil, base.KVMeta{}
+	}
+
+	if !PI(&i.topLevelIndex).First() {
+		return nil, base.KVMeta{}
+	}
+	result := i.loadSecondLevelIndexBlock(+1)
+	if result == loadBlockFailed {
+		return nil, base.KVMeta{}
+	}
+	if result == loadBlockOK {
+		if ikv := i.secondLevel.First(); ikv != nil {
+			meta := i.extractMetaFromCurrentPosition()
+			return ikv, meta
+		}
+		// Else fall through to skipForward.
+	} else {
+		// result == loadBlockIrrelevant. Enforce the upper bound here since
+		// don't want to bother moving to the next entry in the top level index
+		// if upper bound is already exceeded. Note that the next entry starts
+		// with keys >= topLevelIndex.Separator() since even though this is the
+		// block separator, the same user key can span multiple index blocks.
+		// If upper is exclusive we pass orEqual=true below, else we require the
+		// separator to be strictly greater than upper.
+		if i.secondLevel.upper != nil && PI(&i.topLevelIndex).SeparatorGT(
+			i.secondLevel.upper, !i.secondLevel.endKeyInclusive) {
+			i.secondLevel.exhaustedBounds = +1
+		}
+	}
+	// NB: skipForward checks whether exhaustedBounds is already +1.
+	kv := i.skipForward()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	meta := i.extractMetaFromCurrentPosition()
+	return kv, meta
+}
+
+// NextWithMeta moves the iterator to the next key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *twoLevelIterator[I, PI, D, PD]) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	kv := i.Next()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	meta := i.extractMetaFromCurrentPosition()
+	return kv, meta
+}
+
+// extractMetaFromCurrentPosition extracts KVMeta from the current iterator position.
+// This method delegates to the underlying second level iterator if it supports
+// the specialized methods.
+func (i *twoLevelIterator[I, PI, D, PD]) extractMetaFromCurrentPosition() base.KVMeta {
+	if PD(&i.secondLevel.data).IsDataInvalidated() {
+		return base.KVMeta{}
+	}
+
+	// The dataBlockIterator constraint guarantees that PD(&i.secondLevel.data) implements MetaDecoder
+	return PD(&i.secondLevel.data).DecodeMeta()
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
