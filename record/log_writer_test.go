@@ -141,7 +141,6 @@ func TestSyncError(t *testing.T) {
 
 	injectedErr := errors.New("injected error")
 	w := NewLogWriter(syncErrorFile{f, injectedErr}, 0, LogWriterConfig{
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		WriteWALSyncOffsets: func() bool { return false },
 	})
 
@@ -184,7 +183,6 @@ func (f *syncFile) Sync() error {
 func TestSyncRecord(t *testing.T) {
 	f := &syncFile{}
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		WriteWALSyncOffsets: func() bool { return false },
 	})
 
@@ -212,7 +210,6 @@ func TestSyncRecordWithSignalChan(t *testing.T) {
 		semChan <- struct{}{}
 	}
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		QueueSemChan:        semChan,
 		WriteWALSyncOffsets: func() bool { return false },
 	})
@@ -264,7 +261,6 @@ func TestMinSyncInterval(t *testing.T) {
 		WALMinSyncInterval: func() time.Duration {
 			return minSyncInterval
 		},
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		WriteWALSyncOffsets: func() bool { return false },
 	})
 
@@ -337,7 +333,6 @@ func TestMinSyncIntervalClose(t *testing.T) {
 		WALMinSyncInterval: func() time.Duration {
 			return minSyncInterval
 		},
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		WriteWALSyncOffsets: func() bool { return false },
 	})
 
@@ -389,7 +384,6 @@ func TestMetricsWithoutSync(t *testing.T) {
 	f := &syncFileWithWait{}
 	f.writeWG.Add(1)
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		WriteWALSyncOffsets: func() bool { return false },
 	})
 	offset, err := w.SyncRecord([]byte("hello"), nil, nil)
@@ -435,10 +429,9 @@ func TestMetricsWithSync(t *testing.T) {
 	})
 
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency:     syncLatencyMicros,
 		WriteWALSyncOffsets: func() bool { return false },
-	},
-	)
+		WALFileOpHistogram:  syncLatencyMicros,
+	})
 	var wg sync.WaitGroup
 	wg.Add(100)
 	for i := 0; i < 100; i++ {
@@ -542,7 +535,6 @@ func TestQueueWALBlocks(t *testing.T) {
 		return nil
 	}))
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		WriteWALSyncOffsets: func() bool { return false },
 	})
 	const numBlocks = 1024
@@ -651,7 +643,6 @@ func TestSyncRecordGeneralized(t *testing.T) {
 	lastSync := int64(-1)
 	cbChan := make(chan struct{}, 2)
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		ExternalSyncQueueCallback: func(doneSync PendingSyncIndex, err error) {
 			require.NoError(t, err)
 			require.Equal(t, lastSync+1, doneSync.Index)
@@ -703,7 +694,6 @@ func TestSyncRecordGeneralizedWithCloseError(t *testing.T) {
 	lastSync := int64(-1)
 	cbChan := make(chan struct{}, 2)
 	w := NewLogWriter(f, 0, LogWriterConfig{
-		WALFsyncLatency: prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		ExternalSyncQueueCallback: func(doneSync PendingSyncIndex, err error) {
 			if doneSync.Index == 1 {
 				require.Error(t, err)
@@ -744,7 +734,6 @@ func TestSyncRecordGeneralizedWithCloseError(t *testing.T) {
 func writeWALSyncRecords(t *testing.T, numRecords int, recordSizes []int) *syncFile {
 	f := &syncFile{}
 	w := NewLogWriter(f, 1, LogWriterConfig{
-		WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 		WriteWALSyncOffsets: func() bool { return true },
 	})
 	var syncErr error
@@ -853,7 +842,6 @@ func BenchmarkQueueWALBlocks(b *testing.B) {
 					return nil
 				}))
 				w := NewLogWriter(f, 0, LogWriterConfig{
-					WALFsyncLatency:     prometheus.NewHistogram(prometheus.HistogramOpts{}),
 					WriteWALSyncOffsets: func() bool { return false },
 				})
 
@@ -886,7 +874,6 @@ func BenchmarkWriteWALBlocksAllocs(b *testing.B) {
 		b.StopTimer()
 		f := vfstest.DiscardFile
 		w := NewLogWriter(f, 0, LogWriterConfig{
-			WALFsyncLatency:           prometheus.NewHistogram(prometheus.HistogramOpts{}),
 			ExternalSyncQueueCallback: func(doneSync PendingSyncIndex, err error) {},
 			WriteWALSyncOffsets:       func() bool { return false },
 		})

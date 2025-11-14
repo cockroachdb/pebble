@@ -368,10 +368,7 @@ type Metrics struct {
 	// deletion. These can be relevant if free disk space is unexplainably low.
 	DeletePacer deletepacer.Metrics
 
-	LogWriter struct {
-		FsyncLatency prometheus.Histogram
-		record.LogWriterMetrics
-	}
+	WALMetrics WALMetrics
 
 	CategoryStats []block.CategoryStatsAggregate
 
@@ -524,6 +521,28 @@ func (cm *CompressionMetrics) MergeWith(o *CompressionMetrics) {
 	cm.Snappy.Add(o.Snappy)
 	cm.MinLZ.Add(o.MinLZ)
 	cm.Zstd.Add(o.Zstd)
+}
+
+// DirectoryContext identifies which WAL directory an operation targets
+type DirectoryContext int
+
+const (
+	// DirectoryPrimary indicates operation targets the primary WAL directory
+	DirectoryPrimary DirectoryContext = iota
+	// DirectorySecondary indicates operation targets the secondary WAL directory
+	DirectorySecondary
+	// DirectoryUnknown indicates directory context is unknown or not applicable
+	DirectoryUnknown
+)
+
+// WALMetrics contains directory-specific latency histograms for all WAL operations
+type WALMetrics struct {
+	// PrimaryFileOpLatency tracks all file operations for the primary directory
+	PrimaryFileOpLatency prometheus.Histogram
+	// SecondaryFileOpLatency tracks all file operations for the secondary directory
+	SecondaryFileOpLatency prometheus.Histogram
+	// Updated whenever a wal.Writer is closed
+	record.LogWriterMetrics
 }
 
 var (
