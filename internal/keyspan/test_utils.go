@@ -582,7 +582,6 @@ func (i *invalidatingIter) WrapChildren(wrap WrapFn) {
 
 // TreeStepsNode is part of the FragmentIterator interface.
 func (i *invalidatingIter) TreeStepsNode() treesteps.NodeInfo {
-	info := treesteps.NodeInfof(i, "%T(%p)", i, i)
-	info.AddChildren(i.iter)
-	return info
+	// Pass through, hiding this node from the hierarchy.
+	return i.iter.TreeStepsNode()
 }
