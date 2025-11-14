@@ -1,0 +1,28 @@
+# Test treesteps recording for singleLevelIterator SeekPrefixGE operation.
+# This test builds a simple sstable and performs a SeekPrefixGE operation
+# while recording the operation steps with treesteps, then outputs the
+# visualization URL.
+
+build
+a@10#1,SET:va10
+a@5#1,SET:va5
+b@8#1,SET:vb8
+c#1,SET:vc
+c@12#1,SET:vc12
+c@7#1,SET:vc7
+----
+
+iter-treesteps
+seek-ge b@6
+next
+next
+----
+https://raduberinde.github.io/treesteps/decode.html#eNrUVMuK2zAU3fcrLuomAZPGLU3AEAiloQ2UbNJdHYIcXyciqmSsSwmUgTCLWc_Cy_k6f8kgeQjOY4InMHloeXyPzkOS_7MR_4ssYISGYk78E2WIhjA1UyPUXOJU4j-UU0GYBf5X5rExYWpJhgV_mFCCBJcWRlz-GIBWYAzxSGKr5P-y9CFhxklnYIhnhDHzmHHzP1GmmNVnKR3jsdEAhIpxBZHUsyVIzeOaNDv6nRP_ZokNvwk6SQxSrw0S1ZwWPf9L542uE6GEWTj9euVUCCNcUf1W6kyfZ_NJeT_c3ThCCBUAKE2QaiNIaIWxgxIhMYC2W6GyfR8RheLhEcpmGyGL-p2QedBuvufeJV69BJWv1yBe5Pf78hbcNgBFnhf5usjXMNMyksvW0D4b68DZdWt3n2tw_fS6azvvFqcA4kMZN-_7IjmhB7OPvjce_H4xa31uI2eJuyV7YtZbjWL_ZY3mTZq2nff9z_u174LnC1FRPq38G7PujqB74AS6l0qxEWaTuw_PAQAA__-Hxnt3
+
+iter-treesteps
+seek-prefix-ge a
+next
+next-prefix
+next-prefix
+----
+https://raduberinde.github.io/treesteps/decode.html#eNrcVMFq3DAQvfcrBvWyC0tqp2wpBkMoXdJACYX0VodFtseJsCoZayiGUgg99NyDj_06f0mRnAbX3i42BW82uhiGefPe0xvrK7vkn5EFjNBQyom_oBLREBZma4S6kbiV-AXlVhCWwekpW7ErwsKCDAs-MaEECS5tGTH_UGImqvMNaAXGEI8lnrRT3tshF4QlJ12CIV4SpmzFDGJ-vnmHssByPErpFPe1BiBUihXEUic5SM3TkTDb-pYTf2OBC38JOssMUuiBRHVDt6H_8tVE1ZlQwtw6_ilX1IFdYkXj72ZMd294q2kaxTjM_ETX7YK65dwDiBQAKE1QaCNIaIWpK2VCYgCeO5GyUe8hhebHT-iGuogYj9gK7j_eciaatqW7lX9avEeloqm_D3XY4t9KoKnrpr5r6jtItIxlfnJhf2crxel2pz_nUcn_9W_5tt8dTgGku8w-PECHNQwh8DPfe-6vrjYf74VbzYPiLO77zP_v_ujt2ddxsTxi6S6C9Y4E1odysZ5qol0vt1xR5XkRWz4ZIxBCfPZ6kE6_NpupDvFkU_GOdI7bCISQDLJJDmPogZZdf3v2OwAA__9XPWHp

@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
@@ -388,4 +389,14 @@ func (i *IndexIter) Close() error {
 	i.n = 0
 	i.syntheticPrefixAndSuffix = blockiter.SyntheticPrefixAndSuffix{}
 	return nil
+}
+
+func (i *IndexIter) TreeStepsNode() treesteps.NodeInfo {
+	ni := treesteps.NodeInfof(i, "colblk.IndexIter")
+	if i.Valid() {
+		ni.AddPropf("at", "%s", i.Separator())
+	} else {
+		ni.AddPropf("not positioned", "")
+	}
+	return ni
 }

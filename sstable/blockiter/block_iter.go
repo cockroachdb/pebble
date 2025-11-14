@@ -6,6 +6,7 @@ package blockiter
 
 import (
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
@@ -119,4 +120,6 @@ type Index interface {
 	// the iterator must be reset such that it could be reused after a call to
 	// Init or InitHandle.
 	Close() error
+
+	treesteps.Node
 }

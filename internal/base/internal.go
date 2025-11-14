@@ -664,6 +664,13 @@ func (kv *InternalKV) IsExclusiveSentinel() bool {
 	return kv.K.IsExclusiveSentinel()
 }
 
+func (kv *InternalKV) String() string {
+	if kv == nil {
+		return "<nil>"
+	}
+	return kv.K.String()
+}
+
 // AtomicSeqNum is an atomic SeqNum.
 type AtomicSeqNum struct {
 	value atomic.Uint64

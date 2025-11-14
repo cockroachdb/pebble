@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
@@ -1605,9 +1606,9 @@ func (i *Iter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
-// DebugTree is part of the InternalIterator interface.
-func (i *Iter) DebugTree(tp treeprinter.Node) {
-	tp.Childf("%T(%p)", i, i)
+// TreeStepsNode is part of the InternalIterator interface.
+func (i *Iter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(i, "%T(%p)", i, i)
 }
 
 func (i *Iter) getRestart(idx int) offsetInBlock {
@@ -1899,9 +1900,9 @@ func (i *RawIter) Close() error {
 	return nil
 }
 
-// DebugTree is part of the InternalIterator interface.
-func (i *RawIter) DebugTree(tp treeprinter.Node) {
-	tp.Childf("%T(%p)", i, i)
+// TreeStepsNode is part of the InternalIterator interface.
+func (i *RawIter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(i, "%T(%p)", i, i)
 }
 
 func (i *RawIter) getRestart(idx int) offsetInBlock {

@@ -6,6 +6,7 @@ package rowblk
 
 import (
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
@@ -118,4 +119,8 @@ func (i *IndexIter) Prev() bool {
 // Close closes the iterator, releasing any resources it holds.
 func (i *IndexIter) Close() error {
 	return i.iter.Close()
+}
+
+func (i *IndexIter) TreeStepsNode() treesteps.NodeInfo {
+	return i.iter.TreeStepsNode()
 }

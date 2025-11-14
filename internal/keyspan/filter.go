@@ -8,7 +8,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 // FilterFunc is a callback that allows filtering keys from a Span. The result
@@ -141,10 +141,9 @@ func (i *filteringIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
 }
 
-// DebugTree is part of the FragmentIterator interface.
-func (i *filteringIter) DebugTree(tp treeprinter.Node) {
-	n := tp.Childf("%T(%p)", i, i)
-	if i.iter != nil {
-		i.iter.DebugTree(n)
-	}
+// TreeStepsNode is part of the FragmentIterator interface.
+func (i *filteringIter) TreeStepsNode() treesteps.NodeInfo {
+	info := treesteps.NodeInfof(i, "%T(%p)", i, i)
+	info.AddChildren(i.iter)
+	return info
 }

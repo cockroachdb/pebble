@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/humanize"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/redact"
 )
@@ -220,7 +220,7 @@ type InternalIterator interface {
 
 	fmt.Stringer
 
-	IteratorDebug
+	treesteps.Node
 }
 
 // TopLevelIterator extends InternalIterator to include an additional absolute
@@ -515,20 +515,4 @@ func (s *InternalIteratorStats) SafeFormat(p redact.SafePrinter, verb rune) {
 			humanize.Bytes.Uint64(s.SeparatedPointValue.ValueBytes),
 			humanize.Bytes.Uint64(s.SeparatedPointValue.ValueBytesFetched))
 	}
-}
-
-// IteratorDebug is an interface implemented by all internal iterators and
-// fragment iterators.
-type IteratorDebug interface {
-	// DebugTree prints the entire iterator stack, used for debugging.
-	//
-	// Each implementation should perform a single Child/Childf call on tp.
-	DebugTree(tp treeprinter.Node)
-}
-
-// DebugTree returns the iterator tree as a multi-line string.
-func DebugTree(iter IteratorDebug) string {
-	tp := treeprinter.New()
-	iter.DebugTree(tp)
-	return tp.String()
 }

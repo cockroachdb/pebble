@@ -10,7 +10,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 // MaybeWrapIfInvariants wraps some iterators with an invalidating iterator.
@@ -164,12 +164,10 @@ func (i *iter) SetContext(ctx context.Context) {
 	i.iter.SetContext(ctx)
 }
 
-// DebugTree is part of the InternalIterator interface.
-func (i *iter) DebugTree(tp treeprinter.Node) {
-	n := tp.Childf("%T(%p)", i, i)
-	if i.iter != nil {
-		i.iter.DebugTree(n)
-	}
+// TreeStepsNode is part of the InternalIterator interface.
+func (i *iter) TreeStepsNode() treesteps.NodeInfo {
+	// Pass through; this node will not be visible in the tree.
+	return i.iter.TreeStepsNode()
 }
 
 func (i *iter) String() string {

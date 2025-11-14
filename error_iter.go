@@ -9,7 +9,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 type errorIter struct {
@@ -73,8 +73,8 @@ func (c *errorIter) SetBounds(lower, upper []byte) {}
 
 func (c *errorIter) SetContext(_ context.Context) {}
 
-func (c *errorIter) DebugTree(tp treeprinter.Node) {
-	tp.Childf("%T(%p)", c, c)
+func (c *errorIter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(c, "%T(%p)", c, c)
 }
 
 type errorKeyspanIter struct {
@@ -94,4 +94,6 @@ func (i *errorKeyspanIter) SetContext(ctx context.Context)           {}
 func (i *errorKeyspanIter) Close()                                   {}
 func (*errorKeyspanIter) String() string                             { return "error" }
 func (*errorKeyspanIter) WrapChildren(wrap keyspan.WrapFn)           {}
-func (i *errorKeyspanIter) DebugTree(tp treeprinter.Node)            { tp.Childf("%T(%p)", i, i) }
+func (i *errorKeyspanIter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(i, "%T(%p)", i, i)
+}
