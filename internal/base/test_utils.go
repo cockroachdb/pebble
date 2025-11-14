@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 // NewDeletableSumValueMerger return a ValueMerger which computes the sum of its
@@ -253,9 +253,9 @@ func (f *FakeIter) SetBounds(lower, upper []byte) {
 // SetContext is part of the InternalIterator interface.
 func (f *FakeIter) SetContext(_ context.Context) {}
 
-// DebugTree is part of the InternalIterator interface.
-func (f *FakeIter) DebugTree(tp treeprinter.Node) {
-	tp.Childf("%T(%p)", f, f)
+// TreeStepsNode is part of the InternalIterator interface.
+func (f *FakeIter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(f, "%T(%p)", f, f)
 }
 
 // ParseUserKeyBounds parses UserKeyBounds from a string representation of the

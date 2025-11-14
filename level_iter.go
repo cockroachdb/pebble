@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 // levelIter provides a merged view of the sstables in a level.
@@ -950,12 +950,16 @@ func (l *levelIter) SetContext(ctx context.Context) {
 	}
 }
 
-// DebugTree is part of the InternalIterator interface.
-func (l *levelIter) DebugTree(tp treeprinter.Node) {
-	n := tp.Childf("%T(%p) %s", l, l, l.String())
-	if l.iter != nil {
-		l.iter.DebugTree(n)
+// TreeStepsNode is part of the InternalIterator interface.
+func (l *levelIter) TreeStepsNode() treesteps.NodeInfo {
+	info := treesteps.NodeInfof(l, "%T(%p) %s", l, l, l.layer)
+	if l.iterFile != nil {
+		info.AddPropf("file", "%s", l.iterFile.TableNum)
+	} else {
+		info.AddPropf("file", "<none>")
 	}
+	info.AddChildren(l.iter)
+	return info
 }
 
 func (l *levelIter) String() string {

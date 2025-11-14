@@ -8,7 +8,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 // TODO(jackson): Consider removing this type and adding bounds enforcement
@@ -277,10 +277,9 @@ func (i *BoundedIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
 }
 
-// DebugTree is part of the FragmentIterator interface.
-func (i *BoundedIter) DebugTree(tp treeprinter.Node) {
-	n := tp.Childf("%T(%p)", i, i)
-	if i.iter != nil {
-		i.iter.DebugTree(n)
-	}
+// TreeStepsNode is part of the FragmentIterator interface.
+func (i *BoundedIter) TreeStepsNode() treesteps.NodeInfo {
+	info := treesteps.NodeInfof(i, "%T(%p)", i, i)
+	info.AddChildren(i.iter)
+	return info
 }
