@@ -21,10 +21,10 @@ node: 1, store: 1
      to: 211215 00:01
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 node: 1, store: 1
    from: 211215 00:01
@@ -73,10 +73,10 @@ node: 1, store: 1
      to: 211215 00:01
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 node: 1, store: 1
    from: 211215 00:01
@@ -129,10 +129,10 @@ node: 1, store: 1
      to: 211215 00:01
   r-amp: 5.0
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 ----
 ----
@@ -156,10 +156,10 @@ node: 1, store: 1
      to: 211215 00:02
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) |  time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+------
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B | 2m10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B | 2m10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) |  time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+------
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B | 2m10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B | 2m10s
 
 long-running events (descending runtime):
 kind    | from |  to |  job |    type |    start |      end |  dur(s) | bytes
@@ -191,20 +191,20 @@ node: 1, store: 1
      to: 211215 00:02
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 node: 1, store: 2
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 ----
 ----
@@ -234,20 +234,20 @@ node: 1, store: 1
      to: 211215 00:02
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 node: 2, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 ----
 ----
@@ -284,40 +284,40 @@ node: 2, store: 1
      to: 211215 00:01
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L3 |  L4 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 node: 1, store: 1
    from: 211215 00:01
      to: 211215 00:02
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 node: 1, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L1 |  L2 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L1 |  L2 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L4 |  L5 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L4 |  L5 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 ----
 ----
@@ -359,10 +359,10 @@ node: ?, store: ?
      to: 211215 00:02
   r-amp: 5.0
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 ----
 ----
@@ -388,20 +388,20 @@ node: 1, store: 1
      to: 211215 00:02
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 node: 2, store: 2
    from: 211215 00:02
      to: 211215 00:03
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L4 |  L5 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L4 |  L5 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 ----
 ----
@@ -458,10 +458,10 @@ node: 1, store: 1
      to: 220301 00:01
   r-amp: 1.0
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
-total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  13MB |   13MB |     0B |     0B |  10s
 
 ----
 ----
@@ -575,11 +575,11 @@ node: 15, store: 15
      to: 220907 00:28
   r-amp: NaN
 
-kind    | from |  to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+-----+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact |   L5 |  L6 |   1 |    1 |     0 |   0 |    0 |    0 |   2 | 128MB |  3.6MB |    4MB |     0B |   1s
-compact |   L6 |  L6 |   0 |    0 |     0 |   1 |    0 |    0 |   1 |    0B |     0B |     0B |   11MB |   0s
-total   |      |     |   1 |    1 |     0 |   1 |    0 |    0 |   3 | 128MB |  3.6MB |    4MB |   11MB |   1s
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L5 |  L6 |   1 |    1 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   2 | 128MB |  3.6MB |    4MB |     0B |   1s
+compact |   L6 |  L6 |   0 |    0 |     0 |   1 |    0 |    0 |    0 |    0 |    0 |   1 |    0B |     0B |     0B |   11MB |   0s
+total   |      |     |   1 |    1 |     0 |   1 |    0 |    0 |    0 |    0 |    0 |   3 | 128MB |  3.6MB |    4MB |   11MB |   1s
 
 ----
 ----
@@ -636,12 +636,12 @@ node: 1, store: 1
      to: 211215 00:01
   r-amp: NaN
 
-kind    | from |   to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+------+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact | BLOB | BLOB |   0 |    0 |     0 |   0 |    1 |    0 |   1 |  209B |   203B |     0B |     0B |   1s
-compact |   L2 |   L3 |   1 |    0 |     0 |   0 |    0 |    0 |   1 |  314B |   314B |     0B |     0B |  10s
-compact |   L6 |   L6 |   0 |    0 |     0 |   0 |    0 |    1 |   1 |  141B |   669B |     0B |     0B |   4s
-total   |      |      |   1 |    0 |     0 |   0 |    1 |    1 |   3 |  664B |  1.2KB |     0B |     0B |  15s
+kind    | from |   to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+------+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact | BLOB | BLOB |   0 |    0 |     0 |   0 |    1 |    0 |    0 |    0 |    0 |   1 |  209B |   203B |     0B |     0B |   1s
+compact |   L2 |   L3 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |  314B |   314B |     0B |     0B |  10s
+compact |   L6 |   L6 |   0 |    0 |     0 |   0 |    0 |    1 |    0 |    0 |    0 |   1 |  141B |   669B |     0B |     0B |   4s
+total   |      |      |   1 |    0 |     0 |   0 |    1 |    1 |    0 |    0 |    0 |   3 |  664B |  1.2KB |     0B |     0B |  15s
 
 ----
 ----
@@ -671,11 +671,103 @@ node: 1, store: 1
      to: 211215 00:01
   r-amp: NaN
 
-kind    | from |   to | def | move | elide | del | blob | virt | cnt | in(B) | out(B) | mov(B) | del(B) | time
---------+------+------+-----+------+-------+-----+------+------+-----+-------+--------+--------+--------+-----
-compact | BLOB | BLOB |   0 |    0 |     0 |   0 |    1 |    0 |   1 |  182B |   150B |     0B |     0B |   2s
-compact |   L6 |   L6 |   0 |    0 |     0 |   0 |    0 |    1 |   1 |  141B |   669B |     0B |     0B |   4s
-total   |      |      |   0 |    0 |     0 |   0 |    1 |    1 |   2 |  323B |   819B |     0B |     0B |   6s
+kind    | from |   to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+------+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact | BLOB | BLOB |   0 |    0 |     0 |   0 |    1 |    0 |    0 |    0 |    0 |   1 |  182B |   150B |     0B |     0B |   2s
+compact |   L6 |   L6 |   0 |    0 |     0 |   0 |    0 |    1 |    0 |    0 |    0 |   1 |  141B |   669B |     0B |     0B |   4s
+total   |      |      |   0 |    0 |     0 |   0 |    1 |    1 |    0 |    0 |    0 |   2 |  323B |   819B |     0B |     0B |   6s
+
+----
+----
+
+reset
+----
+
+# Test copy, tombstone-density, and rewrite compactions
+
+log
+I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(copy) L5 [442555] (4.2MB) Score=1.01 + L6 [] (0B) Score=0.00;  OverlappingRatio: Single 0.00, Multi 0.00
+I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216554  [JOB 1] compacted(copy) L5 [442555] (4.2MB) Score=1.01 + L6 [] (0B) Score=0.00 -> L6 [445883] (4.2MB), in 0.5s, output rate 8.4MB/s
+
+I211215 00:01:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 2] compacting(tombstone-density) L3 [442556] (8.4MB) Score=1.50 + L4 [445854] (16MB) Score=0.99;  OverlappingRatio: Single 4.00, Multi 12.00
+I211215 00:01:30.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216554  [JOB 2] compacted(tombstone-density) L3 [442556] (8.4MB) Score=1.50 + L4 [445854] (16MB) Score=0.99 -> L4 [445884 445885] (20MB), in 1.0s, output rate 20MB/s
+
+I211215 00:02:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 3] compacting(rewrite) L2 [442557] (2.1MB) Score=1.01 + L3 [] (0B) Score=0.00;  OverlappingRatio: Single 0.00, Multi 0.00
+I211215 00:02:15.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216554  [JOB 3] compacted(rewrite) L2 [442557] (2.1MB) Score=1.01 + L3 [] (0B) Score=0.00 -> L3 [445886] (2.1MB), in 0.3s, output rate 7MB/s
+----
+0.log
+
+summarize
+----
+----
+node: 1, store: 1
+   from: 211215 00:00
+     to: 211215 00:01
+  r-amp: NaN
+
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L5 |  L6 |   0 |    0 |     0 |   0 |    0 |    0 |    1 |    0 |    0 |   1 | 4.2MB |  4.2MB |     0B |     0B |  10s
+total   |      |     |   0 |    0 |     0 |   0 |    0 |    0 |    1 |    0 |    0 |   1 | 4.2MB |  4.2MB |     0B |     0B |  10s
+
+node: 1, store: 1
+   from: 211215 00:01
+     to: 211215 00:02
+  r-amp: NaN
+
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L3 |  L4 |   0 |    0 |     0 |   0 |    0 |    0 |    0 |    1 |    0 |   1 |  24MB |   20MB |     0B |     0B |  20s
+total   |      |     |   0 |    0 |     0 |   0 |    0 |    0 |    0 |    1 |    0 |   1 |  24MB |   20MB |     0B |     0B |  20s
+
+node: 1, store: 1
+   from: 211215 00:02
+     to: 211215 00:03
+  r-amp: NaN
+
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L2 |  L3 |   0 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    1 |   1 | 2.1MB |  2.1MB |     0B |     0B |   5s
+total   |      |     |   0 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    1 |   1 | 2.1MB |  2.1MB |     0B |     0B |   5s
+
+----
+----
+
+reset
+----
+
+# Test all compaction types together
+
+log
+I211215 00:00:10.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216510  [JOB 1] compacting(default) L1 [442555] (1.0MB) Score=1.01 + L2 [445853] (2.0MB) Score=0.99;  OverlappingRatio: Single 2.00, Multi 4.00
+I211215 00:00:15.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216554  [JOB 1] compacted(default) L1 [442555] (1.0MB) Score=1.01 + L2 [445853] (2.0MB) Score=0.99 -> L2 [445883] (3.0MB), in 0.2s, output rate 15MB/s
+
+I211215 00:00:20.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216511  [JOB 2] compacting(copy) L5 [442556] (4.0MB) Score=1.01 + L6 [] (0B) Score=0.00;  OverlappingRatio: Single 0.00, Multi 0.00
+I211215 00:00:25.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216555  [JOB 2] compacted(copy) L5 [442556] (4.0MB) Score=1.01 + L6 [] (0B) Score=0.00 -> L6 [445884] (4.0MB), in 0.3s, output rate 13.3MB/s
+
+I211215 00:00:30.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216512  [JOB 3] compacting(tombstone-density) L3 [442557] (5.0MB) Score=1.50 + L4 [445854] (10MB) Score=0.99;  OverlappingRatio: Single 3.00, Multi 9.00
+I211215 00:00:40.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216556  [JOB 3] compacted(tombstone-density) L3 [442557] (5.0MB) Score=1.50 + L4 [445854] (10MB) Score=0.99 -> L4 [445885] (12MB), in 0.5s, output rate 24MB/s
+
+I211215 00:00:45.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n1,pebble,s1] 1216513  [JOB 4] compacting(rewrite) L2 [442558] (1.5MB) Score=1.01 + L3 [] (0B) Score=0.00;  OverlappingRatio: Single 0.00, Multi 0.00
+I211215 00:00:50.000000 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n1,s1,pebble] 1216557  [JOB 4] compacted(rewrite) L2 [442558] (1.5MB) Score=1.01 + L3 [] (0B) Score=0.00 -> L3 [445886] (1.5MB), in 0.2s, output rate 7.5MB/s
+----
+0.log
+
+summarize
+----
+----
+node: 1, store: 1
+   from: 211215 00:00
+     to: 211215 00:01
+  r-amp: NaN
+
+kind    | from |  to | def | move | elide | del | blob | virt | copy | tomb | rwrt | cnt | in(B) | out(B) | mov(B) | del(B) | time
+--------+------+-----+-----+------+-------+-----+------+------+------+------+------+-----+-------+--------+--------+--------+-----
+compact |   L1 |  L2 |   1 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    0 |   1 |   3MB |    3MB |     0B |     0B |   5s
+compact |   L2 |  L3 |   0 |    0 |     0 |   0 |    0 |    0 |    0 |    0 |    1 |   1 | 1.5MB |  1.5MB |     0B |     0B |   5s
+compact |   L3 |  L4 |   0 |    0 |     0 |   0 |    0 |    0 |    0 |    1 |    0 |   1 |  15MB |   12MB |     0B |     0B |  10s
+compact |   L5 |  L6 |   0 |    0 |     0 |   0 |    0 |    0 |    1 |    0 |    0 |   1 |   4MB |    4MB |     0B |     0B |   5s
+total   |      |     |   1 |    0 |     0 |   0 |    0 |    0 |    1 |    1 |    1 |   4 |  24MB |   20MB |     0B |     0B |  25s
 
 ----
 ----
