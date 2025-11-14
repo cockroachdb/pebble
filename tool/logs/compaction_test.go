@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 )
 
@@ -463,5 +464,68 @@ func TestParseInputBytes(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 		})
+	}
+}
+
+// TestCompactionKindToolSupport verifies that the tool's compactionType enum
+// stays in sync with the main compactionKind enum in compaction.go.
+// This test will fail if a new compaction type is added to compaction.go
+// but not to this tool, preventing the tool from becoming out of date.
+func TestCompactionKindToolSupport(t *testing.T) {
+	// Get all compaction kinds from compaction.go via the helper function
+	allKinds := pebble.AllCompactionKindStrings()
+
+	// These kinds use flush logging format, not compaction logging format.
+	// They are handled separately and should NOT be in the compactionType enum.
+	flushLoggedKinds := map[string]string{
+		"flush":              "logged via FlushInfo, not CompactionInfo",
+		"ingested-flushable": "logged as 'flushed N ingested flushables' via FlushInfo (see parseIngestDuringFlush)",
+	}
+
+	var missingTypes []string
+	handledCount := 0
+
+	// Verify each non-flush kind is supported by the tool
+	for kindStr := range allKinds {
+		if reason, excluded := flushLoggedKinds[kindStr]; excluded {
+			t.Logf("Skipping %q: %s", kindStr, reason)
+			continue
+		}
+
+		// Special case: blob-file-rewrite logs as "blob-rewrite" in practice
+		testStr := kindStr
+		if kindStr == "blob-file-rewrite" {
+			testStr = "blob-rewrite"
+		}
+
+		_, err := parseCompactionType(testStr)
+		if err != nil {
+			missingTypes = append(missingTypes, kindStr)
+			t.Errorf("SYNC ERROR: compaction kind %q from compaction.go is not supported by tool/logs/compaction.go", kindStr)
+		} else {
+			handledCount++
+		}
+	}
+
+	if len(missingTypes) > 0 {
+		t.Errorf("\n"+
+			"═══════════════════════════════════════════════════════════════════════════\n"+
+			"  COMPACTION TOOL OUT OF SYNC\n"+
+			"═══════════════════════════════════════════════════════════════════════════\n"+
+			"\n"+
+			"A new compaction type was added to compaction.go but the compaction summary\n"+
+			"tool (tool/logs/compaction.go) was not updated.\n"+
+			"\n"+
+			"Missing types: %v\n"+
+			"═══════════════════════════════════════════════════════════════════════════\n",
+			missingTypes)
+	}
+
+	// Verify we're handling the expected number of types
+	expectedHandled := len(allKinds) - len(flushLoggedKinds)
+	if handledCount != expectedHandled {
+		t.Errorf("Expected to handle %d compaction types but only handle %d", expectedHandled, handledCount)
+	} else {
+		t.Logf("Successfully verified %d compaction types are supported", handledCount)
 	}
 }

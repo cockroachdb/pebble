@@ -154,6 +154,9 @@ const (
 	compactionKindRewrite
 	compactionKindIngestedFlushable
 	compactionKindBlobFileRewrite
+	// compactionKindVirtualRewrite must be the last compactionKind.
+	// If a new kind has to be added after VirtualRewrite,
+	// update AllCompactionKindStrings() accordingly.
 	compactionKindVirtualRewrite
 )
 
@@ -194,6 +197,20 @@ func (k compactionKind) compactingOrFlushing() string {
 		return "flushing"
 	}
 	return "compacting"
+}
+
+// AllCompactionKindStrings returns all compaction kind string representations
+// for testing purposes. Used by tool/logs/compaction_test.go to verify the
+// compaction summary tool stays in sync with new compaction types.
+//
+// NOTE: This function iterates up to compactionKindVirtualRewrite. If a new
+// compactionKind is added after VirtualRewrite, update this function accordingly.
+func AllCompactionKindStrings() map[string]bool {
+	kinds := make(map[string]bool)
+	for k := compactionKindDefault; k <= compactionKindVirtualRewrite; k++ {
+		kinds[k.String()] = true
+	}
+	return kinds
 }
 
 type compaction interface {
