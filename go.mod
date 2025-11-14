@@ -5,7 +5,7 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/RaduBerinde/axisds v0.0.0-20250419182453-5135a0650657
 	github.com/cespare/xxhash/v2 v2.2.0
-	github.com/cockroachdb/crlib v0.0.0-20251001180057-2a49e1873587
+	github.com/cockroachdb/crlib v0.0.0-20251024155502-a2e0a212ef05
 	github.com/cockroachdb/datadriven v1.0.3-0.20250911232732-d959cf14706c
 	github.com/cockroachdb/errors v1.11.3
 	github.com/cockroachdb/metamorphic v0.0.0-20231108215700-4ba948b56895
@@ -27,11 +27,11 @@ require (
 	github.com/puzpuzpuz/xsync/v3 v3.5.1
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
-	golang.org/x/perf v0.0.0-20230113213139-801c7ef9e5c5
-	golang.org/x/sync v0.16.0
-	golang.org/x/sys v0.34.0
-	golang.org/x/tools v0.35.0
+	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6
+	golang.org/x/perf v0.0.0-20251112180420-cfbd823f7301
+	golang.org/x/sync v0.18.0
+	golang.org/x/sys v0.38.0
+	golang.org/x/tools v0.39.0
 )
 
 require (
@@ -51,8 +51,8 @@ require (
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/mod v0.26.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/mod v0.30.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
