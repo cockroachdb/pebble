@@ -48,6 +48,12 @@ var (
 		table.Div(),
 		table.Int("virt", 4, table.AlignRight, func(r compactionTableRow) int { return r.Virtual }),
 		table.Div(),
+		table.Int("copy", 4, table.AlignRight, func(r compactionTableRow) int { return r.Copy }),
+		table.Div(),
+		table.Int("tomb", 4, table.AlignRight, func(r compactionTableRow) int { return r.Tombstone }),
+		table.Div(),
+		table.Int("rwrt", 4, table.AlignRight, func(r compactionTableRow) int { return r.Rewrite }),
+		table.Div(),
 		table.Int("cnt", 3, table.AlignRight, func(r compactionTableRow) int { return r.Count }),
 		table.Div(),
 		table.Bytes("in(B)", 5, table.AlignRight, func(r compactionTableRow) uint64 { return r.BytesIn }),
@@ -106,6 +112,9 @@ type compactionTableRow struct {
 	Delete     int
 	Blob       int
 	Virtual    int
+	Copy       int
+	Tombstone  int
+	Rewrite    int
 	Count      int
 	BytesIn    uint64
 	BytesOut   uint64
@@ -304,9 +313,12 @@ const (
 	compactionTypeDefault compactionType = iota
 	compactionTypeFlush
 	compactionTypeMove
+	compactionTypeCopy
 	compactionTypeDeleteOnly
 	compactionTypeElisionOnly
 	compactionTypeRead
+	compactionTypeTombstoneDensity
+	compactionTypeRewrite
 	compactionTypeBlobRewrite
 	compactionTypeVirtualRewrite
 )
@@ -318,12 +330,18 @@ func (c compactionType) String() string {
 		return "default"
 	case compactionTypeMove:
 		return "move"
+	case compactionTypeCopy:
+		return "copy"
 	case compactionTypeDeleteOnly:
 		return "delete-only"
 	case compactionTypeElisionOnly:
 		return "elision-only"
 	case compactionTypeRead:
 		return "read"
+	case compactionTypeTombstoneDensity:
+		return "tombstone-density"
+	case compactionTypeRewrite:
+		return "rewrite"
 	case compactionTypeBlobRewrite:
 		return "blob-rewrite"
 	case compactionTypeVirtualRewrite:
@@ -341,12 +359,18 @@ func parseCompactionType(s string) (t compactionType, err error) {
 		t = compactionTypeDefault
 	case "move":
 		t = compactionTypeMove
+	case "copy":
+		t = compactionTypeCopy
 	case "delete-only":
 		t = compactionTypeDeleteOnly
 	case "elision-only":
 		t = compactionTypeElisionOnly
 	case "read":
 		t = compactionTypeRead
+	case "tombstone-density":
+		t = compactionTypeTombstoneDensity
+	case "rewrite":
+		t = compactionTypeRewrite
 	case "blob-rewrite":
 		t = compactionTypeBlobRewrite
 	case "virtual-sst-rewrite":
@@ -794,7 +818,7 @@ func (s windowSummary) String() string {
 	// Print compactions statistics.
 	if len(s.compactionCounts) > 0 {
 		var compactionRows []compactionTableRow
-		var totalDef, totalMove, totalElision, totalDel, totalBlob, totalVirtual int
+		var totalDef, totalMove, totalElision, totalDel, totalBlob, totalVirtual, totalCopy, totalTombstone, totalRewrite int
 		var totalBytesIn, totalBytesOut, totalBytesMoved, totalBytesDel uint64
 		var totalTime time.Duration
 
@@ -805,7 +829,10 @@ func (s windowSummary) String() string {
 			del := p.counts[compactionTypeDeleteOnly]
 			blob := p.counts[compactionTypeBlobRewrite]
 			virtual := p.counts[compactionTypeVirtualRewrite]
-			total := def + move + elision + del + blob + virtual
+			copy := p.counts[compactionTypeCopy]
+			tombstone := p.counts[compactionTypeTombstoneDensity]
+			rewrite := p.counts[compactionTypeRewrite]
+			total := def + move + elision + del + blob + virtual + copy + tombstone + rewrite
 
 			compactionRows = append(compactionRows, compactionTableRow{
 				Kind:       "compact",
@@ -817,6 +844,9 @@ func (s windowSummary) String() string {
 				Delete:     del,
 				Blob:       blob,
 				Virtual:    virtual,
+				Copy:       copy,
+				Tombstone:  tombstone,
+				Rewrite:    rewrite,
 				Count:      total,
 				BytesIn:    p.bytesIn,
 				BytesOut:   p.bytesOut,
@@ -831,6 +861,9 @@ func (s windowSummary) String() string {
 			totalDel += del
 			totalBlob += blob
 			totalVirtual += virtual
+			totalCopy += copy
+			totalTombstone += tombstone
+			totalRewrite += rewrite
 			totalBytesIn += p.bytesIn
 			totalBytesOut += p.bytesOut
 			totalBytesMoved += p.bytesMoved
@@ -848,6 +881,9 @@ func (s windowSummary) String() string {
 			Delete:     totalDel,
 			Blob:       totalBlob,
 			Virtual:    totalVirtual,
+			Copy:       totalCopy,
+			Tombstone:  totalTombstone,
+			Rewrite:    totalRewrite,
 			Count:      s.eventCount,
 			BytesIn:    totalBytesIn,
 			BytesOut:   totalBytesOut,
