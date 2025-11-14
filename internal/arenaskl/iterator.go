@@ -97,24 +97,16 @@ func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 			return nil
 		}
 		less := it.list.cmp(it.kv.K.UserKey, key) < 0
-		// Arbitrary constant. By measuring the seek cost as a function of the
-		// number of elements in the skip list, and fitting to a model, we
-		// could adjust the number of nexts based on the current size of the
-		// skip list.
-		const numNexts = 5
-		kv := &it.kv
-		for i := 0; less && i < numNexts; i++ {
-			if kv = it.Next(); kv == nil {
-				// Iterator is done.
-				return nil
-			}
-			less = it.list.cmp(kv.K.UserKey, key) < 0
-		}
 		if !less {
-			return kv
+			// Current position already satisfies the seek.
+			return &it.kv
 		}
+		// Current key < target key, use optimized forward search.
+		it.trySeekUsingNext(key)
+	} else {
+		_, it.nd = it.seekForBaseSplice(key)
 	}
-	_, it.nd = it.seekForBaseSplice(key)
+
 	if it.nd == it.list.tail || it.nd == it.upperNode {
 		return nil
 	}
@@ -259,9 +251,66 @@ func (it *Iterator) decodeKey() {
 	it.kv.K.Trailer = it.nd.keyTrailer
 }
 
+// trySeekUsingNext attempts to seek to the target key by performing a forward
+// search from the current position using the skiplist structure. This uses
+// seekForBaseSpliceFrom which starts from the current node and uses binary
+// search to find the appropriate starting level.
+func (it *Iterator) trySeekUsingNext(key []byte) {
+	startNode := it.nd
+
+	// Use seekForBaseSpliceFrom which handles:
+	// 1. Binary search to find the highest safe level to start from
+	// 2. Standard skiplist search from that point
+	// We start with the current node's height as the initial level.
+	startLevel := int(startNode.height) - 1
+
+	_, it.nd = it.seekForBaseSpliceFrom(startNode, startLevel, key)
+}
+
 func (it *Iterator) seekForBaseSplice(key []byte) (prev, next *node) {
-	prev = it.list.head
-	for level := int(it.list.Height() - 1); level >= 0; level-- {
+	return it.seekForBaseSpliceFrom(it.list.head, int(it.list.Height()-1), key)
+}
+
+// seekForBaseSpliceFrom is like seekForBaseSplice but starts from a given node
+// and level. It uses binary search to find the appropriate starting level when
+// starting from an intermediate node.
+func (it *Iterator) seekForBaseSpliceFrom(startNode *node, startLevel int, key []byte) (prev, next *node) {
+	prev = startNode
+
+	// If we're starting from an intermediate node (not head), we need to find
+	// the highest level we can safely use. Use binary search to find it.
+	if prev != it.list.head {
+		// Binary search for the highest usable level.
+		// We know level 0 always exists, and levels >= node.height don't exist.
+		nodeHeight := int(prev.height)
+		if startLevel >= nodeHeight {
+			startLevel = nodeHeight - 1
+		}
+
+		// Binary search to find the highest level where prev < key.
+		low, high := 0, startLevel
+		for low < high {
+			mid := (low + high + 1) / 2
+			next := it.list.getNext(prev, mid)
+			if next == nil || next == it.list.tail {
+				// This level goes to tail, prev < key at this level.
+				low = mid
+				continue
+			}
+			offset, size := next.keyOffset, next.keySize
+			nextKey := it.list.arena.buf[offset : offset+size]
+			if it.list.cmp(nextKey, key) < 0 {
+				// next < key, so we can potentially start at a higher level.
+				low = mid
+			} else {
+				// next >= key, need to try lower levels.
+				high = mid - 1
+			}
+		}
+		startLevel = low
+	}
+
+	for level := startLevel; level >= 0; level-- {
 
 		// Search this level for the key.
 		prevLevelNext := next
