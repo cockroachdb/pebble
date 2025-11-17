@@ -28,7 +28,7 @@ func NewProfile() *Profile {
 	return &Profile{samples: make(map[stack]aggSamples)}
 }
 
-type stack [20]uintptr
+type stack [30]uintptr
 
 // trimmed returns the non-zero stack frames of stack.
 func (s stack) trimmed() []uintptr {
