@@ -650,28 +650,28 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		}
 	}
 
-	opts.BytesPerSync = 1 << uint(rng.IntN(28)) // 1B - 256MB
-	opts.CacheSize = 1 << uint(rng.IntN(30))    // 1B - 1GB
+	opts.BytesPerSync = int(randPowerOf2(rng, 0, 28)) // 1B - 256MB
+	opts.CacheSize = int64(randPowerOf2(rng, 0, 30))  // 1B - 1GB
 	opts.DisableWAL = rng.IntN(2) == 0
-	opts.FlushDelayDeleteRange = time.Millisecond * time.Duration(5*rng.IntN(245)) // 5-250ms
-	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(5*rng.IntN(245))    // 5-250ms
-	opts.FlushSplitBytes = 1 << rng.IntN(20)                                       // 1B - 1MB
+	opts.FlushDelayDeleteRange = time.Millisecond * time.Duration(randInRange(rng, 5, 250)) // 5-250ms
+	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(randInRange(rng, 5, 250))    // 5-250ms
+	opts.FlushSplitBytes = int64(randPowerOf2(rng, 0, 20))                                  // 1B - 1MB
 	opts.FormatMajorVersion = minimumFormatMajorVersion
 	n := int(newestFormatMajorVersionToTest - opts.FormatMajorVersion)
 	opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.IntN(n + 1))
-	opts.Experimental.L0CompactionConcurrency = 1 + rng.IntN(4)  // 1-4
-	opts.Experimental.LevelMultiplier = 5 << rng.IntN(7)         // 5 - 320
-	targetByteDeletionRate := uint64(1) << uint(20+rng.IntN(10)) // 1MB - 1GB
+	opts.Experimental.L0CompactionConcurrency = 1 + rng.IntN(4)          // 1-4
+	opts.Experimental.LevelMultiplier = 5 * int(randPowerOf2(rng, 0, 6)) // 5 - 320
+	targetByteDeletionRate := randPowerOf2(rng, 20, 30)                  // 1MB - 1GB
 	opts.DeletionPacing.BaselineRate = func() uint64 { return targetByteDeletionRate }
 	opts.Experimental.ValidateOnIngest = rng.IntN(2) != 0
-	opts.L0CompactionThreshold = 1 + rng.IntN(100)     // 1 - 100
-	opts.L0CompactionFileThreshold = 1 << rng.IntN(11) // 1 - 1024
-	opts.L0StopWritesThreshold = 50 + rng.IntN(100)    // 50 - 150
+	opts.L0CompactionThreshold = 1 + rng.IntN(100)                 // 1 - 100
+	opts.L0CompactionFileThreshold = int(randPowerOf2(rng, 0, 10)) // 1 - 1024
+	opts.L0StopWritesThreshold = randInRange(rng, 50, 150)         // 50 - 150
 	if opts.L0StopWritesThreshold < 2*opts.L0CompactionThreshold {
 		opts.L0StopWritesThreshold = 2 * opts.L0CompactionThreshold
 	}
-	opts.LBaseMaxBytes = 1 << uint(rng.IntN(30)) // 1B - 1GB
-	maxConcurrentCompactions := rng.IntN(3) + 1  // 1-3
+	opts.LBaseMaxBytes = int64(randPowerOf2(rng, 0, 30)) // 1B - 1GB
+	maxConcurrentCompactions := rng.IntN(3) + 1          // 1-3
 	minConcurrentCompactions := 1
 	if rng.IntN(4) == 0 {
 		minConcurrentCompactions = rng.IntN(maxConcurrentCompactions) + 1
@@ -688,9 +688,9 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	opts.MaxConcurrentDownloads = func() int {
 		return maxConcurrentDownloads
 	}
-	opts.MaxManifestFileSize = 1 << uint(rng.IntN(30)) // 1B  - 1GB
-	opts.MemTableSize = 2 << (10 + uint(rng.IntN(16))) // 2KB - 256MB
-	opts.MemTableStopWritesThreshold = 2 + rng.IntN(5) // 2 - 5
+	opts.MaxManifestFileSize = int64(randPowerOf2(rng, 0, 30)) // 1B - 1GB
+	opts.MemTableSize = randPowerOf2(rng, 11, 28)              // 2KB - 256MB
+	opts.MemTableStopWritesThreshold = randInRange(rng, 2, 5)  // 2 - 5
 	if rng.IntN(2) == 0 {
 		opts.WALDir = pebble.MakeStoreRelativePath(opts.FS, "wal")
 	}
@@ -754,7 +754,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
 	}
 
-	opts.TargetFileSizes[0] = 1 << uint(rng.IntN(28)) // 1 - 256MB
+	opts.TargetFileSizes[0] = int64(randPowerOf2(rng, 0, 28)) // 1B - 256MB
 	if opts.TargetFileSizes[0] < 1<<12 {
 		// We will generate a lot of files, which will slow down compactions.
 		// Increase L0StopWritesThreshold to reduce the number of write stalls
@@ -766,10 +766,10 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	opts.TargetFileSizes[0] = max(opts.TargetFileSizes[0], 12)
 
 	var lopts pebble.LevelOptions
-	lopts.BlockRestartInterval = 1 + rng.IntN(64)  // 1 - 64
-	lopts.BlockSize = 1 << uint(rng.IntN(24))      // 1 - 16MB
-	lopts.BlockSizeThreshold = 50 + rng.IntN(50)   // 50 - 100
-	lopts.IndexBlockSize = 1 << uint(rng.IntN(24)) // 1 - 16MB
+	lopts.BlockRestartInterval = 1 + rng.IntN(64)        // 1 - 64
+	lopts.BlockSize = int(randPowerOf2(rng, 0, 24))      // 1B - 16MB
+	lopts.BlockSizeThreshold = 50 + rng.IntN(51)         // 50 - 100
+	lopts.IndexBlockSize = int(randPowerOf2(rng, 0, 24)) // 1B - 16MB
 
 	// We either use no bloom filter, the default filter, or a filter with
 	// randomized bits-per-key setting. We zero out the Filters map. It'll get
@@ -781,7 +781,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	case 1:
 		lopts.FilterPolicy = bloom.FilterPolicy(10)
 	default:
-		lopts.FilterPolicy = newTestingFilterPolicy(1 << rng.IntN(5))
+		lopts.FilterPolicy = newTestingFilterPolicy(int(randPowerOf2(rng, 0, 4)))
 	}
 
 	switch rng.IntN(4) {
@@ -1078,4 +1078,23 @@ func filterPolicyFromName(name string) (pebble.FilterPolicy, error) {
 		return nil, errors.Errorf("Invalid filter policy name '%s'", name)
 	}
 	return newTestingFilterPolicy(bitsPerKey), nil
+}
+
+// randInRange returns an integer in the range [minRange,maxRange].
+func randInRange(rng *rand.Rand, minRange, maxRange int) int {
+	if minRange > maxRange {
+		panic("minRange must be <= maxRange")
+	}
+	return minRange + rng.IntN(maxRange-minRange+1)
+}
+
+// randPowerOf2 returns a power of 2 in the range [2^minExp,2^maxExp].
+func randPowerOf2(rng *rand.Rand, minExp, maxExp int) uint64 {
+	if minExp < 0 {
+		panic("exponents must be non-negative")
+	}
+	if minExp > maxExp {
+		panic("minExp must be <= maxExp")
+	}
+	return 1 << randInRange(rng, minExp, maxExp)
 }
