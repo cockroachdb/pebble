@@ -166,9 +166,8 @@ func (i *iter) SetContext(ctx context.Context) {
 
 // TreeStepsNode is part of the InternalIterator interface.
 func (i *iter) TreeStepsNode() treesteps.NodeInfo {
-	info := treesteps.NodeInfof(i, "%T(%p)", i, i)
-	info.AddChildren(i.iter)
-	return info
+	// Pass through; this node will not be visible in the tree.
+	return i.iter.TreeStepsNode()
 }
 
 func (i *iter) String() string {
