@@ -120,6 +120,11 @@ type ObjectMetadata struct {
 	DiskFileNum base.DiskFileNum
 	FileType    base.FileType
 
+	// The fields below are only set if the object is on local storage.
+	Local struct {
+		Tier base.StorageTier
+	}
+
 	// The fields below are only set if the object is on remote storage.
 	Remote struct {
 		// CreatorID identifies the DB instance that originally created the object.
@@ -242,6 +247,11 @@ type CreateOptions struct {
 	// SharedCleanupMethod is used for the object when it is created on shared storage.
 	// The default (zero) value is SharedRefTracking.
 	SharedCleanupMethod SharedCleanupMethod
+
+	// Tier is the storage tier for this object. If Tier is ColdTier and the
+	// provider has a local cold tier configured (and PreferSharedStorage is
+	// false), the object will be created on the local cold tier.
+	Tier base.StorageTier
 
 	// WriteCategory is used for the object when it is created on local storage
 	// to collect aggregated write metrics for each write source.
