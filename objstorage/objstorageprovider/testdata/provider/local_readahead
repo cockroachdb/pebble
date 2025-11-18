@@ -1,4 +1,4 @@
-open p1 1
+open p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1

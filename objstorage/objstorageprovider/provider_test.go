@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -64,7 +65,17 @@ func TestProvider(t *testing.T) {
 			case "open":
 				var fsDir string
 				var creatorID objstorage.CreatorID
-				scanArgs("<fs-dir> <remote-creator-id>", &fsDir, &creatorID)
+				d.CmdArgs = slices.DeleteFunc(d.CmdArgs, func(arg datadriven.CmdArg) bool {
+					switch arg.Key {
+					case "creator-id":
+						var id uint64
+						arg.Scan(t, 0, &id)
+						creatorID = objstorage.CreatorID(id)
+						return true
+					}
+					return false
+				})
+				scanArgs("<fs-dir> [creator-id=X]", &fsDir)
 
 				st := DefaultSettings(fs, fsDir)
 				if creatorID != 0 {

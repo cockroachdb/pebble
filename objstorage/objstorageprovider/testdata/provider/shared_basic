@@ -1,7 +1,6 @@
 # Basic provider tests with shared storage.
 
-# open <fs-dir> <creator-id>
-open p1 1
+open p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -60,7 +59,7 @@ close
 <local fs> close: p1
 
 # Test that the objects are there on re-open.
-open p1 1
+open p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1

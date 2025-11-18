@@ -1,7 +1,7 @@
 # Basic tests for obtaining the backing of shared objects and attaching them to
 # another provider.
 
-open p1 1
+open p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -70,7 +70,7 @@ close
 <local fs> close: p1/REMOTE-OBJ-CATALOG-000001
 <local fs> close: p1
 
-open p2 2
+open p2 creator-id=2
 ----
 <local fs> mkdir-all: p2 0755
 <local fs> open-dir: p2
