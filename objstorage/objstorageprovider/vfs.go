@@ -13,17 +13,31 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-func (p *provider) vfsPath(fileType base.FileType, fileNum base.DiskFileNum) string {
+type localSubsystem struct {
+	fsDir vfs.File
+}
+
+type localLockedState struct {
+	// objChangeCounter is incremented whenever non-remote objects are created.
+	// The purpose of this counter is to avoid syncing the local filesystem when
+	// only remote objects are changed.
+	objChangeCounter uint64
+	// objChangeCounterLastSync is the value of objChangeCounter at the time the
+	// last completed sync was launched.
+	objChangeCounterLastSync uint64
+}
+
+func (p *provider) localPath(fileType base.FileType, fileNum base.DiskFileNum) string {
 	return base.MakeFilepath(p.st.FS, p.st.FSDirName, fileType, fileNum)
 }
 
-func (p *provider) vfsOpenForReading(
+func (p *provider) localOpenForReading(
 	ctx context.Context,
 	fileType base.FileType,
 	fileNum base.DiskFileNum,
 	opts objstorage.OpenOptions,
 ) (objstorage.Readable, error) {
-	filename := p.vfsPath(fileType, fileNum)
+	filename := p.localPath(fileType, fileNum)
 	file, err := p.st.FS.Open(filename, vfs.RandomReadsOption)
 	if err != nil {
 		if opts.MustExist && p.IsNotExistError(err) {
@@ -41,7 +55,7 @@ func (p *provider) vfsCreate(
 	fileNum base.DiskFileNum,
 	category vfs.DiskWriteCategory,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
-	filename := p.vfsPath(fileType, fileNum)
+	filename := p.localPath(fileType, fileNum)
 	file, err := p.st.FS.Create(filename, category)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
@@ -57,17 +71,22 @@ func (p *provider) vfsCreate(
 	return newFileBufferedWritable(file), meta, nil
 }
 
-func (p *provider) vfsRemove(fileType base.FileType, fileNum base.DiskFileNum) error {
-	return p.st.FSCleaner.Clean(p.st.FS, fileType, p.vfsPath(fileType, fileNum))
+func (p *provider) localRemove(fileType base.FileType, fileNum base.DiskFileNum) error {
+	return p.st.FSCleaner.Clean(p.st.FS, fileType, p.localPath(fileType, fileNum))
 }
 
-// vfsInit finds any local FS objects.
-func (p *provider) vfsInit() error {
+// localInit finds any local FS objects.
+func (p *provider) localInit() error {
+	fsDir, err := p.st.FS.OpenDir(p.st.FSDirName)
+	if err != nil {
+		return err
+	}
+	p.local.fsDir = fsDir
 	listing := p.st.FSDirInitialListing
 	if listing == nil {
-		var err error
 		listing, err = p.st.FS.List(p.st.FSDirName)
 		if err != nil {
+			_ = p.localClose()
 			return errors.Wrapf(err, "pebble: could not list store directory")
 		}
 	}
@@ -88,30 +107,39 @@ func (p *provider) vfsInit() error {
 	return nil
 }
 
-func (p *provider) vfsSync() error {
+func (p *provider) localClose() error {
+	var err error
+	if p.local.fsDir != nil {
+		err = p.local.fsDir.Close()
+		p.local.fsDir = nil
+	}
+	return err
+}
+
+func (p *provider) localSync() error {
 	p.mu.Lock()
-	counterVal := p.mu.localObjectsChangeCounter
-	lastSynced := p.mu.localObjectsChangeCounterSynced
+	counterVal := p.mu.local.objChangeCounter
+	lastSynced := p.mu.local.objChangeCounterLastSync
 	p.mu.Unlock()
 
 	if lastSynced >= counterVal {
 		return nil
 	}
-	if err := p.fsDir.Sync(); err != nil {
+	if err := p.local.fsDir.Sync(); err != nil {
 		return err
 	}
 
 	p.mu.Lock()
-	if p.mu.localObjectsChangeCounterSynced < counterVal {
-		p.mu.localObjectsChangeCounterSynced = counterVal
+	if p.mu.local.objChangeCounterLastSync < counterVal {
+		p.mu.local.objChangeCounterLastSync = counterVal
 	}
 	p.mu.Unlock()
 
 	return nil
 }
 
-func (p *provider) vfsSize(fileType base.FileType, fileNum base.DiskFileNum) (int64, error) {
-	filename := p.vfsPath(fileType, fileNum)
+func (p *provider) localSize(fileType base.FileType, fileNum base.DiskFileNum) (int64, error) {
+	filename := p.localPath(fileType, fileNum)
 	stat, err := p.st.FS.Stat(filename)
 	if err != nil {
 		return 0, err
