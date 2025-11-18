@@ -1,6 +1,6 @@
 # Basic provider tests without shared storage.
 
-open p0 0
+open p0
 ----
 <local fs> mkdir-all: p0 0755
 <local fs> open-dir: p0

@@ -1,6 +1,6 @@
 # Tests when an object is unrefed before it is attached to another provider.
 
-open p5 5
+open p5 creator-id=5
 ----
 <local fs> mkdir-all: p5 0755
 <local fs> open-dir: p5
@@ -27,7 +27,7 @@ save-backing p5b1 1
 remove 1
 ----
 
-open p6 6
+open p6 creator-id=6
 ----
 <local fs> mkdir-all: p6 0755
 <local fs> open-dir: p6

@@ -1,4 +1,4 @@
-open p1 1
+open p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -38,7 +38,7 @@ save-backing b1 1
 save-backing b2 2
 ----
 
-open p2 2
+open p2 creator-id=2
 ----
 <local fs> mkdir-all: p2 0755
 <local fs> open-dir: p2
