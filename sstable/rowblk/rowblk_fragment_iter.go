@@ -411,7 +411,7 @@ func (i *fragmentIter) String() string {
 // WrapChildren implements FragmentIterator.
 func (i *fragmentIter) WrapChildren(wrap keyspan.WrapFn) {}
 
-// TreeStepsNode is part of the InternalIterator interface.
+// TreeStepsNode is part of the FragmentIterator interface.
 func (i *fragmentIter) TreeStepsNode() treesteps.NodeInfo {
 	ni := treesteps.NodeInfof(i, "%T(%p)", i, i)
 	ni.AddPropf("fileNum", "%s", i.fileNum)

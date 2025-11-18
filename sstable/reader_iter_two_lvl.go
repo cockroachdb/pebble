@@ -89,6 +89,9 @@ func (i *twoLevelIterator[I, PI, D, PD]) loadSecondLevelIndexBlock(dir int8) loa
 		i.secondLevel.err = err
 		return loadBlockFailed
 	}
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		treesteps.NodeUpdated(i, fmt.Sprintf("loadSecondLevelIndexBlock(%d) offset=%d length=%d", dir, bhp.Offset, bhp.Length))
+	}
 	return loadBlockOK
 }
 
@@ -256,9 +259,17 @@ func (i *twoLevelIterator[I, PI, D, PD]) String() string {
 
 // TreeStepsNode is part of the InternalIterator interface.
 func (i *twoLevelIterator[I, PI, D, PD]) TreeStepsNode() treesteps.NodeInfo {
-	ni := treesteps.NodeInfof(i, "%T(%p)", i, i)
-	ni.AddPropf("fileNum", "%s", i)
-	return ni
+	info := treesteps.NodeInfof(i, "sstable.twoLevelIterator")
+	if PD(&i.secondLevel.data).Valid() {
+		info.AddPropf("at", "%s", PD(&i.secondLevel.data).KV().K.String())
+	} else {
+		info.AddPropf("not positioned", "")
+	}
+	if i.topLevelIndexLoaded {
+		info.AddChildren(PI(&i.topLevelIndex))
+	}
+	info.AddChildren(&i.secondLevel)
+	return info
 }
 
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
@@ -266,7 +277,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) TreeStepsNode() treesteps.NodeInfo {
 // caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
-) *base.InternalKV {
+) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "SeekGE(%q, %d)", key, flags)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
 	i.lastOpWasSeekPrefixGE.Set(false)
@@ -411,7 +428,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 // to the caller to ensure that key is greater than or equal to the lower bound.
 func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
-) *base.InternalKV {
+) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "SeekPrefixGE(%q, %q, %d)", prefix, key, flags)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	i.lastOpWasSeekPrefixGE.Set(false)
 
 	if i.secondLevel.synthetic.atSyntheticKey {
@@ -534,12 +557,16 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 			return nil
 		}
 		if !mayContain {
+			if treesteps.Enabled && treesteps.IsRecording(i) {
+				treesteps.UpdateLastOpf(i, "pass bloom filter did not match")
+			}
 			// In the no-error bloom filter miss case, the key is definitely not in table.
 			// We can avoid invalidating the already loaded block since the caller is
 			// not allowed to call Next when SeekPrefixGE returns nil.
 			i.lastOpWasSeekPrefixGE.Set(true)
 			return nil
 		}
+		treesteps.UpdateLastOpf(i, "bloom filter matched")
 		i.lastBloomFilterMatched = true
 	}
 
@@ -720,7 +747,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
 // caller to ensure that key is less than the upper bound.
 func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
-) *base.InternalKV {
+) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "SeekLT(%q, %d)", key, flags)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
@@ -809,7 +842,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 // package. Note that First only checks the upper bound. It is up to the caller
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
-func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
+func (i *twoLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "First()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
@@ -862,7 +901,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 // package. Note that Last only checks the lower bound. It is up to the caller
 // to ensure that key is less than the upper bound (e.g. via a call to
 // SeekLT(upper))
-func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
+func (i *twoLevelIterator[I, PI, D, PD]) Last() (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "Last()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
@@ -917,7 +962,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() *base.InternalKV {
 // package.
 // Note: twoLevelCompactionIterator.Next mirrors the implementation of
 // twoLevelIterator.Next due to performance. Keep the two in sync.
-func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
+func (i *twoLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "Next()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	// The SeekPrefixGE might have returned a synthetic key with latest suffix
 	// contained in the sstable. If the caller is calling Next(), that means
 	// they want to move past the synthetic key and Next() is responsible for
@@ -955,7 +1006,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) Next() *base.InternalKV {
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
-func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.InternalKV {
+func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "NextPrefix(%q)", succKey)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	i.lastOpWasSeekPrefixGE.Set(false)
 	if i.secondLevel.exhaustedBounds == +1 {
 		panic("Next called even though exhausted upper bound")
@@ -1012,7 +1069,13 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) *base.Intern
 
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
-func (i *twoLevelIterator[I, PI, D, PD]) Prev() *base.InternalKV {
+func (i *twoLevelIterator[I, PI, D, PD]) Prev() (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "Prev()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
@@ -1197,8 +1260,11 @@ func (i *twoLevelIterator[I, PI, D, PD]) ensureTopLevelIndexLoaded() bool {
 		i.secondLevel.err = err
 		return false
 	}
-
 	i.topLevelIndexLoaded = true
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		treesteps.NodeUpdated(i, "top level index block loaded")
+	}
+
 	return true
 }
 

@@ -1,0 +1,67 @@
+# Test treesteps recording for twoLevelIterator SeekPrefixGE operation.
+# This test builds an sstable with a two-level index (by using small block sizes)
+# and performs a SeekPrefixGE operation while recording the operation steps with
+# treesteps, then outputs the visualization URL.
+
+build block-size=80 index-block-size=80
+a@10#1,SET:valuea10
+a@5#1,SET:valuea5
+b@8#1,SET:valueb8
+c#1,SET:valuec
+c@12#1,SET:valuec12
+c@7#1,SET:valuec7
+d@15#1,SET:valued15
+d@10#1,SET:valued10
+e@20#1,SET:valuee20
+e@12#1,SET:valuee12
+f@18#1,SET:valuef18
+f@9#1,SET:valuef9
+g@25#1,SET:valueg25
+g@14#1,SET:valueg14
+h@22#1,SET:valueh22
+h@11#1,SET:valueh11
+i@30#1,SET:valuei30
+i@16#1,SET:valuei16
+j@28#1,SET:valuej28
+j@13#1,SET:valuej13
+k@35#1,SET:valuek35
+k@19#1,SET:valuek19
+l@33#1,SET:valuel33
+l@17#1,SET:valuel17
+m@40#1,SET:valuem40
+m@21#1,SET:valuem21
+n@38#1,SET:valuen38
+n@20#1,SET:valuen20
+o@45#1,SET:valueo45
+o@23#1,SET:valueo23
+p@43#1,SET:valuep43
+p@22#1,SET:valuep22
+q@50#1,SET:valueq50
+q@26#1,SET:valueq26
+r@48#1,SET:valuer48
+r@24#1,SET:valuer24
+s@55#1,SET:values55
+s@29#1,SET:values29
+t@53#1,SET:valuet53
+t@27#1,SET:valuet27
+u@60#1,SET:valueu60
+u@31#1,SET:valueu31
+v@58#1,SET:valuev58
+v@30#1,SET:valuev30
+w@65#1,SET:valuew65
+w@34#1,SET:valuew34
+x@63#1,SET:valuex63
+x@32#1,SET:valuex32
+y@70#1,SET:valuey70
+y@37#1,SET:valuey37
+z@68#1,SET:valuez68
+z@35#1,SET:valuez35
+----
+
+iter-treesteps
+seek-prefix-ge a
+next
+next
+next
+----
+https://raduberinde.github.io/treesteps/decode.html#eNrslkGL2kAUx-_9FMP0oiBbYzerBgQplW2hLAV7q4uMk-fu4HRGMo-uUApLDz334HE_nZ-kJEaJMbGxi4lmnYuQzMz7_3_zMn9_0Bv2DahDEQy6DNkb9AAMwtQM8UEPJXwHORQInnNl0RrtI0z9FYY6X6lQAgWT_mOAyWcPxmJ23SNaEWOQjSRc4IP-5O_wEcFjqD1ikHkILq1RpV1InecQ1FMSFCdCuTAjI6n5hEjN3Cyr_Xl94Fq5yxf-Fu_8HSpWlejx2AB2LtuNt0SCusP7TtOmNWoAJte9DyCn4EVNGKHuJGTykTB1KeY9QxYXUF9Vb1_uWX0slDD3QfnM5CNrbmCGGU8pPvVQLNrtFYxWI2PZfQwdt3mrdbV2b704941mY_0ZHtT97fL6Cq6utNkDRRbzX0RpJFNtBAqtwA0ezhfzx8X8cZesgSLh2FofjrGQ4JB6MAbK_-rTVJPF7z8k-nFXBpQNaI2EP_VqKaQ-hVK5liM5uQguan_jcEWywtI5ZOgQ3m3uay2x4vrNpr3V83m6nOiIb3tCdJZ6onG60lMPtZzhFQHv6R_wNiSzrpXOfZ0iebFfKXpt1fq9LwWxJ51NDWtoW-qO4iDiqp53EHHz-Z1KCUn7f5kq1TPFk6MYK1xqonnm3TbRA4ebnU-2JbSonV-HBne2nZZX9oGa1X5Gr9p7tmrMYW6Uy0nzTPCUCO7OohLRLHEQjbqtgoJo1G3lGkTRehutmviiQLQxTdmDaJNoTpTLSfNM8JQI7gqiUtEscRDxgmKI5xpCPDmC-EFalP93g_L9w4dvRQ_P99o8Xoa3P1_9DQAA__-Ta-Op
