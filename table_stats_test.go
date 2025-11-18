@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/colblk"
@@ -246,7 +247,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				return err.Error()
 			}
 			var r *sstable.Reader
-			readable, err := sstable.NewSimpleReadable(f)
+			readable, err := objstorage.NewSimpleReadable(f)
 			if err != nil {
 				return err.Error()
 			}

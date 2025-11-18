@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
@@ -80,7 +81,7 @@ func runErrorInjectionTest(t *testing.T, seed int64) {
 		}
 		return err
 	}))
-	readable, err := NewSimpleReadable(f)
+	readable, err := objstorage.NewSimpleReadable(f)
 	require.NoError(t, err)
 	r, err := NewReader(context.Background(), readable, cfg.readerOpts())
 	require.NoError(t, err)

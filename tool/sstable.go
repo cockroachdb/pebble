@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -151,7 +152,7 @@ inclusive-inclusive range specified by --start and --end.
 func (s *sstableT) newReader(
 	f vfs.File, cacheHandle *cache.Handle, fn string,
 ) (*sstable.Reader, error) {
-	readable, err := sstable.NewSimpleReadable(f)
+	readable, err := objstorage.NewSimpleReadable(f)
 	if err != nil {
 		return nil, err
 	}

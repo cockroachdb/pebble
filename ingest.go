@@ -524,7 +524,7 @@ func ingestLoad(
 			return ingestLoadResult{}, err
 		}
 
-		readable, err := sstable.NewSimpleReadable(f)
+		readable, err := objstorage.NewSimpleReadable(f)
 		if err != nil {
 			return ingestLoadResult{}, err
 		}

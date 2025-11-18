@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils/indenttree"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -265,7 +266,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 					if err != nil {
 						return err.Error()
 					}
-					readable, err := sstable.NewSimpleReadable(f)
+					readable, err := objstorage.NewSimpleReadable(f)
 					if err != nil {
 						return err.Error()
 					}
@@ -392,7 +393,7 @@ func buildMergingIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readable, err := sstable.NewSimpleReadable(f)
+		readable, err := objstorage.NewSimpleReadable(f)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -657,7 +658,7 @@ func buildLevelsForMergingIterSeqSeek(
 			if err != nil {
 				b.Fatal(err)
 			}
-			readable, err := sstable.NewSimpleReadable(f)
+			readable, err := objstorage.NewSimpleReadable(f)
 			if err != nil {
 				b.Fatal(err)
 			}

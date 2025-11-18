@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -827,7 +828,7 @@ func TestExciseBounds(t *testing.T) {
 		case "excise":
 			f, err := fs.Open(sstPath)
 			checkErr(err)
-			readable, err := sstable.NewSimpleReadable(f)
+			readable, err := objstorage.NewSimpleReadable(f)
 			checkErr(err)
 			ctx := context.Background()
 			r, err := sstable.NewReader(ctx, readable, sstable.ReaderOptions{})

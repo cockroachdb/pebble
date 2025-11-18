@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -35,7 +36,7 @@ func TestExternalIterator(t *testing.T) {
 	defer func() { require.NoError(t, d.Close()) }()
 	var bv blobtest.Values
 
-	getOptsAndFiles := func(td *datadriven.TestData) (opts IterOptions, files [][]sstable.ReadableFile) {
+	getOptsAndFiles := func(td *datadriven.TestData) (opts IterOptions, files [][]objstorage.ReadableFile) {
 		opts = IterOptions{KeyTypes: IterKeyTypePointsAndRanges}
 		for _, arg := range td.CmdArgs {
 			switch arg.Key {
@@ -49,7 +50,7 @@ func TestExternalIterator(t *testing.T) {
 				for _, v := range arg.Vals {
 					f, err := mem.Open(v)
 					require.NoError(t, err)
-					files = append(files, []sstable.ReadableFile{f})
+					files = append(files, []objstorage.ReadableFile{f})
 				}
 			}
 		}
@@ -89,7 +90,7 @@ func TestExternalIterator(t *testing.T) {
 // See github.com/cockroachdb/cockroach/issues/141606 where an error during
 // initialization caused NewExternalIter to panic.
 func testExternalIteratorInitError(
-	t *testing.T, o *Options, iterOpts *IterOptions, files [][]sstable.ReadableFile,
+	t *testing.T, o *Options, iterOpts *IterOptions, files [][]objstorage.ReadableFile,
 ) {
 	files = slices.Clone(files)
 	for i := range files {
@@ -110,7 +111,7 @@ func testExternalIteratorInitError(
 }
 
 type flakyFile struct {
-	sstable.ReadableFile
+	objstorage.ReadableFile
 }
 
 func (ff *flakyFile) ReadAt(p []byte, off int64) (n int, err error) {
@@ -163,11 +164,11 @@ func BenchmarkExternalIter_NonOverlapping_Scan(b *testing.B) {
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						func() {
-							files := make([][]sstable.ReadableFile, fileCount)
+							files := make([][]objstorage.ReadableFile, fileCount)
 							for i := 0; i < fileCount; i++ {
 								f, err := fs.Open(filenames[i])
 								require.NoError(b, err)
-								files[i] = []sstable.ReadableFile{f}
+								files[i] = []objstorage.ReadableFile{f}
 							}
 
 							it, err := NewExternalIter(opts, iterOpts, files)

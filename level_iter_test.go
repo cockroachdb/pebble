@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -291,7 +292,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 	if err != nil {
 		return err.Error()
 	}
-	readable, err := sstable.NewSimpleReadable(f1)
+	readable, err := objstorage.NewSimpleReadable(f1)
 	if err != nil {
 		return err.Error()
 	}
@@ -561,7 +562,7 @@ func buildLevelIterTables(
 		if err != nil {
 			b.Fatal(err)
 		}
-		readable, err := sstable.NewSimpleReadable(f)
+		readable, err := objstorage.NewSimpleReadable(f)
 		if err != nil {
 			b.Fatal(err)
 		}

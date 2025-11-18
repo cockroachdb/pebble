@@ -9,7 +9,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -28,7 +27,6 @@ import (
 	"github.com/cockroachdb/pebble/sstable/rowblk"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 	"github.com/cockroachdb/pebble/sstable/virtual"
-	"github.com/cockroachdb/pebble/vfs"
 )
 
 var errReaderClosed = errors.New("pebble/table: reader is closed")
@@ -1079,64 +1077,6 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		return nil, r.err
 	}
 	return r, nil
-}
-
-// ReadableFile describes the smallest subset of vfs.File that is required for
-// reading SSTs.
-type ReadableFile interface {
-	io.ReaderAt
-	io.Closer
-	Stat() (vfs.FileInfo, error)
-}
-
-// NewSimpleReadable wraps a ReadableFile in a objstorage.Readable
-// implementation (which does not support read-ahead)
-func NewSimpleReadable(r ReadableFile) (objstorage.Readable, error) {
-	info, err := r.Stat()
-	if err != nil {
-		return nil, err
-	}
-	res := &simpleReadable{
-		f:    r,
-		size: info.Size(),
-	}
-	res.rh = objstorage.MakeNoopReadHandle(res)
-	return res, nil
-}
-
-// simpleReadable wraps a ReadableFile to implement objstorage.Readable.
-type simpleReadable struct {
-	f    ReadableFile
-	size int64
-	rh   objstorage.NoopReadHandle
-}
-
-var _ objstorage.Readable = (*simpleReadable)(nil)
-
-// ReadAt is part of the objstorage.Readable interface.
-func (s *simpleReadable) ReadAt(_ context.Context, p []byte, off int64) error {
-	n, err := s.f.ReadAt(p, off)
-	if invariants.Enabled && err == nil && n != len(p) {
-		panic("short read")
-	}
-	return err
-}
-
-// Close is part of the objstorage.Readable interface.
-func (s *simpleReadable) Close() error {
-	return s.f.Close()
-}
-
-// Size is part of the objstorage.Readable interface.
-func (s *simpleReadable) Size() int64 {
-	return s.size
-}
-
-// NewReadHandle is part of the objstorage.Readable interface.
-func (s *simpleReadable) NewReadHandle(
-	readBeforeSize objstorage.ReadBeforeSize,
-) objstorage.ReadHandle {
-	return &s.rh
 }
 
 func errCorruptIndexEntry(err error) error {

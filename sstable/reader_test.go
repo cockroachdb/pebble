@@ -638,7 +638,7 @@ func TestInjectedErrors(t *testing.T) {
 
 func TestInvalidReader(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	invalid, err := NewSimpleReadable(vfs.NewMemFile([]byte("invalid sst bytes")))
+	invalid, err := objstorage.NewSimpleReadable(vfs.NewMemFile([]byte("invalid sst bytes")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2570,8 +2570,8 @@ func BenchmarkIteratorScanObsolete(b *testing.B) {
 	}
 }
 
-func newReader(r ReadableFile, o ReaderOptions) (*Reader, error) {
-	readable, err := NewSimpleReadable(r)
+func newReader(r objstorage.ReadableFile, o ReaderOptions) (*Reader, error) {
+	readable, err := objstorage.NewSimpleReadable(r)
 	if err != nil {
 		return nil, err
 	}
