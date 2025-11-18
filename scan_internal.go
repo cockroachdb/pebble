@@ -17,7 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
@@ -529,10 +529,11 @@ func (p *pointCollapsingIterator) SetContext(ctx context.Context) {
 	p.iter.SetContext(ctx)
 }
 
-// DebugTree is part of the InternalIterator interface.
-func (p *pointCollapsingIterator) DebugTree(tp treeprinter.Node) {
-	n := tp.Childf("%T(%p)", p, p)
-	p.iter.DebugTree(n)
+// TreeStepsNode is part of the InternalIterator interface.
+func (p *pointCollapsingIterator) TreeStepsNode() treesteps.NodeInfo {
+	info := treesteps.NodeInfof(p, "%T(%p)", p, p)
+	info.AddChildren(&p.iter)
+	return info
 }
 
 // String implements the InternalIterator interface.

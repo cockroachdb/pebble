@@ -70,7 +70,11 @@ func (t *TreeNode) print(parent treeprinter.Node) {
 	}
 	n := parent.Child(name)
 	for _, p := range t.Properties {
-		n.AddLine(fmt.Sprintf("   %s: %s", p[0], p[1]))
+		if p[1] == "" {
+			n.AddLine(fmt.Sprintf("   %s", p[0]))
+		} else {
+			n.AddLine(fmt.Sprintf("   %s: %s", p[0], p[1]))
+		}
 	}
 	for i := range t.Children {
 		t.Children[i].print(n)

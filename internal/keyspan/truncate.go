@@ -9,7 +9,7 @@ import (
 
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 // Truncate creates a new iterator where every span in the supplied iterator is
@@ -180,10 +180,9 @@ func (i *truncatingIter) WrapChildren(wrap WrapFn) {
 	i.iter = wrap(i.iter)
 }
 
-// DebugTree is part of the FragmentIterator interface.
-func (i *truncatingIter) DebugTree(tp treeprinter.Node) {
-	n := tp.Childf("%T(%p)", i, i)
-	if i.iter != nil {
-		i.iter.DebugTree(n)
-	}
+// TreeStepsNode is part of the FragmentIterator interface.
+func (i *truncatingIter) TreeStepsNode() treesteps.NodeInfo {
+	info := treesteps.NodeInfof(i, "%T(%p)", i, i)
+	info.AddChildren(i.iter)
+	return info
 }

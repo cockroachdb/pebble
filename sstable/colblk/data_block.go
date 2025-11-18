@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
@@ -1457,9 +1458,9 @@ func (i *DataBlockIter) String() string {
 	return dataBlockTypeString
 }
 
-// DebugTree is part of the InternalIterator interface.
-func (i *DataBlockIter) DebugTree(tp treeprinter.Node) {
-	tp.Childf("%T(%p)", i, i)
+// TreeStepsNode is part of the InternalIterator interface.
+func (i *DataBlockIter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(i, "%T(%p)", i, i)
 }
 
 // decodeRow decodes i.row into i.kv. If i.row is invalid, it returns nil.
