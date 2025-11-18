@@ -42,11 +42,10 @@ func (o *Options) randomizeForTesting(t testing.TB) {
 	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
 		lowPri := 0.1 + rand.Float64()*0.9 // [0.1, 1.0)
 		policy := ValueSeparationPolicy{
-			Enabled:                    true,
-			MinimumSize:                1 << rand.IntN(10), // [1, 512]
-			MinimumLatencyTolerantSize: 5 + rand.IntN(11),  // [5, 15]
-			MinimumMVCCGarbageSize:     5 + rand.IntN(11),  // [5, 15]
-			MaxBlobReferenceDepth:      1 + rand.IntN(10),  // [1, 10]
+			Enabled:                true,
+			MinimumSize:            1 << rand.IntN(10), // [1, 512]
+			MinimumMVCCGarbageSize: 5 + rand.IntN(11),  // [5, 15]
+			MaxBlobReferenceDepth:  1 + rand.IntN(10),  // [1, 10]
 			// Constrain the rewrite minimum age to [0, 15s).
 			RewriteMinimumAge:        time.Duration(rand.IntN(15)) * time.Second,
 			GarbageRatioLowPriority:  lowPri,
@@ -660,9 +659,7 @@ func TestStaticSpanPolicyFunc(t *testing.T) {
 			case "lowlatency":
 				sap.Policy.ValueStoragePolicy = ValueStorageLowReadLatency
 			case "latencytolerant":
-				sap.Policy.ValueStoragePolicy = ValueStoragePolicyAdjustment{
-					OverrideBlobSeparationMinimumSize: 10,
-				}
+				sap.Policy.ValueStoragePolicy = ValueStorageLatencyTolerant
 			default:
 				t.Fatalf("unknown policy: %s", tok)
 			}

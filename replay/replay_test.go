@@ -350,12 +350,11 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 			}
 			opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 				return pebble.ValueSeparationPolicy{
-					Enabled:                    true,
-					MinimumSize:                3,
-					MinimumLatencyTolerantSize: 10,
-					MinimumMVCCGarbageSize:     10,
-					MaxBlobReferenceDepth:      5,
-					RewriteMinimumAge:          15 * time.Minute,
+					Enabled:                true,
+					MinimumSize:            3,
+					MinimumMVCCGarbageSize: 10,
+					MaxBlobReferenceDepth:  5,
+					RewriteMinimumAge:      15 * time.Minute,
 				}
 			}
 			setDefaultExperimentalOpts(opts)

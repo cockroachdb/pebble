@@ -1420,11 +1420,10 @@ func TestIteratorValueRetrievalProfile(t *testing.T) {
 	opts.FormatMajorVersion = internalFormatNewest
 	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
 		return ValueSeparationPolicy{
-			Enabled:                    true,
-			MinimumSize:                1,
-			MinimumLatencyTolerantSize: 10,
-			MinimumMVCCGarbageSize:     10,
-			MaxBlobReferenceDepth:      5,
+			Enabled:                true,
+			MinimumSize:            1,
+			MinimumMVCCGarbageSize: 10,
+			MaxBlobReferenceDepth:  5,
 		}
 	}
 	d := newTestkeysDatabase(t, opts, testkeys.Alpha(2), rand.New(rand.NewPCG(1, 1)))
