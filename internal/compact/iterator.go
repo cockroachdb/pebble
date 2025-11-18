@@ -18,6 +18,16 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
+// MetaIterator is an interface for iterators that support metadata extraction.
+// It extends MetaDecoder, so any iterator implementing MetaIterator also
+// implements MetaDecoder.
+type MetaIterator interface {
+	base.InternalIterator
+	base.MetaDecoder
+	FirstWithMeta() (*base.InternalKV, base.KVMeta)
+	NextWithMeta() (*base.InternalKV, base.KVMeta)
+}
+
 // Iter provides a forward-only iterator that encapsulates the logic for
 // collapsing entries during compaction. It wraps an internal iterator and
 // collapses entries that are no longer necessary because they are shadowed by
@@ -163,6 +173,10 @@ type Iter struct {
 	// keys.
 	iter base.InternalIterator
 
+	// metaIter is the MetaIterator version of iter, if available. This allows
+	// access to tiering metadata without adding overhead to the common iteration path.
+	metaIter MetaIterator
+
 	delElider         pointTombstoneElider
 	rangeDelCompactor RangeDelSpanCompactor
 	rangeKeyCompactor RangeKeySpanCompactor
@@ -181,6 +195,8 @@ type Iter struct {
 	// when moving to the next key so it can determine whether the user key has
 	// changed from the previous key.
 	kv base.InternalKV
+	// currentMeta holds the metadata for the current key-value pair, if available.
+	currentMeta base.KVMeta
 	// keyTrailer is updated when `i.kv` is updated and holds the key's original
 	// trailer (eg, before any sequence-number zeroing or changes to key kind).
 	keyTrailer  base.InternalKeyTrailer
@@ -356,6 +372,10 @@ func NewIter(
 	}
 	i.iter = invalidating.MaybeWrapIfInvariants(iter)
 
+	if metaIter, ok := iter.(MetaIterator); ok {
+		i.metaIter = metaIter
+	}
+
 	i.frontiers.Init(i.cmp)
 	i.delElider.Init(i.cmp, cfg.TombstoneElision)
 	i.rangeDelCompactor = MakeRangeDelSpanCompactor(i.cmp, i.cfg.Comparer.Equal, cfg.Snapshots, cfg.TombstoneElision)
@@ -389,12 +409,26 @@ func (i *Iter) Stats() IterStats {
 	return i.stats
 }
 
+// GetCurrentMeta returns the metadata for the current key-value pair, if available.
+// This method provides access to tiering metadata without adding overhead to the
+// common iteration path.
+func (i *Iter) GetCurrentMeta() base.KVMeta {
+	return i.currentMeta
+}
+
 // First has the same semantics as InternalIterator.First.
 func (i *Iter) First() *base.InternalKV {
 	if i.err != nil {
 		return nil
 	}
-	i.iterKV = i.iter.First()
+
+	if i.metaIter != nil {
+		i.iterKV, i.currentMeta = i.metaIter.FirstWithMeta()
+	} else {
+		i.iterKV = i.iter.First()
+		i.currentMeta = base.KVMeta{}
+	}
+
 	if i.iterKV != nil {
 		i.curSnapshotIdx, i.curSnapshotSeqNum = i.cfg.Snapshots.IndexAndSeqNum(i.iterKV.SeqNum())
 	}
@@ -707,7 +741,12 @@ func (i *Iter) skipInStripe() {
 }
 
 func (i *Iter) iterNext() bool {
-	i.iterKV = i.iter.Next()
+	if i.metaIter != nil {
+		i.iterKV, i.currentMeta = i.metaIter.NextWithMeta()
+	} else {
+		i.iterKV = i.iter.Next()
+		i.currentMeta = base.KVMeta{}
+	}
 	if i.iterKV == nil {
 		i.err = i.iter.Error()
 	}

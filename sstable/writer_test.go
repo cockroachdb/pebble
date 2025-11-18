@@ -50,6 +50,7 @@ func TestWriter(t *testing.T) {
 		{TableFormat: TableFormatPebblev5, File: "testdata/writer_v5"},
 		{TableFormat: TableFormatPebblev6, File: "testdata/writer_v6"},
 		{TableFormat: TableFormatPebblev7, File: "testdata/writer_v7"},
+		{TableFormat: TableFormatPebblev8, File: "testdata/writer_v8"},
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
@@ -66,6 +67,7 @@ func TestRewriter(t *testing.T) {
 		{TableFormat: TableFormatPebblev5, File: "testdata/rewriter_v5"},
 		{TableFormat: TableFormatPebblev6, File: "testdata/rewriter_v6"},
 		{TableFormat: TableFormatPebblev7, File: "testdata/rewriter_v7"},
+		{TableFormat: TableFormatPebblev8, File: "testdata/writer_v8"},
 	}
 	for _, tff := range formatFiles {
 		t.Run(tff.TableFormat.String(), func(t *testing.T) {
@@ -972,7 +974,7 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 				}
 			}()
 
-			err = w.Add(k1, v1, false /* forceObsolete */)
+			err = w.Add(k1, v1, false /* forceObsolete */, base.KVMeta{})
 			switch tc {
 			case errSiteAdd:
 				require.Error(t, err)
@@ -981,18 +983,18 @@ func TestWriterBlockPropertiesErrors(t *testing.T) {
 			case errSiteFinishBlock:
 				require.NoError(t, err)
 				// Addition of a second key completes the first block.
-				err = w.Add(k2, v2, false /* forceObsolete */)
+				err = w.Add(k2, v2, false /* forceObsolete */, base.KVMeta{})
 				require.Error(t, err)
 				require.Equal(t, blockPropErr, err)
 				return
 			case errSiteFinishIndex:
 				require.NoError(t, err)
 				// Addition of a second key completes the first block.
-				err = w.Add(k2, v2, false /* forceObsolete */)
+				err = w.Add(k2, v2, false /* forceObsolete */, base.KVMeta{})
 				require.NoError(t, err)
 				// The index entry for the first block is added after the completion of
 				// the second block, which is triggered by adding a third key.
-				err = w.Add(k3, v3, false /* forceObsolete */)
+				err = w.Add(k3, v3, false /* forceObsolete */, base.KVMeta{})
 				require.Error(t, err)
 				require.Equal(t, blockPropErr, err)
 				return
@@ -1099,7 +1101,8 @@ func TestWriterRace(t *testing.T) {
 			w := newRowWriter(f, opts)
 			for ki := 0; ki < len(keys); ki++ {
 				require.NoError(t, w.Add(
-					base.MakeInternalKey(keys[ki], base.SeqNum(ki), InternalKeyKindSet), val, false /* forceObsolete */))
+					base.MakeInternalKey(keys[ki], base.SeqNum(ki), InternalKeyKindSet), val,
+					false /* forceObsolete */, base.KVMeta{}))
 				require.Equal(
 					t, w.dataBlockBuf.dataBlock.CurKey().UserKey, keys[ki],
 				)

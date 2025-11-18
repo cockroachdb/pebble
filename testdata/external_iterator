@@ -266,7 +266,7 @@ aaaa@3: (aaaa@3, .)
 aaaa@1: (aaaa@1, .)
 aaaaa@3: (aaaaa@3, .)
 aaaaa@1: (aaaaa@1, .)
-stats: seeked 5 times (5 internal); stepped 5 times (5 internal); blocks: 0B cached, 1.3KB not cached (read time: 0s); points: 10 (50B keys, 35B values); separated: 5 (25B, 25B fetched)
+stats: seeked 5 times (5 internal); stepped 5 times (5 internal); blocks: 0B cached, 1.4KB not cached (read time: 0s); points: 10 (50B keys, 35B values); separated: 5 (25B, 25B fetched)
 
 build table-with-blob-refs
 set a@9 a9
