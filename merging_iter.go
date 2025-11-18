@@ -42,6 +42,9 @@ type mergingIterLevel struct {
 	// positioning tombstones at lower levels which cannot possibly shadow the
 	// current key.
 	tombstone *keyspan.Span
+
+	// lastKey is used only during treesteps recordings.
+	lastIterKey invariants.Value[string]
 }
 
 // Assert that *mergingIterLevel implements rangeDelIterSetter.
@@ -54,6 +57,17 @@ func (ml *mergingIterLevel) setRangeDelIter(iter keyspan.FragmentIterator) {
 	}
 	ml.rangeDelIter = iter
 	ml.rangeDelIterGeneration++
+}
+
+// updateLastIterKey updates the lastIterKey field; only used for treesteps. We
+// cannot use iterKV directly because it is not valid while we are updating it
+// (i.e. when stepping through an operation on ml.iter).
+func (ml *mergingIterLevel) updateLastIterKey() {
+	if ml.iterKV == nil {
+		ml.lastIterKey.Set("<nil>")
+	} else {
+		ml.lastIterKey.Set(ml.iterKV.K.String())
+	}
 }
 
 // mergingIter provides a merged view of multiple iterators from different
@@ -328,6 +342,9 @@ func (m *mergingIter) initHeap() {
 	for i := range m.levels {
 		if l := &m.levels[i]; l.iterKV != nil {
 			m.heap.items = append(m.heap.items, mergingIterHeapItem{mergingIterLevel: l})
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				l.updateLastIterKey()
+			}
 		}
 	}
 	m.heap.init()
@@ -433,6 +450,7 @@ func (m *mergingIter) switchToMinHeap() error {
 			}
 			// key >= iter-key
 		}
+		l.updateLastIterKey()
 		if l.iterKV == nil {
 			if err := l.iter.Error(); err != nil {
 				return err
@@ -486,6 +504,7 @@ func (m *mergingIter) switchToMaxHeap() error {
 			}
 			// key <= iter-key
 		}
+		l.updateLastIterKey()
 		if l.iterKV == nil {
 			if err := l.iter.Error(); err != nil {
 				return err
@@ -562,6 +581,9 @@ func (m *mergingIter) nextEntry(l *mergingIterLevel, succKey []byte) error {
 			// next sstable. We have to update the tombstone for oldTopLevel as well.
 			oldTopLevel--
 		}
+	}
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		l.updateLastIterKey()
 	}
 
 	// The cached tombstones are only valid for the levels
@@ -773,6 +795,10 @@ func (m *mergingIter) prevEntry(l *mergingIterLevel) error {
 			return err
 		}
 		m.heap.pop()
+	}
+
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		l.updateLastIterKey()
 	}
 
 	// The cached tombstones are only valid for the levels
@@ -1021,7 +1047,13 @@ func (m *mergingIter) String() string {
 // SeekGE implements base.InternalIterator.SeekGE. Note that SeekGE only checks
 // the upper bound. It is up to the caller to ensure that key is greater than
 // or equal to the lower bound.
-func (m *mergingIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+func (m *mergingIter) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "SeekGE(%q, %d)", key, flags)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	m.prefix = nil
 	m.err = m.seekGE(key, 0 /* start level */, flags)
 	if m.err != nil {
@@ -1039,7 +1071,13 @@ func (m *mergingIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *
 // SeekPrefixGEStrict explicitly checks that the key has a matching prefix.
 func (m *mergingIter) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
-) *base.InternalKV {
+) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "SeekPrefixGE(%q, %q, %d)", prefix, key, flags)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	m.prefix = prefix
 	m.err = m.seekGE(key, 0 /* start level */, flags)
 	if m.err != nil {
@@ -1114,7 +1152,13 @@ func (m *mergingIter) seekLT(key []byte, level int, flags base.SeekLTFlags) erro
 // SeekLT implements base.InternalIterator.SeekLT. Note that SeekLT only checks
 // the lower bound. It is up to the caller to ensure that key is less than the
 // upper bound.
-func (m *mergingIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
+func (m *mergingIter) SeekLT(key []byte, flags base.SeekLTFlags) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "SeekLT(%q, %d)", key, flags)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	m.prefix = nil
 	m.err = m.seekLT(key, 0 /* start level */, flags)
 	if m.err != nil {
@@ -1126,7 +1170,13 @@ func (m *mergingIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalK
 // First implements base.InternalIterator.First. Note that First only checks
 // the upper bound. It is up to the caller to ensure that key is greater than
 // or equal to the lower bound (e.g. via a call to SeekGE(lower)).
-func (m *mergingIter) First() *base.InternalKV {
+func (m *mergingIter) First() (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "First()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	m.err = nil // clear cached iteration error
 	m.prefix = nil
 	m.heap.items = m.heap.items[:0]
@@ -1148,7 +1198,13 @@ func (m *mergingIter) First() *base.InternalKV {
 // Last implements base.InternalIterator.Last. Note that Last only checks the
 // lower bound. It is up to the caller to ensure that key is less than the
 // upper bound (e.g. via a call to SeekLT(upper))
-func (m *mergingIter) Last() *base.InternalKV {
+func (m *mergingIter) Last() (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "Last()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	m.err = nil // clear cached iteration error
 	m.prefix = nil
 	for i := range m.levels {
@@ -1166,7 +1222,13 @@ func (m *mergingIter) Last() *base.InternalKV {
 	return m.findPrevEntry()
 }
 
-func (m *mergingIter) Next() *base.InternalKV {
+func (m *mergingIter) Next() (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "Next()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	if m.err != nil {
 		return nil
 	}
@@ -1199,7 +1261,13 @@ func (m *mergingIter) Next() *base.InternalKV {
 	return iterKV
 }
 
-func (m *mergingIter) NextPrefix(succKey []byte) *base.InternalKV {
+func (m *mergingIter) NextPrefix(succKey []byte) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "NextPrefix(%q)", succKey)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	if m.dir != 1 {
 		panic("pebble: cannot switch directions with NextPrefix")
 	}
@@ -1269,7 +1337,13 @@ func (m *mergingIter) NextPrefix(succKey []byte) *base.InternalKV {
 	return m.findNextEntry()
 }
 
-func (m *mergingIter) Prev() *base.InternalKV {
+func (m *mergingIter) Prev() (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "Prev()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
 	if m.err != nil {
 		return nil
 	}
@@ -1330,11 +1404,47 @@ func (m *mergingIter) SetContext(ctx context.Context) {
 	}
 }
 
+type dummyNode struct {
+	info treesteps.NodeInfo
+}
+
+func (d *dummyNode) TreeStepsNode() treesteps.NodeInfo {
+	return d.info
+}
+
 // TreeStepsNode is part of the InternalIterator interface.
 func (m *mergingIter) TreeStepsNode() treesteps.NodeInfo {
+	levelName := func(index int) string {
+		return string('A' + byte(index))
+	}
 	info := treesteps.NodeInfof(m, "mergingIter")
+	if m.heap.len() > 0 {
+		item := m.heap.items[0].mergingIterLevel
+		heapProp := "heap min"
+		if m.heap.reverse {
+			heapProp = "heap max"
+		}
+		info.AddPropf(heapProp, "%s:%s", levelName(item.index), item.lastIterKey.Get())
+	}
+	if m.prefix != nil {
+		info.AddPropf("prefix", "%s", m.prefix)
+	}
 	for i := range m.levels {
-		info.AddChildren(m.levels[i].iter)
+		l := &m.levels[i]
+		name := levelName(i)
+		if l.iterKV != nil {
+			name = fmt.Sprintf("%s:%s", name, l.lastIterKey.Get())
+		}
+		d := &dummyNode{}
+		d.info = treesteps.NodeInfof(d, "%s", name)
+		if l.tombstone != nil {
+			d.info.AddPropf("tombstone", "%s", l.tombstone.String())
+		}
+		d.info.AddChildren(l.iter)
+		if l.rangeDelIter != nil {
+			d.info.AddChildren(l.rangeDelIter)
+		}
+		info.AddChildren(d)
 	}
 	return info
 }
