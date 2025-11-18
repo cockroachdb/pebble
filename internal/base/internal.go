@@ -774,5 +774,6 @@ type StorageTier uint8
 
 const (
 	HotTier StorageTier = iota
+	ColdTier
 	NumStorageTiers
 )

@@ -56,6 +56,28 @@ type remoteLockedState struct {
 	externalObjects map[remote.ObjectKey][]base.DiskFileNum
 }
 
+func (rs *remoteLockedState) addObject(meta objstorage.ObjectMetadata) {
+	rs.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
+		FileNum:          meta.DiskFileNum,
+		FileType:         meta.FileType,
+		CreatorID:        meta.Remote.CreatorID,
+		CreatorFileNum:   meta.Remote.CreatorFileNum,
+		Locator:          meta.Remote.Locator,
+		CleanupMethod:    meta.Remote.CleanupMethod,
+		CustomObjectName: meta.Remote.CustomObjectName,
+	})
+	if meta.IsExternal() {
+		rs.addExternalObject(meta)
+	}
+}
+
+func (rs *remoteLockedState) removeObject(meta objstorage.ObjectMetadata) {
+	if meta.IsExternal() {
+		rs.removeExternalObject(meta)
+	}
+	rs.catalogBatch.DeleteObject(meta.DiskFileNum)
+}
+
 func (rs *remoteLockedState) addExternalObject(meta objstorage.ObjectMetadata) {
 	if rs.externalObjects == nil {
 		rs.externalObjects = make(map[remote.ObjectKey][]base.DiskFileNum)
