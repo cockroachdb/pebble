@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math/rand/v2"
 	"sync"
@@ -1296,6 +1297,17 @@ func (i *Iterator) SeekGE(key []byte) bool {
 // guarantees it will surface any range keys with bounds overlapping the
 // keyspace [key, limit).
 func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		var op *treesteps.Op
+		if limit == nil {
+			op = treesteps.StartOpf(i, "SeekGE(%q)", key)
+		} else {
+			op = treesteps.StartOpf(i, "SeekGEWithLimit(%q, %q)", key, limit)
+		}
+		defer func() {
+			op.Finishf("= %s", iterValidityString(i.iterValidityState, i.key))
+		}()
+	}
 	if i.rangeKey != nil {
 		// NB: Check Valid() before clearing requiresReposition.
 		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
@@ -1445,6 +1457,12 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 // ImmediateSuccessor method. For example, a SeekPrefixGE("a@9") call with the
 // prefix "a" will truncate range key bounds to [a,ImmediateSuccessor(a)].
 func (i *Iterator) SeekPrefixGE(key []byte) bool {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "SeekPrefixGE(%q)", key)
+		defer func() {
+			op.Finishf("= %s", iterValidityString(i.iterValidityState, i.key))
+		}()
+	}
 	if i.rangeKey != nil {
 		// NB: Check Valid() before clearing requiresReposition.
 		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
@@ -1575,6 +1593,17 @@ func (i *Iterator) SeekLT(key []byte) bool {
 // guarantees it will surface any range keys with bounds overlapping the
 // keyspace up to limit.
 func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		var op *treesteps.Op
+		if limit == nil {
+			op = treesteps.StartOpf(i, "SeekLT(%q)", key)
+		} else {
+			op = treesteps.StartOpf(i, "SeekLTWithLimit(%q, %q)", key, limit)
+		}
+		defer func() {
+			op.Finishf("= %s", iterValidityString(i.iterValidityState, i.key))
+		}()
+	}
 	if i.rangeKey != nil {
 		// NB: Check Valid() before clearing requiresReposition.
 		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
@@ -1657,6 +1686,12 @@ func (i *Iterator) SeekLTWithLimit(key []byte, limit []byte) IterValidityState {
 // First moves the iterator the first key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) First() bool {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "First()")
+		defer func() {
+			op.Finishf("= %s", iterValidityString(i.iterValidityState, i.key))
+		}()
+	}
 	if i.rangeKey != nil {
 		// NB: Check Valid() before clearing requiresReposition.
 		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
@@ -1693,6 +1728,12 @@ func (i *Iterator) First() bool {
 // Last moves the iterator the last key/value pair. Returns true if the
 // iterator is pointing at a valid entry and false otherwise.
 func (i *Iterator) Last() bool {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "Last()")
+		defer func() {
+			op.Finishf("= %s", iterValidityString(i.iterValidityState, i.key))
+		}()
+	}
 	if i.rangeKey != nil {
 		// NB: Check Valid() before clearing requiresReposition.
 		i.rangeKey.prevPosHadRangeKey = i.rangeKey.hasRangeKey && i.Valid()
@@ -1757,6 +1798,12 @@ func (i *Iterator) NextWithLimit(limit []byte) IterValidityState {
 // upper-bound that is a versioned MVCC key (see the comment for
 // Comparer.Split). It returns an error in this case.
 func (i *Iterator) NextPrefix() bool {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "NextPrefix()")
+		defer func() {
+			op.Finishf("= %s", iterValidityString(i.iterValidityState, i.key))
+		}()
+	}
 	if i.nextPrefixNotPermittedByUpperBound {
 		i.lastPositioningOp = unknownLastPositionOp
 		i.requiresReposition = false
@@ -1924,6 +1971,17 @@ func (i *Iterator) internalNextPrefix(currKeyPrefixLen int) {
 }
 
 func (i *Iterator) nextWithLimit(limit []byte) IterValidityState {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		var op *treesteps.Op
+		if limit == nil {
+			op = treesteps.StartOpf(i, "Next()")
+		} else {
+			op = treesteps.StartOpf(i, "NextWithLimit(%q)", limit)
+		}
+		defer func() {
+			op.Finishf("= %s", iterValidityString(i.iterValidityState, i.key))
+		}()
+	}
 	i.stats.ForwardStepCount[InterfaceCall]++
 	if i.hasPrefix {
 		if limit != nil {
@@ -2034,6 +2092,17 @@ func (i *Iterator) Prev() bool {
 // guarantees it will surface any range keys with bounds overlapping the
 // keyspace up to limit.
 func (i *Iterator) PrevWithLimit(limit []byte) IterValidityState {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		var op *treesteps.Op
+		if limit == nil {
+			op = treesteps.StartOpf(i, "Prev()")
+		} else {
+			op = treesteps.StartOpf(i, "PrevWithLimit(%q)", limit)
+		}
+		defer func() {
+			op.Finishf("= %s", iterValidityString(i.iterValidityState, i.key))
+		}()
+	}
 	i.stats.ReverseStepCount[InterfaceCall]++
 	if i.err != nil {
 		return i.iterValidityState
@@ -3156,9 +3225,31 @@ var _ treesteps.Node = (*Iterator)(nil)
 // TreeStepsNode implements the treesteps.Node interface.
 func (i *Iterator) TreeStepsNode() treesteps.NodeInfo {
 	info := treesteps.NodeInfof(i, "pebble.Iterator")
+	switch i.iterValidityState {
+	case IterExhausted:
+		info.AddPropf("exhausted", "")
+	case IterAtLimit:
+		info.AddPropf("at limit", "")
+	case IterValid:
+		info.AddPropf("at", "%s", i.key)
+	}
 	info.AddChildren(i.iter)
 	if i.pointIter != i.iter {
 		info.AddChildren(i.pointIter)
 	}
 	return info
+}
+
+// iterValidityString returns a string representation of the iterator's validity state.
+func iterValidityString(state IterValidityState, key []byte) string {
+	switch state {
+	case IterExhausted:
+		return "exhausted"
+	case IterAtLimit:
+		return "at limit"
+	case IterValid:
+		return fmt.Sprintf("%q", key)
+	default:
+		return "unknown"
+	}
 }

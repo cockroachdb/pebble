@@ -82,6 +82,13 @@ func TestTreeSteps(t *testing.T) {
 				url := rec.Finish().URL()
 				return out + url.String()
 
+			case "iterator":
+				iter, _ := d.NewIter(nil)
+				rec := treeStepsStartRecording(t, td, iter)
+				out := runIterCmd(td, iter, true /* closeIter */)
+				url := rec.Finish().URL()
+				return out + url.String()
+
 			default:
 				return "unknown command"
 			}
