@@ -29,25 +29,16 @@ import (
 type provider struct {
 	st Settings
 
-	fsDir vfs.File
-
 	tracer *objiotracing.Tracer
 
+	local  localSubsystem
 	remote remoteSubsystem
 
 	mu struct {
 		sync.RWMutex
 
+		local  localLockedState
 		remote remoteLockedState
-
-		// TODO(radu): move these fields to a localLockedState struct.
-		// localObjectsChanged is incremented whenever non-remote objects are created.
-		// The purpose of this counter is to avoid syncing the local filesystem when
-		// only remote objects are changed.
-		localObjectsChangeCounter uint64
-		// localObjectsChangeCounterSynced is the value of localObjectsChangeCounter
-		// value at the time the last completed sync was launched.
-		localObjectsChangeCounterSynced uint64
 
 		// knownObjects maintains information about objects that are known to the provider.
 		// It is initialized with the list of files in the manifest when we open a DB.
@@ -229,24 +220,12 @@ func Open(settings Settings) (objstorage.Provider, error) {
 }
 
 func open(settings Settings) (p *provider, _ error) {
-	fsDir, err := settings.FS.OpenDir(settings.FSDirName)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		if p == nil {
-			fsDir.Close()
-		}
-	}()
-
 	if settings.Local.ReadaheadConfig == nil {
 		settings.Local.ReadaheadConfig = NewReadaheadConfig()
 	}
 
 	p = &provider{
-		st:    settings,
-		fsDir: fsDir,
+		st: settings,
 	}
 	p.mu.knownObjects = make(map[base.DiskFileNum]objstorage.ObjectMetadata)
 	p.mu.protectedObjects = make(map[base.DiskFileNum]int)
@@ -255,13 +234,14 @@ func open(settings Settings) (p *provider, _ error) {
 		p.tracer = objiotracing.Open(settings.FS, settings.FSDirName)
 	}
 
-	// Add local FS objects.
-	if err := p.vfsInit(); err != nil {
+	// Initialize local subsystem and add local vfs.FS objects.
+	if err := p.localInit(); err != nil {
 		return nil, err
 	}
 
 	// Initialize remote subsystem (if configured) and add remote objects.
 	if err := p.remoteInit(); err != nil {
+		_ = p.localClose()
 		return nil, err
 	}
 
@@ -271,10 +251,7 @@ func open(settings Settings) (p *provider, _ error) {
 // Close is part of the objstorage.Provider interface.
 func (p *provider) Close() error {
 	err := p.sharedClose()
-	if p.fsDir != nil {
-		err = firstError(err, p.fsDir.Close())
-		p.fsDir = nil
-	}
+	err = firstError(err, p.localClose())
 	if objiotracing.Enabled {
 		if p.tracer != nil {
 			p.tracer.Close()
@@ -301,7 +278,7 @@ func (p *provider) OpenForReading(
 
 	var r objstorage.Readable
 	if !meta.IsRemote() {
-		r, err = p.vfsOpenForReading(ctx, fileType, fileNum, opts)
+		r, err = p.localOpenForReading(ctx, fileType, fileNum, opts)
 	} else {
 		r, err = p.remoteOpenForReading(ctx, meta, opts)
 		if err != nil && p.isNotExistError(meta, err) {
@@ -365,7 +342,7 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 	}
 
 	if !meta.IsRemote() {
-		err = p.vfsRemove(fileType, fileNum)
+		err = p.localRemove(fileType, fileNum)
 	} else {
 		// TODO(radu): implement remote object removal (i.e. deref).
 		err = p.sharedUnref(meta)
@@ -401,7 +378,7 @@ func (p *provider) IsNotExistError(err error) bool {
 
 // Sync flushes the metadata from creation or removal of objects since the last Sync.
 func (p *provider) Sync() error {
-	if err := p.vfsSync(); err != nil {
+	if err := p.localSync(); err != nil {
 		return err
 	}
 	if err := p.sharedSync(); err != nil {
@@ -432,7 +409,7 @@ func (p *provider) LinkOrCopyFromLocal(
 			NoSyncOnClose: p.st.NoSyncOnClose,
 			BytesPerSync:  p.st.BytesPerSync,
 		})
-		dstPath := p.vfsPath(dstFileType, dstFileNum)
+		dstPath := p.localPath(dstFileType, dstFileNum)
 		if err := vfs.LinkOrCopy(fs, srcFilePath, dstPath); err != nil {
 			return objstorage.ObjectMetadata{}, err
 		}
@@ -505,7 +482,7 @@ func (p *provider) Lookup(
 // Path is part of the objstorage.Provider interface.
 func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 	if !meta.IsRemote() {
-		return p.vfsPath(meta.FileType, meta.DiskFileNum)
+		return p.localPath(meta.FileType, meta.DiskFileNum)
 	}
 	return p.remotePath(meta)
 }
@@ -513,7 +490,7 @@ func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 // Size returns the size of the object.
 func (p *provider) Size(meta objstorage.ObjectMetadata) (int64, error) {
 	if !meta.IsRemote() {
-		return p.vfsSize(meta.FileType, meta.DiskFileNum)
+		return p.localSize(meta.FileType, meta.DiskFileNum)
 	}
 	return p.remoteSize(meta)
 }
@@ -587,7 +564,7 @@ func (p *provider) addMetadataLocked(meta objstorage.ObjectMetadata) {
 			p.mu.remote.addExternalObject(meta)
 		}
 	} else {
-		p.mu.localObjectsChangeCounter++
+		p.mu.local.objChangeCounter++
 	}
 }
 
@@ -606,7 +583,7 @@ func (p *provider) removeMetadata(fileNum base.DiskFileNum) {
 	if meta.IsRemote() {
 		p.mu.remote.catalogBatch.DeleteObject(fileNum)
 	} else {
-		p.mu.localObjectsChangeCounter++
+		p.mu.local.objChangeCounter++
 	}
 }
 
