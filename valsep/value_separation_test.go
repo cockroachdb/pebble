@@ -44,9 +44,9 @@ func TestValueSeparationPolicy(t *testing.T) {
 		})
 	)
 	ctx := context.Background()
-	objStore, err := objstorageprovider.Open(objstorageprovider.Settings{
-		FS: fs,
-	})
+	st := objstorageprovider.Settings{}
+	st.Local.FS = fs
+	objStore, err := objstorageprovider.Open(st)
 	require.NoError(t, err)
 
 	initRawWriter := func() {

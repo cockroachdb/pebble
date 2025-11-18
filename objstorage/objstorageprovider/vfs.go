@@ -28,7 +28,7 @@ type localLockedState struct {
 }
 
 func (p *provider) localPath(fileType base.FileType, fileNum base.DiskFileNum) string {
-	return base.MakeFilepath(p.st.FS, p.st.FSDirName, fileType, fileNum)
+	return base.MakeFilepath(p.st.Local.FS, p.st.Local.FSDirName, fileType, fileNum)
 }
 
 func (p *provider) localOpenForReading(
@@ -38,15 +38,15 @@ func (p *provider) localOpenForReading(
 	opts objstorage.OpenOptions,
 ) (objstorage.Readable, error) {
 	filename := p.localPath(fileType, fileNum)
-	file, err := p.st.FS.Open(filename, vfs.RandomReadsOption)
+	file, err := p.st.Local.FS.Open(filename, vfs.RandomReadsOption)
 	if err != nil {
 		if opts.MustExist && p.IsNotExistError(err) {
-			err = base.AddDetailsToNotExistError(p.st.FS, filename, err)
+			err = base.AddDetailsToNotExistError(p.st.Local.FS, filename, err)
 			err = base.MarkCorruptionError(err)
 		}
 		return nil, err
 	}
-	return newFileReadable(file, p.st.FS, p.st.Local.ReadaheadConfig, filename)
+	return newFileReadable(file, p.st.Local.FS, p.st.Local.ReadaheadConfig, filename)
 }
 
 func (p *provider) vfsCreate(
@@ -56,13 +56,13 @@ func (p *provider) vfsCreate(
 	category vfs.DiskWriteCategory,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
 	filename := p.localPath(fileType, fileNum)
-	file, err := p.st.FS.Create(filename, category)
+	file, err := p.st.Local.FS.Create(filename, category)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
 	file = vfs.NewSyncingFile(file, vfs.SyncingFileOptions{
-		NoSyncOnClose: p.st.NoSyncOnClose,
-		BytesPerSync:  p.st.BytesPerSync,
+		NoSyncOnClose: p.st.Local.NoSyncOnClose,
+		BytesPerSync:  p.st.Local.BytesPerSync,
 	})
 	meta := objstorage.ObjectMetadata{
 		DiskFileNum: fileNum,
@@ -72,19 +72,19 @@ func (p *provider) vfsCreate(
 }
 
 func (p *provider) localRemove(fileType base.FileType, fileNum base.DiskFileNum) error {
-	return p.st.FSCleaner.Clean(p.st.FS, fileType, p.localPath(fileType, fileNum))
+	return p.st.Local.FSCleaner.Clean(p.st.Local.FS, fileType, p.localPath(fileType, fileNum))
 }
 
 // localInit finds any local FS objects.
 func (p *provider) localInit() error {
-	fsDir, err := p.st.FS.OpenDir(p.st.FSDirName)
+	fsDir, err := p.st.Local.FS.OpenDir(p.st.Local.FSDirName)
 	if err != nil {
 		return err
 	}
 	p.local.fsDir = fsDir
-	listing := p.st.FSDirInitialListing
+	listing := p.st.Local.FSDirInitialListing
 	if listing == nil {
-		listing, err = p.st.FS.List(p.st.FSDirName)
+		listing, err = p.st.Local.FS.List(p.st.Local.FSDirName)
 		if err != nil {
 			_ = p.localClose()
 			return errors.Wrapf(err, "pebble: could not list store directory")
@@ -92,7 +92,7 @@ func (p *provider) localInit() error {
 	}
 
 	for _, filename := range listing {
-		fileType, fileNum, ok := base.ParseFilename(p.st.FS, filename)
+		fileType, fileNum, ok := base.ParseFilename(p.st.Local.FS, filename)
 		if ok {
 			switch fileType {
 			case base.FileTypeTable, base.FileTypeBlob:
@@ -140,7 +140,7 @@ func (p *provider) localSync() error {
 
 func (p *provider) localSize(fileType base.FileType, fileNum base.DiskFileNum) (int64, error) {
 	filename := p.localPath(fileType, fileNum)
-	stat, err := p.st.FS.Stat(filename)
+	stat, err := p.st.Local.FS.Stat(filename)
 	if err != nil {
 		return 0, err
 	}

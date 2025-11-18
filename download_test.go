@@ -207,8 +207,8 @@ func TestDownloadTask(t *testing.T) {
 func initDownloadTestProvider(t *testing.T) objstorage.Provider {
 	providerSettings := objstorageprovider.Settings{
 		Logger: base.DefaultLogger,
-		FS:     vfs.NewMem(),
 	}
+	providerSettings.Local.FS = vfs.NewMem()
 	providerSettings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": remote.NewInMem(),
 	})

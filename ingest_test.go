@@ -430,7 +430,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	opts.WithFSDefaults()
 	objSettings := objstorageprovider.DefaultSettings(opts.FS, "")
 	// Prevent the provider from listing the dir (where we may get an injected error).
-	objSettings.FSDirInitialListing = []string{}
+	objSettings.Local.FSDirInitialListing = []string{}
 	objProvider, err := objstorageprovider.Open(objSettings)
 	require.NoError(t, err)
 	defer objProvider.Close()
@@ -1025,14 +1025,14 @@ func TestSimpleIngestShared(t *testing.T) {
 	// Create an objProvider where we will fake-create some sstables that can
 	// then be shared back to the db instance.
 	providerSettings := objstorageprovider.Settings{
-		Logger:              opts2.Logger,
-		FS:                  opts2.FS,
-		FSDirName:           "",
-		FSDirInitialListing: nil,
-		FSCleaner:           opts2.Cleaner,
-		NoSyncOnClose:       opts2.NoSyncOnClose,
-		BytesPerSync:        opts2.BytesPerSync,
+		Logger: opts2.Logger,
 	}
+	providerSettings.Local.FS = opts2.FS
+	providerSettings.Local.FSDirName = ""
+	providerSettings.Local.FSDirInitialListing = nil
+	providerSettings.Local.FSCleaner = opts2.Cleaner
+	providerSettings.Local.NoSyncOnClose = opts2.NoSyncOnClose
+	providerSettings.Local.BytesPerSync = opts2.BytesPerSync
 	providerSettings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"": remote.NewInMem(),
 	})

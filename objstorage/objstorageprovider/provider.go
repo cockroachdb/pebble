@@ -57,37 +57,33 @@ type Settings struct {
 	Logger base.Logger
 
 	// Local filesystem configuration.
-	FS        vfs.FS
-	FSDirName string
-
-	// FSDirInitialListing is a listing of FSDirName at the time of calling Open.
-	//
-	// This is an optional optimization to avoid double listing on Open when the
-	// higher layer already has a listing. When nil, we obtain the listing on
-	// Open.
-	FSDirInitialListing []string
-
-	// Cleaner cleans obsolete files from the local filesystem.
-	//
-	// The default cleaner uses the DeleteCleaner.
-	FSCleaner base.Cleaner
-
-	// NoSyncOnClose decides whether the implementation will enforce a
-	// close-time synchronization (e.g., fdatasync() or sync_file_range())
-	// on files it writes to. Setting this to true removes the guarantee for a
-	// sync on close. Some implementations can still issue a non-blocking sync.
-	NoSyncOnClose bool
-
-	// BytesPerSync enables periodic syncing of files in order to smooth out
-	// writes to disk. This option does not provide any persistence guarantee, but
-	// is used to avoid latency spikes if the OS automatically decides to write
-	// out a large chunk of dirty filesystem buffers.
-	BytesPerSync int
-
-	// Local contains fields that are only relevant for files stored on the local
-	// filesystem.
 	Local struct {
-		// TODO(radu): move FSCleaner, NoSyncOnClose, BytesPerSync here.
+		FS        vfs.FS
+		FSDirName string
+
+		// FSDirInitialListing is a listing of FSDirName at the time of calling Open.
+		//
+		// This is an optional optimization to avoid double listing on Open when the
+		// higher layer already has a listing. When nil, we obtain the listing on
+		// Open.
+		FSDirInitialListing []string
+
+		// Cleaner cleans obsolete files from the local filesystem.
+		//
+		// The default cleaner uses the DeleteCleaner.
+		FSCleaner base.Cleaner
+
+		// NoSyncOnClose decides whether the implementation will enforce a
+		// close-time synchronization (e.g., fdatasync() or sync_file_range())
+		// on files it writes to. Setting this to true removes the guarantee for a
+		// sync on close. Some implementations can still issue a non-blocking sync.
+		NoSyncOnClose bool
+
+		// BytesPerSync enables periodic syncing of files in order to smooth out
+		// writes to disk. This option does not provide any persistence guarantee, but
+		// is used to avoid latency spikes if the OS automatically decides to write
+		// out a large chunk of dirty filesystem buffers.
+		BytesPerSync int
 
 		// ReadaheadConfig is used to retrieve the current readahead mode; it is
 		// consulted whenever a read handle is initialized.
@@ -198,14 +194,15 @@ const (
 // DefaultSettings initializes default settings (with no remote storage),
 // suitable for tests and tools.
 func DefaultSettings(fs vfs.FS, dirName string) Settings {
-	return Settings{
-		Logger:        base.DefaultLogger,
-		FS:            fs,
-		FSDirName:     dirName,
-		FSCleaner:     base.DeleteCleaner{},
-		NoSyncOnClose: false,
-		BytesPerSync:  512 * 1024, // 512KB
+	st := Settings{
+		Logger: base.DefaultLogger,
 	}
+	st.Local.FS = fs
+	st.Local.FSDirName = dirName
+	st.Local.FSCleaner = base.DeleteCleaner{}
+	st.Local.NoSyncOnClose = false
+	st.Local.BytesPerSync = 512 * 1024
+	return st
 }
 
 // Open creates the provider.
@@ -231,7 +228,7 @@ func open(settings Settings) (p *provider, _ error) {
 	p.mu.protectedObjects = make(map[base.DiskFileNum]int)
 
 	if objiotracing.Enabled {
-		p.tracer = objiotracing.Open(settings.FS, settings.FSDirName)
+		p.tracer = objiotracing.Open(settings.Local.FS, settings.Local.FSDirName)
 	}
 
 	// Initialize local subsystem and add local vfs.FS objects.
@@ -402,12 +399,12 @@ func (p *provider) LinkOrCopyFromLocal(
 	opts objstorage.CreateOptions,
 ) (objstorage.ObjectMetadata, error) {
 	shared := opts.PreferSharedStorage && p.st.Remote.CreateOnShared != remote.CreateOnSharedNone
-	if !shared && srcFS == p.st.FS {
+	if !shared && srcFS == p.st.Local.FS {
 		// Wrap the normal filesystem with one which wraps newly created files with
 		// vfs.NewSyncingFile.
-		fs := vfs.NewSyncingFS(p.st.FS, vfs.SyncingFileOptions{
-			NoSyncOnClose: p.st.NoSyncOnClose,
-			BytesPerSync:  p.st.BytesPerSync,
+		fs := vfs.NewSyncingFS(p.st.Local.FS, vfs.SyncingFileOptions{
+			NoSyncOnClose: p.st.Local.NoSyncOnClose,
+			BytesPerSync:  p.st.Local.BytesPerSync,
 		})
 		dstPath := p.localPath(dstFileType, dstFileNum)
 		if err := vfs.LinkOrCopy(fs, srcFilePath, dstPath); err != nil {

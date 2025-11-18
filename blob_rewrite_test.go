@@ -52,9 +52,9 @@ func TestBlobRewrite(t *testing.T) {
 		})
 	)
 	ctx := context.Background()
-	objStore, err := objstorageprovider.Open(objstorageprovider.Settings{
-		FS: fs,
-	})
+	var st objstorageprovider.Settings
+	st.Local.FS = fs
+	objStore, err := objstorageprovider.Open(st)
 	require.NoError(t, err)
 
 	initRawWriter := func() {
@@ -261,9 +261,9 @@ func TestBlobRewriteRandomized(t *testing.T) {
 	}()
 
 	ctx := context.Background()
-	objStore, err := objstorageprovider.Open(objstorageprovider.Settings{
-		FS: vfs.NewMem(),
-	})
+	var st objstorageprovider.Settings
+	st.Local.FS = vfs.NewMem()
+	objStore, err := objstorageprovider.Open(st)
 	require.NoError(t, err)
 
 	// Write the source blob file.

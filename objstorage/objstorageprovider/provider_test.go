@@ -101,7 +101,7 @@ func TestProvider(t *testing.T) {
 			case "close":
 				require.NoError(t, curProvider.Sync())
 				require.NoError(t, curProvider.Close())
-				delete(providers, curProvider.(*provider).st.FSDirName)
+				delete(providers, curProvider.(*provider).st.Local.FSDirName)
 				curProvider = nil
 
 				return log.String()
@@ -703,7 +703,7 @@ func TestParallelSync(t *testing.T) {
 			require.NoError(t, p.Close())
 
 			if !shared {
-				st.FS = crashFS
+				st.Local.FS = crashFS
 			}
 			p, err = Open(st)
 			require.NoError(t, err)
