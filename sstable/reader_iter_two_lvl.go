@@ -856,6 +856,43 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() *base.InternalKV {
 	return i.skipForward()
 }
 
+// FirstWithMeta moves the iterator to the first key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *twoLevelIterator[I, PI, D, PD]) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	kv := i.First()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	return kv, i.extractMetaFromCurrentPosition()
+}
+
+// NextWithMeta moves the iterator to the next key/value pair and returns
+// both the key/value and the associated metadata. This method is used by
+// compaction iterators that need access to tiering metadata without adding
+// overhead to the common iteration path.
+func (i *twoLevelIterator[I, PI, D, PD]) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	kv := i.Next()
+	if kv == nil {
+		return nil, base.KVMeta{}
+	}
+	meta := i.extractMetaFromCurrentPosition()
+	return kv, meta
+}
+
+// extractMetaFromCurrentPosition extracts KVMeta from the current iterator position.
+// This method delegates to the underlying second level iterator if it supports
+// the specialized methods.
+func (i *twoLevelIterator[I, PI, D, PD]) extractMetaFromCurrentPosition() base.KVMeta {
+	if PD(&i.secondLevel.data).IsDataInvalidated() {
+		return base.KVMeta{}
+	}
+
+	// The dataBlockIterator constraint guarantees that PD(&i.secondLevel.data) implements MetaDecoder
+	return PD(&i.secondLevel.data).DecodeMeta()
+}
+
 // Last implements internalIterator.Last, as documented in the pebble
 // package. Note that Last only checks the lower bound. It is up to the caller
 // to ensure that key is less than the upper bound (e.g. via a call to
