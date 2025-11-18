@@ -819,13 +819,13 @@ func runCompactCmd(t *testing.T, td *datadriven.TestData, d *DB) error {
 // ParseInternalKey, followed a colon and the corresponding value.
 //
 //	b#50,SET:foo
-//	c#20,DEL
+//	c#20,DEL:
 //
-// Range keys may be encoded by prefixing the line with `rangekey:`,
+// Range keys may be encoded by prefixing the line with `Span:`,
 // followed by the keyspan.Span string representation, as understood
 // by keyspan.ParseSpan.
 //
-//	rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
+//	Span:b-d:{(#5,RANGEKEYSET,@2,foo)}
 //
 // # Mechanics
 //
