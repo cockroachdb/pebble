@@ -421,10 +421,24 @@ func (i *keyspanIter) init(
 	}
 }
 
+func spanStr(s *keyspan.Span) string {
+	if s == nil || !s.Valid() {
+		return "<nil>"
+	}
+	return s.String()
+}
+
 // SeekGE moves the iterator to the first span covering a key greater than
 // or equal to the given key. This is equivalent to seeking to the first
 // span with an end key greater than the given key.
-func (i *keyspanIter) SeekGE(key []byte) (*keyspan.Span, error) {
+func (i *keyspanIter) SeekGE(key []byte) (span *keyspan.Span, _ error) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "SeekGE(%q)", key)
+		defer func() {
+			op.Finishf("= %s", spanStr(span))
+		}()
+	}
+
 	// Seek among the boundary keys.
 	j, eq := i.r.searchBoundaryKeysWithSyntheticPrefix(i.cmp, key, i.transforms.SyntheticPrefix())
 	// If the found boundary key does not exactly equal the given key, it's
@@ -439,7 +453,13 @@ func (i *keyspanIter) SeekGE(key []byte) (*keyspan.Span, error) {
 // SeekLT moves the iterator to the last span covering a key less than the
 // given key. This is equivalent to seeking to the last span with a start
 // key less than the given key.
-func (i *keyspanIter) SeekLT(key []byte) (*keyspan.Span, error) {
+func (i *keyspanIter) SeekLT(key []byte) (span *keyspan.Span, _ error) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "SeekLT(%q)", key)
+		defer func() {
+			op.Finishf("= %s", spanStr(span))
+		}()
+	}
 	j, _ := i.r.searchBoundaryKeysWithSyntheticPrefix(i.cmp, key, i.transforms.SyntheticPrefix())
 	// searchBoundaryKeys seeks to the first boundary key greater than or equal
 	// to key. The span beginning at the boundary key j necessarily does NOT
@@ -455,22 +475,46 @@ func (i *keyspanIter) SeekLT(key []byte) (*keyspan.Span, error) {
 }
 
 // First moves the iterator to the first span.
-func (i *keyspanIter) First() (*keyspan.Span, error) {
+func (i *keyspanIter) First() (span *keyspan.Span, _ error) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "First()")
+		defer func() {
+			op.Finishf("= %s", spanStr(span))
+		}()
+	}
 	return i.gatherKeysForward(0), nil
 }
 
 // Last moves the iterator to the last span.
-func (i *keyspanIter) Last() (*keyspan.Span, error) {
+func (i *keyspanIter) Last() (span *keyspan.Span, _ error) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "Last()")
+		defer func() {
+			op.Finishf("= %s", spanStr(span))
+		}()
+	}
 	return i.gatherKeysBackward(int(i.r.boundaryKeysCount) - 2), nil
 }
 
 // Next moves the iterator to the next span.
-func (i *keyspanIter) Next() (*keyspan.Span, error) {
+func (i *keyspanIter) Next() (span *keyspan.Span, _ error) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "Next()")
+		defer func() {
+			op.Finishf("= %s", spanStr(span))
+		}()
+	}
 	return i.gatherKeysForward(i.startBoundIndex + 1), nil
 }
 
 // Prev moves the iterator to the previous span.
-func (i *keyspanIter) Prev() (*keyspan.Span, error) {
+func (i *keyspanIter) Prev() (span *keyspan.Span, _ error) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "Prev()")
+		defer func() {
+			op.Finishf("= %s", spanStr(span))
+		}()
+	}
 	return i.gatherKeysBackward(max(i.startBoundIndex-1, -1)), nil
 }
 
@@ -610,5 +654,5 @@ func (i *keyspanIter) WrapChildren(keyspan.WrapFn) {}
 
 // TreeStepsNode is part of the FragmentIterator interface.
 func (i *keyspanIter) TreeStepsNode() treesteps.NodeInfo {
-	return treesteps.NodeInfof(i, "%T(%p)", i, i)
+	return treesteps.NodeInfof(i, "colblk.keyspanIter")
 }
