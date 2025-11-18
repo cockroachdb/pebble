@@ -63,7 +63,7 @@ func TestProvider(t *testing.T) {
 			log.Reset()
 			switch d.Cmd {
 			case "open":
-				var fsDir string
+				var fsDir, coldDir string
 				var creatorID objstorage.CreatorID
 				d.CmdArgs = slices.DeleteFunc(d.CmdArgs, func(arg datadriven.CmdArg) bool {
 					switch arg.Key {
@@ -72,19 +72,29 @@ func TestProvider(t *testing.T) {
 						arg.Scan(t, 0, &id)
 						creatorID = objstorage.CreatorID(id)
 						return true
+					case "cold-tier":
+						coldDir = arg.SingleVal(t)
+						return true
 					}
 					return false
 				})
 				scanArgs("<fs-dir> [creator-id=X]", &fsDir)
 
+				require.NoError(t, fs.MkdirAll(fsDir, 0755))
 				st := DefaultSettings(fs, fsDir)
+				if coldDir != "" {
+					st.Local.ColdTier.FS = fs
+					st.Local.ColdTier.FSDirName = coldDir
+					require.NoError(t, fs.MkdirAll(coldDir, 0755))
+				}
 				if creatorID != 0 {
 					st.Remote.StorageFactory = sharedFactory
 					st.Remote.CreateOnShared = remote.CreateOnSharedAll
 					st.Remote.CreateOnSharedLocator = ""
 				}
 				st.Local.ReadaheadConfig = readaheadConfig
-				require.NoError(t, fs.MkdirAll(fsDir, 0755))
+				if coldDir != "" {
+				}
 				p, err := Open(st)
 				require.NoError(t, err)
 				if creatorID != 0 {
@@ -122,18 +132,24 @@ func TestProvider(t *testing.T) {
 					SharedCleanupMethod: objstorage.SharedRefTracking,
 				}
 				ft := base.FileTypeTable
-				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "file-type" {
-					ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
-					d.CmdArgs = d.CmdArgs[1:]
-				}
-				if len(d.CmdArgs) == 5 && d.CmdArgs[4].Key == "no-ref-tracking" {
-					d.CmdArgs = d.CmdArgs[:4]
-					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
-				}
+				d.CmdArgs = slices.DeleteFunc(d.CmdArgs, func(arg datadriven.CmdArg) bool {
+					switch arg.Key {
+					case "file-type":
+						ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
+						return true
+					case "no-ref-tracking":
+						opts.SharedCleanupMethod = objstorage.SharedNoCleanup
+						return true
+					case "cold-tier":
+						opts.UseColdTier = true
+						return true
+					}
+					return false
+				})
 				var fileNum base.DiskFileNum
 				var typ string
 				var salt, size int
-				scanArgs("[file-type=sstable|blob] <file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
+				scanArgs("[file-type=sstable|blob] <file-num> <local|shared> <salt> <size> [no-ref-tracking] [cold-tier]", &fileNum, &typ, &salt, &size)
 				switch typ {
 				case "local":
 				case "shared":

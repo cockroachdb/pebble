@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
-	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
@@ -60,6 +59,12 @@ type Settings struct {
 	Local struct {
 		FS        vfs.FS
 		FSDirName string
+
+		// ColdTier is set only when a secondary "cold" storage tier is to be used.
+		ColdTier struct {
+			FS        vfs.FS
+			FSDirName string
+		}
 
 		// FSDirInitialListing is a listing of FSDirName at the time of calling Open.
 		//
@@ -275,7 +280,7 @@ func (p *provider) OpenForReading(
 
 	var r objstorage.Readable
 	if !meta.IsRemote() {
-		r, err = p.localOpenForReading(ctx, fileType, fileNum, opts)
+		r, err = p.localOpenForReading(ctx, fileType, fileNum, meta.Local.Tier, opts)
 	} else {
 		r, err = p.remoteOpenForReading(ctx, meta, opts)
 		if err != nil && p.isNotExistError(meta, err) {
@@ -312,7 +317,11 @@ func (p *provider) Create(
 		} else {
 			category = vfs.WriteCategoryUnspecified
 		}
-		w, meta, err = p.vfsCreate(ctx, fileType, fileNum, category)
+		tier := base.HotTier
+		if opts.UseColdTier && p.st.Local.ColdTier.FS != nil {
+			tier = base.ColdTier
+		}
+		w, meta, err = p.vfsCreate(ctx, fileType, fileNum, tier, category)
 	}
 	if err != nil {
 		err = errors.Wrapf(err, "creating object %s", fileNum)
@@ -339,7 +348,7 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 	}
 
 	if !meta.IsRemote() {
-		err = p.localRemove(fileType, fileNum)
+		err = p.localRemove(fileType, fileNum, meta.Local.Tier)
 	} else {
 		// TODO(radu): implement remote object removal (i.e. deref).
 		err = p.sharedUnref(meta)
@@ -400,13 +409,13 @@ func (p *provider) LinkOrCopyFromLocal(
 ) (objstorage.ObjectMetadata, error) {
 	shared := opts.PreferSharedStorage && p.st.Remote.CreateOnShared != remote.CreateOnSharedNone
 	if !shared && srcFS == p.st.Local.FS {
+		fs, dstPath := p.localPath(dstFileType, dstFileNum, base.HotTier)
 		// Wrap the normal filesystem with one which wraps newly created files with
 		// vfs.NewSyncingFile.
-		fs := vfs.NewSyncingFS(p.st.Local.FS, vfs.SyncingFileOptions{
+		fs = vfs.NewSyncingFS(fs, vfs.SyncingFileOptions{
 			NoSyncOnClose: p.st.Local.NoSyncOnClose,
 			BytesPerSync:  p.st.Local.BytesPerSync,
 		})
-		dstPath := p.localPath(dstFileType, dstFileNum)
 		if err := vfs.LinkOrCopy(fs, srcFilePath, dstPath); err != nil {
 			return objstorage.ObjectMetadata{}, err
 		}
@@ -479,7 +488,8 @@ func (p *provider) Lookup(
 // Path is part of the objstorage.Provider interface.
 func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 	if !meta.IsRemote() {
-		return p.localPath(meta.FileType, meta.DiskFileNum)
+		_, path := p.localPath(meta.FileType, meta.DiskFileNum, meta.Local.Tier)
+		return path
 	}
 	return p.remotePath(meta)
 }
@@ -487,7 +497,7 @@ func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 // Size returns the size of the object.
 func (p *provider) Size(meta objstorage.ObjectMetadata) (int64, error) {
 	if !meta.IsRemote() {
-		return p.localSize(meta.FileType, meta.DiskFileNum)
+		return p.localSize(meta.FileType, meta.DiskFileNum, meta.Local.Tier)
 	}
 	return p.remoteSize(meta)
 }
@@ -548,20 +558,9 @@ func (p *provider) addMetadataLocked(meta objstorage.ObjectMetadata) {
 	}
 	p.mu.knownObjects[meta.DiskFileNum] = meta
 	if meta.IsRemote() {
-		p.mu.remote.catalogBatch.AddObject(remoteobjcat.RemoteObjectMetadata{
-			FileNum:          meta.DiskFileNum,
-			FileType:         meta.FileType,
-			CreatorID:        meta.Remote.CreatorID,
-			CreatorFileNum:   meta.Remote.CreatorFileNum,
-			Locator:          meta.Remote.Locator,
-			CleanupMethod:    meta.Remote.CleanupMethod,
-			CustomObjectName: meta.Remote.CustomObjectName,
-		})
-		if meta.IsExternal() {
-			p.mu.remote.addExternalObject(meta)
-		}
+		p.mu.remote.addObject(meta)
 	} else {
-		p.mu.local.objChangeCounter++
+		p.mu.local.objChanged(meta)
 	}
 }
 
@@ -574,13 +573,10 @@ func (p *provider) removeMetadata(fileNum base.DiskFileNum) {
 		return
 	}
 	delete(p.mu.knownObjects, fileNum)
-	if meta.IsExternal() {
-		p.mu.remote.removeExternalObject(meta)
-	}
 	if meta.IsRemote() {
-		p.mu.remote.catalogBatch.DeleteObject(fileNum)
+		p.mu.remote.removeObject(meta)
 	} else {
-		p.mu.local.objChangeCounter++
+		p.mu.local.objChanged(meta)
 	}
 }
 

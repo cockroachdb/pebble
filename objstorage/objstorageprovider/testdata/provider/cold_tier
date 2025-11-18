@@ -1,0 +1,84 @@
+open p1 cold-tier=cold1
+----
+<local fs> mkdir-all: p1 0755
+<local fs> mkdir-all: cold1 0755
+<local fs> open-dir: p1
+<local fs> open-dir: cold1
+
+# Create a cold file.
+create file-type=blob 1 local 1 1024 cold-tier
+----
+<local fs> create: cold1/000001.blob
+<local fs> sync-data: cold1/000001.blob
+<local fs> close: cold1/000001.blob
+
+read file-type=blob 1
+0 500
+512 1024
+----
+<local fs> open: cold1/000001.blob (options: *vfs.randomReadsOption)
+size: 1024
+<local fs> read-at(0, 500): cold1/000001.blob
+0 500: ok (salt 1)
+<local fs> read-at(512, 1024): cold1/000001.blob
+512 1024: EOF
+<local fs> close: cold1/000001.blob
+
+create 2 local 2 1024
+----
+<local fs> create: p1/000002.sst
+<local fs> sync-data: p1/000002.sst
+<local fs> close: p1/000002.sst
+
+read 2
+0 500
+512 1024
+----
+<local fs> open: p1/000002.sst (options: *vfs.randomReadsOption)
+size: 1024
+<local fs> read-at(0, 500): p1/000002.sst
+0 500: ok (salt 2)
+<local fs> read-at(512, 1024): p1/000002.sst
+512 1024: EOF
+<local fs> close: p1/000002.sst
+
+list
+----
+000001 -> cold1/000001.blob
+000002 -> p1/000002.sst
+
+remove file-type=blob 1
+----
+<local fs> remove: cold1/000001.blob
+
+remove 2
+----
+<local fs> remove: p1/000002.sst
+
+# Verify that we can request cold tier even if it is not configured.
+open p2
+----
+<local fs> mkdir-all: p2 0755
+<local fs> open-dir: p2
+
+create file-type=blob 3 local 3 1024 cold-tier
+----
+<local fs> create: p2/000003.blob
+<local fs> sync-data: p2/000003.blob
+<local fs> close: p2/000003.blob
+
+read file-type=blob 3
+0 500
+512 1024
+----
+<local fs> open: p2/000003.blob (options: *vfs.randomReadsOption)
+size: 1024
+<local fs> read-at(0, 500): p2/000003.blob
+0 500: ok (salt 3)
+<local fs> read-at(512, 1024): p2/000003.blob
+512 1024: EOF
+<local fs> close: p2/000003.blob
+
+remove file-type=blob 3
+----
+<local fs> remove: p2/000003.blob

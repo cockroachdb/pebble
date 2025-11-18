@@ -15,30 +15,52 @@ import (
 
 type localSubsystem struct {
 	fsDir vfs.File
+
+	coldTier struct {
+		fsDir vfs.File
+	}
 }
 
 type localLockedState struct {
-	// objChangeCounter is incremented whenever non-remote objects are created.
-	// The purpose of this counter is to avoid syncing the local filesystem when
-	// only remote objects are changed.
-	objChangeCounter uint64
-	// objChangeCounterLastSync is the value of objChangeCounter at the time the
-	// last completed sync was launched.
-	objChangeCounterLastSync uint64
+	hotTier, coldTier struct {
+		// objChangeCounter is incremented whenever objects are created.
+		// The purpose of this counter is to avoid syncing the local filesystem when
+		// only remote objects are changed.
+		objChangeCounter uint64
+		// objChangeCounterLastSync is the value of objChangeCounter at the time the
+		// last completed sync was launched.
+		objChangeCounterLastSync uint64
+	}
 }
 
-func (p *provider) localPath(fileType base.FileType, fileNum base.DiskFileNum) string {
-	return base.MakeFilepath(p.st.Local.FS, p.st.Local.FSDirName, fileType, fileNum)
+// objChanged is called after an object was created or deleted. It records the
+// need to sync the relevant directory.
+func (ls *localLockedState) objChanged(meta objstorage.ObjectMetadata) {
+	if meta.Local.Tier == base.HotTier {
+		ls.hotTier.objChangeCounter++
+	} else {
+		ls.coldTier.objChangeCounter++
+	}
+}
+
+func (p *provider) localPath(
+	fileType base.FileType, fileNum base.DiskFileNum, tier base.StorageTier,
+) (vfs.FS, string) {
+	if coldFS := p.st.Local.ColdTier.FS; tier == base.ColdTier && coldFS != nil {
+		return coldFS, base.MakeFilepath(coldFS, p.st.Local.ColdTier.FSDirName, fileType, fileNum)
+	}
+	return p.st.Local.FS, base.MakeFilepath(p.st.Local.FS, p.st.Local.FSDirName, fileType, fileNum)
 }
 
 func (p *provider) localOpenForReading(
 	ctx context.Context,
 	fileType base.FileType,
 	fileNum base.DiskFileNum,
+	tier base.StorageTier,
 	opts objstorage.OpenOptions,
 ) (objstorage.Readable, error) {
-	filename := p.localPath(fileType, fileNum)
-	file, err := p.st.Local.FS.Open(filename, vfs.RandomReadsOption)
+	fs, filename := p.localPath(fileType, fileNum, tier)
+	file, err := fs.Open(filename, vfs.RandomReadsOption)
 	if err != nil {
 		if opts.MustExist && p.IsNotExistError(err) {
 			err = base.AddDetailsToNotExistError(p.st.Local.FS, filename, err)
@@ -53,10 +75,11 @@ func (p *provider) vfsCreate(
 	_ context.Context,
 	fileType base.FileType,
 	fileNum base.DiskFileNum,
+	tier base.StorageTier,
 	category vfs.DiskWriteCategory,
 ) (objstorage.Writable, objstorage.ObjectMetadata, error) {
-	filename := p.localPath(fileType, fileNum)
-	file, err := p.st.Local.FS.Create(filename, category)
+	fs, filename := p.localPath(fileType, fileNum, tier)
+	file, err := fs.Create(filename, category)
 	if err != nil {
 		return nil, objstorage.ObjectMetadata{}, err
 	}
@@ -68,11 +91,15 @@ func (p *provider) vfsCreate(
 		DiskFileNum: fileNum,
 		FileType:    fileType,
 	}
+	meta.Local.Tier = tier
 	return newFileBufferedWritable(file), meta, nil
 }
 
-func (p *provider) localRemove(fileType base.FileType, fileNum base.DiskFileNum) error {
-	return p.st.Local.FSCleaner.Clean(p.st.Local.FS, fileType, p.localPath(fileType, fileNum))
+func (p *provider) localRemove(
+	fileType base.FileType, fileNum base.DiskFileNum, tier base.StorageTier,
+) error {
+	fs, path := p.localPath(fileType, fileNum, tier)
+	return p.st.Local.FSCleaner.Clean(fs, fileType, path)
 }
 
 // localInit finds any local FS objects.
@@ -92,15 +119,47 @@ func (p *provider) localInit() error {
 	}
 
 	for _, filename := range listing {
-		fileType, fileNum, ok := base.ParseFilename(p.st.Local.FS, filename)
-		if ok {
+		if fileType, fileNum, ok := base.ParseFilename(p.st.Local.FS, filename); ok {
 			switch fileType {
 			case base.FileTypeTable, base.FileTypeBlob:
 				o := objstorage.ObjectMetadata{
 					FileType:    fileType,
 					DiskFileNum: fileNum,
 				}
+				o.Local.Tier = base.HotTier
 				p.mu.knownObjects[o.DiskFileNum] = o
+			}
+		}
+	}
+
+	if p.st.Local.ColdTier.FS != nil {
+		fsDir, err := p.st.Local.ColdTier.FS.OpenDir(p.st.Local.ColdTier.FSDirName)
+		if err != nil {
+			_ = p.localClose()
+			return err
+		}
+		p.local.coldTier.fsDir = fsDir
+		listing, err := p.st.Local.ColdTier.FS.List(p.st.Local.ColdTier.FSDirName)
+		if err != nil {
+			_ = p.localClose()
+			return errors.Wrapf(err, "pebble: could not cold tier directory")
+		}
+
+		for _, filename := range listing {
+			if fileType, fileNum, ok := base.ParseFilename(p.st.Local.FS, filename); ok {
+				switch fileType {
+				case base.FileTypeTable, base.FileTypeBlob:
+					o := objstorage.ObjectMetadata{
+						FileType:    fileType,
+						DiskFileNum: fileNum,
+					}
+					o.Local.Tier = base.ColdTier
+					if _, exists := p.mu.knownObjects[o.DiskFileNum]; exists {
+						p.st.Logger.Errorf("object %s exists on both tiers; using hot tier version", o.DiskFileNum)
+					} else {
+						p.mu.knownObjects[o.DiskFileNum] = o
+					}
+				}
 			}
 		}
 	}
@@ -113,34 +172,52 @@ func (p *provider) localClose() error {
 		err = p.local.fsDir.Close()
 		p.local.fsDir = nil
 	}
+	if p.local.coldTier.fsDir != nil {
+		err = firstError(err, p.local.coldTier.fsDir.Close())
+		p.local.coldTier.fsDir = nil
+	}
 	return err
 }
 
 func (p *provider) localSync() error {
 	p.mu.Lock()
-	counterVal := p.mu.local.objChangeCounter
-	lastSynced := p.mu.local.objChangeCounterLastSync
+	hot := p.mu.local.hotTier
+	cold := p.mu.local.coldTier
 	p.mu.Unlock()
 
-	if lastSynced >= counterVal {
-		return nil
+	var hotSynced, coldSynced bool
+	if hot.objChangeCounter > hot.objChangeCounterLastSync {
+		if err := p.local.fsDir.Sync(); err != nil {
+			return err
+		}
+		hotSynced = true
 	}
-	if err := p.local.fsDir.Sync(); err != nil {
-		return err
+	if cold.objChangeCounter > cold.objChangeCounterLastSync {
+		if err := p.local.coldTier.fsDir.Sync(); err != nil {
+			return err
+		}
+		coldSynced = true
 	}
 
-	p.mu.Lock()
-	if p.mu.local.objChangeCounterLastSync < counterVal {
-		p.mu.local.objChangeCounterLastSync = counterVal
+	if hotSynced || coldSynced {
+		p.mu.Lock()
+		if hotSynced && p.mu.local.hotTier.objChangeCounterLastSync < hot.objChangeCounter {
+			p.mu.local.hotTier.objChangeCounterLastSync = hot.objChangeCounter
+		}
+		if coldSynced && p.mu.local.coldTier.objChangeCounterLastSync < cold.objChangeCounter {
+			p.mu.local.coldTier.objChangeCounterLastSync = cold.objChangeCounter
+		}
+		p.mu.Unlock()
 	}
-	p.mu.Unlock()
 
 	return nil
 }
 
-func (p *provider) localSize(fileType base.FileType, fileNum base.DiskFileNum) (int64, error) {
-	filename := p.localPath(fileType, fileNum)
-	stat, err := p.st.Local.FS.Stat(filename)
+func (p *provider) localSize(
+	fileType base.FileType, fileNum base.DiskFileNum, tier base.StorageTier,
+) (int64, error) {
+	fs, filename := p.localPath(fileType, fileNum, tier)
+	stat, err := fs.Stat(filename)
 	if err != nil {
 		return 0, err
 	}
