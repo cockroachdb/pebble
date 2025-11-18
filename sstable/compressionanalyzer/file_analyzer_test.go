@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -25,7 +26,7 @@ func TestFileAnalyzer(t *testing.T) {
 				if err != nil {
 					td.Fatalf(t, "%v", err)
 				}
-				readable, err := sstable.NewSimpleReadable(file)
+				readable, err := objstorage.NewSimpleReadable(file)
 				if err != nil {
 					td.Fatalf(t, "%v", err)
 				}

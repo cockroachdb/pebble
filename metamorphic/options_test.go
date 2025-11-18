@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/kr/pretty"
@@ -231,7 +232,7 @@ func TestBlockPropertiesParse(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			readable, err := sstable.NewSimpleReadable(f)
+			readable, err := objstorage.NewSimpleReadable(f)
 			if err != nil {
 				return err
 			}

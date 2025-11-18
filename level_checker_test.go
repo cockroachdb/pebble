@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -230,7 +231,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
-				readable, err := sstable.NewSimpleReadable(f)
+				readable, err := objstorage.NewSimpleReadable(f)
 				if err != nil {
 					return err.Error()
 				}

@@ -1359,7 +1359,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 	if err != nil {
 		return err.Error()
 	}
-	readable, err := sstable.NewSimpleReadable(f)
+	readable, err := objstorage.NewSimpleReadable(f)
 	if err != nil {
 		return err.Error()
 	}
@@ -1411,7 +1411,7 @@ func runLayoutCmd(t *testing.T, td *datadriven.TestData, d *DB) string {
 	if err != nil {
 		return err.Error()
 	}
-	readable, err := sstable.NewSimpleReadable(f)
+	readable, err := objstorage.NewSimpleReadable(f)
 	if err != nil {
 		return err.Error()
 	}

@@ -14,7 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -54,7 +54,7 @@ Print the layout for the given blob files.
 func (b *blobT) newReader(
 	f vfs.File, cacheHandle *cache.Handle, fn string,
 ) (*blob.FileReader, error) {
-	readable, err := sstable.NewSimpleReadable(f)
+	readable, err := objstorage.NewSimpleReadable(f)
 	if err != nil {
 		return nil, err
 	}

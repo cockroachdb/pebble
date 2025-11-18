@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/wal"
@@ -462,7 +463,7 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 				CacheHandle: ch,
 				FileNum:     fl.DiskFileNum,
 			}
-			readable, err := sstable.NewSimpleReadable(tf)
+			readable, err := objstorage.NewSimpleReadable(tf)
 			if err != nil {
 				return err
 			}

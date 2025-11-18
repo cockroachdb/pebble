@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -187,7 +188,7 @@ func setupBloomFilterData(b *testing.B) (*Reader, []string) {
 	f, err = mem.Open("bench")
 	require.NoError(b, err)
 
-	readable, err := NewSimpleReadable(f)
+	readable, err := objstorage.NewSimpleReadable(f)
 	require.NoError(b, err)
 
 	reader, err := NewReader(context.Background(), readable, ReaderOptions{

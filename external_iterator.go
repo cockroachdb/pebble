@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 )
@@ -33,7 +34,7 @@ import (
 // options, including block-property and table filters. NewExternalIter errors
 // if an incompatible option is set.
 func NewExternalIter(
-	o *Options, iterOpts *IterOptions, files [][]sstable.ReadableFile,
+	o *Options, iterOpts *IterOptions, files [][]objstorage.ReadableFile,
 ) (it *Iterator, err error) {
 	return NewExternalIterWithContext(context.Background(), o, iterOpts, files)
 }
@@ -41,7 +42,7 @@ func NewExternalIter(
 // NewExternalIterWithContext is like NewExternalIter, and additionally
 // accepts a context for tracing.
 func NewExternalIterWithContext(
-	ctx context.Context, o *Options, iterOpts *IterOptions, files [][]sstable.ReadableFile,
+	ctx context.Context, o *Options, iterOpts *IterOptions, files [][]objstorage.ReadableFile,
 ) (it *Iterator, err error) {
 	if iterOpts != nil {
 		if err := validateExternalIterOpts(iterOpts); err != nil {
@@ -297,11 +298,11 @@ func finishInitializingExternal(ctx context.Context, it *Iterator) error {
 }
 
 func openExternalTables(
-	ctx context.Context, files []sstable.ReadableFile, readerOpts sstable.ReaderOptions,
+	ctx context.Context, files []objstorage.ReadableFile, readerOpts sstable.ReaderOptions,
 ) (readers []*sstable.Reader, err error) {
 	readers = make([]*sstable.Reader, 0, len(files))
 	for i := range files {
-		readable, err := sstable.NewSimpleReadable(files[i])
+		readable, err := objstorage.NewSimpleReadable(files[i])
 		if err != nil {
 			return readers, err
 		}

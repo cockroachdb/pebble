@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/blockiter"
@@ -39,7 +40,7 @@ func TestCopySpan(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		readable, err := NewSimpleReadable(f)
+		readable, err := objstorage.NewSimpleReadable(f)
 		if err != nil {
 			return nil, err
 		}
@@ -160,7 +161,7 @@ func TestCopySpan(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to open sstable: %v", err)
 			}
-			readable2, err := NewSimpleReadable(f2)
+			readable2, err := objstorage.NewSimpleReadable(f2)
 			if err != nil {
 				return err.Error()
 			}

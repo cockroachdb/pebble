@@ -2972,7 +2972,7 @@ func TestIngestValidation(t *testing.T) {
 			defer func() { require.NoError(t, d.Close()) }()
 
 			corrupt := func(f vfs.File) {
-				readable, err := sstable.NewSimpleReadable(f)
+				readable, err := objstorage.NewSimpleReadable(f)
 				require.NoError(t, err)
 				// Compute the layout of the sstable in order to find the
 				// appropriate block locations to corrupt.

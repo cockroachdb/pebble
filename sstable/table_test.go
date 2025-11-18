@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
@@ -588,7 +589,7 @@ func TestFooterRoundTrip(t *testing.T) {
 							f, err = mem.Open("test")
 							require.NoError(t, err)
 
-							readable, err := NewSimpleReadable(f)
+							readable, err := objstorage.NewSimpleReadable(f)
 							require.NoError(t, err)
 
 							result, err := readFooter(context.Background(), readable, nil, base.NoopLoggerAndTracer{}, 1)
@@ -643,7 +644,7 @@ func TestReadFooter(t *testing.T) {
 			f, err = mem.Open("test")
 			require.NoError(t, err)
 
-			readable, err := NewSimpleReadable(f)
+			readable, err := objstorage.NewSimpleReadable(f)
 			require.NoError(t, err)
 
 			if _, err := readFooter(context.Background(), readable, nil, base.NoopLoggerAndTracer{}, 1); err == nil {

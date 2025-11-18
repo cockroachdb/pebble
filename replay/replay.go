@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -1062,7 +1063,7 @@ func loadFlushedSSTableKeys(
 			if err != nil {
 				return err
 			}
-			readable, err := sstable.NewSimpleReadable(f)
+			readable, err := objstorage.NewSimpleReadable(f)
 			if err != nil {
 				f.Close()
 				return err

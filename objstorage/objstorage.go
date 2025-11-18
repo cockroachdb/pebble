@@ -7,9 +7,11 @@ package objstorage
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
@@ -438,4 +440,60 @@ func Placement(provider Provider, fileType base.FileType, fileNum base.DiskFileN
 		return base.Local
 	}
 	return meta.Placement()
+}
+
+// ReadableFile describes the smallest subset of vfs.File that is required for
+// reading SSTs and blob files.
+type ReadableFile interface {
+	io.ReaderAt
+	io.Closer
+	Stat() (vfs.FileInfo, error)
+}
+
+// NewSimpleReadable wraps a ReadableFile in a objstorage.Readable
+// implementation (which does not support read-ahead)
+func NewSimpleReadable(r ReadableFile) (Readable, error) {
+	info, err := r.Stat()
+	if err != nil {
+		return nil, err
+	}
+	res := &SimpleReadable{
+		f:    r,
+		size: info.Size(),
+	}
+	res.rh = MakeNoopReadHandle(res)
+	return res, nil
+}
+
+// SimpleReadable wraps a ReadableFile to implement objstorage.Readable.
+type SimpleReadable struct {
+	f    ReadableFile
+	size int64
+	rh   NoopReadHandle
+}
+
+var _ Readable = (*SimpleReadable)(nil)
+
+// ReadAt is part of the objstorage.Readable interface.
+func (s *SimpleReadable) ReadAt(_ context.Context, p []byte, off int64) error {
+	n, err := s.f.ReadAt(p, off)
+	if invariants.Enabled && err == nil && n != len(p) {
+		panic("short read")
+	}
+	return err
+}
+
+// Close is part of the objstorage.Readable interface.
+func (s *SimpleReadable) Close() error {
+	return s.f.Close()
+}
+
+// Size is part of the objstorage.Readable interface.
+func (s *SimpleReadable) Size() int64 {
+	return s.size
+}
+
+// NewReadHandle is part of the objstorage.Readable interface.
+func (s *SimpleReadable) NewReadHandle(readBeforeSize ReadBeforeSize) ReadHandle {
+	return &s.rh
 }
