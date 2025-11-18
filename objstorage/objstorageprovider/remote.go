@@ -89,7 +89,7 @@ func (p *provider) remoteInit() error {
 	if p.st.Remote.StorageFactory == nil {
 		return nil
 	}
-	catalog, contents, err := remoteobjcat.Open(p.st.FS, p.st.FSDirName)
+	catalog, contents, err := remoteobjcat.Open(p.st.Local.FS, p.st.Local.FSDirName)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: could not open remote object catalog")
 	}
@@ -123,7 +123,7 @@ func (p *provider) remoteInit() error {
 		}
 
 		p.remote.cache, err = sharedcache.Open(
-			p.st.FS, p.st.Logger, p.st.FSDirName, blockSize, shardingBlockSize, p.st.Remote.CacheSizeBytes, numShards)
+			p.st.Local.FS, p.st.Logger, p.st.Local.FSDirName, blockSize, shardingBlockSize, p.st.Remote.CacheSizeBytes, numShards)
 		if err != nil {
 			return errors.Wrapf(err, "pebble: could not open remote object cache")
 		}

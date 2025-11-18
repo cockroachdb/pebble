@@ -62,7 +62,7 @@ func (rs *recoveredState) init(opts *Options, dirname string) error {
 
 	// Open the object storage provider.
 	providerSettings := opts.MakeObjStorageProviderSettings(dirname)
-	providerSettings.FSDirInitialListing = rs.ls
+	providerSettings.Local.FSDirInitialListing = rs.ls
 	rs.objProvider, err = objstorageprovider.Open(providerSettings)
 	if err != nil {
 		return errors.Wrapf(err, "pebble: database %q", dirname)

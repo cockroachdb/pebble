@@ -2735,13 +2735,13 @@ func (d *DB) makeBlobWriterOptions(level int) blob.FileWriterOptions {
 
 func (o *Options) MakeObjStorageProviderSettings(dirname string) objstorageprovider.Settings {
 	s := objstorageprovider.Settings{
-		Logger:        o.Logger,
-		FS:            o.FS,
-		FSDirName:     dirname,
-		FSCleaner:     o.Cleaner,
-		NoSyncOnClose: o.NoSyncOnClose,
-		BytesPerSync:  o.BytesPerSync,
+		Logger: o.Logger,
 	}
+	s.Local.FS = o.FS
+	s.Local.FSDirName = dirname
+	s.Local.FSCleaner = o.Cleaner
+	s.Local.NoSyncOnClose = o.NoSyncOnClose
+	s.Local.BytesPerSync = o.BytesPerSync
 	s.Local.ReadaheadConfig = o.Local.ReadaheadConfig
 	s.Remote.StorageFactory = o.Experimental.RemoteStorage
 	s.Remote.CreateOnShared = o.Experimental.CreateOnShared
