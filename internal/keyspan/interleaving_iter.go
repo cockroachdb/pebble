@@ -11,7 +11,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 // A SpanMask may be used to configure an interleaving iterator to skip point
@@ -1145,15 +1145,11 @@ func (i *InterleavingIter) SetContext(ctx context.Context) {
 	i.keyspanIter.SetContext(ctx)
 }
 
-// DebugTree is part of the InternalIterator interface.
-func (i *InterleavingIter) DebugTree(tp treeprinter.Node) {
-	n := tp.Childf("%T(%p)", i, i)
-	if i.pointIter != nil {
-		i.pointIter.DebugTree(n)
-	}
-	if i.keyspanIter != nil {
-		i.keyspanIter.DebugTree(n)
-	}
+// TreeStepsNode is part of the InternalIterator interface.
+func (i *InterleavingIter) TreeStepsNode() treesteps.NodeInfo {
+	info := treesteps.NodeInfof(i, "%T(%p)", i, i)
+	info.AddChildren(i.pointIter, i.keyspanIter)
+	return info
 }
 
 // Invalidate invalidates the interleaving iterator's current position, clearing

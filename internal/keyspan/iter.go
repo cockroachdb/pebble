@@ -8,7 +8,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
 // FragmentIterator defines an iterator interface over spans. The spans
@@ -75,7 +75,7 @@ type FragmentIterator interface {
 	// one provided by SetContext.
 	SetContext(ctx context.Context)
 
-	base.IteratorDebug
+	treesteps.Node
 }
 
 // SpanIterOptions is a subset of IterOptions that are necessary to instantiate
@@ -230,7 +230,7 @@ func (i *Iter) String() string {
 // WrapChildren implements FragmentIterator.
 func (i *Iter) WrapChildren(wrap WrapFn) {}
 
-// DebugTree is part of the FragmentIterator interface.
-func (i *Iter) DebugTree(tp treeprinter.Node) {
-	tp.Childf("%T(%p)", i, i)
+// TreeStepsNode is part of the FragmentIterator interface.
+func (i *Iter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(i, "%T(%p)", i, i)
 }

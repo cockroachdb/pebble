@@ -16,7 +16,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
-	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/stretchr/testify/require"
 )
 
@@ -284,7 +284,7 @@ func (i *pointIterator) SetBounds(lower, upper []byte) {
 }
 func (i *pointIterator) SetContext(_ context.Context) {}
 
-// DebugTree is part of the InternalIterator interface.
-func (i *pointIterator) DebugTree(tp treeprinter.Node) {
-	tp.Childf("%T(%p)", i, i)
+// TreeStepsNode is part of the InternalIterator interface.
+func (i *pointIterator) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(i, "%T(%p)", i, i)
 }

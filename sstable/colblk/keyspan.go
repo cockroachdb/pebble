@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/blockiter"
 )
@@ -607,7 +608,7 @@ func (i *keyspanIter) SetContext(context.Context) {}
 // WrapChildren implements keyspan.FragmentIterator.
 func (i *keyspanIter) WrapChildren(keyspan.WrapFn) {}
 
-// DebugTree is part of the FragmentIterator interface.
-func (i *keyspanIter) DebugTree(tp treeprinter.Node) {
-	tp.Childf("%T(%p)", i, i)
+// TreeStepsNode is part of the FragmentIterator interface.
+func (i *keyspanIter) TreeStepsNode() treesteps.NodeInfo {
+	return treesteps.NodeInfof(i, "%T(%p)", i, i)
 }
