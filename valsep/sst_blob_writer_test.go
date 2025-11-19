@@ -113,7 +113,6 @@ func runDataDriven(t *testing.T, file string) {
 					return fmt.Sprintf("error handling test KVs: %v", err)
 				}
 			}
-
 			if err := writer.Close(); err != nil {
 				return fmt.Sprintf("error closing writer: %v", err)
 			}

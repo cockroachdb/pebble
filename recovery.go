@@ -650,11 +650,12 @@ func (d *DB) replayIngestedFlushable(
 			return nil, errors.Wrap(err, "pebble: error when opening flushable ingest files")
 		}
 		// NB: ingestLoad1 will close readable.
-		meta[i], lastRangeKey, _, err = ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(),
-			readable, d.cacheHandle, &d.compressionCounters, base.PhysicalTableFileNum(n), disableRangeKeyChecks())
+		res, err := ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(), readable, d.cacheHandle, &d.compressionCounters, base.PhysicalTableFileNum(fileNums[i]), disableRangeKeyChecks(), nil, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")
 		}
+		meta[i] = res.meta
+		lastRangeKey = res.lastRangeKey
 	}
 	if lastRangeKey.Valid() && d.opts.Comparer.Split.HasSuffix(lastRangeKey.End) {
 		return nil, errors.AssertionFailedf("pebble: last ingest sstable has suffixed range key end %s",

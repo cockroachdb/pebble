@@ -1,0 +1,160 @@
+define auto-compactions=off value-separation=(enabled, min-size=4, max-ref-depth=3, rw-min-age=0, garbage-ratios=1.0:1.0)
+----
+
+write-table ext1 value-separation-min-size=4
+a#0,SET:ffff
+b#1,SET:foo
+Span: e-j:{(#11,RANGEKEYSET,@4,bbbbbbb)}
+----
+sst: ext1
+blobs: blob0
+
+write-table ext2 value-separation-min-size=10
+m#4,SET:mmmmm
+n#5,SET:n_value_separated
+o#6,SET:oooo
+----
+sst: ext2
+blobs: blob1
+
+
+ingest ext1
+----
+pebble: table with blob values must provide associated blob files
+
+# This should lead to partial ingestion failure. Ensure the cleanup is correct by trying again with correct blob files.
+ingest ext1=blob0 ext2=blob
+----
+open blob: file does not exist
+
+
+ingest ext1=blob0 ext2=blob1
+----
+L6:
+  000009:[a#10,SET-j#inf,RANGEKEYSET] seqnums:[10-10] points:[a#10,SET-b#10,SET] ranges:[e#10,RANGEKEYSET-j#inf,RANGEKEYSET] size:876 blobrefs:[(B000010: 4); depth:1]
+  000011:[m#11,SET-o#11,SET] seqnums:[11-11] points:[m#11,SET-o#11,SET] size:773 blobrefs:[(B000012: 17); depth:1]
+Blob files:
+  B000010 physical:{000010 size:[93 (93B)] vals:[4 (4B)]}
+  B000012 physical:{000012 size:[106 (106B)] vals:[17 (17B)]}
+
+
+
+write-table ext3 value-separation-min-size=4
+a#0,SET:ffff
+z#3,SET:baz
+----
+sst: ext3
+blobs: blob2
+
+
+ingest ext3=blob2
+----
+L0.0:
+  000013:[a#12,SET-z#12,SET] seqnums:[12-12] points:[a#12,SET-z#12,SET] size:760 blobrefs:[(B000014: 4); depth:1]
+L6:
+  000009:[a#10,SET-j#inf,RANGEKEYSET] seqnums:[10-10] points:[a#10,SET-b#10,SET] ranges:[e#10,RANGEKEYSET-j#inf,RANGEKEYSET] size:876 blobrefs:[(B000010: 4); depth:1]
+  000011:[m#11,SET-o#11,SET] seqnums:[11-11] points:[m#11,SET-o#11,SET] size:773 blobrefs:[(B000012: 17); depth:1]
+Blob files:
+  B000010 physical:{000010 size:[93 (93B)] vals:[4 (4B)]}
+  B000012 physical:{000012 size:[106 (106B)] vals:[17 (17B)]}
+  B000014 physical:{000014 size:[93 (93B)] vals:[4 (4B)]}
+
+# Test excise.
+write-table ext4 value-separation-min-size=4
+m#0,SET:m_val_separated
+n#1,SET:n
+o#2,SET:o_val_separated
+----
+sst: ext4
+blobs: blob3
+
+
+write-table ext5 value-separation-min-size=4
+x#0,SET:x_val_separated
+y#1,SET:y
+----
+sst: ext5
+blobs: blob4
+
+
+ingest ext4=blob3 ext5=blob4 excise-span=m-o
+----
+L0.0:
+  000019(000013):[a#12,SET-a#12,SET] seqnums:[12-12] points:[a#12,SET-a#12,SET] size:100(760) blobrefs:[(B000014: 1/4); depth:1]
+  000015:[m#14,SET-o#14,SET] seqnums:[14-14] points:[m#14,SET-o#14,SET] size:769 blobrefs:[(B000016: 30); depth:1]
+  000020(000013):[z#12,SET-z#12,SET] seqnums:[12-12] points:[z#12,SET-z#12,SET] size:100(760) blobrefs:[(B000014: 1/4); depth:1]
+L6:
+  000009:[a#10,SET-j#inf,RANGEKEYSET] seqnums:[10-10] points:[a#10,SET-b#10,SET] ranges:[e#10,RANGEKEYSET-j#inf,RANGEKEYSET] size:876 blobrefs:[(B000010: 4); depth:1]
+  000021(000011):[o#11,SET-o#11,SET] seqnums:[11-11] points:[o#11,SET-o#11,SET] size:112(773) blobrefs:[(B000012: 2/17); depth:1]
+  000017:[x#15,SET-y#15,SET] seqnums:[15-15] points:[x#15,SET-y#15,SET] size:759 blobrefs:[(B000018: 15); depth:1]
+Blob files:
+  B000010 physical:{000010 size:[93 (93B)] vals:[4 (4B)]}
+  B000012 physical:{000012 size:[106 (106B)] vals:[17 (17B)]}
+  B000014 physical:{000014 size:[93 (93B)] vals:[4 (4B)]}
+  B000016 physical:{000016 size:[120 (120B)] vals:[30 (30B)]}
+  B000018 physical:{000018 size:[104 (104B)] vals:[15 (15B)]}
+
+# Excise with no overlap.
+write-table ext6 value-separation-min-size=4
+x#0,SET:x_value_long
+y#1,SET:y_value_long
+----
+sst: ext6
+blobs: blob5
+
+ingest ext6=blob5 excise-span=p-q
+----
+L0.0:
+  000019(000013):[a#12,SET-a#12,SET] seqnums:[12-12] points:[a#12,SET-a#12,SET] size:100(760) blobrefs:[(B000014: 1/4); depth:1]
+  000015:[m#14,SET-o#14,SET] seqnums:[14-14] points:[m#14,SET-o#14,SET] size:769 blobrefs:[(B000016: 30); depth:1]
+  000022:[x#17,SET-y#17,SET] seqnums:[17-17] points:[x#17,SET-y#17,SET] size:749 blobrefs:[(B000023: 24); depth:1]
+  000020(000013):[z#12,SET-z#12,SET] seqnums:[12-12] points:[z#12,SET-z#12,SET] size:100(760) blobrefs:[(B000014: 1/4); depth:1]
+L6:
+  000009:[a#10,SET-j#inf,RANGEKEYSET] seqnums:[10-10] points:[a#10,SET-b#10,SET] ranges:[e#10,RANGEKEYSET-j#inf,RANGEKEYSET] size:876 blobrefs:[(B000010: 4); depth:1]
+  000021(000011):[o#11,SET-o#11,SET] seqnums:[11-11] points:[o#11,SET-o#11,SET] size:112(773) blobrefs:[(B000012: 2/17); depth:1]
+  000017:[x#15,SET-y#15,SET] seqnums:[15-15] points:[x#15,SET-y#15,SET] size:759 blobrefs:[(B000018: 15); depth:1]
+Blob files:
+  B000010 physical:{000010 size:[93 (93B)] vals:[4 (4B)]}
+  B000012 physical:{000012 size:[106 (106B)] vals:[17 (17B)]}
+  B000014 physical:{000014 size:[93 (93B)] vals:[4 (4B)]}
+  B000016 physical:{000016 size:[120 (120B)] vals:[30 (30B)]}
+  B000018 physical:{000018 size:[104 (104B)] vals:[15 (15B)]}
+  B000023 physical:{000023 size:[114 (114B)] vals:[24 (24B)]}
+
+
+# Ingest with no blob files.
+
+write-table ext7 value-separation-min-size=20
+Span: l-m:{(#11,RANGEKEYSET,@4,foo)}
+p#0,SET:p
+q#1,SET:q
+r#2,SET:r
+----
+sst: ext7
+blobs: 
+
+ingest ext7
+----
+L0.1:
+  000024:[l#18,RANGEKEYSET-r#18,SET] seqnums:[18-18] points:[p#18,SET-r#18,SET] ranges:[l#18,RANGEKEYSET-m#inf,RANGEKEYSET] size:782
+L0.0:
+  000019(000013):[a#12,SET-a#12,SET] seqnums:[12-12] points:[a#12,SET-a#12,SET] size:100(760) blobrefs:[(B000014: 1/4); depth:1]
+  000015:[m#14,SET-o#14,SET] seqnums:[14-14] points:[m#14,SET-o#14,SET] size:769 blobrefs:[(B000016: 30); depth:1]
+  000022:[x#17,SET-y#17,SET] seqnums:[17-17] points:[x#17,SET-y#17,SET] size:749 blobrefs:[(B000023: 24); depth:1]
+  000020(000013):[z#12,SET-z#12,SET] seqnums:[12-12] points:[z#12,SET-z#12,SET] size:100(760) blobrefs:[(B000014: 1/4); depth:1]
+L6:
+  000009:[a#10,SET-j#inf,RANGEKEYSET] seqnums:[10-10] points:[a#10,SET-b#10,SET] ranges:[e#10,RANGEKEYSET-j#inf,RANGEKEYSET] size:876 blobrefs:[(B000010: 4); depth:1]
+  000021(000011):[o#11,SET-o#11,SET] seqnums:[11-11] points:[o#11,SET-o#11,SET] size:112(773) blobrefs:[(B000012: 2/17); depth:1]
+  000017:[x#15,SET-y#15,SET] seqnums:[15-15] points:[x#15,SET-y#15,SET] size:759 blobrefs:[(B000018: 15); depth:1]
+Blob files:
+  B000010 physical:{000010 size:[93 (93B)] vals:[4 (4B)]}
+  B000012 physical:{000012 size:[106 (106B)] vals:[17 (17B)]}
+  B000014 physical:{000014 size:[93 (93B)] vals:[4 (4B)]}
+  B000016 physical:{000016 size:[120 (120B)] vals:[30 (30B)]}
+  B000018 physical:{000018 size:[104 (104B)] vals:[15 (15B)]}
+  B000023 physical:{000023 size:[114 (114B)] vals:[24 (24B)]}
+
+
+ingest file-dne
+----
+open file-dne: file does not exist
