@@ -1,0 +1,130 @@
+define auto-compactions=off value-separation=(enabled, min-size=4, max-ref-depth=3, rw-min-age=0, garbage-ratios=1.0:1.0)
+----
+
+write-table value-separation-min-size=4
+a#0,SET:ffff
+b#1,SET:foo
+Span: e-j:{(#11,RANGEKEYSET,@4,bbbbbbb)}
+----
+
+write-table value-separation-min-size=10
+m#4,SET:mmmmm
+n#5,SET:n_value_separated
+o#6,SET:oooo
+----
+
+
+ingest
+----
+L6:
+  000004:[a#10,SET-j#inf,RANGEKEYSET]
+  000006:[m#11,SET-o#11,SET]
+Blob files:
+  B000005 physical:{000005 size:[93 (93B)] vals:[4 (4B)]}
+  B000007 physical:{000007 size:[106 (106B)] vals:[17 (17B)]}
+
+
+write-table value-separation-min-size=4
+a#0,SET:ffff
+z#3,SET:baz
+----
+
+
+ingest
+----
+L0.0:
+  000008:[a#12,SET-z#12,SET]
+L6:
+  000004:[a#10,SET-j#inf,RANGEKEYSET]
+  000006:[m#11,SET-o#11,SET]
+Blob files:
+  B000005 physical:{000005 size:[93 (93B)] vals:[4 (4B)]}
+  B000007 physical:{000007 size:[106 (106B)] vals:[17 (17B)]}
+  B000009 physical:{000009 size:[93 (93B)] vals:[4 (4B)]}
+
+# Test excise.
+write-table value-separation-min-size=4
+m#0,SET:m_val_separated
+n#1,SET:n
+o#2,SET:o_val_separated
+----
+
+
+write-table value-separation-min-size=4
+x#0,SET:x_val_separated
+y#1,SET:y
+----
+
+
+ingest excise-span=m-o
+----
+L0.0:
+  000014(000008):[a#12,SET-a#12,SET]
+  000010:[m#14,SET-o#14,SET]
+  000015(000008):[z#12,SET-z#12,SET]
+L6:
+  000004:[a#10,SET-j#inf,RANGEKEYSET]
+  000016(000006):[o#11,SET-o#11,SET]
+  000012:[x#15,SET-y#15,SET]
+Blob files:
+  B000005 physical:{000005 size:[93 (93B)] vals:[4 (4B)]}
+  B000007 physical:{000007 size:[106 (106B)] vals:[17 (17B)]}
+  B000009 physical:{000009 size:[93 (93B)] vals:[4 (4B)]}
+  B000011 physical:{000011 size:[120 (120B)] vals:[30 (30B)]}
+  B000013 physical:{000013 size:[104 (104B)] vals:[15 (15B)]}
+
+# Excise with no overlap.
+write-table value-separation-min-size=4
+x#0,SET:x_value_long
+y#1,SET:y_value_long
+----
+
+ingest excise-span=p-q
+----
+L0.0:
+  000014(000008):[a#12,SET-a#12,SET]
+  000010:[m#14,SET-o#14,SET]
+  000017:[x#17,SET-y#17,SET]
+  000015(000008):[z#12,SET-z#12,SET]
+L6:
+  000004:[a#10,SET-j#inf,RANGEKEYSET]
+  000016(000006):[o#11,SET-o#11,SET]
+  000012:[x#15,SET-y#15,SET]
+Blob files:
+  B000005 physical:{000005 size:[93 (93B)] vals:[4 (4B)]}
+  B000007 physical:{000007 size:[106 (106B)] vals:[17 (17B)]}
+  B000009 physical:{000009 size:[93 (93B)] vals:[4 (4B)]}
+  B000011 physical:{000011 size:[120 (120B)] vals:[30 (30B)]}
+  B000013 physical:{000013 size:[104 (104B)] vals:[15 (15B)]}
+  B000018 physical:{000018 size:[114 (114B)] vals:[24 (24B)]}
+
+
+# Ingest with no blob files.
+
+write-table value-separation-min-size=20
+Span: l-m:{(#11,RANGEKEYSET,@4,foo)}
+p#0,SET:p
+q#1,SET:q
+r#2,SET:r
+----
+
+ingest
+----
+L0.1:
+  000019:[l#18,RANGEKEYSET-r#18,SET]
+L0.0:
+  000014(000008):[a#12,SET-a#12,SET]
+  000010:[m#14,SET-o#14,SET]
+  000017:[x#17,SET-y#17,SET]
+  000015(000008):[z#12,SET-z#12,SET]
+L6:
+  000004:[a#10,SET-j#inf,RANGEKEYSET]
+  000016(000006):[o#11,SET-o#11,SET]
+  000012:[x#15,SET-y#15,SET]
+Blob files:
+  B000005 physical:{000005 size:[93 (93B)] vals:[4 (4B)]}
+  B000007 physical:{000007 size:[106 (106B)] vals:[17 (17B)]}
+  B000009 physical:{000009 size:[93 (93B)] vals:[4 (4B)]}
+  B000011 physical:{000011 size:[120 (120B)] vals:[30 (30B)]}
+  B000013 physical:{000013 size:[104 (104B)] vals:[15 (15B)]}
+  B000018 physical:{000018 size:[114 (114B)] vals:[24 (24B)]}
