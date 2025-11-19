@@ -376,3 +376,14 @@ func (cfr *cachedReader) Close() (err error) {
 	*cfr = cachedReader{}
 	return err
 }
+
+type TrivialValueFetcher struct{}
+
+var _ base.ValueFetcher = (*TrivialValueFetcher)(nil)
+
+func (t TrivialValueFetcher) FetchHandle(
+	ctx context.Context, handle []byte, blobFileID base.BlobFileID, valLen uint32, buf []byte,
+) (val []byte, callerOwned bool, err error) {
+	//TODO implement me
+	panic("implement me")
+}

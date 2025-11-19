@@ -66,4 +66,4 @@ build value-separation-min-size=4
 a#1,SET:aaaa
 a#2,SET:bb
 ----
-error putting key a: pebble: keys must be added in strictly increasing order: a#0,SET, a#0,SET
+error handling test KVs: pebble: keys must be added in strictly increasing order: a#0,SET, a#0,SET

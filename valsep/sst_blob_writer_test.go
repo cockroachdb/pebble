@@ -107,46 +107,9 @@ func runDataDriven(t *testing.T, file string) {
 			if err != nil {
 				return fmt.Sprintf("error parsing input: %v", err)
 			}
-
-			for _, kv := range kvs {
-				keyKind := kv.Key.Kind()
-				if kv.IsKeySpan() {
-					keyKind = kv.Span.Keys[0].Kind()
-				}
-				switch keyKind {
-				case sstable.InternalKeyKindSet, sstable.InternalKeyKindSetWithDelete:
-					if err := writer.Set(kv.Key.UserKey, kv.Value); err != nil {
-						return fmt.Sprintf("error putting key %s: %v", kv.Key.UserKey, err)
-					}
-				case sstable.InternalKeyKindDelete, sstable.InternalKeyKindDeleteSized:
-					if err := writer.Delete(kv.Key.UserKey); err != nil {
-						return fmt.Sprintf("error deleting key %s: %v", kv.Key.UserKey, err)
-					}
-				case base.InternalKeyKindRangeDelete:
-					if err := writer.DeleteRange(kv.Span.Start, kv.Span.End); err != nil {
-						return fmt.Sprintf("error deleting range %s-%s: %v", kv.Span.Start, kv.Span.End, err)
-					}
-				case sstable.InternalKeyKindMerge:
-					if err := writer.Merge(kv.Key.UserKey, kv.Value); err != nil {
-						return fmt.Sprintf("error merging key %s: %v", kv.Key.UserKey, err)
-					}
-				case base.InternalKeyKindRangeKeySet:
-					if err := writer.RangeKeySet(kv.Span.Start, kv.Span.End, nil, kv.Value); err != nil {
-						return fmt.Sprintf("error setting range key %s-%s: %v", kv.Span.Start, kv.Span.End, err)
-					}
-				case base.InternalKeyKindRangeKeyUnset:
-					if err := writer.RangeKeyUnset(kv.Span.Start, kv.Span.End, kv.Key.UserKey); err != nil {
-						return fmt.Sprintf("error unsetting range key %s-%s: %v", kv.Span.Start, kv.Span.End, err)
-					}
-				case base.InternalKeyKindRangeKeyDelete:
-					if err := writer.RangeKeyDelete(kv.Span.Start, kv.Span.End); err != nil {
-						return fmt.Sprintf("error deleting range key %s-%s: %v", kv.Span.Start, kv.Span.End, err)
-					}
-				default:
-					return fmt.Sprintf("unsupported key kind %v", kv.Key.Kind())
-				}
+			if err := HandleTestKVs(writer, kvs); err != nil {
+				return fmt.Sprintf("error handling test KVs: %v", err)
 			}
-
 			if err := writer.Close(); err != nil {
 				return fmt.Sprintf("error closing writer: %v", err)
 			}

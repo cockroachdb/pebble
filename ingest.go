@@ -23,7 +23,9 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 )
 
 func sstableKeyCompare(userCmp Compare, a, b InternalKey) int {
@@ -245,6 +247,13 @@ func (r *rangeKeyIngestValidator) Validate(nextFileSmallestKey *keyspan.Span) er
 	return nil
 }
 
+type ingestLocalResult struct {
+	meta           *manifest.TableMetadata
+	lastRangeKey   keyspan.Span
+	blockReadStats base.BlockReadStats
+	blobMetas      []manifest.BlobFileMetadata
+}
+
 // ingestLoad1 creates the TableMetadata for one file. This file will be owned
 // by this store.
 //
@@ -260,12 +269,10 @@ func ingestLoad1(
 	compressionCounters *block.CompressionCounters,
 	tableNum base.TableNum,
 	rangeKeyValidator rangeKeyIngestValidator,
-) (
-	meta *manifest.TableMetadata,
-	lastRangeKey keyspan.Span,
-	blockReadStats base.BlockReadStats,
-	err error,
-) {
+	blobPaths []string,
+	blobFileNums []base.DiskFileNum,
+) (res ingestLocalResult, err error) {
+	var meta *manifest.TableMetadata
 	o := opts.MakeReaderOptions()
 	o.CacheOpts = sstableinternal.CacheOptions{
 		CacheHandle: cacheHandle,
@@ -276,36 +283,31 @@ func ingestLoad1(
 	}
 	r, err := sstable.NewReader(ctx, readable, o)
 	if err != nil {
-		return nil, keyspan.Span{}, base.BlockReadStats{}, errors.CombineErrors(err, readable.Close())
+		return ingestLocalResult{}, errors.CombineErrors(err, readable.Close())
 	}
 	defer func() { _ = r.Close() }()
 
 	// Avoid ingesting tables with format versions this DB doesn't support.
 	tf, err := r.TableFormat()
 	if err != nil {
-		return nil, keyspan.Span{}, base.BlockReadStats{}, err
+		return ingestLocalResult{}, err
 	}
 	if tf < fmv.MinTableFormat() || tf > fmv.MaxTableFormat() {
-		return nil, keyspan.Span{}, base.BlockReadStats{}, errors.Newf(
+		return ingestLocalResult{}, errors.Newf(
 			"pebble: table format %s is not within range supported at DB format major version %d, (%s,%s)",
 			tf, fmv, fmv.MinTableFormat(), fmv.MaxTableFormat(),
 		)
 	}
 
-	if r.Attributes.Has(sstable.AttributeBlobValues) {
-		return nil, keyspan.Span{}, base.BlockReadStats{}, errors.Newf(
-			"pebble: ingesting tables with blob references is not supported")
-	}
-
 	props, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
 	if err != nil {
-		return nil, keyspan.Span{}, base.BlockReadStats{}, err
+		return ingestLocalResult{}, err
 	}
 
 	// If this is a columnar block, read key schema name from properties block.
 	if tf.BlockColumnar() {
 		if _, ok := opts.KeySchemas[props.KeySchemaName]; !ok {
-			return nil, keyspan.Span{}, base.BlockReadStats{}, errors.Newf(
+			return ingestLocalResult{}, errors.Newf(
 				"pebble: table uses key schema %q unknown to the database",
 				props.KeySchemaName)
 		}
@@ -316,6 +318,24 @@ func ingestLoad1(
 	meta.Size = max(uint64(readable.Size()), 1)
 	meta.CreationTime = time.Now().Unix()
 	meta.InitPhysicalBacking()
+
+	if r.Attributes.Has(sstable.AttributeBlobValues) {
+		if len(blobPaths) == 0 {
+			return ingestLocalResult{}, errors.Newf(
+				"pebble: table with blob values must provide associated blob files")
+		}
+		if len(blobPaths) != len(blobFileNums) {
+			return ingestLocalResult{},
+				errors.Errorf("pebble: number of blob paths (%d) does not match number of blob file nums (%d)",
+					len(blobPaths), len(blobFileNums))
+
+		}
+		// Build blob files and sst blob file references.
+		res.blobMetas, err = ingestBlobFilesForTable(ctx, opts, cacheHandle, meta, r, blobPaths, blobFileNums)
+		if err != nil {
+			return ingestLocalResult{}, err
+		}
+	}
 
 	// Avoid loading into the file cache for collecting stats if we
 	// don't need to. If there are no range deletions, we have all the
@@ -343,56 +363,61 @@ func ingestLoad1(
 			FilterBlockSizeLimit: sstable.AlwaysUseFilterBlock,
 			Env:                  env,
 			ReaderProvider:       sstable.MakeTrivialReaderProvider(r),
-			BlobContext:          sstable.AssertNoBlobHandles,
+			BlobContext: sstable.TableBlobContext{
+				// We should not need to fetch any blob values
+				// when determining key bounds.
+				ValueFetcher: base.NoBlobFetches,
+				References:   &meta.BlobReferences,
+			},
 		}
 		iter, err := r.NewPointIter(ctx, iterOpts)
 		if err != nil {
-			return nil, keyspan.Span{}, base.BlockReadStats{}, err
+			return ingestLocalResult{}, err
 		}
 		defer func() { _ = iter.Close() }()
 		var smallest InternalKey
 		if kv := iter.First(); kv != nil {
 			if err := ingestValidateKey(opts, &kv.K); err != nil {
-				return nil, keyspan.Span{}, base.BlockReadStats{}, err
+				return ingestLocalResult{}, err
 			}
 			smallest = kv.K.Clone()
 		}
 		if err := iter.Error(); err != nil {
-			return nil, keyspan.Span{}, base.BlockReadStats{}, err
+			return ingestLocalResult{}, err
 		}
 		if kv := iter.Last(); kv != nil {
 			if err := ingestValidateKey(opts, &kv.K); err != nil {
-				return nil, keyspan.Span{}, base.BlockReadStats{}, err
+				return ingestLocalResult{}, err
 			}
 			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, kv.K.Clone())
 		}
 		if err := iter.Error(); err != nil {
-			return nil, keyspan.Span{}, base.BlockReadStats{}, err
+			return ingestLocalResult{}, err
 		}
 	}
 
 	iter, err := r.NewRawRangeDelIter(ctx, sstable.NoFragmentTransforms, env)
 	if err != nil {
-		return nil, keyspan.Span{}, base.BlockReadStats{}, err
+		return ingestLocalResult{}, err
 	}
 	if iter != nil {
 		defer iter.Close()
 		var smallest InternalKey
 		if s, err := iter.First(); err != nil {
-			return nil, keyspan.Span{}, base.BlockReadStats{}, err
+			return ingestLocalResult{}, err
 		} else if s != nil {
 			key := s.SmallestKey()
 			if err := ingestValidateKey(opts, &key); err != nil {
-				return nil, keyspan.Span{}, base.BlockReadStats{}, err
+				return ingestLocalResult{}, err
 			}
 			smallest = key.Clone()
 		}
 		if s, err := iter.Last(); err != nil {
-			return nil, keyspan.Span{}, base.BlockReadStats{}, err
+			return ingestLocalResult{}, err
 		} else if s != nil {
 			k := s.SmallestKey()
 			if err := ingestValidateKey(opts, &k); err != nil {
-				return nil, keyspan.Span{}, base.BlockReadStats{}, err
+				return ingestLocalResult{}, err
 			}
 			largest := s.LargestKey().Clone()
 			meta.ExtendPointKeyBounds(opts.Comparer.Compare, smallest, largest)
@@ -403,63 +428,160 @@ func ingestLoad1(
 	{
 		iter, err := r.NewRawRangeKeyIter(ctx, sstable.NoFragmentTransforms, env)
 		if err != nil {
-			return nil, keyspan.Span{}, base.BlockReadStats{}, err
+			return ingestLocalResult{}, err
 		}
 		if iter != nil {
 			defer iter.Close()
 			var smallest InternalKey
 			if s, err := iter.First(); err != nil {
-				return nil, keyspan.Span{}, base.BlockReadStats{}, err
+				return ingestLocalResult{}, err
 			} else if s != nil {
 				key := s.SmallestKey()
 				if err := ingestValidateKey(opts, &key); err != nil {
-					return nil, keyspan.Span{}, base.BlockReadStats{}, err
+					return ingestLocalResult{}, err
 				}
 				smallest = key.Clone()
 				// Range keys need some additional validation as we need to ensure they
 				// defragment cleanly with the lastRangeKey from the previous file.
 				if err := rangeKeyValidator.Validate(s); err != nil {
-					return nil, keyspan.Span{}, base.BlockReadStats{}, err
+					return ingestLocalResult{}, err
 				}
 			}
-			lastRangeKey = keyspan.Span{}
+			res.lastRangeKey = keyspan.Span{}
 			if s, err := iter.Last(); err != nil {
-				return nil, keyspan.Span{}, base.BlockReadStats{}, err
+				return ingestLocalResult{}, err
 			} else if s != nil {
 				k := s.SmallestKey()
 				if err := ingestValidateKey(opts, &k); err != nil {
-					return nil, keyspan.Span{}, base.BlockReadStats{}, err
+					return ingestLocalResult{}, err
 				}
 				// As range keys are fragmented, the end key of the last range key in
 				// the table provides the upper bound for the table.
 				largest := s.LargestKey().Clone()
 				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, largest)
-				lastRangeKey = s.Clone()
+				res.lastRangeKey = s.Clone()
 			} else {
 				// s == nil.
 				if err := rangeKeyValidator.Validate(nil /* nextFileSmallestKey */); err != nil {
-					return nil, keyspan.Span{}, base.BlockReadStats{}, err
+					return ingestLocalResult{}, err
 				}
 			}
 		} else {
 			if err := rangeKeyValidator.Validate(nil /* nextFileSmallestKey */); err != nil {
-				return nil, keyspan.Span{}, base.BlockReadStats{}, err
+				return ingestLocalResult{}, err
 			}
-			lastRangeKey = keyspan.Span{}
+			res.lastRangeKey = keyspan.Span{}
 		}
 	}
 
 	if !meta.HasPointKeys && !meta.HasRangeKeys {
 		// Elide ingesting empty sstables.
-		return nil, keyspan.Span{}, base.BlockReadStats{}, nil
+		return ingestLocalResult{}, err
 	}
 
 	// Sanity check that the various bounds on the file were set consistently.
 	if err := meta.Validate(opts.Comparer.Compare, opts.Comparer.FormatKey); err != nil {
-		return nil, keyspan.Span{}, base.BlockReadStats{}, err
+		return ingestLocalResult{}, err
 	}
 
-	return meta, lastRangeKey, iterStats.TotalBlockReads(), nil
+	res.meta = meta
+	res.blockReadStats = iterStats.TotalBlockReads()
+
+	return res, nil
+}
+
+// ingestBlobFilesForTable creates table's blob references from the provided blob file paths.
+//
+// The following invariants are expected to hold:
+//   - The provided blob file paths are ordered by by their index in the table's blob references
+//     list. Blob handles use an index into this list to get the corresponding blob file for a
+//     value, so the order must be maintained when mapping to the table's blob references.
+//   - Each blob file is fully referenced by the table.
+func ingestBlobFilesForTable(
+	ctx context.Context,
+	opts *Options,
+	cacheHandle *cache.Handle,
+	tableMeta *manifest.TableMetadata,
+	tableReader *sstable.Reader,
+	blobPaths []string,
+	blobFileNums []base.DiskFileNum,
+) ([]manifest.BlobFileMetadata, error) {
+	if len(blobPaths) != len(blobFileNums) {
+		return nil, errors.Newf("pebble: number of blob paths (%d) does not match number of blob file nums (%d)",
+			len(blobPaths), len(blobFileNums))
+	}
+
+	// Read the the blob reference index block to determine the size of values
+	// stored in each blob file. This will be used to create the blob references
+	// in the table metadata.
+	h, err := tableReader.ReadBlobRefIndexBlock(ctx, block.ReadEnv{})
+	if err != nil {
+		return nil, err
+	}
+	defer h.Release()
+	if !h.Valid() {
+		return nil, errors.New("pebble: table has invalid blob reference index block")
+	}
+	var decoder colblk.ReferenceLivenessBlockDecoder
+	decoder.Init(h.BlockData())
+	if decoder.BlockDecoder().Rows() != len(blobPaths) {
+		return nil, errors.Newf("pebble: blob reference index has %d entries, but %d blob files were provided",
+			decoder.BlockDecoder().Rows(), len(blobPaths))
+	}
+
+	blobMetas := make([]manifest.BlobFileMetadata, len(blobPaths))
+	blobReferences := make(manifest.BlobReferences, len(blobPaths))
+	// Create the physical blob file metadata for each blob file.
+	readerOpts := opts.MakeReaderOptions()
+	readerOpts.CacheOpts.CacheHandle = cacheHandle
+	for i, p := range blobPaths {
+		blockEncodings := decoder.LivenessAtReference(i)
+		var valueSize uint64
+		for _, enc := range sstable.DecodeBlobRefLivenessEncoding(blockEncodings) {
+			valueSize += uint64(enc.ValuesSize)
+		}
+
+		// Opening a blob file reader will validate the blob file format. We do not
+		// perform any further validation on the blob file values here.
+		fileNum := blobFileNums[i]
+		f, err := opts.FS.Open(p)
+		if err != nil {
+			return nil, err
+		}
+		readable, err := objstorage.NewSimpleReadable(f)
+		if err != nil {
+			return nil, errors.CombineErrors(err, f.Close())
+		}
+
+		fileSize := readable.Size()
+		readerOpts.CacheOpts.FileNum = fileNum
+		if blobFile, err := blob.NewFileReader(ctx, readable, blob.FileReaderOptions{
+			ReaderOptions: readerOpts.ReaderOptions,
+		}); err != nil {
+			return nil, errors.CombineErrors(err, readable.Close())
+		} else {
+			// No further validation or metadata is necessary.
+			if err := blobFile.Close(); err != nil {
+				return nil, err
+			}
+		}
+
+		// Create the blob file references.
+		physical := &manifest.PhysicalBlobFile{
+			FileNum:      fileNum,
+			Size:         max(uint64(fileSize), 1),
+			ValueSize:    valueSize,
+			CreationTime: uint64(time.Now().Unix()),
+		}
+		blobMetas[i] = manifest.BlobFileMetadata{
+			FileID:   base.BlobFileID(fileNum),
+			Physical: physical,
+		}
+		blobReferences[i] = manifest.MakeBlobReference(base.BlobFileID(fileNum), valueSize, valueSize, physical)
+	}
+	tableMeta.BlobReferences = blobReferences
+	tableMeta.BlobReferenceDepth = manifest.BlobReferenceDepth(1)
+	return blobMetas, nil
 }
 
 type ingestLoadResult struct {
@@ -473,7 +595,8 @@ type ingestLoadResult struct {
 
 type ingestLocalMeta struct {
 	*manifest.TableMetadata
-	path string
+	blobFiles []manifest.BlobFileMetadata
+	local     LocalSST
 }
 
 type ingestSharedMeta struct {
@@ -491,7 +614,7 @@ type ingestExternalMeta struct {
 	usedExistingBacking bool
 }
 
-func (r *ingestLoadResult) fileCount() int {
+func (r *ingestLoadResult) sstCount() int {
 	return len(r.local) + len(r.shared) + len(r.external)
 }
 
@@ -509,7 +632,6 @@ func ingestLoad(
 	var result ingestLoadResult
 	result.local = make([]ingestLocalMeta, 0, len(local))
 	var lastRangeKey keyspan.Span
-	var blockReadStats base.BlockReadStats
 	// NB: we disable range key boundary assertions if we have shared or external files
 	// present in this ingestion. This is because a suffixed range key in a local file
 	// can possibly defragment with a suffixed range key in a shared or external file.
@@ -528,22 +650,27 @@ func ingestLoad(
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
-		var m *manifest.TableMetadata
 		rangeKeyValidator := disableRangeKeyChecks()
 		if !shouldDisableRangeKeyChecks {
 			rangeKeyValidator = validateSuffixedBoundaries(opts.Comparer, lastRangeKey)
 		}
 		tableNum := base.TableNum(getNextFileNum())
-		m, lastRangeKey, blockReadStats, err = ingestLoad1(ctx, opts, fmv, readable, cacheHandle, compressionCounters, tableNum, rangeKeyValidator)
+		blobFileNums := make([]base.DiskFileNum, len(p.BlobPaths))
+		for i := range p.BlobPaths {
+			blobFileNums[i] = getNextFileNum()
+		}
+		res, err := ingestLoad1(ctx, opts, fmv, readable, cacheHandle, compressionCounters, tableNum, rangeKeyValidator, p.BlobPaths, blobFileNums)
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
-		if m != nil {
+		lastRangeKey = res.lastRangeKey
+		if res.meta != nil {
 			result.local = append(result.local, ingestLocalMeta{
-				TableMetadata: m,
-				path:          p.Path,
+				TableMetadata: res.meta,
+				local:         p,
+				blobFiles:     res.blobMetas,
 			})
-			result.blockReadStats = blockReadStats
+			result.blockReadStats = res.blockReadStats
 		}
 	}
 
@@ -670,11 +797,32 @@ func ingestSortAndVerify(cmp Compare, lr ingestLoadResult, exciseSpan KeyRange) 
 	return nil
 }
 
-func ingestCleanup(objProvider objstorage.Provider, meta []ingestLocalMeta) error {
+// ingestCleanup removes any partially ingested files from objProvider.
+// Blob files for a table are linked before the table is. If we failed during
+// blob file creation, blobFiles contains the blob files that were successfully
+// linked for the last table being processed, for which we have yet to link the
+// table file itself.
+func ingestCleanup(
+	objProvider objstorage.Provider, meta []ingestLocalMeta, blobFiles []manifest.BlobFileMetadata,
+) error {
 	var firstErr error
+
+	// Remove blob files that were linked for the last table being processed.
+	for i := range blobFiles {
+		if err := objProvider.Remove(base.FileTypeBlob, blobFiles[i].Physical.FileNum); err != nil {
+			firstErr = firstError(firstErr, err)
+		}
+	}
+
+	// Remove all table and blob files that were linked for prior tables.
 	for i := range meta {
 		if err := objProvider.Remove(base.FileTypeTable, meta[i].TableBacking.DiskFileNum); err != nil {
 			firstErr = firstError(firstErr, err)
+		}
+		for _, bf := range meta[i].blobFiles {
+			if err := objProvider.Remove(base.FileTypeBlob, bf.Physical.FileNum); err != nil {
+				firstErr = firstError(firstErr, err)
+			}
 		}
 	}
 	return firstErr
@@ -690,12 +838,35 @@ func ingestLinkLocal(
 	localMetas []ingestLocalMeta,
 ) error {
 	for i := range localMetas {
+		// Link blob files first.
+		for blobInd, bf := range localMetas[i].blobFiles {
+			blobPaths := localMetas[i].local.BlobPaths
+			objMeta, err := objProvider.LinkOrCopyFromLocal(
+				ctx, opts.FS, blobPaths[blobInd], base.FileTypeBlob, bf.Physical.FileNum,
+				objstorage.CreateOptions{PreferSharedStorage: true},
+			)
+			if err != nil {
+				if err2 := ingestCleanup(objProvider, localMetas[:i], localMetas[i].blobFiles[:blobInd]); err2 != nil {
+					opts.Logger.Errorf("ingest cleanup failed: %v", err2)
+				}
+				return err
+			}
+			if opts.EventListener.BlobFileCreated != nil {
+				opts.EventListener.BlobFileCreated(BlobFileCreateInfo{
+					JobID:   int(jobID),
+					Reason:  "ingesting",
+					Path:    objProvider.Path(objMeta),
+					FileNum: objMeta.DiskFileNum,
+				})
+			}
+		}
+
 		objMeta, err := objProvider.LinkOrCopyFromLocal(
-			ctx, opts.FS, localMetas[i].path, base.FileTypeTable, localMetas[i].TableBacking.DiskFileNum,
+			ctx, opts.FS, localMetas[i].local.Path, base.FileTypeTable, localMetas[i].TableBacking.DiskFileNum,
 			objstorage.CreateOptions{PreferSharedStorage: true},
 		)
 		if err != nil {
-			if err2 := ingestCleanup(objProvider, localMetas[:i]); err2 != nil {
+			if err2 := ingestCleanup(objProvider, localMetas[:i], localMetas[i].blobFiles); err2 != nil {
 				opts.Logger.Errorf("ingest cleanup failed: %v", err2)
 			}
 			return err
@@ -1318,7 +1489,7 @@ func (d *DB) newIngestedFlushableEntry(
 ) (*flushableEntry, error) {
 	// If there's an excise being done atomically with the same ingest, we
 	// assign the lowest sequence number in the set of sequence numbers for this
-	// ingestion to the excise. Note that we've already allocated fileCount+1
+	// ingestion to the excise. Note that we've already allocated sstCount+1
 	// sequence numbers in this case.
 	//
 	// This mimics the behaviour in the non-flushable ingest case (see the callsite
@@ -1490,7 +1661,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		return IngestOperationStats{}, err
 	}
 
-	if loadResult.fileCount() == 0 && !args.ExciseSpan.Valid() {
+	if loadResult.sstCount() == 0 && !args.ExciseSpan.Valid() {
 		// All of the sstables to be ingested were empty. Nothing to do.
 		return IngestOperationStats{}, nil
 	}
@@ -1525,7 +1696,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	// metaFlushableOverlaps is a map indicating which of the ingested sstables
 	// overlap some table in the flushable queue. It's used to approximate
 	// ingest-into-L0 stats when using flushable ingests.
-	metaFlushableOverlaps := make(map[base.TableNum]bool, loadResult.fileCount())
+	metaFlushableOverlaps := make(map[base.TableNum]bool, loadResult.sstCount())
 	var mem *flushableEntry
 	var mut *memTable
 	// asFlushable indicates whether the sstable was ingested as a flushable.
@@ -1539,7 +1710,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		// Determine the set of bounds we care about for the purpose of checking
 		// for overlap among the flushables. If there's an excise span, we need
 		// to check for overlap with its bounds as well.
-		overlapBounds := make([]bounded, 0, loadResult.fileCount()+1)
+		overlapBounds := make([]bounded, 0, loadResult.sstCount()+1)
 		for _, m := range loadResult.local {
 			overlapBounds = append(overlapBounds, m.TableMetadata)
 		}
@@ -1646,6 +1817,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		// TODO(aaditya): We should make flushableIngest compatible with remote
 		// files.
 		hasRemoteFiles := len(shared) > 0 || len(external) > 0
+		hasBlobFiles := len(local) < local.TotalFiles()
 		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
 			// We require that either the queue of flushables is below the
 			// stop-writes threshold (note that this is typically a conservative
@@ -1661,7 +1833,8 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold ||
 				d.mu.log.manager.ElevateWriteStallThresholdForFailover()) &&
 			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles &&
-			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises)
+			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises) &&
+			!hasBlobFiles
 		if !canIngestFlushable {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
@@ -1714,7 +1887,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 
 		// If there's an excise being done atomically with the same ingest, we
 		// assign the lowest sequence number in the set of sequence numbers for this
-		// ingestion to the excise. Note that we've already allocated fileCount+1
+		// ingestion to the excise. Note that we've already allocated sstCount+1
 		// sequence numbers in this case.
 		if args.ExciseSpan.Valid() {
 			seqNum++ // the first seqNum is reserved for the excise.
@@ -1756,7 +1929,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	// the commit mutex which would prevent unrelated batches from writing their
 	// changes to the WAL and memtable. This will cause a bigger commit hiccup
 	// during ingestion.
-	seqNumCount := loadResult.fileCount()
+	seqNumCount := loadResult.sstCount()
 	if args.ExciseSpan.Valid() {
 		seqNumCount++
 	}
@@ -1772,16 +1945,21 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	}
 
 	if err != nil {
-		if err2 := ingestCleanup(d.objProvider, loadResult.local); err2 != nil {
+		if err2 := ingestCleanup(d.objProvider, loadResult.local, nil); err2 != nil {
 			d.opts.Logger.Errorf("ingest cleanup failed: %v", err2)
 		}
 	} else {
 		// Since we either created a hard link to the ingesting files, or copied
 		// them over, it is safe to remove the originals paths.
 		for i := range loadResult.local {
-			path := loadResult.local[i].path
+			path := loadResult.local[i].local.Path
 			if err2 := d.opts.FS.Remove(path); err2 != nil {
 				d.opts.Logger.Errorf("ingest failed to remove original file: %s", err2)
+			}
+			for _, bf := range loadResult.local[i].local.BlobPaths {
+				if err2 := d.opts.FS.Remove(bf); err2 != nil {
+					d.opts.Logger.Errorf("ingest failed to remove original blob file: %s", err2)
+				}
 			}
 		}
 	}
@@ -1790,7 +1968,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	// but a valid excise span is not so exceptional.
 
 	var stats IngestOperationStats
-	if loadResult.fileCount() > 0 {
+	if loadResult.sstCount() > 0 {
 		info := TableIngestInfo{
 			JobID:                  int(jobID),
 			Err:                    err,
@@ -1980,7 +2158,7 @@ func (d *DB) ingestApply(
 	defer d.mu.Unlock()
 
 	ve := &manifest.VersionEdit{
-		NewTables: make([]manifest.NewTableEntry, lr.fileCount()),
+		NewTables: make([]manifest.NewTableEntry, lr.sstCount()),
 	}
 	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {
 		ve.DeletedTables = map[manifest.DeletedTableEntry]*manifest.TableMetadata{}
@@ -2023,7 +2201,7 @@ func (d *DB) ingestApply(
 		// is possible for split files to appear twice in this list.
 		filesToSplit := make([]ingestSplitFile, 0)
 		checkCompactions := false
-		for i := 0; i < lr.fileCount(); i++ {
+		for i := 0; i < lr.sstCount(); i++ {
 			// Determine the lowest level in the LSM for which the sstable doesn't
 			// overlap any existing files in the level.
 			var m *manifest.TableMetadata
@@ -2033,6 +2211,7 @@ func (d *DB) ingestApply(
 			if i < len(lr.local) {
 				// local file.
 				m = lr.local[i].TableMetadata
+				ve.NewBlobFiles = append(ve.NewBlobFiles, lr.local[i].blobFiles...)
 			} else if (i - len(lr.local)) < len(lr.shared) {
 				// shared file.
 				isShared = true
