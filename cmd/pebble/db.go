@@ -83,6 +83,7 @@ func newPebbleDB(dir string) DB {
 		return pebble.ValueSeparationPolicy{
 			Enabled:                  true,
 			MinimumSize:              512,
+			MinimumMVCCGarbageSize:   32,
 			MaxBlobReferenceDepth:    10,
 			RewriteMinimumAge:        5 * time.Minute,
 			GarbageRatioLowPriority:  0.10, // 10% garbage
