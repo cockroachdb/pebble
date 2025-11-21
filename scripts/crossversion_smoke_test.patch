@@ -1,0 +1,37 @@
+diff --git a/sstable/layout.go b/sstable/layout.go
+index 052295dcf..22deef113 100644
+--- a/sstable/layout.go
++++ b/sstable/layout.go
+@@ -595,7 +595,9 @@ func decodeLayout(comparer *base.Comparer, data []byte, tableFormat TableFormat)
+ 	}
+ 	var meta map[string]block.Handle
+ 	var vbih valblk.IndexHandle
+-	if tableFormat >= TableFormatPebblev6 {
++	// INTENTIONAL BUG FOR SMOKE TEST: This introduces a backwards compatibility
++	// issue by changing the metaindex block encoding.
++	if tableFormat < TableFormatPebblev6 {
+ 		meta, vbih, err = decodeColumnarMetaIndex(decompressedMeta)
+ 	} else {
+ 		meta, vbih, err = decodeMetaindex(decompressedMeta)
+@@ -1044,7 +1046,7 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
+ 		return cmp.Compare(a.key, b.key)
+ 	})
+ 	var b []byte
+-	if w.tableFormat >= TableFormatPebblev6 {
++	if w.tableFormat < TableFormatPebblev6 {
+ 		var cw colblk.KeyValueBlockWriter
+ 		cw.Init()
+ 		for _, h := range w.handles {
+diff --git a/sstable/reader.go b/sstable/reader.go
+index cc17d6283..ba6513e75 100644
+--- a/sstable/reader.go
++++ b/sstable/reader.go
+@@ -493,7 +493,7 @@ func (r *Reader) readAndDecodeMetaindex(
+ 
+ 	var meta map[string]block.Handle
+ 	var valueBIH valblk.IndexHandle
+-	if r.tableFormat >= TableFormatPebblev6 {
++	if r.tableFormat < TableFormatPebblev6 {
+ 		meta, valueBIH, err = decodeColumnarMetaIndex(data)
+ 	} else {
+ 		meta, valueBIH, err = decodeMetaindex(data)
