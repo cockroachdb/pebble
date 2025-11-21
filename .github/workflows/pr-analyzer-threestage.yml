@@ -2,7 +2,7 @@ name: Claude Code PR Review
 
 on:
   pull_request_target:
-    types: [synchronize, ready_for_review, reopened, labeled]
+    types: [synchronize, ready_for_review, reopened]
 
 jobs:
   claude-code-pr-review:
