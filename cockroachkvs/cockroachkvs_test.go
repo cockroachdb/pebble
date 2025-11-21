@@ -93,7 +93,7 @@ func TestComparerFuncs(t *testing.T) {
 				var dst []byte
 				for line := range crstrings.LinesSeq(td.Input) {
 					keys = keys[:0]
-					for _, formattedKey := range strings.Fields(line) {
+					for formattedKey := range strings.FieldsSeq(line) {
 						k := ParseFormattedKey(formattedKey)
 						keys = append(keys, k)
 					}

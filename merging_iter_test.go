@@ -125,7 +125,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 					iters := make([]internalIterator, len(c))
 					for i := range c {
 						var kvs []base.InternalKV
-						for _, key := range strings.Fields(c[i]) {
+						for key := range strings.FieldsSeq(c[i]) {
 							j := strings.Index(key, ":")
 							kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 						}
@@ -238,7 +238,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 					}
 
 					for _, kvRow := range file.Children() {
-						for _, kv := range strings.Fields(kvRow.Value()) {
+						for kv := range strings.FieldsSeq(kvRow.Value()) {
 							j := strings.Index(kv, ":")
 							ikey := base.ParseInternalKey(kv[:j])
 							value := []byte(kv[j+1:])

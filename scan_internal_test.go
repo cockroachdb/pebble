@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -374,7 +375,7 @@ func TestScanInternal(t *testing.T) {
 			}
 			name := td.CmdArgs[0].Key
 			var keyRanges []KeyRange
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				fields := strings.Fields(line)
 				if len(fields) != 2 {
 					return "expected two fields for file-only snapshot KeyRanges"
@@ -600,8 +601,8 @@ func TestPointCollapsingIter(t *testing.T) {
 		case "iter":
 			var kvs []base.InternalKV
 			var spans []keyspan.Span
-			for _, line := range strings.Split(def, "\n") {
-				for _, key := range strings.Fields(line) {
+			for line := range crstrings.LinesSeq(def) {
+				for key := range strings.FieldsSeq(line) {
 					j := strings.Index(key, ":")
 					k := base.ParseInternalKey(key[:j])
 					v := []byte(key[j+1:])

@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
@@ -47,7 +48,7 @@ func (s Steps) String() string {
 		}
 		out := s.Steps[step].Root.String()
 		if len(s.Steps) > 1 {
-			for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+			for l := range crstrings.LinesSeq(out) {
 				fmt.Fprintf(&buf, "  %s\n", l)
 			}
 		} else {

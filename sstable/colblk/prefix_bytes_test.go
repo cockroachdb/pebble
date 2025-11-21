@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crbytes"
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -98,7 +99,7 @@ func TestPrefixBytes(t *testing.T) {
 			}
 			return out.String()
 		case "search":
-			for _, l := range strings.Split(strings.TrimSpace(td.Input), "\n") {
+			for l := range crstrings.LinesSeq(td.Input) {
 				i, eq := pb.Search([]byte(l))
 				fmt.Fprintf(&out, "Search(%q) = (%d, %t)\n", l, i, eq)
 			}

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -217,7 +218,7 @@ func TestExcise(t *testing.T) {
 			}
 			name := td.CmdArgs[0].Key
 			var keyRanges []KeyRange
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				fields := strings.Fields(line)
 				if len(fields) != 2 {
 					return "expected two fields for file-only snapshot KeyRanges"
@@ -700,7 +701,7 @@ func TestConcurrentExcise(t *testing.T) {
 			}
 			name := td.CmdArgs[0].Key
 			var keyRanges []KeyRange
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				fields := strings.Fields(line)
 				if len(fields) != 2 {
 					return "expected two fields for file-only snapshot KeyRanges"

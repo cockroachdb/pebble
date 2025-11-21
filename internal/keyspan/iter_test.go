@@ -6,9 +6,9 @@ package keyspan
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -19,7 +19,7 @@ func TestIter(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			spans = nil
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				spans = append(spans, ParseSpan(line))
 			}
 			return ""

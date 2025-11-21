@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -43,7 +44,7 @@ func TestSeek(t *testing.T) {
 				}
 			}
 
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				parts := strings.Fields(line)
 				if len(parts) != 2 {
 					return fmt.Sprintf("malformed input: %s", line)

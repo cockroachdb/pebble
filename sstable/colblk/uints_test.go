@@ -132,7 +132,7 @@ func TestUints(t *testing.T) {
 			b.init(defaultZero)
 			return ""
 		case "write":
-			for _, f := range strings.Fields(td.Input) {
+			for f := range strings.FieldsSeq(td.Input) {
 				delim := strings.IndexByte(f, ':')
 				i, err := strconv.Atoi(f[:delim])
 				if err != nil {

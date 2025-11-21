@@ -8,9 +8,9 @@ import (
 	"bytes"
 	"fmt"
 	"strconv"
-	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 )
 
@@ -26,7 +26,7 @@ func TestHumanize(t *testing.T) {
 			td.Fatalf(t, "invalid command %q", td.Cmd)
 		}
 		var buf bytes.Buffer
-		for _, row := range strings.Split(td.Input, "\n") {
+		for row := range crstrings.LinesSeq(td.Input) {
 			val, err := strconv.ParseInt(row, 10, 64)
 			if err != nil {
 				td.Fatalf(t, "error parsing %q: %v", row, err)

@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/stretchr/testify/require"
@@ -86,7 +87,7 @@ func (h *history) format(typ, format string, args ...interface{}) string {
 	var buf strings.Builder
 	orig := fmt.Sprintf(format, args...)
 	timestamp := time.Now().Format("15:04:05.000")
-	for _, line := range strings.Split(strings.TrimSpace(orig), "\n") {
+	for line := range crstrings.LinesSeq(orig) {
 		fmt.Fprintf(&buf, "// %s %s: %s\n", timestamp, typ, line)
 	}
 	return buf.String()

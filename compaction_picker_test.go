@@ -51,7 +51,7 @@ func loadVersion(
 		// and whose compensated file sizes total to `size`+`compensation`. If
 		// size is sufficiently large, only one single file is created. See
 		// the TODO below.
-		for _, data := range strings.Split(d.Input, "\n") {
+		for data := range crstrings.LinesSeq(d.Input) {
 			parts := strings.Split(data, " ")
 			parts[0] = strings.TrimSuffix(strings.TrimSpace(parts[0]), ":")
 			if len(parts) < 2 {
@@ -1162,7 +1162,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 				if len(d.Input) == 0 {
 					return ""
 				}
-				for _, data := range strings.Split(d.Input, "\n") {
+				for data := range crstrings.LinesSeq(d.Input) {
 					meta := parseMeta(data)
 					meta.TableNum = base.TableNum(len(files))
 					files = append(files, meta)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/randvar"
@@ -86,7 +87,7 @@ func TestKeyManager(t *testing.T) {
 			return ""
 		case "run":
 			buf.Reset()
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				fields := strings.Fields(line)
 				switch fields[0] {
 				case "add-new-key":

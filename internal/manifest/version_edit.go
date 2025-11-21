@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -760,7 +761,7 @@ func ParseVersionEditDebug(s string) (_ *VersionEdit, err error) {
 	}()
 
 	var ve VersionEdit
-	for _, l := range strings.Split(s, "\n") {
+	for l := range crstrings.LinesSeq(s) {
 		l = strings.TrimSpace(l)
 		if l == "" {
 			continue

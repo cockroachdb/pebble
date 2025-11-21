@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -52,9 +53,9 @@ func TestLevelIter(t *testing.T) {
 		case "define":
 			iterKVs = nil
 			var metas []*manifest.TableMetadata
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				var kvs []base.InternalKV
-				for _, key := range strings.Fields(line) {
+				for key := range strings.FieldsSeq(line) {
 					j := strings.Index(key, ":")
 					kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 				}
@@ -251,7 +252,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 			tombstones = append(tombstones, fragmented)
 		},
 	}
-	for _, key := range strings.Split(d.Input, "\n") {
+	for key := range crstrings.LinesSeq(d.Input) {
 		j := strings.Index(key, ":")
 		ikey := base.ParseInternalKey(key[:j])
 		value := []byte(key[j+1:])

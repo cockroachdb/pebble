@@ -203,7 +203,7 @@ func ParseCompressionStats(s string) (CompressionStats, error) {
 		return CompressionStats{}, nil
 	}
 	var stats CompressionStats
-	for _, a := range strings.Split(s, ",") {
+	for a := range strings.SplitSeq(s, ",") {
 		b := strings.Split(a, ":")
 		if len(b) != 2 {
 			return CompressionStats{}, errors.Errorf("cannot parse compression stats %q", s)

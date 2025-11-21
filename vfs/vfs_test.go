@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -171,7 +172,7 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 				}
 			}
 
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				parts := strings.Fields(line)
 				if len(parts) == 0 {
 					return "<op> [<args>]"

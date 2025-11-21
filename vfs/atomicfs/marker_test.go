@@ -10,10 +10,10 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/vfs"
@@ -147,7 +147,7 @@ func TestMarker(t *testing.T) {
 			return fmt.Sprintf("Removed %d files.", removedCount)
 
 		case "touch":
-			for _, filename := range strings.Split(td.Input, "\n") {
+			for filename := range crstrings.LinesSeq(td.Input) {
 				f, err := memFS.Create(filename, vfs.WriteCategoryUnspecified)
 				if err != nil {
 					return err.Error()

@@ -118,7 +118,7 @@ func TestBlockIter2(t *testing.T) {
 				switch d.Cmd {
 				case "build":
 					w := &Writer{RestartInterval: r}
-					for _, e := range strings.Split(strings.TrimSpace(d.Input), ",") {
+					for e := range strings.SplitSeq(strings.TrimSpace(d.Input), ",") {
 						require.NoError(t, w.Add(makeIkey(e), nil))
 					}
 					blk = w.Finish()

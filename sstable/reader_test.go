@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crhumanize"
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -808,7 +809,7 @@ func runTestReader(t *testing.T, o WriterOptions, dir string, r *Reader, printVa
 
 			case "get":
 				var b bytes.Buffer
-				for _, k := range strings.Split(d.Input, "\n") {
+				for k := range crstrings.LinesSeq(d.Input) {
 					v, err := r.get([]byte(k))
 					if err != nil {
 						fmt.Fprintf(&b, "<err: %s>\n", err)

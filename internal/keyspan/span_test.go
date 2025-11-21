@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -39,7 +40,7 @@ func TestSpan_Visible(t *testing.T) {
 			return fmt.Sprint(s)
 		case "visible":
 			var buf bytes.Buffer
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				snapshot := base.ParseSeqNum(line)
 				fmt.Fprintf(&buf, "%-2d: %s\n", snapshot, s.Visible(snapshot))
 			}
@@ -59,7 +60,7 @@ func TestSpan_VisibleAt(t *testing.T) {
 			return fmt.Sprint(s)
 		case "visible-at":
 			var buf bytes.Buffer
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				snapshot := base.ParseSeqNum(line)
 				fmt.Fprintf(&buf, "%-2d: %t\n", snapshot, s.VisibleAt(snapshot))
 			}
@@ -79,7 +80,7 @@ func TestSpan_CoversAt(t *testing.T) {
 			return fmt.Sprint(s)
 		case "covers-at":
 			var buf bytes.Buffer
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.Fields(line)
 				snapshot := base.ParseSeqNum(fields[0])
 				seqNum := base.ParseSeqNum(fields[1])

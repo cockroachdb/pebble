@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -1670,7 +1671,7 @@ func TestCheckConsistency(t *testing.T) {
 				var filesByLevel [manifest.NumLevels][]*manifest.TableMetadata
 				var files *[]*manifest.TableMetadata
 
-				for _, data := range strings.Split(d.Input, "\n") {
+				for data := range crstrings.LinesSeq(d.Input) {
 					switch data {
 					case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
 						level, err := strconv.Atoi(data[1:])
@@ -1713,7 +1714,7 @@ func TestCheckConsistency(t *testing.T) {
 				return "OK"
 
 			case "build":
-				for _, data := range strings.Split(d.Input, "\n") {
+				for data := range crstrings.LinesSeq(d.Input) {
 					m, err := parseMeta(data)
 					if err != nil {
 						return err.Error()

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -48,7 +49,7 @@ func TestWriter_RangeKeys(t *testing.T) {
 				_ = w.Close()
 			}
 		}()
-		for _, data := range strings.Split(td.Input, "\n") {
+		for data := range crstrings.LinesSeq(td.Input) {
 			// Format. One of:
 			// - SET $START-$END $SUFFIX=$VALUE
 			// - UNSET $START-$END $SUFFIX

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
@@ -35,7 +36,7 @@ func TestGet(t *testing.T) {
 					parseProbes(cmdArg.Vals...)...)
 			}
 
-			for _, line := range strings.Split(strings.TrimSpace(td.Input), "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				s, err := Get(cmp, iter, []byte(line))
 				if err != nil {
 					fmt.Fprintf(&buf, "Get(%q) = nil <err=%q>\n", line, err)

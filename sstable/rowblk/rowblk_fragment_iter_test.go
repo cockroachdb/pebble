@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -47,12 +48,8 @@ func TestBlockFragmentIterator(t *testing.T) {
 					spans = append(spans, s)
 				},
 			}
-			for _, l := range strings.Split(d.Input, "\n") {
-				if l == "" {
-					continue
-				}
-				span := keyspan.ParseSpan(l)
-				fragmenter.Add(span)
+			for l := range crstrings.LinesSeq(d.Input) {
+				fragmenter.Add(keyspan.ParseSpan(l))
 			}
 			fragmenter.Finish()
 			// Range del or range key blocks always use restart interval 1.
@@ -102,10 +99,7 @@ func TestBlockFragmentIterator(t *testing.T) {
 			defer i.Close()
 			require.NoError(t, err)
 
-			for _, l := range strings.Split(d.Input, "\n") {
-				if l == "" {
-					continue
-				}
+			for l := range crstrings.LinesSeq(d.Input) {
 				func() {
 					defer func() {
 						if r := recover(); r != nil {

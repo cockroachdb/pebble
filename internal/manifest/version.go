@@ -10,10 +10,10 @@ import (
 	"iter"
 	"maps"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/strparse"
@@ -238,10 +238,7 @@ func ParseVersionDebug(
 ) (*Version, error) {
 	var files [NumLevels][]*TableMetadata
 	level := -1
-	for _, l := range strings.Split(s, "\n") {
-		if l == "" {
-			continue
-		}
+	for l := range crstrings.LinesSeq(s) {
 		p := strparse.MakeParser(debugParserSeparators, l)
 		if l, ok := p.TryLevel(); ok {
 			level = l

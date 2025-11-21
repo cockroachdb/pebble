@@ -216,7 +216,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 
 		case "get":
 			var buf bytes.Buffer
-			for _, k := range strings.Split(td.Input, "\n") {
+			for k := range crstrings.LinesSeq(td.Input) {
 				value, err := r.get([]byte(k))
 				if err != nil {
 					fmt.Fprintf(&buf, "get %s: %s\n", k, err.Error())

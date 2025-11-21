@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -254,7 +255,7 @@ func TestProvider(t *testing.T) {
 					rh.SetupForCompaction()
 				}
 				log.Infof("size: %d", r.Size())
-				for _, l := range strings.Split(d.Input, "\n") {
+				for l := range crstrings.LinesSeq(d.Input) {
 					var offset, size int
 					fmt.Sscanf(l, "%d %d", &offset, &size)
 					data := make([]byte, size)

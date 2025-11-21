@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -1531,7 +1532,7 @@ func TestTracing(t *testing.T) {
 			return ""
 
 		case "get":
-			for _, key := range strings.Split(td.Input, "\n") {
+			for key := range crstrings.LinesSeq(td.Input) {
 				v, closer, err := db.Get([]byte(key))
 				require.NoError(t, err)
 				fmt.Fprintf(buf, "%s:%s\n", key, v)

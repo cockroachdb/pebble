@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
@@ -27,7 +28,7 @@ func TestLevelIterator(t *testing.T) {
 				var files []*TableMetadata
 				var startReslice int
 				var endReslice int
-				for _, metaStr := range strings.Split(d.Input, " ") {
+				for metaStr := range strings.SplitSeq(d.Input, " ") {
 					switch metaStr {
 					case "[":
 						startReslice = len(files)
@@ -82,7 +83,7 @@ func TestLevelIteratorFiltered(t *testing.T) {
 			switch d.Cmd {
 			case "define":
 				var files []*TableMetadata
-				for _, metaStr := range strings.Split(d.Input, "\n") {
+				for metaStr := range crstrings.LinesSeq(d.Input) {
 					m, err := ParseTableMetadataDebug(metaStr)
 					require.NoError(t, err)
 					files = append(files, m)
@@ -112,7 +113,7 @@ func TestLevelIteratorFiltered(t *testing.T) {
 
 func runIterCmd(t *testing.T, d *datadriven.TestData, iter LevelIterator, verbose bool) string {
 	var buf bytes.Buffer
-	for _, line := range strings.Split(d.Input, "\n") {
+	for line := range crstrings.LinesSeq(d.Input) {
 		parts := strings.Fields(line)
 		if len(parts) == 0 {
 			continue

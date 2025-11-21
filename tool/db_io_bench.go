@@ -222,7 +222,7 @@ func (d *dbT) openBenchTables(db *pebble.DB) ([]objstorage.Readable, error) {
 // parseIOSizes parses a comma-separated list of IO sizes, in KB.
 func parseIOSizes(sizes string) ([]int, error) {
 	var res []int
-	for _, s := range strings.Split(sizes, ",") {
+	for s := range strings.SplitSeq(sizes, ",") {
 		n, err := strconv.Atoi(s)
 		if err != nil {
 			return nil, err

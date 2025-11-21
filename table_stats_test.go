@@ -10,9 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -217,7 +217,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				TableFormat: sstable.TableFormatMax,
 			})
 			m = &manifest.TableMetadata{}
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				err = w.EncodeSpan(keyspan.ParseSpan(line))
 				if err != nil {
 					return err.Error()

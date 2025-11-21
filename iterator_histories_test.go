@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -212,7 +213,7 @@ func TestIterHistories(t *testing.T) {
 						return fmt.Sprintf("unknown reader %q", arg.Vals[0])
 					}
 				}
-				for _, l := range strings.Split(td.Input, "\n") {
+				for l := range crstrings.LinesSeq(td.Input) {
 					v, closer, err := reader.Get([]byte(l))
 					if err != nil {
 						fmt.Fprintf(&buf, "%s: error: %s\n", l, err)

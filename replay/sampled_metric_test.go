@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +25,7 @@ func TestSampledMetric(t *testing.T) {
 		case "init":
 			m = SampledMetric{samples: m.samples[:0]}
 			var cumDur time.Duration
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				fields := strings.Fields(line)
 				v, err := strconv.ParseInt(fields[0], 10, 64)
 				require.NoError(t, err)

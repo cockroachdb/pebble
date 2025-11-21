@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -81,7 +82,7 @@ func TestDefragmentingIter(t *testing.T) {
 			innerIter := attachProbes(NewIter(cmp, spans), probeContext{log: &buf}, probes...)
 			var iter DefragmentingIter
 			iter.Init(comparer, innerIter, equal, reducer, new(DefragmentingBuffers))
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				runIterOp(&buf, &iter, line)
 				fmt.Fprintln(&buf)
 			}

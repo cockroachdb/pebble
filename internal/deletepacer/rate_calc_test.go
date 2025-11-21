@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crhumanize"
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/datadriven"
 	"github.com/stretchr/testify/require"
@@ -89,8 +90,8 @@ func runSimulation(t *testing.T, td *datadriven.TestData) string {
 	var output strings.Builder
 
 	var currentTime crtime.Mono
-	for _, line := range strings.Split(strings.TrimSpace(td.Input), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
+	for line := range crstrings.LinesSeq(td.Input) {
+		if strings.HasPrefix(line, "#") {
 			continue
 		}
 

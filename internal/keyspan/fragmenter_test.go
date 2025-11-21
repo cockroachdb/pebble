@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
@@ -47,7 +48,7 @@ func buildSpans(
 			spans = append(spans, fragmented)
 		},
 	}
-	for _, line := range strings.Split(s, "\n") {
+	for line := range crstrings.LinesSeq(s) {
 		f.Add(parseSpanSingleKey(t, line, kind))
 	}
 	f.Finish()
@@ -148,7 +149,7 @@ func TestFragmenter(t *testing.T) {
 			readSeq := base.ParseSeqNum(d.CmdArgs[0].Vals[0])
 
 			var results []string
-			for _, p := range strings.Split(d.Input, " ") {
+			for p := range strings.SplitSeq(d.Input, " ") {
 				key, seq := parseGet(t, p)
 				if deleted([]byte(key), seq, readSeq) {
 					results = append(results, "deleted")
@@ -213,7 +214,7 @@ func TestFragmenter_EmitOrder(t *testing.T) {
 					fmt.Fprintln(&buf, "\n-")
 				},
 			}
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.Fields(line)
 				if len(fields) != 2 {
 					panic(fmt.Sprintf("datadriven test: expect 2 fields, found %d", len(fields)))
