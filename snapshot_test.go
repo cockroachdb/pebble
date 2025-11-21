@@ -91,7 +91,7 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 			}
 			snapshots = make(map[string]Reader)
 
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				parts := strings.Fields(line)
 				var err error
 				switch parts[0] {
@@ -160,7 +160,7 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 			defer iter.Close()
 
 			var b bytes.Buffer
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				parts := strings.Fields(line)
 				switch parts[0] {
 				case "first":

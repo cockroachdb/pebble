@@ -20,7 +20,7 @@ func TestFileAnalyzer(t *testing.T) {
 		case "sst":
 			fa := NewFileAnalyzer(nil, sstable.ReaderOptions{})
 			defer fa.Close()
-			for _, path := range crstrings.Lines(td.Input) {
+			for path := range crstrings.LinesSeq(td.Input) {
 				file, err := vfs.Default.Open(path)
 				if err != nil {
 					td.Fatalf(t, "%v", err)

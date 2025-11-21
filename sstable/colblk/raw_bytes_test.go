@@ -33,7 +33,7 @@ func TestRawBytes(t *testing.T) {
 			td.ScanArgs(t, "offset", &startOffset)
 
 			var count int
-			for _, k := range crstrings.Lines(td.Input) {
+			for k := range crstrings.LinesSeq(td.Input) {
 				builder.Put([]byte(k))
 				count++
 			}

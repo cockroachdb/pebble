@@ -399,7 +399,7 @@ func TestLargeKeys(t *testing.T) {
 			return runLSMCmd(td, d)
 		case "batch-commit":
 			b := d.NewBatch()
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				op, rest := splitAt(line, " ")
 				switch op {
 				case "set":

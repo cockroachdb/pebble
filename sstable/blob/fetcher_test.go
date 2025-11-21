@@ -98,7 +98,7 @@ func TestValueFetcher(t *testing.T) {
 			opts := scanFileWriterOptions(t, td)
 			obj := &objstorage.MemObj{}
 			w := NewFileWriter(base.DiskFileNum(fileNum), obj, opts)
-			for _, l := range crstrings.Lines(td.Input) {
+			for l := range crstrings.LinesSeq(td.Input) {
 				h := w.AddValue([]byte(l), false /* isLikelyMVCCGarbage */)
 				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 			}

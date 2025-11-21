@@ -121,7 +121,7 @@ func (bl *ByLevel) String() string {
 	for i := range bl.levels {
 		if !bl.levels[i].IsEmpty() {
 			fmt.Fprintf(&buf, "L%d:\n", i)
-			for _, line := range crstrings.Lines(bl.levels[i].String()) {
+			for line := range crstrings.LinesSeq(bl.levels[i].String()) {
 				fmt.Fprintf(&buf, "  %s\n", line)
 			}
 		}

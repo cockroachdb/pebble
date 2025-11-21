@@ -90,7 +90,7 @@ type testState struct {
 func executeTest(t *testing.T, td *datadriven.TestData, ts *testState) {
 	repeat := 1
 	td.MaybeScanArgs(t, "repeat", &repeat)
-	for _, l := range crstrings.Lines(strings.Repeat(td.Input+"\n", repeat)) {
+	for l := range crstrings.LinesSeq(strings.Repeat(td.Input+"\n", repeat)) {
 		if l == "" {
 			continue
 		}

@@ -966,7 +966,7 @@ func TestBatchIter(t *testing.T) {
 							b = newBatch(nil)
 						}
 
-						for _, line := range crstrings.Lines(d.Input) {
+						for line := range crstrings.LinesSeq(d.Input) {
 							kv := base.ParseInternalKV(line)
 							require.NoError(t, b.Set(kv.K.UserKey, kv.InPlaceValue(), nil))
 						}
@@ -1110,7 +1110,7 @@ func TestFlushableBatchIter(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			batch := newBatch(nil)
-			for _, line := range crstrings.Lines(d.Input) {
+			for line := range crstrings.LinesSeq(d.Input) {
 				kv := base.ParseInternalKV(line)
 				// Ignore any value in the test.
 				value := []byte(kv.K.SeqNum().String())
@@ -1138,7 +1138,7 @@ func TestFlushableBatch(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			batch := newBatch(nil)
-			for _, line := range crstrings.Lines(d.Input) {
+			for line := range crstrings.LinesSeq(d.Input) {
 				kv := base.ParseInternalKV(line)
 				value := kv.InPlaceValue()
 				if len(value) == 0 {

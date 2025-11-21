@@ -156,7 +156,7 @@ func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan
 		}
 	}()
 	var result []ParsedKVOrSpan
-	for _, line := range crstrings.Lines(input) {
+	for line := range crstrings.LinesSeq(input) {
 		if strings.HasPrefix(line, "Span:") {
 			span := keyspan.ParseSpan(strings.TrimPrefix(line, "Span:"))
 			result = append(result, ParsedKVOrSpan{Span: &span})

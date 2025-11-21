@@ -314,7 +314,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 				return err.Error()
 			}
 			var buf strings.Builder
-			for _, p := range crstrings.Lines(props.String()) {
+			for p := range crstrings.LinesSeq(props.String()) {
 				if len(td.CmdArgs) > 0 {
 					ok := false
 					for i := range td.CmdArgs {

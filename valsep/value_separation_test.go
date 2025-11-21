@@ -128,7 +128,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 					initRawWriter()
 				}
 				var ikv base.InternalKV
-				for _, line := range crstrings.Lines(d.Input) {
+				for line := range crstrings.LinesSeq(d.Input) {
 					parts := strings.SplitN(line, ":", 2)
 					ik := base.ParseInternalKey(parts[0])
 					ikv.K = ik
