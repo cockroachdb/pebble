@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -649,7 +650,7 @@ func TestDiskSlowInfo(t *testing.T) {
 	// Essential information should be present
 	require.Contains(t, result, "disk slowness detected")
 	require.Contains(t, result, "write")
-	require.Contains(t, result, "/some/really/deep/path/to/wal/000123.log")
+	require.Contains(t, result, filepath.FromSlash(info.Path))
 	require.Contains(t, result, "(123 bytes)")
 	require.Contains(t, result, "5.0s")
 
