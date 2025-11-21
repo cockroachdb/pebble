@@ -61,3 +61,14 @@ jobs:
       file_issue_branch: 'master'
       bootstrap_go_version: '1.25'
       go_branch: 'cockroach-go1.25.3'
+
+  crossversion:
+    strategy:
+      fail-fast: false
+      matrix:
+        go: [ '1.25' ]
+    uses: ./.github/workflows/crossversion.yaml
+    with:
+      sha: ${{ github.sha }}
+      file_issue_branch: 'master'
+      go_version: ${{ matrix.go }}
