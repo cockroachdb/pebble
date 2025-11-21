@@ -110,7 +110,7 @@ func TestWorkloadCollector(t *testing.T) {
 				return buf.String()
 			case "ingest":
 				ingestInfo := pebble.TableIngestInfo{}
-				for _, line := range crstrings.Lines(td.Input) {
+				for line := range crstrings.LinesSeq(td.Input) {
 					parts := strings.FieldsFunc(line, func(r rune) bool { return unicode.IsSpace(r) || r == ':' })
 					tableInfo := pebble.TableInfo{Size: 10 << 10}
 					fileNum, err := strconv.ParseUint(parts[0], 10, 64)

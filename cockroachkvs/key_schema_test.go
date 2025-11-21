@@ -49,7 +49,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 		case "init":
 			e.Reset()
 			var buf []byte
-			for _, l := range crstrings.Lines(td.Input) {
+			for l := range crstrings.LinesSeq(td.Input) {
 				key, value := parseInternalKV(l)
 				kcmp := e.KeyWriter.ComparePrev(key.UserKey)
 				e.Add(key, value, 0, kcmp, false /* isObsolete */)
@@ -102,7 +102,7 @@ func runDataDrivenTest(t *testing.T, path string) {
 			require.NoError(t, iter.Init(&d, bd, blockiter.Transforms{}))
 			defer iter.Close()
 			var buf strings.Builder
-			for _, l := range crstrings.Lines(td.Input) {
+			for l := range crstrings.LinesSeq(td.Input) {
 				key := parseUserKey(l)
 				fmt.Fprintf(&buf, "%s: ", formatUserKey(key))
 				kv := iter.SeekGE(key, base.SeekGEFlagsNone)

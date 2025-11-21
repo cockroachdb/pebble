@@ -32,7 +32,7 @@ func TestBlobWriter(t *testing.T) {
 			opts := scanFileWriterOptions(t, td)
 			obj = &objstorage.MemObj{}
 			w := NewFileWriter(000001, obj, opts)
-			for _, l := range crstrings.Lines(td.Input) {
+			for l := range crstrings.LinesSeq(td.Input) {
 				h := w.AddValue([]byte(l), false /* isLikelyMVCCGarbage */)
 				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
 			}
@@ -48,7 +48,7 @@ func TestBlobWriter(t *testing.T) {
 			obj = &objstorage.MemObj{}
 			w := NewFileWriter(000001, obj, opts)
 			vBlockID := 0
-			for _, l := range crstrings.Lines(td.Input) {
+			for l := range crstrings.LinesSeq(td.Input) {
 				switch {
 				case l == "---flush---":
 					w.flush()

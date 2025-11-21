@@ -1200,7 +1200,7 @@ func runCompactionTest(
 
 		case "validate-blob-reference-index-block":
 			var inputTables []*manifest.TableMetadata
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				// Parse the file number from the filename
 				fileName := strings.TrimSuffix(line, ".sst")
 				fileNum, err := strconv.ParseUint(fileName, 10, 64)
@@ -2183,7 +2183,7 @@ func TestCompactionReadTriggeredQueue(t *testing.T) {
 				queue = &readCompactionQueue{}
 				return "(success)"
 			case "add-compaction":
-				for _, line := range crstrings.Lines(td.Input) {
+				for line := range crstrings.LinesSeq(td.Input) {
 					parts := strings.Split(line, " ")
 
 					if len(parts) != 3 {
@@ -2303,7 +2303,7 @@ func TestCompactionReadTriggered(t *testing.T) {
 			case "add-read-compaction":
 				d.mu.Lock()
 				td.MaybeScanArgs(t, "flushing", &d.mu.compact.flushing)
-				for _, line := range crstrings.Lines(td.Input) {
+				for line := range crstrings.LinesSeq(td.Input) {
 					parts := strings.Split(line, " ")
 					if len(parts) != 3 {
 						return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end> <filenum>"
@@ -2422,7 +2422,7 @@ func TestCompactionAllowZeroSeqNum(t *testing.T) {
 				d.mu.Unlock()
 
 				var buf bytes.Buffer
-				for _, line := range crstrings.Lines(td.Input) {
+				for line := range crstrings.LinesSeq(td.Input) {
 					parts := strings.Fields(line)
 					c.flush.flushables = nil
 					c.startLevel.level = -1

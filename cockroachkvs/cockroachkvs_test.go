@@ -91,7 +91,7 @@ func TestComparerFuncs(t *testing.T) {
 			case "separator":
 				var keys [][]byte
 				var dst []byte
-				for _, line := range crstrings.Lines(td.Input) {
+				for line := range crstrings.LinesSeq(td.Input) {
 					keys = keys[:0]
 					for _, formattedKey := range strings.Fields(line) {
 						k := ParseFormattedKey(formattedKey)
@@ -107,7 +107,7 @@ func TestComparerFuncs(t *testing.T) {
 				return buf.String()
 			case "successor":
 				var dst []byte
-				for _, line := range crstrings.Lines(td.Input) {
+				for line := range crstrings.LinesSeq(td.Input) {
 					k := ParseFormattedKey(line)
 					dst = Comparer.Successor(dst[:0], k)
 					fmt.Fprintf(&buf, "Successor(%q [%x]) = %q [%x]\n",
@@ -222,7 +222,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 			enc.Reset()
 			maxKeyLen = 0
 			var rows int
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				k := parseUserKey(line)
 				fmt.Fprintf(&buf, "Parse(%s) = hex:%x\n", line, k)
 				maxKeyLen = max(maxKeyLen, len(k))
@@ -241,7 +241,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 			initKeySeeker()
 			syntheticSuffix, syntheticSuffixStr, _ := getSyntheticSuffix(t, td)
 
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				k := parseUserKey(line)
 				got := ks.IsLowerBound(k, syntheticSuffix)
 				fmt.Fprintf(&buf, "IsLowerBound(%s, %q) = %t\n", line, syntheticSuffixStr, got)
@@ -249,7 +249,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 			return buf.String()
 		case "seek-ge":
 			initKeySeeker()
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				k := parseUserKey(line)
 				boundRow := -1
 				searchDir := 0
@@ -273,7 +273,7 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 			var kiter colblk.PrefixBytesIter
 			kiter.Buf = make([]byte, maxKeyLen+len(syntheticSuffix)+1)
 			prevRow := -1
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				row, err := strconv.Atoi(line)
 				if err != nil {
 					t.Fatalf("bad row number %q: %s", line, err)

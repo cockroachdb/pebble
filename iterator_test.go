@@ -205,7 +205,7 @@ func TestIterator(t *testing.T) {
 				merge = base.NewDeletableSumValueMerger
 			}
 			kvs = kvs[:0]
-			for _, line := range crstrings.Lines(d.Input) {
+			for line := range crstrings.LinesSeq(d.Input) {
 				kvs = append(kvs, base.ParseInternalKV(line))
 			}
 			return ""

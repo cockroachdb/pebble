@@ -22,7 +22,7 @@ func TestBuckets(t *testing.T) {
 		var buf strings.Builder
 		switch td.Cmd {
 		case "block-size":
-			for _, l := range crstrings.Lines(td.Input) {
+			for l := range crstrings.LinesSeq(td.Input) {
 				size, err := strconv.Atoi(l)
 				if err != nil {
 					td.Fatalf(t, "%v", err)
@@ -31,7 +31,7 @@ func TestBuckets(t *testing.T) {
 			}
 
 		case "compressibility":
-			for _, l := range crstrings.Lines(td.Input) {
+			for l := range crstrings.LinesSeq(td.Input) {
 				var uncompressed, compressed int
 				if _, err := fmt.Sscanf(l, "%d %d", &uncompressed, &compressed); err != nil {
 					td.Fatalf(t, "%v", err)

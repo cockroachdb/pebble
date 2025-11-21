@@ -290,7 +290,7 @@ func TestVersionEditDecode(t *testing.T) {
 				return outputBuf.String()
 
 			case "decode":
-				for _, l := range crstrings.Lines(d.Input) {
+				for l := range crstrings.LinesSeq(d.Input) {
 					i := strings.IndexByte(l, '#')
 					if i == -1 {
 						i = len(l)

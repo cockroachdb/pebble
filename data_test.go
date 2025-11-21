@@ -462,7 +462,7 @@ func splitFieldsRange(line string, minmum, maximum int) ([]string, error) {
 }
 
 func runBatchDefineCmd(d *datadriven.TestData, b *Batch) error {
-	for _, line := range crstrings.Lines(d.Input) {
+	for line := range crstrings.LinesSeq(d.Input) {
 		i := strings.IndexFunc(line, unicode.IsSpace)
 		cmd := line
 		if i > 0 {
@@ -1030,7 +1030,7 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 		return c, nil
 	}
 
-	for _, line := range crstrings.Lines(td.Input) {
+	for line := range crstrings.LinesSeq(td.Input) {
 		fields := strings.Fields(line)
 		if len(fields) > 0 {
 			switch fields[0] {

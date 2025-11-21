@@ -45,20 +45,20 @@ func TestSet(t *testing.T) {
 			now = 0
 
 		case "add":
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				bounds, expiration := parseSetLine(line, true /* withTime */)
 				// The test uses absolute expiration times.
 				set.Add(bounds, expiration.Sub(now))
 			}
 
 		case "excise":
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				bounds, _ := parseSetLine(line, false /* withTime */)
 				set.Excise(bounds)
 			}
 
 		case "overlap":
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				bounds, _ := parseSetLine(line, false /* withTime */)
 				res := "overlap"
 				if !set.Overlaps(bounds) {
@@ -77,7 +77,7 @@ func TestSet(t *testing.T) {
 			td.Fatalf(t, "unknown command %q", td.Cmd)
 		}
 		out.WriteString("Set:\n")
-		for _, l := range crstrings.Lines(set.String()) {
+		for l := range crstrings.LinesSeq(set.String()) {
 			fmt.Fprintf(&out, "  %s\n", l)
 		}
 		return out.String()

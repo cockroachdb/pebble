@@ -63,7 +63,7 @@ func TestMergingIterSeek(t *testing.T) {
 
 		case "iter":
 			var iters []internalIterator
-			for _, line := range crstrings.Lines(def) {
+			for line := range crstrings.LinesSeq(def) {
 				var kvs []base.InternalKV
 				// Parse space-separated key-value pairs, handling "key = value" format
 				fields := strings.Fields(line)

@@ -43,7 +43,7 @@ func TestByLevel(t *testing.T) {
 		switch td.Cmd {
 
 		case "add":
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				parts := strings.SplitN(line, " ", 2)
 				require.Equalf(t, 2, len(parts), "%s", line)
 				var level int
@@ -55,13 +55,13 @@ func TestByLevel(t *testing.T) {
 			}
 
 		case "excise":
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				bounds, _ := parseSetLine(line, false /* withTime */)
 				byLevel.Excise(bounds)
 			}
 
 		case "overlap":
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				parts := strings.SplitN(line, " ", 2)
 				require.Equal(t, 2, len(parts))
 				var level int
@@ -85,7 +85,7 @@ func TestByLevel(t *testing.T) {
 			td.Fatalf(t, "unknown command %q", td.Cmd)
 		}
 		out.WriteString("ByLevel:\n")
-		for _, l := range crstrings.Lines(byLevel.String()) {
+		for l := range crstrings.LinesSeq(byLevel.String()) {
 			fmt.Fprintf(&out, "  %s\n", l)
 		}
 		return out.String()

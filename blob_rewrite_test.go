@@ -119,7 +119,7 @@ func TestBlobRewrite(t *testing.T) {
 				if tw == nil {
 					initRawWriter()
 				}
-				for _, line := range crstrings.Lines(d.Input) {
+				for line := range crstrings.LinesSeq(d.Input) {
 					ikv := base.ParseInternalKV(line)
 					if value := string(ikv.InPlaceValue()); strings.HasPrefix(value, "blob") {
 						ikv.V, err = bv.ParseInternalValue(value)

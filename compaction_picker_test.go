@@ -876,7 +876,7 @@ func TestCompactionPickerPickReadTriggered(t *testing.T) {
 			return buf.String()
 
 		case "add-read-compaction":
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				parts := strings.Split(line, " ")
 				if len(parts) != 3 {
 					return "error: malformed data for add-read-compaction. usage: <level>: <start>-<end> <filenum>"
@@ -1384,7 +1384,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 		case "problem-spans":
 			problemSpans = &problemspans.ByLevel{}
 			problemSpans.Init(manifest.NumLevels, d.opts.Comparer.Compare)
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				var level int
 				var span1, span2 string
 				n, err := fmt.Sscanf(line, "L%d %s %s", &level, &span1, &span2)

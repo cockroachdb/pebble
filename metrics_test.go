@@ -551,7 +551,7 @@ func TestMetrics(t *testing.T) {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			d.problemSpans.Init(manifest.NumLevels, d.cmp)
-			for _, line := range crstrings.Lines(td.Input) {
+			for line := range crstrings.LinesSeq(td.Input) {
 				var level int
 				var span1, span2 string
 				n, err := fmt.Sscanf(line, "L%d %s %s", &level, &span1, &span2)
