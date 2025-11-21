@@ -5,6 +5,7 @@
 package sstable
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -71,7 +72,7 @@ func runIterTreeStepsCmd(t *testing.T, r *Reader, td *datadriven.TestData) strin
 	iter, err := r.NewIter(NoTransforms, nil /* lower */, nil /* upper */, TableBlobContext{})
 	require.NoError(t, err)
 
-	rec := treesteps.StartRecording(iter, td.Pos)
+	rec := treesteps.StartRecording(iter, strings.ReplaceAll(td.Pos, "\\", "/"))
 	runIterCmd(td, iter, false)
 
 	steps := rec.Finish()
