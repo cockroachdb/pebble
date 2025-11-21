@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -121,7 +122,7 @@ func TestDefragmenting(t *testing.T) {
 				nil /* lower */, nil, /* upper */
 				&hasPrefix, &prefix, false /* internalKeys */, new(Buffers),
 				keyspan.NewIter(cmp, spans))
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				runIterOp(&buf, iter, line)
 			}
 			return strings.TrimSpace(buf.String())

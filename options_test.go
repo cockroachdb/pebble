@@ -667,7 +667,7 @@ func TestStaticSpanPolicyFunc(t *testing.T) {
 		}
 
 		spf := MakeStaticSpanPolicyFunc(testkeys.Comparer.Compare, inputSpanPolicies...)
-		for _, key := range strings.Fields(td.Input) {
+		for key := range strings.FieldsSeq(td.Input) {
 			policy, endKey, err := spf([]byte(key))
 			require.NoError(t, err)
 			if endKey == nil {

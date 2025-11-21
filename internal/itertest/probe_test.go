@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -26,7 +27,7 @@ func TestProbes(t *testing.T) {
 			// new expects each line to describe a probe in the DSL. Each probe
 			// is used to wrap the iterator resulting from attaching the probe
 			// on the previous line.
-			for _, l := range strings.Split(strings.TrimSpace(td.Input), "\n") {
+			for l := range crstrings.LinesSeq(td.Input) {
 				probe, err := parser.Parse(l)
 				if err != nil {
 					return fmt.Sprintf("parsing err: %s\n", err)

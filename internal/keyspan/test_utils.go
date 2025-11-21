@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/dsl"
 	"github.com/cockroachdb/pebble/internal/treesteps"
@@ -450,7 +451,7 @@ func runIterOp(w io.Writer, it FragmentIterator, op string) {
 // RunFragmentIteratorCmd runs a command on an iterator; intended for testing.
 func RunFragmentIteratorCmd(iter FragmentIterator, input string, extraInfo func() string) string {
 	var b bytes.Buffer
-	for _, line := range strings.Split(input, "\n") {
+	for line := range crstrings.LinesSeq(input) {
 		parts := strings.Fields(line)
 		if len(parts) == 0 {
 			continue

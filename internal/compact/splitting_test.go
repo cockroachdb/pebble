@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -26,7 +27,7 @@ func TestOutputSplitter(t *testing.T) {
 			// We create a version with all tables in L1.
 			var files [manifest.NumLevels][]*manifest.TableMetadata
 			if d.Input != "" {
-				for _, l := range strings.Split(d.Input, "\n") {
+				for l := range crstrings.LinesSeq(d.Input) {
 					f, err := manifest.ParseTableMetadataDebug(l)
 					if err != nil {
 						d.Fatalf(t, "error parsing %q: %v", l, err)
@@ -95,7 +96,7 @@ func TestFrontiers(t *testing.T) {
 			//    a p n z
 
 			keySets = keySets[:0]
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				keySets = append(keySets, bytes.Fields([]byte(line)))
 			}
 			return ""
@@ -105,7 +106,7 @@ func TestFrontiers(t *testing.T) {
 				initTestFrontier(f, keys...)
 			}
 			var buf bytes.Buffer
-			for _, kStr := range strings.Fields(td.Input) {
+			for kStr := range strings.FieldsSeq(td.Input) {
 				k := []byte(kStr)
 				f.Advance(k)
 				fmt.Fprintf(&buf, "%s : { %s }\n", kStr, f.String())

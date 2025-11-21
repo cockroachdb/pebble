@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -220,7 +221,7 @@ func (tt *testTables) get(m *manifest.TableMetadata) testTable {
 // it.
 func splitLinesInSections(input string) [][]string {
 	var res [][]string
-	for _, l := range strings.Split(input, "\n") {
+	for l := range crstrings.LinesSeq(input) {
 		if l[0] == ' ' || l[0] == '\t' {
 			if len(res) == 0 {
 				panic(fmt.Sprintf("invalid first line %q", l))

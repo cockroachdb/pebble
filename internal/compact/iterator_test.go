@@ -16,6 +16,7 @@ import (
 	"testing"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -210,7 +211,7 @@ func TestCompactionIter(t *testing.T) {
 
 				iter := newIter()
 				var b bytes.Buffer
-				for _, line := range strings.Split(d.Input, "\n") {
+				for line := range crstrings.LinesSeq(d.Input) {
 					parts := strings.Fields(line)
 					if len(parts) == 0 {
 						continue

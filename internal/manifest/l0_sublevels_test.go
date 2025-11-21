@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -235,7 +236,7 @@ func TestL0Sublevels(t *testing.T) {
 			explicitSublevels = [][]*TableMetadata{}
 			sublevel := -1
 			addedL0Files := make(map[base.FileNum]*TableMetadata)
-			for _, data := range strings.Split(td.Input, "\n") {
+			for data := range crstrings.LinesSeq(td.Input) {
 				data = strings.TrimSpace(data)
 				switch data[:2] {
 				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
@@ -410,7 +411,7 @@ func TestL0Sublevels(t *testing.T) {
 			return strconv.Itoa(sublevels.ReadAmplification())
 		case "in-use-key-ranges":
 			var buf bytes.Buffer
-			for _, data := range strings.Split(strings.TrimSpace(td.Input), "\n") {
+			for data := range crstrings.LinesSeq(td.Input) {
 				keyRange := strings.Split(strings.TrimSpace(data), "-")
 				smallest := []byte(strings.TrimSpace(keyRange[0]))
 				largest := []byte(strings.TrimSpace(keyRange[1]))

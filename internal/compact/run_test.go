@@ -45,7 +45,7 @@ func TestTableSplitLimit(t *testing.T) {
 					MaxGrandparentOverlapBytes: maxOverlap,
 				},
 			}
-			for _, k := range strings.Fields(d.Input) {
+			for k := range strings.FieldsSeq(d.Input) {
 				res := r.TableSplitLimit([]byte(k))
 				if res == nil {
 					fmt.Fprintf(&buf, "%s: no limit\n", k)

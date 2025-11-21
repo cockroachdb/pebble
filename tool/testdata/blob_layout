@@ -1,7 +1,6 @@
 blob layout
 ./testdata/find-val-sep-db/000012.blob
 ----
-----
 000012.blob
 physical blocks:
 block 0: offset=0 length=62
@@ -124,6 +123,3 @@ block
  │         ├── 52-60: x 636869636b656e38 # data[4]: chicken8
  │         └── 60-68: x 636869636b656e39 # data[5]: chicken9
  └── 68-69: x 00 # block trailer padding
-
-----
-----

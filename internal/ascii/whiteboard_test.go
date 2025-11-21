@@ -6,9 +6,9 @@ package ascii
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/stretchr/testify/require"
@@ -25,7 +25,7 @@ func TestASCIIBoardDatadriven(t *testing.T) {
 			board = Make(w, h)
 			return board.String()
 		case "write":
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				p := strparse.MakeParser(" ", line)
 				r := p.Int()
 				c := p.Int()

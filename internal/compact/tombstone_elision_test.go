@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -33,7 +34,7 @@ func TestTombstoneElider(t *testing.T) {
 			case "in-use-ranges":
 				var inUseRanges []base.UserKeyBounds
 				if d.Input != "" {
-					for _, line := range strings.Split(d.Input, "\n") {
+					for line := range crstrings.LinesSeq(d.Input) {
 						fields := strings.FieldsFunc(line, func(r rune) bool { return r == '-' })
 						if len(fields) != 2 {
 							d.Fatalf(t, "invalid range %q", line)
@@ -51,7 +52,7 @@ func TestTombstoneElider(t *testing.T) {
 			var e pointTombstoneElider
 			e.Init(base.DefaultComparer.Compare, elision)
 			var results []string
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.FieldsFunc(line, func(r rune) bool { return r == '-' })
 				if len(fields) != 1 {
 					d.Fatalf(t, "invalid point %q", line)
@@ -65,7 +66,7 @@ func TestTombstoneElider(t *testing.T) {
 			var e rangeTombstoneElider
 			e.Init(base.DefaultComparer.Compare, elision)
 			var results []string
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.FieldsFunc(line, func(r rune) bool { return r == '-' })
 				if len(fields) != 2 {
 					d.Fatalf(t, "invalid range %q", line)
@@ -102,7 +103,7 @@ func TestSetupTombstoneElision(t *testing.T) {
 
 		case "inuse-key-ranges":
 			var buf bytes.Buffer
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				parts := strings.Fields(line)
 				if len(parts) != 3 {
 					fmt.Fprintf(&buf, "expected <output-level> <smallest> <largest>: %q\n", line)
@@ -153,7 +154,7 @@ func TestTombstoneElision(t *testing.T) {
 			var r rangeTombstoneElider
 			r.Init(testkeys.Comparer.Compare, del)
 			var buf bytes.Buffer
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				switch f := strings.FieldsFunc(line, func(r rune) bool { return r == '-' }); len(f) {
 				case 1:
 					fmt.Fprintf(&buf, "elideTombstone(%q) = %t\n", f[0], p.ShouldElide([]byte(f[0])))

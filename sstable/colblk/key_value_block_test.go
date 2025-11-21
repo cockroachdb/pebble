@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,7 @@ func TestMetaIndexBlock(t *testing.T) {
 		case "build":
 			var w KeyValueBlockWriter
 			w.Init()
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.Fields(line)
 				key := fields[0]
 				var err error
@@ -58,7 +59,7 @@ func TestPropertiesBlock(t *testing.T) {
 		case "build":
 			var w KeyValueBlockWriter
 			w.Init()
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.Fields(line)
 				key := []byte(fields[0])
 				value := []byte(fields[1])

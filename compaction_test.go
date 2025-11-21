@@ -1407,7 +1407,7 @@ func runCompactionTest(
 			levels = append(levels, levelArg)
 			td.MaybeScanArgs(t, "extraLevels", &extraLevelsStr)
 			if extraLevelsStr != "" {
-				for _, levelStr := range strings.Split(extraLevelsStr, ",") {
+				for levelStr := range strings.SplitSeq(extraLevelsStr, ",") {
 					level, err := strconv.Atoi(levelStr)
 					if err != nil {
 						return fmt.Sprintf("invalid extraLevels: %s", err)
@@ -1509,7 +1509,7 @@ func runCompactionTest(
 
 		case "set-span-policies":
 			var spanPolicies []SpanAndPolicy
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				line = strings.TrimSpace(line)
 				args := strings.Fields(line)
 				if len(args) < 2 {
@@ -1825,7 +1825,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				defer d.mu.Unlock()
 				d.mu.compact.deletionHints = d.mu.compact.deletionHints[:0]
 				var buf bytes.Buffer
-				for _, data := range strings.Split(td.Input, "\n") {
+				for data := range crstrings.LinesSeq(td.Input) {
 					parts := strings.FieldsFunc(strings.TrimSpace(data),
 						func(r rune) bool { return r == '-' || r == ' ' || r == '.' })
 
@@ -2501,7 +2501,7 @@ func TestCompactionErrorOnUserKeyOverlap(t *testing.T) {
 				var files []manifest.NewTableEntry
 				tableNum := base.TableNum(1)
 
-				for _, data := range strings.Split(d.Input, "\n") {
+				for data := range crstrings.LinesSeq(d.Input) {
 					meta := parseMeta(data)
 					meta.TableNum = tableNum
 					tableNum++
@@ -2653,7 +2653,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 					parsingSublevel = false
 				}
 
-				for _, data := range strings.Split(d.Input, "\n") {
+				for data := range crstrings.LinesSeq(d.Input) {
 					if data[0] == 'L' && len(data) == 4 {
 						// Format L0.{sublevel}.
 						switchSublevel()

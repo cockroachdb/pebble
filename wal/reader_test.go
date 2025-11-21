@@ -17,6 +17,7 @@ import (
 	"testing"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/batchrepr"
@@ -64,7 +65,7 @@ func TestList(t *testing.T) {
 			clear(filesystems)
 			return ""
 		case "touch":
-			for _, l := range strings.Split(strings.TrimSpace(td.Input), "\n") {
+			for l := range crstrings.LinesSeq(td.Input) {
 				if l == "" {
 					continue
 				}

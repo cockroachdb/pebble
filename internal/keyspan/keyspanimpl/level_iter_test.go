@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -369,7 +370,7 @@ func TestLevelIter(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			files = nil
-			for _, key := range strings.Split(d.Input, "\n") {
+			for key := range crstrings.LinesSeq(d.Input) {
 				if strings.HasPrefix(key, "file") {
 					meta := &manifest.TableMetadata{
 						TableNum: base.FileNum(len(files) + 1),

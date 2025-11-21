@@ -156,7 +156,7 @@ func ycsbParseWorkload(w string) (ycsbWeights, error) {
 		return weights, nil
 	}
 	iWeights := make([]int, ycsbNumOps)
-	for _, p := range strings.Split(w, ",") {
+	for p := range strings.SplitSeq(w, ",") {
 		parts := strings.Split(p, "=")
 		if len(parts) != 2 {
 			return nil, errors.Errorf("malformed weights: %s", errors.Safe(w))

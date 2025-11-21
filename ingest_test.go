@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -53,7 +54,7 @@ func TestSSTableKeyCompare(t *testing.T) {
 		switch td.Cmd {
 		case "cmp":
 			buf.Reset()
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				fields := strings.Fields(line)
 				a := base.ParseInternalKey(fields[0])
 				b := base.ParseInternalKey(fields[1])
@@ -109,7 +110,7 @@ func TestIngestLoad(t *testing.T) {
 			}
 			var bv blobtest.Values
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writerOpts)
-			for _, data := range strings.Split(td.Input, "\n") {
+			for data := range crstrings.LinesSeq(td.Input) {
 				if strings.HasPrefix(data, "Span: ") {
 					data = strings.TrimPrefix(data, "Span: ")
 					err := w.EncodeSpan(keyspan.ParseSpan(data))
@@ -297,7 +298,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 				if cmp == nil {
 					return fmt.Sprintf("%s unknown comparer: %s", d.Cmd, cmpName)
 				}
-				for i, data := range strings.Split(d.Input, "\n") {
+				for i, data := range crstrings.Lines(d.Input) {
 					parts := strings.Split(data, "-")
 					if len(parts) != 2 {
 						return fmt.Sprintf("malformed test case: %s", d.Input)
@@ -963,7 +964,7 @@ func testIngestSharedImpl(
 			}
 			name := td.CmdArgs[0].Key
 			var keyRanges []KeyRange
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				fields := strings.Fields(line)
 				if len(fields) != 2 {
 					return "expected two fields for file-only snapshot KeyRanges"
@@ -1491,11 +1492,10 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 
 				case "overlaps":
 					var buf bytes.Buffer
-					for _, data := range strings.Split(d.Input, "\n") {
+					for data := range crstrings.LinesSeq(d.Input) {
 						var keyRanges []bounded
-						for _, part := range strings.Fields(data) {
-							meta := parseMeta(part)
-							keyRanges = append(keyRanges, meta)
+						for part := range strings.FieldsSeq(data) {
+							keyRanges = append(keyRanges, parseMeta(part))
 						}
 						var overlaps bool
 						mem.computePossibleOverlaps(func(bounded) shouldContinue {
@@ -1643,7 +1643,7 @@ func TestIngestTargetLevel(t *testing.T) {
 					suggestSplit = true
 				}
 			}
-			for _, target := range strings.Split(td.Input, "\n") {
+			for target := range crstrings.LinesSeq(td.Input) {
 				meta, err := manifest.ParseTableMetadataDebug(target)
 				require.NoError(t, err)
 				overlapChecker := &overlapChecker{
@@ -2608,7 +2608,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 		w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
 			TableFormat: sstable.TableFormatMax,
 		})
-		for _, data := range strings.Split(input, "\n") {
+		for data := range crstrings.LinesSeq(input) {
 			if strings.HasPrefix(data, "Span: ") {
 				data = strings.TrimPrefix(data, "Span: ")
 				err := w.EncodeSpan(keyspan.ParseSpan(data))

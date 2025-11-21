@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -157,7 +158,7 @@ func runTests(t *testing.T, path string) {
 				}
 				output = strings.TrimSuffix(output, "\n")
 				buf.Reset()
-				for _, l := range strings.Split(output, "\n") {
+				for l := range crstrings.LinesSeq(output) {
 					buf.WriteString(l)
 					buf.WriteString("\n")
 				}

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -25,7 +26,7 @@ import (
 // DefineBatch interprets the provided datadriven command as a sequence of write
 // operations, one-per-line, to apply to the provided batch.
 func DefineBatch(d *datadriven.TestData, b *pebble.Batch) error {
-	for _, line := range strings.Split(d.Input, "\n") {
+	for line := range crstrings.LinesSeq(d.Input) {
 		parts := strings.Fields(line)
 		if len(parts) == 0 {
 			continue

@@ -228,10 +228,8 @@ func TestVersionSet(t *testing.T) {
 		}
 
 		fmt.Fprintf(&buf, "current version:\n")
-		for _, l := range strings.Split(vs.currentVersion().DebugString(), "\n") {
-			if l != "" {
-				fmt.Fprintf(&buf, "  %s\n", l)
-			}
+		for l := range crstrings.LinesSeq(vs.currentVersion().DebugString()) {
+			fmt.Fprintf(&buf, "  %s\n", l)
 		}
 		buf.WriteString(vs.latest.virtualBackings.String())
 		printObjectBreakdown := func(kind string, zombies zombieObjects, obsolete []deletepacer.ObsoleteFile) {

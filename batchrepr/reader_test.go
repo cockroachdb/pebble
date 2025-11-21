@@ -12,6 +12,7 @@ import (
 	"testing"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 )
 
@@ -50,7 +51,7 @@ func TestReader(t *testing.T) {
 
 func readRepr(t testing.TB, str string) []byte {
 	var reprBuf bytes.Buffer
-	for _, l := range strings.Split(str, "\n") {
+	for l := range crstrings.LinesSeq(str) {
 		// Remove any trailing comments behind #.
 		if i := strings.IndexRune(l, '#'); i >= 0 {
 			l = l[:i]

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
@@ -209,7 +210,7 @@ func (f *Formatter) String() string {
 // for each line. The current output is reset; the position within the binary
 // buffer is not.
 func (f *Formatter) ToTreePrinter(tp treeprinter.Node) {
-	for _, l := range strings.Split(strings.TrimRight(f.String(), "\n"), "\n") {
+	for l := range crstrings.LinesSeq(f.String()) {
 		tp.Child(l)
 	}
 	f.buf.Reset()

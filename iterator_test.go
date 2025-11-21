@@ -864,7 +864,7 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 		switch d.Cmd {
 		case "define":
 			kvs = kvs[:0]
-			for _, key := range strings.Split(d.Input, "\n") {
+			for key := range crstrings.LinesSeq(d.Input) {
 				j := strings.Index(key, ":")
 				kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 			}

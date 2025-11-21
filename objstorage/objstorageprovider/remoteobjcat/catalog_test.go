@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -107,7 +108,7 @@ func TestCatalog(t *testing.T) {
 
 		case "batch":
 			var b remoteobjcat.Batch
-			for _, cmd := range strings.Split(td.Input, "\n") {
+			for cmd := range crstrings.LinesSeq(td.Input) {
 				tokens := strings.Split(cmd, " ")
 				if len(tokens) == 0 {
 					td.Fatalf(t, "empty batch line")

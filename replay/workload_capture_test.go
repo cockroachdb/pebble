@@ -53,7 +53,7 @@ func TestWorkloadCollector(t *testing.T) {
 				}
 				return "equal"
 			case "clean":
-				for _, path := range strings.Fields(td.Input) {
+				for path := range strings.FieldsSeq(td.Input) {
 					typ, _, ok := base.ParseFilename(fs, path)
 					require.True(t, ok)
 					require.NoError(t, o.Cleaner.Clean(fs, typ, path))
@@ -85,11 +85,7 @@ func TestWorkloadCollector(t *testing.T) {
 					Duration:      100 * time.Millisecond,
 					TotalDuration: 100 * time.Millisecond,
 				}
-				for _, line := range strings.Split(td.Input, "\n") {
-					if line == "" {
-						continue
-					}
-
+				for line := range crstrings.LinesSeq(td.Input) {
 					parts := strings.FieldsFunc(line, func(r rune) bool { return unicode.IsSpace(r) || r == ':' })
 					tableInfo := pebble.TableInfo{Size: 10 << 10}
 					fileNum, err := strconv.ParseUint(parts[0], 10, 64)

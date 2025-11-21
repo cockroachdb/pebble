@@ -58,7 +58,7 @@ func runGetCmd(t testing.TB, td *datadriven.TestData, d *DB) string {
 	}
 
 	var buf bytes.Buffer
-	for _, data := range strings.Split(td.Input, "\n") {
+	for data := range crstrings.LinesSeq(td.Input) {
 		v, closer, err := snap.Get([]byte(data))
 		if err != nil {
 			fmt.Fprintf(&buf, "%s: %s\n", data, err)
@@ -79,7 +79,7 @@ func runIterCmd(d *datadriven.TestData, iter *Iterator, closeIter bool) string {
 		}()
 	}
 	var b bytes.Buffer
-	for _, line := range strings.Split(d.Input, "\n") {
+	for line := range crstrings.LinesSeq(d.Input) {
 		parts := strings.Fields(line)
 		if len(parts) == 0 {
 			continue
@@ -1393,7 +1393,7 @@ func runSSTablePropertiesCmd(t *testing.T, td *datadriven.TestData, d *DB) strin
 		return buf.String()
 	}
 	propsSlice := strings.Split(props.String(), "\n")
-	for _, requestedProp := range strings.Split(td.Input, "\n") {
+	for requestedProp := range crstrings.LinesSeq(td.Input) {
 		fmt.Fprintf(&buf, "%s:\n", requestedProp)
 		for _, prop := range propsSlice {
 			if strings.Contains(prop, requestedProp) {
@@ -1578,7 +1578,7 @@ func runIngestExternalCmd(
 	t testing.TB, td *datadriven.TestData, d *DB, st remote.Storage, locator string,
 ) error {
 	var external []ExternalFile
-	for _, line := range strings.Split(td.Input, "\n") {
+	for line := range crstrings.LinesSeq(td.Input) {
 		usageErr := func(info interface{}) {
 			t.Helper()
 			td.Fatalf(t, "error parsing %q: %v; "+

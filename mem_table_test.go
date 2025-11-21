@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
@@ -234,7 +235,7 @@ func TestMemTableIter(t *testing.T) {
 			switch d.Cmd {
 			case "define":
 				mem = newMemTable(memTableOptions{})
-				for _, key := range strings.Split(d.Input, "\n") {
+				for key := range crstrings.LinesSeq(d.Input) {
 					j := strings.Index(key, ":")
 					if err := mem.set(base.ParseInternalKey(key[:j]), []byte(key[j+1:])); err != nil {
 						return err.Error()
@@ -424,7 +425,7 @@ func TestMemTable(t *testing.T) {
 			stopAfterFirst := td.HasArg("stop-after-first")
 
 			var keyRanges []bounded
-			for _, l := range strings.Split(td.Input, "\n") {
+			for l := range crstrings.LinesSeq(td.Input) {
 				s := strings.FieldsFunc(l, func(r rune) bool { return unicode.IsSpace(r) || r == '-' })
 				keyRanges = append(keyRanges, KeyRange{Start: []byte(s[0]), End: []byte(s[1])})
 			}

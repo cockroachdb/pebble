@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -47,7 +48,7 @@ func TestDownloadCursor(t *testing.T) {
 			bounds := base.UserKeyBoundsEndExclusive([]byte(lower), []byte(upper))
 
 			var buf strings.Builder
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				fields := strings.Fields(line)
 				fmt.Fprintf(&buf, "%s:\n", fields[0])
 				switch cmd := fields[0]; cmd {
@@ -131,7 +132,7 @@ func TestDownloadTask(t *testing.T) {
 			// Parse a list of tables that are compacting and set compacting status on
 			// all tables in the current version.
 			compacting := make(map[base.TableNum]struct{})
-			for _, f := range strings.Fields(td.Input) {
+			for f := range strings.FieldsSeq(td.Input) {
 				n, err := strconv.Atoi(f)
 				require.NoError(t, err)
 				compacting[base.TableNum(n)] = struct{}{}

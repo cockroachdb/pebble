@@ -38,7 +38,7 @@ func makeBrokenExternalDB() {
 		log.Fatal(err)
 	}
 	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(f), opts.MakeWriterOptions(0, version.MaxTableFormat()))
-	for _, k := range strings.Fields("a25 b1 b2 b3 c15") {
+	for k := range strings.FieldsSeq("a25 b1 b2 b3 c15") {
 		err := w.Set([]byte(k), []byte(k))
 		if err != nil {
 			log.Fatal(err)
@@ -62,7 +62,7 @@ func makeBrokenExternalDB() {
 		}
 	}()
 
-	for _, k := range strings.Fields("a10 a20 a30") {
+	for k := range strings.FieldsSeq("a10 a20 a30") {
 		if err := db.Set([]byte(k), []byte(k), pebble.Sync); err != nil {
 			log.Fatal(err)
 		}
@@ -74,7 +74,7 @@ func makeBrokenExternalDB() {
 		context.Background(), []byte("a"), []byte("b"), false /* parallelize */); err != nil {
 		log.Fatal(err)
 	}
-	for _, k := range strings.Fields("c10 c20 c30") {
+	for k := range strings.FieldsSeq("c10 c20 c30") {
 		if err := db.Set([]byte(k), []byte(k), pebble.Sync); err != nil {
 			log.Fatal(err)
 		}

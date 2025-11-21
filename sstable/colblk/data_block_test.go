@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/binfmt"
@@ -61,7 +62,7 @@ func TestDataBlock(t *testing.T) {
 					w.Init(&testKeysSchema)
 				}
 				var prevKey base.InternalKey
-				for _, line := range strings.Split(td.Input, "\n") {
+				for line := range crstrings.LinesSeq(td.Input) {
 					line, isObsolete := strings.CutSuffix(line, "obsolete")
 
 					j := strings.IndexRune(line, ':')

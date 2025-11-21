@@ -6,16 +6,15 @@ EOF logNum=2
 describe
 ----
 Blocks
- ├── Block #0
- │    ├── Chunk #0 (offset 0)
- │    │    ├── Checksum: 3699662224
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    └── Chunk #1 (offset 20)
- │         └── EOF
- └── 
+ └── Block #0
+      ├── Chunk #0 (offset 0)
+      │    ├── Checksum: 3699662224
+      │    ├── Encoded Length: 1
+      │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+      │    ├── Log Num: 1
+      │    └── Synced Offset: 0
+      └── Chunk #1 (offset 20)
+           └── EOF
 
 read
 ----
@@ -32,16 +31,15 @@ EOF logNum=2
 describe
 ----
 Blocks
- ├── Block #0
- │    ├── Chunk #0 (offset 0, corrupt)
- │    │    ├── Checksum: 3716504721
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 0
- │    └── Chunk #1 (offset 20)
- │         └── EOF
- └── 
+ └── Block #0
+      ├── Chunk #0 (offset 0, corrupt)
+      │    ├── Checksum: 3716504721
+      │    ├── Encoded Length: 1
+      │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+      │    ├── Log Num: 1
+      │    └── Synced Offset: 0
+      └── Chunk #1 (offset 20)
+           └── EOF
 
 read
 ----
@@ -99,10 +97,9 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 0
- ├── Block #1
- │    └── Chunk #0 (offset 32768)
- │         └── EOF
- └── 
+ └── Block #1
+      └── Chunk #0 (offset 32768)
+           └── EOF
 
 # Multiple corruption with no confirmation
 init
@@ -143,10 +140,9 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 0
- ├── Block #2
- │    └── Chunk #0 (offset 65536)
- │         └── EOF
- └── 
+ └── Block #2
+      └── Chunk #0 (offset 65536)
+           └── EOF
 
 # Multiple corruption but large offset is also corrupt, no confirmation
 init
@@ -187,10 +183,9 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 100000
- ├── Block #2
- │    └── Chunk #0 (offset 65536)
- │         └── EOF
- └── 
+ └── Block #2
+      └── Chunk #0 (offset 65536)
+           └── EOF
 
 # Simple corruption with confirmation
 init
@@ -220,16 +215,15 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 0
- ├── Block #1
- │    ├── Chunk #0 (offset 32768)
- │    │    ├── Checksum: 2230101255
- │    │    ├── Encoded Length: 1
- │    │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
- │    │    ├── Log Num: 1
- │    │    └── Synced Offset: 30000
- │    └── Chunk #1 (offset 32788)
- │         └── EOF
- └── 
+ └── Block #1
+      ├── Chunk #0 (offset 32768)
+      │    ├── Checksum: 2230101255
+      │    ├── Encoded Length: 1
+      │    ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
+      │    ├── Log Num: 1
+      │    └── Synced Offset: 30000
+      └── Chunk #1 (offset 32788)
+           └── EOF
 
 # Corrupt the first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -282,10 +276,9 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 32000
- ├── Block #2
- │    └── Chunk #0 (offset 65536)
- │         └── EOF
- └── 
+ └── Block #2
+      └── Chunk #0 (offset 65536)
+           └── EOF
 
 # Corrupt the first block with confirming chunks after. However, these next chunks
 # in the same block cannot be used to confirm because reading ahead jumps to the next
@@ -342,10 +335,9 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 32000
- ├── Block #2
- │    └── Chunk #0 (offset 65536)
- │         └── EOF
- └── 
+ └── Block #2
+      └── Chunk #0 (offset 65536)
+           └── EOF
 
 # Complex multiple corruption with no confirmation
 init
@@ -436,10 +428,9 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 64000
- ├── Block #4
- │    └── Chunk #0 (offset 131072)
- │         └── EOF
- └── 
+ └── Block #4
+      └── Chunk #0 (offset 131072)
+           └── EOF
 
 # Complex multiple corruption with confirmation in blockNum 3
 init
@@ -526,10 +517,9 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 32000
- ├── Block #4
- │    └── Chunk #0 (offset 131072)
- │         └── EOF
- └── 
+ └── Block #4
+      └── Chunk #0 (offset 131072)
+           └── EOF
 
 # Complex multiple corruption with confirmation offset too small
 init
@@ -603,10 +593,9 @@ Blocks
  │         ├── Chunk encoding: 9 (chunkType: 1, wireFormat: 3)
  │         ├── Log Num: 1
  │         └── Synced Offset: 100
- ├── Block #4
- │    └── Chunk #0 (offset 131072)
- │         └── EOF
- └── 
+ └── Block #4
+      └── Chunk #0 (offset 131072)
+           └── EOF
 
 ###########################
 ###### log num cases ######

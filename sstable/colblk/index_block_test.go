@@ -13,6 +13,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -31,7 +32,7 @@ func TestIndexBlock(t *testing.T) {
 		case "build":
 			var w IndexBlockWriter
 			w.Init()
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.Fields(line)
 				var err error
 				var h block.Handle
@@ -62,7 +63,7 @@ func TestIndexBlock(t *testing.T) {
 			}
 			var it IndexIter
 			it.InitWithDecoder(testkeys.Comparer, &decoder, transforms)
-			for _, line := range strings.Split(d.Input, "\n") {
+			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.Fields(line)
 				var valid bool
 				switch fields[0] {

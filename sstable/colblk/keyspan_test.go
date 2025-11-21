@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -41,7 +41,7 @@ func TestKeyspanBlock(t *testing.T) {
 			fmt.Fprint(&buf, &w)
 			return buf.String()
 		case "add":
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range crstrings.LinesSeq(td.Input) {
 				w.AddSpan(keyspan.ParseSpan(line))
 			}
 			fmt.Fprint(&buf, &w)
