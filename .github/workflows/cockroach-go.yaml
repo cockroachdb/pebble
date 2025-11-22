@@ -1,0 +1,85 @@
+name: Nightly cockroach-go tests
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: 'SHA to run against'
+        required: false
+        type: string
+      file_issue_branch:
+        description: 'Branch used in filed issues; if unset, no issues are filed'
+        required: false
+        type: string
+      bootstrap_go_version:
+        description: 'Bootstrap Go version'
+        required: false
+        default: '1.25'
+        type: string
+      go_branch:
+        description: 'CockroachDB Go fork branch'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'SHA to run against'
+        required: false
+        type: string
+      file_issue_branch:
+        description: 'Branch used in filed issues; if unset, no issues are filed'
+        required: false
+        type: string
+      bootstrap_go_version:
+        description: 'Bootstrap Go version'
+        required: false
+        default: '1.25'
+        type: string
+      go_branch:
+        description: 'CockroachDB Go fork branch'
+        required: true
+        type: string
+
+jobs:
+  linux-cockroach-go:
+    name: linux-cockroach-go
+    runs-on: ubuntu-latest
+    env:
+      GO_BRANCH: ${{ inputs.go_branch }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      # Step 1: Fetch the branch tip SHA for cache key
+      - name: Get cockroachdb/go commit hash
+        id: go-sha
+        run: |
+          SHA=$(git ls-remote https://github.com/cockroachdb/go.git refs/heads/$GO_BRANCH | cut -f1)
+          echo "GO_SHA=$SHA" >> $GITHUB_ENV
+
+      # Step 2: Restore cache (per branch + commit SHA)
+      - name: Cache custom Go toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cockroachdb-go/${{ env.GO_SHA }}
+          key: cockroachdb-${{ env.GO_SHA }}
+
+      # Step 3: Install bootstrap Go (needed to build fork)
+      - name: Install bootstrap Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.bootstrap_go_version }}
+
+      # Step 4: Run tests with custom Go
+      - run: ./scripts/run-tests-with-custom-go.sh -tags invariants ./...
+
+      - name: Post issue on failure
+        if: failure() && inputs.file_issue_branch != ''
+        id: create-or-update-unique-issue
+        uses: ./.github/actions/post-issue
+        with:
+          title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} failed"
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }}. Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          labels: "C-test-failure"

@@ -1,0 +1,62 @@
+name: Crossversion smoke test
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: 'SHA to run against'
+        required: false
+        type: string
+      file_issue_branch:
+        description: 'Branch used in filed issues; if unset, no issues are filed'
+        required: false
+        type: string
+      go_version:
+        description: 'Go version'
+        required: false
+        default: '1.25'
+        type: string
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'SHA to run against'
+        required: false
+        type: string
+      file_issue_branch:
+        description: 'Branch used in filed issues; if unset, no issues are filed'
+        required: false
+        type: string
+      go_version:
+        description: 'Go version'
+        required: false
+        default: '1.25'
+        type: string
+
+jobs:
+  crossversion-smoke-test:
+    name: crossversion-smoke-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ inputs.go_version }}
+
+      - run: ./scripts/crossversion_smoke_test.sh
+
+      - name: Post issue on failure
+        if: failure() && inputs.file_issue_branch != ''
+        id: create-or-update-unique-issue
+        uses: ./.github/actions/post-issue
+        with:
+          title: "${{ inputs.file_issue_branch }}: nightly ${{ github.job }} failed"
+          body: "The nightly ${{ github.job }} test run failed on ${{ inputs.sha }} (go${{ inputs.go_version }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          labels: "C-test-failure"
