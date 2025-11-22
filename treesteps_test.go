@@ -7,6 +7,7 @@
 package pebble
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
@@ -105,5 +106,5 @@ func treeStepsStartRecording(
 	if depth != 0 {
 		opts = append(opts, treesteps.MaxTreeDepth(depth))
 	}
-	return treesteps.StartRecording(node, td.Pos, opts...)
+	return treesteps.StartRecording(node, strings.ReplaceAll(td.Pos, "\\", "/"), opts...)
 }
