@@ -268,6 +268,14 @@ func (w *RawColumnWriter) IsPrefixEqualPrev(k []byte) bool {
 	return w.dataBlock.KeyWriter.ComparePrev(k).PrefixEqual()
 }
 
+// PrevPointKeyKind implements the RawWriter interface.
+func (w *RawColumnWriter) PrevPointKeyKind() base.InternalKeyKind {
+	if w == nil || w.dataBlock.Rows() == 0 {
+		return base.InternalKeyKindInvalid
+	}
+	return w.prevPointKey.trailer.Kind()
+}
+
 // SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
 // be used internally by Pebble.
 func (w *RawColumnWriter) SetSnapshotPinnedProperties(

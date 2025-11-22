@@ -1,0 +1,69 @@
+# Standard test. Sequence numbers should be set to 0, so the parsed seqnum
+# values here don't matter.
+build value-separation-min-size=4
+a#1,SET:aaaa
+b#1,DEL:
+c#1,MERGE:c
+Span: d-e:{(#4,RANGEDEL)}
+f#5,SET:f
+g#6,DEL:
+h#7,MERGE:h
+Span: i-j:{(#8,RANGEDEL)}
+Span: j-k:{(#9,RANGEKEYDEL)}
+Span: k-l:{(#10,RANGEKEYUNSET,@5)}
+Span: l-m:{(#11,RANGEKEYSET,@10,foo)}
+----
+size:1040
+blobfiles:
+1: {BlockCount: 1, ValueCount: 1, UncompressedValueBytes: 4 (0% MVCCGarbage), FileLen: 93}
+
+# Test separating MVCC garbage.
+build value-separation-min-size=5
+a@3#2,SET:aa
+a@1#1,SET:aa
+b@3#3,SET:bb
+c#4,SET:ccccc
+----
+size:787
+blobfiles:
+1: {BlockCount: 1, ValueCount: 2, UncompressedValueBytes: 7 (29% MVCCGarbage), FileLen: 97}
+
+# Test with span policy that disables MVCC garbage separation.
+build value-separation-min-size=5 span-policy=(disable-value-separation-by-suffix)
+a@3#2,SET:aa
+a@1#1,SET:aa
+b@3#3,SET:bb
+c#4,SET:ccccc
+----
+size:873
+blobfiles:
+1: {BlockCount: 1, ValueCount: 1, UncompressedValueBytes: 5 (0% MVCCGarbage), FileLen: 94}
+
+
+# Test with span policy that disables blob value separation.
+build value-separation-min-size=1 span-policy=(no-value-separation)
+a@3#2,SET:aa
+a@1#1,SET:aa
+b@3#3,SET:bb
+c#4,SET:ccccc
+----
+size:792
+blobfiles: none
+
+
+# Test with span policy that overrides value separation.
+build value-separation-min-size=100 span-policy=(value-separation-min-size=1)
+a#2,SET:aaaa
+b#3,SET:bb
+c#4,SET:cccc
+----
+size:758
+blobfiles:
+1: {BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 10 (0% MVCCGarbage), FileLen: 101}
+
+# Keys should be added in increasing order.
+build value-separation-min-size=4
+a#1,SET:aaaa
+a#2,SET:bb
+----
+error putting key a: pebble: keys must be added in strictly increasing order: a#0,SET, a#0,SET

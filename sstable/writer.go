@@ -363,6 +363,9 @@ type RawWriter interface {
 	//
 	// Must not be called after Writer is closed.
 	IsPrefixEqualPrev(k []byte) bool
+	// PrevPointKeyKind returns the InternalKeyKind of the last point key written
+	// to the writer. Must not be called after Writer is closed.
+	PrevPointKeyKind() base.InternalKeyKind
 
 	// SetValueSeparationProps sets the value separation props that were used when
 	// writing this sstable. This is recorded in the sstable properties.

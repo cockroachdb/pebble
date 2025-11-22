@@ -1281,94 +1281,16 @@ type ValueSeparationPolicy struct {
 	GarbageRatioHighPriority float64
 }
 
-// SpanPolicy contains policies that can vary by key range. The zero value is
-// the default value.
-type SpanPolicy struct {
-	// Prefer a faster compression algorithm for the keys in this span.
-	//
-	// This is useful for keys that are frequently read or written but which don't
-	// amount to a significant amount of space.
-	PreferFastCompression bool
-
-	// ValueStoragePolicy is a hint used to determine where to store the values
-	// for KVs.
-	ValueStoragePolicy ValueStoragePolicyAdjustment
-}
-
-// String returns a string representation of the SpanPolicy.
-func (p SpanPolicy) String() string {
-	var sb strings.Builder
-	if p.PreferFastCompression {
-		sb.WriteString("fast-compression,")
-	}
-	if p.ValueStoragePolicy.DisableSeparationBySuffix {
-		sb.WriteString("disable-value-separation-by-suffix,")
-	}
-	if p.ValueStoragePolicy.DisableBlobSeparation {
-		sb.WriteString("no-blob-value-separation,")
-	}
-	if p.ValueStoragePolicy.OverrideBlobSeparationMinimumSize > 0 {
-		sb.WriteString("override-value-separation-min-size,")
-	}
-	if p.ValueStoragePolicy.MinimumMVCCGarbageSize > 0 {
-		sb.WriteString("minimum-mvcc-garbage-size")
-	}
-	return strings.TrimSuffix(sb.String(), ",")
-}
-
-// ValueStoragePolicyAdjustment is used to determine where to store the values for
-// KVs, overriding global policies. Values can be configured to be stored in-place,
-// in value blocks, or in blob files.
-type ValueStoragePolicyAdjustment struct {
-	// DisableSeparationBySuffix disables discriminating KVs depending on
-	// suffix.
-	//
-	// Among a set of keys with the same prefix, Pebble's default heuristics
-	// optimize access to the KV with the smallest suffix. This is useful for MVCC
-	// keys (where the smallest suffix is the latest version), but should be
-	// disabled for keys where the suffix does not correspond to a version.
-	// See sstable.IsLikelyMVCCGarbage for the exact criteria we use to
-	// determine whether a value is likely MVCC garbage.
-	//
-	// If separation by suffix is enabled, KVs with older suffix values will be
-	// written according to the following rules:
-	// - If the value is empty, no separation is performed.
-	// - If blob separation is enabled the value will be separated into a blob
-	// file even if its size is smaller than the minimum value size.
-	// - If blob separation is disabled, the value will be written to a value
-	// block within the sstable.
-	DisableSeparationBySuffix bool
-
-	// DisableBlobSeparation disables separating values into blob files.
-	DisableBlobSeparation bool
-
-	// OverrideBlobSeparationMinimumSize overrides the minimum size required
-	// for value separation into a blob file. Note that value separation must
-	// be enabled globally for this to take effect.
-	OverrideBlobSeparationMinimumSize int
-
-	// MinimumMVCCGarbageSize, when non-zero, imposes a new minimum size required
-	// for value separation into a blob file only if the value is likely MVCC
-	// garbage. Note that value separation must be enabled globally for this to
-	// take effect.
-	MinimumMVCCGarbageSize int
-}
-
-func (vsp *ValueStoragePolicyAdjustment) ContainsOverrides() bool {
-	return vsp.OverrideBlobSeparationMinimumSize > 0 || vsp.DisableSeparationBySuffix ||
-		vsp.MinimumMVCCGarbageSize > 0
-}
-
 // ValueStorageLatencyTolerant is the suggested ValueStoragePolicyAdjustment
 // to use for key ranges that can tolerate higher value retrieval
 // latency.
-var ValueStorageLatencyTolerant = ValueStoragePolicyAdjustment{
+var ValueStorageLatencyTolerant = base.ValueStoragePolicyAdjustment{
 	OverrideBlobSeparationMinimumSize: 10,
 }
 
 // ValueStorageLowReadLatency is the suggested ValueStoragePolicyAdjustment
 // to use for key ranges that require low value retrieval latency.
-var ValueStorageLowReadLatency = ValueStoragePolicyAdjustment{
+var ValueStorageLowReadLatency = base.ValueStoragePolicyAdjustment{
 	DisableBlobSeparation:     true,
 	DisableSeparationBySuffix: true,
 }
@@ -1384,12 +1306,12 @@ var ValueStorageLowReadLatency = ValueStoragePolicyAdjustment{
 //
 // The end key can be empty, in which case the policy is valid for the entire
 // keyspace after startKey.
-type SpanPolicyFunc func(startKey []byte) (policy SpanPolicy, endKey []byte, err error)
+type SpanPolicyFunc func(startKey []byte) (policy base.SpanPolicy, endKey []byte, err error)
 
 // SpanAndPolicy defines a key range and the policy to apply to it.
 type SpanAndPolicy struct {
 	KeyRange KeyRange
-	Policy   SpanPolicy
+	Policy   base.SpanPolicy
 }
 
 // MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
@@ -1406,28 +1328,28 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) 
 	uniqueKeys = slices.CompactFunc(uniqueKeys, func(a, b []byte) bool { return cmp(a, b) == 0 })
 
 	// Create a list of policies.
-	policies := make([]SpanPolicy, len(uniqueKeys)-1)
+	policies := make([]base.SpanPolicy, len(uniqueKeys)-1)
 	for _, p := range inputPolicies {
 		idx, _ := slices.BinarySearchFunc(uniqueKeys, p.KeyRange.Start, cmp)
 		policies[idx] = p.Policy
 	}
 
-	return func(startKey []byte) (_ SpanPolicy, endKey []byte, _ error) {
+	return func(startKey []byte) (_ base.SpanPolicy, endKey []byte, _ error) {
 		// Find the policy that applies to the start key.
 		idx, eq := slices.BinarySearchFunc(uniqueKeys, startKey, cmp)
 		switch idx {
 		case len(uniqueKeys):
 			// The start key is after the last policy.
-			return SpanPolicy{}, nil, nil
+			return base.SpanPolicy{}, nil, nil
 		case len(uniqueKeys) - 1:
 			if eq {
 				// The start key is exactly the start of the last policy.
-				return SpanPolicy{}, nil, nil
+				return base.SpanPolicy{}, nil, nil
 			}
 		case 0:
 			if !eq {
 				// The start key is before the first policy.
-				return SpanPolicy{}, uniqueKeys[0], nil
+				return base.SpanPolicy{}, uniqueKeys[0], nil
 			}
 		}
 		if eq {
@@ -1696,7 +1618,7 @@ func (o *Options) EnsureDefaults() {
 		o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 	}
 	if o.Experimental.SpanPolicyFunc == nil {
-		o.Experimental.SpanPolicyFunc = func(startKey []byte) (SpanPolicy, []byte, error) { return SpanPolicy{}, nil, nil }
+		o.Experimental.SpanPolicyFunc = func(startKey []byte) (base.SpanPolicy, []byte, error) { return base.SpanPolicy{}, nil, nil }
 	}
 	if o.Experimental.VirtualTableRewriteUnreferencedFraction == nil {
 		o.Experimental.VirtualTableRewriteUnreferencedFraction = func() float64 { return defaultVirtualTableUnreferencedFraction }

@@ -1787,7 +1787,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				Start: []byte(cmdArg.Vals[0]),
 				End:   []byte(cmdArg.Vals[1]),
 			}
-			policy := SpanPolicy{
+			policy := base.SpanPolicy{
 				ValueStoragePolicy: ValueStorageLowReadLatency,
 			}
 			spanPolicies = append(spanPolicies, SpanAndPolicy{
@@ -1802,7 +1802,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				Start: []byte(cmdArg.Vals[0]),
 				End:   []byte(cmdArg.Vals[1]),
 			}
-			policy := SpanPolicy{ValueStoragePolicy: ValueStorageLatencyTolerant}
+			policy := base.SpanPolicy{ValueStoragePolicy: ValueStorageLatencyTolerant}
 			spanPolicies = append(spanPolicies, SpanAndPolicy{
 				KeyRange: span,
 				Policy:   policy,
