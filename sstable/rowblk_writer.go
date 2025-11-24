@@ -1395,25 +1395,15 @@ func (w *RawRowWriter) ComparePrev(k []byte) int {
 	return w.compare(k, w.dataBlockBuf.dataBlock.CurUserKey())
 }
 
-// IsPrefixEqualPrev compares the provided user key's prefix to the key
-// prefix of the last point key written to the writer.
-//
-// If no key has been written yet, IsPrefixEqualPrev returns false.
-//
-// Must not be called after Writer is closed.
-func (w *RawRowWriter) IsPrefixEqualPrev(k []byte) bool {
+// IsLikelyMVCCGarbage implements the RawWriter interface.
+func (w *RawRowWriter) IsLikelyMVCCGarbage(k []byte, keyKind base.InternalKeyKind) bool {
 	if w == nil || w.dataBlockBuf.dataBlock.EntryCount() == 0 {
 		return false
 	}
-	return bytes.Equal(w.split.Prefix(k), w.split.Prefix(w.dataBlockBuf.dataBlock.CurUserKey()))
-}
+	return w.dataBlockBuf.dataBlock.CurKey().Kind().IsSet() &&
+		keyKind.IsSet() &&
+		bytes.Equal(w.split.Prefix(k), w.split.Prefix(w.dataBlockBuf.dataBlock.CurUserKey()))
 
-// PrevPointKeyKind implements the RawWriter interface.
-func (w *RawRowWriter) PrevPointKeyKind() base.InternalKeyKind {
-	if w == nil || w.dataBlockBuf.dataBlock.EntryCount() == 0 {
-		return base.InternalKeyKindInvalid
-	}
-	return w.dataBlockBuf.dataBlock.CurKey().Kind()
 }
 
 // EncodeSpan encodes the keys in the given span. The span can contain either

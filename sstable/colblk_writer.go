@@ -255,25 +255,16 @@ func (w *RawColumnWriter) ComparePrev(k []byte) int {
 	return int(w.dataBlock.KeyWriter.ComparePrev(k).UserKeyComparison)
 }
 
-// IsPrefixEqualPrev compares the provided user key's prefix to the key
-// prefix of the last point key written to the writer.
+// IsLikelyMVCCGarbage implements the RawWriter interface.
 //
-// If no key has been written yet, IsPrefixEqualPrev returns false.
-//
-// Must not be called after Writer is closed.
-func (w *RawColumnWriter) IsPrefixEqualPrev(k []byte) bool {
+// If no key has been written yet, IsLikelyMVCCGarbage returns false.
+func (w *RawColumnWriter) IsLikelyMVCCGarbage(k []byte, keyKind base.InternalKeyKind) bool {
 	if w == nil || w.dataBlock.Rows() == 0 {
 		return false
 	}
-	return w.dataBlock.KeyWriter.ComparePrev(k).PrefixEqual()
-}
-
-// PrevPointKeyKind implements the RawWriter interface.
-func (w *RawColumnWriter) PrevPointKeyKind() base.InternalKeyKind {
-	if w == nil || w.dataBlock.Rows() == 0 {
-		return base.InternalKeyKindInvalid
-	}
-	return w.prevPointKey.trailer.Kind()
+	return w.prevPointKey.trailer.Kind().IsSet() &&
+		keyKind.IsSet() &&
+		w.dataBlock.KeyWriter.ComparePrev(k).PrefixEqual()
 }
 
 // SetSnapshotPinnedProperties sets the properties for pinned keys. Should only
@@ -641,9 +632,6 @@ func (w *RawColumnWriter) evaluatePoint(
 			key.Pretty(w.comparer.FormatKey))
 	}
 
-	prefixEqual := func(k []byte) bool {
-		return w.IsPrefixEqualPrev(k)
-	}
 	// We might want to write this key's value to a value block if it has the
 	// same prefix.
 	//
@@ -660,7 +648,7 @@ func (w *RawColumnWriter) evaluatePoint(
 	useValueBlock := !w.opts.DisableValueBlocks &&
 		w.valueBlock != nil &&
 		valueLen > 0 &&
-		IsLikelyMVCCGarbage(key.UserKey, prevKeyKind, keyKind, valueLen, prefixEqual)
+		w.IsLikelyMVCCGarbage(key.UserKey, key.Kind())
 	if !useValueBlock {
 		return eval, nil
 	}
@@ -1292,26 +1280,4 @@ func (w *RawColumnWriter) SetValueSeparationProps(
 ) {
 	w.props.ValueSeparationMinSize = minValueSize
 	w.props.ValueSeparationBySuffixDisabled = disableSeparationBySuffix
-}
-
-// IsLikelyMVCCGarbage determines whether the given user key is likely MVCC
-// garbage.
-//
-// We require:
-//
-//	. The previous key to be a SET/SETWITHDEL.
-//	. The current key to be a SET/SETWITHDEL.
-//	. The current key to have the same prefix as the previous key.
-func IsLikelyMVCCGarbage(
-	k []byte,
-	prevKeyKind, keyKind base.InternalKeyKind,
-	valueLen int,
-	prefixEqual func(k []byte) bool,
-) bool {
-	isSetStarKind := func(k base.InternalKeyKind) bool {
-		return k == InternalKeyKindSet || k == InternalKeyKindSetWithDelete
-	}
-	return isSetStarKind(prevKeyKind) &&
-		isSetStarKind(keyKind) &&
-		prefixEqual(k)
 }

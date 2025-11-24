@@ -356,16 +356,14 @@ type RawWriter interface {
 	// Metadata returns the metadata for the finished sstable. Only valid to
 	// call after the sstable has been finished.
 	Metadata() (*WriterMetadata, error)
-	// IsPrefixEqualPrev compares the provided user key's prefix to the key
-	// prefix of the last point key written to the writer.
+	// IsLikelyMVCCGarbage determines whether the given user key is likely MVCC
+	// garbage according to the previous key written to the writer.
 	//
-	// If no key has been written yet, IsPrefixEqualPrev returns false.
-	//
-	// Must not be called after Writer is closed.
-	IsPrefixEqualPrev(k []byte) bool
-	// PrevPointKeyKind returns the InternalKeyKind of the last point key written
-	// to the writer. Must not be called after Writer is closed.
-	PrevPointKeyKind() base.InternalKeyKind
+	// We require:
+	//	* The previous key to be a SET/SETWITHDEL.
+	//	* The current key to be a SET/SETWITHDEL.
+	//	* The current key to have the same prefix as the previous key.
+	IsLikelyMVCCGarbage(key []byte, kind base.InternalKeyKind) bool
 
 	// SetValueSeparationProps sets the value separation props that were used when
 	// writing this sstable. This is recorded in the sstable properties.
