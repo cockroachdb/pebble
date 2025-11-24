@@ -450,6 +450,7 @@ func ingestLoad1(
 	}
 
 	if !meta.HasPointKeys && !meta.HasRangeKeys {
+		// Elide ingesting empty sstables.
 		return nil, keyspan.Span{}, base.BlockReadStats{}, nil
 	}
 
@@ -503,12 +504,8 @@ func ingestLoad(
 	external []ExternalFile,
 	cacheHandle *cache.Handle,
 	compressionCounters *block.CompressionCounters,
-	pending []base.TableNum,
+	getNextFileNum func() base.DiskFileNum,
 ) (ingestLoadResult, error) {
-	localFileNums := pending[:len(paths)]
-	sharedFileNums := pending[len(paths) : len(paths)+len(shared)]
-	externalFileNums := pending[len(paths)+len(shared) : len(paths)+len(shared)+len(external)]
-
 	var result ingestLoadResult
 	result.local = make([]ingestLocalMeta, 0, len(paths))
 	var lastRangeKey keyspan.Span
@@ -536,7 +533,8 @@ func ingestLoad(
 		if !shouldDisableRangeKeyChecks {
 			rangeKeyValidator = validateSuffixedBoundaries(opts.Comparer, lastRangeKey)
 		}
-		m, lastRangeKey, blockReadStats, err = ingestLoad1(ctx, opts, fmv, readable, cacheHandle, compressionCounters, localFileNums[i], rangeKeyValidator)
+		tableNum := base.TableNum(getNextFileNum())
+		m, lastRangeKey, blockReadStats, err = ingestLoad1(ctx, opts, fmv, readable, cacheHandle, compressionCounters, tableNum, rangeKeyValidator)
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -561,7 +559,7 @@ func ingestLoad(
 
 	result.shared = make([]ingestSharedMeta, 0, len(shared))
 	for i := range shared {
-		m, err := ingestSynthesizeShared(opts, shared[i], sharedFileNums[i])
+		m, err := ingestSynthesizeShared(opts, shared[i], base.PhysicalTableFileNum(getNextFileNum()))
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -575,7 +573,7 @@ func ingestLoad(
 	}
 	result.external = make([]ingestExternalMeta, 0, len(external))
 	for i := range external {
-		m, err := ingestLoad1External(opts, external[i], externalFileNums[i])
+		m, err := ingestLoad1External(opts, external[i], base.PhysicalTableFileNum(getNextFileNum()))
 		if err != nil {
 			return ingestLoadResult{}, err
 		}
@@ -1470,22 +1468,12 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			}
 		}
 	}
-	// Allocate table numbers for all files being ingested and mark them as
-	// pending in order to prevent them from being deleted. Note that this causes
-	// the file number ordering to be out of alignment with sequence number
-	// ordering. The sorting of L0 tables by sequence number avoids relying on
-	// that (busted) invariant.
-	pendingOutputs := make([]base.TableNum, len(paths)+len(shared)+len(external))
-	for i := 0; i < len(paths)+len(shared)+len(external); i++ {
-		pendingOutputs[i] = d.mu.versions.getNextTableNum()
-	}
-
 	jobID := d.newJobID()
 
 	// Load the metadata for all the files being ingested. This step detects
 	// and elides empty sstables.
 	loadResult, err := ingestLoad(ctx, d.opts, d.FormatMajorVersion(), paths, shared, external,
-		d.cacheHandle, &d.compressionCounters, pendingOutputs)
+		d.cacheHandle, &d.compressionCounters, d.mu.versions.getNextDiskFileNum)
 	if err != nil {
 		return IngestOperationStats{}, err
 	}

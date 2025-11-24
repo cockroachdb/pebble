@@ -149,7 +149,8 @@ func TestIngestLoad(t *testing.T) {
 				FS:         mem,
 			}
 			opts.WithFSDefaults()
-			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, nil, []base.TableNum{1})
+			getNextFileNum := func() base.DiskFileNum { return 1 }
+			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, nil, getNextFileNum)
 			if err != nil {
 				return err.Error()
 			}
@@ -184,14 +185,19 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 
 	paths := make([]string, 1+rng.IntN(10))
-	pending := make([]base.TableNum, len(paths))
 	expected := make([]ingestLocalMeta, len(paths))
+	pending := make([]base.DiskFileNum, len(expected))
+	for i := range expected {
+		pending[i] = base.DiskFileNum(rng.Uint64())
+	}
+	fileNumAllocator := testFileNumAllocator{
+		fileNums: pending,
+	}
 	for i := range paths {
 		paths[i] = fmt.Sprint(i)
-		pending[i] = base.TableNum(rng.Uint64())
 		expected[i] = ingestLocalMeta{
 			TableMetadata: &manifest.TableMetadata{
-				TableNum: pending[i],
+				TableNum: base.TableNum(pending[i]),
 			},
 			path: paths[i],
 		}
@@ -248,7 +254,7 @@ func TestIngestLoadRand(t *testing.T) {
 	}
 	opts.WithFSDefaults()
 	opts.EnsureDefaults()
-	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, nil, nil, pending)
+	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, nil, nil, fileNumAllocator.nextFileNum)
 	require.NoError(t, err)
 
 	// Reset flaky stats.
@@ -273,7 +279,8 @@ func TestIngestLoadInvalid(t *testing.T) {
 		FS:       mem,
 	}
 	opts.WithFSDefaults()
-	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, nil, []base.TableNum{1}); err == nil {
+	getNextFileNum := func() base.DiskFileNum { return 1 }
+	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, nil, getNextFileNum); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
 }
@@ -3171,4 +3178,15 @@ func runBenchmarkManySSTablesInUseKeyRanges(b *testing.B, d *DB, count int) {
 	for i := 0; i < b.N; i++ {
 		_ = v.CalculateInuseKeyRanges(d.mu.versions.latest.l0Organizer, 0, numLevels-1, smallest, largest)
 	}
+}
+
+type testFileNumAllocator struct {
+	fileNums []base.DiskFileNum
+	idx      int
+}
+
+func (a *testFileNumAllocator) nextFileNum() base.DiskFileNum {
+	n := a.fileNums[a.idx]
+	a.idx++
+	return n
 }
