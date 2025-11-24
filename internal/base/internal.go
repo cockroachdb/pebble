@@ -228,6 +228,11 @@ func (k InternalKeyKind) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Print(redact.SafeString(k.String()))
 }
 
+// IsSet returns true if the key kind is a SET type.
+func (k InternalKeyKind) IsSet() bool {
+	return k == InternalKeyKindSet || k == InternalKeyKindSetWithDelete
+}
+
 // InternalKeyTrailer encodes a SeqNum and an InternalKeyKind.
 type InternalKeyTrailer uint64
 

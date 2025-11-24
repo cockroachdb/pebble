@@ -258,12 +258,8 @@ func (r *Runner) writeKeysToTable(
 	equalPrev := func(k []byte) bool {
 		return tw.ComparePrev(k) == 0
 	}
-	prefixEqual := func(k []byte) bool {
-		return tw.IsPrefixEqualPrev(k)
-	}
 	var pinnedKeySize, pinnedValueSize, pinnedCount uint64
 	var iteratedKeys uint64
-	var prevKeyKind base.InternalKeyKind
 	kv := r.kv
 	for ; kv != nil; kv = r.iter.Next() {
 		iteratedKeys++
@@ -302,7 +298,7 @@ func (r *Runner) writeKeysToTable(
 
 		valueLen := kv.V.Len()
 		isLikelyMVCCGarbage := valueLen > valueSeparation.OutputConfig().MinimumMVCCGarbageSize &&
-			sstable.IsLikelyMVCCGarbage(kv.K.UserKey, prevKeyKind, kv.K.Kind(), valueLen, prefixEqual)
+			tw.IsLikelyMVCCGarbage(kv.K.UserKey, kv.K.Kind())
 		// Add the value to the sstable, possibly separating its value into a
 		// blob file. The ValueSeparation implementation is responsible for
 		// writing the KV to the sstable.
@@ -312,7 +308,6 @@ func (r *Runner) writeKeysToTable(
 		if err := valueSeparation.Add(tw, kv, r.iter.ForceObsoleteDueToRangeDel(), isLikelyMVCCGarbage); err != nil {
 			return nil, err
 		}
-		prevKeyKind = kv.K.Kind()
 		if r.iter.SnapshotPinned() {
 			// The kv pair we just added to the sstable was only surfaced by
 			// the compaction iterator because an open snapshot prevented
