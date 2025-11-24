@@ -50,15 +50,11 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 	reset()
 
 	loadFileMeta := func(paths []string, exciseSpan KeyRange, seqNum base.SeqNum) []*manifest.TableMetadata {
-		pendingOutputs := make([]base.TableNum, len(paths))
-		for i := range paths {
-			pendingOutputs[i] = d.mu.versions.getNextTableNum()
-		}
 		jobID := d.newJobID()
 
 		// We can reuse the ingestLoad function for this test even if we're
 		// not actually ingesting a file.
-		lr, err := ingestLoad(context.Background(), d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheHandle, &d.compressionCounters, pendingOutputs)
+		lr, err := ingestLoad(context.Background(), d.opts, d.FormatMajorVersion(), paths, nil, nil, d.cacheHandle, &d.compressionCounters, d.mu.versions.getNextDiskFileNum)
 		if err != nil {
 			t.Fatal(err)
 		}
