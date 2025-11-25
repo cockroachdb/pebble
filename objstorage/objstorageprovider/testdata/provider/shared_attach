@@ -1,7 +1,7 @@
 # Basic tests for obtaining the backing of shared objects and attaching them to
 # another provider.
 
-open p1 creator-id=1
+open dir=p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -14,28 +14,28 @@ open p1 creator-id=1
 <local fs> sync: p1
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
 
-create 1 shared 1 100
+create file-num=1 shared salt=1 size=100
 ----
 <remote> create object "61a6-1-000001.sst"
 <remote> close writer for "61a6-1-000001.sst" after 100 bytes
 <remote> create object "61a6-1-000001.sst.ref.1.000001"
 <remote> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 
-create 2 shared 2 200
+create file-num=2 shared salt=2 size=200
 ----
 <remote> create object "a629-1-000002.sst"
 <remote> close writer for "a629-1-000002.sst" after 200 bytes
 <remote> create object "a629-1-000002.sst.ref.1.000002"
 <remote> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
 
-create 3 shared 3 300
+create file-num=3 shared salt=3 size=300
 ----
 <remote> create object "eaac-1-000003.sst"
 <remote> close writer for "eaac-1-000003.sst" after 300 bytes
 <remote> create object "eaac-1-000003.sst.ref.1.000003"
 <remote> close writer for "eaac-1-000003.sst.ref.1.000003" after 0 bytes
 
-create 100 local 100 15
+create file-num=100 salt=100 size=15
 ----
 <local fs> create: p1/000100.sst
 <local fs> sync-data: p1/000100.sst
@@ -49,17 +49,17 @@ list
 000100 -> p1/000100.sst
 
 # Can't get backing of local object.
-save-backing foo 100
+save-backing key=foo file-num=100
 ----
 object 000100 not on remote storage
 
-save-backing b1 1
+save-backing key=b1 file-num=1
 ----
 
-save-backing b2 2
+save-backing key=b2 file-num=2
 ----
 
-save-backing b3 3
+save-backing key=b3 file-num=3
 ----
 
 close
@@ -70,7 +70,7 @@ close
 <local fs> close: p1/REMOTE-OBJ-CATALOG-000001
 <local fs> close: p1
 
-open p2 creator-id=2
+open dir=p2 creator-id=2
 ----
 <local fs> mkdir-all: p2 0755
 <local fs> open-dir: p2
@@ -83,7 +83,7 @@ open p2 creator-id=2
 <local fs> sync: p2
 <local fs> sync: p2/REMOTE-OBJ-CATALOG-000001
 
-create 100 shared 100 15
+create file-num=100 shared salt=100 size=15
 ----
 <remote> create object "fd72-2-000100.sst"
 <remote> close writer for "fd72-2-000100.sst" after 15 bytes
@@ -115,7 +115,7 @@ list
 000102 -> remote://a629-1-000002.sst
 000103 -> remote://eaac-1-000003.sst
 
-read 101
+read file-num=101
 0 100
 15 10
 ----
@@ -128,7 +128,7 @@ size: 100
 15 10: ok (salt 1)
 <remote> close reader for "61a6-1-000001.sst"
 
-read 102
+read file-num=102
 0 200
 90 100
 ----
@@ -141,7 +141,7 @@ size: 200
 90 100: ok (salt 2)
 <remote> close reader for "a629-1-000002.sst"
 
-read 103
+read file-num=103
 0 300
 ----
 <remote> size of object "eaac-1-000003.sst.ref.2.000103": 0
