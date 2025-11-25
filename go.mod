@@ -6,7 +6,7 @@ require (
 	github.com/RaduBerinde/axisds v0.0.0-20250419182453-5135a0650657
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/cockroachdb/crlib v0.0.0-20251122031428-fe658a2dbda1
-	github.com/cockroachdb/datadriven v1.0.3-0.20250911232732-d959cf14706c
+	github.com/cockroachdb/datadriven v1.0.3-0.20251123150250-ddff6747b112
 	github.com/cockroachdb/errors v1.11.3
 	github.com/cockroachdb/metamorphic v0.0.0-20231108215700-4ba948b56895
 	github.com/cockroachdb/redact v1.1.5

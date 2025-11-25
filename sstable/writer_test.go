@@ -857,6 +857,8 @@ func (f *discardFile) Finish() error {
 
 func (f *discardFile) Abort() {}
 
+func (f *discardFile) StartMetadataPortion() error { return nil }
+
 func (f *discardFile) Write(p []byte) error {
 	f.wrote += int64(len(p))
 	return nil

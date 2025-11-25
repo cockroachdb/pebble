@@ -1,4 +1,4 @@
-open p1 cold-tier=cold1
+open dir=p1 cold-dir=cold1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> mkdir-all: cold1 0755
@@ -6,13 +6,13 @@ open p1 cold-tier=cold1
 <local fs> open-dir: cold1
 
 # Create a cold file.
-create file-type=blob 1 local 1 1024 cold-tier
+create file-type=blob file-num=1 cold-tier salt=1 size=1024
 ----
 <local fs> create: cold1/000001.blob
 <local fs> sync-data: cold1/000001.blob
 <local fs> close: cold1/000001.blob
 
-read file-type=blob 1
+read file-type=blob file-num=1
 0 500
 512 1024
 ----
@@ -24,13 +24,13 @@ size: 1024
 512 1024: EOF
 <local fs> close: cold1/000001.blob
 
-create 2 local 2 1024
+create file-num=2 salt=2 size=1024
 ----
 <local fs> create: p1/000002.sst
 <local fs> sync-data: p1/000002.sst
 <local fs> close: p1/000002.sst
 
-read 2
+read file-num=2
 0 500
 512 1024
 ----
@@ -47,27 +47,27 @@ list
 000001 -> cold1/000001.blob
 000002 -> p1/000002.sst
 
-remove file-type=blob 1
+remove file-type=blob file-num=1
 ----
 <local fs> remove: cold1/000001.blob
 
-remove 2
+remove file-num=2
 ----
 <local fs> remove: p1/000002.sst
 
 # Verify that we can request cold tier even if it is not configured.
-open p2
+open dir=p2
 ----
 <local fs> mkdir-all: p2 0755
 <local fs> open-dir: p2
 
-create file-type=blob 3 local 3 1024 cold-tier
+create file-type=blob file-num=3 cold-tier salt=3 size=1024
 ----
 <local fs> create: p2/000003.blob
 <local fs> sync-data: p2/000003.blob
 <local fs> close: p2/000003.blob
 
-read file-type=blob 3
+read file-type=blob file-num=3
 0 500
 512 1024
 ----
@@ -79,6 +79,6 @@ size: 1024
 512 1024: EOF
 <local fs> close: p2/000003.blob
 
-remove file-type=blob 3
+remove file-type=blob file-num=3
 ----
 <local fs> remove: p2/000003.blob

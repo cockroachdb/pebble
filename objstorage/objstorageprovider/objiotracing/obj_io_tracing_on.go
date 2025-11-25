@@ -111,6 +111,11 @@ func (w *writable) Write(p []byte) error {
 }
 
 // Finish is part of the objstorage.Writable interface.
+func (w *writable) StartMetadataPortion() error {
+	return w.w.StartMetadataPortion()
+}
+
+// Finish is part of the objstorage.Writable interface.
 func (w *writable) Finish() error {
 	w.g.flush()
 	return w.w.Finish()

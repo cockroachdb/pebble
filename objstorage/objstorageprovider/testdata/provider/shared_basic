@@ -1,6 +1,6 @@
 # Basic provider tests with shared storage.
 
-open p1 creator-id=1
+open dir=p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -13,13 +13,13 @@ open p1 creator-id=1
 <local fs> sync: p1
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
 
-create 1 local 1 100
+create file-num=1 salt=1 size=100
 ----
 <local fs> create: p1/000001.sst
 <local fs> sync-data: p1/000001.sst
 <local fs> close: p1/000001.sst
 
-read 1
+read file-num=1
 0 100
 ----
 <local fs> open: p1/000001.sst (options: *vfs.randomReadsOption)
@@ -28,14 +28,14 @@ size: 100
 0 100: ok (salt 1)
 <local fs> close: p1/000001.sst
 
-create 2 shared 2 100
+create file-num=2 shared salt=2 size=100
 ----
 <remote> create object "a629-1-000002.sst"
 <remote> close writer for "a629-1-000002.sst" after 100 bytes
 <remote> create object "a629-1-000002.sst.ref.1.000002"
 <remote> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
 
-read 2
+read file-num=2
 0 100
 ----
 <remote> size of object "a629-1-000002.sst.ref.1.000002": 0
@@ -59,7 +59,7 @@ close
 <local fs> close: p1
 
 # Test that the objects are there on re-open.
-open p1 creator-id=1
+open dir=p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -72,23 +72,23 @@ list
 000001 -> p1/000001.sst
 000002 -> remote://a629-1-000002.sst
 
-remove 1
+remove file-num=1
 ----
 <local fs> remove: p1/000001.sst
 
-remove 2
+remove file-num=2
 ----
 <remote> delete object "a629-1-000002.sst.ref.1.000002"
 <remote> list (prefix="a629-1-000002.sst.ref.", delimiter="")
 <remote> delete object "a629-1-000002.sst"
 
-link-or-copy 3 local 3 100
+link-or-copy file-num=3 salt=3 size=100
 ----
 <local fs> create: temp-file-1
 <local fs> close: temp-file-1
 <local fs> link: temp-file-1 -> p1/000003.sst
 
-read 3
+read file-num=3
 0 100
 ----
 <local fs> open: p1/000003.sst (options: *vfs.randomReadsOption)
@@ -97,7 +97,7 @@ size: 100
 0 100: ok (salt 3)
 <local fs> close: p1/000003.sst
 
-link-or-copy 4 shared 4 100
+link-or-copy file-num=4 shared salt=4 size=100
 ----
 <local fs> create: temp-file-2
 <local fs> close: temp-file-2
@@ -108,7 +108,7 @@ link-or-copy 4 shared 4 100
 <remote> close writer for "2f2f-1-000004.sst.ref.1.000004" after 0 bytes
 <local fs> close: temp-file-2
 
-read 4
+read file-num=4
 0 100
 ----
 <remote> size of object "2f2f-1-000004.sst.ref.1.000004": 0

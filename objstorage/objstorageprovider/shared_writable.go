@@ -33,6 +33,9 @@ func (w *sharedWritable) Write(p []byte) error {
 	return err
 }
 
+// StartMetadataPortion is part of the Writable interface.
+func (w *sharedWritable) StartMetadataPortion() error { return nil }
+
 // Finish is part of the Writable interface.
 func (w *sharedWritable) Finish() error {
 	err := w.storageWriter.Close()

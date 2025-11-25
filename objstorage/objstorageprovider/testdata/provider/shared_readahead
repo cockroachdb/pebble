@@ -1,4 +1,4 @@
-open p1 creator-id=1
+open dir=p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -11,7 +11,7 @@ open p1 creator-id=1
 <local fs> sync: p1
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
 
-create 1 shared 1 2000000
+create file-num=1 shared salt=1 size=2000000
 ----
 <remote> create object "61a6-1-000001.sst"
 <remote> close writer for "61a6-1-000001.sst" after 2000000 bytes
@@ -20,7 +20,7 @@ create 1 shared 1 2000000
 
 # We should be seeing larger and larger reads. But the last read should be
 # capped to the object size.
-read 1
+read file-num=1
 0 1000
 1000 15000
 16000 30000
@@ -61,7 +61,7 @@ size: 2000000
 <remote> close reader for "61a6-1-000001.sst"
 
 # When reading for a compaction, we should be doing large reads from the start.
-read 1 for-compaction
+read file-num=1 for-compaction
 0 1000
 1000 15000
 16000 30000
@@ -88,14 +88,14 @@ size: 2000000
 <remote> close reader for "61a6-1-000001.sst"
 
 # When reading for a compaction, we should be doing 8MB reads from the start.
-create 2 shared 2 15000000
+create file-num=2 shared salt=2 size=15000000
 ----
 <remote> create object "a629-1-000002.sst"
 <remote> close writer for "a629-1-000002.sst" after 15000000 bytes
 <remote> create object "a629-1-000002.sst.ref.1.000002"
 <remote> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
 
-read 2 for-compaction
+read file-num=2 for-compaction
 0 100000
 9000000 3000000
 ----
