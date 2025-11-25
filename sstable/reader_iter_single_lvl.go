@@ -1246,7 +1246,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 			op.Finishf("= %s", kv.String())
 		}()
 	}
-	// Clear the tracking flag since this is a new absolute positioning operation
+	// Clear the tracking flag since this is a new absolute positioning
+	// operation.
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
@@ -1260,41 +1261,83 @@ func (i *singleLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 
 	i.positionedUsingLatestBounds = true
 
-	return i.firstInternal()
+	kv, _ = i.firstInternal(false /* isMetaOp */)
+	return kv
+}
+
+// FirstWithMeta implements the base.MetaIterator interface.
+func (i *singleLevelIterator[I, PI, D, PD]) FirstWithMeta() (
+	kv *base.InternalKV,
+	kvMeta base.KVMeta,
+) {
+	if treesteps.Enabled && treesteps.IsRecording(i) {
+		op := treesteps.StartOpf(i, "FirstWithMeta()")
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
+	// Clear the tracking flag since this is a new absolute positioning
+	// operation.
+	i.lastOpWasSeekPrefixGE.Set(false)
+	// The synthetic key is no longer relevant and must be cleared.
+	i.synthetic.atSyntheticKey = false
+
+	// If we have a lower bound, use SeekGE. Note that in general this is not
+	// supported usage, except when the lower bound is there because the table is
+	// virtual.
+	if i.lower != nil {
+		return i.SeekGE(i.lower, base.SeekGEFlagsNone), base.KVMeta{}
+	}
+
+	i.positionedUsingLatestBounds = true
+
+	return i.firstInternal(true /* isMetaOp */)
+}
+
+// NextWithMeta implements the base.MetaIterator interface.
+func (i *singleLevelIterator[I, PI, D, PD]) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.nextInternal(true /* isMetaOp */)
 }
 
 // firstInternal is a helper used for absolute positioning in a single-level
 // index file, or for positioning in the second-level index in a two-level
 // index file. For the latter, one cannot make any claims about absolute
 // positioning.
-func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
+func (i *singleLevelIterator[I, PI, D, PD]) firstInternal(
+	isMetaOp bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	i.exhaustedBounds = 0
 	i.err = nil // clear cached iteration error
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.boundsCmp = 0
 
 	if !i.ensureIndexLoaded() {
-		return nil
+		return nil, base.KVMeta{}
 	}
 
 	if !PI(&i.index).First() {
 		PD(&i.data).Invalidate()
-		return nil
+		return nil, base.KVMeta{}
 	}
 	result := i.loadDataBlock(+1)
 	if result == loadBlockFailed {
-		return nil
+		return nil, base.KVMeta{}
 	}
 	if result == loadBlockOK {
-		if kv := PD(&i.data).First(); kv != nil {
+		if isMetaOp {
+			kv, kvMeta = PD(&i.data).FirstWithMeta()
+		} else {
+			kv = PD(&i.data).First()
+		}
+		if kv != nil {
 			if i.blockUpper != nil {
 				cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 					i.exhaustedBounds = +1
-					return nil
+					return nil, base.KVMeta{}
 				}
 			}
-			return kv
+			return kv, kvMeta
 		}
 		// Else fall through to skipForward.
 	} else {
@@ -1307,12 +1350,12 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal() *base.InternalKV {
 		// greater than upper.
 		if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
 			i.exhaustedBounds = +1
-			return nil
+			return nil, base.KVMeta{}
 		}
 		// Else fall through to skipForward.
 	}
 
-	return i.skipForward()
+	return i.skipForward(), base.KVMeta{}
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -1393,8 +1436,19 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 // Note: compactionIterator.Next mirrors the implementation of Iterator.Next
 // due to performance. Keep the two in sync.
 func (i *singleLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
+	kv, _ = i.nextInternal(false /* isMetaOp */)
+	return kv
+}
+
+func (i *singleLevelIterator[I, PI, D, PD]) nextInternal(
+	isMetaOp bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(i) {
-		op := treesteps.StartOpf(i, "Next()")
+		name := ""
+		if isMetaOp {
+			name = "WithMeta"
+		}
+		op := treesteps.StartOpf(i, "Next%s()", name)
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -1407,7 +1461,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
 		// The synthetic key is no longer relevant and must be cleared.
 		// Perform the actual seek since the synthetic key is on top of the heap and must be resolved.
 		i.synthetic.atSyntheticKey = false
-		return i.seekPrefixGE(i.reader.Comparer.Split.Prefix(i.synthetic.seekKey), i.synthetic.seekKey, base.SeekGEFlagsNone)
+		return i.seekPrefixGE(i.reader.Comparer.Split.Prefix(i.synthetic.seekKey), i.synthetic.seekKey, base.SeekGEFlagsNone), base.KVMeta{}
 	}
 
 	if invariants.Enabled && i.lastOpWasSeekPrefixGE.Get() {
@@ -1431,19 +1485,24 @@ func (i *singleLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
 	if i.err != nil {
 		// TODO(jackson): Can this case be turned into a panic? Once an error is
 		// encountered, the iterator must be re-seeked.
-		return nil
+		return nil, base.KVMeta{}
 	}
-	if kv := PD(&i.data).Next(); kv != nil {
+	if isMetaOp {
+		kv, kvMeta = PD(&i.data).NextWithMeta()
+	} else {
+		kv = PD(&i.data).Next()
+	}
+	if kv != nil {
 		if i.blockUpper != nil {
 			cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
 				i.exhaustedBounds = +1
-				return nil
+				return nil, base.KVMeta{}
 			}
 		}
-		return kv
+		return kv, kvMeta
 	}
-	return i.skipForward()
+	return i.skipForward(), base.KVMeta{}
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.

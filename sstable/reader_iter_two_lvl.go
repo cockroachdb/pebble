@@ -420,7 +420,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekGE(
 			return ikv
 		}
 	}
-	return i.skipForward()
+	kv, _ = i.skipForward(false /* isMetaOp */)
+	return kv
 }
 
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
@@ -677,7 +678,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
-	return i.skipForward()
+	kv, _ := i.skipForward(false /* isMetaOp */)
+	return kv
 }
 
 // virtualLast should only be called if i.secondLevel.readBlockEnv.Virtual != nil.
@@ -843,8 +845,19 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 // to ensure that key is greater than or equal to the lower bound (e.g. via a
 // call to SeekGE(lower)).
 func (i *twoLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
+	kv, _ = i.firstInternal(false /* isMetaOp */)
+	return kv
+}
+
+func (i *twoLevelIterator[I, PI, D, PD]) firstInternal(
+	isMetaOp bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
+	name := ""
+	if isMetaOp {
+		name = "WithMeta"
+	}
 	if treesteps.Enabled && treesteps.IsRecording(i) {
-		op := treesteps.StartOpf(i, "First()")
+		op := treesteps.StartOpf(i, "First%s()", name)
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -857,7 +870,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 	// supported usage, except when the lower bound is there because the table is
 	// virtual.
 	if i.secondLevel.lower != nil {
-		return i.SeekGE(i.secondLevel.lower, base.SeekGEFlagsNone)
+		return i.SeekGE(i.secondLevel.lower, base.SeekGEFlagsNone), base.KVMeta{}
 	}
 	i.secondLevel.exhaustedBounds = 0
 	i.secondLevel.err = nil // clear cached iteration error
@@ -865,19 +878,24 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 	i.secondLevel.boundsCmp = 0
 
 	if !i.ensureTopLevelIndexLoaded() {
-		return nil
+		return nil, base.KVMeta{}
 	}
 
 	if !PI(&i.topLevelIndex).First() {
-		return nil
+		return nil, base.KVMeta{}
 	}
 	result := i.loadSecondLevelIndexBlock(+1)
 	if result == loadBlockFailed {
-		return nil
+		return nil, base.KVMeta{}
 	}
 	if result == loadBlockOK {
-		if ikv := i.secondLevel.First(); ikv != nil {
-			return ikv
+		if isMetaOp {
+			kv, kvMeta = i.secondLevel.FirstWithMeta()
+		} else {
+			kv = i.secondLevel.First()
+		}
+		if kv != nil {
+			return kv, kvMeta
 		}
 		// Else fall through to skipForward.
 	} else {
@@ -894,7 +912,17 @@ func (i *twoLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 		}
 	}
 	// NB: skipForward checks whether exhaustedBounds is already +1.
-	return i.skipForward()
+	return i.skipForward(isMetaOp)
+}
+
+// FirstWithMeta implements the base.MetaIterator interface.
+func (i *twoLevelIterator[I, PI, D, PD]) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.firstInternal(true /* isMetaOp */)
+}
+
+// NextWithMeta implements the base.MetaIterator interface.
+func (i *twoLevelIterator[I, PI, D, PD]) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.nextInternal(true /* isMetaOp */)
 }
 
 // Last implements internalIterator.Last, as documented in the pebble
@@ -963,8 +991,19 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() (kv *base.InternalKV) {
 // Note: twoLevelCompactionIterator.Next mirrors the implementation of
 // twoLevelIterator.Next due to performance. Keep the two in sync.
 func (i *twoLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
+	kv, _ = i.nextInternal(false /* isMetaOp */)
+	return kv
+}
+
+func (i *twoLevelIterator[I, PI, D, PD]) nextInternal(
+	isMetaOp bool,
+) (kv *base.InternalKV, kvMeta base.KVMeta) {
+	name := ""
+	if isMetaOp {
+		name = "WithMeta"
+	}
 	if treesteps.Enabled && treesteps.IsRecording(i) {
-		op := treesteps.StartOpf(i, "Next()")
+		op := treesteps.StartOpf(i, "Next%s()", name)
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -979,7 +1018,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
 		// The synthetic key is no longer relevant and must be cleared.
 		i.secondLevel.synthetic.atSyntheticKey = false
 		return i.seekPrefixGE(i.secondLevel.reader.Comparer.Split.Prefix(i.secondLevel.synthetic.seekKey),
-			i.secondLevel.synthetic.seekKey, base.SeekGEFlagsNone)
+			i.secondLevel.synthetic.seekKey, base.SeekGEFlagsNone), base.KVMeta{}
 	}
 
 	if invariants.Enabled && i.lastOpWasSeekPrefixGE.Get() {
@@ -997,12 +1036,17 @@ func (i *twoLevelIterator[I, PI, D, PD]) Next() (kv *base.InternalKV) {
 	if i.secondLevel.err != nil {
 		// TODO(jackson): Can this case be turned into a panic? Once an error is
 		// encountered, the iterator must be re-seeked.
-		return nil
+		return nil, base.KVMeta{}
 	}
-	if ikv := i.secondLevel.Next(); ikv != nil {
-		return ikv
+	if isMetaOp {
+		kv, kvMeta = i.secondLevel.NextWithMeta()
+	} else {
+		kv = i.secondLevel.Next()
 	}
-	return i.skipForward()
+	if kv != nil {
+		return kv, kvMeta
+	}
+	return i.skipForward(isMetaOp)
 }
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
@@ -1064,7 +1108,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base.In
 	} else if kv := i.secondLevel.SeekGE(succKey, base.SeekGEFlagsNone); kv != nil {
 		return i.secondLevel.maybeVerifyKey(kv)
 	}
-	return i.skipForward()
+	kv, _ = i.skipForward(false /* isMetaOp */)
+	return kv
 }
 
 // Prev implements internalIterator.Prev, as documented in the pebble
@@ -1088,15 +1133,17 @@ func (i *twoLevelIterator[I, PI, D, PD]) Prev() (kv *base.InternalKV) {
 	return i.skipBackward()
 }
 
-func (i *twoLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
+func (i *twoLevelIterator[I, PI, D, PD]) skipForward(
+	isMetaOp bool,
+) (*base.InternalKV, base.KVMeta) {
 	for {
 		if i.secondLevel.err != nil || i.secondLevel.exhaustedBounds > 0 {
-			return nil
+			return nil, base.KVMeta{}
 		}
 
 		if !i.topLevelIndexLoaded {
 			i.secondLevel.err = errors.AssertionFailedf("top level index is not loaded")
-			return nil
+			return nil, base.KVMeta{}
 		}
 
 		// It is possible that skipBackward went too far and the virtual table lower
@@ -1135,21 +1182,22 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward() *base.InternalKV {
 		if !PI(&i.topLevelIndex).Next() {
 			PD(&i.secondLevel.data).Invalidate()
 			PI(&i.secondLevel.index).Invalidate()
-			return nil
+			return nil, base.KVMeta{}
 		}
 		result := i.loadSecondLevelIndexBlock(+1)
 		if result == loadBlockFailed {
-			return nil
+			return nil, base.KVMeta{}
 		}
 		if result == loadBlockOK {
 			var ikv *base.InternalKV
+			var kvMeta base.KVMeta
 			if useSeek {
 				ikv = i.secondLevel.SeekGE(i.secondLevel.lower, base.SeekGEFlagsNone)
 			} else {
-				ikv = i.secondLevel.firstInternal()
+				ikv, kvMeta = i.secondLevel.firstInternal(isMetaOp)
 			}
 			if ikv != nil {
-				return i.secondLevel.maybeVerifyKey(ikv)
+				return i.secondLevel.maybeVerifyKey(ikv), kvMeta
 			}
 			// Next iteration will return if singleLevelIterator set
 			// exhaustedBounds = +1.

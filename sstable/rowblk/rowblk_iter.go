@@ -999,6 +999,11 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	return &i.ikv
 }
 
+// FirstWithMeta implements the base.MetaIterator interface.
+func (i *Iter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.First(), base.KVMeta{}
+}
+
 // First implements internalIterator.First, as documented in the pebble
 // package.
 func (i *Iter) First() *base.InternalKV {
@@ -1072,6 +1077,11 @@ func (i *Iter) Last() *base.InternalKV {
 		i.ikv.V = i.lazyValueHandling.getValue.GetInternalValueForPrefixAndValueHandle(i.val)
 	}
 	return &i.ikv
+}
+
+// NextWithMeta implements the base.MetaIterator interface.
+func (i *Iter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
+	return i.Next(), base.KVMeta{}
 }
 
 // Next implements internalIterator.Next, as documented in the pebble

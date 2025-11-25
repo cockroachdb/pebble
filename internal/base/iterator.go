@@ -15,6 +15,18 @@ import (
 	"github.com/cockroachdb/redact"
 )
 
+// MetaIterator is an interface for iterators that support metadata extraction.
+// This interface is used by compaction iterators that need access to tiering
+// metadata without adding overhead to the common iteration path.
+type MetaIterator interface {
+	// FirstWithMeta moves the iterator to the first key/value pair and returns
+	// both the key/value and the associated metadata.
+	FirstWithMeta() (*InternalKV, KVMeta)
+	// NextWithMeta moves the iterator to the next key/value pair and returns
+	// both the key/value and the associated metadata.
+	NextWithMeta() (*InternalKV, KVMeta)
+}
+
 // InternalIterator iterates over a DB's key/value pairs in key order. Unlike
 // the Iterator interface, the returned keys are InternalKeys composed of the
 // user-key, a sequence number and a key kind. In forward iteration, key/value
