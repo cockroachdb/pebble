@@ -42,6 +42,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/valsep"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/kr/pretty"
@@ -150,7 +151,8 @@ func TestIngestLoad(t *testing.T) {
 			}
 			opts.WithFSDefaults()
 			getNextFileNum := func() base.DiskFileNum { return 1 }
-			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, nil, getNextFileNum)
+			localFiles := LocalSSTables([]LocalSST{{Path: "ext"}})
+			lr, err := ingestLoad(context.Background(), opts, dbVersion, localFiles, nil, nil, nil, nil, getNextFileNum)
 			if err != nil {
 				return err.Error()
 			}
@@ -184,7 +186,14 @@ func TestIngestLoadRand(t *testing.T) {
 		return data
 	}
 
-	paths := make([]string, 1+rng.IntN(10))
+	sstPaths := make([]string, 1+rng.IntN(10))
+	for i := range sstPaths {
+		sstPaths[i] = fmt.Sprint(i)
+	}
+	paths := make(LocalSSTables, len(sstPaths))
+	for i, path := range sstPaths {
+		paths[i] = LocalSST{Path: path}
+	}
 	expected := make([]ingestLocalMeta, len(paths))
 	pending := make([]base.DiskFileNum, len(expected))
 	for i := range expected {
@@ -193,17 +202,16 @@ func TestIngestLoadRand(t *testing.T) {
 	fileNumAllocator := testFileNumAllocator{
 		fileNums: pending,
 	}
-	for i := range paths {
-		paths[i] = fmt.Sprint(i)
+	for i := range sstPaths {
 		expected[i] = ingestLocalMeta{
 			TableMetadata: &manifest.TableMetadata{
 				TableNum: base.TableNum(pending[i]),
 			},
-			path: paths[i],
+			local: LocalSST{Path: sstPaths[i]},
 		}
 
 		func() {
-			f, err := mem.Create(paths[i], vfs.WriteCategoryUnspecified)
+			f, err := mem.Create(sstPaths[i], vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 
 			keys := make([]InternalKey, 1+rng.IntN(100))
@@ -268,6 +276,113 @@ func TestIngestLoadRand(t *testing.T) {
 	require.Equal(t, expected, lr.local)
 }
 
+// TestIngestLocalWithBlobs tests the ingestion of local sstables with blobs.
+// Commands:
+// - define: defines the database
+// - write-table: writes an external table and appends it to the ingest args.
+// - ingest: ingests the tables into the database
+func TestIngestLocalWithBlobs(t *testing.T) {
+	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
+	ctx := context.Background()
+	var db *DB
+	defer func() {
+		if db != nil {
+			require.NoError(t, db.Close())
+		}
+	}()
+	var localTables LocalSSTables
+	fileCount := 0
+	fs := vfs.NewMem()
+	reset := func() {
+		if db != nil {
+			require.NoError(t, db.Close())
+		}
+		fileCount = 0
+		fs = vfs.NewMem()
+		localTables = localTables[:0]
+	}
+	datadriven.RunTest(t, "testdata/ingest_with_blobs", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "define":
+			reset()
+			var err error
+			db, err = runDBDefineCmd(td, &Options{
+				Comparer:           testkeys.Comparer,
+				FS:                 fs,
+				FormatMajorVersion: internalFormatNewest,
+			})
+			require.NoError(t, err)
+			return ""
+		case "write-table":
+			sstWriterOpts := sstable.WriterOptions{
+				Comparer:    testkeys.Comparer,
+				KeySchema:   &keySchema,
+				TableFormat: sstable.TableFormatMax,
+			}
+			var valueSeparationMinSize, mvccGarbageValueSeparationMinSize int
+			td.MaybeScanArgs(t, "value-separation-min-size", &valueSeparationMinSize)
+			td.MaybeScanArgs(t, "mvcc-value-separation-min-size", &mvccGarbageValueSeparationMinSize)
+			var blobPaths []string
+			writerOpts := valsep.SSTBlobWriterOptions{
+				SSTWriterOpts:                     sstWriterOpts,
+				ValueSeparationMinSize:            valueSeparationMinSize,
+				MVCCGarbageValueSeparationMinSize: mvccGarbageValueSeparationMinSize,
+			}
+			writerOpts.NewBlobFileFn = func() (objstorage.Writable, error) {
+				fnum := fileCount
+				path := fmt.Sprintf("blob%d", fnum)
+				blobPaths = append(blobPaths, path)
+				f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
+				require.NoError(t, err)
+				w := objstorageprovider.NewFileWritable(f)
+				fileCount++
+				return w, err
+			}
+			sstPath := fmt.Sprintf("sst%d", fileCount)
+			sstFile, err := fs.Create(sstPath, vfs.WriteCategoryUnspecified)
+			require.NoError(t, err)
+			sstHandle := objstorageprovider.NewFileWritable(sstFile)
+			require.NoError(t, err)
+			writer := valsep.NewSSTBlobWriter(sstHandle, writerOpts)
+			writerClosed := false
+			defer func() {
+				if !writerClosed {
+					_ = writer.Close()
+				}
+			}()
+			kvs, err := sstable.ParseTestKVsAndSpans(td.Input, nil)
+			require.NoError(t, err)
+			require.NoError(t, valsep.HandleTestKVs(writer, kvs))
+			writerClosed = true
+			if err := writer.Close(); err != nil {
+				return err.Error()
+			}
+			localTables = append(localTables, LocalSST{Path: sstPath, BlobPaths: blobPaths})
+			return ""
+		case "ingest":
+			var exciseSpan KeyRange
+			var exciseStr string
+			td.MaybeScanArgs(t, "excise-span", &exciseStr)
+			if exciseStr != "" {
+				fields := strings.Split(exciseStr, "-")
+				if len(fields) != 2 {
+					return fmt.Sprintf("malformed excise span: %s", exciseStr)
+				}
+				exciseSpan.Start = []byte(fields[0])
+				exciseSpan.End = []byte(fields[1])
+			}
+			_, err := db.IngestLocal(ctx, localTables, exciseSpan)
+			if err != nil {
+				return err.Error()
+			}
+			localTables = localTables[:0]
+			return runLSMCmd(td, db)
+		default:
+			return "unknown command: " + td.Cmd
+		}
+	})
+}
+
 func TestIngestLoadInvalid(t *testing.T) {
 	mem := vfs.NewMem()
 	f, err := mem.Create("invalid", vfs.WriteCategoryUnspecified)
@@ -280,9 +395,47 @@ func TestIngestLoadInvalid(t *testing.T) {
 	}
 	opts.WithFSDefaults()
 	getNextFileNum := func() base.DiskFileNum { return 1 }
-	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, nil, getNextFileNum); err == nil {
+	localFiles := LocalSSTables([]LocalSST{{Path: "invalid"}})
+	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, localFiles, nil, nil, nil, nil, getNextFileNum); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
+}
+
+func TestIngestLocalErrors(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ReadOnlyDB", func(t *testing.T) {
+		fs := vfs.NewMem()
+
+		// First create a database
+		opts := &Options{FS: fs}
+		db, err := Open("test_db", opts)
+		require.NoError(t, err)
+		require.NoError(t, db.Close())
+
+		// Then open it in read-only mode
+		opts.ReadOnly = true
+		db, err = Open("test_db", opts)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, db.Close()) }()
+
+		_, err = db.IngestLocal(ctx, LocalSSTables{LocalSST{Path: "test.sst"}}, KeyRange{})
+		require.ErrorIs(t, err, ErrReadOnly)
+	})
+
+	t.Run("InvalidExciseSpan", func(t *testing.T) {
+		fs := vfs.NewMem()
+		opts := &Options{FS: fs, Comparer: testkeys.Comparer}
+		db, err := Open("", opts)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, db.Close()) }()
+
+		localTables := LocalSSTables{LocalSST{Path: "test.sst"}}
+		exciseSpan := KeyRange{Start: []byte("a@1"), End: []byte("z")}
+		_, err = db.IngestLocal(ctx, localTables, exciseSpan)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "suffixed start key")
+	})
 }
 
 func TestIngestSortAndVerify(t *testing.T) {
@@ -319,7 +472,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 					m.InitPhysicalBacking()
 					meta = append(meta, ingestLocalMeta{
 						TableMetadata: m,
-						path:          strconv.Itoa(i),
+						local:         LocalSST{Path: strconv.Itoa(i)},
 					})
 				}
 				lr := ingestLoadResult{local: meta}
@@ -328,7 +481,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 					return fmt.Sprintf("%v\n", err)
 				}
 				for i := range meta {
-					fmt.Fprintf(&buf, "%s: %v-%v\n", meta[i].path, meta[i].Smallest(), meta[i].Largest())
+					fmt.Fprintf(&buf, "%s: %v-%v\n", meta[i].local.Path, meta[i].Smallest(), meta[i].Largest())
 				}
 				return buf.String()
 
@@ -358,11 +511,11 @@ func TestIngestLink(t *testing.T) {
 			meta := make([]ingestLocalMeta, 10)
 			contents := make([][]byte, len(meta))
 			for j := range meta {
-				meta[j].path = fmt.Sprintf("external%d", j)
+				meta[j].local.Path = fmt.Sprintf("external%d", j)
 				meta[j].TableMetadata = &manifest.TableMetadata{}
 				meta[j].TableNum = base.TableNum(j)
 				meta[j].InitPhysicalBacking()
-				f, err := opts.FS.Create(meta[j].path, vfs.WriteCategoryUnspecified)
+				f, err := opts.FS.Create(meta[j].local.Path, vfs.WriteCategoryUnspecified)
 				require.NoError(t, err)
 
 				contents[j] = []byte(fmt.Sprintf("data%d", j))
@@ -374,7 +527,7 @@ func TestIngestLink(t *testing.T) {
 			}
 
 			if i < count {
-				opts.FS.Remove(meta[i].path)
+				opts.FS.Remove(meta[i].local.Path)
 			}
 
 			err = ingestLinkLocal(context.Background(), 0 /* jobID */, opts, objProvider, meta)
@@ -445,7 +598,7 @@ func TestIngestLinkFallback(t *testing.T) {
 
 	meta := &manifest.TableMetadata{TableNum: 1}
 	meta.InitPhysicalBacking()
-	err = ingestLinkLocal(context.Background(), 0, opts, objProvider, []ingestLocalMeta{{TableMetadata: meta, path: "source"}})
+	err = ingestLinkLocal(context.Background(), 0, opts, objProvider, []ingestLocalMeta{{TableMetadata: meta, local: LocalSST{Path: "source"}}})
 	require.NoError(t, err)
 
 	dest, err := mem.Open("000001.sst")
@@ -2805,7 +2958,7 @@ func TestIngestCleanup(t *testing.T) {
 				toRemove = append(toRemove, ingestLocalMeta{TableMetadata: m})
 			}
 
-			err = ingestCleanup(objProvider, toRemove)
+			err = ingestCleanup(objProvider, toRemove, nil /* blobFiles */)
 			if tc.wantErr != "" {
 				require.Error(t, err, "got no error, expected %s", tc.wantErr)
 				require.Contains(t, err.Error(), tc.wantErr)
