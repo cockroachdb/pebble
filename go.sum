@@ -29,8 +29,8 @@ github.com/cespare/xxhash/v2 v2.2.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XL
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/cockroachdb/crlib v0.0.0-20251122031428-fe658a2dbda1 h1:iX0YCYC5Jbt2/g7zNTP/QxhrV8Syp5kkzNiERKeN1uE=
 github.com/cockroachdb/crlib v0.0.0-20251122031428-fe658a2dbda1/go.mod h1:NjNuToN/FbhwH1cCyM9G4Rhtxx+ZaOgtoqFR+thng7w=
-github.com/cockroachdb/datadriven v1.0.3-0.20250911232732-d959cf14706c h1:a0m7gmtv2mzJQ4wP9BkxCmJAnjZ7fsvCi2IORGD1als=
-github.com/cockroachdb/datadriven v1.0.3-0.20250911232732-d959cf14706c/go.mod h1:jsaKMvD3RBCATk1/jbUZM8C9idWBJME9+VRZ5+Liq1g=
+github.com/cockroachdb/datadriven v1.0.3-0.20251123150250-ddff6747b112 h1:T1++5Vt0/4/IWZ1mHmUYl7fhQnz50QhNWIY+ITvLLIM=
+github.com/cockroachdb/datadriven v1.0.3-0.20251123150250-ddff6747b112/go.mod h1:jsaKMvD3RBCATk1/jbUZM8C9idWBJME9+VRZ5+Liq1g=
 github.com/cockroachdb/errors v1.11.3 h1:5bA+k2Y6r+oz/6Z/RFlNeVCesGARKuC6YymtcDrbC/I=
 github.com/cockroachdb/errors v1.11.3/go.mod h1:m4UIW4CDjx+R5cybPsNrRbreomiFqt8o1h1wUVazSd8=
 github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b h1:r6VH0faHjZeQy818SGhaone5OnYfxFR/+AzdY3sf5aE=
