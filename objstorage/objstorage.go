@@ -107,7 +107,21 @@ type Writable interface {
 
 	// Finish completes the object and makes the data durable.
 	// No further calls are allowed after calling Finish.
+	//
+	// If Finish fails, it is expected that the caller will delete the created
+	// object. If the process crashes during Finish, it is expected that the file
+	// will be deleted on startup.
 	Finish() error
+
+	// StartMetadataPortion signals to the writer that the metadata part of the
+	// object starts here. If the object is being written to the cold tier, data
+	// in subsequent Write() calls will also be written to the hot tier.
+	//
+	// The function should be called at most one time.
+	//
+	// An error means that we won't be able to successfully finish this object.
+	// - Any constraints on when this can be called relative to Write()
+	StartMetadataPortion() error
 
 	// Abort gives up on finishing the object. There is no guarantee about whether
 	// the object exists after calling Abort.
