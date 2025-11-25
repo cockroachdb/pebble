@@ -44,6 +44,11 @@ const (
 	defaultVirtualTableUnreferencedFraction = 0.3
 )
 
+// Type aliases for types moved to internal/base package.
+// These provide public access to internal types needed by external users.
+type SpanPolicy = base.SpanPolicy
+type ValueStoragePolicyAdjustment = base.ValueStoragePolicyAdjustment
+
 // FilterType exports the base.FilterType type.
 type FilterType = base.FilterType
 
