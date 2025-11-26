@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
@@ -20,6 +21,9 @@ import (
 
 // flushable defines the interface for immutable memtables.
 type flushable interface {
+	// initMergingIterLevel initializes a mergingIterLevel for iteration over
+	// the flushable's point keys and range deletions.
+	initMergingIterLevel(ctx context.Context, o *IterOptions, mil *mergingIterLevel)
 	newIter(o *IterOptions) internalIterator
 	newFlushIter(o *IterOptions) internalIterator
 	newRangeDelIter(o *IterOptions) keyspan.FragmentIterator
@@ -225,6 +229,15 @@ func newIngestedFlushable(
 // TODO(sumeer): ingestedFlushable iters also need to plumb context for
 // tracing.
 
+func (s *ingestedFlushable) initMergingIterLevel(
+	ctx context.Context, o *IterOptions, mil *mergingIterLevel,
+) {
+	li := newLevelIter(ctx, *o, s.comparer, s.newIters, s.slice.Iter(), manifest.Level(0), internalIterOpts{})
+	li.initRangeDel(&mil.rangeDelIter)
+	mil.levelIter = li
+	mil.iter = invalidating.MaybeWrapIfInvariants(li)
+}
+
 // newIter is part of the flushable interface.
 func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
 	var opts IterOptions
@@ -256,8 +269,6 @@ func (s *ingestedFlushable) constructRangeDelIter(
 }
 
 // newRangeDelIter is part of the flushable interface.
-// TODO(bananabrick): Using a level iter instead of a keyspan level iter to
-// surface range deletes is more efficient.
 //
 // TODO(sumeer): *IterOptions are being ignored, so the index block load for
 // the point iterator in constructRangeDeIter is not tracked.
