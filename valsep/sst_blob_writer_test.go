@@ -119,27 +119,27 @@ func runDataDriven(t *testing.T, file string) {
 						return fmt.Sprintf("error putting key %s: %v", kv.Key.UserKey, err)
 					}
 				case sstable.InternalKeyKindDelete, sstable.InternalKeyKindDeleteSized:
-					if err := writer.Delete(kv.Key.UserKey); err != nil {
+					if err := writer.SSTWriter.Delete(kv.Key.UserKey); err != nil {
 						return fmt.Sprintf("error deleting key %s: %v", kv.Key.UserKey, err)
 					}
 				case base.InternalKeyKindRangeDelete:
-					if err := writer.DeleteRange(kv.Span.Start, kv.Span.End); err != nil {
+					if err := writer.SSTWriter.DeleteRange(kv.Span.Start, kv.Span.End); err != nil {
 						return fmt.Sprintf("error deleting range %s-%s: %v", kv.Span.Start, kv.Span.End, err)
 					}
 				case sstable.InternalKeyKindMerge:
-					if err := writer.Merge(kv.Key.UserKey, kv.Value); err != nil {
+					if err := writer.SSTWriter.Merge(kv.Key.UserKey, kv.Value); err != nil {
 						return fmt.Sprintf("error merging key %s: %v", kv.Key.UserKey, err)
 					}
 				case base.InternalKeyKindRangeKeySet:
-					if err := writer.RangeKeySet(kv.Span.Start, kv.Span.End, nil, kv.Value); err != nil {
+					if err := writer.SSTWriter.RangeKeySet(kv.Span.Start, kv.Span.End, nil, kv.Value); err != nil {
 						return fmt.Sprintf("error setting range key %s-%s: %v", kv.Span.Start, kv.Span.End, err)
 					}
 				case base.InternalKeyKindRangeKeyUnset:
-					if err := writer.RangeKeyUnset(kv.Span.Start, kv.Span.End, kv.Key.UserKey); err != nil {
+					if err := writer.SSTWriter.RangeKeyUnset(kv.Span.Start, kv.Span.End, kv.Key.UserKey); err != nil {
 						return fmt.Sprintf("error unsetting range key %s-%s: %v", kv.Span.Start, kv.Span.End, err)
 					}
 				case base.InternalKeyKindRangeKeyDelete:
-					if err := writer.RangeKeyDelete(kv.Span.Start, kv.Span.End); err != nil {
+					if err := writer.SSTWriter.RangeKeyDelete(kv.Span.Start, kv.Span.End); err != nil {
 						return fmt.Sprintf("error deleting range key %s-%s: %v", kv.Span.Start, kv.Span.End, err)
 					}
 				default:
@@ -151,7 +151,7 @@ func runDataDriven(t *testing.T, file string) {
 				return fmt.Sprintf("error closing writer: %v", err)
 			}
 
-			tableMeta, err := writer.Metadata()
+			tableMeta, err := writer.SSTWriter.Metadata()
 			if err != nil {
 				return fmt.Sprintf("error getting metadata: %v", err)
 			}

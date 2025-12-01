@@ -19,10 +19,9 @@ import (
 // neverSeparateValues, this behaves like sstable.Writer and no blob
 // files are written.
 type SSTBlobWriter struct {
-	// Promote methods from sstable.Writer.
-	*sstable.Writer
-	valSep ValueSeparation
-	err    error
+	SSTWriter *sstable.Writer
+	valSep    ValueSeparation
+	err       error
 
 	blobFileNum base.DiskFileNum
 	closed      bool
@@ -76,7 +75,7 @@ func NewSSTBlobWriter(sstHandle objstorage.Writable, opts SSTBlobWriterOptions) 
 		opts.SSTWriterOpts.Compression = block.FastestCompression
 	}
 
-	writer.Writer = sstable.NewWriter(sstHandle, opts.SSTWriterOpts)
+	writer.SSTWriter = sstable.NewWriter(sstHandle, opts.SSTWriterOpts)
 
 	// Create the value separator.
 	minimumValueSize := opts.ValueSeparationMinSize
@@ -123,7 +122,7 @@ func NewSSTBlobWriter(sstHandle objstorage.Writable, opts SSTBlobWriterOptions) 
 
 // Error returns the current accumulated error if any.
 func (w *SSTBlobWriter) Error() error {
-	return errors.CombineErrors(w.err, w.Writer.Error())
+	return errors.CombineErrors(w.err, w.SSTWriter.Error())
 }
 
 // Set sets the value for the given key. The sequence number is set to 0.
@@ -142,8 +141,8 @@ func (w *SSTBlobWriter) Set(key, value []byte) error {
 
 	w.kvScratch.K = base.MakeInternalKey(key, 0, sstable.InternalKeyKindSet)
 	w.kvScratch.V = base.MakeInPlaceValue(value)
-	isLikelyMVCCGarbage := w.Raw().IsLikelyMVCCGarbage(w.kvScratch.K.UserKey, w.kvScratch.Kind())
-	return w.valSep.Add(w.Raw(), &w.kvScratch, false, isLikelyMVCCGarbage)
+	isLikelyMVCCGarbage := w.SSTWriter.Raw().IsLikelyMVCCGarbage(w.kvScratch.K.UserKey, w.kvScratch.Kind())
+	return w.valSep.Add(w.SSTWriter.Raw(), &w.kvScratch, false, isLikelyMVCCGarbage)
 }
 
 // BlobWriterMetas returns a slice of blob.FileWriterStats describing the
@@ -160,7 +159,7 @@ func (w *SSTBlobWriter) BlobWriterMetas() ([]blob.FileWriterStats, error) {
 
 // Close closes both the sstable writer and the blob file writer if any.
 func (w *SSTBlobWriter) Close() error {
-	w.err = errors.CombineErrors(w.err, w.Writer.Close())
+	w.err = errors.CombineErrors(w.err, w.SSTWriter.Close())
 	meta, err := w.valSep.FinishOutput()
 	if err != nil {
 		w.err = errors.CombineErrors(w.err, err)
