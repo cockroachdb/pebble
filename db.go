@@ -2605,7 +2605,8 @@ func (d *DB) rotateWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	d.mu.Unlock()
 	writer, err := d.mu.log.manager.Create(wal.NumWAL(newLogNum), int(jobID))
 	if err != nil {
-		panic(err)
+		// Fatal error since we cannot continue without a WAL.
+		d.opts.Logger.Fatalf("pebble: error creating new WAL: %s", err)
 	}
 
 	d.mu.Lock()
