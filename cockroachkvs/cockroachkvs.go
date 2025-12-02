@@ -789,7 +789,17 @@ func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) boo
 	// is either (a) unversioned (and sorts before all other suffixes) or (b) is
 	// a non-MVCC key with an untyped version.
 	if firstRowWall == 0 && firstLogical == 0 {
-		return ComparePointSuffixes(ks.untypedVersions.At(0), version) >= 0
+		firstRowUntypedVer := ks.untypedVersions.At(0)
+		// Empty suffixes sort before non-empty suffixes.
+		switch {
+		case len(version) == 0:
+			// This includes the case where both versions are empty.
+			return true
+		case len(firstRowUntypedVer) == 0:
+			return false
+		default:
+			return bytes.Compare(version, firstRowUntypedVer) >= 0
+		}
 	}
 
 	var wallTime uint64

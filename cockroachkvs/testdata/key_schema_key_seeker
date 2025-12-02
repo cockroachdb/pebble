@@ -241,3 +241,42 @@ IsLowerBound(moo @ 3000000000,1, "") = true
 IsLowerBound(moo @ 3000000000,0, "") = true
 IsLowerBound(moo @ 0000000000,1, "") = true
 IsLowerBound(moo @ 02073a83c45688420eaf97824255790f1e12, "") = true
+
+# Regression test for cockroach/#158463. This test uses a lock table key (a
+# non-MVCC key with an untyped version) as the first key in the block.
+# Previously, we would incorrectly use the key version as a full suffix and
+# call ComparePointSuffixes with it.
+
+define-block
+moo @ 02073a83c45688420eaf97824255790f1e
+moo @ 3000000002,1
+moo @ 3000000001,1
+moo @ 0000000001,0
+----
+Parse(moo @ 02073a83c45688420eaf97824255790f1e) = hex:6d6f6f0002073a83c45688420eaf97824255790f1e12
+Parse(moo @ 3000000002,1) = hex:6d6f6f0000000000b2d05e02000000010d
+Parse(moo @ 3000000001,1) = hex:6d6f6f0000000000b2d05e01000000010d
+Parse(moo @ 0000000001,0) = hex:6d6f6f00000000000000000109
+
+is-lower-bound
+moo @ 03073a83c45688420eaf97824255790f1e
+moo @ 9000000000,2
+moo @ 8000000000,2
+moo @ 8000000000,1
+moo @ 8000000000,0
+moo @ 7000000000,9
+moo @ 3000000000,2
+moo @ 3000000000,1
+moo @ 3000000000,0
+moo @ 0000000000,1
+----
+IsLowerBound(moo @ 03073a83c45688420eaf97824255790f1e, "") = true
+IsLowerBound(moo @ 9000000000,2, "") = false
+IsLowerBound(moo @ 8000000000,2, "") = false
+IsLowerBound(moo @ 8000000000,1, "") = false
+IsLowerBound(moo @ 8000000000,0, "") = false
+IsLowerBound(moo @ 7000000000,9, "") = false
+IsLowerBound(moo @ 3000000000,2, "") = false
+IsLowerBound(moo @ 3000000000,1, "") = false
+IsLowerBound(moo @ 3000000000,0, "") = false
+IsLowerBound(moo @ 0000000000,1, "") = false
