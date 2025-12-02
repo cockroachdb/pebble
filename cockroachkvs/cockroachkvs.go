@@ -251,7 +251,9 @@ func decodeMVCCTimestamp(encodedTS []byte) (wallTime uint64, logical uint32, err
 	return wallTime, logical, nil
 }
 
-// DecodeEngineKey decodes the given bytes as an EngineKey.
+// DecodeEngineKey decodes the given bytes as an EngineKey, returning the roach
+// key (excluding the sentinel byte) and version, excluding the length byte at
+// the end of the engine key.
 func DecodeEngineKey(b []byte) (roachKey, version []byte, ok bool) {
 	if len(b) == 0 {
 		return nil, nil, false
@@ -369,6 +371,22 @@ func ComparePointSuffixes(a, b []byte) int {
 	return bytes.Compare(normalizeEngineSuffixForCompare(b), normalizeEngineSuffixForCompare(a))
 }
 
+// compareVersions compares a version with a first row's untyped version
+// to determine if the version is a lower bound. Empty suffixes sort before
+// non-empty suffixes. Returns true if version >= firstRowUntypedVer.
+func compareVersions(version, firstRowUntypedVer []byte) bool {
+	switch {
+	case len(version) == 0:
+		// This includes the case where both versions are empty.
+		return true
+	case len(firstRowUntypedVer) == 0:
+		return false
+	default:
+		normalizedVersion := normalizeVersionForCompare(version)
+		return bytes.Compare(normalizedVersion, firstRowUntypedVer) >= 0
+	}
+}
+
 // Equal implements base.Equal for Cockroach keys.
 func Equal(a, b []byte) bool {
 	if len(a) == 0 || len(b) == 0 {
@@ -407,20 +425,14 @@ func Equal(a, b []byte) bool {
 
 var zeroLogical [4]byte
 
-// normalizeEngineSuffixForCompare takes a non-empty key suffix (including the
-// trailing sentinel byte) and returns a prefix of the buffer that should be
-// used for byte-wise comparison. It trims the trailing suffix length byte and
-// any other trailing bytes that need to be ignored (like a synthetic bit or
-// zero logical component).
+// normalizeVersionForCompare takes a version (without the trailing length byte)
+// and returns a prefix of the buffer that should be used for byte-wise
+// comparison. It trims any trailing bytes that need to be ignored (like a
+// synthetic bit or zero logical component). Noop if version is a non-MVCC
+// version.
 //
 //gcassert:inline
-func normalizeEngineSuffixForCompare(a []byte) []byte {
-	// Check sentinel byte.
-	if invariants.Enabled && len(a) != int(a[len(a)-1]) {
-		panic(errors.AssertionFailedf("malformed suffix: %x (length byte is %d; but suffix is %d bytes)", a, a[len(a)-1], len(a)))
-	}
-	// Strip off sentinel byte.
-	a = a[:len(a)-1]
+func normalizeVersionForCompare(a []byte) []byte {
 	switch len(a) {
 	case engineKeyVersionWallLogicalAndSyntheticTimeLen:
 		// Strip the synthetic bit component from the timestamp version. The
@@ -452,6 +464,23 @@ func normalizeEngineSuffixForCompare(a []byte) []byte {
 		}
 	}
 	return a
+}
+
+// normalizeEngineSuffixForCompare takes a non-empty key suffix (including the
+// trailing sentinel byte) and returns a prefix of the buffer that should be
+// used for byte-wise comparison. It trims the trailing suffix length byte and
+// any other trailing bytes that need to be ignored (like a synthetic bit or
+// zero logical component). Noop if suffix is a non-MVCC suffix.
+//
+//gcassert:inline
+func normalizeEngineSuffixForCompare(a []byte) []byte {
+	// Check sentinel byte.
+	if invariants.Enabled && len(a) != int(a[len(a)-1]) {
+		panic(errors.AssertionFailedf("malformed suffix: %x (length byte is %d; but suffix is %d bytes)", a, a[len(a)-1], len(a)))
+	}
+	// Strip off sentinel byte.
+	a = a[:len(a)-1]
+	return normalizeVersionForCompare(a)
 }
 
 func getKeyPartFromEngineKey(engineKey []byte) (key []byte, ok bool) {
@@ -772,8 +801,13 @@ func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) boo
 	}
 	// If there's a synthetic suffix, we ignore the block's suffix columns and
 	// compare the key's suffix to the synthetic suffix.
+	//
+	// NB: DecodeEngineKey excludes the length byte at the end, and roachKey
+	// excludes the sentinel byte. The suffix below is the same as k[Split(k):],
+	// which gives us the version plus the length byte.
+	suffix := k[len(roachKey)+1:]
 	if len(syntheticSuffix) > 0 {
-		return ComparePointSuffixes(syntheticSuffix, k[len(roachKey)+1:]) >= 0
+		return ComparePointSuffixes(syntheticSuffix, suffix) >= 0
 	}
 	firstRowWall := ks.mvccWallTimes.At(0)
 	firstLogical := ks.mvccLogical.At(0)
@@ -781,7 +815,8 @@ func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) boo
 	// is either (a) unversioned (and sorts before all other suffixes) or (b) is
 	// a non-MVCC key with an untyped version.
 	if firstRowWall == 0 && firstLogical == 0 {
-		return ComparePointSuffixes(ks.untypedVersions.At(0), version) >= 0
+		firstRowUntypedVer := ks.untypedVersions.At(0)
+		return compareVersions(version, firstRowUntypedVer)
 	}
 
 	var wallTime uint64
@@ -817,7 +852,7 @@ func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) boo
 			buf[12] = 13
 			firstRowSuffix = buf[:13]
 		}
-		return ComparePointSuffixes(firstRowSuffix, version) >= 0
+		return bytes.Compare(version, firstRowSuffix[:len(firstRowSuffix)-1]) >= 0
 	}
 
 	// NB: The sign comparison is inverted because suffixes are sorted such that
