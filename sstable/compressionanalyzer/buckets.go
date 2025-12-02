@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/compression"
+	"github.com/cockroachdb/pebble/internal/metricsutil"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 )
@@ -156,17 +157,17 @@ type Buckets [blockkind.NumKinds][numBlockSizes][numCompressibility]Bucket
 // Bucket aggregates results for blocks of the same kind, size range, and
 // compressibility.
 type Bucket struct {
-	UncompressedSize Welford
+	UncompressedSize metricsutil.Welford
 	Experiments      [numProfiles]PerProfile
 }
 
 // PerProfile holds statistics from experiments on blocks in a bucket with a
 // specific compression.Setting.
 type PerProfile struct {
-	CompressionRatio WeightedWelford
+	CompressionRatio metricsutil.WeightedWelford
 	// CPU times are in nanoseconds per uncompressed byte.
-	CompressionTime   WeightedWelford
-	DecompressionTime WeightedWelford
+	CompressionTime   metricsutil.WeightedWelford
+	DecompressionTime metricsutil.WeightedWelford
 }
 
 func (b *Buckets) String(minSamples int) string {
@@ -185,21 +186,21 @@ func (b *Buckets) String(minSamples int) string {
 				if bucket.UncompressedSize.Count() < int64(minSamples) {
 					continue
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%.1fKB %s\tCR", k, sz, c, bucket.UncompressedSize.Count(), bucket.UncompressedSize.Mean()/1024, stdDevStr(bucket.UncompressedSize.Mean(), bucket.UncompressedSize.SampleStandardDeviation()))
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%.1fKB %s\tCR", k, sz, c, bucket.UncompressedSize.Count(), bucket.UncompressedSize.Mean()/1024, stdDevStr(bucket.UncompressedSize.Mean(), bucket.UncompressedSize.StdDev()))
 				for _, e := range (*b)[k][sz][c].Experiments {
-					mean, stdDev := e.CompressionRatio.Mean(), e.CompressionRatio.SampleStandardDeviation()
+					mean, stdDev := e.CompressionRatio.Mean(), e.CompressionRatio.StdDev()
 					fmt.Fprintf(tw, "\t%.2f %s", mean, stdDevStr(mean, stdDev))
 				}
 				fmt.Fprintf(tw, "\n")
 				fmt.Fprintf(tw, "\t\t\t\t\tComp")
 				for _, e := range (*b)[k][sz][c].Experiments {
-					mean, stdDev := e.CompressionTime.Mean(), e.CompressionTime.SampleStandardDeviation()
+					mean, stdDev := e.CompressionTime.Mean(), e.CompressionTime.StdDev()
 					fmt.Fprintf(tw, "\t%.0fMBps %s", toMBPS(mean), stdDevStr(mean, stdDev))
 				}
 				fmt.Fprintf(tw, "\n")
 				fmt.Fprintf(tw, "\t\t\t\t\tDecomp")
 				for _, e := range (*b)[k][sz][c].Experiments {
-					mean, stdDev := e.DecompressionTime.Mean(), e.DecompressionTime.SampleStandardDeviation()
+					mean, stdDev := e.DecompressionTime.Mean(), e.DecompressionTime.StdDev()
 					fmt.Fprintf(tw, "\t%.0fMBps %s", toMBPS(mean), stdDevStr(mean, stdDev))
 				}
 				fmt.Fprintf(tw, "\n")
@@ -247,11 +248,11 @@ func (b *Buckets) ToCSV(minSamples int) string {
 				if bucket.UncompressedSize.Count() < int64(minSamples) {
 					continue
 				}
-				fmt.Fprintf(&buf, "%s,%s,%s,%d,%.0f,%.0f", k, sz, c, bucket.UncompressedSize.Count(), bucket.UncompressedSize.Mean(), bucket.UncompressedSize.SampleStandardDeviation())
+				fmt.Fprintf(&buf, "%s,%s,%s,%d,%.0f,%.0f", k, sz, c, bucket.UncompressedSize.Count(), bucket.UncompressedSize.Mean(), bucket.UncompressedSize.StdDev())
 				for _, e := range (*b)[k][sz][c].Experiments {
-					fmt.Fprintf(&buf, ",%.3f,%.3f", e.CompressionRatio.Mean(), e.CompressionRatio.SampleStandardDeviation())
-					fmt.Fprintf(&buf, ",%.3f,%.3f", e.CompressionTime.Mean(), e.CompressionTime.SampleStandardDeviation())
-					fmt.Fprintf(&buf, ",%.3f,%.3f", e.DecompressionTime.Mean(), e.DecompressionTime.SampleStandardDeviation())
+					fmt.Fprintf(&buf, ",%.3f,%.3f", e.CompressionRatio.Mean(), e.CompressionRatio.StdDev())
+					fmt.Fprintf(&buf, ",%.3f,%.3f", e.CompressionTime.Mean(), e.CompressionTime.StdDev())
+					fmt.Fprintf(&buf, ",%.3f,%.3f", e.DecompressionTime.Mean(), e.DecompressionTime.StdDev())
 				}
 				fmt.Fprintf(&buf, "\n")
 			}
