@@ -1,6 +1,6 @@
 # Tests when an object is unrefed before it is attached to another provider.
 
-open p5 creator-id=5
+open dir=p5 creator-id=5
 ----
 <local fs> mkdir-all: p5 0755
 <local fs> open-dir: p5
@@ -13,21 +13,21 @@ open p5 creator-id=5
 <local fs> sync: p5
 <local fs> sync: p5/REMOTE-OBJ-CATALOG-000001
 
-create 1 shared 1 100
+create file-num=1 shared salt=1 size=100
 ----
 <remote> create object "d632-5-000001.sst"
 <remote> close writer for "d632-5-000001.sst" after 100 bytes
 <remote> create object "d632-5-000001.sst.ref.5.000001"
 <remote> close writer for "d632-5-000001.sst.ref.5.000001" after 0 bytes
 
-save-backing p5b1 1
+save-backing key=p5b1 file-num=1
 ----
 
 # This should do nothing.
-remove 1
+remove file-num=1
 ----
 
-open p6 creator-id=6
+open dir=p6 creator-id=6
 ----
 <local fs> mkdir-all: p6 0755
 <local fs> open-dir: p6
@@ -49,34 +49,34 @@ p5b1 101
 <remote> size of object "d632-5-000001.sst.ref.5.000001": 0
 000101 -> remote://d632-5-000001.sst
 
-switch p5
+switch dir=p5
 ----
 
 # TODO(radu): after we close the backing, the unref should happen.
-close-backing p5b1
+close-backing key=p5b1
 ----
 
-create 2 shared 2 100
+create file-num=2 shared salt=2 size=100
 ----
 <remote> create object "1ab5-5-000002.sst"
 <remote> close writer for "1ab5-5-000002.sst" after 100 bytes
 <remote> create object "1ab5-5-000002.sst.ref.5.000002"
 <remote> close writer for "1ab5-5-000002.sst.ref.5.000002" after 0 bytes
 
-save-backing p5b2 2
+save-backing key=p5b2 file-num=2
 ----
 
 # Close the backing, then unref the object.
-close-backing p5b2
+close-backing key=p5b2
 ----
 
-remove 2
+remove file-num=2
 ----
 <remote> delete object "1ab5-5-000002.sst.ref.5.000002"
 <remote> list (prefix="1ab5-5-000002.sst.ref.", delimiter="")
 <remote> delete object "1ab5-5-000002.sst"
 
-switch p6
+switch dir=p6
 ----
 
 # Attach should error out because it can't find p5's ref.
