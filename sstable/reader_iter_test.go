@@ -733,7 +733,7 @@ func (c *controllableFilterPolicy) Name() string {
 	return c.name
 }
 
-func (c *controllableFilterPolicy) MayContain(ftype FilterType, filter, key []byte) bool {
+func (c *controllableFilterPolicy) MayContain(filter, key []byte) bool {
 	return c.mayContainResult
 }
 

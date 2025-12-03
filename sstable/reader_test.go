@@ -389,17 +389,14 @@ func TestReader(t *testing.T) {
 		"bloom10bit": {
 			// The standard policy.
 			FilterPolicy: bloom.FilterPolicy(10),
-			FilterType:   base.TableFilter,
 		},
 		"bloom1bit": {
 			// A policy with many false positives.
 			FilterPolicy: bloom.FilterPolicy(1),
-			FilterType:   base.TableFilter,
 		},
 		"bloom100bit": {
 			// A policy unlikely to have false positives.
 			FilterPolicy: bloom.FilterPolicy(100),
-			FilterType:   base.TableFilter,
 		},
 	}
 

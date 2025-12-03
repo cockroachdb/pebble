@@ -385,14 +385,14 @@ type countingFilterPolicy struct {
 	trueNegatives  int
 }
 
-func (c *countingFilterPolicy) MayContain(ftype FilterType, filter, key []byte) bool {
+func (c *countingFilterPolicy) MayContain(filter, key []byte) bool {
 	got := true
 	if c.degenerate {
 		// When degenerate is true, we override the embedded FilterPolicy's
 		// MayContain method to always return true. Doing so is a valid, if
 		// inefficient, implementation of the FilterPolicy interface.
 	} else {
-		got = c.FilterPolicy.MayContain(ftype, filter, key)
+		got = c.FilterPolicy.MayContain(filter, key)
 	}
 	wordCount := hamletWordCount()
 	_, want := wordCount[string(key)]
@@ -422,7 +422,7 @@ func TestWriterRoundTrip(t *testing.T) {
 				t.Run(fmt.Sprintf("bloom=%s", name), func(t *testing.T) {
 					fs := vfs.NewMem()
 					err := buildHamletTestSST(
-						fs, "test.sst", block.DefaultCompression, fp, TableFilter,
+						fs, "test.sst", block.DefaultCompression, fp,
 						nil /* comparer */, blockSize, indexBlockSize,
 					)
 					require.NoError(t, err)
@@ -525,7 +525,7 @@ func TestMetaIndexEntriesSorted(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	err := buildHamletTestSST(fs, "test.sst", block.DefaultCompression, nil, /* filter policy */
-		TableFilter, nil, 4096, 4096)
+		nil, 4096, 4096)
 	require.NoError(t, err)
 	f, err := fs.Open("test.sst")
 	require.NoError(t, err)

@@ -113,7 +113,7 @@ type testFilterPolicyImpl struct{}
 
 func (testFilterPolicyImpl) Name() string { return "test.filter" }
 
-func (testFilterPolicyImpl) MayContain(ftype FilterType, filter, key []byte) bool {
+func (testFilterPolicyImpl) MayContain(filter, key []byte) bool {
 	// For the test, return false for keys starting with "nonexistent" to simulate bloom filter miss
 	prefix := "nonexistent"
 	if len(key) >= len(prefix) && string(key[:len(prefix)]) == prefix {
@@ -122,7 +122,7 @@ func (testFilterPolicyImpl) MayContain(ftype FilterType, filter, key []byte) boo
 	return true
 }
 
-func (testFilterPolicyImpl) NewWriter(ftype FilterType) FilterWriter {
+func (testFilterPolicyImpl) NewWriter() FilterWriter {
 	return &testFilterWriter{}
 }
 

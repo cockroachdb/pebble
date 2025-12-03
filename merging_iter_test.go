@@ -575,7 +575,6 @@ func buildLevelsForMergingIterSeqSeek(
 			}
 			if writeBloomFilters {
 				writerOptions.FilterPolicy = filterPolicy
-				writerOptions.FilterType = base.TableFilter
 			}
 			if forceTwoLevelIndex {
 				if i == 0 && j == 0 {

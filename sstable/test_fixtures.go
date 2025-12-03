@@ -122,7 +122,6 @@ func buildHamletTestSST(
 	filename string,
 	compression *block.CompressionProfile,
 	fp FilterPolicy,
-	ftype FilterType,
 	comparer *Comparer,
 	blockSize int,
 	indexBlockSize int,
@@ -141,7 +140,6 @@ func buildHamletTestSST(
 		Comparer:       comparer,
 		Compression:    compression,
 		FilterPolicy:   fp,
-		FilterType:     ftype,
 		IndexBlockSize: indexBlockSize,
 		MergerName:     "nullptr",
 		TableFormat:    fixtureFormat,
@@ -257,7 +255,7 @@ func (tf TestFixtureInfo) Build(fs vfs.FS, filename string) error {
 	}
 
 	return buildHamletTestSST(
-		fs, filename, tf.Compression, fp, base.TableFilter,
+		fs, filename, tf.Compression, fp,
 		comparer,
 		fixtureBlockSize,
 		tf.IndexBlockSize,
