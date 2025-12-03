@@ -1,6 +1,6 @@
 # Tests with shared storage when ref tracking is disabled.
 
-open p1 creator-id=1
+open dir=p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -13,28 +13,34 @@ open p1 creator-id=1
 <local fs> sync: p1
 <local fs> sync: p1/REMOTE-OBJ-CATALOG-000001
 
-create 1 shared 1 100 no-ref-tracking
+create file-num=1 shared salt=1 size=100 no-ref-tracking
 ----
 <remote> create object "61a6-1-000001.sst"
 <remote> close writer for "61a6-1-000001.sst" after 100 bytes
+<remote> create object "61a6-1-000001.sst.ref.1.000001"
+<remote> close writer for "61a6-1-000001.sst.ref.1.000001" after 0 bytes
 
-read 1
+read file-num=1
 0 100
 ----
+<remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
 <remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
 <remote> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
 <remote> close reader for "61a6-1-000001.sst"
 
-create 2 shared 2 100 no-ref-tracking
+create file-num=2 shared salt=2 size=100 no-ref-tracking
 ----
 <remote> create object "a629-1-000002.sst"
 <remote> close writer for "a629-1-000002.sst" after 100 bytes
+<remote> create object "a629-1-000002.sst.ref.1.000002"
+<remote> close writer for "a629-1-000002.sst.ref.1.000002" after 0 bytes
 
-read 2
+read file-num=2
 0 100
 ----
+<remote> size of object "a629-1-000002.sst.ref.1.000002": 0
 <remote> create reader for object "a629-1-000002.sst": 100 bytes
 size: 100
 <remote> read object "a629-1-000002.sst" at 0 (length 100)
@@ -46,7 +52,7 @@ list
 000001 -> remote://61a6-1-000001.sst
 000002 -> remote://a629-1-000002.sst
 
-link-or-copy 3 shared 3 100 no-ref-tracking
+link-or-copy file-num=3 shared salt=3 size=100 no-ref-tracking
 ----
 <local fs> create: temp-file-1
 <local fs> close: temp-file-1
@@ -55,7 +61,7 @@ link-or-copy 3 shared 3 100 no-ref-tracking
 <remote> close writer for "eaac-1-000003.sst" after 100 bytes
 <local fs> close: temp-file-1
 
-read 3
+read file-num=3
 0 100
 ----
 <remote> create reader for object "eaac-1-000003.sst": 100 bytes
@@ -72,7 +78,7 @@ close
 <local fs> close: p1
 
 # Test that the objects are there on re-open.
-open p1 creator-id=1
+open dir=p1 creator-id=1
 ----
 <local fs> mkdir-all: p1 0755
 <local fs> open-dir: p1
@@ -86,25 +92,27 @@ list
 000002 -> remote://a629-1-000002.sst
 000003 -> remote://eaac-1-000003.sst
 
-read 1
+read file-num=1
 0 100
 ----
+<remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
 <remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
 <remote> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
 <remote> close reader for "61a6-1-000001.sst"
 
-read 2
+read file-num=2
 0 100
 ----
+<remote> size of object "a629-1-000002.sst.ref.1.000002": 0
 <remote> create reader for object "a629-1-000002.sst": 100 bytes
 size: 100
 <remote> read object "a629-1-000002.sst" at 0 (length 100)
 0 100: ok (salt 2)
 <remote> close reader for "a629-1-000002.sst"
 
-read 3
+read file-num=3
 0 100
 ----
 <remote> create reader for object "eaac-1-000003.sst": 100 bytes
@@ -113,13 +121,13 @@ size: 100
 0 100: ok (salt 3)
 <remote> close reader for "eaac-1-000003.sst"
 
-save-backing b1 1
+save-backing key=b1 file-num=1
 ----
 
-save-backing b2 1
+save-backing key=b2 file-num=1
 ----
 
-open p2 creator-id=2
+open dir=p2 creator-id=2
 ----
 <local fs> mkdir-all: p2 0755
 <local fs> open-dir: p2
@@ -136,6 +144,12 @@ attach
 b1 101
 b2 102
 ----
+<remote> create object "61a6-1-000001.sst.ref.2.000101"
+<remote> close writer for "61a6-1-000001.sst.ref.2.000101" after 0 bytes
+<remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
+<remote> create object "61a6-1-000001.sst.ref.2.000102"
+<remote> close writer for "61a6-1-000001.sst.ref.2.000102" after 0 bytes
+<remote> size of object "61a6-1-000001.sst.ref.1.000001": 0
 000101 -> remote://61a6-1-000001.sst
 000102 -> remote://61a6-1-000001.sst
 
@@ -144,18 +158,20 @@ list
 000101 -> remote://61a6-1-000001.sst
 000102 -> remote://61a6-1-000001.sst
 
-read 101
+read file-num=101
 0 100
 ----
+<remote> size of object "61a6-1-000001.sst.ref.2.000101": 0
 <remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
 <remote> read object "61a6-1-000001.sst" at 0 (length 100)
 0 100: ok (salt 1)
 <remote> close reader for "61a6-1-000001.sst"
 
-read 102
+read file-num=102
 0 100
 ----
+<remote> size of object "61a6-1-000001.sst.ref.2.000102": 0
 <remote> create reader for object "61a6-1-000001.sst": 100 bytes
 size: 100
 <remote> read object "61a6-1-000001.sst" at 0 (length 100)
@@ -163,17 +179,27 @@ size: 100
 <remote> close reader for "61a6-1-000001.sst"
 
 # In this mode, all removes should be no-ops on the shared backend.
-remove 101
+remove file-num=101
+----
+<remote> delete object "61a6-1-000001.sst.ref.2.000101"
+<remote> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<remote>  - 61a6-1-000001.sst.ref.1.000001
+<remote>  - 61a6-1-000001.sst.ref.2.000102
+
+remove file-num=102
+----
+<remote> delete object "61a6-1-000001.sst.ref.2.000102"
+<remote> list (prefix="61a6-1-000001.sst.ref.", delimiter="")
+<remote>  - 61a6-1-000001.sst.ref.1.000001
+
+switch dir=p1
 ----
 
-remove 102
+remove file-num=1
 ----
 
-switch p1
+remove file-num=2
 ----
-
-remove 1
-----
-
-remove 2
-----
+<remote> delete object "a629-1-000002.sst.ref.1.000002"
+<remote> list (prefix="a629-1-000002.sst.ref.", delimiter="")
+<remote> delete object "a629-1-000002.sst"

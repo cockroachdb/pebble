@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,6 +23,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestProvider datadriven format:
+//
+//	open dir=<dir> [cold-dir=<dir>] [creator-id=<id>]
+//	create file-num=<num> [file-type=<type>] [shared] [cold-tier] salt=<salt> size=<size> [no-ref-tracking]
+//	read file-num=<num> [file-type=<type>] [for-compaction] [readahead=<mode>]
+//	remove file-num=<num> [file-type=<type>]
+//	link-or-copy file-num=<num> [file-type=<type>] [shared] salt=<salt> size=<size> [no-ref-tracking]
+//	save-backing key=<key> file-num=<num>
+//	close-backing key=<key>
+//	switch dir=<dir>
 func TestProvider(t *testing.T) {
 	datadriven.Walk(t, "testdata/provider", func(t *testing.T, path string) {
 		var log base.InMemLogger
@@ -46,40 +55,40 @@ func TestProvider(t *testing.T) {
 		var curProvider objstorage.Provider
 		readaheadConfig := NewReadaheadConfig()
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
-			readaheadConfig.Set(defaultReadaheadInformed, defaultReadaheadSpeculative)
-			scanArgs := func(desc string, args ...interface{}) {
-				t.Helper()
-				if len(d.CmdArgs) != len(args) {
-					d.Fatalf(t, "usage: %s %s", d.Cmd, desc)
-				}
-				for i := range args {
-					_, err := fmt.Sscan(d.CmdArgs[i].String(), args[i])
-					if err != nil {
-						d.Fatalf(t, "%s: error parsing argument '%s'", d.Cmd, d.CmdArgs[i])
-					}
-				}
-			}
-			ctx := context.Background()
+			// Arguments that are common to multiple commands.
+			var fsDir, coldDir string
+			var fileType base.FileType
+			var fileNum base.DiskFileNum
+			var salt, size int
+			var noRefTracking, shared, coldTier bool
 
+			d.MaybeScanArgs(t, "dir", &fsDir)
+			d.MaybeScanArgs(t, "cold-dir", &coldDir)
+			fileType = func() base.FileType {
+				var fileTypeStr string
+				if !d.MaybeScanArgs(t, "file-type", &fileTypeStr) {
+					return base.FileTypeTable
+				}
+				return base.FileTypeFromName(fileTypeStr)
+			}()
+			d.MaybeScanArgs(t, "file-num", &fileNum)
+			d.MaybeScanArgs(t, "salt", &salt)
+			d.MaybeScanArgs(t, "size", &size)
+			noRefTracking = d.HasArg("no-ref-tracking")
+			shared = d.HasArg("shared")
+			coldTier = d.HasArg("cold-tier")
+
+			readaheadConfig.Set(defaultReadaheadInformed, defaultReadaheadSpeculative)
+
+			ctx := context.Background()
 			log.Reset()
 			switch d.Cmd {
 			case "open":
-				var fsDir, coldDir string
+				if fsDir == "" {
+					d.Fatalf(t, "usage: switch dir=<dir> [cold-dir=<dir>] [creator-id=<id>]")
+				}
 				var creatorID objstorage.CreatorID
-				d.CmdArgs = slices.DeleteFunc(d.CmdArgs, func(arg datadriven.CmdArg) bool {
-					switch arg.Key {
-					case "creator-id":
-						var id uint64
-						arg.Scan(t, 0, &id)
-						creatorID = objstorage.CreatorID(id)
-						return true
-					case "cold-tier":
-						coldDir = arg.SingleVal(t)
-						return true
-					}
-					return false
-				})
-				scanArgs("<fs-dir> [creator-id=X]", &fsDir)
+				d.MaybeScanArgs(t, "creator-id", &creatorID)
 
 				require.NoError(t, fs.MkdirAll(fsDir, 0755))
 				st := DefaultSettings(fs, fsDir)
@@ -111,8 +120,9 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "switch":
-				var fsDir string
-				scanArgs("<fs-dir>", &fsDir)
+				if fsDir == "" {
+					d.Fatalf(t, "usage: switch dir=<dir>")
+				}
 				curProvider = providers[fsDir]
 				if curProvider == nil {
 					t.Fatalf("unknown provider %s", fsDir)
@@ -129,36 +139,17 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "create":
+				if fileNum == 0 || size == 0 || salt == 0 {
+					d.Fatalf(t, "usage: create file-num=<num> [file-type=sstable|blob] [shared] [cold-tier] salt=<salt> size=<size> [no-ref-tracking]")
+				}
 				opts := objstorage.CreateOptions{
 					SharedCleanupMethod: objstorage.SharedRefTracking,
 				}
-				ft := base.FileTypeTable
-				d.CmdArgs = slices.DeleteFunc(d.CmdArgs, func(arg datadriven.CmdArg) bool {
-					switch arg.Key {
-					case "file-type":
-						ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
-						return true
-					case "no-ref-tracking":
-						opts.SharedCleanupMethod = objstorage.SharedNoCleanup
-						return true
-					case "cold-tier":
-						opts.Tier = base.ColdTier
-						return true
-					}
-					return false
-				})
-				var fileNum base.DiskFileNum
-				var typ string
-				var salt, size int
-				scanArgs("[file-type=sstable|blob] <file-num> <local|shared> <salt> <size> [no-ref-tracking] [cold-tier]", &fileNum, &typ, &salt, &size)
-				switch typ {
-				case "local":
-				case "shared":
-					opts.PreferSharedStorage = true
-				default:
-					d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
+				opts.PreferSharedStorage = shared
+				if coldTier {
+					opts.Tier = base.ColdTier
 				}
-				w, _, err := curProvider.Create(ctx, ft, fileNum, opts)
+				w, _, err := curProvider.Create(ctx, fileType, fileNum, opts)
 				if err != nil {
 					return err.Error()
 				}
@@ -171,29 +162,16 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "link-or-copy":
+				if fileNum == 0 || size == 0 || salt == 0 {
+					d.Fatalf(t, "usage: link-or-copy file-num=<num> [file-type=sstable|blob] [shared] [cold-tier] salt=<salt> size=<size> [no-ref-tracking]")
+				}
 				opts := objstorage.CreateOptions{
 					SharedCleanupMethod: objstorage.SharedRefTracking,
 				}
-				ft := base.FileTypeTable
-				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "file-type" {
-					ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
-					d.CmdArgs = d.CmdArgs[1:]
-				}
-				if len(d.CmdArgs) == 5 && d.CmdArgs[4].Key == "no-ref-tracking" {
-					d.CmdArgs = d.CmdArgs[:4]
+				if noRefTracking {
 					opts.SharedCleanupMethod = objstorage.SharedNoCleanup
 				}
-				var fileNum base.DiskFileNum
-				var typ string
-				var salt, size int
-				scanArgs("[file-type=sstable|blob] <file-num> <local|shared> <salt> <size> [no-ref-tracking]", &fileNum, &typ, &salt, &size)
-				switch typ {
-				case "local":
-				case "shared":
-					opts.PreferSharedStorage = true
-				default:
-					d.Fatalf(t, "'%s' should be 'local' or 'shared'", typ)
-				}
+				opts.PreferSharedStorage = shared
 
 				tmpFileCounter++
 				tmpFilename := fmt.Sprintf("temp-file-%d", tmpFileCounter)
@@ -206,11 +184,14 @@ func TestProvider(t *testing.T) {
 				require.NoError(t, err)
 				require.NoError(t, f.Close())
 
-				_, err = curProvider.LinkOrCopyFromLocal(ctx, fs, tmpFilename, ft, fileNum, opts)
+				_, err = curProvider.LinkOrCopyFromLocal(ctx, fs, tmpFilename, fileType, fileNum, opts)
 				require.NoError(t, err)
 				return log.String()
 
 			case "read":
+				if fileNum == 0 {
+					d.Fatalf(t, "usage: read file-num=<num> [file-type=sstable|blob] <file-num> [for-compaction] [readahead|speculative-overhead=off|sys-readahead|fadvise-sequential]")
+				}
 				forCompaction := d.HasArg("for-compaction")
 				if arg, ok := d.Arg("readahead"); ok {
 					var mode ReadaheadMode
@@ -231,15 +212,7 @@ func TestProvider(t *testing.T) {
 					}
 				}
 
-				ft := base.FileTypeTable
-				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "file-type" {
-					ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
-					d.CmdArgs = d.CmdArgs[1:]
-				}
-				d.CmdArgs = d.CmdArgs[:1]
-				var fileNum base.DiskFileNum
-				scanArgs("[file-type=sstable|blob] <file-num> [for-compaction] [readahead|speculative-overhead=off|sys-readahead|fadvise-sequential]", &fileNum)
-				r, err := curProvider.OpenForReading(ctx, ft, fileNum, objstorage.OpenOptions{})
+				r, err := curProvider.OpenForReading(ctx, fileType, fileNum, objstorage.OpenOptions{})
 				if err != nil {
 					return err.Error()
 				}
@@ -272,14 +245,10 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "remove":
-				ft := base.FileTypeTable
-				if len(d.CmdArgs) > 0 && d.CmdArgs[0].Key == "file-type" {
-					ft = base.FileTypeFromName(d.CmdArgs[0].FirstVal(t))
-					d.CmdArgs = d.CmdArgs[1:]
+				if fileNum == 0 {
+					d.Fatalf(t, "usage: remove file-num=<num> [file-type=sstable|blob]")
 				}
-				var fileNum base.DiskFileNum
-				scanArgs("[file-type=sstable|blob] <file-num>", &fileNum)
-				if err := curProvider.Remove(ft, fileNum); err != nil {
+				if err := curProvider.Remove(fileType, fileNum); err != nil {
 					return err.Error()
 				}
 				return log.String()
@@ -291,9 +260,12 @@ func TestProvider(t *testing.T) {
 				return log.String()
 
 			case "save-backing":
+				if fileNum == 0 {
+					d.Fatalf(t, "usage: save-backing file-num=<num> [file-type=sstable|blob] key=<key>")
+				}
 				var key string
-				var fileNum base.DiskFileNum
-				scanArgs("<key> <file-num>", &key, &fileNum)
+				d.ScanArgs(t, "key", &key)
+
 				meta, err := curProvider.Lookup(base.FileTypeTable, fileNum)
 				require.NoError(t, err)
 				var handle objstorage.RemoteObjectBackingHandle
@@ -312,7 +284,7 @@ func TestProvider(t *testing.T) {
 
 			case "close-backing":
 				var key string
-				scanArgs("<key>", &key)
+				d.ScanArgs(t, "key", &key)
 				backingHandles[key].Close()
 				return ""
 
