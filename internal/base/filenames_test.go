@@ -7,6 +7,7 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"testing"
 
@@ -49,6 +50,7 @@ func TestParseFilename(t *testing.T) {
 		"000000.blob":            true,
 		"000001.blob":            true,
 		"935203523.blob":         true,
+		"000001.blobmeta.0":      true,
 	}
 	fs := vfs.NewMem()
 	for tc, want := range testCases {
@@ -93,6 +95,17 @@ func TestFilenameRoundTrip(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestFilenameBlobMeta(t *testing.T) {
+	fileNum := DiskFileNum(rand.Uint64())
+	offset := rand.Int64()
+	fs := vfs.NewMem()
+	path := fmt.Sprintf("%s.%d", MakeFilepath(fs, "foo", FileTypeBlobMeta, fileNum), offset)
+	typ, fn, ok := ParseFilename(fs, path)
+	require.True(t, ok)
+	require.Equal(t, FileTypeBlobMeta, typ)
+	require.Equal(t, fileNum, fn)
 }
 
 type bufferFataler struct {

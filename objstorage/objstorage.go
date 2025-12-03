@@ -109,10 +109,27 @@ type Writable interface {
 
 	// Finish completes the object and makes the data durable.
 	// No further calls are allowed after calling Finish.
+	//
+	// An error during Finish does not mean that the object is deleted and removed
+	// from the provider. It is expected that the caller will do that separately
+	// (via Provider.Remove).
 	Finish() error
 
-	// Abort gives up on finishing the object. There is no guarantee about whether
-	// the object exists after calling Abort.
+	// StartMetadataPortion signals to the writer that the metadata part of the
+	// object starts here. If the object is being written to the cold tier, data
+	// in subsequent Write() calls will also be written to the hot tier.
+	//
+	// The function should be called at most one time.
+	//
+	// An error means that we won't be able to successfully finish this object.
+	StartMetadataPortion() error
+
+	// Abort gives up on finishing the object.
+	//
+	// Aborting does not mean that the object is deleted and removed from the
+	// provider. It is expected that the caller will do that separately (via
+	// Provider.Remove).
+	//
 	// No further calls are allowed after calling Abort.
 	Abort()
 }

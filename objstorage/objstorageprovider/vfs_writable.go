@@ -66,6 +66,9 @@ func (w *fileBufferedWritable) Abort() {
 	w.file = nil
 }
 
+// StartMetadataPortion is part of the objstorage.Writable interface.
+func (w *fileBufferedWritable) StartMetadataPortion() error { return nil }
+
 func firstError(err0, err1 error) error {
 	if err0 != nil {
 		return err0
