@@ -85,7 +85,7 @@ func TestProvider(t *testing.T) {
 			switch d.Cmd {
 			case "open":
 				if fsDir == "" {
-					d.Fatalf(t, "usage: switch dir=<dir> [cold-dir=<dir>] [creator-id=<id>]")
+					d.Fatalf(t, "usage: open dir=<dir> [cold-dir=<dir>] [creator-id=<id>]")
 				}
 				var creatorID objstorage.CreatorID
 				d.MaybeScanArgs(t, "creator-id", &creatorID)
@@ -140,8 +140,10 @@ func TestProvider(t *testing.T) {
 
 			case "create":
 				if fileNum == 0 || size == 0 || salt == 0 {
-					d.Fatalf(t, "usage: create file-num=<num> [file-type=sstable|blob] [shared] [cold-tier] salt=<salt> size=<size> [no-ref-tracking]")
+					d.Fatalf(t, "usage: create file-num=<num> [file-type=sstable|blob] [shared] [cold-tier] salt=<salt> size=<size> [no-ref-tracking] [meta-offset=<offset>]")
 				}
+				metaOffset := -1
+				d.MaybeScanArgs(t, "meta-offset", &metaOffset)
 				opts := objstorage.CreateOptions{
 					SharedCleanupMethod: objstorage.SharedRefTracking,
 				}
@@ -154,9 +156,24 @@ func TestProvider(t *testing.T) {
 					return err.Error()
 				}
 				data := make([]byte, size)
-				// TODO(radu): write in chunks?
 				genData(byte(salt), 0, data)
-				require.NoError(t, w.Write(data))
+				if metaOffset >= 0 {
+					if metaOffset > size {
+						d.Fatalf(t, "meta-offset (%d) must be <= size (%d)", metaOffset, size)
+					}
+					// Write data before metadata.
+					if metaOffset > 0 {
+						require.NoError(t, w.Write(data[:metaOffset]))
+					}
+					// Start metadata portion.
+					require.NoError(t, w.StartMetadataPortion())
+					// Write metadata.
+					if metaOffset < size {
+						require.NoError(t, w.Write(data[metaOffset:]))
+					}
+				} else {
+					require.NoError(t, w.Write(data))
+				}
 				require.NoError(t, w.Finish())
 
 				return log.String()

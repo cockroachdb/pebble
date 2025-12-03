@@ -1,0 +1,190 @@
+open dir=hot cold-dir=cold
+----
+<local fs> mkdir-all: hot 0755
+<local fs> mkdir-all: cold 0755
+<local fs> open-dir: hot
+<local fs> open-dir: cold
+
+# Create a blob file with metadata starting at offset 512.
+# All 1024 bytes go to the cold tier, and the last 512 bytes also go to a
+# separate metadata file on the hot tier.
+create file-type=blob file-num=1 cold-tier salt=1 size=1024 meta-offset=512
+----
+<local fs> create: cold/000001.blob
+<local fs> create: hot/000001.blobmeta.512
+<local fs> sync: hot/000001.blobmeta.512
+<local fs> close: hot/000001.blobmeta.512
+<local fs> sync-data: cold/000001.blob
+<local fs> close: cold/000001.blob
+
+# Verify we can read the data correctly. The last two reads should be served
+# from the blobmeta file.
+read file-type=blob file-num=1
+0 500
+500 100
+512 512
+1000 24
+----
+<local fs> open: cold/000001.blob (options: *vfs.randomReadsOption)
+size: 1024
+<local fs> read-at(0, 500): cold/000001.blob
+0 500: ok (salt 1)
+<local fs> read-at(500, 100): cold/000001.blob
+500 100: ok (salt 1)
+<local fs> open: hot/000001.blobmeta.512 (options: *vfs.randomReadsOption)
+<local fs> read-at(0, 512): hot/000001.blobmeta.512
+512 512: ok (salt 1)
+<local fs> read-at(488, 24): hot/000001.blobmeta.512
+1000 24: ok (salt 1)
+<local fs> close: cold/000001.blob
+<local fs> close: hot/000001.blobmeta.512
+
+# Create a blob file with metadata starting at offset 0 (all metadata).
+create file-type=blob file-num=2 cold-tier salt=2 size=2048 meta-offset=0
+----
+<local fs> create: cold/000002.blob
+<local fs> create: hot/000002.blobmeta.0
+<local fs> sync: hot/000002.blobmeta.0
+<local fs> close: hot/000002.blobmeta.0
+<local fs> sync-data: cold/000002.blob
+<local fs> close: cold/000002.blob
+
+read file-type=blob file-num=2
+0 2048
+----
+<local fs> open: cold/000002.blob (options: *vfs.randomReadsOption)
+size: 2048
+<local fs> open: hot/000002.blobmeta.0 (options: *vfs.randomReadsOption)
+<local fs> read-at(0, 2048): hot/000002.blobmeta.0
+0 2048: ok (salt 2)
+<local fs> close: cold/000002.blob
+<local fs> close: hot/000002.blobmeta.0
+
+# Create a blob with metadata starting at the end (no metadata).
+create file-type=blob file-num=3 cold-tier salt=3 size=1024 meta-offset=1024
+----
+<local fs> create: cold/000003.blob
+<local fs> create: hot/000003.blobmeta.1024
+<local fs> sync: hot/000003.blobmeta.1024
+<local fs> close: hot/000003.blobmeta.1024
+<local fs> sync-data: cold/000003.blob
+<local fs> close: cold/000003.blob
+
+read file-type=blob file-num=3
+0 1024
+----
+<local fs> open: cold/000003.blob (options: *vfs.randomReadsOption)
+size: 1024
+<local fs> read-at(0, 1024): cold/000003.blob
+0 1024: ok (salt 3)
+<local fs> close: cold/000003.blob
+
+# Create a large blob with metadata that spans multiple buffer flushes (>4KB).
+# Metadata starts at 1024, so we have 1024 bytes of data, then 5120 bytes of metadata.
+create file-type=blob file-num=4 cold-tier salt=4 size=6144 meta-offset=1024
+----
+<local fs> create: cold/000004.blob
+<local fs> create: hot/000004.blobmeta.1024
+<local fs> sync: hot/000004.blobmeta.1024
+<local fs> close: hot/000004.blobmeta.1024
+<local fs> sync-data: cold/000004.blob
+<local fs> close: cold/000004.blob
+
+read file-type=blob file-num=4
+0 1024
+1024 5120
+----
+<local fs> open: cold/000004.blob (options: *vfs.randomReadsOption)
+size: 6144
+<local fs> read-at(0, 1024): cold/000004.blob
+0 1024: ok (salt 4)
+<local fs> open: hot/000004.blobmeta.1024 (options: *vfs.randomReadsOption)
+<local fs> read-at(0, 5120): hot/000004.blobmeta.1024
+1024 5120: ok (salt 4)
+<local fs> close: cold/000004.blob
+<local fs> close: hot/000004.blobmeta.1024
+
+# Create a blob without metadata support (no meta-offset).
+create file-type=blob file-num=5 cold-tier salt=5 size=512
+----
+<local fs> create: cold/000005.blob
+<local fs> sync-data: cold/000005.blob
+<local fs> close: cold/000005.blob
+
+read file-type=blob file-num=5
+0 512
+----
+<local fs> open: cold/000005.blob (options: *vfs.randomReadsOption)
+size: 512
+<local fs> read-at(0, 512): cold/000005.blob
+0 512: ok (salt 5)
+<local fs> close: cold/000005.blob
+
+list
+----
+000001 -> cold/000001.blob
+000002 -> cold/000002.blob
+000003 -> cold/000003.blob
+000004 -> cold/000004.blob
+000005 -> cold/000005.blob
+
+# Verify that we don't lose track of the metadata file if we reopen.
+close
+----
+<local fs> sync: cold
+<local fs> close: hot
+<local fs> close: cold
+
+open dir=hot cold-dir=cold
+----
+<local fs> mkdir-all: hot 0755
+<local fs> mkdir-all: cold 0755
+<local fs> open-dir: hot
+<local fs> open-dir: cold
+
+# Verify we can read the data correctly. The last two reads should be served
+# from the blobmeta file.
+read file-type=blob file-num=1
+0 500
+500 100
+512 512
+1000 24
+----
+<local fs> open: cold/000001.blob (options: *vfs.randomReadsOption)
+size: 1024
+<local fs> read-at(0, 500): cold/000001.blob
+0 500: ok (salt 1)
+<local fs> read-at(500, 100): cold/000001.blob
+500 100: ok (salt 1)
+<local fs> open: hot/000001.blobmeta.512 (options: *vfs.randomReadsOption)
+<local fs> read-at(0, 512): hot/000001.blobmeta.512
+512 512: ok (salt 1)
+<local fs> read-at(488, 24): hot/000001.blobmeta.512
+1000 24: ok (salt 1)
+<local fs> close: cold/000001.blob
+<local fs> close: hot/000001.blobmeta.512
+
+# Clean up.
+remove file-type=blob file-num=1
+----
+<local fs> remove: cold/000001.blob
+<local fs> remove: hot/000001.blobmeta.512
+
+remove file-type=blob file-num=2
+----
+<local fs> remove: cold/000002.blob
+<local fs> remove: hot/000002.blobmeta.0
+
+remove file-type=blob file-num=3
+----
+<local fs> remove: cold/000003.blob
+<local fs> remove: hot/000003.blobmeta.1024
+
+remove file-type=blob file-num=4
+----
+<local fs> remove: cold/000004.blob
+<local fs> remove: hot/000004.blobmeta.1024
+
+remove file-type=blob file-num=5
+----
+<local fs> remove: cold/000005.blob

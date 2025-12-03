@@ -43,6 +43,9 @@ func (f *MemObj) Write(p []byte) error {
 	return err
 }
 
+// StartMetadataPortion is part of the Writable interface.
+func (f *MemObj) StartMetadataPortion() error { return nil }
+
 // Data returns the in-memory buffer behind this MemObj.
 func (f *MemObj) Data() []byte {
 	return f.buf.Bytes()

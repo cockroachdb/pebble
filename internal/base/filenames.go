@@ -128,6 +128,15 @@ const (
 	FileTypeOldTemp
 	FileTypeTemp
 	FileTypeBlob
+	// FileTypeBlobMeta is a file that contains only the metadata portion of a
+	// blob file (used when the blob file in on cold storage). The filename for
+	// blobmeta files is of the form `<file-num>.blobmeta.<offset>`, where
+	// <offset> indicates that the file mirrors the contents of the corresponding
+	// blob file starting at this offset.
+	//
+	// The lifetime of this type of file is managed internally by the objstorage
+	// provider.
+	FileTypeBlobMeta
 )
 
 var fileTypeStrings = [...]string{
@@ -139,6 +148,7 @@ var fileTypeStrings = [...]string{
 	FileTypeOldTemp:  "old-temp",
 	FileTypeTemp:     "temp",
 	FileTypeBlob:     "blob",
+	FileTypeBlobMeta: "blobmeta",
 }
 
 // FileTypeFromName parses a FileType from its string representation.
@@ -166,6 +176,8 @@ func (ft FileType) String() string {
 }
 
 // MakeFilename builds a filename from components.
+//
+// Note that for FileTypeBlobMeta, ".<offset>" must be appended to the filename.
 func MakeFilename(fileType FileType, dfn DiskFileNum) string {
 	// Make a buffer sufficiently large for most possible filenames, especially
 	// the common case of a numbered table or blob file.
@@ -192,6 +204,8 @@ func appendFilename(buf []byte, fileType FileType, dfn DiskFileNum) []byte {
 		buf = fmt.Appendf(buf, "temporary.%06d.dbtmp", uint64(dfn))
 	case FileTypeBlob:
 		buf = fmt.Appendf(buf, "%06d.blob", uint64(dfn))
+	case FileTypeBlobMeta:
+		buf = fmt.Appendf(buf, "%06d.blobmeta", uint64(dfn))
 	default:
 		panic("unreachable")
 	}
@@ -199,11 +213,16 @@ func appendFilename(buf []byte, fileType FileType, dfn DiskFileNum) []byte {
 }
 
 // MakeFilepath builds a filepath from components.
+//
+// Note that for FileTypeBlobMeta, ".<offset>" must be appended to the filepath.
 func MakeFilepath(fs vfs.FS, dirname string, fileType FileType, dfn DiskFileNum) string {
 	return fs.PathJoin(dirname, MakeFilename(fileType, dfn))
 }
 
 // ParseFilename parses the components from a filename.
+//
+// Note that the offset component of a FileTypeBlobMeta is not parsed by this
+// function.
 func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileNum, ok bool) {
 	filename = fs.PathBase(filename)
 	switch {
@@ -249,6 +268,9 @@ func ParseFilename(fs vfs.FS, filename string) (fileType FileType, dfn DiskFileN
 			return FileTypeTable, dfn, true
 		case "blob":
 			return FileTypeBlob, dfn, true
+		}
+		if strings.HasPrefix(filename[i+1:], "blobmeta.") {
+			return FileTypeBlobMeta, dfn, true
 		}
 	}
 	return 0, dfn, false
