@@ -41,14 +41,6 @@ var ignoredInternalProperties = map[string]struct{}{
 	"rocksdb.compression_options":          {},
 }
 
-// FilterType exports the base.FilterType type.
-type FilterType = base.FilterType
-
-// Exported TableFilter constants.
-const (
-	TableFilter = base.TableFilter
-)
-
 // FilterWriter exports the base.FilterWriter type.
 type FilterWriter = base.FilterWriter
 
@@ -198,15 +190,6 @@ type WriterOptions struct {
 	//
 	// The default value is NoFilterPolicy.
 	FilterPolicy FilterPolicy
-
-	// FilterType defines whether an existing filter policy is applied at a
-	// block-level or table-level. Block-level filters use less memory to create,
-	// but are slower to access as a check for the key in the index must first be
-	// performed to locate the filter block. A table-level filter will require
-	// memory proportional to the number of keys in an sstable to create, but
-	// avoids the index lookup when determining if a key is present. Table-level
-	// filters should be preferred except under constrained memory situations.
-	FilterType FilterType
 
 	// IndexBlockSize is the target uncompressed size in bytes of each index
 	// block. When the index block size is larger than this target, two-level

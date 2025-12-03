@@ -56,7 +56,7 @@ func newTableFilterReader(policy FilterPolicy, metrics *FilterMetricsTracker) *t
 }
 
 func (f *tableFilterReader) mayContain(data, key []byte) bool {
-	mayContain := f.policy.MayContain(TableFilter, data, key)
+	mayContain := f.policy.MayContain(data, key)
 	if f.metrics != nil {
 		if mayContain {
 			f.metrics.misses.Add(1)
@@ -77,7 +77,7 @@ type tableFilterWriter struct {
 func newTableFilterWriter(policy FilterPolicy) *tableFilterWriter {
 	return &tableFilterWriter{
 		policy: policy,
-		writer: policy.NewWriter(TableFilter),
+		writer: policy.NewWriter(),
 	}
 }
 

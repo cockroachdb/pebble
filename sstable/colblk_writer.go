@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"math"
 	"slices"
 	"sync"
@@ -151,12 +150,7 @@ func newColumnarWriter(
 		w.valueBlock = valblk.NewWriter(flushGovernor, &w.layout.physBlockMaker, func(compressedSize int) {})
 	}
 	if o.FilterPolicy != base.NoFilterPolicy {
-		switch o.FilterType {
-		case TableFilter:
-			w.filterBlock = newTableFilterWriter(o.FilterPolicy)
-		default:
-			panic(fmt.Sprintf("unknown filter type: %v", o.FilterType))
-		}
+		w.filterBlock = newTableFilterWriter(o.FilterPolicy)
 	}
 
 	numBlockPropertyCollectors := len(o.BlockPropertyCollectors)

@@ -12,22 +12,6 @@ const (
 	SizeClassAwareBlockSizeThreshold = 60
 )
 
-// FilterType is the level at which to apply a filter: block or table.
-type FilterType int
-
-// The available filter types.
-const (
-	TableFilter FilterType = iota
-)
-
-func (t FilterType) String() string {
-	switch t {
-	case TableFilter:
-		return "table"
-	}
-	return "unknown"
-}
-
 // FilterWriter provides an interface for creating filter blocks. See
 // FilterPolicy for more details about filters.
 type FilterWriter interface {
@@ -59,10 +43,10 @@ type FilterPolicy interface {
 	// MayContain returns whether the encoded filter may contain given key.
 	// False positives are possible, where it returns true for keys not in the
 	// original set.
-	MayContain(ftype FilterType, filter, key []byte) bool
+	MayContain(filter, key []byte) bool
 
 	// NewWriter creates a new FilterWriter.
-	NewWriter(ftype FilterType) FilterWriter
+	NewWriter() FilterWriter
 }
 
 // NoFilterPolicy implements the "none" filter policy.
@@ -70,9 +54,9 @@ var NoFilterPolicy FilterPolicy = noFilter{}
 
 type noFilter struct{}
 
-func (noFilter) Name() string                                         { return "none" }
-func (noFilter) MayContain(ftype FilterType, filter, key []byte) bool { return true }
-func (noFilter) NewWriter(ftype FilterType) FilterWriter              { panic("not implemented") }
+func (noFilter) Name() string                       { return "none" }
+func (noFilter) MayContain(filter, key []byte) bool { return true }
+func (noFilter) NewWriter() FilterWriter            { panic("not implemented") }
 
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
 // within the sstable. It should not maintain any per-sstable state, and must

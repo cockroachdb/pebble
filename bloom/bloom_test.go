@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +36,7 @@ func (f tableFilter) String() string {
 }
 
 func newTableFilter(bitsPerKey int, keys ...[]byte) tableFilter {
-	w := FilterPolicy(bitsPerKey).NewWriter(base.TableFilter)
+	w := FilterPolicy(bitsPerKey).NewWriter()
 	for _, key := range keys {
 		w.AddKey(key)
 	}
@@ -210,7 +209,7 @@ func BenchmarkBloomFilter(b *testing.B) {
 	b.ResetTimer()
 	policy := FilterPolicy(10)
 	for i := 0; i < b.N; i++ {
-		w := policy.NewWriter(base.TableFilter)
+		w := policy.NewWriter()
 		for _, key := range keys {
 			w.AddKey(key)
 		}

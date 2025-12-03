@@ -7,7 +7,6 @@ package bloom // import "github.com/cockroachdb/pebble/bloom"
 
 import (
 	"encoding/binary"
-	"fmt"
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -228,21 +227,11 @@ func (p FilterPolicy) Name() string {
 }
 
 // MayContain implements the pebble.FilterPolicy interface.
-func (p FilterPolicy) MayContain(ftype base.FilterType, f, key []byte) bool {
-	switch ftype {
-	case base.TableFilter:
-		return tableFilter(f).MayContain(key)
-	default:
-		panic(fmt.Sprintf("unknown filter type: %v", ftype))
-	}
+func (p FilterPolicy) MayContain(f, key []byte) bool {
+	return tableFilter(f).MayContain(key)
 }
 
 // NewWriter implements the pebble.FilterPolicy interface.
-func (p FilterPolicy) NewWriter(ftype base.FilterType) base.FilterWriter {
-	switch ftype {
-	case base.TableFilter:
-		return newTableFilterWriter(int(p))
-	default:
-		panic(fmt.Sprintf("unknown filter type: %v", ftype))
-	}
+func (p FilterPolicy) NewWriter() base.FilterWriter {
+	return newTableFilterWriter(int(p))
 }

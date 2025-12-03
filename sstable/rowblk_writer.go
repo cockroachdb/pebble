@@ -1739,12 +1739,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	}
 
 	if o.FilterPolicy != base.NoFilterPolicy {
-		switch o.FilterType {
-		case TableFilter:
-			w.filter = newTableFilterWriter(o.FilterPolicy)
-		default:
-			panic(fmt.Sprintf("unknown filter type: %v", o.FilterType))
-		}
+		w.filter = newTableFilterWriter(o.FilterPolicy)
 	}
 
 	w.props.ComparerName = o.Comparer.Name

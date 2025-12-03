@@ -49,14 +49,6 @@ const (
 type SpanPolicy = base.SpanPolicy
 type ValueStoragePolicyAdjustment = base.ValueStoragePolicyAdjustment
 
-// FilterType exports the base.FilterType type.
-type FilterType = base.FilterType
-
-// Exported TableFilter constants.
-const (
-	TableFilter = base.TableFilter
-)
-
 // FilterWriter exports the base.FilterWriter type.
 type FilterWriter = base.FilterWriter
 
@@ -462,10 +454,6 @@ type LevelOptions struct {
 	// The default value for L0 is NoFilterPolicy (no filter), and the value from
 	// the previous level for all other levels.
 	FilterPolicy FilterPolicy
-
-	// FilterType is a legacy field. The default and only possible value is
-	// TableFilter.
-	FilterType FilterType
 
 	// IndexBlockSize is the target uncompressed size in bytes of each index
 	// block. When the index block size is larger than this target, two-level
@@ -1832,7 +1820,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
 		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression().Name)
 		fmt.Fprintf(&buf, "  filter_policy=%s\n", l.FilterPolicy.Name())
-		fmt.Fprintf(&buf, "  filter_type=%s\n", l.FilterType)
+		fmt.Fprintf(&buf, "  filter_type=table\n")
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
 		fmt.Fprintf(&buf, "  target_file_size=%d\n", o.TargetFileSizes[i])
 	}
@@ -2350,7 +2338,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "filter_type":
 				switch value {
 				case "table":
-					l.FilterType = TableFilter
 				default:
 					// Tolerate unknown options, but log them.
 					if o.Logger != nil {
@@ -2629,7 +2616,6 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.BlockSizeThreshold = levelOpts.BlockSizeThreshold
 	writerOpts.Compression = levelOpts.Compression()
 	writerOpts.FilterPolicy = levelOpts.FilterPolicy
-	writerOpts.FilterType = levelOpts.FilterType
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
 	return writerOpts
 }
