@@ -30,17 +30,34 @@ import (
 	testify "github.com/stretchr/testify/require"
 )
 
-func TestComparer(t *testing.T) {
+func testPrefixes() [][]byte {
 	prefixes := [][]byte{
 		EncodeMVCCKey(nil, []byte("abc"), 0, 0),
 		EncodeMVCCKey(nil, []byte("d"), 0, 0),
 		EncodeMVCCKey(nil, []byte("ef"), 0, 0),
 	}
+	for range 10 {
+		roachKey := make([]byte, 1+rand.IntN(100))
+		for i := range roachKey {
+			roachKey[i] = byte(rand.Uint32())
+		}
+		prefixes = append(prefixes, EncodeMVCCKey(nil, roachKey, 0, 0))
+	}
+	return prefixes
+}
 
+func testSuffixes(t *testing.T) [][]byte {
 	suffixes := [][]byte{{}}
-	for walltime := 3; walltime > 0; walltime-- {
-		for logical := 2; logical >= 0; logical-- {
-			key := EncodeMVCCKey(nil, []byte("foo"), uint64(walltime), uint32(logical))
+
+	wallTimes := []uint64{1, 2, 3}
+	logicalTimes := []uint32{0, 1, 2}
+	for range 5 {
+		wallTimes = append(wallTimes, rand.Uint64())
+		logicalTimes = append(logicalTimes, rand.Uint32())
+	}
+	for _, walltime := range wallTimes {
+		for _, logical := range logicalTimes {
+			key := EncodeMVCCKey(nil, []byte("foo"), walltime, logical)
 			suffix := key[Comparer.Split(key):]
 			suffixes = append(suffixes, suffix)
 
@@ -51,7 +68,7 @@ func TestComparer(t *testing.T) {
 				if Comparer.CompareRangeSuffixes(suffix, newSuffix) != 1 {
 					t.Fatalf("expected suffixes %x < %x", suffix, newSuffix)
 				}
-				if Comparer.Compare(slices.Concat(prefixes[0], suffix), slices.Concat(prefixes[0], newSuffix)) != 0 {
+				if Comparer.Compare(slices.Concat([]byte("foo"), suffix), slices.Concat([]byte("foo"), newSuffix)) != 0 {
 					t.Fatalf("expected keys with suffixes %x and %x to be equal", suffix, newSuffix)
 				}
 				suffixes = append(suffixes, newSuffix)
@@ -66,15 +83,31 @@ func TestComparer(t *testing.T) {
 			if Comparer.CompareRangeSuffixes(suffix, newSuffix) != 1 {
 				t.Fatalf("expected suffixes %x < %x", suffix, newSuffix)
 			}
-			if Comparer.Compare(slices.Concat(prefixes[0], suffix), slices.Concat(prefixes[0], newSuffix)) != 0 {
+			if Comparer.Compare(slices.Concat([]byte("foo"), suffix), slices.Concat([]byte("foo"), newSuffix)) != 0 {
 				t.Fatalf("expected keys with suffixes %x and %x to be equal", suffix, newSuffix)
 			}
 			suffixes = append(suffixes, newSuffix)
 		}
 	}
 	// Add some lock table suffixes.
+	suffixes = append(suffixes, append(bytes.Repeat([]byte{0}, engineKeyVersionLockTableLen), suffixLenWithLockTable))
 	suffixes = append(suffixes, append(bytes.Repeat([]byte{1}, engineKeyVersionLockTableLen), suffixLenWithLockTable))
 	suffixes = append(suffixes, append(bytes.Repeat([]byte{2}, engineKeyVersionLockTableLen), suffixLenWithLockTable))
+	suffixes = append(suffixes, append(bytes.Repeat([]byte{0xFF}, engineKeyVersionLockTableLen), suffixLenWithLockTable))
+	for range 5 {
+		v := make([]byte, engineKeyVersionLockTableLen+1)
+		for i := 0; i < engineKeyVersionLockTableLen; i++ {
+			v[i] = byte(rand.Uint32())
+		}
+		v[engineKeyVersionLockTableLen] = suffixLenWithLockTable
+		suffixes = append(suffixes, v)
+	}
+	return suffixes
+}
+
+func TestComparer(t *testing.T) {
+	prefixes := testPrefixes()
+	suffixes := testSuffixes(t)
 	if err := base.CheckComparer(&Comparer, prefixes, suffixes); err != nil {
 		t.Error(err)
 	}
@@ -292,6 +325,41 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
 		}
 	})
+}
+
+func TestKeySeekerIsLowerBound(t *testing.T) {
+	var keys [][]byte
+	for _, prefix := range testPrefixes() {
+		for _, suffix := range testSuffixes(t) {
+			keys = append(keys, slices.Concat(prefix, suffix))
+		}
+	}
+	var enc colblk.DataBlockEncoder
+	enc.Init(&KeySchema)
+	for _, k := range keys {
+		enc.Reset()
+		kcmp := enc.KeyWriter.ComparePrev(k)
+		ikey := base.InternalKey{
+			UserKey: k,
+			Trailer: pebble.MakeInternalKeyTrailer(0, base.InternalKeyKindSet),
+		}
+		enc.Add(ikey, k, block.InPlaceValuePrefix(false), kcmp, false /* isObsolete */)
+		blk, _ := enc.Finish(1, enc.Size())
+		var dec colblk.DataBlockDecoder
+		bd := dec.Init(&KeySchema, blk)
+		ksPointer := &cockroachKeySeeker{}
+		KeySchema.InitKeySeekerMetadata((*colblk.KeySeekerMetadata)(unsafe.Pointer(ksPointer)), &dec, bd)
+		ks := KeySchema.KeySeeker((*colblk.KeySeekerMetadata)(unsafe.Pointer(ksPointer)))
+
+		for _, k2 := range keys {
+			isLowerBound := ks.IsLowerBound(k2, nil /* syntheticSuffix */)
+			expected := Comparer.Compare(k, k2) >= 0
+			if isLowerBound != expected {
+				t.Errorf("key: %s  IsLowerBound(%s) = %t; expected %t",
+					formatUserKey(k), formatUserKey(k2), isLowerBound, expected)
+			}
+		}
+	}
 }
 
 func getSyntheticSuffix(t *testing.T, td *datadriven.TestData) ([]byte, string, bool) {
