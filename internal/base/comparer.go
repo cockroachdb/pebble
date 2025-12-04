@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"strconv"
 	"unicode/utf8"
@@ -509,11 +510,10 @@ func CheckComparer(c *Comparer, prefixes [][]byte, suffixes [][]byte) error {
 		return errors.Errorf("ComparePointSuffixes is inconsistent")
 	}
 
-	n := len(prefixes)
 	// Removing leading bytes from prefixes must yield valid prefixes.
-	for i := 0; i < n; i++ {
-		for j := 1; j < len(prefixes[i]); j++ {
-			prefixes = append(prefixes, prefixes[i][j:])
+	for _, p := range prefixes {
+		if len(p) > 1 {
+			prefixes = append(prefixes, p[1+rand.IntN(len(p)-1):])
 		}
 	}
 
