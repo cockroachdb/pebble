@@ -220,9 +220,6 @@ var _ base.FilterPolicy = FilterPolicy(0)
 
 // Name implements the pebble.FilterPolicy interface.
 func (p FilterPolicy) Name() string {
-	// This string looks arbitrary, but its value is written to LevelDB .sst
-	// files, and should be this exact value to be compatible with those files
-	// and with the C++ LevelDB code.
 	return "rocksdb.BuiltinBloomFilter"
 }
 
