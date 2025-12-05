@@ -132,8 +132,7 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 		//  - refresh the list of files.
 		if shouldStop || time.Since(lastReportTime) > reportPeriod {
 			if isTTY {
-				// Clear screen.
-				fmt.Fprint(stdout, "\033[2J\033[H")
+				clearScreen(stdout)
 			}
 			if isTTY || shouldStop {
 				partialResults := analyzer.Buckets().String(minSamples)
@@ -401,4 +400,8 @@ func isTTY(out io.Writer) bool {
 	}
 
 	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+func clearScreen(stdout io.Writer) {
+	fmt.Fprint(stdout, "\033[2J\033[H")
 }

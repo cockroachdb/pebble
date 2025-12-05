@@ -49,6 +49,7 @@ type dbT struct {
 	IOBench         *cobra.Command
 	Excise          *cobra.Command
 	AnalyzeData     *cobra.Command
+	AnalyzeMetadata *cobra.Command
 
 	// Configuration.
 	opts            *pebble.Options
@@ -80,6 +81,10 @@ type dbT struct {
 		timeout       time.Duration
 		readMBPerSec  int
 		outputCSVFile string
+	}
+	analyzeMetadata struct {
+		samplePercent int
+		timeout       time.Duration
 	}
 }
 
@@ -243,6 +248,18 @@ experiments and produce a CSV file of the results.
 		Args: cobra.ExactArgs(1),
 		Run:  d.runAnalyzeData,
 	}
+	d.AnalyzeMetadata = &cobra.Command{
+		Use:   "analyze-metadata <dir>",
+		Short: "analyze sstable metadata statistics",
+		Long: `
+Sample sstables from the database in round-robin fashion across levels and
+compute running statistics (mean and standard deviation) for various metadata
+properties including file sizes, KV counts, index block characteristics, and
+filter sizes.
+`,
+		Args: cobra.ExactArgs(1),
+		Run:  d.runAnalyzeMetadata,
+	}
 
 	d.Inspect.AddCommand(&cobra.Command{
 		Use:   "manifest <dir>",
@@ -254,10 +271,10 @@ Returns the filename of the current manifest file.
 		Run:  d.inspectManifest,
 	})
 
-	d.Root.AddCommand(d.Check, d.Upgrade, d.Checkpoint, d.Get, d.Inspect, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench, d.AnalyzeData)
+	d.Root.AddCommand(d.Check, d.Upgrade, d.Checkpoint, d.Get, d.Inspect, d.Logs, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.IOBench, d.AnalyzeData, d.AnalyzeMetadata)
 	d.Root.PersistentFlags().BoolVarP(&d.verbose, "verbose", "v", false, "verbose output")
 
-	for _, cmd := range []*cobra.Command{d.Check, d.Upgrade, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.AnalyzeData} {
+	for _, cmd := range []*cobra.Command{d.Check, d.Upgrade, d.Checkpoint, d.Get, d.LSM, d.Properties, d.Scan, d.Set, d.Space, d.Excise, d.AnalyzeData, d.AnalyzeMetadata} {
 		cmd.Flags().StringVar(
 			&d.comparerName, "comparer", "", "comparer name (use default if empty)")
 		cmd.Flags().StringVar(
@@ -316,6 +333,12 @@ Returns the filename of the current manifest file.
 	d.AnalyzeData.Flags().StringVar(
 		&d.analyzeData.outputCSVFile, "output", "", "path for the output CSV file")
 	_ = d.AnalyzeData.MarkFlagRequired("output")
+
+	d.AnalyzeMetadata.Flags().IntVar(
+		&d.analyzeMetadata.samplePercent, "sample-percent", 100, "percentage of files to sample (default 100%)")
+
+	d.AnalyzeMetadata.Flags().DurationVar(
+		&d.analyzeMetadata.timeout, "timeout", 0, "stop after this much time has passed (default 0 = no timeout)")
 
 	return d
 }
@@ -749,55 +772,10 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	dirname := args[0]
 	err := func() error {
-		desc, err := pebble.Peek(dirname, d.opts.FS)
-		if err != nil {
-			return err
-		} else if !desc.Exists {
-			return oserror.ErrNotExist
-		}
-		manifestFilename := d.opts.FS.PathBase(desc.ManifestFilename)
-
-		// Replay the manifest to get the current version.
-		f, err := d.opts.FS.Open(desc.ManifestFilename)
-		if err != nil {
-			return errors.Wrapf(err, "pebble: could not open MANIFEST file %q", manifestFilename)
-		}
-		defer f.Close()
-
-		cmp := base.DefaultComparer
-		var bve manifest.BulkVersionEdit
-		bve.AllAddedTables = make(map[base.FileNum]*manifest.TableMetadata)
-		rr := record.NewReader(f, 0 /* logNum */)
-		for {
-			r, err := rr.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return errors.Wrapf(err, "pebble: reading manifest %q", manifestFilename)
-			}
-			var ve manifest.VersionEdit
-			err = ve.Decode(r)
-			if err != nil {
-				return err
-			}
-			if err := bve.Accumulate(&ve); err != nil {
-				return err
-			}
-			if ve.ComparerName != "" {
-				cmp = d.comparers[ve.ComparerName]
-				d.fmtKey.setForComparer(ve.ComparerName, d.comparers)
-				d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
-			}
-		}
-		l0Organizer := manifest.NewL0Organizer(cmp, d.opts.FlushSplitBytes)
-		emptyVersion := manifest.NewInitialVersion(cmp)
-		v, err := bve.Apply(emptyVersion, d.opts.Experimental.ReadCompactionRate)
+		v, err := d.readCurrentVersion(dirname)
 		if err != nil {
 			return err
 		}
-		l0Organizer.PerformUpdate(l0Organizer.PrepareUpdate(&bve, v), v)
-
 		objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(d.opts.FS, dirname))
 		if err != nil {
 			return err
@@ -896,6 +874,59 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 	}
+}
+
+func (d *dbT) readCurrentVersion(dirname string) (*manifest.Version, error) {
+	desc, err := pebble.Peek(dirname, d.opts.FS)
+	if err != nil {
+		return nil, err
+	}
+	if !desc.Exists {
+		return nil, oserror.ErrNotExist
+	}
+	manifestFilename := d.opts.FS.PathBase(desc.ManifestFilename)
+
+	// Replay the manifest to get the current version.
+	f, err := d.opts.FS.Open(desc.ManifestFilename)
+	if err != nil {
+		return nil, errors.Wrapf(err, "pebble: could not open MANIFEST file %q", manifestFilename)
+	}
+	defer f.Close()
+
+	cmp := base.DefaultComparer
+	var bve manifest.BulkVersionEdit
+	bve.AllAddedTables = make(map[base.FileNum]*manifest.TableMetadata)
+	rr := record.NewReader(f, 0 /* logNum */)
+	for {
+		r, err := rr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, errors.Wrapf(err, "pebble: reading manifest %q", manifestFilename)
+		}
+		var ve manifest.VersionEdit
+		err = ve.Decode(r)
+		if err != nil {
+			return nil, err
+		}
+		if err := bve.Accumulate(&ve); err != nil {
+			return nil, err
+		}
+		if ve.ComparerName != "" {
+			cmp = d.comparers[ve.ComparerName]
+			d.fmtKey.setForComparer(ve.ComparerName, d.comparers)
+			d.fmtValue.setForComparer(ve.ComparerName, d.comparers)
+		}
+	}
+	l0Organizer := manifest.NewL0Organizer(cmp, d.opts.FlushSplitBytes)
+	emptyVersion := manifest.NewInitialVersion(cmp)
+	v, err := bve.Apply(emptyVersion, d.opts.Experimental.ReadCompactionRate)
+	if err != nil {
+		return nil, err
+	}
+	l0Organizer.PerformUpdate(l0Organizer.PrepareUpdate(&bve, v), v)
+	return v, nil
 }
 
 func (d *dbT) runSet(cmd *cobra.Command, args []string) {
