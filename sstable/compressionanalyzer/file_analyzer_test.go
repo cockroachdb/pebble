@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/metricsutil"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -44,10 +45,10 @@ func TestFileAnalyzer(t *testing.T) {
 							// Snappy always has the same output in all configurations and on
 							// all platforms.
 							if Profiles[l].Name != "Snappy" {
-								bucket.Experiments[l].CompressionRatio = WeightedWelford{}
+								bucket.Experiments[l].CompressionRatio = metricsutil.WeightedWelford{}
 							}
-							bucket.Experiments[l].CompressionTime = WeightedWelford{}
-							bucket.Experiments[l].DecompressionTime = WeightedWelford{}
+							bucket.Experiments[l].CompressionTime = metricsutil.WeightedWelford{}
+							bucket.Experiments[l].DecompressionTime = metricsutil.WeightedWelford{}
 						}
 					}
 				}

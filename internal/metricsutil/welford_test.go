@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package compressionanalyzer
+package metricsutil
 
 import (
 	"math"
@@ -73,7 +73,7 @@ func TestWelfordBasic(t *testing.T) {
 			if !almostEqual(gotMean, tc.wantMean) {
 				t.Errorf("Mean = %v; want %v", gotMean, tc.wantMean)
 			}
-			gotSample := w.SampleVariance()
+			gotSample := w.Variance()
 			if !almostEqual(gotSample, tc.wantVarSample) {
 				t.Errorf("Variance (sample) = %v; want %v", gotSample, tc.wantVarSample)
 			}
@@ -135,7 +135,7 @@ func TestWeightedWelford(t *testing.T) {
 			if !almostEqual(gotMean, tc.wantMean) {
 				t.Errorf("Mean = %v; want %v", gotMean, tc.wantMean)
 			}
-			gotSample := w.SampleVariance()
+			gotSample := w.Variance()
 			if !almostEqual(gotSample, tc.wantVarSample) {
 				t.Errorf("Variance (sample) = %v; want %v", gotSample, tc.wantVarSample)
 			}
