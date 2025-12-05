@@ -153,7 +153,9 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, tuples ...T) 
 		// If one of the values exceeds the column width, widen the column as
 		// necessary.
 		for i := range vals {
-			width = max(width, len(vals[i]))
+			// Note: the compiler recognizes len([]rune(str)) and avoids doing the
+			// actual conversion.
+			width = max(width, len([]rune(vals[i])))
 		}
 		header := f.header()
 		align := f.align()
@@ -162,7 +164,7 @@ func (d *Layout[T]) Render(start ascii.Cursor, opts RenderOptions, tuples ...T) 
 		for rowIdx := range vals {
 			if opts.HorizontalDividers.Contains(rowIdx, len(vals)) {
 				rowCur = rowCur.Down(1)
-				rowCur.RepeatByte(width, '-')
+				rowCur.Repeat(width, '-')
 			}
 			rowCur = rowCur.Down(1)
 			pad(rowCur, width, align, vals[rowIdx])

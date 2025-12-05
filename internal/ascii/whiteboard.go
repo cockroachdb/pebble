@@ -7,27 +7,35 @@ package ascii
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 )
 
-// Board is a simple ASCII-based board for rendering ASCII text diagrams.
+// Board is a simple board for rendering text diagrams.
 type Board struct {
-	buf   []byte
+	buf   []rune
 	width int
 }
 
 // Make returns a new Board with the given initial width and height.
 func Make(width, height int) Board {
-	buf := make([]byte, 0, width*height)
+	buf := make([]rune, 0, width*height)
 	return Board{buf: buf, width: width}
 }
 
 // At returns a position at the given coordinates.
 func (b *Board) At(r, c int) Cursor {
 	if r >= b.lines() {
-		b.buf = append(b.buf, bytes.Repeat([]byte{' '}, (r-b.lines()+1)*b.width)...)
+		b.growBuf((r - b.lines() + 1) * b.width)
 	}
 	return Cursor{b: b, r: r, c: c}
+}
+
+func (b *Board) growBuf(n int) {
+	b.buf = slices.Grow(b.buf, n)
+	for range n {
+		b.buf = append(b.buf, ' ')
+	}
 }
 
 // NewLine appends a new line to the board and returns a position at the
@@ -50,7 +58,7 @@ func (b *Board) Render(indent string) string {
 			buf.WriteByte('\n')
 		}
 		buf.WriteString(indent)
-		buf.Write(bytes.TrimRight(b.row(r), " "))
+		buf.WriteString(strings.TrimRight(string(b.row(r)), " "))
 	}
 	return buf.String()
 }
@@ -62,16 +70,20 @@ func (b *Board) Reset(w int) {
 }
 
 func (b *Board) write(r, c int, s string) {
-	if c+len(s) > b.width {
-		b.growWidth(c + len(s))
+	// Note: the compiler recognizes len([]rune(s)) and avoids doing the actual
+	// conversion.
+	if n := len([]rune(s)); c+n > b.width {
+		b.growWidth(c + n)
 	}
 	row := b.row(r)
-	for i := 0; i < len(s); i++ {
-		row[c+i] = s[i]
+	i := 0
+	for _, ch := range s {
+		row[c+i] = ch
+		i++
 	}
 }
 
-func (b *Board) repeat(r, c int, n int, ch byte) {
+func (b *Board) repeat(r, c int, n int, ch rune) {
 	if c+n > b.width {
 		b.growWidth(c + n)
 	}
@@ -82,8 +94,11 @@ func (b *Board) repeat(r, c int, n int, ch byte) {
 }
 
 func (b *Board) growWidth(w int) {
-	buf := bytes.Repeat([]byte{' '}, w*b.lines())
-	for i := 0; i < b.lines(); i++ {
+	buf := make([]rune, w*b.lines())
+	for i := range buf {
+		buf[i] = ' '
+	}
+	for i := range b.lines() {
 		copy(buf[i*w:(i+1)*w], b.buf[i*b.width:(i+1)*b.width])
 	}
 	b.buf = buf
@@ -94,9 +109,9 @@ func (b *Board) lines() int {
 	return len(b.buf) / b.width
 }
 
-func (b *Board) row(r int) []byte {
+func (b *Board) row(r int) []rune {
 	if sz := (r + 1) * b.width; sz > len(b.buf) {
-		b.buf = append(b.buf, bytes.Repeat([]byte{' '}, sz-len(b.buf))...)
+		b.growBuf(sz - len(b.buf))
 	}
 	return b.buf[r*b.width : (r+1)*b.width]
 }
@@ -179,17 +194,19 @@ func (c Cursor) WriteString(s string) Cursor {
 			s = s[i+1:]
 		} else {
 			c.b.write(c.r, c.c, s)
-			c.c += len(s)
+			// Note: the compiler recognizes len([]rune(s)) and avoids doing the
+			// actual conversion.
+			c.c += len([]rune(s))
 			break
 		}
 	}
 	return c
 }
 
-// RepeatByte writes the given byte n times starting at the cursor, returning a
+// Repeat writes the given character n times starting at the cursor, returning a
 // cursor where the written bytes end.
-func (c Cursor) RepeatByte(n int, b byte) Cursor {
-	c.b.repeat(c.r, c.c, n, b)
+func (c Cursor) Repeat(n int, ch rune) Cursor {
+	c.b.repeat(c.r, c.c, n, ch)
 	return c.Right(n)
 }
 
