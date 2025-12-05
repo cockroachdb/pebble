@@ -171,6 +171,10 @@ type Version struct {
 	prev, next *Version
 }
 
+func (v *Version) Comparer() *base.Comparer {
+	return v.cmp
+}
+
 // String implements fmt.Stringer, printing the TableMetadata for each level in
 // the Version.
 func (v *Version) String() string {
