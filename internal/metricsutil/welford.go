@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package compressionanalyzer
+package metricsutil
 
 import "math"
 
@@ -34,17 +34,17 @@ func (w *Welford) Mean() float64 {
 	return w.mean
 }
 
-// SampleVariance returns the sample variance (M2/(n-1)). Returns 0 if fewer than 2 values.
-func (w *Welford) SampleVariance() float64 {
+// Variance returns the sample variance (M2/(n-1)). Returns 0 if fewer than 2 values.
+func (w *Welford) Variance() float64 {
 	if w.count < 2 {
 		return 0
 	}
 	return w.m2 / float64(w.count-1)
 }
 
-// SampleStandardDeviation returns the sample standard deviation.
-func (w *Welford) SampleStandardDeviation() float64 {
-	return math.Sqrt(w.SampleVariance())
+// StdDev returns the sample standard deviation.
+func (w *Welford) StdDev() float64 {
+	return math.Sqrt(w.Variance())
 }
 
 // WeightedWelford maintains running statistics for mean and variance using
@@ -75,16 +75,16 @@ func (ww *WeightedWelford) Mean() float64 {
 	return ww.mean
 }
 
-// SampleVariance returns the sample variance (M2/(n-1)). Returns 0 if the sum
-// of added frequencies is less than 2.
-func (ww *WeightedWelford) SampleVariance() float64 {
+// Variance returns the sample variance (M2/(n-1)). Returns 0 if the sum of
+// added frequencies is less than 2.
+func (ww *WeightedWelford) Variance() float64 {
 	if ww.wSum < 2 {
 		return 0
 	}
 	return ww.s / (ww.wSum - 1)
 }
 
-// SampleStandardDeviation returns the sample standard deviation.
-func (ww *WeightedWelford) SampleStandardDeviation() float64 {
-	return math.Sqrt(ww.SampleVariance())
+// StdDev returns the sample standard deviation.
+func (ww *WeightedWelford) StdDev() float64 {
+	return math.Sqrt(ww.Variance())
 }
