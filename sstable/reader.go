@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -540,7 +539,7 @@ func (r *Reader) initMetaindexBlocks(
 	}
 
 	for name, fp := range filters {
-		if bh, ok := meta["fullfilter."+name]; ok {
+		if bh, ok := meta[filterPolicyToBlockName(name)]; ok {
 			r.filterBH = bh
 			r.tableFilter = newTableFilterReader(fp, r.filterMetricsTracker)
 			break
@@ -636,7 +635,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		return nil, err
 	}
 	for name, bh := range meta {
-		if strings.HasPrefix(name, "fullfilter.") {
+		if _, ok := filterPolicyFromBlockName(name); ok {
 			l.Filter = append(l.Filter, NamedBlockHandle{Name: name, Handle: bh})
 		}
 	}

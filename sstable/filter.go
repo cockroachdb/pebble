@@ -39,7 +39,6 @@ func (m *FilterMetricsTracker) Load() FilterMetrics {
 type filterWriter interface {
 	addKey(key []byte)
 	finish() ([]byte, error)
-	metaName() string
 	policyName() string
 }
 
@@ -91,10 +90,6 @@ func (f *tableFilterWriter) finish() ([]byte, error) {
 		return nil, nil
 	}
 	return f.writer.Finish(nil), nil
-}
-
-func (f *tableFilterWriter) metaName() string {
-	return "fullfilter." + f.policy.Name()
 }
 
 func (f *tableFilterWriter) policyName() string {

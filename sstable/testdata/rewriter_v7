@@ -18,7 +18,7 @@ ca@xyz#1,SET:c
 point:    [aa@xyz#1,SET-ca@xyz#1,SET]
 seqnums:  [1-1]
 
-rewrite from=yz to=23 block-size=1 index-block-size=1 filter
+rewrite from=yz to=23 block-size=1 index-block-size=1
 ----
 rewrite failed: rewriting data blocks: key aa@xyz#1,SET has suffix 0x4078797a; require 0x797a
 
@@ -99,7 +99,7 @@ b
 get f@123: pebble: not found
 c
 
-rewrite from=@123 to=@456 block-size=1 index-block-size=1 filter concurrency=2
+rewrite from=@123 to=@456 block-size=1 index-block-size=1 concurrency=2
 ----
 point:    [a@456#1,SET-c@456#1,SET]
 seqnums:  [1-1]
@@ -170,7 +170,7 @@ get f@123: pebble: not found
 c
 
 
-rewrite from=@123 to=@0 block-size=1 index-block-size=1 filter concurrency=4
+rewrite from=@123 to=@0 block-size=1 index-block-size=1 concurrency=4
 ----
 point:    [a@0#1,SET-c@0#1,SET]
 seqnums:  [1-1]

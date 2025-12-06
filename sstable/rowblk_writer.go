@@ -1872,21 +1872,17 @@ func (w *RawRowWriter) rewriteSuffixes(
 	if err := rewriteRangeKeyBlockToWriter(r, w, from, to); err != nil {
 		return errors.Wrap(err, "rewriting range key blocks")
 	}
-	// Copy over the filter block if it exists (rewriteDataBlocksToWriter will
-	// already have ensured this is valid if it exists).
-	if w.filter != nil {
-		if filterBlockBH, ok := l.FilterByName(w.filter.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(sst, filterBlockBH, r.blockReader.ChecksumType(), nil)
-			if err != nil {
-				return errors.Wrap(err, "reading filter")
-			}
-			w.filter = copyFilterWriter{
-				origPolicyName: w.filter.policyName(),
-				origMetaName:   w.filter.metaName(),
-				// Clone the filter block, because readBlockBuf allows the
-				// returned byte slice to point directly into sst.
-				data: slices.Clone(filterBlock),
-			}
+	// Copy over the filter block if it exists.
+	if policyName, filterBH, ok := getExistingFilter(l); ok {
+		filterBlock, _, err := readBlockBuf(sst, filterBH, r.blockReader.ChecksumType(), nil)
+		if err != nil {
+			return errors.Wrap(err, "reading filter")
+		}
+		w.filter = copyFilterWriter{
+			origPolicyName: policyName,
+			// Clone the filter block, because readBlockBuf allows the
+			// returned byte slice to point directly into sst.
+			data: slices.Clone(filterBlock),
 		}
 	}
 	return nil

@@ -7,7 +7,6 @@ package sstable
 import (
 	"context"
 	"slices"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -103,34 +102,22 @@ func CopySpan(
 	// Copy the filter block if it exists. We iterate over the metaindex to find
 	// the appropriate filter block so that we copy the filter block even if the
 	// reader wasn't configured with the same filter policy.
-	var filterBlockHandle block.Handle
-	var filterBlockName string
-	for name, bh := range metaIndex {
-		if !strings.HasPrefix(name, "fullfilter.") {
-			continue
+	if props.FilterPolicyName != "" {
+		bh, ok := metaIndex[filterPolicyToBlockName(props.FilterPolicyName)]
+		if !ok {
+			return 0, errors.Newf("table has filter policy %q but no corresponding filter block", props.FilterPolicyName)
 		}
-		filterBlockHandle = bh
-		filterBlockName = name
-		break
-	}
-	if filterBlockName != "" {
-		err = func() error {
-			filterBlock, err := r.readFilterBlock(ctx, block.NoReadEnv, rh, filterBlockHandle)
-			if err != nil {
-				return errors.Wrap(err, "reading filter")
-			}
-			defer filterBlock.Release()
-
-			w.setFilter(copyFilterWriter{
-				origMetaName:   filterBlockName,
-				origPolicyName: props.FilterPolicyName,
-				data:           slices.Clone(filterBlock.BlockData()),
-			})
-			return nil
-		}()
+		filterBlock, err := r.readFilterBlock(ctx, block.NoReadEnv, rh, bh)
 		if err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "reading filter")
 		}
+		filterData := slices.Clone(filterBlock.BlockData())
+		filterBlock.Release()
+
+		w.setFilter(copyFilterWriter{
+			origPolicyName: props.FilterPolicyName,
+			data:           filterData,
+		})
 	}
 
 	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, rh)
