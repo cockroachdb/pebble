@@ -170,3 +170,37 @@ func (w *SSTBlobWriter) Close() error {
 	w.closed = true
 	return w.err
 }
+
+// HandleTestKVs is used in datadriven tests to handle the test KVs for the given writer.
+func HandleTestKVs(writer *SSTBlobWriter, kvs []sstable.ParsedKVOrSpan) error {
+	for _, kv := range kvs {
+		keyKind := kv.Key.Kind()
+		if kv.IsKeySpan() {
+			keyKind = kv.Span.Keys[0].Kind()
+		}
+		var err error
+		switch keyKind {
+		case sstable.InternalKeyKindSet, sstable.InternalKeyKindSetWithDelete:
+			err = writer.Set(kv.Key.UserKey, kv.Value)
+		case sstable.InternalKeyKindDelete, sstable.InternalKeyKindDeleteSized:
+			err = writer.SSTWriter.Delete(kv.Key.UserKey)
+		case base.InternalKeyKindRangeDelete:
+			err = writer.SSTWriter.DeleteRange(kv.Span.Start, kv.Span.End)
+		case sstable.InternalKeyKindMerge:
+			err = writer.SSTWriter.Merge(kv.Key.UserKey, kv.Value)
+		case base.InternalKeyKindRangeKeySet:
+			err = writer.SSTWriter.RangeKeySet(kv.Span.Start, kv.Span.End, nil, kv.Value)
+		case base.InternalKeyKindRangeKeyUnset:
+			err = writer.SSTWriter.RangeKeyUnset(kv.Span.Start, kv.Span.End, kv.Key.UserKey)
+		case base.InternalKeyKindRangeKeyDelete:
+			err = writer.SSTWriter.RangeKeyDelete(kv.Span.Start, kv.Span.End)
+		default:
+			return errors.Errorf("unsupported key kind %v", kv.Key.Kind())
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

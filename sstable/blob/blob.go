@@ -683,3 +683,7 @@ func (r *FileReader) ReadProperties(ctx context.Context) (FileProperties, error)
 	}
 	return p, nil
 }
+
+func (r *FileReader) FormatVersion() FileFormat {
+	return r.footer.format
+}
