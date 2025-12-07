@@ -40,20 +40,22 @@ func Free(purpose Purpose, b Buf) {
 	pools[sizeClass(b.n)].Put(b.data)
 }
 
-var pools = mkPools() // pools[n] is for allocs of size 1 << n
+var pools [bits.UintSize]sync.Pool // pools[n] is for allocs of size 1 << n
 
-func mkPools() [bits.UintSize]sync.Pool {
-	var pools [bits.UintSize]sync.Pool
+func init() {
 	for i := range pools {
-		i := i // watch out for capture bugs
+		allocSize := 1 << i
 		pools[i].New = func() any {
-			return unsafe.Pointer(unsafe.SliceData(make([]byte, 1<<i)))
+			// Boxing an unsafe.Pointer into an interface does not require an allocation
+			return unsafe.Pointer(unsafe.SliceData(make([]byte, allocSize)))
 		}
 	}
-	return pools
 }
 
 // sizeClass determines the smallest n such that 1 << n >= size
 func sizeClass(size uintptr) int {
-	return bits.UintSize - bits.LeadingZeros(uint(size-1))
+	if invariants.Enabled && size == 0 {
+		panic("zero size should never get through New")
+	}
+	return bits.Len(uint(size - 1))
 }
