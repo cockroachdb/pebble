@@ -36,6 +36,11 @@ func Free(purpose Purpose, b Buf) {
 	if b.data == nil {
 		return
 	}
+
+	// Expunge pointers from the block that might cause a test failure,
+	// although they are quite safe
+	clear(unsafe.Slice((*byte)(b.data), b.n))
+
 	recordFree(purpose, b.n)
 	pools[sizeClass(b.n)].Put(b.data)
 }
