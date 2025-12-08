@@ -273,6 +273,29 @@ func (w *walT) dumpBatch(
 		case base.InternalKeyKindIngestSST:
 			fileNum, _ := binary.Uvarint(ukey)
 			fmt.Fprintf(stdout, "%s", base.FileNum(fileNum))
+		case base.InternalKeyKindIngestSSTWithBlobs:
+			fileNum, _ := binary.Uvarint(ukey)
+			fmt.Fprintf(stdout, "%s", base.FileNum(fileNum))
+			// Value contains blob file IDs: count (varint) + blob file IDs (varints).
+			if len(value) > 0 {
+				blobCount, n := binary.Uvarint(value)
+				if n > 0 && blobCount > 0 {
+					blobData := value[n:]
+					fmt.Fprintf(stdout, " blobs:[")
+					for i := uint64(0); i < blobCount; i++ {
+						if i > 0 {
+							fmt.Fprintf(stdout, ",")
+						}
+						blobID, m := binary.Uvarint(blobData)
+						if m <= 0 {
+							break
+						}
+						fmt.Fprintf(stdout, "%s", base.BlobFileID(blobID))
+						blobData = blobData[m:]
+					}
+					fmt.Fprintf(stdout, "]")
+				}
+			}
 		case base.InternalKeyKindExcise:
 			fmt.Fprintf(stdout, "%s,%s", w.fmtKey.fn(ukey), w.fmtKey.fn(value))
 		case base.InternalKeyKindSingleDelete:

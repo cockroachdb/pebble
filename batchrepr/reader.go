@@ -97,7 +97,7 @@ func (r *Reader) Next() (kind base.InternalKeyKind, ukey []byte, value []byte, o
 	switch kind {
 	case base.InternalKeyKindSet, base.InternalKeyKindMerge, base.InternalKeyKindRangeDelete,
 		base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete,
-		base.InternalKeyKindDeleteSized, base.InternalKeyKindExcise:
+		base.InternalKeyKindDeleteSized, base.InternalKeyKindExcise, base.InternalKeyKindIngestSSTWithBlobs:
 		*r, value, ok = DecodeStr(*r)
 		if !ok {
 			return 0, nil, nil, false, errors.Wrapf(ErrInvalidBatch, "decoding %s value", kind)
@@ -143,4 +143,23 @@ func DecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
 		return nil, nil, false
 	}
 	return data[v:], data[:v], true
+}
+
+// DecodeBlobFileIDs decodes blob file IDs from bytes.
+// The format expected is: count (varint) + blob file IDs (varints).
+func DecodeBlobFileIDs(value []byte) (blobIDs []base.BlobFileID, ok bool) {
+	blobCount, n := binary.Uvarint(value)
+	if n <= 0 {
+		return nil, false
+	}
+	blobIDs = make([]base.BlobFileID, 0, blobCount)
+	for i := uint64(0); i < blobCount; i++ {
+		blobID, m := binary.Uvarint(value[n:])
+		if m <= 0 {
+			return nil, false
+		}
+		blobIDs = append(blobIDs, base.BlobFileID(blobID))
+		n += m
+	}
+	return blobIDs, true
 }
