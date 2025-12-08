@@ -26,15 +26,21 @@ func (f tableFilter) MayContain(key []byte) bool {
 	n := len(f) - 5
 	nProbes := f[n]
 	nLines := binary.LittleEndian.Uint32(f[n+1:])
-	cacheLineBits := 8 * (uint32(n) / nLines)
-
+	if 8*(uint32(n)/nLines) != cacheLineBits {
+		panic("bloom filter: unexpected cache line size")
+	}
 	h := hash(key)
 	delta := h>>17 | h<<15
-	b := (h % nLines) * cacheLineBits
-
-	for j := uint8(0); j < nProbes; j++ {
-		bitPos := b + (h % cacheLineBits)
-		if f[bitPos/8]&(1<<(bitPos%8)) == 0 {
+	lineIdx := h % nLines
+	// Set up a pointer to a [cacheLineSize]byte array. This avoids bound
+	// checks inside the loop.
+	line := (*[cacheLineSize]byte)(f[lineIdx*cacheLineSize : (lineIdx+1)*cacheLineSize])
+	for range nProbes {
+		// The bit position within the line is (h % cacheLineBits).
+		//  byte index: (h % cacheLineBits)/8 = (h/8) % cacheLineSize
+		//  bit index: (h % cacheLineBits)%8 = h%8
+		val := line[(h>>3)&(cacheLineSize-1)] & (1 << (h & 7)) //gcassert:bce
+		if val == 0 {
 			return false
 		}
 		h += delta
@@ -42,16 +48,32 @@ func (f tableFilter) MayContain(key []byte) bool {
 	return true
 }
 
-func calculateProbes(bitsPerKey int) uint32 {
-	// We intentionally round down to reduce probing cost a little bit
-	n := uint32(float64(bitsPerKey) * 0.69) // 0.69 =~ ln(2)
-	if n < 1 {
-		n = 1
+// This table contains the optimal number of probes for each bitsPerKey. For
+// bits per key over 10, probes[10] should be used.
+//
+// The values are derived from simulations (see simulation.txt).
+//
+// The standard bloom filter formula does not yield the optimal number for our
+// scheme, which constrains all probes to be inside the same cache line. This is
+// especially true for larger bits-per-key values.
+var probes = [11]uint32{
+	1:  1,
+	2:  1,
+	3:  2,
+	4:  3,
+	5:  3,
+	6:  4,
+	7:  4,
+	8:  5,
+	9:  5,
+	10: 6,
+}
+
+func calculateProbes(bitsPerKey uint32) uint32 {
+	if bitsPerKey > 10 {
+		return probes[10]
 	}
-	if n > 30 {
-		n = 30
-	}
-	return n
+	return probes[bitsPerKey]
 }
 
 // extend appends n zero bytes to b. It returns the overall slice (of length
@@ -126,7 +148,8 @@ var hashBlockPool = sync.Pool{
 }
 
 type tableFilterWriter struct {
-	bitsPerKey int
+	bitsPerKey uint32
+	numProbes  uint32
 
 	numHashes int
 	// We store the hashes in blocks.
@@ -138,9 +161,10 @@ type tableFilterWriter struct {
 	blocksBuf [16]*hashBlock
 }
 
-func newTableFilterWriter(bitsPerKey int) *tableFilterWriter {
+func newTableFilterWriter(bitsPerKey uint32) *tableFilterWriter {
 	w := &tableFilterWriter{
 		bitsPerKey: bitsPerKey,
+		numProbes:  calculateProbes(bitsPerKey),
 	}
 	w.blocks = w.blocksBuf[:0]
 	return w
@@ -162,25 +186,27 @@ func (w *tableFilterWriter) AddKey(key []byte) {
 	w.lastHash = h
 }
 
+func calculateNumLines(numHashes int, bitsPerKey uint32) uint32 {
+	if numHashes == 0 {
+		return 0
+	}
+	nLines := (uint64(numHashes)*uint64(bitsPerKey) + cacheLineBits - 1) / (cacheLineBits)
+	// Make nLines an odd number to make sure more bits are involved when
+	// determining which block.
+	return uint32(nLines | 1)
+}
+
 // Finish implements the base.FilterWriter interface.
 func (w *tableFilterWriter) Finish(buf []byte) []byte {
 	// The table filter format matches the RocksDB full-file filter format.
-	var nLines int
-	if w.numHashes != 0 {
-		nLines = (w.numHashes*w.bitsPerKey + cacheLineBits - 1) / (cacheLineBits)
-		// Make nLines an odd number to make sure more bits are involved when
-		// determining which block.
-		if nLines%2 == 0 {
-			nLines++
-		}
-	}
+	nLines := calculateNumLines(w.numHashes, w.bitsPerKey)
 
 	nBytes := nLines * cacheLineSize
 	// +5: 4 bytes for num-lines, 1 byte for num-probes
-	buf, filter := extend(buf, nBytes+5)
+	buf, filter := extend(buf, int(nBytes+5))
 
 	if nLines != 0 {
-		nProbes := calculateProbes(w.bitsPerKey)
+		nProbes := w.numProbes
 		for bIdx, b := range w.blocks {
 			length := hashBlockLen
 			if bIdx == len(w.blocks)-1 && w.numHashes%hashBlockLen != 0 {
@@ -188,14 +214,20 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 			}
 			for _, h := range b[:length] {
 				delta := h>>17 | h<<15 // rotate right 17 bits
-				b := (h % uint32(nLines)) * (cacheLineBits)
-				for i := uint32(0); i < nProbes; i++ {
-					bitPos := b + (h % cacheLineBits)
-					filter[bitPos/8] |= (1 << (bitPos % 8))
+				lineIdx := h % uint32(nLines)
+				// Set up a pointer to a [cacheLineSize]byte array. This avoids bound
+				// checks inside the loop.
+				line := (*[cacheLineSize]byte)(filter[lineIdx*cacheLineSize : (lineIdx+1)*cacheLineSize])
+				for range nProbes {
+					// The bit position within the line is (h % cacheLineBits).
+					//  byte index: (h % cacheLineBits)/8 = (h/8) % cacheLineSize
+					//  bit index: (h % cacheLineBits)%8 = h%8
+					line[(h>>3)&(cacheLineSize-1)] |= 1 << (h & 7) //gcassert:bce
 					h += delta
 				}
 			}
 		}
+		nBytes := nLines * cacheLineSize
 		filter[nBytes] = byte(nProbes)
 		binary.LittleEndian.PutUint32(filter[nBytes+1:], uint32(nLines))
 	}
@@ -213,7 +245,33 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 // FilterPolicy implements the FilterPolicy interface from the pebble package.
 //
 // The integer value is the approximate number of bits used per key. A good
-// value is 10, which yields a filter with ~ 1% false positive rate.
+// value is 10, which yields a filter with ~1% false positive rate.
+//
+// The table below contains false positive rates for various bits-per-key values
+// (obtained from simulations).
+//
+//	Bits/key | Probes |       FPR
+//	---------+--------+------------------
+//	       1 |   1    |  61% (1 in 2)
+//	       2 |   1    |  39% (1 in 3)
+//	       3 |   2    |  23% (1 in 4)
+//	       4 |   3    |  15% (1 in 7)
+//	       5 |   3    | 9.1% (1 in 11)
+//	       6 |   4    | 5.7% (1 in 17)
+//	       7 |   5    | 3.7% (1 in 27)
+//	       8 |   5    | 2.4% (1 in 41)
+//	       9 |   5    | 1.7% (1 in 60)
+//	      10 |   6    | 1.1% (1 in 88)
+//	      11 |   6    | 0.82% (1 in 123)
+//	      12 |   6    | 0.60% (1 in 165)
+//	      13 |   6    | 0.46% (1 in 216)
+//	      14 |   6    | 0.37% (1 in 274)
+//	      15 |   6    | 0.30% (1 in 338)
+//	      16 |   6    | 0.25% (1 in 408)
+//	      17 |   6    | 0.21% (1 in 479)
+//	      18 |   6    | 0.18% (1 in 556)
+//	      19 |   6    | 0.16% (1 in 634)
+//	      20 |   6    | 0.14% (1 in 710)
 type FilterPolicy int
 
 var _ base.FilterPolicy = FilterPolicy(0)
@@ -233,5 +291,5 @@ func (p FilterPolicy) MayContain(f, key []byte) bool {
 
 // NewWriter implements the pebble.FilterPolicy interface.
 func (p FilterPolicy) NewWriter() base.FilterWriter {
-	return newTableFilterWriter(int(p))
+	return newTableFilterWriter(uint32(p))
 }
