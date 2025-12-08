@@ -17,24 +17,25 @@ type InternalKeyKind = base.InternalKeyKind
 
 // These constants are part of the file format, and should not be changed.
 const (
-	InternalKeyKindDelete         = base.InternalKeyKindDelete
-	InternalKeyKindSet            = base.InternalKeyKindSet
-	InternalKeyKindMerge          = base.InternalKeyKindMerge
-	InternalKeyKindLogData        = base.InternalKeyKindLogData
-	InternalKeyKindSingleDelete   = base.InternalKeyKindSingleDelete
-	InternalKeyKindSyntheticKey   = base.InternalKeyKindSyntheticKey
-	InternalKeyKindRangeDelete    = base.InternalKeyKindRangeDelete
-	InternalKeyKindMax            = base.InternalKeyKindMax
-	InternalKeyKindSetWithDelete  = base.InternalKeyKindSetWithDelete
-	InternalKeyKindRangeKeySet    = base.InternalKeyKindRangeKeySet
-	InternalKeyKindRangeKeyUnset  = base.InternalKeyKindRangeKeyUnset
-	InternalKeyKindRangeKeyDelete = base.InternalKeyKindRangeKeyDelete
-	InternalKeyKindRangeKeyMin    = base.InternalKeyKindRangeKeyMin
-	InternalKeyKindRangeKeyMax    = base.InternalKeyKindRangeKeyMax
-	InternalKeyKindIngestSST      = base.InternalKeyKindIngestSST
-	InternalKeyKindDeleteSized    = base.InternalKeyKindDeleteSized
-	InternalKeyKindExcise         = base.InternalKeyKindExcise
-	InternalKeyKindInvalid        = base.InternalKeyKindInvalid
+	InternalKeyKindDelete             = base.InternalKeyKindDelete
+	InternalKeyKindSet                = base.InternalKeyKindSet
+	InternalKeyKindMerge              = base.InternalKeyKindMerge
+	InternalKeyKindLogData            = base.InternalKeyKindLogData
+	InternalKeyKindSingleDelete       = base.InternalKeyKindSingleDelete
+	InternalKeyKindSyntheticKey       = base.InternalKeyKindSyntheticKey
+	InternalKeyKindRangeDelete        = base.InternalKeyKindRangeDelete
+	InternalKeyKindMax                = base.InternalKeyKindMax
+	InternalKeyKindSetWithDelete      = base.InternalKeyKindSetWithDelete
+	InternalKeyKindRangeKeySet        = base.InternalKeyKindRangeKeySet
+	InternalKeyKindRangeKeyUnset      = base.InternalKeyKindRangeKeyUnset
+	InternalKeyKindRangeKeyDelete     = base.InternalKeyKindRangeKeyDelete
+	InternalKeyKindRangeKeyMin        = base.InternalKeyKindRangeKeyMin
+	InternalKeyKindRangeKeyMax        = base.InternalKeyKindRangeKeyMax
+	InternalKeyKindIngestSST          = base.InternalKeyKindIngestSST
+	InternalKeyKindIngestSSTWithBlobs = base.InternalKeyKindIngestSSTWithBlobs
+	InternalKeyKindDeleteSized        = base.InternalKeyKindDeleteSized
+	InternalKeyKindExcise             = base.InternalKeyKindExcise
+	InternalKeyKindInvalid            = base.InternalKeyKindInvalid
 )
 
 // InternalKeyTrailer exports the base.InternalKeyTrailer type.

@@ -906,7 +906,7 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	// d.commit.mu. It's okay for readers of d.mu.mem.mutable to only hold one of
 	// d.commit.mu or d.mu, because memtable rotations require holding both.
 	mem := d.mu.mem.mutable
-	// Batches which contain keys of kind InternalKeyKindIngestSST will
+	// Batches which contain keys of kind InternalKeyKindIngestSST or InternalKeyKindIngestSSTWithBlobs will
 	// never be applied to the memtable, so we don't need to make room for
 	// write.
 	if !b.ingestedSSTBatch {
