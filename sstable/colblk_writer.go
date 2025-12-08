@@ -1145,22 +1145,39 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		return errors.Wrap(err, "rewriting range key blocks")
 	}
 	// Copy over the filter block if it exists.
-	if w.filterBlock != nil {
-		if filterBlockBH, ok := l.FilterByName(w.filterBlock.metaName()); ok {
-			filterBlock, _, err := readBlockBuf(sstBytes, filterBlockBH, r.blockReader.ChecksumType(), nil)
-			if err != nil {
-				return errors.Wrap(err, "reading filter")
-			}
-			w.filterBlock = copyFilterWriter{
-				origPolicyName: w.filterBlock.policyName(),
-				origMetaName:   w.filterBlock.metaName(),
-				// Clone the filter block, because readBlockBuf allows the
-				// returned byte slice to point directly into sst.
-				data: slices.Clone(filterBlock),
-			}
+	if policyName, filterBH, ok := getExistingFilter(l); ok {
+		filterBlock, _, err := readBlockBuf(sstBytes, filterBH, r.blockReader.ChecksumType(), nil)
+		if err != nil {
+			return errors.Wrap(err, "reading filter")
+		}
+		w.filterBlock = copyFilterWriter{
+			origPolicyName: policyName,
+			// Clone the filter block, because readBlockBuf allows the
+			// returned byte slice to point directly into sst.
+			data: slices.Clone(filterBlock),
 		}
 	}
 	return nil
+}
+
+// getExistingFilter returns any existing table filter block handle, along with
+// the policy name (derived from the block name). Returns ok=false if there is
+// no filter block.
+func getExistingFilter(layout *Layout) (policyName string, bh block.Handle, ok bool) {
+	if len(layout.Filter) == 0 {
+		return "", block.Handle{}, false
+	}
+	if invariants.Enabled && len(layout.Filter) > 1 {
+		panic(errors.AssertionFailedf("cannot handle more than one filter"))
+	}
+	policyName, ok = filterPolicyFromBlockName(layout.Filter[0].Name)
+	if !ok {
+		if invariants.Enabled {
+			panic(errors.AssertionFailedf("l.Filter has invalid filter block name %q", layout.Filter[0].Name))
+		}
+		return "", block.Handle{}, false
+	}
+	return policyName, layout.Filter[0].Handle, true
 }
 
 func shouldFlushWithoutLatestKV(
