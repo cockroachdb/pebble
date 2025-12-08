@@ -5,7 +5,7 @@
 package bloom
 
 import (
-	"crypto/rand"
+	crand "crypto/rand"
 	"strings"
 	"testing"
 
@@ -204,7 +204,7 @@ func BenchmarkBloomFilter(b *testing.B) {
 	keys := make([][]byte, numKeys)
 	for i := range keys {
 		keys[i] = make([]byte, keyLen)
-		_, _ = rand.Read(keys[i])
+		_, _ = crand.Read(keys[i])
 	}
 	b.ResetTimer()
 	policy := FilterPolicy(10)

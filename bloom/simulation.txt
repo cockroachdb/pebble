@@ -1,0 +1,264 @@
+Bits/key | Probes |           FPR
+---------+--------+------------------------
+       1 |   1    |  62% (1 in 2) ± 1.7%
+       2 |   1    |  39% (1 in 3) ± 1.1%
+       3 |   2    |  23% (1 in 4) ± 1.6%
+       4 |   3    |   15% (1 in 7) ± 2%
+       5 |   3    | 9.2% (1 in 11) ± 1.6%
+       6 |   4    | 5.8% (1 in 17) ± 1.8%
+       7 |   5    |  3.8% (1 in 27) ± 2%
+       8 |   5    |  2.4% (1 in 41) ± 2%
+       9 |   6    | 1.7% (1 in 60) ± 2.3%
+      10 |   6    | 1.1% (1 in 88) ± 2.3%
+      11 |   6    | 0.81% (1 in 123) ± 2.2%
+      12 |   6    | 0.61% (1 in 165) ± 2.2%
+      13 |   6    | 0.46% (1 in 216) ± 2.3%
+      14 |   6    | 0.37% (1 in 272) ± 2.5%
+      15 |   6    | 0.30% (1 in 338) ± 2.7%
+      16 |   6    | 0.25% (1 in 407) ± 2.8%
+      17 |   6    | 0.21% (1 in 479) ± 2.7%
+      18 |   6    | 0.18% (1 in 553) ± 3.5%
+      19 |   6    | 0.16% (1 in 636) ± 3.7%
+      20 |   6    | 0.14% (1 in 712) ± 3.7%
+
+== Full data ==
+
+  1 bits per key:
+     1 probes:  62% (1 in 2) ± 1.7%
+
+  2 bits per key:
+     1 probes:  39% (1 in 3) ± 1.1%
+     2 probes:  39% (1 in 3) ± 1.8%
+
+  3 bits per key:
+     1 probes:  28% (1 in 4) ± 0.9%
+     2 probes:  23% (1 in 4) ± 1.6%
+     3 probes:  25% (1 in 4) ± 1.8%
+
+  4 bits per key:
+     1 probes:  22% (1 in 5) ± 0.7%
+     2 probes:  15% (1 in 7) ± 1.3%
+     3 probes:  15% (1 in 7) ± 2%
+     4 probes:  16% (1 in 6) ± 2%
+
+  5 bits per key:
+     1 probes:  18% (1 in 6) ± 0.6%
+     2 probes:  11% (1 in 9) ± 1.1%
+     3 probes:  9.2% (1 in 11) ± 1.6%
+     4 probes:  9.3% (1 in 11) ± 1.8%
+     5 probes:  10% (1 in 10) ± 2.1%
+
+  6 bits per key:
+     1 probes:  15% (1 in 7) ± 0.6%
+     2 probes:  8.0% (1 in 13) ± 1.1%
+     3 probes:  6.1% (1 in 16) ± 1.5%
+     4 probes:  5.8% (1 in 17) ± 1.8%
+     5 probes:  6.0% (1 in 17) ± 1.7%
+     6 probes:  6.7% (1 in 15) ± 2.3%
+
+  7 bits per key:
+     1 probes:  13% (1 in 8) ± 0.5%
+     2 probes:  6.1% (1 in 16) ± 1.1%
+     3 probes:  4.3% (1 in 23) ± 1.5%
+     4 probes:  3.8% (1 in 27) ± 1.5%
+     5 probes:  3.8% (1 in 27) ± 2%
+     6 probes:  4.0% (1 in 25) ± 2.2%
+     7 probes:  4.6% (1 in 22) ± 2.2%
+
+  8 bits per key:
+     1 probes:  12% (1 in 9) ± 0.6%
+     2 probes:  4.9% (1 in 20) ± 1%
+     3 probes:  3.2% (1 in 32) ± 1.4%
+     4 probes:  2.6% (1 in 39) ± 1.6%
+     5 probes:  2.4% (1 in 41) ± 2%
+     6 probes:  2.5% (1 in 40) ± 2.3%
+     7 probes:  2.8% (1 in 36) ± 2.5%
+     8 probes:  3.2% (1 in 31) ± 2.5%
+
+  9 bits per key:
+     1 probes:  10% (1 in 10) ± 0.5%
+     2 probes:  4.0% (1 in 25) ± 1.1%
+     3 probes:  2.4% (1 in 42) ± 1.3%
+     4 probes:  1.8% (1 in 55) ± 1.7%
+     5 probes:  1.7% (1 in 60) ± 1.8%
+     6 probes:  1.7% (1 in 60) ± 2.3%
+     7 probes:  1.8% (1 in 56) ± 2.4%
+     8 probes:  2.0% (1 in 50) ± 2.5%
+     9 probes:  2.3% (1 in 44) ± 2.6%
+
+  10 bits per key:
+     1 probes:  9.5% (1 in 11) ± 0.5%
+     2 probes:  3.3% (1 in 30) ± 1%
+     3 probes:  1.8% (1 in 54) ± 1.3%
+     4 probes:  1.3% (1 in 75) ± 1.6%
+     5 probes:  1.2% (1 in 85) ± 2.2%
+     6 probes:  1.1% (1 in 88) ± 2.3%
+     7 probes:  1.2% (1 in 83) ± 2.4%
+     8 probes:  1.3% (1 in 76) ± 2.4%
+     9 probes:  1.5% (1 in 67) ± 2.3%
+    10 probes:  1.7% (1 in 58) ± 2.7%
+
+  11 bits per key:
+     1 probes:  8.7% (1 in 12) ± 0.4%
+     2 probes:  2.8% (1 in 36) ± 0.9%
+     3 probes:  1.5% (1 in 69) ± 1.4%
+     4 probes:  1.0% (1 in 99) ± 1.8%
+     5 probes:  0.86% (1 in 116) ± 2%
+     6 probes:  0.81% (1 in 123) ± 2.2%
+     7 probes:  0.85% (1 in 118) ± 2.2%
+     8 probes:  0.91% (1 in 110) ± 2.7%
+     9 probes:  1.0% (1 in 98) ± 3%
+    10 probes:  1.2% (1 in 87) ± 2.4%
+    11 probes:  1.3% (1 in 75) ± 2.7%
+
+  12 bits per key:
+     1 probes:  8.0% (1 in 13) ± 0.6%
+     2 probes:  2.4% (1 in 42) ± 1.1%
+     3 probes:  1.2% (1 in 85) ± 1.4%
+     4 probes:  0.78% (1 in 128) ± 1.8%
+     5 probes:  0.65% (1 in 154) ± 2.4%
+     6 probes:  0.61% (1 in 165) ± 2.2%
+     7 probes:  0.62% (1 in 161) ± 2.2%
+     8 probes:  0.66% (1 in 151) ± 2.3%
+     9 probes:  0.73% (1 in 137) ± 2.8%
+    10 probes:  0.82% (1 in 122) ± 2.5%
+    11 probes:  0.93% (1 in 107) ± 3.1%
+    12 probes:  1.1% (1 in 94) ± 3%
+
+  13 bits per key:
+     1 probes:  7.4% (1 in 14) ± 0.5%
+     2 probes:  2.1% (1 in 49) ± 1.1%
+     3 probes:  0.96% (1 in 105) ± 1.6%
+     4 probes:  0.62% (1 in 162) ± 1.8%
+     5 probes:  0.50% (1 in 200) ± 2.2%
+     6 probes:  0.46% (1 in 216) ± 2.3%
+     7 probes:  0.47% (1 in 212) ± 2.8%
+     8 probes:  0.50% (1 in 200) ± 2.6%
+     9 probes:  0.55% (1 in 183) ± 2.7%
+    10 probes:  0.61% (1 in 165) ± 2.6%
+    11 probes:  0.69% (1 in 146) ± 2.9%
+    12 probes:  0.78% (1 in 128) ± 2.8%
+    13 probes:  0.90% (1 in 112) ± 3.2%
+
+  14 bits per key:
+     1 probes:  6.9% (1 in 15) ± 0.6%
+     2 probes:  1.8% (1 in 56) ± 1%
+     3 probes:  0.80% (1 in 125) ± 1.6%
+     4 probes:  0.50% (1 in 202) ± 2%
+     5 probes:  0.40% (1 in 251) ± 2%
+     6 probes:  0.37% (1 in 272) ± 2.5%
+     7 probes:  0.37% (1 in 268) ± 2.5%
+     8 probes:  0.39% (1 in 256) ± 2.5%
+     9 probes:  0.43% (1 in 235) ± 2.6%
+    10 probes:  0.47% (1 in 212) ± 2.7%
+    11 probes:  0.53% (1 in 188) ± 2.6%
+    12 probes:  0.60% (1 in 167) ± 2.9%
+    13 probes:  0.68% (1 in 146) ± 2.7%
+    14 probes:  0.78% (1 in 129) ± 3.1%
+
+  15 bits per key:
+     1 probes:  6.4% (1 in 16) ± 0.5%
+     2 probes:  1.6% (1 in 63) ± 1.2%
+     3 probes:  0.67% (1 in 149) ± 1.6%
+     4 probes:  0.41% (1 in 246) ± 2.1%
+     5 probes:  0.32% (1 in 309) ± 2.6%
+     6 probes:  0.30% (1 in 338) ± 2.7%
+     7 probes:  0.30% (1 in 332) ± 2.5%
+     8 probes:  0.32% (1 in 313) ± 2.6%
+     9 probes:  0.34% (1 in 290) ± 2.7%
+    10 probes:  0.38% (1 in 263) ± 2.7%
+    11 probes:  0.42% (1 in 236) ± 2.3%
+    12 probes:  0.48% (1 in 210) ± 2.8%
+    13 probes:  0.54% (1 in 185) ± 2.7%
+    14 probes:  0.61% (1 in 164) ± 2.8%
+    15 probes:  0.70% (1 in 144) ± 2.5%
+
+  16 bits per key:
+     1 probes:  6.0% (1 in 17) ± 0.5%
+     2 probes:  1.4% (1 in 71) ± 1.3%
+     3 probes:  0.57% (1 in 175) ± 1.7%
+     4 probes:  0.34% (1 in 295) ± 2.3%
+     5 probes:  0.27% (1 in 373) ± 3%
+     6 probes:  0.25% (1 in 407) ± 2.8%
+     7 probes:  0.25% (1 in 399) ± 2.6%
+     8 probes:  0.27% (1 in 376) ± 2.8%
+     9 probes:  0.29% (1 in 348) ± 2.4%
+    10 probes:  0.32% (1 in 315) ± 2.6%
+    11 probes:  0.35% (1 in 282) ± 2.7%
+    12 probes:  0.39% (1 in 256) ± 2.7%
+    13 probes:  0.44% (1 in 226) ± 2.5%
+    14 probes:  0.50% (1 in 200) ± 3.1%
+    15 probes:  0.56% (1 in 177) ± 2.6%
+    16 probes:  0.64% (1 in 155) ± 2.6%
+
+  17 bits per key:
+     1 probes:  5.7% (1 in 18) ± 0.6%
+     2 probes:  1.3% (1 in 79) ± 1.3%
+     3 probes:  0.49% (1 in 204) ± 2.2%
+     4 probes:  0.29% (1 in 350) ± 2.9%
+     5 probes:  0.23% (1 in 441) ± 2.7%
+     6 probes:  0.21% (1 in 479) ± 2.7%
+     7 probes:  0.21% (1 in 465) ± 2.6%
+     8 probes:  0.23% (1 in 439) ± 3.1%
+     9 probes:  0.25% (1 in 400) ± 3.3%
+    10 probes:  0.27% (1 in 370) ± 2.7%
+    11 probes:  0.30% (1 in 332) ± 2.8%
+    12 probes:  0.33% (1 in 299) ± 2.8%
+    13 probes:  0.38% (1 in 267) ± 2.5%
+    14 probes:  0.42% (1 in 239) ± 2.6%
+    15 probes:  0.47% (1 in 211) ± 2.7%
+    16 probes:  0.54% (1 in 186) ± 2.3%
+
+  18 bits per key:
+     1 probes:  5.4% (1 in 19) ± 0.6%
+     2 probes:  1.1% (1 in 88) ± 1.3%
+     3 probes:  0.43% (1 in 235) ± 1.7%
+     4 probes:  0.24% (1 in 412) ± 2.8%
+     5 probes:  0.19% (1 in 515) ± 3.2%
+     6 probes:  0.18% (1 in 553) ± 3.5%
+     7 probes:  0.18% (1 in 541) ± 3.3%
+     8 probes:  0.20% (1 in 501) ± 3.1%
+     9 probes:  0.22% (1 in 462) ± 2.9%
+    10 probes:  0.24% (1 in 420) ± 2.8%
+    11 probes:  0.26% (1 in 379) ± 2.6%
+    12 probes:  0.29% (1 in 342) ± 2.7%
+    13 probes:  0.32% (1 in 308) ± 2.7%
+    14 probes:  0.36% (1 in 276) ± 2.5%
+    15 probes:  0.41% (1 in 245) ± 2.6%
+    16 probes:  0.46% (1 in 218) ± 2.5%
+
+  19 bits per key:
+     1 probes:  5.1% (1 in 20) ± 0.6%
+     2 probes:  1.0% (1 in 98) ± 1.3%
+     3 probes:  0.37% (1 in 268) ± 2.2%
+     4 probes:  0.21% (1 in 471) ± 3.2%
+     5 probes:  0.17% (1 in 594) ± 3.4%
+     6 probes:  0.16% (1 in 636) ± 3.7%
+     7 probes:  0.16% (1 in 608) ± 3.1%
+     8 probes:  0.18% (1 in 563) ± 3.4%
+     9 probes:  0.19% (1 in 515) ± 3.2%
+    10 probes:  0.21% (1 in 470) ± 3%
+    11 probes:  0.23% (1 in 426) ± 2.8%
+    12 probes:  0.26% (1 in 386) ± 2.6%
+    13 probes:  0.29% (1 in 347) ± 3%
+    14 probes:  0.32% (1 in 313) ± 2.9%
+    15 probes:  0.36% (1 in 279) ± 2.8%
+    16 probes:  0.40% (1 in 248) ± 2.8%
+
+  20 bits per key:
+     1 probes:  4.9% (1 in 21) ± 0.6%
+     2 probes:  0.93% (1 in 107) ± 1.5%
+     3 probes:  0.33% (1 in 304) ± 2.3%
+     4 probes:  0.18% (1 in 543) ± 3.8%
+     5 probes:  0.15% (1 in 679) ± 3.6%
+     6 probes:  0.14% (1 in 712) ± 3.7%
+     7 probes:  0.15% (1 in 674) ± 3.4%
+     8 probes:  0.16% (1 in 622) ± 3.5%
+     9 probes:  0.18% (1 in 568) ± 3.3%
+    10 probes:  0.19% (1 in 523) ± 3%
+    11 probes:  0.21% (1 in 471) ± 3%
+    12 probes:  0.23% (1 in 429) ± 2.6%
+    13 probes:  0.26% (1 in 385) ± 2.7%
+    14 probes:  0.29% (1 in 350) ± 2.4%
+    15 probes:  0.32% (1 in 312) ± 2.6%
+    16 probes:  0.36% (1 in 279) ± 2.2%
