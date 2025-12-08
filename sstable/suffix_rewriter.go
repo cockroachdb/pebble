@@ -40,10 +40,11 @@ import (
 // Any block property collectors configured in the WriterOptions must implement
 // AddCollectedWithSuffixChange.
 //
-// The WriterOptions.TableFormat is ignored, and the output sstable has the
-// same TableFormat as the input, which is returned in case the caller wants
-// to do some error checking. Suffix rewriting is meant to be efficient, and
-// allowing changes in the TableFormat detracts from that efficiency.
+// The WriterOptions.TableFormat is ignored, and the output sstable has the same
+// TableFormat as the input, which is returned in case the caller wants to do
+// some error checking. Suffix rewriting is meant to be efficient, and allowing
+// changes in the TableFormat detracts from that efficiency. Similarly,
+// WriterOptions.FilterPolicy is ignored and any filter block is copied over.
 //
 // Any obsolete bits that key-value pairs may be annotated with are ignored
 // and lost during the rewrite. Additionally, the output sstable has the
@@ -98,11 +99,11 @@ func rewriteKeySuffixesInBlocks(
 	case props.ComparerName != o.Comparer.Name:
 		return nil, TableFormatUnspecified, errors.Errorf("mismatched Comparer %s vs %s, replacement requires same splitter to copy filters",
 			props.ComparerName, o.Comparer.Name)
-	case o.FilterPolicy != base.NoFilterPolicy && props.FilterPolicyName != o.FilterPolicy.Name():
-		return nil, TableFormatUnspecified, errors.Errorf("mismatched filters %q vs %q", props.FilterPolicyName, o.FilterPolicy.Name())
 	}
 
 	o.TableFormat = r.tableFormat
+	// Don't set up a filter; rewriteSuffixes will copy over any existing filter.
+	o.FilterPolicy = base.NoFilterPolicy
 	w := NewRawWriter(out, o)
 	defer func() {
 		if w != nil {
@@ -291,14 +292,12 @@ func getShortIDs(
 }
 
 type copyFilterWriter struct {
-	origMetaName   string
 	origPolicyName string
 	data           []byte
 }
 
 func (copyFilterWriter) addKey(key []byte)         { panic("unimplemented") }
 func (c copyFilterWriter) finish() ([]byte, error) { return c.data, nil }
-func (c copyFilterWriter) metaName() string        { return c.origMetaName }
 func (c copyFilterWriter) policyName() string      { return c.origPolicyName }
 
 // RewriteKeySuffixesViaWriter is similar to RewriteKeySuffixes but uses just a

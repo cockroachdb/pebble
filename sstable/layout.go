@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -56,18 +57,6 @@ type Layout struct {
 type NamedBlockHandle struct {
 	block.Handle
 	Name string
-}
-
-// FilterByName retrieves the block handle of the named filter, if it exists.
-// The provided the name should be the name as it appears in the metaindex
-// block.
-func (l *Layout) FilterByName(name string) (block.Handle, bool) {
-	for i := range l.Filter {
-		if l.Filter[i].Name == name {
-			return l.Filter[i].Handle, true
-		}
-	}
-	return block.Handle{}, false
 }
 
 func (l *Layout) orderedBlocks() []NamedBlockHandle {
@@ -890,7 +879,7 @@ func (w *layoutWriter) WriteFilterBlock(f filterWriter) (bh block.Handle, err er
 	if err != nil {
 		return block.Handle{}, err
 	}
-	return w.writeNamedBlockUncompressed(b, blockkind.Filter, f.metaName())
+	return w.writeNamedBlockUncompressed(b, blockkind.Filter, filterPolicyToBlockName(f.policyName()))
 }
 
 // WritePropertiesBlock constructs a trailer for the provided properties block
@@ -1083,4 +1072,20 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 	w.writable = nil
 	w.physBlockMaker.Close()
 	return w.offset, err
+}
+
+// filterPolicyToBlockName returns the metaindex block key for the filter
+// block with the given policy name.
+func filterPolicyToBlockName(filterPolicy string) string {
+	return "fullfilter." + filterPolicy
+}
+
+// filterPolicyFromBlockName is the inverse of filterPolicyToBlockName,
+// returning the filer policy if the given block handle is for a filter block.
+func filterPolicyFromBlockName(blockMetaHandle string) (_ string, ok bool) {
+	res, ok := strings.CutPrefix(blockMetaHandle, "fullfilter.")
+	if !ok {
+		return "", ok
+	}
+	return res, ok
 }
