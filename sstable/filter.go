@@ -4,7 +4,11 @@
 
 package sstable
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/cockroachdb/pebble/bloom"
+)
 
 // FilterMetrics holds metrics for the filter policy.
 type FilterMetrics struct {
@@ -40,6 +44,10 @@ type filterWriter interface {
 	addKey(key []byte)
 	finish() ([]byte, error)
 	policyName() string
+	// estimatedSize returns an estimate of the filter block size based on the
+	// number of keys added so far. This is used for size estimation before the
+	// filter is finished.
+	estimatedSize() uint64
 }
 
 type tableFilterReader struct {
@@ -94,4 +102,20 @@ func (f *tableFilterWriter) finish() ([]byte, error) {
 
 func (f *tableFilterWriter) policyName() string {
 	return f.policy.Name()
+}
+
+// estimatedSize returns an estimate of the filter block size based on the
+// number of keys added. For bloom filters, this uses the actual bitsPerKey
+// from the policy. For other filter types, it falls back to a default of 10
+// bits per key.
+func (f *tableFilterWriter) estimatedSize() uint64 {
+	// Get bitsPerKey from the policy. bloom.FilterPolicy is an int representing
+	// bits per key. For other filter implementations (e.g., test wrappers),
+	// fall back to the default of 10 (see bloom.FilterPolicy documentation).
+	bitsPerKey := 10
+	if bp, ok := f.policy.(bloom.FilterPolicy); ok {
+		bitsPerKey = int(bp)
+	}
+	_, nBytes := bloom.FilterSize(f.count, bitsPerKey)
+	return uint64(nBytes)
 }

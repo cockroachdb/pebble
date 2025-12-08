@@ -162,20 +162,26 @@ func (w *tableFilterWriter) AddKey(key []byte) {
 	w.lastHash = h
 }
 
+// FilterSize returns the size in bytes of a bloom filter with the given number
+// of keys and bits per key. This can be used to estimate filter size before
+// building it.
+func FilterSize(numKeys, bitsPerKey int) (nLines int, nBytes int) {
+	if numKeys == 0 {
+		return 0, 0
+	}
+	nLines = (numKeys*bitsPerKey + cacheLineBits - 1) / cacheLineBits
+	// Make nLines an odd number to make sure more bits are involved when
+	// determining which block.
+	if nLines%2 == 0 {
+		nLines++
+	}
+	return nLines, nLines * cacheLineSize
+}
+
 // Finish implements the base.FilterWriter interface.
 func (w *tableFilterWriter) Finish(buf []byte) []byte {
 	// The table filter format matches the RocksDB full-file filter format.
-	var nLines int
-	if w.numHashes != 0 {
-		nLines = (w.numHashes*w.bitsPerKey + cacheLineBits - 1) / (cacheLineBits)
-		// Make nLines an odd number to make sure more bits are involved when
-		// determining which block.
-		if nLines%2 == 0 {
-			nLines++
-		}
-	}
-
-	nBytes := nLines * cacheLineSize
+	nLines, nBytes := FilterSize(w.numHashes, w.bitsPerKey)
 	// +5: 4 bytes for num-lines, 1 byte for num-probes
 	buf, filter := extend(buf, nBytes+5)
 

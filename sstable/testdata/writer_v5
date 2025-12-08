@@ -334,7 +334,7 @@ a@2#1,SET:a2
 a@1#1,SET:a1
 b@2#1,SET:b2
 ----
-EstimatedSize()=163
+EstimatedSize()=629
 
 close
 ----

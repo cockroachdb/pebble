@@ -200,6 +200,21 @@ func (p *Properties) saveToColWriter(tblFormat TableFormat, w *colblk.KeyValueBl
 	}
 }
 
+// EstimatedSize returns an estimate of the properties block size in bytes.
+// This is used for size estimation before the sstable is finished.
+//
+// Note: This is an underestimate as it does not account for block encoding
+// overhead (e.g., varint lengths, column headers). The key and value sizes
+// are the dominant factors, so this is typically close to the actual size.
+func (p *Properties) EstimatedSize(tblFormat TableFormat) uint64 {
+	m := p.accumulateProps(tblFormat)
+	var size uint64
+	for key, val := range m {
+		size += uint64(len(key) + len(val))
+	}
+	return size
+}
+
 func (p *Properties) toAttributes() Attributes {
 	var attributes Attributes
 
