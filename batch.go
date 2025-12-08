@@ -176,15 +176,16 @@ func (d DeferredBatchOp) Finish() error {
 // exactly those specified by InternalKeyKind. The following table shows the
 // format for records of each kind:
 //
-//	InternalKeyKindDelete         varstring
-//	InternalKeyKindLogData        varstring
-//	InternalKeyKindIngestSST      varstring
-//	InternalKeyKindSet            varstring varstring
-//	InternalKeyKindMerge          varstring varstring
-//	InternalKeyKindRangeDelete    varstring varstring
-//	InternalKeyKindRangeKeySet    varstring varstring
-//	InternalKeyKindRangeKeyUnset  varstring varstring
-//	InternalKeyKindRangeKeyDelete varstring varstring
+//	InternalKeyKindDelete             varstring
+//	InternalKeyKindLogData        	  varstring
+//	InternalKeyKindIngestSST          varstring
+//	InternalKeyKindIngestSSTWithBlobs varstring varstring (value contains blob file IDs)
+//	InternalKeyKindSet                varstring varstring
+//	InternalKeyKindMerge              varstring varstring
+//	InternalKeyKindRangeDelete        varstring varstring
+//	InternalKeyKindRangeKeySet        varstring varstring
+//	InternalKeyKindRangeKeyUnset      varstring varstring
+//	InternalKeyKindRangeKeyDelete     varstring varstring
 //
 // The intuitive understanding here are that the arguments to Delete, Set,
 // Merge, DeleteRange and RangeKeyDelete are encoded into the batch. The
@@ -374,8 +375,9 @@ type batchInternal struct {
 	// Position bools together to reduce the sizeof the struct.
 
 	// ingestedSSTBatch indicates that the batch contains one or more key kinds
-	// of InternalKeyKindIngestSST. If the batch contains key kinds of IngestSST
-	// then it will only contain key kinds of IngestSST.
+	// of InternalKeyKindIngestSST, InternalKeyKindIngestSSTWithBlobs, or
+	// InternalKeyKindExcise. If the batch contains key kinds of IngestSST*/Excise
+	// then it will only contain key kinds of IngestSST/Excise.
 	ingestedSSTBatch bool
 
 	// committing is set to true when a batch begins to commit. It's used to
@@ -563,6 +565,12 @@ func (b *Batch) refreshMemTableSize() error {
 			}
 			// This key kind doesn't contribute to the memtable size.
 			continue
+		case InternalKeyKindIngestSSTWithBlobs:
+			if b.minimumFormatMajorVersion < FormatIngestBlobFiles {
+				b.minimumFormatMajorVersion = FormatIngestBlobFiles
+			}
+			// This key kind doesn't contribute to the memtable size.
+			continue
 		case InternalKeyKindExcise:
 			if b.minimumFormatMajorVersion < FormatFlushableIngestExcises {
 				b.minimumFormatMajorVersion = FormatFlushableIngestExcises
@@ -625,7 +633,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				b.countRangeDels++
 			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 				b.countRangeKeys++
-			case InternalKeyKindIngestSST, InternalKeyKindExcise:
+			case InternalKeyKindIngestSST, InternalKeyKindIngestSSTWithBlobs, InternalKeyKindExcise:
 				panic("pebble: invalid key kind for batch")
 			case InternalKeyKindLogData:
 				// LogData does not contribute to memtable size.
@@ -1189,9 +1197,14 @@ func (b *Batch) LogData(data []byte, _ *WriteOptions) error {
 	return nil
 }
 
-// IngestSST adds the TableNum for an sstable to the batch. The data will only be
-// written to the WAL (not added to memtables or sstables).
-func (b *Batch) ingestSST(tableNum base.TableNum) {
+// IngestSST adds the TableNum for an sstable to the batch, along with any
+// blob file IDs referenced by the table. The data will only be written to the
+// WAL (not added to memtables or sstables).
+//
+// The format depends on whether blob files are present:
+//   - InternalKeyKindIngestSST: Key is table number (varint), no value (not even value length)
+//   - InternalKeyKindIngestSSTWithBlobs: Key is table number (varint), value is blob count (varint) + blob file IDs (varints)
+func (b *Batch) ingestSST(tableNum base.TableNum, blobFileIDs []base.BlobFileID) {
 	if b.Empty() {
 		b.ingestedSSTBatch = true
 	} else if !b.ingestedSSTBatch {
@@ -1200,16 +1213,37 @@ func (b *Batch) ingestSST(tableNum base.TableNum) {
 	}
 
 	origMemTableSize := b.memTableSize
-	var buf [binary.MaxVarintLen64]byte
-	length := binary.PutUvarint(buf[:], uint64(tableNum))
-	b.prepareDeferredKeyRecord(length, InternalKeyKindIngestSST)
-	copy(b.deferredOp.Key, buf[:length])
+	var keyBuf [binary.MaxVarintLen64]byte
+	keyLen := binary.PutUvarint(keyBuf[:], uint64(tableNum))
+
+	var valueBuf []byte
+	if len(blobFileIDs) > 0 {
+		// Use InternalKeyKindIngestSSTWithBlobs when blob files are present.
+		// Encode blob file IDs in the value field.
+		// Format: count (varint) + blob file IDs (varints).
+		estimatedSize := binary.MaxVarintLen64 + len(blobFileIDs)*binary.MaxVarintLen64
+		valueBuf = make([]byte, estimatedSize)
+		countLen := binary.PutUvarint(valueBuf, uint64(len(blobFileIDs)))
+		for _, blobID := range blobFileIDs {
+			countLen += binary.PutUvarint(valueBuf[countLen:], uint64(blobID))
+		}
+		b.prepareDeferredKeyValueRecord(keyLen, len(valueBuf), InternalKeyKindIngestSSTWithBlobs)
+		b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, FormatIngestBlobFiles)
+	} else {
+		// Use InternalKeyKindIngestSST when no blob files.
+		b.prepareDeferredKeyRecord(keyLen, InternalKeyKindIngestSST)
+		b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, FormatFlushableIngest)
+	}
+
+	copy(b.deferredOp.Key, keyBuf[:keyLen])
+	if len(valueBuf) > 0 {
+		copy(b.deferredOp.Value, valueBuf)
+	}
 	// Since IngestSST writes only to the WAL and does not affect the memtable,
 	// we restore b.memTableSize to its original value. Note that Batch.count
-	// is not reset because for the InternalKeyKindIngestSST the count is the
+	// is not reset because for the InternalKeyKindIngestSST* the count is the
 	// number of sstable paths which have been added to the batch.
 	b.memTableSize = origMemTableSize
-	b.minimumFormatMajorVersion = FormatFlushableIngest
 }
 
 // Excise adds the excise span for a flushable ingest containing an excise. The data

@@ -528,7 +528,7 @@ func (d *DB) replayWAL(
 			br := b.Reader()
 			if kind, _, _, ok, err := br.Next(); err != nil {
 				return nil, 0, err
-			} else if ok && (kind == InternalKeyKindIngestSST || kind == InternalKeyKindExcise) {
+			} else if ok && (kind == InternalKeyKindIngestSST || kind == InternalKeyKindIngestSSTWithBlobs || kind == InternalKeyKindExcise) {
 				// We're in the flushable ingests (+ possibly excises) case.
 				//
 				// Ingests require an up-to-date view of the LSM to determine the target
@@ -604,13 +604,17 @@ func (d *DB) replayIngestedFlushable(
 	seqNum := b.SeqNum()
 
 	fileNums := make([]base.DiskFileNum, 0, b.Count())
+	// Map from table file number to blob file IDs for that table.
+	tableBlobFileIDs := make(map[base.DiskFileNum][]base.BlobFileID)
 	var exciseSpan KeyRange
-	addFileNum := func(encodedFileNum []byte) {
+	addFileNum := func(encodedFileNum []byte) base.DiskFileNum {
 		fileNum, n := binary.Uvarint(encodedFileNum)
 		if n <= 0 {
 			panic("pebble: ingest sstable file num is invalid")
 		}
-		fileNums = append(fileNums, base.DiskFileNum(fileNum))
+		diskFileNum := base.DiskFileNum(fileNum)
+		fileNums = append(fileNums, diskFileNum)
+		return diskFileNum
 	}
 
 	for i := 0; i < int(b.Count()); i++ {
@@ -618,7 +622,7 @@ func (d *DB) replayIngestedFlushable(
 		if err != nil {
 			return nil, err
 		}
-		if kind != InternalKeyKindIngestSST && kind != InternalKeyKindExcise {
+		if kind != InternalKeyKindIngestSST && kind != InternalKeyKindIngestSSTWithBlobs && kind != InternalKeyKindExcise {
 			panic("pebble: invalid batch key kind")
 		}
 		if !ok {
@@ -632,7 +636,14 @@ func (d *DB) replayIngestedFlushable(
 			exciseSpan.End = slices.Clone(val)
 			continue
 		}
-		addFileNum(key)
+		fileNum := addFileNum(key)
+		if kind == InternalKeyKindIngestSSTWithBlobs {
+			blobFileIDs, ok := batchrepr.DecodeBlobFileIDs(val)
+			if !ok {
+				panic("pebble: corrupt blob file IDs in InternalKeyKindIngestSSTWithBlobs")
+			}
+			tableBlobFileIDs[fileNum] = blobFileIDs
+		}
 	}
 
 	if _, _, _, ok, err := br.Next(); err != nil {
@@ -649,8 +660,19 @@ func (d *DB) replayIngestedFlushable(
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when opening flushable ingest files")
 		}
+		blobReadables := make([]objstorage.Readable, 0, len(tableBlobFileIDs[n]))
+		blobFileNums := make([]base.DiskFileNum, 0, len(tableBlobFileIDs[n]))
+		for _, blobFileID := range tableBlobFileIDs[n] {
+			blobReadable, err := d.objProvider.OpenForReading(context.TODO(), base.FileTypeBlob, base.DiskFileNum(blobFileID),
+				objstorage.OpenOptions{MustExist: true})
+			if err != nil {
+				return nil, errors.Wrap(err, "pebble: error when opening flushable ingest blob files")
+			}
+			blobReadables = append(blobReadables, blobReadable)
+			blobFileNums = append(blobFileNums, base.DiskFileNum(blobFileID))
+		}
 		// NB: ingestLoad1 will close readable.
-		res, err := ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(), readable, d.cacheHandle, &d.compressionCounters, base.PhysicalTableFileNum(fileNums[i]), disableRangeKeyChecks(), nil, nil)
+		res, err := ingestLoad1(context.TODO(), d.opts, d.FormatMajorVersion(), readable, d.cacheHandle, &d.compressionCounters, base.PhysicalTableFileNum(fileNums[i]), disableRangeKeyChecks(), blobReadables, blobFileNums)
 		if err != nil {
 			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")
 		}

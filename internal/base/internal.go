@@ -151,7 +151,8 @@ const (
 	// InternalKeyKindIngestSST is used to distinguish a batch that corresponds to
 	// the WAL entry for ingested sstables that are added to the flushable
 	// queue. This InternalKeyKind cannot appear amongst other key kinds in a
-	// batch (with the exception of alongside InternalKeyKindExcise), or in an sstable.
+	// batch (with the exception of alongside InternalKeyKindIngestSSTWithBlobs
+	// and InternalKeyKindExcise), or in an sstable.
 	InternalKeyKindIngestSST InternalKeyKind = 22
 
 	// InternalKeyKindDeleteSized keys behave identically to
@@ -166,11 +167,19 @@ const (
 	// deletes all point and range keys in a given key range while also immediately
 	// truncating sstables to exclude this key span. This InternalKeyKind cannot
 	// appear amongst other key kinds in a batch (with the exception of alongside
-	// InternalKeyKindIngestSST), or in an sstable.
+	// InternalKeyKindIngestSST or InternalKeyKindIngestSSTWithBlobs), or in an sstable.
 	InternalKeyKindExcise InternalKeyKind = 24
 	// InternalKeyKindSyntheticKey is a key used to mark synthetic keys in the
 	// sstable. This is used to perform optimization during SeekPrefixGE.
 	InternalKeyKindSyntheticKey InternalKeyKind = 25
+
+	// InternalKeyKindIngestSSTWithBlobs is used to distinguish a batch that corresponds to
+	// the WAL entry for ingested sstables that are added to the flushable
+	// queue and have associated blob files. This InternalKeyKind cannot appear amongst
+	// other key kinds in a batch (with the exception of alongside InternalKeyKindExcise), or in an sstable.
+	// The key contains the table number (varint), and the value contains blob file
+	// IDs (varint count + varint blob file IDs).
+	InternalKeyKindIngestSSTWithBlobs InternalKeyKind = 26
 
 	// This maximum value isn't part of the file format. Future extensions may
 	// increase this value.
@@ -181,7 +190,7 @@ const (
 	// which sorts 'less than or equal to' any other valid internalKeyKind, when
 	// searching for any kind of internal key formed by a certain user key and
 	// seqNum.
-	InternalKeyKindMax InternalKeyKind = 25
+	InternalKeyKindMax InternalKeyKind = 26
 
 	// InternalKeyKindMaxForSSTable is the largest valid key kind that can exist
 	// in an SSTable. This should usually equal InternalKeyKindMax, except
@@ -219,22 +228,23 @@ const (
 const _ = uint(InternalKeyKindSSTableInternalObsoleteBit - InternalKeyKindMax - 1)
 
 var internalKeyKindNames = []string{
-	InternalKeyKindDelete:         "DEL",
-	InternalKeyKindSet:            "SET",
-	InternalKeyKindMerge:          "MERGE",
-	InternalKeyKindLogData:        "LOGDATA",
-	InternalKeyKindSingleDelete:   "SINGLEDEL",
-	InternalKeyKindRangeDelete:    "RANGEDEL",
-	InternalKeyKindSeparator:      "SEPARATOR",
-	InternalKeyKindSetWithDelete:  "SETWITHDEL",
-	InternalKeyKindRangeKeySet:    "RANGEKEYSET",
-	InternalKeyKindRangeKeyUnset:  "RANGEKEYUNSET",
-	InternalKeyKindRangeKeyDelete: "RANGEKEYDEL",
-	InternalKeyKindIngestSST:      "INGESTSST",
-	InternalKeyKindDeleteSized:    "DELSIZED",
-	InternalKeyKindExcise:         "EXCISE",
-	InternalKeyKindSyntheticKey:   "SYNTHETIC",
-	InternalKeyKindInvalid:        "INVALID",
+	InternalKeyKindDelete:             "DEL",
+	InternalKeyKindSet:                "SET",
+	InternalKeyKindMerge:              "MERGE",
+	InternalKeyKindLogData:            "LOGDATA",
+	InternalKeyKindSingleDelete:       "SINGLEDEL",
+	InternalKeyKindRangeDelete:        "RANGEDEL",
+	InternalKeyKindSeparator:          "SEPARATOR",
+	InternalKeyKindSetWithDelete:      "SETWITHDEL",
+	InternalKeyKindRangeKeySet:        "RANGEKEYSET",
+	InternalKeyKindRangeKeyUnset:      "RANGEKEYUNSET",
+	InternalKeyKindRangeKeyDelete:     "RANGEKEYDEL",
+	InternalKeyKindIngestSST:          "INGESTSST",
+	InternalKeyKindDeleteSized:        "DELSIZED",
+	InternalKeyKindExcise:             "EXCISE",
+	InternalKeyKindSyntheticKey:       "SYNTHETIC",
+	InternalKeyKindIngestSSTWithBlobs: "INGESTSSTWITHBLOB",
+	InternalKeyKindInvalid:            "INVALID",
 }
 
 func (k InternalKeyKind) String() string {
@@ -335,22 +345,23 @@ func MakeExclusiveSentinelKey(kind InternalKeyKind, userKey []byte) InternalKey 
 }
 
 var kindsMap = map[string]InternalKeyKind{
-	"DEL":           InternalKeyKindDelete,
-	"SINGLEDEL":     InternalKeyKindSingleDelete,
-	"RANGEDEL":      InternalKeyKindRangeDelete,
-	"LOGDATA":       InternalKeyKindLogData,
-	"SET":           InternalKeyKindSet,
-	"MERGE":         InternalKeyKindMerge,
-	"INVALID":       InternalKeyKindInvalid,
-	"SEPARATOR":     InternalKeyKindSeparator,
-	"SETWITHDEL":    InternalKeyKindSetWithDelete,
-	"RANGEKEYSET":   InternalKeyKindRangeKeySet,
-	"RANGEKEYUNSET": InternalKeyKindRangeKeyUnset,
-	"RANGEKEYDEL":   InternalKeyKindRangeKeyDelete,
-	"INGESTSST":     InternalKeyKindIngestSST,
-	"DELSIZED":      InternalKeyKindDeleteSized,
-	"EXCISE":        InternalKeyKindExcise,
-	"SYNTHETIC":     InternalKeyKindSyntheticKey,
+	"DEL":               InternalKeyKindDelete,
+	"SINGLEDEL":         InternalKeyKindSingleDelete,
+	"RANGEDEL":          InternalKeyKindRangeDelete,
+	"LOGDATA":           InternalKeyKindLogData,
+	"SET":               InternalKeyKindSet,
+	"MERGE":             InternalKeyKindMerge,
+	"INVALID":           InternalKeyKindInvalid,
+	"SEPARATOR":         InternalKeyKindSeparator,
+	"SETWITHDEL":        InternalKeyKindSetWithDelete,
+	"RANGEKEYSET":       InternalKeyKindRangeKeySet,
+	"RANGEKEYUNSET":     InternalKeyKindRangeKeyUnset,
+	"RANGEKEYDEL":       InternalKeyKindRangeKeyDelete,
+	"INGESTSST":         InternalKeyKindIngestSST,
+	"DELSIZED":          InternalKeyKindDeleteSized,
+	"EXCISE":            InternalKeyKindExcise,
+	"SYNTHETIC":         InternalKeyKindSyntheticKey,
+	"INGESTSSTWITHBLOB": InternalKeyKindIngestSSTWithBlobs,
 }
 
 // ParseSeqNum parses the string representation of a sequence number.
