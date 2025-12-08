@@ -97,7 +97,7 @@ func (r *Reader) Next() (kind base.InternalKeyKind, ukey []byte, value []byte, o
 	switch kind {
 	case base.InternalKeyKindSet, base.InternalKeyKindMerge, base.InternalKeyKindRangeDelete,
 		base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete,
-		base.InternalKeyKindDeleteSized, base.InternalKeyKindExcise:
+		base.InternalKeyKindDeleteSized, base.InternalKeyKindExcise, base.InternalKeyKindIngestSSTWithBlobs:
 		*r, value, ok = DecodeStr(*r)
 		if !ok {
 			return 0, nil, nil, false, errors.Wrapf(ErrInvalidBatch, "decoding %s value", kind)

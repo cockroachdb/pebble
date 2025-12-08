@@ -133,7 +133,7 @@ func testBatch(t *testing.T, size int) {
 		case InternalKeyKindRangeKeyDelete:
 			_ = b.RangeKeyDelete([]byte(tc.key), []byte(tc.value), nil)
 		case InternalKeyKindIngestSST:
-			b.ingestSST(decodeTableNum([]byte(tc.key)))
+			b.ingestSST(decodeTableNum([]byte(tc.key)), nil /* blob file ids */)
 		}
 	}
 	verifyTestCases(b, testCases, false /* indexedKindsOnly */)
@@ -177,7 +177,7 @@ func testBatch(t *testing.T, size int) {
 		case InternalKeyKindLogData:
 			_ = b.LogData([]byte(tc.key), nil)
 		case InternalKeyKindIngestSST:
-			b.ingestSST(decodeTableNum([]byte(tc.key)))
+			b.ingestSST(decodeTableNum([]byte(tc.key)), nil /* blob file ids */)
 		case InternalKeyKindRangeKeyDelete:
 			d := b.RangeKeyDeleteDeferred(len(key), len(value))
 			copy(d.Key, key)
@@ -224,12 +224,96 @@ func TestBatchIngestSST(t *testing.T) {
 	// Verify that Batch.IngestSST has the correct batch count and memtable
 	// size.
 	var b Batch
-	b.ingestSST(1)
+	b.ingestSST(1, nil /* blob file ids */)
 	require.Equal(t, int(b.Count()), 1)
-	b.ingestSST(2)
+	b.ingestSST(2, nil /* blob file ids */)
 	require.Equal(t, int(b.Count()), 2)
 	require.Equal(t, int(b.memTableSize), 0)
 	require.Equal(t, b.ingestedSSTBatch, true)
+}
+
+func TestBatchIngestSSTWithBlobs(t *testing.T) {
+	// Helper to decode blob file IDs from value.
+	decodeBlobFileIDs := func(t *testing.T, value []byte) []base.BlobFileID {
+		blobCount, n := binary.Uvarint(value)
+		require.Greater(t, n, 0)
+		value = value[n:]
+		blobIDs := make([]base.BlobFileID, 0, blobCount)
+		for i := uint64(0); i < blobCount; i++ {
+			blobID, m := binary.Uvarint(value)
+			require.Greater(t, m, 0)
+			blobIDs = append(blobIDs, base.BlobFileID(blobID))
+			value = value[m:]
+		}
+		return blobIDs
+	}
+
+	type expectedEntry struct {
+		tableNum    base.TableNum
+		blobFileIDs []base.BlobFileID // nil means InternalKeyKindIngestSST
+	}
+
+	t.Run("single entry", func(t *testing.T) {
+		var b Batch
+		blobFileIDs := []base.BlobFileID{100, 200, 300}
+		b.ingestSST(1, blobFileIDs)
+		require.Equal(t, 1, int(b.Count()))
+		require.Equal(t, 0, int(b.memTableSize))
+		require.True(t, b.ingestedSSTBatch)
+		require.Equal(t, FormatIngestBlobFiles, b.minimumFormatMajorVersion)
+
+		r := b.Reader()
+		kind, key, value, ok, err := r.Next()
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, InternalKeyKindIngestSSTWithBlobs, kind)
+		tableNum, n := binary.Uvarint(key)
+		require.Greater(t, n, 0)
+		require.Equal(t, uint64(1), tableNum)
+		require.Equal(t, blobFileIDs, decodeBlobFileIDs(t, value))
+
+		_, _, _, ok, err = r.Next()
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("mixed with and without blobs", func(t *testing.T) {
+		var b Batch
+		entries := []expectedEntry{
+			{tableNum: 1, blobFileIDs: nil},
+			{tableNum: 2, blobFileIDs: []base.BlobFileID{100, 200}},
+			{tableNum: 3, blobFileIDs: nil},
+			{tableNum: 4, blobFileIDs: []base.BlobFileID{300}},
+		}
+		for _, e := range entries {
+			b.ingestSST(e.tableNum, e.blobFileIDs)
+		}
+		require.Equal(t, len(entries), int(b.Count()))
+		require.Equal(t, 0, int(b.memTableSize))
+		require.True(t, b.ingestedSSTBatch)
+
+		r := b.Reader()
+		for _, expected := range entries {
+			kind, key, value, ok, err := r.Next()
+			require.NoError(t, err)
+			require.True(t, ok)
+
+			tableNum, _ := binary.Uvarint(key)
+			require.Equal(t, uint64(expected.tableNum), tableNum)
+
+			if expected.blobFileIDs == nil {
+				require.Equal(t, InternalKeyKindIngestSST, kind)
+				require.Empty(t, value)
+			} else {
+				require.Equal(t, InternalKeyKindIngestSSTWithBlobs, kind)
+				require.Equal(t, expected.blobFileIDs, decodeBlobFileIDs(t, value))
+			}
+		}
+
+		_, _, _, ok, err := r.Next()
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
 }
 
 func TestBatchLen(t *testing.T) {

@@ -1573,7 +1573,12 @@ func (d *DB) handleIngestAsFlushable(
 		b.excise(exciseSpan.Start, exciseSpan.End)
 	}
 	for _, m := range meta {
-		b.ingestSST(m.TableNum)
+		// Collect blob file IDs for this table.
+		blobFileIDs := make([]base.BlobFileID, len(m.BlobReferences))
+		for i, blobRef := range m.BlobReferences {
+			blobFileIDs[i] = blobRef.FileID
+		}
+		b.ingestSST(m.TableNum, blobFileIDs)
 	}
 	b.setSeqNum(seqNum)
 
