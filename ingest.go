@@ -320,6 +320,10 @@ func ingestLoad1(
 	meta.InitPhysicalBacking()
 
 	if r.Attributes.Has(sstable.AttributeBlobValues) {
+		if fmv < FormatIngestBlobFiles {
+			return ingestLocalResult{}, errors.Newf(
+				"pebble: cannot ingest table with blob values at format major version %s", fmv)
+		}
 		if len(blobPaths) == 0 {
 			return ingestLocalResult{}, errors.Newf(
 				"pebble: table with blob values must provide associated blob files")
