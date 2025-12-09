@@ -48,12 +48,34 @@ type iterOpts struct {
 	// see IterOptions.UseL6Filters.
 	useL6Filters bool
 
+	// flags is a set of options configuring the iterator. They're serialized as
+	// a variadic trailing argument.
+	flags iterFlags
+
 	// NB: If adding or removing fields, ensure IsZero is in sync.
 }
 
 func (o iterOpts) IsZero() bool {
 	return o.lower == nil && o.upper == nil && o.keyTypes == 0 &&
-		o.maskSuffix == nil && o.filterMin == nil && o.filterMax == nil && !o.useL6Filters
+		o.maskSuffix == nil && o.filterMin == nil && o.filterMax == nil &&
+		!o.useL6Filters && o.flags == iterFlags{}
+}
+
+const (
+	iterFlagUseMaxSuffixProp = "useMaxSuffixProp"
+)
+
+type iterFlags struct {
+	// See IterOptions.MaximumSuffixProperty.
+	useMaxSuffixProp bool
+}
+
+func (f *iterFlags) String() string {
+	var buf bytes.Buffer
+	if f.useMaxSuffixProp {
+		fmt.Fprintf(&buf, ", %s", iterFlagUseMaxSuffixProp)
+	}
+	return buf.String()
 }
 
 // GenerateOps generates n random operations, drawing randomness from the
@@ -565,6 +587,9 @@ func (g *generator) newIter() {
 	if g.rng.Float64() <= 0.1 {
 		opts.useL6Filters = true
 	}
+
+	// Enable maximum suffix property with a 25% probability.
+	opts.flags.useMaxSuffixProp = g.rng.Float64() <= 0.25
 
 	g.itersLastOpts[iterID] = opts
 	g.iterVisibleKeys[iterID] = g.keyManager.getSetOfVisibleKeys(readerID)
@@ -1561,6 +1586,10 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 		// With 10% probability, flip enablement of L6 filters.
 		if g.rng.Float64() <= 0.1 {
 			opts.useL6Filters = !opts.useL6Filters
+		}
+		// With 10% probability, flip enablement of MaximumSuffixProperty.
+		if g.rng.Float64() <= 0.1 {
+			opts.flags.useMaxSuffixProp = !opts.flags.useMaxSuffixProp
 		}
 	}
 }

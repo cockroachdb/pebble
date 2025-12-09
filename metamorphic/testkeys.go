@@ -27,8 +27,9 @@ var TestkeysKeyFormat = KeyFormat{
 	BlockPropertyCollectors: []func() pebble.BlockPropertyCollector{
 		sstable.NewTestKeysBlockPropertyCollector,
 	},
-	FormatKey:       func(k UserKey) string { return string(k) },
-	FormatKeySuffix: func(s UserKeySuffix) string { return string(s) },
+	FormatKey:             func(k UserKey) string { return string(k) },
+	FormatKeySuffix:       func(s UserKeySuffix) string { return string(s) },
+	MaximumSuffixProperty: sstable.MaxTestKeysSuffixProperty{},
 	NewGenerator: func(km *keyManager, rng *rand.Rand, cfg OpConfig) KeyGenerator {
 		return &testkeyKeyGenerator{
 			keyManager: km,
