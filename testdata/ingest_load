@@ -143,4 +143,4 @@ pebble: table format (Pebble,v4) is not within range supported at DB format majo
 load writer-version=21 db-version=21
 d#0,SET:blob{fileNum=2952 value=foo}
 ----
-pebble: table with blob values must provide associated blob files
+pebble: cannot ingest table with blob values at format major version 021
