@@ -308,7 +308,7 @@ func TestIngestLocalWithBlobs(t *testing.T) {
 			db, err = runDBDefineCmd(td, &Options{
 				Comparer:           testkeys.Comparer,
 				FS:                 fs,
-				FormatMajorVersion: internalFormatNewest,
+				FormatMajorVersion: FormatIngestBlobFiles,
 			})
 			require.NoError(t, err)
 			return ""

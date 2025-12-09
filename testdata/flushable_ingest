@@ -38,7 +38,7 @@ ext
 ext1
 ext2
 ext3
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 # Ingest can complete despite the flush being blocked.
@@ -62,7 +62,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000002
 ext
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 allowFlush
@@ -96,7 +96,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000002
 ext
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 # Test basic WAL replay
@@ -117,7 +117,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000002
 ext
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -210,7 +210,7 @@ MANIFEST-000001
 OPTIONS-000002
 ext
 ext5
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 allowFlush
@@ -440,7 +440,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000002
 ext
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -460,7 +460,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000002
 ext
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 open
@@ -493,7 +493,7 @@ MANIFEST-000001
 MANIFEST-000012
 OPTIONS-000010
 ext
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000002.MANIFEST-000012
 
 # Make sure that the new mutable memtable can accept writes.
@@ -636,7 +636,7 @@ LOCK
 MANIFEST-000001
 OPTIONS-000002
 ext
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 close
@@ -655,7 +655,7 @@ MANIFEST-000001
 OPTIONS-000002
 ext
 ext1
-marker.format-version.000015.028
+marker.format-version.000016.029
 marker.manifest.000001.MANIFEST-000001
 
 open

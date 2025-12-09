@@ -253,6 +253,10 @@ const (
 	// Previously, marking for compaction required a manifest rotation.
 	FormatMarkForCompactionInVersionEdit
 
+	// FormatIngestBlobFiles is a format major version that adds support for
+	// ingesting blob files as part of local ingestions.
+	FormatIngestBlobFiles
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
@@ -397,6 +401,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatMarkForCompactionInVersionEdit: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatMarkForCompactionInVersionEdit)
+	},
+	FormatIngestBlobFiles: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatIngestBlobFiles)
 	},
 }
 
