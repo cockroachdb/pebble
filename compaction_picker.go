@@ -841,13 +841,6 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		}
 	}
 
-	// Initialize the max-bytes setting for each level to "infinity" which will
-	// disallow compaction for that level. We'll fill in the actual value below
-	// for levels we want to allow compactions from.
-	for level := 0; level < numLevels; level++ {
-		p.levelMaxBytes[level] = math.MaxInt64
-	}
-
 	dbSizeBelowL0 := dbSize
 	dbSize += p.vers.Levels[0].AggregateSize()
 	p.dbSizeBytes = dbSize
@@ -858,45 +851,74 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		if firstNonEmptyLevel >= 0 {
 			p.baseLevel = firstNonEmptyLevel
 		}
+		for level := 0; level < numLevels; level++ {
+			p.levelMaxBytes[level] = math.MaxInt64
+		}
 		return
 	}
 
-	bottomLevelSize := dbSize - dbSize/uint64(p.opts.Experimental.LevelMultiplier)
+	// Compute base level (where L0 data is compacted to) and level size targets.
+	p.baseLevel, p.levelMaxBytes = calculateLevelSizes(p.opts, dbSize, firstNonEmptyLevel)
+}
+
+// calculateLevelSizes calculates the base level and the maximum size for each level.
+//
+// In a "perfect" LSM tree, the base level has exactly L0MaxBytes and each level
+// below is LevelMultiplier times bigger.
+//
+// We use LevelMultiplier and LBaseMaxBytes to determine the base level (no
+// smaller than firstNonEmptyLevel). We then calculate the multiplier that would
+// make the base level be exactly LBaseMaxBytes.
+func calculateLevelSizes(
+	opts *Options, dbSize uint64, firstNonEmptyLevel int,
+) (baseLevel int, levelMaxBytes [numLevels]int64) {
+	// Initialize the max-bytes setting for each level to "infinity" which will
+	// disallow compaction for that level. We'll fill in the actual value below
+	// for levels we want to allow compactions from.
+	for level := range levelMaxBytes {
+		levelMaxBytes[level] = math.MaxInt64
+	}
+
+	if firstNonEmptyLevel < 1 {
+		panic("invalid firstNonEmptyLevel")
+	}
+	bottomLevelSize := dbSize - dbSize/uint64(opts.Experimental.LevelMultiplier)
 
 	curLevelSize := bottomLevelSize
 	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
-		curLevelSize = uint64(float64(curLevelSize) / float64(p.opts.Experimental.LevelMultiplier))
+		curLevelSize = uint64(float64(curLevelSize) / float64(opts.Experimental.LevelMultiplier))
 	}
 
 	// Compute base level (where L0 data is compacted to).
-	baseBytesMax := uint64(p.opts.LBaseMaxBytes)
-	p.baseLevel = firstNonEmptyLevel
-	for p.baseLevel > 1 && curLevelSize > baseBytesMax {
-		p.baseLevel--
-		curLevelSize = uint64(float64(curLevelSize) / float64(p.opts.Experimental.LevelMultiplier))
+	baseBytesMax := uint64(opts.LBaseMaxBytes)
+	baseLevel = firstNonEmptyLevel
+	for baseLevel > 1 && curLevelSize > baseBytesMax {
+		baseLevel--
+		curLevelSize = uint64(float64(curLevelSize) / float64(opts.Experimental.LevelMultiplier))
 	}
 
 	smoothedLevelMultiplier := 1.0
-	if p.baseLevel < numLevels-1 {
+	if baseLevel < numLevels-1 {
 		smoothedLevelMultiplier = math.Pow(
 			float64(bottomLevelSize)/float64(baseBytesMax),
-			1.0/float64(numLevels-p.baseLevel-1))
+			1.0/float64(numLevels-baseLevel-1))
 	}
 
 	levelSize := float64(baseBytesMax)
-	for level := p.baseLevel; level < numLevels; level++ {
-		if level > p.baseLevel && levelSize > 0 {
+	for level := baseLevel; level < numLevels; level++ {
+		if level > baseLevel && levelSize > 0 {
 			levelSize *= smoothedLevelMultiplier
 		}
 		// Round the result since test cases use small target level sizes, which
 		// can be impacted by floating-point imprecision + integer truncation.
 		roundedLevelSize := math.Round(levelSize)
 		if roundedLevelSize > float64(math.MaxInt64) {
-			p.levelMaxBytes[level] = math.MaxInt64
+			levelMaxBytes[level] = math.MaxInt64
 		} else {
-			p.levelMaxBytes[level] = int64(roundedLevelSize)
+			levelMaxBytes[level] = int64(roundedLevelSize)
 		}
 	}
+	return baseLevel, levelMaxBytes
 }
 
 type levelSizeAdjust struct {
