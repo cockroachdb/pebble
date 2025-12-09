@@ -35,6 +35,7 @@ var CockroachKeyFormat = KeyFormat{
 		}
 		return fmt.Sprint(cockroachkvs.FormatKeySuffix(s))
 	},
+	MaximumSuffixProperty: cockroachkvs.MaxMVCCTimestampProperty{},
 	ParseFormattedKey: func(formattedKey string) UserKey {
 		return UserKey(cockroachkvs.ParseFormattedKey(formattedKey))
 	},
