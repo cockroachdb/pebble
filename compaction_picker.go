@@ -900,6 +900,13 @@ func calculateLevelSizes(
 	}
 
 	levelSize := float64(baseBytesMax)
+	if smoothedLevelMultiplier > float64(opts.Experimental.LevelMultiplier) {
+		// Don't let the multiplier grow beyond the configured level multiplier.
+		// Instead, grow all levels proportionally by allowing a larger L1.
+		smoothedLevelMultiplier = float64(opts.Experimental.LevelMultiplier)
+		levelSize = float64(curLevelSize)
+	}
+
 	for level := baseLevel; level < numLevels; level++ {
 		// Round the result since test cases use small target level sizes, which
 		// can be impacted by floating-point imprecision + integer truncation.

@@ -110,55 +110,35 @@ L4: 939 B
 L5: 9 KiB
 L6: 88 KiB
 
-# Smoothing multiplier is
-# `(size(Lbottom)/size(Lbase))^(1/(Lbottom-Lbase)) = (1000000/1)^(1/(6-1)) = 1000000^(1/5)`
-#
-# size(L1) = size(Lbase) = 1
-# size(L2) = size(L1) * 1000000^(1/5) ~= 16
-# size(L3) = size(L2) * 1000000^(1/5) ~= 251
-# size(L4) = size(L3) * 1000000^(1/5) ~= 3981
-# size(L5) = size(L4) * 1000000^(1/5) ~= 63096
-# size(L6) = size(L5) * 1000000^(1/5) ~= 1000000
-
 init l-base-max-bytes=1
 L6: 1000000
 ----
-Multiplier: 16.00
-L1: 1 B
-L2: 16 B
-L3: 241 B
-L4: 3.6 KiB
-L5: 57 KiB
+Multiplier: 10.00
+L1: 9 B
+L2: 90 B
+L3: 900 B
+L4: 8.8 KiB
+L5: 88 KiB
 L6: 879 KiB
-
-# Smoothing multiplier is
-# `(size(Lbottom)/size(Lbase))^(Lbottom-Lbase) = (64000000/64)^(1/(6-1)) = 1000000^(1/5)`
-#
-# size(L1) = size(Lbase) = 64
-# size(L2) = size(L1) * 1000000^(1/5) ~= 1014
-# size(L3) = size(L2) * 1000000^(1/5) ~= 16076
-# size(L4) = size(L3) * 1000000^(1/5) ~= 254789
-# size(L5) = size(L4) * 1000000^(1/5) ~= 4038127
-# size(L6) = size(L5) * 1000000^(1/5) ~= 64000000
 
 init l-base-max-bytes=64
 L6: 64000000
 ----
-Multiplier: 15.52
-L1: 64 B
-L2: 993 B
-L3: 15 KiB
-L4: 234 KiB
-L5: 3.5 MiB
+Multiplier: 10.00
+L1: 576 B
+L2: 5.6 KiB
+L3: 56 KiB
+L4: 562 KiB
+L5: 5.5 MiB
 L6: 55 MiB
 
 init l-base-max-bytes=1
 L0: 4
 L6: 10
 ----
-Multiplier: 13.00
+Multiplier: 10.00
 L5: 1 B
-L6: 13 B
+L6: 10 B
 
 init
 L6: 10GiB
@@ -193,43 +173,43 @@ L6: 922 GiB
 init
 L6: 7TiB
 ----
-Multiplier: 10.06
-L1: 64 MiB
-L2: 644 MiB
-L3: 6.3 GiB
-L4: 64 GiB
-L5: 641 GiB
+Multiplier: 10.00
+L1: 66 MiB
+L2: 661 MiB
+L3: 6.5 GiB
+L4: 65 GiB
+L5: 645 GiB
 L6: 6.3 TiB
 
 init
 L6: 10TiB
 ----
-Multiplier: 10.81
-L1: 64 MiB
-L2: 692 MiB
-L3: 7.3 GiB
-L4: 79 GiB
-L5: 853 GiB
+Multiplier: 10.00
+L1: 94 MiB
+L2: 944 MiB
+L3: 9.2 GiB
+L4: 92 GiB
+L5: 922 GiB
 L6: 9 TiB
 
 init
 L6: 40TiB
 ----
-Multiplier: 14.26
-L1: 64 MiB
-L2: 913 MiB
-L3: 13 GiB
-L4: 181 GiB
-L5: 2.5 TiB
+Multiplier: 10.00
+L1: 377 MiB
+L2: 3.7 GiB
+L3: 37 GiB
+L4: 369 GiB
+L5: 3.6 TiB
 L6: 36 TiB
 
 init
 L6: 100TiB
 ----
-Multiplier: 17.13
-L1: 64 MiB
-L2: 1.1 GiB
-L3: 18 GiB
-L4: 314 GiB
-L5: 5.3 TiB
+Multiplier: 10.00
+L1: 944 MiB
+L2: 9.2 GiB
+L3: 92 GiB
+L4: 922 GiB
+L5: 9 TiB
 L6: 90 TiB
