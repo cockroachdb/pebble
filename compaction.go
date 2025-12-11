@@ -1599,6 +1599,14 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 		}
 	}
 
+	// Add any blob files referenced by the ingested sstables to the version edit.
+	for id, bf := range ingestFlushable.blobFileMap {
+		ve.NewBlobFiles = append(ve.NewBlobFiles, manifest.BlobFileMetadata{
+			FileID:   id,
+			Physical: bf,
+		})
+	}
+
 	return ve, nil
 }
 

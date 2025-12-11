@@ -1273,13 +1273,43 @@ func (i *Iterator) constructPointIter(
 		),
 		ValueRetrievalProfile: i.valueRetrievalProfile,
 	}
+
+	// Determine the blob file mapping. We may need to combine the version's
+	// BlobFileSet with blob files from ingestedFlushables in the memtable queue.
+	var maxReadAmp int
+	var versionBlobFiles *manifest.BlobFileSet
+
 	if i.readState != nil {
-		i.blobValueFetcher.Init(&i.readState.current.BlobFiles, i.fc, readEnv,
-			blob.SuggestedCachedReaders(i.readState.current.MaxReadAmp()))
+		versionBlobFiles = &i.readState.current.BlobFiles
+		maxReadAmp = i.readState.current.MaxReadAmp()
 	} else if i.version != nil {
-		i.blobValueFetcher.Init(&i.version.BlobFiles, i.fc, readEnv,
-			blob.SuggestedCachedReaders(i.version.MaxReadAmp()))
+		versionBlobFiles = &i.version.BlobFiles
+		maxReadAmp = i.version.MaxReadAmp()
 	}
+
+	versionHasBlobFiles := versionBlobFiles != nil && versionBlobFiles.Count() > 0
+	memHasBlobFiles := !i.batchOnlyIter && memtables.hasBlobFiles()
+
+	var blobFileMapping base.BlobFileMapping
+	switch {
+	case versionHasBlobFiles && memHasBlobFiles:
+		// Create combined blob file mapping.
+		i.combinedBlobMapping.Primary = versionBlobFiles
+		i.combinedBlobMapping.Secondary = memtables
+		blobFileMapping = &i.combinedBlobMapping
+	case versionHasBlobFiles:
+		blobFileMapping = versionBlobFiles
+	case memHasBlobFiles:
+		blobFileMapping = memtables
+	default:
+		// No blob files to read from.
+	}
+
+	if blobFileMapping != nil {
+		i.blobValueFetcher.Init(blobFileMapping, i.fc, readEnv,
+			blob.SuggestedCachedReaders(maxReadAmp))
+	}
+
 	internalOpts := internalIterOpts{
 		readEnv:          sstable.ReadEnv{Block: readEnv},
 		blobValueFetcher: &i.blobValueFetcher,
@@ -1348,8 +1378,16 @@ func (i *Iterator) constructPointIter(
 		// Next are the memtables.
 		for j := len(memtables) - 1; j >= 0; j-- {
 			mem := memtables[j]
+			var iter internalIterator
+			// For ingested flushables, use newIterInternal to pass the blob
+			// value fetcher so that blob values can be read.
+			if fi, ok := mem.flushable.(*ingestedFlushable); ok {
+				iter = fi.newIterInternal(&i.opts, internalOpts)
+			} else {
+				iter = mem.newIter(&i.opts)
+			}
 			mlevels = append(mlevels, mergingIterLevel{
-				iter:         mem.newIter(&i.opts),
+				iter:         iter,
 				rangeDelIter: mem.newRangeDelIter(&i.opts),
 			})
 		}

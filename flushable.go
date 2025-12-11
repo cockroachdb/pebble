@@ -103,7 +103,7 @@ type flushableEntry struct {
 	// reader references are DB.mu.mem.queue and readState.memtables. The memory
 	// reserved by the flushable in the cache is released when the reader refs
 	// drop to zero. If the flushable is referencing sstables, then the file
-	// refount is also decreased once the reader refs drops to 0. If the
+	// refcount is also decreased once the reader refs drops to 0. If the
 	// flushable is a memTable, when the reader refs drops to zero, the writer
 	// refs will already be zero because the memtable will have been flushed and
 	// that only occurs once the writer refs drops to zero.
@@ -161,6 +161,35 @@ func (e *flushableEntry) readerUnrefHelper(
 
 type flushableList []*flushableEntry
 
+var _ base.BlobFileMapping = flushableList(nil)
+
+// Lookup implements base.BlobFileMapping. It searches all flushable entries
+// for the given blob file ID.
+func (l flushableList) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
+	for _, e := range l {
+		if ingested, ok := e.flushable.(*ingestedFlushable); ok {
+			if ingested.blobFileMap != nil {
+				if phys, ok := ingested.blobFileMap[fileID]; ok {
+					return phys, true
+				}
+			}
+		}
+	}
+	return nil, false
+}
+
+// HasBlobFiles returns true if any flushable entry contains blob files.
+func (l flushableList) hasBlobFiles() bool {
+	for _, e := range l {
+		if ingested, ok := e.flushable.(*ingestedFlushable); ok {
+			if len(ingested.blobFileMap) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ingestedFlushable is the implementation of the flushable interface for the
 // ingesting sstables which are added to the flushable list.
 type ingestedFlushable struct {
@@ -179,6 +208,11 @@ type ingestedFlushable struct {
 	// flush.
 	exciseSpan   KeyRange
 	exciseSeqNum base.SeqNum
+	// blobFileMap maps blob file IDs to their physical blob files for this
+	// ingest. This is used by the blob value fetcher to lookup blob files
+	// for ingestedFlushables and is also used to populate the version edit.
+	// Nil if no blob files were ingested.
+	blobFileMap map[base.BlobFileID]*manifest.PhysicalBlobFile
 }
 
 func newIngestedFlushable(
@@ -188,6 +222,7 @@ func newIngestedFlushable(
 	newRangeKeyIters keyspanimpl.TableNewSpanIter,
 	exciseSpan KeyRange,
 	seqNum base.SeqNum,
+	blobFiles []manifest.BlobFileMetadata,
 ) *ingestedFlushable {
 	if invariants.Enabled {
 		for i := 1; i < len(files); i++ {
@@ -207,6 +242,14 @@ func newIngestedFlushable(
 		physicalFiles = append(physicalFiles, f.PhysicalMeta())
 	}
 
+	var blobFileMap map[base.BlobFileID]*manifest.PhysicalBlobFile
+	if len(blobFiles) > 0 {
+		blobFileMap = make(map[base.BlobFileID]*manifest.PhysicalBlobFile, len(blobFiles))
+		for i := range blobFiles {
+			blobFileMap[blobFiles[i].FileID] = blobFiles[i].Physical
+		}
+	}
+
 	ret := &ingestedFlushable{
 		files:            physicalFiles,
 		comparer:         comparer,
@@ -217,6 +260,7 @@ func newIngestedFlushable(
 		hasRangeKeys: hasRangeKeys,
 		exciseSpan:   exciseSpan,
 		exciseSeqNum: seqNum,
+		blobFileMap:  blobFileMap,
 	}
 
 	return ret
@@ -227,13 +271,24 @@ func newIngestedFlushable(
 
 // newIter is part of the flushable interface.
 func (s *ingestedFlushable) newIter(o *IterOptions) internalIterator {
+	return s.newIterInternal(o, internalIterOpts{})
+}
+
+// newIterInternal creates an iterator with the given internal options.
+// This allows passing a blobValueFetcher for reading blob values.
+func (s *ingestedFlushable) newIterInternal(o *IterOptions, iio internalIterOpts) internalIterator {
 	var opts IterOptions
 	if o != nil {
 		opts = *o
 	}
 	return newLevelIter(
-		context.Background(), opts, s.comparer, s.newIters, s.slice.Iter(), manifest.FlushableIngestsLayer(),
-		internalIterOpts{},
+		context.Background(),
+		opts,
+		s.comparer,
+		s.newIters,
+		s.slice.Iter(),
+		manifest.FlushableIngestsLayer(),
+		iio,
 	)
 }
 

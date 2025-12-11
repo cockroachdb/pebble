@@ -1509,7 +1509,11 @@ func (d *DB) IngestAndExcise(
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.
 func (d *DB) newIngestedFlushableEntry(
-	meta []*manifest.TableMetadata, seqNum base.SeqNum, logNum base.DiskFileNum, exciseSpan KeyRange,
+	meta []*manifest.TableMetadata,
+	seqNum base.SeqNum,
+	logNum base.DiskFileNum,
+	exciseSpan KeyRange,
+	blobFiles []manifest.BlobFileMetadata,
 ) (*flushableEntry, error) {
 	// If there's an excise being done atomically with the same ingest, we
 	// assign the lowest sequence number in the set of sequence numbers for this
@@ -1542,7 +1546,7 @@ func (d *DB) newIngestedFlushableEntry(
 		}
 	}
 
-	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan, seqNum)
+	f := newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan, seqNum, blobFiles)
 
 	// NB: The logNum/seqNum are the WAL number which we're writing this entry
 	// to and the sequence number within the WAL which we'll write this entry
@@ -1571,7 +1575,10 @@ func (d *DB) newIngestedFlushableEntry(
 // recycle the WAL in this function is irrelevant as long as the correct log
 // numbers are assigned to the appropriate flushable.
 func (d *DB) handleIngestAsFlushable(
-	meta []*manifest.TableMetadata, seqNum base.SeqNum, exciseSpan KeyRange,
+	meta []*manifest.TableMetadata,
+	seqNum base.SeqNum,
+	exciseSpan KeyRange,
+	blobFiles []manifest.BlobFileMetadata,
 ) error {
 	b := d.NewBatch()
 	if exciseSpan.Valid() {
@@ -1611,7 +1618,7 @@ func (d *DB) handleIngestAsFlushable(
 		d.mu.Lock()
 	}
 
-	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
+	entry, err := d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan, blobFiles)
 	if err != nil {
 		return err
 	}
@@ -1853,7 +1860,6 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		// files.
 		hasRemoteFiles := len(shared) > 0 || len(external) > 0
 		// TODO(xinhaoz): Allow blob files as flushable ingests.
-		hasBlobFiles := len(local) < local.TotalFiles()
 		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
 			// We require that either the queue of flushables is below the
 			// stop-writes threshold (note that this is typically a conservative
@@ -1869,8 +1875,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold ||
 				d.mu.log.manager.ElevateWriteStallThresholdForFailover()) &&
 			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles &&
-			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises) &&
-			!hasBlobFiles
+			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises)
 		if !canIngestFlushable {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
@@ -1899,10 +1904,12 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		// slide the ingested sstables on top of the existing memtables.
 		asFlushable = true
 		fileMetas := make([]*manifest.TableMetadata, len(loadResult.local))
-		for i := range fileMetas {
+		var blobFiles []manifest.BlobFileMetadata
+		for i := range loadResult.local {
 			fileMetas[i] = loadResult.local[i].TableMetadata
+			blobFiles = append(blobFiles, loadResult.local[i].blobFiles...)
 		}
-		err = d.handleIngestAsFlushable(fileMetas, seqNum, args.ExciseSpan)
+		err = d.handleIngestAsFlushable(fileMetas, seqNum, args.ExciseSpan, blobFiles)
 	}
 
 	var ve *manifest.VersionEdit
