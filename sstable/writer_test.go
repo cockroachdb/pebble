@@ -216,6 +216,24 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			}
 			return buf.String()
 
+		case "scan-compaction":
+			iter, err := r.NewCompactionIter(NoTransforms, NoReadEnv, MakeTrivialReaderProvider(r), AssertNoBlobHandles)
+			if err != nil {
+				return err.Error()
+			}
+			defer iter.Close()
+			iterWithMeta := iter.(base.InternalIteratorWithKVMeta)
+
+			var buf bytes.Buffer
+			for kv, kvMeta := iterWithMeta.FirstWithMeta(); kv != nil; kv, kvMeta = iterWithMeta.NextWithMeta() {
+				v, _, err := kv.Value(nil)
+				if err != nil {
+					return err.Error()
+				}
+				fmt.Fprintf(&buf, "%s:%s meta=%s\n", kv.K, v, kvMeta)
+			}
+			return buf.String()
+
 		case "get":
 			var buf bytes.Buffer
 			for k := range crstrings.LinesSeq(td.Input) {

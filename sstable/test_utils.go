@@ -109,6 +109,7 @@ type ParsedKVOrSpan struct {
 	Value      []byte
 	BlobHandle blob.InlineHandle
 	Attr       base.ShortAttribute
+	Meta       base.KVMeta
 }
 
 func (kv ParsedKVOrSpan) IsKeySpan() bool {
@@ -168,6 +169,7 @@ func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan
 		internalKV := base.ParseInternalKV(line)
 		kv.Key = internalKV.K
 		kv.Value = internalKV.InPlaceValue()
+		kv.Meta = testkeys.ExtractKVMeta(kv.Value)
 
 		if kv.ForceObsolete && kv.Key.Kind() == InternalKeyKindRangeDelete {
 			return nil, errors.Errorf("force-obsolete is not allowed for RANGEDEL")
@@ -213,9 +215,9 @@ func ParseTestSST(w RawWriter, input string, bv *blobtest.Values) error {
 		case kv.IsKeySpan():
 			err = w.EncodeSpan(*kv.Span)
 		case kv.HasBlobValue():
-			err = w.AddWithBlobHandle(kv.Key, kv.BlobHandle, kv.Attr, kv.ForceObsolete, base.KVMeta{})
+			err = w.AddWithBlobHandle(kv.Key, kv.BlobHandle, kv.Attr, kv.ForceObsolete, kv.Meta)
 		default:
-			err = w.Add(kv.Key, kv.Value, kv.ForceObsolete, base.KVMeta{})
+			err = w.Add(kv.Key, kv.Value, kv.ForceObsolete, kv.Meta)
 		}
 		if err != nil {
 			return errors.Wrapf(err, "failed to write %s", kv)
