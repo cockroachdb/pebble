@@ -260,7 +260,6 @@ func TestBatchIngestSSTWithBlobs(t *testing.T) {
 		blobIDs, ok := batchrepr.DecodeBlobFileIDs(value)
 		require.True(t, ok)
 		require.Equal(t, blobFileIDs, blobIDs)
-
 		_, _, _, ok, err = r.Next()
 		require.NoError(t, err)
 		require.False(t, ok)

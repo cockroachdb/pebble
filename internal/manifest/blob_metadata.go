@@ -1086,3 +1086,40 @@ func (s *currentBlobFileHeap[O]) Pop() any {
 	item.heapState.heap = nil
 	return item
 }
+
+// CombinedBlobFileMapping chains multiple BlobFileMapping implementations,
+// looking up blob files first in the primary mapping (typically the version's
+// BlobFileSet), then falling back to the secondary mapping (e.g., from flushable
+// ingests that haven't been flushed yet).
+//
+// This is used when reading blob values from ingested sstables that are still
+// in the flushable queue. The blob files for these ingests aren't in the
+// version's BlobFileSet until the flush completes.
+type CombinedBlobFileMapping struct {
+	// Primary is the main blob file mapping, typically from the current version.
+	Primary base.BlobFileMapping
+	// Secondary is an additional blob file mapping to check if the blob file
+	// is not found in Primary. Currently, this is from flushable ingests that
+	// haven't been flushed yet. The secondary itself may aggregate multiple
+	// mappings (e.g., flushableList implements BlobFileMapping by iterating
+	// through all its entries).
+	Secondary base.BlobFileMapping
+}
+
+var _ base.BlobFileMapping = (*CombinedBlobFileMapping)(nil)
+
+// Lookup implements BlobFileMapping. It first checks the primary mapping, then
+// falls back to the secondary mapping.
+func (c *CombinedBlobFileMapping) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
+	if c.Primary != nil {
+		if obj, ok := c.Primary.Lookup(fileID); ok {
+			return obj, true
+		}
+	}
+	if c.Secondary != nil {
+		if obj, ok := c.Secondary.Lookup(fileID); ok {
+			return obj, true
+		}
+	}
+	return nil, false
+}

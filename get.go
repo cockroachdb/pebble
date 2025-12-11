@@ -120,8 +120,14 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 		readState: readState,
 		keyBuf:    buf.keyBuf,
 	}
+
 	// Set up a blob value fetcher to use for retrieving values from blob files.
-	i.blobValueFetcher.Init(&readState.current.BlobFiles, d.fileCache, block.NoReadEnv,
+	// Secondary contains the blob files from ingestedFlushables.
+	i.combinedBlobMapping = manifest.CombinedBlobFileMapping{
+		Primary:   &readState.current.BlobFiles,
+		Secondary: get.mem,
+	}
+	i.blobValueFetcher.Init(&i.combinedBlobMapping, d.fileCache, block.NoReadEnv,
 		blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
 	get.iiopts.blobValueFetcher = &i.blobValueFetcher
 
@@ -325,7 +331,13 @@ func (g *getIter) initializeNextIterator() (ok bool) {
 	// Create iterators from memtables from newest to oldest.
 	if n := len(g.mem); n > 0 {
 		m := g.mem[n-1]
-		g.iter = m.newIter(nil)
+		// For ingested flushables, use newIterInternal to pass the blob
+		// value fetcher so that blob values can be read.
+		if fi, ok := m.flushable.(*ingestedFlushable); ok {
+			g.iter = fi.newIterInternal(nil, g.iiopts)
+		} else {
+			g.iter = m.newIter(nil)
+		}
 		if !g.maybeSetTombstone(m.newRangeDelIter(nil)) {
 			return false
 		}

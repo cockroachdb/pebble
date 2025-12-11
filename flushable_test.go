@@ -141,7 +141,7 @@ func TestIngestedSSTFlushableAPI(t *testing.T) {
 			}
 			paths := LocalSSTables(localSSTs)
 			meta := loadFileMeta(paths, exciseSpan, startSeqNum)
-			flushable = newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan, base.SeqNum(startSeqNum))
+			flushable = newIngestedFlushable(meta, d.opts.Comparer, d.newIters, d.tableNewRangeKeyIter, exciseSpan, base.SeqNum(startSeqNum), nil /* blobFiles */)
 			return ""
 		case "iter":
 			iter := flushable.newIter(nil)

@@ -126,6 +126,10 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 		for _, file := range f.files {
 			liveFileNums[file.TableBacking.DiskFileNum] = struct{}{}
 		}
+		// Also protect blob files referenced by the flushable ingest.
+		for _, bf := range f.blobFileMap {
+			liveFileNums[bf.FileNum] = struct{}{}
+		}
 	}
 
 	manifestFileNum := d.mu.versions.manifestFileNum

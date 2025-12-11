@@ -415,6 +415,320 @@ func TestIngestLocalWithBlobs(t *testing.T) {
 	})
 }
 
+// TestFlushableIngestWithBlobs tests that ingestion of sstables with blob files
+// works correctly when the ingest is performed as a flushable.
+func TestFlushableIngestWithBlobs(t *testing.T) {
+	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
+	ctx := context.Background()
+	fs := vfs.NewMem()
+
+	opts := &Options{
+		Comparer:           testkeys.Comparer,
+		FS:                 fs,
+		FormatMajorVersion: internalFormatNewest,
+		// Disable automatic compactions for deterministic results.
+		DisableAutomaticCompactions: true,
+		// Set a high stop-writes threshold to ensure we can use flushable ingests.
+		MemTableStopWritesThreshold: 10,
+	}
+	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+		return ValueSeparationPolicy{
+			Enabled:                true,
+			MinimumSize:            4,
+			MinimumMVCCGarbageSize: 4,
+			MaxBlobReferenceDepth:  3,
+			RewriteMinimumAge:      0,
+		}
+	}
+	db, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+
+	// Write some data to the memtable that will overlap with ingested files.
+	require.NoError(t, db.Set([]byte("a"), []byte("memtable-value"), nil))
+	require.NoError(t, db.Set([]byte("b"), []byte("memtable-value"), nil))
+
+	// Create an SST with blob values that overlaps with the memtable.
+	sstFileName := "ext1"
+	var blobPaths []string
+	fileCount := 0
+
+	sstWriterOpts := sstable.WriterOptions{
+		Comparer:    testkeys.Comparer,
+		KeySchema:   &keySchema,
+		TableFormat: sstable.TableFormatPebblev7,
+	}
+	writerOpts := valsep.SSTBlobWriterOptions{
+		SSTWriterOpts:          sstWriterOpts,
+		ValueSeparationMinSize: opts.Experimental.ValueSeparationPolicy().MinimumSize,
+	}
+	writerOpts.NewBlobFileFn = func() (objstorage.Writable, error) {
+		path := fmt.Sprintf("blob%d", fileCount)
+		blobPaths = append(blobPaths, path)
+		f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
+		if err != nil {
+			return nil, err
+		}
+		fileCount++
+		return objstorageprovider.NewFileWritable(f), nil
+	}
+	sstFile, err := fs.Create(sstFileName, vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	sstHandle := objstorageprovider.NewFileWritable(sstFile)
+	writer := valsep.NewSSTBlobWriter(sstHandle, writerOpts)
+
+	// Write a key that overlaps with memtable (key "a").
+	// The value is long enough to be value-separated.
+	require.NoError(t, writer.Set([]byte("a"), []byte("blob-separated-value")))
+	require.NoError(t, writer.Set([]byte("c"), []byte("blob-separated-value-c")))
+	require.NoError(t, writer.Close())
+
+	// Verify we created a blob file.
+	require.NotEmpty(t, blobPaths, "expected at least one blob file to be created")
+
+	// Ingest the SST with its blob files. This should trigger the flushable
+	// ingest path because key "a" overlaps with the memtable.
+	localTables := LocalSSTables{
+		LocalSST{
+			Path:      sstFileName,
+			BlobPaths: blobPaths,
+		},
+	}
+	stats, err := db.IngestLocal(ctx, localTables, KeyRange{})
+	require.NoError(t, err)
+	// ApproxIngestedIntoL0Bytes > 0 indicates the file went through the
+	// flushable ingest path (overlapped with memtable).
+	require.Greater(t, stats.ApproxIngestedIntoL0Bytes, uint64(0),
+		"expected ingest to go through flushable path due to memtable overlap")
+
+	// Verify we can read back the ingested blob values before flushing.
+	val, closer, err := db.Get([]byte("a"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value"), val)
+	closer.Close()
+
+	val, closer, err = db.Get([]byte("c"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-c"), val)
+	closer.Close()
+
+	// Verify the memtable value for "b" is still accessible.
+	val, closer, err = db.Get([]byte("b"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("memtable-value"), val)
+	closer.Close()
+
+	// Flush to move the flushable ingest to the LSM.
+	require.NoError(t, db.Flush())
+
+	// Verify values are still accessible after flush.
+	val, closer, err = db.Get([]byte("a"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value"), val)
+	closer.Close()
+
+	val, closer, err = db.Get([]byte("c"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-c"), val)
+	closer.Close()
+
+	// Test iterator as well to ensure constructPointIter works correctly.
+	iter, err := db.NewIter(nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, iter.Close()) }()
+
+	require.True(t, iter.First())
+	require.Equal(t, []byte("a"), iter.Key())
+	val, err = iter.ValueAndErr()
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value"), val)
+
+	require.True(t, iter.Next())
+	require.Equal(t, []byte("b"), iter.Key())
+	val, err = iter.ValueAndErr()
+	require.NoError(t, err)
+	require.Equal(t, []byte("memtable-value"), val)
+
+	require.True(t, iter.Next())
+	require.Equal(t, []byte("c"), iter.Key())
+	val, err = iter.ValueAndErr()
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-c"), val)
+
+	require.False(t, iter.Next())
+}
+
+// TestFlushableIngestWithBlobsWALRecovery tests replaying the WAL containing flushable
+// ingests with blob files. This tests the scenario where:
+// 1. An SST with blob files is ingested as a flushable (due to overlap with memtable).
+// 2. The DB is closed before the entry is flushed.
+// 3. On reopen, WAL replay should reconstruct the flushable ingest with blob files.
+// 4. The blob values should be readable after recovery.
+func TestFlushableIngestWithBlobsWALRecovery(t *testing.T) {
+	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
+	ctx := context.Background()
+	// Use an on-disk filesystem, because Ingest with a MemFS will copy, not
+	// link the ingested file.
+	dir := t.TempDir()
+	fs := vfs.Default
+
+	opts := &Options{
+		Comparer:           testkeys.Comparer,
+		FS:                 fs,
+		FormatMajorVersion: internalFormatNewest,
+		// Disable automatic compactions for deterministic results.
+		DisableAutomaticCompactions: true,
+		// Set a high stop-writes threshold to ensure we can use flushable ingests.
+		MemTableStopWritesThreshold: 10,
+	}
+	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+		return ValueSeparationPolicy{
+			Enabled:                true,
+			MinimumSize:            4,
+			MinimumMVCCGarbageSize: 4,
+			MaxBlobReferenceDepth:  3,
+			RewriteMinimumAge:      0,
+		}
+	}
+
+	// Create the SST with blob files before opening the DB.
+	sstFileName := fs.PathJoin(dir, "ext1")
+	var blobPaths []string
+	fileCount := 0
+
+	sstWriterOpts := sstable.WriterOptions{
+		Comparer:    testkeys.Comparer,
+		KeySchema:   &keySchema,
+		TableFormat: sstable.TableFormatPebblev7,
+	}
+	writerOpts := valsep.SSTBlobWriterOptions{
+		SSTWriterOpts:          sstWriterOpts,
+		ValueSeparationMinSize: opts.Experimental.ValueSeparationPolicy().MinimumSize,
+	}
+	writerOpts.NewBlobFileFn = func() (objstorage.Writable, error) {
+		path := fs.PathJoin(dir, fmt.Sprintf("blob%d", fileCount))
+		blobPaths = append(blobPaths, path)
+		f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
+		if err != nil {
+			return nil, err
+		}
+		fileCount++
+		return objstorageprovider.NewFileWritable(f), nil
+	}
+	sstFile, err := fs.Create(sstFileName, vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	sstHandle := objstorageprovider.NewFileWritable(sstFile)
+	writer := valsep.NewSSTBlobWriter(sstHandle, writerOpts)
+
+	// Write keys with values long enough to be value-separated.
+	require.NoError(t, writer.Set([]byte("a"), []byte("blob-separated-value-a")))
+	require.NoError(t, writer.Set([]byte("c"), []byte("blob-separated-value-c")))
+	require.NoError(t, writer.Close())
+
+	// Verify we created a blob file.
+	require.NotEmpty(t, blobPaths, "expected at least one blob file to be created")
+
+	// Open the DB and write some data to the memtable.
+	db, err := Open(dir, opts)
+	require.NoError(t, err)
+
+	// Write some data to the memtable that will overlap with ingested files.
+	require.NoError(t, db.Set([]byte("a"), []byte("memtable-value-a"), nil))
+	require.NoError(t, db.Set([]byte("b"), []byte("memtable-value-b"), nil))
+
+	// Ingest the SST with its blob files. This should trigger the flushable
+	// ingest path because key "a" overlaps with the memtable.
+	localTables := LocalSSTables{
+		LocalSST{
+			Path:      sstFileName,
+			BlobPaths: blobPaths,
+		},
+	}
+	stats, err := db.IngestLocal(ctx, localTables, KeyRange{} /* exciseSpan */)
+	require.NoError(t, err)
+	// ApproxIngestedIntoL0Bytes > 0 indicates the file went through the
+	// flushable ingest path (overlapped with memtable).
+	require.Greater(t, stats.ApproxIngestedIntoL0Bytes, uint64(0),
+		"expected ingest to go through flushable path due to memtable overlap")
+
+	// Verify we can read the blob values before closing.
+	val, closer, err := db.Get([]byte("a"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-a"), val)
+	closer.Close()
+
+	val, closer, err = db.Get([]byte("c"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-c"), val)
+	closer.Close()
+
+	// Close the DB without flushing the flushable ingest.
+	// This will leave the flushable ingest in the WAL.
+	require.NoError(t, db.Close())
+
+	// Reopen the DB. WAL replay should reconstruct the flushable ingest
+	// with blob files.
+	db, err = Open(dir, opts)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+
+	// Verify we can read the blob values after WAL recovery.
+	// This tests that replayIngestedFlushable correctly reconstructs
+	// the blob file mappings.
+	val, closer, err = db.Get([]byte("a"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-a"), val)
+	closer.Close()
+
+	val, closer, err = db.Get([]byte("b"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("memtable-value-b"), val)
+	closer.Close()
+
+	val, closer, err = db.Get([]byte("c"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-c"), val)
+	closer.Close()
+
+	// Test iterator after recovery to ensure constructPointIter works correctly.
+	iter, err := db.NewIter(nil)
+	require.NoError(t, err)
+
+	require.True(t, iter.First())
+	require.Equal(t, []byte("a"), iter.Key())
+	val, err = iter.ValueAndErr()
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-a"), val)
+
+	require.True(t, iter.Next())
+	require.Equal(t, []byte("b"), iter.Key())
+	val, err = iter.ValueAndErr()
+	require.NoError(t, err)
+	require.Equal(t, []byte("memtable-value-b"), val)
+
+	require.True(t, iter.Next())
+	require.Equal(t, []byte("c"), iter.Key())
+	val, err = iter.ValueAndErr()
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-c"), val)
+
+	require.False(t, iter.Next())
+	require.NoError(t, iter.Close())
+
+	// Flush and verify values are still accessible.
+	require.NoError(t, db.Flush())
+
+	val, closer, err = db.Get([]byte("a"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-a"), val)
+	closer.Close()
+
+	val, closer, err = db.Get([]byte("c"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("blob-separated-value-c"), val)
+	closer.Close()
+}
+
 func TestIngestLoadInvalid(t *testing.T) {
 	mem := vfs.NewMem()
 	f, err := mem.Create("invalid", vfs.WriteCategoryUnspecified)
