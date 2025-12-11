@@ -824,9 +824,9 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	// Determine the first non-empty level and the total DB size.
 	firstNonEmptyLevel := numLevels - 1
 	var dbSize uint64
-	for level := 1; level < numLevels; level++ {
+	for level := numLevels - 1; level > 0; level-- {
 		if p.vers.Levels[level].AggregateSize() > 0 {
-			firstNonEmptyLevel = min(firstNonEmptyLevel, level)
+			firstNonEmptyLevel = level
 			dbSize += p.vers.Levels[level].AggregateSize()
 		}
 	}
@@ -900,6 +900,17 @@ func calculateLevelSizes(
 	}
 
 	levelSize := float64(baseBytesMax)
+	if smoothedLevelMultiplier > float64(opts.Experimental.LevelMultiplier) {
+		// Don't let the multiplier grow beyond the configured level multiplier.
+		// Instead, grow all levels proportionally by allowing a larger L1.
+		//
+		// TODO(radu): revisit this decision, as it could result in much more
+		// expensive L0->L1 compactions. Consider increasing the memtable size
+		// proportionally.
+		smoothedLevelMultiplier = float64(opts.Experimental.LevelMultiplier)
+		levelSize = float64(curLevelSize)
+	}
+
 	for level := baseLevel; level < numLevels; level++ {
 		// Round the result since test cases use small target level sizes, which
 		// can be impacted by floating-point imprecision + integer truncation.
