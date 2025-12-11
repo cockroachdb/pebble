@@ -273,7 +273,7 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 				if err != nil {
 					return errors.Wrapf(err, "parsing bloom filter bits")
 				}
-				o.FilterPolicy = makeTestingBloomFilterPolicy(name, bits)
+				o.FilterPolicy = makeTestingBloomFilterPolicy(base.TableFilterFamily(name), bits)
 			case "none":
 				o.FilterPolicy = base.NoFilterPolicy
 			default:
@@ -311,22 +311,42 @@ func ParseWriterOptions[StringOrStringer any](o *WriterOptions, args ...StringOr
 // testingBloomFilterPolicy is used to allow bloom filter policies with non-default
 // bits-per-key setting and names.
 type testingBloomFilterPolicy struct {
-	bloom.FilterPolicy
-	name string
+	bloom  base.TableFilterPolicy
+	family base.TableFilterFamily
 }
 
-var _ FilterPolicy = (*testingBloomFilterPolicy)(nil)
+var _ base.TableFilterPolicy = (*testingBloomFilterPolicy)(nil)
 
-func makeTestingBloomFilterPolicy(name string, bitsPerKey int) *testingBloomFilterPolicy {
+func makeTestingBloomFilterPolicy(
+	family base.TableFilterFamily, bitsPerKey int,
+) *testingBloomFilterPolicy {
 	return &testingBloomFilterPolicy{
-		FilterPolicy: bloom.FilterPolicy(bitsPerKey),
-		name:         name,
+		bloom:  bloom.FilterPolicy(bitsPerKey),
+		family: family,
 	}
 }
 
-// Name implements the pebble.FilterPolicy interface.
 func (t *testingBloomFilterPolicy) Name() string {
-	return t.name
+	return string(t.family)
+}
+
+func (t *testingBloomFilterPolicy) NewWriter() base.TableFilterWriter {
+	return &testingBloomFilterWriter{
+		bloom:  t.bloom.NewWriter(),
+		family: t.family,
+	}
+}
+
+type testingBloomFilterWriter struct {
+	bloom  base.TableFilterWriter
+	family base.TableFilterFamily
+}
+
+func (w *testingBloomFilterWriter) AddKey(key []byte) { w.bloom.AddKey(key) }
+
+func (w *testingBloomFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
+	data, _ := w.bloom.Finish()
+	return data, w.family
 }
 
 func comparerFromCmdArg(value string) (*Comparer, error) {

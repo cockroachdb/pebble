@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -88,13 +89,12 @@ func openReader(
 	obj *objstorage.MemObj, writerOpts *WriterOptions, cacheHandle *cache.Handle,
 ) (*Reader, error) {
 	readerOpts := ReaderOptions{
-		Comparer:   writerOpts.Comparer,
-		KeySchemas: KeySchemas{writerOpts.KeySchema.Name: writerOpts.KeySchema},
+		Comparer:       writerOpts.Comparer,
+		KeySchemas:     KeySchemas{writerOpts.KeySchema.Name: writerOpts.KeySchema},
+		FilterDecoders: []base.TableFilterDecoder{bloom.Decoder},
 	}
-	if writerOpts.FilterPolicy != nil {
-		readerOpts.Filters = map[string]FilterPolicy{
-			writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy,
-		}
+	if writerOpts.FilterPolicy == testFilterPolicy {
+		readerOpts.FilterDecoders = []base.TableFilterDecoder{testFilterDecoder}
 	}
 	readerOpts.CacheOpts = sstableinternal.CacheOptions{CacheHandle: cacheHandle}
 	r, err := NewMemReader(obj.Data(), readerOpts)
@@ -427,13 +427,9 @@ func runRewriteCmd(
 		return nil, r, errors.Wrap(err, "rewrite failed")
 	}
 	readerOpts := ReaderOptions{
-		Comparer:   opts.Comparer,
-		KeySchemas: KeySchemas{opts.KeySchema.Name: opts.KeySchema},
-	}
-	if opts.FilterPolicy != nil {
-		readerOpts.Filters = map[string]FilterPolicy{
-			opts.FilterPolicy.Name(): opts.FilterPolicy,
-		}
+		Comparer:       opts.Comparer,
+		KeySchemas:     KeySchemas{opts.KeySchema.Name: opts.KeySchema},
+		FilterDecoders: []base.TableFilterDecoder{bloom.Decoder},
 	}
 	r.Close()
 

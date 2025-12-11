@@ -872,15 +872,19 @@ func (w *layoutWriter) WriteIndexBlock(b []byte) (block.Handle, error) {
 	return h, err
 }
 
-// WriteFilterBlock finishes the provided filter, constructs a trailer, and
-// writes the block and trailer to the writer. It automatically adds the filter
-// block to the file's meta index when the writer is finished.
-func (w *layoutWriter) WriteFilterBlock(f filterWriter) (bh block.Handle, err error) {
-	b, err := f.finish()
+// WriteFilterBlock finishes the provided filter, constructs a trailer, writes
+// the block and trailer, and adds the filter block to the metaindex.
+//
+// Returns the (uncompressed) block length and filter family.
+func (w *layoutWriter) WriteFilterBlock(
+	f base.TableFilterWriter,
+) (blockLength uint64, family base.TableFilterFamily, err error) {
+	data, family := f.Finish()
+	bh, err := w.writeNamedBlockUncompressed(data, blockkind.Filter, filterFamilyToBlockName(family))
 	if err != nil {
-		return block.Handle{}, err
+		return 0, "", err
 	}
-	return w.writeNamedBlockUncompressed(b, blockkind.Filter, filterPolicyToBlockName(f.policyName()))
+	return bh.Length, family, nil
 }
 
 // WritePropertiesBlock constructs a trailer for the provided properties block
@@ -1075,18 +1079,18 @@ func (w *layoutWriter) Finish() (size uint64, err error) {
 	return w.offset, err
 }
 
-// filterPolicyToBlockName returns the metaindex block key for the filter
+// filterFamilyToBlockName returns the metaindex block key for the filter
 // block with the given policy name.
-func filterPolicyToBlockName(filterPolicy string) string {
-	return "fullfilter." + filterPolicy
+func filterFamilyToBlockName(filterPolicy base.TableFilterFamily) string {
+	return "fullfilter." + string(filterPolicy)
 }
 
-// filterPolicyFromBlockName is the inverse of filterPolicyToBlockName,
-// returning the filer policy if the given block handle is for a filter block.
-func filterPolicyFromBlockName(blockMetaHandle string) (_ string, ok bool) {
+// filterFamilyFromBlockName is the inverse of filterFamilyToBlockName,
+// returning the filter family if the given block handle is for a filter block.
+func filterFamilyFromBlockName(blockMetaHandle string) (_ base.TableFilterFamily, ok bool) {
 	res, ok := strings.CutPrefix(blockMetaHandle, "fullfilter.")
 	if !ok {
 		return "", ok
 	}
-	return res, ok
+	return base.TableFilterFamily(res), ok
 }

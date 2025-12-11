@@ -12,51 +12,62 @@ const (
 	SizeClassAwareBlockSizeThreshold = 60
 )
 
-// FilterWriter provides an interface for creating filter blocks. See
-// FilterPolicy for more details about filters.
-type FilterWriter interface {
+// TableFilterFamily identifies the table filter family. Each family has an
+// associated TableFilterDecoder implementation.
+type TableFilterFamily string
+
+// TableFilterWriter provides an interface for creating table filter blocks.
+type TableFilterWriter interface {
 	// AddKey adds a key to the current filter block.
 	AddKey(key []byte)
 
-	// Finish appends to dst an encoded filter tha holds the current set of
-	// keys. The writer state is reset after the call to Finish allowing the
-	// writer to be reused for the creation of additional filters.
-	Finish(dst []byte) []byte
+	// Finish returns an encoded filter for the current set of keys and the filter
+	// family.
+	//
+	// The resulting filter data can only be decoded by the TableFilterDecoder
+	// which is associated with the TableFilterFamily. The caller has to persist
+	// the family along with the filter data.
+	//
+	// The writer state is reset after the call to Finish allowing the writer to
+	// be reused for the creation of additional filters.
+	Finish() ([]byte, TableFilterFamily)
 }
 
-// FilterPolicy is an algorithm for probabilistically encoding a set of keys.
-// The canonical implementation is a Bloom filter.
+// TableFilterPolicy is an algorithm for creating an approximate membership
+// query filter. The canonical implementation is a Bloom filter.
 //
-// Every FilterPolicy has a name. This names the algorithm itself, not any one
-// particular instance. Aspects specific to a particular instance, such as the
-// set of keys or any other parameters, will be encoded in the []byte filter
-// returned by NewWriter.
+// A TableFilterPolicy implementation can decide at runtime what family of filter it creates.
 //
 // The name may be written to files on disk, along with the filter data. To use
 // these filters, the FilterPolicy name at the time of writing must equal the
 // name at the time of reading. If they do not match, the filters will be
 // ignored, which will not affect correctness but may affect performance.
-type FilterPolicy interface {
-	// Name names the filter policy.
+type TableFilterPolicy interface {
+	// Name is the name of the filter policy. It is used in option files.
 	Name() string
+
+	// NewWriter creates a new TableFilterWriter.
+	NewWriter() TableFilterWriter
+}
+
+// TableFilterDecoder provides an interface for using table filter blocks. Each
+// decoder is associated with a TableFilterFamily. See TableFilterPolicy.
+type TableFilterDecoder interface {
+	Family() TableFilterFamily
 
 	// MayContain returns whether the encoded filter may contain given key.
 	// False positives are possible, where it returns true for keys not in the
 	// original set.
 	MayContain(filter, key []byte) bool
-
-	// NewWriter creates a new FilterWriter.
-	NewWriter() FilterWriter
 }
 
 // NoFilterPolicy implements the "none" filter policy.
-var NoFilterPolicy FilterPolicy = noFilter{}
+var NoFilterPolicy TableFilterPolicy = noFilter{}
 
 type noFilter struct{}
 
-func (noFilter) Name() string                       { return "none" }
-func (noFilter) MayContain(filter, key []byte) bool { return true }
-func (noFilter) NewWriter() FilterWriter            { panic("not implemented") }
+func (noFilter) Name() string                 { return "none" }
+func (noFilter) NewWriter() TableFilterWriter { panic("not implemented") }
 
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
 // within the sstable. It should not maintain any per-sstable state, and must

@@ -297,12 +297,13 @@ func (c *replayConfig) getCheckpointDir(r *replay.Runner) string {
 func (c *replayConfig) parseHooks() *pebble.ParseHooks {
 	return &pebble.ParseHooks{
 		NewComparer: makeComparer,
-		NewFilterPolicy: func(name string) (pebble.FilterPolicy, error) {
+		NewFilterPolicy: func(name string) (pebble.TableFilterPolicy, error) {
+			if p, ok := bloom.PolicyFromName(name); ok {
+				return p, nil
+			}
 			switch name {
 			case "none":
 				return base.NoFilterPolicy, nil
-			case "rocksdb.BuiltinBloomFilter":
-				return bloom.FilterPolicy(10), nil
 			default:
 				return nil, errors.Errorf("invalid filter policy name %q", name)
 			}

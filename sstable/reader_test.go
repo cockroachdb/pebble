@@ -1271,7 +1271,11 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 
 	blockSizeCandidates := []int{32, 64, 128, 256}
 	restartIntervalCandidates := []int{1, 4, 8, 16}
-	filterPolicyCandidates := []FilterPolicy{nil, bloom.FilterPolicy(1), bloom.FilterPolicy(10)}
+	filterPolicyCandidates := []base.TableFilterPolicy{
+		nil,
+		bloom.FilterPolicy(1),
+		bloom.FilterPolicy(10),
+	}
 
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
@@ -1294,7 +1298,7 @@ func TestRandomizedPrefixSuffixRewriter(t *testing.T) {
 		require.NoError(t, err)
 		opts := ReaderOptions{Comparer: testkeys.Comparer}
 		if filterPolicy != nil {
-			opts.Filters = map[string]FilterPolicy{filterPolicy.Name(): filterPolicy}
+			opts.FilterDecoders = []base.TableFilterDecoder{bloom.Decoder}
 		}
 		eReader, err := newReader(f, opts)
 		require.NoError(t, err)
@@ -1702,11 +1706,8 @@ func TestValidateBlockChecksums(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, f.Close())
 
-		filter := bloom.FilterPolicy(10)
 		r, err := newReader(fCopy, ReaderOptions{
-			Filters: map[string]FilterPolicy{
-				filter.Name(): filter,
-			},
+			FilterDecoders: []base.TableFilterDecoder{bloom.Decoder},
 		})
 		require.NoError(t, err)
 		defer func() { require.NoError(t, r.Close()) }()

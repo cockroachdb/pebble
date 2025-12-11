@@ -502,7 +502,7 @@ func (r *Reader) initMetaindexBlocks(
 	ctx context.Context,
 	blockEnv block.ReadEnv,
 	readHandle objstorage.ReadHandle,
-	filters map[string]FilterPolicy,
+	filterDecoders []base.TableFilterDecoder,
 ) error {
 	var meta map[string]block.Handle
 	var err error
@@ -538,10 +538,10 @@ func (r *Reader) initMetaindexBlocks(
 		r.rangeKeyBH = bh
 	}
 
-	for name, fp := range filters {
-		if bh, ok := meta[filterPolicyToBlockName(name)]; ok {
+	for _, fd := range filterDecoders {
+		if bh, ok := meta[filterFamilyToBlockName(fd.Family())]; ok {
 			r.filterBH = bh
-			r.tableFilter = newTableFilterReader(fp, r.filterMetricsTracker)
+			r.tableFilter = newTableFilterReader(fd, r.filterMetricsTracker)
 			break
 		}
 	}
@@ -635,7 +635,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		return nil, err
 	}
 	for name, bh := range meta {
-		if _, ok := filterPolicyFromBlockName(name); ok {
+		if _, ok := filterFamilyFromBlockName(name); ok {
 			l.Filter = append(l.Filter, NamedBlockHandle{Name: name, Handle: bh})
 		}
 	}
@@ -1015,7 +1015,7 @@ func NewReader(ctx context.Context, f objstorage.Readable, o ReaderOptions) (*Re
 		IterStats:  o.InitFileReadStats.IterStats,
 		BufferPool: bufferPool,
 	}
-	if err := r.initMetaindexBlocks(ctx, blockEnv, rh, o.Filters); err != nil {
+	if err := r.initMetaindexBlocks(ctx, blockEnv, rh, o.FilterDecoders); err != nil {
 		r.err = err
 		return nil, err
 	}

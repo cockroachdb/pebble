@@ -101,10 +101,10 @@ func CopySpan(
 
 	// Copy the filter block if it exists. Note that we don't rely on the reader
 	// having been configured with a matching filter decoder.
-	if props.FilterPolicyName != "" {
-		bh, ok := metaIndex[filterPolicyToBlockName(props.FilterPolicyName)]
+	if props.FilterFamily != "" {
+		bh, ok := metaIndex[filterFamilyToBlockName(base.TableFilterFamily(props.FilterFamily))]
 		if !ok {
-			return 0, errors.Newf("table has filter policy %q but no corresponding filter block", props.FilterPolicyName)
+			return 0, errors.Newf("table has filter policy %q but no corresponding filter block", props.FilterFamily)
 		}
 		filterBlock, err := r.readFilterBlock(ctx, block.NoReadEnv, rh, bh)
 		if err != nil {
@@ -113,10 +113,7 @@ func CopySpan(
 		filterData := slices.Clone(filterBlock.BlockData())
 		filterBlock.Release()
 
-		w.setFilter(copyFilterWriter{
-			origPolicyName: props.FilterPolicyName,
-			data:           filterData,
-		})
+		w.setFilter(filterData, base.TableFilterFamily(props.FilterFamily))
 	}
 
 	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, rh)

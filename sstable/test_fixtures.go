@@ -121,7 +121,7 @@ func buildHamletTestSST(
 	fs vfs.FS,
 	filename string,
 	compression *block.CompressionProfile,
-	fp FilterPolicy,
+	fp base.TableFilterPolicy,
 	comparer *Comparer,
 	blockSize int,
 	indexBlockSize int,
@@ -245,7 +245,7 @@ var TestFixtures = []TestFixtureInfo{
 
 // Build creates an sst file for the given fixture.
 func (tf TestFixtureInfo) Build(fs vfs.FS, filename string) error {
-	var fp base.FilterPolicy
+	var fp base.TableFilterPolicy
 	if tf.FullKeyFilter || tf.PrefixFilter {
 		fp = bloom.FilterPolicy(10)
 	}

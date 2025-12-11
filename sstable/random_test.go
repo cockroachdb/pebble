@@ -293,12 +293,9 @@ type randomTableConfig struct {
 
 func (cfg *randomTableConfig) readerOpts() ReaderOptions {
 	rOpts := ReaderOptions{
-		Comparer:   testkeys.Comparer,
-		KeySchemas: map[string]*colblk.KeySchema{cfg.wopts.KeySchema.Name: cfg.wopts.KeySchema},
-		Filters:    map[string]FilterPolicy{},
-	}
-	if cfg.wopts.FilterPolicy != nil {
-		rOpts.Filters[cfg.wopts.FilterPolicy.Name()] = cfg.wopts.FilterPolicy
+		Comparer:       testkeys.Comparer,
+		FilterDecoders: []base.TableFilterDecoder{bloom.Decoder},
+		KeySchemas:     map[string]*colblk.KeySchema{cfg.wopts.KeySchema.Name: cfg.wopts.KeySchema},
 	}
 	return rOpts
 }
@@ -319,8 +316,8 @@ func (cfg *randomTableConfig) randomize() {
 			KeySchema:               &testkeysSchema,
 			WritingToLowestLevel:    cfg.rng.IntN(2) == 1,
 		}
-		if v := cfg.rng.IntN(11); v > 0 {
-			cfg.wopts.FilterPolicy = bloom.FilterPolicy(v)
+		if bitsPerKey := cfg.rng.IntN(11); bitsPerKey > 0 {
+			cfg.wopts.FilterPolicy = bloom.FilterPolicy(bitsPerKey)
 		}
 		if cfg.wopts.TableFormat >= TableFormatPebblev1 && cfg.rng.Float64() < 0.75 {
 			cfg.wopts.BlockPropertyCollectors = append(cfg.wopts.BlockPropertyCollectors, NewTestKeysBlockPropertyCollector)

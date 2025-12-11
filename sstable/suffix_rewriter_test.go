@@ -81,9 +81,9 @@ func TestRewriteSuffixProps(t *testing.T) {
 
 			// Rewrite the SST using updated options and check the returned props.
 			readerOpts := ReaderOptions{
-				Comparer:   wOpts.Comparer,
-				KeySchemas: KeySchemas{wOpts.KeySchema.Name: wOpts.KeySchema},
-				Filters:    map[string]base.FilterPolicy{wOpts.FilterPolicy.Name(): wOpts.FilterPolicy},
+				Comparer:       wOpts.Comparer,
+				KeySchemas:     KeySchemas{wOpts.KeySchema.Name: wOpts.KeySchema},
+				FilterDecoders: []base.TableFilterDecoder{bloom.Decoder},
 			}
 			r, err := NewMemReader(sst, readerOpts)
 			require.NoError(t, err)
@@ -242,8 +242,8 @@ func BenchmarkRewriteSST(b *testing.B) {
 			writerOpts.Compression = compressions[comp]
 			sstBytes[comp][size] = makeTestkeySSTable(b, writerOpts, from, sizes[size], 0 /* rangeKeys */)
 			r, err := NewMemReader(sstBytes[comp][size], ReaderOptions{
-				Comparer: test4bSuffixComparer,
-				Filters:  map[string]base.FilterPolicy{writerOpts.FilterPolicy.Name(): writerOpts.FilterPolicy},
+				Comparer:       test4bSuffixComparer,
+				FilterDecoders: []base.TableFilterDecoder{bloom.Decoder},
 			})
 			if err != nil {
 				b.Fatal(err)

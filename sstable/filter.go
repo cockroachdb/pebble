@@ -4,7 +4,11 @@
 
 package sstable
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/cockroachdb/pebble/internal/base"
+)
 
 // FilterMetrics holds metrics for the filter policy.
 type FilterMetrics struct {
@@ -36,26 +40,22 @@ func (m *FilterMetricsTracker) Load() FilterMetrics {
 	}
 }
 
-type filterWriter interface {
-	addKey(key []byte)
-	finish() ([]byte, error)
-	policyName() string
-}
-
 type tableFilterReader struct {
-	policy  FilterPolicy
+	decoder base.TableFilterDecoder
 	metrics *FilterMetricsTracker
 }
 
-func newTableFilterReader(policy FilterPolicy, metrics *FilterMetricsTracker) *tableFilterReader {
+func newTableFilterReader(
+	decoder base.TableFilterDecoder, metrics *FilterMetricsTracker,
+) *tableFilterReader {
 	return &tableFilterReader{
-		policy:  policy,
+		decoder: decoder,
 		metrics: metrics,
 	}
 }
 
 func (f *tableFilterReader) mayContain(data, key []byte) bool {
-	mayContain := f.policy.MayContain(data, key)
+	mayContain := f.decoder.MayContain(data, key)
 	if f.metrics != nil {
 		if mayContain {
 			f.metrics.misses.Add(1)
@@ -64,34 +64,4 @@ func (f *tableFilterReader) mayContain(data, key []byte) bool {
 		}
 	}
 	return mayContain
-}
-
-type tableFilterWriter struct {
-	policy FilterPolicy
-	writer FilterWriter
-	// count is the count of the number of keys added to the filter.
-	count int
-}
-
-func newTableFilterWriter(policy FilterPolicy) *tableFilterWriter {
-	return &tableFilterWriter{
-		policy: policy,
-		writer: policy.NewWriter(),
-	}
-}
-
-func (f *tableFilterWriter) addKey(key []byte) {
-	f.count++
-	f.writer.AddKey(key)
-}
-
-func (f *tableFilterWriter) finish() ([]byte, error) {
-	if f.count == 0 {
-		return nil, nil
-	}
-	return f.writer.Finish(nil), nil
-}
-
-func (f *tableFilterWriter) policyName() string {
-	return f.policy.Name()
 }

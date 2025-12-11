@@ -318,7 +318,7 @@ func (s *sstableT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(tw, "comparer\t%s\n", props.ComparerName)
 		fmt.Fprintf(tw, "key-schema\t%s\n", formatNull(props.KeySchemaName))
 		fmt.Fprintf(tw, "merger\t%s\n", formatNull(props.MergerName))
-		fmt.Fprintf(tw, "filter\t%s\n", formatNull(props.FilterPolicyName))
+		fmt.Fprintf(tw, "filter\t%s\n", formatNull(props.FilterFamily))
 		fmt.Fprintf(tw, "compression\t%s\n", props.CompressionName)
 		if props.CompressionStats != "" {
 			fmt.Fprintf(tw, "compression stats\t%s\n", props.CompressionStats)

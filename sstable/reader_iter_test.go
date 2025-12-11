@@ -709,31 +709,36 @@ func testBoundaryConditions(t *testing.T, reader *Reader, keys [][]byte) {
 	}
 }
 
-// controllableFilterPolicy is a test filter policy that allows controlling
+// controllableFilterDecoder is a test filter policy that allows controlling
 // the return values of MayContain to simulate different bloom filter behaviors.
-type controllableFilterPolicy struct {
-	bloom.FilterPolicy
+type controllableFilterDecoder struct {
 	mayContainResult bool
 	mayContainError  error
-	name             string
+	family           base.TableFilterFamily
 }
+
+var _ base.TableFilterDecoder = (*controllableFilterDecoder)(nil)
 
 func newControllableFilterPolicy(
-	name string, mayContain bool, err error,
-) *controllableFilterPolicy {
-	return &controllableFilterPolicy{
-		FilterPolicy:     bloom.FilterPolicy(10),
+	family base.TableFilterFamily, mayContain bool, err error,
+) (*testingBloomFilterPolicy, *controllableFilterDecoder) {
+	policy := &testingBloomFilterPolicy{
+		bloom:  bloom.FilterPolicy(10),
+		family: family,
+	}
+	decoder := &controllableFilterDecoder{
 		mayContainResult: mayContain,
 		mayContainError:  err,
-		name:             name,
+		family:           family,
 	}
+	return policy, decoder
 }
 
-func (c *controllableFilterPolicy) Name() string {
-	return c.name
+func (c *controllableFilterDecoder) Family() base.TableFilterFamily {
+	return c.family
 }
 
-func (c *controllableFilterPolicy) MayContain(filter, key []byte) bool {
+func (c *controllableFilterDecoder) MayContain(filter, key []byte) bool {
 	return c.mayContainResult
 }
 
@@ -742,13 +747,22 @@ func (c *controllableFilterPolicy) MayContain(filter, key []byte) bool {
 // code path that would require more complex mocking.
 
 // createTestSST creates an SST with the given keys and filter policy for testing.
-func createTestSST(t *testing.T, keys []string, filterPolicy FilterPolicy) (*Reader, func()) {
-	return createTestSSTWithOptions(t, keys, filterPolicy, false)
+func createTestSST(
+	t *testing.T,
+	keys []string,
+	filterPolicy base.TableFilterPolicy,
+	filterDecoder base.TableFilterDecoder,
+) (*Reader, func()) {
+	return createTestSSTWithOptions(t, keys, filterPolicy, filterDecoder, false)
 }
 
 // createTestSSTWithOptions creates an SST with optional two-level index forcing.
 func createTestSSTWithOptions(
-	t *testing.T, keys []string, filterPolicy FilterPolicy, forceTwoLevel bool,
+	t *testing.T,
+	keys []string,
+	filterPolicy base.TableFilterPolicy,
+	filterDecoder base.TableFilterDecoder,
+	forceTwoLevel bool,
 ) (*Reader, func()) {
 	mem := vfs.NewMem()
 
@@ -778,10 +792,8 @@ func createTestSSTWithOptions(
 		Comparer: base.DefaultComparer,
 		Merger:   base.DefaultMerger,
 	}
-	if filterPolicy != nil {
-		readerOpts.Filters = map[string]FilterPolicy{
-			filterPolicy.Name(): filterPolicy,
-		}
+	if filterDecoder != nil {
+		readerOpts.FilterDecoders = []base.TableFilterDecoder{filterDecoder}
 	}
 
 	reader, err := newReader(f, readerOpts)
@@ -800,11 +812,11 @@ func TestBloomFilterOptimizationSingleLevel(t *testing.T) {
 
 	t.Run("bloom_miss_no_invalidation", func(t *testing.T) {
 		// Create a filter policy that always returns false (bloom miss)
-		filterPolicy := newControllableFilterPolicy("test-filter-miss", false, nil)
+		filterPolicy, filterDecoder := newControllableFilterPolicy("test-filter-miss", false, nil)
 
 		// Create test SST with some keys
 		keys := []string{"aa", "bb", "cc", "dd"}
-		reader, cleanup := createTestSST(t, keys, filterPolicy)
+		reader, cleanup := createTestSST(t, keys, filterPolicy, filterDecoder)
 		defer cleanup()
 
 		var pool block.BufferPool
@@ -844,11 +856,11 @@ func TestBloomFilterOptimizationSingleLevel(t *testing.T) {
 
 	t.Run("bloom_hit_no_invalidation", func(t *testing.T) {
 		// Create a filter policy that always returns true (bloom hit)
-		filterPolicy := newControllableFilterPolicy("test-filter-hit", true, nil)
+		filterPolicy, filterDecoder := newControllableFilterPolicy("test-filter-hit", true, nil)
 
 		// Create test SST with some keys
 		keys := []string{"aa", "bb", "cc", "dd"}
-		reader, cleanup := createTestSST(t, keys, filterPolicy)
+		reader, cleanup := createTestSST(t, keys, filterPolicy, filterDecoder)
 		defer cleanup()
 
 		var pool block.BufferPool
@@ -895,14 +907,14 @@ func TestBloomFilterOptimizationTwoLevel(t *testing.T) {
 
 	t.Run("bloom_miss_no_invalidation", func(t *testing.T) {
 		// Create a filter policy that always returns false (bloom miss)
-		filterPolicy := newControllableFilterPolicy("test-filter-2lvl-miss", false, nil)
+		filterPolicy, filterDecoder := newControllableFilterPolicy("test-filter-2lvl-miss", false, nil)
 
 		// Create test SST with enough keys to force two-level structure
 		keys := make([]string, 100)
 		for i := range 100 {
 			keys[i] = fmt.Sprintf("key%03d", i)
 		}
-		reader, cleanup := createTestSSTWithOptions(t, keys, filterPolicy, true)
+		reader, cleanup := createTestSSTWithOptions(t, keys, filterPolicy, filterDecoder, true)
 		defer cleanup()
 
 		// Verify it's actually a two-level index
@@ -946,14 +958,14 @@ func TestBloomFilterOptimizationTwoLevel(t *testing.T) {
 
 	t.Run("bloom_hit_no_invalidation", func(t *testing.T) {
 		// Create a filter policy that always returns true (bloom hit)
-		filterPolicy := newControllableFilterPolicy("test-filter-2lvl-hit", true, nil)
+		filterPolicy, filterDecoder := newControllableFilterPolicy("test-filter-2lvl-hit", true, nil)
 
 		// Create test SST with enough keys to force two-level structure
 		keys := make([]string, 100)
 		for i := range 100 {
 			keys[i] = fmt.Sprintf("key%03d", i)
 		}
-		reader, cleanup := createTestSSTWithOptions(t, keys, filterPolicy, true)
+		reader, cleanup := createTestSSTWithOptions(t, keys, filterPolicy, filterDecoder, true)
 		defer cleanup()
 
 		// Verify it's actually a two-level index
@@ -1003,9 +1015,9 @@ func TestBloomFilterOptimizationEdgeCases(t *testing.T) {
 
 	// Test case: SeekPrefixGE on iterator with no pre-loaded data block
 	t.Run("no_preloaded_block_single_level", func(t *testing.T) {
-		filterPolicy := newControllableFilterPolicy("test-no-preload", false, nil)
+		filterPolicy, filterDecoder := newControllableFilterPolicy("test-no-preload", false, nil)
 		keys := []string{"aa", "bb", "cc"}
-		reader, cleanup := createTestSST(t, keys, filterPolicy)
+		reader, cleanup := createTestSST(t, keys, filterPolicy, filterDecoder)
 		defer cleanup()
 
 		var pool block.BufferPool
@@ -1039,9 +1051,9 @@ func TestBloomFilterOptimizationEdgeCases(t *testing.T) {
 
 	// Test case: Multiple SeekPrefixGE calls with bloom misses
 	t.Run("multiple_seeks_bloom_miss", func(t *testing.T) {
-		filterPolicy := newControllableFilterPolicy("test-multiple-seeks", false, nil)
+		filterPolicy, filterDecoder := newControllableFilterPolicy("test-multiple-seeks", false, nil)
 		keys := []string{"aa", "bb", "cc"}
-		reader, cleanup := createTestSST(t, keys, filterPolicy)
+		reader, cleanup := createTestSST(t, keys, filterPolicy, filterDecoder)
 		defer cleanup()
 
 		var pool block.BufferPool
@@ -1081,7 +1093,7 @@ func TestBloomFilterOptimizationEdgeCases(t *testing.T) {
 		// Use real bloom filter for this test to get actual behavior
 		filterPolicy := bloom.FilterPolicy(10)
 		keys := []string{"aa", "bb", "cc"}
-		reader, cleanup := createTestSST(t, keys, filterPolicy)
+		reader, cleanup := createTestSST(t, keys, filterPolicy, bloom.Decoder)
 		defer cleanup()
 
 		var pool block.BufferPool
