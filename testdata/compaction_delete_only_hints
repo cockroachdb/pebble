@@ -49,12 +49,12 @@ L4:
 
 get-hints
 ----
-L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+L0.000004 b-r seqnums(tombstone=200-230, type=point-key-only)
 
 maybe-compact
 ----
 Deletion hints:
-  L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+  L0.000004 b-r seqnums(tombstone=200-230, type=point-key-only)
 Compactions:
   (none)
 
@@ -81,12 +81,12 @@ L4:
 
 get-hints
 ----
-L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+L0.000004 b-r seqnums(tombstone=200-230, type=point-key-only)
 
 maybe-compact
 ----
 Deletion hints:
-  L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+  L0.000004 b-r seqnums(tombstone=200-230, type=point-key-only)
 Compactions:
   (none)
 
@@ -94,7 +94,7 @@ Compactions:
 # overlapping hints which might delete a file multiple times. All of the
 # resolvable hints should be removed.
 
-define snapshots=(70)
+define
 L0
 a#300,RANGEDEL:k
 L1
@@ -119,16 +119,17 @@ L4:
 
 get-hints
 ----
-L0.000004 a-k seqnums(tombstone=300-300, file-smallest=110, type=point-key-only)
-L1.000005 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+L0.000004 a-k seqnums(tombstone=300-300, type=point-key-only)
+L1.000005 b-r seqnums(tombstone=200-230, type=point-key-only)
 
 maybe-compact
 ----
 Deletion hints:
-  L1.000005 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+  (none)
 Compactions:
-  [JOB 100] compacted(delete-only) (excised: 000005) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 -> L6 [000009] (1B), in 1.0s (2.0s total), output rate 1B/s
-[JOB 100] compacted(virtual-sst-rewrite) L1 [000009] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000010] (643B), in 1.0s (2.0s total), output rate 643B/s
+  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 + L3 [000007] (666B) Score=0.00 + L4 [000008] (666B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
+[JOB 100] compacted(virtual-sst-rewrite) L1 [000009] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000010] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000011] (655B), in 1.0s (2.0s total), output rate 655B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -153,7 +154,7 @@ L4:
 
 get-hints
 ----
-L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+L0.000004 b-r seqnums(tombstone=200-230, type=point-key-only)
 
 compact a-z
 ----
@@ -163,7 +164,7 @@ L5:
 maybe-compact
 ----
 Deletion hints:
-  L0.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+  L0.000004 b-r seqnums(tombstone=200-230, type=point-key-only)
 Compactions:
   (none)
 
@@ -195,7 +196,7 @@ L4:
 
 get-hints
 ----
-L1.000004 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+L1.000004 b-r seqnums(tombstone=200-230, type=point-key-only)
 
 # Tables 000005 and 000006 can be deleted as their largest sequence numbers fall
 # below the smallest sequence number of the range del. Table 000007 falls
@@ -234,21 +235,21 @@ get-hints
 # Place a compaction hint on a non-existent table in a higher level in the LSM.
 #
 # The selection of the sequence numbers for the hints is nuanced, and warrants
-# some explanation. The largest tombstone sequence number (27) and file smallest
-# sequence number (0) were chosen such that they fall into different snapshot
-# stripes, which ensures the hint is not resolved and dropped. The deletion
-# range 5-27 is also chosen such that it covers the sequence number range from
-# the table, i.e. 15-20, which *appears* to make the keys eligible for deletion.
+# some explanation. The largest tombstone sequence number (27) was chosen such
+# that it does NOT fall into the final snapshot stripe, ensuring the hint is not
+# resolved and dropped. The deletion range 5-27 is also chosen such that it
+# covers the sequence number range from the table, i.e. 15-20, which *appears*
+# to make the keys eligible for deletion.
 force-set-hints
-L0.000001 a-z 0 5-27 point_key_only
+L0.000001 a-z 5-27 point_key_only
 ----
-L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0, type=point-key-only)
+L0.000001 a-z seqnums(tombstone=5-27, type=point-key-only)
 
 # Hints on the table are unchanged, as the new sstable is at L6, and hints are
 # not generated on tables at this level.
 get-hints
 ----
-L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0, type=point-key-only)
+L0.000001 a-z seqnums(tombstone=5-27, type=point-key-only)
 
 # Closing snapshot 10 triggers an elision-only compaction in L6 rather than a
 # deletion-only compaction, as the earliest snapshot that remains open is 25,
@@ -270,7 +271,7 @@ close-snapshot
 
 get-hints
 ----
-L0.000001 a-z seqnums(tombstone=5-27, file-smallest=0, type=point-key-only)
+L0.000001 a-z seqnums(tombstone=5-27, type=point-key-only)
 
 # The LSM contains the key, as expected.
 iter
@@ -423,9 +424,9 @@ L6:
 
 get-hints
 ----
-L0.000013 a-i seqnums(tombstone=19-19, file-smallest=12, type=point-key-only)
-L0.000013 i-r seqnums(tombstone=19-19, file-smallest=13, type=point-and-range-key)
-L0.000013 r-z seqnums(tombstone=19-19, file-smallest=17, type=range-key-only)
+L0.000013 a-i seqnums(tombstone=19-19, type=point-key-only)
+L0.000013 i-r seqnums(tombstone=19-19, type=point-and-range-key)
+L0.000013 r-z seqnums(tombstone=19-19, type=range-key-only)
 
 maybe-compact
 ----
@@ -461,8 +462,8 @@ L4:
 
 get-hints
 ----
-L0.000004 a-k seqnums(tombstone=300-300, file-smallest=110, type=point-key-only)
-L1.000005 b-r seqnums(tombstone=200-230, file-smallest=30, type=point-key-only)
+L0.000004 a-k seqnums(tombstone=300-300, type=point-key-only)
+L1.000005 b-r seqnums(tombstone=200-230, type=point-key-only)
 
 iter
 first
@@ -532,7 +533,7 @@ L6:
 
 get-hints
 ----
-L0.000006 b-r seqnums(tombstone=12-12, file-smallest=11, type=point-key-only)
+L0.000006 b-r seqnums(tombstone=12-12, type=point-key-only)
 
 iter
 first
@@ -593,8 +594,8 @@ L6:
 
 get-hints
 ----
-L0.000005 b-l seqnums(tombstone=11-11, file-smallest=10, type=point-and-range-key)
-L0.000005 m-n seqnums(tombstone=11-11, file-smallest=10, type=point-and-range-key)
+L0.000005 b-l seqnums(tombstone=11-11, type=point-and-range-key)
+L0.000005 m-n seqnums(tombstone=11-11, type=point-and-range-key)
 
 iter
 first
@@ -665,7 +666,7 @@ L6:
 
 get-hints
 ----
-L0.000005 l-m seqnums(tombstone=11-11, file-smallest=10, type=point-and-range-key)
+L0.000005 l-m seqnums(tombstone=11-11, type=point-and-range-key)
 
 iter
 first
@@ -752,7 +753,7 @@ L6:
 
 get-hints
 ----
-L0.000006 c-h seqnums(tombstone=11-12, file-smallest=10, type=point-and-range-key)
+L0.000006 c-h seqnums(tombstone=11-12, type=point-and-range-key)
 
 close-snapshot
 11

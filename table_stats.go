@@ -503,7 +503,6 @@ func (d *DB) loadTableRangeDelStats(
 			tombstoneLevel:          level,
 			tombstoneLargestSeqNum:  s.LargestSeqNum(),
 			tombstoneSmallestSeqNum: s.SmallestSeqNum(),
-			fileSmallestSeqNum:      hintSeqNum,
 		})
 	}
 	if err != nil {

@@ -163,7 +163,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					}
 
 					var hintType deleteCompactionHintType
-					switch typ := parts[7]; typ {
+					switch typ := parts[6]; typ {
 					case "point_key_only":
 						hintType = deleteCompactionHintTypePointKeyOnly
 					case "range_key_only":
@@ -178,11 +178,10 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 						hintType:                hintType,
 						start:                   start,
 						end:                     end,
-						fileSmallestSeqNum:      base.SeqNum(parseUint64(parts[4])),
 						tombstoneLevel:          tombstoneLevel,
 						tombstoneFile:           tombstoneFile,
-						tombstoneSmallestSeqNum: base.SeqNum(parseUint64(parts[5])),
-						tombstoneLargestSeqNum:  base.SeqNum(parseUint64(parts[6])),
+						tombstoneSmallestSeqNum: base.SeqNum(parseUint64(parts[4])),
+						tombstoneLargestSeqNum:  base.SeqNum(parseUint64(parts[5])),
 					}
 					d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, h)
 					fmt.Fprintln(&buf, h.String())
