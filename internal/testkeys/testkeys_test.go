@@ -316,3 +316,8 @@ func TestIgnorableSuffix(t *testing.T) {
 	require.Equal(t, 0, Comparer.CompareRangeSuffixes([]byte("@1_synthetic"), []byte("@1_synthetic")))
 	require.Equal(t, 0, Comparer.CompareRangeSuffixes([]byte("@1"), []byte("@1")))
 }
+
+func TestExtractKVMeta(t *testing.T) {
+	require.Equal(t, base.KVMeta{}, ExtractKVMeta([]byte("foo")))
+	require.Equal(t, base.KVMeta{TieringSpanID: 1, TieringAttribute: 123}, ExtractKVMeta([]byte("foo;tiering:span=1,attr=123")))
+}
