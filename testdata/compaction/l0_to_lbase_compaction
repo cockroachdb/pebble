@@ -18,19 +18,19 @@ wrote 18278 keys
 flush
 ----
 L0.0:
-  000006:[a@1#10,SET-hci@1#4995,SET]
-  000007:[hcj@1#4996,SET-oex@1#9985,SET]
-  000008:[oey@1#9986,SET-vhm@1#14976,SET]
-  000009:[vhn@1#14977,SET-zzz@1#18287,SET]
+  000006:[a@1#10,SET-hb@1#4959,SET]
+  000007:[hba@1#4960,SET-ocd@1#9911,SET]
+  000008:[oce@1#9912,SET-vdf@1#14861,SET]
+  000009:[vdg@1#14862,SET-zzz@1#18287,SET]
 
 
 auto-compact
 ----
 L6:
-  000006:[a@1#10,SET-hci@1#4995,SET]
-  000007:[hcj@1#4996,SET-oex@1#9985,SET]
-  000008:[oey@1#9986,SET-vhm@1#14976,SET]
-  000009:[vhn@1#14977,SET-zzz@1#18287,SET]
+  000006:[a@1#10,SET-hb@1#4959,SET]
+  000007:[hba@1#4960,SET-ocd@1#9911,SET]
+  000008:[oce@1#9912,SET-vdf@1#14861,SET]
+  000009:[vdg@1#14862,SET-zzz@1#18287,SET]
 
 metrics
 ----
@@ -38,18 +38,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |  160KB |      0    0B |   0  1.47
-   L6      236KB |      4 236KB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
+   L0         0B |      0    0B |      0     0 |     0B     0B |  160KB |      0    0B |   0  1.48
+   L6      237KB |      4 237KB |      0     0 |     0B     0B |     0B |      0    0B |   1     0
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      236KB |      4 236KB |      0     0 |     0B     0B |  160KB |      0    0B |   1  2.47
+total      237KB |      4 237KB |      0     0 |     0B     0B |  160KB |      0    0B |   1  2.48
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      4  236KB     0B
-   L6 |     -  0.00  0.00 |      4 236KB |    0B    0B    0B |     0B    0B |      0     0B     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      4  237KB     0B
+   L6 |     -  0.00  0.00 |      4 237KB |    0B    0B    0B |     0B    0B |      0     0B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      4 236KB |    0B    0B    0B |     0B    0B |      4  396KB     0B
+total |     -     -     - |      4 237KB |    0B    0B    0B |     0B    0B |      4  397KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       0       0        0     4     0     0        0     0      0     0       0
@@ -77,7 +77,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   4 (236KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   4 (237KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -116,7 +116,7 @@ COMPRESSION
         Logical bytes compressed / decompressed
 level |  data blocks   |  value blocks  |  other blocks
 ------+----------------+----------------+---------------
-L0-L4 |   233KB / 0B   |    0B / 0B     |   569B / 0B
+L0-L4 |   234KB / 0B   |    0B / 0B     |   598B / 0B
 
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------

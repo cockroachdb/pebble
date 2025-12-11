@@ -221,17 +221,20 @@ func (w *RawColumnWriter) EstimatedSize() uint64 {
 	// until the sstable is finished.  Including the uncompressed size bounds
 	// the memory usage used by the writer to the physical size limit.
 	sz += w.indexBuffering.partitionSizeSum
-	sz += uint64(w.dataBlock.Size())
-	sz += uint64(w.indexBlockSize)
+	sz += uint64(w.dataBlock.Size() + block.TrailerLen)
+	sz += uint64(w.indexBlockSize + block.TrailerLen)
 	if w.rangeDelBlock.KeyCount() > 0 {
-		sz += uint64(w.rangeDelBlock.Size())
+		sz += uint64(w.rangeDelBlock.Size() + block.TrailerLen)
 	}
 	if w.rangeKeyBlock.KeyCount() > 0 {
-		sz += uint64(w.rangeKeyBlock.Size())
+		sz += uint64(w.rangeKeyBlock.Size() + block.TrailerLen)
 	}
+	if w.filterBlock != nil {
+		sz += w.filterBlock.estimatedSize() + block.TrailerLen
+	}
+	sz += w.props.EstimatedSize(w.opts.TableFormat) + block.TrailerLen
 
-	// TODO(jackson): Include an estimate of the properties, filter and meta
-	// index blocks sizes.
+	// TODO(jackson): Add the size of the meta index block.
 	return sz
 }
 

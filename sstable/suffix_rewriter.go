@@ -299,6 +299,7 @@ type copyFilterWriter struct {
 func (copyFilterWriter) addKey(key []byte)         { panic("unimplemented") }
 func (c copyFilterWriter) finish() ([]byte, error) { return c.data, nil }
 func (c copyFilterWriter) policyName() string      { return c.origPolicyName }
+func (c copyFilterWriter) estimatedSize() uint64   { return uint64(len(c.data)) }
 
 // RewriteKeySuffixesViaWriter is similar to RewriteKeySuffixes but uses just a
 // single loop over the Reader that writes each key to the Writer with the new

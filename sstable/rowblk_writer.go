@@ -1665,7 +1665,9 @@ func (w *RawRowWriter) EstimatedSize() uint64 {
 	size += w.indexBlock.estimatedSize()
 	size += uint64(w.rangeDelBlock.EstimatedSize())
 	size += uint64(w.rangeKeyBlock.EstimatedSize())
-	// TODO(jackson): Account for the size of the filter block.
+	if w.filter != nil {
+		size += w.filter.estimatedSize()
+	}
 	return size
 }
 
