@@ -200,6 +200,12 @@ type Iterator struct {
 	// blobValueFetcher is the ValueFetcher to use when retrieving values stored
 	// externally in blob files.
 	blobValueFetcher blob.ValueFetcher
+	// combinedBlobMapping chains the version's BlobFIleSet with any blob files
+	// from flushable ingests that haven't been flushed yet. This allows initializing
+	// blob value fetcher for reading blob values from ingested sstables before they
+	// are flushed to the LSM.  This is only populated when there are flushable
+	// ingests with blob files.
+	combinedBlobMapping manifest.CombinedBlobFileMapping
 
 	// All fields below this field are cleared during Iterator.Close before
 	// returning the Iterator to the pool. Any fields above this field must also
@@ -2465,6 +2471,7 @@ func (i *Iterator) Close() error {
 			i.rangeKey.rangeKeyIter.Close()
 		}
 		i.err = firstError(i.err, i.blobValueFetcher.Close())
+		i.combinedBlobMapping = manifest.CombinedBlobFileMapping{}
 	}
 	err := i.err
 

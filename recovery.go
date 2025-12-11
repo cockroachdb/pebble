@@ -668,6 +668,7 @@ func (d *DB) replayIngestedFlushable(
 	}
 
 	meta := make([]*manifest.TableMetadata, len(fileNums))
+	var blobFiles []manifest.BlobFileMetadata
 	var lastRangeKey keyspan.Span
 	for i, n := range fileNums {
 		readable, err := d.objProvider.OpenForReading(context.TODO(), base.FileTypeTable, n,
@@ -681,6 +682,8 @@ func (d *DB) replayIngestedFlushable(
 			blobReadable, err := d.objProvider.OpenForReading(context.TODO(), base.FileTypeBlob, base.DiskFileNum(blobFileID),
 				objstorage.OpenOptions{MustExist: true})
 			if err != nil {
+				err = errors.CombineErrors(err, closeReadables(blobReadables))
+				err = errors.CombineErrors(err, readable.Close())
 				return nil, errors.Wrap(err, "pebble: error when opening flushable ingest blob files")
 			}
 			blobReadables = append(blobReadables, blobReadable)
@@ -692,6 +695,7 @@ func (d *DB) replayIngestedFlushable(
 			return nil, errors.Wrap(err, "pebble: error when loading flushable ingest files")
 		}
 		meta[i] = res.meta
+		blobFiles = append(blobFiles, res.blobMetas...)
 		lastRangeKey = res.lastRangeKey
 	}
 	if lastRangeKey.Valid() && d.opts.Comparer.Split.HasSuffix(lastRangeKey.End) {
@@ -707,5 +711,5 @@ func (d *DB) replayIngestedFlushable(
 		panic("pebble: couldn't load all files in WAL entry")
 	}
 
-	return d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan)
+	return d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan, blobFiles)
 }

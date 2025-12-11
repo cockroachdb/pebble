@@ -1273,13 +1273,30 @@ func (i *Iterator) constructPointIter(
 		),
 		ValueRetrievalProfile: i.valueRetrievalProfile,
 	}
+
+	// Determine the primary blob file mapping and combine with flushable queue.
+	// Flushable queue may contain ingestedFlushables with blob file handles.
+	var maxReadAmp int
+	var blobFileMapping base.BlobFileMapping
 	if i.readState != nil {
-		i.blobValueFetcher.Init(&i.readState.current.BlobFiles, i.fc, readEnv,
-			blob.SuggestedCachedReaders(i.readState.current.MaxReadAmp()))
+		i.combinedBlobMapping.Primary = &i.readState.current.BlobFiles
+		i.combinedBlobMapping.Secondary = memtables
+		blobFileMapping = &i.combinedBlobMapping
+		maxReadAmp = i.readState.current.MaxReadAmp()
 	} else if i.version != nil {
-		i.blobValueFetcher.Init(&i.version.BlobFiles, i.fc, readEnv,
-			blob.SuggestedCachedReaders(i.version.MaxReadAmp()))
+		i.combinedBlobMapping.Primary = &i.version.BlobFiles
+		i.combinedBlobMapping.Secondary = memtables
+		blobFileMapping = &i.combinedBlobMapping
+		maxReadAmp = i.version.MaxReadAmp()
+	} else if len(memtables) > 0 {
+		// No version, but we have memtables that might have blob files.
+		blobFileMapping = memtables
 	}
+	if blobFileMapping != nil {
+		i.blobValueFetcher.Init(blobFileMapping, i.fc, readEnv,
+			blob.SuggestedCachedReaders(maxReadAmp))
+	}
+
 	internalOpts := internalIterOpts{
 		readEnv:          sstable.ReadEnv{Block: readEnv},
 		blobValueFetcher: &i.blobValueFetcher,
@@ -1348,8 +1365,16 @@ func (i *Iterator) constructPointIter(
 		// Next are the memtables.
 		for j := len(memtables) - 1; j >= 0; j-- {
 			mem := memtables[j]
+			var iter internalIterator
+			// For ingested flushables, use newIterInternal to pass the blob
+			// value fetcher so that blob values can be read.
+			if fi, ok := mem.flushable.(*ingestedFlushable); ok {
+				iter = fi.newIterInternal(&i.opts, internalOpts)
+			} else {
+				iter = mem.newIter(&i.opts)
+			}
 			mlevels = append(mlevels, mergingIterLevel{
-				iter:         mem.newIter(&i.opts),
+				iter:         iter,
 				rangeDelIter: mem.newRangeDelIter(&i.opts),
 			})
 		}
