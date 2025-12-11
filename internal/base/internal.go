@@ -655,6 +655,13 @@ type KVMeta struct {
 	TieringAttribute TieringAttribute
 }
 
+func (m KVMeta) String() string {
+	if m == (KVMeta{}) {
+		return "<no meta>"
+	}
+	return fmt.Sprintf("tiering:span=%d,attr=%d", m.TieringSpanID, m.TieringAttribute)
+}
+
 // Kind returns the KV's internal key kind.
 func (kv *InternalKV) Kind() InternalKeyKind {
 	return kv.K.Kind()

@@ -374,7 +374,7 @@ props rocksdb.compression
 ----
 rocksdb.compression: ZSTD
 
-# MinLZ is supported in v6.
+# MinLZ is supported since v6.
 build compression=minlz
 a#1,SET:thequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydog
 ----
@@ -384,3 +384,19 @@ seqnums:  [1-1]
 props rocksdb.compression
 ----
 rocksdb.compression: MinLZ
+
+build
+a#1,SET:a;tiering:span=1,attr=100
+b#1,SET:b;tiering:span=1,attr=102
+c#1,SET:c
+d#1,SET:d;tiering:span=1,attr=101
+----
+point:    [a#1,SET-d#1,SET]
+seqnums:  [1-1]
+
+scan-compaction
+----
+a#1,SET:a;tiering:span=1,attr=100 meta=tiering:span=1,attr=100
+b#1,SET:b;tiering:span=1,attr=102 meta=tiering:span=1,attr=102
+c#1,SET:c meta=<no meta>
+d#1,SET:d;tiering:span=1,attr=101 meta=tiering:span=1,attr=101
