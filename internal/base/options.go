@@ -24,13 +24,16 @@ type TableFilterWriter interface {
 	// Finish returns an encoded filter for the current set of keys and the filter
 	// family.
 	//
+	// If the filter should not be created (for example, if no keys were added or
+	// it the filter would be bigger than a set limit), returns ok=false.
+	//
 	// The resulting filter data can only be decoded by the TableFilterDecoder
 	// which is associated with the TableFilterFamily. The caller has to persist
 	// the family along with the filter data.
 	//
 	// The writer state is reset after the call to Finish allowing the writer to
 	// be reused for the creation of additional filters.
-	Finish() ([]byte, TableFilterFamily)
+	Finish() (_ []byte, _ TableFilterFamily, ok bool)
 }
 
 // TableFilterPolicy is an algorithm for creating an approximate membership

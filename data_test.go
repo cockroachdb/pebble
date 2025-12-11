@@ -1697,7 +1697,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			if err != nil {
 				return err
 			}
-			fp := bloom.FilterPolicy(v)
+			fp := bloom.FilterPolicy(uint32(v))
 			opts.TableFilterDecoders = []TableFilterDecoder{bloom.Decoder}
 			for i := range opts.Levels {
 				opts.Levels[i].TableFilterPolicy = fp

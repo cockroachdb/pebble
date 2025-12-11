@@ -1496,12 +1496,15 @@ func (w *RawRowWriter) Close() (err error) {
 
 	// Write the filter block.
 	if w.filterWriter != nil {
-		blockSize, filterFamily, err := w.layout.WriteFilterBlock(w.filterWriter)
-		if err != nil {
-			return err
+		filterData, filterFamily, ok := w.filterWriter.Finish()
+		if ok {
+			bh, err := w.layout.WriteFilterBlock(filterData, filterFamily)
+			if err != nil {
+				return err
+			}
+			w.props.FilterFamily = string(filterFamily)
+			w.props.FilterSize = bh.Length
 		}
-		w.props.FilterFamily = string(filterFamily)
-		w.props.FilterSize = blockSize
 	}
 
 	if w.twoLevelIndex {
