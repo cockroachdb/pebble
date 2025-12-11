@@ -255,7 +255,8 @@ type ingestLocalResult struct {
 }
 
 // ingestLoad1 creates the TableMetadata for one file. This file will be owned
-// by this store.
+// by this store. All readable objects will be closed by this function, even
+// in error cases.
 //
 // prevLastRangeKey is the last range key from the previous file. It is used to
 // ensure that the range keys defragment cleanly across files. These checks
@@ -269,7 +270,7 @@ func ingestLoad1(
 	compressionCounters *block.CompressionCounters,
 	tableNum base.TableNum,
 	rangeKeyValidator rangeKeyIngestValidator,
-	blobPaths []string,
+	blobFiles []objstorage.Readable,
 	blobFileNums []base.DiskFileNum,
 ) (res ingestLocalResult, err error) {
 	var meta *manifest.TableMetadata
@@ -286,6 +287,12 @@ func ingestLoad1(
 		return ingestLocalResult{}, errors.CombineErrors(err, readable.Close())
 	}
 	defer func() { _ = r.Close() }()
+	blobFilesClosed := false
+	defer func() {
+		if !blobFilesClosed {
+			_ = closeReadables(blobFiles)
+		}
+	}()
 
 	// Avoid ingesting tables with format versions this DB doesn't support.
 	tf, err := r.TableFormat()
@@ -324,12 +331,14 @@ func ingestLoad1(
 			return ingestLocalResult{}, errors.Newf(
 				"pebble: cannot ingest table with blob values at format major version %s", fmv)
 		}
-		if len(blobPaths) == 0 {
+		if len(blobFiles) == 0 {
 			return ingestLocalResult{}, errors.Newf(
 				"pebble: table with blob values must provide associated blob files")
 		}
 		// Build blob files and sst blob file references.
-		res.blobMetas, err = constructBlobFileMetadataForIngestedTable(ctx, opts, cacheHandle, meta, r, blobPaths, blobFileNums)
+		// constructBlobFileMetadataForIngestedTable will close the blob readables.
+		blobFilesClosed = true
+		res.blobMetas, err = constructBlobFileMetadataForIngestedTable(ctx, opts, cacheHandle, meta, r, blobFiles, blobFileNums)
 		if err != nil {
 			return ingestLocalResult{}, err
 		}
@@ -489,9 +498,9 @@ func ingestLoad1(
 }
 
 // constructBlobFileMetadataForIngestedTable creates table's blob references from the provided
-// blob file paths. This function will populate the manifest.TableMetadata's BlobReferences and
+// blob files. This function will populate the manifest.TableMetadata's BlobReferences and
 // BlobReferenceDepth fields, returning the manifest.BlobFileMetadata for the constructed blob
-// references.
+// references. All provided blob files will be closed, even in error cases.
 //
 // The following invariants are expected to hold:
 //   - The provided blob file paths are ordered by their index in the table's blob references
@@ -504,12 +513,13 @@ func constructBlobFileMetadataForIngestedTable(
 	cacheHandle *cache.Handle,
 	tableMeta *manifest.TableMetadata,
 	tableReader *sstable.Reader,
-	blobPaths []string,
+	blobFiles []objstorage.Readable,
 	blobFileNums []base.DiskFileNum,
 ) ([]manifest.BlobFileMetadata, error) {
-	if len(blobPaths) != len(blobFileNums) {
+	if len(blobFiles) != len(blobFileNums) {
+		_ = closeReadables(blobFiles)
 		return nil, errors.Errorf("pebble: number of blob paths (%d) does not match number of blob file nums (%d)",
-			len(blobPaths), len(blobFileNums))
+			len(blobFiles), len(blobFileNums))
 	}
 
 	// Read the blob reference index block to determine the size of values
@@ -517,22 +527,26 @@ func constructBlobFileMetadataForIngestedTable(
 	// in the table metadata.
 	h, err := tableReader.ReadBlobRefIndexBlock(ctx, block.ReadEnv{})
 	if err != nil {
+		_ = closeReadables(blobFiles)
 		return nil, err
 	}
 	defer h.Release()
 	var decoder colblk.ReferenceLivenessBlockDecoder
 	decoder.Init(h.BlockData())
-	if decoder.BlockDecoder().Rows() != len(blobPaths) {
+	if decoder.BlockDecoder().Rows() != len(blobFiles) {
+		_ = closeReadables(blobFiles)
 		return nil, errors.Newf("pebble: blob reference index has %d entries, but %d blob files were provided",
-			decoder.BlockDecoder().Rows(), len(blobPaths))
+			decoder.BlockDecoder().Rows(), len(blobFiles))
 	}
 
-	blobMetas := make([]manifest.BlobFileMetadata, len(blobPaths))
-	blobReferences := make(manifest.BlobReferences, len(blobPaths))
+	blobMetas := make([]manifest.BlobFileMetadata, len(blobFiles))
+	blobReferences := make(manifest.BlobReferences, len(blobFiles))
 	// Create the physical blob file metadata for each blob file.
 	readerOpts := opts.MakeReaderOptions()
 	readerOpts.CacheOpts.CacheHandle = cacheHandle
-	for i, p := range blobPaths {
+	for i, readable := range blobFiles {
+		// Read the blob file reference index block in the sstable to determine the
+		//  size of values stored in each blob file.
 		blockEncodings := decoder.LivenessAtReference(i)
 		var valueSize uint64
 		for _, enc := range sstable.DecodeBlobRefLivenessEncoding(blockEncodings) {
@@ -542,21 +556,12 @@ func constructBlobFileMetadataForIngestedTable(
 
 		// Opening a blob file reader will validate the blob file format. We do not
 		// perform any further validation on the blob file values here.
-		f, err := opts.FS.Open(p)
-		if err != nil {
-			return nil, err
-		}
-
-		readable, err := objstorage.NewSimpleReadable(f)
-		if err != nil {
-			return nil, errors.CombineErrors(err, f.Close())
-		}
-
 		fileSize := readable.Size()
 		fileNum := blobFileNums[i]
 		readerOpts.CacheOpts.FileNum = fileNum
 
 		// Validate the blob file format.
+		// This function will close the the reader at blobFiles[i].
 		if err = func() error {
 			blobFile, err := blob.NewFileReader(ctx, readable, blob.FileReaderOptions{
 				ReaderOptions: readerOpts.ReaderOptions,
@@ -573,7 +578,8 @@ func constructBlobFileMetadataForIngestedTable(
 			}
 			return nil
 		}(); err != nil {
-			return nil, err
+			// Close the remaining blob files.
+			return nil, errors.CombineErrors(err, closeReadables(blobFiles[i+1:]))
 		}
 
 		// Create the blob file references.
@@ -669,7 +675,11 @@ func ingestLoad(
 		for i := range p.BlobPaths {
 			blobFileNums[i] = getNextFileNum()
 		}
-		res, err := ingestLoad1(ctx, opts, fmv, readable, cacheHandle, compressionCounters, tableNum, rangeKeyValidator, p.BlobPaths, blobFileNums)
+		blobReadables, err := createBlobReadables(ctx, opts, p.BlobPaths)
+		if err != nil {
+			return ingestLoadResult{}, err
+		}
+		res, err := ingestLoad1(ctx, opts, fmv, readable, cacheHandle, compressionCounters, tableNum, rangeKeyValidator, blobReadables, blobFileNums)
 		if err != nil {
 			return ingestLoadResult{}, err
 		}

@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // LocalSSTables represents a set of sstables on local disk to be ingested into
@@ -65,4 +66,35 @@ func (d *DB) IngestLocal(
 	}
 
 	return d.ingest(ctx, args)
+}
+
+// closeReadables closes all readables in the slice, combining any errors.
+func closeReadables(readables []objstorage.Readable) error {
+	var errs error
+	for _, r := range readables {
+		errs = errors.CombineErrors(errs, r.Close())
+	}
+	return errs
+}
+
+func createBlobReadables(
+	ctx context.Context, opts *Options, blobPaths []string,
+) ([]objstorage.Readable, error) {
+	readables := make([]objstorage.Readable, 0, len(blobPaths))
+	for _, path := range blobPaths {
+		f, err := opts.FS.Open(path)
+		if err != nil {
+			// Close any readables we've already created before returning the error.
+			return nil, errors.CombineErrors(err, closeReadables(readables))
+		}
+
+		readable, err := objstorage.NewSimpleReadable(f)
+		if err != nil {
+			// Close the file and any readables we've already created.
+			closeErr := errors.CombineErrors(f.Close(), closeReadables(readables))
+			return nil, errors.CombineErrors(err, closeErr)
+		}
+		readables = append(readables, readable)
+	}
+	return readables, nil
 }
