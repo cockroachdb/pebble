@@ -636,6 +636,8 @@ type InternalKV struct {
 // Currently, the value is always a unix timestamp in seconds (what
 // time.Time.Unix() returns), but this could be extended in the future.
 // and should be opaque to most of the Pebble code.
+//
+// The zero value is reserved to mean "no attribute" or "unknown".
 type TieringAttribute uint64
 
 // KVMeta describes optional metadata associated with an `InternalKV`.

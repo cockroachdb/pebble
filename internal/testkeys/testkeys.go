@@ -537,3 +537,31 @@ func (e everyNKeyspace) MaxLen() int {
 func (e everyNKeyspace) key(buf []byte, i uint64) int {
 	return e.ks.key(buf, i*e.n)
 }
+
+// ExtractKVMeta extracts optional KV metadata from a testkeys KV value, if
+// present.
+//
+// The optional metadata is a suffix of the value, demarcated by a semicolon:
+// "<actual value>;tiering:span=1,attr=100".
+//
+// Return an empty KVMeta{} if no optional metadata is specified.
+func ExtractKVMeta(value []byte) base.KVMeta {
+	m := tieringRe.FindStringSubmatch(string(value))
+	if m == nil {
+		return base.KVMeta{}
+	}
+	var res base.KVMeta
+	v, e := strconv.ParseUint(m[1], 10, 64)
+	if e != nil {
+		panic(fmt.Sprintf("invalid tiering span in KV metadata in %q", value))
+	}
+	res.TieringSpanID = v
+	v, e = strconv.ParseUint(m[2], 10, 64)
+	if e != nil {
+		panic(fmt.Sprintf("invalid tiering attr in KV metadata in %q", value))
+	}
+	res.TieringAttribute = base.TieringAttribute(v)
+	return res
+}
+
+var tieringRe = regexp.MustCompile(`;tiering:span=([0-9]+),attr=([0-9]+)$`)
