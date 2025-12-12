@@ -178,7 +178,7 @@ type WriterOptions struct {
 	Compression *CompressionProfile
 
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
-	// reduce disk reads for Get calls.
+	// reduce disk reads for SeekPrefixGE calls.
 	//
 	// One such implementation is in the pebble/bloom package.
 	//

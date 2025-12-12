@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 const (
@@ -75,6 +77,58 @@ func calculateProbes(bitsPerKey uint32) uint32 {
 		return probes[10]
 	}
 	return probes[bitsPerKey]
+}
+
+// FilterSize returns the size in bytes of a bloom filter for the given number
+// of keys (hashes) and bits per key. The size includes the 5-byte trailer that
+// stores the number of probes and cache lines.
+func FilterSize(numKeys int, bitsPerKey uint32) uint64 {
+	if numKeys <= 0 || bitsPerKey <= 0 {
+		return 0
+	}
+	// Filter format: nLines * cacheLineSize bytes of filter bits, plus 5 bytes
+	// for the trailer (1 byte for number of probes, 4 bytes for number of lines).
+	return uint64(calculateNumLines(numKeys, bitsPerKey))*cacheLineSize + 5
+}
+
+// MaxBitsPerKey returns the maximum bits per key that can be used to create a
+// bloom filter with at most maxFilterSize bytes for the given number of keys.
+// Returns 0 if the constraints cannot be satisfied (i.e., even 1 bit per key
+// would exceed the maximum filter size).
+func MaxBitsPerKey(numKeys int, maxFilterSize uint64) uint32 {
+	if numKeys <= 0 || maxFilterSize <= 5 {
+		return 0
+	}
+	// Compute the maximum number of cache lines that fit in maxFilterSize.
+	maxLines := (maxFilterSize - 5) / cacheLineSize
+	if maxLines == 0 {
+		return 0
+	}
+	// The filter always uses an odd number of cache lines (nLines |= 1 in
+	// filterNumLines). If maxLines is even, we can only use maxLines-1 lines.
+	if maxLines&1 == 0 {
+		maxLines--
+	}
+	// Given maxLines cache lines, we have maxLines * cacheLineBits bits available.
+	// The maximum bits per key is the total bits divided by number of keys.
+	result := uint32(min(cacheLineBits, maxLines*cacheLineBits/uint64(numKeys)))
+	if invariants.Enabled && result > 0 {
+		// Cross-check: FilterSize with result should be <= maxFilterSize.
+		if size := FilterSize(numKeys, result); size > maxFilterSize {
+			panic(errors.AssertionFailedf(
+				"MaxBitsPerKey invariant violated: FilterSize(%d, %d) = %d > %d",
+				numKeys, result, size, maxFilterSize))
+		}
+		// Cross-check: FilterSize with result+1 should be > maxFilterSize.
+		if result < cacheLineBits {
+			if sizeNext := FilterSize(numKeys, result+1); sizeNext <= maxFilterSize {
+				panic(errors.AssertionFailedf(
+					"MaxBitsPerKey invariant violated: FilterSize(%d, %d) = %d <= %d but returned %d",
+					numKeys, result+1, sizeNext, maxFilterSize, result))
+			}
+		}
+	}
+	return result
 }
 
 // hash implements a hashing algorithm similar to the Murmur hash.
@@ -142,12 +196,15 @@ type tableFilterWriter struct {
 }
 
 func newTableFilterWriter(bitsPerKey uint32) *tableFilterWriter {
-	w := &tableFilterWriter{
-		bitsPerKey: bitsPerKey,
-		numProbes:  calculateProbes(bitsPerKey),
-	}
-	w.blocks = w.blocksBuf[:0]
+	w := &tableFilterWriter{}
+	w.init(bitsPerKey)
 	return w
+}
+
+func (w *tableFilterWriter) init(bitsPerKey uint32) {
+	w.bitsPerKey = bitsPerKey
+	w.numProbes = calculateProbes(bitsPerKey)
+	w.blocks = w.blocksBuf[:0]
 }
 
 // AddKey implements the base.FilterWriter interface.
@@ -167,17 +224,17 @@ func (w *tableFilterWriter) AddKey(key []byte) {
 }
 
 func calculateNumLines(numHashes int, bitsPerKey uint32) uint32 {
-	if numHashes == 0 {
-		return 0
-	}
 	nLines := (uint64(numHashes)*uint64(bitsPerKey) + cacheLineBits - 1) / (cacheLineBits)
 	// Make nLines an odd number to make sure more bits are involved when
 	// determining which block.
 	return uint32(nLines | 1)
 }
 
-// Finish implements the base.FilterWriter interface.
-func (w *tableFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
+// Finish implements the base.TableFilterWriter interface.
+func (w *tableFilterWriter) Finish() (_ []byte, _ base.TableFilterFamily, ok bool) {
+	if w.numHashes == 0 {
+		return nil, "", false
+	}
 	// The table filter format matches the RocksDB full-file filter format.
 	nLines := calculateNumLines(w.numHashes, w.bitsPerKey)
 
@@ -188,32 +245,29 @@ func (w *tableFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
 	//   - 4 bytes: number of lines
 	filter := make([]byte, nBytes+5)
 
-	if nLines != 0 {
-		nProbes := w.numProbes
-		for bIdx, b := range w.blocks {
-			length := hashBlockLen
-			if bIdx == len(w.blocks)-1 && w.numHashes%hashBlockLen != 0 {
-				length = w.numHashes % hashBlockLen
-			}
-			for _, h := range b[:length] {
-				delta := h>>17 | h<<15 // rotate right 17 bits
-				lineIdx := h % uint32(nLines)
-				// Set up a pointer to a [cacheLineSize]byte array. This avoids bound
-				// checks inside the loop.
-				line := (*[cacheLineSize]byte)(filter[lineIdx*cacheLineSize : (lineIdx+1)*cacheLineSize])
-				for range nProbes {
-					// The bit position within the line is (h % cacheLineBits).
-					//  byte index: (h % cacheLineBits)/8 = (h/8) % cacheLineSize
-					//  bit index: (h % cacheLineBits)%8 = h%8
-					line[(h>>3)&(cacheLineSize-1)] |= 1 << (h & 7) //gcassert:bce
-					h += delta
-				}
+	nProbes := w.numProbes
+	for bIdx, b := range w.blocks {
+		length := hashBlockLen
+		if bIdx == len(w.blocks)-1 && w.numHashes%hashBlockLen != 0 {
+			length = w.numHashes % hashBlockLen
+		}
+		for _, h := range b[:length] {
+			delta := h>>17 | h<<15 // rotate right 17 bits
+			lineIdx := h % uint32(nLines)
+			// Set up a pointer to a [cacheLineSize]byte array. This avoids bound
+			// checks inside the loop.
+			line := (*[cacheLineSize]byte)(filter[lineIdx*cacheLineSize : (lineIdx+1)*cacheLineSize])
+			for range nProbes {
+				// The bit position within the line is (h % cacheLineBits).
+				//  byte index: (h % cacheLineBits)/8 = (h/8) % cacheLineSize
+				//  bit index: (h % cacheLineBits)%8 = h%8
+				line[(h>>3)&(cacheLineSize-1)] |= 1 << (h & 7) //gcassert:bce
+				h += delta
 			}
 		}
-		nBytes := nLines * cacheLineSize
-		filter[nBytes] = byte(nProbes)
-		binary.LittleEndian.PutUint32(filter[nBytes+1:], uint32(nLines))
 	}
+	filter[nBytes] = byte(nProbes)
+	binary.LittleEndian.PutUint32(filter[nBytes+1:], uint32(nLines))
 
 	// Release the hash blocks.
 	for i, b := range w.blocks {
@@ -222,7 +276,7 @@ func (w *tableFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
 	}
 	w.blocks = w.blocks[:0]
 	w.numHashes = 0
-	return filter, Family
+	return filter, Family, true
 }
 
 // Family name for bloom filters. This string looks arbitrary, but its value is
@@ -235,7 +289,9 @@ const Family base.TableFilterFamily = "rocksdb.BuiltinBloomFilter"
 // yields a filter with ~1% false positive rate.
 //
 // The table below contains false positive rates for various bits-per-key values
-// (obtained from simulations).
+// (obtained from simulations). Note that these rates don't take into account
+// the additional chance of 32-bit hash collision, which is
+// <num-hashes-in-block> / 2^32.
 //
 //	Bits/key | Probes |       FPR
 //	---------+--------+------------------
@@ -259,11 +315,11 @@ const Family base.TableFilterFamily = "rocksdb.BuiltinBloomFilter"
 //	      18 |   6    | 0.179% (1 in 557)
 //	      19 |   6    | 0.158% (1 in 634)
 //	      20 |   6    | 0.140% (1 in 713)
-func FilterPolicy(bitsPerKey int) base.TableFilterPolicy {
+func FilterPolicy(bitsPerKey uint32) base.TableFilterPolicy {
 	if bitsPerKey < 1 {
 		panic(fmt.Sprintf("invalid bitsPerKey %d", bitsPerKey))
 	}
-	return filterPolicyImpl{BitsPerKey: uint32(bitsPerKey)}
+	return filterPolicyImpl{BitsPerKey: bitsPerKey}
 }
 
 type filterPolicyImpl struct {
@@ -293,12 +349,15 @@ func PolicyFromName(name string) (_ base.TableFilterPolicy, ok bool) {
 	if name == string(Family) {
 		return FilterPolicy(10), true
 	}
-	var bitsPerKey int
-	n, err := fmt.Sscanf(name, "bloom(%d)", &bitsPerKey)
-	if err != nil || n != 1 || bitsPerKey < 1 {
-		return nil, false
+	var bitsPerKey uint32
+	if n, err := fmt.Sscanf(name, "bloom(%d)", &bitsPerKey); err == nil && n == 1 && bitsPerKey >= 1 {
+		return FilterPolicy(bitsPerKey), true
 	}
-	return FilterPolicy(bitsPerKey), true
+	var maxFilterSize uint64
+	if n, err := fmt.Sscanf(name, "adaptive_bloom(%d,%d)", &bitsPerKey, &maxFilterSize); err == nil && n == 2 && bitsPerKey > 0 && maxFilterSize > 0 {
+		return AdaptivePolicy(bitsPerKey, maxFilterSize), true
+	}
+	return nil, false
 }
 
 // Decoder implements base.TableFilterDecoder for Bloom filters.

@@ -444,7 +444,7 @@ type LevelOptions struct {
 	Compression func() *sstable.CompressionProfile
 
 	// TableFilterPolicy defines a filter algorithm (such as a Bloom filter) that can
-	// reduce disk reads for Get calls.
+	// reduce disk reads for Get and SeekPrefixGE calls.
 	//
 	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
 	// package.

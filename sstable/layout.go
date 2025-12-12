@@ -872,19 +872,12 @@ func (w *layoutWriter) WriteIndexBlock(b []byte) (block.Handle, error) {
 	return h, err
 }
 
-// WriteFilterBlock finishes the provided filter, constructs a trailer, writes
-// the block and trailer, and adds the filter block to the metaindex.
-//
-// Returns the (uncompressed) block length and filter family.
+// WriteFilterBlock constructs a trailer, writes the filter block and trailer,
+// and adds the filter block to the metaindex.
 func (w *layoutWriter) WriteFilterBlock(
-	f base.TableFilterWriter,
-) (blockLength uint64, family base.TableFilterFamily, err error) {
-	data, family := f.Finish()
-	bh, err := w.writeNamedBlockUncompressed(data, blockkind.Filter, filterFamilyToBlockName(family))
-	if err != nil {
-		return 0, "", err
-	}
-	return bh.Length, family, nil
+	data []byte, family base.TableFilterFamily,
+) (block.Handle, error) {
+	return w.writeNamedBlockUncompressed(data, blockkind.Filter, filterFamilyToBlockName(family))
 }
 
 // WritePropertiesBlock constructs a trailer for the provided properties block
