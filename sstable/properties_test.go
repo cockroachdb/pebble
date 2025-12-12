@@ -72,7 +72,7 @@ var testProps = Properties{
 	NumTombstoneDenseBlocks: 2,
 	ComparerName:            "comparator name",
 	DataSize:                3,
-	FilterPolicyName:        "filter policy name",
+	FilterFamily:            "filter policy name",
 	FilterSize:              5,
 	IndexPartitions:         10,
 	IndexSize:               11,

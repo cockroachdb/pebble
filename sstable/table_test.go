@@ -30,14 +30,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) error {
+func check(fs vfs.FS, filename string, comparer *Comparer, fp base.TableFilterDecoder) error {
 	opts := ReaderOptions{
 		Comparer: comparer,
 	}
 	if fp != nil {
-		opts.Filters = map[string]FilterPolicy{
-			fp.Name(): fp,
-		}
+		opts.FilterDecoders = []base.TableFilterDecoder{fp}
 	}
 
 	f, err := fs.Open(filename)
@@ -240,7 +238,7 @@ func check(fs vfs.FS, filename string, comparer *Comparer, fp FilterPolicy) erro
 	return r.Close()
 }
 
-func testReader(t *testing.T, filename string, comparer *Comparer, fp FilterPolicy) {
+func testReader(t *testing.T, filename string, comparer *Comparer, fp base.TableFilterDecoder) {
 	// Check that we can read a pre-made table.
 	err := check(vfs.Default, filepath.FromSlash("testdata/"+filename), comparer, fp)
 	if err != nil {
@@ -291,9 +289,8 @@ func TestReaderBloomUsed(t *testing.T) {
 		t.Run(tc.path, func(t *testing.T) {
 			for _, degenerate := range []bool{false, true} {
 				t.Run(fmt.Sprintf("degenerate=%t", degenerate), func(t *testing.T) {
-					c := &countingFilterPolicy{
-						FilterPolicy: bloom.FilterPolicy(10),
-						degenerate:   degenerate,
+					c := &countingFilterDecoder{
+						degenerate: degenerate,
 					}
 					testReader(t, tc.path, tc.comparer, c)
 
@@ -329,13 +326,9 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	f, err := vfs.Default.Open(filepath.FromSlash("testdata/h-table-bloom-no-compression-sst/000011.sst"))
 	require.NoError(t, err)
 
-	c := &countingFilterPolicy{
-		FilterPolicy: bloom.FilterPolicy(1),
-	}
+	c := &countingFilterDecoder{}
 	r, err := newReader(f, ReaderOptions{
-		Filters: map[string]FilterPolicy{
-			c.Name(): c,
-		},
+		FilterDecoders: []base.TableFilterDecoder{c},
 	})
 	require.NoError(t, err)
 
@@ -375,8 +368,7 @@ func TestBloomFilterFalsePositiveRate(t *testing.T) {
 	require.NoError(t, r.Close())
 }
 
-type countingFilterPolicy struct {
-	FilterPolicy
+type countingFilterDecoder struct {
 	degenerate bool
 
 	truePositives  int
@@ -385,14 +377,18 @@ type countingFilterPolicy struct {
 	trueNegatives  int
 }
 
-func (c *countingFilterPolicy) MayContain(filter, key []byte) bool {
+func (c *countingFilterDecoder) Family() base.TableFilterFamily {
+	return bloom.Family
+}
+
+func (c *countingFilterDecoder) MayContain(filter, key []byte) bool {
 	got := true
 	if c.degenerate {
 		// When degenerate is true, we override the embedded FilterPolicy's
 		// MayContain method to always return true. Doing so is a valid, if
 		// inefficient, implementation of the FilterPolicy interface.
 	} else {
-		got = c.FilterPolicy.MayContain(filter, key)
+		got = bloom.Decoder.MayContain(filter, key)
 	}
 	wordCount := hamletWordCount()
 	_, want := wordCount[string(key)]
@@ -415,7 +411,7 @@ func TestWriterRoundTrip(t *testing.T) {
 	blockSizes := []int{100, 1000, 2048, 4096, math.MaxInt32}
 	for _, blockSize := range blockSizes {
 		for _, indexBlockSize := range blockSizes {
-			for name, fp := range map[string]FilterPolicy{
+			for name, fp := range map[string]base.TableFilterPolicy{
 				"none":       nil,
 				"bloom10bit": bloom.FilterPolicy(10),
 			} {

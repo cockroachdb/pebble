@@ -645,8 +645,7 @@ func buildLevelsForMergingIterSeqSeek(
 	opts.CacheOpts = sstableinternal.CacheOptions{CacheHandle: ch}
 
 	if writeBloomFilters {
-		opts.Filters = make(map[string]FilterPolicy)
-		opts.Filters[filterPolicy.Name()] = filterPolicy
+		opts.FilterDecoders = []TableFilterDecoder{bloom.Decoder}
 	}
 
 	readers = make([][]*sstable.Reader, levelCount)

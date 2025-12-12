@@ -59,10 +59,9 @@ type RawColumnWriter struct {
 	rangeKeyBlock             colblk.KeyspanBlockWriter
 	valueBlock                *valblk.Writer // nil iff WriterOptions.DisableValueBlocks=true
 	blobRefLivenessIndexBlock blobRefValueLivenessWriter
-	// filter accumulates the filter block. If populated, the filter ingests
-	// either the output of w.split (i.e. a prefix extractor) if w.split is not
-	// nil, or the full keys otherwise.
-	filterBlock  filterWriter
+	// filterWriter accumulates the filter block. If not nil, the filter writer
+	// ingests the prefix of each key.
+	filterWriter base.TableFilterWriter
 	prevPointKey struct {
 		trailer    base.InternalKeyTrailer
 		isObsolete bool
@@ -150,7 +149,7 @@ func newColumnarWriter(
 		w.valueBlock = valblk.NewWriter(flushGovernor, &w.layout.physBlockMaker, func(compressedSize int) {})
 	}
 	if o.FilterPolicy != base.NoFilterPolicy {
-		w.filterBlock = newTableFilterWriter(o.FilterPolicy)
+		w.filterWriter = o.FilterPolicy.NewWriter()
 	}
 
 	numBlockPropertyCollectors := len(o.BlockPropertyCollectors)
@@ -508,8 +507,8 @@ func (w *RawColumnWriter) add(
 		}
 	}
 	w.obsoleteCollector.AddPoint(eval.isObsolete)
-	if w.filterBlock != nil {
-		w.filterBlock.addKey(key.UserKey[:eval.kcmp.PrefixLen])
+	if w.filterWriter != nil {
+		w.filterWriter.AddKey(key.UserKey[:eval.kcmp.PrefixLen])
 	}
 	w.meta.updateSeqNum(key.SeqNum())
 	if !w.meta.HasPointKeys {
@@ -948,13 +947,13 @@ func (w *RawColumnWriter) Close() (err error) {
 	}
 
 	// Write the filter block.
-	if w.filterBlock != nil {
-		bh, err := w.layout.WriteFilterBlock(w.filterBlock)
+	if w.filterWriter != nil {
+		blockSize, filterFamily, err := w.layout.WriteFilterBlock(w.filterWriter)
 		if err != nil {
 			return err
 		}
-		w.props.FilterPolicyName = w.filterBlock.policyName()
-		w.props.FilterSize = bh.Length
+		w.props.FilterFamily = string(filterFamily)
+		w.props.FilterSize = blockSize
 	}
 
 	// Write the range deletion block if non-empty.
@@ -1152,17 +1151,14 @@ func (w *RawColumnWriter) rewriteSuffixes(
 		return errors.Wrap(err, "rewriting range key blocks")
 	}
 	// Copy over the filter block if it exists.
-	if policyName, filterBH, ok := getExistingFilter(l); ok {
+	if family, filterBH, ok := getExistingFilter(l); ok {
 		filterBlock, _, err := readBlockBuf(sstBytes, filterBH, r.blockReader.ChecksumType(), nil)
 		if err != nil {
 			return errors.Wrap(err, "reading filter")
 		}
-		w.filterBlock = copyFilterWriter{
-			origPolicyName: policyName,
-			// Clone the filter block, because readBlockBuf allows the
-			// returned byte slice to point directly into sst.
-			data: slices.Clone(filterBlock),
-		}
+		// Clone the filter block, because readBlockBuf allows the
+		// returned byte slice to point directly into sst.
+		w.setFilter(slices.Clone(filterBlock), family)
 	}
 	return nil
 }
@@ -1170,21 +1166,21 @@ func (w *RawColumnWriter) rewriteSuffixes(
 // getExistingFilter returns any existing table filter block handle, along with
 // the policy name (derived from the block name). Returns ok=false if there is
 // no filter block.
-func getExistingFilter(layout *Layout) (policyName string, bh block.Handle, ok bool) {
+func getExistingFilter(layout *Layout) (family base.TableFilterFamily, bh block.Handle, ok bool) {
 	if len(layout.Filter) == 0 {
 		return "", block.Handle{}, false
 	}
 	if invariants.Enabled && len(layout.Filter) > 1 {
 		panic(errors.AssertionFailedf("cannot handle more than one filter"))
 	}
-	policyName, ok = filterPolicyFromBlockName(layout.Filter[0].Name)
+	family, ok = filterFamilyFromBlockName(layout.Filter[0].Name)
 	if !ok {
 		if invariants.Enabled {
 			panic(errors.AssertionFailedf("l.Filter has invalid filter block name %q", layout.Filter[0].Name))
 		}
 		return "", block.Handle{}, false
 	}
-	return policyName, layout.Filter[0].Handle, true
+	return family, layout.Filter[0].Handle, true
 }
 
 func shouldFlushWithoutLatestKV(
@@ -1269,11 +1265,15 @@ func (w *RawColumnWriter) addDataBlock(b, sep []byte, bhp block.HandleWithProper
 	return nil
 }
 
-// setFilter sets the filter to the specified filterWriter. It's specifically used
-// by the sstable copier that can copy parts of an sstable to a new sstable,
-// using CopySpan().
-func (w *RawColumnWriter) setFilter(fw filterWriter) {
-	w.filterBlock = fw
+// setFilter sets a pre-populated filter. It is used when we are rewriting
+// suffixes or copying parts of an sstable via CopySpan().
+//
+// The writer takes ownership of the filterData buffer.
+func (w *RawColumnWriter) setFilter(filterData []byte, family base.TableFilterFamily) {
+	w.filterWriter = &copyFilterWriter{
+		data:   filterData,
+		family: family,
+	}
 }
 
 // copyProperties copies properties from the specified props, and resets others

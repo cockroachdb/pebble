@@ -71,9 +71,9 @@ type Properties struct {
 	ComparerName string `prop:"rocksdb.comparator" options:"encodeempty,intern"`
 	// The total size of all data blocks.
 	DataSize uint64 `prop:"rocksdb.data.size" options:"encodeempty"`
-	// The name of the filter policy used in this table. Empty if no filter
+	// The name of the filter family used in this table. Empty if no filter
 	// policy is used.
-	FilterPolicyName string `prop:"rocksdb.filter.policy" options:"intern"`
+	FilterFamily string `prop:"rocksdb.filter.policy" options:"intern"`
 	// The size of filter block.
 	FilterSize uint64 `prop:"rocksdb.filter.size" options:"encodeempty"`
 	// Total number of index partitions if kTwoLevelIndexSearch is used.

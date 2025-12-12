@@ -1104,8 +1104,8 @@ func TestWriterRace(t *testing.T) {
 		keys[ki] = testkeys.Key(ks, uint64(ki))
 	}
 	readerOpts := ReaderOptions{
-		Comparer: testkeys.Comparer,
-		Filters:  map[string]base.FilterPolicy{},
+		Comparer:       testkeys.Comparer,
+		FilterDecoders: []base.TableFilterDecoder{bloom.Decoder},
 	}
 
 	var wg sync.WaitGroup

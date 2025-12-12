@@ -46,9 +46,7 @@ func TestCopySpan(t *testing.T) {
 		}
 
 		rOpts := ReaderOptions{
-			Filters: map[string]FilterPolicy{
-				"rocksdb.BuiltinBloomFilter": bloom.FilterPolicy(10),
-			},
+			FilterDecoders: []base.TableFilterDecoder{bloom.Decoder},
 			ReaderOptions: block.ReaderOptions{
 				CacheOpts: sstableinternal.CacheOptions{
 					CacheHandle: cacheHandle,

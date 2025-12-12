@@ -40,7 +40,8 @@ func newTableFilter(bitsPerKey int, keys ...[]byte) tableFilter {
 	for _, key := range keys {
 		w.AddKey(key)
 	}
-	return tableFilter(w.Finish(nil))
+	data, _ := w.Finish()
+	return tableFilter(data)
 }
 
 func TestSmallBloomFilter(t *testing.T) {
@@ -213,6 +214,6 @@ func BenchmarkBloomFilter(b *testing.B) {
 		for _, key := range keys {
 			w.AddKey(key)
 		}
-		w.Finish(nil)
+		w.Finish()
 	}
 }

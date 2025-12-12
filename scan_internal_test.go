@@ -294,9 +294,9 @@ func TestScanInternal(t *testing.T) {
 					return nil, err
 				}
 				fp := bloom.FilterPolicy(v)
-				opts.Filters = map[string]FilterPolicy{fp.Name(): fp}
+				opts.TableFilterDecoders = []TableFilterDecoder{bloom.Decoder}
 				for i := range opts.Levels {
-					opts.Levels[i].FilterPolicy = fp
+					opts.Levels[i].TableFilterPolicy = fp
 				}
 			case "merger":
 				switch cmdArg.Vals[0] {
