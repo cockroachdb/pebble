@@ -297,9 +297,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		return err.Error()
 	}
 	r, err := sstable.NewReader(context.Background(), readable, sstable.ReaderOptions{
-		Filters: map[string]FilterPolicy{
-			fp.Name(): fp,
-		},
+		FilterDecoders: []TableFilterDecoder{bloom.Decoder},
 	})
 	if err != nil {
 		return errors.CombineErrors(err, readable.Close()).Error()

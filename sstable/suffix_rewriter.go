@@ -291,14 +291,22 @@ func getShortIDs(
 	return shortIDs, n, nil
 }
 
+// copyFilterWriter is an implementation of TableFilterWriter that presents a
+// pre-created filter.
 type copyFilterWriter struct {
-	origPolicyName string
-	data           []byte
+	data   []byte
+	family base.TableFilterFamily
 }
 
-func (copyFilterWriter) addKey(key []byte)         { panic("unimplemented") }
-func (c copyFilterWriter) finish() ([]byte, error) { return c.data, nil }
-func (c copyFilterWriter) policyName() string      { return c.origPolicyName }
+var _ base.TableFilterWriter = (*copyFilterWriter)(nil)
+
+func (copyFilterWriter) AddKey(key []byte) { panic("unimplemented") }
+
+func (c *copyFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
+	data, family := c.data, c.family
+	*c = copyFilterWriter{}
+	return data, family
+}
 
 // RewriteKeySuffixesViaWriter is similar to RewriteKeySuffixes but uses just a
 // single loop over the Reader that writes each key to the Writer with the new

@@ -3,10 +3,11 @@
 // the LICENSE file.
 
 // Package bloom implements Bloom filters.
-package bloom // import "github.com/cockroachdb/pebble/bloom"
+package bloom
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/base"
@@ -74,27 +75,6 @@ func calculateProbes(bitsPerKey uint32) uint32 {
 		return probes[10]
 	}
 	return probes[bitsPerKey]
-}
-
-// extend appends n zero bytes to b. It returns the overall slice (of length
-// n+len(originalB)) and the slice of n trailing zeroes.
-func extend(b []byte, n int) (overall, trailer []byte) {
-	want := n + len(b)
-	if want <= cap(b) {
-		overall = b[:want]
-		trailer = overall[len(b):]
-		clear(trailer)
-	} else {
-		// Grow the capacity exponentially, with a 1KiB minimum.
-		c := 1024
-		for c < want {
-			c += c / 4
-		}
-		overall = make([]byte, want, c)
-		trailer = overall[len(b):]
-		copy(overall, b)
-	}
-	return overall, trailer
 }
 
 // hash implements a hashing algorithm similar to the Murmur hash.
@@ -197,13 +177,16 @@ func calculateNumLines(numHashes int, bitsPerKey uint32) uint32 {
 }
 
 // Finish implements the base.FilterWriter interface.
-func (w *tableFilterWriter) Finish(buf []byte) []byte {
+func (w *tableFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
 	// The table filter format matches the RocksDB full-file filter format.
 	nLines := calculateNumLines(w.numHashes, w.bitsPerKey)
 
 	nBytes := nLines * cacheLineSize
-	// +5: 4 bytes for num-lines, 1 byte for num-probes
-	buf, filter := extend(buf, int(nBytes+5))
+	// Format:
+	//   - nBytes: filter bits
+	//   - 1 byte: number of probes
+	//   - 4 bytes: number of lines
+	filter := make([]byte, nBytes+5)
 
 	if nLines != 0 {
 		nProbes := w.numProbes
@@ -239,13 +222,17 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 	}
 	w.blocks = w.blocks[:0]
 	w.numHashes = 0
-	return buf
+	return filter, Family
 }
 
-// FilterPolicy implements the FilterPolicy interface from the pebble package.
-//
-// The integer value is the approximate number of bits used per key. A good
-// value is 10, which yields a filter with ~1% false positive rate.
+// Family name for bloom filters. This string looks arbitrary, but its value is
+// written to LevelDB .sst files, and should be this exact value to be
+// compatible with those files and with the C++ LevelDB code.
+const Family base.TableFilterFamily = "rocksdb.BuiltinBloomFilter"
+
+// FilterPolicy is a base.TableFilterPolicy that creates bloom filters with the
+// given number of bits per key (approximately). A good value is 10, which
+// yields a filter with ~1% false positive rate.
 //
 // The table below contains false positive rates for various bits-per-key values
 // (obtained from simulations).
@@ -272,24 +259,57 @@ func (w *tableFilterWriter) Finish(buf []byte) []byte {
 //	      18 |   6    | 0.179% (1 in 557)
 //	      19 |   6    | 0.158% (1 in 634)
 //	      20 |   6    | 0.140% (1 in 713)
-type FilterPolicy int
-
-var _ base.FilterPolicy = FilterPolicy(0)
-
-// Name implements the pebble.FilterPolicy interface.
-func (p FilterPolicy) Name() string {
-	// This string looks arbitrary, but its value is written to LevelDB .sst
-	// files, and should be this exact value to be compatible with those files
-	// and with the C++ LevelDB code.
-	return "rocksdb.BuiltinBloomFilter"
+func FilterPolicy(bitsPerKey int) base.TableFilterPolicy {
+	if bitsPerKey < 1 {
+		panic(fmt.Sprintf("invalid bitsPerKey %d", bitsPerKey))
+	}
+	return filterPolicyImpl{BitsPerKey: uint32(bitsPerKey)}
 }
 
-// MayContain implements the pebble.FilterPolicy interface.
-func (p FilterPolicy) MayContain(f, key []byte) bool {
-	return tableFilter(f).MayContain(key)
+type filterPolicyImpl struct {
+	BitsPerKey uint32
 }
 
-// NewWriter implements the pebble.FilterPolicy interface.
-func (p FilterPolicy) NewWriter() base.FilterWriter {
-	return newTableFilterWriter(uint32(p))
+var _ base.TableFilterPolicy = filterPolicyImpl{}
+
+// Name is part of the base.TableFilterPolicy interface.
+func (p filterPolicyImpl) Name() string {
+	if p.BitsPerKey == 10 {
+		// We return rocksdb.BuiltinBloomFilter for backward compatibility.
+		return string(Family)
+	}
+	return fmt.Sprintf("bloom(%d)", p.BitsPerKey)
+}
+
+// NewWriter is part of the base.TableFilterPolicy interface.
+func (p filterPolicyImpl) NewWriter() base.TableFilterWriter {
+	return newTableFilterWriter(p.BitsPerKey)
+}
+
+// PolicyFromName returns the filterPolicyImpl corresponding to the given
+// name (i.e. for which filterPolicyImpl.Name() == name), or false if the
+// string is not recognized as a bloom filter policy.
+func PolicyFromName(name string) (_ base.TableFilterPolicy, ok bool) {
+	if name == string(Family) {
+		return FilterPolicy(10), true
+	}
+	var bitsPerKey int
+	n, err := fmt.Sscanf(name, "bloom(%d)", &bitsPerKey)
+	if err != nil || n != 1 || bitsPerKey < 1 {
+		return nil, false
+	}
+	return FilterPolicy(bitsPerKey), true
+}
+
+// Decoder implements base.TableFilterDecoder for Bloom filters.
+var Decoder base.TableFilterDecoder = decoderImpl{}
+
+type decoderImpl struct{}
+
+func (d decoderImpl) Family() base.TableFilterFamily {
+	return Family
+}
+
+func (d decoderImpl) MayContain(filter, key []byte) bool {
+	return tableFilter(filter).MayContain(key)
 }

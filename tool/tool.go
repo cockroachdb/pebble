@@ -23,9 +23,6 @@ import (
 // Comparer exports the base.Comparer type.
 type Comparer = base.Comparer
 
-// FilterPolicy exports the base.FilterPolicy type.
-type FilterPolicy = base.FilterPolicy
-
 // Merger exports the base.Merger type.
 type Merger = base.Merger
 
@@ -102,13 +99,11 @@ func Mergers(mergers ...*Merger) Option {
 	}
 }
 
-// Filters may be passed to New to register filter policies for use by the
+// FilterDecoders may be passed to New to register filter decoders for use by the
 // introspection tools.
-func Filters(filters ...FilterPolicy) Option {
+func FilterDecoders(decoders ...pebble.TableFilterDecoder) Option {
 	return func(t *T) {
-		for _, f := range filters {
-			t.opts.Filters[f.Name()] = f
-		}
+		t.opts.TableFilterDecoders = append(t.opts.TableFilterDecoders, decoders...)
 	}
 }
 
@@ -167,7 +162,6 @@ func WithDBRemoteStorageFn(fn DBRemoteStorageFn) Option {
 func New(opts ...Option) *T {
 	t := &T{
 		opts: pebble.Options{
-			Filters:  make(map[string]FilterPolicy),
 			FS:       vfs.Default,
 			ReadOnly: true,
 		},
@@ -178,7 +172,7 @@ func New(opts ...Option) *T {
 
 	opts = append(opts,
 		Comparers(base.DefaultComparer),
-		Filters(bloom.FilterPolicy(10)),
+		FilterDecoders(bloom.Decoder),
 		Mergers(base.DefaultMerger))
 
 	for _, opt := range opts {

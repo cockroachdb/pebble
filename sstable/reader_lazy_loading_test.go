@@ -106,14 +106,15 @@ func isLazyIndexLoaded(iter Iterator) bool {
 	}
 }
 
-// Simple test filter policy for bloom filters
-var testFilterPolicy = testFilterPolicyImpl{}
+// Simple test filter policy and decoder.
+var testFilterPolicy base.TableFilterPolicy = testFilterPolicyImpl{}
+var testFilterDecoder base.TableFilterDecoder = testFilterDecoderImpl{}
 
-type testFilterPolicyImpl struct{}
+type testFilterDecoderImpl struct{}
 
-func (testFilterPolicyImpl) Name() string { return "test.filter" }
+func (testFilterDecoderImpl) Family() base.TableFilterFamily { return "test.filter" }
 
-func (testFilterPolicyImpl) MayContain(filter, key []byte) bool {
+func (testFilterDecoderImpl) MayContain(filter, key []byte) bool {
 	// For the test, return false for keys starting with "nonexistent" to simulate bloom filter miss
 	prefix := "nonexistent"
 	if len(key) >= len(prefix) && string(key[:len(prefix)]) == prefix {
@@ -122,15 +123,20 @@ func (testFilterPolicyImpl) MayContain(filter, key []byte) bool {
 	return true
 }
 
-func (testFilterPolicyImpl) NewWriter() FilterWriter {
+type testFilterPolicyImpl struct{}
+
+func (testFilterPolicyImpl) Name() string { return "test-filter-policy" }
+
+func (testFilterPolicyImpl) NewWriter() base.TableFilterWriter {
 	return &testFilterWriter{}
 }
 
 type testFilterWriter struct{}
 
-func (w *testFilterWriter) AddKey(key []byte)                          {}
-func (w *testFilterWriter) Finish(buf []byte) []byte                   { return buf }
-func (w *testFilterWriter) EstimateEncodedSize() int                   { return 10 }
+func (w *testFilterWriter) AddKey(key []byte) {}
+func (w *testFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
+	return nil, testFilterDecoder.Family()
+}
 func (w *testFilterWriter) Reset()                                     {}
 func (w *testFilterWriter) Len() int                                   { return 0 }
 func (w *testFilterWriter) MayContain(key []byte) bool                 { return true }

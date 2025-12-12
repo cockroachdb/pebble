@@ -41,12 +41,6 @@ var ignoredInternalProperties = map[string]struct{}{
 	"rocksdb.compression_options":          {},
 }
 
-// FilterWriter exports the base.FilterWriter type.
-type FilterWriter = base.FilterWriter
-
-// FilterPolicy exports the base.FilterPolicy type.
-type FilterPolicy = base.FilterPolicy
-
 // Comparers is a map from comparer name to comparer. It is used for debugging
 // tools which may be used on multiple databases configured with different
 // comparers.
@@ -94,9 +88,10 @@ type ReaderOptions struct {
 	// TableFormatPebblev5 or higher.
 	KeySchemas KeySchemas
 
-	// Filters is a map from filter policy name to filter policy. Filters with
-	// policies that are not in this map will be ignored.
-	Filters map[string]FilterPolicy
+	// FilterDecoders contains decoders for supported table filter families. If
+	// the filter family does not have a decoder in this list, the filter block
+	// will not be used.
+	FilterDecoders []base.TableFilterDecoder
 
 	// FilterMetricsTracker is optionally used to track filter metrics.
 	FilterMetricsTracker *FilterMetricsTracker
@@ -185,11 +180,10 @@ type WriterOptions struct {
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
 	//
-	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
-	// package.
+	// One such implementation is in the pebble/bloom package.
 	//
 	// The default value is NoFilterPolicy.
-	FilterPolicy FilterPolicy
+	FilterPolicy base.TableFilterPolicy
 
 	// IndexBlockSize is the target uncompressed size in bytes of each index
 	// block. When the index block size is larger than this target, two-level

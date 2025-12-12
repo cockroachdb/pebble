@@ -306,7 +306,7 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 		FormatMajorVersion:      defaultFormatMajorVersion,
 		BlockPropertyCollectors: kf.BlockPropertyCollectors,
 	}
-	opts.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
+	opts.Levels[0].TableFilterPolicy = bloom.FilterPolicy(10)
 	opts.Experimental.IngestSplit = func() bool { return false }
 
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
@@ -775,14 +775,14 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	// We either use no bloom filter, the default filter, or a filter with
 	// randomized bits-per-key setting. We zero out the Filters map. It'll get
 	// repopulated on EnsureDefaults accordingly.
-	opts.Filters = nil
+	opts.TableFilterDecoders = nil
 	switch rng.IntN(3) {
 	case 0:
-		lopts.FilterPolicy = pebble.NoFilterPolicy
+		lopts.TableFilterPolicy = pebble.NoFilterPolicy
 	case 1:
-		lopts.FilterPolicy = bloom.FilterPolicy(10)
+		lopts.TableFilterPolicy = bloom.FilterPolicy(10)
 	default:
-		lopts.FilterPolicy = newTestingFilterPolicy(int(randPowerOf2(rng, 0, 4)))
+		lopts.TableFilterPolicy = bloom.FilterPolicy(1 + rand.IntN(20))
 	}
 
 	switch rng.IntN(4) {
@@ -1042,44 +1042,19 @@ func setupInitialState(dataDir string, testOpts *TestOptions) error {
 	return nil
 }
 
-// testingFilterPolicy is used to allow bloom filter policies with non-default
-// bits-per-key setting. It is necessary because the name of the production
-// filter policy is fixed (see bloom.FilterPolicy.Name()); we need to output a
-// custom policy name to the OPTIONS file that the test can then parse.
-type testingFilterPolicy struct {
-	bloom.FilterPolicy
-}
-
-var _ pebble.FilterPolicy = (*testingFilterPolicy)(nil)
-
-func newTestingFilterPolicy(bitsPerKey int) *testingFilterPolicy {
-	return &testingFilterPolicy{
-		FilterPolicy: bloom.FilterPolicy(bitsPerKey),
+func filterPolicyFromName(name string) (pebble.TableFilterPolicy, error) {
+	if p, ok := bloom.PolicyFromName(name); ok {
+		return p, nil
 	}
-}
-
-const testingFilterPolicyFmt = "testing_bloom_filter/bits_per_key=%d"
-
-// Name implements the pebble.FilterPolicy interface.
-func (t *testingFilterPolicy) Name() string {
-	if t.FilterPolicy == 10 {
-		return "rocksdb.BuiltinBloomFilter"
-	}
-	return fmt.Sprintf(testingFilterPolicyFmt, t.FilterPolicy)
-}
-
-func filterPolicyFromName(name string) (pebble.FilterPolicy, error) {
-	switch name {
-	case "none":
+	if name == "none" {
 		return base.NoFilterPolicy, nil
-	case "rocksdb.BuiltinBloomFilter":
-		return bloom.FilterPolicy(10), nil
 	}
+	// Backward compatibility.
 	var bitsPerKey int
-	if _, err := fmt.Sscanf(name, testingFilterPolicyFmt, &bitsPerKey); err != nil {
+	if _, err := fmt.Sscanf(name, "testing_bloom_filter/bits_per_key=%d", &bitsPerKey); err != nil {
 		return nil, errors.Errorf("Invalid filter policy name '%s'", name)
 	}
-	return newTestingFilterPolicy(bitsPerKey), nil
+	return bloom.FilterPolicy(bitsPerKey), nil
 }
 
 // randInRange returns an integer in the range [minRange,maxRange].

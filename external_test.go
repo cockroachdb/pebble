@@ -207,7 +207,7 @@ func buildSeparatedValuesDB(
 	}
 	o.Levels[0].BlockSize = 32 << 10       // 32 KB
 	o.Levels[0].IndexBlockSize = 256 << 10 // 256 KB
-	o.Levels[0].FilterPolicy = bloom.FilterPolicy(10)
+	o.Levels[0].TableFilterPolicy = bloom.FilterPolicy(10)
 	db, err := pebble.Open("", o)
 	require.NoError(tb, err)
 

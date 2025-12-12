@@ -79,8 +79,8 @@ func (p *Properties) load(i iter.Seq2[[]byte, []byte]) error {
 			n, _ := binary.Uvarint(v)
 			p.DataSize = n
 		case "rocksdb.filter.policy":
-			p.Loaded |= 1 << _bit_FilterPolicyName
-			p.FilterPolicyName = intern.Bytes(v)
+			p.Loaded |= 1 << _bit_FilterFamily
+			p.FilterFamily = intern.Bytes(v)
 		case "rocksdb.filter.size":
 			p.Loaded |= 1 << _bit_FilterSize
 			n, _ := binary.Uvarint(v)
@@ -278,9 +278,9 @@ func (p *Properties) encodeAll() map[string][]byte {
 		val = val[:n]
 		m["rocksdb.data.size"] = val
 	}
-	if p.FilterPolicyName != "" {
-		val := alloc(len(p.FilterPolicyName))
-		copy(val, p.FilterPolicyName)
+	if p.FilterFamily != "" {
+		val := alloc(len(p.FilterFamily))
+		copy(val, p.FilterFamily)
 		m["rocksdb.filter.policy"] = val
 	}
 	if true {
@@ -474,8 +474,8 @@ func (p *Properties) String() string {
 	if p.DataSize != 0 || p.isLoaded(_bit_DataSize) {
 		fmt.Fprintf(&buf, "%s: %v\n", "rocksdb.data.size", p.DataSize)
 	}
-	if p.FilterPolicyName != "" || p.isLoaded(_bit_FilterPolicyName) {
-		fmt.Fprintf(&buf, "%s: %v\n", "rocksdb.filter.policy", p.FilterPolicyName)
+	if p.FilterFamily != "" || p.isLoaded(_bit_FilterFamily) {
+		fmt.Fprintf(&buf, "%s: %v\n", "rocksdb.filter.policy", p.FilterFamily)
 	}
 	if p.FilterSize != 0 || p.isLoaded(_bit_FilterSize) {
 		fmt.Fprintf(&buf, "%s: %v\n", "rocksdb.filter.size", p.FilterSize)
@@ -577,7 +577,7 @@ const (
 	_bit_NumTombstoneDenseBlocks         = 12
 	_bit_ComparerName                    = 13
 	_bit_DataSize                        = 14
-	_bit_FilterPolicyName                = 15
+	_bit_FilterFamily                    = 15
 	_bit_FilterSize                      = 16
 	_bit_IndexPartitions                 = 17
 	_bit_IndexSize                       = 18

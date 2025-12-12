@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
@@ -49,11 +50,8 @@ const (
 type SpanPolicy = base.SpanPolicy
 type ValueStoragePolicyAdjustment = base.ValueStoragePolicyAdjustment
 
-// FilterWriter exports the base.FilterWriter type.
-type FilterWriter = base.FilterWriter
-
-// FilterPolicy exports the base.FilterPolicy type.
-type FilterPolicy = base.FilterPolicy
+type TableFilterPolicy = base.TableFilterPolicy
+type TableFilterDecoder = base.TableFilterDecoder
 
 var NoFilterPolicy = base.NoFilterPolicy
 
@@ -445,7 +443,7 @@ type LevelOptions struct {
 	// ApplyCompressionSettings can be used to initialize this field for all levels.
 	Compression func() *sstable.CompressionProfile
 
-	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
+	// TableFilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for Get calls.
 	//
 	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
@@ -453,7 +451,7 @@ type LevelOptions struct {
 	//
 	// The default value for L0 is NoFilterPolicy (no filter), and the value from
 	// the previous level for all other levels.
-	FilterPolicy FilterPolicy
+	TableFilterPolicy TableFilterPolicy
 
 	// IndexBlockSize is the target uncompressed size in bytes of each index
 	// block. When the index block size is larger than this target, two-level
@@ -483,8 +481,8 @@ func (o *LevelOptions) EnsureL0Defaults() {
 	if o.Compression == nil {
 		o.Compression = func() *sstable.CompressionProfile { return sstable.SnappyCompression }
 	}
-	if o.FilterPolicy == nil {
-		o.FilterPolicy = NoFilterPolicy
+	if o.TableFilterPolicy == nil {
+		o.TableFilterPolicy = NoFilterPolicy
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
@@ -508,8 +506,8 @@ func (o *LevelOptions) EnsureL1PlusDefaults(previousLevel *LevelOptions) {
 	if o.Compression == nil {
 		o.Compression = previousLevel.Compression
 	}
-	if o.FilterPolicy == nil {
-		o.FilterPolicy = previousLevel.FilterPolicy
+	if o.TableFilterPolicy == nil {
+		o.TableFilterPolicy = previousLevel.TableFilterPolicy
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = previousLevel.IndexBlockSize
@@ -813,12 +811,10 @@ type Options struct {
 		}
 	}
 
-	// Filters is a map from filter policy name to filter policy. It is used for
-	// debugging tools which may be used on multiple databases configured with
-	// different filter policies. It is not necessary to populate this filters
-	// map during normal usage of a DB (it will be done automatically by
-	// EnsureDefaults).
-	Filters map[string]FilterPolicy
+	// TableFilterDecoders contains the available table filter decoders.
+	//
+	// The default value contains bloom.Decoder.
+	TableFilterDecoders []TableFilterDecoder
 
 	// FlushDelayDeleteRange configures how long the database should wait before
 	// forcing a flush of a memtable that contains a range deletion. Disk space
@@ -1483,6 +1479,11 @@ func (o *Options) EnsureDefaults() {
 			return ValueSeparationPolicy{Enabled: false}
 		}
 	}
+
+	if o.TableFilterDecoders == nil {
+		o.TableFilterDecoders = []TableFilterDecoder{bloom.Decoder}
+	}
+
 	if o.KeySchema == "" && len(o.KeySchemas) == 0 {
 		ks := colblk.DefaultKeySchema(o.Comparer, 16 /* bundleSize */)
 		o.KeySchema = ks.Name
@@ -1621,8 +1622,6 @@ func (o *Options) EnsureDefaults() {
 	}
 	// TODO(jackson): Enable value separation by default once we have confidence
 	// in a default policy.
-
-	o.initMaps()
 }
 
 // TargetFileSize computes the target file size for the given output level.
@@ -1662,22 +1661,6 @@ func (o *Options) AddEventListener(l EventListener) {
 		l = TeeEventListener(l, *o.EventListener)
 	}
 	o.EventListener = &l
-}
-
-// initMaps initializes the Comparers, Filters, and Mergers maps.
-func (o *Options) initMaps() {
-	for i := range o.Levels {
-		l := &o.Levels[i]
-		if l.FilterPolicy != NoFilterPolicy {
-			if o.Filters == nil {
-				o.Filters = make(map[string]FilterPolicy)
-			}
-			name := l.FilterPolicy.Name()
-			if _, ok := o.Filters[name]; !ok {
-				o.Filters[name] = l.FilterPolicy
-			}
-		}
-	}
 }
 
 // Clone creates a shallow-copy of the supplied options.
@@ -1819,7 +1802,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
 		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
 		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression().Name)
-		fmt.Fprintf(&buf, "  filter_policy=%s\n", l.FilterPolicy.Name())
+		fmt.Fprintf(&buf, "  filter_policy=%s\n", l.TableFilterPolicy.Name())
 		fmt.Fprintf(&buf, "  filter_type=table\n")
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
 		fmt.Fprintf(&buf, "  target_file_size=%d\n", o.TargetFileSizes[i])
@@ -1915,7 +1898,7 @@ func parseOptions(s string, fns parseOptionsFuncs) error {
 type ParseHooks struct {
 	NewCleaner      func(name string) (Cleaner, error)
 	NewComparer     func(name string) (*Comparer, error)
-	NewFilterPolicy func(name string) (FilterPolicy, error)
+	NewFilterPolicy func(name string) (TableFilterPolicy, error)
 	NewKeySchema    func(name string) (KeySchema, error)
 	NewMerger       func(name string) (*Merger, error)
 	OnUnknown       func(name, value string)
@@ -2331,9 +2314,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				l.Compression = func() *sstable.CompressionProfile { return profile }
 			case "filter_policy":
 				if hooks != nil && hooks.NewFilterPolicy != nil {
-					l.FilterPolicy, err = hooks.NewFilterPolicy(value)
+					l.TableFilterPolicy, err = hooks.NewFilterPolicy(value)
 				} else {
-					l.FilterPolicy = NoFilterPolicy
+					l.TableFilterPolicy = NoFilterPolicy
 				}
 			case "filter_type":
 				switch value {
@@ -2572,10 +2555,10 @@ func (o *Options) Validate() error {
 // options in the receiver.
 func (o *Options) MakeReaderOptions() sstable.ReaderOptions {
 	return sstable.ReaderOptions{
-		Comparer:   o.Comparer,
-		Filters:    o.Filters,
-		KeySchemas: o.KeySchemas,
-		Merger:     o.Merger,
+		Comparer:       o.Comparer,
+		FilterDecoders: o.TableFilterDecoders,
+		KeySchemas:     o.KeySchemas,
+		Merger:         o.Merger,
 		ReaderOptions: block.ReaderOptions{
 			LoadBlockSema:   o.LoadBlockSema,
 			LoggerAndTracer: o.LoggerAndTracer,
@@ -2615,7 +2598,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.BlockSize = levelOpts.BlockSize
 	writerOpts.BlockSizeThreshold = levelOpts.BlockSizeThreshold
 	writerOpts.Compression = levelOpts.Compression()
-	writerOpts.FilterPolicy = levelOpts.FilterPolicy
+	writerOpts.FilterPolicy = levelOpts.TableFilterPolicy
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
 	return writerOpts
 }

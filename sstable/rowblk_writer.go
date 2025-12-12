@@ -84,10 +84,9 @@ type RawRowWriter struct {
 	blockPropCollectors []BlockPropertyCollector
 	obsoleteCollector   obsoleteKeyBlockPropertyCollector
 	blockPropsEncoder   blockPropertiesEncoder
-	// filter accumulates the filter block. If populated, the filter ingests
-	// either the output of w.split (i.e. a prefix extractor) if w.split is not
-	// nil, or the full keys otherwise.
-	filter          filterWriter
+	// filterWriter accumulates the filter block. If not nil, the filterWriter ingests
+	// the key prefixes.
+	filterWriter    base.TableFilterWriter
 	indexPartitions []bufferedIndexBlock
 	// indexPartitionsSizeSum is the sum of the sizes of all index blocks in
 	// indexPartitions.
@@ -961,9 +960,9 @@ func (w *RawRowWriter) addRangeKey(key InternalKey, value []byte) error {
 }
 
 func (w *RawRowWriter) maybeAddToFilter(key []byte) {
-	if w.filter != nil {
+	if w.filterWriter != nil {
 		prefix := key[:w.split(key)]
-		w.filter.addKey(prefix)
+		w.filterWriter.AddKey(prefix)
 	}
 }
 
@@ -1496,13 +1495,13 @@ func (w *RawRowWriter) Close() (err error) {
 	w.props.DataSize = w.layout.offset
 
 	// Write the filter block.
-	if w.filter != nil {
-		bh, err := w.layout.WriteFilterBlock(w.filter)
+	if w.filterWriter != nil {
+		blockSize, filterFamily, err := w.layout.WriteFilterBlock(w.filterWriter)
 		if err != nil {
 			return err
 		}
-		w.props.FilterPolicyName = w.filter.policyName()
-		w.props.FilterSize = bh.Length
+		w.props.FilterFamily = string(filterFamily)
+		w.props.FilterSize = blockSize
 	}
 
 	if w.twoLevelIndex {
@@ -1739,7 +1738,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	}
 
 	if o.FilterPolicy != base.NoFilterPolicy {
-		w.filter = newTableFilterWriter(o.FilterPolicy)
+		w.filterWriter = o.FilterPolicy.NewWriter()
 	}
 
 	w.props.ComparerName = o.Comparer.Name
@@ -1873,17 +1872,14 @@ func (w *RawRowWriter) rewriteSuffixes(
 		return errors.Wrap(err, "rewriting range key blocks")
 	}
 	// Copy over the filter block if it exists.
-	if policyName, filterBH, ok := getExistingFilter(l); ok {
+	if family, filterBH, ok := getExistingFilter(l); ok {
 		filterBlock, _, err := readBlockBuf(sst, filterBH, r.blockReader.ChecksumType(), nil)
 		if err != nil {
 			return errors.Wrap(err, "reading filter")
 		}
-		w.filter = copyFilterWriter{
-			origPolicyName: policyName,
-			// Clone the filter block, because readBlockBuf allows the
-			// returned byte slice to point directly into sst.
-			data: slices.Clone(filterBlock),
-		}
+		// Clone the filter block, because readBlockBuf allows the
+		// returned byte slice to point directly into sst.
+		w.setFilter(slices.Clone(filterBlock), family)
 	}
 	return nil
 }
@@ -1950,9 +1946,15 @@ func (w *RawRowWriter) copyProperties(props Properties) {
 	w.props.IndexType = 0
 }
 
-// setFilter implements RawWriter.
-func (w *RawRowWriter) setFilter(fw filterWriter) {
-	w.filter = fw
+// setFilter sets a pre-populated filter. It is used when we are rewriting
+// suffixes or copying parts of an sstable via CopySpan().
+//
+// The writer takes ownership of the filterData buffer.
+func (w *RawRowWriter) setFilter(filterData []byte, family base.TableFilterFamily) {
+	w.filterWriter = &copyFilterWriter{
+		data:   filterData,
+		family: family,
+	}
 }
 
 // SetValueSeparationProps implements RawWriter.
