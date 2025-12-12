@@ -661,6 +661,11 @@ type InternalKV struct {
 // The zero value is reserved to mean "no attribute" or "unknown".
 type TieringAttribute uint64
 
+// TieringSpanID is an identifier that provides a context for interpreting a
+// TieringAttribute value. At any point in time, the span policies determine
+// a set of non-overlapping key regions with distinct TieringSpanIDs.
+type TieringSpanID uint64
+
 // KVMeta describes optional metadata associated with an `InternalKV`.
 // It's currently produced only by sstable-backed iterators and is not embedded
 // within `InternalKV` to avoid overhead on the common iteration path.
@@ -672,7 +677,7 @@ type TieringAttribute uint64
 // These methods exist to support compaction-only logic (eg, `compaction.Iter`).
 // Regular iteration should use the standard methods that do not surface metadata.
 type KVMeta struct {
-	TieringSpanID    uint64
+	TieringSpanID    TieringSpanID
 	TieringAttribute TieringAttribute
 }
 
