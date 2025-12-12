@@ -250,6 +250,14 @@ const MetadataSize = 280
 // block data buffer aligned.
 const _ uint = -(MetadataSize % 8)
 
+// TODO(radu): increase MetadataSize so that the total overhead is a multiple of
+// 64 bytes (the typical cache line size). Some blocks, like bloom filters,
+// benefit from 64-byte alignment of data.
+//
+// We can only do this a few releases after introducing some slack into the
+// AllocationOverheadAllowance.
+// const _ uint = -((cache.ValueMetadataSize + MetadataSize) % 64)
+
 // NoReadEnv is the empty ReadEnv which reports no stats and does not use a
 // buffer pool.
 var NoReadEnv = ReadEnv{}
