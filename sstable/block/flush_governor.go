@@ -34,21 +34,28 @@ type FlushGovernor struct {
 	targetBoundary int
 }
 
-// This value is the amount of extra bytes we allocate together with the block
-// data. This must be taken into account when taking allocator size classes into
-// consideration.
+// AllocationOverheadAllowance is the amount of extra bytes we budget when
+// fitting a block to an allocator size class. This accounts for metadata (of
+// size cache.ValueMetadataSize+block.MetadataSize) that is allocated together
+// with the block data.
 //
 // For instance, we may have a block of size 1020B that by itself would fit
-// within a 1024B class. However, when loaded into the block cache we also
-// allocate space for the cache entry metadata. The new allocation may now only
-// fit within a 2048B class, which increases internal fragmentation.
+// within a 1KiB class. However, when loaded into the block cache we also
+// allocate space for the cache entry and block metadata. The new allocation may
+// now only fit within a 2KiB class, which increases internal fragmentation.
 //
-// TODO: Consider adding extra slack here for future metadata growth (tradeoff:
-// wasted memory). Metadata size increases can cause internal fragmentation when
-// reading blocks written by older versions that were aligned to size classes
-// according to the old metadata size. An alternative design (e.g. a separate
-// slab allocator for metadata) could also avoid this issue.
-const blockAllocationOverhead = cache.ValueMetadataSize + MetadataSize
+// The exact overhead is cache.ValueMetadataSize + MetadataSize, but we add some
+// extra slack to allow for some metadata growth in future releases without
+// causing fragmentation when loading blocks created by this release.
+const AllocationOverheadAllowance = 384
+
+// Assert that we leave at least 64 bytes for future growth.
+const _ uint = AllocationOverheadAllowance - (cache.ValueMetadataSize + MetadataSize) - 64
+
+// Assert that the overhead aligns to 64 bytes. In the future, we will constrain
+// the overhead to be a multiple of the typical cache line size, so that the
+// block data is aligned (which matters for some blocks, like bloom filters).
+const _ uint = 0 - (AllocationOverheadAllowance % 64)
 
 // MakeFlushGovernor initializes a flush controller.
 //
@@ -76,7 +83,7 @@ func MakeFlushGovernor(
 	if len(allocatorSizeClasses) == 0 {
 		return makeFlushGovernorNoSizeClasses(targetBlockSize, blockSizeThreshold)
 	}
-	targetSizeWithOverhead := targetBlockSize + blockAllocationOverhead
+	targetSizeWithOverhead := targetBlockSize + AllocationOverheadAllowance
 	classIdx := findClosestClass(allocatorSizeClasses, targetSizeWithOverhead)
 	if classIdx == 0 || classIdx == len(allocatorSizeClasses)-1 {
 		// Safeguard if our target isn't inside the known classes.
@@ -85,8 +92,8 @@ func MakeFlushGovernor(
 
 	var fg FlushGovernor
 	fg.lowWatermark = (targetBlockSize*sizeClassAwareThreshold + 99) / 100
-	fg.targetBoundary = allocatorSizeClasses[classIdx] - blockAllocationOverhead
-	fg.highWatermark = allocatorSizeClasses[classIdx+1] - blockAllocationOverhead
+	fg.targetBoundary = allocatorSizeClasses[classIdx] - AllocationOverheadAllowance
+	fg.highWatermark = allocatorSizeClasses[classIdx+1] - AllocationOverheadAllowance
 	// Safeguard, in case the threshold is very close to 100.
 	fg.lowWatermark = min(fg.lowWatermark, fg.targetBoundary)
 
