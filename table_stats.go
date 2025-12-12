@@ -483,7 +483,7 @@ func (d *DB) loadTableRangeDelStats(
 		// While the size estimates for point keys should only be updated if this
 		// span contains a range del, the sequence numbers are required for the
 		// hint. Unconditionally descend, but conditionally update the estimates.
-		hintType := compactionHintFromKeys(s.Keys)
+		hintType := tombstoneKeyTypeFromKeys(s.Keys)
 		estimate, hintSeqNum, err := d.estimateReclaimedSizeBeneath(ctx, v, level, start, end, hintType)
 		if err != nil {
 			return nil, 0, err
@@ -496,7 +496,7 @@ func (d *DB) loadTableRangeDelStats(
 			continue
 		}
 		compactionHints = append(compactionHints, deleteCompactionHint{
-			hintType:                hintType,
+			keyType:                 hintType,
 			start:                   slices.Clone(start),
 			end:                     slices.Clone(end),
 			tombstoneFile:           meta,
@@ -608,11 +608,7 @@ func (d *DB) estimateSizesBeneath(
 }
 
 func (d *DB) estimateReclaimedSizeBeneath(
-	ctx context.Context,
-	v *manifest.Version,
-	level int,
-	start, end []byte,
-	hintType deleteCompactionHintType,
+	ctx context.Context, v *manifest.Version, level int, start, end []byte, hintType manifest.KeyType,
 ) (estimate uint64, hintSeqNum base.SeqNum, err error) {
 	// Find all files in lower levels that overlap with the deleted range
 	// [start, end).
@@ -633,7 +629,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 			// based on the type of hint and the type of keys in this file.
 			var updateEstimates, updateHints bool
 			switch hintType {
-			case deleteCompactionHintTypePointKeyOnly:
+			case manifest.KeyTypePoint:
 				// The range deletion byte estimates should only be updated if this
 				// table contains point keys. This ends up being an overestimate in
 				// the case that table also has range keys, but such keys are expected
@@ -647,7 +643,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				if !file.HasRangeKeys {
 					updateHints = true
 				}
-			case deleteCompactionHintTypeRangeKeyOnly:
+			case manifest.KeyTypeRange:
 				// The initiating span contained only range key dels. The estimates
 				// apply only to point keys, and are therefore not updated.
 				updateEstimates = false
@@ -656,7 +652,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				if !file.HasPointKeys {
 					updateHints = true
 				}
-			case deleteCompactionHintTypePointAndRangeKey:
+			case manifest.KeyTypePointAndRange:
 				// Always update the estimates and hints, as this hint type can drop a
 				// file, irrespective of the mixture of keys. Similar to above, the
 				// range del bytes estimates is an overestimate.
@@ -677,7 +673,7 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				}
 			} else if d.cmp(file.Smallest().UserKey, end) <= 0 && d.cmp(start, file.Largest().UserKey) <= 0 {
 				// Partial overlap.
-				if hintType == deleteCompactionHintTypeRangeKeyOnly {
+				if hintType == manifest.KeyTypeRange {
 					// If the hint that generated this overlap contains only range keys,
 					// there is no need to calculate disk usage, as the reclaimable space
 					// is expected to be minimal relative to point keys.

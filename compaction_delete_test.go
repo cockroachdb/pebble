@@ -162,20 +162,20 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 						TableNum: base.TableNum(parseUint64(parts[1])),
 					}
 
-					var hintType deleteCompactionHintType
+					var keyType manifest.KeyType
 					switch typ := parts[6]; typ {
 					case "point_key_only":
-						hintType = deleteCompactionHintTypePointKeyOnly
+						keyType = manifest.KeyTypePoint
 					case "range_key_only":
-						hintType = deleteCompactionHintTypeRangeKeyOnly
+						keyType = manifest.KeyTypeRange
 					case "point_and_range_key":
-						hintType = deleteCompactionHintTypePointAndRangeKey
+						keyType = manifest.KeyTypePointAndRange
 					default:
 						return fmt.Sprintf("unknown hint type: %s", typ)
 					}
 
 					h := deleteCompactionHint{
-						hintType:                hintType,
+						keyType:                 keyType,
 						start:                   start,
 						end:                     end,
 						tombstoneLevel:          tombstoneLevel,
