@@ -24,7 +24,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
 )
@@ -632,6 +631,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	// There are some private options, which we don't want users to fiddle with.
 	// There's no way to set it through the public interface. The only method is
 	// through Parse.
+	// Note: the parseOptions call below will call opts.EnsureDefaults().
 	{
 		var privateOpts bytes.Buffer
 		fmt.Fprintln(&privateOpts, `[Options]`)
@@ -785,32 +785,25 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		lopts.TableFilterPolicy = bloom.FilterPolicy(1 + rand.Uint32N(20))
 	}
 
-	switch rng.IntN(4) {
-	case 0:
-		lopts.Compression = func() *block.CompressionProfile { return sstable.NoCompression }
-	case 1:
-		lopts.Compression = func() *block.CompressionProfile { return sstable.ZstdCompression }
-	case 2:
-		lopts.Compression = func() *block.CompressionProfile { return sstable.SnappyCompression }
-	default:
-		lopts.Compression = func() *block.CompressionProfile { return sstable.MinLZCompression }
+	for i := range opts.Levels {
+		opts.Levels[i] = lopts
 	}
-	opts.Levels[0] = lopts
 
-	// Sometimes apply DBCompressionSettings.
-	if rng.IntN(2) == 0 {
-		csList := []pebble.DBCompressionSettings{
-			pebble.DBCompressionNone,
-			pebble.DBCompressionFast,
-			pebble.DBCompressionFastest,
-			pebble.DBCompressionBalanced,
-			pebble.DBCompressionGood,
-		}
-		cs := csList[rng.IntN(len(csList))]
-		opts.ApplyCompressionSettings(func() pebble.DBCompressionSettings {
-			return cs
-		})
+	// Apply a random DBCompressionSettings.
+	csList := []pebble.DBCompressionSettings{
+		pebble.DBCompressionNone,
+		pebble.UniformDBCompressionSettings(sstable.ZstdCompression),
+		pebble.UniformDBCompressionSettings(sstable.SnappyCompression),
+		pebble.UniformDBCompressionSettings(sstable.MinLZCompression),
+		pebble.DBCompressionFast,
+		pebble.DBCompressionFastest,
+		pebble.DBCompressionBalanced,
+		pebble.DBCompressionGood,
 	}
+	cs := csList[rng.IntN(len(csList))]
+	opts.ApplyCompressionSettings(func() pebble.DBCompressionSettings {
+		return cs
+	})
 
 	// Explicitly disable disk-backed FS's for the random configurations. The
 	// single standard test configuration that uses a disk-backed FS is
