@@ -176,8 +176,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 
 					h := deleteCompactionHint{
 						keyType:                 keyType,
-						start:                   start,
-						end:                     end,
+						bounds:                  base.UserKeyBoundsEndExclusive(start, end),
 						tombstoneLevel:          tombstoneLevel,
 						tombstoneFile:           tombstoneFile,
 						tombstoneSmallestSeqNum: base.SeqNum(parseUint64(parts[4])),

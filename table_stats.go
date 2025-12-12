@@ -7,7 +7,6 @@ package pebble
 import (
 	"context"
 	"fmt"
-	"math"
 	"slices"
 	"time"
 
@@ -401,7 +400,8 @@ func (d *DB) loadTablePointKeyStats(
 }
 
 // loadTableRangeDelStats calculates the range deletion and range key deletion
-// statistics for the given table.
+// statistics for the given table. It also collects deleteCompactionHints if it
+// finds any eligible sstables.
 func (d *DB) loadTableRangeDelStats(
 	ctx context.Context,
 	r *sstable.Reader,
@@ -423,35 +423,24 @@ func (d *DB) loadTableRangeDelStats(
 	// our overall estimate.
 	s, err := iter.First()
 	for ; s != nil; s, err = iter.Next() {
-		start, end := s.Start, s.End
-		// We only need to consider deletion size estimates for tables that contain
-		// RANGEDELs.
-		var maxRangeDeleteSeqNum base.SeqNum
-		for _, k := range s.Keys {
-			if k.Kind() == base.InternalKeyKindRangeDelete && maxRangeDeleteSeqNum < k.SeqNum() {
-				maxRangeDeleteSeqNum = k.SeqNum()
-				break
-			}
-		}
-
-		// If the file is in the last level of the LSM, there is no data beneath
-		// it. The fact that there is still a range tombstone in a bottommost file
-		// indicates two possibilites:
+		// If the table is in the last level of the LSM, there is no data
+		// beneath it. The fact that there is still a range tombstone in a
+		// bottommost table indicates two possibilites:
 		//   1. an open snapshot kept the tombstone around, and the data the
-		//      tombstone deletes is contained within the file itself.
-		//   2. the file was ingested.
-		// In the first case, we'd like to estimate disk usage within the file
-		// itself since compacting the file will drop that covered data. In the
-		// second case, we expect that compacting the file will NOT drop any
-		// data and rewriting the file is a waste of write bandwidth. We can
+		//      tombstone deletes is contained within the table itself.
+		//   2. the table was ingested.
+		// In the first case, we'd like to estimate disk usage within the table
+		// itself since compacting the table will drop that covered data. In the
+		// second case, we expect that compacting the table will NOT drop any
+		// data and rewriting the table is a waste of write bandwidth. We can
 		// distinguish these cases by looking at the table metadata's sequence
-		// numbers. A file's range deletions can only delete data within the
-		// file at lower sequence numbers. All keys in an ingested sstable adopt
-		// the same sequence number, preventing tombstones from deleting keys
-		// within the same file. We check here if the largest RANGEDEL sequence
-		// number is greater than the file's smallest sequence number. If it is,
-		// the RANGEDEL could conceivably (although inconclusively) delete data
-		// within the same file.
+		// numbers. A table's range deletions can only delete data within the
+		// table at lower sequence numbers. All keys in an ingested sstable
+		// adopt the same sequence number, preventing tombstones from deleting
+		// keys within the same table. We check here if the largest RANGEDEL
+		// sequence number is greater than the table's smallest sequence number.
+		// If it is, the RANGEDEL could conceivably (although inconclusively)
+		// delete data within the same table.
 		//
 		// Note that this heuristic is imperfect. If a table containing a range
 		// deletion is ingested into L5 and subsequently compacted into L6 but
@@ -460,7 +449,7 @@ func (d *DB) loadTableRangeDelStats(
 		// covered keys.
 		//
 		// TODO(jackson): We could prevent the above error in the heuristic by
-		// computing the file's RangeDeletionsBytesEstimate during the
+		// computing the table's RangeDeletionsBytesEstimate during the
 		// compaction itself. It's unclear how common this is.
 		//
 		// NOTE: If the span `s` wholly contains a table containing range keys,
@@ -468,42 +457,48 @@ func (d *DB) loadTableRangeDelStats(
 		// block. However, in practice, range keys are expected to be rare, and
 		// the size of the range key block relative to the overall size of the
 		// table is expected to be small.
-		if level == numLevels-1 && meta.SmallestSeqNum < maxRangeDeleteSeqNum {
-			size, err := estimateDiskUsageInTableAndBlobReferences(r, start, end, env, meta)
-			if err != nil {
-				return nil, 0, err
+		if level == numLevels-1 {
+			var maxRangeDeleteSeqNum base.SeqNum
+			for _, k := range s.Keys {
+				if k.Kind() == base.InternalKeyKindRangeDelete && maxRangeDeleteSeqNum < k.SeqNum() {
+					maxRangeDeleteSeqNum = k.SeqNum()
+					break
+				}
 			}
-			rangeDeletionsBytesEstimate += size
-
-			// As the file is in the bottommost level, there is no need to collect a
-			// deletion hint.
-			continue
+			if meta.SmallestSeqNum < maxRangeDeleteSeqNum {
+				size, err := estimateDiskUsageInTableAndBlobReferences(r, s.Start, s.End, env, meta)
+				if err != nil {
+					return nil, 0, err
+				}
+				rangeDeletionsBytesEstimate += size
+				// As the table is in the bottommost level, there is no need to
+				// collect a deletion hint.
+				continue
+			}
 		}
 
 		// While the size estimates for point keys should only be updated if this
 		// span contains a range del, the sequence numbers are required for the
 		// hint. Unconditionally descend, but conditionally update the estimates.
-		hintType := tombstoneKeyTypeFromKeys(s.Keys)
-		estimate, hintSeqNum, err := d.estimateReclaimedSizeBeneath(ctx, v, level, start, end, hintType)
+		tombstoneKeyType := tombstoneKeyTypeFromKeys(s.Keys)
+		tombBounds := base.UserKeyBoundsEndExclusive(s.Start, s.End)
+		estimate, deletionCandidates, err := d.examineTablesBeneathTombstones(
+			ctx, v, level, tombBounds, tombstoneKeyType)
 		if err != nil {
 			return nil, 0, err
 		}
 		rangeDeletionsBytesEstimate += estimate
 
-		// hintSeqNum is the smallest sequence number contained in any
-		// file overlapping with the hint and in a level below it.
-		if hintSeqNum == math.MaxUint64 {
-			continue
+		if deletionCandidates > 0 {
+			compactionHints = append(compactionHints, deleteCompactionHint{
+				keyType:                 tombstoneKeyType,
+				bounds:                  base.UserKeyBoundsEndExclusive(slices.Clone(s.Start), slices.Clone(s.End)),
+				tombstoneFile:           meta,
+				tombstoneLevel:          level,
+				tombstoneLargestSeqNum:  s.LargestSeqNum(),
+				tombstoneSmallestSeqNum: s.SmallestSeqNum(),
+			})
 		}
-		compactionHints = append(compactionHints, deleteCompactionHint{
-			keyType:                 hintType,
-			start:                   slices.Clone(start),
-			end:                     slices.Clone(end),
-			tombstoneFile:           meta,
-			tombstoneLevel:          level,
-			tombstoneLargestSeqNum:  s.LargestSeqNum(),
-			tombstoneSmallestSeqNum: s.SmallestSeqNum(),
-		})
 	}
 	if err != nil {
 		return nil, 0, err
@@ -607,40 +602,60 @@ func (d *DB) estimateSizesBeneath(
 	return avgValueLogicalSize, compressionRatio, nil
 }
 
-func (d *DB) estimateReclaimedSizeBeneath(
-	ctx context.Context, v *manifest.Version, level int, start, end []byte, hintType manifest.KeyType,
-) (estimate uint64, hintSeqNum base.SeqNum, err error) {
-	// Find all files in lower levels that overlap with the deleted range
-	// [start, end).
+// examineTablesBeneathTombstones descends the LSM, visting sstables within the
+// bounds of a set of tombstones. It does two things: determine the number of
+// tables that are eligible for delete-only compactions, and estimates the
+// amount of data that can be reclaimed.
+//
+// The type of tombstones is indicated by tombType, with RangeKeyOnly indicating
+// a RANGEKEYDEL tombstone, PointKeyOnly indicating a RANGEDEL tombstone, and
+// PointAndRangeKey indicating the presence of both with the same bounds.
+//
+// In order for a table to be eligible for a delete-only compaction, it must
+// meet certain requirements with respect to the kinds of keys contained and the
+// bounds of the table relative to the tombstones. If a table falls wholly
+// within the provided bounds and only contains keys deleted by the tombstone
+// (as indicated by tombType), it could be dropped outright by a delete-only
+// compaction. Additionally, if the tombstone bounds overlap either the left or
+// right boundary of the table, a delete-only compaction could excise the table,
+// shortening its boundary to exclude the part of its keyspace that overlaps the
+// tombstone. Both of these cases are considered deletion candidates.
+func (d *DB) examineTablesBeneathTombstones(
+	ctx context.Context,
+	v *manifest.Version,
+	level int,
+	tombBounds base.UserKeyBounds,
+	tombType manifest.KeyType,
+) (estimate uint64, deletionCandidates int, err error) {
+	// Find all tables in lower levels that overlap with tombBounds.
 	//
-	// An overlapping file might be completely contained by the range
-	// tombstone, in which case we can count the entire file size in
-	// our estimate without doing any additional I/O.
+	// An overlapping table might be completely contained by the tombstone(s),
+	// in which case we can count the entire table size in our estimate without
+	// doing any additional I/O. Otherwise, estimating the amount of data within
+	// the table that falls within the tombstone bounds requires additional I/O
+	// to read the table's index blocks.
 	//
-	// Otherwise, estimating the range for the file requires
-	// additional I/O to read the file's index blocks.
-	hintSeqNum = math.MaxUint64
-	// TODO(jbowens): When there are multiple sub-levels in L0 and the RANGEDEL
-	// is from a higher sub-level, we incorrectly skip the files in the lower
+	// TODO(jackson): When there are multiple sub-levels in L0 and the RANGEDEL
+	// is from a higher sub-level, we incorrectly skip the tables in the lower
 	// sub-levels when estimating this overlap.
 	for l := level + 1; l < numLevels; l++ {
-		for file := range v.Overlaps(l, base.UserKeyBoundsEndExclusive(start, end)).All() {
+		for tbl := range v.Overlaps(l, tombBounds).All() {
 			// Determine whether we need to update size estimates and hint seqnums
 			// based on the type of hint and the type of keys in this file.
 			var updateEstimates, updateHints bool
-			switch hintType {
+			switch tombType {
 			case manifest.KeyTypePoint:
 				// The range deletion byte estimates should only be updated if this
 				// table contains point keys. This ends up being an overestimate in
 				// the case that table also has range keys, but such keys are expected
 				// to contribute a negligible amount of the table's overall size,
 				// relative to point keys.
-				if file.HasPointKeys {
+				if tbl.HasPointKeys {
 					updateEstimates = true
 				}
 				// As the initiating span contained only range dels, hints can only be
 				// updated if this table does _not_ contain range keys.
-				if !file.HasRangeKeys {
+				if !tbl.HasRangeKeys {
 					updateHints = true
 				}
 			case manifest.KeyTypeRange:
@@ -649,55 +664,57 @@ func (d *DB) estimateReclaimedSizeBeneath(
 				updateEstimates = false
 				// As the initiating span contained only range key dels, hints can
 				// only be updated if this table does _not_ contain point keys.
-				if !file.HasPointKeys {
+				if !tbl.HasPointKeys {
 					updateHints = true
 				}
 			case manifest.KeyTypePointAndRange:
-				// Always update the estimates and hints, as this hint type can drop a
-				// file, irrespective of the mixture of keys. Similar to above, the
-				// range del bytes estimates is an overestimate.
+				// Always update the estimates and hints, as this hint type can
+				// drop a table, irrespective of the mixture of keys. Similar to
+				// above, the range del bytes estimates is an overestimate.
 				updateEstimates, updateHints = true, true
 			default:
-				panic(fmt.Sprintf("pebble: unknown hint type %s", hintType))
+				panic(errors.AssertionFailedf("pebble: unknown tombstone type %s", tombType))
 			}
-			startCmp := d.cmp(start, file.Smallest().UserKey)
-			endCmp := d.cmp(file.Largest().UserKey, end)
-			if startCmp <= 0 && (endCmp < 0 || endCmp == 0 && file.Largest().IsExclusiveSentinel()) {
-				// The range fully contains the file, so skip looking it up in table
-				// cache/looking at its indexes and add the full file size.
+
+			if tombBounds.ContainsBounds(d.cmp, tbl.UserKeyBounds()) {
+				// The range fully contains the file, so skip looking it up in
+				// table cache/looking at its indexes and add the full file
+				// size.
 				if updateEstimates {
-					estimate += file.Size + file.EstimatedReferenceSize()
+					estimate += tbl.Size + tbl.EstimatedReferenceSize()
 				}
-				if updateHints && hintSeqNum > file.SmallestSeqNum {
-					hintSeqNum = file.SmallestSeqNum
+				if updateHints {
+					deletionCandidates++
 				}
-			} else if d.cmp(file.Smallest().UserKey, end) <= 0 && d.cmp(start, file.Largest().UserKey) <= 0 {
-				// Partial overlap.
-				if hintType == manifest.KeyTypeRange {
-					// If the hint that generated this overlap contains only range keys,
-					// there is no need to calculate disk usage, as the reclaimable space
-					// is expected to be minimal relative to point keys.
-					continue
-				}
-				var size uint64
-				err := d.fileCache.withReader(ctx, block.NoReadEnv, file,
-					func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
-						size, err = estimateDiskUsageInTableAndBlobReferences(r, start, end, env, file)
-						return err
-					})
-				if err != nil {
-					return 0, hintSeqNum, err
-				}
-				estimate += size
-				if updateHints && hintSeqNum > file.SmallestSeqNum && d.FormatMajorVersion() >= FormatVirtualSSTables {
-					// If the format major version is past Virtual SSTables, deletion only
-					// hints can also apply to partial overlaps with sstables.
-					hintSeqNum = file.SmallestSeqNum
-				}
+				continue
+			}
+			// Partial overlap.
+			if tombType == manifest.KeyTypeRange {
+				// If the tombstone can only delete range keys, there is no need
+				// to calculate disk usage, as the reclaimable space is expected
+				// to be minimal relative to point keys and we have no way of
+				// accurately calculating it.
+				continue
+			}
+			var size uint64
+			err := d.fileCache.withReader(ctx, block.NoReadEnv, tbl,
+				func(r *sstable.Reader, env sstable.ReadEnv) (err error) {
+					size, err = estimateDiskUsageInTableAndBlobReferences(
+						r, tombBounds.Start, tombBounds.End.Key, env, tbl)
+					return err
+				})
+			if err != nil {
+				return 0, 0, err
+			}
+			estimate += size
+			if updateHints && d.FormatMajorVersion() >= FormatVirtualSSTables {
+				// If the format major version is past Virtual SSTables, deletion only
+				// hints can also apply to partial overlaps with sstables.
+				deletionCandidates++
 			}
 		}
 	}
-	return estimate, hintSeqNum, nil
+	return estimate, deletionCandidates, nil
 }
 
 var lastSanityCheckStatsLog crtime.AtomicMono
