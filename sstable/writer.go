@@ -309,6 +309,9 @@ func (w *Writer) Close() (err error) {
 	return errors.CombineErrors(w.rw.Close(), w.err)
 }
 
+// KVMeta reexports base.KVMeta, so callers can use RawWriter.Add.
+type KVMeta = base.KVMeta
+
 // RawWriter defines an interface for sstable writers. Implementations may vary
 // depending on the TableFormat being written.
 type RawWriter interface {
