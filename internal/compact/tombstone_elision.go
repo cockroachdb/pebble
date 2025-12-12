@@ -183,7 +183,7 @@ func SetupTombstoneElision(
 	// of the compaction. This is an optimization to avoid key comparisons against
 	// the in-use ranges during the compaction when every key within the
 	// compaction overlaps with an in-use span.
-	if len(inUseKeyRanges) == 1 && inUseKeyRanges[0].ContainsBounds(cmp, &compactionBounds) {
+	if len(inUseKeyRanges) == 1 && inUseKeyRanges[0].ContainsBounds(cmp, compactionBounds) {
 		dels = NoTombstoneElision()
 	} else {
 		dels = ElideTombstonesOutsideOf(inUseKeyRanges)

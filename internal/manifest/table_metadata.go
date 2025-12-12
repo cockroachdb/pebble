@@ -687,7 +687,7 @@ func (m *TableMetadata) extendOverallBounds(
 // Overlaps returns true if the file key range overlaps with the given user key bounds.
 func (m *TableMetadata) Overlaps(cmp Compare, bounds *base.UserKeyBounds) bool {
 	b := m.UserKeyBounds()
-	return b.Overlaps(cmp, bounds)
+	return b.Overlaps(cmp, *bounds)
 }
 
 // ContainedWithinSpan returns true if the file key range completely overlaps with the

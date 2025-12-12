@@ -169,7 +169,7 @@ func (c *Checker) emptyRegionPointsAndRangeDels(
 		return true, nil
 	}
 	pointBounds := m.UserKeyBoundsByType(manifest.KeyTypePoint)
-	if !pointBounds.Overlaps(c.cmp, &region) {
+	if !pointBounds.Overlaps(c.cmp, region) {
 		return true, nil
 	}
 	points, err := c.iteratorFactory.Points(ctx, m)
@@ -216,7 +216,7 @@ func (c *Checker) emptyRegionRangeKeys(
 		return true, nil
 	}
 	rangeKeyBounds := m.UserKeyBoundsByType(manifest.KeyTypeRange)
-	if !rangeKeyBounds.Overlaps(c.cmp, &region) {
+	if !rangeKeyBounds.Overlaps(c.cmp, region) {
 		return true, nil
 	}
 	rangeKeys, err := c.iteratorFactory.RangeKeys(ctx, m)

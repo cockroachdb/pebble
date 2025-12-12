@@ -82,8 +82,7 @@ func (d *DB) exciseTable(
 	boundsPolicy exciseBoundsPolicy,
 ) (leftTable, rightTable *manifest.TableMetadata, _ error) {
 	// Check if there's actually an overlap between m and exciseSpan.
-	mBounds := m.UserKeyBounds()
-	if !exciseBounds.Overlaps(d.cmp, &mBounds) {
+	if !exciseBounds.Overlaps(d.cmp, m.UserKeyBounds()) {
 		return nil, nil, base.AssertionFailedf("excise span does not overlap table")
 	}
 	// Fast path: m sits entirely within the exciseSpan, so just delete it.
