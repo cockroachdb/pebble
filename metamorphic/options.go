@@ -782,7 +782,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	case 1:
 		lopts.TableFilterPolicy = bloom.FilterPolicy(10)
 	default:
-		lopts.TableFilterPolicy = bloom.FilterPolicy(1 + rand.IntN(20))
+		lopts.TableFilterPolicy = bloom.FilterPolicy(1 + rand.Uint32N(20))
 	}
 
 	switch rng.IntN(4) {
@@ -1050,7 +1050,7 @@ func filterPolicyFromName(name string) (pebble.TableFilterPolicy, error) {
 		return base.NoFilterPolicy, nil
 	}
 	// Backward compatibility.
-	var bitsPerKey int
+	var bitsPerKey uint32
 	if _, err := fmt.Sscanf(name, "testing_bloom_filter/bits_per_key=%d", &bitsPerKey); err != nil {
 		return nil, errors.Errorf("Invalid filter policy name '%s'", name)
 	}

@@ -134,8 +134,8 @@ func (testFilterPolicyImpl) NewWriter() base.TableFilterWriter {
 type testFilterWriter struct{}
 
 func (w *testFilterWriter) AddKey(key []byte) {}
-func (w *testFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
-	return nil, testFilterDecoder.Family()
+func (w *testFilterWriter) Finish() ([]byte, base.TableFilterFamily, bool) {
+	return nil, testFilterDecoder.Family(), true
 }
 func (w *testFilterWriter) Reset()                                     {}
 func (w *testFilterWriter) Len() int                                   { return 0 }

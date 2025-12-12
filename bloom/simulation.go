@@ -47,7 +47,11 @@ func SimulateFPR(bitsPerKey int, numProbes int) (float64, string) {
 					w.blocks[len(w.blocks)-1][ofs] = h
 					w.numHashes++
 				}
-				filter := tableFilter(w.Finish(nil))
+				filterData, _, ok := w.Finish()
+				if !ok {
+					continue
+				}
+				filter := tableFilter(filterData)
 
 				queries := cacheLineSize * numHashes
 				negatives := 0

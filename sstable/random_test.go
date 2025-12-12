@@ -316,7 +316,7 @@ func (cfg *randomTableConfig) randomize() {
 			KeySchema:               &testkeysSchema,
 			WritingToLowestLevel:    cfg.rng.IntN(2) == 1,
 		}
-		if bitsPerKey := cfg.rng.IntN(11); bitsPerKey > 0 {
+		if bitsPerKey := cfg.rng.Uint32N(11); bitsPerKey > 0 {
 			cfg.wopts.FilterPolicy = bloom.FilterPolicy(bitsPerKey)
 		}
 		if cfg.wopts.TableFormat >= TableFormatPebblev1 && cfg.rng.Float64() < 0.75 {

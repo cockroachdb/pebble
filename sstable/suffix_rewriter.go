@@ -302,10 +302,10 @@ var _ base.TableFilterWriter = (*copyFilterWriter)(nil)
 
 func (copyFilterWriter) AddKey(key []byte) { panic("unimplemented") }
 
-func (c *copyFilterWriter) Finish() ([]byte, base.TableFilterFamily) {
+func (c *copyFilterWriter) Finish() (_ []byte, _ base.TableFilterFamily, ok bool) {
 	data, family := c.data, c.family
 	*c = copyFilterWriter{}
-	return data, family
+	return data, family, true
 }
 
 // RewriteKeySuffixesViaWriter is similar to RewriteKeySuffixes but uses just a
