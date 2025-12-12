@@ -11,6 +11,8 @@ github.com/RaduBerinde/axisds v0.0.0-20260105221726-1be486564c85 h1:OjUilXBeTEMa
 github.com/RaduBerinde/axisds v0.0.0-20260105221726-1be486564c85/go.mod h1:gAhfbTwNsV064J6aon3TDJLzeh5IxfptXalQVnjjnWQ=
 github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603 h1:fSdiBlO4Bad28mJOPlAynvfgdDC9v+yRlzSFHvvjKYI=
 github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603/go.mod h1:0tr7FllbE9gJkHq7CVeeDDFAFKQVy5RnCSSNBOvdqbc=
+github.com/RaduBerinde/tdigest v0.0.0-20251022152254-90e030c3a314 h1:RcSNrxDZ1ZyEfpGwrpWqd3YWfMjQbKOtT+p3Wht6XN0=
+github.com/RaduBerinde/tdigest v0.0.0-20251022152254-90e030c3a314/go.mod h1:RClmoWh7JPAzCuExyOvKDCRVYGz3D11DcpzEkq4N3RA=
 github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794 h1:xlwdaKcTNVW4PtpQb8aKA4Pjy0CdJHEqvFbAnvR5m2g=
 github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794/go.mod h1:7e+I0LQFUI9AXWxOfsQROs9xPhoJtbsyWcjJqDd4KPY=
 github.com/aclements/go-perfevent v0.0.0-20240301234650-f7843625020f h1:JjxwchlOepwsUWcQwD2mLUAGE9aCp0/ehy6yCHFBOvo=
