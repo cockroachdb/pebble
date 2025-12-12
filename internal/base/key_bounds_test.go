@@ -86,23 +86,23 @@ func TestUserKeyBounds(t *testing.T) {
 	})
 
 	t.Run("Overlaps", func(t *testing.T) {
-		require.True(t, bdi.Overlaps(cmp, &bdi))
-		require.True(t, bdi.Overlaps(cmp, &bde))
-		require.True(t, bdi.Overlaps(cmp, &bb))
-		require.True(t, bde.Overlaps(cmp, &bde))
-		require.True(t, bde.Overlaps(cmp, &bdi))
-		require.True(t, bde.Overlaps(cmp, &aci))
-		require.True(t, bde.Overlaps(cmp, &bb))
-		require.True(t, aci.Overlaps(cmp, &cde))
-		require.False(t, ace.Overlaps(cmp, &cde))
-		require.False(t, cde.Overlaps(cmp, &bb))
+		require.True(t, bdi.Overlaps(cmp, bdi))
+		require.True(t, bdi.Overlaps(cmp, bde))
+		require.True(t, bdi.Overlaps(cmp, bb))
+		require.True(t, bde.Overlaps(cmp, bde))
+		require.True(t, bde.Overlaps(cmp, bdi))
+		require.True(t, bde.Overlaps(cmp, aci))
+		require.True(t, bde.Overlaps(cmp, bb))
+		require.True(t, aci.Overlaps(cmp, cde))
+		require.False(t, ace.Overlaps(cmp, cde))
+		require.False(t, cde.Overlaps(cmp, bb))
 	})
 
 	t.Run("ContainsBounds", func(t *testing.T) {
-		require.True(t, bdi.ContainsBounds(cmp, &bb))
-		require.True(t, bdi.ContainsBounds(cmp, &bde))
-		require.True(t, bde.ContainsBounds(cmp, &bde))
-		require.False(t, bde.ContainsBounds(cmp, &bdi))
+		require.True(t, bdi.ContainsBounds(cmp, bb))
+		require.True(t, bdi.ContainsBounds(cmp, bde))
+		require.True(t, bde.ContainsBounds(cmp, bde))
+		require.False(t, bde.ContainsBounds(cmp, bdi))
 	})
 
 	t.Run("ContainsUserKey", func(t *testing.T) {

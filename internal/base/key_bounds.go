@@ -41,8 +41,7 @@ func (k KeyRange) UserKeyBounds() UserKeyBounds {
 // between the two ranges.
 func (k *KeyRange) OverlapsInternalKeyRange(cmp Compare, smallest, largest InternalKey) bool {
 	ukb := k.UserKeyBounds()
-	b := UserKeyBoundsFromInternal(smallest, largest)
-	return ukb.Overlaps(cmp, &b)
+	return ukb.Overlaps(cmp, UserKeyBoundsFromInternal(smallest, largest))
 }
 
 // OverlapsKeyRange checks if this span overlaps with the provided KeyRange.
@@ -181,13 +180,13 @@ func (b *UserKeyBounds) Valid(cmp Compare) bool {
 }
 
 // Overlaps returns true if the bounds overlap.
-func (b *UserKeyBounds) Overlaps(cmp Compare, other *UserKeyBounds) bool {
+func (b *UserKeyBounds) Overlaps(cmp Compare, other UserKeyBounds) bool {
 	// There is no overlap iff one interval starts after the other ends.
 	return other.End.IsUpperBoundFor(cmp, b.Start) && b.End.IsUpperBoundFor(cmp, other.Start)
 }
 
 // ContainsBounds returns true if b completely overlaps other.
-func (b *UserKeyBounds) ContainsBounds(cmp Compare, other *UserKeyBounds) bool {
+func (b *UserKeyBounds) ContainsBounds(cmp Compare, other UserKeyBounds) bool {
 	if cmp(b.Start, other.Start) > 0 {
 		return false
 	}

@@ -87,7 +87,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 
 				var containedWithin bool
 				for _, kr := range keyRanges {
-					containedWithin = containedWithin || kr.ContainsBounds(cmp, &b)
+					containedWithin = containedWithin || kr.ContainsBounds(cmp, b)
 				}
 				if !containedWithin {
 					t.Fatalf("file L%d.%s with bounds %s overlaps [%s, %s] but no in-use key range contains it",
