@@ -708,7 +708,7 @@ func (w *DataBlockEncoder) Add(
 		w.values.Put(value)
 	}
 	if w.columnConfig.SupportsTiering() && meta != (base.KVMeta{}) {
-		w.tieringSpanIDs.Set(w.rows, meta.TieringSpanID)
+		w.tieringSpanIDs.Set(w.rows, uint64(meta.TieringSpanID))
 		w.tieringAttributes.Set(w.rows, uint64(meta.TieringAttribute))
 	}
 	if len(ikey.UserKey) > int(w.maximumKeyLength) {
@@ -1518,7 +1518,7 @@ func (i *DataBlockIter) decodeMeta() base.KVMeta {
 		return base.KVMeta{}
 	}
 	return base.KVMeta{
-		TieringSpanID:    i.tieringSpanIDs.At(i.row),
+		TieringSpanID:    base.TieringSpanID(i.tieringSpanIDs.At(i.row)),
 		TieringAttribute: base.TieringAttribute(i.tieringAttributes.At(i.row)),
 	}
 }
