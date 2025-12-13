@@ -555,7 +555,7 @@ func ExtractKVMeta(value []byte) base.KVMeta {
 	if e != nil {
 		panic(fmt.Sprintf("invalid tiering span in KV metadata in %q", value))
 	}
-	res.TieringSpanID = v
+	res.TieringSpanID = base.TieringSpanID(v)
 	v, e = strconv.ParseUint(m[2], 10, 64)
 	if e != nil {
 		panic(fmt.Sprintf("invalid tiering attr in KV metadata in %q", value))
