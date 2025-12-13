@@ -87,7 +87,7 @@ base: 5
 
 queue
 ----
-L5->L6: 2.2
+L5->L6: 2.0
   500001:[0001#1,SET-0001#1,SET] marked as compacting
   600001:[0001#1,SET-0001#1,SET] marked as compacting
 
@@ -384,7 +384,7 @@ base: 5
 
 queue
 ----
-L5->L6: 3.2
+L5->L6: 2.0
   500001:[0001#1,SET-0001#1,SET] marked as compacting
   600001:[0001#1,SET-0001#1,SET] marked as compacting
 
@@ -411,7 +411,7 @@ L6:
   600008:[0008#8,SET-0008#8,SET]: 1 bytes (1B)
   600009:[0009#9,SET-0009#9,SET]: 1 bytes (1B)
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
-Picked: L5->L6: 3.2
+Picked: L5->L6: 2.0
 
 pick ongoing=(5,6)
 ----
@@ -1000,7 +1000,7 @@ base: 5
 
 queue
 ----
-L5->L6: 5.2
+L5->L6: 4.0
   500001:[0001#1,SET-0001#1,SET] marked as compacting
   600001:[0001#1,SET-0001#1,SET] marked as compacting
 
@@ -1023,7 +1023,7 @@ L6:
   600008:[0008#8,SET-0008#8,SET]: 1 bytes (1B)
   600009:[0009#9,SET-0009#9,SET]: 1 bytes (1B)
   600010:[0010#10,SET-0010#10,SET]: 1 bytes (1B)
-Picked: L5->L6: 5.2
+Picked: L5->L6: 4.0
 
 pick ongoing=(5,6)
 ----
