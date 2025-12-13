@@ -822,13 +822,11 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	//    larger than Ln+1.
 
 	// Determine the first non-empty level and the total DB size.
-	firstNonEmptyLevel := -1
+	firstNonEmptyLevel := numLevels - 1
 	var dbSize uint64
 	for level := 1; level < numLevels; level++ {
 		if p.vers.Levels[level].AggregateSize() > 0 {
-			if firstNonEmptyLevel == -1 {
-				firstNonEmptyLevel = level
-			}
+			firstNonEmptyLevel = min(firstNonEmptyLevel, level)
 			dbSize += p.vers.Levels[level].AggregateSize()
 		}
 	}
@@ -836,8 +834,8 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 		if c.outputLevel == 0 || c.outputLevel == -1 {
 			continue
 		}
-		if c.inputs[0].level == 0 && (firstNonEmptyLevel == -1 || c.outputLevel < firstNonEmptyLevel) {
-			firstNonEmptyLevel = c.outputLevel
+		if c.inputs[0].level == 0 {
+			firstNonEmptyLevel = min(firstNonEmptyLevel, c.outputLevel)
 		}
 	}
 
@@ -847,10 +845,7 @@ func (p *compactionPickerByScore) initLevelMaxBytes(inProgressCompactions []comp
 	if dbSizeBelowL0 == 0 {
 		// No levels for L1 and up contain any data. Target L0 compactions for the
 		// last level or to the level to which there is an ongoing L0 compaction.
-		p.baseLevel = numLevels - 1
-		if firstNonEmptyLevel >= 0 {
-			p.baseLevel = firstNonEmptyLevel
-		}
+		p.baseLevel = firstNonEmptyLevel
 		for level := 0; level < numLevels; level++ {
 			p.levelMaxBytes[level] = math.MaxInt64
 		}
@@ -879,14 +874,11 @@ func calculateLevelSizes(
 		levelMaxBytes[level] = math.MaxInt64
 	}
 
-	if firstNonEmptyLevel < 1 {
-		panic("invalid firstNonEmptyLevel")
-	}
 	bottomLevelSize := dbSize - dbSize/uint64(opts.Experimental.LevelMultiplier)
 
 	curLevelSize := bottomLevelSize
 	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
-		curLevelSize = uint64(float64(curLevelSize) / float64(opts.Experimental.LevelMultiplier))
+		curLevelSize /= uint64(opts.Experimental.LevelMultiplier)
 	}
 
 	// Compute base level (where L0 data is compacted to).
@@ -894,11 +886,14 @@ func calculateLevelSizes(
 	baseLevel = firstNonEmptyLevel
 	for baseLevel > 1 && curLevelSize > baseBytesMax {
 		baseLevel--
-		curLevelSize = uint64(float64(curLevelSize) / float64(opts.Experimental.LevelMultiplier))
+		curLevelSize /= uint64(opts.Experimental.LevelMultiplier)
 	}
 
 	smoothedLevelMultiplier := 1.0
 	if baseLevel < numLevels-1 {
+		// Find the multiplier so that
+		//   baseBytesMax * smoothedLevelMultiplier^(numLevels - baseLevel - 1) = bottomLevelSize
+		//   smoothedLevelMultiplier = (bottomLevelSize / baseBytesMax)^(1 / (numLevels - baseLevel - 1))
 		smoothedLevelMultiplier = math.Pow(
 			float64(bottomLevelSize)/float64(baseBytesMax),
 			1.0/float64(numLevels-baseLevel-1))
@@ -906,9 +901,6 @@ func calculateLevelSizes(
 
 	levelSize := float64(baseBytesMax)
 	for level := baseLevel; level < numLevels; level++ {
-		if level > baseLevel && levelSize > 0 {
-			levelSize *= smoothedLevelMultiplier
-		}
 		// Round the result since test cases use small target level sizes, which
 		// can be impacted by floating-point imprecision + integer truncation.
 		roundedLevelSize := math.Round(levelSize)
@@ -917,6 +909,7 @@ func calculateLevelSizes(
 		} else {
 			levelMaxBytes[level] = int64(roundedLevelSize)
 		}
+		levelSize *= smoothedLevelMultiplier
 	}
 	return baseLevel, levelMaxBytes
 }
