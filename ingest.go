@@ -1693,7 +1693,9 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	err = d.ingestAttachRemote(jobID, loadResult)
 	defer d.ingestUnprotectExternalBackings(loadResult)
 	if err != nil {
-		// TODO (xinhaoz): Clean up the linked/copied files on failure.
+		if err2 := ingestCleanup(d.objProvider, loadResult.local, nil); err2 != nil {
+			d.opts.Logger.Errorf("ingest cleanup failed: %v", err2)
+		}
 		return IngestOperationStats{}, err
 	}
 
@@ -1701,7 +1703,9 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	// update the MANIFEST (via UpdateVersionLocked), otherwise a crash can have
 	// the tables referenced in the MANIFEST, but not present in the provider.
 	if err := d.objProvider.Sync(); err != nil {
-		// TODO (xinhaoz): Clean up the linked/copied files on failure.
+		if err2 := ingestCleanup(d.objProvider, loadResult.local, nil); err2 != nil {
+			d.opts.Logger.Errorf("ingest cleanup failed: %v", err2)
+		}
 		return IngestOperationStats{}, err
 	}
 
