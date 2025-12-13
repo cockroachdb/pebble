@@ -387,7 +387,7 @@ func (s *ingestedFlushable) anyFileOverlaps(bounds base.UserKeyBounds) bool {
 	}
 	if s.exciseSpan.Valid() {
 		uk := s.exciseSpan.UserKeyBounds()
-		return uk.Overlaps(s.comparer.Compare, &bounds)
+		return uk.Overlaps(s.comparer.Compare, bounds)
 	}
 	return false
 }

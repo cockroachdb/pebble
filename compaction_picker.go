@@ -2317,7 +2317,7 @@ func outputKeyRangeAlreadyCompacting(
 			if pc.outputLevel.level != c.outputLevel {
 				continue
 			}
-			if !c.bounds.Overlaps(cmp, &pc.bounds) {
+			if !c.bounds.Overlaps(cmp, pc.bounds) {
 				continue
 			}
 			// The picked compaction and the in-progress compaction c are

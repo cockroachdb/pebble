@@ -416,7 +416,7 @@ func (r *Runner) validateWriterMeta(meta *sstable.WriterMetadata, splitKey []byt
 	var err error
 	checkBounds := func(smallest, largest base.InternalKey, description string) {
 		bounds := base.UserKeyBoundsFromInternal(smallest, largest)
-		if !r.cfg.CompactionBounds.ContainsBounds(r.cmp, &bounds) {
+		if !r.cfg.CompactionBounds.ContainsBounds(r.cmp, bounds) {
 			err = errors.CombineErrors(err, base.AssertionFailedf(
 				"output table %s bounds %s extend beyond compaction bounds %s",
 				description, bounds, r.cfg.CompactionBounds,

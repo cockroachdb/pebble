@@ -1795,7 +1795,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				// to error out the whole compaction as we can't guarantee it hasn't/won't
 				// write a file overlapping with the excise span.
 				bounds := c2.Bounds()
-				if bounds != nil && bounds.Overlaps(d.cmp, &exciseBounds) {
+				if bounds != nil && bounds.Overlaps(d.cmp, exciseBounds) {
 					c2.Cancel()
 				}
 			}

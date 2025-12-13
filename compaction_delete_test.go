@@ -162,27 +162,25 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 						TableNum: base.TableNum(parseUint64(parts[1])),
 					}
 
-					var hintType deleteCompactionHintType
-					switch typ := parts[7]; typ {
+					var keyType manifest.KeyType
+					switch typ := parts[6]; typ {
 					case "point_key_only":
-						hintType = deleteCompactionHintTypePointKeyOnly
+						keyType = manifest.KeyTypePoint
 					case "range_key_only":
-						hintType = deleteCompactionHintTypeRangeKeyOnly
+						keyType = manifest.KeyTypeRange
 					case "point_and_range_key":
-						hintType = deleteCompactionHintTypePointAndRangeKey
+						keyType = manifest.KeyTypePointAndRange
 					default:
 						return fmt.Sprintf("unknown hint type: %s", typ)
 					}
 
 					h := deleteCompactionHint{
-						hintType:                hintType,
-						start:                   start,
-						end:                     end,
-						fileSmallestSeqNum:      base.SeqNum(parseUint64(parts[4])),
+						keyType:                 keyType,
+						bounds:                  base.UserKeyBoundsEndExclusive(start, end),
 						tombstoneLevel:          tombstoneLevel,
 						tombstoneFile:           tombstoneFile,
-						tombstoneSmallestSeqNum: base.SeqNum(parseUint64(parts[5])),
-						tombstoneLargestSeqNum:  base.SeqNum(parseUint64(parts[6])),
+						tombstoneSmallestSeqNum: base.SeqNum(parseUint64(parts[4])),
+						tombstoneLargestSeqNum:  base.SeqNum(parseUint64(parts[5])),
 					}
 					d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, h)
 					fmt.Fprintln(&buf, h.String())

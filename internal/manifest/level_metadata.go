@@ -10,6 +10,7 @@ import (
 	"iter"
 	"reflect"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/metrics"
@@ -422,22 +423,34 @@ func (ls LevelSlice) HasOverlap(cmp Compare, bounds base.UserKeyBounds) bool {
 	return t != nil && bounds.End.IsUpperBoundFor(cmp, t.Smallest().UserKey)
 }
 
-// KeyType is used to specify the type of keys we're looking for in
-// LevelIterator positioning operations. Files not containing any keys of the
-// desired type are skipped.
+// KeyType denotes the type of keys: point, range, or both.
 type KeyType int8
 
 const (
-	// KeyTypePointAndRange denotes a search among the entire keyspace, including
-	// both point keys and range keys. No sstables are skipped.
+	// KeyTypePointAndRange indicates the joined keyspace of point and range
+	// keys.
 	KeyTypePointAndRange KeyType = iota
-	// KeyTypePoint denotes a search among the point keyspace. SSTables with no
-	// point keys will be skipped. Note that the point keyspace includes rangedels.
+	// KeyTypePoint indicates the point keyspace. This key type includes point
+	// keys and RANGEDELs.
 	KeyTypePoint
-	// KeyTypeRange denotes a search among the range keyspace. SSTables with no
-	// range keys will be skipped.
+	// KeyTypeRange indicates the range key (eg, RANGEKEYSET, RANGEKEYUNSET,
+	// RANGEKEYDEL) keyspace.
 	KeyTypeRange
 )
+
+// String implements fmt.Stringer.
+func (kt KeyType) String() string {
+	switch kt {
+	case KeyTypePointAndRange:
+		return "point-and-range"
+	case KeyTypePoint:
+		return "point"
+	case KeyTypeRange:
+		return "range"
+	default:
+		panic(errors.AssertionFailedf("unrecognized key type: %d", kt))
+	}
+}
 
 // LevelIterator iterates over a set of files' metadata. Its zero value is an
 // empty iterator.

@@ -104,67 +104,45 @@ func newDeleteOnlyCompaction(
 	return c
 }
 
-// deleteCompactionHintType indicates whether the deleteCompactionHint was
-// generated from a span containing a range del (point key only), a range key
-// delete (range key only), or both a point and range key.
-type deleteCompactionHintType uint8
-
-const (
-	// NOTE: While these are primarily used as enumeration types, they are also
-	// used for some bitwise operations. Care should be taken when updating.
-	deleteCompactionHintTypeUnknown deleteCompactionHintType = iota
-	deleteCompactionHintTypePointKeyOnly
-	deleteCompactionHintTypeRangeKeyOnly
-	deleteCompactionHintTypePointAndRangeKey
-)
-
-// String implements fmt.Stringer.
-func (h deleteCompactionHintType) String() string {
-	switch h {
-	case deleteCompactionHintTypeUnknown:
-		return "unknown"
-	case deleteCompactionHintTypePointKeyOnly:
-		return "point-key-only"
-	case deleteCompactionHintTypeRangeKeyOnly:
-		return "range-key-only"
-	case deleteCompactionHintTypePointAndRangeKey:
-		return "point-and-range-key"
-	default:
-		panic(fmt.Sprintf("unknown hint type: %d", h))
-	}
-}
-
-// compactionHintFromKeys returns a deleteCompactionHintType given a slice of
+// tombstoneTypeFromKeys returns a manifest.KeyType given a slice of
 // keyspan.Keys.
-func compactionHintFromKeys(keys []keyspan.Key) deleteCompactionHintType {
-	var hintType deleteCompactionHintType
+func tombstoneKeyTypeFromKeys(keys []keyspan.Key) manifest.KeyType {
+	var pointKeys, rangeKeys bool
 	for _, k := range keys {
 		switch k.Kind() {
 		case base.InternalKeyKindRangeDelete:
-			hintType |= deleteCompactionHintTypePointKeyOnly
+			pointKeys = true
 		case base.InternalKeyKindRangeKeyDelete:
-			hintType |= deleteCompactionHintTypeRangeKeyOnly
+			rangeKeys = true
 		default:
-			panic(fmt.Sprintf("unsupported key kind: %s", k.Kind()))
+			panic(errors.AssertionFailedf("unsupported key kind: %s", k.Kind()))
 		}
 	}
-	return hintType
+	switch {
+	case pointKeys && rangeKeys:
+		return manifest.KeyTypePointAndRange
+	case pointKeys:
+		return manifest.KeyTypePoint
+	case rangeKeys:
+		return manifest.KeyTypeRange
+	default:
+		panic(errors.AssertionFailedf("no keys"))
+	}
 }
 
-// A deleteCompactionHint records a user key and sequence number span that has been
-// deleted by a range tombstone. A hint is recorded if at least one sstable
-// falls completely within both the user key and sequence number spans.
-// Once the tombstones and the observed completely-contained sstables fall
-// into the same snapshot stripe, a delete-only compaction may delete any
-// sstables within the range.
+// A deleteCompactionHint records a user key and sequence number span that has
+// been deleted by tombstones. A hint is recorded if at least one sstable
+// containing keys older than the tombstones and either (a) completely falls
+// within both the user key, or (b) has a boundary that overlaps with the span
+// [which could be shorted with an excise]. Once the tombstones fall into the
+// last snapshot stripe, a delete-only compaction may delete or excise any
+// applicable sstables within the range.
 type deleteCompactionHint struct {
 	// The type of key span that generated this hint (point key, range key, or
 	// both).
-	hintType deleteCompactionHintType
-	// start and end are user keys specifying a key range [start, end) of
-	// deleted keys.
-	start []byte
-	end   []byte
+	keyType manifest.KeyType
+	// bounds are the bounds of the tombstone(s).
+	bounds base.UserKeyBounds
 	// The level of the file containing the range tombstone(s) when the hint
 	// was created. Only lower levels need to be searched for files that may
 	// be deleted.
@@ -178,13 +156,6 @@ type deleteCompactionHint struct {
 	// tombstone largest sequence number to be deleted.
 	tombstoneLargestSeqNum  base.SeqNum
 	tombstoneSmallestSeqNum base.SeqNum
-	// The smallest sequence number of a sstable that was found to be covered
-	// by this hint. The hint cannot be resolved until this sequence number is
-	// in the same snapshot stripe as the largest tombstone sequence number.
-	// This is set when a hint is created, so the LSM may look different and
-	// notably no longer contain the sstable that contained the key at this
-	// sequence number.
-	fileSmallestSeqNum base.SeqNum
 }
 
 type deletionHintOverlap int8
@@ -201,15 +172,14 @@ const (
 
 func (h deleteCompactionHint) String() string {
 	return fmt.Sprintf(
-		"L%d.%s %s-%s seqnums(tombstone=%d-%d, file-smallest=%d, type=%s)",
-		h.tombstoneLevel, h.tombstoneFile.TableNum, h.start, h.end,
-		h.tombstoneSmallestSeqNum, h.tombstoneLargestSeqNum, h.fileSmallestSeqNum,
-		h.hintType,
+		"L%d.%s %s-%s seqnums(tombstone=%d-%d, type=%s)",
+		h.tombstoneLevel, h.tombstoneFile.TableNum, h.bounds.Start, h.bounds.End.Key,
+		h.tombstoneSmallestSeqNum, h.tombstoneLargestSeqNum, h.keyType,
 	)
 }
 
 func (h *deleteCompactionHint) canDeleteOrExcise(
-	cmp Compare, m *manifest.TableMetadata, snapshots compact.Snapshots, exciseEnabled bool,
+	cmp Compare, m *manifest.TableMetadata, exciseEnabled bool,
 ) deletionHintOverlap {
 	// The file can only be deleted if all of its keys are older than the
 	// earliest tombstone aggregated into the hint. Note that we use
@@ -221,41 +191,31 @@ func (h *deleteCompactionHint) canDeleteOrExcise(
 	// avoid this error, the largest pre-zeroing sequence number is maintained
 	// in LargestSeqNumAbsolute and used here to make the determination whether
 	// the file's keys are older than all of the hint's tombstones.
-	if m.LargestSeqNumAbsolute >= h.tombstoneSmallestSeqNum || m.SmallestSeqNum < h.fileSmallestSeqNum {
+	if m.LargestSeqNumAbsolute >= h.tombstoneSmallestSeqNum {
 		return hintDoesNotApply
 	}
 
-	// The file's oldest key must  be in the same snapshot stripe as the
-	// newest tombstone. NB: We already checked the hint's sequence numbers,
-	// but this file's oldest sequence number might be lower than the hint's
-	// smallest sequence number despite the file falling within the key range
-	// if this file was constructed after the hint by a compaction.
-	if snapshots.Index(h.tombstoneLargestSeqNum) != snapshots.Index(m.SmallestSeqNum) {
-		return hintDoesNotApply
-	}
-
-	switch h.hintType {
-	case deleteCompactionHintTypePointKeyOnly:
+	switch h.keyType {
+	case manifest.KeyTypePoint:
 		// A hint generated by a range del span cannot delete tables that contain
 		// range keys.
 		if m.HasRangeKeys {
 			return hintDoesNotApply
 		}
-	case deleteCompactionHintTypeRangeKeyOnly:
+	case manifest.KeyTypeRange:
 		// A hint generated by a range key del span cannot delete tables that
 		// contain point keys.
 		if m.HasPointKeys {
 			return hintDoesNotApply
 		}
-	case deleteCompactionHintTypePointAndRangeKey:
+	case manifest.KeyTypePointAndRange:
 		// A hint from a span that contains both range dels *and* range keys can
 		// only be deleted if both bounds fall within the hint. The next check takes
 		// care of this.
 	default:
-		panic(fmt.Sprintf("pebble: unknown delete compaction hint type: %d", h.hintType))
+		panic(errors.AssertionFailedf("pebble: unknown delete compaction key type: %s", h.keyType))
 	}
-	if cmp(h.start, m.Smallest().UserKey) <= 0 &&
-		base.UserKeyExclusive(h.end).CompareUpperBounds(cmp, m.UserKeyBounds().End) >= 0 {
+	if h.bounds.ContainsBounds(cmp, m.UserKeyBounds()) {
 		return hintDeletesFile
 	}
 	if !exciseEnabled {
@@ -265,8 +225,7 @@ func (h *deleteCompactionHint) canDeleteOrExcise(
 	}
 	// Check for any overlap. In cases of partial overlap, we can excise the part of the file
 	// that overlaps with the deletion hint.
-	if cmp(h.end, m.Smallest().UserKey) > 0 &&
-		(m.UserKeyBounds().End.CompareUpperBounds(cmp, base.UserKeyInclusive(h.start)) >= 0) {
+	if h.bounds.Overlaps(cmp, m.UserKeyBounds()) {
 		return hintExcisesFile
 	}
 	return hintDoesNotApply
@@ -304,17 +263,21 @@ func checkDeleteCompactionHints(
 		// in the current LSM still meet their criteria. Unresolvable hints
 		// are saved and don't trigger a delete-only compaction.
 		//
-		// When a compaction hint is created, the sequence numbers of the
-		// range tombstones and the covered file with the oldest key are
-		// recorded. The largest tombstone sequence number and the smallest
-		// file sequence number must be in the same snapshot stripe for the
-		// hint to be resolved. The below graphic models a compaction hint
-		// covering the keyspace [b, r). The hint completely contains two
-		// files, 000002 and 000003. The file 000003 contains the lowest
-		// covered sequence number at #90. The tombstone b.RANGEDEL.230:h has
-		// the highest tombstone sequence number incorporated into the hint.
-		// The hint may be resolved only once the snapshots at #100, #180 and
-		// #210 are all closed. File 000001 is not included within the hint
+		// When a compaction hint is created, the sequence numbers of the range
+		// tombstones are recorded. The largest tombstone sequence number must
+		// be in the last snapshot stripe for the hint to be resolved. Note that
+		// technically the largest tombstone sequence number only needs to be in
+		// the same snapshot stripe as an affected table's lowest sequence
+		// number. The difference is unlikely to delay hint resolution
+		// significantly, and we don't know candidate tables' lowest sequence
+		// numbers until we examine the LSM.
+		//
+		// The below graphic models a compaction hint covering the keyspace [b,
+		// r). The hint completely contains two files, 000002 and 000003. The
+		// file 000003 contains the lowest covered sequence number at #90. The
+		// tombstone b.RANGEDEL.230:h has the highest tombstone sequence number
+		// incorporated into the hint. The hint may be resolved only once all
+		// the snapshots are closed. File 000001 is not included within the hint
 		// because it extends beyond the range tombstones in user key space.
 		//
 		// 250
@@ -339,7 +302,7 @@ func checkDeleteCompactionHints(
 		// ______________________________________________________________
 		//     a b c d e f g h i j k l m n o p q r s t u v w x y z
 
-		if snapshots.Index(h.tombstoneLargestSeqNum) != snapshots.Index(h.fileSmallestSeqNum) ||
+		if snapshots.Index(h.tombstoneLargestSeqNum) != 0 ||
 			(len(resolvedHints) >= maxHintsPerDeleteOnlyCompaction && exciseEnabled) {
 			// Cannot resolve yet.
 			unresolvedHints = append(unresolvedHints, h)
@@ -353,8 +316,8 @@ func checkDeleteCompactionHints(
 		filesDeletedByCurrentHint := 0
 		var filesDeletedByLevel [7][]*manifest.TableMetadata
 		for l := h.tombstoneLevel + 1; l < numLevels; l++ {
-			for m := range v.Overlaps(l, base.UserKeyBoundsEndExclusive(h.start, h.end)).All() {
-				doesHintApply := h.canDeleteOrExcise(cmp, m, snapshots, exciseEnabled)
+			for m := range v.Overlaps(l, h.bounds).All() {
+				doesHintApply := h.canDeleteOrExcise(cmp, m, exciseEnabled)
 				if m.IsCompacting() || doesHintApply == hintDoesNotApply || files[m] {
 					continue
 				}
@@ -368,10 +331,10 @@ func checkDeleteCompactionHints(
 					// leaves a fragment of the file on the left, decrement
 					// the counter once. If the hint leaves a fragment of the
 					// file on the right, decrement the counter once.
-					if cmp(h.start, m.Smallest().UserKey) > 0 {
+					if cmp(h.bounds.Start, m.Smallest().UserKey) > 0 {
 						filesDeletedByCurrentHint--
 					}
-					if m.UserKeyBounds().End.IsUpperBoundFor(cmp, h.end) {
+					if m.UserKeyBounds().End.IsUpperBoundFor(cmp, h.bounds.End.Key) {
 						filesDeletedByCurrentHint--
 					}
 				}
@@ -419,13 +382,24 @@ func checkDeleteCompactionHints(
 func (d *DB) runDeleteOnlyCompaction(
 	jobID JobID, c *tableCompaction, snapshots compact.Snapshots,
 ) (ve *manifest.VersionEdit, stats compact.Stats, blobs []compact.OutputBlob, retErr error) {
+	// If any snapshots exist beneath the largest tombstone sequence number,
+	// then deleting data beneath the tombstone violates the snapshot's
+	// isolation. Validate that all hints' tombstones' sequence numbers fall
+	// within the last snapshot stripe.
+	for _, h := range c.deleteOnly.hints {
+		if snapshots.Index(h.tombstoneLargestSeqNum) != 0 {
+			return nil, stats, blobs, errors.AssertionFailedf(
+				"tombstone largest sequence number is not in the last snapshot stripe")
+		}
+	}
+
 	fragments := fragmentDeleteCompactionHints(d.cmp, c.deleteOnly.hints)
 	ve = &manifest.VersionEdit{
 		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{},
 	}
 	for _, cl := range c.inputs {
 		levelMetrics := c.metrics.perLevel.level(cl.level)
-		err := d.runDeleteOnlyCompactionForLevel(cl, levelMetrics, ve, snapshots, fragments, c.deleteOnly.exciseEnabled)
+		err := d.runDeleteOnlyCompactionForLevel(cl, levelMetrics, ve, fragments, c.deleteOnly.exciseEnabled)
 		if err != nil {
 			return nil, stats, blobs, err
 		}
@@ -498,8 +472,8 @@ func fragmentDeleteCompactionHints(
 ) []deleteCompactionHintFragment {
 	fragments := make([]deleteCompactionHintFragment, 0, len(hints)*2)
 	for i := range hints {
-		fragments = append(fragments, deleteCompactionHintFragment{start: hints[i].start},
-			deleteCompactionHintFragment{start: hints[i].end})
+		fragments = append(fragments, deleteCompactionHintFragment{start: hints[i].bounds.Start},
+			deleteCompactionHintFragment{start: hints[i].bounds.End.Key})
 	}
 	slices.SortFunc(fragments, func(i, j deleteCompactionHintFragment) int {
 		return cmp(i.start, j.start)
@@ -509,10 +483,10 @@ func fragmentDeleteCompactionHints(
 	})
 	for _, h := range hints {
 		startIdx := sort.Search(len(fragments), func(i int) bool {
-			return cmp(fragments[i].start, h.start) >= 0
+			return cmp(fragments[i].start, h.bounds.Start) >= 0
 		})
 		endIdx := sort.Search(len(fragments), func(i int) bool {
-			return cmp(fragments[i].start, h.end) >= 0
+			return cmp(fragments[i].start, h.bounds.End.Key) >= 0
 		})
 		for i := startIdx; i < endIdx; i++ {
 			fragments[i].hints = append(fragments[i].hints, h)
@@ -555,8 +529,7 @@ func (d *DB) applyHintOnFile(
 	}
 
 	levelMetrics.TablesExcised++
-	exciseBounds := base.UserKeyBoundsEndExclusive(h.start, h.end)
-	leftTable, rightTable, err := d.exciseTable(context.TODO(), exciseBounds, f, level, tightExciseBounds)
+	leftTable, rightTable, err := d.exciseTable(context.TODO(), h.bounds, f, level, tightExciseBounds)
 	if err != nil {
 		return nil, errors.Wrap(err, "error when running excise for delete-only compaction")
 	}
@@ -568,7 +541,6 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 	cl compactionLevel,
 	levelMetrics *LevelMetrics,
 	ve *manifest.VersionEdit,
-	snapshots compact.Snapshots,
 	fragments []deleteCompactionHintFragment,
 	exciseEnabled bool,
 ) error {
@@ -606,7 +578,7 @@ func (d *DB) runDeleteOnlyCompactionForLevel(
 					// above it.
 					continue
 				}
-				hintOverlap := h.canDeleteOrExcise(d.cmp, curFile, snapshots, exciseEnabled)
+				hintOverlap := h.canDeleteOrExcise(d.cmp, curFile, exciseEnabled)
 				if hintOverlap == hintDoesNotApply {
 					continue
 				}

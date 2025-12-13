@@ -164,7 +164,7 @@ func (ns *naiveSet) Add(bounds base.UserKeyBounds, expiration crtime.Mono) {
 
 func (ns *naiveSet) Overlaps(bounds base.UserKeyBounds, now crtime.Mono) bool {
 	for _, sp := range ns.spans {
-		if sp.expiration > now && sp.bounds.Overlaps(base.DefaultComparer.Compare, &bounds) {
+		if sp.expiration > now && sp.bounds.Overlaps(base.DefaultComparer.Compare, bounds) {
 			return true
 		}
 	}
@@ -179,7 +179,7 @@ func (ns *naiveSet) Excise(bounds base.UserKeyBounds) {
 
 	cmp := base.DefaultComparer.Compare
 	ns.spans = slices.DeleteFunc(ns.spans, func(sp naiveSpan) bool {
-		if sp.bounds.Overlaps(cmp, &bounds) {
+		if sp.bounds.Overlaps(cmp, bounds) {
 			overlapping = append(overlapping, sp)
 			return true
 		}
