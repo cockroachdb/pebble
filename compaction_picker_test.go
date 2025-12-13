@@ -19,6 +19,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
@@ -40,7 +41,7 @@ func loadVersion(
 	opts := &Options{}
 	opts.randomizeForTesting(t)
 	opts.EnsureDefaults()
-	d.ScanArgs(t, "l-base-max-bytes", &opts.LBaseMaxBytes)
+	d.MaybeScanArgs(t, "l-base-max-bytes", &opts.LBaseMaxBytes)
 	var files [numLevels][]*manifest.TableMetadata
 	if len(d.Input) > 0 {
 		// Parse each line as
@@ -57,14 +58,14 @@ func loadVersion(
 			if len(parts) < 2 {
 				return nil, nil, nil, fmt.Sprintf("malformed test:\n%s", d.Input)
 			}
-			level, err := strconv.Atoi(parts[0])
+			level, err := strconv.Atoi(strings.TrimPrefix(parts[0], "L"))
 			if err != nil {
 				return nil, nil, nil, err.Error()
 			}
 			if files[level] != nil {
 				return nil, nil, nil, fmt.Sprintf("level %d already filled", level)
 			}
-			size, err := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
+			size, err := crhumanize.ParseBytes[uint64](parts[1])
 			if err != nil {
 				return nil, nil, nil, err.Error()
 			}
@@ -264,8 +265,12 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 				}
 				p := newCompactionPickerByScore(vers, latest, opts, nil)
 				var buf bytes.Buffer
-				for level := p.getBaseLevel(); level < numLevels; level++ {
-					fmt.Fprintf(&buf, "%d: %d\n", level, p.levelMaxBytes[level])
+				baseLevel := p.getBaseLevel()
+				if baseLevel+1 < manifest.NumLevels {
+					fmt.Fprintf(&buf, "Multiplier: %.2f\n", float64(p.levelMaxBytes[baseLevel+1])/float64(p.levelMaxBytes[baseLevel]))
+				}
+				for level := baseLevel; level < numLevels; level++ {
+					fmt.Fprintf(&buf, "L%d: %s\n", level, crhumanize.Bytes(p.levelMaxBytes[level]))
 				}
 				return buf.String()
 
