@@ -1203,10 +1203,10 @@ func (o *newIterOp) run(t *Test, h historyRecorder) {
 }
 
 func (o *newIterOp) formattedString(kf KeyFormat) string {
-	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+	return fmt.Sprintf("%s = %s.NewIter(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */%s)",
 		o.iterID, o.readerID, kf.FormatKey(o.lower), kf.FormatKey(o.upper),
 		o.keyTypes, kf.FormatKeySuffix(o.filterMax), kf.FormatKeySuffix(o.filterMin),
-		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
+		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix), o.flags.String())
 }
 
 func (o *newIterOp) receiver() objID { return o.readerID }
@@ -1275,10 +1275,11 @@ func (o *newIterUsingCloneOp) run(t *Test, h historyRecorder) {
 }
 
 func (o *newIterUsingCloneOp) formattedString(kf KeyFormat) string {
-	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+	return fmt.Sprintf("%s = %s.Clone(%t, %q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */%s)",
 		o.iterID, o.existingIterID, o.refreshBatch, kf.FormatKey(o.lower),
 		kf.FormatKey(o.upper), o.keyTypes, kf.FormatKeySuffix(o.filterMax),
-		kf.FormatKeySuffix(o.filterMin), o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
+		kf.FormatKeySuffix(o.filterMin), o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix),
+		o.flags.String())
 }
 
 func (o *newIterUsingCloneOp) receiver() objID { return o.existingIterID }
@@ -1372,10 +1373,10 @@ func (o *iterSetOptionsOp) run(t *Test, h historyRecorder) {
 }
 
 func (o *iterSetOptionsOp) formattedString(kf KeyFormat) string {
-	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */)",
+	return fmt.Sprintf("%s.SetOptions(%q, %q, %d /* key types */, %q, %q, %t /* use L6 filters */, %q /* masking suffix */%s)",
 		o.iterID, kf.FormatKey(o.lower), kf.FormatKey(o.upper),
 		o.keyTypes, kf.FormatKeySuffix(o.filterMax), kf.FormatKeySuffix(o.filterMin),
-		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix))
+		o.useL6Filters, kf.FormatKeySuffix(o.maskSuffix), o.flags.String())
 }
 
 func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
@@ -1405,6 +1406,9 @@ func iterOptions(kf KeyFormat, o iterOpts) *pebble.IterOptions {
 	}
 	if opts.RangeKeyMasking.Suffix != nil {
 		opts.RangeKeyMasking.Filter = kf.NewSuffixFilterMask
+	}
+	if o.flags.useMaxSuffixProp {
+		opts.MaximumSuffixProperty = kf.MaximumSuffixProperty
 	}
 	if o.filterMin != nil {
 		opts.PointKeyFilters = []pebble.BlockPropertyFilter{

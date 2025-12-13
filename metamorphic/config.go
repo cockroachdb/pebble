@@ -369,6 +369,7 @@ type KeyFormat struct {
 	BlockPropertyCollectors      []func() pebble.BlockPropertyCollector
 	FormatKey                    func(UserKey) string
 	FormatKeySuffix              func(UserKeySuffix) string
+	MaximumSuffixProperty        sstable.MaximumSuffixProperty
 	ParseFormattedKey            func(string) UserKey
 	ParseFormattedKeySuffix      func(string) UserKeySuffix
 	NewGenerator                 func(*keyManager, *rand.Rand, OpConfig) KeyGenerator

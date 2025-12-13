@@ -93,9 +93,9 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *newIndexedBatchOp:
 		return &t.dbID, &t.batchID, nil
 	case *newIterOp:
-		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
 	case *newIterUsingCloneOp:
-		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
 	case *newSnapshotOp:
 		return &t.dbID, &t.snapID, []interface{}{&t.bounds}
 	case *newExternalObjOp:
@@ -119,7 +119,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *iterSetBoundsOp:
 		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
 	case *iterSetOptionsOp:
-		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix}
+		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
 	case *singleDeleteOp:
 		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
 	case *rangeKeyDeleteOp:
@@ -338,7 +338,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 	var varArg interface{}
 	if len(args) > 0 {
 		switch args[len(args)-1].(type) {
-		case *[]objID, *[]pebble.KeyRange, *[]pebble.CheckpointSpan, *[]pebble.DownloadSpan, *[]externalObjWithBounds, ignoreExtraArgs:
+		case *iterFlags, *[]objID, *[]pebble.KeyRange, *[]pebble.CheckpointSpan, *[]pebble.DownloadSpan, *[]externalObjWithBounds, ignoreExtraArgs:
 			varArg = args[len(args)-1]
 			args = args[:len(args)-1]
 		}
@@ -416,6 +416,8 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 	if varArg != nil {
 		list = list[len(args):]
 		switch t := varArg.(type) {
+		case *iterFlags:
+			*t = p.parseIterFlags(list)
 		case *[]objID:
 			*t = p.parseObjIDs(list)
 		case *[]pebble.KeyRange:
@@ -493,6 +495,19 @@ func (p *parser) parseList() (token.Pos, []listElem) {
 		}
 		panic(p.errorf(pos, "unexpected token: %q", p.tokenf(tok, lit)))
 	}
+}
+
+func (p *parser) parseIterFlags(list []listElem) iterFlags {
+	var res iterFlags
+	for _, elem := range list {
+		switch elem.lit {
+		case iterFlagUseMaxSuffixProp:
+			res.useMaxSuffixProp = true
+		default:
+			panic(p.errorf(elem.pos, "unknown iter flag: %q", elem.lit))
+		}
+	}
+	return res
 }
 
 func (p *parser) parseObjIDs(list []listElem) []objID {
