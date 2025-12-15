@@ -477,7 +477,11 @@ func (rw *blobFileRewriter) generateHeap(ctx context.Context) error {
 			// TODO(annie): We should instead maintain 1 heap item per sstable
 			// instead of 1 heap item per sstable block ref to reduce the heap
 			// comparisons to O(sstables).
-			for _, enc := range sstable.DecodeBlobRefLivenessEncoding(bitmapEncodings) {
+			blocks, err := sstable.DecodeBlobRefLivenessEncoding(bitmapEncodings)
+			if err != nil {
+				return err
+			}
+			for _, enc := range blocks {
 				heap.Push(&rw.blkHeap, &enc)
 			}
 			return nil

@@ -748,7 +748,11 @@ func performValidationForSSTable(
 	}
 	for refID, blockValues := range referenced {
 		bitmapEncodings := slices.Clone(decoder.LivenessAtReference(refID))
-		for _, blockEnc := range sstable.DecodeBlobRefLivenessEncoding(bitmapEncodings) {
+		blocks, err := sstable.DecodeBlobRefLivenessEncoding(bitmapEncodings)
+		if err != nil {
+			return err
+		}
+		for _, blockEnc := range blocks {
 			blockID := blockEnc.BlockID
 			vi, ok := blockValues[blockID]
 			if !ok {

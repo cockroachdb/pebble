@@ -535,7 +535,11 @@ func constructBlobFileMetadataForIngestedTable(
 	for i, p := range blobPaths {
 		blockEncodings := decoder.LivenessAtReference(i)
 		var valueSize uint64
-		for _, enc := range sstable.DecodeBlobRefLivenessEncoding(blockEncodings) {
+		blocks, err := sstable.DecodeBlobRefLivenessEncoding(blockEncodings)
+		if err != nil {
+			return nil, err
+		}
+		for _, enc := range blocks {
 			// There should be only one encoding per blob file.
 			valueSize += uint64(enc.ValuesSize)
 		}
