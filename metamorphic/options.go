@@ -772,19 +772,6 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	lopts.BlockSizeThreshold = 50 + rng.IntN(51)         // 50 - 100
 	lopts.IndexBlockSize = int(randPowerOf2(rng, 0, 24)) // 1B - 16MB
 
-	// We either use no bloom filter, the default filter, or a filter with
-	// randomized bits-per-key setting. We zero out the Filters map. It'll get
-	// repopulated on EnsureDefaults accordingly.
-	opts.TableFilterDecoders = nil
-	tableFilterPolicy := pebble.NoFilterPolicy
-	switch rng.IntN(3) {
-	case 1:
-		tableFilterPolicy = bloom.FilterPolicy(10)
-	default:
-		tableFilterPolicy = bloom.FilterPolicy(1 + rand.Uint32N(20))
-	}
-	lopts.TableFilterPolicy = func() base.TableFilterPolicy { return tableFilterPolicy }
-
 	for i := range opts.Levels {
 		opts.Levels[i] = lopts
 	}
@@ -803,6 +790,19 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	cs := csList[rng.IntN(len(csList))]
 	opts.ApplyCompressionSettings(func() pebble.DBCompressionSettings {
 		return cs
+	})
+
+	// Apply a random DBTableFilterPolicy.
+	fpList := []pebble.DBTableFilterPolicy{
+		pebble.UniformDBTableFilterPolicy(pebble.NoFilterPolicy),
+		pebble.UniformDBTableFilterPolicy(bloom.FilterPolicy(1 + rng.Uint32N(20))),
+		pebble.DBTableFilterPolicyUniform,
+		pebble.DBTableFilterPolicyNoL6,
+		pebble.DBTableFilterPolicyProgressive,
+	}
+	fp := fpList[rng.IntN(len(fpList))]
+	opts.ApplyTableFilterPolicy(func() pebble.DBTableFilterPolicy {
+		return fp
 	})
 
 	// Explicitly disable disk-backed FS's for the random configurations. The
@@ -896,14 +896,14 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 			MaxBlobReferenceDepth:    2 + rng.IntN(9),                                   // 2-10
 			RewriteMinimumAge:        time.Duration(rng.IntN(90)+10) * time.Millisecond, // [10ms, 100ms)
 			GarbageRatioLowPriority:  lowPri,
-			GarbageRatioHighPriority: lowPri + rand.Float64()*(1.0-lowPri), // [lowPri, 1.0)
+			GarbageRatioHighPriority: lowPri + rng.Float64()*(1.0-lowPri), // [lowPri, 1.0)
 		}
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 			return policy
 		}
 	}
 
-	if rand.IntN(2) == 0 {
+	if rng.IntN(2) == 0 {
 		opts.Experimental.IteratorTracking.PollInterval = 100 * time.Millisecond
 		opts.Experimental.IteratorTracking.MaxAge = 10 * time.Second
 	}

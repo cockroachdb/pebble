@@ -1457,6 +1457,51 @@ var (
 		p[6] = NoFilterPolicy
 		return p
 	}()
+
+	// DBTableFilterPolicyProgressive uses better filters for higher levels and
+	// restricts the maximum block sizes.
+	DBTableFilterPolicyProgressive = func() DBTableFilterPolicy {
+		// We use block.AllocationOverheadAllowance so that the block fits well into
+		// an allocation class when loaded into the block cache.
+		const limit1MB = 1024*1024 - block.AllocationOverheadAllowance
+
+		// The idea of using better but larger filters for upper levels comes from
+		// "Optimal Bloom Filters and Adaptive Merging for LSM-Trees" by Dayan et
+		// al. The total size of bloom filters in upper levels is very small (for
+		// example, in TPCC with 20k warehouses and 3 nodes, the LSM has 1.3TiB and
+		// the filters for L1 and L3 together are under 100MiB). Given that these
+		// filters fit very easily in the block cache, we can use larger filters to
+		// reduce the false positive rates.
+		//
+		// The paper suggests that the bits per key should increase by ln(T)/ln(2)^2
+		// as we go up for each level, where T is the level size multiplier. For
+		// T=10, this comes out to 4.8.
+		//
+		// The calculation applies to general bloom filters. We use a blocked bloom
+		// filter which is faster but has worse false positive rates and achieves
+		// diminishing returns as we increase the bits per key (see
+		// bloom.FilterPolicy: for example, going from 16 to 20 improves the FPR by
+		// only 75%, whereas for a general bloom filter this would be ~7x).
+		//
+		// With this in mind, we keep the default 10bpk for L5, use 14bpk for L4,
+		// and 16bpk for L0-L3. For L6 we set a 8bpk target; in practice, we will
+		// use less because of the block limit.
+		//
+		// For L0-L3, filters should almost never reach 1MB, so the limit is more of
+		// a safety for corner cases.
+		//
+		// TODO(radu): add support for Binary Fuse filters which have much better
+		// FPR than bloom filters.
+		return DBTableFilterPolicy{
+			0: bloom.AdaptivePolicy(16, limit1MB),
+			1: bloom.AdaptivePolicy(16, limit1MB),
+			2: bloom.AdaptivePolicy(16, limit1MB),
+			3: bloom.AdaptivePolicy(16, limit1MB),
+			4: bloom.AdaptivePolicy(14, limit1MB),
+			5: bloom.AdaptivePolicy(10, limit1MB),
+			6: bloom.AdaptivePolicy(8, limit1MB),
+		}
+	}()
 )
 
 // UniformDBTableFilterPolicy returns a DBTableFilterPolicy which uses the same
