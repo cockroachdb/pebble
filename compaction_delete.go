@@ -213,20 +213,26 @@ func (h *deleteCompactionHint) canDeleteOrExcise(
 	default:
 		panic(errors.AssertionFailedf("pebble: unknown delete compaction key type: %s", h.keyType))
 	}
-	if h.bounds.ContainsBounds(cmp, m.UserKeyBounds()) {
+	tableBounds := m.UserKeyBounds()
+	if h.bounds.ContainsBounds(cmp, tableBounds) {
 		return hintDeletesFile
 	}
 	if !exciseEnabled {
 		// The file's keys must be completely contained within the hint range; excises
 		// aren't allowed.
 		return hintDoesNotApply
+	} else if !h.bounds.Overlaps(cmp, tableBounds) {
+		// Disjoint.
+		return hintDoesNotApply
+	} else if cmp(tableBounds.Start, h.bounds.Start) < 0 &&
+		tableBounds.End.CompareUpperBounds(cmp, h.bounds.End) > 0 {
+		// If the table's bounds completely contain the hint, applying the hint
+		// would cut the table into two virtual sstables, increasing the number
+		// of tables in the level. We only pursue excises if they shorten an
+		// existing table's bounds.
+		return hintDoesNotApply
 	}
-	// Check for any overlap. In cases of partial overlap, we can excise the part of the file
-	// that overlaps with the deletion hint.
-	if h.bounds.Overlaps(cmp, m.UserKeyBounds()) {
-		return hintExcisesFile
-	}
-	return hintDoesNotApply
+	return hintExcisesFile
 }
 
 // checkDeleteCompactionHints checks the passed-in deleteCompactionHints for those that
