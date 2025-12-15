@@ -368,7 +368,10 @@ func (l *Layout) Describe(
 				offset := 0
 				for i := range decoder.BlockDecoder().Rows() {
 					value := decoder.LivenessAtReference(i)
-					encs := DecodeBlobRefLivenessEncoding(value)
+					encs, err := DecodeBlobRefLivenessEncoding(value)
+					if err != nil {
+						return err
+					}
 					length := len(value)
 					parent := tpNode.Childf("%05d (%d)", offset, length)
 					for _, enc := range encs {

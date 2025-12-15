@@ -155,21 +155,30 @@ type BlobRefLivenessEncoding struct {
 // encodings from the provided buffer. Each encoding has the format:
 //
 //	<block ID> <values size> <len of bitmap> [<bitmap>]
-func DecodeBlobRefLivenessEncoding(buf []byte) []BlobRefLivenessEncoding {
+func DecodeBlobRefLivenessEncoding(buf []byte) ([]BlobRefLivenessEncoding, error) {
 	var encodings []BlobRefLivenessEncoding
 	for len(buf) > 0 {
 		var enc BlobRefLivenessEncoding
 		var n int
 
 		blockIDVal, n := binary.Uvarint(buf)
+		if n <= 0 {
+			return nil, base.CorruptionErrorf("cannot decode block ID from buf %x", buf)
+		}
 		buf = buf[n:]
 		enc.BlockID = blob.BlockID(blockIDVal)
 
 		valuesSizeVal, n := binary.Uvarint(buf)
+		if n <= 0 {
+			return nil, base.CorruptionErrorf("cannot decode values size from buf %x", buf)
+		}
 		buf = buf[n:]
 		enc.ValuesSize = int(valuesSizeVal)
 
 		bitmapSizeVal, n := binary.Uvarint(buf)
+		if n <= 0 {
+			return nil, base.CorruptionErrorf("cannot decode bitmap size from buf %x", buf)
+		}
 		buf = buf[n:]
 		enc.BitmapSize = int(bitmapSizeVal)
 
@@ -179,5 +188,5 @@ func DecodeBlobRefLivenessEncoding(buf []byte) []BlobRefLivenessEncoding {
 
 		encodings = append(encodings, enc)
 	}
-	return encodings
+	return encodings, nil
 }

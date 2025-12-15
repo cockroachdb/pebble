@@ -38,7 +38,8 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 
 		encodings := maps.Collect(w.finish())
 		require.Len(t, encodings, 1)
-		blocks := DecodeBlobRefLivenessEncoding(encodings[0])
+		blocks, err := DecodeBlobRefLivenessEncoding(encodings[0])
+		require.NoError(t, err)
 		require.Len(t, blocks, 2)
 
 		// Verify first block (refID=0, blockID=0).
@@ -71,7 +72,8 @@ func TestBlobRefValueLivenessWriter(t *testing.T) {
 
 		encodings := maps.Collect(w.finish())
 		require.Len(t, encodings, 1)
-		blocks := DecodeBlobRefLivenessEncoding(encodings[0])
+		blocks, err := DecodeBlobRefLivenessEncoding(encodings[0])
+		require.NoError(t, err)
 		require.Len(t, blocks, 1)
 
 		require.Equal(t, blob.BlockID(0), blocks[0].BlockID)
@@ -129,7 +131,11 @@ func TestBlobRefLivenessEncoding_Randomized(t *testing.T) {
 		// Reinitialize the writer before reconstructing values.
 		w.init()
 		for refID, blockEnc := range encoded {
-			for _, block := range DecodeBlobRefLivenessEncoding(blockEnc) {
+			blocks, err := DecodeBlobRefLivenessEncoding(blockEnc)
+			if err != nil {
+				t.Fatalf("cannot decode blob reference liveness encoding for refID %d: %v", refID, err)
+			}
+			for _, block := range blocks {
 				// Reconstruct the live values from the bitmap and add them to
 				// the writer.
 				for valueID := range IterSetBitsInRunLengthBitmap(block.Bitmap) {
