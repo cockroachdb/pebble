@@ -305,7 +305,7 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 		FormatMajorVersion:      defaultFormatMajorVersion,
 		BlockPropertyCollectors: kf.BlockPropertyCollectors,
 	}
-	opts.Levels[0].TableFilterPolicy = bloom.FilterPolicy(10)
+	opts.Levels[0].TableFilterPolicy = func() pebble.TableFilterPolicy { return bloom.FilterPolicy(10) }
 	opts.Experimental.IngestSplit = func() bool { return false }
 
 	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
@@ -776,14 +776,14 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	// randomized bits-per-key setting. We zero out the Filters map. It'll get
 	// repopulated on EnsureDefaults accordingly.
 	opts.TableFilterDecoders = nil
+	tableFilterPolicy := pebble.NoFilterPolicy
 	switch rng.IntN(3) {
-	case 0:
-		lopts.TableFilterPolicy = pebble.NoFilterPolicy
 	case 1:
-		lopts.TableFilterPolicy = bloom.FilterPolicy(10)
+		tableFilterPolicy = bloom.FilterPolicy(10)
 	default:
-		lopts.TableFilterPolicy = bloom.FilterPolicy(1 + rand.Uint32N(20))
+		tableFilterPolicy = bloom.FilterPolicy(1 + rand.Uint32N(20))
 	}
+	lopts.TableFilterPolicy = func() base.TableFilterPolicy { return tableFilterPolicy }
 
 	for i := range opts.Levels {
 		opts.Levels[i] = lopts

@@ -443,15 +443,15 @@ type LevelOptions struct {
 	// ApplyCompressionSettings can be used to initialize this field for all levels.
 	Compression func() *sstable.CompressionProfile
 
-	// TableFilterPolicy defines a filter algorithm (such as a Bloom filter) that can
-	// reduce disk reads for Get and SeekPrefixGE calls.
+	// TableFilterPolicy returns a filter algorithm (such as a Bloom filter) that
+	// can reduce disk reads for Get and SeekPrefixGE calls.
 	//
 	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
 	// package.
 	//
 	// The default value for L0 is NoFilterPolicy (no filter), and the value from
 	// the previous level for all other levels.
-	TableFilterPolicy TableFilterPolicy
+	TableFilterPolicy func() TableFilterPolicy
 
 	// IndexBlockSize is the target uncompressed size in bytes of each index
 	// block. When the index block size is larger than this target, two-level
@@ -482,7 +482,7 @@ func (o *LevelOptions) EnsureL0Defaults() {
 		o.Compression = func() *sstable.CompressionProfile { return sstable.SnappyCompression }
 	}
 	if o.TableFilterPolicy == nil {
-		o.TableFilterPolicy = NoFilterPolicy
+		o.TableFilterPolicy = func() TableFilterPolicy { return NoFilterPolicy }
 	}
 	if o.IndexBlockSize <= 0 {
 		o.IndexBlockSize = o.BlockSize
@@ -1802,7 +1802,7 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "  block_size=%d\n", l.BlockSize)
 		fmt.Fprintf(&buf, "  block_size_threshold=%d\n", l.BlockSizeThreshold)
 		fmt.Fprintf(&buf, "  compression=%s\n", l.Compression().Name)
-		fmt.Fprintf(&buf, "  filter_policy=%s\n", l.TableFilterPolicy.Name())
+		fmt.Fprintf(&buf, "  filter_policy=%s\n", l.TableFilterPolicy().Name())
 		fmt.Fprintf(&buf, "  filter_type=table\n")
 		fmt.Fprintf(&buf, "  index_block_size=%d\n", l.IndexBlockSize)
 		fmt.Fprintf(&buf, "  target_file_size=%d\n", o.TargetFileSizes[i])
@@ -2313,11 +2313,11 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 				l.Compression = func() *sstable.CompressionProfile { return profile }
 			case "filter_policy":
+				policy := NoFilterPolicy
 				if hooks != nil && hooks.NewFilterPolicy != nil {
-					l.TableFilterPolicy, err = hooks.NewFilterPolicy(value)
-				} else {
-					l.TableFilterPolicy = NoFilterPolicy
+					policy, err = hooks.NewFilterPolicy(value)
 				}
+				l.TableFilterPolicy = func() TableFilterPolicy { return policy }
 			case "filter_type":
 				switch value {
 				case "table":
@@ -2598,7 +2598,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 	writerOpts.BlockSize = levelOpts.BlockSize
 	writerOpts.BlockSizeThreshold = levelOpts.BlockSizeThreshold
 	writerOpts.Compression = levelOpts.Compression()
-	writerOpts.FilterPolicy = levelOpts.TableFilterPolicy
+	writerOpts.FilterPolicy = levelOpts.TableFilterPolicy()
 	writerOpts.IndexBlockSize = levelOpts.IndexBlockSize
 	return writerOpts
 }
