@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/strparse"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -641,6 +642,29 @@ func TestApplyDBCompressionSettings(t *testing.T) {
 	require.Equal(t, block.FastestCompression, o.Levels[1].Compression())
 	require.Equal(t, block.FastestCompression, o.Levels[2].Compression())
 	require.Equal(t, block.FastestCompression, o.Levels[3].Compression())
+}
+
+func TestApplyDBTableFilterPolicy(t *testing.T) {
+	var o Options
+	o.randomizeForTesting(t)
+
+	var profile DBTableFilterPolicy
+	o.ApplyTableFilterPolicy(func() DBTableFilterPolicy {
+		return profile
+	})
+
+	profile = UniformDBTableFilterPolicy(bloom.FilterPolicy(10))
+	profile[1] = bloom.FilterPolicy(1)
+	profile[2] = bloom.FilterPolicy(2)
+	profile[3] = bloom.FilterPolicy(3)
+	require.Equal(t, bloom.FilterPolicy(1), o.Levels[1].TableFilterPolicy())
+	require.Equal(t, bloom.FilterPolicy(2), o.Levels[2].TableFilterPolicy())
+	require.Equal(t, bloom.FilterPolicy(3), o.Levels[3].TableFilterPolicy())
+
+	profile = UniformDBTableFilterPolicy(bloom.FilterPolicy(15))
+	require.Equal(t, bloom.FilterPolicy(15), o.Levels[1].TableFilterPolicy())
+	require.Equal(t, bloom.FilterPolicy(15), o.Levels[2].TableFilterPolicy())
+	require.Equal(t, bloom.FilterPolicy(15), o.Levels[3].TableFilterPolicy())
 }
 
 func TestStaticSpanPolicyFunc(t *testing.T) {

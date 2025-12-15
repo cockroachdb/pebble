@@ -1444,6 +1444,42 @@ func (o *Options) ApplyCompressionSettings(csFn func() DBCompressionSettings) {
 	}
 }
 
+// DBTableFilterPolicy defines table policy settings for each LSM level.
+type DBTableFilterPolicy [manifest.NumLevels]TableFilterPolicy
+
+var (
+	// DBTableFilterPolicyUniform uses a 10-bit bloom filter on all levels.
+	DBTableFilterPolicyUniform = UniformDBTableFilterPolicy(bloom.FilterPolicy(10))
+
+	// DBTableFilterPolicyNoL6 uses a 10-bit bloom filter on L0-L5 and no filters on L6.
+	DBTableFilterPolicyNoL6 = func() DBTableFilterPolicy {
+		p := UniformDBTableFilterPolicy(bloom.FilterPolicy(10))
+		p[6] = NoFilterPolicy
+		return p
+	}()
+)
+
+// UniformDBTableFilterPolicy returns a DBTableFilterPolicy which uses the same
+// table filter policy on all LSM levels.
+func UniformDBTableFilterPolicy(policy TableFilterPolicy) DBTableFilterPolicy {
+	var levels DBTableFilterPolicy
+	for i := range levels {
+		levels[i] = policy
+	}
+	return levels
+}
+
+// ApplyTableFilterPolicy sets the TableFilterPolicy field in each LevelOptions
+// to call the given function and return the compression profile for that level.
+func (o *Options) ApplyTableFilterPolicy(dbFilterPolicyFn func() DBTableFilterPolicy) {
+	for i := range o.Levels {
+		levelIdx := i
+		o.Levels[i].TableFilterPolicy = func() TableFilterPolicy {
+			return dbFilterPolicyFn()[levelIdx]
+		}
+	}
+}
+
 // EnsureDefaults ensures that the default values for all options are set if a
 // valid value was not already specified.
 func (o *Options) EnsureDefaults() {

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -99,9 +98,8 @@ func newPebbleDB(dir string) DB {
 		l := &opts.Levels[i]
 		l.BlockSize = 32 << 10       // 32 KB
 		l.IndexBlockSize = 256 << 10 // 256 KB
-		l.TableFilterPolicy = func() pebble.TableFilterPolicy { return bloom.FilterPolicy(10) }
 	}
-	opts.Levels[6].TableFilterPolicy = func() pebble.TableFilterPolicy { return pebble.NoFilterPolicy }
+	opts.ApplyTableFilterPolicy(func() pebble.DBTableFilterPolicy { return pebble.DBTableFilterPolicyNoL6 })
 	opts.FlushSplitBytes = opts.TargetFileSizes[0]
 
 	opts.EnsureDefaults()
