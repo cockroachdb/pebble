@@ -99,9 +99,9 @@ func newPebbleDB(dir string) DB {
 		l := &opts.Levels[i]
 		l.BlockSize = 32 << 10       // 32 KB
 		l.IndexBlockSize = 256 << 10 // 256 KB
-		l.TableFilterPolicy = bloom.FilterPolicy(10)
+		l.TableFilterPolicy = func() pebble.TableFilterPolicy { return bloom.FilterPolicy(10) }
 	}
-	opts.Levels[6].TableFilterPolicy = pebble.NoFilterPolicy
+	opts.Levels[6].TableFilterPolicy = func() pebble.TableFilterPolicy { return pebble.NoFilterPolicy }
 	opts.FlushSplitBytes = opts.TargetFileSizes[0]
 
 	opts.EnsureDefaults()

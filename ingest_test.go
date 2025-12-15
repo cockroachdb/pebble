@@ -702,7 +702,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		}
 		opts.EnsureDefaults()
 		// Some of the tests require bloom filters.
-		opts.Levels[0].TableFilterPolicy = bloom.FilterPolicy(10)
+		opts.Levels[0].TableFilterPolicy = func() TableFilterPolicy { return bloom.FilterPolicy(10) }
 
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.

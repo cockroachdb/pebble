@@ -293,7 +293,7 @@ func TestScanInternal(t *testing.T) {
 				if err != nil {
 					return nil, err
 				}
-				fp := bloom.FilterPolicy(uint32(v))
+				fp := func() TableFilterPolicy { return bloom.FilterPolicy(uint32(v)) }
 				opts.TableFilterDecoders = []TableFilterDecoder{bloom.Decoder}
 				for i := range opts.Levels {
 					opts.Levels[i].TableFilterPolicy = fp

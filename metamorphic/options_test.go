@@ -89,12 +89,19 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.TombstoneDenseCompactionThreshold:",
 		"Experimental.ValueSeparationPolicy:",
 		"Levels[0].Compression:",
+		"Levels[0].TableFilterPolicy:",
 		"Levels[1].Compression:",
+		"Levels[1].TableFilterPolicy:",
 		"Levels[2].Compression:",
+		"Levels[2].TableFilterPolicy:",
 		"Levels[3].Compression:",
+		"Levels[3].TableFilterPolicy:",
 		"Levels[4].Compression:",
+		"Levels[4].TableFilterPolicy:",
 		"Levels[5].Compression:",
+		"Levels[5].TableFilterPolicy:",
 		"Levels[6].Compression:",
+		"Levels[6].TableFilterPolicy:",
 		"WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold:",
 		// Floating points
 		"Experimental.PointTombstoneWeight:",
@@ -121,6 +128,11 @@ func TestOptionsRoundtrip(t *testing.T) {
 		expectEqualFn(t, o.Opts.Experimental.TombstoneDenseCompactionThreshold, parsed.Opts.Experimental.TombstoneDenseCompactionThreshold)
 		expectEqualFn(t, o.Opts.Experimental.ValueSeparationPolicy, parsed.Opts.Experimental.ValueSeparationPolicy)
 		expectEqualFn(t, o.Opts.DeletionPacing.BaselineRate, parsed.Opts.DeletionPacing.BaselineRate)
+		for i := range o.Opts.Levels {
+			expectEqualFn(t, o.Opts.Levels[i].Compression, parsed.Opts.Levels[i].Compression)
+			t.Logf("L%d:  %#v  %#v\n", i, o.Opts.Levels[i].TableFilterPolicy(), parsed.Opts.Levels[i].TableFilterPolicy())
+			expectEqualFn(t, o.Opts.Levels[i].TableFilterPolicy, parsed.Opts.Levels[i].TableFilterPolicy)
+		}
 
 		expBaseline, expUpper := o.Opts.CompactionConcurrencyRange()
 		parsedBaseline, parsedUpper := parsed.Opts.CompactionConcurrencyRange()
