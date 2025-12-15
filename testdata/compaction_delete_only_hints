@@ -595,7 +595,6 @@ L6:
 get-hints
 ----
 L0.000005 [b, l) seqnums(tombstone=11-11, type=point-and-range)
-L0.000005 [m, n) seqnums(tombstone=11-11, type=point-and-range)
 
 iter
 first
@@ -611,17 +610,15 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (810B) Score=0.00 -> L6 [000007 000008] (186B), in 1.0s (2.0s total), output rate 186B/s
-[JOB 100] compacted(virtual-sst-rewrite) L6 [000007] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000009] (788B), in 1.0s (2.0s total), output rate 788B/s
-[JOB 100] compacted(virtual-sst-rewrite) L6 [000008] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (792B), in 1.0s (2.0s total), output rate 792B/s
+  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (810B) Score=0.00 -> L6 [000006] (93B), in 1.0s (2.0s total), output rate 93B/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000006] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000007] (806B), in 1.0s (2.0s total), output rate 806B/s
 
 describe-lsm
 ----
 L0.0:
   000005:[b#11,RANGEKEYDEL-n#inf,RANGEDEL]
 L6:
-  000009:[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
-  000010:[n#10,RANGEKEYSET-o#0,SET]
+  000007:[l#10,RANGEKEYSET-o#0,SET]
 
 iter
 first
@@ -666,7 +663,7 @@ L6:
 
 get-hints
 ----
-L0.000005 [l, m) seqnums(tombstone=11-11, type=point-and-range)
+(none)
 
 iter
 first

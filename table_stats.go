@@ -707,11 +707,23 @@ func (d *DB) examineTablesBeneathTombstones(
 				return 0, 0, err
 			}
 			estimate += size
-			if updateHints && d.FormatMajorVersion() >= FormatVirtualSSTables {
-				// If the format major version is past Virtual SSTables, deletion only
-				// hints can also apply to partial overlaps with sstables.
-				deletionCandidates++
+
+			// If the format major version is past FormatVirtualSSTables,
+			// deletion only hints can also apply to partial overlaps with
+			// sstables.
+			if !updateHints || d.FormatMajorVersion() < FormatVirtualSSTables {
+				continue
 			}
+			tableBounds := tbl.UserKeyBounds()
+			if tableBounds.ContainsBounds(d.cmp, tombBounds) {
+				continue
+			}
+			// The table's bounds do not completely contain the tombstone
+			// bounds, and vice versa. So the tombstone must overlap eiter the
+			// left or right boundary of the table, and an excise would be able
+			// to shorten the bound without increasing the number of tables.
+			// Mark it as a candidate.
+			deletionCandidates++
 		}
 	}
 	return estimate, deletionCandidates, nil
