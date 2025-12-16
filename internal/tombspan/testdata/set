@@ -1,0 +1,82 @@
+define-version
+L0
+000029:[b#230,RANGEDEL-r#inf,RANGEDEL] seqnums:[#230-#230]
+L2
+000019:[b#201,SET-c#198,SET] seqnums:[#198-#201]
+000011:[d#71,SET-f#70,SET] seqnums:[#70-#71]
+L3
+000008:[c#28,SET-g#29,SET] seqnums:[#28-#29]
+L4
+000005:[a#12,SET-g#11,SET] seqnums:[#11-#12]
+----
+v0:
+L0.0:
+  000029:[b#230,RANGEDEL-r#inf,RANGEDEL] seqnums:[#230-#230] points:[b#230,RANGEDEL-r#inf,RANGEDEL]
+L2:
+  000019:[b#201,SET-c#198,SET] seqnums:[#198-#201] points:[b#201,SET-c#198,SET]
+  000011:[d#71,SET-f#70,SET] seqnums:[#70-#71] points:[d#71,SET-f#70,SET]
+L3:
+  000008:[c#28,SET-g#29,SET] seqnums:[#28-#29] points:[c#28,SET-g#29,SET]
+L4:
+  000005:[a#12,SET-g#11,SET] seqnums:[#11-#12] points:[a#12,SET-g#11,SET]
+
+add
+L0.000029 [b, r) seqnums{point=[#230-#230]}
+----
+Pending:
+  L0.000029 [b, r) seqnums{point=[#230-#230]}
+
+update-with-earliest-snapshot 250
+----
+Tombstoned spans:
+[b, r) = {point=230}
+
+# Pick a compaction, no excise allowed.
+
+pick-compaction v=0
+----
+delete L3.000008:[c#28,SET-g#29,SET] (completely contained within [b, r))
+Tombstoned spans:
+[b, r) = {point=230}
+
+# Try again, after marking 000008 as compacting. A new file should be discovered.
+
+mark-as-compacting table=000008
+----
+
+pick-compaction v=0
+----
+delete L2.000019:[b#201,SET-c#198,SET] (completely contained within [b, r))
+Tombstoned spans:
+[b, r) = {point=230}
+
+# Try again, this time with excise allowed. It'll pick a different compaction.
+
+pick-compaction v=0 exciseAllowed
+----
+excise L4.000005:[a#12,SET-g#11,SET] (partially overlapping with [b, r))
+Tombstoned spans:
+[b, r) = {point=230}
+
+# Define a new version, v1, after all the effects of the tombstones have been
+# applied.
+
+define-version
+L0
+000029:[b#230,RANGEDEL-r#inf,RANGEDEL] seqnums:[#230-#230]
+L4:
+ 000031:[a#12,SET-a#12,SET] seqnums:[#11-#12] points:[a#12,SET-a#12,SET]
+----
+v1:
+L0.0:
+  000029:[b#230,RANGEDEL-r#inf,RANGEDEL] seqnums:[#230-#230] points:[b#230,RANGEDEL-r#inf,RANGEDEL]
+L4:
+  000031:[a#12,SET-a#12,SET] seqnums:[#11-#12] points:[a#12,SET-a#12,SET]
+
+# Picking a compaction against v1 should find no compaction, and should clear
+# the set of tombstoned spans.
+
+pick-compaction v=1 exciseAllowed
+----
+none
+(none)

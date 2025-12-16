@@ -614,6 +614,19 @@ func (v *Version) AllLevelsAndSublevels() iter.Seq2[Layer, LevelSlice] {
 	}
 }
 
+// AllTables returns an iterator over all tables in the version.
+func (v *Version) AllTables() iter.Seq2[Layer, *TableMetadata] {
+	return func(yield func(Layer, *TableMetadata) bool) {
+		for layer, tables := range v.AllLevelsAndSublevels() {
+			for table := range tables.All() {
+				if !yield(layer, table) {
+					return
+				}
+			}
+		}
+	}
+}
+
 // CheckOrdering checks that the files are consistent with respect to
 // increasing file numbers (for level 0 files) and increasing and non-
 // overlapping internal key ranges (for level non-0 files).
