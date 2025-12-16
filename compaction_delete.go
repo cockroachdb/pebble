@@ -149,13 +149,12 @@ type deleteCompactionHint struct {
 	tombstoneLevel int
 	// The file containing the range tombstone(s) that created the hint.
 	tombstoneFile *manifest.TableMetadata
-	// The smallest and largest sequence numbers of the abutting tombstones
-	// merged to form this hint. All of a tables' keys must be less than the
-	// tombstone smallest sequence number to be deleted. All of a tables'
-	// sequence numbers must fall into the same snapshot stripe as the
-	// tombstone largest sequence number to be deleted.
-	tombstoneLargestSeqNum  base.SeqNum
-	tombstoneSmallestSeqNum base.SeqNum
+	// The sequence number range of the abutting tombstones merged to form this
+	// hint. All of a tables' keys must be less than the sequence number range
+	// to be deleted. All of a tables' sequence numbers must fall into the same
+	// snapshot stripe as the high end of the sequence number range to be
+	// deleted.
+	tombstoneSeqNums base.SeqNumRange
 }
 
 type deletionHintOverlap int8
@@ -172,9 +171,9 @@ const (
 
 func (h deleteCompactionHint) String() string {
 	return fmt.Sprintf(
-		"L%d.%s %s seqnums(tombstone=%d-%d, type=%s)",
+		"L%d.%s %s seqnums(tombstone=%s, type=%s)",
 		h.tombstoneLevel, h.tombstoneFile.TableNum, h.bounds,
-		h.tombstoneSmallestSeqNum, h.tombstoneLargestSeqNum, h.keyType)
+		h.tombstoneSeqNums, h.keyType)
 }
 
 func (h *deleteCompactionHint) canDeleteOrExcise(
@@ -190,7 +189,7 @@ func (h *deleteCompactionHint) canDeleteOrExcise(
 	// avoid this error, the largest pre-zeroing sequence number is maintained
 	// in LargestSeqNumAbsolute and used here to make the determination whether
 	// the file's keys are older than all of the hint's tombstones.
-	if m.LargestSeqNumAbsolute >= h.tombstoneSmallestSeqNum {
+	if m.LargestSeqNumAbsolute >= h.tombstoneSeqNums.Low {
 		return hintDoesNotApply
 	}
 
@@ -301,7 +300,7 @@ func checkDeleteCompactionHints(
 		// ______________________________________________________________
 		//     a b c d e f g h i j k l m n o p q r s t u v w x y z
 
-		if snapshots.Index(h.tombstoneLargestSeqNum) != 0 ||
+		if snapshots.Index(h.tombstoneSeqNums.High) != 0 ||
 			(len(resolvedHints) >= maxHintsPerDeleteOnlyCompaction && exciseEnabled) {
 			// Cannot resolve yet.
 			unresolvedHints = append(unresolvedHints, h)
@@ -386,7 +385,7 @@ func (d *DB) runDeleteOnlyCompaction(
 	// isolation. Validate that all hints' tombstones' sequence numbers fall
 	// within the last snapshot stripe.
 	for _, h := range c.deleteOnly.hints {
-		if snapshots.Index(h.tombstoneLargestSeqNum) != 0 {
+		if snapshots.Index(h.tombstoneSeqNums.High) != 0 {
 			return nil, stats, blobs, errors.AssertionFailedf(
 				"tombstone largest sequence number is not in the last snapshot stripe")
 		}
