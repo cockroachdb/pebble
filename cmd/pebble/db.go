@@ -99,7 +99,7 @@ func newPebbleDB(dir string) DB {
 		l.BlockSize = 32 << 10       // 32 KB
 		l.IndexBlockSize = 256 << 10 // 256 KB
 	}
-	opts.ApplyTableFilterPolicy(func() pebble.DBTableFilterPolicy { return pebble.DBTableFilterPolicyNoL6 })
+	opts.ApplyTableFilterPolicy(func() pebble.DBTableFilterPolicy { return pebble.DBTableFilterPolicyProgressive })
 	opts.FlushSplitBytes = opts.TargetFileSizes[0]
 
 	opts.EnsureDefaults()
