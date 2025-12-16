@@ -491,12 +491,11 @@ func (d *DB) loadTableRangeDelStats(
 
 		if deletionCandidates > 0 {
 			compactionHints = append(compactionHints, deleteCompactionHint{
-				keyType:                 tombstoneKeyType,
-				bounds:                  base.UserKeyBoundsEndExclusive(slices.Clone(s.Start), slices.Clone(s.End)),
-				tombstoneFile:           meta,
-				tombstoneLevel:          level,
-				tombstoneLargestSeqNum:  s.LargestSeqNum(),
-				tombstoneSmallestSeqNum: s.SmallestSeqNum(),
+				keyType:          tombstoneKeyType,
+				bounds:           base.UserKeyBoundsEndExclusive(slices.Clone(s.Start), slices.Clone(s.End)),
+				tombstoneFile:    meta,
+				tombstoneLevel:   level,
+				tombstoneSeqNums: base.SeqNumRange{Low: s.SmallestSeqNum(), High: s.LargestSeqNum()},
 			})
 		}
 	}
