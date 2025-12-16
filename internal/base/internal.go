@@ -67,6 +67,27 @@ func (s SeqNum) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Print(redact.SafeString(s.String()))
 }
 
+// SeqNumRange is a range of sequence numbers [Low, High]. Like all SeqNums,
+// sequence numbers should be constrained within [SeqNumStart, SeqNumMax].
+type SeqNumRange struct {
+	Low, High SeqNum
+}
+
+// Contains returns true if the provided sequence number falls within the range.
+func (r SeqNumRange) Contains(seqNum SeqNum) bool {
+	return r.Low <= seqNum && seqNum <= r.High
+}
+
+// String implements fmt.Stringer.
+func (r SeqNumRange) String() string {
+	return fmt.Sprintf("[#%s-#%s]", r.Low, r.High)
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (r SeqNumRange) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Print(redact.SafeString(r.String()))
+}
+
 // InternalKeyKind enumerates the kind of key: a deletion tombstone, a set
 // value, a merged value, etc.
 type InternalKeyKind uint8

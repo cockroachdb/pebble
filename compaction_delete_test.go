@@ -175,12 +175,14 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					}
 
 					h := deleteCompactionHint{
-						keyType:                 keyType,
-						bounds:                  base.UserKeyBoundsEndExclusive(start, end),
-						tombstoneLevel:          tombstoneLevel,
-						tombstoneFile:           tombstoneFile,
-						tombstoneSmallestSeqNum: base.SeqNum(parseUint64(parts[4])),
-						tombstoneLargestSeqNum:  base.SeqNum(parseUint64(parts[5])),
+						keyType:        keyType,
+						bounds:         base.UserKeyBoundsEndExclusive(start, end),
+						tombstoneLevel: tombstoneLevel,
+						tombstoneFile:  tombstoneFile,
+						tombstoneSeqNums: base.SeqNumRange{
+							Low:  base.SeqNum(parseUint64(parts[4])),
+							High: base.SeqNum(parseUint64(parts[5])),
+						},
 					}
 					d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, h)
 					fmt.Fprintln(&buf, h.String())
