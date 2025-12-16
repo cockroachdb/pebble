@@ -6,19 +6,15 @@ package pebble
 
 import (
 	"bytes"
-	"cmp"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -27,11 +23,6 @@ import (
 func TestCompactionDeleteOnlyHints(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	parseUint64 := func(s string) uint64 {
-		v, err := strconv.ParseUint(s, 10, 64)
-		require.NoError(t, err)
-		return v
-	}
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -73,9 +64,10 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			//		compactInfo = &info
 			//	},
 			// },
-			EventListener:      &el,
-			FormatMajorVersion: internalFormatNewest,
-			Logger:             testutils.Logger{T: t},
+			EventListener:              &el,
+			FormatMajorVersion:         internalFormatNewest,
+			Logger:                     testutils.Logger{T: t},
+			CompactionConcurrencyRange: func() (lower, upper int) { return 1, 1 },
 		}
 		opts.WithFSDefaults()
 		opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
@@ -87,24 +79,28 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 		for d.mu.compact.compactProcesses > 0 {
 			d.mu.compact.cond.Wait()
 		}
-		slices.SortFunc(compactInfo, func(a, b CompactionInfo) int {
-			return cmp.Compare(a.String(), b.String())
-		})
-
-		var b strings.Builder
 		if len(compactInfo) == 0 {
 			return "(none)\n"
 		}
-
+		var lines []string
 		for _, c := range compactInfo {
-			// Fix the job ID and durations for determinism.
+			// Fix the job ID, durations and file numbers for determinism.
 			c.JobID = 100
 			c.Duration = time.Second
 			c.TotalDuration = 2 * time.Second
-			b.WriteString(fmt.Sprintf("%s\n", c.String()))
+			for i := range c.Input {
+				for j := range c.Input[i].Tables {
+					c.Input[i].Tables[j].FileNum = 0
+				}
+			}
+			for i := range c.Output.Tables {
+				c.Output.Tables[i].FileNum = 0
+			}
+			lines = append(lines, c.String())
 		}
 		compactInfo = nil
-		return b.String()
+		slices.Sort(lines)
+		return strings.Join(lines, "\n")
 	}
 
 	var err error
@@ -143,52 +139,6 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				}
 				return runLSMCmd(td, d)
 
-			case "force-set-hints":
-				d.mu.Lock()
-				defer d.mu.Unlock()
-				d.mu.compact.deletionHints = d.mu.compact.deletionHints[:0]
-				var buf bytes.Buffer
-				for data := range crstrings.LinesSeq(td.Input) {
-					parts := strings.FieldsFunc(strings.TrimSpace(data),
-						func(r rune) bool { return r == '-' || r == ' ' || r == '.' })
-
-					start, end := []byte(parts[2]), []byte(parts[3])
-
-					var tombstoneFile *manifest.TableMetadata
-					tombstoneLevel := int(parseUint64(parts[0][1:]))
-
-					// Set file number to the value provided in the input.
-					tombstoneFile = &manifest.TableMetadata{
-						TableNum: base.TableNum(parseUint64(parts[1])),
-					}
-
-					var keyType manifest.KeyType
-					switch typ := parts[6]; typ {
-					case "point_key_only":
-						keyType = manifest.KeyTypePoint
-					case "range_key_only":
-						keyType = manifest.KeyTypeRange
-					case "point_and_range_key":
-						keyType = manifest.KeyTypePointAndRange
-					default:
-						return fmt.Sprintf("unknown hint type: %s", typ)
-					}
-
-					h := deleteCompactionHint{
-						keyType:        keyType,
-						bounds:         base.UserKeyBoundsEndExclusive(start, end),
-						tombstoneLevel: tombstoneLevel,
-						tombstoneFile:  tombstoneFile,
-						tombstoneSeqNums: base.SeqNumRange{
-							Low:  base.SeqNum(parseUint64(parts[4])),
-							High: base.SeqNum(parseUint64(parts[5])),
-						},
-					}
-					d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, h)
-					fmt.Fprintln(&buf, h.String())
-				}
-				return buf.String()
-
 			case "get-hints":
 				d.mu.Lock()
 				defer d.mu.Unlock()
@@ -213,31 +163,17 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 						d.waitTableStats()
 					}
 				}()
-
-				hints := d.mu.compact.deletionHints
-				if len(hints) == 0 {
-					return "(none)"
-				}
-				var buf bytes.Buffer
-				for _, h := range hints {
-					buf.WriteString(h.String() + "\n")
-				}
-				return buf.String()
+				return d.mu.compact.wideTombstones.String()
 
 			case "maybe-compact":
 				d.mu.Lock()
 				d.maybeScheduleCompaction()
 
 				var buf bytes.Buffer
-				fmt.Fprintf(&buf, "Deletion hints:\n")
-				for _, h := range d.mu.compact.deletionHints {
-					fmt.Fprintf(&buf, "  %s\n", h.String())
-				}
-				if len(d.mu.compact.deletionHints) == 0 {
-					fmt.Fprintf(&buf, "  (none)\n")
-				}
-				fmt.Fprintf(&buf, "Compactions:\n")
-				fmt.Fprintf(&buf, "  %s", compactionString())
+				fmt.Fprint(&buf, strings.TrimSpace(d.mu.compact.wideTombstones.String()))
+				fmt.Fprintln(&buf)
+				fmt.Fprintln(&buf, "Compactions:")
+				fmt.Fprint(&buf, compactionString())
 				d.mu.Unlock()
 				return buf.String()
 
@@ -246,10 +182,9 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 					return err.Error()
 				}
 				d.mu.Lock()
+				defer d.mu.Unlock()
 				compactInfo = nil
-				s := d.mu.versions.currentVersion().String()
-				d.mu.Unlock()
-				return s
+				return d.mu.versions.currentVersion().String()
 
 			case "close-snapshot":
 				seqNum := base.ParseSeqNum(strings.TrimSpace(td.Input))
@@ -269,10 +204,9 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 				}
 
 				d.mu.Lock()
+				defer d.mu.Unlock()
 				// Closing the snapshot may have triggered a compaction.
-				str := compactionString()
-				d.mu.Unlock()
-				return str
+				return compactionString()
 
 			case "iter":
 				snap := Snapshot{

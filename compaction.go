@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/problemspans"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
+	"github.com/cockroachdb/pebble/internal/tombspan"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/objiotracing"
 	"github.com/cockroachdb/pebble/sstable"
@@ -317,15 +318,7 @@ type tableCompaction struct {
 	// compaction that does not merge or write sstables. Instead, it only
 	// performs deletions either through removing whole sstables from the LSM or
 	// virtualizing them into virtual sstables.
-	deleteOnly struct {
-		// hints are collected by the table stats collector and describe range
-		// deletions and the files containing keys deleted by them.
-		hints []deleteCompactionHint
-		// exciseEnabled is set to true if this compaction is allowed to excise
-		// files. If false, the compaction will only remove whole sstables that
-		// are wholly contained within the bounds of range deletions.
-		exciseEnabled bool
-	}
+	deleteOnly tombspan.DeleteOnlyCompaction
 	// flush contains information specific to flushes (compactionKindFlush and
 	// compactionKindIngestedFlushable). A flush is modeled by a compaction
 	// because it has similar mechanics to a default compaction.
@@ -1988,7 +1981,7 @@ func (d *DB) maybeScheduleCompaction() {
 	// Delete-only compactions are expected to be cheap and reduce future
 	// compaction work, so schedule them directly instead of using the
 	// CompactionScheduler.
-	if d.tryScheduleDeleteOnlyCompaction() {
+	for d.tryScheduleDeleteOnlyCompaction() {
 		env.inProgressCompactions = d.getInProgressCompactionInfoLocked(nil)
 		d.mu.versions.pickedCompactionCache.invalidate()
 	}
@@ -2686,7 +2679,7 @@ func (d *DB) runCompaction(
 	}
 	switch c.kind {
 	case compactionKindDeleteOnly:
-		return d.runDeleteOnlyCompaction(c, d.mu.snapshots.toSlice())
+		return d.runDeleteOnlyCompaction(c)
 	case compactionKindMove:
 		return d.runMoveCompaction(jobID, c)
 	case compactionKindCopy:
