@@ -28,7 +28,7 @@ func writeVE(writer *record.Writer, ve *manifest.VersionEdit) {
 
 func makeManifest1() {
 	fs := vfs.Default
-	f, err := fs.Create("tool/testdata/MANIFEST-invalid")
+	f, err := fs.Create("tool/testdata/MANIFEST-invalid", vfs.WriteCategoryUnspecified)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,13 +38,13 @@ func makeManifest1() {
 	ve.MinUnflushedLogNum = 2
 	ve.NextFileNum = 5
 	ve.LastSeqNum = 20
-	ve.NewFiles = []manifest.NewTableEntry{
+	ve.NewTables = []manifest.NewTableEntry{
 		{Level: 6, Meta: &manifest.TableMetadata{
 			TableNum: 1, SmallestSeqNum: 2, LargestSeqNum: 5}}}
 	writeVE(writer, &ve)
 
 	ve.MinUnflushedLogNum = 3
-	ve.NewFiles = []manifest.NewTableEntry{
+	ve.NewTables = []manifest.NewTableEntry{
 		{Level: 6, Meta: &manifest.TableMetadata{
 			TableNum: 2, SmallestSeqNum: 1, LargestSeqNum: 4}}}
 	writeVE(writer, &ve)
