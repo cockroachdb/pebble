@@ -49,14 +49,15 @@ L4:
 
 get-hints
 ----
-L0.000004 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Pending:
+  L0.000004 [b, r) seqnums{point=[#200-#230]}
 
 maybe-compact
 ----
-Deletion hints:
-  L0.000004 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Pending:
+  L0.000004 [b, r) seqnums{point=[#200-#230]}
 Compactions:
-  (none)
+(none)
 
 # Adopt the same LSM but without snapshots 100, 180 and 210.
 
@@ -81,14 +82,15 @@ L4:
 
 get-hints
 ----
-L0.000004 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Pending:
+  L0.000004 [b, r) seqnums{point=[#200-#230]}
 
 maybe-compact
 ----
-Deletion hints:
-  L0.000004 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Pending:
+  L0.000004 [b, r) seqnums{point=[#200-#230]}
 Compactions:
-  (none)
+(none)
 
 # Verify that compaction correctly handles the presence of multiple
 # overlapping hints which might delete a file multiple times. All of the
@@ -119,17 +121,22 @@ L4:
 
 get-hints
 ----
-L0.000004 [a, k) seqnums(tombstone=[#300-#300], type=point)
-L1.000005 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Tombstoned spans:
+[a, k) = {point=300}
+[k, r) = {point=200}
 
 maybe-compact
 ----
-Deletion hints:
-  (none)
+Tombstoned spans:
+[a, k) = {point=300}
+[k, r) = {point=200}
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 + L3 [000007] (666B) Score=0.00 + L4 [000008] (666B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
-[JOB 100] compacted(virtual-sst-rewrite) L1 [000009] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000010] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000011] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(delete-only) L2 [000000] (666B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L3 [000000] (666B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) [excise] L1 [000000] (649B) Score=0.00 -> L1 [000000] (1B), in 1.0s (2.0s total), output rate 1B/s
+[JOB 100] compacted(delete-only) [excise] L4 [000000] (666B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
+[JOB 100] compacted(virtual-sst-rewrite) L1 [000000] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000000] (643B), in 1.0s (2.0s total), output rate 643B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (655B), in 1.0s (2.0s total), output rate 655B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -154,7 +161,8 @@ L4:
 
 get-hints
 ----
-L0.000004 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Pending:
+  L0.000004 [b, r) seqnums{point=[#200-#230]}
 
 compact a-z
 ----
@@ -163,10 +171,10 @@ L5:
 
 maybe-compact
 ----
-Deletion hints:
-  L0.000004 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Pending:
+  L0.000004 [b, r) seqnums{point=[#200-#230]}
 Compactions:
-  (none)
+(none)
 
 # The same test case, without snapshots, with a table (000008) that exists
 # within the range del user key bounds, but above it in the LSM.
@@ -196,7 +204,8 @@ L4:
 
 get-hints
 ----
-L1.000004 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Tombstoned spans:
+[b, r) = {point=200}
 
 # Tables 000005 and 000006 can be deleted as their largest sequence numbers fall
 # below the smallest sequence number of the range del. Table 000007 falls
@@ -205,11 +214,13 @@ L1.000004 [b, r) seqnums(tombstone=[#200-#230], type=point)
 
 maybe-compact
 ----
-Deletion hints:
-  (none)
+Tombstoned spans:
+[b, r) = {point=200}
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (666B) Score=0.00 + L3 [000006] (666B) Score=0.00 + L4 [000007] (666B) Score=0.00 -> L6 [000009] (94B), in 1.0s (2.0s total), output rate 94B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000009] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000010] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(delete-only) L2 [000000] (666B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L3 [000000] (666B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) [excise] L4 [000000] (666B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (655B), in 1.0s (2.0s total), output rate 655B/s
 
 # A deletion hint present on an sstable in a higher level should NOT result in a
 # deletion-only compaction incorrectly removing an sstable in L6 following an
@@ -231,78 +242,6 @@ L6:
 get-hints
 ----
 (none)
-
-# Place a compaction hint on a non-existent table in a higher level in the LSM.
-#
-# The selection of the sequence numbers for the hints is nuanced, and warrants
-# some explanation. The largest tombstone sequence number (27) was chosen such
-# that it does NOT fall into the final snapshot stripe, ensuring the hint is not
-# resolved and dropped. The deletion range 5-27 is also chosen such that it
-# covers the sequence number range from the table, i.e. 15-20, which *appears*
-# to make the keys eligible for deletion.
-force-set-hints
-L0.000001 a-z 5-27 point_key_only
-----
-L0.000001 [a, z) seqnums(tombstone=[#5-#27], type=point)
-
-# Hints on the table are unchanged, as the new sstable is at L6, and hints are
-# not generated on tables at this level.
-get-hints
-----
-L0.000001 [a, z) seqnums(tombstone=[#5-#27], type=point)
-
-# Closing snapshot 10 triggers an elision-only compaction in L6 rather than a
-# deletion-only compaction, as the earliest snapshot that remains open is 25,
-# preventing the delete compaction hint from being resolved as it does not exist
-# in the same snapshot stripe as the table in L6.
-close-snapshot
-10
-----
-[JOB 100] compacted(elision-only) L6 [000004] (739B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (655B), in 1.0s (2.0s total), output rate 655B/s
-
-# In previous versions of the code, the deletion hint was removed by the
-# elision-only compaction because it zeroed sequence numbers of keys with
-# sequence numbers higher than the lowest tombstone sequence number.
-#
-# In the current code, the hint remains but when the hint is resolved the hint
-# will not apply to any sstables containing keys that previously had sequence
-# numbers higher than the hint's lowest tombstone sequence number. We use
-# TableMetadata.LargestSeqNumAbsolute for this purpose.
-
-get-hints
-----
-L0.000001 [a, z) seqnums(tombstone=[#5-#27], type=point)
-
-# The LSM contains the key, as expected.
-iter
-first
-next
-----
-a: (b, .)
-.
-
-# Closing the next snapshot should NOT trigger another compaction but SHOULD
-# clear the hint. Although the file 000005's largest sequence number is zero
-# (due to sequence number zeroing), the file's LargestSeqNumAbsolute
-# indicates that some of the keys previously had higher sequence numbers, so
-# the hint cannot be used to drop the file 000005.
-
-close-snapshot
-25
-----
-(none)
-
-get-hints
-----
-(none)
-
-# The key remains in the LSM.
-iter
-first
-next
-----
-a: (b, .)
-.
 
 # Construct a scenario with tables containing a mixture of range dels and range
 # key dels that sit within different types of hints.
@@ -410,30 +349,37 @@ OK
 describe-lsm
 ----
 L0.0:
-  000013:[a#19,RANGEDEL-z#inf,RANGEKEYDEL]
+  XXXXXX:[a#19,RANGEDEL-z#inf,RANGEKEYDEL]
 L6:
-  000004:[a#10,RANGEKEYSET-c#10,SET]
-  000005:[d#11,RANGEKEYSET-f#inf,RANGEKEYSET]
-  000006:[g#12,SET-h#12,SET]
-  000007:[i#13,RANGEKEYSET-k#13,SET]
-  000008:[l#14,RANGEKEYSET-n#inf,RANGEKEYSET]
-  000009:[o#15,SET-q#15,SET]
-  000010:[r#16,RANGEKEYSET-t#16,SET]
-  000011:[u#17,RANGEKEYSET-w#inf,RANGEKEYSET]
-  000012:[x#18,SET-z#18,SET]
+  XXXXXX:[a#10,RANGEKEYSET-c#10,SET]
+  XXXXXX:[d#11,RANGEKEYSET-f#inf,RANGEKEYSET]
+  XXXXXX:[g#12,SET-h#12,SET]
+  XXXXXX:[i#13,RANGEKEYSET-k#13,SET]
+  XXXXXX:[l#14,RANGEKEYSET-n#inf,RANGEKEYSET]
+  XXXXXX:[o#15,SET-q#15,SET]
+  XXXXXX:[r#16,RANGEKEYSET-t#16,SET]
+  XXXXXX:[u#17,RANGEKEYSET-w#inf,RANGEKEYSET]
+  XXXXXX:[x#18,SET-z#18,SET]
 
 get-hints
 ----
-L0.000013 [a, i) seqnums(tombstone=[#19-#19], type=point)
-L0.000013 [i, r) seqnums(tombstone=[#19-#19], type=point-and-range)
-L0.000013 [r, z) seqnums(tombstone=[#19-#19], type=range)
+Tombstoned spans:
+[a, i) = {point=19}
+[i, r) = {point=19, range=19}
+[r, z) = {range=19}
 
 maybe-compact
 ----
-Deletion hints:
-  (none)
+Tombstoned spans:
+[a, i) = {point=19}
+[i, r) = {point=19, range=19}
+[r, z) = {range=19}
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000006 000007 000008 000009 000011] (3.4KB) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000000] (661B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000000] (661B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000000] (696B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000000] (696B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000000] (796B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 # Verify that a delete-only compaction can partially excise a file.
 
@@ -462,8 +408,9 @@ L4:
 
 get-hints
 ----
-L0.000004 [a, k) seqnums(tombstone=[#300-#300], type=point)
-L1.000005 [b, r) seqnums(tombstone=[#200-#230], type=point)
+Tombstoned spans:
+[a, k) = {point=300}
+[k, r) = {point=200}
 
 iter
 first
@@ -474,19 +421,25 @@ u: (u, .)
 
 maybe-compact
 ----
-Deletion hints:
-  (none)
+Tombstoned spans:
+[a, k) = {point=300}
+[k, r) = {point=200}
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 + L3 [000007] (666B) Score=0.00 + L4 [000008] (666B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
-[JOB 100] compacted(virtual-sst-rewrite) L1 [000009] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000010] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000011] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(delete-only) L2 [000000] (666B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L3 [000000] (666B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) [excise] L1 [000000] (649B) Score=0.00 -> L1 [000000] (1B), in 1.0s (2.0s total), output rate 1B/s
+[JOB 100] compacted(delete-only) [excise] L4 [000000] (666B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
+[JOB 100] compacted(virtual-sst-rewrite) L1 [000000] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000000] (643B), in 1.0s (2.0s total), output rate 643B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (655B), in 1.0s (2.0s total), output rate 655B/s
 
 describe-lsm
 ----
 L0.0:
-  000004:[a#300,RANGEDEL-k#inf,RANGEDEL]
+  XXXXXX:[a#300,RANGEDEL-k#inf,RANGEDEL]
+L1:
+  XXXXXX:[k#200,RANGEDEL-r#inf,RANGEDEL]
 L4:
-  000011:[u#0,SET-u#0,SET]
+  XXXXXX:[u#0,SET-u#0,SET]
 
 iter
 first
@@ -526,14 +479,15 @@ OK
 describe-lsm
 ----
 L0.0:
-  000006:[b#12,RANGEDEL-r#inf,RANGEDEL]
+  XXXXXX:[b#12,RANGEDEL-r#inf,RANGEDEL]
 L6:
-  000005:[d#11,SET-i#11,SET]
-  000004:[k#10,RANGEKEYSET-o#10,SET]
+  XXXXXX:[d#11,SET-i#11,SET]
+  XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
 
 get-hints
 ----
-L0.000006 [b, r) seqnums(tombstone=[#12-#12], type=point)
+Tombstoned spans:
+[b, r) = {point=12}
 
 iter
 first
@@ -542,17 +496,17 @@ first
 
 maybe-compact
 ----
-Deletion hints:
-  (none)
+Tombstoned spans:
+[b, r) = {point=12}
 Compactions:
-  [JOB 100] compacted(delete-only) L6 [000005] (661B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000000] (661B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
 
 describe-lsm
 ----
 L0.0:
-  000006:[b#12,RANGEDEL-r#inf,RANGEDEL]
+  XXXXXX:[b#12,RANGEDEL-r#inf,RANGEDEL]
 L6:
-  000004:[k#10,RANGEKEYSET-o#10,SET]
+  XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
 
 iter
 first
@@ -588,14 +542,15 @@ OK
 describe-lsm
 ----
 L0.0:
-  000005:[b#11,RANGEKEYDEL-p#inf,RANGEDEL]
+  XXXXXX:[b#11,RANGEKEYDEL-p#inf,RANGEDEL]
 L6:
-  000004:[k#10,RANGEKEYSET-o#10,SET]
+  XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
 
 get-hints
 ----
-L0.000005 [b, l) seqnums(tombstone=[#11-#11], type=point-and-range)
-L0.000005 [m, p) seqnums(tombstone=[#11-#11], type=point-and-range)
+Tombstoned spans:
+[b, l) = {point=11, range=11}
+[m, p) = {point=11, range=11}
 
 iter
 first
@@ -606,18 +561,20 @@ ll: (mm, .)
 
 maybe-compact
 ----
-Deletion hints:
-  (none)
+Tombstoned spans:
+[b, l) = {point=11, range=11}
+[m, p) = {point=11, range=11}
 Compactions:
-  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (810B) Score=0.00 -> L6 [000007] (93B), in 1.0s (2.0s total), output rate 93B/s
-[JOB 100] compacted(virtual-sst-rewrite) L6 [000007] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000008] (788B), in 1.0s (2.0s total), output rate 788B/s
+[JOB 100] compacted(delete-only) [excise] L6 [000000] (810B) Score=0.00 -> L6 [000000] (93B), in 1.0s (2.0s total), output rate 93B/s
+[JOB 100] compacted(delete-only) [excise] L6 [000000] (93B) Score=0.00 -> L6 [000000] (93B), in 1.0s (2.0s total), output rate 93B/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (788B), in 1.0s (2.0s total), output rate 788B/s
 
 describe-lsm
 ----
 L0.0:
-  000005:[b#11,RANGEKEYDEL-p#inf,RANGEDEL]
+  XXXXXX:[b#11,RANGEKEYDEL-p#inf,RANGEDEL]
 L6:
-  000008:[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
+  XXXXXX:[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
 
 iter
 first
@@ -654,9 +611,9 @@ OK
 describe-lsm
 ----
 L0.0:
-  000005:[l#11,RANGEKEYDEL-m#inf,RANGEDEL]
+  XXXXXX:[l#11,RANGEKEYDEL-m#inf,RANGEDEL]
 L6:
-  000004:[k#10,RANGEKEYSET-o#10,SET]
+  XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
 
 get-hints
 ----
@@ -675,17 +632,16 @@ o: (o, .)
 
 maybe-compact
 ----
-Deletion hints:
-  (none)
+(none)
 Compactions:
-  (none)
+(none)
 
 describe-lsm
 ----
 L0.0:
-  000005:[l#11,RANGEKEYDEL-m#inf,RANGEDEL]
+  XXXXXX:[l#11,RANGEKEYDEL-m#inf,RANGEDEL]
 L6:
-  000004:[k#10,RANGEKEYSET-o#10,SET]
+  XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
 
 iter
 first
@@ -724,7 +680,7 @@ OK
 describe-lsm
 ----
 L6:
-  000004:[c#10,RANGEKEYDEL-h#inf,RANGEDEL]
+  XXXXXX:[c#10,RANGEKEYDEL-h#inf,RANGEDEL]
 
 snapshot
 ----
@@ -747,9 +703,10 @@ L6:
 
 get-hints
 ----
-L0.000006 [c, h) seqnums(tombstone=[#11-#12], type=point-and-range)
+Pending:
+  L0.000006 [c, h) seqnums{point=[#11-#11], range=[#12-#12]}
 
 close-snapshot
 11
 ----
-[JOB 100] compacted(delete-only) L6 [000004] (867B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L6 [000000] (867B) Score=0.00 -> L6 [] (0B), in 1.0s (2.0s total), output rate 0B/s
