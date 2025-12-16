@@ -31,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/problemspans"
+	"github.com/cockroachdb/pebble/internal/tombspan"
 	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -420,9 +421,10 @@ type DB struct {
 			compactProcesses int
 			// The number of download compactions.
 			downloadingCount int
-			// The list of deletion hints, suggesting ranges for delete-only
-			// compactions.
-			deletionHints []deleteCompactionHint
+			// The set of wide tombstoned spans. Spans are added by the table
+			// stats collector, used to inform compaction picking and then
+			// dropped when no longer useful.
+			wideTombstones tombspan.Set
 			// The list of manual compactions. The next manual compaction to perform
 			// is at the start of the list. New entries are added to the end.
 			manual    []*manualCompaction
