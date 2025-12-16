@@ -2,7 +2,7 @@ build
 a#1,SET:a
 ----
 point:    [a#1,SET-a#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 scan
 ----
@@ -30,7 +30,7 @@ Span: l-m:{(#11,RANGEKEYSET,@10,foo)}
 point:    [a#1,SET-h#7,MERGE]
 rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
 rangekey: [j#9,RANGEKEYDEL-m#inf,RANGEKEYSET]
-seqnums:  [1-11]
+seqnums:  [#1-#11]
 
 build
 a#1,SET:a
@@ -44,7 +44,7 @@ Span: i-j:{(#8,RANGEDEL)}
 ----
 point:    [a#1,SET-h#7,MERGE]
 rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
-seqnums:  [1-8]
+seqnums:  [#1-#8]
 
 scan
 ----
@@ -72,7 +72,7 @@ Span: m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
 Span: s-z:{(#1,RANGEDEL)}
 ----
 rangedel: [a#3,RANGEDEL-z#inf,RANGEDEL]
-seqnums:  [1-3]
+seqnums:  [#1-#3]
 
 scan
 ----
@@ -118,7 +118,7 @@ b#4,SET:c
 ----
 point:    [b#4,SET-b#4,SET]
 rangedel: [a#3,RANGEDEL-b#inf,RANGEDEL]
-seqnums:  [3-4]
+seqnums:  [#3-#4]
 
 build
 Span: a-b:{(#3,RANGEDEL)}
@@ -126,7 +126,7 @@ b#2,SET:c
 ----
 point:    [b#2,SET-b#2,SET]
 rangedel: [a#3,RANGEDEL-b#inf,RANGEDEL]
-seqnums:  [2-3]
+seqnums:  [#2-#3]
 
 build
 Span: a-c:{(#3,RANGEDEL)}
@@ -134,7 +134,7 @@ b#2,SET:c
 ----
 point:    [b#2,SET-b#2,SET]
 rangedel: [a#3,RANGEDEL-c#inf,RANGEDEL]
-seqnums:  [2-3]
+seqnums:  [#2-#3]
 
 # Keys must be added in order.
 
@@ -185,13 +185,13 @@ Span: a-c:{(#1,RANGEDEL)}
 Span: c-d:{(#2,RANGEDEL)}
 ----
 rangedel: [a#1,RANGEDEL-d#inf,RANGEDEL]
-seqnums:  [1-2]
+seqnums:  [#1-#2]
 
 build-raw
 Span: a-b:{(#2,RANGEKEYSET,@10,foo) (#1,RANGEKEYSET,@10,foo)}
 ----
 rangekey: [a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
-seqnums:  [1-2]
+seqnums:  [#1-#2]
 
 build-raw
 Span: b-c:{(#2,RANGEKEYSET,@10,foo)}
@@ -204,7 +204,7 @@ Span: a-c:{(#1,RANGEKEYSET,@10,foo)}
 Span: c-d:{(#2,RANGEKEYSET,@10,foo)}
 ----
 rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
-seqnums:  [1-2]
+seqnums:  [#1-#2]
 
 # Range keys may have perfectly aligned spans (including sequence numbers),
 # though the key kinds must be ordered (descending).
@@ -213,7 +213,7 @@ build-raw
 Span: a-b:{(#1,RANGEKEYSET,@10,foo) (#1,RANGEKEYUNSET,@10) (#1,RANGEKEYDEL)}
 ----
 rangekey: [a#1,RANGEKEYSET-b#inf,RANGEKEYDEL]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 # Setting a very small index-block-size results in a two-level index.
 
@@ -223,7 +223,7 @@ b#1,SET:b
 c#1,SET:c
 ----
 point:    [a#1,SET-c#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -293,7 +293,7 @@ b#1,SET:b
 c#1,SET:c
 ----
 point:    [a#1,SET-c#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -314,7 +314,7 @@ Span: b-c:{(#2,RANGEKEYSET,@2,bar)}
 Span: c-d:{(#1,RANGEKEYSET,@1,baz)}
 ----
 rangekey: [a#3,RANGEKEYSET-d#inf,RANGEKEYSET]
-seqnums:  [1-3]
+seqnums:  [#1-#3]
 
 layout
 ----
@@ -362,13 +362,13 @@ EstimatedSize()=181
 close
 ----
 point:    [a@2#1,SET-b@2#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 build compression=zstd
 a#1,SET:thequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydog
 ----
 point:    [a#1,SET-a#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 props rocksdb.compression
 ----
@@ -379,7 +379,7 @@ build compression=minlz
 a#1,SET:thequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydogthequickbrownfoxjumpsoverthelazydog
 ----
 point:    [a#1,SET-a#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 props rocksdb.compression
 ----
@@ -392,7 +392,7 @@ c#1,SET:c
 d#1,SET:d;tiering:span=1,attr=101
 ----
 point:    [a#1,SET-d#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 scan-compaction
 ----

@@ -440,8 +440,8 @@ func (f *findT) searchTables(stdout io.Writer, searchKey []byte, refs []findRef)
 			m := f.tableMeta[base.PhysicalTableFileNum(fl.DiskFileNum)]
 			if f.verbose {
 				fmt.Fprintf(stdout, "%s", fl.path)
-				if m != nil && m.SmallestSeqNum == m.LargestSeqNum {
-					fmt.Fprintf(stdout, ": global seqnum: %d", m.LargestSeqNum)
+				if m != nil && m.SeqNums.Low == m.SeqNums.High {
+					fmt.Fprintf(stdout, ": global seqnum: %d", m.SeqNums.High)
 				}
 				defer fmt.Fprintf(stdout, "\n")
 			}
@@ -653,7 +653,7 @@ func (f *findT) tableProvenance(fileNum base.FileNum) string {
 				// operation.
 				fmt.Fprintf(&buf, "flushed to L%d", nf.Level)
 
-			case nf.Meta.SmallestSeqNum == nf.Meta.LargestSeqNum:
+			case nf.Meta.SeqNums.Low == nf.Meta.SeqNums.High:
 				// If the smallest and largest seqnum are the same, the file was
 				// ingested. Note that this can also occur for a flushed sstable
 				// that contains only a single key, though that would have

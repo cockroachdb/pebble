@@ -8,7 +8,7 @@ c#1,SET:c
 d#1,SET:d
 ----
 point:    [a#1,SET-d#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 virtualize lower=b#1,SET upper=c#1,SET
 ----
@@ -39,7 +39,7 @@ Span: y-z:{(#12,RANGEKEYSET,@11,foo)}
 point:    [a#1,SET-f#3,SET]
 rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
 rangekey: [a#11,RANGEKEYSET-z#inf,RANGEKEYSET]
-seqnums:  [1-12]
+seqnums:  [#1-#12]
 
 # Note that we shouldn't have range del spans which cross virtual sstable
 # boundaries. NumRangeKeySets must be > 1.
@@ -68,7 +68,7 @@ g#8,SET:g
 h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 virtualize lower=dd#5,SET upper=ddd#6,SET
 ----
@@ -96,7 +96,7 @@ g#8,SET:g
 h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 # Set bounds c-f for the virtual sstable.
 virtualize lower=c#3,SET upper=f#6,SET
@@ -195,7 +195,7 @@ g#8,SET:g
 h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 virtualize lower=c#3,SET upper=f#1,SET
 ----
@@ -283,7 +283,7 @@ g#8,SET:g
 h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 virtualize lower=dd#5,SET upper=ddd#6,SET
 ----
@@ -311,7 +311,7 @@ g#8,SET:g
 h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 # Set bounds c-f for the virtual sstable.
 virtualize lower=c#3,SET upper=f#6,SET
@@ -410,7 +410,7 @@ g#8,SET:g
 h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 virtualize lower=c#3,SET upper=f#1,SET
 ----
@@ -498,7 +498,7 @@ f#5,SET:f
 ----
 point:    [a#1,SET-f#5,SET]
 rangedel: [d#4,RANGEDEL-e#inf,RANGEDEL]
-seqnums:  [1-5]
+seqnums:  [#1-#5]
 
 virtualize lower=a#1,SET upper=e#inf,RANGEDEL
 ----
@@ -535,7 +535,7 @@ f#5,SET:f
 ----
 point:    [a#1,SET-f#5,SET]
 rangedel: [d#4,RANGEDEL-e#inf,RANGEDEL]
-seqnums:  [1-5]
+seqnums:  [#1-#5]
 
 virtualize lower=a#1,SET upper=e#inf,RANGEDEL
 ----
@@ -576,7 +576,7 @@ Span: y-z:{(#12,RANGEKEYSET,@11,foo)}
 point:    [a#1,SET-f#3,SET]
 rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
 rangekey: [a#11,RANGEKEYSET-z#inf,RANGEKEYSET]
-seqnums:  [1-12]
+seqnums:  [#1-#12]
 
 # Virtual sstable doesn't contain range key set, but NumRangeKeySets in the
 # properties must be > 0.
@@ -597,7 +597,7 @@ g@2#8,SET:g
 h@3#9,SET:h
 ----
 point:    [a@2#1,SET-h@3#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 # Set bounds c@7-f@2 for the virtual sstable. Notice that we correctly elide c
 # because post suffix replacement, it is not in the bounds. Further, notice that
@@ -639,7 +639,7 @@ ce@1#1,SET:ce
 cf@1#1,SET:cf
 ----
 point:    [aa@2#1,SET-cf@1#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 virtualize lower=ae1#1,SET upper=ca@1#1,SET
 ----

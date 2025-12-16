@@ -3,7 +3,7 @@ a#1,SET:a
 b#2,DEL:
 ----
 point:    [a#1,SET-b#2,DEL]
-seqnums:  [1-2]
+seqnums:  [#1-#2]
 
 open
 ----
@@ -145,7 +145,7 @@ b#1,SET:banana
 c#1,SET:cantelope
 ----
 point:    [a#1,SET-c#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 open
 ----
@@ -287,7 +287,7 @@ t#1,SET:tangerine
 u#1,SET:ume
 ----
 point:    [a#1,SET-u#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 open
 ----
@@ -1055,7 +1055,7 @@ build
 Span: a-b:{(#10,RANGEDEL)}
 ----
 rangedel: [a#10,RANGEDEL-b#inf,RANGEDEL]
-seqnums:  [10-10]
+seqnums:  [#10-#10]
 
 open
 ----
@@ -1155,7 +1155,7 @@ Span: a-b:{(#10,RANGEKEYSET,@5,foo)}
 Span: b-c:{(#9,RANGEKEYDEL)}
 ----
 rangekey: [a#10,RANGEKEYSET-c#inf,RANGEKEYDEL]
-seqnums:  [9-10]
+seqnums:  [#9-#10]
 
 open
 ----

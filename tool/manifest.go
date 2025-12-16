@@ -561,7 +561,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					for _, nf := range ve.NewTables {
 						fmt.Fprintf(stdout, "  added: L%d %s:%d",
 							nf.Level, nf.Meta.TableNum, nf.Meta.Size)
-						formatSeqNumRange(stdout, nf.Meta.SmallestSeqNum, nf.Meta.LargestSeqNum)
+						formatSeqNumRange(stdout, nf.Meta.SeqNums)
 						smallest := nf.Meta.Smallest()
 						largest := nf.Meta.Largest()
 						formatKeyRange(stdout, m.fmtKey, &smallest, &largest)

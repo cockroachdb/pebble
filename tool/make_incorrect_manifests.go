@@ -10,6 +10,7 @@ package main
 import (
 	"log"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
@@ -40,13 +41,17 @@ func makeManifest1() {
 	ve.LastSeqNum = 20
 	ve.NewTables = []manifest.NewTableEntry{
 		{Level: 6, Meta: &manifest.TableMetadata{
-			TableNum: 1, SmallestSeqNum: 2, LargestSeqNum: 5}}}
+			TableNum: 1, SeqNums: base.SeqNumRange{Low: 2, High: 5},
+		}},
+	}
 	writeVE(writer, &ve)
 
 	ve.MinUnflushedLogNum = 3
 	ve.NewTables = []manifest.NewTableEntry{
 		{Level: 6, Meta: &manifest.TableMetadata{
-			TableNum: 2, SmallestSeqNum: 1, LargestSeqNum: 4}}}
+			TableNum: 2, SeqNums: base.SeqNumRange{Low: 1, High: 4},
+		}},
+	}
 	writeVE(writer, &ve)
 
 	err = writer.Close()

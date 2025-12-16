@@ -465,7 +465,7 @@ func (d *DB) loadTableRangeDelStats(
 					break
 				}
 			}
-			if meta.SmallestSeqNum < maxRangeDeleteSeqNum {
+			if meta.SeqNums.Low < maxRangeDeleteSeqNum {
 				size, err := estimateDiskUsageInTableAndBlobReferences(r, s.Start, s.End, env, meta)
 				if err != nil {
 					return nil, 0, err

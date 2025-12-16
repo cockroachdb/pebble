@@ -3,7 +3,7 @@ define
 
 # An empty LSM ingests into the bottom level.
 target
-000000:[a#5,SET-b#5,SET] seqnums:[5-5]
+000000:[a#5,SET-b#5,SET] seqnums:[#5-#5]
 ----
 6
 
@@ -17,9 +17,9 @@ L5:
 
 # Overlapping cases.
 target
-000000:[a#5,SET-b#5,SET] seqnums:[5-5]
-000000:[b#5,SET-c#5,SET] seqnums:[5-5]
-000000:[c#5,SET-d#5,SET] seqnums:[5-5]
+000000:[a#5,SET-b#5,SET] seqnums:[#5-#5]
+000000:[b#5,SET-c#5,SET] seqnums:[#5-#5]
+000000:[c#5,SET-d#5,SET] seqnums:[#5-#5]
 ----
 4
 4
@@ -31,9 +31,9 @@ target
 # - Ingested file has no data overlap (falls through the middle of the existing
 #   file).
 target
-000000:[a#5,SET-aa#5,SET] seqnums:[5-5]
-000000:[d#5,SET-e#5,SET] seqnums:[5-5]
-000000:[bb#5,SET-bb#5,SET] seqnums:[5-5]
+000000:[a#5,SET-aa#5,SET] seqnums:[#5-#5]
+000000:[d#5,SET-e#5,SET] seqnums:[#5-#5]
+000000:[bb#5,SET-bb#5,SET] seqnums:[#5-#5]
 ----
 6
 6
@@ -63,22 +63,22 @@ L3:
 
 # Files overlap with L0. Files ingested into L0.
 target
-000000:[b#5,SET-c#5,SET] seqnums:[5-5]
-000000:[d#5,SET-e#5,SET] seqnums:[5-5]
+000000:[b#5,SET-c#5,SET] seqnums:[#5-#5]
+000000:[d#5,SET-e#5,SET] seqnums:[#5-#5]
 ----
 0
 0
 
 # Files overlap with L3. Files ingested into L2.
 target
-000000:[g#5,SET-m#5,SET] seqnums:[5-5]
+000000:[g#5,SET-m#5,SET] seqnums:[#5-#5]
 ----
 2
 
 # No overlap. Files ingested into L6.
 target
-000000:[i#5,SET-m#5,SET] seqnums:[5-5]
-000000:[c#5,SET-c#5,SET] seqnums:[5-5]
+000000:[i#5,SET-m#5,SET] seqnums:[#5-#5]
+000000:[c#5,SET-c#5,SET] seqnums:[#5-#5]
 ----
 6
 6
@@ -102,7 +102,7 @@ L6:
 
 # The ingested file slips through the gaps in both L5 and L6.
 target
-000000:[b#5,SET-b#5,SET] seqnums:[5-5]
+000000:[b#5,SET-b#5,SET] seqnums:[#5-#5]
 ----
 6
 
@@ -127,7 +127,7 @@ L6:
 # The ingested file cannot reach L6 as there is a compaction outputting a file
 # into the range [a,c].
 target
-000000:[b#5,SET-b#5,SET] seqnums:[5-5]
+000000:[b#5,SET-b#5,SET] seqnums:[#5-#5]
 ----
 5
 
@@ -149,9 +149,9 @@ L2:
 # - The rangedel over [d,g) keeps the ingested file in L0.
 # - Ditto.
 target
-000000:[c#5,SET-c#5,SET] seqnums:[5-5]
-000000:[d#5,SET-d#5,SET] seqnums:[5-5]
-000000:[e#5,SET-e#5,SET] seqnums:[5-5]
+000000:[c#5,SET-c#5,SET] seqnums:[#5-#5]
+000000:[d#5,SET-d#5,SET] seqnums:[#5-#5]
+000000:[e#5,SET-e#5,SET] seqnums:[#5-#5]
 ----
 0
 0
@@ -164,9 +164,9 @@ target
 # - The ingested file is to the left of all files in L0, but is kept at L1 by
 #   the rangedel in L2.
 target
-000000:[cc#5,SET-cc#5,SET] seqnums:[5-5]
-000000:[g#5,SET-g#5,SET] seqnums:[5-5]
-000000:[a#5,SET-a#5,SET] seqnums:[5-5]
+000000:[cc#5,SET-cc#5,SET] seqnums:[#5-#5]
+000000:[g#5,SET-g#5,SET] seqnums:[#5-#5]
+000000:[a#5,SET-a#5,SET] seqnums:[#5-#5]
 ----
 1
 6
@@ -192,14 +192,14 @@ L1:
 
 # Data overlap.
 target
-000000:[d#5,SET-e#5,SET] seqnums:[5-5]
+000000:[d#5,SET-e#5,SET] seqnums:[#5-#5]
 ----
 0
 
 # No data overlap.
 target
-000000:[cc#5,SET-d#5,SET] seqnums:[5-5]
-000000:[ee#5,SET-ff#5,SET] seqnums:[5-5]
+000000:[cc#5,SET-d#5,SET] seqnums:[#5-#5]
+000000:[ee#5,SET-ff#5,SET] seqnums:[#5-#5]
 ----
 6
 6
@@ -217,7 +217,7 @@ L5:
   000004:[a#0,SET-c#0,SET]
 
 target
-000000:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL] seqnums:[5-5] ranges:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL]
+000000:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL] seqnums:[#5-#5] ranges:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL]
 ----
 4
 
@@ -230,7 +230,7 @@ L5:
   000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 
 target
-000000:[a#5,SET-c#5,SET] seqnums:[5-5]
+000000:[a#5,SET-c#5,SET] seqnums:[#5-#5]
 ----
 4
 
@@ -243,7 +243,7 @@ L5:
   000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
 
 target
-000000:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL] seqnums:[5-5] ranges:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL]
+000000:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL] seqnums:[#5-#5] ranges:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL]
 ----
 4
 
@@ -264,21 +264,21 @@ L6:
   000005:[f#4,SET-k#6,SET]
 
 target
-000000:[b#5,SET-c#5,SET] seqnums:[5-5]
-000000:[e#5,SET-g#5,SET] seqnums:[5-5]
+000000:[b#5,SET-c#5,SET] seqnums:[#5-#5]
+000000:[e#5,SET-g#5,SET] seqnums:[#5-#5]
 ----
 5
 5
 
 target suggest-split
-000000:[b#5,SET-c#5,SET] seqnums:[5-5]
-000000:[e#5,SET-g#5,SET] seqnums:[5-5]
+000000:[b#5,SET-c#5,SET] seqnums:[#5-#5]
+000000:[e#5,SET-g#5,SET] seqnums:[#5-#5]
 ----
 6 (split file: 000004)
 5
 
 target suggest-split
-000000:[g#5,SET-i#5,SET] seqnums:[5-5]
+000000:[g#5,SET-i#5,SET] seqnums:[#5-#5]
 ----
 6 (split file: 000005)
 
@@ -298,7 +298,7 @@ L6:
   000005:[f#4,SET-k#6,SET]
 
 target suggest-split
-000000:[g#5,SET-i#5,SET] seqnums:[5-5]
+000000:[g#5,SET-i#5,SET] seqnums:[#5-#5]
 ----
 5
 
@@ -319,7 +319,7 @@ L6:
   000005:[c#1,SET-k#1,SET]
 
 target suggest-split
-000000:[b#5,SET-c#5,SET] seqnums:[5-5]
+000000:[b#5,SET-c#5,SET] seqnums:[#5-#5]
 ----
 5 (split file: 000004)
 
@@ -338,6 +338,6 @@ L0.0:
   000005:[j#21,RANGEDEL-m#21,SET]
 
 target
-000000:[i#5,RANGEDEL-j#inf,RANGEDEL] seqnums:[5-5]
+000000:[i#5,RANGEDEL-j#inf,RANGEDEL] seqnums:[#5-#5]
 ----
 6

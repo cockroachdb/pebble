@@ -54,8 +54,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		TableNum:                 810,
 		Size:                     8090,
 		CreationTime:             809060,
-		SmallestSeqNum:           9,
-		LargestSeqNum:            11,
+		SeqNums:                  base.SeqNumRange{Low: 9, High: 11},
 		LargestSeqNumAbsolute:    11,
 		SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix([]byte("after"), []byte("foo")),
 		BlobReferences: []BlobReference{
@@ -77,8 +76,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		TableNum:              812,
 		Size:                  8090,
 		CreationTime:          809060,
-		SmallestSeqNum:        9,
-		LargestSeqNum:         11,
+		SeqNums:               base.SeqNumRange{Low: 9, High: 11},
 		LargestSeqNumAbsolute: 11,
 		Virtual:               true,
 		BlobReferences: []BlobReference{
@@ -143,8 +141,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		TableNum:                 806,
 		Size:                     8060,
 		CreationTime:             806040,
-		SmallestSeqNum:           3,
-		LargestSeqNum:            5,
+		SeqNums:                  base.SeqNumRange{Low: 3, High: 5},
 		LargestSeqNumAbsolute:    5,
 		SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(nil, []byte("foo")),
 	}).ExtendPointKeyBounds(
@@ -169,8 +166,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		TableNum:              809,
 		Size:                  8090,
 		CreationTime:          809060,
-		SmallestSeqNum:        9,
-		LargestSeqNum:         11,
+		SeqNums:               base.SeqNumRange{Low: 9, High: 11},
 		LargestSeqNumAbsolute: 11,
 	}).ExtendPointKeyBounds(
 		cmp,
@@ -187,8 +183,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		TableNum:              810,
 		Size:                  8090,
 		CreationTime:          809060,
-		SmallestSeqNum:        9,
-		LargestSeqNum:         11,
+		SeqNums:               base.SeqNumRange{Low: 9, High: 11},
 		LargestSeqNumAbsolute: 11,
 	}).ExtendPointKeyBounds(
 		cmp,
@@ -205,8 +200,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		TableNum:              811,
 		Size:                  8090,
 		CreationTime:          809060,
-		SmallestSeqNum:        9,
-		LargestSeqNum:         11,
+		SeqNums:               base.SeqNumRange{Low: 9, High: 11},
 		LargestSeqNumAbsolute: 11,
 	}).ExtendPointKeyBounds(
 		cmp,
@@ -505,11 +499,11 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 			output: `  add-blob-file: B000925 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
 		},
 		{
-			input: `  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
+			input: `  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] size:1`,
 		},
 		{
 			input:  `add-table: L0 1:[a#0,SET-z#0,DEL]`,
-			output: `  add-table:     L0 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]`,
+			output: `  add-table:     L0 000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL]`,
 		},
 		{
 			input: `  del-table:     L1 000001`,
@@ -518,16 +512,16 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 			input: strings.Join([]string{
 				`  del-table:     L1 000002`,
 				`  del-table:     L3 000003`,
-				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
-				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2`,
+				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] size:1`,
+				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] size:2`,
 			}, "\n"),
 		},
 		{
 			input: strings.Join([]string{
 				`  del-table:     L1 000002`,
 				`  del-table:     L3 000003`,
-				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
-				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2`,
+				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] size:1`,
+				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] size:2`,
 				`  add-blob-file: B000005 physical:{000005 size:[20535 (20KB)] vals:[25935 (25KB)]}`,
 				`  del-blob-file: B000004 000004`,
 				`  del-blob-file: B000006 000006`,
@@ -535,8 +529,8 @@ func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 		},
 		{
 			input: strings.Join([]string{
-				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:1`,
-				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL] size:2 blobrefs:[(B002431: 3008533), (B002432: 10534); depth:2]`,
+				`  add-table:     L1 000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] size:1`,
+				`  add-table:     L2 000002:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] size:2 blobrefs:[(B002431: 3008533), (B002432: 10534); depth:2]`,
 			}, "\n"),
 		},
 		{

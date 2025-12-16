@@ -115,13 +115,12 @@ type TableMetadata struct {
 	// sequence number. LargestSeqNumAbsolute is NOT durably persisted, so after
 	// a database restart it takes on the value of LargestSeqNum.
 	LargestSeqNumAbsolute base.SeqNum
-	// Lower and upper bounds for the smallest and largest sequence numbers in
-	// the table, across both point and range keys. For physical sstables, these
-	// values are tight bounds. For virtual sstables, there is no guarantee that
-	// there will be keys with SmallestSeqNum or LargestSeqNum within virtual
-	// sstable bounds.
-	SmallestSeqNum base.SeqNum
-	LargestSeqNum  base.SeqNum
+	// SeqNums holds the lower and upper bounds for the smallest and largest
+	// sequence numbers in the table, across both point and range keys. For
+	// physical sstables, these values are tight bounds. For virtual sstables,
+	// there is no guarantee that there will be keys with SeqNums.Low or
+	// SeqNums.High within virtual sstable bounds.
+	SeqNums base.SeqNumRange
 	// PointKeyBounds.Smallest() and PointKeyBounds.Largest() are the inclusive bounds for the
 	// internal point keys stored in the table. This includes RANGEDELs, which
 	// alter point keys.
@@ -253,11 +252,11 @@ func (m *TableMetadata) UserKeyBoundsByType(keyType KeyType) base.UserKeyBounds 
 	}
 }
 
-// SyntheticSeqNum returns a SyntheticSeqNum which is set when SmallestSeqNum
-// equals LargestSeqNum.
+// SyntheticSeqNum returns a SyntheticSeqNum which is set when the table's
+// sequence number range is a single integer.
 func (m *TableMetadata) SyntheticSeqNum() sstable.SyntheticSeqNum {
-	if m.SmallestSeqNum == m.LargestSeqNum {
-		return sstable.SyntheticSeqNum(m.SmallestSeqNum)
+	if m.SeqNums.Low == m.SeqNums.High {
+		return sstable.SyntheticSeqNum(m.SeqNums.Low)
 	}
 	return sstable.NoSyntheticSeqNum
 }
@@ -540,9 +539,9 @@ func (m *TableMetadata) ValidateVirtual(createdFrom *TableMetadata) {
 	switch {
 	case !m.Virtual:
 		panic("pebble: invalid virtual sstable")
-	case createdFrom.SmallestSeqNum != m.SmallestSeqNum:
+	case createdFrom.SeqNums.Low != m.SeqNums.Low:
 		panic("pebble: invalid smallest sequence number for virtual sstable")
-	case createdFrom.LargestSeqNum != m.LargestSeqNum:
+	case createdFrom.SeqNums.High != m.SeqNums.High:
 		panic("pebble: invalid largest sequence number for virtual sstable")
 	case createdFrom.LargestSeqNumAbsolute != m.LargestSeqNumAbsolute:
 		panic("pebble: invalid largest absolute sequence number for virtual sstable")
@@ -834,7 +833,7 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	if !verbose {
 		return b.String()
 	}
-	fmt.Fprintf(&b, " seqnums:[%d-%d]", m.SmallestSeqNum, m.LargestSeqNum)
+	fmt.Fprintf(&b, " seqnums:%s", m.SeqNums)
 	if m.HasPointKeys {
 		fmt.Fprintf(&b, " points:[%s-%s]",
 			m.PointKeyBounds.Smallest().Pretty(format), m.PointKeyBounds.Largest().Pretty(format))
@@ -887,7 +886,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	}()
 
 	// Input format:
-	//	000000:[a#0,SET-z#0,SET] seqnums:[5-5] points:[...] ranges:[...] size:5
+	//	000000:[a#0,SET-z#0,SET] seqnums:[#5-#5] points:[...] ranges:[...] size:5
 	m := &TableMetadata{}
 	p := strparse.MakeParser(debugParserSeparators, s)
 	m.TableNum = p.FileNum()
@@ -910,11 +909,11 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 		switch field {
 		case "seqnums":
 			p.Expect("[")
-			m.SmallestSeqNum = p.SeqNum()
+			m.SeqNums.Low = p.HashSeqNum()
 			p.Expect("-")
-			m.LargestSeqNum = p.SeqNum()
+			m.SeqNums.High = p.HashSeqNum()
 			p.Expect("]")
-			m.LargestSeqNumAbsolute = m.LargestSeqNum
+			m.LargestSeqNumAbsolute = m.SeqNums.High
 
 		case "points":
 			p.Expect("[")
@@ -1008,13 +1007,13 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 			errors.Safe(m.TableNum), m.Smallest().Pretty(formatKey),
 			m.Largest().Pretty(formatKey))
 	}
-	if m.SmallestSeqNum > m.LargestSeqNum {
+	if m.SeqNums.Low > m.SeqNums.High {
 		return base.CorruptionErrorf("file %s has inconsistent seqnum bounds: %d vs %d",
-			errors.Safe(m.TableNum), m.SmallestSeqNum, m.LargestSeqNum)
+			errors.Safe(m.TableNum), m.SeqNums.Low, m.SeqNums.High)
 	}
-	if m.LargestSeqNumAbsolute < m.LargestSeqNum {
+	if m.LargestSeqNumAbsolute < m.SeqNums.High {
 		return base.CorruptionErrorf("file %s has inconsistent absolute largest seqnum bounds: %d vs %d",
-			errors.Safe(m.TableNum), m.LargestSeqNumAbsolute, m.LargestSeqNum)
+			errors.Safe(m.TableNum), m.LargestSeqNumAbsolute, m.SeqNums.High)
 	}
 
 	// Point key validation.
@@ -1125,8 +1124,8 @@ func (m *TableMetadata) TableInfo() TableInfo {
 		Size:           m.Size,
 		Smallest:       m.Smallest(),
 		Largest:        m.Largest(),
-		SmallestSeqNum: m.SmallestSeqNum,
-		LargestSeqNum:  m.LargestSeqNum,
+		SmallestSeqNum: m.SeqNums.Low,
+		LargestSeqNum:  m.SeqNums.High,
 		blobReferences: m.BlobReferences,
 	}
 }
@@ -1135,11 +1134,11 @@ func (m *TableMetadata) cmpSeqNum(b *TableMetadata) int {
 	// NB: This is the same ordering that RocksDB uses for L0 files.
 
 	// Sort first by largest sequence number.
-	if v := stdcmp.Compare(m.LargestSeqNum, b.LargestSeqNum); v != 0 {
+	if v := stdcmp.Compare(m.SeqNums.High, b.SeqNums.High); v != 0 {
 		return v
 	}
 	// Then by smallest sequence number.
-	if v := stdcmp.Compare(m.SmallestSeqNum, b.SmallestSeqNum); v != 0 {
+	if v := stdcmp.Compare(m.SeqNums.Low, b.SeqNums.Low); v != 0 {
 		return v
 	}
 	// Break ties by file number.

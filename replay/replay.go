@@ -825,7 +825,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				blobFileMap := make(map[base.BlobFileID]base.ObjectInfo)
 				for _, nf := range ve.NewTables {
 					newFiles = append(newFiles, nf.Meta.TableBacking.DiskFileNum)
-					if s.kind == ingestStepKind && (nf.Meta.SmallestSeqNum != nf.Meta.LargestSeqNum) {
+					if s.kind == ingestStepKind && (nf.Meta.SeqNums.Low != nf.Meta.SeqNums.High) {
 						s.kind = flushStepKind
 					}
 					if nf.Meta.BlobReferenceDepth > 0 {

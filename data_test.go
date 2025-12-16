@@ -973,8 +973,8 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 			if blobDepth > 0 {
 				f.Meta.BlobReferenceDepth = blobDepth
 			}
-			if largestSeqNum <= f.Meta.LargestSeqNum {
-				largestSeqNum = f.Meta.LargestSeqNum + 1
+			if largestSeqNum <= f.Meta.SeqNums.High {
+				largestSeqNum = f.Meta.SeqNums.High + 1
 			}
 			ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{
 				Level: level,

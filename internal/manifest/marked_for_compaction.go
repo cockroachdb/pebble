@@ -30,8 +30,8 @@ func markedForCompactionLessFn(a, b tableAndLevel) bool {
 	if a.level != b.level {
 		return a.level > b.level
 	}
-	if a.meta.LargestSeqNum != b.meta.LargestSeqNum {
-		return a.meta.LargestSeqNum < b.meta.LargestSeqNum
+	if a.meta.SeqNums.High != b.meta.SeqNums.High {
+		return a.meta.SeqNums.High < b.meta.SeqNums.High
 	}
 	return a.meta.TableNum < b.meta.TableNum
 }

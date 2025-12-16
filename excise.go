@@ -142,8 +142,7 @@ func (d *DB) exciseTable(
 			TableNum: d.mu.versions.getNextTableNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
-			SmallestSeqNum:           m.SmallestSeqNum,
-			LargestSeqNum:            m.LargestSeqNum,
+			SeqNums:                  m.SeqNums,
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 			BlobReferenceDepth:       m.BlobReferenceDepth,
@@ -182,8 +181,7 @@ func (d *DB) exciseTable(
 			TableNum: d.mu.versions.getNextTableNum(),
 			// Note that these are loose bounds for smallest/largest seqnums, but they're
 			// sufficient for maintaining correctness.
-			SmallestSeqNum:           m.SmallestSeqNum,
-			LargestSeqNum:            m.LargestSeqNum,
+			SeqNums:                  m.SeqNums,
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
 			BlobReferenceDepth:       m.BlobReferenceDepth,

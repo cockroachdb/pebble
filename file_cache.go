@@ -668,7 +668,7 @@ func (h *fileCacheHandle) newPointIter(
 		// applying the filter.
 		hideObsoletePoints, pointKeyFilters =
 			r.TryAddBlockPropertyFilterForHideObsoletePoints(
-				opts.snapshotForHideObsoletePoints, file.LargestSeqNum, opts.PointKeyFilters)
+				opts.snapshotForHideObsoletePoints, file.SeqNums.High, opts.PointKeyFilters)
 
 		var ok bool
 		var err error
