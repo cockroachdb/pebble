@@ -1226,7 +1226,7 @@ func pickCompactionSeedFile(
 			// they don't contribute to write amplification. Subtracting them
 			// out of the overlapping bytes helps prioritize these compactions
 			// that are cheaper than their file sizes suggest.
-			if outputLevel == numLevels-1 && outputFile.LargestSeqNum < earliestSnapshotSeqNum {
+			if outputLevel == numLevels-1 && outputFile.SeqNums.High < earliestSnapshotSeqNum {
 				if stats, ok := outputFile.Stats(); ok {
 					overlappingBytes -= stats.RangeDeletionsBytesEstimate
 				}
@@ -1627,7 +1627,7 @@ var elisionOnlyAnnotator = manifest.MakePickFileAnnotator(
 			return eligible, true
 		},
 		Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
-			return f1.LargestSeqNum < f2.LargestSeqNum
+			return f1.SeqNums.High < f2.SeqNums.High
 		},
 	},
 )
@@ -1690,7 +1690,7 @@ func (p *compactionPickerByScore) pickElisionOnlyCompaction(
 	if candidate == nil {
 		return nil
 	}
-	if candidate.LargestSeqNum >= env.earliestSnapshotSeqNum {
+	if candidate.SeqNums.High >= env.earliestSnapshotSeqNum {
 		return nil
 	}
 	return p.pickedCompactionFromCandidateFile(candidate, env, numLevels-1, numLevels-1, compactionKindElisionOnly)

@@ -303,8 +303,8 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 					Size:           nf.Meta.Size,
 					Smallest:       l.findKey(nf.Meta.Smallest()),
 					Largest:        l.findKey(nf.Meta.Largest()),
-					SmallestSeqNum: nf.Meta.SmallestSeqNum,
-					LargestSeqNum:  nf.Meta.LargestSeqNum,
+					SmallestSeqNum: nf.Meta.SeqNums.Low,
+					LargestSeqNum:  nf.Meta.SeqNums.High,
 					Virtual:        nf.Meta.Virtual,
 				}
 			}
@@ -410,7 +410,7 @@ func (l *lsmT) reason(ve *manifest.VersionEdit) string {
 	}
 	for i := range ve.NewTables {
 		nf := &ve.NewTables[i]
-		if nf.Meta.SmallestSeqNum == nf.Meta.LargestSeqNum {
+		if nf.Meta.SeqNums.Low == nf.Meta.SeqNums.High {
 			return "ingested"
 		}
 	}

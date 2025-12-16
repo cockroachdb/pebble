@@ -19,7 +19,7 @@ set zoo@1 bah
 flush
 ----
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
 Blob files:
   B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
 
@@ -31,9 +31,9 @@ set yuumi@1 ba
 flush
 ----
 L0.1:
-  000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[17-18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:737
+  000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[#17-#18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:737
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
 Blob files:
   B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
 
@@ -51,11 +51,11 @@ set yuumi@1 poiandyaya
 flush
 ----
 L0.2:
-  000010:[yay@3#19,SET-yuumi@1#21,SET] seqnums:[19-21] points:[yay@3#19,SET-yuumi@1#21,SET] size:827 blobrefs:[(B000011: 12); depth:1]
+  000010:[yay@3#19,SET-yuumi@1#21,SET] seqnums:[#19-#21] points:[yay@3#19,SET-yuumi@1#21,SET] size:827 blobrefs:[(B000011: 12); depth:1]
 L0.1:
-  000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[17-18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:737
+  000008:[yuumi@2#17,DEL-yuumi@1#18,SET] seqnums:[#17-#18] points:[yuumi@2#17,DEL-yuumi@1#18,SET] size:737
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:859 blobrefs:[(B000006: 10); depth:1]
 Blob files:
   B000006 physical:{000006 size:[102 (102B)] vals:[10 (10B)]}
   B000011 physical:{000011 size:[102 (102B)] vals:[12 (12B)]}
@@ -97,8 +97,8 @@ set zoo@1 bah
 flush
 ----
 L0.0:
-  000005:[apple@3#10,SET-apple@2#11,SET] seqnums:[10-11] points:[apple@3#10,SET-apple@2#11,SET] size:799 blobrefs:[(B000006: 2); depth:1]
-  000007:[yay@3#12,SET-zoo@1#19,SET] seqnums:[12-19] points:[yay@3#12,SET-zoo@1#19,SET] size:890 blobrefs:[(B000008: 5); depth:1]
+  000005:[apple@3#10,SET-apple@2#11,SET] seqnums:[#10-#11] points:[apple@3#10,SET-apple@2#11,SET] size:799 blobrefs:[(B000006: 2); depth:1]
+  000007:[yay@3#12,SET-zoo@1#19,SET] seqnums:[#12-#19] points:[yay@3#12,SET-zoo@1#19,SET] size:890 blobrefs:[(B000008: 5); depth:1]
 Blob files:
   B000006 physical:{000006 size:[91 (91B)] vals:[2 (2B)]}
   B000008 physical:{000008 size:[94 (94B)] vals:[5 (5B)]}
@@ -152,7 +152,7 @@ set b@0 bat0
 flush
 ----
 L0.0:
-  000005:[a@2#10,SET-b@0#17,SET] seqnums:[10-17] points:[a@2#10,SET-b@0#17,SET] size:880
+  000005:[a@2#10,SET-b@0#17,SET] seqnums:[#10-#17] points:[a@2#10,SET-b@0#17,SET] size:880
 
 sstable-properties file=000005
 ----
@@ -198,9 +198,9 @@ a,c val-sep-minimum-size=0 disable-separation-by-suffix
 flush
 ----
 L0.1:
-  000007:[a@2#18,SET-b@0#25,SET] seqnums:[18-25] points:[a@2#18,SET-b@0#25,SET] size:770
+  000007:[a@2#18,SET-b@0#25,SET] seqnums:[#18-#25] points:[a@2#18,SET-b@0#25,SET] size:770
 L0.0:
-  000005:[a@2#10,SET-b@0#17,SET] seqnums:[10-17] points:[a@2#10,SET-b@0#17,SET] size:880
+  000005:[a@2#10,SET-b@0#17,SET] seqnums:[#10-#17] points:[a@2#10,SET-b@0#17,SET] size:880
 
 sstable-properties file=000007
 ----
@@ -241,4 +241,4 @@ set zoo@1 bah
 flush
 ----
 L0.0:
-  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[10-16] points:[yay@3#10,SET-zoo@1#16,SET] size:870
+  000005:[yay@3#10,SET-zoo@1#16,SET] seqnums:[#10-#16] points:[yay@3#10,SET-zoo@1#16,SET] size:870

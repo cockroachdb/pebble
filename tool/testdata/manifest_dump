@@ -27,10 +27,10 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 L0.0:
-  000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709
+  000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709
 
 manifest dump --verbose
 ../testdata/db-stage-4/MANIFEST-000006
@@ -50,10 +50,10 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 L0.0:
-  000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709
+  000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709
 
 manifest dump --filter-start=zoo
 ../testdata/db-stage-4/MANIFEST-000006
@@ -66,7 +66,7 @@ MANIFEST-000006
 41/1
 EOF
 L0.0:
-  000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709
+  000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709
 
 manifest dump --filter-end=a
 ../testdata/db-stage-4/MANIFEST-000006
@@ -79,7 +79,7 @@ MANIFEST-000006
 41/1
 EOF
 L0.0:
-  000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709
+  000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709
 
 manifest dump --filter-start=a --filter-end=d
 ../testdata/db-stage-4/MANIFEST-000006
@@ -93,10 +93,10 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 L0.0:
-  000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709
+  000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709
 
 manifest dump
 ../testdata/db-stage-4/MANIFEST-000006
@@ -111,10 +111,10 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000004:[626172#14,DEL-666f6f#13,SET] seqnums:[12-14] points:[626172#14,DEL-666f6f#13,SET] size:709 (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[626172#14,DEL-666f6f#13,SET] seqnums:[#12-#14] points:[626172#14,DEL-666f6f#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 L0.0:
-  000004:[626172#14,DEL-666f6f#13,SET] seqnums:[12-14] points:[626172#14,DEL-666f6f#13,SET] size:709
+  000004:[626172#14,DEL-666f6f#13,SET] seqnums:[#12-#14] points:[626172#14,DEL-666f6f#13,SET] size:709
 
 manifest dump
 ../testdata/db-stage-4/MANIFEST-000006
@@ -129,10 +129,10 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000004:[#14,DEL-#13,SET] seqnums:[12-14] points:[#14,DEL-#13,SET] size:709 (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[#14,DEL-#13,SET] seqnums:[#12-#14] points:[#14,DEL-#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 L0.0:
-  000004:[#14,DEL-#13,SET] seqnums:[12-14] points:[#14,DEL-#13,SET] size:709
+  000004:[#14,DEL-#13,SET] seqnums:[#12-#14] points:[#14,DEL-#13,SET] size:709
 
 manifest dump
 ../testdata/db-stage-4/MANIFEST-000006
@@ -147,10 +147,10 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 L0.0:
-  000004:[bar#14,DEL-foo#13,SET] seqnums:[12-14] points:[bar#14,DEL-foo#13,SET] size:709
+  000004:[bar#14,DEL-foo#13,SET] seqnums:[#12-#14] points:[bar#14,DEL-foo#13,SET] size:709
 
 manifest dump
 ../testdata/db-stage-4/MANIFEST-000006
@@ -165,10 +165,10 @@ MANIFEST-000006
   log-num:       5
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000004:[test formatter: bar#14,DEL-test formatter: foo#13,SET] seqnums:[12-14] points:[test formatter: bar#14,DEL-test formatter: foo#13,SET] size:709 (2023-12-04T17:57:25Z)
+  add-table:     L0 000004:[test formatter: bar#14,DEL-test formatter: foo#13,SET] seqnums:[#12-#14] points:[test formatter: bar#14,DEL-test formatter: foo#13,SET] size:709 (2023-12-04T17:57:25Z)
 EOF
 L0.0:
-  000004:[test formatter: bar#14,DEL-test formatter: foo#13,SET] seqnums:[12-14] points:[test formatter: bar#14,DEL-test formatter: foo#13,SET] size:709
+  000004:[test formatter: bar#14,DEL-test formatter: foo#13,SET] seqnums:[#12-#14] points:[test formatter: bar#14,DEL-test formatter: foo#13,SET] size:709
 
 manifest check
 ----
@@ -203,13 +203,13 @@ MANIFEST-invalid
   log-num:       2
   next-file-num: 5
   last-seq-num:  20
-  add-table:     L6 000001:[#0,DEL-#0,DEL] seqnums:[2-5] points:[#0,DEL-#0,DEL]
+  add-table:     L6 000001:[#0,DEL-#0,DEL] seqnums:[#2-#5] points:[#0,DEL-#0,DEL]
 65/1
   comparer:     leveldb.BytewiseComparator
   log-num:       3
   next-file-num: 5
   last-seq-num:  20
-  add-table:     L6 000002:[#0,DEL-#0,DEL] seqnums:[1-4] points:[#0,DEL-#0,DEL]
+  add-table:     L6 000002:[#0,DEL-#0,DEL] seqnums:[#1-#4] points:[#0,DEL-#0,DEL]
 EOF
 pebble: files 000002:[#0,DEL-#0,DEL] and 000001:[#0,DEL-#0,DEL] collided on sort keys
 
@@ -219,7 +219,7 @@ manifest check
 MANIFEST-invalid: offset: 65 err: pebble: files 000002:[#0,DEL-#0,DEL] and 000001:[#0,DEL-#0,DEL] collided on sort keys
 Version state before failed Apply
 L6:
-  000001:[#0,DEL-#0,DEL] seqnums:[2-5] points:[#0,DEL-#0,DEL]
+  000001:[#0,DEL-#0,DEL] seqnums:[#2-#5] points:[#0,DEL-#0,DEL]
 Version edit that failed
   added: L6 000002:0<#1-#4>[#0,DEL-#0,DEL]
 
@@ -238,41 +238,41 @@ MANIFEST-000001
   log-num:       4
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[10-14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
+  add-table:     L0 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[#10-#14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
 90/3
   next-file-num: 6
   last-seq-num:  14
   del-table:     L0 000005
-  add-table:     L6 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[10-14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
+  add-table:     L6 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[#10-#14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
 143/4
   next-file-num: 7
   last-seq-num:  15
-  add-table:     L0 000006:[bbb#15,SET-ccc#15,SET] seqnums:[15-15] points:[bbb#15,SET-ccc#15,SET] size:680 (2023-12-12T18:55:00Z)
+  add-table:     L0 000006:[bbb#15,SET-ccc#15,SET] seqnums:[#15-#15] points:[bbb#15,SET-ccc#15,SET] size:680 (2023-12-12T18:55:00Z)
 193/5
   next-file-num: 8
   last-seq-num:  16
-  add-table:     L6 000007:[ddd#16,SET-ddd#16,SET] seqnums:[16-16] points:[ddd#16,SET-ddd#16,SET] size:671 (2023-12-12T18:55:00Z)
+  add-table:     L6 000007:[ddd#16,SET-ddd#16,SET] seqnums:[#16-#16] points:[ddd#16,SET-ddd#16,SET] size:671 (2023-12-12T18:55:00Z)
 243/6
   next-file-num: 9
   last-seq-num:  16
   del-table:     L0 000006
   del-table:     L6 000005
-  add-table:     L6 000008:[aaa#0,SET-ccc#0,MERGE] seqnums:[0-15] points:[aaa#0,SET-ccc#0,MERGE] size:738 (2023-12-12T18:55:00Z)
+  add-table:     L6 000008:[aaa#0,SET-ccc#0,MERGE] seqnums:[#0-#15] points:[aaa#0,SET-ccc#0,MERGE] size:738 (2023-12-12T18:55:00Z)
 299/7
   log-num:       9
   next-file-num: 11
   last-seq-num:  19
-  add-table:     L0 000010:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[17-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:736 (2023-12-12T18:55:00Z)
+  add-table:     L0 000010:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[#17-#19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:736 (2023-12-12T18:55:00Z)
 351/8
   next-file-num: 12
   last-seq-num:  19
   del-table:     L0 000010
   del-table:     L6 000007
   del-table:     L6 000008
-  add-table:     L6 000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[0-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870 (2023-12-12T18:55:00Z)
+  add-table:     L6 000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[#0-#19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870 (2023-12-12T18:55:00Z)
 EOF
 L6:
-  000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[0-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870
+  000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[#0-#19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870
 
 manifest dump --filter-start=bat --filter-end=cat
 ./testdata/find-db/MANIFEST-000001
@@ -289,38 +289,38 @@ MANIFEST-000001
   log-num:       4
   next-file-num: 6
   last-seq-num:  14
-  add-table:     L0 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[10-14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
+  add-table:     L0 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[#10-#14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
 90/3
   next-file-num: 6
   last-seq-num:  14
   del-table:     L0 000005
-  add-table:     L6 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[10-14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
+  add-table:     L6 000005:[aaa#10,SET-ccc#14,MERGE] seqnums:[#10-#14] points:[aaa#10,SET-ccc#14,MERGE] size:647 (2023-12-12T18:55:00Z)
 143/4
   next-file-num: 7
   last-seq-num:  15
-  add-table:     L0 000006:[bbb#15,SET-ccc#15,SET] seqnums:[15-15] points:[bbb#15,SET-ccc#15,SET] size:680 (2023-12-12T18:55:00Z)
+  add-table:     L0 000006:[bbb#15,SET-ccc#15,SET] seqnums:[#15-#15] points:[bbb#15,SET-ccc#15,SET] size:680 (2023-12-12T18:55:00Z)
 193/5
 243/5
   next-file-num: 9
   last-seq-num:  16
   del-table:     L0 000006
   del-table:     L6 000005
-  add-table:     L6 000008:[aaa#0,SET-ccc#0,MERGE] seqnums:[0-15] points:[aaa#0,SET-ccc#0,MERGE] size:738 (2023-12-12T18:55:00Z)
+  add-table:     L6 000008:[aaa#0,SET-ccc#0,MERGE] seqnums:[#0-#15] points:[aaa#0,SET-ccc#0,MERGE] size:738 (2023-12-12T18:55:00Z)
 299/6
   log-num:       9
   next-file-num: 11
   last-seq-num:  19
-  add-table:     L0 000010:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[17-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:736 (2023-12-12T18:55:00Z)
+  add-table:     L0 000010:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[#17-#19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:736 (2023-12-12T18:55:00Z)
 351/7
   next-file-num: 12
   last-seq-num:  19
   del-table:     L0 000010
   del-table:     L6 000007
   del-table:     L6 000008
-  add-table:     L6 000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[0-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870 (2023-12-12T18:55:00Z)
+  add-table:     L6 000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[#0-#19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870 (2023-12-12T18:55:00Z)
 EOF
 L6:
-  000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[0-19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870
+  000011:[aaa#17,DEL-eee#inf,RANGEDEL] seqnums:[#0-#19] points:[aaa#17,DEL-eee#inf,RANGEDEL] size:870
 
 manifest check
 ./testdata/mixed/MANIFEST-000001
@@ -342,10 +342,10 @@ MANIFEST-000001
   log-num:       4
   next-file-num: 6
   last-seq-num:  38
-  add-table:     L0 000005:[a#38,RANGEKEYDEL-z@1#35,SET] seqnums:[10-38] points:[a@1#10,SET-z@1#35,SET] ranges:[a#38,RANGEKEYDEL-z#inf,RANGEKEYSET] size:1056 (2023-12-11T18:59:04Z)
+  add-table:     L0 000005:[a#38,RANGEKEYDEL-z@1#35,SET] seqnums:[#10-#38] points:[a@1#10,SET-z@1#35,SET] ranges:[a#38,RANGEKEYDEL-z#inf,RANGEKEYSET] size:1056 (2023-12-11T18:59:04Z)
 EOF
 L0.0:
-  000005:[a#38,RANGEKEYDEL-z@1#35,SET] seqnums:[10-38] points:[a@1#10,SET-z@1#35,SET] ranges:[a#38,RANGEKEYDEL-z#inf,RANGEKEYSET] size:1056
+  000005:[a#38,RANGEKEYDEL-z@1#35,SET] seqnums:[#10-#38] points:[a@1#10,SET-z@1#35,SET] ranges:[a#38,RANGEKEYDEL-z#inf,RANGEKEYSET] size:1056
 
 manifest dump
 ./testdata/find-val-sep-db/MANIFEST-000001
@@ -358,25 +358,25 @@ MANIFEST-000001
   log-num:       4
   next-file-num: 7
   last-seq-num:  13
-  add-table:     L0 000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[10-13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:966 blobrefs:[(B000006: 18); depth:1] (2025-06-27T19:43:25Z)
+  add-table:     L0 000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[#10-#13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:966 blobrefs:[(B000006: 18); depth:1] (2025-06-27T19:43:25Z)
   add-blob-file: B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
 108/2
   log-num:       7
   next-file-num: 10
   last-seq-num:  15
-  add-table:     L0 000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[14-15] points:[eee\x00#14,SET-fff\x00#15,SET] size:847 blobrefs:[(B000009: 13); depth:1] (2025-06-27T19:43:25Z)
+  add-table:     L0 000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[#14-#15] points:[eee\x00#14,SET-fff\x00#15,SET] size:847 blobrefs:[(B000009: 13); depth:1] (2025-06-27T19:43:25Z)
   add-blob-file: B000009 physical:{000009 size:[103 (103B)] vals:[13 (13B)]}
 177/3
   log-num:       10
   next-file-num: 13
   last-seq-num:  45
-  add-table:     L0 000011:[ggg0\x00#16,SET-ggg9\x00#25,SET] seqnums:[16-45] points:[ggg0\x00#16,SET-ggg9\x00#25,SET] size:2584 blobrefs:[(B000012: 260); depth:1] (2025-06-27T19:43:25Z)
+  add-table:     L0 000011:[ggg0\x00#16,SET-ggg9\x00#25,SET] seqnums:[#16-#45] points:[ggg0\x00#16,SET-ggg9\x00#25,SET] size:2584 blobrefs:[(B000012: 260); depth:1] (2025-06-27T19:43:25Z)
   add-blob-file: B000012 physical:{000012 size:[346 (346B)] vals:[260 (260B)]}
 EOF
 L0.0:
-  000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[10-13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:966 blobrefs:[(B000006: 18); depth:1]
-  000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[14-15] points:[eee\x00#14,SET-fff\x00#15,SET] size:847 blobrefs:[(B000009: 13); depth:1]
-  000011:[ggg0\x00#16,SET-ggg9\x00#25,SET] seqnums:[16-45] points:[ggg0\x00#16,SET-ggg9\x00#25,SET] size:2584 blobrefs:[(B000012: 260); depth:1]
+  000005:[aaa\x00#10,SET-ddd\x00#13,SET] seqnums:[#10-#13] points:[aaa\x00#10,SET-ddd\x00#13,SET] size:966 blobrefs:[(B000006: 18); depth:1]
+  000008:[eee\x00#14,SET-fff\x00#15,SET] seqnums:[#14-#15] points:[eee\x00#14,SET-fff\x00#15,SET] size:847 blobrefs:[(B000009: 13); depth:1]
+  000011:[ggg0\x00#16,SET-ggg9\x00#25,SET] seqnums:[#16-#45] points:[ggg0\x00#16,SET-ggg9\x00#25,SET] size:2584 blobrefs:[(B000012: 260); depth:1]
 Blob files:
   B000006 physical:{000006 size:[109 (109B)] vals:[18 (18B)]}
   B000009 physical:{000009 size:[103 (103B)] vals:[13 (13B)]}

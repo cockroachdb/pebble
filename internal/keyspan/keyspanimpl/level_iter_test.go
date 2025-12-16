@@ -290,8 +290,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 				meta := &manifest.TableMetadata{
 					TableNum:              base.FileNum(k + 1),
 					Size:                  1024,
-					SmallestSeqNum:        2,
-					LargestSeqNum:         2,
+					SeqNums:               base.SeqNumRange{Low: 2, High: 2},
 					LargestSeqNumAbsolute: 2,
 					HasPointKeys:          false,
 					HasRangeKeys:          true,

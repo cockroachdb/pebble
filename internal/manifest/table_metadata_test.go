@@ -94,32 +94,32 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 	}{
 		{
 			name:  "point keys only",
-			input: "000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]",
+			input: "000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL]",
 		},
 		{
 			name:  "range keys only",
-			input: "000001:[a#0,RANGEKEYSET-z#0,RANGEKEYDEL] seqnums:[0-0] ranges:[a#0,RANGEKEYSET-z#0,RANGEKEYDEL]",
+			input: "000001:[a#0,RANGEKEYSET-z#0,RANGEKEYDEL] seqnums:[#0-#0] ranges:[a#0,RANGEKEYSET-z#0,RANGEKEYDEL]",
 		},
 		{
 			name:  "point and range keys",
-			input: "000001:[a#0,RANGEKEYSET-d#0,DEL] seqnums:[0-0] points:[b#0,SET-d#0,DEL] ranges:[a#0,RANGEKEYSET-c#0,RANGEKEYDEL]",
+			input: "000001:[a#0,RANGEKEYSET-d#0,DEL] seqnums:[#0-#0] points:[b#0,SET-d#0,DEL] ranges:[a#0,RANGEKEYSET-c#0,RANGEKEYDEL]",
 		},
 		{
 			name:  "point and range keys with nonzero senums",
-			input: "000001:[a#3,RANGEKEYSET-d#4,DEL] seqnums:[3-7] points:[b#3,SET-d#4,DEL] ranges:[a#3,RANGEKEYSET-c#5,RANGEKEYDEL]",
+			input: "000001:[a#3,RANGEKEYSET-d#4,DEL] seqnums:[#3-#7] points:[b#3,SET-d#4,DEL] ranges:[a#3,RANGEKEYSET-c#5,RANGEKEYDEL]",
 		},
 		{
 			name:   "whitespace",
 			input:  " 000001 : [ a#0,SET - z#0,DEL] points : [ a#0,SET - z#0,DEL] ",
-			output: "000001:[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]",
+			output: "000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL]",
 		},
 		{
 			name:  "virtual",
-			input: "000001(000008):[a#0,SET-z#0,DEL] seqnums:[0-0] points:[a#0,SET-z#0,DEL]",
+			input: "000001(000008):[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL]",
 		},
 		{
 			name:  "blobrefs",
-			input: "000196:[bar#0,SET-foo#0,SET] seqnums:[0-0] points:[bar#0,SET-foo#0,SET] blobrefs:[(B000191: 2952), (B000075: 108520); depth:2]",
+			input: "000196:[bar#0,SET-foo#0,SET] seqnums:[#0-#0] points:[bar#0,SET-foo#0,SET] blobrefs:[(B000191: 2952), (B000075: 108520); depth:2]",
 		},
 	}
 	for _, tc := range testCases {

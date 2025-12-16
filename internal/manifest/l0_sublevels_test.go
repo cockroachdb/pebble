@@ -177,12 +177,12 @@ func TestL0Sublevels(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(keyRange[0])),
 			base.ParseInternalKey(strings.TrimSpace(keyRange[1])),
 		)
-		m.SmallestSeqNum = m.Smallest().SeqNum()
-		m.LargestSeqNum = m.Largest().SeqNum()
+		m.SeqNums.Low = m.Smallest().SeqNum()
+		m.SeqNums.High = m.Largest().SeqNum()
 		if m.Largest().IsExclusiveSentinel() {
-			m.LargestSeqNum = m.SmallestSeqNum
+			m.SeqNums.High = m.SeqNums.Low
 		}
-		m.LargestSeqNumAbsolute = m.LargestSeqNum
+		m.LargestSeqNumAbsolute = m.SeqNums.High
 		m.TableNum = base.FileNum(fileNum)
 		m.Size = uint64(256)
 		m.InitPhysicalBacking()
@@ -538,10 +538,12 @@ func TestAddL0FilesEquivalence(t *testing.T) {
 				continue
 			}
 			meta := (&TableMetadata{
-				TableNum:              base.FileNum(i*10 + j + 1),
-				Size:                  rng.Uint64N(1 << 20),
-				SmallestSeqNum:        base.SeqNum(2*i + 1),
-				LargestSeqNum:         base.SeqNum(2*i + 2),
+				TableNum: base.FileNum(i*10 + j + 1),
+				Size:     rng.Uint64N(1 << 20),
+				SeqNums: base.SeqNumRange{
+					Low:  base.SeqNum(2*i + 1),
+					High: base.SeqNum(2*i + 2),
+				},
 				LargestSeqNumAbsolute: base.SeqNum(2*i + 2),
 			}).ExtendPointKeyBounds(
 				base.DefaultComparer.Compare,

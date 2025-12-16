@@ -518,8 +518,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				TableNum:                 fileNum,
 				Size:                     size,
 				CreationTime:             int64(creationTime),
-				SmallestSeqNum:           smallestSeqNum,
-				LargestSeqNum:            largestSeqNum,
+				SeqNums:                  base.SeqNumRange{Low: smallestSeqNum, High: largestSeqNum},
 				LargestSeqNumAbsolute:    largestSeqNum,
 				BlobReferences:           blobReferences,
 				BlobReferenceDepth:       blobReferenceDepth,
@@ -927,8 +926,8 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeKey(x.Meta.RangeKeyBounds.Largest())
 			}
 		}
-		e.writeUvarint(uint64(x.Meta.SmallestSeqNum))
-		e.writeUvarint(uint64(x.Meta.LargestSeqNum))
+		e.writeUvarint(uint64(x.Meta.SeqNums.Low))
+		e.writeUvarint(uint64(x.Meta.SeqNums.High))
 		if customFields {
 			if x.Meta.CreationTime != 0 {
 				e.writeUvarint(customTagCreationTime)

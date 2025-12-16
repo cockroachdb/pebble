@@ -49,9 +49,9 @@ func TestLevelIterator(t *testing.T) {
 							base.ParseInternalKey(strings.TrimSpace(parts[0])),
 							base.ParseInternalKey(strings.TrimSpace(parts[1])),
 						)
-						m.SmallestSeqNum = m.Smallest().SeqNum()
-						m.LargestSeqNum = m.Largest().SeqNum()
-						m.LargestSeqNumAbsolute = m.LargestSeqNum
+						m.SeqNums.Low = m.Smallest().SeqNum()
+						m.SeqNums.High = m.Largest().SeqNum()
+						m.LargestSeqNumAbsolute = m.SeqNums.High
 						m.InitPhysicalBacking()
 						files = append(files, m)
 					}

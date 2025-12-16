@@ -2682,7 +2682,7 @@ func TestIngestMemtableOverlapRace(t *testing.T) {
 		for _, f := range ve.NewTables {
 			if largest != nil {
 				require.Equal(t, 0, f.Level)
-				if largest.LargestSeqNum > f.Meta.LargestSeqNum {
+				if largest.SeqNums.High > f.Meta.SeqNums.High {
 					t.Fatalf("previous largest file %s has sequence number > next file %s", largest, f.Meta)
 				}
 			}
@@ -2866,8 +2866,8 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 
 			// Construct the table metadata from the writer metadata.
 			m := &manifest.TableMetadata{
-				SmallestSeqNum: 0, // Simulate an ingestion.
-				LargestSeqNum:  0,
+				// Simulate an ingestion (SeqNums.Low == SeqNums.High).
+				SeqNums: base.SeqNumRange{},
 			}
 			if wm.HasPointKeys {
 				m.ExtendPointKeyBounds(cmp, wm.SmallestPoint, wm.LargestPoint)

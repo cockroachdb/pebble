@@ -272,8 +272,8 @@ func formatKey(w io.Writer, fmtKey keyFormatter, key *base.InternalKey) bool {
 	return true
 }
 
-func formatSeqNumRange(w io.Writer, start, end base.SeqNum) {
-	fmt.Fprintf(w, "<#%d-#%d>", start, end)
+func formatSeqNumRange(w io.Writer, seqNums base.SeqNumRange) {
+	fmt.Fprintf(w, "<#%d-#%d>", seqNums.Low, seqNums.High)
 }
 
 func formatKeyRange(w io.Writer, fmtKey keyFormatter, start, end *base.InternalKey) {

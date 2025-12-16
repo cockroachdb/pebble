@@ -1082,8 +1082,8 @@ func (d *dbT) addProps(objProvider objstorage.Provider, m *manifest.TableMetadat
 
 	p.update(props{
 		Count:                      1,
-		SmallestSeqNum:             m.SmallestSeqNum,
-		LargestSeqNum:              m.LargestSeqNum,
+		SmallestSeqNum:             m.SeqNums.Low,
+		LargestSeqNum:              m.SeqNums.High,
 		DataSize:                   properties.DataSize,
 		FilterSize:                 properties.FilterSize,
 		IndexSize:                  properties.IndexSize,

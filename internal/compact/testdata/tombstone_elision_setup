@@ -168,13 +168,13 @@ L0 [a, z]: [a, j) [k, z)
 
 define
 L0
-  1:[aa#7,SET-ab#inf,RANGEDEL] seqnums:[7-7]
-  2:[bb#6,SET-dd#inf,RANGEDEL] seqnums:[6-6]
-  3:[a#5,SET-b#inf,RANGEDEL] seqnums:[5-5]
-  4:[b#4,SET-d#inf,RANGEDEL] seqnums:[4-4]
-  5:[c#3,SET-d#inf,RANGEDEL] seqnums:[3-3]
-  6:[e#2,SET-m#inf,RANGEDEL] seqnums:[2-2]
-  7:[g#1,SET-p#inf,RANGEDEL] seqnums:[1-1]
+  1:[aa#7,SET-ab#inf,RANGEDEL] seqnums:[#7-#7]
+  2:[bb#6,SET-dd#inf,RANGEDEL] seqnums:[#6-#6]
+  3:[a#5,SET-b#inf,RANGEDEL] seqnums:[#5-#5]
+  4:[b#4,SET-d#inf,RANGEDEL] seqnums:[#4-#4]
+  5:[c#3,SET-d#inf,RANGEDEL] seqnums:[#3-#3]
+  6:[e#2,SET-m#inf,RANGEDEL] seqnums:[#2-#2]
+  7:[g#1,SET-p#inf,RANGEDEL] seqnums:[#1-#1]
 ----
 L0.2:
   000002:[bb#6,SET-dd#inf,RANGEDEL]

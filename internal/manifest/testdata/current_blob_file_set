@@ -11,7 +11,7 @@ applyAndUpdateVersionEdit
 ----
 t2
 modified version edit:
-  add-table:     L3 000010:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET]
+  add-table:     L3 000010:[d#1,SET-e#1,SET] seqnums:[#0-#0] points:[d#1,SET-e#1,SET]
 current blob file set:
 CurrentBlobFileSet:
 Files:{Count: 0, Size: 0, ValueSize: 0}, References:{ValueSize: 0, BackingValueSize: 0, Count: 0}
@@ -25,7 +25,7 @@ applyAndUpdateVersionEdit
 ----
 t3
 modified version edit:
-  add-table:     L3 000011:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000012: 25935); depth:1]
+  add-table:     L3 000011:[d#1,SET-e#1,SET] seqnums:[#0-#0] points:[d#1,SET-e#1,SET] blobrefs:[(B000012: 25935); depth:1]
   add-blob-file: B000012 physical:{000012 size:[20535 (20KB)] vals:[25935 (25KB)]}
 current blob file set:
 CurrentBlobFileSet:
@@ -42,7 +42,7 @@ applyAndUpdateVersionEdit
 t4
 modified version edit:
   del-table:     L3 000011
-  add-table:     L4 000013:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000012: 25935); depth:1]
+  add-table:     L4 000013:[d#1,SET-e#1,SET] seqnums:[#0-#0] points:[d#1,SET-e#1,SET] blobrefs:[(B000012: 25935); depth:1]
 current blob file set:
 CurrentBlobFileSet:
 Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 25935, BackingValueSize: 25935, Count: 1}
@@ -59,8 +59,8 @@ applyAndUpdateVersionEdit
 t5
 modified version edit:
   del-table:     L4 000013
-  add-table:     L5 000014:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000012: 10); depth:2]
-  add-table:     L5 000015:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET] blobrefs:[(B000012: 15935); depth:2]
+  add-table:     L5 000014:[d#1,SET-e#1,SET] seqnums:[#0-#0] points:[d#1,SET-e#1,SET] blobrefs:[(B000012: 10); depth:2]
+  add-table:     L5 000015:[f#1,SET-g#1,SET] seqnums:[#0-#0] points:[f#1,SET-g#1,SET] blobrefs:[(B000012: 15935); depth:2]
 current blob file set:
 CurrentBlobFileSet:
 Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15945, BackingValueSize: 15945, Count: 2}
@@ -102,7 +102,7 @@ applyAndUpdateVersionEdit
 ----
 t8
 modified version edit:
-  add-table:     L3 000016:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000017: 25935); depth:1]
+  add-table:     L3 000016:[d#1,SET-e#1,SET] seqnums:[#0-#0] points:[d#1,SET-e#1,SET] blobrefs:[(B000017: 25935); depth:1]
   add-blob-file: B000017 physical:{000017 size:[20535 (20KB)] vals:[25935 (25KB)]}
 current blob file set:
 CurrentBlobFileSet:
@@ -116,7 +116,7 @@ applyAndUpdateVersionEdit
 t9
 modified version edit:
   del-table:     L3 000016
-  add-table:     L4 000018:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000017: 15935); depth:1]
+  add-table:     L4 000018:[d#1,SET-e#1,SET] seqnums:[#0-#0] points:[d#1,SET-e#1,SET] blobrefs:[(B000017: 15935); depth:1]
 current blob file set:
 CurrentBlobFileSet:
 Files:{Count: 1, Size: 20535, ValueSize: 25935}, References:{ValueSize: 15935, BackingValueSize: 15935, Count: 1}
@@ -156,7 +156,7 @@ applyAndUpdateVersionEdit
 ----
 t2
 modified version edit:
-  add-table:     L6 000003:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000002: 1000); depth:1]
+  add-table:     L6 000003:[d#1,SET-e#1,SET] seqnums:[#0-#0] points:[d#1,SET-e#1,SET] blobrefs:[(B000002: 1000); depth:1]
   add-blob-file: B000002 physical:{000002 size:[1000 (1000B)] vals:[2000 (2.0KB)]}
 current blob file set:
 CurrentBlobFileSet:
@@ -173,7 +173,7 @@ applyAndUpdateVersionEdit
 t3
 modified version edit:
   del-table:     L6 000003
-  add-table:     L6 000004:[d#1,SET-e#1,SET] seqnums:[0-0] points:[d#1,SET-e#1,SET] blobrefs:[(B000002: 500); depth:1]
+  add-table:     L6 000004:[d#1,SET-e#1,SET] seqnums:[#0-#0] points:[d#1,SET-e#1,SET] blobrefs:[(B000002: 500); depth:1]
 current blob file set:
 CurrentBlobFileSet:
 Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, BackingValueSize: 500, Count: 1}
@@ -187,7 +187,7 @@ applyAndUpdateVersionEdit
 ----
 t4
 modified version edit:
-  add-table:     L6 000005:[f#1,SET-g#1,SET] seqnums:[0-0] points:[f#1,SET-g#1,SET]
+  add-table:     L6 000005:[f#1,SET-g#1,SET] seqnums:[#0-#0] points:[f#1,SET-g#1,SET]
 current blob file set:
 CurrentBlobFileSet:
 Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, BackingValueSize: 500, Count: 1}
@@ -199,7 +199,7 @@ applyAndUpdateVersionEdit
 ----
 t5
 modified version edit:
-  add-table:     L0 000006:[a#2,SET-b#3,SET] seqnums:[0-0] points:[a#2,SET-b#3,SET]
+  add-table:     L0 000006:[a#2,SET-b#3,SET] seqnums:[#0-#0] points:[a#2,SET-b#3,SET]
 current blob file set:
 CurrentBlobFileSet:
 Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, BackingValueSize: 500, Count: 1}
@@ -214,7 +214,7 @@ applyAndUpdateVersionEdit
 ----
 t6
 modified version edit:
-  add-table:     L6 000007:[x#9,SET-y#10,SET] seqnums:[0-0] points:[x#9,SET-y#10,SET]
+  add-table:     L6 000007:[x#9,SET-y#10,SET] seqnums:[#0-#0] points:[x#9,SET-y#10,SET]
 current blob file set:
 CurrentBlobFileSet:
 Files:{Count: 1, Size: 1000, ValueSize: 2000}, References:{ValueSize: 500, BackingValueSize: 500, Count: 1}

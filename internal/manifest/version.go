@@ -793,13 +793,12 @@ func CheckOrdering(comparer *base.Comparer, level Layer, files LevelIterator) er
 				continue
 			}
 			// Validate that the sorting is sane.
-			if prev.LargestSeqNum == 0 && f.LargestSeqNum == prev.LargestSeqNum {
+			if prev.SeqNums.High == 0 && f.SeqNums.High == prev.SeqNums.High {
 				// Multiple files satisfying case 2 mentioned above.
 			} else if prev.cmpSeqNum(f) >= 0 {
-				return base.CorruptionErrorf("L0 files %s and %s are not properly ordered: <#%d-#%d> vs <#%d-#%d>",
+				return base.CorruptionErrorf("L0 files %s and %s are not properly ordered: %s vs %s",
 					errors.Safe(prev.TableNum), errors.Safe(f.TableNum),
-					errors.Safe(prev.SmallestSeqNum), errors.Safe(prev.LargestSeqNum),
-					errors.Safe(f.SmallestSeqNum), errors.Safe(f.LargestSeqNum))
+					errors.Safe(prev.SeqNums), errors.Safe(f.SeqNums))
 			}
 		}
 	} else {

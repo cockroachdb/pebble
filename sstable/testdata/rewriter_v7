@@ -4,7 +4,7 @@ b@xyz#1,SET:b
 c@xyz#1,SET:c
 ----
 point:    [a@xyz#1,SET-c@xyz#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 rewrite from=@xyz to=@123 block-size=1 index-block-size=1 filter comparer=split-4b-suffix
 ----
@@ -16,7 +16,7 @@ ba@xyz#1,SET:b
 ca@xyz#1,SET:c
 ----
 point:    [aa@xyz#1,SET-ca@xyz#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 rewrite from=yz to=23 block-size=1 index-block-size=1
 ----
@@ -32,7 +32,7 @@ b@0#1,SET:b
 c@0#1,SET:c
 ----
 point:    [a@0#1,SET-c@0#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -67,7 +67,7 @@ c
 rewrite from=@0 to=@123 block-size=1 index-block-size=1 filter
 ----
 point:    [a@123#1,SET-c@123#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -102,7 +102,7 @@ c
 rewrite from=@123 to=@456 block-size=1 index-block-size=1 concurrency=2
 ----
 point:    [a@456#1,SET-c@456#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -137,7 +137,7 @@ c
 rewrite from=@456 to=@123 block-size=1 index-block-size=1 filter concurrency=3
 ----
 point:    [a@123#1,SET-c@123#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -173,7 +173,7 @@ c
 rewrite from=@123 to=@0 block-size=1 index-block-size=1 concurrency=4
 ----
 point:    [a@0#1,SET-c@0#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -213,7 +213,7 @@ Span: b-c:{(#1,RANGEKEYSET,@0)}
 Span: c-d:{(#1,RANGEKEYSET,@0)}
 ----
 rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 scan-range-key
 ----
@@ -224,7 +224,7 @@ c-d:{(#1,RANGEKEYSET,@0)}
 rewrite from=@0 to=@123 block-size=1 index-block-size=1 filter
 ----
 rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 scan-range-key
 ----
@@ -238,9 +238,9 @@ b#1,SET:b
 c#1,SET:c
 ----
 point:    [a#1,SET-c#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 rewrite from= to=@123 block-size=1 index-block-size=1 filter
 ----
 point:    [a@123#1,SET-c@123#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]

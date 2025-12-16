@@ -415,17 +415,17 @@ func TestGetIter(t *testing.T) {
 
 				meta.ExtendPointKeyBounds(cmp.Compare, ikey, ikey)
 				if i == 0 {
-					meta.SmallestSeqNum = ikey.SeqNum()
-					meta.LargestSeqNum = ikey.SeqNum()
+					meta.SeqNums.Low = ikey.SeqNum()
+					meta.SeqNums.High = ikey.SeqNum()
 				} else {
-					if meta.SmallestSeqNum > ikey.SeqNum() {
-						meta.SmallestSeqNum = ikey.SeqNum()
+					if meta.SeqNums.Low > ikey.SeqNum() {
+						meta.SeqNums.Low = ikey.SeqNum()
 					}
-					if meta.LargestSeqNum < ikey.SeqNum() {
-						meta.LargestSeqNum = ikey.SeqNum()
+					if meta.SeqNums.High < ikey.SeqNum() {
+						meta.SeqNums.High = ikey.SeqNum()
 					}
 				}
-				meta.LargestSeqNumAbsolute = meta.LargestSeqNum
+				meta.LargestSeqNumAbsolute = meta.SeqNums.High
 			}
 
 			files[tt.level] = append(files[tt.level], meta)

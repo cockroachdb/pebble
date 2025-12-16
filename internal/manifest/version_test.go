@@ -301,9 +301,9 @@ func TestCheckOrdering(t *testing.T) {
 				// L0 files compare on sequence numbers. Use the seqnums from the
 				// smallest / largest bounds for the table.
 				for m := range v.Levels[0].All() {
-					m.SmallestSeqNum = m.Smallest().SeqNum()
-					m.LargestSeqNum = m.Largest().SeqNum()
-					m.LargestSeqNumAbsolute = m.LargestSeqNum
+					m.SeqNums.Low = m.Smallest().SeqNum()
+					m.SeqNums.High = m.Largest().SeqNum()
+					m.LargestSeqNumAbsolute = m.SeqNums.High
 				}
 				if err = v.CheckOrdering(); err != nil {
 					return err.Error()
@@ -587,9 +587,9 @@ func TestCalculateInuseKeyRangesRandomized(t *testing.T) {
 				makeIK(level, start),
 				makeIK(level, end),
 			)
-			m.SmallestSeqNum = m.Smallest().SeqNum()
-			m.LargestSeqNum = m.Largest().SeqNum()
-			m.LargestSeqNumAbsolute = m.LargestSeqNum
+			m.SeqNums.Low = m.Smallest().SeqNum()
+			m.SeqNums.High = m.Largest().SeqNum()
+			m.LargestSeqNumAbsolute = m.SeqNums.High
 			m.InitPhysicalBacking()
 			return m
 		}

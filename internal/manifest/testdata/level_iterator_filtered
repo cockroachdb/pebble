@@ -9,9 +9,9 @@ seek-ge n
 seek-ge o
 seek-ge p
 ----
-seek-ge a: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-ge m: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-ge n: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-ge a: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-ge m: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-ge n: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
 seek-ge o: .
 seek-ge p: .
 
@@ -22,7 +22,7 @@ seek-ge n
 seek-ge o
 seek-ge p
 ----
-seek-ge a: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-ge a: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
 seek-ge m: .
 seek-ge n: .
 seek-ge o: .
@@ -44,12 +44,12 @@ seek-lt a: .
 seek-lt b: .
 seek-lt c: .
 seek-lt j: .
-seek-lt k: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt l: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt m: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt n: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt o: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt p: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt k: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt l: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt m: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt n: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt o: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt p: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
 
 iter key-type=ranges
 seek-lt a
@@ -64,15 +64,15 @@ seek-lt o
 seek-lt p
 ----
 seek-lt a: .
-seek-lt b: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt c: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt j: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt k: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt l: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt m: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt n: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt o: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
-seek-lt p: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt b: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt c: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt j: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt k: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt l: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt m: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt n: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt o: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+seek-lt p: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
 
 iter key-type=points
 seek-lt a
@@ -83,10 +83,10 @@ prev
 prev
 ----
 seek-lt a: .
-next: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+next: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
 next: .
 seek-ge o: .
-prev: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+prev: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
 prev: .
 
 iter key-type=ranges
@@ -98,10 +98,10 @@ prev
 prev
 ----
 seek-lt a: .
-next: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+next: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
 next: .
 seek-ge m: .
-prev: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[0-0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
+prev: 000000:[a#42,RANGEKEYSET-o#inf,RANGEDEL] seqnums:[#0-#0] points:[j#0,SET-o#inf,RANGEDEL] ranges:[a#42,RANGEKEYSET-m#inf,RANGEKEYSET]
 prev: .
 
 define
@@ -123,14 +123,14 @@ seek-ge cantalope
 seek-ge d
 seek-ge dragonfruit
 ----
-seek-ge a: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge apple: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge b: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge banana: 000001:[c#9,SET-d#2,DEL] seqnums:[0-0] points:[c#9,SET-d#2,DEL]
-seek-ge c: 000001:[c#9,SET-d#2,DEL] seqnums:[0-0] points:[c#9,SET-d#2,DEL]
-seek-ge cantalope: 000001:[c#9,SET-d#2,DEL] seqnums:[0-0] points:[c#9,SET-d#2,DEL]
-seek-ge d: 000001:[c#9,SET-d#2,DEL] seqnums:[0-0] points:[c#9,SET-d#2,DEL]
-seek-ge dragonfruit: 000002:[e#9,SET-f#2,DEL] seqnums:[0-0] points:[e#9,SET-f#2,DEL]
+seek-ge a: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge apple: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge b: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge banana: 000001:[c#9,SET-d#2,DEL] seqnums:[#0-#0] points:[c#9,SET-d#2,DEL]
+seek-ge c: 000001:[c#9,SET-d#2,DEL] seqnums:[#0-#0] points:[c#9,SET-d#2,DEL]
+seek-ge cantalope: 000001:[c#9,SET-d#2,DEL] seqnums:[#0-#0] points:[c#9,SET-d#2,DEL]
+seek-ge d: 000001:[c#9,SET-d#2,DEL] seqnums:[#0-#0] points:[c#9,SET-d#2,DEL]
+seek-ge dragonfruit: 000002:[e#9,SET-f#2,DEL] seqnums:[#0-#0] points:[e#9,SET-f#2,DEL]
 
 iter key-type=points
 seek-lt a
@@ -143,13 +143,13 @@ seek-lt d
 seek-lt dragonfruit
 ----
 seek-lt a: .
-seek-lt apple: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt b: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt banana: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt c: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt cantalope: 000001:[c#9,SET-d#2,DEL] seqnums:[0-0] points:[c#9,SET-d#2,DEL]
-seek-lt d: 000001:[c#9,SET-d#2,DEL] seqnums:[0-0] points:[c#9,SET-d#2,DEL]
-seek-lt dragonfruit: 000001:[c#9,SET-d#2,DEL] seqnums:[0-0] points:[c#9,SET-d#2,DEL]
+seek-lt apple: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt b: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt banana: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt c: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt cantalope: 000001:[c#9,SET-d#2,DEL] seqnums:[#0-#0] points:[c#9,SET-d#2,DEL]
+seek-lt d: 000001:[c#9,SET-d#2,DEL] seqnums:[#0-#0] points:[c#9,SET-d#2,DEL]
+seek-lt dragonfruit: 000001:[c#9,SET-d#2,DEL] seqnums:[#0-#0] points:[c#9,SET-d#2,DEL]
 
 iter key-type=ranges
 seek-ge a
@@ -223,27 +223,27 @@ seek-ge k
 seek-ge kiwi
 seek-ge l
 ----
-seek-ge a: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge apple: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge b: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge banana: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge c: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge cantalope: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge d: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge dragonfruit: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge e: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge f: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-ge figs: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-ge g: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-ge guava: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge h: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge huckleberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge i: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge jujube: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
-seek-ge k: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
+seek-ge a: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge apple: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge b: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge banana: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge c: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge cantalope: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge d: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge dragonfruit: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge e: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge f: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-ge figs: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-ge g: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-ge guava: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge h: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge huckleberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge i: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge jujube: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
+seek-ge k: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
 seek-ge kiwi: .
 seek-ge l: .
 
@@ -273,28 +273,28 @@ seek-lt kiwi
 seek-lt l
 ----
 seek-lt a: .
-seek-lt apple: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt b: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt banana: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt c: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt cantalope: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-lt d: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-lt dragonfruit: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-lt e: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-lt elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt f: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt figs: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt g: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt guava: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt h: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt huckleberry: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt i: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt jujube: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt k: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt kiwi: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
-seek-lt l: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
+seek-lt apple: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt b: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt banana: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt c: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt cantalope: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-lt d: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-lt dragonfruit: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-lt e: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-lt elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt f: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt figs: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt g: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt guava: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt h: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt huckleberry: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt i: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt jujube: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt k: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt kiwi: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
+seek-lt l: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
 
 
 iter key-type=points
@@ -322,27 +322,27 @@ seek-ge k
 seek-ge kiwi
 seek-ge l
 ----
-seek-ge a: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge apple: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge b: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-ge banana: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge c: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge cantalope: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge d: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge dragonfruit: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge e: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge f: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-ge figs: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-ge g: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-ge guava: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge h: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge huckleberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge i: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge j: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
-seek-ge jujube: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
-seek-ge k: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
+seek-ge a: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge apple: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge b: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-ge banana: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge c: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge cantalope: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge d: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge dragonfruit: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge e: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge f: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-ge figs: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-ge g: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-ge guava: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge h: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge huckleberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge i: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge j: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
+seek-ge jujube: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
+seek-ge k: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
 seek-ge kiwi: .
 seek-ge l: .
 
@@ -372,28 +372,28 @@ seek-lt kiwi
 seek-lt l
 ----
 seek-lt a: .
-seek-lt apple: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt b: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt banana: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt c: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt cantalope: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt d: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt dragonfruit: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt e: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-seek-lt elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt f: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt figs: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt g: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt guava: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt h: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt huckleberry: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt i: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt incaberry: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-seek-lt j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt jujube: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt k: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt kiwi: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
-seek-lt l: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
+seek-lt apple: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt b: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt banana: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt c: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt cantalope: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt d: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt dragonfruit: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt e: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+seek-lt elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt f: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt figs: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt g: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt guava: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt h: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt huckleberry: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt i: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt incaberry: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+seek-lt j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt jujube: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt k: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt kiwi: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
+seek-lt l: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
 
 iter key-type=ranges
 seek-ge a
@@ -420,25 +420,25 @@ seek-ge k
 seek-ge kiwi
 seek-ge l
 ----
-seek-ge a: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge apple: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge b: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge banana: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge c: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge cantalope: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-ge d: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge dragonfruit: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge e: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-ge f: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge figs: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge g: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge guava: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge h: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge huckleberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge i: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-ge j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge a: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge apple: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge b: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge banana: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge c: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge cantalope: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-ge d: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge dragonfruit: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge e: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-ge f: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge figs: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge g: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge guava: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge h: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge huckleberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge i: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-ge j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
 seek-ge jujube: .
 seek-ge k: .
 seek-ge kiwi: .
@@ -474,24 +474,24 @@ seek-lt apple: .
 seek-lt b: .
 seek-lt banana: .
 seek-lt c: .
-seek-lt cantalope: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-lt d: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-lt dragonfruit: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-lt e: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-seek-lt elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt f: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt figs: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt g: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt guava: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt h: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt huckleberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt i: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-seek-lt incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt jujube: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt k: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt kiwi: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-seek-lt l: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt cantalope: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-lt d: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-lt dragonfruit: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-lt e: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+seek-lt elderberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt f: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt figs: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt g: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt guava: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt h: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt huckleberry: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt i: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+seek-lt incaberry: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt j: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt jujube: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt k: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt kiwi: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+seek-lt l: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
 
 iter key-type=both
 first
@@ -502,12 +502,12 @@ next
 next
 next
 ----
-first: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-next: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-next: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-next: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-next: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-next: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
+first: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+next: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+next: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+next: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+next: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+next: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
 next: .
 
 iter key-type=points
@@ -518,11 +518,11 @@ next
 next
 next
 ----
-first: 000000:[a#9,SET-b#2,DEL] seqnums:[0-0] points:[a#9,SET-b#2,DEL]
-next: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-next: 000003:[g#9,SET-g#2,DEL] seqnums:[0-0] points:[g#9,SET-g#2,DEL]
-next: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
-next: 000005:[k#9,SET-k#2,DEL] seqnums:[0-0] points:[k#9,SET-k#2,DEL]
+first: 000000:[a#9,SET-b#2,DEL] seqnums:[#0-#0] points:[a#9,SET-b#2,DEL]
+next: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+next: 000003:[g#9,SET-g#2,DEL] seqnums:[#0-#0] points:[g#9,SET-g#2,DEL]
+next: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+next: 000005:[k#9,SET-k#2,DEL] seqnums:[#0-#0] points:[k#9,SET-k#2,DEL]
 next: .
 
 iter key-type=ranges
@@ -531,7 +531,7 @@ next
 next
 next
 ----
-first: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[0-0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
-next: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[0-0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
-next: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[0-0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
+first: 000001:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#0-#0] ranges:[c#9,RANGEKEYSET-d#inf,RANGEKEYSET]
+next: 000002:[e#9,SET-f#inf,RANGEKEYDEL] seqnums:[#0-#0] points:[e#9,SET-elderberry#2,DEL] ranges:[e#3,RANGEKEYSET-f#inf,RANGEKEYDEL]
+next: 000004:[i#9,RANGEKEYSET-j#2,RANGEKEYSET] seqnums:[#0-#0] points:[incaberry#9,SET-incaettry#9,SET] ranges:[i#9,RANGEKEYSET-j#2,RANGEKEYSET]
 next: .

@@ -129,7 +129,7 @@ func newColumnarWriter(
 	w := &RawColumnWriter{
 		comparer: o.Comparer,
 		meta: WriterMetadata{
-			SmallestSeqNum: math.MaxUint64,
+			SeqNums: base.SeqNumRange{Low: math.MaxUint64},
 		},
 		opts:                  o,
 		disableKeyOrderChecks: o.internal.DisableKeyOrderChecks,
