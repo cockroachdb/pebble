@@ -9,7 +9,7 @@ g@8#7,SET:63
 h@3#8,SET:38
 ----
 point:    [a@5#1,SET-h@3#8,SET]
-seqnums:  [1-8]
+seqnums:  [#1-#8]
 
 collectors
 ----

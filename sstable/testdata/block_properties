@@ -14,7 +14,7 @@ b#2,SET:20
 c#3,SET:30
 ----
 point:    [a#1,SET-c#3,SET]
-seqnums:  [1-3]
+seqnums:  [#1-#3]
 
 # collectors returns the collectors used when writing the table, keyed by the
 # shortID of the collector.
@@ -42,7 +42,7 @@ b#2,SET:29
 c#3,SET:38
 ----
 point:    [a#1,SET-c#3,SET]
-seqnums:  [1-3]
+seqnums:  [#1-#3]
 
 collectors
 ----
@@ -74,7 +74,7 @@ g#7,SET:63
 h#8,SET:38
 ----
 point:    [a#1,SET-h#8,SET]
-seqnums:  [1-8]
+seqnums:  [#1-#8]
 
 collectors
 ----
@@ -114,7 +114,7 @@ Span: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET-c@15#3,SET]
 rangekey: [d@10#4,RANGEKEYSET-z@25#inf,RANGEKEYDEL]
-seqnums:  [1-6]
+seqnums:  [#1-#6]
 
 collectors
 ----
@@ -141,7 +141,7 @@ Span: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET-c@15#3,SET]
 rangekey: [d@10#4,RANGEKEYSET-z@25#inf,RANGEKEYDEL]
-seqnums:  [1-6]
+seqnums:  [#1-#6]
 
 collectors
 ----
@@ -168,7 +168,7 @@ Span: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET-c@15#3,SET]
 rangekey: [d@10#4,RANGEKEYSET-z@25#inf,RANGEKEYDEL]
-seqnums:  [1-6]
+seqnums:  [#1-#6]
 
 collectors
 ----
@@ -196,7 +196,7 @@ Span: f@20-z@25:{(#6,RANGEKEYDEL)}
 ----
 point:    [a@5#1,SET-c@15#3,SET]
 rangekey: [d@10#4,RANGEKEYSET-z@25#inf,RANGEKEYDEL]
-seqnums:  [1-6]
+seqnums:  [#1-#6]
 
 collectors
 ----
@@ -291,7 +291,7 @@ e@3#5,SET:box
 f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
-seqnums:  [1-5]
+seqnums:  [#1-#5]
 
 collectors
 ----
@@ -345,7 +345,7 @@ e@3#5,SET:box
 f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
-seqnums:  [1-5]
+seqnums:  [#1-#5]
 
 collectors
 ----
@@ -400,7 +400,7 @@ e@3#5,SET:box
 f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
-seqnums:  [1-5]
+seqnums:  [#1-#5]
 
 block-props
 ----
@@ -596,7 +596,7 @@ e@3#5,SET:box
 f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
-seqnums:  [1-5]
+seqnums:  [#1-#5]
 
 block-props
 ----
@@ -635,7 +635,7 @@ e@3#5,SET:box
 f@5#3,SET:mop
 ----
 point:    [a@1#1,SET-f@5#3,SET]
-seqnums:  [1-5]
+seqnums:  [#1-#5]
 
 block-props
 ----
@@ -666,7 +666,7 @@ b@8#2,SET:bar
 c@7#3,SET:baz
 ----
 point:    [a@5#1,SET-c@7#3,SET]
-seqnums:  [1-3]
+seqnums:  [#1-#3]
 
 collectors
 ----
@@ -707,7 +707,7 @@ aa@8#3,SET:box
 f@5#3,SET:mop
 ----
 point:    [a@10#1,SET-f@5#3,SET]
-seqnums:  [1-3]
+seqnums:  [#1-#3]
 
 block-props
 ----

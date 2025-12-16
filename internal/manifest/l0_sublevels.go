@@ -654,7 +654,7 @@ func (s *l0Sublevels) addFileToSublevels(f *TableMetadata) {
 	for i := f.minIntervalIndex; i <= f.maxIntervalIndex; i++ {
 		interval := &s.orderedIntervals[i]
 		if len(interval.files) > 0 {
-			if interval.files[len(interval.files)-1].LargestSeqNum > f.LargestSeqNum {
+			if interval.files[len(interval.files)-1].SeqNums.High > f.SeqNums.High {
 				panic(errors.AssertionFailedf("addFileToSublevels found existing newer file"))
 			}
 			// interval.files is sorted by sublevels, from lowest to highest.
@@ -1054,11 +1054,10 @@ func (s *l0Sublevels) checkCompaction(c *L0CompactionFiles) error {
 			if f.minIntervalIndex > max {
 				break
 			}
-			if c.isIntraL0 && f.LargestSeqNum >= c.earliestUnflushedSeqNum {
+			if c.isIntraL0 && f.SeqNums.High >= c.earliestUnflushedSeqNum {
 				return errors.Errorf(
-					"sstable %s in compaction has sequence numbers higher than the earliest unflushed seqnum %d: %d-%d",
-					f.TableNum, c.earliestUnflushedSeqNum, f.SmallestSeqNum,
-					f.LargestSeqNum)
+					"sstable %s in compaction has sequence numbers higher than the earliest unflushed seqnum %d: %s",
+					f.TableNum, c.earliestUnflushedSeqNum, f.SeqNums)
 			}
 			if !includedFiles[f.L0Index] {
 				var buf strings.Builder
@@ -1577,7 +1576,7 @@ func (s *l0Sublevels) extendFiles(
 		// files with f.LargestSeqNum < earliestUnflushedSeqNum, and the output
 		// of the compaction will also go in a lower (older) sublevel than this
 		// file by definition.
-		if f.LargestSeqNum >= earliestUnflushedSeqNum {
+		if f.SeqNums.High >= earliestUnflushedSeqNum {
 			continue
 		}
 		cFiles.addFile(f)
@@ -1635,7 +1634,7 @@ func (s *l0Sublevels) PickIntraL0Compaction(
 				consideredIntervals.markBits(f.minIntervalIndex, f.maxIntervalIndex+1)
 				// Can this be the seed file? Files with newer sequence numbers than
 				// earliestUnflushedSeqNum cannot be in the compaction.
-				if f.LargestSeqNum < earliestUnflushedSeqNum {
+				if f.SeqNums.High < earliestUnflushedSeqNum {
 					return f
 				}
 				stackDepthReduction--
@@ -2023,7 +2022,7 @@ func (s *l0Sublevels) extendCandidateToRectangle(
 				// cleaner unwinding and error messages.
 				panic(fmt.Sprintf("expected %s to not be compacting", f.TableNum))
 			}
-			if candidate.isIntraL0 && f.LargestSeqNum >= candidate.earliestUnflushedSeqNum {
+			if candidate.isIntraL0 && f.SeqNums.High >= candidate.earliestUnflushedSeqNum {
 				continue
 			}
 			if !candidate.FilesIncluded[f.L0Index] {

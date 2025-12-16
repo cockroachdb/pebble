@@ -2,7 +2,7 @@ build
 a#1,SET:a
 ----
 point:    [a#1,SET-a#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 scan
 ----
@@ -30,7 +30,7 @@ Span: l-m:{(#11,RANGEKEYSET,@10,foo)}
 point:    [a#1,SET-h#7,MERGE]
 rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
 rangekey: [j#9,RANGEKEYDEL-m#inf,RANGEKEYSET]
-seqnums:  [1-11]
+seqnums:  [#1-#11]
 props "deletions":
   rocksdb.num.range-deletions: 2
 props "deleted":
@@ -52,7 +52,7 @@ Span: l-m:{(#11,RANGEKEYSET,@10,foo)}
 ----
 point:    [a#1,SET-h#8,SINGLEDEL]
 rangekey: [j#9,RANGEKEYDEL-m#inf,RANGEKEYSET]
-seqnums:  [1-11]
+seqnums:  [#1-#11]
 props "deletions":
 props "deleted":
   rocksdb.deleted.keys: 5
@@ -70,7 +70,7 @@ i#8,RANGEDEL:j
 ----
 point:    [a#1,SET-h#7,MERGE]
 rangedel: [d#4,RANGEDEL-j#inf,RANGEDEL]
-seqnums:  [1-8]
+seqnums:  [#1-#8]
 
 scan
 ----
@@ -98,7 +98,7 @@ Span: m-s:{(#2,RANGEDEL) (#1,RANGEDEL)}
 Span: s-z:{(#1,RANGEDEL)}
 ----
 rangedel: [a#3,RANGEDEL-z#inf,RANGEDEL]
-seqnums:  [1-3]
+seqnums:  [#1-#3]
 
 scan
 ----
@@ -123,7 +123,7 @@ b#4,SET:c
 ----
 point:    [b#4,SET-b#4,SET]
 rangedel: [a#3,RANGEDEL-b#inf,RANGEDEL]
-seqnums:  [3-4]
+seqnums:  [#3-#4]
 
 build
 a#3,RANGEDEL:b
@@ -131,7 +131,7 @@ b#2,SET:c
 ----
 point:    [b#2,SET-b#2,SET]
 rangedel: [a#3,RANGEDEL-b#inf,RANGEDEL]
-seqnums:  [2-3]
+seqnums:  [#2-#3]
 
 build
 a#3,RANGEDEL:c
@@ -139,7 +139,7 @@ b#2,SET:c
 ----
 point:    [b#2,SET-b#2,SET]
 rangedel: [a#3,RANGEDEL-c#inf,RANGEDEL]
-seqnums:  [2-3]
+seqnums:  [#2-#3]
 
 # Keys must be added in order.
 
@@ -165,7 +165,7 @@ build-raw
 #1,RANGEDEL:b
 ----
 rangedel: [#1,RANGEDEL-b#inf,RANGEDEL]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 build-raw
 a#1,RANGEDEL:c
@@ -190,13 +190,13 @@ a#1,RANGEDEL:c
 c#2,RANGEDEL:d
 ----
 rangedel: [a#1,RANGEDEL-d#inf,RANGEDEL]
-seqnums:  [1-2]
+seqnums:  [#1-#2]
 
 build
 Span: a-b:{(#2,RANGEKEYSET,@10,foo) (#1,RANGEKEYSET,@10,foo)}
 ----
 rangekey: [a#2,RANGEKEYSET-b#inf,RANGEKEYSET]
-seqnums:  [1-2]
+seqnums:  [#1-#2]
 
 build-raw
 Span: b-c:{(#2,RANGEKEYSET,@10,foo)}
@@ -209,7 +209,7 @@ Span: a-c:{(#1,RANGEKEYSET,@10,foo)}
 Span: c-d:{(#2,RANGEKEYSET,@10,foo)}
 ----
 rangekey: [a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
-seqnums:  [1-2]
+seqnums:  [#1-#2]
 
 # Range keys may have perfectly aligned spans (including sequence numbers),
 # though the key kinds must be ordered (descending).
@@ -218,7 +218,7 @@ build-raw
 Span: a-b:{(#1,RANGEKEYSET,@10,foo) (#1,RANGEKEYUNSET,@t10) (#1,RANGEKEYDEL)}
 ----
 rangekey: [a#1,RANGEKEYSET-b#inf,RANGEKEYDEL]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 # Setting a very small index-block-size results in a two-level index.
 
@@ -228,7 +228,7 @@ b#1,SET:b
 c#1,SET:c
 ----
 point:    [a#1,SET-c#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -259,7 +259,7 @@ b#1,SET:b
 c#1,SET:c
 ----
 point:    [a#1,SET-c#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 layout
 ----
@@ -280,7 +280,7 @@ Span: b-c:{(#2,RANGEKEYSET,@2,bar)}
 Span: c-d:{(#1,RANGEKEYSET,@1,baz)}
 ----
 rangekey: [a#3,RANGEKEYSET-d#inf,RANGEKEYSET]
-seqnums:  [1-3]
+seqnums:  [#1-#3]
 
 layout
 ----

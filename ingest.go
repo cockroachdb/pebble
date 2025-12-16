@@ -1072,10 +1072,10 @@ func setSeqNumInMetadata(
 	if m.HasPointKeys && !m.PointKeyBounds.Largest().IsExclusiveSentinel() {
 		m.PointKeyBounds.SetLargest(setSeqFn(m.PointKeyBounds.Largest()))
 	}
-	// Setting smallestSeqNum == largestSeqNum triggers the setting of
-	// Properties.GlobalSeqNum when an sstable is loaded.
-	m.SmallestSeqNum = seqNum
-	m.LargestSeqNum = seqNum
+	// Setting m.SeqNums.Low == m.SeqNums.High triggers the setting of
+	// the synthetic sequence number when an sstable is loaded.
+	m.SeqNums.Low = seqNum
+	m.SeqNums.High = seqNum
 	m.LargestSeqNumAbsolute = seqNum
 	// Ensure the new bounds are consistent.
 	if err := m.Validate(cmp, format); err != nil {
@@ -2000,11 +2000,11 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			BlockReadBytes:         loadResult.blockReadStats.BlockBytes - loadResult.blockReadStats.BlockBytesInCache,
 		}
 		if len(loadResult.local) > 0 {
-			info.GlobalSeqNum = loadResult.local[0].SmallestSeqNum
+			info.GlobalSeqNum = loadResult.local[0].SeqNums.Low
 		} else if len(loadResult.shared) > 0 {
-			info.GlobalSeqNum = loadResult.shared[0].SmallestSeqNum
+			info.GlobalSeqNum = loadResult.shared[0].SeqNums.Low
 		} else {
-			info.GlobalSeqNum = loadResult.external[0].SmallestSeqNum
+			info.GlobalSeqNum = loadResult.external[0].SeqNums.Low
 		}
 		if ve != nil {
 			info.Tables = make([]struct {

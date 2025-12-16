@@ -86,9 +86,11 @@ func loadVersion(
 					key = base.MakeInternalKey([]byte(fmt.Sprintf("%04d", i)), base.SeqNum(i), InternalKeyKindSet)
 				}
 				m := &manifest.TableMetadata{
-					TableNum:              base.TableNum(uint64(level)*100_000 + i),
-					SmallestSeqNum:        key.SeqNum(),
-					LargestSeqNum:         key.SeqNum(),
+					TableNum: base.TableNum(uint64(level)*100_000 + i),
+					SeqNums: base.SeqNumRange{
+						Low:  key.SeqNum(),
+						High: key.SeqNum(),
+					},
 					LargestSeqNumAbsolute: key.SeqNum(),
 					Size:                  1,
 				}
@@ -171,12 +173,12 @@ func parseTableMeta(t *testing.T, s string, opts *Options) (*manifest.TableMetad
 			})
 		}
 	}
-	m.SmallestSeqNum = m.Smallest().SeqNum()
-	m.LargestSeqNum = m.Largest().SeqNum()
-	if m.SmallestSeqNum > m.LargestSeqNum {
-		m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
+	m.SeqNums.Low = m.Smallest().SeqNum()
+	m.SeqNums.High = m.Largest().SeqNum()
+	if m.SeqNums.Low > m.SeqNums.High {
+		m.SeqNums.Low, m.SeqNums.High = m.SeqNums.High, m.SeqNums.Low
 	}
-	m.LargestSeqNumAbsolute = m.LargestSeqNum
+	m.LargestSeqNumAbsolute = m.SeqNums.High
 	return m, nil
 }
 
@@ -571,12 +573,12 @@ func TestCompactionPickerL0(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		)
-		m.SmallestSeqNum = m.Smallest().SeqNum()
-		m.LargestSeqNum = m.Largest().SeqNum()
-		if m.SmallestSeqNum > m.LargestSeqNum {
-			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
+		m.SeqNums.Low = m.Smallest().SeqNum()
+		m.SeqNums.High = m.Largest().SeqNum()
+		if m.SeqNums.Low > m.SeqNums.High {
+			m.SeqNums.Low, m.SeqNums.High = m.SeqNums.High, m.SeqNums.Low
 		}
-		m.LargestSeqNumAbsolute = m.LargestSeqNum
+		m.LargestSeqNumAbsolute = m.SeqNums.High
 		m.InitPhysicalBacking()
 		return m, nil
 	}

@@ -95,7 +95,7 @@ func formatWriterMetadata(td *datadriven.TestData, m *WriterMetadata) string {
 	if m.HasRangeKeys {
 		fmt.Fprintf(&b, "rangekey: [%s-%s]\n", m.SmallestRangeKey, m.LargestRangeKey)
 	}
-	fmt.Fprintf(&b, "seqnums:  [%d-%d]\n", m.SmallestSeqNum, m.LargestSeqNum)
+	fmt.Fprintf(&b, "seqnums:  %s\n", m.SeqNums)
 
 	if len(requestedProps) > 0 {
 		props := strings.Split(m.Properties.String(), "\n")

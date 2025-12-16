@@ -417,8 +417,7 @@ type WriterMetadata struct {
 	HasPointKeys     bool
 	HasRangeDelKeys  bool
 	HasRangeKeys     bool
-	SmallestSeqNum   base.SeqNum
-	LargestSeqNum    base.SeqNum
+	SeqNums          base.SeqNumRange
 	Properties       Properties
 }
 
@@ -471,11 +470,11 @@ func (m *WriterMetadata) SetLargestRangeKey(k InternalKey) {
 }
 
 func (m *WriterMetadata) updateSeqNum(seqNum base.SeqNum) {
-	if m.SmallestSeqNum > seqNum {
-		m.SmallestSeqNum = seqNum
+	if m.SeqNums.Low > seqNum {
+		m.SeqNums.Low = seqNum
 	}
-	if m.LargestSeqNum < seqNum {
-		m.LargestSeqNum = seqNum
+	if m.SeqNums.High < seqNum {
+		m.SeqNums.High = seqNum
 	}
 }
 

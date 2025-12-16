@@ -2501,8 +2501,7 @@ func (d *DB) runCopyCompaction(
 	newMeta := &manifest.TableMetadata{
 		Size:                     inputMeta.Size,
 		CreationTime:             inputMeta.CreationTime,
-		SmallestSeqNum:           inputMeta.SmallestSeqNum,
-		LargestSeqNum:            inputMeta.LargestSeqNum,
+		SeqNums:                  inputMeta.SeqNums,
 		LargestSeqNumAbsolute:    inputMeta.LargestSeqNumAbsolute,
 		Virtual:                  inputMeta.Virtual,
 		SyntheticPrefixAndSuffix: inputMeta.SyntheticPrefixAndSuffix,
@@ -2966,8 +2965,7 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			TableNum:           base.PhysicalTableFileNum(t.ObjMeta.DiskFileNum),
 			CreationTime:       t.CreationTime.Unix(),
 			Size:               t.WriterMeta.Size,
-			SmallestSeqNum:     t.WriterMeta.SmallestSeqNum,
-			LargestSeqNum:      t.WriterMeta.LargestSeqNum,
+			SeqNums:            t.WriterMeta.SeqNums,
 			BlobReferences:     t.BlobReferences,
 			BlobReferenceDepth: t.BlobReferenceDepth,
 		}
@@ -2978,7 +2976,7 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			// sstables that overlap the output sstable's key range.
 			fileMeta.LargestSeqNumAbsolute = inputLargestSeqNumAbsolute
 		} else {
-			fileMeta.LargestSeqNumAbsolute = t.WriterMeta.LargestSeqNum
+			fileMeta.LargestSeqNumAbsolute = t.WriterMeta.SeqNums.High
 		}
 		fileMeta.InitPhysicalBacking()
 

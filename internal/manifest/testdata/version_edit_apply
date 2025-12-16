@@ -1,29 +1,29 @@
 define v1
 L0:
-  000002:[c#3,SET-d#4,SET] seqnums:[3-4]
-  000001:[a#1,SET-b#2,SET] seqnums:[1-2]
+  000002:[c#3,SET-d#4,SET] seqnums:[#3-#4]
+  000001:[a#1,SET-b#2,SET] seqnums:[#1-#2]
 ----
 L0.0:
-  000001:[a#1,SET-b#2,SET] seqnums:[1-2] points:[a#1,SET-b#2,SET]
-  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+  000001:[a#1,SET-b#2,SET] seqnums:[#1-#2] points:[a#1,SET-b#2,SET]
+  000002:[c#3,SET-d#4,SET] seqnums:[#3-#4] points:[c#3,SET-d#4,SET]
 
 # Empty edit.
 apply v1
 ----
 L0.0:
-  000001:[a#1,SET-b#2,SET] seqnums:[1-2] points:[a#1,SET-b#2,SET]
-  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+  000001:[a#1,SET-b#2,SET] seqnums:[#1-#2] points:[a#1,SET-b#2,SET]
+  000002:[c#3,SET-d#4,SET] seqnums:[#3-#4] points:[c#3,SET-d#4,SET]
 
 apply v1
   del-table: L0 000001
-  add-table: L2 000001:[a#1,SET-b#2,SET] seqnums:[1-2]
-  add-table: L2 000004:[c#3,SET-d#4,SET] seqnums:[3-4]
+  add-table: L2 000001:[a#1,SET-b#2,SET] seqnums:[#1-#2]
+  add-table: L2 000004:[c#3,SET-d#4,SET] seqnums:[#3-#4]
 ----
 L0.0:
-  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+  000002:[c#3,SET-d#4,SET] seqnums:[#3-#4] points:[c#3,SET-d#4,SET]
 L2:
-  000001:[a#1,SET-b#2,SET] seqnums:[1-2] points:[a#1,SET-b#2,SET]
-  000004:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+  000001:[a#1,SET-b#2,SET] seqnums:[#1-#2] points:[a#1,SET-b#2,SET]
+  000004:[c#3,SET-d#4,SET] seqnums:[#3-#4] points:[c#3,SET-d#4,SET]
 
 apply v1
   del-table: L1 000001
@@ -32,72 +32,72 @@ pebble: internal error: No current or added files but have deleted files: 1
 
 apply v1
   del-table: L0 000001
-  add-table: L2 000001:[a#1,SET-b#2,SET] seqnums:[1-2]
-  add-table: L2 000004:[b#3,SET-d#4,SET] seqnums:[3-4]
+  add-table: L2 000001:[a#1,SET-b#2,SET] seqnums:[#1-#2]
+  add-table: L2 000004:[b#3,SET-d#4,SET] seqnums:[#3-#4]
 ----
 pebble: internal error: L2 files 000001 and 000004 have overlapping ranges: [a#1,SET-b#2,SET] vs [b#3,SET-d#4,SET]
 
 define v2
 L0:
-  000002:[c#3,SET-d#4,SET] seqnums:[3-4]
-  000001:[a#1,SET-c#2,SET] seqnums:[1-2]
+  000002:[c#3,SET-d#4,SET] seqnums:[#3-#4]
+  000001:[a#1,SET-c#2,SET] seqnums:[#1-#2]
 ----
 L0.1:
-  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+  000002:[c#3,SET-d#4,SET] seqnums:[#3-#4] points:[c#3,SET-d#4,SET]
 L0.0:
-  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
+  000001:[a#1,SET-c#2,SET] seqnums:[#1-#2] points:[a#1,SET-c#2,SET]
 
 apply v2
-  add-table: L0 000004:[b#3,SET-d#5,SET] seqnums:[3-5]
+  add-table: L0 000004:[b#3,SET-d#5,SET] seqnums:[#3-#5]
 ----
 L0.2:
-  000004:[b#3,SET-d#5,SET] seqnums:[3-5] points:[b#3,SET-d#5,SET]
+  000004:[b#3,SET-d#5,SET] seqnums:[#3-#5] points:[b#3,SET-d#5,SET]
 L0.1:
-  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+  000002:[c#3,SET-d#4,SET] seqnums:[#3-#4] points:[c#3,SET-d#4,SET]
 L0.0:
-  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
+  000001:[a#1,SET-c#2,SET] seqnums:[#1-#2] points:[a#1,SET-c#2,SET]
 
 apply v2
-  add-table: L0 000004:[b#0,SET-d#0,SET] seqnums:[0-0]
+  add-table: L0 000004:[b#0,SET-d#0,SET] seqnums:[#0-#0]
 ----
 L0.2:
-  000002:[c#3,SET-d#4,SET] seqnums:[3-4] points:[c#3,SET-d#4,SET]
+  000002:[c#3,SET-d#4,SET] seqnums:[#3-#4] points:[c#3,SET-d#4,SET]
 L0.1:
-  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
+  000001:[a#1,SET-c#2,SET] seqnums:[#1-#2] points:[a#1,SET-c#2,SET]
 L0.0:
-  000004:[b#0,SET-d#0,SET] seqnums:[0-0] points:[b#0,SET-d#0,SET]
+  000004:[b#0,SET-d#0,SET] seqnums:[#0-#0] points:[b#0,SET-d#0,SET]
 
 
 define empty
 ----
 
 apply empty
-  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
-  add-table: L0 000004:[b#3,SET-d#5,SET] seqnums:[3-5]
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[#1-#2]
+  add-table: L0 000004:[b#3,SET-d#5,SET] seqnums:[#3-#5]
 ----
 L0.1:
-  000004:[b#3,SET-d#5,SET] seqnums:[3-5] points:[b#3,SET-d#5,SET]
+  000004:[b#3,SET-d#5,SET] seqnums:[#3-#5] points:[b#3,SET-d#5,SET]
 L0.0:
-  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
+  000001:[a#1,SET-c#2,SET] seqnums:[#1-#2] points:[a#1,SET-c#2,SET]
 
 apply v2
-  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[#1-#2]
 ----
 pebble: files 000001:[a#1,SET-c#2,SET] and 000001:[a#1,SET-c#2,SET] collided on sort keys
 
 apply empty
-  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[1-2]
+  add-table: L0 000001:[a#1,SET-c#2,SET] seqnums:[#1-#2]
 ----
 L0.0:
-  000001:[a#1,SET-c#2,SET] seqnums:[1-2] points:[a#1,SET-c#2,SET]
+  000001:[a#1,SET-c#2,SET] seqnums:[#1-#2] points:[a#1,SET-c#2,SET]
 
 apply empty
   add-table: L2 000010:[j#3,SET-m#2,SET]
   add-table: L2 000006:[a#10,SET-a#7,SET]
 ----
 L2:
-  000006:[a#10,SET-a#7,SET] seqnums:[0-0] points:[a#10,SET-a#7,SET]
-  000010:[j#3,SET-m#2,SET] seqnums:[0-0] points:[j#3,SET-m#2,SET]
+  000006:[a#10,SET-a#7,SET] seqnums:[#0-#0] points:[a#10,SET-a#7,SET]
+  000010:[j#3,SET-m#2,SET] seqnums:[#0-#0] points:[j#3,SET-m#2,SET]
 
 define v3
 L2:
@@ -108,11 +108,11 @@ L2:
   000001:[r#2,SET-t#1,SET]
 ----
 L2:
-  000003:[b#1,SET-c#2,SET] seqnums:[0-0] points:[b#1,SET-c#2,SET]
-  000004:[d#3,SET-f#4,SET] seqnums:[0-0] points:[d#3,SET-f#4,SET]
-  000005:[h#3,SET-h#2,SET] seqnums:[0-0] points:[h#3,SET-h#2,SET]
-  000002:[n#5,SET-q#3,SET] seqnums:[0-0] points:[n#5,SET-q#3,SET]
-  000001:[r#2,SET-t#1,SET] seqnums:[0-0] points:[r#2,SET-t#1,SET]
+  000003:[b#1,SET-c#2,SET] seqnums:[#0-#0] points:[b#1,SET-c#2,SET]
+  000004:[d#3,SET-f#4,SET] seqnums:[#0-#0] points:[d#3,SET-f#4,SET]
+  000005:[h#3,SET-h#2,SET] seqnums:[#0-#0] points:[h#3,SET-h#2,SET]
+  000002:[n#5,SET-q#3,SET] seqnums:[#0-#0] points:[n#5,SET-q#3,SET]
+  000001:[r#2,SET-t#1,SET] seqnums:[#0-#0] points:[r#2,SET-t#1,SET]
 
 apply v3
   del-table: L2 000004
@@ -122,12 +122,12 @@ apply v3
   add-table: L2 000010:[j#3,SET-m#2,SET]
 ----
 L2:
-  000006:[a#10,SET-a#7,SET] seqnums:[0-0] points:[a#10,SET-a#7,SET]
-  000003:[b#1,SET-c#2,SET] seqnums:[0-0] points:[b#1,SET-c#2,SET]
-  000007:[e#1,SET-g#2,SET] seqnums:[0-0] points:[e#1,SET-g#2,SET]
-  000005:[h#3,SET-h#2,SET] seqnums:[0-0] points:[h#3,SET-h#2,SET]
-  000010:[j#3,SET-m#2,SET] seqnums:[0-0] points:[j#3,SET-m#2,SET]
-  000002:[n#5,SET-q#3,SET] seqnums:[0-0] points:[n#5,SET-q#3,SET]
+  000006:[a#10,SET-a#7,SET] seqnums:[#0-#0] points:[a#10,SET-a#7,SET]
+  000003:[b#1,SET-c#2,SET] seqnums:[#0-#0] points:[b#1,SET-c#2,SET]
+  000007:[e#1,SET-g#2,SET] seqnums:[#0-#0] points:[e#1,SET-g#2,SET]
+  000005:[h#3,SET-h#2,SET] seqnums:[#0-#0] points:[h#3,SET-h#2,SET]
+  000010:[j#3,SET-m#2,SET] seqnums:[#0-#0] points:[j#3,SET-m#2,SET]
+  000002:[n#5,SET-q#3,SET] seqnums:[#0-#0] points:[n#5,SET-q#3,SET]
 
 define v4
 L0:
@@ -136,9 +136,9 @@ L1:
   000002:[c#3,SET-d#2,SET]
 ----
 L0.0:
-  000001:[a#1,SET-b#2,SET] seqnums:[0-0] points:[a#1,SET-b#2,SET]
+  000001:[a#1,SET-b#2,SET] seqnums:[#0-#0] points:[a#1,SET-b#2,SET]
 L1:
-  000002:[c#3,SET-d#2,SET] seqnums:[0-0] points:[c#3,SET-d#2,SET]
+  000002:[c#3,SET-d#2,SET] seqnums:[#0-#0] points:[c#3,SET-d#2,SET]
 
 apply v4
   del-table: L0 000001
@@ -156,7 +156,7 @@ L0:
   000001:[a#1,SET-b#2,SET]
 ----
 L0.0:
-  000001:[a#1,SET-b#2,SET] seqnums:[0-0] points:[a#1,SET-b#2,SET]
+  000001:[a#1,SET-b#2,SET] seqnums:[#0-#0] points:[a#1,SET-b#2,SET]
 
 apply v5
   del-table: L0 1
@@ -168,7 +168,7 @@ new version edit
   del-table: L2 000004
 ----
 L2:
-  000005:[s#3,SET-z#4,SET] seqnums:[0-0] points:[s#3,SET-z#4,SET]
+  000005:[s#3,SET-z#4,SET] seqnums:[#0-#0] points:[s#3,SET-z#4,SET]
 
 define v6
 L1:
@@ -177,9 +177,9 @@ L2:
   000002:[c#1,SET-f#1,SET]
 ----
 L1:
-  000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
+  000001:[a#2,SET-e#2,SET] seqnums:[#0-#0] points:[a#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 
 # Convert a physical table to virtual tables.
 apply v6
@@ -190,23 +190,23 @@ apply v6
   excise-op: [b, c] #3
 ----
 L1:
-  000003(000009):[a#2,SET-b#2,SET] seqnums:[0-0] points:[a#2,SET-b#2,SET]
-  000004(000009):[c#2,SET-e#2,SET] seqnums:[0-0] points:[c#2,SET-e#2,SET]
+  000003(000009):[a#2,SET-b#2,SET] seqnums:[#0-#0] points:[a#2,SET-b#2,SET]
+  000004(000009):[c#2,SET-e#2,SET] seqnums:[#0-#0] points:[c#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 
 define v7
 L1:
-  000003(000009):[a#2,SET-b#2,SET] seqnums:[0-0] points:[a#2,SET-b#2,SET]
-  000004(000009):[c#2,SET-e#2,SET] seqnums:[0-0] points:[c#2,SET-e#2,SET]
+  000003(000009):[a#2,SET-b#2,SET] seqnums:[#0-#0] points:[a#2,SET-b#2,SET]
+  000004(000009):[c#2,SET-e#2,SET] seqnums:[#0-#0] points:[c#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 ----
 L1:
-  000003(000009):[a#2,SET-b#2,SET] seqnums:[0-0] points:[a#2,SET-b#2,SET]
-  000004(000009):[c#2,SET-e#2,SET] seqnums:[0-0] points:[c#2,SET-e#2,SET]
+  000003(000009):[a#2,SET-b#2,SET] seqnums:[#0-#0] points:[a#2,SET-b#2,SET]
+  000004(000009):[c#2,SET-e#2,SET] seqnums:[#0-#0] points:[c#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 
 # Remove virtual tables and their backing.
 apply v7
@@ -215,7 +215,7 @@ apply v7
   del-backing: 000009
 ----
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 
 define v8
 L1:
@@ -224,15 +224,15 @@ L2:
   000002:[c#1,SET-f#1,SET]
 ----
 L1:
-  000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
+  000001:[a#2,SET-e#2,SET] seqnums:[#0-#0] points:[a#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 
 # Accumulate should error if we attempt to add a sstable referencing a blob file
 # that is unknown.
 
 apply v8
-  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
+  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 ----
 pebble: blob file B000003 referenced by L0.000004 not found
 
@@ -241,14 +241,14 @@ pebble: blob file B000003 referenced by L0.000004 not found
 
 apply v8 name=v9
   add-blob-file: B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
-  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
+  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 ----
 L0.0:
-  000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
+  000004:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 L1:
-  000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
+  000001:[a#2,SET-e#2,SET] seqnums:[#0-#0] points:[a#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 Blob files:
   B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
 
@@ -257,7 +257,7 @@ Blob files:
 # same version edit, accumulate will error.
 
 apply v8
-  add-table:     L0 000005:[a#10,SET-a#10,SET] seqnums:[10-10] points:[a#10,SET-a#10,SET] blobrefs:[(B000003: 205); depth:1]
+  add-table:     L0 000005:[a#10,SET-a#10,SET] seqnums:[#10-#10] points:[a#10,SET-a#10,SET] blobrefs:[(B000003: 205); depth:1]
 ----
 pebble: blob file B000003 referenced by L0.000005 not found
 
@@ -267,14 +267,14 @@ pebble: blob file B000003 referenced by L0.000005 not found
 apply v9
   del-table:     L0 000004
   del-table:     L1 000001
-  add-table:     L1 000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
-  add-table:     L1 000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
+  add-table:     L1 000005:[a#9,SET-d#9,SET] seqnums:[#0-#9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
+  add-table:     L1 000006:[e#2,SET-z#9,SET] seqnums:[#0-#9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
 ----
 L1:
-  000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
-  000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
+  000005:[a#9,SET-d#9,SET] seqnums:[#0-#9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
+  000006:[e#2,SET-z#9,SET] seqnums:[#0-#9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 Blob files:
   B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
 
@@ -288,42 +288,42 @@ L2:
   000002:[c#1,SET-f#1,SET]
 ----
 L1:
-  000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
+  000001:[a#2,SET-e#2,SET] seqnums:[#0-#0] points:[a#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 
 apply v10
   add-blob-file: B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
-  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
+  add-table:     L0 000004:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 new version edit
   del-table:     L0 000004
   del-table:     L1 000001
-  add-table:     L1 000005:[a#9,SET-d#9,SET] seqnums:[0-9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
-  add-table:     L1 000006:[e#2,SET-z#9,SET] seqnums:[0-9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
+  add-table:     L1 000005:[a#9,SET-d#9,SET] seqnums:[#0-#9] points:[a#9,SET-d#9,SET] blobrefs:[(B000003: 12205); depth:1]
+  add-table:     L1 000006:[e#2,SET-z#9,SET] seqnums:[#0-#9] points:[e#2,SET-z#9,SET] blobrefs:[(B000003: 14192); depth:1]
 new version edit
   del-table:     L1 000005
   del-table:     L1 000006
   del-blob-file: B000003 000003
 ----
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 
 # Create a state with two blob files.
 
 apply v10 name=v11
   add-blob-file: B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
   add-blob-file: B000004 physical:{000004 size:[20535 (20KB)] vals:[25935 (25KB)]}
-  add-table:     L0 000005:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
-  add-table:     L0 000006:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000004: 25935); depth:1]
+  add-table:     L0 000005:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
+  add-table:     L0 000006:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000004: 25935); depth:1]
 ----
 L0.1:
-  000006:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000004: 25935); depth:1]
+  000006:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000004: 25935); depth:1]
 L0.0:
-  000005:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
+  000005:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 L1:
-  000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
+  000001:[a#2,SET-e#2,SET] seqnums:[#0-#0] points:[a#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 Blob files:
   B000003 physical:{000003 size:[20535 (20KB)] vals:[25935 (25KB)]}
   B000004 physical:{000004 size:[20535 (20KB)] vals:[25935 (25KB)]}
@@ -338,9 +338,9 @@ new version edit
   del-blob-file: B000004 000004
 ----
 L1:
-  000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
+  000001:[a#2,SET-e#2,SET] seqnums:[#0-#0] points:[a#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 
 # Test a version edit that replaces a blob file.
 
@@ -349,13 +349,13 @@ apply v11
   add-blob-file: B000003 physical:{000052 size:[10000] vals:[10000]}
 ----
 L0.1:
-  000006:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000004: 25935); depth:1]
+  000006:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000004: 25935); depth:1]
 L0.0:
-  000005:[a#9,SET-z#9,DEL] seqnums:[9-9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
+  000005:[a#9,SET-z#9,DEL] seqnums:[#9-#9] points:[a#9,SET-z#9,DEL] blobrefs:[(B000003: 25935); depth:1]
 L1:
-  000001:[a#2,SET-e#2,SET] seqnums:[0-0] points:[a#2,SET-e#2,SET]
+  000001:[a#2,SET-e#2,SET] seqnums:[#0-#0] points:[a#2,SET-e#2,SET]
 L2:
-  000002:[c#1,SET-f#1,SET] seqnums:[0-0] points:[c#1,SET-f#1,SET]
+  000002:[c#1,SET-f#1,SET] seqnums:[#0-#0] points:[c#1,SET-f#1,SET]
 Blob files:
   B000003 physical:{000052 size:[10000 (9.8KB)] vals:[10000 (9.8KB)]}
   B000004 physical:{000004 size:[20535 (20KB)] vals:[25935 (25KB)]}

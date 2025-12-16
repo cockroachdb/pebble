@@ -16,7 +16,7 @@ L0
   c#3,SET-d#4,SET
   a#1,SET-b#2,SET
 ----
-L0 files 000001 and 000002 are not properly ordered: <#3-#4> vs <#1-#2>
+L0 files 000001 and 000002 are not properly ordered: [#3-#4] vs [#1-#2]
 
 # Seqnum overlaps are allowed in L0 as long as no key ranges overlap.
 check-ordering
@@ -31,14 +31,14 @@ L0
   a#3,SET-d#3,SET
   a#1,SET-b#2,SET
 ----
-L0 files 000001 and 000002 are not properly ordered: <#3-#3> vs <#1-#2>
+L0 files 000001 and 000002 are not properly ordered: [#3-#3] vs [#1-#2]
 
 check-ordering
 L0
   a#2,SET-d#4,SET
   a#3,SET-b#3,SET
 ----
-L0 files 000001 and 000002 are not properly ordered: <#2-#4> vs <#3-#3>
+L0 files 000001 and 000002 are not properly ordered: [#2-#4] vs [#3-#3]
 
 check-ordering
 L0.0

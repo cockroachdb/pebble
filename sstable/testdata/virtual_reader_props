@@ -6,7 +6,7 @@ c#1,SET:c
 d#1,SET:d
 ----
 point:    [a#1,SET-d#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 virtualize lower=b#1,SET upper=c#1,SET show-size
 ----
@@ -22,7 +22,7 @@ c#1,SET:c
 d#1,SET:d
 ----
 point:    [a#1,SET-d#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 virtualize lower=b#1,SET upper=c#1,SET show-size
 ----
@@ -38,7 +38,7 @@ c#1,SET:c
 d#1,SET:d
 ----
 point:    [a#1,SET-d#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 virtualize lower=b#1,SET upper=c#1,SET show-size
 ----
@@ -107,7 +107,7 @@ c#1,SET:c
 d#1,SET:d
 ----
 point:    [a#1,SET-d#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 virtualize lower=b#1,SET upper=c#1,SET show-size
 ----
@@ -179,7 +179,7 @@ Span: y-z:{(#12,RANGEKEYSET,@11,foo)}
 point:    [a#1,SET-f#3,SET]
 rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
 rangekey: [a#11,RANGEKEYSET-z#inf,RANGEKEYSET]
-seqnums:  [1-12]
+seqnums:  [#1-#12]
 
 # Note that we shouldn't have range del spans which cross virtual sstable
 # boundaries; num.range-key-sets must be >= 1.
@@ -202,7 +202,7 @@ Span: y-z:{(#12,RANGEKEYSET,@11,foo)}
 point:    [a#1,SET-f#3,SET]
 rangedel: [d#4,RANGEDEL-l#inf,RANGEDEL]
 rangekey: [a#11,RANGEKEYSET-z#inf,RANGEKEYSET]
-seqnums:  [1-12]
+seqnums:  [#1-#12]
 
 # Note that we shouldn't have range del spans which cross virtual sstable
 # boundaries; num.range-key-sets must be >= 1.
@@ -222,7 +222,7 @@ g#8,SET:g
 h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 virtualize lower=dd#5,SET upper=ddd#6,SET show-size
 ----
@@ -242,7 +242,7 @@ g#8,SET:g
 h#9,SET:h
 ----
 point:    [a#1,SET-h#9,SET]
-seqnums:  [1-9]
+seqnums:  [#1-#9]
 
 virtualize lower=dd#5,SET upper=ddd#6,SET show-size
 ----
@@ -256,7 +256,7 @@ Span: c-d:{(#1,RANGEDEL)}
 ----
 point:    [a#1,DEL-b#1,DELSIZED]
 rangedel: [c#1,RANGEDEL-d#inf,RANGEDEL]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 # Verify that we get 3 deletions instead of 1 (because it has to be the sum of
 # its components).
@@ -273,7 +273,7 @@ c#1,SET:c
 d#1,SET:d
 ----
 point:    [a#1,SET-d#1,SET]
-seqnums:  [1-1]
+seqnums:  [#1-#1]
 
 virtualize lower=poi-b#1,SET upper=poi-c#1,SET prefix=poi- show-size
 ----

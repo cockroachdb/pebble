@@ -1687,7 +1687,7 @@ func newRowWriter(writable objstorage.Writable, o WriterOptions) *RawRowWriter {
 	o = o.ensureDefaults()
 	w := &RawRowWriter{
 		meta: WriterMetadata{
-			SmallestSeqNum: math.MaxUint64,
+			SeqNums: base.SeqNumRange{Low: math.MaxUint64},
 		},
 		compare:                    o.Comparer.Compare,
 		pointSuffixCmp:             o.Comparer.ComparePointSuffixes,

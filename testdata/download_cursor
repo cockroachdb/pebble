@@ -4,21 +4,21 @@
 # Basic test to verify cursor iteration.
 define
 L0:
-  1(101):[a#1,SET-a#1,SET] seqnums:[5-5]
-  2(102):[b#1,SET-d#1,SET] seqnums:[4-4]
-  3(103):[e#1,SET-g#1,SET] seqnums:[3-3]
-  4(104):[a#1,SET-c#1,SET] seqnums:[2-2]
+  1(101):[a#1,SET-a#1,SET] seqnums:[#5-#5]
+  2(102):[b#1,SET-d#1,SET] seqnums:[#4-#4]
+  3(103):[e#1,SET-g#1,SET] seqnums:[#3-#3]
+  4(104):[a#1,SET-c#1,SET] seqnums:[#2-#2]
 L2:
   5(105):[b#1,SET-c#1,SET]
 ----
 L0.1:
-  000001(000101):[a#1,SET-a#1,SET] seqnums:[5-5] points:[a#1,SET-a#1,SET]
-  000002(000102):[b#1,SET-d#1,SET] seqnums:[4-4] points:[b#1,SET-d#1,SET]
+  000001(000101):[a#1,SET-a#1,SET] seqnums:[#5-#5] points:[a#1,SET-a#1,SET]
+  000002(000102):[b#1,SET-d#1,SET] seqnums:[#4-#4] points:[b#1,SET-d#1,SET]
 L0.0:
-  000004(000104):[a#1,SET-c#1,SET] seqnums:[2-2] points:[a#1,SET-c#1,SET]
-  000003(000103):[e#1,SET-g#1,SET] seqnums:[3-3] points:[e#1,SET-g#1,SET]
+  000004(000104):[a#1,SET-c#1,SET] seqnums:[#2-#2] points:[a#1,SET-c#1,SET]
+  000003(000103):[e#1,SET-g#1,SET] seqnums:[#3-#3] points:[e#1,SET-g#1,SET]
 L2:
-  000005(000105):[b#1,SET-c#1,SET] seqnums:[0-0] points:[b#1,SET-c#1,SET]
+  000005(000105):[b#1,SET-c#1,SET] seqnums:[#0-#0] points:[b#1,SET-c#1,SET]
 
 # Verify iteration.
 cursor lower=a upper=d
@@ -49,21 +49,21 @@ iterate:
 # Verify that non-external files are skipped.
 define
 L0:
-  1:[a#1,SET-a#1,SET] seqnums:[5-5]
-  2(102):[b#1,SET-d#1,SET] seqnums:[4-4]
-  3:[e#1,SET-g#1,SET] seqnums:[3-3]
-  4(104):[a#1,SET-c#1,SET] seqnums:[2-2]
+  1:[a#1,SET-a#1,SET] seqnums:[#5-#5]
+  2(102):[b#1,SET-d#1,SET] seqnums:[#4-#4]
+  3:[e#1,SET-g#1,SET] seqnums:[#3-#3]
+  4(104):[a#1,SET-c#1,SET] seqnums:[#2-#2]
 L2:
-  5(105):[b#1,SET-c#1,SET] seqnums:[1-1]
+  5(105):[b#1,SET-c#1,SET] seqnums:[#1-#1]
 ----
 L0.1:
-  000001:[a#1,SET-a#1,SET] seqnums:[5-5] points:[a#1,SET-a#1,SET]
-  000002(000102):[b#1,SET-d#1,SET] seqnums:[4-4] points:[b#1,SET-d#1,SET]
+  000001:[a#1,SET-a#1,SET] seqnums:[#5-#5] points:[a#1,SET-a#1,SET]
+  000002(000102):[b#1,SET-d#1,SET] seqnums:[#4-#4] points:[b#1,SET-d#1,SET]
 L0.0:
-  000004(000104):[a#1,SET-c#1,SET] seqnums:[2-2] points:[a#1,SET-c#1,SET]
-  000003:[e#1,SET-g#1,SET] seqnums:[3-3] points:[e#1,SET-g#1,SET]
+  000004(000104):[a#1,SET-c#1,SET] seqnums:[#2-#2] points:[a#1,SET-c#1,SET]
+  000003:[e#1,SET-g#1,SET] seqnums:[#3-#3] points:[e#1,SET-g#1,SET]
 L2:
-  000005(000105):[b#1,SET-c#1,SET] seqnums:[1-1] points:[b#1,SET-c#1,SET]
+  000005(000105):[b#1,SET-c#1,SET] seqnums:[#1-#1] points:[b#1,SET-c#1,SET]
 
 cursor lower=a upper=z
 start
@@ -88,12 +88,12 @@ L2:
   5(105):[d1#1,SET-g#1,SET]
 ----
 L1:
-  000001(000101):[a#1,SET-b#1,SET] seqnums:[0-0] points:[a#1,SET-b#1,SET]
-  000002(000102):[c#1,SET-d#1,SET] seqnums:[0-0] points:[c#1,SET-d#1,SET]
-  000003(000103):[e#1,SET-f#1,SET] seqnums:[0-0] points:[e#1,SET-f#1,SET]
+  000001(000101):[a#1,SET-b#1,SET] seqnums:[#0-#0] points:[a#1,SET-b#1,SET]
+  000002(000102):[c#1,SET-d#1,SET] seqnums:[#0-#0] points:[c#1,SET-d#1,SET]
+  000003(000103):[e#1,SET-f#1,SET] seqnums:[#0-#0] points:[e#1,SET-f#1,SET]
 L2:
-  000004(000104):[a1#1,SET-b#1,SET] seqnums:[0-0] points:[a1#1,SET-b#1,SET]
-  000005(000105):[d1#1,SET-g#1,SET] seqnums:[0-0] points:[d1#1,SET-g#1,SET]
+  000004(000104):[a1#1,SET-b#1,SET] seqnums:[#0-#0] points:[a1#1,SET-b#1,SET]
+  000005(000105):[d1#1,SET-g#1,SET] seqnums:[#0-#0] points:[d1#1,SET-g#1,SET]
 
 cursor lower=a upper=z
 start
@@ -120,12 +120,12 @@ L2:
   5(105):[d1#1,SET-g#1,SET]
 ----
 L1:
-  000001(000101):[a#1,SET-b#1,SET] seqnums:[0-0] points:[a#1,SET-b#1,SET]
-  000003(000103):[e#1,SET-f#1,SET] seqnums:[0-0] points:[e#1,SET-f#1,SET]
+  000001(000101):[a#1,SET-b#1,SET] seqnums:[#0-#0] points:[a#1,SET-b#1,SET]
+  000003(000103):[e#1,SET-f#1,SET] seqnums:[#0-#0] points:[e#1,SET-f#1,SET]
 L2:
-  000004(000104):[a1#1,SET-b#1,SET] seqnums:[0-0] points:[a1#1,SET-b#1,SET]
-  000002(000102):[c#1,SET-d#1,SET] seqnums:[0-0] points:[c#1,SET-d#1,SET]
-  000005(000105):[d1#1,SET-g#1,SET] seqnums:[0-0] points:[d1#1,SET-g#1,SET]
+  000004(000104):[a1#1,SET-b#1,SET] seqnums:[#0-#0] points:[a1#1,SET-b#1,SET]
+  000002(000102):[c#1,SET-d#1,SET] seqnums:[#0-#0] points:[c#1,SET-d#1,SET]
+  000005(000105):[d1#1,SET-g#1,SET] seqnums:[#0-#0] points:[d1#1,SET-g#1,SET]
 
 # Continue the cursor above. We should see table 2 again.
 cursor lower=a upper=z

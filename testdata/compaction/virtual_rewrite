@@ -17,13 +17,13 @@ set e value_e_first_table
 flush
 ----
 L0.0:
-  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:732
+  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:732
 
 # Compact to L6 to create backing table
 compact a-e
 ----
 L6:
-  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:732
+  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:732
 
 # Create second backing table  
 batch
@@ -37,33 +37,33 @@ set j value_j_second_table
 flush
 ----
 L0.0:
-  000007:[f#15,SET-j#19,SET] seqnums:[15-19] points:[f#15,SET-j#19,SET] size:724
+  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:724
 L6:
-  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:732
+  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:732
 
 # Compact to L6 to create second backing table.
 compact f-j
 ----
 L6:
-  000005:[a#10,SET-e#14,SET] seqnums:[10-14] points:[a#10,SET-e#14,SET] size:732
-  000007:[f#15,SET-j#19,SET] seqnums:[15-19] points:[f#15,SET-j#19,SET] size:724
+  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:732
+  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:724
 
 # Excise from first backing.
 excise b c
 ----
 L6:
-  000008(000005):[a#10,SET-a#10,SET] seqnums:[10-14] points:[a#10,SET-a#10,SET] size:147(732)
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
-  000007:[f#15,SET-j#19,SET] seqnums:[15-19] points:[f#15,SET-j#19,SET] size:724
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(732)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
+  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:724
 
 # Excise from second backing.
 excise g i
 ----
 L6:
-  000008(000005):[a#10,SET-a#10,SET] seqnums:[10-14] points:[a#10,SET-a#10,SET] size:147(732)
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
-  000010(000007):[f#15,SET-f#15,SET] seqnums:[15-19] points:[f#15,SET-f#15,SET] size:141(724)
-  000011(000007):[i#18,SET-j#19,SET] seqnums:[15-19] points:[i#18,SET-j#19,SET] size:141(724)
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(732)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
+  000010(000007):[f#15,SET-f#15,SET] seqnums:[#15-#19] points:[f#15,SET-f#15,SET] size:141(724)
+  000011(000007):[i#18,SET-j#19,SET] seqnums:[#15-#19] points:[i#18,SET-j#19,SET] size:141(724)
 
 # Check the LSM state - we should have virtual tables with different backing utilization.
 lsm
@@ -87,10 +87,10 @@ rewrite candidates heap: 000007(39.0%) 000005(40.2%)
 run-virtual-rewrite-compaction
 ----
 L6:
-  000008(000005):[a#10,SET-a#10,SET] seqnums:[10-14] points:[a#10,SET-a#10,SET] size:147(732)
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
-  000012:[f#0,SET-f#0,SET] seqnums:[0-0] points:[f#0,SET-f#0,SET] size:669
-  000011(000007):[i#18,SET-j#19,SET] seqnums:[15-19] points:[i#18,SET-j#19,SET] size:141(724)
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(732)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
+  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:669
+  000011(000007):[i#18,SET-j#19,SET] seqnums:[#15-#19] points:[i#18,SET-j#19,SET] size:141(724)
 
 
 # Check virtual backings state after rewrite.
@@ -107,10 +107,10 @@ rewrite candidates heap: 000007(19.5%) 000005(40.2%)
 run-virtual-rewrite-compaction  
 ----
 L6:
-  000008(000005):[a#10,SET-a#10,SET] seqnums:[10-14] points:[a#10,SET-a#10,SET] size:147(732)
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
-  000012:[f#0,SET-f#0,SET] seqnums:[0-0] points:[f#0,SET-f#0,SET] size:669
-  000013:[i#0,SET-j#0,SET] seqnums:[0-0] points:[i#0,SET-j#0,SET] size:687
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(732)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
+  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:669
+  000013:[i#0,SET-j#0,SET] seqnums:[#0-#0] points:[i#0,SET-j#0,SET] size:687
 
 # Backing 000007 should have been removed.
 virtual-backings
@@ -123,10 +123,10 @@ rewrite candidates heap: 000005(40.2%)
 run-virtual-rewrite-compaction
 ----
 L6:
-  000014:[a#0,SET-a#0,SET] seqnums:[0-0] points:[a#0,SET-a#0,SET] size:668
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[10-14] points:[c#12,SET-e#14,SET] size:147(732)
-  000012:[f#0,SET-f#0,SET] seqnums:[0-0] points:[f#0,SET-f#0,SET] size:669
-  000013:[i#0,SET-j#0,SET] seqnums:[0-0] points:[i#0,SET-j#0,SET] size:687
+  000014:[a#0,SET-a#0,SET] seqnums:[#0-#0] points:[a#0,SET-a#0,SET] size:668
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
+  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:669
+  000013:[i#0,SET-j#0,SET] seqnums:[#0-#0] points:[i#0,SET-j#0,SET] size:687
 
 virtual-backings
 ----
@@ -249,19 +249,19 @@ set d value_d
 flush
 ----
 L0.0:
-  000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:695
+  000005:[a#10,SET-d#13,SET] seqnums:[#10-#13] points:[a#10,SET-d#13,SET] size:695
 
 compact a-d
 ----
 L6:
-  000005:[a#10,SET-d#13,SET] seqnums:[10-13] points:[a#10,SET-d#13,SET] size:695
+  000005:[a#10,SET-d#13,SET] seqnums:[#10-#13] points:[a#10,SET-d#13,SET] size:695
 
 # Excise only a small portion to create low unreferenced fraction (~0.1).
 excise a.5 b.5
 ----
 L6:
-  000006(000005):[a#10,SET-a#10,SET] seqnums:[10-13] points:[a#10,SET-a#10,SET] size:113(695)
-  000007(000005):[c#12,SET-d#13,SET] seqnums:[10-13] points:[c#12,SET-d#13,SET] size:113(695)
+  000006(000005):[a#10,SET-a#10,SET] seqnums:[#10-#13] points:[a#10,SET-a#10,SET] size:113(695)
+  000007(000005):[c#12,SET-d#13,SET] seqnums:[#10-#13] points:[c#12,SET-d#13,SET] size:113(695)
 
 virtual-backings
 ----
@@ -273,5 +273,5 @@ rewrite candidates heap: 000005(32.5%)
 run-virtual-rewrite-compaction
 ----
 L6:
-  000008:[a#0,SET-a#0,SET] seqnums:[0-0] points:[a#0,SET-a#0,SET] size:658
-  000007(000005):[c#12,SET-d#13,SET] seqnums:[10-13] points:[c#12,SET-d#13,SET] size:113(695)
+  000008:[a#0,SET-a#0,SET] seqnums:[#0-#0] points:[a#0,SET-a#0,SET] size:658
+  000007(000005):[c#12,SET-d#13,SET] seqnums:[#10-#13] points:[c#12,SET-d#13,SET] size:113(695)

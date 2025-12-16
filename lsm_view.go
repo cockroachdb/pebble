@@ -181,7 +181,7 @@ func (b *lsmViewBuilder) tableDetails(
 		}
 		outf("virtual; backed by %s (%ssize: %s)", m.TableBacking.DiskFileNum, backingInfo, humanize.Bytes.Uint64(m.TableBacking.Size))
 	}
-	outf("seqnums: %d - %d", m.SmallestSeqNum, m.LargestSeqNum)
+	outf("seqnums: %s", m.SeqNums)
 	if m.SyntheticPrefixAndSuffix.HasPrefix() {
 		// Note: we are abusing the key formatter by passing just the prefix.
 		outf("synthetic prefix: %s", b.fmtKey(m.SyntheticPrefixAndSuffix.Prefix()))

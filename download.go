@@ -316,7 +316,7 @@ func makeCursorAtFile(f *manifest.TableMetadata, level int) downloadCursor {
 	return downloadCursor{
 		level:  level,
 		key:    f.Smallest().UserKey,
-		seqNum: f.LargestSeqNum,
+		seqNum: f.SeqNums.High,
 	}
 }
 
@@ -326,7 +326,7 @@ func makeCursorAfterFile(f *manifest.TableMetadata, level int) downloadCursor {
 	return downloadCursor{
 		level:  level,
 		key:    f.Smallest().UserKey,
-		seqNum: f.LargestSeqNum + 1,
+		seqNum: f.SeqNums.High + 1,
 	}
 }
 

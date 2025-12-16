@@ -19,9 +19,9 @@ L1
   i#1,SET:vi
 ----
 L1:
-  000004:[a#10,SET-c#10,SET] seqnums:[10-10] points:[a#10,SET-c#10,SET] size:672
-  000005:[d#5,SET-f#5,SET] seqnums:[5-5] points:[d#5,SET-f#5,SET] size:798
-  000006:[g#1,SET-i#1,SET] seqnums:[1-1] points:[g#1,SET-i#1,SET] size:669
+  000004:[a#10,SET-c#10,SET] seqnums:[#10-#10] points:[a#10,SET-c#10,SET] size:672
+  000005:[d#5,SET-f#5,SET] seqnums:[#5-#5] points:[d#5,SET-f#5,SET] size:798
+  000006:[g#1,SET-i#1,SET] seqnums:[#1-#1] points:[g#1,SET-i#1,SET] size:669
 
 level-iter depth=1
 seek-ge b
