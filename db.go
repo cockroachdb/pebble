@@ -1348,10 +1348,8 @@ func (i *Iterator) constructPointIter(
 		// Next are the memtables.
 		for j := len(memtables) - 1; j >= 0; j-- {
 			mem := memtables[j]
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         mem.newIter(&i.opts),
-				rangeDelIter: mem.newRangeDelIter(&i.opts),
-			})
+			mlevels = append(mlevels, mergingIterLevel{})
+			mem.initMergingIterLevel(ctx, &i.opts, &mlevels[len(mlevels)-1])
 		}
 
 		// Next are the file levels: L0 sub-levels followed by lower levels.
