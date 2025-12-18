@@ -1239,7 +1239,7 @@ func (c *tableCompaction) newInputIters(
 func (c *tableCompaction) newRangeDelIter(
 	ctx context.Context,
 	newIters tableNewIters,
-	f manifest.LevelFile,
+	f manifest.LevelTable,
 	opts IterOptions,
 	iiopts internalIterOpts,
 	l manifest.Layer,
