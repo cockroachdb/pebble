@@ -382,10 +382,15 @@ func checkDeleteCompactionHints(
 
 // Runs a delete-only compaction.
 //
-// d.mu must *not* be held when calling this.
+// d.mu must be held when calling this.
 func (d *DB) runDeleteOnlyCompaction(
-	jobID JobID, c *tableCompaction, snapshots compact.Snapshots,
+	c *tableCompaction, snapshots compact.Snapshots,
 ) (ve *manifest.VersionEdit, stats compact.Stats, blobs []compact.OutputBlob, retErr error) {
+	// Release the d.mu lock while doing I/O.
+	// Note the unusual order: Unlock and then Lock.
+	d.mu.Unlock()
+	defer d.mu.Lock()
+
 	// If any snapshots exist beneath the largest tombstone sequence number,
 	// then deleting data beneath the tombstone violates the snapshot's
 	// isolation. Validate that all hints' tombstones' sequence numbers fall
