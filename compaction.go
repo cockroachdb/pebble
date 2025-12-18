@@ -2686,12 +2686,7 @@ func (d *DB) runCompaction(
 	}
 	switch c.kind {
 	case compactionKindDeleteOnly:
-		// Release the d.mu lock while doing I/O.
-		// Note the unusual order: Unlock and then Lock.
-		snapshots := d.mu.snapshots.toSlice()
-		d.mu.Unlock()
-		defer d.mu.Lock()
-		return d.runDeleteOnlyCompaction(jobID, c, snapshots)
+		return d.runDeleteOnlyCompaction(c, d.mu.snapshots.toSlice())
 	case compactionKindMove:
 		return d.runMoveCompaction(jobID, c)
 	case compactionKindCopy:
