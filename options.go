@@ -1451,13 +1451,6 @@ var (
 	// DBTableFilterPolicyUniform uses a 10-bit bloom filter on all levels.
 	DBTableFilterPolicyUniform = UniformDBTableFilterPolicy(bloom.FilterPolicy(10))
 
-	// DBTableFilterPolicyNoL6 uses a 10-bit bloom filter on L0-L5 and no filters on L6.
-	DBTableFilterPolicyNoL6 = func() DBTableFilterPolicy {
-		p := UniformDBTableFilterPolicy(bloom.FilterPolicy(10))
-		p[6] = NoFilterPolicy
-		return p
-	}()
-
 	// DBTableFilterPolicyProgressive uses better filters for higher levels and
 	// restricts the maximum block sizes.
 	DBTableFilterPolicyProgressive = func() DBTableFilterPolicy {

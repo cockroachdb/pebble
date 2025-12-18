@@ -797,7 +797,6 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		pebble.UniformDBTableFilterPolicy(pebble.NoFilterPolicy),
 		pebble.UniformDBTableFilterPolicy(bloom.FilterPolicy(1 + rng.Uint32N(20))),
 		pebble.DBTableFilterPolicyUniform,
-		pebble.DBTableFilterPolicyNoL6,
 		pebble.DBTableFilterPolicyProgressive,
 	}
 	fp := fpList[rng.IntN(len(fpList))]
