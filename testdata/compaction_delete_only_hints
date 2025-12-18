@@ -563,7 +563,7 @@ get-hints
 ----
 (none)
 
-# Verify that a delete-only compaction hint can excise a file twice
+# Verify that a delete-only compaction hint can excise a file twice.
 
 reset
 ----
@@ -579,30 +579,29 @@ OK
 
 ingest ext
 del-range b l
-del-range m n
+del-range m p
 range-key-del b l
-range-key-del m n
+range-key-del m p
 ----
 OK
 
 describe-lsm
 ----
 L0.0:
-  000005:[b#11,RANGEKEYDEL-n#inf,RANGEDEL]
+  000005:[b#11,RANGEKEYDEL-p#inf,RANGEDEL]
 L6:
   000004:[k#10,RANGEKEYSET-o#10,SET]
 
 get-hints
 ----
 L0.000005 [b, l) seqnums(tombstone=[#11-#11], type=point-and-range)
+L0.000005 [m, p) seqnums(tombstone=[#11-#11], type=point-and-range)
 
 iter
 first
 next
-next
 ----
 ll: (mm, .)
-o: (o, .)
 .
 
 maybe-compact
@@ -610,23 +609,21 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (810B) Score=0.00 -> L6 [000006] (93B), in 1.0s (2.0s total), output rate 93B/s
-[JOB 100] compacted(virtual-sst-rewrite) L6 [000006] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000007] (806B), in 1.0s (2.0s total), output rate 806B/s
+  [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (810B) Score=0.00 -> L6 [000007] (93B), in 1.0s (2.0s total), output rate 93B/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000007] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000008] (788B), in 1.0s (2.0s total), output rate 788B/s
 
 describe-lsm
 ----
 L0.0:
-  000005:[b#11,RANGEKEYDEL-n#inf,RANGEDEL]
+  000005:[b#11,RANGEKEYDEL-p#inf,RANGEDEL]
 L6:
-  000007:[l#10,RANGEKEYSET-o#0,SET]
+  000008:[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
 
 iter
 first
 next
-next
 ----
 ll: (mm, .)
-o: (o, .)
 .
 
 get-hints
