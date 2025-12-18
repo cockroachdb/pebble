@@ -1419,7 +1419,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 			// initialization of the compaction-picking environment, but never
 			// pick a compaction; just call pickFile using the user-provided
 			// level.
-			var lf manifest.LevelFile
+			var lf manifest.LevelTable
 			var ok bool
 			func() {
 				d.mu.versions.logLock()

@@ -680,7 +680,7 @@ type candidateLevelInfo struct {
 	// The file in level that will be compacted. Additional files may be
 	// picked by the compaction, and a pickedCompaction created for the
 	// compaction.
-	file manifest.LevelFile
+	file manifest.LevelTable
 }
 
 func (c *candidateLevelInfo) shouldCompact() bool {
@@ -1153,7 +1153,7 @@ func pickCompactionSeedFile(
 	level, outputLevel int,
 	earliestSnapshotSeqNum base.SeqNum,
 	problemSpans *problemspans.ByLevel,
-) (manifest.LevelFile, bool) {
+) (manifest.LevelTable, bool) {
 	// Select the file within the level to compact. We want to minimize write
 	// amplification, but also ensure that (a) deletes are propagated to the
 	// bottom level in a timely fashion, and (b) virtual sstables that are
@@ -1180,7 +1180,7 @@ func pickCompactionSeedFile(
 	startIter := vers.Levels[level].Iter()
 	outputIter := vers.Levels[outputLevel].Iter()
 
-	var file manifest.LevelFile
+	var file manifest.LevelTable
 	smallestRatio := uint64(math.MaxUint64)
 
 	outputFile := outputIter.First()
