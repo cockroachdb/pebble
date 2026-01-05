@@ -74,6 +74,6 @@ func SimulateFPR(bitsPerKey int, numProbes int) (float64, string) {
 
 // formatFPR formats a false positive rate as a percentage with "1 in N" ratio.
 func formatFPR(fpr float64) string {
-	l10 := int(math.Floor(math.Log10(fpr)))
-	return fmt.Sprintf("%.*f%% (1 in %.*f)", -l10, fpr*100, 3+l10, 1.0/fpr)
+	l10 := min(3, -int(math.Floor(math.Log10(fpr))))
+	return fmt.Sprintf("%.*f%% (1 in %.*f)", l10, fpr*100, 3-l10, 1.0/fpr)
 }
