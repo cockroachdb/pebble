@@ -6,50 +6,10 @@
 package bloom
 
 import (
-	"encoding/binary"
 	"fmt"
-	"sync"
 
-	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/invariants"
 )
-
-const (
-	cacheLineSize = 64
-	cacheLineBits = cacheLineSize * 8
-)
-
-type tableFilter []byte
-
-func (f tableFilter) MayContain(key []byte) bool {
-	if len(f) <= 5 {
-		return false
-	}
-	n := len(f) - 5
-	nProbes := f[n]
-	nLines := binary.LittleEndian.Uint32(f[n+1:])
-	if 8*(uint32(n)/nLines) != cacheLineBits {
-		panic("bloom filter: unexpected cache line size")
-	}
-	h := hash(key)
-	delta := h>>17 | h<<15
-	lineIdx := h % nLines
-	// Set up a pointer to a [cacheLineSize]byte array. This avoids bound
-	// checks inside the loop.
-	line := (*[cacheLineSize]byte)(f[lineIdx*cacheLineSize : (lineIdx+1)*cacheLineSize])
-	for range nProbes {
-		// The bit position within the line is (h % cacheLineBits).
-		//  byte index: (h % cacheLineBits)/8 = (h/8) % cacheLineSize
-		//  bit index: (h % cacheLineBits)%8 = h%8
-		val := line[(h>>3)&(cacheLineSize-1)] & (1 << (h & 7)) //gcassert:bce
-		if val == 0 {
-			return false
-		}
-		h += delta
-	}
-	return true
-}
 
 // This table contains the optimal number of probes for each bitsPerKey. For
 // bits per key over 10, probes[10] should be used.
@@ -79,65 +39,13 @@ func calculateProbes(bitsPerKey uint32) uint32 {
 	return probes[bitsPerKey]
 }
 
-// FilterSize returns the size in bytes of a bloom filter for the given number
-// of keys (hashes) and bits per key. The size includes the 5-byte trailer that
-// stores the number of probes and cache lines.
-func FilterSize(numKeys int, bitsPerKey uint32) uint64 {
-	if numKeys <= 0 || bitsPerKey <= 0 {
-		return 0
-	}
-	// Filter format: nLines * cacheLineSize bytes of filter bits, plus 5 bytes
-	// for the trailer (1 byte for number of probes, 4 bytes for number of lines).
-	return uint64(calculateNumLines(numKeys, bitsPerKey))*cacheLineSize + 5
-}
-
-// MaxBitsPerKey returns the maximum bits per key that can be used to create a
-// bloom filter with at most maxFilterSize bytes for the given number of keys.
-// Returns 0 if the constraints cannot be satisfied (i.e., even 1 bit per key
-// would exceed the maximum filter size).
-func MaxBitsPerKey(numKeys int, maxFilterSize uint64) uint32 {
-	if numKeys <= 0 || maxFilterSize <= 5 {
-		return 0
-	}
-	// Compute the maximum number of cache lines that fit in maxFilterSize.
-	maxLines := (maxFilterSize - 5) / cacheLineSize
-	if maxLines == 0 {
-		return 0
-	}
-	// The filter always uses an odd number of cache lines (nLines |= 1 in
-	// filterNumLines). If maxLines is even, we can only use maxLines-1 lines.
-	if maxLines&1 == 0 {
-		maxLines--
-	}
-	// Given maxLines cache lines, we have maxLines * cacheLineBits bits available.
-	// The maximum bits per key is the total bits divided by number of keys.
-	result := uint32(min(cacheLineBits, maxLines*cacheLineBits/uint64(numKeys)))
-	if invariants.Enabled && result > 0 {
-		// Cross-check: FilterSize with result should be <= maxFilterSize.
-		if size := FilterSize(numKeys, result); size > maxFilterSize {
-			panic(errors.AssertionFailedf(
-				"MaxBitsPerKey invariant violated: FilterSize(%d, %d) = %d > %d",
-				numKeys, result, size, maxFilterSize))
-		}
-		// Cross-check: FilterSize with result+1 should be > maxFilterSize.
-		if result < cacheLineBits {
-			if sizeNext := FilterSize(numKeys, result+1); sizeNext <= maxFilterSize {
-				panic(errors.AssertionFailedf(
-					"MaxBitsPerKey invariant violated: FilterSize(%d, %d) = %d <= %d but returned %d",
-					numKeys, result+1, sizeNext, maxFilterSize, result))
-			}
-		}
-	}
-	return result
-}
-
 // hash implements a hashing algorithm similar to the Murmur hash.
 func hash(b []byte) uint32 {
 	const (
 		seed = 0xbc9f1d34
 		m    = 0xc6a4a793
 	)
-	h := uint32(seed) ^ uint32(uint64(uint32(len(b))*m))
+	h := uint32(seed) ^ (uint32(len(b)) * m)
 	for ; len(b) >= 4; b = b[4:] {
 		h += uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
 		h *= m
@@ -171,28 +79,12 @@ func hash(b []byte) uint32 {
 	return h
 }
 
-const hashBlockLen = 16384
-
-type hashBlock [hashBlockLen]uint32
-
-var hashBlockPool = sync.Pool{
-	New: func() interface{} {
-		return &hashBlock{}
-	},
-}
-
+// tableFilterWriter implements base.TableFilterWriter for Bloom filters.
 type tableFilterWriter struct {
 	bitsPerKey uint32
 	numProbes  uint32
 
-	numHashes int
-	// We store the hashes in blocks.
-	blocks   []*hashBlock
-	lastHash uint32
-
-	// Initial "in-line" storage for the blocks slice (to avoid some small
-	// allocations).
-	blocksBuf [16]*hashBlock
+	hc hashCollector
 }
 
 func newTableFilterWriter(bitsPerKey uint32) *tableFilterWriter {
@@ -204,26 +96,15 @@ func newTableFilterWriter(bitsPerKey uint32) *tableFilterWriter {
 func (w *tableFilterWriter) init(bitsPerKey uint32) {
 	w.bitsPerKey = bitsPerKey
 	w.numProbes = calculateProbes(bitsPerKey)
-	w.blocks = w.blocksBuf[:0]
+	w.hc.Init()
 }
 
 // AddKey implements the base.FilterWriter interface.
 func (w *tableFilterWriter) AddKey(key []byte) {
-	h := hash(key)
-	if w.numHashes != 0 && h == w.lastHash {
-		return
-	}
-	ofs := w.numHashes % hashBlockLen
-	if ofs == 0 {
-		// Time for a new block.
-		w.blocks = append(w.blocks, hashBlockPool.Get().(*hashBlock))
-	}
-	w.blocks[len(w.blocks)-1][ofs] = h
-	w.numHashes++
-	w.lastHash = h
+	w.hc.Add(hash(key))
 }
 
-func calculateNumLines(numHashes int, bitsPerKey uint32) uint32 {
+func calculateNumLines(numHashes uint, bitsPerKey uint32) uint32 {
 	nLines := (uint64(numHashes)*uint64(bitsPerKey) + cacheLineBits - 1) / (cacheLineBits)
 	// Make nLines an odd number to make sure more bits are involved when
 	// determining which block.
@@ -232,50 +113,14 @@ func calculateNumLines(numHashes int, bitsPerKey uint32) uint32 {
 
 // Finish implements the base.TableFilterWriter interface.
 func (w *tableFilterWriter) Finish() (_ []byte, _ base.TableFilterFamily, ok bool) {
-	if w.numHashes == 0 {
+	numHashes := w.hc.NumHashes()
+	if numHashes == 0 {
 		return nil, "", false
 	}
 	// The table filter format matches the RocksDB full-file filter format.
-	nLines := calculateNumLines(w.numHashes, w.bitsPerKey)
-
-	nBytes := nLines * cacheLineSize
-	// Format:
-	//   - nBytes: filter bits
-	//   - 1 byte: number of probes
-	//   - 4 bytes: number of lines
-	filter := make([]byte, nBytes+5)
-
-	nProbes := w.numProbes
-	for bIdx, b := range w.blocks {
-		length := hashBlockLen
-		if bIdx == len(w.blocks)-1 && w.numHashes%hashBlockLen != 0 {
-			length = w.numHashes % hashBlockLen
-		}
-		for _, h := range b[:length] {
-			delta := h>>17 | h<<15 // rotate right 17 bits
-			lineIdx := h % uint32(nLines)
-			// Set up a pointer to a [cacheLineSize]byte array. This avoids bound
-			// checks inside the loop.
-			line := (*[cacheLineSize]byte)(filter[lineIdx*cacheLineSize : (lineIdx+1)*cacheLineSize])
-			for range nProbes {
-				// The bit position within the line is (h % cacheLineBits).
-				//  byte index: (h % cacheLineBits)/8 = (h/8) % cacheLineSize
-				//  bit index: (h % cacheLineBits)%8 = h%8
-				line[(h>>3)&(cacheLineSize-1)] |= 1 << (h & 7) //gcassert:bce
-				h += delta
-			}
-		}
-	}
-	filter[nBytes] = byte(nProbes)
-	binary.LittleEndian.PutUint32(filter[nBytes+1:], uint32(nLines))
-
-	// Release the hash blocks.
-	for i, b := range w.blocks {
-		hashBlockPool.Put(b)
-		w.blocks[i] = nil
-	}
-	w.blocks = w.blocks[:0]
-	w.numHashes = 0
+	nLines := calculateNumLines(numHashes, w.bitsPerKey)
+	filter := buildFilter(nLines, w.numProbes, &w.hc)
+	w.hc.Reset()
 	return filter, Family, true
 }
 
@@ -370,5 +215,5 @@ func (d decoderImpl) Family() base.TableFilterFamily {
 }
 
 func (d decoderImpl) MayContain(filter, key []byte) bool {
-	return tableFilter(filter).MayContain(key)
+	return mayContain(filter, hash(key))
 }

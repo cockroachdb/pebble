@@ -7,7 +7,9 @@ package bloom
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // AdaptivePolicy implements base.TableFilterPolicy for Bloom filters. It
@@ -35,35 +37,95 @@ func (p adaptivePolicyImpl) NewWriter() base.TableFilterWriter {
 // adaptiveFilterWriter is a TableFilterWriter that uses up to w.bitsPerKey to
 // create a filter of up to maxSize bytes.
 type adaptiveFilterWriter struct {
-	w       tableFilterWriter
-	maxSize uint64
+	hc               hashCollector
+	targetBitsPerKey uint32
+	maxSize          uint64
 }
 
 func (aw *adaptiveFilterWriter) AddKey(key []byte) {
-	aw.w.AddKey(key)
+	aw.hc.Add(hash(key))
 }
 
 func (aw *adaptiveFilterWriter) Finish() (_ []byte, _ base.TableFilterFamily, ok bool) {
-	if aw.w.numHashes == 0 {
+	numHashes := aw.hc.NumHashes()
+	if numHashes == 0 {
 		return nil, "", false
 	}
-	if filterSize := FilterSize(aw.w.numHashes, aw.w.bitsPerKey); filterSize > aw.maxSize {
-		aw.w.bitsPerKey = MaxBitsPerKey(aw.w.numHashes, aw.maxSize)
+	bitsPerKey := aw.targetBitsPerKey
+	if filterSize := FilterSize(numHashes, bitsPerKey); filterSize > aw.maxSize {
+		bitsPerKey = MaxBitsPerKey(numHashes, aw.maxSize)
 		// A single-bit filter is not very useful; it is large (at least maxSize/2) so
 		// it wastes memory and bandwidth.
-		if aw.w.bitsPerKey < 2 {
+		if bitsPerKey < 2 {
 			return nil, "", false
 		}
-		aw.w.numProbes = calculateProbes(aw.w.bitsPerKey)
 	}
-	return aw.w.Finish()
+	nLines := calculateNumLines(numHashes, bitsPerKey)
+	numProbes := calculateProbes(bitsPerKey)
+	filter := buildFilter(nLines, numProbes, &aw.hc)
+	aw.hc.Reset()
+	return filter, Family, true
 }
 
 var _ base.TableFilterWriter = (*adaptiveFilterWriter)(nil)
 
 func newAdaptiveFilterWriter(targetBitsPerKey uint32, maxSize uint64) *adaptiveFilterWriter {
-	aw := &adaptiveFilterWriter{}
-	aw.w.init(targetBitsPerKey)
-	aw.maxSize = maxSize
+	aw := &adaptiveFilterWriter{
+		targetBitsPerKey: targetBitsPerKey,
+		maxSize:          maxSize,
+	}
+	aw.hc.Init()
 	return aw
+}
+
+// FilterSize returns the size in bytes of a bloom filter for the given number
+// of keys (hashes) and bits per key. The size includes the 5-byte trailer that
+// stores the number of probes and cache lines.
+func FilterSize(numKeys uint, bitsPerKey uint32) uint64 {
+	if numKeys <= 0 || bitsPerKey <= 0 {
+		return 0
+	}
+	// Filter format: nLines * cacheLineSize bytes of filter bits, plus 5 bytes
+	// for the trailer (1 byte for number of probes, 4 bytes for number of lines).
+	return uint64(calculateNumLines(numKeys, bitsPerKey))*cacheLineSize + 5
+}
+
+// MaxBitsPerKey returns the maximum bits per key that can be used to create a
+// bloom filter with at most maxFilterSize bytes for the given number of keys.
+// Returns 0 if the constraints cannot be satisfied (i.e., even 1 bit per key
+// would exceed the maximum filter size).
+func MaxBitsPerKey(numKeys uint, maxFilterSize uint64) uint32 {
+	if numKeys <= 0 || maxFilterSize <= 5 {
+		return 0
+	}
+	// Compute the maximum number of cache lines that fit in maxFilterSize.
+	maxLines := (maxFilterSize - 5) / cacheLineSize
+	if maxLines == 0 {
+		return 0
+	}
+	// The filter always uses an odd number of cache lines (nLines |= 1 in
+	// filterNumLines). If maxLines is even, we can only use maxLines-1 lines.
+	if maxLines&1 == 0 {
+		maxLines--
+	}
+	// Given maxLines cache lines, we have maxLines * cacheLineBits bits available.
+	// The maximum bits per key is the total bits divided by number of keys.
+	result := uint32(min(cacheLineBits, maxLines*cacheLineBits/uint64(numKeys)))
+	if invariants.Enabled && result > 0 {
+		// Cross-check: FilterSize with result should be <= maxFilterSize.
+		if size := FilterSize(numKeys, result); size > maxFilterSize {
+			panic(errors.AssertionFailedf(
+				"MaxBitsPerKey invariant violated: FilterSize(%d, %d) = %d > %d",
+				numKeys, result, size, maxFilterSize))
+		}
+		// Cross-check: FilterSize with result+1 should be > maxFilterSize.
+		if result < cacheLineBits {
+			if sizeNext := FilterSize(numKeys, result+1); sizeNext <= maxFilterSize {
+				panic(errors.AssertionFailedf(
+					"MaxBitsPerKey invariant violated: FilterSize(%d, %d) = %d <= %d but returned %d",
+					numKeys, result+1, sizeNext, maxFilterSize, result))
+			}
+		}
+	}
+	return result
 }
