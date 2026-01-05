@@ -3,7 +3,7 @@ module github.com/cockroachdb/pebble
 require (
 	github.com/DataDog/zstd v1.5.7
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
-	github.com/RaduBerinde/axisds v0.0.0-20250419182453-5135a0650657
+	github.com/RaduBerinde/axisds v0.0.0-20260105221726-1be486564c85
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/cockroachdb/crlib v0.0.0-20251122031428-fe658a2dbda1
 	github.com/cockroachdb/datadriven v1.0.3-0.20251123150250-ddff6747b112
@@ -35,7 +35,7 @@ require (
 )
 
 require (
-	github.com/RaduBerinde/btreemap v0.0.0-20250419174037-3d62b7205d54 // indirect
+	github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603 // indirect
 	github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect

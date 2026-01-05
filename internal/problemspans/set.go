@@ -106,10 +106,9 @@ func (s *Set) IsEmpty() bool {
 func (s *Set) Len() int {
 	s.now = s.nowFn()
 	n := 0
-	s.rt.EnumerateAll(func(start, end axisds.Endpoint[[]byte], prop expirationTime) bool {
+	for range s.rt.All() {
 		n++
-		return true
-	})
+	}
 	return n
 }
 
@@ -117,10 +116,9 @@ func (s *Set) Len() int {
 func (s *Set) String() string {
 	var buf strings.Builder
 	s.now = s.nowFn()
-	s.rt.EnumerateAll(func(start, end axisds.Endpoint[[]byte], prop expirationTime) bool {
-		fmt.Fprintf(&buf, "%s  expires in: %s\n", keyEndpointIntervalFormatter(start, end), time.Duration(prop)-time.Duration(s.now))
-		return true
-	})
+	for i, exp := range s.rt.All() {
+		fmt.Fprintf(&buf, "%s  expires in: %s\n", keyEndpointIntervalFormatter(i), time.Duration(exp)-time.Duration(s.now))
+	}
 	if buf.Len() == 0 {
 		return "<empty>"
 	}
