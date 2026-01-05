@@ -532,6 +532,10 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 				// to still be open by the time singleLevelIterator.Next is called
 				// and we use the seek key to actually perform the seek.
 				i.secondLevel.synthetic.seekKey = append(i.secondLevel.synthetic.seekKey[:0], key...)
+				// Clear any stale error from previous operations before returning
+				// a valid key. The seekPrefixGE helper clears i.secondLevel.err,
+				// but this early return bypasses it.
+				i.secondLevel.err = nil
 				return &i.secondLevel.synthetic.kv
 			}
 		}
