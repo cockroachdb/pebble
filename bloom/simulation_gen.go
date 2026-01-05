@@ -4,7 +4,7 @@
 
 //go:build ignore
 
-// This program generates the simulation.txt file via:
+// This program generates the simulation.md file via:
 //
 //	go run simulation_gen.go
 package main
@@ -15,7 +15,6 @@ import (
 
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/ascii"
-	"github.com/cockroachdb/pebble/internal/ascii/table"
 )
 
 func main() {
@@ -42,33 +41,32 @@ func main() {
 		}
 	}
 
-	tbl := table.Define[int](
-		table.Int("Bits/key", 8, table.AlignRight, func(bpk int) int { return bpk }),
-		table.Div(),
-		table.Int("Probes", 6, table.AlignCenter, func(bpk int) int { return best[bpk] }),
-		table.Div(),
-		table.String("FPR", 10, table.AlignCenter, func(bpk int) string { return fprStr[bpk][best[bpk]] }),
-	)
-
-	// Render the table.
 	board := ascii.Make(100, 100)
-	rows := make([]int, maxBitsPerKey)
-	for i := range rows {
-		rows[i] = i + 1
-	}
 	cur := board.At(0, 0)
-	cur = tbl.Render(cur, table.RenderOptions{}, rows...)
-	cur = cur.NewlineReturn()
-	cur = cur.WriteString("== Full data ==\n")
+	cur = cur.WriteString("# Bloom filter simulation results\n\n")
+
+	cur = cur.WriteString("| Bits/key | Probes |            FPR            |\n")
+	cur = cur.WriteString("|---------:|:------:|:-------------------------:|\n")
 	for bpk := 1; bpk <= maxBitsPerKey; bpk++ {
-		cur = cur.NewlineReturn()
-		cur = cur.Printf("  %d bits per key:\n", bpk)
+		p := best[bpk]
+		cur = cur.Printf("| %8d |   %2d   | %-25s |\n", bpk, p, fprStr[bpk][p])
+	}
+	cur = cur.NewlineReturn()
+
+	cur = cur.WriteString("\n## Full data\n")
+	cur = cur.WriteString("| Bits/key | Probes |            FPR            |\n")
+	cur = cur.WriteString("|---------:|:------:|:-------------------------:|\n")
+
+	for bpk := 1; bpk <= maxBitsPerKey; bpk++ {
+		if bpk > 1 {
+			cur = cur.WriteString("|          |        |                           |\n")
+		}
 		for p := 1; p <= bpk && p <= maxProbes; p++ {
-			cur = cur.Printf("    %2d probes:  %s\n", p, fprStr[bpk][p])
+			cur = cur.Printf("| %8d |   %2d   | %-25s |\n", bpk, p, fprStr[bpk][p])
 		}
 	}
 	fmt.Println(board.String())
-	err := os.WriteFile("simulation.txt", []byte(board.String()+"\n"), 0644)
+	err := os.WriteFile("simulation.md", []byte(board.String()+"\n"), 0644)
 	if err != nil {
 		panic(err)
 	}

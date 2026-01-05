@@ -14,7 +14,7 @@ import (
 // This table contains the optimal number of probes for each bitsPerKey. For
 // bits per key over 10, probes[10] should be used.
 //
-// The values are derived from simulations (see simulation.txt).
+// The values are derived from simulations (see simulation.md).
 //
 // The standard bloom filter formula does not yield the optimal number for our
 // scheme, which constrains all probes to be inside the same cache line. This is
@@ -33,10 +33,7 @@ var probes = [11]uint32{
 }
 
 func calculateProbes(bitsPerKey uint32) uint32 {
-	if bitsPerKey > 10 {
-		return probes[10]
-	}
-	return probes[bitsPerKey]
+	return probes[min(bitsPerKey, uint32(len(probes)-1))]
 }
 
 // hash implements a hashing algorithm similar to the Murmur hash.
