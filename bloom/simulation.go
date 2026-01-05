@@ -35,47 +35,25 @@ func SimulateFPR(bitsPerKey int, numProbes int) (float64, string) {
 			defer wg.Done()
 			for range ch {
 				numHashes := size - size/10 + rand.IntN(size*2/10)
-				w := newTableFilterWriter(uint32(bitsPerKey))
-				w.numProbes = uint32(numProbes)
+				hc := &hashCollector{}
+				hc.Init()
 				for range numHashes {
-					h := rand.Uint32()
-					ofs := w.numHashes % hashBlockLen
-					if ofs == 0 {
-						// Time for a new block.
-						w.blocks = append(w.blocks, new(hashBlock))
-					}
-					w.blocks[len(w.blocks)-1][ofs] = h
-					w.numHashes++
+					hc.Add(rand.Uint32())
 				}
-				filterData, _, ok := w.Finish()
-				if !ok {
-					continue
-				}
-				filter := tableFilter(filterData)
+				nLines := calculateNumLines(hc.NumHashes(), uint32(bitsPerKey))
+				filter := buildFilter(nLines, uint32(numProbes), hc)
+				hc.Reset()
 
 				queries := cacheLineSize * numHashes
-				negatives := 0
-				nLines := uint32(len(filter)-5) / cacheLineSize
+				positives := 0
+				bits := aliasFilterBits(filter, uint32(len(filter)-5)/cacheLineSize)
 				for range queries {
 					h := rand.Uint32()
-					delta := h>>17 | h<<15
-					lineIdx := h % nLines
-					// Set up a pointer to a [cacheLineSize]byte array. This avoids bound
-					// checks inside the loop.
-					line := (*[cacheLineSize]byte)(filter[lineIdx*cacheLineSize : (lineIdx+1)*cacheLineSize])
-					for range numProbes {
-						// The bit position within the line is (h % cacheLineBits).
-						//  byte index: (h % cacheLineBits)/8 = (h/8) % cacheLineSize
-						//  bit index: (h % cacheLineBits)%8 = h%8
-						val := line[(h>>3)&(cacheLineSize-1)] & (1 << (h & 7)) //gcassert:bce
-						if val == 0 {
-							negatives++
-							break
-						}
-						h += delta
+					if bits.probe(uint8(numProbes), h) {
+						positives++
 					}
 				}
-				positiveRate := 1.0 - (float64(negatives) / float64(queries))
+				positiveRate := float64(positives) / float64(queries)
 				truePositiveRate := float64(numHashes) / float64(1<<32)
 				falsePositiveRate := positiveRate - truePositiveRate
 				fprMu.Lock()
