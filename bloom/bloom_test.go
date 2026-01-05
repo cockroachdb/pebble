@@ -6,9 +6,11 @@ package bloom
 
 import (
 	crand "crypto/rand"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/stretchr/testify/require"
 )
 
@@ -203,20 +205,27 @@ func TestHash(t *testing.T) {
 }
 
 func BenchmarkBloomFilterWriter(b *testing.B) {
-	const keyLen = 128
-	const numKeys = 1024
-	keys := make([][]byte, numKeys)
-	for i := range keys {
-		keys[i] = make([]byte, keyLen)
-		_, _ = crand.Read(keys[i])
-	}
-	b.ResetTimer()
-	policy := FilterPolicy(10)
-	for i := 0; i < b.N; i++ {
-		w := policy.NewWriter()
-		for _, key := range keys {
-			w.AddKey(key)
+	for _, keyLen := range []int{4, 16, 128} {
+		for _, bpk := range []uint32{10, 16} {
+			for _, numKeys := range []int{10_000, 100_000, 1_000_000} {
+				b.Run(fmt.Sprintf("len=%d/bpk=%d/n=%s", keyLen, bpk, crhumanize.Count(numKeys, crhumanize.Compact)), func(b *testing.B) {
+					keys := make([][]byte, numKeys)
+					for i := range keys {
+						keys[i] = make([]byte, keyLen)
+						_, _ = crand.Read(keys[i])
+					}
+					b.ResetTimer()
+					policy := FilterPolicy(bpk)
+					for i := 0; i < b.N; i++ {
+						w := policy.NewWriter()
+						for _, key := range keys {
+							w.AddKey(key)
+						}
+						w.Finish()
+					}
+					b.ReportMetric(float64(b.N*numKeys)/b.Elapsed().Seconds()/1e6, "MKeys/s")
+				})
+			}
 		}
-		w.Finish()
 	}
 }
