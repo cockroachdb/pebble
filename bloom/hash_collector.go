@@ -14,6 +14,7 @@ type hashCollector struct {
 	numHashes uint
 	lastHash  uint32
 
+	curBlock *hashBlock
 	// We store the hashes in blocks.
 	blocks []*hashBlock
 	// Initial "in-line" storage for the blocks slice (to avoid some small
@@ -42,9 +43,10 @@ func (hc *hashCollector) Add(h uint32) {
 	ofs := hc.numHashes % hashBlockLen
 	if ofs == 0 {
 		// Time for a new block.
-		hc.blocks = append(hc.blocks, hashBlockPool.Get().(*hashBlock))
+		hc.curBlock = hashBlockPool.Get().(*hashBlock)
+		hc.blocks = append(hc.blocks, hc.curBlock)
 	}
-	hc.blocks[len(hc.blocks)-1][ofs] = h
+	hc.curBlock[ofs] = h //gcassert:bce
 	hc.numHashes++
 	hc.lastHash = h
 }
