@@ -174,7 +174,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    1 (288B) |       0.0% |        0.0% |           1 |           0
+    1 (304B) |       0.0% |        0.0% |           1 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
@@ -302,7 +302,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    2 (576B) |      66.7% |        0.0% |           2 |           0
+    2 (608B) |      66.7% |        0.0% |           2 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
@@ -413,7 +413,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    2 (576B) |      66.7% |        0.0% |           2 |           0
+    2 (608B) |      66.7% |        0.0% |           2 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
@@ -521,7 +521,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    1 (288B) |      66.7% |        0.0% |           1 |           0
+    1 (304B) |      66.7% |        0.0% |           1 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
@@ -2413,7 +2413,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    2 (576B) |       0.0% |        0.0% |           0 |           0
+    2 (608B) |       0.0% |        0.0% |           0 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
@@ -2517,7 +2517,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    2 (576B) |       0.0% |        0.0% |           0 |           0
+    2 (608B) |       0.0% |        0.0% |           0 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote

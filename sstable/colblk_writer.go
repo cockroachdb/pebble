@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -59,6 +60,7 @@ type RawColumnWriter struct {
 	rangeKeyBlock             colblk.KeyspanBlockWriter
 	valueBlock                *valblk.Writer // nil iff WriterOptions.DisableValueBlocks=true
 	blobRefLivenessIndexBlock blobRefValueLivenessWriter
+	tieringHistogramBlock     tieredmeta.TieringHistogramBlockWriter
 	// filterWriter accumulates the filter block. If not nil, the filter writer
 	// ingests the prefix of each key.
 	filterWriter base.TableFilterWriter
@@ -142,6 +144,7 @@ func newColumnarWriter(
 	w.topLevelIndexBlock.Init()
 	w.rangeDelBlock.Init(w.comparer.Equal)
 	w.rangeKeyBlock.Init(w.comparer.Equal)
+	w.tieringHistogramBlock = tieredmeta.TieringHistogramBlockWriter{}
 	if !o.DisableValueBlocks {
 		flushGovernor := block.MakeFlushGovernor(o.BlockSize, o.BlockSizeThreshold, o.SizeClassAwareThreshold, o.AllocatorSizeClasses)
 		// We use the value block writer in the same goroutine so it's safe to share
@@ -411,6 +414,25 @@ func (w *RawColumnWriter) Add(
 			valuePrefix = block.InPlaceValuePrefix(eval.kcmp.PrefixEqual())
 		}
 	}
+
+	// Track in-place value bytes in tiering histogram.
+	if w.opts.TieringSpanIDGetter != nil && w.opts.TieringAttributeExtractor != nil {
+		if !meta.IsSet() {
+			meta.TieringSpanID = w.opts.TieringSpanIDGetter(key.UserKey)
+			attribute, err := w.opts.TieringAttributeExtractor(key.UserKey, int(eval.kcmp.PrefixLen), value)
+			if err != nil {
+				return err
+			}
+			meta.TieringAttribute = attribute
+		}
+		w.tieringHistogramBlock.Add(tieredmeta.SSTableInPlaceValueBytes, meta.TieringSpanID,
+			meta.TieringAttribute, uint64(len(value)))
+
+		// Track key bytes in tiering histogram summary.
+		w.tieringHistogramBlock.AddKeyBytes(meta.TieringAttribute, w.opts.TieringThreshold,
+			uint64(len(key.UserKey)))
+	}
+
 	return w.add(key, len(value), valueStoredWithKey, valuePrefix, eval, meta)
 }
 
@@ -454,6 +476,34 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	if err := w.blobRefLivenessIndexBlock.addLiveValue(h.ReferenceID, h.BlockID, h.ValueID, uint64(h.ValueLen)); err != nil {
 		return err
 	}
+
+	// Track blob reference bytes in tiering histogram by tier.
+	if w.opts.TieringSpanIDGetter != nil && w.opts.TieringAttributeExtractor != nil && w.opts.BlobReferenceTierGetter != nil {
+		spanID := w.opts.TieringSpanIDGetter(key.UserKey)
+		attribute, err := w.opts.TieringAttributeExtractor(key.UserKey, int(eval.kcmp.PrefixLen), nil)
+		if err != nil {
+			return err
+		}
+
+		var kindAndTier tieredmeta.KindAndTier
+		switch w.opts.BlobReferenceTierGetter(h.ReferenceID) {
+		case base.HotTier:
+			kindAndTier = tieredmeta.SSTableBlobReferenceHotBytes
+		case base.ColdTier:
+			kindAndTier = tieredmeta.SSTableBlobReferenceColdBytes
+		default:
+			panic(errors.AssertionFailedf("unexpected tier %s", w.opts.BlobReferenceTierGetter(h.ReferenceID)))
+		}
+		w.tieringHistogramBlock.Add(kindAndTier, spanID, attribute,
+			uint64(h.ValueLen))
+
+		// TODO(annie): track hot-and-cold blob reference bytes when a value exists
+		// in both tiers. This requires an extra column and changes to pass both
+		// hot and cold blob handles. Use AddHotAndColdBlobRefBytes once implemented.
+
+		w.tieringHistogramBlock.AddKeyBytes(attribute, w.opts.TieringThreshold, uint64(len(key.UserKey)))
+	}
+
 	return nil
 }
 
@@ -1004,6 +1054,13 @@ func (w *RawColumnWriter) Close() (err error) {
 			encoder.AddReferenceLiveness(int(refID), buf)
 		}
 		if _, err := w.layout.WriteBlobRefIndexBlock(encoder.Finish()); err != nil {
+			return err
+		}
+	}
+
+	// Write the tiering histogram block if non-empty.
+	if !w.tieringHistogramBlock.IsEmpty() {
+		if _, err := w.layout.WriteTieringHistogramBlock(w.tieringHistogramBlock.Finish()); err != nil {
 			return err
 		}
 	}
