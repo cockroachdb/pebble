@@ -16,6 +16,7 @@ const (
 	SSTableValue
 	BlobValue
 	BlobReferenceValueLivenessIndex
+	TieringHistogram
 	Filter
 	RangeDel
 	RangeKey
@@ -31,6 +32,7 @@ var kindString = [...]string{
 	SSTableValue:                    "sstval",
 	BlobValue:                       "blobval",
 	BlobReferenceValueLivenessIndex: "blobrefval",
+	TieringHistogram:                "tieringhist",
 	Filter:                          "filter",
 	RangeDel:                        "rangedel",
 	RangeKey:                        "rangekey",

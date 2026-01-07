@@ -140,7 +140,7 @@ func TestHistogramEncoding_Roundtrip(t *testing.T) {
 	prng := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0))
 
 	for range 20 {
-		hw := newHistogramWriter()
+		hw := makeHistogramWriter()
 		numRecords := testutils.RandIntInRange(prng, 10, 200)
 
 		exp := generateRandomRecords(prng, numRecords, hw.record)
