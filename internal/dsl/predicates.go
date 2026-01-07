@@ -7,6 +7,7 @@ package dsl
 import (
 	"fmt"
 	"go/token"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -100,6 +101,39 @@ func (p or[E]) Evaluate(e E) bool {
 	return ok
 }
 
+// CallStackIncludes returns a Predicate that evaluates to true if the call
+// stack includes a function whose fully-qualified name contains the provided
+// substring.
+//
+// This technique is fragile (e.g., can break due to renaming a function), so it
+// should be used judiciously.
+func CallStackIncludes[E any](funcName string) Predicate[E] {
+	return &callStackIncludes[E]{funcName: funcName}
+}
+
+type callStackIncludes[E any] struct {
+	funcName string
+}
+
+func (c *callStackIncludes[E]) String() string {
+	return fmt.Sprintf("(CallStackIncludes %q)", c.funcName)
+}
+
+func (c *callStackIncludes[E]) Evaluate(e E) bool {
+	var pcs [32]uintptr
+	n := runtime.Callers(2, pcs[:])
+	frames := runtime.CallersFrames(pcs[:n])
+	for {
+		frame, more := frames.Next()
+		if strings.Contains(frame.Function, c.funcName) {
+			return true
+		}
+		if !more {
+			return false
+		}
+	}
+}
+
 func parseNot[E any](p *Parser[Predicate[E]], s *Scanner) Predicate[E] {
 	preds := parseVariadicPredicate(p, s)
 	if len(preds) != 1 {
@@ -133,4 +167,10 @@ func parseVariadicPredicate[E any](p *Parser[Predicate[E]], s *Scanner) (ret []P
 	}
 	assertTok(tok, token.RPAREN)
 	return ret
+}
+
+func parseCallStackIncludes[E any](p *Parser[Predicate[E]], s *Scanner) Predicate[E] {
+	funcName := s.ConsumeString()
+	s.Consume(token.RPAREN)
+	return &callStackIncludes[E]{funcName: funcName}
 }
