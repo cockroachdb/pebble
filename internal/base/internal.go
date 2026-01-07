@@ -687,16 +687,24 @@ type TieringSpanID uint64
 //
 // These methods exist to support compaction-only logic (eg, `compaction.Iter`).
 // Regular iteration should use the standard methods that do not surface metadata.
+//
+// The zero-value TieringAttribute indicates no metadata is available.
 type KVMeta struct {
 	TieringSpanID    TieringSpanID
 	TieringAttribute TieringAttribute
 }
 
 func (m KVMeta) String() string {
-	if m == (KVMeta{}) {
+	if !m.IsSet() {
 		return "<no meta>"
 	}
 	return fmt.Sprintf("tiering:span=%d,attr=%d", m.TieringSpanID, m.TieringAttribute)
+}
+
+// IsSet returns true if valid tiering metadata is present. Returns false if
+// TieringAttribute is 0.
+func (m KVMeta) IsSet() bool {
+	return m.TieringAttribute != 0
 }
 
 // Kind returns the KV's internal key kind.
