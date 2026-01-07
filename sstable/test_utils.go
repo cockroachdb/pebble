@@ -143,6 +143,7 @@ func (kv ParsedKVOrSpan) String() string {
 //	a#1,SET:a
 //	force-obsolete: d#2,SET:d
 //	f#3,SET:blob{fileNum=1 blockNum=2 offset=110 valueLen=200}attr=7
+//	a#1,SET:valueA;tiering:span=1,attr=10
 //	Span: d-e:{(#4,RANGEDEL)}
 //	Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
 //	Span: g-l:{(#5,RANGEDEL)}
@@ -166,6 +167,7 @@ func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan
 
 		var kv ParsedKVOrSpan
 		line, kv.ForceObsolete = strings.CutPrefix(line, "force-obsolete:")
+
 		internalKV := base.ParseInternalKV(line)
 		kv.Key = internalKV.K
 		kv.Value = internalKV.InPlaceValue()

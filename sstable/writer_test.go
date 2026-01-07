@@ -598,6 +598,89 @@ func TestWriterWithBlobValueHandles(t *testing.T) {
 	})
 }
 
+func TestWriterWithTieringHistogram(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	var r *Reader
+	defer func() {
+		if r != nil {
+			require.NoError(t, r.Close())
+		}
+	}()
+	formatMeta := func(m *WriterMetadata) string {
+		return fmt.Sprintf(
+			"point:    [%s-%s]\nseqnums:  [%d-%d]\n",
+			m.SmallestPoint, m.LargestPoint,
+			m.SeqNums.Low, m.SeqNums.High)
+	}
+
+	datadriven.RunTest(t, "testdata/writer_tiering_histogram", func(t *testing.T, td *datadriven.TestData) string {
+		switch td.Cmd {
+		case "build":
+			if r != nil {
+				_ = r.Close()
+				r = nil
+			}
+			var meta *WriterMetadata
+			var err error
+			var blockSize int
+			if td.HasArg("block-size") {
+				td.ScanArgs(t, "block-size", &blockSize)
+			}
+
+			// Parse the test data which now includes tiering metadata.
+			kvs, err := ParseTestKVsAndSpans(td.Input, nil /* bv */)
+			if err != nil {
+				return err.Error()
+			}
+			tieringMetadata := make(map[string]ParsedKVOrSpan)
+			for _, kv := range kvs {
+				if kv.Meta != (base.KVMeta{}) && !kv.IsKeySpan() {
+					tieringMetadata[string(kv.Key.UserKey)] = kv
+				}
+			}
+
+			// Create extractors that use the parsed tiering metadata.
+			tieringSpanIDGetter := func(key []byte) base.TieringSpanID {
+				if kv, ok := tieringMetadata[string(key)]; ok {
+					return kv.Meta.TieringSpanID
+				}
+				return 0
+			}
+
+			tieringAttributeExtractor := func(key []byte, keyPrefixLen int, value []byte) (base.TieringAttribute, error) {
+				// Values with tiering info are provided via KVMeta.TieringSpanID instead.
+				return 0, nil
+			}
+
+			meta, r, err = runBuildCmd(td, &WriterOptions{
+				BlockSize:                 blockSize,
+				Comparer:                  testkeys.Comparer,
+				TableFormat:               TableFormatMax,
+				TieringSpanIDGetter:       tieringSpanIDGetter,
+				TieringAttributeExtractor: tieringAttributeExtractor,
+				WriteTieringHistograms:    len(tieringMetadata) > 0,
+				DisableValueBlocks:        true,
+			}, nil /* cacheHandle */)
+			if err != nil {
+				return err.Error()
+			}
+			return formatMeta(meta)
+
+		case "layout":
+			l, err := r.Layout()
+			if err != nil {
+				return err.Error()
+			}
+			return l.Describe(true, r, func(key *base.InternalKey, value []byte) string {
+				return fmt.Sprintf("%s:%s", key.String(), asciiOrHex(value))
+			})
+
+		default:
+			return fmt.Sprintf("unknown command: %s", td.Cmd)
+		}
+	})
+}
+
 func asciiOrHex(b []byte) string {
 	if bytes.ContainsFunc(b, func(r rune) bool { return r < ' ' || r > '~' }) {
 		return fmt.Sprintf("hex:%x", b)
