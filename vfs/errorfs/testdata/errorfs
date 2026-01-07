@@ -64,6 +64,7 @@ parse-dsl
 (ErrInjected (Randomly 18520850252 0.25))
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05 185957252)))
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05)))
+(ErrInjected (And (PathMatch "*.sst") (CallStackIncludes "newPointIter")))
 ----
 parsing err: dsl: unexpected token (INT, "0") at pos 24; expected FLOAT
 (ErrInjected (Randomly 0.10))
@@ -73,6 +74,7 @@ parsing err: dsl: unexpected token - at pos 24; expected FLOAT
 parsing err: dsl: unexpected token (INT, "18520850252") at pos 24; expected FLOAT
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05 185957252)))
 (ErrInjected (And (PathMatch "*.sst") (Randomly 0.05)))
+(ErrInjected (And (PathMatch "*.sst") (CallStackIncludes "newPointIter")))
 
 parse-dsl
 (RandomLatency "1.5ms" 0)
@@ -81,6 +83,7 @@ parse-dsl
 (RandomLatency "200bingos" 18520850252  (PathMatch "*.log"))
 (RandomLatency "200µs" (PathMatch "*.log"))
 (RandomLatency "1.5ms" 0
+(RandomLatency "1.5ms" 0 (CallStackIncludes "pebble.NewIterWithContext"))
 ----
 (RandomLatency "1.5ms" 0)
 (RandomLatency "1.5ms" 0 (Randomly 0.10))
@@ -88,3 +91,4 @@ parse-dsl
 parsing err: parsing RandomLatency: time: unknown unit "bingos" in duration "200bingos"
 parsing err: dsl: unexpected token ( at pos 25; expected INT
 parsing err: errorfs: unexpected token (;, "\n") at pos 25; expected )
+(RandomLatency "1.5ms" 0 (CallStackIncludes "pebble.NewIterWithContext"))

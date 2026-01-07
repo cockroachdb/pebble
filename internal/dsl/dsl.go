@@ -33,6 +33,7 @@ func NewPredicateParser[E any]() *Parser[Predicate[E]] {
 	p.DefineFunc("And", parseAnd[E])
 	p.DefineFunc("Or", parseOr[E])
 	p.DefineFunc("OnIndex", parseOnIndex[E])
+	p.DefineFunc("CallStackIncludes", parseCallStackIncludes[E])
 	return p
 }
 
