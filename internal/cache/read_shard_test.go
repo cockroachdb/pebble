@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/cockroachdb/datadriven"
@@ -120,112 +121,115 @@ func TestReadShard(t *testing.T) {
 		}
 	}
 	defer freeShard()
-	datadriven.RunTest(t, "testdata/read_shard",
-		func(t *testing.T, td *datadriven.TestData) string {
-			switch td.Cmd {
-			case "init":
-				freeShard()
-				var maxSize int64
-				td.ScanArgs(t, "max-size", &maxSize)
-				c = &shard{}
-				c.init(maxSize)
-				if len(readers) > 0 {
-					t.Fatalf("have %d readers that have not completed", len(readers))
-				}
-				readers = map[string]*testReader{}
-				return ""
 
-			case "get":
-				var name string
-				td.ScanArgs(t, "name", &name)
-				if _, ok := readers[name]; ok {
-					t.Fatalf("reader with name %s already exists", name)
-				}
-				var id, fileNum, offset int
-				td.ScanArgs(t, "id", &id)
-				td.ScanArgs(t, "file-num", &fileNum)
-				td.ScanArgs(t, "offset", &offset)
-				ctx := context.Background()
-				if td.HasArg("cancelled-context") {
-					var cancelFunc context.CancelFunc
-					ctx, cancelFunc = context.WithCancel(ctx)
-					cancelFunc()
-				}
-				r := newTestReader(ctx, handleID(id), base.DiskFileNum(fileNum), uint64(offset), &mu)
-				val := r.getAsync(c)
-				if val != nil {
-					return fmt.Sprintf("val: %s", *val)
-				}
-				readers[name] = r
-				time.Sleep(10 * time.Millisecond)
-				return fmt.Sprintf("waiting\nmap-len: %d", c.readShard.lenForTesting())
+	synctest.Test(t, func(t *testing.T) {
+		datadriven.RunTest(t, "testdata/read_shard",
+			func(t *testing.T, td *datadriven.TestData) string {
+				switch td.Cmd {
+				case "init":
+					freeShard()
+					var maxSize int64
+					td.ScanArgs(t, "max-size", &maxSize)
+					c = &shard{}
+					c.init(maxSize)
+					if len(readers) > 0 {
+						t.Fatalf("have %d readers that have not completed", len(readers))
+					}
+					readers = map[string]*testReader{}
+					return ""
 
-			case "wait":
-				var name string
-				td.ScanArgs(t, "name", &name)
-				val, err := readers[name].waitUntilFinishedWait()
-				if val != nil || err != nil {
-					delete(readers, name)
+				case "get":
+					var name string
+					td.ScanArgs(t, "name", &name)
+					if _, ok := readers[name]; ok {
+						t.Fatalf("reader with name %s already exists", name)
+					}
+					var id, fileNum, offset int
+					td.ScanArgs(t, "id", &id)
+					td.ScanArgs(t, "file-num", &fileNum)
+					td.ScanArgs(t, "offset", &offset)
+					ctx := context.Background()
+					if td.HasArg("cancelled-context") {
+						var cancelFunc context.CancelFunc
+						ctx, cancelFunc = context.WithCancel(ctx)
+						cancelFunc()
+					}
+					r := newTestReader(ctx, handleID(id), base.DiskFileNum(fileNum), uint64(offset), &mu)
+					val := r.getAsync(c)
 					if val != nil {
-						return fmt.Sprintf("val: %s\nmap-len: %d", *val, c.readShard.lenForTesting())
+						return fmt.Sprintf("val: %s", *val)
 					}
-					if err != nil {
-						return fmt.Sprintf("err: %s\nmap-len: %d", err.Error(), c.readShard.lenForTesting())
+					readers[name] = r
+					synctest.Wait()
+					return fmt.Sprintf("waiting\nmap-len: %d", c.readShard.lenForTesting())
+
+				case "wait":
+					var name string
+					td.ScanArgs(t, "name", &name)
+					val, err := readers[name].waitUntilFinishedWait()
+					if val != nil || err != nil {
+						delete(readers, name)
+						if val != nil {
+							return fmt.Sprintf("val: %s\nmap-len: %d", *val, c.readShard.lenForTesting())
+						}
+						if err != nil {
+							return fmt.Sprintf("err: %s\nmap-len: %d", err.Error(), c.readShard.lenForTesting())
+						}
 					}
+					return fmt.Sprintf("turn to read\nmap-len: %d", c.readShard.lenForTesting())
+
+				case "set-read-value":
+					var name string
+					td.ScanArgs(t, "name", &name)
+					var val string
+					td.ScanArgs(t, "val", &val)
+					readers[name].setReadValue(t, val)
+					delete(readers, name)
+					synctest.Wait()
+					return fmt.Sprintf("map-len: %d", c.readShard.lenForTesting())
+
+				case "set-error":
+					var name string
+					td.ScanArgs(t, "name", &name)
+					readers[name].setError(errors.Errorf("read error: %s", name))
+					delete(readers, name)
+					synctest.Wait()
+					return fmt.Sprintf("map-len: %d", c.readShard.lenForTesting())
+
+				case "print-shard":
+					return func() string {
+						c.mu.RLock()
+						defer c.mu.RUnlock()
+						type shardEntry struct {
+							k          key
+							hasValue   bool
+							referenced bool
+						}
+						var entries []shardEntry
+						c.blocks.All(func(k key, e *entry) bool {
+							entries = append(entries,
+								shardEntry{k: k, hasValue: e.val != nil, referenced: e.referenced.Load()})
+							return true
+						})
+						slices.SortFunc(entries, func(a, b shardEntry) int {
+							return cmp.Or(
+								cmp.Compare(a.k.id, b.k.id), cmp.Compare(a.k.fileNum, b.k.fileNum),
+								cmp.Compare(a.k.offset, b.k.offset))
+						})
+						var b strings.Builder
+						for _, e := range entries {
+							fmt.Fprintf(&b, "id=%d file=%d offset=%d hasValue=%t referenced=%t\n",
+								e.k.id, e.k.fileNum, e.k.offset, e.hasValue, e.referenced)
+						}
+						return b.String()
+					}()
+
+				default:
+					return fmt.Sprintf("unknown command: %s", td.Cmd)
+
 				}
-				return fmt.Sprintf("turn to read\nmap-len: %d", c.readShard.lenForTesting())
-
-			case "set-read-value":
-				var name string
-				td.ScanArgs(t, "name", &name)
-				var val string
-				td.ScanArgs(t, "val", &val)
-				readers[name].setReadValue(t, val)
-				delete(readers, name)
-				time.Sleep(10 * time.Millisecond)
-				return fmt.Sprintf("map-len: %d", c.readShard.lenForTesting())
-
-			case "set-error":
-				var name string
-				td.ScanArgs(t, "name", &name)
-				readers[name].setError(errors.Errorf("read error: %s", name))
-				delete(readers, name)
-				time.Sleep(10 * time.Millisecond)
-				return fmt.Sprintf("map-len: %d", c.readShard.lenForTesting())
-
-			case "print-shard":
-				return func() string {
-					c.mu.RLock()
-					defer c.mu.RUnlock()
-					type shardEntry struct {
-						k          key
-						hasValue   bool
-						referenced bool
-					}
-					var entries []shardEntry
-					c.blocks.All(func(k key, e *entry) bool {
-						entries = append(entries,
-							shardEntry{k: k, hasValue: e.val != nil, referenced: e.referenced.Load()})
-						return true
-					})
-					slices.SortFunc(entries, func(a, b shardEntry) int {
-						return cmp.Or(
-							cmp.Compare(a.k.id, b.k.id), cmp.Compare(a.k.fileNum, b.k.fileNum),
-							cmp.Compare(a.k.offset, b.k.offset))
-					})
-					var b strings.Builder
-					for _, e := range entries {
-						fmt.Fprintf(&b, "id=%d file=%d offset=%d hasValue=%t referenced=%t\n",
-							e.k.id, e.k.fileNum, e.k.offset, e.hasValue, e.referenced)
-					}
-					return b.String()
-				}()
-
-			default:
-				return fmt.Sprintf("unknown command: %s", td.Cmd)
-
-			}
-		})
+			})
+	})
 }
 
 // testSyncReaders is the config for multiple readers concurrently reading the
