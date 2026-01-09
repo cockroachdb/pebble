@@ -24,7 +24,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       642B     0.00     0.01           0.01
+L5       676B     0.00     0.01           0.01
 L6       321KB    1.11     1.11           1.11
 
 enable-table-stats
@@ -37,7 +37,7 @@ num-entries: 1
 num-deletions: 1
 num-range-key-sets: 0
 point-deletions-bytes-estimate: 0
-range-deletions-bytes-estimate: 328795
+range-deletions-bytes-estimate: 328823
 compression: None:79
 
 scores
@@ -48,7 +48,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       642B     0.01     0.01           5.03
+L5       676B     0.01     0.01           5.03
 L6       321KB    1.11     1.11           1.11
 
 # Ensure that point deletions in a higher level result in a compensated level
@@ -81,7 +81,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       709B     0.00     0.01           0.01
+L5       742B     0.00     0.01           0.01
 L6       321KB    1.11     1.11           1.11
 
 enable-table-stats
@@ -105,7 +105,7 @@ L1       0B       0.00     0.00           0.00
 L2       0B       0.00     0.00           0.00
 L3       0B       0.00     0.00           0.00
 L4       0B       0.00     0.00           0.00
-L5       709B     0.01     0.01           5.01
+L5       742B     0.01     0.01           5.01
 L6       321KB    1.11     1.11           1.11
 
 # Run a similar test as above, but this time the table containing the DELs is
@@ -172,6 +172,8 @@ lsm
 ----
 L6:
   000006:[a#0,SET-e#0,SET]
+Blob files:
+  B000007 physical:{000007 size:[328011 (320KB)] vals:[327680 (320KB)]}
 
 # Test the adjustment of level sizes to accommodate in-progress compactions. A
 # compaction may be "inProgress" if it's already been applied, but is still
@@ -215,11 +217,11 @@ L6       386KB    0.00     0.42           0.42
 lsm verbose
 ----
 L5:
-  000004:[aa#2,SET-dd#2,SET] seqnums:[#2-#2] points:[aa#2,SET-dd#2,SET] size:525303
-  000005:[e#2,SET-e#2,SET] seqnums:[#2-#2] points:[e#2,SET-e#2,SET] size:131758
+  000004:[aa#2,SET-dd#2,SET] seqnums:[#2-#2] points:[aa#2,SET-dd#2,SET] size:525331
+  000005:[e#2,SET-e#2,SET] seqnums:[#2-#2] points:[e#2,SET-e#2,SET] size:131786
 L6:
-  000006:[a#1,SET-d#1,SET] seqnums:[#1-#1] points:[a#1,SET-d#1,SET] size:263155
-  000007:[e#1,SET-e#1,SET] seqnums:[#1-#1] points:[e#1,SET-e#1,SET] size:131758
+  000006:[a#1,SET-d#1,SET] seqnums:[#1-#1] points:[a#1,SET-d#1,SET] size:263183
+  000007:[e#1,SET-e#1,SET] seqnums:[#1-#1] points:[e#1,SET-e#1,SET] size:131786
 
 # Attempting to schedule a compaction should begin a L5->L6 compaction.
 
@@ -251,6 +253,8 @@ L5:
 L6:
   000008:[a#0,SET-dd#0,SET]
   000007:[e#1,SET-e#1,SET]
+Blob files:
+  B000009 physical:{000009 size:[786865 (768KB)] vals:[786432 (768KB)]}
 
 resume-cleaning
 ----

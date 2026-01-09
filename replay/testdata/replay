@@ -11,7 +11,7 @@ tree
      508      000007.sst
        0      LOCK
      133      MANIFEST-000001
-    2733      OPTIONS-000002
+    2946      OPTIONS-000002
        0      marker.format-version.000001.013
        0      marker.manifest.000001.MANIFEST-000001
             simple/
@@ -21,7 +21,7 @@ tree
       11        000004.log
      480        000005.sst
       85        MANIFEST-000001
-    2733        OPTIONS-000002
+    2946        OPTIONS-000002
        0        marker.format-version.000001.013
        0        marker.manifest.000001.MANIFEST-000001
 
@@ -74,6 +74,15 @@ cat build/OPTIONS-000002
   wal_bytes_per_sync=0
   secondary_cache_size_bytes=0
   create_on_shared=0
+
+[Value Separation]
+  enabled=true
+  minimum_size=256
+  minimum_mvcc_garbage_size=1024
+  max_blob_reference_depth=10
+  rewrite_minimum_age=5m0s
+  garbage_ratio_low_priority=0.10
+  garbage_ratio_high_priority=0.20
 
 [Level "0"]
   block_restart_interval=16
