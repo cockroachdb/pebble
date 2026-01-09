@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"unsafe"
@@ -29,6 +30,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/sstable/rowblk"
+	"github.com/cockroachdb/pebble/sstable/tieredmeta"
 	"github.com/cockroachdb/pebble/sstable/valblk"
 )
 
@@ -49,6 +51,7 @@ type Layout struct {
 	Properties         block.Handle
 	MetaIndex          block.Handle
 	BlobReferenceIndex block.Handle
+	TieringHistogram   block.Handle
 	Footer             block.Handle
 	Format             TableFormat
 }
@@ -91,6 +94,9 @@ func (l *Layout) orderedBlocks() []NamedBlockHandle {
 	}
 	if l.BlobReferenceIndex.Length != 0 {
 		blocks = append(blocks, NamedBlockHandle{l.BlobReferenceIndex, "blob-reference-index"})
+	}
+	if l.TieringHistogram.Length != 0 {
+		blocks = append(blocks, NamedBlockHandle{l.TieringHistogram, "tiering-histogram"})
 	}
 	if l.Footer.Length != 0 {
 		if l.Footer.Length == levelDBFooterLen {
@@ -379,6 +385,30 @@ func (l *Layout) Describe(
 							enc.BlockID, enc.ValuesSize, enc.BitmapSize, enc.Bitmap)
 					}
 					offset += length
+				}
+			case "tiering-histogram":
+				h, err = r.readTieringHistogramBlock(ctx, block.NoReadEnv, noReadHandle, r.tieringHistogramBH)
+				if err != nil {
+					return err
+				}
+				summary, histograms, err := tieredmeta.DecodeTieringHistogramBlock(h.BlockData())
+				if err != nil {
+					return err
+				}
+				tpNode.Childf("summary: key-bytes=%d key-bytes-below-threshold=%d hot-cold-blob-ref-bytes=%d",
+					summary.KeyBytesTotal, summary.KeyBytesBelowThreshold, summary.HotAndColdBlobRefBytes)
+				keys := slices.Collect(maps.Keys(histograms))
+				// Display per-(span,kind) histograms in sorted order.
+				slices.SortFunc(keys, func(a, b tieredmeta.Key) int {
+					if c := cmp.Compare(a.TieringSpanID, b.TieringSpanID); c != 0 {
+						return c
+					}
+					return cmp.Compare(a.KindAndTier, b.KindAndTier)
+				})
+				for _, key := range keys {
+					histogram := histograms[key]
+					tpNode.Childf("span=%d kind=%d: total-bytes=%d total-count=%d bytes-no-attr=%d",
+						key.TieringSpanID, key.KindAndTier, histogram.TotalBytes, histogram.TotalCount, histogram.BytesNoAttr)
 				}
 			}
 
@@ -915,6 +945,14 @@ func (w *layoutWriter) WriteRangeKeyBlock(b []byte) (block.Handle, error) {
 // is finished.
 func (w *layoutWriter) WriteBlobRefIndexBlock(b []byte) (block.Handle, error) {
 	return w.writeNamedBlockUncompressed(b, blockkind.BlobReferenceValueLivenessIndex, metaBlobRefIndexName)
+}
+
+// WriteTieringHistogramBlock constructs a trailer for the provided tiering
+// histogram block and writes the block and trailer to the writer. It
+// automatically adds the tiering histogram block to the file's meta index when
+// the writer is finished.
+func (w *layoutWriter) WriteTieringHistogramBlock(b []byte) (block.Handle, error) {
+	return w.writeNamedBlockUncompressed(b, blockkind.TieringHistogram, metaTieringHistogramName)
 }
 
 // WriteRangeDeletionBlock constructs a trailer for the provided range deletion

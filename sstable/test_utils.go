@@ -110,6 +110,10 @@ type ParsedKVOrSpan struct {
 	BlobHandle blob.InlineHandle
 	Attr       base.ShortAttribute
 	Meta       base.KVMeta
+	// Tiering metadata (optional, for tiering histogram tests).
+	HasTiering       bool
+	TieringSpanID    base.TieringSpanID
+	TieringAttribute base.TieringAttribute
 }
 
 func (kv ParsedKVOrSpan) IsKeySpan() bool {
@@ -125,10 +129,44 @@ func (kv ParsedKVOrSpan) String() string {
 		return fmt.Sprintf("Span: %s", kv.Span)
 	}
 	prefix := crstrings.If(kv.ForceObsolete, "force-obsolete: ")
-	if !kv.HasBlobValue() {
-		return fmt.Sprintf("%s%s = %s", prefix, kv.Key, kv.Value)
+	tieringSuffix := ""
+	if kv.HasTiering {
+		tieringSuffix = fmt.Sprintf(" tiering={spanID=%d attr=%d}", kv.TieringSpanID, kv.TieringAttribute)
 	}
-	return fmt.Sprintf("%s%s = blob:%s attr=%d", prefix, kv.Key, kv.BlobHandle, kv.Attr)
+	if !kv.HasBlobValue() {
+		return fmt.Sprintf("%s%s = %s%s", prefix, kv.Key, kv.Value, tieringSuffix)
+	}
+	return fmt.Sprintf("%s%s = blob:%s attr=%d%s", prefix, kv.Key, kv.BlobHandle, kv.Attr, tieringSuffix)
+}
+
+// parseTieringMetadata parses tiering metadata from a string of the form
+// "spanID=X attr=Y" and returns the parsed values.
+func parseTieringMetadata(s string) (base.TieringSpanID, base.TieringAttribute, error) {
+	var spanID base.TieringSpanID
+	var attr base.TieringAttribute
+	for _, part := range strings.Fields(s) {
+		keyVal := strings.Split(part, "=")
+		if len(keyVal) != 2 {
+			return 0, 0, errors.Newf("invalid tiering metadata: %q", part)
+		}
+		switch keyVal[0] {
+		case "spanID":
+			val, err := strconv.Atoi(keyVal[1])
+			if err != nil {
+				return 0, 0, errors.Wrapf(err, "parsing spanID")
+			}
+			spanID = base.TieringSpanID(val)
+		case "attr":
+			val, err := strconv.Atoi(keyVal[1])
+			if err != nil {
+				return 0, 0, errors.Wrapf(err, "parsing attr")
+			}
+			attr = base.TieringAttribute(val)
+		default:
+			return 0, 0, errors.Newf("unknown tiering field: %q", keyVal[0])
+		}
+	}
+	return spanID, attr, nil
 }
 
 // ParseTestKVsAndSpans parses a multi-line string that defines SSTable
@@ -143,6 +181,7 @@ func (kv ParsedKVOrSpan) String() string {
 //	a#1,SET:a
 //	force-obsolete: d#2,SET:d
 //	f#3,SET:blob{fileNum=1 blockNum=2 offset=110 valueLen=200}attr=7
+//	a#1,SET:valueA tiering={spanID=1 attr=10}
 //	Span: d-e:{(#4,RANGEDEL)}
 //	Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
 //	Span: g-l:{(#5,RANGEDEL)}
@@ -166,6 +205,24 @@ func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan
 
 		var kv ParsedKVOrSpan
 		line, kv.ForceObsolete = strings.CutPrefix(line, "force-obsolete:")
+
+		// Check for tiering metadata suffix: tiering={spanID=X attr=Y}.
+		if idx := strings.Index(line, " tiering={"); idx != -1 {
+			tieringPart := line[idx+10:]
+			if endIdx := strings.Index(tieringPart, "}"); endIdx != -1 {
+				tieringStr := tieringPart[:endIdx]
+				line = line[:idx]
+
+				spanID, attr, err := parseTieringMetadata(tieringStr)
+				if err != nil {
+					return nil, err
+				}
+				kv.TieringSpanID = spanID
+				kv.TieringAttribute = attr
+				kv.HasTiering = true
+			}
+		}
+
 		internalKV := base.ParseInternalKV(line)
 		kv.Key = internalKV.K
 		kv.Value = internalKV.InPlaceValue()

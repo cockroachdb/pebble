@@ -231,6 +231,35 @@ type WriterOptions struct {
 	// Options.Experimental.ShortAttributeExtractor.
 	ShortAttributeExtractor base.ShortAttributeExtractor
 
+	// TieringSpanIDGetter returns the tiering span ID for a key. The span ID
+	// is determined by policy (e.g., which logical partition the key belongs to).
+	// Used to populate tiering histograms when WriteTieringHistograms is true.
+	TieringSpanIDGetter func(key []byte) base.TieringSpanID
+
+	// TieringAttributeExtractor extracts the tiering attribute from a key-value
+	// pair. The attribute is data-driven metadata (e.g., access frequency).
+	// Used to populate tiering histograms when WriteTieringHistograms is true.
+	TieringAttributeExtractor func(key []byte, keyPrefixLen int, value []byte) (base.TieringAttribute, error)
+
+	// WriteTieringHistograms enables writing tiering histogram blocks to the
+	// sstable. Requires TieringSpanIDGetter and TieringAttributeExtractor to be set.
+	WriteTieringHistograms bool
+
+	// BlobReferenceTierGetter returns the storage tier for a blob reference ID.
+	// Used when WriteTieringHistograms is true to categorize blob references as
+	// hot or cold tier.
+	BlobReferenceTierGetter func(base.BlobReferenceID) base.StorageTier
+
+	// BlobValueExistsInBothTiers returns true if a blob reference ID points to a
+	// value that exists in both hot and cold tiers. This happens during tiering
+	// transitions when a value has been copied to cold storage but the hot copy
+	// hasn't been deleted yet. Used when WriteTieringHistograms is true.
+	BlobValueExistsInBothTiers func(base.BlobReferenceID) bool
+
+	// TieringThreshold is the tiering attribute threshold used to categorize keys
+	// as below or above threshold in the histogram summary.
+	TieringThreshold base.TieringAttribute
+
 	// DisableValueBlocks is only used for TableFormat >= TableFormatPebblev3,
 	// and if set to true, does not write any values to value blocks. This is
 	// only intended for cases where the in-memory buffering of all value blocks

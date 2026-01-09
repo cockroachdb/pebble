@@ -71,16 +71,6 @@ const (
 	NumKindAndTiers
 )
 
-// TieringHistogramBlockWriter is instantiated for each output file that
-// requires tiering histograms.
-type TieringHistogramBlockWriter struct {
-	writers map[Key]*histogramWriter
-	// Per-sstable summary counters.
-	keyBytesTotal          uint64
-	keyBytesBelowThreshold uint64
-	hotAndColdBlobRefBytes uint64
-}
-
 // Key is a unique identifier for a histogram.
 type Key struct {
 	KindAndTier
@@ -110,6 +100,16 @@ func (k *Key) decode(data []byte) error {
 	return nil
 }
 
+// TieringHistogramBlockWriter is instantiated for each output file that
+// requires tiering histograms.
+type TieringHistogramBlockWriter struct {
+	writers map[Key]*histogramWriter
+	// Per-sstable summary counters.
+	keyBytesTotal          uint64
+	keyBytesBelowThreshold uint64
+	hotAndColdBlobRefBytes uint64
+}
+
 func MakeTieringHistogramBlockWriter() TieringHistogramBlockWriter {
 	return TieringHistogramBlockWriter{
 		writers: make(map[Key]*histogramWriter),
@@ -122,7 +122,7 @@ func (w *TieringHistogramBlockWriter) Add(
 	k := Key{kt, spanID}
 	hw, ok := w.writers[k]
 	if !ok {
-		hw = newHistogramWriter()
+		hw = makeHistogramWriter()
 		w.writers[k] = hw
 	}
 	hw.record(attr, bytes)
@@ -148,11 +148,18 @@ func (w *TieringHistogramBlockWriter) AddHotAndColdBlobRefBytes(bytes uint64) {
 }
 
 // Reset clears the writer to an empty state, retaining the map for reuse.
-func (w *TieringHistogramBlockWriter) Reset() {
+func (w *TieringHistogramBlockWriter) reset() {
 	clear(w.writers)
 	w.keyBytesTotal = 0
 	w.keyBytesBelowThreshold = 0
 	w.hotAndColdBlobRefBytes = 0
+}
+
+// IsEmpty returns true if no histograms have been added to the histogram block
+// and the per-sstable summary fields (keyBytesTotal, etc.) are zero.
+func (w *TieringHistogramBlockWriter) IsEmpty() bool {
+	return len(w.writers) == 0 && w.keyBytesTotal == 0 &&
+		w.keyBytesBelowThreshold == 0 && w.hotAndColdBlobRefBytes == 0
 }
 
 // Finish returns the encoded block contents. The writer is reset and can be
@@ -180,7 +187,7 @@ func (w *TieringHistogramBlockWriter) Finish() []byte {
 	buf = binary.AppendUvarint(buf, w.hotAndColdBlobRefBytes)
 	buf = append(buf, histograms...)
 
-	w.Reset()
+	w.reset()
 	return buf
 }
 

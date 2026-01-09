@@ -54,15 +54,16 @@ type Reader struct {
 
 	err error
 
-	indexBH        block.Handle
-	filterBH       block.Handle
-	rangeDelBH     block.Handle
-	rangeKeyBH     block.Handle
-	valueBIH       valblk.IndexHandle
-	propertiesBH   block.Handle
-	metaindexBH    block.Handle
-	footerBH       block.Handle
-	blobRefIndexBH block.Handle
+	indexBH            block.Handle
+	filterBH           block.Handle
+	rangeDelBH         block.Handle
+	rangeKeyBH         block.Handle
+	valueBIH           valblk.IndexHandle
+	propertiesBH       block.Handle
+	metaindexBH        block.Handle
+	footerBH           block.Handle
+	blobRefIndexBH     block.Handle
+	tieringHistogramBH block.Handle
 
 	tableFormat    TableFormat
 	Attributes     Attributes
@@ -460,6 +461,12 @@ func (r *Reader) readBlobRefIndexBlock(
 	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.BlobReferenceValueLivenessIndex, noInitBlockMetadataFn)
 }
 
+func (r *Reader) readTieringHistogramBlock(
+	ctx context.Context, env block.ReadEnv, readHandle objstorage.ReadHandle, bh block.Handle,
+) (block.BufferHandle, error) {
+	return r.blockReader.Read(ctx, env, readHandle, bh, blockkind.TieringHistogram, noInitBlockMetadataFn)
+}
+
 // metaBufferPools is a sync pool of BufferPools used exclusively when opening a
 // table and loading its meta blocks.
 var metaBufferPools = sync.Pool{
@@ -519,6 +526,10 @@ func (r *Reader) initMetaindexBlocks(
 
 	if bh, ok := meta[metaBlobRefIndexName]; ok {
 		r.blobRefIndexBH = bh
+	}
+
+	if bh, ok := meta[metaTieringHistogramName]; ok {
+		r.tieringHistogramBH = bh
 	}
 
 	if bh, ok := meta[metaRangeDelV2Name]; ok {
@@ -623,6 +634,7 @@ func (r *Reader) Layout() (*Layout, error) {
 		Footer:             r.footerBH,
 		Format:             r.tableFormat,
 		BlobReferenceIndex: r.blobRefIndexBH,
+		TieringHistogram:   r.tieringHistogramBH,
 	}
 
 	bufferPool := metaBufferPools.Get().(*block.BufferPool)

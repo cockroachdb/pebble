@@ -169,7 +169,7 @@ type histogramWriter struct {
 	zeroBytes  uint64
 }
 
-func newHistogramWriter() *histogramWriter {
+func makeHistogramWriter() *histogramWriter {
 	return &histogramWriter{
 		builder: tdigest.MakeBuilder(digestDelta),
 	}
