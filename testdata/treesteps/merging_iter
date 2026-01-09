@@ -13,11 +13,11 @@ L3
   c#1,SET:vc
 ----
 L1:
-  000004:[a@1#10,SET-e#10,SET] seqnums:[#10-#10] points:[a@1#10,SET-e#10,SET] size:680
+  000004:[a@1#10,SET-e#10,SET] seqnums:[#10-#10] points:[a@1#10,SET-e#10,SET] size:708
 L2:
-  000005:[a#5,SET-d#5,SET] seqnums:[#5-#5] points:[a#5,SET-d#5,SET] size:844
+  000005:[a#5,SET-d#5,SET] seqnums:[#5-#5] points:[a#5,SET-d#5,SET] size:866
 L3:
-  000006:[c#1,SET-c#1,SET] seqnums:[#1-#1] points:[c#1,SET-c#1,SET] size:651
+  000006:[c#1,SET-c#1,SET] seqnums:[#1-#1] points:[c#1,SET-c#1,SET] size:679
 
 merging-iter depth=2
 seek-ge a
@@ -65,14 +65,14 @@ L2
   f2#1,SET:va
 ----
 L1:
-  000004:[c#10,RANGEDEL-f#inf,RANGEDEL] seqnums:[#10-#10] points:[c#10,RANGEDEL-f#inf,RANGEDEL] size:642
+  000004:[c#10,RANGEDEL-f#inf,RANGEDEL] seqnums:[#10-#10] points:[c#10,RANGEDEL-f#inf,RANGEDEL] size:676
 L2:
-  000005:[a1#1,SET-a2#1,SET] seqnums:[#1-#1] points:[a1#1,SET-a2#1,SET] size:669
-  000006:[b1#1,SET-b2#1,SET] seqnums:[#1-#1] points:[b1#1,SET-b2#1,SET] size:669
-  000007:[c1#1,SET-c2#1,SET] seqnums:[#1-#1] points:[c1#1,SET-c2#1,SET] size:669
-  000008:[d1#1,SET-d2#1,SET] seqnums:[#1-#1] points:[d1#1,SET-d2#1,SET] size:669
-  000009:[e1#1,SET-e2#1,SET] seqnums:[#1-#1] points:[e1#1,SET-e2#1,SET] size:669
-  000010:[f1#1,SET-f2#1,SET] seqnums:[#1-#1] points:[f1#1,SET-f2#1,SET] size:669
+  000005:[a1#1,SET-a2#1,SET] seqnums:[#1-#1] points:[a1#1,SET-a2#1,SET] size:697
+  000006:[b1#1,SET-b2#1,SET] seqnums:[#1-#1] points:[b1#1,SET-b2#1,SET] size:697
+  000007:[c1#1,SET-c2#1,SET] seqnums:[#1-#1] points:[c1#1,SET-c2#1,SET] size:697
+  000008:[d1#1,SET-d2#1,SET] seqnums:[#1-#1] points:[d1#1,SET-d2#1,SET] size:697
+  000009:[e1#1,SET-e2#1,SET] seqnums:[#1-#1] points:[e1#1,SET-e2#1,SET] size:697
+  000010:[f1#1,SET-f2#1,SET] seqnums:[#1-#1] points:[f1#1,SET-f2#1,SET] size:697
 
 merging-iter depth=2
 first

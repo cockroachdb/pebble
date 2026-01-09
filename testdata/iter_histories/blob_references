@@ -12,9 +12,9 @@ L6
   d@2#2,SET:v
 ----
 L5:
-  000004:[b@9#9,SET-d@9#9,SET] seqnums:[#9-#9] points:[b@9#9,SET-d@9#9,SET] size:817 blobrefs:[(B000921: 10); depth:1]
+  000004:[b@9#9,SET-d@9#9,SET] seqnums:[#9-#9] points:[b@9#9,SET-d@9#9,SET] size:845 blobrefs:[(B000921: 10); depth:1]
 L6:
-  000005:[b@2#2,SET-d@2#2,SET] seqnums:[#2-#2] points:[b@2#2,SET-d@2#2,SET] size:812 blobrefs:[(B000921: 6); depth:1]
+  000005:[b@2#2,SET-d@2#2,SET] seqnums:[#2-#2] points:[b@2#2,SET-d@2#2,SET] size:840 blobrefs:[(B000921: 6); depth:1]
 Blob files:
   B000921 physical:{000921 size:[106 (106B)] vals:[16 (16B)]}
 
@@ -35,7 +35,7 @@ c@2: (foobar, .)
 d@9: (v, .)
 d@2: (v, .)
 .
-stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 1.4KB not cached (read time: 0s); points: 6 (18B keys, 8B values); separated: 2 (16B, 16B fetched)
+stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 6 (18B keys, 8B values); separated: 2 (16B, 16B fetched)
 
 # Try the same but avoid fetching one of the values (by using NextPrefix to step
 # over it).
@@ -72,9 +72,9 @@ L6
   f@2#3,SETWITHDEL:blob{fileNum=000039 value=grapes}
 ----
 L5:
-  000004:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] seqnums:[#9-#9] points:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] size:818 blobrefs:[(B000039: 14), (B000921: 20); depth:2]
+  000004:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] seqnums:[#9-#9] points:[b@9#9,SETWITHDEL-e@1#9,SETWITHDEL] size:846 blobrefs:[(B000039: 14), (B000921: 20); depth:2]
 L6:
-  000005:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] seqnums:[#2-#9] points:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] size:826 blobrefs:[(B000039: 11), (B000921: 13); depth:2]
+  000005:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] seqnums:[#2-#9] points:[b@2#9,SETWITHDEL-f@2#3,SETWITHDEL] size:854 blobrefs:[(B000039: 11), (B000921: 13); depth:2]
 Blob files:
   B000039 physical:{000039 size:[117 (117B)] vals:[25 (25B)]}
   B000921 physical:{000921 size:[125 (125B)] vals:[33 (33B)]}
@@ -108,15 +108,15 @@ stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cac
 b@2: (lemon, .)
 stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 2 (6B keys, 4B values); separated: 3 (21B, 11B fetched)
 c@9: (canteloupe, .)
-stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 3 (9B keys, 6B values); separated: 4 (25B, 21B fetched)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 1.6KB not cached (read time: 0s); points: 3 (9B keys, 6B values); separated: 4 (25B, 21B fetched)
 c@2: (kiwi, .)
 d@9: (honeydew, .)
 d@2: (tangerine, .)
-stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 6 (18B keys, 12B values); separated: 7 (52B, 42B fetched)
+stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 0B cached, 1.6KB not cached (read time: 0s); points: 6 (18B keys, 12B values); separated: 7 (52B, 42B fetched)
 e@1: (watermelon, .)
 f@2: (grapes, .)
 .
-stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cached, 1.5KB not cached (read time: 0s); points: 8 (24B keys, 16B values); separated: 8 (58B, 58B fetched)
+stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cached, 1.6KB not cached (read time: 0s); points: 8 (24B keys, 16B values); separated: 8 (58B, 58B fetched)
 
 # Test scanning a table, stepping into new blocks of the blob file. The stats
 # should reflect that a block is only loaded when stepping into a new block.
@@ -137,7 +137,7 @@ L6
   l#2,SETWITHDEL:blob{fileNum=000009 value=peach blockID=6 valueID=0}
 ----
 L6:
-  000004:[a#2,SETWITHDEL-l#2,SETWITHDEL] seqnums:[#2-#2] points:[a#2,SETWITHDEL-l#2,SETWITHDEL] size:912 blobrefs:[(B000009: 96); depth:1]
+  000004:[a#2,SETWITHDEL-l#2,SETWITHDEL] seqnums:[#2-#2] points:[a#2,SETWITHDEL-l#2,SETWITHDEL] size:932 blobrefs:[(B000009: 96); depth:1]
 Blob files:
   B000009 physical:{000009 size:[322 (322B)] vals:[96 (96B)]}
 
@@ -170,27 +170,27 @@ next
 stats
 ----
 a: (lemonmeringue, .)
-stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cached, 850B not cached (read time: 0s); points: 1 (1B keys, 2B values); separated: 1 (13B, 13B fetched)
+stats: seeked 1 times (1 internal); stepped 0 times (0 internal); blocks: 0B cached, 870B not cached (read time: 0s); points: 1 (1B keys, 2B values); separated: 1 (13B, 13B fetched)
 b: (keylime, .)
-stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 850B not cached (read time: 0s); points: 2 (2B keys, 4B values); separated: 2 (20B, 20B fetched)
+stats: seeked 1 times (1 internal); stepped 1 times (1 internal); blocks: 0B cached, 870B not cached (read time: 0s); points: 2 (2B keys, 4B values); separated: 2 (20B, 20B fetched)
 c: (pecan, .)
-stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 884B not cached (read time: 0s); points: 3 (3B keys, 6B values); separated: 3 (25B, 25B fetched)
+stats: seeked 1 times (1 internal); stepped 2 times (2 internal); blocks: 0B cached, 904B not cached (read time: 0s); points: 3 (3B keys, 6B values); separated: 3 (25B, 25B fetched)
 d: (cherry, .)
-stats: seeked 1 times (1 internal); stepped 3 times (3 internal); blocks: 0B cached, 884B not cached (read time: 0s); points: 4 (4B keys, 8B values); separated: 4 (31B, 31B fetched)
+stats: seeked 1 times (1 internal); stepped 3 times (3 internal); blocks: 0B cached, 904B not cached (read time: 0s); points: 4 (4B keys, 8B values); separated: 4 (31B, 31B fetched)
 e: (apple, .)
-stats: seeked 1 times (1 internal); stepped 4 times (4 internal); blocks: 0B cached, 884B not cached (read time: 0s); points: 5 (5B keys, 10B values); separated: 5 (36B, 36B fetched)
+stats: seeked 1 times (1 internal); stepped 4 times (4 internal); blocks: 0B cached, 904B not cached (read time: 0s); points: 5 (5B keys, 10B values); separated: 5 (36B, 36B fetched)
 f: (bananacream, .)
-stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 0B cached, 921B not cached (read time: 0s); points: 6 (6B keys, 12B values); separated: 6 (47B, 47B fetched)
+stats: seeked 1 times (1 internal); stepped 5 times (5 internal); blocks: 0B cached, 941B not cached (read time: 0s); points: 6 (6B keys, 12B values); separated: 6 (47B, 47B fetched)
 g: (chocolate, .)
-stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 921B not cached (read time: 0s); points: 7 (7B keys, 14B values); separated: 7 (56B, 56B fetched)
+stats: seeked 1 times (1 internal); stepped 6 times (6 internal); blocks: 0B cached, 941B not cached (read time: 0s); points: 7 (7B keys, 14B values); separated: 7 (56B, 56B fetched)
 h: (strawberry, .)
-stats: seeked 1 times (1 internal); stepped 7 times (7 internal); blocks: 0B cached, 955B not cached (read time: 0s); points: 8 (8B keys, 16B values); separated: 8 (66B, 66B fetched)
+stats: seeked 1 times (1 internal); stepped 7 times (7 internal); blocks: 0B cached, 975B not cached (read time: 0s); points: 8 (8B keys, 16B values); separated: 8 (66B, 66B fetched)
 i: (custard, .)
-stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cached, 955B not cached (read time: 0s); points: 9 (9B keys, 18B values); separated: 9 (73B, 73B fetched)
+stats: seeked 1 times (1 internal); stepped 8 times (8 internal); blocks: 0B cached, 975B not cached (read time: 0s); points: 9 (9B keys, 18B values); separated: 9 (73B, 73B fetched)
 j: (blueberry, .)
-stats: seeked 1 times (1 internal); stepped 9 times (9 internal); blocks: 0B cached, 980B not cached (read time: 0s); points: 10 (10B keys, 20B values); separated: 10 (82B, 82B fetched)
+stats: seeked 1 times (1 internal); stepped 9 times (9 internal); blocks: 0B cached, 1000B not cached (read time: 0s); points: 10 (10B keys, 20B values); separated: 10 (82B, 82B fetched)
 k: (raspberry, .)
-stats: seeked 1 times (1 internal); stepped 10 times (10 internal); blocks: 0B cached, 1005B not cached (read time: 0s); points: 11 (11B keys, 22B values); separated: 11 (91B, 91B fetched)
+stats: seeked 1 times (1 internal); stepped 10 times (10 internal); blocks: 0B cached, 1.0KB not cached (read time: 0s); points: 11 (11B keys, 22B values); separated: 11 (91B, 91B fetched)
 l: (peach, .)
 stats: seeked 1 times (1 internal); stepped 11 times (11 internal); blocks: 0B cached, 1.0KB not cached (read time: 0s); points: 12 (12B keys, 24B values); separated: 12 (96B, 96B fetched)
 .
@@ -210,7 +210,7 @@ L6
   b#2,SETWITHDEL:blob{fileNum=000009 value=keylime}
 ----
 L6:
-  000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#2-#5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:931 blobrefs:[(B000009: 7); depth:1]
+  000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#2-#5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:964 blobrefs:[(B000009: 7); depth:1]
 Blob files:
   B000009 physical:{000009 size:[96 (96B)] vals:[7 (7B)]}
 

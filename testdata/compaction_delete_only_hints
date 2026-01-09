@@ -131,12 +131,12 @@ Tombstoned spans:
 [a, k) = {point=300}
 [k, r) = {point=200}
 Compactions:
-[JOB 100] compacted(delete-only) L2 [000000] (666B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(delete-only) L3 [000000] (666B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(delete-only) [excise] L1 [000000] (649B) Score=0.00 -> L1 [000000] (1B), in 1.0s (2.0s total), output rate 1B/s
-[JOB 100] compacted(delete-only) [excise] L4 [000000] (666B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
-[JOB 100] compacted(virtual-sst-rewrite) L1 [000000] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000000] (643B), in 1.0s (2.0s total), output rate 643B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(delete-only) L2 [000000] (697B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L3 [000000] (697B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) [excise] L1 [000000] (678B) Score=0.00 -> L1 [000000] (1B), in 1.0s (2.0s total), output rate 1B/s
+[JOB 100] compacted(delete-only) [excise] L4 [000000] (697B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
+[JOB 100] compacted(virtual-sst-rewrite) L1 [000000] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000000] (672B), in 1.0s (2.0s total), output rate 672B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (686B), in 1.0s (2.0s total), output rate 686B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -217,10 +217,10 @@ maybe-compact
 Tombstoned spans:
 [b, r) = {point=200}
 Compactions:
-[JOB 100] compacted(delete-only) L2 [000000] (666B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(delete-only) L3 [000000] (666B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(delete-only) [excise] L4 [000000] (666B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(delete-only) L2 [000000] (697B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L3 [000000] (697B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) [excise] L4 [000000] (697B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (686B), in 1.0s (2.0s total), output rate 686B/s
 
 # A deletion hint present on an sstable in a higher level should NOT result in a
 # deletion-only compaction incorrectly removing an sstable in L6 following an
@@ -425,12 +425,12 @@ Tombstoned spans:
 [a, k) = {point=300}
 [k, r) = {point=200}
 Compactions:
-[JOB 100] compacted(delete-only) L2 [000000] (666B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(delete-only) L3 [000000] (666B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(delete-only) [excise] L1 [000000] (649B) Score=0.00 -> L1 [000000] (1B), in 1.0s (2.0s total), output rate 1B/s
-[JOB 100] compacted(delete-only) [excise] L4 [000000] (666B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
-[JOB 100] compacted(virtual-sst-rewrite) L1 [000000] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000000] (643B), in 1.0s (2.0s total), output rate 643B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(delete-only) L2 [000000] (697B) Score=0.00 -> L2 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) L3 [000000] (697B) Score=0.00 -> L3 [] (0B), in 1.0s (2.0s total), output rate 0B/s
+[JOB 100] compacted(delete-only) [excise] L1 [000000] (678B) Score=0.00 -> L1 [000000] (1B), in 1.0s (2.0s total), output rate 1B/s
+[JOB 100] compacted(delete-only) [excise] L4 [000000] (697B) Score=0.00 -> L4 [000000] (94B), in 1.0s (2.0s total), output rate 94B/s
+[JOB 100] compacted(virtual-sst-rewrite) L1 [000000] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [000000] (672B), in 1.0s (2.0s total), output rate 672B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000000] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000000] (686B), in 1.0s (2.0s total), output rate 686B/s
 
 describe-lsm
 ----
@@ -567,7 +567,7 @@ Tombstoned spans:
 Compactions:
 [JOB 100] compacted(delete-only) [excise] L6 [000000] (810B) Score=0.00 -> L6 [000000] (93B), in 1.0s (2.0s total), output rate 93B/s
 [JOB 100] compacted(delete-only) [excise] L6 [000000] (93B) Score=0.00 -> L6 [000000] (93B), in 1.0s (2.0s total), output rate 93B/s
-[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (788B), in 1.0s (2.0s total), output rate 788B/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000000] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000000] (826B), in 1.0s (2.0s total), output rate 826B/s
 
 describe-lsm
 ----
