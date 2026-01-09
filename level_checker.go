@@ -359,6 +359,9 @@ type checkConfig struct {
 	merge     Merge
 	formatKey base.FormatKey
 	readEnv   block.ReadEnv
+	// combinedBlobMapping chains the version's BlobFileSet with any blob files
+	// from flushable ingests that haven't been flushed yet.
+	combinedBlobMapping manifest.CombinedBlobFileMapping
 	// blobValueFetcher is the ValueFetcher to use when retrieving values stored
 	// externally in blob files.
 	blobValueFetcher blob.ValueFetcher
@@ -559,8 +562,14 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 		},
 		fileCache: d.fileCache,
 	}
+	// Set up a combined blob file mapping that includes both the version's
+	// BlobFileSet and blob files from flushable ingests.
+	checkConfig.combinedBlobMapping = manifest.CombinedBlobFileMapping{
+		Primary:   &readState.current.BlobFiles,
+		Secondary: readState.memtables,
+	}
 	checkConfig.blobValueFetcher.Init(
-		&readState.current.BlobFiles,
+		&checkConfig.combinedBlobMapping,
 		checkConfig.fileCache,
 		checkConfig.readEnv,
 		blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
@@ -599,8 +608,16 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	memtables := c.readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
+		var iter internalIterator
+		// For ingestedFlushable, we need to pass the blob value fetcher to allow
+		// reading values from blob files.
+		if ingested, ok := mem.flushable.(*ingestedFlushable); ok {
+			iter = ingested.newIterInternal(nil, internalOpts)
+		} else {
+			iter = mem.newIter(nil)
+		}
 		mlevels = append(mlevels, simpleMergingIterLevel{
-			iter:         mem.newIter(nil),
+			iter:         iter,
 			rangeDelIter: mem.newRangeDelIter(nil),
 		})
 	}
