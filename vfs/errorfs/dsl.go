@@ -36,6 +36,16 @@ func PathMatch(pattern string) Predicate {
 	return &pathMatch{pattern: pattern}
 }
 
+// CallStackIncludes returns a Predicate that evaluates to true if the call
+// stack includes a function whose fully-qualified name contains the provided
+// substring.
+//
+// This technique is fragile (e.g., can break due to renaming a function), so it
+// should be used judiciously.
+func CallStackIncludes(funcName string) Predicate {
+	return dsl.CallStackIncludes[Op](funcName)
+}
+
 type pathMatch struct {
 	pattern string
 }
