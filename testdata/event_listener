@@ -155,7 +155,7 @@ close: db/marker.manifest.000002.MANIFEST-000006
 remove: db/marker.manifest.000001.MANIFEST-000001
 sync: db
 [JOB 3] MANIFEST created 000006
-[JOB 3] flushed 1 memtable (100B) to L0 [000005] (657B), in 1.0s (3.0s total), output rate 657B/s
+[JOB 3] flushed 1 memtable (100B) to L0 [000005] (688B), in 1.0s (3.0s total), output rate 688B/s
 
 compact
 ----
@@ -181,18 +181,18 @@ close: db/marker.manifest.000003.MANIFEST-000009
 remove: db/marker.manifest.000002.MANIFEST-000006
 sync: db
 [JOB 5] MANIFEST created 000009
-[JOB 5] flushed 1 memtable (100B) to L0 [000008] (657B), in 1.0s (3.0s total), output rate 657B/s
+[JOB 5] flushed 1 memtable (100B) to L0 [000008] (688B), in 1.0s (3.0s total), output rate 688B/s
 remove: db/MANIFEST-000001
 [JOB 5] MANIFEST deleted 000001
 [JOB 6] compacting(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00; OverlappingRatio: Single 0.00, Multi 0.00
 open: db/000005.sst (options: *vfs.randomReadsOption)
-read-at(596, 61): db/000005.sst
-read-at(546, 50): db/000005.sst
-read-at(119, 427): db/000005.sst
+read-at(627, 61): db/000005.sst
+read-at(577, 50): db/000005.sst
+read-at(119, 458): db/000005.sst
 open: db/000008.sst (options: *vfs.randomReadsOption)
-read-at(596, 61): db/000008.sst
-read-at(546, 50): db/000008.sst
-read-at(119, 427): db/000008.sst
+read-at(627, 61): db/000008.sst
+read-at(577, 50): db/000008.sst
+read-at(119, 458): db/000008.sst
 open: db/000005.sst (options: *vfs.sequentialReadsOption)
 read-at(78, 41): db/000005.sst
 read-at(0, 78): db/000005.sst
@@ -216,7 +216,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 6] MANIFEST created 000011
-[JOB 6] compacted(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (652B), in 1.0s (4.0s total), output rate 652B/s
+[JOB 6] compacted(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (683B), in 1.0s (4.0s total), output rate 683B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/MANIFEST-000006
@@ -253,7 +253,7 @@ close: db/marker.manifest.000005.MANIFEST-000014
 remove: db/marker.manifest.000004.MANIFEST-000011
 sync: db
 [JOB 8] MANIFEST created 000014
-[JOB 8] flushed 1 memtable (100B) to L0 [000013] (657B), in 1.0s (3.0s total), output rate 657B/s
+[JOB 8] flushed 1 memtable (100B) to L0 [000013] (688B), in 1.0s (3.0s total), output rate 688B/s
 
 enable-file-deletions
 ----
@@ -293,18 +293,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    97B |      1  652B |   2 20.32
-   L6       652B |      1  652B |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.50
+   L0      1.3KB |      2 1.3KB |      0     0 |     0B     0B |    97B |      1  652B |   2 21.28
+   L6       683B |      1  683B |      0     0 |     0B     0B |  1.3KB |      0    0B |   1  0.50
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      1.9KB |      3 1.9KB |      0     0 |     0B     0B |   749B |      1  652B |   3  4.50
+total        2KB |      3   2KB |      0     0 |     0B     0B |   749B |      1  652B |   3  4.67
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.40  0.40 |      0    0B |    0B    0B    0B |     0B    0B |      3  1.9KB     0B
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      1   652B     0B
+   L0 |     -  0.40  0.40 |      0    0B |    0B    0B    0B |     0B    0B |      3    2KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.2KB    0B |      1   683B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |      4  3.3KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.2KB    0B |      4  3.4KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -333,7 +333,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   3 (1.9KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |    3 (2KB)       0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -357,7 +357,7 @@ COMPACTIONS
                                                                          |      blob rewrites
     est. debt |   in progress |  cancelled |   failed |    problem spans |       read |    written
 --------------+---------------+------------+----------+------------------+------------+-----------
-        1.9KB |        0 (0B) |     0 (0B) |        0 |                0 |         0B |         0B
+          2KB |        0 (0B) |     0 (0B) |        0 |                0 |         0B |         0B
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
@@ -373,8 +373,8 @@ COMPRESSION
         Logical bytes compressed / decompressed
 level |  data blocks   |  value blocks  |  other blocks
 ------+----------------+----------------+---------------
-L0-L4 |  252B / 168B   |    0B / 0B     | 1.9KB / 2.4KB
-   L6 |    76B / 0B    |    0B / 0B     |   632B / 0B
+L0-L4 |  252B / 168B   |    0B / 0B     |  2KB / 2.4KB
+   L6 |    76B / 0B    |    0B / 0B     |   669B / 0B
 
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------
@@ -439,7 +439,7 @@ close: db/000022.sst
 sync: db
 get-disk-usage: db
 sync: db/MANIFEST-000016
-[JOB 15] flushed 1 memtable (100B) to L0 [000022] (657B), in 1.0s (3.0s total), output rate 657B/s
+[JOB 15] flushed 1 memtable (100B) to L0 [000022] (688B), in 1.0s (3.0s total), output rate 688B/s
 [JOB 16] flushing 2 ingested tables
 create: db/MANIFEST-000023
 close: db/MANIFEST-000016
@@ -464,18 +464,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0      2.6KB |      4 2.6KB |      0     0 |     0B     0B |   132B |      2 1.3KB |   4 19.91
+   L0      2.6KB |      4 2.6KB |      0     0 |     0B     0B |   132B |      2 1.3KB |   4 20.85
    L6      1.3KB |      2 1.3KB |      0     0 |     0B     0B |  1.3KB |      1  652B |   1  0.50
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      3.8KB |      6 3.8KB |      0     0 |     0B     0B |    2KB |      3 1.9KB |   5  2.57
+total      3.9KB |      6 3.9KB |      0     0 |     0B     0B |    2KB |      3 1.9KB |   5  2.65
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -  0.80  0.80 |      0    0B |    0B    0B    0B |     0B    0B |      4  2.6KB     0B
-   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.1KB    0B |      1   652B     0B
+   L0 |     -  0.80  0.80 |      0    0B |    0B    0B    0B |     0B    0B |      4  2.7KB     0B
+   L6 |     -  0.00  0.00 |      0    0B |    0B    0B    0B |  1.2KB    0B |      1   683B     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      0    0B |    0B    0B    0B |  1.1KB    0B |      5  5.2KB     0B
+total |     -     -     - |      0    0B |    0B    0B    0B |  1.2KB    0B |      5  5.4KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       1       0        0     0     0     0        0     0      0     0       0
@@ -504,7 +504,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   6 (3.8KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   6 (3.9KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -528,7 +528,7 @@ COMPACTIONS
                                                                          |      blob rewrites
     est. debt |   in progress |  cancelled |   failed |    problem spans |       read |    written
 --------------+---------------+------------+----------+------------------+------------+-----------
-        3.8KB |        0 (0B) |     0 (0B) |        0 |                0 |         0B |         0B
+        3.9KB |        0 (0B) |     0 (0B) |        0 |                0 |         0B |         0B
 
 KEYS
       range keys |       tombstones |      missized tombstones |      point dels |      range dels
@@ -544,8 +544,8 @@ COMPRESSION
         Logical bytes compressed / decompressed
 level |  data blocks   |  value blocks  |  other blocks
 ------+----------------+----------------+---------------
-L0-L4 |  336B / 168B   |    0B / 0B     | 2.5KB / 4.7KB
-   L6 |    76B / 0B    |    0B / 0B     |   632B / 0B
+L0-L4 |  336B / 168B   |    0B / 0B     | 2.7KB / 4.8KB
+   L6 |    76B / 0B    |    0B / 0B     |   669B / 0B
 
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------

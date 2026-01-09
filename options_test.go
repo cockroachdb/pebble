@@ -39,20 +39,31 @@ func (o *Options) randomizeForTesting(t testing.TB) {
 		o.FormatMajorVersion = FormatMinSupported + FormatMajorVersion(n)
 		t.Logf("Running %s with format major version %s", t.Name(), o.FormatMajorVersion.String())
 	}
-	// Enable value separation if using a format major version that supports it.
-	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil && rand.Int64N(4) > 0 {
-		lowPri := 0.1 + rand.Float64()*0.9 // [0.1, 1.0)
-		policy := ValueSeparationPolicy{
-			Enabled:                true,
-			MinimumSize:            1 << rand.IntN(10), // [1, 512]
-			MinimumMVCCGarbageSize: 5 + rand.IntN(11),  // [5, 15]
-			MaxBlobReferenceDepth:  1 + rand.IntN(10),  // [1, 10]
-			// Constrain the rewrite minimum age to [0, 15s).
-			RewriteMinimumAge:        time.Duration(rand.IntN(15)) * time.Second,
-			GarbageRatioLowPriority:  lowPri,
-			GarbageRatioHighPriority: lowPri + rand.Float64()*(1.0-lowPri), // [lowPri, 1.0)
+	// Randomize value separation if using a format major version that supports it.
+	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil {
+		switch rand.IntN(4) {
+		case 0:
+			// 25% of the time, use defaults (leave nil for EnsureDefaults).
+		case 1:
+			// 25% of the time, disable value separation.
+			o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+				return ValueSeparationPolicy{Enabled: false}
+			}
+		default:
+			// 50% of the time, enable with random parameters.
+			lowPri := 0.1 + rand.Float64()*0.9 // [0.1, 1.0)
+			policy := ValueSeparationPolicy{
+				Enabled:                true,
+				MinimumSize:            1 << rand.IntN(10), // [1, 512]
+				MinimumMVCCGarbageSize: 5 + rand.IntN(11),  // [5, 15]
+				MaxBlobReferenceDepth:  1 + rand.IntN(10),  // [1, 10]
+				// Constrain the rewrite minimum age to [0, 15s).
+				RewriteMinimumAge:        time.Duration(rand.IntN(15)) * time.Second,
+				GarbageRatioLowPriority:  lowPri,
+				GarbageRatioHighPriority: lowPri + rand.Float64()*(1.0-lowPri), // [lowPri, 1.0)
+			}
+			o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
 		}
-		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
 	}
 	if rand.IntN(2) == 0 {
 		o.Experimental.IteratorTracking.PollInterval = 100 * time.Millisecond
@@ -141,6 +152,15 @@ func TestDefaultOptionsString(t *testing.T) {
   wal_bytes_per_sync=0
   secondary_cache_size_bytes=0
   create_on_shared=0
+
+[Value Separation]
+  enabled=true
+  minimum_size=256
+  minimum_mvcc_garbage_size=1024
+  max_blob_reference_depth=10
+  rewrite_minimum_age=5m0s
+  garbage_ratio_low_priority=0.10
+  garbage_ratio_high_priority=0.20
 
 [Level "0"]
   block_restart_interval=16

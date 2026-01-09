@@ -17,13 +17,13 @@ set e value_e_first_table
 flush
 ----
 L0.0:
-  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:732
+  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:761
 
 # Compact to L6 to create backing table
 compact a-e
 ----
 L6:
-  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:732
+  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:761
 
 # Create second backing table  
 batch
@@ -37,33 +37,33 @@ set j value_j_second_table
 flush
 ----
 L0.0:
-  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:724
+  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:755
 L6:
-  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:732
+  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:761
 
 # Compact to L6 to create second backing table.
 compact f-j
 ----
 L6:
-  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:732
-  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:724
+  000005:[a#10,SET-e#14,SET] seqnums:[#10-#14] points:[a#10,SET-e#14,SET] size:761
+  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:755
 
 # Excise from first backing.
 excise b c
 ----
 L6:
-  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(732)
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
-  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:724
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(761)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(761)
+  000007:[f#15,SET-j#19,SET] seqnums:[#15-#19] points:[f#15,SET-j#19,SET] size:755
 
 # Excise from second backing.
 excise g i
 ----
 L6:
-  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(732)
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
-  000010(000007):[f#15,SET-f#15,SET] seqnums:[#15-#19] points:[f#15,SET-f#15,SET] size:141(724)
-  000011(000007):[i#18,SET-j#19,SET] seqnums:[#15-#19] points:[i#18,SET-j#19,SET] size:141(724)
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(761)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(761)
+  000010(000007):[f#15,SET-f#15,SET] seqnums:[#15-#19] points:[f#15,SET-f#15,SET] size:141(755)
+  000011(000007):[i#18,SET-j#19,SET] seqnums:[#15-#19] points:[i#18,SET-j#19,SET] size:141(755)
 
 # Check the LSM state - we should have virtual tables with different backing utilization.
 lsm
@@ -78,19 +78,19 @@ L6:
 # Virtual rewrite should pick 000007, which is the least utilized backing.
 virtual-backings
 ----
-2 virtual backings, total size 1456:
-  000005:  size=732  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
-  000007:  size=724  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=282  tables: [000010 000011]
-rewrite candidates heap: 000007(39.0%) 000005(40.2%) 
+2 virtual backings, total size 1516:
+  000005:  size=761  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
+  000007:  size=755  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=282  tables: [000010 000011]
+rewrite candidates heap: 000007(37.4%) 000005(38.6%) 
 
 # Run virtual rewrite compaction, which should pick backing 000007 to materialize.
 run-virtual-rewrite-compaction
 ----
 L6:
-  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(732)
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
-  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:669
-  000011(000007):[i#18,SET-j#19,SET] seqnums:[#15-#19] points:[i#18,SET-j#19,SET] size:141(724)
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(761)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(761)
+  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:700
+  000011(000007):[i#18,SET-j#19,SET] seqnums:[#15-#19] points:[i#18,SET-j#19,SET] size:141(755)
 
 
 # Check virtual backings state after rewrite.
@@ -98,41 +98,41 @@ L6:
 # backing 000009 should now have only one virtual table (000013)
 virtual-backings
 ----
-2 virtual backings, total size 1456:
-  000005:  size=732  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
-  000007:  size=724  refBlobValueSize=0  useCount=1  protectionCount=0  virtualizedSize=141  tables: [000011]
-rewrite candidates heap: 000007(19.5%) 000005(40.2%) 
+2 virtual backings, total size 1516:
+  000005:  size=761  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
+  000007:  size=755  refBlobValueSize=0  useCount=1  protectionCount=0  virtualizedSize=141  tables: [000011]
+rewrite candidates heap: 000007(18.7%) 000005(38.6%) 
 
 # Run another virtual rewrite compaction to materialize the remaining virtual table from 7.
 run-virtual-rewrite-compaction  
 ----
 L6:
-  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(732)
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
-  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:669
-  000013:[i#0,SET-j#0,SET] seqnums:[#0-#0] points:[i#0,SET-j#0,SET] size:687
+  000008(000005):[a#10,SET-a#10,SET] seqnums:[#10-#14] points:[a#10,SET-a#10,SET] size:147(761)
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(761)
+  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:700
+  000013:[i#0,SET-j#0,SET] seqnums:[#0-#0] points:[i#0,SET-j#0,SET] size:718
 
 # Backing 000007 should have been removed.
 virtual-backings
 ----
-1 virtual backings, total size 732:
-  000005:  size=732  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
-rewrite candidates heap: 000005(40.2%) 
+1 virtual backings, total size 761:
+  000005:  size=761  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=294  tables: [000008 000009]
+rewrite candidates heap: 000005(38.6%) 
 
 # Run one more virtual rewrite compaction to test materialization from backing 000005.
 run-virtual-rewrite-compaction
 ----
 L6:
-  000014:[a#0,SET-a#0,SET] seqnums:[#0-#0] points:[a#0,SET-a#0,SET] size:668
-  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(732)
-  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:669
-  000013:[i#0,SET-j#0,SET] seqnums:[#0-#0] points:[i#0,SET-j#0,SET] size:687
+  000014:[a#0,SET-a#0,SET] seqnums:[#0-#0] points:[a#0,SET-a#0,SET] size:699
+  000009(000005):[c#12,SET-e#14,SET] seqnums:[#10-#14] points:[c#12,SET-e#14,SET] size:147(761)
+  000012:[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:700
+  000013:[i#0,SET-j#0,SET] seqnums:[#0-#0] points:[i#0,SET-j#0,SET] size:718
 
 virtual-backings
 ----
-1 virtual backings, total size 732:
-  000005:  size=732  refBlobValueSize=0  useCount=1  protectionCount=0  virtualizedSize=147  tables: [000009]
-rewrite candidates heap: 000005(20.1%) 
+1 virtual backings, total size 761:
+  000005:  size=761  refBlobValueSize=0  useCount=1  protectionCount=0  virtualizedSize=147  tables: [000009]
+rewrite candidates heap: 000005(19.3%) 
 
 metrics
 ----
@@ -140,18 +140,18 @@ metrics
 LSM                             |    vtables   |   value sep   |        |   ingested   |    amp
 level       size | tables  size |  count  size |  refsz valblk |     in | tables  size |   r     w
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-   L0         0B |      0    0B |      0     0 |     0B     0B |   289B |      0    0B |   0  5.04
-   L6      2.1KB |      4 2.1KB |      1   147 |     0B     0B |   429B |      0    0B |   1  4.72
+   L0         0B |      0    0B |      0     0 |     0B     0B |   289B |      0    0B |   0  5.25
+   L6      2.2KB |      4 2.2KB |      1   147 |     0B     0B |   429B |      0    0B |   1  4.93
 -----------------+--------------+--------------+---------------+--------+--------------+----------
-total      2.1KB |      4 2.1KB |      1   147 |     0B     0B |   289B |      0    0B |   1 13.04
+total      2.2KB |      4 2.2KB |      1   147 |     0B     0B |   289B |      0    0B |   1 13.57
 
 COMPACTIONS               |     moved    |     multilevel    |     read     |       written
 level | score    ff   cff | tables  size |   top    in  read | tables  blob | tables  sstsz blobsz
 ------+-------------------+--------------+-------------------+--------------+---------------------
-   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.4KB     0B
-   L6 |     -  0.00  0.00 |      2 1.4KB |    0B    0B    0B |   522B    0B |      3    2KB     0B
+   L0 |     -     0     0 |      0    0B |    0B    0B    0B |     0B    0B |      2  1.5KB     0B
+   L6 |     -  0.00  0.00 |      2 1.5KB |    0B    0B    0B |   522B    0B |      3  2.1KB     0B
 ------+-------------------+--------------+-------------------+--------------+---------------------
-total |     -     -     - |      2 1.4KB |    0B    0B    0B |   522B    0B |      5  3.7KB     0B
+total |     -     -     - |      2 1.5KB |    0B    0B    0B |   522B    0B |      5  3.8KB     0B
 
  kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
 count |       0       0        0     2     0     0        0     0      0     0       3
@@ -180,7 +180,7 @@ ITERATORS
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
 ----------+-------------------------------------------+------------------------------------------
-     live |   4 (2.7KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
+     live |   4 (2.8KB)      0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
    zombie |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
  obsolete |    0 (0B)        0 (0B)        0 (0B)     |    0 (0B)        0 (0B)        0 (0B)
 
@@ -214,14 +214,14 @@ KEYS
 COMPRESSION
     algorithm |         tables |    blob files
 --------------+----------------+--------------
-         none |           116B |
-       snappy | 296B (CR=1.23) |
+         none |           115B |
+       snappy | 295B (CR=1.22) |
 
         Logical bytes compressed / decompressed
 level |  data blocks   |  value blocks  |  other blocks
 ------+----------------+----------------+---------------
-L0-L4 |  407B / 407B   |    0B / 0B     | 1.3KB / 5.4KB
-   L6 |   322B / 2KB   |    0B / 0B     |   1.9KB / 0B
+L0-L4 |  407B / 407B   |    0B / 0B     | 1.3KB / 5.7KB
+   L6 |   322B / 2KB   |    0B / 0B     |    2KB / 0B
 
 DELETE PACER   |   in queue   |   deleted
 ---------------+--------------+-------------
@@ -249,29 +249,29 @@ set d value_d
 flush
 ----
 L0.0:
-  000005:[a#10,SET-d#13,SET] seqnums:[#10-#13] points:[a#10,SET-d#13,SET] size:695
+  000005:[a#10,SET-d#13,SET] seqnums:[#10-#13] points:[a#10,SET-d#13,SET] size:726
 
 compact a-d
 ----
 L6:
-  000005:[a#10,SET-d#13,SET] seqnums:[#10-#13] points:[a#10,SET-d#13,SET] size:695
+  000005:[a#10,SET-d#13,SET] seqnums:[#10-#13] points:[a#10,SET-d#13,SET] size:726
 
 # Excise only a small portion to create low unreferenced fraction (~0.1).
 excise a.5 b.5
 ----
 L6:
-  000006(000005):[a#10,SET-a#10,SET] seqnums:[#10-#13] points:[a#10,SET-a#10,SET] size:113(695)
-  000007(000005):[c#12,SET-d#13,SET] seqnums:[#10-#13] points:[c#12,SET-d#13,SET] size:113(695)
+  000006(000005):[a#10,SET-a#10,SET] seqnums:[#10-#13] points:[a#10,SET-a#10,SET] size:113(726)
+  000007(000005):[c#12,SET-d#13,SET] seqnums:[#10-#13] points:[c#12,SET-d#13,SET] size:113(726)
 
 virtual-backings
 ----
-1 virtual backings, total size 695:
-  000005:  size=695  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=226  tables: [000006 000007]
-rewrite candidates heap: 000005(32.5%) 
+1 virtual backings, total size 726:
+  000005:  size=726  refBlobValueSize=0  useCount=2  protectionCount=0  virtualizedSize=226  tables: [000006 000007]
+rewrite candidates heap: 000005(31.1%) 
 
 # Should NOT trigger virtual rewrite (0.1 unreferenced fraction < default 0.3 threshold)
 run-virtual-rewrite-compaction
 ----
 L6:
-  000008:[a#0,SET-a#0,SET] seqnums:[#0-#0] points:[a#0,SET-a#0,SET] size:658
-  000007(000005):[c#12,SET-d#13,SET] seqnums:[#10-#13] points:[c#12,SET-d#13,SET] size:113(695)
+  000008:[a#0,SET-a#0,SET] seqnums:[#0-#0] points:[a#0,SET-a#0,SET] size:689
+  000007(000005):[c#12,SET-d#13,SET] seqnums:[#10-#13] points:[c#12,SET-d#13,SET] size:113(726)

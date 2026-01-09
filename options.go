@@ -1550,7 +1550,15 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.ValueSeparationPolicy == nil {
 		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
-			return ValueSeparationPolicy{Enabled: false}
+			return ValueSeparationPolicy{
+				Enabled:                  true,
+				MinimumSize:              256,     // 256 bytes
+				MinimumMVCCGarbageSize:   1 << 10, // 1 KiB
+				MaxBlobReferenceDepth:    10,
+				RewriteMinimumAge:        5 * time.Minute,
+				GarbageRatioLowPriority:  0.10,
+				GarbageRatioHighPriority: 0.20,
+			}
 		}
 	}
 
@@ -1694,8 +1702,6 @@ func (o *Options) EnsureDefaults() {
 	if o.private.timeNow == nil {
 		o.private.timeNow = time.Now
 	}
-	// TODO(jackson): Enable value separation by default once we have confidence
-	// in a default policy.
 }
 
 // TargetFileSize computes the target file size for the given output level.
@@ -1842,10 +1848,10 @@ func (o *Options) String() string {
 
 	if o.Experimental.ValueSeparationPolicy != nil {
 		policy := o.Experimental.ValueSeparationPolicy()
+		fmt.Fprintln(&buf)
+		fmt.Fprintln(&buf, "[Value Separation]")
+		fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
 		if policy.Enabled {
-			fmt.Fprintln(&buf)
-			fmt.Fprintln(&buf, "[Value Separation]")
-			fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
 			fmt.Fprintf(&buf, "  minimum_size=%d\n", policy.MinimumSize)
 			fmt.Fprintf(&buf, "  minimum_mvcc_garbage_size=%d\n", policy.MinimumMVCCGarbageSize)
 			fmt.Fprintf(&buf, "  max_blob_reference_depth=%d\n", policy.MaxBlobReferenceDepth)
@@ -1983,6 +1989,7 @@ type ParseHooks struct {
 // merger.
 func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	var valSepPolicy ValueSeparationPolicy
+	var valSepPolicySet bool
 	var concurrencyLimit struct {
 		lower    int
 		lowerSet bool
@@ -2290,6 +2297,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			return err
 
 		case section == "Value Separation":
+			valSepPolicySet = true
 			var err error
 			switch key {
 			case "enabled":
@@ -2435,7 +2443,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 	if err != nil {
 		return err
 	}
-	o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return valSepPolicy }
+	if valSepPolicySet {
+		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return valSepPolicy }
+	}
 	if concurrencyLimit.lowerSet || concurrencyLimit.upperSet {
 		if !concurrencyLimit.lowerSet {
 			concurrencyLimit.lower = 1
