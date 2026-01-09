@@ -127,9 +127,9 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 + L3 [000007] (666B) Score=0.00 + L4 [000008] (666B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
+  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (678B) Score=0.00 + L2 [000006] (697B) Score=0.00 + L3 [000007] (697B) Score=0.00 + L4 [000008] (697B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
 [JOB 100] compacted(virtual-sst-rewrite) L1 [000009] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000010] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000011] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000010] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000011] (686B), in 1.0s (2.0s total), output rate 686B/s
 
 # Test a range tombstone that is already compacted into L6.
 
@@ -208,8 +208,8 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (666B) Score=0.00 + L3 [000006] (666B) Score=0.00 + L4 [000007] (666B) Score=0.00 -> L6 [000009] (94B), in 1.0s (2.0s total), output rate 94B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000009] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000010] (655B), in 1.0s (2.0s total), output rate 655B/s
+  [JOB 100] compacted(delete-only) multilevel (excised: 000007) L2 [000005] (697B) Score=0.00 + L3 [000006] (697B) Score=0.00 + L4 [000007] (697B) Score=0.00 -> L6 [000009] (94B), in 1.0s (2.0s total), output rate 94B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000009] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000010] (686B), in 1.0s (2.0s total), output rate 686B/s
 
 # A deletion hint present on an sstable in a higher level should NOT result in a
 # deletion-only compaction incorrectly removing an sstable in L6 following an
@@ -258,7 +258,7 @@ L0.000001 [a, z) seqnums(tombstone=[#5-#27], type=point)
 close-snapshot
 10
 ----
-[JOB 100] compacted(elision-only) L6 [000004] (739B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(elision-only) L6 [000004] (770B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000005] (686B), in 1.0s (2.0s total), output rate 686B/s
 
 # In previous versions of the code, the deletion hint was removed by the
 # elision-only compaction because it zeroed sequence numbers of keys with
@@ -477,9 +477,9 @@ maybe-compact
 Deletion hints:
   (none)
 Compactions:
-  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (649B) Score=0.00 + L2 [000006] (666B) Score=0.00 + L3 [000007] (666B) Score=0.00 + L4 [000008] (666B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
+  [JOB 100] compacted(delete-only) multilevel (excised: 000005) (excised: 000008) L1 [000005] (678B) Score=0.00 + L2 [000006] (697B) Score=0.00 + L3 [000007] (697B) Score=0.00 + L4 [000008] (697B) Score=0.00 -> L6 [000009 000010] (95B), in 1.0s (2.0s total), output rate 95B/s
 [JOB 100] compacted(virtual-sst-rewrite) L1 [000009] (1B) Score=0.00 + L1 [] (0B) Score=0.00 -> L1 [] (0B), in 1.0s (2.0s total), output rate 0B/s
-[JOB 100] compacted(virtual-sst-rewrite) L4 [000010] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000011] (655B), in 1.0s (2.0s total), output rate 655B/s
+[JOB 100] compacted(virtual-sst-rewrite) L4 [000010] (94B) Score=0.00 + L4 [] (0B) Score=0.00 -> L4 [000011] (686B), in 1.0s (2.0s total), output rate 686B/s
 
 describe-lsm
 ----
@@ -611,7 +611,7 @@ Deletion hints:
   (none)
 Compactions:
   [JOB 100] compacted(delete-only) (excised: 000004) L6 [000004] (810B) Score=0.00 -> L6 [000006] (93B), in 1.0s (2.0s total), output rate 93B/s
-[JOB 100] compacted(virtual-sst-rewrite) L6 [000006] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000007] (806B), in 1.0s (2.0s total), output rate 806B/s
+[JOB 100] compacted(virtual-sst-rewrite) L6 [000006] (93B) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000007] (828B), in 1.0s (2.0s total), output rate 828B/s
 
 describe-lsm
 ----
