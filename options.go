@@ -19,7 +19,6 @@ import (
 
 	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
@@ -34,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/cockroachdb/redact"
@@ -446,8 +446,8 @@ type LevelOptions struct {
 	// TableFilterPolicy returns a filter algorithm (such as a Bloom filter) that
 	// can reduce disk reads for Get and SeekPrefixGE calls.
 	//
-	// One such implementation is bloom.FilterPolicy(10) from the pebble/bloom
-	// package.
+	// One such implementation is bloom.FilterPolicy(10) from the
+	// sstable/tablefilters/bloom package.
 	//
 	// The default value for L0 is NoFilterPolicy (no filter), and the value from
 	// the previous level for all other levels.
