@@ -242,6 +242,16 @@ func (p *Parser) HashSeqNum() base.SeqNum {
 	return base.ParseSeqNum(tok[1:])
 }
 
+// SeqNumRange parses the next token as a sequence number range.
+func (p *Parser) SeqNumRange() base.SeqNumRange {
+	p.Expect("[")
+	low := p.HashSeqNum()
+	p.Expect("-")
+	high := p.HashSeqNum()
+	p.Expect("]")
+	return base.SeqNumRange{Low: low, High: high}
+}
+
 // BlobFileID parses the next token as a BlobFileID.
 func (p *Parser) BlobFileID() base.BlobFileID {
 	s := p.Next()

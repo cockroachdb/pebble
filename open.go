@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/pebble/internal/tombspan"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
@@ -225,6 +226,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.formatVers.vers.Store(uint64(formatVersion))
 	d.mu.formatVers.marker = rs.fmvMarker
 	d.openedAt = d.opts.private.timeNow()
+	d.mu.compact.wideTombstones = tombspan.Make(opts.Comparer)
 
 	d.mu.Lock()
 	defer d.mu.Unlock()

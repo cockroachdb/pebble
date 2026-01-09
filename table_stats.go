@@ -7,7 +7,6 @@ package pebble
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/cockroachdb/crlib/crmath"
@@ -18,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/tombspan"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/redact"
@@ -109,14 +109,14 @@ func (d *DB) collectTableStats() bool {
 	// Grab a read state to scan for tables.
 	rs := d.loadReadState()
 	var collected []collectedStats
-	var hints []deleteCompactionHint
+	var wideTombstones []tombspan.WideTombstone
 	initialLoadCompleted := false
 	if len(pending) > 0 {
-		collected, hints = d.loadNewFileStats(ctx, rs, pending)
+		collected, wideTombstones = d.loadNewFileStats(ctx, rs, pending)
 	} else {
 		var moreRemain bool
 		var buf [maxTableStatsPerScan]collectedStats
-		collected, hints, moreRemain = d.scanReadStateTableStats(ctx, rs.current, buf[:0])
+		collected, wideTombstones, moreRemain = d.scanReadStateTableStats(ctx, rs.current, buf[:0])
 		if !moreRemain {
 			// Once we're done with table stats, load blob file properties.
 			moreRemain = d.scanBlobFileProperties(ctx, rs.current, maxTableStatsPerScan-len(collected))
@@ -148,7 +148,8 @@ func (d *DB) collectTableStats() bool {
 	d.mu.tableStats.cond.Broadcast()
 	d.maybeCollectTableStatsLocked()
 	if !d.opts.private.disableDeleteOnlyCompactions {
-		d.mu.compact.deletionHints = append(d.mu.compact.deletionHints, hints...)
+		d.mu.compact.wideTombstones.AddTombstones(wideTombstones...)
+		d.mu.compact.wideTombstones.UpdateWithEarliestSnapshot(d.mu.snapshots.earliest())
 	}
 	if maybeCompact {
 		d.maybeScheduleCompaction()
@@ -163,9 +164,8 @@ type collectedStats struct {
 
 func (d *DB) loadNewFileStats(
 	ctx context.Context, rs *readState, pending []manifest.NewTableEntry,
-) ([]collectedStats, []deleteCompactionHint) {
-	var hints []deleteCompactionHint
-	collected := make([]collectedStats, 0, len(pending))
+) (collected []collectedStats, wideTombstones []tombspan.WideTombstone) {
+	collected = make([]collectedStats, 0, len(pending))
 	for _, nf := range pending {
 		// A file's stats might have been populated by an earlier call to
 		// loadNewFileStats if the file was moved.
@@ -183,7 +183,7 @@ func (d *DB) loadNewFileStats(
 			continue
 		}
 
-		stats, newHints, err := d.loadTableStats(ctx, rs.current, nf.Level, nf.Meta)
+		stats, newWideTombstones, err := d.loadTableStats(ctx, rs.current, nf.Level, nf.Meta)
 		if err != nil {
 			d.opts.EventListener.BackgroundError(err)
 			continue
@@ -195,9 +195,9 @@ func (d *DB) loadNewFileStats(
 			TableMetadata: nf.Meta,
 			TableStats:    stats,
 		})
-		hints = append(hints, newHints...)
+		wideTombstones = append(wideTombstones, newWideTombstones...)
 	}
-	return collected, hints
+	return collected, wideTombstones
 }
 
 // scanReadStateTableStats is run by an active stat collection job when there
@@ -205,8 +205,8 @@ func (d *DB) loadNewFileStats(
 // which we haven't loaded table stats.
 func (d *DB) scanReadStateTableStats(
 	ctx context.Context, version *manifest.Version, fill []collectedStats,
-) (_ []collectedStats, _ []deleteCompactionHint, moreRemain bool) {
-	var hints []deleteCompactionHint
+) (_ []collectedStats, _ []tombspan.WideTombstone, moreRemain bool) {
+	var wideTombstones []tombspan.WideTombstone
 	sizesChecked := make(map[base.DiskFileNum]struct{})
 	// TODO(radu): an O(#tables) scan every time could be problematic.
 	for l, levelMetadata := range version.Levels {
@@ -224,7 +224,7 @@ func (d *DB) scanReadStateTableStats(
 			// return true for the last return value to signal there's more
 			// work to do.
 			if len(fill) == cap(fill) {
-				return fill, hints, true
+				return fill, wideTombstones, true
 			}
 
 			// If the file is remote and not SharedForeign, we should check if its size
@@ -265,7 +265,7 @@ func (d *DB) scanReadStateTableStats(
 				sizesChecked[f.TableBacking.DiskFileNum] = struct{}{}
 			}
 
-			stats, newHints, err := d.loadTableStats(ctx, version, l, f)
+			stats, newWideTombstones, err := d.loadTableStats(ctx, version, l, f)
 			if err != nil {
 				// Set `moreRemain` so we'll try again.
 				moreRemain = true
@@ -276,10 +276,10 @@ func (d *DB) scanReadStateTableStats(
 				TableMetadata: f,
 				TableStats:    stats,
 			})
-			hints = append(hints, newHints...)
+			wideTombstones = append(wideTombstones, newWideTombstones...)
 		}
 	}
-	return fill, hints, moreRemain
+	return fill, wideTombstones, moreRemain
 }
 
 // populateBlobFileProperties reads at most maxNum blob file properties for blob
@@ -325,8 +325,8 @@ func (d *DB) scanBlobFileProperties(
 
 func (d *DB) loadTableStats(
 	ctx context.Context, v *manifest.Version, level int, meta *manifest.TableMetadata,
-) (manifest.TableStats, []deleteCompactionHint, error) {
-	var compactionHints []deleteCompactionHint
+) (manifest.TableStats, []tombspan.WideTombstone, error) {
+	var wideTombstones []tombspan.WideTombstone
 	var rangeDeletionsBytesEstimate uint64
 
 	backingProps, backingPropsOk := meta.TableBacking.Properties()
@@ -348,7 +348,7 @@ func (d *DB) loadTableStats(
 					backingProps = meta.TableBacking.PopulateProperties(&loadedProps)
 				}
 				if backingProps.NumRangeDeletions > 0 || backingProps.NumRangeKeyDels > 0 {
-					compactionHints, rangeDeletionsBytesEstimate, err = d.loadTableRangeDelStats(ctx, r, v, level, meta, env)
+					wideTombstones, rangeDeletionsBytesEstimate, err = d.loadTableRangeDelStats(ctx, r, v, level, meta, env)
 					if err != nil {
 						return err
 					}
@@ -370,7 +370,7 @@ func (d *DB) loadTableStats(
 			return stats, nil, err
 		}
 	}
-	return stats, compactionHints, nil
+	return stats, wideTombstones, nil
 }
 
 // loadTablePointKeyStats calculates the point key statistics for the given
@@ -400,8 +400,8 @@ func (d *DB) loadTablePointKeyStats(
 }
 
 // loadTableRangeDelStats calculates the range deletion and range key deletion
-// statistics for the given table. It also collects deleteCompactionHints if it
-// finds any eligible sstables.
+// statistics for the given table. It also collects wide tombstones if it finds
+// any eligible sstables.
 func (d *DB) loadTableRangeDelStats(
 	ctx context.Context,
 	r *sstable.Reader,
@@ -409,13 +409,13 @@ func (d *DB) loadTableRangeDelStats(
 	level int,
 	meta *manifest.TableMetadata,
 	env sstable.ReadEnv,
-) (_ []deleteCompactionHint, rangeDeletionsBytesEstimate uint64, _ error) {
+) (_ []tombspan.WideTombstone, rangeDeletionsBytesEstimate uint64, _ error) {
 	iter, err := newCombinedDeletionKeyspanIter(ctx, d.opts.Comparer, r, meta, env)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer iter.Close()
-	var compactionHints []deleteCompactionHint
+	var wideTombstones []tombspan.WideTombstone
 	// We iterate over the defragmented range tombstones and range key deletions,
 	// which ensures we don't double count ranges deleted at different sequence
 	// numbers. Also, merging abutting tombstones reduces the number of calls to
@@ -472,14 +472,15 @@ func (d *DB) loadTableRangeDelStats(
 				}
 				rangeDeletionsBytesEstimate += size
 				// As the table is in the bottommost level, there is no need to
-				// collect a deletion hint.
+				// collect a wide tombstone.
 				continue
 			}
 		}
 
-		// While the size estimates for point keys should only be updated if this
-		// span contains a range del, the sequence numbers are required for the
-		// hint. Unconditionally descend, but conditionally update the estimates.
+		// While the size estimates for point keys should only be updated if
+		// this span contains a range del, the sequence numbers are required for
+		// the wide tombstone. Unconditionally descend, but conditionally update
+		// the estimates.
 		tombstoneKeyType := tombstoneKeyTypeFromKeys(s.Keys)
 		tombBounds := base.UserKeyBoundsEndExclusive(s.Start, s.End)
 		estimate, deletionCandidates, err := d.examineTablesBeneathTombstones(
@@ -489,20 +490,43 @@ func (d *DB) loadTableRangeDelStats(
 		}
 		rangeDeletionsBytesEstimate += estimate
 
+		// NB: deletionCandidates is the number of tables that are determined
+		// eligible for delete-only compactions based on the tombstones within
+		// this sstable alone. It's not strictly guaranteed to uncover all files
+		// that could be deleted due to tombstone fragmentation. See
+		// newCombinedDeletionKeyspanIter for details on the defragmentation performed
+		// while looking for deletion candidates.
 		if deletionCandidates > 0 {
-			compactionHints = append(compactionHints, deleteCompactionHint{
-				keyType:          tombstoneKeyType,
-				bounds:           base.UserKeyBoundsEndExclusive(slices.Clone(s.Start), slices.Clone(s.End)),
-				tombstoneFile:    meta,
-				tombstoneLevel:   level,
-				tombstoneSeqNums: base.SeqNumRange{Low: s.SmallestSeqNum(), High: s.LargestSeqNum()},
+			wideTombstones = append(wideTombstones, tombspan.WideTombstone{
+				PointSeqNums: seqNumRangeOfKind(s.Keys, base.InternalKeyKindRangeDelete),
+				RangeSeqNums: seqNumRangeOfKind(s.Keys, base.InternalKeyKindRangeKeyDelete),
+				Bounds:       tombBounds.Clone(),
+				Level:        level,
+				Table:        meta,
 			})
 		}
 	}
 	if err != nil {
 		return nil, 0, err
 	}
-	return compactionHints, rangeDeletionsBytesEstimate, nil
+	return wideTombstones, rangeDeletionsBytesEstimate, nil
+}
+
+func seqNumRangeOfKind(keys []keyspan.Key, kind base.InternalKeyKind) base.SeqNumRange {
+	var seqnums base.SeqNumRange
+	for _, k := range keys {
+		if k.Kind() != kind {
+			continue
+		}
+		seq := k.SeqNum()
+		if seqnums.High == 0 {
+			seqnums.High, seqnums.Low = seq, seq
+			continue
+		}
+		seqnums.Low = min(seqnums.Low, seq)
+		seqnums.High = max(seqnums.High, seq)
+	}
+	return seqnums
 }
 
 // estimateSizesBeneath calculates two statistics describing the data in the LSM
@@ -639,9 +663,10 @@ func (d *DB) examineTablesBeneathTombstones(
 	// sub-levels when estimating this overlap.
 	for l := level + 1; l < numLevels; l++ {
 		for tbl := range v.Overlaps(l, tombBounds).All() {
-			// Determine whether we need to update size estimates and hint seqnums
-			// based on the type of hint and the type of keys in this file.
-			var updateEstimates, updateHints bool
+			// Determine whether we need to update size estimates and
+			// WideTombstone seqnums based on the type of tombstone and the type
+			// of keys in this file.
+			var updateEstimates, updateWideTombstones bool
 			switch tombType {
 			case manifest.KeyTypePoint:
 				// The range deletion byte estimates should only be updated if this
@@ -652,25 +677,28 @@ func (d *DB) examineTablesBeneathTombstones(
 				if tbl.HasPointKeys {
 					updateEstimates = true
 				}
-				// As the initiating span contained only range dels, hints can only be
-				// updated if this table does _not_ contain range keys.
+				// As the initiating span contained only range dels, wide
+				// tombstone state can only be updated if this table does _not_
+				// contain range keys.
 				if !tbl.HasRangeKeys {
-					updateHints = true
+					updateWideTombstones = true
 				}
 			case manifest.KeyTypeRange:
 				// The initiating span contained only range key dels. The estimates
 				// apply only to point keys, and are therefore not updated.
 				updateEstimates = false
-				// As the initiating span contained only range key dels, hints can
-				// only be updated if this table does _not_ contain point keys.
+				// As the initiating span contained only range key dels, wide
+				// tombstones can only be updated if this table does _not_
+				// contain point keys.
 				if !tbl.HasPointKeys {
-					updateHints = true
+					updateWideTombstones = true
 				}
 			case manifest.KeyTypePointAndRange:
-				// Always update the estimates and hints, as this hint type can
-				// drop a table, irrespective of the mixture of keys. Similar to
+				// Always update the estimates and wide tombstones, as
+				// tombstones deleting both points and ranges can drop a table,
+				// irrespective of the table's mixture of keys. Similar to
 				// above, the range del bytes estimates is an overestimate.
-				updateEstimates, updateHints = true, true
+				updateEstimates, updateWideTombstones = true, true
 			default:
 				panic(errors.AssertionFailedf("pebble: unknown tombstone type %s", tombType))
 			}
@@ -682,7 +710,7 @@ func (d *DB) examineTablesBeneathTombstones(
 				if updateEstimates {
 					estimate += tbl.Size + tbl.EstimatedReferenceSize()
 				}
-				if updateHints {
+				if updateWideTombstones {
 					deletionCandidates++
 				}
 				continue
@@ -708,9 +736,9 @@ func (d *DB) examineTablesBeneathTombstones(
 			estimate += size
 
 			// If the format major version is past FormatVirtualSSTables,
-			// deletion only hints can also apply to partial overlaps with
-			// sstables.
-			if !updateHints || d.FormatMajorVersion() < FormatVirtualSSTables {
+			// deletion only compactions can also apply to partial overlaps with
+			// sstables via excise.
+			if !updateWideTombstones || d.FormatMajorVersion() < FormatVirtualSSTables {
 				continue
 			}
 			tableBounds := tbl.UserKeyBounds()
@@ -792,9 +820,9 @@ func maybeSetStatsFromProperties(meta *manifest.TableMetadata, props *sstable.Pr
 	//  1. Estimating the potential for reclaimed space due to a deletion
 	//     requires scanning the LSM - a potentially expensive operation that
 	//     should be deferred.
-	//  2. Range deletions present an opportunity to compute "deletion hints",
-	//     which also requires a scan of the LSM to compute tables that would be
-	//     eligible for deletion.
+	//  2. Range deletions present an opportunity to find "wide" ranged
+	//     tombstones, which also requires a scan of the LSM to compute tables
+	//     that would be eligible for deletion.
 	//
 	// These two tasks are deferred to the table stats collector goroutine.
 	//
@@ -903,7 +931,7 @@ func pointDeletionsBytesEstimate(
 // returns "ranged deletion" spans for a single table, providing a combined view
 // of both range deletion and range key deletion spans. The
 // tableRangedDeletionIter is intended for use in the specific case of computing
-// the statistics and deleteCompactionHints for a single table.
+// the statistics and wide tombstones for a single table.
 //
 // As an example, consider the following set of spans from the range deletion
 // and range key blocks of a table:
