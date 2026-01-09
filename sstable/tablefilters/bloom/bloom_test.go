@@ -5,12 +5,11 @@
 package bloom
 
 import (
-	crand "crypto/rand"
 	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/crlib/crhumanize"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/internal/filtertestutils"
 	"github.com/stretchr/testify/require"
 )
 
@@ -204,28 +203,83 @@ func TestHash(t *testing.T) {
 	}
 }
 
+func TestEndToEnd(t *testing.T) {
+	filtertestutils.RunEndToEndTest(t, FilterPolicy(5), Decoder, 0.5)
+	filtertestutils.RunEndToEndTest(t, FilterPolicy(10), Decoder, 0.2)
+	filtertestutils.RunEndToEndTest(t, FilterPolicy(20), Decoder, 0.1)
+}
+
+// Results on n2d-standard-8 (AMD EPYC Turin, go 1.25):
+//
+// name                                         MKeys/s
+// BloomFilterWriter/bpk=10/len=4/n=10K-8          112 ± 1%
+// BloomFilterWriter/bpk=10/len=4/n=100K-8         110 ± 1%
+// BloomFilterWriter/bpk=10/len=4/n=1M-8          91.1 ± 2%
+// BloomFilterWriter/bpk=10/len=16/n=10K-8        96.4 ± 1%
+// BloomFilterWriter/bpk=10/len=16/n=100K-8       94.2 ± 1%
+// BloomFilterWriter/bpk=10/len=16/n=1M-8         80.7 ± 2%
+// BloomFilterWriter/bpk=10/len=128/n=10K-8       25.1 ± 0%
+// BloomFilterWriter/bpk=10/len=128/n=100K-8      24.7 ± 1%
+// BloomFilterWriter/bpk=10/len=128/n=1M-8        23.7 ± 2%
+// BloomFilterWriter/bpk=16/len=4/n=10K-8          111 ± 1%
+// BloomFilterWriter/bpk=16/len=4/n=100K-8         108 ± 1%
+// BloomFilterWriter/bpk=16/len=4/n=1M-8          85.1 ± 1%
+// BloomFilterWriter/bpk=16/len=16/n=10K-8        95.0 ± 1%
+// BloomFilterWriter/bpk=16/len=16/n=100K-8       93.4 ± 1%
+// BloomFilterWriter/bpk=16/len=16/n=1M-8         75.2 ± 1%
+// BloomFilterWriter/bpk=16/len=128/n=10K-8       24.9 ± 0%
+// BloomFilterWriter/bpk=16/len=128/n=100K-8      24.9 ± 1%
+// BloomFilterWriter/bpk=16/len=128/n=1M-8        23.0 ± 4%
 func BenchmarkBloomFilterWriter(b *testing.B) {
-	for _, keyLen := range []int{4, 16, 128} {
-		for _, bpk := range []uint32{10, 16} {
-			for _, numKeys := range []int{10_000, 100_000, 1_000_000} {
-				b.Run(fmt.Sprintf("len=%d/bpk=%d/n=%s", keyLen, bpk, crhumanize.Count(numKeys, crhumanize.Compact)), func(b *testing.B) {
-					keys := make([][]byte, numKeys)
-					for i := range keys {
-						keys[i] = make([]byte, keyLen)
-						_, _ = crand.Read(keys[i])
-					}
-					b.ResetTimer()
-					policy := FilterPolicy(bpk)
-					for i := 0; i < b.N; i++ {
-						w := policy.NewWriter()
-						for _, key := range keys {
-							w.AddKey(key)
-						}
-						w.Finish()
-					}
-					b.ReportMetric(float64(b.N*numKeys)/b.Elapsed().Seconds()/1e6, "MKeys/s")
-				})
-			}
-		}
+	for _, bpk := range []uint32{10, 16} {
+		b.Run(fmt.Sprintf("bpk=%d", bpk), func(b *testing.B) {
+			filtertestutils.BenchmarkWriter(b, FilterPolicy(bpk))
+		})
+	}
+}
+
+// Results on n2d-standard-8 (AMD EPYC Turin, go 1.25):
+//
+// MayContain/bpk=10/len=4/n=10K/positive-8     17.4ns ± 2%
+// MayContain/bpk=10/len=4/n=10K/negative-8     30.1ns ± 4%
+// MayContain/bpk=10/len=4/n=100K/positive-8    25.6ns ± 4%
+// MayContain/bpk=10/len=4/n=100K/negative-8    31.6ns ± 5%
+// MayContain/bpk=10/len=4/n=1M/positive-8      51.4ns ± 9%
+// MayContain/bpk=10/len=4/n=1M/negative-8      37.2ns ± 4%
+// MayContain/bpk=10/len=16/n=10K/positive-8    22.0ns ± 6%
+// MayContain/bpk=10/len=16/n=10K/negative-8    36.2ns ± 2%
+// MayContain/bpk=10/len=16/n=100K/positive-8   32.7ns ± 1%
+// MayContain/bpk=10/len=16/n=100K/negative-8   37.8ns ± 2%
+// MayContain/bpk=10/len=16/n=1M/positive-8      103ns ± 2%
+// MayContain/bpk=10/len=16/n=1M/negative-8     41.5ns ± 1%
+// MayContain/bpk=10/len=128/n=10K/positive-8   67.9ns ± 1%
+// MayContain/bpk=10/len=128/n=10K/negative-8   79.3ns ± 2%
+// MayContain/bpk=10/len=128/n=100K/positive-8  80.1ns ± 3%
+// MayContain/bpk=10/len=128/n=100K/negative-8  77.9ns ± 2%
+// MayContain/bpk=10/len=128/n=1M/positive-8     261ns ± 4%
+// MayContain/bpk=10/len=128/n=1M/negative-8    80.7ns ± 2%
+// MayContain/bpk=16/len=4/n=10K/positive-8     17.8ns ± 3%
+// MayContain/bpk=16/len=4/n=10K/negative-8     24.6ns ± 3%
+// MayContain/bpk=16/len=4/n=100K/positive-8    26.4ns ± 4%
+// MayContain/bpk=16/len=4/n=100K/negative-8    26.3ns ± 2%
+// MayContain/bpk=16/len=4/n=1M/positive-8      51.5ns ± 1%
+// MayContain/bpk=16/len=4/n=1M/negative-8      31.5ns ± 3%
+// MayContain/bpk=16/len=16/n=10K/positive-8    21.9ns ± 2%
+// MayContain/bpk=16/len=16/n=10K/negative-8    32.0ns ± 5%
+// MayContain/bpk=16/len=16/n=100K/positive-8   33.2ns ± 2%
+// MayContain/bpk=16/len=16/n=100K/negative-8   33.7ns ± 2%
+// MayContain/bpk=16/len=16/n=1M/positive-8      105ns ± 5%
+// MayContain/bpk=16/len=16/n=1M/negative-8     38.2ns ± 5%
+// MayContain/bpk=16/len=128/n=10K/positive-8   67.0ns ± 4%
+// MayContain/bpk=16/len=128/n=10K/negative-8   73.6ns ± 3%
+// MayContain/bpk=16/len=128/n=100K/positive-8  80.6ns ± 2%
+// MayContain/bpk=16/len=128/n=100K/negative-8  74.0ns ± 2%
+// MayContain/bpk=16/len=128/n=1M/positive-8     262ns ± 3%
+// MayContain/bpk=16/len=128/n=1M/negative-8    76.3ns ± 3%
+func BenchmarkMayContain(b *testing.B) {
+	for _, bpk := range []uint32{10, 16} {
+		b.Run(fmt.Sprintf("bpk=%d", bpk), func(b *testing.B) {
+			filtertestutils.BenchmarkMayContain(b, FilterPolicy(bpk), Decoder)
+		})
 	}
 }
