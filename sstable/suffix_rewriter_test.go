@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
-	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 	"github.com/stretchr/testify/require"
 )
 

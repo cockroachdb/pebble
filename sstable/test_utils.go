@@ -13,7 +13,6 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -22,6 +21,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 )
 
 // ReadAll returns all point keys, range del spans, and range key spans from an

@@ -180,7 +180,7 @@ type WriterOptions struct {
 	// FilterPolicy defines a filter algorithm (such as a Bloom filter) that can
 	// reduce disk reads for SeekPrefixGE calls.
 	//
-	// One such implementation is in the pebble/bloom package.
+	// One such implementation is in the sstable/tablefilters/bloom package.
 	//
 	// The default value is NoFilterPolicy.
 	FilterPolicy base.TableFilterPolicy

@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/internal/ascii"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 )
 
 func main() {
