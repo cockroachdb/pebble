@@ -21,12 +21,19 @@ const Family base.TableFilterFamily = "binaryfuse"
 // A binary fuse filter has false positive rate 1/2^bitsPerFingerprint and
 // overhead ~13% (i.e. contains ~1.13 fingerprints per key):
 //
-//	Bits/fingeprint | Bits/key | FPR
-//	----------------+----------+---------------------
-//	              4 |   ~4.5   | 6.25% (1 in 16)
-//	              8 |   ~9     | 0.39% (1 in 256)
-//	             12 |   ~13.5  | 0.024% (1 in 4096)
-//	             16 |   ~18    | 0.0015% (1 in 65536)
+//	Bits/fingerprint | Bits/key | FPR
+//	-----------------+----------+---------------------
+//	               4 |   ~4.5   | 6.25% (1 in 16)
+//	               8 |   ~9     | 0.39% (1 in 256)
+//	              12 |   ~13.5  | 0.024% (1 in 4096)
+//	              16 |   ~18    | 0.0015% (1 in 65536)
+//
+// Notes:
+//   - Older Pebble versions do not understand binary fuse filters and will not
+//     use these filters.
+//   - The Bits/key above applies once we have a lot (hundreds of thousands) of
+//     keys. For smaller sets, we get 5-10% larger filters. See simulation.md
+//     for exact figures.
 func FilterPolicy(bitsPerFingerprint int) base.TableFilterPolicy {
 	switch bitsPerFingerprint {
 	case 4, 8, 12, 16:
