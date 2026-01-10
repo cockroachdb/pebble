@@ -29,6 +29,7 @@ require (
 	github.com/puzpuzpuz/xsync/v3 v3.5.1
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.9.0
+	github.com/zeebo/xxh3 v1.0.2
 	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6
 	golang.org/x/perf v0.0.0-20251112180420-cfbd823f7301
 	golang.org/x/sync v0.18.0
@@ -46,6 +47,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
