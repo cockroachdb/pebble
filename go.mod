@@ -2,10 +2,11 @@ module github.com/cockroachdb/pebble
 
 require (
 	github.com/DataDog/zstd v1.5.7
+	github.com/FastFilter/xorfilter v0.4.0
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/RaduBerinde/axisds v0.0.0-20260105221726-1be486564c85
 	github.com/RaduBerinde/tdigest v0.0.0-20251022152254-90e030c3a314
-	github.com/cespare/xxhash/v2 v2.2.0
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/crlib v0.0.0-20251122031428-fe658a2dbda1
 	github.com/cockroachdb/datadriven v1.0.3-0.20251123150250-ddff6747b112
 	github.com/cockroachdb/errors v1.11.3
@@ -45,6 +46,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
@@ -52,6 +54,7 @@ require (
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/zeebo/xxh3 v1.0.2 // indirect
 	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect

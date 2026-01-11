@@ -212,24 +212,24 @@ func TestEndToEnd(t *testing.T) {
 // Results on n2d-standard-8 (AMD EPYC Turin, go 1.25):
 //
 // name                                         MKeys/s
-// BloomFilterWriter/bpk=10/len=4/n=10K-8          112 ± 1%
-// BloomFilterWriter/bpk=10/len=4/n=100K-8         110 ± 1%
-// BloomFilterWriter/bpk=10/len=4/n=1M-8          91.1 ± 2%
-// BloomFilterWriter/bpk=10/len=16/n=10K-8        96.4 ± 1%
-// BloomFilterWriter/bpk=10/len=16/n=100K-8       94.2 ± 1%
-// BloomFilterWriter/bpk=10/len=16/n=1M-8         80.7 ± 2%
+// BloomFilterWriter/bpk=10/len=6/n=10K-8          110 ± 0%
+// BloomFilterWriter/bpk=10/len=6/n=100K-8         108 ± 0%
+// BloomFilterWriter/bpk=10/len=6/n=1M-8          92.6 ± 2%
+// BloomFilterWriter/bpk=10/len=16/n=10K-8        96.7 ± 0%
+// BloomFilterWriter/bpk=10/len=16/n=100K-8       94.5 ± 0%
+// BloomFilterWriter/bpk=10/len=16/n=1M-8         82.5 ± 2%
 // BloomFilterWriter/bpk=10/len=128/n=10K-8       25.1 ± 0%
-// BloomFilterWriter/bpk=10/len=128/n=100K-8      24.7 ± 1%
-// BloomFilterWriter/bpk=10/len=128/n=1M-8        23.7 ± 2%
-// BloomFilterWriter/bpk=16/len=4/n=10K-8          111 ± 1%
-// BloomFilterWriter/bpk=16/len=4/n=100K-8         108 ± 1%
-// BloomFilterWriter/bpk=16/len=4/n=1M-8          85.1 ± 1%
-// BloomFilterWriter/bpk=16/len=16/n=10K-8        95.0 ± 1%
-// BloomFilterWriter/bpk=16/len=16/n=100K-8       93.4 ± 1%
-// BloomFilterWriter/bpk=16/len=16/n=1M-8         75.2 ± 1%
-// BloomFilterWriter/bpk=16/len=128/n=10K-8       24.9 ± 0%
-// BloomFilterWriter/bpk=16/len=128/n=100K-8      24.9 ± 1%
-// BloomFilterWriter/bpk=16/len=128/n=1M-8        23.0 ± 4%
+// BloomFilterWriter/bpk=10/len=128/n=100K-8      24.9 ± 0%
+// BloomFilterWriter/bpk=10/len=128/n=1M-8        23.9 ± 1%
+// BloomFilterWriter/bpk=16/len=6/n=10K-8          110 ± 0%
+// BloomFilterWriter/bpk=16/len=6/n=100K-8         107 ± 0%
+// BloomFilterWriter/bpk=16/len=6/n=1M-8          85.2 ± 2%
+// BloomFilterWriter/bpk=16/len=16/n=10K-8        96.1 ± 0%
+// BloomFilterWriter/bpk=16/len=16/n=100K-8       93.6 ± 0%
+// BloomFilterWriter/bpk=16/len=16/n=1M-8         76.7 ± 2%
+// BloomFilterWriter/bpk=16/len=128/n=10K-8       25.0 ± 0%
+// BloomFilterWriter/bpk=16/len=128/n=100K-8      24.9 ± 0%
+// BloomFilterWriter/bpk=16/len=128/n=1M-8        23.5 ± 0%
 func BenchmarkBloomFilterWriter(b *testing.B) {
 	for _, bpk := range []uint32{10, 16} {
 		b.Run(fmt.Sprintf("bpk=%d", bpk), func(b *testing.B) {
@@ -240,42 +240,43 @@ func BenchmarkBloomFilterWriter(b *testing.B) {
 
 // Results on n2d-standard-8 (AMD EPYC Turin, go 1.25):
 //
-// MayContain/bpk=10/len=4/n=10K/positive-8     17.4ns ± 2%
-// MayContain/bpk=10/len=4/n=10K/negative-8     30.1ns ± 4%
-// MayContain/bpk=10/len=4/n=100K/positive-8    25.6ns ± 4%
-// MayContain/bpk=10/len=4/n=100K/negative-8    31.6ns ± 5%
-// MayContain/bpk=10/len=4/n=1M/positive-8      51.4ns ± 9%
-// MayContain/bpk=10/len=4/n=1M/negative-8      37.2ns ± 4%
-// MayContain/bpk=10/len=16/n=10K/positive-8    22.0ns ± 6%
-// MayContain/bpk=10/len=16/n=10K/negative-8    36.2ns ± 2%
-// MayContain/bpk=10/len=16/n=100K/positive-8   32.7ns ± 1%
-// MayContain/bpk=10/len=16/n=100K/negative-8   37.8ns ± 2%
-// MayContain/bpk=10/len=16/n=1M/positive-8      103ns ± 2%
-// MayContain/bpk=10/len=16/n=1M/negative-8     41.5ns ± 1%
-// MayContain/bpk=10/len=128/n=10K/positive-8   67.9ns ± 1%
-// MayContain/bpk=10/len=128/n=10K/negative-8   79.3ns ± 2%
-// MayContain/bpk=10/len=128/n=100K/positive-8  80.1ns ± 3%
-// MayContain/bpk=10/len=128/n=100K/negative-8  77.9ns ± 2%
-// MayContain/bpk=10/len=128/n=1M/positive-8     261ns ± 4%
-// MayContain/bpk=10/len=128/n=1M/negative-8    80.7ns ± 2%
-// MayContain/bpk=16/len=4/n=10K/positive-8     17.8ns ± 3%
-// MayContain/bpk=16/len=4/n=10K/negative-8     24.6ns ± 3%
-// MayContain/bpk=16/len=4/n=100K/positive-8    26.4ns ± 4%
-// MayContain/bpk=16/len=4/n=100K/negative-8    26.3ns ± 2%
-// MayContain/bpk=16/len=4/n=1M/positive-8      51.5ns ± 1%
-// MayContain/bpk=16/len=4/n=1M/negative-8      31.5ns ± 3%
-// MayContain/bpk=16/len=16/n=10K/positive-8    21.9ns ± 2%
-// MayContain/bpk=16/len=16/n=10K/negative-8    32.0ns ± 5%
-// MayContain/bpk=16/len=16/n=100K/positive-8   33.2ns ± 2%
-// MayContain/bpk=16/len=16/n=100K/negative-8   33.7ns ± 2%
-// MayContain/bpk=16/len=16/n=1M/positive-8      105ns ± 5%
-// MayContain/bpk=16/len=16/n=1M/negative-8     38.2ns ± 5%
-// MayContain/bpk=16/len=128/n=10K/positive-8   67.0ns ± 4%
-// MayContain/bpk=16/len=128/n=10K/negative-8   73.6ns ± 3%
-// MayContain/bpk=16/len=128/n=100K/positive-8  80.6ns ± 2%
-// MayContain/bpk=16/len=128/n=100K/negative-8  74.0ns ± 2%
-// MayContain/bpk=16/len=128/n=1M/positive-8     262ns ± 3%
-// MayContain/bpk=16/len=128/n=1M/negative-8    76.3ns ± 3%
+// name                                         time/op
+// MayContain/bpk=10/len=6/n=10K/positive-8     10.4ns ± 0%
+// MayContain/bpk=10/len=6/n=10K/negative-8     10.9ns ± 1%
+// MayContain/bpk=10/len=6/n=100K/positive-8    10.7ns ± 0%
+// MayContain/bpk=10/len=6/n=100K/negative-8    11.0ns ± 3%
+// MayContain/bpk=10/len=6/n=1M/positive-8      11.1ns ± 0%
+// MayContain/bpk=10/len=6/n=1M/negative-8      11.8ns ± 2%
+// MayContain/bpk=10/len=16/n=10K/positive-8    12.5ns ± 0%
+// MayContain/bpk=10/len=16/n=10K/negative-8    14.9ns ± 1%
+// MayContain/bpk=10/len=16/n=100K/positive-8   12.8ns ± 0%
+// MayContain/bpk=10/len=16/n=100K/negative-8   15.7ns ± 1%
+// MayContain/bpk=10/len=16/n=1M/positive-8     13.7ns ± 0%
+// MayContain/bpk=10/len=16/n=1M/negative-8     16.3ns ± 1%
+// MayContain/bpk=10/len=128/n=10K/positive-8   47.4ns ± 0%
+// MayContain/bpk=10/len=128/n=10K/negative-8   56.3ns ± 0%
+// MayContain/bpk=10/len=128/n=100K/positive-8  47.8ns ± 0%
+// MayContain/bpk=10/len=128/n=100K/negative-8  57.7ns ± 0%
+// MayContain/bpk=10/len=128/n=1M/positive-8    49.0ns ± 0%
+// MayContain/bpk=10/len=128/n=1M/negative-8    58.3ns ± 1%
+// MayContain/bpk=16/len=6/n=10K/positive-8     10.7ns ± 0%
+// MayContain/bpk=16/len=6/n=10K/negative-8     11.6ns ± 1%
+// MayContain/bpk=16/len=6/n=100K/positive-8    10.7ns ± 0%
+// MayContain/bpk=16/len=6/n=100K/negative-8    11.7ns ± 1%
+// MayContain/bpk=16/len=6/n=1M/positive-8      11.2ns ± 0%
+// MayContain/bpk=16/len=6/n=1M/negative-8      12.3ns ± 1%
+// MayContain/bpk=16/len=16/n=10K/positive-8    12.5ns ± 0%
+// MayContain/bpk=16/len=16/n=10K/negative-8    14.4ns ± 1%
+// MayContain/bpk=16/len=16/n=100K/positive-8   12.8ns ± 0%
+// MayContain/bpk=16/len=16/n=100K/negative-8   14.8ns ± 1%
+// MayContain/bpk=16/len=16/n=1M/positive-8     13.4ns ± 0%
+// MayContain/bpk=16/len=16/n=1M/negative-8     15.2ns ± 1%
+// MayContain/bpk=16/len=128/n=10K/positive-8   47.5ns ± 0%
+// MayContain/bpk=16/len=128/n=10K/negative-8   48.6ns ± 0%
+// MayContain/bpk=16/len=128/n=100K/positive-8  48.2ns ± 0%
+// MayContain/bpk=16/len=128/n=100K/negative-8  50.1ns ± 0%
+// MayContain/bpk=16/len=128/n=1M/positive-8    49.4ns ± 0%
+// MayContain/bpk=16/len=128/n=1M/negative-8    51.7ns ± 0%
 func BenchmarkMayContain(b *testing.B) {
 	for _, bpk := range []uint32{10, 16} {
 		b.Run(fmt.Sprintf("bpk=%d", bpk), func(b *testing.B) {
