@@ -195,7 +195,7 @@ func TestLint(t *testing.T) {
 		t.Parallel()
 
 		if err := stream.ForEach(
-			dirCmd(t, pkg.Dir, "git", "grep", "fmt\\.Errorf("),
+			dirCmd(t, pkg.Dir, "git", "grep", "fmt\\.Errorf(", "--", "*.go"),
 			func(s string) {
 				t.Errorf("\n%s <- please use \"errors.Errorf\" instead", s)
 			}); err != nil {
@@ -207,7 +207,7 @@ func TestLint(t *testing.T) {
 		t.Parallel()
 
 		if err := stream.ForEach(
-			dirCmd(t, pkg.Dir, "git", "grep", "os\\.Is"),
+			dirCmd(t, pkg.Dir, "git", "grep", "os\\.Is", "--", "*.go"),
 			func(s string) {
 				t.Errorf("\n%s <- please use the \"oserror\" equivalent instead", s)
 			}); err != nil {
@@ -220,7 +220,7 @@ func TestLint(t *testing.T) {
 
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, "git", "grep", "-B1", "runtime\\.SetFinalizer("),
+				dirCmd(t, pkg.Dir, "git", "grep", "-B1", "runtime\\.SetFinalizer(", "--", "*.go"),
 				lintIgnore("lint:ignore SetFinalizer"),
 				stream.GrepNot(`^internal/invariants/invariants.go`),
 			), func(s string) {
@@ -236,7 +236,7 @@ func TestLint(t *testing.T) {
 		t.Parallel()
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, "git", "grep", `atomic\.\(Load\|Store\|Add\|Swap\|Compare\)`),
+				dirCmd(t, pkg.Dir, "git", "grep", `atomic\.\(Load\|Store\|Add\|Swap\|Compare\)`, "--", "*.go"),
 				lintIgnore("lint:ignore RawAtomics"),
 			), func(s string) {
 				t.Errorf("\n%s <- please use atomic wrappers (like atomic.Int32) instead", s)
