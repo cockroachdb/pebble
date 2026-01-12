@@ -195,6 +195,12 @@ func (m *PhysicalBlobFile) ref() {
 	m.refs.Add(+1)
 }
 
+// Ref increments the reference count for the blob file. This is the exported
+// version of ref() for use by ingestedFlushable entries.
+func (m *PhysicalBlobFile) Ref() {
+	m.ref()
+}
+
 // unref decrements the reference count for the blob file. If the reference
 // count reaches zero, the blob file is added to the provided obsolete files
 // set.
@@ -205,6 +211,14 @@ func (m *PhysicalBlobFile) unref(of ObsoleteFilesSet) {
 	} else if refs == 0 {
 		of.AddBlob(m)
 	}
+}
+
+// Unref decrements the reference count for the blob file. If the reference
+// count reaches zero, the blob file is added to the provided obsolete files
+// set. This is the exported version of unref() for use by ingestedFlushable
+// entries.
+func (m *PhysicalBlobFile) Unref(of ObsoleteFilesSet) {
+	m.unref(of)
 }
 
 // ParseBlobFileMetadataDebug parses a BlobFileMetadata from its string
