@@ -312,12 +312,13 @@ func TestMergingIterDataDriven(t *testing.T) {
 					continue
 				}
 				li := &levelIter{}
-				li.init(context.Background(), IterOptions{}, testkeys.Comparer,
+				li.init(t.Context(), IterOptions{}, testkeys.Comparer,
 					newIters, slice.Iter(), manifest.Level(i), iio)
-
-				i := len(levelIters)
-				levelIters = append(levelIters, mergingIterLevel{iter: li})
-				li.initRangeDel(&levelIters[i])
+				li.interleaveRangeDels = true
+				levelIters = append(levelIters, mergingIterLevel{
+					iter:         li,
+					getTombstone: li.getTombstone,
+				})
 			}
 			miter := &mergingIter{}
 			miter.init(nil /* opts */, &stats, cmp, func(a []byte) int { return len(a) }, levelIters...)
@@ -326,7 +327,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 			// Exercise SetContext for fun
 			// (https://github.com/cockroachdb/pebble/pull/3037 caused a SIGSEGV due
 			// to a nil pointer dereference).
-			miter.SetContext(context.Background())
+			miter.SetContext(t.Context())
 			itertest.RunInternalIterCmdWriter(t, &buf, d, miter,
 				itertest.Verbose, itertest.WithStats(&stats))
 			return buf.String()
@@ -713,7 +714,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 		l := newLevelIter(
 			context.Background(), IterOptions{}, testkeys.Comparer, newIters, levelSlices[i].Iter(),
 			manifest.Level(level), internalIterOpts{})
-		l.initRangeDel(&mils[level])
+		l.interleaveRangeDels = true
 		mils[level].iter = l
 	}
 	var stats base.InternalIteratorStats
