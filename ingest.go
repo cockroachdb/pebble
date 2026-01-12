@@ -338,7 +338,7 @@ func ingestLoad1(
 		// Build blob files and sst blob file references.
 		// constructBlobFileMetadataForIngestedTable will close the blob readables.
 		blobFilesClosed = true
-		res.blobMetas, err = constructBlobFileMetadataForIngestedTable(ctx, opts, cacheHandle, meta, r, blobFiles, blobFileNums)
+		res.blobMetas, err = constructBlobFileMetadataForIngestedTable(ctx, opts, fmv, cacheHandle, meta, r, blobFiles, blobFileNums)
 		if err != nil {
 			return ingestLocalResult{}, err
 		}
@@ -510,6 +510,7 @@ func ingestLoad1(
 func constructBlobFileMetadataForIngestedTable(
 	ctx context.Context,
 	opts *Options,
+	fmv FormatMajorVersion,
 	cacheHandle *cache.Handle,
 	tableMeta *manifest.TableMetadata,
 	tableReader *sstable.Reader,
@@ -574,7 +575,7 @@ func constructBlobFileMetadataForIngestedTable(
 				return errors.CombineErrors(err, readable.Close())
 			}
 			defer func() { _ = blobFile.Close() }()
-			maxSupportedBlobFileFormat := opts.FormatMajorVersion.MaxBlobFileFormat()
+			maxSupportedBlobFileFormat := fmv.MaxBlobFileFormat()
 			if maxSupportedBlobFileFormat < blobFile.FormatVersion() {
 				return errors.Errorf(
 					"pebble: ingesting blob file with format version %s, but max supported format version is %s",
