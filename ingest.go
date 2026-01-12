@@ -1554,15 +1554,21 @@ func (d *DB) newIngestedFlushableEntry(
 	// to.
 	entry := d.newFlushableEntry(f, logNum, seqNum)
 	// The flushable entry starts off with a single reader ref, so increment
-	// the TableMetadata.Refs.
+	// the TableMetadata.Refs and blob file refs.
 	for _, file := range f.files {
 		file.Ref()
 	}
+	for _, bf := range blobFiles {
+		bf.Physical.Ref()
+	}
 	entry.unrefFiles = func(of *manifest.ObsoleteFiles) {
-		// Invoke Unref on each table. If any files become obsolete, they'll be
-		// added to the set of obsolete files.
+		// Invoke Unref on each table and blob file. If any files become
+		// obsolete, they'll be added to the set of obsolete files.
 		for _, file := range f.files {
 			file.Unref(of)
+		}
+		for _, bf := range blobFiles {
+			bf.Physical.Unref(of)
 		}
 	}
 
