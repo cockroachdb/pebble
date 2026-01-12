@@ -719,24 +719,28 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 		return
 	}
 
-	var paths []string
+	var localSSTs pebble.LocalSSTables
 	var err error
 	for i, id := range o.batchIDs {
 		b := t.getBatch(id)
 		t.clearObj(id)
-		path, _, err2 := buildForIngest(t, o.dbID, b, i)
+		path, blobPaths, _, err2 := buildForIngest(t, o.dbID, b, i)
 		if err2 != nil {
 			h.Recordf("Build(%s) // %v", id, err2)
 		}
 		err = firstError(err, err2)
 		if err2 == nil {
-			paths = append(paths, path)
+			localSSTs = append(localSSTs, pebble.LocalSST{
+				Path:      path,
+				BlobPaths: blobPaths,
+			})
 		}
 		err = firstError(err, b.Close())
 	}
 
 	err = firstError(err, t.withRetries(func() error {
-		return t.getDB(o.dbID).Ingest(context.Background(), paths)
+		_, ingestErr := t.getDB(o.dbID).IngestLocal(context.Background(), localSSTs, pebble.KeyRange{})
+		return ingestErr
 	}))
 
 	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
@@ -933,7 +937,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 		return
 	}
 
-	path, writerMeta, err2 := buildForIngest(t, o.dbID, b, 0 /* i */)
+	path, blobPaths, writerMeta, err2 := buildForIngest(t, o.dbID, b, 0 /* i */)
 	if err2 != nil {
 		h.Recordf("Build(%s) // %v", o.batchID, err2)
 		return
@@ -947,18 +951,26 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 
 	t.opts.Comparer.ValidateKey.MustValidate(o.exciseStart)
 	t.opts.Comparer.ValidateKey.MustValidate(o.exciseEnd)
+	exciseSpan := pebble.KeyRange{
+		Start: o.exciseStart,
+		End:   o.exciseEnd,
+	}
 	if t.testOpts.useExcise {
+		localSSTs := pebble.LocalSSTables{
+			pebble.LocalSST{Path: path, BlobPaths: blobPaths},
+		}
 		err = firstError(err, t.withRetries(func() error {
-			_, err := db.IngestAndExcise(context.Background(), []string{path}, nil /* shared */, nil /* external */, pebble.KeyRange{
-				Start: o.exciseStart,
-				End:   o.exciseEnd,
-			})
-			return err
+			_, ingestErr := db.IngestLocal(context.Background(), localSSTs, exciseSpan)
+			return ingestErr
 		}))
 	} else {
 		err = firstError(err, o.simulateExcise(db, t))
+		localSSTs := pebble.LocalSSTables{
+			pebble.LocalSST{Path: path, BlobPaths: blobPaths},
+		}
 		err = firstError(err, t.withRetries(func() error {
-			return db.Ingest(context.Background(), []string{path})
+			_, ingestErr := db.IngestLocal(context.Background(), localSSTs, pebble.KeyRange{})
+			return ingestErr
 		}))
 	}
 

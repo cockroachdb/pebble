@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/valsep"
 	"github.com/cockroachdb/pebble/vfs"
 )
 
@@ -44,15 +45,16 @@ func writeSSTForIngestion(
 	pointIterCloser := base.CloseHelper(pointIter)
 	defer func() {
 		_ = pointIterCloser.Close()
-		if rangeDelIter != nil {
-			rangeDelIter.Close()
-		}
-		if rangeKeyIter != nil {
-			rangeKeyIter.Close()
-		}
 	}()
 
-	outputKey := func(key []byte, syntheticSuffix sstable.SyntheticSuffix) []byte {
+	outputKey := func(key []byte) []byte {
+		if !syntheticPrefix.IsSet() {
+			return slices.Clone(key)
+		}
+		return syntheticPrefix.Apply(key)
+	}
+
+	outputKeyWithSuffix := func(key []byte) []byte {
 		if !syntheticPrefix.IsSet() && !syntheticSuffix.IsSet() {
 			return slices.Clone(key)
 		}
@@ -84,7 +86,7 @@ func writeSSTForIngestion(
 
 		k := *kv
 		k.K.SetSeqNum(base.SeqNumZero)
-		k.K.UserKey = outputKey(k.K.UserKey, syntheticSuffix)
+		k.K.UserKey = outputKeyWithSuffix(k.K.UserKey)
 		value := kv.LazyValue()
 		// It's possible that we wrote the key on a batch from a db that supported
 		// DeleteSized, but will be ingesting into a db that does not. Detect this
@@ -106,72 +108,15 @@ func writeSSTForIngestion(
 		return nil, err
 	}
 
-	if rangeDelIter != nil {
-		span, err := rangeDelIter.First()
-		for ; span != nil; span, err = rangeDelIter.Next() {
-			if syntheticSuffix.IsSet() {
-				panic("synthetic suffix with RangeDel")
-			}
-			start := outputKey(span.Start, nil)
-			end := outputKey(span.End, nil)
-			t.opts.Comparer.ValidateKey.MustValidate(start)
-			t.opts.Comparer.ValidateKey.MustValidate(end)
-			if err := w.DeleteRange(start, end); err != nil {
-				return nil, err
-			}
-		}
-		if err != nil {
-			return nil, err
-		}
-		rangeDelIter.Close()
-		rangeDelIter = nil
+	if syntheticSuffix.IsSet() && rangeDelIter != nil {
+		panic("synthetic suffix with RangeDel")
+	}
+	if err := writeRangeDeletes(w, rangeDelIter, t.opts.Comparer, outputKey); err != nil {
+		return nil, err
 	}
 
-	if rangeKeyIter != nil {
-		span, err := rangeKeyIter.First()
-		for ; span != nil; span, err = rangeKeyIter.Next() {
-			// Coalesce the keys of this span and then zero the sequence
-			// numbers. This is necessary in order to make the range keys within
-			// the ingested sstable internally consistent at the sequence number
-			// it's ingested at. The individual keys within a batch are
-			// committed at unique sequence numbers, whereas all the keys of an
-			// ingested sstable are given the same sequence number. A span
-			// containing keys that both set and unset the same suffix at the
-			// same sequence number is nonsensical, so we "coalesce" or collapse
-			// the keys.
-			collapsed := keyspan.Span{
-				Start: outputKey(span.Start, nil),
-				End:   outputKey(span.End, nil),
-				Keys:  make([]keyspan.Key, 0, len(span.Keys)),
-			}
-			t.opts.Comparer.ValidateKey.MustValidate(collapsed.Start)
-			t.opts.Comparer.ValidateKey.MustValidate(collapsed.End)
-			keys := span.Keys
-			if syntheticSuffix.IsSet() {
-				keys = slices.Clone(span.Keys)
-				for i := range keys {
-					if keys[i].Kind() == base.InternalKeyKindRangeKeyUnset {
-						panic("RangeKeyUnset with synthetic suffix")
-					}
-					if len(keys[i].Suffix) > 0 {
-						keys[i].Suffix = syntheticSuffix
-					}
-				}
-			}
-			rangekey.Coalesce(t.opts.Comparer.CompareRangeSuffixes, keys, &collapsed.Keys)
-			for i := range collapsed.Keys {
-				collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
-			}
-			keyspan.SortKeysByTrailer(collapsed.Keys)
-			if err := w.Raw().EncodeSpan(collapsed); err != nil {
-				return nil, err
-			}
-		}
-		if err != nil {
-			return nil, err
-		}
-		rangeKeyIter.Close()
-		rangeKeyIter = nil
+	if err := writeRangeKeys(w, rangeKeyIter, t.opts.Comparer, syntheticSuffix, outputKey); err != nil {
+		return nil, err
 	}
 
 	if err := w.Close(); err != nil {
@@ -185,16 +130,23 @@ func writeSSTForIngestion(
 }
 
 // buildForIngest builds a local SST file containing the keys in the given batch
-// and returns its path and metadata.
+// and returns its path, blob paths (if any), and metadata.
 func buildForIngest(
 	t *Test, dbID objID, b *pebble.Batch, i int,
-) (path string, _ *sstable.WriterMetadata, _ error) {
+) (path string, blobPaths []string, _ *sstable.WriterMetadata, _ error) {
 	path = t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d", dbID.slot(), i))
 	f, err := t.opts.FS.Create(path, vfs.WriteCategoryUnspecified)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	db := t.getDB(dbID)
+
+	// If value separation is enabled and the format major version supports
+	// ingesting blob files, use SSTBlobWriter to potentially create blob files.
+	if t.opts.Experimental.ValueSeparationPolicy().Enabled &&
+		db.FormatMajorVersion() >= pebble.FormatIngestBlobFiles {
+		return buildForIngestWithBlobs(t, dbID, b, i, path, f, db)
+	}
 
 	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 
@@ -208,10 +160,213 @@ func buildForIngest(
 		writable,
 		db.FormatMajorVersion(),
 	)
-	return path, meta, err
+	return path, nil, meta, err
 }
 
-// buildForIngest builds a local SST file containing the keys in the given
+// buildForIngestWithBlobs builds a local SST file and associated blob files
+// containing the keys in the given batch. Returns the SST path, blob paths,
+// and metadata.
+func buildForIngestWithBlobs(
+	t *Test, dbID objID, b *pebble.Batch, sstIndex int, path string, f vfs.File, db *pebble.DB,
+) (string, []string, *sstable.WriterMetadata, error) {
+	var blobPaths []string
+	blobFileCount := 0
+
+	// Get the value separation policy to determine the minimum value size.
+	policy := t.opts.Experimental.ValueSeparationPolicy()
+
+	writerOpts := valsep.SSTBlobWriterOptions{
+		SSTWriterOpts:                     t.opts.MakeWriterOptions(0, db.FormatMajorVersion().MaxTableFormat()),
+		ValueSeparationMinSize:            policy.MinimumSize,
+		MVCCGarbageValueSeparationMinSize: policy.MinimumMVCCGarbageSize,
+		NewBlobFileFn: func() (objstorage.Writable, error) {
+			// Include sstIndex in the blob file path to ensure unique names when
+			// building multiple SSTs for the same ingest operation.
+			blobPath := t.opts.FS.PathJoin(t.tmpDir, fmt.Sprintf("ext%d-%d-blob%d", dbID.slot(), sstIndex, blobFileCount))
+			blobFile, err := t.opts.FS.Create(blobPath, vfs.WriteCategoryUnspecified)
+			if err != nil {
+				return nil, err
+			}
+			blobPaths = append(blobPaths, blobPath)
+			blobFileCount++
+			return objstorageprovider.NewFileWritable(blobFile), nil
+		},
+	}
+
+	if t.testOpts.disableValueBlocksForIngestSSTables {
+		writerOpts.SSTWriterOpts.DisableValueBlocks = true
+	}
+
+	writable := objstorageprovider.NewFileWritable(f)
+	writer := valsep.NewSSTBlobWriter(writable, writerOpts)
+	writerCloser := base.CloseHelper(writer)
+
+	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
+	iterCloser := base.CloseHelper(iter)
+	defer func() {
+		_ = writerCloser.Close()
+		_ = iterCloser.Close()
+		if rangeDelIter != nil {
+			rangeDelIter.Close()
+		}
+		if rangeKeyIter != nil {
+			rangeKeyIter.Close()
+		}
+	}()
+
+	// Write point keys.
+	var lastUserKey []byte
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		// Ignore duplicate keys.
+		if lastUserKey != nil && t.opts.Comparer.Equal(lastUserKey, kv.K.UserKey) {
+			continue
+		}
+		lastUserKey = append(lastUserKey[:0], kv.K.UserKey...)
+
+		value := kv.LazyValue()
+		valBytes, _, err := value.Value(nil)
+		if err != nil {
+			return "", nil, nil, err
+		}
+
+		t.opts.Comparer.ValidateKey.MustValidate(kv.K.UserKey)
+
+		switch kv.Kind() {
+		case pebble.InternalKeyKindSet, pebble.InternalKeyKindSetWithDelete:
+			if err := writer.Set(kv.K.UserKey, valBytes); err != nil {
+				return "", nil, nil, err
+			}
+		case pebble.InternalKeyKindDelete:
+			if err := writer.SSTWriter.Delete(kv.K.UserKey); err != nil {
+				return "", nil, nil, err
+			}
+		case pebble.InternalKeyKindDeleteSized:
+			k := base.MakeInternalKey(kv.K.UserKey, base.SeqNumZero, pebble.InternalKeyKindDeleteSized)
+			if err := writer.SSTWriter.Raw().Add(k, valBytes, false, base.KVMeta{}); err != nil {
+				return "", nil, nil, err
+			}
+		case pebble.InternalKeyKindSingleDelete:
+			// SingleDelete doesn't have a dedicated method, use Raw().Add().
+			k := base.MakeInternalKey(kv.K.UserKey, base.SeqNumZero, pebble.InternalKeyKindSingleDelete)
+			if err := writer.SSTWriter.Raw().Add(k, nil, false, base.KVMeta{}); err != nil {
+				return "", nil, nil, err
+			}
+		case pebble.InternalKeyKindMerge:
+			if err := writer.SSTWriter.Merge(kv.K.UserKey, valBytes); err != nil {
+				return "", nil, nil, err
+			}
+		}
+	}
+	if err := iterCloser.Close(); err != nil {
+		return "", nil, nil, err
+	}
+
+	// Write range deletions using the underlying SST writer.
+	// writeRangeDeletes closes rangeDelIter. Set to nil before calling to
+	// avoid double-close in deferred cleanup.
+	rdi := rangeDelIter
+	rangeDelIter = nil
+	if err := writeRangeDeletes(writer.SSTWriter, rdi, t.opts.Comparer, slices.Clone); err != nil {
+		return "", nil, nil, err
+	}
+
+	// Write range keys using the underlying SST writer.
+	// writeRangeKeys closes rangeKeyIter. Set to nil before calling to
+	// avoid double-close in deferred cleanup.
+	rki := rangeKeyIter
+	rangeKeyIter = nil
+	if err := writeRangeKeys(writer.SSTWriter, rki, t.opts.Comparer, nil, slices.Clone); err != nil {
+		return "", nil, nil, err
+	}
+
+	if err := writerCloser.Close(); err != nil {
+		return "", nil, nil, err
+	}
+
+	meta, err := writer.SSTWriter.Raw().Metadata()
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	return path, blobPaths, meta, nil
+}
+
+// writeRangeDeletes writes range deletions from the iterator to the SST writer.
+// The iterator is closed after writing.
+func writeRangeDeletes(
+	w *sstable.Writer,
+	rangeDelIter keyspan.FragmentIterator,
+	comparer *base.Comparer,
+	outputKey func(key []byte) []byte,
+) error {
+	if rangeDelIter == nil {
+		return nil
+	}
+	defer rangeDelIter.Close()
+
+	span, err := rangeDelIter.First()
+	for ; span != nil; span, err = rangeDelIter.Next() {
+		start := outputKey(span.Start)
+		end := outputKey(span.End)
+		comparer.ValidateKey.MustValidate(start)
+		comparer.ValidateKey.MustValidate(end)
+		if err := w.DeleteRange(start, end); err != nil {
+			return err
+		}
+	}
+	return err
+}
+
+// writeRangeKeys writes range keys from the iterator to the SST writer.
+// The iterator is closed after writing.
+func writeRangeKeys(
+	w *sstable.Writer,
+	rangeKeyIter keyspan.FragmentIterator,
+	comparer *base.Comparer,
+	syntheticSuffix sstable.SyntheticSuffix,
+	outputKey func(key []byte) []byte,
+) error {
+	if rangeKeyIter == nil {
+		return nil
+	}
+	defer rangeKeyIter.Close()
+
+	span, err := rangeKeyIter.First()
+	for ; span != nil; span, err = rangeKeyIter.Next() {
+		// Coalesce the keys of this span and then zero the sequence numbers.
+		collapsed := keyspan.Span{
+			Start: outputKey(span.Start),
+			End:   outputKey(span.End),
+			Keys:  make([]keyspan.Key, 0, len(span.Keys)),
+		}
+		comparer.ValidateKey.MustValidate(collapsed.Start)
+		comparer.ValidateKey.MustValidate(collapsed.End)
+
+		keys := span.Keys
+		if syntheticSuffix.IsSet() {
+			keys = slices.Clone(span.Keys)
+			for i := range keys {
+				if keys[i].Kind() == base.InternalKeyKindRangeKeyUnset {
+					panic("RangeKeyUnset with synthetic suffix")
+				}
+				if len(keys[i].Suffix) > 0 {
+					keys[i].Suffix = syntheticSuffix
+				}
+			}
+		}
+		rangekey.Coalesce(comparer.CompareRangeSuffixes, keys, &collapsed.Keys)
+		for i := range collapsed.Keys {
+			collapsed.Keys[i].Trailer = base.MakeTrailer(0, collapsed.Keys[i].Kind())
+		}
+		keyspan.SortKeysByTrailer(collapsed.Keys)
+		if err := w.Raw().EncodeSpan(collapsed); err != nil {
+			return err
+		}
+	}
+	return err
+}
+
+// buildForIngestExternalEmulation builds a local SST file containing the keys in the given
 // external object (truncated to the given bounds) and returns its path and
 // metadata.
 func buildForIngestExternalEmulation(
