@@ -5,6 +5,8 @@
 package rangedel
 
 import (
+	"sync"
+
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -60,4 +62,49 @@ func DecodeIntoSpan(cmp base.Compare, ik base.InternalKey, v []byte, s *keyspan.
 	}
 	s.Keys = append(s.Keys, keyspan.Key{Trailer: ik.Trailer})
 	return nil
+}
+
+// Interleave takes a point iterator and a range deletion iterator, returning an
+// iterator that interleaves range deletion boundary keys at the maximal
+// sequence number among the stream of point keys.
+//
+// In addition, Interleave returns a function that may be used to retrieve the
+// range tombstone overlapping the current iterator position, if any. If range
+// deletion iterator is nil, the returned function is nil.
+//
+// The returned iterator must only be closed once.
+func Interleave(
+	comparer *base.Comparer, iter base.InternalIterator, rangeDelIter keyspan.FragmentIterator,
+) (base.InternalIterator, func() *keyspan.Span) {
+	// If there is no range deletion iterator, don't bother using an interleaving
+	// iterator. We can return iter verbatim and a func that unconditionally
+	// returns nil.
+	if rangeDelIter == nil {
+		return iter, nil
+	}
+
+	ii := interleavingIterPool.Get().(*interleavingIter)
+	ii.Init(comparer, iter, rangeDelIter, keyspan.InterleavingIterOpts{
+		InterleaveEndKeys: true,
+	})
+	return ii, ii.Span
+}
+
+var interleavingIterPool = sync.Pool{
+	New: func() interface{} {
+		return &interleavingIter{}
+	},
+}
+
+type interleavingIter struct {
+	keyspan.InterleavingIter
+}
+
+// Close closes the interleaving iterator and returns the interleaving iterator
+// to the pool.
+func (i *interleavingIter) Close() error {
+	err := i.InterleavingIter.Close()
+	*i = interleavingIter{}
+	interleavingIterPool.Put(i)
+	return err
 }
