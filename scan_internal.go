@@ -1074,6 +1074,9 @@ func (i *scanInternalIterator) constructPointIter(
 		}
 		mlevels = append(mlevels, mergingIterLevel{
 			iter: iter,
+			// Range deletions are handled below and explicitly propagated to
+			// the caller.
+			getTombstone: nil,
 		})
 		i.iterLevels[mlevelsIndex] = IteratorLevel{
 			Kind:           IteratorLevelFlushable,

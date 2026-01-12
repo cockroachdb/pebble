@@ -17,8 +17,8 @@
 # KVs should be ordered relative to each other, and rangedels should be ordered
 # relative to each other.
 
-# The rangedel should not delete any points in any sstable.  The two files were involved in a
-# compaction and then the second file got moved to a lower level.
+# The rangedel should not delete any points in any sstable. The two files were
+# involved in a compaction and then the second file got moved to a lower level.
 define
 L
   000000:[a#30,SET-e#inf,RANGEDEL]
@@ -50,10 +50,11 @@ c#27,SET:27
 e#10,SET:10
 g#20,SET:20
 .
-blocks: 0B cached, 200B not cached (read time: 0s); points: 4 (4B keys, 8B values)
+blocks: 0B cached, 158B not cached (read time: 0s); points: 4 (4B keys, 8B values)
 blocks: 0B cached; points: 0 (0B keys, 0B values)
 
-# seekGE() should not allow the rangedel to act on points in the lower sstable that are after it.
+# seekGE() should not allow the rangedel to act on points in the lower sstable
+# that are after it.
 iter
 seek-ge d
 next
@@ -63,22 +64,16 @@ e#10,SET:10
 g#20,SET:20
 .
 
-iter probe-rangedels=(000000,(Log "#  000000.rangeDelIter.")) probe-rangedels=(000001,(If (Equal SeekKey (Bytes "g")) ErrInjected noop),(Log "#  000001.rangeDelIter."))
+iter probe-rangedels=(000000,(Log "#  000000.rangeDelIter.")) probe-rangedels=(000001,(If opSpanNext ErrInjected noop),(Log "#  000001.rangeDelIter."))
 seek-ge d
 next
 ----
 #  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
-#  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
 #  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
-#  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
-#  000000.rangeDelIter.opSpanSeekGE("d") = a-e:{(#8,RANGEDEL)}
 #  000000.rangeDelIter.opSpanNext() = nil
 #  000000.rangeDelIter.opSpanClose() = nil
-#  000000.rangeDelIter.opSpanClose() = nil
-#  000001.rangeDelIter.opSpanSeekGE("e") = e-g:{(#8,RANGEDEL)}
 e#10,SET:10
-#  000001.rangeDelIter.opSpanNext() = nil
-#  000001.rangeDelIter.opSpanSeekGE("g") = nil <err="injected error">
+#  000001.rangeDelIter.opSpanNext() = nil <err="injected error">
 err=injected error
 
 # isPrevEntryDeleted() should not allow the rangedel to act on the points in the lower sstable
@@ -570,8 +565,8 @@ seek-lt jd
 next
 ----
 #  000022.SeekLT("jd") = (iwoeionch#792,SET,"792")
-#  000023.SeekLT("c") = nil
-#  000024.SeekLT("c") = nil
+#  000023.SeekLT("cz") = nil
+#  000024.SeekLT("cz") = nil
 iwoeionch#792,SET:792
 #  000023.SeekGE("cz") = nil <err="injected error">
 err=injected error
@@ -651,7 +646,7 @@ next
 stats
 ----
 a#30,SET:30
-blocks: 0B cached, 139B not cached (read time: 0s); points: 1 (1B keys, 2B values)
+blocks: 0B cached, 118B not cached (read time: 0s); points: 1 (1B keys, 2B values)
 blocks: 0B cached; points: 0 (0B keys, 0B values)
 f#21,SET:21
 blocks: 0B cached; points: 5(4 tombstoned) (5B keys, 10B values)
@@ -923,6 +918,6 @@ set-bounds lower=cz upper=jd
 seek-lt jd
 ----
 #  000033.SeekLT("jd") = (iwoeionch#792,SET,"792")
-#  000034.SeekLT("c") = nil
-#  000035.SeekLT("c") = nil
+#  000034.SeekLT("cz") = nil
+#  000035.SeekLT("cz") = nil
 iwoeionch#792,SET:792
