@@ -73,20 +73,22 @@ type levelIter struct {
 	files    manifest.LevelIterator
 	err      error
 
+	// interleaveRangeDels is set to true if the levelIter is configured to
+	// interleave range deletions among point keys, using li.interleaving.
+	interleaveRangeDels bool
+	// interleaving is used when interleaveRangeDels=true to interleave the
+	// boundaries of range deletions among point keys. When the level iterator
+	// is used by a merging iterator, this ensures that we don't advance to a
+	// new file until the range deletions are no longer needed by other levels.
+	interleaving keyspan.InterleavingIter
 	// When rangeDelIterSetter != nil, the caller requires that this function
 	// gets called with a range deletion iterator whenever the current file
-	// changes.  The iterator is relinquished to the caller which is responsible
+	// changes. The iterator is relinquished to the caller which is responsible
 	// for closing it.
 	//
-	// When rangeDelIterSetter != nil, the levelIter will also interleave the
-	// boundaries of range deletions among point keys.
+	// When rangeDelIterSetter != nil, interleaveRangeDels must be true (but the
+	// inverse is not true).
 	rangeDelIterSetter rangeDelIterSetter
-
-	// interleaving is used when rangeDelIterFn != nil to interleave the
-	// boundaries of range deletions among point keys. When the leve iterator is
-	// used by a merging iterator, this ensures that we don't advance to a new
-	// file until the range deletions are no longer needed by other levels.
-	interleaving keyspan.InterleavingIter
 
 	// internalOpts holds the internal iterator options to pass to the table
 	// cache when constructing new table iterators.
@@ -170,11 +172,12 @@ func (l *levelIter) init(
 
 // initRangeDel puts the level iterator into a mode where it interleaves range
 // deletion boundaries with point keys and provides a range deletion iterator
-// (through rangeDelIterFn) whenever the current file changes.
+// (through rangeDelIterSetter) whenever the current file changes.
 //
-// The range deletion iterator passed to rangeDelIterFn is relinquished to the
-// implementor who is responsible for closing it.
+// The range deletion iterator passed to rangeDelIterSetter is relinquished to
+// the implementor who is responsible for closing it.
 func (l *levelIter) initRangeDel(rangeDelSetter rangeDelIterSetter) {
+	l.interleaveRangeDels = true
 	l.rangeDelIterSetter = rangeDelSetter
 }
 
@@ -571,7 +574,7 @@ func (l *levelIter) loadFile(file *manifest.TableMetadata, dir int) loadFileRetu
 		}
 
 		iterKinds := iterPointKeys
-		if l.rangeDelIterSetter != nil {
+		if l.interleaveRangeDels {
 			iterKinds |= iterRangeDeletions
 		}
 
@@ -584,30 +587,39 @@ func (l *levelIter) loadFile(file *manifest.TableMetadata, dir int) loadFileRetu
 			return noFileLoaded
 		}
 		l.iter = iters.Point()
-		if l.rangeDelIterSetter != nil && iters.rangeDeletion != nil {
+		if l.interleaveRangeDels && iters.rangeDeletion != nil {
 			// If this file has range deletions, interleave the bounds of the
 			// range deletions among the point keys. When used with a
 			// mergingIter, this ensures we don't move beyond a file with range
 			// deletions until its range deletions are no longer relevant.
-			//
-			// For now, we open a second range deletion iterator. Future work
-			// will avoid the need to open a second range deletion iterator, and
-			// avoid surfacing the file's range deletion iterator via rangeDelIterFn.
-			itersForBounds, err := l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterRangeDeletions)
-			if err != nil {
-				l.iter = nil
-				l.err = errors.CombineErrors(err, iters.CloseAll())
-				return noFileLoaded
-			}
-			l.interleaving.Init(l.comparer, l.iter, itersForBounds.RangeDeletion(), keyspan.InterleavingIterOpts{
+			l.interleaving.Init(l.comparer, l.iter, iters.rangeDeletion, keyspan.InterleavingIterOpts{
 				LowerBound:        l.tableOpts.LowerBound,
 				UpperBound:        l.tableOpts.UpperBound,
 				InterleaveEndKeys: true,
 			})
 			l.iter = &l.interleaving
 
-			// Relinquish iters.rangeDeletion to the caller.
-			l.rangeDelIterSetter.setRangeDelIter(iters.rangeDeletion)
+			// Additionally, when interleaving range deletions, optionally the
+			// caller may request a copy of each range deletion iterator we
+			// open by providing a rangeDelIterSetter.
+			//
+			// The levelIter requires its own range deletion iterator for
+			// interleaving bounds, so we open a second range deletion iterator
+			// that's solely owned by the caller and we relinquish it to the
+			// caller through calling setRangeDelIter.
+			if l.rangeDelIterSetter != nil {
+				// TODO(jackson): This should be avoidable by teaching the
+				// merging iterator to read range deletions from
+				// levelIter.getTombstone() but requires some delicate
+				// refactoring. See the unmerged PR #3600.
+				itersForSetter, err := l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterRangeDeletions)
+				if err != nil {
+					l.iter = nil
+					l.err = errors.CombineErrors(err, iters.CloseAll())
+					return noFileLoaded
+				}
+				l.rangeDelIterSetter.setRangeDelIter(itersForSetter.rangeDeletion)
+			}
 		}
 		if treesteps.Enabled && treesteps.IsRecording(l) {
 			treesteps.NodeUpdated(l, fmt.Sprintf("file %s loaded", l.iterFile.TableNum))
@@ -1025,6 +1037,19 @@ func (l *levelIter) exhaustedForward() {
 
 func (l *levelIter) exhaustedBackward() {
 	l.exhaustedDir = -1
+}
+
+// getTombstone retrieves the range tombstone covering the current iterator
+// position. If there is none, or if the iterator is not configured to
+// interleave range deletions, getTombstone returns nil.
+//
+// The returned Span's memory is guaranteed to be valid until the iterator is
+// moved beyond the Span's interleaved boundary keys.
+func (l *levelIter) getTombstone() *keyspan.Span {
+	if l.iter != &l.interleaving {
+		return nil
+	}
+	return l.interleaving.Span()
 }
 
 func (l *levelIter) Error() error {

@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -55,19 +56,11 @@ import (
 
 // The per-level structure used by simpleMergingIter.
 type simpleMergingIterLevel struct {
-	iter         internalIterator
-	rangeDelIter keyspan.FragmentIterator
-
-	iterKV    *base.InternalKV
-	tombstone *keyspan.Span
-}
-
-func (ml *simpleMergingIterLevel) setRangeDelIter(iter keyspan.FragmentIterator) {
-	ml.tombstone = nil
-	if ml.rangeDelIter != nil {
-		ml.rangeDelIter.Close()
-	}
-	ml.rangeDelIter = iter
+	iter internalIterator
+	// getTombstone returns the range deletion tombstone covering the current
+	// iterator position. getTombstone must not be called after iter is closed.
+	getTombstone func() *keyspan.Span
+	iterKV       *base.InternalKV
 }
 
 type simpleMergingIter struct {
@@ -114,26 +107,6 @@ func (m *simpleMergingIter) init(
 		}
 	}
 	m.heap.init()
-
-	if m.heap.len() == 0 {
-		return
-	}
-	m.positionRangeDels()
-}
-
-// Positions all the rangedel iterators at or past the current top of the
-// heap, using SeekGE().
-func (m *simpleMergingIter) positionRangeDels() {
-	item := &m.heap.items[0]
-	for i := range m.levels {
-		l := &m.levels[i]
-		if l.rangeDelIter == nil {
-			continue
-		}
-		t, err := l.rangeDelIter.SeekGE(item.kv.K.UserKey)
-		m.err = firstError(m.err, err)
-		l.tombstone = t
-	}
 }
 
 // Returns true if not yet done.
@@ -161,6 +134,7 @@ func (m *simpleMergingIter) step() bool {
 	if l.iterKV == nil {
 		m.err = errors.CombineErrors(l.iter.Error(), l.iter.Close())
 		l.iter = nil
+		l.getTombstone = nil
 		m.heap.pop()
 	} else {
 		// Check point keys in an sstable are ordered. Although not required, we check
@@ -201,7 +175,6 @@ func (m *simpleMergingIter) step() bool {
 		}
 		return false
 	}
-	m.positionRangeDels()
 	return true
 }
 
@@ -283,12 +256,16 @@ func (m *simpleMergingIter) handleVisiblePoint(
 	// iterators must be positioned at a key > item.key.
 	for level := item.index + 1; level < len(m.levels); level++ {
 		lvl := &m.levels[level]
-		if lvl.rangeDelIter == nil || lvl.tombstone.Empty() {
+		if lvl.getTombstone == nil {
 			continue
 		}
-		if lvl.tombstone.Contains(m.heap.cmp, item.kv.K.UserKey) && lvl.tombstone.CoversAt(m.snapshot, item.kv.K.SeqNum()) {
+		t := lvl.getTombstone()
+		if t.Empty() {
+			continue
+		}
+		if t.Contains(m.heap.cmp, item.kv.K.UserKey) && t.CoversAt(m.snapshot, item.kv.K.SeqNum()) {
 			m.err = errors.Errorf("tombstone %s in %s deletes key %s in %s",
-				lvl.tombstone.Pretty(m.formatKey), lvl.iter, item.kv.K.Pretty(m.formatKey),
+				t.Pretty(m.formatKey), lvl.iter, item.kv.K.Pretty(m.formatKey),
 				l.iter)
 			return false
 		}
@@ -598,28 +575,22 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 				err = firstError(err, l.iter.Close())
 				l.iter = nil
 			}
-			if l.rangeDelIter != nil {
-				l.rangeDelIter.Close()
-				l.rangeDelIter = nil
-			}
 		}
 	}()
 
 	memtables := c.readState.memtables
 	for i := len(memtables) - 1; i >= 0; i-- {
 		mem := memtables[i]
-		var iter internalIterator
+		var mil simpleMergingIterLevel
 		// For ingestedFlushable, we need to pass the blob value fetcher to allow
 		// reading values from blob files.
 		if ingested, ok := mem.flushable.(*ingestedFlushable); ok {
-			iter = ingested.newIterInternal(nil, internalOpts)
+			mil.iter = ingested.newIterInternal(nil, internalOpts)
 		} else {
-			iter = mem.newIter(nil)
+			mil.iter = mem.newIter(nil)
 		}
-		mlevels = append(mlevels, simpleMergingIterLevel{
-			iter:         iter,
-			rangeDelIter: mem.newRangeDelIter(nil),
-		})
+		mil.iter, mil.getTombstone = rangedel.Interleave(c.comparer, mil.iter, mem.newRangeDelIter(nil))
+		mlevels = append(mlevels, mil)
 	}
 
 	current := c.readState.current
@@ -651,8 +622,9 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.comparer, c.newIters, manifestIter,
 			manifest.L0Sublevel(sublevel), internalOpts)
-		li.initRangeDel(&mlevelAlloc[0])
+		li.interleaveRangeDels = true
 		mlevelAlloc[0].iter = li
+		mlevelAlloc[0].getTombstone = li.getTombstone
 		mlevelAlloc = mlevelAlloc[1:]
 		for f := range current.L0SublevelFiles[sublevel].All() {
 			allTables = append(allTables, f)
@@ -666,8 +638,9 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		li := &levelIter{}
 		li.init(context.Background(), iterOpts, c.comparer, c.newIters,
 			current.Levels[level].Iter(), manifest.Level(level), internalOpts)
-		li.initRangeDel(&mlevelAlloc[0])
+		li.interleaveRangeDels = true
 		mlevelAlloc[0].iter = li
+		mlevelAlloc[0].getTombstone = li.getTombstone
 		mlevelAlloc = mlevelAlloc[1:]
 		for f := range current.Levels[level].All() {
 			allTables = append(allTables, f)
