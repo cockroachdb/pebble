@@ -1280,7 +1280,6 @@ func (i *Iterator) constructPointIter(
 	// BlobFileSet with blob files from ingestedFlushables in the memtable queue.
 	var maxReadAmp int
 	var versionBlobFiles *manifest.BlobFileSet
-
 	if i.readState != nil {
 		versionBlobFiles = &i.readState.current.BlobFiles
 		maxReadAmp = i.readState.current.MaxReadAmp()
@@ -1288,26 +1287,10 @@ func (i *Iterator) constructPointIter(
 		versionBlobFiles = &i.version.BlobFiles
 		maxReadAmp = i.version.MaxReadAmp()
 	}
-
-	versionHasBlobFiles := versionBlobFiles != nil && versionBlobFiles.Count() > 0
 	memHasBlobFiles := !i.batchOnlyIter && memtables.hasBlobFiles()
-
-	var blobFileMapping base.BlobFileMapping
-	switch {
-	case versionHasBlobFiles && memHasBlobFiles:
-		// Create combined blob file mapping.
-		i.combinedBlobMapping.Primary = versionBlobFiles
-		i.combinedBlobMapping.Secondary = memtables
-		blobFileMapping = &i.combinedBlobMapping
-	case versionHasBlobFiles:
-		blobFileMapping = versionBlobFiles
-	case memHasBlobFiles:
-		blobFileMapping = memtables
-	default:
-		// No blob files to read from.
-	}
-
-	if blobFileMapping != nil {
+	if blobFileMapping := i.combinedBlobMapping.Resolve(
+		versionBlobFiles, memtables, memHasBlobFiles,
+	); blobFileMapping != nil {
 		i.blobValueFetcher.Init(blobFileMapping, i.fc, readEnv,
 			blob.SuggestedCachedReaders(maxReadAmp))
 	}

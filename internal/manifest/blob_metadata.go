@@ -1122,6 +1122,28 @@ type CombinedBlobFileMapping struct {
 
 var _ base.BlobFileMapping = (*CombinedBlobFileMapping)(nil)
 
+// Resolve configures the combined mapping and returns the appropriate
+// BlobFileMapping to use. Returns nil if neither primary nor secondary has blob
+// files. This method reuses the receiver struct when both mappings are needed,
+// avoiding allocations.
+func (c *CombinedBlobFileMapping) Resolve(
+	primary *BlobFileSet, secondary base.BlobFileMapping, secondaryHasBlobFiles bool,
+) base.BlobFileMapping {
+	primaryHasBlobFiles := primary != nil && primary.Count() > 0
+	switch {
+	case primaryHasBlobFiles && secondaryHasBlobFiles:
+		c.Primary = primary
+		c.Secondary = secondary
+		return c
+	case primaryHasBlobFiles:
+		return primary
+	case secondaryHasBlobFiles:
+		return secondary
+	default:
+		return nil
+	}
+}
+
 // Lookup implements BlobFileMapping. It first checks the primary mapping, then
 // falls back to the secondary mapping.
 func (c *CombinedBlobFileMapping) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {

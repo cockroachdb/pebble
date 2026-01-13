@@ -201,9 +201,20 @@ func (d *DB) newInternalIter(
 	if d.iterTracker != nil {
 		dbi.trackerHandle = d.iterTracker.Start()
 	}
-	dbi.blobValueFetcher.Init(&vers.BlobFiles, d.fileCache,
-		block.ReadEnv{ValueRetrievalProfile: d.valueRetrievalProfile.Load()},
-		blob.SuggestedCachedReaders(vers.MaxReadAmp()))
+
+	// Determine the blob file mapping. We may need to combine the version's
+	// BlobFileSet with blob files from ingestedFlushables in the memtable queue.
+	var memtables flushableList
+	if readState != nil {
+		memtables = readState.memtables
+	}
+	if blobFileMapping := dbi.combinedBlobMapping.Resolve(
+		&vers.BlobFiles, memtables, memtables.hasBlobFiles(),
+	); blobFileMapping != nil {
+		dbi.blobValueFetcher.Init(blobFileMapping, d.fileCache,
+			block.ReadEnv{ValueRetrievalProfile: d.valueRetrievalProfile.Load()},
+			blob.SuggestedCachedReaders(vers.MaxReadAmp()))
+	}
 
 	dbi.opts = *o
 	dbi.opts.logger = d.opts.Logger
@@ -582,25 +593,28 @@ type IteratorLevel struct {
 // *must* return the range delete as well as the range key unset/delete that did
 // the shadowing.
 type scanInternalIterator struct {
-	ctx              context.Context
-	db               *DB
-	trackerHandle    inflight.Handle
-	opts             ScanInternalOptions
-	comparer         *base.Comparer
-	merge            Merge
-	iter             internalIterator
-	readState        *readState
-	version          *manifest.Version
-	rangeKey         *iteratorRangeKeyState
-	pointKeyIter     internalIterator
-	iterKV           *base.InternalKV
-	alloc            *scanInternalIterAlloc
-	newIters         tableNewIters
-	newIterRangeKey  keyspanimpl.TableNewSpanIter
-	seqNum           base.SeqNum
-	iterLevels       []IteratorLevel
-	mergingIter      *mergingIter
-	blobValueFetcher blob.ValueFetcher
+	ctx             context.Context
+	db              *DB
+	trackerHandle   inflight.Handle
+	opts            ScanInternalOptions
+	comparer        *base.Comparer
+	merge           Merge
+	iter            internalIterator
+	readState       *readState
+	version         *manifest.Version
+	rangeKey        *iteratorRangeKeyState
+	pointKeyIter    internalIterator
+	iterKV          *base.InternalKV
+	alloc           *scanInternalIterAlloc
+	newIters        tableNewIters
+	newIterRangeKey keyspanimpl.TableNewSpanIter
+	seqNum          base.SeqNum
+	iterLevels      []IteratorLevel
+	mergingIter     *mergingIter
+	// combinedBlobMapping chains the version's BlobFileSet with any blob files
+	// from ingestedFlushables in the memtable queue.
+	combinedBlobMapping manifest.CombinedBlobFileMapping
+	blobValueFetcher    blob.ValueFetcher
 
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
 	// Whenever the InternalIterator's bounds change, the new bounds are copied
@@ -1043,11 +1057,23 @@ func (i *scanInternalIterator) constructPointIter(
 	i.iterLevels = make([]IteratorLevel, numMergingLevels)
 	mlevelsIndex := 0
 
+	internalOpts := internalIterOpts{
+		blobValueFetcher: &i.blobValueFetcher,
+	}
+
 	// Next are the memtables.
 	for j := len(memtables) - 1; j >= 0; j-- {
 		mem := memtables[j]
+		var iter internalIterator
+		// For ingested flushables, use newIterInternal to pass the blob
+		// value fetcher so that blob values can be read.
+		if fi, ok := mem.flushable.(*ingestedFlushable); ok {
+			iter = fi.newIterInternal(&i.opts.IterOptions, internalOpts)
+		} else {
+			iter = mem.newIter(&i.opts.IterOptions)
+		}
 		mlevels = append(mlevels, mergingIterLevel{
-			iter: mem.newIter(&i.opts.IterOptions),
+			iter: iter,
 		})
 		i.iterLevels[mlevelsIndex] = IteratorLevel{
 			Kind:           IteratorLevelFlushable,
@@ -1066,10 +1092,6 @@ func (i *scanInternalIterator) constructPointIter(
 	rangeDelLevels = rangeDelLevels[:numLevelIters]
 	i.opts.IterOptions.snapshotForHideObsoletePoints = i.seqNum
 	i.opts.IterOptions.Category = category
-
-	internalOpts := internalIterOpts{
-		blobValueFetcher: &i.blobValueFetcher,
-	}
 
 	addLevelIterForFiles := func(files manifest.LevelIterator, level manifest.Layer) {
 		li := &levels[levelsIndex]
