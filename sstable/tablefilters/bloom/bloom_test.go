@@ -284,3 +284,12 @@ func BenchmarkMayContain(b *testing.B) {
 		})
 	}
 }
+
+// Results on n2d-standard-8 (AMD EPYC Turin, go 1.25):
+// BenchmarkMayContainLarge/procs=1-8          100000000        117.0 ns/op
+// BenchmarkMayContainLarge/procs=2-8          100000000        115.8 ns/op
+// BenchmarkMayContainLarge/procs=4-8          100000000        137.4 ns/op
+// BenchmarkMayContainLarge/procs=8-8          100000000        193.2 ns/op
+func BenchmarkMayContainLarge(b *testing.B) {
+	filtertestutils.BenchmarkMayContainLarge(b, FilterPolicy(10), Decoder)
+}

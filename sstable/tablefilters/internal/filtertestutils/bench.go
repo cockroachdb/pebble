@@ -6,7 +6,12 @@ package filtertestutils
 
 import (
 	crand "crypto/rand"
+	"encoding/binary"
 	"fmt"
+	"io"
+	"math/rand/v2"
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/cockroachdb/crlib/crhumanize"
@@ -68,6 +73,61 @@ func BenchmarkMayContain(
 				})
 			})
 		}
+	}
+}
+
+// BenchmarkMayContainLarge should be run with -benchtime=100000000.
+func BenchmarkMayContainLarge(
+	b *testing.B, policy base.TableFilterPolicy, decoder base.TableFilterDecoder,
+) {
+	const keyLen = 8
+	const numKeys = 1_000_000
+	const numFilters = 1024
+	filters := make([][]byte, numFilters)
+	b.Log("Generating filters...")
+	for i := range filters {
+		keys := randKeys(numKeys, keyLen)
+		w := policy.NewWriter()
+		for _, key := range keys {
+			w.AddKey(key)
+		}
+		filter, _, ok := w.Finish()
+		if !ok {
+			b.Fatalf("failed to create filter")
+		}
+		filters[i] = filter
+		if i*10/len(filters) != (i+1)*10/len(filters) {
+			b.Logf("..%d%%", (i+1)*100/len(filters))
+		}
+	}
+	for p := 1; p <= runtime.GOMAXPROCS(0); p *= 2 {
+		b.Run(fmt.Sprintf("procs=%d", p), func(b *testing.B) {
+			ch := make(chan int, 10*p)
+			var wg sync.WaitGroup
+			wg.Add(p)
+			for range p {
+				go func() {
+					defer wg.Done()
+					var key [keyLen]byte
+					var hits int
+					for n := range ch {
+						for range n {
+							binary.NativeEndian.PutUint64(key[:], rand.Uint64())
+							res := decoder.MayContain(filters[rand.IntN(numFilters)], key[:])
+							if res {
+								hits++
+							}
+						}
+					}
+					fmt.Fprint(io.Discard, hits)
+				}()
+			}
+			for n := b.N * p; n > 0; {
+				batch := min(n, 1000)
+				ch <- batch
+				n -= batch
+			}
+		})
 	}
 }
 
