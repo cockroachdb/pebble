@@ -865,10 +865,11 @@ func ingestLinkLocal(
 	for i := range localMetas {
 		// Link blob files first.
 		blobPaths := localMetas[i].local.BlobPaths
+		hasBlobRefs := len(localMetas[i].blobFiles) > 0
 		for blobInd, bf := range localMetas[i].blobFiles {
 			objMeta, err := objProvider.LinkOrCopyFromLocal(
 				ctx, opts.FS, blobPaths[blobInd], base.FileTypeBlob, bf.Physical.FileNum,
-				objstorage.CreateOptions{PreferSharedStorage: true},
+				objstorage.CreateOptions{PreferSharedStorage: false},
 			)
 			if err != nil {
 				if err2 := ingestCleanup(objProvider, localMetas[:i], localMetas[i].blobFiles[:blobInd]); err2 != nil {
@@ -888,7 +889,7 @@ func ingestLinkLocal(
 
 		objMeta, err := objProvider.LinkOrCopyFromLocal(
 			ctx, opts.FS, localMetas[i].local.Path, base.FileTypeTable, localMetas[i].TableBacking.DiskFileNum,
-			objstorage.CreateOptions{PreferSharedStorage: true},
+			objstorage.CreateOptions{PreferSharedStorage: !hasBlobRefs},
 		)
 		if err != nil {
 			if err2 := ingestCleanup(objProvider, localMetas[:i], localMetas[i].blobFiles); err2 != nil {
