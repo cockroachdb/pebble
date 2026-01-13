@@ -564,15 +564,15 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	}
 	// Set up a combined blob file mapping that includes both the version's
 	// BlobFileSet and blob files from flushable ingests.
-	checkConfig.combinedBlobMapping = manifest.CombinedBlobFileMapping{
-		Primary:   &readState.current.BlobFiles,
-		Secondary: readState.memtables,
+	if blobFileMapping := checkConfig.combinedBlobMapping.Resolve(
+		&readState.current.BlobFiles, readState.memtables, readState.memtables.hasBlobFiles(),
+	); blobFileMapping != nil {
+		checkConfig.blobValueFetcher.Init(
+			blobFileMapping,
+			checkConfig.fileCache,
+			checkConfig.readEnv,
+			blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
 	}
-	checkConfig.blobValueFetcher.Init(
-		&checkConfig.combinedBlobMapping,
-		checkConfig.fileCache,
-		checkConfig.readEnv,
-		blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
 	defer func() { _ = checkConfig.blobValueFetcher.Close() }()
 	return checkLevelsInternal(checkConfig)
 }

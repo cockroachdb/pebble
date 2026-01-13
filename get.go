@@ -122,13 +122,12 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	}
 
 	// Set up a blob value fetcher to use for retrieving values from blob files.
-	// Secondary contains the blob files from ingestedFlushables.
-	i.combinedBlobMapping = manifest.CombinedBlobFileMapping{
-		Primary:   &readState.current.BlobFiles,
-		Secondary: get.mem,
+	if blobFileMapping := i.combinedBlobMapping.Resolve(
+		&readState.current.BlobFiles, get.mem, get.mem.hasBlobFiles(),
+	); blobFileMapping != nil {
+		i.blobValueFetcher.Init(blobFileMapping, d.fileCache, block.NoReadEnv,
+			blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
 	}
-	i.blobValueFetcher.Init(&i.combinedBlobMapping, d.fileCache, block.NoReadEnv,
-		blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
 	get.iiopts.blobValueFetcher = &i.blobValueFetcher
 
 	if !i.First() {
