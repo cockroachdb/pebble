@@ -146,3 +146,12 @@ func BenchmarkMayContain(b *testing.B) {
 		})
 	}
 }
+
+// Results on n4d-standard-8 (AMD EPYC Turin, go 1.25):
+// BenchmarkMayContainLarge/procs=1-8          100000000        121.3 ns/op
+// BenchmarkMayContainLarge/procs=2-8          100000000        127.2 ns/op
+// BenchmarkMayContainLarge/procs=4-8          100000000        150.4 ns/op
+// BenchmarkMayContainLarge/procs=8-8          100000000        214.5 ns/op
+func BenchmarkMayContainLarge(b *testing.B) {
+	filtertestutils.BenchmarkMayContainLarge(b, FilterPolicy(8), Decoder)
+}
