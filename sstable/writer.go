@@ -334,6 +334,12 @@ type RawWriter interface {
 	// must provide the already-extracted ShortAttribute for the value.
 	AddWithBlobHandle(key InternalKey, h blob.InlineHandle, attr base.ShortAttribute,
 		forceObsolete bool, meta base.KVMeta) error
+	// AddWithDualTierBlobHandles adds a key to the sstable with both a primary and
+	// secondary blob handle for dual-tier blob values. This is used when a value exists
+	// in multiple tiers simultaneously. The primary handle is encoded in the value column,
+	// and the secondary handle is stored in a separate column. See Add for more details.
+	AddWithDualTierBlobHandles(key InternalKey, hotHandle, secondaryHandle blob.InlineHandle,
+		attr base.ShortAttribute, forceObsolete bool, meta base.KVMeta) error
 	// EncodeSpan encodes the keys in the given span. The span can contain
 	// either only RANGEDEL keys or only range keys.
 	//
