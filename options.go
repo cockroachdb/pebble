@@ -34,6 +34,8 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
+	"github.com/cockroachdb/pebble/sstable/tablefilters"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/binaryfuse"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -814,7 +816,7 @@ type Options struct {
 
 	// TableFilterDecoders contains the available table filter decoders.
 	//
-	// The default value contains bloom.Decoder.
+	// The default value is tablefilters.Decoders.
 	TableFilterDecoders []TableFilterDecoder
 
 	// FlushDelayDeleteRange configures how long the database should wait before
@@ -1448,34 +1450,46 @@ func (o *Options) ApplyCompressionSettings(csFn func() DBCompressionSettings) {
 // DBTableFilterPolicy defines table policy settings for each LSM level.
 type DBTableFilterPolicy [manifest.NumLevels]TableFilterPolicy
 
-var (
-	// DBTableFilterPolicyUniform uses a 10-bit bloom filter on all levels.
-	DBTableFilterPolicyUniform = UniformDBTableFilterPolicy(bloom.FilterPolicy(10))
+// DBTableFilterPolicyUniform uses a 10-bit bloom filter on all levels.
+var DBTableFilterPolicyUniform = UniformDBTableFilterPolicy(bloom.FilterPolicy(10))
 
-	// DBTableFilterPolicyProgressive uses better filters for higher levels and
+// The idea of using better but larger filters for upper levels comes from
+// "Optimal Bloom Filters and Adaptive Merging for LSM-Trees" by Dayan et al.
+// The total size of bloom filters in upper levels is very small (for example,
+// in TPCC with 20k warehouses and 3 nodes, the LSM has 1.3TiB and the filters
+// for L1 and L3 together are under 100MiB). Given that these filters fit very
+// easily in the block cache, we can use larger filters to reduce the false
+// positive rates.
+//
+// The result is that if we want to minimize the total number of data block
+// accesses for a given total size of filters, the false-positive rate (FPR)
+// should be inversely proportional to the level size. With a level size
+// multiplier T, that means that each level's FPR is T times smaller than the
+// one below.
+//
+// An intuition for this result (which is only directionally correct) is to
+// consider the ratio of "useful" vs "false positive" data bock accesses. If a
+// level is T times smaller than the next level, we will only find 1/T as many
+// keys as in the level below (i.e. the true positive ratio is T times smaller).
+// If we want to keep the same useful-to-false-positive access ratio, the
+// smaller levels' FPR has to be T times better.
+var (
+	// DBTableFilterPolicyProgressive uses bloom filters, with better filters for higher levels and
 	// restricts the maximum block sizes.
 	DBTableFilterPolicyProgressive = func() DBTableFilterPolicy {
 		// We use block.AllocationOverheadAllowance so that the block fits well into
 		// an allocation class when loaded into the block cache.
 		const limit1MB = 1024*1024 - block.AllocationOverheadAllowance
 
-		// The idea of using better but larger filters for upper levels comes from
-		// "Optimal Bloom Filters and Adaptive Merging for LSM-Trees" by Dayan et
-		// al. The total size of bloom filters in upper levels is very small (for
-		// example, in TPCC with 20k warehouses and 3 nodes, the LSM has 1.3TiB and
-		// the filters for L1 and L3 together are under 100MiB). Given that these
-		// filters fit very easily in the block cache, we can use larger filters to
-		// reduce the false positive rates.
+		// As the paper above notes, for general bloom filters, the bits per key
+		// should increase by ln(T)/ln(2)^2 as we go up for each level, where T is
+		// the level size multiplier. For T=10, this comes out to 4.8.
 		//
-		// The paper suggests that the bits per key should increase by ln(T)/ln(2)^2
-		// as we go up for each level, where T is the level size multiplier. For
-		// T=10, this comes out to 4.8.
-		//
-		// The calculation applies to general bloom filters. We use a blocked bloom
-		// filter which is faster but has worse false positive rates and achieves
-		// diminishing returns as we increase the bits per key (see
-		// bloom.FilterPolicy: for example, going from 16 to 20 improves the FPR by
-		// only 75%, whereas for a general bloom filter this would be ~7x).
+		// We use a blocked bloom filter which is faster than general bloom filters
+		// but has worse false positive rates and achieves diminishing returns as we
+		// increase the bits per key (see bloom.FilterPolicy: for example, going
+		// from 16 to 20 improves the FPR by only 75%, whereas for a general bloom
+		// filter this would be ~7x).
 		//
 		// With this in mind, we keep the default 10bpk for L5, use 14bpk for L4,
 		// and 16bpk for L0-L3. For L6 we set a 8bpk target; in practice, we will
@@ -1483,9 +1497,6 @@ var (
 		//
 		// For L0-L3, filters should almost never reach 1MB, so the limit is more of
 		// a safety for corner cases.
-		//
-		// TODO(radu): add support for Binary Fuse filters which have much better
-		// FPR than bloom filters.
 		return DBTableFilterPolicy{
 			0: bloom.AdaptivePolicy(16, limit1MB),
 			1: bloom.AdaptivePolicy(16, limit1MB),
@@ -1494,6 +1505,23 @@ var (
 			4: bloom.AdaptivePolicy(14, limit1MB),
 			5: bloom.AdaptivePolicy(10, limit1MB),
 			6: bloom.AdaptivePolicy(8, limit1MB),
+		}
+	}()
+
+	// DBTableFilterPolicyBinaryFuseProgressive uses binary fuse filters, with
+	// better filters for higher levels.
+	DBTableFilterPolicyBinaryFuseProgressive = func() DBTableFilterPolicy {
+		// Binary fuse filters have FPR = 1/2^bitsPerFingerprint. For T=10,
+		// the bits per fingerprint should increase by ~3.3; we round up to 4 since
+		// we only support multiples of 4.
+		return DBTableFilterPolicy{
+			0: binaryfuse.FilterPolicy(16),
+			1: binaryfuse.FilterPolicy(16),
+			2: binaryfuse.FilterPolicy(16),
+			3: binaryfuse.FilterPolicy(16),
+			4: binaryfuse.FilterPolicy(12),
+			5: binaryfuse.FilterPolicy(8),
+			6: binaryfuse.FilterPolicy(4),
 		}
 	}()
 )
@@ -1564,7 +1592,7 @@ func (o *Options) EnsureDefaults() {
 	}
 
 	if o.TableFilterDecoders == nil {
-		o.TableFilterDecoders = []TableFilterDecoder{bloom.Decoder}
+		o.TableFilterDecoders = tablefilters.Decoders
 	}
 
 	if o.KeySchema == "" && len(o.KeySchemas) == 0 {
