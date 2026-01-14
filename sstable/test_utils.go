@@ -106,10 +106,17 @@ type ParsedKVOrSpan struct {
 	Key           base.InternalKey
 	ForceObsolete bool
 	// Either Value is set, or BlobHandle and Attr are set.
-	Value      []byte
-	BlobHandle blob.InlineHandle
-	Attr       base.ShortAttribute
-	Meta       base.KVMeta
+	//
+	// For blob values:
+	//   - Single-tier: Only BlobHandle is set. The tier (hot/cold) is determined
+	//     by BlobReferenceTierGetter based on the blob file's reference ID.
+	//   - Dual-tier: Both BlobHandle and SecondaryBlobHandle are set, representing
+	//     a value that exists in both tiers simultaneously (typically hot + cold).
+	Value               []byte
+	BlobHandle          blob.InlineHandle
+	SecondaryBlobHandle blob.InlineHandle
+	Attr                base.ShortAttribute
+	Meta                base.KVMeta
 }
 
 func (kv ParsedKVOrSpan) IsKeySpan() bool {
@@ -120,6 +127,10 @@ func (kv ParsedKVOrSpan) HasBlobValue() bool {
 	return kv.Span == nil && kv.Value == nil
 }
 
+func (kv ParsedKVOrSpan) HasDualTierBlobValue() bool {
+	return kv.HasBlobValue() && kv.SecondaryBlobHandle.ValueLen != 0
+}
+
 func (kv ParsedKVOrSpan) String() string {
 	if kv.IsKeySpan() {
 		return fmt.Sprintf("Span: %s", kv.Span)
@@ -127,6 +138,9 @@ func (kv ParsedKVOrSpan) String() string {
 	prefix := crstrings.If(kv.ForceObsolete, "force-obsolete: ")
 	if !kv.HasBlobValue() {
 		return fmt.Sprintf("%s%s = %s", prefix, kv.Key, kv.Value)
+	}
+	if kv.HasDualTierBlobValue() {
+		return fmt.Sprintf("%s%s = hot-blob:%s cold-blob:%s attr=%d", prefix, kv.Key, kv.BlobHandle, kv.SecondaryBlobHandle, kv.Attr)
 	}
 	return fmt.Sprintf("%s%s = blob:%s attr=%d", prefix, kv.Key, kv.BlobHandle, kv.Attr)
 }
@@ -143,6 +157,7 @@ func (kv ParsedKVOrSpan) String() string {
 //	a#1,SET:a
 //	force-obsolete: d#2,SET:d
 //	f#3,SET:blob{fileNum=1 blockNum=2 offset=110 valueLen=200}attr=7
+//	g#4,SET:hot-blob{fileNum=1 blockNum=2 offset=110 valueLen=200}cold-blob{fileNum=2 blockNum=3 offset=220 valueLen=200}attr=7
 //	a#1,SET:valueA;tiering:span=1,attr=10
 //	Span: d-e:{(#4,RANGEDEL)}
 //	Span: a-d:{(#11,RANGEKEYSET,@10,foo)}
@@ -177,7 +192,44 @@ func ParseTestKVsAndSpans(input string, bv *blobtest.Values) (_ []ParsedKVOrSpan
 			return nil, errors.Errorf("force-obsolete is not allowed for RANGEDEL")
 		}
 
-		if blobtest.IsBlobHandle(string(kv.Value)) {
+		// Check for dual-tier blob handles: hot-blob{...}cold-blob{...}attr=X.
+		if strings.HasPrefix(string(kv.Value), "hot-blob{") {
+			if bv == nil {
+				return nil, errors.Errorf("test not set up to support blob handles")
+			}
+			// Parse hot blob handle - replace "hot-" prefix with standard "blob" prefix.
+			hotInput := "blob" + strings.TrimPrefix(string(kv.Value), "hot-blob")
+			hotHandle, remaining, err := bv.ParseInlineHandle(hotInput)
+			if err != nil {
+				return nil, errors.Wrapf(err, "parsing hot blob handle")
+			}
+			kv.Value = nil
+			kv.BlobHandle = hotHandle
+
+			// Parse cold blob handle - replace "cold-" prefix with standard "blob" prefix.
+			// N.B. the parser may add spaces, so we check for "cold-blob " or "cold-blob{".
+			if !strings.HasPrefix(remaining, "cold-blob ") && !strings.HasPrefix(remaining, "cold-blob{") {
+				return nil, errors.Newf("expected cold-blob{...} after hot-blob{...}, got %q", remaining)
+			}
+			coldInput := strings.Replace(remaining, "cold-blob", "blob", 1)
+			secondaryHandle, remaining, err := bv.ParseInlineHandle(coldInput)
+			if err != nil {
+				return nil, errors.Wrapf(err, "parsing secondary blob handle")
+			}
+			kv.SecondaryBlobHandle = secondaryHandle
+
+			// Parse attribute.
+			if remaining != "" {
+				p := strparse.MakeParser("=", remaining)
+				p.Expect("attr")
+				p.Expect("=")
+				kv.Attr = base.ShortAttribute(p.Int())
+				if !p.Done() {
+					return nil, errors.Newf("unexpected trailing input %q", p.Remaining())
+				}
+			}
+		} else if blobtest.IsBlobHandle(string(kv.Value)) {
+			// Single-tier blob handle.
 			if bv == nil {
 				return nil, errors.Errorf("test not set up to support blob handles")
 			}
@@ -216,6 +268,8 @@ func ParseTestSST(w RawWriter, input string, bv *blobtest.Values) error {
 		switch {
 		case kv.IsKeySpan():
 			err = w.EncodeSpan(*kv.Span)
+		case kv.HasDualTierBlobValue():
+			err = w.AddWithDualTierBlobHandles(kv.Key, kv.BlobHandle, kv.SecondaryBlobHandle, kv.Attr, kv.ForceObsolete, kv.Meta)
 		case kv.HasBlobValue():
 			err = w.AddWithBlobHandle(kv.Key, kv.BlobHandle, kv.Attr, kv.ForceObsolete, kv.Meta)
 		default:

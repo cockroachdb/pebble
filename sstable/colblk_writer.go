@@ -433,7 +433,7 @@ func (w *RawColumnWriter) Add(
 			uint64(len(key.UserKey)))
 	}
 
-	return w.add(key, len(value), valueStoredWithKey, valuePrefix, eval, meta)
+	return w.internalAdd(key, len(value), valueStoredWithKey, valuePrefix, eval, meta, nil /* secondaryHandle */)
 }
 
 // AddWithBlobHandle implements the RawWriter interface.
@@ -468,7 +468,7 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	n := h.Encode(w.tmp[:])
 	valueStoredWithKey := w.tmp[:n]
 	valuePrefix := block.BlobValueHandlePrefix(eval.kcmp.PrefixEqual(), attr)
-	err = w.add(key, int(h.ValueLen), valueStoredWithKey, valuePrefix, eval, meta)
+	err = w.internalAdd(key, int(h.ValueLen), valueStoredWithKey, valuePrefix, eval, meta, nil /* secondaryHandle */)
 	if err != nil {
 		return err
 	}
@@ -478,10 +478,10 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	}
 
 	// Track blob reference bytes in tiering histogram by tier.
-	if w.opts.TieringSpanIDGetter != nil && w.opts.TieringAttributeExtractor != nil && w.opts.BlobReferenceTierGetter != nil {
+	if w.opts.TieringSpanIDGetter != nil && w.opts.BlobReferenceTierGetter != nil && w.opts.TieringAttributeExtractor != nil {
 		if !meta.IsSet() {
 			meta.TieringSpanID = w.opts.TieringSpanIDGetter(key.UserKey)
-			attribute, err := w.opts.TieringAttributeExtractor(key.UserKey, int(eval.kcmp.PrefixLen), nil /* value */)
+			attribute, err := w.opts.TieringAttributeExtractor(key.UserKey, int(eval.kcmp.PrefixLen), nil)
 			if err != nil {
 				return err
 			}
@@ -499,30 +499,108 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 		}
 		w.tieringHistogramBlock.Add(kindAndTier, meta.TieringSpanID, meta.TieringAttribute,
 			uint64(h.ValueLen))
-
-		// TODO(annie): track hot-and-cold blob reference bytes when a value exists
-		// in both tiers. This requires an extra column and changes to pass both
-		// hot and cold blob handles. Use AddHotAndColdBlobRefBytes once implemented.
-
 		w.tieringHistogramBlock.AddKeyBytes(meta.TieringAttribute, w.opts.TieringThreshold, uint64(len(key.UserKey)))
 	}
 
 	return nil
 }
 
-func (w *RawColumnWriter) add(
+// AddWithDualTierBlobHandles implements the RawWriter interface.
+func (w *RawColumnWriter) AddWithDualTierBlobHandles(
+	key InternalKey,
+	hotHandle, secondaryHandle blob.InlineHandle,
+	attr base.ShortAttribute,
+	forceObsolete bool,
+	meta base.KVMeta,
+) error {
+	// Dual-tier blob handles require tiering to be configured since cold blobs
+	// don't exist without tiering.
+	tieringConfig := w.opts.TableFormat.TieringColumnConfig()
+	if !tieringConfig.SupportsTiering() {
+		w.err = errors.Newf("pebble: dual-tier blob handles require tiering to be configured")
+		return w.err
+	}
+	switch key.Kind() {
+	case base.InternalKeyKindRangeDelete, base.InternalKeyKindRangeKeySet,
+		base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
+		return errors.Newf("%s must be added through EncodeSpan", key.Kind())
+	case base.InternalKeyKindMerge:
+		return errors.Errorf("MERGE does not support blob value handles")
+	}
+
+	eval, err := w.evaluatePoint(key, int(hotHandle.ValueLen))
+	if err != nil {
+		return err
+	}
+	eval.isObsolete = eval.isObsolete || forceObsolete
+	w.prevPointKey.trailer = key.Trailer
+	w.prevPointKey.isObsolete = eval.isObsolete
+
+	// Encode the hot handle into the value column.
+	n := hotHandle.Encode(w.tmp[:])
+	valueStoredWithKey := w.tmp[:n]
+	valuePrefix := block.BlobValueHandlePrefix(eval.kcmp.PrefixEqual(), attr)
+
+	// Encode the secondary handle separately.
+	var secondaryHandleBuf [blob.MaxInlineHandleLength]byte
+	secondaryN := secondaryHandle.Encode(secondaryHandleBuf[:])
+	secondaryHandleEncoded := secondaryHandleBuf[:secondaryN]
+
+	// Populate tiering metadata if not already set.
+	if w.opts.TieringSpanIDGetter != nil && w.opts.TieringAttributeExtractor != nil {
+		if !meta.IsSet() {
+			meta.TieringSpanID = w.opts.TieringSpanIDGetter(key.UserKey)
+			attribute, err := w.opts.TieringAttributeExtractor(key.UserKey, int(eval.kcmp.PrefixLen), nil)
+			if err != nil {
+				return err
+			}
+			meta.TieringAttribute = attribute
+		}
+	}
+
+	err = w.internalAdd(key, int(hotHandle.ValueLen), valueStoredWithKey, valuePrefix, eval, meta, secondaryHandleEncoded)
+	if err != nil {
+		return err
+	}
+	w.props.NumValuesInBlobFiles++
+
+	// Track liveness for both hot and secondary blob references.
+	if err := w.blobRefLivenessIndexBlock.addLiveValue(hotHandle.ReferenceID, hotHandle.BlockID, hotHandle.ValueID, uint64(hotHandle.ValueLen)); err != nil {
+		return err
+	}
+	if err := w.blobRefLivenessIndexBlock.addLiveValue(secondaryHandle.ReferenceID, secondaryHandle.BlockID, secondaryHandle.ValueID, uint64(secondaryHandle.ValueLen)); err != nil {
+		return err
+	}
+
+	// Track hot-and-cold blob reference bytes in tiering histogram.
+	if w.opts.TieringSpanIDGetter != nil && w.opts.TieringAttributeExtractor != nil {
+		w.tieringHistogramBlock.AddHotAndColdBlobRefBytes(uint64(hotHandle.ValueLen))
+		w.tieringHistogramBlock.AddKeyBytes(meta.TieringAttribute, w.opts.TieringThreshold, uint64(len(key.UserKey)))
+	}
+
+	return nil
+}
+
+// internalAdd adds a key-value pair to the data block. It also supports an
+// optional secondaryHandle for dual-tier blob references.
+func (w *RawColumnWriter) internalAdd(
 	key InternalKey,
 	valueLen int,
 	valueStoredWithKey []byte,
 	valuePrefix block.ValuePrefix,
 	eval pointKeyEvaluation,
 	meta base.KVMeta,
+	secondaryHandle []byte,
 ) error {
 	// Append the key to the data block. We have NOT yet committed to
 	// including the key in the block. The data block writer permits us to
 	// finish the block excluding the last-appended KV.
 	entriesWithoutKV := w.dataBlock.Rows()
-	w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete, meta)
+	if secondaryHandle == nil {
+		w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete, meta)
+	} else {
+		w.dataBlock.AddWithSecondaryBlobHandle(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete, meta, secondaryHandle)
+	}
 
 	// Now that we've appended the KV pair, we can compute the exact size of the
 	// block with this key-value pair included. Check to see if we should flush
@@ -536,7 +614,11 @@ func (w *RawColumnWriter) add(
 		}
 		// flushDataBlockWithoutNextKey reset the data block builder, and we can
 		// add the key to this next block now.
-		w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete, meta)
+		if secondaryHandle == nil {
+			w.dataBlock.Add(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete, meta)
+		} else {
+			w.dataBlock.AddWithSecondaryBlobHandle(key, valueStoredWithKey, valuePrefix, eval.kcmp, eval.isObsolete, meta, secondaryHandle)
+		}
 		w.pendingDataBlockSize = w.dataBlock.Size()
 	} else {
 		// We're not flushing the data block, and we're committing to including
