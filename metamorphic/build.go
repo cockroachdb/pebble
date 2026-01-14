@@ -143,8 +143,10 @@ func buildForIngest(
 
 	// If value separation is enabled and the format major version supports
 	// ingesting blob files, use SSTBlobWriter to potentially create blob files.
+	// Blob files don't support shared storage yet, so skip when it's enabled.
 	if t.opts.Experimental.ValueSeparationPolicy().Enabled &&
-		db.FormatMajorVersion() >= pebble.FormatIngestBlobFiles {
+		db.FormatMajorVersion() >= pebble.FormatIngestBlobFiles &&
+		!t.testOpts.sharedStorageEnabled {
 		return buildForIngestWithBlobs(t, dbID, b, i, path, f, db)
 	}
 
