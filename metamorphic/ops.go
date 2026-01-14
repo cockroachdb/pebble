@@ -2017,6 +2017,7 @@ type replicateOp struct {
 	start, end   UserKey
 }
 
+// runSharedReplicate always closes w.
 func (r *replicateOp) runSharedReplicate(
 	t *Test, h historyRecorder, source, dest *pebble.DB, w *sstable.Writer, sstPath string,
 ) {
@@ -2050,16 +2051,12 @@ func (r *replicateOp) runSharedReplicate(
 			return nil
 		},
 	})
+	err = firstError(err, w.Close())
 	if err != nil {
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 
-	err = w.Close()
-	if err != nil {
-		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
-		return
-	}
 	meta, err := w.Raw().Metadata()
 	if err != nil {
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
@@ -2084,6 +2081,7 @@ func (r *replicateOp) runSharedReplicate(
 	h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 }
 
+// runExternalReplicate always closes w.
 func (r *replicateOp) runExternalReplicate(
 	t *Test, h historyRecorder, source, dest *pebble.DB, w *sstable.Writer, sstPath string,
 ) {
@@ -2122,16 +2120,12 @@ func (r *replicateOp) runExternalReplicate(
 			return nil
 		},
 	})
+	err = firstError(err, w.Close())
 	if err != nil {
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 
-	err = w.Close()
-	if err != nil {
-		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
-		return
-	}
 	meta, err := w.Raw().Metadata()
 	if err != nil {
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
@@ -2192,10 +2186,12 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 	t.opts.Comparer.ValidateKey.MustValidate(r.end)
 	// First, do a RangeKeyDelete and DeleteRange on the whole span.
 	if err := dest.RangeKeyDelete(r.start, r.end, t.writeOpts); err != nil {
+		_ = w.Close()
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
 	if err := dest.DeleteRange(r.start, r.end, t.writeOpts); err != nil {
+		_ = w.Close()
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
@@ -2241,6 +2237,7 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 		}
 	}
 	if err := iter.Error(); err != nil {
+		_ = w.Close()
 		h.Recordf("%s // %v", r.formattedString(t.testOpts.KeyFormat), err)
 		return
 	}
