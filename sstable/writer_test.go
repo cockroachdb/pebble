@@ -627,15 +627,20 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 				td.ScanArgs(t, "block-size", &blockSize)
 			}
 
-			// Parse the test data which now includes tiering metadata.
-			kvs, err := ParseTestKVsAndSpans(td.Input, nil /* bv */)
+			bv := &blobtest.Values{}
+
+			kvs, err := ParseTestKVsAndSpans(td.Input, bv)
 			if err != nil {
 				return err.Error()
 			}
 			tieringMetadata := make(map[string]ParsedKVOrSpan)
+			hasBlobHandles := false
 			for _, kv := range kvs {
 				if kv.Meta != (base.KVMeta{}) && !kv.IsKeySpan() {
 					tieringMetadata[string(kv.Key.UserKey)] = kv
+				}
+				if kv.HasBlobValue() {
+					hasBlobHandles = true
 				}
 			}
 
@@ -652,21 +657,38 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 				return 0, nil
 			}
 
-			meta, r, err = runBuildCmd(td, &WriterOptions{
+			// BlobReferenceTierGetter determines which tier a blob reference is in.
+			// For testing, odd reference IDs are hot, even are cold.
+			blobReferenceTierGetter := func(refID base.BlobReferenceID) base.StorageTier {
+				if refID%2 == 1 {
+					return base.HotTier
+				}
+				return base.ColdTier
+			}
+
+			opts := &WriterOptions{
 				BlockSize:                 blockSize,
 				Comparer:                  testkeys.Comparer,
 				TableFormat:               TableFormatMax,
 				TieringSpanIDGetter:       tieringSpanIDGetter,
 				TieringAttributeExtractor: tieringAttributeExtractor,
-				WriteTieringHistograms:    len(tieringMetadata) > 0,
+				WriteTieringHistograms:    len(tieringMetadata) > 0 || hasBlobHandles,
 				DisableValueBlocks:        true,
-			}, nil /* cacheHandle */)
+			}
+			if hasBlobHandles {
+				opts.BlobReferenceTierGetter = blobReferenceTierGetter
+			}
+
+			meta, r, err = runBuildCmd(td, opts, nil /* cacheHandle */)
 			if err != nil {
 				return err.Error()
 			}
 			return formatMeta(meta)
 
 		case "layout":
+			if r == nil {
+				return "error: no reader available (previous build may have failed)"
+			}
 			l, err := r.Layout()
 			if err != nil {
 				return err.Error()
@@ -680,6 +702,10 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 		}
 	})
 }
+
+// TODO(annie): Once the read path is ready, add a unit test that retrieves
+// values using the secondary blob handle (for dual-tier blob values) and
+// validates that we get the same result as using the primary handle.
 
 func asciiOrHex(b []byte) string {
 	if bytes.ContainsFunc(b, func(r rune) bool { return r < ' ' || r > '~' }) {

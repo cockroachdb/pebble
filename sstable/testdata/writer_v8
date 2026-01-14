@@ -228,16 +228,16 @@ seqnums:  [#1-#1]
 layout
 ----
 sstable
- ├── data  offset: 0  length: 78
- ├── data  offset: 83  length: 78
- ├── data  offset: 166  length: 78
- ├── index  offset: 249  length: 36
- ├── index  offset: 290  length: 37
- ├── index  offset: 332  length: 37
- ├── top-index  offset: 374  length: 48
- ├── properties  offset: 427  length: 465
- ├── meta-index  offset: 897  length: 46
- └── footer  offset: 948  length: 61
+ ├── data  offset: 0  length: 82
+ ├── data  offset: 87  length: 82
+ ├── data  offset: 174  length: 82
+ ├── index  offset: 261  length: 36
+ ├── index  offset: 302  length: 37
+ ├── index  offset: 344  length: 37
+ ├── top-index  offset: 386  length: 48
+ ├── properties  offset: 439  length: 465
+ ├── meta-index  offset: 909  length: 46
+ └── footer  offset: 960  length: 61
 
 props
 ----
@@ -248,7 +248,7 @@ rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 3
 rocksdb.comparator: pebble.internal.testkeys
-rocksdb.data.size: 249
+rocksdb.data.size: 261
 rocksdb.filter.size: 0
 rocksdb.index.partitions: 3
 rocksdb.index.size: 158
@@ -259,7 +259,7 @@ rocksdb.merge.operands: 0
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.top-level.index.size: 48
 rocksdb.compression: Snappy
-pebble.compression_stats: None:158,Snappy:234/291
+pebble.compression_stats: None:158,Snappy:246/318
 obsolete-key: hex:00
 
 # Exercise the non-Reader layout-decoding codepath.
@@ -267,16 +267,16 @@ obsolete-key: hex:00
 decode-layout
 ----
 sstable
- ├── data  offset: 0  length: 78
- ├── data  offset: 83  length: 78
- ├── data  offset: 166  length: 78
- ├── index  offset: 249  length: 36
- ├── index  offset: 290  length: 37
- ├── index  offset: 332  length: 37
- ├── top-index  offset: 374  length: 48
- ├── properties  offset: 427  length: 465
- ├── meta-index  offset: 897  length: 46
- └── footer  offset: 948  length: 61
+ ├── data  offset: 0  length: 82
+ ├── data  offset: 87  length: 82
+ ├── data  offset: 174  length: 82
+ ├── index  offset: 261  length: 36
+ ├── index  offset: 302  length: 37
+ ├── index  offset: 344  length: 37
+ ├── top-index  offset: 386  length: 48
+ ├── properties  offset: 439  length: 465
+ ├── meta-index  offset: 909  length: 46
+ └── footer  offset: 960  length: 61
 
 scan
 ----
@@ -357,7 +357,7 @@ a@2#1,SET:a2
 a@1#1,SET:a1
 b@2#1,SET:b2
 ----
-EstimatedSize()=181
+EstimatedSize()=190
 
 close
 ----
