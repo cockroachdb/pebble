@@ -15,7 +15,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/colblk"
-	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
+	"github.com/cockroachdb/pebble/sstable/tablefilters"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
@@ -172,7 +172,7 @@ func New(opts ...Option) *T {
 
 	opts = append(opts,
 		Comparers(base.DefaultComparer),
-		FilterDecoders(bloom.Decoder),
+		FilterDecoders(tablefilters.Decoders...),
 		Mergers(base.DefaultMerger))
 
 	for _, opt := range opts {

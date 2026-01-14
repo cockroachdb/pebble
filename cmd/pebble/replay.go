@@ -24,7 +24,7 @@ import (
 	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/replay"
-	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
+	"github.com/cockroachdb/pebble/sstable/tablefilters"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
@@ -298,15 +298,10 @@ func (c *replayConfig) parseHooks() *pebble.ParseHooks {
 	return &pebble.ParseHooks{
 		NewComparer: makeComparer,
 		NewFilterPolicy: func(name string) (pebble.TableFilterPolicy, error) {
-			if p, ok := bloom.PolicyFromName(name); ok {
+			if p, ok := tablefilters.PolicyFromName(name); ok {
 				return p, nil
 			}
-			switch name {
-			case "none":
-				return base.NoFilterPolicy, nil
-			default:
-				return nil, errors.Errorf("invalid filter policy name %q", name)
-			}
+			return nil, errors.Errorf("invalid filter policy name %q", name)
 		},
 		NewMerger: makeMerger,
 	}

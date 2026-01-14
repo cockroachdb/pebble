@@ -23,6 +23,8 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/tablefilters"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/binaryfuse"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
@@ -796,8 +798,10 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	fpList := []pebble.DBTableFilterPolicy{
 		pebble.UniformDBTableFilterPolicy(pebble.NoFilterPolicy),
 		pebble.UniformDBTableFilterPolicy(bloom.FilterPolicy(1 + rng.Uint32N(20))),
+		pebble.UniformDBTableFilterPolicy(binaryfuse.FilterPolicy(4 * (1 + rng.IntN(4)))),
 		pebble.DBTableFilterPolicyUniform,
 		pebble.DBTableFilterPolicyProgressive,
+		pebble.DBTableFilterPolicyBinaryFuseProgressive,
 	}
 	fp := fpList[rng.IntN(len(fpList))]
 	opts.ApplyTableFilterPolicy(func() pebble.DBTableFilterPolicy {
@@ -1035,11 +1039,8 @@ func setupInitialState(dataDir string, testOpts *TestOptions) error {
 }
 
 func filterPolicyFromName(name string) (pebble.TableFilterPolicy, error) {
-	if p, ok := bloom.PolicyFromName(name); ok {
+	if p, ok := tablefilters.PolicyFromName(name); ok {
 		return p, nil
-	}
-	if name == "none" {
-		return base.NoFilterPolicy, nil
 	}
 	// Backward compatibility.
 	var bitsPerKey uint32
