@@ -59,6 +59,7 @@ func parseSpanPolicy(t *testing.T, spanPolicyStr string) base.SpanPolicy {
 func parseBuildSSTBlobWriterOptions(t *testing.T, td *datadriven.TestData) SSTBlobWriterOptions {
 	opts := SSTBlobWriterOptions{}
 	td.MaybeScanArgs(t, "value-separation-min-size", &opts.ValueSeparationMinSize)
+	td.MaybeScanArgs(t, "mvcc-garbage-value-separation-min-size", &opts.MVCCGarbageValueSeparationMinSize)
 
 	var spanPolicyStr string
 	td.MaybeScanArgs(t, "span-policy", &spanPolicyStr)

@@ -141,7 +141,8 @@ func (w *SSTBlobWriter) Set(key, value []byte) error {
 
 	w.kvScratch.K = base.MakeInternalKey(key, 0, sstable.InternalKeyKindSet)
 	w.kvScratch.V = base.MakeInPlaceValue(value)
-	isLikelyMVCCGarbage := w.SSTWriter.Raw().IsLikelyMVCCGarbage(w.kvScratch.K.UserKey, w.kvScratch.Kind())
+	isLikelyMVCCGarbage := len(value) > w.valSep.OutputConfig().MinimumMVCCGarbageSize &&
+		w.SSTWriter.Raw().IsLikelyMVCCGarbage(w.kvScratch.K.UserKey, w.kvScratch.Kind())
 	return w.valSep.Add(w.SSTWriter.Raw(), &w.kvScratch, false, isLikelyMVCCGarbage, base.KVMeta{})
 }
 
