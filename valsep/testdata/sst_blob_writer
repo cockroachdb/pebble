@@ -61,6 +61,18 @@ size:758
 blobfiles:
 1: {BlockCount: 1, ValueCount: 3, UncompressedValueBytes: 10 (0% MVCCGarbage), FileLen: 101}
 
+# Test that MVCC garbage smaller than mvcc-garbage-value-separation-min-size is not separated.
+# Only b@1 (5 bytes) is separated; a@1 (3 bytes) is not.
+build value-separation-min-size=100 mvcc-garbage-value-separation-min-size=4
+a@3#2,SET:aaa
+a@1#1,SET:aaa
+b@3#3,SET:bbbbb
+b@1#1,SET:bbbbb
+----
+size:874
+blobfiles:
+1: {BlockCount: 1, ValueCount: 1, UncompressedValueBytes: 5 (100% MVCCGarbage), FileLen: 94}
+
 # Keys should be added in increasing order.
 build value-separation-min-size=4
 a#1,SET:aaaa
