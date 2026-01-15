@@ -303,9 +303,6 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	// Configure failover-specific histograms and options
 	if !opts.ReadOnly && opts.WALFailover != nil {
-		if walOpts.Secondary.ID == "" {
-			walOpts.Secondary.ID = opts.WALFailover.Secondary.ID
-		}
 		walSecondaryFileOpHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
 			Buckets: FsyncLatencyBuckets,
 		})
@@ -318,19 +315,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		walOpts.FailoverWriteAndSyncLatency = walFailoverWriteAndSyncHistogram
 
 		walOpts.FailoverOptions = opts.WALFailover.FailoverOptions
-
-		walDir, err := wal.ValidateOrInitWALDir(walOpts.Secondary)
-		if err != nil {
-			return nil, err
-		}
-		walOpts.Secondary = walDir
-		opts.WALFailover.Secondary.ID = walDir.ID
 	}
+
 	walManager, err := wal.Init(walOpts, rs.walsReplay)
 	if err != nil {
 		return nil, err
 	}
-
 	defer maybeCleanUp(walManager.Close)
 	d.mu.log.manager = walManager
 

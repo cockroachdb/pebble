@@ -6,19 +6,16 @@ package wal
 
 import (
 	"cmp"
-	crand "crypto/rand"
 	"fmt"
 	"io"
-	mathrand "math/rand/v2"
+	"math/rand/v2"
 	"os"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/vfs"
@@ -56,80 +53,6 @@ const probeHistoryLength = 128
 // Large value.
 const failedProbeDuration = 24 * 60 * 60 * time.Second
 
-// For testing, generateStableIdentifierForTesting can be overridden to return
-// a constant value when we generate stable identifiers.
-var generateStableIdentifierForTesting = ""
-
-// SetGenerateStableIdentifierForTesting sets a constant identifier for testing.
-// This should only be used in tests to avoid flaky behavior.
-func SetGenerateStableIdentifierForTesting(identifier string) {
-	generateStableIdentifierForTesting = identifier
-}
-
-// ResetGenerateStableIdentifierForTesting resets the testing override.
-// This should only be used in tests.
-func ResetGenerateStableIdentifierForTesting() {
-	generateStableIdentifierForTesting = ""
-}
-
-// generateStableIdentifier generates a random hex string from 16 bytes.
-func generateStableIdentifier() (string, error) {
-	// For testing, return a constant value if set.
-	if generateStableIdentifierForTesting != "" {
-		return generateStableIdentifierForTesting, nil
-	}
-
-	var uuid [16]byte
-	if _, err := crand.Read(uuid[:]); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%x", uuid), nil
-}
-
-// readSecondaryIdentifier reads the identifier from the secondary directory.
-func readSecondaryIdentifier(fs vfs.FS, identifierFile string) (string, error) {
-	f, err := fs.Open(identifierFile)
-	if err != nil {
-		if oserror.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return "", err
-	}
-
-	// Trim whitespace and return the identifier.
-	return strings.TrimSpace(string(data)), nil
-}
-
-// writeSecondaryIdentifier writes the identifier to the secondary directory.
-func writeSecondaryIdentifier(fs vfs.FS, identifierFile string, identifier string) error {
-	f, err := fs.Create(identifierFile, "pebble-wal")
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.WriteString(f, identifier); err != nil {
-		f.Close()
-		return errors.CombineErrors(err, fs.Remove(identifierFile))
-	}
-
-	if err := errors.CombineErrors(f.Sync(), f.Close()); err != nil {
-		return errors.CombineErrors(err, fs.Remove(identifierFile))
-	}
-
-	// Sync the containing directory to ensure the new file is durably visible.
-	dir, err := fs.OpenDir(fs.PathDir(identifierFile))
-	if err != nil {
-		return err
-	}
-	return errors.CombineErrors(dir.Sync(), dir.Close())
-}
-
 // init takes a stopper in order to connect the dirProber's long-running
 // goroutines with the stopper's wait group, but the dirProber has its own
 // stop() method that should be invoked to trigger the shutdown.
@@ -151,7 +74,7 @@ func (p *dirProber) init(
 	}
 	// Random bytes for writing, to defeat any FS compression optimization.
 	for i := range p.buf {
-		p.buf[i] = byte(mathrand.Uint32())
+		p.buf[i] = byte(rand.Uint32())
 	}
 	// dirProber has an explicit stop() method instead of listening on
 	// stopper.shouldQuiesce. This structure helps negotiate the shutdown
@@ -624,42 +547,6 @@ func (wm *failoverManager) init(o Options, initial Logs) error {
 	return nil
 }
 
-// ValidateOrInitWALDir manages the secondary directory identifier for
-// failover validation. It ensures the correct secondary directory is mounted
-// by validating or generating a stable identifier.
-func ValidateOrInitWALDir(walDir Dir) (Dir, error) {
-	identifierFile := walDir.FS.PathJoin(walDir.Dirname, "stable_identifier")
-	existingIdentifier, err := readSecondaryIdentifier(walDir.FS, identifierFile)
-	if err != nil {
-		return Dir{}, errors.Newf("failed to read secondary identifier: %v", err)
-	}
-	// If we have an identifier from the OPTIONS file, validate it matches what's
-	// in the directory.
-	if walDir.ID != "" {
-		// Not the same identifier, wrong disk may be mounted.
-		if existingIdentifier != walDir.ID {
-			return Dir{}, errors.Newf("secondary directory %q has identifier %q but expected %q - wrong disk may be mounted",
-				walDir.Dirname, existingIdentifier, walDir.ID)
-		}
-		return walDir, nil
-	}
-	// No identifier in OPTIONS file, check if one exists in the directory.
-	if existingIdentifier == "" {
-		// Generate a new identifier.
-		identifier, err := generateStableIdentifier()
-		if err != nil {
-			return Dir{}, errors.Newf("failed to generate UUID: %v", err)
-		}
-		if err := writeSecondaryIdentifier(walDir.FS, identifierFile, identifier); err != nil {
-			return Dir{}, errors.Newf("failed to write secondary identifier: %v", err)
-		}
-		walDir.ID = identifier
-		return walDir, nil
-	}
-	walDir.ID = existingIdentifier
-	return walDir, nil
-}
-
 // List implements Manager.
 func (wm *failoverManager) List() Logs {
 	wm.mu.Lock()
@@ -982,11 +869,6 @@ func (wm *failoverManager) logCreator(
 	}
 	r.writeEnd(err)
 	return logFile, 0, err
-}
-
-// Opts implements Manager.
-func (wm *failoverManager) Opts() Options {
-	return wm.opts
 }
 
 type stopper struct {
