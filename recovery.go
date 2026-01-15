@@ -125,21 +125,6 @@ func (rs *recoveredState) init(opts *Options, dirname string) error {
 		if err := opts.CheckCompatibility(dirname, previousOptions); err != nil {
 			return err
 		}
-		// Extract recovery ID encoded within OPTIONS file and save it to
-		// rs.dirs for later validation if WAL failover is enabled.
-		if opts.WALFailover != nil {
-			var secondaryIdentifier string
-			visitKeyValue := func(i, j int, section, key, value string) error {
-				if section == "WAL Failover" && key == "secondary_identifier" {
-					secondaryIdentifier = value
-				}
-				return nil
-			}
-			if err := parseOptions(previousOptions, parseOptionsFuncs{visitKeyValue: visitKeyValue}); err != nil {
-				return err
-			}
-			rs.dirs.WALSecondary.ID = secondaryIdentifier
-		}
 	}
 
 	// Ratchet rs.maxFilenumUsed ahead of all known objects in the objProvider.

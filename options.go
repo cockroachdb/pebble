@@ -19,7 +19,6 @@ import (
 
 	"github.com/cockroachdb/crlib/fifo"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
@@ -1895,9 +1894,6 @@ func (o *Options) String() string {
 		fmt.Fprintf(&buf, "\n")
 		fmt.Fprintf(&buf, "[WAL Failover]\n")
 		fmt.Fprintf(&buf, "  secondary_dir=%s\n", o.WALFailover.Secondary.Dirname)
-		if o.WALFailover.Secondary.ID != "" {
-			fmt.Fprintf(&buf, "  secondary_identifier=%s\n", o.WALFailover.Secondary.ID)
-		}
 		fmt.Fprintf(&buf, "  primary_dir_probe_interval=%s\n", o.WALFailover.FailoverOptions.PrimaryDirProbeInterval)
 		fmt.Fprintf(&buf, "  healthy_probe_latency_threshold=%s\n", o.WALFailover.FailoverOptions.HealthyProbeLatencyThreshold)
 		fmt.Fprintf(&buf, "  healthy_interval=%s\n", o.WALFailover.FailoverOptions.HealthyInterval)
@@ -2372,8 +2368,6 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			switch key {
 			case "secondary_dir":
 				o.WALFailover.Secondary = wal.Dir{Dirname: value, FS: vfs.Default}
-			case "secondary_identifier":
-				o.WALFailover.Secondary.ID = value
 			case "primary_dir_probe_interval":
 				o.WALFailover.PrimaryDirProbeInterval, err = time.ParseDuration(value)
 			case "healthy_probe_latency_threshold":
@@ -2511,21 +2505,6 @@ func (e ErrMissingWALRecoveryDir) Error() string {
 	return fmt.Sprintf("directory %q may contain relevant WALs but is not in WALRecoveryDirs%s", e.Dir, e.ExtraInfo)
 }
 
-// ErrSecondaryIdentifierMismatch is an error returned when the secondary directory
-// identifier doesn't match the expected identifier, indicating the wrong disk
-// may have been mounted at the expected path.
-type ErrSecondaryIdentifierMismatch struct {
-	ExpectedIdentifier string
-	ActualIdentifier   string
-	SecondaryDir       string
-}
-
-// Error implements error.
-func (e ErrSecondaryIdentifierMismatch) Error() string {
-	return fmt.Sprintf("secondary directory %q has identifier %q but expected %q - wrong disk may be mounted",
-		e.SecondaryDir, e.ActualIdentifier, e.ExpectedIdentifier)
-}
-
 // CheckCompatibility verifies the options are compatible with the previous options
 // serialized by Options.String(). For example, the Comparer and Merger must be
 // the same, or data will not be able to be properly read from the DB.
@@ -2593,12 +2572,6 @@ func (o *Options) checkWALDir(storeDir, walDir, errContext string) error {
 	for _, d := range o.WALRecoveryDirs {
 		// TODO(radu): should we also check that d.FS is the same as walDir's FS?
 		if walPath == resolveStorePath(storeDir, d.Dirname) {
-			if d.ID != "" {
-				if err := o.validateWALRecoveryDirIdentifier(d); err != nil {
-					return err
-				}
-
-			}
 			return nil
 		}
 	}
@@ -2902,30 +2875,4 @@ func resolveStorePath(storeDir, path string) string {
 		return storeDir + remainder
 	}
 	return path
-}
-
-// validateWALRecoveryDirIdentifier validates that the identifier in the
-// provided wal.Dir matches the expected ID encoded in the OPTIONS file to
-// ensure that we're using the correct directory.
-func (o *Options) validateWALRecoveryDirIdentifier(d wal.Dir) error {
-	identifierFile := d.FS.PathJoin(d.Dirname, "stable_identifier")
-	f, err := d.FS.Open(identifierFile)
-	if err != nil {
-		if oserror.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	defer f.Close()
-
-	existingIdentifier, err := io.ReadAll(f)
-	if err != nil {
-		return err
-	}
-	trimmedIdentifier := strings.TrimSpace(string(existingIdentifier))
-	if trimmedIdentifier != d.ID {
-		return errors.Newf("WALRecoveryDir %q has identifier %q but expected %q",
-			d.Dirname, trimmedIdentifier, d.ID)
-	}
-	return nil
 }
