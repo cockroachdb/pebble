@@ -208,10 +208,10 @@ func (d *DB) newInternalIter(
 	if readState != nil {
 		memtables = readState.memtables
 	}
-	if blobFileMapping := dbi.combinedBlobMapping.Resolve(
-		&vers.BlobFiles, memtables, memtables.hasBlobFiles(),
-	); blobFileMapping != nil {
-		dbi.blobValueFetcher.Init(blobFileMapping, d.fileCache,
+	if dbi.combinedBlobMapping.Init(
+		&vers.BlobFiles, memtables,
+	) {
+		dbi.blobValueFetcher.Init(&dbi.combinedBlobMapping, d.fileCache,
 			block.ReadEnv{ValueRetrievalProfile: d.valueRetrievalProfile.Load()},
 			blob.SuggestedCachedReaders(vers.MaxReadAmp()))
 	}
@@ -613,7 +613,7 @@ type scanInternalIterator struct {
 	mergingIter     *mergingIter
 	// combinedBlobMapping chains the version's BlobFileSet with any blob files
 	// from ingestedFlushables in the memtable queue.
-	combinedBlobMapping manifest.CombinedBlobFileMapping
+	combinedBlobMapping combinedBlobFileMapping
 	blobValueFetcher    blob.ValueFetcher
 
 	// boundsBuf holds two buffers used to store the lower and upper bounds.
