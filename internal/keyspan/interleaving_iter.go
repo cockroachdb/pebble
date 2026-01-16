@@ -245,7 +245,7 @@ func (i *InterleavingIter) InitSeekGE(
 	// NB: This keyspanSeekGE call will truncate the span to the seek key if
 	// necessary. This truncation is important for cases where a switch to
 	// combined iteration is made during a user-initiated SeekGE.
-	i.keyspanSeekGE(key, prefix)
+	i.keyspanSeekGE(key)
 	i.computeSmallestPos()
 	return i.yieldPosition(key, i.nextPos)
 }
@@ -295,7 +295,7 @@ func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Inte
 		i.saveSpanForward(i.span, nil)
 		i.savedKeyspan()
 	} else {
-		i.keyspanSeekGE(key, nil /* prefix */)
+		i.keyspanSeekGE(key)
 	}
 
 	i.dir = +1
@@ -355,7 +355,7 @@ func (i *InterleavingIter) SeekPrefixGE(
 		}
 	}
 	if seekKeyspanIter {
-		i.keyspanSeekGE(key, prefix)
+		i.keyspanSeekGE(key)
 	}
 
 	i.dir = +1
@@ -826,7 +826,7 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 }
 
 // keyspanSeekGE seeks the keyspan iterator to the first span covering a key ≥ k.
-func (i *InterleavingIter) keyspanSeekGE(k []byte, prefix []byte) {
+func (i *InterleavingIter) keyspanSeekGE(k []byte) {
 	i.saveSpanForward(i.keyspanIter.SeekGE(k))
 	i.savedKeyspan()
 }
