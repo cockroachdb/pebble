@@ -161,35 +161,6 @@ func (e *flushableEntry) readerUnrefHelper(
 
 type flushableList []*flushableEntry
 
-var _ base.BlobFileMapping = flushableList(nil)
-
-// Lookup implements base.BlobFileMapping. It searches all flushable entries
-// for the given blob file ID.
-func (l flushableList) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
-	for _, e := range l {
-		if ingested, ok := e.flushable.(*ingestedFlushable); ok {
-			if ingested.blobFileMap != nil {
-				if phys, ok := ingested.blobFileMap[fileID]; ok {
-					return phys, true
-				}
-			}
-		}
-	}
-	return nil, false
-}
-
-// HasBlobFiles returns true if any flushable entry contains blob files.
-func (l flushableList) hasBlobFiles() bool {
-	for _, e := range l {
-		if ingested, ok := e.flushable.(*ingestedFlushable); ok {
-			if len(ingested.blobFileMap) > 0 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // ingestedFlushable is the implementation of the flushable interface for the
 // ingesting sstables which are added to the flushable list.
 type ingestedFlushable struct {
@@ -539,4 +510,51 @@ func determineOverlapKeyspanIterator(
 		}
 	}
 	return false, err
+}
+
+// combinedBlobFileMapping implements base.BlobFileMapping, looking up blob
+// files from manifest.BlobFileSet and/or flushableList.
+type combinedBlobFileMapping struct {
+	// primary is the main blob file mapping, typically from the current version.
+	primary *manifest.BlobFileSet
+	// secondary is the flushable list to check if the blob file is not found in
+	// primary. This is from flushable ingests that haven't been flushed yet.
+	secondary flushableList
+}
+
+var _ base.BlobFileMapping = (*combinedBlobFileMapping)(nil)
+
+// Init configures the combined mapping, returning true on success. If both primary
+// and secondary are empty, Init will return false.
+func (c *combinedBlobFileMapping) Init(
+	primary *manifest.BlobFileSet, secondary flushableList,
+) bool {
+	if (primary == nil || primary.Count() == 0) && len(secondary) == 0 {
+		return false
+	}
+	c.primary = primary
+	c.secondary = secondary
+	return true
+}
+
+// Lookup implements BlobFileMapping. It first checks the primary mapping, then
+// falls back to the secondary mapping.
+func (c *combinedBlobFileMapping) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
+	if c.primary != nil {
+		if obj, ok := c.primary.Lookup(fileID); ok {
+			return obj, true
+		}
+	}
+	if c.secondary != nil {
+		for _, e := range c.secondary {
+			if ingested, ok := e.flushable.(*ingestedFlushable); ok {
+				if ingested.blobFileMap != nil {
+					if phys, ok := ingested.blobFileMap[fileID]; ok {
+						return phys, true
+					}
+				}
+			}
+		}
+	}
+	return nil, false
 }
