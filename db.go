@@ -1287,9 +1287,12 @@ func (i *Iterator) constructPointIter(
 		versionBlobFiles = &i.version.BlobFiles
 		maxReadAmp = i.version.MaxReadAmp()
 	}
-	memHasBlobFiles := !i.batchOnlyIter && memtables.hasBlobFiles()
+	var flushables flushableList
+	if !i.batchOnlyIter {
+		flushables = memtables
+	}
 	if blobFileMapping := i.combinedBlobMapping.Resolve(
-		versionBlobFiles, memtables, memHasBlobFiles,
+		versionBlobFiles, flushables,
 	); blobFileMapping != nil {
 		i.blobValueFetcher.Init(blobFileMapping, i.fc, readEnv,
 			blob.SuggestedCachedReaders(maxReadAmp))

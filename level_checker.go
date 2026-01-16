@@ -338,7 +338,7 @@ type checkConfig struct {
 	readEnv   block.ReadEnv
 	// combinedBlobMapping chains the version's BlobFileSet with any blob files
 	// from flushable ingests that haven't been flushed yet.
-	combinedBlobMapping manifest.CombinedBlobFileMapping
+	combinedBlobMapping combinedBlobFileMapping
 	// blobValueFetcher is the ValueFetcher to use when retrieving values stored
 	// externally in blob files.
 	blobValueFetcher blob.ValueFetcher
@@ -542,7 +542,7 @@ func (d *DB) CheckLevels(stats *CheckLevelsStats) error {
 	// Set up a combined blob file mapping that includes both the version's
 	// BlobFileSet and blob files from flushable ingests.
 	if blobFileMapping := checkConfig.combinedBlobMapping.Resolve(
-		&readState.current.BlobFiles, readState.memtables, readState.memtables.hasBlobFiles(),
+		&readState.current.BlobFiles, readState.memtables,
 	); blobFileMapping != nil {
 		checkConfig.blobValueFetcher.Init(
 			blobFileMapping,

@@ -178,7 +178,7 @@ func (l flushableList) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
 	return nil, false
 }
 
-// HasBlobFiles returns true if any flushable entry contains blob files.
+// hasBlobFiles returns true if any flushable entry contains blob files.
 func (l flushableList) hasBlobFiles() bool {
 	for _, e := range l {
 		if ingested, ok := e.flushable.(*ingestedFlushable); ok {
@@ -539,4 +539,60 @@ func determineOverlapKeyspanIterator(
 		}
 	}
 	return false, err
+}
+
+// combinedBlobFileMapping chains multiple BlobFileMapping implementations,
+// looking up blob files first in the primary mapping (typically the version's
+// BlobFileSet), then falling back to the secondary mapping (from flushable
+// ingests that haven't been flushed yet).
+//
+// This is used when reading blob values from ingested sstables that are still
+// in the flushable queue. The blob files for these ingests aren't in the
+// version's BlobFileSet until the flush completes.
+type combinedBlobFileMapping struct {
+	// primary is the main blob file mapping, typically from the current version.
+	primary base.BlobFileMapping
+	// secondary is the flushable list to check if the blob file is not found in
+	// primary. This is from flushable ingests that haven't been flushed yet.
+	secondary flushableList
+}
+
+var _ base.BlobFileMapping = (*combinedBlobFileMapping)(nil)
+
+// Resolve configures the combined mapping and returns the appropriate
+// BlobFileMapping to use. Returns nil if neither primary nor secondary has
+// blob files.
+func (c *combinedBlobFileMapping) Resolve(
+	primary *manifest.BlobFileSet, secondary flushableList,
+) base.BlobFileMapping {
+	primaryHasBlobFiles := primary != nil && primary.Count() > 0
+	secondaryHasBlobFiles := secondary != nil && secondary.hasBlobFiles()
+	switch {
+	case primaryHasBlobFiles && secondaryHasBlobFiles:
+		c.primary = primary
+		c.secondary = secondary
+		return c
+	case primaryHasBlobFiles:
+		return primary
+	case secondaryHasBlobFiles:
+		return secondary
+	default:
+		return nil
+	}
+}
+
+// Lookup implements BlobFileMapping. It first checks the primary mapping, then
+// falls back to the secondary mapping.
+func (c *combinedBlobFileMapping) Lookup(fileID base.BlobFileID) (base.ObjectInfo, bool) {
+	if c.primary != nil {
+		if obj, ok := c.primary.Lookup(fileID); ok {
+			return obj, true
+		}
+	}
+	if c.secondary != nil {
+		if obj, ok := c.secondary.Lookup(fileID); ok {
+			return obj, true
+		}
+	}
+	return nil, false
 }
