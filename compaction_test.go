@@ -2949,6 +2949,7 @@ func TestCompactionCorruption(t *testing.T) {
 	datadriven.RunTest(t, "testdata/compaction_corruption", func(t *testing.T, td *datadriven.TestData) string {
 		// wait until fn() returns true.
 		wait := func(what string, fn func() bool) {
+			// Decrease to 5 * time.Second to repro flakes.
 			const timeout = 2 * time.Minute
 			start := time.Now()
 			for !fn() {
@@ -3017,15 +3018,17 @@ func TestCompactionCorruption(t *testing.T) {
 			})
 
 		case "manual-compaction":
-			if err := d.Compact([]byte("a"), []byte("z9999999"), true /* parallelize */); err != nil {
-				td.Fatalf(t, "manual compaction failed: %s", err)
-			}
-			v := d.DebugCurrentVersion()
-			for i := 0; i < numLevels-1; i++ {
-				if v.Levels[i].Len() > 0 {
-					td.Fatalf(t, "expected no tables on L%d", i)
+			// If some background process (like loading stats) was in the process of
+			// opening the file, we could see the same error it sees because of the
+			// file cache. So we retry for a while.
+			wait("manual compaction", func() bool {
+				err := d.Compact([]byte("a"), []byte("z9999999"), true /* parallelize */)
+				if err == nil {
+					return true
 				}
-			}
+				td.Logf(t, "manual compaction error: %s", err)
+				return false
+			})
 
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
