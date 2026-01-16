@@ -122,10 +122,10 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	}
 
 	// Set up a blob value fetcher to use for retrieving values from blob files.
-	if blobFileMapping := i.combinedBlobMapping.Resolve(
-		&readState.current.BlobFiles, get.mem, get.mem.hasBlobFiles(),
-	); blobFileMapping != nil {
-		i.blobValueFetcher.Init(blobFileMapping, d.fileCache, block.NoReadEnv,
+	if i.combinedBlobMapping.Init(
+		&readState.current.BlobFiles, get.mem,
+	) {
+		i.blobValueFetcher.Init(&i.combinedBlobMapping, d.fileCache, block.NoReadEnv,
 			blob.SuggestedCachedReaders(readState.current.MaxReadAmp()))
 	}
 	get.iiopts.blobValueFetcher = &i.blobValueFetcher
