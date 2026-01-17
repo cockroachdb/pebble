@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crstrings"
@@ -654,6 +655,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
+	i.seekCounters().SeekGE.Add(1)
 	kv, _ = i.internalSeekGE(key, flags, false /* shouldReturnMeta */)
 	return kv
 }
@@ -661,6 +663,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGEWithMeta(
 	key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKV, base.KVMeta) {
+	i.seekCounters().SeekGE.Add(1)
 	return i.internalSeekGE(key, flags, true /* shouldReturnMeta */)
 }
 
@@ -839,6 +842,25 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 	return i.skipForward(shouldReturnMeta)
 }
 
+type SeekCountersForLevel struct {
+	SeekGE                    atomic.Uint64
+	SeekLT                    atomic.Uint64
+	SeekPrefixGEPositive      atomic.Uint64
+	SeekPrefixGEFilteredOut   atomic.Uint64
+	SeekPrefixGEFalsePositive atomic.Uint64
+}
+
+var SeekCounters [7]SeekCountersForLevel
+var SeekCountersUnknownLevel SeekCountersForLevel
+
+func (i *singleLevelIterator[I, PI, D, PD]) seekCounters() *SeekCountersForLevel {
+	l, ok := i.readEnv.Block.Level.Get()
+	if !ok {
+		return &SeekCountersUnknownLevel
+	}
+	return &SeekCounters[l]
+}
+
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
@@ -974,6 +996,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 			// We can avoid invalidating the already loaded block since the caller is
 			// not allowed to call Next when SeekPrefixGE returns nil.
 			i.lastOpWasSeekPrefixGE.Set(true)
+			i.seekCounters().SeekPrefixGEFilteredOut.Add(1)
 			return nil, base.KVMeta{}
 		}
 		treesteps.UpdateLastOpf(i, "bloom filter matched")
@@ -1005,6 +1028,11 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	i.boundsCmp = 0
 	i.positionedUsingLatestBounds = true
 	kv, kvMeta = i.seekGEHelper(key, boundsCmp, flags, shouldReturnMeta)
+	if kv == nil || !bytes.Equal(i.reader.Comparer.Split.Prefix(kv.K.UserKey), prefix) {
+		i.seekCounters().SeekPrefixGEFalsePositive.Add(1)
+	} else {
+		i.seekCounters().SeekPrefixGEPositive.Add(1)
+	}
 	return i.maybeVerifyKey(kv), kvMeta
 }
 
@@ -1145,6 +1173,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) (kv *base.InternalKV) {
+	i.seekCounters().SeekLT.Add(1)
 	if treesteps.Enabled && treesteps.IsRecording(i) {
 		op := treesteps.StartOpf(i, "SeekLT(%q, %d)", key, flags)
 		defer func() {

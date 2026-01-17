@@ -1227,6 +1227,33 @@ func (m *Metrics) String() string {
 	}
 	cur = deletePacerTable.Render(cur, table.RenderOptions{}, deletePacerContents...)
 
+	cur.NewlineReturn()
+	cur = cur.Printf("Seek counters\n")
+	cur = cur.Printf("%8s %8s %8s %50s\n", "Level", "SeekGE", "SeekLT", "SeekPrefixGE")
+	seekGEStr := func(c *sstable.SeekCountersForLevel) string {
+		p := c.SeekPrefixGEPositive.Load()
+		fp := c.SeekPrefixGEFalsePositive.Load()
+		n := c.SeekPrefixGEFilteredOut.Load()
+		total := p + fp + n
+		return fmt.Sprintf("%s (%s filtered, %s false positive, %s hits)",
+			humanizeCount(total), crhumanize.Percent(n, total), crhumanize.Percent(fp, total), crhumanize.Percent(p, total),
+		)
+	}
+	cur = cur.Printf("%8s %8s %8s %50s\n",
+		"unknown",
+		humanizeCount(sstable.SeekCountersUnknownLevel.SeekGE.Load()),
+		humanizeCount(sstable.SeekCountersUnknownLevel.SeekLT.Load()),
+		seekGEStr(&sstable.SeekCountersUnknownLevel),
+	)
+	for i := range sstable.SeekCounters {
+		cur = cur.Printf("%8s %8s %8s %50s\n",
+			fmt.Sprintf("L%d", i),
+			humanizeCount(sstable.SeekCounters[i].SeekGE.Load()),
+			humanizeCount(sstable.SeekCounters[i].SeekLT.Load()),
+			seekGEStr(&sstable.SeekCounters[i]),
+		)
+	}
+
 	_ = cur
 	return wb.String()
 }
