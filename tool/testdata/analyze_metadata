@@ -1,0 +1,21 @@
+print-metadata-stats
+----
+----
+Sampled 83 / 175 files (47.4%)
+
+                          |            L0             |  L1  |       L2       |             L3             |           L4           |           L5            |        L6
+--------------------------+---------------------------+------+----------------+----------------------------+------------------------+-------------------------+------------------
+                 SSTables |     50 (50% sampled)      |      | 0 (0% sampled) |      15 (50% sampled)      |    5 (100% sampled)    |     3 (30% sampled)     | 10 (100% sampled)
+             SSTable size | 2MB ± 41% (198MB total)   |      |                | 751KB ± 35% (22MB total)   | 1KB ± 0% (5KB total)   | 1GB ± 0% (10GB total)   |        0B
+    SSTable+blob ref size | 3MB ± 28% (298MB total)   |      |                | 751KB ± 35% (22MB total)   | 2KB ± 0% (10KB total)  | 2GB ± 0% (20GB total)   |        0B
+                      KVs | 1.2K ± 12% (124K total)   |      |                |  535 ± 4.2% (16K total)    |  10 ± 0% (50 total)    | 10M ± 0% (100M total)   |         0
+     SSTable bytes per KV |       108B ± 5.3%         |      |                |        83B ± 3.4%          |       100B ± 0%        |       100B ± 0%         |
+SSTable+blob bytes per KV |        162B ± 5%          |      |                |        83B ± 3.4%          |       200B ± 0%        |       200B ± 0%         |
+SSTable common key prefix |         12 ± 12%          |      |                |          6 ± 14%           |        1 ± 0%          |        100 ± 0%         |         0
+     With two-level index |         10 (20%)          |      |                |             0              |        5 (100%)        |        3 (100%)         |         0
+               Index size | 12KB ± 12% (1.2MB total)  |      |                | 5.2KB ± 4.2% (157KB total) | 100B ± 0% (500B total) | 100MB ± 0% (1GB total)  |        0B
+  Entries per index block |        104 ± 2.8%         |      |                |         52 ± 2.8%          |        5 ± 0%          |        10K ± 0%         |         0
+              Data blocks |  58 ± 9.8% (5.8K total)   |      |                |   33 ± 8.5% (1K total)     |   2 ± 0% (10 total)    |  1M ± 0% (10M total)    |         0
+        Filter block size | 6.1KB ± 12% (608KB total) |      |                | 2.1KB ± 4.2% (63KB total)  | 50B ± 0% (250B total)  | 50MB ± 0% (500MB total) |        0B
+----
+----

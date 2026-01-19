@@ -320,7 +320,15 @@ func printMetadataStats(w io.Writer, stats *metadataStats, sampled, total int) {
 			return formatStat(&ls.commonPrefix, formatCount)
 		}},
 		{title: "With two-level index", value: func(ls *levelStats) string {
-			return string(crhumanize.Percent(ls.numFilesWithTwoLevelIndex, ls.numSampledFiles))
+			switch {
+			case ls.numSampledFiles == 0:
+				return ""
+			case ls.numFilesWithTwoLevelIndex == 0:
+				return "0"
+			default:
+				return fmt.Sprintf("%d (%s)", ls.numFilesWithTwoLevelIndex,
+					crhumanize.Percent(ls.numFilesWithTwoLevelIndex, ls.numSampledFiles))
+			}
 		}},
 		{title: "Index size", value: func(ls *levelStats) string {
 			return formatStatWithTotal(&ls.indexSize, ls.numTotalFiles, formatBytes)
