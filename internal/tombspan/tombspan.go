@@ -201,8 +201,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/RaduBerinde/axisds"
-	"github.com/RaduBerinde/axisds/regiontree"
+	"github.com/RaduBerinde/axisds/v2"
+	"github.com/RaduBerinde/axisds/v2/regiontree"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
 )

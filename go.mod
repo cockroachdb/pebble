@@ -4,7 +4,7 @@ require (
 	github.com/DataDog/zstd v1.5.7
 	github.com/FastFilter/xorfilter v0.4.0
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
-	github.com/RaduBerinde/axisds v0.0.0-20260105221726-1be486564c85
+	github.com/RaduBerinde/axisds/v2 v2.0.0
 	github.com/RaduBerinde/tdigest v0.0.0-20251022152254-90e030c3a314
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cockroachdb/crlib v0.0.0-20251122031428-fe658a2dbda1

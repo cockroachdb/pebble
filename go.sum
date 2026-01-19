@@ -9,8 +9,8 @@ github.com/FastFilter/xorfilter v0.4.0/go.mod h1:h+9l02/leuyyhepO30BKr25MkZdy7LH
 github.com/HdrHistogram/hdrhistogram-go v1.1.2 h1:5IcZpTvzydCQeHzK4Ef/D5rrSqwxob0t8PQPMybUNFM=
 github.com/HdrHistogram/hdrhistogram-go v1.1.2/go.mod h1:yDgFjdqOqDEKOvasDdhWNXYg9BVp4O+o5f6V/ehm6Oo=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
-github.com/RaduBerinde/axisds v0.0.0-20260105221726-1be486564c85 h1:OjUilXBeTEMa9a/KCzbpiLCB3+TZ4kmNJXuUegmaWtA=
-github.com/RaduBerinde/axisds v0.0.0-20260105221726-1be486564c85/go.mod h1:gAhfbTwNsV064J6aon3TDJLzeh5IxfptXalQVnjjnWQ=
+github.com/RaduBerinde/axisds/v2 v2.0.0 h1:sjW1xADsV/Bcv+WmfCYDyxz41tnL6QcNICfBWe9uUgE=
+github.com/RaduBerinde/axisds/v2 v2.0.0/go.mod h1:mU/V9RwBbKLbo9Eyucnjv/vp1tFRqd9WKRXgQKmDmyI=
 github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603 h1:fSdiBlO4Bad28mJOPlAynvfgdDC9v+yRlzSFHvvjKYI=
 github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603/go.mod h1:0tr7FllbE9gJkHq7CVeeDDFAFKQVy5RnCSSNBOvdqbc=
 github.com/RaduBerinde/tdigest v0.0.0-20251022152254-90e030c3a314 h1:RcSNrxDZ1ZyEfpGwrpWqd3YWfMjQbKOtT+p3Wht6XN0=
