@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -39,9 +40,9 @@ type maskingHooks struct {
 func (m *maskingHooks) SpanChanged(s *Span) {
 	if m.log != nil {
 		if s == nil {
-			fmt.Fprintln(m.log, "-- SpanChanged(nil)")
+			fmt.Fprint(m.log, "# SpanChanged(nil)\n")
 		} else {
-			fmt.Fprintf(m.log, "-- SpanChanged(%s)\n", s)
+			fmt.Fprintf(m.log, "# SpanChanged(%s)\n", s)
 		}
 	}
 
@@ -89,11 +90,11 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 		}
 		prevKV = kv
 		s := iter.Span()
-		fmt.Fprintf(&buf, "PointKey: %s\n", kv.K.String())
+		fmt.Fprintf(&buf, ". %s:", kv.K.String())
 		if s != nil {
-			fmt.Fprintf(&buf, "Span: %s\n-", s)
+			fmt.Fprintf(&buf, " %s\n", s)
 		} else {
-			fmt.Fprintf(&buf, "Span: %s\n-", Span{})
+			fmt.Fprint(&buf, " (no span)\n")
 		}
 	}
 
@@ -128,10 +129,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 			// Clear any previous bounds.
 			pointIter.SetBounds(nil, nil)
 			prevKV = nil
-			lines := strings.Split(strings.TrimSpace(td.Input), "\n")
-			for _, line := range lines {
-				bufLen := buf.Len()
-				line = strings.TrimSpace(line)
+			for line := range crstrings.LinesSeq(td.Input) {
 				i := strings.IndexByte(line, ' ')
 				iterCmd := line
 				if i > 0 {
@@ -175,9 +173,6 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 					return fmt.Sprintf("unrecognized iter command %q", iterCmd)
 				}
 				require.NoError(t, iter.Error())
-				if buf.Len() > bufLen {
-					fmt.Fprintln(&buf)
-				}
 			}
 			return strings.TrimSpace(buf.String())
 		default:
