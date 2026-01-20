@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"math/bits"
 	"runtime"
+	"slices"
 	"sync"
 
 	"github.com/FastFilter/xorfilter"
@@ -48,7 +49,12 @@ func ensureInitialized() {
 
 var builderPool = sync.Pool{
 	New: func() interface{} {
-		return &builder{}
+		// Preallocate enough size to avoid allocations while ramping up.
+		b := &builder{
+			hashes: make([]uint64, maxSizeForPool),
+		}
+		b.bfBuilder = xorfilter.MakeBinaryFuseBuilder[uint16](maxSizeForPool)
+		return b
 	},
 }
 
@@ -104,7 +110,7 @@ func buildFilter(hc *hashCollector, fpBits int) (data []byte, ok bool) {
 		return nil, false
 	}
 	withBuilder(n, func(bld *builder) {
-		bld.hashes = bld.hashes[:0]
+		bld.hashes = slices.Grow(bld.hashes[:0], int(hc.NumHashes()))
 		for b := range hc.Blocks() {
 			bld.hashes = append(bld.hashes, b...)
 		}

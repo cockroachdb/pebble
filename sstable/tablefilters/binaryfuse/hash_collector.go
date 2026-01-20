@@ -80,31 +80,6 @@ func (hc *hashCollector) Blocks() iter.Seq[[]uint64] {
 	}
 }
 
-// BlocksAndReset iterates blocks and returns each page to the pool after
-// yielding. After iteration completes, the hashCollector is reset.
-func (hc *hashCollector) BlocksAndReset() iter.Seq[[]uint64] {
-	return func(yield func([]uint64) bool) {
-		defer hc.Reset()
-		for len(hc.blocks) > 1 {
-			block := hc.blocks[0]
-			if !yield(block[:]) {
-				return
-			}
-			hc.blocks = hc.blocks[1:]
-			hashBlockPool.Put(block)
-		}
-		// Last block may be partially filled.
-		if len(hc.blocks) == 1 {
-			lastBlock := hc.blocks[0]
-			ofs := hc.numHashes % hashBlockLen
-			if ofs == 0 {
-				ofs = hashBlockLen
-			}
-			yield(lastBlock[:ofs])
-		}
-	}
-}
-
 // Reset releases the hash blocks back to the pool.
 func (hc *hashCollector) Reset() {
 	// Release the hash blocks.
