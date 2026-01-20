@@ -10,6 +10,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/internal/metricsutil"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
@@ -21,6 +22,9 @@ func TestFileAnalyzer(t *testing.T) {
 		switch td.Cmd {
 		case "sst":
 			fa := NewFileAnalyzer(nil, sstable.ReaderOptions{})
+			// MinLZ output can vary depending on platform. Use Snappy for the "Test CR".
+			fa.blockAnalyzer.minLZFastest.Close()
+			fa.blockAnalyzer.minLZFastest = compression.GetCompressor(compression.SnappySetting)
 			defer fa.Close()
 			for path := range crstrings.LinesSeq(td.Input) {
 				file, err := vfs.Default.Open(path)
