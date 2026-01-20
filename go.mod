@@ -20,7 +20,7 @@ require (
 	github.com/guptarohit/asciigraph v0.5.5
 	github.com/klauspost/compress v1.17.11
 	github.com/kr/pretty v0.3.1
-	github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882
+	github.com/minio/minlz v1.0.2-0.20260119185444-845e64f85661
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pkg/errors v0.9.1
 	github.com/pmezard/go-difflib v1.0.0
