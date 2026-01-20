@@ -2,7 +2,7 @@ module github.com/cockroachdb/pebble
 
 require (
 	github.com/DataDog/zstd v1.5.7
-	github.com/FastFilter/xorfilter v0.4.0
+	github.com/FastFilter/xorfilter v0.4.2-0.20260120015552-4e5a4d9df65a
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/RaduBerinde/axisds v0.0.0-20260105221726-1be486564c85
 	github.com/RaduBerinde/tdigest v0.0.0-20251022152254-90e030c3a314
