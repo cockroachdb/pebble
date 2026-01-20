@@ -89,7 +89,7 @@ func (d *dbT) runAnalyzeData(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(stdout, "No read bandwidth limiting.\n")
 		}
 		if d.analyzeData.samplePercent > 0 && d.analyzeData.samplePercent < 100 {
-			fmt.Fprintf(stdout, "Stopping after samping %d%% of the data", d.analyzeData.samplePercent)
+			fmt.Fprintf(stdout, "Stopping after sampling %d%% of the data", d.analyzeData.samplePercent)
 			if d.analyzeData.timeout > 0 {
 				fmt.Fprintf(stdout, " or after %s", d.analyzeData.timeout)
 			}
