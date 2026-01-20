@@ -5,7 +5,6 @@
 package block
 
 import (
-	"runtime"
 	"strings"
 	"sync/atomic"
 
@@ -129,15 +128,8 @@ var (
 	})
 )
 
-// fastestCompression is either Snappy or MinLZ1, depending on the architecture.
-var fastestCompression = func() compression.Setting {
-	if runtime.GOARCH == "arm64" {
-		// MinLZ is generally faster and better than Snappy except for arm64: Snappy
-		// has an arm64 assembly implementation and MinLZ does not.
-		return compression.SnappySetting
-	}
-	return compression.MinLZFastest
-}()
+// fastestCompression is MinLZ1.
+var fastestCompression = compression.MinLZFastest
 
 // simpleCompressionProfile returns a CompressionProfile that uses the same
 // compression setting for all blocks and which uses the uncompressed block if
