@@ -839,9 +839,45 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 	return i.skipForward(shouldReturnMeta)
 }
 
-// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
-// pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
-// to the caller to ensure that key is greater than or equal to the lower bound.
+// SeekPrefixGE implements InternalIterator.SeekPrefixGE. It positions the
+// iterator at the first key greater than or equal to key, as long as that key
+// has a prefix matching prefix. It returns the key-value pair at that position,
+// or nil if no such key exists in the table.
+//
+// The prefix argument is used exclusively for bloom filter checking. If the
+// table has a bloom filter and the filter indicates that prefix is not present,
+// SeekPrefixGE returns nil without positioning the iterator. The key argument
+// is used for the actual seek positioning when the bloom filter check passes or
+// is not applicable.
+//
+// The prefix is typically the prefix of key (i.e. Split.Prefix(key) == prefix),
+// but this is not required. The only requirement is that prefix be less than or
+// equal to Split.Prefix(key). This flexibility is used by higher-layer
+// iterators.
+//
+// Return values and iterator state:
+//
+//   - If a key is found: returns the key-value pair and positions the iterator
+//     at that key. Subsequent Next() calls will return following keys.
+//
+//   - If no key is found because the bloom filter excluded the prefix: returns
+//     nil. The iterator is not positioned; calling Next() or Prev() after this
+//     is not permitted.
+//
+//   - If no key is found but the bloom filter matched (or was not used): returns
+//     nil. The iterator may be exhausted (reached bounds or end of table).
+//     Calling Next() when exhausted forward will panic.
+//
+// The TrySeekUsingNext flag in flags indicates that the caller knows the seek
+// key is greater than or equal to the iterator's current position. When set,
+// the iterator may optimize by scanning forward from its current position
+// rather than performing a full seek. This optimization is automatically
+// disabled (i.e. SeekPrefixGE ignores the TrySeekUsingNext flag) when the
+// previous SeekPrefixGE returned nil due to a bloom filter miss, since the
+// iterator was not repositioned in that case.
+//
+// Note: SeekPrefixGE only checks the upper bound. It is up to the caller to
+// ensure that key is greater than or equal to the lower bound.
 func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {

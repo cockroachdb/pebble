@@ -703,6 +703,71 @@ func (l *levelIter) internalSeekGE(
 	return l.verify(kv), kvMeta
 }
 
+// SeekPrefixGE implements InternalIterator.SeekPrefixGE. It positions the
+// iterator at the first key greater than or equal to key across all files in
+// the level. It returns the key-value pair at that position, or nil if no such
+// key exists.
+//
+// The prefix argument is passed to each file's iterator for bloom filter
+// checking. If a file's bloom filter indicates that prefix is not present, that
+// file is skipped, and the iterator moves to the next file if and only if the
+// next file also can contain the prefix. The key argument is used for the
+// actual seek positioning.
+//
+// # Prefix vs key
+//
+// The prefix is typically the prefix of key (i.e. Split.Prefix(key) == prefix),
+// but this is not required. The only requirement is that prefix be less than or
+// equal to Split.Prefix(key). This flexibility is used when a higher-level
+// range deletion invalidates keys between prefix and Split.Prefix(key).
+//
+// For example, consider a SeekPrefixGE for prefix b and assume a RANGEDEL
+// [a, c@3) from a higher level. In this case, the merging iterator must seek
+// past the tombstone so it calls SeekPrefixGE(b, c@3, flags). The bloom filter
+// is checked against b (the original prefix), while the actual seek targets
+// c@3.
+//
+// # File positioning and TrySeekUsingNext
+//
+// The prefix is stored and controls file advancement when the current file is
+// exhausted. If the current file's largest key has a prefix greater than the
+// seek prefix, the iterator stops rather than advancing to the next file.
+//
+// This stopping condition is critical for TrySeekUsingNext correctness. Without
+// it, the following scenario would produce incorrect results:
+//
+//  1. SeekPrefixGE(P1, key1) - bloom filter misses on file F, no key found
+//  2. Iterator advances to file G (incorrectly, if G's smallest prefix > P1)
+//  3. SeekPrefixGE(P2, key2, TrySeekUsingNext) where P1 < P2 < G's smallest prefix
+//  4. TrySeekUsingNext starts from G, completely skipping file F which may
+//     contain keys with prefix P2
+//
+// The stopping condition prevents step 2: if F's largest prefix > P1, the
+// iterator remains at F, allowing the subsequent seek for P2 to correctly
+// examine F.
+//
+// # Return values and iterator state
+//
+//   - If a key is found: returns the key-value pair and positions the iterator
+//     at that key. The iterator may be positioned in any file that contains
+//     matching keys.
+//
+//   - If no key is found: returns nil. The iterator is exhausted in the forward
+//     direction. Subsequent Next() calls will return nil.
+//
+// # TrySeekUsingNext optimization
+//
+// The TrySeekUsingNext flag in flags indicates that the caller knows the seek
+// key is greater than or equal to the iterator's current position. When set:
+//
+//   - At the file level: the iterator may scan forward through files rather
+//     than performing a binary search through the file metadata.
+//
+//   - At the sstable level: the optimization is automatically disabled when a
+//     new file is loaded, since the new file's iterator is not yet positioned.
+//
+// Note: The caller must ensure that key is greater than or equal to the lower
+// bound. SeekPrefixGE checks the upper bound but not the lower bound.
 func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(l) {
 		op := treesteps.StartOpf(l, "SeekPrefixGE(%q, %q, %d)", prefix, key, flags)
