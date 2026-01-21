@@ -292,7 +292,8 @@ func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Inte
 	if i.span != nil && i.cmp(key, i.span.End) < 0 && i.cmp(key, i.span.Start) >= 0 {
 		// We're seeking within the existing span's bounds. We still might need
 		// truncate the span to the iterator's bounds.
-		i.saveSpanForward(i.span, nil)
+		i.saveSpan(i.span, nil)
+		i.enforceBoundsForward()
 		i.savedKeyspan()
 	} else {
 		i.keyspanSeekGE(key)
@@ -349,7 +350,8 @@ func (i *InterleavingIter) SeekPrefixGE(
 		if ei := i.comparer.Split(i.span.End); i.cmp(prefix, i.span.End[:ei]) < 0 {
 			// We're seeking within the existing span's bounds. We still might need
 			// truncate the span to the iterator's bounds.
-			i.saveSpanForward(i.span, nil)
+			i.saveSpan(i.span, nil)
+			i.enforceBoundsForward()
 			i.savedKeyspan()
 			seekKeyspanIter = false
 		}
@@ -376,7 +378,8 @@ func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.Inte
 	if i.span != nil && i.cmp(key, i.span.Start) > 0 && i.cmp(key, i.span.End) < 0 {
 		// We're seeking within the existing span's bounds. We still might need
 		// truncate the span to the iterator's bounds.
-		i.saveSpanBackward(i.span, nil)
+		i.saveSpan(i.span, nil)
+		i.enforceBoundsBackward()
 		// The span's start key is still not guaranteed to be less than key,
 		// because of the bounds enforcement. Consider the following example:
 		//
@@ -408,7 +411,8 @@ func (i *InterleavingIter) First() *base.InternalKV {
 	i.clearMask()
 	i.disablePrefixMode()
 	i.savePoint(i.pointIter.First())
-	i.saveSpanForward(i.keyspanIter.First())
+	i.saveSpan(i.keyspanIter.First())
+	i.enforceBoundsForward()
 	i.savedKeyspan()
 	i.dir = +1
 	i.computeSmallestPos()
@@ -421,7 +425,8 @@ func (i *InterleavingIter) Last() *base.InternalKV {
 	i.clearMask()
 	i.disablePrefixMode()
 	i.savePoint(i.pointIter.Last())
-	i.saveSpanBackward(i.keyspanIter.Last())
+	i.saveSpan(i.keyspanIter.Last())
+	i.enforceBoundsBackward()
 	i.savedKeyspan()
 	i.dir = -1
 	i.computeLargestPos()
@@ -458,7 +463,8 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 			// entirely behind the current key (!i.withinSpan), then we
 			// need to move it to the first span in the forward direction.
 			if !i.withinSpan {
-				i.saveSpanForward(i.keyspanIter.Next())
+				i.saveSpan(i.keyspanIter.Next())
+				i.enforceBoundsForward()
 				i.savedKeyspan()
 			}
 		case posKeyspanStart:
@@ -539,7 +545,8 @@ func (i *InterleavingIter) Prev() *base.InternalKV {
 			// current key (!i.withinSpan), then we need to move it to the first
 			// span in the reverse direction.
 			if !i.withinSpan {
-				i.saveSpanBackward(i.keyspanIter.Prev())
+				i.saveSpan(i.keyspanIter.Prev())
+				i.enforceBoundsBackward()
 				i.savedKeyspan()
 			}
 		case posKeyspanStart:
@@ -641,7 +648,8 @@ func (i *InterleavingIter) nextPos() {
 	switch i.pos {
 	case posExhausted:
 		i.switchPointIteratorIntoForward()
-		i.saveSpanForward(i.keyspanIter.Next())
+		i.saveSpan(i.keyspanIter.Next())
+		i.enforceBoundsForward()
 		i.savedKeyspan()
 		i.computeSmallestPos()
 	case posPointKey:
@@ -683,7 +691,8 @@ func (i *InterleavingIter) nextPos() {
 			i.pos = posKeyspanEnd
 		}
 	case posKeyspanEnd:
-		i.saveSpanForward(i.keyspanIter.Next())
+		i.saveSpan(i.keyspanIter.Next())
+		i.enforceBoundsForward()
 		i.savedKeyspan()
 		i.computeSmallestPos()
 	default:
@@ -713,7 +722,8 @@ func (i *InterleavingIter) prevPos() {
 	switch i.pos {
 	case posExhausted:
 		i.switchPointIteratorIntoReverse()
-		i.saveSpanBackward(i.keyspanIter.Prev())
+		i.saveSpan(i.keyspanIter.Prev())
+		i.enforceBoundsBackward()
 		i.savedKeyspan()
 		i.computeLargestPos()
 	case posPointKey:
@@ -743,7 +753,8 @@ func (i *InterleavingIter) prevPos() {
 			}
 		}
 	case posKeyspanStart:
-		i.saveSpanBackward(i.keyspanIter.Prev())
+		i.saveSpan(i.keyspanIter.Prev())
+		i.enforceBoundsBackward()
 		i.savedKeyspan()
 		i.computeLargestPos()
 	case posKeyspanEnd:
@@ -827,13 +838,15 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 
 // keyspanSeekGE seeks the keyspan iterator to the first span covering a key ≥ k.
 func (i *InterleavingIter) keyspanSeekGE(k []byte) {
-	i.saveSpanForward(i.keyspanIter.SeekGE(k))
+	i.saveSpan(i.keyspanIter.SeekGE(k))
+	i.enforceBoundsForward()
 	i.savedKeyspan()
 }
 
 // keyspanSeekLT seeks the keyspan iterator to the last span covering a key < k.
 func (i *InterleavingIter) keyspanSeekLT(k []byte) {
-	i.saveSpanBackward(i.keyspanIter.SeekLT(k))
+	i.saveSpan(i.keyspanIter.SeekLT(k))
+	i.enforceBoundsBackward()
 	// The current span's start key is not guaranteed to be less than key,
 	// because of the bounds enforcement. Consider the following example:
 	//
@@ -875,11 +888,14 @@ func (i *InterleavingIter) switchPointIteratorIntoForward() {
 	i.savePoint(i.pointIter.Next())
 }
 
-func (i *InterleavingIter) saveSpanForward(span *Span, err error) {
+func (i *InterleavingIter) saveSpan(span *Span, err error) {
 	i.span = span
 	i.err = firstError(i.err, err)
 	i.truncated = false
 	i.truncatedSpan = Span{}
+}
+
+func (i *InterleavingIter) enforceBoundsForward() {
 	if i.span == nil {
 		return
 	}
@@ -888,13 +904,22 @@ func (i *InterleavingIter) saveSpanForward(span *Span, err error) {
 		i.span = nil
 		return
 	}
+	i.maybeTruncateSpan()
+}
 
-	// TODO(jackson): The key comparisons below truncate bounds whenever the
-	// keyspan iterator is repositioned. We could perform this lazily, and do it
-	// the first time the user actually asks for this span's bounds in
-	// SpanBounds. This would reduce work in the case where there's no span
-	// covering the point and the keyspan iterator is non-empty.
+func (i *InterleavingIter) enforceBoundsBackward() {
+	if i.span == nil {
+		return
+	}
+	// Check the lower bound if we have one.
+	if i.opts.LowerBound != nil && i.cmp(i.span.End, i.opts.LowerBound) <= 0 {
+		i.span = nil
+		return
+	}
+	i.maybeTruncateSpan()
+}
 
+func (i *InterleavingIter) maybeTruncateSpan() {
 	// NB: These truncations don't require setting `keyspanMarkerTruncated`:
 	// That flag only applies to truncated span marker keys.
 	if i.opts.LowerBound != nil && i.cmp(i.span.Start, i.opts.LowerBound) < 0 {
@@ -909,8 +934,8 @@ func (i *InterleavingIter) saveSpanForward(span *Span, err error) {
 		}
 		i.truncatedSpan.End = i.opts.UpperBound
 	}
-	// If this is a part of a SeekPrefixGE call, we may also need to truncate to
-	// the prefix's bounds.
+	// If the iterator is in prefix iteration mode, we may also need to truncate
+	// to the prefix's bounds.
 	if i.prefix != nil {
 		if !i.truncated {
 			i.truncated = true
@@ -924,47 +949,8 @@ func (i *InterleavingIter) saveSpanForward(span *Span, err error) {
 			i.truncatedSpan.End = i.nextPrefixBuf
 		}
 	}
-
-	if i.truncated && i.comparer.Equal(i.truncatedSpan.Start, i.truncatedSpan.End) {
-		i.span = nil
-	}
-}
-
-func (i *InterleavingIter) saveSpanBackward(span *Span, err error) {
-	i.span = span
-	i.err = firstError(i.err, err)
-	i.truncated = false
-	i.truncatedSpan = Span{}
-	if i.span == nil {
-		return
-	}
-
-	// Check the lower bound if we have one.
-	if i.opts.LowerBound != nil && i.cmp(i.span.End, i.opts.LowerBound) <= 0 {
-		i.span = nil
-		return
-	}
-
-	// TODO(jackson): The key comparisons below truncate bounds whenever the
-	// keyspan iterator is repositioned. We could perform this lazily, and do it
-	// the first time the user actually asks for this span's bounds in
-	// SpanBounds. This would reduce work in the case where there's no span
-	// covering the point and the keyspan iterator is non-empty.
-
-	// NB: These truncations don't require setting `keyspanMarkerTruncated`:
-	// That flag only applies to truncated span marker keys.
-	if i.opts.LowerBound != nil && i.cmp(i.span.Start, i.opts.LowerBound) < 0 {
-		i.truncated = true
-		i.truncatedSpan = *i.span
-		i.truncatedSpan.Start = i.opts.LowerBound
-	}
-	if i.opts.UpperBound != nil && i.cmp(i.opts.UpperBound, i.span.End) < 0 {
-		if !i.truncated {
-			i.truncated = true
-			i.truncatedSpan = *i.span
-		}
-		i.truncatedSpan.End = i.opts.UpperBound
-	}
+	// If the span is truncated and the start and end keys are the same, the
+	// span is empty.
 	if i.truncated && i.comparer.Equal(i.truncatedSpan.Start, i.truncatedSpan.End) {
 		i.span = nil
 	}
