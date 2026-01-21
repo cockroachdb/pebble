@@ -85,7 +85,7 @@ func runInterleavingIterTest(t *testing.T, filename string) {
 	var prevKV *base.InternalKV
 	formatKey := func(kv *base.InternalKV) {
 		if kv == nil {
-			fmt.Fprint(&buf, ".")
+			fmt.Fprintln(&buf, ".")
 			return
 		}
 		prevKV = kv
