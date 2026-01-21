@@ -1,59 +1,71 @@
 # A single policy.
 
 test d-f:lowlatency
-a b c d e f g
+[a, z)
+[a, b)
+[b, z)
+[c, z)
+[d, z)
+[e, z)
+[g, z)
 ----
-a ->  until d
-b ->  until d
-c ->  until d
-d -> disable-value-separation-by-suffix,no-blob-value-separation until f
-e -> disable-value-separation-by-suffix,no-blob-value-separation until f
-f -> none
-g -> none
-
+[-∞, d) -> default
+[-∞, d) -> default
+[-∞, d) -> default
+[-∞, d) -> default
+[d, f) -> disable-value-separation-by-suffix,no-blob-value-separation
+[d, f) -> disable-value-separation-by-suffix,no-blob-value-separation
+[f, ∞) -> default
 
 # A single encompassing policy.
 
 test a-z:lowlatency
-a b c d e z
+[a, x)
+[b, c]
+[u, zz)
+[z, zz)
 ----
-a -> disable-value-separation-by-suffix,no-blob-value-separation until z
-b -> disable-value-separation-by-suffix,no-blob-value-separation until z
-c -> disable-value-separation-by-suffix,no-blob-value-separation until z
-d -> disable-value-separation-by-suffix,no-blob-value-separation until z
-e -> disable-value-separation-by-suffix,no-blob-value-separation until z
-z -> none
+[a, z) -> disable-value-separation-by-suffix,no-blob-value-separation
+[a, z) -> disable-value-separation-by-suffix,no-blob-value-separation
+[a, z) -> disable-value-separation-by-suffix,no-blob-value-separation
+[z, ∞) -> default
 
 # Abutting policies.
 
 test b-d:lowlatency d-f:latencytolerant f-h:lowlatency
-a b c d e f g h i z
+[a, z)
+[b, z)
+[b, c]
+[c, d)
+[d, e)
+[f, u)
+[h, z)
 ----
-a ->  until b
-b -> disable-value-separation-by-suffix,no-blob-value-separation until d
-c -> disable-value-separation-by-suffix,no-blob-value-separation until d
-d -> override-value-separation-min-size=10 until f
-e -> override-value-separation-min-size=10 until f
-f -> disable-value-separation-by-suffix,no-blob-value-separation until h
-g -> disable-value-separation-by-suffix,no-blob-value-separation until h
-h -> none
-i -> none
-z -> none
+[-∞, b) -> default
+[b, d) -> disable-value-separation-by-suffix,no-blob-value-separation
+[b, d) -> disable-value-separation-by-suffix,no-blob-value-separation
+[b, d) -> disable-value-separation-by-suffix,no-blob-value-separation
+[d, f) -> override-value-separation-min-size=10
+[f, h) -> disable-value-separation-by-suffix,no-blob-value-separation
+[h, ∞) -> default
 
 # Gaps between policies.
 
 test b-d:lowlatency h-j:latencytolerant
-a b c d e f g h i j k l
+[a, z)
+[b, c]
+[d, e)
+[e, h)
+[e, h]
+[i, i]
+[h, z)
+[j, k)
 ----
-a ->  until b
-b -> disable-value-separation-by-suffix,no-blob-value-separation until d
-c -> disable-value-separation-by-suffix,no-blob-value-separation until d
-d ->  until h
-e ->  until h
-f ->  until h
-g ->  until h
-h -> override-value-separation-min-size=10 until j
-i -> override-value-separation-min-size=10 until j
-j -> none
-k -> none
-l -> none
+[-∞, b) -> default
+[b, d) -> disable-value-separation-by-suffix,no-blob-value-separation
+[d, h) -> default
+[d, h) -> default
+[d, h) -> default
+[h, j) -> override-value-separation-min-size=10
+[h, j) -> override-value-separation-min-size=10
+[j, ∞) -> default

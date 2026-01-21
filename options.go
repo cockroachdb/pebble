@@ -1288,67 +1288,83 @@ var ValueStorageLowReadLatency = base.ValueStoragePolicyAdjustment{
 
 // SpanPolicyFunc is used to determine the SpanPolicy for a key region.
 //
-// The returned policy is valid from the start key until (and not including) the
-// end key.
+// The returned policy is valid over the interval in policy.KeyRange, which must
+// include the bounds.Start key specified by the caller. Specifically,
+// policy.KeyRange.Start is empty or is <= bounds.Start.
+//
+// If policy.KeyRange.End is before bounds.End, then the policy is only valid up
+// to that point.
 //
 // A flush or compaction will call this function once for the first key to be
 // output. If the compaction reaches the end key, the current output sst is
 // finished and the function is called again.
 //
-// The end key can be empty, in which case the policy is valid for the entire
-// keyspace after startKey.
-type SpanPolicyFunc func(startKey []byte) (policy base.SpanPolicy, endKey []byte, err error)
-
-// SpanAndPolicy defines a key range and the policy to apply to it.
-type SpanAndPolicy struct {
-	KeyRange KeyRange
-	Policy   base.SpanPolicy
-}
+// Correctness must never depend on having a specific span policy. The function
+// is allowed to change the returned policy arbitrarily.
+//
+// If this function returns an error, the flush or compaction will be aborted.
+type SpanPolicyFunc func(bounds base.UserKeyBounds) (base.SpanPolicy, error)
 
 // MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
 // to the given span (and the default policy outside the span). The supplied
-// policies must be non-overlapping in key range.
-func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanAndPolicy) SpanPolicyFunc {
+// policies must be non-overlapping in key range. This method must not be called
+// with inputPolicies that have an empty KeyRange.Start or End to signify
+// extending to the start/end of the keyspace.
+func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) SpanPolicyFunc {
 	// Collect all the boundaries of the input policies, sort and deduplicate them.
 	uniqueKeys := make([][]byte, 0, 2*len(inputPolicies))
 	for i := range inputPolicies {
-		uniqueKeys = append(uniqueKeys, inputPolicies[i].KeyRange.Start)
-		uniqueKeys = append(uniqueKeys, inputPolicies[i].KeyRange.End)
+		r := inputPolicies[i].KeyRange
+		if len(r.Start) == 0 || len(r.End) == 0 || cmp(r.Start, r.End) >= 0 {
+			panic("invalid key range in input policy")
+		}
+		uniqueKeys = append(uniqueKeys, r.Start)
+		uniqueKeys = append(uniqueKeys, r.End)
 	}
 	slices.SortFunc(uniqueKeys, cmp)
 	uniqueKeys = slices.CompactFunc(uniqueKeys, func(a, b []byte) bool { return cmp(a, b) == 0 })
 
-	// Create a list of policies.
-	policies := make([]base.SpanPolicy, len(uniqueKeys)-1)
+	// Create a list of policies, including filling in gaps with default
+	// policies.
+	policies := make([]SpanPolicy, len(uniqueKeys)-1)
+	// Populate default policies for every index.
+	for idx := range policies {
+		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
+	}
+	// Populate the non-default policies.
 	for _, p := range inputPolicies {
 		idx, _ := slices.BinarySearchFunc(uniqueKeys, p.KeyRange.Start, cmp)
-		policies[idx] = p.Policy
+		if cmp(p.KeyRange.End, uniqueKeys[idx+1]) != 0 {
+			panic("overlapping key ranges in input policies")
+		}
+		policies[idx] = p
+		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
 	}
 
-	return func(startKey []byte) (_ base.SpanPolicy, endKey []byte, _ error) {
+	return func(bounds base.UserKeyBounds) (_ SpanPolicy, _ error) {
 		// Find the policy that applies to the start key.
-		idx, eq := slices.BinarySearchFunc(uniqueKeys, startKey, cmp)
+		idx, eq := slices.BinarySearchFunc(uniqueKeys, bounds.Start, cmp)
 		switch idx {
 		case len(uniqueKeys):
 			// The start key is after the last policy.
-			return base.SpanPolicy{}, nil, nil
+			return SpanPolicy{KeyRange: KeyRange{Start: uniqueKeys[len(uniqueKeys)-1]}}, nil
 		case len(uniqueKeys) - 1:
 			if eq {
-				// The start key is exactly the start of the last policy.
-				return base.SpanPolicy{}, nil, nil
+				// The start key is exactly the end of the last policy.
+				return SpanPolicy{KeyRange: KeyRange{Start: uniqueKeys[len(uniqueKeys)-1]}}, nil
 			}
 		case 0:
 			if !eq {
 				// The start key is before the first policy.
-				return base.SpanPolicy{}, uniqueKeys[0], nil
+				return SpanPolicy{KeyRange: KeyRange{End: uniqueKeys[0]}}, nil
 			}
 		}
 		if eq {
 			// The start key is exactly the start of this policy.
-			return policies[idx], uniqueKeys[idx+1], nil
+			return policies[idx], nil
 		}
-		// The start key is between two policies.
-		return policies[idx-1], uniqueKeys[idx], nil
+		// The start key is in the interval of the preceding policy.
+		return policies[idx-1], nil
 	}
 }
 
@@ -1722,7 +1738,7 @@ func (o *Options) EnsureDefaults() {
 		o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 	}
 	if o.Experimental.SpanPolicyFunc == nil {
-		o.Experimental.SpanPolicyFunc = func(startKey []byte) (base.SpanPolicy, []byte, error) { return base.SpanPolicy{}, nil, nil }
+		o.Experimental.SpanPolicyFunc = func(bounds base.UserKeyBounds) (base.SpanPolicy, error) { return base.SpanPolicy{}, nil }
 	}
 	if o.Experimental.VirtualTableRewriteUnreferencedFraction == nil {
 		o.Experimental.VirtualTableRewriteUnreferencedFraction = func() float64 { return defaultVirtualTableUnreferencedFraction }

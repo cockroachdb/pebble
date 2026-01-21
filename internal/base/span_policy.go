@@ -7,10 +7,24 @@ package base
 import (
 	"fmt"
 	"strings"
+
+	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 // SpanPolicy contains policies that can vary by key range.
 type SpanPolicy struct {
+	// KeyRange defines the key range for which this policy is valid.
+	//
+	// If Start is empty, the policy is valid for the entire keyspace up to End.
+	// If End is empty, the policy is valid for the entire keyspace after Start.
+	// If both are empty, this is the only policy across the entire keyspace.
+	//
+	// The Start and End keys are not required to encompass the whole KeyRange over
+	// which this policy applies, i.e., they should be interpreted as a subset of
+	// the real interval for the policy.
+	KeyRange KeyRange
+
 	// Prefer a faster compression algorithm for the keys in this span.
 	//
 	// This is useful for keys that are frequently read or written but which don't
@@ -20,18 +34,53 @@ type SpanPolicy struct {
 	// ValueStoragePolicy is a hint used to determine where to store the values
 	// for KVs.
 	ValueStoragePolicy ValueStoragePolicyAdjustment
+
+	// NOTE: update the IsDefault() method if you add new fields to this struct.
+}
+
+// IsDefault returns true if the SpanPolicy is the default policy, i.e. none of
+// the fields other than KeyRange are set.
+func (p *SpanPolicy) IsDefault() bool {
+	return !p.PreferFastCompression &&
+		p.ValueStoragePolicy == (ValueStoragePolicyAdjustment{})
+}
+
+// StillCovers takes a key that is no smaller than the span policy start key (if
+// any) and returns whether the key is still within the span policy end key.
+func (p *SpanPolicy) StillCovers(cmp Compare, key []byte) bool {
+	if invariants.Enabled && len(p.KeyRange.Start) > 0 && cmp(p.KeyRange.Start, key) > 0 {
+		panic("key too small")
+	}
+	return len(p.KeyRange.End) == 0 || cmp(key, p.KeyRange.End) < 0
 }
 
 // String returns a string representation of the SpanPolicy.
 func (p SpanPolicy) String() string {
-	var f []string
+	var b strings.Builder
+	if len(p.KeyRange.Start) > 0 {
+		fmt.Fprintf(&b, "[%s, ", DefaultFormatter(p.KeyRange.Start))
+	} else {
+		b.WriteString("[-∞, ")
+	}
+	if len(p.KeyRange.End) > 0 {
+		fmt.Fprintf(&b, "%s", DefaultFormatter(p.KeyRange.End))
+	} else {
+		b.WriteString("∞")
+	}
+	b.WriteString(") -> ")
+
+	var policy string
 	if p.PreferFastCompression {
-		f = append(f, "fast-compression")
+		policy = crstrings.WithSep(policy, ",", "fast-compression")
 	}
 	if vsp := p.ValueStoragePolicy.String(); vsp != "" {
-		f = append(f, vsp)
+		policy = crstrings.WithSep(policy, ",", vsp)
 	}
-	return strings.Join(f, ",")
+	if policy == "" {
+		policy = "default"
+	}
+	b.WriteString(policy)
+	return b.String()
 }
 
 // ValueStoragePolicyAdjustment is used to determine where to store the values for

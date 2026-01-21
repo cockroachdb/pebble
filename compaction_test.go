@@ -1508,7 +1508,7 @@ func runCompactionTest(
 			return s
 
 		case "set-span-policies":
-			var spanPolicies []SpanAndPolicy
+			var spanPolicies []SpanPolicy
 			for line := range crstrings.LinesSeq(td.Input) {
 				line = strings.TrimSpace(line)
 				args := strings.Fields(line)
@@ -1517,11 +1517,12 @@ func runCompactionTest(
 				}
 				// First arg should be keys in the form <start>,<end>
 				keys := strings.Split(args[0], ",")
-				keyRange := KeyRange{
-					Start: []byte(keys[0]),
-					End:   []byte(keys[1]),
+				policy := base.SpanPolicy{
+					KeyRange: KeyRange{
+						Start: []byte(keys[0]),
+						End:   []byte(keys[1]),
+					},
 				}
-				policy := base.SpanPolicy{}
 				args = args[1:]
 				for _, arg := range args {
 					parts := strings.Split(arg, "=")
@@ -1556,10 +1557,7 @@ func runCompactionTest(
 						td.Fatalf(t, "unknown span policy arg: %s", arg)
 					}
 				}
-				spanPolicies = append(spanPolicies, SpanAndPolicy{
-					KeyRange: keyRange,
-					Policy:   policy,
-				})
+				spanPolicies = append(spanPolicies, policy)
 			}
 			d.opts.Experimental.SpanPolicyFunc = MakeStaticSpanPolicyFunc(d.cmp, spanPolicies...)
 			return ""

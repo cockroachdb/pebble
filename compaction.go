@@ -2842,11 +2842,8 @@ func (d *DB) compactAndWrite(
 	}
 	runner := compact.NewRunner(runnerCfg, iter)
 
-	var spanPolicyValid bool
+	var spanPolicySet bool
 	var spanPolicy base.SpanPolicy
-	// If spanPolicyValid is true and spanPolicyEndKey is empty, then spanPolicy
-	// applies for the rest of the keyspace.
-	var spanPolicyEndKey []byte
 
 	valueSeparation := c.getValueSeparation(jobID, c)
 	for runner.MoreDataToWrite() {
@@ -2855,13 +2852,16 @@ func (d *DB) compactAndWrite(
 		}
 		// Create a new table.
 		firstKey := runner.FirstKey()
-		if !spanPolicyValid || (len(spanPolicyEndKey) > 0 && d.cmp(firstKey, spanPolicyEndKey) >= 0) {
+		if !spanPolicySet || !spanPolicy.StillCovers(d.cmp, firstKey) {
 			var err error
-			spanPolicy, spanPolicyEndKey, err = d.opts.Experimental.SpanPolicyFunc(firstKey)
+			spanPolicy, err = d.opts.Experimental.SpanPolicyFunc(base.UserKeyBounds{
+				Start: firstKey,
+				End:   c.bounds.End,
+			})
 			if err != nil {
 				return runner.Finish().WithError(err)
 			}
-			spanPolicyValid = true
+			spanPolicySet = true
 		}
 		writerOpts := d.makeWriterOptions(c.eventualOutputLevel)
 		if spanPolicy.ValueStoragePolicy.DisableSeparationBySuffix {
@@ -2884,7 +2884,7 @@ func (d *DB) compactAndWrite(
 		if err != nil {
 			return runner.Finish().WithError(err)
 		}
-		runner.WriteTable(objMeta, tw, spanPolicyEndKey, vSep)
+		runner.WriteTable(objMeta, tw, spanPolicy.KeyRange.End, vSep)
 	}
 	result = runner.Finish()
 	if result.Err == nil {
