@@ -1,4 +1,4 @@
-# This file tests the download cursor functionality.
+# This file tests the LSM scan cursor functionality.
 # Backings >= 100 are external.
 
 # Basic test to verify cursor iteration.

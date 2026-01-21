@@ -5,9 +5,7 @@
 package pebble
 
 import (
-	"cmp"
 	"context"
-	"fmt"
 	"slices"
 
 	"github.com/cockroachdb/errors"
@@ -218,7 +216,7 @@ type downloadSpanTask struct {
 
 	// Keeps track of the current position; all files up to these position were
 	// examined and were either downloaded or we have bookmarks for them.
-	cursor downloadCursor
+	cursor lsmScanCursor
 
 	// Bookmarks remember areas which correspond to downloads that we started or
 	// files that were undergoing other compactions and which we need to check
@@ -234,7 +232,7 @@ type downloadSpanTask struct {
 // downloadBookmark represents an area that was swept by the task cursor which
 // corresponds to a file that was part of a running compaction or download.
 type downloadBookmark struct {
-	start    downloadCursor
+	start    lsmScanCursor
 	endBound base.UserKeyBoundary
 	// downloadDoneCh is set if this bookmark corresponds to a download we
 	// started; in this case the channel will report the status of that
@@ -258,12 +256,12 @@ func (d *DB) newDownloadSpanTask(
 			bounds.Start = f.Smallest().UserKey
 		}
 	}
-	startCursor := downloadCursor{
+	startCursor := lsmScanCursor{
 		level:  0,
 		key:    bounds.Start,
 		seqNum: 0,
 	}
-	f, level := startCursor.NextExternalFile(d.cmp, d.objProvider, bounds, vers)
+	f, level := nextExternalFile(startCursor, d.cmp, d.objProvider, bounds, vers)
 	if f == nil {
 		// No external files in the given span.
 		return nil, false
@@ -273,86 +271,21 @@ func (d *DB) newDownloadSpanTask(
 		downloadSpan:      sp,
 		bounds:            bounds,
 		taskCompletedChan: make(chan error, 1),
-		cursor:            makeCursorAtFile(f, level),
+		cursor:            makeLSMCursorAtFile(f, level),
 	}, true
 }
 
-// downloadCursor represents a position in the download process, which does not
-// depend on a specific version.
-//
-// The Download process scans for external files level-by-level (starting with
-// L0), and left-to-right (in terms of Smallest.UserKey) within each level. In
-// L0, we break ties by the LargestSeqNum.
-//
-// A cursor can be thought of as a boundary between two files in a version
-// (ordered by level, then by Smallest.UserKey, then by LargestSeqNum). A file
-// is either "before" or "after" the cursor.
-type downloadCursor struct {
-	// LSM level (0 to NumLevels). When level=NumLevels, the cursor is at the end.
-	level int
-	// Inclusive lower bound for Smallest.UserKey for tables on level.
-	key []byte
-	// Inclusive lower bound for sequence number for tables on level with
-	// Smallest.UserKey equaling key. Used to break ties within L0, and also used
-	// to position a cursor immediately after a given file.
-	seqNum base.SeqNum
-}
-
-var endCursor = downloadCursor{level: manifest.NumLevels}
-
-// AtEnd returns true if the cursor is after all relevant files.
-func (c downloadCursor) AtEnd() bool {
-	return c.level >= manifest.NumLevels
-}
-
-func (c downloadCursor) String() string {
-	return fmt.Sprintf("level=%d key=%q seqNum=%d", c.level, c.key, c.seqNum)
-}
-
-// makeCursorAtFile returns a downloadCursor that is immediately before the
-// given file. Calling nextExternalFile on the resulting cursor (using the same
-// version) should return f.
-func makeCursorAtFile(f *manifest.TableMetadata, level int) downloadCursor {
-	return downloadCursor{
-		level:  level,
-		key:    f.Smallest().UserKey,
-		seqNum: f.SeqNums.High,
-	}
-}
-
-// makeCursorAfterFile returns a downloadCursor that is immediately
-// after the given file.
-func makeCursorAfterFile(f *manifest.TableMetadata, level int) downloadCursor {
-	return downloadCursor{
-		level:  level,
-		key:    f.Smallest().UserKey,
-		seqNum: f.SeqNums.High + 1,
-	}
-}
-
-func (c downloadCursor) FileIsAfterCursor(
-	cmp base.Compare, f *manifest.TableMetadata, level int,
-) bool {
-	return c.Compare(cmp, makeCursorAfterFile(f, level)) < 0
-}
-
-func (c downloadCursor) Compare(keyCmp base.Compare, other downloadCursor) int {
-	if c := cmp.Compare(c.level, other.level); c != 0 {
-		return c
-	}
-	if c := keyCmp(c.key, other.key); c != 0 {
-		return c
-	}
-	return cmp.Compare(c.seqNum, other.seqNum)
-}
-
-// NextExternalFile returns the first file after the cursor, returning the file
-// and the level. If no such file exists, returns nil fileMetadata.
-func (c downloadCursor) NextExternalFile(
-	cmp base.Compare, objProvider objstorage.Provider, bounds base.UserKeyBounds, v *manifest.Version,
+// nextExternalFile returns the first external file after the cursor, returning
+// the file and the level. If no such file exists, returns nil fileMetadata.
+func nextExternalFile(
+	c lsmScanCursor,
+	cmp base.Compare,
+	objProvider objstorage.Provider,
+	bounds base.UserKeyBounds,
+	v *manifest.Version,
 ) (_ *manifest.TableMetadata, level int) {
 	for !c.AtEnd() {
-		if f := c.NextExternalFileOnLevel(cmp, objProvider, bounds.End, v); f != nil {
+		if f := nextExternalFileOnLevel(c, cmp, objProvider, bounds.End, v); f != nil {
 			return f, c.level
 		}
 		// Go to the next level.
@@ -363,9 +296,10 @@ func (c downloadCursor) NextExternalFile(
 	return nil, manifest.NumLevels
 }
 
-// NextExternalFileOnLevel returns the first external file on c.level which is
+// nextExternalFileOnLevel returns the first external file on c.level which is
 // after c and with Smallest.UserKey within the end bound.
-func (c downloadCursor) NextExternalFileOnLevel(
+func nextExternalFileOnLevel(
+	c lsmScanCursor,
 	cmp base.Compare,
 	objProvider objstorage.Provider,
 	endBound base.UserKeyBoundary,
@@ -377,14 +311,14 @@ func (c downloadCursor) NextExternalFileOnLevel(
 	}
 	// For L0, we look at all sublevel iterators and take the first file.
 	var first *manifest.TableMetadata
-	var firstCursor downloadCursor
+	var firstCursor lsmScanCursor
 	for _, sublevel := range v.L0SublevelFiles {
 		f := firstExternalFileInLevelIter(cmp, objProvider, c, sublevel.Iter(), endBound)
 		if f != nil {
-			c := makeCursorAtFile(f, c.level)
-			if first == nil || c.Compare(cmp, firstCursor) < 0 {
+			fc := makeLSMCursorAtFile(f, c.level)
+			if first == nil || fc.Compare(cmp, firstCursor) < 0 {
 				first = f
-				firstCursor = c
+				firstCursor = fc
 			}
 			// Trim the end bound as an optimization.
 			endBound = base.UserKeyInclusive(f.Smallest().UserKey)
@@ -399,7 +333,7 @@ func (c downloadCursor) NextExternalFileOnLevel(
 func firstExternalFileInLevelIter(
 	cmp base.Compare,
 	objProvider objstorage.Provider,
-	cursor downloadCursor,
+	cursor lsmScanCursor,
 	it manifest.LevelIterator,
 	endBound base.UserKeyBoundary,
 ) *manifest.TableMetadata {
@@ -505,7 +439,7 @@ func (d *DB) tryLaunchDownloadCompaction(
 		// files within the bookmark. This is ok because this method is called (for
 		// this download task) at most once every time a compaction completes.
 
-		f := b.start.NextExternalFileOnLevel(d.cmp, d.objProvider, b.endBound, vers)
+		f := nextExternalFileOnLevel(b.start, d.cmp, d.objProvider, b.endBound, vers)
 		if f == nil {
 			// No more external files for this bookmark, remove it.
 			download.bookmarks = slices.Delete(download.bookmarks, i, i+1)
@@ -514,7 +448,7 @@ func (d *DB) tryLaunchDownloadCompaction(
 		}
 
 		// Move up the bookmark position to point at this file.
-		b.start = makeCursorAtFile(f, b.start.level)
+		b.start = makeLSMCursorAtFile(f, b.start.level)
 		doneCh, ok := d.tryLaunchDownloadForFile(vers, l0Organizer, env, download, b.start.level, f)
 		if ok {
 			b.downloadDoneCh = doneCh
@@ -527,19 +461,19 @@ func (d *DB) tryLaunchDownloadCompaction(
 
 	// Try to advance the cursor and launch more downloads.
 	for len(download.bookmarks) < maxConcurrentDownloads {
-		f, level := download.cursor.NextExternalFile(d.cmp, d.objProvider, download.bounds, vers)
+		f, level := nextExternalFile(download.cursor, d.cmp, d.objProvider, download.bounds, vers)
 		if f == nil {
-			download.cursor = endCursor
+			download.cursor = endLSMCursor
 			if len(download.bookmarks) == 0 {
 				download.taskCompletedChan <- nil
 				return downloadTaskCompleted
 			}
 			return didNotLaunchCompaction
 		}
-		download.cursor = makeCursorAfterFile(f, level)
+		download.cursor = makeLSMCursorAfterFile(f, level)
 
 		download.bookmarks = append(download.bookmarks, downloadBookmark{
-			start:    makeCursorAtFile(f, level),
+			start:    makeLSMCursorAtFile(f, level),
 			endBound: base.UserKeyInclusive(f.Largest().UserKey),
 		})
 		doneCh, ok := d.tryLaunchDownloadForFile(vers, l0Organizer, env, download, level, f)
