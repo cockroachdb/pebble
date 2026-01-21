@@ -32,8 +32,8 @@ a b c d e f g h i z
 a ->  until b
 b -> disable-value-separation-by-suffix,no-blob-value-separation until d
 c -> disable-value-separation-by-suffix,no-blob-value-separation until d
-d -> override-value-separation-min-size until f
-e -> override-value-separation-min-size until f
+d -> override-value-separation-min-size=10 until f
+e -> override-value-separation-min-size=10 until f
 f -> disable-value-separation-by-suffix,no-blob-value-separation until h
 g -> disable-value-separation-by-suffix,no-blob-value-separation until h
 h -> none
@@ -52,8 +52,8 @@ d ->  until h
 e ->  until h
 f ->  until h
 g ->  until h
-h -> override-value-separation-min-size until j
-i -> override-value-separation-min-size until j
+h -> override-value-separation-min-size=10 until j
+i -> override-value-separation-min-size=10 until j
 j -> none
 k -> none
 l -> none
