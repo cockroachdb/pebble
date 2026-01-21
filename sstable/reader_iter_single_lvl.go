@@ -1027,6 +1027,21 @@ func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte)
 		}
 	}
 
+	// Fast path: check directly in cache without refcount overhead.
+	if cacheHandle := i.reader.blockReader.CacheHandle(); cacheHandle != nil {
+		found, mayContain := cacheHandle.TableFilterMayContain(
+			i.reader.blockReader.FileNum(),
+			i.reader.filterBH.Offset,
+			block.MetadataSize,
+			i.reader.tableFilter.Decoder(),
+			prefixToCheck,
+		)
+		if found {
+			return mayContain, nil
+		}
+	}
+
+	// Slow path: read filter block from disk.
 	dataH, err := i.reader.readFilterBlock(i.ctx, i.readEnv.Block, i.indexFilterRH, i.reader.filterBH)
 	if err != nil {
 		return false, err

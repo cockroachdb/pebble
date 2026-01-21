@@ -271,6 +271,28 @@ func (c *Handle) Get(
 	return c.cache.getShard(k).get(k, level, category, false /* peekOnly */)
 }
 
+// TableFilterMayContain looks up a cached filter block and checks if it may contain the
+// given key, while holding the cache's read lock. This avoids the refcount
+// overhead of Get/Release for the common case of bloom filter checks.
+//
+// TableFilterMayContain does not update hit counters.
+//
+// The dataOffset specifies how many bytes to skip at the start of the cached
+// buffer (typically block.MetadataSize to skip block metadata).
+//
+// Returns (true, mayContain) if found; (false, false) if not in cache.
+// When not found, the caller should fall back to reading from disk.
+func (c *Handle) TableFilterMayContain(
+	fileNum base.DiskFileNum,
+	offset uint64,
+	dataOffset int,
+	filter base.TableFilterDecoder,
+	filterKey []byte,
+) (found bool, mayContain bool) {
+	k := makeKey(c.id, fileNum, offset)
+	return c.cache.getShard(k).tableFilterMayContain(k, dataOffset, filter, filterKey)
+}
+
 // GetWithReadHandle retrieves the cache value for the specified handleID, fileNum
 // and offset. If found, a valid Handle is returned (with cacheHit set to
 // true), else a valid ReadHandle is returned.
