@@ -1510,15 +1510,15 @@ var (
 	// DBTableFilterPolicyBinaryFuseProgressive uses binary fuse filters, with
 	// better filters for higher levels.
 	DBTableFilterPolicyBinaryFuseProgressive = func() DBTableFilterPolicy {
-		// Binary fuse filters have FPR = 1/2^bitsPerFingerprint. For T=10,
-		// the bits per fingerprint should increase by ~3.3; we round up to 4 since
-		// we only support multiples of 4.
+		// Binary fuse filters have FPR = 1/2^bitsPerFingerprint. For T=10, the
+		// bits per fingerprint should increase by ~3.3. In practice, we see
+		// closer to T=8 when the LSM has submaximal size.
 		return DBTableFilterPolicy{
 			0: binaryfuse.FilterPolicy(16),
 			1: binaryfuse.FilterPolicy(16),
 			2: binaryfuse.FilterPolicy(16),
-			3: binaryfuse.FilterPolicy(16),
-			4: binaryfuse.FilterPolicy(12),
+			3: binaryfuse.FilterPolicy(12),
+			4: binaryfuse.FilterPolicy(10),
 			5: binaryfuse.FilterPolicy(8),
 			6: binaryfuse.FilterPolicy(4),
 		}

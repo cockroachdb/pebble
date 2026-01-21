@@ -6,13 +6,19 @@ package binaryfuse
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/sstable/tablefilters/binaryfuse/bitpacking"
 	"github.com/zeebo/xxh3"
 )
 
 // Family name for binary fuse filters.
 const Family base.TableFilterFamily = "binaryfuse"
+
+// SupportedBitsPerFingerprint contains the bitsPerFingerprint values supported
+// by FilterPolicy.
+var SupportedBitsPerFingerprint = bitpacking.SupportedBitsPerValue
 
 // FilterPolicy returns a base.TableFilterPolicy that creates binary fuse
 // filters with the given number of bits per fingerprint. Only 4, 8, 12, and 16
@@ -25,6 +31,7 @@ const Family base.TableFilterFamily = "binaryfuse"
 //	-----------------+----------+---------------------
 //	               4 |   ~4.5   | 6.25% (1 in 16)
 //	               8 |   ~9     | 0.39% (1 in 256)
+//	              10 |   ~11    | 0.1% (1 in 1024)
 //	              12 |   ~13.5  | 0.024% (1 in 4096)
 //	              16 |   ~18    | 0.0015% (1 in 65536)
 //
@@ -35,9 +42,7 @@ const Family base.TableFilterFamily = "binaryfuse"
 //     keys. For smaller sets, we get 5-10% larger filters. See simulation.md
 //     for exact figures.
 func FilterPolicy(bitsPerFingerprint int) base.TableFilterPolicy {
-	switch bitsPerFingerprint {
-	case 4, 8, 12, 16:
-	default:
+	if !slices.Contains(SupportedBitsPerFingerprint, bitsPerFingerprint) {
 		panic(fmt.Sprintf("invalid bitsPerFingerprint %d", bitsPerFingerprint))
 	}
 	return filterPolicyImpl{BitsPerFingerprint: bitsPerFingerprint}
@@ -64,8 +69,7 @@ func (p filterPolicyImpl) NewWriter() base.TableFilterWriter {
 func PolicyFromName(name string) (_ base.TableFilterPolicy, ok bool) {
 	var fpBits int
 	if n, err := fmt.Sscanf(name, "binaryfuse(%d)", &fpBits); err == nil && n == 1 {
-		switch fpBits {
-		case 4, 8, 12, 16:
+		if slices.Contains(SupportedBitsPerFingerprint, fpBits) {
 			return FilterPolicy(fpBits), true
 		}
 	}
