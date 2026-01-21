@@ -247,15 +247,17 @@ type Align uint8
 // pad writes the given string to the cursor, padding it to the given width
 // (according to the alignment).
 func pad(cur ascii.Cursor, toWidth int, align Align, s string) ascii.Cursor {
-	if len(s) >= toWidth {
+	// Use rune count for proper handling of multi-byte UTF-8 characters.
+	runeLen := len([]rune(s))
+	if runeLen >= toWidth {
 		return cur.WriteString(s)
 	}
 	padding := 0
 	switch align {
 	case AlignRight:
-		padding = toWidth - len(s)
+		padding = toWidth - runeLen
 	case AlignCenter:
-		padding = (toWidth - len(s)) / 2
+		padding = (toWidth - runeLen) / 2
 	}
 	cur.Right(padding).WriteString(s)
 	return cur.Right(toWidth)
