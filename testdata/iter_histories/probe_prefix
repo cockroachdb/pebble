@@ -1,5 +1,3 @@
-# Test for SeekPrefixGE with probes that includes synthetic keys and range deletions
-
 define
 L6
   a@5#10,SET:10 a@3#8,SET:8 a@1#5,SET:5 b@2#7,SET:7 c@10#2,SET:2 c@5#1,SET:1
@@ -21,16 +19,8 @@ set c@20 c20
 ----
 committed 8 keys
 
-combined-iter probe-points=(4,(Log "OpSeekPrefixGE")) probe-points=(4,(Log "OpNext"))
-seek-prefix-ge a@12
-next
-----
-a@10: (a10, .)
-a@8: (a8, .)
-OpNextSeekPrefixGE("a@12") = (a@5#10,SET,"10")
-OpNextClose() = nil
+# Basic test with no probes.
 
-# Basic test with no probes
 combined-iter
 seek-prefix-ge a@7
 next
@@ -40,9 +30,22 @@ a@6: (a6, .)
 a@5: (10, .)
 a@3: (8, .)
 
+# Test with point key probes.
+
+combined-iter probe-points=(4,(Log "000004."))
+seek-prefix-ge a@12
+next
+----
+a@10: (a10, .)
+a@8: (a8, .)
+000004.SeekPrefixGE("a@12") = (a@5#10,SET,"10")
+000004.Close() = nil
+
 # Test synthetic key behavior - when SeekPrefixGE returns a key with max suffix
-# This tests the MVCCGet optimization where smaller suffixes return synthetic keys
-combined-iter probe-points=(4,(Log "OpSeekPrefixGE")) probe-points=(4,(Log "OpNext"))
+# This tests the MVCCGet optimization where smaller suffixes return synthetic
+# keys.
+
+combined-iter probe-points=(4,(Log "000004."))
 seek-prefix-ge b@15
 next
 next
@@ -54,36 +57,31 @@ b@8: (b8, .)
 b@6: (b6, .)
 .
 .
-OpNextSeekPrefixGE("b@15") = (b@10#inf,SYNTHETIC,"")
-OpNextSeekPrefixGE("b@15") = (b@10#inf,SYNTHETIC,"")
-OpNextNext() = (b@2#7,SET,"7")
-OpNextNext() = (b@2#7,SET,"7")
-OpNextClose() = nil
-OpNextClose() = nil
+000004.SeekPrefixGE("b@15") = (b@10#inf,SYNTHETIC,"")
+000004.Next() = (b@2#7,SET,"7")
+000004.Close() = nil
 
 
-# Test with range deletion probe to observe range deletion behavior
-combined-iter probe-points=(4,(Log "OpSeekPrefixGE")) probe-rangedels=(4,(Log "000004.RangeDels."))
+# Test with range deletion probes.
+
+combined-iter probe-points=(4,(Log "000004.PointKeys.")) probe-rangedels=(4,(Log "000004.RangeDels."))
 seek-prefix-ge b@7
 next
 ----
 b@6: (b6, .)
 b@2: (7, .)
-OpNextSeekPrefixGE("b@7") = (b@2#7,SET,"7")
-OpNextSeekPrefixGE("b@7") = (b@2#7,SET,"7")
-OpSeekPrefixGESeekPrefixGE("b@7") = (b@2#7,SET,"7")
+000004.PointKeys.SeekPrefixGE("b@7") = (b@2#7,SET,"7")
 000004.RangeDels.opSpanSeekGE("b@7") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanSeekGE("b@7") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanSeekGE("b@3") = nil
 000004.RangeDels.opSpanNext() = nil
-OpNextClose() = nil
-OpNextClose() = nil
-OpSeekPrefixGEClose() = nil
+000004.PointKeys.Close() = nil
 000004.RangeDels.opSpanClose() = nil
 000004.RangeDels.opSpanClose() = nil
 
-# Test with bounds and multiple probes
-combined-iter lower=b upper=c probe-points=(4,(Log "OpSeekPrefixGE")) probe-rangedels=(4,(Log "000004.RangeDels."))
+# Test boundary interactions.
+
+combined-iter lower=b upper=c probe-points=(4,(Log "000004.PointKeys.")) probe-rangedels=(4,(Log "000004.RangeDels."))
 seek-prefix-ge b@20
 next
 seek-prefix-ge c@20
@@ -91,61 +89,22 @@ seek-prefix-ge c@20
 b@9: (b9, .)
 b@8: (b8, .)
 .
-OpNextSeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
-OpNextSeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
-OpSeekPrefixGESeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
-OpSeekPrefixGESeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
+000004.PointKeys.SeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
 000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
-OpNextNext() = (b@2#7,SET,"7")
-OpNextNext() = (b@2#7,SET,"7")
-OpSeekPrefixGENext() = (b@2#7,SET,"7")
-OpSeekPrefixGENext() = (b@2#7,SET,"7")
-OpNextSeekPrefixGE("c") = nil
-OpNextSeekPrefixGE("c") = nil
-OpSeekPrefixGESeekPrefixGE("c") = nil
-OpSeekPrefixGESeekPrefixGE("c") = nil
+000004.PointKeys.Next() = (b@2#7,SET,"7")
+000004.PointKeys.SeekPrefixGE("c") = nil
 000004.RangeDels.opSpanSeekGE("c") = nil
-000004.RangeDels.opSpanSeekGE("c") = nil
-OpNextClose() = nil
-OpNextClose() = nil
-OpSeekPrefixGEClose() = nil
-OpSeekPrefixGEClose() = nil
-000004.RangeDels.opSpanClose() = nil
-000004.RangeDels.opSpanClose() = nil
+000004.PointKeys.Close() = nil
 000004.RangeDels.opSpanClose() = nil
 000004.RangeDels.opSpanClose() = nil
 
-
-# Test complex probe combination - logging, error injection, and result modification
 combined-iter probe-points=(4, (If (UserKey "c@5") (ReturnKV "c@99#7,SET" "cc") noop))
 seek-prefix-ge c@15
 next
 ----
 c@10: (2, .)
 c@99: (cc, .)
-OpNextSeekPrefixGE("c@15") = (c@10#2,SET,"2")
-OpNextSeekPrefixGE("c@15") = (c@10#2,SET,"2")
-OpSeekPrefixGESeekPrefixGE("c@15") = (c@10#2,SET,"2")
-OpSeekPrefixGESeekPrefixGE("c@15") = (c@10#2,SET,"2")
-000004.RangeDels.opSpanSeekGE("c@15") = nil
-000004.RangeDels.opSpanSeekGE("c@15") = nil
-000004.RangeDels.opSpanSeekGE("c@10") = nil
-000004.RangeDels.opSpanSeekGE("c@10") = nil
-OpNextNext() = (c@5#1,SET,"1")
-OpNextNext() = (c@5#1,SET,"1")
-OpSeekPrefixGENext() = (c@5#1,SET,"1")
-OpSeekPrefixGENext() = (c@5#1,SET,"1")
-OpNextClose() = nil
-OpNextClose() = nil
-OpSeekPrefixGEClose() = nil
-OpSeekPrefixGEClose() = nil
-000004.RangeDels.opSpanClose() = nil
-000004.RangeDels.opSpanClose() = nil
-000004.RangeDels.opSpanClose() = nil
-000004.RangeDels.opSpanClose() = nil
 
 batch commit
 del-range b c
@@ -175,7 +134,7 @@ ingest external ext1
 flush
 ----
 
-combined-iter probe-points=(4,(Log "OpSeekPrefixGE")) probe-rangedels=(4,(Log "000004.RangeDels."))
+combined-iter probe-points=(4,(Log "000004.PointKeys.")) probe-rangedels=(4,(Log "000004.RangeDels."))
 seek-prefix-ge b
 next
 seek-prefix-ge b@10
@@ -187,39 +146,13 @@ b@21: (b21, .)
 .
 d@22: (d22, .)
 d@21: (d21, .)
-OpNextSeekPrefixGE("b") = (b@2#7,SET,"7")
-OpNextSeekPrefixGE("b") = (b@2#7,SET,"7")
-OpSeekPrefixGESeekPrefixGE("b") = (b@2#7,SET,"7")
-OpSeekPrefixGESeekPrefixGE("b") = (b@2#7,SET,"7")
-OpSeekPrefixGESeekPrefixGE("b") = (b@2#7,SET,"7")
+000004.PointKeys.SeekPrefixGE("b") = (b@2#7,SET,"7")
 000004.RangeDels.opSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
-OpNextSeekPrefixGE("b@10") = (b@2#7,SET,"7")
-OpNextSeekPrefixGE("b@10") = (b@2#7,SET,"7")
-OpSeekPrefixGESeekPrefixGE("b@10") = (b@2#7,SET,"7")
-OpSeekPrefixGESeekPrefixGE("b@10") = (b@2#7,SET,"7")
-OpSeekPrefixGESeekPrefixGE("b@10") = (b@2#7,SET,"7")
-000004.RangeDels.opSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
-000004.RangeDels.opSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
+000004.PointKeys.SeekPrefixGE("b@10") = (b@2#7,SET,"7")
 000004.RangeDels.opSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanNext() = nil
-000004.RangeDels.opSpanNext() = nil
-000004.RangeDels.opSpanNext() = nil
-OpNextClose() = nil
-OpNextClose() = nil
-OpSeekPrefixGEClose() = nil
-OpSeekPrefixGEClose() = nil
-OpSeekPrefixGEClose() = nil
-000004.RangeDels.opSpanClose() = nil
-000004.RangeDels.opSpanClose() = nil
-000004.RangeDels.opSpanClose() = nil
-000004.RangeDels.opSpanClose() = nil
+000004.PointKeys.Close() = nil
 000004.RangeDels.opSpanClose() = nil
 000004.RangeDels.opSpanClose() = nil

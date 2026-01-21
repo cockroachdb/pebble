@@ -105,6 +105,32 @@ func TestIterHistories(t *testing.T) {
 			}
 			return err
 		}
+		pointProbes := make(map[base.TableNum][]itertest.Probe)
+		rangeDelProbes := make(map[base.TableNum][]keyspanProbe)
+		addProbeInjectingNewIters := func(d *DB) {
+			// Overwrite newIters so that we can attach probes to opened
+			// iterators.
+			oldNewIters := d.newIters
+			d.newIters = func(
+				ctx context.Context, file *manifest.TableMetadata, iopts *IterOptions,
+				iio internalIterOpts, kinds iterKinds,
+			) (iterSet, error) {
+				set, err := oldNewIters(ctx, file, iopts, iio, kinds)
+				if err != nil {
+					return set, err
+				}
+				if probes := pointProbes[file.TableNum]; len(probes) > 0 {
+					set.point = itertest.Attach(set.point,
+						itertest.ProbeState{Comparer: testkeys.Comparer, Log: &buf}, probes...)
+				}
+				if rangedelProbes := rangeDelProbes[file.TableNum]; len(rangedelProbes) > 0 {
+					set.rangeDeletion = attachKeyspanProbes(set.rangeDeletion,
+						keyspanProbeContext{log: &buf}, rangedelProbes...)
+				}
+				return set, nil
+			}
+		}
+
 		defer cleanup()
 
 		datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
@@ -123,6 +149,7 @@ func TestIterHistories(t *testing.T) {
 				if err != nil {
 					return err.Error()
 				}
+				addProbeInjectingNewIters(d)
 				return runLSMCmd(td, d)
 			case "reopen":
 				var err error
@@ -138,6 +165,7 @@ func TestIterHistories(t *testing.T) {
 				refedCache = originalCache != opts.Cache
 				d, err = Open("", opts)
 				require.NoError(t, err)
+				addProbeInjectingNewIters(d)
 				return ""
 			case "reset":
 				var err error
@@ -151,6 +179,7 @@ func TestIterHistories(t *testing.T) {
 
 				d, err = Open("", opts)
 				require.NoError(t, err)
+				addProbeInjectingNewIters(d)
 				return ""
 			case "populate":
 				b := d.NewBatch()
@@ -290,11 +319,11 @@ func TestIterHistories(t *testing.T) {
 				delete(batches, name)
 				return fmt.Sprintf("committed %d keys\n", count)
 			case "combined-iter":
+				clear(pointProbes)
+				clear(rangeDelProbes)
 				o := &IterOptions{KeyTypes: IterKeyTypePointsAndRanges, MaximumSuffixProperty: sstable.MaxTestKeysSuffixProperty{}}
 				var reader Reader = d
 				var name string
-				pointProbes := make(map[base.TableNum][]itertest.Probe)
-				rangeDelProbes := make(map[base.TableNum][]keyspanProbe)
 				for _, arg := range td.CmdArgs {
 					switch arg.Key {
 					case "mask-suffix":
@@ -371,26 +400,7 @@ func TestIterHistories(t *testing.T) {
 						rangeDelProbes[base.TableNum(i)] = parseKeyspanProbes(arg.Vals[1:]...)
 					}
 				}
-				// If we have probes, override d.newIters to attach them
-				if (len(pointProbes) > 0 || len(rangeDelProbes) > 0) && reader == d {
-					oldNewIters := d.newIters
-					d.newIters = func(
-						ctx context.Context, file *manifest.TableMetadata, iopts *IterOptions,
-						iio internalIterOpts, kinds iterKinds,
-					) (iterSet, error) {
-						set, err := oldNewIters(ctx, file, iopts, iio, kinds)
-						if err != nil {
-							return set, err
-						}
-						if probes := pointProbes[file.TableNum]; len(probes) > 0 {
-							set.point = itertest.Attach(set.point, itertest.ProbeState{Comparer: testkeys.Comparer, Log: &buf}, probes...)
-						}
-						if rangedelProbes := rangeDelProbes[file.TableNum]; len(rangedelProbes) > 0 {
-							set.rangeDeletion = attachKeyspanProbes(set.rangeDeletion, keyspanProbeContext{log: &buf}, rangedelProbes...)
-						}
-						return set, nil
-					}
-				}
+
 				var iter *Iterator
 				var err error
 				func() {
@@ -413,7 +423,7 @@ func TestIterHistories(t *testing.T) {
 				}
 				out := runIterCmd(td, iter, name == "" /* close iter */)
 				// Append probe logs if any
-				if len(pointProbes) > 0 && buf.Len() > 0 {
+				if buf.Len() > 0 {
 					out += buf.String()
 				}
 				return out

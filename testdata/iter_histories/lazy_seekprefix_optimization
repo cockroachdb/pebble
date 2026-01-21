@@ -50,7 +50,7 @@ L0.0:
 # we discover s@10 SET, since its still on top of the heap, we don't need to
 # perform the real seek.
 
-combined-iter probe-points=(9,(Log "OpSeekPrefixGE")) probe-points=(7,(Log "OpSeekPrefixGE")) probe-points=(5,(Log "OpSeekPrefixGE"))
+combined-iter probe-points=(9,(Log "000009.")) probe-points=(7,(Log "000007.")) probe-points=(5,(Log "000005."))
 seek-prefix-ge s@10
 next
 next
@@ -58,16 +58,16 @@ next
 s@10: (s@10, .)
 s@8: (s@8, .)
 s@4: (s@4, .)
-OpSeekPrefixGESeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
-OpSeekPrefixGESeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
-OpSeekPrefixGESeekPrefixGE("s@10") = (s@10#11,SET,"s@10")
-OpSeekPrefixGENext() = (s@8#12,SET,"s@8")
-OpSeekPrefixGENext() = (w@7#13,SET,"w@7")
-OpSeekPrefixGENext() = (s@4#18,SET,"s@4")
-OpSeekPrefixGENext() = (s@3#15,SET,"s@3")
-OpSeekPrefixGEClose() = nil
-OpSeekPrefixGEClose() = nil
-OpSeekPrefixGEClose() = nil
+000009.SeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
+000007.SeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
+000005.SeekPrefixGE("s@10") = (s@10#11,SET,"s@10")
+000005.Next() = (s@8#12,SET,"s@8")
+000005.Next() = (w@7#13,SET,"w@7")
+000009.Next() = (s@4#18,SET,"s@4")
+000007.Next() = (s@3#15,SET,"s@3")
+000009.Close() = nil
+000007.Close() = nil
+000005.Close() = nil
 
 
 # Test case discovered during implementation of the optimization
@@ -290,7 +290,7 @@ L0.1:
 L0.0:
   000005:[a@1#10,SET-s@8#12,SET]
 
-combined-iter probe-points=(7,(Log "OpSeekPrefixGE")) probe-points=(5,(Log "OpSeekPrefixGE"))
+combined-iter probe-points=(7,(Log "000007.")) probe-points=(5,(Log "000005."))
 seek-prefix-ge s
 next
 next
@@ -298,9 +298,9 @@ next
 s@10: (s@10, .)
 s@9: (s@9, .)
 s@8: (s@8, .)
-OpSeekPrefixGESeekPrefixGE("s") = (s@9#14,SET,"s@9")
-OpSeekPrefixGESeekPrefixGE("s") = (s@10#11,SET,"s@10")
-OpSeekPrefixGENext() = (s@8#12,SET,"s@8")
-OpSeekPrefixGENext() = (s@7#15,SET,"s@7")
-OpSeekPrefixGEClose() = nil
-OpSeekPrefixGEClose() = nil
+000007.SeekPrefixGE("s") = (s@9#14,SET,"s@9")
+000005.SeekPrefixGE("s") = (s@10#11,SET,"s@10")
+000005.Next() = (s@8#12,SET,"s@8")
+000007.Next() = (s@7#15,SET,"s@7")
+000007.Close() = nil
+000005.Close() = nil
