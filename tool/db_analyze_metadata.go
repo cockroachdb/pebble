@@ -12,6 +12,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/RaduBerinde/tdigest"
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/crlib/crhumanize"
 	"github.com/cockroachdb/errors"
@@ -26,6 +27,36 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// digestDelta is the compression argument for t-digest, used to specify the
+// tradeoff between accuracy and memory consumption. A value of 100 is a common
+// default, providing at least +/-1% quantile accuracy.
+const digestDelta = 100
+
+// stat maintains running statistics for mean, variance, and percentiles using
+// Welford's algorithm combined with a t-digest sketch.
+type stat struct {
+	metricsutil.Welford
+	builder tdigest.Builder
+}
+
+// makeStat creates a new stat instance.
+func makeStat() stat {
+	return stat{builder: tdigest.MakeBuilder(digestDelta)}
+}
+
+// Add incorporates a new data point x into the running statistics.
+func (s *stat) Add(x float64) {
+	s.Welford.Add(x)
+	s.builder.Add(x, 1)
+}
+
+// Percentile returns the value at the given percentile (0.0 to 1.0).
+// For example, Percentile(0.5) returns the median.
+func (s *stat) Percentile(p float64) float64 {
+	d := s.builder.Digest()
+	return d.Quantile(p)
+}
+
 // levelStats holds the running statistics for sstable metadata for a single level.
 type levelStats struct {
 	numTotalFiles   int64
@@ -33,34 +64,57 @@ type levelStats struct {
 
 	// commonPrefix records the longest common prefix of user keys within each
 	// sstable.
-	commonPrefix metricsutil.Welford
+	commonPrefix stat
 
 	// Size metrics (in bytes).
-	sstableFileSize          metricsutil.Welford
-	sstableFileSizePlusBlobs metricsutil.Welford
+	sstableFileSize          stat
+	sstableFileSizePlusBlobs stat
 
 	// KV metrics.
-	numKVsPerFile       metricsutil.Welford
-	bytesPerKV          metricsutil.Welford // (RawKeySize + RawValueSize) / NumEntries
-	bytesPerKVWithBlobs metricsutil.Welford // includes blob value sizes
+	numKVsPerFile       stat
+	bytesPerKV          stat // (RawKeySize + RawValueSize) / NumEntries
+	bytesPerKVWithBlobs stat // includes blob value sizes
 
 	// Index metrics.
 	numFilesWithTwoLevelIndex int64
 	// indexSize records the total size of the index block(s) within each sstable.
-	indexSize metricsutil.Welford // IndexSize
+	indexSize stat // IndexSize
 	// numEntriesPerIndexBlock records the number of entries per index block
 	// (excluding top-level index blocks).
-	numEntriesPerIndexBlock metricsutil.Welford
+	numEntriesPerIndexBlock stat
 
-	numDataBlocks metricsutil.Welford
+	numDataBlocks stat
 
 	// Filter metrics.
-	filterBlockSize metricsutil.Welford
+	filterBlockSize stat
+}
+
+func makeLevelStats() levelStats {
+	return levelStats{
+		commonPrefix:             makeStat(),
+		sstableFileSize:          makeStat(),
+		sstableFileSizePlusBlobs: makeStat(),
+		numKVsPerFile:            makeStat(),
+		bytesPerKV:               makeStat(),
+		bytesPerKVWithBlobs:      makeStat(),
+		indexSize:                makeStat(),
+		numEntriesPerIndexBlock:  makeStat(),
+		numDataBlocks:            makeStat(),
+		filterBlockSize:          makeStat(),
+	}
 }
 
 // metadataStats holds statistics for all levels.
 type metadataStats struct {
 	levels [manifest.NumLevels]levelStats
+}
+
+func makeMetadataStats() metadataStats {
+	var stats metadataStats
+	for i := range stats.levels {
+		stats.levels[i] = makeLevelStats()
+	}
+	return stats
 }
 
 func (d *dbT) runAnalyzeMetadata(cmd *cobra.Command, args []string) {
@@ -102,9 +156,9 @@ func (d *dbT) runAnalyzeMetadata(cmd *cobra.Command, args []string) {
 		}
 
 		// Sampling loop.
-		var stats metadataStats
+		stats := makeMetadataStats()
 		for i := range stats.levels {
-			stats.levels[i].numTotalFiles += int64(len(levelTables[i]))
+			stats.levels[i].numTotalFiles = int64(len(levelTables[i]))
 		}
 		startTime := time.Now()
 		lastReportTime := startTime
@@ -259,7 +313,7 @@ func printMetadataStats(w io.Writer, stats *metadataStats, sampled, total int) {
 		return string(crhumanize.Count(int64(v), crhumanize.Compact))
 	}
 
-	formatStat := func(s *metricsutil.Welford, format func(float64) string) string {
+	formatStat := func(s *stat, format func(float64) string) string {
 		if s.Count() == 0 {
 			return ""
 		}
@@ -269,7 +323,7 @@ func printMetadataStats(w io.Writer, stats *metadataStats, sampled, total int) {
 		return fmt.Sprintf("%s ± %s", format(s.Mean()), crhumanize.Percent(s.StdDev(), s.Mean()))
 	}
 
-	formatStatWithTotal := func(s *metricsutil.Welford, numFiles int64, format func(float64) string) string {
+	formatStatWithTotal := func(s *stat, numFiles int64, format func(float64) string) string {
 		if s.Count() == 0 {
 			return ""
 		}
@@ -279,12 +333,24 @@ func printMetadataStats(w io.Writer, stats *metadataStats, sampled, total int) {
 		return fmt.Sprintf("%s ± %s (%s total)", format(s.Mean()), crhumanize.Percent(s.StdDev(), s.Mean()), format(s.Mean()*float64(numFiles)))
 	}
 
+	formatPercentiles := func(s *stat, format func(float64) string) string {
+		if s.Count() == 0 {
+			return ""
+		}
+		return fmt.Sprintf("p90=%s max=%s",
+			format(s.Percentile(0.9)),
+			format(s.Percentile(1.0)))
+	}
+
+	const titleWidth = 22
+
 	type row struct {
-		title string
-		value func(*levelStats) string
+		title   string
+		value   func(*levelStats) string
+		divider bool // if true, a horizontal divider is placed before this row
 	}
 	elems := []table.Element{
-		table.String("", 14, table.AlignRight, func(r row) string { return r.title }),
+		table.String("", titleWidth, table.AlignCenter, func(r row) string { return r.title }),
 	}
 	for level := range manifest.NumLevels {
 		elems = append(elems,
@@ -294,32 +360,49 @@ func printMetadataStats(w io.Writer, stats *metadataStats, sampled, total int) {
 	}
 	tab := table.Define[row](elems...)
 
+	pctTitle := ""
+
 	rows := []row{
-		{title: "SSTables", value: func(ls *levelStats) string {
+		{divider: true, title: "SSTables", value: func(ls *levelStats) string {
 			if ls.numTotalFiles == 0 {
 				return ""
 			}
 			return fmt.Sprintf("%d (%s sampled)", ls.numSampledFiles, crhumanize.Percent(ls.numSampledFiles, ls.numTotalFiles))
 		}},
-		{title: "SSTable size", value: func(ls *levelStats) string {
+		{divider: true, title: "SSTable size", value: func(ls *levelStats) string {
 			return formatStatWithTotal(&ls.sstableFileSize, ls.numTotalFiles, formatBytes)
 		}},
-		{title: "SSTable+blob ref size", value: func(ls *levelStats) string {
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.sstableFileSize, formatBytes)
+		}},
+		{divider: true, title: "SSTable+blob ref size", value: func(ls *levelStats) string {
 			return formatStatWithTotal(&ls.sstableFileSizePlusBlobs, ls.numTotalFiles, formatBytes)
 		}},
-		{title: "KVs", value: func(ls *levelStats) string {
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.sstableFileSizePlusBlobs, formatBytes)
+		}},
+		{divider: true, title: "KVs", value: func(ls *levelStats) string {
 			return formatStatWithTotal(&ls.numKVsPerFile, ls.numTotalFiles, formatCount)
 		}},
-		{title: "SSTable bytes per KV", value: func(ls *levelStats) string {
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.numKVsPerFile, formatCount)
+		}},
+		{divider: true, title: "SSTable bytes per KV", value: func(ls *levelStats) string {
 			return formatStat(&ls.bytesPerKV, formatBytes)
 		}},
-		{title: "SSTable+blob bytes per KV", value: func(ls *levelStats) string {
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.bytesPerKV, formatBytes)
+		}},
+		{divider: true, title: "SSTable+blob bytes per KV", value: func(ls *levelStats) string {
 			return formatStat(&ls.bytesPerKVWithBlobs, formatBytes)
 		}},
-		{title: "SSTable common key prefix", value: func(ls *levelStats) string {
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.bytesPerKVWithBlobs, formatBytes)
+		}},
+		{divider: true, title: "SSTable common key prefix", value: func(ls *levelStats) string {
 			return formatStat(&ls.commonPrefix, formatCount)
 		}},
-		{title: "With two-level index", value: func(ls *levelStats) string {
+		{divider: true, title: "With two-level index", value: func(ls *levelStats) string {
 			switch {
 			case ls.numSampledFiles == 0:
 				return ""
@@ -330,20 +413,43 @@ func printMetadataStats(w io.Writer, stats *metadataStats, sampled, total int) {
 					crhumanize.Percent(ls.numFilesWithTwoLevelIndex, ls.numSampledFiles))
 			}
 		}},
-		{title: "Index size", value: func(ls *levelStats) string {
+		{divider: true, title: "Index size", value: func(ls *levelStats) string {
 			return formatStatWithTotal(&ls.indexSize, ls.numTotalFiles, formatBytes)
 		}},
-		{title: "Entries per index block", value: func(ls *levelStats) string {
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.indexSize, formatBytes)
+		}},
+		{divider: true, title: "Entries per index block", value: func(ls *levelStats) string {
 			return formatStat(&ls.numEntriesPerIndexBlock, formatCount)
 		}},
-		{title: "Data blocks", value: func(ls *levelStats) string {
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.numEntriesPerIndexBlock, formatCount)
+		}},
+		{divider: true, title: "Data blocks", value: func(ls *levelStats) string {
 			return formatStatWithTotal(&ls.numDataBlocks, ls.numTotalFiles, formatCount)
 		}},
-		{title: "Filter block size", value: func(ls *levelStats) string {
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.numDataBlocks, formatCount)
+		}},
+		{divider: true, title: "Filter block size", value: func(ls *levelStats) string {
 			return formatStatWithTotal(&ls.filterBlockSize, ls.numTotalFiles, formatBytes)
 		}},
+		{title: pctTitle, value: func(ls *levelStats) string {
+			return formatPercentiles(&ls.filterBlockSize, formatBytes)
+		}},
 	}
+
+	// Build horizontal dividers from rows that have divider: true.
+	var dividerIndices []int
+	for i, r := range rows {
+		if r.divider {
+			dividerIndices = append(dividerIndices, i)
+		}
+	}
+
 	wb := ascii.Make(100, 100)
-	tab.Render(wb.At(0, 0), table.RenderOptions{}, rows...)
+	tab.Render(wb.At(0, 0), table.RenderOptions{
+		HorizontalDividers: table.MakeHorizontalDividers(dividerIndices...),
+	}, rows...)
 	fmt.Fprintln(w, wb.String())
 }
