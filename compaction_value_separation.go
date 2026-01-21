@@ -130,11 +130,11 @@ func shouldWriteBlobFiles(
 			expectedMinSize := policy.MinimumSize
 			expectedValSepBySuffixDisabled := false
 			bounds := t.UserKeyBounds()
-			spanPolicy, spanPolicyEndKey, err := spanPolicyFunc(bounds.Start)
+			spanPolicy, err := spanPolicyFunc(t.UserKeyBounds())
 			// For now, if we can't determine the span policy, we should just assume
 			// the default policy is in effect for this table.
 			if err == nil {
-				if len(spanPolicyEndKey) > 0 && cmp(bounds.End.Key, spanPolicyEndKey) >= 0 {
+				if !spanPolicy.StillCovers(cmp, bounds.End.Key) {
 					// The table's key range now uses multiple span policies. Rewrite to new
 					// blob files so values are stored according to the current policy.
 					return true, 0
