@@ -42,7 +42,7 @@ func testBuild(t *testing.T, hashes []uint64) {
 	for _, hash := range hashes {
 		hc.Add(hash)
 	}
-	fpVals := []int{4, 8, 12, 16}
+	fpVals := []int{4, 8, 10, 12, 16}
 	filter, ok := buildFilter(&hc, fpVals[rand.IntN(len(fpVals))])
 	require.True(t, ok)
 	for range min(len(hashes), 100_000) {

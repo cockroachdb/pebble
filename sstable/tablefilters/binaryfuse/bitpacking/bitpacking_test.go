@@ -34,6 +34,20 @@ func TestEncode8_BPV8(t *testing.T) {
 	require.Equal(t, input, output)
 }
 
+func TestEncode16_BPV10(t *testing.T) {
+	// Test encoding of 10-bit values.
+	// 4 values at 10 bits = 40 bits = 5 bytes of data + 1 padding = 6 bytes
+	input := []uint16{0x123, 0x2AB, 0x1FF, 0x3FF}
+	output := make([]byte, EncodedSize(len(input), 10))
+	Encode16(input, 10, output)
+
+	// Verify by decoding
+	for i, expected := range input {
+		got := Decode(output, uint(i), 10)
+		require.Equalf(t, expected&0x3FF, got, "index %d", i)
+	}
+}
+
 func TestEncode16_BPV12(t *testing.T) {
 	// Two 12-bit values: 0x123 and 0x456
 	input := []uint16{0x123, 0x456}
@@ -93,6 +107,18 @@ func TestDecode_BPV8(t *testing.T) {
 	}
 }
 
+func TestDecode_BPV10(t *testing.T) {
+	// Encode known values and decode them.
+	input := []uint16{0x3FF, 0x155, 0x2AA, 0x000, 0x1FF, 0x100, 0x0FF, 0x200}
+	output := make([]byte, EncodedSize(len(input), 10))
+	Encode16(input, 10, output)
+
+	for i, expected := range input {
+		got := Decode(output, uint(i), 10)
+		require.Equalf(t, expected&0x3FF, got, "index %d", i)
+	}
+}
+
 func TestDecode_BPV12(t *testing.T) {
 	// Encoded as: [low8_a=0x23, high4_a|low4_b<<4=0x61, high8_b=0x45]
 	data := []byte{0x23, 0x61, 0x45, 0x00}
@@ -134,7 +160,7 @@ func TestRoundTrip(t *testing.T) {
 			input8[i] = uint8(input[i])
 		}
 
-		for _, bpv := range []int{4, 8, 12, 16} {
+		for _, bpv := range SupportedBitsPerValue {
 			encoded := make([]byte, EncodedSize(n, bpv))
 			for i := range encoded {
 				encoded[i] = 0xCC
@@ -160,11 +186,12 @@ func TestRoundTrip(t *testing.T) {
 
 // Results on an Apple M1:
 //
-// name             Gvals/s
-// Encode/4b-10     8.88 ± 2%
-// Encode/8b-10     76.4 ± 1%
-// Encode/12b-10    4.96 ± 0%
-// Encode/16b-10    38.2 ± 2%
+// name              Gvals/s
+// Encode/4b-10      9.12 ± 1%
+// Encode/8b-10      76.4 ± 0%
+// Encode/10b-10     5.10 ± 2%
+// Encode/12b-10     5.12 ± 0%
+// Encode/16b-10     38.2 ± 3%
 func BenchmarkEncode(b *testing.B) {
 	const size = 10000
 	vals := make([]uint16, size)
@@ -173,7 +200,7 @@ func BenchmarkEncode(b *testing.B) {
 		vals[i] = uint16(rand.Uint32())
 		vals8[i] = uint8(vals[i])
 	}
-	for _, bpv := range []int{4, 8, 12, 16} {
+	for _, bpv := range SupportedBitsPerValue {
 		b.Run(fmt.Sprintf("%db", bpv), func(b *testing.B) {
 			output := make([]byte, EncodedSize(len(vals), bpv))
 			b.ResetTimer()
@@ -191,10 +218,11 @@ func BenchmarkEncode(b *testing.B) {
 
 // Results on Apple M1:
 //
-// Decode3/4b-10   3.10ns ± 5%
-// Decode3/8b-10   2.48ns ± 0%
-// Decode3/12b-10  3.84ns ± 3%
-// Decode3/16b-10  2.51ns ± 0%
+// Decode3/4b-10   2.93ns ± 0%
+// Decode3/8b-10   2.38ns ± 0%
+// Decode3/10b-10  3.34ns ± 0%
+// Decode3/12b-10  3.54ns ± 0%
+// Decode3/16b-10  2.50ns ± 0%
 func BenchmarkDecode3(b *testing.B) {
 	const size = 10000
 	vals := make([]uint16, size)
@@ -203,7 +231,7 @@ func BenchmarkDecode3(b *testing.B) {
 		vals[i] = uint16(rand.Uint32())
 		vals8[i] = uint8(vals[i])
 	}
-	for _, bpv := range []int{4, 8, 12, 16} {
+	for _, bpv := range SupportedBitsPerValue {
 		b.Run(fmt.Sprintf("%db", bpv), func(b *testing.B) {
 			output := make([]byte, EncodedSize(len(vals), bpv))
 			if bpv <= 8 {

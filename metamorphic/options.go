@@ -798,7 +798,9 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	fpList := []pebble.DBTableFilterPolicy{
 		pebble.UniformDBTableFilterPolicy(pebble.NoFilterPolicy),
 		pebble.UniformDBTableFilterPolicy(bloom.FilterPolicy(1 + rng.Uint32N(20))),
-		pebble.UniformDBTableFilterPolicy(binaryfuse.FilterPolicy(4 * (1 + rng.IntN(4)))),
+		pebble.UniformDBTableFilterPolicy(binaryfuse.FilterPolicy(
+			binaryfuse.SupportedBitsPerFingerprint[rng.IntN(len(binaryfuse.SupportedBitsPerFingerprint))],
+		)),
 		pebble.DBTableFilterPolicyUniform,
 		pebble.DBTableFilterPolicyProgressive,
 		pebble.DBTableFilterPolicyBinaryFuseProgressive,
