@@ -1,4 +1,4 @@
-# This file tests the download cursor functionality.
+# This file tests the ScanCursor functionality.
 # Backings >= 100 are external.
 
 # Basic test to verify cursor iteration.
@@ -23,11 +23,11 @@ L2:
 # Verify iteration.
 cursor lower=a upper=d
 start
-iterate
+iterate-external-files
 ----
 start:
   level=0 key="a" seqNum=0
-iterate:
+iterate-external-files:
   file: 000004:[a#1,SET-c#1,SET]  level: 0
   file: 000001:[a#1,SET-a#1,SET]  level: 0
   file: 000002:[b#1,SET-d#1,SET]  level: 0
@@ -36,11 +36,11 @@ iterate:
 
 cursor lower=b upper=z
 start
-iterate
+iterate-external-files
 ----
 start:
   level=0 key="b" seqNum=0
-iterate:
+iterate-external-files:
   file: 000002:[b#1,SET-d#1,SET]  level: 0
   file: 000003:[e#1,SET-g#1,SET]  level: 0
   file: 000005:[b#1,SET-c#1,SET]  level: 2
@@ -67,11 +67,11 @@ L2:
 
 cursor lower=a upper=z
 start
-iterate
+iterate-external-files
 ----
 start:
   level=0 key="a" seqNum=0
-iterate:
+iterate-external-files:
   file: 000004:[a#1,SET-c#1,SET]  level: 0
   file: 000002:[b#1,SET-d#1,SET]  level: 0
   file: 000005:[b#1,SET-c#1,SET]  level: 2
@@ -97,17 +97,17 @@ L2:
 
 cursor lower=a upper=z
 start
-next-file
-next-file
-next-file
+next-external-file
+next-external-file
+next-external-file
 ----
 start:
   level=0 key="a" seqNum=0
-next-file:
+next-external-file:
   file: 000001:[a#1,SET-b#1,SET]  level: 1
-next-file:
+next-external-file:
   file: 000002:[c#1,SET-d#1,SET]  level: 1
-next-file:
+next-external-file:
   file: 000003:[e#1,SET-f#1,SET]  level: 1
 
 define
@@ -129,16 +129,16 @@ L2:
 
 # Continue the cursor above. We should see table 2 again.
 cursor lower=a upper=z
-next-file
-next-file
-next-file
-next-file
+next-external-file
+next-external-file
+next-external-file
+next-external-file
 ----
-next-file:
+next-external-file:
   file: 000004:[a1#1,SET-b#1,SET]  level: 2
-next-file:
+next-external-file:
   file: 000002:[c#1,SET-d#1,SET]  level: 2
-next-file:
+next-external-file:
   file: 000005:[d1#1,SET-g#1,SET]  level: 2
-next-file:
+next-external-file:
   file: <nil>  level: 7

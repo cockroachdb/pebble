@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -22,82 +21,6 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
-
-func TestDownloadCursor(t *testing.T) {
-	cmp := bytes.Compare
-	objProvider := initDownloadTestProvider(t)
-
-	var vers *manifest.Version
-	var cursor downloadCursor
-	datadriven.RunTest(t, "testdata/download_cursor", func(t *testing.T, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "define":
-			var err error
-			const flushSplitBytes = 10 * 1024 * 1024
-			l0Organizer := manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
-			vers, err = manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, td.Input)
-			if err != nil {
-				td.Fatalf(t, "%v", err)
-			}
-			return vers.DebugString()
-
-		case "cursor":
-			var lower, upper string
-			td.ScanArgs(t, "lower", &lower)
-			td.ScanArgs(t, "upper", &upper)
-			bounds := base.UserKeyBoundsEndExclusive([]byte(lower), []byte(upper))
-
-			var buf strings.Builder
-			for line := range crstrings.LinesSeq(td.Input) {
-				fields := strings.Fields(line)
-				fmt.Fprintf(&buf, "%s:\n", fields[0])
-				switch cmd := fields[0]; cmd {
-				case "start":
-					cursor = downloadCursor{
-						level:  0,
-						key:    bounds.Start,
-						seqNum: 0,
-					}
-					fmt.Fprintf(&buf, "  %s\n", cursor)
-
-				case "next-file":
-					f, level := cursor.NextExternalFile(cmp, objProvider, bounds, vers)
-					if f != nil {
-						// Verify that fCursor still points to this file.
-						f2, level2 := makeCursorAtFile(f, level).NextExternalFile(cmp, objProvider, bounds, vers)
-						if f != f2 {
-							td.Fatalf(t, "nextExternalFile returned different file")
-						}
-						if level != level2 {
-							td.Fatalf(t, "nextExternalFile returned different level")
-						}
-						cursor = makeCursorAfterFile(f, level)
-					}
-					fmt.Fprintf(&buf, "  file: %v  level: %d\n", f, level)
-
-				case "iterate":
-					for {
-						f, level := cursor.NextExternalFile(cmp, objProvider, bounds, vers)
-						if f == nil {
-							fmt.Fprintf(&buf, "  no more files\n")
-							break
-						}
-						fmt.Fprintf(&buf, "  file: %v  level: %d\n", f, level)
-						cursor = makeCursorAfterFile(f, level)
-					}
-
-				default:
-					td.Fatalf(t, "unknown cursor command %q", cmd)
-				}
-			}
-			return buf.String()
-
-		default:
-			td.Fatalf(t, "unknown command: %s", td.Cmd)
-			return ""
-		}
-	})
-}
 
 func TestDownloadTask(t *testing.T) {
 	cmp := bytes.Compare
@@ -112,7 +35,7 @@ func TestDownloadTask(t *testing.T) {
 	var task *downloadSpanTask
 	printTask := func(b *strings.Builder) {
 		for i := range task.bookmarks {
-			fmt.Fprintf(b, "bookmark %d: %s  end-bound=%q\n", i, task.bookmarks[i].start, task.bookmarks[i].endBound.Key)
+			fmt.Fprintf(b, "bookmark %d: %s  end-bound=%q\n", i, &task.bookmarks[i].start, task.bookmarks[i].endBound.Key)
 		}
 		fmt.Fprintf(b, "cursor: %s\n", task.cursor.String())
 	}
