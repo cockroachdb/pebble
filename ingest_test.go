@@ -404,7 +404,7 @@ func TestIngestLocalWithBlobs(t *testing.T) {
 				exciseSpan.Start = []byte(fields[0])
 				exciseSpan.End = []byte(fields[1])
 			}
-			_, err := db.IngestLocal(ctx, localTables, exciseSpan)
+			_, err := db.IngestAndExciseWithBlobs(ctx, localTables, nil /* shared */, nil /* external */, exciseSpan)
 			if err != nil {
 				return err.Error()
 			}
@@ -494,7 +494,7 @@ func TestFlushableIngestWithBlobs(t *testing.T) {
 			BlobPaths: blobPaths,
 		},
 	}
-	stats, err := db.IngestLocal(ctx, localTables, KeyRange{})
+	stats, err := db.IngestAndExciseWithBlobs(ctx, localTables, nil /* shared */, nil /* external */, KeyRange{})
 	require.NoError(t, err)
 	// ApproxIngestedIntoL0Bytes > 0 indicates the file went through the
 	// flushable ingest path (overlapped with memtable).
@@ -644,7 +644,7 @@ func TestFlushableIngestWithBlobsWALRecovery(t *testing.T) {
 			BlobPaths: blobPaths,
 		},
 	}
-	stats, err := db.IngestLocal(ctx, localTables, KeyRange{} /* exciseSpan */)
+	stats, err := db.IngestAndExciseWithBlobs(ctx, localTables, nil /* shared */, nil /* external */, KeyRange{})
 	require.NoError(t, err)
 	// ApproxIngestedIntoL0Bytes > 0 indicates the file went through the
 	// flushable ingest path (overlapped with memtable).
@@ -765,7 +765,7 @@ func TestIngestLocalErrors(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { require.NoError(t, db.Close()) }()
 
-		_, err = db.IngestLocal(ctx, LocalSSTables{LocalSST{Path: "test.sst"}}, KeyRange{})
+		_, err = db.IngestAndExciseWithBlobs(ctx, LocalSSTables{LocalSST{Path: "test.sst"}}, nil /* shared */, nil /* external */, KeyRange{})
 		require.ErrorIs(t, err, ErrReadOnly)
 	})
 
@@ -778,7 +778,7 @@ func TestIngestLocalErrors(t *testing.T) {
 
 		localTables := LocalSSTables{LocalSST{Path: "test.sst"}}
 		exciseSpan := KeyRange{Start: []byte("a@1"), End: []byte("z")}
-		_, err = db.IngestLocal(ctx, localTables, exciseSpan)
+		_, err = db.IngestAndExciseWithBlobs(ctx, localTables, nil /* shared */, nil /* external */, exciseSpan)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "suffixed start key")
 	})

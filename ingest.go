@@ -1459,7 +1459,7 @@ func (d *DB) IngestExternalFiles(
 	return d.ingest(ctx, ingestArgs{External: external})
 }
 
-// IngestAndExcise does the same as IngestWithStats, and additionally accepts a
+// IngestAndExciseWithBlobs does the same as IngestWithStats, and additionally accepts a
 // list of shared files to ingest that can be read from a remote.Storage through
 // a Provider. All the shared files must live within exciseSpan, and any existing
 // keys in exciseSpan are deleted by turning existing sstables into virtual
@@ -1469,9 +1469,9 @@ func (d *DB) IngestExternalFiles(
 //
 // Panics if this DB instance was not instantiated with a remote.Storage and
 // shared sstables are present.
-func (d *DB) IngestAndExcise(
+func (d *DB) IngestAndExciseWithBlobs(
 	ctx context.Context,
-	paths []string,
+	localSSTs LocalSSTables,
 	shared []SharedSSTMeta,
 	external []ExternalFile,
 	exciseSpan KeyRange,
@@ -1489,16 +1489,13 @@ func (d *DB) IngestAndExcise(
 	if d.opts.Comparer.Split(exciseSpan.End) != len(exciseSpan.End) {
 		return IngestOperationStats{}, errors.New("IngestAndExcise called with suffixed end key")
 	}
-	if v := d.FormatMajorVersion(); v < FormatMinForSharedObjects {
+	if v := d.FormatMajorVersion(); exciseSpan.Valid() && v < FormatMinForSharedObjects {
 		return IngestOperationStats{}, errors.Newf(
 			"store has format major version %d; IngestAndExcise requires at least %d",
 			v, FormatMinForSharedObjects,
 		)
 	}
-	localSSTs := make([]LocalSST, len(paths))
-	for i, path := range paths {
-		localSSTs[i] = LocalSST{Path: path}
-	}
+	// Versioning check for ingesting blob files will occur in the ingest function.
 	args := ingestArgs{
 		Local:              localSSTs,
 		Shared:             shared,
@@ -1506,7 +1503,23 @@ func (d *DB) IngestAndExcise(
 		ExciseSpan:         exciseSpan,
 		ExciseBoundsPolicy: tightExciseBounds,
 	}
+
 	return d.ingest(ctx, args)
+}
+
+// IngestAndExcise is like IngestAndExciseWithBlobs, but does not accept blob files.
+func (d *DB) IngestAndExcise(
+	ctx context.Context,
+	paths []string,
+	shared []SharedSSTMeta,
+	external []ExternalFile,
+	exciseSpan KeyRange,
+) (IngestOperationStats, error) {
+	localSSTs := make([]LocalSST, len(paths))
+	for i, path := range paths {
+		localSSTs[i] = LocalSST{Path: path}
+	}
+	return d.IngestAndExciseWithBlobs(ctx, localSSTs, shared, external, exciseSpan)
 }
 
 // Both DB.mu and commitPipeline.mu must be held while this is called.

@@ -34,40 +34,6 @@ type LocalSST struct {
 	BlobPaths []string
 }
 
-// IngestLocal ingests the provided local sstables into the DB. If a valid
-// excise span is provided, any existing keys in exciseSpan are deleted by
-// turning existing sstables into virtual sstables (if not virtual already)
-// and shrinking their spans to exclude exciseSpan. See the comment at Ingest
-// for a more complete picture of the ingestion process.
-func (d *DB) IngestLocal(
-	ctx context.Context, localSSTs LocalSSTables, exciseSpan KeyRange,
-) (IngestOperationStats, error) {
-	if err := d.closed.Load(); err != nil {
-		panic(err)
-	}
-	if d.opts.ReadOnly {
-		return IngestOperationStats{}, ErrReadOnly
-	}
-
-	if exciseSpan.Valid() {
-		// Excise is only supported on prefix keys.
-		if d.opts.Comparer.Split(exciseSpan.Start) != len(exciseSpan.Start) {
-			return IngestOperationStats{}, errors.New("IngestLocal called with suffixed start key")
-		}
-		if d.opts.Comparer.Split(exciseSpan.End) != len(exciseSpan.End) {
-			return IngestOperationStats{}, errors.New("IngestLocal called with suffixed end key")
-		}
-	}
-
-	args := ingestArgs{
-		Local:              localSSTs,
-		ExciseSpan:         exciseSpan,
-		ExciseBoundsPolicy: tightExciseBounds,
-	}
-
-	return d.ingest(ctx, args)
-}
-
 // closeReadables closes all readables in the slice, combining any errors.
 func closeReadables(readables []objstorage.Readable) error {
 	var errs error

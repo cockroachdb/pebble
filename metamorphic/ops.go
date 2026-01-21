@@ -739,7 +739,7 @@ func (o *ingestOp) run(t *Test, h historyRecorder) {
 	}
 
 	err = firstError(err, t.withRetries(func() error {
-		_, ingestErr := t.getDB(o.dbID).IngestLocal(context.Background(), localSSTs, pebble.KeyRange{})
+		_, ingestErr := t.getDB(o.dbID).IngestAndExciseWithBlobs(context.Background(), localSSTs, nil /* shared */, nil /* external */, pebble.KeyRange{})
 		return ingestErr
 	}))
 
@@ -960,7 +960,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 			pebble.LocalSST{Path: path, BlobPaths: blobPaths},
 		}
 		err = firstError(err, t.withRetries(func() error {
-			_, ingestErr := db.IngestLocal(context.Background(), localSSTs, exciseSpan)
+			_, ingestErr := db.IngestAndExciseWithBlobs(context.Background(), localSSTs, nil /* shared */, nil /* external */, exciseSpan)
 			return ingestErr
 		}))
 	} else {
@@ -969,7 +969,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 			pebble.LocalSST{Path: path, BlobPaths: blobPaths},
 		}
 		err = firstError(err, t.withRetries(func() error {
-			_, ingestErr := db.IngestLocal(context.Background(), localSSTs, pebble.KeyRange{})
+			_, ingestErr := db.IngestAndExciseWithBlobs(context.Background(), localSSTs, nil /* shared */, nil /* external */, pebble.KeyRange{})
 			return ingestErr
 		}))
 	}
