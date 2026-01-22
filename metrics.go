@@ -385,18 +385,19 @@ type Metrics struct {
 // CompactMetrics contains metric related to compaction activity.
 type CompactMetrics struct {
 	// The total number of compactions, and per-compaction type counts.
-	Count                 int64
-	DefaultCount          int64
-	DeleteOnlyCount       int64
-	ElisionOnlyCount      int64
-	CopyCount             int64
-	MoveCount             int64
-	ReadCount             int64
-	TombstoneDensityCount int64
-	RewriteCount          int64
-	MultiLevelCount       int64
-	BlobFileRewriteCount  int64
-	VirtualRewriteCount   int64
+	Count                  int64
+	DefaultCount           int64
+	DeleteOnlyCount        int64
+	ElisionOnlyCount       int64
+	CopyCount              int64
+	MoveCount              int64
+	ReadCount              int64
+	TombstoneDensityCount  int64
+	RewriteCount           int64
+	MultiLevelCount        int64
+	BlobFileRewriteCount   int64
+	VirtualRewriteCount    int64
+	PolicyEnforcementCount int64
 	// An estimate of the number of bytes that need to be compacted for the LSM
 	// to reach a stable state.
 	EstimatedDebt uint64
