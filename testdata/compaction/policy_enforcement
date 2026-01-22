@@ -1,0 +1,140 @@
+# Test span policy enforcer detecting compression violations and triggering
+# policy enforcement compactions.
+
+# Create files with Zstd compression using zstd-force (MinReductionPercent=0).
+# The span policy requires fast compression for keys >= "m".
+# We use long repetitive values to ensure they compress with Zstd.
+
+define compression=zstd-force
+L1
+  a#10,SET:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b#10,SET:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+L1
+  m#10,SET:mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm n#10,SET:nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+L2
+  x#5,SET:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx z#5,SET:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+----
+L1:
+  000004:[a#10,SET-b#10,SET]
+  000005:[m#10,SET-n#10,SET]
+L2:
+  000006:[x#5,SET-z#5,SET]
+
+# Configure span policy: keys >= "m" require fast compression.
+set-span-policies
+m,zzz prefer-fast-compression
+----
+
+# Initially no pending enforcement files.
+pending-policy-enforcement
+----
+pending: 0
+
+# Run the enforcer scan to detect violations and mark files.
+# Files 000005 (m-n) and 000006 (x-z) are in the policy span and use Zstd.
+scan-policy-violations
+----
+
+# Verify files are now pending enforcement. The enforcer's run loop would pause
+# here until these are processed.
+pending-policy-enforcement
+----
+pending: 2
+  L2: 000006
+  L1: 000005
+
+# Run compaction. The scheduler should pick up policy enforcement compactions.
+auto-compact
+----
+L1:
+  000004:[a#10,SET-b#10,SET]
+  000005:[m#10,SET-n#10,SET]
+L2:
+  000007:[x#0,SET-z#0,SET]
+
+# After auto-compact processes enforcement compactions, pending should be cleared.
+# (auto-compact may process one or both files depending on scheduling)
+pending-policy-enforcement
+----
+pending: 0
+
+# Scan again to check for any remaining violations.
+scan-policy-violations
+----
+
+# One file may still violate policy if not recompacted in first pass.
+pending-policy-enforcement
+----
+pending: 1
+  L1: 000005
+
+auto-compact
+----
+L1:
+  000004:[a#10,SET-b#10,SET]
+  000008:[m#0,SET-n#0,SET]
+L2:
+  000007:[x#0,SET-z#0,SET]
+
+# All enforcement compactions complete.
+pending-policy-enforcement
+----
+pending: 0
+
+# Test interaction with manual compaction: a file marked for enforcement
+# gets moved by a manual compaction. Since the move keeps the same file
+# reference, the enforcement mark remains valid.
+
+define compression=zstd-force
+L1
+  a#10,SET:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b#10,SET:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+L2
+  m#10,SET:mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm n#10,SET:nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn
+L3
+  x#5,SET:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx z#5,SET:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+----
+L1:
+  000004:[a#10,SET-b#10,SET]
+L2:
+  000005:[m#10,SET-n#10,SET]
+L3:
+  000006:[x#5,SET-z#5,SET]
+
+# Set policy and scan to mark files.
+set-span-policies
+m,zzz prefer-fast-compression
+----
+
+scan-policy-violations
+----
+
+# Manually compact the L2 file. This moves 000005 to L3 but keeps the same
+# file reference, so the enforcement mark remains valid.
+compact m-o L2
+----
+L1:
+  000004:[a#10,SET-b#10,SET]
+L3:
+  000005:[m#10,SET-n#10,SET]
+  000006:[x#5,SET-z#5,SET]
+
+# Auto-compact picks up the enforcement compaction for one of the marked files.
+# File 000006 is outside the policy span (x-z < m), so only 000005 was marked.
+auto-compact
+----
+L1:
+  000004:[a#10,SET-b#10,SET]
+L3:
+  000005:[m#10,SET-n#10,SET]
+  000007:[x#0,SET-z#0,SET]
+
+# Scan and compact again. This should compact file 000005.
+scan-policy-violations
+----
+
+auto-compact
+----
+L1:
+  000004:[a#10,SET-b#10,SET]
+L3:
+  000008:[m#0,SET-n#0,SET]
+  000007:[x#0,SET-z#0,SET]
