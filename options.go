@@ -793,7 +793,7 @@ type Options struct {
 		// scans the LSM for span policy violations. If nil, the policy enforcer
 		// is disabled.
 		//
-		// Default: nil (disabled).
+		// Default is nil (disabled).
 		SpanPolicyEnforcerOptions *SpanPolicyEnforcerOptions
 
 		// VirtualTableRewriteUnreferencedFraction configures the minimum fraction of

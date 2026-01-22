@@ -1507,6 +1507,31 @@ func runCompactionTest(
 			s := blobRewriteLog.String()
 			return s
 
+		case "scan-policy-violations":
+			// Run the span policy enforcer's scan to detect violations and mark files.
+			if d.opts.Experimental.SpanPolicyFunc == nil {
+				return "no span policy configured"
+			}
+			// Wait for table stats to be loaded so that table properties
+			// are available for violation detection.
+			d.waitTableStats()
+
+			enforcer := newSpanPolicyEnforcer(d, SpanPolicyEnforcerOptions{})
+			enforcer.scanAll()
+			return ""
+
+		case "pending-policy-enforcement":
+			// Show files pending policy enforcement compaction.
+			d.mu.Lock()
+			count := d.mu.compact.spanPolicyEnforcementFiles.Count()
+			var buf strings.Builder
+			fmt.Fprintf(&buf, "pending: %d\n", count)
+			for f, level := range d.mu.compact.spanPolicyEnforcementFiles.Ascending() {
+				fmt.Fprintf(&buf, "  L%d: %s\n", level, f.TableNum)
+			}
+			d.mu.Unlock()
+			return buf.String()
+
 		case "set-span-policies":
 			var spanPolicies []SpanPolicy
 			for line := range crstrings.LinesSeq(td.Input) {
@@ -1553,6 +1578,11 @@ func runCompactionTest(
 							td.Fatalf(t, "parsing minimum-mvcc-garbage-size: %s", err)
 						}
 						policy.ValueStoragePolicy.MinimumMVCCGarbageSize = int(size)
+					case "prefer-fast-compression":
+						if len(parts) != 1 {
+							td.Fatalf(t, "expected prefer-fast-compression with no value, got: %s", arg)
+						}
+						policy.PreferFastCompression = true
 					default:
 						td.Fatalf(t, "unknown span policy arg: %s", arg)
 					}
@@ -1657,6 +1687,11 @@ func TestCompaction(t *testing.T) {
 			minVersion: FormatNewest,
 			maxVersion: FormatNewest,
 			verbose:    true,
+		},
+		"policy_enforcement": {
+			minVersion: FormatNewest,
+			maxVersion: FormatNewest,
+			cmp:        DefaultComparer,
 		},
 	}
 	datadriven.Walk(t, "testdata/compaction", func(t *testing.T, path string) {
