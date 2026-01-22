@@ -119,6 +119,23 @@ func (s *spanPolicyEnforcer) run() {
 	}
 }
 
+// scanAll performs a single full scan of the LSM, checking all files for
+// policy violations.
+func (s *spanPolicyEnforcer) scanAll() {
+	for {
+		nextFile, level, endOfScan := s.getNextFile(false /* waitForPendingWork */)
+		if endOfScan {
+			return
+		}
+		if nextFile == nil {
+			continue
+		}
+		if s.checkPolicyViolation(nextFile) {
+			s.markForEnforcement(nextFile, level)
+		}
+	}
+}
+
 // getNextFile finds the file to check for policy violations, advances the cursor past
 // the file, and returns the file. If waitForPendingWork is true, it blocks until there
 // are no files marked for policy enforcement waiting to be compacted.
