@@ -42,6 +42,9 @@ type compactionEnv struct {
 	earliestSnapshotSeqNum  base.SeqNum
 	inProgressCompactions   []compactionInfo
 	readCompactionEnv       readCompactionEnv
+	// policyEnforcementFiles contains files marked for policy enforcement
+	// compaction by the background policy enforcer.
+	policyEnforcementFiles *manifest.MarkedForCompactionSet
 	// problemSpans is checked by the compaction picker to avoid compactions that
 	// overlap an active "problem span". It can be nil when there are no problem
 	// spans.
@@ -1562,6 +1565,13 @@ func (p *compactionPickerByScore) pickAutoNonScore(env compactionEnv) (pc picked
 		}
 	}
 
+	// Check for files that violate span policies (e.g., compression settings).
+	if env.policyEnforcementFiles != nil && env.policyEnforcementFiles.Count() > 0 {
+		if pc := p.pickPolicyEnforcementCompaction(env); pc != nil {
+			return pc
+		}
+	}
+
 	return nil
 }
 
@@ -1706,6 +1716,28 @@ func (p *compactionPickerByScore) pickRewriteCompaction(
 ) (pc *pickedTableCompaction) {
 	for candidate, level := range p.vers.MarkedForCompaction.Ascending() {
 		if pc := p.pickedCompactionFromCandidateFile(candidate, env, level, level, compactionKindRewrite); pc != nil {
+			return pc
+		}
+	}
+	return nil
+}
+
+// pickPolicyEnforcementCompaction attempts to construct a compaction that
+// rewrites a file marked for policy enforcement. This handles files that
+// violate new span policies such as compression settings. The compaction
+// outputs files to the same level as the input level.
+func (p *compactionPickerByScore) pickPolicyEnforcementCompaction(
+	env compactionEnv,
+) (pc *pickedTableCompaction) {
+	for candidate, level := range env.policyEnforcementFiles.Ascending() {
+		if !p.vers.Contains(level, candidate) {
+			env.policyEnforcementFiles.Delete(candidate, level)
+			continue
+		}
+		if pc := p.pickedCompactionFromCandidateFile(candidate, env, level, level, compactionKindPolicyEnforcement); pc != nil {
+			// Remove the file from the set since it's now being compacted.
+			// This prevents picking the same file again.
+			env.policyEnforcementFiles.Delete(candidate, level)
 			return pc
 		}
 	}

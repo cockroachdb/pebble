@@ -321,6 +321,7 @@ const (
 	compactionTypeRewrite
 	compactionTypeBlobRewrite
 	compactionTypeVirtualRewrite
+	compactionTypePolicyEnforcement
 )
 
 // String implements fmt.Stringer.
@@ -346,6 +347,8 @@ func (c compactionType) String() string {
 		return "blob-rewrite"
 	case compactionTypeVirtualRewrite:
 		return "virtual-sst-rewrite"
+	case compactionTypePolicyEnforcement:
+		return "policy-enforcement"
 	default:
 		panic(errors.Newf("unknown compaction type: %s", c))
 	}
@@ -375,6 +378,8 @@ func parseCompactionType(s string) (t compactionType, err error) {
 		t = compactionTypeBlobRewrite
 	case "virtual-sst-rewrite":
 		t = compactionTypeVirtualRewrite
+	case "policy-enforcement":
+		t = compactionTypePolicyEnforcement
 	default:
 		err = errors.Newf("unknown compaction type: %s", s)
 	}
