@@ -657,15 +657,6 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 				return 0, nil
 			}
 
-			// BlobReferenceTierGetter determines which tier a blob reference is in.
-			// For testing, odd reference IDs are hot, even are cold.
-			blobReferenceTierGetter := func(refID base.BlobReferenceID) base.StorageTier {
-				if refID%2 == 1 {
-					return base.HotTier
-				}
-				return base.ColdTier
-			}
-
 			opts := &WriterOptions{
 				BlockSize:                 blockSize,
 				Comparer:                  testkeys.Comparer,
@@ -676,7 +667,20 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 				DisableValueBlocks:        true,
 			}
 			if hasBlobHandles {
-				opts.BlobReferenceTierGetter = blobReferenceTierGetter
+				// Build BlobReferenceTiers for testing. For test simplicity, we
+				// use the pattern: odd reference IDs are hot, even are cold.
+				// We allocate enough space for up to 100 references.
+				tiers := make([]base.StorageTier, 100)
+				for i := range tiers {
+					if i%2 == 1 {
+						tiers[i] = base.HotTier
+					} else {
+						tiers[i] = base.ColdTier
+					}
+				}
+				opts.SetInternal(sstableinternal.WriterOptions{
+					BlobReferenceTiers: tiers,
+				})
 			}
 
 			meta, r, err = runBuildCmd(td, opts, nil /* cacheHandle */)

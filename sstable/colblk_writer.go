@@ -478,7 +478,7 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 	}
 
 	// Track blob reference bytes in tiering histogram by tier.
-	if w.opts.TieringSpanIDGetter != nil && w.opts.BlobReferenceTierGetter != nil && w.opts.TieringAttributeExtractor != nil {
+	if w.opts.TieringSpanIDGetter != nil && w.opts.internal.BlobReferenceTiers != nil && w.opts.TieringAttributeExtractor != nil {
 		if !meta.IsSet() {
 			meta.TieringSpanID = w.opts.TieringSpanIDGetter(key.UserKey)
 			attribute, err := w.opts.TieringAttributeExtractor(key.UserKey, int(eval.kcmp.PrefixLen), nil)
@@ -489,13 +489,14 @@ func (w *RawColumnWriter) AddWithBlobHandle(
 		}
 
 		var kindAndTier tieredmeta.KindAndTier
-		switch w.opts.BlobReferenceTierGetter(h.ReferenceID) {
+		tier := w.opts.internal.BlobReferenceTiers[h.ReferenceID]
+		switch tier {
 		case base.HotTier:
 			kindAndTier = tieredmeta.SSTableBlobReferenceHotBytes
 		case base.ColdTier:
 			kindAndTier = tieredmeta.SSTableBlobReferenceColdBytes
 		default:
-			panic(errors.AssertionFailedf("unexpected tier %s", w.opts.BlobReferenceTierGetter(h.ReferenceID)))
+			panic(errors.AssertionFailedf("unexpected tier %s", tier))
 		}
 		w.tieringHistogramBlock.Add(kindAndTier, meta.TieringSpanID, meta.TieringAttribute,
 			uint64(h.ValueLen))

@@ -84,6 +84,9 @@ type pendingReference struct {
 	// from an existing blob reference, or is a new reference being
 	// written to a new blob file.
 	preserved bool
+	// tier indicates the storage tier (hot or cold) where the blob file is
+	// stored.
+	tier base.StorageTier
 }
 
 type blobWriterAndMeta struct {
@@ -338,16 +341,25 @@ func (vs *ValueSeparator) preserveBlobReference(
 	fileID := lv.Fetcher.BlobFileID
 
 	var refID base.BlobReferenceID
+	var tier base.StorageTier
 	if refIdx := slices.IndexFunc(vs.currPendingReferences, func(ref pendingReference) bool {
 		return ref.blobFileID == fileID
 	}); refIdx != -1 {
 		refID = base.BlobReferenceID(refIdx)
+		tier = vs.currPendingReferences[refIdx].tier
 	} else {
 		refID = base.BlobReferenceID(len(vs.currPendingReferences))
+		// Look up the tier from the input blob file metadata.
+		phys, ok := vs.inputBlobPhysicalFiles[fileID]
+		if !ok {
+			panic(errors.AssertionFailedf("pebble: blob file %s not found in input blob files", fileID))
+		}
+		tier = phys.Tier
 		vs.currPendingReferences = append(vs.currPendingReferences, pendingReference{
 			blobFileID: fileID,
 			valueSize:  0,
 			preserved:  true,
+			tier:       tier,
 		})
 	}
 	if invariants.Enabled && vs.currPendingReferences[refID].blobFileID != fileID {
@@ -368,7 +380,7 @@ func (vs *ValueSeparator) preserveBlobReference(
 		return err
 	}
 	vs.currPendingReferences[refID].valueSize += uint64(lv.Fetcher.Attribute.ValueLen)
-	vs.blobTiers[base.HotTier].totalPreservedValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
+	vs.blobTiers[tier].totalPreservedValueSize += uint64(lv.Fetcher.Attribute.ValueLen)
 	return nil
 }
 
@@ -425,6 +437,7 @@ func (vs *ValueSeparator) getWriter(blobTier base.StorageTier) (*blobWriterAndMe
 	wnm.refID = base.BlobReferenceID(len(vs.currPendingReferences))
 	vs.currPendingReferences = append(vs.currPendingReferences, pendingReference{
 		blobFileID: base.BlobFileID(objMeta.DiskFileNum),
+		tier:       blobTier,
 	})
 	return wnm, nil
 }
@@ -448,6 +461,18 @@ func (vs *ValueSeparator) maybeCheckInvariants() {
 			}
 		}
 	}
+}
+
+// BlobReferenceTiers returns a slice of storage tiers for the current pending
+// blob references. The tier for reference ID i is BlobReferenceTiers()[i].
+// This should be called to populate sstableinternal.WriterOptions.BlobReferenceTiers
+// for the sstable writer.
+func (vs *ValueSeparator) BlobReferenceTiers() []base.StorageTier {
+	tiers := make([]base.StorageTier, len(vs.currPendingReferences))
+	for i := range vs.currPendingReferences {
+		tiers[i] = vs.currPendingReferences[i].tier
+	}
+	return tiers
 }
 
 // FinishOutput closes the current blob file (if any). It returns the stats
