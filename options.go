@@ -51,6 +51,7 @@ const (
 // These provide public access to internal types needed by external users.
 type SpanPolicy = base.SpanPolicy
 type ValueStoragePolicyAdjustment = base.ValueStoragePolicyAdjustment
+type UserKeyBounds = base.UserKeyBounds
 
 type TableFilterPolicy = base.TableFilterPolicy
 type TableFilterDecoder = base.TableFilterDecoder
@@ -1303,7 +1304,7 @@ var ValueStorageLowReadLatency = base.ValueStoragePolicyAdjustment{
 // is allowed to change the returned policy arbitrarily.
 //
 // If this function returns an error, the flush or compaction will be aborted.
-type SpanPolicyFunc func(bounds base.UserKeyBounds) (base.SpanPolicy, error)
+type SpanPolicyFunc func(bounds UserKeyBounds) (SpanPolicy, error)
 
 // MakeStaticSpanPolicyFunc returns a SpanPolicyFunc that applies a given policy
 // to the given span (and the default policy outside the span). The supplied
