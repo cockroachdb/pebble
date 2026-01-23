@@ -31,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/problemspans"
+	"github.com/cockroachdb/pebble/internal/rangedel"
 	"github.com/cockroachdb/pebble/internal/tombspan"
 	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/objstorage"
@@ -1342,19 +1343,17 @@ func (i *Iterator) constructPointIter(
 		} else {
 			i.batch.batch.initInternalIter(&i.opts, &i.batch.pointIter)
 			i.batch.batch.initRangeDelIter(&i.opts, &i.batch.rangeDelIter, i.batch.batchSeqNum)
+
+			mil := mergingIterLevel{iter: &i.batch.pointIter, getTombstone: nil}
 			// Only include the batch's rangedel iterator if it's non-empty.
 			// This requires some subtle logic in the case a rangedel is later
 			// written to the batch and the view of the batch is refreshed
 			// during a call to SetOptions—in this case, we need to reconstruct
 			// the point iterator to add the batch rangedel iterator.
-			var rangeDelIter keyspan.FragmentIterator
 			if i.batch.rangeDelIter.Count() > 0 {
-				rangeDelIter = &i.batch.rangeDelIter
+				mil.iter, mil.getTombstone = rangedel.Interleave(i.comparer, mil.iter, &i.batch.rangeDelIter)
 			}
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         &i.batch.pointIter,
-				rangeDelIter: rangeDelIter,
-			})
+			mlevels = append(mlevels, mil)
 		}
 	}
 
@@ -1370,10 +1369,10 @@ func (i *Iterator) constructPointIter(
 			} else {
 				iter = mem.newIter(&i.opts)
 			}
-			mlevels = append(mlevels, mergingIterLevel{
-				iter:         iter,
-				rangeDelIter: mem.newRangeDelIter(&i.opts),
-			})
+			mil := mergingIterLevel{}
+			mil.iter, mil.getTombstone = rangedel.Interleave(
+				i.comparer, iter, mem.newRangeDelIter(&i.opts))
+			mlevels = append(mlevels, mil)
 		}
 
 		// Next are the file levels: L0 sub-levels followed by lower levels.
@@ -1386,10 +1385,11 @@ func (i *Iterator) constructPointIter(
 			li := &levels[levelsIndex]
 
 			li.init(ctx, i.opts, i.comparer, i.newIters, files, level, internalOpts)
-			li.initRangeDel(&mlevels[mlevelsIndex])
+			li.interleaveRangeDels = true
 			li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
 			mlevels[mlevelsIndex].levelIter = li
 			mlevels[mlevelsIndex].iter = invalidating.MaybeWrapIfInvariants(li)
+			mlevels[mlevelsIndex].getTombstone = li.getTombstone
 
 			levelsIndex++
 			mlevelsIndex++
