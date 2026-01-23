@@ -7,6 +7,7 @@ package base
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -35,6 +36,25 @@ type SpanPolicy struct {
 	// for KVs.
 	ValueStoragePolicy ValueStoragePolicyAdjustment
 
+	// TieringPolicy is an optional policy for specifying which key-value pairs
+	// should be stored in the warm or cold tier. Once a SpanPolicy specifies a
+	// non-zero TieringPolicy, all subsequent requests for a SpanPolicy for a key
+	// k in [KeyRange.Start, KeyRange.End) must not return a TieringPolicy that
+	// returns a different value from TieringPolicy.SpanID.
+	//
+	// Due to eventual consistency at the CockroachDB layer, we tolerate the
+	// TieringPolicy field to appear and disappear (become zero), as long as in
+	// all appearances the SpanID is the same.
+	//
+	// Additionally, a span may stop being used permanently by a higher layer,
+	// and the data deleted, in which case it can reuse the same SpanID for a
+	// different span. This must only be done when the deletion has destroyed
+	// the data in the LSM, say via an excise.
+	//
+	// Pebble will remember the set of (KeyRange, SpanID) pairs that it has seen
+	// in its history, for error checking the aforementioned invariant.
+	TieringPolicy TieringPolicyAndExtractor
+
 	// NOTE: update the IsDefault() method if you add new fields to this struct.
 }
 
@@ -42,7 +62,8 @@ type SpanPolicy struct {
 // the fields other than KeyRange are set.
 func (p *SpanPolicy) IsDefault() bool {
 	return !p.PreferFastCompression &&
-		p.ValueStoragePolicy == (ValueStoragePolicyAdjustment{})
+		!p.ValueStoragePolicy.IsSet() &&
+		!p.TieringPolicy.IsSet()
 }
 
 // StillCovers takes a key that is no smaller than the span policy start key (if
@@ -73,8 +94,11 @@ func (p SpanPolicy) String() string {
 	if p.PreferFastCompression {
 		policy = crstrings.WithSep(policy, ",", "fast-compression")
 	}
-	if vsp := p.ValueStoragePolicy.String(); vsp != "" {
-		policy = crstrings.WithSep(policy, ",", vsp)
+	if p.ValueStoragePolicy.IsSet() {
+		policy = crstrings.WithSep(policy, ",", p.ValueStoragePolicy.String())
+	}
+	if p.TieringPolicy.IsSet() {
+		policy = crstrings.WithSep(policy, ",", p.TieringPolicy.String())
 	}
 	if policy == "" {
 		policy = "default"
@@ -121,6 +145,10 @@ type ValueStoragePolicyAdjustment struct {
 	MinimumMVCCGarbageSize int
 }
 
+func (vsp *ValueStoragePolicyAdjustment) IsSet() bool {
+	return *vsp != (ValueStoragePolicyAdjustment{})
+}
+
 func (vsp *ValueStoragePolicyAdjustment) ContainsOverrides() bool {
 	return vsp.OverrideBlobSeparationMinimumSize > 0 || vsp.DisableSeparationBySuffix ||
 		vsp.MinimumMVCCGarbageSize > 0
@@ -141,4 +169,111 @@ func (vsp ValueStoragePolicyAdjustment) String() string {
 		f = append(f, fmt.Sprintf("minimum-mvcc-garbage-size=%d", vsp.MinimumMVCCGarbageSize))
 	}
 	return strings.Join(f, ",")
+}
+
+// TieringAttribute is a user-specified attribute for the key-value pair.
+//
+// Currently, the value is always a unix timestamp in seconds (what
+// time.Time.Unix() returns), but this could be extended in the future.
+// and should be opaque to most of the Pebble code.
+//
+// The zero value is reserved to mean "no attribute" or "unknown".
+type TieringAttribute uint64
+
+// TieringSpanID is an identifier that provides a context for interpreting a
+// TieringAttribute value. At any point in time, the span policies determine
+// a set of non-overlapping key regions with distinct TieringSpanIDs.
+type TieringSpanID uint64
+
+// TieringPolicy defines a policy for tiering key-value pairs into warm and
+// cold tiers.
+//
+// The default (zero) value indicates no tiering.
+type TieringPolicy struct {
+	// SpanID is an immutable id for the key span to which this policy applies.
+	// The actual span is specified by the SpanPolicy.KeyRange context in which
+	// this policy is returned.
+	SpanID TieringSpanID
+
+	// AgeThreshold defines a threshold based on age. Each TieringAttribute for
+	// this SpanID is assumed to be a Unix time in seconds (see time.Time.Unix()).
+	// KVs with TieringAttribute time older than this threshold belongs in the cold
+	// tier.
+	//
+	// The threshold for a SpanID can change (rarely), as a user reconfiguration.
+	//
+	// Note: in the future, we may add other mechanisms to set the cold/hot
+	// threshold; we should not assume that TieringAttribute is a timestamp
+	// except in the context of interpreting a specific policy.
+	AgeThreshold time.Duration
+}
+
+func (tp TieringPolicy) IsSet() bool {
+	return tp.SpanID != 0
+}
+
+func (tp TieringPolicy) String() string {
+	if tp.SpanID == 0 {
+		return ""
+	}
+	return fmt.Sprintf("tiering:span=%d/age=%s", tp.SpanID, tp.AgeThreshold)
+}
+
+// TieringPolicyAndExtractor defines a tiering policy and an extractor for the
+// tiering attribute for that policy.
+//
+// Currently, the only way to retrieve a TieringPolicyAndExtractor is via
+// SpanPolicyFunc, by passing a key parameter. The policy is needed by Pebble
+// in the following cases:
+//
+//   - During the execution phase of a flush or a sstable compaction, to do
+//     attribute extraction, or to decide which tier a particular row belongs
+//     to. Since the key is known, the SpanPolicy can be retrieved with that
+//     key. Typically, attribute extraction is done during flushes, and we
+//     never re-extract during compactions. However, due to the eventual
+//     consistency of the tiering policies, we may need to extract for the
+//     first time during a sstable compaction. Note that we cannot extract for
+//     the first time when doing a blob file rewrite compaction since the key
+//     that determines the policy is not known.
+//
+//   - During a blob file rewrite compaction. We do not store the key with
+//     each value in the blob file, but we store a non-tight key span for the
+//     whole blob file. The start key of that span is used to retrieve the
+//     first SpanPolicy, and the SpanPolicy.KeyRange.End is used to iterate
+//     until we reach the blob file end key. Since the blob file may have
+//     been rewritten in the past (hence the key span is not tight), we may
+//     retrieve some unnecessary policies, but we will have all the SpanIDs
+//     that could possibly apply to these values and can stash them into a
+//     SpanID => TieringPolicy map, for use in this compaction. NB: due to
+//     eventual consistency, the SpanIDs in this map may be a subset of the
+//     SpanIDs in the blob file. For the ones with an unknown policy, we will
+//     not change the tier.
+//
+//   - Before starting a sstable compaction, a decision needs to be made
+//     whether to rewrite certain warm and cold blob files referenced in the
+//     compaction. This rewrite decision uses the latest tiering policies for
+//     all the spanIDs in the inputs of the compactions, and their tiering
+//     attribute histograms. It may result in a decision to rewrite a blob
+//     file, if it allows for significant movement of data between tiers. In a
+//     similar vein, when writing new blob files, a decision needs to be made
+//     up front whether there is enough cold data to justify writing a cold
+//     blob file (to avoid having tiny files). The same iteration approach
+//     mentioned earlier is used.
+//
+//   - Periodic calls, to learn the latest AgeThreshold, so that it can
+//     initiate explicit rewrites of files that are not being rewritten
+//     normally, to move data between tiers. The same iteration approach
+//     mentioned earlier is used to iterate over *all* tiering policies.
+type TieringPolicyAndExtractor struct {
+	TieringPolicy
+
+	// ExtractAttribute extracts the tiering attribute from the key-value pair.
+	// Once extracted, the attribute can be remembered since it must never
+	// change for this key-value pair during the lifetime of the DB.
+	//
+	// Successful extraction must not return a 0 attribute. Pebble reserves the
+	// 0 attribute (with a non-zero SpanID) to represent an extraction error,
+	// and stats are maintained for this so that users can enquire about the
+	// bytes in the system that have such errors.
+	ExtractAttribute func(userKey []byte, value []byte) (TieringAttribute, error)
 }
