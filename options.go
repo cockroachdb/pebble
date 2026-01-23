@@ -52,6 +52,10 @@ const (
 // These provide public access to internal types needed by external users.
 type SpanPolicy = base.SpanPolicy
 type ValueStoragePolicyAdjustment = base.ValueStoragePolicyAdjustment
+type TieringPolicy = base.TieringPolicy
+type TieringSpanID = base.TieringSpanID
+type TieringAttribute = base.TieringAttribute
+type TieringPolicyAndExtractor = base.TieringPolicyAndExtractor
 type UserKeyBounds = base.UserKeyBounds
 
 type TableFilterPolicy = base.TableFilterPolicy
@@ -812,6 +816,12 @@ type Options struct {
 			//
 			// The default value is 0 (disabled).
 			MaxAge time.Duration
+		}
+
+		Tiering struct {
+			// NowFn can be used to override the current time used to decide if data
+			// belongs in the cold or hot tier.
+			NowFn func() time.Time
 		}
 	}
 
@@ -1744,6 +1754,9 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.Experimental.VirtualTableRewriteUnreferencedFraction == nil {
 		o.Experimental.VirtualTableRewriteUnreferencedFraction = func() float64 { return defaultVirtualTableUnreferencedFraction }
+	}
+	if o.Experimental.Tiering.NowFn == nil {
+		o.Experimental.Tiering.NowFn = time.Now
 	}
 	if o.private.timeNow == nil {
 		o.private.timeNow = time.Now

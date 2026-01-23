@@ -663,20 +663,6 @@ type InternalKV struct {
 	V InternalValue
 }
 
-// TieringAttribute is a user-specified attribute for the key-value pair.
-//
-// Currently, the value is always a unix timestamp in seconds (what
-// time.Time.Unix() returns), but this could be extended in the future.
-// and should be opaque to most of the Pebble code.
-//
-// The zero value is reserved to mean "no attribute" or "unknown".
-type TieringAttribute uint64
-
-// TieringSpanID is an identifier that provides a context for interpreting a
-// TieringAttribute value. At any point in time, the span policies determine
-// a set of non-overlapping key regions with distinct TieringSpanIDs.
-type TieringSpanID uint64
-
 // KVMeta describes optional metadata associated with an `InternalKV`.
 // It's currently produced only by sstable-backed iterators and is not embedded
 // within `InternalKV` to avoid overhead on the common iteration path.
