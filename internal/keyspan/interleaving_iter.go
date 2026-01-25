@@ -182,8 +182,6 @@ type interleavePos int8
 
 const (
 	posUninitialized interleavePos = iota
-	posBeyondLowerBound
-	posBeyondUpperBound
 	posExhausted
 	posPointKey
 	posKeyspanStart
@@ -241,18 +239,9 @@ func (i *InterleavingIter) InitSeekGE(
 	prefix, key []byte, pointKV *base.InternalKV,
 ) *base.InternalKV {
 	i.dir = +1
-	i.prefix = prefix
 	i.clearMask()
+	i.prefix = prefix
 	i.savePoint(pointKV)
-	// During a Seek[Prefix]GE, cascading seeks due to range deletions may
-	// result in seeking to or beyond the upper bound. Such a seek is a no-op.
-	// We leave i.pos as posBeyondUpperBound so that a subsequent Prev will seek
-	// the iterator approriately for the upper bound.
-	if i.opts.UpperBound != nil && i.cmp(key, i.opts.UpperBound) >= 0 {
-		i.pos = posBeyondUpperBound
-		return nil
-	}
-
 	// NB: This keyspanSeekGE call will truncate the span to the seek key if
 	// necessary. This truncation is important for cases where a switch to
 	// combined iteration is made during a user-initiated SeekGE.
@@ -275,15 +264,6 @@ func (i *InterleavingIter) InitSeekLT(key []byte, pointKV *base.InternalKV) *bas
 	i.dir = -1
 	i.clearMask()
 	i.savePoint(pointKV)
-	// During a SeekLT, cascading seeks due to range deletions may result in
-	// seeking to or beyond the lower bound. Such a seek is a no-op.  We leave
-	// i.pos as posBeyondLowerBound so that a subsequent Next will seek the
-	// iterator approriately for the lower bound.
-	if i.opts.LowerBound != nil && i.cmp(i.opts.LowerBound, key) >= 0 {
-		i.pos = posBeyondLowerBound
-		return nil
-	}
-
 	i.keyspanSeekLT(key)
 	i.computeLargestPos()
 	return i.yieldPosition(i.opts.LowerBound, i.prevPos)
@@ -302,18 +282,8 @@ func (i *InterleavingIter) InitSeekLT(key []byte, pointKV *base.InternalKV) *bas
 //	i.lower ≤ key
 func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	i.err = nil
-	i.dir = +1
 	i.clearMask()
 	i.disablePrefixMode()
-	// During a Seek[Prefix]GE, cascading seeks due to range deletions may
-	// result in seeking to or beyond the upper bound. Such a seek is a no-op.
-	// We leave i.pos as posBeyondUpperBound so that a subsequent Prev will seek
-	// the iterator approriately for the upper bound.
-	if i.opts.UpperBound != nil && i.cmp(key, i.opts.UpperBound) >= 0 {
-		i.pos = posBeyondUpperBound
-		return nil
-	}
-
 	i.savePoint(i.pointIter.SeekGE(key, flags))
 
 	// We need to seek the keyspan iterator too. If the keyspan iterator was
@@ -324,10 +294,12 @@ func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Inte
 		// truncate the span to the iterator's bounds.
 		i.saveSpan(i.span, nil)
 		i.enforceBoundsForward()
+		i.savedKeyspan()
 	} else {
 		i.keyspanSeekGE(key)
 	}
 
+	i.dir = +1
 	i.computeSmallestPos()
 	return i.yieldPosition(key, i.nextPos)
 }
@@ -347,18 +319,8 @@ func (i *InterleavingIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
 	i.err = nil
-	i.dir = +1
 	i.clearMask()
 	i.prefix = prefix
-	// During a Seek[Prefix]GE, cascading seeks due to range deletions may
-	// result in seeking to or beyond the upper bound. Such a seek is a no-op.
-	// We leave i.pos as posBeyondUpperBound so that a subsequent Prev will seek
-	// the iterator approriately for the upper bound.
-	if i.opts.UpperBound != nil && i.cmp(key, i.opts.UpperBound) >= 0 {
-		i.pos = posBeyondUpperBound
-		return nil
-	}
-
 	i.savePoint(i.pointIter.SeekPrefixGE(prefix, key, flags))
 
 	// We need to seek the keyspan iterator too. If the keyspan iterator was
@@ -390,6 +352,7 @@ func (i *InterleavingIter) SeekPrefixGE(
 			// truncate the span to the iterator's bounds.
 			i.saveSpan(i.span, nil)
 			i.enforceBoundsForward()
+			i.savedKeyspan()
 			seekKeyspanIter = false
 		}
 	}
@@ -397,6 +360,7 @@ func (i *InterleavingIter) SeekPrefixGE(
 		i.keyspanSeekGE(key)
 	}
 
+	i.dir = +1
 	i.computeSmallestPos()
 	return i.yieldPosition(key, i.nextPos)
 }
@@ -404,18 +368,8 @@ func (i *InterleavingIter) SeekPrefixGE(
 // SeekLT implements (base.InternalIterator).SeekLT.
 func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	i.err = nil
-	i.dir = -1
 	i.clearMask()
 	i.disablePrefixMode()
-	// During a SeekLT, cascading seeks due to range deletions may result in
-	// seeking to or beyond the lower bound. Such a seek is a no-op.  We leave
-	// i.pos as posBeyondLowerBound so that a subsequent Next will seek the
-	// iterator approriately for the lower bound.
-	if i.opts.LowerBound != nil && i.cmp(i.opts.LowerBound, key) >= 0 {
-		i.pos = posBeyondLowerBound
-		return nil
-	}
-
 	i.savePoint(i.pointIter.SeekLT(key, flags))
 
 	// We need to seek the keyspan iterator too. If the keyspan iterator was
@@ -426,10 +380,27 @@ func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.Inte
 		// truncate the span to the iterator's bounds.
 		i.saveSpan(i.span, nil)
 		i.enforceBoundsBackward()
+		// The span's start key is still not guaranteed to be less than key,
+		// because of the bounds enforcement. Consider the following example:
+		//
+		// Bounds are set to [d,e). The user performs a SeekLT(d). The
+		// FragmentIterator.SeekLT lands on a span [b,f). This span has a start
+		// key less than d, as expected. Above, saveSpanBackward truncates the
+		// span to match the iterator's current bounds, modifying the span to
+		// [d,e), which does not overlap the search space of [-∞, d).
+		//
+		// This problem is a consequence of the SeekLT's exclusive search key
+		// and the fact that we don't perform bounds truncation at every leaf
+		// iterator.
+		if i.span != nil && i.truncated && i.cmp(i.truncatedSpan.Start, key) >= 0 {
+			i.span = nil
+		}
+		i.savedKeyspan()
 	} else {
 		i.keyspanSeekLT(key)
 	}
 
+	i.dir = -1
 	i.computeLargestPos()
 	return i.yieldPosition(i.opts.LowerBound, i.prevPos)
 }
@@ -442,6 +413,7 @@ func (i *InterleavingIter) First() *base.InternalKV {
 	i.savePoint(i.pointIter.First())
 	i.saveSpan(i.keyspanIter.First())
 	i.enforceBoundsForward()
+	i.savedKeyspan()
 	i.dir = +1
 	i.computeSmallestPos()
 	return i.yieldPosition(i.opts.LowerBound, i.nextPos)
@@ -455,6 +427,7 @@ func (i *InterleavingIter) Last() *base.InternalKV {
 	i.savePoint(i.pointIter.Last())
 	i.saveSpan(i.keyspanIter.Last())
 	i.enforceBoundsBackward()
+	i.savedKeyspan()
 	i.dir = -1
 	i.computeLargestPos()
 	return i.yieldPosition(i.opts.LowerBound, i.prevPos)
@@ -463,12 +436,9 @@ func (i *InterleavingIter) Last() *base.InternalKV {
 // Next implements (base.InternalIterator).Next.
 func (i *InterleavingIter) Next() *base.InternalKV {
 	if i.dir == -1 {
-		if i.pos == posBeyondLowerBound {
-			return i.seekBeginning()
-		}
-
 		// Switching directions.
 		i.dir = +1
+
 		if i.opts.Mask != nil {
 			// Clear the mask while we reposition the point iterator. While
 			// switching directions, we may move the point iterator outside of
@@ -495,6 +465,7 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 			if !i.withinSpan {
 				i.saveSpan(i.keyspanIter.Next())
 				i.enforceBoundsForward()
+				i.savedKeyspan()
 			}
 		case posKeyspanStart:
 			i.withinSpan = true
@@ -547,10 +518,6 @@ func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 // Prev implements (base.InternalIterator).Prev.
 func (i *InterleavingIter) Prev() *base.InternalKV {
 	if i.dir == +1 {
-		if i.pos == posBeyondUpperBound {
-			return i.seekEnd()
-		}
-
 		// Switching directions.
 		i.dir = -1
 
@@ -580,6 +547,7 @@ func (i *InterleavingIter) Prev() *base.InternalKV {
 			if !i.withinSpan {
 				i.saveSpan(i.keyspanIter.Prev())
 				i.enforceBoundsBackward()
+				i.savedKeyspan()
 			}
 		case posKeyspanStart:
 			// Since we're positioned on a Span, the pointIter is positioned
@@ -610,7 +578,10 @@ func (i *InterleavingIter) Prev() *base.InternalKV {
 			i.switchPointIteratorIntoReverse()
 		}
 
-		i.spanMarkerTruncated = false
+		if i.spanMarkerTruncated {
+			// Save the keyspan again to clear truncation.
+			i.savedKeyspan()
+		}
 		// Fallthrough to calling i.prevPos.
 	}
 	i.prevPos()
@@ -655,20 +626,6 @@ func (i *InterleavingIter) computeLargestPos() {
 	i.pos = posExhausted
 }
 
-func (i *InterleavingIter) seekBeginning() *base.InternalKV {
-	if i.opts.LowerBound == nil {
-		return i.First()
-	}
-	return i.SeekGE(i.opts.LowerBound, base.SeekGEFlagsNone)
-}
-
-func (i *InterleavingIter) seekEnd() *base.InternalKV {
-	if i.opts.UpperBound == nil {
-		return i.Last()
-	}
-	return i.SeekLT(i.opts.UpperBound, base.SeekLTFlagsNone)
-}
-
 // nextPos advances the iterator one position in the forward direction.
 func (i *InterleavingIter) nextPos() {
 	if invariants.Enabled {
@@ -693,6 +650,7 @@ func (i *InterleavingIter) nextPos() {
 		i.switchPointIteratorIntoForward()
 		i.saveSpan(i.keyspanIter.Next())
 		i.enforceBoundsForward()
+		i.savedKeyspan()
 		i.computeSmallestPos()
 	case posPointKey:
 		i.savePoint(i.pointIter.Next())
@@ -735,6 +693,7 @@ func (i *InterleavingIter) nextPos() {
 	case posKeyspanEnd:
 		i.saveSpan(i.keyspanIter.Next())
 		i.enforceBoundsForward()
+		i.savedKeyspan()
 		i.computeSmallestPos()
 	default:
 		panic(fmt.Sprintf("unexpected pos=%d", i.pos))
@@ -765,6 +724,7 @@ func (i *InterleavingIter) prevPos() {
 		i.switchPointIteratorIntoReverse()
 		i.saveSpan(i.keyspanIter.Prev())
 		i.enforceBoundsBackward()
+		i.savedKeyspan()
 		i.computeLargestPos()
 	case posPointKey:
 		i.savePoint(i.pointIter.Prev())
@@ -795,6 +755,7 @@ func (i *InterleavingIter) prevPos() {
 	case posKeyspanStart:
 		i.saveSpan(i.keyspanIter.Prev())
 		i.enforceBoundsBackward()
+		i.savedKeyspan()
 		i.computeLargestPos()
 	case posKeyspanEnd:
 		// Either a point key or the span's start key is previous.
@@ -879,12 +840,28 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 func (i *InterleavingIter) keyspanSeekGE(k []byte) {
 	i.saveSpan(i.keyspanIter.SeekGE(k))
 	i.enforceBoundsForward()
+	i.savedKeyspan()
 }
 
 // keyspanSeekLT seeks the keyspan iterator to the last span covering a key < k.
 func (i *InterleavingIter) keyspanSeekLT(k []byte) {
 	i.saveSpan(i.keyspanIter.SeekLT(k))
 	i.enforceBoundsBackward()
+	// The current span's start key is not guaranteed to be less than key,
+	// because of the bounds enforcement. Consider the following example:
+	//
+	// Bounds are set to [d,e). The user performs a SeekLT(d). The
+	// FragmentIterator.SeekLT lands on a span [b,f). This span has a start key
+	// less than d, as expected. Above, saveSpanBackward truncates the span to
+	// match the iterator's current bounds, modifying the span to [d,e), which
+	// does not overlap the search space of [-∞, d).
+	//
+	// This problem is a consequence of the SeekLT's exclusive search key and
+	// the fact that we don't perform bounds truncation at every leaf iterator.
+	if i.span != nil && i.truncated && i.cmp(i.truncatedSpan.Start, k) >= 0 {
+		i.span = nil
+	}
+	i.savedKeyspan()
 }
 
 // switchPointIteratorIntoReverse switches the direction of the point iterator
@@ -919,8 +896,6 @@ func (i *InterleavingIter) saveSpan(span *Span, err error) {
 }
 
 func (i *InterleavingIter) enforceBoundsForward() {
-	i.spanMarkerTruncated = false
-	i.maskSpanChangedCalled = false
 	if i.span == nil {
 		return
 	}
@@ -933,8 +908,6 @@ func (i *InterleavingIter) enforceBoundsForward() {
 }
 
 func (i *InterleavingIter) enforceBoundsBackward() {
-	i.spanMarkerTruncated = false
-	i.maskSpanChangedCalled = false
 	if i.span == nil {
 		return
 	}
@@ -976,6 +949,11 @@ func (i *InterleavingIter) maybeTruncateSpan() {
 			i.truncatedSpan.End = i.nextPrefixBuf
 		}
 	}
+	// If the span is truncated and the start and end keys are the same, the
+	// span is empty.
+	if i.truncated && i.comparer.Equal(i.truncatedSpan.Start, i.truncatedSpan.End) {
+		i.span = nil
+	}
 }
 
 func (i *InterleavingIter) yieldNil() *base.InternalKV {
@@ -997,6 +975,15 @@ func (i *InterleavingIter) yieldSyntheticSpanStartMarker(lowerBound []byte) *bas
 	// argument is guaranteed to be ≥ i.lower. It may be equal to the SetBounds
 	// lower bound, or it could come from a SeekGE or SeekPrefixGE search key.
 	if lowerBound != nil && i.cmp(lowerBound, i.startKey()) > 0 {
+		// Truncating to the lower bound may violate the upper bound if
+		// lowerBound == i.upper. For example, a SeekGE(k) uses k as a lower
+		// bound for truncating a span. The span a-z will be truncated to [k,
+		// z). If i.upper == k, we'd mistakenly try to return a span [k, k), an
+		// invariant violation.
+		if i.comparer.Equal(lowerBound, i.opts.UpperBound) {
+			return i.yieldNil()
+		}
+
 		// If the lowerBound argument came from a SeekGE or SeekPrefixGE
 		// call, and it may be backed by a user-provided byte slice that is not
 		// guaranteed to be stable.
@@ -1051,6 +1038,11 @@ func (i *InterleavingIter) verify(kv *base.InternalKV) *base.InternalKV {
 		}
 	}
 	return kv
+}
+
+func (i *InterleavingIter) savedKeyspan() {
+	i.spanMarkerTruncated = false
+	i.maskSpanChangedCalled = false
 }
 
 // updateMask updates the current mask, if a mask is configured and the mask

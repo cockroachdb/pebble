@@ -231,8 +231,7 @@ seek-lt tomago
 . parsnip#3,SET: (no span)
 # SpanChanged(nil)
 # SpanChanged(nil)
-.
-# SpanChanged(nil)
+.# SpanChanged(nil)
 # SpanChanged(q-z:{(#14,RANGEKEYSET,@9,mangos)})
 . q#inf,RANGEKEYSET: q-z:{(#14,RANGEKEYSET,@9,mangos)}
 # SpanChanged(nil)
@@ -698,12 +697,14 @@ set-bounds a c
 seek-ge c
 ----
 # SpanChanged(nil)
+# SpanChanged(nil)
 .
 
 iter
 set-bounds a c
 seek-lt a
 ----
+# SpanChanged(nil)
 # SpanChanged(nil)
 .
 
@@ -726,6 +727,7 @@ iter
 set-bounds d e
 seek-lt d
 ----
+# SpanChanged(nil)
 # SpanChanged(nil)
 .
 
@@ -954,43 +956,3 @@ prev
 . a#inf,RANGEDEL: a-b:{(#5,RANGEDEL)}
 # SpanChanged(nil)
 .
-
-define-pointkeys
-a#10,SET
-b#10,SET
-c#10,SET
-d#10,SET
-----
-OK
-
-define-spans
-a-c:{(#11,RANGEDEL)}
-----
-OK
-
-iter interleave-end-keys
-set-bounds b c
-seek-lt b
-next
-next
-----
-# SpanChanged(nil)
-.
-# SpanChanged(nil)
-# SpanChanged(b-c:{(#11,RANGEDEL)})
-. b#inf,RANGEDEL: b-c:{(#11,RANGEDEL)}
-. b#10,SET: b-c:{(#11,RANGEDEL)}
-
-
-iter interleave-end-keys
-set-bounds a b
-seek-ge b
-prev
-prev
-----
-# SpanChanged(nil)
-.
-# SpanChanged(nil)
-. b#inf,RANGEDEL: a-b:{(#11,RANGEDEL)}
-# SpanChanged(a-b:{(#11,RANGEDEL)})
-. a#10,SET: a-b:{(#11,RANGEDEL)}

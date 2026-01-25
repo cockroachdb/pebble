@@ -93,6 +93,8 @@ b@8: (b8, .)
 000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
 000004.PointKeys.Next() = (b@2#7,SET,"7")
+000004.PointKeys.SeekPrefixGE("c") = nil
+000004.RangeDels.opSpanSeekGE("c") = nil
 000004.PointKeys.Close() = nil
 000004.RangeDels.opSpanClose() = nil
 000004.RangeDels.opSpanClose() = nil

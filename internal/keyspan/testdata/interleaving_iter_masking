@@ -263,8 +263,7 @@ next
 . a#1,SET: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 . a@12#1,SET: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 # SpanChanged(nil)
-.
-# SpanChanged(nil)
+.# SpanChanged(nil)
 .
 
 iter masking-threshold=@10
@@ -280,8 +279,7 @@ prev
 . a#1,SET: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 . a#inf,RANGEKEYUNSET: a-c:{(#1,RANGEKEYUNSET,@5) (#1,RANGEKEYUNSET,@2)}
 # SpanChanged(nil)
-.
-# SpanChanged(nil)
+.# SpanChanged(nil)
 .
 
 # Test a scenario where a point key is masked in the forward direction, which in
