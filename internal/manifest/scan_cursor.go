@@ -72,7 +72,7 @@ func MakeScanCursor(f *TableMetadata, level int) ScanCursor {
 // been processed.
 //
 // The cursor is positioned such that the file would be considered "before" the
-// cursor (i.e., cursor.Compare(MakeScanCursorAtFile(f)) > 0).
+// cursor (i.e., cursor.Compare(MakeScanCursor(f, level)) > 0).
 func MakeScanCursorAfterFile(f *TableMetadata, level int) ScanCursor {
 	return ScanCursor{
 		Level:  level,
@@ -164,7 +164,7 @@ func (c *ScanCursor) FirstExternalFileInLevelIter(
 	return nil
 }
 
-// NextFile returns the first file after the cursor, returning the file and the
+// NextFile returns the first file at or after the cursor, returning the file and the
 // level. If no such file exists, returns nil.
 func (c *ScanCursor) NextFile(cmp base.Compare, v *Version) (_ *TableMetadata, level int) {
 	for !c.AtEnd() {
