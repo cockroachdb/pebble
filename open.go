@@ -481,6 +481,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.maybeScheduleFlush()
 	d.maybeScheduleCompaction()
 
+	// Start the background policy enforcer if enabled.
+	if opts.Experimental.SpanPolicyEnforcerOptions != nil {
+		d.spanPolicyEnforcer = newSpanPolicyEnforcer(d, *opts.Experimental.SpanPolicyEnforcerOptions)
+		d.spanPolicyEnforcer.Start()
+	}
+
 	// Locks in RecoveryDirLocks can be closed as soon as we've finished opening
 	// the database.
 	if err = rs.dirs.RecoveryDirLocks.Close(); err != nil {
