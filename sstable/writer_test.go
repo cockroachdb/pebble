@@ -627,15 +627,20 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 				td.ScanArgs(t, "block-size", &blockSize)
 			}
 
-			// Parse the test data which now includes tiering metadata.
-			kvs, err := ParseTestKVsAndSpans(td.Input, nil /* bv */)
+			bv := &blobtest.Values{}
+
+			kvs, err := ParseTestKVsAndSpans(td.Input, bv)
 			if err != nil {
 				return err.Error()
 			}
 			tieringMetadata := make(map[string]ParsedKVOrSpan)
+			hasBlobHandles := false
 			for _, kv := range kvs {
 				if kv.Meta != (base.KVMeta{}) && !kv.IsKeySpan() {
 					tieringMetadata[string(kv.Key.UserKey)] = kv
+				}
+				if kv.HasBlobValue() {
+					hasBlobHandles = true
 				}
 			}
 
@@ -652,21 +657,42 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 				return 0, nil
 			}
 
-			meta, r, err = runBuildCmd(td, &WriterOptions{
+			opts := &WriterOptions{
 				BlockSize:                 blockSize,
 				Comparer:                  testkeys.Comparer,
 				TableFormat:               TableFormatMax,
 				TieringSpanIDGetter:       tieringSpanIDGetter,
 				TieringAttributeExtractor: tieringAttributeExtractor,
-				WriteTieringHistograms:    len(tieringMetadata) > 0,
+				WriteTieringHistograms:    len(tieringMetadata) > 0 || hasBlobHandles,
 				DisableValueBlocks:        true,
-			}, nil /* cacheHandle */)
+			}
+			if hasBlobHandles {
+				// Build BlobReferenceTiers for testing. For test simplicity, we
+				// use the pattern: odd reference IDs are hot, even are cold.
+				// We allocate enough space for up to 100 references.
+				tiers := make([]base.StorageTier, 100)
+				for i := range tiers {
+					if i%2 == 1 {
+						tiers[i] = base.HotTier
+					} else {
+						tiers[i] = base.ColdTier
+					}
+				}
+				opts.SetInternal(sstableinternal.WriterOptions{
+					BlobReferenceTiers: tiers,
+				})
+			}
+
+			meta, r, err = runBuildCmd(td, opts, nil /* cacheHandle */)
 			if err != nil {
 				return err.Error()
 			}
 			return formatMeta(meta)
 
 		case "layout":
+			if r == nil {
+				return "error: no reader available (previous build may have failed)"
+			}
 			l, err := r.Layout()
 			if err != nil {
 				return err.Error()

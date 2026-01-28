@@ -245,11 +245,6 @@ type WriterOptions struct {
 	// sstable. Requires TieringSpanIDGetter and TieringAttributeExtractor to be set.
 	WriteTieringHistograms bool
 
-	// BlobReferenceTierGetter returns the storage tier for a blob reference ID.
-	// Used when WriteTieringHistograms is true to categorize blob references as
-	// hot or cold tier.
-	BlobReferenceTierGetter func(base.BlobReferenceID) base.StorageTier
-
 	// TieringThreshold is the tiering attribute threshold used to categorize keys
 	// as below or above threshold in the histogram summary.
 	TieringThreshold base.TieringAttribute

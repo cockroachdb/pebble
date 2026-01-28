@@ -541,6 +541,19 @@ func (w *RawRowWriter) AddWithBlobHandle(
 	return w.err
 }
 
+// AddWithDualTierBlobHandles implements the RawWriter interface. This
+// implementation does not support writing dual-tier blob value handles.
+func (w *RawRowWriter) AddWithDualTierBlobHandles(
+	key InternalKey,
+	hotHandle, secondaryHandle blob.InlineHandle,
+	attr base.ShortAttribute,
+	forceObsolete bool,
+	_ base.KVMeta,
+) error {
+	w.err = errors.Newf("pebble: dual-tier blob value handles are not supported in %s", w.tableFormat.String())
+	return w.err
+}
+
 func (w *RawRowWriter) makeAddPointDecisionV2(key InternalKey) error {
 	prevTrailer := w.lastPointKeyInfo.trailer
 	w.lastPointKeyInfo.trailer = key.Trailer
