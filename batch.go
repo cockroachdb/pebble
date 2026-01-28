@@ -1534,6 +1534,11 @@ func fragmentRangeKeys(frag *keyspan.Fragmenter, it internalIterator, count int)
 	return nil
 }
 
+// Capacity returns the amount of space left in storage till hitting max size
+func (b *Batch) Capacity() int {
+	return maxMemTableSize - len(b.data)
+}
+
 // Commit applies the batch to its parent writer.
 func (b *Batch) Commit(o *WriteOptions) error {
 	return b.db.Apply(b, o)
