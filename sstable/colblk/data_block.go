@@ -489,6 +489,10 @@ type DataBlockEncoder struct {
 	// blocks.
 	tieringSpanIDs    UintBuilder
 	tieringAttributes UintBuilder
+	// secondaryBlobHandles stores secondary blob handles for dual-tier blob values.
+	// This column is ONLY populated when a value exists in multiple tiers simultaneously.
+	// For single-tier blobs (whether hot or cold), this column stores an empty slice.
+	secondaryBlobHandles RawBytesBuilder
 
 	enc              BlockEncoder
 	rows             int
@@ -509,8 +513,9 @@ const (
 	dataBlockColumnIsObsolete
 	dataBlockColumnTieringSpanID
 	dataBlockColumnTieringAttribute
+	dataBlockColumnSecondaryBlobHandle
 	dataBlockColumnMaxV1 = dataBlockColumnTieringSpanID
-	dataBlockColumnMaxV2 = dataBlockColumnTieringAttribute + 1
+	dataBlockColumnMaxV2 = dataBlockColumnSecondaryBlobHandle + 1
 )
 
 // OptionalColumnConfig describes the columns that are present in a columnar
@@ -608,6 +613,7 @@ func (w *DataBlockEncoder) Init(schema *KeySchema, optionalColConfig OptionalCol
 	if optionalColConfig.SupportsTiering() {
 		w.tieringSpanIDs.InitWithDefault()
 		w.tieringAttributes.InitWithDefault()
+		w.secondaryBlobHandles.Init()
 	}
 	w.rows = 0
 	w.maximumKeyLength = 0
@@ -626,6 +632,7 @@ func (w *DataBlockEncoder) Reset() {
 	if w.columnConfig.SupportsTiering() {
 		w.tieringSpanIDs.Reset()
 		w.tieringAttributes.Reset()
+		w.secondaryBlobHandles.Reset()
 	}
 	w.rows = 0
 	w.maximumKeyLength = 0
@@ -668,6 +675,10 @@ func (w *DataBlockEncoder) String() string {
 		fmt.Fprintf(&buf, "%d: tiering-attribute: ", len(w.Schema.ColumnTypes)+dataBlockColumnTieringAttribute)
 		w.tieringAttributes.WriteDebug(&buf, w.rows)
 		fmt.Fprintln(&buf)
+
+		fmt.Fprintf(&buf, "%d: secondary-blob-handle: ", len(w.Schema.ColumnTypes)+dataBlockColumnSecondaryBlobHandle)
+		w.secondaryBlobHandles.WriteDebug(&buf, w.rows)
+		fmt.Fprintln(&buf)
 	}
 
 	return buf.String()
@@ -689,6 +700,32 @@ func (w *DataBlockEncoder) Add(
 	isObsolete bool,
 	meta base.KVMeta,
 ) {
+	w.internalAdd(ikey, value, valuePrefix, kcmp, isObsolete, meta, nil)
+}
+
+// AddWithSecondaryBlobHandle is like Add but also stores a secondary blob handle
+// for dual-tier blob values (values that exist in multiple tiers simultaneously).
+func (w *DataBlockEncoder) AddWithSecondaryBlobHandle(
+	ikey base.InternalKey,
+	value []byte,
+	valuePrefix block.ValuePrefix,
+	kcmp KeyComparison,
+	isObsolete bool,
+	meta base.KVMeta,
+	secondaryHandle []byte,
+) {
+	w.internalAdd(ikey, value, valuePrefix, kcmp, isObsolete, meta, secondaryHandle)
+}
+
+func (w *DataBlockEncoder) internalAdd(
+	ikey base.InternalKey,
+	value []byte,
+	valuePrefix block.ValuePrefix,
+	kcmp KeyComparison,
+	isObsolete bool,
+	meta base.KVMeta,
+	secondaryHandle []byte,
+) {
 	w.KeyWriter.WriteKey(w.rows, ikey.UserKey, kcmp.PrefixLen, kcmp.CommonPrefixLen)
 	if kcmp.PrefixEqual() {
 		w.prefixSame.Set(w.rows)
@@ -707,9 +744,14 @@ func (w *DataBlockEncoder) Add(
 		// bitmap and know there is no value prefix byte if !isValueExternal.
 		w.values.Put(value)
 	}
-	if w.columnConfig.SupportsTiering() && meta != (base.KVMeta{}) {
-		w.tieringSpanIDs.Set(w.rows, uint64(meta.TieringSpanID))
-		w.tieringAttributes.Set(w.rows, uint64(meta.TieringAttribute))
+	if w.columnConfig.SupportsTiering() {
+		if meta.IsSet() {
+			w.tieringSpanIDs.Set(w.rows, uint64(meta.TieringSpanID))
+			w.tieringAttributes.Set(w.rows, uint64(meta.TieringAttribute))
+		}
+		// Secondary blob handle is nil for single-tier blobs (hot or cold).
+		// Only dual-tier blobs populate this column with the secondary handle.
+		w.secondaryBlobHandles.Put(secondaryHandle)
 	}
 	if len(ikey.UserKey) > int(w.maximumKeyLength) {
 		w.maximumKeyLength = len(ikey.UserKey)
@@ -734,6 +776,7 @@ func (w *DataBlockEncoder) Size() int {
 	if w.columnConfig.SupportsTiering() {
 		off = w.tieringSpanIDs.Size(w.rows, off)
 		off = w.tieringAttributes.Size(w.rows, off)
+		off = w.secondaryBlobHandles.Size(w.rows, off)
 	}
 	off++ // trailer padding byte
 	return int(off)
@@ -791,6 +834,7 @@ func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base
 	if w.columnConfig.SupportsTiering() {
 		w.enc.Encode(rows, &w.tieringSpanIDs)
 		w.enc.Encode(rows, &w.tieringAttributes)
+		w.enc.Encode(rows, &w.secondaryBlobHandles)
 	}
 	finished = w.enc.Finish()
 
