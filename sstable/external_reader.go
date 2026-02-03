@@ -43,9 +43,6 @@ type CacheHandle = cache.Handle
 // cache handle and file number. The file number is caller-assigned and must be
 // unique within the cache handle's namespace to avoid collisions.
 func SetCacheOptions(opts *ReaderOptions, handle *CacheHandle, fileNum uint64) {
-	if opts == nil || handle == nil {
-		return
-	}
 	opts.CacheOpts = sstableinternal.CacheOptions{
 		CacheHandle: handle,
 		FileNum:     base.DiskFileNum(fileNum),
@@ -56,8 +53,5 @@ func SetCacheOptions(opts *ReaderOptions, handle *CacheHandle, fileNum uint64) {
 // from the cache handle. Call this when an sstable is no longer needed to free
 // cache space.
 func CacheHandleEvictFile(handle *CacheHandle, fileNum uint64) {
-	if handle == nil {
-		return
-	}
 	handle.EvictFile(base.DiskFileNum(fileNum))
 }
