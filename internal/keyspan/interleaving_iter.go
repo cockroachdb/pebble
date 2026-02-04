@@ -490,7 +490,7 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 // Calling NextPrefix while positioned at a span boundary is prohibited.
 func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 	if i.dir == -1 {
-		panic("pebble: cannot switch directions with NextPrefix")
+		panic(errors.AssertionFailedf("pebble: cannot switch directions with NextPrefix"))
 	}
 
 	switch i.pos {
@@ -510,7 +510,7 @@ func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 			i.computeSmallestPos()
 		}
 	case posKeyspanStart, posKeyspanEnd:
-		panic(errors.AssertionFailedf("NextPrefix called while positioned on a span boundary"))
+		panic(errors.AssertionFailedf("pebble: NextPrefix called while positioned on a span boundary"))
 	}
 	return i.yieldPosition(i.opts.LowerBound, i.nextPos)
 }
@@ -670,7 +670,7 @@ func (i *InterleavingIter) nextPos() {
 		// MIN(pointKey,span.End).
 		switch {
 		case i.span == nil:
-			panic("i.withinSpan=true and i.span=nil")
+			panic(errors.AssertionFailedf("pebble: i.withinSpan=true and i.span=nil"))
 		case i.pointKV == nil:
 			// Since i.withinSpan=true, we step onto the end boundary of the
 			// keyspan.
@@ -696,7 +696,7 @@ func (i *InterleavingIter) nextPos() {
 		i.savedKeyspan()
 		i.computeSmallestPos()
 	default:
-		panic(fmt.Sprintf("unexpected pos=%d", i.pos))
+		panic(errors.AssertionFailedf("pebble: unexpected pos=%d", i.pos))
 	}
 }
 
@@ -741,7 +741,7 @@ func (i *InterleavingIter) prevPos() {
 		}
 		switch {
 		case i.span == nil:
-			panic("withinSpan=true, but i.span == nil")
+			panic(errors.AssertionFailedf("withinSpan=true, but i.span == nil"))
 		case i.pointKV == nil:
 			i.pos = posKeyspanStart
 		default:
@@ -765,7 +765,7 @@ func (i *InterleavingIter) prevPos() {
 			i.pos = posKeyspanStart
 		}
 	default:
-		panic(fmt.Sprintf("unexpected pos=%d", i.pos))
+		panic(errors.AssertionFailedf("pebble: unexpected pos=%d", i.pos))
 	}
 }
 
@@ -783,7 +783,7 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 			return i.yieldNil()
 		case posPointKey:
 			if i.pointKV == nil {
-				panic("i.pointKV is nil")
+				panic(errors.AssertionFailedf("pebble: i.pointKV is nil"))
 			}
 
 			if i.opts.Mask != nil {
@@ -831,7 +831,7 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 			}
 			return i.yieldSyntheticSpanStartMarker(lowerBound)
 		default:
-			panic(fmt.Sprintf("unexpected interleavePos=%d", i.pos))
+			panic(errors.AssertionFailedf("pebble: unexpected interleavePos=%d", i.pos))
 		}
 	}
 }
@@ -1024,17 +1024,22 @@ func (i *InterleavingIter) verify(kv *base.InternalKV) *base.InternalKV {
 	if invariants.Enabled {
 		switch {
 		case i.dir == -1 && i.spanMarkerTruncated:
-			panic("pebble: invariant violation: truncated span key in reverse iteration")
+			panic(errors.AssertionFailedf("pebble: invariant violation: truncated span key in reverse iteration"))
 		case kv != nil && i.opts.LowerBound != nil && !kv.K.IsExclusiveSentinel() &&
 			i.cmp(kv.K.UserKey, i.opts.LowerBound) < 0:
-			panic("pebble: invariant violation: key < lower bound")
+			panic(errors.AssertionFailedf("pebble: invariant violation: key (%q) < lower bound (%q)",
+				kv.K.UserKey, i.opts.LowerBound))
 		case kv != nil && i.opts.UpperBound != nil && !kv.K.IsExclusiveSentinel() &&
 			!base.UserKeyExclusive(i.opts.UpperBound).IsUpperBoundForInternalKey(i.comparer.Compare, kv.K):
-			panic("pebble: invariant violation: key ≥ upper bound")
+			panic(errors.AssertionFailedf("pebble: invariant violation: key (%q) ≥ upper bound (%q)",
+				kv.K.UserKey, i.opts.UpperBound))
 		case i.err != nil && kv != nil:
-			panic("pebble: invariant violation: accumulated error swallowed")
+			panic(errors.WithSecondaryError(errors.AssertionFailedf(
+				"pebble: invariant violation: accumulated error swallowed: %s"), i.err))
 		case i.err == nil && i.pointIter.Error() != nil:
-			panic("pebble: invariant violation: pointIter swallowed")
+			panic(errors.WithSecondaryError(
+				errors.AssertionFailedf("pebble: invariant violation: pointIter error swallowed"),
+				i.pointIter.Error()))
 		}
 	}
 	return kv
@@ -1107,7 +1112,7 @@ func (i *InterleavingIter) savePoint(kv *base.InternalKV) {
 // Span will never return an invalid or empty span.
 func (i *InterleavingIter) Span() *Span {
 	if invariants.Enabled && i.pointIter == nil {
-		panic("Span() called after close")
+		panic(errors.AssertionFailedf("Span() called after close"))
 	}
 	if !i.withinSpan || len(i.span.Keys) == 0 {
 		return nil
