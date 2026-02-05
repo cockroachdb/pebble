@@ -1245,9 +1245,26 @@ func runCompactionTest(
 				defer d.mu.Unlock()
 				prev := d.opts.DisableAutomaticCompactions
 				d.opts.DisableAutomaticCompactions = false
-				d.maybeScheduleCompaction()
-				for d.mu.compact.compactProcesses > 0 {
-					d.mu.compact.cond.Wait()
+				for {
+					d.maybeScheduleCompaction()
+					if d.mu.compact.compactProcesses == 0 {
+						// No compactions running. Check if there's a cached compaction
+						// waiting. If TrySchedule returned false, the picked compaction
+						// may be cached but not started yet.
+						if !d.mu.versions.pickedCompactionCache.isWaiting() {
+							break
+						}
+						// Cached compaction waiting but couldn't be scheduled. Release
+						// the lock and explicitly trigger the scheduler's granting
+						// mechanism to run the cached compaction.
+						d.mu.Unlock()
+						d.compactionScheduler.(*ConcurrencyLimitScheduler).TriggerGrantingForTest()
+						d.mu.Lock()
+						continue
+					}
+					for d.mu.compact.compactProcesses > 0 {
+						d.mu.compact.cond.Wait()
+					}
 				}
 				d.opts.DisableAutomaticCompactions = prev
 				return nil
