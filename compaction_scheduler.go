@@ -431,6 +431,14 @@ func (s *ConcurrencyLimitScheduler) adjustRunningCompactionsForTesting(delta int
 	}
 }
 
+// TriggerGrantingForTest explicitly triggers the granting mechanism. This is
+// needed for tests that disable periodic granting but still need cached
+// compactions to run when TrySchedule returns false.
+func (s *ConcurrencyLimitScheduler) TriggerGrantingForTest() {
+	s.mu.Lock()
+	s.tryGrantLockedAndUnlock() // This unlocks s.mu
+}
+
 func (s *ConcurrencyLimitScheduler) isUnregisteredForTesting() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
