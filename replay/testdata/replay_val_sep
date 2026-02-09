@@ -15,15 +15,15 @@ tree
      792      000015.sst
       97      000016.blob
        0      LOCK
-     152      MANIFEST-000010
-     250      MANIFEST-000013
+     158      MANIFEST-000010
+     259      MANIFEST-000013
     2942      OPTIONS-000002
        0      marker.format-version.000011.024
        0      marker.manifest.000003.MANIFEST-000013
             simple_val_sep/
      792      000015.sst
       97      000016.blob
-     250      MANIFEST-000013
+     259      MANIFEST-000013
               checkpoint/
      819        000005.sst
      101        000006.blob
@@ -31,7 +31,7 @@ tree
       97        000009.blob
       11        000011.log
      687        000012.sst
-     187        MANIFEST-000013
+     193        MANIFEST-000013
     2942        OPTIONS-000002
        0        marker.format-version.000001.024
        0        marker.manifest.000001.MANIFEST-000013

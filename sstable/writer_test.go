@@ -636,7 +636,7 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 			tieringMetadata := make(map[string]ParsedKVOrSpan)
 			hasBlobHandles := false
 			for _, kv := range kvs {
-				if kv.Meta != (base.KVMeta{}) && !kv.IsKeySpan() {
+				if kv.Meta.IsSet() && !kv.IsKeySpan() {
 					tieringMetadata[string(kv.Key.UserKey)] = kv
 				}
 				if kv.HasBlobValue() {
@@ -657,15 +657,6 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 				return 0, nil
 			}
 
-			// BlobReferenceTierGetter determines which tier a blob reference is in.
-			// For testing, odd reference IDs are hot, even are cold.
-			blobReferenceTierGetter := func(refID base.BlobReferenceID) base.StorageTier {
-				if refID%2 == 1 {
-					return base.HotTier
-				}
-				return base.ColdTier
-			}
-
 			opts := &WriterOptions{
 				BlockSize:                 blockSize,
 				Comparer:                  testkeys.Comparer,
@@ -676,7 +667,19 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 				DisableValueBlocks:        true,
 			}
 			if hasBlobHandles {
-				opts.BlobReferenceTierGetter = blobReferenceTierGetter
+				// Build BlobReferenceTiers for testing. For test simplicity, we
+				// use the pattern: odd reference IDs are hot, even are cold.
+				tiers := make([]base.StorageTier, 10)
+				for i := range tiers {
+					if i%2 == 1 {
+						tiers[i] = base.HotTier
+					} else {
+						tiers[i] = base.ColdTier
+					}
+				}
+				opts.SetInternal(sstableinternal.WriterOptions{
+					BlobReferenceTiers: tiers,
+				})
 			}
 
 			meta, r, err = runBuildCmd(td, opts, nil /* cacheHandle */)
@@ -702,10 +705,6 @@ func TestWriterWithTieringHistogram(t *testing.T) {
 		}
 	})
 }
-
-// TODO(annie): Once the read path is ready, add a unit test that retrieves
-// values using the secondary blob handle (for dual-tier blob values) and
-// validates that we get the same result as using the primary handle.
 
 func asciiOrHex(b []byte) string {
 	if bytes.ContainsFunc(b, func(r rune) bool { return r < ' ' || r > '~' }) {

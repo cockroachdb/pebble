@@ -549,16 +549,17 @@ func (w *RawColumnWriter) addWithBlobHandleInternal(
 		if secondaryHandle != nil {
 			// Dual-tier case: track hot-and-cold blob reference bytes.
 			w.tieringHistogramBlock.AddHotAndColdBlobRefBytes(uint64(hotHandle.ValueLen))
-		} else if w.opts.BlobReferenceTierGetter != nil {
+		} else if w.opts.internal.BlobReferenceTiers != nil {
 			// Single-tier case: track by tier.
 			var kindAndTier tieredmeta.KindAndTier
-			switch w.opts.BlobReferenceTierGetter(hotHandle.ReferenceID) {
+			tier := w.opts.internal.BlobReferenceTiers[hotHandle.ReferenceID]
+			switch tier {
 			case base.HotTier:
 				kindAndTier = tieredmeta.SSTableBlobReferenceHotBytes
 			case base.ColdTier:
 				kindAndTier = tieredmeta.SSTableBlobReferenceColdBytes
 			default:
-				panic(errors.AssertionFailedf("unexpected tier %s", w.opts.BlobReferenceTierGetter(hotHandle.ReferenceID)))
+				panic(errors.AssertionFailedf("unexpected tier %s", tier))
 			}
 			w.tieringHistogramBlock.Add(kindAndTier, meta.TieringSpanID, meta.TieringAttribute, uint64(hotHandle.ValueLen))
 		}
