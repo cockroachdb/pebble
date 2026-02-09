@@ -167,6 +167,12 @@ func (d *DB) loadNewFileStats(
 ) (collected []collectedStats, wideTombstones []tombspan.WideTombstone) {
 	collected = make([]collectedStats, 0, len(pending))
 	for _, nf := range pending {
+		if err := d.closed.Load(); err != nil {
+			// Returning an incomplete result is okay since we're closing so it likely
+			// is being ignroed anyway, or, at worst, we'd just have some incomplete
+			// stats while we close.
+			break
+		}
 		// A file's stats might have been populated by an earlier call to
 		// loadNewFileStats if the file was moved.
 		// NB: Only collectTableStats updates f.Stats for active files, and we
