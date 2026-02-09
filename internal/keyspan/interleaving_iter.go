@@ -494,7 +494,7 @@ func (i *InterleavingIter) Last() *base.InternalKV {
 func (i *InterleavingIter) Next() *base.InternalKV {
 	if i.dir == -1 {
 		if i.pos == posSeekedBeyondLowerBound {
-			return i.seekBeginning()
+			return i.SeekGE(i.opts.LowerBound, base.SeekGEFlagsNone)
 		}
 
 		// Switching directions.
@@ -578,7 +578,7 @@ func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 func (i *InterleavingIter) Prev() *base.InternalKV {
 	if i.dir == +1 {
 		if i.pos == posSeekedBeyondUpperBound {
-			return i.seekEnd()
+			return i.SeekLT(i.opts.UpperBound, base.SeekLTFlagsNone)
 		}
 
 		// Switching directions.
@@ -683,24 +683,6 @@ func (i *InterleavingIter) computeLargestPos() {
 		}
 	}
 	i.pos = posExhausted
-}
-
-func (i *InterleavingIter) seekBeginning() *base.InternalKV {
-	// We may not have a lower bound despite being positioned at
-	// posSeekedBeyondLowerBound if there was an intervening call to SetBounds.
-	if i.opts.LowerBound == nil {
-		return i.First()
-	}
-	return i.SeekGE(i.opts.LowerBound, base.SeekGEFlagsNone)
-}
-
-func (i *InterleavingIter) seekEnd() *base.InternalKV {
-	// We may not have a upper bound despite being positioned at
-	// posSeekedBeyondUpperBound if there was an intervening call to SetBounds.
-	if i.opts.UpperBound == nil {
-		return i.Last()
-	}
-	return i.SeekLT(i.opts.UpperBound, base.SeekLTFlagsNone)
 }
 
 // nextPos advances the iterator one position in the forward direction.
@@ -1186,6 +1168,7 @@ func (i *InterleavingIter) TreeStepsNode() treesteps.NodeInfo {
 func (i *InterleavingIter) Invalidate() {
 	i.span = nil
 	i.pointKV = nil
+	i.pos = posUninitialized
 }
 
 // Error implements (base.InternalIterator).Error.
