@@ -20,6 +20,7 @@ all:
 	@echo "  make gen-bazel"
 	@echo "  make generate"
 	@echo "  make generate-test-data"
+	@echo "  make testdocs"
 	@echo "  make clean"
 override testflags :=
 .PHONY: test
@@ -127,6 +128,11 @@ generate-test-data:
 	${GO} run -tags make_test_find_db ./tool/make_test_find_db.go
 	${GO} run -tags make_test_sstables ./tool/make_test_sstables.go
 	${GO} run -tags make_test_remotecat ./tool/make_test_remotecat.go
+
+.PHONY: testdocs
+testdocs:
+	@echo "Serving docs at http://localhost:8000/local-test.html?local=true"
+	python3 -m http.server 8000 -d docs
 
 .PHONY: mod-update
 mod-update:
