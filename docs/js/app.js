@@ -5,7 +5,22 @@
 // write-throughput.js is loaded first, but contains references to functions
 // defined in this file. Work out a better way of modularizing this code.
 
-const parseTime = d3.timeParse("%Y%m%d");
+const _parseTime = d3.timeParse("%Y%m%d");
+
+// parseDateStr handles both "YYYYMMDD" and "YYYYMMDD-sha" formats.
+// Returns { date: Date, sha: string|null }.
+function parseDateStr(s) {
+    const idx = s.indexOf("-");
+    if (idx === -1) {
+        return { date: _parseTime(s), sha: null };
+    }
+    return { date: _parseTime(s.substring(0, idx)), sha: s.substring(idx + 1) };
+}
+
+// parseTime strips any -sha suffix before parsing. Drop-in replacement.
+function parseTime(s) {
+    return parseDateStr(s).date;
+}
 const formatTime = d3.timeFormat("%b %d");
 const dateBisector = d3.bisector(d => d.date).left;
 
@@ -132,7 +147,7 @@ function renderChart(chart) {
 
     const svg = chart.html("");
 
-    const margin = { top: 25, right: 60, bottom: 25, left: 60 };
+    const margin = { top: 25, right: 60, bottom: 35, left: 60 };
 
     const width = styleWidth(svg) - margin.left - margin.right,
         height = styleHeight(svg) - margin.top - margin.bottom;
@@ -411,6 +426,16 @@ function renderChart(chart) {
         .attr("text-anchor", "middle")
         .attr("transform", "translate(0, 0)");
 
+    const shaHover = g
+        .append("text")
+        .attr("class", "hover")
+        .attr("fill", "#999")
+        .attr("text-anchor", "middle")
+        .attr("alignment-baseline", "hanging")
+        .attr("font-family", "monospace")
+        .attr("font-size", "7pt")
+        .attr("transform", "translate(0, 0)");
+
     const marker = g
         .append("circle")
         .attr("class", "hover")
@@ -466,6 +491,14 @@ function renderChart(chart) {
                 "translate(" + x(v.date) + "," + (valY - 7) + ")"
             )
             .text(valFormat(val));
+        if (v.sha) {
+            shaHover
+                .attr("transform", "translate(" + mousex + "," + (height + 19) + ")")
+                .text(v.sha.substring(0, 10))
+                .style("opacity", 1);
+        } else {
+            shaHover.style("opacity", 0);
+        }
     };
 
     const rect = svg
@@ -525,8 +558,10 @@ function renderYCSB() {
 function initData() {
     for (key in data) {
         data[key] = d3.csvParseRows(data[key], function(d, i) {
+            const parsed = parseDateStr(d[0]);
             return {
-                date: parseTime(d[0]),
+                date: parsed.date,
+                sha: parsed.sha,
                 opsSec: +d[1],
                 readBytes: +d[2],
                 writeBytes: +d[3],
@@ -559,7 +594,13 @@ function initData() {
       .then(response => response.json())
       .then(wtData => {
             for (let key in wtData) {
-                data[key] = wtData[key];
+                data[key] = wtData[key].map(d => {
+                    const parsed = parseDateStr(d.date);
+                    return Object.assign({}, d, {
+                        date: d.date.split("-")[0],
+                        sha: parsed.sha,
+                    });
+                });
             }
       });
 }
@@ -578,12 +619,16 @@ function initAnnotations() {
 }
 
 function setQueryParams() {
-    var params = new URLSearchParams();
+    var params = new URLSearchParams(window.location.search);
     if (detailName) {
         params.set("detail", detailName);
+    } else {
+        params.delete("detail");
     }
     if (usePerChartMax) {
         params.set("max", "local");
+    } else {
+        params.delete("max");
     }
     var search = "?" + params;
     if (window.location.search != search) {

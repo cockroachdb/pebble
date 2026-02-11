@@ -1,0 +1,74 @@
+{
+	"write/values=1024": [
+		{
+			"name": "write/values=1024",
+			"date": "20260125-abc123def0",
+			"opsSec": 58825,
+			"writeAmp": 1.17,
+			"summaryPath": "20260125-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260126-def456abc1",
+			"opsSec": 65525,
+			"writeAmp": 1.39,
+			"summaryPath": "20260126-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260127-e789012345",
+			"opsSec": 62000,
+			"writeAmp": 1.28,
+			"summaryPath": "20260127-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260128-f012345678",
+			"opsSec": 67000,
+			"writeAmp": 1.42,
+			"summaryPath": "20260128-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260129",
+			"opsSec": 60000,
+			"writeAmp": 1.22,
+			"summaryPath": "20260129-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260130-b345678901",
+			"opsSec": 68000,
+			"writeAmp": 1.45,
+			"summaryPath": "20260130-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260131-c456789012",
+			"opsSec": 63500,
+			"writeAmp": 1.32,
+			"summaryPath": "20260131-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260201-d567890123",
+			"opsSec": 64500,
+			"writeAmp": 1.35,
+			"summaryPath": "20260201-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260202-e678901234",
+			"opsSec": 61000,
+			"writeAmp": 1.25,
+			"summaryPath": "20260202-pebble-write-size=1024-run_1-summary.json"
+		},
+		{
+			"name": "write/values=1024",
+			"date": "20260203-f789012345",
+			"opsSec": 67500,
+			"writeAmp": 1.43,
+			"summaryPath": "20260203-pebble-write-size=1024-run_1-summary.json"
+		}
+	]
+}

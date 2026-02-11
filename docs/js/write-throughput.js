@@ -2,10 +2,17 @@
 // have data available.
 const writeThroughputWorkload = "write/values=1024";
 
+function isLocalMode() {
+    return new URLSearchParams(window.location.search).get("local") === "true";
+}
+
 /*
  * Returns the full URL to the write-throughput summary JSON file.
  */
 function writeThroughputSummaryURL() {
+    if (isLocalMode()) {
+        return "testdata/write-throughput/summary.json";
+    }
     return "https://pebble-benchmarks.s3.amazonaws.com/write-throughput/summary.json";
 }
 
@@ -14,6 +21,9 @@ function writeThroughputSummaryURL() {
  * filename.
  */
 function writeThroughputDetailURL(filename) {
+    if (isLocalMode()) {
+        return `testdata/write-throughput/${filename}`;
+    }
     return `https://pebble-benchmarks.s3.amazonaws.com/write-throughput/${filename}`;
 }
 
@@ -60,7 +70,7 @@ function renderWriteThroughputSummary(allData) {
 
     // Set up axes.
 
-    const margin = {top: 25, right: 60, bottom: 25, left: 60};
+    const margin = {top: 25, right: 60, bottom: 35, left: 60};
     let maxY = d3.max(data, d => d.opsSec);
 
     const width = styleWidth(svg) - margin.left - margin.right;
@@ -161,6 +171,16 @@ function renderWriteThroughputSummary(allData) {
         .attr("text-anchor", "middle")
         .attr("transform", "translate(0, 0)");
 
+    const shaHover = g
+        .append("text")
+        .attr("class", "hover")
+        .attr("fill", "#999")
+        .attr("text-anchor", "middle")
+        .attr("alignment-baseline", "hanging")
+        .attr("font-family", "monospace")
+        .attr("font-size", "7pt")
+        .attr("transform", "translate(0, 0)");
+
     const marker = g
         .append("circle")
         .attr("class", "hover")
@@ -203,6 +223,14 @@ function renderWriteThroughputSummary(allData) {
         opsHover
             .attr("transform", "translate(" + x(parseTime(v.date)) + "," + (valY - 7) + ")")
             .text(valFormat(val));
+        if (v.sha) {
+            shaHover
+                .attr("transform", "translate(" + mousex + "," + (height + 19) + ")")
+                .text(v.sha.substring(0, 10))
+                .style("opacity", 1);
+        } else {
+            shaHover.style("opacity", 0);
+        }
     };
 
     // Panning and zooming.
