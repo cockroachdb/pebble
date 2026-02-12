@@ -338,6 +338,16 @@ func (h *fileCacheHandle) estimateSize(
 	return size, err
 }
 
+func (h *fileCacheHandle) collectBlockEntries(
+	ctx context.Context, meta *manifest.TableMetadata, start, end []byte,
+) (entries []sstable.BlockEntry, err error) {
+	err = h.withReader(ctx, block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) error {
+		entries, err = r.CollectBlockEntries(ctx, start, end, env, meta.IterTransforms())
+		return err
+	})
+	return entries, err
+}
+
 func createReader(
 	v *fileCacheValue, meta *manifest.TableMetadata,
 ) (*sstable.Reader, sstable.ReadEnv) {
