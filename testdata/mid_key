@@ -1,0 +1,32 @@
+# Test approximate mid key functionality.
+
+open
+----
+
+# Empty database should return no mid key.
+approximate-mid-key a z
+----
+no mid key
+
+# Write a small amount of data -- too small to bisect.
+batch
+set a value
+set b value
+set c value
+set d value
+----
+
+flush
+----
+
+approximate-mid-key a z
+----
+no mid key
+
+# Invalid range should return error.
+approximate-mid-key z a
+----
+invalid key-range specified (start >= end)
+
+close
+----
