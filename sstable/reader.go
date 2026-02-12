@@ -959,6 +959,140 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 		endBH.Offset + endBH.Length + block.TrailerLen - startBH.Offset), nil
 }
 
+// SeparatorAtEstimatedSize walks the index starting from start, accumulating
+// data block sizes with value block interpolation. It returns the separator key
+// at the data block boundary where the cumulative size first crosses
+// targetSize. If no such key is found (e.g. targetSize exceeds the data in the
+// file past start), it returns nil.
+func (r *Reader) SeparatorAtEstimatedSize(
+	ctx context.Context, start []byte, targetSize uint64, env ReadEnv, transforms IterTransforms,
+) ([]byte, error) {
+	if env.Virtual != nil {
+		_, start, _ = env.Virtual.ConstrainBounds(start, nil, false, r.Comparer.Compare)
+	}
+	if !r.tableFormat.BlockColumnar() {
+		return separatorAtEstimatedSize[rowblk.IndexIter, *rowblk.IndexIter](ctx, r, start, targetSize, transforms)
+	}
+	return separatorAtEstimatedSize[colblk.IndexIter, *colblk.IndexIter](ctx, r, start, targetSize, transforms)
+}
+
+func separatorAtEstimatedSize[I any, PI indexBlockIterator[I]](
+	ctx context.Context, r *Reader, start []byte, targetSize uint64, transforms IterTransforms,
+) ([]byte, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
+	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, noReadHandle)
+	if err != nil {
+		return nil, err
+	}
+	defer indexH.Release()
+
+	props, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+	if err != nil {
+		return nil, err
+	}
+
+	includeInterpolatedValueBlocksSize := func(dataBlockSize uint64) uint64 {
+		if props.DataSize == 0 {
+			return dataBlockSize
+		}
+		return dataBlockSize +
+			uint64((float64(dataBlockSize)/float64(props.DataSize))*
+				float64(props.ValueBlocksSize))
+	}
+
+	if !r.Attributes.Has(AttributeTwoLevelIndex) {
+		// Single-level index: walk all entries from start.
+		var idxIter PI = new(I)
+		if err := idxIter.InitHandle(r.Comparer, indexH, transforms); err != nil {
+			return nil, err
+		}
+		if !idxIter.SeekGE(start) {
+			return nil, nil
+		}
+		startBH, err := idxIter.BlockHandleWithProperties()
+		if err != nil {
+			return nil, errCorruptIndexEntry(err)
+		}
+		var cumulative uint64
+		for {
+			bh, err := idxIter.BlockHandleWithProperties()
+			if err != nil {
+				return nil, errCorruptIndexEntry(err)
+			}
+			blockSize := bh.Offset + bh.Length + block.TrailerLen - startBH.Offset
+			cumulative = includeInterpolatedValueBlocksSize(blockSize)
+			if cumulative >= targetSize {
+				return slices.Clone(idxIter.Separator()), nil
+			}
+			if !idxIter.Next() {
+				return nil, nil
+			}
+		}
+	}
+
+	// Two-level index: walk top-level entries, loading second-level blocks.
+	var topIter PI = new(I)
+	if err := topIter.InitHandle(r.Comparer, indexH, transforms); err != nil {
+		return nil, err
+	}
+	if !topIter.SeekGE(start) {
+		return nil, nil
+	}
+
+	// We need the offset of the first data block at or after start to track
+	// cumulative size.
+	var firstOffset uint64
+	var haveFirstOffset bool
+
+	for topValid := true; topValid; topValid = topIter.Next() {
+		topBH, err := topIter.BlockHandleWithProperties()
+		if err != nil {
+			return nil, errCorruptIndexEntry(err)
+		}
+		subIdxBlock, err := r.readIndexBlock(ctx, block.NoReadEnv, noReadHandle, topBH.Handle)
+		if err != nil {
+			return nil, err
+		}
+		var subIter PI = new(I)
+		// We never Close subIter, so we release subIdxBlock ourselves.
+		if err := subIter.InitHandle(r.Comparer, subIdxBlock, transforms); err != nil {
+			subIdxBlock.Release()
+			return nil, err
+		}
+
+		var valid bool
+		if !haveFirstOffset {
+			valid = subIter.SeekGE(start)
+		} else {
+			valid = subIter.First()
+		}
+		for ; valid; valid = subIter.Next() {
+			bh, err := subIter.BlockHandleWithProperties()
+			if err != nil {
+				subIdxBlock.Release()
+				return nil, errCorruptIndexEntry(err)
+			}
+			if !haveFirstOffset {
+				firstOffset = bh.Offset
+				haveFirstOffset = true
+			}
+			blockSize := bh.Offset + bh.Length + block.TrailerLen - firstOffset
+			cumulative := includeInterpolatedValueBlocksSize(blockSize)
+			if cumulative >= targetSize {
+				key := slices.Clone(subIter.Separator())
+				subIdxBlock.Release()
+				return key, nil
+			}
+		}
+		subIdxBlock.Release()
+	}
+
+	return nil, nil
+}
+
 // TableFormat returns the format version for the table.
 func (r *Reader) TableFormat() (TableFormat, error) {
 	if r.err != nil {

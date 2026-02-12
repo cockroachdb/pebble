@@ -338,6 +338,16 @@ func (h *fileCacheHandle) estimateSize(
 	return size, err
 }
 
+func (h *fileCacheHandle) estimateMidKey(
+	ctx context.Context, meta *manifest.TableMetadata, start []byte, targetSize uint64,
+) (midKey []byte, err error) {
+	err = h.withReader(ctx, block.NoReadEnv, meta, func(r *sstable.Reader, env sstable.ReadEnv) error {
+		midKey, err = r.SeparatorAtEstimatedSize(ctx, start, targetSize, env, meta.IterTransforms())
+		return err
+	})
+	return midKey, err
+}
+
 func createReader(
 	v *fileCacheValue, meta *manifest.TableMetadata,
 ) (*sstable.Reader, sstable.ReadEnv) {
