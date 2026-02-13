@@ -30,6 +30,7 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/stretchr/testify v1.9.0
 	github.com/zeebo/xxh3 v1.0.2
+	golang.org/x/crypto v0.44.0
 	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6
 	golang.org/x/perf v0.0.0-20251112180420-cfbd823f7301
 	golang.org/x/sync v0.18.0
