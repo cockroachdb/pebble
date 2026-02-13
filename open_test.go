@@ -27,10 +27,10 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
-	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/metamorphic"
@@ -297,55 +297,55 @@ func TestOpen_WALFailover(t *testing.T) {
 }
 
 func TestOpenRecovery(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-
-	mkOpts := func(td *datadriven.TestData) *Options {
-		opts := &Options{FS: vfs.NewMem(), Logger: testutils.Logger{T: t}}
-		parseDBOptionsArgs(opts, td.CmdArgs)
-		return opts
-	}
-	var d *DB
-	var opts *Options
-	closeDB := func() {
-		if d != nil {
-			require.NoError(t, d.Close())
-			d = nil
+	synctest.Test(t, func(t *testing.T) {
+		mkOpts := func(td *datadriven.TestData) *Options {
+			opts := &Options{FS: vfs.NewMem(), Logger: testutils.Logger{T: t}}
+			parseDBOptionsArgs(opts, td.CmdArgs)
+			return opts
 		}
-	}
-	defer closeDB()
-	datadriven.RunTestAny(t, "testdata/open_recovery", func(t testing.TB, td *datadriven.TestData) string {
-		switch td.Cmd {
-		case "batch":
-			writeBatch := newBatch(d)
-			if err := runBatchDefineCmd(td, writeBatch); err != nil {
-				return err.Error()
+		var d *DB
+		var opts *Options
+		closeDB := func() {
+			if d != nil {
+				require.NoError(t, d.Close())
+				d = nil
 			}
-			if err := writeBatch.Commit(nil); err != nil {
-				return err.Error()
-			}
-			return ""
-		case "define":
-			closeDB()
-			opts = mkOpts(td)
-			var err error
-			d, err = runDBDefineCmd(td, opts)
-			if err != nil {
-				return err.Error()
-			}
-			return runLSMCmd(td, d)
-		case "reopen":
-			closeDB()
-			var err error
-			require.NoError(t, parseDBOptionsArgs(opts, td.CmdArgs))
-			d, err = Open("", opts)
-			if err != nil {
-				return err.Error()
-			}
-			waitForCompactionsAndTableStats(d)
-			return "ok"
-		default:
-			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
+		defer closeDB()
+		datadriven.RunTestAny(t, "testdata/open_recovery", func(t testing.TB, td *datadriven.TestData) string {
+			switch td.Cmd {
+			case "batch":
+				writeBatch := newBatch(d)
+				if err := runBatchDefineCmd(td, writeBatch); err != nil {
+					return err.Error()
+				}
+				if err := writeBatch.Commit(nil); err != nil {
+					return err.Error()
+				}
+				return ""
+			case "define":
+				closeDB()
+				opts = mkOpts(td)
+				var err error
+				d, err = runDBDefineCmd(td, opts)
+				if err != nil {
+					return err.Error()
+				}
+				return runLSMCmd(td, d)
+			case "reopen":
+				closeDB()
+				var err error
+				require.NoError(t, parseDBOptionsArgs(opts, td.CmdArgs))
+				d, err = Open("", opts)
+				if err != nil {
+					return err.Error()
+				}
+				waitForCompactionsAndTableStats(d)
+				return "ok"
+			default:
+				return fmt.Sprintf("unrecognized command %q", td.Cmd)
+			}
+		})
 	})
 }
 
