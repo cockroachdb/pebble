@@ -62,6 +62,7 @@ const (
 	tagRemovedBackingTable = 106
 	tagNewBlobFile         = 107
 	tagDeletedBlobFile     = 108
+	tagNewBlobFile2        = 109
 
 	// The custom tags sub-format used by tagNewFile4 and above. All tags less
 	// than customTagNonSafeIgnoreMask are safe to ignore and their format must be
@@ -77,6 +78,8 @@ const (
 	customTagBlobReferences    = 69
 	// customTagBlobReferences2 contains BackingValueSize for each BlobReference.
 	customTagBlobReferences2 = 70
+	// customTagBlobReferences3 contains BackingValueSize and Tier for each BlobReference.
+	customTagBlobReferences3 = 71
 )
 
 // DeletedTableEntry holds the state for a sstable deletion from a level. The
@@ -467,7 +470,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							return err
 						}
 
-					case customTagBlobReferences, customTagBlobReferences2:
+					case customTagBlobReferences, customTagBlobReferences2, customTagBlobReferences3:
 						// The first varint encodes the 'blob reference depth'
 						// of the table.
 						v, err := d.readUvarint()
@@ -490,16 +493,31 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 								return err
 							}
 							var backingValueSize uint64
-							if customTag == customTagBlobReferences2 {
+							if customTag == customTagBlobReferences2 || customTag == customTagBlobReferences3 {
 								backingValueSize, err = d.readUvarint()
 								if err != nil {
 									return err
 								}
 							}
+							var tier base.StorageTier
+							if customTag == customTagBlobReferences3 {
+								tierValue, err := d.readUvarint()
+								if err != nil {
+									return err
+								}
+								if tierValue >= uint64(base.NumStorageTiers) {
+									return base.CorruptionErrorf("new-file4: invalid tier value: %d", tierValue)
+								}
+								tier = base.StorageTier(tierValue)
+							} else {
+								// For backward compatibility, default to HotTier.
+								tier = base.HotTier
+							}
 							blobReferences[i] = BlobReference{
 								FileID:           base.BlobFileID(fileID),
 								ValueSize:        valueSize,
 								BackingValueSize: backingValueSize,
+								Tier:             tier,
 							}
 						}
 						continue
@@ -566,7 +584,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			}
 			v.NewTables = append(v.NewTables, nfe)
 
-		case tagNewBlobFile:
+		case tagNewBlobFile, tagNewBlobFile2:
 			fileID, err := d.readUvarint()
 			if err != nil {
 				return err
@@ -587,6 +605,17 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if err != nil {
 				return err
 			}
+			var tier base.StorageTier
+			if tag == tagNewBlobFile2 {
+				tierValue, err := d.readUvarint()
+				if err != nil {
+					return err
+				}
+				tier = base.StorageTier(tierValue)
+			} else {
+				// For backward compatibility with tagNewBlobFile, default to HotTier.
+				tier = base.HotTier
+			}
 			v.NewBlobFiles = append(v.NewBlobFiles, BlobFileMetadata{
 				FileID: base.BlobFileID(fileID),
 				Physical: &PhysicalBlobFile{
@@ -594,6 +623,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					Size:         size,
 					ValueSize:    valueSize,
 					CreationTime: creationTime,
+					Tier:         tier,
 				},
 			})
 
@@ -948,40 +978,27 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				e.writeBytes(x.Meta.SyntheticPrefixAndSuffix.Suffix())
 			}
 			if len(x.Meta.BlobReferences) > 0 {
-				writeBackingValueSize := false
-				if x.Meta.Virtual {
-					for _, ref := range x.Meta.BlobReferences {
-						if ref.BackingValueSize > 0 && ref.BackingValueSize != ref.ValueSize {
-							writeBackingValueSize = true
-							break
-						}
-					}
-				}
-				if writeBackingValueSize {
-					e.writeUvarint(customTagBlobReferences2)
-				} else {
-					e.writeUvarint(customTagBlobReferences)
-				}
+				e.writeUvarint(customTagBlobReferences3)
 				e.writeUvarint(uint64(x.Meta.BlobReferenceDepth))
 				e.writeUvarint(uint64(len(x.Meta.BlobReferences)))
 				for _, ref := range x.Meta.BlobReferences {
 					e.writeUvarint(uint64(ref.FileID))
 					e.writeUvarint(ref.ValueSize)
-					if writeBackingValueSize {
-						e.writeUvarint(ref.BackingValueSize)
-					}
+					e.writeUvarint(ref.BackingValueSize)
+					e.writeUvarint(uint64(ref.Tier))
 				}
 			}
 			e.writeUvarint(customTagTerminate)
 		}
 	}
 	for _, x := range v.NewBlobFiles {
-		e.writeUvarint(tagNewBlobFile)
+		e.writeUvarint(tagNewBlobFile2)
 		e.writeUvarint(uint64(x.FileID))
 		e.writeUvarint(uint64(x.Physical.FileNum))
 		e.writeUvarint(x.Physical.Size)
 		e.writeUvarint(x.Physical.ValueSize)
 		e.writeUvarint(x.Physical.CreationTime)
+		e.writeUvarint(uint64(x.Physical.Tier))
 	}
 	for x := range v.DeletedBlobFiles {
 		e.writeUvarint(tagDeletedBlobFile)

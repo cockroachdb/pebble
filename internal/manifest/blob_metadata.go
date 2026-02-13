@@ -46,6 +46,9 @@ type BlobReference struct {
 	// size according to the ValueSize of the blob reference relative to the
 	// total ValueSize of the blob file.
 	EstimatedPhysicalSize uint64
+	// Tier indicates the storage tier (hot or cold) where the referenced blob
+	// file was written.
+	Tier base.StorageTier
 }
 
 // MakeBlobReference creates a BlobReference from the given file ID, value size,
@@ -74,6 +77,7 @@ func MakeBlobReference(
 		//
 		// We perform the multiplication first to avoid floating point arithmetic.
 		EstimatedPhysicalSize: (valueSize * phys.Size) / phys.ValueSize,
+		Tier:                  phys.Tier,
 	}
 }
 
@@ -130,6 +134,9 @@ type PhysicalBlobFile struct {
 	// File creation time in seconds since the epoch (1970-01-01 00:00:00
 	// UTC).
 	CreationTime uint64
+	// Tier indicates the storage tier (hot or cold) where this blob file was
+	// written.
+	Tier base.StorageTier
 
 	// Mutable state
 
@@ -151,6 +158,10 @@ func (m *PhysicalBlobFile) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("%s size:[%d (%s)] vals:[%d (%s)]",
 		m.FileNum, redact.Safe(m.Size), humanize.Bytes.Uint64(m.Size),
 		redact.Safe(m.ValueSize), humanize.Bytes.Uint64(m.ValueSize))
+	// Only show tier if it's not the default (HotTier) for backward compatibility.
+	if m.Tier != base.HotTier {
+		w.Printf(" tier:cold")
+	}
 }
 
 // String implements fmt.Stringer.
@@ -294,6 +305,16 @@ func parsePhysicalBlobFileDebug(p *strparse.Parser) (*PhysicalBlobFile, error) {
 			p.Expect("]")
 		case "creationTime":
 			m.CreationTime = p.Uint64()
+		case "tier":
+			tierStr := p.Next()
+			switch tierStr {
+			case "hot":
+				m.Tier = base.HotTier
+			case "cold":
+				m.Tier = base.ColdTier
+			default:
+				p.Errf("unknown tier %q", tierStr)
+			}
 		default:
 			p.Errf("unknown field %q", field)
 		}

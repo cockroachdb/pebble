@@ -28,13 +28,18 @@ func TestDataBlockIterWithMeta(t *testing.T) {
 		meta base.KVMeta
 	}{
 		{"a#1,SET", base.KVMeta{TieringSpanID: 42, TieringAttribute: 100}},
-		{"b#2,SET", base.KVMeta{TieringSpanID: 43, TieringAttribute: 200}},
+		{"b#2,SET", base.KVMeta{TieringSpanID: 43, TieringAttribute: 200, SecondaryBlobHandle: []byte("cold-handle-b")}},
 		{"c#3,SET", base.KVMeta{TieringSpanID: 0, TieringAttribute: 0}},
 	}
 	for _, kv := range testKVs {
 		ikey := base.ParseInternalKey(kv.key)
 		kcmp := w.KeyWriter.ComparePrev(ikey.UserKey)
-		w.Add(ikey, []byte("value"), block.InPlaceValuePrefix(kcmp.PrefixEqual()), kcmp, false, kv.meta)
+		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+		if kv.meta.SecondaryBlobHandle != nil {
+			w.AddWithSecondaryBlobHandle(ikey, []byte("value"), vp, kcmp, false, kv.meta, kv.meta.SecondaryBlobHandle)
+		} else {
+			w.Add(ikey, []byte("value"), vp, kcmp, false, kv.meta)
+		}
 	}
 	block, _ := w.Finish(w.Rows(), w.Size())
 

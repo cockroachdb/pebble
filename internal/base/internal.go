@@ -678,6 +678,11 @@ type InternalKV struct {
 type KVMeta struct {
 	TieringSpanID    TieringSpanID
 	TieringAttribute TieringAttribute
+	// SecondaryBlobHandle holds the raw encoded secondary (cold tier) blob
+	// handle for dual-tier blob values. It is nil when the value does not have
+	// a secondary blob handle. The raw bytes can be decoded using
+	// blob.DecodeInlineHandlePreface and blob.DecodeHandleSuffix.
+	SecondaryBlobHandle []byte
 }
 
 func (m KVMeta) String() string {
