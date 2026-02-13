@@ -184,6 +184,34 @@ func (c *shard) getWithReadEntry(k key, level base.Level, category Category) (*V
 	return nil, re
 }
 
+// tableFilterMayContain looks up a cache entry and checks if the filter may
+// contain the given key, while holding the read lock. This avoids refcount
+// overhead for bloom filter checks.
+//
+// The dataOffset specifies how many bytes to skip at the start of the cached
+// buffer (to skip block metadata).
+//
+// tableFilterMayContain does not update hit counters.
+//
+// Returns (true, mayContain) if found; (false, false) otherwise.
+func (c *shard) tableFilterMayContain(
+	k key, dataOffset int, filter base.TableFilterDecoder, filterKey []byte,
+) (found bool, mayContain bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if e, _ := c.blocks.Get(k); e != nil {
+		if v := e.val; v != nil && len(v.buf) > dataOffset {
+			// Update referenced flag for CLOCK-Pro (same as regular get).
+			if !e.referenced.Load() {
+				e.referenced.Store(true)
+			}
+			return true, filter.MayContain(v.buf[dataOffset:], filterKey)
+		}
+	}
+	return false, false
+}
+
 func (c *shard) set(k key, value *Value, markAccessed bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
