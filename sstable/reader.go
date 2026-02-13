@@ -959,6 +959,126 @@ func estimateDiskUsage[I any, PI indexBlockIterator[I]](
 		endBH.Offset + endBH.Length + block.TrailerLen - startBH.Offset), nil
 }
 
+// BlockEntry represents a single data block's contribution to an SST's disk
+// usage. Separator is a cloned key guaranteed to be ≥ every key in the block.
+// Size includes the data block's physical size (length + trailer) plus a
+// proportional share of the SST's value block overhead.
+type BlockEntry struct {
+	Separator []byte
+	Size      uint64
+}
+
+// CollectBlockEntries reads the SST's index block and walks it from start,
+// returning a BlockEntry for each data block. The entries are in key order
+// and their Separator keys are cloned (safe to use after the Reader is
+// released).
+//
+// This reads one index block (plus sub-index blocks for two-level indexes)
+// and the properties block. No data blocks are read.
+func (r *Reader) CollectBlockEntries(
+	ctx context.Context, start []byte, env ReadEnv, transforms IterTransforms,
+) ([]BlockEntry, error) {
+	if env.Virtual != nil {
+		_, start, _ = env.Virtual.ConstrainBounds(start, nil, false, r.Comparer.Compare)
+	}
+	if !r.tableFormat.BlockColumnar() {
+		return collectBlockEntries[rowblk.IndexIter, *rowblk.IndexIter](ctx, r, start, transforms)
+	}
+	return collectBlockEntries[colblk.IndexIter, *colblk.IndexIter](ctx, r, start, transforms)
+}
+
+func collectBlockEntries[I any, PI indexBlockIterator[I]](
+	ctx context.Context, r *Reader, start []byte, transforms IterTransforms,
+) ([]BlockEntry, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+
+	indexH, err := r.readTopLevelIndexBlock(ctx, block.NoReadEnv, noReadHandle)
+	if err != nil {
+		return nil, err
+	}
+	defer indexH.Release()
+
+	props, err := r.ReadPropertiesBlock(ctx, nil /* buffer pool */)
+	if err != nil {
+		return nil, err
+	}
+
+	// Scale each data block's size to account for value block overhead.
+	vbScale := 1.0
+	if props.DataSize > 0 && props.ValueBlocksSize > 0 {
+		vbScale = 1.0 + float64(props.ValueBlocksSize)/float64(props.DataSize)
+	}
+
+	var entries []BlockEntry
+	addEntry := func(iter PI) error {
+		bh, err := iter.BlockHandleWithProperties()
+		if err != nil {
+			return errCorruptIndexEntry(err)
+		}
+		entries = append(entries, BlockEntry{
+			Separator: slices.Clone(iter.Separator()),
+			Size:      uint64(float64(bh.Length+block.TrailerLen) * vbScale),
+		})
+		return nil
+	}
+
+	if !r.Attributes.Has(AttributeTwoLevelIndex) {
+		var idxIter PI = new(I)
+		if err := idxIter.InitHandle(r.Comparer, indexH, transforms); err != nil {
+			return nil, err
+		}
+		for valid := idxIter.SeekGE(start); valid; valid = idxIter.Next() {
+			if err := addEntry(idxIter); err != nil {
+				return nil, err
+			}
+		}
+		return entries, nil
+	}
+
+	// Two-level index: walk top-level entries, loading sub-index blocks.
+	var topIter PI = new(I)
+	if err := topIter.InitHandle(r.Comparer, indexH, transforms); err != nil {
+		return nil, err
+	}
+
+	first := true
+	for topValid := topIter.SeekGE(start); topValid; topValid = topIter.Next() {
+		topBH, err := topIter.BlockHandleWithProperties()
+		if err != nil {
+			return nil, errCorruptIndexEntry(err)
+		}
+		subIdxBlock, err := r.readIndexBlock(ctx, block.NoReadEnv, noReadHandle, topBH.Handle)
+		if err != nil {
+			return nil, err
+		}
+		var subIter PI = new(I)
+		// We never Close subIter, so we release subIdxBlock ourselves.
+		if err := subIter.InitHandle(r.Comparer, subIdxBlock, transforms); err != nil {
+			subIdxBlock.Release()
+			return nil, err
+		}
+
+		var valid bool
+		if first {
+			valid = subIter.SeekGE(start)
+			first = false
+		} else {
+			valid = subIter.First()
+		}
+		for ; valid; valid = subIter.Next() {
+			if err := addEntry(subIter); err != nil {
+				subIdxBlock.Release()
+				return nil, err
+			}
+		}
+		subIdxBlock.Release()
+	}
+
+	return entries, nil
+}
+
 // TableFormat returns the format version for the table.
 func (r *Reader) TableFormat() (TableFormat, error) {
 	if r.err != nil {
