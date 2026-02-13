@@ -201,10 +201,7 @@ function renderWriteThroughputSummary(allData) {
                     : data[i];
         const noData = mousex < x(parseTime(data[0].date));
 
-        let lineY = height;
-        if (!noData) {
-            lineY = pathGetY(path.node(), mousex);
-        }
+        const vx = x(parseTime(v.date));
 
         let val, valY, valFormat;
         val = v.opsSec;
@@ -212,20 +209,20 @@ function renderWriteThroughputSummary(allData) {
         valFormat = d3.format(",.0f");
 
         lineHover
-            .attr("x1", mousex)
-            .attr("x2", mousex)
-            .attr("y1", lineY)
+            .attr("x1", vx)
+            .attr("x2", vx)
+            .attr("y1", valY)
             .attr("y2", height);
-        marker.attr("transform", "translate(" + x(parseTime(v.date)) + "," + valY + ")");
+        marker.attr("transform", "translate(" + vx + "," + valY + ")");
         dateHover
-            .attr("transform", "translate(" + mousex + "," + (height + 8) + ")")
-            .text(formatTime(date));
+            .attr("transform", "translate(" + vx + "," + (height + 8) + ")")
+            .text(formatTime(parseTime(v.date)));
         opsHover
-            .attr("transform", "translate(" + x(parseTime(v.date)) + "," + (valY - 7) + ")")
+            .attr("transform", "translate(" + vx + "," + (valY - 7) + ")")
             .text(valFormat(val));
         if (v.sha) {
             shaHover
-                .attr("transform", "translate(" + mousex + "," + (height + 19) + ")")
+                .attr("transform", "translate(" + vx + "," + (height + 19) + ")")
                 .text(v.sha.substring(0, 10))
                 .style("opacity", 1);
         } else {
