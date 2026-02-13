@@ -317,6 +317,10 @@ type DB struct {
 
 	compactionScheduler CompactionScheduler
 
+	// spanPolicyEnforcer is the background goroutine that scans the LSM for tables
+	// that violate the current span policy and marks those files for compaction.
+	spanPolicyEnforcer *spanPolicyEnforcer
+
 	// During an iterator close, we may asynchronously schedule read compactions.
 	// We want to wait for those goroutines to finish, before closing the DB.
 	// compactionShedulers.Wait() should not be called while the DB.mu is held.
@@ -468,6 +472,12 @@ type DB struct {
 			// compactions which we might have to perform.
 			readCompactions readCompactionQueue
 
+			// spanPolicyEnforcementFiles contains files that have been marked for
+			// span policy enforcement compaction by the background policy enforcer.
+			// Unlike MarkedForCompaction, this is not persisted to the manifest
+			// since the policy enforcer will re-scan on restart.
+			// TODO(xinhaoz): Create new compaction that will utilize this set.
+			spanPolicyEnforcementFiles manifest.MarkedForCompactionSet
 			// The cumulative duration of all completed compactions since Open.
 			// Does not include flushes.
 			duration time.Duration
@@ -1531,6 +1541,10 @@ func (d *DB) Close() error {
 	// CompactionScheduler will never again call a method on the DB. Note that
 	// this must be called without holding d.mu.
 	d.compactionScheduler.Unregister()
+	// Stop the background policy enforcer if it was started.
+	if d.spanPolicyEnforcer != nil {
+		d.spanPolicyEnforcer.Stop()
+	}
 	// Lock the commit pipeline for the duration of Close. This prevents a race
 	// with makeRoomForWrite. Rotating the WAL in makeRoomForWrite requires
 	// dropping d.mu several times for I/O. If Close only holds d.mu, an

@@ -78,6 +78,15 @@ func TestScanCursor(t *testing.T) {
 					}
 					fmt.Fprintf(&buf, "  %s\n", &cursor)
 
+				case "reset":
+					// Reset cursor to a specific level without bounds.
+					level := 0
+					if len(fields) > 1 {
+						fmt.Sscanf(fields[1], "level=%d", &level)
+					}
+					cursor = ScanCursor{Level: level}
+					fmt.Fprintf(&buf, "  %s\n", &cursor)
+
 				case "next-external-file":
 					f, level := cursor.NextExternalFile(cmp, objProvider, bounds, vers)
 					if f != nil {
@@ -96,6 +105,32 @@ func TestScanCursor(t *testing.T) {
 				case "iterate-external-files":
 					for {
 						f, level := cursor.NextExternalFile(cmp, objProvider, bounds, vers)
+						if f == nil {
+							fmt.Fprintf(&buf, "  no more files\n")
+							break
+						}
+						fmt.Fprintf(&buf, "  file: %v  level: %d\n", f, level)
+						cursor = MakeScanCursorAfterFile(f, level)
+					}
+
+				case "next-file":
+					f, level := cursor.NextFile(cmp, vers)
+					if f != nil {
+						// Verify that cursor still points to this file.
+						f2, level2 := cursor.NextFile(cmp, vers)
+						if f != f2 {
+							td.Fatalf(t, "NextFile returned different file")
+						}
+						if level != level2 {
+							td.Fatalf(t, "NextFile returned different level")
+						}
+						cursor = MakeScanCursorAfterFile(f, level)
+					}
+					fmt.Fprintf(&buf, "  file: %v  level: %d\n", f, level)
+
+				case "iterate-files":
+					for {
+						f, level := cursor.NextFile(cmp, vers)
 						if f == nil {
 							fmt.Fprintf(&buf, "  no more files\n")
 							break

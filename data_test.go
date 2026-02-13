@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
+	"github.com/cockroachdb/pebble/internal/compression"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -36,6 +37,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/bloom"
 	"github.com/cockroachdb/pebble/valsep"
@@ -1895,6 +1897,32 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 				Secondary: wal.Dir{FS: opts.FS, Dirname: cmdArg.Vals[0]},
 			}
 			opts.WALFailover.EnsureDefaults()
+		case "compression":
+			var profile block.CompressionProfile
+			switch cmdArg.Vals[0] {
+			case "zstd":
+				profile = *block.ZstdCompression
+			case "snappy":
+				profile = *block.SnappyCompression
+			case "none":
+				profile = *block.NoCompression
+			case "zstd-force":
+				// For testing: Zstd with MinReductionPercent=0 so even small
+				// values are stored compressed.
+				profile = block.CompressionProfile{
+					Name:                "test-zstd-force",
+					DataBlocks:          block.SimpleCompressionSetting(compression.ZstdLevel3),
+					ValueBlocks:         block.SimpleCompressionSetting(compression.ZstdLevel3),
+					OtherBlocks:         compression.ZstdLevel3,
+					MinReductionPercent: 0,
+				}
+			default:
+				return errors.Newf("unrecognized compression %q", cmdArg.Vals[0])
+			}
+			for i := range opts.Levels {
+				p := profile
+				opts.Levels[i].Compression = func() *block.CompressionProfile { return &p }
+			}
 		}
 	}
 	if len(spanPolicies) > 0 {

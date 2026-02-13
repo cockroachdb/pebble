@@ -81,7 +81,7 @@ func MakeScanCursorAfterFile(f *TableMetadata, level int) ScanCursor {
 	}
 }
 
-// FileIsAfterCursor returns true if the given file is strictly after the cursor
+// FileIsAfterCursor returns true if the given file is at or after the cursor
 // position. This is useful for skipping files that have already been processed.
 func (c *ScanCursor) FileIsAfterCursor(cmp base.Compare, f *TableMetadata, level int) bool {
 	return c.Compare(cmp, MakeScanCursorAfterFile(f, level)) < 0
@@ -148,6 +148,55 @@ func (c *ScanCursor) FirstExternalFileInLevelIter(
 	}
 	for ; f != nil && endBound.IsUpperBoundFor(cmp, f.Smallest().UserKey); f = it.Next() {
 		if f.Virtual && objstorage.IsExternalTable(objProvider, f.TableBacking.DiskFileNum) {
+			return f
+		}
+	}
+	return nil
+}
+
+// NextFile returns the first file after the cursor, returning the file and the
+// level. If no such file exists, returns nil.
+func (c *ScanCursor) NextFile(cmp base.Compare, v *Version) (_ *TableMetadata, level int) {
+	for !c.AtEnd() {
+		if f := c.nextFileOnLevel(cmp, v); f != nil {
+			return f, c.Level
+		}
+		// Go to the next level.
+		c.Key = nil
+		c.SeqNum = 0
+		c.Level++
+	}
+	return nil, NumLevels
+}
+
+// nextFileOnLevel returns the first file on c.Level which is at or after the
+// cursor position.
+func (c *ScanCursor) nextFileOnLevel(cmp base.Compare, v *Version) *TableMetadata {
+	if c.Level == 0 {
+		return c.nextFileOnL0(v)
+	}
+	it := v.Levels[c.Level].Iter()
+	if len(c.Key) == 0 {
+		return it.First()
+	}
+	f := it.SeekGE(cmp, c.Key)
+	// Find the first file at or after the cursor position.
+	for f != nil && !c.FileIsAfterCursor(cmp, f, c.Level) {
+		f = it.Next()
+	}
+	return f
+}
+
+// nextFileOnL0 returns the next L0 file at or after the cursor's sequence
+// number. L0 files are sorted by increasing SeqNums.High.
+func (c *ScanCursor) nextFileOnL0(v *Version) *TableMetadata {
+	iter := v.Levels[0].Iter()
+	if c.SeqNum == 0 {
+		return iter.First()
+	}
+	// Find the first file with SeqNums.High >= c.SeqNum.
+	for f := iter.First(); f != nil; f = iter.Next() {
+		if f.SeqNums.High >= c.SeqNum {
 			return f
 		}
 	}
