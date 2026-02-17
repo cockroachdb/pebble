@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -443,6 +444,17 @@ func (t *Test) runOp(idx int, h historyRecorder) {
 			panic(fmt.Sprintf("operation took longer than %s: %s",
 				opTimeout, op.formattedString(t.testOpts.KeyFormat)))
 		})
+	}
+	if t.testOpts.treeSteps {
+		if iop, ok := op.(treeStepsOp); ok {
+			node := iop.treeStepsNode(t)
+			rec := treesteps.StartRecording(node, op.formattedString(t.testOpts.KeyFormat))
+			defer func() {
+				steps := rec.Finish()
+				u := steps.URL()
+				fmt.Fprintf(os.Stderr, "#%d %s treesteps: %s\n", idx, op.formattedString(t.testOpts.KeyFormat), u.String())
+			}()
+		}
 	}
 	op.run(t, h)
 	if timer != nil {

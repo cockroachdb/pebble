@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/private"
 	"github.com/cockroachdb/pebble/internal/rangekey"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
@@ -60,6 +61,13 @@ type op interface {
 	// diagramKeyRanges() returns key spans associated with this operation, to be
 	// shown on an ASCII diagram of operations.
 	diagramKeyRanges() []pebble.KeyRange
+}
+
+// treeStepsOp is implemented by operations that act on an iterator. When
+// treesteps mode is enabled, the test framework uses this to automatically
+// record a treesteps visualization for each iterator operation.
+type treeStepsOp interface {
+	treeStepsNode(t *Test) treesteps.Node
 }
 
 // A UserKey is a user key used by the metamorphic test. The format is
@@ -1553,6 +1561,7 @@ func (o *iterSeekGEOp) rewriteKeys(fn func(UserKey) UserKey) {
 	o.key = fn(o.key)
 }
 
+func (o *iterSeekGEOp) treeStepsNode(t *Test) treesteps.Node { return t.getIter(o.iterID).iter }
 func (o *iterSeekGEOp) diagramKeyRanges() []pebble.KeyRange {
 	return []pebble.KeyRange{{Start: o.key, End: o.key}}
 }
@@ -1596,6 +1605,7 @@ func (o *iterSeekPrefixGEOp) rewriteKeys(fn func(UserKey) UserKey) {
 	o.key = fn(o.key)
 }
 
+func (o *iterSeekPrefixGEOp) treeStepsNode(t *Test) treesteps.Node { return t.getIter(o.iterID).iter }
 func (o *iterSeekPrefixGEOp) diagramKeyRanges() []pebble.KeyRange {
 	return []pebble.KeyRange{{Start: o.key, End: o.key}}
 }
@@ -1640,6 +1650,7 @@ func (o *iterSeekLTOp) rewriteKeys(fn func(UserKey) UserKey) {
 	o.key = fn(o.key)
 }
 
+func (o *iterSeekLTOp) treeStepsNode(t *Test) treesteps.Node { return t.getIter(o.iterID).iter }
 func (o *iterSeekLTOp) diagramKeyRanges() []pebble.KeyRange {
 	return []pebble.KeyRange{{Start: o.key, End: o.key}}
 }
@@ -1668,7 +1679,8 @@ func (o *iterFirstOp) receiver() objID                  { return o.iterID }
 func (o *iterFirstOp) syncObjs() objIDSlice             { return onlyBatchIDs(o.derivedReaderID) }
 
 func (o *iterFirstOp) rewriteKeys(func(UserKey) UserKey)   {}
-func (o *iterFirstOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+func (o *iterFirstOp) treeStepsNode(t *Test) treesteps.Node { return t.getIter(o.iterID).iter }
+func (o *iterFirstOp) diagramKeyRanges() []pebble.KeyRange  { return nil }
 
 // iterLastOp models an Iterator.Last operation.
 type iterLastOp struct {
@@ -1694,7 +1706,8 @@ func (o *iterLastOp) receiver() objID                  { return o.iterID }
 func (o *iterLastOp) syncObjs() objIDSlice             { return onlyBatchIDs(o.derivedReaderID) }
 
 func (o *iterLastOp) rewriteKeys(func(UserKey) UserKey)   {}
-func (o *iterLastOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+func (o *iterLastOp) treeStepsNode(t *Test) treesteps.Node { return t.getIter(o.iterID).iter }
+func (o *iterLastOp) diagramKeyRanges() []pebble.KeyRange  { return nil }
 
 // iterNextOp models an Iterator.Next[WithLimit] operation.
 type iterNextOp struct {
@@ -1730,7 +1743,8 @@ func (o *iterNextOp) receiver() objID      { return o.iterID }
 func (o *iterNextOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 func (o *iterNextOp) rewriteKeys(func(UserKey) UserKey)   {}
-func (o *iterNextOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+func (o *iterNextOp) treeStepsNode(t *Test) treesteps.Node { return t.getIter(o.iterID).iter }
+func (o *iterNextOp) diagramKeyRanges() []pebble.KeyRange  { return nil }
 
 // iterNextPrefixOp models an Iterator.NextPrefix operation.
 type iterNextPrefixOp struct {
@@ -1759,7 +1773,8 @@ func (o *iterNextPrefixOp) receiver() objID      { return o.iterID }
 func (o *iterNextPrefixOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 func (o *iterNextPrefixOp) rewriteKeys(func(UserKey) UserKey)   {}
-func (o *iterNextPrefixOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+func (o *iterNextPrefixOp) treeStepsNode(t *Test) treesteps.Node { return t.getIter(o.iterID).iter }
+func (o *iterNextPrefixOp) diagramKeyRanges() []pebble.KeyRange  { return nil }
 
 // iterCanSingleDelOp models a call to CanDeterministicallySingleDelete with an
 // Iterator.
@@ -1830,7 +1845,8 @@ func (o *iterPrevOp) receiver() objID      { return o.iterID }
 func (o *iterPrevOp) syncObjs() objIDSlice { return onlyBatchIDs(o.derivedReaderID) }
 
 func (o *iterPrevOp) rewriteKeys(func(UserKey) UserKey)   {}
-func (o *iterPrevOp) diagramKeyRanges() []pebble.KeyRange { return nil }
+func (o *iterPrevOp) treeStepsNode(t *Test) treesteps.Node { return t.getIter(o.iterID).iter }
+func (o *iterPrevOp) diagramKeyRanges() []pebble.KeyRange  { return nil }
 
 // newSnapshotOp models a DB.NewSnapshot operation.
 type newSnapshotOp struct {

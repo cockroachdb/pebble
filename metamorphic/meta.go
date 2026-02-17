@@ -233,6 +233,9 @@ func RunAndCompare(t *testing.T, rootDir string, rOpts ...RunOption) {
 		if runOpts.numInstances > 1 {
 			args = append(args, "--num-instances="+strconv.Itoa(runOpts.numInstances))
 		}
+		if runOpts.treeSteps {
+			args = append(args, "--treesteps")
+		}
 		if runOpts.traceFile != "" {
 			args = append(args, "-test.trace="+filepath.Join(runDir, runOpts.traceFile))
 		}
@@ -414,6 +417,7 @@ type runOnceOptions struct {
 	numInstances        int
 	keyFormat           KeyFormat
 	initialStatePath    string
+	treeSteps           bool
 	customOptionParsers map[string]func(string) (CustomOption, bool)
 }
 
@@ -472,6 +476,13 @@ func (m MultiInstance) applyOnce(ro *runOnceOptions)   { ro.numInstances = int(m
 type RunOnceInitialStatePath string
 
 func (i RunOnceInitialStatePath) applyOnce(ro *runOnceOptions) { ro.initialStatePath = string(i) }
+
+// TreeStepsMode enables treesteps visualizations for each iterator operation.
+// When enabled, threads are forced to 1.
+type TreeStepsMode bool
+
+func (m TreeStepsMode) apply(ro *runAndCompareOptions) { ro.treeSteps = bool(m) }
+func (m TreeStepsMode) applyOnce(ro *runOnceOptions)   { ro.treeSteps = bool(m) }
 
 // RunOnce performs one run of the metamorphic tests. RunOnce expects the
 // directory named by `runDir` to already exist and contain an `OPTIONS` file
@@ -538,6 +549,11 @@ func RunOnce(t TestingT, runDir string, seed uint64, historyPath string, rOpts .
 	opts.FS = errorfs.Wrap(opts.FS, errorfs.ErrInjected.If(
 		dsl.And(errorfs.Reads, errorfs.Randomly(runOpts.errorRate, int64(seed))),
 	))
+
+	if runOpts.treeSteps {
+		testOpts.treeSteps = true
+		testOpts.Threads = 1
+	}
 
 	// Bound testOpts.threads to runOpts.maxThreads.
 	if runOpts.maxThreads < testOpts.Threads {
