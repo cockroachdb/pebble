@@ -198,6 +198,7 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 		strings.Contains(output.String(), "evicting in-use file") ||
 		strings.Contains(output.String(), "leaked iterators") ||
 		strings.Contains(output.String(), "leaked snapshots") ||
+		strings.Contains(output.String(), "element has outstanding references") ||
 		strings.Contains(output.String(), "test timed out") {
 		require.NoError(t, os.RemoveAll(testRootDir))
 		return false
