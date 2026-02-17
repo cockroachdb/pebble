@@ -948,6 +948,7 @@ func (i *InterleavingIter) enforceBoundsForward() {
 	// Check the upper bound if we have one.
 	if i.opts.UpperBound != nil && i.cmp(i.span.Start, i.opts.UpperBound) >= 0 {
 		i.span = nil
+		i.withinSpan = false
 		return
 	}
 	i.maybeTruncateSpan()
@@ -962,6 +963,7 @@ func (i *InterleavingIter) enforceBoundsBackward() {
 	// Check the lower bound if we have one.
 	if i.opts.LowerBound != nil && i.cmp(i.span.End, i.opts.LowerBound) <= 0 {
 		i.span = nil
+		i.withinSpan = false
 		return
 	}
 	i.maybeTruncateSpan()
@@ -1049,6 +1051,7 @@ func (i *InterleavingIter) disablePrefixMode() {
 		// Clear the existing span. It may not hold the true end bound of the
 		// underlying span.
 		i.span = nil
+		i.withinSpan = false
 	}
 }
 
@@ -1172,6 +1175,7 @@ func (i *InterleavingIter) TreeStepsNode() treesteps.NodeInfo {
 // seek.
 func (i *InterleavingIter) Invalidate() {
 	i.span = nil
+	i.withinSpan = false
 	i.pointKV = nil
 	i.pos = posUninitialized
 }
