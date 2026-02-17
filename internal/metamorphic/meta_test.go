@@ -53,17 +53,23 @@ var runOnceFlags, runFlags = metaflags.InitAllFlags()
 // be customized via the --inner-binary flag (used for code coverage
 // instrumentation).
 func TestMeta(t *testing.T) {
-	defer leaktest.AfterTest(t)()
+	if !runOnceFlags.NoLeakTest {
+		defer leaktest.AfterTest(t)()
+	}
 	runTestMeta(t)
 }
 
 func TestMetaTwoInstance(t *testing.T) {
-	defer leaktest.AfterTest(t)()
+	if !runOnceFlags.NoLeakTest {
+		defer leaktest.AfterTest(t)()
+	}
 	runTestMeta(t, metamorphic.MultiInstance(2))
 }
 
 func TestMetaCockroachKVs(t *testing.T) {
-	defer leaktest.AfterTest(t)()
+	if !runOnceFlags.NoLeakTest {
+		defer leaktest.AfterTest(t)()
+	}
 	runTestMeta(t, metamorphic.CockroachKeyFormat)
 }
 

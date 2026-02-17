@@ -52,6 +52,8 @@ type CommonFlags struct {
 	// InitialStatePath is the path to a database data directory from a previous
 	// run. See the "initial-state" flag below.
 	InitialStatePath string
+	// NoLeakTest disables the goroutine leak test.
+	NoLeakTest bool
 }
 
 // KeyFormat returns the KeyFormat indicated by the flags KeyFormatName.
@@ -111,6 +113,9 @@ func initCommonFlags() *CommonFlags {
 	flag.StringVar(&c.InitialStatePath, "initial-state", "",
 		`path to a database's data directory, used to prepopulate the test run's databases.
 		Must be used in conjunction with --previous-ops (unless --run or --compare is used).`)
+
+	flag.BoolVar(&c.NoLeakTest, "noleaktest", false,
+		"disable the goroutine leak test")
 
 	return c
 }
