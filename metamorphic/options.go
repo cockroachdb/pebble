@@ -435,6 +435,8 @@ type TestOptions struct {
 	useDeleteOnlyCompactionExcises bool
 	// disableDownloads, if true, makes downloadOp a no-op.
 	disableDownloads bool
+	// treeSteps enables treesteps visualizations for each iterator operation.
+	treeSteps bool
 }
 
 // CustomOption defines a custom option that configures the behavior of an

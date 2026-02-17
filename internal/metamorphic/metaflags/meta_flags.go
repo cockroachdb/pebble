@@ -54,6 +54,9 @@ type CommonFlags struct {
 	InitialStatePath string
 	// NoLeakTest disables the goroutine leak test.
 	NoLeakTest bool
+	// TreeSteps enables treesteps visualizations for each iterator operation.
+	// When enabled, threads are forced to 1.
+	TreeSteps bool
 }
 
 // KeyFormat returns the KeyFormat indicated by the flags KeyFormatName.
@@ -116,6 +119,9 @@ func initCommonFlags() *CommonFlags {
 
 	flag.BoolVar(&c.NoLeakTest, "noleaktest", false,
 		"disable the goroutine leak test")
+
+	flag.BoolVar(&c.TreeSteps, "treesteps", false,
+		`if set, record a treesteps visualization for each iterator operation. Forces single-threaded execution.`)
 
 	return c
 }
@@ -289,6 +295,9 @@ func (ro *RunOnceFlags) MakeRunOnceOptions() []metamorphic.RunOnceOption {
 	if ro.InitialStatePath != "" {
 		onceOpts = append(onceOpts, metamorphic.RunOnceInitialStatePath(ro.InitialStatePath))
 	}
+	if ro.TreeSteps {
+		onceOpts = append(onceOpts, metamorphic.TreeStepsMode(true))
+	}
 	return onceOpts
 }
 
@@ -367,6 +376,9 @@ func (r *RunFlags) MakeRunOptions() ([]metamorphic.RunOption, error) {
 	}
 	if r.InnerBinary != "" {
 		opts = append(opts, metamorphic.InnerBinary(r.InnerBinary))
+	}
+	if r.TreeSteps {
+		opts = append(opts, metamorphic.TreeStepsMode(true))
 	}
 	return opts, nil
 }
