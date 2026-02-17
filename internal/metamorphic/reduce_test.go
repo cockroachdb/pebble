@@ -172,6 +172,7 @@ func (r *reducer) try(t *testing.T, ops []string) bool {
 		"-test.v",
 		"-test.timeout", "10s",
 		"--keep",
+		"--noleaktest",
 	}
 
 	if len(runSubdirs) == 1 {
