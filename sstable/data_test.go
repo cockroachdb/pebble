@@ -239,7 +239,8 @@ func runIterCmd(
 			if len(parts) != 2 && len(parts) != 3 {
 				return "seek-prefix-ge <key> [<try-seek-using-next>]\n"
 			}
-			prefix = []byte(strings.TrimSpace(parts[1]))
+			k := []byte(strings.TrimSpace(parts[1]))
+			prefix = testkeys.Comparer.Split.Prefix(k)
 			var flags base.SeekGEFlags
 			if len(parts) == 3 {
 				if trySeekUsingNext, err := strconv.ParseBool(parts[2]); err != nil {
@@ -248,7 +249,7 @@ func runIterCmd(
 					flags = flags.EnableTrySeekUsingNext()
 				}
 			}
-			kv = iter.SeekPrefixGE(prefix, prefix /* key */, flags)
+			kv = iter.SeekPrefixGE(prefix, k, flags)
 			kv = skipMaskedKeys(+1, kv)
 		case "seek-lt":
 			if len(parts) != 2 {
