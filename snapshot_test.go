@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -26,6 +27,7 @@ import (
 )
 
 func TestSnapshotListToSlice(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		vals []base.SeqNum
 	}{
@@ -201,12 +203,14 @@ func testSnapshotImpl(t *testing.T, newSnapshot func(d *DB) Reader) {
 }
 
 func TestSnapshot(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testSnapshotImpl(t, func(d *DB) Reader {
 		return d.NewSnapshot()
 	})
 }
 
 func TestEventuallyFileOnlySnapshot(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testSnapshotImpl(t, func(d *DB) Reader {
 		// NB: all keys in testdata/snapshot fall within the ASCII keyrange a-z.
 		return d.NewEventuallyFileOnlySnapshot([]KeyRange{{Start: []byte("a"), End: []byte("z")}})
@@ -214,6 +218,7 @@ func TestEventuallyFileOnlySnapshot(t *testing.T) {
 }
 
 func TestSnapshotClosed(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", &Options{
 		FS:     vfs.NewMem(),
 		Logger: testutils.Logger{T: t},
@@ -240,6 +245,7 @@ func TestSnapshotClosed(t *testing.T) {
 }
 
 func TestSnapshotRangeDeletionStress(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const runs = 200
 	const middleKey = runs * runs
 
@@ -325,6 +331,7 @@ func TestSnapshotRangeDeletionStress(t *testing.T) {
 // that occurred between the reading of the sequence number and appending the
 // snapshot could drop keys required by the snapshot.
 func TestNewSnapshotRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const runs = 10
 	d, err := Open("", &Options{
 		FS:     vfs.NewMem(),
@@ -386,6 +393,7 @@ func TestNewSnapshotRace(t *testing.T) {
 
 // Test for fix to https://github.com/cockroachdb/pebble/issues/5390.
 func TestEFOSAndExciseRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	o := &Options{
 		FS:                          vfs.NewMem(),
 		L0CompactionThreshold:       10,

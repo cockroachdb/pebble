@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
@@ -212,6 +213,7 @@ func init() {
 }
 
 func TestMetrics(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	if runtime.GOARCH == "386" {
 		t.Skip("skipped on 32-bit due to slightly varied output")
 	}
@@ -552,6 +554,7 @@ func TestMetrics(t *testing.T) {
 }
 
 func TestMetricsWAmpDisableWAL(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", &Options{FS: vfs.NewMem(), DisableWAL: true, Logger: testutils.Logger{T: t}})
 	require.NoError(t, err)
 	ks := testkeys.Alpha(2)
@@ -575,6 +578,7 @@ func TestMetricsWAmpDisableWAL(t *testing.T) {
 // Metrics.WAL.BytesWritten metric is always nondecreasing.
 // It's a regression test for issue #3505.
 func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := errorfs.Wrap(vfs.NewMem(), errorfs.RandomLatency(
 		nil, 100*time.Microsecond, time.Now().UnixNano(), 0 /* no limit */))
 	d, err := Open("", &Options{

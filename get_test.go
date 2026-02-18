@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -17,6 +18,7 @@ import (
 )
 
 func TestGetIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// testTable is a table to insert into a version.
 	// Each element of data is a string of the form "internalKey value".
 	type testTable struct {

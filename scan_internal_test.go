@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -31,6 +32,7 @@ import (
 )
 
 func TestScanStatistics(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d *DB
 	type scanInternalReader interface {
 		ScanStatistics(
@@ -210,6 +212,7 @@ func TestScanStatistics(t *testing.T) {
 }
 
 func TestScanInternal(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d *DB
 	type scanInternalReader interface {
 		ScanInternal(context.Context, ScanInternalOptions) error
@@ -590,6 +593,7 @@ func TestScanInternal(t *testing.T) {
 }
 
 func TestPointCollapsingIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var def string
 	datadriven.RunTest(t, "testdata/point_collapsing_iter", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/vfs"
@@ -16,6 +17,7 @@ import (
 )
 
 func TestManualFlush(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	getOptions := func() *Options {
 		opts := &Options{
 			FS:                    vfs.NewMem(),
@@ -95,6 +97,7 @@ func TestManualFlush(t *testing.T) {
 // TestFlushDelRangeEmptyKey tests flushing a range tombstone that begins with
 // an empty key. The empty key is a valid key but can be confused with nil.
 func TestFlushDelRangeEmptyKey(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", &Options{FS: vfs.NewMem()})
 	require.NoError(t, err)
 	require.NoError(t, d.DeleteRange([]byte{}, []byte("z"), nil))
@@ -105,6 +108,7 @@ func TestFlushDelRangeEmptyKey(t *testing.T) {
 // TestFlushEmptyKey tests that flushing an empty key does not trigger that key
 // order invariant assertions.
 func TestFlushEmptyKey(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", &Options{FS: vfs.NewMem()})
 	require.NoError(t, err)
 	require.NoError(t, d.Set(nil, []byte("hello"), nil))

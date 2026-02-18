@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -36,6 +37,7 @@ const (
 )
 
 func TestLevelIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var iterKVs [][]base.InternalKV
 	var files manifest.LevelSlice
 
@@ -324,6 +326,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 }
 
 func TestLevelIterBoundaries(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	lt := newLevelIterTest()
 	defer lt.runClear()
 
@@ -478,6 +481,7 @@ func (i *levelIterTestIter) Prev() *base.InternalKV {
 }
 
 func TestLevelIterSeek(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	lt := newLevelIterTest()
 	defer lt.runClear()
 
