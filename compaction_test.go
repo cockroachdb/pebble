@@ -2786,8 +2786,10 @@ var _ errorfs.Injector = &createManifestErrorInjector{}
 //
 // Regression test for #1669.
 func TestCompaction_UpdateVersionFails(t *testing.T) {
-	// TODO(jackson): Fix the leak.
-	// defer leaktest.AfterTest(t)()
+	defer leaktest.AfterTest(t)()
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
 
 	// flushKeys writes the given keys to the DB, flushing the resulting memtable.
 	var key = []byte("foo")
@@ -2799,7 +2801,16 @@ func TestCompaction_UpdateVersionFails(t *testing.T) {
 		err = b.Commit(nil)
 		require.NoError(t, err)
 		// An error from a failing flush is returned asynchronously.
-		go func() { _ = db.Flush() }()
+		go func() {
+			flushDone, err := db.AsyncFlush()
+			if err != nil {
+				panic(err)
+			}
+			select {
+			case <-flushDone:
+			case <-stopCh:
+			}
+		}()
 		return <-flushErrC
 	}
 

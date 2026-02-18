@@ -341,4 +341,5 @@ func TestStatsAfterReopen(t *testing.T) {
 	if before != after {
 		t.Errorf("metrics differ.\nbefore:\n%s\nafter:\n%s", before, after)
 	}
+	require.NoError(t, d.Close())
 }

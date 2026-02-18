@@ -58,6 +58,7 @@ func TestBlobRewrite(t *testing.T) {
 	st.Local.FS = fs
 	objStore, err := objstorageprovider.Open(st)
 	require.NoError(t, err)
+	defer objStore.Close()
 
 	initRawWriter := func() {
 		if tw != nil {
@@ -181,13 +182,19 @@ func TestBlobRewrite(t *testing.T) {
 				}
 
 				fileCache := NewFileCache(1, 100)
+				defer fileCache.Unref()
+				blockCache := NewCache(1024)
+				defer blockCache.Unref()
+				blockCacheHandle := blockCache.NewHandle()
+				defer blockCacheHandle.Close()
 				mockFC := fileCache.newHandle(
-					nil,
+					blockCacheHandle,
 					objStore,
 					&base.LoggerWithNoopTracer{Logger: base.DefaultLogger},
 					sstable.ReaderOptions{},
 					func(base.ObjectInfo, error) error { return nil },
 				)
+				defer mockFC.Close()
 				var sstables []*manifest.TableMetadata
 				for _, sstFileNum := range sstableFileNums {
 					sst := &manifest.TableMetadata{
