@@ -411,19 +411,26 @@ func lookupFormatMajorVersion(
 	if versString == "" {
 		return FormatDefault, m, nil
 	}
-	v, err := strconv.ParseUint(versString, 10, 64)
+	vers, err := func() (FormatMajorVersion, error) {
+		v, err := strconv.ParseUint(versString, 10, 64)
+		if err != nil {
+			return 0, errors.Wrap(err, "parsing format major version")
+		}
+		vers := FormatMajorVersion(v)
+		if vers == FormatDefault {
+			return 0, errors.Newf("pebble: default format major version should not persisted", vers)
+		}
+		if vers > internalFormatNewest {
+			return 0, errors.Newf("pebble: database %q written in unknown format major version %d", dirname, vers)
+		}
+		if vers < FormatMinSupported {
+			return 0, errors.Newf("pebble: database %q written in format major version %d which is no longer supported", dirname, vers)
+		}
+		return vers, nil
+	}()
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "parsing format major version")
-	}
-	vers := FormatMajorVersion(v)
-	if vers == FormatDefault {
-		return 0, nil, errors.Newf("pebble: default format major version should not persisted", vers)
-	}
-	if vers > internalFormatNewest {
-		return 0, nil, errors.Newf("pebble: database %q written in unknown format major version %d", dirname, vers)
-	}
-	if vers < FormatMinSupported {
-		return 0, nil, errors.Newf("pebble: database %q written in format major version %d which is no longer supported", dirname, vers)
+		_ = m.Close()
+		return 0, nil, err
 	}
 	return vers, m, nil
 }

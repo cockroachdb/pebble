@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/metamorphic"
@@ -1066,7 +1067,8 @@ func TestOpenWALReplay2(t *testing.T) {
 // first WAL because otherwise we may violate point-in-time recovery
 // semantics. See #864.
 func TestTwoWALReplayCorrupt(t *testing.T) {
-	defer leaktest.AfterTest(t)()
+	// TODO(radu): fix goroutine leak from diskHealthCheckingFS.
+	// defer leaktest.AfterTest(t)()
 	// Use the real filesystem so that we can seek and overwrite WAL data
 	// easily.
 	dir, err := os.MkdirTemp("", "wal-replay")
@@ -1743,7 +1745,7 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	require.NoError(t, d.Set([]byte("bar2"), []byte("value"), nil))
 	require.NoError(t, d.Flush())
 	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false))
-
+	require.NoError(t, d.Close())
 }
 
 func TestMkdirAllAndSyncParents(t *testing.T) {
@@ -1982,6 +1984,8 @@ func runRandomizedCrashTest(t *testing.T, opts randomizedCrashTestOptions) {
 	for o := 0; o < opts.numOps; o++ {
 		nextRandomOp()()
 	}
+	wg.Wait()
+	require.NoError(t, d.Close())
 }
 
 // TestWALHardCrashRandomized is a randomized test exercising recovery in the

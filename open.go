@@ -206,6 +206,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		d.compactionScheduler = newConcurrencyLimitScheduler(defaultTimeSource{})
 	}
 
+	var compactionSchedulerRegistered bool
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
 		// allocated memory resources. Note that rather than look for an error, we
@@ -236,6 +237,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			}
 			if d.mu.versions.manifestFile != nil {
 				_ = d.mu.versions.manifestFile.Close()
+			}
+			if compactionSchedulerRegistered {
+				d.compactionScheduler.Unregister()
 			}
 			if r != nil {
 				panic(r)
@@ -573,6 +577,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// d.maybeScheduleFlush, since completion of the flush can trigger
 	// compactions.
 	d.compactionScheduler.Register(2, d)
+	compactionSchedulerRegistered = true
 	if !d.opts.ReadOnly {
 		d.maybeScheduleFlush()
 		for d.mu.compact.flushing {
