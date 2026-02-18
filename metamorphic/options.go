@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
@@ -653,7 +654,13 @@ func RandomOptions(
 	}
 
 	opts.BytesPerSync = 1 << uint(rng.IntN(28)) // 1B - 256MB
-	opts.CacheSize = 1 << uint(rng.IntN(30))    // 1B - 1GB
+	cacheSizeMax := 30                          // 1B - 1GB
+	if unsafe.Sizeof(uintptr(0)) == 4 {
+		// Cap the cache size on 32-bit builds to avoid OOMs due to the
+		// limited user-space address space (~3GB on Linux).
+		cacheSizeMax = 27 // 1B - 128MB
+	}
+	opts.CacheSize = 1 << uint(rng.IntN(cacheSizeMax))
 	opts.DisableWAL = rng.IntN(2) == 0
 	opts.FlushDelayDeleteRange = time.Millisecond * time.Duration(5*rng.IntN(245)) // 5-250ms
 	opts.FlushDelayRangeKey = time.Millisecond * time.Duration(5*rng.IntN(245))    // 5-250ms
