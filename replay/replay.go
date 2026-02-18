@@ -312,7 +312,12 @@ type Runner struct {
 		started   int64
 		completed int64
 	}
-	workload struct {
+	// finalMetrics holds the metrics snapshot from the moment compactions
+	// were confirmed quiesced. It is written by refreshMetrics before it
+	// returns and read by Wait after errgroup.Wait, so the errgroup
+	// provides happens-before synchronization.
+	finalMetrics *pebble.Metrics
+	workload     struct {
 		manifests []string
 		// manifest{Idx,Off} record the starting position of the workload
 		// relative to the initial database state.
@@ -457,8 +462,13 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 			case <-time.After(time.Second):
 				// No compactions completed. If it still looks like they've
 				// quiesced according to the metrics, consider them quiesced.
-				if r.compactionsAppearQuiesced(r.d.Metrics()) {
+				// Save the metrics snapshot so Wait() can use the metrics
+				// from the moment quiescence was confirmed, rather than
+				// re-fetching (which could race with new compactions).
+				finalM := r.d.Metrics()
+				if r.compactionsAppearQuiesced(finalM) {
 					r.metrics.quiesceDuration = time.Since(workloadExhaustedAt)
+					r.finalMetrics = finalM
 					return nil
 				}
 			}
@@ -527,7 +537,13 @@ func (r *Runner) Wait() (Metrics, error) {
 	if storedErr := r.err.Load(); storedErr != nil {
 		err = storedErr.(error)
 	}
-	pm := r.d.Metrics()
+	// Use the metrics snapshot from when quiescence was confirmed. Fall
+	// back to a live fetch if refreshMetrics exited due to an error
+	// without confirming quiescence.
+	pm := r.finalMetrics
+	if pm == nil {
+		pm = r.d.Metrics()
+	}
 	total := pm.Total()
 	var ingestBytesWeighted uint64
 	for l := 0; l < len(pm.Levels); l++ {
