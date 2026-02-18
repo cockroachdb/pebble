@@ -91,3 +91,43 @@ f1#1,SET:va
 f2#1,SET:va
 .
 https://raduberinde.github.io/treesteps/decode.html#eNrsmcFq20AQhu99imFzcUAl1raNYaGHhLqhEHyoe6tCkZTZZKm8NtK2FEIg5NBLLz3o2GfoQ-lJimS7lpSVbFVyHJf1yfZoZvx_-mcH5BsycidIGFEYqUtXuUcqRIwUzqKjCYZXQl59EgpDNhgQi4wVztLrI8I-EiGFEm5ALPJWhJGCqYRFxjuFIUTKDRVe5sMBfsUgC3IhRXTdJJovnYuP8FtN52VUW1qXaiprg2PEz2fDf8v97zBfzOcgm4HcBY6EJP6VxHdJfAcn2ad7AIAkjhdfrlqd21l8GTh1JEDltdSRxMp3Aki-_4RsMnqHT67tPajpxIvUVCID_zlnN70Du2-9PxmdDd8Mzw9v1_3GQh94Df6BkPxv_ioblv24CJBBP329LId__N6SZNap5q2qKgN17QPbGg8_LLN0LV8Vg2nDGjTFommpa3RnMBGSwSkrhFYAq-7r7nGyMqEqt7Tmlx40C2cZZoZZ3fzOZaeTRjsbX13NB1Tp3lGlO3eiYWaY6afX22D5HjecXq9693p7dyZ6rffIcUsnGmaGWdX00i1Mb_Xu9fbuTPTozp1omBlm-un1N9i9g1YotcweBWhJKu_yoQnzW--XQUuH-vr9wp-uQ_0G-2X-fLXnEO4QC2h2A9d71e639Cqv82o12g3s53zp91_4UgTZGyyh4W3t1Ex5kWbZWVzrrGYPUh9bkZHRgYyyRWjHA1es-UAo7UIo3fn9MjIaylh3UtYaSneubuvPn4vbZ38CAAD__xYptfg=
+
+define
+L1
+  b@20#5,SET:b20
+  b@10#5,SET:b10
+  c@20#5,SET:c20
+  c@10#5,SET:c10
+  d@20#5,SET:d20
+  d@10#5,SET:d10
+L2
+  a#4,RANGEDEL:c1
+L3
+  b@25#3,SET:b25
+  b@15#3,SET:b15
+  b@5#3,SET:b5
+  c@25#3,SET:c25
+  c@15#3,SET:c15
+  c@5#3,SET:c5
+  d@25#3,SET:d25
+  d@15#3,SET:d15
+  d@5#3,SET:d5
+----
+L1:
+  000004:[b@20#5,SET-d@10#5,SET] seqnums:[#5-#5] points:[b@20#5,SET-d@10#5,SET] size:839
+L2:
+  000005:[a#4,RANGEDEL-c1#inf,RANGEDEL] seqnums:[#4-#4] points:[a#4,RANGEDEL-c1#inf,RANGEDEL] size:678
+L3:
+  000006:[b@25#3,SET-d@5#3,SET] seqnums:[#3-#3] points:[b@25#3,SET-d@5#3,SET] size:873
+
+# TODO(radu): the InterleavingIter returns `b-b\x00:{(#4,RANGEDEL)}` instead of
+# returning a tombstone up to d; this seems suspicious.
+merging-iter depth=2
+seek-prefix-ge b
+seek-prefix-ge c try-seek-using-next
+seek-prefix-ge d try-seek-using-next
+----
+b@20#5,SET:b20
+c@20#5,SET:c20
+d@25#3,SET:d25
+https://raduberinde.github.io/treesteps/decode.html#eNrsmUFv2jAUx-_7FE_mAhJVA5QdLE1q6VA1qULTuttSTYnzKNbAoMSbkKpKFYdddtmB4z7DPhSfZIqTQigJeCymCwqXQN6L_Z5_79l_kXvSc0ZIKJEYSM-Rzqn0EQOJk-B0hP4dF3efuUSfNpptUic3EifhAwGhnwgXXHJnGN5G_PLexz6fXnVhLCB-8p1EHwLp-BK9FK8hfsOh8ulzwYNBzk49nErtEZIRa7qViQ0MO6XGfhtVoarAhIMtYDH_tZg_LuaPcKF-zQAAFvN5fHM15XVjzbuzw7up7E-GS1sAZPq2bEHqybgAFt9_QjKzqk1cm9Qhvli1ooc-g4myU3D_LhWNCeANuOdNq9Ku33Q_rsaLs5hBnw-RghV-zp6bf_wu0FpRLe75JD8DOR65gRwLpOCeuLY9tSx6X62c1T9c9K66b7vXtYddq6UJr8JFfznq9hzaGTkcKxKaOxOj67t9PcNwl9TZebNdacUtC1nxvF43htHsS3CAzgRGXFDo0NSSy0KctrmYgZ3VCbm2YygNqqrv1CCHbD6znNPOgRX0FI4vDrxYzZ0_PxbxU5dGrUR21MjY3sg0AokOlPw1YIn4MIhNIWMnLD_lullyRT48C4iZ2l8tq8UEH6ovmDv2w4vjJYUncawKyzMojndw71C2TRw_Z88Oxp7pieN_6_ilOGaFF8e7D8hkszPdZmeF3dMLxs-L-HmZ-3OJ7HiQeXsj0wgkOlAMi-MSsTHEhv_T1qugNOlVUniZNwvaPW9MRG6fbJ3GJd0wZtHw_k8adHMp86n024dXfwIAAP__Ox8y6w==
