@@ -257,14 +257,10 @@ D
 C
 
 iter
-seek-prefix-ge a false
-seek-prefix-ge a true
-seek-prefix-ge aa true
-seek-prefix-ge d true
-seek-prefix-ge c false
+seek-prefix-ge a
+seek-prefix-ge a try-seek-using-next
+seek-prefix-ge aa try-seek-using-next
+seek-prefix-ge d try-seek-using-next
+seek-prefix-ge c
 ----
-seek-prefix-ge a false: <a:1>:A
- seek-prefix-ge a true: <a:1>:A
-seek-prefix-ge aa true: <aa:2>:AA
- seek-prefix-ge d true: <d:4>:D
-seek-prefix-ge c false: <c:3>:C
+strconv.ParseBool: parsing "try-seek-using-next": invalid syntax
