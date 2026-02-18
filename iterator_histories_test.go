@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -29,6 +30,7 @@ import (
 // fragmented spans is susceptible to races.
 
 func TestIterHistories(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	datadriven.Walk(t, "testdata/iter_histories", func(t *testing.T, path string) {
 		filename := filepath.Base(path)
 		switch {

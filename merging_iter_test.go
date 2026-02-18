@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/bloom"
@@ -34,6 +35,7 @@ import (
 )
 
 func TestMergingIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var stats base.InternalIteratorStats
 	newFunc := func(iters ...internalIterator) internalIterator {
 		return newMergingIter(nil /* logger */, &stats, DefaultComparer.Compare,
@@ -53,6 +55,7 @@ func TestMergingIter(t *testing.T) {
 }
 
 func TestMergingIterSeek(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var def string
 	datadriven.RunTest(t, "testdata/merging_iter_seek", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -84,6 +87,7 @@ func TestMergingIterSeek(t *testing.T) {
 }
 
 func TestMergingIterNextPrev(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// The data is the same in each of these cases, but divided up amongst the
 	// iterators differently. This data must match the definition in
 	// testdata/internal_iter_next.
@@ -144,6 +148,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 }
 
 func TestMergingIterDataDriven(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	memFS := vfs.NewMem()
 	cmp := DefaultComparer.Compare
 	fmtKey := DefaultComparer.FormatKey

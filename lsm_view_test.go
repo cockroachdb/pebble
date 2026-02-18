@@ -7,10 +7,12 @@ package pebble
 import (
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 )
 
 func TestLSMViewURL(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	datadriven.RunTest(t, "testdata/lsm_view",
 		func(t *testing.T, td *datadriven.TestData) string {
 			switch td.Cmd {

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -28,6 +29,7 @@ import (
 )
 
 func TestExcise(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem vfs.FS
 	var d *DB
 	var flushed bool
@@ -355,6 +357,7 @@ func TestExcise(t *testing.T) {
 }
 
 func TestConcurrentExcise(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d, d1, d2 *DB
 	var efos map[string]*EventuallyFileOnlySnapshot
 	compactionErrs := make(chan error, 5)
@@ -780,6 +783,7 @@ func TestConcurrentExcise(t *testing.T) {
 }
 
 func TestExciseBounds(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const sstPath = "foo.sst"
 	var fs vfs.FS
 	var m *manifest.TableMetadata

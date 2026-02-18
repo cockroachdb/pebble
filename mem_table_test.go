@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
@@ -82,6 +83,7 @@ func ikey(s string) InternalKey {
 }
 
 func TestMemTableBasic(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Check the empty DB.
 	m := newMemTable(memTableOptions{})
 	if got, want := m.count(), 0; got != want {
@@ -132,6 +134,7 @@ func TestMemTableBasic(t *testing.T) {
 }
 
 func TestMemTableCount(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	m := newMemTable(memTableOptions{})
 	for i := 0; i < 200; i++ {
 		if j := m.count(); j != i {
@@ -142,6 +145,7 @@ func TestMemTableCount(t *testing.T) {
 }
 
 func TestMemTableEmpty(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	m := newMemTable(memTableOptions{})
 	if !m.empty() {
 		t.Errorf("got !empty, want empty")
@@ -154,6 +158,7 @@ func TestMemTableEmpty(t *testing.T) {
 }
 
 func TestMemTable1000Entries(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Initialize the DB.
 	const N = 1000
 	m0 := newMemTable(memTableOptions{})
@@ -227,6 +232,7 @@ func TestMemTable1000Entries(t *testing.T) {
 }
 
 func TestMemTableIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem *memTable
 	for _, testdata := range []string{
 		"testdata/internal_iter_next", "testdata/internal_iter_bounds"} {
@@ -274,6 +280,7 @@ func TestMemTableIter(t *testing.T) {
 }
 
 func TestMemTableDeleteRange(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem *memTable
 	var seqNum base.SeqNum
 
@@ -318,6 +325,7 @@ func TestMemTableDeleteRange(t *testing.T) {
 }
 
 func TestMemTableConcurrentDeleteRange(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Concurrently write and read range tombstones. Workers add range
 	// tombstones, and then immediately retrieve them verifying that the
 	// tombstones they've added are all present.
@@ -366,6 +374,7 @@ func TestMemTableConcurrentDeleteRange(t *testing.T) {
 }
 
 func TestMemTableReserved(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	m := newMemTable(memTableOptions{size: 5000})
 	// Increase to 2 references.
 	m.writerRef()
@@ -381,6 +390,7 @@ func TestMemTableReserved(t *testing.T) {
 }
 
 func TestMemTable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var m *memTable
 	var buf bytes.Buffer
 	batches := map[string]*Batch{}

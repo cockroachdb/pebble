@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMergingIterHeap(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Logf("Using seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))
@@ -105,6 +107,7 @@ func TestMergingIterHeap(t *testing.T) {
 // with uniform random keys. There is a ~3.7% saving, with the following being
 // a representative result: cmp needed=104325 called=100416(frac=0.9625).
 func TestMergingIterHeapInit(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Logf("Using seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))

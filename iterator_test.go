@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -167,6 +168,7 @@ func testIterator(
 }
 
 func TestIterator(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var merge Merge
 	var kvs []base.InternalKV
 
@@ -312,6 +314,7 @@ func (f *minSeqNumFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) 
 }
 
 func TestReadSampling(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -474,6 +477,7 @@ func TestReadSampling(t *testing.T) {
 }
 
 func TestIteratorTableFilter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -537,6 +541,7 @@ func TestIteratorTableFilter(t *testing.T) {
 }
 
 func TestIteratorNextPrev(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem vfs.FS
 	var d *DB
 	defer func() {
@@ -598,6 +603,7 @@ func TestIteratorNextPrev(t *testing.T) {
 }
 
 func TestIteratorStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem vfs.FS
 	var d *DB
 	defer func() {
@@ -676,6 +682,7 @@ func (i *iterSeekOptWrapper) SeekPrefixGE(
 }
 
 func TestIteratorSeekOpt(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d *DB
 	defer func() {
 		require.NoError(t, d.Close())
@@ -843,6 +850,7 @@ func (i *errorSeekIter) Error() error {
 }
 
 func TestIteratorSeekOptErrors(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var kvs []base.InternalKV
 
 	var errorIter errorSeekIter
@@ -935,6 +943,7 @@ func (bi *testBlockIntervalMapper) MapRangeKeys(span sstable.Span) (sstable.Bloc
 	return sstable.BlockInterval{}, nil
 }
 func TestIteratorBlockIntervalFilter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem vfs.FS
 	var d *DB
 	defer func() {
@@ -1077,6 +1086,7 @@ func randKey(n int, rng *rand.Rand) ([]byte, int) {
 }
 
 func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	opts := &Options{
 		FS:                 mem,
@@ -1149,6 +1159,7 @@ func TestIteratorRandomizedBlockIntervalFilter(t *testing.T) {
 }
 
 func TestIteratorGuaranteedDurable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	opts := &Options{FS: mem}
 	d, err := Open("", opts)
@@ -1190,6 +1201,7 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 }
 
 func TestIteratorBoundsLifetimes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	d := newPointTestkeysDatabase(t, testkeys.Alpha(2))
 	defer func() { require.NoError(t, d.Close()) }()
@@ -1324,6 +1336,7 @@ func TestIteratorBoundsLifetimes(t *testing.T) {
 }
 
 func TestIteratorStatsMerge(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	s := IteratorStats{
 		ForwardSeekCount: [NumStatsKind]int{1, 2},
 		ReverseSeekCount: [NumStatsKind]int{3, 4},
@@ -1419,6 +1432,7 @@ func TestIteratorStatsMerge(t *testing.T) {
 // iterator and constructing a new iterator with NewIter. The long-lived
 // iterator and the new iterator should surface identical iterator states.
 func TestSetOptionsEquivalence(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := uint64(time.Now().UnixNano())
 	// Call a helper function with the seed so that the seed appears within
 	// stack traces if there's a panic.
@@ -2044,6 +2058,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 }
 
 func TestRangeKeyMaskingRandomized(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := *seed
 	if seed == 0 {
 		seed = uint64(time.Now().UnixNano())
@@ -2268,6 +2283,7 @@ func TestRangeKeyMaskingRandomized(t *testing.T) {
 }
 
 func TestIteratorSeekPrefixGERandomized(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := uint64(time.Now().UnixNano())
 	t.Logf("seed: %d", seed)
 	rng := rand.New(rand.NewPCG(seed, seed))

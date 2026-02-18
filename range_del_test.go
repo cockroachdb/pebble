@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
@@ -28,6 +29,7 @@ import (
 )
 
 func TestRangeDel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -101,6 +103,7 @@ func TestRangeDel(t *testing.T) {
 }
 
 func TestFlushDelay(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := &Options{
 		FS:                    vfs.NewMem(),
 		Comparer:              testkeys.Comparer,
@@ -200,6 +203,7 @@ func TestFlushDelay(t *testing.T) {
 }
 
 func TestFlushDelayStress(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	opts := &Options{
 		FS:                    vfs.NewMem(),
@@ -261,6 +265,7 @@ func TestFlushDelayStress(t *testing.T) {
 // problem is that range tombstones are not truncated to sstable boundaries on
 // disk, only in memory.
 func TestRangeDelCompactionTruncation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	runTest := func(formatVersion FormatMajorVersion) {
 		// Use a small target file size so that there is a single key per sstable.
 		d, err := Open("", &Options{
@@ -410,6 +415,7 @@ L3:
 // sstable expanding to overlap its left neighbor if we failed to truncate an
 // sstable's boundaries to the compaction input boundaries.
 func TestRangeDelCompactionTruncation2(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
@@ -471,6 +477,7 @@ L6:
 // TODO(peter): rewrite this test, TestRangeDelCompactionTruncation, and
 // TestRangeDelCompactionTruncation2 as data-driven tests.
 func TestRangeDelCompactionTruncation3(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Use a small target file size so that there is a single key per sstable.
 	d, err := Open("tmp", &Options{
 		Cleaner: ArchiveCleaner{},
