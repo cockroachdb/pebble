@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/crlib/crstrings"
@@ -221,33 +220,25 @@ func runIterCmd(
 		parts := strings.Fields(line)
 		switch parts[0] {
 		case "seek-ge":
-			if len(parts) < 2 || len(parts) > 3 {
-				return "seek-ge <key> [<try-seek-using-next]\n"
+			if !(len(parts) == 2 || len(parts) == 3 && parts[2] == "try-seek-using-next") {
+				panic("seek-ge <key> [<try-seek-using-next]")
 			}
 			prefix = nil
 			var flags base.SeekGEFlags
 			if len(parts) == 3 {
-				if trySeekUsingNext, err := strconv.ParseBool(parts[2]); err != nil {
-					return err.Error()
-				} else if trySeekUsingNext {
-					flags = flags.EnableTrySeekUsingNext()
-				}
+				flags = flags.EnableTrySeekUsingNext()
 			}
 			kv = iter.SeekGE([]byte(strings.TrimSpace(parts[1])), flags)
 			kv = skipMaskedKeys(+1, kv)
 		case "seek-prefix-ge":
-			if len(parts) != 2 && len(parts) != 3 {
-				return "seek-prefix-ge <key> [<try-seek-using-next>]\n"
+			if !(len(parts) == 2 || len(parts) == 3 && parts[2] == "try-seek-using-next") {
+				panic("seek-prefix-ge <key> [<try-seek-using-next]")
 			}
 			k := []byte(strings.TrimSpace(parts[1]))
 			prefix = testkeys.Comparer.Split.Prefix(k)
 			var flags base.SeekGEFlags
 			if len(parts) == 3 {
-				if trySeekUsingNext, err := strconv.ParseBool(parts[2]); err != nil {
-					return err.Error()
-				} else if trySeekUsingNext {
-					flags = flags.EnableTrySeekUsingNext()
-				}
+				flags = flags.EnableTrySeekUsingNext()
 			}
 			kv = iter.SeekPrefixGE(prefix, k, flags)
 			kv = skipMaskedKeys(+1, kv)

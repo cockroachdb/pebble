@@ -330,17 +330,17 @@ j#7,SET:j
 
 # Seeks to immediately following keys.
 iter
-seek-prefix-ge a false
-seek-prefix-ge a true
-seek-prefix-ge b true
+seek-prefix-ge a
+seek-prefix-ge a try-seek-using-next
+seek-prefix-ge b try-seek-using-next
 next
-seek-prefix-ge c false
-seek-prefix-ge d true
-seek-prefix-ge f true
-seek-prefix-ge g true
-seek-prefix-ge h true
-seek-prefix-ge i true
-seek-prefix-ge j true
+seek-prefix-ge c
+seek-prefix-ge d try-seek-using-next
+seek-prefix-ge f try-seek-using-next
+seek-prefix-ge g try-seek-using-next
+seek-prefix-ge h try-seek-using-next
+seek-prefix-ge i try-seek-using-next
+seek-prefix-ge j try-seek-using-next
 ----
 a#1,SET:a / c-e:{(#4,RANGEDEL)}
 a#1,SET:a / c-e:{(#4,RANGEDEL)}
@@ -356,10 +356,10 @@ j#7,SET:j
 
 # Seeks to keys that are in the next file, so cannot use Next.
 iter
-seek-prefix-ge a false
-seek-prefix-ge e true
-seek-prefix-ge i true
-seek-prefix-ge j true
+seek-prefix-ge a
+seek-prefix-ge e try-seek-using-next
+seek-prefix-ge i try-seek-using-next
+seek-prefix-ge j try-seek-using-next
 ----
 a#1,SET:a / c-e:{(#4,RANGEDEL)}
 e#4,SET:e

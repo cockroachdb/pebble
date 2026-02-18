@@ -571,10 +571,10 @@ seek-lt b
 
 iter point-key-filter=(suffix-point-keys-only,10,16)
 seek-ge a
-seek-ge aa true
-seek-ge bb true
-seek-ge c@16 true
-seek-ge c@19 true
+seek-ge aa try-seek-using-next
+seek-ge bb try-seek-using-next
+seek-ge c@16 try-seek-using-next
+seek-ge c@19 try-seek-using-next
 ----
 <b@10:2>
 <b@10:2>

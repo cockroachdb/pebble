@@ -41,16 +41,16 @@ first: <d@7:9>
 iter block-property-filter=(7,8)
 set-bounds lower=a upper=c
 seek-ge a
-seek-ge b true
+seek-ge b try-seek-using-next
 set-bounds lower=c upper=g
 seek-ge c
 next
 next
 ----
-set-bounds lower=a upper=c: .
-                 seek-ge a: .
-            seek-ge b true: .
-set-bounds lower=c upper=g: .
-                 seek-ge c: <d@7:9>
-                      next: <f@7:5>
-                      next: .
+   set-bounds lower=a upper=c: .
+                    seek-ge a: .
+seek-ge b try-seek-using-next: .
+   set-bounds lower=c upper=g: .
+                    seek-ge c: <d@7:9>
+                         next: <f@7:5>
+                         next: .

@@ -244,36 +244,36 @@ seek-lt a: .
 # Verify the optimization to use next when doing SeekGE.
 
 iter
-seek-ge a false
-seek-ge a true
-seek-ge b true
-seek-ge c true
-seek-ge d true
-seek-ge e true
+seek-ge a
+seek-ge a try-seek-using-next
+seek-ge b try-seek-using-next
+seek-ge c try-seek-using-next
+seek-ge d try-seek-using-next
+seek-ge e try-seek-using-next
 ----
-seek-ge a false: <a:1>:A
- seek-ge a true: <a:1>:A
- seek-ge b true: <b:2>:B
- seek-ge c true: <c:3>:C
- seek-ge d true: <d:4>:D
- seek-ge e true: .
+                    seek-ge a: <a:1>:A
+seek-ge a try-seek-using-next: <a:1>:A
+seek-ge b try-seek-using-next: <b:2>:B
+seek-ge c try-seek-using-next: <c:3>:C
+seek-ge d try-seek-using-next: <d:4>:D
+seek-ge e try-seek-using-next: .
 
 # Verify the optimization to use next when doing SeekPrefixGE.
 
 iter
-seek-prefix-ge a false
-seek-prefix-ge a true
-seek-prefix-ge b true
-seek-prefix-ge c true
-seek-prefix-ge d true
-seek-prefix-ge e true
+seek-prefix-ge a
+seek-prefix-ge a try-seek-using-next
+seek-prefix-ge b try-seek-using-next
+seek-prefix-ge c try-seek-using-next
+seek-prefix-ge d try-seek-using-next
+seek-prefix-ge e try-seek-using-next
 ----
-seek-prefix-ge a false: <a:1>:A
- seek-prefix-ge a true: <a:1>:A
- seek-prefix-ge b true: <b:2>:B
- seek-prefix-ge c true: <c:3>:C
- seek-prefix-ge d true: <d:4>:D
- seek-prefix-ge e true: .
+                    seek-prefix-ge a: <a:1>:A
+seek-prefix-ge a try-seek-using-next: <a:1>:A
+seek-prefix-ge b try-seek-using-next: <b:2>:B
+seek-prefix-ge c try-seek-using-next: <c:3>:C
+seek-prefix-ge d try-seek-using-next: <d:4>:D
+seek-prefix-ge e try-seek-using-next: .
 
 # Verify that iteration from before the beginning or after the end of
 # the sstable does not "wrap around". A bug previously allowed this to

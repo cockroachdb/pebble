@@ -597,11 +597,11 @@ d#10,SET:d10
 # match -- that is job of the higher-level Iterator. So "seek-prefix-ge c" is
 # allowed to return d.
 iter
-seek-prefix-ge a false
-seek-prefix-ge aa true
-seek-prefix-ge b true
-seek-prefix-ge c true
-seek-prefix-ge d true
+seek-prefix-ge a
+seek-prefix-ge aa try-seek-using-next
+seek-prefix-ge b try-seek-using-next
+seek-prefix-ge c try-seek-using-next
+seek-prefix-ge d try-seek-using-next
 ----
 a#10,SET:a10
 .
@@ -610,10 +610,10 @@ a#10,SET:a10
 d#10,SET:d10
 
 iter
-seek-prefix-ge a false
+seek-prefix-ge a
 next
-seek-prefix-ge b false
-seek-prefix-ge d true
+seek-prefix-ge b
+seek-prefix-ge d try-seek-using-next
 next
 ----
 a#10,SET:a10
