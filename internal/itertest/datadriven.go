@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -148,42 +147,29 @@ func RunInternalIterCmdWriter(
 		}
 		switch parts[0] {
 		case "seek-ge":
-			if len(parts) < 2 || len(parts) > 3 {
-				fmt.Fprint(w, "seek-ge <key> [<try-seek-using-next>]\n")
-				return
+			if !(len(parts) == 2 || (len(parts) == 3 && parts[2] == "try-seek-using-next")) {
+				t.Fatalf("seek-ge <key> [<try-seek-using-next>]")
 			}
 			prefix = nil
 			var flags base.SeekGEFlags
 			if len(parts) == 3 {
-				if trySeekUsingNext, err := strconv.ParseBool(parts[2]); err != nil {
-					fmt.Fprintf(w, "%s", err.Error())
-					return
-				} else if trySeekUsingNext {
-					flags = flags.EnableTrySeekUsingNext()
-				}
+				flags = flags.EnableTrySeekUsingNext()
 			}
 			key, value = getKV(iter.SeekGE([]byte(strings.TrimSpace(parts[1])), flags))
 		case "seek-prefix-ge":
-			if len(parts) != 2 && len(parts) != 3 {
-				fmt.Fprint(w, "seek-prefix-ge <key> [<try-seek-using-next>]\n")
-				return
+			if !(len(parts) == 2 || (len(parts) == 3 && parts[2] == "try-seek-using-next")) {
+				t.Fatalf("seek-prefix-ge <key> [<try-seek-using-next>]")
 			}
 			k := []byte(strings.TrimSpace(parts[1]))
 			prefix = testkeys.Comparer.Split.Prefix(k)
 			var flags base.SeekGEFlags
 			if len(parts) == 3 {
-				if trySeekUsingNext, err := strconv.ParseBool(parts[2]); err != nil {
-					fmt.Fprintf(w, "%s", err.Error())
-					return
-				} else if trySeekUsingNext {
-					flags = flags.EnableTrySeekUsingNext()
-				}
+				flags = flags.EnableTrySeekUsingNext()
 			}
 			key, value = getKV(iter.SeekPrefixGE(prefix, k, flags))
 		case "seek-lt":
 			if len(parts) != 2 {
-				fmt.Fprint(w, "seek-lt <key>\n")
-				return
+				t.Fatalf("seek-lt <key>")
 			}
 			prefix = nil
 			key, value = getKV(iter.SeekLT([]byte(strings.TrimSpace(parts[1])), base.SeekLTFlagsNone))
@@ -202,8 +188,7 @@ func RunInternalIterCmdWriter(
 			key, value = getKV(iter.Prev())
 		case "set-bounds":
 			if len(parts) <= 1 || len(parts) > 3 {
-				fmt.Fprint(w, "set-bounds lower=<lower> upper=<upper>\n")
-				return
+				t.Fatalf("set-bounds lower=<lower> upper=<upper>")
 			}
 			var lower []byte
 			var upper []byte
@@ -215,8 +200,7 @@ func RunInternalIterCmdWriter(
 				case "upper":
 					upper = []byte(arg[1])
 				default:
-					fmt.Fprintf(w, "set-bounds: unknown arg: %s", arg)
-					return
+					t.Fatalf("set-bounds: unknown arg: %s", arg)
 				}
 			}
 			iter.SetBounds(lower, upper)
@@ -238,15 +222,13 @@ func RunInternalIterCmdWriter(
 		case "is-lower-bound":
 			// This command is specific to colblk.DataBlockIter.
 			if len(parts) != 2 {
-				fmt.Fprint(w, "is-lower-bound <key>\n")
-				return
+				t.Fatalf("is-lower-bound <key>")
 			}
 			i := iter.(interface{ IsLowerBound(key []byte) bool })
 			fmt.Fprintf(w, "%v\n", i.IsLowerBound([]byte(parts[1])))
 			continue
 		default:
-			fmt.Fprintf(w, "unknown op: %s", parts[0])
-			return
+			t.Fatalf("unknown op: %s", parts[0])
 		}
 		o.fmtKV(w, key, value, iter)
 		if !o.withoutNewlines {
