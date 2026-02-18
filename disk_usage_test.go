@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/vfs"
@@ -16,6 +17,7 @@ import (
 
 // Test that the EstimateDiskUsage and EstimateDiskUsageByBackingType should panic when the DB is closed
 func TestEstimateDiskUsageClosedDB(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	d, err := Open("", &Options{FS: mem})
 	require.NoError(t, err)
@@ -32,6 +34,7 @@ func TestEstimateDiskUsageClosedDB(t *testing.T) {
 
 // Test the EstimateDiskUsage and EstimateDiskUsageByBackingType data driven tests
 func TestEstimateDiskUsageDataDriven(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	remoteStorage := remote.NewInMem()
 	var d *DB

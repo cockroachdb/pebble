@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -31,6 +32,7 @@ import (
 
 // Verify event listener actions, as well as expected filesystem operations.
 func TestEventListener(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	if runtime.GOARCH == "386" {
 		t.Skip("skipped on 32-bit due to slightly varied output")
 	}
@@ -246,6 +248,7 @@ func TestEventListener(t *testing.T) {
 }
 
 func TestWriteStallEvents(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const flushCount = 10
 	const writeStallEnd = "write stall ending"
 
@@ -345,6 +348,7 @@ func (l redactLogger) Fatalf(format string, args ...interface{}) {
 }
 
 func TestEventListenerRedact(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// The vast majority of event listener fields logged are safe and do not
 	// need to be redacted. Verify that the rare, unsafe error does appear in
 	// the log redacted.
@@ -359,12 +363,14 @@ func TestEventListenerRedact(t *testing.T) {
 }
 
 func TestEventListenerEnsureDefaultsSetsAllCallbacks(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	e := EventListener{}
 	e.EnsureDefaults(nil)
 	testAllCallbacksSetInEventListener(t, e)
 }
 
 func TestMakeLoggingEventListenerSetsAllCallbacks(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	e := MakeLoggingEventListener(nil)
 	testAllCallbacksSetInEventListener(t, e)
 }
@@ -409,6 +415,7 @@ func newCountingMockLogger(t *testing.T) (*mockLogger, *int, *int) {
 }
 
 func TestMakeLoggingEventListenerBackgroundErrorOtherError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mockLogger, infoCount, errorCount := newCountingMockLogger(t)
 	e := MakeLoggingEventListener(mockLogger)
 
@@ -420,6 +427,7 @@ func TestMakeLoggingEventListenerBackgroundErrorOtherError(t *testing.T) {
 }
 
 func TestTeeEventListenerSetsAllCallbacks(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	e := TeeEventListener(EventListener{}, EventListener{})
 	testAllCallbacksSetInEventListener(t, e)
 }
@@ -436,6 +444,7 @@ func testAllCallbacksSetInEventListener(t *testing.T, e EventListener) {
 }
 
 func TestLowDiskReporter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const totalBytes = 1000
 	testCases := []struct {
 		// time, as a fraction of lowDiskSpaceFrequency.
@@ -480,6 +489,7 @@ func TestLowDiskReporter(t *testing.T) {
 }
 
 func TestLowDiskSpaceEvent(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var lastInfo atomic.Value
 
 	listener := &EventListener{
@@ -535,6 +545,7 @@ func (fs *mockDiskUsageFS) GetDiskUsage(path string) (vfs.DiskUsage, error) {
 }
 
 func TestSSTCorruptionEvent(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, test := range []string{"missing-file", "missing-before-open", "meta-block-corruption", "data-block-corruption"} {
 		t.Run(test, func(t *testing.T) {
 			var mu sync.Mutex
@@ -613,6 +624,7 @@ func TestSSTCorruptionEvent(t *testing.T) {
 }
 
 func TestBlobCorruptionEvent(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, test := range []string{"missing-file"} {
 		t.Run(test, func(t *testing.T) {
 			var mu sync.Mutex

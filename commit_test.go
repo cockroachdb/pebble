@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
@@ -60,6 +61,7 @@ func (e *testCommitEnv) write(b *Batch, wg *sync.WaitGroup, _ *error) (*memTable
 }
 
 func TestCommitQueue(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var q commitQueue
 	var batches [16]Batch
 	for i := range batches {
@@ -84,6 +86,7 @@ func TestCommitQueue(t *testing.T) {
 }
 
 func TestCommitPipeline(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var e testCommitEnv
 	p := newCommitPipeline(e.env())
 
@@ -122,6 +125,7 @@ func TestCommitPipeline(t *testing.T) {
 }
 
 func TestCommitPipelineSync(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	n := 10000
 	if invariants.RaceEnabled {
 		// Under race builds we have to limit the concurrency or we hit the
@@ -167,6 +171,7 @@ func TestCommitPipelineSync(t *testing.T) {
 }
 
 func TestCommitPipelineAllocateSeqNum(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var e testCommitEnv
 	p := newCommitPipeline(e.env())
 
@@ -215,6 +220,7 @@ func (f *syncDelayFile) Sync() error {
 }
 
 func TestCommitPipelineWALClose(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// This test stresses the edge case of N goroutines blocked in the
 	// commitPipeline waiting for the log to sync when we concurrently decide to
 	// rotate and close the log.
@@ -296,6 +302,7 @@ func TestCommitPipelineWALClose(t *testing.T) {
 // also grabbed the first seqnum = 5 before this batch, will ratchet to 5 + 0,
 // which is a noop.
 func TestCommitPipelineLogDataSeqNum(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var testEnv commitEnv
 	testEnv = commitEnv{
 		logSeqNum:     new(base.AtomicSeqNum),
