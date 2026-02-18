@@ -921,3 +921,38 @@ seek-lt jd
 #  000034.SeekLT("cz") = nil
 #  000035.SeekLT("cz") = nil
 iwoeionch#792,SET:792
+
+# Test needsPositioning: a range tombstone at L1 covers the prefix, so lower
+# levels are not seeked (needsPositioning=true). On a subsequent SeekPrefixGE
+# with TrySeekUsingNext, levels with needsPositioning get fresh seeks when the
+# tombstone no longer covers the prefix.
+define
+L
+  000036:[a#20,SET-d#inf,RANGEDEL]
+    a#20,SET:a20
+    a#15,RANGEDEL:d
+L
+  000037:[b#10,SET-e#10,SET]
+    b#10,SET:b10 c#10,SET:c10 d#10,SET:d10 e#10,SET:e10
+----
+L1:
+  000036:[a#20,SET-d#inf,RANGEDEL]
+L2:
+  000037:[b#10,SET-e#10,SET]
+
+# seek-prefix-ge b: tombstone [a,d) at L1 covers "b", adjusting the seek key to
+# "d" which is beyond prefix "b". L2 gets needsPositioning=true.
+# seek-prefix-ge c: tombstone still covers "c". L2 stays needsPositioning=true.
+# seek-prefix-ge d: tombstone doesn't cover "d". L2 gets a fresh seek and finds
+# d#10.
+# seek-prefix-ge e: L2 is now properly positioned. TrySeekUsingNext works.
+iter
+seek-prefix-ge b
+seek-prefix-ge c try-seek-using-next
+seek-prefix-ge d try-seek-using-next
+seek-prefix-ge e try-seek-using-next
+----
+.
+.
+d#10,SET:d10
+e#10,SET:e10

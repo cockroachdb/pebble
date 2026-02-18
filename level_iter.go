@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"runtime/debug"
@@ -669,7 +670,7 @@ func (l *levelIter) internalSeekGE(
 		}()
 	}
 	if invariants.Enabled && l.lower != nil && l.comparer.Compare(key, l.lower) < 0 {
-		panic(errors.AssertionFailedf("levelIter SeekGE to key %q violates lower bound %q", key, l.lower))
+		l.logger.Fatalf("levelIter %s: SeekGE to key %q violates lower bound %q", l.layer, key, l.lower)
 	}
 
 	l.err = nil // clear cached iteration error
@@ -713,19 +714,6 @@ func (l *levelIter) internalSeekGE(
 // file is skipped, and the iterator moves to the next file if and only if the
 // next file also can contain the prefix. The key argument is used for the
 // actual seek positioning.
-//
-// # Prefix vs key
-//
-// The prefix is typically the prefix of key (i.e. Split.Prefix(key) == prefix),
-// but this is not required. The only requirement is that prefix be less than or
-// equal to Split.Prefix(key). This flexibility is used when a higher-level
-// range deletion invalidates keys between prefix and Split.Prefix(key).
-//
-// For example, consider a SeekPrefixGE for prefix b and assume a RANGEDEL
-// [a, c@3) from a higher level. In this case, the merging iterator must seek
-// past the tombstone so it calls SeekPrefixGE(b, c@3, flags). The bloom filter
-// is checked against b (the original prefix), while the actual seek targets
-// c@3.
 //
 // # File positioning and TrySeekUsingNext
 //
@@ -776,7 +764,10 @@ func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) (kv
 		}()
 	}
 	if invariants.Enabled && l.lower != nil && l.comparer.Compare(key, l.lower) < 0 {
-		panic(errors.AssertionFailedf("levelIter SeekGE to key %q violates lower bound %q", key, l.lower))
+		l.logger.Fatalf("levelIter %s: SeekGE to key %q violates lower bound %q", l.layer, key, l.lower)
+	}
+	if invariants.Enabled && !bytes.Equal(prefix, l.comparer.Split.Prefix(key)) {
+		l.logger.Fatalf("levelIter %s: SeekPrefixGE prefix %q does not match key %q", l.layer, prefix, key)
 	}
 	l.err = nil // clear cached iteration error
 	l.exhaustedDir = 0
@@ -812,7 +803,7 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) (kv *base.Interna
 		}()
 	}
 	if invariants.Enabled && l.upper != nil && l.comparer.Compare(key, l.upper) > 0 {
-		panic(errors.AssertionFailedf("levelIter SeekLT to key %q violates upper bound %q", key, l.upper))
+		l.logger.Fatalf("levelIter %s: SeekLT to key %q violates upper bound %q", l.layer, key, l.upper)
 	}
 
 	l.err = nil // clear cached iteration error
@@ -844,7 +835,7 @@ func (l *levelIter) internalFirst(shouldReturnMeta bool) (kv *base.InternalKV, k
 		}()
 	}
 	if invariants.Enabled && l.lower != nil {
-		panic(errors.AssertionFailedf("levelIter First called while lower bound %q is set", l.lower))
+		l.logger.Fatalf("levelIter %s: First called while lower bound %q is set", l.layer, l.lower)
 	}
 
 	l.err = nil // clear cached iteration error
@@ -881,7 +872,7 @@ func (l *levelIter) Last() (kv *base.InternalKV) {
 		}()
 	}
 	if invariants.Enabled && l.upper != nil {
-		panic(errors.AssertionFailedf("levelIter Last called while upper bound %q is set", l.upper))
+		l.logger.Fatalf("levelIter %s: Last called while upper bound %q is set", l.layer, l.upper)
 	}
 
 	l.err = nil // clear cached iteration error

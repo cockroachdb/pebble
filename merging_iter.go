@@ -29,6 +29,15 @@ type mergingIterLevel struct {
 	// intermediary internalIterator implementations.
 	levelIter *levelIter
 
+	// needsPositioning is set to true during prefix iteration when a range
+	// tombstone at a higher level extends beyond the iteration prefix,
+	// causing this level to be skipped during seekGE. When true, iterKV is
+	// nil and the underlying iterator is not properly positioned for
+	// TrySeekUsingNext. On a subsequent SeekPrefixGE, if the adjusted seek
+	// key falls within the new prefix, this level must be sought without
+	// TrySeekUsingNext.
+	needsPositioning bool
+
 	// lastKey is used only during treesteps recordings.
 	lastIterKey invariants.Value[string]
 }
@@ -315,6 +324,9 @@ func (m *mergingIter) initHeap() {
 	m.heap.items = m.heap.items[:0]
 	for i := range m.levels {
 		if l := &m.levels[i]; l.iterKV != nil {
+			if invariants.Enabled && l.needsPositioning {
+				m.logger.Fatalf("mergingIter: level %d has iterKV set but needsPositioning is true", i)
+			}
 			m.heap.items = append(m.heap.items, mergingIterHeapItem{mergingIterLevel: l})
 			if treesteps.Enabled && treesteps.IsRecording(m) {
 				l.updateLastIterKey()
@@ -871,17 +883,26 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 		}
 
 		l := &m.levels[level]
+		levelFlags := flags
+		if l.needsPositioning {
+			// This level was not positioned on a prior SeekPrefixGE (it
+			// was skipped due to a tombstone extending beyond the
+			// prefix). We must do a fresh seek.
+			levelFlags = levelFlags.DisableTrySeekUsingNext()
+			l.needsPositioning = false
+		}
 		if m.prefix != nil {
-			l.iterKV = l.iter.SeekPrefixGE(m.prefix, key, flags)
+			l.iterKV = l.iter.SeekPrefixGE(m.prefix, key, levelFlags)
 			if l.iterKV != nil {
 				if !bytes.Equal(m.prefix, m.split.Prefix(l.iterKV.K.UserKey)) {
-					// Prevent keys without a matching prefix from being added to the heap by setting
-					// iterKey and iterValue to their zero values before calling initMinHeap.
+					// Prevent keys without a matching prefix from being added to the heap
+					// by setting iterKey and iterValue to their zero values before
+					// calling initMinHeap.
 					l.iterKV = nil
 				}
 			}
 		} else {
-			l.iterKV = l.iter.SeekGE(key, flags)
+			l.iterKV = l.iter.SeekGE(key, levelFlags)
 		}
 		if l.iterKV == nil {
 			if err := l.iter.Error(); err != nil {
@@ -908,6 +929,18 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 				// was greater than or equal to m.lower, the new key will
 				// continue to be greater than or equal to m.lower.
 				key = t.End
+				if m.prefix != nil {
+					// Check if the tombstone end key is still within the iteration
+					// prefix. If not, this range tombstone covers all keys with the
+					// matching prefix in all lower levels.
+					if !bytes.Equal(m.prefix, m.split.Prefix(key)) {
+						for level++; level < len(m.levels); level++ {
+							m.levels[level].iterKV = nil
+							m.levels[level].needsPositioning = true
+						}
+						break
+					}
+				}
 			}
 		}
 	}
@@ -953,6 +986,9 @@ func (m *mergingIter) SeekPrefixGEStrict(
 			op.Finishf("= %s", kv.String())
 		}()
 	}
+	if invariants.Enabled && !bytes.Equal(prefix, m.split.Prefix(key)) {
+		m.logger.Fatalf("mergingIter: SeekPrefixGE prefix %q does not match key %q", prefix, key)
+	}
 	m.prefix = prefix
 	m.err = m.seekGE(key, 0 /* start level */, flags)
 	if m.err != nil {
@@ -979,6 +1015,7 @@ func (m *mergingIter) seekLT(key []byte, level int, flags base.SeekLTFlags) erro
 		}
 
 		l := &m.levels[level]
+		l.needsPositioning = false
 		l.iterKV = l.iter.SeekLT(key, flags)
 		if l.iterKV == nil {
 			if err := l.iter.Error(); err != nil {
@@ -1049,6 +1086,7 @@ func (m *mergingIter) First() (kv *base.InternalKV) {
 	m.heap.items = m.heap.items[:0]
 	for i := range m.levels {
 		l := &m.levels[i]
+		l.needsPositioning = false
 		l.iterKV = l.iter.First()
 		if l.iterKV == nil {
 			if m.err = l.iter.Error(); m.err != nil {
@@ -1074,6 +1112,7 @@ func (m *mergingIter) Last() (kv *base.InternalKV) {
 	m.prefix = nil
 	for i := range m.levels {
 		l := &m.levels[i]
+		l.needsPositioning = false
 		l.iterKV = l.iter.Last()
 		if l.iterKV == nil {
 			if m.err = l.iter.Error(); m.err != nil {

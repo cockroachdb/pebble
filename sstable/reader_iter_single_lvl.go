@@ -887,6 +887,9 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 			op.Finishf("= %s", kv.String())
 		}()
 	}
+	if invariants.Enabled && !bytes.Equal(prefix, i.reader.Comparer.Split.Prefix(key)) {
+		panic(errors.AssertionFailedf("SeekPrefixGE prefix %q does not match key %q", prefix, key))
+	}
 	if i.synthetic.atSyntheticKey {
 		// TODO(sachin) : We have to disable the optimization to avoid false data
 		// invalidation if there are back to back SeekPrefixGE calls. Currently
