@@ -512,6 +512,7 @@ func TestBatchReuse(t *testing.T) {
 		Logger: testutils.Logger{T: t},
 	})
 	require.NoError(t, err)
+	defer db.Close()
 
 	var buf bytes.Buffer
 	batches := map[string]*Batch{}
