@@ -121,6 +121,11 @@ func TestErrors(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		defer func() {
+			if d != nil {
+				d.Close()
+			}
+		}()
 
 		key := []byte("a")
 		value := []byte("b")
@@ -140,7 +145,9 @@ func TestErrors(t *testing.T) {
 		if err := iter.Close(); err != nil {
 			return err
 		}
-		return d.Close()
+		err = d.Close()
+		d = nil
+		return err
 	}
 
 	errorCounts := make(map[string]int)

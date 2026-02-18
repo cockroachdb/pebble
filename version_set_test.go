@@ -397,6 +397,9 @@ func TestLargeKeys(t *testing.T) {
 				DisableTableStats:           true,
 			}
 			var err error
+			if d != nil {
+				require.NoError(t, d.Close())
+			}
 			d, err = runDBDefineCmd(td, opts)
 			require.NoError(t, err)
 			return runLSMCmd(td, d)
