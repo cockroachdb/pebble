@@ -75,6 +75,7 @@ func TestTreeSteps(t *testing.T) {
 					levelIters = append(levelIters, mergingIterLevel{iter: li, getTombstone: li.getTombstone})
 				}
 				miter := &mergingIter{}
+				miter.forceEnableSeekOpt = true
 				var stats base.InternalIteratorStats
 				miter.init(nil /* opts */, &stats, d.cmp, d.split, levelIters...)
 				defer miter.Close()
