@@ -168,7 +168,8 @@ func RunInternalIterCmdWriter(
 				fmt.Fprint(w, "seek-prefix-ge <key> [<try-seek-using-next>]\n")
 				return
 			}
-			prefix = []byte(strings.TrimSpace(parts[1]))
+			k := []byte(strings.TrimSpace(parts[1]))
+			prefix = testkeys.Comparer.Split.Prefix(k)
 			var flags base.SeekGEFlags
 			if len(parts) == 3 {
 				if trySeekUsingNext, err := strconv.ParseBool(parts[2]); err != nil {
@@ -178,7 +179,7 @@ func RunInternalIterCmdWriter(
 					flags = flags.EnableTrySeekUsingNext()
 				}
 			}
-			key, value = getKV(iter.SeekPrefixGE(prefix, prefix /* key */, flags))
+			key, value = getKV(iter.SeekPrefixGE(prefix, k, flags))
 		case "seek-lt":
 			if len(parts) != 2 {
 				fmt.Fprint(w, "seek-lt <key>\n")
