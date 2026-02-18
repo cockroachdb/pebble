@@ -11,6 +11,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/blobtest"
@@ -23,6 +24,7 @@ import (
 )
 
 func TestExternalIterator(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	o := &Options{
 		FS:                 mem,

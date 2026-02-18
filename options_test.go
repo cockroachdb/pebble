@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -66,6 +67,7 @@ func testingRandomized(t testing.TB, o *Options) *Options {
 }
 
 func TestTargetFileSize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
 
 	testCases := []struct {
@@ -91,6 +93,7 @@ func TestTargetFileSize(t *testing.T) {
 }
 
 func TestDefaultOptionsString(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	n := runtime.GOMAXPROCS(8)
 	defer runtime.GOMAXPROCS(n)
 
@@ -216,6 +219,7 @@ func TestDefaultOptionsString(t *testing.T) {
 }
 
 func TestOptionsCheckCompatibility(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	storeDir := "/mnt/foo"
 	opts := DefaultOptions()
 	s := opts.String()
@@ -350,6 +354,7 @@ func (testCleaner) String() string {
 }
 
 func TestOptionsParse(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testComparer := *DefaultComparer
 	testComparer.Name = "test-comparer"
 	testMerger := *DefaultMerger
@@ -432,6 +437,7 @@ func TestOptionsParse(t *testing.T) {
 }
 
 func TestOptionsParseLevelNoQuotes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	withQuotes := `
 [Options]
 [Level "1"]
@@ -462,6 +468,7 @@ func TestOptionsParseLevelNoQuotes(t *testing.T) {
 }
 
 func TestOptionsParseInvalidLevel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	str := `
 [Options]
 [Level 1]
@@ -492,6 +499,7 @@ func TestOptionsParseInvalidLevel(t *testing.T) {
 }
 
 func TestOptionsParseComparerOverwrite(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Test that an unrecognized comparer in the OPTIONS file does not nil out
 	// the Comparer field.
 	o := &Options{Comparer: testkeys.Comparer}
@@ -502,6 +510,7 @@ comparer=unrecognized`, nil)
 }
 
 func TestOptionsValidate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		options  string
 		expected string
@@ -559,6 +568,7 @@ func TestOptionsValidate(t *testing.T) {
 }
 
 func TestKeyCategories(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	kc := MakeUserKeyCategories(base.DefaultComparer.Compare, []UserKeyCategory{
 		{Name: "b", UpperBound: []byte("b")},
 		{Name: "dd", UpperBound: []byte("dd")},
@@ -621,6 +631,7 @@ func TestKeyCategories(t *testing.T) {
 }
 
 func TestApplyDBCompressionSettings(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var o Options
 	o.randomizeForTesting(t)
 
@@ -644,6 +655,7 @@ func TestApplyDBCompressionSettings(t *testing.T) {
 }
 
 func TestStaticSpanPolicyFunc(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/static_span_policy_func", func(t *testing.T, td *datadriven.TestData) string {
 		buf.Reset()

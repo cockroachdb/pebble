@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
@@ -23,6 +24,7 @@ import (
 // TestTreeSteps tests the treesteps recording for various iterator types,
 // generating visualization URLs showing iterator behavior.
 func TestTreeSteps(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	if !treesteps.Enabled {
 		t.Skip("treesteps not available in this build")
 	}

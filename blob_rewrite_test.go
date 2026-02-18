@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
@@ -35,6 +36,7 @@ import (
 )
 
 func TestBlobRewrite(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var (
 		bv  blobtest.Values
 		vs  valsep.ValueSeparation
@@ -236,6 +238,7 @@ func TestBlobRewrite(t *testing.T) {
 // sstables as extant references. Each blob rewrite may rewrite the original
 // blob file, or one of the previous iteration's rewritten blob files.
 func TestBlobRewriteRandomized(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const numKVs = 1000
 	const blobFileID = 100000
 	const numRewrites = 10

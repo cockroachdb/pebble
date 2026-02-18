@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -254,6 +255,7 @@ func parseCompactionLines(
 }
 
 func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	datadriven.RunTest(t, "testdata/compaction_picker_level_max_bytes",
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
@@ -276,6 +278,7 @@ func TestCompactionPickerByScoreLevelMaxBytes(t *testing.T) {
 }
 
 func TestCompactionPickerTargetLevel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var vers *manifest.Version
 	var latest *latestVersionState
 	var opts *Options
@@ -528,6 +531,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 }
 
 func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	datadriven.RunTest(t, "testdata/compaction_picker_estimated_debt",
 		func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
@@ -548,6 +552,7 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 }
 
 func TestCompactionPickerL0(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
 
@@ -718,6 +723,7 @@ func TestCompactionPickerL0(t *testing.T) {
 const noSharedStorage = false
 
 func TestCompactionPickerConcurrency(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
 	lowerConcurrencyLimit, upperConcurrencyLimit := 1, 4
@@ -828,6 +834,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 }
 
 func TestCompactionPickerPickReadTriggered(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
 	var picker *compactionPickerByScore
 	var rcList readCompactionQueue
@@ -963,6 +970,7 @@ func (d alwaysMultiLevel) allowL0() bool  { return false }
 func (d alwaysMultiLevel) String() string { return "always" }
 
 func TestPickedCompactionSetupInputs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
 
 	setupInputTest := func(t *testing.T, d *datadriven.TestData) string {
@@ -1136,6 +1144,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 }
 
 func TestPickedCompactionExpandInputs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
 	cmp := DefaultComparer.Compare
 	var files []*manifest.TableMetadata
@@ -1214,6 +1223,7 @@ func TestPickedCompactionExpandInputs(t *testing.T) {
 }
 
 func TestCompactionOutputFileSize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
 	var picker *compactionPickerByScore
 
@@ -1283,6 +1293,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 }
 
 func TestCompactionPickerCompensatedSize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		size                  uint64
 		pointDelEstimateBytes uint64
@@ -1324,6 +1335,7 @@ func TestCompactionPickerCompensatedSize(t *testing.T) {
 }
 
 func TestCompactionPickerPickFile(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var problemSpans *problemspans.ByLevel
 	var d *DB
 	defer func() {
@@ -1472,6 +1484,7 @@ func (c *pausableCleaner) resume() {
 }
 
 func TestCompactionPickerScores(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	cleaner := newPausableCleaner(DeleteCleaner{})
 
 	var d *DB

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -34,6 +35,7 @@ import (
 )
 
 func TestCheckLevelsBasics(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []string{"db-stage-1", "db-stage-2", "db-stage-3", "db-stage-4"}
 	for _, tc := range testCases {
 		t.Run(tc, func(t *testing.T) {
@@ -90,6 +92,7 @@ func (f *failMerger) Close() error {
 }
 
 func TestCheckLevelsCornerCases(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	if invariants.Enabled {
 		t.Skip("disabled under invariants; relies on violating invariants to detect them")
 	}
@@ -300,6 +303,7 @@ func TestCheckLevelsCornerCases(t *testing.T) {
 	})
 }
 func TestPerformValidationForSSTableFailures(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const tableNum = base.TableNum(1)
 
 	//	<block ID> <values size> <n bytes of bitmap> [<bitmap>]

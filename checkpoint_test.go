@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -248,6 +249,7 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 }
 
 func TestCopyCheckpointOptions(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	datadriven.RunTest(t, "testdata/copy_checkpoint_options", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -275,6 +277,7 @@ func TestCopyCheckpointOptions(t *testing.T) {
 }
 
 func TestCheckpoint(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	t.Run("shared=false", func(t *testing.T) {
 		testCheckpointImpl(t, "testdata/checkpoint", false /* createOnShared */)
 	})
@@ -287,6 +290,7 @@ func TestCheckpoint(t *testing.T) {
 }
 
 func TestCheckpointCompaction(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	d, err := Open("", &Options{FS: fs, Logger: testutils.Logger{T: t}})
 	require.NoError(t, err)
@@ -364,6 +368,7 @@ func TestCheckpointCompaction(t *testing.T) {
 }
 
 func TestCheckpointFlushWAL(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const checkpointPath = "checkpoints/checkpoint"
 	fs := vfs.NewCrashableMem()
 	opts := &Options{FS: fs, Logger: testutils.Logger{T: t}}
@@ -417,6 +422,7 @@ func TestCheckpointFlushWAL(t *testing.T) {
 }
 
 func TestCheckpointManyFiles(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	if testing.Short() {
 		t.Skip("skipping because of short flag")
 	}

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/batchrepr"
@@ -33,6 +34,7 @@ import (
 )
 
 func TestBatch(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testBatch(t, 0)
 	testBatch(t, defaultBatchInitialSize)
 }
@@ -203,6 +205,7 @@ func testBatch(t *testing.T, size int) {
 }
 
 func TestBatchPreAlloc(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var cases = []struct {
 		size int
 		exp  int
@@ -221,6 +224,7 @@ func TestBatchPreAlloc(t *testing.T) {
 }
 
 func TestBatchIngestSST(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Verify that Batch.IngestSST has the correct batch count and memtable
 	// size.
 	var b Batch
@@ -233,6 +237,7 @@ func TestBatchIngestSST(t *testing.T) {
 }
 
 func TestBatchLen(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var b Batch
 
 	requireLenAndReprEq := func(size int) {
@@ -257,6 +262,7 @@ func TestBatchLen(t *testing.T) {
 }
 
 func TestBatchEmpty(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testBatchEmpty(t, 0)
 	testBatchEmpty(t, defaultBatchInitialSize)
 	testBatchEmpty(t, 0, WithInitialSizeBytes(2<<10), WithMaxRetainedSizeBytes(2<<20))
@@ -324,6 +330,7 @@ func testBatchEmpty(t *testing.T, size int, opts ...BatchOption) {
 }
 
 func TestBatchApplyNoSyncWait(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	db, err := Open("", &Options{
 		FS:     vfs.NewMem(),
 		Logger: testutils.Logger{T: t},
@@ -351,6 +358,7 @@ func TestBatchApplyNoSyncWait(t *testing.T) {
 }
 
 func TestBatchReset(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	db, err := Open("", &Options{
 		FS:     vfs.NewMem(),
 		Logger: testutils.Logger{T: t},
@@ -423,6 +431,7 @@ func TestBatchReset(t *testing.T) {
 }
 
 func TestBatchReuse(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	db, err := Open("", &Options{
 		FS:     vfs.NewMem(),
 		Logger: testutils.Logger{T: t},
@@ -505,6 +514,7 @@ func TestBatchReuse(t *testing.T) {
 }
 
 func TestIndexedBatchReset(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	indexCount := func(sl *batchskl.Skiplist) int {
 		count := 0
 		iter := sl.NewIter(nil, nil)
@@ -598,6 +608,7 @@ func TestIndexedBatchReset(t *testing.T) {
 // TestIndexedBatchMutation tests mutating an indexed batch with an open
 // iterator.
 func TestIndexedBatchMutation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := &Options{
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
@@ -705,6 +716,7 @@ func TestIndexedBatchMutation(t *testing.T) {
 }
 
 func TestIndexedBatch_GlobalVisibility(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := &Options{
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: internalFormatNewest,
@@ -763,6 +775,7 @@ func TestIndexedBatch_GlobalVisibility(t *testing.T) {
 }
 
 func TestFlushableBatchReset(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var b Batch
 	var err error
 	b.flushable, err = newFlushableBatch(&b, DefaultComparer)
@@ -773,6 +786,7 @@ func TestFlushableBatchReset(t *testing.T) {
 }
 
 func TestBatchIncrement(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []uint32{
 		0x00000000,
 		0x00000001,
@@ -837,6 +851,7 @@ func TestBatchIncrement(t *testing.T) {
 }
 
 func TestBatchOpDoesIncrement(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var b Batch
 	key := []byte("foo")
 	value := []byte("bar")
@@ -879,6 +894,7 @@ func TestBatchOpDoesIncrement(t *testing.T) {
 }
 
 func TestBatchGet(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		method       string
 		memTableSize uint64
@@ -950,6 +966,7 @@ func TestBatchGet(t *testing.T) {
 }
 
 func TestBatchIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var b *Batch
 
 	for _, method := range []string{"build", "apply"} {
@@ -1013,6 +1030,7 @@ func TestBatchIter(t *testing.T) {
 }
 
 func TestBatchRangeOps(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var b *Batch
 
 	datadriven.RunTest(t, "testdata/batch_range_ops", func(t *testing.T, td *datadriven.TestData) string {
@@ -1091,6 +1109,7 @@ func TestBatchRangeOps(t *testing.T) {
 }
 
 func TestBatchTooLarge(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var b Batch
 	var result interface{}
 	func() {
@@ -1105,6 +1124,7 @@ func TestBatchTooLarge(t *testing.T) {
 }
 
 func TestFlushableBatchIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var b *flushableBatch
 	datadriven.RunTest(t, "testdata/internal_iter_next", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -1133,6 +1153,7 @@ func TestFlushableBatchIter(t *testing.T) {
 }
 
 func TestFlushableBatch(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var b *flushableBatch
 	datadriven.RunTest(t, "testdata/flushable_batch", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
@@ -1220,6 +1241,7 @@ func TestFlushableBatch(t *testing.T) {
 }
 
 func TestFlushableBatchDeleteRange(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var fb *flushableBatch
 	var input string
 
@@ -1281,6 +1303,7 @@ func scanKeyspanIterator(w io.Writer, ki keyspan.FragmentIterator) {
 }
 
 func TestEmptyFlushableBatch(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Verify that we can create a flushable batch on an empty batch.
 	fb, err := newFlushableBatch(newBatch(nil), DefaultComparer)
 	require.NoError(t, err)
@@ -1289,6 +1312,7 @@ func TestEmptyFlushableBatch(t *testing.T) {
 }
 
 func TestBatchCommitStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testFunc := func() error {
 		db, err := Open("", &Options{
 			FS:     vfs.NewMem(),
@@ -1434,6 +1458,7 @@ func TestBatchCommitStats(t *testing.T) {
 // TestBatchLogDataMemtableSize tests that LogDatas never contribute to memtable
 // size.
 func TestBatchLogDataMemtableSize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Create a batch with Set("foo", "bar") and a LogData. Only the Set should
 	// contribute to the batch's memtable size.
 	b := Batch{}
@@ -1579,6 +1604,7 @@ func BenchmarkIndexedBatchSetDeferred(b *testing.B) {
 }
 
 func TestBatchMemTableSizeOverflow(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	})
@@ -1603,6 +1629,7 @@ func TestBatchMemTableSizeOverflow(t *testing.T) {
 // TestBatchSpanCaching stress tests the caching of keyspan.Spans for range
 // tombstones and range keys.
 func TestBatchSpanCaching(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := &Options{
 		Comparer:           testkeys.Comparer,
 		FS:                 vfs.NewMem(),
@@ -1700,6 +1727,7 @@ func TestBatchSpanCaching(t *testing.T) {
 }
 
 func TestBatchOption(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, tc := range []struct {
 		name     string
 		opts     []BatchOption

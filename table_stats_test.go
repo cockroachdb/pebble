@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -28,6 +29,7 @@ import (
 )
 
 func TestTableStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// loadedInfo is protected by d.mu.
 	var loadedInfo *TableStatsInfo
 	mkOpts := func() *Options {
@@ -201,6 +203,7 @@ func TestTableStats(t *testing.T) {
 }
 
 func TestTableRangeDeletionIter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var m *manifest.TableMetadata
 	cmp := testkeys.Comparer
 	keySchema := colblk.DefaultKeySchema(cmp, 16)
@@ -286,6 +289,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 // depend on blob or table properties are the same after the store is reopened
 // and the initial stats are loaded.
 func TestStatsAfterReopen(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := &Options{
 		DisableAutomaticCompactions: true,
 		FS:                          vfs.NewMem(),
