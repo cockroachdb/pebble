@@ -54,6 +54,7 @@ import (
 )
 
 func TestOpenSharedFileCache(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	c := cache.New(cacheDefaultSize)
 	tc := NewFileCache(16, 100)
 	defer tc.Unref()
@@ -88,6 +89,7 @@ func TestOpenSharedFileCache(t *testing.T) {
 }
 
 func TestErrorIfExists(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := testingRandomized(t, &Options{
 		FS:            vfs.NewMem(),
 		ErrorIfExists: true,
@@ -109,6 +111,7 @@ func TestErrorIfExists(t *testing.T) {
 }
 
 func TestErrorIfNotExists(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := testingRandomized(t, &Options{
 		FS:               vfs.NewMem(),
 		ErrorIfNotExists: true,
@@ -133,6 +136,7 @@ func TestErrorIfNotExists(t *testing.T) {
 }
 
 func TestErrorIfNotPristine(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := testingRandomized(t, &Options{
 		FS:                 vfs.NewMem(),
 		ErrorIfNotPristine: true,
@@ -168,6 +172,7 @@ func TestErrorIfNotPristine(t *testing.T) {
 }
 
 func TestOpen_WALFailover(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	filesystems := map[string]vfs.FS{}
 
 	extractFSAndPath := func(cmdArg datadriven.CmdArg) (fs vfs.FS, dir string) {
@@ -358,6 +363,7 @@ func TestOpenRecovery(t *testing.T) {
 // - Closes the database reopens the database (should now succeed).
 // - Closes and cleans up all locks.
 func TestOpenAlreadyLocked(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		name       string
 		setupLocks func(opts *Options, dirname, walDirname, secondaryWalDirname string, fs vfs.FS) error
@@ -566,6 +572,7 @@ func TestOpenAlreadyLocked(t *testing.T) {
 }
 
 func TestNewDBFilenames(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	versions := map[FormatMajorVersion][]string{
 		internalFormatNewest: {
 			"000003.log",
@@ -702,6 +709,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 }
 
 func TestOpenCloseOpenClose(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, fstype := range []string{"disk", "mem"} {
 		t.Run(fstype, func(t *testing.T) {
 			var fs vfs.FS
@@ -725,6 +733,7 @@ func TestOpenCloseOpenClose(t *testing.T) {
 }
 
 func TestOpenOptionsCheck(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	opts := testingRandomized(t, &Options{FS: mem})
 
@@ -751,6 +760,7 @@ func TestOpenOptionsCheck(t *testing.T) {
 }
 
 func TestOpenCrashWritingOptions(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	memFS := vfs.NewMem()
 
 	d, err := Open("", &Options{FS: memFS})
@@ -798,6 +808,7 @@ func (f optionsTornWriteFile) Write(b []byte) (int, error) {
 }
 
 func TestOpenReadOnly(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 
 	{
@@ -918,6 +929,7 @@ func TestOpenReadOnly(t *testing.T) {
 }
 
 func TestOpenWALReplay(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	largeValue := []byte(strings.Repeat("a", 100<<10))
 	hugeValue := []byte(strings.Repeat("b", 10<<20))
 	checkIter := func(iter *Iterator, err error) {
@@ -998,6 +1010,7 @@ func TestOpenWALReplay(t *testing.T) {
 
 // Reproduction for https://github.com/cockroachdb/pebble/issues/2234.
 func TestWALReplaySequenceNumBug(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: mem,
@@ -1059,6 +1072,7 @@ func TestWALReplaySequenceNumBug(t *testing.T) {
 // memtable has been flushed. We test all 3 reasons for flushing: forced, size,
 // and large-batch.
 func TestOpenWALReplay2(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, readOnly := range []bool{false, true} {
 		t.Run(fmt.Sprintf("read-only=%t", readOnly), func(t *testing.T) {
 			for _, reason := range []string{"forced", "size", "large-batch"} {
@@ -1121,6 +1135,7 @@ func TestOpenWALReplay2(t *testing.T) {
 // first WAL because otherwise we may violate point-in-time recovery
 // semantics. See #864.
 func TestTwoWALReplayCorrupt(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Use the real filesystem so that we can seek and overwrite WAL data
 	// easily.
 	dir, err := os.MkdirTemp("", "wal-replay")
@@ -1181,6 +1196,7 @@ func TestTwoWALReplayCorrupt(t *testing.T) {
 // new WAL is created, the current manifest's MinUnflushedLogNum must be
 // higher than the previous WAL.
 func TestCrashOpenCrashAfterWALCreation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewCrashableMem()
 
 	getLogs := func() (logs []string) {
@@ -1337,6 +1353,7 @@ func (d *crashAfterLogCreationDir) Sync() error {
 //
 // See cockroachdb/cockroach#48660.
 func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const root = ""
 	mem := vfs.NewMem()
 
@@ -1405,6 +1422,7 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 }
 
 func TestOpenWALReplayMemtableGrowth(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	const memTableSize = 64 * 1024 * 1024
 	opts := &Options{
@@ -1429,6 +1447,7 @@ func TestOpenWALReplayMemtableGrowth(t *testing.T) {
 }
 
 func TestPeek(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// The file paths are UNIX-oriented. To avoid duplicating the test fixtures
 	// just for Windows, just skip the tests on Windows.
 	if runtime.GOOS == "windows" {
@@ -1450,6 +1469,7 @@ func TestPeek(t *testing.T) {
 }
 
 func TestGetVersion(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	opts := &Options{
 		FS: mem,
@@ -1508,6 +1528,7 @@ func TestGetVersion(t *testing.T) {
 // TestOpenNeverFlushed verifies that we can open a database that had an
 // ingestion but no other operations.
 func TestOpenNeverFlushed(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 
 	sstFile, err := mem.Create("to-ingest.sst", vfs.WriteCategoryUnspecified)
@@ -1541,6 +1562,7 @@ func TestOpenNeverFlushed(t *testing.T) {
 }
 
 func TestOpen_ErrorIfUnknownFormatVersion(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	d, err := Open("", &Options{
 		FS:                 fs,
@@ -1635,6 +1657,7 @@ func (f *closeTrackingFile) Close() error {
 }
 
 func TestCheckConsistency(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const dir = "./test"
 	mem := vfs.NewMem()
 	mem.MkdirAll(dir, 0755)
@@ -1748,6 +1771,7 @@ func TestCheckConsistency(t *testing.T) {
 }
 
 func TestOpenRatchetsNextFileNum(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	memShared := remote.NewInMem()
 
@@ -1792,6 +1816,7 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 }
 
 func TestMkdirAllAndSyncParents(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	if filepath.Separator != '/' {
 		t.Skip("skipping due to path separator")
 	}
@@ -1842,6 +1867,7 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 //
 // This test is partially a regression test for #3865.
 func TestWALFailoverRandomized(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewPCG(1, uint64(seed)))
@@ -2030,6 +2056,7 @@ func runRandomizedCrashTest(t *testing.T, opts randomizedCrashTestOptions) {
 // ensures that the resulting DB state opens successfully, and the contents of
 // the DB match the expectations based on the keys written.
 func TestWALHardCrashRandomized(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for i := 0; i < 4; i++ {
 		func() {
 			seed := time.Now().UnixNano()
@@ -2068,6 +2095,7 @@ func TestWALHardCrashRandomized(t *testing.T) {
 }
 
 func TestWALCorruption(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS:                 fs,
@@ -2109,6 +2137,7 @@ func TestWALCorruption(t *testing.T) {
 }
 
 func TestWALCorruptionBitFlip(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS:                 fs,
@@ -2179,6 +2208,7 @@ func TestWALCorruptionBitFlip(t *testing.T) {
 // process. It ensures that the resulting DB state opens successfully, and the
 // contents of the DB match the expectations based on the keys written.
 func TestCrashDuringOpenRandomized(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))

@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blob"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -258,6 +259,7 @@ func (t *fileCacheTest) newTestHandle() (*fileCacheHandle, *fileCacheTestFS) {
 
 // Test basic reference counting for the file cache.
 func TestFileCacheRefs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fct := newFileCacheTest(t, 8<<20, 10, 2)
 	// We don't call the full fct.cleanup() method because we will unref the
 	// fileCache in the test.
@@ -305,6 +307,7 @@ func TestFileCacheRefs(t *testing.T) {
 
 // Basic test to determine if reads through the file cache are wired correctly.
 func TestVirtualReadsWiring(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("",
 		&Options{
 			FS:                 vfs.NewMem(),
@@ -440,6 +443,7 @@ func TestVirtualReadsWiring(t *testing.T) {
 
 // The file cache shouldn't be usable after all the dbs close.
 func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fct := newFileCacheTest(t, 8<<20, 10, 1)
 	// We don't call the full fct.cleanup() method because we will unref the
 	// fileCache in the test.
@@ -496,6 +500,7 @@ func TestSharedFileCacheUseAfterAllFree(t *testing.T) {
 // TestSharedFileCacheUseAfterOneFree tests whether a shared file cache is
 // usable by a db, after one of the db's releases its reference.
 func TestSharedFileCacheUseAfterOneFree(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fct := newFileCacheTest(t, 8<<20, 10, 1)
 	defer fct.cleanup()
 
@@ -541,6 +546,7 @@ func TestSharedFileCacheUseAfterOneFree(t *testing.T) {
 // TestSharedFileCacheUsable ensures that a shared file cache is usable by more
 // than one database at once.
 func TestSharedFileCacheUsable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fct := newFileCacheTest(t, 8<<20, 10, 1)
 	defer fct.cleanup()
 
@@ -585,6 +591,7 @@ func TestSharedFileCacheUsable(t *testing.T) {
 }
 
 func TestSharedTableConcurrent(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fct := newFileCacheTest(t, 8<<20, 10, 1)
 	defer fct.cleanup()
 
@@ -693,8 +700,14 @@ func testFileCacheRandomAccess(t *testing.T, concurrent bool) {
 	fs.validateAndCloseHandle(t, h, nil)
 }
 
-func TestFileCacheRandomAccessSequential(t *testing.T) { testFileCacheRandomAccess(t, false) }
-func TestFileCacheRandomAccessConcurrent(t *testing.T) { testFileCacheRandomAccess(t, true) }
+func TestFileCacheRandomAccessSequential(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	testFileCacheRandomAccess(t, false)
+}
+func TestFileCacheRandomAccessConcurrent(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	testFileCacheRandomAccess(t, true)
+}
 
 func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 	const (
@@ -748,6 +761,7 @@ func testFileCacheFrequentlyUsedInternal(t *testing.T, rangeIter bool) {
 }
 
 func TestFileCacheFrequentlyUsed(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for i, iterType := range []string{"point", "range"} {
 		t.Run(fmt.Sprintf("iter=%s", iterType), func(t *testing.T) {
 			testFileCacheFrequentlyUsedInternal(t, i == 1)
@@ -756,6 +770,7 @@ func TestFileCacheFrequentlyUsed(t *testing.T) {
 }
 
 func TestSharedFileCacheFrequentlyUsed(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const (
 		N       = 1000
 		pinned0 = 7
@@ -887,6 +902,7 @@ func testFileCacheEvictionsInternal(t *testing.T, rangeIter bool) {
 }
 
 func TestFileCacheEvictions(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for i, iterType := range []string{"point", "range"} {
 		t.Run(fmt.Sprintf("iter=%s", iterType), func(t *testing.T) {
 			testFileCacheEvictionsInternal(t, i == 1)
@@ -895,6 +911,7 @@ func TestFileCacheEvictions(t *testing.T) {
 }
 
 func TestSharedFileCacheEvictions(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const (
 		N      = 1000
 		lo, hi = 10, 20
@@ -989,6 +1006,7 @@ func TestSharedFileCacheEvictions(t *testing.T) {
 }
 
 func TestFileCacheIterLeak(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	defer fct.cleanup()
 	h, _ := fct.newTestHandle()
@@ -1011,6 +1029,7 @@ func TestFileCacheIterLeak(t *testing.T) {
 }
 
 func TestSharedFileCacheIterLeak(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
 	// We don't call the full fct.cleanup() method because we will unref the
 	// fileCache in the test.
@@ -1051,6 +1070,7 @@ func TestSharedFileCacheIterLeak(t *testing.T) {
 }
 
 func TestFileCacheRetryAfterFailure(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	ctx := context.Background()
 	// Test a retry can succeed after a failure, i.e., errors are not cached.
 	fct := newFileCacheTest(t, 8<<20, fileCacheTestCacheSize, []int{1, 2, 4, 10}[rand.IntN(4)])
@@ -1095,6 +1115,7 @@ func TestFileCacheRetryAfterFailure(t *testing.T) {
 }
 
 func TestFileCacheErrorBadMagicNumber(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	obj := &objstorage.MemObj{}
 	tw := sstable.NewWriter(obj, sstable.WriterOptions{TableFormat: sstable.TableFormatPebblev2})
 	tw.Set([]byte("a"), nil)
@@ -1136,6 +1157,7 @@ func TestFileCacheErrorBadMagicNumber(t *testing.T) {
 }
 
 func TestFileCacheEvictClose(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	errs := make(chan error, 10)
 	db, err := Open("test",
 		&Options{
@@ -1199,6 +1221,7 @@ func BenchmarkNewItersAlloc(b *testing.B) {
 // TestFileCacheNoSuchFileError verifies that when the file cache hits a "no
 // such file" error, it generates a useful fatal message.
 func TestFileCacheNoSuchFileError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const dirname = "test"
 	mem := vfs.NewMem()
 	logger := &catchFatalLogger{}

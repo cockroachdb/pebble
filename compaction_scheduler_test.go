@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 )
 
@@ -89,6 +90,7 @@ func (d *testDBForCompaction) compactionDone(index int) {
 }
 
 func TestConcurrencyLimitScheduler(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var tts testTimeSource
 	var sched *ConcurrencyLimitScheduler
 	var db *testDBForCompaction
