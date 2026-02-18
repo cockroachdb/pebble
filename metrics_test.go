@@ -590,6 +590,7 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 		MemTableSize: 1 << 20, /* 20 KiB */
 	})
 	require.NoError(t, err)
+	defer d.Close()
 
 	stopCh := make(chan struct{})
 
