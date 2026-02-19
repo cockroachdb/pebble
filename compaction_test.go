@@ -3241,6 +3241,11 @@ func TestCompactionCorruption(t *testing.T) {
 
 		case "wait-for-no-external-files":
 			wait("no external files", func() bool {
+				// Keep advancing fake time to expire any problem spans
+				// that may have been re-created by a compaction failure
+				// racing with the table stats goroutine through the file
+				// cache (see the comment on the manual-compaction case).
+				now.Store(now.Load() + crtime.Mono(30*time.Minute))
 				return !hasExternalFiles(d)
 			})
 
