@@ -72,7 +72,7 @@ func TestTreeSteps(t *testing.T) {
 					var opts IterOptions
 					li := newLevelIter(t.Context(), opts, testkeys.Comparer, d.newIters, v.Levels[l].Iter(), manifest.Level(l), internalIterOpts{})
 					li.interleaveRangeDels = true
-					levelIters = append(levelIters, mergingIterLevel{iter: li, getTombstone: li.getTombstone})
+					levelIters = append(levelIters, mergingIterLevel{iter: li, getTombstone: li})
 				}
 				miter := &mergingIter{}
 				var stats base.InternalIteratorStats

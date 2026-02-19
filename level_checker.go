@@ -59,7 +59,7 @@ type simpleMergingIterLevel struct {
 	iter internalIterator
 	// getTombstone returns the range deletion tombstone covering the current
 	// iterator position. getTombstone must not be called after iter is closed.
-	getTombstone func() *keyspan.Span
+	getTombstone keyspan.TombstoneSpanGetter
 	iterKV       *base.InternalKV
 }
 
@@ -259,7 +259,7 @@ func (m *simpleMergingIter) handleVisiblePoint(
 		if lvl.getTombstone == nil {
 			continue
 		}
-		t := lvl.getTombstone()
+		t := lvl.getTombstone.Span()
 		if t.Empty() {
 			continue
 		}
@@ -624,7 +624,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 			manifest.L0Sublevel(sublevel), internalOpts)
 		li.interleaveRangeDels = true
 		mlevelAlloc[0].iter = li
-		mlevelAlloc[0].getTombstone = li.getTombstone
+		mlevelAlloc[0].getTombstone = li
 		mlevelAlloc = mlevelAlloc[1:]
 		for f := range current.L0SublevelFiles[sublevel].All() {
 			allTables = append(allTables, f)
@@ -640,7 +640,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 			current.Levels[level].Iter(), manifest.Level(level), internalOpts)
 		li.interleaveRangeDels = true
 		mlevelAlloc[0].iter = li
-		mlevelAlloc[0].getTombstone = li.getTombstone
+		mlevelAlloc[0].getTombstone = li
 		mlevelAlloc = mlevelAlloc[1:]
 		for f := range current.Levels[level].All() {
 			allTables = append(allTables, f)

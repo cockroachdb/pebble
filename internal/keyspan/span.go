@@ -78,6 +78,12 @@ type Key struct {
 	Value []byte
 }
 
+// TombstoneSpanGetter is implemented by iterators that can return the range
+// tombstone span covering the current iterator position.
+type TombstoneSpanGetter interface {
+	Span() *Span
+}
+
 // SeqNum returns the sequence number component of the key.
 func (k Key) SeqNum() base.SeqNum {
 	return k.Trailer.SeqNum()
