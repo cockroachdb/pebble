@@ -657,6 +657,22 @@ func (r *Runner) eventListener() pebble.EventListener {
 			defer r.writeStallMetrics.Unlock()
 			r.writeStallMetrics.durationByReason[writeStallReason] += time.Since(writeStallBegin)
 		},
+		FlushEnd: func(_ pebble.FlushInfo) {
+			// Wake refreshMetrics so it can re-check quiescence.
+			// compactionsAppearQuiesced checks Flush.NumInProgress, so
+			// refreshMetrics must be notified when flushes complete, not
+			// just compactions. Without this, refreshMetrics can hang
+			// forever waiting on compactionMu.ch if the last in-flight
+			// operation is a flush and no subsequent compaction is
+			// scheduled. The completed counter is not incremented here
+			// because it only tracks compactions.
+			r.compactionMu.Lock()
+			defer r.compactionMu.Unlock()
+			if r.compactionMu.ch != nil {
+				close(r.compactionMu.ch)
+				r.compactionMu.ch = nil
+			}
+		},
 		CompactionBegin: func(_ pebble.CompactionInfo) {
 			r.compactionMu.Lock()
 			defer r.compactionMu.Unlock()
