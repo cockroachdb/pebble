@@ -1377,9 +1377,13 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 	for d.mu.compact.compactingCount > 0 {
 		d.mu.compact.cond.Wait()
 	}
+	// Disable file deletions to prevent a race between listing and copying
+	// files below. Background goroutines (e.g. table stats collection) may
+	// hold a readState that delays version unrefs, causing files to become
+	// obsolete and be deleted after WaitForTesting returns.
+	d.disableFileDeletions()
 	d.mu.Unlock()
 
-	d.TestOnlyWaitForCleaning()
 	// While the MANIFEST is still in this state, copy all the files in the
 	// database to a new directory.
 	replayDir := mem.PathJoin(root, "replay")
@@ -1388,6 +1392,7 @@ func TestOpenWALReplayReadOnlySeqNums(t *testing.T) {
 
 	d.mu.Lock()
 	d.mu.compact.flushing = false
+	d.enableFileDeletions()
 	d.mu.Unlock()
 	require.NoError(t, d.Close())
 
