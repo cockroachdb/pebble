@@ -1389,7 +1389,7 @@ func (i *Iterator) constructPointIter(
 			li.initCombinedIterState(&i.lazyCombinedIter.combinedIterState)
 			mlevels[mlevelsIndex].levelIter = li
 			mlevels[mlevelsIndex].iter = invalidating.MaybeWrapIfInvariants(li)
-			mlevels[mlevelsIndex].getTombstone = li.getTombstone
+			mlevels[mlevelsIndex].getTombstone = li
 
 			levelsIndex++
 			mlevelsIndex++

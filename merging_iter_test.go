@@ -317,7 +317,7 @@ func TestMergingIterDataDriven(t *testing.T) {
 				li.interleaveRangeDels = true
 				levelIters = append(levelIters, mergingIterLevel{
 					iter:         li,
-					getTombstone: li.getTombstone,
+					getTombstone: li,
 				})
 			}
 			miter := &mergingIter{}
@@ -716,7 +716,7 @@ func buildMergingIter(readers [][]*sstable.Reader, levelSlices []manifest.LevelS
 			manifest.Level(level), internalIterOpts{})
 		l.interleaveRangeDels = true
 		mils[level].iter = l
-		mils[level].getTombstone = l.getTombstone
+		mils[level].getTombstone = l
 	}
 	var stats base.InternalIteratorStats
 	m := &mergingIter{}

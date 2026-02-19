@@ -21,7 +21,7 @@ import (
 type mergingIterLevel struct {
 	index        int
 	iter         internalIterator
-	getTombstone func() *keyspan.Span
+	getTombstone keyspan.TombstoneSpanGetter
 	// iterKV caches the current key-value pair iter points to.
 	iterKV *base.InternalKV
 	// levelIter is non-nil if this level's iter is ultimately backed by a
@@ -524,7 +524,7 @@ func (m *mergingIter) isNextEntryDeleted(item *mergingIterLevel) (bool, error) {
 			// If getTombstone is nil, there are no tombstones within the level.
 			continue
 		}
-		t := l.getTombstone()
+		t := l.getTombstone.Span()
 		if t == nil || !t.VisibleAt(m.snapshot) {
 			continue
 		}
@@ -709,7 +709,7 @@ func (m *mergingIter) isPrevEntryDeleted(item *mergingIterLevel) (bool, error) {
 			// If getTombstone is nil, there are no tombstones within the level.
 			continue
 		}
-		t := l.getTombstone()
+		t := l.getTombstone.Span()
 		if t == nil || !t.VisibleAt(m.snapshot) {
 			continue
 		}
@@ -897,7 +897,7 @@ func (m *mergingIter) seekGE(key []byte, level int, flags base.SeekGEFlags) erro
 		// combined iteration.
 		if (m.combinedIterState == nil || m.combinedIterState.initialized) &&
 			l.getTombstone != nil {
-			t := l.getTombstone()
+			t := l.getTombstone.Span()
 			if t != nil && t.VisibleAt(m.snapshot) && m.heap.cmp(t.Start, key) <= 0 {
 				// Based on the containment condition t.End > key, so the
 				// assignment to key results in a monotonically non-decreasing
@@ -994,7 +994,7 @@ func (m *mergingIter) seekLT(key []byte, level int, flags base.SeekLTFlags) erro
 		// combined iteration.
 		if (m.combinedIterState == nil || m.combinedIterState.initialized) &&
 			l.getTombstone != nil {
-			t := l.getTombstone()
+			t := l.getTombstone.Span()
 			// Since SeekLT is exclusive on `key` and a tombstone's end key is
 			// also exclusive, a seek key equal to a tombstone's end key still
 			// enables the seek optimization (Note this is different than the
@@ -1301,7 +1301,7 @@ func (m *mergingIter) TreeStepsNode() treesteps.NodeInfo {
 		d := &dummyNode{}
 		d.info = treesteps.NodeInfof(d, "%s", name)
 		if l.getTombstone != nil {
-			if t := l.getTombstone(); t != nil {
+			if t := l.getTombstone.Span(); t != nil {
 				d.info.AddPropf("tombstone", "%s", t.String())
 			}
 		}

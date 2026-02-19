@@ -68,16 +68,16 @@ func DecodeIntoSpan(cmp base.Compare, ik base.InternalKey, v []byte, s *keyspan.
 // iterator that interleaves range deletion boundary keys at the maximal
 // sequence number among the stream of point keys.
 //
-// In addition, Interleave returns a function that may be used to retrieve the
-// range tombstone overlapping the current iterator position, if any. If range
-// deletion iterator is nil, the returned function is nil.
+// In addition, Interleave returns a TombstoneSpanGetter that may be used to
+// retrieve the range tombstone overlapping the current iterator position, if
+// any. If range deletion iterator is nil, the returned getter is nil.
 //
 // The returned iterator must only be closed once.
 func Interleave(
 	comparer *base.Comparer, iter base.InternalIterator, rangeDelIter keyspan.FragmentIterator,
-) (base.InternalIterator, func() *keyspan.Span) {
+) (base.InternalIterator, keyspan.TombstoneSpanGetter) {
 	// If there is no range deletion iterator, don't bother using an interleaving
-	// iterator. We can return iter verbatim and a nil func.
+	// iterator. We can return iter verbatim and a nil getter.
 	if rangeDelIter == nil {
 		return iter, nil
 	}
@@ -86,7 +86,7 @@ func Interleave(
 	ii.Init(comparer, iter, rangeDelIter, keyspan.InterleavingIterOpts{
 		InterleaveEndKeys: true,
 	})
-	return ii, ii.Span
+	return ii, ii
 }
 
 var interleavingIterPool = sync.Pool{
