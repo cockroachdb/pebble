@@ -610,7 +610,7 @@ func (l *levelIter) loadFile(file *manifest.TableMetadata, dir int) loadFileRetu
 			if l.rangeDelIterSetter != nil {
 				// TODO(jackson): This should be avoidable by teaching the
 				// merging iterator to read range deletions from
-				// levelIter.getTombstone() but requires some delicate
+				// levelIter.Span() but requires some delicate
 				// refactoring. See the unmerged PR #3600.
 				itersForSetter, err := l.newIters(l.ctx, l.iterFile, &l.tableOpts, l.internalOpts, iterRangeDeletions)
 				if err != nil {
@@ -1104,13 +1104,13 @@ func (l *levelIter) exhaustedBackward() {
 	l.exhaustedDir = -1
 }
 
-// getTombstone retrieves the range tombstone covering the current iterator
-// position. If there is none, or if the iterator is not configured to
-// interleave range deletions, getTombstone returns nil.
+// Span implements keyspan.TombstoneSpanGetter, returning the range tombstone
+// covering the current iterator position. If there is none, or if the iterator
+// is not configured to interleave range deletions, Span returns nil.
 //
 // The returned Span's memory is guaranteed to be valid until the iterator is
 // moved beyond the Span's interleaved boundary keys.
-func (l *levelIter) getTombstone() *keyspan.Span {
+func (l *levelIter) Span() *keyspan.Span {
 	if l.iter != &l.interleaving {
 		return nil
 	}
