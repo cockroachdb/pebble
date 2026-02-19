@@ -278,19 +278,30 @@ func (p *provider) OpenForReading(
 		return nil, err
 	}
 
+	// Open core Readable.
 	var r objstorage.Readable
 	if !meta.IsRemote() {
 		r, err = p.localOpenForReading(ctx, fileType, fileNum, meta.Local.Tier, opts)
 	} else {
 		r, err = p.remoteOpenForReading(ctx, meta, opts)
-		if err != nil && p.isNotExistError(meta, err) {
-			// Wrap the error so that IsNotExistError functions properly.
-			err = errors.Mark(err, os.ErrNotExist)
-			err = base.MarkCorruptionError(err)
+		if err != nil {
+			if p.isNotExistError(meta, err) {
+				// Wrap the error so that IsNotExistError functions properly.
+				err = errors.Mark(err, os.ErrNotExist)
+				err = base.MarkCorruptionError(err)
+			}
 		}
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// Wrap core Readable.
+	if meta.Remote.ExternalFileEncryptionKey != [32]byte{} {
+		r, err = NewExternalFileDecryptingReadable(ctx, r, meta.Remote.ExternalFileEncryptionKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if objiotracing.Enabled {
 		r = p.tracer.WrapReadable(ctx, r, fileNum)

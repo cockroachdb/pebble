@@ -73,8 +73,9 @@ type Test struct {
 }
 
 type externalObjMeta struct {
-	sstMeta *sstable.WriterMetadata
-	objName string
+	sstMeta       *sstable.WriterMetadata
+	objName       string
+	encryptionKey [32]byte
 }
 
 func newTest(ops []op) *Test {

@@ -165,6 +165,9 @@ type ObjectMetadata struct {
 		// Storage is the remote.Storage object corresponding to the Locator. Used
 		// to avoid lookups in hot paths.
 		Storage remote.Storage
+		// ExternalFileEncryptionKey is used to decrypt a remote object if it has been encrypted via
+		// CockroachDB's backup encryption. Distinct from Pebble's encryption-at-rest support.
+		ExternalFileEncryptionKey [32]byte
 	}
 }
 
@@ -357,7 +360,7 @@ type Provider interface {
 	// CreateExternalObjectBacking creates a backing for an existing object with a
 	// custom object name. The object is considered to be managed outside of
 	// Pebble and will never be removed by Pebble.
-	CreateExternalObjectBacking(locator remote.Locator, objName string) (RemoteObjectBacking, error)
+	CreateExternalObjectBacking(locator remote.Locator, objName string, encryptionKey [32]byte) (RemoteObjectBacking, error)
 
 	// GetExternalObjects returns a list of DiskFileNums corresponding to all
 	// objects that are backed by the given external object.

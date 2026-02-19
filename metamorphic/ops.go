@@ -1075,6 +1075,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 				HasPointKey:     meta.sstMeta.HasPointKeys || meta.sstMeta.HasRangeDelKeys,
 				HasRangeKey:     meta.sstMeta.HasRangeKeys,
 				SyntheticSuffix: obj.syntheticSuffix,
+				EncryptionKey:   meta.encryptionKey,
 			}
 			if obj.syntheticPrefix.IsSet() {
 				external[i].SyntheticPrefix = obj.syntheticPrefix
@@ -1913,6 +1914,20 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 	}
 	writable := objstorageprovider.NewRemoteWritable(writeCloser)
 
+	// Randomly encrypt 50% of external objects.
+	var encryptionKey [32]byte
+	if rand.IntN(2) == 0 {
+		if _, err := cryptorand.Read(encryptionKey[:]); err != nil {
+			panic(err)
+		}
+		writable, err = objstorageprovider.NewExternalFileEncryptingWritable(
+			context.Background(), writable, encryptionKey,
+		)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	iter, rangeDelIter, rangeKeyIter := private.BatchSort(b)
 
 	sstMeta, err := writeSSTForIngestion(
@@ -1931,9 +1946,11 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 		// This can occur when using --try-to-reduce.
 		panic("metamorphic test internal error: external object empty")
 	}
+
 	t.setExternalObj(o.externalObjID, externalObjMeta{
-		objName: objName,
-		sstMeta: sstMeta,
+		objName:       objName,
+		sstMeta:       sstMeta,
+		encryptionKey: encryptionKey,
 	})
 	h.Recordf("%s", o.formattedString(t.testOpts.KeyFormat))
 }

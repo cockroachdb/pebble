@@ -946,7 +946,9 @@ func (d *DB) ingestAttachRemote(jobID JobID, lr ingestLoadResult) error {
 			meta.AttachVirtualBacking(backing)
 			continue
 		}
-		providerBacking, err := d.objProvider.CreateExternalObjectBacking(key.Locator, key.ObjectName)
+		providerBacking, err := d.objProvider.CreateExternalObjectBacking(
+			key.Locator, key.ObjectName, lr.external[i].external.EncryptionKey,
+		)
 		if err != nil {
 			return err
 		}
@@ -1421,6 +1423,11 @@ type ExternalFile struct {
 	// if the external file was returned by a scan of an existing Pebble
 	// instance. If Level is 0, this field is ignored.
 	Level uint8
+
+	// EncryptionKey is a 32 byte encryption key for decrypting this ExternalFile if it is encrypted
+	// via CockroachDB's backup encryption.
+	// Distinct from Pebble's encryption-at-rest support.
+	EncryptionKey [32]byte
 }
 
 // IngestWithStats does the same as Ingest, and additionally returns
