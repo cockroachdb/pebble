@@ -627,6 +627,88 @@ func TestCompactionsQuiesce(t *testing.T) {
 	}
 }
 
+// TestFlushEndNotifiesRefreshMetrics is a regression test for a hang where
+// refreshMetrics blocks forever on compactionMu.ch when the last in-flight
+// operation is a flush and no compaction follows. With
+// DisableAutomaticCompactions, no CompactionEnd event ever fires, so the only
+// way for refreshMetrics to make progress is via the FlushEnd handler closing
+// compactionMu.ch. Without the fix, this test hangs.
+func TestFlushEndNotifiesRefreshMetrics(t *testing.T) {
+	// Build a workload that consists of a single flush and no compactions.
+	workloadFS := buildFlushOnlyWorkload(t)
+	fs := vfs.NewMem()
+	require.NoError(t, fs.MkdirAll("run", os.ModePerm))
+	r := Runner{
+		RunDir:       "run",
+		WorkloadFS:   workloadFS,
+		WorkloadPath: "workload",
+		Pacer:        Unpaced{},
+		Opts: &pebble.Options{
+			Comparer:                    testkeys.Comparer,
+			FS:                          fs,
+			FormatMajorVersion:          pebble.FormatNewest,
+			DisableAutomaticCompactions: true,
+		},
+	}
+	require.NoError(t, r.Run(context.Background()))
+	defer r.Close()
+
+	var m Metrics
+	var err error
+	var done atomic.Bool
+	go func() {
+		m, err = r.Wait()
+		done.Store(true)
+	}()
+
+	wait := 10 * time.Second
+	if buildtags.SlowBuild {
+		wait = 2 * time.Minute
+	} else if invariants.Enabled {
+		wait = 30 * time.Second
+	}
+	// Without the FlushEnd handler closing compactionMu.ch, Wait would hang
+	// forever because DisableAutomaticCompactions prevents any CompactionEnd
+	// event from ever firing.
+	require.Eventually(t, func() bool { return done.Load() },
+		wait, time.Millisecond, "(*replay.Runner).Wait didn't terminate")
+	require.NoError(t, err)
+	// No compactions should have run.
+	require.Equal(t, int64(0), m.Final.Compact.Count)
+}
+
+func buildFlushOnlyWorkload(t *testing.T) vfs.FS {
+	o := &pebble.Options{
+		Comparer:           testkeys.Comparer,
+		FS:                 vfs.NewMem(),
+		FormatMajorVersion: pebble.FormatNewest,
+	}
+	wc := NewWorkloadCollector("")
+	wc.Attach(o)
+	d, err := pebble.Open("", o)
+	require.NoError(t, err)
+
+	destFS := vfs.NewMem()
+	require.NoError(t, destFS.MkdirAll("workload", os.ModePerm))
+	wc.Start(destFS, "workload")
+
+	// Write a single batch and flush. This produces exactly one flush step
+	// in the recorded workload.
+	ks := testkeys.Alpha(5)
+	bufKey := make([]byte, ks.MaxLen())
+	b := d.NewBatch()
+	for j := 0; j < 100; j++ {
+		n := testkeys.WriteKey(bufKey[:], ks, uint64(j))
+		require.NoError(t, b.Set(bufKey[:n], []byte("value"), pebble.NoSync))
+	}
+	require.NoError(t, b.Commit(pebble.NoSync))
+	require.NoError(t, d.Flush())
+
+	wc.WaitAndStop()
+	defer d.Close()
+	return destFS
+}
+
 // getHeavyWorkload returns a FS containing a workload in the `workload`
 // directory that flushes enough randomly generated keys that replaying it
 // should generate a non-trivial number of compactions.
