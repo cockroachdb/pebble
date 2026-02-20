@@ -11,16 +11,21 @@ import (
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/overlap"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // An overlapChecker provides facilities for checking whether any keys within a
 // particular LSM version overlap a set of bounds. It is a thin wrapper for
 // dataoverlap.Checker.
 type overlapChecker struct {
-	comparer *base.Comparer
-	newIters tableNewIters
-	opts     IterOptions
-	v        *manifest.Version
+	comparer    *base.Comparer
+	newIters    tableNewIters
+	opts        IterOptions
+	v           *manifest.Version
+	objProvider objstorage.Provider
+	// skipRemoteProbe, when true, skips probing files that have remote backings
+	// while still probing local files.
+	skipRemoteProbe bool
 }
 
 // DetermineLSMOverlap calculates the overlap.WithLSM for the given bounds.
@@ -28,6 +33,11 @@ func (c *overlapChecker) DetermineLSMOverlap(
 	ctx context.Context, bounds base.UserKeyBounds,
 ) (overlap.WithLSM, error) {
 	checker := overlap.MakeChecker(c.comparer.Compare, c)
+	if c.skipRemoteProbe {
+		checker.SkipProbe = func(m *manifest.TableMetadata) bool {
+			return !objstorage.IsLocalTable(c.objProvider, m.TableBacking.DiskFileNum)
+		}
+	}
 	return checker.LSMOverlap(ctx, bounds, c.v)
 }
 

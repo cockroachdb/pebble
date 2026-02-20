@@ -54,6 +54,12 @@ const (
 type Checker struct {
 	cmp             base.Compare
 	iteratorFactory IteratorFactory
+	// SkipProbe, if set, is called to determine whether to skip opening a
+	// specific file to check for actual data overlap (via EmptyRegion). When it
+	// returns true, the checker pessimistically assumes data overlap for that
+	// file. This is used during external file ingestion to avoid network I/O
+	// against remote-backed files while still probing local files.
+	SkipProbe func(m *manifest.TableMetadata) bool
 }
 
 // IteratorFactory is an interface that is used by the Checker to create
@@ -135,6 +141,10 @@ func (c *Checker) LevelOverlap(
 		return WithLevel{Result: Data}, nil
 	}
 	// We have a single file to look at; its boundaries enclose our region.
+	if c.SkipProbe != nil && c.SkipProbe(file) {
+		// Pessimistically assume data overlap to avoid opening the file.
+		return WithLevel{Result: Data}, nil
+	}
 	empty, err := c.EmptyRegion(ctx, region, file)
 	if err != nil {
 		return WithLevel{}, err
