@@ -16,6 +16,7 @@ import (
 	"testing/quick"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/bloom"
 	"github.com/cockroachdb/pebble/cockroachkvs"
@@ -36,6 +37,8 @@ import (
 // expects the error to surface to the operation output. If it doesn't, the test
 // fails.
 func TestIteratorErrors(t *testing.T) {
+	// TODO(radu): fix goroutine leak.
+	//defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Logf("Using seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))
@@ -269,6 +272,7 @@ func buildSeparatedValuesDB(
 // This test was used to reproduce the failure in
 // https://github.com/cockroachdb/cockroach/issues/148419.
 func TestDoubleRestart(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Logf("Using seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))
@@ -416,6 +420,7 @@ func checkKVs(
 }
 
 func TestReadOnlyRecovery(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Logf("Using seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))
@@ -466,6 +471,7 @@ func TestReadOnlyRecovery(t *testing.T) {
 }
 
 func TestOptionsClone(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Logf("Using seed %d", seed)
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))

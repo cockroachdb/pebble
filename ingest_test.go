@@ -25,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
@@ -51,6 +52,7 @@ import (
 )
 
 func TestSSTableKeyCompare(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var buf bytes.Buffer
 	datadriven.RunTest(t, "testdata/sstable_key_compare", func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
@@ -80,6 +82,7 @@ func TestSSTableKeyCompare(t *testing.T) {
 }
 
 func TestIngestLoad(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 
@@ -174,6 +177,7 @@ func TestIngestLoad(t *testing.T) {
 }
 
 func TestIngestLoadRand(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 	cmp := DefaultComparer.Compare
@@ -283,6 +287,7 @@ func TestIngestLoadRand(t *testing.T) {
 // - write-table: writes an external table using valsep.SSTBlobWriter
 // - ingest: ingests the tables into the database
 func TestIngestLocalWithBlobs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	keySchema := colblk.DefaultKeySchema(testkeys.Comparer, 16)
 	ctx := context.Background()
 	var db *DB
@@ -416,6 +421,7 @@ func TestIngestLocalWithBlobs(t *testing.T) {
 }
 
 func TestIngestLoadInvalid(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	f, err := mem.Create("invalid", vfs.WriteCategoryUnspecified)
 	require.NoError(t, err)
@@ -434,6 +440,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 }
 
 func TestIngestLocalErrors(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	ctx := context.Background()
 
 	t.Run("ReadOnlyDB", func(t *testing.T) {
@@ -471,6 +478,7 @@ func TestIngestLocalErrors(t *testing.T) {
 }
 
 func TestIngestSortAndVerify(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	comparers := map[string]Compare{
 		"default": DefaultComparer.Compare,
 		"reverse": func(a, b []byte) int {
@@ -525,6 +533,7 @@ func TestIngestSortAndVerify(t *testing.T) {
 }
 
 func TestIngestLink(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Test linking of tables into the DB directory. Test cleanup when one of the
 	// tables cannot be linked.
 
@@ -535,6 +544,7 @@ func TestIngestLink(t *testing.T) {
 			opts := &Options{FS: vfs.NewMem()}
 			opts.EnsureDefaults()
 			opts.WithFSDefaults()
+			defer opts.private.fsCloser.Close()
 			require.NoError(t, opts.FS.MkdirAll(dir, 0755))
 			objProvider, err := objstorageprovider.Open(objstorageprovider.DefaultSettings(opts.FS, dir))
 			require.NoError(t, err)
@@ -612,6 +622,7 @@ func TestIngestLink(t *testing.T) {
 }
 
 func TestIngestLinkFallback(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Verify that ingestLink succeeds if linking fails by falling back to
 	// copying.
 	mem := vfs.NewMem()
@@ -621,6 +632,7 @@ func TestIngestLinkFallback(t *testing.T) {
 	opts := &Options{FS: errorfs.Wrap(mem, errorfs.ErrInjected.If(errorfs.OnIndex(1)))}
 	opts.EnsureDefaults()
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 	objSettings := objstorageprovider.DefaultSettings(opts.FS, "")
 	// Prevent the provider from listing the dir (where we may get an injected error).
 	objSettings.Local.FSDirInitialListing = []string{}
@@ -647,6 +659,7 @@ func TestIngestLinkFallback(t *testing.T) {
 }
 
 func TestOverlappingIngestedSSTs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	dir := ""
 	var (
 		mem        *vfs.MemFS
@@ -1193,6 +1206,7 @@ func testIngestSharedImpl(
 }
 
 func TestIngestShared(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, strategy := range []remote.CreateOnSharedStrategy{remote.CreateOnSharedAll, remote.CreateOnSharedLower} {
 		strategyStr := "all"
 		if strategy == remote.CreateOnSharedLower {
@@ -1209,6 +1223,7 @@ func TestIngestShared(t *testing.T) {
 }
 
 func TestSimpleIngestShared(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	var d *DB
 	var provider2 objstorage.Provider
@@ -1318,6 +1333,7 @@ type blockedCompaction struct {
 }
 
 func TestIngestExternal(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem vfs.FS
 	var d, d1, d2 *DB
 	var opts *Options
@@ -1604,6 +1620,7 @@ func TestIngestExternal(t *testing.T) {
 }
 
 func TestIngestMemtableOverlaps(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	comparers := []Comparer{
 		{
 			Name:    "default",
@@ -1707,6 +1724,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 }
 
 func TestKeyRangeBasic(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	cmp := base.DefaultComparer.Compare
 	k1 := KeyRange{Start: []byte("b"), End: []byte("c")}
 	k1UserKeyBounds := k1.UserKeyBounds()
@@ -1779,6 +1797,7 @@ func BenchmarkIngestOverlappingMemtable(b *testing.B) {
 }
 
 func TestIngestTargetLevel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -1871,6 +1890,7 @@ func TestIngestTargetLevel(t *testing.T) {
 }
 
 func TestIngest(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem vfs.FS
 	var d *DB
 	var flushed bool
@@ -2015,6 +2035,7 @@ func (p linkAndRemovePredicate) Evaluate(op errorfs.Op) bool {
 var _ errorfs.Predicate = &linkAndRemovePredicate{}
 
 func TestIngestError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, linkAndRemove := range []bool{false, true} {
 		for i := int32(0); ; i++ {
 			mem := vfs.NewMem()
@@ -2132,6 +2153,7 @@ func TestIngestError(t *testing.T) {
 }
 
 func TestIngestIdempotence(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Use an on-disk filesystem, because Ingest with a MemFS will copy, not
 	// link the ingested file.
 	dir, err := os.MkdirTemp("", "ingest-idempotence")
@@ -2160,6 +2182,7 @@ func TestIngestIdempotence(t *testing.T) {
 }
 
 func TestIngestCompact(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	lel := MakeLoggingEventListener(&base.InMemLogger{})
 	d, err := Open("", &Options{
@@ -2203,6 +2226,7 @@ func TestIngestCompact(t *testing.T) {
 }
 
 func TestConcurrentIngest(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	d, err := Open("", &Options{
 		FS: mem,
@@ -2250,6 +2274,7 @@ func TestConcurrentIngest(t *testing.T) {
 }
 
 func TestConcurrentIngestCompact(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for i := 0; i < 2; i++ {
 		t.Run("", func(t *testing.T) {
 			mem := vfs.NewMem()
@@ -2365,6 +2390,7 @@ L6:
 }
 
 func TestIngestFlushQueuedMemTable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Verify that ingestion forces a flush of a queued memtable.
 
 	mem := vfs.NewMem()
@@ -2410,6 +2436,7 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 }
 
 func TestIngestStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	d, err := Open("", &Options{
 		FS: mem,
@@ -2443,6 +2470,7 @@ func TestIngestStats(t *testing.T) {
 }
 
 func TestIngestFlushQueuedLargeBatch(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Verify that ingestion forces a flush of a queued large batch.
 
 	mem := vfs.NewMem()
@@ -2483,6 +2511,7 @@ func TestIngestFlushQueuedLargeBatch(t *testing.T) {
 }
 
 func TestIngestMemtablePendingOverlap(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	d, err := Open("", &Options{
 		FS: mem,
@@ -2575,6 +2604,7 @@ func TestIngestMemtablePendingOverlap(t *testing.T) {
 // edits should contain new files with monotonically increasing sequence
 // numbers, since every flush and every ingest conflicts with one another.
 func TestIngestMemtableOverlapRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	el := MakeLoggingEventListener(testutils.Logger{T: t})
 	d, err := Open("", &Options{
@@ -2711,6 +2741,7 @@ func (fs noRemoveFS) Remove(string) error {
 }
 
 func TestIngestFileNumReuseCrash(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	const count = 10
 	// Use an on-disk filesystem, because Ingest with a MemFS will copy, not
 	// link the ingested file.
@@ -2790,6 +2821,7 @@ func TestIngestFileNumReuseCrash(t *testing.T) {
 }
 
 func TestIngest_UpdateSequenceNumber(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	cmp := base.DefaultComparer.Compare
 	parse := func(input string) (sstable.RawWriter, error) {
@@ -2924,6 +2956,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 }
 
 func TestIngestCleanup(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fns := []base.TableNum{0, 1, 2}
 
 	testCases := []struct {
@@ -3090,6 +3123,7 @@ func (l *fatalCapturingLogger) Fatalf(_ string, args ...interface{}) {
 }
 
 func TestIngestValidation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	type keyVal struct {
 		key, val []byte
 	}

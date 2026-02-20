@@ -23,6 +23,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/fifo"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -53,6 +54,7 @@ func try(initialSleep, maxTotalSleep time.Duration, f func() error) error {
 }
 
 func TestTry(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	c := make(chan struct{})
 	go func() {
 		time.Sleep(1 * time.Millisecond)
@@ -86,6 +88,7 @@ func TestTry(t *testing.T) {
 }
 
 func TestBasicReads(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	testCases := []struct {
 		dirname string
 		wantMap map[string]string
@@ -169,6 +172,7 @@ func TestBasicReads(t *testing.T) {
 }
 
 func TestBasicWrites(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -307,6 +311,7 @@ func TestBasicWrites(t *testing.T) {
 }
 
 func TestRandomWrites(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS:           vfs.NewMem(),
 		MemTableSize: 8 * 1024,
@@ -360,6 +365,7 @@ func TestRandomWrites(t *testing.T) {
 }
 
 func TestLargeBatch(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS:                          vfs.NewMem(),
 		MemTableSize:                1400,
@@ -446,6 +452,7 @@ func TestLargeBatch(t *testing.T) {
 }
 
 func TestGetNoCache(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	cache := NewCache(0)
 	defer cache.Unref()
 
@@ -463,6 +470,7 @@ func TestGetNoCache(t *testing.T) {
 }
 
 func TestGetMerge(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -494,6 +502,7 @@ func TestGetMerge(t *testing.T) {
 }
 
 func TestMergeOrderSameAfterFlush(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Ensure compaction iterator (used by flush) and user iterator process merge
 	// operands in the same order
 	d, err := Open("", testingRandomized(t, &Options{
@@ -554,6 +563,7 @@ func (m *closableMerger) Close() error {
 }
 
 func TestMergerClosing(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	m := &closableMerger{}
 
 	d, err := Open("", testingRandomized(t, &Options{
@@ -584,6 +594,7 @@ func TestMergerClosing(t *testing.T) {
 }
 
 func TestLogData(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -600,6 +611,7 @@ func TestLogData(t *testing.T) {
 }
 
 func TestSingleDeleteGet(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -625,6 +637,7 @@ func TestSingleDeleteGet(t *testing.T) {
 }
 
 func TestSingleDeleteFlush(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -658,6 +671,7 @@ func TestSingleDeleteFlush(t *testing.T) {
 }
 
 func TestUnremovableSingleDelete(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS:                    vfs.NewMem(),
 		L0CompactionThreshold: 8,
@@ -693,6 +707,7 @@ func TestUnremovableSingleDelete(t *testing.T) {
 }
 
 func TestIterLeak(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, leak := range []bool{true, false} {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
 			for _, flush := range []bool{true, false} {
@@ -733,6 +748,10 @@ func TestIterLeak(t *testing.T) {
 // Make sure that we detect an iter leak when only one DB closes
 // while the second db still holds a reference to the FileCache.
 func TestIterLeakSharedCache(t *testing.T) {
+	// TODO(radu): this test leaks a file cache goroutine. The goroutine is
+	// blocked and won't span other goroutines so this won't affect leaked
+	// goroutine detection in other tests.
+	// defer leaktest.AfterTest(t)()
 	for _, leak := range []bool{true, false} {
 		t.Run(fmt.Sprintf("leak=%t", leak), func(t *testing.T) {
 			for _, flush := range []bool{true, false} {
@@ -822,6 +841,7 @@ func TestIterLeakSharedCache(t *testing.T) {
 }
 
 func TestMemTableReservation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := &Options{
 		Cache: NewCache(128 << 10 /* 128 KB */),
 		// We're going to be looking at and asserting the global memtable reservation
@@ -896,6 +916,7 @@ func TestMemTableReservation(t *testing.T) {
 }
 
 func TestMemTableReservationLeak(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{FS: vfs.NewMem()}))
 	require.NoError(t, err)
 
@@ -916,6 +937,7 @@ func TestMemTableReservationLeak(t *testing.T) {
 }
 
 func TestCacheEvict(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	cache := NewCache(10 << 20)
 	defer cache.Unref()
 
@@ -955,6 +977,7 @@ func TestCacheEvict(t *testing.T) {
 }
 
 func TestFlushEmpty(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -966,6 +989,7 @@ func TestFlushEmpty(t *testing.T) {
 }
 
 func TestRollManifest(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	toPreserve := rand.Int32N(5) + 1
 	opts := &Options{
 		MaxManifestFileSize:   1,
@@ -1113,6 +1137,7 @@ func TestRollManifest(t *testing.T) {
 }
 
 func TestDBClosed(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", &Options{
 		FS: vfs.NewMem(),
 	})
@@ -1153,6 +1178,7 @@ func TestDBClosed(t *testing.T) {
 }
 
 func TestDBConcurrentCommitCompactFlush(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -1183,6 +1209,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 }
 
 func TestDBConcurrentCompactClose(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// Test closing while a compaction is ongoing. This ensures compaction code
 	// detects the close and finishes cleanly.
 	mem := vfs.NewMem()
@@ -1216,6 +1243,7 @@ func TestDBConcurrentCompactClose(t *testing.T) {
 }
 
 func TestDBApplyBatchNilDB(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{FS: vfs.NewMem()}))
 	require.NoError(t, err)
 
@@ -1236,6 +1264,7 @@ func TestDBApplyBatchNilDB(t *testing.T) {
 }
 
 func TestDBApplyBatchMismatch(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	srcDB, err := Open("", testingRandomized(t, &Options{FS: vfs.NewMem()}))
 	require.NoError(t, err)
 
@@ -1262,6 +1291,7 @@ func TestDBApplyBatchMismatch(t *testing.T) {
 }
 
 func TestCloseCleanerRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	for i := 0; i < 20; i++ {
 		db, err := Open("", testingRandomized(t, &Options{FS: mem}))
@@ -1299,6 +1329,7 @@ func TestCloseCleanerRace(t *testing.T) {
 }
 
 func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -1340,6 +1371,7 @@ func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
 }
 
 func TestFilterSSTablesWithOption(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -1380,6 +1412,7 @@ func TestFilterSSTablesWithOption(t *testing.T) {
 }
 
 func TestSSTables(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS: vfs.NewMem(),
 	}))
@@ -1417,6 +1450,7 @@ func TestSSTables(t *testing.T) {
 }
 
 func TestVirtualSSTables(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	d, err := Open("", testingRandomized(t, &Options{
 		FS:                 vfs.NewMem(),
 		FormatMajorVersion: FormatTableFormatV6,
@@ -1495,6 +1529,7 @@ func (t *testTracer) IsTracingEnabled(ctx context.Context) bool {
 }
 
 func TestTracing(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	defer base.DeterministicReadDurationForTesting()()
 
 	var tracer testTracer
@@ -1569,6 +1604,7 @@ func TestTracing(t *testing.T) {
 }
 
 func TestMemtableIngestInversion(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	memFS := vfs.NewMem()
 	opts := &Options{
 		FS:                          memFS,
@@ -2103,6 +2139,7 @@ func BenchmarkRotateMemtables(b *testing.B) {
 
 // TODO(sumeer): rewrite test when LogRecycler is hidden from this package.
 func TestRecycleLogs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	d, err := Open("", &Options{
 		FS:     mem,
@@ -2191,6 +2228,7 @@ func newBlockingFS(fs vfs.FS, blockWAL, blockSST bool) *sstAndLogFileBlockingFS 
 }
 
 func TestWALFailoverAvoidsWriteStall(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	// All sst and log creation is blocked.
 	primaryFS := newBlockingFS(mem, true /*blockWAL*/, true /*blockSST*/)
@@ -2237,6 +2275,7 @@ func (tlm *testLogManager) ElevateWriteStallThresholdForFailover() bool {
 }
 
 func TestElevateThresholdAfterWriteStallUnblocksStall(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	// All sst writes are blocked.
 	blockingFS := newBlockingFS(mem, false /*blockWAL*/, true /*blockSST*/)
@@ -2300,6 +2339,7 @@ func TestElevateThresholdAfterWriteStallUnblocksStall(t *testing.T) {
 // re-run the sequence introducing latencies, reorderings, parallelism, etc,
 // ensuring that all re-runs produce the same output.
 func TestDeterminism(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var d *DB
 	var fs vfs.FS = vfs.NewMem()
 	defer func() {
@@ -2344,6 +2384,9 @@ func TestDeterminism(t *testing.T) {
 						DisableAutomaticCompactions: true,
 					}
 					opts.Experimental.IngestSplit = func() bool { return rand.IntN(2) == 1 }
+					if d != nil {
+						require.NoError(t, d.Close())
+					}
 					var err error
 					if d, err = runDBDefineCmd(td, opts); err != nil {
 						return err.Error()
@@ -2588,6 +2631,7 @@ func (f *readTrackFile) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func TestLoadBlockSema(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := &readTrackFS{FS: vfs.NewMem()}
 	sema := fifo.NewSemaphore(100)
 	db, err := Open("", testingRandomized(t, &Options{
@@ -2597,6 +2641,7 @@ func TestLoadBlockSema(t *testing.T) {
 		Logger:        testutils.Logger{T: t},
 	}))
 	require.NoError(t, err)
+	defer db.Close()
 
 	key := func(i, j int) []byte {
 		return []byte(fmt.Sprintf("%02d/%02d", i, j))

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -19,6 +20,7 @@ import (
 )
 
 func TestCleaner(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	dbs := make(map[string]*DB)
 	defer func() {
 		for _, db := range dbs {

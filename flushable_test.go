@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -17,6 +18,7 @@ import (
 // Simple sanity tests for the flushable interface implementation for ingested
 // sstables.
 func TestIngestedSSTFlushableAPI(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var mem vfs.FS
 	var d *DB
 	defer func() {

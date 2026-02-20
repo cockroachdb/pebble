@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -20,6 +21,7 @@ import (
 // TestFormatMajorVersionValues checks that we don't accidentally change the
 // numbers of format versions.
 func TestFormatMajorVersionStableValues(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	require.Equal(t, FormatDefault, FormatMajorVersion(0))
 
 	require.Equal(t, FormatFlushableIngest, FormatMajorVersion(13))
@@ -47,6 +49,7 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 }
 
 func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for v := FormatMinSupported; v <= FormatNewest; v++ {
 		if _, ok := formatMajorVersionMigrations[v]; !ok {
 			t.Errorf("format major version %d has no migration defined", v)
@@ -55,6 +58,7 @@ func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
 }
 
 func TestRatchetFormat(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
 	opts := &Options{FS: fs}
 	opts.WithFSDefaults()
@@ -119,6 +123,7 @@ func testBasicDB(d *DB) error {
 }
 
 func TestFormatMajorVersions(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for vers := FormatMinSupported; vers <= FormatNewest; vers++ {
 		t.Run(fmt.Sprintf("vers=%03d", vers), func(t *testing.T) {
 			fs := vfs.NewCrashableMem()
@@ -211,6 +216,7 @@ func TestFormatMajorVersions(t *testing.T) {
 }
 
 func TestFormatMajorVersions_TableFormat(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// NB: This test is intended to validate the mapping between every
 	// FormatMajorVersion and sstable.TableFormat exhaustively. This serves as a
 	// sanity check that new versions have a corresponding mapping. The test
@@ -251,6 +257,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 }
 
 func TestFormatMajorVersions_BlobFileFormat(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	// NB: This test is intended to validate the mapping between every
 	// FormatMajorVersion and blob.FileFormat exhaustively. This serves as a
 	// sanity check that new versions have a corresponding mapping. The test
@@ -277,6 +284,7 @@ func TestFormatMajorVersions_BlobFileFormat(t *testing.T) {
 }
 
 func TestFormatMajorVersions_MaxTableFormat(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	type testCase struct {
 		fmv  FormatMajorVersion
 		want sstable.TableFormat
