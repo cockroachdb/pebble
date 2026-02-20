@@ -17,10 +17,11 @@ import (
 // particular LSM version overlap a set of bounds. It is a thin wrapper for
 // dataoverlap.Checker.
 type overlapChecker struct {
-	comparer *base.Comparer
-	newIters tableNewIters
-	opts     IterOptions
-	v        *manifest.Version
+	comparer  *base.Comparer
+	newIters  tableNewIters
+	opts      IterOptions
+	v         *manifest.Version
+	skipProbe bool
 }
 
 // DetermineLSMOverlap calculates the overlap.WithLSM for the given bounds.
@@ -28,6 +29,7 @@ func (c *overlapChecker) DetermineLSMOverlap(
 	ctx context.Context, bounds base.UserKeyBounds,
 ) (overlap.WithLSM, error) {
 	checker := overlap.MakeChecker(c.comparer.Compare, c)
+	checker.SkipProbe = c.skipProbe
 	return checker.LSMOverlap(ctx, bounds, c.v)
 }
 
