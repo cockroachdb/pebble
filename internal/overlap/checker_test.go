@@ -101,8 +101,13 @@ func TestChecker(t *testing.T) {
 
 		case "overlap":
 			var metas []*manifest.TableMetadata
+			skipProbe := false
 			lines := strings.Split(d.Input, "\n")
 			for _, arg := range d.CmdArgs {
+				if arg.Key == "skip-probe" {
+					skipProbe = true
+					continue
+				}
 				name := arg.String()
 				m := byName[name]
 				if m == nil {
@@ -112,6 +117,9 @@ func TestChecker(t *testing.T) {
 			}
 			levelMeta := manifest.MakeLevelMetadata(bytes.Compare, 1 /* level */, metas)
 			c := MakeChecker(bytes.Compare, tables)
+			if skipProbe {
+				c.SkipProbe = func(m *manifest.TableMetadata) bool { return true }
+			}
 			var buf strings.Builder
 			for _, l := range lines {
 				bounds := base.ParseUserKeyBounds(l)

@@ -26,6 +26,17 @@ overlap t1
 [u, w]: possible data overlap   iterators opened: none
 [v, w]: no overlap   iterators opened: none
 
+# With skip-probe, regions that would be probed (single enclosing file,
+# no endpoint match) are pessimistically reported as Data without opening
+# iterators. Compare [b1, b2] and [e, u) above which returned OnlyBoundary.
+
+overlap t1 skip-probe
+[b1, b2]
+[e, u)
+----
+[b1, b2]: possible data overlap   iterators opened: none
+[e, u): possible data overlap   iterators opened: none
+
 define t2
 range-dels:
   b-e:{#1,RANGEDEL}
