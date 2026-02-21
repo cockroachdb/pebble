@@ -101,7 +101,7 @@ simple_val_sep:
 stat simple_val_sep/MANIFEST-000013 simple_val_sep/000015.sst simple_val_sep/000016.blob
 ----
 simple_val_sep/MANIFEST-000013:
-  size: 250
+  size: 259
 simple_val_sep/000015.sst:
   size: 792
 simple_val_sep/000016.blob:

@@ -109,7 +109,7 @@ type ParsedKVOrSpan struct {
 	//
 	// For blob values:
 	//   - Single-tier: Only BlobHandle is set. The tier (hot/cold) is determined
-	//     by BlobReferenceTierGetter based on the blob file's reference ID.
+	//     by sstableinternal.WriterOptions.BlobReferenceTiers[BlobHandle.ReferenceID].
 	//   - Dual-tier: Both BlobHandle and SecondaryBlobHandle are set, representing
 	//     a value that exists in both tiers simultaneously (typically hot + cold).
 	Value               []byte
