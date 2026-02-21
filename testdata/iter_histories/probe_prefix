@@ -72,8 +72,11 @@ b@6: (b6, .)
 b@2: (7, .)
 000004.PointKeys.SeekPrefixGE("b@7") = (b@2#7,SET,"7")
 000004.RangeDels.opSpanSeekGE("b@7") = a@2-b@3:{(#10,RANGEDEL)}
+000004.RangeDels.opSpanSeekGE("b@7") = a@2-b@3:{(#10,RANGEDEL)}
+000004.RangeDels.opSpanSeekGE("b@3") = nil
 000004.RangeDels.opSpanNext() = nil
 000004.PointKeys.Close() = nil
+000004.RangeDels.opSpanClose() = nil
 000004.RangeDels.opSpanClose() = nil
 
 # Test boundary interactions.
@@ -88,10 +91,12 @@ b@8: (b8, .)
 .
 000004.PointKeys.SeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
 000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
+000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
 000004.PointKeys.Next() = (b@2#7,SET,"7")
 000004.PointKeys.SeekPrefixGE("c") = nil
 000004.RangeDels.opSpanSeekGE("c") = nil
 000004.PointKeys.Close() = nil
+000004.RangeDels.opSpanClose() = nil
 000004.RangeDels.opSpanClose() = nil
 
 combined-iter probe-points=(4, (If (UserKey "c@5") (ReturnKV "c@99#7,SET" "cc") noop))
@@ -143,8 +148,11 @@ d@22: (d22, .)
 d@21: (d21, .)
 000004.PointKeys.SeekPrefixGE("b") = (b@2#7,SET,"7")
 000004.RangeDels.opSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
+000004.RangeDels.opSpanSeekGE("b") = a@2-b@3:{(#10,RANGEDEL)}
 000004.PointKeys.SeekPrefixGE("b@10") = (b@2#7,SET,"7")
+000004.RangeDels.opSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanSeekGE("b@10") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanNext() = nil
 000004.PointKeys.Close() = nil
+000004.RangeDels.opSpanClose() = nil
 000004.RangeDels.opSpanClose() = nil
