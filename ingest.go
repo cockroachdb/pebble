@@ -1456,7 +1456,38 @@ func (d *DB) IngestExternalFiles(
 	if d.opts.Experimental.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
-	return d.ingest(ctx, ingestArgs{External: external})
+	// SkipLevelProbe avoids opening existing LSM files to probe for data overlap
+	// during level targeting. This keeps external-file ingestion on a
+	// metadata-only path (no network I/O against remote backings), at the cost of
+	// pessimistic level placement: ingested files may land higher in the LSM than
+	// necessary. Normal compactions will eventually move them down but this can be
+	// slow.
+	//
+	// TODO(dt): Rather than always skipping, let the caller configure the probe
+	// policy: e.g. always probe, never probe, only probe local backings, or
+	// best-effort (probe but treat errors as pessimistic overlap rather than
+	// failing the ingest). A caller doing bulk restore may prefer no probing
+	// for throughput, while one doing a single AddSSTable may prefer probing
+	// for better placement.
+	//
+	// TODO(dt): After download compactions (compactionKindCopy) replace remote
+	// backings with local files, we should re-evaluate level placement. Download
+	// compactions keep files at their current level, so a subsequent step is
+	// needed to move misplaced files down. Note that the only case that matters is
+	// boundary-only overlap (OnlyBoundary): if a level had no overlapping files at
+	// all, ingest would have placed the file there even with SkipProbe.
+	//
+	// A bit on TableMetadata could record that a file was placed pessimistically
+	// due to skipped probing. The compaction picker could then scan for
+	// locally-backed files with this bit set and pick a speculative "maybe-move"
+	// compaction. At execution time the compaction would re-run the overlap
+	// checker with probing enabled (now cheap since backings are local) via
+	// DetermineLSMOverlap to find the target level. If it finds boundary-only
+	// overlap at the target (OnlyBoundary + SplitFile), it splits the enclosing
+	// file and moves the candidate down, similar to ingest-split. If probing
+	// reveals actual data overlap, the compaction clears the bit (the file is
+	// correctly placed) and is a no-op.
+	return d.ingest(ctx, ingestArgs{External: external, SkipLevelProbe: true})
 }
 
 // IngestAndExciseWithBlobs does the same as IngestWithStats, and additionally accepts a
@@ -1685,6 +1716,10 @@ type ingestArgs struct {
 	// ExciseSpan (unset if not excising).
 	ExciseSpan         KeyRange
 	ExciseBoundsPolicy exciseBoundsPolicy
+	// SkipLevelProbe, when true, makes the overlap checker pessimistically
+	// assume data overlap when an existing file's bounds enclose the ingested
+	// file's region, rather than opening the file to probe.
+	SkipLevelProbe bool
 }
 
 // See comment at Ingest() for details on how this works.
@@ -1985,7 +2020,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		}
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, manifestUpdateDuration, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, seqNum)
+		ve, manifestUpdateDuration, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, seqNum, args.SkipLevelProbe)
 	}
 
 	// Only one ingest can occur at a time because if not, one would block waiting
@@ -2217,6 +2252,7 @@ func (d *DB) ingestApply(
 	exciseSpan KeyRange,
 	exciseBoundsPolicy exciseBoundsPolicy,
 	exciseSeqNum base.SeqNum,
+	skipLevelProbe bool,
 ) (*manifest.VersionEdit, time.Duration, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -2254,7 +2290,8 @@ func (d *DB) ingestApply(
 				logger:   d.opts.Logger,
 				Category: categoryIngest,
 			},
-			v: current,
+			v:         current,
+			skipProbe: skipLevelProbe,
 		}
 		shouldIngestSplit := d.opts.Experimental.IngestSplit != nil &&
 			d.opts.Experimental.IngestSplit() && d.FormatMajorVersion() >= FormatVirtualSSTables
