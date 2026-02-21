@@ -71,8 +71,8 @@ func TestTreeSteps(t *testing.T) {
 					}
 					var opts IterOptions
 					li := newLevelIter(t.Context(), opts, testkeys.Comparer, d.newIters, v.Levels[l].Iter(), manifest.Level(l), internalIterOpts{})
-					li.interleaveRangeDels = true
-					levelIters = append(levelIters, mergingIterLevel{iter: li, getTombstone: li})
+					levelIters = append(levelIters, mergingIterLevel{iter: li})
+					li.initRangeDel(&levelIters[len(levelIters)-1])
 				}
 				miter := &mergingIter{}
 				miter.forceEnableSeekOpt = true

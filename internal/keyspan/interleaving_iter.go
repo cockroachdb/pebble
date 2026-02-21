@@ -262,7 +262,6 @@ func (i *InterleavingIter) InitSeekGE(
 	// optimization are maintained.
 	if i.opts.UpperBound != nil && i.cmp(key, i.opts.UpperBound) >= 0 {
 		i.pos = posSeekedBeyondUpperBound
-		i.withinSpan = false
 		return nil
 	}
 	i.computeSmallestPos()
@@ -296,7 +295,6 @@ func (i *InterleavingIter) InitSeekLT(key []byte, pointKV *base.InternalKV) *bas
 	// optimization are maintained.
 	if i.opts.LowerBound != nil && i.cmp(i.opts.LowerBound, key) >= 0 {
 		i.pos = posSeekedBeyondLowerBound
-		i.withinSpan = false
 		return nil
 	}
 	i.computeLargestPos()
@@ -346,7 +344,6 @@ func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Inte
 	// optimization are maintained.
 	if i.opts.UpperBound != nil && i.cmp(key, i.opts.UpperBound) >= 0 {
 		i.pos = posSeekedBeyondUpperBound
-		i.withinSpan = false
 		return nil
 	}
 
@@ -423,7 +420,6 @@ func (i *InterleavingIter) SeekPrefixGE(
 	// optimization are maintained.
 	if i.opts.UpperBound != nil && i.cmp(key, i.opts.UpperBound) >= 0 {
 		i.pos = posSeekedBeyondUpperBound
-		i.withinSpan = false
 		return nil
 	}
 	i.computeSmallestPos()
@@ -462,7 +458,6 @@ func (i *InterleavingIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.Inte
 	// optimization are maintained.
 	if i.opts.LowerBound != nil && i.cmp(i.opts.LowerBound, key) >= 0 {
 		i.pos = posSeekedBeyondLowerBound
-		i.withinSpan = false
 		return nil
 	}
 	i.computeLargestPos()
