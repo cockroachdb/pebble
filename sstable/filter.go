@@ -65,3 +65,8 @@ func (f *tableFilterReader) mayContain(data, key []byte) bool {
 	}
 	return mayContain
 }
+
+// Decoder returns the underlying filter decoder.
+func (f *tableFilterReader) Decoder() base.TableFilterDecoder {
+	return f.decoder
+}

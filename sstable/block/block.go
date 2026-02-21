@@ -375,6 +375,11 @@ func (r *Reader) ChecksumType() ChecksumType {
 	return r.checksumType
 }
 
+// CacheHandle returns the cache Handle, or nil if caching is disabled.
+func (r *Reader) CacheHandle() *cache.Handle {
+	return r.opts.CacheOpts.CacheHandle
+}
+
 var kindToCacheCategory = [blockkind.NumKinds]cache.Category{
 	blockkind.Unknown:                         cache.CategoryBackground,
 	blockkind.SSTableData:                     cache.CategorySSTableData,
