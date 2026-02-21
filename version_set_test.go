@@ -21,6 +21,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
@@ -49,6 +50,7 @@ func writeAndIngest(t *testing.T, mem vfs.FS, d *DB, k InternalKey, v []byte, fi
 }
 
 func TestVersionSet(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	opts := &Options{
 		FS:       vfs.NewMem(),
 		Comparer: base.DefaultComparer,
@@ -261,6 +263,7 @@ func TestVersionSet(t *testing.T) {
 }
 
 func TestVersionSetCheckpoint(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 	require.NoError(t, mem.MkdirAll("ext", 0755))
 
@@ -294,6 +297,7 @@ func TestVersionSetCheckpoint(t *testing.T) {
 }
 
 func TestVersionSetSeqNums(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var buf struct {
 		sync.Mutex
 		bytes.Buffer
@@ -366,6 +370,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 //
 // See #4518.
 func TestLargeKeys(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	var largeKeyComparer = func() base.Comparer {
 		c := *testkeys.Comparer
 		c.FormatKey = func(key []byte) fmt.Formatter {
@@ -392,6 +397,9 @@ func TestLargeKeys(t *testing.T) {
 				DisableTableStats:           true,
 			}
 			var err error
+			if d != nil {
+				require.NoError(t, d.Close())
+			}
 			d, err = runDBDefineCmd(td, opts)
 			require.NoError(t, err)
 			return runLSMCmd(td, d)
@@ -503,6 +511,7 @@ func splitAt(s string, chars string) (string, string) {
 // across multiple 32KiB blocks within the record package's encoding. There have
 // previously been issues specifically decoding these multi-block version edits.
 func TestCrashDuringManifestWrite_LargeKeys(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := rand.Uint64()
 	t.Logf("seed: %d", seed)
 	rng := rand.New(rand.NewPCG(seed, 0))

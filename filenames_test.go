@@ -7,6 +7,7 @@ package pebble
 import (
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -19,6 +20,7 @@ import (
 // the filesystem. These temporary files should be cleaned
 // up on Open.
 func TestSetCurrentFileCrash(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	mem := vfs.NewMem()
 
 	// Initialize a fresh database to write the initial MANIFEST.

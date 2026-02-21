@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/wal"
 	"github.com/stretchr/testify/require"
@@ -35,6 +36,7 @@ import (
 //     database should fail to open with an error indicating the wrong disk may
 //     be mounted
 func TestWALFailoverIdentifier(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	t.Run("first_time_generation", func(t *testing.T) {
 		mem := vfs.NewMem()
 

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -101,6 +102,7 @@ func expectLSM(expected string, d *DB, t *testing.T) {
 // TestErrors repeatedly runs a short sequence of operations, injecting FS
 // errors at different points, until success is achieved.
 func TestErrors(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	run := func(fs *errorfs.FS) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -119,6 +121,11 @@ func TestErrors(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		defer func() {
+			if d != nil {
+				d.Close()
+			}
+		}()
 
 		key := []byte("a")
 		value := []byte("b")
@@ -138,7 +145,9 @@ func TestErrors(t *testing.T) {
 		if err := iter.Close(); err != nil {
 			return err
 		}
-		return d.Close()
+		err = d.Close()
+		d = nil
+		return err
 	}
 
 	errorCounts := make(map[string]int)
@@ -174,6 +183,7 @@ func TestErrors(t *testing.T) {
 // cannot require operations fail since it involves flush/compaction, which retry
 // internally and succeed following an injected error.
 func TestRequireReadError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	run := func(formatVersion FormatMajorVersion, index int32) (err error) {
 		// Perform setup with error injection disabled as it involves writes/background ops.
 		ii := errorfs.OnIndex(-1)
@@ -265,6 +275,7 @@ L6:
 // corruption and return an error. In this case the filesystem reads return
 // successful status but the data they return is corrupt.
 func TestCorruptReadError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	run := func(formatVersion FormatMajorVersion, index int32) (err error) {
 		// Perform setup with corruption injection disabled as it involves writes/background ops.
 		fs := &corruptFS{
@@ -355,6 +366,7 @@ L6:
 }
 
 func TestDBWALRotationCrash(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	memfs := vfs.NewCrashableMem()
 
 	var crashFS *vfs.MemFS
@@ -419,6 +431,7 @@ func TestDBWALRotationCrash(t *testing.T) {
 }
 
 func TestDBCompactionCrash(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	seed := time.Now().UnixNano()
 	t.Log("seed", seed)
 

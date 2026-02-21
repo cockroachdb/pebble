@@ -96,6 +96,10 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		}
 	}
 
+	if opts.private.fsCloser != nil {
+		defer maybeCleanUp(opts.private.fsCloser.Close)
+	}
+
 	// Recover the current database state.
 	rs, err := recoverState(opts, dirname)
 	if err != nil {
@@ -171,6 +175,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		})
 	}
 
+	var compactionSchedulerRegistered bool
 	defer func() {
 		// If an error or panic occurs during open, attempt to release the manually
 		// allocated memory resources. Note that rather than look for an error, we
@@ -202,6 +207,9 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 			if d.iterTracker != nil {
 				d.iterTracker.Close()
 				d.iterTracker = nil
+			}
+			if compactionSchedulerRegistered {
+				d.compactionScheduler.Unregister()
 			}
 			if r != nil {
 				panic(r)
@@ -432,6 +440,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	// d.maybeScheduleFlush, since completion of the flush can trigger
 	// compactions.
 	d.compactionScheduler.Register(2, d)
+	compactionSchedulerRegistered = true
 	if !d.opts.ReadOnly {
 		d.maybeScheduleFlush()
 		for d.mu.compact.flushing {
