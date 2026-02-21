@@ -46,6 +46,22 @@ iterate-external-files:
   file: 000005:[b#1,SET-c#1,SET]  level: 2
   no more files
 
+# Test NextFile with multiple L0 sublevels (reuses the version above).
+# Files are ordered by (Smallest.UserKey, SeqNums.High).
+cursor lower=a upper=z
+reset level=0
+iterate-files
+----
+reset:
+  level=0 key="" seqNum=0
+iterate-files:
+  file: 000004:[a#1,SET-c#1,SET]  level: 0
+  file: 000001:[a#1,SET-a#1,SET]  level: 0
+  file: 000002:[b#1,SET-d#1,SET]  level: 0
+  file: 000003:[e#1,SET-g#1,SET]  level: 0
+  file: 000005:[b#1,SET-c#1,SET]  level: 2
+  no more files
+
 # Verify that non-external files are skipped.
 define
 L0:
@@ -142,3 +158,78 @@ next-external-file:
   file: 000005:[d1#1,SET-g#1,SET]  level: 2
 next-external-file:
   file: <nil>  level: 7
+
+# Test NextFile: iterate through all files (not just external).
+# L0 files are ordered by (Smallest.UserKey, SeqNums.High).
+# Note: L0 files must be defined in decreasing seqnum order in input.
+define
+L0:
+  2:[c#1,SET-d#1,SET] seqnums:[#90-#100]
+  1:[a#1,SET-b#1,SET] seqnums:[#40-#50]
+L1:
+  3:[e#1,SET-f#1,SET]
+  4:[g#1,SET-h#1,SET]
+----
+L0.0:
+  000001:[a#1,SET-b#1,SET] seqnums:[#40-#50] points:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET] seqnums:[#90-#100] points:[c#1,SET-d#1,SET]
+L1:
+  000003:[e#1,SET-f#1,SET] seqnums:[#0-#0] points:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET] seqnums:[#0-#0] points:[g#1,SET-h#1,SET]
+
+# Iterate all files: L0 by (Smallest.UserKey, SeqNums.High), then L1 by key.
+cursor lower=a upper=z
+reset level=0
+iterate-files
+----
+reset:
+  level=0 key="" seqNum=0
+iterate-files:
+  file: 000001:[a#1,SET-b#1,SET]  level: 0
+  file: 000002:[c#1,SET-d#1,SET]  level: 0
+  file: 000003:[e#1,SET-f#1,SET]  level: 1
+  file: 000004:[g#1,SET-h#1,SET]  level: 1
+  no more files
+
+# Test NextFile: L1 and L2 only (no L0).
+define
+L1:
+  1:[a#1,SET-b#1,SET]
+  2:[c#1,SET-d#1,SET]
+L2:
+  3:[e#1,SET-f#1,SET]
+----
+L1:
+  000001:[a#1,SET-b#1,SET] seqnums:[#0-#0] points:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET] seqnums:[#0-#0] points:[c#1,SET-d#1,SET]
+L2:
+  000003:[e#1,SET-f#1,SET] seqnums:[#0-#0] points:[e#1,SET-f#1,SET]
+
+cursor lower=a upper=z
+reset level=0
+iterate-files
+----
+reset:
+  level=0 key="" seqNum=0
+iterate-files:
+  file: 000001:[a#1,SET-b#1,SET]  level: 1
+  file: 000002:[c#1,SET-d#1,SET]  level: 1
+  file: 000003:[e#1,SET-f#1,SET]  level: 2
+  no more files
+
+# Test NextFile: skip empty levels.
+define
+L2:
+  3:[e#1,SET-f#1,SET]
+----
+L2:
+  000003:[e#1,SET-f#1,SET] seqnums:[#0-#0] points:[e#1,SET-f#1,SET]
+
+cursor lower=a upper=z
+reset level=1
+next-file
+----
+reset:
+  level=1 key="" seqNum=0
+next-file:
+  file: 000003:[e#1,SET-f#1,SET]  level: 2
