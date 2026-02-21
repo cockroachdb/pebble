@@ -72,7 +72,7 @@ func MakeScanCursor(f *TableMetadata, level int) ScanCursor {
 // been processed.
 //
 // The cursor is positioned such that the file would be considered "before" the
-// cursor (i.e., cursor.Compare(MakeScanCursorAtFile(f)) > 0).
+// cursor (i.e., cursor.Compare(MakeScanCursor(f, level)) > 0).
 func MakeScanCursorAfterFile(f *TableMetadata, level int) ScanCursor {
 	return ScanCursor{
 		Level:  level,
@@ -81,10 +81,10 @@ func MakeScanCursorAfterFile(f *TableMetadata, level int) ScanCursor {
 	}
 }
 
-// FileIsAfterCursor returns true if the given file is strictly after the cursor
+// FileIsAfterCursor returns true if the given file is at or after the cursor
 // position. This is useful for skipping files that have already been processed.
 func (c *ScanCursor) FileIsAfterCursor(cmp base.Compare, f *TableMetadata, level int) bool {
-	return c.Compare(cmp, MakeScanCursorAfterFile(f, level)) < 0
+	return c.Compare(cmp, MakeScanCursor(f, level)) <= 0
 }
 
 // NextExternalFile returns the first external file after the cursor, returning
@@ -131,6 +131,21 @@ func (c *ScanCursor) NextExternalFileOnLevel(
 	return first
 }
 
+// firstFileInLevelIter returns the first file at or after the cursor position
+// in the given level iterator. It is assumed that the iterator corresponds to
+// c.Level.
+func (c *ScanCursor) firstFileInLevelIter(cmp base.Compare, it *LevelIterator) *TableMetadata {
+	if len(c.Key) == 0 {
+		return it.First()
+	}
+	f := it.SeekGE(cmp, c.Key)
+	// Skip files that are before the cursor position.
+	for f != nil && !c.FileIsAfterCursor(cmp, f, c.Level) {
+		f = it.Next()
+	}
+	return f
+}
+
 // FirstExternalFileInLevelIter finds the first external file after the cursor
 // but which starts before the endBound. It is assumed that the iterator
 // corresponds to cursor.Level.
@@ -140,16 +155,51 @@ func (c *ScanCursor) FirstExternalFileInLevelIter(
 	it LevelIterator,
 	endBound base.UserKeyBoundary,
 ) *TableMetadata {
-	f := it.SeekGE(cmp, c.Key)
-	// Skip the file if it starts before cursor.Key or is at that same key with lower
-	// sequence number.
-	for f != nil && !c.FileIsAfterCursor(cmp, f, c.Level) {
-		f = it.Next()
-	}
+	f := c.firstFileInLevelIter(cmp, &it)
 	for ; f != nil && endBound.IsUpperBoundFor(cmp, f.Smallest().UserKey); f = it.Next() {
 		if f.Virtual && objstorage.IsExternalTable(objProvider, f.TableBacking.DiskFileNum) {
 			return f
 		}
 	}
 	return nil
+}
+
+// NextFile returns the first file at or after the cursor, returning the file and the
+// level. If no such file exists, returns nil.
+func (c *ScanCursor) NextFile(cmp base.Compare, v *Version) (_ *TableMetadata, level int) {
+	for !c.AtEnd() {
+		if f := c.nextFileOnLevel(cmp, v); f != nil {
+			return f, c.Level
+		}
+		// Go to the next level.
+		c.Key = nil
+		c.SeqNum = 0
+		c.Level++
+	}
+	return nil, NumLevels
+}
+
+// nextFileOnLevel returns the first file on c.Level which is at or after the
+// cursor position.
+func (c *ScanCursor) nextFileOnLevel(cmp base.Compare, v *Version) *TableMetadata {
+	if c.Level > 0 {
+		it := v.Levels[c.Level].Iter()
+		return c.firstFileInLevelIter(cmp, &it)
+	}
+	// For L0, we look at all sublevel iterators and take the first file
+	// (ordered by Smallest.UserKey, then by SeqNums.High).
+	var first *TableMetadata
+	var firstCursor ScanCursor
+	for _, sublevel := range v.L0SublevelFiles {
+		it := sublevel.Iter()
+		f := c.firstFileInLevelIter(cmp, &it)
+		if f != nil {
+			fc := MakeScanCursor(f, c.Level)
+			if first == nil || fc.Compare(cmp, firstCursor) < 0 {
+				first = f
+				firstCursor = fc
+			}
+		}
+	}
+	return first
 }

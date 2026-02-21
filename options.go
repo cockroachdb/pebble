@@ -793,6 +793,13 @@ type Options struct {
 		// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
 		SpanPolicyFunc SpanPolicyFunc
 
+		// SpanPolicyEnforcerOptions configures the background policy enforcer that
+		// scans the LSM for span policy violations. If nil, the policy enforcer
+		// is disabled.
+		//
+		// Default is nil (disabled).
+		SpanPolicyEnforcerOptions *SpanPolicyEnforcerOptions
+
 		// VirtualTableRewriteUnreferencedFraction configures the minimum fraction of
 		// unreferenced data in a backing table required to trigger a virtual table
 		// rewrite compaction. This is calculated as the ratio of unreferenced

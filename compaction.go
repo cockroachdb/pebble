@@ -152,6 +152,7 @@ const (
 	compactionKindRewrite
 	compactionKindIngestedFlushable
 	compactionKindBlobFileRewrite
+	compactionKindPolicyEnforcement
 	// compactionKindVirtualRewrite must be the last compactionKind.
 	// If a new kind has to be added after VirtualRewrite,
 	// update AllCompactionKindStrings() accordingly.
@@ -182,6 +183,8 @@ func (k compactionKind) String() string {
 		return "copy"
 	case compactionKindBlobFileRewrite:
 		return "blob-file-rewrite"
+	case compactionKindPolicyEnforcement:
+		return "policy-enforcement"
 	case compactionKindVirtualRewrite:
 		return "virtual-sst-rewrite"
 	}
@@ -2048,6 +2051,7 @@ func (d *DB) makeCompactionEnvLocked() *compactionEnv {
 			flushing:                 d.mu.compact.flushing || d.passedFlushThreshold(),
 			rescheduleReadCompaction: &d.mu.compact.rescheduleReadCompaction,
 		},
+		policyEnforcementFiles: &d.mu.compact.spanPolicyEnforcementFiles,
 	}
 	if !d.problemSpans.IsEmpty() {
 		env.problemSpans = &d.problemSpans
