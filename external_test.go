@@ -61,8 +61,12 @@ func TestIteratorErrors(t *testing.T) {
 	_ = vfs.Root(testOpts.Opts.FS).(*vfs.MemFS)
 
 	{
+		// Disable restarts during the write phase. DB.Close() during a restart
+		// blocks on the cleanup manager draining its queue of obsolete file
+		// deletions; with aggressive random options (tiny TargetFileSizes) this
+		// queue can grow large and take minutes to drain on slow machines.
 		test, err := metamorphic.New(metamorphic.GenerateOps(
-			rng, 10000, kf, metamorphic.WriteOpConfig()),
+			rng, 10000, kf, metamorphic.WriteOpConfig().WithOpWeight(metamorphic.OpDBRestart, 0)),
 			testOpts, "" /* dir */, io.Discard)
 		require.NoError(t, err)
 		require.NoError(t, metamorphic.Execute(test))
