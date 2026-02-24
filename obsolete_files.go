@@ -10,6 +10,7 @@ import (
 	"runtime/pprof"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
@@ -41,6 +42,9 @@ type cleanupManager struct {
 	jobsCh chan *cleanupJob
 	// waitGroup is used to wait for the background goroutine to exit.
 	waitGroup sync.WaitGroup
+	// closedFlag is set when Close() is called. maybePace checks this to
+	// disable pacing during close, allowing the queue to drain quickly.
+	closedFlag atomic.Bool
 
 	mu struct {
 		sync.Mutex
@@ -116,6 +120,7 @@ func openCleanupManager(
 // Close stops the background goroutine, waiting until all queued jobs are completed.
 // Delete pacing is disabled for the remaining jobs.
 func (cm *cleanupManager) Close() {
+	cm.closedFlag.Store(true)
 	close(cm.jobsCh)
 	cm.waitGroup.Wait()
 }
@@ -219,6 +224,9 @@ func (cm *cleanupManager) needsPacing(fileType base.FileType, fileNumIfSST base.
 func (cm *cleanupManager) maybePace(
 	tb *tokenbucket.TokenBucket, fileType base.FileType, fileNum base.DiskFileNum, fileSize uint64,
 ) {
+	if cm.closedFlag.Load() {
+		return
+	}
 	if !cm.needsPacing(fileType, fileNum) {
 		return
 	}
