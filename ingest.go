@@ -2595,12 +2595,17 @@ func (d *DB) validateSSTables() {
 
 		// TOOD(radu): plumb a ReadEnv with a CategoryIngest stats collector through
 		// to ValidateBlockChecksums.
-		err := d.fileCache.withReader(context.TODO(), block.NoReadEnv,
+		err := d.fileCache.withReader(d.bgCtx, block.NoReadEnv,
 			f.Meta, func(r *sstable.Reader, _ sstable.ReadEnv) error {
 				return r.ValidateBlockChecksums()
 			})
 
 		if err != nil {
+			if d.bgCtx.Err() != nil {
+				// The context was cancelled, which happens when Close()
+				// cancels bgCtx. Stop validating without reporting.
+				break
+			}
 			if IsCorruptionError(err) {
 				// TODO(travers): Hook into the corruption reporting pipeline, once
 				// available. See pebble#1192.
