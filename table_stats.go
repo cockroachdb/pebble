@@ -93,7 +93,7 @@ func (d *DB) collectTableStats() bool {
 		d.mu.Unlock()
 		return false
 	}
-	ctx := context.Background()
+	ctx := d.bgCtx
 
 	pending := d.mu.tableStats.pending
 	d.mu.tableStats.pending = nil
@@ -191,6 +191,11 @@ func (d *DB) loadNewFileStats(
 
 		stats, newWideTombstones, err := d.loadTableStats(ctx, rs.current, nf.Level, nf.Meta)
 		if err != nil {
+			if ctx.Err() != nil {
+				// The context was cancelled, which happens when Close() cancels
+				// bgCtx. Stop collecting stats without reporting.
+				break
+			}
 			d.opts.EventListener.BackgroundError(err)
 			continue
 		}
@@ -273,6 +278,11 @@ func (d *DB) scanReadStateTableStats(
 
 			stats, newWideTombstones, err := d.loadTableStats(ctx, version, l, f)
 			if err != nil {
+				if ctx.Err() != nil {
+					// The context was cancelled, which happens when Close()
+					// cancels bgCtx. Stop collecting stats without reporting.
+					return fill, wideTombstones, false
+				}
 				// Set `moreRemain` so we'll try again.
 				moreRemain = true
 				d.opts.EventListener.BackgroundError(err)
