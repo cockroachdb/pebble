@@ -208,18 +208,25 @@ func (r *Reader) NewIter(
 // the number of bytes iterated. If an error occurs, NewCompactionIter cleans up
 // after itself and returns a nil iterator.
 func (r *Reader) NewCompactionIter(
-	transforms IterTransforms, env ReadEnv, rp valblk.ReaderProvider, blobContext TableBlobContext,
+	ctx context.Context,
+	transforms IterTransforms,
+	env ReadEnv,
+	rp valblk.ReaderProvider,
+	blobContext TableBlobContext,
 ) (Iterator, error) {
-	return r.newCompactionIter(transforms, env, rp, blobContext)
+	return r.newCompactionIter(ctx, transforms, env, rp, blobContext)
 }
 
 func (r *Reader) newCompactionIter(
-	transforms IterTransforms, env ReadEnv, rp valblk.ReaderProvider, blobContext TableBlobContext,
+	ctx context.Context,
+	transforms IterTransforms,
+	env ReadEnv,
+	rp valblk.ReaderProvider,
+	blobContext TableBlobContext,
 ) (Iterator, error) {
 	if env.IsSharedIngested {
 		transforms.HideObsoletePoints = true
 	}
-	ctx := context.Background()
 	opts := IterOptions{
 		Transforms:           transforms,
 		Filterer:             nil,

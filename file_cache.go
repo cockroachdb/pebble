@@ -717,7 +717,7 @@ func (h *fileCacheHandle) newPointIter(
 	}
 	var err error
 	if internalOpts.compaction {
-		iter, err = reader.NewCompactionIter(transforms, internalOpts.readEnv,
+		iter, err = reader.NewCompactionIter(ctx, transforms, internalOpts.readEnv,
 			&v.readerProvider, sstable.TableBlobContext{
 				ValueFetcher: internalOpts.blobValueFetcher,
 				References:   blobReferences,

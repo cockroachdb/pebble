@@ -235,7 +235,7 @@ func runVirtualReaderTest(t *testing.T, path string, blockSize, indexBlockSize i
 				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(nil, syntheticSuffix),
 			}
 			env.Block.BufferPool = &bp
-			iter, err := r.NewCompactionIter(transforms, env, rp, AssertNoBlobHandles)
+			iter, err := r.NewCompactionIter(context.Background(), transforms, env, rp, AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
 			}
@@ -940,7 +940,7 @@ func TestCompactionIteratorSetupForCompaction(t *testing.T) {
 				r := buildTestTableWithProvider(t, provider, numEntries, blockSize, indexBlockSize, block.DefaultCompression, nil, ch)
 				var pool block.BufferPool
 				pool.Init(5, block.ForCompaction)
-				citer, err := r.NewCompactionIter(
+				citer, err := r.NewCompactionIter(context.Background(),
 					NoTransforms, ReadEnv{Block: block.ReadEnv{BufferPool: &pool}},
 					MakeTrivialReaderProvider(r), AssertNoBlobHandles)
 				require.NoError(t, err)
@@ -1001,7 +1001,7 @@ func TestReadaheadSetupForV3TablesWithMultipleVersions(t *testing.T) {
 		var pool block.BufferPool
 		pool.Init(5, block.ForCompaction)
 		defer pool.Release()
-		citer, err := r.NewCompactionIter(
+		citer, err := r.NewCompactionIter(context.Background(),
 			NoTransforms, ReadEnv{Block: block.ReadEnv{BufferPool: &pool}},
 			MakeTrivialReaderProvider(r), AssertNoBlobHandles)
 		require.NoError(t, err)

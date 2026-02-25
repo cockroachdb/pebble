@@ -231,6 +231,7 @@ type compaction interface {
 // tableCompaction is a table compaction from one level to the next, starting
 // from a given version. It implements the compaction interface.
 type tableCompaction struct {
+	ctx context.Context
 	// cancel is a bool that can be used by other goroutines to signal a compaction
 	// to cancel, such as if a conflicting excise operation raced it to manifest
 	// application. Only holders of the manifest lock will write to this atomic.
@@ -566,6 +567,7 @@ type getValueSeparation func(JobID, *tableCompaction) valsep.ValueSeparation
 // The compaction is created with a reference to its version that must be
 // released when the compaction is complete.
 func newCompaction(
+	ctx context.Context,
 	pc *pickedTableCompaction,
 	opts *Options,
 	beganAt time.Time,
@@ -575,6 +577,7 @@ func newCompaction(
 	getValueSeparation getValueSeparation,
 ) *tableCompaction {
 	c := &tableCompaction{
+		ctx:                ctx,
 		kind:               compactionKindDefault,
 		comparer:           opts.Comparer,
 		inputs:             pc.inputs,
@@ -984,7 +987,7 @@ func (c *tableCompaction) newInputIters(
 	rangeDelIter, rangeKeyIter keyspan.FragmentIterator,
 	retErr error,
 ) {
-	ctx := context.TODO()
+	ctx := c.ctx
 	cmp := c.comparer.Compare
 
 	// Validate the ordering of compaction input files for defense in depth.
@@ -2238,7 +2241,7 @@ func (d *DB) pickManualCompaction(env compactionEnv) (pc pickedCompaction) {
 
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact(c compaction, errChannel chan error) {
-	pprof.Do(context.Background(), c.PprofLabels(d.opts.Experimental.UserKeyCategories), func(context.Context) {
+	pprof.Do(d.bgCtx, c.PprofLabels(d.opts.Experimental.UserKeyCategories), func(context.Context) {
 		func() {
 			d.mu.Lock()
 			defer d.mu.Unlock()
@@ -2377,6 +2380,14 @@ func (d *DB) compact1(jobID JobID, c *tableCompaction) (err error) {
 	startTime := d.opts.private.timeNow()
 
 	ve, stats, outputBlobs, err := d.runCompaction(jobID, c)
+
+	// If the compaction failed due to context cancellation during DB close,
+	// treat it as a cancelled compaction. d.mu is held here, and Close() sets
+	// d.closed before cancelling bgCtx (while also holding d.mu), so if
+	// d.closed is set the context cancellation is from Close().
+	if err != nil && errors.Is(err, context.Canceled) && d.closed.Load() != nil {
+		err = ErrCancelledCompaction
+	}
 
 	info.Annotations = append(info.Annotations, c.annotations...)
 	info.Duration = d.opts.private.timeNow().Sub(startTime)
@@ -2544,9 +2555,8 @@ func (d *DB) runCopyCompaction(
 
 	// If the src obj is external, we're doing an external to local/shared copy.
 	if objMeta.IsExternal() {
-		ctx := context.TODO()
 		src, err := d.objProvider.OpenForReading(
-			ctx, base.FileTypeTable, inputMeta.TableBacking.DiskFileNum, objstorage.OpenOptions{},
+			c.ctx, base.FileTypeTable, inputMeta.TableBacking.DiskFileNum, objstorage.OpenOptions{},
 		)
 		if err != nil {
 			return nil, compact.Stats{}, []compact.OutputBlob{}, err
@@ -2557,7 +2567,7 @@ func (d *DB) runCopyCompaction(
 			}
 		}()
 
-		w, _, err := d.objProvider.Create(ctx, base.FileTypeTable, newMeta.TableBacking.DiskFileNum, c.objCreateOpts)
+		w, _, err := d.objProvider.Create(c.ctx, base.FileTypeTable, newMeta.TableBacking.DiskFileNum, c.objCreateOpts)
 		if err != nil {
 			return nil, compact.Stats{}, []compact.OutputBlob{}, err
 		}
@@ -2579,13 +2589,13 @@ func (d *DB) runCopyCompaction(
 
 		// NB: external files are always virtual.
 		var wrote uint64
-		err = d.fileCache.withReader(ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r *sstable.Reader, env sstable.ReadEnv) error {
+		err = d.fileCache.withReader(c.ctx, block.NoReadEnv, inputMeta.VirtualMeta(), func(r *sstable.Reader, env sstable.ReadEnv) error {
 			var err error
 			writerOpts := d.opts.MakeWriterOptions(c.outputLevel.level, d.TableFormat())
 			writerOpts.CompressionCounters = d.compressionCounters.Compressed.ForLevel(base.MakeLevel(c.outputLevel.level))
 			// TODO(radu): plumb a ReadEnv to CopySpan (it could use the buffer pool
 			// or update category stats).
-			wrote, err = sstable.CopySpan(ctx,
+			wrote, err = sstable.CopySpan(c.ctx,
 				src, r, c.startLevel.level,
 				w, d.makeWriterOptions(c.outputLevel.level),
 				start, end,
