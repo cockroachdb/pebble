@@ -135,8 +135,32 @@ func (s *shard[K, V, InitOpts]) findOrCreateValue(
 			n.referenced.Store(true)
 		}
 		s.hits.Add(1)
-		<-v.initialized
-		return v
+		// TODO(dt): an atomic bool on value could let us skip the channel and
+		// ctx checks entirely in the common (already-initialized) case, avoiding
+		// even the overhead of the non-blocking select below.
+
+		// Fast path: check if already initialized without involving ctx.Done()
+		// to avoid the allocation overhead of reading ctx.Done() in the common
+		// case where the value is already ready.
+		select {
+		case <-v.initialized:
+			return v
+		default:
+		}
+		// Slow path: value is still initializing; wait with cancellation.
+		select {
+		case <-v.initialized:
+			return v
+		case <-ctx.Done():
+			s.UnrefValue(v)
+			cancelled := &value[V]{
+				err:         ctx.Err(),
+				initialized: make(chan struct{}),
+			}
+			cancelled.refCount.Store(1)
+			close(cancelled.initialized)
+			return cancelled
+		}
 	}
 	s.mu.RUnlock()
 
@@ -159,8 +183,25 @@ func (s *shard[K, V, InitOpts]) findOrCreateValue(
 		n.referenced.Store(true)
 		s.hits.Add(1)
 		s.mu.Unlock()
-		<-v.initialized
-		return v
+		// Same fast/slow path as the read-lock hit above.
+		select {
+		case <-v.initialized:
+			return v
+		default:
+		}
+		select {
+		case <-v.initialized:
+			return v
+		case <-ctx.Done():
+			s.UnrefValue(v)
+			cancelled := &value[V]{
+				err:         ctx.Err(),
+				initialized: make(chan struct{}),
+			}
+			cancelled.refCount.Store(1)
+			close(cancelled.initialized)
+			return cancelled
+		}
 
 	default:
 		// Slow-path miss of a test node.
