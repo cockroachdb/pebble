@@ -229,3 +229,58 @@ func TestErrorHandling(t *testing.T) {
 	require.Equal(t, *v.Value(), 1)
 	v.Unref()
 }
+
+func TestContextCancellation(t *testing.T) {
+	// Test that findOrCreateValue respects context cancellation when waiting
+	// for another goroutine to initialize a value.
+	ready := make(chan struct{})
+	proceed := make(chan struct{})
+
+	initFn := func(ctx context.Context, k intKey, opts struct{}, v ValueRef[intKey, int, struct{}]) error {
+		close(ready)
+		<-proceed
+		*v.Value() = int(k)
+		return nil
+	}
+	releaseFn := func(v *int) {
+		*v = -1
+	}
+	c := New[intKey, int](20, 1, initFn, releaseFn)
+	defer c.Close()
+
+	// Start a goroutine that will initialize the value but block.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ref, err := c.FindOrCreate(context.Background(), 1, struct{}{})
+		require.NoError(t, err)
+		require.Equal(t, 1, *ref.Value())
+		ref.Unref()
+	}()
+
+	// Wait for the first goroutine to start initializing.
+	<-ready
+
+	// Try to get the same value with a cancelled context.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := c.FindOrCreate(ctx, 1, struct{}{})
+	require.ErrorIs(t, err, context.Canceled)
+
+	// Also test with a context that gets cancelled while waiting.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel2()
+	_, err = c.FindOrCreate(ctx2, 1, struct{}{})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	// Unblock the initializing goroutine.
+	close(proceed)
+	wg.Wait()
+
+	// Now subsequent calls with a valid context should succeed.
+	ref, err := c.FindOrCreate(context.Background(), 1, struct{}{})
+	require.NoError(t, err)
+	require.Equal(t, 1, *ref.Value())
+	ref.Unref()
+}
