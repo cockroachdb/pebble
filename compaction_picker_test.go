@@ -7,6 +7,7 @@ package pebble
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"maps"
 	"math"
@@ -683,7 +684,7 @@ func TestCompactionPickerL0(t *testing.T) {
 			var result strings.Builder
 			if ptc != nil {
 				checkClone(t, ptc)
-				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
+				c := newCompaction(context.TODO(), ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 				fmt.Fprintf(&result, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
 				if !ptc.outputLevel.files.Empty() {
@@ -714,13 +715,13 @@ func TestCompactionPickerL0(t *testing.T) {
 			if ptc == nil {
 				return "no compaction"
 			}
-			c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
+			c := newCompaction(context.TODO(), ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 			return fmt.Sprintf("%d", c.maxOutputFileSize)
 		case "max-overlap-bytes":
 			if ptc == nil {
 				return "no compaction"
 			}
-			c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
+			c := newCompaction(context.TODO(), ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 			return fmt.Sprintf("%d", c.maxOverlapBytes)
 		}
 		return fmt.Sprintf("unrecognized command: %s", td.Cmd)
@@ -820,7 +821,7 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 			var result strings.Builder
 			fmt.Fprintf(&result, "picker.getCompactionConcurrency: %d\n", allowedCompactions)
 			if pc != nil {
-				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
+				c := newCompaction(context.TODO(), ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 				fmt.Fprintf(&result, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
 				fmt.Fprintf(&result, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
 				if !ptc.outputLevel.files.Empty() {
@@ -1286,7 +1287,7 @@ func TestCompactionOutputFileSize(t *testing.T) {
 				ptc := pc.(*pickedTableCompaction)
 				fmt.Fprintf(&buf, "L%d -> L%d\n", ptc.startLevel.level, ptc.outputLevel.level)
 				fmt.Fprintf(&buf, "L%d: %s\n", ptc.startLevel.level, tableNums(ptc.startLevel.files))
-				c := newCompaction(ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
+				c := newCompaction(context.TODO(), ptc, opts, time.Now(), nil /* provider */, noopGrantHandle{}, noSharedStorage, neverSeparateValues)
 				fmt.Fprintf(&buf, "maxOutputFileSize: %d\n", c.maxOutputFileSize)
 			} else {
 				return "nil"

@@ -217,7 +217,7 @@ func runDataDriven(t *testing.T, file string, tableFormat TableFormat) {
 			return buf.String()
 
 		case "scan-compaction":
-			iter, err := r.NewCompactionIter(NoTransforms, NoReadEnv, MakeTrivialReaderProvider(r), AssertNoBlobHandles)
+			iter, err := r.NewCompactionIter(context.Background(), NoTransforms, NoReadEnv, MakeTrivialReaderProvider(r), AssertNoBlobHandles)
 			if err != nil {
 				return err.Error()
 			}

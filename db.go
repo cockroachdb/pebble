@@ -309,8 +309,13 @@ type DB struct {
 		val *readState
 	}
 
-	closed   *atomic.Value
-	closedCh chan struct{}
+	closed *atomic.Value
+	// bgCtx is cancelled when the DB is closing. Background goroutines
+	// (compactions, table stats loading) use this context so their I/O is
+	// unblocked during Close().
+	bgCtx       context.Context
+	bgCtxCancel context.CancelFunc
+	closedCh    chan struct{}
 
 	deletePacer *deletepacer.DeletePacer
 
@@ -1562,6 +1567,7 @@ func (d *DB) Close() error {
 
 	d.closed.Store(errors.WithStack(ErrClosed))
 	close(d.closedCh)
+	d.bgCtxCancel()
 
 	defer d.cacheHandle.Close()
 

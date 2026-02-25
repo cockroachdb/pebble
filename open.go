@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -146,6 +147,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		defer opts.Cache.Unref()
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	d := &DB{
 		cacheHandle:         opts.Cache.NewHandle(),
 		dirname:             dirname,
@@ -160,6 +162,8 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		objProvider:         rs.objProvider,
 		closed:              new(atomic.Value),
 		closedCh:            make(chan struct{}),
+		bgCtx:               ctx,
+		bgCtxCancel:         cancel,
 	}
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)

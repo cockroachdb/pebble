@@ -233,6 +233,7 @@ func (pc *pickedTableCompaction) ConstructCompaction(
 	d *DB, grantHandle CompactionGrantHandle,
 ) compaction {
 	return newCompaction(
+		d.bgCtx,
 		pc,
 		d.opts,
 		d.opts.private.timeNow(),
