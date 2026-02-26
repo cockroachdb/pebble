@@ -2913,25 +2913,30 @@ func TestCompactionCorruption(t *testing.T) {
 	now.Store(1)
 	d.problemSpans.InitForTesting(manifest.NumLevels, d.cmp, func() crtime.Mono { return now.Load() })
 
-	var workloadWG sync.WaitGroup
-	var stopWorkload atomic.Bool
-	defer stopWorkload.Store(true)
-	startWorkload := func() {
-		stopWorkload.Store(false)
-		workloadWG.Add(1)
+	startWorkload := func(minKey, maxKey byte) (stop func()) {
+		var shouldStop atomic.Bool
+		var wg sync.WaitGroup
+		wg.Add(1)
 		go func() {
-			defer workloadWG.Done()
-			for !stopWorkload.Load() {
+			defer wg.Done()
+			var valSeed [32]byte
+			for i := range valSeed {
+				valSeed[i] = byte(rand.Uint32())
+			}
+			cha := rand.NewChaCha8(valSeed)
+			for !shouldStop.Load() {
+				time.Sleep(time.Millisecond)
+				if m := d.Metrics(); m.Compact.NumInProgress > 0 {
+					// Pause the workload while there are compactions happening (we run
+					// the risk of compactions not keeping up).
+					continue
+				}
 				b := d.NewBatch()
 				// Write a random key of the form a012345 and flush it. This will result
 				// in (mostly) non-overlapping tables in L0.
-				var valSeed [32]byte
-				for i := range valSeed {
-					valSeed[i] = byte(rand.Uint32())
-				}
-				v := make([]byte, 1024+rand.IntN(10240))
-				_, _ = rand.NewChaCha8(valSeed).Read(v)
-				key := fmt.Sprintf("%c%06d", 'a'+byte(rand.IntN(int('z'-'a'+1))), rand.IntN(1000000))
+				v := make([]byte, 1+int(100*rand.ExpFloat64()))
+				_, _ = cha.Read(v)
+				key := fmt.Sprintf("%c%06d", minKey+byte(rand.IntN(int(maxKey-minKey+1))), rand.IntN(1000000))
 				if err := b.Set([]byte(key), v, nil); err != nil {
 					panic(err)
 				}
@@ -2941,12 +2946,21 @@ func TestCompactionCorruption(t *testing.T) {
 				if err := d.Flush(); err != nil {
 					panic(err)
 				}
-				time.Sleep(10 * time.Millisecond)
 			}
 		}()
+		return func() {
+			shouldStop.Store(true)
+			wg.Wait()
+		}
 	}
 
 	datadriven.RunTest(t, "testdata/compaction_corruption", func(t *testing.T, td *datadriven.TestData) string {
+		if arg, ok := td.Arg("workload"); ok {
+			if len(arg.Vals) != 2 || len(arg.Vals[0]) != 1 || len(arg.Vals[1]) != 1 {
+				td.Fatalf(t, "workload argument must be of the form (a,z)")
+			}
+			defer startWorkload(arg.Vals[0][0], arg.Vals[1][0])()
+		}
 		// wait until fn() returns true.
 		wait := func(what string, fn func() bool) {
 			// Decrease to 5 * time.Second to repro flakes.
@@ -2987,13 +3001,6 @@ func TestCompactionCorruption(t *testing.T) {
 			require.Equal(t, len(buf), n)
 			require.NoError(t, writer.Close())
 			return fmt.Sprintf("%s -> %s", before, after)
-
-		case "start-workload":
-			startWorkload()
-
-		case "stop-workload":
-			stopWorkload.Store(true)
-			workloadWG.Wait()
 
 		case "wait-for-problem-span":
 			wait("problem span", func() bool {
