@@ -401,6 +401,18 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 	compactionCount, alreadyCompleted, compactionCh := r.nextCompactionCompletes(0)
 	for {
 		if !alreadyCompleted {
+			// After the workload is exhausted, add a periodic timeout so
+			// that refreshMetrics re-checks quiescence with fresh metrics
+			// even if a FlushEnd notification was missed between metrics
+			// collection and channel creation. (CompactionEnd notifications
+			// cannot be missed because they increment the completed counter
+			// checked by nextCompactionCompletes.) Receiving from a nil
+			// channel blocks forever, which is the desired behavior while
+			// the workload is still being applied.
+			var timeoutCh <-chan time.Time
+			if stepsApplied == nil {
+				timeoutCh = time.After(time.Second)
+			}
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -416,6 +428,8 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 					// Record the replay time.
 					r.metrics.workloadDuration = workloadExhaustedAt.Sub(startAt)
 				}
+				// Fall through to refreshing dbMetrics.
+			case <-timeoutCh:
 				// Fall through to refreshing dbMetrics.
 			}
 		}
