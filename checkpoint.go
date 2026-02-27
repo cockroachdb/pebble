@@ -208,6 +208,25 @@ func (d *DB) Checkpoint(
 	// before our call to List.
 	allLogicalLogs := d.mu.log.manager.List()
 
+	// Collect SSTable files referenced by flushable ingest entries. These files
+	// are not yet part of the LSM (not in current) but are referenced by WAL
+	// IngestSST records that will be replayed when the checkpoint is opened.
+	// They must be copied to the checkpoint directory.
+	//
+	// Note: we always copy these regardless of any restrictToSpans option.
+	// When WAL is enabled, the IngestSST WAL records referencing these files
+	// are included in the checkpoint's WAL and will be replayed unconditionally
+	// on open. When WAL is disabled no such replay occurs, but copying the files
+	// is harmless.
+	var flushableIngestFiles []base.DiskFileNum
+	for _, entry := range d.mu.mem.queue {
+		if fi, ok := entry.flushable.(*ingestedFlushable); ok {
+			for _, f := range fi.files {
+				flushableIngestFiles = append(flushableIngestFiles, f.TableBacking.DiskFileNum)
+			}
+		}
+	}
+
 	// Grab the visible sequence number. The checkpoint's view of the state of
 	// the database will be equivalent to an iterator that acquired this same
 	// visible sequence number.
@@ -366,6 +385,18 @@ func (d *DB) Checkpoint(
 			removeBackingTables = append(removeBackingTables, diskFileNum)
 		}
 	}
+
+	// Copy SSTable files referenced by flushable ingest entries (collected
+	// above while holding d.mu). These files are protected from deletion by the
+	// disableFileDeletions call above. Unlike LSM files, span restriction does
+	// not apply here; the WAL always references these files and they must exist.
+	for _, fileNum := range flushableIngestFiles {
+		ckErr = copyFile(base.FileTypeTable, fileNum)
+		if ckErr != nil {
+			return ckErr
+		}
+	}
+
 	// Record the blob files that are not referenced by any included sstables.
 	// When we write the MANIFEST of the checkpoint, we'll include a final
 	// VersionEdit that removes these blob files so that the checkpointed
