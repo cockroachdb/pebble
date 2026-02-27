@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/v2/internal/base"
+	"github.com/cockroachdb/pebble/v2/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/v2/objstorage/remote"
 	"github.com/cockroachdb/pebble/v2/sstable"
 	"github.com/cockroachdb/pebble/v2/vfs"
@@ -479,4 +480,76 @@ func TestCheckpointManyFiles(t *testing.T) {
 		require.NoError(t, d.Close())
 		require.Equal(t, 10, n)
 	}
+}
+
+// TestCheckpointFlushableIngest is a regression test: a Checkpoint taken while
+// there are pending flushable ingest entries in the memtable queue must copy
+// the corresponding SSTable files to the checkpoint directory. Without the fix,
+// opening the checkpoint would fail with:
+//
+//	pebble: error when opening flushable ingest files: file does not exist
+func TestCheckpointFlushableIngest(t *testing.T) {
+	mem := vfs.NewMem()
+	require.NoError(t, mem.MkdirAll("ext", 0755))
+
+	opts := &Options{
+		FS:                          mem,
+		FormatMajorVersion:          internalFormatNewest,
+		DisableAutomaticCompactions: true,
+		Logger:                      testLogger{t},
+	}
+	d, err := Open("db", opts)
+	require.NoError(t, err)
+
+	// Write a key to the memtable. A subsequent ingest whose key range overlaps
+	// with the memtable is taken along the flushable-ingest path instead of
+	// forcing a synchronous flush, which is the scenario under test.
+	require.NoError(t, d.Set([]byte("b"), []byte("memtable"), Sync))
+
+	// Build a small SSTable in the external directory containing the same key.
+	sstPath := "ext/foo.sst"
+	f, err := mem.Create(sstPath, vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), d.opts.MakeWriterOptions(0, d.TableFormat()))
+	require.NoError(t, w.Set([]byte("b"), []byte("ingested")))
+	require.NoError(t, w.Close())
+
+	// Ingest the SSTable. Because it overlaps with the memtable key "b", it is
+	// added to the flushable queue as an ingestedFlushable rather than being
+	// placed directly into L0.
+	require.NoError(t, d.Ingest(context.Background(), []string{sstPath}))
+
+	// Confirm that the ingest went through the flushable path.
+	d.mu.Lock()
+	var hasFlushableIngest bool
+	for _, entry := range d.mu.mem.queue {
+		if _, ok := entry.flushable.(*ingestedFlushable); ok {
+			hasFlushableIngest = true
+			break
+		}
+	}
+	d.mu.Unlock()
+	require.True(t, hasFlushableIngest, "expected ingest to be enqueued as a flushable ingest")
+
+	// Checkpoint without flushing first. The checkpoint must copy the
+	// ingestedFlushable SSTable files so that WAL replay on open succeeds.
+	require.NoError(t, d.Checkpoint("checkpoint"))
+	require.NoError(t, d.Close())
+
+	// Opening the checkpoint previously failed with:
+	//   pebble: error when opening flushable ingest files: file does not exist
+	d2, err := Open("checkpoint", &Options{
+		FS:                 mem,
+		FormatMajorVersion: internalFormatNewest,
+		Logger:             testLogger{t},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d2.Close()) }()
+
+	// The ingested value (higher sequence number) should shadow the memtable
+	// value for key "b".
+	val, closer, err := d2.Get([]byte("b"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("ingested"), val)
+	closer.Close()
 }
