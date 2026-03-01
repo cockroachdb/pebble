@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -1419,12 +1420,19 @@ func (m *mergingIter) TreeStepsNode() treesteps.NodeInfo {
 	}
 	info := treesteps.NodeInfof(m, "mergingIter")
 	if m.heap.len() > 0 {
-		item := m.heap.items[0].mergingIterLevel
-		heapProp := "heap min"
+		heapProp := "min heap"
 		if m.heap.reverse {
-			heapProp = "heap max"
+			heapProp = "max heap"
 		}
-		info.AddPropf(heapProp, "%s:%s", levelName(item.index), item.lastIterKey.Get())
+		var str strings.Builder
+		for i := range m.heap.len() {
+			if i > 0 {
+				str.WriteString(" ")
+			}
+			item := m.heap.items[i].mergingIterLevel
+			fmt.Fprintf(&str, "%s:%s", levelName(item.index), item.lastIterKey.Get())
+		}
+		info.AddPropf(heapProp, "%s", str.String())
 	}
 	if m.prefix != nil {
 		info.AddPropf("prefix", "%s", m.prefix)
