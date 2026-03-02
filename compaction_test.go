@@ -1815,6 +1815,9 @@ func TestCompactionTombstones(t *testing.T) {
 			case "maybe-compact":
 				d.mu.Lock()
 				d.opts.DisableAutomaticCompactions = false
+				defer func() {
+					d.opts.DisableAutomaticCompactions = true
+				}()
 				d.maybeScheduleCompaction()
 				s := compactionString()
 				d.mu.Unlock()
@@ -2058,6 +2061,9 @@ func TestCompactionReadTriggered(t *testing.T) {
 			case "maybe-compact":
 				d.mu.Lock()
 				d.opts.DisableAutomaticCompactions = false
+				defer func() {
+					d.opts.DisableAutomaticCompactions = true
+				}()
 				d.maybeScheduleCompaction()
 				s := compactionString()
 				d.mu.Unlock()
