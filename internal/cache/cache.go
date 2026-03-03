@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/metricsutil"
+	"github.com/cockroachdb/redact"
 )
 
 // Cache implements Pebble's sharded block cache. The Clock-PRO algorithm is
@@ -327,7 +328,7 @@ func (c *Handle) GetWithReadHandle(
 // REQUIRES: value.refs() == 1
 func (c *Handle) Set(fileNum base.DiskFileNum, offset uint64, value *Value) {
 	if n := value.refs(); n != 1 {
-		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
+		panic(redact.Safe(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n)))
 	}
 	k := makeKey(c.id, fileNum, offset)
 	c.cache.getShard(k).set(k, value, false /*markAccessed*/)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/redact"
 	"github.com/cockroachdb/swiss"
 )
 
@@ -295,7 +296,7 @@ func (e *readEntry) unrefAndTryRemoveFromMap() {
 
 func (e *readEntry) setReadValue(v *Value) {
 	if n := v.refs(); n != 1 {
-		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
+		panic(redact.Safe(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n)))
 	}
 	concurrentRequesters := false
 	e.mu.Lock()

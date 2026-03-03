@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
+	"github.com/cockroachdb/redact"
 )
 
 // ValueMetadataSize denotes the number of bytes of metadata allocated for a
@@ -143,7 +144,7 @@ func (v *Value) Release() {
 // Free. Do not call Free on a value that has been added to the cache.
 func Free(v *Value) {
 	if n := v.refs(); n > 1 {
-		panic(fmt.Sprintf("pebble: Value has been added to the cache: refs=%d", n))
+		panic(redact.Safe(fmt.Sprintf("pebble: Value has been added to the cache: refs=%d", n)))
 	}
 	v.Release()
 }
