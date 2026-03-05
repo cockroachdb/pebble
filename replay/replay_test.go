@@ -628,11 +628,11 @@ func TestCompactionsQuiesce(t *testing.T) {
 }
 
 // TestFlushEndNotifiesRefreshMetrics is a regression test for a hang where
-// refreshMetrics blocks forever on compactionMu.ch when the last in-flight
-// operation is a flush and no compaction follows. With
-// DisableAutomaticCompactions, no CompactionEnd event ever fires, so the only
-// way for refreshMetrics to make progress is via the FlushEnd handler closing
-// compactionMu.ch. Without the fix, this test hangs.
+// refreshMetrics blocks forever when the last in-flight operation is a flush
+// and no compaction follows. With DisableAutomaticCompactions, no CompactionEnd
+// event ever fires, so the only way for refreshMetrics to make progress is via
+// the FlushEnd handler incrementing compactionOrFlushMu.completed and closing
+// the notification channel. Without the fix, this test hangs.
 func TestFlushEndNotifiesRefreshMetrics(t *testing.T) {
 	// Build a workload that consists of a single flush and no compactions.
 	workloadFS := buildFlushOnlyWorkload(t)
@@ -667,9 +667,9 @@ func TestFlushEndNotifiesRefreshMetrics(t *testing.T) {
 	} else if invariants.Enabled {
 		wait = 30 * time.Second
 	}
-	// Without the FlushEnd handler closing compactionMu.ch, Wait would hang
-	// forever because DisableAutomaticCompactions prevents any CompactionEnd
-	// event from ever firing.
+	// Without the FlushEnd handler incrementing compactionOrFlushMu.completed,
+	// Wait would hang forever because DisableAutomaticCompactions prevents any
+	// CompactionEnd event from ever firing.
 	require.Eventually(t, func() bool { return done.Load() },
 		wait, time.Millisecond, "(*replay.Runner).Wait didn't terminate")
 	require.NoError(t, err)
