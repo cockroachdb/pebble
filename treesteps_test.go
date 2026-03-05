@@ -109,5 +109,11 @@ func treeStepsStartRecording(
 	if depth != 0 {
 		opts = append(opts, treesteps.MaxTreeDepth(depth))
 	}
-	return treesteps.StartRecording(node, strings.ReplaceAll(td.Pos, "\\", "/"), opts...)
+	name := td.Pos
+	// Make the name consistent across platforms.
+	name = strings.ReplaceAll(td.Pos, "\\", "/")
+	// Remove the line number, as that will change the URL when unrelated parts of
+	// the test file change.
+	name = strings.SplitN(name, ":", 2)[0]
+	return treesteps.StartRecording(node, name, opts...)
 }
