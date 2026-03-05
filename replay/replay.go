@@ -303,10 +303,21 @@ type Runner struct {
 		countByReason    map[string]int
 		durationByReason map[string]time.Duration
 	}
-	// compactionMu holds state for tracking the number of compactions
-	// started and completed and waking waiting goroutines when a new compaction
-	// completes. See nextCompactionCompletes.
-	compactionMu struct {
+	// compactionOrFlushMu holds state for tracking the number of compactions
+	// and flushes started and completed, and waking waiting goroutines when
+	// one completes. See nextCompactionOrFlushCompletes.
+	//
+	// State transitions:
+	//   FlushBegin / CompactionBegin: started++
+	//   FlushEnd   / CompactionEnd:   completed++; close(ch); ch = nil
+	//
+	// The channel ch is created on-demand by nextCompactionOrFlushCompletes
+	// and closed by the End handlers to wake any goroutine waiting for
+	// activity to finish. The started/completed counters allow
+	// nextCompactionOrFlushCompletes to detect events that occurred between
+	// the caller's last observation and the current call, without relying
+	// solely on the channel.
+	compactionOrFlushMu struct {
 		sync.Mutex
 		ch        chan struct{}
 		started   int64
@@ -359,7 +370,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// Extend the user-provided Options with extensions necessary for replay
 	// mechanics.
-	r.compactionMu.ch = make(chan struct{})
+	r.compactionOrFlushMu.ch = make(chan struct{})
 	r.Opts.AddEventListener(r.eventListener())
 	r.writeStallMetrics.countByReason = make(map[string]int)
 	r.writeStallMetrics.durationByReason = make(map[string]time.Duration)
@@ -398,14 +409,16 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 	var workloadExhausted bool
 	var workloadExhaustedAt time.Time
 	stepsApplied := r.stepsApplied
-	compactionCount, alreadyCompleted, compactionCh := r.nextCompactionCompletes(0)
+	compactionCount, alreadyCompleted, compactionCh := r.nextCompactionOrFlushCompletes(0)
+	var lastStarted int64
 	for {
 		if !alreadyCompleted {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-compactionCh:
-				// Fall through to refreshing dbMetrics.
+				// A compaction or flush completed. Fall through to
+				// refreshing dbMetrics.
 			case _, ok := <-stepsApplied:
 				if !ok {
 					workloadExhausted = true
@@ -434,7 +447,7 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 		r.metrics.totalSize.record(int64(m.DiskSpaceUsage()))
 		r.metrics.writeThroughput.record(int64(r.metrics.writeBytes.Load()))
 
-		compactionCount, alreadyCompleted, compactionCh = r.nextCompactionCompletes(compactionCount)
+		compactionCount, alreadyCompleted, compactionCh = r.nextCompactionOrFlushCompletes(compactionCount)
 		// Consider whether replaying is complete. There are two necessary
 		// conditions:
 		//
@@ -453,7 +466,9 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 		// progress). If it appears that compactions have quiesced, pause for a
 		// fixed duration to see if a new one is scheduled. If not, consider
 		// compactions quiesced.
-		if workloadExhausted && !alreadyCompleted && r.compactionsAppearQuiesced(m) {
+		var quiesced bool
+		quiesced, lastStarted = r.compactionsAppearQuiesced(lastStarted)
+		if workloadExhausted && !alreadyCompleted && quiesced {
 			select {
 			case <-compactionCh:
 				// A new compaction just finished; compactions have not
@@ -466,7 +481,8 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 				// from the moment quiescence was confirmed, rather than
 				// re-fetching (which could race with new compactions).
 				finalM := r.d.Metrics()
-				if r.compactionsAppearQuiesced(finalM) {
+				quiesced, lastStarted = r.compactionsAppearQuiesced(lastStarted)
+				if quiesced {
 					r.metrics.quiesceDuration = time.Since(workloadExhaustedAt)
 					r.finalMetrics = finalM
 					return nil
@@ -476,58 +492,60 @@ func (r *Runner) refreshMetrics(ctx context.Context) error {
 	}
 }
 
-// compactionsAppearQuiesced returns true if the database may have quiesced, and
-// there likely won't be additional compactions scheduled. Detecting quiescence
-// is a bit fraught: The various signals that Pebble makes available are
-// adjusted at different points in the compaction lifecycle, and database
-// mutexes are dropped and acquired between them. This makes it difficult to
-// reliably identify when compactions quiesce.
+// compactionsAppearQuiesced returns true if all flushes and compactions
+// that have started (FlushBegin/CompactionBegin) have also completed
+// (FlushEnd/CompactionEnd), and no new activity has occurred since the
+// caller's last observation (lastStarted). The caller must pass the
+// returned started count back on subsequent calls.
 //
-// For example, our call to DB.Metrics() may acquire the DB.mu mutex when a
-// compaction has just successfully completed, but before it's managed to
-// schedule the next compaction (DB.mu is dropped while it attempts to acquire
-// the manifest lock).
-func (r *Runner) compactionsAppearQuiesced(m *pebble.Metrics) bool {
-	r.compactionMu.Lock()
-	defer r.compactionMu.Unlock()
-	if m.Flush.NumInProgress > 0 {
-		return false
-	} else if m.Compact.NumInProgress > 0 && r.compactionMu.started != r.compactionMu.completed {
-		return false
-	}
-	return true
+// The second condition (started == lastStarted) detects cascading
+// compactions that start and complete between two calls, which would
+// otherwise appear quiesced because started == completed.
+//
+// This relies solely on the started/completed counters rather than
+// DB.Metrics().NumInProgress, because there is a scheduling window
+// between when a compaction is added to the in-progress set (under d.mu)
+// and when CompactionBegin fires (in a separate goroutine). During this
+// window NumInProgress > 0 but started == completed, and using
+// NumInProgress would prevent quiescence detection during cascading
+// compactions.
+func (r *Runner) compactionsAppearQuiesced(lastStarted int64) (bool, int64) {
+	r.compactionOrFlushMu.Lock()
+	defer r.compactionOrFlushMu.Unlock()
+	s := r.compactionOrFlushMu.started
+	return s == r.compactionOrFlushMu.completed && s == lastStarted, s
 }
 
-// nextCompactionCompletes may be used to be notified when new compactions
-// complete. The caller is responsible for holding on to a monotonically
-// increasing count representing the number of compactions that have been
-// observed, beginning at zero.
+// nextCompactionOrFlushCompletes may be used to be notified when a new
+// compaction or flush completes. The caller is responsible for holding on to a
+// monotonically increasing count representing the number of completions that
+// have been observed, beginning at zero.
 //
-// The caller passes their current count as an argument. If a new compaction has
-// already completed since their provided count, nextCompactionCompletes returns
-// the new count and a true boolean return value. If a new compaction has not
-// yet completed, it returns a channel that will be closed when the next
-// compaction completes. This scheme allows the caller to select{...},
-// performing some action on every compaction completion.
-func (r *Runner) nextCompactionCompletes(
+// The caller passes their current count as an argument. If a new compaction or
+// flush has already completed since their provided count,
+// nextCompactionOrFlushCompletes returns the new count and a true boolean
+// return value. If neither has completed, it returns a channel that will be
+// closed when the next completion occurs. This scheme allows the caller to
+// select{...}, performing some action on every compaction or flush completion.
+func (r *Runner) nextCompactionOrFlushCompletes(
 	lastObserved int64,
 ) (count int64, alreadyOccurred bool, ch chan struct{}) {
-	r.compactionMu.Lock()
-	defer r.compactionMu.Unlock()
+	r.compactionOrFlushMu.Lock()
+	defer r.compactionOrFlushMu.Unlock()
 
-	if lastObserved < r.compactionMu.completed {
-		// There has already been another compaction since the last one observed
-		// by this caller. Return immediately.
-		return r.compactionMu.completed, true, nil
+	if lastObserved < r.compactionOrFlushMu.completed {
+		// There has already been another compaction or flush since the last
+		// one observed by this caller. Return immediately.
+		return r.compactionOrFlushMu.completed, true, nil
 	}
 
-	// The last observed compaction is still the most recent compaction.
-	// Return a channel that the caller can wait on to be notified when the
-	// next compaction occurs.
-	if r.compactionMu.ch == nil {
-		r.compactionMu.ch = make(chan struct{})
+	// No new completions since the caller's last observation. Return a
+	// channel that the caller can wait on to be notified when the next
+	// compaction or flush completes.
+	if r.compactionOrFlushMu.ch == nil {
+		r.compactionOrFlushMu.ch = make(chan struct{})
 	}
-	return lastObserved, false, r.compactionMu.ch
+	return lastObserved, false, r.compactionOrFlushMu.ch
 }
 
 // Wait waits for the workload replay to complete. Wait returns once the entire
@@ -657,35 +675,32 @@ func (r *Runner) eventListener() pebble.EventListener {
 			defer r.writeStallMetrics.Unlock()
 			r.writeStallMetrics.durationByReason[writeStallReason] += time.Since(writeStallBegin)
 		},
+		FlushBegin: func(_ pebble.FlushInfo) {
+			r.compactionOrFlushMu.Lock()
+			defer r.compactionOrFlushMu.Unlock()
+			r.compactionOrFlushMu.started++
+		},
 		FlushEnd: func(_ pebble.FlushInfo) {
-			// Close compactionMu.ch to wake refreshMetrics so it can re-check
-			// quiescence. This is necessary because compactionsAppearQuiesced
-			// checks Flush.NumInProgress; if the last in-flight operation is a flush
-			// and no compaction follows, refreshMetrics would block on
-			// compactionMu.ch forever.
-			r.compactionMu.Lock()
-			defer r.compactionMu.Unlock()
-			if r.compactionMu.ch != nil {
-				close(r.compactionMu.ch)
-				r.compactionMu.ch = nil
+			r.compactionOrFlushMu.Lock()
+			defer r.compactionOrFlushMu.Unlock()
+			r.compactionOrFlushMu.completed++
+			if r.compactionOrFlushMu.ch != nil {
+				close(r.compactionOrFlushMu.ch)
+				r.compactionOrFlushMu.ch = nil
 			}
 		},
 		CompactionBegin: func(_ pebble.CompactionInfo) {
-			r.compactionMu.Lock()
-			defer r.compactionMu.Unlock()
-			r.compactionMu.started++
+			r.compactionOrFlushMu.Lock()
+			defer r.compactionOrFlushMu.Unlock()
+			r.compactionOrFlushMu.started++
 		},
 		CompactionEnd: func(_ pebble.CompactionInfo) {
-			// Keep track of the number of compactions that complete and notify
-			// anyone waiting for a compaction to complete. See the function
-			// nextCompactionCompletes for the corresponding receiver side.
-			r.compactionMu.Lock()
-			defer r.compactionMu.Unlock()
-			r.compactionMu.completed++
-			if r.compactionMu.ch != nil {
-				// Signal that a compaction has completed.
-				close(r.compactionMu.ch)
-				r.compactionMu.ch = nil
+			r.compactionOrFlushMu.Lock()
+			defer r.compactionOrFlushMu.Unlock()
+			r.compactionOrFlushMu.completed++
+			if r.compactionOrFlushMu.ch != nil {
+				close(r.compactionOrFlushMu.ch)
+				r.compactionOrFlushMu.ch = nil
 			}
 		},
 	}
