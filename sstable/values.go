@@ -5,6 +5,8 @@
 package sstable
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/blob"
@@ -86,6 +88,25 @@ type TableBlobContext struct {
 	// handle has had its preface decoded. Note that if this function is set,
 	// we will not do any work in making a lazy value.
 	BlobHandleFn func(preface blob.InlineHandlePreface, remainder []byte) base.InternalValue
+}
+
+// FetchValueFromSecondaryHandle fetches the value for an encoded secondary
+// (e.g. cold-tier) blob handle. secondaryBlobHandle is the raw bytes from
+// KVMeta.SecondaryBlobHandle. It returns the value, whether the caller owns the
+// returned slice, and any error. ValueFetcher and References must be set on the
+// TableBlobContext.
+func (c TableBlobContext) FetchValueFromSecondaryHandle(
+	ctx context.Context, secondaryBlobHandle []byte, buf []byte,
+) (val []byte, callerOwned bool, err error) {
+	if c.ValueFetcher == nil || c.References == nil {
+		return nil, false, errors.New("ValueFetcher and References must be set to fetch secondary handle")
+	}
+	preface, remainder := blob.DecodeInlineHandlePreface(secondaryBlobHandle)
+	handleSuffix := blob.DecodeHandleSuffix(remainder)
+	blobFileID := c.References.BlobFileIDByID(preface.ReferenceID)
+	var suffixBuf [blob.MaxInlineHandleLength]byte
+	suffixLen := handleSuffix.Encode(suffixBuf[:])
+	return c.ValueFetcher.FetchHandle(ctx, suffixBuf[:suffixLen], blobFileID, preface.ValueLen, buf)
 }
 
 // defaultInternalValueConstructor is the default implementation of the
