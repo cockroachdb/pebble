@@ -151,7 +151,7 @@ func initDownloadTestProvider(t *testing.T) objstorage.Provider {
 	}
 	var remoteObjs []objstorage.RemoteObjectToAttach
 	for i := base.DiskFileNum(100); i < 200; i++ {
-		backing, err := objProvider.CreateExternalObjectBacking("", fmt.Sprintf("external-%d", i))
+		backing, err := objProvider.CreateExternalObjectBacking("", fmt.Sprintf("external-%d", i), [32]byte{})
 		require.NoError(t, err)
 		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
 			FileNum:  i,

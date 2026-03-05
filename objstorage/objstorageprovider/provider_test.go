@@ -473,7 +473,7 @@ func TestAttachExternalObject(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
 
-	backing, err := p1.CreateExternalObjectBacking("foo", "some-obj-name")
+	backing, err := p1.CreateExternalObjectBacking("foo", "some-obj-name", [32]byte{})
 	require.NoError(t, err)
 
 	_, err = p1.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{

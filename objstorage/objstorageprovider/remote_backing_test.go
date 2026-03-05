@@ -120,7 +120,7 @@ func TestCreateSharedObjectBacking(t *testing.T) {
 
 			require.NoError(t, p.SetCreatorID(1))
 
-			backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name")
+			backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name", [32]byte{})
 			require.NoError(t, err)
 			d, err := decodeRemoteObjectBacking(fileType, base.DiskFileNum(100), backing)
 			require.NoError(t, err)
@@ -145,7 +145,7 @@ func TestAttachRemoteObjects(t *testing.T) {
 			require.NoError(t, err)
 			defer p.Close()
 			require.NoError(t, p.SetCreatorID(1))
-			backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name")
+			backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name", [32]byte{})
 			require.NoError(t, err)
 			_, err = p.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 				FileType: fileType,

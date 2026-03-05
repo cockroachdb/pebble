@@ -31,6 +31,10 @@ const (
 	// tagLocator encodes a custom object name (if present). It is followed by the
 	// custom name string length and the string.
 	tagCustomObjectName = 6
+	// tagExternalFileEncryptionKey encodes a 32 byte encryption key for decrypting external files
+	// encrypted with CockroachDB's backup encryption.
+	// Distinct from Pebble's encryption-at-rest support.
+	tagExternalFileEncryptionKey = 7
 
 	// Any new tags that don't have the tagNotSafeToIgnoreMask bit set must be
 	// followed by the length of the data (so they can be skipped).
@@ -67,6 +71,10 @@ func (p *provider) encodeRemoteObjectBacking(
 	if meta.Remote.CustomObjectName != "" {
 		buf = binary.AppendUvarint(buf, tagCustomObjectName)
 		buf = encodeString(buf, meta.Remote.CustomObjectName)
+	}
+	if meta.Remote.ExternalFileEncryptionKey != [32]byte{} {
+		buf = binary.AppendUvarint(buf, tagExternalFileEncryptionKey)
+		buf = append(buf, meta.Remote.ExternalFileEncryptionKey[:]...)
 	}
 	return buf, nil
 }
@@ -111,11 +119,12 @@ func (p *provider) RemoteObjectBacking(
 
 // CreateExternalObjectBacking is part of the objstorage.Provider interface.
 func (p *provider) CreateExternalObjectBacking(
-	locator remote.Locator, objName string,
+	locator remote.Locator, objName string, externalEncryptionKey [32]byte,
 ) (objstorage.RemoteObjectBacking, error) {
 	var meta objstorage.ObjectMetadata
 	meta.Remote.Locator = locator
 	meta.Remote.CustomObjectName = objName
+	meta.Remote.ExternalFileEncryptionKey = externalEncryptionKey
 	meta.Remote.CleanupMethod = objstorage.SharedNoCleanup
 	return p.encodeRemoteObjectBacking(&meta)
 }
@@ -137,6 +146,7 @@ func decodeRemoteObjectBacking(
 ) (decodedBacking, error) {
 	var creatorID, creatorFileNum, cleanupMethod, refCheckCreatorID, refCheckFileNum uint64
 	var locator, customObjName string
+	var externalFileEncryptionKey [32]byte
 	br := bytes.NewReader(buf)
 	for {
 		tag, err := binary.ReadUvarint(br)
@@ -167,6 +177,14 @@ func decodeRemoteObjectBacking(
 
 		case tagCustomObjectName:
 			customObjName, err = decodeString(br)
+
+		case tagExternalFileEncryptionKey:
+			for i := range 32 {
+				externalFileEncryptionKey[i], err = br.ReadByte()
+				if err != nil {
+					break
+				}
+			}
 
 		default:
 			// Ignore unknown tags, unless they're not safe to ignore.
@@ -206,6 +224,7 @@ func decodeRemoteObjectBacking(
 	}
 	res.meta.Remote.Locator = remote.Locator(locator)
 	res.meta.Remote.CustomObjectName = customObjName
+	res.meta.Remote.ExternalFileEncryptionKey = externalFileEncryptionKey
 	return res, nil
 }
 
