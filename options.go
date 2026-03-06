@@ -2672,8 +2672,8 @@ func (o *Options) Validate() error {
 		fmt.Fprintf(&buf, "L0StopWritesThreshold (%d) must be >= L0CompactionThreshold (%d)\n",
 			o.L0StopWritesThreshold, o.L0CompactionThreshold)
 	}
-	if uint64(o.MemTableSize) >= maxMemTableSize {
-		fmt.Fprintf(&buf, "MemTableSize (%s) must be < %s\n",
+	if uint64(o.MemTableSize) > maxMemTableSize {
+		fmt.Fprintf(&buf, "MemTableSize (%s) must be <= %s\n",
 			humanize.Bytes.Uint64(uint64(o.MemTableSize)), humanize.Bytes.Uint64(maxMemTableSize))
 	}
 	if o.MemTableStopWritesThreshold < 2 {
