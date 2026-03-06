@@ -6,10 +6,10 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/swiss"
 )
@@ -295,7 +295,7 @@ func (e *readEntry) unrefAndTryRemoveFromMap() {
 
 func (e *readEntry) setReadValue(v *Value) {
 	if n := v.refs(); n != 1 {
-		panic(fmt.Sprintf("pebble: Value has already been added to the cache: refs=%d", n))
+		panic(errors.AssertionFailedf("pebble: Value has already been added to the cache: refs=%d", n))
 	}
 	concurrentRequesters := false
 	e.mu.Lock()
