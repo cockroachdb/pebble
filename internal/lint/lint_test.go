@@ -191,6 +191,24 @@ func TestLint(t *testing.T) {
 		}
 	})
 
+	// Disallow panic(fmt.Sprintf(...)); use panic(errors.AssertionFailedf(...))
+	// instead so that panic messages are not redacted in CockroachDB logs and
+	// include proper stack traces.
+	t.Run("TestPanicFmtSprintf", func(t *testing.T) {
+		t.Parallel()
+
+		if err := stream.ForEach(
+			stream.Sequence(
+				dirCmd(t, pkg.Dir, "git", "grep", "-B1", `panic(fmt\.Sprintf(`, "--", "*.go"),
+				lintIgnore("lint:ignore PanicFmtSprintf"),
+				stream.GrepNot(`^internal/lint/lint_test.go`),
+			), func(s string) {
+				t.Errorf("\n%s <- please use \"panic(errors.AssertionFailedf(...))\" instead", s)
+			}); err != nil {
+			t.Error(err)
+		}
+	})
+
 	t.Run("TestFmtErrorf", func(t *testing.T) {
 		t.Parallel()
 
