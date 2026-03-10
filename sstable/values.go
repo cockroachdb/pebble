@@ -118,7 +118,7 @@ func (i *defaultInternalValueConstructor) GetInternalValueForPrefixAndValueHandl
 	if vp.IsValueBlockHandle() {
 		return i.vbReader.GetInternalValueForPrefixAndValueHandle(handle)
 	} else if !vp.IsBlobValueHandle() {
-		panic(errors.AssertionFailedf("block: %x is neither a valblk or blob handle prefix", vp))
+		panic(errors.AssertionFailedf("block: %x is neither a valblk or blob handle prefix", errors.Safe(vp)))
 	}
 
 	// The first byte of [handle] is the valuePrefix byte.

@@ -37,7 +37,7 @@ func (v *refcnt) refs() int32 {
 func (v *refcnt) acquire() {
 	switch n := v.val.Add(1); {
 	case n <= 1:
-		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", n))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", errors.Safe(n)))
 	}
 	v.trace("acquire")
 }
@@ -46,7 +46,7 @@ func (v *refcnt) release() bool {
 	n := v.val.Add(-1)
 	switch {
 	case n < 0:
-		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", n))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", errors.Safe(n)))
 	}
 	v.trace("release")
 	return n == 0

@@ -144,7 +144,7 @@ func (v *Value) Release() {
 // Free. Do not call Free on a value that has been added to the cache.
 func Free(v *Value) {
 	if n := v.refs(); n > 1 {
-		panic(errors.AssertionFailedf("pebble: Value has been added to the cache: refs=%d", n))
+		panic(errors.AssertionFailedf("pebble: Value has been added to the cache: refs=%d", errors.Safe(n)))
 	}
 	v.Release()
 }

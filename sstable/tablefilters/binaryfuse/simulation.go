@@ -27,7 +27,7 @@ func SimulateFPR(avgSize int, fpBits int) (fprMean, fprStdDev, avgBitsPerKey flo
 		}
 		filter, ok := buildFilter(hc, fpBits)
 		if !ok {
-			panic(errors.AssertionFailedf("could not build filter (size=%d, bits=%d)", size, fpBits))
+			panic(errors.AssertionFailedf("could not build filter (size=%d, bits=%d)", errors.Safe(size), errors.Safe(fpBits)))
 		}
 		sizeSum.Add(uint64(size))
 		filterSizeSum.Add(uint64(len(filter)))

@@ -1557,7 +1557,7 @@ func unHumanize(s string) uint64 {
 	}
 	val, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		panic(errors.AssertionFailedf("parsing %s: %v", s, err))
+		panic(errors.AssertionFailedf("parsing %s: %v", errors.Safe(s), err))
 	}
 
 	return uint64(val * float64(multiplier))

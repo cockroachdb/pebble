@@ -295,7 +295,7 @@ func (e *readEntry) unrefAndTryRemoveFromMap() {
 
 func (e *readEntry) setReadValue(v *Value) {
 	if n := v.refs(); n != 1 {
-		panic(errors.AssertionFailedf("pebble: Value has already been added to the cache: refs=%d", n))
+		panic(errors.AssertionFailedf("pebble: Value has already been added to the cache: refs=%d", errors.Safe(n)))
 	}
 	concurrentRequesters := false
 	e.mu.Lock()

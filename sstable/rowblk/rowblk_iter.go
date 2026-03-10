@@ -1276,7 +1276,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			// This should not happen since only the key prefix is shared, so even
 			// if the prefix length is the same as the user key length, the unshared
 			// will include the trailer.
-			panic(errors.AssertionFailedf("unshared %d is too small", unshared))
+			panic(errors.AssertionFailedf("unshared %d is too small", errors.Safe(unshared)))
 		}
 		// The trailer is written in little endian, so the key kind is the first
 		// byte in the trailer that is encoded in the slice [unshared-8:unshared].

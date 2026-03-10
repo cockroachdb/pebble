@@ -507,7 +507,7 @@ func (w *RawColumnWriter) addWithBlobHandleInternal(
 	if secondaryHandle != nil {
 		if invariants.Enabled && hotHandle.ValueLen != secondaryHandle.ValueLen {
 			panic(errors.AssertionFailedf("pebble: dual-tier blob handles must have identical ValueLen (hot=%d, secondary=%d)",
-				hotHandle.ValueLen, secondaryHandle.ValueLen))
+				errors.Safe(hotHandle.ValueLen), errors.Safe(secondaryHandle.ValueLen)))
 		}
 		var secondaryHandleBuf [blob.MaxInlineHandleLength]byte
 		secondaryN := secondaryHandle.Encode(secondaryHandleBuf[:])
@@ -558,7 +558,7 @@ func (w *RawColumnWriter) addWithBlobHandleInternal(
 			case base.ColdTier:
 				kindAndTier = tieredmeta.SSTableBlobReferenceColdBytes
 			default:
-				panic(errors.AssertionFailedf("unexpected tier %s", w.opts.BlobReferenceTierGetter(hotHandle.ReferenceID)))
+				panic(errors.AssertionFailedf("unexpected tier %s", errors.Safe(w.opts.BlobReferenceTierGetter(hotHandle.ReferenceID))))
 			}
 			w.tieringHistogramBlock.Add(kindAndTier, meta.TieringSpanID, meta.TieringAttribute, uint64(hotHandle.ValueLen))
 		}
@@ -698,7 +698,7 @@ func (w *RawColumnWriter) evaluatePoint(
 	case InternalKeyKindSet, InternalKeyKindSetWithDelete, InternalKeyKindMerge,
 		InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 	default:
-		panic(errors.AssertionFailedf("unexpected key kind %s", keyKind.String()))
+		panic(errors.AssertionFailedf("unexpected key kind %s", errors.Safe(keyKind.String())))
 	}
 	prevKeyKind := w.prevPointKey.trailer.Kind()
 	// If same user key, then the current key is obsolete if any of the
@@ -1061,7 +1061,7 @@ func (w *RawColumnWriter) Close() (err error) {
 	// offset.
 	if w.queuedDataSize != w.layout.offset {
 		panic(errors.AssertionFailedf("pebble: %d of queued data blocks but layout offset is %d",
-			w.queuedDataSize, w.layout.offset))
+			errors.Safe(w.queuedDataSize), errors.Safe(w.layout.offset)))
 	}
 	w.props.DataSize = w.layout.offset
 	if _, err = w.flushBufferedIndexBlocks(); err != nil {
@@ -1308,7 +1308,7 @@ func getExistingFilter(layout *Layout) (family base.TableFilterFamily, bh block.
 	family, ok = filterFamilyFromBlockName(layout.Filter[0].Name)
 	if !ok {
 		if invariants.Enabled {
-			panic(errors.AssertionFailedf("l.Filter has invalid filter block name %q", layout.Filter[0].Name))
+			panic(errors.AssertionFailedf("l.Filter has invalid filter block name %q", errors.Safe(layout.Filter[0].Name)))
 		}
 		return "", block.Handle{}, false
 	}

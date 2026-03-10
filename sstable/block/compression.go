@@ -161,7 +161,7 @@ var compressionProfileMap = make(map[string]*CompressionProfile)
 func registerCompressionProfile(p CompressionProfile) *CompressionProfile {
 	key := strings.ToLower(p.Name)
 	if _, ok := compressionProfileMap[key]; ok {
-		panic(errors.AssertionFailedf("duplicate compression profile: %s", p.Name))
+		panic(errors.AssertionFailedf("duplicate compression profile: %s", errors.Safe(p.Name)))
 	}
 	compressionProfileMap[key] = &p
 	return &p

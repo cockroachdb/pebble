@@ -45,7 +45,7 @@ func getMinlzCompressor(level int) Compressor {
 	case minlz.LevelBalanced:
 		return minlzCompressorBalanced
 	default:
-		panic(errors.AssertionFailedf("unexpected MinLZ level %d", level))
+		panic(errors.AssertionFailedf("unexpected MinLZ level %d", errors.Safe(level)))
 	}
 }
 

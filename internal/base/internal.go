@@ -377,7 +377,7 @@ func ParseSeqNum(s string) SeqNum {
 	}
 	n, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		panic(errors.AssertionFailedf("error parsing %q as seqnum: %s", s, err))
+		panic(errors.AssertionFailedf("error parsing %q as seqnum: %s", errors.Safe(s), err))
 	}
 	seqNum := SeqNum(n)
 	if batch {
@@ -390,7 +390,7 @@ func ParseSeqNum(s string) SeqNum {
 func ParseKind(s string) InternalKeyKind {
 	kind, ok := kindsMap[s]
 	if !ok {
-		panic(errors.AssertionFailedf("unknown kind: %q", s))
+		panic(errors.AssertionFailedf("unknown kind: %q", errors.Safe(s)))
 	}
 	return kind
 }
@@ -616,7 +616,7 @@ func ParseInternalKey(s string) InternalKey {
 	seqNum := ParseSeqNum(s[sep1+1 : sep2])
 	kind, ok := kindsMap[s[sep2+1:]]
 	if !ok {
-		panic(errors.AssertionFailedf("unknown kind: %q", s[sep2+1:]))
+		panic(errors.AssertionFailedf("unknown kind: %q", errors.Safe(s[sep2+1:])))
 	}
 	return MakeInternalKey(userKey, seqNum, kind)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treesteps"
+	"github.com/cockroachdb/redact"
 )
 
 // A SpanMask may be used to configure an interleaving iterator to skip point
@@ -189,6 +190,33 @@ const (
 	posKeyspanStart
 	posKeyspanEnd
 )
+
+// String implements fmt.Stringer.
+func (p interleavePos) String() string {
+	switch p {
+	case posUninitialized:
+		return "uninitialized"
+	case posSeekedBeyondLowerBound:
+		return "seekedBeyondLowerBound"
+	case posSeekedBeyondUpperBound:
+		return "seekedBeyondUpperBound"
+	case posExhausted:
+		return "exhausted"
+	case posPointKey:
+		return "pointKey"
+	case posKeyspanStart:
+		return "keyspanStart"
+	case posKeyspanEnd:
+		return "keyspanEnd"
+	default:
+		return fmt.Sprintf("unknown(%d)", int8(p))
+	}
+}
+
+// SafeFormat implements redact.SafeFormatter.
+func (p interleavePos) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Print(redact.SafeString(p.String()))
+}
 
 // Assert that *InterleavingIter implements the InternalIterator interface.
 var _ base.InternalIterator = &InterleavingIter{}

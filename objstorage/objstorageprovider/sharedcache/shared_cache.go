@@ -220,7 +220,7 @@ func (c *Cache) ReadAt(
 	c.metrics.totalReads.Add(1)
 	if ofs >= objSize {
 		if invariants.Enabled {
-			panic(errors.AssertionFailedf("invalid ReadAt offset %v %v", ofs, objSize))
+			panic(errors.AssertionFailedf("invalid ReadAt offset %v %v", errors.Safe(ofs), errors.Safe(objSize)))
 		}
 		return io.EOF
 	}
@@ -251,7 +251,7 @@ func (c *Cache) ReadAt(
 
 		if invariants.Enabled {
 			if n != 0 && c.bm.Remainder(ofs) != 0 {
-				panic(errors.AssertionFailedf("after non-zero read from cache, ofs is not block-aligned: %v %v", ofs, n))
+				panic(errors.AssertionFailedf("after non-zero read from cache, ofs is not block-aligned: %v %v", errors.Safe(ofs), errors.Safe(n)))
 			}
 		}
 	}
@@ -335,7 +335,7 @@ func (c *Cache) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 func (c *Cache) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
 		if c.bm.Remainder(ofs) != 0 || c.bm.Remainder(int64(len(p))) != 0 {
-			panic(errors.AssertionFailedf("set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
+			panic(errors.AssertionFailedf("set with ofs & len not multiples of block size: %v %v", errors.Safe(ofs), errors.Safe(len(p))))
 		}
 	}
 
@@ -548,7 +548,7 @@ func (s *shard) lruUnlink(index cacheBlockIndex) {
 func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ error) {
 	if invariants.Enabled {
 		if ofs/s.shardingBlockSize != (ofs+int64(len(p))-1)/s.shardingBlockSize {
-			panic(errors.AssertionFailedf("get crosses shard boundary: %v %v", ofs, len(p)))
+			panic(errors.AssertionFailedf("get crosses shard boundary: %v %v", errors.Safe(ofs), errors.Safe(len(p))))
 		}
 		s.assertShardStateIsConsistent()
 	}
@@ -627,10 +627,10 @@ func (s *shard) get(fileNum base.DiskFileNum, p []byte, ofs int64) (n int, _ err
 func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 	if invariants.Enabled {
 		if ofs/s.shardingBlockSize != (ofs+int64(len(p))-1)/s.shardingBlockSize {
-			panic(errors.AssertionFailedf("set crosses shard boundary: %v %v", ofs, len(p)))
+			panic(errors.AssertionFailedf("set crosses shard boundary: %v %v", errors.Safe(ofs), errors.Safe(len(p))))
 		}
 		if s.bm.Remainder(ofs) != 0 || s.bm.Remainder(int64(len(p))) != 0 {
-			panic(errors.AssertionFailedf("set with ofs & len not multiples of block size: %v %v", ofs, len(p)))
+			panic(errors.AssertionFailedf("set with ofs & len not multiples of block size: %v %v", errors.Safe(ofs), errors.Safe(len(p))))
 		}
 		s.assertShardStateIsConsistent()
 	}
@@ -645,7 +645,7 @@ func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 		}
 		if invariants.Enabled {
 			if n > len(p) {
-				panic(errors.AssertionFailedf("set with n greater than len(p): %v %v", n, len(p)))
+				panic(errors.AssertionFailedf("set with n greater than len(p): %v %v", errors.Safe(n), errors.Safe(len(p))))
 			}
 		}
 
@@ -726,7 +726,7 @@ func (s *shard) dropReadLock(cacheBlockInd cacheBlockIndex) {
 	s.mu.Lock()
 	s.mu.blocks[cacheBlockInd].lock -= readLockTakenInc
 	if invariants.Enabled && s.mu.blocks[cacheBlockInd].lock < 0 {
-		panic(errors.AssertionFailedf("unexpected lock state %v in dropReadLock", s.mu.blocks[cacheBlockInd].lock))
+		panic(errors.AssertionFailedf("unexpected lock state %v in dropReadLock", errors.Safe(s.mu.blocks[cacheBlockInd].lock)))
 	}
 	s.mu.Unlock()
 }
@@ -735,7 +735,7 @@ func (s *shard) dropReadLock(cacheBlockInd cacheBlockIndex) {
 func (s *shard) dropWriteLock(cacheBlockInd cacheBlockIndex) {
 	s.mu.Lock()
 	if invariants.Enabled && s.mu.blocks[cacheBlockInd].lock != writeLockTaken {
-		panic(errors.AssertionFailedf("unexpected lock state %v in dropWriteLock", s.mu.blocks[cacheBlockInd].lock))
+		panic(errors.AssertionFailedf("unexpected lock state %v in dropWriteLock", errors.Safe(s.mu.blocks[cacheBlockInd].lock)))
 	}
 	s.mu.blocks[cacheBlockInd].lock = unlocked
 	s.mu.Unlock()
@@ -759,7 +759,7 @@ func (s *shard) assertShardStateIsConsistent() {
 		}
 	}
 	if lruLen != len(s.mu.where) {
-		panic(errors.AssertionFailedf("lru list len is %d but where map has %d entries", lruLen, len(s.mu.where)))
+		panic(errors.AssertionFailedf("lru list len is %d but where map has %d entries", errors.Safe(lruLen), errors.Safe(len(s.mu.where))))
 	}
 	freeLen := 0
 	for n := s.mu.freeHead; n != invalidBlockIndex; n = s.mu.blocks[n].next {
@@ -767,11 +767,11 @@ func (s *shard) assertShardStateIsConsistent() {
 	}
 
 	if lruLen+freeLen != int(s.sizeInBlocks) {
-		panic(errors.AssertionFailedf("%d lru blocks and %d free blocks don't add up to %d", lruLen, freeLen, s.sizeInBlocks))
+		panic(errors.AssertionFailedf("%d lru blocks and %d free blocks don't add up to %d", errors.Safe(lruLen), errors.Safe(freeLen), errors.Safe(s.sizeInBlocks)))
 	}
 	for i := range s.mu.blocks {
 		if state := s.mu.blocks[i].lock; state < writeLockTaken {
-			panic(errors.AssertionFailedf("lock state %v is not allowed", state))
+			panic(errors.AssertionFailedf("lock state %v is not allowed", errors.Safe(state)))
 		}
 	}
 }
@@ -793,7 +793,7 @@ func makeBlockMath(blockSize int) blockMath {
 		blockSizeBits: int8(bits.Len64(uint64(blockSize)) - 1),
 	}
 	if blockSize != (1 << bm.blockSizeBits) {
-		panic(errors.AssertionFailedf("blockSize %d is not a power of 2", blockSize))
+		panic(errors.AssertionFailedf("blockSize %d is not a power of 2", errors.Safe(blockSize)))
 	}
 	return bm
 }

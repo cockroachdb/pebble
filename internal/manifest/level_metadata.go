@@ -276,7 +276,7 @@ func (ls LevelSlice) verifyInvariants() {
 			length++
 		}
 		if ls.length != length {
-			panic(errors.AssertionFailedf("LevelSlice %s has length %d value; actual length is %d", ls, ls.length, length))
+			panic(errors.AssertionFailedf("LevelSlice %s has length %d value; actual length is %d", ls, errors.Safe(ls.length), errors.Safe(length)))
 		}
 	}
 }
@@ -449,7 +449,7 @@ func (kt KeyType) String() string {
 	case KeyTypeRange:
 		return "range"
 	default:
-		panic(errors.AssertionFailedf("unrecognized key type: %d", kt))
+		panic(errors.AssertionFailedf("unrecognized key type: %d", errors.Safe(kt)))
 	}
 }
 

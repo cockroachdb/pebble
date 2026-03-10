@@ -120,7 +120,7 @@ func (w *IndexBlockWriter) size(rows int) int {
 // The value of [rows] must be Rows() or Rows()-1.
 func (w *IndexBlockWriter) Finish(rows int) []byte {
 	if invariants.Enabled && rows != w.rows && rows != w.rows-1 {
-		panic(errors.AssertionFailedf("index block has %d rows; asked to finish %d", w.rows, rows))
+		panic(errors.AssertionFailedf("index block has %d rows; asked to finish %d", errors.Safe(w.rows), errors.Safe(rows)))
 	}
 
 	w.enc.Init(w.size(rows), Header{
@@ -308,7 +308,7 @@ func (i *IndexIter) applyTransforms(key []byte) []byte {
 // properties at the iterator's current position.
 func (i *IndexIter) BlockHandleWithProperties() (block.HandleWithProperties, error) {
 	if invariants.Enabled && !i.Valid() {
-		panic(errors.AssertionFailedf("invalid row %d (n=%d)", i.row, i.n))
+		panic(errors.AssertionFailedf("invalid row %d (n=%d)", errors.Safe(i.row), errors.Safe(i.n)))
 	}
 	return block.HandleWithProperties{
 		Handle: block.Handle{

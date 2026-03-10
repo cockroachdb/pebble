@@ -32,7 +32,7 @@ type uintsEncoder[T serializedUint] struct {
 func makeUintsEncoder[T serializedUint](targetBuf []byte, n int) uintsEncoder[T] {
 	ptr := unsafe.Pointer(unsafe.SliceData(targetBuf))
 	if align(uintptr(ptr), unsafe.Sizeof(T(0))) != uintptr(ptr) {
-		panic(errors.AssertionFailedf("slice pointer %p not %d-byte aligned", ptr, unsafe.Sizeof(T(0))))
+		panic(errors.AssertionFailedf("slice pointer %p not %d-byte aligned", errors.Safe(ptr), errors.Safe(unsafe.Sizeof(T(0)))))
 	}
 	if len(targetBuf) < n*int(unsafe.Sizeof(T(0))) {
 		panic(errors.AssertionFailedf("target buffer is too small"))

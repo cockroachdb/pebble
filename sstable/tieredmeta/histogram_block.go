@@ -90,7 +90,7 @@ func (k *Key) decode(data []byte) error {
 	}
 	kt := KindAndTier(data[0])
 	if kt >= NumKindAndTiers {
-		return errors.AssertionFailedf("invalid KindAndTier %d", kt)
+		return errors.AssertionFailedf("invalid KindAndTier %d", errors.Safe(kt))
 	}
 	id, n := binary.Uvarint(data[1:])
 	if n <= 0 {

@@ -675,7 +675,7 @@ func (s *l0Sublevels) addFileToSublevels(f *TableMetadata) {
 	}
 	f.SubLevel = subLevel
 	if subLevel > len(s.levelFiles) {
-		panic(errors.AssertionFailedf("chose a sublevel beyond allowed range of sublevels: %d vs 0-%d", subLevel, len(s.levelFiles)))
+		panic(errors.AssertionFailedf("chose a sublevel beyond allowed range of sublevels: %d vs 0-%d", errors.Safe(subLevel), errors.Safe(len(s.levelFiles))))
 	}
 	if subLevel == len(s.levelFiles) {
 		s.levelFiles = append(s.levelFiles, []*TableMetadata{f})
@@ -792,7 +792,7 @@ func (s *l0Sublevels) Check() {
 	n := 0
 	for t := iter.First(); t != nil; n, t = n+1, iter.Next() {
 		if t.L0Index != n {
-			panic(errors.AssertionFailedf("t.L0Index out of sync (%d vs %d)", t.L0Index, n))
+			panic(errors.AssertionFailedf("t.L0Index out of sync (%d vs %d)", errors.Safe(t.L0Index), errors.Safe(n)))
 		}
 	}
 	if len(s.Levels) != len(s.levelFiles) {

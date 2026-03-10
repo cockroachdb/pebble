@@ -47,7 +47,7 @@ const MaxArenaSize = min(math.MaxUint32, math.MaxInt)
 func NewArena(buf []byte) *Arena {
 	if len(buf) > MaxArenaSize {
 		if invariants.Enabled {
-			panic(errors.AssertionFailedf("attempting to create arena of size %d", len(buf)))
+			panic(errors.AssertionFailedf("attempting to create arena of size %d", errors.Safe(len(buf))))
 		}
 		buf = buf[:MaxArenaSize]
 	}
@@ -84,7 +84,7 @@ func (a *Arena) Capacity() uint32 {
 // requested size but don't use those extra bytes).
 func (a *Arena) alloc(size, alignment, overflow uint32) (uint32, error) {
 	if invariants.Enabled && (alignment&(alignment-1)) != 0 {
-		panic(errors.AssertionFailedf("invalid alignment %d", alignment))
+		panic(errors.AssertionFailedf("invalid alignment %d", errors.Safe(alignment)))
 	}
 	// Verify that the arena isn't already full.
 	origSize := a.n.Load()

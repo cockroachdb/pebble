@@ -1351,7 +1351,7 @@ func (i *Iter) deleteSizedNext() *base.InternalKV {
 	}
 
 	if i.iterStripeChange == sameStripe {
-		panic(errors.AssertionFailedf("unexpectedly found iter stripe change = %d", i.iterStripeChange))
+		panic(errors.AssertionFailedf("unexpectedly found iter stripe change = %d", errors.Safe(i.iterStripeChange)))
 	}
 	// We landed outside the original stripe. Reset skip.
 	i.skip = false

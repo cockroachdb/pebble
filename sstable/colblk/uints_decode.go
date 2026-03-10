@@ -25,7 +25,7 @@ func makeUnsafeUint64Decoder(buf []byte, n int) unsafeUint64Decoder {
 	}
 	ptr := unsafe.Pointer(unsafe.SliceData(buf))
 	if align(uintptr(ptr), align64) != uintptr(ptr) {
-		panic(errors.AssertionFailedf("slice pointer %p not %d-byte aligned", ptr, align64))
+		panic(errors.AssertionFailedf("slice pointer %p not %d-byte aligned", errors.Safe(ptr), errors.Safe(align64)))
 	}
 	if len(buf) < n<<align64Shift {
 		panic(errors.AssertionFailedf("data buffer is too small"))

@@ -57,11 +57,11 @@ func MakeBlobReference(
 		switch {
 		case valueSize > phys.ValueSize:
 			panic(errors.AssertionFailedf("pebble: blob reference value size %d is greater than the blob file's value size %d",
-				valueSize, phys.ValueSize))
+				errors.Safe(valueSize), errors.Safe(phys.ValueSize)))
 		case valueSize == 0:
-			panic(errors.AssertionFailedf("pebble: blob reference value size %d is zero", valueSize))
+			panic(errors.AssertionFailedf("pebble: blob reference value size %d is zero", errors.Safe(valueSize)))
 		case phys.ValueSize == 0:
-			panic(errors.AssertionFailedf("pebble: blob file value size %d is zero", phys.ValueSize))
+			panic(errors.AssertionFailedf("pebble: blob file value size %d is zero", errors.Safe(phys.ValueSize)))
 		}
 	}
 	return BlobReference{
@@ -207,7 +207,7 @@ func (m *PhysicalBlobFile) Ref() {
 func (m *PhysicalBlobFile) unref(of ObsoleteFilesSet) {
 	refs := m.refs.Add(-1)
 	if refs < 0 {
-		panic(errors.AssertionFailedf("pebble: refs for blob file %s equal to %d", m.FileNum, refs))
+		panic(errors.AssertionFailedf("pebble: refs for blob file %s equal to %d", m.FileNum, errors.Safe(refs)))
 	} else if refs == 0 {
 		of.AddBlob(m)
 	}
@@ -888,7 +888,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 			if len(cbf.references) == 0 {
 				if cbf.referencedValueSize != 0 {
 					return errors.AssertionFailedf("pebble: referenced value size %d is non-zero for blob file %s with no refs",
-						cbf.referencedValueSize, cbf.metadata.FileID)
+						errors.Safe(cbf.referencedValueSize), cbf.metadata.FileID)
 				}
 
 				// Remove the blob file from any heap it's in.
@@ -1007,16 +1007,16 @@ func (s *CurrentBlobFileSet) maybeVerifyHeapStateInvariants() {
 	if invariants.Enabled {
 		for i, cbf := range s.rewrite.candidates.items {
 			if cbf.heapState.heap != &s.rewrite.candidates {
-				panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", cbf.heapState.heap, &s.rewrite.candidates))
+				panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", errors.Safe(cbf.heapState.heap), errors.Safe(&s.rewrite.candidates)))
 			} else if cbf.heapState.index != i {
-				panic(errors.AssertionFailedf("pebble: heap index mismatch %d != %d", cbf.heapState.index, i))
+				panic(errors.AssertionFailedf("pebble: heap index mismatch %d != %d", errors.Safe(cbf.heapState.index), errors.Safe(i)))
 			}
 		}
 		for i, cbf := range s.rewrite.recentlyCreated.items {
 			if cbf.heapState.heap != &s.rewrite.recentlyCreated {
-				panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", cbf.heapState.heap, &s.rewrite.recentlyCreated))
+				panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", errors.Safe(cbf.heapState.heap), errors.Safe(&s.rewrite.recentlyCreated)))
 			} else if cbf.heapState.index != i {
-				panic(errors.AssertionFailedf("pebble: heap index mismatch %d != %d", cbf.heapState.index, i))
+				panic(errors.AssertionFailedf("pebble: heap index mismatch %d != %d", errors.Safe(cbf.heapState.index), errors.Safe(i)))
 			}
 		}
 	}
@@ -1061,9 +1061,9 @@ func (s *currentBlobFileHeap[O]) Len() int { return len(s.items) }
 func (s *currentBlobFileHeap[O]) Less(i, j int) bool {
 	if invariants.Enabled {
 		if s.items[i].heapState.heap != s {
-			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", s.items[i].heapState.heap, s))
+			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", errors.Safe(s.items[i].heapState.heap), errors.Safe(s)))
 		} else if s.items[j].heapState.heap != s {
-			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", s.items[j].heapState.heap, s))
+			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", errors.Safe(s.items[j].heapState.heap), errors.Safe(s)))
 		}
 	}
 	return s.ordering.less(s.items[i], s.items[j])
@@ -1075,9 +1075,9 @@ func (s *currentBlobFileHeap[O]) Swap(i, j int) {
 	s.items[j].heapState.index = j
 	if invariants.Enabled {
 		if s.items[i].heapState.heap != s {
-			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", s.items[i].heapState.heap, s))
+			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", errors.Safe(s.items[i].heapState.heap), errors.Safe(s)))
 		} else if s.items[j].heapState.heap != s {
-			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", s.items[j].heapState.heap, s))
+			panic(errors.AssertionFailedf("pebble: heap state mismatch %v != %v", errors.Safe(s.items[j].heapState.heap), errors.Safe(s)))
 		}
 	}
 }

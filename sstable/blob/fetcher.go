@@ -126,7 +126,7 @@ func (r *ValueFetcher) FetchHandle(
 	v, err := r.retrieve(ctx, vh)
 	if err == nil && len(v) != int(vh.ValueLen) {
 		return nil, false,
-			errors.AssertionFailedf("value length mismatch: %d != %d", len(v), vh.ValueLen)
+			errors.AssertionFailedf("value length mismatch: %d != %d", errors.Safe(len(v)), errors.Safe(vh.ValueLen))
 	}
 	if invariants.Enabled {
 		v = r.bufMangler.MaybeMangleLater(v)
@@ -309,7 +309,7 @@ func (cr *cachedReader) GetUnsafeValue(
 			physicalBlockIndex, valueIDOffset = cr.indexBlock.dec.RemapVirtualBlockID(vh.BlockID)
 			if valueIDOffset == virtualBlockIndexMask {
 				return nil, errors.AssertionFailedf("blob file indicates virtual block ID %d in %s should be unreferenced",
-					vh.BlockID, vh.BlobFileID)
+					errors.Safe(vh.BlockID), vh.BlobFileID)
 			}
 		}
 		invariants.CheckBounds(physicalBlockIndex, cr.indexBlock.dec.BlockCount())

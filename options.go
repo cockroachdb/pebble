@@ -121,7 +121,7 @@ func (t IterKeyType) String() string {
 	case IterKeyTypePointsAndRanges:
 		return "points-and-ranges"
 	default:
-		panic(errors.AssertionFailedf("unknown key type %d", t))
+		panic(errors.AssertionFailedf("unknown key type %d", errors.Safe(t)))
 	}
 }
 
@@ -1769,7 +1769,7 @@ func (o *Options) TargetFileSize(outputLevel int, baseLevel int) int64 {
 		return o.TargetFileSizes[0]
 	}
 	if baseLevel > outputLevel {
-		panic(errors.AssertionFailedf("invalid base level %d (output level %d)", baseLevel, outputLevel))
+		panic(errors.AssertionFailedf("invalid base level %d (output level %d)", errors.Safe(baseLevel), errors.Safe(outputLevel)))
 	}
 	return o.TargetFileSizes[outputLevel-baseLevel+1]
 }

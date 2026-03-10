@@ -69,6 +69,11 @@ const (
 	opTypeMax
 )
 
+// SafeFormat implements redact.SafeFormatter.
+func (o OpType) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Print(redact.SafeString(o.String()))
+}
+
 // String implements fmt.Stringer.
 func (o OpType) String() string {
 	switch o {
