@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
@@ -74,9 +75,16 @@ func fakeIkey(s string) InternalKey {
 	return MakeInternalKey([]byte(s[:j]), SeqNum(seqNum), InternalKeyKindSet)
 }
 
-// NewFakeIter returns an iterator over the given KVs.
+// NewFakeIter returns an iterator over the given KVs, using the default
+// comparer.
 func NewFakeIter(kvs []InternalKV) *FakeIter {
+	return NewFakeIterWithCmp(DefaultComparer.Compare, kvs)
+}
+
+// NewFakeIterWithCmp returns an iterator over the given KVs.
+func NewFakeIterWithCmp(cmp Compare, kvs []InternalKV) *FakeIter {
 	return &FakeIter{
+		cmp:   cmp,
 		kvs:   kvs,
 		index: 0,
 		valid: len(kvs) > 0,
@@ -85,6 +93,7 @@ func NewFakeIter(kvs []InternalKV) *FakeIter {
 
 // FakeIter is an iterator over a fixed set of KVs.
 type FakeIter struct {
+	cmp      Compare
 	lower    []byte
 	upper    []byte
 	kvs      []InternalKV
@@ -107,10 +116,18 @@ func (f *FakeIter) String() string {
 
 // SeekGE is part of the InternalIterator interface.
 func (f *FakeIter) SeekGE(key []byte, flags SeekGEFlags) *InternalKV {
+	if flags.TrySeekUsingNext() {
+		if !f.valid ||
+			(f.index > 0 && f.cmp(key, f.kvs[f.index-1].K.UserKey) <= 0) {
+			panic(errors.AssertionFailedf("invalid use of TreSeekUsingNext"))
+		}
+	} else {
+		f.index = 0
+	}
 	f.valid = false
 	for f.index = 0; f.index < len(f.kvs); f.index++ {
-		if DefaultComparer.Compare(key, f.key().UserKey) <= 0 {
-			if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
+		if f.cmp(key, f.key().UserKey) <= 0 {
+			if f.upper != nil && f.cmp(f.upper, f.key().UserKey) <= 0 {
 				return nil
 			}
 			f.valid = true
@@ -129,8 +146,8 @@ func (f *FakeIter) SeekPrefixGE(prefix, key []byte, flags SeekGEFlags) *Internal
 func (f *FakeIter) SeekLT(key []byte, flags SeekLTFlags) *InternalKV {
 	f.valid = false
 	for f.index = len(f.kvs) - 1; f.index >= 0; f.index-- {
-		if DefaultComparer.Compare(key, f.key().UserKey) > 0 {
-			if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
+		if f.cmp(key, f.key().UserKey) > 0 {
+			if f.lower != nil && f.cmp(f.lower, f.key().UserKey) > 0 {
 				return nil
 			}
 			f.valid = true
@@ -147,7 +164,7 @@ func (f *FakeIter) First() *InternalKV {
 	if kv := f.Next(); kv == nil {
 		return nil
 	}
-	if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
+	if f.upper != nil && f.cmp(f.upper, f.key().UserKey) <= 0 {
 		return nil
 	}
 	f.valid = true
@@ -161,7 +178,7 @@ func (f *FakeIter) Last() *InternalKV {
 	if kv := f.Prev(); kv == nil {
 		return nil
 	}
-	if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
+	if f.lower != nil && f.cmp(f.lower, f.key().UserKey) > 0 {
 		return nil
 	}
 	f.valid = true
@@ -178,7 +195,7 @@ func (f *FakeIter) Next() *InternalKV {
 	if f.index == len(f.kvs) {
 		return nil
 	}
-	if f.upper != nil && DefaultComparer.Compare(f.upper, f.key().UserKey) <= 0 {
+	if f.upper != nil && f.cmp(f.upper, f.key().UserKey) <= 0 {
 		return nil
 	}
 	f.valid = true
@@ -195,7 +212,7 @@ func (f *FakeIter) Prev() *InternalKV {
 	if f.index < 0 {
 		return nil
 	}
-	if f.lower != nil && DefaultComparer.Compare(f.lower, f.key().UserKey) > 0 {
+	if f.lower != nil && f.cmp(f.lower, f.key().UserKey) > 0 {
 		return nil
 	}
 	f.valid = true
