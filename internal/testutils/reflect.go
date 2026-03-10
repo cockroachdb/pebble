@@ -5,8 +5,9 @@
 package testutils
 
 import (
-	"fmt"
 	"reflect"
+
+	"github.com/cockroachdb/errors"
 )
 
 // AnyPointers returns true if the provided type contains any pointers.
@@ -29,7 +30,7 @@ func AnyPointers(typ reflect.Type) bool {
 	case reflect.Array:
 		return AnyPointers(typ.Elem())
 	default:
-		panic(fmt.Sprintf("unexpected kind: %s", kind))
+		panic(errors.AssertionFailedf("unexpected kind: %s", kind))
 	}
 }
 

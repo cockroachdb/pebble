@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -232,7 +233,7 @@ func splitLinesInSections(input string) [][]string {
 	for l := range crstrings.LinesSeq(input) {
 		if l[0] == ' ' || l[0] == '\t' {
 			if len(res) == 0 {
-				panic(fmt.Sprintf("invalid first line %q", l))
+				panic(errors.AssertionFailedf("invalid first line %q", l))
 			}
 			res[len(res)-1] = append(res[len(res)-1], strings.TrimSpace(l))
 		} else {

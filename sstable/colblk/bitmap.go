@@ -435,7 +435,7 @@ func bitmapToBinFormatter(f *binfmt.Formatter, tp treeprinter.Node, rows int) {
 		return
 	}
 	if encoding != defaultBitmapEncoding {
-		panic(fmt.Sprintf("unknown bitmap encoding %d", encoding))
+		panic(errors.AssertionFailedf("unknown bitmap encoding %d", encoding))
 	}
 	f.HexBytesln(1, "default bitmap encoding")
 	if aligned := align(f.RelativeOffset(), 8); aligned-f.RelativeOffset() != 0 {

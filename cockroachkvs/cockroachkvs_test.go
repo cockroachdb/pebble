@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/crlib/testutils/require"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -148,7 +149,8 @@ func TestComparerFuncs(t *testing.T) {
 				}
 				return buf.String()
 			default:
-				panic(fmt.Sprintf("unknown command: %s", td.Cmd))
+				t.Fatalf("unknown command: %s", td.Cmd)
+				return ""
 			}
 		})
 }
@@ -226,7 +228,8 @@ func TestKeySchema_KeyWriter(t *testing.T) {
 			tbl.Render()
 			return buf.String()
 		default:
-			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+			t.Fatalf("unrecognized command %q", td.Cmd)
+			return ""
 		}
 	})
 }
@@ -322,7 +325,8 @@ func TestKeySchema_KeySeeker(t *testing.T) {
 			}
 			return buf.String()
 		default:
-			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+			t.Fatalf("unrecognized command %q", td.Cmd)
+			return ""
 		}
 	})
 }
@@ -638,7 +642,7 @@ func parseUserKey(userKeyStr string) []byte {
 		var err error
 		roachKey, err = strconv.Unquote(roachKey)
 		if err != nil {
-			panic(fmt.Sprintf("invalid user key string %s: %v", userKeyStr, err))
+			panic(errors.AssertionFailedf("invalid user key string %s: %v", userKeyStr, err))
 		}
 	}
 	k := append(append([]byte(roachKey), 0), parseVersion(versionStr)...)
@@ -664,7 +668,7 @@ func parseVersion(versionStr string) []byte {
 		}
 		ret := AppendTimestamp([]byte{0x00}, wallTime, uint32(logicalTime))
 		if len(ret) != 14 && len(ret) != 10 {
-			panic(fmt.Sprintf("expected 10 or 14-length ret got %d", len(ret)))
+			panic(errors.AssertionFailedf("expected 10 or 14-length ret got %d", len(ret)))
 		}
 		validateEngineKey.MustValidate(ret)
 		// TODO(jackson): Refactor to allow us to generate a suffix without a
@@ -675,7 +679,7 @@ func parseVersion(versionStr string) []byte {
 	// Parse as a hex-encoded version.
 	var version []byte
 	if _, err := fmt.Sscanf(versionStr, "%X", &version); err != nil {
-		panic(fmt.Sprintf("invalid version string %q", versionStr))
+		panic(errors.AssertionFailedf("invalid version string %q", versionStr))
 	}
 	return append(version, byte(len(version)+1))
 }

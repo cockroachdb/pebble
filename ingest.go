@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sort"
 	"time"
@@ -2393,7 +2392,7 @@ func (d *DB) ingestApply(
 				return versionUpdate{}, err
 			}
 			if isShared && f.Level < sharedLevelsStart {
-				panic(fmt.Sprintf("cannot slot a shared file higher than the highest shared level: %d < %d",
+				panic(errors.AssertionFailedf("cannot slot a shared file higher than the highest shared level: %d < %d",
 					f.Level, sharedLevelsStart))
 			}
 			f.Meta = m

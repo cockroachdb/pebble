@@ -82,7 +82,8 @@ func TestIndexBlockEncoding(t *testing.T) {
 			return buf.String()
 
 		default:
-			panic(fmt.Sprintf("unknown command: %s", d.Cmd))
+			t.Fatalf("unknown command: %s", d.Cmd)
+			return ""
 		}
 	})
 }

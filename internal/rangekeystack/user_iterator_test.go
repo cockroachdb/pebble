@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
@@ -325,7 +326,7 @@ func runIterOp(w io.Writer, it keyspan.FragmentIterator, op string) {
 	case "prev":
 		s, err = it.Prev()
 	default:
-		panic(fmt.Sprintf("unrecognized iter op %q", fields[0]))
+		panic(errors.AssertionFailedf("unrecognized iter op %q", fields[0]))
 	}
 	fmt.Fprintf(w, "%-10s", op)
 	switch {

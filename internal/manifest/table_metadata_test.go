@@ -31,7 +31,7 @@ func TestExtendBounds(t *testing.T) {
 			case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
 				upper = base.MakeExclusiveSentinelKey(k, []byte(end))
 			default:
-				panic(fmt.Sprintf("unknown kind %s with end key", k))
+				t.Fatalf("unknown kind %s with end key", k)
 			}
 		} else {
 			l, u := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])

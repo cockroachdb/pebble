@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -280,7 +281,7 @@ func (s *OutputSplitter) SplitKey() []byte {
 	s.frontier.Update(nil)
 	if s.splitKey != nil {
 		if invariants.Enabled && s.cmp(s.splitKey, s.startKey) <= 0 {
-			panic(fmt.Sprintf("splitKey %q <= startKey %q", s.splitKey, s.startKey))
+			panic(errors.AssertionFailedf("splitKey %q <= startKey %q", s.splitKey, s.startKey))
 		}
 		return s.splitKey
 	}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/randvar"
@@ -504,7 +505,7 @@ func (g *generator) dbRestart() {
 		g.add(&closeOp{objID: batchID})
 	}
 	if len(g.liveReaders) != len(g.dbs) || len(g.liveWriters) != len(g.dbs) {
-		panic(fmt.Sprintf("unexpected counts: liveReaders %d, liveWriters: %d",
+		panic(errors.AssertionFailedf("unexpected counts: liveReaders %d, liveWriters: %d",
 			len(g.liveReaders), len(g.liveWriters)))
 	}
 	g.add(&dbRestartOp{dbID: dbID})
@@ -634,7 +635,7 @@ func (g *generator) deriveDB(readerID objID) objID {
 
 func (g *generator) dbIDForObj(objID objID) objID {
 	if g.objDB[objID] == 0 {
-		panic(fmt.Sprintf("object %s has no associated DB", objID))
+		panic(errors.AssertionFailedf("object %s has no associated DB", objID))
 	}
 	return g.objDB[objID]
 }
@@ -1123,7 +1124,7 @@ func (g *generator) writerApply() {
 		return
 	}
 	if len(g.liveWriters) < 2 {
-		panic(fmt.Sprintf("insufficient liveWriters (%d) to apply batch", len(g.liveWriters)))
+		panic(errors.AssertionFailedf("insufficient liveWriters (%d) to apply batch", len(g.liveWriters)))
 	}
 
 	batchID := g.liveBatches.rand(g.rng)

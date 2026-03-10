@@ -83,7 +83,7 @@ func TestIndexBlock(t *testing.T) {
 				case "invalidate":
 					it.Invalidate()
 				default:
-					panic(fmt.Sprintf("unknown command: %s", fields[0]))
+					t.Fatalf("unknown command: %s", fields[0])
 				}
 				if valid {
 					var bp string
@@ -103,7 +103,8 @@ func TestIndexBlock(t *testing.T) {
 			}
 			return buf.String()
 		default:
-			panic(fmt.Sprintf("unknown command: %s", d.Cmd))
+			t.Fatalf("unknown command: %s", d.Cmd)
+			return ""
 		}
 	})
 }

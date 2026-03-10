@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -1017,7 +1018,7 @@ func (m *MergingIter) heapRoot() []byte {
 func (m *MergingIter) synthesizeKeys(dir int8) (bool, *keyspan.Span, error) {
 	if invariants.Enabled {
 		if m.comparer.Compare(m.start, m.end) >= 0 {
-			panic(fmt.Sprintf("pebble: invariant violation: span start ≥ end: %s >= %s", m.start, m.end))
+			panic(errors.AssertionFailedf("pebble: invariant violation: span start ≥ end: %s >= %s", m.start, m.end))
 		}
 	}
 

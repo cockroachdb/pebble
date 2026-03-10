@@ -421,7 +421,7 @@ func TestLargeKeys(t *testing.T) {
 					end := parseLargeKey(rest)
 					require.NoError(t, b.DeleteRange(start, end, nil))
 				default:
-					panic(fmt.Sprintf("unknown op: %s", op))
+					t.Fatalf("unknown op: %s", op)
 				}
 			}
 			require.NoError(t, b.Commit(Sync))

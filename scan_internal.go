@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sync"
 
@@ -372,7 +371,7 @@ func (p *pointCollapsingIterator) verifySeqNum(kv *base.InternalKV) *base.Intern
 		return kv
 	}
 	if kv.SeqNum() != p.fixedSeqNum {
-		panic(fmt.Sprintf("expected foreign point key to have seqnum %d, got %d", p.fixedSeqNum, kv.SeqNum()))
+		panic(errors.AssertionFailedf("expected foreign point key to have seqnum %d, got %d", p.fixedSeqNum, kv.SeqNum()))
 	}
 	return kv
 }
@@ -438,7 +437,7 @@ func (p *pointCollapsingIterator) findNextEntry() *base.InternalKV {
 			p.pos = pcIterPosCur
 			return p.verifySeqNum(p.iterKV)
 		default:
-			panic(fmt.Sprintf("unexpected kind: %d", p.iterKV.Kind()))
+			panic(errors.AssertionFailedf("unexpected kind: %d", p.iterKV.Kind()))
 		}
 	}
 	p.resetKey()

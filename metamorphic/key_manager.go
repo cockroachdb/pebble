@@ -74,9 +74,9 @@ type bounds struct {
 
 func (b bounds) checkValid(cmp base.Compare) {
 	if c := cmp(b.smallest, b.largest); c > 0 {
-		panic(fmt.Sprintf("invalid bound [%q, %q]", b.smallest, b.largest))
+		panic(errors.AssertionFailedf("invalid bound [%q, %q]", b.smallest, b.largest))
 	} else if c == 0 && b.largestExcl {
-		panic(fmt.Sprintf("invalid bound [%q, %q)", b.smallest, b.largest))
+		panic(errors.AssertionFailedf("invalid bound [%q, %q)", b.smallest, b.largest))
 	}
 }
 
@@ -277,7 +277,7 @@ func (k *keyManager) SortedKeysForObj(o objID) []keyMeta {
 	slices.SortFunc(res, func(a, b keyMeta) int {
 		cmp := k.kf.Comparer.Compare(a.key, b.key)
 		if cmp == 0 {
-			panic(fmt.Sprintf("distinct keys %q and %q compared as equal", a.key, b.key))
+			panic(errors.AssertionFailedf("distinct keys %q and %q compared as equal", a.key, b.key))
 		}
 		return cmp
 	})
@@ -332,7 +332,7 @@ func (k *keyManager) KeysForExternalIngest(obj externalObjWithBounds) []keyMeta 
 	// Check for duplicate resulting keys.
 	for i := 1; i < len(res); i++ {
 		if k.kf.Comparer.Compare(res[i].key, res[i-1].key) == 0 {
-			panic(fmt.Sprintf("duplicate external ingest key %q", res[i].key))
+			panic(errors.AssertionFailedf("duplicate external ingest key %q", res[i].key))
 		}
 	}
 	return res
@@ -398,7 +398,7 @@ func (k *keyManager) addNewKey(key []byte) bool {
 
 	prefixLen := k.kf.Comparer.Split(key)
 	if prefixLen == 0 {
-		panic(fmt.Sprintf("key %q has zero length prefix", key))
+		panic(errors.AssertionFailedf("key %q has zero length prefix", key))
 	}
 	if _, ok := k.globalKeyPrefixesMap[string(key[:prefixLen])]; !ok {
 		insertSorted(k.kf.Comparer.Compare, &k.globalKeyPrefixes, key[:prefixLen])

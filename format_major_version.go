@@ -287,7 +287,7 @@ func (v FormatMajorVersion) resolveDefault() FormatMajorVersion {
 		return FormatMinSupported
 	}
 	if v < FormatMinSupported || v > internalFormatNewest {
-		panic(fmt.Sprintf("pebble: unsupported format major version: %s", v))
+		panic(errors.AssertionFailedf("pebble: unsupported format major version: %s", v))
 	}
 	return v
 }
@@ -335,7 +335,7 @@ func (v FormatMajorVersion) MaxBlobFileFormat() blob.FileFormat {
 	case v >= FormatValueSeparation:
 		return blob.FileFormatV1
 	default:
-		panic(fmt.Sprintf("pebble: format major version %s does not support blob files", v))
+		panic(errors.AssertionFailedf("pebble: format major version %s does not support blob files", v))
 	}
 }
 

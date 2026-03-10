@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/crlib/crhumanize"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/internal/filtersim"
 )
 
@@ -26,7 +27,7 @@ func SimulateFPR(avgSize int, fpBits int) (fprMean, fprStdDev, avgBitsPerKey flo
 		}
 		filter, ok := buildFilter(hc, fpBits)
 		if !ok {
-			panic(fmt.Sprintf("could not build filter (size=%d, bits=%d)", size, fpBits))
+			panic(errors.AssertionFailedf("could not build filter (size=%d, bits=%d)", size, fpBits))
 		}
 		sizeSum.Add(uint64(size))
 		filterSizeSum.Add(uint64(len(filter)))

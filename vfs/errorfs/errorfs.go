@@ -93,14 +93,14 @@ const (
 
 func (o OpKind) IsRead() bool {
 	if o < 0 || o >= numOpKinds {
-		panic(fmt.Sprintf("invalid op kind: %d", o))
+		panic(errors.AssertionFailedf("invalid op kind: %d", o))
 	}
 	return ReadOps.Contains(o)
 }
 
 func (o OpKind) IsWrite() bool {
 	if o < 0 || o >= numOpKinds {
-		panic(fmt.Sprintf("invalid op kind: %d", o))
+		panic(errors.AssertionFailedf("invalid op kind: %d", o))
 	}
 	return WriteOps.Contains(o)
 }

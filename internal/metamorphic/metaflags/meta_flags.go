@@ -63,7 +63,7 @@ type CommonFlags struct {
 func (c *CommonFlags) KeyFormat() metamorphic.KeyFormat {
 	keyFormat, ok := KeyFormats[c.KeyFormatName]
 	if !ok {
-		panic(fmt.Sprintf("unknown key format: %q", c.KeyFormatName))
+		panic(errors.AssertionFailedf("unknown key format: %q", c.KeyFormatName))
 	}
 	return keyFormat
 }
@@ -372,7 +372,7 @@ func (r *RunFlags) MakeRunOptions() ([]metamorphic.RunOption, error) {
 	case "mem":
 		opts = append(opts, metamorphic.UseInMemory)
 	default:
-		panic(fmt.Sprintf("unknown forced filesystem type: %q", r.FS))
+		panic(errors.AssertionFailedf("unknown forced filesystem type: %q", r.FS))
 	}
 	if r.InnerBinary != "" {
 		opts = append(opts, metamorphic.InnerBinary(r.InnerBinary))

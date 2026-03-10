@@ -6,11 +6,11 @@ package sstable
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
@@ -529,7 +529,7 @@ func (id shortID) IsValid() bool {
 
 func (id shortID) ToByte() byte {
 	if invariants.Enabled && !id.IsValid() {
-		panic(fmt.Sprintf("inavlid id %d", id))
+		panic(errors.AssertionFailedf("inavlid id %d", id))
 	}
 	return byte(id)
 }

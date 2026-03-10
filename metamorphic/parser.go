@@ -133,7 +133,7 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 	case *estimateDiskUsageOp:
 		return &t.dbID, nil, []interface{}{&t.start, &t.end}
 	}
-	panic(fmt.Sprintf("unsupported op type: %T", op))
+	panic(errors.AssertionFailedf("unsupported op type: %T", op))
 }
 
 // ignoreExtraArgs is used as a stand-in for a variable length argument for
@@ -601,11 +601,11 @@ func (p *parser) parseExternalObjsWithBounds(list []listElem) []externalObjWithB
 		}
 		if len(syntheticPrefix) > 0 {
 			if !bytes.HasPrefix(objs[i].bounds.Start, []byte(syntheticPrefix)) {
-				panic(fmt.Sprintf("invalid synthetic prefix %q [%x] %s [%x]",
+				panic(errors.AssertionFailedf("invalid synthetic prefix %q [%x] %s [%x]",
 					objs[i].bounds.Start, []byte(objs[i].bounds.Start), syntheticPrefix, []byte(syntheticPrefix)))
 			}
 			if !bytes.HasPrefix(objs[i].bounds.End, []byte(syntheticPrefix)) {
-				panic(fmt.Sprintf("invalid synthetic prefix %q %s", objs[i].bounds.End, syntheticPrefix))
+				panic(errors.AssertionFailedf("invalid synthetic prefix %q %s", objs[i].bounds.End, syntheticPrefix))
 			}
 			objs[i].syntheticPrefix = blockiter.SyntheticPrefix(syntheticPrefix)
 		}

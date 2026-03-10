@@ -7,7 +7,6 @@ package pebble // import "github.com/cockroachdb/pebble"
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"reflect"
 	"slices"
@@ -796,7 +795,7 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		return ErrReadOnly
 	}
 	if batch.db != nil && batch.db != d {
-		panic(fmt.Sprintf("pebble: batch db mismatch: %p != %p", batch.db, d))
+		panic(errors.AssertionFailedf("pebble: batch db mismatch: %p != %p", batch.db, d))
 	}
 
 	sync := opts.GetSync()
@@ -805,7 +804,7 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 	}
 
 	if fmv := d.FormatMajorVersion(); fmv < batch.minimumFormatMajorVersion {
-		panic(fmt.Sprintf(
+		panic(errors.AssertionFailedf(
 			"pebble: batch requires at least format major version %d (current: %d)",
 			batch.minimumFormatMajorVersion, fmv,
 		))

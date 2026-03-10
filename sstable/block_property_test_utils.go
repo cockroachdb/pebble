@@ -5,10 +5,10 @@
 package sstable
 
 import (
-	"fmt"
 	"math"
 	"strconv"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
@@ -54,7 +54,7 @@ func (sr testKeysBlockIntervalSyntheticReplacer) ApplySuffixReplacement(
 	// The testKeysSuffixIntervalMapper below maps keys with no suffix to
 	// [0, MaxUint64); ignore that.
 	if interval.Upper != math.MaxUint64 && uint64(decoded) < interval.Upper {
-		panic(fmt.Sprintf("the synthetic suffix %d is less than the property upper bound %d", decoded, interval.Upper))
+		panic(errors.AssertionFailedf("the synthetic suffix %d is less than the property upper bound %d", decoded, interval.Upper))
 	}
 	return BlockInterval{uint64(decoded), uint64(decoded) + 1}, nil
 }

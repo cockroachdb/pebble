@@ -6,7 +6,6 @@ package vfs
 
 import (
 	"cmp"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
 )
 
@@ -99,7 +99,7 @@ func (o OpType) String() string {
 	case OpTypeUnknown:
 		return "unknown"
 	default:
-		panic(fmt.Sprintf("vfs: unknown op type: %d", o))
+		panic(errors.AssertionFailedf("vfs: unknown op type: %d", o))
 	}
 }
 

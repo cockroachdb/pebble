@@ -5,8 +5,7 @@
 package sstable
 
 import (
-	"fmt"
-
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/sstableinternal"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -60,7 +59,7 @@ func MakeKeySchemas(keySchemas ...*colblk.KeySchema) KeySchemas {
 	m := make(KeySchemas, len(keySchemas))
 	for _, keySchema := range keySchemas {
 		if _, ok := m[keySchema.Name]; ok {
-			panic(fmt.Sprintf("duplicate key schemas with name %q", keySchema.Name))
+			panic(errors.AssertionFailedf("duplicate key schemas with name %q", keySchema.Name))
 		}
 		m[keySchema.Name] = keySchema
 	}

@@ -272,7 +272,8 @@ func TestCopyCheckpointOptions(t *testing.T) {
 			require.NoError(t, f.Close())
 			return string(newFile)
 		default:
-			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+			t.Fatalf("unrecognized command %q", td.Cmd)
+			return ""
 		}
 	})
 }
