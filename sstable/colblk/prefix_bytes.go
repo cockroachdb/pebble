@@ -702,7 +702,7 @@ var _ ColumnWriter = (*PrefixBytesBuilder)(nil)
 // column will share a column-wide prefix if there is one.
 func (b *PrefixBytesBuilder) Init(bundleSize int) {
 	if bundleSize > 0 && (bundleSize&(bundleSize-1)) != 0 {
-		panic(errors.AssertionFailedf("prefixbytes bundle size %d is not a power of 2", bundleSize))
+		panic(errors.AssertionFailedf("prefixbytes bundle size %d is not a power of 2", errors.Safe(bundleSize)))
 	}
 	*b = PrefixBytesBuilder{
 		bundleCalc: makeBundleCalc(uint32(bits.TrailingZeros32(uint32(bundleSize)))),
@@ -806,7 +806,7 @@ func (b *PrefixBytesBuilder) Put(key []byte, bytesSharedWithPrev int) {
 				panic(errors.AssertionFailedf("keys must be added in order: %q < %q", key, b.data[prev.lastKeyOff:]))
 			}
 			if bytesSharedWithPrev != crbytes.CommonPrefix(key, b.data[prev.lastKeyOff:]) {
-				panic(errors.AssertionFailedf("bytesSharedWithPrev %d != %d", bytesSharedWithPrev,
+				panic(errors.AssertionFailedf("bytesSharedWithPrev %d != %d", errors.Safe(bytesSharedWithPrev),
 					crbytes.CommonPrefix(key, b.data[prev.lastKeyOff:])))
 			}
 		}
@@ -933,7 +933,7 @@ func (b *PrefixBytesBuilder) UnsafeGet(i int) []byte {
 		}
 		return b.data[secondLastKeyOff:lastKeyOff]
 	default:
-		panic(errors.AssertionFailedf("UnsafeGet(%d) called on PrefixBytes with %d keys", i, b.nKeys))
+		panic(errors.AssertionFailedf("UnsafeGet(%d) called on PrefixBytes with %d keys", errors.Safe(i), errors.Safe(b.nKeys)))
 	}
 }
 
@@ -1032,7 +1032,7 @@ func writePrefixCompressed[T Uint](
 			lastRowOffset = off
 		}
 		if invariants.Enabled && len(buf) < int(destOffset)+len(suffix) {
-			panic(errors.AssertionFailedf("buf is too small: %d < %d", len(buf[destOffset:]), len(suffix)))
+			panic(errors.AssertionFailedf("buf is too small: %d < %d", errors.Safe(len(buf[destOffset:])), errors.Safe(len(suffix))))
 		}
 		memmove(
 			unsafe.Add(unsafe.Pointer(unsafe.SliceData(buf)), destOffset),
@@ -1043,7 +1043,7 @@ func writePrefixCompressed[T Uint](
 		offsetDeltas.UnsafeSet(i, destOffset)
 	}
 	if destOffset != T(sz.compressedDataLen) {
-		panic(errors.AssertionFailedf("wrote %d, expected %d", destOffset, sz.compressedDataLen))
+		panic(errors.AssertionFailedf("wrote %d, expected %d", errors.Safe(destOffset), errors.Safe(sz.compressedDataLen)))
 	}
 }
 
@@ -1057,7 +1057,7 @@ func (b *PrefixBytesBuilder) Finish(
 	col int, rows int, offset uint32, buf []byte,
 ) (endOffset uint32) {
 	if rows < b.nKeys-1 || rows > b.nKeys {
-		panic(errors.AssertionFailedf("PrefixBytes has accumulated %d keys, asked to Finish %d", b.nKeys, rows))
+		panic(errors.AssertionFailedf("PrefixBytes has accumulated %d keys, asked to Finish %d", errors.Safe(b.nKeys), errors.Safe(rows)))
 	}
 	if rows == 0 {
 		return offset
@@ -1104,7 +1104,7 @@ func (b *PrefixBytesBuilder) Size(rows int, offset uint32) uint32 {
 	if rows == 0 {
 		return offset
 	} else if rows != b.nKeys && rows != b.nKeys-1 {
-		panic(errors.AssertionFailedf("PrefixBytes has accumulated %d keys, asked to Size %d", b.nKeys, rows))
+		panic(errors.AssertionFailedf("PrefixBytes has accumulated %d keys, asked to Size %d", errors.Safe(b.nKeys), errors.Safe(rows)))
 	}
 	sz := &b.sizings[rows&1^1]
 	// The 1-byte bundleSize.

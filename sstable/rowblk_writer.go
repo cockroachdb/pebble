@@ -621,7 +621,7 @@ func (w *RawRowWriter) makeAddPointDecisionV3(
 	case InternalKeyKindSet, InternalKeyKindSetWithDelete, InternalKeyKindMerge,
 		InternalKeyKindDelete, InternalKeyKindSingleDelete, InternalKeyKindDeleteSized:
 	default:
-		panic(errors.AssertionFailedf("unexpected key kind %s", keyKind.String()))
+		panic(errors.AssertionFailedf("unexpected key kind %s", errors.Safe(keyKind.String())))
 	}
 	// If same user key, then the current key is obsolete if any of the
 	// following is true:

@@ -795,7 +795,7 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		return ErrReadOnly
 	}
 	if batch.db != nil && batch.db != d {
-		panic(errors.AssertionFailedf("pebble: batch db mismatch: %p != %p", batch.db, d))
+		panic(errors.AssertionFailedf("pebble: batch db mismatch: %p != %p", errors.Safe(batch.db), errors.Safe(d)))
 	}
 
 	sync := opts.GetSync()
@@ -994,7 +994,7 @@ func assertZeroed(v reflect.Value) error {
 		return assertZeroed(v.Elem())
 	case reflect.Slice:
 		if v.Len() > 0 {
-			return errors.AssertionFailedf("%s is not zeroed (%d len): %#v", typ.Name(), v.Len(), v)
+			return errors.AssertionFailedf("%s is not zeroed (%d len): %#v", errors.Safe(typ.Name()), errors.Safe(v.Len()), v)
 		}
 		resliced := v.Slice(0, v.Cap())
 		for i := 0; i < resliced.Len(); i++ {
@@ -1014,7 +1014,7 @@ func assertZeroed(v reflect.Value) error {
 		}
 		return nil
 	}
-	return errors.AssertionFailedf("%s (%s) is not zeroed: %#v", typ.Name(), typ.Kind(), v)
+	return errors.AssertionFailedf("%s (%s) is not zeroed: %#v", errors.Safe(typ.Name()), typ.Kind(), v)
 }
 
 func newIterAlloc() *iterAlloc {

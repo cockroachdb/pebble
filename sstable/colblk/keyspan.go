@@ -523,7 +523,7 @@ func (i *keyspanIter) Prev() (span *keyspan.Span, _ error) {
 // [startBoundIndex] as the span's start boundary.
 func (i *keyspanIter) gatherKeysForward(startBoundIndex int) *keyspan.Span {
 	if invariants.Enabled && startBoundIndex < 0 {
-		panic(errors.AssertionFailedf("out of bounds: i.startBoundIndex=%d", startBoundIndex))
+		panic(errors.AssertionFailedf("out of bounds: i.startBoundIndex=%d", errors.Safe(startBoundIndex)))
 	}
 	i.startBoundIndex = startBoundIndex
 	if i.startBoundIndex >= int(i.r.boundaryKeysCount)-1 {
@@ -552,7 +552,7 @@ func (i *keyspanIter) gatherKeysBackward(startBoundIndex int) *keyspan.Span {
 	}
 	if invariants.Enabled && i.startBoundIndex >= int(i.r.boundaryKeysCount)-1 {
 		panic(errors.AssertionFailedf("out of bounds: i.startBoundIndex=%d, i.r.boundaryKeysCount=%d",
-			i.startBoundIndex, i.r.boundaryKeysCount))
+			errors.Safe(i.startBoundIndex), errors.Safe(i.r.boundaryKeysCount)))
 	}
 	if !i.isNonemptySpan(i.startBoundIndex) {
 		if i.startBoundIndex == 0 {

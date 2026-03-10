@@ -600,7 +600,7 @@ func formatRowblkDataBlock(
 				vh := valblk.DecodeHandle(value[1:])
 				fmt.Fprintf(w, "\n         %s", fmtRecord(key, []byte(fmt.Sprintf("value handle %+v", vh))))
 			} else {
-				panic(errors.AssertionFailedf("unknown value prefix: %d", value[0]))
+				panic(errors.AssertionFailedf("unknown value prefix: %d", errors.Safe(value[0])))
 			}
 		}
 	})

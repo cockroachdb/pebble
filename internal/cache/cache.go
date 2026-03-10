@@ -152,7 +152,7 @@ func NewWithShards(size int64, shards int) *Cache {
 func (c *Cache) Ref() {
 	v := c.refs.Add(1)
 	if v <= 1 {
-		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", errors.Safe(v)))
 	}
 	c.trace("ref", v)
 }
@@ -163,7 +163,7 @@ func (c *Cache) Unref() {
 	c.trace("unref", v)
 	switch {
 	case v < 0:
-		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", errors.Safe(v)))
 	case v == 0:
 		c.destroy()
 	}
@@ -328,7 +328,7 @@ func (c *Handle) GetWithReadHandle(
 // REQUIRES: value.refs() == 1
 func (c *Handle) Set(fileNum base.DiskFileNum, offset uint64, value *Value) {
 	if n := value.refs(); n != 1 {
-		panic(errors.AssertionFailedf("pebble: Value has already been added to the cache: refs=%d", n))
+		panic(errors.AssertionFailedf("pebble: Value has already been added to the cache: refs=%d", errors.Safe(n)))
 	}
 	k := makeKey(c.id, fileNum, offset)
 	c.cache.getShard(k).set(k, value, false /*markAccessed*/)

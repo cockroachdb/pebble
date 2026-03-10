@@ -1019,7 +1019,7 @@ func setBasicLevelMetrics(lm *AllLevelMetrics, newVersion *manifest.Version) {
 		if invariants.Enabled {
 			levelFiles := newVersion.Levels[i].Slice()
 			if size := levelFiles.TableSizeSum(); l.Tables.Bytes != size {
-				panic(errors.AssertionFailedf("versionSet metrics L%d Size = %d, actual size = %d", i, l.Tables.Bytes, size))
+				panic(errors.AssertionFailedf("versionSet metrics L%d Size = %d, actual size = %d", errors.Safe(i), errors.Safe(l.Tables.Bytes), errors.Safe(size)))
 			}
 			refSize := uint64(0)
 			for f := range levelFiles.All() {
@@ -1028,21 +1028,18 @@ func setBasicLevelMetrics(lm *AllLevelMetrics, newVersion *manifest.Version) {
 			if refSize != l.EstimatedReferencesSize {
 				panic(errors.AssertionFailedf(
 					"versionSet metrics L%d EstimatedReferencesSize = %d, recomputed size = %d",
-					i, l.EstimatedReferencesSize, refSize,
-				))
+					errors.Safe(i), errors.Safe(l.EstimatedReferencesSize), errors.Safe(refSize)))
 			}
 
 			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTables.Count {
 				panic(errors.AssertionFailedf(
 					"versionSet metrics L%d NumVirtual = %d, actual NumVirtual = %d",
-					i, l.VirtualTables.Count, nVirtual,
-				))
+					errors.Safe(i), errors.Safe(l.VirtualTables.Count), errors.Safe(nVirtual)))
 			}
 			if vSize := levelFiles.VirtualTableSizeSum(); vSize != l.VirtualTables.Bytes {
 				panic(errors.AssertionFailedf(
 					"versionSet metrics L%d Virtual size = %d, actual size = %d",
-					i, l.VirtualTables.Bytes, vSize,
-				))
+					errors.Safe(i), errors.Safe(l.VirtualTables.Bytes), errors.Safe(vSize)))
 			}
 		}
 	}

@@ -78,7 +78,7 @@ func recordAlloc(purpose Purpose, n uintptr) {
 func recordFree(purpose Purpose, n uintptr) {
 	newVal := counters[purpose].InUseBytes.Add(-int64(n))
 	if invariants.Enabled && newVal < 0 {
-		panic(errors.AssertionFailedf("negative counter value %d", newVal))
+		panic(errors.AssertionFailedf("negative counter value %d", errors.Safe(newVal)))
 	}
 }
 

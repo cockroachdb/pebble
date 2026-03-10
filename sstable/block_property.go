@@ -529,7 +529,7 @@ func (id shortID) IsValid() bool {
 
 func (id shortID) ToByte() byte {
 	if invariants.Enabled && !id.IsValid() {
-		panic(errors.AssertionFailedf("inavlid id %d", id))
+		panic(errors.AssertionFailedf("inavlid id %d", errors.Safe(id)))
 	}
 	return byte(id)
 }

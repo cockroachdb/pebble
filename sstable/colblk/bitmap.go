@@ -50,7 +50,7 @@ func DecodeBitmap(b []byte, off uint32, bitCount int) (bitmap Bitmap, endOffset 
 	sz := bitmapRequiredSize(bitCount)
 	if len(b) < int(off)+sz {
 		panic(errors.AssertionFailedf("bitmap of %d bits requires at least %d bytes; provided with %d-byte slice",
-			bitCount, bitmapRequiredSize(bitCount), len(b[off:])))
+			errors.Safe(bitCount), errors.Safe(bitmapRequiredSize(bitCount)), errors.Safe(len(b[off:]))))
 	}
 	return Bitmap{
 		data:     makeUnsafeUint64Decoder(b[off:], sz>>align64Shift),
@@ -435,7 +435,7 @@ func bitmapToBinFormatter(f *binfmt.Formatter, tp treeprinter.Node, rows int) {
 		return
 	}
 	if encoding != defaultBitmapEncoding {
-		panic(errors.AssertionFailedf("unknown bitmap encoding %d", encoding))
+		panic(errors.AssertionFailedf("unknown bitmap encoding %d", errors.Safe(encoding)))
 	}
 	f.HexBytesln(1, "default bitmap encoding")
 	if aligned := align(f.RelativeOffset(), 8); aligned-f.RelativeOffset() != 0 {

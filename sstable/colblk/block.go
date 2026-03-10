@@ -253,7 +253,7 @@ func (e *BlockEncoder) Finish() []byte {
 	e.buf[e.pageOffset] = 0x00 // Padding byte
 	e.pageOffset++
 	if e.pageOffset != uint32(len(e.buf)) {
-		panic(errors.AssertionFailedf("expected pageOffset=%d to equal size=%d", e.pageOffset, len(e.buf)))
+		panic(errors.AssertionFailedf("expected pageOffset=%d to equal size=%d", errors.Safe(e.pageOffset), errors.Safe(len(e.buf))))
 	}
 	return e.buf
 }
@@ -288,14 +288,14 @@ func DecodeColumn[V any](
 	d *BlockDecoder, col int, rows int, dataType DataType, decodeFunc DecodeFunc[V],
 ) V {
 	if uint16(col) >= d.header.Columns {
-		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, d.header.Columns))
+		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", errors.Safe(col), errors.Safe(d.header.Columns)))
 	}
 	if dt := d.dataType(col); dt != dataType {
-		panic(errors.AssertionFailedf("column %d is type %s; not %s", col, dt, dataType))
+		panic(errors.AssertionFailedf("column %d is type %s; not %s", errors.Safe(col), dt, dataType))
 	}
 	v, endOffset := decodeFunc(d.data, d.pageStart(col), rows)
 	if nextColumnOff := d.pageStart(col + 1); endOffset != nextColumnOff {
-		panic(errors.AssertionFailedf("column %d decoded to offset %d; expected %d", col, endOffset, nextColumnOff))
+		panic(errors.AssertionFailedf("column %d decoded to offset %d; expected %d", errors.Safe(col), errors.Safe(endOffset), errors.Safe(nextColumnOff)))
 	}
 	return v
 }
@@ -334,7 +334,7 @@ func (d *BlockDecoder) Rows() int {
 // is encoded within the block header.
 func (d *BlockDecoder) DataType(col int) DataType {
 	if uint16(col) >= d.header.Columns {
-		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", col, d.header.Columns))
+		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", errors.Safe(col), errors.Safe(d.header.Columns)))
 	}
 	return d.dataType(col)
 }
@@ -432,10 +432,10 @@ func (d *BlockDecoder) formatColumn(
 	// between the column's pageOffset and the next column's pageOffset.
 	switch v := endOff - f.Offset(); cmp.Compare[int](v, 0) {
 	case +1:
-		panic(errors.AssertionFailedf("expected f.Offset() = %d, but found %d; did column %s format too few bytes?", endOff, f.Offset(), dataType))
+		panic(errors.AssertionFailedf("expected f.Offset() = %d, but found %d; did column %s format too few bytes?", errors.Safe(endOff), errors.Safe(f.Offset()), errors.Safe(dataType)))
 	case 0:
 	case -1:
-		panic(errors.AssertionFailedf("expected f.Offset() = %d, but found %d; did column %s format too many bytes?", endOff, f.Offset(), dataType))
+		panic(errors.AssertionFailedf("expected f.Offset() = %d, but found %d; did column %s format too many bytes?", errors.Safe(endOff), errors.Safe(f.Offset()), errors.Safe(dataType)))
 	}
 }
 

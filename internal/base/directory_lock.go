@@ -87,7 +87,7 @@ func LockDirectory(dirname string, fs vfs.FS) (*DirLock, error) {
 	l.refs.Store(1)
 	invariants.SetFinalizer(l, func(obj interface{}) {
 		if refs := obj.(*DirLock).refs.Load(); refs > 0 {
-			panic(errors.AssertionFailedf("lock for %q finalized with %d refs", dirname, refs))
+			panic(errors.AssertionFailedf("lock for %q finalized with %d refs", errors.Safe(dirname), errors.Safe(refs)))
 		}
 	})
 	return l, nil
@@ -135,7 +135,7 @@ func (l *DirLock) Close() error {
 	if v > 0 {
 		return nil
 	} else if v < 0 {
-		return errors.AssertionFailedf("pebble: unexpected %q DirLock reference count %d", l.dirname, v)
+		return errors.AssertionFailedf("pebble: unexpected %q DirLock reference count %d", errors.Safe(l.dirname), errors.Safe(v))
 	}
 	defer func() { l.fileLock = nil }()
 	return l.fileLock.Close()

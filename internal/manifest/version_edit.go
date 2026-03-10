@@ -1398,7 +1398,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				phys, ok := v.BlobFiles.LookupPhysical(ref.FileID)
 				if !ok {
 					return nil, errors.AssertionFailedf("pebble: blob file %s referenced by L%d.%s not found",
-						ref.FileID, level, f.TableNum)
+						ref.FileID, errors.Safe(level), f.TableNum)
 				}
 				// NB: It's possible that the reference already has an estimated
 				// physical size if the table was moved.

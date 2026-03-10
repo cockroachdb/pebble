@@ -248,7 +248,7 @@ func (b *UintBuilder) Get(row int) uint64 {
 	// possible that the array has not been grown to a size that includes [row].
 	if len(b.elems) <= row {
 		if invariants.Enabled && !b.useDefault {
-			panic(errors.AssertionFailedf("Get(%d) on UintBuilder with array of size %d", row, len(b.elems)))
+			panic(errors.AssertionFailedf("Get(%d) on UintBuilder with array of size %d", errors.Safe(row), errors.Safe(len(b.elems))))
 		}
 		return 0
 	}
@@ -311,7 +311,7 @@ func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, deltaBase uin
 		// base for b.stats.encoding.
 		if invariants.Enabled && invariants.Sometimes(1) && rows > 0 {
 			if enc, _ := b.recalculateEncoding(rows); enc != b.stats.encoding {
-				panic(errors.AssertionFailedf("fast and slow paths don't agree: %s vs %s", b.stats.encoding, enc))
+				panic(errors.AssertionFailedf("fast and slow paths don't agree: %s vs %s", errors.Safe(b.stats.encoding), errors.Safe(enc)))
 			}
 		}
 		return b.stats.encoding, b.stats.minimum
@@ -492,7 +492,7 @@ func uintsToBinFormatter(
 
 	e := UintEncoding(f.PeekUint(1)) // UintEncoding byte
 	if !e.IsValid() {
-		panic(errors.AssertionFailedf("%d", e))
+		panic(errors.AssertionFailedf("%d", errors.Safe(e)))
 	}
 	f.HexBytesln(1, "encoding: %s", e)
 

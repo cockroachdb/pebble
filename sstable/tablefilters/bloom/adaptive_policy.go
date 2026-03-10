@@ -116,14 +116,14 @@ func MaxBitsPerKey(numKeys uint, maxFilterSize uint64) uint32 {
 		if size := FilterSize(numKeys, result); size > maxFilterSize {
 			panic(errors.AssertionFailedf(
 				"MaxBitsPerKey invariant violated: FilterSize(%d, %d) = %d > %d",
-				numKeys, result, size, maxFilterSize))
+				errors.Safe(numKeys), errors.Safe(result), errors.Safe(size), errors.Safe(maxFilterSize)))
 		}
 		// Cross-check: FilterSize with result+1 should be > maxFilterSize.
 		if result < cacheLineBits {
 			if sizeNext := FilterSize(numKeys, result+1); sizeNext <= maxFilterSize {
 				panic(errors.AssertionFailedf(
 					"MaxBitsPerKey invariant violated: FilterSize(%d, %d) = %d <= %d but returned %d",
-					numKeys, result+1, sizeNext, maxFilterSize, result))
+					errors.Safe(numKeys), errors.Safe(result+1), errors.Safe(sizeNext), errors.Safe(maxFilterSize), errors.Safe(result)))
 			}
 		}
 	}

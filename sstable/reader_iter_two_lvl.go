@@ -411,7 +411,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) internalSeekGE(
 		// behind invariants.Enabled.
 		if i.secondLevel.boundsCmp > 0 == flags.TrySeekUsingNext() {
 			panic(errors.AssertionFailedf("inconsistency in optimization case 1 %t and case 2 %t",
-				i.secondLevel.boundsCmp > 0, flags.TrySeekUsingNext()))
+				errors.Safe(i.secondLevel.boundsCmp > 0), errors.Safe(flags.TrySeekUsingNext())))
 		}
 
 		if !flags.TrySeekUsingNext() {
@@ -680,7 +680,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		// behind invariants.Enabled.
 		if i.secondLevel.boundsCmp > 0 == flags.TrySeekUsingNext() {
 			panic(errors.AssertionFailedf("inconsistency in optimization case 1 %t and case 2 %t",
-				i.secondLevel.boundsCmp > 0, flags.TrySeekUsingNext()))
+				errors.Safe(i.secondLevel.boundsCmp > 0), errors.Safe(flags.TrySeekUsingNext())))
 		}
 
 		if !flags.TrySeekUsingNext() {
