@@ -4,10 +4,11 @@ package datadrivenutil
 
 import (
 	"encoding/hex"
-	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/cockroachdb/errors"
 )
 
 // Lines wraps a string, providing facilities for parsing individual lines.
@@ -88,7 +89,7 @@ func (fs Fields) KeyValue(key string) (Value, bool) {
 func (fs Fields) MustKeyValue(key string) Value {
 	f, ok := fs.KeyValue(key)
 	if !ok {
-		panic(fmt.Sprintf("unable to find required key-value pair %q", key))
+		panic(errors.AssertionFailedf("unable to find required key-value pair %q", key))
 	}
 	return f
 }

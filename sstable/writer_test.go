@@ -459,7 +459,7 @@ func TestWriterWithValueBlocks(t *testing.T) {
 						fmt.Fprintf(&buf, "%s:value-handle len %d block %d offset %d, att %d, same-pre %t\n",
 							kv.K, vh.ValueLen, vh.BlockNum, vh.OffsetInBlock, attribute, setWithSamePrefix)
 					} else {
-						panic(fmt.Sprintf("unknown value prefix: %d", lv.ValueOrHandle[0]))
+						panic(errors.AssertionFailedf("unknown value prefix: %d", lv.ValueOrHandle[0]))
 					}
 				} else {
 					fmt.Fprintf(&buf, "%s:%s\n", kv.K, lv.ValueOrHandle)

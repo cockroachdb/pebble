@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"math"
 	"sort"
@@ -2080,7 +2079,7 @@ func newFlushableBatch(batch *Batch, comparer *Comparer) (*flushableBatch, error
 
 func (b *flushableBatch) setSeqNum(seqNum base.SeqNum) {
 	if b.seqNum != 0 {
-		panic(fmt.Sprintf("pebble: flushableBatch.seqNum already set: %d", b.seqNum))
+		panic(errors.AssertionFailedf("pebble: flushableBatch.seqNum already set: %d", b.seqNum))
 	}
 	b.seqNum = seqNum
 	for i := range b.tombstones {

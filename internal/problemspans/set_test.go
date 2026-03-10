@@ -15,6 +15,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -90,12 +91,12 @@ func parseSetLine(line string, withTime bool) (base.UserKeyBounds, crtime.Mono) 
 	if withTime {
 		n, err := fmt.Sscanf(line, "%s %s %ds", &span1, &span2, &timeVal)
 		if err != nil || n != 3 {
-			panic(fmt.Sprintf("error parsing line %q: n=%d err=%v", line, n, err))
+			panic(errors.AssertionFailedf("error parsing line %q: n=%d err=%v", line, n, err))
 		}
 	} else {
 		n, err := fmt.Sscanf(line, "%s %s", &span1, &span2)
 		if err != nil || n != 2 {
-			panic(fmt.Sprintf("error parsing line %q: n=%d err=%v", line, n, err))
+			panic(errors.AssertionFailedf("error parsing line %q: n=%d err=%v", line, n, err))
 		}
 	}
 	bounds := base.ParseUserKeyBounds(span1 + " " + span2)

@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crhumanize"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/ascii"
 	"github.com/cockroachdb/pebble/internal/ascii/table"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -1262,10 +1263,10 @@ func (m *Metrics) StringForTests() string {
 	if math.MaxInt == math.MaxInt64 {
 		// Verify the 64-bit sizes, so they are kept updated.
 		if sstableReaderSize64bit != unsafe.Sizeof(sstable.Reader{}) {
-			panic(fmt.Sprintf("sstableReaderSize64bit should be updated to %d", unsafe.Sizeof(sstable.Reader{})))
+			panic(errors.AssertionFailedf("sstableReaderSize64bit should be updated to %d", unsafe.Sizeof(sstable.Reader{})))
 		}
 		if blobFileReaderSize64bit != unsafe.Sizeof(blob.FileReader{}) {
-			panic(fmt.Sprintf("blobFileReaderSize64bit should be updated to %d", unsafe.Sizeof(blob.FileReader{})))
+			panic(errors.AssertionFailedf("blobFileReaderSize64bit should be updated to %d", unsafe.Sizeof(blob.FileReader{})))
 		}
 	}
 	// Don't show cgo memory statistics as they can vary based on architecture,

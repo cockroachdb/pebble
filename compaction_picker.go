@@ -281,7 +281,7 @@ func newPickedTableCompaction(
 		panic("base level cannot be 0")
 	}
 	if startLevel > 0 && startLevel < baseLevel {
-		panic(fmt.Sprintf("invalid compaction: start level %d should not be empty (base level %d)",
+		panic(errors.AssertionFailedf("invalid compaction: start level %d should not be empty (base level %d)",
 			startLevel, baseLevel))
 	}
 
@@ -514,7 +514,7 @@ func (pc *pickedTableCompaction) maybeGrow(
 func (pc *pickedTableCompaction) maybeGrowL0ForBase(cmp base.Compare, maxExpandedBytes uint64) {
 	if invariants.Enabled {
 		if pc.startLevel.level != 0 {
-			panic(fmt.Sprintf("pc.startLevel.level is %d, expected 0", pc.startLevel.level))
+			panic(errors.AssertionFailedf("pc.startLevel.level is %d, expected 0", pc.startLevel.level))
 		}
 	}
 
@@ -1664,7 +1664,7 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 			}
 		}
 		if !found {
-			panic(fmt.Sprintf("file %s not found in level %d as expected", candidate.TableNum, startLevel))
+			panic(errors.AssertionFailedf("file %s not found in level %d as expected", candidate.TableNum, startLevel))
 		}
 	}
 

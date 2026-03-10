@@ -14,6 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unicode"
+
+	"github.com/cockroachdb/errors"
 )
 
 const Enabled = true
@@ -372,7 +374,7 @@ func nodeStateLocked(rec *Recording, n Node) *nodeState {
 		ns = &nodeState{recording: rec, node: n}
 		mu.nodeMap[n] = ns
 	} else if rec != ns.recording {
-		panic(fmt.Sprintf("node %v part of multiple recordings", n))
+		panic(errors.AssertionFailedf("node %v part of multiple recordings", n))
 	}
 	return ns
 }

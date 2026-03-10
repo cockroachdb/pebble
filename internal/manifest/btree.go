@@ -680,7 +680,7 @@ func (n *node[M]) verifyInvariants() {
 		}
 	}
 	if recomputedSubtreeCount != n.subtreeCount() {
-		panic(fmt.Sprintf("recomputed subtree count (%d) ≠ n.subtreeCount (%d)",
+		panic(errors.AssertionFailedf("recomputed subtree count (%d) ≠ n.subtreeCount (%d)",
 			recomputedSubtreeCount, n.subtreeCount()))
 	}
 }

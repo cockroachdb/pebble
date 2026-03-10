@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cockroachdb/errors"
 )
 
 // refcnt provides an atomic reference count, along with a tracing facility for
@@ -35,7 +37,7 @@ func (v *refcnt) refs() int32 {
 func (v *refcnt) acquire() {
 	switch n := v.val.Add(1); {
 	case n <= 1:
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", n))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", n))
 	}
 	v.trace("acquire")
 }
@@ -44,7 +46,7 @@ func (v *refcnt) release() bool {
 	n := v.val.Add(-1)
 	switch {
 	case n < 0:
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", n))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", n))
 	}
 	v.trace("release")
 	return n == 0

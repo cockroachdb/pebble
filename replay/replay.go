@@ -648,7 +648,7 @@ func (r *Runner) eventListener() pebble.EventListener {
 			case "L0", "memtable":
 				r.writeStallMetrics.countByReason[writeStallReason]++
 			default:
-				panic(fmt.Sprintf("unrecognized write stall reason %q", info.Reason))
+				panic(errors.AssertionFailedf("unrecognized write stall reason %q", info.Reason))
 			}
 			writeStallBegin = time.Now()
 		},

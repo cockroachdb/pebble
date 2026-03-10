@@ -423,12 +423,12 @@ func runIterOp(w io.Writer, it FragmentIterator, op string) {
 		s, err = it.Last()
 	case "seekge", "seek-ge":
 		if len(fields) == 1 {
-			panic(fmt.Sprintf("unable to parse iter op %q", op))
+			panic(errors.AssertionFailedf("unable to parse iter op %q", op))
 		}
 		s, err = it.SeekGE([]byte(fields[1]))
 	case "seeklt", "seek-lt":
 		if len(fields) == 1 {
-			panic(fmt.Sprintf("unable to parse iter op %q", op))
+			panic(errors.AssertionFailedf("unable to parse iter op %q", op))
 		}
 		s, err = it.SeekLT([]byte(fields[1]))
 	case "next":
@@ -436,7 +436,7 @@ func runIterOp(w io.Writer, it FragmentIterator, op string) {
 	case "prev":
 		s, err = it.Prev()
 	default:
-		panic(fmt.Sprintf("unrecognized iter op %q", fields[0]))
+		panic(errors.AssertionFailedf("unrecognized iter op %q", fields[0]))
 	}
 	switch {
 	case err != nil:

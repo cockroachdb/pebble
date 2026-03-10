@@ -5,8 +5,7 @@
 package keyspan
 
 import (
-	"fmt"
-
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
@@ -43,10 +42,10 @@ type Fragmenter struct {
 func (f *Fragmenter) checkInvariants(buf []Span) {
 	for i := 1; i < len(buf); i++ {
 		if f.Cmp(buf[i].Start, buf[i].End) >= 0 {
-			panic(fmt.Sprintf("pebble: empty pending span invariant violated: %s", buf[i]))
+			panic(errors.AssertionFailedf("pebble: empty pending span invariant violated: %s", buf[i]))
 		}
 		if f.Cmp(buf[i-1].Start, buf[i].Start) != 0 {
-			panic(fmt.Sprintf("pebble: pending span invariant violated: %s %s",
+			panic(errors.AssertionFailedf("pebble: pending span invariant violated: %s %s",
 				f.Format(buf[i-1].Start), f.Format(buf[i].Start)))
 		}
 	}
@@ -143,7 +142,7 @@ func (f *Fragmenter) Add(s Span) {
 	if f.flushedKey != nil {
 		switch c := f.Cmp(s.Start, f.flushedKey); {
 		case c < 0:
-			panic(fmt.Sprintf("pebble: start key (%s) < flushed key (%s)",
+			panic(errors.AssertionFailedf("pebble: start key (%s) < flushed key (%s)",
 				f.Format(s.Start), f.Format(f.flushedKey)))
 		}
 	}
@@ -161,7 +160,7 @@ func (f *Fragmenter) Add(s Span) {
 		// to compare against the first one.
 		switch c := f.Cmp(f.pending[0].Start, s.Start); {
 		case c > 0:
-			panic(fmt.Sprintf("pebble: keys must be added in order: %s > %s",
+			panic(errors.AssertionFailedf("pebble: keys must be added in order: %s > %s",
 				f.Format(f.pending[0].Start), f.Format(s.Start)))
 		case c == 0:
 			// The new span has the same start key as the existing pending

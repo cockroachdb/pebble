@@ -57,7 +57,7 @@ func (h *history) Recordf(op int, format string, args ...interface{}) {
 	}
 	if strings.Contains(format, "\n") {
 		// We could remove this restriction but suffixing every line with "#<seq>".
-		panic(fmt.Sprintf("format string must not contain \\n: %q", format))
+		panic(errors.AssertionFailedf("format string must not contain \\n: %q", format))
 	}
 
 	// We suffix every line with #<op> in order to provide a marker to locate
@@ -123,7 +123,7 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.mu.closed {
-		panic(fmt.Sprintf(format, args...))
+		panic(errors.AssertionFailedf(format, args...))
 	}
 	_ = h.log.Output(2, h.format("FATAL", format, args...))
 	// Store the first fatal error message.
@@ -221,7 +221,7 @@ func extractOp(line string) int {
 	}
 	v, err := strconv.Atoi(line[i+1 : i+1+j])
 	if err != nil {
-		panic(fmt.Sprintf("unable to parse line %q: %s", line, err))
+		panic(errors.AssertionFailedf("unable to parse line %q: %s", line, err))
 	}
 	return v
 }

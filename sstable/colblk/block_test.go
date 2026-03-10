@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 )
 
 type testColumnSpec struct {
@@ -77,7 +78,7 @@ var interestingIntRanges = []intRange{
 func TestBlockWriter(t *testing.T) {
 	panicIfErr := func(dataType DataType, stringValue string, err error) {
 		if err != nil {
-			panic(fmt.Sprintf("unable to decode %q as value for data type %s: %s", stringValue, dataType, err))
+			panic(errors.AssertionFailedf("unable to decode %q as value for data type %s: %s", stringValue, dataType, err))
 		}
 	}
 	var buf bytes.Buffer
@@ -110,7 +111,7 @@ func TestBlockWriter(t *testing.T) {
 				case DataTypePrefixBytes:
 					panic("unimplemented")
 				default:
-					panic(fmt.Sprintf("unsupported data type: %s", v))
+					panic(errors.AssertionFailedf("unsupported data type: %s", v))
 				}
 				colWriters[i].Reset()
 			}
@@ -149,7 +150,7 @@ func TestBlockWriter(t *testing.T) {
 				case DataTypePrefixBytes:
 					panic("unimplemented")
 				default:
-					panic(fmt.Sprintf("unsupported data type: %s", dataType))
+					panic(errors.AssertionFailedf("unsupported data type: %s", dataType))
 				}
 			}
 			return ""

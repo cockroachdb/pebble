@@ -6,7 +6,6 @@ package base
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -281,7 +280,7 @@ func ParseUserKeyBounds(s string) UserKeyBounds {
 	first, last, s := s[0], s[len(s)-1], s[1:len(s)-1]
 	start, end, ok := strings.Cut(s, ", ")
 	if !ok || first != '[' || (last != ']' && last != ')') {
-		panic(fmt.Sprintf("invalid bounds %q", s))
+		panic(errors.AssertionFailedf("invalid bounds %q", s))
 	}
 	return UserKeyBoundsEndExclusiveIf([]byte(start), []byte(end), last == ')')
 }

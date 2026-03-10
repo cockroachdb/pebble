@@ -1319,7 +1319,7 @@ func TestIteratorBoundsLifetimes(t *testing.T) {
 					case "both":
 						opts.KeyTypes = IterKeyTypePointsAndRanges
 					default:
-						panic(fmt.Sprintf("unrecognized key type %q", arg.Vals[0]))
+						panic(errors.AssertionFailedf("unrecognized key type %q", arg.Vals[0]))
 					}
 				}
 			}

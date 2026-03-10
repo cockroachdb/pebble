@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
 )
@@ -82,7 +83,7 @@ func TestIndexBlockEncoding(t *testing.T) {
 			return buf.String()
 
 		default:
-			panic(fmt.Sprintf("unknown command: %s", d.Cmd))
+			panic(errors.AssertionFailedf("unknown command: %s", d.Cmd))
 		}
 	})
 }

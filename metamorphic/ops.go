@@ -1915,7 +1915,7 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 	t.clearObj(o.batchID)
 
 	if o.externalObjID.tag() != externalObjTag {
-		panic(fmt.Sprintf("invalid externalObjID %s", o.externalObjID))
+		panic(errors.AssertionFailedf("invalid externalObjID %s", o.externalObjID))
 	}
 	// We add a unique number to the object name to avoid collisions with existing
 	// external objects (when using an initial starting state).

@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -210,7 +211,7 @@ func (kg *cockroachKeyGenerator) randKey(
 		knownKeys = kg.keyManager.knownKeys()
 	} else {
 		if cockroachkvs.Compare(bounds.Start, bounds.End) >= 0 {
-			panic(fmt.Sprintf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
+			panic(errors.AssertionFailedf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
 		}
 		knownKeys = kg.keyManager.knownKeysInRange(*bounds)
 	}
@@ -282,7 +283,7 @@ func (kg *cockroachKeyGenerator) randKey(
 		prefix = startPrefix
 		// Bounds have the same prefix, generate a suffix in-between.
 		if startSuffixIdx <= endSuffixIdx {
-			panic(fmt.Sprintf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
+			panic(errors.AssertionFailedf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
 		}
 		suffixIdx = kg.skewedSuffixInt(0.01)
 		for i := 0; !(startSuffixIdx >= suffixIdx && endSuffixIdx < suffixIdx); i++ {
@@ -320,7 +321,7 @@ func (kg *cockroachKeyGenerator) randKey(
 		key = append(key, kg.suffixSpace.ToMaterializedSuffix(suffixIdx)...)
 	}
 	if cockroachkvs.Compare(key, bounds.Start) < 0 || cockroachkvs.Compare(key, bounds.End) >= 0 {
-		panic(fmt.Sprintf("invalid randKey %q; bounds: [%q, %q) %v %v",
+		panic(errors.AssertionFailedf("invalid randKey %q; bounds: [%q, %q) %v %v",
 			key, bounds.Start, bounds.End,
 			cockroachkvs.Compare(key, bounds.Start),
 			cockroachkvs.Compare(key, bounds.End)))

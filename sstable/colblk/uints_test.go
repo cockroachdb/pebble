@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/stretchr/testify/require"
@@ -185,7 +186,7 @@ func TestUints(t *testing.T) {
 			uintsToBinFormatter(f, n, rows, nil)
 			return tp.String()
 		default:
-			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
+			panic(errors.AssertionFailedf("unknown command: %s", td.Cmd))
 		}
 	})
 }

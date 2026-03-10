@@ -6,9 +6,9 @@ package blockiter
 
 import (
 	"bytes"
-	"fmt"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -157,7 +157,7 @@ func (sp SyntheticPrefix) Apply(key []byte) []byte {
 func (sp SyntheticPrefix) Invert(key []byte) []byte {
 	res, ok := bytes.CutPrefix(key, sp)
 	if !ok {
-		panic(fmt.Sprintf("unexpected prefix: %s", key))
+		panic(errors.AssertionFailedf("unexpected prefix: %s", key))
 	}
 	return res
 }

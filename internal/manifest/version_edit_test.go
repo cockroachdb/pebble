@@ -336,7 +336,7 @@ func TestVersionEditDecode(t *testing.T) {
 				fmt.Fprint(&outputBuf, ve.DebugString(base.DefaultFormatter))
 				return outputBuf.String()
 			default:
-				panic(fmt.Sprintf("unknown command: %s", d.Cmd))
+				panic(errors.AssertionFailedf("unknown command: %s", d.Cmd))
 			}
 		})
 }

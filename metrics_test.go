@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
@@ -514,7 +515,7 @@ func TestMetrics(t *testing.T) {
 						panic(err)
 					}
 					if l >= numLevels {
-						panic(fmt.Sprintf("invalid level %d", l))
+						panic(errors.AssertionFailedf("invalid level %d", l))
 					}
 					buf.WriteString(fmt.Sprintf("%d\n", m.Levels[l].VirtualTables.Count))
 				} else if line == "remote-count" {
@@ -524,7 +525,7 @@ func TestMetrics(t *testing.T) {
 					cs := m.RemoteTablesTotal()
 					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(cs.Bytes)))
 				} else {
-					panic(fmt.Sprintf("invalid field: %s", line))
+					panic(errors.AssertionFailedf("invalid field: %s", line))
 				}
 			}
 			return buf.String()

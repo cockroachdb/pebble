@@ -371,7 +371,7 @@ func printIterState(
 			if iter.Valid() {
 				hasPoint, hasRange := iter.HasPointAndRange()
 				if hasPoint || !hasRange {
-					panic(fmt.Sprintf("pebble: unexpected HasPointAndRange (%t, %t)", hasPoint, hasRange))
+					panic(errors.AssertionFailedf("pebble: unexpected HasPointAndRange (%t, %t)", hasPoint, hasRange))
 				}
 				start, end := iter.RangeBounds()
 				fmt.Fprintf(b, "%s [%s-%s)", iter.Key(), formatASCIIKey(start), formatASCIIKey(end))

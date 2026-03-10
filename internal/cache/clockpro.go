@@ -25,6 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
@@ -265,14 +266,14 @@ func (c *shard) checkConsistency() {
 	// See the comment above the count{Hot,Cold,Test} fields.
 	switch {
 	case c.sizeHot < 0 || c.sizeCold < 0 || c.sizeTest < 0 || c.countHot < 0 || c.countCold < 0 || c.countTest < 0:
-		panic(fmt.Sprintf("pebble: unexpected negative: %d (%d bytes) hot, %d (%d bytes) cold, %d (%d bytes) test",
+		panic(errors.AssertionFailedf("pebble: unexpected negative: %d (%d bytes) hot, %d (%d bytes) cold, %d (%d bytes) test",
 			c.countHot, c.sizeHot, c.countCold, c.sizeCold, c.countTest, c.sizeTest))
 	case c.sizeHot > 0 && c.countHot == 0:
-		panic(fmt.Sprintf("pebble: mismatch %d hot size, %d hot count", c.sizeHot, c.countHot))
+		panic(errors.AssertionFailedf("pebble: mismatch %d hot size, %d hot count", c.sizeHot, c.countHot))
 	case c.sizeCold > 0 && c.countCold == 0:
-		panic(fmt.Sprintf("pebble: mismatch %d cold size, %d cold count", c.sizeCold, c.countCold))
+		panic(errors.AssertionFailedf("pebble: mismatch %d cold size, %d cold count", c.sizeCold, c.countCold))
 	case c.sizeTest > 0 && c.countTest == 0:
-		panic(fmt.Sprintf("pebble: mismatch %d test size, %d test count", c.sizeTest, c.countTest))
+		panic(errors.AssertionFailedf("pebble: mismatch %d test size, %d test count", c.sizeTest, c.countTest))
 	}
 }
 
@@ -581,7 +582,7 @@ func (c *shard) runHandCold(countColdDebug, sizeColdDebug int64) {
 	// arguments will appear within stack traces should we encounter
 	// a reproduction.
 	if c.countCold != countColdDebug || c.sizeCold != sizeColdDebug {
-		panic(fmt.Sprintf("runHandCold: cold count and size are %d, %d, arguments are %d and %d",
+		panic(errors.AssertionFailedf("runHandCold: cold count and size are %d, %d, arguments are %d and %d",
 			c.countCold, c.sizeCold, countColdDebug, sizeColdDebug))
 	}
 
@@ -643,7 +644,7 @@ func (c *shard) runHandTest() {
 		// sizeCold is > 0, so assert that countCold == 0. See the
 		// comment above count{Hot,Cold,Test}.
 		if c.countCold == 0 {
-			panic(fmt.Sprintf("pebble: mismatch %d cold size, %d cold count", c.sizeCold, c.countCold))
+			panic(errors.AssertionFailedf("pebble: mismatch %d cold size, %d cold count", c.sizeCold, c.countCold))
 		}
 
 		c.runHandCold(c.countCold, c.sizeCold)

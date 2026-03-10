@@ -1221,7 +1221,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			// There is already a TableBacking associated with fb.DiskFileNum.
 			// This should never happen. There must always be only one TableBacking
 			// associated with a backing sstable.
-			panic(fmt.Sprintf("pebble: duplicate file backing %s", fb.DiskFileNum.String()))
+			panic(errors.AssertionFailedf("pebble: duplicate file backing %s", fb.DiskFileNum.String()))
 		}
 		b.AddedFileBacking[fb.DiskFileNum] = fb
 	}

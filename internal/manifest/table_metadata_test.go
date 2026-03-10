@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +32,7 @@ func TestExtendBounds(t *testing.T) {
 			case base.InternalKeyKindRangeKeySet, base.InternalKeyKindRangeKeyUnset, base.InternalKeyKindRangeKeyDelete:
 				upper = base.MakeExclusiveSentinelKey(k, []byte(end))
 			default:
-				panic(fmt.Sprintf("unknown kind %s with end key", k))
+				panic(errors.AssertionFailedf("unknown kind %s with end key", k))
 			}
 		} else {
 			l, u := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])

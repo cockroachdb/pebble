@@ -5,10 +5,10 @@
 package manual
 
 import (
-	"fmt"
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -78,7 +78,7 @@ func recordAlloc(purpose Purpose, n uintptr) {
 func recordFree(purpose Purpose, n uintptr) {
 	newVal := counters[purpose].InUseBytes.Add(-int64(n))
 	if invariants.Enabled && newVal < 0 {
-		panic(fmt.Sprintf("negative counter value %d", newVal))
+		panic(errors.AssertionFailedf("negative counter value %d", newVal))
 	}
 }
 

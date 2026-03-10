@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -83,7 +84,7 @@ func TestIndexBlock(t *testing.T) {
 				case "invalidate":
 					it.Invalidate()
 				default:
-					panic(fmt.Sprintf("unknown command: %s", fields[0]))
+					panic(errors.AssertionFailedf("unknown command: %s", fields[0]))
 				}
 				if valid {
 					var bp string
@@ -103,7 +104,7 @@ func TestIndexBlock(t *testing.T) {
 			}
 			return buf.String()
 		default:
-			panic(fmt.Sprintf("unknown command: %s", d.Cmd))
+			panic(errors.AssertionFailedf("unknown command: %s", d.Cmd))
 		}
 	})
 }

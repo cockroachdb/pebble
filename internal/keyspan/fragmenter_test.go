@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/stretchr/testify/require"
 )
@@ -217,7 +218,7 @@ func TestFragmenter_EmitOrder(t *testing.T) {
 			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.Fields(line)
 				if len(fields) != 2 {
-					panic(fmt.Sprintf("datadriven test: expect 2 fields, found %d", len(fields)))
+					panic(errors.AssertionFailedf("datadriven test: expect 2 fields, found %d", len(fields)))
 				}
 				k := base.ParseInternalKey(fields[0])
 				f.Add(Span{
@@ -230,7 +231,7 @@ func TestFragmenter_EmitOrder(t *testing.T) {
 			f.Finish()
 			return buf.String()
 		default:
-			panic(fmt.Sprintf("unrecognized command %q", d.Cmd))
+			panic(errors.AssertionFailedf("unrecognized command %q", d.Cmd))
 		}
 	})
 }

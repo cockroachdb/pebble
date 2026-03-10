@@ -8,6 +8,7 @@ package bloom
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -159,7 +160,7 @@ const Family base.TableFilterFamily = "rocksdb.BuiltinBloomFilter"
 //	      20 |   6    | 0.140% (1 in 713)
 func FilterPolicy(bitsPerKey uint32) base.TableFilterPolicy {
 	if bitsPerKey < 1 {
-		panic(fmt.Sprintf("invalid bitsPerKey %d", bitsPerKey))
+		panic(errors.AssertionFailedf("invalid bitsPerKey %d", bitsPerKey))
 	}
 	return filterPolicyImpl{BitsPerKey: bitsPerKey}
 }

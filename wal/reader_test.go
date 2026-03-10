@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/datadrivenutil"
@@ -213,7 +214,7 @@ func TestReader(t *testing.T) {
 
 					fmt.Fprintf(&buf, "%d..%d: corrupt-tail\n", offset-length, offset)
 				default:
-					panic(fmt.Sprintf("unrecognized command %q", fields[0]))
+					panic(errors.AssertionFailedf("unrecognized command %q", fields[0]))
 				}
 			}
 			if td.HasArg("close-unclean") {

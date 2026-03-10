@@ -753,7 +753,7 @@ func (i *InterleavingIter) nextPos() {
 		i.enforceBoundsForward()
 		i.computeSmallestPos()
 	default:
-		panic(fmt.Sprintf("unexpected pos=%d", i.pos))
+		panic(errors.AssertionFailedf("unexpected pos=%d", i.pos))
 	}
 }
 
@@ -820,7 +820,7 @@ func (i *InterleavingIter) prevPos() {
 			i.pos = posKeyspanStart
 		}
 	default:
-		panic(fmt.Sprintf("unexpected pos=%d", i.pos))
+		panic(errors.AssertionFailedf("unexpected pos=%d", i.pos))
 	}
 }
 
@@ -886,7 +886,7 @@ func (i *InterleavingIter) yieldPosition(lowerBound []byte, advance func()) *bas
 			}
 			return i.yieldSyntheticSpanStartMarker(lowerBound)
 		default:
-			panic(fmt.Sprintf("unexpected interleavePos=%d", i.pos))
+			panic(errors.AssertionFailedf("unexpected interleavePos=%d", i.pos))
 		}
 	}
 }

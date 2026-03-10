@@ -432,10 +432,10 @@ func (d *BlockDecoder) formatColumn(
 	// between the column's pageOffset and the next column's pageOffset.
 	switch v := endOff - f.Offset(); cmp.Compare[int](v, 0) {
 	case +1:
-		panic(fmt.Sprintf("expected f.Offset() = %d, but found %d; did column %s format too few bytes?", endOff, f.Offset(), dataType))
+		panic(errors.AssertionFailedf("expected f.Offset() = %d, but found %d; did column %s format too few bytes?", endOff, f.Offset(), dataType))
 	case 0:
 	case -1:
-		panic(fmt.Sprintf("expected f.Offset() = %d, but found %d; did column %s format too many bytes?", endOff, f.Offset(), dataType))
+		panic(errors.AssertionFailedf("expected f.Offset() = %d, but found %d; did column %s format too many bytes?", endOff, f.Offset(), dataType))
 	}
 }
 

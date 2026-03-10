@@ -18,6 +18,7 @@ import (
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -272,7 +273,7 @@ func TestCopyCheckpointOptions(t *testing.T) {
 			require.NoError(t, f.Close())
 			return string(newFile)
 		default:
-			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+			panic(errors.AssertionFailedf("unrecognized command %q", td.Cmd))
 		}
 	})
 }

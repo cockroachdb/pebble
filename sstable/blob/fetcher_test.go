@@ -159,7 +159,7 @@ func TestValueFetcher(t *testing.T) {
 			fmt.Fprintf(&buf, "%s\n", val)
 			return buf.String()
 		default:
-			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
+			panic(errors.AssertionFailedf("unknown command: %s", td.Cmd))
 		}
 	})
 }

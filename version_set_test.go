@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -421,7 +422,7 @@ func TestLargeKeys(t *testing.T) {
 					end := parseLargeKey(rest)
 					require.NoError(t, b.DeleteRange(start, end, nil))
 				default:
-					panic(fmt.Sprintf("unknown op: %s", op))
+					panic(errors.AssertionFailedf("unknown op: %s", op))
 				}
 			}
 			require.NoError(t, b.Commit(Sync))

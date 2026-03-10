@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/crlib/crbytes"
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 	"github.com/stretchr/testify/require"
@@ -70,7 +71,7 @@ func TestRawBytes(t *testing.T) {
 			}
 			return out.String()
 		default:
-			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+			panic(errors.AssertionFailedf("unrecognized command %q", td.Cmd))
 		}
 	})
 }

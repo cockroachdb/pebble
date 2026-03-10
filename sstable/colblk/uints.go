@@ -311,7 +311,7 @@ func (b *UintBuilder) determineEncoding(rows int) (_ UintEncoding, deltaBase uin
 		// base for b.stats.encoding.
 		if invariants.Enabled && invariants.Sometimes(1) && rows > 0 {
 			if enc, _ := b.recalculateEncoding(rows); enc != b.stats.encoding {
-				panic(fmt.Sprintf("fast and slow paths don't agree: %s vs %s", b.stats.encoding, enc))
+				panic(errors.AssertionFailedf("fast and slow paths don't agree: %s vs %s", b.stats.encoding, enc))
 			}
 		}
 		return b.stats.encoding, b.stats.minimum
@@ -492,7 +492,7 @@ func uintsToBinFormatter(
 
 	e := UintEncoding(f.PeekUint(1)) // UintEncoding byte
 	if !e.IsValid() {
-		panic(fmt.Sprintf("%d", e))
+		panic(errors.AssertionFailedf("%d", e))
 	}
 	f.HexBytesln(1, "encoding: %s", e)
 

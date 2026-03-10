@@ -159,7 +159,7 @@ func TestMarker(t *testing.T) {
 			return ""
 
 		default:
-			panic(fmt.Sprintf("unknown command %q", td.Cmd))
+			panic(errors.AssertionFailedf("unknown command %q", td.Cmd))
 		}
 	})
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -75,7 +76,7 @@ func TestColumnarWriter(t *testing.T) {
 				}
 				return props.String()
 			default:
-				panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+				panic(errors.AssertionFailedf("unrecognized command %q", td.Cmd))
 			}
 		})
 	})
