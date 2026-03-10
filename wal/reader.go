@@ -403,7 +403,13 @@ func Copy(
 	w := record.NewLogWriter(dstFile, base.DiskFileNum(ll.Num), cfg)
 
 	r := newVirtualWALReader(ll)
-	defer func() { err = errors.CombineErrors(err, r.Close()) }()
+	defer func() {
+		err = errors.CombineErrors(err, r.Close())
+		// Ensure w is closed (w == nil is the case where it was already closed).
+		if w != nil {
+			err = errors.CombineErrors(err, w.Close())
+		}
+	}()
 	for {
 		rec, h, _, err := r.nextRecord()
 		if errors.Is(err, io.EOF) || errors.Is(err, record.ErrUnexpectedEOF) {
@@ -440,7 +446,9 @@ func Copy(
 	}
 	// Close on the LogWriter will sync the file (but not the containing
 	// directory).
-	if err := w.Close(); err != nil {
+	err = w.Close()
+	w = nil
+	if err != nil {
 		return errors.Wrapf(err, "copying WAL file %s", ll.Num)
 	}
 	return err
