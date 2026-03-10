@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/sstable/virtual"
+	"github.com/cockroachdb/redact"
 )
 
 // TableMetadata is maintained for leveled-ssts, i.e., they belong to a level of
@@ -347,7 +348,7 @@ type TableBacking struct {
 func (b *TableBacking) MustHaveRefs() {
 	if refs := b.refs.Load(); refs <= 0 {
 		panic(errors.AssertionFailedf("backing %s must have positive refcount (refs=%d)",
-			b.DiskFileNum, refs))
+			b.DiskFileNum, errors.Safe(refs)))
 	}
 }
 
@@ -366,7 +367,7 @@ func (b *TableBacking) IsUnused() bool {
 func (b *TableBacking) Unref() int32 {
 	v := b.refs.Add(-1)
 	if invariants.Enabled && v < 0 {
-		panic(errors.AssertionFailedf("pebble: invalid TableBacking refcounting: file %s has refcount %d", b.DiskFileNum, v))
+		panic(errors.AssertionFailedf("pebble: invalid TableBacking refcounting: file %s has refcount %d", b.DiskFileNum, errors.Safe(v)))
 	}
 	return v
 }
@@ -466,7 +467,7 @@ func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBacki
 	// to parse them back.
 	b.props.CompressionStats, err = block.ParseCompressionStats(props.CompressionStats)
 	if invariants.Enabled && err != nil {
-		panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", b.props.CompressionStats, b.DiskFileNum, err))
+		panic(errors.AssertionFailedf("pebble: error parsing compression stats %q for table %s: %v", errors.Safe(b.props.CompressionStats), b.DiskFileNum, err))
 	}
 	oldStatsValid := b.propsValid.Swap(true)
 	if invariants.Enabled && oldStatsValid {
@@ -1262,6 +1263,11 @@ const (
 	CompactionStateCompacting
 	CompactionStateCompacted
 )
+
+// SafeFormat implements redact.SafeFormatter.
+func (s CompactionState) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Print(redact.SafeString(s.String()))
+}
 
 // String implements fmt.Stringer.
 func (s CompactionState) String() string {

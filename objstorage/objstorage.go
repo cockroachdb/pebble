@@ -202,7 +202,7 @@ func (meta *ObjectMetadata) AssertValid() {
 	if !meta.IsRemote() {
 		// Verify all Remote fields are empty.
 		if meta.Remote != (ObjectMetadata{}).Remote {
-			panic(errors.AssertionFailedf("meta.Remote not empty: %#v", meta.Remote))
+			panic(errors.AssertionFailedf("meta.Remote not empty: %#v", errors.Safe(meta.Remote)))
 		}
 	} else {
 		if meta.Remote.CustomObjectName == "" {
@@ -214,7 +214,7 @@ func (meta *ObjectMetadata) AssertValid() {
 			}
 		}
 		if meta.Remote.CleanupMethod != SharedNoCleanup && meta.Remote.CleanupMethod != SharedRefTracking {
-			panic(errors.AssertionFailedf("invalid CleanupMethod %d", meta.Remote.CleanupMethod))
+			panic(errors.AssertionFailedf("invalid CleanupMethod %d", errors.Safe(meta.Remote.CleanupMethod)))
 		}
 		if meta.Remote.Storage == nil {
 			panic(errors.AssertionFailedf("Storage not set"))

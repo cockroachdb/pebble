@@ -372,7 +372,7 @@ func (m *failoverMonitor) accumulateDurationLocked(now time.Time) {
 	dur := now.Sub(m.mu.lastAccumulateIntoDurations)
 	if invariants.Enabled && dur < 0 {
 		panic(errors.AssertionFailedf("time regressed: last accumulated %s; now is %s",
-			m.mu.lastAccumulateIntoDurations, now))
+			errors.Safe(m.mu.lastAccumulateIntoDurations), errors.Safe(now)))
 	}
 	m.mu.lastAccumulateIntoDurations = now
 	if m.mu.dirIndex == primaryDirIndex {

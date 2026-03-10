@@ -2393,7 +2393,7 @@ func (d *DB) ingestApply(
 			}
 			if isShared && f.Level < sharedLevelsStart {
 				panic(errors.AssertionFailedf("cannot slot a shared file higher than the highest shared level: %d < %d",
-					f.Level, sharedLevelsStart))
+					errors.Safe(f.Level), errors.Safe(sharedLevelsStart)))
 			}
 			f.Meta = m
 			levelMetrics := metrics.level(f.Level)
@@ -2525,7 +2525,7 @@ func (d *DB) ingestApply(
 						d.opts.Comparer.FormatKey(exciseSpan.Start), d.opts.Comparer.FormatKey(exciseSpan.End),
 						exciseSeqNum, d.opts.Comparer.FormatKey(efos.protectedRanges[i].Start),
 						d.opts.Comparer.FormatKey(efos.protectedRanges[i].End), efos.seqNum,
-						efos.hasTransitioned(), efos.isClosed(), d.mu.versions.visibleSeqNum.Load()))
+						errors.Safe(efos.hasTransitioned()), errors.Safe(efos.isClosed()), d.mu.versions.visibleSeqNum.Load()))
 				}
 			}
 		}

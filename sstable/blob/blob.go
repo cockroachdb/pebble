@@ -318,7 +318,7 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 
 		if w.stats.BlockCount != uint32(w.indexEncoder.countBlocks) {
 			panic(errors.AssertionFailedf("block count mismatch: %d vs %d",
-				w.stats.BlockCount, w.indexEncoder.countBlocks))
+				errors.Safe(w.stats.BlockCount), errors.Safe(w.indexEncoder.countBlocks)))
 		}
 		if w.stats.BlockCount == 0 {
 			panic(errors.AssertionFailedf("no blocks written"))
@@ -641,7 +641,7 @@ func (p *FileProperties) set(key []byte, value []byte) {
 		var err error
 		p.CompressionStats, err = block.ParseCompressionStats(string(value))
 		if invariants.Enabled && err != nil {
-			panic(errors.AssertionFailedf("pebble: error parsing blob file compression stats %q", string(value)))
+			panic(errors.AssertionFailedf("pebble: error parsing blob file compression stats %q", errors.Safe(string(value))))
 		}
 
 	default:

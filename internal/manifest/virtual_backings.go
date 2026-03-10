@@ -148,8 +148,7 @@ func (bv *VirtualBackings) Remove(n base.DiskFileNum) {
 	if v.inUse() {
 		panic(errors.AssertionFailedf(
 			"backing %s still in use (useCount=%d protectionCount=%d)",
-			v.backing.DiskFileNum, len(v.virtualTables), v.protectionCount,
-		))
+			v.backing.DiskFileNum, errors.Safe(len(v.virtualTables)), errors.Safe(v.protectionCount)))
 	}
 	if v.heapIndex != -1 {
 		panic(errors.AssertionFailedf("backing %s still in rewriteCandidates heap", v.backing.DiskFileNum))

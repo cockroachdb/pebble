@@ -109,11 +109,11 @@ func AssertKeyCompare(comparer *base.Comparer, a, b []byte, kcmp KeyComparison) 
 	recomputed.CommonPrefixLen = int32(crbytes.CommonPrefix(a[:recomputed.PrefixLen], b[:bi]))
 	recomputed.UserKeyComparison = int32(comparer.Compare(a, b))
 	if recomputed.PrefixEqual() != bytes.Equal(a[:recomputed.PrefixLen], b[:bi]) {
-		panic(errors.AssertionFailedf("PrefixEqual()=%t doesn't hold: %q, %q", kcmp.PrefixEqual(), a, b))
+		panic(errors.AssertionFailedf("PrefixEqual()=%t doesn't hold: %q, %q", errors.Safe(kcmp.PrefixEqual()), a, b))
 	}
 	if recomputed != kcmp {
 		panic(errors.AssertionFailedf("KeyComparison of (%q, %q) = %s, ComparePrev gave %s",
-			a, b, recomputed, kcmp))
+			a, b, errors.Safe(recomputed), errors.Safe(kcmp)))
 	}
 }
 
@@ -285,7 +285,7 @@ func (w *defaultKeyWriter) ComparePrev(key []byte) KeyComparison {
 		}
 		if v := w.comparer.Compare(key, lp); v != int(cmpv.UserKeyComparison) {
 			panic(errors.AssertionFailedf("user key comparison mismatch: Compare(%q, %q) = %d ≠ %d",
-				key, lp, v, cmpv.UserKeyComparison))
+				key, lp, errors.Safe(v), cmpv.UserKeyComparison))
 		}
 	}
 	return cmpv
@@ -341,7 +341,7 @@ func (w *defaultKeyWriter) Finish(col, rows int, offset uint32, buf []byte) (nex
 	case defaultKeySchemaColumnSuffix:
 		return w.suffixes.Finish(0, rows, offset, buf)
 	default:
-		panic(errors.AssertionFailedf("unknown default key column: %d", col))
+		panic(errors.AssertionFailedf("unknown default key column: %d", errors.Safe(col)))
 	}
 }
 
@@ -807,7 +807,7 @@ func (w *DataBlockEncoder) MaterializeLastUserKey(appendTo []byte) []byte {
 // copy it if they require it to outlive a Reset of the writer.
 func (w *DataBlockEncoder) Finish(rows, size int) (finished []byte, lastKey base.InternalKey) {
 	if invariants.Enabled && rows != w.rows && rows != w.rows-1 {
-		panic(errors.AssertionFailedf("data block has %d rows; asked to finish %d", w.rows, rows))
+		panic(errors.AssertionFailedf("data block has %d rows; asked to finish %d", errors.Safe(w.rows), errors.Safe(rows)))
 	}
 
 	cols := len(w.Schema.ColumnTypes) + w.numFormatColumns()
@@ -1163,7 +1163,7 @@ func (v *DataBlockValidator) Validate(
 		ucmp := comparer.Compare(k.UserKey, prevKey.UserKey)
 		if ucmp < 0 || (ucmp == 0 && k.Trailer >= prevKey.Trailer) {
 			return errors.AssertionFailedf("key %s (row %d) and key %s (row %d) are out of order",
-				prevKey, i-1, k, i)
+				prevKey, errors.Safe(i-1), k, errors.Safe(i))
 		}
 		// Ensure the obsolete bit is set if the key is definitively obsolete.
 		// Not all sources of obsolescence are evident with only a data block
@@ -1171,7 +1171,7 @@ func (v *DataBlockValidator) Validate(
 		// a key to be obsolete).
 		if ucmp == 0 && prevKey.Kind() != base.InternalKeyKindMerge && !v.dec.isObsolete.At(i) {
 			return errors.AssertionFailedf("key %s (row %d) is shadowed by previous key %s but is not marked as obsolete",
-				k, i, prevKey)
+				k, errors.Safe(i), prevKey)
 		}
 		// Ensure that the prefix-changed bit is set correctly.
 		if i > 0 {
@@ -1180,7 +1180,7 @@ func (v *DataBlockValidator) Validate(
 			prefixChanged := !bytes.Equal(prevPrefix, currPrefix)
 			if prefixChanged != v.dec.prefixChanged.At(i) {
 				return errors.AssertionFailedf("prefix changed bit for key %q (row %d) is %t, expected %t [prev key was %q]",
-					k.UserKey, i, v.dec.prefixChanged.At(i), prefixChanged, prevKey.UserKey)
+					k.UserKey, errors.Safe(i), errors.Safe(v.dec.prefixChanged.At(i)), errors.Safe(prefixChanged), prevKey.UserKey)
 			}
 		}
 

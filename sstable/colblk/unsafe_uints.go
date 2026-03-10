@@ -40,7 +40,7 @@ func DecodeUnsafeUints(b []byte, off uint32, rows int) (_ UnsafeUints, endOffset
 	}
 	encoding := UintEncoding(b[off])
 	if !encoding.IsValid() {
-		panic(errors.AssertionFailedf("invalid encoding 0x%x", b[off:off+1]))
+		panic(errors.AssertionFailedf("invalid encoding 0x%x", errors.Safe(b[off:off+1])))
 	}
 	off++
 	var base uint64
@@ -87,7 +87,7 @@ type UnsafeOffsets struct {
 func DecodeUnsafeOffsets(b []byte, off uint32, rows int) (_ UnsafeOffsets, endOffset uint32) {
 	ints, endOffset := DecodeUnsafeUints(b, off, rows)
 	if ints.base != 0 || ints.width == 8 {
-		panic(errors.AssertionFailedf("unexpected offsets encoding (base=%d, width=%d)", ints.base, ints.width))
+		panic(errors.AssertionFailedf("unexpected offsets encoding (base=%d, width=%d)", errors.Safe(ints.base), errors.Safe(ints.width)))
 	}
 	return UnsafeOffsets{
 		ptr:   ints.ptr,

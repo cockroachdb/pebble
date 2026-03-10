@@ -267,13 +267,13 @@ func (c *shard) checkConsistency() {
 	switch {
 	case c.sizeHot < 0 || c.sizeCold < 0 || c.sizeTest < 0 || c.countHot < 0 || c.countCold < 0 || c.countTest < 0:
 		panic(errors.AssertionFailedf("pebble: unexpected negative: %d (%d bytes) hot, %d (%d bytes) cold, %d (%d bytes) test",
-			c.countHot, c.sizeHot, c.countCold, c.sizeCold, c.countTest, c.sizeTest))
+			errors.Safe(c.countHot), errors.Safe(c.sizeHot), errors.Safe(c.countCold), errors.Safe(c.sizeCold), errors.Safe(c.countTest), errors.Safe(c.sizeTest)))
 	case c.sizeHot > 0 && c.countHot == 0:
-		panic(errors.AssertionFailedf("pebble: mismatch %d hot size, %d hot count", c.sizeHot, c.countHot))
+		panic(errors.AssertionFailedf("pebble: mismatch %d hot size, %d hot count", errors.Safe(c.sizeHot), errors.Safe(c.countHot)))
 	case c.sizeCold > 0 && c.countCold == 0:
-		panic(errors.AssertionFailedf("pebble: mismatch %d cold size, %d cold count", c.sizeCold, c.countCold))
+		panic(errors.AssertionFailedf("pebble: mismatch %d cold size, %d cold count", errors.Safe(c.sizeCold), errors.Safe(c.countCold)))
 	case c.sizeTest > 0 && c.countTest == 0:
-		panic(errors.AssertionFailedf("pebble: mismatch %d test size, %d test count", c.sizeTest, c.countTest))
+		panic(errors.AssertionFailedf("pebble: mismatch %d test size, %d test count", errors.Safe(c.sizeTest), errors.Safe(c.countTest)))
 	}
 }
 
@@ -583,7 +583,7 @@ func (c *shard) runHandCold(countColdDebug, sizeColdDebug int64) {
 	// a reproduction.
 	if c.countCold != countColdDebug || c.sizeCold != sizeColdDebug {
 		panic(errors.AssertionFailedf("runHandCold: cold count and size are %d, %d, arguments are %d and %d",
-			c.countCold, c.sizeCold, countColdDebug, sizeColdDebug))
+			errors.Safe(c.countCold), errors.Safe(c.sizeCold), errors.Safe(countColdDebug), errors.Safe(sizeColdDebug)))
 	}
 
 	e := c.handCold
@@ -644,7 +644,7 @@ func (c *shard) runHandTest() {
 		// sizeCold is > 0, so assert that countCold == 0. See the
 		// comment above count{Hot,Cold,Test}.
 		if c.countCold == 0 {
-			panic(errors.AssertionFailedf("pebble: mismatch %d cold size, %d cold count", c.sizeCold, c.countCold))
+			panic(errors.AssertionFailedf("pebble: mismatch %d cold size, %d cold count", errors.Safe(c.sizeCold), errors.Safe(c.countCold)))
 		}
 
 		c.runHandCold(c.countCold, c.sizeCold)

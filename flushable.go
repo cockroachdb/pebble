@@ -121,7 +121,7 @@ type flushableEntry struct {
 func (e *flushableEntry) readerRef() {
 	switch v := e.readerRefs.Add(1); {
 	case v <= 1:
-		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", errors.Safe(v)))
 	}
 }
 
@@ -140,7 +140,7 @@ func (e *flushableEntry) readerUnrefHelper(
 ) {
 	switch v := e.readerRefs.Add(-1); {
 	case v < 0:
-		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", errors.Safe(v)))
 	case v == 0:
 		if e.releaseMemAccounting == nil {
 			panic("pebble: memtable reservation already released")

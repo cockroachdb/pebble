@@ -948,7 +948,7 @@ func (ww *failoverWriter) closeInternal() (logicalOffset int64, err error) {
 	ww.mu.closed = true
 	n, m := ww.q.popAll(err)
 	if err == nil && (n > 0 || m > 0) {
-		panic(errors.AssertionFailedf("no error but recordQueue had %d records and %d syncs", n, m))
+		panic(errors.AssertionFailedf("no error but recordQueue had %d records and %d syncs", errors.Safe(n), errors.Safe(m)))
 	}
 	return logicalOffset, err
 }

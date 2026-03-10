@@ -44,7 +44,7 @@ var SupportedBitsPerFingerprint = bitpacking.SupportedBitsPerValue
 //     for exact figures.
 func FilterPolicy(bitsPerFingerprint int) base.TableFilterPolicy {
 	if !slices.Contains(SupportedBitsPerFingerprint, bitsPerFingerprint) {
-		panic(errors.AssertionFailedf("invalid bitsPerFingerprint %d", bitsPerFingerprint))
+		panic(errors.AssertionFailedf("invalid bitsPerFingerprint %d", errors.Safe(bitsPerFingerprint)))
 	}
 	return filterPolicyImpl{BitsPerFingerprint: bitsPerFingerprint}
 }

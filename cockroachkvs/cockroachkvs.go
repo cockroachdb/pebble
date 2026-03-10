@@ -476,7 +476,7 @@ func normalizeVersionForCompare(a []byte) []byte {
 func normalizeEngineSuffixForCompare(a []byte) []byte {
 	// Check sentinel byte.
 	if invariants.Enabled && len(a) != int(a[len(a)-1]) {
-		panic(errors.AssertionFailedf("malformed suffix: %x (length byte is %d; but suffix is %d bytes)", a, a[len(a)-1], len(a)))
+		panic(errors.AssertionFailedf("malformed suffix: %x (length byte is %d; but suffix is %d bytes)", errors.Safe(a), errors.Safe(a[len(a)-1]), errors.Safe(len(a))))
 	}
 	// Strip off sentinel byte.
 	a = a[:len(a)-1]
@@ -659,7 +659,7 @@ func (kw *cockroachKeyWriter) WriteKey(
 	versionLen := int(key[len(key)-1])
 	if (len(key)-versionLen) != int(keyPrefixLen) || key[keyPrefixLen-1] != 0x00 {
 		panic(errors.AssertionFailedf("invalid %d-byte key with %d-byte prefix (%q)",
-			len(key), keyPrefixLen, key))
+			errors.Safe(len(key)), errors.Safe(keyPrefixLen), key))
 	}
 	// TODO(jackson): Avoid copying the previous suffix.
 	kw.prevSuffix = append(kw.prevSuffix[:0], key[keyPrefixLen:]...)
@@ -754,7 +754,7 @@ func (kw *cockroachKeyWriter) Finish(
 	case cockroachColUntypedVersion:
 		return kw.untypedVersions.Finish(0, rows, offset, buf)
 	default:
-		panic(errors.AssertionFailedf("unknown default key column: %d", col))
+		panic(errors.AssertionFailedf("unknown default key column: %d", errors.Safe(col)))
 	}
 }
 
@@ -793,7 +793,7 @@ func (ks *cockroachKeySeeker) init(
 	header := bd.Header()
 	header = header[:len(header)-colblk.DataBlockCustomHeaderSize]
 	if len(header) != 1 {
-		panic(errors.AssertionFailedf("invalid key schema-specific header %x", header))
+		panic(errors.AssertionFailedf("invalid key schema-specific header %x", errors.Safe(header)))
 	}
 	ks.suffixTypes = suffixTypes(header[0])
 }
@@ -1003,7 +1003,7 @@ func (ks *cockroachKeySeeker) MaterializeUserKey(
 	ki *colblk.PrefixBytesIter, prevRow, row int,
 ) []byte {
 	if invariants.Enabled && (row < 0 || row >= ks.roachKeys.Rows()) {
-		panic(errors.AssertionFailedf("invalid row number %d", row))
+		panic(errors.AssertionFailedf("invalid row number %d", errors.Safe(row)))
 	}
 	if prevRow+1 == row && prevRow >= 0 {
 		ks.roachKeys.SetNext(ki)
@@ -1148,7 +1148,7 @@ func (fk formatKeySuffix) Format(f fmt.State, c rune) {
 			fmt.Fprintf(f, "%d.%09d,%d", wallTime/1e9, wallTime%1e9, logical)
 		}
 	default:
-		panic(errors.AssertionFailedf("invalid suffix length: %d", len(fk)))
+		panic(errors.AssertionFailedf("invalid suffix length: %d", errors.Safe(len(fk))))
 	}
 }
 

@@ -117,7 +117,7 @@ func (v *Value[V]) Set(inner V) {
 // non-invariant builds.
 func CheckBounds[T Integer](i T, n T) {
 	if i < 0 || i >= n {
-		panic(errors.AssertionFailedf("index %d out of bounds [0, %d)", i, n))
+		panic(errors.AssertionFailedf("index %d out of bounds [0, %d)", errors.Safe(i), errors.Safe(n)))
 	}
 }
 
@@ -125,7 +125,7 @@ func CheckBounds[T Integer](i T, n T) {
 // in non-invariant builds.
 func SafeSub[T Integer](a, b T) T {
 	if a < b {
-		panic(errors.AssertionFailedf("underflow: %d - %d", a, b))
+		panic(errors.AssertionFailedf("underflow: %d - %d", errors.Safe(a), errors.Safe(b)))
 	}
 	return a - b
 }

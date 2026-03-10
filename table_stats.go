@@ -787,10 +787,9 @@ func sanityCheckStats(
 		stats.RangeDeletionsBytesEstimate > maxDeletionBytesEstimate {
 		if invariants.Enabled {
 			panic(errors.AssertionFailedf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
-				info, meta.TableNum,
+				errors.Safe(info), meta.TableNum,
 				redact.Safe(stats.PointDeletionsBytesEstimate),
-				redact.Safe(stats.RangeDeletionsBytesEstimate),
-			))
+				redact.Safe(stats.RangeDeletionsBytesEstimate)))
 		}
 		if v := lastSanityCheckStatsLog.Load(); v == 0 || v.Elapsed() > 30*time.Second {
 			logger.Errorf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",

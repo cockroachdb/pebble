@@ -188,6 +188,10 @@ func (k compactionKind) String() string {
 	return "?"
 }
 
+func (k compactionKind) SafeFormat(w redact.SafePrinter, _ rune) {
+	w.Print(redact.SafeString(k.String()))
+}
+
 // compactingOrFlushing returns "flushing" if the compaction kind is a flush,
 // otherwise it returns "compacting".
 func (k compactionKind) compactingOrFlushing() string {
@@ -1690,9 +1694,9 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 		for i := 0; i < n; i++ {
 			if logNum := d.mu.mem.queue[i].logNum; logNum >= minUnflushedLogNum {
 				panic(errors.AssertionFailedf("logNum invariant violated: flushing %d items; %d:type=%T,logNum=%d; %d:type=%T,logNum=%d",
-					n,
-					i, d.mu.mem.queue[i].flushable, logNum,
-					n, d.mu.mem.queue[n].flushable, minUnflushedLogNum))
+					errors.Safe(n),
+					errors.Safe(i), errors.Safe(d.mu.mem.queue[i].flushable), logNum,
+					errors.Safe(n), errors.Safe(d.mu.mem.queue[n].flushable), minUnflushedLogNum))
 			}
 		}
 	}
@@ -1837,7 +1841,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 	d.clearCompactingState(c, err != nil)
 	if c.UsesBurstConcurrency() {
 		if v := d.mu.compact.burstConcurrency.Add(-1); v < 0 {
-			panic(errors.AssertionFailedf("burst concurrency underflow: %d", v))
+			panic(errors.AssertionFailedf("burst concurrency underflow: %d", errors.Safe(v)))
 		}
 	}
 	delete(d.mu.compact.inProgress, c)
@@ -2101,7 +2105,7 @@ func (d *DB) runPickedCompaction(pc pickedCompaction, grantHandle CompactionGran
 			}
 		}
 		if doneChannel == nil {
-			panic(errors.AssertionFailedf("did not find manual compaction with id %d", pc.ManualID()))
+			panic(errors.AssertionFailedf("did not find manual compaction with id %d", errors.Safe(pc.ManualID())))
 		}
 	}
 
@@ -2267,7 +2271,7 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 			}
 			if c.UsesBurstConcurrency() {
 				if v := d.mu.compact.burstConcurrency.Add(-1); v < 0 {
-					panic(errors.AssertionFailedf("burst concurrency underflow: %d", v))
+					panic(errors.AssertionFailedf("burst concurrency underflow: %d", errors.Safe(v)))
 				}
 			}
 			delete(d.mu.compact.inProgress, c)

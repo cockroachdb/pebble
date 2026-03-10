@@ -81,7 +81,7 @@ func (e *indexBlockEncoder) AddBlockHandle(h block.Handle) {
 	if e.countBlocks == 0 {
 		e.offsets.Set(0, h.Offset)
 	} else if expected := e.offsets.Get(e.countBlocks); expected != h.Offset {
-		panic(errors.AssertionFailedf("block handle %s doesn't have expected offset of %d", h, expected))
+		panic(errors.AssertionFailedf("block handle %s doesn't have expected offset of %d", errors.Safe(h), errors.Safe(expected)))
 	}
 
 	// Increment the number blocks, and set the endOffset.
@@ -97,7 +97,7 @@ func (e *indexBlockEncoder) AddVirtualBlockMapping(
 ) {
 	// Require that virtual blocks are added in order.
 	if virtualBlockID < BlockID(e.countVirtualBlocks) {
-		panic(errors.AssertionFailedf("virtual block ID %d is out of order; expected %d", virtualBlockID, e.countVirtualBlocks))
+		panic(errors.AssertionFailedf("virtual block ID %d is out of order; expected %d", errors.Safe(virtualBlockID), errors.Safe(e.countVirtualBlocks)))
 	}
 	// If there's a gap within the virtual block IDs, we fill in the gap with
 	// entries that clarify these blocks are empty.

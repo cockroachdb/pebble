@@ -444,7 +444,7 @@ func (vs *ValueSeparator) maybeCheckInvariants() {
 			}
 			accumulatedPreservedValueSize := vs.blobTiers[base.HotTier].totalPreservedValueSize
 			if totalValueSize != accumulatedPreservedValueSize {
-				panic(errors.AssertionFailedf("totalPreservedValueSize mismatch: %d != %d", totalValueSize, accumulatedPreservedValueSize))
+				panic(errors.AssertionFailedf("totalPreservedValueSize mismatch: %d != %d", errors.Safe(totalValueSize), errors.Safe(accumulatedPreservedValueSize)))
 			}
 		}
 	}
@@ -467,7 +467,7 @@ func (vs *ValueSeparator) FinishOutput() (ValueSeparationMetadata, error) {
 		phys, ok := vs.inputBlobPhysicalFiles[ref.blobFileID]
 		if !ok {
 			return ValueSeparationMetadata{},
-				errors.AssertionFailedf("pebble: blob file %s not found among input sstables", ref.blobFileID)
+				errors.AssertionFailedf("pebble: blob file %s not found among input sstables", errors.Safe(ref.blobFileID))
 		}
 		references[i] = manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, ref.valueSize, phys)
 	}
