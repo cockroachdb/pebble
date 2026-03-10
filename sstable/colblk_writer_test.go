@@ -75,7 +75,8 @@ func TestColumnarWriter(t *testing.T) {
 				}
 				return props.String()
 			default:
-				panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+				t.Fatalf("unrecognized command %q", td.Cmd)
+				return ""
 			}
 		})
 	})

@@ -514,7 +514,7 @@ func TestMetrics(t *testing.T) {
 						panic(err)
 					}
 					if l >= numLevels {
-						panic(fmt.Sprintf("invalid level %d", l))
+						t.Fatalf("invalid level %d", l)
 					}
 					buf.WriteString(fmt.Sprintf("%d\n", m.Levels[l].VirtualTables.Count))
 				} else if line == "remote-count" {
@@ -524,7 +524,7 @@ func TestMetrics(t *testing.T) {
 					cs := m.RemoteTablesTotal()
 					buf.WriteString(fmt.Sprintf("%s\n", humanize.Bytes.Uint64(cs.Bytes)))
 				} else {
-					panic(fmt.Sprintf("invalid field: %s", line))
+					t.Fatalf("invalid field: %s", line)
 				}
 			}
 			return buf.String()

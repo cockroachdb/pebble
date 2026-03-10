@@ -743,7 +743,7 @@ var _ File = (*memFile)(nil)
 
 func (f *memFile) Close() error {
 	if n := f.n.refs.Add(-1); n < 0 {
-		panic(fmt.Sprintf("pebble: close of unopened file: %d", n))
+		panic(errors.AssertionFailedf("pebble: close of unopened file: %d", n))
 	}
 	// Set node pointer to nil, to cause panic on any subsequent method call. This
 	// is a defence-in-depth to catch use-after-close or double-close bugs.

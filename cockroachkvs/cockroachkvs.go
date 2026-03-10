@@ -754,7 +754,7 @@ func (kw *cockroachKeyWriter) Finish(
 	case cockroachColUntypedVersion:
 		return kw.untypedVersions.Finish(0, rows, offset, buf)
 	default:
-		panic(fmt.Sprintf("unknown default key column: %d", col))
+		panic(errors.AssertionFailedf("unknown default key column: %d", col))
 	}
 }
 

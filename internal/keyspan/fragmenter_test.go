@@ -217,7 +217,7 @@ func TestFragmenter_EmitOrder(t *testing.T) {
 			for line := range crstrings.LinesSeq(d.Input) {
 				fields := strings.Fields(line)
 				if len(fields) != 2 {
-					panic(fmt.Sprintf("datadriven test: expect 2 fields, found %d", len(fields)))
+					t.Fatalf("datadriven test: expect 2 fields, found %d", len(fields))
 				}
 				k := base.ParseInternalKey(fields[0])
 				f.Add(Span{
@@ -230,7 +230,8 @@ func TestFragmenter_EmitOrder(t *testing.T) {
 			f.Finish()
 			return buf.String()
 		default:
-			panic(fmt.Sprintf("unrecognized command %q", d.Cmd))
+			t.Fatalf("unrecognized command %q", d.Cmd)
+			return ""
 		}
 	})
 }

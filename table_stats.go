@@ -6,7 +6,6 @@ package pebble
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/cockroachdb/crlib/crmath"
@@ -787,7 +786,7 @@ func sanityCheckStats(
 	if stats.PointDeletionsBytesEstimate > maxDeletionBytesEstimate ||
 		stats.RangeDeletionsBytesEstimate > maxDeletionBytesEstimate {
 		if invariants.Enabled {
-			panic(fmt.Sprintf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
+			panic(errors.AssertionFailedf("%s: table %s has extreme deletion bytes estimates: point=%d range=%d",
 				info, meta.TableNum,
 				redact.Safe(stats.PointDeletionsBytesEstimate),
 				redact.Safe(stats.RangeDeletionsBytesEstimate),

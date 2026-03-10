@@ -276,7 +276,7 @@ func (t *Test) finalizeOptions() pebble.Options {
 	// test's data dir and can be shared among multiple dbs.
 	externalDir := o.FS.PathJoin(t.dir, "external")
 	if err := o.FS.MkdirAll(externalDir, 0755); err != nil {
-		panic(fmt.Sprintf("failed to create directory %q: %s", externalDir, err))
+		panic(errors.AssertionFailedf("failed to create directory %q: %s", externalDir, err))
 	}
 	// Even if externalStorageEnabled is false, the test uses externalStorage to
 	// emulate external ingestion.
@@ -289,7 +289,7 @@ func (t *Test) finalizeOptions() pebble.Options {
 	if t.testOpts.sharedStorageEnabled || t.testOpts.initialStatePath != "" {
 		sharedDir := o.FS.PathJoin(t.dir, "shared")
 		if err := o.FS.MkdirAll(sharedDir, 0755); err != nil {
-			panic(fmt.Sprintf("failed to create directory %q: %s", sharedDir, err))
+			panic(errors.AssertionFailedf("failed to create directory %q: %s", sharedDir, err))
 		}
 		m[""] = remote.NewLocalFS(sharedDir, o.FS)
 	}
@@ -441,7 +441,7 @@ func (t *Test) runOp(idx int, h historyRecorder) {
 			opTimeout *= 8
 		}
 		timer = time.AfterFunc(opTimeout, func() {
-			panic(fmt.Sprintf("operation took longer than %s: %s",
+			panic(errors.AssertionFailedf("operation took longer than %s: %s",
 				opTimeout, op.formattedString(t.testOpts.KeyFormat)))
 		})
 	}
@@ -464,14 +464,14 @@ func (t *Test) runOp(idx int, h historyRecorder) {
 
 func (t *Test) setBatch(id objID, b *pebble.Batch) {
 	if id.tag() != batchTag {
-		panic(fmt.Sprintf("invalid batch ID: %s", id))
+		panic(errors.AssertionFailedf("invalid batch ID: %s", id))
 	}
 	t.batches[id.slot()] = b
 }
 
 func (t *Test) setIter(id objID, i *pebble.Iterator) {
 	if id.tag() != iterTag {
-		panic(fmt.Sprintf("invalid iter ID: %s", id))
+		panic(errors.AssertionFailedf("invalid iter ID: %s", id))
 	}
 	t.iters[id.slot()] = &retryableIter{
 		iter:      i,
@@ -487,21 +487,21 @@ type readerCloser interface {
 
 func (t *Test) setSnapshot(id objID, s readerCloser) {
 	if id.tag() != snapTag {
-		panic(fmt.Sprintf("invalid snapshot ID: %s", id))
+		panic(errors.AssertionFailedf("invalid snapshot ID: %s", id))
 	}
 	t.snapshots[id.slot()] = s
 }
 
 func (t *Test) setExternalObj(id objID, meta externalObjMeta) {
 	if id.tag() != externalObjTag {
-		panic(fmt.Sprintf("invalid external object ID: %s", id))
+		panic(errors.AssertionFailedf("invalid external object ID: %s", id))
 	}
 	t.externalObjs[id.slot()] = meta
 }
 
 func (t *Test) getExternalObj(id objID) externalObjMeta {
 	if id.tag() != externalObjTag || t.externalObjs[id.slot()].sstMeta == nil {
-		panic(fmt.Sprintf("metamorphic test internal error: invalid external object ID: %s", id))
+		panic(errors.AssertionFailedf("metamorphic test internal error: invalid external object ID: %s", id))
 	}
 	return t.externalObjs[id.slot()]
 }
@@ -517,13 +517,13 @@ func (t *Test) clearObj(id objID) {
 	case snapTag:
 		t.snapshots[id.slot()] = nil
 	default:
-		panic(fmt.Sprintf("cannot clear ID: %s", id))
+		panic(errors.AssertionFailedf("cannot clear ID: %s", id))
 	}
 }
 
 func (t *Test) getBatch(id objID) *pebble.Batch {
 	if id.tag() != batchTag || t.batches[id.slot()] == nil {
-		panic(fmt.Sprintf("metamorphic test internal error: invalid batch ID: %s", id))
+		panic(errors.AssertionFailedf("metamorphic test internal error: invalid batch ID: %s", id))
 	}
 	return t.batches[id.slot()]
 }
@@ -539,13 +539,13 @@ func (t *Test) getCloser(id objID) io.Closer {
 	case snapTag:
 		return t.snapshots[id.slot()]
 	default:
-		panic(fmt.Sprintf("cannot close ID: %s", id))
+		panic(errors.AssertionFailedf("cannot close ID: %s", id))
 	}
 }
 
 func (t *Test) getIter(id objID) *retryableIter {
 	if id.tag() != iterTag {
-		panic(fmt.Sprintf("invalid iter ID: %s", id))
+		panic(errors.AssertionFailedf("invalid iter ID: %s", id))
 	}
 	return t.iters[id.slot()]
 }
@@ -559,7 +559,7 @@ func (t *Test) getReader(id objID) pebble.Reader {
 	case snapTag:
 		return t.snapshots[id.slot()]
 	default:
-		panic(fmt.Sprintf("invalid reader ID: %s", id))
+		panic(errors.AssertionFailedf("invalid reader ID: %s", id))
 	}
 }
 
@@ -570,7 +570,7 @@ func (t *Test) getWriter(id objID) pebble.Writer {
 	case batchTag:
 		return t.batches[id.slot()]
 	default:
-		panic(fmt.Sprintf("invalid writer ID: %s", id))
+		panic(errors.AssertionFailedf("invalid writer ID: %s", id))
 	}
 }
 
@@ -579,7 +579,7 @@ func (t *Test) getDB(id objID) *pebble.DB {
 	case dbTag:
 		return t.dbs[id.slot()-1]
 	default:
-		panic(fmt.Sprintf("invalid writer tag: %v", id.tag()))
+		panic(errors.AssertionFailedf("invalid writer tag: %v", id.tag()))
 	}
 }
 
@@ -608,7 +608,7 @@ func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan s
 			// have been referenced by some other operation before it's used as
 			// a receiver.
 			if i != 0 && receiver.tag() != dbTag {
-				panic(fmt.Sprintf("op %T on receiver %s; first reference of %s",
+				panic(errors.AssertionFailedf("op %T on receiver %s; first reference of %s",
 					ops[i], receiver, receiver))
 			}
 			// The initOp is a little special. We do want to store the objects it's
@@ -634,7 +634,7 @@ func computeSynchronizationPoints(ops []op) (opsWaitOn [][]int, opsDone []chan s
 		for _, syncObjID := range o.syncObjs() {
 			if vi, vok := lastOpReference[syncObjID]; vok {
 				if vi == i {
-					panic(fmt.Sprintf("%T has %s as syncObj multiple times", ops[i], syncObjID))
+					panic(errors.AssertionFailedf("%T has %s as syncObj multiple times", ops[i], syncObjID))
 				}
 				opsWaitOn[i] = append(opsWaitOn[i], vi)
 			}

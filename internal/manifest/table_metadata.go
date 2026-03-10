@@ -571,7 +571,7 @@ func (m *TableMetadata) SetCompactionState(to CompactionState) {
 		case CompactionStateCompacted:
 			panic(transitionErr())
 		default:
-			panic(fmt.Sprintf("pebble: unknown compaction state: %d", m.CompactionState))
+			panic(errors.AssertionFailedf("pebble: unknown compaction state: %d", m.CompactionState))
 		}
 	}
 	m.CompactionState = to
@@ -1273,6 +1273,6 @@ func (s CompactionState) String() string {
 	case CompactionStateCompacted:
 		return "Compacted"
 	default:
-		panic(fmt.Sprintf("pebble: unknown compaction state %d", s))
+		panic(errors.AssertionFailedf("pebble: unknown compaction state %d", s))
 	}
 }

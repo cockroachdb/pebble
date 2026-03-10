@@ -158,7 +158,7 @@ func FileTypeFromName(name string) FileType {
 			return FileType(i)
 		}
 	}
-	panic(fmt.Sprintf("unknown file type: %q", name))
+	panic(errors.AssertionFailedf("unknown file type: %q", name))
 }
 
 // SafeFormat implements redact.SafeFormatter.

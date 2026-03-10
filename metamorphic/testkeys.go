@@ -6,7 +6,6 @@ package metamorphic
 
 import (
 	"cmp"
-	"fmt"
 	"math/rand/v2"
 	"slices"
 
@@ -209,7 +208,7 @@ func (kg *testkeyKeyGenerator) randKey(newKeyProbability float64, bounds *pebble
 		knownKeys = kg.keyManager.knownKeys()
 	} else {
 		if kg.cmp(bounds.Start, bounds.End) >= 0 {
-			panic(fmt.Sprintf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
+			panic(errors.AssertionFailedf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
 		}
 		knownKeys = kg.keyManager.knownKeysInRange(*bounds)
 	}
@@ -283,7 +282,7 @@ func (kg *testkeyKeyGenerator) randKey(newKeyProbability float64, bounds *pebble
 		prefix = startPrefix
 		// Bounds have the same prefix, generate a suffix in-between.
 		if cmpSuffix(startSuffix, endSuffix) >= 0 {
-			panic(fmt.Sprintf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
+			panic(errors.AssertionFailedf("invalid bounds [%q, %q)", bounds.Start, bounds.End))
 		}
 		suffix = kg.skewedSuffixInt(0.01)
 		for i := 0; !(cmpSuffix(startSuffix, suffix) <= 0 && cmpSuffix(suffix, endSuffix) < 0); i++ {
@@ -315,7 +314,7 @@ func (kg *testkeyKeyGenerator) randKey(newKeyProbability float64, bounds *pebble
 		key = append(key, testkeys.Suffix(suffix)...)
 	}
 	if kg.cmp(key, bounds.Start) < 0 || kg.cmp(key, bounds.End) >= 0 {
-		panic(fmt.Sprintf("invalid randKey %q; bounds: [%q, %q) %v %v",
+		panic(errors.AssertionFailedf("invalid randKey %q; bounds: [%q, %q) %v %v",
 			key, bounds.Start, bounds.End, kg.cmp(key, bounds.Start), kg.cmp(key, bounds.End)))
 	}
 	// We might (rarely) produce an existing key here, that's ok.
@@ -373,7 +372,7 @@ func (kg *testkeyKeyGenerator) parseKey(k []byte) (prefix []byte, suffix int64) 
 	}
 	suffix, err := testkeys.ParseSuffix(k[n:])
 	if err != nil {
-		panic(fmt.Sprintf("error parsing suffix for key %q", k))
+		panic(errors.AssertionFailedf("error parsing suffix for key %q", k))
 	}
 	return k[:n:n], suffix
 }

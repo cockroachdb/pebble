@@ -299,7 +299,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) maybeVerifyKey(kv *base.InternalKV) 
 		lc := i.cmp(key, v.Lower.UserKey)
 		uc := i.cmp(key, v.Upper.UserKey)
 		if lc < 0 || uc > 0 || (uc == 0 && v.Upper.IsExclusiveSentinel()) {
-			panic(fmt.Sprintf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.Lower.UserKey, v.Upper.UserKey))
+			panic(errors.AssertionFailedf("key %q out of singleLeveliterator virtual bounds %s %s", key, v.Lower.UserKey, v.Upper.UserKey))
 		}
 	}
 	return kv

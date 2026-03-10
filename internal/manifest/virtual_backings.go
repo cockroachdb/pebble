@@ -369,7 +369,7 @@ func (bv *VirtualBackings) mustAdd(v *backingWithMetadata) {
 func (bv *VirtualBackings) mustGet(n base.DiskFileNum) *backingWithMetadata {
 	v, ok := bv.m[n]
 	if !ok {
-		panic(fmt.Sprintf("unknown backing %s", n))
+		panic(errors.AssertionFailedf("unknown backing %s", n))
 	}
 	return v
 }

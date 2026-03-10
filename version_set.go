@@ -5,7 +5,6 @@
 package pebble
 
 import (
-	"fmt"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -364,7 +363,7 @@ func (vs *versionSet) UpdateVersionLocked(
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
 			vs.nextFileNum.Load() <= uint64(ve.MinUnflushedLogNum) {
-			panic(fmt.Sprintf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
+			panic(errors.AssertionFailedf("pebble: inconsistent versionEdit minUnflushedLogNum %d",
 				ve.MinUnflushedLogNum))
 		}
 	}
@@ -928,7 +927,7 @@ func (vs *versionSet) append(v *manifest.Version) {
 			for f := range l.All() {
 				if f.Virtual {
 					if _, ok := vs.latest.virtualBackings.Get(f.TableBacking.DiskFileNum); !ok {
-						panic(fmt.Sprintf("%s is not in virtualBackings", f.TableBacking.DiskFileNum))
+						panic(errors.AssertionFailedf("%s is not in virtualBackings", f.TableBacking.DiskFileNum))
 					}
 				}
 			}
@@ -1020,27 +1019,27 @@ func setBasicLevelMetrics(lm *AllLevelMetrics, newVersion *manifest.Version) {
 		if invariants.Enabled {
 			levelFiles := newVersion.Levels[i].Slice()
 			if size := levelFiles.TableSizeSum(); l.Tables.Bytes != size {
-				panic(fmt.Sprintf("versionSet metrics L%d Size = %d, actual size = %d", i, l.Tables.Bytes, size))
+				panic(errors.AssertionFailedf("versionSet metrics L%d Size = %d, actual size = %d", i, l.Tables.Bytes, size))
 			}
 			refSize := uint64(0)
 			for f := range levelFiles.All() {
 				refSize += f.EstimatedReferenceSize()
 			}
 			if refSize != l.EstimatedReferencesSize {
-				panic(fmt.Sprintf(
+				panic(errors.AssertionFailedf(
 					"versionSet metrics L%d EstimatedReferencesSize = %d, recomputed size = %d",
 					i, l.EstimatedReferencesSize, refSize,
 				))
 			}
 
 			if nVirtual := levelFiles.NumVirtual(); nVirtual != l.VirtualTables.Count {
-				panic(fmt.Sprintf(
+				panic(errors.AssertionFailedf(
 					"versionSet metrics L%d NumVirtual = %d, actual NumVirtual = %d",
 					i, l.VirtualTables.Count, nVirtual,
 				))
 			}
 			if vSize := levelFiles.VirtualTableSizeSum(); vSize != l.VirtualTables.Bytes {
-				panic(fmt.Sprintf(
+				panic(errors.AssertionFailedf(
 					"versionSet metrics L%d Virtual size = %d, actual size = %d",
 					i, l.VirtualTables.Bytes, vSize,
 				))

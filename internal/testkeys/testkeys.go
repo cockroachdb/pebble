@@ -152,15 +152,15 @@ func compareTimestamps(a, b []byte) int {
 		return cmp.Compare(len(a), len(b))
 	}
 	if a[0] != suffixDelim || b[0] != suffixDelim {
-		panic(fmt.Sprintf("invalid suffixes %q %q", a, b))
+		panic(errors.AssertionFailedf("invalid suffixes %q %q", a, b))
 	}
 	ai, err := parseUintBytes(a[1:], 10, 64)
 	if err != nil {
-		panic(fmt.Sprintf("invalid test mvcc timestamp %q", a))
+		panic(errors.AssertionFailedf("invalid test mvcc timestamp %q", a))
 	}
 	bi, err := parseUintBytes(b[1:], 10, 64)
 	if err != nil {
-		panic(fmt.Sprintf("invalid test mvcc timestamp %q", b))
+		panic(errors.AssertionFailedf("invalid test mvcc timestamp %q", b))
 	}
 	return cmp.Compare(bi, ai)
 }
@@ -390,7 +390,7 @@ func generateAlphabetKey(buf, alphabet []byte, i, keyCount uint64) int {
 func computeAlphabetKeyIndex(key []byte, alphabet map[byte]uint64, n int) uint64 {
 	i, ok := alphabet[key[0]]
 	if !ok {
-		panic(fmt.Sprintf("unrecognized alphabet character %v", key[0]))
+		panic(errors.AssertionFailedf("unrecognized alphabet character %v", key[0]))
 	}
 	// How many keys exist that start with the preceding i characters? Each of
 	// the i characters themselves are a key, plus the count of all the keys
@@ -455,19 +455,19 @@ func RandomPrefixInRange(a, b []byte, rng *rand.Rand) []byte {
 
 func assertValidPrefix(p []byte) {
 	if !prefixRE.Match(p) {
-		panic(fmt.Sprintf("invalid prefix %q", p))
+		panic(errors.AssertionFailedf("invalid prefix %q", p))
 	}
 }
 
 func assertLess(a, b []byte) {
 	if Comparer.Compare(a, b) >= 0 {
-		panic(fmt.Sprintf("invalid key ordering: %q >= %q", a, b))
+		panic(errors.AssertionFailedf("invalid key ordering: %q >= %q", a, b))
 	}
 }
 
 func assertLE(a, b []byte) {
 	if Comparer.Compare(a, b) > 0 {
-		panic(fmt.Sprintf("invalid key ordering: %q > %q", a, b))
+		panic(errors.AssertionFailedf("invalid key ordering: %q > %q", a, b))
 	}
 }
 
@@ -553,12 +553,12 @@ func ExtractKVMeta(value []byte) base.KVMeta {
 	var res base.KVMeta
 	v, e := strconv.ParseUint(m[1], 10, 64)
 	if e != nil {
-		panic(fmt.Sprintf("invalid tiering span in KV metadata in %q", value))
+		panic(errors.AssertionFailedf("invalid tiering span in KV metadata in %q", value))
 	}
 	res.TieringSpanID = base.TieringSpanID(v)
 	v, e = strconv.ParseUint(m[2], 10, 64)
 	if e != nil {
-		panic(fmt.Sprintf("invalid tiering attr in KV metadata in %q", value))
+		panic(errors.AssertionFailedf("invalid tiering attr in KV metadata in %q", value))
 	}
 	res.TieringAttribute = base.TieringAttribute(v)
 	return res

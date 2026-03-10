@@ -152,7 +152,7 @@ func NewWithShards(size int64, shards int) *Cache {
 func (c *Cache) Ref() {
 	v := c.refs.Add(1)
 	if v <= 1 {
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
 	}
 	c.trace("ref", v)
 }
@@ -163,7 +163,7 @@ func (c *Cache) Unref() {
 	c.trace("unref", v)
 	switch {
 	case v < 0:
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
 		c.destroy()
 	}

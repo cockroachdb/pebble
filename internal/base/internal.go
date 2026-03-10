@@ -377,7 +377,7 @@ func ParseSeqNum(s string) SeqNum {
 	}
 	n, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		panic(fmt.Sprintf("error parsing %q as seqnum: %s", s, err))
+		panic(errors.AssertionFailedf("error parsing %q as seqnum: %s", s, err))
 	}
 	seqNum := SeqNum(n)
 	if batch {
@@ -390,7 +390,7 @@ func ParseSeqNum(s string) SeqNum {
 func ParseKind(s string) InternalKeyKind {
 	kind, ok := kindsMap[s]
 	if !ok {
-		panic(fmt.Sprintf("unknown kind: %q", s))
+		panic(errors.AssertionFailedf("unknown kind: %q", s))
 	}
 	return kind
 }
@@ -609,14 +609,14 @@ func ParseInternalKey(s string) InternalKey {
 	sep1 := strings.Index(s, "#")
 	sep2 := strings.Index(s, ",")
 	if sep1 == -1 || sep2 == -1 || sep2 < sep1 {
-		panic(fmt.Sprintf("invalid internal key %q", s))
+		panic(errors.AssertionFailedf("invalid internal key %q", s))
 	}
 
 	userKey := []byte(s[:sep1])
 	seqNum := ParseSeqNum(s[sep1+1 : sep2])
 	kind, ok := kindsMap[s[sep2+1:]]
 	if !ok {
-		panic(fmt.Sprintf("unknown kind: %q", s[sep2+1:]))
+		panic(errors.AssertionFailedf("unknown kind: %q", s[sep2+1:]))
 	}
 	return MakeInternalKey(userKey, seqNum, kind)
 }
@@ -627,7 +627,7 @@ func ParseInternalKV(s string) InternalKV {
 	// Cut the key at the first ":".
 	sepIdx := strings.Index(s, ":")
 	if sepIdx == -1 {
-		panic(fmt.Sprintf("invalid KV %q", s))
+		panic(errors.AssertionFailedf("invalid KV %q", s))
 	}
 	keyStr := strings.TrimSpace(s[:sepIdx])
 	valStr := strings.TrimSpace(s[sepIdx+1:])
@@ -643,7 +643,7 @@ func ParseInternalKeyRange(s string) (start, end InternalKey) {
 	s, ok2 := strings.CutSuffix(s, "]")
 	x := strings.Split(s, "-")
 	if !ok1 || !ok2 || len(x) != 2 {
-		panic(fmt.Sprintf("invalid key range %q", s))
+		panic(errors.AssertionFailedf("invalid key range %q", s))
 	}
 	return ParseInternalKey(x[0]), ParseInternalKey(x[1])
 }

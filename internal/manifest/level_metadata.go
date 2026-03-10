@@ -276,7 +276,7 @@ func (ls LevelSlice) verifyInvariants() {
 			length++
 		}
 		if ls.length != length {
-			panic(fmt.Sprintf("LevelSlice %s has length %d value; actual length is %d", ls, ls.length, length))
+			panic(errors.AssertionFailedf("LevelSlice %s has length %d value; actual length is %d", ls, ls.length, length))
 		}
 	}
 }

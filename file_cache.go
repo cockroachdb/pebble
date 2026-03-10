@@ -291,7 +291,7 @@ func (h *fileCacheHandle) findOrCreateBlob(
 func (h *fileCacheHandle) Evict(fileNum base.DiskFileNum, fileType base.FileType) {
 	defer func() {
 		if p := recover(); p != nil {
-			panic(fmt.Sprintf("pebble: evicting in-use file %s(%s): %v", fileNum, fileType, p))
+			panic(errors.AssertionFailedf("pebble: evicting in-use file %s(%s): %v", fileNum, fileType, p))
 		}
 	}()
 	h.fileCache.c.Evict(fileCacheKey{handle: h, fileNum: fileNum, fileType: fileType})
@@ -429,7 +429,7 @@ func (c *FileCache) Ref() {
 	// We don't want the reference count to ever go from 0 -> 1,
 	// cause a reference count of 0 implies that we've closed the cache.
 	if v <= 1 {
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
 	}
 }
 
@@ -438,7 +438,7 @@ func (c *FileCache) Unref() {
 	v := c.refs.Add(-1)
 	switch {
 	case v < 0:
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
 		c.c.Close()
 		c.c = genericcache.Cache[fileCacheKey, fileCacheValue, initFileOpts]{}

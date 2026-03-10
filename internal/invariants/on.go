@@ -7,9 +7,10 @@
 package invariants
 
 import (
-	"fmt"
 	"math/rand/v2"
 	"slices"
+
+	"github.com/cockroachdb/errors"
 )
 
 // Sometimes returns true percent% of the time if invariants are Enabled (i.e.
@@ -116,7 +117,7 @@ func (v *Value[V]) Set(inner V) {
 // non-invariant builds.
 func CheckBounds[T Integer](i T, n T) {
 	if i < 0 || i >= n {
-		panic(fmt.Sprintf("index %d out of bounds [0, %d)", i, n))
+		panic(errors.AssertionFailedf("index %d out of bounds [0, %d)", i, n))
 	}
 }
 
@@ -124,7 +125,7 @@ func CheckBounds[T Integer](i T, n T) {
 // in non-invariant builds.
 func SafeSub[T Integer](a, b T) T {
 	if a < b {
-		panic(fmt.Sprintf("underflow: %d - %d", a, b))
+		panic(errors.AssertionFailedf("underflow: %d - %d", a, b))
 	}
 	return a - b
 }

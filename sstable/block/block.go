@@ -236,7 +236,7 @@ func CastMetadata[T any](md *Metadata) *T {
 	var z T
 	if invariants.Enabled {
 		if uintptr(unsafe.Pointer(md))%unsafe.Alignof(z) != 0 {
-			panic(fmt.Sprintf("incorrect alignment for %T (%p)", z, unsafe.Pointer(md)))
+			panic(errors.AssertionFailedf("incorrect alignment for %T (%p)", z, unsafe.Pointer(md)))
 		}
 	}
 	return (*T)(unsafe.Pointer(md))

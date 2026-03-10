@@ -95,7 +95,7 @@ func TestBitmapFixed(t *testing.T) {
 			}
 
 		default:
-			panic(fmt.Sprintf("unknown command: %s", td.Cmd))
+			t.Fatalf("unknown command: %s", td.Cmd)
 		}
 		return buf.String()
 	})

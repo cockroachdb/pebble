@@ -410,7 +410,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) internalSeekGE(
 		// This invariant checking is important enough that we do not gate it
 		// behind invariants.Enabled.
 		if i.secondLevel.boundsCmp > 0 == flags.TrySeekUsingNext() {
-			panic(fmt.Sprintf("inconsistency in optimization case 1 %t and case 2 %t",
+			panic(errors.AssertionFailedf("inconsistency in optimization case 1 %t and case 2 %t",
 				i.secondLevel.boundsCmp > 0, flags.TrySeekUsingNext()))
 		}
 
@@ -679,7 +679,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		// This invariant checking is important enough that we do not gate it
 		// behind invariants.Enabled.
 		if i.secondLevel.boundsCmp > 0 == flags.TrySeekUsingNext() {
-			panic(fmt.Sprintf("inconsistency in optimization case 1 %t and case 2 %t",
+			panic(errors.AssertionFailedf("inconsistency in optimization case 1 %t and case 2 %t",
 				i.secondLevel.boundsCmp > 0, flags.TrySeekUsingNext()))
 		}
 

@@ -6,7 +6,6 @@ package sstable
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -66,11 +66,11 @@ func hamletWordCount() testKVs {
 			wordCount[k] = v
 		}
 		if len(wordCount) != 1710 {
-			panic(fmt.Sprintf("h.txt entry count: got %d, want %d", len(wordCount), 1710))
+			panic(errors.AssertionFailedf("h.txt entry count: got %d, want %d", len(wordCount), 1710))
 		}
 		for _, s := range hamletNonsenseWords {
 			if _, ok := wordCount[s]; ok {
-				panic(fmt.Sprintf("nonsense word %q was in h.txt", s))
+				panic(errors.AssertionFailedf("nonsense word %q was in h.txt", s))
 			}
 		}
 		hamletWordCountState.data = wordCount

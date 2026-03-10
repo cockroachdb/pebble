@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/crlib/crhumanize"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/ascii"
 	"golang.org/x/exp/constraints"
 )
@@ -48,7 +49,7 @@ func Define[T any](fields ...Element) Layout[T] {
 	for i := range fields {
 		if f, ok := fields[i].(Field[T]); ok {
 			if h := f.header(); len(h) > f.width() {
-				panic(fmt.Sprintf("header %q is too long for column %d", h, i))
+				panic(errors.AssertionFailedf("header %q is too long for column %d", h, i))
 			}
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/binaryfuse/bitpacking"
 	"github.com/zeebo/xxh3"
@@ -43,7 +44,7 @@ var SupportedBitsPerFingerprint = bitpacking.SupportedBitsPerValue
 //     for exact figures.
 func FilterPolicy(bitsPerFingerprint int) base.TableFilterPolicy {
 	if !slices.Contains(SupportedBitsPerFingerprint, bitsPerFingerprint) {
-		panic(fmt.Sprintf("invalid bitsPerFingerprint %d", bitsPerFingerprint))
+		panic(errors.AssertionFailedf("invalid bitsPerFingerprint %d", bitsPerFingerprint))
 	}
 	return filterPolicyImpl{BitsPerFingerprint: bitsPerFingerprint}
 }

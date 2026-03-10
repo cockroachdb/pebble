@@ -110,7 +110,8 @@ func TestPrefixBytes(t *testing.T) {
 			}
 			return out.String()
 		default:
-			panic(fmt.Sprintf("unrecognized command %q", td.Cmd))
+			t.Fatalf("unrecognized command %q", td.Cmd)
+			return ""
 		}
 	})
 }

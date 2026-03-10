@@ -716,11 +716,11 @@ func (s *l0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 		if invariants.Enabled {
 			bounds := f.UserKeyBounds()
 			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, bounds.Start) {
-				panic(fmt.Sprintf("f.minIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
+				panic(errors.AssertionFailedf("f.minIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
 					s.formatKey(s.orderedIntervals[f.minIntervalIndex].startKey.key), s.formatKey(bounds.Start)))
 			}
 			if !bytes.Equal(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, bounds.End.Key) {
-				panic(fmt.Sprintf("f.maxIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
+				panic(errors.AssertionFailedf("f.maxIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
 					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(bounds.Start)))
 			}
 		}
@@ -731,7 +731,7 @@ func (s *l0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 			bounds := f.UserKeyBounds()
 			if s.cmp(s.orderedIntervals[f.minIntervalIndex].startKey.key, bounds.Start) != 0 ||
 				s.cmp(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, bounds.End.Key) != 0 {
-				panic(fmt.Sprintf("file %s has inconsistent L0 Sublevel interval bounds: %s-%s, %s-%s", f.TableNum,
+				panic(errors.AssertionFailedf("file %s has inconsistent L0 Sublevel interval bounds: %s-%s, %s-%s", f.TableNum,
 					s.orderedIntervals[f.minIntervalIndex].startKey.key, s.orderedIntervals[f.maxIntervalIndex+1].startKey.key,
 					bounds.Start, bounds.End.Key))
 			}
@@ -792,7 +792,7 @@ func (s *l0Sublevels) Check() {
 	n := 0
 	for t := iter.First(); t != nil; n, t = n+1, iter.Next() {
 		if t.L0Index != n {
-			panic(fmt.Sprintf("t.L0Index out of sync (%d vs %d)", t.L0Index, n))
+			panic(errors.AssertionFailedf("t.L0Index out of sync (%d vs %d)", t.L0Index, n))
 		}
 	}
 	if len(s.Levels) != len(s.levelFiles) {
@@ -2020,7 +2020,7 @@ func (s *l0Sublevels) extendCandidateToRectangle(
 			if f.IsCompacting() {
 				// TODO(bilal): Do a logger.Fatalf instead of a panic, for
 				// cleaner unwinding and error messages.
-				panic(fmt.Sprintf("expected %s to not be compacting", f.TableNum))
+				panic(errors.AssertionFailedf("expected %s to not be compacting", f.TableNum))
 			}
 			if candidate.isIntraL0 && f.SeqNums.High >= candidate.earliestUnflushedSeqNum {
 				continue
@@ -2160,7 +2160,7 @@ func (o *L0Organizer) PerformUpdate(prepared L0PreparedUpdate, newVersion *Versi
 		if invariants.Enabled && invariants.Sometimes(10) {
 			expectedSublevels, err := newL0Sublevels(&o.levelMetadata, o.cmp, o.formatKey, o.flushSplitBytes)
 			if err != nil {
-				panic(fmt.Sprintf("error when regenerating sublevels: %s", err))
+				panic(errors.AssertionFailedf("error when regenerating sublevels: %s", err))
 			}
 			s1 := describeSublevels(o.formatKey, false /* verbose */, expectedSublevels.Levels)
 			s2 := describeSublevels(o.formatKey, false /* verbose */, newSublevels.Levels)
@@ -2168,7 +2168,7 @@ func (o *L0Organizer) PerformUpdate(prepared L0PreparedUpdate, newVersion *Versi
 				// Add verbosity.
 				s1 := describeSublevels(o.formatKey, true /* verbose */, expectedSublevels.Levels)
 				s2 := describeSublevels(o.formatKey, true /* verbose */, newSublevels.Levels)
-				panic(fmt.Sprintf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
+				panic(errors.AssertionFailedf("incremental L0 sublevel generation produced different output than regeneration: %s != %s", s1, s2))
 			}
 		}
 		o.l0Sublevels = newSublevels

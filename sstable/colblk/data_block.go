@@ -341,7 +341,7 @@ func (w *defaultKeyWriter) Finish(col, rows int, offset uint32, buf []byte) (nex
 	case defaultKeySchemaColumnSuffix:
 		return w.suffixes.Finish(0, rows, offset, buf)
 	default:
-		panic(fmt.Sprintf("unknown default key column: %d", col))
+		panic(errors.AssertionFailedf("unknown default key column: %d", col))
 	}
 }
 

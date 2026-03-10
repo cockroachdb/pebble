@@ -71,7 +71,7 @@ func parseOptions(
 		OnUnknown: func(name, value string) {
 			if strings.EqualFold(value, "false") {
 				// TODO(radu): audit all settings and use ParseBool wherever necessary.
-				panic(fmt.Sprintf("%s: boolean options can only be set to true", name))
+				panic(errors.AssertionFailedf("%s: boolean options can only be set to true", name))
 			}
 			switch name {
 			case "TestOptions":
@@ -272,7 +272,7 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.Opts.AllocatorSizeClasses != nil {
 		if fmt.Sprint(opts.Opts.AllocatorSizeClasses) != fmt.Sprint(pebble.JemallocSizeClasses) {
-			panic(fmt.Sprintf("unexpected AllocatorSizeClasses %v", opts.Opts.AllocatorSizeClasses))
+			panic(errors.AssertionFailedf("unexpected AllocatorSizeClasses %v", opts.Opts.AllocatorSizeClasses))
 		}
 		fmt.Fprint(&buf, "  use_jemalloc_size_classes=true\n")
 	}

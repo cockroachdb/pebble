@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 )
 
@@ -141,7 +142,7 @@ func (w *namedHistogram) Record(elapsed time.Duration) {
 		// Note that a histogram only drops recorded values that are out of range,
 		// but we clamp the latency value to the configured range to prevent such
 		// drops. This code path should never happen.
-		panic(fmt.Sprintf(`%s: recording value: %s`, w.name, err))
+		panic(errors.AssertionFailedf(`%s: recording value: %s`, w.name, err))
 	}
 }
 

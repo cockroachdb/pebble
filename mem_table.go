@@ -168,7 +168,7 @@ func (m *memTable) init(opts memTableOptions) {
 func (m *memTable) writerRef() {
 	switch v := m.writerRefs.Add(1); {
 	case v <= 1:
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
 	}
 }
 
@@ -176,7 +176,7 @@ func (m *memTable) writerRef() {
 func (m *memTable) writerUnref() (wasLastRef bool) {
 	switch v := m.writerRefs.Add(-1); {
 	case v < 0:
-		panic(fmt.Sprintf("pebble: inconsistent reference count: %d", v))
+		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", v))
 	case v == 0:
 		return true
 	default:

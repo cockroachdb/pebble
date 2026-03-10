@@ -1638,7 +1638,7 @@ func TestCompactionPickerScores(t *testing.T) {
 					}
 				}()
 			default:
-				panic(fmt.Sprintf("unrecognized `wait-for-compaction` value: %q", waitFor))
+				t.Fatalf("unrecognized `wait-for-compaction` value: %q", waitFor)
 			}
 
 			buf.Reset()

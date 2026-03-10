@@ -213,7 +213,7 @@ func TestReader(t *testing.T) {
 
 					fmt.Fprintf(&buf, "%d..%d: corrupt-tail\n", offset-length, offset)
 				default:
-					panic(fmt.Sprintf("unrecognized command %q", fields[0]))
+					t.Fatalf("unrecognized command %q", fields[0])
 				}
 			}
 			if td.HasArg("close-unclean") {

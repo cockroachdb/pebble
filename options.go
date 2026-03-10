@@ -121,7 +121,7 @@ func (t IterKeyType) String() string {
 	case IterKeyTypePointsAndRanges:
 		return "points-and-ranges"
 	default:
-		panic(fmt.Sprintf("unknown key type %d", t))
+		panic(errors.AssertionFailedf("unknown key type %d", t))
 	}
 }
 
@@ -1769,7 +1769,7 @@ func (o *Options) TargetFileSize(outputLevel int, baseLevel int) int64 {
 		return o.TargetFileSizes[0]
 	}
 	if baseLevel > outputLevel {
-		panic(fmt.Sprintf("invalid base level %d (output level %d)", baseLevel, outputLevel))
+		panic(errors.AssertionFailedf("invalid base level %d (output level %d)", baseLevel, outputLevel))
 	}
 	return o.TargetFileSizes[outputLevel-baseLevel+1]
 }
@@ -2757,7 +2757,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 		var ok bool
 		writerOpts.KeySchema, ok = o.KeySchemas[o.KeySchema]
 		if !ok {
-			panic(fmt.Sprintf("invalid schema %q", redact.Safe(o.KeySchema)))
+			panic(errors.AssertionFailedf("invalid schema %q", redact.Safe(o.KeySchema)))
 		}
 	}
 	if format >= sstable.TableFormatPebblev3 {
