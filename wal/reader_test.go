@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/datadrivenutil"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/vfs/vfstest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -302,4 +303,52 @@ func TestReader(t *testing.T) {
 			return fmt.Sprintf("unrecognized command %q", td.Cmd)
 		}
 	})
+}
+
+// TestCopyClosesWriterOnError verifies that wal.Copy closes the destination
+// file even when copying fails due to a corrupt WAL. This is a regression
+// test for https://github.com/cockroachdb/cockroach/issues/164128 where Copy
+// would leak the destination file handle on error.
+func TestCopyClosesWriterOnError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	memFS := vfs.NewMem()
+	fs, dumpOpenFiles := vfstest.WithOpenFileTracking(memFS)
+
+	// Write a WAL containing a record shorter than batchrepr.HeaderLen.
+	// The record will decode successfully at the record layer (valid
+	// chunk and checksum), but virtualWALReader.nextRecord will fail
+	// to parse the batch header, returning a CorruptionError that is
+	// not io.EOF or ErrUnexpectedEOF.
+	const logNum = 1
+	filename := makeLogFilename(NumWAL(logNum), 0)
+	f, err := fs.Create(filename, vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	w := record.NewLogWriter(f, base.DiskFileNum(logNum), record.LogWriterConfig{
+		WriteWALSyncOffsets: func() bool { return false },
+	})
+	// Write a record that is too short to contain a valid batch header.
+	_, err = w.WriteRecord([]byte("short"))
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	// Copy should fail.
+	logs, err := Scan(Dir{FS: fs})
+	require.NoError(t, err)
+	ll, ok := logs.Get(NumWAL(logNum))
+	require.True(t, ok)
+	copyDir := "copy"
+	require.NoError(t, fs.MkdirAll(copyDir, os.ModePerm))
+	err = Copy(fs, copyDir, ll, base.SeqNum(100), record.LogWriterConfig{
+		WriteWALSyncOffsets: func() bool { return false },
+	})
+	require.Error(t, err)
+	t.Logf("Copy error (expected): %v", err)
+
+	// Verify that no files are leaked.
+	var buf bytes.Buffer
+	dumpOpenFiles(&buf)
+	if buf.Len() > 0 {
+		t.Fatalf("leaked open files after Copy error:\n%s", buf.String())
+	}
 }
