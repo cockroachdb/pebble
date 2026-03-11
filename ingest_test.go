@@ -3702,6 +3702,157 @@ func TestIngestValidation(t *testing.T) {
 	}
 }
 
+func TestDisableWALIngest(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	writeSST := func(fs vfs.FS, path string, kvs [][2]string) {
+		t.Helper()
+		f, err := fs.Create(path, vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{})
+		for _, kv := range kvs {
+			require.NoError(t, w.Set([]byte(kv[0]), []byte(kv[1])))
+		}
+		require.NoError(t, w.Close())
+	}
+
+	// checkKVs verifies the DB contains exactly the expected key-value pairs.
+	checkKVs := func(t *testing.T, d *DB, expected [][2]string) {
+		t.Helper()
+		iter, _ := d.NewIter(nil)
+		var got [][2]string
+		for valid := iter.First(); valid; valid = iter.Next() {
+			got = append(got, [2]string{string(iter.Key()), string(iter.Value())})
+		}
+		require.NoError(t, iter.Close())
+		require.Equal(t, expected, got)
+	}
+
+	t.Run("Regular", func(t *testing.T) {
+		fs := vfs.NewMem()
+		wo := &WriteOptions{Sync: false}
+		d, err := Open("", &Options{
+			FS:         fs,
+			DisableWAL: true,
+			Logger:     testutils.Logger{T: t},
+		})
+		require.NoError(t, err)
+
+		// Write keys in "b" range to memtable.
+		for i := 0; i < 5; i++ {
+			require.NoError(t, d.Set([]byte(fmt.Sprintf("b%02d", i)), []byte("memval"), wo))
+		}
+
+		// Write SST with non-overlapping keys in "a" range.
+		var sstKVs [][2]string
+		for i := 0; i < 5; i++ {
+			sstKVs = append(sstKVs, [2]string{fmt.Sprintf("a%02d", i), "sstval"})
+		}
+		writeSST(fs, "ext", sstKVs)
+
+		// Ingest — should be regular (no memtable overlap).
+		stats, err := d.IngestWithStats(context.Background(), []string{"ext"})
+		require.NoError(t, err)
+		require.Equal(t, 0, stats.MemtableOverlappingFiles)
+
+		// Expected: "a" keys from SST then "b" keys from memtable.
+		var expected [][2]string
+		for i := 0; i < 5; i++ {
+			expected = append(expected, [2]string{fmt.Sprintf("a%02d", i), "sstval"})
+		}
+		for i := 0; i < 5; i++ {
+			expected = append(expected, [2]string{fmt.Sprintf("b%02d", i), "memval"})
+		}
+		checkKVs(t, d, expected)
+
+		// WAL should have no data written.
+		m := d.Metrics()
+		require.EqualValues(t, 0, m.WAL.BytesIn)
+
+		// Flush should not be an ingest-as-flush.
+		asIngestBefore := m.Flush.AsIngestCount
+		require.NoError(t, d.Flush())
+		m = d.Metrics()
+		require.Equal(t, asIngestBefore, m.Flush.AsIngestCount)
+
+		checkKVs(t, d, expected)
+
+		// Reopen and verify again.
+		require.NoError(t, d.Close())
+		d, err = Open("", &Options{
+			FS:         fs,
+			DisableWAL: true,
+			Logger:     testutils.Logger{T: t},
+		})
+		require.NoError(t, err)
+		checkKVs(t, d, expected)
+		require.NoError(t, d.Close())
+	})
+
+	t.Run("Flushable", func(t *testing.T) {
+		fs := vfs.NewMem()
+		wo := &WriteOptions{Sync: false}
+		d, err := Open("", &Options{
+			FS:         fs,
+			DisableWAL: true,
+			Logger:     testutils.Logger{T: t},
+		})
+		require.NoError(t, err)
+
+		// Write keys c00..c09 to memtable.
+		for i := 0; i < 10; i++ {
+			require.NoError(t, d.Set([]byte(fmt.Sprintf("c%02d", i)), []byte("memval"), wo))
+		}
+
+		// Write SST with keys c05..c15 (partially overlapping with memtable).
+		var sstKVs [][2]string
+		for i := 5; i < 15; i++ {
+			sstKVs = append(sstKVs, [2]string{fmt.Sprintf("c%02d", i), "sstval"})
+		}
+		writeSST(fs, "ext", sstKVs)
+
+		// Sample AsIngestCount before the ingest. The flushable ingest entry
+		// has flushForced=true, so a background flush may complete before we
+		// next sample metrics.
+		asIngestBefore := d.Metrics().Flush.AsIngestCount
+
+		// Ingest — should become a flushable ingest due to memtable overlap.
+		stats, err := d.IngestWithStats(context.Background(), []string{"ext"})
+		require.NoError(t, err)
+		require.Equal(t, 1, stats.MemtableOverlappingFiles)
+
+		// WAL should have no data written.
+		require.EqualValues(t, 0, d.Metrics().WAL.BytesIn)
+
+		// Expected: c00..c04 from memtable, c05..c14 from SST (higher seqnum wins).
+		var expected [][2]string
+		for i := 0; i < 5; i++ {
+			expected = append(expected, [2]string{fmt.Sprintf("c%02d", i), "memval"})
+		}
+		for i := 5; i < 15; i++ {
+			expected = append(expected, [2]string{fmt.Sprintf("c%02d", i), "sstval"})
+		}
+		checkKVs(t, d, expected)
+
+		// Flush should use the ingest-as-flush path.
+		require.NoError(t, d.Flush())
+		require.Equal(t, asIngestBefore+1, d.Metrics().Flush.AsIngestCount)
+
+		checkKVs(t, d, expected)
+
+		// Reopen and verify again.
+		require.NoError(t, d.Close())
+		d, err = Open("", &Options{
+			FS:         fs,
+			DisableWAL: true,
+			Logger:     testutils.Logger{T: t},
+		})
+		require.NoError(t, err)
+		checkKVs(t, d, expected)
+		require.NoError(t, d.Close())
+	})
+}
+
 // BenchmarkManySSTables measures the cost of various operations with various
 // counts of SSTables within the database.
 func BenchmarkManySSTables(b *testing.B) {
