@@ -575,8 +575,6 @@ type Options struct {
 	// Disable the write-ahead log (WAL). Disabling the write-ahead log prohibits
 	// crash recovery, but can improve performance if crash recovery is not
 	// needed (e.g. when only temporary state is being stored in the database).
-	//
-	// TODO(peter): untested
 	DisableWAL bool
 
 	// ErrorIfExists causes an error on Open if the database already exists.
