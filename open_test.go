@@ -2361,3 +2361,63 @@ func TestCrashDuringOpenRandomized(t *testing.T) {
 	}
 	require.NoError(t, recoveredDB.Close())
 }
+
+func TestDisableWAL(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	fs := vfs.NewMem()
+	opts := &Options{
+		DisableWAL: true,
+		FS:         fs,
+	}
+	wo := &WriteOptions{Sync: false}
+
+	// Write enough data to rotate through multiple memtables. The memtable
+	// ramp-up starts at 256KB and doubles, so ~1-2MB of data will create
+	// several small memtables without triggering an automatic flush.
+	ks := testkeys.Alpha(6)
+	const numKeys = 5000
+	type kv struct {
+		key, value []byte
+	}
+	written := make([]kv, 0, numKeys)
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+
+	for i := 0; i < numKeys; i++ {
+		key := testkeys.Key(ks, uint64(i))
+		value := []byte(fmt.Sprintf("value-%d", i))
+		require.NoError(t, d.Set(key, value, wo))
+		written = append(written, kv{key: slices.Clone(key), value: value})
+	}
+
+	m := d.Metrics()
+	require.Greater(t, m.MemTable.Count, int64(1),
+		"expected multiple memtables from writing data")
+	require.Zero(t, m.WAL.Size)
+	require.Zero(t, m.WAL.BytesIn)
+	require.Zero(t, m.WAL.BytesWritten)
+
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Close())
+
+	// Reopen with the same FS and verify all data is present.
+	d, err = Open("", opts)
+	require.NoError(t, err)
+
+	iter, err := d.NewIter(nil)
+	require.NoError(t, err)
+
+	var count int
+	for valid := iter.First(); valid; valid = iter.Next() {
+		require.Less(t, count, numKeys)
+		require.Equal(t, written[count].key, iter.Key())
+		require.Equal(t, written[count].value, iter.Value())
+		count++
+	}
+	require.NoError(t, iter.Close())
+	require.Equal(t, numKeys, count)
+
+	require.NoError(t, d.Close())
+}
