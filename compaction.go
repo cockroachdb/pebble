@@ -1862,6 +1862,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				}
 			}
 		}
+		d.mu.versions.metrics.Flush.FlushableMemBytesIn += inputBytes
 		d.maybeTransitionSnapshotsToFileOnlyLocked()
 	}
 	// Signal FlushEnd after installing the new readState. This helps for unit

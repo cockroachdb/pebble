@@ -224,6 +224,10 @@ type Metrics struct {
 		ZombieSize uint64
 		// The count of zombie memtables.
 		ZombieCount int64
+		// CumulativeFlushableMemBytes is a monotonically increasing counter of
+		// the cumulative inuseBytes of all flushables that have been created.
+		// It includes the current mutable memtable's inuseBytes.
+		CumulativeFlushableMemBytes uint64
 	}
 
 	Keys KeysMetrics
@@ -470,6 +474,9 @@ type FlushMetrics struct {
 	// AsIngestBytes is a monotonically increasing counter of the bytes flushed
 	// for flushables that originated as ingestion operations.
 	AsIngestBytes uint64
+	// FlushableMemBytesIn is a monotonically increasing counter of the
+	// inuseBytes consumed by flush operations.
+	FlushableMemBytesIn uint64
 }
 
 type KeysMetrics struct {
