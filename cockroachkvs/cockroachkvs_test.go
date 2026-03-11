@@ -178,11 +178,13 @@ func TestKeySchema_KeyWriter(t *testing.T) {
 				k := parseUserKey(line)
 				fmt.Fprintf(&buf, "Parse(%s) = hex:%x\n", line, k)
 				kcmp := kw.ComparePrev(k)
-				if v := Compare(k, keyBuf); v < 0 {
-					t.Fatalf("line %d: Compare(%s, hex:%x) = %d", i, line, keyBuf, v)
-				} else if v != int(kcmp.UserKeyComparison) {
-					t.Fatalf("line %d: Compare(%s, hex:%x) = %d; kcmp.UserKeyComparison = %d",
-						i, line, keyBuf, v, kcmp.UserKeyComparison)
+				if len(keyBuf) > 0 {
+					if v := Compare(k, keyBuf); v < 0 {
+						t.Fatalf("line %d: Compare(%s, hex:%x) = %d", i, line, keyBuf, v)
+					} else if v != int(kcmp.UserKeyComparison) {
+						t.Fatalf("line %d: Compare(%s, hex:%x) = %d; kcmp.UserKeyComparison = %d",
+							i, line, keyBuf, v, kcmp.UserKeyComparison)
+					}
 				}
 
 				fmt.Fprintf(&buf, "%02d: ComparePrev(%s): PrefixLen=%d; CommonPrefixLen=%d; UserKeyComparison=%d\n",

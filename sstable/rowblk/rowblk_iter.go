@@ -643,7 +643,9 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 			}
 			// Else k is invalid, and left as nil
 
-			if i.cmp(searchKey, k) > 0 {
+			// An empty user key (from an empty data block separator in
+			// range-key-only sstables) is less than all non-empty keys.
+			if len(k) == 0 || i.cmp(searchKey, k) > 0 {
 				// The search key is greater than the user key at this restart point.
 				// Search beyond this restart point, since we are trying to find the
 				// first restart point with a user key >= the search key.
@@ -707,7 +709,9 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 
 	i.maybeReplaceSuffix()
 
-	if !hiddenPoint && i.cmp(i.ikv.K.UserKey, key) >= 0 {
+	// UserKey could be an empty. The empty slice might or might not be a valid
+	// key; but if it is, it is always smaller than all other keys.
+	if !hiddenPoint && (len(key) == 0 || (len(i.ikv.K.UserKey) > 0 && i.cmp(i.ikv.K.UserKey, key) >= 0)) {
 		// Initialize i.lazyValue
 		if !i.lazyValueHandling.hasValuePrefix ||
 			i.ikv.K.Kind() != base.InternalKeyKindSet {
@@ -720,7 +724,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 		return &i.ikv
 	}
 	for i.Next(); i.Valid(); i.Next() {
-		if i.cmp(i.ikv.K.UserKey, key) >= 0 {
+		if len(i.ikv.K.UserKey) > 0 && i.cmp(i.ikv.K.UserKey, key) >= 0 {
 			// i.Next() has already initialized i.ikv.LazyValue.
 			return &i.ikv
 		}
@@ -760,6 +764,13 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 			return nil
 		}
 		searchKey = key[len(syntheticPrefix):]
+		if len(searchKey) == 0 {
+			// The search key equals the synthetic prefix, which is less than all
+			// keys in the block.
+			i.offset = -1
+			i.nextOffset = 0
+			return nil
+		}
 	}
 
 	i.clearCache()
@@ -826,7 +837,9 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 			}
 			// Else k is invalid, and left as nil
 
-			if i.cmp(searchKey, k) > 0 {
+			// An empty user key (from an empty data block separator in
+			// range-key-only sstables) is less than all non-empty keys.
+			if len(k) == 0 || i.cmp(searchKey, k) > 0 {
 				// The search key is greater than the user key at this restart point.
 				// Search beyond this restart point, since we are trying to find the
 				// first restart point with a user key >= the search key.
@@ -854,7 +867,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 			// suffix replacement though, a@4 should be returned as a@4 sorts before
 			// a@3.
 			ikv := i.First()
-			if i.cmp(ikv.K.UserKey, key) < 0 {
+			if len(ikv.K.UserKey) > 0 && i.cmp(ikv.K.UserKey, key) < 0 {
 				return ikv
 			}
 		}
@@ -930,7 +943,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 
 			// If the binary search point is actually less than the search key, post
 			// replacement, bump the target offset.
-			if i.cmp(i.ikv.K.UserKey, key) < 0 {
+			if len(i.ikv.K.UserKey) == 0 || i.cmp(i.ikv.K.UserKey, key) < 0 {
 				i.offset = targetOffset
 				if index+1 < i.numRestarts {
 					// if index+1 is within the i.data bounds, use it to find the target
@@ -967,7 +980,7 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 		// NB: we don't use the hiddenPoint return value of decodeInternalKey
 		// since we want to stop as soon as we reach a key >= ikey.UserKey, so
 		// that we can reverse.
-		if i.cmp(i.ikv.K.UserKey, key) >= 0 {
+		if i.ikv.K.UserKey != nil && i.cmp(i.ikv.K.UserKey, key) >= 0 {
 			// The current key is greater than or equal to our search key. Back up to
 			// the previous key which was less than our search key. Note that this for
 			// loop will execute at least once with this if-block not being true, so

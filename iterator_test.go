@@ -1499,7 +1499,7 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 					o.UpperBound = testkeys.KeyAt(ks, rng.Uint64N(ks.Count()), rng.Int64N(int64(ks.Count())))
 				}
 			}
-			if testkeys.Comparer.Compare(o.LowerBound, o.UpperBound) > 0 {
+			if len(o.LowerBound) > 0 && len(o.UpperBound) > 0 && testkeys.Comparer.Compare(o.LowerBound, o.UpperBound) > 0 {
 				o.LowerBound, o.UpperBound = o.UpperBound, o.LowerBound
 			}
 		}
@@ -2067,7 +2067,7 @@ func BenchmarkBlockPropertyFilter(b *testing.B) {
 			}
 			require.NoError(b, batch.Commit(nil))
 			require.NoError(b, d.Flush())
-			require.NoError(b, d.Compact(context.Background(), nil, []byte{0xFF}, false))
+			require.NoError(b, d.Compact(context.Background(), []byte{0}, []byte{0xFF}, false))
 
 			for _, filter := range []bool{false, true} {
 				b.Run(fmt.Sprintf("filter=%t", filter), func(b *testing.B) {

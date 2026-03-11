@@ -176,6 +176,9 @@ func UserKeyBoundsFromInternal(smallest, largest InternalKey) UserKeyBounds {
 
 // Valid returns true if the bounds contain at least a user key.
 func (b *UserKeyBounds) Valid(cmp Compare) bool {
+	if b.Start == nil {
+		return false
+	}
 	return b.End.IsUpperBoundFor(cmp, b.Start)
 }
 

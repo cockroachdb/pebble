@@ -184,7 +184,7 @@ func (m *simpleMergingIter) handleVisiblePoint(
 	item *simpleMergingIterItem, l *simpleMergingIterLevel,
 ) (ok bool) {
 	m.numPoints++
-	keyChanged := m.heap.cmp(item.kv.K.UserKey, m.lastKey.UserKey) != 0
+	keyChanged := m.lastKey.UserKey == nil || m.heap.cmp(item.kv.K.UserKey, m.lastKey.UserKey) != 0
 	if !keyChanged {
 		// At the same user key. We will see them in decreasing seqnum
 		// order so the lastLevel must not be lower.
@@ -315,7 +315,7 @@ func iterateAndCheckTombstones(
 	// in non-decreasing level order.
 	lastTombstone := tombstoneWithLevel{}
 	for _, t := range tombstones {
-		if cmp(lastTombstone.Start, t.Start) == 0 && lastTombstone.level > t.level {
+		if lastTombstone.Start != nil && cmp(lastTombstone.Start, t.Start) == 0 && lastTombstone.level > t.level {
 			return errors.Errorf("encountered tombstone %s in %s"+
 				" that has a lower seqnum than the same tombstone in %s",
 				t.Span.Pretty(formatKey), levelOrMemtable(t.lsmLevel, t.tableNum),
@@ -443,7 +443,7 @@ func addTombstonesFromIter(
 		// This is mainly a test for rangeDelV2 formatted blocks which are expected to
 		// be ordered and fragmented on disk. But we anyways check for memtables,
 		// rangeDelV1 as well.
-		if cmp(prevTombstone.End, t.Start) > 0 {
+		if prevTombstone.End != nil && cmp(prevTombstone.End, t.Start) > 0 {
 			return nil, errors.Errorf("unordered or unfragmented range delete tombstones %s, %s in %s",
 				prevTombstone.Pretty(formatKey), t.Pretty(formatKey), levelOrMemtable(lsmLevel, tableNum))
 		}

@@ -485,7 +485,12 @@ func determineOverlapAllIters(
 func determineOverlapPointIterator(
 	cmp base.Compare, bounds base.UserKeyBounds, iter internalIterator,
 ) (bool, error) {
-	kv := iter.SeekGE(bounds.Start, base.SeekGEFlagsNone)
+	var kv *base.InternalKV
+	if bounds.Start != nil {
+		kv = iter.SeekGE(bounds.Start, base.SeekGEFlagsNone)
+	} else {
+		kv = iter.First()
+	}
 	if kv == nil {
 		return false, iter.Error()
 	}
@@ -496,7 +501,13 @@ func determineOverlapKeyspanIterator(
 	cmp base.Compare, bounds base.UserKeyBounds, iter keyspan.FragmentIterator,
 ) (bool, error) {
 	// NB: The spans surfaced by the fragment iterator are non-overlapping.
-	span, err := iter.SeekGE(bounds.Start)
+	var span *keyspan.Span
+	var err error
+	if bounds.Start != nil {
+		span, err = iter.SeekGE(bounds.Start)
+	} else {
+		span, err = iter.First()
+	}
 	if err != nil {
 		return false, err
 	}

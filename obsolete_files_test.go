@@ -53,7 +53,7 @@ func TestCleaner(t *testing.T) {
 				return "compact <db>"
 			}
 			d := dbs[td.CmdArgs[0].String()]
-			if err := d.Compact(context.Background(), nil, []byte("\xff"), false); err != nil {
+			if err := d.Compact(context.Background(), []byte{0}, []byte("\xff"), false); err != nil {
 				return err.Error()
 			}
 			return memLog.String()

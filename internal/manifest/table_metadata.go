@@ -965,12 +965,12 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 	}
 
 	cmp := base.DefaultComparer.Compare
-	if base.InternalCompare(cmp, smallest, m.PointKeyBounds.Smallest()) == 0 {
+	if m.HasPointKeys && base.InternalCompare(cmp, smallest, m.PointKeyBounds.Smallest()) == 0 {
 		m.boundTypeSmallest = boundTypePointKey
 	} else if m.HasRangeKeys && base.InternalCompare(cmp, smallest, m.RangeKeyBounds.Smallest()) == 0 {
 		m.boundTypeSmallest = boundTypeRangeKey
 	}
-	if base.InternalCompare(cmp, largest, m.PointKeyBounds.Largest()) == 0 {
+	if m.HasPointKeys && base.InternalCompare(cmp, largest, m.PointKeyBounds.Largest()) == 0 {
 		m.boundTypeLargest = boundTypePointKey
 	} else if m.HasRangeKeys && base.InternalCompare(cmp, largest, m.RangeKeyBounds.Largest()) == 0 {
 		m.boundTypeLargest = boundTypeRangeKey

@@ -368,6 +368,12 @@ func (ks *defaultKeySeeker) init(d *DataBlockDecoder, bd *BlockDecoder) {
 
 // IsLowerBound is part of the KeySeeker interface.
 func (ks *defaultKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) bool {
+	if len(k) == 0 {
+		if invariants.Enabled {
+			panic(errors.AssertionFailedf("empty key"))
+		}
+		return true
+	}
 	si := ks.comparer.Split(k)
 	if v := ks.comparer.Compare(ks.prefixes.UnsafeFirstSlice(), k[:si]); v != 0 {
 		return v > 0
@@ -376,7 +382,7 @@ func (ks *defaultKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) bool 
 	if len(suffix) == 0 {
 		suffix = ks.suffixes.At(0)
 	}
-	return ks.comparer.Compare(suffix, k[si:]) >= 0
+	return ks.comparer.ComparePointSuffixes(suffix, k[si:]) >= 0
 }
 
 // SeekGE is part of the KeySeeker interface.
@@ -1159,22 +1165,22 @@ func (v *DataBlockValidator) Validate(
 			UserKey: keySeeker.MaterializeUserKey(&v.curKeyIter, i-1, i),
 			Trailer: base.InternalKeyTrailer(v.dec.trailers.At(i)),
 		}
-		// Ensure the keys are ordered.
-		ucmp := comparer.Compare(k.UserKey, prevKey.UserKey)
-		if ucmp < 0 || (ucmp == 0 && k.Trailer >= prevKey.Trailer) {
-			return errors.AssertionFailedf("key %s (row %d) and key %s (row %d) are out of order",
-				prevKey, i-1, k, i)
-		}
-		// Ensure the obsolete bit is set if the key is definitively obsolete.
-		// Not all sources of obsolescence are evident with only a data block
-		// available (range deletions or point keys in previous blocks may cause
-		// a key to be obsolete).
-		if ucmp == 0 && prevKey.Kind() != base.InternalKeyKindMerge && !v.dec.isObsolete.At(i) {
-			return errors.AssertionFailedf("key %s (row %d) is shadowed by previous key %s but is not marked as obsolete",
-				k, i, prevKey)
-		}
-		// Ensure that the prefix-changed bit is set correctly.
 		if i > 0 {
+			// Ensure the keys are ordered.
+			ucmp := comparer.Compare(k.UserKey, prevKey.UserKey)
+			if ucmp < 0 || (ucmp == 0 && k.Trailer >= prevKey.Trailer) {
+				return errors.AssertionFailedf("key %s (row %d) and key %s (row %d) are out of order",
+					prevKey, i-1, k, i)
+			}
+			// Ensure the obsolete bit is set if the key is definitively obsolete.
+			// Not all sources of obsolescence are evident with only a data block
+			// available (range deletions or point keys in previous blocks may cause
+			// a key to be obsolete).
+			if ucmp == 0 && prevKey.Kind() != base.InternalKeyKindMerge && !v.dec.isObsolete.At(i) {
+				return errors.AssertionFailedf("key %s (row %d) is shadowed by previous key %s but is not marked as obsolete",
+					k, i, prevKey)
+			}
+			// Ensure that the prefix-changed bit is set correctly.
 			currPrefix := comparer.Split.Prefix(k.UserKey)
 			prevPrefix := comparer.Split.Prefix(prevKey.UserKey)
 			prefixChanged := !bytes.Equal(prevPrefix, currPrefix)
@@ -1381,6 +1387,9 @@ func (i *DataBlockIter) IsLowerBound(k []byte) bool {
 		keyPrefix, k = splitKey(k, len(i.transforms.SyntheticPrefix()))
 		if cmp := bytes.Compare(keyPrefix, i.transforms.SyntheticPrefix()); cmp != 0 {
 			return cmp < 0
+		}
+		if len(k) == 0 {
+			return true
 		}
 	}
 	// If we are hiding obsolete points, it is possible that all points < k are

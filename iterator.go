@@ -2581,8 +2581,8 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 
 	if ((i.opts.LowerBound == nil) == (lower == nil)) &&
 		((i.opts.UpperBound == nil) == (upper == nil)) &&
-		i.equal(i.opts.LowerBound, lower) &&
-		i.equal(i.opts.UpperBound, upper) {
+		(i.opts.LowerBound == nil || i.equal(i.opts.LowerBound, lower)) &&
+		(i.opts.UpperBound == nil || i.equal(i.opts.UpperBound, upper)) {
 		// Unchanged, noop.
 		return
 	}
@@ -2799,8 +2799,8 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 
 	boundsEqual := ((i.opts.LowerBound == nil) == (o.LowerBound == nil)) &&
 		((i.opts.UpperBound == nil) == (o.UpperBound == nil)) &&
-		i.equal(i.opts.LowerBound, o.LowerBound) &&
-		i.equal(i.opts.UpperBound, o.UpperBound)
+		(i.opts.LowerBound == nil || i.equal(i.opts.LowerBound, o.LowerBound)) &&
+		(i.opts.UpperBound == nil || i.equal(i.opts.UpperBound, o.UpperBound))
 
 	if boundsEqual && o.KeyTypes == i.opts.KeyTypes &&
 		(i.pointIter != nil || !i.opts.pointKeys()) &&

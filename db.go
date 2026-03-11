@@ -1690,6 +1690,9 @@ func (d *DB) Compact(ctx context.Context, start, end []byte, parallelize bool) e
 	if d.opts.ReadOnly {
 		return ErrReadOnly
 	}
+	if start == nil || end == nil {
+		return errors.Errorf("Compact start/end keys cannot be nil")
+	}
 	if d.cmp(start, end) >= 0 {
 		return errors.Errorf("Compact start %s is not less than end %s",
 			d.opts.Comparer.FormatKey(start), d.opts.Comparer.FormatKey(end))
@@ -2793,7 +2796,7 @@ func (d *DB) ScanStatistics(
 			// pinned by a snapshot.
 			size := uint64(key.Size())
 			kind := key.Kind()
-			sameKey := d.equal(prevKey.UserKey, key.UserKey)
+			sameKey := prevKey.UserKey != nil && d.equal(prevKey.UserKey, key.UserKey)
 			if iterInfo.Kind == IteratorLevelLSM && sameKey {
 				stats.Levels[iterInfo.Level].SnapshotPinnedKeys++
 				stats.Levels[iterInfo.Level].SnapshotPinnedKeysBytes += size

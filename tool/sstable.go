@@ -454,7 +454,7 @@ func (s *sstableT) runScan(cmd *cobra.Command, args []string) {
 					formatKeyValue(stdout, s.fmtKey, s.fmtValue, &kv.K, v)
 
 				}
-				if base.InternalCompare(r.Comparer.Compare, lastKey, kv.K) >= 0 {
+				if lastKey.UserKey != nil && base.InternalCompare(r.Comparer.Compare, lastKey, kv.K) >= 0 {
 					fmt.Fprintf(stdout, "%s    WARNING: OUT OF ORDER KEYS!\n", prefix)
 				}
 				lastKey.Trailer = kv.K.Trailer

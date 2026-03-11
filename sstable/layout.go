@@ -235,7 +235,7 @@ func (l *Layout) Describe(
 					var lastKey InternalKey
 					err = formatting.formatDataBlock(tpNode, r, *b, h.BlockData(), func(key *base.InternalKey, value []byte) string {
 						v := fmtKV(key, value)
-						if base.InternalCompare(r.Comparer.Compare, lastKey, *key) >= 0 {
+						if lastKey.UserKey != nil && base.InternalCompare(r.Comparer.Compare, lastKey, *key) >= 0 {
 							v += " WARNING: OUT OF ORDER KEYS!"
 						}
 						lastKey.Trailer = key.Trailer

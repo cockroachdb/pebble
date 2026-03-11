@@ -1194,7 +1194,7 @@ func TestDBConcurrentCommitCompactFlush(t *testing.T) {
 			var err error
 			switch i % 3 {
 			case 0:
-				err = d.Compact(context.Background(), nil, []byte("\xff"), false)
+				err = d.Compact(context.Background(), []byte{0}, []byte("\xff"), false)
 			case 1:
 				err = d.Flush()
 			case 2:

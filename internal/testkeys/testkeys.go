@@ -24,6 +24,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
 const alpha = "abcdefghijklmnopqrstuvwxyz"
@@ -129,6 +130,9 @@ var Comparer = &base.Comparer{
 //   - when both keys have a suffix, the key with the larger (decoded) suffix
 //     value is smaller.
 func compare(a, b []byte) int {
+	if invariants.Enabled && (len(a) == 0 || len(b) == 0) {
+		panic(errors.AssertionFailedf("empty key passed to Compare"))
+	}
 	ai, bi := split(a), split(b)
 	if v := bytes.Compare(a[:ai], b[:bi]); v != 0 {
 		return v

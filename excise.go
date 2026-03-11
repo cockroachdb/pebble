@@ -429,6 +429,13 @@ func determineRightTableBounds(
 func determineExcisedTableSize(
 	fc *fileCacheHandle, originalTable, excisedTable *manifest.TableMetadata,
 ) error {
+	if !originalTable.HasPointKeys {
+		// The original table has no point keys (only range keys); the index
+		// block only has a placeholder entry for the forced empty data block.
+		// Skip estimating size through the index block.
+		excisedTable.Size = 1
+		return nil
+	}
 	size, err := fc.estimateSize(originalTable, excisedTable.Smallest().UserKey, excisedTable.Largest().UserKey)
 	if err != nil {
 		return err

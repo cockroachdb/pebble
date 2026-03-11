@@ -946,7 +946,13 @@ func scanInternalImpl(
 		}
 	}
 
-	for valid := iter.seekGE(opts.LowerBound); valid && iter.error() == nil; valid = iter.next() {
+	var firstValid bool
+	if opts.LowerBound != nil {
+		firstValid = iter.seekGE(opts.LowerBound)
+	} else {
+		firstValid = iter.first()
+	}
+	for valid := firstValid; valid && iter.error() == nil; valid = iter.next() {
 		key := iter.unsafeKey()
 
 		if opts.RateLimitFunc != nil {
@@ -1261,6 +1267,12 @@ func (i *scanInternalIterator) constructRangeKeyIter() error {
 		i.rangeKey.iterConfig.AddLevel(li)
 	}
 	return nil
+}
+
+// first positions this iterator at the first key.
+func (i *scanInternalIterator) first() bool {
+	i.iterKV = i.iter.First()
+	return i.iterKV != nil
 }
 
 // seekGE seeks this iterator to the first key that's greater than or equal

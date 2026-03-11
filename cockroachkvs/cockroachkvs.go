@@ -312,6 +312,9 @@ func Split(key []byte) int {
 // timestamps).
 func Compare(a, b []byte) int {
 	if len(a) == 0 || len(b) == 0 {
+		if invariants.Enabled {
+			panic(errors.AssertionFailedf("empty key passed to Compare"))
+		}
 		return cmp.Compare(len(a), len(b))
 	}
 	if invariants.Enabled {
@@ -390,6 +393,9 @@ func compareVersions(version, firstRowUntypedVer []byte) bool {
 // Equal implements base.Equal for Cockroach keys.
 func Equal(a, b []byte) bool {
 	if len(a) == 0 || len(b) == 0 {
+		if invariants.Enabled {
+			panic(errors.AssertionFailedf("empty key passed to Equal"))
+		}
 		return len(a) == len(b)
 	}
 	if invariants.Enabled {
