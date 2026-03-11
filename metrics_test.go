@@ -95,6 +95,7 @@ func exampleMetrics() Metrics {
 	m.Flush.AsIngestCount = 4
 	m.Flush.AsIngestTableCount = 5
 	m.Flush.AsIngestBytes = 6
+	m.Flush.FlushableMemBytesIn = 20 * MB
 
 	m.Filter.Hits = 9
 	m.Filter.Misses = 10
@@ -133,6 +134,7 @@ func exampleMetrics() Metrics {
 	m.MemTable.Count = 12
 	m.MemTable.ZombieSize = 13 * MB
 	m.MemTable.ZombieCount = 5
+	m.MemTable.CumulativeFlushableMemBytes = 100 * MB
 
 	m.Keys.RangeKeySetsCount = 123
 	m.Keys.TombstoneCount = 456
@@ -656,4 +658,54 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+}
+
+func TestCumulativeFlushableMemBytes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	runTest := func(t *testing.T, disableWAL bool) {
+		opts := &Options{
+			FS:         vfs.NewMem(),
+			DisableWAL: disableWAL,
+		}
+		opts.DisableAutomaticCompactions = true
+		d, err := Open("", opts)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, d.Close()) }()
+
+		writeData := func(keys ...string) {
+			b := d.NewBatch()
+			for _, k := range keys {
+				require.NoError(t, b.Set([]byte(k), []byte("v"), nil))
+			}
+			var wo *WriteOptions
+			if disableWAL {
+				wo = &WriteOptions{Sync: false}
+			}
+			require.NoError(t, b.Commit(wo))
+		}
+
+		// Write some data and check metrics before flush.
+		writeData("a", "b", "c")
+		m := d.Metrics()
+		require.Greater(t, m.MemTable.CumulativeFlushableMemBytes, uint64(0))
+		require.Equal(t, uint64(0), m.Flush.FlushableMemBytesIn)
+		cumBytesBeforeFlush := m.MemTable.CumulativeFlushableMemBytes
+
+		// Flush and check both metrics are > 0.
+		require.NoError(t, d.Flush())
+		m = d.Metrics()
+		require.Equal(t, cumBytesBeforeFlush, m.MemTable.CumulativeFlushableMemBytes)
+		require.Equal(t, cumBytesBeforeFlush, m.Flush.FlushableMemBytesIn)
+
+		// Write more data without flushing. CumulativeFlushableMemBytes should
+		// increase but FlushableMemBytesIn should stay the same.
+		writeData("d", "e")
+		m = d.Metrics()
+		require.Greater(t, m.MemTable.CumulativeFlushableMemBytes, cumBytesBeforeFlush)
+		require.Equal(t, cumBytesBeforeFlush, m.Flush.FlushableMemBytesIn)
+	}
+
+	t.Run("wal-enabled", func(t *testing.T) { runTest(t, false) })
+	t.Run("wal-disabled", func(t *testing.T) { runTest(t, true) })
 }

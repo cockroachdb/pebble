@@ -355,8 +355,8 @@ func (s *ingestedFlushable) containsRangeKeys() bool {
 
 // inuseBytes is part of the flushable interface.
 func (s *ingestedFlushable) inuseBytes() uint64 {
-	// inuseBytes is only used when memtables are flushed to disk as sstables.
-	panic("pebble: not implemented")
+	// Ingested flushables don't have in-memory bytes to track.
+	return 0
 }
 
 // totalBytes is part of the flushable interface.

@@ -407,6 +407,9 @@ type DB struct {
 			// footprint of memtables when lots of DB instances are used concurrently
 			// in test environments.
 			nextSize uint64
+			// cumulativeImmutableFlushableInuseBytes is the cumulative sum of
+			// inuseBytes() for all flushables that have become immutable.
+			cumulativeImmutableFlushableInuseBytes uint64
 		}
 
 		compact struct {
@@ -1966,6 +1969,8 @@ func (d *DB) Metrics() *Metrics {
 	metrics.MemTable.Count = int64(len(d.mu.mem.queue))
 	metrics.MemTable.ZombieCount = d.memTableCount.Load() - metrics.MemTable.Count
 	metrics.MemTable.ZombieSize = uint64(d.memTableReserved.Load()) - metrics.MemTable.Size
+	metrics.MemTable.CumulativeFlushableMemBytes =
+		d.mu.mem.cumulativeImmutableFlushableInuseBytes + d.mu.mem.mutable.inuseBytes()
 	metrics.WAL.ObsoleteFiles = int64(walStats.ObsoleteFileCount)
 	metrics.WAL.ObsoletePhysicalSize = walStats.ObsoleteFileSize
 	metrics.WAL.Files = int64(walStats.LiveFileCount)
@@ -2525,6 +2530,7 @@ func (d *DB) makeRoomForWrite(b *Batch) error {
 			// The large batch is by definition large. Reserve space from the cache
 			// for it until it is flushed.
 			entry.releaseMemAccounting = d.opts.Cache.Reserve(int(b.flushable.totalBytes()))
+			d.mu.mem.cumulativeImmutableFlushableInuseBytes += b.flushable.inuseBytes()
 			d.mu.mem.queue = append(d.mu.mem.queue, entry)
 		} else {
 			minSize = b.memTableSize
@@ -2592,6 +2598,17 @@ func (d *DB) rotateMemtable(
 	// the most recent flushable.
 	d.logSize.Store(0)
 	d.updateReadStateLocked(nil)
+	// NB: prev.inuseBytes() may undercount the final inuseBytes of prev.
+	// Another goroutine may have called mem.prepare(b) (which does writerRef
+	// and reserves space) before we acquired DB.mu+commitPipeline.mu for
+	// rotation, and its commitApply may still be in-flight, writing to the
+	// skiplist arena. The writerUnref below will not be the last ref in that
+	// case. When that goroutine finishes applying, it will increase
+	// skl.Size() (and thus inuseBytes()) beyond what we read here. The
+	// undercount is bounded by the size of such in-flight batches. We
+	// tolerate this for a metric that doesn't need to be precise, rather
+	// than adding synchronization that would reduce commit concurrency.
+	d.mu.mem.cumulativeImmutableFlushableInuseBytes += prev.inuseBytes()
 	if prev.writerUnref() {
 		d.maybeScheduleFlush()
 	}
