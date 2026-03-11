@@ -254,7 +254,7 @@ func TestIteratorSeekLT(t *testing.T) {
 		require.Nil(t, l.Add(d.add(fmt.Sprintf("%05d", i*10+1000))))
 	}
 
-	require.Nil(t, it.SeekLT(makeKey("")))
+	require.Nil(t, it.SeekLT(makeKey("\x00")))
 	require.Nil(t, it.SeekLT(makeKey("01000")))
 	assertKey(t, "01000", it.SeekLT(makeKey("01001")))
 	assertKey(t, "01000", it.SeekLT(makeKey("01005")))

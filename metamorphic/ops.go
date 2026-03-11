@@ -831,7 +831,7 @@ func (o *ingestOp) collapseBatch(
 			// sequence number precedence determine which of the keys "wins".
 			// But the code to build the ingested sstable will only keep the
 			// most recent internal key and will not merge across internal keys.
-			if equal(lastUserKey, kv.K.UserKey) {
+			if lastUserKey != nil && equal(lastUserKey, kv.K.UserKey) {
 				continue
 			}
 			// NB: We don't have to copy the key or value since we're reading from a

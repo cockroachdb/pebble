@@ -569,7 +569,7 @@ func (g *generator) newIter() {
 			// Generate a new key with a .1% probability.
 			opts.upper = g.keyGenerator.RandKey(0.001)
 		}
-		if g.cmp(opts.lower, opts.upper) > 0 {
+		if opts.lower != nil && opts.upper != nil && g.cmp(opts.lower, opts.upper) > 0 {
 			opts.lower, opts.upper = opts.upper, opts.lower
 		}
 	}
@@ -728,7 +728,7 @@ func (g *generator) iterSetBounds(iterID objID) {
 				// Generate a new key with a .1% probability.
 				upper = g.keyGenerator.RandKey(0.001)
 			}
-			if g.cmp(lower, upper) > 0 {
+			if lower != nil && upper != nil && g.cmp(lower, upper) > 0 {
 				lower, upper = upper, lower
 			}
 			if ensureLowerGE && g.cmp(iterLastOpts.upper, lower) > 0 {
@@ -1565,7 +1565,7 @@ func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
 				// Generate a new key with a .1% probability.
 				opts.upper = g.keyGenerator.RandKey(0.001)
 			}
-			if g.cmp(opts.lower, opts.upper) > 0 {
+			if opts.lower != nil && opts.upper != nil && g.cmp(opts.lower, opts.upper) > 0 {
 				opts.lower, opts.upper = opts.upper, opts.lower
 			}
 		}

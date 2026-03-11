@@ -557,7 +557,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) resolveMaybeExcluded(dir int8) inter
 	// need.
 	if dir > 0 {
 		// Forward iteration.
-		if i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(PI(&i.index).Separator()) {
+		sep := PI(&i.index).Separator()
+		if len(sep) == 0 || i.bpfs.boundLimitedFilter.KeyIsWithinUpperBound(sep) {
 			return blockExcluded
 		}
 		return blockIntersects
@@ -586,12 +587,15 @@ func (i *singleLevelIterator[I, PI, D, PD]) resolveMaybeExcluded(dir int8) inter
 		// there's a two-level index, it could potentially provide a lower
 		// bound, but the code refactoring necessary to read it doesn't seem
 		// worth the payoff. We fall through to loading the block.
-	} else if i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(PI(&i.index).Separator()) {
-		// The lower-bound on the original block falls within the filter's
-		// bounds, and we can skip the block (after restoring our current index
-		// position).
-		_ = PI(&i.index).Next()
-		return blockExcluded
+	} else {
+		sep := PI(&i.index).Separator()
+		if len(sep) > 0 && i.bpfs.boundLimitedFilter.KeyIsWithinLowerBound(sep) {
+			// The lower-bound on the original block falls within the filter's
+			// bounds, and we can skip the block (after restoring our current index
+			// position).
+			_ = PI(&i.index).Next()
+			return blockExcluded
+		}
 	}
 	_ = PI(&i.index).Next()
 	return blockIntersects

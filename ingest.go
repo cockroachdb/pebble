@@ -2463,7 +2463,9 @@ func (d *DB) ingestApply(
 				// to error out the whole compaction as we can't guarantee it hasn't/won't
 				// write a file overlapping with the excise span.
 				bounds := c.Bounds()
-				if bounds != nil && bounds.Overlaps(d.cmp, exciseBounds) {
+				if exciseSpan.Valid() && bounds != nil &&
+					(bounds.Start == nil || exciseBounds.End.IsUpperBoundFor(d.cmp, bounds.Start)) &&
+					(bounds.End.Key == nil || bounds.End.IsUpperBoundFor(d.cmp, exciseBounds.Start)) {
 					c.Cancel()
 				}
 				// Check if this compaction's inputs have been replaced due to an

@@ -67,12 +67,17 @@ func (i *IndexIter) Separator() []byte {
 // SeparatorLT returns true if the separator at the iterator's current
 // position is strictly less than the provided key.
 func (i *IndexIter) SeparatorLT(key []byte) bool {
-	return i.iter.cmp(i.iter.ikv.K.UserKey, key) < 0
+	// An empty separator (from range-key-only sstables) is less than all
+	// non-empty keys.
+	return len(i.iter.ikv.K.UserKey) == 0 || i.iter.cmp(i.iter.ikv.K.UserKey, key) < 0
 }
 
 // SeparatorGT returns true if the separator at the iterator's current position
 // is strictly greater than (or equal, if orEqual=true) the provided key.
 func (i *IndexIter) SeparatorGT(key []byte, inclusively bool) bool {
+	if len(i.iter.ikv.K.UserKey) == 0 {
+		return false
+	}
 	cmp := i.iter.cmp(i.iter.ikv.K.UserKey, key)
 	return cmp > 0 || (cmp == 0 && inclusively)
 }

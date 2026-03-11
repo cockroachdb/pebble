@@ -470,7 +470,12 @@ func (k InternalKey) Separator(
 // InternalKey.UserKey, though it is valid to pass a nil.
 func (k InternalKey) Successor(cmp Compare, succ Successor, buf []byte) InternalKey {
 	buf = succ(buf, k.UserKey)
-	if (len(k.UserKey) == 0 || len(buf) <= len(k.UserKey)) && cmp(k.UserKey, buf) < 0 {
+	if len(k.UserKey) == 0 {
+		if len(buf) == 0 {
+			// The empty slice might not be a valid key, while buf is always valid.
+			return MakeInternalKey(buf, SeqNumMax, InternalKeyKindSeparator)
+		}
+	} else if len(buf) <= len(k.UserKey) && cmp(k.UserKey, buf) < 0 {
 		// The successor user key is physically shorter that k.UserKey (if it is
 		// longer, we'll continue to use "k"), but logically after. Tack on the max
 		// sequence number to the shortened user key. Note that we could tack on

@@ -918,7 +918,9 @@ func newFlush(
 	if opts.FlushSplitBytes > 0 {
 		c.maxOutputFileSize = uint64(opts.TargetFileSizes[0])
 		c.maxOverlapBytes = maxGrandparentOverlapBytes(opts.TargetFileSizes[0])
-		c.grandparents = cur.Overlaps(baseLevel, c.bounds)
+		if c.bounds.Start != nil && c.bounds.End.Key != nil {
+			c.grandparents = cur.Overlaps(baseLevel, c.bounds)
+		}
 		adjustGrandparentOverlapBytesForFlush(c, flushingBytes)
 	}
 
@@ -1789,18 +1791,22 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 			// c.kind == compactionKindIngestedFlushable && we could have deleted files due
 			// to ingest-time splits or excises.
 			ingestFlushable := c.flush.flushables[0].flushable.(*ingestedFlushable)
-			exciseBounds := ingestFlushable.exciseSpan.UserKeyBounds()
-			for c2 := range d.mu.compact.inProgress {
-				// Check if this compaction overlaps with the excise span. Note that just
-				// checking if the inputs individually overlap with the excise span
-				// isn't sufficient; for instance, a compaction could have [a,b] and [e,f]
-				// as inputs and write it all out as [a,b,e,f] in one sstable. If we're
-				// doing a [c,d) excise at the same time as this compaction, we will have
-				// to error out the whole compaction as we can't guarantee it hasn't/won't
-				// write a file overlapping with the excise span.
-				bounds := c2.Bounds()
-				if bounds != nil && bounds.Overlaps(d.cmp, exciseBounds) {
-					c2.Cancel()
+			if ingestFlushable.exciseSpan.Valid() {
+				exciseBounds := ingestFlushable.exciseSpan.UserKeyBounds()
+				for c2 := range d.mu.compact.inProgress {
+					// Check if this compaction overlaps with the excise span. Note that just
+					// checking if the inputs individually overlap with the excise span
+					// isn't sufficient; for instance, a compaction could have [a,b] and [e,f]
+					// as inputs and write it all out as [a,b,e,f] in one sstable. If we're
+					// doing a [c,d) excise at the same time as this compaction, we will have
+					// to error out the whole compaction as we can't guarantee it hasn't/won't
+					// write a file overlapping with the excise span.
+					if bounds := c2.Bounds(); bounds != nil {
+						if (bounds.Start == nil || exciseBounds.End.IsUpperBoundFor(d.cmp, bounds.Start)) &&
+							(bounds.End.Key == nil || bounds.End.IsUpperBoundFor(d.cmp, exciseBounds.Start)) {
+							c2.Cancel()
+						}
+					}
 				}
 			}
 

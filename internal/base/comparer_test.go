@@ -113,7 +113,7 @@ func TestAbbreviatedKey(t *testing.T) {
 
 	keys := make([][]byte, 10000)
 	for i := range keys {
-		keys[i] = randBytes(rng.IntN(16))
+		keys[i] = randBytes(1 + rng.IntN(15))
 	}
 	slices.SortFunc(keys, DefaultComparer.Compare)
 
