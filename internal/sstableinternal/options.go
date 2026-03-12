@@ -33,4 +33,11 @@ type WriterOptions struct {
 	// in order. It is intended for use only in the construction of invalid
 	// sstables for testing. See tool/make_test_sstables.go.
 	DisableKeyOrderChecks bool
+
+	// BlobReferenceTiers provides the storage tier (hot or cold) for each blob
+	// reference ID. Used when WriteTieringHistograms is true to categorize blob
+	// references by tier. The tier for reference ID i is BlobReferenceTiers[i].
+	// When a value exists in both tiers (hot-and-cold), there are two separate
+	// blob references with different IDs and tiers.
+	BlobReferenceTiers []base.StorageTier
 }

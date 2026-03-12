@@ -2600,7 +2600,7 @@ Blob files:
 
 disk-usage
 ----
-7,605B
+7,617B
 
 init reopen
 ----
@@ -2608,4 +2608,4 @@ init reopen
 # The disk usage is expected to go down a bit because we remove the WALs.
 disk-usage
 ----
-7,088B
+7,100B

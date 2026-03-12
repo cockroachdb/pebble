@@ -1228,6 +1228,9 @@ type DataBlockIter struct {
 	// for the current block.
 	tieringSpanIDs    UnsafeUints
 	tieringAttributes UnsafeUints
+	// secondaryBlobHandles stores the decoded secondary blob handle column for
+	// dual-tier blob values. Only populated when the block has tiering columns.
+	secondaryBlobHandles RawBytes
 	// blockData stores a reference to the block data for lazy tiering column
 	// decoding. This is only set when Init() is called (not InitHandle()).
 	blockData []byte
@@ -1300,6 +1303,7 @@ func (i *DataBlockIter) Init(
 	i.tieringConfig = tieringConfig
 	i.tieringSpanIDs = UnsafeUints{}
 	i.tieringAttributes = UnsafeUints{}
+	i.secondaryBlobHandles = RawBytes{}
 	// Store block data for lazy tiering column decoding.
 	i.blockData = bd.Data()
 	return nil
@@ -1340,6 +1344,7 @@ func (i *DataBlockIter) InitHandle(
 	// from h.BlockData() when needed.
 	i.tieringSpanIDs = UnsafeUints{}
 	i.tieringAttributes = UnsafeUints{}
+	i.secondaryBlobHandles = RawBytes{}
 	i.blockData = nil
 	return nil
 }
@@ -1553,8 +1558,12 @@ func (i *DataBlockIter) initTieringMetadata() bool {
 
 	// Decode the tiering columns.
 	bd := DecodeBlock(data, DataBlockCustomHeaderSize+i.keySchema.HeaderSize)
-	i.tieringSpanIDs = bd.Uints(len(i.keySchema.ColumnTypes) + dataBlockColumnTieringSpanID)
-	i.tieringAttributes = bd.Uints(len(i.keySchema.ColumnTypes) + dataBlockColumnTieringAttribute)
+	baseCol := len(i.keySchema.ColumnTypes)
+	i.tieringSpanIDs = bd.Uints(baseCol + dataBlockColumnTieringSpanID)
+	i.tieringAttributes = bd.Uints(baseCol + dataBlockColumnTieringAttribute)
+	if uint16(baseCol+dataBlockColumnMaxV2) <= bd.header.Columns {
+		i.secondaryBlobHandles = bd.RawBytes(baseCol + dataBlockColumnSecondaryBlobHandle)
+	}
 	return true
 }
 
@@ -1563,10 +1572,16 @@ func (i *DataBlockIter) decodeMeta() base.KVMeta {
 	if !i.initTieringMetadata() {
 		return base.KVMeta{}
 	}
-	return base.KVMeta{
+	m := base.KVMeta{
 		TieringSpanID:    base.TieringSpanID(i.tieringSpanIDs.At(i.row)),
 		TieringAttribute: base.TieringAttribute(i.tieringAttributes.At(i.row)),
 	}
+	if i.secondaryBlobHandles.Slices() > 0 {
+		if b := i.secondaryBlobHandles.At(i.row); len(b) > 0 {
+			m.SecondaryBlobHandle = b
+		}
+	}
+	return m
 }
 
 // Last implements the base.InternalIterator interface.
