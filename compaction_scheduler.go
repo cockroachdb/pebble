@@ -150,6 +150,8 @@ func init() {
 		compactionOptionalAndPriority{optional: true, priority: 20}
 	scheduledCompactionMap[compactionKindRewrite] =
 		compactionOptionalAndPriority{optional: true, priority: 10}
+	scheduledCompactionMap[compactionKindPolicyEnforcement] =
+		compactionOptionalAndPriority{optional: true, priority: 5}
 }
 
 // noopGrantHandle is used in cases that don't interact with a CompactionScheduler.

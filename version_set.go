@@ -782,6 +782,9 @@ func (vs *versionSet) incrementCompactions(
 	case compactionKindVirtualRewrite:
 		vs.metrics.Compact.VirtualRewriteCount++
 
+	case compactionKindPolicyEnforcement:
+		vs.metrics.Compact.PolicyEnforcementCount++
+
 	default:
 		if invariants.Enabled {
 			panic("unhandled compaction kind")
