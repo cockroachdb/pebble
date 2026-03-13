@@ -6,6 +6,8 @@
 
 package treesteps
 
+import _ "github.com/cockroachdb/errors"
+
 const Enabled = false
 
 type RecordingOption struct{}

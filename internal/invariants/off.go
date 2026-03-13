@@ -6,6 +6,8 @@
 
 package invariants
 
+import _ "github.com/cockroachdb/errors"
+
 // Sometimes returns true percent% of the time if invariants are Enabled (i.e.
 // we were built with the "invariants" or "race" build tags). Otherwise, always
 // returns false.
