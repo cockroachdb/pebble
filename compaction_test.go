@@ -1787,6 +1787,11 @@ func TestCompactionTombstones(t *testing.T) {
 				opts.Experimental.CompactionScheduler = func() CompactionScheduler {
 					return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 				}
+				opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+					return ValueSeparationPolicy{
+						Enabled: false,
+					}
+				}
 				var err error
 				d, err = runDBDefineCmd(td, opts)
 				if err != nil {
