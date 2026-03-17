@@ -1033,7 +1033,9 @@ compression: None:79
 define value-separation=(enabled, min-size=1, max-ref-depth=3, rw-min-age=0, garbage-ratios=1.0:1.0)
 ----
 
-# With these span policies, only values for keys n-z will be separated.
+# With these span policies, only values for keys o-z will be separated. [a, f)
+# has a value separation policy but the size threshold is too high for the
+# values in this test.
 set-span-policies
 a,f val-sep-minimum-size=100
 f,o val-sep-minimum-size=0
@@ -1066,8 +1068,9 @@ L6:
 Blob files:
   B000008 physical:{000008 size:[94 (94B)] vals:[4 (4B)]}
 
-# Adjust the span policies. The first span policy is truncated to only cover d-f.
-# The second span policy's minimum size changes from 0 to 10 bytes.
+# Adjust the span policies. The first span policy is truncated to only cover
+# d-f. The second span policy's minimum size changes from 0 to 10 bytes, which
+# means value separation goes from disabled to enabled for keys [f, o).
 set-span-policies
 d,f val-sep-minimum-size=100
 f,o val-sep-minimum-size=10
@@ -1096,8 +1099,10 @@ Blob files:
   B000017 physical:{000017 size:[91 (91B)] vals:[2 (2B)]}
 
 
-# This should rewrite blob references for input tables, since the span policies changed
-# so the table's key range is longer covered by a span policy.
+# This should rewrite blob references for input tables, since the span
+# policies changed so the table's key range is longer covered by a span
+# policy, and [a,d) now can use the default policy of separating at the 1 byte
+# threshold.
 compact a-e
 ----
 L0.0:
@@ -1112,17 +1117,20 @@ Blob files:
   B000017 physical:{000017 size:[91 (91B)] vals:[2 (2B)]}
   B000019 physical:{000019 size:[94 (94B)] vals:[4 (4B)]}
 
-# Compacting key range f-z should also rewrite blob references, even though the o-z input range
-# is using the same value separation settings, since the f-o span policy changed.
+# Compacting key range f-z. Even though the o-z input range is using the same
+# value separation settings, the f-o span policy changed. However, it
+# transitioned from disabled to enabled, and we don't eagerly rewrite in this
+# case. As the blob reference depth is low, blob files are not rewritten.
 compact f-z
 ----
 L6:
   000018:[a#0,SET-b#0,SET] seqnums:[#0-#0] points:[a#0,SET-b#0,SET] size:779 blobrefs:[(B000019: 4); depth:1]
   000020:[f#0,SET-g#0,SET] seqnums:[#0-#0] points:[f#0,SET-g#0,SET] size:693
-  000021:[o#0,SET-p#0,SET] seqnums:[#0-#0] points:[o#0,SET-p#0,SET] size:779 blobrefs:[(B000022: 4); depth:1]
+  000021:[o#0,SET-p#0,SET] seqnums:[#0-#0] points:[o#0,SET-p#0,SET] size:786 blobrefs:[(B000017: 2), (B000008: 2); depth:2]
 Blob files:
+  B000008 physical:{000008 size:[94 (94B)] vals:[4 (4B)]}
+  B000017 physical:{000017 size:[91 (91B)] vals:[2 (2B)]}
   B000019 physical:{000019 size:[94 (94B)] vals:[4 (4B)]}
-  B000022 physical:{000022 size:[94 (94B)] vals:[4 (4B)]}
 
 # Default value separation.
 sstable-properties file=000018
@@ -1182,7 +1190,7 @@ rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 1
 rocksdb.comparator: leveldb.BytewiseComparator
-rocksdb.data.size: 87
+rocksdb.data.size: 89
 rocksdb.filter.size: 0
 rocksdb.index.size: 36
 rocksdb.block.based.table.index.type: 0
@@ -1192,6 +1200,6 @@ rocksdb.merge.operands: 0
 pebble.num.values.in.blob-files: 2
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.compression: Snappy
-pebble.compression_stats: None:56,Snappy:82/114
+pebble.compression_stats: None:61,Snappy:84/114
 pebble.value-separation.min-size: 1
 obsolete-key: hex:00
