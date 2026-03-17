@@ -588,6 +588,34 @@ func (i *LevelIterator) Next() *TableMetadata {
 	return i.skipFilteredForward(i.iter.cur())
 }
 
+// PeekNext returns the next table without advancing the iterator.
+func (i *LevelIterator) PeekNext() *TableMetadata {
+	if i.iter.r == nil {
+		return nil
+	}
+	if invariants.Enabled && (i.iter.pos >= i.iter.n.count || (i.end != nil && cmpIter(i.iter, *i.end) > 0)) {
+		panic("pebble: cannot peek next on forward-exhausted iterator")
+	}
+	// Fast path: we're in a leaf and there are more items after the current
+	// position. Scan forward within the leaf for an item matching the filter.
+	if i.iter.n.isLeaf() {
+		for pos := i.iter.pos + 1; pos < i.iter.n.count; pos++ {
+			// If the end bound is in the same leaf and we've passed it,
+			// there's nothing left within bounds.
+			if i.end != nil && i.end.n == i.iter.n && pos > i.end.pos {
+				return nil
+			}
+			m := i.iter.n.items[pos]
+			if m.ContainsKeyType(i.filter) {
+				return m
+			}
+		}
+	}
+	// Slow path: clone the iterator and call Next.
+	cloned := i.Clone()
+	return cloned.Next()
+}
+
 // Prev moves the iterator the previous table and returns it.
 func (i *LevelIterator) Prev() *TableMetadata {
 	if i.iter.r == nil {

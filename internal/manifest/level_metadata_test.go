@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -125,7 +126,16 @@ func runIterCmd(t *testing.T, d *datadriven.TestData, iter LevelIterator, verbos
 		case "last":
 			m = iter.Last()
 		case "next":
-			m = iter.Next()
+			// 50% of the time, cross-check PeekNext with Next.
+			if rand.IntN(2) == 0 {
+				peek := iter.PeekNext()
+				m = iter.Next()
+				if peek != m {
+					t.Fatalf("PeekNext returned %v, but Next returned %v", peek, m)
+				}
+			} else {
+				m = iter.Next()
+			}
 		case "prev":
 			m = iter.Prev()
 		case "seek-ge":
