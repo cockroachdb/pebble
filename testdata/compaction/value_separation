@@ -1119,10 +1119,11 @@ compact f-z
 L6:
   000018:[a#0,SET-b#0,SET] seqnums:[0-0] points:[a#0,SET-b#0,SET] size:779 blobrefs:[(B000019: 4); depth:1]
   000020:[f#0,SET-g#0,SET] seqnums:[0-0] points:[f#0,SET-g#0,SET] size:693
-  000021:[o#0,SET-p#0,SET] seqnums:[0-0] points:[o#0,SET-p#0,SET] size:779 blobrefs:[(B000022: 4); depth:1]
+  000021:[o#0,SET-p#0,SET] seqnums:[0-0] points:[o#0,SET-p#0,SET] size:786 blobrefs:[(B000017: 2), (B000008: 2); depth:2]
 Blob files:
+  B000008 physical:{000008 size:[94 (94B)] vals:[4 (4B)]}
+  B000017 physical:{000017 size:[91 (91B)] vals:[2 (2B)]}
   B000019 physical:{000019 size:[94 (94B)] vals:[4 (4B)]}
-  B000022 physical:{000022 size:[94 (94B)] vals:[4 (4B)]}
 
 # Default value separation.
 sstable-properties file=000018
@@ -1182,7 +1183,7 @@ rocksdb.deleted.keys: 0
 rocksdb.num.range-deletions: 0
 rocksdb.num.data.blocks: 1
 rocksdb.comparator: leveldb.BytewiseComparator
-rocksdb.data.size: 87
+rocksdb.data.size: 89
 rocksdb.filter.size: 0
 rocksdb.index.size: 36
 rocksdb.block.based.table.index.type: 0
@@ -1192,6 +1193,6 @@ rocksdb.merge.operands: 0
 pebble.num.values.in.blob-files: 2
 rocksdb.property.collectors: [obsolete-key]
 rocksdb.compression: Snappy
-pebble.compression_stats: None:56,Snappy:82/114
+pebble.compression_stats: None:61,Snappy:84/114
 pebble.value-separation.min-size: 1
 obsolete-key: hex:00

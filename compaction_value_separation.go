@@ -105,6 +105,7 @@ func shouldWriteBlobFiles(
 		// None of the input sstables reference blob files. It may be the case
 		// that these sstables were created before value separation was enabled.
 		// We should try to write to new blob files.
+		c.annotations = append(c.annotations, "write-blobs-input-depth-zero")
 		return true, 0
 	}
 
@@ -112,6 +113,7 @@ func shouldWriteBlobFiles(
 	// configured max, we should rewrite the values into new blob files to
 	// restore locality.
 	if inputReferenceDepth > manifest.BlobReferenceDepth(policy.MaxBlobReferenceDepth) {
+		c.annotations = append(c.annotations, "write-blobs-input-depth-exceeded")
 		return true, 0
 	}
 	// Compare policies used by each input file. If all input files have the
@@ -137,6 +139,7 @@ func shouldWriteBlobFiles(
 				if len(spanPolicyEndKey) > 0 && cmp(bounds.End.Key, spanPolicyEndKey) >= 0 {
 					// The table's key range now uses multiple span policies. Rewrite to new
 					// blob files so values are stored according to the current policy.
+					c.annotations = append(c.annotations, "write-blobs-multiple-policies")
 					return true, 0
 				}
 				if spanPolicy.ValueStoragePolicy.DisableBlobSeparation {
@@ -153,8 +156,22 @@ func shouldWriteBlobFiles(
 				}
 			}
 
-			if int(backingProps.ValueSeparationMinSize) != expectedMinSize ||
-				(expectedMinSize > 0 && backingProps.ValueSeparationBySuffixDisabled != expectedValSepBySuffixDisabled) {
+			if backingProps.ValueSeparationMinSize == 0 {
+				// This table was written with value separation disabled. Eventually
+				// this table will be input to a compaction that exceeds the blob
+				// reference depth threshold. Until then, don't eagerly rewrite. We
+				// don't want to have a situation where 1 out of 20 input sstables to
+				// a compaction was written when value separation was disabled, and
+				// now all the other 19 sstables have to rewrite their blob
+				// references.
+				continue
+			}
+			if int(backingProps.ValueSeparationMinSize) != expectedMinSize {
+				c.annotations = append(c.annotations, "write-blobs-min-size-mismatch")
+				return true, 0
+			}
+			if expectedMinSize > 0 && backingProps.ValueSeparationBySuffixDisabled != expectedValSepBySuffixDisabled {
+				c.annotations = append(c.annotations, "write-blobs-suffix-disabled-mismatch")
 				return true, 0
 			}
 		}
