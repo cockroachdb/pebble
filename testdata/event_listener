@@ -216,7 +216,7 @@ close: db/marker.manifest.000004.MANIFEST-000011
 remove: db/marker.manifest.000003.MANIFEST-000009
 sync: db
 [JOB 6] MANIFEST created 000011
-[JOB 6] compacted(default) L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (683B), in 1.0s (4.0s total), output rate 683B/s
+[JOB 6] compacted(default) write-blobs-input-depth-zero L0 [000005 000008] (1.3KB) Score=0.00 + L6 [] (0B) Score=0.00 -> L6 [000010] (683B), in 1.0s (4.0s total), output rate 683B/s
 close: db/000005.sst
 close: db/000008.sst
 remove: db/MANIFEST-000006
