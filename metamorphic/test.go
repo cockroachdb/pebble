@@ -291,10 +291,10 @@ func (t *Test) finalizeOptions() pebble.Options {
 		if err := o.FS.MkdirAll(sharedDir, 0755); err != nil {
 			panic(errors.AssertionFailedf("failed to create directory %q: %s", sharedDir, err))
 		}
-		m[""] = remote.NewLocalFS(sharedDir, o.FS)
+		m[remote.MakeLocator("")] = remote.NewLocalFS(sharedDir, o.FS)
 	}
 	if t.testOpts.externalStorageEnabled || t.testOpts.initialStatePath != "" {
-		m["external"] = t.externalStorage
+		m[remote.MakeLocator("external")] = t.externalStorage
 	}
 	if len(m) > 0 {
 		o.Experimental.RemoteStorage = remote.MakeSimpleFactory(m)

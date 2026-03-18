@@ -275,7 +275,7 @@ func (p *provider) sharedSync() error {
 }
 
 func (p *provider) remotePath(meta objstorage.ObjectMetadata) string {
-	if meta.Remote.Locator != "" {
+	if meta.Remote.Locator.RawRedactableString != "" {
 		return fmt.Sprintf("remote-%s://%s", meta.Remote.Locator, remoteObjectName(meta))
 	}
 	return "remote://" + remoteObjectName(meta)

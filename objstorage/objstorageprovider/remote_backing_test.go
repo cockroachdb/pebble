@@ -32,7 +32,7 @@ func TestSharedObjectBacking(t *testing.T) {
 					st := DefaultSettings(vfs.NewMem(), "")
 					sharedStorage := remote.NewInMem()
 					st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-						"foo": sharedStorage,
+						remote.MakeLocator("foo"): sharedStorage,
 					})
 					p, err := Open(st)
 					require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestSharedObjectBacking(t *testing.T) {
 					meta.Remote.CreatorID = 100
 					meta.Remote.CreatorFileNum = base.DiskFileNum(200)
 					meta.Remote.CleanupMethod = cleanup
-					meta.Remote.Locator = "foo"
+					meta.Remote.Locator = remote.MakeLocator("foo")
 					meta.Remote.CustomObjectName = "obj-name"
 					meta.Remote.Storage = sharedStorage
 
@@ -112,7 +112,7 @@ func TestCreateSharedObjectBacking(t *testing.T) {
 			st := DefaultSettings(vfs.NewMem(), "")
 			sharedStorage := remote.NewInMem()
 			st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-				"foo": sharedStorage,
+				remote.MakeLocator("foo"): sharedStorage,
 			})
 			p, err := Open(st)
 			require.NoError(t, err)
@@ -120,13 +120,13 @@ func TestCreateSharedObjectBacking(t *testing.T) {
 
 			require.NoError(t, p.SetCreatorID(1))
 
-			backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name")
+			backing, err := p.CreateExternalObjectBacking(remote.MakeLocator("foo"), "custom-obj-name")
 			require.NoError(t, err)
 			d, err := decodeRemoteObjectBacking(fileType, base.DiskFileNum(100), backing)
 			require.NoError(t, err)
 			require.Equal(t, uint64(100), uint64(d.meta.DiskFileNum))
 			require.Equal(t, fileType, d.meta.FileType)
-			require.Equal(t, remote.Locator("foo"), d.meta.Remote.Locator)
+			require.Equal(t, remote.MakeLocator("foo"), d.meta.Remote.Locator)
 			require.Equal(t, "custom-obj-name", d.meta.Remote.CustomObjectName)
 			require.Equal(t, objstorage.SharedNoCleanup, d.meta.Remote.CleanupMethod)
 		})
@@ -139,13 +139,13 @@ func TestAttachRemoteObjects(t *testing.T) {
 			st := DefaultSettings(vfs.NewMem(), "")
 			sharedStorage := remote.NewInMem()
 			st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-				"foo": sharedStorage,
+				remote.MakeLocator("foo"): sharedStorage,
 			})
 			p, err := Open(st)
 			require.NoError(t, err)
 			defer p.Close()
 			require.NoError(t, p.SetCreatorID(1))
-			backing, err := p.CreateExternalObjectBacking("foo", "custom-obj-name")
+			backing, err := p.CreateExternalObjectBacking(remote.MakeLocator("foo"), "custom-obj-name")
 			require.NoError(t, err)
 			_, err = p.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
 				FileType: fileType,
@@ -166,7 +166,7 @@ func TestAttachRemoteObjects(t *testing.T) {
 			objs := p.List()
 			require.Len(t, objs, 1)
 			o := objs[0]
-			require.Equal(t, remote.Locator("foo"), o.Remote.Locator)
+			require.Equal(t, remote.MakeLocator("foo"), o.Remote.Locator)
 			require.Equal(t, "custom-obj-name", o.Remote.CustomObjectName)
 			require.Equal(t, uint64(100), uint64(o.DiskFileNum))
 			require.Equal(t, fileType, o.FileType)

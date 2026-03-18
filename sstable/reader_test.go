@@ -2589,9 +2589,9 @@ func TestReaderReportsCorruption(t *testing.T) {
 	remoteStorage := remote.NewInMem()
 	settings := objstorageprovider.DefaultSettings(vfs.NewMem(), "")
 	settings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"locator": remoteStorage,
+		remote.MakeLocator("locator"): remoteStorage,
 	})
-	settings.Remote.CreateOnSharedLocator = "locator"
+	settings.Remote.CreateOnSharedLocator = remote.MakeLocator("locator")
 	settings.Remote.CreateOnShared = remote.CreateOnSharedAll
 	provider, err := objstorageprovider.Open(settings)
 	require.NoError(t, err)
