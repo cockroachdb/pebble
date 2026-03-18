@@ -73,7 +73,7 @@ func (i DataCorruptionInfo) String() string {
 func (i DataCorruptionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	w.Printf("on-disk corruption: %s", redact.Safe(i.Path))
 	if i.IsRemote {
-		w.Printf(" (remote locator %q)", redact.Safe(i.Locator))
+		w.Printf(" (remote locator %q)", i.Locator)
 	}
 	w.Printf("; bounds: %s; details: %+v", i.Bounds.String(), i.Details)
 }

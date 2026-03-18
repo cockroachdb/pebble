@@ -88,7 +88,7 @@ func TestExcise(t *testing.T) {
 			opts.Levels[0].IndexBlockSize = 32 << 10
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"external-locator": remoteStorage,
+			remote.NewLocator("external-locator"): remoteStorage,
 		})
 		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
 		// Disable automatic compactions because otherwise we'll race with
@@ -453,10 +453,10 @@ func TestConcurrentExcise(t *testing.T) {
 		tel := TeeEventListener(lel, el)
 		opts1.EventListener = &tel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": sstorage,
+			remote.NewLocator(""): sstorage,
 		})
 		opts1.Experimental.CreateOnShared = remote.CreateOnSharedAll
-		opts1.Experimental.CreateOnSharedLocator = ""
+		opts1.Experimental.CreateOnSharedLocator = remote.NewLocator("")
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts1.DisableAutomaticCompactions = true
@@ -465,10 +465,10 @@ func TestConcurrentExcise(t *testing.T) {
 		opts2 := &Options{}
 		*opts2 = *opts1
 		opts2.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": sstorage,
+			remote.NewLocator(""): sstorage,
 		})
 		opts2.Experimental.CreateOnShared = remote.CreateOnSharedAll
-		opts2.Experimental.CreateOnSharedLocator = ""
+		opts2.Experimental.CreateOnSharedLocator = remote.NewLocator("")
 		opts2.FS = mem2
 
 		var err error

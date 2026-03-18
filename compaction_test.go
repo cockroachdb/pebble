@@ -2923,7 +2923,7 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 	var opts Options
 	opts.FS = vfs.NewMem()
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"": remote.NewInMem(),
+		remote.NewLocator(""): remote.NewInMem(),
 	})
 	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
 	opts.DeletionPacing.BaselineRate = func() uint64 { return 1 }
@@ -3139,7 +3139,7 @@ func TestCompactionCorruption(t *testing.T) {
 	opts.WithFSDefaults()
 	remoteStorage := remote.NewInMem()
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"external-locator": remoteStorage,
+		remote.NewLocator("external-locator"): remoteStorage,
 	})
 	d, err := Open("", opts)
 	require.NoError(t, err)

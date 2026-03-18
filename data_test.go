@@ -1596,7 +1596,7 @@ func runIngestExternalCmd(
 			sz = 1024
 		}
 		ef := ExternalFile{
-			Locator:     remote.Locator(locator),
+			Locator:     remote.NewLocator(locator),
 			ObjName:     objName,
 			HasPointKey: true,
 			Size:        uint64(sz),

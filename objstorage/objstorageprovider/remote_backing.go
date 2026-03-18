@@ -60,9 +60,9 @@ func (p *provider) encodeRemoteObjectBacking(
 		buf = binary.AppendUvarint(buf, uint64(p.remote.shared.creatorID))
 		buf = binary.AppendUvarint(buf, uint64(meta.DiskFileNum))
 	}
-	if meta.Remote.Locator != "" {
+	if meta.Remote.Locator.RawRedactableString != "" {
 		buf = binary.AppendUvarint(buf, tagLocator)
-		buf = encodeString(buf, string(meta.Remote.Locator))
+		buf = encodeString(buf, string(meta.Remote.Locator.RawRedactableString))
 	}
 	if meta.Remote.CustomObjectName != "" {
 		buf = binary.AppendUvarint(buf, tagCustomObjectName)
@@ -204,7 +204,7 @@ func decodeRemoteObjectBacking(
 		res.refToCheck.creatorID = objstorage.CreatorID(refCheckCreatorID)
 		res.refToCheck.fileNum = base.DiskFileNum(refCheckFileNum)
 	}
-	res.meta.Remote.Locator = remote.Locator(locator)
+	res.meta.Remote.Locator = remote.NewLocator(locator)
 	res.meta.Remote.CustomObjectName = customObjName
 	return res, nil
 }

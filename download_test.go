@@ -136,7 +136,7 @@ func initDownloadTestProvider(t *testing.T) objstorage.Provider {
 	}
 	providerSettings.Local.FS = vfs.NewMem()
 	providerSettings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"": remote.NewInMem(),
+		remote.NewLocator(""): remote.NewInMem(),
 	})
 
 	objProvider, err := objstorageprovider.Open(providerSettings)
@@ -151,7 +151,7 @@ func initDownloadTestProvider(t *testing.T) objstorage.Provider {
 	}
 	var remoteObjs []objstorage.RemoteObjectToAttach
 	for i := base.DiskFileNum(100); i < 200; i++ {
-		backing, err := objProvider.CreateExternalObjectBacking("", fmt.Sprintf("external-%d", i))
+		backing, err := objProvider.CreateExternalObjectBacking(remote.NewLocator(""), fmt.Sprintf("external-%d", i))
 		require.NoError(t, err)
 		remoteObjs = append(remoteObjs, objstorage.RemoteObjectToAttach{
 			FileNum:  i,

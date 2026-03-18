@@ -43,7 +43,7 @@ func TestProvider(t *testing.T) {
 			log.Infof("<remote> "+fmt, args...)
 		})
 		sharedFactory := remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": sharedStore,
+			remote.NewLocator(""): sharedStore,
 		})
 		tmpFileCounter := 0
 
@@ -100,7 +100,7 @@ func TestProvider(t *testing.T) {
 				if creatorID != 0 {
 					st.Remote.StorageFactory = sharedFactory
 					st.Remote.CreateOnShared = remote.CreateOnSharedAll
-					st.Remote.CreateOnSharedLocator = ""
+					st.Remote.CreateOnSharedLocator = remote.NewLocator("")
 				}
 				st.Local.ReadaheadConfig = readaheadConfig
 				if coldDir != "" {
@@ -346,15 +346,15 @@ func TestProvider(t *testing.T) {
 func TestSharedMultipleLocators(t *testing.T) {
 	ctx := context.Background()
 	stores := map[remote.Locator]remote.Storage{
-		"foo": remote.NewInMem(),
-		"bar": remote.NewInMem(),
+		remote.NewLocator("foo"): remote.NewInMem(),
+		remote.NewLocator("bar"): remote.NewInMem(),
 	}
 	sharedFactory := remote.MakeSimpleFactory(stores)
 
 	st1 := DefaultSettings(vfs.NewMem(), "")
 	st1.Remote.StorageFactory = sharedFactory
 	st1.Remote.CreateOnShared = remote.CreateOnSharedAll
-	st1.Remote.CreateOnSharedLocator = "foo"
+	st1.Remote.CreateOnSharedLocator = remote.NewLocator("foo")
 	p1, err := Open(st1)
 	require.NoError(t, err)
 	require.NoError(t, p1.SetCreatorID(1))
@@ -362,7 +362,7 @@ func TestSharedMultipleLocators(t *testing.T) {
 	st2 := DefaultSettings(vfs.NewMem(), "")
 	st2.Remote.StorageFactory = sharedFactory
 	st2.Remote.CreateOnShared = remote.CreateOnSharedAll
-	st2.Remote.CreateOnSharedLocator = "bar"
+	st2.Remote.CreateOnSharedLocator = remote.NewLocator("bar")
 	p2, err := Open(st2)
 	require.NoError(t, err)
 	require.NoError(t, p2.SetCreatorID(2))
@@ -455,7 +455,7 @@ func TestAttachExternalObject(t *testing.T) {
 	ctx := context.Background()
 	storage := remote.NewInMem()
 	sharedFactory := remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"foo": storage,
+		remote.NewLocator("foo"): storage,
 	})
 
 	st1 := DefaultSettings(vfs.NewMem(), "")
@@ -473,7 +473,7 @@ func TestAttachExternalObject(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
 
-	backing, err := p1.CreateExternalObjectBacking("foo", "some-obj-name")
+	backing, err := p1.CreateExternalObjectBacking(remote.NewLocator("foo"), "some-obj-name")
 	require.NoError(t, err)
 
 	_, err = p1.AttachRemoteObjects([]objstorage.RemoteObjectToAttach{{
@@ -492,7 +492,7 @@ func TestAttachExternalObject(t *testing.T) {
 	require.Equal(t, byte(123), checkData(t, 0, buf))
 	require.NoError(t, r.Close())
 
-	require.Equal(t, []base.DiskFileNum{1}, p1.GetExternalObjects("foo", "some-obj-name"))
+	require.Equal(t, []base.DiskFileNum{1}, p1.GetExternalObjects(remote.NewLocator("foo"), "some-obj-name"))
 
 	// Verify that we can extract a correct backing from this provider and attach
 	// the object to another provider.
@@ -533,10 +533,10 @@ func TestNotExistError(t *testing.T) {
 	st := DefaultSettings(fs, "")
 	sharedStorage := remote.NewInMem()
 	st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"": sharedStorage,
+		remote.NewLocator(""): sharedStorage,
 	})
 	st.Remote.CreateOnShared = remote.CreateOnSharedAll
-	st.Remote.CreateOnSharedLocator = ""
+	st.Remote.CreateOnSharedLocator = remote.NewLocator("")
 	provider, err := Open(st)
 	require.NoError(t, err)
 	require.NoError(t, provider.SetCreatorID(1))
@@ -621,11 +621,11 @@ func TestParallelSync(t *testing.T) {
 			fs := vfs.NewCrashableMem()
 			st := DefaultSettings(fs, "")
 			st.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-				"": remote.NewInMem(),
+				remote.NewLocator(""): remote.NewInMem(),
 			})
 
 			st.Remote.CreateOnShared = remote.CreateOnSharedAll
-			st.Remote.CreateOnSharedLocator = ""
+			st.Remote.CreateOnSharedLocator = remote.NewLocator("")
 			p, err := Open(st)
 			require.NoError(t, err)
 			require.NoError(t, p.SetCreatorID(1))

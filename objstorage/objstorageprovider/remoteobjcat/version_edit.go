@@ -87,9 +87,9 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorID))
 		buf = binary.AppendUvarint(buf, uint64(meta.CreatorFileNum))
 		buf = binary.AppendUvarint(buf, uint64(meta.CleanupMethod))
-		if meta.Locator != "" {
+		if meta.Locator.RawRedactableString != "" {
 			buf = binary.AppendUvarint(buf, uint64(tagNewObjectLocator))
-			buf = encodeString(buf, string(meta.Locator))
+			buf = encodeString(buf, string(meta.Locator.RawRedactableString))
 		}
 		if meta.CustomObjectName != "" {
 			buf = binary.AppendUvarint(buf, uint64(tagNewObjectCustomName))
@@ -175,7 +175,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					CreatorID:        objstorage.CreatorID(creatorID),
 					CreatorFileNum:   base.DiskFileNum(creatorFileNum),
 					CleanupMethod:    objstorage.SharedCleanupMethod(cleanupMethod),
-					Locator:          remote.Locator(locator),
+					Locator:          remote.NewLocator(locator),
 					CustomObjectName: customName,
 				})
 			}

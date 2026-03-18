@@ -1219,10 +1219,10 @@ func testIngestSharedImpl(
 		lel := MakeLoggingEventListener(testutils.Logger{T: t})
 		opts1.EventListener = &lel
 		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": sstorage,
+			remote.NewLocator(""): sstorage,
 		})
 		opts1.Experimental.CreateOnShared = createOnShared
-		opts1.Experimental.CreateOnSharedLocator = ""
+		opts1.Experimental.CreateOnSharedLocator = remote.NewLocator("")
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts1.DisableAutomaticCompactions = true
@@ -1230,10 +1230,10 @@ func testIngestSharedImpl(
 		opts2 = &Options{}
 		*opts2 = *opts1
 		opts2.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": sstorage,
+			remote.NewLocator(""): sstorage,
 		})
 		opts2.Experimental.CreateOnShared = createOnShared
-		opts2.Experimental.CreateOnSharedLocator = ""
+		opts2.Experimental.CreateOnSharedLocator = remote.NewLocator("")
 		opts2.FS = mem2
 
 		var err error
@@ -1558,10 +1558,10 @@ func TestSimpleIngestShared(t *testing.T) {
 	providerSettings.Local.NoSyncOnClose = opts2.NoSyncOnClose
 	providerSettings.Local.BytesPerSync = opts2.BytesPerSync
 	providerSettings.Remote.StorageFactory = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"": remote.NewInMem(),
+		remote.NewLocator(""): remote.NewInMem(),
 	})
 	providerSettings.Remote.CreateOnShared = remote.CreateOnSharedAll
-	providerSettings.Remote.CreateOnSharedLocator = ""
+	providerSettings.Remote.CreateOnSharedLocator = remote.NewLocator("")
 
 	provider2, err := objstorageprovider.Open(providerSettings)
 	require.NoError(t, err)
@@ -1702,7 +1702,7 @@ func TestIngestExternal(t *testing.T) {
 			Logger:             testutils.Logger{T: t},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"external-locator": remoteStorage,
+			remote.NewLocator("external-locator"): remoteStorage,
 		})
 		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
 		opts.Experimental.IngestSplit = func() bool {

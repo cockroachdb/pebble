@@ -49,7 +49,7 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			Logger:                      testutils.Logger{T: t},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": remoteMem,
+			remote.NewLocator(""): remoteMem,
 		})
 		if createOnShared {
 			opts.Experimental.CreateOnShared = remote.CreateOnSharedAll

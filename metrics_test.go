@@ -291,7 +291,7 @@ func TestMetrics(t *testing.T) {
 		opts.MemTableStopWritesThreshold = 4
 
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": remoteStorage,
+			remote.NewLocator(""): remoteStorage,
 		})
 		if createOnSharedLower {
 			opts.Experimental.CreateOnShared = remote.CreateOnSharedLower
