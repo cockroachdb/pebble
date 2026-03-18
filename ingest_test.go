@@ -2213,9 +2213,6 @@ func TestIngest(t *testing.T) {
 	if runtime.GOARCH == "386" {
 		t.Skip("skipped on 32-bit due to slightly varied output")
 	}
-	defer func() {
-		require.NoError(t, d.Close())
-	}()
 
 	reset := func(split bool) {
 		if d != nil {
@@ -2330,6 +2327,9 @@ func TestIngest(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+	if d != nil {
+		require.NoError(t, d.Close())
+	}
 }
 
 // linkAndRemovePredicate is like errorfs.InjectIndex, and injects only on the

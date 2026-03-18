@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/iterv2"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -260,6 +261,42 @@ func (s *ingestedFlushable) newIterInternal(o *IterOptions, iio internalIterOpts
 		manifest.FlushableIngestsLayer(),
 		iio,
 	)
+}
+
+func (s *ingestedFlushable) newItersV2(
+	o *IterOptions, iio internalIterOpts,
+) (levelIter, rangeDelIter iterv2.Iter) {
+	var opts IterOptions
+	if o != nil {
+		opts = *o
+	}
+	files := s.slice.Iter()
+	levelIter = newLevelIterV2(
+		context.Background(),
+		opts,
+		s.comparer,
+		s.newIters,
+		files.Filter(manifest.KeyTypePoint),
+		manifest.FlushableIngestsLayer(),
+		iio,
+	)
+	if s.exciseSpan.Valid() {
+		// We have an excise span; we will set it up as a separate level.
+		rdel := keyspan.Span{
+			Start: s.exciseSpan.Start,
+			End:   s.exciseSpan.End,
+			Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(s.exciseSeqNum, base.InternalKeyKindRangeDelete)}},
+		}
+		iiter := &iterv2.InterleavingIter{}
+		iiter.Init(
+			s.comparer,
+			base.NewFakeIterWithCmp(s.comparer.Compare, nil),
+			keyspan.NewIter(s.comparer.Compare, []keyspan.Span{rdel}),
+			nil, nil, nil, nil,
+		)
+		rangeDelIter = iiter
+	}
+	return levelIter, rangeDelIter
 }
 
 // newFlushIter is part of the flushable interface.

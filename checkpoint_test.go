@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/iterv2"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -281,6 +282,9 @@ func TestCopyCheckpointOptions(t *testing.T) {
 func TestCheckpoint(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	t.Run("shared=false", func(t *testing.T) {
+		if iterv2.Enabled {
+			t.Skipf("file open timing changes with iterv2")
+		}
 		testCheckpointImpl(t, "testdata/checkpoint", false /* createOnShared */)
 	})
 	t.Run("shared=true", func(t *testing.T) {

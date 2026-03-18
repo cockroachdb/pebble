@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/inflight"
 	"github.com/cockroachdb/pebble/internal/invalidating"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/iterv2"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -1203,7 +1204,8 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 		useLazyCombinedIteration := dbi.rangeKey == nil &&
 			dbi.opts.KeyTypes == IterKeyTypePointsAndRanges &&
 			(dbi.batch == nil || dbi.batch.batch.countRangeKeys == 0) &&
-			!dbi.opts.disableLazyCombinedIteration
+			!dbi.opts.disableLazyCombinedIteration &&
+			!iterv2.Enabled
 		if useLazyCombinedIteration {
 			// The user requested combined iteration, and there's no indexed
 			// batch currently containing range keys that would prevent lazy
@@ -1307,6 +1309,11 @@ func (i *Iterator) constructPointIter(
 	}
 	if i.opts.RangeKeyMasking.Filter != nil {
 		internalOpts.boundLimitedFilter = &i.rangeKeyMasking
+	}
+
+	if iterv2.Enabled {
+		i.constructPointIterV2(ctx, memtables, buf, internalOpts)
+		return
 	}
 
 	// Merging levels and levels from iterAlloc.
@@ -1427,6 +1434,103 @@ func (i *Iterator) constructPointIter(
 	buf.merging.combinedIterState = &i.lazyCombinedIter.combinedIterState
 	i.pointIter = invalidating.MaybeWrapIfInvariants(&buf.merging).(topLevelIterator)
 	i.merging = &buf.merging
+}
+
+// constructPointIterV2 builds the point iterator stack using mergingIterV2 and
+// levelIterV2/InterleavingIter children.
+func (i *Iterator) constructPointIterV2(
+	ctx context.Context, memtables flushableList, buf *iterAlloc, internalOpts internalIterOpts,
+) {
+	var v2iters []iterv2.Iter
+
+	// 1. Batch iterator (if any).
+	if i.batch != nil {
+		if i.batch.batch.index == nil {
+			panic(errors.AssertionFailedf("creating an iterator over an unindexed batch"))
+		}
+		i.batch.batch.initInternalIter(&i.opts, &i.batch.pointIter)
+		i.batch.batch.initRangeDelIter(&i.opts, &i.batch.rangeDelIter, i.batch.batchSeqNum)
+		var rangeDelIter keyspan.FragmentIterator
+		if i.batch.rangeDelIter.Count() > 0 {
+			rangeDelIter = &i.batch.rangeDelIter
+		}
+		iiter := new(iterv2.InterleavingIter)
+		iiter.Init(i.comparer,
+			&iterv2.PointKeyFilter{Iter: &i.batch.pointIter},
+			rangeDelIter,
+			nil, nil, // startKey, endKey: unbounded
+			i.opts.LowerBound, i.opts.UpperBound)
+		v2iters = append(v2iters, iiter)
+	}
+
+	if !i.batchOnlyIter {
+		// 2. Memtable iterators (newest to oldest).
+		for j := len(memtables) - 1; j >= 0; j-- {
+			mem := memtables[j]
+			if fi, ok := mem.flushable.(*ingestedFlushable); ok {
+				flushableLevelIter, flushableRangeDelIter := fi.newItersV2(&i.opts, internalOpts)
+				v2iters = append(v2iters, flushableLevelIter)
+				if flushableRangeDelIter != nil {
+					v2iters = append(v2iters, flushableRangeDelIter)
+				}
+				continue
+			}
+			pointIter := mem.newIter(&i.opts)
+			// Apparently the memtable iterator interleaves range key span boundaries.
+			// Filter them out using a PointKeyFilter.
+			pointIter = &iterv2.PointKeyFilter{Iter: pointIter}
+			rangeDelIter := mem.newRangeDelIter(&i.opts)
+			iiter := new(iterv2.InterleavingIter)
+			iiter.Init(i.comparer, pointIter, rangeDelIter,
+				nil, nil, // startKey, endKey: unbounded
+				i.opts.LowerBound, i.opts.UpperBound)
+			v2iters = append(v2iters, iiter)
+		}
+
+		// 3. Level iterators: L0 sublevels followed by L1+.
+		var current *manifest.Version
+		if i.version != nil {
+			current = i.version
+		} else {
+			current = i.readState.current
+		}
+		i.opts.snapshotForHideObsoletePoints = buf.dbi.seqNum
+
+		addLevelIterV2 := func(files manifest.LevelIterator, layer manifest.Layer) {
+			// Filter to point-key files only; range-key-only files are handled
+			// by the separate range key iterator.
+			files = files.Filter(manifest.KeyTypePoint)
+			li := newLevelIterV2(ctx, i.opts, i.comparer, i.newIters, files, layer, internalOpts)
+			v2iters = append(v2iters, li)
+		}
+
+		// L0 sublevels, newest to oldest.
+		for idx := len(current.L0SublevelFiles) - 1; idx >= 0; idx-- {
+			addLevelIterV2(current.L0SublevelFiles[idx].Iter(), manifest.L0Sublevel(idx))
+		}
+		// L1+.
+		for level := 1; level < len(current.Levels); level++ {
+			if current.Levels[level].Empty() {
+				continue
+			}
+			addLevelIterV2(current.Levels[level].Iter(), manifest.Level(level))
+		}
+	}
+	for j := range v2iters {
+		v2iters[j] = iterv2.MaybeWrapInInvalidating(v2iters[j])
+	}
+
+	m := newMergingIterV2(i.comparer.Compare, i.comparer.Split, i.seqNum, v2iters...)
+	m.lower = i.opts.LowerBound
+	m.upper = i.opts.UpperBound
+	m.logger = i.opts.getLogger()
+	m.stats = &i.stats.InternalStats
+	if i.batch != nil {
+		m.batchSnapshot = i.batch.batchSeqNum
+		m.slab.batchSnapshot = i.batch.batchSeqNum
+	}
+	i.pointIter = invalidating.MaybeWrapIfInvariants(m).(topLevelIterator)
+	i.mergingV2 = m
 }
 
 // NewBatch returns a new empty write-only batch. Any reads on the batch will
