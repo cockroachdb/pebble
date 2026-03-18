@@ -13,14 +13,15 @@ import (
 
 // Locator is an opaque string identifying a remote.Storage implementation.
 //
-// The Locator must not contain secrets (like authentication keys). Locators are
-// stored on disk in the shared object catalog and are passed around as part of
-// RemoteObjectBacking; they can also appear in error messages.
-type Locator string
+// Locators are stored on disk in the shared object catalog and are passed around as part of
+// RemoteObjectBacking. They can also appear in error messages.
+// As such, if a Locator contains secrets, the constructor must ensure that the necessary redaction
+// is implemented.
+type Locator redact.RedactableString
 
 // SafeFormat implements redact.SafeFormatter.
-func (l Locator) SafeFormat(w redact.SafePrinter, _ rune) {
-	w.Printf("%s", redact.SafeString(l))
+func (l Locator) SafeFormat(w redact.SafePrinter, r rune) {
+	redact.RedactableString(l).SafeFormat(w, r)
 }
 
 // StorageFactory is used to return Storage implementations based on locators. A

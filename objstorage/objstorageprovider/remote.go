@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/remoteobjcat"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider/sharedcache"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/redact"
 )
 
 // remoteSubsystem contains the provider fields related to remote storage.
@@ -276,7 +277,8 @@ func (p *provider) sharedSync() error {
 
 func (p *provider) remotePath(meta objstorage.ObjectMetadata) string {
 	if meta.Remote.Locator != "" {
-		return fmt.Sprintf("remote-%s://%s", meta.Remote.Locator, remoteObjectName(meta))
+		return fmt.Sprintf("remote-%s://%s",
+			redact.Sprint(meta.Remote.Locator).Redact(), remoteObjectName(meta))
 	}
 	return "remote://" + remoteObjectName(meta)
 }
