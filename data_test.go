@@ -42,6 +42,7 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
 	"github.com/cockroachdb/pebble/wal"
+	"github.com/cockroachdb/redact"
 	"github.com/ghemawat/stream"
 	"github.com/stretchr/testify/require"
 )
@@ -1596,7 +1597,7 @@ func runIngestExternalCmd(
 			sz = 1024
 		}
 		ef := ExternalFile{
-			Locator:     remote.Locator(locator),
+			Locator:     remote.MakeLocator(redact.RedactableString(locator)),
 			ObjName:     objName,
 			HasPointKey: true,
 			Size:        uint64(sz),

@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/kr/pretty"
 )
 
@@ -29,7 +30,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					CreatorID:        12,
 					CreatorFileNum:   base.DiskFileNum(123),
 					CleanupMethod:    objstorage.SharedNoCleanup,
-					Locator:          "",
+					Locator:          remote.MakeLocator(""),
 					CustomObjectName: "foo",
 				},
 			},
@@ -42,7 +43,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					CreatorID:        12,
 					CreatorFileNum:   base.DiskFileNum(123),
 					CleanupMethod:    objstorage.SharedNoCleanup,
-					Locator:          "",
+					Locator:          remote.MakeLocator(""),
 					CustomObjectName: "foo",
 				},
 			},
@@ -59,7 +60,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					CreatorID:        12,
 					CreatorFileNum:   base.DiskFileNum(123),
 					CleanupMethod:    objstorage.SharedRefTracking,
-					Locator:          "foo",
+					Locator:          remote.MakeLocator("foo"),
 					CustomObjectName: "",
 				},
 				{
@@ -67,7 +68,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					FileType:         base.FileTypeTable,
 					CreatorID:        22,
 					CreatorFileNum:   base.DiskFileNum(223),
-					Locator:          "bar",
+					Locator:          remote.MakeLocator("bar"),
 					CustomObjectName: "obj1",
 				},
 				{
@@ -76,7 +77,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					CreatorID:        32,
 					CreatorFileNum:   base.DiskFileNum(323),
 					CleanupMethod:    objstorage.SharedRefTracking,
-					Locator:          "baz",
+					Locator:          remote.MakeLocator("baz"),
 					CustomObjectName: "obj2",
 				},
 			},
@@ -91,7 +92,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					CreatorID:        12,
 					CreatorFileNum:   base.DiskFileNum(123),
 					CleanupMethod:    objstorage.SharedRefTracking,
-					Locator:          "foo",
+					Locator:          remote.MakeLocator("foo"),
 					CustomObjectName: "",
 				},
 				{
@@ -99,7 +100,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					FileType:         base.FileTypeBlob,
 					CreatorID:        22,
 					CreatorFileNum:   base.DiskFileNum(223),
-					Locator:          "bar",
+					Locator:          remote.MakeLocator("bar"),
 					CustomObjectName: "obj1",
 				},
 				{
@@ -108,7 +109,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 					CreatorID:        32,
 					CreatorFileNum:   base.DiskFileNum(323),
 					CleanupMethod:    objstorage.SharedRefTracking,
-					Locator:          "baz",
+					Locator:          remote.MakeLocator("baz"),
 					CustomObjectName: "obj2",
 				},
 			},

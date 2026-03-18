@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/rangekey"
 	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -1072,7 +1073,7 @@ func (o *ingestExternalFilesOp) run(t *Test, h historyRecorder) {
 
 			meta := t.getExternalObj(obj.externalObjID)
 			external[i] = pebble.ExternalFile{
-				Locator:           "external",
+				Locator:           remote.MakeLocator("external"),
 				ObjName:           meta.objName,
 				Size:              meta.sstMeta.Size,
 				StartKey:          obj.bounds.Start,

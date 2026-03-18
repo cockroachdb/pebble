@@ -73,10 +73,10 @@ func TestScanStatistics(t *testing.T) {
 			},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"": remote.NewInMem(),
+			remote.MakeLocator(""): remote.NewInMem(),
 		})
 		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
-		opts.Experimental.CreateOnSharedLocator = ""
+		opts.Experimental.CreateOnSharedLocator = remote.MakeLocator("")
 		opts.DisableAutomaticCompactions = true
 		opts.EnsureDefaults()
 		opts.WithFSDefaults()
@@ -249,11 +249,11 @@ func TestScanInternal(t *testing.T) {
 			},
 		}
 		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-			"external-storage": extStorage,
-			"":                 remote.NewInMem(),
+			remote.MakeLocator("external-storage"): extStorage,
+			remote.MakeLocator(""):                 remote.NewInMem(),
 		})
 		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
-		opts.Experimental.CreateOnSharedLocator = ""
+		opts.Experimental.CreateOnSharedLocator = remote.MakeLocator("")
 		opts.DisableAutomaticCompactions = true
 		opts.EnsureDefaults()
 		opts.WithFSDefaults()
@@ -490,7 +490,7 @@ func TestScanInternal(t *testing.T) {
 				writeSST(points, rangeDels, rangeKeys, objstorageprovider.NewRemoteWritable(file))
 				ef := ExternalFile{
 					ObjName:           objName,
-					Locator:           remote.Locator("external-storage"),
+					Locator:           remote.MakeLocator("external-storage"),
 					Size:              10,
 					StartKey:          smallest.UserKey,
 					EndKey:            largest.UserKey,

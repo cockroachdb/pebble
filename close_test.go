@@ -34,7 +34,7 @@ func TestCloseWithBlockedRemoteIO(t *testing.T) {
 		L0StopWritesThreshold: 100,
 	}
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"blocking": storage,
+		remote.MakeLocator("blocking"): storage,
 	})
 
 	d, err := Open("", opts)
@@ -55,7 +55,7 @@ func TestCloseWithBlockedRemoteIO(t *testing.T) {
 	// Ingest the external file. This triggers table stats loading in the
 	// background, which will try to read from the blocking storage.
 	_, err = d.IngestExternalFiles(context.Background(), []ExternalFile{{
-		Locator:           "blocking",
+		Locator:           remote.MakeLocator("blocking"),
 		ObjName:           "ext1",
 		Size:              uint64(sz),
 		StartKey:          []byte("a"),
