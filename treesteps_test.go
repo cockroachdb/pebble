@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/itertest"
+	"github.com/cockroachdb/pebble/internal/iterv2"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/treesteps"
@@ -28,6 +29,10 @@ func TestTreeSteps(t *testing.T) {
 	if !treesteps.Enabled {
 		t.Skip("treesteps not available in this build")
 	}
+	if iterv2.Enabled {
+		t.Skip("treesteps output is specific to v1 iterator stack")
+	}
+
 	datadriven.Walk(t, "testdata/treesteps", func(t *testing.T, path string) {
 		var d *DB
 		defer func() {
