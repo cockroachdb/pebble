@@ -166,7 +166,7 @@ build-raw
 Span: a-c:{(#1,RANGEDEL)}
 Span: a-c:{(#2,RANGEDEL)}
 ----
-pebble: keys must be added in order: a-c:{(#1,RANGEDEL)}, a-c:{(#2,RANGEDEL)}
+failed to write Span: a-c:{(#2,RANGEDEL)}: pebble: keys must be added in order: a-c:{(#1,RANGEDEL)}, a-c:{(#2,RANGEDEL)}
 
 build-raw
 Span: a-c:{(#1,RANGEDEL)}

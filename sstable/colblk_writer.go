@@ -325,6 +325,7 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 		}
 		for i := range w.blockPropCollectors {
 			if err := w.blockPropCollectors[i].AddRangeKeys(span); err != nil {
+				w.err = err
 				return err
 			}
 		}
@@ -339,6 +340,7 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 					w.opts.Comparer.FormatKey(prevStart),
 					w.opts.Comparer.FormatKey(prevEnd),
 					prevTrailer, span.Pretty(w.opts.Comparer.FormatKey))
+				return w.err
 			}
 		} else if c := w.opts.Comparer.Compare(prevEnd, span.Start); c > 0 {
 			w.err = errors.Errorf("pebble: keys must be added in order: %s-%s:{(#%s)}, %s",
