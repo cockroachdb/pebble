@@ -784,7 +784,7 @@ func (ks *cockroachKeySeeker) init(
 	// Note that we call DecodeColumn directly rather than using the
 	// BlockDecoder's type-specific convenience methods (e.g. PrefixBytes,
 	// Uints, etc) to avoid bd from escaping to the heap.
-	rows := int(bd.Rows())
+	rows := uint32(bd.Rows())
 	ks.roachKeys = colblk.DecodeColumn(&bd, cockroachColRoachKey, rows, colblk.DataTypePrefixBytes, colblk.DecodePrefixBytes)
 	ks.roachKeyChanged = d.PrefixChanged()
 	ks.mvccWallTimes = colblk.DecodeColumn(&bd, cockroachColMVCCWallTime, rows, colblk.DataTypeUint, colblk.DecodeUnsafeUints)

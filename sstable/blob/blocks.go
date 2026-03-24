@@ -6,6 +6,7 @@ package blob
 
 import (
 	"encoding/binary"
+	"math"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -161,11 +162,14 @@ func (d *indexBlockDecoder) Init(data []byte) {
 	d.virtualBlockCount = int(binary.LittleEndian.Uint32(data))
 	d.bd.Init(data, indexBlockCustomHeaderSize)
 	d.virtualBlocks = colblk.DecodeColumn(&d.bd, indexBlockColumnVirtualBlocksIdx,
-		d.virtualBlockCount, colblk.DataTypeUint, colblk.DecodeUnsafeUints)
+		uint32(d.virtualBlockCount), colblk.DataTypeUint, colblk.DecodeUnsafeUints)
+	if d.bd.Rows() == math.MaxUint32 {
+		panic(errors.AssertionFailedf("invalid row count"))
+	}
 	// Decode the offsets column. We pass rows+1 because an index block encoding
 	// n block handles encodes n+1 offsets.
 	d.offsets = colblk.DecodeColumn(&d.bd, indexBlockColumnOffsetsIdx,
-		d.bd.Rows()+1, colblk.DataTypeUint, colblk.DecodeUnsafeUints)
+		uint32(d.bd.Rows()+1), colblk.DataTypeUint, colblk.DecodeUnsafeUints)
 }
 
 // BlockHandle returns the block handle for the given block index in the

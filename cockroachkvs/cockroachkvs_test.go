@@ -211,10 +211,10 @@ func TestKeySchema_KeyWriter(t *testing.T) {
 			for i := 0; i < kw.NumColumns(); i++ {
 				offs[i+1] = kw.Finish(i, row, offs[i], b)
 			}
-			roachKeys, _ := colblk.DecodePrefixBytes(b, offs[cockroachColRoachKey], row)
-			mvccWallTimes, _ := colblk.DecodeUnsafeUints(b, offs[cockroachColMVCCWallTime], row)
-			mvccLogicalTimes, _ := colblk.DecodeUnsafeUints(b, offs[cockroachColMVCCLogical], row)
-			untypedVersions, _ := colblk.DecodeRawBytes(b, offs[cockroachColUntypedVersion], row)
+			roachKeys, _ := colblk.DecodePrefixBytes(b, uint64(offs[cockroachColRoachKey]), uint32(row))
+			mvccWallTimes, _ := colblk.DecodeUnsafeUints(b, uint64(offs[cockroachColMVCCWallTime]), uint32(row))
+			mvccLogicalTimes, _ := colblk.DecodeUnsafeUints(b, uint64(offs[cockroachColMVCCLogical]), uint32(row))
+			untypedVersions, _ := colblk.DecodeRawBytes(b, uint64(offs[cockroachColUntypedVersion]), uint32(row))
 			tbl := tablewriter.NewWriter(&buf)
 			tbl.SetHeader([]string{"Key", "Wall", "Logical", "Untyped"})
 			for i := 0; i < row; i++ {

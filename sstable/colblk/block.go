@@ -285,7 +285,7 @@ func FinishBlock(rows int, writers []ColumnWriter) []byte {
 // DecodeColumn decodes the col'th column of the provided reader's block as a
 // column of dataType using decodeFunc.
 func DecodeColumn[V any](
-	d *BlockDecoder, col int, rows int, dataType DataType, decodeFunc DecodeFunc[V],
+	d *BlockDecoder, col int, rows uint32, dataType DataType, decodeFunc DecodeFunc[V],
 ) V {
 	if uint16(col) >= d.header.Columns {
 		panic(errors.AssertionFailedf("column %d is out of range [0, %d)", errors.Safe(col), errors.Safe(d.header.Columns)))
@@ -346,25 +346,25 @@ func (d *BlockDecoder) dataType(col int) DataType {
 // Bitmap retrieves the col'th column as a bitmap. The column must be of type
 // DataTypeBool.
 func (d *BlockDecoder) Bitmap(col int) Bitmap {
-	return DecodeColumn(d, col, int(d.header.Rows), DataTypeBool, DecodeBitmap)
+	return DecodeColumn(d, col, d.header.Rows, DataTypeBool, DecodeBitmap)
 }
 
 // RawBytes retrieves the col'th column as a column of byte slices. The column
 // must be of type DataTypeBytes.
 func (d *BlockDecoder) RawBytes(col int) RawBytes {
-	return DecodeColumn(d, col, int(d.header.Rows), DataTypeBytes, DecodeRawBytes)
+	return DecodeColumn(d, col, d.header.Rows, DataTypeBytes, DecodeRawBytes)
 }
 
 // PrefixBytes retrieves the col'th column as a prefix-compressed byte slice column. The column
 // must be of type DataTypePrefixBytes.
 func (d *BlockDecoder) PrefixBytes(col int) PrefixBytes {
-	return DecodeColumn(d, col, int(d.header.Rows), DataTypePrefixBytes, DecodePrefixBytes)
+	return DecodeColumn(d, col, d.header.Rows, DataTypePrefixBytes, DecodePrefixBytes)
 }
 
 // Uints retrieves the col'th column as a column of uints. The column must be
 // of type DataTypeUint.
 func (d *BlockDecoder) Uints(col int) UnsafeUints {
-	return DecodeColumn(d, col, int(d.header.Rows), DataTypeUint, DecodeUnsafeUints)
+	return DecodeColumn(d, col, d.header.Rows, DataTypeUint, DecodeUnsafeUints)
 }
 
 // Data returns the underlying buffer.
@@ -377,13 +377,13 @@ func (d *BlockDecoder) Header() []byte {
 	return d.data[:d.customHeaderSize]
 }
 
-func (d *BlockDecoder) pageStart(col int) uint32 {
+func (d *BlockDecoder) pageStart(col int) uint64 {
 	if uint16(col) >= d.header.Columns {
 		// -1 for the trailing version byte
-		return uint32(len(d.data) - 1)
+		return uint64(len(d.data) - 1)
 	}
-	return binary.LittleEndian.Uint32(
-		unsafe.Slice((*byte)(d.pointer(d.customHeaderSize+uint32(blockHeaderBaseSize+columnHeaderSize*col+1))), 4))
+	return uint64(binary.LittleEndian.Uint32(
+		unsafe.Slice((*byte)(d.pointer(d.customHeaderSize+uint32(blockHeaderBaseSize+columnHeaderSize*col+1))), 4)))
 }
 
 func (d *BlockDecoder) pointer(offset uint32) unsafe.Pointer {

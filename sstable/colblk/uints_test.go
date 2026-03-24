@@ -221,8 +221,8 @@ func TestUintsRandomized(t *testing.T) {
 		off := b.Finish(0, cfg.rowsFinish, 0, buf)
 		require.Equal(t, sz, off)
 
-		uu, endOff := DecodeUnsafeUints(buf, 0, cfg.rowsFinish)
-		require.Equal(t, endOff, off)
+		uu, endOff := DecodeUnsafeUints(buf, 0, uint32(cfg.rowsFinish))
+		require.Equal(t, endOff, uint64(off))
 		for i := 0; i < cfg.rowsFinish; i++ {
 			if uu.At(i) != vals[i] {
 				t.Fatalf("At(%d) = %d, want %d", i, uu.At(i), vals[i])

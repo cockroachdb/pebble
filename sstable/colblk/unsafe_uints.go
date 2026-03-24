@@ -29,7 +29,7 @@ var _ Array[uint64] = UnsafeUints{}
 
 // DecodeUnsafeUints decodes the structure of a slice of uints from a
 // byte slice.
-func DecodeUnsafeUints(b []byte, off uint32, rows int) (_ UnsafeUints, endOffset uint32) {
+func DecodeUnsafeUints(b []byte, off uint64, rows uint32) (_ UnsafeUints, endOffset uint64) {
 	if rows == 0 {
 		// NB: &b[off] is actually pointing beyond the uints serialization.  We
 		// ensure this is always valid at the block-level by appending a
@@ -50,9 +50,9 @@ func DecodeUnsafeUints(b []byte, off uint32, rows int) (_ UnsafeUints, endOffset
 	}
 	w := encoding.Width()
 	if w > 0 {
-		off = align(off, uint32(w))
+		off = align(off, uint64(w))
 	}
-	return makeUnsafeUints(base, unsafe.Pointer(&b[off]), w), off + uint32(rows*w)
+	return makeUnsafeUints(base, unsafe.Pointer(&b[off]), w), off + uint64(rows)*uint64(w)
 }
 
 // Assert that DecodeUnsafeIntegerSlice implements DecodeFunc.
@@ -84,7 +84,7 @@ type UnsafeOffsets struct {
 
 // DecodeUnsafeOffsets decodes the structure of a slice of offsets from a byte
 // slice.
-func DecodeUnsafeOffsets(b []byte, off uint32, rows int) (_ UnsafeOffsets, endOffset uint32) {
+func DecodeUnsafeOffsets(b []byte, off uint64, rows uint32) (_ UnsafeOffsets, endOffset uint64) {
 	ints, endOffset := DecodeUnsafeUints(b, off, rows)
 	if ints.base != 0 || ints.width == 8 {
 		panic(errors.AssertionFailedf("unexpected offsets encoding (base=%d, width=%d)", errors.Safe(ints.base), errors.Safe(ints.width)))
