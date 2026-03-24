@@ -2368,7 +2368,6 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				var sublevels []manifest.LevelSlice
 				var files *[]*manifest.TableMetadata
 				var sublevel []*manifest.TableMetadata
-				var sublevelNum int
 				var parsingSublevel bool
 				tableNum := base.TableNum(1)
 
@@ -2390,7 +2389,7 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						if err != nil {
 							return err.Error()
 						}
-						sublevelNum, err = strconv.Atoi(data[3:])
+						_, err = strconv.Atoi(data[3:])
 						if err != nil {
 							return err.Error()
 						}
@@ -2423,7 +2422,6 @@ func TestCompactionCheckOrdering(t *testing.T) {
 						tableNum++
 						*files = append(*files, meta)
 						if parsingSublevel {
-							meta.SubLevel = sublevelNum
 							sublevel = append(sublevel, meta)
 						}
 					}
@@ -2437,7 +2435,21 @@ func TestCompactionCheckOrdering(t *testing.T) {
 				}
 				if c.startLevel.level == 0 {
 					// We don't change the input files for the compaction beyond this point.
-					c.startLevel.l0SublevelInfo = generateSublevelInfo(c.comparer.Compare, c.startLevel.files)
+					// Build l0SublevelInfo directly from the explicitly-specified sublevels.
+					if len(sublevels) > 0 {
+						for i, sl := range sublevels {
+							c.startLevel.l0SublevelInfo = append(c.startLevel.l0SublevelInfo, sublevelInfo{
+								LevelSlice: sl,
+								sublevel:   manifest.L0Sublevel(i),
+							})
+						}
+					} else {
+						// No explicit sublevels; put all files in sublevel 0.
+						c.startLevel.l0SublevelInfo = []sublevelInfo{{
+							LevelSlice: manifest.NewLevelSliceKeySorted(c.comparer.Compare, startFiles),
+							sublevel:   manifest.L0Sublevel(0),
+						}}
+					}
 				}
 
 				newIters := func(

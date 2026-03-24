@@ -159,15 +159,6 @@ type TableMetadata struct {
 	//
 	stats TableStats
 
-	// For L0 files only. Protected by DB.mu. Used to generate L0 sublevels and
-	// pick L0 compactions. Only accurate for the most recent Version.
-	// TODO(radu): this is very hacky and fragile. This information should live
-	// inside l0Sublevels.
-	SubLevel         int
-	L0Index          int
-	minIntervalIndex int
-	maxIntervalIndex int
-
 	// NB: the alignment of this struct is 8 bytes. We pack all the bools to
 	// ensure an optimal packing.
 

@@ -144,21 +144,21 @@ L0 [a, z]: [a, j) [k, z)
 define
 L0
   1:[a#1,SET-b#inf,RANGEDEL]
-  1:[c#1,SET-d#inf,RANGEDEL]
-  1:[f#1,SET-g#inf,RANGEDEL]
-  1:[i#1,SET-j#inf,RANGEDEL]
+  2:[c#1,SET-d#inf,RANGEDEL]
+  3:[f#1,SET-g#inf,RANGEDEL]
+  4:[i#1,SET-j#inf,RANGEDEL]
 L6
-  1:[a#0,SET-i#inf,RANGEDEL]
-  1:[k#0,SET-z#inf,RANGEDEL]
+  5:[a#0,SET-i#inf,RANGEDEL]
+  6:[k#0,SET-z#inf,RANGEDEL]
 ----
 L0.0:
   000001:[a#1,SET-b#inf,RANGEDEL]
-  000001:[c#1,SET-d#inf,RANGEDEL]
-  000001:[f#1,SET-g#inf,RANGEDEL]
-  000001:[i#1,SET-j#inf,RANGEDEL]
+  000002:[c#1,SET-d#inf,RANGEDEL]
+  000003:[f#1,SET-g#inf,RANGEDEL]
+  000004:[i#1,SET-j#inf,RANGEDEL]
 L6:
-  000001:[a#0,SET-i#inf,RANGEDEL]
-  000001:[k#0,SET-z#inf,RANGEDEL]
+  000005:[a#0,SET-i#inf,RANGEDEL]
+  000006:[k#0,SET-z#inf,RANGEDEL]
 
 # L0 compaction should reflect the ranges in L0 as well.
 inuse-key-ranges

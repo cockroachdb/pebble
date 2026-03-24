@@ -143,10 +143,13 @@ func (cl sublevelInfo) String() string {
 
 // generateSublevelInfo will generate the level slices for each of the sublevels
 // from the level slice for all of L0.
-func generateSublevelInfo(cmp base.Compare, levelFiles manifest.LevelSlice) []sublevelInfo {
+func generateSublevelInfo(
+	cmp base.Compare, levelFiles manifest.LevelSlice, l0Organizer *manifest.L0Organizer,
+) []sublevelInfo {
 	sublevelMap := make(map[uint64][]*manifest.TableMetadata)
 	for f := range levelFiles.All() {
-		sublevelMap[uint64(f.SubLevel)] = append(sublevelMap[uint64(f.SubLevel)], f)
+		sl := uint64(l0Organizer.SubLevelOf(f))
+		sublevelMap[sl] = append(sublevelMap[sl], f)
 	}
 
 	var sublevels []int
@@ -442,7 +445,7 @@ func (pc *pickedTableCompaction) setupInputs(
 
 	if inputLevel.level == 0 {
 		// If L0 is involved, it should always be the startLevel of the compaction.
-		pc.startLevel.l0SublevelInfo = generateSublevelInfo(cmp, pc.startLevel.files)
+		pc.startLevel.l0SublevelInfo = generateSublevelInfo(cmp, pc.startLevel.files, pc.l0Organizer)
 	}
 
 	if outputKeyRangeAlreadyCompacting(cmp, inProgressCompactions, pc) {
@@ -546,7 +549,7 @@ func (pc *pickedTableCompaction) maybeGrowL0ForBase(cmp base.Compare, maxExpande
 	iter := pc.version.Levels[0].Iter()
 	var sizeSum uint64
 	for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
-		if pc.lcf.FilesIncluded[f.L0Index] {
+		if _, ok := pc.lcf.FilesIncluded[f.TableNum]; ok {
 			newStartLevelFiles = append(newStartLevelFiles, f)
 			sizeSum += f.Size
 		}
