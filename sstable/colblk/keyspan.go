@@ -238,9 +238,9 @@ func (d *KeyspanDecoder) Init(data []byte) {
 	// columns, so we call DecodeColumn directly, taking care to pass in
 	// rows=r.boundaryKeysCount.
 	d.boundaryKeys = DecodeColumn(&d.blockDecoder, keyspanColBoundaryUserKeys,
-		int(d.boundaryKeysCount), DataTypeBytes, DecodeRawBytes)
+		d.boundaryKeysCount, DataTypeBytes, DecodeRawBytes)
 	d.boundaryKeyIndices = DecodeColumn(&d.blockDecoder, keyspanColBoundaryKeyIndices,
-		int(d.boundaryKeysCount), DataTypeUint, DecodeUnsafeUints)
+		d.boundaryKeysCount, DataTypeUint, DecodeUnsafeUints)
 
 	d.trailers = d.blockDecoder.Uints(keyspanColTrailers)
 	d.suffixes = d.blockDecoder.RawBytes(keyspanColSuffixes)

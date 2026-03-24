@@ -55,9 +55,9 @@ func TestRawBytes(t *testing.T) {
 				f.ToTreePrinter(n)
 			}
 			rawBytesToBinFormatter(f, n, count, nil)
-			var decodedEndOffset uint32
-			rawBytes, decodedEndOffset = DecodeRawBytes(buf[startOffset:], 0, count)
-			require.Equal(t, endOffset, decodedEndOffset+uint32(startOffset))
+			var decodedEndOffset uint64
+			rawBytes, decodedEndOffset = DecodeRawBytes(buf[startOffset:], 0, uint32(count))
+			require.Equal(t, uint64(endOffset), decodedEndOffset+uint64(startOffset))
 			return tp.String()
 		case "at":
 			var indices []int
@@ -133,7 +133,7 @@ func BenchmarkRawBytes(b *testing.B) {
 			b.Run(fmt.Sprintf("sliceLen=%d", sz), func(b *testing.B) {
 				slices := generateRandomSlices(sz, 32<<10 /* 32 KiB */)
 				data := buildRawBytes(slices)
-				rb, _ := DecodeRawBytes(data, 0, len(slices))
+				rb, _ := DecodeRawBytes(data, 0, uint32(len(slices)))
 				b.ResetTimer()
 				b.SetBytes(32 << 10)
 				for i := 0; i < b.N; i++ {

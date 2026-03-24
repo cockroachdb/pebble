@@ -55,7 +55,7 @@ func TestBitmapFixed(t *testing.T) {
 			if endOffset != size {
 				td.Fatalf(t, "endOffset=%d size=%d", endOffset, size)
 			}
-			bitmap, _ = DecodeBitmap(data, off, n)
+			bitmap, _ = DecodeBitmap(data, uint64(off), uint32(n))
 			dumpBitmap(&buf, bitmap)
 			fmt.Fprint(&buf, "\nBinary representation:\n")
 			f := binfmt.New(data)
@@ -174,8 +174,8 @@ func TestBitmapRandom(t *testing.T) {
 
 		data := make([]byte, builder.Size(size, 0))
 		_ = builder.Finish(0, size, 0, data)
-		bitmap, endOffset := DecodeBitmap(data, 0, size)
-		require.Equal(t, uint32(len(data)), endOffset)
+		bitmap, endOffset := DecodeBitmap(data, 0, uint32(size))
+		require.Equal(t, uint64(len(data)), endOffset)
 		for i := 0; i < size; i++ {
 			if got := bitmap.At(i); got != v[i] {
 				t.Fatalf("b.Get(%d) = %t; want %t", i, got, v[i])

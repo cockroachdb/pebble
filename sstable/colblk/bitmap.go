@@ -40,22 +40,23 @@ var _ Array[bool] = Bitmap{}
 // reads from b supporting bitCount logical bits. No bounds checking is
 // performed, so the caller must guarantee the bitmap is appropriately sized and
 // the provided bitCount correctly identifies the number of bits in the bitmap.
-func DecodeBitmap(b []byte, off uint32, bitCount int) (bitmap Bitmap, endOffset uint32) {
+func DecodeBitmap(b []byte, off uint64, bitCount uint32) (bitmap Bitmap, endOffset uint64) {
 	encoding := bitmapEncoding(b[off])
 	off++
 	if encoding == zeroBitmapEncoding {
-		return Bitmap{bitCount: bitCount}, off
+		return Bitmap{bitCount: int(bitCount)}, off
 	}
 	off = align(off, align64)
-	sz := bitmapRequiredSize(bitCount)
-	if len(b) < int(off)+sz {
+	sz := bitmapRequiredSize(int(bitCount))
+	endOffset = off + uint64(sz)
+	if endOffset > uint64(len(b)) {
 		panic(errors.AssertionFailedf("bitmap of %d bits requires at least %d bytes; provided with %d-byte slice",
-			errors.Safe(bitCount), errors.Safe(bitmapRequiredSize(bitCount)), errors.Safe(len(b[off:]))))
+			errors.Safe(bitCount), errors.Safe(sz), errors.Safe(len(b[off:]))))
 	}
 	return Bitmap{
 		data:     makeUnsafeUint64Decoder(b[off:], sz>>align64Shift),
-		bitCount: bitCount,
-	}, off + uint32(sz)
+		bitCount: int(bitCount),
+	}, endOffset
 }
 
 // Assert that DecodeBitmap implements DecodeFunc.

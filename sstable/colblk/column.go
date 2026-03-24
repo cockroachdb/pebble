@@ -92,7 +92,7 @@ type Encoder interface {
 // accessor for the data and the offset of the first byte after the structure.
 // The rows argument must be number of logical rows encoded within the data
 // structure.
-type DecodeFunc[T any] func(buf []byte, offset uint32, rows int) (decoded T, nextOffset uint32)
+type DecodeFunc[T any] func(buf []byte, offset uint64, rows uint32) (decoded T, nextOffset uint64)
 
 // An Array provides indexed access to an array of values.
 type Array[V any] interface {

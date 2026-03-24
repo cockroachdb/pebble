@@ -8,8 +8,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/binfmt"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
@@ -58,16 +60,24 @@ var _ Array[[]byte] = RawBytes{}
 // DecodeRawBytes decodes the structure of a RawBytes, constructing an accessor
 // for an array of byte slices constructed by RawBytesBuilder. Count must be the
 // number of byte slices within the array.
-func DecodeRawBytes(b []byte, offset uint32, count int) (rawBytes RawBytes, endOffset uint32) {
+func DecodeRawBytes(b []byte, offset uint64, count uint32) (rawBytes RawBytes, endOffset uint64) {
 	if count == 0 {
 		return RawBytes{}, offset
 	}
+	if count == math.MaxUint32 {
+		panic(errors.AssertionFailedf("count overflow"))
+	}
 	offsets, dataOff := DecodeUnsafeOffsets(b, offset, count+1 /* +1 offset */)
+	endOffset = dataOff + uint64(offsets.At(int(count)))
+	if endOffset > uint64(len(b)) {
+		panic(errors.AssertionFailedf("RawBytes data extends beyond slice: end offset %d, slice length %d",
+			errors.Safe(endOffset), errors.Safe(len(b))))
+	}
 	return RawBytes{
-		slices:  count,
+		slices:  int(count),
 		offsets: offsets,
 		data:    unsafe.Pointer(&b[dataOff]),
-	}, dataOff + offsets.At(count)
+	}, endOffset
 }
 
 // Assert that DecodeRawBytes implements DecodeFunc.
@@ -93,7 +103,7 @@ func rawBytesToBinFormatter(
 	data := f.RelativeData()
 	off := f.RelativeOffset()
 	start := unsafe.Pointer(&data[off])
-	rb, _ := DecodeRawBytes(data, uint32(off), count)
+	rb, _ := DecodeRawBytes(data, uint64(off), uint32(count))
 	dataOffset := uint64(off) + uint64(uintptr(rb.data)-uintptr(start))
 	n := tp.Child("offsets table")
 	uintsToBinFormatter(f, n, count+1, func(offset, base uint64) string {

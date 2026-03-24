@@ -82,9 +82,9 @@ func TestPrefixBytes(t *testing.T) {
 			f := binfmt.New(buf)
 			tp := treeprinter.New()
 			prefixBytesToBinFormatter(f, tp.Child("prefix-bytes"), rows, nil)
-			var endOffset uint32
-			pb, endOffset = DecodePrefixBytes(buf, 0, rows)
-			require.Equal(t, offset, endOffset)
+			var endOffset uint64
+			pb, endOffset = DecodePrefixBytes(buf, 0, uint32(rows))
+			require.Equal(t, uint64(offset), endOffset)
 			require.Equal(t, rows, pb.Rows())
 			return tp.String()
 		case "get":
@@ -185,8 +185,8 @@ func TestPrefixBytesRandomized(t *testing.T) {
 		t.Logf("Size: %d; NumUserKeys: %d (%d); Aggregate pre-compressed string data: %d",
 			size, n, len(userKeys), totalSize)
 
-		pb, endOffset := DecodePrefixBytes(buf, 0, n)
-		require.Equal(t, offset, endOffset)
+		pb, endOffset := DecodePrefixBytes(buf, 0, uint32(n))
+		require.Equal(t, uint64(offset), endOffset)
 		f := binfmt.New(buf)
 		tp := treeprinter.New()
 		prefixBytesToBinFormatter(f, tp.Child("prefix-bytes"), n, nil)
@@ -315,7 +315,7 @@ func BenchmarkPrefixBytes(b *testing.B) {
 		b.Run("iteration", func(b *testing.B) {
 			n := len(userKeys)
 			buf = build(n)
-			pb, _ := DecodePrefixBytes(buf, 0, n)
+			pb, _ := DecodePrefixBytes(buf, 0, uint32(n))
 			b.ResetTimer()
 			var pbi PrefixBytesIter
 			pbi.Buf = make([]byte, 0, maxLen)

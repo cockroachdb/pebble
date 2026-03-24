@@ -204,8 +204,8 @@ var _ Array[[]byte] = PrefixBytes{}
 // PrefixBytesBuilder. Count must be the number of logical slices within the
 // array.
 func DecodePrefixBytes(
-	b []byte, offset uint32, count int,
-) (prefixBytes PrefixBytes, endOffset uint32) {
+	b []byte, offset uint64, count uint32,
+) (prefixBytes PrefixBytes, endOffset uint64) {
 	if count == 0 {
 		panic(errors.AssertionFailedf("empty PrefixBytes"))
 	}
@@ -214,12 +214,16 @@ func DecodePrefixBytes(
 	// power of two)
 	bundleShift := uint32(*((*uint8)(unsafe.Pointer(&b[offset]))))
 	calc := makeBundleCalc(bundleShift)
-	nBundles := int(calc.bundleCount(count))
+	nBundles := uint32(calc.bundleCount(int(count)))
+	totalSlices := count + nBundles
+	if totalSlices < count {
+		panic(errors.AssertionFailedf("overflow in PrefixBytes slice count: %d + %d", errors.Safe(count), errors.Safe(nBundles)))
+	}
 
-	rb, endOffset := DecodeRawBytes(b, offset+1, count+nBundles)
+	rb, endOffset := DecodeRawBytes(b, offset+1, totalSlices)
 	pb := PrefixBytes{
 		bundleCalc: calc,
-		rows:       count,
+		rows:       int(count),
 		rawBytes:   rb,
 	}
 	pb.sharedPrefixLen = int(pb.rawBytes.offsets.At(0))
@@ -618,7 +622,7 @@ func prefixBytesToBinFormatter(
 	data := f.RelativeData()
 	off := f.RelativeOffset()
 	start := unsafe.Pointer(&data[off])
-	pb, _ := DecodePrefixBytes(data, uint32(off), count)
+	pb, _ := DecodePrefixBytes(data, uint64(off), uint32(count))
 
 	f.HexBytesln(1, "bundle size: %d", 1<<pb.bundleShift)
 	f.ToTreePrinter(tp)

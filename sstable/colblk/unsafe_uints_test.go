@@ -34,14 +34,14 @@ func TestUnsafeUints(t *testing.T) {
 					buf := crbytes.AllocAligned(int(sz) + 1 /* trailing padding byte */)
 					_ = ub.Finish(0, rows, 0, buf)
 
-					uints, _ := DecodeUnsafeUints(buf, 0, rows)
+					uints, _ := DecodeUnsafeUints(buf, 0, uint32(rows))
 					for i := range rows {
 						if v := uints.At(i); v != vals[i] {
 							t.Fatalf("mismatch at row %d: got %X, expected %X", i, v, vals[i])
 						}
 					}
 					if encoding := UintEncoding(buf[0]); encoding.Width() <= 4 && !encoding.IsDelta() {
-						offsets, _ := DecodeUnsafeOffsets(buf, 0, rows)
+						offsets, _ := DecodeUnsafeOffsets(buf, 0, uint32(rows))
 						for i := range rows {
 							if v := uint64(offsets.At(i)); v != vals[i] {
 								t.Fatalf("mismatch at row %d: got %X, expected %X", i, v, vals[i])
@@ -102,7 +102,7 @@ func encodeRandUints(rng *rand.Rand, rows int, intRange intRange) []byte {
 func benchmarkUnsafeUints(b *testing.B, rng *rand.Rand, rows int, intRange intRange) {
 	b.Run(intRange.ExpectedEncoding.String(), func(b *testing.B) {
 		buf := encodeRandUints(rng, rows, intRange)
-		s, _ := DecodeUnsafeUints(buf, 0, rows)
+		s, _ := DecodeUnsafeUints(buf, 0, uint32(rows))
 		var reads [256]int
 		for i := range reads {
 			reads[i] = rng.IntN(rows)
@@ -133,7 +133,7 @@ func BenchmarkUnsafeUintOffsets(b *testing.B) {
 func benchmarkUnsafeOffsets(b *testing.B, rng *rand.Rand, rows int, intRange intRange) {
 	b.Run(intRange.ExpectedEncoding.String(), func(b *testing.B) {
 		buf := encodeRandUints(rng, rows, intRange)
-		s, _ := DecodeUnsafeOffsets(buf, 0, rows)
+		s, _ := DecodeUnsafeOffsets(buf, 0, uint32(rows))
 		var reads [256]int
 		for i := range reads {
 			reads[i] = rng.IntN(rows)
