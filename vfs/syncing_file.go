@@ -213,5 +213,5 @@ func (fs *syncingFS) ReuseForWrite(
 	oldname, newname string, category DiskWriteCategory,
 ) (File, error) {
 	// TODO(radu): implement this if needed.
-	panic("unimplemented")
+	panic(errors.AssertionFailedf("unimplemented"))
 }

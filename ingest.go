@@ -1727,7 +1727,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	shared := args.Shared
 	external := args.External
 	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
-		panic("cannot ingest shared sstables with nil SharedStorage")
+		panic(errors.AssertionFailedf("cannot ingest shared sstables with nil SharedStorage"))
 	}
 	if (args.ExciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < FormatVirtualSSTables {
 		return IngestOperationStats{}, errors.New("pebble: format major version too old for excise, shared or external sstable ingestion")
@@ -1885,7 +1885,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 					// An excise span or an EventuallyFileOnlySnapshot protected range;
 					// not a file.
 				default:
-					panic("unreachable")
+					panic(errors.AssertionFailedf("unreachable"))
 				}
 				return continueIteration
 			}, overlapBounds...)
@@ -2184,7 +2184,7 @@ func (d *DB) ingestSplit(
 						// where we overlap with two or more files in `replaced` is if we
 						// actually had data overlap all along, or if the ingestion files
 						// were overlapping, either of which is an invariant violation.
-						panic("updated with two files in ingestSplit")
+						panic(errors.AssertionFailedf("updated with two files in ingestSplit"))
 					}
 					splitFile = replaced[i].Meta
 					updatedSplitFile = true
@@ -2223,7 +2223,7 @@ func (d *DB) ingestSplit(
 		for i := range added {
 			addedBounds := added[i].Meta.UserKeyBounds()
 			if s.ingestFile.Overlaps(d.cmp, &addedBounds) {
-				panic("ingest-time split produced a file that overlaps with ingested file")
+				panic(errors.AssertionFailedf("ingest-time split produced a file that overlaps with ingested file"))
 			}
 		}
 	}
@@ -2374,7 +2374,7 @@ func (d *DB) ingestApply(
 				if splitTable != nil {
 					if invariants.Enabled {
 						if lf := current.Levels[f.Level].Find(d.cmp, splitTable); lf.Empty() {
-							panic("splitFile returned is not in level it should be")
+							panic(errors.AssertionFailedf("splitFile returned is not in level it should be"))
 						}
 					}
 					// We take advantage of the fact that we won't drop the db mutex

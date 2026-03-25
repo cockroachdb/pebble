@@ -187,7 +187,7 @@ func (r *Runner) WriteTable(
 	valueSeparation valsep.ValueSeparation,
 ) {
 	if r.err != nil {
-		panic("error already encountered")
+		panic(errors.AssertionFailedf("error already encountered"))
 	}
 
 	// Set the value separation props on the writer.

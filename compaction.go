@@ -848,7 +848,7 @@ func newFlush(
 	if len(flushing) > 0 {
 		if _, ok := flushing[0].flushable.(*ingestedFlushable); ok {
 			if len(flushing) != 1 {
-				panic("pebble: ingestedFlushable must be flushed one at a time.")
+				panic(errors.AssertionFailedf("pebble: ingestedFlushable must be flushed one at a time."))
 			}
 			c.kind = compactionKindIngestedFlushable
 			return c, nil
@@ -857,7 +857,7 @@ func newFlush(
 			// in the list.
 			for _, f := range c.flush.flushables[1:] {
 				if _, ok := f.flushable.(*ingestedFlushable); ok {
-					panic("pebble: flushables shouldn't contain ingestedFlushable")
+					panic(errors.AssertionFailedf("pebble: flushables shouldn't contain ingestedFlushable"))
 				}
 			}
 		}
@@ -1010,7 +1010,7 @@ func (c *tableCompaction) newInputIters(
 		}
 		if c.startLevel.level == 0 {
 			if c.startLevel.l0SublevelInfo == nil {
-				panic("l0SublevelInfo not created for compaction out of L0")
+				panic(errors.AssertionFailedf("l0SublevelInfo not created for compaction out of L0"))
 			}
 			for _, info := range c.startLevel.l0SublevelInfo {
 				err := manifest.CheckOrdering(c.comparer, info.sublevel, info.Iter())
@@ -1021,7 +1021,7 @@ func (c *tableCompaction) newInputIters(
 		}
 		if len(c.extraLevels) > 0 {
 			if len(c.extraLevels) > 1 {
-				panic("n>2 multi level compaction not implemented yet")
+				panic(errors.AssertionFailedf("n>2 multi level compaction not implemented yet"))
 			}
 			interLevel := c.extraLevels[0]
 			err := manifest.CheckOrdering(c.comparer, manifest.Level(interLevel.level),
@@ -1505,7 +1505,7 @@ func (d *DB) flush() {
 // while runIngestFlush is called.
 func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 	if len(c.flush.flushables) != 1 {
-		panic("pebble: ingestedFlushable must be flushed one at a time.")
+		panic(errors.AssertionFailedf("pebble: ingestedFlushable must be flushed one at a time."))
 	}
 
 	// Finding the target level for ingestion must use the latest version
@@ -1657,7 +1657,7 @@ func (d *DB) flush1() (bytesFlushed uint64, err error) {
 				if !f.readyForFlush() {
 					// This check is almost unnecessary, but we guard against it
 					// just in case this invariant changes in the future.
-					panic("pebble: ingestedFlushable should always be ready to flush.")
+					panic(errors.AssertionFailedf("pebble: ingestedFlushable should always be ready to flush."))
 				}
 				// By setting n = 1, we ensure that the first flushable(n == 0)
 				// is scheduled for a flush. The number of tables added is equal to the
@@ -2700,7 +2700,7 @@ func (d *DB) runCompaction(
 	case compactionKindCopy:
 		return d.runCopyCompaction(jobID, c)
 	case compactionKindIngestedFlushable:
-		panic("pebble: runCompaction cannot handle compactionKindIngestedFlushable.")
+		panic(errors.AssertionFailedf("pebble: runCompaction cannot handle compactionKindIngestedFlushable."))
 	}
 	return d.runDefaultTableCompaction(jobID, c)
 }

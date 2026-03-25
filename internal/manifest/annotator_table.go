@@ -7,6 +7,7 @@ package manifest
 import (
 	"sort"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -62,7 +63,7 @@ type TableAnnotationIdx int
 func NewTableAnnotationIdx() TableAnnotationIdx {
 	n := nextTableAnnotationIdx
 	if n >= maxAnnotationsPerNode {
-		panic("too many table annotations")
+		panic(errors.AssertionFailedf("too many table annotations"))
 	}
 	nextTableAnnotationIdx++
 	return n

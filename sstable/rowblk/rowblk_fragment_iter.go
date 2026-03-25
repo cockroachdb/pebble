@@ -11,6 +11,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -161,7 +162,7 @@ func (i *fragmentIter) applySpanTransforms() error {
 		i.startKeyBuf = append(i.startKeyBuf[:0], i.span.Start...)
 		i.span.Start = i.startKeyBuf
 		if invariants.Enabled && !bytes.Equal(syntheticPrefix, i.endKeyBuf[:len(syntheticPrefix)]) {
-			panic("pebble: invariant violation: synthetic prefix mismatch")
+			panic(errors.AssertionFailedf("pebble: invariant violation: synthetic prefix mismatch"))
 		}
 		i.endKeyBuf = append(i.endKeyBuf[:len(syntheticPrefix)], i.span.End...)
 		i.span.End = i.endKeyBuf
@@ -340,7 +341,7 @@ func (i *fragmentIter) Next() (*keyspan.Span, error) {
 		if x, err := i.gatherForward(i.blockIter.Next()); err != nil {
 			return nil, err
 		} else if invariants.Enabled && !x.Valid() {
-			panic("pebble: invariant violation: next entry unexpectedly invalid")
+			panic(errors.AssertionFailedf("pebble: invariant violation: next entry unexpectedly invalid"))
 		}
 		i.dir = +1
 	}
@@ -376,7 +377,7 @@ func (i *fragmentIter) Prev() (*keyspan.Span, error) {
 		if x, err := i.gatherBackward(i.blockIter.Prev()); err != nil {
 			return nil, err
 		} else if invariants.Enabled && !x.Valid() {
-			panic("pebble: invariant violation: previous entry unexpectedly invalid")
+			panic(errors.AssertionFailedf("pebble: invariant violation: previous entry unexpectedly invalid"))
 		}
 		i.dir = -1
 	}

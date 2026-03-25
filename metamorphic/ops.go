@@ -937,7 +937,7 @@ func (o *ingestAndExciseOp) run(t *Test, h historyRecorder) {
 	b := t.getBatch(o.batchID)
 	t.clearObj(o.batchID)
 	if t.testOpts.Opts.Comparer.Compare(o.exciseEnd, o.exciseStart) <= 0 {
-		panic("non-well-formed excise span")
+		panic(errors.AssertionFailedf("non-well-formed excise span"))
 	}
 	db := t.getDB(o.dbID)
 	if b.Empty() {
@@ -1528,7 +1528,7 @@ func validityStateToStr(validity pebble.IterValidityState) (bool, string) {
 	case pebble.IterValid:
 		return true, "valid"
 	default:
-		panic("unknown validity")
+		panic(errors.AssertionFailedf("unknown validity"))
 	}
 }
 
@@ -1862,7 +1862,7 @@ type newSnapshotOp struct {
 func (o *newSnapshotOp) run(t *Test, h historyRecorder) {
 	bounds := o.bounds
 	if len(bounds) == 0 {
-		panic("bounds unexpectedly unset for newSnapshotOp")
+		panic(errors.AssertionFailedf("bounds unexpectedly unset for newSnapshotOp"))
 	}
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
 	createEfos := ((11400714819323198485 * uint64(t.idx) * t.testOpts.seedEFOS) >> 63) == 1
@@ -1946,7 +1946,7 @@ func (o *newExternalObjOp) run(t *Test, h historyRecorder) {
 	}
 	if !sstMeta.HasPointKeys && !sstMeta.HasRangeDelKeys && !sstMeta.HasRangeKeys {
 		// This can occur when using --try-to-reduce.
-		panic("metamorphic test internal error: external object empty")
+		panic(errors.AssertionFailedf("metamorphic test internal error: external object empty"))
 	}
 	t.setExternalObj(o.externalObjID, externalObjMeta{
 		objName: objName,

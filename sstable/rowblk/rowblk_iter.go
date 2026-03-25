@@ -431,7 +431,7 @@ func (i *Iter) readFirstKey() error {
 		ptr = unsafe.Add(ptr, 1)
 	} else {
 		// The shared length is != 0, which is invalid.
-		panic("first key in block must have zero shared length")
+		panic(errors.AssertionFailedf("first key in block must have zero shared length"))
 	}
 
 	var unshared uint32
@@ -732,7 +732,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 // pebble package.
 func (i *Iter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	// This should never be called as prefix iteration is handled by sstable.Iterator.
-	panic("pebble: SeekPrefixGE unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekPrefixGE unimplemented"))
 }
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
@@ -1616,7 +1616,7 @@ func (i *Iter) Close() error {
 // always be handled the by the parent sstable iterator.
 func (i *Iter) SetBounds(lower, upper []byte) {
 	// This should never be called as bounds are handled by sstable.Iterator.
-	panic("pebble: SetBounds unimplemented")
+	panic(errors.AssertionFailedf("pebble: SetBounds unimplemented"))
 }
 
 // SetContext implements base.InternalIterator.

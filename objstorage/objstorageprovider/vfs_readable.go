@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
@@ -66,7 +67,7 @@ func newFileReadable(
 func (r *fileReadable) ReadAt(_ context.Context, p []byte, off int64) error {
 	n, err := r.file.ReadAt(p, off)
 	if invariants.Enabled && err == nil && n != len(p) {
-		panic("short read")
+		panic(errors.AssertionFailedf("short read"))
 	}
 	return err
 }
@@ -145,7 +146,7 @@ func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error
 		// Use OS-level read-ahead.
 		n, err := rh.sequentialFile.ReadAt(p, offset)
 		if invariants.Enabled && err == nil && n != len(p) {
-			panic("short read")
+			panic(errors.AssertionFailedf("short read"))
 		}
 		return err
 	}
@@ -162,7 +163,7 @@ func (rh *vfsReadHandle) ReadAt(_ context.Context, p []byte, offset int64) error
 	}
 	n, err := rh.r.file.ReadAt(p, offset)
 	if invariants.Enabled && err == nil && n != len(p) {
-		panic("short read")
+		panic(errors.AssertionFailedf("short read"))
 	}
 	return err
 }
@@ -177,7 +178,7 @@ func (rh *vfsReadHandle) SetupForCompaction() {
 
 func (rh *vfsReadHandle) switchToOSReadahead() {
 	if invariants.Enabled && rh.readaheadMode != FadviseSequential {
-		panic("readheadMode not respected")
+		panic(errors.AssertionFailedf("readheadMode not respected"))
 	}
 	if rh.sequentialFile != nil {
 		return
@@ -217,7 +218,7 @@ func TestingCheckMaxReadahead(rh objstorage.ReadHandle) bool {
 	case *PreallocatedReadHandle:
 		return rh.sequentialFile != nil
 	default:
-		panic("unknown ReadHandle type")
+		panic(errors.AssertionFailedf("unknown ReadHandle type"))
 	}
 }
 

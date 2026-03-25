@@ -53,7 +53,7 @@ func (h *history) Recordf(op int, format string, args ...interface{}) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.mu.closed {
-		panic("Recordf after close")
+		panic(errors.AssertionFailedf("Recordf after close"))
 	}
 	if strings.Contains(format, "\n") {
 		// We could remove this restriction but suffixing every line with "#<seq>".
@@ -204,7 +204,7 @@ func reorderHistory(lines []string) []string {
 		}
 		idx := extractOp(l)
 		if idx >= len(reordered) {
-			panic("incomplete test history; this shouldn't happen given that execution completed successfully")
+			panic(errors.AssertionFailedf("incomplete test history; this shouldn't happen given that execution completed successfully"))
 		}
 		reordered[idx] = l
 	}

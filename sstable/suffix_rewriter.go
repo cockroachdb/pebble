@@ -300,7 +300,7 @@ type copyFilterWriter struct {
 
 var _ base.TableFilterWriter = (*copyFilterWriter)(nil)
 
-func (copyFilterWriter) AddKey(key []byte) { panic("unimplemented") }
+func (copyFilterWriter) AddKey(key []byte) { panic(errors.AssertionFailedf("unimplemented")) }
 
 func (c *copyFilterWriter) Finish() (_ []byte, _ base.TableFilterFamily, ok bool) {
 	data, family := c.data, c.family
@@ -453,7 +453,7 @@ func newMemReader(b []byte) *memReader {
 func (m *memReader) ReadAt(_ context.Context, p []byte, off int64) error {
 	n, err := m.r.ReadAt(p, off)
 	if invariants.Enabled && err == nil && n != len(p) {
-		panic("short read")
+		panic(errors.AssertionFailedf("short read"))
 	}
 	return err
 }

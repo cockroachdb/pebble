@@ -236,7 +236,7 @@ func exciseOverlapBounds(
 		}
 		if invariants.Enabled {
 			if s.efos.hasTransitioned() {
-				panic("unexpected transitioned EFOS in snapshots list")
+				panic(errors.AssertionFailedf("unexpected transitioned EFOS in snapshots list"))
 			}
 		}
 		for i := range s.efos.protectedRanges {

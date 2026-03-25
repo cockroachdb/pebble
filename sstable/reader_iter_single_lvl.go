@@ -1074,7 +1074,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) bloomFilterMayContain(prefix []byte)
 // virtualLast should only be called if i.readBlockEnv.Virtual != nil
 func (i *singleLevelIterator[I, PI, D, PD]) virtualLast() *base.InternalKV {
 	if i.readEnv.Virtual == nil {
-		panic("pebble: invalid call to virtualLast")
+		panic(errors.AssertionFailedf("pebble: invalid call to virtualLast"))
 	}
 
 	if !i.endKeyInclusive {
@@ -1099,7 +1099,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 	// TODO(bananabrick): We can optimize this check away for the level iter
 	// if necessary.
 	if !i.endKeyInclusive {
-		panic("unexpected virtualLastSeekLE with exclusive upper bounds")
+		panic(errors.AssertionFailedf("unexpected virtualLastSeekLE with exclusive upper bounds"))
 	}
 	key := i.upper
 
@@ -1441,7 +1441,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) Last() (kv *base.InternalKV) {
 	}
 
 	if i.upper != nil {
-		panic("singleLevelIterator.Last() used despite upper bound")
+		panic(errors.AssertionFailedf("singleLevelIterator.Last() used despite upper bound"))
 	}
 	i.positionedUsingLatestBounds = true
 	return i.lastInternal()
@@ -1527,14 +1527,14 @@ func (i *singleLevelIterator[I, PI, D, PD]) nextInternal(
 		// filter miss, the data block should not have been invalidated. This assertion
 		// ensures the optimization to preserve loaded blocks is working correctly.
 		if PD(&i.data).IsDataInvalidated() {
-			panic("pebble: data block was invalidated after SeekPrefixGE returned nil due to bloom filter miss")
+			panic(errors.AssertionFailedf("pebble: data block was invalidated after SeekPrefixGE returned nil due to bloom filter miss"))
 		}
 	}
 	// Clear the tracking flag since this is no longer the next operation after SeekPrefixGE
 	i.lastOpWasSeekPrefixGE.Set(false)
 
 	if i.exhaustedBounds == +1 {
-		panic("Next called even though exhausted upper bound")
+		panic(errors.AssertionFailedf("Next called even though exhausted upper bound"))
 	}
 	i.exhaustedBounds = 0
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -1574,7 +1574,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base
 	// Clear the tracking flag since this is a relative positioning operation
 	i.lastOpWasSeekPrefixGE.Set(false)
 	if i.exhaustedBounds == +1 {
-		panic("NextPrefix called even though exhausted upper bound")
+		panic(errors.AssertionFailedf("NextPrefix called even though exhausted upper bound"))
 	}
 	i.exhaustedBounds = 0
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -1660,7 +1660,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) Prev() (kv *base.InternalKV) {
 	// Clear the tracking flag since this is a relative positioning operation
 	i.lastOpWasSeekPrefixGE.Set(false)
 	if i.exhaustedBounds == -1 {
-		panic("Prev called even though exhausted lower bound")
+		panic(errors.AssertionFailedf("Prev called even though exhausted lower bound"))
 	}
 	i.exhaustedBounds = 0
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -1700,7 +1700,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward(
 				// We checked that i.index was at a valid entry, so
 				// loadBlockFailed could not have happened due to i.index
 				// being exhausted, and must be due to an error.
-				panic("loadDataBlock should not have failed with no error")
+				panic(errors.AssertionFailedf("loadDataBlock should not have failed with no error"))
 			}
 			// result == loadBlockIrrelevant. Enforce the upper bound here since
 			// don't want to bother moving to the next block if upper bound is
@@ -1790,7 +1790,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 				// We checked that i.index was at a valid entry, so
 				// loadBlockFailed could not have happened due to to i.index
 				// being exhausted, and must be due to an error.
-				panic("loadDataBlock should not have failed with no error")
+				panic(errors.AssertionFailedf("loadDataBlock should not have failed with no error"))
 			}
 			// result == loadBlockIrrelevant. Enforce the lower bound here
 			// since don't want to bother moving to the previous block if lower
@@ -1861,7 +1861,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) Close() error {
 
 func (i *singleLevelIterator[I, PI, D, PD]) closeInternal() error {
 	if invariants.Enabled && i.inPool {
-		panic("Close called on interator in pool")
+		panic(errors.AssertionFailedf("Close called on interator in pool"))
 	}
 
 	if i.closeHook != nil {

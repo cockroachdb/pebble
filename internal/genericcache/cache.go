@@ -8,6 +8,7 @@ import (
 	"context"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -110,7 +111,7 @@ type ValueRef[K Key, V any, InitOpts any] struct {
 // until ref.Unref() is called.
 func (ref ValueRef[K, V, InitOpts]) Value() *V {
 	if invariants.Enabled && ref.value.err != nil {
-		panic("ValueRef with error")
+		panic(errors.AssertionFailedf("ValueRef with error"))
 	}
 	return &ref.value.v
 }

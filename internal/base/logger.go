@@ -12,6 +12,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -114,14 +115,14 @@ var _ LoggerAndTracer = &LoggerWithNoopTracer{}
 // Eventf implements LoggerAndTracer.
 func (*LoggerWithNoopTracer) Eventf(ctx context.Context, format string, args ...interface{}) {
 	if invariants.Enabled && ctx == nil {
-		panic("Eventf context is nil")
+		panic(errors.AssertionFailedf("Eventf context is nil"))
 	}
 }
 
 // IsTracingEnabled implements LoggerAndTracer.
 func (*LoggerWithNoopTracer) IsTracingEnabled(ctx context.Context) bool {
 	if invariants.Enabled && ctx == nil {
-		panic("IsTracingEnabled ctx is nil")
+		panic(errors.AssertionFailedf("IsTracingEnabled ctx is nil"))
 	}
 	return false
 }
@@ -145,14 +146,14 @@ func (l NoopLoggerAndTracer) Fatalf(format string, args ...interface{}) {}
 // Eventf implements LoggerAndTracer.
 func (l NoopLoggerAndTracer) Eventf(ctx context.Context, format string, args ...interface{}) {
 	if invariants.Enabled && ctx == nil {
-		panic("Eventf context is nil")
+		panic(errors.AssertionFailedf("Eventf context is nil"))
 	}
 }
 
 // IsTracingEnabled implements LoggerAndTracer.
 func (l NoopLoggerAndTracer) IsTracingEnabled(ctx context.Context) bool {
 	if invariants.Enabled && ctx == nil {
-		panic("IsTracingEnabled ctx is nil")
+		panic(errors.AssertionFailedf("IsTracingEnabled ctx is nil"))
 	}
 	return false
 }

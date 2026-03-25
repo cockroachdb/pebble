@@ -826,7 +826,7 @@ func estimateDiskUsageInTableAndBlobReferences(
 func maybeSetStatsFromProperties(meta *manifest.TableMetadata, props *sstable.Properties) bool {
 	meta.TableBacking.PopulateProperties(props)
 	if invariants.Enabled && meta.Virtual {
-		panic("table expected to be physical")
+		panic(errors.AssertionFailedf("table expected to be physical"))
 	}
 	// If a table contains any deletions, we defer the stats collection. There
 	// are two main reasons for this:

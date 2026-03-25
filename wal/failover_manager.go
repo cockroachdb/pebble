@@ -194,7 +194,7 @@ func (p *dirProber) probeLoop() {
 					return failedProbeDuration
 				}
 				if n != len(p.buf) {
-					panic("invariant violation")
+					panic(errors.AssertionFailedf("invariant violation"))
 				}
 				err = f.Sync()
 				if err != nil {
@@ -248,9 +248,9 @@ func (p *dirProber) getMeanMax(interval time.Duration) (time.Duration, time.Dura
 	numSamples := p.mu.nextProbeIndex - p.mu.firstProbeIndex
 	samplesNeeded := int((interval + p.interval - 1) / p.interval)
 	if samplesNeeded == 0 {
-		panic("interval is too short")
+		panic(errors.AssertionFailedf("interval is too short"))
 	} else if samplesNeeded > probeHistoryLength {
-		panic("interval is too long")
+		panic(errors.AssertionFailedf("interval is too long"))
 	}
 	if samplesNeeded > numSamples {
 		// Not enough samples, so assume not yet healthy.
@@ -353,7 +353,7 @@ func (m *failoverMonitor) newWriter(writerCreateFunc func(dir dirAndFileHandle) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.mu.writer != nil {
-		panic("previous writer not closed")
+		panic(errors.AssertionFailedf("previous writer not closed"))
 	}
 	m.mu.writer = writerCreateFunc(m.opts.dirs[m.mu.dirIndex])
 }
@@ -746,7 +746,7 @@ func (wm *failoverManager) Create(wn NumWAL, jobID int) (Writer, error) {
 		wm.mu.Lock()
 		defer wm.mu.Unlock()
 		if wm.mu.ww != nil {
-			panic("previous wal.Writer not closed")
+			panic(errors.AssertionFailedf("previous wal.Writer not closed"))
 		}
 	}()
 	fwOpts := failoverWriterOpts{

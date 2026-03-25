@@ -600,7 +600,7 @@ func (p *provider) unprotectObject(fileNum base.DiskFileNum) {
 	defer p.mu.Unlock()
 	v := p.mu.protectedObjects[fileNum]
 	if invariants.Enabled && v == 0 {
-		panic("invalid protection count")
+		panic(errors.AssertionFailedf("invalid protection count"))
 	}
 	if v > 1 {
 		p.mu.protectedObjects[fileNum] = v - 1

@@ -431,7 +431,7 @@ func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
 		case ignoreExtraArgs:
 		default:
 			// We already checked for these types when we set varArgs.
-			panic("unreachable")
+			panic(errors.AssertionFailedf("unreachable"))
 		}
 	}
 }

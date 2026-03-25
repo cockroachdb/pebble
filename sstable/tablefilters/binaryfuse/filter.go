@@ -14,6 +14,7 @@ import (
 
 	"github.com/FastFilter/xorfilter"
 	"github.com/cockroachdb/crlib/fifo"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/sstable/tablefilters/binaryfuse/bitpacking"
 )
 
@@ -139,7 +140,7 @@ func build[T uint8 | uint16](bld *builder, fpBits int) (data []byte, ok bool) {
 	case []uint16:
 		bitpacking.Encode16(fingerprints, fpBits, data)
 	default:
-		panic("unsupported fingerprints type")
+		panic(errors.AssertionFailedf("unsupported fingerprints type"))
 	}
 
 	data = binary.LittleEndian.AppendUint64(data, filter.Seed)

@@ -72,7 +72,7 @@ func (w *Writer) AddValue(v []byte) (Handle, error) {
 		// big, so finish this block.
 		w.compressAndFlush()
 		if invariants.Enabled && w.buf.Size() != 0 {
-			panic("buffer should be empty when starting new block")
+			panic(errors.AssertionFailedf("buffer should be empty when starting new block"))
 		}
 	}
 	vh := Handle{
@@ -162,7 +162,7 @@ func (w *Writer) writeValueBlocksIndex(layout LayoutWriter, h IndexHandle) (Inde
 		b = b[int(h.BlockLengthByteLength):]
 	}
 	if len(b) != 0 {
-		panic("incorrect length calculation")
+		panic(errors.AssertionFailedf("incorrect length calculation"))
 	}
 	pb := w.physBlockMaker.Make(w.buf.Data(), blockkind.Metadata, block.DontCompress)
 	if _, err := layout.WriteValueIndexBlock(pb.Take(), h); err != nil {

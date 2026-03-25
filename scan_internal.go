@@ -353,7 +353,7 @@ func (p *pointCollapsingIterator) SeekGE(key []byte, flags base.SeekGEFlags) *ba
 
 // SeekLT implements the InternalIterator interface.
 func (p *pointCollapsingIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
-	panic("unimplemented")
+	panic(errors.AssertionFailedf("unimplemented"))
 }
 
 func (p *pointCollapsingIterator) resetKey() {
@@ -393,7 +393,7 @@ func (p *pointCollapsingIterator) findNextEntry() *base.InternalKV {
 		if s := p.iter.Span(); s != nil && s.CoversAt(p.seqNum, p.iterKV.SeqNum()) {
 			// All future keys for this user key must be deleted.
 			if p.savedKey.Kind() == InternalKeyKindSingleDelete {
-				panic("cannot process singledel key in point collapsing iterator")
+				panic(errors.AssertionFailedf("cannot process singledel key in point collapsing iterator"))
 			}
 			// Fast forward to the next user key.
 			p.saveKey()
@@ -426,10 +426,10 @@ func (p *pointCollapsingIterator) findNextEntry() *base.InternalKV {
 			return p.verifySeqNum(p.iterKV)
 		case InternalKeyKindSingleDelete:
 			// Panic, as this iterator is not expected to observe single deletes.
-			panic("cannot process singledel key in point collapsing iterator")
+			panic(errors.AssertionFailedf("cannot process singledel key in point collapsing iterator"))
 		case InternalKeyKindMerge:
 			// Panic, as this iterator is not expected to observe merges.
-			panic("cannot process merge key in point collapsing iterator")
+			panic(errors.AssertionFailedf("cannot process merge key in point collapsing iterator"))
 		case InternalKeyKindRangeDelete:
 			// These are interleaved by the interleaving iterator ahead of all points.
 			// We should pass them as-is, but also account for any points ahead of
@@ -457,7 +457,7 @@ func (p *pointCollapsingIterator) First() *base.InternalKV {
 
 // Last implements the InternalIterator interface.
 func (p *pointCollapsingIterator) Last() *base.InternalKV {
-	panic("unimplemented")
+	panic(errors.AssertionFailedf("unimplemented"))
 }
 
 func (p *pointCollapsingIterator) saveKey() {
@@ -508,12 +508,12 @@ func (p *pointCollapsingIterator) Next() *base.InternalKV {
 
 // NextPrefix implements the InternalIterator interface.
 func (p *pointCollapsingIterator) NextPrefix(succKey []byte) *base.InternalKV {
-	panic("unimplemented")
+	panic(errors.AssertionFailedf("unimplemented"))
 }
 
 // Prev implements the InternalIterator interface.
 func (p *pointCollapsingIterator) Prev() *base.InternalKV {
-	panic("unimplemented")
+	panic(errors.AssertionFailedf("unimplemented"))
 }
 
 // Error implements the InternalIterator interface.
@@ -856,7 +856,7 @@ func scanInternalImpl(
 	ctx context.Context, iter *scanInternalIterator, opts *ScanInternalOptions,
 ) error {
 	if opts.VisitSharedFile != nil && (opts.LowerBound == nil || opts.UpperBound == nil) {
-		panic("lower and upper bounds must be specified in skip-shared iteration mode")
+		panic(errors.AssertionFailedf("lower and upper bounds must be specified in skip-shared iteration mode"))
 	}
 	if opts.VisitSharedFile != nil && opts.VisitExternalFile != nil {
 		return base.AssertionFailedf("cannot provide both a shared-file and external-file visitor")
@@ -877,7 +877,7 @@ func scanInternalImpl(
 
 	if opts.VisitSharedFile != nil || opts.VisitExternalFile != nil {
 		if provider == nil {
-			panic("expected non-nil Provider in skip-shared iteration mode")
+			panic(errors.AssertionFailedf("expected non-nil Provider in skip-shared iteration mode"))
 		}
 
 		firstLevelWithRemote := opts.skipLevelForOpts()

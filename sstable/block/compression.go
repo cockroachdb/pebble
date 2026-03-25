@@ -229,7 +229,7 @@ func (i CompressionIndicator) Algorithm() compression.Algorithm {
 	case MinLZCompressionIndicator:
 		return compression.MinLZ
 	default:
-		panic("Invalid compression type.")
+		panic(errors.AssertionFailedf("Invalid compression type."))
 	}
 }
 
@@ -244,7 +244,7 @@ func compressionIndicatorFromAlgorithm(algo compression.Algorithm) CompressionIn
 	case compression.MinLZ:
 		return MinLZCompressionIndicator
 	default:
-		panic("invalid algorithm")
+		panic(errors.AssertionFailedf("invalid algorithm"))
 	}
 }
 

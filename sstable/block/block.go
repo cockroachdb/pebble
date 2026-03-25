@@ -451,7 +451,7 @@ func (r *Reader) Read(
 
 	if cv != nil {
 		if invariants.Enabled && crh.Valid() {
-			panic("cache.ReadHandle must not be valid")
+			panic(errors.AssertionFailedf("cache.ReadHandle must not be valid"))
 		}
 		if hit {
 			recordCacheHit(ctx, env, readHandle, bh, kind)

@@ -96,7 +96,7 @@ var _ io.WriteCloser = (*inMemWriter)(nil)
 
 func (o *inMemWriter) Write(p []byte) (n int, err error) {
 	if o.store == nil {
-		panic("Write after Close")
+		panic(errors.AssertionFailedf("Write after Close"))
 	}
 	return o.buf.Write(p)
 }
@@ -114,7 +114,7 @@ func (o *inMemWriter) Close() error {
 
 func (s *inMemStore) List(prefix, delimiter string) ([]string, error) {
 	if delimiter != "" {
-		panic("delimiter unimplemented")
+		panic(errors.AssertionFailedf("delimiter unimplemented"))
 	}
 
 	s.mu.Lock()

@@ -132,13 +132,13 @@ func (s *Skiplist) Reset(arena *Arena, cmp base.Compare) {
 	// Allocate head and tail nodes.
 	head, err := newRawNode(arena, maxHeight, 0, 0)
 	if err != nil {
-		panic("arenaSize is not large enough to hold the head node")
+		panic(errors.AssertionFailedf("arenaSize is not large enough to hold the head node"))
 	}
 	head.keyOffset = 0
 
 	tail, err := newRawNode(arena, maxHeight, 0, 0)
 	if err != nil {
-		panic("arenaSize is not large enough to hold the tail node")
+		panic(errors.AssertionFailedf("arenaSize is not large enough to hold the tail node"))
 	}
 	tail.keyOffset = 0
 
@@ -210,7 +210,7 @@ func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter
 			// New node increased the height of the skiplist, so assume that the
 			// new level has not yet been populated.
 			if next != nil {
-				panic("next is expected to be nil, since prev is nil")
+				panic(errors.AssertionFailedf("next is expected to be nil, since prev is nil"))
 			}
 
 			prev = s.head
@@ -274,7 +274,7 @@ func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter
 			prev, next, found = s.findSpliceForLevel(key, i, prev)
 			if found {
 				if i != 0 {
-					panic("how can another thread have inserted a node at a non-base level?")
+					panic(errors.AssertionFailedf("how can another thread have inserted a node at a non-base level?"))
 				}
 
 				return ErrRecordExists

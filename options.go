@@ -1326,7 +1326,7 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) Spa
 	for i := range inputPolicies {
 		r := inputPolicies[i].KeyRange
 		if len(r.Start) == 0 || len(r.End) == 0 || cmp(r.Start, r.End) >= 0 {
-			panic("invalid key range in input policy")
+			panic(errors.AssertionFailedf("invalid key range in input policy"))
 		}
 		uniqueKeys = append(uniqueKeys, r.Start)
 		uniqueKeys = append(uniqueKeys, r.End)
@@ -1345,7 +1345,7 @@ func MakeStaticSpanPolicyFunc(cmp base.Compare, inputPolicies ...SpanPolicy) Spa
 	for _, p := range inputPolicies {
 		idx, _ := slices.BinarySearchFunc(uniqueKeys, p.KeyRange.Start, cmp)
 		if cmp(p.KeyRange.End, uniqueKeys[idx+1]) != 0 {
-			panic("overlapping key ranges in input policies")
+			panic(errors.AssertionFailedf("overlapping key ranges in input policies"))
 		}
 		policies[idx] = p
 		policies[idx].KeyRange = KeyRange{Start: uniqueKeys[idx], End: uniqueKeys[idx+1]}
@@ -2854,12 +2854,12 @@ func MakeUserKeyCategories(cmp base.Compare, categories ...UserKeyCategory) User
 		return UserKeyCategories{}
 	}
 	if categories[n-1].UpperBound != nil {
-		panic("last category UpperBound must be nil")
+		panic(errors.AssertionFailedf("last category UpperBound must be nil"))
 	}
 	// Verify that the partitions are ordered as expected.
 	for i := 1; i < n-1; i++ {
 		if cmp(categories[i-1].UpperBound, categories[i].UpperBound) >= 0 {
-			panic("invalid UserKeyCategories: key prefixes must be sorted")
+			panic(errors.AssertionFailedf("invalid UserKeyCategories: key prefixes must be sorted"))
 		}
 	}
 

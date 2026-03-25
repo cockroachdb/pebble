@@ -983,7 +983,7 @@ func writePrefixCompressed[T Uint](
 	b *PrefixBytesBuilder, rows int, sz *prefixBytesSizing, offsetDeltas uintsEncoder[T], buf []byte,
 ) {
 	if invariants.Enabled && offsetDeltas.Len() != sz.offsetCount {
-		panic("incorrect offsetDeltas length")
+		panic(errors.AssertionFailedf("incorrect offsetDeltas length"))
 	}
 	if rows <= 1 {
 		if rows == 1 {
@@ -1094,7 +1094,7 @@ func (b *PrefixBytesBuilder) Finish(
 		writePrefixCompressed[uint32](b, rows, sz, offsetDest, buf[stringDataOffset:])
 		offsetDest.Finish()
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 	return stringDataOffset + uint32(sz.compressedDataLen)
 }

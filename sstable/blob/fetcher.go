@@ -106,7 +106,7 @@ func (r *ValueFetcher) Init(
 	r.readerProvider = rp
 	r.env = env
 	if r.readerProvider == nil {
-		panic("readerProvider is nil")
+		panic(errors.AssertionFailedf("readerProvider is nil"))
 	}
 	r.maxCachedReaders = maxCachedReaders
 }

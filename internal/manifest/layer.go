@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
 )
 
@@ -24,7 +25,7 @@ type Layer struct {
 // Level returns a Layer that represents an entire level (L0 through L6).
 func Level(level int) Layer {
 	if level < 0 || level >= NumLevels {
-		panic("invalid level")
+		panic(errors.AssertionFailedf("invalid level"))
 	}
 	return Layer{
 		kind:  levelLayer,
@@ -36,7 +37,7 @@ func Level(level int) Layer {
 func L0Sublevel(sublevel int) Layer {
 	// Note: Pebble stops writes once we get to 1000 sublevels.
 	if sublevel < 0 || sublevel > math.MaxUint16 {
-		panic("invalid sublevel")
+		panic(errors.AssertionFailedf("invalid sublevel"))
 	}
 	return Layer{
 		kind:  l0SublevelLayer,
@@ -76,9 +77,9 @@ func (l Layer) Level() int {
 	case l0SublevelLayer:
 		return 0
 	case flushableIngestsLayer:
-		panic("flushable ingests layer")
+		panic(errors.AssertionFailedf("flushable ingests layer"))
 	default:
-		panic("invalid layer")
+		panic(errors.AssertionFailedf("invalid layer"))
 	}
 }
 
@@ -86,7 +87,7 @@ func (l Layer) Level() int {
 // an L0 sublevel.
 func (l Layer) Sublevel() int {
 	if !l.IsL0Sublevel() {
-		panic("not an L0 sublevel layer")
+		panic(errors.AssertionFailedf("not an L0 sublevel layer"))
 	}
 	return int(l.value)
 }

@@ -800,7 +800,7 @@ func (i PossibleAPIMisuseInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf("possible API misuse: %s (key=%q, %s)", redact.Safe(i.Kind), i.UserKey, i.ExtraInfo)
 	default:
 		if invariants.Enabled {
-			panic("invalid API misuse event")
+			panic(errors.AssertionFailedf("invalid API misuse event"))
 		}
 		w.Printf("invalid API misuse event")
 	}
@@ -1398,7 +1398,7 @@ func (r *lowDiskSpaceReporter) findThreshold(
 // to the event listener and also adds a DataCorruptionInfo payload to the error.
 func (d *DB) reportCorruption(meta base.ObjectInfo, err error) error {
 	if invariants.Enabled && !IsCorruptionError(err) {
-		panic("not a corruption error")
+		panic(errors.AssertionFailedf("not a corruption error"))
 	}
 	fileType, fileNum := meta.FileInfo()
 

@@ -1091,7 +1091,7 @@ func (d *DataBlockDecoder) PrefixChanged() Bitmap {
 // Init initializes the data block reader with the given serialized data block.
 func (d *DataBlockDecoder) Init(schema *KeySchema, data []byte) BlockDecoder {
 	if uintptr(unsafe.Pointer(unsafe.SliceData(data)))&7 != 0 {
-		panic("data buffer not 8-byte aligned")
+		panic(errors.AssertionFailedf("data buffer not 8-byte aligned"))
 	}
 	bd := BlockDecoder{}
 	bd.Init(data, DataBlockCustomHeaderSize+schema.HeaderSize)
@@ -1460,7 +1460,7 @@ func (i *DataBlockIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags)
 	// circuit the search if the prefix isn't found within the prefix column.
 	// There's some subtlety around ensuring we continue to benefit from the
 	// TrySeekUsingNext optimization.
-	panic("pebble: SeekPrefixGE unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekPrefixGE unimplemented"))
 }
 
 // SeekLT implements the base.InternalIterator interface.
@@ -1697,7 +1697,7 @@ func (i *DataBlockIter) Prev() *base.InternalKV {
 //gcassert:inline
 func (i *DataBlockIter) atObsoletePointForward() bool {
 	if invariants.Enabled && i.row > i.nextObsoletePoint {
-		panic("invalid nextObsoletePoint")
+		panic(errors.AssertionFailedf("invalid nextObsoletePoint"))
 	}
 	return i.row == i.nextObsoletePoint && i.row <= i.maxRow
 }
@@ -1733,7 +1733,7 @@ func (i *DataBlockIter) atObsoletePointCheck() {
 	// error from GCAssert about At not being inlined because it is compiled out
 	// altogether in non-invariant builds.
 	if !i.transforms.HideObsoletePoints || !i.d.isObsolete.At(i.row) {
-		panic("expected obsolete point")
+		panic(errors.AssertionFailedf("expected obsolete point"))
 	}
 }
 
@@ -1746,7 +1746,7 @@ func (i *DataBlockIter) Error() error {
 // SetBounds implements the base.InternalIterator interface.
 func (i *DataBlockIter) SetBounds(lower, upper []byte) {
 	// This should never be called as bounds are handled by sstable.Iterator.
-	panic("pebble: SetBounds unimplemented")
+	panic(errors.AssertionFailedf("pebble: SetBounds unimplemented"))
 }
 
 // SetContext implements the base.InternalIterator interface.

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 )
@@ -184,7 +185,7 @@ type TempBuffer struct {
 func NewTempBuffer() *TempBuffer {
 	tb := tempBufferPool.Get().(*TempBuffer)
 	if invariants.Enabled && len(tb.b) > 0 {
-		panic("NewTempBuffer length not 0")
+		panic(errors.AssertionFailedf("NewTempBuffer length not 0"))
 	}
 	return tb
 }

@@ -784,7 +784,7 @@ func (vs *versionSet) incrementCompactions(
 
 	default:
 		if invariants.Enabled {
-			panic("unhandled compaction kind")
+			panic(errors.AssertionFailedf("unhandled compaction kind"))
 		}
 
 	}
@@ -912,7 +912,7 @@ func (vs *versionSet) getNextDiskFileNum() base.DiskFileNum {
 
 func (vs *versionSet) append(v *manifest.Version) {
 	if v.Refs() != 0 {
-		panic("pebble: version should be unreferenced")
+		panic(errors.AssertionFailedf("pebble: version should be unreferenced"))
 	}
 	if !vs.versions.Empty() {
 		vs.versions.Back().UnrefLocked()

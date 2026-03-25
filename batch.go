@@ -597,7 +597,7 @@ func (b *Batch) refreshMemTableSize() error {
 // Apply returns ErrInvalidBatch if the provided batch is invalid in any way.
 func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 	if b.ingestedSSTBatch {
-		panic("pebble: invalid batch application")
+		panic(errors.AssertionFailedf("pebble: invalid batch application"))
 	}
 	if len(batch.data) == 0 {
 		return nil
@@ -633,7 +633,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
 				b.countRangeKeys++
 			case InternalKeyKindIngestSST, InternalKeyKindIngestSSTWithBlobs, InternalKeyKindExcise:
-				panic("pebble: invalid key kind for batch")
+				panic(errors.AssertionFailedf("pebble: invalid key kind for batch"))
 			case InternalKeyKindLogData:
 				// LogData does not contribute to memtable size.
 				continue
@@ -695,7 +695,7 @@ func (b *Batch) Get(key []byte) ([]byte, io.Closer, error) {
 
 func (b *Batch) prepareDeferredKeyValueRecord(keyLen, valueLen int, kind InternalKeyKind) {
 	if b.committing {
-		panic("pebble: batch already committing")
+		panic(errors.AssertionFailedf("pebble: batch already committing"))
 	}
 	if len(b.data) == 0 {
 		b.init(keyLen + valueLen + 2*binary.MaxVarintLen64 + batchrepr.HeaderLen)
@@ -747,7 +747,7 @@ func (b *Batch) prepareDeferredKeyValueRecord(keyLen, valueLen int, kind Interna
 
 func (b *Batch) prepareDeferredKeyRecord(keyLen int, kind InternalKeyKind) {
 	if b.committing {
-		panic("pebble: batch already committing")
+		panic(errors.AssertionFailedf("pebble: batch already committing"))
 	}
 	if len(b.data) == 0 {
 		b.init(keyLen + binary.MaxVarintLen64 + batchrepr.HeaderLen)
@@ -796,7 +796,7 @@ func (b *Batch) AddInternalKey(key *base.InternalKey, value []byte, _ *WriteOpti
 	hasValue := false
 	switch kind := key.Kind(); kind {
 	case InternalKeyKindRangeDelete:
-		panic("unexpected range delete in AddInternalKey")
+		panic(errors.AssertionFailedf("unexpected range delete in AddInternalKey"))
 	case InternalKeyKindSingleDelete, InternalKeyKindDelete:
 		b.prepareDeferredKeyRecord(keyLen, kind)
 		b.deferredOp.index = b.index
@@ -1052,10 +1052,10 @@ func (b *Batch) RangeKeySet(start, end, suffix, value []byte, _ *WriteOptions) e
 	if invariants.Enabled && b.db != nil {
 		// RangeKeySet is only supported on prefix keys.
 		if b.db.opts.Comparer.Split(start) != len(start) {
-			panic("RangeKeySet called with suffixed start key")
+			panic(errors.AssertionFailedf("RangeKeySet called with suffixed start key"))
 		}
 		if b.db.opts.Comparer.Split(end) != len(end) {
-			panic("RangeKeySet called with suffixed end key")
+			panic(errors.AssertionFailedf("RangeKeySet called with suffixed end key"))
 		}
 	}
 	suffixValues := [1]rangekey.SuffixValue{{Suffix: suffix, Value: value}}
@@ -1065,7 +1065,7 @@ func (b *Batch) RangeKeySet(start, end, suffix, value []byte, _ *WriteOptions) e
 	copy(deferredOp.Key, start)
 	n := rangekey.EncodeSetValue(deferredOp.Value, end, suffixValues[:])
 	if n != internalValueLen {
-		panic("unexpected internal value length mismatch")
+		panic(errors.AssertionFailedf("unexpected internal value length mismatch"))
 	}
 
 	// Manually inline DeferredBatchOp.Finish().
@@ -1108,10 +1108,10 @@ func (b *Batch) RangeKeyUnset(start, end, suffix []byte, _ *WriteOptions) error 
 	if invariants.Enabled && b.db != nil {
 		// RangeKeyUnset is only supported on prefix keys.
 		if b.db.opts.Comparer.Split(start) != len(start) {
-			panic("RangeKeyUnset called with suffixed start key")
+			panic(errors.AssertionFailedf("RangeKeyUnset called with suffixed start key"))
 		}
 		if b.db.opts.Comparer.Split(end) != len(end) {
-			panic("RangeKeyUnset called with suffixed end key")
+			panic(errors.AssertionFailedf("RangeKeyUnset called with suffixed end key"))
 		}
 	}
 	suffixes := [1][]byte{suffix}
@@ -1121,7 +1121,7 @@ func (b *Batch) RangeKeyUnset(start, end, suffix []byte, _ *WriteOptions) error 
 	copy(deferredOp.Key, start)
 	n := rangekey.EncodeUnsetValue(deferredOp.Value, end, suffixes[:])
 	if n != internalValueLen {
-		panic("unexpected internal value length mismatch")
+		panic(errors.AssertionFailedf("unexpected internal value length mismatch"))
 	}
 
 	// Manually inline DeferredBatchOp.Finish()
@@ -1150,10 +1150,10 @@ func (b *Batch) RangeKeyDelete(start, end []byte, _ *WriteOptions) error {
 	if invariants.Enabled && b.db != nil {
 		// RangeKeyDelete is only supported on prefix keys.
 		if b.db.opts.Comparer.Split(start) != len(start) {
-			panic("RangeKeyDelete called with suffixed start key")
+			panic(errors.AssertionFailedf("RangeKeyDelete called with suffixed start key"))
 		}
 		if b.db.opts.Comparer.Split(end) != len(end) {
-			panic("RangeKeyDelete called with suffixed end key")
+			panic(errors.AssertionFailedf("RangeKeyDelete called with suffixed end key"))
 		}
 	}
 	deferredOp := b.RangeKeyDeleteDeferred(len(start), len(end))
@@ -1208,7 +1208,7 @@ func (b *Batch) ingestSST(tableNum base.TableNum, blobFileIDs []base.BlobFileID)
 		b.ingestedSSTBatch = true
 	} else if !b.ingestedSSTBatch {
 		// Batch contains other key kinds.
-		panic("pebble: invalid call to ingestSST")
+		panic(errors.AssertionFailedf("pebble: invalid call to ingestSST"))
 	}
 
 	origMemTableSize := b.memTableSize
@@ -1252,7 +1252,7 @@ func (b *Batch) excise(start, end []byte) {
 		b.ingestedSSTBatch = true
 	} else if !b.ingestedSSTBatch {
 		// Batch contains other key kinds.
-		panic("pebble: invalid call to excise")
+		panic(errors.AssertionFailedf("pebble: invalid call to excise"))
 	}
 
 	origMemTableSize := b.memTableSize
@@ -2430,17 +2430,17 @@ func (i *flushFlushableBatchIter) String() string {
 }
 
 func (i *flushFlushableBatchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	panic("pebble: SeekGE unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekGE unimplemented"))
 }
 
 func (i *flushFlushableBatchIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
-	panic("pebble: SeekPrefixGE unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekPrefixGE unimplemented"))
 }
 
 func (i *flushFlushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
-	panic("pebble: SeekLT unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekLT unimplemented"))
 }
 
 func (i *flushFlushableBatchIter) First() *base.InternalKV {
@@ -2449,7 +2449,7 @@ func (i *flushFlushableBatchIter) First() *base.InternalKV {
 }
 
 func (i *flushFlushableBatchIter) NextPrefix(succKey []byte) *base.InternalKV {
-	panic("pebble: Prev unimplemented")
+	panic(errors.AssertionFailedf("pebble: Prev unimplemented"))
 }
 
 // Note: flushFlushableBatchIter.Next mirrors the implementation of
@@ -2466,7 +2466,7 @@ func (i *flushFlushableBatchIter) Next() *base.InternalKV {
 }
 
 func (i flushFlushableBatchIter) Prev() *base.InternalKV {
-	panic("pebble: Prev unimplemented")
+	panic(errors.AssertionFailedf("pebble: Prev unimplemented"))
 }
 
 // batchOptions holds the parameters to configure batch.

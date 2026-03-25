@@ -172,9 +172,9 @@ func (s *Span) Bounds() base.UserKeyBounds {
 // contains no keys or its keys are sorted in a different order.
 func (s *Span) SmallestKey() base.InternalKey {
 	if len(s.Keys) == 0 {
-		panic("pebble: Span contains no keys")
+		panic(errors.AssertionFailedf("pebble: Span contains no keys"))
 	} else if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	// The first key has the highest (sequence number,kind) tuple.
 	return base.InternalKey{
@@ -193,9 +193,9 @@ func (s *Span) SmallestKey() base.InternalKey {
 // contains no keys or its keys are sorted in a different order.
 func (s *Span) LargestKey() base.InternalKey {
 	if len(s.Keys) == 0 {
-		panic("pebble: Span contains no keys")
+		panic(errors.AssertionFailedf("pebble: Span contains no keys"))
 	} else if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	// The last key has the lowest (sequence number,kind) tuple.
 	kind := s.Keys[len(s.Keys)-1].Kind()
@@ -207,9 +207,9 @@ func (s *Span) LargestKey() base.InternalKey {
 // the span contains no keys or its keys are sorted in a different order.
 func (s *Span) SmallestSeqNum() base.SeqNum {
 	if len(s.Keys) == 0 {
-		panic("pebble: Span contains no keys")
+		panic(errors.AssertionFailedf("pebble: Span contains no keys"))
 	} else if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 
 	return s.Keys[len(s.Keys)-1].SeqNum()
@@ -220,9 +220,9 @@ func (s *Span) SmallestSeqNum() base.SeqNum {
 // the span contains no keys or its keys are sorted in a different order.
 func (s *Span) LargestSeqNum() base.SeqNum {
 	if len(s.Keys) == 0 {
-		panic("pebble: Span contains no keys")
+		panic(errors.AssertionFailedf("pebble: Span contains no keys"))
 	} else if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	return s.Keys[0].SeqNum()
 }
@@ -235,9 +235,9 @@ func (s *Span) LargestVisibleSeqNum(snapshot base.SeqNum) (largest base.SeqNum, 
 	if s == nil {
 		return 0, false
 	} else if len(s.Keys) == 0 {
-		panic("pebble: Span contains no keys")
+		panic(errors.AssertionFailedf("pebble: Span contains no keys"))
 	} else if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	for i := range s.Keys {
 		if s.Keys[i].VisibleAt(snapshot) {
@@ -258,7 +258,7 @@ func (s *Span) LargestVisibleSeqNum(snapshot base.SeqNum) (largest base.SeqNum, 
 // non-allocating methods when possible.
 func (s Span) Visible(snapshot base.SeqNum) Span {
 	if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 
 	ret := Span{Start: s.Start, End: s.End}
@@ -335,7 +335,7 @@ func (s Span) Visible(snapshot base.SeqNum) Span {
 // the span's keys are sorted in a different order.
 func (s *Span) VisibleAt(snapshot base.SeqNum) bool {
 	if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	if len(s.Keys) == 0 {
 		return false
@@ -379,7 +379,7 @@ func (s *Span) Contains(cmp base.Compare, key []byte) bool {
 // span's keys are sorted in a different order.
 func (s Span) Covers(seqNum base.SeqNum) bool {
 	if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	return !s.Empty() && s.Keys[0].SeqNum() > seqNum
 }
@@ -395,7 +395,7 @@ func (s Span) Covers(seqNum base.SeqNum) bool {
 // span's keys are sorted in a different order.
 func (s *Span) CoversAt(snapshot, seqNum base.SeqNum) bool {
 	if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	// NB: A key is visible at `snapshot` if its sequence number is strictly
 	// less than `snapshot`. See base.Visible.

@@ -49,7 +49,7 @@ func makeKey(id handleID, fileNum base.DiskFileNum, offset uint64) key {
 // shardIdx determines the shard index for the given key.
 func (k *key) shardIdx(numShards int) int {
 	if k.id == 0 {
-		panic("pebble: 0 cache handleID is invalid")
+		panic(errors.AssertionFailedf("pebble: 0 cache handleID is invalid"))
 	}
 	// Same as fibonacciHash() but without the cast to uintptr.
 	const m = 11400714819323198485
@@ -235,7 +235,7 @@ func (c *shard) set(k key, value *Value, markAccessed bool) {
 		c.countTest--
 		v := c.metaDel(e)
 		if invariants.Enabled && v != nil {
-			panic("value should be nil")
+			panic(errors.AssertionFailedf("value should be nil"))
 		}
 		c.metaCheck(e)
 

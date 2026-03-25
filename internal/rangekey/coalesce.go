@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -76,7 +77,7 @@ func CoalesceInto(
 	deleteIdx := -1
 	for i := range keys {
 		if invariants.Enabled && i > 0 && keys[i].Trailer > keys[i-1].Trailer {
-			panic("pebble: invariant violation: span keys unordered")
+			panic(errors.AssertionFailedf("pebble: invariant violation: span keys unordered"))
 		}
 		if !keys[i].VisibleAt(snapshot) {
 			continue
@@ -178,11 +179,11 @@ func (f *ForeignSSTTransformer) Transform(
 		switch keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
 			if invariants.Enabled && len(dst.Keys) > 0 && suffixCmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
-				panic("pebble: keys unexpectedly not in ascending suffix order")
+				panic(errors.AssertionFailedf("pebble: keys unexpectedly not in ascending suffix order"))
 			}
 		case base.InternalKeyKindRangeKeyUnset:
 			if invariants.Enabled && len(dst.Keys) > 0 && suffixCmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
-				panic("pebble: keys unexpectedly not in ascending suffix order")
+				panic(errors.AssertionFailedf("pebble: keys unexpectedly not in ascending suffix order"))
 			}
 		case base.InternalKeyKindRangeKeyDelete:
 			// Nothing to do.

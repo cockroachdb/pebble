@@ -789,10 +789,10 @@ func (d *DB) applyInternal(batch *Batch, opts *WriteOptions, noSyncWait bool) er
 		panic(err)
 	}
 	if batch.committing {
-		panic("pebble: batch already committing")
+		panic(errors.AssertionFailedf("pebble: batch already committing"))
 	}
 	if batch.applied.Load() {
-		panic("pebble: batch already applied")
+		panic(errors.AssertionFailedf("pebble: batch already applied"))
 	}
 	if d.opts.ReadOnly {
 		return ErrReadOnly
@@ -1065,10 +1065,10 @@ func (d *DB) newIter(
 ) *Iterator {
 	if newIterOpts.batch.batchOnly {
 		if batch == nil {
-			panic("batchOnly is true, but batch is nil")
+			panic(errors.AssertionFailedf("batchOnly is true, but batch is nil"))
 		}
 		if newIterOpts.snapshot.vers != nil {
-			panic("batchOnly is true, but snapshotIterOpts is initialized")
+			panic(errors.AssertionFailedf("batchOnly is true, but snapshotIterOpts is initialized"))
 		}
 	}
 	if err := d.closed.Load(); err != nil {
@@ -1076,14 +1076,14 @@ func (d *DB) newIter(
 	}
 	seqNum := newIterOpts.snapshot.seqNum
 	if o != nil && o.RangeKeyMasking.Suffix != nil && o.KeyTypes != IterKeyTypePointsAndRanges {
-		panic("pebble: range key masking requires IterKeyTypePointsAndRanges")
+		panic(errors.AssertionFailedf("pebble: range key masking requires IterKeyTypePointsAndRanges"))
 	}
 	if (batch != nil || seqNum != 0) && (o != nil && o.OnlyReadGuaranteedDurable) {
 		// We could add support for OnlyReadGuaranteedDurable on snapshots if
 		// there was a need: this would require checking that the sequence number
 		// of the snapshot has been flushed, by comparing with
 		// DB.mem.queue[0].logSeqNum.
-		panic("OnlyReadGuaranteedDurable is not supported for batches or snapshots")
+		panic(errors.AssertionFailedf("OnlyReadGuaranteedDurable is not supported for batches or snapshots"))
 	}
 	var readState *readState
 	var newIters tableNewIters
@@ -1517,7 +1517,7 @@ func (d *DB) NewEventuallyFileOnlySnapshot(keyRanges []KeyRange) *EventuallyFile
 	}
 	for i := range keyRanges {
 		if i > 0 && d.cmp(keyRanges[i-1].End, keyRanges[i].Start) > 0 {
-			panic("pebble: key ranges for eventually-file-only-snapshot not in order")
+			panic(errors.AssertionFailedf("pebble: key ranges for eventually-file-only-snapshot not in order"))
 		}
 	}
 	return d.makeEventuallyFileOnlySnapshot(keyRanges)
@@ -1594,7 +1594,7 @@ func (d *DB) Close() error {
 			err = firstError(err, err2)
 		}
 	} else if d.mu.log.writer != nil {
-		panic("pebble: log-writer should be nil in read-only mode")
+		panic(errors.AssertionFailedf("pebble: log-writer should be nil in read-only mode"))
 	}
 	err = firstError(err, d.mu.log.manager.Close())
 
@@ -1648,7 +1648,7 @@ func (d *DB) Close() error {
 	// Sanity check compaction metrics.
 	if invariants.Enabled {
 		if d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.versions.atomicInProgressBytes.Load() > 0 {
-			panic("compacting counts not 0 on close")
+			panic(errors.AssertionFailedf("compacting counts not 0 on close"))
 		}
 	}
 
@@ -2491,7 +2491,7 @@ func (d *DB) maybeInduceWriteStall(b *Batch) {
 // may be released and reacquired.
 func (d *DB) makeRoomForWrite(b *Batch) error {
 	if b != nil && b.ingestedSSTBatch {
-		panic("pebble: invalid function call")
+		panic(errors.AssertionFailedf("pebble: invalid function call"))
 	}
 	d.maybeInduceWriteStall(b)
 
@@ -2621,7 +2621,7 @@ func (d *DB) rotateMemtable(
 // may be released and reacquired.
 func (d *DB) rotateWAL() (newLogNum base.DiskFileNum, prevLogSize uint64) {
 	if d.opts.DisableWAL {
-		panic("pebble: invalid function call")
+		panic(errors.AssertionFailedf("pebble: invalid function call"))
 	}
 	jobID := d.newJobIDLocked()
 	newLogNum = d.mu.versions.getNextDiskFileNum()

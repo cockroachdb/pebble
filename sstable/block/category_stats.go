@@ -62,11 +62,11 @@ func (c Category) SafeFormat(p redact.SafePrinter, verb rune) {
 // Only CategoryMax categories can be registered in total.
 func RegisterCategory(name string, qosLevel QoSLevel) Category {
 	if categoriesList != nil {
-		panic("ReigsterCategory called after Categories()")
+		panic(errors.AssertionFailedf("ReigsterCategory called after Categories()"))
 	}
 	c := Category(numRegisteredCategories.Add(1))
 	if c > CategoryMax {
-		panic("too many categories")
+		panic(errors.AssertionFailedf("too many categories"))
 	}
 	categories[c].name = name
 	categories[c].qosLevel = qosLevel

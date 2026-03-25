@@ -1064,7 +1064,7 @@ func filterPolicyFromName(name string) (pebble.TableFilterPolicy, error) {
 // randInRange returns an integer in the range [minRange,maxRange].
 func randInRange(rng *rand.Rand, minRange, maxRange int) int {
 	if minRange > maxRange {
-		panic("minRange must be <= maxRange")
+		panic(errors.AssertionFailedf("minRange must be <= maxRange"))
 	}
 	return minRange + rng.IntN(maxRange-minRange+1)
 }
@@ -1072,10 +1072,10 @@ func randInRange(rng *rand.Rand, minRange, maxRange int) int {
 // randPowerOf2 returns a power of 2 in the range [2^minExp,2^maxExp].
 func randPowerOf2(rng *rand.Rand, minExp, maxExp int) uint64 {
 	if minExp < 0 {
-		panic("exponents must be non-negative")
+		panic(errors.AssertionFailedf("exponents must be non-negative"))
 	}
 	if minExp > maxExp {
-		panic("minExp must be <= maxExp")
+		panic(errors.AssertionFailedf("minExp must be <= maxExp"))
 	}
 	return 1 << randInRange(rng, minExp, maxExp)
 }

@@ -7,6 +7,7 @@ package rangekeystack
 import (
 	"bytes"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -152,7 +153,7 @@ func (ui *UserIteratorConfig) Transform(
 	ui.bufs.sortBuf = rangekey.CoalesceInto(suffixCmp, ui.bufs.sortBuf[:0], ui.snapshot, s.Keys)
 	if ui.internalKeys {
 		if s.KeysOrder != keyspan.ByTrailerDesc {
-			panic("unexpected key ordering in UserIteratorTransform with internalKeys = true")
+			panic(errors.AssertionFailedf("unexpected key ordering in UserIteratorTransform with internalKeys = true"))
 		}
 		dst.Keys = ui.bufs.sortBuf
 		keyspan.SortKeysByTrailer(dst.Keys)
@@ -166,12 +167,12 @@ func (ui *UserIteratorConfig) Transform(
 		switch keys[i].Kind() {
 		case base.InternalKeyKindRangeKeySet:
 			if invariants.Enabled && len(dst.Keys) > 0 && suffixCmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
-				panic("pebble: keys unexpectedly not in ascending suffix order")
+				panic(errors.AssertionFailedf("pebble: keys unexpectedly not in ascending suffix order"))
 			}
 			dst.Keys = append(dst.Keys, keys[i])
 		case base.InternalKeyKindRangeKeyUnset:
 			if invariants.Enabled && len(dst.Keys) > 0 && suffixCmp(dst.Keys[len(dst.Keys)-1].Suffix, keys[i].Suffix) > 0 {
-				panic("pebble: keys unexpectedly not in ascending suffix order")
+				panic(errors.AssertionFailedf("pebble: keys unexpectedly not in ascending suffix order"))
 			}
 			// Skip.
 			continue
@@ -200,7 +201,7 @@ func (ui *UserIteratorConfig) ShouldDefragment(
 ) bool {
 	// This method is not called with internalKeys = true.
 	if ui.internalKeys {
-		panic("unexpected call to ShouldDefragment with internalKeys = true")
+		panic(errors.AssertionFailedf("unexpected call to ShouldDefragment with internalKeys = true"))
 	}
 	// This implementation must only be used on spans that have transformed by
 	// ui.Transform. The transform applies shadowing, removes all keys besides
@@ -211,7 +212,7 @@ func (ui *UserIteratorConfig) ShouldDefragment(
 		return false
 	}
 	if a.KeysOrder != keyspan.BySuffixAsc || b.KeysOrder != keyspan.BySuffixAsc {
-		panic("pebble: range key span's keys unexpectedly not in ascending suffix order")
+		panic(errors.AssertionFailedf("pebble: range key span's keys unexpectedly not in ascending suffix order"))
 	}
 
 	ret := true
@@ -219,11 +220,11 @@ func (ui *UserIteratorConfig) ShouldDefragment(
 		if invariants.Enabled {
 			if a.Keys[i].Kind() != base.InternalKeyKindRangeKeySet ||
 				b.Keys[i].Kind() != base.InternalKeyKindRangeKeySet {
-				panic("pebble: unexpected non-RangeKeySet during defragmentation")
+				panic(errors.AssertionFailedf("pebble: unexpected non-RangeKeySet during defragmentation"))
 			}
 			if i > 0 && (suffixCmp(a.Keys[i].Suffix, a.Keys[i-1].Suffix) < 0 ||
 				suffixCmp(b.Keys[i].Suffix, b.Keys[i-1].Suffix) < 0) {
-				panic("pebble: range keys not ordered by suffix during defragmentation")
+				panic(errors.AssertionFailedf("pebble: range keys not ordered by suffix during defragmentation"))
 			}
 		}
 		if suffixCmp(a.Keys[i].Suffix, b.Keys[i].Suffix) != 0 {

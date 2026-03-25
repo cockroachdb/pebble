@@ -109,7 +109,7 @@ func writeSSTForIngestion(
 	}
 
 	if syntheticSuffix.IsSet() && rangeDelIter != nil {
-		panic("synthetic suffix with RangeDel")
+		panic(errors.AssertionFailedf("synthetic suffix with RangeDel"))
 	}
 	if err := writeRangeDeletes(w, rangeDelIter, t.opts.Comparer, outputKey); err != nil {
 		return nil, err
@@ -349,7 +349,7 @@ func writeRangeKeys(
 			keys = slices.Clone(span.Keys)
 			for i := range keys {
 				if keys[i].Kind() == base.InternalKeyKindRangeKeyUnset {
-					panic("RangeKeyUnset with synthetic suffix")
+					panic(errors.AssertionFailedf("RangeKeyUnset with synthetic suffix"))
 				}
 				if len(keys[i].Suffix) > 0 {
 					keys[i].Suffix = syntheticSuffix

@@ -129,10 +129,10 @@ var WriteOps = MakeOpKinds(OpCreate, OpLink, OpRemove, OpRemoveAll, OpRename, Op
 
 func init() {
 	if ReadOps&WriteOps != 0 {
-		panic("some op is both read and write")
+		panic(errors.AssertionFailedf("some op is both read and write"))
 	}
 	if ReadOps|WriteOps != (OpKinds(1)<<numOpKinds - 1) {
-		panic("some op is neither read nor write")
+		panic(errors.AssertionFailedf("some op is neither read nor write"))
 	}
 }
 

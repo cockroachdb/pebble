@@ -7,6 +7,7 @@ package keyspan
 import (
 	"context"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/treesteps"
 )
@@ -166,7 +167,7 @@ func (i *BoundedIter) Next() (*Span, error) {
 		// Already exhausted.
 		return nil, nil
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 }
 
@@ -202,7 +203,7 @@ func (i *BoundedIter) Prev() (*Span, error) {
 		i.pos = posAtIterSpan
 		return i.iterSpan, nil
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 }
 

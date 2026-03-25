@@ -186,7 +186,7 @@ func (m *PhysicalBlobFile) PopulateProperties(props *blob.FileProperties) {
 	m.props = *props
 	oldPropsValid := m.propsValid.Swap(true)
 	if invariants.Enabled && oldPropsValid {
-		panic("props set twice")
+		panic(errors.AssertionFailedf("props set twice"))
 	}
 }
 
@@ -952,7 +952,7 @@ func (s *CurrentBlobFileSet) ApplyAndUpdateVersionEdit(ve *VersionEdit) error {
 				// is the first time a reference to the file has been removed.
 				heap.Push(&s.rewrite.candidates, cbf)
 			default:
-				panic("unreachable")
+				panic(errors.AssertionFailedf("unreachable"))
 			}
 		}
 	}

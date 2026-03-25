@@ -277,7 +277,7 @@ func (s *Skiplist) newNode(
 	offset, keyStart, keyEnd uint32, abbreviatedKey uint64,
 ) (uint32, error) {
 	if height < 1 || height > maxHeight {
-		panic("height cannot be less than one or greater than the max height")
+		panic(errors.AssertionFailedf("height cannot be less than one or greater than the max height"))
 	}
 
 	unusedSize := uint64(maxHeight-int(height)) * linksSize

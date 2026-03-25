@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -53,7 +54,7 @@ func (f DefragmentMethodFunc) ShouldDefragment(
 // required their fragmentation has been dropped.
 var DefragmentInternal DefragmentMethod = DefragmentMethodFunc(func(suffixCmp base.CompareRangeSuffixes, a, b *Span) bool {
 	if a.KeysOrder != ByTrailerDesc || b.KeysOrder != ByTrailerDesc {
-		panic("pebble: span keys unexpectedly not in trailer descending order")
+		panic(errors.AssertionFailedf("pebble: span keys unexpectedly not in trailer descending order"))
 	}
 	if len(a.Keys) != len(b.Keys) {
 		return false
@@ -343,7 +344,7 @@ func (i *DefragmentingIter) Next() (*Span, error) {
 		if err != nil {
 			return nil, err
 		} else if i.iterSpan == nil {
-			panic("pebble: invariant violation: no next span while switching directions")
+			panic(errors.AssertionFailedf("pebble: invariant violation: no next span while switching directions"))
 		}
 		// We're now positioned on the first span that was defragmented into the
 		// current iterator position. Skip over the rest of the current iterator
@@ -364,7 +365,7 @@ func (i *DefragmentingIter) Next() (*Span, error) {
 		// iterPosCurr is only used when the iter is exhausted or when the iterator
 		// is at an empty span.
 		if invariants.Enabled && i.iterSpan != nil && !i.iterSpan.Empty() {
-			panic("pebble: invariant violation: iterPosCurr with valid iterSpan")
+			panic(errors.AssertionFailedf("pebble: invariant violation: iterPosCurr with valid iterSpan"))
 		}
 
 		var err error
@@ -382,7 +383,7 @@ func (i *DefragmentingIter) Next() (*Span, error) {
 		}
 		return i.defragmentForward()
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 }
 
@@ -400,7 +401,7 @@ func (i *DefragmentingIter) Prev() (*Span, error) {
 		// iterPosCurr is only used when the iter is exhausted or when the iterator
 		// is at an empty span.
 		if invariants.Enabled && i.iterSpan != nil && !i.iterSpan.Empty() {
-			panic("pebble: invariant violation: iterPosCurr with valid iterSpan")
+			panic(errors.AssertionFailedf("pebble: invariant violation: iterPosCurr with valid iterSpan"))
 		}
 
 		var err error
@@ -428,7 +429,7 @@ func (i *DefragmentingIter) Prev() (*Span, error) {
 		if err != nil {
 			return nil, err
 		} else if i.iterSpan == nil {
-			panic("pebble: invariant violation: no previous span while switching directions")
+			panic(errors.AssertionFailedf("pebble: invariant violation: no previous span while switching directions"))
 		}
 		// We're now positioned on the last span that was defragmented into the
 		// current iterator position. Skip over the rest of the current iterator
@@ -446,7 +447,7 @@ func (i *DefragmentingIter) Prev() (*Span, error) {
 		}
 		return i.defragmentBackward()
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 }
 

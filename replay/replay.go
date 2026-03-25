@@ -740,7 +740,7 @@ func (r *Runner) applyWorkloadSteps(ctx context.Context) error {
 			// No-op.
 			// TODO(jackson): Should we elide this earlier?
 		default:
-			panic("unreachable")
+			panic(errors.AssertionFailedf("unreachable"))
 		}
 	}
 }

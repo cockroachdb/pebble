@@ -282,14 +282,14 @@ func (m *TableMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms 
 
 func (m *TableMetadata) PhysicalMeta() *TableMetadata {
 	if m.Virtual {
-		panic("pebble: table metadata does not belong to a physical sstable")
+		panic(errors.AssertionFailedf("pebble: table metadata does not belong to a physical sstable"))
 	}
 	return m
 }
 
 func (m *TableMetadata) VirtualMeta() *TableMetadata {
 	if !m.Virtual {
-		panic("pebble: table metadata does not belong to a virtual sstable")
+		panic(errors.AssertionFailedf("pebble: table metadata does not belong to a virtual sstable"))
 	}
 	return m
 }
@@ -471,7 +471,7 @@ func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBacki
 	}
 	oldStatsValid := b.propsValid.Swap(true)
 	if invariants.Enabled && oldStatsValid {
-		panic("stats set twice")
+		panic(errors.AssertionFailedf("stats set twice"))
 	}
 	return &b.props
 }
@@ -485,10 +485,10 @@ func (b *TableBacking) PopulateProperties(props *sstable.Properties) *TableBacki
 // TableMetadata is not necessary in tests which don't rely on TableBacking.
 func (m *TableMetadata) InitPhysicalBacking() {
 	if m.Virtual {
-		panic("pebble: virtual sstables should use a pre-existing TableBacking")
+		panic(errors.AssertionFailedf("pebble: virtual sstables should use a pre-existing TableBacking"))
 	}
 	if m.TableBacking != nil {
-		panic("backing already initialized")
+		panic(errors.AssertionFailedf("backing already initialized"))
 	}
 
 	var blobValueSizeTotal uint64
@@ -518,14 +518,14 @@ func (m *TableMetadata) InitVirtualBacking(fileNum base.DiskFileNum, size uint64
 // The Smallest/Largest bounds must already be set to their final values.
 func (m *TableMetadata) AttachVirtualBacking(backing *TableBacking) {
 	if !m.Virtual {
-		panic("pebble: provider-backed sstables must be virtual")
+		panic(errors.AssertionFailedf("pebble: provider-backed sstables must be virtual"))
 	}
 	if m.TableBacking != nil {
-		panic("backing already initialized")
+		panic(errors.AssertionFailedf("backing already initialized"))
 	}
 	m.TableBacking = backing
 	if m.Smallest().UserKey == nil || m.Largest().UserKey == nil {
-		panic("bounds must be set before attaching backing")
+		panic(errors.AssertionFailedf("bounds must be set before attaching backing"))
 	}
 	m.VirtualParams = &virtual.VirtualReaderParams{
 		Lower:   m.Smallest(),
@@ -539,17 +539,17 @@ func (m *TableMetadata) AttachVirtualBacking(backing *TableBacking) {
 func (m *TableMetadata) ValidateVirtual(createdFrom *TableMetadata) {
 	switch {
 	case !m.Virtual:
-		panic("pebble: invalid virtual sstable")
+		panic(errors.AssertionFailedf("pebble: invalid virtual sstable"))
 	case createdFrom.SeqNums.Low != m.SeqNums.Low:
-		panic("pebble: invalid smallest sequence number for virtual sstable")
+		panic(errors.AssertionFailedf("pebble: invalid smallest sequence number for virtual sstable"))
 	case createdFrom.SeqNums.High != m.SeqNums.High:
-		panic("pebble: invalid largest sequence number for virtual sstable")
+		panic(errors.AssertionFailedf("pebble: invalid largest sequence number for virtual sstable"))
 	case createdFrom.LargestSeqNumAbsolute != m.LargestSeqNumAbsolute:
-		panic("pebble: invalid largest absolute sequence number for virtual sstable")
+		panic(errors.AssertionFailedf("pebble: invalid largest absolute sequence number for virtual sstable"))
 	case createdFrom.TableBacking != nil && createdFrom.TableBacking != m.TableBacking:
-		panic("pebble: invalid physical sstable state for virtual sstable")
+		panic(errors.AssertionFailedf("pebble: invalid physical sstable state for virtual sstable"))
 	case m.Size == 0:
-		panic("pebble: virtual sstable size must be set upon creation")
+		panic(errors.AssertionFailedf("pebble: virtual sstable size must be set upon creation"))
 	}
 }
 
@@ -601,7 +601,7 @@ func (m *TableMetadata) PopulateStats(stats *TableStats) {
 	m.stats = *stats
 	oldStatsValid := m.statsValid.Swap(true)
 	if invariants.Enabled && oldStatsValid {
-		panic("stats set twice")
+		panic(errors.AssertionFailedf("stats set twice"))
 	}
 }
 
@@ -708,7 +708,7 @@ func (m *TableMetadata) ContainsKeyType(kt KeyType) bool {
 	case KeyTypeRange:
 		return m.HasRangeKeys
 	default:
-		panic("unrecognized key type")
+		panic(errors.AssertionFailedf("unrecognized key type"))
 	}
 }
 
@@ -727,7 +727,7 @@ func (m *TableMetadata) SmallestBound(kt KeyType) (InternalKey, bool) {
 		}
 		return m.RangeKeyBounds.Smallest(), m.HasRangeKeys
 	default:
-		panic("unrecognized key type")
+		panic(errors.AssertionFailedf("unrecognized key type"))
 	}
 }
 
@@ -747,7 +747,7 @@ func (m *TableMetadata) LargestBound(kt KeyType) (InternalKey, bool) {
 		}
 		return m.RangeKeyBounds.Largest(), m.HasRangeKeys
 	default:
-		panic("unrecognized key type")
+		panic(errors.AssertionFailedf("unrecognized key type"))
 	}
 }
 

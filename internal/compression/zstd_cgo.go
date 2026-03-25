@@ -55,10 +55,10 @@ func (z *zstdCompressor) Compress(compressedBuf []byte, b []byte) ([]byte, Setti
 	varIntLen := binary.PutUvarint(compressedBuf, uint64(len(b)))
 	result, err := z.ctx.CompressLevel(compressedBuf[varIntLen:varIntLen+bound], b, z.level)
 	if err != nil {
-		panic("Error while compressing using Zstd.")
+		panic(errors.AssertionFailedf("Error while compressing using Zstd."))
 	}
 	if &result[0] != &compressedBuf[varIntLen] {
-		panic("Allocated a new buffer despite checking CompressBound.")
+		panic(errors.AssertionFailedf("Allocated a new buffer despite checking CompressBound."))
 	}
 	msanWrite(result)
 

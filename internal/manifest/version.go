@@ -721,7 +721,7 @@ func (l *VersionList) Back() *Version {
 // becomes the "newest" version in the list.
 func (l *VersionList) PushBack(v *Version) {
 	if v.list != nil || v.prev != nil || v.next != nil {
-		panic("pebble: version list is inconsistent")
+		panic(errors.AssertionFailedf("pebble: version list is inconsistent"))
 	}
 	v.prev = l.root.prev
 	v.prev.next = v
@@ -733,10 +733,10 @@ func (l *VersionList) PushBack(v *Version) {
 // Remove removes the specified version from the list.
 func (l *VersionList) Remove(v *Version) {
 	if v == &l.root {
-		panic("pebble: cannot remove version list root node")
+		panic(errors.AssertionFailedf("pebble: cannot remove version list root node"))
 	}
 	if v.list != l {
-		panic("pebble: version list is inconsistent")
+		panic(errors.AssertionFailedf("pebble: version list is inconsistent"))
 	}
 	v.prev.next = v.next
 	v.next.prev = v.prev

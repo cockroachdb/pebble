@@ -7,6 +7,7 @@ package ewma
 import (
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -56,7 +57,7 @@ func (b *Bytes) Estimate() float64 {
 func (b *Bytes) NoSample(numBytes int64) {
 	if numBytes < 0 {
 		if invariants.Enabled {
-			panic("invalid numBytes")
+			panic(errors.AssertionFailedf("invalid numBytes"))
 		}
 		return
 	}
@@ -70,7 +71,7 @@ func (b *Bytes) NoSample(numBytes int64) {
 func (b *Bytes) SampledBlock(numBytes int64, value float64) {
 	if numBytes < 1 {
 		if invariants.Enabled {
-			panic("invalid numBytes")
+			panic(errors.AssertionFailedf("invalid numBytes"))
 		}
 		return
 	}

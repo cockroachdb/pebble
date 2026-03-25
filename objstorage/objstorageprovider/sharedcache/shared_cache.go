@@ -664,7 +664,7 @@ func (s *shard) set(fileNum base.DiskFileNum, p []byte, ofs int64) error {
 		var cacheBlockIdx cacheBlockIndex
 		if s.mu.freeHead == invalidBlockIndex {
 			if invariants.Enabled && s.mu.lruHead == invalidBlockIndex {
-				panic("both LRU and free lists empty")
+				panic(errors.AssertionFailedf("both LRU and free lists empty"))
 			}
 
 			// Find the last element in the LRU list which is not locked.
@@ -750,7 +750,7 @@ func (s *shard) assertShardStateIsConsistent() {
 		for b := s.mu.lruHead; ; {
 			lruLen++
 			if idx, ok := s.mu.where[s.mu.blocks[b].logical]; !ok || idx != b {
-				panic("block in LRU list with no entry in where map")
+				panic(errors.AssertionFailedf("block in LRU list with no entry in where map"))
 			}
 			b = s.lruNext(b)
 			if b == s.mu.lruHead {

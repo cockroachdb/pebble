@@ -7,6 +7,7 @@ package compact
 import (
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -108,7 +109,7 @@ func (te *pointTombstoneElider) ShouldElide(key []byte) bool {
 
 	inUseRanges := te.elision.inUseRanges
 	if invariants.Enabled && te.inUseIdx > 0 && inUseRanges[te.inUseIdx-1].End.IsUpperBoundFor(te.cmp, key) {
-		panic("ShouldElidePoint called with out-of-order key")
+		panic(errors.AssertionFailedf("ShouldElidePoint called with out-of-order key"))
 	}
 	// Advance inUseIdx to the first in-use range that ends after key.
 	for te.inUseIdx < len(te.elision.inUseRanges) && !inUseRanges[te.inUseIdx].End.IsUpperBoundFor(te.cmp, key) {
@@ -148,7 +149,7 @@ func (te *rangeTombstoneElider) ShouldElide(start, end []byte) bool {
 
 	inUseRanges := te.elision.inUseRanges
 	if invariants.Enabled && te.inUseIdx > 0 && inUseRanges[te.inUseIdx-1].End.IsUpperBoundFor(te.cmp, start) {
-		panic("ShouldElideRange called with out-of-order key")
+		panic(errors.AssertionFailedf("ShouldElideRange called with out-of-order key"))
 	}
 	// Advance inUseIdx to the first in-use range that ends after start.
 	for te.inUseIdx < len(te.elision.inUseRanges) && !inUseRanges[te.inUseIdx].End.IsUpperBoundFor(te.cmp, start) {

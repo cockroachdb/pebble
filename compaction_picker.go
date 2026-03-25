@@ -278,7 +278,7 @@ func newPickedTableCompaction(
 	startLevel, outputLevel, baseLevel int,
 ) *pickedTableCompaction {
 	if baseLevel == 0 {
-		panic("base level cannot be 0")
+		panic(errors.AssertionFailedf("base level cannot be 0"))
 	}
 	if startLevel > 0 && startLevel < baseLevel {
 		panic(errors.AssertionFailedf("invalid compaction: start level %d should not be empty (base level %d)",
@@ -304,7 +304,7 @@ func adjustedOutputLevel(outputLevel int, baseLevel int) int {
 		return 0
 	}
 	if baseLevel == 0 {
-		panic("base level cannot be 0")
+		panic(errors.AssertionFailedf("base level cannot be 0"))
 	}
 	// Output level is in the range [baseLevel, numLevels). For the purpose of
 	// determining the target output file size, overlap bytes, and expanded
@@ -1906,12 +1906,12 @@ func pickAutoLPositive(
 	baseLevel int,
 ) (pc *pickedTableCompaction) {
 	if cInfo.level == 0 {
-		panic("pebble: pickAutoLPositive called for L0")
+		panic(errors.AssertionFailedf("pebble: pickAutoLPositive called for L0"))
 	}
 
 	pc = newPickedTableCompaction(opts, vers, l0Organizer, cInfo.level, defaultOutputLevel(cInfo.level, baseLevel), baseLevel)
 	if pc.outputLevel.level != cInfo.outputLevel {
-		panic("pebble: compaction picked unexpected output level")
+		panic(errors.AssertionFailedf("pebble: compaction picked unexpected output level"))
 	}
 	pc.startLevel.files = cInfo.file.Slice()
 
@@ -2175,7 +2175,7 @@ func newPickedManualCompaction(
 		if len(pc.inputs) > 2 {
 			// Multilevel compactions relax this invariant.
 		} else {
-			panic("pebble: compaction picked unexpected output level")
+			panic(errors.AssertionFailedf("pebble: compaction picked unexpected output level"))
 		}
 	}
 	return pc, false
@@ -2199,7 +2199,7 @@ func pickDownloadCompaction(
 		return nil
 	}
 	if kind != compactionKindCopy && kind != compactionKindRewrite {
-		panic("invalid download/rewrite compaction kind")
+		panic(errors.AssertionFailedf("invalid download/rewrite compaction kind"))
 	}
 	pc = newPickedTableCompaction(opts, vers, l0Organizer, level, level, baseLevel)
 	pc.kind = kind
@@ -2210,7 +2210,7 @@ func pickDownloadCompaction(
 		return nil
 	}
 	if pc.outputLevel.level != level {
-		panic("pebble: download compaction picked unexpected output level")
+		panic(errors.AssertionFailedf("pebble: download compaction picked unexpected output level"))
 	}
 	return pc
 }

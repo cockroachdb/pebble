@@ -351,7 +351,7 @@ func (vs *ValueSeparator) preserveBlobReference(
 		})
 	}
 	if invariants.Enabled && vs.currPendingReferences[refID].blobFileID != fileID {
-		panic("wrong reference index")
+		panic(errors.AssertionFailedf("wrong reference index"))
 	}
 
 	handleSuffix := blob.DecodeHandleSuffix(lv.ValueOrHandle)
@@ -439,7 +439,7 @@ func (vs *ValueSeparator) maybeCheckInvariants() {
 				if ref.preserved {
 					totalValueSize += ref.valueSize
 				} else {
-					panic("no new references should exist in preserveAllHotBlobReferences mode")
+					panic(errors.AssertionFailedf("no new references should exist in preserveAllHotBlobReferences mode"))
 				}
 			}
 			accumulatedPreservedValueSize := vs.blobTiers[base.HotTier].totalPreservedValueSize

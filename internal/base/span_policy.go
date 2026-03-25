@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -70,7 +71,7 @@ func (p *SpanPolicy) IsDefault() bool {
 // any) and returns whether the key is still within the span policy end key.
 func (p *SpanPolicy) StillCovers(cmp Compare, key []byte) bool {
 	if invariants.Enabled && len(p.KeyRange.Start) > 0 && cmp(p.KeyRange.Start, key) > 0 {
-		panic("key too small")
+		panic(errors.AssertionFailedf("key too small"))
 	}
 	return len(p.KeyRange.End) == 0 || cmp(key, p.KeyRange.End) < 0
 }

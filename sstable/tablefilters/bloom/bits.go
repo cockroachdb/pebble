@@ -7,6 +7,8 @@ package bloom
 import (
 	"encoding/binary"
 	"unsafe"
+
+	"github.com/cockroachdb/errors"
 )
 
 const cacheLineSize = 64
@@ -96,7 +98,7 @@ func mayContain(filter []byte, h uint32) bool {
 	nProbes := filter[n]
 	nLines := binary.LittleEndian.Uint32(filter[n+1:])
 	if 8*(uint32(n)/nLines) != cacheLineBits {
-		panic("bloom filter: unexpected cache line size")
+		panic(errors.AssertionFailedf("bloom filter: unexpected cache line size"))
 	}
 	bits := aliasFilterBits(filter, nLines)
 	return bits.probe(nProbes, h)

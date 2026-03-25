@@ -59,7 +59,7 @@ func (b Value) MakeHandle() BufferHandle {
 
 func (b *Value) SetInCacheForTesting(h *cache.Handle, fileNum base.DiskFileNum, offset uint64) {
 	if b.buf.Valid() {
-		panic("block value must be backed by a cache.Value")
+		panic(errors.AssertionFailedf("block value must be backed by a cache.Value"))
 	}
 	h.Set(fileNum, offset, b.v)
 	b.v.Release()

@@ -501,10 +501,10 @@ func (i *lazyCombinedIter) initCombinedIteration(
 	// Invariant: !i.combinedIterState.initialized.
 	if invariants.Enabled {
 		if i.combinedIterState.initialized {
-			panic("pebble: combined iterator already initialized")
+			panic(errors.AssertionFailedf("pebble: combined iterator already initialized"))
 		}
 		if i.parent.rangeKey != nil {
-			panic("pebble: iterator already has a range-key iterator stack")
+			panic(errors.AssertionFailedf("pebble: iterator already has a range-key iterator stack"))
 		}
 	}
 

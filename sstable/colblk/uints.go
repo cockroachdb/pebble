@@ -387,7 +387,7 @@ func uintColumnFinish(
 	offset = alignWithZeroes(buf, offset, width)
 
 	if invariants.Enabled && len(buf) < int(offset)+rows*e.Width() {
-		panic("buffer too small")
+		panic(errors.AssertionFailedf("buffer too small"))
 	}
 	switch e.Width() {
 	case 1:
@@ -410,7 +410,7 @@ func uintColumnFinish(
 
 	case 8:
 		if deltaBase != 0 {
-			panic("unreachable")
+			panic(errors.AssertionFailedf("unreachable"))
 		}
 		dest := unsafe.Slice((*uint64)(unsafe.Pointer(&buf[offset])), rows)
 		copy(dest, values)
@@ -422,7 +422,7 @@ func uintColumnFinish(
 		}
 
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 	return offset + uint32(rows)*width
 }
@@ -446,17 +446,17 @@ func reduceUints[N constraints.Integer](minimum uint64, values []uint64, dst []N
 	for i, v := range values {
 		if invariants.Enabled {
 			if v < minimum {
-				panic("incorrect minimum value")
+				panic(errors.AssertionFailedf("incorrect minimum value"))
 			}
 			if v-minimum > uint64(N(0)-1) {
-				panic("incorrect target width")
+				panic(errors.AssertionFailedf("incorrect target width"))
 			}
 		}
 		//gcassert:bce
 		dst[i] = N(v - minimum)
 	}
 	if invariants.Enabled && len(values) < len(dst) && minimum != 0 {
-		panic("incorrect minimum value")
+		panic(errors.AssertionFailedf("incorrect minimum value"))
 	}
 	for i := len(values); i < len(dst); i++ {
 		dst[i] = 0
