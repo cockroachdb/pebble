@@ -7,6 +7,7 @@ package objstorageprovider
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/objstorage"
 )
@@ -31,7 +32,7 @@ func remoteObjectName(meta objstorage.ObjectMetadata) string {
 			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum,
 		)
 	}
-	panic("unknown FileType")
+	panic(errors.AssertionFailedf("unknown FileType"))
 }
 
 // sharedObjectRefName returns the name of the object's ref marker associated
@@ -43,7 +44,7 @@ func sharedObjectRefName(
 	meta objstorage.ObjectMetadata, refCreatorID objstorage.CreatorID, refFileNum base.DiskFileNum,
 ) string {
 	if meta.Remote.CleanupMethod != objstorage.SharedRefTracking {
-		panic("ref object used when ref tracking disabled")
+		panic(errors.AssertionFailedf("ref object used when ref tracking disabled"))
 	}
 	if meta.Remote.CustomObjectName != "" {
 		return fmt.Sprintf(
@@ -62,7 +63,7 @@ func sharedObjectRefName(
 			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum, refCreatorID, refFileNum,
 		)
 	}
-	panic("unknown FileType")
+	panic(errors.AssertionFailedf("unknown FileType"))
 }
 
 func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
@@ -81,7 +82,7 @@ func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
 			objHash(meta), meta.Remote.CreatorID, meta.Remote.CreatorFileNum,
 		)
 	}
-	panic("unknown FileType")
+	panic(errors.AssertionFailedf("unknown FileType"))
 }
 
 // sharedObjectRefName returns the name of the object's ref marker associated
@@ -91,7 +92,7 @@ func sharedObjectRefPrefix(meta objstorage.ObjectMetadata) string {
 // For example: 1a3f-2-000001.sst.ref.5.000008
 func (p *provider) sharedObjectRefName(meta objstorage.ObjectMetadata) string {
 	if meta.Remote.CleanupMethod != objstorage.SharedRefTracking {
-		panic("ref object used when ref tracking disabled")
+		panic(errors.AssertionFailedf("ref object used when ref tracking disabled"))
 	}
 	return sharedObjectRefName(meta, p.remote.shared.creatorID, meta.DiskFileNum)
 }

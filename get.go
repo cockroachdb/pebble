@@ -183,7 +183,7 @@ func (g *getIter) String() string {
 }
 
 func (g *getIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	panic("pebble: SeekGE unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekGE unimplemented"))
 }
 
 func (g *getIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
@@ -191,11 +191,11 @@ func (g *getIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base
 }
 
 func (g *getIter) SeekPrefixGEStrict(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	panic("pebble: SeekPrefixGE unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekPrefixGE unimplemented"))
 }
 
 func (g *getIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
-	panic("pebble: SeekLT unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekLT unimplemented"))
 }
 
 func (g *getIter) First() *base.InternalKV {
@@ -203,7 +203,7 @@ func (g *getIter) First() *base.InternalKV {
 }
 
 func (g *getIter) Last() *base.InternalKV {
-	panic("pebble: Last unimplemented")
+	panic(errors.AssertionFailedf("pebble: Last unimplemented"))
 }
 
 func (g *getIter) Next() *base.InternalKV {
@@ -266,11 +266,11 @@ func (g *getIter) Next() *base.InternalKV {
 }
 
 func (g *getIter) Prev() *base.InternalKV {
-	panic("pebble: Prev unimplemented")
+	panic(errors.AssertionFailedf("pebble: Prev unimplemented"))
 }
 
 func (g *getIter) NextPrefix([]byte) *base.InternalKV {
-	panic("pebble: NextPrefix unimplemented")
+	panic(errors.AssertionFailedf("pebble: NextPrefix unimplemented"))
 }
 
 func (g *getIter) Error() error {
@@ -288,7 +288,7 @@ func (g *getIter) Close() error {
 }
 
 func (g *getIter) SetBounds(lower, upper []byte) {
-	panic("pebble: SetBounds unimplemented")
+	panic(errors.AssertionFailedf("pebble: SetBounds unimplemented"))
 }
 
 func (g *getIter) SetContext(_ context.Context) {}

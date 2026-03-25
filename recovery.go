@@ -375,11 +375,11 @@ func recoverVersion(
 		// from an empty state.
 		for _, deletedLevel := range bve.DeletedTables {
 			if len(deletedLevel) != 0 {
-				panic("deleted files after manifest replay")
+				panic(errors.AssertionFailedf("deleted files after manifest replay"))
 			}
 		}
 		if len(bve.RemovedFileBacking) > 0 {
-			panic("deleted backings after manifest replay")
+			panic(errors.AssertionFailedf("deleted backings after manifest replay"))
 		}
 	}
 
@@ -636,7 +636,7 @@ func (d *DB) replayIngestedFlushable(
 	addFileNum := func(encodedFileNum []byte) base.DiskFileNum {
 		fileNum, n := binary.Uvarint(encodedFileNum)
 		if n <= 0 {
-			panic("pebble: ingest sstable file num is invalid")
+			panic(errors.AssertionFailedf("pebble: ingest sstable file num is invalid"))
 		}
 		diskFileNum := base.DiskFileNum(fileNum)
 		fileNums = append(fileNums, diskFileNum)
@@ -649,14 +649,14 @@ func (d *DB) replayIngestedFlushable(
 			return nil, err
 		}
 		if kind != InternalKeyKindIngestSST && kind != InternalKeyKindIngestSSTWithBlobs && kind != InternalKeyKindExcise {
-			panic("pebble: invalid batch key kind")
+			panic(errors.AssertionFailedf("pebble: invalid batch key kind"))
 		}
 		if !ok {
-			panic("pebble: invalid batch count")
+			panic(errors.AssertionFailedf("pebble: invalid batch count"))
 		}
 		if kind == base.InternalKeyKindExcise {
 			if exciseSpan.Valid() {
-				panic("pebble: multiple excise spans in a single batch")
+				panic(errors.AssertionFailedf("pebble: multiple excise spans in a single batch"))
 			}
 			exciseSpan.Start = slices.Clone(key)
 			exciseSpan.End = slices.Clone(val)
@@ -666,7 +666,7 @@ func (d *DB) replayIngestedFlushable(
 		if kind == InternalKeyKindIngestSSTWithBlobs {
 			blobFileIDs, ok := batchrepr.DecodeBlobFileIDs(val)
 			if !ok {
-				panic("pebble: corrupt blob file IDs in InternalKeyKindIngestSSTWithBlobs")
+				panic(errors.AssertionFailedf("pebble: corrupt blob file IDs in InternalKeyKindIngestSSTWithBlobs"))
 			}
 			tableBlobFileIDs[fileNum] = blobFileIDs
 		}
@@ -675,7 +675,7 @@ func (d *DB) replayIngestedFlushable(
 	if _, _, _, ok, err := br.Next(); err != nil {
 		return nil, err
 	} else if ok {
-		panic("pebble: invalid number of entries in batch")
+		panic(errors.AssertionFailedf("pebble: invalid number of entries in batch"))
 	}
 
 	meta := make([]*manifest.TableMetadata, len(fileNums))
@@ -719,7 +719,7 @@ func (d *DB) replayIngestedFlushable(
 		numFiles++
 	}
 	if uint32(numFiles) != b.Count() {
-		panic("pebble: couldn't load all files in WAL entry")
+		panic(errors.AssertionFailedf("pebble: couldn't load all files in WAL entry"))
 	}
 
 	return d.newIngestedFlushableEntry(meta, seqNum, logNum, exciseSpan, blobFiles)

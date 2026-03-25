@@ -716,7 +716,7 @@ func NewWriter(w io.Writer) *Writer {
 // fillHeader fills in the header for the pending chunk.
 func (w *Writer) fillHeader(last bool) {
 	if w.i+legacyHeaderSize > w.j || w.j > blockSize {
-		panic("pebble/record: bad writer state")
+		panic(errors.AssertionFailedf("pebble/record: bad writer state"))
 	}
 	if last {
 		if w.first {

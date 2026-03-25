@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -307,7 +308,7 @@ func (s *ConcurrencyLimitScheduler) Register(numGoroutinesPerCompaction int, db 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.mu.unregistered {
-		panic("cannot reuse ConcurrencyLimitScheduler")
+		panic(errors.AssertionFailedf("cannot reuse ConcurrencyLimitScheduler"))
 	}
 }
 

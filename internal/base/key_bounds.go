@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -169,7 +170,7 @@ func UserKeyBoundsEndExclusiveIf(start []byte, end []byte, exclusive bool) UserK
 // smallest must not be an exclusive sentinel.
 func UserKeyBoundsFromInternal(smallest, largest InternalKey) UserKeyBounds {
 	if invariants.Enabled && smallest.IsExclusiveSentinel() {
-		panic("smallest key is exclusive sentinel")
+		panic(errors.AssertionFailedf("smallest key is exclusive sentinel"))
 	}
 	return UserKeyBoundsEndExclusiveIf(smallest.UserKey, largest.UserKey, largest.IsExclusiveSentinel())
 }

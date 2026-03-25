@@ -201,7 +201,7 @@ func (c *Cache) Reserve(n int) func() {
 	}
 	return func() {
 		if shardN == -1 {
-			panic("pebble: cache reservation already released")
+			panic(errors.AssertionFailedf("pebble: cache reservation already released"))
 		}
 		for i := range c.shards {
 			c.shards[i].Reserve(-shardN)

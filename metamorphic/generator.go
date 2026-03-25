@@ -1378,7 +1378,7 @@ func (g *generator) writerIngestExternalFiles() {
 			objEnd = g.keyGenerator.ExtendPrefix(objEnd)
 		}
 		if g.cmp(objStart, objEnd) >= 0 {
-			panic("bug in generating obj bounds")
+			panic(errors.AssertionFailedf("bug in generating obj bounds"))
 		}
 		// Generate two random keys within the given bounds.
 		// First, generate a start key in the range [objStart, objEnd).
@@ -1635,7 +1635,7 @@ func uniqueKeys(cmp base.Compare, n int, genFn func() []byte) [][]byte {
 				break
 			}
 			if attempts > 100000 {
-				panic("could not generate unique key")
+				panic(errors.AssertionFailedf("could not generate unique key"))
 			}
 		}
 		used[string(keys[i])] = struct{}{}

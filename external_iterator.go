@@ -89,7 +89,7 @@ func NewExternalIterWithContext(
 			// (see TODO below), we'll need to adjust this tableNewIters
 			// implementation to open iterators by looking up f in a map
 			// of readers indexed by *fileMetadata.
-			panic("unreachable")
+			panic(errors.AssertionFailedf("unreachable"))
 		},
 		seqNum: base.SeqNumMax,
 	}

@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
 )
 
@@ -73,7 +74,7 @@ func ShouldCreateShared(strategy CreateOnSharedStrategy, level int) bool {
 	case CreateOnSharedLower:
 		return level >= SharedLevelsStart
 	default:
-		panic("unexpected CreateOnSharedStrategy value")
+		panic(errors.AssertionFailedf("unexpected CreateOnSharedStrategy value"))
 	}
 }
 

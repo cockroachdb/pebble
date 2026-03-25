@@ -405,7 +405,7 @@ func (w *testingBloomFilterWriter) AddKey(key []byte) { w.bloom.AddKey(key) }
 func (w *testingBloomFilterWriter) Finish() ([]byte, base.TableFilterFamily, bool) {
 	data, _, ok := w.bloom.Finish()
 	if !ok {
-		panic("no filter")
+		panic(errors.AssertionFailedf("no filter"))
 	}
 	return data, w.family, true
 }

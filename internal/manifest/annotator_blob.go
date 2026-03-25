@@ -4,6 +4,8 @@
 
 package manifest
 
+import "github.com/cockroachdb/errors"
+
 // A BlobFileAnnotator defines a computation over a version's set of blob files.
 type BlobFileAnnotator[T any] struct {
 	annotator[T, BlobFileMetadata]
@@ -57,7 +59,7 @@ type BlobFileAnnotationIdx int
 func NewBlobAnnotationIdx() BlobFileAnnotationIdx {
 	n := nextBlobAnnotationID
 	if n >= maxAnnotationsPerNode {
-		panic("too many blob annotations")
+		panic(errors.AssertionFailedf("too many blob annotations"))
 	}
 	nextBlobAnnotationID++
 	return n

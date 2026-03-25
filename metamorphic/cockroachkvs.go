@@ -125,7 +125,7 @@ func (kg *cockroachKeyGenerator) RandPrefix(newPrefix float64) []byte {
 		prefix := kg.generateKeyWithSuffix(4, 12, 0)
 		if !kg.keyManager.prefixExists(prefix) {
 			if !kg.keyManager.addNewKey(prefix) {
-				panic("key must not exist if prefix doesn't exist")
+				panic(errors.AssertionFailedf("key must not exist if prefix doesn't exist"))
 			}
 			return prefix
 		}
@@ -267,7 +267,7 @@ func (kg *cockroachKeyGenerator) randKey(
 			key := kg.generateKeyWithSuffix(4, 12, suffixIdx)
 			if !kg.keyManager.prefixExists(kg.keyManager.kf.Comparer.Split.Prefix(key)) {
 				if !kg.keyManager.addNewKey(key) {
-					panic("key must not exist if prefix doesn't exist")
+					panic(errors.AssertionFailedf("key must not exist if prefix doesn't exist"))
 				}
 				return key
 			}

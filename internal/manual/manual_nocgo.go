@@ -11,6 +11,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -59,7 +60,7 @@ func init() {
 // sizeClass determines the smallest n such that 1 << n >= size
 func sizeClass(size uintptr) int {
 	if invariants.Enabled && size == 0 {
-		panic("zero size should never get through New")
+		panic(errors.AssertionFailedf("zero size should never get through New"))
 	}
 	return bits.Len(uint(size - 1))
 }

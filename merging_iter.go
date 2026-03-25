@@ -1270,7 +1270,7 @@ func (m *mergingIter) NextPrefix(succKey []byte) (kv *base.InternalKV) {
 		}()
 	}
 	if m.dir != 1 {
-		panic("pebble: cannot switch directions with NextPrefix")
+		panic(errors.AssertionFailedf("pebble: cannot switch directions with NextPrefix"))
 	}
 	if m.err != nil || m.heap.len() == 0 {
 		return nil

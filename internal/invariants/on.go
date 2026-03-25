@@ -37,7 +37,7 @@ func (d *CloseChecker) Close() {
 		// Note: to debug a double-close, you can add a stack field to CloseChecker
 		// and set it to string(debug.Stack()) in Close, then print that in this
 		// panic.
-		panic("double close")
+		panic(errors.AssertionFailedf("double close"))
 	}
 	d.closed = true
 }
@@ -45,14 +45,14 @@ func (d *CloseChecker) Close() {
 // AssertClosed panics in invariant builds if Close was not called.
 func (d *CloseChecker) AssertClosed() {
 	if !d.closed {
-		panic("not closed")
+		panic(errors.AssertionFailedf("not closed"))
 	}
 }
 
 // AssertNotClosed panics in invariant builds if Close was called.
 func (d *CloseChecker) AssertNotClosed() {
 	if d.closed {
-		panic("closed")
+		panic(errors.AssertionFailedf("closed"))
 	}
 }
 

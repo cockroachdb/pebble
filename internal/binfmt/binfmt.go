@@ -16,6 +16,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/treeprinter"
 )
 
@@ -103,7 +104,7 @@ func (f *Formatter) PeekUint(w int) uint64 {
 	case 8:
 		return binary.LittleEndian.Uint64(f.data[f.off:])
 	default:
-		panic("unsupported width")
+		panic(errors.AssertionFailedf("unsupported width"))
 	}
 }
 
@@ -259,7 +260,7 @@ func (l Line) Append(s string) Line {
 // a zero or one.
 func (l Line) Binary(n int) Line {
 	if n+l.i > l.n {
-		panic("binary data exceeds consumed line length")
+		panic(errors.AssertionFailedf("binary data exceeds consumed line length"))
 	}
 	for i := 0; i < n; i++ {
 		l.f.printf("%08b", l.f.data[l.f.off+l.i])
@@ -271,7 +272,7 @@ func (l Line) Binary(n int) Line {
 // HexBytes formats the next n bytes in hexadecimal format.
 func (l Line) HexBytes(n int) Line {
 	if n+l.i > l.n {
-		panic("binary data exceeds consumed line length")
+		panic(errors.AssertionFailedf("binary data exceeds consumed line length"))
 	}
 	l.f.printf("%0"+strconv.Itoa(n*2)+"x", l.f.data[l.f.off+l.i:l.f.off+l.i+n])
 	l.i += n
@@ -281,7 +282,7 @@ func (l Line) HexBytes(n int) Line {
 // Done finishes the line, appending the provided comment if any.
 func (l Line) Done(format string, args ...interface{}) int {
 	if l.n != l.i {
-		panic("unconsumed data in line")
+		panic(errors.AssertionFailedf("unconsumed data in line"))
 	}
 	l.f.newline(l.f.buf.String(), fmt.Sprintf(format, args...))
 	l.f.off += l.n

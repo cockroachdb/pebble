@@ -828,7 +828,7 @@ func (i *Iter) nextInStripeHelper() stripeChangeType {
 			// sequence number for a given user key, and the first key after one
 			// is always considered a newStripeNewKey, so we should never reach
 			// this.
-			panic("unreachable")
+			panic(errors.AssertionFailedf("unreachable"))
 		case base.InternalKeyKindDelete, base.InternalKeyKindSet, base.InternalKeyKindMerge, base.InternalKeyKindSingleDelete,
 			base.InternalKeyKindSetWithDelete, base.InternalKeyKindDeleteSized:
 			// Fall through
@@ -1067,7 +1067,7 @@ func (i *Iter) singleDeleteNext() bool {
 				}
 			case newStripeNewKey:
 			default:
-				panic("unreachable")
+				panic(errors.AssertionFailedf("unreachable"))
 			}
 			return false
 
@@ -1167,7 +1167,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 							"unexpected internal key kind: %d", errors.Safe(i.iterKV.Kind())))
 					}
 				default:
-					panic("unreachable")
+					panic(errors.AssertionFailedf("unreachable"))
 				}
 				// Whether in same stripe or new stripe, this key is not consumed by
 				// the SingleDelete.
@@ -1178,7 +1178,7 @@ func (i *Iter) skipDueToSingleDeleteElision() {
 					"unexpected internal key kind: %d", errors.Safe(i.iterKV.Kind())))
 			}
 		default:
-			panic("unreachable")
+			panic(errors.AssertionFailedf("unreachable"))
 		}
 	}
 }
@@ -1479,7 +1479,7 @@ func (i *Iter) tombstoneCovers(key base.InternalKey, snapshot base.SeqNum) cover
 
 func (i *Iter) setLastRangeDelSpan(span *keyspan.Span) {
 	if invariants.Enabled && !i.lastRangeDelSpan.Empty() {
-		panic("last range del span overwritten")
+		panic(errors.AssertionFailedf("last range del span overwritten"))
 	}
 	i.lastRangeDelSpan.CopyFrom(span)
 	i.lastRangeDelSpanFrontier.Update(i.lastRangeDelSpan.End)

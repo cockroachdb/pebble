@@ -4,6 +4,8 @@
 
 package base
 
+import "github.com/cockroachdb/errors"
+
 // SSTable block defaults.
 const (
 	DefaultBlockRestartInterval      = 16
@@ -71,7 +73,7 @@ var NoFilterPolicy TableFilterPolicy = noFilter{}
 type noFilter struct{}
 
 func (noFilter) Name() string                 { return "none" }
-func (noFilter) NewWriter() TableFilterWriter { panic("not implemented") }
+func (noFilter) NewWriter() TableFilterWriter { panic(errors.AssertionFailedf("not implemented")) }
 
 // BlockPropertyFilter is used in an Iterator to filter sstables and blocks
 // within the sstable. It should not maintain any per-sstable state, and must

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/errors"
 )
 
 // rateCalculator computes the target deletion throughput (bytes/sec) for a
@@ -167,7 +168,7 @@ func (rc *rateCalculator) InDebt() bool {
 // This method panics if called when there is no debt (InDebt() returns false).
 func (rc *rateCalculator) DebtWaitTime() time.Duration {
 	if rc.debtBytes == 0 {
-		panic("no debt")
+		panic(errors.AssertionFailedf("no debt"))
 	}
 	// We add 1ns as a way to round up. We must also make sure we never return 0,
 	// as that will be problematic with synctest (which has exact sleeps).

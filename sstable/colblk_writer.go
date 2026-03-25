@@ -122,7 +122,7 @@ func newColumnarWriter(
 	writable objstorage.Writable, o WriterOptions, cpuMeasurer base.CPUMeasurer,
 ) *RawColumnWriter {
 	if writable == nil {
-		panic("pebble: nil writable")
+		panic(errors.AssertionFailedf("pebble: nil writable"))
 	}
 	if !o.TableFormat.BlockColumnar() {
 		panic(errors.AssertionFailedf("newColumnarWriter cannot create sstables with %s format", o.TableFormat))
@@ -965,7 +965,7 @@ func (w *RawColumnWriter) flushBufferedIndexBlocks() (rootIndex block.Handle, er
 		// above this switch statement if there are no buffered partitions
 		// (regardless of whether there are data block handles in the index
 		// block).
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	case 1:
 		// Single-level index.
 		rootIndex, err = w.layout.WriteIndexBlock(w.indexBuffering.partitions[0].block)
@@ -1340,7 +1340,7 @@ func (w *RawColumnWriter) copyDataBlocks(
 	var buf []byte
 	readAndFlushBlocks := func(firstBlockIdx, lastBlockIdx int) error {
 		if firstBlockIdx > lastBlockIdx {
-			panic("pebble: readAndFlushBlocks called with invalid block range")
+			panic(errors.AssertionFailedf("pebble: readAndFlushBlocks called with invalid block range"))
 		}
 		// We need to flush blocks[firstBlockIdx:lastBlockIdx+1] into the write queue.
 		// We do this by issuing one big read from the read handle into the buffer, and
@@ -1372,7 +1372,7 @@ func (w *RawColumnWriter) copyDataBlocks(
 	lastBlockOffset := uint64(0)
 	for i := 0; i < len(blocks); {
 		if blocks[i].bh.Offset < lastBlockOffset {
-			panic("pebble: copyDataBlocks called with blocks out of order")
+			panic(errors.AssertionFailedf("pebble: copyDataBlocks called with blocks out of order"))
 		}
 		start := i
 		// Note the i++ in the initializing condition; this means we will always flush at least

@@ -260,7 +260,7 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 		return DefaultComparer
 	}
 	if c.AbbreviatedKey == nil || c.Separator == nil || c.Successor == nil || c.Name == "" {
-		panic("invalid Comparer: mandatory field not set")
+		panic(errors.AssertionFailedf("invalid Comparer: mandatory field not set"))
 	}
 	if c.CompareRangeSuffixes != nil && c.ComparePointSuffixes != nil && c.Compare != nil && c.Equal != nil && c.Split != nil && c.FormatKey != nil {
 		return c
@@ -429,7 +429,7 @@ func MakeAssertComparer(c Comparer) Comparer {
 			eq := c.Equal(a, b)
 			// Verify that Equal is consistent with Compare.
 			if expected := c.Compare(a, b); eq != (expected == 0) {
-				panic("Compare and Equal are not consistent")
+				panic(errors.AssertionFailedf("Compare and Equal are not consistent"))
 			}
 			return eq
 		},

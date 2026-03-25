@@ -17,7 +17,10 @@
 
 package arenaskl
 
-import "github.com/cockroachdb/pebble/internal/base"
+import (
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
+)
 
 // flushIterator is an iterator over the skiplist object. Use Skiplist.NewFlushIter
 // to construct an iterator. The current state of the iterator can be cloned by
@@ -34,15 +37,15 @@ func (it *flushIterator) String() string {
 }
 
 func (it *flushIterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	panic("pebble: SeekGE unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekGE unimplemented"))
 }
 
 func (it *flushIterator) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	panic("pebble: SeekPrefixGE unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekPrefixGE unimplemented"))
 }
 
 func (it *flushIterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
-	panic("pebble: SeekLT unimplemented")
+	panic(errors.AssertionFailedf("pebble: SeekLT unimplemented"))
 }
 
 // First seeks position at the first entry in list. Returns the key and value
@@ -68,9 +71,9 @@ func (it *flushIterator) Next() *base.InternalKV {
 }
 
 func (it *flushIterator) NextPrefix(succKey []byte) *base.InternalKV {
-	panic("pebble: NextPrefix unimplemented")
+	panic(errors.AssertionFailedf("pebble: NextPrefix unimplemented"))
 }
 
 func (it *flushIterator) Prev() *base.InternalKV {
-	panic("pebble: Prev unimplemented")
+	panic(errors.AssertionFailedf("pebble: Prev unimplemented"))
 }

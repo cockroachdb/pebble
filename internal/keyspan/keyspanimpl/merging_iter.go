@@ -764,7 +764,7 @@ func (m *MergingIter) switchToMinHeap() error {
 		for i := range m.levels {
 			l := &m.levels[i]
 			if l.heapKey.kind != boundKindInvalid && m.comparer.Compare(l.heapKey.key, m.start) > 0 {
-				panic("pebble: invariant violation: max-heap key > m.start")
+				panic(errors.AssertionFailedf("pebble: invariant violation: max-heap key > m.start"))
 			}
 		}
 	}
@@ -819,7 +819,7 @@ func (m *MergingIter) switchToMaxHeap() error {
 		for i := range m.levels {
 			l := &m.levels[i]
 			if l.heapKey.kind != boundKindInvalid && m.comparer.Compare(l.heapKey.key, m.end) < 0 {
-				panic("pebble: invariant violation: min-heap key < m.end")
+				panic(errors.AssertionFailedf("pebble: invariant violation: min-heap key < m.end"))
 			}
 		}
 	}

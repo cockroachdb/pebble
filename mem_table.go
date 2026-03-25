@@ -234,7 +234,7 @@ func (m *memTable) apply(batch *Batch, seqNum base.SeqNum) error {
 			// to the memtable.
 			seqNum--
 		case InternalKeyKindIngestSST, InternalKeyKindIngestSSTWithBlobs, InternalKeyKindExcise:
-			panic("pebble: cannot apply ingested sstable or excise kind keys to memtable")
+			panic(errors.AssertionFailedf("pebble: cannot apply ingested sstable or excise kind keys to memtable"))
 		default:
 			err = ins.Add(&m.skl, ikey, value)
 		}

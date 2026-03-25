@@ -119,7 +119,7 @@ func (s *localFSStore) CreateObject(objName string) (io.WriteCloser, error) {
 // List is part of the remote.Storage interface.
 func (s *localFSStore) List(prefix, delimiter string) ([]string, error) {
 	if delimiter != "" {
-		panic("delimiter unimplemented")
+		panic(errors.AssertionFailedf("delimiter unimplemented"))
 	}
 	files, err := s.vfs.List(s.dirname)
 	if err != nil {

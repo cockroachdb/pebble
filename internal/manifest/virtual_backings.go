@@ -360,7 +360,7 @@ func (bv *VirtualBackings) String() string {
 func (bv *VirtualBackings) mustAdd(v *backingWithMetadata) {
 	_, ok := bv.m[v.backing.DiskFileNum]
 	if ok {
-		panic("pebble: trying to add an existing file backing")
+		panic(errors.AssertionFailedf("pebble: trying to add an existing file backing"))
 	}
 	bv.m[v.backing.DiskFileNum] = v
 }

@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -38,7 +39,7 @@ func EncodedSize(n int, bpv int) int {
 	case 16:
 		return n * 2
 	default:
-		panic("unsupported bpv")
+		panic(errors.AssertionFailedf("unsupported bpv"))
 	}
 }
 
@@ -62,7 +63,7 @@ func Encode8(input []uint8, bpv int, output []byte) {
 	case 8:
 		copy(output[:len(input)], input)
 	default:
-		panic("unsupported bpv")
+		panic(errors.AssertionFailedf("unsupported bpv"))
 	}
 }
 
@@ -117,7 +118,7 @@ func Encode16(input []uint16, bpv int, output []byte) {
 	case 16:
 		encode16bpv(input, output)
 	default:
-		panic("unsupported bpv")
+		panic(errors.AssertionFailedf("unsupported bpv"))
 	}
 }
 
@@ -293,7 +294,7 @@ func Decode(data []byte, i uint, bpv int) uint16 {
 		shift := (i & 1) * 12
 		return uint16((w >> shift) & 0xFFF)
 	default:
-		panic("unsupported bpv")
+		panic(errors.AssertionFailedf("unsupported bpv"))
 	}
 }
 
@@ -343,7 +344,7 @@ func Decode3(data []byte, i1, i2, i3 uint, bpv int) (uint16, uint16, uint16) {
 		shift3 := (i3 & 1) * 12
 		return uint16((w1 >> shift1) & 0xFFF), uint16((w2 >> shift2) & 0xFFF), uint16((w3 >> shift3) & 0xFFF)
 	default:
-		panic("unsupported bpv")
+		panic(errors.AssertionFailedf("unsupported bpv"))
 	}
 }
 

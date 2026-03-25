@@ -4,7 +4,10 @@
 
 package objstorageprovider
 
-import "github.com/cockroachdb/pebble/internal/invariants"
+import (
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/invariants"
+)
 
 const (
 	// Constants for dynamic readahead of data blocks. Note that the size values
@@ -58,7 +61,7 @@ func (rs *readaheadState) maybeReadaheadOrCacheHit(
 	offset, blockLength int64, readahead bool,
 ) int64 {
 	if invariants.Enabled && rs.maxReadaheadSize == 0 {
-		panic("readaheadState not initialized")
+		panic(errors.AssertionFailedf("readaheadState not initialized"))
 	}
 	currentReadEnd := offset + blockLength
 	if rs.numReads >= minFileReadsForReadahead {

@@ -5,6 +5,7 @@
 package compact
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -47,7 +48,7 @@ func MakeRangeDelSpanCompactor(
 // non-overlapping.
 func (c *RangeDelSpanCompactor) Compact(span, output *keyspan.Span) {
 	if invariants.Enabled && span.KeysOrder != keyspan.ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	output.Reset()
 	// Apply the snapshot stripe rules, keeping only the latest tombstone for
@@ -118,7 +119,7 @@ func MakeRangeKeySpanCompactor(
 // non-overlapping.
 func (c *RangeKeySpanCompactor) Compact(span, output *keyspan.Span) {
 	if invariants.Enabled && span.KeysOrder != keyspan.ByTrailerDesc {
-		panic("pebble: span's keys unexpectedly not in trailer order")
+		panic(errors.AssertionFailedf("pebble: span's keys unexpectedly not in trailer order"))
 	}
 	// snapshots are in ascending order, while s.keys are in descending seqnum
 	// order. Partition s.keys by snapshot stripes, and call rangekey.Coalesce

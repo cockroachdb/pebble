@@ -4,7 +4,10 @@
 
 package pebble
 
-import "github.com/cockroachdb/pebble/internal/invariants"
+import (
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/invariants"
+)
 
 // mergingIterHeap is a heap of mergingIterLevels. It only reads
 // mergingIterLevel.iterKV.K.
@@ -122,7 +125,7 @@ func (h *mergingIterHeap) down(i, n int) {
 					wc = winnerChildRight
 				}
 				if wc != winnerChildUnknown && wc != h.items[i].winnerChild {
-					panic("winnerChild mismatch")
+					panic(errors.AssertionFailedf("winnerChild mismatch"))
 				}
 			}
 			if h.items[i].winnerChild == winnerChildRight {

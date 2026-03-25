@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
 
@@ -362,7 +363,7 @@ func (s *shard[K, V, InitOpts]) Evict(key K) {
 
 	if v != nil {
 		if v.refCount.Add(-1) != 0 {
-			panic("element has outstanding references")
+			panic(errors.AssertionFailedf("element has outstanding references"))
 		}
 		<-v.initialized
 		if v.err == nil {
@@ -397,7 +398,7 @@ func (s *shard[K, V, InitOpts]) EvictAll(predicate func(K) bool) []K {
 		defer s.mu.RUnlock()
 		s.forAllNodesLocked(func(n *node[K, V]) {
 			if predicate(n.key) {
-				panic("evictable key added in shard")
+				panic(errors.AssertionFailedf("evictable key added in shard"))
 			}
 		})
 	}
@@ -425,7 +426,7 @@ func (s *shard[K, V, InitOpts]) Close() {
 		n := s.mu.handHot
 		if v := n.value; v != nil {
 			if v.refCount.Add(-1) != 0 {
-				panic("element has outstanding references")
+				panic(errors.AssertionFailedf("element has outstanding references"))
 			}
 			s.releasingCh <- v
 		}

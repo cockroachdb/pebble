@@ -356,7 +356,7 @@ func createReader(
 	if meta.Virtual {
 		if invariants.Enabled {
 			if meta.VirtualParams.FileNum == 0 || meta.VirtualParams.Lower.UserKey == nil || meta.VirtualParams.Upper.UserKey == nil {
-				panic("virtual params not initialized")
+				panic(errors.AssertionFailedf("virtual params not initialized"))
 			}
 		}
 		env.Virtual = meta.VirtualParams
@@ -386,7 +386,7 @@ func (h *fileCacheHandle) withReader(
 	if meta.Virtual {
 		if invariants.Enabled {
 			if meta.VirtualParams.FileNum == 0 || meta.VirtualParams.Lower.UserKey == nil || meta.VirtualParams.Upper.UserKey == nil {
-				panic("virtual params not initialized")
+				panic(errors.AssertionFailedf("virtual params not initialized"))
 			}
 		}
 		env.Virtual = meta.VirtualParams
@@ -473,9 +473,9 @@ func optsFromBlockReadEnv(blockEnv block.ReadEnv) initFileOpts {
 // reference to the file cache.
 func NewFileCache(numShards int, size int) *FileCache {
 	if size == 0 {
-		panic("pebble: cannot create a file cache of size 0")
+		panic(errors.AssertionFailedf("pebble: cannot create a file cache of size 0"))
 	} else if numShards == 0 {
-		panic("pebble: cannot create a file cache with 0 shards")
+		panic(errors.AssertionFailedf("pebble: cannot create a file cache with 0 shards"))
 	}
 
 	c := &FileCache{}
@@ -506,7 +506,7 @@ func NewFileCache(numShards int, size int) *FileCache {
 		case base.FileTypeBlob:
 			c.counts.blobFiles.Add(1)
 		default:
-			panic("unexpected file type")
+			panic(errors.AssertionFailedf("unexpected file type"))
 		}
 		return nil
 	}
@@ -980,7 +980,7 @@ func (rp *tableCacheShardReaderProvider) Close() {
 	rp.mu.refCount--
 	if rp.mu.refCount <= 0 {
 		if rp.mu.refCount < 0 {
-			panic("pebble: sstable.ReaderProvider misuse")
+			panic(errors.AssertionFailedf("pebble: sstable.ReaderProvider misuse"))
 		}
 		rp.mu.r.Unref()
 		rp.mu.r = genericcache.ValueRef[fileCacheKey, fileCacheValue, initFileOpts]{}

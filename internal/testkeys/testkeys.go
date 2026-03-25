@@ -102,7 +102,7 @@ var Comparer = &base.Comparer{
 		// representable prefix keys containing characters a-z.
 		ai := split(a)
 		if ai != len(a) {
-			panic("pebble: ImmediateSuccessor invoked with a non-prefix key")
+			panic(errors.AssertionFailedf("pebble: ImmediateSuccessor invoked with a non-prefix key"))
 		}
 		return append(append(dst, a...), 0x00)
 	},
@@ -312,12 +312,12 @@ func keyCount(n, l int) uint64 {
 	res := uint64(0)
 	for i := 1; i <= l; i++ {
 		if x >= math.MaxInt64/uint64(n) {
-			panic("overflow")
+			panic(errors.AssertionFailedf("overflow"))
 		}
 		x *= uint64(n)
 		res += x
 		if res < x {
-			panic("overflow")
+			panic(errors.AssertionFailedf("overflow"))
 		}
 	}
 	return res
@@ -437,7 +437,7 @@ func RandomPrefixInRange(a, b []byte, rng *rand.Rand) []byte {
 	apIdx := computeAlphabetKeyIndex(aPiece, inverseAlphabet, maxLength)
 	bpIdx := computeAlphabetKeyIndex(bPiece, inverseAlphabet, maxLength)
 	if bpIdx <= apIdx {
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 	generatedIdx := apIdx + rng.Uint64N(bpIdx-apIdx)
 	if generatedIdx == apIdx {

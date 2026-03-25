@@ -579,7 +579,7 @@ func (i *LevelIterator) Next() *TableMetadata {
 		return nil
 	}
 	if invariants.Enabled && (i.iter.pos >= i.iter.n.count || (i.end != nil && cmpIter(i.iter, *i.end) > 0)) {
-		panic("pebble: cannot next forward-exhausted iterator")
+		panic(errors.AssertionFailedf("pebble: cannot next forward-exhausted iterator"))
 	}
 	i.iter.next()
 	if !i.iter.valid() {
@@ -594,7 +594,7 @@ func (i *LevelIterator) PeekNext() *TableMetadata {
 		return nil
 	}
 	if invariants.Enabled && (i.iter.pos >= i.iter.n.count || (i.end != nil && cmpIter(i.iter, *i.end) > 0)) {
-		panic("pebble: cannot peek next on forward-exhausted iterator")
+		panic(errors.AssertionFailedf("pebble: cannot peek next on forward-exhausted iterator"))
 	}
 	// Fast path: we're in a leaf and there are more items after the current
 	// position. Scan forward within the leaf for an item matching the filter.
@@ -622,7 +622,7 @@ func (i *LevelIterator) Prev() *TableMetadata {
 		return nil
 	}
 	if invariants.Enabled && (i.iter.pos < 0 || (i.start != nil && cmpIter(i.iter, *i.start) < 0)) {
-		panic("pebble: cannot prev backward-exhausted iterator")
+		panic(errors.AssertionFailedf("pebble: cannot prev backward-exhausted iterator"))
 	}
 	i.iter.prev()
 	if !i.iter.valid() {
@@ -751,7 +751,7 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *TableMetadata {
 	if i.filter != KeyTypePointAndRange && m != nil {
 		b, ok := m.SmallestBound(i.filter)
 		if !ok {
-			panic("unreachable")
+			panic(errors.AssertionFailedf("unreachable"))
 		}
 		if cmp(b.UserKey, userKey) >= 0 {
 			// This table does not contain any keys of desired key types
@@ -768,7 +768,7 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *TableMetadata {
 func (i *LevelIterator) assertNotL0Cmp() {
 	if invariants.Enabled {
 		if reflect.ValueOf(i.iter.cmp).Pointer() == reflect.ValueOf(btreeCmpSeqNum).Pointer() {
-			panic("Seek used with btreeCmpSeqNum")
+			panic(errors.AssertionFailedf("Seek used with btreeCmpSeqNum"))
 		}
 	}
 }
@@ -855,7 +855,7 @@ func (i *LevelIterator) Take() LevelTable {
 	if !i.iter.valid() ||
 		(i.end != nil && cmpIter(i.iter, *i.end) > 0) ||
 		(i.start != nil && cmpIter(i.iter, *i.start) < 0) {
-		panic("Take called on invalid LevelIterator")
+		panic(errors.AssertionFailedf("Take called on invalid LevelIterator"))
 	}
 	m := i.iter.cur()
 	// LevelSlice's start and end fields are immutable and are positioned to the

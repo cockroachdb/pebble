@@ -95,7 +95,7 @@ func (rs *readShard) acquireReadEntry(k key) *readEntry {
 		// An entry we found in the map while holding the mutex must have a non-zero
 		// reference count.
 		if e.refCount < 1 {
-			panic("invalid reference count")
+			panic(errors.AssertionFailedf("invalid reference count"))
 		}
 		e.refCount++
 		return e
@@ -189,17 +189,17 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 ) (cv *Value, errorDuration time.Duration, err error) {
 	constructValueLocked := func() *Value {
 		if e.mu.v == nil {
-			panic("value is nil")
+			panic(errors.AssertionFailedf("value is nil"))
 		}
 		e.mu.v.acquire()
 		return e.mu.v
 	}
 	becomeReaderLocked := func() {
 		if e.mu.v != nil {
-			panic("value is non-nil")
+			panic(errors.AssertionFailedf("value is non-nil"))
 		}
 		if e.mu.isReading {
-			panic("isReading is already true")
+			panic(errors.AssertionFailedf("isReading is already true"))
 		}
 		e.mu.isReading = true
 		if e.mu.ch != nil {
@@ -249,7 +249,7 @@ func (e *readEntry) waitForReadPermissionOrHandle(
 				// Channel closed, so value was read.
 				e.mu.RLock()
 				if e.mu.v == nil {
-					panic("value is nil")
+					panic(errors.AssertionFailedf("value is nil"))
 				}
 				h := constructValueLocked()
 				errorDuration = e.mu.errorDuration
@@ -276,12 +276,12 @@ func (e *readEntry) unrefAndTryRemoveFromMap() {
 		return
 	}
 	if e.refCount < 0 {
-		panic("invalid reference count")
+		panic(errors.AssertionFailedf("invalid reference count"))
 	}
 	// The refcount is now 0; remove from the map.
 	if invariants.Enabled {
 		if e2, ok := rs.mu.readMap.Get(e.key); !ok || e2 != e {
-			panic("entry not in readMap")
+			panic(errors.AssertionFailedf("entry not in readMap"))
 		}
 	}
 	rs.mu.readMap.Delete(e.key)
@@ -302,11 +302,11 @@ func (e *readEntry) setReadValue(v *Value) {
 	// Acquire a ref for readEntry, since we are going to remember it in e.mu.v.
 	v.acquire()
 	if e.mu.v != nil {
-		panic("value already set")
+		panic(errors.AssertionFailedf("value already set"))
 	}
 	e.mu.v = v
 	if !e.mu.isReading {
-		panic("isReading is false")
+		panic(errors.AssertionFailedf("isReading is false"))
 	}
 	e.mu.isReading = false
 	if e.mu.ch != nil {
@@ -326,14 +326,14 @@ func (e *readEntry) setReadValue(v *Value) {
 func (e *readEntry) setReadError(err error) {
 	e.mu.Lock()
 	if !e.mu.isReading {
-		panic("isReading is false")
+		panic(errors.AssertionFailedf("isReading is false"))
 	}
 	e.mu.isReading = false
 	if e.mu.ch != nil {
 		select {
 		case e.mu.ch <- struct{}{}:
 		default:
-			panic("channel is not empty")
+			panic(errors.AssertionFailedf("channel is not empty"))
 		}
 	}
 	e.mu.errorDuration += time.Since(e.mu.readStart)

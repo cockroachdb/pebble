@@ -228,7 +228,7 @@ func (d *DB) disableFileDeletions() {
 // d.mu must be held when calling this method.
 func (d *DB) enableFileDeletions() {
 	if d.mu.fileDeletions.disableCount <= 0 {
-		panic("pebble: file deletion disablement invariant violated")
+		panic(errors.AssertionFailedf("pebble: file deletion disablement invariant violated"))
 	}
 	d.mu.fileDeletions.disableCount--
 	if d.mu.fileDeletions.disableCount > 0 {

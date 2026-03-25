@@ -53,7 +53,7 @@ func btreeCmpSpecificOrder(files []*TableMetadata) btreeCmp[*TableMetadata] {
 		ai, aok := m[a]
 		bi, bok := m[b]
 		if !aok || !bok {
-			panic("btreeCmpSliceOrder called with unknown files")
+			panic(errors.AssertionFailedf("btreeCmpSliceOrder called with unknown files"))
 		}
 		return stdcmp.Compare(ai, bi)
 	}
@@ -1028,7 +1028,7 @@ func (i iterator[M]) String() string {
 
 func cmpIter[M fileMetadata](a, b iterator[M]) int {
 	if a.r != b.r {
-		panic("compared iterators from different btrees")
+		panic(errors.AssertionFailedf("compared iterators from different btrees"))
 	}
 
 	// Each iterator has a stack of frames marking the path from the root node
@@ -1087,7 +1087,7 @@ func cmpIter[M fileMetadata](a, b iterator[M]) int {
 
 		// aok && bok
 		if af.n != bf.n {
-			panic("nonmatching nodes during btree iterator comparison")
+			panic(errors.AssertionFailedf("nonmatching nodes during btree iterator comparison"))
 		}
 		if v := stdcmp.Compare(af.pos, bf.pos); v != 0 {
 			return v
@@ -1097,10 +1097,10 @@ func cmpIter[M fileMetadata](a, b iterator[M]) int {
 	}
 
 	if aok && bok {
-		panic("expected one or more stacks to have been exhausted")
+		panic(errors.AssertionFailedf("expected one or more stacks to have been exhausted"))
 	}
 	if an != bn {
-		panic("nonmatching nodes during btree iterator comparison")
+		panic(errors.AssertionFailedf("nonmatching nodes during btree iterator comparison"))
 	}
 	if v := stdcmp.Compare(apos, bpos); v != 0 {
 		return v
@@ -1240,7 +1240,7 @@ func (i *iterator[M]) valid() bool {
 // illegal to call cur if the iterator is not valid.
 func (i *iterator[M]) cur() M {
 	if invariants.Enabled && !i.valid() {
-		panic("btree iterator.cur invoked on invalid iterator")
+		panic(errors.AssertionFailedf("btree iterator.cur invoked on invalid iterator"))
 	}
 	return i.n.items[i.pos]
 }

@@ -139,7 +139,7 @@ type CrashCloneCfg struct {
 // latter is controlled by CrashCloneCfg.
 func (y *MemFS) CrashClone(cfg CrashCloneCfg) *MemFS {
 	if !y.crashable {
-		panic("not a crashable MemFS")
+		panic(errors.AssertionFailedf("not a crashable MemFS"))
 	}
 	// Block all modification operations while we clone.
 	y.cloneMu.Lock()
@@ -552,7 +552,7 @@ func (y *MemFS) List(dirname string) ([]string, error) {
 	err := y.walk(dirname, func(dir *memNode, frag string, final bool) error {
 		if final {
 			if frag != "" {
-				panic("unreachable")
+				panic(errors.AssertionFailedf("unreachable"))
 			}
 			ret = make([]string, 0, len(dir.children))
 			for s := range dir.children {
@@ -804,7 +804,7 @@ func (f *memFile) Write(p []byte) (int, error) {
 	if f.pos+len(p) <= len(f.n.mu.data) {
 		n := copy(f.n.mu.data[f.pos:f.pos+len(p)], p)
 		if n != len(p) {
-			panic("stuff")
+			panic(errors.AssertionFailedf("stuff"))
 		}
 	} else {
 		if grow := f.pos - len(f.n.mu.data); grow > 0 {
@@ -845,7 +845,7 @@ func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
 
 	n := copy(f.n.mu.data[int(ofs):int(ofs)+len(p)], p)
 	if n != len(p) {
-		panic("stuff")
+		panic(errors.AssertionFailedf("stuff"))
 	}
 
 	return len(p), nil

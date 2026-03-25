@@ -349,10 +349,10 @@ func (i *indexBlockBuf) estimatedSize() uint64 {
 	// Make sure that the size estimation works as expected.
 	if invariants.Enabled {
 		if i.size.estimate.inflightSize != 0 {
-			panic("unexpected inflight entry in index block size estimation")
+			panic(errors.AssertionFailedf("unexpected inflight entry in index block size estimation"))
 		}
 		if i.size.estimate.size() != uint64(i.block.EstimatedSize()) {
-			panic("index block size estimation is incorrect")
+			panic(errors.AssertionFailedf("index block size estimation is incorrect"))
 		}
 	}
 	return i.size.estimate.size()
@@ -378,7 +378,7 @@ func (d *dataBlockEstimates) dataBlockCompressed(compressedSize int, inflightSiz
 func (d *dataBlockEstimates) size() uint64 {
 	if invariants.Enabled {
 		if d.estimate.inflightSize != 0 {
-			panic("unexpected inflight entry in data block size estimation")
+			panic(errors.AssertionFailedf("unexpected inflight entry in data block size estimation"))
 		}
 	}
 	return d.estimate.size()

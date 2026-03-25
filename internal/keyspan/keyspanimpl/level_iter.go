@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -109,7 +110,7 @@ func (l *LevelIter) Init(
 	keyType manifest.KeyType,
 ) {
 	if keyType != manifest.KeyTypePoint && keyType != manifest.KeyTypeRange {
-		panic("keyType must be point or range")
+		panic(errors.AssertionFailedf("keyType must be point or range"))
 	}
 	*l = LevelIter{
 		cmp:       cmp,
@@ -344,7 +345,7 @@ func (l *LevelIter) Prev() (*keyspan.Span, error) {
 
 func (l *LevelIter) moveToNextFile() (*keyspan.Span, error) {
 	if invariants.Enabled && l.pos == beforeFile {
-		panic("moveToNextFile with beforeFile pos")
+		panic(errors.AssertionFailedf("moveToNextFile with beforeFile pos"))
 	}
 	for {
 		nextFile := l.files.Next()
@@ -370,7 +371,7 @@ func (l *LevelIter) moveToNextFile() (*keyspan.Span, error) {
 
 func (l *LevelIter) moveToPrevFile() (*keyspan.Span, error) {
 	if invariants.Enabled && l.pos == afterFile {
-		panic("eofBackward with afterFile pos")
+		panic(errors.AssertionFailedf("eofBackward with afterFile pos"))
 	}
 	for {
 		prevFile := l.files.Prev()

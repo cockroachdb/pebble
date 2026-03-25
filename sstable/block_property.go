@@ -270,7 +270,7 @@ func NewBlockIntervalCollector(
 	name string, mapper IntervalMapper, suffixReplacer BlockIntervalSuffixReplacer,
 ) BlockPropertyCollector {
 	if mapper == nil {
-		panic("mapper must be provided")
+		panic(errors.AssertionFailedf("mapper must be provided"))
 	}
 	return &BlockIntervalCollector{
 		name:           name,
@@ -619,7 +619,7 @@ func (d *blockPropertiesDecoder) Next() (id shortID, prop []byte, err error) {
 
 	if len(d.props) == 0 || shortID(d.props[0]) != id {
 		if invariants.Enabled && len(d.props) > 0 && shortID(d.props[0]) < id {
-			panic("shortIDs are not in order")
+			panic(errors.AssertionFailedf("shortIDs are not in order"))
 		}
 		// This property was omitted because it was empty.
 		return id, nil, nil

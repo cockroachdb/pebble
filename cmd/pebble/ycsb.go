@@ -403,7 +403,7 @@ func (y *ycsb) run(db DB) {
 		case ycsbUpdate:
 			y.update(db, buf)
 		default:
-			panic("not reached")
+			panic(errors.AssertionFailedf("not reached"))
 		}
 
 		latency[op].Record(time.Since(start))

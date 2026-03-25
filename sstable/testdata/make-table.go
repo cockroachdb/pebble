@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -20,7 +21,7 @@ func main() {
 		panic(err)
 	}
 	if filepath.Base(dir) != "testdata" {
-		panic("This program must be run from sstable/testdata")
+		panic(errors.AssertionFailedf("This program must be run from sstable/testdata"))
 	}
 	if err := os.Chdir(filepath.Dir(dir)); err != nil {
 		panic(err)

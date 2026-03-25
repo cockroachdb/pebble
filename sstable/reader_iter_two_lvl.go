@@ -103,7 +103,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) loadSecondLevelIndexBlock(dir int8) loa
 // `blockIntersects` or `blockExcluded`.
 func (i *twoLevelIterator[I, PI, D, PD]) resolveMaybeExcluded(dir int8) intersectsResult {
 	if invariants.Enabled && !i.topLevelIndexLoaded {
-		panic("pebble: resolveMaybeExcluded called without loaded top-level index")
+		panic(errors.AssertionFailedf("pebble: resolveMaybeExcluded called without loaded top-level index"))
 	}
 
 	// This iterator is configured with a bound-limited block property filter.
@@ -710,7 +710,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 // virtualLast should only be called if i.secondLevel.readBlockEnv.Virtual != nil.
 func (i *twoLevelIterator[I, PI, D, PD]) virtualLast() *base.InternalKV {
 	if i.secondLevel.readEnv.Virtual == nil {
-		panic("pebble: invalid call to virtualLast")
+		panic(errors.AssertionFailedf("pebble: invalid call to virtualLast"))
 	}
 	if !i.secondLevel.endKeyInclusive {
 		// Trivial case.
@@ -729,7 +729,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV {
 	// TODO(bananabrick): We can optimize this check away for the level iter
 	// if necessary.
 	if !i.secondLevel.endKeyInclusive {
-		panic("unexpected virtualLastSeekLE with exclusive upper bounds")
+		panic(errors.AssertionFailedf("unexpected virtualLastSeekLE with exclusive upper bounds"))
 	}
 	key := i.secondLevel.upper
 
@@ -973,7 +973,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() (kv *base.InternalKV) {
 	}
 
 	if i.secondLevel.upper != nil {
-		panic("twoLevelIterator.Last() used despite upper bound")
+		panic(errors.AssertionFailedf("twoLevelIterator.Last() used despite upper bound"))
 	}
 	i.secondLevel.exhaustedBounds = 0
 	i.secondLevel.err = nil // clear cached iteration error
@@ -1047,7 +1047,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) nextInternal(
 		// filter miss, the data block should not have been invalidated. This assertion
 		// ensures the optimization to preserve loaded blocks is working correctly.
 		if PD(&i.secondLevel.data).IsDataInvalidated() {
-			panic("pebble: data block was invalidated after SeekPrefixGE returned nil due to bloom filter miss")
+			panic(errors.AssertionFailedf("pebble: data block was invalidated after SeekPrefixGE returned nil due to bloom filter miss"))
 		}
 	}
 	i.lastOpWasSeekPrefixGE.Set(false)
@@ -1080,7 +1080,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base.In
 	}
 	i.lastOpWasSeekPrefixGE.Set(false)
 	if i.secondLevel.exhaustedBounds == +1 {
-		panic("Next called even though exhausted upper bound")
+		panic(errors.AssertionFailedf("Next called even though exhausted upper bound"))
 	}
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
 	i.secondLevel.boundsCmp = 0
@@ -1340,7 +1340,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) ensureTopLevelIndexLoaded() bool {
 // Close implements internalIterator.Close, as documented in the pebble package.
 func (i *twoLevelIterator[I, PI, D, PD]) Close() error {
 	if invariants.Enabled && i.secondLevel.pool != nil {
-		panic("twoLevelIterator's singleLevelIterator has its own non-nil pool")
+		panic(errors.AssertionFailedf("twoLevelIterator's singleLevelIterator has its own non-nil pool"))
 	}
 	pool := i.pool
 	err := i.secondLevel.closeInternal()

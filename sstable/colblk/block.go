@@ -455,7 +455,7 @@ func (d *BlockDecoder) ColumnToBinFormatter(
 		case DataTypeBytes:
 			rawBytesToBinFormatter(f, n, rows, nil)
 		default:
-			panic("unimplemented")
+			panic(errors.AssertionFailedf("unimplemented"))
 		}
 	})
 

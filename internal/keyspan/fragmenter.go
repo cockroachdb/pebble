@@ -135,9 +135,9 @@ func (f *Fragmenter) checkInvariants(buf []Span) {
 // Add requires the provided span's keys are sorted in InternalKeyTrailer descending order.
 func (f *Fragmenter) Add(s Span) {
 	if f.finished {
-		panic("pebble: span fragmenter already finished")
+		panic(errors.AssertionFailedf("pebble: span fragmenter already finished"))
 	} else if s.KeysOrder != ByTrailerDesc {
-		panic("pebble: span keys unexpectedly not in trailer descending order")
+		panic(errors.AssertionFailedf("pebble: span keys unexpectedly not in trailer descending order"))
 	}
 	if f.flushedKey != nil {
 		switch c := f.Cmp(s.Start, f.flushedKey); {
@@ -315,7 +315,7 @@ func (f *Fragmenter) flush(buf []Span, lastKey []byte) {
 // this if any other spans will be added.
 func (f *Fragmenter) Finish() {
 	if f.finished {
-		panic("pebble: span fragmenter already finished")
+		panic(errors.AssertionFailedf("pebble: span fragmenter already finished"))
 	}
 	f.flush(f.pending, nil)
 	f.finished = true

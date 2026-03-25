@@ -9,6 +9,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -32,7 +33,7 @@ func NewFileAnalyzer(
 	if sstReadOpts.CacheOpts.CacheHandle != nil {
 		// We do not support using a cache here (we don't properly populate the
 		// block metadata).
-		panic("sstReadOpts.CacheOpts.CacheHandle must be nil")
+		panic(errors.AssertionFailedf("sstReadOpts.CacheOpts.CacheHandle must be nil"))
 	}
 	return &FileAnalyzer{
 		blockAnalyzer: NewBlockAnalyzer(),

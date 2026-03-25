@@ -68,7 +68,7 @@ func (c *CompressionStats) addOne(setting compression.Setting, stats Compression
 	case compression.NoCompression:
 		c.noCompressionBytes += stats.UncompressedBytes
 		if invariants.Enabled && stats.UncompressedBytes != stats.CompressedBytes {
-			panic("invalid stats for no-compression")
+			panic(errors.AssertionFailedf("invalid stats for no-compression"))
 		}
 	case fastestCompression:
 		c.fastest.Add(stats)

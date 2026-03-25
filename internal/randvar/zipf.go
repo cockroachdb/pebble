@@ -90,7 +90,7 @@ func NewZipf(min, max uint64, theta float64) (*Zipf, error) {
 // zeta(oldMax, theta). Returns zeta(max, theta), computed incrementally.
 func computeZetaIncrementally(oldMax, max uint64, theta float64, sum float64) float64 {
 	if max < oldMax {
-		panic("unable to decrement max!")
+		panic(errors.AssertionFailedf("unable to decrement max!"))
 	}
 	for i := oldMax + 1; i <= max; i++ {
 		sum += 1.0 / math.Pow(float64(i), theta)

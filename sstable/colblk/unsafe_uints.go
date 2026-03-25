@@ -62,7 +62,7 @@ func makeUnsafeUints(base uint64, ptr unsafe.Pointer, width int) UnsafeUints {
 	switch width {
 	case 0, 1, 2, 4, 8:
 	default:
-		panic("invalid width")
+		panic(errors.AssertionFailedf("invalid width"))
 	}
 	return UnsafeUints{
 		base:  base,

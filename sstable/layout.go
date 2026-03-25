@@ -148,7 +148,7 @@ func (l *Layout) Describe(
 			magicNumber := trailer[len(trailer)-magicLen:]
 			format, err := parseTableFormat(magicNumber, version)
 			if err != nil {
-				panic("Error parsing table format.")
+				panic(errors.AssertionFailedf("Error parsing table format."))
 			}
 
 			var attributes Attributes

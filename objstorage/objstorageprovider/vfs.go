@@ -84,7 +84,7 @@ func metaFileType(fileType base.FileType) base.FileType {
 	case base.FileTypeBlob:
 		return base.FileTypeBlobMeta
 	default:
-		panic("unsupported file type for metaFileType")
+		panic(errors.AssertionFailedf("unsupported file type for metaFileType"))
 	}
 }
 

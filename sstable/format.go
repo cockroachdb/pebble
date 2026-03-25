@@ -351,7 +351,7 @@ func (f TableFormat) AsTuple() (string, uint32) {
 	case TableFormatPebblev8:
 		return pebbleDBMagic, 8
 	default:
-		panic("sstable: unknown table format version tuple")
+		panic(errors.AssertionFailedf("sstable: unknown table format version tuple"))
 	}
 }
 
@@ -381,7 +381,7 @@ func (f TableFormat) String() string {
 	case TableFormatPebblev8:
 		return "(Pebble,v8)"
 	default:
-		panic("sstable: unknown table format version tuple")
+		panic(errors.AssertionFailedf("sstable: unknown table format version tuple"))
 	}
 }
 

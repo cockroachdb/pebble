@@ -146,7 +146,7 @@ func NewOutputSplitter(
 	}
 	if len(limit) > 0 {
 		if invariants.Enabled && cmp(startKey, limit) >= 0 {
-			panic("limit <= startKey")
+			panic(errors.AssertionFailedf("limit <= startKey"))
 		}
 		s.limit = slices.Clone(limit)
 	}
@@ -157,7 +157,7 @@ func NewOutputSplitter(
 	}
 	s.setNextBoundary(grandparent)
 	if invariants.Enabled && s.nextBoundary.key != nil && s.cmp(s.nextBoundary.key, startKey) <= 0 {
-		panic("first boundary is not after startKey")
+		panic(errors.AssertionFailedf("first boundary is not after startKey"))
 	}
 	// We start using the frontier after the first ShouldSplitBefore call.
 	s.frontier.Init(frontiers, nil, s.boundaryReached)
@@ -210,7 +210,7 @@ func (s *OutputSplitter) ShouldSplitBefore(
 	nextUserKey []byte, estimatedFileSize uint64, equalPrevFn func([]byte) bool,
 ) ShouldSplit {
 	if invariants.Enabled && s.splitKey != nil {
-		panic("ShouldSplitBefore called after it returned SplitNow")
+		panic(errors.AssertionFailedf("ShouldSplitBefore called after it returned SplitNow"))
 	}
 	if !s.shouldSplitCalled {
 		// The boundary could have been advanced to nextUserKey before the splitter
@@ -223,13 +223,13 @@ func (s *OutputSplitter) ShouldSplitBefore(
 	}
 
 	if invariants.Enabled && s.nextBoundary.key != nil && s.cmp(s.nextBoundary.key, nextUserKey) <= 0 {
-		panic("boundary is behind the next key (or startKey was before the boundary)")
+		panic(errors.AssertionFailedf("boundary is behind the next key (or startKey was before the boundary)"))
 	}
 	// Note: s.reachedBoundary can be empty.
 	reachedBoundary := s.reachedBoundary
 	s.reachedBoundary = splitterBoundary{}
 	if invariants.Enabled && reachedBoundary.key != nil && s.cmp(reachedBoundary.key, nextUserKey) > 0 {
-		panic("reached boundary ahead of the next user key")
+		panic(errors.AssertionFailedf("reached boundary ahead of the next user key"))
 	}
 	if reachedBoundary.key != nil && !reachedBoundary.isGrandparent {
 		// Limit was reached.
@@ -440,7 +440,7 @@ func (f *frontier) Update(key []byte) {
 			return
 		}
 	}
-	panic("unreachable")
+	panic(errors.AssertionFailedf("unreachable"))
 }
 
 // Frontiers is used to track progression of a task (eg, compaction) across the

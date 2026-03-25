@@ -21,6 +21,7 @@ import (
 	"math"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
@@ -70,18 +71,18 @@ func newNode(
 	arena *Arena, height uint32, key base.InternalKey, value []byte,
 ) (nd *node, err error) {
 	if height < 1 || height > maxHeight {
-		panic("height cannot be less than one or greater than the max height")
+		panic(errors.AssertionFailedf("height cannot be less than one or greater than the max height"))
 	}
 	keySize := len(key.UserKey)
 	if int64(keySize) > math.MaxUint32 {
-		panic("key is too large")
+		panic(errors.AssertionFailedf("key is too large"))
 	}
 	valueSize := len(value)
 	if int64(len(value)) > math.MaxUint32 {
-		panic("value is too large")
+		panic(errors.AssertionFailedf("value is too large"))
 	}
 	if int64(len(value))+int64(keySize)+int64(maxNodeSize) > math.MaxUint32 {
-		panic("combined key and value size is too large")
+		panic(errors.AssertionFailedf("combined key and value size is too large"))
 	}
 
 	nd, err = newRawNode(arena, height, uint32(keySize), uint32(valueSize))

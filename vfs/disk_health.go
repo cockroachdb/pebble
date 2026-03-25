@@ -384,11 +384,11 @@ func (d *diskHealthCheckingFile) timeDiskOp(
 	delta := start.Sub(d.createTime)
 	packed := pack(delta, writeSizeInBytes, opType)
 	if d.lastWritePacked.Swap(packed) != 0 {
-		panic("concurrent write operations detected on file")
+		panic(errors.AssertionFailedf("concurrent write operations detected on file"))
 	}
 	defer func() {
 		if d.lastWritePacked.Swap(0) != packed {
-			panic("concurrent write operations detected on file")
+			panic(errors.AssertionFailedf("concurrent write operations detected on file"))
 		}
 	}()
 	op()
@@ -409,7 +409,7 @@ func pack(delta time.Duration, writeSizeInBytes int64, opType OpType) uint64 {
 	// of effective monitoring time before the uint wraps around, at millisecond
 	// precision.
 	if deltaMillis > 1<<deltaBits-1 {
-		panic("vfs: last write delta would result in integer wraparound")
+		panic(errors.AssertionFailedf("vfs: last write delta would result in integer wraparound"))
 	}
 
 	// See writeSizePrecision to get the unit of writeSize. As of 1/26/2023, the unit is KBs.

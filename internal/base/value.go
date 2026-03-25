@@ -4,7 +4,10 @@
 
 package base
 
-import "github.com/cockroachdb/pebble/internal/invariants"
+import (
+	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/invariants"
+)
 
 // An InternalValue represents a value. The value may be in-memory, immediately
 // accessible, or it may be stored out-of-band and need to be fetched when
@@ -44,7 +47,7 @@ func (v *InternalValue) IsInPlaceValue() bool {
 // This is for Pebble-internal code.
 func (v *InternalValue) InPlaceValue() []byte {
 	if invariants.Enabled && v.lazyValue.Fetcher != nil {
-		panic("value must be in-place")
+		panic(errors.AssertionFailedf("value must be in-place"))
 	}
 	return v.lazyValue.ValueOrHandle
 }

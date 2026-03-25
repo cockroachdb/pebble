@@ -397,13 +397,13 @@ func (s *l0Sublevels) canUseAddL0Files(
 ) (filesToAddInOrder []*TableMetadata, ok bool) {
 	if s.addL0FilesCalled {
 		if invariants.Enabled {
-			panic("addL0Files called twice on the same receiver")
+			panic(errors.AssertionFailedf("addL0Files called twice on the same receiver"))
 		}
 		return nil, false
 	}
 	if s.levelMetadata.Len()+len(addedTables) != levelMetadata.Len() {
 		if invariants.Enabled {
-			panic("levelMetadata mismatch")
+			panic(errors.AssertionFailedf("levelMetadata mismatch"))
 		}
 		return nil, false
 	}
@@ -449,7 +449,7 @@ func (s *l0Sublevels) addL0Files(
 	files []*TableMetadata, flushSplitMaxBytes int64, levelMetadata *LevelMetadata,
 ) *l0Sublevels {
 	if s.addL0FilesCalled {
-		panic("addL0Files called twice on the same receiver")
+		panic(errors.AssertionFailedf("addL0Files called twice on the same receiver"))
 	}
 	s.addL0FilesCalled = true
 
@@ -493,7 +493,7 @@ func (s *l0Sublevels) addL0Files(
 	if invariants.Enabled {
 		for i := 1; i < len(keys); i++ {
 			if intervalKeyCompare(newVal.cmp, keys[i-1].startKey, keys[i].startKey) >= 0 {
-				panic("keys not sorted correctly")
+				panic(errors.AssertionFailedf("keys not sorted correctly"))
 			}
 		}
 	}
@@ -796,15 +796,15 @@ func (s *l0Sublevels) Check() {
 		}
 	}
 	if len(s.Levels) != len(s.levelFiles) {
-		panic("Levels and levelFiles inconsistency")
+		panic(errors.AssertionFailedf("Levels and levelFiles inconsistency"))
 	}
 	for i := range s.Levels {
 		if s.Levels[i].Len() != len(s.levelFiles[i]) {
-			panic("Levels and levelFiles inconsistency")
+			panic(errors.AssertionFailedf("Levels and levelFiles inconsistency"))
 		}
 		for _, t := range s.levelFiles[i] {
 			if t.SubLevel != i {
-				panic("t.SubLevel out of sync")
+				panic(errors.AssertionFailedf("t.SubLevel out of sync"))
 			}
 		}
 	}
@@ -2147,7 +2147,7 @@ type L0PreparedUpdate struct {
 // This method cannot be called concurrently with any other methods.
 func (o *L0Organizer) PerformUpdate(prepared L0PreparedUpdate, newVersion *Version) {
 	if prepared.generation != o.generation {
-		panic("invalid L0 update generation")
+		panic(errors.AssertionFailedf("invalid L0 update generation"))
 	}
 	o.levelMetadata = newVersion.Levels[0]
 	o.generation++
@@ -2205,27 +2205,27 @@ func verifyLevelMetadataTransition(
 	}
 	for n, t := range addedTables {
 		if m[n] != nil {
-			panic("added table that already exists in old level")
+			panic(errors.AssertionFailedf("added table that already exists in old level"))
 		}
 		m[n] = t
 	}
 	for n, t := range deletedTables {
 		if m[n] == nil {
-			panic("deleted table not in old level")
+			panic(errors.AssertionFailedf("deleted table not in old level"))
 		}
 		if m[n] != t {
-			panic("deleted table does not match old level")
+			panic(errors.AssertionFailedf("deleted table does not match old level"))
 		}
 		delete(m, n)
 	}
 	iter = newLevel.Iter()
 	for t := iter.First(); t != nil; t = iter.Next() {
 		if m[t.TableNum] == nil {
-			panic("unknown table in new level")
+			panic(errors.AssertionFailedf("unknown table in new level"))
 		}
 		delete(m, t.TableNum)
 	}
 	if len(m) != 0 {
-		panic("tables missing from the new level")
+		panic(errors.AssertionFailedf("tables missing from the new level"))
 	}
 }

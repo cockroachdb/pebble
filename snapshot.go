@@ -163,7 +163,7 @@ func (l *snapshotList) toSlice() []base.SeqNum {
 
 func (l *snapshotList) pushBack(s *Snapshot) {
 	if s.list != nil || s.prev != nil || s.next != nil {
-		panic("pebble: snapshot list is inconsistent")
+		panic(errors.AssertionFailedf("pebble: snapshot list is inconsistent"))
 	}
 	s.prev = l.root.prev
 	s.prev.next = s
@@ -174,10 +174,10 @@ func (l *snapshotList) pushBack(s *Snapshot) {
 
 func (l *snapshotList) remove(s *Snapshot) {
 	if s == &l.root {
-		panic("pebble: cannot remove snapshot list root node")
+		panic(errors.AssertionFailedf("pebble: cannot remove snapshot list root node"))
 	}
 	if s.list != l {
-		panic("pebble: snapshot list is inconsistent")
+		panic(errors.AssertionFailedf("pebble: snapshot list is inconsistent"))
 	}
 	s.prev.next = s.next
 	s.next.prev = s.prev
@@ -359,7 +359,7 @@ func (es *EventuallyFileOnlySnapshot) transitionToFileOnlySnapshot(vers *manifes
 	}
 	if es.mu.snap == nil {
 		es.mu.Unlock()
-		panic("pebble: tried to transition an eventually-file-only-snapshot twice")
+		panic(errors.AssertionFailedf("pebble: tried to transition an eventually-file-only-snapshot twice"))
 	}
 	// The caller has already called Ref() on vers.
 	es.mu.vers = vers
@@ -449,7 +449,7 @@ func (es *EventuallyFileOnlySnapshot) WaitForFileOnlySnapshot(
 		// Since we aren't returning an error, we _must_ have transitioned to a
 		// file-only snapshot by now.
 		if !es.hasTransitioned() {
-			panic("expected EFOS to have transitioned to file-only snapshot after flush")
+			panic(errors.AssertionFailedf("expected EFOS to have transitioned to file-only snapshot after flush"))
 		}
 	}
 	return nil

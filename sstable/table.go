@@ -432,7 +432,7 @@ func (f footer) encode(buf []byte) []byte {
 		case block.ChecksumTypeXXHash64:
 			buf[0] = byte(block.ChecksumTypeXXHash64)
 		default:
-			panic("unknown checksum type")
+			panic(errors.AssertionFailedf("unknown checksum type"))
 		}
 		n := 1
 		n += f.metaindexBH.EncodeVarints(buf[n:])
@@ -457,7 +457,7 @@ func (f footer) encode(buf []byte) []byte {
 		}
 
 	default:
-		panic("sstable: unspecified table format version")
+		panic(errors.AssertionFailedf("sstable: unspecified table format version"))
 	}
 
 	return buf
@@ -471,6 +471,6 @@ func supportsTwoLevelIndex(format TableFormat) bool {
 		TableFormatPebblev5, TableFormatPebblev6, TableFormatPebblev7:
 		return true
 	default:
-		panic("sstable: unspecified table format version")
+		panic(errors.AssertionFailedf("sstable: unspecified table format version"))
 	}
 }

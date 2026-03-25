@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/metrics"
@@ -224,7 +225,7 @@ func (dp *DeletePacer) Enqueue(jobID int, files ...ObsoleteFile) {
 	defer dp.mu.Unlock()
 	if dp.mu.closed {
 		if invariants.Enabled {
-			panic("Enqueue called after Close")
+			panic(errors.AssertionFailedf("Enqueue called after Close"))
 		}
 		return
 	}

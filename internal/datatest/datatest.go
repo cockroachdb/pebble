@@ -136,7 +136,7 @@ func NewCompactionTracker(options *pebble.Options) *CompactionTracker {
 func (cql *CompactionTracker) WaitForInflightCompactionsToEqual(target int) {
 	cql.L.Lock()
 	if !cql.attached {
-		panic("Cannot wait for compactions if listener has not been attached")
+		panic(errors.AssertionFailedf("Cannot wait for compactions if listener has not been attached"))
 	}
 	for cql.count != target {
 		cql.Wait()

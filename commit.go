@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/crlib/crtime"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/batchrepr"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/record"
@@ -64,7 +65,7 @@ func (q *commitQueue) enqueue(b *Batch) {
 	if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
 		// Queue is full. This should never be reached because commitPipeline.commitQueueSem
 		// limits the number of concurrent operations.
-		panic("pebble: not reached")
+		panic(errors.AssertionFailedf("pebble: not reached"))
 	}
 	slot := &q.slots[head&uint32(len(q.slots)-1)]
 
@@ -494,7 +495,7 @@ func (p *commitPipeline) publish(b *Batch) {
 			break
 		}
 		if !t.applied.Load() {
-			panic("not reached")
+			panic(errors.AssertionFailedf("not reached"))
 		}
 
 		// We're responsible for publishing the sequence number for batch t, but

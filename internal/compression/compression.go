@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/minio/minlz"
 )
 
@@ -119,7 +120,7 @@ func GetCompressor(s Setting) Compressor {
 	case MinLZ:
 		return getMinlzCompressor(int(s.Level))
 	default:
-		panic("Invalid compression type.")
+		panic(errors.AssertionFailedf("Invalid compression type."))
 	}
 }
 
@@ -152,7 +153,7 @@ func GetDecompressor(a Algorithm) Decompressor {
 	case MinLZ:
 		return minlzDecompressor{}
 	default:
-		panic("Invalid compression type.")
+		panic(errors.AssertionFailedf("Invalid compression type."))
 	}
 }
 

@@ -143,7 +143,7 @@ func (e *flushableEntry) readerUnrefHelper(
 		panic(errors.AssertionFailedf("pebble: inconsistent reference count: %d", errors.Safe(v)))
 	case v == 0:
 		if e.releaseMemAccounting == nil {
-			panic("pebble: memtable reservation already released")
+			panic(errors.AssertionFailedf("pebble: memtable reservation already released"))
 		}
 		e.releaseMemAccounting()
 		e.releaseMemAccounting = nil
@@ -267,7 +267,7 @@ func (s *ingestedFlushable) newFlushIter(*IterOptions) internalIterator {
 	// newFlushIter is only used for writing memtables to disk as sstables.
 	// Since ingested sstables are already present on disk, they don't need to
 	// make use of a flush iter.
-	panic("pebble: not implemented")
+	panic(errors.AssertionFailedf("pebble: not implemented"))
 }
 
 func (s *ingestedFlushable) constructRangeDelIter(

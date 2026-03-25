@@ -495,7 +495,7 @@ var _ Readable = (*SimpleReadable)(nil)
 func (s *SimpleReadable) ReadAt(_ context.Context, p []byte, off int64) error {
 	n, err := s.f.ReadAt(p, off)
 	if invariants.Enabled && err == nil && n != len(p) {
-		panic("short read")
+		panic(errors.AssertionFailedf("short read"))
 	}
 	return err
 }

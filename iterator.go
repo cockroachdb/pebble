@@ -1494,7 +1494,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	i.err = nil // clear cached iteration error
 	i.stats.ForwardSeekCount[InterfaceCall]++
 	if i.comparer.ImmediateSuccessor == nil && i.opts.KeyTypes != IterKeyTypePointsOnly {
-		panic("pebble: ImmediateSuccessor must be provided for SeekPrefixGE with range keys")
+		panic(errors.AssertionFailedf("pebble: ImmediateSuccessor must be provided for SeekPrefixGE with range keys"))
 	}
 	prefixLen := i.comparer.Split(key)
 	keyPrefix := key[:prefixLen]
@@ -1505,7 +1505,7 @@ func (i *Iterator) SeekPrefixGE(key []byte) bool {
 	}
 	if lastPositioningOp == seekPrefixGELastPositioningOp {
 		if !i.hasPrefix {
-			panic("lastPositioningOpsIsSeekPrefixGE is true, but hasPrefix is false")
+			panic(errors.AssertionFailedf("lastPositioningOpsIsSeekPrefixGE is true, but hasPrefix is false"))
 		}
 		// The iterator has not been repositioned after the last SeekPrefixGE.
 		// See if we are seeking to a larger key, since then we can optimize
@@ -2275,7 +2275,7 @@ func (i *Iterator) saveRangeKey() {
 	}
 
 	if s.KeysOrder != keyspan.BySuffixAsc {
-		panic("pebble: range key span's keys unexpectedly not in ascending suffix order")
+		panic(errors.AssertionFailedf("pebble: range key span's keys unexpectedly not in ascending suffix order"))
 	}
 
 	// Although `i.rangeKey.stale` is true, the span s may still be identical
@@ -2308,9 +2308,9 @@ func (i *Iterator) saveRangeKey() {
 	for j := 0; j < len(s.Keys); j++ {
 		if invariants.Enabled {
 			if s.Keys[j].Kind() != base.InternalKeyKindRangeKeySet {
-				panic("pebble: user iteration encountered non-RangeKeySet key kind")
+				panic(errors.AssertionFailedf("pebble: user iteration encountered non-RangeKeySet key kind"))
 			} else if j > 0 && i.comparer.CompareRangeSuffixes(s.Keys[j].Suffix, s.Keys[j-1].Suffix) < 0 {
-				panic("pebble: user iteration encountered range keys not in suffix order")
+				panic(errors.AssertionFailedf("pebble: user iteration encountered range keys not in suffix order"))
 			}
 		}
 		var rkd RangeKeyData
@@ -3223,7 +3223,7 @@ func (i *Iterator) internalNext() (internalNextValidity, base.InternalKeyKind) {
 		//     user key that's not equal to i.Iterator.Key().
 		return internalNextExhausted, base.InternalKeyKindInvalid
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 }
 

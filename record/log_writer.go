@@ -97,7 +97,7 @@ func (q *syncQueue) push(wg *sync.WaitGroup, err *error) {
 	ptrs := q.headTail.Load()
 	head, tail := q.unpack(ptrs)
 	if (tail+uint32(len(q.slots)))&(1<<dequeueBits-1) == head {
-		panic("pebble: queue is full")
+		panic(errors.AssertionFailedf("pebble: queue is full"))
 	}
 
 	slot := &q.slots[head&uint32(len(q.slots)-1)]

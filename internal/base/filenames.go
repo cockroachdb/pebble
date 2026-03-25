@@ -189,7 +189,7 @@ func MakeFilename(fileType FileType, dfn DiskFileNum) string {
 func appendFilename(buf []byte, fileType FileType, dfn DiskFileNum) []byte {
 	switch fileType {
 	case FileTypeLog:
-		panic("the pebble/wal pkg is responsible for constructing WAL filenames")
+		panic(errors.AssertionFailedf("the pebble/wal pkg is responsible for constructing WAL filenames"))
 	case FileTypeLock:
 		buf = append(buf, "LOCK"...)
 	case FileTypeTable:
@@ -207,7 +207,7 @@ func appendFilename(buf []byte, fileType FileType, dfn DiskFileNum) []byte {
 	case FileTypeBlobMeta:
 		buf = fmt.Appendf(buf, "%06d.blobmeta", uint64(dfn))
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 	return buf
 }

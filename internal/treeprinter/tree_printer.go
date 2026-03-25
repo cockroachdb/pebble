@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 )
 
 var (
@@ -260,7 +262,7 @@ func (n Node) DotDotDot() {
 	if len(t.stack) <= n.level {
 		// No siblings; Connect to parent.
 		if len(t.stack) != n.level {
-			panic("misuse of node")
+			panic(errors.AssertionFailedf("misuse of node"))
 		}
 		parentRow := t.stack[n.level-1].firstChildConnectRow
 		for i := parentRow + 1; i < rowIdx; i++ {
@@ -307,12 +309,12 @@ func (n Node) childLine(text string) Node {
 	if n.level == 0 {
 		// Case 1: root.
 		if len(t.stack) != 0 {
-			panic("multiple root nodes")
+			panic(errors.AssertionFailedf("multiple root nodes"))
 		}
 	} else if len(t.stack) <= n.level {
 		// Case 2: first child. Connect to parent.
 		if len(t.stack) != n.level {
-			panic("misuse of node")
+			panic(errors.AssertionFailedf("misuse of node"))
 		}
 		parentRow := t.stack[n.level-1].firstChildConnectRow
 		for i := parentRow + 1; i < rowIdx; i++ {
@@ -353,7 +355,7 @@ func (n Node) AddEmptyLine() {
 // treeprinter.New.
 func (n Node) FormattedRows() []string {
 	if n.level != 0 {
-		panic("Only the root can be stringified")
+		panic(errors.AssertionFailedf("Only the root can be stringified"))
 	}
 	res := make([]string, len(n.tree.rows))
 	for i, r := range n.tree.rows {
@@ -364,7 +366,7 @@ func (n Node) FormattedRows() []string {
 
 func (n Node) String() string {
 	if n.level != 0 {
-		panic("Only the root can be stringified")
+		panic(errors.AssertionFailedf("Only the root can be stringified"))
 	}
 	var buf bytes.Buffer
 	for _, r := range n.tree.rows {
