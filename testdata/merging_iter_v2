@@ -1,0 +1,511 @@
+# No range deletions: all points from all levels survive.
+
+define
+L
+  a#10,SET c#9,SET
+L
+  b#5,SET d#4,SET
+----
+L0
+  a#10,SET
+  c#9,SET
+L1
+  b#5,SET
+  d#4,SET
+
+iter
+first
+next
+next
+next
+next
+----
+a#10,SET:
+b#5,SET:
+c#9,SET:
+d#4,SET:
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+----
+d#4,SET:
+c#9,SET:
+b#5,SET:
+a#10,SET:
+.
+
+iter
+seek-ge c
+next
+next
+----
+c#9,SET:
+d#4,SET:
+.
+
+iter
+seek-lt c
+prev
+prev
+----
+b#5,SET:
+a#10,SET:
+.
+
+# Same-level shadowing: RANGEDEL [a, d) at seqnum 10 shadows point b@5 but not
+# point c@15.
+
+define
+L
+  b#5,SET c#15,SET
+  a-d:{(#10,RANGEDEL)}
+----
+L0
+  b#5,SET
+  c#15,SET
+  a-d:{(#10,RANGEDEL)}
+
+iter
+first
+next
+----
+c#15,SET:
+.
+
+# Same seqnum not shadowed: point and RANGEDEL with identical seqnum; point is
+# NOT shadowed (strictly-greater check).
+
+define
+L
+  b#10,SET
+  a-d:{(#10,RANGEDEL)}
+----
+L0
+  b#10,SET
+  a-d:{(#10,RANGEDEL)}
+
+iter
+first
+next
+----
+b#10,SET:
+.
+
+# Cross-level shadowing: level 0 RANGEDEL [b, d) at seqnum 20 shadows level 1
+# points a@3 and c@5 (inside range) but not e@3 (outside range).
+
+define
+L
+  a-d:{(#20,RANGEDEL)}
+L
+  a#3,SET c#5,SET e#3,SET
+----
+L0
+  a-d:{(#20,RANGEDEL)}
+L1
+  a#3,SET
+  c#5,SET
+  e#3,SET
+
+iter
+first
+next
+----
+e#3,SET:
+.
+
+# Snapshot filtering: snapshot=15, so point b@20 is invisible and RANGEDEL at
+# seqnum 18 is invisible (cannot shadow point c@10).
+
+define snapshot=15
+L
+  b#20,SET c#10,SET
+  a-d:{(#18,RANGEDEL)}
+----
+L0
+  b#20,SET
+  c#10,SET
+  a-d:{(#18,RANGEDEL)}
+
+iter
+first
+next
+----
+c#10,SET:
+.
+
+# Empty levels interspersed: surviving points unaffected.
+
+define
+L
+  a#10,SET
+L
+L
+  b#5,SET
+L
+----
+L0
+  a#10,SET
+L1
+L2
+  b#5,SET
+L3
+
+iter
+first
+next
+next
+----
+a#10,SET:
+b#5,SET:
+.
+
+# Multiple range deletions from different levels covering the same key region.
+# L0 RANGEDEL at seqnum 10 parks all lower levels (by the LSM invariant, all
+# L1 keys have seqnums < 10). L1's own RANGEDEL at seqnum 7 would shadow
+# same-level keys with seqnum < 7, but that is moot since L1 is fully parked.
+# No keys survive.
+
+define
+L
+  a-c:{(#10,RANGEDEL)}
+L
+  b#3,SET b#8,SET b#9,SET
+  a-c:{(#7,RANGEDEL)}
+----
+L0
+  a-c:{(#10,RANGEDEL)}
+L1
+  b#3,SET
+  b#8,SET
+  b#9,SET
+  a-c:{(#7,RANGEDEL)}
+
+iter
+first
+----
+.
+
+# Multi-level ordering: points from multiple levels merge in correct
+# InternalCompare order (user key ascending, seqnum descending).
+
+define
+L
+  a#20,SET c#18,SET
+L
+  a#10,SET b#15,SET
+L
+  a#5,DEL d#1,SET
+----
+L0
+  a#20,SET
+  c#18,SET
+L1
+  a#10,SET
+  b#15,SET
+L2
+  a#5,DEL
+  d#1,SET
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+a#20,SET:
+a#10,SET:
+a#5,DEL:
+b#15,SET:
+c#18,SET:
+d#1,SET:
+.
+
+iter
+last
+prev
+prev
+prev
+prev
+prev
+prev
+----
+d#1,SET:
+c#18,SET:
+b#15,SET:
+a#5,DEL:
+a#10,SET:
+a#20,SET:
+.
+
+# Seek operations across multiple levels with range deletions.
+
+define
+L
+  a#20,SET c#18,SET e#16,SET
+  b-d:{(#19,RANGEDEL)}
+L
+  b#10,SET d#8,SET f#6,SET
+----
+L0
+  a#20,SET
+  c#18,SET
+  e#16,SET
+  b-d:{(#19,RANGEDEL)}
+L1
+  b#10,SET
+  d#8,SET
+  f#6,SET
+
+iter
+seek-ge b
+next
+next
+----
+d#8,SET:
+e#16,SET:
+f#6,SET:
+
+iter
+seek-lt e
+prev
+----
+d#8,SET:
+a#20,SET:
+
+# DELETE point keys survive (they are not the same as RANGEDELs).
+
+define
+L
+  a#10,DEL b#8,SET
+L
+  a#5,SET c#3,SET
+----
+L0
+  a#10,DEL
+  b#8,SET
+L1
+  a#5,SET
+  c#3,SET
+
+iter
+first
+next
+next
+next
+next
+----
+a#10,DEL:
+a#5,SET:
+b#8,SET:
+c#3,SET:
+.
+
+# Snapshot that makes everything invisible.
+
+define snapshot=1
+L
+  a#10,SET b#5,SET
+  c-e:{(#8,RANGEDEL)}
+----
+L0
+  a#10,SET
+  b#5,SET
+  c-e:{(#8,RANGEDEL)}
+
+iter
+first
+----
+.
+
+# Multiple RANGEDEL keys in the same span. L0 RANGEDEL at seqnum 10 parks all
+# lower levels (by the LSM invariant, all L1 keys have seqnums < 10). The
+# second RANGEDEL at seqnum 8 is redundant (same span, lower seqnum). No keys
+# survive.
+
+define
+L
+  a-e:{(#10,RANGEDEL) (#8,RANGEDEL)}
+L
+  b#9,SET c#7,SET d#5,SET
+----
+L0
+  a-e:{(#10,RANGEDEL) (#8,RANGEDEL)}
+L1
+  b#9,SET
+  c#7,SET
+  d#5,SET
+
+iter
+first
+----
+.
+
+# --------------------------------------------------------------------------
+# SeekPrefixGE tests
+#
+# testkeys.Comparer splits at '@'. Suffixes are compared in reverse numeric
+# order: a@9 < a@7 < a@5 < a@3 < a@1. Use a large suffix (e.g. a@99) to
+# seek to the start of a prefix.
+# --------------------------------------------------------------------------
+
+# Basic prefix seek, no range deletions. Two levels with keys at prefixes
+# "a" and "b". seek-prefix-ge returns only matching-prefix keys.
+
+define
+L
+  a@9#10,SET a@7#8,SET b@5#6,SET
+L
+  a@5#4,SET b@3#2,SET
+----
+L0
+  a@9#10,SET
+  a@7#8,SET
+  b@5#6,SET
+L1
+  a@5#4,SET
+  b@3#2,SET
+
+iter
+seek-prefix-ge a@99
+next
+next
+next
+----
+a@9#10,SET:
+a@7#8,SET:
+a@5#4,SET:
+.
+
+iter
+seek-prefix-ge b@99
+next
+next
+----
+b@5#6,SET:
+b@3#2,SET:
+.
+
+# Prefix with no matching keys returns nil.
+
+iter
+seek-prefix-ge c@1
+----
+.
+
+# Cross-level RANGEDEL [b, c) shadows all "b" prefix keys in L1.
+
+define
+L
+  a@9#15,SET
+  b-c:{(#10,RANGEDEL)}
+L
+  a@5#3,SET b@9#5,SET c@1#1,SET
+----
+L0
+  a@9#15,SET
+  b-c:{(#10,RANGEDEL)}
+L1
+  a@5#3,SET
+  b@9#5,SET
+  c@1#1,SET
+
+iter
+seek-prefix-ge a@99
+next
+next
+----
+a@9#15,SET:
+a@5#3,SET:
+.
+
+iter
+seek-prefix-ge b@99
+----
+.
+
+# Slab transition within the same prefix. L0 RANGEDEL [a@5, a@2) parks L1
+# in that range; after the slab boundary at a@2, L1 is unparked and a@1#3
+# becomes visible (a@3#5 is shadowed since a@3 is in [a@5, a@2)).
+
+define
+L
+  a@9#20,SET
+  a@5-a@2:{(#15,RANGEDEL)}
+L
+  a@3#5,SET a@1#3,SET
+----
+L0
+  a@9#20,SET
+  a@5-a@2:{(#15,RANGEDEL)}
+L1
+  a@3#5,SET
+  a@1#3,SET
+
+iter
+seek-prefix-ge a@99
+next
+next
+----
+a@9#20,SET:
+a@1#3,SET:
+.
+
+# Slab transition past the prefix. L0 RANGEDEL [a@5, c) extends past prefix
+# "a". L1 keys within the range are shadowed; the iterator exhausts without
+# seeking L1 past the prefix.
+
+define
+L
+  a@9#20,SET
+  a@5-c:{(#15,RANGEDEL)}
+L
+  a@3#5,SET b@1#3,SET
+----
+L0
+  a@9#20,SET
+  a@5-c:{(#15,RANGEDEL)}
+L1
+  a@3#5,SET
+  b@1#3,SET
+
+iter
+seek-prefix-ge a@99
+next
+----
+a@9#20,SET:
+.
+
+# seek-prefix-ge followed by regular seek-ge resets prefix mode.
+
+define
+L
+  a@5#10,SET b@5#8,SET
+L
+  a@3#5,SET c@1#3,SET
+----
+L0
+  a@5#10,SET
+  b@5#8,SET
+L1
+  a@3#5,SET
+  c@1#3,SET
+
+iter
+seek-prefix-ge a@99
+next
+seek-ge b@99
+next
+----
+a@5#10,SET:
+a@3#5,SET:
+b@5#8,SET:
+c@1#3,SET:
