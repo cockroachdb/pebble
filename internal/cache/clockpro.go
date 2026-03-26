@@ -500,17 +500,17 @@ func (c *shard) metaCheck(e *entry) {
 		if _, ok := c.entries[e]; ok {
 			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in entries map\n%s",
 				e, e.key, debug.Stack())
-			os.Exit(1)
+			base.Exit(1)
 		}
 		if c.blocks.findByValue(e) {
 			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in blocks map\n%#v\n%s",
 				e, e.key, &c.blocks, debug.Stack())
-			os.Exit(1)
+			base.Exit(1)
 		}
 		if c.files.findByValue(e) {
 			fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in files map\n%#v\n%s",
 				e, e.key, &c.files, debug.Stack())
-			os.Exit(1)
+			base.Exit(1)
 		}
 		// NB: c.hand{Hot,Cold,Test} are pointers into a single linked list. We
 		// only have to traverse one of them to check all of them.
@@ -532,7 +532,7 @@ func (c *shard) metaCheck(e *entry) {
 			if e == t {
 				fmt.Fprintf(os.Stderr, "%p: %s unexpectedly found in blocks list\n%s",
 					e, e.key, debug.Stack())
-				os.Exit(1)
+				base.Exit(1)
 			}
 			if t == c.handHot {
 				break
@@ -546,7 +546,7 @@ func (c *shard) metaCheck(e *entry) {
 				c.countHot, c.sizeHot, c.countCold, c.sizeCold, c.countTest, c.sizeTest,
 				countHot, sizeHot, countCold, sizeCold, countTest, sizeTest,
 				debug.Stack())
-			os.Exit(1)
+			base.Exit(1)
 		}
 	}
 }

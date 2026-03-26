@@ -141,7 +141,7 @@ func NewWithShards(size int64, shards int) *Cache {
 				fmt.Fprintf(os.Stderr, "%s\n", strings.Join(c.tr.msgs, "\n"))
 			}
 			c.tr.Unlock()
-			os.Exit(1)
+			base.Exit(1)
 		}
 	})
 	return c

@@ -521,7 +521,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		v := obj.(*atomic.Value)
 		if err := v.Load(); err == nil {
 			fmt.Fprintf(os.Stderr, "%s: unreferenced DB not closed\n", dPtr)
-			os.Exit(1)
+			base.Exit(1)
 		}
 	})
 

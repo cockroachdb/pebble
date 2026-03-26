@@ -422,6 +422,6 @@ func checkFragmentBlockIterator(obj interface{}) {
 	i := obj.(*fragmentIter)
 	if h := i.blockIter.Handle(); h.Valid() {
 		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %#v\n", h)
-		os.Exit(1)
+		base.Exit(1)
 	}
 }

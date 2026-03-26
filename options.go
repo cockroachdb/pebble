@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"runtime"
 	"slices"
@@ -943,6 +944,12 @@ type Options struct {
 	// LoggerAndTracer is used for writing log messages and traces.
 	LoggerAndTracer LoggerAndTracer
 
+	// ExitFunc is called when Pebble needs to terminate the process due to
+	// an invariant violation. If nil, os.Exit is used. Embedders (e.g.
+	// CockroachDB) can set this to route exits through their own fatal
+	// logging infrastructure for better crash visibility.
+	ExitFunc func(code int)
+
 	// MaxManifestFileSize is the maximum size the MANIFEST file is allowed to
 	// become. When the MANIFEST exceeds this size it is rolled over and a new
 	// MANIFEST is created.
@@ -1675,6 +1682,10 @@ func (o *Options) EnsureDefaults() {
 	if o.Logger == nil {
 		o.Logger = DefaultLogger
 	}
+	if o.ExitFunc == nil {
+		o.ExitFunc = os.Exit
+	}
+	base.Exit = o.ExitFunc
 	if o.EventListener == nil {
 		o.EventListener = &EventListener{}
 	}

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
@@ -186,7 +187,7 @@ func entryAllocNew() *entry {
 			e := obj.(*entry)
 			if *e != (entry{}) {
 				fmt.Fprintf(os.Stderr, "%p: entry was not freed", e)
-				os.Exit(1)
+				base.Exit(1)
 			}
 		})
 		return e

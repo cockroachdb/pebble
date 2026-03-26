@@ -112,7 +112,7 @@ func checkMemTable(obj interface{}) {
 	m := obj.(*memTable)
 	if m.arenaBuf.Data() != nil {
 		fmt.Fprintf(os.Stderr, "%v: memTable buffer was not freed\n", m.arenaBuf)
-		os.Exit(1)
+		base.Exit(1)
 	}
 }
 

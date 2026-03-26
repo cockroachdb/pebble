@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"sync"
 
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -41,7 +40,7 @@ func (defaultLogger) Errorf(format string, args ...interface{}) {
 // Fatalf implements the Logger.Fatalf interface.
 func (defaultLogger) Fatalf(format string, args ...interface{}) {
 	_ = log.Output(2, fmt.Sprintf(format, args...))
-	os.Exit(1)
+	Exit(1)
 }
 
 // InMemLogger implements Logger using an in-memory buffer (used for testing).

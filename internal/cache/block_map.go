@@ -9,6 +9,7 @@ import (
 	"os"
 	"unsafe"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/swiss"
@@ -58,7 +59,7 @@ func newBlockMap(initialCapacity int) *blockMap {
 		m := obj.(*blockMap)
 		if !m.closed {
 			fmt.Fprintf(os.Stderr, "%p: block-map not closed\n", m)
-			os.Exit(1)
+			base.Exit(1)
 		}
 	})
 	return m
