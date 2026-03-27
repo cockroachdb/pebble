@@ -163,7 +163,7 @@ func (d *indexBlockDecoder) Init(data []byte) {
 	d.bd.Init(data, indexBlockCustomHeaderSize)
 	d.virtualBlocks = colblk.DecodeColumn(&d.bd, indexBlockColumnVirtualBlocksIdx,
 		uint32(d.virtualBlockCount), colblk.DataTypeUint, colblk.DecodeUnsafeUints)
-	if d.bd.Rows() == math.MaxUint32 {
+	if uint32(d.bd.Rows()) == math.MaxUint32 {
 		panic(errors.AssertionFailedf("invalid row count"))
 	}
 	// Decode the offsets column. We pass rows+1 because an index block encoding
