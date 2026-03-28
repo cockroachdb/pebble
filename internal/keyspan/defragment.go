@@ -454,7 +454,7 @@ func (i *DefragmentingIter) Prev() (*Span, error) {
 // DefragmentMethod and ensures both spans are NOT empty; not defragmenting empty
 // spans is an optimization that lets us load fewer sstable blocks.
 func (i *DefragmentingIter) checkEqual(left, right *Span) bool {
-	return (!left.Empty() && !right.Empty()) && i.method.ShouldDefragment(i.comparer.CompareRangeSuffixes, i.iterSpan, &i.curr)
+	return (!left.Empty() && !right.Empty()) && i.method.ShouldDefragment(i.comparer.CompareRangeSuffixes, left, right)
 }
 
 // defragmentForward defragments spans in the forward direction, starting from
