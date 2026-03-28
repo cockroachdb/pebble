@@ -516,6 +516,13 @@ func TestCheckpointFlushableIngest(t *testing.T) {
 	require.NoError(t, w.Set([]byte("b"), []byte("ingested")))
 	require.NoError(t, w.Close())
 
+	// Prevent automatic flushes from draining the flushable queue before we
+	// can verify the ingestedFlushable and take a checkpoint.
+	// DisableAutomaticCompactions does not disable flushes.
+	d.mu.Lock()
+	d.mu.compact.flushing = true
+	d.mu.Unlock()
+
 	// Ingest the SSTable. Because it overlaps with the memtable key "b", it is
 	// added to the flushable queue as an ingestedFlushable rather than being
 	// placed directly into L0.
@@ -536,6 +543,12 @@ func TestCheckpointFlushableIngest(t *testing.T) {
 	// Checkpoint without flushing first. The checkpoint must copy the
 	// ingestedFlushable SSTable files so that WAL replay on open succeeds.
 	require.NoError(t, d.Checkpoint("checkpoint"))
+
+	// Re-enable flushing so Close does not deadlock.
+	d.mu.Lock()
+	d.mu.compact.flushing = false
+	d.mu.Unlock()
+
 	require.NoError(t, d.Close())
 
 	// Opening the checkpoint previously failed with:
