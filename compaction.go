@@ -1471,6 +1471,19 @@ func (d *DB) maybeScheduleDelayedFlush(tbl *memTable, dur time.Duration) {
 
 func (d *DB) flush() {
 	pprof.Do(context.Background(), flushLabels, func(context.Context) {
+		// Guard against the flush goroutine being terminated by runtime.Goexit
+		// (e.g. from a Logger.Fatalf → t.Fatalf call in a test) without clearing
+		// the flushing flag. If that happens, Close will hang forever waiting on
+		// cond.Wait.
+		flushingCleared := false
+		defer func() {
+			if !flushingCleared {
+				d.mu.Lock()
+				d.mu.compact.flushing = false
+				d.mu.compact.cond.Broadcast()
+				d.mu.Unlock()
+			}
+		}()
 		flushingWorkStart := crtime.NowMono()
 		d.mu.Lock()
 		defer d.mu.Unlock()
@@ -1482,6 +1495,7 @@ func (d *DB) flush() {
 			d.opts.EventListener.BackgroundError(err)
 		}
 		d.mu.compact.flushing = false
+		flushingCleared = true
 		d.mu.compact.noOngoingFlushStartTime = crtime.NowMono()
 		workDuration := d.mu.compact.noOngoingFlushStartTime.Sub(flushingWorkStart)
 		d.mu.compact.flushWriteThroughput.Bytes += int64(bytesFlushed)
@@ -2247,6 +2261,35 @@ func (d *DB) pickManualCompaction(env compactionEnv) (pc pickedCompaction) {
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact(c compaction, errChannel chan error) {
 	pprof.Do(d.bgCtx, c.PprofLabels(d.opts.Experimental.UserKeyCategories), func(context.Context) {
+		// cleanupDone tracks whether the full compact() cleanup completed
+		// (counter decrement + Broadcast). This guards against the goroutine
+		// being terminated by runtime.Goexit (e.g. Logger.Fatalf → t.Fatalf in
+		// tests) which skips non-deferred code, leaving compactingCount positive
+		// and causing Close to hang on cond.Wait forever.
+		cleanupDone := false
+		errChannelSent := false
+		defer func() {
+			if !cleanupDone {
+				// Unblock callers waiting on errChannel (e.g. manualCompact).
+				if errChannel != nil && !errChannelSent {
+					errChannel <- errors.New("compaction goroutine terminated unexpectedly")
+				}
+				d.mu.Lock()
+				if _, ok := d.mu.compact.inProgress[c]; ok {
+					// BLOCK 1 never completed: counter not decremented.
+					if c.IsDownload() {
+						d.mu.compact.downloadingCount--
+					} else {
+						d.mu.compact.compactingCount--
+					}
+					delete(d.mu.compact.inProgress, c)
+				}
+				// BLOCK 2 never ran: ensure Broadcast so Close can proceed.
+				d.mu.compact.compactProcesses--
+				d.mu.compact.cond.Broadcast()
+				d.mu.Unlock()
+			}
+		}()
 		func() {
 			d.mu.Lock()
 			defer d.mu.Unlock()
@@ -2261,6 +2304,7 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 			// observes the deletion.
 			if errChannel != nil {
 				errChannel <- compactErr
+				errChannelSent = true
 			}
 			if compactErr != nil {
 				d.handleCompactFailure(c, compactErr)
@@ -2304,6 +2348,10 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 			d.maybeScheduleCompaction()
 			d.mu.compact.compactProcesses--
 			d.mu.compact.cond.Broadcast()
+			// Mark cleanup complete inside this function to avoid a
+			// double-decrement of compactProcesses if Goexit fires after the
+			// decrement above but before this flag is set.
+			cleanupDone = true
 		}()
 	})
 }

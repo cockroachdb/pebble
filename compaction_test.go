@@ -14,6 +14,7 @@ import (
 	"math/rand/v2"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -32,6 +33,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/compact"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -3101,6 +3103,115 @@ func TestCompactionErrorStats(t *testing.T) {
 	require.Equal(t, 9, int(d.mu.snapshots.cumulativePinnedSize))
 	d.mu.Unlock()
 	require.NoError(t, d.Close())
+}
+
+// TestCompactionGoexitCloseHang verifies that Close does not hang when a
+// compaction or flush goroutine is terminated by runtime.Goexit (e.g. from a
+// Logger.Fatalf implementation that calls t.Fatalf instead of panic).
+//
+// Regression test for #5780.
+func TestCompactionGoexitCloseHang(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	if invariants.UseFinalizers {
+		// This test deliberately kills background goroutines via Goexit, leaving
+		// memTable buffers unreachable. The memTable finalizer calls os.Exit(1)
+		// on leaked buffers, which cannot be recovered. UseFinalizers is false
+		// under -race (where the original bug #5780 manifests).
+		t.Skip("skipped: memTable finalizer calls os.Exit on intentionally leaked buffers")
+	}
+
+	for _, tc := range []struct {
+		name    string
+		trigger string // "compaction" or "flush"
+	}{
+		{name: "compaction", trigger: "compaction"},
+		{name: "flush", trigger: "flush"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var debugCheckErr atomic.Bool
+			opts := &Options{
+				FS:                          vfs.NewMem(),
+				DisableAutomaticCompactions: true,
+				FormatMajorVersion:          FormatNewest,
+				// Use a Logger whose Fatalf calls runtime.Goexit, reproducing
+				// the old testutils.Logger behavior that caused #5780.
+				Logger: goexitFatalLogger{t: t},
+			}
+			// Use a DebugCheck that fails on demand, triggering Logger.Fatalf
+			// inside the compaction/flush goroutine.
+			opts.DebugCheck = func(db *DB) error {
+				if debugCheckErr.Load() {
+					return errors.New("injected DebugCheck error")
+				}
+				return nil
+			}
+			opts.WithFSDefaults()
+			d, err := Open("", opts)
+			require.NoError(t, err)
+
+			// Write data so we have something to compact/flush.
+			require.NoError(t, d.Set([]byte("a"), []byte("1"), nil))
+			require.NoError(t, d.Set([]byte("z"), []byte("2"), nil))
+			require.NoError(t, d.Flush())
+
+			if tc.trigger == "compaction" {
+				// Flush more data to create L0 files for compaction.
+				require.NoError(t, d.Set([]byte("a"), []byte("3"), nil))
+				require.NoError(t, d.Set([]byte("z"), []byte("4"), nil))
+				require.NoError(t, d.Flush())
+
+				// Arm the DebugCheck error and trigger a manual compaction.
+				// The compaction goroutine will call Logger.Fatalf → Goexit.
+				debugCheckErr.Store(true)
+				_ = d.Compact(context.Background(), []byte("a"), []byte("z\x00"), false)
+			} else {
+				// Arm the DebugCheck error and trigger a flush.
+				// The flush goroutine will call Logger.Fatalf → Goexit.
+				debugCheckErr.Store(true)
+				require.NoError(t, d.Set([]byte("b"), []byte("5"), nil))
+				// Use AsyncFlush + timeout since Flush blocks on mem.flushed
+				// which won't be signaled when the flush goroutine exits via
+				// Goexit.
+				if flushDone, err := d.AsyncFlush(); err == nil {
+					select {
+					case <-flushDone:
+					case <-time.After(5 * time.Second):
+						// Expected: flush goroutine was killed by Goexit.
+					}
+				}
+			}
+
+			// The critical assertion: Close must not hang. Without the defer
+			// guards, Close hangs forever on cond.Wait because the background
+			// goroutine exited via Goexit without decrementing counters or
+			// broadcasting.
+			closeDone := make(chan error, 1)
+			go func() {
+				closeDone <- d.Close()
+			}()
+			select {
+			case err := <-closeDone:
+				// Close completed (may return an error, but didn't hang).
+				_ = err
+			case <-time.After(30 * time.Second):
+				t.Fatal("Close hung — defer guard did not fire")
+			}
+		})
+	}
+}
+
+// goexitFatalLogger is a Logger whose Fatalf calls runtime.Goexit, reproducing
+// the old testutils.Logger behavior that caused Close to hang (#5780).
+type goexitFatalLogger struct {
+	t testing.TB
+}
+
+func (l goexitFatalLogger) Infof(format string, args ...interface{})  {}
+func (l goexitFatalLogger) Errorf(format string, args ...interface{}) {}
+func (l goexitFatalLogger) Fatalf(format string, args ...interface{}) {
+	l.t.Logf("goexitFatalLogger.Fatalf: "+format, args...)
+	runtime.Goexit()
 }
 
 func TestCompactionCorruption(t *testing.T) {

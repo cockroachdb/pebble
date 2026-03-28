@@ -4,7 +4,11 @@
 
 package testutils
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/cockroachdb/errors"
+)
 
 // Logger is a logger that writes to a testing.TB.
 type Logger struct {
@@ -20,6 +24,12 @@ func (l Logger) Errorf(format string, args ...interface{}) {
 }
 
 func (l Logger) Fatalf(format string, args ...interface{}) {
-	l.T.Helper()
-	l.T.Fatalf(format, args...)
+	// Use panic instead of l.T.Fatalf. t.Fatalf calls runtime.Goexit which only
+	// terminates the calling goroutine. When Logger.Fatalf is called from a
+	// background goroutine (compaction, flush), Goexit silently kills that
+	// goroutine without decrementing DB internal counters (compactingCount,
+	// flushing), causing Close to hang. panic propagates across goroutines and
+	// crashes the process with a clear stack trace, matching production behavior
+	// (DefaultLogger.Fatalf calls os.Exit).
+	panic(errors.AssertionFailedf(format, args...))
 }
