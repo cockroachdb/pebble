@@ -280,7 +280,7 @@ func (r *Runner) writeKeysToTable(
 		case base.InternalKeyKindRangeDelete:
 			// The previous span (if any) must end at or before this key, since the
 			// spans we receive are non-overlapping.
-			if err := tw.EncodeSpan(r.lastRangeDelSpan); r.err != nil {
+			if err := tw.EncodeSpan(r.lastRangeDelSpan); err != nil {
 				return nil, err
 			}
 			r.lastRangeDelSpan.CopyFrom(r.iter.Span())
