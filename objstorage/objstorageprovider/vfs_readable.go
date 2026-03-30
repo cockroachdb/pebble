@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 	"sync"
 
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
@@ -55,7 +56,7 @@ func newFileReadable(
 		invariants.SetFinalizer(r, func(obj interface{}) {
 			if obj.(*fileReadable).file != nil {
 				fmt.Fprintf(os.Stderr, "Readable %s was not closed\n%s", filename, stack)
-				os.Exit(1)
+				base.Exit(1)
 			}
 		})
 	}
@@ -112,7 +113,7 @@ var readHandlePool = sync.Pool{
 			invariants.SetFinalizer(i, func(obj interface{}) {
 				if obj.(*vfsReadHandle).r != nil {
 					fmt.Fprintf(os.Stderr, "ReadHandle was not closed")
-					os.Exit(1)
+					base.Exit(1)
 				}
 			})
 		}

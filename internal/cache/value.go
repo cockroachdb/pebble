@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manual"
@@ -70,7 +71,7 @@ func Alloc(n int) *Value {
 			if v.buf != nil {
 				fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",
 					v, v.refs(), v.ref.traces())
-				os.Exit(1)
+				base.Exit(1)
 			}
 		})
 		return v

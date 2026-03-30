@@ -342,7 +342,7 @@ var keyspanIterPool = sync.Pool{
 			invariants.SetFinalizer(i, func(obj interface{}) {
 				if i := obj.(*KeyspanIter); i.handle.Valid() {
 					fmt.Fprintf(os.Stderr, "KeyspanIter.handle is not nil: %#v\n", i.handle)
-					os.Exit(1)
+					base.Exit(1)
 				}
 			})
 		}

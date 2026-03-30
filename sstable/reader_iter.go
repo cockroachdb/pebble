@@ -204,11 +204,11 @@ func checkSingleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlo
 	i := obj.(*singleLevelIterator[I, PI, D, PD])
 	if h := PD(&i.data).Handle(); h.Valid() {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.handle is not nil: %#v\n", h)
-		os.Exit(1)
+		base.Exit(1)
 	}
 	if h := PI(&i.index).Handle(); h.Valid() {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %#v\n", h)
-		os.Exit(1)
+		base.Exit(1)
 	}
 }
 
@@ -218,10 +218,10 @@ func checkTwoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockI
 	i := obj.(*twoLevelIterator[I, PI, D, PD])
 	if h := PD(&i.secondLevel.data).Handle(); h.Valid() {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.data.handle is not nil: %#v\n", h)
-		os.Exit(1)
+		base.Exit(1)
 	}
 	if h := PI(&i.secondLevel.index).Handle(); h.Valid() {
 		fmt.Fprintf(os.Stderr, "singleLevelIterator.index.handle is not nil: %#v\n", h)
-		os.Exit(1)
+		base.Exit(1)
 	}
 }
