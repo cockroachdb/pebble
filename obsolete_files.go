@@ -145,14 +145,15 @@ func (d *DB) scanObsoleteFiles(list []string, flushableIngests []*ingestedFlusha
 			continue
 		}
 		makeObsoleteFile := func() deletepacer.ObsoleteFile {
+			path := d.opts.FS.PathJoin(d.dirname, filename)
 			of := deletepacer.ObsoleteFile{
 				FileType:  fileType,
 				FS:        d.opts.FS,
-				Path:      d.opts.FS.PathJoin(d.dirname, filename),
+				Path:      path,
 				FileNum:   diskFileNum,
 				Placement: base.Local,
 			}
-			if stat, err := d.opts.FS.Stat(filename); err == nil {
+			if stat, err := d.opts.FS.Stat(path); err == nil {
 				of.FileSize = uint64(stat.Size())
 			}
 			return of
