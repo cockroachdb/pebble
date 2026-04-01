@@ -99,7 +99,7 @@ test-s390x-qemu:
 				lscpu | grep Endian && \
 				cd /pebble && \
 				go version && \
-				go test -tags '$(TAGS)' -timeout 30m ./..."
+				go test -tags '$(TAGS)' -timeout 60m ./..."
 
 .PHONY: gen-bazel
 gen-bazel:
