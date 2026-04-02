@@ -28,7 +28,9 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/metrics"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -572,6 +574,64 @@ func TestMetrics(t *testing.T) {
 		}
 	})
 
+}
+
+// TestRemoteTablesTotalWithVirtualSSTables is a regression test for a bug
+// where RemoteTablesTotal() previously had inconsistent size accounting.
+// When virtual tables existed on a local-only DB, backing sizes could exceed
+// virtual sizes, causing a uint64 underflow that produced enormous values.
+func TestRemoteTablesTotalWithVirtualSSTables(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	mem := vfs.NewMem()
+	opts := &Options{
+		Comparer:                    testkeys.Comparer,
+		FS:                          mem,
+		FormatMajorVersion:          internalFormatNewest,
+		DisableAutomaticCompactions: true,
+		Logger:                      testutils.Logger{T: t},
+	}
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Write many keys spanning a wide range and flush to create one large
+	// sstable. Use large values so the backing file is significantly bigger
+	// than the virtual sstable pieces will be after excise.
+	val := make([]byte, 1024)
+	b := d.NewBatch()
+	for i := byte('a'); i <= byte('z'); i++ {
+		require.NoError(t, b.Set([]byte{i}, val, nil))
+	}
+	require.NoError(t, b.Commit(nil))
+	require.NoError(t, d.Flush())
+
+	// Build a small sstable to ingest, with an excise span covering most of the
+	// flushed sstable. This leaves two small virtual sstables (for 'a' and 'z')
+	// backed by the large original file.
+	path := "ext.sst"
+	f, err := mem.Create(path, vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), d.opts.MakeWriterOptions(0, d.TableFormat()))
+	require.NoError(t, w.Set([]byte("m"), []byte("new-val-m")))
+	require.NoError(t, w.Close())
+
+	_, err = d.IngestAndExcise(context.Background(), []string{path}, nil, nil, KeyRange{
+		Start: []byte("b"),
+		End:   []byte("z"),
+	})
+	require.NoError(t, err)
+
+	// Verify virtual tables were created (the excise should have split the
+	// original sstable).
+	m := d.Metrics()
+	require.Greater(t, m.NumVirtual(), uint64(0), "expected virtual sstables after excise")
+
+	// Remote tables should be zero on a local-only DB, regardless of virtual
+	// sstables.
+	cs := m.RemoteTablesTotal()
+	require.Equal(t, uint64(0), cs.Count, "expected zero remote table count")
+	require.Equal(t, uint64(0), cs.Bytes, "expected zero remote table bytes")
 }
 
 func TestMetricsWAmpDisableWAL(t *testing.T) {
