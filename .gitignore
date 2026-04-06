@@ -5,6 +5,9 @@ cpu.*.prof
 heap.prof
 mutex.prof
 coverprofile.out
+heap.prof
+mutex.prof
+coverprofile.out
 # Testing artifacts
 meta.*.test
 
