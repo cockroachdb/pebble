@@ -952,7 +952,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				writeBackingValueSize := false
 				if x.Meta.Virtual {
 					for _, ref := range x.Meta.BlobReferences {
-						if ref.BackingValueSize > 0 && ref.BackingValueSize != ref.ValueSize {
+						if ref.BackingValueSize > 0 {
 							writeBackingValueSize = true
 							break
 						}
@@ -1248,7 +1248,7 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 			// blob references.
 			if backing.ReferencedBlobValueSizeTotal == 0 {
 				for _, br := range nf.Meta.BlobReferences {
-					backing.ReferencedBlobValueSizeTotal += br.BackingValueSize
+					backing.ReferencedBlobValueSizeTotal += max(br.BackingValueSize, br.ValueSize)
 				}
 			}
 			nf.Meta.AttachVirtualBacking(backing)

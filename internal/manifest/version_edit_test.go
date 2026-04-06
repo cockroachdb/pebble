@@ -126,6 +126,77 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 	}
 }
 
+// TestVERoundTripBackingValueSizeEqualValueSize verifies that BackingValueSize
+// is preserved through encode/decode when it equals ValueSize for a virtual
+// table. This is a regression test for a bug where the encoder omitted
+// BackingValueSize when it equaled ValueSize, causing it to decode as 0 (the
+// sentinel for "unknown").
+func TestVERoundTripBackingValueSizeEqualValueSize(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+	m1 := (&TableMetadata{
+		TableNum:              810,
+		Size:                  8090,
+		CreationTime:          809060,
+		SeqNums:               base.SeqNumRange{Low: 9, High: 11},
+		LargestSeqNumAbsolute: 11,
+		BlobReferences: []BlobReference{
+			{FileID: 900, ValueSize: 1024, BackingValueSize: 1024},
+			{FileID: 910, ValueSize: 8090, BackingValueSize: 8090},
+		},
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
+	)
+	m1.InitPhysicalBacking()
+
+	// Virtual table where BackingValueSize == ValueSize for all references.
+	m2 := (&TableMetadata{
+		TableNum:              812,
+		Size:                  8090,
+		CreationTime:          809060,
+		SeqNums:               base.SeqNumRange{Low: 9, High: 11},
+		LargestSeqNumAbsolute: 11,
+		Virtual:               true,
+		BlobReferences: []BlobReference{
+			{FileID: 900, ValueSize: 1024, BackingValueSize: 1024},
+			{FileID: 910, ValueSize: 8090, BackingValueSize: 8090},
+		},
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("c"), 0, base.InternalKeyKindSet),
+	)
+	m2.AttachVirtualBacking(m1.TableBacking)
+
+	ve1 := VersionEdit{
+		CreatedBackingTables: []*TableBacking{m1.TableBacking},
+		NewTables: []NewTableEntry{
+			{
+				Level:          4,
+				Meta:           m2,
+				BackingFileNum: m2.TableBacking.DiskFileNum,
+			},
+		},
+	}
+	buf := new(bytes.Buffer)
+	require.NoError(t, ve1.Encode(buf))
+	var ve2 VersionEdit
+	require.NoError(t, ve2.Decode(buf))
+	var bve BulkVersionEdit
+	require.NoError(t, bve.Accumulate(&ve2))
+
+	// Verify BackingValueSize is preserved after round-trip.
+	require.Equal(t, len(ve1.NewTables), len(ve2.NewTables))
+	for i, nt := range ve2.NewTables {
+		for j, ref := range nt.Meta.BlobReferences {
+			orig := ve1.NewTables[i].Meta.BlobReferences[j]
+			require.Equal(t, orig.BackingValueSize, ref.BackingValueSize,
+				"BlobReferences[%d].BackingValueSize: got %d, want %d", j, ref.BackingValueSize, orig.BackingValueSize)
+		}
+	}
+}
+
 func TestVersionEditRoundTrip(t *testing.T) {
 	cmp := base.DefaultComparer.Compare
 	m1 := (&TableMetadata{
