@@ -715,13 +715,15 @@ func (s *l0Sublevels) InitCompactingFileInfo(inProgress []L0Compaction) {
 	for f := range s.levelMetadata.All() {
 		if invariants.Enabled {
 			bounds := f.UserKeyBounds()
-			if !bytes.Equal(s.orderedIntervals[f.minIntervalIndex].startKey.key, bounds.Start) {
-				panic(errors.AssertionFailedf("f.minIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
-					s.formatKey(s.orderedIntervals[f.minIntervalIndex].startKey.key), s.formatKey(bounds.Start)))
-			}
-			if !bytes.Equal(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key, bounds.End.Key) {
-				panic(errors.AssertionFailedf("f.maxIntervalIndex in TableMetadata out of sync with intervals in L0Sublevels: %s != %s",
-					s.formatKey(s.orderedIntervals[f.maxIntervalIndex+1].startKey.key), s.formatKey(bounds.Start)))
+			expectedStart := s.orderedIntervals[f.minIntervalIndex].startKey.key
+			expectedEnd := s.orderedIntervals[f.maxIntervalIndex+1].startKey.key
+			if !bytes.Equal(expectedStart, bounds.Start) || !bytes.Equal(expectedEnd, bounds.End.Key) {
+				panic(errors.AssertionFailedf(
+					"interval indexes in TableMetadata out of sync with intervals in L0Sublevels: "+
+						"bounds [%s, %s) intervals [%s, %s)",
+					s.formatKey(bounds.Start), s.formatKey(bounds.End.Key),
+					s.formatKey(expectedStart), s.formatKey(expectedEnd),
+				))
 			}
 		}
 		if !f.IsCompacting() {
