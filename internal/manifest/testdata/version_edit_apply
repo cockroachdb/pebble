@@ -359,3 +359,20 @@ L2:
 Blob files:
   B000003 physical:{000052 size:[10000 (9.8KB)] vals:[10000 (9.8KB)]}
   B000004 physical:{000004 size:[20535 (20KB)] vals:[25935 (25KB)]}
+
+# Regression test: adding two widely-separated files should check ordering
+# across the entire span, not just near the file with the smallest key.
+define v12
+L2:
+  000003:[f#1,SET-g#2,SET]
+----
+L2:
+  000003:[f#1,SET-g#2,SET] seqnums:[#0-#0] points:[f#1,SET-g#2,SET]
+
+# Add files [a-b] and [f-h] to L2. File [f-h] overlaps with existing [f-g].
+# The ordering check must cover the full span of added files to detect this.
+apply v12
+  add-table: L2 000006:[a#10,SET-b#7,SET]
+  add-table: L2 000007:[f#3,SET-h#2,SET]
+----
+pebble: internal error: L2 files 000007 and 000003 have overlapping ranges: [f#3,SET-h#2,SET] vs [f#1,SET-g#2,SET]
