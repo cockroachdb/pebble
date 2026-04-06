@@ -1438,7 +1438,9 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 
 		// Check consistency of the level in the vicinity of our edits.
 		if sm != nil && la != nil {
-			overlap := v.Levels[level].Slice().Overlaps(comparer.Compare, sm.UserKeyBounds())
+			smBounds := sm.UserKeyBounds()
+			bounds := smBounds.Union(comparer.Compare, la.UserKeyBounds())
+			overlap := v.Levels[level].Slice().Overlaps(comparer.Compare, bounds)
 			// overlap contains all of the added tables. We want to ensure that
 			// the added tables are consistent with neighboring existing tables
 			// too, so reslice the overlap to pull in a neighbor on each side.
