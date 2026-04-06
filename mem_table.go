@@ -385,6 +385,7 @@ func (f *keySpanFrags) get(
 			frag.Add(s)
 			keysDst = s.Keys[len(s.Keys):]
 		}
+		_ = it.Close()
 		frag.Finish()
 	})
 	return f.spans
