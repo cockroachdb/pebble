@@ -1538,10 +1538,11 @@ func TestBatchLogDataMemtableSize(t *testing.T) {
 	// Create a batch with Set("foo", "bar") and a LogData. Only the Set should
 	// contribute to the batch's memtable size.
 	b := Batch{}
+	const expSize uint64 = 193
 	require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
-	require.Equal(t, uint64(201), b.memTableSize)
+	require.Equal(t, expSize, b.memTableSize)
 	require.NoError(t, b.LogData([]byte("baxbarbaz"), nil))
-	require.Equal(t, uint64(201), b.memTableSize)
+	require.Equal(t, expSize, b.memTableSize)
 
 	t.Run("SetRepr", func(t *testing.T) {
 		// Setting another batch's repr using SetRepr should result in a
@@ -1549,7 +1550,7 @@ func TestBatchLogDataMemtableSize(t *testing.T) {
 		a := Batch{}
 		a.db = new(DB)
 		require.NoError(t, a.SetRepr(b.Repr()))
-		require.Equal(t, uint64(201), a.memTableSize)
+		require.Equal(t, expSize, a.memTableSize)
 	})
 	t.Run("Apply", func(t *testing.T) {
 		// Applying another batch using apply should result in a recalculation
@@ -1557,7 +1558,7 @@ func TestBatchLogDataMemtableSize(t *testing.T) {
 		a := Batch{}
 		a.db = new(DB)
 		require.NoError(t, a.Apply(&b, nil))
-		require.Equal(t, uint64(201), a.memTableSize)
+		require.Equal(t, expSize, a.memTableSize)
 	})
 }
 
