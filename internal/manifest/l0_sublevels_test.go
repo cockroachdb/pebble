@@ -64,11 +64,11 @@ func readManifest(filename string) (*Version, error) {
 }
 
 func visualizeSublevels(
-	s *l0Sublevels, compactionFiles bitSet, otherLevels [][]*TableMetadata,
+	s *l0Sublevels, compactionFiles map[base.TableNum]struct{}, otherLevels [][]*TableMetadata,
 ) string {
 	var buf strings.Builder
 	if compactionFiles == nil {
-		compactionFiles = newBitSet(s.levelMetadata.Len())
+		compactionFiles = make(map[base.TableNum]struct{})
 	}
 	largestChar := byte('a')
 	printLevel := func(files []*TableMetadata, level string, isL0 bool) {
@@ -85,7 +85,7 @@ func visualizeSublevels(
 			buf.WriteByte(f.Smallest().UserKey[0])
 			middleChar := byte('-')
 			if isL0 {
-				if compactionFiles[f.L0Index] {
+				if _, ok := compactionFiles[f.TableNum]; ok {
 					middleChar = '+'
 				} else if f.IsCompacting() {
 					if f.IsIntraL0Compacting {
@@ -102,7 +102,7 @@ func visualizeSublevels(
 			}
 			if f.Smallest().UserKey[0] == f.Largest().UserKey[0] {
 				buf.WriteByte(f.Largest().UserKey[0])
-				if compactionFiles[f.L0Index] {
+				if _, ok := compactionFiles[f.TableNum]; ok {
 					buf.WriteByte('+')
 				} else if j < len(files)-1 {
 					buf.WriteByte(' ')
@@ -326,6 +326,16 @@ func TestL0Sublevels(t *testing.T) {
 					cmp:           base.DefaultComparer.Compare,
 					formatKey:     base.DefaultFormatter,
 					levelMetadata: levelMetadata,
+					fileStateMap:  make(map[base.TableNum]int),
+				}
+				// Build fileState for the explicitly-specified sublevels.
+				for sublevelIdx, files := range explicitSublevels {
+					for _, f := range files {
+						sublevels.fileStateMap[f.TableNum] = len(sublevels.fileState)
+						sublevels.fileState = append(sublevels.fileState, l0FileState{
+							subLevel: sublevelIdx,
+						})
+					}
 				}
 				for _, files := range explicitSublevels {
 					sublevels.Levels = append(sublevels.Levels, NewLevelSliceSpecificOrder(files))
