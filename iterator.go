@@ -2851,7 +2851,10 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// Iterators created through NewExternalIter have a different iterator
 	// initialization process.
 	if i.externalIter != nil {
-		_ = finishInitializingExternal(i.ctx, i)
+		if err := finishInitializingExternal(i.ctx, i); err != nil {
+			// TODO(radu): propagate the error instead.
+			panic(err)
+		}
 		return
 	}
 	finishInitializingIter(i.ctx, i.alloc)
