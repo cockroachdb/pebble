@@ -882,7 +882,17 @@ func (h *mergingIterV2Heap) Reset() {
 }
 
 func (h *mergingIterV2Heap) less(i, j int) bool {
-	return h.items[i].level.Compare(h.cmp, h.items[j].level) == h.lessCmp
+	li := h.items[i].level
+	lj := h.items[j].level
+	if cmp := li.Compare(h.cmp, lj); cmp != 0 {
+		return cmp == h.lessCmp
+	}
+	// When multiple levels have the same key, put higher levels (smaller index)
+	// at the top. This can only happen for boundary keys.
+	if invariants.Enabled && h.items[i].level.iterKV.Kind() != base.InternalKeyKindSpanBoundary {
+		panic(errors.AssertionFailedf("duplicate non-boundary key"))
+	}
+	return li.index < lj.index
 }
 
 func (h *mergingIterV2Heap) swap(i, j int) {
@@ -900,7 +910,7 @@ func (h *mergingIterV2Heap) Init(lessCmp int) {
 	h.lessCmp = lessCmp
 	n := h.Len()
 	for i := n/2 - 1; i >= 0; i-- {
-		h.down(i, n)
+		h.down(i)
 	}
 }
 
@@ -909,17 +919,18 @@ func (h *mergingIterV2Heap) Top() *mergingIterV2Level {
 }
 
 func (h *mergingIterV2Heap) FixTop() {
-	h.down(0, h.Len())
+	h.down(0)
 }
 
 func (h *mergingIterV2Heap) PopTop() {
 	n := h.Len() - 1
 	h.swap(0, n)
-	h.down(0, n)
 	h.items = h.items[:n]
+	h.down(0)
 }
 
-func (h *mergingIterV2Heap) down(i, n int) {
+func (h *mergingIterV2Heap) down(i int) {
+	n := len(h.items)
 	for {
 		j1 := 2*i + 1
 		if j1 >= n || j1 < 0 {
