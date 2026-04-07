@@ -53,6 +53,13 @@ type fileCacheTestFS struct {
 	openCounts       map[string]int
 	closeCounts      map[string]int
 	openErrorEnabled bool
+	openDelay        time.Duration
+}
+
+func (fs *fileCacheTestFS) setOpenDelay(d time.Duration) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	fs.openDelay = d
 }
 
 func (fs *fileCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
@@ -64,7 +71,11 @@ func (fs *fileCacheTestFS) Open(name string, opts ...vfs.OpenOption) (vfs.File, 
 	if fs.openCounts != nil {
 		fs.openCounts[name]++
 	}
+	delay := fs.openDelay
 	fs.mu.Unlock()
+	if delay > 0 {
+		time.Sleep(delay)
+	}
 	f, err := fs.FS.Open(name, opts...)
 	if len(opts) < 1 || opts[0] != vfs.RandomReadsOption {
 		return nil, errors.Errorf("sstable file %s not opened with random reads option", name)
@@ -1114,6 +1125,130 @@ func TestFileCacheRetryAfterFailure(t *testing.T) {
 		closeFunc()
 		fs.validateAndCloseHandle(t, h, nil)
 	})
+}
+
+// TestFileCacheContextCancellation is a stress test verifying that context
+// cancellation in some goroutines doesn't cause failures in other goroutines
+// accessing the same cached files. This exercises the waiter select logic in
+// genericcache/shard.go's findOrCreateValue, where a waiter whose context is
+// canceled unrefs the real value and returns a synthetic error value.
+func TestFileCacheContextCancellation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	const (
+		numGoroutines = 2000
+		numFiles      = 10
+		cacheSize     = 5
+	)
+	// Small cache with 1 shard to maximize eviction and re-initialization.
+	fct := newFileCacheTest(t, 8<<20, cacheSize, 1)
+	defer fct.cleanup()
+	h, fs := fct.newTestHandle()
+
+	// Slow down file opens so that concurrent waiters have time to hit the
+	// ctx.Done() path in the select on v.initialized.
+	fs.setOpenDelay(1 * time.Millisecond)
+
+	isContextErr := func(err error) bool {
+		return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	}
+	errc := make(chan error, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			tableNum := rand.IntN(numFiles)
+			m := &manifest.TableMetadata{TableNum: base.TableNum(tableNum)}
+			m.InitPhysicalBacking()
+			m.TableBacking.Ref()
+			defer m.TableBacking.Unref()
+
+			// Decide whether to cancel context.
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			canceled := false
+			switch rand.IntN(3) {
+			case 0:
+				// Pre-canceled context.
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+				canceled = true
+			case 1:
+				// Short timeout to race with initialization.
+				timeout := time.Duration(50+rand.IntN(450)) * time.Microsecond
+				ctx, cancel = context.WithTimeout(ctx, timeout)
+				defer cancel()
+				canceled = true
+			default:
+				// No cancellation.
+			}
+
+			iters, err := h.newIters(ctx, m, nil, internalIterOpts{}, iterPointKeys)
+			if err != nil {
+				if canceled && isContextErr(err) {
+					errc <- nil
+					return
+				}
+				errc <- errors.Errorf("fileNum=%d canceled=%t: newIters: %v", tableNum, canceled, err)
+				return
+			}
+			// The context may expire between newIters and iterator
+			// operations (the sstable iterator retains the context for
+			// block reads). Treat context errors as expected for canceled
+			// goroutines.
+			iter := iters.Point()
+			kv := iter.SeekGE([]byte("k"), base.SeekGEFlagsNone)
+			if kv == nil {
+				iterErr := iter.Error()
+				_ = iter.Close()
+				if canceled && isContextErr(iterErr) {
+					errc <- nil
+					return
+				}
+				errc <- errors.Errorf("fileNum=%d: SeekGE returned nil, iter err: %v", tableNum, iterErr)
+				return
+			}
+			v, _, err := kv.Value(nil)
+			if err != nil {
+				_ = iter.Close()
+				if canceled && isContextErr(err) {
+					errc <- nil
+					return
+				}
+				errc <- errors.Errorf("fileNum=%d: value error: %v", tableNum, err)
+				return
+			}
+			if got := len(v); got != tableNum {
+				_ = iter.Close()
+				errc <- errors.Errorf("fileNum=%d: got %d value bytes, want %d", tableNum, got, tableNum)
+				return
+			}
+			if err := iter.Close(); err != nil {
+				if canceled && isContextErr(err) {
+					errc <- nil
+					return
+				}
+				errc <- errors.Wrapf(err, "fileNum=%d: close error", tableNum)
+				return
+			}
+			errc <- nil
+		}()
+	}
+
+	// Collect all results before checking, to ensure all goroutines have
+	// finished before we potentially fail and run defers (which close the cache).
+	allErrs := make([]error, numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		allErrs[i] = <-errc
+	}
+	for _, err := range allErrs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Remove delay and validate no leaks.
+	fs.setOpenDelay(0)
+	fs.validateAndCloseHandle(t, h, nil)
 }
 
 func TestFileCacheErrorBadMagicNumber(t *testing.T) {
