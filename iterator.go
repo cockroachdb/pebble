@@ -1127,15 +1127,17 @@ func (i *Iterator) findPrevEntry(limit []byte) {
 					return
 				}
 				valueMerger, i.err = i.merge(i.key, value)
+				if i.err != nil {
+					i.iterValidityState = IterExhausted
+					return
+				}
 				var iterValue []byte
 				iterValue, _, i.err = i.iterKV.Value(nil)
 				if i.err != nil {
 					i.iterValidityState = IterExhausted
 					return
 				}
-				if i.err == nil {
-					i.err = valueMerger.MergeNewer(iterValue)
-				}
+				i.err = valueMerger.MergeNewer(iterValue)
 				if i.err != nil {
 					i.iterValidityState = IterExhausted
 					return
