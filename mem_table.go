@@ -385,6 +385,13 @@ func (f *keySpanFrags) get(
 			frag.Add(s)
 			keysDst = s.Keys[len(s.Keys):]
 		}
+		// The arenaskl iterator never returns errors; assert in case this changes.
+		if err := it.Error(); err != nil {
+			panic(err)
+		}
+		if err := it.Close(); err != nil {
+			panic(err)
+		}
 		frag.Finish()
 	})
 	return f.spans
