@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manual"
 	"github.com/cockroachdb/pebble/internal/rangedel"
@@ -272,6 +273,17 @@ func (m *memTable) newRangeDelIter(*IterOptions) keyspan.FragmentIterator {
 	tombstones := m.tombstones.get()
 	if tombstones == nil {
 		return nil
+	}
+	if invariants.Enabled {
+		for i := range tombstones {
+			for j := range tombstones[i].Keys {
+				switch tombstones[i].Keys[j].Kind() {
+				case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+					panic(errors.Newf("memTable.newRangeDelIter: tombstones contain range key kind: %s in span [%s, %s)",
+						tombstones[i].Keys[j].Kind(), tombstones[i].Start, tombstones[i].End))
+				}
+			}
+		}
 	}
 	return keyspan.NewIter(m.cmp, tombstones)
 }
