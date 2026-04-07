@@ -31,6 +31,7 @@ import (
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
 	it := m.skl.NewIter(nil, nil)
+	defer it.Close()
 	kv := it.SeekGE(key, base.SeekGEFlagsNone)
 	if kv == nil {
 		return nil, ErrNotFound

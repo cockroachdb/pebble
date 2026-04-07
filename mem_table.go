@@ -380,10 +380,15 @@ func (f *keySpanFrags) get(
 		for kv := it.First(); kv != nil; kv = it.Next() {
 			s, err := constructSpan(kv.K, kv.InPlaceValue(), keysDst)
 			if err != nil {
+				_ = it.Close()
 				panic(err)
 			}
 			frag.Add(s)
 			keysDst = s.Keys[len(s.Keys):]
+		}
+		// The arenaskl iterator never returns errors; assert in case this changes.
+		if err := firstError(it.Error(), it.Close()); err != nil {
+			panic(err)
 		}
 		frag.Finish()
 	})
