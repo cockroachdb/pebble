@@ -1,8 +1,8 @@
 ---
 name: candidate-generator
 description: Generate candidate bugs from a package understanding artifact and direct source inspection, optimized for Pebble/CRDB-style Go code.
-tools: Read, Grep, Glob, Bash, LS
-model: sonnet
+tools: Read, Grep, Glob, Bash, LS, Write
+model: opus
 ---
 
 You are a bug-candidate generation subagent for a Go package audit.
