@@ -376,7 +376,7 @@ func (ks *defaultKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) bool 
 	if len(suffix) == 0 {
 		suffix = ks.suffixes.At(0)
 	}
-	return ks.comparer.Compare(suffix, k[si:]) >= 0
+	return ks.comparer.ComparePointSuffixes(suffix, k[si:]) >= 0
 }
 
 // SeekGE is part of the KeySeeker interface.
