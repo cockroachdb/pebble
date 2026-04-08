@@ -183,6 +183,7 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 			err = errors.WithSafeDetails(err, ". bit flip found: byte index %d. got: %x. want: %x.",
 				indexFound, data[indexFound], data[indexFound]^(1<<bitFound))
 		}
+		err = base.AttachCorruptBlockData(err, b)
 		return err
 	}
 	return nil
