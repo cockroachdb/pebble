@@ -5,6 +5,8 @@
 package base
 
 import (
+	"slices"
+
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/invariants"
 )
@@ -33,6 +35,34 @@ func IsCorruptionError(err error) bool {
 // the string as an error value that is marked as a corruption error.
 func CorruptionErrorf(format string, args ...interface{}) error {
 	return errors.Mark(errors.Newf(format, args...), ErrCorruption)
+}
+
+// CorruptBlockData is a wrapper error type that carries the raw block data
+// associated with a corruption error. It wraps the cause error transparently
+// (Error() delegates to cause), does not implement SafeDetailer, and is not
+// registered with the error encoding system, ensuring the raw data does not
+// leak to Sentry or over the wire.
+type CorruptBlockData struct {
+	cause error
+	Data  []byte
+}
+
+func (e *CorruptBlockData) Error() string { return e.cause.Error() }
+func (e *CorruptBlockData) Unwrap() error { return e.cause }
+
+// AttachCorruptBlockData wraps an error with a copy of the raw block data.
+func AttachCorruptBlockData(err error, data []byte) error {
+	return &CorruptBlockData{cause: err, Data: slices.Clone(data)}
+}
+
+// ExtractCorruptBlockData extracts the raw block data from the error chain, if
+// present.
+func ExtractCorruptBlockData(err error) []byte {
+	var e *CorruptBlockData
+	if errors.As(err, &e) {
+		return e.Data
+	}
+	return nil
 }
 
 // AssertionFailedf creates an assertion error and panics in invariants.Enabled

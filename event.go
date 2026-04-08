@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -63,6 +64,9 @@ type DataCorruptionInfo struct {
 	// Details of the error. See cockroachdb/error for how to format with or
 	// without redaction.
 	Details error
+	// CorruptedBlockData contains raw data of the corrupted block. Nil if not
+	// applicable.
+	CorruptedBlockData []byte
 }
 
 func (i DataCorruptionInfo) String() string {
@@ -76,6 +80,39 @@ func (i DataCorruptionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf(" (remote locator %q)", redact.Safe(i.Locator))
 	}
 	w.Printf("; bounds: %s; details: %+v", i.Bounds.String(), i.Details)
+}
+
+// FormatBlockDataAsHex formats the corrupted block data as a hex dump with 64
+// bytes per line grouped into 8-byte groups, up to 256 KiB. Returns empty
+// string if no block data is available.
+func (i DataCorruptionInfo) FormatBlockDataAsHex() string {
+	data := i.CorruptedBlockData
+	if len(data) == 0 {
+		return ""
+	}
+	const maxSize = 256 << 10 // 256 KiB
+	truncated := len(data) > maxSize
+	if truncated {
+		data = data[:maxSize]
+	}
+	const bytesPerLine = 64
+	var buf strings.Builder
+	for j := 0; j < len(data); j += bytesPerLine {
+		end := min(j+bytesPerLine, len(data))
+		line := data[j:end]
+		fmt.Fprintf(&buf, "%6d  ", j)
+		for k := 0; k < len(line); k += 8 {
+			if k > 0 {
+				buf.WriteByte(' ')
+			}
+			buf.WriteString(hex.EncodeToString(line[k:min(k+8, len(line))]))
+		}
+		buf.WriteByte('\n')
+	}
+	if truncated {
+		fmt.Fprintf(&buf, "... (truncated from %d bytes)\n", len(i.CorruptedBlockData))
+	}
+	return buf.String()
 }
 
 // LevelInfo contains info pertaining to a particular level.
@@ -1147,6 +1184,9 @@ func MakeLoggingEventListener(logger Logger) EventListener {
 		},
 		DataCorruption: func(info DataCorruptionInfo) {
 			logger.Errorf("%s", info)
+			if s := info.FormatBlockDataAsHex(); s != "" {
+				logger.Errorf("corrupted block data (hex):\n%s", s)
+			}
 		},
 		CompactionBegin: func(info CompactionInfo) {
 			logger.Infof("%s", info)
@@ -1421,11 +1461,12 @@ func (d *DB) reportCorruption(meta base.ObjectInfo, err error) error {
 		err = errors.WithHintf(err, "path: %s", redact.Safe(path))
 	}
 	info := DataCorruptionInfo{
-		Path:     path,
-		IsRemote: objMeta.IsRemote(),
-		Locator:  objMeta.Remote.Locator,
-		Bounds:   meta.UserKeyBounds(),
-		Details:  err,
+		Path:               path,
+		IsRemote:           objMeta.IsRemote(),
+		Locator:            objMeta.Remote.Locator,
+		Bounds:             meta.UserKeyBounds(),
+		Details:            err,
+		CorruptedBlockData: base.ExtractCorruptBlockData(err),
 	}
 	d.opts.EventListener.DataCorruption(info)
 	// We don't use errors.Join() because that also annotates with this stack
