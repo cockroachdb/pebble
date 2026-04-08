@@ -37,7 +37,7 @@ func (l Level) String() string {
 }
 
 func MakeLevel(l int) Level {
-	if invariants.Enabled && l < 0 || l >= validBit {
+	if invariants.Enabled && (l < 0 || l >= validBit) {
 		panic(errors.AssertionFailedf("invalid level: %d", errors.Safe(l)))
 	}
 	return Level{uint8(l) | validBit}
