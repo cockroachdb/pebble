@@ -2535,6 +2535,7 @@ func (d *DB) runCopyCompaction(
 		newMeta.ExtendRangeKeyBounds(c.comparer.Compare,
 			inputMeta.RangeKeyBounds.Smallest(),
 			inputMeta.RangeKeyBounds.Largest())
+		newMeta.HasRangeKeySets = inputMeta.HasRangeKeySets
 	}
 	newMeta.TableNum = d.mu.versions.getNextTableNum()
 	if objMeta.IsExternal() {
@@ -3009,6 +3010,9 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 			fileMeta.ExtendRangeKeyBounds(c.comparer.Compare,
 				t.WriterMeta.SmallestRangeKey,
 				t.WriterMeta.LargestRangeKey)
+			if t.WriterMeta.Properties.NumRangeKeySets == 0 {
+				fileMeta.HasRangeKeySets = false
+			}
 		}
 
 		ve.NewTables[i] = manifest.NewTableEntry{

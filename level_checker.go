@@ -671,6 +671,60 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		return err
 	}
 
+	// Phase 4: Validate range key metadata (HasRangeKeys, MayHaveRangeKeySets).
+	if err := checkRangeKeyMetadata(c, allTables); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// checkRangeKeyMetadata verifies that HasRangeKeys and MayHaveRangeKeySets are
+// consistent with the actual range key contents of each table.
+func checkRangeKeyMetadata(c *checkConfig, allTables []*manifest.TableMetadata) error {
+	ctx := context.Background()
+	for _, file := range allTables {
+		iters, err := c.newIters(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
+		if err != nil {
+			return err
+		}
+		rangeKeyIter := iters.rangeKey
+		if rangeKeyIter == nil {
+			// No range key iterator means no range keys in the table.
+			if file.HasRangeKeys && !file.Virtual {
+				return errors.Errorf("table %s has HasRangeKeys=true but no range key iterator", file.TableNum)
+			}
+			continue
+		}
+		hasAnyRangeKeys := false
+		hasRangeKeySets := false
+		span, err := rangeKeyIter.First()
+		for ; span != nil; span, err = rangeKeyIter.Next() {
+			hasAnyRangeKeys = true
+			for _, k := range span.Keys {
+				if k.Kind() == base.InternalKeyKindRangeKeySet {
+					hasRangeKeySets = true
+				}
+			}
+		}
+		rangeKeyIter.Close()
+		if err != nil {
+			return err
+		}
+		// For non-virtual tables, HasRangeKeys must match reality.
+		if !file.Virtual {
+			if file.HasRangeKeys && !hasAnyRangeKeys {
+				return errors.Errorf("table %s has HasRangeKeys=true but contains no range keys", file.TableNum)
+			}
+			if !file.HasRangeKeys && hasAnyRangeKeys {
+				return errors.Errorf("table %s has HasRangeKeys=false but contains range keys", file.TableNum)
+			}
+		}
+		// If MayHaveRangeKeySets is false, there must be no RANGEKEYSETs visible.
+		if !file.HasRangeKeySets && hasRangeKeySets {
+			return errors.Errorf("table %s has MayHaveRangeKeySets=false but contains RANGEKEYSETs", file.TableNum)
+		}
+	}
 	return nil
 }
 

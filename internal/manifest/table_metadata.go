@@ -168,12 +168,22 @@ type TableMetadata struct {
 	// file must be part of a compaction to Lbase.
 	IsIntraL0Compacting bool
 	CompactionState     CompactionState
-	// HasPointKeys tracks whether the table contains point keys (including
-	// RANGEDELs). If a table contains only range deletions, HasPointsKeys is
-	// still true.
+	// HasPointKeys tracks whether the table (possibly) contains point keys
+	// (including RANGEDELs). If a table contains only range deletions,
+	// HasPointsKeys is still true.
+	//
+	// For virtual tables, it can be true even if no point keys are visible in the
+	// virtual table.
 	HasPointKeys bool
-	// HasRangeKeys tracks whether the table contains any range keys.
+	// HasRangeKeys tracks whether the table (possibly) contains any range keys.
+	//
+	// For virtual tables, it can be true even if no range keys are visible in the
+	// virtual table.
 	HasRangeKeys bool
+	// HasRangeKeySets tracks whether the table (possibly) contains any
+	// RANGEKEYSETs. In some cases (older manifests, external/virtual tables) we
+	// don't have this information (in which case it is set to HasRangeKeys).
+	HasRangeKeySets bool
 	// Virtual is true if the TableMetadata belongs to a virtual sstable.
 	Virtual bool
 	// boundsSet track whether the overall bounds have been set.
@@ -650,6 +660,10 @@ func (m *TableMetadata) ExtendRangeKeyBounds(
 			m.RangeKeyBounds.SetLargest(largest)
 		}
 	}
+	// This method was called with the knowledge that there are (or might be)
+	// range keys within the given bounds; we don't know if that includes
+	// RANGEKEYSETs, so we set the flag defensively.
+	m.HasRangeKeySets = true
 	// Update the overall bounds.
 	m.extendOverallBounds(cmp, m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest(), boundTypeRangeKey)
 	return m

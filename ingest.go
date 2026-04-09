@@ -465,6 +465,9 @@ func ingestLoad1(
 				// the table provides the upper bound for the table.
 				largest := s.LargestKey().Clone()
 				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, largest)
+				if props.NumRangeKeySets == 0 {
+					meta.HasRangeKeySets = false
+				}
 				res.lastRangeKey = s.Clone()
 			} else {
 				// s == nil.

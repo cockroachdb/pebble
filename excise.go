@@ -278,6 +278,7 @@ func looseLeftTableBounds(
 			largestRangeKey = base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyMin, exciseSpanStart)
 		}
 		leftTable.ExtendRangeKeyBounds(cmp, originalTable.RangeKeyBounds.Smallest(), largestRangeKey)
+		leftTable.HasRangeKeySets = originalTable.HasRangeKeySets
 	}
 }
 
@@ -306,6 +307,7 @@ func looseRightTableBounds(
 			smallestRangeKey = base.MakeInternalKey(exciseSpanEnd, 0, base.InternalKeyKindRangeKeyMax)
 		}
 		rightTable.ExtendRangeKeyBounds(cmp, smallestRangeKey, originalTable.RangeKeyBounds.Largest())
+		rightTable.HasRangeKeySets = originalTable.HasRangeKeySets
 	}
 }
 
@@ -356,6 +358,7 @@ func determineLeftTableBounds(
 			}
 			leftTable.ExtendRangeKeyBounds(cmp, originalTable.RangeKeyBounds.Smallest(),
 				base.MakeExclusiveSentinelKey(rkey.LargestKey().Kind(), lastRangeKey))
+			leftTable.HasRangeKeySets = originalTable.HasRangeKeySets
 		}
 	}
 	return nil
@@ -421,6 +424,7 @@ func determineRightTableBounds(
 				UserKey: firstRangeKey,
 				Trailer: rkey.SmallestKey().Trailer,
 			}, originalTable.RangeKeyBounds.Largest())
+			rightTable.HasRangeKeySets = originalTable.HasRangeKeySets
 		}
 	}
 	return nil
