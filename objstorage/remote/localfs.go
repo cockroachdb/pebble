@@ -51,6 +51,7 @@ func (s *localFSStore) ReadObject(
 	}
 	stat, err := f.Stat()
 	if err != nil {
+		_ = f.Close()
 		return nil, 0, err
 	}
 
@@ -75,9 +76,9 @@ func (r *localFSReader) ReadAt(_ context.Context, p []byte, offset int64) error 
 
 // Close is part of the shared.ObjectReader interface.
 func (r *localFSReader) Close() error {
-	r.file.Close()
+	err := r.file.Close()
 	r.file = nil
-	return nil
+	return err
 }
 
 func (f *localFSStore) sync() error {

@@ -8,7 +8,6 @@ import (
 	"cmp"
 	"fmt"
 	"io"
-	"path/filepath"
 	"slices"
 	"sync"
 
@@ -386,8 +385,8 @@ func (c *Catalog) Checkpoint(fs vfs.FS, dir string) error {
 
 	// NB: Every write to recWriter is flushed. We don't need to worry about
 	// this new file descriptor not getting all the saved catalog entries.
-	existingCatalogFilepath := filepath.Join(c.dirname, c.mu.catalogFilename)
-	destPath := filepath.Join(dir, c.mu.catalogFilename)
+	existingCatalogFilepath := c.fs.PathJoin(c.dirname, c.mu.catalogFilename)
+	destPath := fs.PathJoin(dir, c.mu.catalogFilename)
 	if err := vfs.CopyAcrossFS(c.fs, existingCatalogFilepath, fs, destPath); err != nil {
 		return err
 	}
