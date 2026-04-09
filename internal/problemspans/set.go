@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RaduBerinde/axisds/v2"
-	"github.com/RaduBerinde/axisds/v2/regiontree"
+	"github.com/RaduBerinde/axisds/v3"
+	"github.com/RaduBerinde/axisds/v3/regiontree"
 	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/pebble/internal/base"
 )
@@ -80,9 +80,9 @@ func (s *Set) Add(bounds base.UserKeyBounds, expiration time.Duration) {
 func (s *Set) Overlaps(bounds base.UserKeyBounds) bool {
 	s.now = s.nowFn()
 	start, end := boundsToEndpoints(bounds)
-	return s.rt.AnyWithGC(start, end, func(exp expirationTime) bool {
+	return s.rt.Any(regiontree.GE(start), regiontree.LT(end), func(exp expirationTime) bool {
 		return crtime.Mono(exp) > s.now
-	})
+	}, regiontree.WithGC)
 }
 
 // Excise removes a span fragment from all spans in the set. Any overlapping
