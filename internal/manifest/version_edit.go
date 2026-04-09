@@ -80,7 +80,7 @@ const (
 	customTagCreationTime = 6
 	// customTagNoRangeKeySets appears when a file has range keys but is known to
 	// have no RANGEKEYSETs. The bytes value is empty. See
-	// TableMatadta.MayHaveRangeKeySets.
+	// TableMatadata.HasRangeKeySets.
 	customTagNoRangeKeySets = 7
 
 	// All custom tags below are not safe to ignore.
@@ -1337,6 +1337,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 	v := &Version{
 		BlobFiles:           curr.BlobFiles.clone(),
 		MarkedForCompaction: curr.MarkedForCompaction.Clone(),
+		RangeKeySetRegions:  curr.RangeKeySetRegions.Clone(),
 		cmp:                 comparer,
 	}
 
@@ -1396,6 +1397,9 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				}
 			}
 			v.RangeKeyLevels[level].remove(f)
+			if f.HasRangeKeys && f.HasRangeKeySets {
+				removeFromRangeKeySetRegions(&v.RangeKeySetRegions, f)
+			}
 			v.MarkedForCompaction.Delete(f, level)
 		}
 
@@ -1448,6 +1452,9 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				err = lmRange.insert(f)
 				if err != nil {
 					return nil, errors.Wrap(err, "pebble")
+				}
+				if f.HasRangeKeySets {
+					addToRangeKeySetRegions(&v.RangeKeySetRegions, f)
 				}
 			}
 			// Track the keys with the smallest and largest keys, so that we can

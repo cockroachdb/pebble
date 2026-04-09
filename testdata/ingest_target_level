@@ -228,6 +228,7 @@ L5
 ----
 L5:
   000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
+Range key set regions: [a, c)=1
 
 target
 000000:[a#5,SET-c#5,SET] seqnums:[#5-#5]
@@ -241,6 +242,7 @@ L5
 ----
 L5:
   000004:[a#1,RANGEKEYSET-c#inf,RANGEKEYSET]
+Range key set regions: [a, c)=1
 
 target
 000000:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL] seqnums:[#5-#5] ranges:[a#5,RANGEKEYDEL-c#inf,RANGEKEYDEL]

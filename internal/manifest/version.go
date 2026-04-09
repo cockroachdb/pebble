@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/RaduBerinde/axisds/v3"
+	"github.com/RaduBerinde/axisds/v3/regiontree"
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -67,8 +69,9 @@ const NumLevels = 7
 // NewInitialVersion creates a version with no files. The L0Organizer should be freshly created.
 func NewInitialVersion(comparer *base.Comparer) *Version {
 	v := &Version{
-		cmp:       comparer,
-		BlobFiles: MakeBlobFileSet(nil),
+		cmp:                comparer,
+		BlobFiles:          MakeBlobFileSet(nil),
+		RangeKeySetRegions: makeRangeKeySetRegions(comparer),
 	}
 	for level := range v.Levels {
 		v.Levels[level] = MakeLevelMetadata(comparer.Compare, level, nil /* files */)
@@ -84,8 +87,9 @@ func NewVersionForTesting(
 	comparer *base.Comparer, l0Organizer *L0Organizer, files [7][]*TableMetadata,
 ) *Version {
 	v := &Version{
-		cmp:       comparer,
-		BlobFiles: MakeBlobFileSet(nil),
+		cmp:                comparer,
+		BlobFiles:          MakeBlobFileSet(nil),
+		RangeKeySetRegions: makeRangeKeySetRegions(comparer),
 	}
 	for l := range files {
 		// NB: We specifically insert `files` into the B-Tree in the order
@@ -100,11 +104,20 @@ func NewVersionForTesting(
 		} else {
 			v.Levels[l].tree.bcmp = btreeCmpSmallestKey(comparer.Compare)
 		}
+		v.RangeKeyLevels[l] = MakeLevelMetadata(comparer.Compare, l, nil)
 		for _, f := range files[l] {
 			v.Levels[l].totalTableSize += f.Size
 			v.Levels[l].totalRefSize += f.EstimatedReferenceSize()
 			if f.Virtual {
 				v.Levels[l].virtualTables.Inc(f.Size)
+			}
+			if f.HasRangeKeys {
+				if err := v.RangeKeyLevels[l].insert(f); err != nil {
+					panic(err)
+				}
+				if f.HasRangeKeySets {
+					addToRangeKeySetRegions(&v.RangeKeySetRegions, f)
+				}
 			}
 		}
 	}
@@ -158,6 +171,11 @@ type Version struct {
 	// MarkedForCompaction holds the set of tables that are marked for compaction.
 	MarkedForCompaction MarkedForCompactionSet
 
+	// RangeKeySetRegions tracks regions that may contain range-key-sets. The
+	// property is the number of tables with HasRangeKeySets=true whose
+	// range-key bounds overlap the region.
+	RangeKeySetRegions regiontree.T[[]byte, int]
+
 	// The callback to invoke when the last reference to a version is
 	// removed. Will be called with list.mu held.
 	Deleted func(obsolete ObsoleteFiles)
@@ -173,6 +191,39 @@ type Version struct {
 
 func (v *Version) Comparer() *base.Comparer {
 	return v.cmp
+}
+
+func makeRangeKeySetRegions(comparer *base.Comparer) regiontree.T[[]byte, int] {
+	return regiontree.Make(
+		axisds.CompareFn[[]byte](comparer.Compare),
+		func(a, b int) bool { return a == b },
+	)
+}
+
+// rangeKeySetRegionBounds returns the [start, end) user key bounds of a table's
+// range keys for use with the RangeKeySetRegions tree. The table must have range
+// keys (HasRangeKeys=true).
+func rangeKeySetRegionBounds(f *TableMetadata) (start, end []byte) {
+	bounds := f.UserKeyBoundsByType(KeyTypeRange)
+	// Range key bounds should always have an exclusive end.
+	if bounds.End.Kind != base.Exclusive {
+		panic(errors.AssertionFailedf("range key bounds have inclusive end for table %s", f.TableNum))
+	}
+	return bounds.Start, bounds.End.Key
+}
+
+// addToRangeKeySetRegions increments the RangeKeySetRegions tree for a table
+// that has range keys and HasRangeKeySets=true.
+func addToRangeKeySetRegions(tree *regiontree.T[[]byte, int], f *TableMetadata) {
+	start, end := rangeKeySetRegionBounds(f)
+	tree.Update(start, end, func(p int) int { return p + 1 })
+}
+
+// removeFromRangeKeySetRegions decrements the RangeKeySetRegions tree for a
+// table that has range keys and HasRangeKeySets=true.
+func removeFromRangeKeySetRegions(tree *regiontree.T[[]byte, int], f *TableMetadata) {
+	start, end := rangeKeySetRegionBounds(f)
+	tree.Update(start, end, func(p int) int { return p - 1 })
 }
 
 // String implements fmt.Stringer, printing the TableMetadata for each level in
@@ -232,6 +283,22 @@ func (v *Version) string(fmtKey base.FormatKey, verbose bool) string {
 		for f := range v.BlobFiles.All() {
 			fmt.Fprintf(&buf, "  %s\n", f.String())
 		}
+	}
+	if !v.RangeKeySetRegions.IsEmpty() {
+		iFmt := axisds.MakeIntervalFormatter(func(b []byte) string {
+			return fmt.Sprint(fmtKey(b))
+		})
+		fmt.Fprintf(&buf, "Range key set regions:")
+		n := 0
+		for interval, prop := range v.RangeKeySetRegions.All() {
+			if n >= 20 {
+				fmt.Fprintf(&buf, " ...")
+				break
+			}
+			fmt.Fprintf(&buf, " %s=%d", iFmt(interval), prop)
+			n++
+		}
+		fmt.Fprintln(&buf)
 	}
 	return buf.String()
 }

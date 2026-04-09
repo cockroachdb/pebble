@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/RaduBerinde/axisds/v3/regiontree"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -671,7 +672,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		return err
 	}
 
-	// Phase 4: Validate range key metadata (HasRangeKeys, MayHaveRangeKeySets).
+	// Phase 4: Validate range key metadata (HasRangeKeys, HasRangeKeySets).
 	if err := checkRangeKeyMetadata(c, allTables); err != nil {
 		return err
 	}
@@ -679,7 +680,7 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 	return nil
 }
 
-// checkRangeKeyMetadata verifies that HasRangeKeys and MayHaveRangeKeySets are
+// checkRangeKeyMetadata verifies that HasRangeKeys and HasRangeKeySets are
 // consistent with the actual range key contents of each table.
 func checkRangeKeyMetadata(c *checkConfig, allTables []*manifest.TableMetadata) error {
 	ctx := context.Background()
@@ -696,6 +697,7 @@ func checkRangeKeyMetadata(c *checkConfig, allTables []*manifest.TableMetadata) 
 			}
 			continue
 		}
+		current := c.readState.current
 		hasAnyRangeKeys := false
 		hasRangeKeySets := false
 		span, err := rangeKeyIter.First()
@@ -704,6 +706,16 @@ func checkRangeKeyMetadata(c *checkConfig, allTables []*manifest.TableMetadata) 
 			for _, k := range span.Keys {
 				if k.Kind() == base.InternalKeyKindRangeKeySet {
 					hasRangeKeySets = true
+					// Verify that no subrange of this span has a zero count
+					// in the region tree.
+					if current.RangeKeySetRegions.Any(regiontree.GE(span.Start), regiontree.LT(span.End), func(count int) bool {
+						return count == 0
+					}) {
+						return errors.Errorf(
+							"table %s has RangeKeySet in span [%s, %s) but RangeKeySetRegions has zero-count subrange",
+							file.TableNum, c.comparer.FormatKey(span.Start), c.comparer.FormatKey(span.End),
+						)
+					}
 				}
 			}
 		}
@@ -720,9 +732,9 @@ func checkRangeKeyMetadata(c *checkConfig, allTables []*manifest.TableMetadata) 
 				return errors.Errorf("table %s has HasRangeKeys=false but contains range keys", file.TableNum)
 			}
 		}
-		// If MayHaveRangeKeySets is false, there must be no RANGEKEYSETs visible.
+		// If HasRangeKeySets is false, there must be no RANGEKEYSETs visible.
 		if !file.HasRangeKeySets && hasRangeKeySets {
-			return errors.Errorf("table %s has MayHaveRangeKeySets=false but contains RANGEKEYSETs", file.TableNum)
+			return errors.Errorf("table %s has HasRangeKeySets=false but contains RANGEKEYSETs", file.TableNum)
 		}
 	}
 	return nil

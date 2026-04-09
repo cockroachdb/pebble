@@ -284,7 +284,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	)
 	m6.InitPhysicalBacking()
 
-	// Range-key-only table with MayHaveRangeKeySets = false (e.g. only has
+	// Range-key-only table with HasRangeKeySets = false (e.g. only has
 	// range key unsets/deletes).
 	m7 := (&TableMetadata{
 		TableNum:     812,
@@ -298,7 +298,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	m7.HasRangeKeySets = false
 	m7.InitPhysicalBacking()
 
-	// Table with both point and range keys with MayHaveRangeKeySets = false.
+	// Table with both point and range keys with HasRangeKeySets = false.
 	m8 := (&TableMetadata{
 		TableNum:              813,
 		Size:                  8130,

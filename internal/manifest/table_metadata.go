@@ -847,6 +847,9 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	if m.HasRangeKeys {
 		fmt.Fprintf(&b, " ranges:[%s-%s]",
 			m.RangeKeyBounds.Smallest().Pretty(format), m.RangeKeyBounds.Largest().Pretty(format))
+		if !m.HasRangeKeySets {
+			fmt.Fprintf(&b, ";nosets")
+		}
 	}
 	if m.Size != 0 {
 		fmt.Fprintf(&b, " size:%d", m.Size)
@@ -937,6 +940,13 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 			m.RangeKeyBounds.SetInternalKeyBounds(smallest, p.InternalKey())
 			m.HasRangeKeys = true
 			p.Expect("]")
+			if !p.Done() && p.Peek() == ";" {
+				p.Expect(";", "nosets")
+				// HasRangeKeySets stays false.
+			} else {
+				// Default: assume range key sets exist.
+				m.HasRangeKeySets = true
+			}
 
 		case "size":
 			m.Size = p.Uint64()
