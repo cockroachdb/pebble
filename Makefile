@@ -66,9 +66,16 @@ stress stressrace: test
 
 .PHONY: stressmeta
 stressmeta: override PKG = ./internal/metamorphic
-stressmeta: override STRESSFLAGS += -p 1
+stressmeta: override STRESSFLAGS += -p 3
 stressmeta: override TESTS = TestMeta$$
 stressmeta: stress
+
+.PHONY: stressmeta-iterv2
+stressmeta-iterv2: override PKG = ./internal/metamorphic
+stressmeta-iterv2: override TAGS += iterv2
+stressmeta-iterv2: override STRESSFLAGS += -p 3
+stressmeta-iterv2: override TESTS = TestMeta$$
+stressmeta-iterv2: stress
 
 .PHONY: crossversion-meta
 crossversion-meta:
