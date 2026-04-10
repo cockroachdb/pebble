@@ -1235,16 +1235,22 @@ type DataBlockIter struct {
 	// For any changes to these fields, InitHandle (which resets them) should be
 	// updated.
 
-	keyIter PrefixBytesIter
-	row     int
-	kv      base.InternalKV
-	kvRow   int // the row currently held in kv
+	keyIter     PrefixBytesIter
+	row         int
+	kv          base.InternalKV
+	kvRow       int // the row currently held in kv
+	prefixMatch blockiter.PrefixMatchResult
 
 	// nextObsoletePoint is the row index of the first obsolete point after i.row.
 	// It is used to optimize skipping of obsolete points during forward
 	// iteration.
 	nextObsoletePoint int
 }
+
+// prefixMatchCheckBitmap is an internal sentinel used by the columnar
+// implementation. It is set by Next to indicate that PrefixMatched should
+// consult the prefixChanged bitmap lazily.
+const prefixMatchCheckBitmap blockiter.PrefixMatchResult = -1
 
 // InitOnce configures the data block iterator's key schema and lazy value
 // handler. The iterator must be initialized with a block before it can be used.
@@ -1388,6 +1394,18 @@ func (i *DataBlockIter) IsLowerBound(k []byte) bool {
 	return i.keySeeker.IsLowerBound(k, i.transforms.SyntheticSuffix())
 }
 
+// PrefixMatched implements the blockiter.Data interface.
+func (i *DataBlockIter) PrefixMatched() blockiter.PrefixMatchResult {
+	pm := i.prefixMatch
+	if pm == prefixMatchCheckBitmap {
+		if i.d.prefixChanged.At(i.row) {
+			return blockiter.PrefixMatchNo
+		}
+		return blockiter.PrefixMatchYes
+	}
+	return pm
+}
+
 // splitKey splits a key into k[:at] and k[at:].
 func splitKey(k []byte, at int) (before, after []byte) {
 	if len(k) <= at {
@@ -1432,9 +1450,16 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 	}
 	if i.noTransforms {
 		// Fast path.
-		i.row, _ = i.keySeeker.SeekGE(key, i.row, searchDir)
+		var equalPrefix bool
+		i.row, equalPrefix = i.keySeeker.SeekGE(key, i.row, searchDir)
+		if equalPrefix {
+			i.prefixMatch = blockiter.PrefixMatchYes
+		} else {
+			i.prefixMatch = blockiter.PrefixMatchNo
+		}
 		return i.decodeRow()
 	}
+	i.prefixMatch = blockiter.PrefixMatchUnknown
 	i.row = i.seekGEInternal(key, i.row, searchDir)
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
@@ -1453,6 +1478,7 @@ func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV 
 	if i.d == nil {
 		return nil
 	}
+	i.prefixMatch = blockiter.PrefixMatchUnknown
 	i.row = i.seekGEInternal(key, i.row, 0 /* searchDir */) - 1
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(max(i.row, 0))
@@ -1471,6 +1497,7 @@ func (i *DataBlockIter) First() *base.InternalKV {
 	if i.d == nil {
 		return nil
 	}
+	i.prefixMatch = blockiter.PrefixMatchUnknown
 	i.row = 0
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(0)
@@ -1559,6 +1586,7 @@ func (i *DataBlockIter) Last() *base.InternalKV {
 	if i.d == nil {
 		return nil
 	}
+	i.prefixMatch = blockiter.PrefixMatchUnknown
 	i.row = i.maxRow
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.maxRow + 1
@@ -1580,17 +1608,20 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 	// Inline decodeRow, but avoiding unnecessary checks against i.row.
 	if i.row >= i.maxRow {
 		i.row = i.maxRow + 1
+		i.prefixMatch = blockiter.PrefixMatchUnknown
 		return nil
 	}
 	i.row++
 	// Inline decodeKey(), adding obsolete points logic.
 	if i.noTransforms {
 		// Fast path.
+		i.prefixMatch = prefixMatchCheckBitmap
 		i.kv.K = base.InternalKey{
 			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
 			Trailer: base.InternalKeyTrailer(i.d.trailers.At(i.row)),
 		}
 	} else {
+		i.prefixMatch = blockiter.PrefixMatchUnknown
 		if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
 			i.skipObsoletePointsForward()
 			if i.row > i.maxRow {
@@ -1648,6 +1679,7 @@ func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
 	if i.d == nil {
 		return nil
 	}
+	i.prefixMatch = blockiter.PrefixMatchUnknown
 	i.row = i.d.prefixChanged.SeekSetBitGE(i.row + 1)
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
@@ -1664,6 +1696,7 @@ func (i *DataBlockIter) Prev() *base.InternalKV {
 	if i.d == nil {
 		return nil
 	}
+	i.prefixMatch = blockiter.PrefixMatchUnknown
 	i.row--
 	if i.transforms.HideObsoletePoints && i.atObsoletePointBackward() {
 		i.skipObsoletePointsBackward()

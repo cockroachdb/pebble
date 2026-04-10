@@ -10,6 +10,22 @@ import (
 	"github.com/cockroachdb/pebble/sstable/block"
 )
 
+// PrefixMatchResult is a tri-state indicating whether the current key has the
+// same prefix as a reference key from the last positioning operation.
+type PrefixMatchResult int8
+
+const (
+	// PrefixMatchUnknown indicates that the prefix match information is not
+	// cheaply available (e.g. row format, transforms active, iterator invalid).
+	PrefixMatchUnknown PrefixMatchResult = 0
+	// PrefixMatchYes indicates that the current key has the same prefix as the
+	// reference key.
+	PrefixMatchYes PrefixMatchResult = 1
+	// PrefixMatchNo indicates that the current key has a different prefix than
+	// the reference key.
+	PrefixMatchNo PrefixMatchResult = 2
+)
+
 // Data is a type constraint for implementations of block iterators over data
 // blocks. It's implemented by *rowblk.Iter and *colblk.DataBlockIter.
 //
@@ -78,6 +94,14 @@ type Data interface {
 	// NB: this is different from Valid which indicates whether the current *KV*
 	// is valid.
 	IsDataInvalidated() bool
+	// PrefixMatched reports whether the current key has the same prefix as
+	// the reference key from the last positioning operation:
+	//   - After SeekGE: the reference is the seek key's prefix.
+	//   - After Next: the reference is the previous row's prefix.
+	//
+	// Returns PrefixMatchUnknown if the information is not cheaply available
+	// (e.g. row format, transforms active, iterator invalid).
+	PrefixMatched() PrefixMatchResult
 
 	treesteps.Node
 }

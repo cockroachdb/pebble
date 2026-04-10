@@ -261,3 +261,128 @@ func BenchmarkDataBlockDecoderInit(b *testing.B) {
 		InitDataBlockMetadata(&testKeysSchema, &md, finished)
 	}
 }
+
+func TestDataBlockIterPrefixMatched(t *testing.T) {
+	const targetBlockSize = 32 << 10
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(0, seed))
+	// Use a moderate prefix size to ensure shared prefixes.
+	keys, values := makeTestKeyRandomKVs(rng, 4, 8, targetBlockSize)
+
+	// Build a data block.
+	var w DataBlockEncoder
+	w.Init(&testKeysSchema, NoTieringColumns())
+	var nRows int
+	for j := 0; w.Size() < targetBlockSize; j++ {
+		ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
+		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+		w.Add(ik, values[j], vp, kcmp, false /* isObsolete */, base.KVMeta{})
+		nRows++
+	}
+	blockData, _ := w.Finish(w.Rows(), w.Size())
+
+	var r DataBlockDecoder
+	bd := r.Init(&testKeysSchema, blockData)
+
+	split := testkeys.Comparer.Split
+	prefix := func(key []byte) []byte {
+		return key[:split(key)]
+	}
+
+	// Test with NoTransforms (should return Yes/No).
+	t.Run("NoTransforms", func(t *testing.T) {
+		var it DataBlockIter
+		it.InitOnce(&testKeysSchema, testkeys.Comparer,
+			getInternalValuer(func([]byte) base.InternalValue {
+				return base.MakeInPlaceValue(nil)
+			}), NoTieringColumns())
+		if err := it.Init(&r, bd, blockiter.Transforms{}, NoTieringColumns()); err != nil {
+			t.Fatal(err)
+		}
+		defer it.Close()
+
+		const numOps = 1000
+		var prevPrefix []byte
+		var valid bool
+		for op := 0; op < numOps; op++ {
+			if rng.IntN(3) == 0 || !valid {
+				// SeekGE with a random key.
+				seekKey := keys[rng.IntN(len(keys))]
+				kv := it.SeekGE(seekKey, base.SeekGEFlagsNone)
+				if kv != nil {
+					pm := it.PrefixMatched()
+					seekPfx := prefix(seekKey)
+					resultPfx := prefix(kv.K.UserKey)
+					eq := bytes.Equal(seekPfx, resultPfx)
+					if eq && pm != blockiter.PrefixMatchYes {
+						t.Fatalf("SeekGE(%q) -> %q: expected PrefixMatchYes, got %d", seekKey, kv.K.UserKey, pm)
+					}
+					if !eq && pm != blockiter.PrefixMatchNo {
+						t.Fatalf("SeekGE(%q) -> %q: expected PrefixMatchNo, got %d", seekKey, kv.K.UserKey, pm)
+					}
+					prevPrefix = append(prevPrefix[:0], resultPfx...)
+					valid = true
+				} else {
+					valid = false
+				}
+			} else {
+				// Next.
+				kv := it.Next()
+				if kv != nil {
+					pm := it.PrefixMatched()
+					resultPfx := prefix(kv.K.UserKey)
+					eq := bytes.Equal(prevPrefix, resultPfx)
+					if eq && pm != blockiter.PrefixMatchYes {
+						t.Fatalf("Next -> %q (prev prefix %q): expected PrefixMatchYes, got %d", kv.K.UserKey, prevPrefix, pm)
+					}
+					if !eq && pm != blockiter.PrefixMatchNo {
+						t.Fatalf("Next -> %q (prev prefix %q): expected PrefixMatchNo, got %d", kv.K.UserKey, prevPrefix, pm)
+					}
+					prevPrefix = append(prevPrefix[:0], resultPfx...)
+				} else {
+					valid = false
+				}
+			}
+		}
+	})
+
+	// Test with transforms active (should always return Unknown).
+	t.Run("WithTransforms", func(t *testing.T) {
+		var it DataBlockIter
+		it.InitOnce(&testKeysSchema, testkeys.Comparer,
+			getInternalValuer(func([]byte) base.InternalValue {
+				return base.MakeInPlaceValue(nil)
+			}), NoTieringColumns())
+		transforms := blockiter.Transforms{
+			SyntheticSeqNum: 42,
+		}
+		if err := it.Init(&r, bd, transforms, NoTieringColumns()); err != nil {
+			t.Fatal(err)
+		}
+		defer it.Close()
+
+		kv := it.First()
+		if kv != nil {
+			pm := it.PrefixMatched()
+			if pm != blockiter.PrefixMatchUnknown {
+				t.Fatalf("First with transforms: expected PrefixMatchUnknown, got %d", pm)
+			}
+		}
+		kv = it.Next()
+		if kv != nil {
+			pm := it.PrefixMatched()
+			if pm != blockiter.PrefixMatchUnknown {
+				t.Fatalf("Next with transforms: expected PrefixMatchUnknown, got %d", pm)
+			}
+		}
+		kv = it.SeekGE(keys[0], base.SeekGEFlagsNone)
+		if kv != nil {
+			pm := it.PrefixMatched()
+			if pm != blockiter.PrefixMatchUnknown {
+				t.Fatalf("SeekGE with transforms: expected PrefixMatchUnknown, got %d", pm)
+			}
+		}
+	})
+}
