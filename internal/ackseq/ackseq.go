@@ -49,6 +49,12 @@ func (s *S) Next() uint64 {
 // returning the number of newly acknowledged sequence numbers.
 func (s *S) Ack(seqNum uint64) (int, error) {
 	s.mu.Lock()
+	if seqNum < s.mu.base || seqNum >= s.mu.base+windowSize {
+		defer s.mu.Unlock()
+		return 0, errors.Errorf(
+			"ack seqNum %d out of valid range [%d, %d)",
+			errors.Safe(seqNum), errors.Safe(s.mu.base), errors.Safe(s.mu.base+windowSize))
+	}
 	if s.getLocked(seqNum) {
 		defer s.mu.Unlock()
 		return 0, errors.Errorf(
