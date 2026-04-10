@@ -60,10 +60,11 @@ func (a A) Copy(src []byte) (A, []byte) {
 	return a, alloc
 }
 
-// Reset returns the current chunk, resetting allocated memory back to none.
+// Reset the current chunk.
+//
 // Future allocations will use memory previously allocated by previous calls to
-// Alloc or Copy, so the caller must know know that none of the previously
+// Alloc or Copy, so the caller must ensure that none of the previously
 // allocated byte slices are still in use.
-func (a A) Reset() A {
-	return a[:0]
+func (a *A) Reset() {
+	*a = (*a)[:0]
 }
