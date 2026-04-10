@@ -539,6 +539,12 @@ func (i *Iter) IsLowerBound(k []byte) bool {
 	return i.cmp(i.firstUserKey, k) >= 0
 }
 
+// PrefixMatched implements the blockiter.Data interface. Row format does not
+// track prefix match information.
+func (i *Iter) PrefixMatched() blockiter.PrefixMatchResult {
+	return blockiter.PrefixMatchUnknown
+}
+
 // SeekGEWithMeta implements the base.MetaIterator interface.
 // Row format does not support additional KV metadata; so, we return an empty
 // KVMeta and just call the non-metadata version of SeekGE.
