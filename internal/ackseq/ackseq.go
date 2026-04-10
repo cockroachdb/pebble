@@ -58,7 +58,7 @@ func (s *S) Ack(seqNum uint64) (int, error) {
 	if s.getLocked(seqNum) {
 		defer s.mu.Unlock()
 		return 0, errors.Errorf(
-			"pending acks exceeds window size: %d has been acked, but %d has not",
+			"sequence number %d already acked (base=%d)",
 			errors.Safe(seqNum), errors.Safe(s.mu.base))
 	}
 

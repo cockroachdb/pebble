@@ -48,7 +48,7 @@ func TestAckOutOfOrder(t *testing.T) {
 	}
 }
 
-func TestAckDoubleAck(t *testing.T) {
+func TestAckDoubleAckAfterBaseAdvance(t *testing.T) {
 	s := New(0)
 	seq := s.Next()
 	if _, err := s.Ack(seq); err != nil {
@@ -65,6 +65,24 @@ func TestAckDoubleAck(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "out of valid range") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAckDoubleAckBeforeBaseAdvance(t *testing.T) {
+	s := New(0)
+	// Get two sequence numbers, ack the second one first.
+	s.Next()         // seq 0
+	seq1 := s.Next() // seq 1
+	if _, err := s.Ack(seq1); err != nil {
+		t.Fatal(err)
+	}
+	// Double-ack seq1 before base has advanced (base is still 0).
+	_, err := s.Ack(seq1)
+	if err == nil {
+		t.Fatal("expected error for double ack")
+	}
+	if !strings.Contains(err.Error(), "already acked") {
+		t.Fatalf("expected 'already acked' error, got: %v", err)
 	}
 }
 
