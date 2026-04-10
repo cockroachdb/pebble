@@ -1220,12 +1220,13 @@ func (b *Batch) ingestSST(tableNum base.TableNum, blobFileIDs []base.BlobFileID)
 		// Use InternalKeyKindIngestSSTWithBlobs when blob files are present.
 		// Encode blob file IDs in the value field.
 		// Format: count (varint) + blob file IDs (varints).
-		estimatedSize := binary.MaxVarintLen64 + len(blobFileIDs)*binary.MaxVarintLen64
-		valueBuf = make([]byte, estimatedSize)
+		maxSize := binary.MaxVarintLen64 + len(blobFileIDs)*binary.MaxVarintLen64
+		valueBuf = make([]byte, maxSize)
 		countLen := binary.PutUvarint(valueBuf, uint64(len(blobFileIDs)))
 		for _, blobID := range blobFileIDs {
 			countLen += binary.PutUvarint(valueBuf[countLen:], uint64(blobID))
 		}
+		valueBuf = valueBuf[:countLen]
 		b.prepareDeferredKeyValueRecord(keyLen, len(valueBuf), InternalKeyKindIngestSSTWithBlobs)
 		b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, FormatIngestBlobFiles)
 	} else {
