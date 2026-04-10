@@ -300,6 +300,11 @@ func (c *Comparer) EnsureDefaults() *Comparer {
 	return n
 }
 
+// HasPrefix returns true if the key's prefix equals the given prefix.
+func (c *Comparer) HasPrefix(key, prefix []byte) bool {
+	return bytes.Equal(c.Split.Prefix(key), prefix)
+}
+
 // DefaultComparer is the default implementation of the Comparer interface.
 // It uses the natural ordering, consistent with bytes.Compare.
 var DefaultComparer = &Comparer{
