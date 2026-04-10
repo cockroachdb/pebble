@@ -19,7 +19,18 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
+	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/cockroachdb/pebble/sstable/valblk"
+)
+
+// Possible values for singleLevelIterator.exhaustedBounds. See the field
+// comment for details on the distinction between these values.
+type exhaustedBounds int8
+
+const (
+	exhaustedLowerBound exhaustedBounds = -1
+	exhaustedUpperBound exhaustedBounds = +1
+	exhaustedPrefix     exhaustedBounds = +2
 )
 
 // singleLevelIterator iterates over an entire table of data. To seek for a given
@@ -151,13 +162,20 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	positionedUsingLatestBounds bool
 
 	// exhaustedBounds represents whether the iterator is exhausted for
-	// iteration by reaching the upper or lower bound. +1 when exhausted
-	// the upper bound, -1 when exhausted the lower bound, and 0 when
-	// neither. exhaustedBounds is also used for the TrySeekUsingNext
-	// optimization in twoLevelIterator and singleLevelIterator. Care should be
-	// taken in setting this in twoLevelIterator before calling into
-	// singleLevelIterator, given that these two iterators share this field.
-	exhaustedBounds int8
+	// iteration by reaching the upper or lower bound, or by prefix mismatch.
+	// Values: -1 when exhausted the lower bound, 0 when not exhausted, +1 when
+	// exhausted the upper bound, +2 when exhausted due to prefix mismatch
+	// during prefix iteration. The distinction between +1 and +2 is important:
+	// trySeekUsingNext checks exhaustedBounds == exhaustedUpperBound to short-circuit seeks
+	// (correct for upper-bound exhaustion, but not for prefix exhaustion where
+	// a new prefix may exist in the table). skipForward checks > 0, which
+	// correctly handles both.
+	//
+	// exhaustedBounds is also used for the TrySeekUsingNext optimization in
+	// twoLevelIterator and singleLevelIterator. Care should be taken in setting
+	// this in twoLevelIterator before calling into singleLevelIterator, given
+	// that these two iterators share this field.
+	exhaustedBounds exhaustedBounds
 
 	// useFilterBlock controls whether the bloom filter block in this sstable, if
 	// present, should be used for prefix seeks or not. In some cases it is
@@ -175,6 +193,10 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 	indexLoaded bool
 
 	transforms IterTransforms
+
+	// prefix is set during prefix iteration (SeekPrefixGE). When non-nil,
+	// Next() will return nil when the key's prefix no longer matches.
+	prefix []byte
 
 	// All fields above this field are cleared when resetting the iterator for reuse.
 	clearForResetBoundary struct{}
@@ -377,6 +399,39 @@ func (i *singleLevelIterator[I, PI, D, PD]) initBoundsForAlreadyLoadedBlock() {
 		// than or equal to every key in the block. No need to check the
 		// upper-bound again for this block.
 		i.blockUpper = nil
+	}
+}
+
+// prefixExhausted checks whether the given key's prefix no longer matches
+// i.prefix. Returns true if the prefix is exhausted (key doesn't match).
+// It uses PrefixMatched() when available, falling back to Comparer.HasPrefix().
+// When returning true, it sets exhaustedBounds = exhaustedPrefix.
+func (i *singleLevelIterator[I, PI, D, PD]) prefixExhausted(kv *base.InternalKV) bool {
+	if i.prefix == nil || kv == nil {
+		return false
+	}
+	// Note: whenever we switch to a new data block, we use First() which returns
+	// PrefixMatchUnknown.
+	switch PD(&i.data).PrefixMatched() {
+	case blockiter.PrefixMatchYes:
+		return false
+	case blockiter.PrefixMatchNo:
+		// Use +2 to distinguish prefix exhaustion from upper-bound exhaustion
+		// (+1). This is important because the trySeekUsingNext optimization in
+		// seekPrefixGE checks exhaustedBounds == exhaustedUpperBound to short-circuit: this is
+		// correct for upper-bound exhaustion (a higher seek key is also past the
+		// bound) but wrong for prefix exhaustion (a higher seek key may have a
+		// new prefix that exists in the table). Using +2 ensures that
+		// skipForward still stops (it checks > 0) but trySeekUsingNext doesn't
+		// incorrectly short-circuit.
+		i.exhaustedBounds = exhaustedPrefix
+		return true
+	default: // PrefixMatchUnknown
+		if i.reader.Comparer.HasPrefix(kv.K.UserKey, i.prefix) {
+			return false
+		}
+		i.exhaustedBounds = exhaustedPrefix
+		return true
 	}
 }
 
@@ -610,10 +665,17 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekGEUsingNextWithinBlock(
 	for j := 0; j < numStepsBeforeSeek; j++ {
 		curKeyCmp := i.cmp(kv.K.UserKey, key)
 		if curKeyCmp >= 0 {
+			// NB: Cannot use prefixExhausted here because PrefixMatched()
+			// compares against the previous row's prefix, which may differ
+			// from i.prefix during seeks. Use HasPrefix directly.
+			if i.prefix != nil && !i.reader.Comparer.HasPrefix(kv.K.UserKey, i.prefix) {
+				i.exhaustedBounds = exhaustedPrefix
+				return nil, true
+			}
 			if i.blockUpper != nil {
 				cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-					i.exhaustedBounds = +1
+					i.exhaustedBounds = exhaustedUpperBound
 					return nil, true
 				}
 			}
@@ -635,7 +697,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 		curKeyCmp := i.cmp(kv.K.UserKey, key)
 		if curKeyCmp < 0 {
 			if i.blockLower != nil && i.cmp(kv.K.UserKey, i.blockLower) < 0 {
-				i.exhaustedBounds = -1
+				i.exhaustedBounds = exhaustedLowerBound
 				return nil, true
 			}
 			return kv, true
@@ -654,6 +716,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) trySeekLTUsingPrevWithinBlock(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 	key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
+	// Clear prefix since this is not a prefix iteration.
+	i.prefix = nil
 	kv, _ = i.internalSeekGE(key, flags, false /* shouldReturnMeta */)
 	return kv
 }
@@ -661,6 +725,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekGE(
 func (i *singleLevelIterator[I, PI, D, PD]) SeekGEWithMeta(
 	key []byte, flags base.SeekGEFlags,
 ) (*base.InternalKV, base.KVMeta) {
+	// Clear prefix since this is not a prefix iteration.
+	i.prefix = nil
 	return i.internalSeekGE(key, flags, true /* shouldReturnMeta */)
 }
 
@@ -694,7 +760,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) internalSeekGE(
 		// The i.exhaustedBounds comparison indicates that the upper bound was
 		// reached. The i.data.isDataInvalidated() indicates that the sstable was
 		// exhausted.
-		if (i.exhaustedBounds == +1 || PD(&i.data).IsDataInvalidated()) && i.err == nil {
+		if (i.exhaustedBounds == exhaustedUpperBound || PD(&i.data).IsDataInvalidated()) && i.err == nil {
 			// Already exhausted, so return nil.
 			return nil, base.KVMeta{}
 		}
@@ -703,7 +769,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) internalSeekGE(
 			flags = flags.DisableTrySeekUsingNext()
 		}
 		// INVARIANT: flags.TrySeekUsingNext() => i.err == nil &&
-		// !i.exhaustedBounds==+1 && !i.data.isDataInvalidated(). That is,
+		// !i.exhaustedBounds == exhaustedUpperBound && !i.data.isDataInvalidated(). That is,
 		// data-exhausted and bounds-exhausted, as defined earlier, are both
 		// false. Ths makes it safe to clear out i.exhaustedBounds and i.err
 		// before calling into seekGEHelper.
@@ -732,7 +798,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 	if !i.ensureIndexLoaded() {
 		return nil, base.KVMeta{}
 	}
-	// Invariant: trySeekUsingNext => !i.data.isDataInvalidated() && i.exhaustedBounds != +1
+	// Invariant: trySeekUsingNext => !i.data.isDataInvalidated() && i.exhaustedBounds != exhaustedUpperBound
 
 	// SeekGE performs various step-instead-of-seeking optimizations: eg enabled
 	// by trySeekUsingNext, or by monotonically increasing bounds (i.boundsCmp).
@@ -764,25 +830,40 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 		// flags.TrySeekUsingNext().
 		if flags.TrySeekUsingNext() {
 			// seekPrefixGE or SeekGE has already ensured
-			// !i.data.isDataInvalidated() && i.exhaustedBounds != +1
+			// !i.data.isDataInvalidated() && i.exhaustedBounds != exhaustedUpperBound
 			curr := PD(&i.data).KV()
 			less := i.cmp(curr.K.UserKey, key) < 0
 			// We could be more sophisticated and confirm that the seek
 			// position is within the current block before applying this
 			// optimization. But there may be some benefit even if it is in
 			// the next block, since we can avoid seeking i.index.
+			//
+			// Temporarily suppress prefix checking during the seek loop.
+			// The Next() calls are stepping toward the target key and may
+			// cross prefix boundaries that don't indicate exhaustion.
+			savedPrefix := i.prefix
+			i.prefix = nil
 			for j := 0; less && j < numStepsBeforeSeek; j++ {
 				curr = i.Next()
 				if curr == nil {
+					i.prefix = savedPrefix
 					return nil, base.KVMeta{}
 				}
 				less = i.cmp(curr.K.UserKey, key) < 0
 			}
+			i.prefix = savedPrefix
 			if !less {
+				// NB: Cannot use prefixExhausted here because PrefixMatched()
+				// compares against the previous row's prefix, which may differ
+				// from i.prefix after stepping through intermediate keys.
+				if i.prefix != nil && !i.reader.Comparer.HasPrefix(curr.K.UserKey, i.prefix) {
+					i.exhaustedBounds = exhaustedPrefix
+					return nil, base.KVMeta{}
+				}
 				if i.blockUpper != nil {
 					cmp := i.cmp(curr.K.UserKey, i.blockUpper)
 					if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-						i.exhaustedBounds = +1
+						i.exhaustedBounds = exhaustedUpperBound
 						return nil, base.KVMeta{}
 					}
 				}
@@ -812,7 +893,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 			// below, else we require the separator to be strictly greater than
 			// upper.
 			if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
-				i.exhaustedBounds = +1
+				i.exhaustedBounds = exhaustedUpperBound
 				return nil, base.KVMeta{}
 			}
 			// Want to skip to the next block.
@@ -826,10 +907,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 			kv = PD(&i.data).SeekGE(key, flags.DisableTrySeekUsingNext())
 		}
 		if kv != nil {
+			if i.prefixExhausted(kv) {
+				return nil, base.KVMeta{}
+			}
 			if i.blockUpper != nil {
 				cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-					i.exhaustedBounds = +1
+					i.exhaustedBounds = exhaustedUpperBound
 					return nil, base.KVMeta{}
 				}
 			}
@@ -887,6 +971,10 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 			op.Finishf("= %s", kv.String())
 		}()
 	}
+	// Store the prefix for strict prefix iteration. Must be set before the
+	// synthetic key optimization, so deferred seeks have correct prefix context.
+	// The prefix slice is stable for the duration of prefix iteration.
+	i.prefix = prefix
 	if i.synthetic.atSyntheticKey {
 		// TODO(sachin) : We have to disable the optimization to avoid false data
 		// invalidation if there are back to back SeekPrefixGE calls. Currently
@@ -1019,7 +1107,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 		// The i.exhaustedBounds comparison indicates that the upper bound was
 		// reached. The i.data.isDataInvalidated() indicates that the sstable was
 		// exhausted.
-		if (i.exhaustedBounds == +1 || PD(&i.data).IsDataInvalidated()) && err == nil {
+		if (i.exhaustedBounds == exhaustedUpperBound || PD(&i.data).IsDataInvalidated()) && err == nil {
 			// Already exhausted, so return nil.
 			return nil, base.KVMeta{}
 		}
@@ -1028,7 +1116,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekPrefixGE(
 			flags = flags.DisableTrySeekUsingNext()
 		}
 		// INVARIANT: flags.TrySeekUsingNext() => err == nil &&
-		// !i.exhaustedBounds==+1 && !i.data.isDataInvalidated(). That is,
+		// !i.exhaustedBounds == exhaustedUpperBound && !i.data.isDataInvalidated(). That is,
 		// data-exhausted and bounds-exhausted, as defined earlier, are both
 		// false. Ths makes it safe to clear out i.exhaustedBounds and i.err
 		// before calling into seekGEHelper.
@@ -1167,7 +1255,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 		// i.data.Prev will skip all these obsolete keys, and could land on a key
 		// below the lower bound, requiring the lower bound check.
 		if i.blockLower != nil && i.cmp(ikv.K.UserKey, i.blockLower) < 0 {
-			i.exhaustedBounds = -1
+			i.exhaustedBounds = exhaustedLowerBound
 			return nil
 		}
 		return ikv
@@ -1191,6 +1279,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
+	// Clear prefix since this is not a prefix iteration.
+	i.prefix = nil
 
 	if i.readEnv.Virtual != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
@@ -1267,7 +1357,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 			// even though this is the current block's separator, the same
 			// user key can span multiple blocks.
 			if i.lower != nil && PI(&i.index).SeparatorLT(i.lower) {
-				i.exhaustedBounds = -1
+				i.exhaustedBounds = exhaustedLowerBound
 				return nil
 			}
 			// Want to skip to the previous block.
@@ -1277,7 +1367,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	if !dontSeekWithinBlock {
 		if ikv := PD(&i.data).SeekLT(key, flags); ikv != nil {
 			if i.blockLower != nil && i.cmp(ikv.K.UserKey, i.blockLower) < 0 {
-				i.exhaustedBounds = -1
+				i.exhaustedBounds = exhaustedLowerBound
 				return nil
 			}
 			return ikv
@@ -1313,6 +1403,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
+	// Clear prefix since this is not a prefix iteration.
+	i.prefix = nil
 
 	// If we have a lower bound, use SeekGE. Note that in general this is not
 	// supported usage, except when the lower bound is there because the table is
@@ -1343,6 +1435,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) FirstWithMeta() (
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
+	// Clear prefix since this is not a prefix iteration.
+	i.prefix = nil
 
 	// If we have a lower bound, use SeekGE. Note that in general this is not
 	// supported usage, except when the lower bound is there because the table is
@@ -1392,10 +1486,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal(
 			kv = PD(&i.data).First()
 		}
 		if kv != nil {
+			if i.prefixExhausted(kv) {
+				return nil, base.KVMeta{}
+			}
 			if i.blockUpper != nil {
 				cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-					i.exhaustedBounds = +1
+					i.exhaustedBounds = exhaustedUpperBound
 					return nil, base.KVMeta{}
 				}
 			}
@@ -1411,7 +1508,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal(
 		// orEqual=true below, else we require the separator to be strictly
 		// greater than upper.
 		if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
-			i.exhaustedBounds = +1
+			i.exhaustedBounds = exhaustedUpperBound
 			return nil, base.KVMeta{}
 		}
 		// Else fall through to skipForward.
@@ -1435,6 +1532,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) Last() (kv *base.InternalKV) {
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.synthetic.atSyntheticKey = false
+	// Clear prefix since this is not a prefix iteration.
+	i.prefix = nil
 
 	if i.readEnv.Virtual != nil {
 		return i.maybeVerifyKey(i.virtualLast())
@@ -1472,7 +1571,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 	if result == loadBlockOK {
 		if ikv := PD(&i.data).Last(); ikv != nil {
 			if i.blockLower != nil && i.cmp(ikv.K.UserKey, i.blockLower) < 0 {
-				i.exhaustedBounds = -1
+				i.exhaustedBounds = exhaustedLowerBound
 				return nil
 			}
 			return ikv
@@ -1485,7 +1584,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) lastInternal() *base.InternalKV {
 		// key.UserKey since even though this is the current block's
 		// separator, the same user key can span multiple blocks.
 		if i.lower != nil && PI(&i.index).SeparatorLT(i.lower) {
-			i.exhaustedBounds = -1
+			i.exhaustedBounds = exhaustedLowerBound
 			return nil
 		}
 	}
@@ -1533,8 +1632,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) nextInternal(
 	// Clear the tracking flag since this is no longer the next operation after SeekPrefixGE
 	i.lastOpWasSeekPrefixGE.Set(false)
 
-	if i.exhaustedBounds == +1 {
-		panic(errors.AssertionFailedf("Next called even though exhausted upper bound"))
+	if i.exhaustedBounds == exhaustedUpperBound || i.exhaustedBounds == exhaustedPrefix {
+		panic(errors.AssertionFailedf("Next called even though exhausted bounds (exhaustedBounds=%d)", i.exhaustedBounds))
 	}
 	i.exhaustedBounds = 0
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -1551,10 +1650,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) nextInternal(
 		kv = PD(&i.data).Next()
 	}
 	if kv != nil {
+		if i.prefixExhausted(kv) {
+			return nil, base.KVMeta{}
+		}
 		if i.blockUpper != nil {
 			cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-				i.exhaustedBounds = +1
+				i.exhaustedBounds = exhaustedUpperBound
 				return nil, base.KVMeta{}
 			}
 		}
@@ -1573,8 +1675,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base
 	}
 	// Clear the tracking flag since this is a relative positioning operation
 	i.lastOpWasSeekPrefixGE.Set(false)
-	if i.exhaustedBounds == +1 {
-		panic(errors.AssertionFailedf("NextPrefix called even though exhausted upper bound"))
+	if i.exhaustedBounds == exhaustedUpperBound {
+		panic(errors.AssertionFailedf("NextPrefix called even though exhausted bounds (exhaustedBounds=%d)", i.exhaustedBounds))
 	}
 	i.exhaustedBounds = 0
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -1588,7 +1690,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base
 		if i.blockUpper != nil {
 			cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-				i.exhaustedBounds = +1
+				i.exhaustedBounds = exhaustedUpperBound
 				return nil
 			}
 		}
@@ -1630,14 +1732,14 @@ func (i *singleLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base
 		// If upper is exclusive we pass orEqual=true below, else we require
 		// the separator to be strictly greater than upper.
 		if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
-			i.exhaustedBounds = +1
+			i.exhaustedBounds = exhaustedUpperBound
 			return nil
 		}
 	} else if kv := PD(&i.data).SeekGE(succKey, base.SeekGEFlagsNone); kv != nil {
 		if i.blockUpper != nil {
 			cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 			if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-				i.exhaustedBounds = +1
+				i.exhaustedBounds = exhaustedUpperBound
 				return nil
 			}
 		}
@@ -1659,7 +1761,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) Prev() (kv *base.InternalKV) {
 	}
 	// Clear the tracking flag since this is a relative positioning operation
 	i.lastOpWasSeekPrefixGE.Set(false)
-	if i.exhaustedBounds == -1 {
+	if i.exhaustedBounds == exhaustedLowerBound {
 		panic(errors.AssertionFailedf("Prev called even though exhausted lower bound"))
 	}
 	i.exhaustedBounds = 0
@@ -1671,7 +1773,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) Prev() (kv *base.InternalKV) {
 	}
 	if kv := PD(&i.data).Prev(); kv != nil {
 		if i.blockLower != nil && i.cmp(kv.K.UserKey, i.blockLower) < 0 {
-			i.exhaustedBounds = -1
+			i.exhaustedBounds = exhaustedLowerBound
 			return nil
 		}
 		return kv
@@ -1710,7 +1812,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward(
 			// we pass orEqual=true below, else we require the separator to be
 			// strictly greater than upper.
 			if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
-				i.exhaustedBounds = +1
+				i.exhaustedBounds = exhaustedUpperBound
 				return nil, base.KVMeta{}
 			}
 			continue
@@ -1758,10 +1860,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipForward(
 			}
 		}
 		if kv != nil {
+			if i.prefixExhausted(kv) {
+				return nil, base.KVMeta{}
+			}
 			if i.blockUpper != nil {
 				cmp := i.cmp(kv.K.UserKey, i.blockUpper)
 				if (!i.endKeyInclusive && cmp >= 0) || cmp > 0 {
-					i.exhaustedBounds = +1
+					i.exhaustedBounds = exhaustedUpperBound
 					return nil, base.KVMeta{}
 				}
 			}
@@ -1798,7 +1903,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			// keys <= key.UserKey since even though this is the current block's
 			// separator, the same user key can span multiple blocks.
 			if i.lower != nil && PI(&i.index).SeparatorLT(i.lower) {
-				i.exhaustedBounds = -1
+				i.exhaustedBounds = exhaustedLowerBound
 				return nil
 			}
 			continue
@@ -1810,13 +1915,13 @@ func (i *singleLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			// Check the previous block, but check the lower bound before doing
 			// that.
 			if i.lower != nil && PI(&i.index).SeparatorLT(i.lower) {
-				i.exhaustedBounds = -1
+				i.exhaustedBounds = exhaustedLowerBound
 				return nil
 			}
 			continue
 		}
 		if i.blockLower != nil && i.cmp(kv.K.UserKey, i.blockLower) < 0 {
-			i.exhaustedBounds = -1
+			i.exhaustedBounds = exhaustedLowerBound
 			return nil
 		}
 		return i.maybeVerifyKey(kv)

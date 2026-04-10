@@ -303,6 +303,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) internalSeekGE(
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
 	i.lastOpWasSeekPrefixGE.Set(false)
+	// Clear prefix since this is not a prefix iteration.
+	i.secondLevel.prefix = nil
 	if i.secondLevel.readEnv.Virtual != nil {
 		// Callers of SeekGE don't know about virtual sstable bounds, so we may
 		// have to internally restrict the bounds.
@@ -325,7 +327,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) internalSeekGE(
 	// trySeekUsingNext is true. See the comment about data-exhausted, PGDE, and
 	// bounds-exhausted near the top of the file.
 	if flags.TrySeekUsingNext() &&
-		(i.secondLevel.exhaustedBounds == +1 || (PD(&i.secondLevel.data).IsDataInvalidated() && PI(&i.secondLevel.index).IsDataInvalidated())) &&
+		(i.secondLevel.exhaustedBounds == exhaustedUpperBound || (PD(&i.secondLevel.data).IsDataInvalidated() && PI(&i.secondLevel.index).IsDataInvalidated())) &&
 		err == nil {
 		// Already exhausted, so return nil.
 		return nil, base.KVMeta{}
@@ -372,7 +374,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) internalSeekGE(
 			// the separator to be strictly greater than upper.
 			if i.secondLevel.upper != nil && PI(&i.topLevelIndex).SeparatorGT(
 				i.secondLevel.upper, !i.secondLevel.endKeyInclusive) {
-				i.secondLevel.exhaustedBounds = +1
+				i.secondLevel.exhaustedBounds = exhaustedUpperBound
 			}
 			// Fall through to skipForward.
 			dontSeekWithinSingleLevelIter = true
@@ -458,6 +460,9 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 		}()
 	}
 	i.lastOpWasSeekPrefixGE.Set(false)
+	// Store the prefix on the second-level iterator for strict prefix iteration.
+	// The prefix slice is stable for the duration of prefix iteration.
+	i.secondLevel.prefix = prefix
 
 	if i.secondLevel.synthetic.atSyntheticKey {
 		// TODO(sachin) : We have to disable the optimization to avoid false data
@@ -564,7 +569,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	// bounds-exhausted near the top of the file.
 	filterUsedAndDidNotMatch := i.useFilterBlock && !i.lastBloomFilterMatched
 	if flags.TrySeekUsingNext() && !filterUsedAndDidNotMatch &&
-		(i.secondLevel.exhaustedBounds == +1 || (PD(&i.secondLevel.data).IsDataInvalidated() && PI(&i.secondLevel.index).IsDataInvalidated())) &&
+		(i.secondLevel.exhaustedBounds == exhaustedUpperBound || (PD(&i.secondLevel.data).IsDataInvalidated() && PI(&i.secondLevel.index).IsDataInvalidated())) &&
 		err == nil {
 		// Already exhausted, so return nil.
 		return nil, base.KVMeta{}
@@ -641,7 +646,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 			// the separator to be strictly greater than upper.
 			if i.secondLevel.upper != nil && PI(&i.topLevelIndex).SeparatorGT(
 				i.secondLevel.upper, !i.secondLevel.endKeyInclusive) {
-				i.secondLevel.exhaustedBounds = +1
+				i.secondLevel.exhaustedBounds = exhaustedUpperBound
 			}
 			// Fall through to skipForward.
 			dontSeekWithinSingleLevelIter = true
@@ -703,7 +708,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 			return ikv, kvMeta
 		}
 	}
-	// NB: skipForward checks whether exhaustedBounds is already +1.
+	// NB: skipForward checks whether exhaustedBounds is exhaustedUpperBound or
+	// exhaustedPrefix.
 	return i.skipForward(shouldReturnMeta)
 }
 
@@ -784,6 +790,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
+	// Clear prefix since this is not a prefix iteration.
+	i.secondLevel.prefix = nil
 
 	if i.secondLevel.readEnv.Virtual != nil {
 		// Might have to fix upper bound since virtual sstable bounds are not
@@ -858,10 +866,10 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekLT(
 		// ikey.InternalKey.UserKey since even though this is the current block's
 		// separator, the same user key can span multiple index blocks.
 		if i.secondLevel.lower != nil && PI(&i.topLevelIndex).SeparatorLT(i.secondLevel.lower) {
-			i.secondLevel.exhaustedBounds = -1
+			i.secondLevel.exhaustedBounds = exhaustedLowerBound
 		}
 	}
-	// NB: skipBackward checks whether exhaustedBounds is already -1.
+	// NB: skipBackward checks whether exhaustedBounds is exhaustedLowerBound.
 	return i.skipBackward()
 }
 
@@ -886,6 +894,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) firstInternal(
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
+	// Clear prefix since this is not a prefix iteration.
+	i.secondLevel.prefix = nil
 
 	// If we have a lower bound, use SeekGE. Note that in general this is not
 	// supported usage, except when the lower bound is there because the table is
@@ -933,10 +943,10 @@ func (i *twoLevelIterator[I, PI, D, PD]) firstInternal(
 		// separator to be strictly greater than upper.
 		if i.secondLevel.upper != nil && PI(&i.topLevelIndex).SeparatorGT(
 			i.secondLevel.upper, !i.secondLevel.endKeyInclusive) {
-			i.secondLevel.exhaustedBounds = +1
+			i.secondLevel.exhaustedBounds = exhaustedUpperBound
 		}
 	}
-	// NB: skipForward checks whether exhaustedBounds is already +1.
+	// NB: skipForward checks whether exhaustedBounds > 0.
 	return i.skipForward(shouldReturnMeta)
 }
 
@@ -964,6 +974,8 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() (kv *base.InternalKV) {
 	i.lastOpWasSeekPrefixGE.Set(false)
 	// The synthetic key is no longer relevant and must be cleared.
 	i.secondLevel.synthetic.atSyntheticKey = false
+	// Clear prefix since this is not a prefix iteration.
+	i.secondLevel.prefix = nil
 
 	if i.secondLevel.readEnv.Virtual != nil {
 		if i.secondLevel.endKeyInclusive {
@@ -1004,10 +1016,10 @@ func (i *twoLevelIterator[I, PI, D, PD]) Last() (kv *base.InternalKV) {
 		// this is the current block's separator, the same user key can span
 		// multiple index blocks.
 		if i.secondLevel.lower != nil && PI(&i.topLevelIndex).SeparatorLT(i.secondLevel.lower) {
-			i.secondLevel.exhaustedBounds = -1
+			i.secondLevel.exhaustedBounds = exhaustedLowerBound
 		}
 	}
-	// NB: skipBackward checks whether exhaustedBounds is already -1.
+	// NB: skipBackward checks whether exhaustedBounds < 0.
 	return i.skipBackward()
 }
 
@@ -1079,7 +1091,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base.In
 		}()
 	}
 	i.lastOpWasSeekPrefixGE.Set(false)
-	if i.secondLevel.exhaustedBounds == +1 {
+	if i.secondLevel.exhaustedBounds == exhaustedUpperBound {
 		panic(errors.AssertionFailedf("Next called even though exhausted upper bound"))
 	}
 	// Seek optimization only applies until iterator is first positioned after SetBounds.
@@ -1124,7 +1136,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) NextPrefix(succKey []byte) (kv *base.In
 		// separator to be strictly greater than upper.
 		if i.secondLevel.upper != nil && PI(&i.topLevelIndex).SeparatorGT(
 			i.secondLevel.upper, !i.secondLevel.endKeyInclusive) {
-			i.secondLevel.exhaustedBounds = +1
+			i.secondLevel.exhaustedBounds = exhaustedUpperBound
 		}
 	} else if kv := i.secondLevel.SeekGE(succKey, base.SeekGEFlagsNone); kv != nil {
 		return i.secondLevel.maybeVerifyKey(kv)
@@ -1158,7 +1170,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward(
 	shouldReturnMeta bool,
 ) (*base.InternalKV, base.KVMeta) {
 	for {
-		if i.secondLevel.err != nil || i.secondLevel.exhaustedBounds > 0 {
+		if i.secondLevel.err != nil || i.secondLevel.exhaustedBounds == exhaustedUpperBound || i.secondLevel.exhaustedBounds == exhaustedPrefix {
 			return nil, base.KVMeta{}
 		}
 
@@ -1221,7 +1233,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward(
 				return i.secondLevel.maybeVerifyKey(ikv), kvMeta
 			}
 			// Next iteration will return if singleLevelIterator set
-			// exhaustedBounds = +1.
+			// exhaustedBounds > 0.
 		} else {
 			// result == loadBlockIrrelevant. Enforce the upper bound here since
 			// don't want to bother moving to the next entry in the top level
@@ -1233,7 +1245,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward(
 			// upper.
 			if i.secondLevel.upper != nil && PI(&i.topLevelIndex).SeparatorGT(
 				i.secondLevel.upper, !i.secondLevel.endKeyInclusive) {
-				i.secondLevel.exhaustedBounds = +1
+				i.secondLevel.exhaustedBounds = exhaustedUpperBound
 				// Next iteration will return.
 			}
 		}
@@ -1242,7 +1254,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipForward(
 
 func (i *twoLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 	for {
-		if i.secondLevel.err != nil || i.secondLevel.exhaustedBounds < 0 {
+		if i.secondLevel.err != nil || i.secondLevel.exhaustedBounds == exhaustedLowerBound {
 			return nil
 		}
 
@@ -1268,7 +1280,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			}
 
 			// Next iteration will return if singleLevelIterator set
-			// exhaustedBounds = -1.
+			// exhaustedBounds < 0.
 		} else {
 			// result == loadBlockIrrelevant. Enforce the lower bound here since
 			// don't want to bother moving to the previous entry in the top
@@ -1277,7 +1289,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) skipBackward() *base.InternalKV {
 			// even though this is the current block's separator, the same user
 			// key can span multiple index blocks.
 			if i.secondLevel.lower != nil && PI(&i.topLevelIndex).SeparatorLT(i.secondLevel.lower) {
-				i.secondLevel.exhaustedBounds = -1
+				i.secondLevel.exhaustedBounds = exhaustedLowerBound
 				// Next iteration will return.
 			}
 		}
