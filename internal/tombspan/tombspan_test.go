@@ -18,6 +18,14 @@ import (
 )
 
 func TestSet(t *testing.T) {
+	runSetTest(t, "testdata/set")
+}
+
+func TestPartialPromotion(t *testing.T) {
+	runSetTest(t, "testdata/partial_promotion")
+}
+
+func runSetTest(t *testing.T, path string) {
 	tables := make(map[base.DiskFileNum]*manifest.TableMetadata)
 	set := Make(testkeys.Comparer)
 	var versions []*manifest.Version
@@ -53,7 +61,7 @@ func TestSet(t *testing.T) {
 		return h
 	}
 
-	datadriven.RunTest(t, "testdata/set", func(t *testing.T, td *datadriven.TestData) string {
+	datadriven.RunTest(t, path, func(t *testing.T, td *datadriven.TestData) string {
 		switch td.Cmd {
 		case "define-version":
 			l0Organizer := manifest.NewL0Organizer(testkeys.Comparer, 64*1024 /* flushSplitBytes */)

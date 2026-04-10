@@ -1,0 +1,44 @@
+# Test that UpdateWithEarliestSnapshot correctly promotes only tombstones
+# whose HighestSeqNum is less than the earliest snapshot, even when there
+# are other pending tombstones with higher sequence numbers.
+
+define-version
+L2
+000001:[a#50,SET-d#50,SET] seqnums:[#50-#50]
+000002:[e#50,SET-h#50,SET] seqnums:[#50-#50]
+----
+v0:
+L2:
+  000001:[a#50,SET-d#50,SET] seqnums:[#50-#50] points:[a#50,SET-d#50,SET]
+  000002:[e#50,SET-h#50,SET] seqnums:[#50-#50] points:[e#50,SET-h#50,SET]
+
+# Add two tombstones with different sequence numbers: one high (300) and one
+# low (100).
+
+add
+L0.000001 [a, d) seqnums{point=[#100-#100]}
+L0.000002 [e, h) seqnums{point=[#300-#300]}
+----
+Pending:
+  L0.000001 [a, d) seqnums{point=[#100-#100]}
+  L0.000002 [e, h) seqnums{point=[#300-#300]}
+
+# Update with a snapshot at 200. This should promote the tombstone with
+# seqnum 100 (since 200 > 100) but NOT the tombstone with seqnum 300
+# (since 200 <= 300).
+
+update-with-earliest-snapshot 200
+----
+Pending:
+  L0.000002 [e, h) seqnums{point=[#300-#300]}
+Tombstoned spans:
+[a, d) = {point=100}
+
+# After advancing the snapshot past 300, the remaining tombstone should be
+# promoted too.
+
+update-with-earliest-snapshot 400
+----
+Tombstoned spans:
+[a, d) = {point=100}
+[e, h) = {point=300}

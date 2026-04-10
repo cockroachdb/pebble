@@ -280,7 +280,7 @@ type Set struct {
 	// pending is the set of WideTombstones that cannot yet be used to schedule
 	// delete-only compactions, because at least one of their tombstones are not
 	// yet in the last snapshot stripe. Pending is sorted by HighestSeqNum() in
-	// descending order.
+	// ascending order.
 	//
 	// When UpdateWithEarliestSnapshot is called with a sufficiently high
 	// snapshot sequence number, a prefix of the pending WideTombstones are
@@ -363,7 +363,7 @@ func mergeTombstonedSpans(a, b tombstoneSeqNums) tombstoneSeqNums {
 func (fs *Set) AddTombstones(tombstones ...WideTombstone) {
 	fs.pending = append(fs.pending, tombstones...)
 	slices.SortFunc(fs.pending, func(a, b WideTombstone) int {
-		return cmp.Compare(b.HighestSeqNum(), a.HighestSeqNum())
+		return cmp.Compare(a.HighestSeqNum(), b.HighestSeqNum())
 	})
 }
 
@@ -379,13 +379,12 @@ func (ts *Set) UpdateWithEarliestSnapshot(earliestSnapshot base.SeqNum) {
 	// tombstones are recorded. The highest tombstone sequence number must be in
 	// the last snapshot stripe for the WideTombstone to be used to actually
 	// delete data.
-	for i, h := range ts.pending {
-		if earliestSnapshot <= h.HighestSeqNum() {
-			// All remaining WideTombstones are not yet in the last snapshot
-			// stripe.
-			ts.pending = append(ts.pending[:0], ts.pending[i:]...)
-			return
-		}
+	n := 0
+	for n < len(ts.pending) && ts.pending[n].HighestSeqNum() < earliestSnapshot {
+		n++
+	}
+	// The first n tombstones are now in the last snapshot stripe.
+	for _, h := range ts.pending[:n] {
 		// This WideTombstone's tombstones are now in the last snapshot stripe.
 		// Add a tombstoned span.
 		s := tombstoneSeqNums{
@@ -397,8 +396,7 @@ func (ts *Set) UpdateWithEarliestSnapshot(earliestSnapshot base.SeqNum) {
 				return mergeTombstonedSpans(curr, s)
 			})
 	}
-	// All WideTombstones were added to the tombstoned spans.
-	ts.pending = ts.pending[:0]
+	ts.pending = slices.Delete(ts.pending, 0, n)
 }
 
 // DeleteOnlyCompaction describes a picked delete-only compaction, applying to a
