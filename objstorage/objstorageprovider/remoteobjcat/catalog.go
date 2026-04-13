@@ -395,6 +395,15 @@ func (c *Catalog) Checkpoint(fs vfs.FS, dir string) error {
 	if err != nil {
 		return err
 	}
+	// Sync the directory to ensure the catalog file is durable before creating
+	// the marker that references it. This prevents a crash from leaving the
+	// marker pointing to a non-existent catalog file. Without this sync, both
+	// the catalog and marker files would be unsynced until Move() completes,
+	// creating a race where a crash could include the marker but not the
+	// catalog on filesystems with unordered metadata updates.
+	if err := catalogMarker.SyncDir(); err != nil {
+		return err
+	}
 	if err := catalogMarker.Move(c.mu.catalogFilename); err != nil {
 		return err
 	}
