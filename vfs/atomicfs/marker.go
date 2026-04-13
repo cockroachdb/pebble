@@ -259,3 +259,16 @@ func (a *Marker) RemoveObsolete() error {
 	a.obsoleteFiles = nil
 	return nil
 }
+
+// SyncDir syncs the directory to ensure that any file creations or removals
+// within the directory are durable. This can be used to ensure atomicity
+// when multiple files need to be created before updating the marker.
+func (a *Marker) SyncDir() error {
+	if err := a.dirFD.Sync(); err != nil {
+		// Fsync errors are unrecoverable.
+		// See https://wiki.postgresql.org/wiki/Fsync_Errors and
+		// https://danluu.com/fsyncgate.
+		panic(errors.WithStack(err))
+	}
+	return nil
+}
