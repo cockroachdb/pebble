@@ -572,6 +572,15 @@ func (d *DB) writeCheckpointManifest(
 	if err != nil {
 		return err
 	}
+	// Sync the directory to ensure the MANIFEST file is durable before creating
+	// the marker that references it. This prevents a crash from leaving the
+	// marker pointing to a non-existent MANIFEST. Without this sync, both the
+	// MANIFEST and marker files would be unsynced until Move() completes,
+	// creating a race where a crash could include the marker but not the
+	// MANIFEST on filesystems with unordered metadata updates.
+	if err := manifestMarker.SyncDir(); err != nil {
+		return err
+	}
 	if err := manifestMarker.Move(base.MakeFilename(base.FileTypeManifest, manifestFileNum)); err != nil {
 		return err
 	}
