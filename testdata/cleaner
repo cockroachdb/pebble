@@ -20,6 +20,7 @@ open-dir: db
 open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
+sync: db
 create: db/marker.manifest.000001.MANIFEST-000001
 sync: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
@@ -153,6 +154,7 @@ open-dir: db1
 open-dir: db1
 create: db1/MANIFEST-000001
 sync: db1/MANIFEST-000001
+sync: db1
 create: db1/marker.manifest.000001.MANIFEST-000001
 sync: db1/marker.manifest.000001.MANIFEST-000001
 close: db1/marker.manifest.000001.MANIFEST-000001
@@ -255,6 +257,7 @@ close: db1/OPTIONS-000003
 open: db1_wal/000004.log (options: *vfs.sequentialReadsOption)
 close: db1_wal/000004.log
 create: db1/MANIFEST-000458
+sync: db1
 sync: db1/MANIFEST-000458
 create: db1/marker.manifest.000002.MANIFEST-000458
 sync: db1/marker.manifest.000002.MANIFEST-000458

@@ -200,7 +200,21 @@ func (vs *versionSet) create(
 		}
 	}
 	if err == nil {
-		// NB: Move() is responsible for syncing the data directory.
+		// Sync the directory to make the MANIFEST file durable before creating
+		// the marker that points to it. This prevents a crash from leaving the
+		// marker pointing to a non-existent MANIFEST. Without this sync, both
+		// the MANIFEST and marker files would be unsynced until Move() completes,
+		// creating a race where a crash could include the marker but not the
+		// MANIFEST on filesystems with unordered metadata updates.
+		if err = vs.manifestMarker.SyncDir(); err != nil {
+			vs.opts.Logger.Fatalf("MANIFEST directory sync failed: %v", err)
+		}
+	}
+	if err == nil {
+		// NB: Move() syncs the directory again after creating the marker file,
+		// making the marker itself durable. The two directory syncs ensure that
+		// MANIFEST is durable before marker creation, and marker is durable
+		// after creation, eliminating any race window.
 		if err = vs.manifestMarker.Move(base.MakeFilename(base.FileTypeManifest, vs.manifestFileNum)); err != nil {
 			vs.opts.Logger.Fatalf("MANIFEST set current failed: %v", err)
 		}
@@ -623,6 +637,15 @@ func (vs *versionSet) UpdateVersionLocked(
 				})
 				return errors.Wrap(err, "MANIFEST create failed")
 			}
+			// Sync the directory to make the MANIFEST file durable before creating
+			// the marker that points to it. This prevents a crash from leaving the
+			// marker pointing to a non-existent MANIFEST. Without this sync, both
+			// the MANIFEST and marker files would be unsynced until Move() completes,
+			// creating a race where a crash could include the marker but not the
+			// MANIFEST on filesystems with unordered metadata updates.
+			if err := vs.manifestMarker.SyncDir(); err != nil {
+				return errors.Wrap(err, "MANIFEST directory sync failed")
+			}
 		}
 
 		// Call ApplyAndUpdateVersionEdit before accumulating the version edit.
@@ -666,7 +689,10 @@ func (vs *versionSet) UpdateVersionLocked(
 			return errors.Wrap(err, "MANIFEST sync failed")
 		}
 		if newManifestFileNum != 0 {
-			// NB: Move() is responsible for syncing the data directory.
+			// NB: Move() syncs the directory again after creating the marker file,
+			// making the marker itself durable. The two directory syncs ensure that
+			// MANIFEST is durable before marker creation, and marker is durable
+			// after creation, eliminating any race window.
 			if err := vs.manifestMarker.Move(base.MakeFilename(base.FileTypeManifest, newManifestFileNum)); err != nil {
 				return errors.Wrap(err, "MANIFEST set current failed")
 			}
