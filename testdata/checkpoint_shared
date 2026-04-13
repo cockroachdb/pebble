@@ -167,6 +167,7 @@ sync-data: checkpoints/checkpoint1/MANIFEST-000001
 close: checkpoints/checkpoint1/MANIFEST-000001
 close: db/MANIFEST-000001
 open-dir: checkpoints/checkpoint1
+sync: checkpoints/checkpoint1
 create: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 sync-data: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint1/marker.manifest.000001.MANIFEST-000001
@@ -220,6 +221,7 @@ sync-data: checkpoints/checkpoint2/MANIFEST-000001
 close: checkpoints/checkpoint2/MANIFEST-000001
 close: db/MANIFEST-000001
 open-dir: checkpoints/checkpoint2
+sync: checkpoints/checkpoint2
 create: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
 sync-data: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint2/marker.manifest.000001.MANIFEST-000001
@@ -269,6 +271,7 @@ sync-data: checkpoints/checkpoint3/MANIFEST-000001
 close: checkpoints/checkpoint3/MANIFEST-000001
 close: db/MANIFEST-000001
 open-dir: checkpoints/checkpoint3
+sync: checkpoints/checkpoint3
 create: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
 sync-data: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
 close: checkpoints/checkpoint3/marker.manifest.000001.MANIFEST-000001
