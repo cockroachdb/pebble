@@ -538,6 +538,7 @@ sync-data: checkpoint/MANIFEST-000023
 close: checkpoint/MANIFEST-000023
 close: db/MANIFEST-000023
 open-dir: checkpoint
+sync: checkpoint
 create: checkpoint/marker.manifest.000001.MANIFEST-000023
 sync-data: checkpoint/marker.manifest.000001.MANIFEST-000023
 close: checkpoint/marker.manifest.000001.MANIFEST-000023
