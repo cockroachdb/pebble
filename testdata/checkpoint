@@ -14,6 +14,7 @@ open-dir: db
 open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
+sync: db
 create: db/marker.manifest.000001.MANIFEST-000001
 sync: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
@@ -730,6 +731,7 @@ sync-data: checkpoints/checkpoint5/000018.sst
 close: checkpoints/checkpoint5/000018.sst
 sync: checkpoints/checkpoint5
 create: checkpoints/checkpoint5/MANIFEST-000019
+sync: checkpoints/checkpoint5
 sync: checkpoints/checkpoint5/MANIFEST-000019
 create: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000019
 sync: checkpoints/checkpoint5/marker.manifest.000002.MANIFEST-000019
@@ -832,6 +834,7 @@ sync-data: checkpoints/checkpoint6/000018.sst
 close: checkpoints/checkpoint6/000018.sst
 sync: checkpoints/checkpoint6
 create: checkpoints/checkpoint6/MANIFEST-000019
+sync: checkpoints/checkpoint6
 sync: checkpoints/checkpoint6/MANIFEST-000019
 create: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000019
 sync: checkpoints/checkpoint6/marker.manifest.000002.MANIFEST-000019
@@ -911,6 +914,7 @@ open-dir: valsepdb
 open-dir: valsepdb
 create: valsepdb/MANIFEST-000001
 sync: valsepdb/MANIFEST-000001
+sync: valsepdb
 create: valsepdb/marker.manifest.000001.MANIFEST-000001
 sync: valsepdb/marker.manifest.000001.MANIFEST-000001
 close: valsepdb/marker.manifest.000001.MANIFEST-000001
