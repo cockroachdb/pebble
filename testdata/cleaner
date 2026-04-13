@@ -21,6 +21,7 @@ open-dir: db
 open-dir: db
 create: db/MANIFEST-000001
 sync: db/MANIFEST-000001
+sync: db
 create: db/marker.manifest.000001.MANIFEST-000001
 sync: db/marker.manifest.000001.MANIFEST-000001
 close: db/marker.manifest.000001.MANIFEST-000001
@@ -158,6 +159,7 @@ open-dir: db1
 open-dir: db1
 create: db1/MANIFEST-000001
 sync: db1/MANIFEST-000001
+sync: db1
 create: db1/marker.manifest.000001.MANIFEST-000001
 sync: db1/marker.manifest.000001.MANIFEST-000001
 close: db1/marker.manifest.000001.MANIFEST-000001
@@ -273,6 +275,7 @@ remove: db1/000345.blob
 sync: db1
 get-disk-usage: db1
 create: db1/MANIFEST-000459
+sync: db1
 sync: db1/MANIFEST-000459
 create: db1/marker.manifest.000002.MANIFEST-000459
 sync: db1/marker.manifest.000002.MANIFEST-000459
