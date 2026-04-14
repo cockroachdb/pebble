@@ -70,8 +70,7 @@ import (
 // The slab ends at the nearest unshadowed span boundary across all levels.
 // The slab state — per-level [minSeqNum, maxSeqNum) ranges, the next
 // boundary, and which levels are parked — is computed by
-// slabState.BuildForward / slabState.BuildBackward (see
-// merging_iter_v2_slab.go).
+// slabState.Build (see merging_iter_v2_slab.go).
 //
 // # Worked Example
 //
@@ -126,18 +125,15 @@ import (
 // When a slab boundary is reached (handleBoundaryForward /
 // handleBoundaryBackward), the merging iterator performs a slab transition:
 //
-//  1. Drain all co-located boundary keys at the same user key from the heap,
-//     advancing each level past its boundary. Multiple levels may have span
-//     boundaries at the same user key.
-//  2. Recompute the slab state via BuildForward / BuildBackward. This reads
-//     each level's updated span (the stashed span pointer is updated in
-//     place by the level iterator), finds visible RANGEDELs, sets per-level
-//     visibility ranges, and computes the next slab boundary.
-//  3. Unpark levels that were previously parked but are no longer shadowed
-//     (seek them to the slab boundary via SeekGE / SeekLT).
-//  4. Park levels that are now fully shadowed (clear their iterKV and
-//     exclude them from the heap).
-//  5. Rebuild the heap.
+//  1. Mark all co-located boundary keys at the same user key, removing them
+//     from the heap. The Next()/Prev() call to cross each boundary is
+//     deferred to avoid unnecessary file opens in level iterators.
+//  2. Recompute the slab state via Build. For each level, advance past the
+//     boundary (via Next()/Prev()) only if the level is not parked. Parked
+//     levels skip the call entirely — this is the key optimization. Unpark
+//     levels that were previously parked but are no longer shadowed by seeking
+//     them to the slab boundary.
+//  3. Rebuild the heap.
 //
 // # Parked Levels
 //
@@ -199,6 +195,10 @@ type mergingIterV2Level struct {
 	// RANGEDEL. A parked level's iterator is not positioned and produces
 	// no keys until unparked.
 	parked bool
+	// atBoundary is true when this level has a boundary key at the current
+	// slab boundary. The Next()/Prev() to cross it is deferred until we
+	// know whether the level will be parked.
+	atBoundary bool
 }
 
 func (level *mergingIterV2Level) Compare(cmp base.Compare, other *mergingIterV2Level) int {
@@ -286,7 +286,7 @@ func (m *mergingIterV2) First() (kv *base.InternalKV) {
 	}
 	m.err = nil
 	m.prefix = nil
-	for levelIdx, parked := range m.slab.BuildForward() {
+	for levelIdx, parked := range m.slab.Build(+1) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
@@ -310,7 +310,7 @@ func (m *mergingIterV2) seekGE(key []byte, flags base.SeekGEFlags) {
 	}
 	// TODO(radu): support TrySeekUsingNext.
 	flags = flags.DisableTrySeekUsingNext()
-	for levelIdx, parked := range m.slab.BuildForward() {
+	for levelIdx, parked := range m.slab.Build(+1) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
@@ -372,7 +372,8 @@ func (m *mergingIterV2) findNextEntry() *base.InternalKV {
 
 		// Handle boundary keys from level iters.
 		if level.iterKV.K.Kind() == base.InternalKeyKindSpanBoundary {
-			m.handleBoundaryForward(level)
+			m.slab.assertNextBoundary(level.iterKV.K.UserKey)
+			m.advanceSlabForward()
 			continue
 		}
 
@@ -403,56 +404,16 @@ func (m *mergingIterV2) addLevelStats(l *mergingIterV2Level) {
 	}
 }
 
-// handleBoundaryForward processes a boundary key at the top of the heap.
-// The boundary always matches the slab boundary, triggering a slab transition.
-func (m *mergingIterV2) handleBoundaryForward(level *mergingIterV2Level) {
-	if invariants.Enabled {
-		if m.slab.nextBoundary == nil || m.slab.cmp(level.iterKV.K.UserKey, m.slab.nextBoundary) != 0 {
-			panic(errors.AssertionFailedf(
-				"mergingIterV2: boundary key %s does not match slab boundary %v",
-				level.iterKV.K, m.slab.nextBoundary,
-			))
-		}
-	}
-	m.advanceSlabForward()
-}
-
 // advanceSlabForward handles a slab transition during forward iteration.
 func (m *mergingIterV2) advanceSlabForward() {
-	// Copy the slab boundary into a stable buffer. BuildForward below will
-	// reuse slab.nextBoundaryBuf, invalidating slab.nextBoundary.
-	m.keyBuf = append(m.keyBuf[:0], m.slab.nextBoundary...)
-	slabBoundary := m.keyBuf
+	top := m.heap.Top()
+	boundaryKey := top.iterKV.K.UserKey
 
-	// Drain all level boundary keys at slabBoundary from the heap.
-	for m.heap.Len() > 0 {
-		level := m.heap.Top()
-		if level.iterKV.K.Kind() != base.InternalKeyKindSpanBoundary {
-			break
-		}
-		if m.slab.cmp(level.iterKV.K.UserKey, slabBoundary) != 0 {
-			break
-		}
-		// Advance this level past its boundary. The level's stashed span
-		// pointer (level.span) is updated in-place by the iterator.
-		// TODO(radu): if the level becomes parked, this Next() call is not
-		// necessary and it can cause opening a new file in a level iterator.
-		level.iterKV = level.iter.Next()
-		if level.iterKV == nil {
-			if m.levelHasError(level) {
-				return
-			}
-			m.heap.PopTop()
-		} else {
-			m.heap.FixTop()
-		}
-	}
-
-	// If in prefix mode and the slab boundary is past the prefix, exhaust
+	// If in prefix mode and the boundary key is past the prefix, exhaust
 	// all levels. All matching-prefix keys have been returned. Don't seek
 	// any level past the prefix (preserves TrySeekUsingNext correctness
 	// for future seeks to different prefixes).
-	if m.prefix != nil && !bytes.Equal(m.prefix, m.split.Prefix(slabBoundary)) {
+	if m.prefix != nil && !bytes.Equal(m.prefix, m.split.Prefix(boundaryKey)) {
 		for i := range m.levels {
 			m.levels[i].iterKV = nil
 		}
@@ -460,33 +421,63 @@ func (m *mergingIterV2) advanceSlabForward() {
 		return
 	}
 
-	// Recompute the slab via BuildForward. Levels that were previously
-	// parked are unparked and seeked to the slab boundary; newly parked
-	// levels have their iterKV cleared.
-	for levelIdx, parked := range m.slab.BuildForward() {
+	// Mark all levels at the slab boundary. The actual Next() call is deferred to
+	// the Build loop below, where we can skip it for levels that become parked
+	// (avoiding unnecessary file opens in level iterators).
+	top.atBoundary = true
+	m.heap.PopTop()
+	for m.heap.Len() > 0 {
+		level := m.heap.Top()
+		if level.iterKV.K.Kind() != base.InternalKeyKindSpanBoundary {
+			break
+		}
+		if m.slab.cmp(level.iterKV.K.UserKey, boundaryKey) != 0 {
+			break
+		}
+		level.atBoundary = true
+		m.heap.PopTop()
+	}
+
+	// If some levels are parked, we will need the boundaryKey after potentially
+	// moving the iterator that produced it; make a copy.
+	if m.anyLevelParked() {
+		m.keyBuf = append(m.keyBuf[:0], boundaryKey...)
+		boundaryKey = m.keyBuf
+	}
+
+	// Recompute the slab. For levels at the boundary, call Next() to cross it
+	// (updating the span in place) only if the level is not parked. Parked levels
+	// skip the Next() entirely.
+	for levelIdx, parked := range m.slab.Build(+1) {
 		level := &m.levels[levelIdx]
 		wasParked := level.parked
 		level.parked = parked
 		if parked {
 			level.iterKV = nil
+			level.atBoundary = false
+		} else if level.atBoundary {
+			// Cross the boundary via Next(). This updates the level's
+			// stashed span pointer in place.
+			level.atBoundary = false
+			level.iterKV = level.iter.Next()
+			if level.iterKV == nil && m.levelHasError(level) {
+				return
+			}
 		} else if wasParked {
 			// Unpark: seek to slab boundary.
 			if m.prefix != nil {
 				// TODO(radu): use TrySeekUsingNext (we'll have to keep track of whether
 				// the iteration direction has changed).
-				level.iterKV = level.iter.SeekPrefixGE(
-					m.prefix, slabBoundary, base.SeekGEFlagsNone,
-				)
+				level.iterKV = level.iter.SeekPrefixGE(m.prefix, boundaryKey, base.SeekGEFlagsNone)
 			} else {
-				level.iterKV = level.iter.SeekGE(
-					slabBoundary, base.SeekGEFlagsNone,
-				)
+				level.iterKV = level.iter.SeekGE(boundaryKey, base.SeekGEFlagsNone)
 			}
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
 			}
 		}
-		// else: level was active and stays active; span already current.
+		// else: level was active, not at boundary, stays active; span
+		// already current.
 	}
 
 	// Rebuild the heap.
@@ -535,7 +526,7 @@ func (m *mergingIterV2) seekLT(key []byte, flags base.SeekLTFlags) {
 	if invariants.Enabled && flags.RelativeSeek() {
 		panic(errors.AssertionFailedf("invalid use of relative seek"))
 	}
-	for levelIdx, parked := range m.slab.BuildBackward() {
+	for levelIdx, parked := range m.slab.Build(-1) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
@@ -560,7 +551,7 @@ func (m *mergingIterV2) Last() (kv *base.InternalKV) {
 	}
 	m.err = nil
 	m.prefix = nil
-	for levelIdx, parked := range m.slab.BuildBackward() {
+	for levelIdx, parked := range m.slab.Build(-1) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
@@ -611,7 +602,8 @@ func (m *mergingIterV2) findPrevEntry() *base.InternalKV {
 
 		// Handle boundary keys from level iters.
 		if level.iterKV.K.Kind() == base.InternalKeyKindSpanBoundary {
-			m.handleBoundaryBackward(level)
+			m.slab.assertNextBoundary(level.iterKV.K.UserKey)
+			m.advanceSlabBackward()
 			continue
 		}
 
@@ -629,71 +621,62 @@ func (m *mergingIterV2) findPrevEntry() *base.InternalKV {
 	return nil
 }
 
-// handleBoundaryBackward processes a boundary key at the top of the heap
-// during backward iteration. The boundary always matches the slab boundary,
-// triggering a slab transition.
-func (m *mergingIterV2) handleBoundaryBackward(level *mergingIterV2Level) {
-	if invariants.Enabled {
-		if m.slab.nextBoundary == nil || m.slab.cmp(level.iterKV.K.UserKey, m.slab.nextBoundary) != 0 {
-			panic(errors.AssertionFailedf(
-				"mergingIterV2: boundary key %s does not match slab boundary %v",
-				level.iterKV.K, m.slab.nextBoundary,
-			))
-		}
-	}
-	m.advanceSlabBackward()
-}
-
 // advanceSlabBackward handles a slab transition during backward iteration.
 func (m *mergingIterV2) advanceSlabBackward() {
-	// Copy the slab boundary into a stable buffer. BuildBackward below will
-	// reuse slab.nextBoundaryBuf, invalidating slab.nextBoundary.
-	m.keyBuf = append(m.keyBuf[:0], m.slab.nextBoundary...)
-	lastSlabBoundary := m.keyBuf
+	top := m.heap.Top()
+	boundaryKey := top.iterKV.K.UserKey
 
-	// Drain all level boundary keys at slabBoundary from the heap.
+	// Mark all levels at the slab boundary (see advanceSlabForward). The actual
+	// Prev() call is deferred to the Build loop below, where we can skip it for
+	// levels that become parked (avoiding unnecessary file opens in level
+	// iterators).
+	top.atBoundary = true
+	m.heap.PopTop()
 	for m.heap.Len() > 0 {
 		level := m.heap.Top()
 		if level.iterKV.K.Kind() != base.InternalKeyKindSpanBoundary {
 			break
 		}
-		if m.slab.cmp(level.iterKV.K.UserKey, lastSlabBoundary) != 0 {
+		if m.slab.cmp(level.iterKV.K.UserKey, boundaryKey) != 0 {
 			break
 		}
-		// Advance this level past its boundary (backward). The level's
-		// stashed span pointer (level.span) is updated in-place by the
-		// iterator.
-		// TODO(radu): if the level becomes parked, this Prev() call is not
-		// necessary and it can cause opening a new file in a level iterator.
-		level.iterKV = level.iter.Prev()
-		if level.iterKV == nil {
-			if m.levelHasError(level) {
-				return
-			}
-			m.heap.PopTop()
-		} else {
-			m.heap.FixTop()
-		}
+		level.atBoundary = true
+		m.heap.PopTop()
 	}
 
-	// Recompute the slab via BuildBackward. Levels that were previously
-	// parked are unparked and seeked to the slab boundary; newly parked
-	// levels have their iterKV cleared.
-	for level, parked := range m.slab.BuildBackward() {
-		wasParked := m.levels[level].parked
-		m.levels[level].parked = parked
+	// Unless some levels are parked, we are only using boundary in the first loop
+	// below (before messing with the iterator).
+	if m.anyLevelParked() {
+		m.keyBuf = append(m.keyBuf[:0], boundaryKey...)
+		boundaryKey = m.keyBuf
+	}
+
+	// Recompute the slab. For levels at the boundary, call Prev() to cross it
+	// only if the level is not parked.
+	for levelIdx, parked := range m.slab.Build(-1) {
+		level := &m.levels[levelIdx]
+		wasParked := level.parked
+		level.parked = parked
 		if parked {
-			m.levels[level].iterKV = nil
+			level.iterKV = nil
+			level.atBoundary = false
+		} else if level.atBoundary {
+			// Cross the boundary via Prev(). This updates the level's
+			// stashed span pointer in place.
+			level.atBoundary = false
+			level.iterKV = level.iter.Prev()
+			if level.iterKV == nil && m.levelHasError(level) {
+				return
+			}
 		} else if wasParked {
 			// Unpark: seek to before slab boundary.
-			m.levels[level].iterKV = m.levels[level].iter.SeekLT(
-				lastSlabBoundary, base.SeekLTFlagsNone,
-			)
-			if m.levels[level].iterKV == nil && m.levelHasError(&m.levels[level]) {
+			level.iterKV = level.iter.SeekLT(boundaryKey, base.SeekLTFlagsNone)
+			if level.iterKV == nil && m.levelHasError(level) {
 				return
 			}
 		}
-		// else: level was active and stays active; span already current.
+		// else: level was active, not at boundary, stays active; span
+		// already current.
 	}
 
 	// Rebuild the heap.
@@ -717,7 +700,7 @@ func (m *mergingIterV2) switchToMinHeapAndNext() *base.InternalKV {
 	key.UserKey = m.keyBuf
 
 	// Recompute slab for forward iteration.
-	for levelIdx, parked := range m.slab.BuildForward() {
+	for levelIdx, parked := range m.slab.Build(+1) {
 		level := &m.levels[levelIdx]
 		if parked {
 			level.parked = true
@@ -764,7 +747,7 @@ func (m *mergingIterV2) switchToMaxHeapAndPrev() *base.InternalKV {
 	key.UserKey = m.keyBuf
 
 	// Recompute slab for backward iteration.
-	for levelIdx, parked := range m.slab.BuildBackward() {
+	for levelIdx, parked := range m.slab.Build(-1) {
 		level := &m.levels[levelIdx]
 		if parked {
 			level.parked = true
@@ -846,9 +829,21 @@ func (m *mergingIterV2) TreeStepsNode() treesteps.NodeInfo {
 	return info
 }
 
+func (m *mergingIterV2) anyLevelParked() bool {
+	for i := range m.levels {
+		if m.levels[i].parked {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *mergingIterV2) levelHasError(level *mergingIterV2Level) bool {
 	if err := level.iter.Error(); err != nil {
 		m.err = err
+		for i := range m.levels {
+			m.levels[i].atBoundary = false
+		}
 		m.heap.Reset()
 		return true
 	}

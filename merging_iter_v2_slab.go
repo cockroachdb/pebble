@@ -6,6 +6,7 @@ package pebble
 
 import (
 	"iter"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
@@ -17,9 +18,7 @@ import (
 
 // slabState manages the per-level span state, the per-level visibility ranges
 // ([minSeqNum, maxSeqNum) on each level), and the slab boundary for the
-// merging iterator. It is direction-aware: BuildForward uses span.Boundary
-// (which is the exclusive End during forward iteration); BuildBackward uses
-// span.Boundary (which is the inclusive Start during backward iteration).
+// merging iterator.
 type slabState struct {
 	cmp base.Compare
 	// snapshot is the SeqNum at which we are reading; only point/span keys with
@@ -32,33 +31,29 @@ type slabState struct {
 	// level index (0 = highest / most recent level).
 	levels []mergingIterV2Level
 
-	// nextBoundary is the user key where the current slab ends (forward
-	// iteration) or starts (backward iteration). It is the nearest
-	// unshadowed span.Boundary across all levels. nil means no boundary
-	// was found (the slab extends to the iterator bound).
-	nextBoundary    []byte
-	nextBoundaryBuf []byte
+	// nextBoundary is the nearest unshadowed span.Boundary across all
+	// non-parked levels. Only computed and used in invariant builds, for
+	// assertion checking in handleBoundaryForward / handleBoundaryBackward.
+	nextBoundary invariants.Value[[]byte]
 }
 
-// BuildForward returns an iterator over (levelIdx, parked) pairs for levels
-// 0 through len(s.levels)-1. For each yielded level, the caller must position
-// the level's iterator (which updates the stashed span) before continuing the
-// loop, unless parked is true (in which case the iterator should not be
-// positioned). The caller should also set the level's parked field accordingly.
+// Build returns an iterator over (levelIdx, parked) pairs for levels 0 through
+// len(s.levels)-1. For each yielded level, the caller must position the level's
+// iterator (which updates the stashed span) before continuing the loop, unless
+// parked is true (in which case the iterator should not be positioned). The
+// caller should also set the level's parked field accordingly.
 //
-// After the caller continues, BuildForward reads the level's span, detects
-// visible RANGEDELs, sets the level's [minSeqNum, maxSeqNum) visibility range,
-// updates the nextBoundary, and computes whether the next level should be
-// parked.
+// After the caller continues, Build reads the level's span, detects visible
+// RANGEDELs, sets the level's [minSeqNum, maxSeqNum) visibility range, and
+// computes whether the next level should be parked.
 //
 // Under invariants, asserts that a lower-level RANGEDEL has a strictly
 // smaller seqnum than any higher-level RANGEDEL.
 //
 // TODO(radu): avoid building and maintaining the slab in the common case where
 // no levels have any spans.
-func (s *slabState) BuildForward() iter.Seq2[int, bool] {
+func (s *slabState) Build(dir int8) iter.Seq2[int, bool] {
 	return func(yield func(int, bool) bool) {
-		s.nextBoundary = nil
 		highestRangeDelSeqNum := base.SeqNum(0)
 
 		parked := false
@@ -94,83 +89,40 @@ func (s *slabState) BuildForward() iter.Seq2[int, bool] {
 			}
 			sl.minSeqNum = highestRangeDelSeqNum
 
-			// Incremental nextBoundary: minimum span.Boundary across all
-			// active (non-parked) levels. During forward iteration,
-			// span.Boundary is the exclusive End of the span.
-			if boundary := sl.span.Boundary; boundary != nil {
-				if s.nextBoundary == nil || s.cmp(boundary, s.nextBoundary) < 0 {
-					s.nextBoundaryBuf = append(s.nextBoundaryBuf[:0], boundary...)
-					s.nextBoundary = s.nextBoundaryBuf
-				}
-			}
-
 			// All lower levels are parked if we have any visible RANGEDEL.
 			parked = highestRangeDelSeqNum > 0
 		}
+		s.calcNextBoundary(dir)
 	}
 }
 
-// BuildBackward is the backward-iteration counterpart of BuildForward. It
-// returns an iterator over (levelIdx, parked) pairs. For each yielded level,
-// the caller must position the level's iterator (which updates the stashed
-// span) before continuing the loop, unless parked is true. During backward
-// iteration, span.Boundary is the inclusive Start of the span.
+// calcNextBoundary computes the nearest unshadowed span boundary across all
+// non-parked levels and stores it in s.nextBoundary. Only does work in
+// invariant builds; in production builds this is a no-op.
 //
-// After the caller continues, BuildBackward reads the level's span, detects
-// visible RANGEDELs, sets the level's [minSeqNum, maxSeqNum) visibility range,
-// updates the nextBoundary, and computes whether the next level should be
-// parked.
-//
-// The nextBoundary is the maximum span.Boundary across all non-parked levels
-// (the nearest boundary in the backward direction).
-func (s *slabState) BuildBackward() iter.Seq2[int, bool] {
-	return func(yield func(int, bool) bool) {
-		s.nextBoundary = nil
-		highestRangeDelSeqNum := base.SeqNum(0)
-
-		parked := false
-		for levelIdx := range s.levels {
-			if !yield(levelIdx, parked) {
-				return
-			}
-			// After yield, the caller has positioned the level's iterator
-			// (updating the span) or left it unpositioned if parked.
-
-			if parked {
-				continue
-			}
-
-			sl := &s.levels[levelIdx]
-			// Set maxSeqNum: batch level uses batchSnapshot, others use snapshot.
-			if levelIdx == 0 && s.batchSnapshot != 0 {
-				sl.maxSeqNum = s.batchSnapshot
-			} else {
-				sl.maxSeqNum = s.snapshot
-			}
-
-			if highestRangeDelSeqNum == 0 {
-				highestRangeDelSeqNum = visibleRangeDelSeqNum(sl.span, sl.maxSeqNum)
-			} else if invariants.Enabled {
-				rdSeqNum := visibleRangeDelSeqNum(sl.span, sl.maxSeqNum)
-				if rdSeqNum >= highestRangeDelSeqNum {
-					panic(errors.AssertionFailedf("lower level has visible RANGEDEL with seqnum >= higher level's"))
-				}
-			}
-			sl.minSeqNum = highestRangeDelSeqNum
-
-			// Incremental nextBoundary: maximum span.Boundary across all
-			// active (non-parked) levels. During backward iteration,
-			// span.Boundary is the inclusive Start of the span.
-			if boundary := sl.span.Boundary; boundary != nil {
-				if s.nextBoundary == nil || s.cmp(boundary, s.nextBoundary) > 0 {
-					s.nextBoundaryBuf = append(s.nextBoundaryBuf[:0], boundary...)
-					s.nextBoundary = s.nextBoundaryBuf
-				}
-			}
-
-			// All lower levels are parked if we have any visible RANGEDEL.
-			parked = highestRangeDelSeqNum > 0
+// dir indicates the comparison direction: +1 for forward iteration (minimum
+// boundary), -1 for backward iteration (maximum boundary).
+func (s *slabState) calcNextBoundary(dir int8) {
+	if !invariants.Enabled {
+		return
+	}
+	var nb []byte
+	for i := range s.levels {
+		if s.levels[i].parked {
+			continue
 		}
+		if boundary := s.levels[i].span.Boundary; boundary != nil {
+			if nb == nil || s.cmp(boundary, nb) == -int(dir) {
+				nb = boundary
+			}
+		}
+	}
+	s.nextBoundary.Set(slices.Clone(nb))
+}
+
+func (s *slabState) assertNextBoundary(key []byte) {
+	if invariants.Enabled && s.cmp(s.nextBoundary.Get(), key) != 0 {
+		panic(errors.AssertionFailedf("boundary key %s does not match slab boundary %v", key, s.nextBoundary))
 	}
 }
 
