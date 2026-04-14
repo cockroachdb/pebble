@@ -14,7 +14,7 @@ on:
       go_version:
         description: 'Go version'
         required: false
-        default: '1.25'
+        default: '1.26'
         type: string
   workflow_dispatch:
     inputs:
@@ -29,7 +29,7 @@ on:
       go_version:
         description: 'Go version'
         required: false
-        default: '1.25'
+        default: '1.26'
         type: string
 
 jobs:
