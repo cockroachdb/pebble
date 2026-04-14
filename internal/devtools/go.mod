@@ -5,10 +5,10 @@ go 1.25.3
 require (
 	github.com/cockroachdb/cockroach v0.0.0-20250225003441-0fd08b1c5cc1
 	github.com/cockroachdb/crlfmt v0.0.0-20230505164321-461e8663b4b4
-	github.com/jordanlewis/gcassert v0.0.0-20241223220613-778fb585567f
-	github.com/kisielk/errcheck v1.9.0
-	golang.org/x/tools v0.31.0
-	honnef.co/go/tools v0.6.1
+	github.com/jordanlewis/gcassert v0.0.0-20260313214104-ad3fae17affe
+	github.com/kisielk/errcheck v1.10.0
+	golang.org/x/tools v0.44.0
+	honnef.co/go/tools v0.7.0
 )
 
 require (
@@ -16,7 +16,7 @@ require (
 	github.com/cockroachdb/gostdlib v1.19.0 // indirect
 	github.com/cockroachdb/ttycolor v0.0.0-20210902133924-c7d7dcdde4e8 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
-	golang.org/x/mod v0.24.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 )
