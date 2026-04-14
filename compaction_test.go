@@ -3356,6 +3356,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	// Create a file with high tombstone density.
 	meta := &manifest.TableMetadata{
@@ -3458,6 +3459,7 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	// Create a file with high tombstone density in L4.
 	metaL4 := &manifest.TableMetadata{
@@ -3542,6 +3544,7 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	// File in L4 with high tombstone density.
 	metaL4 := &manifest.TableMetadata{
@@ -3610,6 +3613,7 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	meta := &manifest.TableMetadata{
 		TableNum: 1,
@@ -3662,6 +3666,7 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	meta := &manifest.TableMetadata{
 		TableNum: 1,
