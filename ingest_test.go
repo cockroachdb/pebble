@@ -113,6 +113,7 @@ func TestIngestLoad(t *testing.T) {
 			}
 			var bv blobtest.Values
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writerOpts)
+			defer w.Close()
 			for _, data := range strings.Split(td.Input, "\n") {
 				if strings.HasPrefix(data, "Span: ") {
 					data = strings.TrimPrefix(data, "Span: ")
@@ -152,6 +153,7 @@ func TestIngestLoad(t *testing.T) {
 				FS:         mem,
 			}
 			opts.WithFSDefaults()
+			defer opts.private.fsCloser.Close()
 			lr, err := ingestLoad(context.Background(), opts, dbVersion, []string{"ext"}, nil, nil, nil, []base.TableNum{1})
 			if err != nil {
 				return err.Error()
@@ -251,6 +253,7 @@ func TestIngestLoadRand(t *testing.T) {
 		FS:       mem,
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 	opts.EnsureDefaults()
 	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, nil, pending)
 	require.NoError(t, err)
@@ -278,6 +281,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		FS:       mem,
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, []string{"invalid"}, nil, nil, nil, []base.TableNum{1}); err == nil {
 		t.Fatalf("expected error, but found success")
 	}
@@ -1489,6 +1493,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					}
 					opts.EnsureDefaults()
 					opts.WithFSDefaults()
+					defer opts.private.fsCloser.Close()
 					if len(d.CmdArgs) > 1 {
 						return fmt.Sprintf("%s expects at most 1 argument", d.Cmd)
 					}
