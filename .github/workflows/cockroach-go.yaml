@@ -14,7 +14,7 @@ on:
       bootstrap_go_version:
         description: 'Bootstrap Go version'
         required: false
-        default: '1.25'
+        default: '1.26'
         type: string
       go_branch:
         description: 'CockroachDB Go fork branch'
@@ -33,7 +33,7 @@ on:
       bootstrap_go_version:
         description: 'Bootstrap Go version'
         required: false
-        default: '1.25'
+        default: '1.26'
         type: string
       go_branch:
         description: 'CockroachDB Go fork branch'

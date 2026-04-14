@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-tests-with-custom-go.sh
 #
-# Downloads and builds a custom Go toolchain from cockcroachdb/go (specific
+# Downloads and builds a custom Go toolchain from cockroachdb/go (specific
 # branch), caches it in ~/.cache/cockcroachdb-go/<branch>/<sha>, and runs
 # `go test`.
 #
@@ -15,7 +15,7 @@ GO_REPO="https://github.com/cockroachdb/go.git"
 GO_SHA="${GO_SHA:-}"
 
 if [ -z "$GO_SHA" ]; then
-  GO_BRANCH="${GO_BRANCH:-cockroach-go1.23.12}"
+  GO_BRANCH="${GO_BRANCH:-cockroach-go1.26.2}"
   echo "==> Resolving latest SHA for branch $GO_BRANCH..."
   GO_SHA=$(git ls-remote "$GO_REPO" "refs/heads/$GO_BRANCH" | cut -f1)
 fi

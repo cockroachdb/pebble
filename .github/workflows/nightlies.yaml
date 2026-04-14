@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.25' ]
+        go: [ '1.26' ]
     uses: ./.github/workflows/tests.yaml
     with:
       sha: ${{ github.sha }}
@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.25' ]
+        go: [ '1.26' ]
     uses: ./.github/workflows/s390x.yaml
     with:
       sha: ${{ github.sha }}
@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.25' ]
+        go: [ '1.26' ]
     uses: ./.github/workflows/stress.yaml
     with:
       sha: ${{ github.sha }}
@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.25' ]
+        go: [ '1.26' ]
     uses: ./.github/workflows/instrumented.yaml
     with:
       sha: ${{ github.sha }}
@@ -54,19 +54,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.25' ]
+        go: [ '1.26' ]
     uses: ./.github/workflows/cockroach-go.yaml
     with:
       sha: ${{ github.sha }}
       file_issue_branch: 'master'
-      bootstrap_go_version: '1.25'
-      go_branch: 'cockroach-go1.25.3'
+      bootstrap_go_version: '1.26'
+      go_branch: 'cockroach-go1.26.2'
 
   crossversion:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.25' ]
+        go: [ '1.26' ]
     uses: ./.github/workflows/crossversion.yaml
     with:
       sha: ${{ github.sha }}
