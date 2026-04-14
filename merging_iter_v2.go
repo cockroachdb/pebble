@@ -421,21 +421,43 @@ func (m *mergingIterV2) advanceSlabForward() {
 		return
 	}
 
-	// Mark all levels at the slab boundary. The actual Next() call is deferred to
-	// the Build loop below, where we can skip it for levels that become parked
-	// (avoiding unnecessary file opens in level iterators).
-	top.atBoundary = true
-	m.heap.PopTop()
-	for m.heap.Len() > 0 {
-		level := m.heap.Top()
-		if level.iterKV.K.Kind() != base.InternalKeyKindSpanBoundary {
-			break
+	// Optimization: when a single level has a boundary here, and the current span
+	// on that level has no span keys, try to advance without rebuilding the slab.
+	// TODO(radu): we can relax these conditions to cover more cases.
+	if len(top.span.Keys) == 0 && !m.heap.MultipleLevelsAtSameBoundary() {
+		top.iterKV = top.iter.Next()
+		if top.iterKV == nil {
+			if m.levelHasError(top) {
+				return
+			}
+			m.heap.PopTop()
+		} else {
+			m.heap.FixTop()
 		}
-		if m.slab.cmp(level.iterKV.K.UserKey, boundaryKey) != 0 {
-			break
+		if len(top.span.Keys) == 0 {
+			// This was a spurious boundary: no keys before, no keys after. Nothing
+			// else in the slab has changed.
+			m.slab.calcNextBoundary(+1)
+			return
 		}
-		level.atBoundary = true
+		// We have to rebuild the slab in case some levels become parked.
+	} else {
+		// Mark all levels at the slab boundary. The actual Next() call is deferred to
+		// the Build loop below, where we can skip it for levels that become parked
+		// (avoiding unnecessary file opens in level iterators).
+		top.atBoundary = true
 		m.heap.PopTop()
+		for m.heap.Len() > 0 {
+			level := m.heap.Top()
+			if level.iterKV.K.Kind() != base.InternalKeyKindSpanBoundary {
+				break
+			}
+			if m.slab.cmp(level.iterKV.K.UserKey, boundaryKey) != 0 {
+				break
+			}
+			level.atBoundary = true
+			m.heap.PopTop()
+		}
 	}
 
 	// If some levels are parked, we will need the boundaryKey after potentially
@@ -626,22 +648,44 @@ func (m *mergingIterV2) advanceSlabBackward() {
 	top := m.heap.Top()
 	boundaryKey := top.iterKV.K.UserKey
 
-	// Mark all levels at the slab boundary (see advanceSlabForward). The actual
-	// Prev() call is deferred to the Build loop below, where we can skip it for
-	// levels that become parked (avoiding unnecessary file opens in level
-	// iterators).
-	top.atBoundary = true
-	m.heap.PopTop()
-	for m.heap.Len() > 0 {
-		level := m.heap.Top()
-		if level.iterKV.K.Kind() != base.InternalKeyKindSpanBoundary {
-			break
+	// Optimization: when a single level has a boundary here, and the current span
+	// on that level has no span keys, try to advance without rebuilding the slab.
+	// TODO(radu): we can relax these conditions to cover more cases.
+	if len(top.span.Keys) == 0 && !m.heap.MultipleLevelsAtSameBoundary() {
+		top.iterKV = top.iter.Prev()
+		if top.iterKV == nil {
+			if m.levelHasError(top) {
+				return
+			}
+			m.heap.PopTop()
+		} else {
+			m.heap.FixTop()
 		}
-		if m.slab.cmp(level.iterKV.K.UserKey, boundaryKey) != 0 {
-			break
+		if len(top.span.Keys) == 0 {
+			// This was a spurious boundary: no keys before, no keys after. Nothing
+			// else in the slab has changed.
+			m.slab.calcNextBoundary(-1)
+			return
 		}
-		level.atBoundary = true
+		// We have to rebuild the slab in case some levels become parked.
+	} else {
+		// Mark all levels at the slab boundary (see advanceSlabForward). The actual
+		// Prev() call is deferred to the Build loop below, where we can skip it for
+		// levels that become parked (avoiding unnecessary file opens in level
+		// iterators).
+		top.atBoundary = true
 		m.heap.PopTop()
+		for m.heap.Len() > 0 {
+			level := m.heap.Top()
+			if level.iterKV.K.Kind() != base.InternalKeyKindSpanBoundary {
+				break
+			}
+			if m.slab.cmp(level.iterKV.K.UserKey, boundaryKey) != 0 {
+				break
+			}
+			level.atBoundary = true
+			m.heap.PopTop()
+		}
 	}
 
 	// Unless some levels are parked, we are only using boundary in the first loop
@@ -911,6 +955,57 @@ func (h *mergingIterV2Heap) Init(lessCmp int) {
 
 func (h *mergingIterV2Heap) Top() *mergingIterV2Level {
 	return h.items[0].level
+}
+
+// MultipleLevelsAtSameBoundary returns true if the "second best" in the heap is at
+// the same boundary key as the top.
+func (h *mergingIterV2Heap) MultipleLevelsAtSameBoundary() bool {
+	if invariants.Enabled && h.Top().iterKV.Kind() != base.InternalKeyKindSpanBoundary {
+		panic(errors.AssertionFailedf("not at boundary"))
+	}
+
+	if h.Len() < 2 {
+		return false
+	}
+	secondBest := h.items[1].level
+	if h.Len() > 2 {
+		if h.items[0].winnerChild == winnerChildUnknown {
+			if h.less(2, 1) {
+				h.items[0].winnerChild = winnerChildRight
+			} else {
+				h.items[0].winnerChild = winnerChildLeft
+			}
+		}
+		if h.items[0].winnerChild == winnerChildRight {
+			secondBest = h.items[2].level
+		}
+	}
+	top := h.items[0].level
+	// Note: the index comparison is just an optimization: we know that if there
+	// are multiple levels with the same key, the smallest index is on top. We
+	// expect the bottom level to have the most boundaries, so it can save some
+	// comparisons.
+	return secondBest.index > top.index &&
+		secondBest.iterKV.Kind() == base.InternalKeyKindSpanBoundary &&
+		h.cmp(secondBest.iterKV.K.UserKey, top.iterKV.K.UserKey) == 0
+}
+
+// SecondBest returns the next best element in the heap (what would be the new
+// top if we popped the current top). The heap must have at least 2 elements.
+func (h *mergingIterV2Heap) SecondBest() *mergingIterV2Level {
+	if len(h.items) > 2 {
+		if h.items[0].winnerChild == winnerChildUnknown {
+			if h.less(2, 1) {
+				h.items[0].winnerChild = winnerChildRight
+			} else {
+				h.items[0].winnerChild = winnerChildLeft
+			}
+		}
+		if h.items[0].winnerChild == winnerChildRight {
+			return h.items[2].level
+		}
+	}
+	return h.items[1].level
 }
 
 func (h *mergingIterV2Heap) FixTop() {
