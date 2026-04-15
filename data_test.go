@@ -919,8 +919,8 @@ func runDBDefineCmd(td *datadriven.TestData, opts *Options) (*DB, error) {
 	valueSeparator.pbr = valsep.NewPreserveAllHotBlobReferences(
 		valueSeparator.metas,
 		0, /* outputreference depth */
-		d.opts.Experimental.ValueSeparationPolicy().MinimumSize,
-		d.opts.Experimental.ValueSeparationPolicy().MinimumMVCCGarbageSize,
+		d.opts.ValueSeparationPolicy().MinimumSize,
+		d.opts.ValueSeparationPolicy().MinimumMVCCGarbageSize,
 	)
 
 	var mem *memTable
@@ -1713,7 +1713,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 			}
 			opts.Cache = NewCache(size)
 		case "disable-multi-level":
-			opts.Experimental.MultiLevelCompactionHeuristic = OptionNoMultiLevel
+			opts.MultiLevelCompactionHeuristic = OptionNoMultiLevel
 		case "enable-table-stats":
 			enable, err := strconv.ParseBool(cmdArg.Vals[0])
 			if err != nil {
@@ -1884,7 +1884,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 					}
 				}
 			}
-			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+			opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 				return policy
 			}
 		case "wal-failover":
@@ -1899,7 +1899,7 @@ func parseDBOptionsArgs(opts *Options, args []datadriven.CmdArg) error {
 		}
 	}
 	if len(spanPolicies) > 0 {
-		opts.Experimental.SpanPolicyFunc = MakeStaticSpanPolicyFunc(opts.Comparer.Compare, spanPolicies...)
+		opts.SpanPolicyFunc = MakeStaticSpanPolicyFunc(opts.Comparer.Compare, spanPolicies...)
 	}
 	return nil
 }

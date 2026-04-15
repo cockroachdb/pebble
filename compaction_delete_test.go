@@ -71,7 +71,7 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			CompactionConcurrencyRange: func() (lower, upper int) { return 1, 1 },
 		}
 		opts.WithFSDefaults()
-		opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
+		opts.EnableDeleteOnlyCompactionExcises = func() bool { return true }
 		return opts, nil
 	}
 

@@ -819,7 +819,7 @@ func SetupBlobReaderProvider(
 
 	fileCacheSize := FileCacheSize(opts.MaxOpenFiles)
 	if opts.FileCache == nil {
-		fc = NewFileCache(opts.Experimental.FileCacheShards, fileCacheSize)
+		fc = NewFileCache(opts.FileCacheShards, fileCacheSize)
 	} else {
 		fc = opts.FileCache
 		fc.Ref()

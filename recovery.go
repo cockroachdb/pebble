@@ -384,7 +384,7 @@ func recoverVersion(
 	}
 
 	emptyVersion := manifest.NewInitialVersion(opts.Comparer)
-	newVersion, err := bve.Apply(emptyVersion, opts.Experimental.ReadCompactionRate)
+	newVersion, err := bve.Apply(emptyVersion, opts.ReadCompactionRate)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +392,7 @@ func recoverVersion(
 	rv.latest.l0Organizer.InitCompactingFileInfo(nil /* in-progress compactions */)
 	rv.latest.blobFiles.Init(&bve, manifest.BlobRewriteHeuristic{
 		CurrentTime: opts.private.timeNow,
-		MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
+		MinimumAge:  opts.ValueSeparationPolicy().RewriteMinimumAge,
 	})
 	rv.version = newVersion
 	return rv, nil

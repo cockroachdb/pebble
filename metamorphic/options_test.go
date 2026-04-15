@@ -70,24 +70,24 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"FS:",
 		"KeySchemas[",
 		"FileCache:",
-		"Experimental.CompactionScheduler",
+		"CompactionScheduler",
 		// Function pointers
 		"BlockPropertyCollectors:",
 		"EventListener:",
 		"CompactionConcurrencyRange:",
 		"MaxConcurrentDownloads:",
 		"DeletionPacing.BaselineRate:",
-		"Experimental.CompactionGarbageFractionForMaxConcurrency:",
-		"Experimental.DisableIngestAsFlushable:",
-		"Experimental.EnableColumnarBlocks:",
-		"Experimental.EnableValueBlocks:",
-		"Experimental.IneffectualSingleDeleteCallback:",
-		"Experimental.IngestSplit:",
-		"Experimental.RemoteStorage:",
-		"Experimental.SingleDeleteInvariantViolationCallback:",
-		"Experimental.EnableDeleteOnlyCompactionExcises:",
-		"Experimental.TombstoneDenseCompactionThreshold:",
-		"Experimental.ValueSeparationPolicy:",
+		"CompactionGarbageFractionForMaxConcurrency:",
+		"DisableIngestAsFlushable:",
+		"EnableColumnarBlocks:",
+		"EnableValueBlocks:",
+		"IneffectualSingleDeleteCallback:",
+		"IngestSplit:",
+		"RemoteStorage:",
+		"SingleDeleteInvariantViolationCallback:",
+		"EnableDeleteOnlyCompactionExcises:",
+		"TombstoneDenseCompactionThreshold:",
+		"ValueSeparationPolicy:",
 		"Levels[0].Compression:",
 		"Levels[0].TableFilterPolicy:",
 		"Levels[1].Compression:",
@@ -104,9 +104,9 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Levels[6].TableFilterPolicy:",
 		"WALFailover.FailoverOptions.UnhealthyOperationLatencyThreshold:",
 		// Floating points
-		"Experimental.PointTombstoneWeight:",
-		"Experimental.MultiLevelCompactionHeuristic.AddPropensity",
-		"Experimental.MultiLevelCompactionHeuristic",
+		"PointTombstoneWeight:",
+		"MultiLevelCompactionHeuristic.AddPropensity",
+		"MultiLevelCompactionHeuristic",
 	}
 
 	checkOptions := func(t *testing.T, o *TestOptions) {
@@ -121,12 +121,12 @@ func TestOptionsRoundtrip(t *testing.T) {
 
 		// In some options, the closure obscures the underlying value. Check
 		// that the return values are equal.
-		expectEqualFn(t, o.Opts.Experimental.EnableValueBlocks, parsed.Opts.Experimental.EnableValueBlocks)
-		expectEqualFn(t, o.Opts.Experimental.DisableIngestAsFlushable, parsed.Opts.Experimental.DisableIngestAsFlushable)
-		expectEqualFn(t, o.Opts.Experimental.IngestSplit, parsed.Opts.Experimental.IngestSplit)
-		expectEqualFn(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency, parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency)
-		expectEqualFn(t, o.Opts.Experimental.TombstoneDenseCompactionThreshold, parsed.Opts.Experimental.TombstoneDenseCompactionThreshold)
-		expectEqualFn(t, o.Opts.Experimental.ValueSeparationPolicy, parsed.Opts.Experimental.ValueSeparationPolicy)
+		expectEqualFn(t, o.Opts.EnableValueBlocks, parsed.Opts.EnableValueBlocks)
+		expectEqualFn(t, o.Opts.DisableIngestAsFlushable, parsed.Opts.DisableIngestAsFlushable)
+		expectEqualFn(t, o.Opts.IngestSplit, parsed.Opts.IngestSplit)
+		expectEqualFn(t, o.Opts.CompactionGarbageFractionForMaxConcurrency, parsed.Opts.CompactionGarbageFractionForMaxConcurrency)
+		expectEqualFn(t, o.Opts.TombstoneDenseCompactionThreshold, parsed.Opts.TombstoneDenseCompactionThreshold)
+		expectEqualFn(t, o.Opts.ValueSeparationPolicy, parsed.Opts.ValueSeparationPolicy)
 		expectEqualFn(t, o.Opts.DeletionPacing.BaselineRate, parsed.Opts.DeletionPacing.BaselineRate)
 		for i := range o.Opts.Levels {
 			expectEqualFn(t, o.Opts.Levels[i].Compression, parsed.Opts.Levels[i].Compression)

@@ -1432,7 +1432,7 @@ func TestIteratorValueRetrievalProfile(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	opts := &Options{}
 	opts.FormatMajorVersion = internalFormatNewest
-	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+	opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 		return ValueSeparationPolicy{
 			Enabled:                true,
 			MinimumSize:            1,
@@ -2570,7 +2570,7 @@ func BenchmarkIteratorScanNextPrefix(b *testing.B) {
 			FormatMajorVersion: FormatNewest,
 		}
 		opts.DisableAutomaticCompactions = true
-		opts.Experimental.EnableValueBlocks = func() bool { return enableValueBlocks }
+		opts.EnableValueBlocks = func() bool { return enableValueBlocks }
 		d, err := Open("", opts)
 		require.NoError(b, err)
 

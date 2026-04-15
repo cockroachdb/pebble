@@ -1781,8 +1781,8 @@ func TestOpenRatchetsNextFileNum(t *testing.T) {
 	memShared := remote.NewInMem()
 
 	opts := &Options{FS: mem, Logger: testutils.Logger{T: t}}
-	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
-	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	opts.CreateOnShared = remote.CreateOnSharedAll
+	opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		remote.MakeLocator(""): memShared,
 	})
 	d, err := Open("", opts)

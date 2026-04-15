@@ -1382,7 +1382,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 		var sm, la *TableMetadata
 		for _, f := range addedTables {
 			// NB: allowedSeeks is used for read triggered compactions. It is set using
-			// Options.Experimental.ReadCompactionRate which defaults to 32KB.
+			// Options.ReadCompactionRate which defaults to 32KB.
 			var allowedSeeks int64
 			if readCompactionRate != 0 {
 				allowedSeeks = int64(f.Size) / readCompactionRate

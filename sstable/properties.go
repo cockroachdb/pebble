@@ -57,11 +57,11 @@ type Properties struct {
 	// considered tombstone-dense.
 	//
 	// A block is considered tombstone dense if at least one of the following:
-	//  1. The block contains at least options.Experimental.NumDeletionsThreshold
+	//  1. The block contains at least options.NumDeletionsThreshold
 	//     point tombstones.
 	//  2. The ratio of the uncompressed size of point tombstones to the
 	//     uncompressed size of the block is at least
-	//     options.Experimental.DeletionSizeRatioThreshold.
+	//     options.DeletionSizeRatioThreshold.
 	//
 	// This statistic is used to determine eligibility for a tombstone density
 	// compaction.

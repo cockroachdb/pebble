@@ -43,13 +43,13 @@ func (o *Options) randomizeForTesting(t testing.TB) {
 		t.Logf("Running %s with format major version %s", t.Name(), o.FormatMajorVersion.String())
 	}
 	// Randomize value separation if using a format major version that supports it.
-	if o.FormatMajorVersion >= FormatValueSeparation && o.Experimental.ValueSeparationPolicy == nil {
+	if o.FormatMajorVersion >= FormatValueSeparation && o.ValueSeparationPolicy == nil {
 		switch rand.IntN(4) {
 		case 0:
 			// 25% of the time, use defaults (leave nil for EnsureDefaults).
 		case 1:
 			// 25% of the time, disable value separation.
-			o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+			o.ValueSeparationPolicy = func() ValueSeparationPolicy {
 				return ValueSeparationPolicy{Enabled: false}
 			}
 		default:
@@ -65,12 +65,12 @@ func (o *Options) randomizeForTesting(t testing.TB) {
 				GarbageRatioLowPriority:  lowPri,
 				GarbageRatioHighPriority: lowPri + rand.Float64()*(1.0-lowPri), // [lowPri, 1.0)
 			}
-			o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
+			o.ValueSeparationPolicy = func() ValueSeparationPolicy { return policy }
 		}
 	}
 	if rand.IntN(2) == 0 {
-		o.Experimental.IteratorTracking.PollInterval = 100 * time.Millisecond
-		o.Experimental.IteratorTracking.MaxAge = 10 * time.Second
+		o.IteratorTracking.PollInterval = 100 * time.Millisecond
+		o.IteratorTracking.MaxAge = 10 * time.Second
 	}
 	o.EnsureDefaults()
 }
@@ -486,22 +486,22 @@ func TestOptionsParse(t *testing.T) {
 			opts.Levels[0].BlockSize = 1024
 			opts.Levels[1].BlockSize = 2048
 			opts.Levels[2].BlockSize = 4096
-			opts.Experimental.CompactionDebtConcurrency = 100
+			opts.CompactionDebtConcurrency = 100
 			opts.FlushDelayDeleteRange = 10 * time.Second
 			opts.FlushDelayRangeKey = 11 * time.Second
-			opts.Experimental.LevelMultiplier = 5
+			opts.LevelMultiplier = 5
 			opts.DeletionPacing.BaselineRate = func() uint64 { return 200 }
 			opts.WALFailover = &WALFailoverOptions{
 				Secondary: wal.Dir{Dirname: "wal_secondary", FS: vfs.Default},
 			}
-			opts.Experimental.ReadCompactionRate = 300
-			opts.Experimental.ReadSamplingMultiplier = 400
-			opts.Experimental.NumDeletionsThreshold = 500
-			opts.Experimental.DeletionSizeRatioThreshold = 0.7
-			opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.2 }
-			opts.Experimental.FileCacheShards = 500
-			opts.Experimental.SecondaryCacheSizeBytes = 1024
-			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+			opts.ReadCompactionRate = 300
+			opts.ReadSamplingMultiplier = 400
+			opts.NumDeletionsThreshold = 500
+			opts.DeletionSizeRatioThreshold = 0.7
+			opts.TombstoneDenseCompactionThreshold = func() float64 { return 0.2 }
+			opts.FileCacheShards = 500
+			opts.SecondaryCacheSizeBytes = 1024
+			opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 				return ValueSeparationPolicy{
 					Enabled:               true,
 					MinimumSize:           1024,

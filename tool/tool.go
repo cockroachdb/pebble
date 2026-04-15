@@ -206,9 +206,9 @@ func (t *T) ConfigureSharedStorage(
 	createOnShared remote.CreateOnSharedStrategy,
 	createOnSharedLocator remote.Locator,
 ) {
-	t.opts.Experimental.RemoteStorage = s
-	t.opts.Experimental.CreateOnShared = createOnShared
-	t.opts.Experimental.CreateOnSharedLocator = createOnSharedLocator
+	t.opts.RemoteStorage = s
+	t.opts.CreateOnShared = createOnShared
+	t.opts.CreateOnSharedLocator = createOnSharedLocator
 }
 
 // debugReaderProvider is a cache-less ReaderProvider meant for debugging blob

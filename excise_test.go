@@ -87,16 +87,16 @@ func TestExcise(t *testing.T) {
 			opts.Levels[0].BlockSize = blockSize
 			opts.Levels[0].IndexBlockSize = 32 << 10
 		}
-		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator("external-locator"): remoteStorage,
 		})
-		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
+		opts.CreateOnShared = remote.CreateOnSharedNone
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts.DisableAutomaticCompactions = true
 		// Set this to true to add some testing for the virtual sstable validation
 		// code paths.
-		opts.Experimental.ValidateOnIngest = true
+		opts.ValidateOnIngest = true
 
 		var err error
 		d, err = Open("", opts)
@@ -452,23 +452,23 @@ func TestConcurrentExcise(t *testing.T) {
 		lel := MakeLoggingEventListener(testutils.Logger{T: t})
 		tel := TeeEventListener(lel, el)
 		opts1.EventListener = &tel
-		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts1.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator(""): sstorage,
 		})
-		opts1.Experimental.CreateOnShared = remote.CreateOnSharedAll
-		opts1.Experimental.CreateOnSharedLocator = remote.MakeLocator("")
+		opts1.CreateOnShared = remote.CreateOnSharedAll
+		opts1.CreateOnSharedLocator = remote.MakeLocator("")
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts1.DisableAutomaticCompactions = true
-		opts1.Experimental.MultiLevelCompactionHeuristic = OptionNoMultiLevel
+		opts1.MultiLevelCompactionHeuristic = OptionNoMultiLevel
 
 		opts2 := &Options{}
 		*opts2 = *opts1
-		opts2.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts2.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator(""): sstorage,
 		})
-		opts2.Experimental.CreateOnShared = remote.CreateOnSharedAll
-		opts2.Experimental.CreateOnSharedLocator = remote.MakeLocator("")
+		opts2.CreateOnShared = remote.CreateOnSharedAll
+		opts2.CreateOnSharedLocator = remote.MakeLocator("")
 		opts2.FS = mem2
 
 		var err error

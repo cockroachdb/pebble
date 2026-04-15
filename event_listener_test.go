@@ -643,7 +643,7 @@ func TestBlobCorruptionEvent(t *testing.T) {
 				},
 				DisableAutomaticCompactions: true,
 			}
-			opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+			opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 				return ValueSeparationPolicy{
 					Enabled:                true,
 					MinimumSize:            1,
