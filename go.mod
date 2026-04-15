@@ -10,7 +10,7 @@ require (
 	github.com/cockroachdb/errors v1.11.3
 	github.com/cockroachdb/metamorphic v0.0.0-20231108215700-4ba948b56895
 	github.com/cockroachdb/redact v1.1.5
-	github.com/cockroachdb/swiss v0.0.0-20250624142022-d6e517c1d961
+	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06
 	github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9
 	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e
