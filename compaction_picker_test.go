@@ -368,7 +368,7 @@ func TestCompactionPickerTargetLevel(t *testing.T) {
 					return 1, maxConcurrentCompactions
 				}
 				if d.HasArg("compaction-debt-concurrency") {
-					d.ScanArgs(t, "compaction-debt-concurrency", &opts.Experimental.CompactionDebtConcurrency)
+					d.ScanArgs(t, "compaction-debt-concurrency", &opts.CompactionDebtConcurrency)
 				}
 				if errMsg != "" {
 					return errMsg
@@ -562,7 +562,7 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 func TestCompactionPickerL0(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
-	opts.Experimental.L0CompactionConcurrency = 1
+	opts.L0CompactionConcurrency = 1
 
 	parseMeta := func(s string) (*manifest.TableMetadata, error) {
 		parts := strings.Split(s, ":")
@@ -733,7 +733,7 @@ const noSharedStorage = false
 func TestCompactionPickerConcurrency(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
-	opts.Experimental.L0CompactionConcurrency = 1
+	opts.L0CompactionConcurrency = 1
 	lowerConcurrencyLimit, upperConcurrencyLimit := 1, 4
 	opts.CompactionConcurrencyRange = func() (int, int) { return lowerConcurrencyLimit, upperConcurrencyLimit }
 
@@ -798,8 +798,8 @@ func TestCompactionPickerConcurrency(t *testing.T) {
 
 		case "pick-auto":
 			td.MaybeScanArgs(t, "l0_compaction_threshold", &opts.L0CompactionThreshold)
-			td.MaybeScanArgs(t, "l0_compaction_concurrency", &opts.Experimental.L0CompactionConcurrency)
-			td.MaybeScanArgs(t, "compaction_debt_concurrency", &opts.Experimental.CompactionDebtConcurrency)
+			td.MaybeScanArgs(t, "l0_compaction_concurrency", &opts.L0CompactionConcurrency)
+			td.MaybeScanArgs(t, "compaction_debt_concurrency", &opts.CompactionDebtConcurrency)
 			td.MaybeScanArgs(t, "concurrency", &lowerConcurrencyLimit, &upperConcurrencyLimit)
 
 			env := compactionEnv{
@@ -1136,7 +1136,7 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 	}
 
 	t.Logf("Test basic setup inputs behavior without multi level compactions")
-	opts.Experimental.MultiLevelCompactionHeuristic = OptionNoMultiLevel
+	opts.MultiLevelCompactionHeuristic = OptionNoMultiLevel
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs",
 		setupInputTest)
 
@@ -1146,12 +1146,12 @@ func TestPickedCompactionSetupInputs(t *testing.T) {
 		// multilevel compactions to be picked.
 		return 1, 2
 	}
-	opts.Experimental.MultiLevelCompactionHeuristic = optionAlwaysMultiLevel
+	opts.MultiLevelCompactionHeuristic = optionAlwaysMultiLevel
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_dummy",
 		setupInputTest)
 
 	t.Logf("Try Write-Amp Heuristic")
-	opts.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
+	opts.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 	datadriven.RunTest(t, "testdata/compaction_setup_inputs_multilevel_write_amp",
 		setupInputTest)
 }
@@ -1371,7 +1371,7 @@ func TestCompactionPickerPickFile(t *testing.T) {
 				Logger:                      testutils.Logger{T: t},
 				DisableAutomaticCompactions: true,
 			}
-			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+			opts.CompactionScheduler = func() CompactionScheduler {
 				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 			}
 
@@ -1539,7 +1539,7 @@ func TestCompactionPickerScores(t *testing.T) {
 				FormatMajorVersion:          FormatNewest,
 				Logger:                      testutils.Logger{T: t},
 			}
-			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+			opts.CompactionScheduler = func() CompactionScheduler {
 				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 			}
 			var err error

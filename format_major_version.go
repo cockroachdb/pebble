@@ -486,7 +486,7 @@ func (d *DB) TableFormat() sstable.TableFormat {
 		// value blocks were conditional on an experimental setting. In format
 		// major versions with maximum table formats of Pebblev4 and higher,
 		// value blocks are always enabled.
-		if d.opts.Experimental.EnableValueBlocks == nil || !d.opts.Experimental.EnableValueBlocks() {
+		if d.opts.EnableValueBlocks == nil || !d.opts.EnableValueBlocks() {
 			f = sstable.TableFormatPebblev2
 		}
 	}
@@ -502,7 +502,7 @@ func (d *DB) BlobFileFormat() blob.FileFormat {
 // shouldCreateShared returns true if the database should use shared objects
 // when creating new objects on the given level.
 func (d *DB) shouldCreateShared(targetLevel int) bool {
-	return remote.ShouldCreateShared(d.opts.Experimental.CreateOnShared, targetLevel) &&
+	return remote.ShouldCreateShared(d.opts.CreateOnShared, targetLevel) &&
 		d.FormatMajorVersion() >= FormatMinForSharedObjects
 }
 

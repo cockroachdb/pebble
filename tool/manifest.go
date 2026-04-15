@@ -169,7 +169,7 @@ func (m *manifestT) runDump(cmd *cobra.Command, args []string) {
 			if comparer != nil {
 				l0Organizer := manifest.NewL0Organizer(comparer, 0 /* flushSplitBytes */)
 				emptyVersion := manifest.NewInitialVersion(comparer)
-				v, err := bve.Apply(emptyVersion, m.opts.Experimental.ReadCompactionRate)
+				v, err := bve.Apply(emptyVersion, m.opts.ReadCompactionRate)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s\n", err)
 					return
@@ -548,7 +548,7 @@ func (m *manifestT) runCheck(cmd *cobra.Command, args []string) {
 					l0Organizer = manifest.NewL0Organizer(cmp, 0 /* flushSplitBytes */)
 					v = manifest.NewInitialVersion(cmp)
 				}
-				newv, err := bve.Apply(v, m.opts.Experimental.ReadCompactionRate)
+				newv, err := bve.Apply(v, m.opts.ReadCompactionRate)
 				if err != nil {
 					fmt.Fprintf(stdout, "%s: offset: %d err: %s\n",
 						arg, offset, err)

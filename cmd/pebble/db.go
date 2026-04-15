@@ -78,7 +78,7 @@ func newPebbleDB(dir string) DB {
 	// Enable value separation. Note the minimum size of 512 means that only the
 	// variant of the ycsb benchmarks that uses 1024 values will result in any
 	// value separation.
-	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+	opts.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{
 			Enabled:                  true,
 			MinimumSize:              512,
@@ -91,7 +91,7 @@ func newPebbleDB(dir string) DB {
 	}
 
 	// Running the tool should not start compactions due to garbage.
-	opts.Experimental.CompactionGarbageFractionForMaxConcurrency = func() float64 {
+	opts.CompactionGarbageFractionForMaxConcurrency = func() float64 {
 		return -1.0
 	}
 	for i := 0; i < len(opts.Levels); i++ {
@@ -114,13 +114,13 @@ func newPebbleDB(dir string) DB {
 	}
 
 	if pathToLocalSharedStorage != "" {
-		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			// Store all shared objects on local disk, for convenience.
 			remote.MakeLocator(""): remote.NewLocalFS(pathToLocalSharedStorage, vfs.Default),
 		})
-		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+		opts.CreateOnShared = remote.CreateOnSharedAll
 		if secondaryCacheSize != 0 {
-			opts.Experimental.SecondaryCacheSizeBytes = secondaryCacheSize
+			opts.SecondaryCacheSizeBytes = secondaryCacheSize
 		}
 	}
 

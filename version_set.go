@@ -534,7 +534,7 @@ func (vs *versionSet) UpdateVersionLocked(
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST accumulate failed")
 		}
-		newVersion, err = bulkEdit.Apply(currentVersion, vs.opts.Experimental.ReadCompactionRate)
+		newVersion, err = bulkEdit.Apply(currentVersion, vs.opts.ReadCompactionRate)
 		if err != nil {
 			return errors.Wrap(err, "MANIFEST apply failed")
 		}

@@ -200,7 +200,7 @@ func buildSeparatedValuesDB(
 		MemTableSize:            2 << 20,
 		L0CompactionThreshold:   2,
 	}
-	o.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+	o.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{
 			Enabled:               true,
 			MinimumSize:           50,

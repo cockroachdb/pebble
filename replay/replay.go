@@ -887,7 +887,7 @@ func (r *Runner) prepareWorkloadSteps(ctx context.Context) error {
 				}
 
 				// Apply the edit.
-				v, err = bve.Apply(v, r.Opts.Experimental.ReadCompactionRate)
+				v, err = bve.Apply(v, r.Opts.ReadCompactionRate)
 				if err != nil {
 					return err
 				}

@@ -72,11 +72,11 @@ func TestScanStatistics(t *testing.T) {
 				sstable.NewTestKeysBlockPropertyCollector,
 			},
 		}
-		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator(""): remote.NewInMem(),
 		})
-		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
-		opts.Experimental.CreateOnSharedLocator = remote.MakeLocator("")
+		opts.CreateOnShared = remote.CreateOnSharedAll
+		opts.CreateOnSharedLocator = remote.MakeLocator("")
 		opts.DisableAutomaticCompactions = true
 		opts.EnsureDefaults()
 		opts.WithFSDefaults()
@@ -248,12 +248,12 @@ func TestScanInternal(t *testing.T) {
 				sstable.NewTestKeysBlockPropertyCollector,
 			},
 		}
-		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator("external-storage"): extStorage,
 			remote.MakeLocator(""):                 remote.NewInMem(),
 		})
-		opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
-		opts.Experimental.CreateOnSharedLocator = remote.MakeLocator("")
+		opts.CreateOnShared = remote.CreateOnSharedAll
+		opts.CreateOnSharedLocator = remote.MakeLocator("")
 		opts.DisableAutomaticCompactions = true
 		opts.EnsureDefaults()
 		opts.WithFSDefaults()
@@ -313,7 +313,7 @@ func TestScanInternal(t *testing.T) {
 					return nil, err
 				}
 				if !v {
-					opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
+					opts.CreateOnShared = remote.CreateOnSharedNone
 				}
 			}
 		}
