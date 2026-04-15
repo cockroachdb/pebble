@@ -110,21 +110,21 @@ func parseOptions(
 				}
 			case "TestOptions.enable_value_blocks":
 				opts.enableValueBlocks = true
-				opts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
+				opts.Opts.EnableValueBlocks = func() bool { return true }
 			case "TestOptions.disable_value_blocks_for_ingest_sstables":
 				opts.disableValueBlocksForIngestSSTables = true
 			case "TestOptions.async_apply_to_db":
 				opts.asyncApplyToDB = true
 			case "TestOptions.shared_storage_enabled":
 				opts.sharedStorageEnabled = true
-				if opts.Opts.Experimental.CreateOnShared == remote.CreateOnSharedNone {
-					opts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+				if opts.Opts.CreateOnShared == remote.CreateOnSharedNone {
+					opts.Opts.CreateOnShared = remote.CreateOnSharedAll
 				}
 			case "TestOptions.external_storage_enabled":
 				opts.externalStorageEnabled = true
 			case "TestOptions.secondary_cache_enabled":
 				opts.secondaryCacheEnabled = true
-				opts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
+				opts.Opts.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
 			case "TestOptions.seed_efos":
 				v, err := strconv.ParseUint(value, 10, 64)
 				if err != nil {
@@ -152,7 +152,7 @@ func parseOptions(
 			case "TestOptions.ingest_split":
 				// TODO(radu): this should be on by default.
 				opts.ingestSplit = true
-				opts.Opts.Experimental.IngestSplit = func() bool {
+				opts.Opts.IngestSplit = func() bool {
 					return true
 				}
 			case "TestOptions.use_shared_replicate":
@@ -164,7 +164,7 @@ func parseOptions(
 				opts.useExcise = true
 			case "TestOptions.use_delete_only_compaction_excises":
 				opts.useDeleteOnlyCompactionExcises = true
-				opts.Opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool {
+				opts.Opts.EnableDeleteOnlyCompactionExcises = func() bool {
 					return opts.useDeleteOnlyCompactionExcises
 				}
 			case "TestOptions.disable_downloads":
@@ -309,9 +309,9 @@ func defaultOptions(kf KeyFormat) *pebble.Options {
 		BlockPropertyCollectors: kf.BlockPropertyCollectors,
 	}
 	opts.Levels[0].TableFilterPolicy = func() pebble.TableFilterPolicy { return bloom.FilterPolicy(10) }
-	opts.Experimental.IngestSplit = func() bool { return false }
+	opts.IngestSplit = func() bool { return false }
 
-	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+	opts.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{
 			Enabled:                  true,
 			MinimumSize:              5,
@@ -671,11 +671,11 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	opts.FormatMajorVersion = minimumFormatMajorVersion
 	n := int(newestFormatMajorVersionToTest - opts.FormatMajorVersion)
 	opts.FormatMajorVersion += pebble.FormatMajorVersion(rng.IntN(n + 1))
-	opts.Experimental.L0CompactionConcurrency = 1 + rng.IntN(4)          // 1-4
-	opts.Experimental.LevelMultiplier = 5 * int(randPowerOf2(rng, 0, 6)) // 5 - 320
+	opts.L0CompactionConcurrency = 1 + rng.IntN(4)          // 1-4
+	opts.LevelMultiplier = 5 * int(randPowerOf2(rng, 0, 6)) // 5 - 320
 	targetByteDeletionRate := randPowerOf2(rng, 20, 30)                  // 1MB - 1GB
 	opts.DeletionPacing.BaselineRate = func() uint64 { return targetByteDeletionRate }
-	opts.Experimental.ValidateOnIngest = rng.IntN(2) != 0
+	opts.ValidateOnIngest = rng.IntN(2) != 0
 	opts.L0CompactionThreshold = 1 + rng.IntN(100)                 // 1 - 100
 	opts.L0CompactionFileThreshold = int(randPowerOf2(rng, 0, 10)) // 1 - 1024
 	opts.L0StopWritesThreshold = randInRange(rng, 50, 150)         // 50 - 150
@@ -693,7 +693,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	}
 	// [-0.2, 0.4], in steps of 0.2.
 	garbageFrac := float64(rng.IntN(5))/5.0 - 0.2
-	opts.Experimental.CompactionGarbageFractionForMaxConcurrency = func() float64 {
+	opts.CompactionGarbageFractionForMaxConcurrency = func() float64 {
 		return garbageFrac
 	}
 	maxConcurrentDownloads := rng.IntN(3) + 1 // 1-3
@@ -741,7 +741,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		}
 	}
 	if rng.IntN(2) == 0 {
-		opts.Experimental.DisableIngestAsFlushable = func() bool { return true }
+		opts.DisableIngestAsFlushable = func() bool { return true }
 	}
 
 	// We either use no multilevel compactions, multilevel compactions with the
@@ -750,15 +750,15 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	// ohterwise would.
 	switch rng.IntN(3) {
 	case 0:
-		opts.Experimental.MultiLevelCompactionHeuristic = pebble.OptionNoMultiLevel
+		opts.MultiLevelCompactionHeuristic = pebble.OptionNoMultiLevel
 	case 1:
-		opts.Experimental.MultiLevelCompactionHeuristic = pebble.OptionWriteAmpHeuristic
+		opts.MultiLevelCompactionHeuristic = pebble.OptionWriteAmpHeuristic
 	default:
 		writeAmpHeuristic := &pebble.WriteAmpHeuristic{
 			AddPropensity: rng.Float64() * float64(rng.IntN(3)), // [0,3.0)
 			AllowL0:       rng.IntN(4) == 1,                     // 25% of the time
 		}
-		opts.Experimental.MultiLevelCompactionHeuristic = func() pebble.MultiLevelHeuristic {
+		opts.MultiLevelCompactionHeuristic = func() pebble.MultiLevelHeuristic {
 			return writeAmpHeuristic
 		}
 	}
@@ -855,7 +855,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	}
 	testOpts.enableValueBlocks = rng.IntN(2) != 0
 	if testOpts.enableValueBlocks {
-		testOpts.Opts.Experimental.EnableValueBlocks = func() bool { return true }
+		testOpts.Opts.EnableValueBlocks = func() bool { return true }
 	}
 	testOpts.disableValueBlocksForIngestSSTables = rng.IntN(2) == 0
 	testOpts.asyncApplyToDB = rng.IntN(2) != 0
@@ -867,15 +867,15 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		}
 		// If shared storage is enabled, pick between writing all files on shared
 		// vs. lower levels only, 50% of the time.
-		testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+		testOpts.Opts.CreateOnShared = remote.CreateOnSharedAll
 		if rng.IntN(2) == 0 {
-			testOpts.Opts.Experimental.CreateOnShared = remote.CreateOnSharedLower
+			testOpts.Opts.CreateOnShared = remote.CreateOnSharedLower
 		}
 		// If shared storage is enabled, enable secondary cache 20% of the time.
 		if rng.IntN(100) < 20 {
 			testOpts.secondaryCacheEnabled = true
 			// TODO(josh): Randomize various secondary cache settings.
-			testOpts.Opts.Experimental.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
+			testOpts.Opts.SecondaryCacheSizeBytes = 1024 * 1024 * 32 // 32 MBs
 		}
 		// 50% of the time, enable shared replication.
 		testOpts.useSharedReplicate = rng.IntN(2) == 0
@@ -895,7 +895,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	//  - 50% of the time (n = 2,3), enable value separation and randomize parameters.
 	if n := rng.IntN(4); n == 1 {
 		// 25% of the time, disable value separation.
-		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+		opts.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 			return pebble.ValueSeparationPolicy{Enabled: false}
 		}
 	} else if n > 1 {
@@ -912,19 +912,19 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 			GarbageRatioLowPriority:  lowPri,
 			GarbageRatioHighPriority: lowPri + rng.Float64()*(1.0-lowPri), // [lowPri, 1.0)
 		}
-		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+		opts.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 			return policy
 		}
 	}
 
 	if rng.IntN(2) == 0 {
-		opts.Experimental.IteratorTracking.PollInterval = 100 * time.Millisecond
-		opts.Experimental.IteratorTracking.MaxAge = 10 * time.Second
+		opts.IteratorTracking.PollInterval = 100 * time.Millisecond
+		opts.IteratorTracking.MaxAge = 10 * time.Second
 	}
 
 	testOpts.seedEFOS = rng.Uint64()
 	testOpts.ingestSplit = rng.IntN(2) == 0
-	opts.Experimental.IngestSplit = func() bool { return testOpts.ingestSplit }
+	opts.IngestSplit = func() bool { return testOpts.ingestSplit }
 	testOpts.useExcise = rng.IntN(2) == 0
 	if testOpts.useExcise {
 		if testOpts.Opts.FormatMajorVersion < pebble.FormatVirtualSSTables {
@@ -932,7 +932,7 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 		}
 	}
 	testOpts.useDeleteOnlyCompactionExcises = rng.IntN(2) == 0
-	opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool {
+	opts.EnableDeleteOnlyCompactionExcises = func() bool {
 		return testOpts.useDeleteOnlyCompactionExcises
 	}
 	testOpts.disableDownloads = rng.IntN(2) == 0

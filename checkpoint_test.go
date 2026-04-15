@@ -48,11 +48,11 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 			DisableAutomaticCompactions: true,
 			Logger:                      testutils.Logger{T: t},
 		}
-		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator(""): remoteMem,
 		})
 		if createOnShared {
-			opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+			opts.CreateOnShared = remote.CreateOnSharedAll
 		}
 		opts.DisableTableStats = true
 		opts.private.testingAlwaysWaitForCleanup = true

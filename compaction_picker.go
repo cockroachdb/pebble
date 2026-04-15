@@ -878,11 +878,11 @@ func calculateLevelSizes(
 		levelMaxBytes[level] = math.MaxInt64
 	}
 
-	bottomLevelSize := dbSize - dbSize/uint64(opts.Experimental.LevelMultiplier)
+	bottomLevelSize := dbSize - dbSize/uint64(opts.LevelMultiplier)
 
 	curLevelSize := bottomLevelSize
 	for level := numLevels - 2; level >= firstNonEmptyLevel; level-- {
-		curLevelSize /= uint64(opts.Experimental.LevelMultiplier)
+		curLevelSize /= uint64(opts.LevelMultiplier)
 	}
 
 	// Compute base level (where L0 data is compacted to).
@@ -890,7 +890,7 @@ func calculateLevelSizes(
 	baseLevel = firstNonEmptyLevel
 	for baseLevel > 1 && curLevelSize > baseBytesMax {
 		baseLevel--
-		curLevelSize /= uint64(opts.Experimental.LevelMultiplier)
+		curLevelSize /= uint64(opts.LevelMultiplier)
 	}
 
 	smoothedLevelMultiplier := 1.0
@@ -904,14 +904,14 @@ func calculateLevelSizes(
 	}
 
 	levelSize := float64(baseBytesMax)
-	if smoothedLevelMultiplier > float64(opts.Experimental.LevelMultiplier) {
+	if smoothedLevelMultiplier > float64(opts.LevelMultiplier) {
 		// Don't let the multiplier grow beyond the configured level multiplier.
 		// Instead, grow all levels proportionally by allowing a larger L1.
 		//
 		// TODO(radu): revisit this decision, as it could result in much more
 		// expensive L0->L1 compactions. Consider increasing the memtable size
 		// proportionally.
-		smoothedLevelMultiplier = float64(opts.Experimental.LevelMultiplier)
+		smoothedLevelMultiplier = float64(opts.LevelMultiplier)
 		levelSize = float64(curLevelSize)
 	}
 
@@ -1088,7 +1088,7 @@ func (p *compactionPickerByScore) calculateLevelScores(
 		// and attempting to pick L0 compactions may result in intra-L0
 		// compactions.
 		const compensatedScoreThreshold = 1.0
-		if (level == 0 || p.opts.Experimental.UseDeprecatedCompensatedScore()) &&
+		if (level == 0 || p.opts.UseDeprecatedCompensatedScore()) &&
 			compensatedScore < compensatedScoreThreshold {
 			// No need to compact this level; score stays 0.
 			continue
@@ -1332,31 +1332,31 @@ func (p *compactionPickerByScore) getCompactionConcurrency() int {
 	// Let n be the number of in-progress compactions.
 	//
 	// l0ReadAmp >= ccSignal1 then can run another compaction, where
-	// ccSignal1 = n * p.opts.Experimental.L0CompactionConcurrency
+	// ccSignal1 = n * p.opts.L0CompactionConcurrency
 	// Rearranging,
-	// n <= l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency.
+	// n <= l0ReadAmp / p.opts.L0CompactionConcurrency.
 	// So we can run up to
-	// l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency extra compactions.
+	// l0ReadAmp / p.opts.L0CompactionConcurrency extra compactions.
 	l0ReadAmpCompactions := 0
-	if p.opts.Experimental.L0CompactionConcurrency > 0 {
+	if p.opts.L0CompactionConcurrency > 0 {
 		l0ReadAmp := p.latestVersionState.l0Organizer.MaxDepthAfterOngoingCompactions()
-		l0ReadAmpCompactions = (l0ReadAmp / p.opts.Experimental.L0CompactionConcurrency)
+		l0ReadAmpCompactions = (l0ReadAmp / p.opts.L0CompactionConcurrency)
 	}
 	// compactionDebt >= ccSignal2 then can run another compaction, where
-	// ccSignal2 = uint64(n) * p.opts.Experimental.CompactionDebtConcurrency
+	// ccSignal2 = uint64(n) * p.opts.CompactionDebtConcurrency
 	// Rearranging,
-	// n <= compactionDebt / p.opts.Experimental.CompactionDebtConcurrency
+	// n <= compactionDebt / p.opts.CompactionDebtConcurrency
 	// So we can run up to
-	// compactionDebt / p.opts.Experimental.CompactionDebtConcurrency extra
+	// compactionDebt / p.opts.CompactionDebtConcurrency extra
 	// compactions.
 	compactionDebtCompactions := 0
-	if p.opts.Experimental.CompactionDebtConcurrency > 0 {
+	if p.opts.CompactionDebtConcurrency > 0 {
 		compactionDebt := p.estimatedCompactionDebt()
-		compactionDebtCompactions = int(compactionDebt / p.opts.Experimental.CompactionDebtConcurrency)
+		compactionDebtCompactions = int(compactionDebt / p.opts.CompactionDebtConcurrency)
 	}
 
 	compactableGarbageCompactions := 0
-	garbageFractionLimit := p.opts.Experimental.CompactionGarbageFractionForMaxConcurrency()
+	garbageFractionLimit := p.opts.CompactionGarbageFractionForMaxConcurrency()
 	if garbageFractionLimit > 0 && p.dbSizeBytes > 0 {
 		delBytes := deletionBytesAnnotator.MultiLevelAnnotation(p.vers.Levels[:])
 		compactableGarbageBytes := delBytes.PointDels + delBytes.RangeDels
@@ -1736,7 +1736,7 @@ func (p *compactionPickerByScore) pickVirtualRewriteCompaction(
 	// picked again, since the space amp will increase.
 	referencedDataPct, _, vtablesByLevel := p.latestVersionState.virtualBackings.ReplacementCandidate()
 
-	if 1-referencedDataPct < p.opts.Experimental.VirtualTableRewriteUnreferencedFraction() {
+	if 1-referencedDataPct < p.opts.VirtualTableRewriteUnreferencedFraction() {
 		return nil
 	}
 
@@ -1760,7 +1760,7 @@ func (p *compactionPickerByScore) pickVirtualRewriteCompaction(
 func (p *compactionPickerByScore) pickBlobFileRewriteCompactionHighPriority(
 	env compactionEnv,
 ) (pc *pickedBlobFileCompaction) {
-	policy := p.opts.Experimental.ValueSeparationPolicy()
+	policy := p.opts.ValueSeparationPolicy()
 	if policy.GarbageRatioHighPriority >= 1.0 {
 		// High-priority blob file rewrite compactions are disabled.
 		return nil
@@ -1795,7 +1795,7 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCompactionLowPriority(
 		// No blob files with any garbage to rewrite.
 		return nil
 	}
-	policy := p.opts.Experimental.ValueSeparationPolicy()
+	policy := p.opts.ValueSeparationPolicy()
 	if policy.GarbageRatioLowPriority >= 1.0 {
 		// Blob file rewrite compactions are disabled.
 		return nil
@@ -1838,12 +1838,12 @@ func (p *compactionPickerByScore) pickBlobFileRewriteCandidate(
 // pickTombstoneDensityCompaction looks for a compaction that eliminates
 // regions of extremely high point tombstone density. For each level, it picks
 // a file where the ratio of tombstone-dense blocks is at least
-// options.Experimental.MinTombstoneDenseRatio, prioritizing compaction of
+// options.MinTombstoneDenseRatio, prioritizing compaction of
 // files with higher ratios of tombstone-dense blocks.
 func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 	env compactionEnv,
 ) (pc *pickedTableCompaction) {
-	threshold := p.opts.Experimental.TombstoneDenseCompactionThreshold()
+	threshold := p.opts.TombstoneDenseCompactionThreshold()
 	if threshold <= 0 {
 		// Tombstone density compactions are disabled.
 		return nil
@@ -1947,7 +1947,7 @@ func (pc *pickedTableCompaction) maybeAddLevel(
 		// as they could block compactions from L0.
 		return pc
 	}
-	if !opts.Experimental.MultiLevelCompactionHeuristic().allowL0() && pc.startLevel.level == 0 {
+	if !opts.MultiLevelCompactionHeuristic().allowL0() && pc.startLevel.level == 0 {
 		return pc
 	}
 	targetFileSize := opts.TargetFileSize(pc.outputLevel.level, pc.baseLevel)
@@ -1955,7 +1955,7 @@ func (pc *pickedTableCompaction) maybeAddLevel(
 		// Don't add a level if the current compaction exceeds the compaction size limit
 		return pc
 	}
-	return opts.Experimental.MultiLevelCompactionHeuristic().pick(pc, opts, env)
+	return opts.MultiLevelCompactionHeuristic().pick(pc, opts, env)
 }
 
 // MultiLevelHeuristic evaluates whether to add files from the next level into the compaction.

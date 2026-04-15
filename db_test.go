@@ -1677,7 +1677,7 @@ func TestMemtableIngestInversion(t *testing.T) {
 	}
 	tel := TeeEventListener(MakeLoggingEventListener(testutils.Logger{T: t}), el)
 	opts.EventListener = &tel
-	opts.Experimental.L0CompactionConcurrency = 1
+	opts.L0CompactionConcurrency = 1
 	d, err := Open("", opts)
 	require.NoError(t, err)
 	defer func() {
@@ -2383,7 +2383,7 @@ func TestDeterminism(t *testing.T) {
 						FormatMajorVersion:          FormatNewest,
 						DisableAutomaticCompactions: true,
 					}
-					opts.Experimental.IngestSplit = func() bool { return rand.IntN(2) == 1 }
+					opts.IngestSplit = func() bool { return rand.IntN(2) == 1 }
 					if d != nil {
 						require.NoError(t, d.Close())
 					}

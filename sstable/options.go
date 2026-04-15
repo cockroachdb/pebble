@@ -227,7 +227,7 @@ type WriterOptions struct {
 	Checksum block.ChecksumType
 
 	// ShortAttributeExtractor mirrors
-	// Options.Experimental.ShortAttributeExtractor.
+	// Options.ShortAttributeExtractor.
 	ShortAttributeExtractor base.ShortAttributeExtractor
 
 	// TieringSpanIDGetter returns the tiering span ID for a key. The span ID
@@ -283,11 +283,11 @@ type WriterOptions struct {
 	// internal options can only be used from within the pebble package.
 	internal sstableinternal.WriterOptions
 
-	// NumDeletionsThreshold mirrors Options.Experimental.NumDeletionsThreshold.
+	// NumDeletionsThreshold mirrors Options.NumDeletionsThreshold.
 	NumDeletionsThreshold int
 
 	// DeletionSizeRatioThreshold mirrors
-	// Options.Experimental.DeletionSizeRatioThreshold.
+	// Options.DeletionSizeRatioThreshold.
 	DeletionSizeRatioThreshold float32
 
 	// disableObsoleteCollector is used to disable the obsolete key block property

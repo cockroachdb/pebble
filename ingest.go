@@ -659,7 +659,7 @@ func ingestLoad(
 	// true, as that means we could have suffixed RangeKeyDels or Unsets in the local
 	// files that won't ever be surfaced, even if there are no shared or external files
 	// in the ingestion.
-	shouldDisableRangeKeyChecks := len(shared) > 0 || len(external) > 0 || opts.Experimental.CreateOnShared != remote.CreateOnSharedNone
+	shouldDisableRangeKeyChecks := len(shared) > 0 || len(external) > 0 || opts.CreateOnShared != remote.CreateOnSharedNone
 	for _, p := range local {
 		f, err := opts.FS.Open(p.Path)
 		if err != nil {
@@ -1452,7 +1452,7 @@ func (d *DB) IngestExternalFiles(
 	if d.opts.ReadOnly {
 		return IngestOperationStats{}, ErrReadOnly
 	}
-	if d.opts.Experimental.RemoteStorage == nil {
+	if d.opts.RemoteStorage == nil {
 		return IngestOperationStats{}, errors.New("pebble: cannot ingest external files without shared storage configured")
 	}
 	// SkipRemoteProbe avoids opening remote-backed LSM files to probe for data
@@ -1726,7 +1726,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 	local := args.Local
 	shared := args.Shared
 	external := args.External
-	if len(shared) > 0 && d.opts.Experimental.RemoteStorage == nil {
+	if len(shared) > 0 && d.opts.RemoteStorage == nil {
 		panic(errors.AssertionFailedf("cannot ingest shared sstables with nil SharedStorage"))
 	}
 	if (args.ExciseSpan.Valid() || len(shared) > 0 || len(external) > 0) && d.FormatMajorVersion() < FormatVirtualSSTables {
@@ -1929,7 +1929,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			// of this problem.
 			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold ||
 				d.mu.log.manager.ElevateWriteStallThresholdForFailover()) &&
-			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles &&
+			!d.opts.DisableIngestAsFlushable() && !hasRemoteFiles &&
 			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises)
 		if !canIngestFlushable {
 			// We're not able to ingest as a flushable,
@@ -2259,7 +2259,7 @@ func (d *DB) ingestApply(
 	ve := &manifest.VersionEdit{
 		NewTables: make([]manifest.NewTableEntry, lr.sstCount()),
 	}
-	if exciseSpan.Valid() || (d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit()) {
+	if exciseSpan.Valid() || (d.opts.IngestSplit != nil && d.opts.IngestSplit()) {
 		ve.DeletedTables = map[manifest.DeletedTableEntry]*manifest.TableMetadata{}
 	}
 	var metrics levelMetricsDelta
@@ -2293,8 +2293,8 @@ func (d *DB) ingestApply(
 			objProvider:     d.objProvider,
 			skipRemoteProbe: skipRemoteProbe,
 		}
-		shouldIngestSplit := d.opts.Experimental.IngestSplit != nil &&
-			d.opts.Experimental.IngestSplit() && d.FormatMajorVersion() >= FormatVirtualSSTables
+		shouldIngestSplit := d.opts.IngestSplit != nil &&
+			d.opts.IngestSplit() && d.FormatMajorVersion() >= FormatVirtualSSTables
 		baseLevel := d.mu.versions.picker.getBaseLevel()
 		// filesToSplit is a list where each element is a pair consisting of a file
 		// being ingested and a file being split to make room for an ingestion into
@@ -2563,7 +2563,7 @@ func (d *DB) ingestApply(
 // DB.mu must be locked when calling.
 func (d *DB) maybeValidateSSTablesLocked(newFiles []manifest.NewTableEntry) {
 	// Only add to the validation queue when the feature is enabled.
-	if !d.opts.Experimental.ValidateOnIngest {
+	if !d.opts.ValidateOnIngest {
 		return
 	}
 
@@ -2578,7 +2578,7 @@ func (d *DB) maybeValidateSSTablesLocked(newFiles []manifest.NewTableEntry) {
 func (d *DB) shouldValidateSSTablesLocked() bool {
 	return !d.mu.tableValidation.validating &&
 		d.closed.Load() == nil &&
-		d.opts.Experimental.ValidateOnIngest &&
+		d.opts.ValidateOnIngest &&
 		len(d.mu.tableValidation.pending) > 0
 }
 

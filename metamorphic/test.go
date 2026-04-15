@@ -268,7 +268,7 @@ func (t *Test) init(
 func (t *Test) finalizeOptions() pebble.Options {
 	o := *t.opts
 	// Give each DB its own CompactionScheduler.
-	o.Experimental.CompactionScheduler = func() pebble.CompactionScheduler {
+	o.CompactionScheduler = func() pebble.CompactionScheduler {
 		return pebble.NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 
@@ -297,7 +297,7 @@ func (t *Test) finalizeOptions() pebble.Options {
 		m[remote.MakeLocator("external")] = t.externalStorage
 	}
 	if len(m) > 0 {
-		o.Experimental.RemoteStorage = remote.MakeSimpleFactory(m)
+		o.RemoteStorage = remote.MakeSimpleFactory(m)
 	}
 	return o
 }

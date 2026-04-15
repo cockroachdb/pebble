@@ -840,7 +840,7 @@ func (i *Iterator) maybeSampleRead() {
 		i.sampleRead()
 		return
 	}
-	samplingPeriod := int32(int64(readBytesPeriod) * i.readState.db.opts.Experimental.ReadSamplingMultiplier)
+	samplingPeriod := int32(int64(readBytesPeriod) * i.readState.db.opts.ReadSamplingMultiplier)
 	if samplingPeriod <= 0 {
 		return
 	}

@@ -97,7 +97,7 @@ func runReplayTest(t *testing.T, path string) {
 				FormatMajorVersion:        pebble.FormatMinSupported,
 				L0CompactionFileThreshold: 1,
 			}
-			setDefaultExperimentalOpts(opts)
+			setDefaultTestOpts(opts)
 			ct = datatest.NewCompactionTracker(opts)
 
 			r = Runner{
@@ -151,8 +151,8 @@ func runReplayTest(t *testing.T, path string) {
 	})
 }
 
-func setDefaultExperimentalOpts(opts *pebble.Options) {
-	opts.Experimental.FileCacheShards = 2
+func setDefaultTestOpts(opts *pebble.Options) {
+	opts.FileCacheShards = 2
 }
 
 func TestReplay(t *testing.T) {
@@ -187,7 +187,7 @@ func TestLoadFlushedSSTableKeys(t *testing.T) {
 		Comparer:           testkeys.Comparer,
 		FormatMajorVersion: pebble.FormatMinSupported,
 	}
-	setDefaultExperimentalOpts(opts)
+	setDefaultTestOpts(opts)
 	d, err := pebble.Open("", opts)
 	require.NoError(t, err)
 	defer d.Close()
@@ -333,7 +333,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 				FS:                          fs,
 				MaxManifestFileSize:         96,
 			}
-			setDefaultExperimentalOpts(opts)
+			setDefaultTestOpts(opts)
 			wc.Attach(opts)
 			var err error
 			d, err = pebble.Open("build", opts)
@@ -348,7 +348,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 				FS:                          fs,
 				MaxManifestFileSize:         96,
 			}
-			opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+			opts.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 				return pebble.ValueSeparationPolicy{
 					Enabled:                true,
 					MinimumSize:            3,
@@ -357,7 +357,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 					RewriteMinimumAge:      15 * time.Minute,
 				}
 			}
-			setDefaultExperimentalOpts(opts)
+			setDefaultTestOpts(opts)
 			wc.Attach(opts)
 			var err error
 			d, err = pebble.Open("build", opts)
@@ -372,7 +372,7 @@ func collectCorpus(t *testing.T, fs *vfs.MemFS, name string) {
 				FS:                          fs,
 				MaxManifestFileSize:         156,
 			}
-			setDefaultExperimentalOpts(opts)
+			setDefaultTestOpts(opts)
 			wc.Attach(opts)
 			var err error
 			d, err = pebble.Open("build", opts)
@@ -593,7 +593,7 @@ func TestCompactionsQuiesce(t *testing.T) {
 					LBaseMaxBytes:      1,
 				},
 			}
-			r.Opts.Experimental.LevelMultiplier = 2
+			r.Opts.LevelMultiplier = 2
 			require.NoError(t, r.Run(context.Background()))
 			defer r.Close()
 

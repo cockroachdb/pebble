@@ -603,224 +603,272 @@ type Options struct {
 	// flushes, compactions, and table deletion.
 	EventListener *EventListener
 
-	// Experimental contains experimental options which are off by default.
-	// These options are temporary and will eventually either be deleted, moved
-	// out of the experimental group, or made the non-adjustable default. These
-	// options may change at any time, so do not rely on them.
-	Experimental struct {
-		// The threshold of L0 read-amplification at which compaction concurrency
-		// is enabled (if CompactionDebtConcurrency was not already exceeded).
-		// Every multiple of this value enables another concurrent
-		// compaction up to CompactionConcurrencyRange.
-		L0CompactionConcurrency int
+	// L0CompactionConcurrency is the threshold of L0 read-amplification at
+	// which compaction concurrency is enabled (if CompactionDebtConcurrency
+	// was not already exceeded). Every multiple of this value enables another
+	// concurrent compaction up to CompactionConcurrencyRange.
+	//
+	// Experimental.
+	L0CompactionConcurrency int
 
-		// CompactionDebtConcurrency controls the threshold of compaction debt
-		// at which additional compaction concurrency slots are added. For every
-		// multiple of this value in compaction debt bytes, an additional
-		// concurrent compaction is added. This works "on top" of
-		// L0CompactionConcurrency, so the higher of the count of compaction
-		// concurrency slots as determined by the two options is chosen.
-		CompactionDebtConcurrency uint64
+	// CompactionDebtConcurrency controls the threshold of compaction debt
+	// at which additional compaction concurrency slots are added. For every
+	// multiple of this value in compaction debt bytes, an additional
+	// concurrent compaction is added. This works "on top" of
+	// L0CompactionConcurrency, so the higher of the count of compaction
+	// concurrency slots as determined by the two options is chosen.
+	//
+	// Experimental.
+	CompactionDebtConcurrency uint64
 
-		// CompactionGarbageFractionForMaxConcurrency is the fraction of garbage
-		// due to DELs and RANGEDELs that causes MaxConcurrentCompactions to be
-		// allowed. Concurrent compactions are allowed in a linear manner upto
-		// this limit being reached. A value <= 0.0 disables adding concurrency
-		// due to garbage.
-		CompactionGarbageFractionForMaxConcurrency func() float64
+	// CompactionGarbageFractionForMaxConcurrency is the fraction of garbage
+	// due to DELs and RANGEDELs that causes MaxConcurrentCompactions to be
+	// allowed. Concurrent compactions are allowed in a linear manner upto
+	// this limit being reached. A value <= 0.0 disables adding concurrency
+	// due to garbage.
+	//
+	// Experimental.
+	CompactionGarbageFractionForMaxConcurrency func() float64
 
-		// UseDeprecatedCompensatedScore is a temporary option to revert the
-		// compaction picker to the previous behavior of only considering
-		// compaction out of a level if its compensated fill factor divided by
-		// the next level's fill factor is >= 1.0. The details of this setting
-		// are documented within its use within the compaction picker.
+	// UseDeprecatedCompensatedScore is a temporary option to revert the
+	// compaction picker to the previous behavior of only considering
+	// compaction out of a level if its compensated fill factor divided by
+	// the next level's fill factor is >= 1.0. The details of this setting
+	// are documented within its use within the compaction picker.
+	//
+	// The default value is false.
+	//
+	// Experimental.
+	UseDeprecatedCompensatedScore func() bool
+
+	// IngestSplit, if it returns true, allows for ingest-time splitting of
+	// existing sstables into two virtual sstables to allow ingestion sstables to
+	// slot into a lower level than they otherwise would have.
+	//
+	// Experimental.
+	IngestSplit func() bool
+
+	// ReadCompactionRate controls the frequency of read triggered
+	// compactions by adjusting `AllowedSeeks` in manifest.TableMetadata:
+	//
+	// AllowedSeeks = FileSize / ReadCompactionRate
+	//
+	// From LevelDB:
+	// ```
+	// We arrange to automatically compact this file after
+	// a certain number of seeks. Let's assume:
+	//   (1) One seek costs 10ms
+	//   (2) Writing or reading 1MB costs 10ms (100MB/s)
+	//   (3) A compaction of 1MB does 25MB of IO:
+	//         1MB read from this level
+	//         10-12MB read from next level (boundaries may be misaligned)
+	//         10-12MB written to next level
+	// This implies that 25 seeks cost the same as the compaction
+	// of 1MB of data.  I.e., one seek costs approximately the
+	// same as the compaction of 40KB of data.  We are a little
+	// conservative and allow approximately one seek for every 16KB
+	// of data before triggering a compaction.
+	// ```
+	//
+	// Experimental.
+	ReadCompactionRate int64
+
+	// ReadSamplingMultiplier is a multiplier for the readSamplingPeriod in
+	// iterator.maybeSampleRead() to control the frequency of read sampling
+	// to trigger a read triggered compaction. A value of -1 prevents sampling
+	// and disables read triggered compactions. The default is 1 << 4. which
+	// gets multiplied with a constant of 1 << 16 to yield 1 << 20 (1MB).
+	//
+	// Experimental.
+	ReadSamplingMultiplier int64
+
+	// NumDeletionsThreshold defines the minimum number of point tombstones
+	// that must be present in a single data block for that block to be
+	// considered tombstone-dense for the purposes of triggering a
+	// tombstone density compaction. Data blocks may also be considered
+	// tombstone-dense if they meet the criteria defined by
+	// DeletionSizeRatioThreshold below. Tombstone-dense blocks are identified
+	// when sstables are written, and so this is effectively an option for
+	// sstable writers. The default value is 100.
+	//
+	// Experimental.
+	NumDeletionsThreshold int
+
+	// DeletionSizeRatioThreshold defines the minimum ratio of the size of
+	// point tombstones to the size of a data block that must be reached
+	// for that block to be considered tombstone-dense for the purposes of
+	// triggering a tombstone density compaction. Data blocks may also be
+	// considered tombstone-dense if they meet the criteria defined by
+	// NumDeletionsThreshold above. Tombstone-dense blocks are identified
+	// when sstables are written, and so this is effectively an option for
+	// sstable writers. The default value is 0.5.
+	//
+	// Experimental.
+	DeletionSizeRatioThreshold float32
+
+	// TombstoneDenseCompactionThreshold is a function that returns the minimum
+	// percent of data blocks in a table that must be tombstone-dense for that
+	// table to be eligible for a tombstone density compaction. The value should
+	// be defined as a ratio out of 1. The default value is 0.10.
+	//
+	// If multiple tables are eligible for a tombstone density compaction, then
+	// tables with a higher percent of tombstone-dense blocks are still
+	// prioritized for compaction.
+	//
+	// Using a function allows for dynamic reconfiguration of the threshold based
+	// on workload characteristics. A zero or negative value disables tombstone
+	// density compactions.
+	//
+	// Experimental.
+	TombstoneDenseCompactionThreshold func() float64
+
+	// FileCacheShards is the number of shards per file cache.
+	// Reducing the value can reduce the number of idle goroutines per DB
+	// instance which can be useful in scenarios with a lot of DB instances
+	// and a large number of CPUs, but doing so can lead to higher contention
+	// in the file cache and reduced performance.
+	//
+	// The default value is the number of logical CPUs, which can be
+	// limited by runtime.GOMAXPROCS.
+	//
+	// Experimental.
+	FileCacheShards int
+
+	// ValidateOnIngest schedules validation of sstables after they have
+	// been ingested.
+	//
+	// By default, this value is false.
+	//
+	// Experimental.
+	ValidateOnIngest bool
+
+	// LevelMultiplier configures the size multiplier used to determine the
+	// desired size of each level of the LSM. Defaults to 10.
+	//
+	// Experimental.
+	LevelMultiplier int
+
+	// MultiLevelCompactionHeuristic determines whether to add an additional
+	// level to a conventional two level compaction.
+	//
+	// Experimental.
+	MultiLevelCompactionHeuristic func() MultiLevelHeuristic
+
+	// EnableValueBlocks is used to decide whether to enable writing
+	// TableFormatPebblev3 sstables. This setting is only respected by a
+	// specific subset of format major versions: FormatSSTableValueBlocks,
+	// FormatFlushableIngest and FormatPrePebblev1MarkedCompacted. In lower
+	// format major versions, value blocks are never enabled. In higher
+	// format major versions, value blocks are always enabled.
+	//
+	// Experimental.
+	EnableValueBlocks func() bool
+
+	// ShortAttributeExtractor is used iff EnableValueBlocks() returns true
+	// (else ignored). If non-nil, a ShortAttribute can be extracted from the
+	// value and stored with the key, when the value is stored elsewhere.
+	//
+	// Experimental.
+	ShortAttributeExtractor ShortAttributeExtractor
+
+	// DisableIngestAsFlushable disables lazy ingestion of sstables through
+	// a WAL write and memtable rotation. Only effectual if the format
+	// major version is at least `FormatFlushableIngest`.
+	//
+	// Experimental.
+	DisableIngestAsFlushable func() bool
+
+	// RemoteStorage enables use of remote storage (e.g. S3) for storing
+	// sstables. Setting this option enables use of CreateOnShared option and
+	// allows ingestion of external files.
+	//
+	// Experimental.
+	RemoteStorage remote.StorageFactory
+
+	// If CreateOnShared is non-zero, new sstables are created on remote storage
+	// (using CreateOnSharedLocator and with the appropriate
+	// CreateOnSharedStrategy). These sstables can be shared between different
+	// Pebble instances; the lifecycle of such objects is managed by the
+	// remote.Storage constructed by options.RemoteStorage.
+	//
+	// Can only be used when RemoteStorage is set (and recognizes
+	// CreateOnSharedLocator).
+	//
+	// Experimental.
+	CreateOnShared        remote.CreateOnSharedStrategy
+	CreateOnSharedLocator remote.Locator
+
+	// CacheSizeBytesBytes is the size of the on-disk block cache for objects
+	// on shared storage in bytes. If it is 0, no cache is used.
+	//
+	// Experimental.
+	SecondaryCacheSizeBytes int64
+
+	// EnableDeleteOnlyCompactionExcises enables delete-only compactions to also
+	// apply delete-only compaction hints on sstables that partially overlap
+	// with it. This application happens through an excise, similar to
+	// the excise phase of IngestAndExcise.
+	//
+	// Experimental.
+	EnableDeleteOnlyCompactionExcises func() bool
+
+	// CompactionScheduler, if set, is used to create a scheduler to limit
+	// concurrent compactions as well as to pace compactions already chosen. If
+	// nil, a default scheduler is created and used.
+	//
+	// Experimental.
+	CompactionScheduler func() CompactionScheduler
+
+	// Experimental.
+	UserKeyCategories UserKeyCategories
+
+	// ValueSeparationPolicy controls the policy for separating values into
+	// external blob files. If nil, value separation defaults to disabled.
+	// The value separation policy is ignored if EnableColumnarBlocks() is
+	// false.
+	//
+	// Experimental.
+	ValueSeparationPolicy func() ValueSeparationPolicy
+
+	// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
+	//
+	// Experimental.
+	SpanPolicyFunc SpanPolicyFunc
+
+	// VirtualTableRewriteUnreferencedFraction configures the minimum fraction of
+	// unreferenced data in a backing table required to trigger a virtual table
+	// rewrite compaction. This is calculated as the ratio of unreferenced
+	// data size to total backing file size. A value of 0.0 triggers
+	// rewrites for any amount of unreferenced data. A value of 1.0 disables
+	// virtual table rewrite compactions entirely. The default value is 0.30
+	// (rewrite when >= 30% of backing data is unreferenced).
+	//
+	// Experimental.
+	VirtualTableRewriteUnreferencedFraction func() float64
+
+	// IteratorTracking configures periodic logging of iterators held open for
+	// too long.
+	//
+	// Experimental.
+	IteratorTracking struct {
+		// PollInterval is the interval at which to log a report of long-lived
+		// iterators. If zero, disables iterator tracking.
 		//
-		// The default value is false.
-		UseDeprecatedCompensatedScore func() bool
+		// The default value is 0 (disabled).
+		PollInterval time.Duration
 
-		// IngestSplit, if it returns true, allows for ingest-time splitting of
-		// existing sstables into two virtual sstables to allow ingestion sstables to
-		// slot into a lower level than they otherwise would have.
-		IngestSplit func() bool
-
-		// ReadCompactionRate controls the frequency of read triggered
-		// compactions by adjusting `AllowedSeeks` in manifest.TableMetadata:
+		// MaxAge is the age above which iterators are considered long-lived. If
+		// zero, disables iterator tracking.
 		//
-		// AllowedSeeks = FileSize / ReadCompactionRate
-		//
-		// From LevelDB:
-		// ```
-		// We arrange to automatically compact this file after
-		// a certain number of seeks. Let's assume:
-		//   (1) One seek costs 10ms
-		//   (2) Writing or reading 1MB costs 10ms (100MB/s)
-		//   (3) A compaction of 1MB does 25MB of IO:
-		//         1MB read from this level
-		//         10-12MB read from next level (boundaries may be misaligned)
-		//         10-12MB written to next level
-		// This implies that 25 seeks cost the same as the compaction
-		// of 1MB of data.  I.e., one seek costs approximately the
-		// same as the compaction of 40KB of data.  We are a little
-		// conservative and allow approximately one seek for every 16KB
-		// of data before triggering a compaction.
-		// ```
-		ReadCompactionRate int64
+		// The default value is 0 (disabled).
+		MaxAge time.Duration
+	}
 
-		// ReadSamplingMultiplier is a multiplier for the readSamplingPeriod in
-		// iterator.maybeSampleRead() to control the frequency of read sampling
-		// to trigger a read triggered compaction. A value of -1 prevents sampling
-		// and disables read triggered compactions. The default is 1 << 4. which
-		// gets multiplied with a constant of 1 << 16 to yield 1 << 20 (1MB).
-		ReadSamplingMultiplier int64
-
-		// NumDeletionsThreshold defines the minimum number of point tombstones
-		// that must be present in a single data block for that block to be
-		// considered tombstone-dense for the purposes of triggering a
-		// tombstone density compaction. Data blocks may also be considered
-		// tombstone-dense if they meet the criteria defined by
-		// DeletionSizeRatioThreshold below. Tombstone-dense blocks are identified
-		// when sstables are written, and so this is effectively an option for
-		// sstable writers. The default value is 100.
-		NumDeletionsThreshold int
-
-		// DeletionSizeRatioThreshold defines the minimum ratio of the size of
-		// point tombstones to the size of a data block that must be reached
-		// for that block to be considered tombstone-dense for the purposes of
-		// triggering a tombstone density compaction. Data blocks may also be
-		// considered tombstone-dense if they meet the criteria defined by
-		// NumDeletionsThreshold above. Tombstone-dense blocks are identified
-		// when sstables are written, and so this is effectively an option for
-		// sstable writers. The default value is 0.5.
-		DeletionSizeRatioThreshold float32
-
-		// TombstoneDenseCompactionThreshold is a function that returns the minimum
-		// percent of data blocks in a table that must be tombstone-dense for that
-		// table to be eligible for a tombstone density compaction. The value should
-		// be defined as a ratio out of 1. The default value is 0.10.
-		//
-		// If multiple tables are eligible for a tombstone density compaction, then
-		// tables with a higher percent of tombstone-dense blocks are still
-		// prioritized for compaction.
-		//
-		// Using a function allows for dynamic reconfiguration of the threshold based
-		// on workload characteristics. A zero or negative value disables tombstone
-		// density compactions.
-		TombstoneDenseCompactionThreshold func() float64
-
-		// FileCacheShards is the number of shards per file cache.
-		// Reducing the value can reduce the number of idle goroutines per DB
-		// instance which can be useful in scenarios with a lot of DB instances
-		// and a large number of CPUs, but doing so can lead to higher contention
-		// in the file cache and reduced performance.
-		//
-		// The default value is the number of logical CPUs, which can be
-		// limited by runtime.GOMAXPROCS.
-		FileCacheShards int
-
-		// ValidateOnIngest schedules validation of sstables after they have
-		// been ingested.
-		//
-		// By default, this value is false.
-		ValidateOnIngest bool
-
-		// LevelMultiplier configures the size multiplier used to determine the
-		// desired size of each level of the LSM. Defaults to 10.
-		LevelMultiplier int
-
-		// MultiLevelCompactionHeuristic determines whether to add an additional
-		// level to a conventional two level compaction.
-		MultiLevelCompactionHeuristic func() MultiLevelHeuristic
-
-		// EnableValueBlocks is used to decide whether to enable writing
-		// TableFormatPebblev3 sstables. This setting is only respected by a
-		// specific subset of format major versions: FormatSSTableValueBlocks,
-		// FormatFlushableIngest and FormatPrePebblev1MarkedCompacted. In lower
-		// format major versions, value blocks are never enabled. In higher
-		// format major versions, value blocks are always enabled.
-		EnableValueBlocks func() bool
-
-		// ShortAttributeExtractor is used iff EnableValueBlocks() returns true
-		// (else ignored). If non-nil, a ShortAttribute can be extracted from the
-		// value and stored with the key, when the value is stored elsewhere.
-		ShortAttributeExtractor ShortAttributeExtractor
-
-		// DisableIngestAsFlushable disables lazy ingestion of sstables through
-		// a WAL write and memtable rotation. Only effectual if the format
-		// major version is at least `FormatFlushableIngest`.
-		DisableIngestAsFlushable func() bool
-
-		// RemoteStorage enables use of remote storage (e.g. S3) for storing
-		// sstables. Setting this option enables use of CreateOnShared option and
-		// allows ingestion of external files.
-		RemoteStorage remote.StorageFactory
-
-		// If CreateOnShared is non-zero, new sstables are created on remote storage
-		// (using CreateOnSharedLocator and with the appropriate
-		// CreateOnSharedStrategy). These sstables can be shared between different
-		// Pebble instances; the lifecycle of such objects is managed by the
-		// remote.Storage constructed by options.RemoteStorage.
-		//
-		// Can only be used when RemoteStorage is set (and recognizes
-		// CreateOnSharedLocator).
-		CreateOnShared        remote.CreateOnSharedStrategy
-		CreateOnSharedLocator remote.Locator
-
-		// CacheSizeBytesBytes is the size of the on-disk block cache for objects
-		// on shared storage in bytes. If it is 0, no cache is used.
-		SecondaryCacheSizeBytes int64
-
-		// EnableDeleteOnlyCompactionExcises enables delete-only compactions to also
-		// apply delete-only compaction hints on sstables that partially overlap
-		// with it. This application happens through an excise, similar to
-		// the excise phase of IngestAndExcise.
-		EnableDeleteOnlyCompactionExcises func() bool
-
-		// CompactionScheduler, if set, is used to create a scheduler to limit
-		// concurrent compactions as well as to pace compactions already chosen. If
-		// nil, a default scheduler is created and used.
-		CompactionScheduler func() CompactionScheduler
-
-		UserKeyCategories UserKeyCategories
-
-		// ValueSeparationPolicy controls the policy for separating values into
-		// external blob files. If nil, value separation defaults to disabled.
-		// The value separation policy is ignored if EnableColumnarBlocks() is
-		// false.
-		ValueSeparationPolicy func() ValueSeparationPolicy
-
-		// SpanPolicyFunc is used to determine the SpanPolicy for a key region.
-		SpanPolicyFunc SpanPolicyFunc
-
-		// VirtualTableRewriteUnreferencedFraction configures the minimum fraction of
-		// unreferenced data in a backing table required to trigger a virtual table
-		// rewrite compaction. This is calculated as the ratio of unreferenced
-		// data size to total backing file size. A value of 0.0 triggers
-		// rewrites for any amount of unreferenced data. A value of 1.0 disables
-		// virtual table rewrite compactions entirely. The default value is 0.30
-		// (rewrite when >= 30% of backing data is unreferenced).
-		VirtualTableRewriteUnreferencedFraction func() float64
-
-		// IteratorTracking configures periodic logging of iterators held open for
-		// too long.
-		IteratorTracking struct {
-			// PollInterval is the interval at which to log a report of long-lived
-			// iterators. If zero, disables iterator tracking.
-			//
-			// The default value is 0 (disabled).
-			PollInterval time.Duration
-
-			// MaxAge is the age above which iterators are considered long-lived. If
-			// zero, disables iterator tracking.
-			//
-			// The default value is 0 (disabled).
-			MaxAge time.Duration
-		}
-
-		Tiering struct {
-			// NowFn can be used to override the current time used to decide if data
-			// belongs in the cold or hot tier.
-			NowFn func() time.Time
-		}
+	// Experimental.
+	Tiering struct {
+		// NowFn can be used to override the current time used to decide if data
+		// belongs in the cold or hot tier.
+		NowFn func() time.Time
 	}
 
 	// TableFilterDecoders contains the available table filter decoders.
@@ -1588,22 +1636,22 @@ func (o *Options) EnsureDefaults() {
 	}
 	o.DeletionPacing.EnsureDefaults()
 
-	if o.Experimental.DisableIngestAsFlushable == nil {
-		o.Experimental.DisableIngestAsFlushable = func() bool { return false }
+	if o.DisableIngestAsFlushable == nil {
+		o.DisableIngestAsFlushable = func() bool { return false }
 	}
-	if o.Experimental.L0CompactionConcurrency <= 0 {
-		o.Experimental.L0CompactionConcurrency = 10
+	if o.L0CompactionConcurrency <= 0 {
+		o.L0CompactionConcurrency = 10
 	}
-	if o.Experimental.CompactionDebtConcurrency <= 0 {
-		o.Experimental.CompactionDebtConcurrency = 1 << 30 // 1 GB
+	if o.CompactionDebtConcurrency <= 0 {
+		o.CompactionDebtConcurrency = 1 << 30 // 1 GB
 	}
-	if o.Experimental.CompactionGarbageFractionForMaxConcurrency == nil {
+	if o.CompactionGarbageFractionForMaxConcurrency == nil {
 		// When 40% of the DB is garbage, the compaction concurrency is at the
 		// maximum permitted.
-		o.Experimental.CompactionGarbageFractionForMaxConcurrency = func() float64 { return 0.4 }
+		o.CompactionGarbageFractionForMaxConcurrency = func() float64 { return 0.4 }
 	}
-	if o.Experimental.ValueSeparationPolicy == nil {
-		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+	if o.ValueSeparationPolicy == nil {
+		o.ValueSeparationPolicy = func() ValueSeparationPolicy {
 			return ValueSeparationPolicy{
 				Enabled:                  true,
 				MinimumSize:              256,     // 256 bytes
@@ -1706,7 +1754,7 @@ func (o *Options) EnsureDefaults() {
 
 	if o.FormatMajorVersion == FormatDefault {
 		o.FormatMajorVersion = FormatMinSupported
-		if o.Experimental.CreateOnShared != remote.CreateOnSharedNone {
+		if o.CreateOnShared != remote.CreateOnSharedNone {
 			o.FormatMajorVersion = FormatMinForSharedObjects
 		}
 	}
@@ -1720,41 +1768,41 @@ func (o *Options) EnsureDefaults() {
 	if o.WALFailover != nil {
 		o.WALFailover.FailoverOptions.EnsureDefaults()
 	}
-	if o.Experimental.UseDeprecatedCompensatedScore == nil {
-		o.Experimental.UseDeprecatedCompensatedScore = func() bool { return false }
+	if o.UseDeprecatedCompensatedScore == nil {
+		o.UseDeprecatedCompensatedScore = func() bool { return false }
 	}
-	if o.Experimental.LevelMultiplier <= 0 {
-		o.Experimental.LevelMultiplier = defaultLevelMultiplier
+	if o.LevelMultiplier <= 0 {
+		o.LevelMultiplier = defaultLevelMultiplier
 	}
-	if o.Experimental.ReadCompactionRate == 0 {
-		o.Experimental.ReadCompactionRate = 16000
+	if o.ReadCompactionRate == 0 {
+		o.ReadCompactionRate = 16000
 	}
-	if o.Experimental.ReadSamplingMultiplier == 0 {
-		o.Experimental.ReadSamplingMultiplier = 1 << 4
+	if o.ReadSamplingMultiplier == 0 {
+		o.ReadSamplingMultiplier = 1 << 4
 	}
-	if o.Experimental.NumDeletionsThreshold == 0 {
-		o.Experimental.NumDeletionsThreshold = sstable.DefaultNumDeletionsThreshold
+	if o.NumDeletionsThreshold == 0 {
+		o.NumDeletionsThreshold = sstable.DefaultNumDeletionsThreshold
 	}
-	if o.Experimental.DeletionSizeRatioThreshold == 0 {
-		o.Experimental.DeletionSizeRatioThreshold = sstable.DefaultDeletionSizeRatioThreshold
+	if o.DeletionSizeRatioThreshold == 0 {
+		o.DeletionSizeRatioThreshold = sstable.DefaultDeletionSizeRatioThreshold
 	}
-	if o.Experimental.TombstoneDenseCompactionThreshold == nil {
-		o.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.10 }
+	if o.TombstoneDenseCompactionThreshold == nil {
+		o.TombstoneDenseCompactionThreshold = func() float64 { return 0.10 }
 	}
-	if o.Experimental.FileCacheShards <= 0 {
-		o.Experimental.FileCacheShards = runtime.GOMAXPROCS(0)
+	if o.FileCacheShards <= 0 {
+		o.FileCacheShards = runtime.GOMAXPROCS(0)
 	}
-	if o.Experimental.MultiLevelCompactionHeuristic == nil {
-		o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
+	if o.MultiLevelCompactionHeuristic == nil {
+		o.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 	}
-	if o.Experimental.SpanPolicyFunc == nil {
-		o.Experimental.SpanPolicyFunc = func(bounds base.UserKeyBounds) (base.SpanPolicy, error) { return base.SpanPolicy{}, nil }
+	if o.SpanPolicyFunc == nil {
+		o.SpanPolicyFunc = func(bounds base.UserKeyBounds) (base.SpanPolicy, error) { return base.SpanPolicy{}, nil }
 	}
-	if o.Experimental.VirtualTableRewriteUnreferencedFraction == nil {
-		o.Experimental.VirtualTableRewriteUnreferencedFraction = func() float64 { return defaultVirtualTableUnreferencedFraction }
+	if o.VirtualTableRewriteUnreferencedFraction == nil {
+		o.VirtualTableRewriteUnreferencedFraction = func() float64 { return defaultVirtualTableUnreferencedFraction }
 	}
-	if o.Experimental.Tiering.NowFn == nil {
-		o.Experimental.Tiering.NowFn = time.Now
+	if o.Tiering.NowFn == nil {
+		o.Tiering.NowFn = time.Now
 	}
 	if o.private.timeNow == nil {
 		o.private.timeNow = time.Now
@@ -1828,12 +1876,12 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  bytes_per_sync=%d\n", o.BytesPerSync)
 	fmt.Fprintf(&buf, "  cache_size=%d\n", cacheSize)
 	fmt.Fprintf(&buf, "  cleaner=%s\n", o.Cleaner)
-	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.Experimental.CompactionDebtConcurrency)
+	fmt.Fprintf(&buf, "  compaction_debt_concurrency=%d\n", o.CompactionDebtConcurrency)
 	fmt.Fprintf(&buf, "  compaction_garbage_fraction_for_max_concurrency=%.2f\n",
-		o.Experimental.CompactionGarbageFractionForMaxConcurrency())
+		o.CompactionGarbageFractionForMaxConcurrency())
 	fmt.Fprintf(&buf, "  comparer=%s\n", o.Comparer.Name)
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
-	if o.Experimental.DisableIngestAsFlushable != nil && o.Experimental.DisableIngestAsFlushable() {
+	if o.DisableIngestAsFlushable != nil && o.DisableIngestAsFlushable() {
 		fmt.Fprintf(&buf, "  disable_ingest_as_flushable=%t\n", true)
 	}
 	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
@@ -1841,13 +1889,13 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  flush_split_bytes=%d\n", o.FlushSplitBytes)
 	fmt.Fprintf(&buf, "  format_major_version=%d\n", o.FormatMajorVersion)
 	fmt.Fprintf(&buf, "  key_schema=%s\n", o.KeySchema)
-	fmt.Fprintf(&buf, "  l0_compaction_concurrency=%d\n", o.Experimental.L0CompactionConcurrency)
+	fmt.Fprintf(&buf, "  l0_compaction_concurrency=%d\n", o.L0CompactionConcurrency)
 	fmt.Fprintf(&buf, "  l0_compaction_file_threshold=%d\n", o.L0CompactionFileThreshold)
 	fmt.Fprintf(&buf, "  l0_compaction_threshold=%d\n", o.L0CompactionThreshold)
 	fmt.Fprintf(&buf, "  l0_stop_writes_threshold=%d\n", o.L0StopWritesThreshold)
 	fmt.Fprintf(&buf, "  lbase_max_bytes=%d\n", o.LBaseMaxBytes)
-	if o.Experimental.LevelMultiplier != defaultLevelMultiplier {
-		fmt.Fprintf(&buf, "  level_multiplier=%d\n", o.Experimental.LevelMultiplier)
+	if o.LevelMultiplier != defaultLevelMultiplier {
+		fmt.Fprintf(&buf, "  level_multiplier=%d\n", o.LevelMultiplier)
 	}
 	lower, upper := o.CompactionConcurrencyRange()
 	fmt.Fprintf(&buf, "  concurrent_compactions=%d\n", lower)
@@ -1862,29 +1910,29 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  free_space_timeframe=%s\n", o.DeletionPacing.FreeSpaceTimeframe.String())
 	fmt.Fprintf(&buf, "  obsolete_bytes_timeframe=%s\n", o.DeletionPacing.BacklogTimeframe.String())
 	fmt.Fprintf(&buf, "  merger=%s\n", o.Merger.Name)
-	if o.Experimental.MultiLevelCompactionHeuristic != nil {
-		fmt.Fprintf(&buf, "  multilevel_compaction_heuristic=%s\n", o.Experimental.MultiLevelCompactionHeuristic().String())
+	if o.MultiLevelCompactionHeuristic != nil {
+		fmt.Fprintf(&buf, "  multilevel_compaction_heuristic=%s\n", o.MultiLevelCompactionHeuristic().String())
 	}
-	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.Experimental.ReadCompactionRate)
-	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.Experimental.ReadSamplingMultiplier)
-	fmt.Fprintf(&buf, "  num_deletions_threshold=%d\n", o.Experimental.NumDeletionsThreshold)
-	fmt.Fprintf(&buf, "  deletion_size_ratio_threshold=%f\n", o.Experimental.DeletionSizeRatioThreshold)
-	fmt.Fprintf(&buf, "  tombstone_dense_compaction_threshold=%f\n", o.Experimental.TombstoneDenseCompactionThreshold())
+	fmt.Fprintf(&buf, "  read_compaction_rate=%d\n", o.ReadCompactionRate)
+	fmt.Fprintf(&buf, "  read_sampling_multiplier=%d\n", o.ReadSamplingMultiplier)
+	fmt.Fprintf(&buf, "  num_deletions_threshold=%d\n", o.NumDeletionsThreshold)
+	fmt.Fprintf(&buf, "  deletion_size_ratio_threshold=%f\n", o.DeletionSizeRatioThreshold)
+	fmt.Fprintf(&buf, "  tombstone_dense_compaction_threshold=%f\n", o.TombstoneDenseCompactionThreshold())
 	// We no longer care about strict_wal_tail, but set it to true in case an
 	// older version reads the options.
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", true)
-	fmt.Fprintf(&buf, "  table_cache_shards=%d\n", o.Experimental.FileCacheShards)
-	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
+	fmt.Fprintf(&buf, "  table_cache_shards=%d\n", o.FileCacheShards)
+	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
-	fmt.Fprintf(&buf, "  secondary_cache_size_bytes=%d\n", o.Experimental.SecondaryCacheSizeBytes)
-	fmt.Fprintf(&buf, "  create_on_shared=%d\n", o.Experimental.CreateOnShared)
+	fmt.Fprintf(&buf, "  secondary_cache_size_bytes=%d\n", o.SecondaryCacheSizeBytes)
+	fmt.Fprintf(&buf, "  create_on_shared=%d\n", o.CreateOnShared)
 
-	if o.Experimental.IteratorTracking.PollInterval != 0 {
-		fmt.Fprintf(&buf, "  iterator_tracking_poll_interval=%s\n", o.Experimental.IteratorTracking.PollInterval)
+	if o.IteratorTracking.PollInterval != 0 {
+		fmt.Fprintf(&buf, "  iterator_tracking_poll_interval=%s\n", o.IteratorTracking.PollInterval)
 	}
-	if o.Experimental.IteratorTracking.MaxAge != 0 {
-		fmt.Fprintf(&buf, "  iterator_tracking_max_age=%s\n", o.Experimental.IteratorTracking.MaxAge)
+	if o.IteratorTracking.MaxAge != 0 {
+		fmt.Fprintf(&buf, "  iterator_tracking_max_age=%s\n", o.IteratorTracking.MaxAge)
 	}
 
 	// Private options.
@@ -1903,8 +1951,8 @@ func (o *Options) String() string {
 		fmt.Fprintln(&buf, "  disable_lazy_combined_iteration=true")
 	}
 
-	if o.Experimental.ValueSeparationPolicy != nil {
-		policy := o.Experimental.ValueSeparationPolicy()
+	if o.ValueSeparationPolicy != nil {
+		policy := o.ValueSeparationPolicy()
 		fmt.Fprintln(&buf)
 		fmt.Fprintln(&buf, "[Value Separation]")
 		fmt.Fprintf(&buf, "  enabled=%t\n", policy.Enabled)
@@ -2114,12 +2162,12 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					o.Comparer = comparer
 				}
 			case "compaction_debt_concurrency":
-				o.Experimental.CompactionDebtConcurrency, err = strconv.ParseUint(value, 10, 64)
+				o.CompactionDebtConcurrency, err = strconv.ParseUint(value, 10, 64)
 			case "compaction_garbage_fraction_for_max_concurrency":
 				var frac float64
 				frac, err = strconv.ParseFloat(value, 64)
 				if err == nil {
-					o.Experimental.CompactionGarbageFractionForMaxConcurrency =
+					o.CompactionGarbageFractionForMaxConcurrency =
 						func() float64 { return frac }
 				}
 			case "delete_range_flush_delay":
@@ -2134,7 +2182,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				var v bool
 				v, err = strconv.ParseBool(value)
 				if err == nil {
-					o.Experimental.DisableIngestAsFlushable = func() bool { return v }
+					o.DisableIngestAsFlushable = func() bool { return v }
 				}
 			case "disable_lazy_combined_iteration":
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
@@ -2201,7 +2249,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					}
 				}
 			case "l0_compaction_concurrency":
-				o.Experimental.L0CompactionConcurrency, err = strconv.Atoi(value)
+				o.L0CompactionConcurrency, err = strconv.Atoi(value)
 			case "l0_compaction_file_threshold":
 				o.L0CompactionFileThreshold, err = strconv.Atoi(value)
 			case "l0_compaction_threshold":
@@ -2211,7 +2259,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "lbase_max_bytes":
 				o.LBaseMaxBytes, err = strconv.ParseInt(value, 10, 64)
 			case "level_multiplier":
-				o.Experimental.LevelMultiplier, err = strconv.Atoi(value)
+				o.LevelMultiplier, err = strconv.Atoi(value)
 			case "concurrent_compactions":
 				concurrencyLimit.lowerSet = true
 				concurrencyLimit.lower, err = strconv.Atoi(value)
@@ -2249,9 +2297,9 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 			case "multilevel_compaction_heuristic":
 				switch {
 				case value == "none":
-					o.Experimental.MultiLevelCompactionHeuristic = OptionNoMultiLevel
+					o.MultiLevelCompactionHeuristic = OptionNoMultiLevel
 				case strings.HasPrefix(value, "wamp"):
-					o.Experimental.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
+					o.MultiLevelCompactionHeuristic = OptionWriteAmpHeuristic
 					fields := strings.FieldsFunc(strings.TrimPrefix(value, "wamp"), func(r rune) bool {
 						return unicode.IsSpace(r) || r == ',' || r == '(' || r == ')'
 					})
@@ -2268,7 +2316,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 
 					if err == nil {
 						if h.AllowL0 || h.AddPropensity != 0 {
-							o.Experimental.MultiLevelCompactionHeuristic = func() MultiLevelHeuristic {
+							o.MultiLevelCompactionHeuristic = func() MultiLevelHeuristic {
 								return &h
 							}
 						}
@@ -2299,23 +2347,23 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					}
 				}
 			case "read_compaction_rate":
-				o.Experimental.ReadCompactionRate, err = strconv.ParseInt(value, 10, 64)
+				o.ReadCompactionRate, err = strconv.ParseInt(value, 10, 64)
 			case "read_sampling_multiplier":
-				o.Experimental.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
+				o.ReadSamplingMultiplier, err = strconv.ParseInt(value, 10, 64)
 			case "num_deletions_threshold":
-				o.Experimental.NumDeletionsThreshold, err = strconv.Atoi(value)
+				o.NumDeletionsThreshold, err = strconv.Atoi(value)
 			case "deletion_size_ratio_threshold":
 				val, parseErr := strconv.ParseFloat(value, 32)
-				o.Experimental.DeletionSizeRatioThreshold = float32(val)
+				o.DeletionSizeRatioThreshold = float32(val)
 				err = parseErr
 			case "tombstone_dense_compaction_threshold":
 				var threshold float64
 				threshold, err = strconv.ParseFloat(value, 64)
 				if err == nil {
-					o.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return threshold }
+					o.TombstoneDenseCompactionThreshold = func() float64 { return threshold }
 				}
 			case "table_cache_shards":
-				o.Experimental.FileCacheShards, err = strconv.Atoi(value)
+				o.FileCacheShards, err = strconv.Atoi(value)
 			case "table_format":
 				switch value {
 				case "leveldb":
@@ -2328,21 +2376,21 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 					return nil
 				}
 			case "validate_on_ingest":
-				o.Experimental.ValidateOnIngest, err = strconv.ParseBool(value)
+				o.ValidateOnIngest, err = strconv.ParseBool(value)
 			case "wal_dir":
 				o.WALDir = value
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
 			case "secondary_cache_size_bytes":
-				o.Experimental.SecondaryCacheSizeBytes, err = strconv.ParseInt(value, 10, 64)
+				o.SecondaryCacheSizeBytes, err = strconv.ParseInt(value, 10, 64)
 			case "create_on_shared":
 				var createOnSharedInt int64
 				createOnSharedInt, err = strconv.ParseInt(value, 10, 64)
-				o.Experimental.CreateOnShared = remote.CreateOnSharedStrategy(createOnSharedInt)
+				o.CreateOnShared = remote.CreateOnSharedStrategy(createOnSharedInt)
 			case "iterator_tracking_poll_interval":
-				o.Experimental.IteratorTracking.PollInterval, err = time.ParseDuration(value)
+				o.IteratorTracking.PollInterval, err = time.ParseDuration(value)
 			case "iterator_tracking_max_age":
-				o.Experimental.IteratorTracking.MaxAge, err = time.ParseDuration(value)
+				o.IteratorTracking.MaxAge, err = time.ParseDuration(value)
 			default:
 				if hooks != nil && hooks.OnUnknown != nil {
 					hooks.OnUnknown(section+"."+key, value)
@@ -2506,7 +2554,7 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 		return err
 	}
 	if valSepPolicySet {
-		o.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy { return valSepPolicy }
+		o.ValueSeparationPolicy = func() ValueSeparationPolicy { return valSepPolicy }
 	}
 	if concurrencyLimit.lowerSet || concurrencyLimit.upperSet {
 		if !concurrencyLimit.lowerSet {
@@ -2662,9 +2710,9 @@ func (o *Options) Validate() error {
 	// is no need to check for zero values.
 
 	var buf strings.Builder
-	if o.Experimental.L0CompactionConcurrency < 1 {
+	if o.L0CompactionConcurrency < 1 {
 		fmt.Fprintf(&buf, "L0CompactionConcurrency (%d) must be >= 1\n",
-			o.Experimental.L0CompactionConcurrency)
+			o.L0CompactionConcurrency)
 	}
 	if o.L0StopWritesThreshold < o.L0CompactionThreshold {
 		fmt.Fprintf(&buf, "L0StopWritesThreshold (%d) must be >= L0CompactionThreshold (%d)\n",
@@ -2682,7 +2730,7 @@ func (o *Options) Validate() error {
 		fmt.Fprintf(&buf, "FormatMajorVersion (%d) must be between %d and %d\n",
 			o.FormatMajorVersion, FormatMinSupported, internalFormatNewest)
 	}
-	if o.Experimental.CreateOnShared != remote.CreateOnSharedNone && o.FormatMajorVersion < FormatMinForSharedObjects {
+	if o.CreateOnShared != remote.CreateOnSharedNone && o.FormatMajorVersion < FormatMinForSharedObjects {
 		fmt.Fprintf(&buf, "FormatMajorVersion (%d) when CreateOnShared is set must be at least %d\n",
 			o.FormatMajorVersion, FormatMinForSharedObjects)
 	}
@@ -2694,7 +2742,7 @@ func (o *Options) Validate() error {
 			fmt.Fprintf(&buf, "KeySchema %q not found in KeySchemas\n", o.KeySchema)
 		}
 	}
-	if policy := o.Experimental.ValueSeparationPolicy(); policy.Enabled {
+	if policy := o.ValueSeparationPolicy(); policy.Enabled {
 		if policy.MinimumSize <= 0 {
 			fmt.Fprintf(&buf, "ValueSeparationPolicy.MinimumSize (%d) must be > 0\n", policy.MinimumSize)
 		}
@@ -2745,8 +2793,8 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 		Comparer:                   o.Comparer,
 		BlockPropertyCollectors:    o.BlockPropertyCollectors,
 		AllocatorSizeClasses:       o.AllocatorSizeClasses,
-		NumDeletionsThreshold:      o.Experimental.NumDeletionsThreshold,
-		DeletionSizeRatioThreshold: o.Experimental.DeletionSizeRatioThreshold,
+		NumDeletionsThreshold:      o.NumDeletionsThreshold,
+		DeletionSizeRatioThreshold: o.DeletionSizeRatioThreshold,
 	}
 	if o.Merger != nil {
 		writerOpts.MergerName = o.Merger.Name
@@ -2759,7 +2807,7 @@ func (o *Options) MakeWriterOptions(level int, format sstable.TableFormat) sstab
 		}
 	}
 	if format >= sstable.TableFormatPebblev3 {
-		writerOpts.ShortAttributeExtractor = o.Experimental.ShortAttributeExtractor
+		writerOpts.ShortAttributeExtractor = o.ShortAttributeExtractor
 		if format >= sstable.TableFormatPebblev4 && level == numLevels-1 {
 			writerOpts.WritingToLowestLevel = true
 		}
@@ -2810,10 +2858,10 @@ func (o *Options) MakeObjStorageProviderSettings(dirname string) objstorageprovi
 	s.Local.NoSyncOnClose = o.NoSyncOnClose
 	s.Local.BytesPerSync = o.BytesPerSync
 	s.Local.ReadaheadConfig = o.Local.ReadaheadConfig
-	s.Remote.StorageFactory = o.Experimental.RemoteStorage
-	s.Remote.CreateOnShared = o.Experimental.CreateOnShared
-	s.Remote.CreateOnSharedLocator = o.Experimental.CreateOnSharedLocator
-	s.Remote.CacheSizeBytes = o.Experimental.SecondaryCacheSizeBytes
+	s.Remote.StorageFactory = o.RemoteStorage
+	s.Remote.CreateOnShared = o.CreateOnShared
+	s.Remote.CreateOnSharedLocator = o.CreateOnSharedLocator
+	s.Remote.CacheSizeBytes = o.SecondaryCacheSizeBytes
 	return s
 }
 

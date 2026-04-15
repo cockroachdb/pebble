@@ -63,7 +63,7 @@ func main() {
 	for i := range opts.Levels {
 		opts.Levels[i].BlockSize = 100
 	}
-	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+	opts.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
 		return pebble.ValueSeparationPolicy{
 			Enabled:               true,
 			MinimumSize:           minSizeForValSep,

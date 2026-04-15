@@ -28,7 +28,7 @@ func makeBrokenExternalDB() {
 		ErrorIfExists:               true,
 	}
 	store := remote.NewInMem()
-	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		"external": store,
 	})
 	opts.EnsureDefaults()

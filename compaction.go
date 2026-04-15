@@ -1517,7 +1517,7 @@ func (d *DB) runIngestFlush(c *tableCompaction) (*manifest.VersionEdit, error) {
 	var ingestSplitFiles []ingestSplitFile
 	ingestFlushable := c.flush.flushables[0].flushable.(*ingestedFlushable)
 
-	suggestSplit := d.opts.Experimental.IngestSplit != nil && d.opts.Experimental.IngestSplit() &&
+	suggestSplit := d.opts.IngestSplit != nil && d.opts.IngestSplit() &&
 		d.FormatMajorVersion() >= FormatVirtualSSTables
 
 	if suggestSplit || ingestFlushable.exciseSpan.Valid() {
@@ -2246,7 +2246,7 @@ func (d *DB) pickManualCompaction(env compactionEnv) (pc pickedCompaction) {
 
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact(c compaction, errChannel chan error) {
-	pprof.Do(d.bgCtx, c.PprofLabels(d.opts.Experimental.UserKeyCategories), func(context.Context) {
+	pprof.Do(d.bgCtx, c.PprofLabels(d.opts.UserKeyCategories), func(context.Context) {
 		func() {
 			d.mu.Lock()
 			defer d.mu.Unlock()
@@ -2869,7 +2869,7 @@ func (d *DB) compactAndWrite(
 		firstKey := runner.FirstKey()
 		if !spanPolicySet || !spanPolicy.StillCovers(d.cmp, firstKey) {
 			var err error
-			spanPolicy, err = d.opts.Experimental.SpanPolicyFunc(base.UserKeyBounds{
+			spanPolicy, err = d.opts.SpanPolicyFunc(base.UserKeyBounds{
 				Start: firstKey,
 				End:   c.bounds.End,
 			})
