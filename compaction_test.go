@@ -959,7 +959,7 @@ func runCompactionTest(
 			},
 		}
 		opts.WithFSDefaults()
-		opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+		opts.CompactionScheduler = func() CompactionScheduler {
 			return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 		}
 		return opts
@@ -1574,7 +1574,7 @@ func runCompactionTest(
 				}
 				spanPolicies = append(spanPolicies, policy)
 			}
-			d.opts.Experimental.SpanPolicyFunc = MakeStaticSpanPolicyFunc(d.cmp, spanPolicies...)
+			d.opts.SpanPolicyFunc = MakeStaticSpanPolicyFunc(d.cmp, spanPolicies...)
 			return ""
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -1800,11 +1800,11 @@ func TestCompactionTombstones(t *testing.T) {
 					Logger:             testutils.Logger{T: t},
 				}
 				opts.WithFSDefaults()
-				opts.Experimental.EnableDeleteOnlyCompactionExcises = func() bool { return true }
-				opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+				opts.EnableDeleteOnlyCompactionExcises = func() bool { return true }
+				opts.CompactionScheduler = func() CompactionScheduler {
 					return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 				}
-				opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+				opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 					return ValueSeparationPolicy{
 						Enabled: false,
 					}
@@ -2724,7 +2724,7 @@ func TestMarkedForCompaction(t *testing.T) {
 				t = t.Add(time.Second)
 				return t
 			}
-			opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+			opts.CompactionScheduler = func() CompactionScheduler {
 				return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 			}
 			var err error
@@ -2945,10 +2945,10 @@ func TestSharedObjectDeletePacing(t *testing.T) {
 
 	var opts Options
 	opts.FS = vfs.NewMem()
-	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		remote.MakeLocator(""): remote.NewInMem(),
 	})
-	opts.Experimental.CreateOnShared = remote.CreateOnSharedAll
+	opts.CreateOnShared = remote.CreateOnSharedAll
 	opts.DeletionPacing.BaselineRate = func() uint64 { return 1 }
 	opts.Logger = testutils.Logger{T: t}
 
@@ -3161,7 +3161,7 @@ func TestCompactionCorruption(t *testing.T) {
 	}
 	opts.WithFSDefaults()
 	remoteStorage := remote.NewInMem()
-	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		remote.MakeLocator("external-locator"): remoteStorage,
 	})
 	d, err := Open("", opts)
@@ -3352,9 +3352,9 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 } // Lower for test
-	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+	opts.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 } // Lower for test
+	opts.NumDeletionsThreshold = 1
+	opts.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
@@ -3455,9 +3455,9 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 } // Lower for test
-	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+	opts.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 } // Lower for test
+	opts.NumDeletionsThreshold = 1
+	opts.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
@@ -3540,9 +3540,9 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 }
-	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+	opts.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 }
+	opts.NumDeletionsThreshold = 1
+	opts.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
@@ -3609,9 +3609,9 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.9 } // Set high threshold
-	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+	opts.TombstoneDenseCompactionThreshold = func() float64 { return 0.9 } // Set high threshold
+	opts.NumDeletionsThreshold = 1
+	opts.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
@@ -3662,9 +3662,9 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 	)
 
 	opts := DefaultOptions()
-	opts.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 }
-	opts.Experimental.NumDeletionsThreshold = 1
-	opts.Experimental.CompactionScheduler = func() CompactionScheduler {
+	opts.TombstoneDenseCompactionThreshold = func() float64 { return 0.5 }
+	opts.NumDeletionsThreshold = 1
+	opts.CompactionScheduler = func() CompactionScheduler {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()

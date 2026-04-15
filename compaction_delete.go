@@ -32,8 +32,8 @@ func (d *DB) tryScheduleDeleteOnlyCompaction() bool {
 	}
 	v := d.mu.versions.currentVersion()
 	isExciseAllowed := d.FormatMajorVersion() >= FormatVirtualSSTables &&
-		d.opts.Experimental.EnableDeleteOnlyCompactionExcises != nil &&
-		d.opts.Experimental.EnableDeleteOnlyCompactionExcises()
+		d.opts.EnableDeleteOnlyCompactionExcises != nil &&
+		d.opts.EnableDeleteOnlyCompactionExcises()
 
 	picked, ok := d.mu.compact.wideTombstones.PickCompaction(v, isExciseAllowed)
 	if !ok {

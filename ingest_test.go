@@ -440,7 +440,7 @@ func TestFlushableIngestWithBlobs(t *testing.T) {
 		// Set a high stop-writes threshold to ensure we can use flushable ingests.
 		MemTableStopWritesThreshold: 10,
 	}
-	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+	opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 		return ValueSeparationPolicy{
 			Enabled:                true,
 			MinimumSize:            4,
@@ -469,7 +469,7 @@ func TestFlushableIngestWithBlobs(t *testing.T) {
 	}
 	writerOpts := valsep.SSTBlobWriterOptions{
 		SSTWriterOpts:          sstWriterOpts,
-		ValueSeparationMinSize: opts.Experimental.ValueSeparationPolicy().MinimumSize,
+		ValueSeparationMinSize: opts.ValueSeparationPolicy().MinimumSize,
 	}
 	writerOpts.NewBlobFileFn = func() (objstorage.Writable, error) {
 		path := fmt.Sprintf("blob%d", fileCount)
@@ -591,7 +591,7 @@ func TestFlushableIngestWithBlobsWALRecovery(t *testing.T) {
 		// Set a high stop-writes threshold to ensure we can use flushable ingests.
 		MemTableStopWritesThreshold: 10,
 	}
-	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+	opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 		return ValueSeparationPolicy{
 			Enabled:                true,
 			MinimumSize:            4,
@@ -613,7 +613,7 @@ func TestFlushableIngestWithBlobsWALRecovery(t *testing.T) {
 	}
 	writerOpts := valsep.SSTBlobWriterOptions{
 		SSTWriterOpts:          sstWriterOpts,
-		ValueSeparationMinSize: opts.Experimental.ValueSeparationPolicy().MinimumSize,
+		ValueSeparationMinSize: opts.ValueSeparationPolicy().MinimumSize,
 	}
 	writerOpts.NewBlobFileFn = func() (objstorage.Writable, error) {
 		path := fs.PathJoin(dir, fmt.Sprintf("blob%d", fileCount))
@@ -1220,22 +1220,22 @@ func testIngestSharedImpl(
 		}
 		lel := MakeLoggingEventListener(testutils.Logger{T: t})
 		opts1.EventListener = &lel
-		opts1.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts1.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator(""): sstorage,
 		})
-		opts1.Experimental.CreateOnShared = createOnShared
-		opts1.Experimental.CreateOnSharedLocator = remote.MakeLocator("")
+		opts1.CreateOnShared = createOnShared
+		opts1.CreateOnSharedLocator = remote.MakeLocator("")
 		// Disable automatic compactions because otherwise we'll race with
 		// delete-only compactions triggered by ingesting range tombstones.
 		opts1.DisableAutomaticCompactions = true
 
 		opts2 = &Options{}
 		*opts2 = *opts1
-		opts2.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts2.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator(""): sstorage,
 		})
-		opts2.Experimental.CreateOnShared = createOnShared
-		opts2.Experimental.CreateOnSharedLocator = remote.MakeLocator("")
+		opts2.CreateOnShared = createOnShared
+		opts2.CreateOnSharedLocator = remote.MakeLocator("")
 		opts2.FS = mem2
 
 		var err error
@@ -1589,9 +1589,9 @@ func TestSimpleIngestShared(t *testing.T) {
 			L0StopWritesThreshold: 100,
 			Logger:                testutils.Logger{T: t},
 		}
-		opts.Experimental.RemoteStorage = providerSettings.Remote.StorageFactory
-		opts.Experimental.CreateOnShared = providerSettings.Remote.CreateOnShared
-		opts.Experimental.CreateOnSharedLocator = providerSettings.Remote.CreateOnSharedLocator
+		opts.RemoteStorage = providerSettings.Remote.StorageFactory
+		opts.CreateOnShared = providerSettings.Remote.CreateOnShared
+		opts.CreateOnSharedLocator = providerSettings.Remote.CreateOnSharedLocator
 
 		var err error
 		d, err = Open("", opts)
@@ -1703,11 +1703,11 @@ func TestIngestExternal(t *testing.T) {
 			FormatMajorVersion: majorVersion,
 			Logger:             testutils.Logger{T: t},
 		}
-		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator("external-locator"): remoteStorage,
 		})
-		opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
-		opts.Experimental.IngestSplit = func() bool {
+		opts.CreateOnShared = remote.CreateOnSharedNone
+		opts.IngestSplit = func() bool {
 			return true
 		}
 		// Disable automatic compactions because otherwise we'll race with
@@ -2234,7 +2234,7 @@ func TestIngest(t *testing.T) {
 			}},
 			FormatMajorVersion: internalFormatNewest,
 		}
-		opts.Experimental.IngestSplit = func() bool {
+		opts.IngestSplit = func() bool {
 			return split
 		}
 		// Disable automatic compactions because otherwise we'll race with
@@ -3572,7 +3572,7 @@ func TestIngestValidation(t *testing.T) {
 					},
 				},
 			}
-			opts.Experimental.ValidateOnIngest = true
+			opts.ValidateOnIngest = true
 			d, err := Open("", opts)
 			require.NoError(t, err)
 			defer func() { require.NoError(t, d.Close()) }()

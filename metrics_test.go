@@ -271,9 +271,9 @@ func TestMetrics(t *testing.T) {
 		}
 		// Fix FileCacheShards to avoid non-determinism in disk usage (the option is
 		// written to the OPTIONS file).
-		opts.Experimental.FileCacheShards = 10
-		opts.Experimental.EnableValueBlocks = func() bool { return true }
-		opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+		opts.FileCacheShards = 10
+		opts.EnableValueBlocks = func() bool { return true }
+		opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 			return ValueSeparationPolicy{
 				Enabled:                true,
 				MinimumSize:            3,
@@ -292,13 +292,13 @@ func TestMetrics(t *testing.T) {
 		// ingests.
 		opts.MemTableStopWritesThreshold = 4
 
-		opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			remote.MakeLocator(""): remoteStorage,
 		})
 		if createOnSharedLower {
-			opts.Experimental.CreateOnShared = remote.CreateOnSharedLower
+			opts.CreateOnShared = remote.CreateOnSharedLower
 		} else {
-			opts.Experimental.CreateOnShared = remote.CreateOnSharedNone
+			opts.CreateOnShared = remote.CreateOnSharedNone
 		}
 		var err error
 		d, err = Open("", opts)

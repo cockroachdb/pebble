@@ -26,10 +26,10 @@ func (d *DB) determineCompactionValueSeparation(
 	jobID JobID, c *tableCompaction,
 ) valsep.ValueSeparation {
 	if d.FormatMajorVersion() < FormatValueSeparation ||
-		d.opts.Experimental.ValueSeparationPolicy == nil {
+		d.opts.ValueSeparationPolicy == nil {
 		return valsep.NeverSeparateValues{}
 	}
-	policy := d.opts.Experimental.ValueSeparationPolicy()
+	policy := d.opts.ValueSeparationPolicy()
 	if !policy.Enabled {
 		return valsep.NeverSeparateValues{}
 	}
@@ -42,7 +42,7 @@ func (d *DB) determineCompactionValueSeparation(
 		// For flushes, c.version is nil.
 		blobFileSet = uniqueInputBlobMetadatas(&c.version.BlobFiles, c.inputs)
 	}
-	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, d.opts.Experimental.SpanPolicyFunc, d.cmp); !writeBlobs {
+	if writeBlobs, outputBlobReferenceDepth := shouldWriteBlobFiles(c, policy, d.opts.SpanPolicyFunc, d.cmp); !writeBlobs {
 		// This compaction should preserve existing blob references.
 		return valsep.NewPreserveAllHotBlobReferences(
 			blobFileSet,
@@ -64,7 +64,7 @@ func (d *DB) determineCompactionValueSeparation(
 		policy.MinimumMVCCGarbageSize,
 		valsep.WriteNewBlobFilesOptions{
 			InputBlobPhysicalFiles: blobFileSet,
-			ShortAttrExtractor:     d.opts.Experimental.ShortAttributeExtractor,
+			ShortAttrExtractor:     d.opts.ShortAttributeExtractor,
 			InvalidValueCallback: func(userKey []byte, value []byte, err error) {
 				// The value may not be safe, so it will be redacted when redaction
 				// is enabled.

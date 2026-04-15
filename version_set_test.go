@@ -56,7 +56,7 @@ func TestVersionSet(t *testing.T) {
 		Comparer: base.DefaultComparer,
 		Logger:   testutils.Logger{T: t},
 	}
-	opts.Experimental.ValueSeparationPolicy = func() ValueSeparationPolicy {
+	opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 		return ValueSeparationPolicy{
 			Enabled:               true,
 			MinimumSize:           50,
@@ -70,7 +70,7 @@ func TestVersionSet(t *testing.T) {
 	}
 	blobRewriteHeuristic := manifest.BlobRewriteHeuristic{
 		CurrentTime: getCurrentTimeSecs,
-		MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
+		MinimumAge:  opts.ValueSeparationPolicy().RewriteMinimumAge,
 	}
 
 	opts.EnsureDefaults()

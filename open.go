@@ -114,7 +114,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		// We will initialize the store at the minimum possible format, then upgrade
 		// the format to the desired one. This helps test the format upgrade code.
 		formatVersion = FormatMinSupported
-		if opts.Experimental.CreateOnShared != remote.CreateOnSharedNone {
+		if opts.CreateOnShared != remote.CreateOnSharedNone {
 			formatVersion = FormatMinForSharedObjects
 		}
 		// There is no format version marker file. There are three cases:
@@ -168,12 +168,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	d.mu.versions = &versionSet{}
 	d.diskAvailBytes.Store(math.MaxUint64)
 	d.problemSpans.Init(manifest.NumLevels, opts.Comparer.Compare)
-	if opts.Experimental.CompactionScheduler != nil {
-		d.compactionScheduler = opts.Experimental.CompactionScheduler()
+	if opts.CompactionScheduler != nil {
+		d.compactionScheduler = opts.CompactionScheduler()
 	} else {
 		d.compactionScheduler = newConcurrencyLimitScheduler(defaultTimeSource{})
 	}
-	if iterTrackOpts := opts.Experimental.IteratorTracking; iterTrackOpts.PollInterval > 0 && iterTrackOpts.MaxAge > 0 {
+	if iterTrackOpts := opts.IteratorTracking; iterTrackOpts.PollInterval > 0 && iterTrackOpts.MaxAge > 0 {
 		d.iterTracker = inflight.NewPollingTracker(iterTrackOpts.PollInterval, iterTrackOpts.MaxAge, func(report string) {
 			d.opts.Logger.Infof("Long-lived iterators detected:\n%s", report)
 		})
@@ -253,7 +253,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		// Create a fresh version set and create an initial manifest file.
 		blobRewriteHeuristic := manifest.BlobRewriteHeuristic{
 			CurrentTime: d.opts.private.timeNow,
-			MinimumAge:  opts.Experimental.ValueSeparationPolicy().RewriteMinimumAge,
+			MinimumAge:  opts.ValueSeparationPolicy().RewriteMinimumAge,
 		}
 		if err := d.mu.versions.initNewDB(
 			jobID, dirname, d.objProvider, opts, rs.manifestMarker, d.FormatMajorVersion, blobRewriteHeuristic, &d.mu.Mutex); err != nil {
@@ -358,7 +358,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	fileCacheSize := FileCacheSize(opts.MaxOpenFiles)
 	if opts.FileCache == nil {
-		opts.FileCache = NewFileCache(opts.Experimental.FileCacheShards, fileCacheSize)
+		opts.FileCache = NewFileCache(opts.FileCacheShards, fileCacheSize)
 		defer opts.FileCache.Unref()
 	}
 	fileCacheReaderOpts := d.opts.MakeReaderOptions()

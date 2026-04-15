@@ -956,7 +956,7 @@ func (d *dbT) readCurrentVersion(dirname string) (*manifest.Version, error) {
 	}
 	l0Organizer := manifest.NewL0Organizer(cmp, d.opts.FlushSplitBytes)
 	emptyVersion := manifest.NewInitialVersion(cmp)
-	v, err := bve.Apply(emptyVersion, d.opts.Experimental.ReadCompactionRate)
+	v, err := bve.Apply(emptyVersion, d.opts.ReadCompactionRate)
 	if err != nil {
 		return nil, err
 	}

@@ -33,7 +33,7 @@ func TestCloseWithBlockedRemoteIO(t *testing.T) {
 		L0CompactionThreshold: 100,
 		L0StopWritesThreshold: 100,
 	}
-	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+	opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 		remote.MakeLocator("blocking"): storage,
 	})
 

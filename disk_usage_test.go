@@ -52,7 +52,7 @@ func TestEstimateDiskUsageDataDriven(t *testing.T) {
 				d = nil
 			}
 			opts := &Options{FS: fs, FormatMajorVersion: FormatExciseBoundsRecord, DisableAutomaticCompactions: true}
-			opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+			opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 				remote.MakeLocator("external-locator"): remoteStorage,
 			})
 			require.NoError(t, parseDBOptionsArgs(opts, td.CmdArgs))

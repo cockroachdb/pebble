@@ -144,7 +144,7 @@ func buildForIngest(
 	// If value separation is enabled and the format major version supports
 	// ingesting blob files, use SSTBlobWriter to potentially create blob files.
 	// Blob files don't support shared storage yet, so skip when it's enabled.
-	if t.opts.Experimental.ValueSeparationPolicy().Enabled &&
+	if t.opts.ValueSeparationPolicy().Enabled &&
 		db.FormatMajorVersion() >= pebble.FormatIngestBlobFiles &&
 		!t.testOpts.sharedStorageEnabled {
 		return buildForIngestWithBlobs(t, dbID, b, i, path, f, db)
@@ -175,7 +175,7 @@ func buildForIngestWithBlobs(
 	blobFileCount := 0
 
 	// Get the value separation policy to determine the minimum value size.
-	policy := t.opts.Experimental.ValueSeparationPolicy()
+	policy := t.opts.ValueSeparationPolicy()
 
 	writerOpts := valsep.SSTBlobWriterOptions{
 		SSTWriterOpts:                     t.opts.MakeWriterOptions(0, db.FormatMajorVersion().MaxTableFormat()),
