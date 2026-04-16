@@ -1474,6 +1474,16 @@ func (d *DB) flush() {
 		flushingWorkStart := crtime.NowMono()
 		d.mu.Lock()
 		defer d.mu.Unlock()
+		// Safety net: if this goroutine exits without completing normal
+		// cleanup (e.g. Logger.Fatalf → runtime.Goexit), ensure flushing
+		// is cleared and Close() is unblocked.
+		cleanedUp := false
+		defer func() {
+			if !cleanedUp {
+				d.mu.compact.flushing = false
+				d.mu.compact.cond.Broadcast()
+			}
+		}()
 		idleDuration := flushingWorkStart.Sub(d.mu.compact.noOngoingFlushStartTime)
 		var bytesFlushed uint64
 		var err error
@@ -1497,6 +1507,7 @@ func (d *DB) flush() {
 		// compaction if needed.
 		d.maybeScheduleCompaction()
 		d.mu.compact.cond.Broadcast()
+		cleanedUp = true
 	})
 }
 
@@ -2247,9 +2258,42 @@ func (d *DB) pickManualCompaction(env compactionEnv) (pc pickedCompaction) {
 // compact runs one compaction and maybe schedules another call to compact.
 func (d *DB) compact(c compaction, errChannel chan error) {
 	pprof.Do(d.bgCtx, c.PprofLabels(d.opts.Experimental.UserKeyCategories), func(context.Context) {
+		// Decrement compactProcesses and broadcast on exit. This is
+		// deferred so that if the goroutine is killed mid-flight (e.g.
+		// Logger.Fatalf → runtime.Goexit in tests), DB.Close() does not
+		// hang in cond.Wait(). In the normal path this runs after
+		// maybeScheduleCompaction completes.
+		//
+		// NB: if the goroutine exits abnormally, GrantHandle().Done() is
+		// never called, leaving the scheduler's runningCompactions
+		// inflated. This is acceptable because Close() calls Unregister()
+		// before the wait loop, which stops the scheduler.
+		defer func() {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			d.mu.compact.compactProcesses--
+			d.mu.compact.cond.Broadcast()
+		}()
+
 		func() {
 			d.mu.Lock()
 			defer d.mu.Unlock()
+			// Decrement the compaction counter and remove from inProgress
+			// on exit. Deferred so it runs even if Execute triggers a
+			// Logger.Fatalf → runtime.Goexit. LIFO defer ordering ensures
+			// this runs before d.mu.Unlock().
+			defer func() {
+				if c.IsDownload() {
+					d.mu.compact.downloadingCount--
+				} else {
+					d.mu.compact.compactingCount--
+				}
+				if c.UsesBurstConcurrency() {
+					d.mu.compact.burstConcurrency.Add(-1)
+				}
+				delete(d.mu.compact.inProgress, c)
+			}()
+
 			jobID := d.newJobIDLocked()
 
 			compactErr := c.Execute(jobID, d)
@@ -2265,21 +2309,11 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 			if compactErr != nil {
 				d.handleCompactFailure(c, compactErr)
 			}
-			if c.IsDownload() {
-				d.mu.compact.downloadingCount--
-			} else {
-				d.mu.compact.compactingCount--
-			}
-			if c.UsesBurstConcurrency() {
-				if v := d.mu.compact.burstConcurrency.Add(-1); v < 0 {
-					panic(errors.AssertionFailedf("burst concurrency underflow: %d", errors.Safe(v)))
-				}
-			}
-			delete(d.mu.compact.inProgress, c)
-			// Add this compaction's duration to the cumulative duration. NB: This
-			// must be atomic with the above removal of c from
-			// d.mu.compact.InProgress to ensure Metrics.Compact.Duration does not
-			// miss or double count a completing compaction's duration.
+			// Add this compaction's duration to the cumulative duration.
+			// NB: This must be atomic with the deferred removal of c from
+			// d.mu.compact.InProgress to ensure Metrics.Compact.Duration
+			// does not miss or double count a completing compaction's
+			// duration.
 			d.mu.compact.duration += d.opts.private.timeNow().Sub(c.BeganAt())
 		}()
 		// Done must not be called while holding any lock that needs to be
@@ -2302,8 +2336,6 @@ func (d *DB) compact(c compaction, errChannel chan error) {
 			d.mu.Lock()
 			defer d.mu.Unlock()
 			d.maybeScheduleCompaction()
-			d.mu.compact.compactProcesses--
-			d.mu.compact.cond.Broadcast()
 		}()
 	})
 }
