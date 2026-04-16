@@ -894,12 +894,10 @@ func runCompactionTest(
 	defer leaktest.AfterTest(t)()
 
 	var d *DB
-	defer func() {
-		if d != nil {
-			require.NoError(t, closeAllSnapshots(d))
-			require.NoError(t, d.Close())
-		}
-	}()
+	// NB: d is closed explicitly at the end of this function, not via
+	// defer. If deferred, a td.Fatalf (runtime.Goexit) would run Close()
+	// while a compaction goroutine is still in flight, causing Close() to
+	// hang in cond.Wait(). See #5780.
 
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
@@ -1582,6 +1580,10 @@ func runCompactionTest(
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+	if d != nil {
+		require.NoError(t, closeAllSnapshots(d))
+		require.NoError(t, d.Close())
+	}
 }
 
 // TestCompaction tests compaction mechanics. It is a datadriven test, with
