@@ -350,7 +350,15 @@ func (c *Catalog) createNewCatalogFileLocked() (outErr error) {
 		if err := writeRecord(&ve, file, recWriter); err != nil {
 			return err
 		}
-
+		// Sync the directory to ensure the catalog file is durable before creating
+		// the marker that references it. This prevents a crash from leaving the
+		// marker pointing to a non-existent catalog file. Without this sync, both
+		// the catalog and marker files would be unsynced until Move() completes,
+		// creating a race where a crash could include the marker but not the
+		// catalog on filesystems with unordered metadata updates.
+		if err := c.mu.marker.SyncDir(); err != nil {
+			return err
+		}
 		// Move the marker to the new filename. Move handles syncing the data
 		// directory as well.
 		if err := c.mu.marker.Move(filename); err != nil {
