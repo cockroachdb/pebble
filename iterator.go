@@ -283,7 +283,8 @@ type Iterator struct {
 	// appears here because key visibility is handled by the merging iterator.
 	// During SetOptions on an iterator over an indexed batch, this field is
 	// used to update the merging iterator's batch snapshot.
-	merging *mergingIter
+	merging   *mergingIter
+	mergingV2 *mergingIterV2
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -2737,10 +2738,21 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 			if i.merging != nil {
 				i.merging.batchSnapshot = nextBatchSeqNum
 			}
+			if i.mergingV2 != nil {
+				i.mergingV2.slab.batchSnapshot = nextBatchSeqNum
+			}
 			// Prevent a no-op seek optimization on the next seek. We won't be
 			// able to reuse the top-level Iterator state, because it may be
 			// incorrect after the inclusion of new batch mutations.
 			i.batchJustRefreshed = true
+			if i.mergingV2 != nil && i.pointIter != nil {
+				// V2: the batch point and range del iters are wrapped in an
+				// InterleavingIter. We can't update them in place, so force
+				// a full point iterator reconstruction.
+				i.err = firstError(i.err, i.pointIter.Close())
+				i.pointIter = nil
+				i.mergingV2 = nil
+			}
 			if i.pointIter != nil && i.batch.batch.countRangeDels > 0 {
 				if i.batch.rangeDelIter.Count() == 0 {
 					// When we constructed this iterator, there were no

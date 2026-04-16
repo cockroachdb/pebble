@@ -819,8 +819,6 @@ func (l *levelIter) SeekLT(key []byte, flags base.SeekLTFlags) (kv *base.Interna
 	l.exhaustedDir = 0
 	l.prefix = nil
 
-	// NB: the top-level Iterator has already adjusted key based on
-	// IterOptions.UpperBound.
 	if l.loadFile(l.findFileLT(key, flags), -1) == noFileLoaded {
 		l.exhaustedBackward()
 		return nil
