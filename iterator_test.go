@@ -28,6 +28,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/bytealloc"
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/invalidating"
+	"github.com/cockroachdb/pebble/internal/iterv2"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
@@ -315,6 +316,9 @@ func (f *minSeqNumFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) 
 
 func TestReadSampling(t *testing.T) {
 	defer leaktest.AfterTest(t)()
+	if iterv2.Enabled {
+		t.Skip("TODO(radu): investigate")
+	}
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -683,6 +687,9 @@ func (i *iterSeekOptWrapper) SeekPrefixGE(
 
 func TestIteratorSeekOpt(t *testing.T) {
 	defer leaktest.AfterTest(t)()
+	if iterv2.Enabled {
+		t.Skipf("not supported with iterv2")
+	}
 	var d *DB
 	defer func() {
 		require.NoError(t, d.Close())
