@@ -292,6 +292,7 @@ func (d *DB) Checkpoint(
 		// the filesystem.
 		ckErr = versionMarker.Move(formatVers.String())
 		if ckErr != nil {
+			_ = versionMarker.Close()
 			return ckErr
 		}
 		ckErr = versionMarker.Close()
@@ -614,6 +615,7 @@ func (d *DB) writeCheckpointManifest(
 		return err
 	}
 	if err := manifestMarker.Move(base.MakeFilename(base.FileTypeManifest, manifestFileNum)); err != nil {
+		_ = manifestMarker.Close()
 		return err
 	}
 	return manifestMarker.Close()

@@ -404,6 +404,7 @@ func (c *Catalog) Checkpoint(fs vfs.FS, dir string) error {
 		return err
 	}
 	if err := catalogMarker.Move(c.mu.catalogFilename); err != nil {
+		_ = catalogMarker.Close()
 		return err
 	}
 	return catalogMarker.Close()
