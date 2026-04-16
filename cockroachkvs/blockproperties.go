@@ -9,7 +9,6 @@ import (
 	"math"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/sstable"
 )
 
@@ -17,8 +16,8 @@ const mvccWallTimeIntervalCollector = "MVCCTimeInterval"
 
 // BlockPropertyCollectors is a list of constructors for block-property
 // collectors used by CockroachDB.
-var BlockPropertyCollectors = []func() pebble.BlockPropertyCollector{
-	func() pebble.BlockPropertyCollector {
+var BlockPropertyCollectors = []func() sstable.BlockPropertyCollector{
+	func() sstable.BlockPropertyCollector {
 		return sstable.NewBlockIntervalCollector(
 			mvccWallTimeIntervalCollector,
 			pebbleIntervalMapper{},
@@ -92,7 +91,7 @@ var _ sstable.IntervalMapper = pebbleIntervalMapper{}
 
 // MapPointKey is part of the sstable.IntervalMapper interface.
 func (pebbleIntervalMapper) MapPointKey(
-	key pebble.InternalKey, value []byte,
+	key sstable.InternalKey, value []byte,
 ) (sstable.BlockInterval, error) {
 	return mapSuffixToInterval(key.UserKey)
 }
