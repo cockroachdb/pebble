@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -796,8 +797,14 @@ func runCompactCmdFn(
 
 func runCompactCmd(t *testing.T, td *datadriven.TestData, d *DB) error {
 	ctx := context.Background()
-	// Set up a 1-minute deadline to detect stuck compactions.
-	ctx, cancelFn := context.WithDeadline(ctx, time.Now().Add(time.Minute))
+	// Set up a deadline to detect stuck compactions. Use a longer timeout
+	// for slow builds (race detector) where compactions take significantly
+	// longer.
+	timeout := time.Minute
+	if buildtags.SlowBuild {
+		timeout = 5 * time.Minute
+	}
+	ctx, cancelFn := context.WithDeadline(ctx, time.Now().Add(timeout))
 	defer cancelFn()
 	compactFunc := runCompactCmdFn(ctx, t, td, d)
 	err := compactFunc()
