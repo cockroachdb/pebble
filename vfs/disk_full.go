@@ -437,11 +437,21 @@ func (f *enospcFile) Sync() error {
 }
 
 func (f *enospcFile) SyncData() error {
-	return f.inner.SyncData()
+	gen := f.fs.waitUntilReady()
+	err := f.inner.SyncData()
+	if err != nil && isENOSPC(err) {
+		f.fs.handleENOSPC(gen)
+	}
+	return err
 }
 
 func (f *enospcFile) SyncTo(length int64) (fullSync bool, err error) {
-	return f.inner.SyncTo(length)
+	gen := f.fs.waitUntilReady()
+	fullSync, err = f.inner.SyncTo(length)
+	if err != nil && isENOSPC(err) {
+		f.fs.handleENOSPC(gen)
+	}
+	return fullSync, err
 }
 
 func (f *enospcFile) Fd() uintptr {

@@ -1,5 +1,6 @@
-# First write to probe file has error.
-init interval=200ms inject-errors=((ErrInjected (And Writes (PathMatch "foo") (OnIndex 0))))
+# First create of probe file has error. OnIndex 1 skips the Remove call
+# (index 0) and targets Create (index 1).
+init interval=200ms inject-errors=((ErrInjected (And Writes (PathMatch "foo") (OnIndex 1))))
 ----
 
 enable wait

@@ -788,12 +788,12 @@ func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func (f *memFile) Write(p []byte) (int, error) {
+	if !f.write {
+		return 0, errors.New("pebble/vfs: file was not created for writing")
+	}
 	if f.fs.crashable {
 		f.fs.cloneMu.RLock()
 		defer f.fs.cloneMu.RUnlock()
-	}
-	if !f.write {
-		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
 	if f.n.isDir {
 		return 0, errors.New("pebble/vfs: cannot write a directory")
@@ -825,12 +825,12 @@ func (f *memFile) Write(p []byte) (int, error) {
 }
 
 func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
+	if !f.write {
+		return 0, errors.New("pebble/vfs: file was not created for writing")
+	}
 	if f.fs.crashable {
 		f.fs.cloneMu.RLock()
 		defer f.fs.cloneMu.RUnlock()
-	}
-	if !f.write {
-		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
 	if f.n.isDir {
 		return 0, errors.New("pebble/vfs: cannot write a directory")
