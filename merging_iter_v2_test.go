@@ -24,8 +24,9 @@ import (
 // mergingTestLevel represents a single level of a merging iterator test, with
 // sorted point keys and non-overlapping range deletion spans.
 type mergingTestLevel struct {
-	points []base.InternalKV // sorted by InternalCompare
-	spans  []keyspan.Span    // non-overlapping, sorted by Start
+	points          []base.InternalKV // sorted by InternalCompare
+	spans           []keyspan.Span    // non-overlapping, sorted by Start
+	extraBoundaries [][]byte          // additional boundary keys (for spurious boundaries)
 }
 
 // mergeLevels returns the surviving point keys after applying range deletion
@@ -92,7 +93,7 @@ func newMergingIterV2FromLevels(
 ) *mergingIterV2 {
 	iters := make([]iterv2.Iter, len(levels))
 	for i, lvl := range levels {
-		iters[i] = iterv2.NewTestIter(lvl.points, lvl.spans, nil, nil, nil, nil, nil)
+		iters[i] = iterv2.NewTestIter(lvl.points, lvl.spans, lvl.extraBoundaries, nil, nil, nil, nil)
 		if rand.IntN(2) == 0 {
 			iters[i] = iterv2.NewInvalidating(iters[i])
 		}

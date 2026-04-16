@@ -51,6 +51,7 @@ type slabState struct {
 // smaller seqnum than any higher-level RANGEDEL.
 func (s *slabState) Build(dir int8) iter.Seq2[int, bool] {
 	return func(yield func(int, bool) bool) {
+		// INVARIANT: highestRangeDelSeqNum > 0 <=> parked
 		highestRangeDelSeqNum := base.SeqNum(0)
 
 		parked := false
