@@ -9,6 +9,7 @@ add 1 10 100
 ----
 create: test/REMOTE-OBJ-CATALOG-000001
 sync: test/REMOTE-OBJ-CATALOG-000001
+sync: test
 create: test/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 sync: test/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 close: test/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
@@ -80,6 +81,7 @@ add 8 80 80
 ----
 create: test/REMOTE-OBJ-CATALOG-000002
 sync: test/REMOTE-OBJ-CATALOG-000002
+sync: test
 create: test/marker.remote-obj-catalog.000002.REMOTE-OBJ-CATALOG-000002
 sync: test/marker.remote-obj-catalog.000002.REMOTE-OBJ-CATALOG-000002
 close: test/marker.remote-obj-catalog.000002.REMOTE-OBJ-CATALOG-000002
@@ -117,6 +119,7 @@ add 5 50 500
 ----
 create: other-path/REMOTE-OBJ-CATALOG-000001
 sync: other-path/REMOTE-OBJ-CATALOG-000001
+sync: other-path
 create: other-path/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 sync: other-path/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 close: other-path/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
@@ -163,6 +166,7 @@ random-batches n=20 size=2000
 ----
 create: test/REMOTE-OBJ-CATALOG-000003
 sync: test/REMOTE-OBJ-CATALOG-000003
+sync: test
 create: test/marker.remote-obj-catalog.000003.REMOTE-OBJ-CATALOG-000003
 sync: test/marker.remote-obj-catalog.000003.REMOTE-OBJ-CATALOG-000003
 close: test/marker.remote-obj-catalog.000003.REMOTE-OBJ-CATALOG-000003
@@ -189,6 +193,7 @@ sync: test/REMOTE-OBJ-CATALOG-000003
 close: test/REMOTE-OBJ-CATALOG-000003
 create: test/REMOTE-OBJ-CATALOG-000004
 sync: test/REMOTE-OBJ-CATALOG-000004
+sync: test
 create: test/marker.remote-obj-catalog.000004.REMOTE-OBJ-CATALOG-000004
 sync: test/marker.remote-obj-catalog.000004.REMOTE-OBJ-CATALOG-000004
 close: test/marker.remote-obj-catalog.000004.REMOTE-OBJ-CATALOG-000004
@@ -223,6 +228,7 @@ sync: test/REMOTE-OBJ-CATALOG-000004
 close: test/REMOTE-OBJ-CATALOG-000004
 create: test/REMOTE-OBJ-CATALOG-000005
 sync: test/REMOTE-OBJ-CATALOG-000005
+sync: test
 create: test/marker.remote-obj-catalog.000005.REMOTE-OBJ-CATALOG-000005
 sync: test/marker.remote-obj-catalog.000005.REMOTE-OBJ-CATALOG-000005
 close: test/marker.remote-obj-catalog.000005.REMOTE-OBJ-CATALOG-000005
@@ -248,6 +254,7 @@ sync: test/REMOTE-OBJ-CATALOG-000005
 close: test/REMOTE-OBJ-CATALOG-000005
 create: test/REMOTE-OBJ-CATALOG-000006
 sync: test/REMOTE-OBJ-CATALOG-000006
+sync: test
 create: test/marker.remote-obj-catalog.000006.REMOTE-OBJ-CATALOG-000006
 sync: test/marker.remote-obj-catalog.000006.REMOTE-OBJ-CATALOG-000006
 close: test/marker.remote-obj-catalog.000006.REMOTE-OBJ-CATALOG-000006
@@ -259,6 +266,7 @@ sync: test/REMOTE-OBJ-CATALOG-000006
 close: test/REMOTE-OBJ-CATALOG-000006
 create: test/REMOTE-OBJ-CATALOG-000007
 sync: test/REMOTE-OBJ-CATALOG-000007
+sync: test
 create: test/marker.remote-obj-catalog.000007.REMOTE-OBJ-CATALOG-000007
 sync: test/marker.remote-obj-catalog.000007.REMOTE-OBJ-CATALOG-000007
 close: test/marker.remote-obj-catalog.000007.REMOTE-OBJ-CATALOG-000007
@@ -272,6 +280,7 @@ sync: test/REMOTE-OBJ-CATALOG-000007
 close: test/REMOTE-OBJ-CATALOG-000007
 create: test/REMOTE-OBJ-CATALOG-000008
 sync: test/REMOTE-OBJ-CATALOG-000008
+sync: test
 create: test/marker.remote-obj-catalog.000008.REMOTE-OBJ-CATALOG-000008
 sync: test/marker.remote-obj-catalog.000008.REMOTE-OBJ-CATALOG-000008
 close: test/marker.remote-obj-catalog.000008.REMOTE-OBJ-CATALOG-000008

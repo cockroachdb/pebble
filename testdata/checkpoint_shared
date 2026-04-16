@@ -88,6 +88,7 @@ rename: db/temporary.000003.dbtmp -> db/OPTIONS-000003
 sync: db
 create: db/REMOTE-OBJ-CATALOG-000001
 sync: db/REMOTE-OBJ-CATALOG-000001
+sync: db
 create: db/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 sync: db/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
 close: db/marker.remote-obj-catalog.000001.REMOTE-OBJ-CATALOG-000001
