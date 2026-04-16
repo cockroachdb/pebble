@@ -115,9 +115,20 @@ func randMergingTestLevels(
 		lvlCfg.MinSeqNum = minSeq
 		lvlCfg.MaxSeqNum = maxSeq
 
+		// Generate random spurious boundaries (0-3 per level).
+		numExtra := rng.IntN(4)
+		var extraBoundaries [][]byte
+		if numExtra > 0 {
+			extraBoundaries = make([][]byte, numExtra)
+			for j := range numExtra {
+				extraBoundaries[j] = cfg.RandKey(rng)
+			}
+		}
+
 		levels[i] = mergingTestLevel{
-			points: iterv2.RandPointKeys(rng, lvlCfg, maxPointsPerLevel),
-			spans:  iterv2.RandSpans(rng, lvlCfg, maxSpansPerLevel),
+			points:          iterv2.RandPointKeys(rng, lvlCfg, maxPointsPerLevel),
+			spans:           iterv2.RandSpans(rng, lvlCfg, maxSpansPerLevel),
+			extraBoundaries: extraBoundaries,
 		}
 	}
 	return levels
