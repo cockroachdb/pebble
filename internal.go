@@ -22,19 +22,20 @@ const (
 	InternalKeyKindMerge              = base.InternalKeyKindMerge
 	InternalKeyKindLogData            = base.InternalKeyKindLogData
 	InternalKeyKindSingleDelete       = base.InternalKeyKindSingleDelete
-	InternalKeyKindSyntheticKey       = base.InternalKeyKindSyntheticKey
 	InternalKeyKindRangeDelete        = base.InternalKeyKindRangeDelete
-	InternalKeyKindMax                = base.InternalKeyKindMax
 	InternalKeyKindSetWithDelete      = base.InternalKeyKindSetWithDelete
-	InternalKeyKindRangeKeySet        = base.InternalKeyKindRangeKeySet
-	InternalKeyKindRangeKeyUnset      = base.InternalKeyKindRangeKeyUnset
 	InternalKeyKindRangeKeyDelete     = base.InternalKeyKindRangeKeyDelete
 	InternalKeyKindRangeKeyMin        = base.InternalKeyKindRangeKeyMin
+	InternalKeyKindRangeKeyUnset      = base.InternalKeyKindRangeKeyUnset
+	InternalKeyKindRangeKeySet        = base.InternalKeyKindRangeKeySet
 	InternalKeyKindRangeKeyMax        = base.InternalKeyKindRangeKeyMax
 	InternalKeyKindIngestSST          = base.InternalKeyKindIngestSST
-	InternalKeyKindIngestSSTWithBlobs = base.InternalKeyKindIngestSSTWithBlobs
 	InternalKeyKindDeleteSized        = base.InternalKeyKindDeleteSized
 	InternalKeyKindExcise             = base.InternalKeyKindExcise
+	InternalKeyKindSyntheticKey       = base.InternalKeyKindSyntheticKey
+	InternalKeyKindIngestSSTWithBlobs = base.InternalKeyKindIngestSSTWithBlobs
+	InternalKeyKindSpanBoundary       = base.InternalKeyKindSpanBoundary
+	InternalKeyKindMax                = base.InternalKeyKindMax
 	InternalKeyKindInvalid            = base.InternalKeyKindInvalid
 )
 
