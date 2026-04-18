@@ -236,9 +236,15 @@ func (p *Parser) SeqNum() base.SeqNum {
 	return base.ParseSeqNum(p.Next())
 }
 
-// Uint64 parses the next token as a sequence number with a "#" prefix.
+// HashSeqNum parses the next token as a sequence number with a "#" prefix.
 func (p *Parser) HashSeqNum() base.SeqNum {
 	tok := p.Next()
+	if !strings.HasPrefix(tok, "#") {
+		p.Errf("expected sequence number with %q prefix, got %q", "#", tok)
+	}
+	if len(tok) < 2 {
+		p.Errf("expected sequence number after %q prefix, got %q", "#", tok)
+	}
 	return base.ParseSeqNum(tok[1:])
 }
 
