@@ -35,6 +35,11 @@ type shard[K Key, V any, InitOpts any] struct {
 	releasingCh     chan *value[V]
 	releaseLoopExit sync.WaitGroup
 
+	// initWg tracks initValueFn calls in flight. Close waits on it so that
+	// limbo nodes have transitioned out of limbo (or been cleaned up) before
+	// teardown.
+	initWg sync.WaitGroup
+
 	initValueFn    InitValueFn[K, V, InitOpts]
 	releaseValueFn ReleaseValueFn[V]
 }
@@ -87,6 +92,8 @@ func (s *shard[K, V, InitOpts]) unlinkNode(n *node[K, V]) {
 		s.mu.sizeCold--
 	case test:
 		s.mu.sizeTest--
+	case limbo:
+		panic(errors.AssertionFailedf("unlinkNode called on limbo node"))
 	}
 
 	if n == s.mu.handHot {
@@ -170,13 +177,17 @@ func (s *shard[K, V, InitOpts]) findOrCreateValue(
 	n := s.mu.nodes[key]
 	switch {
 	case n == nil:
-		// Slow-path miss of a non-existent node.
+		// Slow-path miss of a non-existent node. Create a limbo node: it
+		// lives in the map so concurrent FindOrCreate calls find it, but
+		// stays out of the CLOCK-Pro linked list while initValueFn runs.
 		n = &node[K, V]{}
-		s.addNode(n, key, cold)
-		s.mu.sizeCold++
+		n.key = key
+		n.status = limbo
+		n.limboTarget = cold
+		s.mu.nodes[key] = n
 
 	case n.value != nil:
-		// Slow-path hit of a hot or cold node.
+		// Slow-path hit of a hot, cold, or limbo node.
 		//
 		// The caller is responsible for decrementing the refCount.
 		v := n.value
@@ -205,7 +216,9 @@ func (s *shard[K, V, InitOpts]) findOrCreateValue(
 		}
 
 	default:
-		// Slow-path miss of a test node.
+		// Slow-path miss of a test node. Remove it from the linked list and
+		// move it to limbo while we initialize a fresh value. On success it
+		// will rejoin the cache as hot.
 		s.unlinkNode(n)
 		s.mu.coldTarget++
 		if s.mu.coldTarget > s.capacity {
@@ -213,8 +226,9 @@ func (s *shard[K, V, InitOpts]) findOrCreateValue(
 		}
 
 		n.referenced.Store(false)
-		s.addNode(n, key, hot)
-		s.mu.sizeHot++
+		n.status = limbo
+		n.limboTarget = hot
+		s.mu.nodes[key] = n
 	}
 
 	v := &value[V]{
@@ -224,6 +238,7 @@ func (s *shard[K, V, InitOpts]) findOrCreateValue(
 	v.refCount.Store(2)
 	n.value = v
 	s.misses.Add(1)
+	s.initWg.Add(1)
 
 	s.mu.Unlock()
 
@@ -232,28 +247,52 @@ func (s *shard[K, V, InitOpts]) findOrCreateValue(
 		value: v,
 	}
 
+	// Use a defer so that we leave the node's initialized state consistent
+	// (waiters unblocked, Close unblocked) even if initValueFn panics.
+	defer func() {
+		s.initWg.Done()
+		close(v.initialized)
+	}()
 	v.err = s.initValueFn(ctx, key, opts, vRef)
+
+	s.mu.Lock()
 	if v.err != nil {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		// Lookup the node in the cache again as it might have already been
-		// removed.
-		if n := s.mu.nodes[key]; n != nil && n.value == v {
-			s.unlinkNode(n)
-			s.clearNode(n)
+		// Init failed: remove from the map (if still ours) and release the
+		// shard's ref. The node never joins the linked list.
+		if existing := s.mu.nodes[key]; existing == n {
+			delete(s.mu.nodes, key)
 		}
+		n.value = nil
+		s.mu.Unlock()
+		s.UnrefValue(v)
+	} else {
+		// Init succeeded: leave limbo by joining the linked list with the
+		// target status. evictNodes runs first to make room (matching the
+		// original addNode ordering: evict, bump size, link).
+		target := n.limboTarget
+		n.status = target
+		n.limboTarget = 0
+		s.evictNodes()
+		// linkNodeLocked always inserts at the boundary between the hot and
+		// cold regions of the ring (right before handHot, with handCold
+		// stepped back), so the same insertion position serves both targets;
+		// the only thing that distinguishes hot from cold is which size
+		// counter we bump (and therefore which clock hand will process it).
+		switch target {
+		case cold:
+			s.mu.sizeCold++
+		case hot:
+			s.mu.sizeHot++
+		}
+		s.linkNodeLocked(n)
+		s.mu.Unlock()
 	}
-	close(v.initialized)
 	return v
 }
 
-func (s *shard[K, V, InitOpts]) addNode(n *node[K, V], key K, status nodeStatus) {
-	n.key = key
-	n.status = status
-
-	s.evictNodes()
-	s.mu.nodes[n.key] = n
-
+// linkNodeLocked inserts n into the CLOCK-Pro linked list. n must not
+// already be linked. s.mu must be held.
+func (s *shard[K, V, InitOpts]) linkNodeLocked(n *node[K, V]) {
 	n.links.next = n
 	n.links.prev = n
 	if s.mu.handHot == nil {
@@ -264,7 +303,6 @@ func (s *shard[K, V, InitOpts]) addNode(n *node[K, V], key K, status nodeStatus)
 	} else {
 		s.mu.handHot.link(n)
 	}
-
 	if s.mu.handCold == s.mu.handHot {
 		s.mu.handCold = s.mu.handCold.prev()
 	}
@@ -353,6 +391,12 @@ func (s *shard[K, V, InitOpts]) Evict(key K) {
 	n := s.mu.nodes[key]
 	var v *value[V]
 	if n != nil {
+		if n.status == limbo {
+			// initValueFn is in flight; the caller is holding a vRef, so
+			// Evict's "no outstanding references" precondition is violated.
+			s.mu.Unlock()
+			panic(errors.AssertionFailedf("Evict called while initValueFn in flight"))
+		}
 		// NB: This is equivalent to UnrefValue, but we perform the releaseValueFn()
 		// call synchronously below to free up any associated resources before
 		// returning.
@@ -379,14 +423,17 @@ func (s *shard[K, V, InitOpts]) Evict(key K) {
 //
 // It should be used sparingly as it is an O(n) operation.
 func (s *shard[K, V, InitOpts]) EvictAll(predicate func(K) bool) []K {
-	// Collect the keys which need to be evicted.
+	// Collect the keys which need to be evicted. Iterate the map (rather than
+	// the linked list) so we also include any limbo nodes — though the
+	// caller's "no outstanding references" precondition implies there shouldn't
+	// be any in flight.
 	var keys []K
 	s.mu.RLock()
-	s.forAllNodesLocked(func(n *node[K, V]) {
-		if predicate(n.key) {
-			keys = append(keys, n.key)
+	for k := range s.mu.nodes {
+		if predicate(k) {
+			keys = append(keys, k)
 		}
-	})
+	}
 	s.mu.RUnlock()
 
 	for i := range keys {
@@ -396,29 +443,23 @@ func (s *shard[K, V, InitOpts]) EvictAll(predicate func(K) bool) []K {
 	if invariants.Enabled {
 		s.mu.RLock()
 		defer s.mu.RUnlock()
-		s.forAllNodesLocked(func(n *node[K, V]) {
-			if predicate(n.key) {
+		for k := range s.mu.nodes {
+			if predicate(k) {
 				panic(errors.AssertionFailedf("evictable key added in shard"))
-			}
-		})
-	}
-	return keys
-}
-
-func (s *shard[K, V, InitOpts]) forAllNodesLocked(f func(n *node[K, V])) {
-	if firstNode := s.mu.handHot; firstNode != nil {
-		for node := firstNode; ; {
-			f(node)
-			if node = node.next(); node == firstNode {
-				return
 			}
 		}
 	}
+	return keys
 }
 
 // Close the shard, releasing all live values. There must not be any outstanding
 // references on any of the values.
 func (s *shard[K, V, InitOpts]) Close() {
+	// Wait for any in-flight initValueFn calls to complete before tearing
+	// down: they need the lock to transition out of limbo, and Close holds
+	// it.
+	s.initWg.Wait()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
