@@ -284,3 +284,89 @@ func TestContextCancellation(t *testing.T) {
 	require.Equal(t, 1, *ref.Value())
 	ref.Unref()
 }
+
+// TestNoConcurrentInitForSameKey is a regression test for a race where
+// runHandCold could evict a cold node whose initValueFn was still running,
+// allowing a third goroutine to start a parallel initValueFn for the same
+// key — violating the exclusivity contract documented in cache.go.
+func TestNoConcurrentInitForSameKey(t *testing.T) {
+	const blockedKey intKey = 1
+	var perKey sync.Map // intKey -> *atomic.Int32
+	block := make(chan struct{})
+
+	initFn := func(ctx context.Context, k intKey, opts struct{}, v ValueRef[intKey, int, struct{}]) error {
+		ctr, _ := perKey.LoadOrStore(k, &atomic.Int32{})
+		c := ctr.(*atomic.Int32)
+		if n := c.Add(1); n > 1 {
+			t.Errorf("concurrent InitValueFn for key %d (n=%d)", k, n)
+		}
+		defer c.Add(-1)
+		if k == blockedKey {
+			<-block
+		}
+		*v.Value() = int(k)
+		return nil
+	}
+	releaseFn := func(v *int) { *v = -1 }
+
+	// Single shard, small capacity so eviction is reachable with few keys.
+	c := New[intKey, int, struct{}](2, 1, initFn, releaseFn)
+	defer func() {
+		// Drain remaining refs before Close.
+		c.Close()
+	}()
+	ctx := context.Background()
+
+	// Goroutine A: kicks off init for blockedKey; init blocks on `block`.
+	type result struct {
+		ref ValueRef[intKey, int, struct{}]
+		err error
+	}
+	aDone := make(chan result, 1)
+	go func() {
+		ref, err := c.FindOrCreate(ctx, blockedKey, struct{}{})
+		aDone <- result{ref, err}
+	}()
+
+	// Wait until blockedKey's init is in flight.
+	require.Eventually(t, func() bool {
+		v, ok := perKey.Load(blockedKey)
+		return ok && v.(*atomic.Int32).Load() >= 1
+	}, time.Second, time.Millisecond)
+
+	// Goroutine B (this goroutine): apply eviction pressure with other keys
+	// so runHandCold sweeps blockedKey's still-initializing cold node.
+	for k := intKey(2); k <= 6; k++ {
+		ref, err := c.FindOrCreate(ctx, k, struct{}{})
+		require.NoError(t, err)
+		ref.Unref()
+	}
+
+	// Goroutine C: ask for blockedKey again. Pre-fix this would observe
+	// n.value == nil (cleared by runHandCold) and start a SECOND initFn for
+	// blockedKey concurrently with A's. Post-fix it must wait on
+	// v.initialized.
+	cDone := make(chan result, 1)
+	go func() {
+		ref, err := c.FindOrCreate(ctx, blockedKey, struct{}{})
+		cDone <- result{ref, err}
+	}()
+
+	// Give C time to either (incorrectly) start a second init or (correctly)
+	// park on v.initialized. If a parallel init starts, the t.Errorf in
+	// initFn will fire.
+	time.Sleep(50 * time.Millisecond)
+
+	// Unblock A's init.
+	close(block)
+
+	a := <-aDone
+	require.NoError(t, a.err)
+	require.Equal(t, int(blockedKey), *a.ref.Value())
+	a.ref.Unref()
+
+	cRes := <-cDone
+	require.NoError(t, cRes.err)
+	require.Equal(t, int(blockedKey), *cRes.ref.Value())
+	cRes.ref.Unref()
+}

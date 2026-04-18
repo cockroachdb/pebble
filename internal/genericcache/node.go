@@ -8,6 +8,14 @@ import "sync/atomic"
 
 // node is an entry in the cache. Normally half the nodes in the cache have a
 // value, and half do not.
+//
+// A node in the limbo state is in the cache map but is NOT in the CLOCK-Pro
+// linked list and does not count toward sizeHot/sizeCold/sizeTest. Limbo
+// nodes hold a value whose initValueFn has not yet returned. Concurrent
+// FindOrCreate calls for the same key still find a limbo node via the map
+// and wait on v.initialized. Once initValueFn completes successfully, the
+// node transitions out of limbo by being added to the linked list with
+// status equal to limboTarget.
 type node[K Key, V any] struct {
 	key   K
 	value *value[V]
@@ -17,6 +25,9 @@ type node[K Key, V any] struct {
 		prev *node[K, V]
 	}
 	status nodeStatus
+	// limboTarget is the status the node should transition to when its
+	// initValueFn completes. Only meaningful when status == limbo.
+	limboTarget nodeStatus
 	// referenced is atomically set to indicate that this entry has been accessed
 	// since the last time one of the clock hands swept it.
 	referenced atomic.Bool
@@ -28,6 +39,7 @@ const (
 	test = iota
 	cold
 	hot
+	limbo
 )
 
 func (p nodeStatus) String() string {
@@ -38,6 +50,8 @@ func (p nodeStatus) String() string {
 		return "cold"
 	case hot:
 		return "hot"
+	case limbo:
+		return "limbo"
 	}
 	return "unknown"
 }
