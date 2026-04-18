@@ -453,21 +453,46 @@ func (ts *Set) PickCompaction(
 					continue
 				}
 
-				eligibility := canDeleteOrExciseTable(ts.comparer.Compare, tombBounds, m.UserKeyBounds(), isExciseAllowed)
-				if eligibility == tableEligibilityDelete {
+				eligibility := canDeleteOrExciseTable(ts.comparer.Compare, tombBounds, m.UserKeyBounds())
+				switch eligibility {
+				case tableEligibilityDelete:
 					return DeleteOnlyCompaction{
 						Level:  level,
 						Table:  iter.Take(),
 						Bounds: tombBounds,
 						Excise: false,
 					}, true /* ok */
-				} else if eligibility == tableEligibilityExcise && isExciseAllowed {
-					return DeleteOnlyCompaction{
-						Level:  level,
-						Table:  iter.Take(),
-						Bounds: tombBounds,
-						Excise: true,
-					}, true /* ok */
+				case tableEligibilityExcise:
+					if isExciseAllowed {
+						return DeleteOnlyCompaction{
+							Level:  level,
+							Table:  iter.Take(),
+							Bounds: tombBounds,
+							Excise: true,
+						}, true /* ok */
+					}
+					// The table is structurally eligible for excise, but
+					// excise is not currently allowed (the
+					// EnableDeleteOnlyCompactionExcises option is false).
+					// That option is set from a function-valued hook and may
+					// remain false indefinitely (e.g. an operator-controlled
+					// CockroachDB cluster setting that is left off). We
+					// deliberately do NOT mark the span as transiently
+					// skipped here: if we did, every wide tombstone whose
+					// only LSM candidates require excise would accumulate in
+					// tombstonedSpans for the lifetime of the process and
+					// be re-evaluated on every PickCompaction call,
+					// unboundedly growing the region tree.
+					//
+					// Instead we treat this candidate as not picked. If no
+					// other candidate is found below, the span will be
+					// cleared and disk-space reclamation for these tables
+					// will fall back to regular compactions. If excise is
+					// later re-enabled, a future WideTombstone covering the
+					// same keyspace (e.g. produced when the next table-stats
+					// scan re-observes the originating RANGEDEL) will
+					// re-add the span. This forgets the current span on
+					// purpose; do not "fix" it by preserving the span here.
 				}
 			}
 		}
@@ -522,8 +547,10 @@ const (
 	tableEligibilityExcise
 )
 
+// canDeleteOrExciseTable returns the eligibility of a table for deletion or
+// excise, given the tombstone bounds and the table bounds.
 func canDeleteOrExciseTable(
-	cmp base.Compare, tombBounds, tableBounds base.UserKeyBounds, isExciseAllowed bool,
+	cmp base.Compare, tombBounds, tableBounds base.UserKeyBounds,
 ) tableEligibility {
 	if tombBounds.ContainsBounds(cmp, tableBounds) {
 		// The table is completely contained within the tombstone's
@@ -533,13 +560,6 @@ func canDeleteOrExciseTable(
 		//	    |--------sstable--------|
 		//
 		return tableEligibilityDelete
-	}
-
-	// We can't delete the table outright. If excise is enabled and
-	// allowed by the format major version, we can try to excise the
-	// table. Otherwise, we can continue to the next table.
-	if !isExciseAllowed {
-		return tableEligibilityNone
 	}
 
 	if cmp(tombBounds.Start, tableBounds.Start) <= 0 ||
