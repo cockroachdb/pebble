@@ -315,6 +315,12 @@ func TestIgnorableSuffix(t *testing.T) {
 	require.Equal(t, 1, Comparer.CompareRangeSuffixes([]byte("@1_synthetic"), []byte("@1")))
 	require.Equal(t, 0, Comparer.CompareRangeSuffixes([]byte("@1_synthetic"), []byte("@1_synthetic")))
 	require.Equal(t, 0, Comparer.CompareRangeSuffixes([]byte("@1"), []byte("@1")))
+	// ComparePointSuffixes must agree with Compare (see base.ComparePointSuffixes
+	// contract and base.MakeAssertComparer): the "_synthetic" suffix must be
+	// ignored.
+	require.Equal(t, 0, Comparer.ComparePointSuffixes([]byte("@1"), []byte("@1_synthetic")))
+	require.Equal(t, 0, Comparer.ComparePointSuffixes([]byte("@1_synthetic"), []byte("@1")))
+	require.Equal(t, 0, Comparer.ComparePointSuffixes([]byte("@1_synthetic"), []byte("@1_synthetic")))
 }
 
 func TestExtractKVMeta(t *testing.T) {
