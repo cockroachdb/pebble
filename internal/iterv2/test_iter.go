@@ -61,6 +61,8 @@ type TestIter struct {
 	// Entries where the filter returns false are skipped. The function takes
 	// an index into t.entries.
 	filter func(idx int) bool
+
+	lastSeekIsPrefix bool // true if last seek was SeekPrefixGE
 }
 
 var _ Iter = (*TestIter)(nil)
@@ -302,6 +304,7 @@ func (t *TestIter) First() *base.InternalKV {
 	t.filter = nil
 	t.dir = +1
 	t.idx = 0
+	t.lastSeekIsPrefix = false
 	return t.emitForward()
 }
 
@@ -325,6 +328,7 @@ func (t *TestIter) Last() *base.InternalKV {
 	t.filter = nil
 	t.dir = -1
 	t.idx = len(t.entries) - 1
+	t.lastSeekIsPrefix = false
 	return t.emitBackward()
 }
 
@@ -351,16 +355,40 @@ func (t *TestIter) seekGEInternal(key []byte) *base.InternalKV {
 
 // SeekGE implements InternalIterator.
 func (t *TestIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	prevIdx := t.idx
 	t.filter = nil
 	t.dir = +1
-	return t.seekGEInternal(key)
+	t.seekGEInternal(key)
+	if flags.TrySeekUsingNext() {
+		if t.lastSeekIsPrefix {
+			panic(errors.AssertionFailedf("SeekGE with TrySeekUsingNext after SeekPrefixGE"))
+		}
+		if t.idx < prevIdx {
+			panic(errors.AssertionFailedf(
+				"SeekGE(%s) with TrySeekUsingNext: idx moved backward (%d -> %d)",
+				testkeys.Comparer.FormatKey(key), prevIdx, t.idx))
+		}
+	}
+	t.lastSeekIsPrefix = false
+	if t.idx < len(t.entries) {
+		return &t.kv
+	}
+	return nil
 }
 
 // SeekPrefixGE implements InternalIterator.
 func (t *TestIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	if t.SeekGE(key, flags) == nil {
+	prevIdx := t.idx
+	prevFilter := t.filter
+	t.filter = nil
+	t.dir = +1
+	if t.seekGEInternal(key) == nil {
+		t.checkPrefixSeekBacktrack(key, prevIdx, prevFilter, flags)
+		t.lastSeekIsPrefix = true
 		return nil
 	}
+	t.checkPrefixSeekBacktrack(key, prevIdx, prevFilter, flags)
+	t.lastSeekIsPrefix = true
 	// Set up a filter that accepts entries with the given prefix, plus one
 	// terminal span boundary past the prefix. A non-matching boundary is
 	// accepted if the previous non-skipped boundary (since the seek start)
@@ -391,6 +419,37 @@ func (t *TestIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *bas
 	return &t.kv
 }
 
+// checkPrefixSeekBacktrack validates TrySeekUsingNext for SeekPrefixGE. It
+// checks that the iterator did not backtrack over entries that were visible
+// under the previous prefix's filter.
+func (t *TestIter) checkPrefixSeekBacktrack(
+	key []byte, prevIdx int, prevFilter func(int) bool, flags base.SeekGEFlags,
+) {
+	if !flags.TrySeekUsingNext() {
+		return
+	}
+	if !t.lastSeekIsPrefix {
+		panic(errors.AssertionFailedf("SeekPrefixGE with TrySeekUsingNext after SeekGE"))
+	}
+	if t.idx >= prevIdx {
+		return
+	}
+	// idx went backwards. Check that we only backtracked over entries that
+	// were invisible under the previous prefix's filter.
+	for i := t.idx; i < prevIdx; i++ {
+		if t.entries[i].skipFwd {
+			continue
+		}
+		if prevFilter != nil && !prevFilter(i) {
+			continue // entry was filtered by previous prefix, OK
+		}
+		panic(errors.AssertionFailedf(
+			"SeekPrefixGE(%s) with TrySeekUsingNext: "+
+				"backtracked over visible entry at idx %d (prevIdx=%d, newIdx=%d)",
+			testkeys.Comparer.FormatKey(key), i, prevIdx, t.idx))
+	}
+}
+
 // seekLTInternal contains the core SeekLT logic.
 func (t *TestIter) seekLTInternal(key []byte) *base.InternalKV {
 	t.idx = sort.Search(len(t.entries), func(i int) bool {
@@ -403,6 +462,7 @@ func (t *TestIter) seekLTInternal(key []byte) *base.InternalKV {
 func (t *TestIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	t.filter = nil
 	t.dir = -1
+	t.lastSeekIsPrefix = false
 	return t.seekLTInternal(key)
 }
 
@@ -415,7 +475,9 @@ func (t *TestIter) Next() *base.InternalKV {
 
 // NextPrefix implements InternalIterator.
 func (t *TestIter) NextPrefix(succKey []byte) *base.InternalKV {
-	return t.SeekGE(succKey, base.SeekGEFlagsNone)
+	t.filter = nil
+	t.dir = +1
+	return t.seekGEInternal(succKey)
 }
 
 // Prev implements InternalIterator.

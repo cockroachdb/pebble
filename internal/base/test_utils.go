@@ -116,8 +116,7 @@ func (f *FakeIter) String() string {
 // SeekGE is part of the InternalIterator interface.
 func (f *FakeIter) SeekGE(key []byte, flags SeekGEFlags) *InternalKV {
 	if flags.TrySeekUsingNext() {
-		if !f.valid ||
-			(f.index > 0 && f.cmp(key, f.kvs[f.index-1].K.UserKey) <= 0) {
+		if f.index > 0 && f.cmp(key, f.kvs[f.index-1].K.UserKey) <= 0 {
 			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
 		}
 	} else {

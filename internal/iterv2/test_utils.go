@@ -26,7 +26,6 @@ type TB interface {
 }
 
 // TestOp enumerates the iterator operations used by CheckIter.
-// TODO(radu): add TestOpSeekPrefixGEWithTrySeekUsingNext
 type TestOp int
 
 const (
@@ -39,6 +38,8 @@ const (
 	TestOpPrev
 	TestOpNextPrefix
 	TestOpSetBounds
+	TestOpSeekGEWithTrySeekUsingNext
+	TestOpSeekPrefixGEWithTrySeekUsingNext
 	NumTestOps
 )
 
@@ -49,15 +50,17 @@ type TestOpWeights [NumTestOps]int
 
 // AllTestOps is the default set of weights, which exercises all operations.
 var AllTestOps = TestOpWeights{
-	TestOpFirst:        5,
-	TestOpLast:         5,
-	TestOpSeekGE:       15,
-	TestOpSeekPrefixGE: 15,
-	TestOpSeekLT:       15,
-	TestOpNext:         15,
-	TestOpPrev:         15,
-	TestOpNextPrefix:   10,
-	TestOpSetBounds:    5,
+	TestOpFirst:                            5,
+	TestOpLast:                             5,
+	TestOpSeekGE:                           10,
+	TestOpSeekGEWithTrySeekUsingNext:       10,
+	TestOpSeekPrefixGE:                     10,
+	TestOpSeekPrefixGEWithTrySeekUsingNext: 10,
+	TestOpSeekLT:                           15,
+	TestOpNext:                             30,
+	TestOpPrev:                             10,
+	TestOpNextPrefix:                       10,
+	TestOpSetBounds:                        5,
 }
 
 // CheckIterConfig contains parameters for CheckIter.
@@ -125,11 +128,24 @@ func CheckIter(t TB, rng *rand.Rand, cfg CheckIterConfig, expected TestIterData,
 				return iter.SeekGE(opKey, base.SeekGEFlagsNone)
 			}
 
+		case TestOpSeekGEWithTrySeekUsingNext:
+			opKey = cfg.KeyGenConfig.RandKey(rng)
+			doOp = func(iter Iter) *base.InternalKV {
+				return iter.SeekGE(opKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+			}
+
 		case TestOpSeekPrefixGE:
 			opKey = cfg.KeyGenConfig.RandKey(rng)
 			prefix := cmp.Split.Prefix(opKey)
 			doOp = func(iter Iter) *base.InternalKV {
 				return iter.SeekPrefixGE(prefix, opKey, base.SeekGEFlagsNone)
+			}
+
+		case TestOpSeekPrefixGEWithTrySeekUsingNext:
+			opKey = cfg.KeyGenConfig.RandKey(rng)
+			prefix := cmp.Split.Prefix(opKey)
+			doOp = func(iter Iter) *base.InternalKV {
+				return iter.SeekPrefixGE(prefix, opKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
 			}
 
 		case TestOpSeekLT:
