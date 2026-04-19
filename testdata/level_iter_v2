@@ -1,0 +1,195 @@
+# Tests for levelIterV2 with a focus on the TrySeekUsingNext (TSUN) code paths
+# in level_iter_v2.go.
+
+# ---------------------------------------------------------------------------
+# Same-file fast path: TSUN seek to a key still inside the active file's
+# bounds avoids re-finding the file.
+# ---------------------------------------------------------------------------
+
+define
+F
+  a#10,SET d#8,SET g#6,SET
+F
+  k#5,SET n#4,SET q#3,SET
+----
+F0: a#10,SET-g#6,SET
+F1: k#5,SET-q#3,SET
+
+iter
+seek-ge a
+seek-ge c try-seek-using-next
+seek-ge d try-seek-using-next
+seek-ge f try-seek-using-next
+----
+seek-ge a:                     a#10,SET [?, k):{}
+seek-ge c try-seek-using-next: d#8,SET [?, k):{}
+seek-ge d try-seek-using-next: d#8,SET [?, k):{}
+seek-ge f try-seek-using-next: g#6,SET [?, k):{}
+
+# ---------------------------------------------------------------------------
+# Sequential file scan: TSUN seeks that cross one or two file boundaries
+# should be served by the forward-scan path in findFileGE (up to ~4 files).
+# ---------------------------------------------------------------------------
+
+define
+F
+  a#10,SET b#9,SET
+F
+  d#8,SET e#7,SET
+F
+  g#6,SET h#5,SET
+F
+  j#4,SET k#3,SET
+----
+F0: a#10,SET-b#9,SET
+F1: d#8,SET-e#7,SET
+F2: g#6,SET-h#5,SET
+F3: j#4,SET-k#3,SET
+
+iter
+seek-ge a
+seek-ge d try-seek-using-next
+seek-ge g try-seek-using-next
+seek-ge j try-seek-using-next
+----
+seek-ge a:                     a#10,SET [?, d):{}
+seek-ge d try-seek-using-next: d#8,SET [?, g):{}
+seek-ge g try-seek-using-next: g#6,SET [?, j):{}
+seek-ge j try-seek-using-next: j#4,SET [?, ∞):{}
+
+# Same files, but TSUN seeks that land in the gap between files. The level
+# iterator emits a synthetic boundary at the next file's smallest key.
+iter
+seek-ge a
+seek-ge c try-seek-using-next
+seek-ge f try-seek-using-next
+seek-ge i try-seek-using-next
+----
+seek-ge a:                     a#10,SET [?, d):{}
+seek-ge c try-seek-using-next: d#inf,BDRY [?, d):{}
+seek-ge f try-seek-using-next: g#inf,BDRY [?, g):{}
+seek-ge i try-seek-using-next: j#inf,BDRY [?, j):{}
+
+# ---------------------------------------------------------------------------
+# Fall-through to binary search: TSUN seek that skips past more than 4 files.
+# Verifies correctness even when the sequential-scan path bails out.
+# ---------------------------------------------------------------------------
+
+define
+F
+  a#20,SET
+F
+  c#19,SET
+F
+  e#18,SET
+F
+  g#17,SET
+F
+  i#16,SET
+F
+  k#15,SET
+F
+  m#14,SET
+----
+F0: a#20,SET-a#20,SET
+F1: c#19,SET-c#19,SET
+F2: e#18,SET-e#18,SET
+F3: g#17,SET-g#17,SET
+F4: i#16,SET-i#16,SET
+F5: k#15,SET-k#15,SET
+F6: m#14,SET-m#14,SET
+
+iter
+seek-ge a
+seek-ge m try-seek-using-next
+----
+seek-ge a:                     a#20,SET [?, c):{}
+seek-ge m try-seek-using-next: m#14,SET [?, ∞):{}
+
+# ---------------------------------------------------------------------------
+# Synthetic boundary handling: when the prior result was a synthetic file
+# boundary, a TSUN seek can land (a) before the boundary, (b) at the
+# boundary, or (c) past the boundary.
+# ---------------------------------------------------------------------------
+
+define
+F
+  a#10,SET b#9,SET
+F
+  f#8,SET g#7,SET
+----
+F0: a#10,SET-b#9,SET
+F1: f#8,SET-g#7,SET
+
+# Position at the synthetic boundary, then TSUN at the boundary key.
+iter
+seek-ge c
+seek-ge f try-seek-using-next
+----
+seek-ge c:                     f#inf,BDRY [?, f):{}
+seek-ge f try-seek-using-next: f#8,SET [?, ∞):{}
+
+# Position at the synthetic boundary, then TSUN past the boundary.
+iter
+seek-ge c
+seek-ge g try-seek-using-next
+----
+seek-ge c:                     f#inf,BDRY [?, f):{}
+seek-ge g try-seek-using-next: g#7,SET [?, ∞):{}
+
+# Position at the synthetic boundary, then TSUN at a key still before the
+# boundary (must still return the boundary).
+iter
+seek-ge c
+seek-ge d try-seek-using-next
+----
+seek-ge c:                     f#inf,BDRY [?, f):{}
+seek-ge d try-seek-using-next: f#inf,BDRY [?, f):{}
+
+# ---------------------------------------------------------------------------
+# SeekPrefixGE with TSUN spanning multiple files.
+# ---------------------------------------------------------------------------
+
+define
+F
+  a@3#10,SET a@1#9,SET
+F
+  c@5#8,SET c@2#7,SET
+F
+  e@4#6,SET e@1#5,SET
+----
+F0: a@3#10,SET-a@1#9,SET
+F1: c@5#8,SET-c@2#7,SET
+F2: e@4#6,SET-e@1#5,SET
+
+iter
+seek-prefix-ge a@3
+seek-prefix-ge c@5 try-seek-using-next
+seek-prefix-ge e@4 try-seek-using-next
+----
+seek-prefix-ge a@3:                     a@3#10,SET [?, c@5):{}
+seek-prefix-ge c@5 try-seek-using-next: c@5#8,SET [?, e@4):{}
+seek-prefix-ge e@4 try-seek-using-next: e@4#6,SET [?, ∞):{}
+
+# ---------------------------------------------------------------------------
+# Quick-check for non-TSUN SeekGE: when the current file already contains the
+# new seek key (common at upper LSM levels with wide file bounds), the
+# implementation avoids re-finding the file.
+# ---------------------------------------------------------------------------
+
+define
+F
+  a#10,SET m#8,SET z#6,SET
+----
+F0: a#10,SET-z#6,SET
+
+iter
+seek-ge a
+seek-ge h
+seek-ge m
+seek-ge p
+----
+seek-ge a: a#10,SET [?, ∞):{}
+seek-ge h: m#8,SET [?, ∞):{}
+seek-ge m: m#8,SET [?, ∞):{}
+seek-ge p: z#6,SET [?, ∞):{}

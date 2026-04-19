@@ -233,8 +233,28 @@ func (l *levelIterV2) findFileGE(key []byte, flags base.SeekGEFlags) *manifest.T
 	if invariants.Enabled && flags.RelativeSeek() {
 		panic(errors.AssertionFailedf("levelIterV2 does not support RelativeSeek"))
 	}
-	// TODO(radu): do better for TrySeekUsingNext.
-	m := l.files.SeekGE(l.comparer.Compare, key)
+
+	m := func() *manifest.TableMetadata {
+		if flags.TrySeekUsingNext() {
+			// Try the current file, then try using Next() a few times.
+			for n, m := 0, l.files.Current(); ; n, m = n+1, l.files.Next() {
+				if m == nil || m.PointKeyBounds.Largest().IsUpperBoundFor(l.comparer.Compare, key) {
+					return m
+				}
+				if n == 4 {
+					break
+				}
+			}
+		} else {
+			// Check if we are lucky and the current file (if any) is the one we need.
+			// This is likely to happen at upper LSM levels where files have wide
+			// bounds.
+			if m := l.files.Current(); m != nil && m.PointKeyBounds.Contains(l.comparer.Compare, key) {
+				return m
+			}
+		}
+		return l.files.SeekGE(l.comparer.Compare, key)
+	}()
 	if invariants.Enabled && m != nil && !m.HasPointKeys {
 		panic(errors.AssertionFailedf("file has no point keys"))
 	}
@@ -374,10 +394,38 @@ func (l *levelIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Inter
 		panic(errors.AssertionFailedf("levelIterV2 SeekGE to key %q violates lower bound %q", key, l.lower))
 	}
 
-	l.reset(+1)
+	if flags.TrySeekUsingNext() {
+		if invariants.Enabled && (l.err != nil || l.dir != +1 || l.prefix != nil) {
+			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
+		}
+		if !l.currentSpan.Valid() {
+			// Iterator exhausted.
+			return nil
+		}
 
-	// TODO(radu): revisit TrySeekUsingNext support for v2.
-	flags = flags.DisableTrySeekUsingNext()
+		if l.atSyntheticBoundary {
+			if l.comparer.Compare(key, l.kv.K.UserKey) < 0 {
+				// We are still below the synthetic boundary.
+				return &l.kv
+			}
+			// We need to move past the synthetic boundary; fall through.
+			// files.Current() is the first file after the boundary.
+		} else {
+			if invariants.Enabled && l.iterFile != l.files.Current() {
+				panic(errors.AssertionFailedf("files.Current() (%v) != iterFile (%v)", l.files.Current(), l.iterFile))
+			}
+			if endKey := l.fileEndKey(); endKey == nil || l.comparer.Compare(key, endKey) < 0 {
+				// Fast path: same file.
+				if kv := l.iter.SeekGE(key, flags); kv != nil {
+					l.updateCurrentSpan()
+					return kv
+				}
+				return l.seekGEIterExhausted(key)
+			}
+		}
+	}
+
+	l.reset(+1)
 
 	file := l.findFileGE(key, flags)
 	if file == nil || l.comparer.Compare(key, file.PointKeyBounds.SmallestUserKey()) < 0 {
@@ -398,10 +446,14 @@ func (l *levelIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Inter
 		return nil
 	}
 	// INVARIANT: l.iter is the iterator over file; key >= file.PointKeyBounds.SmallestUserKey().
-	if kv := l.iter.SeekGE(key, base.SeekGEFlagsNone); kv != nil {
+	if kv := l.iter.SeekGE(key, flags.DisableTrySeekUsingNext()); kv != nil {
 		l.updateCurrentSpan()
 		return kv
 	}
+	return l.seekGEIterExhausted(key)
+}
+
+func (l *levelIterV2) seekGEIterExhausted(key []byte) *base.InternalKV {
 	if l.iterHasError() {
 		return nil
 	}
@@ -430,11 +482,51 @@ func (l *levelIterV2) SeekPrefixGE(
 	if invariants.Enabled && l.lower != nil && l.comparer.Compare(key, l.lower) < 0 {
 		panic(errors.AssertionFailedf("levelIterV2 SeekPrefixGE to key %q violates lower bound %q", key, l.lower))
 	}
+
+	if flags.TrySeekUsingNext() {
+		if invariants.Enabled && (l.err != nil || l.dir != +1 || l.prefix == nil) {
+			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
+		}
+		l.prefix = prefix
+		l.prefixExhausted = false
+
+		switch {
+		case l.atSyntheticBoundary:
+			if l.comparer.Compare(key, l.kv.K.UserKey) < 0 {
+				// We are still below the synthetic boundary.
+				if !l.matchesPrefix(l.kv.K.UserKey) {
+					l.prefixExhausted = true
+				}
+				return &l.kv
+			}
+			// We need to move past the synthetic boundary; files.Current() is the
+			// first file after the boundary.
+
+		case l.files.Current() != nil && l.iterFile == l.files.Current():
+			if endKey := l.fileEndKey(); endKey == nil || l.comparer.Compare(key, endKey) < 0 {
+				// Fast path: same file.
+				if kv := l.iter.SeekPrefixGE(prefix, key, flags); kv != nil {
+					if kv.K.Kind() == base.InternalKeyKindSpanBoundary && !l.matchesPrefix(kv.K.UserKey) {
+						l.prefixExhausted = true
+					}
+					l.updateCurrentSpan()
+					return kv
+				}
+				return l.seekGEIterExhausted(key)
+			}
+		// We need to move past the current file.
+
+		default:
+			if invariants.Enabled && l.currentSpan.Valid() {
+				panic(errors.AssertionFailedf("files.Current() (%v) nil or != iterFile (%v)", l.files.Current(), l.iterFile))
+			}
+			// Iterator exhausted, we may need to move back to the last file.
+			flags = flags.DisableTrySeekUsingNext()
+		}
+	}
+
 	l.reset(+1)
 	l.prefix = prefix
-
-	// TODO(radu): revisit TrySeekUsingNext support for v2.
-	flags = flags.DisableTrySeekUsingNext()
 
 	file := l.findFileGE(key, flags)
 	if file == nil || l.comparer.Compare(key, file.PointKeyBounds.SmallestUserKey()) < 0 {
@@ -447,26 +539,14 @@ func (l *levelIterV2) SeekPrefixGE(
 	if l.loadFile(file) == noFileLoaded {
 		return nil
 	}
-	if kv := l.iter.SeekPrefixGE(prefix, key, base.SeekGEFlagsNone); kv != nil {
+	if kv := l.iter.SeekPrefixGE(prefix, key, flags.DisableTrySeekUsingNext()); kv != nil {
 		if kv.K.Kind() == base.InternalKeyKindSpanBoundary && !l.matchesPrefix(kv.K.UserKey) {
 			l.prefixExhausted = true
 		}
 		l.updateCurrentSpan()
 		return kv
 	}
-	if l.iterHasError() {
-		return nil
-	}
-	// Check for the case where the key overlaps the file but is actually beyond
-	// the upper bound. Conceptually, it would be easy to check this upfront. But
-	// we know that in this particular case, iter.SeekGE must return nil (because
-	// l.iter has the same upper bound), so we do the check here and avoid it in
-	// the common path (where iter.SeekGE return something).
-	if l.upper != nil && l.comparer.Compare(key, l.upper) >= 0 {
-		l.invalidateSpan()
-		return nil
-	}
-	return l.maybeEmitBoundaryFwd(l.files.Next())
+	return l.seekGEIterExhausted(key)
 }
 
 func (l *levelIterV2) SeekLT(key []byte, flags base.SeekLTFlags) (kv *base.InternalKV) {
