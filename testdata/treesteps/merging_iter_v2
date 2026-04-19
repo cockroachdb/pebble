@@ -37,7 +37,7 @@ b@2#5,SET:vb2
 c#5,DEL:
 c#1,SET:vc
 d#5,SET:vd
-https://raduberinde.github.io/treesteps/decode.html#eNrsmU9r2z4Yx--_V_HgXBowNE5_2cEwlrUNY1B6WMdgNKU48ZNWLPFCrJVBKZQexmCXHXwcewl7UX4lI44SS4ndSIm62o58SizpkZ7vx8-fOLfWqTdCy7UohtT3qLdPJ4ghxXG4P8LJFQmuLgnFyeVN07KtM4rj6fzQcs8tEhBKvOH0NuKnNx34HABb8pbi5EMTQupNKPrCjCHe4JCND0hAwmvtE8RDcFNO8St97JTz8ZwdJIefentj3-BZtX8xi84kMoUp3QDi6Fcc3cfRPbxOvj0AAMRRxG7yG5446Yzkin_8ESwcrrXQzLEwn3zUDdhA9vqD-Xi62rJFnwDibz9hFvF7XcvrWjY06rvqKZy_ssFrO3X39m6919kW4eXUQo0EA_vw-N3Hqkjj8k6p6bROgsRa_P23lLVmvuq1ln3Web-8W_QAAzJEFxrTq1V5NV2mg5qqW6qWbNZnWz2qXy6-Ph8yG0m88gyMSADX6I1dTpUl6Y_cvhiqlUXEOSpPSxbFtKTu1Y3shZG97RRK-MVxNkj1MydZWdWR4p8biQoDWa2cDK2cxnqx_n8qdsVnlKVSCmzGYjaoQo-tUGJnEMmGkaFSTCo9RSa9jYgsRW_PZDipDJfbEnNNwgKIdmiGzmZtmyFSBCK9drMERNJTbtNfL6yUIrP18js3rhqlylQFWtn7A0OkEERQkQjq6NhQU8dWWVAZWTivGqFENUITRv-wPzBEikCkX2vZx52TQvOYn3Gbbo3ZqAij8mLRDCDdV-JvNO5hcJiKkHeSF8qVSHzCJGLM2XWSToanCpG0FTCDqayY_OwOojiYfA0vF3xdrxaeE56QaUWM6dGE31a826XEWLFoM5gMpvJjUuwOu18ajYN-QIbJB9SbEP3ctxWrdW1nwemOpYu7__4GAAD__6dCO2o=
+https://raduberinde.github.io/treesteps/decode.html#eNrsmc9q204Qx--_pxjWlxgEsZyfexCUuklMKYQcmlIocQiyNU6W2qqxtqEQAiGHUuilBx1LH6EPpScpltf2rizFWnvTSPL6lHh3Z3a-H80f5Fty6o6QOIRhwDyXuftsghgwHAf7I5xcUf_qkjKcXN40iUXOGI6n-wPinBPqU0bd4fRrxE9vOvDZB37kLcPJhyYEzJ0w9KQdQ7zBIV8fUJ8G19o3yJcQtpziV_bYLefrGR5yLj-1e2Pf4Fm1fzHLzjgzpS1dH6LwVxTeR-E9vI7_ewAAiMKQfyk6PLGXO-JP9OOPZOFwrYVmhoX55qOuzxfSzx_M15eniSXHBBB9-wmzjN_rErdLLGjUdzVSOH9lgdu2687t3fqo0y3Cy6mFGvUH1uHxu49VkcYRg1LTaZ0EsbXo--9c1prZqtda1lnnfdJb-AADOkQHGtNPq_JqOlwHNVW3VC121ueuHtUvE19fTJmNJF55BkbUh2t0x46gSkL6I6cvp2plEQmB5qeVF8W0pe7VjeyFkb1tF0r4xXU2KPWzIHlb1VHinwNJQl5REhUkeaWzU6SzG-u1-_-pUBYfWZpKSX6zRRV6_IQSO4NILasMlaJR6Sky6W1EJJG9PVPhclW4zAlZmBkWQLRDM3Q2m-IMkSIQ6bWbJSCyvOU24_bCSikqWy97chO60VKZqkAr-3xgiBSCCCoSQR0TG2qa2CoLKqUKZ3UjzNGN0KTRP5wPDJEiEOnXWtZx56TQPOZ33GZa4zZKyEhyKnUiMaZSMtJMY-k3x09swpNh8_4BWTd5odyW5MctR8LZix62oyTtlEgV0morYAZTWTF56eNEcTB5Gt40eLreMzwnPKnSrnY4O4lxIV15MVYs2wwmg6n8mBSnw-6XRuOg79Nh_AfqLYhe5quL1b62s-B059LF3X9_AwAA___xj0NR
 
 # This test verifies that the level iterators skips files 8:[d1-d2], 9:[e1-e2]
 # altogether. Ideally, we would skip 7:[c1-c2] as well, but we currently need to
@@ -90,7 +90,7 @@ b2#1,SET:va
 f1#1,SET:va
 f2#1,SET:va
 .
-https://raduberinde.github.io/treesteps/decode.html#eNrsmM1q20AQx-99imF9sUEQadvmICglwW4oGB_iUiiWCZK8myyxVSNtQ8AEgg-l0EsPOpY-Qh9KT1K8tmutKlnaWLZqIp0Sze58_Jj_zloz1LMnBJmIk4CPbG6fcJ-QgJNpcDIh_jXzrq8YJ_7VHUYa6nMyXawPkDlAzGOc2WOkoXfMDzh89mC14z0n_kcMAbd9TkbxBWNyR8YrM2UeC24K2XvkvtB2OX6Kg6wEcwKkby_ff8XhKy4vw9wn5PaiU9PL8D9cylJIUlpieRCFP6PwMQof4Uz8NwcAiMJw9TIesGtsVogn-v5bvFkvPre8lSF9P17bN7uRJmcEEH39AUKtzdZRpQeDtxq4LXP2kJ-o5AbegNtgHtXO25efKi3B3OShUk1ezsKXbaycbU0_CcY24mSUK5vDhHlwQ-ypKVV3kLLNWPLCr6OAYKHoNQFD63c-yOWHc6BsTEzQF89rRTayWxmTSFuYqiG2DF0cVylclrRrFttZ4OpYYGUWSRnhEmWU5vW4adWdU7MooCInaxyXS-nwaBq61u50ly6fCCb3eDlVPl6c7CHtVDeYnPhgcneW1OnOkqpZxFhUd7w4WJlFst_xXlSUPaSPi1bdOTWLAipyiw3p3SnJgbawoS1z1mwYunZ51rvotDvdVuFvJH-ropmfSOSyXuUSdhM_y6tpuA0sy7qnadUVBGN90fWXrsfG4g-yIx0YTG3_loyG_wMadTkpV7voTgWRLT80Ny1ELaSBLhpzf3I7HAiTJkQRffv1hKOH5l-DDV15gNPsa7BkOiyuzSldkFWJUGoS20jgikhgdRLJTsd70U_2BfiYWNVd8zxIKGrm3_tPidJJu1wdDknZfTB8ePEnAAD__wCN3uo=
+https://raduberinde.github.io/treesteps/decode.html#eNrsmM1q20AQx-99imF9sUEQadvmICglxm4oGB_iUii2CZK8SpbYqpG2oWACwYdS6KUHHUsfoQ-lJyley7VWlSxtLHtrKp0Sze58_Jj_zloL1LdmBJmIkYBNLGadMZ-QgJF5cDYj_g31bq4pI_71PUYaGjAyX60PkDlE1KOMWlOkoTfUDxh89CDe8ZYR_z2GgFk-I5Pkgim5J9PY7FKPBrel7H3yudR2MX6Gg7wECwJkb6_ev-LwisvLMQ8Iubvs1vRy_I_XsuSSFJaMPIjCH1H4GIWPcMH_WwIARGEYv0wG7BnbFfyJvv3ibzaL2yMvNmTvxxv7djfSxIwAoi_fgau12Tqp9GD4WgOnZS4eihMV3MArcBrUc7V25-qD0hLMbR4y1RTlzH1ZRuxsZ_ppMJaRJCNd2RJm1INbYs1NaJsJZ0KtR4EgRF_5tSWArPS94WFog-47EUa4BJdOiQn66nkpSUp0mwGNm9QQW4cuj6sSLmvaNYvdLLA6FliaRVpGuEIZZXk9bVp159QsSqjIzhvOVVNq6Fqn21PAKA7MXT6RUOE5cy59ztj509pWN6Hs5IRy9tbW-d5dU7NIsFB3zthYmkW63_FBVJQ_rU-LVt05NYsSKnLKTet9KQkE2qYYdQcot2Uumg1D164u-pfdTrfXKv0d5U-Jbu5nFLHGF4W4ndSPdTXdt4WVVVlJKKNPuv7c8eiU_0H2JAPDueXfkcn4X8AiryvpaledKaG29Yfo5gi5I6SBwZvyOLprm26e1A6OKRmaI4u-_nzCCeUW35YNXXrOu_m3ZcF0XFzbw7wkqwqh1CR2kcCKSGB5EulOxwfRT_49-ZRY1V3zf5CQ1Mzft6MKpZN19Toekqr7YPzw7HcAAAD__4yk8Rk=
 
 define
 L1
@@ -128,4 +128,58 @@ seek-prefix-ge d try-seek-using-next
 b@20#5,SET:b20
 c@20#5,SET:c20
 d@25#3,SET:d25
-https://raduberinde.github.io/treesteps/decode.html#eNrsls1q20AQgO99imF9sUEQWY57WChtnJhQCKYkpVAsE2TtOFkiq0LahoAJBB9KoZcedCx9hD6UnqRIVmyvI0WS7QT_SBfbmtn5-2ZnPCIdY4iEEoGeYIYwDoSL6Al0vIMhulfcvrrkAt3LW40o5EKgE-p7hHYJt7nghhW-Rrz55OKA35224ZsN8cGPAt0vGnjCcAWyBD0Lb9GKtQbc5t51EbUO3okCVuSgciu-VPRbFt5qWfQmrRO1jaSi2xD4fwL_IfAf4Cj6NQYACHw_fjnv-Kw-04ie4Nc_yUIr04KWYuFR-Vi3Y0Hy-cajfHaaKHJOAMGP3zBfmapO-jpRQK3tZb5jcCIBhb6cP3TfK9D_oKk1OrrPLka6o6k_eBfZq3B7oLROzr_udv2olGvBamaVJjJn1mt0VK0cKudHndP2Sfuslm1Zy8fJrKdS8scw4BZSUMOnuREIhtyGazQcCi36NPT8gIKff4t0e7jkqtO2bioX7c_PV-swi-t89MszXhEZdB3DvUHWe1l2SXWbgYzxRMLiVCfHCiEtyWWTM0Ny9VoJa7thmflgmQuwzCVhpUcXf0xWTjlDtxHuRsDK2WFr-1PzSnSTbsW-o95wcqy8l7sAi-WDxRZgsXVuSDaZX2w6v1i5IbcR7hphLbkJn3SS_l1VG6bNregL7gbJ5KQ2jOYrXCspm2d55B47zUojHjuQFtjb1eAu-pFJH9OZUGK3p5Dny1GAd1F-vfs3_wMAAP__trByMg==
+https://raduberinde.github.io/treesteps/decode.html#eNrsls1q20AQx-99imF9sUAQWY57WChtnJhQCKYkpVAsE2TtOFkiq0LahoAJBB9KoZcedCx9hD6UnqRIVmzLliLJdow_pItt7ezszP83O-MhaesDJJQIdAXThX4kHERXoO0eDdC54dbNNRfoXN-rRCZXAu3A3iW0Q7jFBdfN4DXi3ScH-_zhvAXfLIg2fhTofFHBFbojkCXYmXiPZmTV5xZ3b4uYtfFBFPASDyq34WtFv2PhrZZFd1w6YdnETDQLfO-P7z353hOchL9GAAC-50UvZw--qE0twsf_9S_moZnpQU3x8Gx8qlnRQvL--vP6dDeR4zkB-D9-w6wyVY30NCKDIh1kviOwwwUKvXj-0HkvQ--Dqkh0-JgtRvpBk_PgXeivwq2-3Dy7_Lrf-tFYrgXVzJImdGfUJDqsVo7ly5P2eeusdSFle1bzcTJqqZS8EfS5iRSU4GlsBYIBt-AWdZsuyN6ki6nkB-b__Fuk-oOhV52UeUO-an1-Wb3jLM6z0S_PfEWE0LF15w5Z93VZJum2ADZcLE51vK0Q0pJcNjkjIFeTSli7DcvIB8uYg2UsCSs9uuhjPILKHrqLcLcCVs4KW9ufnA3RTboVh456y8mx8l7uAyyWDxabg8XWOSHZuH-xSf9i5YTcRbhrhLXkJFyoJO27otQNi5vhF9wPkslJbRnNDVyrWDYv8sjddhqVetR2IC2wt6vBnT8nTvqUThdj7A4U8qwcBXgX5dd9fPM_AAD__3Vedo4=
+
+# Treesteps tests for mergingIterV2 with TrySeekUsingNext (TSUN). Each `define`
+# block sets up an LSM with files, then `merging-iter-v2` runs operations
+# directly against a mergingIterV2 built over levelIterV2 children.
+
+# ---------------------------------------------------------------------------
+# Unparking #1: L1 RANGEDEL [c, g) parks L2 (its keys d/e/f fall inside the
+# deleted range). After advancing past the slab boundary at g, L2 is unparked
+# via TrySeekUsingNext since it was only moved forward while parked.
+# ---------------------------------------------------------------------------
+
+define
+L1
+  a#10,SET:va
+  h#10,SET:vh
+  c#10,RANGEDEL:g
+L2
+  b#5,SET:vb
+  d#5,SET:vd
+  e#5,SET:ve
+  f#5,SET:vf
+  i#5,SET:vi
+----
+L1:
+  000004:[a#10,SET-h#10,SET] seqnums:[#10-#10] points:[a#10,SET-h#10,SET] size:775
+L2:
+  000005:[b#5,SET-i#5,SET] seqnums:[#5-#5] points:[b#5,SET-i#5,SET] size:707
+
+merging-iter-v2 depth=2
+first
+next
+next
+next
+----
+a#10,SET:va
+b#5,SET:vb
+h#10,SET:vh
+i#5,SET:vi
+https://raduberinde.github.io/treesteps/decode.html#eNrsmMFq20AQhu99imFziUEQ260vglJs4oZC8CEuhWKZIEsjaYmsGmkbAiYQfCiFXnrQsfQR-lB6kiJZjrSK1tYmKpaLdbI1u7P_fjszO2hJRvociUoYBszUmX7GfMSA4SI4m6NvU8--pgz969suUciY4SIeHxB1QqhHGdVdopD31A8YfPEgnfGBof-pCwHTfYZmfoCLt-imZot6NHAq2Ud4V2k6v36JA5HAHQtUNO95eYF5jHhzMWyAfIH_6TqukpjihmgeROGvKHyIwgfoJ_9WAABRGKYv8wtedrIRyRP9-JO82QweaF5qKJ_f3diz2UThFQFE335CEm6nrYOSB5N3CugtdXm_WyjnBt6CfkI9SxmcX33e6xbUTIfMbnZpTnzNUl9b1Re5zPJcpPe1gjn1wEF9ofJ7G6gzHriQgCFznnEWpsfZaSvj4ccimHAFFnVRhXb8vNnFLaeyOkJJUE_V8szWpu3E0jESvJoMZn2KRxjbYTgVYDjPgFHIJENYGA-AErdoXzVEnIxn1ZyagUTff1ev0I_nMzvppaUDREp6chQ5p095JpYmwuw9RnpFkjUyO5J6ASmzqaRMeVKFRDJrz86Sm8DO91VmLnUzfjbPz26py9P4brjqjy6G58PLlvzFYNd2MZj7D8iMlKbdWZaoMMsRcuppQmGy0P0bNKfNAMT1FJXRvJiBbAquvwicasTWiAKd-Dzov7gqHXHvnuvQaGlW7gXlRktT6v-RU-2cpCuV9rXdfm141E1-4GGT4zK92GuUgvsvYml6_-pvAAAA__-kOxPz
+
+# ---------------------------------------------------------------------------
+# Unparking #2: a SeekGE past the deleted slab triggers an unpark of L2.
+# Same setup as above, but a forward seek (instead of next) does the unparking.
+# ---------------------------------------------------------------------------
+
+merging-iter-v2 depth=2
+first
+seek-ge h
+next
+----
+a#10,SET:va
+h#10,SET:vh
+i#5,SET:vi
+https://raduberinde.github.io/treesteps/decode.html#eNrslkGr2kAQx-_9FMN6UQgYbb0EpFRqS6F4qKVQjMiqo1kat5JspSCCeCiFXnrIsfQj9EPlkxST9SWrxmQfPnw-zEkz_9n5z28y0SXp0BkSiwj0xZgKWhUeoi9w7ldn6E0Znw6YQG-wqBODdAXOt3qfWD3COBOMusQgb5jnC_jKQWa8E-h9qoMvqCdwnBa4uEBXhieMM98pFO_g90Lpav2Uoov45W37lMVEkVFEQ5BpY9dHlomcPo-n3wn68YCi4SgSm0MY_AmDdRis4VX0bQMAEAaBvJku-L6WKKIr_PUvurMTt2wuA8fz67t4kk0M1RFA-OM3RHMrV67KHvReGkAr1nKVb1Q5BppAS4xPjNbrD58v2oKV-NDpJs9zdNZQnnXS_T6XYZqLdl8bmDEODtK5pfbWsoYq8EwCI515brdQjrNmGt32x30wwQYmzEULzO31Io9bymVxhJqgDt2qzOLQaWJSo8HrMYOJ39Zlmzg2McCs3LAUxeIUwOKksYQ__-rs174FaIJzBZt2UXJnBpPULfAePzIvVmrIcUGWp8Z9uR4-DhmIExOX5yu96MA9C7z4t-rG6eE5af97sL-Z5vMRZ270Aa-bnLLzKsMMcE_iWeqvnv0PAAD__2g5ZHU=

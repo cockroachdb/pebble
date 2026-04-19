@@ -517,3 +517,113 @@ a@5#10,SET:
 a@3#5,SET:
 b@5#8,SET:
 c@1#3,SET:
+
+# Unparking via SeekGE: L0 RANGEDEL [c, g) parks L1 (whose next entries fall
+# inside the deleted slab). A subsequent SeekGE past the slab unparks L1; the
+# iterator internally uses TrySeekUsingNext for the unpark since the level
+# was only moved forward since being parked.
+
+define
+L
+  a#20,SET h#18,SET
+  c-g:{(#15,RANGEDEL)}
+L
+  b#10,SET d#8,SET e#7,SET f#6,SET i#5,SET
+----
+L0
+  a#20,SET
+  h#18,SET
+  c-g:{(#15,RANGEDEL)}
+L1
+  b#10,SET
+  d#8,SET
+  e#7,SET
+  f#6,SET
+  i#5,SET
+
+iter
+first
+next
+next
+seek-ge h
+next
+----
+a#20,SET:
+b#10,SET:
+h#18,SET:
+h#18,SET:
+i#5,SET:
+
+# Parked-level slab boundary at file edge: L1 has an entry exactly at the slab
+# boundary. Forward iteration past the boundary must produce the boundary key
+# from L1.
+
+define
+L
+  a#20,SET k#18,SET
+  c-g:{(#15,RANGEDEL)}
+L
+  b#10,SET d#8,SET g#6,SET j#5,SET
+----
+L0
+  a#20,SET
+  k#18,SET
+  c-g:{(#15,RANGEDEL)}
+L1
+  b#10,SET
+  d#8,SET
+  g#6,SET
+  j#5,SET
+
+iter
+first
+next
+next
+next
+next
+----
+a#20,SET:
+b#10,SET:
+g#6,SET:
+j#5,SET:
+k#18,SET:
+
+# Backward-then-forward clears onlyFwdSinceParked: after iterating forward
+# (which parks L1), a Prev moves the iterator backward. A subsequent forward
+# operation must re-seek the previously-parked level from scratch (no TSUN).
+
+define
+L
+  a#20,SET h#18,SET
+  c-g:{(#15,RANGEDEL)}
+L
+  b#10,SET d#8,SET f#6,SET i#5,SET
+----
+L0
+  a#20,SET
+  h#18,SET
+  c-g:{(#15,RANGEDEL)}
+L1
+  b#10,SET
+  d#8,SET
+  f#6,SET
+  i#5,SET
+
+iter
+first
+next
+next
+prev
+prev
+next
+next
+next
+----
+a#20,SET:
+b#10,SET:
+h#18,SET:
+b#10,SET:
+a#20,SET:
+b#10,SET:
+h#18,SET:
+i#5,SET:
