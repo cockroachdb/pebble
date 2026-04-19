@@ -1,6 +1,6 @@
 ---
 name: candidate-generator
-description: Generate candidate bugs from a package understanding artifact and direct source inspection, optimized for Pebble/CRDB-style Go code.
+description: Internal helper used only by the bug-catcher skill. Do not invoke directly. Generates candidate bugs from a package-understanding artifact for the bug-catcher pipeline.
 tools: Read, Grep, Glob, Bash, LS, Write
 model: opus
 ---

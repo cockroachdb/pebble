@@ -1,6 +1,6 @@
 ---
 name: bug-confirmer
-description: Independently validate one candidate bug and assign severity, optimized for subtle semantic issues in Pebble/CRDB-style Go code.
+description: Internal helper used only by the bug-catcher skill. Do not invoke directly. Independently validates one candidate bug from the bug-catcher pipeline and assigns severity.
 tools: Read, Grep, Glob, Bash, LS, Write, Edit
 model: opus
 ---

@@ -1,6 +1,6 @@
 ---
 name: package-understander
-description: Build a durable understanding of a Go package and how the repository relies on it, optimized for Pebble/CRDB-style invariants and semantics.
+description: Internal helper used only by the bug-catcher skill. Do not invoke directly. Builds a durable package-understanding artifact for the bug-catcher pipeline.
 tools: Read, Grep, Glob, Bash, LS, Write
 model: opus
 ---

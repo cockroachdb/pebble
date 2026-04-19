@@ -1,6 +1,7 @@
 ---
 name: bug-catcher
 description: Audit a Go package in this repository for subtle correctness bugs, including both bugs inside the package and bugs in how the rest of the repository uses it. Optimized for Pebble- and CockroachDB-style code where invariants, iterator semantics, ownership, and API contracts matter more than style issues.
+disable-model-invocation: true
 ---
 
 You are running a multi-stage audit of a Go package.
