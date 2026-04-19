@@ -66,3 +66,20 @@ func TestSkewedLatest(t *testing.T) {
 		dumpSamples(x)
 	}
 }
+
+func TestSkewedLatestMax(t *testing.T) {
+	const min, max uint64 = 10, 99
+	z, err := NewSkewedLatest(min, max, 0.99)
+	require.NoError(t, err)
+	require.Equal(t, max, z.Max())
+
+	z.IncMax(50)
+	require.Equal(t, max+50, z.Max())
+
+	rng := NewRand()
+	for i := 0; i < 1000; i++ {
+		v := z.Uint64(rng)
+		require.GreaterOrEqual(t, v, min)
+		require.LessOrEqual(t, v, z.Max())
+	}
+}
