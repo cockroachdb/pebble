@@ -60,36 +60,35 @@ var AllTestOps = TestOpWeights{
 	TestOpSetBounds:    5,
 }
 
+// CheckIterConfig contains parameters for CheckIter.
+type CheckIterConfig struct {
+	Comparer     *base.Comparer
+	KeyGenConfig KeyGenConfig
+	OpWeights    TestOpWeights
+	NumOps       int
+}
+
 // CheckIter constructs a TestIter with the given points and spans and runs
 // numOps random positioning operations on TestIter and iter, comparing their
 // outputs after each operation. The TestIter is wrapped in an OpCheckIter and
 // iter is wrapped in a LoggingIter. On mismatch, the operation history is
 // logged and t.Fatalf is called.
-func CheckIter(
-	t TB,
-	rng *rand.Rand,
-	cmp *base.Comparer,
-	cfg KeyGenConfig,
-	weights TestOpWeights,
-	points []base.InternalKV,
-	spans []keyspan.Span,
-	iter Iter,
-	startKey, endKey []byte,
-	lower, upper []byte,
-	numOps int,
-) {
+func CheckIter(t TB, rng *rand.Rand, cfg CheckIterConfig, expected TestIterData, iter Iter) {
+	startKey, endKey := expected.StartKey, expected.EndKey
+	lower, upper := expected.Lower, expected.Upper
+	cmp := cfg.Comparer
 	if startKey != nil && endKey != nil && cmp.Compare(startKey, endKey) >= 0 {
 		panic(errors.AssertionFailedf("invalid range [%q, %q)", startKey, endKey))
 	}
 	var totalWeight int
-	for _, w := range weights {
+	for _, w := range cfg.OpWeights {
 		totalWeight += w
 	}
 	if totalWeight == 0 {
 		panic(errors.AssertionFailedf("CheckIter: all weights are zero"))
 	}
 
-	testIter := NewTestIter(points, spans, nil, startKey, endKey, lower, upper)
+	testIter := NewTestIter(expected)
 	checkIter := NewOpCheckIter(testIter, cmp, lower, upper)
 	logIter := NewLoggingIter(iter)
 	defer func() {
@@ -98,19 +97,76 @@ func CheckIter(
 	}()
 
 	var lastKV *base.InternalKV
-	for range numOps {
+	for range cfg.NumOps {
 		// Pick a random operation based on weights.
 		r := rng.IntN(totalWeight)
 		var op TestOp
 		for op = 0; op < NumTestOps-1; op++ {
-			r -= weights[op]
+			r -= cfg.OpWeights[op]
 			if r < 0 {
 				break
 			}
 		}
 
-		var refKV, intKV *base.InternalKV
+		var opKey []byte
 
+		// Initialize doOp to perform the selected operation on any Iter.
+		var doOp func(iter Iter) *base.InternalKV
+		switch op {
+		case TestOpFirst:
+			doOp = func(iter Iter) *base.InternalKV { return iter.First() }
+
+		case TestOpLast:
+			doOp = func(iter Iter) *base.InternalKV { return iter.Last() }
+
+		case TestOpSeekGE:
+			opKey = cfg.KeyGenConfig.RandKey(rng)
+			doOp = func(iter Iter) *base.InternalKV {
+				return iter.SeekGE(opKey, base.SeekGEFlagsNone)
+			}
+
+		case TestOpSeekPrefixGE:
+			opKey = cfg.KeyGenConfig.RandKey(rng)
+			prefix := cmp.Split.Prefix(opKey)
+			doOp = func(iter Iter) *base.InternalKV {
+				return iter.SeekPrefixGE(prefix, opKey, base.SeekGEFlagsNone)
+			}
+
+		case TestOpSeekLT:
+			key := cfg.KeyGenConfig.RandKey(rng)
+			doOp = func(iter Iter) *base.InternalKV {
+				return iter.SeekLT(key, base.SeekLTFlagsNone)
+			}
+
+		case TestOpNext:
+			doOp = func(iter Iter) *base.InternalKV { return iter.Next() }
+
+		case TestOpPrev:
+			doOp = func(iter Iter) *base.InternalKV { return iter.Prev() }
+
+		case TestOpNextPrefix:
+			if lastKV == nil || lastKV.Kind() == base.InternalKeyKindSpanBoundary {
+				// NextPrefix not applicable.
+				continue
+			}
+			succKey := cmp.ImmediateSuccessor(nil, cmp.Split.Prefix(lastKV.K.UserKey))
+			doOp = func(iter Iter) *base.InternalKV {
+				return iter.NextPrefix(succKey)
+			}
+
+		case TestOpSetBounds:
+			lower, upper = RandBounds(rng, cfg.KeyGenConfig, startKey, endKey)
+			doOp = func(iter Iter) *base.InternalKV {
+				iter.SetBounds(lower, upper)
+				return nil
+			}
+
+		default:
+			t.Fatalf("unknown op %d", op)
+		}
+
+		// Run doOp on checkIter, catching illegal ops.
+		var refKV, intKV *base.InternalKV
 		illegal := false
 		func() {
 			defer func() {
@@ -123,60 +179,15 @@ func CheckIter(
 					panic(r)
 				}
 			}()
-
-			switch op {
-			case TestOpFirst:
-				refKV = checkIter.First()
-				intKV = logIter.First()
-
-			case TestOpLast:
-				refKV = checkIter.Last()
-				intKV = logIter.Last()
-
-			case TestOpSeekGE:
-				key := cfg.RandKey(rng)
-				refKV = checkIter.SeekGE(key, base.SeekGEFlagsNone)
-				intKV = logIter.SeekGE(key, base.SeekGEFlagsNone)
-
-			case TestOpSeekPrefixGE:
-				key := cfg.RandKey(rng)
-				prefix := cmp.Split.Prefix(key)
-				refKV = checkIter.SeekPrefixGE(prefix, key, base.SeekGEFlagsNone)
-				intKV = logIter.SeekPrefixGE(prefix, key, base.SeekGEFlagsNone)
-
-			case TestOpSeekLT:
-				key := cfg.RandKey(rng)
-				refKV = checkIter.SeekLT(key, base.SeekLTFlagsNone)
-				intKV = logIter.SeekLT(key, base.SeekLTFlagsNone)
-
-			case TestOpNext:
-				refKV = checkIter.Next()
-				intKV = logIter.Next()
-
-			case TestOpPrev:
-				refKV = checkIter.Prev()
-				intKV = logIter.Prev()
-
-			case TestOpNextPrefix:
-				if lastKV == nil || lastKV.Kind() == base.InternalKeyKindSpanBoundary {
-					// NextPrefix not applicable.
-					illegal = true
-					return
-				}
-				succKey := cmp.ImmediateSuccessor(nil, cmp.Split.Prefix(lastKV.K.UserKey))
-				refKV = checkIter.NextPrefix(succKey)
-				intKV = logIter.NextPrefix(succKey)
-
-			case TestOpSetBounds:
-				lower, upper = RandBounds(rng, cfg, startKey, endKey)
-				checkIter.SetBounds(lower, upper)
-				logIter.SetBounds(lower, upper)
-			}
+			refKV = doOp(checkIter)
 		}()
-
 		if illegal {
 			continue
 		}
+
+		// Run doOp on logIter; any illegal op here fails the test.
+		intKV = doOp(logIter)
+
 		lastKV = refKV
 
 		// Check for mismatches.

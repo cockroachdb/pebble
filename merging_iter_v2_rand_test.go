@@ -42,7 +42,7 @@ func runMergingIterV2RandomTest(t *testing.T, seed uint64) {
 	}
 
 	// TODO(radu): support initial lower/upper bounds.
-	iter := newMergingIterV2FromLevels(cmp, levels, snapshot)
+	iter := newMergingIterV2FromLevels(rng, cmp, levels, snapshot)
 	expectedPoints := mergeLevels(cmp, levels, snapshot)
 
 	// On failure, log seed and configuration.
@@ -53,12 +53,12 @@ func runMergingIterV2RandomTest(t *testing.T, seed uint64) {
 			fmt.Printf("cfg: %+v\n", cfg)
 			for levelIdx, l := range levels {
 				fmt.Printf("L%d:\n", levelIdx)
-				p := make([]base.InternalKey, len(l.points))
+				p := make([]base.InternalKey, len(l.Points))
 				for j := range p {
-					p[j] = l.points[j].K
+					p[j] = l.Points[j].K
 				}
 				fmt.Printf("  points: %v\n", p)
-				fmt.Printf("  spans: %v\n", l.spans)
+				fmt.Printf("  spans: %v\n", l.Spans)
 			}
 		}
 	}()
@@ -68,14 +68,23 @@ func runMergingIterV2RandomTest(t *testing.T, seed uint64) {
 	// infrastructure.
 	var interleaving iterv2.InterleavingIter
 	interleaving.Init(cmp, iter, nil, nil, nil, nil, nil)
-	iterv2.CheckIter(t, rng, cmp, cfg, iterv2.AllTestOps, expectedPoints, nil, &interleaving, nil, nil, nil, nil, 500)
+	checkCfg := iterv2.CheckIterConfig{
+		Comparer:     cmp,
+		KeyGenConfig: cfg,
+		OpWeights:    iterv2.AllTestOps,
+		NumOps:       500,
+	}
+	expected := iterv2.TestIterData{
+		Points: expectedPoints,
+	}
+	iterv2.CheckIter(t, rng, checkCfg, expected, &interleaving)
 }
 
 // randMergingTestLevels generates random merging test levels with seqnum ranges
 // partitioned so that level 0 (topmost) gets the highest seqnums.
 func randMergingTestLevels(
 	rng *rand.Rand, cfg iterv2.KeyGenConfig, maxLevels, maxPointsPerLevel, maxSpansPerLevel int,
-) []mergingTestLevel {
+) []iterv2.TestIterData {
 	numLevels := 1 + rng.IntN(maxLevels)
 
 	// Partition [cfg.MinSeqNum, cfg.MaxSeqNum] into numLevels non-overlapping
@@ -103,7 +112,7 @@ func randMergingTestLevels(
 	cuts = append(cuts, totalSeqNums)
 	slices.Sort(cuts)
 
-	levels := make([]mergingTestLevel, numLevels)
+	levels := make([]iterv2.TestIterData, numLevels)
 	for i := range numLevels {
 		// Level 0 is the topmost (highest seqnums). Partitions are assigned in
 		// reverse order: level 0 gets the last partition.
@@ -125,10 +134,10 @@ func randMergingTestLevels(
 			}
 		}
 
-		levels[i] = mergingTestLevel{
-			points:          iterv2.RandPointKeys(rng, lvlCfg, maxPointsPerLevel),
-			spans:           iterv2.RandSpans(rng, lvlCfg, maxSpansPerLevel),
-			extraBoundaries: extraBoundaries,
+		levels[i] = iterv2.TestIterData{
+			Points:          iterv2.RandPointKeys(rng, lvlCfg, maxPointsPerLevel),
+			Spans:           iterv2.RandSpans(rng, lvlCfg, maxSpansPerLevel),
+			ExtraBoundaries: extraBoundaries,
 		}
 	}
 	return levels

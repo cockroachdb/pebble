@@ -111,5 +111,19 @@ func runRandomTest(t *testing.T, seed uint64) {
 		}
 	}()
 
-	CheckIter(t, rng, cmp, cfg, AllTestOps, points, spans, &interleavingIter, startKey, endKey, lower, upper, numOps)
+	checkCfg := CheckIterConfig{
+		Comparer:     cmp,
+		KeyGenConfig: cfg,
+		OpWeights:    AllTestOps,
+		NumOps:       numOps,
+	}
+	expected := TestIterData{
+		Points:   points,
+		Spans:    spans,
+		StartKey: startKey,
+		EndKey:   endKey,
+		Lower:    lower,
+		Upper:    upper,
+	}
+	CheckIter(t, rng, checkCfg, expected, &interleavingIter)
 }
