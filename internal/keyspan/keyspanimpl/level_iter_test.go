@@ -300,7 +300,7 @@ func TestLevelIterEquivalence(t *testing.T) {
 				meta.RangeKeyBounds.SetInternalKeyBounds(
 					base.MakeInternalKey(file[0].Start, file[0].SmallestKey().SeqNum(), file[0].SmallestKey().Kind()),
 					base.MakeExclusiveSentinelKey(file[len(file)-1].LargestKey().Kind(), file[len(file)-1].End))
-				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, meta.RangeKeyBounds.Smallest(), meta.RangeKeyBounds.Largest())
+				meta.ExtendRangeKeyBounds(base.DefaultComparer.Compare, manifest.AnyRangeKeys, meta.RangeKeyBounds.Smallest(), meta.RangeKeyBounds.Largest())
 				metas = append(metas, meta)
 			}
 
@@ -388,7 +388,7 @@ func TestLevelIter(t *testing.T) {
 							meta.ExtendPointKeyBounds(cmp, start, end)
 						case "range-key-bounds":
 							start, end := base.ParseInternalKeyRange(val)
-							meta.ExtendRangeKeyBounds(cmp, start, end)
+							meta.ExtendRangeKeyBounds(cmp, manifest.AnyRangeKeys, start, end)
 						default:
 							d.Fatalf(t, "unknown argument %q", arg)
 						}
@@ -405,7 +405,7 @@ func TestLevelIter(t *testing.T) {
 					f.meta.ExtendPointKeyBounds(cmp, smallest, largest)
 				} else {
 					f.rangeKeys = append(f.rangeKeys, span)
-					f.meta.ExtendRangeKeyBounds(cmp, smallest, largest)
+					f.meta.ExtendRangeKeyBounds(cmp, manifest.AnyRangeKeys, smallest, largest)
 				}
 			}
 			var strs []string

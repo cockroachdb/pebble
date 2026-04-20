@@ -67,6 +67,7 @@ func TestVERoundTripAndAccumulate(t *testing.T) {
 		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
 	).ExtendRangeKeyBounds(
 		cmp,
+		AnyRangeKeys,
 		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
 		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
 	)
@@ -228,6 +229,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		CreationTime: 807050,
 	}).ExtendRangeKeyBounds(
 		cmp,
+		AnyRangeKeys,
 		base.MakeInternalKey([]byte("aaa"), 0, base.InternalKeyKindRangeKeySet),
 		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("zzz")),
 	)
@@ -245,6 +247,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
 	).ExtendRangeKeyBounds(
 		cmp,
+		AnyRangeKeys,
 		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
 		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
 	)
@@ -262,6 +265,7 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
 	).ExtendRangeKeyBounds(
 		cmp,
+		AnyRangeKeys,
 		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
 		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
 	)
@@ -279,10 +283,43 @@ func TestVersionEditRoundTrip(t *testing.T) {
 		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindSet),
 	).ExtendRangeKeyBounds(
 		cmp,
+		AnyRangeKeys,
 		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindRangeKeySet),
 		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeySet, []byte("z")),
 	)
 	m6.InitPhysicalBacking()
+
+	// Range-key-only table with RangeKeyTypes = OnlyRangeKeyUnsetAndDelete.
+	m7 := (&TableMetadata{
+		TableNum:     812,
+		Size:         8120,
+		CreationTime: 812070,
+	}).ExtendRangeKeyBounds(
+		cmp,
+		OnlyRangeKeyUnsetAndDelete,
+		base.MakeInternalKey([]byte("aaa"), 0, base.InternalKeyKindRangeKeyUnset),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeyUnset, []byte("zzz")),
+	)
+	m7.InitPhysicalBacking()
+
+	// Table with both point and range keys with RangeKeyTypes = AnyRangeKeys.
+	m8 := (&TableMetadata{
+		TableNum:              813,
+		Size:                  8130,
+		CreationTime:          813080,
+		SeqNums:               base.SeqNumRange{Low: 12, High: 14},
+		LargestSeqNumAbsolute: 14,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("b"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("n"), 0, base.InternalKeyKindSet),
+	).ExtendRangeKeyBounds(
+		cmp,
+		AnyRangeKeys,
+		base.MakeInternalKey([]byte("m"), 0, base.InternalKeyKindRangeKeyDelete),
+		base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeyDelete, []byte("y")),
+	)
+	m8.InitPhysicalBacking()
 
 	testCases := []VersionEdit{
 		// An empty version edit.
@@ -322,6 +359,14 @@ func TestVersionEditRoundTrip(t *testing.T) {
 				{
 					Level: 6,
 					Meta:  m4,
+				},
+				{
+					Level: 6,
+					Meta:  m7,
+				},
+				{
+					Level: 6,
+					Meta:  m8,
 				},
 			},
 		},

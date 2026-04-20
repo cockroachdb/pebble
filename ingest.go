@@ -114,7 +114,7 @@ func ingestSynthesizeShared(
 		// kinds here.
 		smallestRangeKey := base.MakeInternalKey(sm.SmallestRangeKey.UserKey, 0, base.InternalKeyKindRangeKeyMax)
 		largestRangeKey := base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeyMin, sm.LargestRangeKey.UserKey)
-		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallestRangeKey, largestRangeKey)
+		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, manifest.AnyRangeKeys, smallestRangeKey, largestRangeKey)
 	}
 
 	// For simplicity, we use the same number for both the FileNum and the
@@ -188,6 +188,7 @@ func ingestLoad1External(
 	if e.HasRangeKey {
 		meta.ExtendRangeKeyBounds(
 			opts.Comparer.Compare,
+			manifest.AnyRangeKeys,
 			base.MakeInternalKey(smallestCopy, 0, InternalKeyKindRangeKeyMax),
 			base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyMin, largestCopy),
 		)
@@ -464,7 +465,11 @@ func ingestLoad1(
 				// As range keys are fragmented, the end key of the last range key in
 				// the table provides the upper bound for the table.
 				largest := s.LargestKey().Clone()
-				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, smallest, largest)
+				kinds := manifest.AnyRangeKeys
+				if props.NumRangeKeySets == 0 {
+					kinds = manifest.OnlyRangeKeyUnsetAndDelete
+				}
+				meta.ExtendRangeKeyBounds(opts.Comparer.Compare, kinds, smallest, largest)
 				res.lastRangeKey = s.Clone()
 			} else {
 				// s == nil.

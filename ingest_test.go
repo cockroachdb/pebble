@@ -3235,6 +3235,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			if wm.HasRangeKeys {
 				m.ExtendRangeKeyBounds(
 					cmp,
+					manifest.AnyRangeKeys,
 					wm.SmallestRangeKey,
 					maybeUpdateUpperBound(wm.LargestRangeKey),
 				)
