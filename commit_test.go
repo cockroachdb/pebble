@@ -354,6 +354,48 @@ func TestCommitPipelineLogDataSeqNum(t *testing.T) {
 	wg.Wait()
 }
 
+// TestCommitPipelineInvalidBatchLeak is a regression test for a bug where
+// Commit leaked the commitQueueSem and logSyncQSem slots when prepare
+// returned ErrInvalidBatch. Each failed commit permanently consumed one slot
+// from each semaphore; after record.SyncConcurrency-1 such failures,
+// subsequent commits would block forever.
+func TestCommitPipelineInvalidBatchLeak(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	makeBadBatch := func() *Batch {
+		b := &Batch{}
+		require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
+		// Force the batch's count to invalidBatchCount so prepare returns
+		// ErrInvalidBatch before enqueueing the batch or writing to the WAL.
+		b.setCount(invalidBatchCount)
+		return b
+	}
+
+	for _, syncWAL := range []bool{false, true} {
+		t.Run(fmt.Sprintf("syncWAL=%t", syncWAL), func(t *testing.T) {
+			var e testCommitEnv
+			p := newCommitPipeline(e.env())
+			e.queueSemChan = p.logSyncQSem
+
+			// Submit more failing commits than the semaphore capacity. Without
+			// the fix, the loop would deadlock once the semaphores filled.
+			for i := 0; i < 2*record.SyncConcurrency; i++ {
+				err := p.Commit(makeBadBatch(), syncWAL, false /* noSyncWait */)
+				require.ErrorIs(t, err, ErrInvalidBatch)
+				require.Equal(t, 0, len(p.commitQueueSem),
+					"commitQueueSem leaked on iteration %d", i)
+				require.Equal(t, 0, len(p.logSyncQSem),
+					"logSyncQSem leaked on iteration %d", i)
+			}
+
+			// A subsequent valid commit should succeed without blocking.
+			b := &Batch{}
+			require.NoError(t, b.Set([]byte("ok"), []byte("v"), nil))
+			require.NoError(t, p.Commit(b, syncWAL, false /* noSyncWait */))
+		})
+	}
+}
+
 func BenchmarkCommitPipeline(b *testing.B) {
 	for _, noSyncWait := range []bool{false, true} {
 		for _, parallelism := range []int{1, 2, 4, 8, 16, 32, 64, 128} {

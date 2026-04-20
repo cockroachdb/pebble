@@ -318,9 +318,16 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 	mem, err := p.prepare(b, syncWAL, noSyncWait)
 	if err != nil {
 		b.db = nil // prevent batch reuse on error
-		// NB: we are not doing <-p.commitQueueSem since the batch is still
-		// sitting in the pending queue. We should consider fixing this by also
-		// removing the batch from the pending queue.
+		// The only error prepare can return is ErrInvalidBatch, which is
+		// returned before the batch is enqueued in the pending queue and
+		// before the WAL write. Release the semaphore slots acquired above;
+		// otherwise repeated failures would exhaust the bounded semaphores
+		// (logSyncQSem in particular has no other drain path here, since
+		// WriteRecord never ran) and deadlock the commit pipeline.
+		<-p.commitQueueSem
+		if syncWAL {
+			<-p.logSyncQSem
+		}
 		return err
 	}
 
@@ -329,7 +336,9 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 		b.db = nil // prevent batch reuse on error
 		// NB: we are not doing <-p.commitQueueSem since the batch is still
 		// sitting in the pending queue. We should consider fixing this by also
-		// removing the batch from the pending queue.
+		// removing the batch from the pending queue. logSyncQSem does not
+		// leak here because WriteRecord successfully enqueued the record and
+		// it will be drained on sync queue pop.
 		return err
 	}
 
