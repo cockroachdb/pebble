@@ -36,6 +36,7 @@ L6:
 Blob files:
   B000010 physical:{000010 size:[93 (93B)] vals:[4 (4B)]}
   B000012 physical:{000012 size:[106 (106B)] vals:[17 (17B)]}
+Range key set regions: [e, j)=1
 
 
 
@@ -58,6 +59,7 @@ Blob files:
   B000010 physical:{000010 size:[93 (93B)] vals:[4 (4B)]}
   B000012 physical:{000012 size:[106 (106B)] vals:[17 (17B)]}
   B000014 physical:{000014 size:[93 (93B)] vals:[4 (4B)]}
+Range key set regions: [e, j)=1
 
 # Test excise.
 write-table ext4 value-separation-min-size=4
@@ -93,6 +95,7 @@ Blob files:
   B000014 physical:{000014 size:[93 (93B)] vals:[4 (4B)]}
   B000016 physical:{000016 size:[120 (120B)] vals:[30 (30B)]}
   B000018 physical:{000018 size:[104 (104B)] vals:[15 (15B)]}
+Range key set regions: [e, j)=1
 
 # Excise with no overlap.
 write-table ext6 value-separation-min-size=4
@@ -120,6 +123,7 @@ Blob files:
   B000016 physical:{000016 size:[120 (120B)] vals:[30 (30B)]}
   B000018 physical:{000018 size:[104 (104B)] vals:[15 (15B)]}
   B000023 physical:{000023 size:[114 (114B)] vals:[24 (24B)]}
+Range key set regions: [e, j)=1
 
 
 # Ingest with no blob files.
@@ -153,6 +157,7 @@ Blob files:
   B000016 physical:{000016 size:[120 (120B)] vals:[30 (30B)]}
   B000018 physical:{000018 size:[104 (104B)] vals:[15 (15B)]}
   B000023 physical:{000023 size:[114 (114B)] vals:[24 (24B)]}
+Range key set regions: [e, j)=1 [l, m)=1
 
 
 ingest file-dne

@@ -277,6 +277,7 @@ flush
 ----
 L0.0:
   000005:[a#12,RANGEKEYUNSET-b#inf,RANGEKEYSET]
+Range key set regions: [a, b)=1
 
 # Add a table that contains only point keys, to the right of the existing table.
 batch
@@ -288,12 +289,14 @@ flush
 L0.0:
   000005:[a#12,RANGEKEYUNSET-b#inf,RANGEKEYSET]
   000007:[c#13,SET-c#13,SET]
+Range key set regions: [a, b)=1
 
 compact a-c
 ----
 L6:
   000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
+Range key set regions: [a, b)=1
 
 # Add a table that contains a RANGEKEYDEL covering the first table in L6.
 batch
@@ -307,6 +310,7 @@ L0.0:
 L6:
   000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
+Range key set regions: [a, b)=1
 
 # Add one more table containing a RANGEDEL.
 batch
@@ -322,6 +326,7 @@ L0.0:
 L6:
   000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
+Range key set regions: [a, b)=1
 
 # Compute stats on the table containing range key del. It should not show an
 # estimate for deleted point keys as there are no tables below it that contain
@@ -363,6 +368,7 @@ L0.0:
 L6:
   000008:[a#11,RANGEKEYSET-b#inf,RANGEKEYSET]
   000009:[c#0,SET-c#0,SET]
+Range key set regions: [a, b)=1
 
 compact a-z
 ----
@@ -466,6 +472,7 @@ L5:
   000005:[a#2,RANGEDEL-e#inf,RANGEDEL]
 L6:
   000006:[c#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+Range key set regions: [c, d)=1
 
 # The table in L5 should not contain an estimate for the table below it, which
 # contains only range keys.
@@ -724,6 +731,7 @@ L0.0:
   000008(000005):[d#12,DEL-d#12,DEL]
 L6:
   000006:[f#14,SET-f#14,SET]
+Range key set regions: [e, ee)=1
 
 properties file=10
 rocksdb
@@ -774,6 +782,7 @@ L0.0:
 L6:
   000006:[f#14,SET-f#14,SET]
   000011:[z#20,SET-z#20,SET]
+Range key set regions: [e, ee)=1
 
 metadata-stats file=12
 ----
@@ -860,6 +869,7 @@ L6:
   000016:[e#18,RANGEKEYSET-ee#inf,RANGEKEYSET]
   000006:[f#14,SET-f#14,SET]
   000011:[z#20,SET-z#20,SET]
+Range key set regions: [e, ee)=1
 
 batch
 del-range a e
@@ -875,6 +885,7 @@ L6:
   000016:[e#18,RANGEKEYSET-ee#inf,RANGEKEYSET]
   000006:[f#14,SET-f#14,SET]
   000011:[z#20,SET-z#20,SET]
+Range key set regions: [e, ee)=1
 
 properties file=18
 rocksdb
@@ -919,6 +930,7 @@ L6:
   000006:[f#14,SET-f#14,SET]
   000011:[z#20,SET-z#20,SET]
   000019:[zz#23,SET-zz#23,SET]
+Range key set regions: [e, ee)=1
 
 properties file=20
 ----

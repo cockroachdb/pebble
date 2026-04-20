@@ -21,6 +21,7 @@ L2:
 L3:
   000006:[a#0,SET-c#inf,RANGEKEYSET] seqnums:[#0-#1] points:[a#0,SET-b#0,SET] ranges:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#0,SET-c#0,SET] seqnums:[#0-#0] points:[c#0,SET-c#0,SET]
+Range key set regions: [a, b)=1 [b, c)=2
 
 compact a-d L0 hide-size
 ----
@@ -31,6 +32,7 @@ L2:
 L3:
   000006:[a#0,SET-c#inf,RANGEKEYSET] seqnums:[#0-#1] points:[a#0,SET-b#0,SET] ranges:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#0,SET-c#0,SET] seqnums:[#0-#0] points:[c#0,SET-c#0,SET]
+Range key set regions: [a, b)=1 [b, c)=2
 
 compact a-d L1 hide-size
 ----
@@ -39,6 +41,7 @@ L2:
 L3:
   000006:[a#0,SET-c#inf,RANGEKEYSET] seqnums:[#0-#1] points:[a#0,SET-b#0,SET] ranges:[b#1,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#0,SET-c#0,SET] seqnums:[#0-#0] points:[c#0,SET-c#0,SET]
+Range key set regions: [a, b)=1 [b, c)=2
 
 compact a-d L2 hide-size
 ----
@@ -46,3 +49,4 @@ L3:
   000010:[a#4,RANGEKEYSET-b#inf,RANGEKEYSET] seqnums:[#0-#4] points:[a#0,SET-a#0,SET] ranges:[a#4,RANGEKEYSET-b#inf,RANGEKEYSET]
   000011:[b#4,RANGEKEYSET-c#inf,RANGEKEYSET] seqnums:[#0-#4] points:[b#0,SET-b#0,SET] ranges:[b#4,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#0,SET-c#0,SET] seqnums:[#0-#0] points:[c#0,SET-c#0,SET]
+Range key set regions: [a, c)=1

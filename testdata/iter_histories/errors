@@ -74,6 +74,7 @@ L0
 ----
 L0.0:
   000004:[a#9,SET-e@2#2,SET]
+Range key set regions: [c, d)=1
 
 layout filename=000004.sst
 ----

@@ -346,6 +346,7 @@ MANIFEST-000001
 EOF
 L0.0:
   000005:[a#38,RANGEKEYDEL-z@1#35,SET] seqnums:[#10-#38] points:[a@1#10,SET-z@1#35,SET] ranges:[a#38,RANGEKEYDEL-z#inf,RANGEKEYSET] size:1056
+Range key set regions: [a, z)=1
 
 manifest dump
 ./testdata/find-val-sep-db/MANIFEST-000001

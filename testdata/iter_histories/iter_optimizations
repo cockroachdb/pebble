@@ -574,6 +574,7 @@ compact a-z
 ----
 L6:
   000005:[c#11,RANGEKEYSET-e#inf,RANGEKEYSET]
+Range key set regions: [c, e)=1
 
 batch commit
 set j k
@@ -588,6 +589,7 @@ compact a-z
 L6:
   000005:[c#11,RANGEKEYSET-e#inf,RANGEKEYSET]
   000007:[j#12,SET-j#12,SET]
+Range key set regions: [c, e)=1
 
 batch commit
 del-range c@2 d
@@ -614,6 +616,7 @@ L0.0:
 L6:
   000005:[c#11,RANGEKEYSET-e#inf,RANGEKEYSET]
   000007:[j#12,SET-j#12,SET]
+Range key set regions: [c, e)=1
 
 combined-iter upper=z@3 mask-suffix=@3 mask-filter use-l6-filter
 seek-prefix-ge b@2
