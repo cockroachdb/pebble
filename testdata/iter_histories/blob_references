@@ -213,6 +213,7 @@ L6:
   000004:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#2-#5] points:[b#2,SETWITHDEL-b#2,SETWITHDEL] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] size:964 blobrefs:[(B000009: 7); depth:1]
 Blob files:
   B000009 physical:{000009 size:[96 (96B)] vals:[7 (7B)]}
+Range key set regions: [a, d)=1
 
 combined-iter
 seek-lt c

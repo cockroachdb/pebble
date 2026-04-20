@@ -43,6 +43,7 @@ L0.0:
   000005:[a#10,RANGEKEYSET-c#inf,RANGEKEYSET]
   000007:[c#11,RANGEKEYSET-f#inf,RANGEKEYSET]
   000009:[f#12,RANGEKEYSET-m#inf,RANGEKEYSET]
+Range key set regions: [a, m)=1
 
 combined-iter
 seek-prefix-ge d@5
@@ -107,6 +108,7 @@ L0.0:
   000015:[d@0#20,SET-e#inf,RANGEKEYSET]
   000016:[y#21,RANGEKEYSET-z#inf,RANGEKEYSET]
   000017:[z#22,SET-z#22,SET]
+Range key set regions: [a, e)=1 [y, z)=1
 
 # The first seek-prefix-ge y@1 converts the iterator from lazy combined iterator
 # to combined iteration.
@@ -172,6 +174,7 @@ L6:
   000005:[a#10,RANGEKEYSET-c@8#inf,RANGEKEYSET]
   000006:[c@8#11,RANGEKEYSET-e#inf,RANGEKEYSET]
   000007:[y#12,RANGEKEYSET-z#12,SET]
+Range key set regions: [a, e)=1 [y, z)=1
 
 
 # The first seek-prefix-ge y@1 converts the iterator from lazy combined iterator
@@ -301,6 +304,7 @@ L0.0:
 L6:
   000004:[b@4#10,SET-b@4#10,SET]
   000005:[c#11,SET-f#inf,RANGEKEYSET]
+Range key set regions: [d, f)=1
 
 combined-iter
 seek-prefix-ge b@9

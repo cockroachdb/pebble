@@ -986,6 +986,7 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 				p.Expect(";", "nosets")
 				m.RangeKeyKinds = OnlyRangeKeyUnsetAndDelete
 			} else {
+				// Default: assume range key sets exist.
 				m.RangeKeyKinds = AnyRangeKeys
 			}
 

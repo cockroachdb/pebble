@@ -1344,6 +1344,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 	v := &Version{
 		BlobFiles:           curr.BlobFiles.clone(),
 		MarkedForCompaction: curr.MarkedForCompaction.Clone(),
+		RangeKeySetRegions:  curr.RangeKeySetRegions.Clone(),
 		cmp:                 comparer,
 	}
 
@@ -1403,6 +1404,9 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				}
 			}
 			v.RangeKeyLevels[level].remove(f)
+			if f.RangeKeyKinds == AnyRangeKeys {
+				removeFromRangeKeySetRegions(&v.RangeKeySetRegions, f)
+			}
 			v.MarkedForCompaction.Delete(f, level)
 		}
 
@@ -1455,6 +1459,9 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				err = lmRange.insert(f)
 				if err != nil {
 					return nil, errors.Wrap(err, "pebble")
+				}
+				if f.RangeKeyKinds == AnyRangeKeys {
+					addToRangeKeySetRegions(&v.RangeKeySetRegions, f)
 				}
 			}
 			// Track the keys with the smallest and largest keys, so that we can

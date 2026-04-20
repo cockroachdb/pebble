@@ -45,6 +45,7 @@ L0.1:
 L0.0:
   000005:[bar#10,SET-bar#10,SET]
   000007:[bax#11,RANGEKEYSET-zoo#inf,RANGEKEYSET]
+Range key set regions: [bax, foo)=1 [foo, zoo)=2
 
 # Assert that First correctly finds [bax,zoo), despite the discovery of
 # [foo,zoo) triggering the switch to combined iteration.
@@ -131,6 +132,7 @@ L0.0:
   000009:[d#12,RANGEKEYSET-e#inf,RANGEKEYSET]
   000011:[l#13,RANGEKEYSET-m#inf,RANGEKEYSET]
   000007:[z#11,SET-z#11,SET]
+Range key set regions: [d, e)=1 [l, m)=1
 
 combined-iter
 seek-ge k
@@ -246,6 +248,7 @@ L6:
   000004:[bax#9,DEL-bax#9,DEL]
   000005:[c#0,RANGEKEYSET-d#inf,RANGEKEYSET]
   000006:[d@2#2,SET-d@2#2,SET]
+Range key set regions: [c, d)=1
 
 combined-iter
 seek-prefix-ge bax
@@ -270,6 +273,7 @@ L6:
   000004:[bax#9,MERGE-bax#9,MERGE]
   000005:[c#0,RANGEKEYSET-d#inf,RANGEKEYSET]
   000006:[d@2#2,SET-d@2#2,SET]
+Range key set regions: [c, d)=1
 
 combined-iter
 seek-prefix-ge bax
