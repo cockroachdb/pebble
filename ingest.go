@@ -2500,7 +2500,22 @@ func (d *DB) ingestApply(
 	if exciseSpan.Valid() {
 		for s := d.mu.snapshots.root.next; s != &d.mu.snapshots.root; s = s.next {
 			// Skip non-EFOS snapshots, and also skip any EFOS that were created
-			// *after* the excise, or are already closed.
+			// *at or after* the excise, or are already closed.
+			//
+			// The boundary case efos.seqNum == exciseSeqNum is reachable: the
+			// commit pipeline's spin-wait in AllocateSeqNum makes
+			// visibleSeqNum == exciseSeqNum before prepare registers the excise
+			// in d.mu.snapshots.ongoingExcises, so a concurrent EFOS creator
+			// that grabs DB.mu in that window can observe snapshotSeqNum ==
+			// exciseSeqNum without seeing the excise. Such an EFOS sees the
+			// post-excise version of the LSM (the excise's seqnum is not
+			// visible to it, and any of its keys with that seqnum are equally
+			// invisible), so it is correct to skip it here. The
+			// exciseOverlapBounds machinery in prepare ensures that if such an
+			// EFOS is on snapshotList, the excise has already waited for the
+			// memtable flush that transitions it off the list, so in practice
+			// we don't expect to encounter one — but the predicate is written
+			// to handle it for safety.
 			//
 			// NB: this code can race with EventuallyFileOnlySnapshot.Close, which
 			// closes the channel that isClosed() reads, without holding DB.mu. This
@@ -2508,7 +2523,7 @@ func (d *DB) ingestApply(
 			// not closed until after the excise has already updated the LSM state.
 			// It is then fair to confirm that the EFOS did not overlap with the
 			// excise.
-			if s.efos == nil || base.Visible(exciseSeqNum, s.efos.seqNum, base.SeqNumMax) ||
+			if s.efos == nil || base.Visible(exciseSeqNum, s.efos.seqNum+1, base.SeqNumMax) ||
 				s.efos.isClosed() {
 				continue
 			}
