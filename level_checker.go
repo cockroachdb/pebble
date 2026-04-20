@@ -671,6 +671,64 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		return err
 	}
 
+	// Phase 4: Validate range key metadata (HasRangeKeys, RangeKeyTypes).
+	if err := checkRangeKeyMetadata(c, allTables); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// checkRangeKeyMetadata verifies that HasRangeKeys and RangeKeyTypes are
+// consistent with the actual range key contents of each table.
+func checkRangeKeyMetadata(c *checkConfig, allTables []*manifest.TableMetadata) error {
+	ctx := context.Background()
+	for _, file := range allTables {
+		iters, err := c.newIters(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
+		if err != nil {
+			return err
+		}
+		rangeKeyIter := iters.rangeKey
+		if rangeKeyIter == nil {
+			// No range key iterator means no range keys in the table.
+			if file.HasRangeKeys {
+				return errors.Errorf("table %s has HasRangeKeys=true but no range key iterator", file.TableNum)
+			}
+			continue
+		}
+		hasRangeKeys := false
+		hasRangeKeySets := false
+		span, err := rangeKeyIter.First()
+		for ; span != nil; span, err = rangeKeyIter.Next() {
+			hasRangeKeys = true
+			for _, k := range span.Keys {
+				if k.Kind() == base.InternalKeyKindRangeKeySet {
+					hasRangeKeySets = true
+				}
+			}
+		}
+		rangeKeyIter.Close()
+		if err != nil {
+			return err
+		}
+		// For all tables, HasRangeKeys must be set if there are range keys; and
+		// RangeKeyKinds must be AnyRangeKeys if there are range key sets.
+		if hasRangeKeys && !file.HasRangeKeys {
+			return errors.Errorf("table %s has HasRangeKeys=false but contains range keys", file.TableNum)
+		}
+		if hasRangeKeySets && file.RangeKeyKinds != manifest.AnyRangeKeys {
+			return errors.Errorf("table %s has RangeKeyKinds!=AnyRangeKeys but contains RANGEKEYSETs", file.TableNum)
+		}
+		// For non-virtual tables, HasRangeKeys and RangeKeyKinds must exactly match reality.
+		if !file.Virtual {
+			if file.HasRangeKeys && !hasRangeKeys {
+				return errors.Errorf("table %s has HasRangeKeys=true but contains no range keys", file.TableNum)
+			}
+			if !hasRangeKeySets && file.RangeKeyKinds == manifest.AnyRangeKeys {
+				return errors.Errorf("table %s has RangeKeyKinds=AnyRangeKeys but does not contain RANGEKEYSETs", file.TableNum)
+			}
+		}
+	}
 	return nil
 }
 

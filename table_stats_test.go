@@ -241,7 +241,7 @@ func TestTableRangeDeletionIter(t *testing.T) {
 				m.ExtendPointKeyBounds(cmp.Compare, meta.SmallestRangeDel, meta.LargestRangeDel)
 			}
 			if meta.HasRangeKeys {
-				m.ExtendRangeKeyBounds(cmp.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
+				m.ExtendRangeKeyBounds(cmp.Compare, manifest.AnyRangeKeys, meta.SmallestRangeKey, meta.LargestRangeKey)
 			}
 			return m.DebugString(cmp.FormatKey, false /* verbose */)
 		case "spans":

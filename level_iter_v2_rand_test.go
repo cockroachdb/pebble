@@ -341,7 +341,11 @@ func createSSTable(
 		m.ExtendPointKeyBounds(cmp.Compare, meta.SmallestRangeDel, meta.LargestRangeDel)
 	}
 	if meta.HasRangeKeys {
-		m.ExtendRangeKeyBounds(cmp.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
+		kinds := manifest.AnyRangeKeys
+		if meta.Properties.NumRangeKeySets == 0 {
+			kinds = manifest.OnlyRangeKeyUnsetAndDelete
+		}
+		m.ExtendRangeKeyBounds(cmp.Compare, kinds, meta.SmallestRangeKey, meta.LargestRangeKey)
 	}
 	m.InitPhysicalBacking()
 	return r, m

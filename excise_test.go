@@ -826,7 +826,7 @@ func TestExciseBounds(t *testing.T) {
 				m.ExtendPointKeyBounds(cmp, sstMeta.SmallestRangeDel, sstMeta.LargestRangeDel)
 			}
 			if sstMeta.HasRangeKeys {
-				m.ExtendRangeKeyBounds(cmp, sstMeta.SmallestRangeKey, sstMeta.LargestRangeKey)
+				m.ExtendRangeKeyBounds(cmp, manifest.AnyRangeKeys, sstMeta.SmallestRangeKey, sstMeta.LargestRangeKey)
 			}
 			printBounds("Bounds", m)
 
