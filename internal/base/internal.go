@@ -746,6 +746,21 @@ func (kv *InternalKV) String() string {
 	return kv.K.String()
 }
 
+// FormatKeys returns a string representation of the keys in the given slice of
+// InternalKVs, in the form "[a#6,DEL b#1,SET c#3,SET]".
+func FormatKeys(kvs []InternalKV) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i := range kvs {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(kvs[i].K.String())
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
 // AtomicSeqNum is an atomic SeqNum.
 type AtomicSeqNum struct {
 	value atomic.Uint64

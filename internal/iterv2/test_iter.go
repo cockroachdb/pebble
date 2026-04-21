@@ -65,33 +65,34 @@ type TestIter struct {
 
 var _ Iter = (*TestIter)(nil)
 
+// TestIterData contains the data that is presented by a TestIter.
+type TestIterData struct {
+	// Point keys to return.
+	Points []base.InternalKV
+	// Span definitions.
+	Spans []keyspan.Span
+	// ExtraBoundaries contains additional boundary keys to inject (to induce
+	// spurious boundaries in gaps between spans).
+	ExtraBoundaries [][]byte
+	// StartKey, EndKey are the overall ("static") bounds of the iterator's range
+	// (can be nil).
+	StartKey, EndKey []byte
+	// Lower, Upper are the initial "dynamic" bounds (can be nil, see
+	// Iter.SetBounds).
+	Lower, Upper []byte
+}
+
 // NewTestIter creates a TestIter.
-//
-// Parameters:
-//   - points: point keys to include.
-//   - spans: span definitions.
-//   - extraBoundaries: additional boundary keys to inject (to induce
-//     spurious boundaries in gaps between spans).
-//   - startKey: the overall start key of the iterator's range (can be nil).
-//   - endKey: the overall exclusive end key of the iterator's range (can be
-//     nil).
-//   - lower: the initial lower bound (nil for unbounded below).
-//   - upper: the initial exclusive upper bound (nil for unbounded above).
-func NewTestIter(
-	points []base.InternalKV,
-	spans []keyspan.Span,
-	extraBoundaries [][]byte,
-	startKey, endKey, lower, upper []byte,
-) *TestIter {
+func NewTestIter(cfg TestIterData) *TestIter {
 	t := &TestIter{
-		points:          points,
-		spans:           spans,
-		extraBoundaries: extraBoundaries,
-		startKey:        startKey,
-		endKey:          endKey,
+		points:          cfg.Points,
+		spans:           cfg.Spans,
+		extraBoundaries: cfg.ExtraBoundaries,
+		startKey:        cfg.StartKey,
+		endKey:          cfg.EndKey,
 		idx:             -1,
 	}
-	t.init(lower, upper)
+	t.init(cfg.Lower, cfg.Upper)
 	return t
 }
 

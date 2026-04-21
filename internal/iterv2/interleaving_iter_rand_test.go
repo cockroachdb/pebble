@@ -106,10 +106,24 @@ func runRandomTest(t *testing.T, seed uint64) {
 			t.Logf("cfg: %+v", cfg)
 			t.Logf("start, end: %q %q", startKey, endKey)
 			t.Logf("lower, upper: %q %q", lower, upper)
-			t.Logf("points: %v", points)
+			t.Logf("points: %s", base.FormatKeys(points))
 			t.Logf("spans: %v", spans)
 		}
 	}()
 
-	CheckIter(t, rng, cmp, cfg, AllTestOps, points, spans, &interleavingIter, startKey, endKey, lower, upper, numOps)
+	checkCfg := CheckIterConfig{
+		Comparer:     cmp,
+		KeyGenConfig: cfg,
+		OpWeights:    AllTestOps,
+		NumOps:       numOps,
+	}
+	expected := TestIterData{
+		Points:   points,
+		Spans:    spans,
+		StartKey: startKey,
+		EndKey:   endKey,
+		Lower:    lower,
+		Upper:    upper,
+	}
+	CheckIter(t, rng, checkCfg, expected, &interleavingIter)
 }
