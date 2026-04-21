@@ -7,7 +7,12 @@ package pebble
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"iter"
+	"slices"
+	"strings"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -234,6 +239,10 @@ type mergingIterV2Level struct {
 	// slab boundary. The Next()/Prev() to cross it is deferred until we
 	// know whether the level will be parked.
 	atBoundary bool
+}
+
+func (level *mergingIterV2Level) Name() string {
+	return string('A' + byte(level.index))
 }
 
 func (level *mergingIterV2Level) Compare(cmp base.Compare, other *mergingIterV2Level) int {
@@ -896,14 +905,72 @@ func (m *mergingIterV2) SetContext(ctx context.Context) {
 
 // String implements fmt.Stringer.
 func (m *mergingIterV2) String() string {
-	return "merging-v2"
+	var buf strings.Builder
+	buf.WriteString("merging-v2(")
+	if m.err != nil {
+		fmt.Fprintf(&buf, "err: %s", m.err)
+	} else if m.dir == 0 {
+		buf.WriteString("not positioned")
+	} else {
+		if m.dir > 0 {
+			buf.WriteString("fwd")
+		} else {
+			buf.WriteString("bwd")
+		}
+		buf.WriteString(", heap:")
+		for level := range m.heap.DebugItems() {
+			fmt.Fprintf(&buf, " %s:%s %s", level.Name(), level.iterKV.K, level.span)
+		}
+	}
+	buf.WriteByte(')')
+	return buf.String()
+}
+
+type treestepsV2DummyNode struct {
+	info treesteps.NodeInfo
+}
+
+func (d *treestepsV2DummyNode) TreeStepsNode() treesteps.NodeInfo {
+	return d.info
 }
 
 // TreeStepsNode implements treesteps.Node.
 func (m *mergingIterV2) TreeStepsNode() treesteps.NodeInfo {
-	info := treesteps.NodeInfof(m, "mergingIterV2(%p)", m)
+	info := treesteps.NodeInfof(m, "mergingIterV2")
+	if m.heap.Len() > 0 {
+		heapProp := crstrings.IfElse(m.heap.lessCmp == -1, "min heap", "max heap")
+		var str strings.Builder
+		for i, item := range m.heap.items {
+			if i > 0 {
+				str.WriteString(" ")
+			}
+			if item.level.iterKV != nil {
+				fmt.Fprintf(&str, "%s:%s", item.level.Name(), item.level.iterKV.K)
+			} else {
+				fmt.Fprintf(&str, "%s:<nil>", item.level.Name())
+			}
+		}
+		info.AddPropf(heapProp, "%s", str.String())
+	}
+	if m.prefix != nil {
+		info.AddPropf("prefix", "%s", m.prefix)
+	}
 	for i := range m.levels {
-		info.AddChildren(m.levels[i].iter)
+		l := &m.levels[i]
+		name := l.Name()
+		if l.iterKV != nil {
+			name = fmt.Sprintf("%s:%s", name, l.iterKV.K)
+		}
+		if l.parked {
+			name += " [parked]"
+		}
+		d := &treestepsV2DummyNode{}
+		if l.span != nil && l.span.Valid() {
+			name += fmt.Sprintf(" %s", l.span)
+		}
+		d.info = treesteps.NodeInfof(d, "%s", name)
+		d.info.AddChildren(l.iter)
+		info.AddChildren(d)
 	}
 	return info
 }
@@ -1068,5 +1135,26 @@ func (h *mergingIterV2Heap) down(i int) {
 		h.swap(i, j)
 		h.items[i].winnerChild = winnerChildUnknown
 		i = j
+	}
+}
+
+// DebugItems returns an iterator over the heap items in sorted order.
+func (h *mergingIterV2Heap) DebugItems() iter.Seq[*mergingIterV2Level] {
+	return func(yield func(*mergingIterV2Level) bool) {
+		indices := make([]int, len(h.items))
+		for i := range indices {
+			indices[i] = i
+		}
+		slices.SortFunc(indices, func(i, j int) int {
+			if h.less(i, j) {
+				return -1
+			}
+			return 1
+		})
+		for _, idx := range indices {
+			if !yield(h.items[idx].level) {
+				return
+			}
+		}
 	}
 }

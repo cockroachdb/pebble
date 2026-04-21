@@ -227,6 +227,11 @@ func RunInternalIterCmdWriter(
 			i := iter.(interface{ IsLowerBound(key []byte) bool })
 			fmt.Fprintf(w, "%v\n", i.IsLowerBound([]byte(parts[1])))
 			continue
+		case "print":
+			if s, ok := iter.(fmt.Stringer); ok {
+				fmt.Fprintln(w, s.String())
+			}
+			continue
 		default:
 			t.Fatalf("unknown op: %s", parts[0])
 		}

@@ -210,15 +210,15 @@ func (s *Span) String() string {
 	default:
 		return "<invalid BoundaryType>"
 	}
+	b.WriteString(":{")
 	if len(s.Keys) > 0 {
-		b.WriteString(" {")
 		for i, k := range s.Keys {
 			if i > 0 {
 				b.WriteByte(' ')
 			}
 			b.WriteString(k.String())
 		}
-		b.WriteByte('}')
 	}
+	b.WriteByte('}')
 	return b.String()
 }

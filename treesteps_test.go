@@ -7,6 +7,7 @@
 package pebble
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,11 +30,15 @@ func TestTreeSteps(t *testing.T) {
 	if !treesteps.Enabled {
 		t.Skip("treesteps not available in this build")
 	}
-	if iterv2.Enabled {
-		t.Skip("treesteps output is specific to v1 iterator stack")
-	}
-
 	datadriven.Walk(t, "testdata/treesteps", func(t *testing.T, path string) {
+		isV2 := strings.HasSuffix(path, "_v2")
+		baseName := filepath.Base(path)
+		if isV2 && !iterv2.Enabled {
+			t.Skipf("skipping %s: iterv2 not enabled", baseName)
+		}
+		if !isV2 && iterv2.Enabled {
+			t.Skipf("skipping %s: iterv2 enabled", baseName)
+		}
 		var d *DB
 		defer func() {
 			if d != nil {
@@ -85,6 +90,36 @@ func TestTreeSteps(t *testing.T) {
 				miter.forceEnableSeekOpt = true
 				var stats base.InternalIteratorStats
 				miter.init(nil /* opts */, &stats, d.cmp, d.split, levelIters...)
+				defer miter.Close()
+				rec := treeStepsStartRecording(t, td, miter)
+				out := itertest.RunInternalIterCmd(t, td, miter, itertest.Verbose)
+				url := rec.Finish().URL()
+				return out + url.String()
+
+			case "level-iter-v2":
+				v := d.DebugCurrentVersion()
+				var opts IterOptions
+				iter := newLevelIterV2(t.Context(), opts, testkeys.Comparer, d.newIters,
+					v.Levels[1].Iter(), manifest.Level(1), internalIterOpts{})
+				defer iter.Close()
+				rec := treeStepsStartRecording(t, td, iter)
+				out := itertest.RunInternalIterCmd(t, td, iter, itertest.Verbose)
+				url := rec.Finish().URL()
+				return out + url.String()
+
+			case "merging-iter-v2":
+				v := d.DebugCurrentVersion()
+				var levelIters []iterv2.Iter
+				for l := 1; l < len(v.Levels); l++ {
+					if v.Levels[l].Empty() {
+						continue
+					}
+					var opts IterOptions
+					li := newLevelIterV2(t.Context(), opts, testkeys.Comparer, d.newIters,
+						v.Levels[l].Iter(), manifest.Level(l), internalIterOpts{})
+					levelIters = append(levelIters, li)
+				}
+				miter := newMergingIterV2(d.cmp, d.split, base.SeqNumMax, levelIters...)
 				defer miter.Close()
 				rec := treeStepsStartRecording(t, td, miter)
 				out := itertest.RunInternalIterCmd(t, td, miter, itertest.Verbose)

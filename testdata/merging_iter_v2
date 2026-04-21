@@ -15,12 +15,14 @@ L1
 
 iter
 first
+print
 next
 next
 next
 next
 ----
 a#10,SET:
+merging-v2(fwd, heap: A:a#10,SET [?, ∞):{} B:b#5,SET [?, ∞):{})
 b#5,SET:
 c#9,SET:
 d#4,SET:
@@ -28,12 +30,14 @@ d#4,SET:
 
 iter
 last
+print
 prev
 prev
 prev
 prev
 ----
 d#4,SET:
+merging-v2(bwd, heap: B:d#4,SET [-∞, ?):{} A:c#9,SET [-∞, ?):{})
 c#9,SET:
 b#5,SET:
 a#10,SET:
@@ -214,17 +218,21 @@ L2
 
 iter
 first
+print
 next
 next
 next
+print
 next
 next
 next
 ----
 a#20,SET:
+merging-v2(fwd, heap: A:a#20,SET [?, ∞):{} B:a#10,SET [?, ∞):{} C:a#5,DEL [?, ∞):{})
 a#10,SET:
 a#5,DEL:
 b#15,SET:
+merging-v2(fwd, heap: B:b#15,SET [?, ∞):{} A:c#18,SET [?, ∞):{} C:d#1,SET [?, ∞):{})
 c#18,SET:
 d#1,SET:
 .
