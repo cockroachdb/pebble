@@ -1,0 +1,54 @@
+# Test treesteps recording for levelIterV2 SeekGE operation.
+# This test creates a DB with multiple sstables in L1 and performs a SeekGE
+# operation while recording the operation steps with treesteps.
+
+define
+L1
+  a#10,SET:va
+  b#10,SET:vb
+  c#10,SET:vc
+L1
+  d#5,SET:vd
+  d@10#5,SET:vd10
+  d@20#5,SET:vd20
+  e#5,SET:ve
+  f#5,SET:vf
+L1
+  g#1,SET:vg
+  h#1,SET:vh
+  i#1,SET:vi
+----
+L1:
+  000004:[a#10,SET-c#10,SET] seqnums:[#10-#10] points:[a#10,SET-c#10,SET] size:700
+  000005:[d#5,SET-f#5,SET] seqnums:[#5-#5] points:[d#5,SET-f#5,SET] size:831
+  000006:[g#1,SET-i#1,SET] seqnums:[#1-#1] points:[g#1,SET-i#1,SET] size:697
+
+level-iter-v2 depth=1
+seek-ge b
+next
+next
+next
+next
+next
+next
+next
+----
+b#10,SET:vb
+c#10,SET:vc
+d#inf,BDRY:
+d#5,SET:vd
+d@20#5,SET:vd20
+d@10#5,SET:vd10
+e#5,SET:ve
+f#5,SET:vf
+https://raduberinde.github.io/treesteps/decode.html#eNrUUk9L-0AQvf8-xTC9tLDQtPxyCRRELFKQHqwIYkrZmokurtuSHYIgQvHgxYuHfA4_VD6JZCtYNP45pOrOcefNm_d23g2O5RVhhEyWE8myyxmRZVrarqac9EwxZbO8jwInTMsKbTE6RWUUK6mrZ6LL_SEsDLiBEVN23AfLMmNKUKBZJLTZiiBVmiCo6j_ohUwcrJ4mVUbZCwcY0zV_vKWu-zPDn_kLX_39nsA_OjxdJ8qlaRNw0IsNlEVRFquyWMHIMGWaZK7MeYWIDYo3eIDy_hHWAWrHOI9RQNBpkOXOnTR6yewXxOCqfHj69g4YwLzVC8RkeLSNddUV2p3tMcMAzvyWn7SUScXu3uGJjwbeM4dNfk1Yf9jQC_U7_cBzAz2_DZDX6tMm1E9v_z0HAAD__7u7YYc=
+
+level-iter-v2 depth=1
+seek-prefix-ge d@10
+next
+next
+----
+d@10#5,SET:vd10
+g#inf,BDRY:
+.
+https://raduberinde.github.io/treesteps/decode.html#eNrUkc9KOzEQx--_pximlxYC3fZHLwsFEYsUpIgVQUwpwczWYExLMpaCCMWDFy8e9jl8qH0SSfSwiH9A3YNzmt35zHwz873BiboizJEpsFasuuyJAtMqdC2tyc4Nk5-v-yhwyrSKdMD8DI0zbJSNv4kuDz0VZrM_gqWD1DZm8id9CKw8k0aBbqmpXsqhMJYgizEAu1Q6YZ8NK4wz4SJhE9rwx1rvVX-nefZyhXSBOnDQkw6qsqzKbVVuYeyYvCW1Nm4RCelQvOEBqvtHqK_blqglCpCod3pZzLJOg1PvkgH5qwNfCEGK6uHp25owhPjRGojp6LiJB0Tf2p3mJsMQFi3jCrG7d3T6RxeQ11n2_9wZmxL6mdbs9t9zAAAA__9u8YMZ

@@ -1,0 +1,131 @@
+define
+L1
+  a@1#10,SET:va1
+  b#10,SET:vb
+  e#10,SET:ve
+L2
+  a#5,SET:va
+  a@1#5,SET:va1b
+  b@2#5,SET:vb2
+  c#5,DEL:
+  d#5,SET:vd
+L3
+  c#1,SET:vc
+----
+L1:
+  000004:[a@1#10,SET-e#10,SET] seqnums:[#10-#10] points:[a@1#10,SET-e#10,SET] size:708
+L2:
+  000005:[a#5,SET-d#5,SET] seqnums:[#5-#5] points:[a#5,SET-d#5,SET] size:866
+L3:
+  000006:[c#1,SET-c#1,SET] seqnums:[#1-#1] points:[c#1,SET-c#1,SET] size:679
+
+merging-iter-v2 depth=2
+seek-ge a
+next
+next
+next
+next
+next
+next
+next
+----
+a#5,SET:va
+a@1#10,SET:va1
+a@1#5,SET:va1b
+b#10,SET:vb
+b@2#5,SET:vb2
+c#5,DEL:
+c#1,SET:vc
+d#5,SET:vd
+https://raduberinde.github.io/treesteps/decode.html#eNrsmU9r2z4Yx--_V_HgXBowNE5_2cEwlrUNY1B6WMdgNKU48ZNWLPFCrJVBKZQexmCXHXwcewl7UX4lI44SS4ndSIm62o58SizpkZ7vx8-fOLfWqTdCy7UohtT3qLdPJ4ghxXG4P8LJFQmuLgnFyeVN07KtM4rj6fzQcs8tEhBKvOH0NuKnNx34HABb8pbi5EMTQupNKPrCjCHe4JCND0hAwmvtE8RDcFNO8St97JTz8ZwdJIefentj3-BZtX8xi84kMoUp3QDi6Fcc3cfRPbxOvj0AAMRRxG7yG5446Yzkin_8ESwcrrXQzLEwn3zUDdhA9vqD-Xi62rJFnwDibz9hFvF7XcvrWjY06rvqKZy_ssFrO3X39m6919kW4eXUQo0EA_vw-N3Hqkjj8k6p6bROgsRa_P23lLVmvuq1ln3Web-8W_QAAzJEFxrTq1V5NV2mg5qqW6qWbNZnWz2qXy6-Ph8yG0m88gyMSADX6I1dTpUl6Y_cvhiqlUXEOSpPSxbFtKTu1Y3shZG97RRK-MVxNkj1MydZWdWR4p8biQoDWa2cDK2cxnqx_n8qdsVnlKVSCmzGYjaoQo-tUGJnEMmGkaFSTCo9RSa9jYgsRW_PZDipDJfbEnNNwgKIdmiGzmZtmyFSBCK9drMERNJTbtNfL6yUIrP18js3rhqlylQFWtn7A0OkEERQkQjq6NhQU8dWWVAZWTivGqFENUITRv-wPzBEikCkX2vZx52TQvOYn3Gbbo3ZqAij8mLRDCDdV-JvNO5hcJiKkHeSF8qVSHzCJGLM2XWSToanCpG0FTCDqayY_OwOojiYfA0vF3xdrxaeE56QaUWM6dGE31a826XEWLFoM5gMpvJjUuwOu18ajYN-QIbJB9SbEP3ctxWrdW1nwemOpYu7__4GAAD__6dCO2o=
+
+# This test verifies that the level iterators skips files 8:[d1-d2], 9:[e1-e2]
+# altogether. Ideally, we would skip 7:[c1-c2] as well, but we currently need to
+# read a key that's past the tombstone start before we consider the tombstone.
+define
+L1
+  c#10,RANGEDEL:f
+L2
+  a1#1,SET:va
+  a2#1,SET:va
+L2
+  b1#1,SET:va
+  b2#1,SET:va
+L2
+  c1#1,SET:va
+  c2#1,SET:va
+L2
+  d1#1,SET:va
+  d2#1,SET:va
+L2
+  e1#1,SET:va
+  e2#1,SET:va
+L2
+  f1#1,SET:va
+  f2#1,SET:va
+----
+L1:
+  000004:[c#10,RANGEDEL-f#inf,RANGEDEL] seqnums:[#10-#10] points:[c#10,RANGEDEL-f#inf,RANGEDEL] size:676
+L2:
+  000005:[a1#1,SET-a2#1,SET] seqnums:[#1-#1] points:[a1#1,SET-a2#1,SET] size:697
+  000006:[b1#1,SET-b2#1,SET] seqnums:[#1-#1] points:[b1#1,SET-b2#1,SET] size:697
+  000007:[c1#1,SET-c2#1,SET] seqnums:[#1-#1] points:[c1#1,SET-c2#1,SET] size:697
+  000008:[d1#1,SET-d2#1,SET] seqnums:[#1-#1] points:[d1#1,SET-d2#1,SET] size:697
+  000009:[e1#1,SET-e2#1,SET] seqnums:[#1-#1] points:[e1#1,SET-e2#1,SET] size:697
+  000010:[f1#1,SET-f2#1,SET] seqnums:[#1-#1] points:[f1#1,SET-f2#1,SET] size:697
+
+merging-iter-v2 depth=2
+first
+next
+next
+next
+next
+next
+next
+----
+a1#1,SET:va
+a2#1,SET:va
+b1#1,SET:va
+b2#1,SET:va
+f1#1,SET:va
+f2#1,SET:va
+.
+https://raduberinde.github.io/treesteps/decode.html#eNrsmM1q20AQx-99imF9sUEQadvmICglwW4oGB_iUiiWCZK8myyxVSNtQ8AEgg-l0EsPOpY-Qh9KT1K8tmutKlnaWLZqIp0Sze58_Jj_zloz1LMnBJmIk4CPbG6fcJ-QgJNpcDIh_jXzrq8YJ_7VHUYa6nMyXawPkDlAzGOc2WOkoXfMDzh89mC14z0n_kcMAbd9TkbxBWNyR8YrM2UeC24K2XvkvtB2OX6Kg6wEcwKkby_ff8XhKy4vw9wn5PaiU9PL8D9cylJIUlpieRCFP6PwMQof4Uz8NwcAiMJw9TIesGtsVogn-v5bvFkvPre8lSF9P17bN7uRJmcEEH39AUKtzdZRpQeDtxq4LXP2kJ-o5AbegNtgHtXO25efKi3B3OShUk1ezsKXbaycbU0_CcY24mSUK5vDhHlwQ-ypKVV3kLLNWPLCr6OAYKHoNQFD63c-yOWHc6BsTEzQF89rRTayWxmTSFuYqiG2DF0cVylclrRrFttZ4OpYYGUWSRnhEmWU5vW4adWdU7MooCInaxyXS-nwaBq61u50ly6fCCb3eDlVPl6c7CHtVDeYnPhgcneW1OnOkqpZxFhUd7w4WJlFst_xXlSUPaSPi1bdOTWLAipyiw3p3SnJgbawoS1z1mwYunZ51rvotDvdVuFvJH-ropmfSOSyXuUSdhM_y6tpuA0sy7qnadUVBGN90fWXrsfG4g-yIx0YTG3_loyG_wMadTkpV7voTgWRLT80Ny1ELaSBLhpzf3I7HAiTJkQRffv1hKOH5l-DDV15gNPsa7BkOiyuzSldkFWJUGoS20jgikhgdRLJTsd70U_2BfiYWNVd8zxIKGrm3_tPidJJu1wdDknZfTB8ePEnAAD__wCN3uo=
+
+define
+L1
+  b@20#5,SET:b20
+  b@10#5,SET:b10
+  c@20#5,SET:c20
+  c@10#5,SET:c10
+  d@20#5,SET:d20
+  d@10#5,SET:d10
+L2
+  a#4,RANGEDEL:c1
+L3
+  b@25#3,SET:b25
+  b@15#3,SET:b15
+  b@5#3,SET:b5
+  c@25#3,SET:c25
+  c@15#3,SET:c15
+  c@5#3,SET:c5
+  d@25#3,SET:d25
+  d@15#3,SET:d15
+  d@5#3,SET:d5
+----
+L1:
+  000004:[b@20#5,SET-d@10#5,SET] seqnums:[#5-#5] points:[b@20#5,SET-d@10#5,SET] size:839
+L2:
+  000005:[a#4,RANGEDEL-c1#inf,RANGEDEL] seqnums:[#4-#4] points:[a#4,RANGEDEL-c1#inf,RANGEDEL] size:678
+L3:
+  000006:[b@25#3,SET-d@5#3,SET] seqnums:[#3-#3] points:[b@25#3,SET-d@5#3,SET] size:873
+
+merging-iter-v2 depth=2
+seek-prefix-ge b
+seek-prefix-ge c try-seek-using-next
+seek-prefix-ge d try-seek-using-next
+----
+b@20#5,SET:b20
+c@20#5,SET:c20
+d@25#3,SET:d25
+https://raduberinde.github.io/treesteps/decode.html#eNrsls1q20AQgO99imF9sUEQWY57WChtnJhQCKYkpVAsE2TtOFkiq0LahoAJBB9KoZcedCx9hD6UnqRIVmyvI0WS7QT_SBfbmtn5-2ZnPCIdY4iEEoGeYIYwDoSL6Al0vIMhulfcvrrkAt3LW40o5EKgE-p7hHYJt7nghhW-Rrz55OKA35224ZsN8cGPAt0vGnjCcAWyBD0Lb9GKtQbc5t51EbUO3okCVuSgciu-VPRbFt5qWfQmrRO1jaSi2xD4fwL_IfAf4Cj6NQYACHw_fjnv-Kw-04ie4Nc_yUIr04KWYuFR-Vi3Y0Hy-cajfHaaKHJOAMGP3zBfmapO-jpRQK3tZb5jcCIBhb6cP3TfK9D_oKk1OrrPLka6o6k_eBfZq3B7oLROzr_udv2olGvBamaVJjJn1mt0VK0cKudHndP2Sfuslm1Zy8fJrKdS8scw4BZSUMOnuREIhtyGazQcCi36NPT8gIKff4t0e7jkqtO2bioX7c_PV-swi-t89MszXhEZdB3DvUHWe1l2SXWbgYzxRMLiVCfHCiEtyWWTM0Ny9VoJa7thmflgmQuwzCVhpUcXf0xWTjlDtxHuRsDK2WFr-1PzSnSTbsW-o95wcqy8l7sAi-WDxRZgsXVuSDaZX2w6v1i5IbcR7hphLbkJn3SS_l1VG6bNregL7gbJ5KQ2jOYrXCspm2d55B47zUojHjuQFtjb1eAu-pFJH9OZUGK3p5Dny1GAd1F-vfs3_wMAAP__trByMg==

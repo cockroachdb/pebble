@@ -37,24 +37,24 @@ next
 prev
 seek-lt a
 ----
-first:     z#inf,BDRY [?, z)
+first:     z#inf,BDRY [?, z):{}
 next:      .
-prev:      a#inf,BDRY [a, ?)
+prev:      a#inf,BDRY [a, ?):{}
 prev:      .
-last:      a#inf,BDRY [a, ?)
+last:      a#inf,BDRY [a, ?):{}
 prev:      .
-next:      z#inf,BDRY [?, z)
+next:      z#inf,BDRY [?, z):{}
 next:      .
-seek-ge x: z#inf,BDRY [?, z)
+seek-ge x: z#inf,BDRY [?, z):{}
 next:      .
-prev:      a#inf,BDRY [a, ?)
+prev:      a#inf,BDRY [a, ?):{}
 prev:      .
 seek-ge z: .
-seek-lt b: a#inf,BDRY [a, ?)
+seek-lt b: a#inf,BDRY [a, ?):{}
 prev:      .
-next:      z#inf,BDRY [?, z)
+next:      z#inf,BDRY [?, z):{}
 next:      .
-prev:      a#inf,BDRY [a, ?)
+prev:      a#inf,BDRY [a, ?):{}
 seek-lt a: .
 
 iter start=a end=z lower=b upper=u
@@ -70,16 +70,16 @@ next
 prev
 seek-lt b
 ----
-seek-ge p: u#inf,BDRY [?, u)
+seek-ge p: u#inf,BDRY [?, u):{}
 next:      .
-prev:      b#inf,BDRY [b, ?)
+prev:      b#inf,BDRY [b, ?):{}
 prev:      .
 seek-ge u: .
-seek-lt d: b#inf,BDRY [b, ?)
+seek-lt d: b#inf,BDRY [b, ?):{}
 prev:      .
-next:      u#inf,BDRY [?, u)
+next:      u#inf,BDRY [?, u):{}
 next:      .
-prev:      b#inf,BDRY [b, ?)
+prev:      b#inf,BDRY [b, ?):{}
 seek-lt b: .
 
 # Points only, no spans.
@@ -104,14 +104,14 @@ prev
 prev
 prev
 ----
-first: b#10,SET [?, ∞)
-next:  c#8,SET [?, ∞)
-next:  d#5,SET [?, ∞)
+first: b#10,SET [?, ∞):{}
+next:  c#8,SET [?, ∞):{}
+next:  d#5,SET [?, ∞):{}
 next:  .
 next:  .
-prev:  d#5,SET [-∞, ?)
-prev:  c#8,SET [-∞, ?)
-prev:  b#10,SET [-∞, ?)
+prev:  d#5,SET [-∞, ?):{}
+prev:  c#8,SET [-∞, ?):{}
+prev:  b#10,SET [-∞, ?):{}
 prev:  .
 
 iter start=a end=z
@@ -125,15 +125,15 @@ prev
 prev
 prev
 ----
-first: b#10,SET [?, z)
-next:  c#8,SET [?, z)
-next:  d#5,SET [?, z)
-next:  z#inf,BDRY [?, z)
+first: b#10,SET [?, z):{}
+next:  c#8,SET [?, z):{}
+next:  d#5,SET [?, z):{}
+next:  z#inf,BDRY [?, z):{}
 next:  .
-prev:  d#5,SET [a, ?)
-prev:  c#8,SET [a, ?)
-prev:  b#10,SET [a, ?)
-prev:  a#inf,BDRY [a, ?)
+prev:  d#5,SET [a, ?):{}
+prev:  c#8,SET [a, ?):{}
+prev:  b#10,SET [a, ?):{}
+prev:  a#inf,BDRY [a, ?):{}
 
 iter start=b end=e
 first
@@ -146,15 +146,15 @@ prev
 prev
 prev
 ----
-first: b#10,SET [?, e)
-next:  c#8,SET [?, e)
-next:  d#5,SET [?, e)
-next:  e#inf,BDRY [?, e)
+first: b#10,SET [?, e):{}
+next:  c#8,SET [?, e):{}
+next:  d#5,SET [?, e):{}
+next:  e#inf,BDRY [?, e):{}
 next:  .
-prev:  d#5,SET [b, ?)
-prev:  c#8,SET [b, ?)
-prev:  b#10,SET [b, ?)
-prev:  b#inf,BDRY [b, ?)
+prev:  d#5,SET [b, ?):{}
+prev:  c#8,SET [b, ?):{}
+prev:  b#10,SET [b, ?):{}
+prev:  b#inf,BDRY [b, ?):{}
 
 iter lower=bb
 seek-ge bb
@@ -165,12 +165,12 @@ prev
 prev
 prev
 ----
-seek-ge bb: c#8,SET [?, ∞)
-next:       d#5,SET [?, ∞)
+seek-ge bb: c#8,SET [?, ∞):{}
+next:       d#5,SET [?, ∞):{}
 next:       .
-prev:       d#5,SET [bb, ?)
-prev:       c#8,SET [bb, ?)
-prev:       bb#inf,BDRY [bb, ?)
+prev:       d#5,SET [bb, ?):{}
+prev:       c#8,SET [bb, ?):{}
+prev:       bb#inf,BDRY [bb, ?):{}
 prev:       .
 
 iter upper=d
@@ -182,12 +182,12 @@ next
 next
 next
 ----
-seek-lt d: c#8,SET [-∞, ?)
-prev:      b#10,SET [-∞, ?)
+seek-lt d: c#8,SET [-∞, ?):{}
+prev:      b#10,SET [-∞, ?):{}
 prev:      .
-next:      b#10,SET [?, d)
-next:      c#8,SET [?, d)
-next:      d#inf,BDRY [?, d)
+next:      b#10,SET [?, d):{}
+next:      c#8,SET [?, d):{}
+next:      d#inf,BDRY [?, d):{}
 next:      .
 
 iter lower=c upper=dd
@@ -200,13 +200,13 @@ prev
 prev
 prev
 ----
-seek-ge c: c#8,SET [?, dd)
-next:      d#5,SET [?, dd)
-next:      dd#inf,BDRY [?, dd)
+seek-ge c: c#8,SET [?, dd):{}
+next:      d#5,SET [?, dd):{}
+next:      dd#inf,BDRY [?, dd):{}
 next:      .
-prev:      d#5,SET [c, ?)
-prev:      c#8,SET [c, ?)
-prev:      c#inf,BDRY [c, ?)
+prev:      d#5,SET [c, ?):{}
+prev:      c#8,SET [c, ?):{}
+prev:      c#inf,BDRY [c, ?):{}
 prev:      .
 
 # Spans only, no points.
@@ -230,15 +230,15 @@ seek-ge e
 next
 prev
 ----
-first:     c#inf,BDRY [?, c)
-next:      g#inf,BDRY [?, g) {(#5,RANGEDEL)}
+first:     c#inf,BDRY [?, c):{}
+next:      g#inf,BDRY [?, g):{(#5,RANGEDEL)}
 next:      .
-prev:      g#inf,BDRY [g, ?)
-prev:      c#inf,BDRY [c, ?) {(#5,RANGEDEL)}
+prev:      g#inf,BDRY [g, ?):{}
+prev:      c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
 prev:      .
-seek-ge e: g#inf,BDRY [?, g) {(#5,RANGEDEL)}
+seek-ge e: g#inf,BDRY [?, g):{(#5,RANGEDEL)}
 next:      .
-prev:      g#inf,BDRY [g, ?)
+prev:      g#inf,BDRY [g, ?):{}
 
 iter start=a end=z
 first
@@ -251,15 +251,15 @@ seek-ge e
 next
 prev
 ----
-first:     c#inf,BDRY [?, c)
-next:      g#inf,BDRY [?, g) {(#5,RANGEDEL)}
-next:      z#inf,BDRY [?, z)
-prev:      g#inf,BDRY [g, ?)
-prev:      c#inf,BDRY [c, ?) {(#5,RANGEDEL)}
-prev:      a#inf,BDRY [a, ?)
-seek-ge e: g#inf,BDRY [?, g) {(#5,RANGEDEL)}
-next:      z#inf,BDRY [?, z)
-prev:      g#inf,BDRY [g, ?)
+first:     c#inf,BDRY [?, c):{}
+next:      g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+next:      z#inf,BDRY [?, z):{}
+prev:      g#inf,BDRY [g, ?):{}
+prev:      c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
+prev:      a#inf,BDRY [a, ?):{}
+seek-ge e: g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+next:      z#inf,BDRY [?, z):{}
+prev:      g#inf,BDRY [g, ?):{}
 
 iter start=c end=g
 first
@@ -267,9 +267,9 @@ next
 last
 prev
 ----
-first: g#inf,BDRY [?, g) {(#5,RANGEDEL)}
+first: g#inf,BDRY [?, g):{(#5,RANGEDEL)}
 next:  .
-last:  c#inf,BDRY [c, ?) {(#5,RANGEDEL)}
+last:  c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
 prev:  .
 
 iter lower=b upper=d
@@ -284,8 +284,8 @@ prev
 seek-ge e: .
 next:      .
 next:      .
-prev:      c#inf,BDRY [c, ?) {(#5,RANGEDEL)}
-prev:      b#inf,BDRY [b, ?)
+prev:      c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
+prev:      b#inf,BDRY [b, ?):{}
 prev:      .
 prev:      .
 
@@ -295,9 +295,9 @@ next
 prev
 prev
 ----
-seek-ge e: f#inf,BDRY [?, f) {(#5,RANGEDEL)}
+seek-ge e: f#inf,BDRY [?, f):{(#5,RANGEDEL)}
 next:      .
-prev:      e#inf,BDRY [e, ?) {(#5,RANGEDEL)}
+prev:      e#inf,BDRY [e, ?):{(#5,RANGEDEL)}
 prev:      .
 
 # Mixed points and spans, forward iteration.
@@ -330,16 +330,16 @@ next
 next
 next
 ----
-seek-ge a: a#10,SET [?, c)
-next:      b#8,SET [?, c)
-next:      c#inf,BDRY [?, c)
-next:      c#5,SET [?, g) {(#5,RANGEDEL)}
-next:      d#4,SET [?, g) {(#5,RANGEDEL)}
-next:      e#2,SET [?, g) {(#5,RANGEDEL)}
-next:      g#inf,BDRY [?, g) {(#5,RANGEDEL)}
-next:      h#6,SET [?, z)
-next:      i#1,SET [?, z)
-next:      z#inf,BDRY [?, z)
+seek-ge a: a#10,SET [?, c):{}
+next:      b#8,SET [?, c):{}
+next:      c#inf,BDRY [?, c):{}
+next:      c#5,SET [?, g):{(#5,RANGEDEL)}
+next:      d#4,SET [?, g):{(#5,RANGEDEL)}
+next:      e#2,SET [?, g):{(#5,RANGEDEL)}
+next:      g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+next:      h#6,SET [?, z):{}
+next:      i#1,SET [?, z):{}
+next:      z#inf,BDRY [?, z):{}
 
 # Mixed points and spans, backward iteration.
 
@@ -355,16 +355,16 @@ prev
 prev
 prev
 ----
-seek-lt z: i#1,SET [g, ?)
-prev:      h#6,SET [g, ?)
-prev:      g#inf,BDRY [g, ?)
-prev:      e#2,SET [c, ?) {(#5,RANGEDEL)}
-prev:      d#4,SET [c, ?) {(#5,RANGEDEL)}
-prev:      c#5,SET [c, ?) {(#5,RANGEDEL)}
-prev:      c#inf,BDRY [c, ?) {(#5,RANGEDEL)}
-prev:      b#8,SET [a, ?)
-prev:      a#10,SET [a, ?)
-prev:      a#inf,BDRY [a, ?)
+seek-lt z: i#1,SET [g, ?):{}
+prev:      h#6,SET [g, ?):{}
+prev:      g#inf,BDRY [g, ?):{}
+prev:      e#2,SET [c, ?):{(#5,RANGEDEL)}
+prev:      d#4,SET [c, ?):{(#5,RANGEDEL)}
+prev:      c#5,SET [c, ?):{(#5,RANGEDEL)}
+prev:      c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
+prev:      b#8,SET [a, ?):{}
+prev:      a#10,SET [a, ?):{}
+prev:      a#inf,BDRY [a, ?):{}
 
 # Contiguous (abutting) fragment spans.
 
@@ -391,13 +391,13 @@ next
 next
 next
 ----
-seek-ge a: a#10,SET [?, c)
-next:      c#inf,BDRY [?, c)
-next:      d#4,SET [?, f) {(#5,RANGEDEL)}
-next:      f#inf,BDRY [?, f) {(#5,RANGEDEL)}
-next:      h#6,SET [?, j) {(#3,RANGEKEYDEL)}
-next:      j#inf,BDRY [?, j) {(#3,RANGEKEYDEL)}
-next:      z#inf,BDRY [?, z)
+seek-ge a: a#10,SET [?, c):{}
+next:      c#inf,BDRY [?, c):{}
+next:      d#4,SET [?, f):{(#5,RANGEDEL)}
+next:      f#inf,BDRY [?, f):{(#5,RANGEDEL)}
+next:      h#6,SET [?, j):{(#3,RANGEKEYDEL)}
+next:      j#inf,BDRY [?, j):{(#3,RANGEKEYDEL)}
+next:      z#inf,BDRY [?, z):{}
 
 iter lower=a upper=z
 seek-lt z
@@ -408,13 +408,13 @@ prev
 prev
 prev
 ----
-seek-lt z: j#inf,BDRY [j, ?)
-prev:      h#6,SET [f, ?) {(#3,RANGEKEYDEL)}
-prev:      f#inf,BDRY [f, ?) {(#3,RANGEKEYDEL)}
-prev:      d#4,SET [c, ?) {(#5,RANGEDEL)}
-prev:      c#inf,BDRY [c, ?) {(#5,RANGEDEL)}
-prev:      a#10,SET [a, ?)
-prev:      a#inf,BDRY [a, ?)
+seek-lt z: j#inf,BDRY [j, ?):{}
+prev:      h#6,SET [f, ?):{(#3,RANGEKEYDEL)}
+prev:      f#inf,BDRY [f, ?):{(#3,RANGEKEYDEL)}
+prev:      d#4,SET [c, ?):{(#5,RANGEDEL)}
+prev:      c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
+prev:      a#10,SET [a, ?):{}
+prev:      a#inf,BDRY [a, ?):{}
 
 # Points exactly at span boundaries.
 
@@ -436,11 +436,11 @@ next
 next
 next
 ----
-seek-ge a: c#inf,BDRY [?, c)
-next:      c#5,SET [?, g) {(#10,RANGEDEL)}
-next:      g#inf,BDRY [?, g) {(#10,RANGEDEL)}
-next:      g#3,SET [?, z)
-next:      z#inf,BDRY [?, z)
+seek-ge a: c#inf,BDRY [?, c):{}
+next:      c#5,SET [?, g):{(#10,RANGEDEL)}
+next:      g#inf,BDRY [?, g):{(#10,RANGEDEL)}
+next:      g#3,SET [?, z):{}
+next:      z#inf,BDRY [?, z):{}
 
 iter lower=a upper=z
 seek-lt z
@@ -449,11 +449,11 @@ prev
 prev
 prev
 ----
-seek-lt z: g#3,SET [g, ?)
-prev:      g#inf,BDRY [g, ?)
-prev:      c#5,SET [c, ?) {(#10,RANGEDEL)}
-prev:      c#inf,BDRY [c, ?) {(#10,RANGEDEL)}
-prev:      a#inf,BDRY [a, ?)
+seek-lt z: g#3,SET [g, ?):{}
+prev:      g#inf,BDRY [g, ?):{}
+prev:      c#5,SET [c, ?):{(#10,RANGEDEL)}
+prev:      c#inf,BDRY [c, ?):{(#10,RANGEDEL)}
+prev:      a#inf,BDRY [a, ?):{}
 
 # Direction changes.
 
@@ -480,13 +480,13 @@ next
 next
 prev
 ----
-seek-ge a: a#10,SET [?, c)
-next:      b#8,SET [?, c)
-prev:      a#10,SET [a, ?)
-next:      b#8,SET [?, c)
-next:      c#inf,BDRY [?, c)
-next:      c#5,SET [?, g) {(#5,RANGEDEL)}
-prev:      c#inf,BDRY [c, ?) {(#5,RANGEDEL)}
+seek-ge a: a#10,SET [?, c):{}
+next:      b#8,SET [?, c):{}
+prev:      a#10,SET [a, ?):{}
+next:      b#8,SET [?, c):{}
+next:      c#inf,BDRY [?, c):{}
+next:      c#5,SET [?, g):{(#5,RANGEDEL)}
+prev:      c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
 
 # SeekGE and SeekLT.
 
@@ -509,10 +509,10 @@ next
 next
 next
 ----
-seek-ge d: e#2,SET [?, g) {(#5,RANGEDEL)}
-next:      g#inf,BDRY [?, g) {(#5,RANGEDEL)}
-next:      h#6,SET [?, z)
-next:      z#inf,BDRY [?, z)
+seek-ge d: e#2,SET [?, g):{(#5,RANGEDEL)}
+next:      g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+next:      h#6,SET [?, z):{}
+next:      z#inf,BDRY [?, z):{}
 
 iter lower=a upper=z
 seek-lt g
@@ -520,10 +520,10 @@ prev
 prev
 prev
 ----
-seek-lt g: e#2,SET [c, ?) {(#5,RANGEDEL)}
-prev:      c#5,SET [c, ?) {(#5,RANGEDEL)}
-prev:      c#inf,BDRY [c, ?) {(#5,RANGEDEL)}
-prev:      a#10,SET [a, ?)
+seek-lt g: e#2,SET [c, ?):{(#5,RANGEDEL)}
+prev:      c#5,SET [c, ?):{(#5,RANGEDEL)}
+prev:      c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
+prev:      a#10,SET [a, ?):{}
 
 # SetBounds + re-seek.
 
@@ -535,9 +535,9 @@ next
 next
 ----
 set-bounds c g: ok
-seek-ge c:      c#5,SET [?, g) {(#5,RANGEDEL)}
-next:           e#2,SET [?, g) {(#5,RANGEDEL)}
-next:           g#inf,BDRY [?, g) {(#5,RANGEDEL)}
+seek-ge c:      c#5,SET [?, g):{(#5,RANGEDEL)}
+next:           e#2,SET [?, g):{(#5,RANGEDEL)}
+next:           g#inf,BDRY [?, g):{(#5,RANGEDEL)}
 next:           .
 
 # SetBounds with nil bounds (unbounded).
@@ -547,8 +547,8 @@ seek-ge a
 next
 ----
 set-bounds . .: ok
-seek-ge a:      a#10,SET [?, c)
-next:           c#inf,BDRY [?, c)
+seek-ge a:      a#10,SET [?, c):{}
+next:           c#inf,BDRY [?, c):{}
 
 # Point exhaustion with remaining boundaries.
 
@@ -569,9 +569,9 @@ seek-ge a
 next
 next
 ----
-seek-ge a: a#10,SET [?, c)
-next:      c#inf,BDRY [?, c)
-next:      g#inf,BDRY [?, g) {(#5,RANGEDEL)}
+seek-ge a: a#10,SET [?, c):{}
+next:      c#inf,BDRY [?, c):{}
+next:      g#inf,BDRY [?, g):{(#5,RANGEDEL)}
 
 # Direction change from backward-exhausted with lower bound.
 # After SetBounds(m, .), SeekLT(a) returns nil (backward-exhausted).
@@ -596,7 +596,7 @@ next
 ----
 set-bounds m .: ok
 seek-lt a:      .
-next:           p#5,SET [?, ∞)
+next:           p#5,SET [?, ∞):{}
 
 # Direction change from forward-exhausted with upper bound.
 # After SetBounds(., m), SeekGE(z) returns nil (forward-exhausted).
@@ -610,7 +610,7 @@ prev
 ----
 set-bounds . m: ok
 seek-ge z:      .
-prev:           a#10,SET [-∞, ?)
+prev:           a#10,SET [-∞, ?):{}
 
 # Backward gap span end clamped to upper bound.
 # With upper=h, the span [c,j) is above upper. When going backward from
@@ -634,7 +634,7 @@ prev
 ----
 set-bounds . h: ok
 seek-ge z:      .
-prev:           d#4,SET [c, ?) {(#5,RANGEDEL)}
+prev:           d#4,SET [c, ?):{(#5,RANGEDEL)}
 
 # Stale fragment state after SeekGE/SeekLT returns nil.
 # When SeekGE or SeekLT exhausts points, the fragment iterator state
@@ -659,7 +659,7 @@ seek-ge a
 seek-ge z
 next
 ----
-seek-ge a: b#8,SET [?, c)
+seek-ge a: b#8,SET [?, c):{}
 seek-ge z: .
 next:      .
 
@@ -670,7 +670,7 @@ seek-lt z
 seek-lt a
 prev
 ----
-seek-lt z: g#inf,BDRY [g, ?)
+seek-lt z: g#inf,BDRY [g, ?):{}
 seek-lt a: .
 prev:      .
 
@@ -696,8 +696,8 @@ first
 next
 ----
 set-bounds . h: ok
-first:          c#inf,BDRY [?, c)
-next:           d#4,SET [?, h) {(#5,RANGEDEL)}
+first:          c#inf,BDRY [?, c):{}
+next:           d#4,SET [?, h):{(#5,RANGEDEL)}
 
 # Same test but backward: no spurious boundary at lower bound.
 # With nil upper from set-bounds, the last gap is unbounded above.
@@ -707,8 +707,8 @@ last
 prev
 ----
 set-bounds d .: ok
-last:           j#inf,BDRY [j, ?)
-prev:           d#4,SET [d, ?) {(#5,RANGEDEL)}
+last:           j#inf,BDRY [j, ?):{}
+prev:           d#4,SET [d, ?):{(#5,RANGEDEL)}
 
 # NextPrefix is equivalent to SeekGE(succKey).
 
@@ -732,9 +732,9 @@ next
 next
 next
 ----
-seek-ge a:   a#10,SET [?, c)
-next-prefix: c#inf,BDRY [?, c)
-next:        d#4,SET [?, g) {(#5,RANGEDEL)}
-next:        g#inf,BDRY [?, g) {(#5,RANGEDEL)}
-next:        h#6,SET [?, z)
-next:        z#inf,BDRY [?, z)
+seek-ge a:   a#10,SET [?, c):{}
+next-prefix: c#inf,BDRY [?, c):{}
+next:        d#4,SET [?, g):{(#5,RANGEDEL)}
+next:        g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+next:        h#6,SET [?, z):{}
+next:        z#inf,BDRY [?, z):{}
