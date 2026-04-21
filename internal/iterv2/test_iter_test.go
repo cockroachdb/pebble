@@ -71,7 +71,14 @@ func TestTestIter(t *testing.T) {
 				}
 				return []byte(s)
 			}
-			iter = NewTestIter(points, spans, nil, key(start), key(end), key(lower), key(upper))
+			iter = NewTestIter(TestIterData{
+				Points:   points,
+				Spans:    spans,
+				StartKey: key(start),
+				EndKey:   key(end),
+				Lower:    key(lower),
+				Upper:    key(upper),
+			})
 			return runIterOps(t, iter, d.Input)
 
 		default:

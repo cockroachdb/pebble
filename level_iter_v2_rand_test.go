@@ -153,12 +153,8 @@ func runLevelIterV2RandomTest(t *testing.T, seed uint64) {
 			t.Logf("cfg: %+v", cfg)
 			t.Logf("initial bounds: %q %q", lower, upper)
 			for i, m := range metas {
-				p := make([]base.InternalKey, len(filePointKeys[i]))
-				for j := range p {
-					p[j] = filePointKeys[i][j].K
-				}
 				t.Logf("file %d (%s - %s):", i, m.PointKeyBounds.Smallest(), m.PointKeyBounds.Largest())
-				t.Logf("  points: %v", p)
+				t.Logf("  points: %s", base.FormatKeys(filePointKeys[i]))
 				t.Logf("  spans: %v", fileSpans[i])
 			}
 		}
@@ -168,10 +164,21 @@ func runLevelIterV2RandomTest(t *testing.T, seed uint64) {
 	slices.SortFunc(allSpans, func(a, b keyspan.Span) int {
 		return cmp.Compare(a.Start, b.Start)
 	})
-	ops := iterv2.AllTestOps
+	checkCfg := iterv2.CheckIterConfig{
+		Comparer:     cmp,
+		KeyGenConfig: cfg,
+		OpWeights:    iterv2.AllTestOps,
+		NumOps:       500,
+	}
 	// TODO(radu): implement NextPrefix.
-	ops[iterv2.TestOpNextPrefix] = 0
-	iterv2.CheckIter(t, rng, cmp, cfg, ops /* iterv2.AllTestOps*/, points, allSpans, li, nil, nil, lower, upper, 500)
+	checkCfg.OpWeights[iterv2.TestOpNextPrefix] = 0
+	expected := iterv2.TestIterData{
+		Points: points,
+		Spans:  allSpans,
+		Lower:  lower,
+		Upper:  upper,
+	}
+	iterv2.CheckIter(t, rng, checkCfg, expected, li)
 }
 
 // pickFileBoundaries generates sorted, deduplicated file boundaries

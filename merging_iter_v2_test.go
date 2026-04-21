@@ -21,20 +21,12 @@ import (
 	"github.com/cockroachdb/pebble/internal/testkeys"
 )
 
-// mergingTestLevel represents a single level of a merging iterator test, with
-// sorted point keys and non-overlapping range deletion spans.
-type mergingTestLevel struct {
-	points          []base.InternalKV // sorted by InternalCompare
-	spans           []keyspan.Span    // non-overlapping, sorted by Start
-	extraBoundaries [][]byte          // additional boundary keys (for spurious boundaries)
-}
-
 // mergeLevels returns the surviving point keys after applying range deletion
 // filtering across all levels. A point is "surviving" if it is visible at the
 // given snapshot and not shadowed by any visible RANGEDEL with a strictly
 // greater sequence number.
 func mergeLevels(
-	cmp *base.Comparer, levels []mergingTestLevel, snapshot base.SeqNum,
+	cmp *base.Comparer, levels []iterv2.TestIterData, snapshot base.SeqNum,
 ) []base.InternalKV {
 	// Collect all visible range deletions from all levels.
 	type rangeDel struct {
@@ -43,7 +35,7 @@ func mergeLevels(
 	}
 	var rangeDels []rangeDel
 	for _, lvl := range levels {
-		for _, span := range lvl.spans {
+		for _, span := range lvl.Spans {
 			for _, k := range span.Keys {
 				if k.Trailer.SeqNum() < snapshot {
 					rangeDels = append(rangeDels, rangeDel{
@@ -60,7 +52,7 @@ func mergeLevels(
 	// deletions.
 	var surviving []base.InternalKV
 	for _, lvl := range levels {
-		for _, p := range lvl.points {
+		for _, p := range lvl.Points {
 			if p.SeqNum() >= snapshot {
 				continue
 			}
@@ -89,25 +81,27 @@ func mergeLevels(
 // newMergingIterV2FromLevels builds a mergingIterV2 from test levels by
 // wrapping each level's data in an iterv2.TestIter.
 func newMergingIterV2FromLevels(
-	cmp *base.Comparer, levels []mergingTestLevel, snapshot base.SeqNum,
+	rng *rand.Rand, cmp *base.Comparer, levels []iterv2.TestIterData, snapshot base.SeqNum,
 ) *mergingIterV2 {
 	iters := make([]iterv2.Iter, len(levels))
-	for i, lvl := range levels {
-		iters[i] = iterv2.NewTestIter(lvl.points, lvl.spans, lvl.extraBoundaries, nil, nil, nil, nil)
-		if rand.IntN(2) == 0 {
+	for i := range levels {
+		iters[i] = iterv2.NewTestIter(levels[i])
+		if rng.IntN(2) == 0 {
 			iters[i] = iterv2.NewInvalidating(iters[i])
+		}
+		if rng.IntN(2) == 0 {
+			iters[i] = iterv2.NewOpCheckIter(iters[i], cmp, nil, nil)
 		}
 	}
 	return newMergingIterV2(cmp.Compare, cmp.Split, snapshot, iters...)
 }
 
-// parseMergingTestLevels parses a define block into a slice of
-// mergingTestLevel. Each level starts with an "L" line, followed by point keys
-// (in "key#seq,KIND" format) and range deletion spans (in
-// "start-end:{(#seq,RANGEDEL) ...}" format, as understood by
+// parseMergingTestLevels parses a define block. Each level starts with an "L"
+// line, followed by point keys (in "key#seq,KIND" format) and range deletion
+// spans (in "start-end:{(#seq,RANGEDEL) ...}" format, as understood by
 // keyspan.ParseSpan).
-func parseMergingTestLevels(input string) []mergingTestLevel {
-	var levels []mergingTestLevel
+func parseMergingTestLevels(input string) []iterv2.TestIterData {
+	var levels []iterv2.TestIterData
 	curLevel := -1
 	for line := range crstrings.LinesSeq(input) {
 		line = strings.TrimSpace(line)
@@ -115,7 +109,7 @@ func parseMergingTestLevels(input string) []mergingTestLevel {
 			continue
 		}
 		if line == "L" {
-			levels = append(levels, mergingTestLevel{})
+			levels = append(levels, iterv2.TestIterData{})
 			curLevel++
 			continue
 		}
@@ -125,12 +119,12 @@ func parseMergingTestLevels(input string) []mergingTestLevel {
 		// If the line contains a "-" followed by ":{", it's a span.
 		if strings.Contains(line, ":{") || strings.Contains(line, "-") && strings.Contains(line, "RANGEDEL") {
 			span := keyspan.ParseSpan(line)
-			levels[curLevel].spans = append(levels[curLevel].spans, span)
+			levels[curLevel].Spans = append(levels[curLevel].Spans, span)
 		} else {
 			// Parse space-separated point keys.
 			for field := range strings.FieldsSeq(line) {
 				k := base.ParseInternalKey(field)
-				levels[curLevel].points = append(levels[curLevel].points, base.MakeInternalKV(k, nil))
+				levels[curLevel].Points = append(levels[curLevel].Points, base.MakeInternalKV(k, nil))
 			}
 		}
 	}
@@ -138,14 +132,14 @@ func parseMergingTestLevels(input string) []mergingTestLevel {
 }
 
 // formatMergingTestLevels formats levels for display in define output.
-func formatMergingTestLevels(levels []mergingTestLevel) string {
+func formatMergingTestLevels(levels []iterv2.TestIterData) string {
 	var buf strings.Builder
 	for i, lvl := range levels {
 		fmt.Fprintf(&buf, "L%d\n", i)
-		for _, p := range lvl.points {
+		for _, p := range lvl.Points {
 			fmt.Fprintf(&buf, "  %s\n", p.K)
 		}
-		for _, s := range lvl.spans {
+		for _, s := range lvl.Spans {
 			fmt.Fprintf(&buf, "  %s\n", s)
 		}
 	}
@@ -169,9 +163,10 @@ func formatMergingTestLevels(levels []mergingTestLevel) string {
 //	  seek-ge <key>
 //	  ...
 func TestMergingIterV2(t *testing.T) {
-	var levels []mergingTestLevel
+	var levels []iterv2.TestIterData
 	var snapshot base.SeqNum
 
+	rng := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 	datadriven.RunTest(t, "testdata/merging_iter_v2", func(t *testing.T, d *datadriven.TestData) string {
 		switch d.Cmd {
 		case "define":
@@ -186,7 +181,7 @@ func TestMergingIterV2(t *testing.T) {
 			return formatMergingTestLevels(levels)
 
 		case "iter":
-			iter := newMergingIterV2FromLevels(testkeys.Comparer, levels, snapshot)
+			iter := newMergingIterV2FromLevels(rng, testkeys.Comparer, levels, snapshot)
 			defer iter.Close()
 			return itertest.RunInternalIterCmd(t, d, iter, itertest.Verbose)
 
