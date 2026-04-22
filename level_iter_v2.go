@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -365,7 +366,7 @@ func (l *levelIterV2) loadFile(file *manifest.TableMetadata) loadFileReturnIndic
 
 func (l *levelIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(l) {
-		op := treesteps.StartOpf(l, "SeekGE(%q, %d)", key, flags)
+		op := treesteps.StartOpf(l, "SeekGE(%q%s)", key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -422,7 +423,7 @@ func (l *levelIterV2) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(l) {
-		op := treesteps.StartOpf(l, "SeekPrefixGE(%q, %q, %d)", prefix, key, flags)
+		op := treesteps.StartOpf(l, "SeekPrefixGE(%q, %q%s)", prefix, key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()

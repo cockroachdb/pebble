@@ -295,7 +295,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) internalSeekGE(
 	key []byte, flags base.SeekGEFlags, shouldReturnMeta bool,
 ) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(i) {
-		op := treesteps.StartOpf(i, "SeekGE%s(%q, %d)", crstrings.If(shouldReturnMeta, "WithMeta"), key, flags)
+		op := treesteps.StartOpf(i, "SeekGE%s(%q%s)", crstrings.If(shouldReturnMeta, "WithMeta"), key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -452,7 +452,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(i) {
-		op := treesteps.StartOpf(i, "SeekPrefixGE(%q, %q, %d)", prefix, key, flags)
+		op := treesteps.StartOpf(i, "SeekPrefixGE(%q, %q%s)", prefix, key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
