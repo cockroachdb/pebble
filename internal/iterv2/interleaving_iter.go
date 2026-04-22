@@ -791,6 +791,9 @@ func (i *InterleavingIter) checkPoint(kv *base.InternalKV) {
 		if i.upper != nil && i.cmp.Compare(kv.K.UserKey, i.upper) >= 0 {
 			panic(errors.AssertionFailedf("point %s returned despite upper bound %q", kv.K, i.upper))
 		}
+		if kind := kv.Kind(); kind == base.InternalKeyKindRangeDelete || (kind >= base.InternalKeyKindRangeKeyMin && kind <= base.InternalKeyKindRangeKeyMax) {
+			panic(errors.AssertionFailedf("point %s has invalid kind", kv.K))
+		}
 	}
 }
 

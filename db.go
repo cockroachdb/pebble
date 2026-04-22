@@ -1456,7 +1456,7 @@ func (i *Iterator) constructPointIterV2(
 		}
 		iiter := new(iterv2.InterleavingIter)
 		iiter.Init(i.comparer,
-			&iterv2.PointKeyFilter{Iter: &i.batch.pointIter},
+			&i.batch.pointIter,
 			rangeDelIter,
 			nil, nil, // startKey, endKey: unbounded
 			i.opts.LowerBound, i.opts.UpperBound)
@@ -1476,9 +1476,6 @@ func (i *Iterator) constructPointIterV2(
 				continue
 			}
 			pointIter := mem.newIter(&i.opts)
-			// Apparently the memtable iterator interleaves range key span boundaries.
-			// Filter them out using a PointKeyFilter.
-			pointIter = &iterv2.PointKeyFilter{Iter: pointIter}
 			rangeDelIter := mem.newRangeDelIter(&i.opts)
 			iiter := new(iterv2.InterleavingIter)
 			iiter.Init(i.comparer, pointIter, rangeDelIter,
