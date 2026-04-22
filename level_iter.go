@@ -663,7 +663,7 @@ func (l *levelIter) internalSeekGE(
 	key []byte, flags base.SeekGEFlags, shouldReturnMeta bool,
 ) (kv *base.InternalKV, kvMeta base.KVMeta) {
 	if treesteps.Enabled && treesteps.IsRecording(l) {
-		op := treesteps.StartOpf(l, "SeekGE%s(%q, %d)", crstrings.If(shouldReturnMeta, "WithMeta"), key, flags)
+		op := treesteps.StartOpf(l, "SeekGE%s(%q%s)", crstrings.If(shouldReturnMeta, "WithMeta"), key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -770,7 +770,7 @@ func (l *levelIter) internalSeekGE(
 // bound. SeekPrefixGE checks the upper bound but not the lower bound.
 func (l *levelIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(l) {
-		op := treesteps.StartOpf(l, "SeekPrefixGE(%q, %q, %d)", prefix, key, flags)
+		op := treesteps.StartOpf(l, "SeekPrefixGE(%q, %q%s)", prefix, key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()

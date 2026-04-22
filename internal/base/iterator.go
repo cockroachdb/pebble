@@ -7,6 +7,7 @@ package base
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/pebble/internal/humanize"
@@ -357,6 +358,25 @@ func (s SeekGEFlags) EnableBatchJustRefreshed() SeekGEFlags {
 // batch-just-refreshed bit unset.
 func (s SeekGEFlags) DisableBatchJustRefreshed() SeekGEFlags {
 	return s &^ (1 << seekGEFlagBatchJustRefreshed)
+}
+
+// String returns a human-readable representation of the flags. It returns
+// "None" if no flags are set, otherwise the names of set flags joined by "|".
+func (s SeekGEFlags) String() string {
+	if s == 0 {
+		return "None"
+	}
+	var names []string
+	if s.TrySeekUsingNext() {
+		names = append(names, "TrySeekUsingNext")
+	}
+	if s.RelativeSeek() {
+		names = append(names, "RelativeSeek")
+	}
+	if s.BatchJustRefreshed() {
+		names = append(names, "BatchJustRefreshed")
+	}
+	return strings.Join(names, "|")
 }
 
 // SeekLTFlags holds flags that may configure the behavior of a reverse seek.

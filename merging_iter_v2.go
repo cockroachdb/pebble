@@ -376,7 +376,7 @@ func (m *mergingIterV2) seekGE(key []byte, flags base.SeekGEFlags) {
 // SeekGE implements base.InternalIterator.
 func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(m) {
-		op := treesteps.StartOpf(m, "SeekGE(%q, %d)", key, flags)
+		op := treesteps.StartOpf(m, "SeekGE(%q%s)", key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -561,7 +561,7 @@ func (m *mergingIterV2) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(m) {
-		op := treesteps.StartOpf(m, "SeekPrefixGE(%q, %d)", key, flags)
+		op := treesteps.StartOpf(m, "SeekPrefixGE(%q%s)", key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
