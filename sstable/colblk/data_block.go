@@ -386,7 +386,7 @@ func (ks *defaultKeySeeker) SeekGE(
 	si := ks.comparer.Split(key)
 	row, eq := ks.prefixes.Search(key[:si])
 	if eq {
-		return ks.seekGEOnSuffix(row, key[si:]), true
+		return ks.seekGEOnSuffix(row, key[si:])
 	}
 	return row, false
 }
@@ -394,20 +394,23 @@ func (ks *defaultKeySeeker) SeekGE(
 // seekGEOnSuffix is a helper function for SeekGE when a seek key's prefix
 // exactly matches a row. seekGEOnSuffix finds the first row at index or later
 // with the same prefix as index and a suffix greater than or equal to [suffix],
-// or if no such row exists, the next row with a different prefix.
-func (ks *defaultKeySeeker) seekGEOnSuffix(index int, suffix []byte) (row int) {
+// or if no such row exists, the next row with a different prefix. equalPrefix
+// reports whether the returned row still has the same prefix as the seek key
+// (false when the search walked past the prefix group).
+func (ks *defaultKeySeeker) seekGEOnSuffix(index int, suffix []byte) (row int, equalPrefix bool) {
 	// The search key's prefix exactly matches the prefix of the row at index.
 	// If the row at index has a suffix >= [suffix], then return the row.
 	if ks.comparer.ComparePointSuffixes(ks.suffixes.At(index), suffix) >= 0 {
-		return index
+		return index, true
 	}
 	// Otherwise, the row at [index] sorts before the search key and we need to
 	// search forward. Binary search between [index+1, prefixChanged.SeekSetBitGE(index+1)].
 	//
 	// Define f(l-1) == false and f(u) == true.
 	// Invariant: f(l-1) == false, f(u) == true.
+	nextPrefixRow := ks.decoder.prefixChanged.SeekSetBitGE(index + 1)
 	l := index + 1
-	u := ks.decoder.prefixChanged.SeekSetBitGE(index + 1)
+	u := nextPrefixRow
 	for l < u {
 		h := int(uint(l+u) >> 1) // avoid overflow when computing h
 		// l ≤ h < u
@@ -417,7 +420,9 @@ func (ks *defaultKeySeeker) seekGEOnSuffix(index int, suffix []byte) (row int) {
 			l = h + 1 // preserves f(l-1) == false
 		}
 	}
-	return l
+	// If l == nextPrefixRow, no row in the prefix group satisfied the suffix
+	// constraint and we have walked into the next prefix group (or past maxRow).
+	return l, l < nextPrefixRow
 }
 
 // MaterializeUserKey is part of the colblk.KeySeeker interface.

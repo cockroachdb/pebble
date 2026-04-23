@@ -881,7 +881,7 @@ func (ks *cockroachKeySeeker) SeekGE(
 	si := Split(key)
 	row, eq := ks.roachKeys.Search(key[:si-1])
 	if eq {
-		return ks.seekGEOnSuffix(row, key[si:]), true
+		return ks.seekGEOnSuffix(row, key[si:])
 	}
 	return row, false
 }
@@ -889,8 +889,12 @@ func (ks *cockroachKeySeeker) SeekGE(
 // seekGEOnSuffix is a helper function for SeekGE when a seek key's prefix
 // exactly matches a row. seekGEOnSuffix finds the first row at index or later
 // with the same prefix as index and a suffix greater than or equal to [suffix],
-// or if no such row exists, the next row with a different prefix.
-func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row int) {
+// or if no such row exists, the next row with a different prefix. equalPrefix
+// reports whether the returned row still has the same prefix as the seek key
+// (false when the search walked past the prefix group).
+func (ks *cockroachKeySeeker) seekGEOnSuffix(
+	index int, seekSuffix []byte,
+) (row int, equalPrefix bool) {
 	// We have three common cases:
 	// 1. The seek key has no suffix.
 	// 2. We are seeking to an MVCC timestamp in a block where all keys have
@@ -902,7 +906,7 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 		// The search key has no suffix, so it's the smallest possible key with its
 		// prefix. Return the row. This is a common case where the user is seeking
 		// to the most-recent row and just wants the smallest key with the prefix.
-		return index
+		return index, true
 	}
 
 	const withWall = 9
@@ -924,15 +928,16 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 		// the most common case.
 		if latestWallTime := ks.mvccWallTimes.At(index); latestWallTime < seekWallTime ||
 			(latestWallTime == seekWallTime && uint32(ks.mvccLogical.At(index)) <= seekLogicalTime) {
-			return index
+			return index, true
 		}
 
 		// Binary search between [index+1, prefixChanged.SeekSetBitGE(index+1)].
 		//
 		// Define f(i) = true iff key at i is >= seek key.
 		// Invariant: f(l-1) == false, f(u) == true.
+		nextPrefixRow := ks.roachKeyChanged.SeekSetBitGE(index + 1)
 		l := index + 1
-		u := ks.roachKeyChanged.SeekSetBitGE(index + 1)
+		u := nextPrefixRow
 
 		for l < u {
 			m := int(uint(l+u) >> 1) // avoid overflow when computing m
@@ -945,7 +950,7 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 				l = m + 1 // preserves f(l-1) = false
 			}
 		}
-		return l
+		return l, l < nextPrefixRow
 	}
 
 	// Remove the terminator byte, which we know is equal to len(seekSuffix)
@@ -959,8 +964,9 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 	//
 	// Define f(i) = true iff key at i is >= seek key (i.e. suffix at i is <= seek suffix).
 	// Invariant: f(l-1) == false, f(u) == true.
+	nextPrefixRow := ks.roachKeyChanged.SeekSetBitGE(index + 1)
 	l := index
-	u := ks.roachKeyChanged.SeekSetBitGE(index + 1)
+	u := nextPrefixRow
 	for l < u {
 		m := int(uint(l+u) >> 1) // avoid overflow when computing m
 		// l ≤ m < u
@@ -995,7 +1001,7 @@ func (ks *cockroachKeySeeker) seekGEOnSuffix(index int, seekSuffix []byte) (row 
 			l = m + 1 // preserves f(l-1) == false
 		}
 	}
-	return l
+	return l, l < nextPrefixRow
 }
 
 // MaterializeUserKey is part of the KeySeeker interface.
