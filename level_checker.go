@@ -731,14 +731,12 @@ func checkRangeKeyMetadata(c *checkConfig, allTables []*manifest.TableMetadata) 
 		if hasRangeKeySets && file.RangeKeyKinds != manifest.AnyRangeKeys {
 			return errors.Errorf("table %s has RangeKeyKinds!=AnyRangeKeys but contains RANGEKEYSETs", file.TableNum)
 		}
-		// For non-virtual tables, HasRangeKeys and RangeKeyKinds must exactly match reality.
 		if !file.Virtual {
+			// For non-virtual tables, HasRangeKeys must exactly match reality.
 			if file.HasRangeKeys && !hasRangeKeys {
 				return errors.Errorf("table %s has HasRangeKeys=true but contains no range keys", file.TableNum)
 			}
-			if !hasRangeKeySets && file.RangeKeyKinds == manifest.AnyRangeKeys {
-				return errors.Errorf("table %s has RangeKeyKinds=AnyRangeKeys but does not contain RANGEKEYSETs", file.TableNum)
-			}
+			// RangeKeyKinds allows for false positives even for non-virtual tables.
 		}
 	}
 	return nil
