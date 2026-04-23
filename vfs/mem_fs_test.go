@@ -5,13 +5,16 @@
 package vfs
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/rand/v2"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/stretchr/testify/require"
@@ -138,6 +141,117 @@ func TestMemFile(t *testing.T) {
 	if got := string(buf); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
+}
+
+// TestMemFSCrashCloneConcurrency exercises concurrent CrashClone (write lock)
+// against ReuseForWrite, Link, and Lock (all of which take read locks and call
+// other methods that also take read locks). Before the fix in this package,
+// these methods would recursively acquire cloneMu.RLock(), deadlocking when
+// CrashClone was waiting for the write lock (Go's sync.RWMutex is
+// writer-preferring, blocking new RLocks behind a pending Lock).
+func TestMemFSCrashCloneConcurrency(t *testing.T) {
+	const workers = 4
+	const duration = 5 * time.Second
+
+	fs := NewCrashableMem()
+	// Pre-create a directory and seed files for ReuseForWrite and Link.
+	require.NoError(t, fs.MkdirAll("/d", 0755))
+	for i := 0; i < workers; i++ {
+		name := fmt.Sprintf("/d/src-%d", i)
+		f, err := fs.Create(name, WriteCategoryUnspecified)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	defer cancel()
+
+	var g sync.WaitGroup
+
+	// CrashClone goroutines (writer lock).
+	for i := 0; i < workers; i++ {
+		g.Add(1)
+		go func() {
+			defer g.Done()
+			rng := rand.New(rand.NewPCG(0, uint64(i)))
+			for ctx.Err() == nil {
+				fs.CrashClone(CrashCloneCfg{UnsyncedDataPercent: 50, RNG: rng})
+			}
+		}()
+	}
+
+	// ReuseForWrite goroutines.
+	for i := 0; i < workers; i++ {
+		g.Add(1)
+		go func() {
+			defer g.Done()
+			a := fmt.Sprintf("/d/reuse-a-%d", i)
+			b := fmt.Sprintf("/d/reuse-b-%d", i)
+			// Seed initial file.
+			f, err := fs.Create(a, WriteCategoryUnspecified)
+			if err != nil {
+				return
+			}
+			_ = f.Close()
+			useA := true
+			for ctx.Err() == nil {
+				var from, to string
+				if useA {
+					from, to = a, b
+				} else {
+					from, to = b, a
+				}
+				f, err := fs.ReuseForWrite(from, to, WriteCategoryUnspecified)
+				if err != nil {
+					// File may have been removed by CrashClone side effects;
+					// recreate and retry.
+					f2, err2 := fs.Create(a, WriteCategoryUnspecified)
+					if err2 == nil {
+						_ = f2.Close()
+					}
+					useA = true
+					continue
+				}
+				_ = f.Close()
+				useA = !useA
+			}
+		}()
+	}
+
+	// Link goroutines.
+	for i := 0; i < workers; i++ {
+		g.Add(1)
+		go func() {
+			defer g.Done()
+			src := fmt.Sprintf("/d/src-%d", i)
+			n := 0
+			for ctx.Err() == nil {
+				dst := fmt.Sprintf("/d/link-%d-%d", i, n)
+				_ = fs.Link(src, dst)
+				// Clean up to avoid unbounded growth.
+				_ = fs.Remove(dst)
+				n++
+			}
+		}()
+	}
+
+	// Lock goroutines.
+	for i := 0; i < workers; i++ {
+		g.Add(1)
+		go func() {
+			defer g.Done()
+			name := fmt.Sprintf("/d/lock-%d", i)
+			for ctx.Err() == nil {
+				closer, err := fs.Lock(name)
+				if err != nil {
+					continue
+				}
+				_ = closer.Close()
+			}
+		}()
+	}
+
+	g.Wait()
 }
 
 func TestMemFSLock(t *testing.T) {
