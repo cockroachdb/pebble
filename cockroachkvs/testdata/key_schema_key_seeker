@@ -101,18 +101,18 @@ zoo @ 9000000000,0
 ----
 SeekGE(apple @ 2000000000,0, boundRow=-1, searchDir=0) = (row=0, equalPrefix=false) [hex:6261720000000000b2d05e00000000010d]
 SeekGE(bar @ 4000000000,0, boundRow=-1, searchDir=0) = (row=0, equalPrefix=true) [hex:6261720000000000b2d05e00000000010d]
-SeekGE(bar @ 3000000000,0, boundRow=-1, searchDir=0) = (row=1, equalPrefix=true) [hex:6261780000000000b2d05e00000000010d]
-SeekGE(bar @ 2000000000,0, boundRow=-1, searchDir=0) = (row=1, equalPrefix=true) [hex:6261780000000000b2d05e00000000010d]
+SeekGE(bar @ 3000000000,0, boundRow=-1, searchDir=0) = (row=1, equalPrefix=false) [hex:6261780000000000b2d05e00000000010d]
+SeekGE(bar @ 2000000000,0, boundRow=-1, searchDir=0) = (row=1, equalPrefix=false) [hex:6261780000000000b2d05e00000000010d]
 SeekGE(bax @ 3000000000,1, boundRow=-1, searchDir=0) = (row=1, equalPrefix=true) [hex:6261780000000000b2d05e00000000010d]
-SeekGE(bax @ 3000000000,0, boundRow=-1, searchDir=0) = (row=2, equalPrefix=true) [hex:666f6f0000000000b2d05e00000000010d]
+SeekGE(bax @ 3000000000,0, boundRow=-1, searchDir=0) = (row=2, equalPrefix=false) [hex:666f6f0000000000b2d05e00000000010d]
 SeekGE(fax @ 9000000000,0, boundRow=-1, searchDir=0) = (row=2, equalPrefix=false) [hex:666f6f0000000000b2d05e00000000010d]
 SeekGE(foo @ 3000000000,2, boundRow=-1, searchDir=0) = (row=2, equalPrefix=true) [hex:666f6f0000000000b2d05e00000000010d]
 SeekGE(foo @ 3000000000,1, boundRow=-1, searchDir=0) = (row=2, equalPrefix=true) [hex:666f6f0000000000b2d05e00000000010d]
-SeekGE(foo @ 3000000000,0, boundRow=-1, searchDir=0) = (row=3, equalPrefix=true) [hex:6d6f6f0000000000b2d05e00000000010d]
+SeekGE(foo @ 3000000000,0, boundRow=-1, searchDir=0) = (row=3, equalPrefix=false) [hex:6d6f6f0000000000b2d05e00000000010d]
 SeekGE(moo @ 3000000001,0, boundRow=-1, searchDir=0) = (row=3, equalPrefix=true) [hex:6d6f6f0000000000b2d05e00000000010d]
 SeekGE(moo @ 3000000000,2, boundRow=-1, searchDir=0) = (row=3, equalPrefix=true) [hex:6d6f6f0000000000b2d05e00000000010d]
 SeekGE(moo @ 3000000000,1, boundRow=-1, searchDir=0) = (row=3, equalPrefix=true) [hex:6d6f6f0000000000b2d05e00000000010d]
-SeekGE(moo @ 3000000000,0, boundRow=-1, searchDir=0) = (row=4, equalPrefix=true)
+SeekGE(moo @ 3000000000,0, boundRow=-1, searchDir=0) = (row=4, equalPrefix=false)
 SeekGE(zoo @ 9000000000,0, boundRow=-1, searchDir=0) = (row=4, equalPrefix=false)
 
 materialize-user-key
