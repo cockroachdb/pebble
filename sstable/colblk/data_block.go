@@ -7,7 +7,6 @@ package colblk
 import (
 	"bytes"
 	"cmp"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -1454,21 +1453,7 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 	return i.decodeRow()
 }
 
-// SeekPrefixGE implements the base.InternalIterator interface.
-func (i *DataBlockIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	// This should never be called as prefix iteration is handled by
-	// sstable.Iterator.
-
-	// TODO(jackson): We can implement this and avoid propagating keys without
-	// the prefix up to the merging iterator. It will avoid unnecessary key
-	// comparisons fixing up the merging iterator heap. We can also short
-	// circuit the search if the prefix isn't found within the prefix column.
-	// There's some subtlety around ensuring we continue to benefit from the
-	// TrySeekUsingNext optimization.
-	panic(errors.AssertionFailedf("pebble: SeekPrefixGE unimplemented"))
-}
-
-// SeekLT implements the base.InternalIterator interface.
+// SeekLT implements the blockiter.Data interface.
 func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV {
 	if i.d == nil {
 		return nil
@@ -1748,23 +1733,7 @@ func (i *DataBlockIter) Error() error {
 	return nil // infallible
 }
 
-// SetBounds implements the base.InternalIterator interface.
-func (i *DataBlockIter) SetBounds(lower, upper []byte) {
-	// This should never be called as bounds are handled by sstable.Iterator.
-	panic(errors.AssertionFailedf("pebble: SetBounds unimplemented"))
-}
-
-// SetContext implements the base.InternalIterator interface.
-func (i *DataBlockIter) SetContext(_ context.Context) {}
-
-var dataBlockTypeString string = fmt.Sprintf("%T", (*DataBlockIter)(nil))
-
-// String implements the base.InternalIterator interface.
-func (i *DataBlockIter) String() string {
-	return dataBlockTypeString
-}
-
-// TreeStepsNode is part of the InternalIterator interface.
+// TreeStepsNode is part of the blockiter.Data interface.
 func (i *DataBlockIter) TreeStepsNode() treesteps.NodeInfo {
 	ni := treesteps.NodeInfof(i, "colblk.DataBlockIter")
 	if i.Valid() {

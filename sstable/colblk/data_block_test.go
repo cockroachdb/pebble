@@ -6,6 +6,7 @@ package colblk
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"slices"
@@ -25,6 +26,22 @@ import (
 )
 
 var testKeysSchema = DefaultKeySchema(testkeys.Comparer, 16)
+
+// dataBlockIterInternalIterator wraps a DataBlockIter as a base.InternalIterator
+// for use in itertest.RunInternalIterCmd.
+type dataBlockIterInternalIterator struct {
+	*DataBlockIter
+}
+
+func (d *dataBlockIterInternalIterator) SeekPrefixGE(
+	prefix, key []byte, flags base.SeekGEFlags,
+) *base.InternalKV {
+	panic("SeekPrefixGE not supported on data block iterators")
+}
+
+func (d *dataBlockIterInternalIterator) SetBounds(lower, upper []byte) {}
+func (d *dataBlockIterInternalIterator) SetContext(_ context.Context)  {}
+func (d *dataBlockIterInternalIterator) String() string                { return "data-block-iter" }
 
 func TestDataBlock(t *testing.T) {
 	var buf bytes.Buffer
@@ -144,7 +161,7 @@ func TestDataBlock(t *testing.T) {
 				if td.HasArg("invalidated") {
 					it.Invalidate()
 				}
-				return itertest.RunInternalIterCmd(t, td, &it, o...)
+				return itertest.RunInternalIterCmd(t, td, &dataBlockIterInternalIterator{&it}, o...)
 			default:
 				return fmt.Sprintf("unknown command: %s", td.Cmd)
 			}

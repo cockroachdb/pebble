@@ -25,7 +25,9 @@ import (
 // https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
 type dataBlockIterator[D any] interface {
 	blockiter.Data
-	base.InternalIteratorWithKVMeta
+	FirstWithMeta() (*base.InternalKV, base.KVMeta)
+	NextWithMeta() (*base.InternalKV, base.KVMeta)
+	SeekGEWithMeta(key []byte, flags base.SeekGEFlags) (*base.InternalKV, base.KVMeta)
 
 	*D // non-interface type constraint element
 }
