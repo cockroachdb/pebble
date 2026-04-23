@@ -2165,12 +2165,13 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 		FilterPolicy:         nil,
 		Compression:          block.SnappyCompression,
 		Comparer:             testkeys.Comparer,
+		KeySchema:            &testkeysSchema,
 	}
-	// 10,000 key prefixes, each with 100 versions.
-	const keyCount = 10000
+	// 1,000 key prefixes, each with 1,000 versions.
+	const keyCount = 1000
 	const sharedPrefixLen = 32
 	const unsharedPrefixLen = 8
-	const versionCount = 100
+	const versionCount = 1000
 
 	// Take the very large keyspace consisting of alphabetic characters of
 	// lengths up to unsharedPrefixLen and reduce it down to keyCount keys by
@@ -2215,62 +2216,72 @@ func BenchmarkIteratorScanManyVersions(b *testing.B) {
 					CacheHandle: ch,
 				},
 			},
+			KeySchemas: KeySchemas{testkeysSchema.Name: &testkeysSchema},
 		})
 		require.NoError(b, err)
 		return r
 	}
-	for _, format := range []TableFormat{TableFormatPebblev2, TableFormatPebblev3, TableFormatPebblev4} {
-		b.Run(fmt.Sprintf("format=%s", format.String()), func(b *testing.B) {
-			// 150MiB results in a high cache hit rate for both formats. 20MiB
-			// results in a high cache hit rate for the data blocks in
-			// TableFormatPebblev3.
-			for _, cacheSize := range []int64{20 << 20, 150 << 20} {
-				b.Run(fmt.Sprintf("cache-size=%s", humanize.Bytes.Int64(cacheSize)),
-					func(b *testing.B) {
-						c := cache.New(cacheSize)
-						ch := c.NewHandle()
-						r := setupBench(b, format, ch)
-						defer func() {
-							require.NoError(b, r.Close())
-							ch.Close()
-							c.Unref()
-						}()
-						b.Run("NewIter", func(b *testing.B) {
-							for i := 0; i < b.N; i++ {
-								iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
-								require.NoError(b, err)
-								require.NoError(b, iter.Close())
-							}
-						})
-						for _, readValue := range []bool{false, true} {
-							b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
-								iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
-								require.NoError(b, err)
-								var kv *base.InternalKV
-								var valBuf [100]byte
-								b.ResetTimer()
+	for _, format := range []TableFormat{TableFormatPebblev6, TableFormatMax} {
+		for _, prefix := range []bool{false, true} {
+			b.Run(fmt.Sprintf("format=%s,prefix-scan=%v", format.String(), prefix), func(b *testing.B) {
+				// 150MiB results in a high cache hit rate for both formats. 20MiB
+				// results in a high cache hit rate for the data blocks in
+				// TableFormatPebblev3.
+				for _, cacheSize := range []int64{20 << 20, 150 << 20} {
+					b.Run(fmt.Sprintf("cache-size=%s", humanize.Bytes.Int64(cacheSize)),
+						func(b *testing.B) {
+							c := cache.New(cacheSize)
+							ch := c.NewHandle()
+							r := setupBench(b, format, ch)
+							defer func() {
+								require.NoError(b, r.Close())
+								ch.Close()
+								c.Unref()
+							}()
+							b.Run("NewIter", func(b *testing.B) {
 								for i := 0; i < b.N; i++ {
-									if kv == nil {
-										kv = iter.First()
-										if kv == nil {
-											b.Fatalf("kv is nil")
-										}
-									}
-									kv = iter.Next()
-									if kv != nil && readValue {
-										_, callerOwned, err := kv.Value(valBuf[:])
-										if err != nil {
-											b.Fatal(err)
-										} else if callerOwned {
-											b.Fatalf("unexpected callerOwned: %t", callerOwned)
-										}
-									}
+									iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
+									require.NoError(b, err)
+									require.NoError(b, iter.Close())
 								}
 							})
-						}
-					})
-			}
-		})
+							for _, readValue := range []bool{false, true} {
+								b.Run(fmt.Sprintf("read-value=%t", readValue), func(b *testing.B) {
+									iter, err := r.NewIter(NoTransforms, nil, nil, AssertNoBlobHandles)
+									require.NoError(b, err)
+									var kv *base.InternalKV
+									var valBuf [100]byte
+									b.ResetTimer()
+									for i := 0; i < b.N; i++ {
+										if kv == nil {
+											if prefix {
+												// Seek to a random prefix.
+												n := testkeys.WriteKey(keyBuf[sharedPrefixLen:], keys, rand.Uint64N(keys.Count()))
+												key := keyBuf[:n+sharedPrefixLen]
+												kv = iter.SeekPrefixGE(key, key, base.SeekGEFlagsNone)
+											} else {
+												kv = iter.First()
+											}
+											if kv == nil {
+												b.Fatalf("kv is nil")
+											}
+										}
+										kv = iter.Next()
+										if kv != nil && readValue {
+											_, callerOwned, err := kv.Value(valBuf[:])
+											if err != nil {
+												b.Fatal(err)
+											} else if callerOwned {
+												b.Fatalf("unexpected callerOwned: %t", callerOwned)
+											}
+										}
+									}
+								})
+							}
+						})
+				}
+			})
+		}
 	}
 }
 
