@@ -67,6 +67,14 @@ func TestUserKeyBounds(t *testing.T) {
 	ade := UserKeyBoundsEndExclusive(a, d)
 	empty := UserKeyBounds{}
 
+	t.Run("IsUnset", func(t *testing.T) {
+		require.True(t, empty.IsUnset())
+		require.False(t, bb.IsUnset())
+		require.False(t, bdi.IsUnset())
+		require.False(t, bde.IsUnset())
+		require.False(t, aci.IsUnset())
+	})
+
 	t.Run("Valid", func(t *testing.T) {
 		require.True(t, bb.Valid(cmp))
 		require.True(t, bdi.Valid(cmp))
@@ -150,6 +158,9 @@ func TestUserKeyBounds(t *testing.T) {
 		require.Equal(t, ade, ace.Union(cmp, bde))
 		require.Equal(t, adi, ace.Union(cmp, bdi))
 
+		// Unset operand acts as the identity for Union, on either side.
 		require.Equal(t, bde, empty.Union(cmp, bde))
+		require.Equal(t, bde, bde.Union(cmp, empty))
+		require.Equal(t, empty, empty.Union(cmp, empty))
 	})
 }
