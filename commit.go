@@ -140,6 +140,14 @@ type commitEnv struct {
 	// and err != nil, a failure to persist the WAL will populate *err. Returns
 	// the memtable the batch should be applied to. Serial execution enforced by
 	// commitPipeline.mu.
+	//
+	// Contract on error: if write returns a non-nil error, it must not have
+	// enqueued anything in the WAL sync queue (i.e. the logSyncQSem slot
+	// reserved by the caller is the caller's to release), and it must not
+	// have signaled wg or written to err. The current production
+	// implementation (DB.commitWrite) satisfies this trivially because its
+	// only failure points are mem.prepare / makeRoomForWrite, which run
+	// before WriteRecord; WriteRecord errors panic.
 	write func(b *Batch, wg *sync.WaitGroup, err *error) (*memTable, error)
 }
 
@@ -315,12 +323,37 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 	//
 	// NB: We set Batch.commitErr on error so that the batch won't be a candidate
 	// for reuse. See Batch.release().
-	mem, err := p.prepare(b, syncWAL, noSyncWait)
+	mem, enqueued, err := p.prepare(b, syncWAL, noSyncWait)
 	if err != nil {
 		b.db = nil // prevent batch reuse on error
-		// NB: we are not doing <-p.commitQueueSem since the batch is still
-		// sitting in the pending queue. We should consider fixing this by also
-		// removing the batch from the pending queue.
+		if !enqueued {
+			// The batch was rejected before being enqueued in the pending
+			// queue and before env.write was called (e.g. ErrInvalidBatch).
+			// No batch state to clean up; just release the semaphore slots
+			// reserved above. Otherwise repeated failures would exhaust the
+			// bounded semaphores and deadlock the commit pipeline.
+			<-p.commitQueueSem
+			if syncWAL {
+				<-p.logSyncQSem
+			}
+		} else {
+			// env.write returned an error after the batch was enqueued in
+			// p.pending. We cannot drain commitQueueSem because the batch
+			// still occupies a slot in the lock-free pending queue, and
+			// commitQueue does not support out-of-order removal. (Same
+			// situation as the apply-error branch below.) Per the
+			// commitEnv.write contract, env.write did not enqueue into the
+			// WAL sync queue on error, so we must drain the logSyncQSem
+			// slot ourselves; nothing else will.
+			//
+			// The DB is effectively unrecoverable at this point: this batch
+			// will block publish() of all subsequent batches forever. In
+			// production DB.commitInternal turns any Commit error into a
+			// Fatalf, which is how this asymmetry is tolerated.
+			if syncWAL {
+				<-p.logSyncQSem
+			}
+		}
 		return err
 	}
 
@@ -329,7 +362,9 @@ func (p *commitPipeline) Commit(b *Batch, syncWAL bool, noSyncWait bool) error {
 		b.db = nil // prevent batch reuse on error
 		// NB: we are not doing <-p.commitQueueSem since the batch is still
 		// sitting in the pending queue. We should consider fixing this by also
-		// removing the batch from the pending queue.
+		// removing the batch from the pending queue. logSyncQSem does not
+		// leak here because WriteRecord successfully enqueued the record and
+		// it will be drained on sync queue pop.
 		return err
 	}
 
@@ -427,10 +462,23 @@ func (p *commitPipeline) AllocateSeqNum(
 	<-p.commitQueueSem
 }
 
-func (p *commitPipeline) prepare(b *Batch, syncWAL bool, noSyncWait bool) (*memTable, error) {
+// prepare enqueues the batch in the pending queue, assigns it a sequence
+// number, and writes it to the WAL via p.env.write.
+//
+// The returned enqueued bool indicates whether the batch was added to the
+// pending queue before the error occurred. This dictates how the caller
+// must clean up:
+//   - enqueued=false: nothing was done; caller releases both semaphore slots.
+//   - enqueued=true: the batch is in p.pending and has a sequence number;
+//     caller must NOT release commitQueueSem (the slot is still in use)
+//     but must release logSyncQSem (env.write's contract guarantees the
+//     WAL sync queue was not enqueued on error).
+func (p *commitPipeline) prepare(
+	b *Batch, syncWAL bool, noSyncWait bool,
+) (mem *memTable, enqueued bool, err error) {
 	n := uint64(b.Count())
 	if n == invalidBatchCount {
-		return nil, ErrInvalidBatch
+		return nil, false, ErrInvalidBatch
 	}
 	var syncWG *sync.WaitGroup
 	var syncErr *error
@@ -459,6 +507,7 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool, noSyncWait bool) (*memT
 	// is lock-free, we want the order of batches to be the same as the sequence
 	// number order.
 	p.pending.enqueue(b)
+	enqueued = true
 
 	// Assign the batch a sequence number. Note that we use atomic operations
 	// here to handle concurrent reads of logSeqNum. commitPipeline.mu provides
@@ -466,11 +515,11 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool, noSyncWait bool) (*memT
 	b.setSeqNum(p.env.logSeqNum.Add(base.SeqNum(n)) - base.SeqNum(n))
 
 	// Write the data to the WAL.
-	mem, err := p.env.write(b, syncWG, syncErr)
+	mem, err = p.env.write(b, syncWG, syncErr)
 
 	p.mu.Unlock()
 
-	return mem, err
+	return mem, enqueued, err
 }
 
 func (p *commitPipeline) publish(b *Batch) {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/arenaskl"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/buildtags"
@@ -33,6 +34,10 @@ type testCommitEnv struct {
 		buf []uint64
 	}
 	queueSemChan chan struct{}
+	// If non-nil, write returns this error without registering anything in
+	// the WAL sync queue (i.e. without consuming queueSemChan), matching
+	// the commitEnv.write contract for the error case.
+	writeErr error
 }
 
 func (e *testCommitEnv) env() commitEnv {
@@ -53,6 +58,9 @@ func (e *testCommitEnv) apply(b *Batch, mem *memTable) error {
 
 func (e *testCommitEnv) write(b *Batch, wg *sync.WaitGroup, _ *error) (*memTable, error) {
 	e.writeCount.Add(1)
+	if e.writeErr != nil {
+		return nil, e.writeErr
+	}
 	if wg != nil {
 		wg.Done()
 		<-e.queueSemChan
@@ -352,6 +360,116 @@ func TestCommitPipelineLogDataSeqNum(t *testing.T) {
 		require.NoError(t, p.Commit(b, false /* sync */, false))
 	})
 	wg.Wait()
+}
+
+// TestCommitPipelinePrepareErrorLeak exercises commitPipeline.Commit's
+// cleanup on the two distinct prepare error paths:
+//
+//   - "invalid-batch": prepare returns ErrInvalidBatch before the batch is
+//     enqueued in the pending queue and before env.write runs. Both
+//     semaphore slots reserved by Commit must be released, and the
+//     pipeline must remain usable for subsequent commits.
+//
+//   - "write-error": env.write returns an error after the batch has been
+//     enqueued in the pending queue. The batch occupies a pending-queue
+//     slot indefinitely (commitQueue does not support out-of-order
+//     removal), so commitQueueSem cannot be released; but logSyncQSem
+//     must be released by Commit, since env.write's contract guarantees
+//     it did not enqueue into the WAL sync queue. After commitQueueSem
+//     fills with stuck batches, further Commits must block (this
+//     documents the known "DB is horked" failure mode that
+//     DB.commitInternal converts into Fatalf).
+func TestCommitPipelinePrepareErrorLeak(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	t.Run("invalid-batch", func(t *testing.T) {
+		makeBadBatch := func() *Batch {
+			b := &Batch{}
+			require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
+			// Force the batch's count to invalidBatchCount so prepare
+			// returns ErrInvalidBatch before enqueueing the batch or
+			// calling env.write.
+			b.setCount(invalidBatchCount)
+			return b
+		}
+
+		for _, syncWAL := range []bool{false, true} {
+			t.Run(fmt.Sprintf("syncWAL=%t", syncWAL), func(t *testing.T) {
+				var e testCommitEnv
+				p := newCommitPipeline(e.env())
+				e.queueSemChan = p.logSyncQSem
+
+				// Submit more failing commits than the semaphore capacity.
+				// Without the fix, the loop would deadlock once the
+				// semaphores filled.
+				for i := 0; i < 2*record.SyncConcurrency; i++ {
+					err := p.Commit(makeBadBatch(), syncWAL, false /* noSyncWait */)
+					require.ErrorIs(t, err, ErrInvalidBatch)
+					require.Equal(t, 0, len(p.commitQueueSem),
+						"commitQueueSem leaked on iteration %d", i)
+					require.Equal(t, 0, len(p.logSyncQSem),
+						"logSyncQSem leaked on iteration %d", i)
+				}
+
+				// A subsequent valid commit should succeed without blocking.
+				b := &Batch{}
+				require.NoError(t, b.Set([]byte("ok"), []byte("v"), nil))
+				require.NoError(t, p.Commit(b, syncWAL, false /* noSyncWait */))
+			})
+		}
+	})
+
+	t.Run("write-error", func(t *testing.T) {
+		writeErr := errors.New("simulated WAL write error")
+
+		for _, syncWAL := range []bool{false, true} {
+			t.Run(fmt.Sprintf("syncWAL=%t", syncWAL), func(t *testing.T) {
+				var e testCommitEnv
+				e.writeErr = writeErr
+				p := newCommitPipeline(e.env())
+				e.queueSemChan = p.logSyncQSem
+
+				// Each failed commit consumes one commitQueueSem slot
+				// (batch stuck in p.pending) but must release logSyncQSem.
+				// Fill the commitQueueSem capacity exactly.
+				cap := record.SyncConcurrency - 1
+				for i := 0; i < cap; i++ {
+					b := &Batch{}
+					require.NoError(t, b.Set([]byte("foo"), []byte("bar"), nil))
+					err := p.Commit(b, syncWAL, false /* noSyncWait */)
+					require.ErrorIs(t, err, writeErr)
+					require.Equal(t, i+1, len(p.commitQueueSem),
+						"commitQueueSem unexpectedly drained on iteration %d", i)
+					require.Equal(t, 0, len(p.logSyncQSem),
+						"logSyncQSem leaked on iteration %d", i)
+				}
+
+				// commitQueueSem is now full of stuck batches. The next
+				// Commit must block on the semaphore acquisition. Verify
+				// via a short timeout instead of literally hanging.
+				done := make(chan error, 1)
+				go func() {
+					b := &Batch{}
+					_ = b.Set([]byte("blocked"), []byte("v"), nil)
+					done <- p.Commit(b, syncWAL, false /* noSyncWait */)
+				}()
+				select {
+				case err := <-done:
+					t.Fatalf("Commit unexpectedly returned %v; expected to block", err)
+				case <-time.After(50 * time.Millisecond):
+					// Expected: Commit is blocked on commitQueueSem.
+				}
+				// Drain the goroutine so it doesn't leak past this test:
+				// release one commitQueueSem slot so the blocked Commit
+				// proceeds, then itself errors out (consuming a slot of
+				// its own; that final leak is intrinsic to the documented
+				// failure mode and exits with the pipeline).
+				<-p.commitQueueSem
+				err := <-done
+				require.ErrorIs(t, err, writeErr)
+			})
+		}
+	})
 }
 
 func BenchmarkCommitPipeline(b *testing.B) {
