@@ -261,3 +261,159 @@ func BenchmarkDataBlockDecoderInit(b *testing.B) {
 		InitDataBlockMetadata(&testKeysSchema, &md, finished)
 	}
 }
+
+func TestDataBlockIterPrefixMatched(t *testing.T) {
+	const targetBlockSize = 32 << 10
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(0, seed))
+	// Use a moderate prefix size to ensure shared prefixes.
+	keys, values := makeTestKeyRandomKVs(rng, 4, 8, targetBlockSize)
+
+	// Build a data block. Each row is marked obsolete with a per-block
+	// probability picked uniformly at random; this lets coverage span from
+	// no obsolete rows to all rows obsolete across seeds, exercising the
+	// skip-obsolete-points branches that reset prefixMatch.
+	obsoleteProb := rng.Float64()
+	var w DataBlockEncoder
+	w.Init(&testKeysSchema, NoTieringColumns())
+	var nRows, nObsolete int
+	for j := 0; w.Size() < targetBlockSize; j++ {
+		ik := base.MakeInternalKey(keys[j], base.SeqNum(rng.Uint64N(uint64(base.SeqNumMax))), base.InternalKeyKindSet)
+		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
+		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+		isObsolete := rng.Float64() < obsoleteProb
+		w.Add(ik, values[j], vp, kcmp, isObsolete, base.KVMeta{})
+		nRows++
+		if isObsolete {
+			nObsolete++
+		}
+	}
+	t.Logf("rows: %d, obsolete: %d (probability %.3f)", nRows, nObsolete, obsoleteProb)
+	blockData, _ := w.Finish(w.Rows(), w.Size())
+
+	var r DataBlockDecoder
+	bd := r.Init(&testKeysSchema, blockData)
+
+	split := testkeys.Comparer.Split
+	prefix := func(key []byte) []byte {
+		return key[:split(key)]
+	}
+
+	// checkPrefixMatched verifies that pm is consistent with the actual prefixes
+	// of refKey and resultKey. PrefixMatchUnknown is always accepted; Yes/No
+	// must agree with the byte-level prefix comparison.
+	checkPrefixMatched := func(t *testing.T, opDesc string, pm blockiter.PrefixMatchResult, refKey, resultKey []byte) {
+		t.Helper()
+		if pm == blockiter.PrefixMatchUnknown {
+			return
+		}
+		eq := bytes.Equal(prefix(refKey), prefix(resultKey))
+		switch pm {
+		case blockiter.PrefixMatchYes:
+			if !eq {
+				t.Fatalf("%s: PrefixMatched=Yes but prefixes differ (ref=%q result=%q)",
+					opDesc, refKey, resultKey)
+			}
+		case blockiter.PrefixMatchNo:
+			if eq {
+				t.Fatalf("%s: PrefixMatched=No but prefixes equal (ref=%q result=%q)",
+					opDesc, refKey, resultKey)
+			}
+		default:
+			t.Fatalf("%s: unexpected PrefixMatchResult %d", opDesc, pm)
+		}
+	}
+
+	// randomTransforms returns a random Transforms. The original keys' suffixes
+	// are @0..@99, so a synthetic suffix of @1000 satisfies the
+	// "replacementSuffix < originalSuffix" invariant (testkeys orders larger
+	// numeric suffixes first).
+	randomTransforms := func() blockiter.Transforms {
+		var tr blockiter.Transforms
+		if rng.IntN(2) == 0 {
+			tr.SyntheticSeqNum = blockiter.SyntheticSeqNum(1 + rng.Uint64N(1000))
+		}
+		tr.HideObsoletePoints = rng.IntN(2) == 0
+		var sp blockiter.SyntheticPrefix
+		var ss blockiter.SyntheticSuffix
+		switch rng.IntN(4) {
+		case 0:
+			// none
+		case 1:
+			sp = randSyntheticPrefix(rng)
+		case 2:
+			ss = blockiter.SyntheticSuffix("@1000")
+		case 3:
+			sp = randSyntheticPrefix(rng)
+			ss = blockiter.SyntheticSuffix("@1000")
+		}
+		tr.SyntheticPrefixAndSuffix = blockiter.MakeSyntheticPrefixAndSuffix(sp, ss)
+		return tr
+	}
+
+	const numIters = 20
+	const numOps = 1000
+	for iter := 0; iter < numIters; iter++ {
+		transforms := randomTransforms()
+		sp := transforms.SyntheticPrefixAndSuffix.Prefix()
+		t.Run(fmt.Sprintf("iter%d", iter), func(t *testing.T) {
+			t.Logf("transforms: SyntheticSeqNum=%d HideObsoletePoints=%v SyntheticPrefix=%q SyntheticSuffix=%q",
+				transforms.SyntheticSeqNum, transforms.HideObsoletePoints,
+				sp, transforms.SyntheticPrefixAndSuffix.Suffix())
+
+			var it DataBlockIter
+			it.InitOnce(&testKeysSchema, testkeys.Comparer,
+				getInternalValuer(func([]byte) base.InternalValue {
+					return base.MakeInPlaceValue(nil)
+				}), NoTieringColumns())
+			if err := it.Init(&r, bd, transforms, NoTieringColumns()); err != nil {
+				t.Fatal(err)
+			}
+			defer it.Close()
+
+			var prevKey []byte
+			var valid bool
+			for op := 0; op < numOps; op++ {
+				if rng.IntN(3) == 0 || !valid {
+					// SeekGE with a random key. If a synthetic prefix is active,
+					// prepend it so the seek lands inside the block's logical
+					// keyspace.
+					seekKey := keys[rng.IntN(len(keys))]
+					if sp.IsSet() {
+						seekKey = sp.Apply(seekKey)
+					}
+					kv := it.SeekGE(seekKey, base.SeekGEFlagsNone)
+					if kv != nil {
+						checkPrefixMatched(
+							t, fmt.Sprintf("SeekGE(%q) -> %q", seekKey, kv.K.UserKey),
+							it.PrefixMatched(), seekKey, kv.K.UserKey)
+						prevKey = append(prevKey[:0], kv.K.UserKey...)
+						valid = true
+					} else {
+						valid = false
+					}
+				} else {
+					kv := it.Next()
+					if kv != nil {
+						checkPrefixMatched(
+							t, fmt.Sprintf("Next -> %q (prev %q)", kv.K.UserKey, prevKey),
+							it.PrefixMatched(), prevKey, kv.K.UserKey)
+						prevKey = append(prevKey[:0], kv.K.UserKey...)
+					} else {
+						valid = false
+					}
+				}
+			}
+		})
+	}
+}
+
+func randSyntheticPrefix(rng *rand.Rand) blockiter.SyntheticPrefix {
+	n := 1 + rng.IntN(4)
+	buf := make([]byte, n)
+	for i := range buf {
+		buf[i] = byte(rng.IntN(26) + 'A')
+	}
+	return blockiter.SyntheticPrefix(buf)
+}
