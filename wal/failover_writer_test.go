@@ -661,6 +661,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		writeWALSyncOffsets:         func() bool { return false },
 	}, dirs[dirIndex])
 	require.NoError(t, err)
+	<-logWriterCreated // Wait for initial writer to be created.
 	wg := &sync.WaitGroup{}
 	switchInterval := len(records) / 4
 	for i := 0; i < len(records); i++ {
@@ -693,6 +694,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 		}
 		require.Equal(t, 0, len(queueSemChan))
 	}()
+	stopper.stop()
 	type indexInterval struct {
 		first, last int
 	}
@@ -726,6 +728,7 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 				}
 			}
 			require.Equal(t, 0, interval.first)
+			t.Logf("file %d: interval [%d, %d)", i, interval.first, interval.last)
 			if i == numLogWriters-1 {
 				require.Equal(t, len(records), interval.last)
 			}
