@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/colblk"
 	"github.com/cockroachdb/pebble/tool/logs"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
@@ -372,6 +373,7 @@ func (d *dbT) loadOptions(dir string) error {
 		return nil
 	}
 
+	var dbOpts pebble.Options
 	hooks := &pebble.ParseHooks{
 		NewComparer: func(name string) (*pebble.Comparer, error) {
 			if c := d.comparers[name]; c != nil {
@@ -385,13 +387,28 @@ func (d *dbT) loadOptions(dir string) error {
 			}
 			return nil, errors.Errorf("unknown merger %q", errors.Safe(name))
 		},
+		NewKeySchema: func(name string) (pebble.KeySchema, error) {
+			if s, ok := d.opts.KeySchemas[name]; ok {
+				return *s, nil
+			}
+			// Fall back to a default key schema for the comparer loaded
+			// from OPTIONS. This mirrors what pebble.Options.ensureDefaults
+			// would do if no KeySchema were configured.
+			cmp := dbOpts.Comparer
+			if cmp == nil {
+				cmp = d.opts.Comparer
+			}
+			if cmp == nil {
+				cmp = base.DefaultComparer
+			}
+			return colblk.DefaultKeySchema(cmp, 16 /* bundleSize */), nil
+		},
 	}
 
 	// TODO(peter): RocksDB sometimes leaves multiple OPTIONS files in
 	// existence. We parse all of them as the comparer and merger shouldn't be
 	// changing. We could parse only the first or the latest. Not clear if this
 	// matters.
-	var dbOpts pebble.Options
 	for _, filename := range ls {
 		ft, _, ok := base.ParseFilename(d.opts.FS, filename)
 		if !ok {
@@ -428,6 +445,17 @@ func (d *dbT) loadOptions(dir string) error {
 	if dbOpts.Merger != nil {
 		d.opts.Merger = dbOpts.Merger
 	}
+	if dbOpts.KeySchema != "" {
+		d.opts.KeySchema = dbOpts.KeySchema
+	}
+	for name, schema := range dbOpts.KeySchemas {
+		if d.opts.KeySchemas == nil {
+			d.opts.KeySchemas = make(map[string]*pebble.KeySchema)
+		}
+		if _, ok := d.opts.KeySchemas[name]; !ok {
+			d.opts.KeySchemas[name] = schema
+		}
+	}
 	return nil
 }
 
@@ -461,6 +489,13 @@ func (d *dbT) openDBInternal(dir string, openOptions ...OpenOption) (*pebble.DB,
 	}
 	opts.Cache = nil
 	opts.CacheSize = 128 * 1024 * 1024
+	// If the configured KeySchema isn't registered, clear it so that
+	// pebble.Options.ensureDefaults derives a DefaultKeySchema for the
+	// configured Comparer.
+	if _, ok := opts.KeySchemas[opts.KeySchema]; !ok {
+		opts.KeySchema = ""
+		opts.KeySchemas = nil
+	}
 	return pebble.Open(dir, &opts)
 }
 

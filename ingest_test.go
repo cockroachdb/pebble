@@ -990,12 +990,6 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 		blockFlush = false
 	)
 	cache := NewCache(0)
-	defer func() {
-		if d != nil && !closed {
-			require.NoError(t, d.Close())
-		}
-		cache.Unref()
-	}()
 	var fsLog struct {
 		sync.Mutex
 		buf bytes.Buffer
@@ -1171,6 +1165,10 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+	if d != nil && !closed {
+		require.NoError(t, d.Close())
+	}
+	cache.Unref()
 }
 
 func testIngestSharedImpl(
