@@ -41,11 +41,12 @@ func TestFormatMajorVersionStableValues(t *testing.T) {
 	require.Equal(t, FormatBackingValueSize, FormatMajorVersion(27))
 	require.Equal(t, FormatMarkForCompactionInVersionEdit, FormatMajorVersion(28))
 	require.Equal(t, FormatIngestBlobFiles, FormatMajorVersion(29))
+	require.Equal(t, FormatRowblkMarkedForCompaction, FormatMajorVersion(30))
 
 	// When we add a new version, we should add a check for the new version above
 	// in addition to updating the expected values below.
-	require.Equal(t, FormatNewest, FormatMajorVersion(29))
-	require.Equal(t, internalFormatNewest, FormatMajorVersion(29))
+	require.Equal(t, FormatNewest, FormatMajorVersion(30))
+	require.Equal(t, internalFormatNewest, FormatMajorVersion(30))
 }
 
 func TestFormatMajorVersion_MigrationDefined(t *testing.T) {
@@ -241,6 +242,7 @@ func TestFormatMajorVersions_TableFormat(t *testing.T) {
 		FormatBackingValueSize:                      {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 		FormatMarkForCompactionInVersionEdit:        {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 		FormatIngestBlobFiles:                       {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
+		FormatRowblkMarkedForCompaction:             {sstable.TableFormatPebblev1, sstable.TableFormatPebblev7},
 	}
 
 	// Valid versions.
@@ -270,6 +272,7 @@ func TestFormatMajorVersions_BlobFileFormat(t *testing.T) {
 		FormatBackingValueSize:               blob.FileFormatV2,
 		FormatMarkForCompactionInVersionEdit: blob.FileFormatV2,
 		FormatIngestBlobFiles:                blob.FileFormatV2,
+		FormatRowblkMarkedForCompaction:      blob.FileFormatV2,
 	}
 
 	// Valid versions.

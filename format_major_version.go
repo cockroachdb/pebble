@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/blob"
+	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/atomicfs"
 )
@@ -257,6 +259,14 @@ const (
 	// ingesting blob files as part of local ingestions.
 	FormatIngestBlobFiles
 
+	// FormatRowblkMarkedForCompaction is a format major version that guarantees
+	// that all sstables with a row-based (pre-Pebblev5) data block format are
+	// marked for compaction in the manifest. Ratcheting to this version will
+	// block (without holding mutexes) until the LSM scan completes and the
+	// marks are persisted. A subsequent format major version will require all
+	// such marked tables to have been compacted.
+	FormatRowblkMarkedForCompaction
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
@@ -404,6 +414,12 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 	},
 	FormatIngestBlobFiles: func(d *DB) error {
 		return d.finalizeFormatVersUpgrade(FormatIngestBlobFiles)
+	},
+	FormatRowblkMarkedForCompaction: func(d *DB) error {
+		if err := d.markFilesForCompactionLocked(findFilesRowblk(d)); err != nil {
+			return err
+		}
+		return d.finalizeFormatVersUpgrade(FormatRowblkMarkedForCompaction)
 	},
 }
 
@@ -616,6 +632,36 @@ func (d *DB) compactMarkedFilesLocked() error {
 		}
 	}
 	return nil
+}
+
+// findFilesRowblk returns a findFilesFunc that locates every sstable in the
+// LSM whose on-disk table format uses row-based (non-columnar) data blocks.
+// Virtual sstables are inspected via their backing physical file.
+func findFilesRowblk(d *DB) findFilesFunc {
+	return func(v *manifest.Version) (found bool, files [numLevels][]*manifest.TableMetadata, _ error) {
+		ctx := context.Background()
+		for l := range v.Levels {
+			for f := range v.Levels[l].All() {
+				var isRowblk bool
+				if err := d.fileCache.withReader(ctx, block.NoReadEnv, f,
+					func(r *sstable.Reader, _ sstable.ReadEnv) error {
+						format, err := r.TableFormat()
+						if err != nil {
+							return err
+						}
+						isRowblk = !format.BlockColumnar()
+						return nil
+					}); err != nil {
+					return false, files, err
+				}
+				if isRowblk {
+					files[l] = append(files[l], f)
+					found = true
+				}
+			}
+		}
+		return found, files, nil
+	}
 }
 
 // findFilesFunc scans the LSM for files, returning true if at least one
