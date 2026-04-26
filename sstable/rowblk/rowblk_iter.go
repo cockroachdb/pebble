@@ -195,6 +195,11 @@ type Iter struct {
 	}
 	synthSuffixBuf            []byte
 	firstUserKeyWithPrefixBuf []byte
+	// prefixCopy is a reusable buffer holding the reference prefix
+	// for a NextWithSamePrefix iteration episode. Length 0 means uninitialized
+	// (set on the first NextWithSamePrefix call after a positioning op). All
+	// other positioning methods reset it to length 0 (preserving capacity).
+	prefixCopy []byte
 }
 
 // offsetInBlock represents an offset in a block
@@ -539,6 +544,56 @@ func (i *Iter) IsLowerBound(k []byte) bool {
 	return i.cmp(i.firstUserKey, k) >= 0
 }
 
+// SeekPrefixGE implements the blockiter.Data interface. Row format has no
+// cheap prefix-match information available, so this delegates to SeekGE and
+// performs a byte-level prefix comparison on the result.
+func (i *Iter) SeekPrefixGE(
+	key []byte, flags base.SeekGEFlags,
+) (kv *base.InternalKV, prefixDidNotMatch bool) {
+	kv = i.SeekGE(key, flags)
+	if kv == nil {
+		return nil, false
+	}
+	seekPrefixLen := i.split(key)
+	keyPrefixLen := i.split(kv.K.UserKey)
+	if seekPrefixLen != keyPrefixLen ||
+		!bytes.Equal(key[:seekPrefixLen], kv.K.UserKey[:keyPrefixLen]) {
+		return nil, true
+	}
+	return kv, false
+}
+
+// NextWithSamePrefix implements the blockiter.Data interface. Row format does
+// not have cheap prefix bookkeeping; we save a copy of the current prefix on
+// the first call (after a positioning op) and compare each subsequent key
+// against it. On prefix exhaustion the iterator stays at the new-prefix key
+// (no rollback) — matching the contract.
+func (i *Iter) NextWithSamePrefix() (kv *base.InternalKV, prefixExhausted bool) {
+	if len(i.prefixCopy) == 0 {
+		if !i.Valid() {
+			return nil, false
+		}
+		n := i.split(i.ikv.K.UserKey)
+		i.prefixCopy = append(i.prefixCopy[:0], i.ikv.K.UserKey[:n]...)
+	}
+	savedPrefix := i.prefixCopy
+	kv = i.Next()
+	if kv == nil {
+		return nil, false
+	}
+	n := i.split(kv.K.UserKey)
+	if n != len(savedPrefix) || !bytes.Equal(kv.K.UserKey[:n], savedPrefix) {
+		// Prefix differs; iterator is positioned at the new-prefix key.
+		// Leave prefixCopy cleared (Next reset it) so a
+		// subsequent NextWithSamePrefix re-captures from that new key.
+		return nil, true
+	}
+	// Same prefix. Restore the cached prefix so subsequent
+	// NextWithSamePrefix calls reuse it (Next clobbered it).
+	i.prefixCopy = savedPrefix
+	return kv, false
+}
+
 // SeekGEWithMeta implements the base.MetaIterator interface.
 // Row format does not support additional KV metadata; so, we return an empty
 // KVMeta and just call the non-metadata version of SeekGE.
@@ -549,6 +604,7 @@ func (i *Iter) SeekGEWithMeta(key []byte, flags base.SeekGEFlags) (*base.Interna
 // SeekGE implements internalIterator.SeekGE, as documented in the pebble
 // package.
 func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	i.prefixCopy = i.prefixCopy[:0]
 	if invariants.Enabled && i.IsDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
@@ -724,6 +780,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 
 // SeekLT implements blockiter.Data.
 func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
+	i.prefixCopy = i.prefixCopy[:0]
 	if invariants.Enabled && i.IsDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
@@ -1002,6 +1059,7 @@ func (i *Iter) FirstWithMeta() (*base.InternalKV, base.KVMeta) {
 // First implements internalIterator.First, as documented in the pebble
 // package.
 func (i *Iter) First() *base.InternalKV {
+	i.prefixCopy = i.prefixCopy[:0]
 	if invariants.Enabled && i.IsDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
@@ -1039,6 +1097,7 @@ func decodeRestart(b []byte) offsetInBlock {
 
 // Last implements internalIterator.Last, as documented in the pebble package.
 func (i *Iter) Last() *base.InternalKV {
+	i.prefixCopy = i.prefixCopy[:0]
 	if invariants.Enabled && i.IsDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
 	}
@@ -1084,6 +1143,7 @@ func (i *Iter) NextWithMeta() (*base.InternalKV, base.KVMeta) {
 // Next implements internalIterator.Next, as documented in the pebble
 // package.
 func (i *Iter) Next() *base.InternalKV {
+	i.prefixCopy = i.prefixCopy[:0]
 	if len(i.cachedBuf) > 0 {
 		// We're switching from reverse iteration to forward iteration. We need to
 		// populate i.fullKey with the current key we're positioned at so that
@@ -1142,6 +1202,7 @@ start:
 
 // NextPrefix implements (base.InternalIterator).NextPrefix.
 func (i *Iter) NextPrefix(succKey []byte) *base.InternalKV {
+	i.prefixCopy = i.prefixCopy[:0]
 	if i.lazyValueHandling.hasValuePrefix {
 		return i.nextPrefixV3(succKey)
 	}
@@ -1441,6 +1502,7 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 // Prev implements internalIterator.Prev, as documented in the pebble
 // package.
 func (i *Iter) Prev() *base.InternalKV {
+	i.prefixCopy = i.prefixCopy[:0]
 start:
 	for n := len(i.cached) - 1; n >= 0; n-- {
 		i.nextOffset = i.offset
@@ -1589,11 +1651,13 @@ func (i *Iter) Close() error {
 	cached := i.cached[:0]
 	cachedBuf := i.cachedBuf[:0]
 	firstUserKeyWithPrefixBuf := i.firstUserKeyWithPrefixBuf[:0]
+	prefixCopy := i.prefixCopy[:0]
 	*i = Iter{
 		fullKey:                   fullKey,
 		cached:                    cached,
 		cachedBuf:                 cachedBuf,
 		firstUserKeyWithPrefixBuf: firstUserKeyWithPrefixBuf,
+		prefixCopy:                prefixCopy,
 	}
 	return nil
 }
