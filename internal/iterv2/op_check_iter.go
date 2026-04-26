@@ -114,6 +114,9 @@ func (c *OpCheckIter) checkTrySeekUsingNext(opName string, key []byte, isPrefix 
 		panic(illegalOpf("%s(%s, TrySeekUsingNext): cannot mix SeekGE and SeekPrefixGE",
 			opName, c.cmp.FormatKey(key)))
 	}
+	if c.state == iterUnpositioned || c.state == iterBwdValid || c.state == iterBwdExhausted {
+		panic(illegalOpf("TrySeekUsingNext can only be used after a forward operation"))
+	}
 	if c.trySeekBound.Key == nil {
 		// Kind=Inclusive indicates any seek key is ok.
 		if c.trySeekBound.Kind == base.Exclusive {

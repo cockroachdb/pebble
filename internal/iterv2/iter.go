@@ -94,8 +94,10 @@ const Enabled = buildtags.IterV2
 //   - after First(): the seek key can be anything.
 //   - after NextPrefix(succKey): the seek key must be >= succKey.
 //   - after Next(): the last absolute positioning operation must not be
-//     SeekPrefixGE, and the seek key must be greater than the key (whether
-//     point or boundary) returned by the operation before that last Next().
+//     SeekPrefixGE, and the seek key must be strictly greater than the key
+//     (whether point or boundary) returned by the operation before that last
+//     Next(). For example: if the previous operations were SeekGE(a) -> b;
+//     Next() -> c, the seek key must be strictly greater than b.
 //
 // ## SeekPrefixGE
 //
@@ -132,8 +134,10 @@ const Enabled = buildtags.IterV2
 // possibly followed by one or more calls to Next():
 //   - after SeekPrefixGE(): the seek key must be >= the seek key of that
 //     previous SeekPrefixGE().
-//   - after Next(): the seek key must be greater than the key (whether
-//     point or boundary) returned by the operation before that last Next().
+//   - after Next(): the seek key must be strictly greater than the key (whether
+//     point or boundary) returned by the operation before that last Next(). For
+//     example: if the previous operations were SeekPrefixGE(a) -> a@10;
+//     Next() -> a@5, the seek key must be strictly greater than a@10.
 //
 // For example, consider a table:
 //
@@ -141,24 +145,35 @@ const Enabled = buildtags.IterV2
 //	Spans:   -----------------|----------
 //
 // The following sequences of operations are all valid:
-//   - SeekPrefixGE(a) -> a@4; SeekPrefixGE(a@10, TrySeekUsingNext) -> a@4
 //   - SeekPrefixGE(a) -> a@4; SeekPrefixGE(a@3, TrySeekUsingNext) -> a@2
+//     Seek key a@3 is >= last seek key a.
 //   - SeekPrefixGE(a) -> a@4; SeekPrefixGE(b, TrySeekUsingNext) -> b@1
+//     Seek key b is >= last seek key a.
 //   - SeekPrefixGE(a) -> a@4; Next() -> a@2; SeekPrefixGE(a@3, TrySeekUsingNext) -> a@2
+//     Seek key a@3 is > a@4.
 //   - SeekPrefixGE(a) -> a@4; Next() -> a@2; SeekPrefixGE(a@2, TrySeekUsingNext) -> a@2
+//     Seek key a@2 is > a@4.
 //   - SeekPrefixGE(a) -> a@4; Next() -> a@2; SeekPrefixGE(a@1, TrySeekUsingNext) -> c#BOUNDARY
+//     Seek key a@1 is > a@2.
 //   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; SeekPrefixGE(a@1, TrySeekUsingNext) -> c#BOUNDARY
+//     Seek key a@1 is > a@2.
 //   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; SeekPrefixGE(b, TrySeekUsingNext) -> b@1
+//     Seek key b is > a@2. Notice that the SeekPrefixGE(b, TrySeekUsingNext)
+//     operation returns a key that is before the previously returned boundary
+//     key and we seem to be going backward. This is because of the special
+//     semantics of prefix iteration where the b keys before the boundary were
+//     not exposed.
 //   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; Next() -> nil; SeekPrefixGE(c, TrySeekUsingNext) -> c@1
-//
-// In the last example, notice that the SeekPrefixGE(b, TrySeekUsingNext)
-// operation returns a key that is before the previously returned boundary key.
+//     Seek key c is > c#BOUNDARY. This is similar to above, in that the
+//     position seems to be moving backward (from exhausted to not exhausted).
 //
 // The following sequences are not valid:
 //   - SeekPrefixGE(a@2) -> a@2; SeekPrefixGE(a@4, TrySeekUsingNext)
-//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; SeekPrefixGE(a@3, TrySeekUsingNext)
+//     The seek key must be >= previous seek key a@2.
 //   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; SeekPrefixGE(a@3, TrySeekUsingNext)
+//     The seek key must be > a@2 (key returned before the last Next).
 //   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; Next() -> nil; SeekPrefixGE(b, TrySeekUsingNext)
+//     The seek key must be > c#BOUNDARY.
 //
 // ## NextPrefix
 //
