@@ -677,53 +677,18 @@ func (d *DB) markFilesForCompactionLocked(findFn findFilesFunc) error {
 	}
 	jobID := d.newJobIDLocked()
 
-	// Acquire a read state to have a view of the LSM and a guarantee that none
-	// of the referenced files will be deleted until we've unreferenced the read
-	// state. Some findFilesFuncs may read the files, requiring they not be
-	// deleted.
-	rs := d.loadReadState()
-	var (
-		found bool
-		files [numLevels][]*manifest.TableMetadata
-		err   error
-	)
-	func() {
-		defer rs.unrefLocked()
-		// Note the unusual locking: unlock, defer Lock(). The scan of the files in
-		// the version does not need to block other operations that require the
-		// DB.mu. Drop it for the scan, before re-acquiring it.
-		d.mu.Unlock()
-		defer d.mu.Lock()
-		found, files, err = findFn(rs.current)
-	}()
-	if err != nil {
-		return err
-	}
-
-	// The database lock has been acquired again by the defer within the above
-	// anonymous function.
-	if !found {
-		// Nothing to do.
-		return nil
-	}
-
-	// After scanning, if we found files to mark, we fetch the current state of
-	// the LSM (which may have changed) and build the list of tables to mark for
-	// compaction.
-
-	// Lock the manifest for a coherent view of the LSM. The database lock has
-	// been re-acquired by the defer within the above anonymous function.
-	_, err = d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
-		var ve manifest.VersionEdit
+	// Run the scan and the version edit under the same DB.mu/manifest lock so
+	// they observe the same Version. This call site is a one-time format major
+	// version upgrade, so holding DB.mu across the scan is acceptable.
+	_, err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
 		vers := d.mu.versions.currentVersion()
+		found, files, err := findFn(vers)
+		if err != nil || !found {
+			return versionUpdate{}, err
+		}
+		var ve manifest.VersionEdit
 		for level, filesToMark := range files {
 			for _, f := range filesToMark {
-				// Ignore files to be marked that have already been compacted or marked.
-				if f.CompactionState == manifest.CompactionStateCompacted ||
-					vers.MarkedForCompaction.Contains(f, level) {
-					continue
-				}
-				// Else, mark the file for compaction in this version.
 				ve.TablesMarkedForCompaction = append(ve.TablesMarkedForCompaction, manifest.TableMarkedForCompactionEntry{
 					TableNum: f.TableNum,
 					Level:    level,
