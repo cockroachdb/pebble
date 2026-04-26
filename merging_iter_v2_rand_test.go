@@ -65,10 +65,11 @@ func runMergingIterV2RandomTest(t *testing.T, seed uint64) {
 	var interleaving iterv2.InterleavingIter
 	interleaving.Init(cmp, iter, nil, nil, nil, nil, nil)
 	checkCfg := iterv2.CheckIterConfig{
-		Comparer:     cmp,
-		KeyGenConfig: cfg,
-		OpWeights:    iterv2.AllTestOps,
-		NumOps:       500,
+		Comparer:                               cmp,
+		KeyGenConfig:                           cfg,
+		OpWeights:                              iterv2.AllTestOps,
+		NumOps:                                 500,
+		RequirePrefixChangeForTrySeekUsingNext: true,
 	}
 	expected := iterv2.TestIterData{
 		Points: expectedPoints,

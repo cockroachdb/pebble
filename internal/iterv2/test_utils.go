@@ -74,6 +74,10 @@ type CheckIterConfig struct {
 	KeyGenConfig KeyGenConfig
 	OpWeights    TestOpWeights
 	NumOps       int
+	// RequirePrefixChangeForTrySeekUsingNext, when true, requires that
+	// SeekPrefixGE(TrySeekUsingNext) be called with a prefix that differs from
+	// the prefix of the most recent SeekPrefixGE.
+	RequirePrefixChangeForTrySeekUsingNext bool
 }
 
 // CheckIter constructs a TestIter with the given points and spans and runs
@@ -98,6 +102,9 @@ func CheckIter(t TB, rng *rand.Rand, cfg CheckIterConfig, expected TestIterData,
 
 	testIter := NewTestIter(expected)
 	checkIter := NewOpCheckIter(testIter, cmp, lower, upper)
+	if cfg.RequirePrefixChangeForTrySeekUsingNext {
+		checkIter.RequirePrefixChangeForTrySeekUsingNext()
+	}
 	logIter := NewLoggingIter(iter)
 	defer func() {
 		_ = checkIter.Close()
