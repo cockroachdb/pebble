@@ -367,6 +367,8 @@ func (i *InterleavingIter) SeekPrefixGE(
 			panic(errors.AssertionFailedf("prefix %q does not match key %q", prefix, key))
 		}
 	}
+	// TODO(radu): support TrySeekUsingNext.
+	flags = flags.DisableTrySeekUsingNext()
 	kv := i.pointIter.SeekPrefixGE(prefix, key, flags)
 	i.checkPoint(kv)
 	// TODO(radu): make SeekPrefixGE strict in InternalIterator.

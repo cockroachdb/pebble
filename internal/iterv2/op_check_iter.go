@@ -38,16 +38,24 @@ func illegalOpf(format string, args ...interface{}) *IllegalOpError {
 }
 
 // OpCheckIter wraps an Iter and validates that operations are legal according
-// to the InternalIterator and Iter contracts. On any illegal operation, it
-// panics with an *IllegalOpError.
+// to the InternalIterator and Iter contracts. On any illegal operation,
+// OpCheckIter panics with an *IllegalOpError without altering the state of the
+// iterator (this is used to generate sequences of valid operations in random
+// tests).
 type OpCheckIter struct {
-	inner      Iter
-	cmp        *base.Comparer
-	state      iterState
-	atBoundary bool   // true if the last returned key was a boundary key
-	lastKey    []byte // copy of the last returned user key (for NextPrefix validation)
-	lower      []byte
-	upper      []byte
+	inner            Iter
+	cmp              *base.Comparer
+	state            iterState
+	atBoundary       bool   // true if the last returned key was a boundary key
+	lastKey          []byte // copy of the last returned user key (for NextPrefix validation)
+	lower            []byte
+	upper            []byte
+	lastSeekIsPrefix bool // true if last seek was SeekPrefixGE
+	// trySeekBound is used to validate TrySeekUsingNext. The zero value (Key=nil,
+	// Boundary=Exclusive) indicates that TrySeekUsingNext is not legal. The
+	// special value (Key=nil, Boundary=Inclusive) indicates that any key is legal
+	// (which is the case after a First() call).
+	trySeekBound base.UserKeyBoundary
 }
 
 var _ Iter = (*OpCheckIter)(nil)
@@ -99,11 +107,37 @@ func (c *OpCheckIter) prefixTransition(kv *base.InternalKV) *base.InternalKV {
 	return kv
 }
 
+// checkTrySeekUsingNext validates the TrySeekUsingNext flag on SeekGE/SeekPrefixGE.
+// isPrefix indicates whether the current seek is a SeekPrefixGE.
+func (c *OpCheckIter) checkTrySeekUsingNext(opName string, key []byte, isPrefix bool) {
+	if isPrefix != c.lastSeekIsPrefix {
+		panic(illegalOpf("%s(%s, TrySeekUsingNext): cannot mix SeekGE and SeekPrefixGE",
+			opName, c.cmp.FormatKey(key)))
+	}
+	if c.trySeekBound.Key == nil {
+		// Kind=Inclusive indicates any seek key is ok.
+		if c.trySeekBound.Kind == base.Exclusive {
+			panic(illegalOpf("%s(%s, TrySeekUsingNext): no valid seek boundary",
+				opName, c.cmp.FormatKey(key)))
+		}
+	} else if cmpVal := c.cmp.Compare(key, c.trySeekBound.Key); cmpVal < 0 || (cmpVal == 0 && c.trySeekBound.Kind == base.Exclusive) {
+		panic(illegalOpf("%s(%s, TrySeekUsingNext): key must be %s boundary key %s",
+			opName, c.cmp.FormatKey(key),
+			map[base.BoundaryKind]string{base.Inclusive: ">=", base.Exclusive: ">"}[c.trySeekBound.Kind],
+			c.cmp.FormatKey(c.trySeekBound.Key)))
+	}
+}
+
 // SeekGE implements Iter.
 func (c *OpCheckIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	if c.lower != nil && c.cmp.Compare(key, c.lower) < 0 {
 		panic(illegalOpf("SeekGE(%s) with lower bound %s", c.cmp.FormatKey(key), c.lower))
 	}
+	if flags.TrySeekUsingNext() {
+		c.checkTrySeekUsingNext("SeekGE", key, false /* isPrefix */)
+	}
+	c.lastSeekIsPrefix = false
+	c.trySeekBound = base.UserKeyBoundary{Key: append(c.trySeekBound.Key[:0], key...), Kind: base.Inclusive}
 	return c.fwdTransition(c.inner.SeekGE(key, flags))
 }
 
@@ -115,6 +149,11 @@ func (c *OpCheckIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *
 	if !bytes.Equal(prefix, c.cmp.Split.Prefix(key)) {
 		panic(illegalOpf("SeekPrefixGE(%s) incorrect prefix %s", c.cmp.FormatKey(key), c.cmp.FormatKey(prefix)))
 	}
+	if flags.TrySeekUsingNext() {
+		c.checkTrySeekUsingNext("SeekPrefixGE", key, true /* isPrefix */)
+	}
+	c.lastSeekIsPrefix = true
+	c.trySeekBound = base.UserKeyBoundary{Key: append(c.trySeekBound.Key[:0], key...), Kind: base.Inclusive}
 	return c.prefixTransition(c.inner.SeekPrefixGE(prefix, key, flags))
 }
 
@@ -123,6 +162,8 @@ func (c *OpCheckIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalK
 	if c.upper != nil && c.cmp.Compare(key, c.upper) > 0 {
 		panic(illegalOpf("SeekLT(%s) with upper bound %s", c.cmp.FormatKey(key), c.upper))
 	}
+	c.lastSeekIsPrefix = false
+	c.trySeekBound = base.UserKeyBoundary{}
 	return c.bwdTransition(c.inner.SeekLT(key, flags))
 }
 
@@ -131,6 +172,8 @@ func (c *OpCheckIter) First() *base.InternalKV {
 	if c.lower != nil {
 		panic(illegalOpf("First with lower bound set; use SeekGE instead"))
 	}
+	c.lastSeekIsPrefix = false
+	c.trySeekBound = base.UserKeyBoundary{Kind: base.Inclusive}
 	return c.fwdTransition(c.inner.First())
 }
 
@@ -139,6 +182,8 @@ func (c *OpCheckIter) Last() *base.InternalKV {
 	if c.upper != nil {
 		panic(illegalOpf("Last with upper bound set; use SeekLT instead"))
 	}
+	c.lastSeekIsPrefix = false
+	c.trySeekBound = base.UserKeyBoundary{}
 	return c.bwdTransition(c.inner.Last())
 }
 
@@ -151,6 +196,18 @@ func (c *OpCheckIter) Next() *base.InternalKV {
 		panic(illegalOpf("Next called on forward-exhausted iterator"))
 	case iterPrefixExhausted:
 		panic(illegalOpf("Next called on prefix-exhausted iterator"))
+	}
+
+	if len(c.lastKey) > 0 {
+		c.trySeekBound = base.UserKeyBoundary{Key: append(c.trySeekBound.Key[:0], c.lastKey...), Kind: base.Exclusive}
+	} else {
+		// lastKey is empty, meaning the previous operation returned nil (which must
+		// be backward exhaustion). After Next, the iterator is positioned at the
+		// first key, so any forward seek is valid.
+		c.trySeekBound = base.UserKeyBoundary{Kind: base.Inclusive}
+	}
+
+	switch c.state {
 	case iterPrefixValid:
 		return c.prefixTransition(c.inner.Next())
 	default:
@@ -173,6 +230,7 @@ func (c *OpCheckIter) NextPrefix(succKey []byte) *base.InternalKV {
 		panic(illegalOpf("NextPrefix(%s) with incorrect succKey; expected %s (prefix of %s)",
 			c.cmp.FormatKey(succKey), c.cmp.FormatKey(expectedSuccKey), c.cmp.FormatKey(c.lastKey)))
 	}
+	c.trySeekBound = base.UserKeyBoundary{Key: append(c.trySeekBound.Key[:0], succKey...), Kind: base.Inclusive}
 	return c.fwdTransition(c.inner.NextPrefix(succKey))
 }
 
@@ -188,6 +246,7 @@ func (c *OpCheckIter) Prev() *base.InternalKV {
 	case iterPrefixExhausted:
 		panic(illegalOpf("Prev called on prefix-exhausted iterator"))
 	default:
+		c.trySeekBound = base.UserKeyBoundary{}
 		return c.bwdTransition(c.inner.Prev())
 	}
 }
@@ -214,6 +273,7 @@ func (c *OpCheckIter) SetBounds(lower, upper []byte) {
 	c.lastKey = c.lastKey[:0]
 	c.lower = lower
 	c.upper = upper
+	c.trySeekBound = base.UserKeyBoundary{}
 	c.inner.SetBounds(lower, upper)
 }
 
