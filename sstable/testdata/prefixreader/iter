@@ -5,13 +5,14 @@ c#3,SET:C
 d#4,SET:D
 ----
 
+# With fixtureComparer, Split returns len(key), so prefix is the whole key.
+# Strict prefix iteration: Next returns nil once prefix changes.
+
 iter
 seek-prefix-ge a
 next
-next
 ----
 seek-prefix-ge a: <a:1>:A
-            next: <aa:2>:AA
             next: .
 
 iter
@@ -73,12 +74,10 @@ seek-prefix-ge c
 next
 seek-prefix-ge a
 next
-next
 ----
 seek-prefix-ge c: <c:3>:C
             next: .
 seek-prefix-ge a: <a:1>:A
-            next: <aa:2>:AA
             next: .
 
 iter
@@ -86,14 +85,12 @@ seek-prefix-ge aa
 next
 seek-prefix-ge a
 next
-next
 seek-prefix-ge c
 next
 ----
 seek-prefix-ge aa: <aa:2>:AA
              next: .
  seek-prefix-ge a: <a:1>:A
-             next: <aa:2>:AA
              next: .
  seek-prefix-ge c: <c:3>:C
              next: .
@@ -105,35 +102,20 @@ seek-prefix-ge aa
 next
 seek-prefix-ge a
 next
-next
 ----
  seek-prefix-ge c: <c:3>:C
              next: .
 seek-prefix-ge aa: <aa:2>:AA
              next: .
  seek-prefix-ge a: <a:1>:A
-             next: <aa:2>:AA
              next: .
 
 iter
 seek-prefix-ge a
 next
-next
 ----
 seek-prefix-ge a: <a:1>:A
-            next: <aa:2>:AA
             next: .
-
-iter
-seek-prefix-ge a
-next
-prev
-prev
-----
-seek-prefix-ge a: <a:1>:A
-            next: <aa:2>:AA
-            prev: <a:1>:A
-            prev: .
 
 iter
 seek-prefix-ge a
@@ -218,24 +200,20 @@ iter
 seek-lt c
 seek-prefix-ge a
 next
-next
 
 ----
        seek-lt c: <aa:2>:AA
 seek-prefix-ge a: <a:1>:A
-            next: <aa:2>:AA
             next: .
 
 iter
 seek-ge aa
 seek-prefix-ge a
 next
-next
 
 ----
       seek-ge aa: <aa:2>:AA
 seek-prefix-ge a: <a:1>:A
-            next: <aa:2>:AA
             next: .
 
 iter
