@@ -358,19 +358,34 @@ func (m *mergingIterV2) seekGE(key []byte, flags base.SeekGEFlags) {
 	if invariants.Enabled && flags.RelativeSeek() {
 		panic(errors.AssertionFailedf("invalid use of relative seek"))
 	}
-	// TODO(radu): support TrySeekUsingNext.
-	flags = flags.DisableTrySeekUsingNext()
 	for levelIdx, parked := range m.slab.Build(+1) {
 		level := &m.levels[levelIdx]
+		wasParked := level.parked
 		level.parked = parked
 		if parked {
-			level.onlyFwdSinceParked = false
+			if flags.TrySeekUsingNext() {
+				if !wasParked {
+					// We are parking the level now. We know that it is positioned at or
+					// behind <key>.
+					level.onlyFwdSinceParked = true
+				}
+				// If the level was already parked, onlyFwdSinceParked stays as-is
+				// because we are moving forward.
+			} else {
+				// Without TrySeekUsingNext, seekGE is an absolute positioning operation
+				// and we can't rely on any existing state.
+				level.onlyFwdSinceParked = false
+			}
 			level.iterKV = nil
 		} else {
+			levelFlags := flags
+			if wasParked && !level.onlyFwdSinceParked {
+				levelFlags = levelFlags.DisableTrySeekUsingNext()
+			}
 			if m.prefix != nil {
-				level.iterKV = level.iter.SeekPrefixGE(m.prefix, key, flags)
+				level.iterKV = level.iter.SeekPrefixGE(m.prefix, key, levelFlags)
 			} else {
-				level.iterKV = level.iter.SeekGE(key, flags)
+				level.iterKV = level.iter.SeekGE(key, levelFlags)
 			}
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -387,6 +402,24 @@ func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Int
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
+	}
+	if flags.TrySeekUsingNext() {
+		if m.err != nil || m.dir != +1 || m.prefix != nil {
+			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
+		}
+		if m.heap.Len() == 0 {
+			return nil
+		}
+		if top := m.heap.Top(); m.heap.cmp(key, top.iterKV.K.UserKey) <= 0 {
+			// Iterator already at the right position. We have to check for this case
+			// because it is possible multiple slab transitions are necessary between
+			// <key> and <iterKV.K>, which would mean some levels would go backwards
+			// if we seeked them at <key>.
+			return top.iterKV
+		}
+		// TODO(radu): investigate a fast path for the common case where only a
+		// level needs to be advanced and the slab doesn't need to be rebuilt; we
+		// can look at the second best in the heap to determine if this is the case.
 	}
 	m.err = nil
 	m.prefix = nil
@@ -582,6 +615,8 @@ func (m *mergingIterV2) SeekPrefixGEStrict(
 			op.Finishf("= %s", kv.String())
 		}()
 	}
+	// TODO(radu): support TrySeekUsingNext.
+	flags = flags.DisableTrySeekUsingNext()
 	m.err = nil
 	m.prefix = prefix
 	m.seekGE(key, flags)
