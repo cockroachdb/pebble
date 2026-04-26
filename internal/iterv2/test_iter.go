@@ -360,6 +360,9 @@ func (t *TestIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	t.dir = +1
 	t.seekGEInternal(key)
 	if flags.TrySeekUsingNext() {
+		// Note: these checks don't check all requirements for using
+		// TrySeekUsingNext (for that, wrap TestIter in an OpCheckIter). They are
+		// just what is needed so that the TestIter stays in a sane state.
 		if t.lastSeekIsPrefix {
 			panic(errors.AssertionFailedf("SeekGE with TrySeekUsingNext after SeekPrefixGE"))
 		}

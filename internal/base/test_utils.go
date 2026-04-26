@@ -86,7 +86,6 @@ func NewFakeIterWithCmp(cmp Compare, kvs []InternalKV) *FakeIter {
 		cmp:   cmp,
 		kvs:   kvs,
 		index: 0,
-		valid: len(kvs) > 0,
 	}
 }
 
@@ -97,7 +96,6 @@ type FakeIter struct {
 	upper    []byte
 	kvs      []InternalKV
 	index    int
-	valid    bool
 	closeErr error
 }
 
@@ -116,6 +114,8 @@ func (f *FakeIter) String() string {
 // SeekGE is part of the InternalIterator interface.
 func (f *FakeIter) SeekGE(key []byte, flags SeekGEFlags) *InternalKV {
 	if flags.TrySeekUsingNext() {
+		// Note that f.index could be len(f.kvs) here (iterator exhausted), and that
+		// is ok.
 		if f.index > 0 && f.cmp(key, f.kvs[f.index-1].K.UserKey) <= 0 {
 			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
 		}
@@ -127,11 +127,9 @@ func (f *FakeIter) SeekGE(key []byte, flags SeekGEFlags) *InternalKV {
 			if f.upper != nil && f.cmp(f.upper, f.key().UserKey) <= 0 {
 				return nil
 			}
-			f.valid = true
-			return f.KV()
+			return &f.kvs[f.index]
 		}
 	}
-	f.valid = false
 	return nil
 }
 
@@ -142,14 +140,12 @@ func (f *FakeIter) SeekPrefixGE(prefix, key []byte, flags SeekGEFlags) *Internal
 
 // SeekLT is part of the InternalIterator interface.
 func (f *FakeIter) SeekLT(key []byte, flags SeekLTFlags) *InternalKV {
-	f.valid = false
 	for f.index = len(f.kvs) - 1; f.index >= 0; f.index-- {
 		if f.cmp(key, f.key().UserKey) > 0 {
 			if f.lower != nil && f.cmp(f.lower, f.key().UserKey) > 0 {
 				return nil
 			}
-			f.valid = true
-			return f.KV()
+			return &f.kvs[f.index]
 		}
 	}
 	return nil
@@ -157,35 +153,18 @@ func (f *FakeIter) SeekLT(key []byte, flags SeekLTFlags) *InternalKV {
 
 // First is part of the InternalIterator interface.
 func (f *FakeIter) First() *InternalKV {
-	f.valid = false
 	f.index = -1
-	if kv := f.Next(); kv == nil {
-		return nil
-	}
-	if f.upper != nil && f.cmp(f.upper, f.key().UserKey) <= 0 {
-		return nil
-	}
-	f.valid = true
-	return f.KV()
+	return f.Next()
 }
 
 // Last is part of the InternalIterator interface.
 func (f *FakeIter) Last() *InternalKV {
-	f.valid = false
 	f.index = len(f.kvs)
-	if kv := f.Prev(); kv == nil {
-		return nil
-	}
-	if f.lower != nil && f.cmp(f.lower, f.key().UserKey) > 0 {
-		return nil
-	}
-	f.valid = true
-	return f.KV()
+	return f.Prev()
 }
 
 // Next is part of the InternalIterator interface.
 func (f *FakeIter) Next() *InternalKV {
-	f.valid = false
 	if f.index == len(f.kvs) {
 		return nil
 	}
@@ -196,13 +175,11 @@ func (f *FakeIter) Next() *InternalKV {
 	if f.upper != nil && f.cmp(f.upper, f.key().UserKey) <= 0 {
 		return nil
 	}
-	f.valid = true
-	return f.KV()
+	return &f.kvs[f.index]
 }
 
 // Prev is part of the InternalIterator interface.
 func (f *FakeIter) Prev() *InternalKV {
-	f.valid = false
 	if f.index < 0 {
 		return nil
 	}
@@ -213,8 +190,7 @@ func (f *FakeIter) Prev() *InternalKV {
 	if f.lower != nil && f.cmp(f.lower, f.key().UserKey) > 0 {
 		return nil
 	}
-	f.valid = true
-	return f.KV()
+	return &f.kvs[f.index]
 }
 
 // NextPrefix is part of the InternalIterator interface.
@@ -222,31 +198,9 @@ func (f *FakeIter) NextPrefix(succKey []byte) *InternalKV {
 	return f.SeekGE(succKey, SeekGEFlagsNone)
 }
 
-// key returns the current Key the iterator is positioned at regardless of the
-// value of f.valid.
+// key returns the current Key the iterator is positioned at.
 func (f *FakeIter) key() *InternalKey {
 	return &f.kvs[f.index].K
-}
-
-// KV is part of the InternalIterator interface.
-func (f *FakeIter) KV() *InternalKV {
-	if f.valid {
-		return &f.kvs[f.index]
-	}
-	// It is invalid to call Key() when Valid() returns false. Rather than
-	// returning nil here which would technically be more correct, return a
-	// non-nil key which is the behavior of some InternalIterator
-	// implementations. This provides better testing of users of
-	// InternalIterators.
-	if f.index < 0 {
-		return &f.kvs[0]
-	}
-	return &f.kvs[len(f.kvs)-1]
-}
-
-// Valid is part of the InternalIterator interface.
-func (f *FakeIter) Valid() bool {
-	return f.index >= 0 && f.index < len(f.kvs) && f.valid
 }
 
 // Error is part of the InternalIterator interface.
