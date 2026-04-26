@@ -239,14 +239,25 @@ func (i *InterleavingIter) emitBoundary(userKey []byte) *base.InternalKV {
 //
 // After this call, span is the first span with End > pos, or nil if none. When
 // inSpan is true, pos is inside span.
-func (i *InterleavingIter) positionSpanIterForward(pos []byte) {
+func (i *InterleavingIter) positionSpanIterForward(pos []byte, flags base.SeekGEFlags) {
 	if i.spanIter == nil {
-		i.span = nil
 		i.inSpan = false
+		i.span = nil
 		i.computeCurrentSpan()
 		return
 	}
-	i.nextSpan(i.spanIter.SeekGE(pos))
+	// Try to avoid reseeking. We can do this in TrySeekUsingNext mode if pos is
+	// not beyond the current known span; otherwise we can do this if pos happens
+	// to be inside the known span.
+	var currentSpanOK bool
+	if flags.TrySeekUsingNext() {
+		currentSpanOK = i.span == nil || i.cmp.Compare(pos, i.span.End) < 0
+	} else {
+		currentSpanOK = i.span != nil && i.span.Contains(i.cmp.Compare, pos)
+	}
+	if !currentSpanOK {
+		i.nextSpan(i.spanIter.SeekGE(pos))
+	}
 	i.inSpan = false
 	if i.span != nil {
 		if i.startKey != nil && i.cmp.Compare(pos, i.startKey) < 0 {
@@ -326,12 +337,12 @@ func (i *InterleavingIter) Span() *Span {
 
 // SeekGE implements InternalIterator.
 func (i *InterleavingIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	// TODO(radu): support TrySeekUsingNext.
-	flags = flags.DisableTrySeekUsingNext()
-	return i.seekGEHelper(key, i.pointIter.SeekGE(key, flags))
+	return i.seekGEHelper(key, flags, i.pointIter.SeekGE(key, flags))
 }
 
-func (i *InterleavingIter) seekGEHelper(key []byte, kv *base.InternalKV) *base.InternalKV {
+func (i *InterleavingIter) seekGEHelper(
+	key []byte, flags base.SeekGEFlags, kv *base.InternalKV,
+) *base.InternalKV {
 	if invariants.Enabled && i.lower != nil && i.cmp.Compare(key, i.lower) < 0 {
 		panic(errors.AssertionFailedf("forward seek (%q) before lower bound %q", key, i.lower))
 	}
@@ -351,7 +362,7 @@ func (i *InterleavingIter) seekGEHelper(key []byte, kv *base.InternalKV) *base.I
 			return nil
 		}
 	}
-	i.positionSpanIterForward(key)
+	i.positionSpanIterForward(key, flags)
 	return i.resolveForward()
 }
 
@@ -367,8 +378,6 @@ func (i *InterleavingIter) SeekPrefixGE(
 			panic(errors.AssertionFailedf("prefix %q does not match key %q", prefix, key))
 		}
 	}
-	// TODO(radu): support TrySeekUsingNext.
-	flags = flags.DisableTrySeekUsingNext()
 	kv := i.pointIter.SeekPrefixGE(prefix, key, flags)
 	i.checkPoint(kv)
 	// TODO(radu): make SeekPrefixGE strict in InternalIterator.
@@ -390,7 +399,7 @@ func (i *InterleavingIter) SeekPrefixGE(
 			return nil
 		}
 	}
-	i.positionSpanIterForward(key)
+	i.positionSpanIterForward(key, flags)
 	return i.resolveForward()
 }
 
@@ -503,7 +512,9 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 	if i.atBoundary {
 		i.atBoundary = false
 		if i.prefix != nil && !i.cmp.HasPrefix(i.currentSpan.Boundary, i.prefix) {
-			i.invalidateSpan()
+			// Exhaust the iterator but don't invalidate i.span; it will be useful for
+			// TrySeekUsingNext.
+			i.currentSpan = Span{}
 			return nil
 		}
 		i.updateSpanAfterForwardBoundary()
@@ -657,7 +668,7 @@ func (i *InterleavingIter) switchToForward() *base.InternalKV {
 		if i.lower == nil {
 			return i.First()
 		}
-		return i.seekGEHelper(i.lower, i.pointIter.SeekGE(i.lower, base.SeekGEFlagsNone))
+		return i.seekGEHelper(i.lower, base.SeekGEFlagsNone, i.pointIter.SeekGE(i.lower, base.SeekGEFlagsNone))
 	}
 
 	i.dir = +1
@@ -714,7 +725,7 @@ func (i *InterleavingIter) NextPrefix(succKey []byte) *base.InternalKV {
 	if i.pointKV != nil {
 		kv = i.pointIter.NextPrefix(succKey)
 	}
-	return i.seekGEHelper(succKey, kv)
+	return i.seekGEHelper(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext(), kv)
 }
 
 // SetBounds implements InternalIterator.

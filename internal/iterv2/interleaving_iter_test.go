@@ -74,7 +74,7 @@ func TestInterleavingIter(t *testing.T) {
 				}
 				return []byte(s)
 			}
-			pointIter := base.NewFakeIter(points)
+			pointIter := base.NewFakeIterWithCmp(testkeys.Comparer.Compare, points)
 			spanIter := keyspan.NewIter(testkeys.Comparer.Compare, spans)
 			iter.Init(
 				testkeys.Comparer,
@@ -122,7 +122,21 @@ func runIterOps(t *testing.T, iter Iter, input string) string {
 			if len(parts) < 2 {
 				t.Fatalf("ERROR: seek-ge requires a key argument")
 			}
-			kv = iter.SeekGE([]byte(parts[1]), base.SeekGEFlagsNone)
+			flags := base.SeekGEFlagsNone
+			if len(parts) >= 3 && parts[2] == "try-seek-using-next" {
+				flags = flags.EnableTrySeekUsingNext()
+			}
+			kv = iter.SeekGE([]byte(parts[1]), flags)
+		case "seek-prefix-ge":
+			if len(parts) < 2 {
+				t.Fatalf("ERROR: seek-prefix-ge requires a key argument")
+			}
+			prefix := testkeys.Comparer.Split.Prefix([]byte(parts[1]))
+			flags := base.SeekGEFlagsNone
+			if len(parts) >= 3 && parts[2] == "try-seek-using-next" {
+				flags = flags.EnableTrySeekUsingNext()
+			}
+			kv = iter.SeekPrefixGE(prefix, []byte(parts[1]), flags)
 		case "seek-lt":
 			if len(parts) < 2 {
 				t.Fatalf("ERROR: seek-lt requires a key argument")
