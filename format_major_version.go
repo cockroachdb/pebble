@@ -718,9 +718,11 @@ func (d *DB) markFilesForCompactionLocked(findFn findFilesFunc) error {
 		vers := d.mu.versions.currentVersion()
 		for level, filesToMark := range files {
 			for _, f := range filesToMark {
-				// Ignore files to be marked that have already been compacted or marked.
-				if f.CompactionState == manifest.CompactionStateCompacted ||
-					vers.MarkedForCompaction.Contains(f, level) {
+				// The scan ran without DB.mu held, so the file may have been
+				// compacted away or moved to a different level by an intervening
+				// compaction. Skip it if it is no longer present at the recorded
+				// level, or if it has already been marked.
+				if !vers.Contains(level, f) || vers.MarkedForCompaction.Contains(f, level) {
 					continue
 				}
 				// Else, mark the file for compaction in this version.
