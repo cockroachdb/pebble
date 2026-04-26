@@ -235,6 +235,11 @@ type mergingIterV2Level struct {
 	// RANGEDEL. A parked level's iterator is not positioned and produces
 	// no keys until unparked.
 	parked bool
+	// onlyFwdSinceParked is true when the level was parked during a forward slab
+	// advance and we have only iterated forward since. When true, we can use
+	// TrySeekUsingNext when unparking the level in advanceSlabForward. Only valid
+	// when parked is true.
+	onlyFwdSinceParked bool
 	// atBoundary is true when this level has a boundary key at the current
 	// slab boundary. The Next()/Prev() to cross it is deferred until we
 	// know whether the level will be parked.
@@ -334,6 +339,7 @@ func (m *mergingIterV2) First() (kv *base.InternalKV) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
 			level.iterKV = level.iter.First()
@@ -358,6 +364,7 @@ func (m *mergingIterV2) seekGE(key []byte, flags base.SeekGEFlags) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
 			if m.prefix != nil {
@@ -519,7 +526,13 @@ func (m *mergingIterV2) advanceSlabForward() {
 		wasParked := level.parked
 		level.parked = parked
 		if parked {
-			level.iterKV = nil
+			if !wasParked {
+				// Note that advanceSlabForward is only used when the iterator is
+				// already in forward mode; the last operation on any non-parked
+				// iterator must have been a forward operation.
+				level.onlyFwdSinceParked = true
+				level.iterKV = nil
+			}
 			level.atBoundary = false
 		} else if level.atBoundary {
 			// Cross the boundary via Next(). This updates the level's
@@ -530,13 +543,16 @@ func (m *mergingIterV2) advanceSlabForward() {
 				return
 			}
 		} else if wasParked {
-			// Unpark: seek to slab boundary.
+			// Unpark: seek to slab boundary. Use TrySeekUsingNext if we have
+			// only iterated forward since the level was parked.
+			flags := base.SeekGEFlagsNone
+			if level.onlyFwdSinceParked {
+				flags = flags.EnableTrySeekUsingNext()
+			}
 			if m.prefix != nil {
-				// TODO(radu): use TrySeekUsingNext (we'll have to keep track of whether
-				// the iteration direction has changed).
-				level.iterKV = level.iter.SeekPrefixGE(m.prefix, boundaryKey, base.SeekGEFlagsNone)
+				level.iterKV = level.iter.SeekPrefixGE(m.prefix, boundaryKey, flags)
 			} else {
-				level.iterKV = level.iter.SeekGE(boundaryKey, base.SeekGEFlagsNone)
+				level.iterKV = level.iter.SeekGE(boundaryKey, flags)
 			}
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -596,6 +612,7 @@ func (m *mergingIterV2) seekLT(key []byte, flags base.SeekLTFlags) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
 			level.iterKV = level.iter.SeekLT(key, flags)
@@ -621,6 +638,7 @@ func (m *mergingIterV2) Last() (kv *base.InternalKV) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
 			level.iterKV = level.iter.Last()
@@ -746,6 +764,7 @@ func (m *mergingIterV2) advanceSlabBackward() {
 		wasParked := level.parked
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 			level.atBoundary = false
 		} else if level.atBoundary {
@@ -792,6 +811,7 @@ func (m *mergingIterV2) switchToMinHeapAndNext() *base.InternalKV {
 		level := &m.levels[levelIdx]
 		if parked {
 			level.parked = true
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 			continue
 		}
@@ -839,6 +859,7 @@ func (m *mergingIterV2) switchToMaxHeapAndPrev() *base.InternalKV {
 		level := &m.levels[levelIdx]
 		if parked {
 			level.parked = true
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 			continue
 		}
