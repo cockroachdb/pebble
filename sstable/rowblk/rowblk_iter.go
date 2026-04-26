@@ -6,7 +6,6 @@ package rowblk
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"io"
 	"iter"
@@ -231,11 +230,6 @@ func NewIter(
 ) (*Iter, error) {
 	i := &Iter{}
 	return i, i.Init(cmp, suffixCmp, split, block, transforms)
-}
-
-// String implements fmt.Stringer.
-func (i *Iter) String() string {
-	return "block"
 }
 
 // Init initializes the block iterator from the provided block.
@@ -728,15 +722,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	return nil
 }
 
-// SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
-// pebble package.
-func (i *Iter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	// This should never be called as prefix iteration is handled by sstable.Iterator.
-	panic(errors.AssertionFailedf("pebble: SeekPrefixGE unimplemented"))
-}
-
-// SeekLT implements internalIterator.SeekLT, as documented in the pebble
-// package.
+// SeekLT implements blockiter.Data.
 func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	if invariants.Enabled && i.IsDataInvalidated() {
 		panic(errors.AssertionFailedf("invalidated blockIter used"))
@@ -1612,22 +1598,12 @@ func (i *Iter) Close() error {
 	return nil
 }
 
-// SetBounds implements base.InternalIterator. It panics, as bounds should
-// always be handled the by the parent sstable iterator.
-func (i *Iter) SetBounds(lower, upper []byte) {
-	// This should never be called as bounds are handled by sstable.Iterator.
-	panic(errors.AssertionFailedf("pebble: SetBounds unimplemented"))
-}
-
-// SetContext implements base.InternalIterator.
-func (i *Iter) SetContext(_ context.Context) {}
-
 // Valid returns true if the iterator is currently positioned at a valid KV.
 func (i *Iter) Valid() bool {
 	return i.offset >= 0 && i.offset < i.restarts
 }
 
-// TreeStepsNode is part of the InternalIterator interface.
+// TreeStepsNode is part of the blockiter.Data interface.
 func (i *Iter) TreeStepsNode() treesteps.NodeInfo {
 	return treesteps.NodeInfof(i, "%T(%p)", i, i)
 }
@@ -1921,7 +1897,7 @@ func (i *RawIter) Close() error {
 	return nil
 }
 
-// TreeStepsNode is part of the InternalIterator interface.
+// TreeStepsNode is part of the blockiter.Data interface.
 func (i *RawIter) TreeStepsNode() treesteps.NodeInfo {
 	return treesteps.NodeInfof(i, "%T(%p)", i, i)
 }

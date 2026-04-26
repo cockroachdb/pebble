@@ -6,6 +6,7 @@ package rowblk
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -18,6 +19,22 @@ import (
 	"github.com/cockroachdb/pebble/sstable/blockiter"
 	"github.com/stretchr/testify/require"
 )
+
+// blockIterInternalIterator wraps an Iter as a base.InternalIterator
+// for use in itertest.RunInternalIterCmd.
+type blockIterInternalIterator struct {
+	*Iter
+}
+
+func (d *blockIterInternalIterator) SeekPrefixGE(
+	prefix, key []byte, flags base.SeekGEFlags,
+) *base.InternalKV {
+	panic("SeekPrefixGE not supported on data block iterators")
+}
+
+func (d *blockIterInternalIterator) SetBounds(lower, upper []byte) {}
+func (d *blockIterInternalIterator) SetContext(_ context.Context)  {}
+func (d *blockIterInternalIterator) String() string                { return "block-iter" }
 
 func TestInvalidInternalKeyDecoding(t *testing.T) {
 	// Invalid keys since they don't have an 8 byte trailer.
@@ -133,7 +150,7 @@ func TestBlockIter2(t *testing.T) {
 						return err.Error()
 					}
 
-					return itertest.RunInternalIterCmd(t, d, iter, itertest.Condensed)
+					return itertest.RunInternalIterCmd(t, d, &blockIterInternalIterator{iter}, itertest.Condensed)
 
 				default:
 					return fmt.Sprintf("unknown command: %s", d.Cmd)
