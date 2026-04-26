@@ -56,6 +56,13 @@ type OpCheckIter struct {
 	// special value (Key=nil, Boundary=Inclusive) indicates that any key is legal
 	// (which is the case after a First() call).
 	trySeekBound base.UserKeyBoundary
+	// requirePrefixChangeForTSUN, when true, requires that
+	// SeekPrefixGE(TrySeekUsingNext) be called with a prefix that differs from
+	// the prefix of the most recent SeekPrefixGE.
+	requirePrefixChangeForTSUN bool
+	// lastSeekPrefix is the prefix of the most recent SeekPrefixGE call. It is
+	// only used when requirePrefixChangeForTSUN is true.
+	lastSeekPrefix []byte
 }
 
 var _ Iter = (*OpCheckIter)(nil)
@@ -63,6 +70,13 @@ var _ Iter = (*OpCheckIter)(nil)
 // NewOpCheckIter creates an OpCheckIter wrapping inner.
 func NewOpCheckIter(inner Iter, cmp *base.Comparer, lower, upper []byte) *OpCheckIter {
 	return &OpCheckIter{inner: inner, cmp: cmp, lower: lower, upper: upper}
+}
+
+// RequirePrefixChangeForTrySeekUsingNext configures OpCheckIter to allow
+// SeekPrefixGE(TrySeekUsingNext) only when the seek prefix differs from the
+// prefix of the previous SeekPrefixGE call.
+func (c *OpCheckIter) RequirePrefixChangeForTrySeekUsingNext() {
+	c.requirePrefixChangeForTSUN = true
 }
 
 // trackKV updates atBoundary and lastKey from the result of an iterator
@@ -154,8 +168,13 @@ func (c *OpCheckIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *
 	}
 	if flags.TrySeekUsingNext() {
 		c.checkTrySeekUsingNext("SeekPrefixGE", key, true /* isPrefix */)
+		if c.requirePrefixChangeForTSUN && bytes.Equal(prefix, c.lastSeekPrefix) {
+			panic(illegalOpf("SeekPrefixGE(%s, TrySeekUsingNext): prefix %s must differ from previous SeekPrefixGE prefix",
+				c.cmp.FormatKey(key), c.cmp.FormatKey(prefix)))
+		}
 	}
 	c.lastSeekIsPrefix = true
+	c.lastSeekPrefix = append(c.lastSeekPrefix[:0], prefix...)
 	c.trySeekBound = base.UserKeyBoundary{Key: append(c.trySeekBound.Key[:0], key...), Kind: base.Inclusive}
 	return c.prefixTransition(c.inner.SeekPrefixGE(prefix, key, flags))
 }

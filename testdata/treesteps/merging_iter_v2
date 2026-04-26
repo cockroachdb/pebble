@@ -128,7 +128,7 @@ seek-prefix-ge d try-seek-using-next
 b@20#5,SET:b20
 c@20#5,SET:c20
 d@25#3,SET:d25
-https://raduberinde.github.io/treesteps/decode.html#eNrsls1q20AQx-99imF9sUEQf8Q9LJQ2TkwoBFOStFBsE2Tt2Flib420DSkmEHwohV560LH0EfpQepKitVJ7bSmSHKdxZelie3d2dub_G814QlrmCAklEh3JTGnuSRvRkTh29kZoD7gYXHCJ9sV1lRjkTOLYt3cIbRMuuOTm0F9GvHpnY5_fHDfhk4Dg4FuJ9ocqONK0JbIQuyFe4zCw6nPBncs0Zi28kSm86EElNnyq6P-z8B6XRXdWOqpsNJOOAM_96bl3nnsHB-rXFADAc91gcfHik8rcQj3e99-ah0ash2qEh3vjw44INsLP1-7356eJoecE4H39AYvKFDuk1yGl3Ut2CmO1SqGnJw_t1wb03lTLJTq5jVci6hYDZpfBK-WswEXfaBydfsywclRLNKWOcbood1alRCfFwr5xetA6bh41T0rxnqsJCFmVSD7uFPp8iBTK_lN_fvFHXMAlmmO6IniDruaRHJX37VeaivdHXPFvddeNs-b5w9LtxxFejH592o_kB-2xaV8h6z4hyDDRVqiqzfRIZ8dS8cyxxWOz_HZxbn_xl987XAz88i_l7DLFzkrGzlpiZ63JLjpY9aHmUt5bMwB6K9glqbaN_Qt6HtJhL8yuY99ykCx_ZbPPjiVjx5bYsU3OVTbrdGzW6Vg-VzMAeoPs1pyfelV1PpfLNUvwofqCmaQanuOWkf0Hb5yWzYN4krWjeqEWtCOIiurlRkEvX6tTP6TzTY3jjgJflCMF-7Q4u7cv_gQAAP__Npuo0Q==
+https://raduberinde.github.io/treesteps/decode.html#eNrsls1q20AQx-99imFzsUEQf8Q9LJQ2TkwoBFOStFAsE2TtyFlib4W0DS4mEHwohV560LH0EfpQepIiWaktW4okfzSuLB2MvTs7OzO_v2Y8Jm1tiIQSibZkmtQOpYVoSzTtwyFafS7611yidX1XIwq5lGh69jahHcIFl1wbeMuIt-8sNPjorAWfBAQH30q0PtTAlpolkUXYDfAOB4GVwQW3b7KYtXEkM3gJB5XacFvR_2fhrZdFdyodXzYhE1WA6_x0nQfXeYBj_9cEAMB1nGBx_uLz6szCf9zvv0MemokeajEeHo1PVBFsRJ-vP-7PThMlnBOA-_UHzFempJKeSsr7l-wETH-VQi-cPHReK9B7U6uU6fg-uRJxtygwvQxe-c4OuDCU5unFxxxXjoYSzVjHpLr47vRqmY5LB0fKxXH7rHXaOi8ne66lIKRXY_k4EzD4AClUvKfx_MUfcgE3qJl0qeBNupxHelTut19ZFO-NuNJfdTeUy9bV06U7SiI8H_3qtNfkBx1Ts26RdbcIMqpoS1T9zexIp8cy8SywJWPTvXZxZX3xlt_bXPQ9-ZcLdrlip6djpy-w01dkFx9sXMzepCq6bQ7Q7wS71fS3sX9Kz8M-6hXadyHsOEhWvMT5Z8fSsWML7NgmZy-b9j4W1zhYMXu3jl5VR4bhf2xbAusyjI8068xN0p36uVKp64IP_C-YT-6ROe4Y83_wToayeRJPgpSChtU4qAcNC-KierlR0IvXhqmf0NlmiOOeAp8vRwb2WXF271_8CQAA___Sj8p5
 
 # Treesteps tests for mergingIterV2 with TrySeekUsingNext (TSUN). Each `define`
 # block sets up an LSM with files, then `merging-iter-v2` runs operations
@@ -167,7 +167,7 @@ a#10,SET:va
 b#5,SET:vb
 h#10,SET:vh
 i#5,SET:vi
-https://raduberinde.github.io/treesteps/decode.html#eNrsmMFq20AQhu99imFzsUEQx60vglJs4oZC8CFOC8UyQZbG0hJ5a6RtaDGB4EMp9NKDjqWP0IfSkxTJcqRVJFsbq1gu1inZ2Z3999uZncELMtBnSFTC0eOmzvVT7iJ6HOfe6QxdizLrhnJ0b-7aRCFDjvNwvkfUEaGMcqo7RCFvqetx-MQgXvGOo_uhDR7XXY5meoKDd-jE5ill1LNL2Qf4pdRycf8cB0UCt2xQ0rzn7QvMQ8Tbi34N5Bf4H6_iKoopYYrGIPB_Bf5D4D9AN_pvCQAQ-H48mN7w8iyZEX3Bjz_RyHpyT2OxIX99e21PVhNFVAQQfPsJUbg1mgclD0ZvFNCb6uJ-u1DBDbwG_YSyqdI7v_q41yOoiQ6Z02zTHPmaxL42qs9ymaS5SJ9rCTPKwEZ9ropn66kTEXghAUPmPsMsjK_zrKUM-9dZMP4SptRBFVrh92obt5TK8gglQT1VKzJbmTYTi-dI8KozmNUtHmFshmGXgGE_A0Ymk4zCh_EAKAmbdlWjiJPxrDenYiDB99_lX-jH-5mcdOKnA4qUdOQoCk6f8owsdYTZeYz0kiQrZHYktQMps66kTHlSmUQyK8_OnEpgpfsqM5W6CT9L5Gc11UUjrA1X3cFF_7x_2ZQvDFZlhcHcf0AWkkr0yNGxq2lAYTTX3Vs0x_WAI_QTpdHszEA2_Va_BjQ0YmlEgWv3azjw3qPMCk8VXg_9F1XTLm7jU80azU3QvZBda6lLKThyqpyT9MOlfW61XhqMOtEfeNjkhEzPth254P6LWBrfv_gbAAD__6OcGJk=
+https://raduberinde.github.io/treesteps/decode.html#eNrsmE1q20AUx_c9xWOysUEQx603glJs4oZC8CJOC8UyQbaepCHy1EjTkGICwYtS6KYLLUuP0EPpJEWyHGkUydYkKpaDtUrmzcd_fvO-8IIM9BkSlXD0uKFz_Zi7iB7HuXc8Q9eizLqiHN2rmzZRyJDjPJzvEXVEKKOc6g5RyHvqehy-MIhXfODofmqDx3WXo5Ge4OANOrHZpIx6din7AG9LLRfPz9mgSOCWA0qad3x8gXmIeH3Wr4H8gv3HK7-KfEqYojEI_N-Bfx_499CN_lsCAAS-Hw-mDzw_SWZEX_DzbzSyntzTWGzIX99e25PVRBEVAQTff0Hkbo3mXsmD0TsF9Ka6uNsuVNgG3oJ-RJmp9E4vPu_0CmqiQ-Y22zRHe03ivTaqz3KZpLlI32sJM8rARn2uinfrqRMReCGBqcx7hlEYP-dJSxn2L7Ng_CWY1EEVWuH3Zhu3lMryCCVBPVYrMluZNhOL50jwqjOY1SseYGyGYZeAYT8BRiaSpoWJcQ8oCYd21WkRp-mTck7FQIIff8pn6If3mRx14tQBRUo6chSFTR_zjCx1hNl58PSSJCtkdiD1DFJGXUkZ8qQygWRUHp05lcBK91VGKnQTfpbIz2qqi0ZYGy66g7P-af-8KV8YrMoKg7F7h0xIadqtaRYlZjlCdjVNKIzmunuNxrgegISeojSaZzOQDcHVLwINjVgaUeDS_RYOfPQos8Jbhc9D_0fltItb-VTDRnODdCdk11rqUg4OnCrnJJ24tK-t1uspo070B-43OSHSs61HLrgX4Uvju1f_AgAA__9Uixou
 
 # ---------------------------------------------------------------------------
 # Unparking #2: a SeekGE past the deleted slab triggers an unpark of L2.
@@ -253,4 +253,76 @@ a#20,SET:va
 b#10,SET:vb
 h#18,SET:vh
 h#18,SET:vh
-https://raduberinde.github.io/treesteps/decode.html#eNrsls1q20AQx-99imF1sUCQyNRQBKHExIRC8CFJCyUyYY1G3iX21khLSDGBkEMp9NKDjqWP0IfSkxR9Vd5W68iKwEqxbtqd3fnPb2Znd0XGdIHEIRJD6VFJD2SAGEpchgcLDGZczK65xOD6tk8sciFxmdiHxLkiXHDJ6TwZRrw5HcEnAfmSdxKDD30IJQ0keorFHG9xns_7XPCQbWug-qhh8vJkjPFOdkilZpNJVhBpMSgmroA4-hFHD3H0AMfp3yMAQBxF-eC67jO7tEi_-NuvdKQwHroin6he3y_my9XEUhUBxF--QxZRzyXUJeYLFAlXby3wTGd1_7Tcis3gCKjRP7QuRpd_BxM9gs_n6MBh8r3uQKxOIXWboJ8ZVupqmrvaGGA13anBhW8NT84_NgLwb34WXABDunTWeQwdxc-Oma2JqY9vazxTl1hwGXxOBt6HXMySDmnuKTWkxAz7zVOU_tg0bzrVeuAIPNXpf8O1jGsTWU_VvJsKjL_-bNDotBmdGnbRuECncdASeNWdmoMkzmxKAd2RDNhl36nJv12eXr1C3kNsGyLTd1kFIjOdVc-wB9b58fh0dDI6M7fvup7u0LAWu26Hk1DCdd0739e1vVpQk117GbvsNnz2C3NJgxv0Jh0np1z-tZm18fxudi8xXc1zY9D-tbThhClVonlylZp2jrzQsrtyZA3erHuAdUp_X4wVLCf3r34HAAD__1NDVm4=
+https://raduberinde.github.io/treesteps/decode.html#eNrsls1q20AQx-99imF1sUCQyNRQBKHExIRC8CFJCyUyYY3G3iX21khLaDGBkEMp9NKDjqWP0IfSkxR9Vd5W68iKwEqQbtqd3fnPb2Znd03GdInEIRID6VFJD6SPGEhcBQdL9OdczK-5RP_6tk8sciFxFdsHxLkiXHDJ6SIeRrw5HcEnAdmSdxL9D30IJPUleorFAm9xkc3PuOAB29VA9VHB5PnJGONn2SKVmk0maUEkxaCYuAKi8GcU3kfhPRwnfw8AAFEYZoObus_swiL5ou-_k5HceOiKbKJ8fT-fL1YTS1UEEH39AWlEPZdQl5jPUCRcvbXAM5313eNySzaDI6BG_9C6GF3-G0z4ADO-QAcO4-91C2J1cqm7BP3EsBJX08zV1gDL6U4NLmbW8OT8Yy0A_-dnyQUwpCtnk8fQUfzsmdmGmOr4dsYzdYkFl_6XeOB9wMU87pBmR6kmJWbYbx6j9NemftMp1wNH4KlOXwzXIq5tZD1V834qMPr2q0aj02Z0ath54wKdxkFD4FV3ag7iONMpBXRLMmAXfaci_2Z5etUKuYPYNESm77IKRGY6655hD6zz4_Hp6GR0Zu7edT3doWENdt0WJ0ELtxBaCWi8Yy_llt6ET35drqh_g96k9dQ2Lv7KzJp4ete7k5iu3rkxaP5K2nK6lCrRPLcKTXtHnmvZXzmyGu_VDmCV0u-KsYTl5O7VnwAAAP__0_hU2g==
+
+# ---------------------------------------------------------------------------
+# SeekPrefixGE+TSUN #1: sequential strictly-increasing prefixes across two
+# levels. Same-prefix TSUN is forbidden by the contract.
+# ---------------------------------------------------------------------------
+
+define
+L1
+  a@5#20,SET:a5
+  a@1#19,SET:a1
+  d@3#18,SET:d3
+  h@2#16,SET:h2
+L2
+  b@4#10,SET:b4
+  c@3#5,SET:c3
+  e@5#8,SET:e5
+----
+L1:
+  000004:[a@5#20,SET-h@2#16,SET] seqnums:[#16-#20] points:[a@5#20,SET-h@2#16,SET] size:828
+L2:
+  000005:[b@4#10,SET-e@5#8,SET] seqnums:[#5-#10] points:[b@4#10,SET-e@5#8,SET] size:715
+
+merging-iter-v2 depth=2
+seek-prefix-ge a@9
+seek-prefix-ge b@9 try-seek-using-next
+seek-prefix-ge c@9 try-seek-using-next
+seek-prefix-ge d@9 try-seek-using-next
+seek-prefix-ge e@9 try-seek-using-next
+seek-prefix-ge h@9 try-seek-using-next
+----
+a@5#20,SET:a5
+b@4#10,SET:b4
+c@3#5,SET:c3
+d@3#18,SET:d3
+e@5#8,SET:e5
+h@2#16,SET:h2
+https://raduberinde.github.io/treesteps/decode.html#eNrsmM9q204Qx--_pxjkSwyC-O-PVBCqmoZSKKE0aaFEIcjW2Fpqq0bahpQQCD6UQi896Fj6CH0oPUnRH8eSvKq0lizLiXxKtLO7M5_v7MxKt8KpOkNBEihaVFOpekhNRIvi3DqcoTkhxuSKUDSvrjuCKJxRnLv2liBdCMQglKhT9zHip7cmjsnNqxP4bEAw8TVF80MHLKqaFDWG3RSvcRpYjYlBLJ3H7BRvKMcqUacyG9be1-7V7rHcu_TrgVcLIiaKAY79y7HvHfseXnj_LQAAHNsOHoY3ftNeWXg_58cf78nSeKAYwQB7fmc5vpotiFGPAJxvPyEc14EiqPIzRWjun7MLmHvPJVCjzsPFcxFUud-Ubu_SA2FvowgiLHeDY3e1BjHG4uDlu48VjlwK-8mHIS0qb7Wh3AtW-2eEmZAO5V4YaW4kM2KAjupcimMYSLGtuAA633_z5JHbzg6WGdNpiWcn53Gy9gLGZIoStNxfLw18xHseFXJBZUUQJ-wP8vMN5nHR3TOIQxeiCOfmV3fgvUWMiZsZzZrkFklqcrfRPkonOYyRXM3bsFsM_dKW5Cocg_Kl1eqODDL1_sDHq0EsUC4hqpu7G6peQIvLjL7ioFflKQPohybqLtNetiBIcqdfMNv4xizQkcGdYm6zegBHFSiG5YgvT2t8xeMb8eJje-JXtVGpvWzvRBjJ3Ua_CA3y0ntwhL_KcgsfDro0-LF9H5cQ2wCpPZUsrig8jfExivMjQtwp_2RqySeE9QbzdJRAud84Slci_H5Y6htz2D_-upyu_npDLk0NVu6xX8mrqc0uMhs3-aJR49sAny53Gu3_Gfgwhm_NkLdEo39Isaxbc8XBs4NNoL_1LM19NU5Xd63ElwE-tm_Wtlg2_pUju75T6PnvFDW8HPD0wq_Gun8y9eQTwirttRJ6YgPcp6txuvolXI15ci_T5aQi2hSd2Zd3__0NAAD__4h44gE=
+
+# ---------------------------------------------------------------------------
+# SeekPrefixGE+TSUN #2: prefix seek with TSUN where the target prefix is
+# entirely covered by a RANGEDEL in a higher level. The lower level's keys
+# at that prefix are shadowed.
+# ---------------------------------------------------------------------------
+
+define
+L1
+  a@5#20,SET:a5
+  k@3#18,SET:k3
+  d#15,RANGEDEL:h
+L2
+  b@4#10,SET:b4
+  e@5#8,SET:e5
+  e@2#7,SET:e2
+  f@1#6,SET:f1
+  k@9#5,SET:k9
+----
+L1:
+  000004:[a@5#20,SET-k@3#18,SET] seqnums:[#15-#20] points:[a@5#20,SET-k@3#18,SET] size:783
+L2:
+  000005:[b@4#10,SET-k@9#5,SET] seqnums:[#5-#10] points:[b@4#10,SET-k@9#5,SET] size:847
+
+merging-iter-v2 depth=2
+seek-prefix-ge a@9
+seek-prefix-ge b@9 try-seek-using-next
+seek-prefix-ge e@9 try-seek-using-next
+seek-prefix-ge k@9 try-seek-using-next
+----
+a@5#20,SET:a5
+b@4#10,SET:b4
+.
+k@9#5,SET:k9
+https://raduberinde.github.io/treesteps/decode.html#eNrsl89q20AQxu99imF9iUEQ27GhEZg6JiYUgilJWiiWCXI1thbZqpG2IcUEgg-l0EsPOpY-Qh9KT1L0x7G0SLZWshu7sU6Jdnb3m983uyPPSFedIJEJQ5tpKlOPmYVoM5zaxxO0RtQc3VKG1u1djUjkmuHUi7eJ3CPUpIyqY-81ovHOwiG9v-jAZxPCiW8ZWh9qYDPVYqglxI3xDsdh1JCa1NZFwrp4zwRWiYvKHPjC1e8YtYzy-kGp-mUaC1FMcJ1frvPoOo9w5v83BwBwHSd8Gd34srqM8B_3xx__zSK4rZjhQPL82mJ8OZtIcUUA7refEM3rSCFq61Qh5f0TO4ep_14GNS4eem8kUFuNsjx7WJ9I8jYKkWCxGzS91UrUHErt86uPO5y5HNUphmFdVv5qg1Y9XG1lhpmQDlr1KNLCSCbUBB3VqcxjaMvcVkIANZEq8u7Zo0W91CrSdeeG5-rMYUjHKEPFe-rrsMe0i3hQCGlSBjzfYFCcbjhPgO2eIRx4CCW4sb56A-9tao68uigfOG6No9E6KVVfr-c44DhG5gmfdV5tcL2liYYmaKkd5P8xQst47fJGaLku3efimLMANtDxMlvBJRclvB9WuN9_Z7fiqe96y1QXXQvS5DQ2TJ_fOMmKYHA_jKguW0tGG7ZBG8Vq_QD4XwHW0wAjB1iPA9bL8uyoVG1IV2fdi85557Kct9licNdi-nnUN9psd9svaILypVI5-WTSsf8HrvYlvxkFWUJvqloGav3nJmmsrvwDt2LcjARuS9V5DrwRHHgj_QQsP-VfNmz-N01m7oWxiX605bD4tNTY1rddxn35xvg0FiO_mxZFxG6xtPsPr_4GAAD__6BaGnM=
