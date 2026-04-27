@@ -41,31 +41,32 @@ type InterleavingIter struct {
 	lower []byte
 	upper []byte
 
-	// pointKV is the last returned key, unless the last returned key was a
-	// boundary key; then, pointKV is the next point in the current iteration
-	// direction.
+	// pointKV is the last KV returned by pointIter. This is also the last KV
+	// returned by this iterator, unless the last KV returned was a boundary key
+	// (atBoundary=true); in the latter case, pointKV is the next point in the
+	// direction of iteration.
 	pointKV *base.InternalKV
 
-	// Fragment state: span is the current fragment span, or nil when
-	// exhausted.
-	//
-	// In forward mode (dir >= 0) when in a gap, span is the next span
-	// forward (the span above the gap), or nil if the gap extends to upper.
-	//
-	// In backward mode (dir < 0) when in a gap, span is the preceding
-	// span (the span below the gap), or nil if the gap extends from lower.
+	// span is the current position of spanIter (the last result of a spanIter
+	// operation). If inSpan is true, the current position of this iterator is
+	// inside this span; otherwise span is the next span in the direction of
+	// iteration.
 	span *keyspan.Span
 
 	// dir is +1 for forward, -1 for backward (and 0 for unpositioned).
 	dir int8
-	// inSpan indicates whether the current position is inside span.
+	// inSpan indicates whether the current position is inside span. When inSpan is true,
+	// the presentedSpan Boundary matches span.End (forward iteration) or span.End
+	// (backward iteration).
 	inSpan bool
 	// atBoundary indicates if the last returned key was a boundary key.
-	atBoundary  bool
-	currentSpan Span
-	kv          base.InternalKV // reused for boundary keys
-	prefix      []byte
-	err         error
+	atBoundary bool
+	// presentedSpan is the iterv2.Span presented by this iterator via Span().
+	presentedSpan Span
+	// kv is used to avoid allocations when returning boundary keys.
+	kv     base.InternalKV
+	prefix []byte
+	err    error
 
 	tmpBuf []byte
 }
@@ -174,7 +175,7 @@ func (i *InterleavingIter) leEffectiveLower(key []byte) bool {
 	return lower != nil && key != nil && i.cmp.Compare(key, lower) <= 0
 }
 
-// computeCurrentSpan sets currentSpan based on inSpan, span, and dir.
+// computeCurrentSpan sets presentedSpan based on inSpan, span, and dir.
 //
 // Boundary is set to the next boundary in the current iteration direction,
 // clamped to iteration bounds. BoundaryType is set to BoundaryEnd (forward) or
@@ -183,48 +184,48 @@ func (i *InterleavingIter) leEffectiveLower(key []byte) bool {
 // Boundary can be nil when the range is unbounded in that direction.
 func (i *InterleavingIter) computeCurrentSpan() {
 	if i.inSpan {
-		i.currentSpan.Keys = i.span.Keys
+		i.presentedSpan.Keys = i.span.Keys
 		if i.dir >= 0 {
 			// Forward: boundary is the span's End (clamped to upper).
 			end := i.span.End
 			if i.geUpper(end) {
 				end = i.upper
 			}
-			i.currentSpan.BoundaryType = BoundaryEnd
-			i.currentSpan.Boundary = end
+			i.presentedSpan.BoundaryType = BoundaryEnd
+			i.presentedSpan.Boundary = end
 		} else {
 			// Backward: boundary is the span's Start (clamped to lower).
 			start := i.span.Start
 			if i.leLower(start) {
 				start = i.lower
 			}
-			i.currentSpan.BoundaryType = BoundaryStart
-			i.currentSpan.Boundary = start
+			i.presentedSpan.BoundaryType = BoundaryStart
+			i.presentedSpan.Boundary = start
 		}
 	} else {
-		i.currentSpan.Keys = nil
+		i.presentedSpan.Keys = nil
 		if i.dir >= 0 {
 			// Forward: boundary is the next span's Start or upper.
-			i.currentSpan.BoundaryType = BoundaryEnd
+			i.presentedSpan.BoundaryType = BoundaryEnd
 			if i.span != nil {
-				i.currentSpan.Boundary = i.span.Start
+				i.presentedSpan.Boundary = i.span.Start
 			} else {
-				i.currentSpan.Boundary = i.effectiveUpper() // can be nil
+				i.presentedSpan.Boundary = i.effectiveUpper() // can be nil
 			}
 		} else {
 			// Backward: boundary is the previous span's End or lower.
-			i.currentSpan.BoundaryType = BoundaryStart
+			i.presentedSpan.BoundaryType = BoundaryStart
 			if i.span != nil {
-				i.currentSpan.Boundary = i.span.End
+				i.presentedSpan.Boundary = i.span.End
 			} else {
-				i.currentSpan.Boundary = i.effectiveLower() // can be nil
+				i.presentedSpan.Boundary = i.effectiveLower() // can be nil
 			}
 		}
 	}
 }
 
 // emitBoundary sets atBoundary=true, builds a synthetic key with
-// SpanBoundary kind + SeqNumMax. Does NOT update currentSpan (stays as
+// SpanBoundary kind + SeqNumMax. Does NOT update presentedSpan (stays as
 // the exiting span).
 func (i *InterleavingIter) emitBoundary(userKey []byte) *base.InternalKV {
 	i.atBoundary = true
@@ -315,24 +316,27 @@ func (i *InterleavingIter) prevSpan(s *keyspan.Span, err error) {
 	i.span = s
 }
 
-// invalidateSpan zeros out the current span and resets fragment state. Called
-// when the iterator is exhausted or hits an error.
-func (i *InterleavingIter) invalidateSpan() {
-	i.currentSpan = Span{}
-	i.span = nil
+// exhaust zeros out the current span. Called when the iterator is
+// exhausted or hits an error.
+func (i *InterleavingIter) exhaust() {
+	i.presentedSpan = Span{}
 	i.inSpan = false
+}
+
+func (i *InterleavingIter) isExhausted() bool {
+	return !i.presentedSpan.Valid()
 }
 
 func (i *InterleavingIter) setError(err error) {
 	i.err = err
 	i.dir = 0
 	i.pointKV = nil
-	i.invalidateSpan()
+	i.exhaust()
 }
 
 // Span implements Iter.
 func (i *InterleavingIter) Span() *Span {
-	return &i.currentSpan
+	return &i.presentedSpan
 }
 
 // SeekGE implements InternalIterator.
@@ -358,7 +362,7 @@ func (i *InterleavingIter) seekGEHelper(
 			return nil
 		}
 		if i.geEffectiveUpper(key) {
-			i.invalidateSpan()
+			i.exhaust()
 			return nil
 		}
 	}
@@ -395,7 +399,7 @@ func (i *InterleavingIter) SeekPrefixGE(
 			return nil
 		}
 		if i.geEffectiveUpper(key) {
-			i.invalidateSpan()
+			i.exhaust()
 			return nil
 		}
 	}
@@ -425,7 +429,7 @@ func (i *InterleavingIter) seekLTHelper(key []byte, kv *base.InternalKV) *base.I
 			return nil
 		}
 		if i.leEffectiveLower(key) {
-			i.invalidateSpan()
+			i.exhaust()
 			return nil
 		}
 	}
@@ -453,7 +457,7 @@ func (i *InterleavingIter) First() *base.InternalKV {
 
 	if i.pointKV == nil && i.geUpper(i.startKey) {
 		// Empty range.
-		i.invalidateSpan()
+		i.exhaust()
 		return nil
 	}
 
@@ -488,7 +492,7 @@ func (i *InterleavingIter) Last() *base.InternalKV {
 
 	if i.pointKV == nil && i.leLower(i.endKey) {
 		// Empty range.
-		i.invalidateSpan()
+		i.exhaust()
 		return nil
 	}
 
@@ -511,10 +515,10 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 
 	if i.atBoundary {
 		i.atBoundary = false
-		if i.prefix != nil && !i.cmp.HasPrefix(i.currentSpan.Boundary, i.prefix) {
+		if i.prefix != nil && !i.cmp.HasPrefix(i.presentedSpan.Boundary, i.prefix) {
 			// Exhaust the iterator but don't invalidate i.span; it will be useful for
 			// TrySeekUsingNext.
-			i.currentSpan = Span{}
+			i.presentedSpan = Span{}
 			return nil
 		}
 		i.updateSpanAfterForwardBoundary()
@@ -542,34 +546,34 @@ func (i *InterleavingIter) resolveForward() *base.InternalKV {
 		return nil
 	}
 
-	if !i.currentSpan.Valid() {
+	if i.isExhausted() {
 		return nil
 	}
 
-	if i.currentSpan.Boundary == nil {
+	if i.presentedSpan.Boundary == nil {
 		// No boundary in this direction (unbounded). Return the point key
 		// if we have one; otherwise, the iterator is exhausted.
 		if i.pointKV == nil {
-			i.invalidateSpan()
+			i.exhaust()
 		}
 		return i.pointKV
 	}
 
 	if i.pointKV != nil {
-		if i.cmp.Compare(i.pointKV.K.UserKey, i.currentSpan.Boundary) < 0 {
+		if i.cmp.Compare(i.pointKV.K.UserKey, i.presentedSpan.Boundary) < 0 {
 			return i.pointKV
 		}
 	}
 
-	return i.emitBoundary(i.currentSpan.Boundary)
+	return i.emitBoundary(i.presentedSpan.Boundary)
 }
 
 // updateSpanAfterForwardBoundary advances fragment state after a forward
 // boundary was emitted.
 func (i *InterleavingIter) updateSpanAfterForwardBoundary() {
-	if i.span == nil || i.geEffectiveUpper(i.currentSpan.Boundary) {
+	if i.span == nil || i.geEffectiveUpper(i.presentedSpan.Boundary) {
 		// We reached the end.
-		i.invalidateSpan()
+		i.exhaust()
 		return
 	}
 	if i.inSpan {
@@ -615,34 +619,34 @@ func (i *InterleavingIter) resolveBackward() *base.InternalKV {
 		return nil
 	}
 
-	if !i.currentSpan.Valid() {
+	if i.isExhausted() {
 		return nil
 	}
 
-	if i.currentSpan.Boundary == nil {
+	if i.presentedSpan.Boundary == nil {
 		// No boundary in this direction (unbounded). Return the point key
 		// if we have one; otherwise, the iterator is exhausted.
 		if i.pointKV == nil {
-			i.invalidateSpan()
+			i.exhaust()
 		}
 		return i.pointKV
 	}
 
 	if i.pointKV != nil {
-		if i.cmp.Compare(i.pointKV.K.UserKey, i.currentSpan.Boundary) >= 0 {
+		if i.cmp.Compare(i.pointKV.K.UserKey, i.presentedSpan.Boundary) >= 0 {
 			return i.pointKV
 		}
 	}
 
-	return i.emitBoundary(i.currentSpan.Boundary)
+	return i.emitBoundary(i.presentedSpan.Boundary)
 }
 
 // updateSpanAfterBackwardBoundary updates fragment state after a backward
 // boundary was emitted.
 func (i *InterleavingIter) updateSpanAfterBackwardBoundary() {
-	if i.span == nil || i.leEffectiveLower(i.currentSpan.Boundary) {
+	if i.span == nil || i.leEffectiveLower(i.presentedSpan.Boundary) {
 		// We reached the end.
-		i.invalidateSpan()
+		i.exhaust()
 		return
 	}
 	if i.inSpan {
@@ -664,7 +668,7 @@ func (i *InterleavingIter) switchToForward() *base.InternalKV {
 		return nil
 	}
 
-	if !i.currentSpan.Valid() {
+	if i.isExhausted() {
 		if i.lower == nil {
 			return i.First()
 		}
@@ -693,7 +697,7 @@ func (i *InterleavingIter) switchToBackward() *base.InternalKV {
 		return nil
 	}
 
-	if !i.currentSpan.Valid() {
+	if i.isExhausted() {
 		if i.upper == nil {
 			return i.Last()
 		}
@@ -740,7 +744,7 @@ func (i *InterleavingIter) SetBounds(lower, upper []byte) {
 	i.span = nil
 	i.inSpan = false
 	i.err = nil
-	i.invalidateSpan()
+	i.exhaust()
 }
 
 // Error implements InternalIterator.
