@@ -236,9 +236,12 @@ type mergingIterV2Level struct {
 	// no keys until unparked.
 	parked bool
 	// onlyFwdSinceParked is true when the level was parked during a forward slab
-	// advance and we have only iterated forward since. When true, we can use
-	// TrySeekUsingNext when unparking the level in advanceSlabForward. Only valid
-	// when parked is true.
+	// advance and the merging iterator has only moved forward since then. When
+	// true, we can use TrySeekUsingNext when unparking the level in
+	// advanceSlabForward. Only valid when parked is true.
+	//
+	// This field is per-level because different levels get parked/unparked at
+	// different times.
 	onlyFwdSinceParked bool
 	// atBoundary is true when this level has a boundary key at the current
 	// slab boundary. The Next()/Prev() to cross it is deferred until we
@@ -543,8 +546,8 @@ func (m *mergingIterV2) advanceSlabForward() {
 				return
 			}
 		} else if wasParked {
-			// Unpark: seek to slab boundary. Use TrySeekUsingNext if we have
-			// only iterated forward since the level was parked.
+			// Unpark: seek to slab boundary. If the merging iterator has only moved
+			// forward since the level was parked, use TrySeekUsingNext.
 			flags := base.SeekGEFlagsNone
 			if level.onlyFwdSinceParked {
 				flags = flags.EnableTrySeekUsingNext()
@@ -762,6 +765,11 @@ func (m *mergingIterV2) advanceSlabBackward() {
 	for levelIdx, parked := range m.slab.Build(-1) {
 		level := &m.levels[levelIdx]
 		wasParked := level.parked
+		if invariants.Enabled && wasParked && level.onlyFwdSinceParked {
+			// The iterator is moving in reverse direction; all onlyFwdSinceParked
+			// flags should have been reset.
+			panic(errors.AssertionFailedf("onlyFwdSinceParked set in reverse iteration mode"))
+		}
 		level.parked = parked
 		if parked {
 			level.onlyFwdSinceParked = false
