@@ -636,14 +636,8 @@ func (m *mergingIterV2) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags)
 // When flags.TrySeekUsingNext() is set, the caller MUST pass a prefix that
 // differs from the prefix supplied to the most recent SeekPrefixGE call.
 // Reusing the same prefix with TrySeekUsingNext is illegal and is checked in
-// invariants builds.
-//
-// Why: when iteration crosses a slab boundary past the current prefix,
-// advanceSlabForward exhausts the heap without seeking the level iterators
-// past the prefix (this preserves the level iterators' own TrySeekUsingNext
-// state for future seeks to a different prefix). A subsequent SeekPrefixGE
-// reusing the same prefix with TrySeekUsingNext would skip re-seeking the
-// level iterators and could return stale or incorrect results.
+// invariants builds. This is a particularity of this iterator and not the
+// general base.InternalIterator contract.
 func (m *mergingIterV2) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
@@ -661,9 +655,10 @@ func (m *mergingIterV2) SeekPrefixGEStrict(
 			//
 			// The reason we require this is that we otherwise can't tell if the
 			// iterator is already at the correct position for the seek key (in which
-			// case, re-seeking some levels could move them back). Making that
-			// determination would require an extra copy of the prefix or of the last
-			// point key.
+			// case, re-seeking some levels could move them back; see the "iterator is
+			// already at the right position" case in SeekGE). Making that
+			// determination would require remembering a copy of the prefix or of the
+			// last point key.
 			if prev := m.lastPrefixCopy.Get(); prev == nil || bytes.Compare(prefix, prev) <= 0 {
 				panic(errors.AssertionFailedf(
 					"mergingIterV2.SeekPrefixGE(TrySeekUsingNext): prefix %q must be > previous %q", prefix, prev))
