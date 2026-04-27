@@ -77,6 +77,11 @@ type CheckIterConfig struct {
 	// RequirePrefixChangeForTrySeekUsingNext, when true, requires that
 	// SeekPrefixGE(TrySeekUsingNext) be called with a prefix that differs from
 	// the prefix of the most recent SeekPrefixGE.
+	//
+	// This flag should not be used with general iterv2.Iter implementations which
+	// must support TrySeekUsingNext without changing the prefix. It is used to
+	// test mergingIterV2 which is not an iterv2.Iter (but uses the iterv2 testing
+	// infrastructure).
 	RequirePrefixChangeForTrySeekUsingNext bool
 }
 

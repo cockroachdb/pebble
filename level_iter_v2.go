@@ -494,14 +494,12 @@ func (l *levelIterV2) SeekPrefixGE(
 		if invariants.Enabled && (l.err != nil || l.dir != +1 || l.prefix == nil) {
 			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
 		}
-		l.prefixExhausted = false
 
-		if l.atSyntheticBoundary {
+		if atSyntheticBoundary {
 			if l.comparer.Compare(key, l.kv.K.UserKey) < 0 {
 				// We are still below the synthetic boundary.
-				if !l.comparer.HasPrefix(l.kv.K.UserKey, prefix) {
-					l.prefixExhausted = true
-				}
+				l.prefix = prefix
+				l.prefixExhausted = !l.comparer.HasPrefix(l.kv.K.UserKey, prefix)
 				return &l.kv
 			}
 			// We need to move past the synthetic boundary; files.Current() is the

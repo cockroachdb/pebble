@@ -57,8 +57,8 @@ type OpCheckIter struct {
 	// (which is the case after a First() call).
 	trySeekBound base.UserKeyBoundary
 	// requirePrefixChangeForTSUN, when true, requires that
-	// SeekPrefixGE(TrySeekUsingNext) be called with a prefix that differs from
-	// the prefix of the most recent SeekPrefixGE.
+	// SeekPrefixGE(TrySeekUsingNext) be called with a prefix that is strictly
+	// greater than the prefix of the most recent SeekPrefixGE.
 	requirePrefixChangeForTSUN bool
 	// lastSeekPrefix is the prefix of the most recent SeekPrefixGE call. It is
 	// only used when requirePrefixChangeForTSUN is true.
@@ -75,6 +75,11 @@ func NewOpCheckIter(inner Iter, cmp *base.Comparer, lower, upper []byte) *OpChec
 // RequirePrefixChangeForTrySeekUsingNext configures OpCheckIter to allow
 // SeekPrefixGE(TrySeekUsingNext) only when the seek prefix differs from the
 // prefix of the previous SeekPrefixGE call.
+//
+// This mode should not be used with general iterv2.Iter implementations which
+// must support TrySeekUsingNext without changing the prefix. It is used to test
+// mergingIterV2 which is not an iterv2.Iter (but uses the iterv2 testing
+// infrastructure).
 func (c *OpCheckIter) RequirePrefixChangeForTrySeekUsingNext() {
 	c.requirePrefixChangeForTSUN = true
 }
