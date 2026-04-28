@@ -306,6 +306,9 @@ func (m *mergingIterV2) nextEntry(level *mergingIterV2Level) {
 	if invariants.Enabled && level != m.heap.Top() {
 		panic(errors.AssertionFailedf("level not the top"))
 	}
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		level.iterKV = nil
+	}
 	level.iterKV = level.iter.Next()
 	if level.iterKV == nil {
 		if m.levelHasError(level) {
@@ -322,6 +325,9 @@ func (m *mergingIterV2) nextEntry(level *mergingIterV2Level) {
 func (m *mergingIterV2) prevEntry(level *mergingIterV2Level) {
 	if invariants.Enabled && level != m.heap.Top() {
 		panic(errors.AssertionFailedf("level not the top"))
+	}
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		level.iterKV = nil
 	}
 	level.iterKV = level.iter.Prev()
 	if level.iterKV == nil {
@@ -351,6 +357,9 @@ func (m *mergingIterV2) First() (kv *base.InternalKV) {
 			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.First()
 			if level.iterKV == nil && m.levelHasError(level) {
 				return nil
@@ -393,6 +402,9 @@ func (m *mergingIterV2) seekGE(key []byte, flags base.SeekGEFlags) {
 				// The level could be positioned in an arbitrary place, so we need to do
 				// an absolute seek.
 				levelFlags = levelFlags.DisableTrySeekUsingNext()
+			}
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
 			}
 			if m.prefix != nil {
 				level.iterKV = level.iter.SeekPrefixGE(m.prefix, key, levelFlags)
@@ -535,6 +547,9 @@ func (m *mergingIterV2) advanceSlabForward() {
 	// on that level has no span keys, try to advance without rebuilding the slab.
 	// TODO(radu): we can relax these conditions to cover more cases.
 	if len(top.span.Keys) == 0 && !m.heap.MultipleLevelsAtSameBoundary() {
+		if treesteps.Enabled && treesteps.IsRecording(m) {
+			top.iterKV = nil
+		}
 		top.iterKV = top.iter.Next()
 		if top.iterKV == nil {
 			if m.levelHasError(top) {
@@ -597,6 +612,9 @@ func (m *mergingIterV2) advanceSlabForward() {
 			// Cross the boundary via Next(). This updates the level's
 			// stashed span pointer in place.
 			level.atBoundary = false
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Next()
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -607,6 +625,9 @@ func (m *mergingIterV2) advanceSlabForward() {
 			flags := base.SeekGEFlagsNone
 			if level.onlyFwdSinceParked {
 				flags = flags.EnableTrySeekUsingNext()
+			}
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
 			}
 			if m.prefix != nil {
 				level.iterKV = level.iter.SeekPrefixGE(m.prefix, boundaryKey, flags)
@@ -699,6 +720,9 @@ func (m *mergingIterV2) seekLT(key []byte, flags base.SeekLTFlags) {
 			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.SeekLT(key, flags)
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -725,6 +749,9 @@ func (m *mergingIterV2) Last() (kv *base.InternalKV) {
 			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Last()
 			if level.iterKV == nil && m.levelHasError(level) {
 				return nil
@@ -798,6 +825,9 @@ func (m *mergingIterV2) advanceSlabBackward() {
 	// on that level has no span keys, try to advance without rebuilding the slab.
 	// TODO(radu): we can relax these conditions to cover more cases.
 	if len(top.span.Keys) == 0 && !m.heap.MultipleLevelsAtSameBoundary() {
+		if treesteps.Enabled && treesteps.IsRecording(m) {
+			top.iterKV = nil
+		}
 		top.iterKV = top.iter.Prev()
 		if top.iterKV == nil {
 			if m.levelHasError(top) {
@@ -860,12 +890,18 @@ func (m *mergingIterV2) advanceSlabBackward() {
 			// Cross the boundary via Prev(). This updates the level's
 			// stashed span pointer in place.
 			level.atBoundary = false
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Prev()
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
 			}
 		} else if wasParked {
 			// Unpark: seek to before slab boundary.
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.SeekLT(boundaryKey, base.SeekLTFlagsNone)
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -906,6 +942,9 @@ func (m *mergingIterV2) switchToMinHeapAndNext() *base.InternalKV {
 		}
 		if level.parked {
 			level.parked = false
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.SeekGE(key.UserKey, base.SeekGEFlagsNone)
 		} else {
 			level.iterKV = level.iter.Next()
@@ -916,7 +955,13 @@ func (m *mergingIterV2) switchToMinHeapAndNext() *base.InternalKV {
 		// invisible in the end), so a Prev followed by a Next might not return us
 		// to the same place.
 		for level.iterKV != nil && base.InternalCompare(m.heap.cmp, level.iterKV.K, key) <= 0 {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Next()
+		}
+		if treesteps.Enabled && treesteps.IsRecording(m) {
+			level.iterKV = nil
 		}
 		if level.iterKV == nil && m.levelHasError(level) {
 			return nil
@@ -952,6 +997,9 @@ func (m *mergingIterV2) switchToMaxHeapAndPrev() *base.InternalKV {
 			level.iterKV = nil
 			continue
 		}
+		if treesteps.Enabled && treesteps.IsRecording(m) {
+			level.iterKV = nil
+		}
 		if level.parked {
 			level.parked = false
 			level.iterKV = level.iter.SeekLT(key.UserKey, base.SeekLTFlagsNone)
@@ -963,6 +1011,9 @@ func (m *mergingIterV2) switchToMaxHeapAndPrev() *base.InternalKV {
 		// will make them invisible in the end), so a Next followed by a Prev might
 		// not return us to the same place.
 		for level.iterKV != nil && base.InternalCompare(m.heap.cmp, level.iterKV.K, key) >= 0 {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Prev()
 		}
 		if level.iterKV == nil && m.levelHasError(level) {
