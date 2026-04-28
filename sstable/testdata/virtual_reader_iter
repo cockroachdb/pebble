@@ -75,13 +75,13 @@ virtualize lower=dd#5,SET upper=ddd#6,SET
 bounds:  [dd#5,SET-ddd#6,SET]
 
 # Check lower bound enforcement during SeekPrefixGE.
+# With strict prefix matching, seek for prefix "dd" finds "dd" but stops before
+# "ddd" (different prefix).
 iter
-seek-prefix-ge d
-next
+seek-prefix-ge dd
 next
 ----
 <dd:5>:dd
-<ddd:6>:ddd
 .
 
 # Build a simpler sstable for the rest of the tests.
@@ -290,13 +290,13 @@ virtualize lower=dd#5,SET upper=ddd#6,SET
 bounds:  [dd#5,SET-ddd#6,SET]
 
 # Check lower bound enforcement during SeekPrefixGE.
+# With strict prefix matching, seek for prefix "dd" finds "dd" but stops before
+# "ddd" (different prefix).
 iter
-seek-prefix-ge d
-next
+seek-prefix-ge dd
 next
 ----
 <dd:5>:dd
-<ddd:6>:ddd
 .
 
 # Build a simpler sstable for the rest of the tests.
