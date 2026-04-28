@@ -12,8 +12,39 @@ import (
 
 // Data is a type constraint for implementations of block iterators over data
 // blocks. It's implemented by *rowblk.Iter and *colblk.DataBlockIter.
+//
+// Unlike base.InternalIterator, a data block iterator does not support
+// SeekPrefixGE, SetBounds, or SetContext — those are handled at a higher level
+// by the sstable iterator.
 type Data interface {
-	base.InternalIterator
+	// SeekGE moves the iterator to the first key/value pair whose key is greater
+	// than or equal to the given key. Returns the key/value if the iterator is
+	// pointing at a valid entry, and nil otherwise.
+	SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV
+	// SeekLT moves the iterator to the last key/value pair whose key is less
+	// than the given key. Returns the key/value if the iterator is pointing at a
+	// valid entry, and nil otherwise.
+	SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV
+	// First moves the iterator to the first key/value pair. Returns the
+	// key/value if the iterator is pointing at a valid entry, and nil otherwise.
+	First() *base.InternalKV
+	// Last moves the iterator to the last key/value pair. Returns the key/value
+	// if the iterator is pointing at a valid entry, and nil otherwise.
+	Last() *base.InternalKV
+	// Next moves the iterator to the next key/value pair. Returns the key/value
+	// if the iterator is pointing at a valid entry, and nil otherwise.
+	Next() *base.InternalKV
+	// NextPrefix moves the iterator to the next key/value pair with a different
+	// prefix than the key at the current iterator position. succKey is the
+	// immediate successor to the current prefix key.
+	NextPrefix(succKey []byte) *base.InternalKV
+	// Prev moves the iterator to the previous key/value pair. Returns the
+	// key/value if the iterator is pointing at a valid entry, and nil otherwise.
+	Prev() *base.InternalKV
+	// Error returns any accumulated error.
+	Error() error
+	// Close closes the iterator, releasing any resources it holds.
+	Close() error
 
 	// Handle returns the handle to the block.
 	Handle() block.BufferHandle
@@ -38,7 +69,7 @@ type Data interface {
 	IsLowerBound(k []byte) bool
 	// Invalidate invalidates the block iterator, removing references to the
 	// block it was initialized with. The iterator may continue to be used after
-	// a call to Invalidate, but all positioning methods should return false.
+	// a call to Invalidate, but all positioning methods should return nil.
 	// Valid() must also return false.
 	Invalidate()
 	// IsDataInvalidated returns true when the iterator has been invalidated
@@ -47,6 +78,8 @@ type Data interface {
 	// NB: this is different from Valid which indicates whether the current *KV*
 	// is valid.
 	IsDataInvalidated() bool
+
+	treesteps.Node
 }
 
 // Index is an interface for implementations of block iterators over index
