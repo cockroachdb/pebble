@@ -205,6 +205,12 @@ type mergingIterV2 struct {
 	stats  *InternalIteratorStats
 
 	keyBuf []byte
+
+	// lastPrefixCopy stores a copy of the prefix from the most recent
+	// SeekPrefixGE call. It is used in invariants builds to verify that
+	// callers do not pass the same prefix when using TrySeekUsingNext (see
+	// SeekPrefixGEStrict).
+	lastPrefixCopy invariants.Value[[]byte]
 }
 
 var _ base.TopLevelIterator = (*mergingIterV2)(nil)
@@ -490,7 +496,8 @@ func (m *mergingIterV2) findNextEntry() *base.InternalKV {
 
 		if invariants.Enabled && m.prefix != nil {
 			if !bytes.Equal(m.prefix, m.split.Prefix(level.iterKV.K.UserKey)) {
-				panic(errors.AssertionFailedf("mergingIterV2: prefix violation: returning key without matching prefix"))
+				panic(errors.AssertionFailedf("mergingIterV2: prefix violation: returning key %q without matching prefix %q",
+					level.iterKV.K.UserKey, m.prefix))
 			}
 		}
 		m.addLevelStats(level)
@@ -625,6 +632,12 @@ func (m *mergingIterV2) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags)
 
 // SeekPrefixGEStrict implements base.TopLevelIterator. The V2 merging iterator
 // always filters keys by prefix, so this is identical to SeekPrefixGE.
+//
+// When flags.TrySeekUsingNext() is set, the caller MUST pass a prefix that
+// differs from the prefix supplied to the most recent SeekPrefixGE call.
+// Reusing the same prefix with TrySeekUsingNext is illegal and is checked in
+// invariants builds. This is a particularity of this iterator and not the
+// general base.InternalIterator contract.
 func (m *mergingIterV2) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
@@ -634,8 +647,25 @@ func (m *mergingIterV2) SeekPrefixGEStrict(
 			op.Finishf("= %s", kv.String())
 		}()
 	}
-	// TODO(radu): support TrySeekUsingNext.
-	flags = flags.DisableTrySeekUsingNext()
+	if invariants.Enabled {
+		if flags.TrySeekUsingNext() {
+			// Verify that the prefix is strictly greater than the last prefix. We can't
+			// use m.prefix, since it's a shallow copy that is no longer guaranteed to
+			// be stable.
+			//
+			// The reason we require this is that we otherwise can't tell if the
+			// iterator is already at the correct position for the seek key (in which
+			// case, re-seeking some levels could move them back; see the "iterator is
+			// already at the right position" case in SeekGE). Making that
+			// determination would require remembering a copy of the prefix or of the
+			// last point key.
+			if prev := m.lastPrefixCopy.Get(); prev == nil || bytes.Compare(prefix, prev) <= 0 {
+				panic(errors.AssertionFailedf(
+					"mergingIterV2.SeekPrefixGE(TrySeekUsingNext): prefix %q must be > previous %q", prefix, prev))
+			}
+		}
+		m.lastPrefixCopy.Set(append(m.lastPrefixCopy.Get()[:0], prefix...))
+	}
 	m.err = nil
 	m.prefix = prefix
 	m.seekGE(key, flags)
@@ -1017,6 +1047,9 @@ func (d *treestepsV2DummyNode) TreeStepsNode() treesteps.NodeInfo {
 // TreeStepsNode implements treesteps.Node.
 func (m *mergingIterV2) TreeStepsNode() treesteps.NodeInfo {
 	info := treesteps.NodeInfof(m, "mergingIterV2")
+	if m.err != nil {
+		info.AddPropf("ERROR", "%s", m.err)
+	}
 	if m.heap.Len() > 0 {
 		heapProp := crstrings.IfElse(m.heap.lessCmp == -1, "min heap", "max heap")
 		var str strings.Builder

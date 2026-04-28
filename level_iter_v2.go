@@ -494,14 +494,12 @@ func (l *levelIterV2) SeekPrefixGE(
 		if invariants.Enabled && (l.err != nil || l.dir != +1 || l.prefix == nil) {
 			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
 		}
-		l.prefixExhausted = false
 
-		if l.atSyntheticBoundary {
+		if atSyntheticBoundary {
 			if l.comparer.Compare(key, l.kv.K.UserKey) < 0 {
 				// We are still below the synthetic boundary.
-				if !l.comparer.HasPrefix(l.kv.K.UserKey, prefix) {
-					l.prefixExhausted = true
-				}
+				l.prefix = prefix
+				l.prefixExhausted = !l.comparer.HasPrefix(l.kv.K.UserKey, prefix)
 				return &l.kv
 			}
 			// We need to move past the synthetic boundary; files.Current() is the
@@ -528,6 +526,16 @@ func (l *levelIterV2) SeekPrefixGE(
 		return nil
 	}
 	if loadIndicator == newFileLoaded || atSyntheticBoundary {
+		// We can pass TrySeekUsingNext to the iterator only if we haven't changed
+		// the file and we are not at a synthetic boundary.
+		//
+		// If we are at a synthetic boundary, iterFile might coincidentally match
+		// the file we land on, but its iterator will be at an arbitrary position.
+		// For example, say we have a single file [b, c) with points b1, b2 and
+		// consider the sequence of operations
+		//   SeekGE(b2) -> b2; SeekGE(a) -> b#BOUNDARY; SeekGE(b1, TrySeekUsingNext) -> b1
+		// SeekGE(b2) loads the first file, then at the time of the last SeekGE the
+		// file is loaded but the iterator forward of the desired position.
 		flags = flags.DisableTrySeekUsingNext()
 	}
 	if kv := l.iter.SeekPrefixGE(prefix, key, flags); kv != nil {

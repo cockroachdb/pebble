@@ -742,3 +742,112 @@ d#4,SET:
 e#3,SET:
 n#8,SET:
 o#2,SET:
+
+# SeekPrefixGE with TrySeekUsingNext: sequential strictly-increasing prefixes
+# across multiple levels. Same-prefix TSUN is illegal per the contract.
+
+define
+L
+  a@5#20,SET a@1#19,SET d@3#18,SET d@1#17,SET h@2#16,SET
+L
+  b@4#10,SET b@1#9,SET e@5#8,SET g@2#7,SET
+L
+  c@3#5,SET d@2#4,SET h@9#3,SET h@1#2,SET
+----
+L0
+  a@5#20,SET
+  a@1#19,SET
+  d@3#18,SET
+  d@1#17,SET
+  h@2#16,SET
+L1
+  b@4#10,SET
+  b@1#9,SET
+  e@5#8,SET
+  g@2#7,SET
+L2
+  c@3#5,SET
+  d@2#4,SET
+  h@9#3,SET
+  h@1#2,SET
+
+iter
+seek-prefix-ge a@9
+seek-prefix-ge b@9 try-seek-using-next
+seek-prefix-ge c@9 try-seek-using-next
+seek-prefix-ge d@9 try-seek-using-next
+seek-prefix-ge e@9 try-seek-using-next
+seek-prefix-ge g@9 try-seek-using-next
+seek-prefix-ge h@9 try-seek-using-next
+seek-prefix-ge z@9 try-seek-using-next
+----
+a@5#20,SET:
+b@4#10,SET:
+c@3#5,SET:
+d@3#18,SET:
+e@5#8,SET:
+g@2#7,SET:
+h@9#3,SET:
+.
+
+# SeekPrefixGE with TSUN after a slab advance. Forward iteration parks some
+# levels; a subsequent TSUN prefix seek must unpark them correctly.
+
+define
+L
+  a@5#20,SET h@3#18,SET
+  b-g:{(#15,RANGEDEL)}
+L
+  c@4#10,SET d@2#9,SET e@1#8,SET h@5#7,SET
+----
+L0
+  a@5#20,SET
+  h@3#18,SET
+  b-g:{(#15,RANGEDEL)}
+L1
+  c@4#10,SET
+  d@2#9,SET
+  e@1#8,SET
+  h@5#7,SET
+
+iter
+seek-prefix-ge a@9
+next
+seek-prefix-ge h@9 try-seek-using-next
+next
+----
+a@5#20,SET:
+.
+h@5#7,SET:
+h@3#18,SET:
+
+# SeekPrefixGE with TSUN where target prefix is fully covered by RANGEDEL.
+
+define
+L
+  a@5#20,SET k@3#18,SET
+  d-h:{(#15,RANGEDEL)}
+L
+  b@4#10,SET e@5#8,SET e@2#7,SET f@1#6,SET k@9#5,SET
+----
+L0
+  a@5#20,SET
+  k@3#18,SET
+  d-h:{(#15,RANGEDEL)}
+L1
+  b@4#10,SET
+  e@5#8,SET
+  e@2#7,SET
+  f@1#6,SET
+  k@9#5,SET
+
+iter
+seek-prefix-ge a@9
+seek-prefix-ge b@9 try-seek-using-next
+seek-prefix-ge e@9 try-seek-using-next
+seek-prefix-ge k@9 try-seek-using-next
+----
+a@5#20,SET:
+b@4#10,SET:
+.
+k@9#5,SET:

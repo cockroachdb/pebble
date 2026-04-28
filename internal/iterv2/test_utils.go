@@ -74,6 +74,15 @@ type CheckIterConfig struct {
 	KeyGenConfig KeyGenConfig
 	OpWeights    TestOpWeights
 	NumOps       int
+	// RequirePrefixChangeForTrySeekUsingNext, when true, requires that
+	// SeekPrefixGE(TrySeekUsingNext) be called with a prefix that differs from
+	// the prefix of the most recent SeekPrefixGE.
+	//
+	// This flag should not be used with general iterv2.Iter implementations which
+	// must support TrySeekUsingNext without changing the prefix. It is used to
+	// test mergingIterV2 which is not an iterv2.Iter (but uses the iterv2 testing
+	// infrastructure).
+	RequirePrefixChangeForTrySeekUsingNext bool
 }
 
 // CheckIter constructs a TestIter with the given points and spans and runs
@@ -98,6 +107,9 @@ func CheckIter(t TB, rng *rand.Rand, cfg CheckIterConfig, expected TestIterData,
 
 	testIter := NewTestIter(expected)
 	checkIter := NewOpCheckIter(testIter, cmp, lower, upper)
+	if cfg.RequirePrefixChangeForTrySeekUsingNext {
+		checkIter.RequirePrefixChangeForTrySeekUsingNext()
+	}
 	logIter := NewLoggingIter(iter)
 	defer func() {
 		_ = checkIter.Close()
