@@ -292,6 +292,11 @@ const SeekGEFlagsNone = SeekGEFlags(0)
 // is not necessarily cheap, and there may be many iterators in the iterator
 // stack. Doing it once at the root of the iterator stack is cheaper.
 //
+// TrySeekUsingNext must only be used within same-type seek sequences: SeekGE
+// after SeekGE, or SeekPrefixGE after SeekPrefixGE. Cross-type usage (e.g.
+// SeekGE with TrySeekUsingNext after SeekPrefixGE, or vice versa) is not
+// supported.
+//
 // This optimization could also be applied to SeekLT (where it would be
 // trySeekUsingPrev). We currently only do it for SeekPrefixGE and SeekGE
 // because this is where this optimization helps the performance of CockroachDB.
