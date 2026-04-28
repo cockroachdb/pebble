@@ -178,18 +178,21 @@ func (s *sstableT) runCheck(cmd *cobra.Command, args []string) {
 	s.foreachSstable(stderr, args, func(path string, r *sstable.Reader, props sstable.Properties) {
 		fmt.Fprintf(stdout, "%s\n", path)
 
+		if err := r.ValidateBlockChecksums(); err != nil {
+			fmt.Fprintf(stdout, "  checksum validation failed: %s\n", err)
+		}
+
 		// Update the internal formatter if this comparator has one specified.
 		s.fmtKey.setForComparer(props.ComparerName, s.comparers)
 		s.fmtValue.setForComparer(props.ComparerName, s.comparers)
 
-		iter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.AssertNoBlobHandles)
+		iter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.DebugHandlesBlobContext)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return
 		}
 
-		// Verify that SeekPrefixGE can find every key in the table.
-		prefixIter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.AssertNoBlobHandles)
+		prefixIter, err := r.NewIter(sstable.NoTransforms, nil, nil, sstable.DebugHandlesBlobContext)
 		if err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return

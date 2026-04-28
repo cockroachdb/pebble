@@ -50,3 +50,8 @@ sstable check
 testdata/bad-magic-sst/000015.sst
 ----
 000015.sst: pebble/table: invalid table 000015: (bad magic number: 0xf6cff485b741e288)
+
+sstable check
+testdata/find-val-sep-db/000005.sst
+----
+000005.sst
