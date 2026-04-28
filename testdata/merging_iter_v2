@@ -627,3 +627,118 @@ a#20,SET:
 b#10,SET:
 h#18,SET:
 i#5,SET:
+
+# SeekGE with TrySeekUsingNext: forward sequence across multiple levels with
+# no spans. Each TSUN seek must produce the same result as a fresh SeekGE.
+
+define
+L
+  a#20,SET d#18,SET g#16,SET k#14,SET
+L
+  b#10,SET e#8,SET h#6,SET m#4,SET
+L
+  c#5,SET f#4,SET i#3,SET n#2,SET
+----
+L0
+  a#20,SET
+  d#18,SET
+  g#16,SET
+  k#14,SET
+L1
+  b#10,SET
+  e#8,SET
+  h#6,SET
+  m#4,SET
+L2
+  c#5,SET
+  f#4,SET
+  i#3,SET
+  n#2,SET
+
+iter
+seek-ge a
+seek-ge c try-seek-using-next
+seek-ge f try-seek-using-next
+seek-ge h try-seek-using-next
+seek-ge l try-seek-using-next
+seek-ge n try-seek-using-next
+----
+a#20,SET:
+c#5,SET:
+f#4,SET:
+h#6,SET:
+m#4,SET:
+n#2,SET:
+
+# SeekGE with TSUN crossing RANGEDEL coverage: L0 RANGEDEL [d, h) shadows L1
+# entries inside the range. TSUN seeks must still respect the deletion.
+
+define
+L
+  a#20,SET h#18,SET
+  d-h:{(#15,RANGEDEL)}
+L
+  b#10,SET e#8,SET f#7,SET g#6,SET i#5,SET
+----
+L0
+  a#20,SET
+  h#18,SET
+  d-h:{(#15,RANGEDEL)}
+L1
+  b#10,SET
+  e#8,SET
+  f#7,SET
+  g#6,SET
+  i#5,SET
+
+iter
+seek-ge a
+seek-ge b try-seek-using-next
+seek-ge d try-seek-using-next
+seek-ge e try-seek-using-next
+seek-ge h try-seek-using-next
+----
+a#20,SET:
+b#10,SET:
+h#18,SET:
+h#18,SET:
+h#18,SET:
+
+# SeekGE with TSUN where only some levels are at/past the seek key. Levels
+# behind the seek key may be parked; the per-level TrySeekUsingNext flag
+# handling must produce a correct merged result.
+
+define
+L
+  a#20,SET m#18,SET
+L
+  b#10,SET n#8,SET
+L
+  c#5,SET d#4,SET e#3,SET o#2,SET
+----
+L0
+  a#20,SET
+  m#18,SET
+L1
+  b#10,SET
+  n#8,SET
+L2
+  c#5,SET
+  d#4,SET
+  e#3,SET
+  o#2,SET
+
+iter
+first
+next
+seek-ge d try-seek-using-next
+next
+seek-ge n try-seek-using-next
+next
+----
+a#20,SET:
+b#10,SET:
+d#4,SET:
+e#3,SET:
+n#8,SET:
+o#2,SET:
