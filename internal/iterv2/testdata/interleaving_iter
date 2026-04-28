@@ -377,10 +377,10 @@ a#10,SET, d#4,SET, h#6,SET
 
 define-spans
 c-f:{(#5,RANGEDEL)}
-f-j:{(#3,RANGEKEYDEL)}
+f-j:{(#3,RANGEDEL)}
 ----
 c-f:{(#5,RANGEDEL)}
-f-j:{(#3,RANGEKEYDEL)}
+f-j:{(#3,RANGEDEL)}
 
 iter lower=a upper=z
 seek-ge a
@@ -395,8 +395,8 @@ seek-ge a: a#10,SET [?, c):{}
 next:      c#inf,BDRY [?, c):{}
 next:      d#4,SET [?, f):{(#5,RANGEDEL)}
 next:      f#inf,BDRY [?, f):{(#5,RANGEDEL)}
-next:      h#6,SET [?, j):{(#3,RANGEKEYDEL)}
-next:      j#inf,BDRY [?, j):{(#3,RANGEKEYDEL)}
+next:      h#6,SET [?, j):{(#3,RANGEDEL)}
+next:      j#inf,BDRY [?, j):{(#3,RANGEDEL)}
 next:      z#inf,BDRY [?, z):{}
 
 iter lower=a upper=z
@@ -409,8 +409,8 @@ prev
 prev
 ----
 seek-lt z: j#inf,BDRY [j, ?):{}
-prev:      h#6,SET [f, ?):{(#3,RANGEKEYDEL)}
-prev:      f#inf,BDRY [f, ?):{(#3,RANGEKEYDEL)}
+prev:      h#6,SET [f, ?):{(#3,RANGEDEL)}
+prev:      f#inf,BDRY [f, ?):{(#3,RANGEDEL)}
 prev:      d#4,SET [c, ?):{(#5,RANGEDEL)}
 prev:      c#inf,BDRY [c, ?):{(#5,RANGEDEL)}
 prev:      a#10,SET [a, ?):{}
@@ -559,10 +559,10 @@ a#10,SET
 
 define-spans
 c-g:{(#5,RANGEDEL)}
-g-j:{(#3,RANGEKEYDEL)}
+g-j:{(#3,RANGEDEL)}
 ----
 c-g:{(#5,RANGEDEL)}
-g-j:{(#3,RANGEKEYDEL)}
+g-j:{(#3,RANGEDEL)}
 
 iter lower=a upper=z
 seek-ge a
@@ -738,3 +738,255 @@ next:        d#4,SET [?, g):{(#5,RANGEDEL)}
 next:        g#inf,BDRY [?, g):{(#5,RANGEDEL)}
 next:        h#6,SET [?, z):{}
 next:        z#inf,BDRY [?, z):{}
+
+# SeekGE with TrySeekUsingNext.
+
+define-points
+a#10,SET
+c#5,SET
+e#2,SET
+h#6,SET
+----
+a#10,SET, c#5,SET, e#2,SET, h#6,SET
+
+define-spans
+c-g:{(#5,RANGEDEL)}
+----
+c-g:{(#5,RANGEDEL)}
+
+# Sequential forward seeks using try-seek-using-next.
+iter lower=a upper=z
+seek-ge a
+seek-ge b try-seek-using-next
+seek-ge c try-seek-using-next
+seek-ge d try-seek-using-next
+seek-ge f try-seek-using-next
+seek-ge g try-seek-using-next
+seek-ge h try-seek-using-next
+seek-ge z try-seek-using-next
+----
+seek-ge a:                     a#10,SET [?, c):{}
+seek-ge b try-seek-using-next: c#inf,BDRY [?, c):{}
+seek-ge c try-seek-using-next: c#5,SET [?, g):{(#5,RANGEDEL)}
+seek-ge d try-seek-using-next: e#2,SET [?, g):{(#5,RANGEDEL)}
+seek-ge f try-seek-using-next: g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+seek-ge g try-seek-using-next: h#6,SET [?, z):{}
+seek-ge h try-seek-using-next: h#6,SET [?, z):{}
+seek-ge z try-seek-using-next: .
+
+# try-seek-using-next with Next interleaved.
+iter lower=a upper=z
+seek-ge a
+next
+seek-ge d try-seek-using-next
+next
+next
+seek-ge h try-seek-using-next
+----
+seek-ge a:                     a#10,SET [?, c):{}
+next:                          c#inf,BDRY [?, c):{}
+seek-ge d try-seek-using-next: e#2,SET [?, g):{(#5,RANGEDEL)}
+next:                          g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+next:                          h#6,SET [?, z):{}
+seek-ge h try-seek-using-next: h#6,SET [?, z):{}
+
+# SeekPrefixGE.
+
+define-points
+a@3#10,SET
+a@1#8,SET
+b@5#7,SET
+b@2#6,SET
+d@4#5,SET
+d@1#4,SET
+h@3#3,SET
+----
+a@3#10,SET, a@1#8,SET, b@5#7,SET, b@2#6,SET, d@4#5,SET, d@1#4,SET, h@3#3,SET
+
+define-spans
+c-g:{(#5,RANGEDEL)}
+----
+c-g:{(#5,RANGEDEL)}
+
+# Basic seek-prefix-ge within a gap (before the span).
+iter lower=a upper=z
+seek-prefix-ge a@3
+next
+next
+----
+seek-prefix-ge a@3: a@3#10,SET [?, c):{}
+next:               a@1#8,SET [?, c):{}
+next:               c#inf,BDRY [?, c):{}
+
+# seek-prefix-ge into a span.
+iter lower=a upper=z
+seek-prefix-ge d@4
+next
+next
+----
+seek-prefix-ge d@4: d@4#5,SET [?, g):{(#5,RANGEDEL)}
+next:               d@1#4,SET [?, g):{(#5,RANGEDEL)}
+next:               g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+
+# seek-prefix-ge with prefix that doesn't exist.
+iter lower=a upper=z
+seek-prefix-ge f@1
+----
+seek-prefix-ge f@1: g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+
+# seek-prefix-ge at prefix that straddles a span boundary.
+# Prefix "b" has points before the span; next should exhaust at span boundary
+# (the boundary has a different prefix).
+iter lower=a upper=z
+seek-prefix-ge b@5
+next
+next
+----
+seek-prefix-ge b@5: b@5#7,SET [?, c):{}
+next:               b@2#6,SET [?, c):{}
+next:               c#inf,BDRY [?, c):{}
+
+# seek-prefix-ge for prefix entirely after the span.
+iter lower=a upper=z
+seek-prefix-ge h@3
+next
+----
+seek-prefix-ge h@3: h@3#3,SET [?, z):{}
+next:               z#inf,BDRY [?, z):{}
+
+# SeekPrefixGE with TrySeekUsingNext.
+
+# Sequential seek-prefix-ge with try-seek-using-next, same prefix.
+iter lower=a upper=z
+seek-prefix-ge a@3
+seek-prefix-ge a@1 try-seek-using-next
+next
+----
+seek-prefix-ge a@3:                     a@3#10,SET [?, c):{}
+seek-prefix-ge a@1 try-seek-using-next: a@1#8,SET [?, c):{}
+next:                                   c#inf,BDRY [?, c):{}
+
+# Sequential seek-prefix-ge with try-seek-using-next, different prefixes.
+iter lower=a upper=z
+seek-prefix-ge a@3
+seek-prefix-ge b@5 try-seek-using-next
+seek-prefix-ge d@4 try-seek-using-next
+next
+seek-prefix-ge h@3 try-seek-using-next
+----
+seek-prefix-ge a@3:                     a@3#10,SET [?, c):{}
+seek-prefix-ge b@5 try-seek-using-next: b@5#7,SET [?, c):{}
+seek-prefix-ge d@4 try-seek-using-next: d@4#5,SET [?, g):{(#5,RANGEDEL)}
+next:                                   d@1#4,SET [?, g):{(#5,RANGEDEL)}
+seek-prefix-ge h@3 try-seek-using-next: h@3#3,SET [?, z):{}
+
+# Sequential seek-prefix-ge with try-seek-using-next, different prefixes; seek
+# after hitting boundary.
+iter lower=a upper=z
+seek-prefix-ge a@3
+next
+next
+seek-prefix-ge b@5 try-seek-using-next
+next
+next
+seek-prefix-ge d@4 try-seek-using-next
+next
+next
+seek-prefix-ge h@3 try-seek-using-next
+next
+seek-prefix-ge u@3 try-seek-using-next
+next
+----
+seek-prefix-ge a@3:                     a@3#10,SET [?, c):{}
+next:                                   a@1#8,SET [?, c):{}
+next:                                   c#inf,BDRY [?, c):{}
+seek-prefix-ge b@5 try-seek-using-next: b@5#7,SET [?, c):{}
+next:                                   b@2#6,SET [?, c):{}
+next:                                   c#inf,BDRY [?, c):{}
+seek-prefix-ge d@4 try-seek-using-next: d@4#5,SET [?, g):{(#5,RANGEDEL)}
+next:                                   d@1#4,SET [?, g):{(#5,RANGEDEL)}
+next:                                   g#inf,BDRY [?, g):{(#5,RANGEDEL)}
+seek-prefix-ge h@3 try-seek-using-next: h@3#3,SET [?, z):{}
+next:                                   z#inf,BDRY [?, z):{}
+seek-prefix-ge u@3 try-seek-using-next: z#inf,BDRY [?, z):{}
+next:                                   .
+
+iter
+seek-prefix-ge h@3
+next
+seek-prefix-ge u@3 try-seek-using-next
+----
+seek-prefix-ge h@3:                     h@3#3,SET [?, ∞):{}
+next:                                   .
+seek-prefix-ge u@3 try-seek-using-next: .
+
+# SeekGE with TrySeekUsingNext across multiple adjacent spans. Exercises
+# nextSpan() advancement when the prior pos has crossed past the previously
+# known span.
+
+define-points
+a#10,SET
+d#8,SET
+i#6,SET
+n#4,SET
+----
+a#10,SET, d#8,SET, i#6,SET, n#4,SET
+
+define-spans
+b-e:{(#9,RANGEDEL)}
+f-k:{(#7,RANGEDEL)}
+m-p:{(#5,RANGEDEL)}
+----
+b-e:{(#9,RANGEDEL)}
+f-k:{(#7,RANGEDEL)}
+m-p:{(#5,RANGEDEL)}
+
+iter lower=a upper=z
+seek-ge a
+seek-ge c try-seek-using-next
+seek-ge e try-seek-using-next
+seek-ge g try-seek-using-next
+seek-ge l try-seek-using-next
+seek-ge n try-seek-using-next
+seek-ge p try-seek-using-next
+----
+seek-ge a:                     a#10,SET [?, b):{}
+seek-ge c try-seek-using-next: d#8,SET [?, e):{(#9,RANGEDEL)}
+seek-ge e try-seek-using-next: f#inf,BDRY [?, f):{}
+seek-ge g try-seek-using-next: i#6,SET [?, k):{(#7,RANGEDEL)}
+seek-ge l try-seek-using-next: m#inf,BDRY [?, m):{}
+seek-ge n try-seek-using-next: n#4,SET [?, p):{(#5,RANGEDEL)}
+seek-ge p try-seek-using-next: z#inf,BDRY [?, z):{}
+
+# NextPrefix internally uses TrySeekUsingNext when re-positioning the span
+# iterator. Verify behavior across a span boundary.
+
+define-points
+a@3#10,SET
+a@1#8,SET
+c@2#7,SET
+e@4#6,SET
+e@1#5,SET
+h@3#3,SET
+----
+a@3#10,SET, a@1#8,SET, c@2#7,SET, e@4#6,SET, e@1#5,SET, h@3#3,SET
+
+define-spans
+b-f:{(#5,RANGEDEL)}
+----
+b-f:{(#5,RANGEDEL)}
+
+iter lower=a upper=z
+seek-ge a@3
+next-prefix
+next
+next-prefix
+next-prefix
+next
+----
+seek-ge a@3: a@3#10,SET [?, b):{}
+next-prefix: b#inf,BDRY [?, b):{}
+next:        c@2#7,SET [?, f):{(#5,RANGEDEL)}
+next-prefix: e@4#6,SET [?, f):{(#5,RANGEDEL)}
+next-prefix: f#inf,BDRY [?, f):{(#5,RANGEDEL)}
+next:        h@3#3,SET [?, z):{}
