@@ -36,8 +36,11 @@ type Key interface {
 // need to store the ValueRef in a closure (to Unref() it after a later
 // FindOrCreate() call).
 //
-// It is guaranteed that there will be no concurrent calls to InitValueFn() with
-// the same key.
+// InitValueFn may be called concurrently for the same key (for example, if the
+// key was evicted from the cache while a previous initialization was still in
+// progress). The cache stores at most one value per key at any point in time;
+// values produced by losing concurrent initializations are released through the
+// normal ref-counting path once the caller drops its ValueRef.
 type InitValueFn[K Key, V any, InitOpts any] func(context.Context, K, InitOpts, ValueRef[K, V, InitOpts]) error
 
 // ReleaseValueFn is called to release a value that is no longer used
