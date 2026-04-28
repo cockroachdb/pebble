@@ -14,13 +14,28 @@ import (
 // blocks. It's implemented by *rowblk.Iter and *colblk.DataBlockIter.
 //
 // Unlike base.InternalIterator, a data block iterator does not support
-// SeekPrefixGE, SetBounds, or SetContext — those are handled at a higher level
-// by the sstable iterator.
+// SetBounds or SetContext — those are handled at a higher level by the sstable
+// iterator.
 type Data interface {
 	// SeekGE moves the iterator to the first key/value pair whose key is greater
 	// than or equal to the given key. Returns the key/value if the iterator is
 	// pointing at a valid entry, and nil otherwise.
 	SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV
+	// SeekPrefixGE behaves like SeekGE but only returns a KV if the key's prefix
+	// matches the seke key's prefix. Otherwise, it indicates whether there was a
+	// prefix mismatch or there were no keys.
+	//
+	// Returns:
+	//   - (kv, false) if a key with the same prefix as the seek key was found.
+	//   - (nil, true) if a key ≥ the seek key was found but its prefix differs
+	//     from the seek key's prefix. The iterator IS positioned at that key
+	//     (KV()/Valid() reflect it), so callers may use TrySeekUsingNext on a
+	//     subsequent seek.
+	//   - (nil, false) if there is no key ≥ the seek key in the block.
+	//
+	// SeekPrefixGE allows NextWithSamePrefix as a follow-up call (see
+	// NextWithSamePrefix's contract).
+	SeekPrefixGE(key []byte, flags base.SeekGEFlags) (kv *base.InternalKV, prefixDidNotMatch bool)
 	// SeekLT moves the iterator to the last key/value pair whose key is less
 	// than the given key. Returns the key/value if the iterator is pointing at a
 	// valid entry, and nil otherwise.
@@ -34,6 +49,16 @@ type Data interface {
 	// Next moves the iterator to the next key/value pair. Returns the key/value
 	// if the iterator is pointing at a valid entry, and nil otherwise.
 	Next() *base.InternalKV
+	// NextWithSamePrefix moves the iterator to the next key/value pair, but
+	// only if the next key shares the same prefix as the current key.
+	//
+	// Returns:
+	//   - (kv, false) if the new key has the same prefix as the current key.
+	//   - (nil, true) if the next key has a different prefix. The iterator
+	//     IS positioned at that new-prefix key — KV() materializes it lazily,
+	//     enabling subsequent TrySeekUsingNext optimizations.
+	//   - (nil, false) if there are no more keys (similar to Next returning nil).
+	NextWithSamePrefix() (kv *base.InternalKV, prefixExhausted bool)
 	// NextPrefix moves the iterator to the next key/value pair with a different
 	// prefix than the key at the current iterator position. succKey is the
 	// immediate successor to the current prefix key.

@@ -73,6 +73,17 @@ func BenchmarkDataBlockIter(b *testing.B) {
 		}
 	})
 
+	b.Run("SeekPrefixGE", func(b *testing.B) {
+		idx := 0
+		for b.Loop() {
+			it.SeekPrefixGE(shuffled[idx], base.SeekGEFlagsNone)
+			idx++
+			if idx == len(shuffled) {
+				idx = 0
+			}
+		}
+	})
+
 	b.Run("SeekGE-TrySeekUsingNext", func(b *testing.B) {
 		// Walk forward through prefixes monotonically, resetting with a plain
 		// SeekGE when wrapping back to the beginning.
