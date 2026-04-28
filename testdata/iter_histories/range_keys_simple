@@ -352,6 +352,7 @@ L0.1:
   000008:[b#2120,RANGEKEYSET-z#inf,RANGEKEYSET]
 L0.0:
   000006:[a@100#12,SET-zz@1#2113,SET]
+Range key set regions: [b, e)=2 [e, z)=1
 
 scan-rangekeys
 ----
@@ -449,6 +450,7 @@ rangekey:b-d:{(#5,RANGEKEYSET,@2,foo)}
 ----
 L6:
   000004:[a#3,RANGEDEL-z#inf,RANGEDEL]
+Range key set regions: [b, d)=1
 
 combined-iter
 seek-lt apple

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
@@ -1050,7 +1051,7 @@ func (m *mergingIter) String() string {
 // or equal to the lower bound.
 func (m *mergingIter) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(m) {
-		op := treesteps.StartOpf(m, "SeekGE(%q, %d)", key, flags)
+		op := treesteps.StartOpf(m, "SeekGE(%q%s)", key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
@@ -1074,7 +1075,7 @@ func (m *mergingIter) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(m) {
-		op := treesteps.StartOpf(m, "SeekPrefixGE(%q, %q, %d)", prefix, key, flags)
+		op := treesteps.StartOpf(m, "SeekPrefixGE(%q, %q%s)", prefix, key, crstrings.If(flags != 0, ", "+flags.String()))
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()

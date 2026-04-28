@@ -168,12 +168,26 @@ type TableMetadata struct {
 	// file must be part of a compaction to Lbase.
 	IsIntraL0Compacting bool
 	CompactionState     CompactionState
-	// HasPointKeys tracks whether the table contains point keys (including
-	// RANGEDELs). If a table contains only range deletions, HasPointsKeys is
-	// still true.
+	// HasPointKeys tracks whether the table (possibly) contains point keys
+	// (including RANGEDELs). If a table contains only range deletions,
+	// HasPointsKeys is still true.
+	//
+	// For virtual tables, it can be true even if no point keys are visible in the
+	// virtual table.
 	HasPointKeys bool
-	// HasRangeKeys tracks whether the table contains any range keys.
+	// HasRangeKeys tracks whether the table (possibly) contains any range keys.
+	//
+	// For virtual tables, it can be true even if no range keys are visible in the
+	// virtual table.
+	//
+	// Equivalent to RangeKeyKinds != NoRangeKeys; kept as a separate convenience
+	// field for symmetry with HasPointKeys.
 	HasRangeKeys bool
+	// RangeKeyKinds describes which kinds of range keys may be present in the
+	// table. In some cases (older manifests, external/virtual tables) we don't
+	// have full information; in those cases AnyRangeKeys is used as a defensive
+	// default whenever the table is known to have range keys.
+	RangeKeyKinds RangeKeyKinds
 	// Virtual is true if the TableMetadata belongs to a virtual sstable.
 	Virtual bool
 	// boundsSet track whether the overall bounds have been set.
@@ -188,6 +202,36 @@ type TableMetadata struct {
 	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
 	// suffixes in a table; used for some virtual tables.
 	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
+}
+
+// RangeKeyKinds describes which kinds of range keys may be present in a table.
+type RangeKeyKinds uint8
+
+const (
+	// NoRangeKeys indicates that the table contains no range keys.
+	NoRangeKeys RangeKeyKinds = iota
+	// OnlyRangeKeyUnsetAndDelete indicates that the table contains range keys,
+	// but only of the RANGEKEYUNSET and RANGEKEYDELETE kinds (no
+	// RANGEKEYSETs).
+	OnlyRangeKeyUnsetAndDelete
+	// AnyRangeKeys indicates that the table may contain range keys of any
+	// kind, including RANGEKEYSETs. This is the default when we don't know
+	// for sure (e.g. older manifests, external/virtual tables).
+	AnyRangeKeys
+)
+
+// String implements fmt.Stringer.
+func (r RangeKeyKinds) String() string {
+	switch r {
+	case NoRangeKeys:
+		return "NoRangeKeys"
+	case OnlyRangeKeyUnsetAndDelete:
+		return "OnlyRangeKeyUnsetAndDelete"
+	case AnyRangeKeys:
+		return "AnyRangeKeys"
+	default:
+		return fmt.Sprintf("RangeKeyKinds(%d)", uint8(r))
+	}
 }
 
 // Ref increments the table's ref count. If this is the table's first reference,
@@ -628,18 +672,30 @@ func (m *TableMetadata) ExtendPointKeyBounds(
 // ExtendRangeKeyBounds attempts to extend the lower and upper range key bounds
 // and overall table bounds with the given smallest and largest keys. The
 // smallest and largest bounds may not be extended if the table already has a
-// bound that is smaller or larger, respectively. The receiver is returned.
+// bound that is smaller or larger, respectively. The kinds describe which
+// range key kinds are (potentially) present in the new bounds; the resulting
+// RangeKeyKinds field is the maximum of the existing and new values, so a
+// later call cannot downgrade an existing AnyRangeKeys. Callers without
+// precise information should pass AnyRangeKeys defensively. The receiver is
+// returned.
 // NB: calling this method should be preferred to manually setting the bounds by
 // manipulating the fields directly, to maintain certain invariants.
 func (m *TableMetadata) ExtendRangeKeyBounds(
-	cmp Compare, smallest, largest InternalKey,
+	cmp Compare, kinds RangeKeyKinds, smallest, largest InternalKey,
 ) *TableMetadata {
+	if invariants.Enabled && kinds == NoRangeKeys {
+		panic(errors.AssertionFailedf("ExtendRangeKeyBounds called with NoRangeKeys"))
+	}
 	// Update the range key bounds.
 	if !m.HasRangeKeys {
 		m.RangeKeyBounds = &InternalKeyBounds{}
 		m.RangeKeyBounds.SetInternalKeyBounds(smallest, largest)
 		m.HasRangeKeys = true
+		m.RangeKeyKinds = kinds
 	} else {
+		if kinds > m.RangeKeyKinds {
+			m.RangeKeyKinds = kinds
+		}
 		isSmallestRange := base.InternalCompare(cmp, smallest, m.RangeKeyBounds.Smallest()) < 0
 		isLargestRange := base.InternalCompare(cmp, largest, m.RangeKeyBounds.Largest()) > 0
 		if isSmallestRange && isLargestRange {
@@ -833,6 +889,9 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 	if m.HasRangeKeys {
 		fmt.Fprintf(&b, " ranges:[%s-%s]",
 			m.RangeKeyBounds.Smallest().Pretty(format), m.RangeKeyBounds.Largest().Pretty(format))
+		if m.RangeKeyKinds == OnlyRangeKeyUnsetAndDelete {
+			fmt.Fprintf(&b, ";nosets")
+		}
 	}
 	if m.Size != 0 {
 		fmt.Fprintf(&b, " size:%d", m.Size)
@@ -923,6 +982,13 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 			m.RangeKeyBounds.SetInternalKeyBounds(smallest, p.InternalKey())
 			m.HasRangeKeys = true
 			p.Expect("]")
+			if !p.Done() && p.Peek() == ";" {
+				p.Expect(";", "nosets")
+				m.RangeKeyKinds = OnlyRangeKeyUnsetAndDelete
+			} else {
+				// Default: assume range key sets exist.
+				m.RangeKeyKinds = AnyRangeKeys
+			}
 
 		case "size":
 			m.Size = p.Uint64()
@@ -1036,6 +1102,15 @@ func (m *TableMetadata) Validate(cmp Compare, formatKey base.FormatKey) error {
 
 	// Range key validation.
 
+	if m.RangeKeyKinds > AnyRangeKeys {
+		return base.CorruptionErrorf("file %s has invalid RangeKeyKinds value %d",
+			errors.Safe(m.TableNum), uint8(m.RangeKeyKinds))
+	}
+	if m.HasRangeKeys != (m.RangeKeyKinds != NoRangeKeys) {
+		return base.CorruptionErrorf(
+			"file %s has inconsistent range key state: HasRangeKeys=%t, RangeKeyKinds=%s",
+			errors.Safe(m.TableNum), m.HasRangeKeys, m.RangeKeyKinds)
+	}
 	if m.HasRangeKeys {
 		if base.InternalCompare(cmp, m.RangeKeyBounds.Smallest(), m.RangeKeyBounds.Largest()) > 0 {
 			return base.CorruptionErrorf("file %s has inconsistent range key bounds: %s vs %s",

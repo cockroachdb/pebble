@@ -1,0 +1,161 @@
+// Copyright 2026 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
+package iterv2
+
+import (
+	"bytes"
+	"fmt"
+	"strings"
+	"testing"
+	"text/tabwriter"
+
+	"github.com/cockroachdb/crlib/crstrings"
+	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/testkeys"
+)
+
+func TestInterleavingIter(t *testing.T) {
+	var points []base.InternalKV
+	var spans []keyspan.Span
+	var iter InterleavingIter
+
+	datadriven.RunTest(t, "testdata/interleaving_iter", func(t *testing.T, d *datadriven.TestData) string {
+		switch d.Cmd {
+		case "define-points":
+			points = nil
+			for line := range crstrings.LinesSeq(d.Input) {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				k := base.ParseInternalKey(line)
+				points = append(points, base.InternalKV{K: k})
+			}
+			var buf strings.Builder
+			for i, kv := range points {
+				if i > 0 {
+					buf.WriteString(", ")
+				}
+				buf.WriteString(kv.K.String())
+			}
+			return buf.String()
+
+		case "define-spans":
+			spans = nil
+			for line := range crstrings.LinesSeq(d.Input) {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				spans = append(spans, keyspan.ParseSpan(line))
+			}
+			var buf strings.Builder
+			for i, s := range spans {
+				if i > 0 {
+					buf.WriteString("\n")
+				}
+				buf.WriteString(s.String())
+			}
+			return buf.String()
+
+		case "iter":
+			var start, end, lower, upper string
+			d.MaybeScanArgs(t, "start", &start)
+			d.MaybeScanArgs(t, "end", &end)
+			d.MaybeScanArgs(t, "lower", &lower)
+			d.MaybeScanArgs(t, "upper", &upper)
+			key := func(s string) []byte {
+				if s == "" {
+					return nil
+				}
+				return []byte(s)
+			}
+			pointIter := base.NewFakeIter(points)
+			spanIter := keyspan.NewIter(testkeys.Comparer.Compare, spans)
+			iter.Init(
+				testkeys.Comparer,
+				pointIter,
+				spanIter,
+				key(start), key(end),
+				key(lower), key(upper),
+			)
+			return runIterOps(t, &iter, d.Input)
+
+		default:
+			return fmt.Sprintf("unknown command: %s", d.Cmd)
+		}
+	})
+}
+
+func runIterOps(t *testing.T, iter Iter, input string) string {
+	t.Helper()
+	var lastKV *base.InternalKV
+	var buf bytes.Buffer
+	tw := tabwriter.NewWriter(&buf, 2, 1, 1, ' ', 0)
+	for line := range crstrings.LinesSeq(input) {
+		parts := strings.Fields(line)
+		cmd := parts[0]
+		fmt.Fprintf(tw, "%s:\t", line)
+
+		var kv *base.InternalKV
+		switch cmd {
+		case "first":
+			kv = iter.First()
+		case "last":
+			kv = iter.Last()
+		case "next":
+			kv = iter.Next()
+		case "prev":
+			kv = iter.Prev()
+		case "next-prefix":
+			if lastKV == nil || lastKV.K.Kind() == base.InternalKeyKindSpanBoundary {
+				t.Fatalf("next-prefix requires iterator to be positioned at point key")
+			}
+			prefix := testkeys.Comparer.Split.Prefix(lastKV.K.UserKey)
+			succKey := testkeys.Comparer.ImmediateSuccessor(nil, prefix)
+			kv = iter.NextPrefix(succKey)
+		case "seek-ge":
+			if len(parts) < 2 {
+				t.Fatalf("ERROR: seek-ge requires a key argument")
+			}
+			kv = iter.SeekGE([]byte(parts[1]), base.SeekGEFlagsNone)
+		case "seek-lt":
+			if len(parts) < 2 {
+				t.Fatalf("ERROR: seek-lt requires a key argument")
+			}
+			kv = iter.SeekLT([]byte(parts[1]), base.SeekLTFlagsNone)
+		case "set-bounds":
+			if len(parts) < 3 {
+				t.Fatalf("ERROR: set-bounds requires lower and upper args")
+			}
+			var lower, upper []byte
+			if parts[1] != "." {
+				lower = []byte(parts[1])
+			}
+			if parts[2] != "." {
+				upper = []byte(parts[2])
+			}
+			iter.SetBounds(lower, upper)
+			fmt.Fprintf(tw, "ok\n")
+			continue
+		default:
+			t.Fatalf("ERROR: unknown op %q", cmd)
+		}
+		if err := iter.Error(); err != nil {
+			fmt.Fprintf(tw, "err=%v\n", err)
+			continue
+		}
+		if kv == nil {
+			fmt.Fprintf(tw, ".\n")
+		} else {
+			fmt.Fprintf(tw, "%s %s\n", kv.K, iter.Span())
+		}
+		lastKV = kv
+	}
+	_ = tw.Flush()
+	return buf.String()
+}

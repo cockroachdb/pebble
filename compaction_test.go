@@ -894,12 +894,10 @@ func runCompactionTest(
 	defer leaktest.AfterTest(t)()
 
 	var d *DB
-	defer func() {
-		if d != nil {
-			require.NoError(t, closeAllSnapshots(d))
-			require.NoError(t, d.Close())
-		}
-	}()
+	// NB: d is closed explicitly at the end of this function, not via
+	// defer. If deferred, a td.Fatalf (runtime.Goexit) would run Close()
+	// while a compaction goroutine is still in flight, causing Close() to
+	// hang in cond.Wait(). See #5780.
 
 	seed := uint64(time.Now().UnixNano())
 	rng := rand.New(rand.NewPCG(0, seed))
@@ -1582,6 +1580,10 @@ func runCompactionTest(
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+	if d != nil {
+		require.NoError(t, closeAllSnapshots(d))
+		require.NoError(t, d.Close())
+	}
 }
 
 // TestCompaction tests compaction mechanics. It is a datadriven test, with
@@ -3356,6 +3358,7 @@ func TestTombstoneDensityCompactionMoveOptimization(t *testing.T) {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	// Create a file with high tombstone density.
 	meta := &manifest.TableMetadata{
@@ -3458,6 +3461,7 @@ func TestTombstoneDensityCompactionMoveOptimization_NoMoveWithOverlap(t *testing
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	// Create a file with high tombstone density in L4.
 	metaL4 := &manifest.TableMetadata{
@@ -3542,6 +3546,7 @@ func TestTombstoneDensityCompactionMoveOptimization_GrandparentOverlapTooLarge(t
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	// File in L4 with high tombstone density.
 	metaL4 := &manifest.TableMetadata{
@@ -3610,6 +3615,7 @@ func TestTombstoneDensityCompactionMoveOptimization_BelowDensityThreshold(t *tes
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	meta := &manifest.TableMetadata{
 		TableNum: 1,
@@ -3662,6 +3668,7 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 		return NewConcurrencyLimitSchedulerWithNoPeriodicGrantingForTest()
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 
 	meta := &manifest.TableMetadata{
 		TableNum: 1,

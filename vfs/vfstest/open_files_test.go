@@ -39,7 +39,7 @@ func TestOpenFiles(t *testing.T) {
 			return f
 		}},
 		{name: "OpenReadWrite", fn: func() vfs.File {
-			f, err := fs.Open("foo")
+			f, err := fs.OpenReadWrite("foo", vfs.WriteCategoryUnspecified)
 			require.NoError(t, err)
 			return f
 		}},

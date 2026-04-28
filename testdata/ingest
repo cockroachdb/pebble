@@ -67,7 +67,7 @@ ITERATORS
         file cache        |    filter   |    open     |    open
      entries |   hit rate | utilization |  sst iters  |  snapshots
 -------------+------------+-------------+-------------+------------
-    1 (304B) |      50.0% |        0.0% |           0 |           0
+    1 (304B) |      66.7% |        0.0% |           0 |           0
 
 FILES                 physical tables                 |                blob files
           |     local        shared        remote     |     local        shared        remote
@@ -783,6 +783,7 @@ lsm
 ----
 L6:
   000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
+Range key set regions: [d, g)=1
 
 build ext2
 range-key-set b e 1 val2
@@ -797,6 +798,7 @@ L0.0:
   000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
 L6:
   000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
+Range key set regions: [b, d)=1 [d, e)=2 [e, g)=1
 
 build ext3
 range-key-del a c
@@ -814,6 +816,7 @@ L0.0:
   000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
 L6:
   000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
+Range key set regions: [b, d)=1 [d, e)=2 [e, g)=1
 
 build ext4
 set a a
@@ -832,6 +835,7 @@ L0.0:
   000005:[b#11,RANGEKEYSET-e#inf,RANGEKEYSET]
 L6:
   000004:[d#10,RANGEKEYSET-g#inf,RANGEKEYSET]
+Range key set regions: [b, d)=1 [d, e)=2 [e, g)=1
 
 compact a aa
 ----
@@ -842,6 +846,7 @@ lsm
 ----
 L6:
   000008:[a#0,SET-g#inf,RANGEKEYSET]
+Range key set regions: [c, g)=1
 
 # Shouldn't show results for the b-c range as it must be deleted.
 iter
@@ -886,6 +891,7 @@ lsm
 L6:
   000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
   000004:[c#10,SET-e#10,SET]
+Range key set regions: [a, c)=1
 
 # The following test cases will test that files where the end bound is an
 # exclusive sentinel due to range keys are ingested into the correct levels.
@@ -903,6 +909,7 @@ L6:
   000005:[a#11,RANGEKEYSET-c#inf,RANGEKEYSET]
   000004:[c#10,SET-e#10,SET]
   000006:[f#12,SET-h#12,SET]
+Range key set regions: [a, c)=1
 
 
 build ext4
@@ -919,6 +926,7 @@ L6:
   000004:[c#10,SET-e#10,SET]
   000007:[eee#13,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
   000006:[f#12,SET-h#12,SET]
+Range key set regions: [a, c)=1
 
 build ext5
 range-key-set ee eee 1 val3
@@ -935,6 +943,7 @@ L6:
   000008:[ee#14,RANGEKEYSET-eee#inf,RANGEKEYSET]
   000007:[eee#13,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
   000006:[f#12,SET-h#12,SET]
+Range key set regions: [a, c)=1 [ee, eee)=1
 
 build ext6
 set x x
@@ -953,6 +962,7 @@ L6:
   000007:[eee#13,RANGEKEYUNSET-f#inf,RANGEKEYUNSET]
   000006:[f#12,SET-h#12,SET]
   000009:[x#15,SET-y#15,SET]
+Range key set regions: [a, c)=1 [ee, eee)=1
 
 build ext7
 range-key-del s x
@@ -971,6 +981,7 @@ L6:
   000006:[f#12,SET-h#12,SET]
   000010:[s#16,RANGEKEYDEL-x#inf,RANGEKEYDEL]
   000009:[x#15,SET-y#15,SET]
+Range key set regions: [a, c)=1 [ee, eee)=1
 
 reset enable-split
 ----

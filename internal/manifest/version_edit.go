@@ -62,15 +62,30 @@ const (
 	tagRemovedBackingTable = 106
 	tagNewBlobFile         = 107
 	tagDeletedBlobFile     = 108
+)
 
-	// The custom tags sub-format used by tagNewFile4 and above. All tags less
-	// than customTagNonSafeIgnoreMask are safe to ignore and their format must be
-	// a single bytes field.
-	customTagTerminate         = 1
-	customTagNeedsCompaction   = 2
-	customTagCreationTime      = 6
-	customTagPathID            = 65
+// Custom tags used by tagNewFile4 and above.
+const (
+	// customTagTerminate is a sentinel value used to indicate the end of the
+	// custom tags section.
+	customTagTerminate = 1
+
+	// Flags with values below customTagNonSafeIgnoreMask are safe to ignore;
+	// their format is always a single bytes field.
+
+	// customTagNeedsCompaction is deprecated.
+	customTagNeedsCompaction = 2
+	// customTagCreationTime contains the file creation time. The bytes value
+	// contains a 64-bit uvarint. See TableMetadata.CreationTime.
+	customTagCreationTime = 6
+	// customTagNoRangeKeySets appears when a file has range keys but is known to
+	// have no RANGEKEYSETs. The bytes value is empty. See
+	// TableMatadata.RangeKeyKinds.
+	customTagNoRangeKeySets = 7
+
+	// All custom tags below are not safe to ignore.
 	customTagNonSafeIgnoreMask = 1 << 6
+	customTagPathID            = 65
 	customTagVirtual           = 66
 	customTagSyntheticPrefix   = 67
 	customTagSyntheticSuffix   = 68
@@ -405,6 +420,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				virtual        bool
 				backingFileNum uint64
 			}{}
+			var noRangeKeySets bool
 			var syntheticPrefix sstable.SyntheticPrefix
 			var syntheticSuffix sstable.SyntheticSuffix
 			var blobReferences BlobReferences
@@ -445,6 +461,16 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						if n != len(field) {
 							return base.CorruptionErrorf("new-file4: invalid file creation time")
 						}
+
+					case customTagNoRangeKeySets:
+						field, err := d.readBytes()
+						if err != nil {
+							return err
+						}
+						if len(field) != 0 {
+							return base.CorruptionErrorf("new-file4: invalid no-range-key-sets value")
+						}
+						noRangeKeySets = true
 
 					case customTagPathID:
 						return base.CorruptionErrorf("new-file4: path-id field not supported")
@@ -543,6 +569,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				m.RangeKeyBounds.SetInternalKeyBounds(base.DecodeInternalKey(smallestRangeKey),
 					base.DecodeInternalKey(largestRangeKey))
 				m.HasRangeKeys = true
+				// Note that older encodings will not have the customTagNoRangeKeySets;
+				// in this case we have to assume that the table can contain any range
+				// keys (and accept the possibility of a false positive).
+				if noRangeKeySets {
+					m.RangeKeyKinds = OnlyRangeKeyUnsetAndDelete
+				} else {
+					m.RangeKeyKinds = AnyRangeKeys
+				}
 				// Set overall bounds (by default assume range keys).
 				m.boundTypeSmallest, m.boundTypeLargest = boundTypeRangeKey, boundTypeRangeKey
 				if boundsMarker&maskSmallest == maskSmallest {
@@ -884,7 +918,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewTables {
-		customFields := x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0
+		customFields := x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0 || x.Meta.RangeKeyKinds == OnlyRangeKeyUnsetAndDelete
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -934,6 +968,10 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 				var buf [binary.MaxVarintLen64]byte
 				n := binary.PutUvarint(buf[:], uint64(x.Meta.CreationTime))
 				e.writeBytes(buf[:n])
+			}
+			if x.Meta.RangeKeyKinds == OnlyRangeKeyUnsetAndDelete {
+				e.writeUvarint(customTagNoRangeKeySets)
+				e.writeBytes(nil)
 			}
 			if x.Meta.Virtual {
 				e.writeUvarint(customTagVirtual)
@@ -1306,6 +1344,7 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 	v := &Version{
 		BlobFiles:           curr.BlobFiles.clone(),
 		MarkedForCompaction: curr.MarkedForCompaction.Clone(),
+		RangeKeySetRegions:  curr.RangeKeySetRegions.Clone(),
 		cmp:                 comparer,
 	}
 
@@ -1365,6 +1404,9 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				}
 			}
 			v.RangeKeyLevels[level].remove(f)
+			if f.RangeKeyKinds == AnyRangeKeys {
+				removeFromRangeKeySetRegions(&v.RangeKeySetRegions, f)
+			}
 			v.MarkedForCompaction.Delete(f, level)
 		}
 
@@ -1417,6 +1459,9 @@ func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Versi
 				err = lmRange.insert(f)
 				if err != nil {
 					return nil, errors.Wrap(err, "pebble")
+				}
+				if f.RangeKeyKinds == AnyRangeKeys {
+					addToRangeKeySetRegions(&v.RangeKeySetRegions, f)
 				}
 			}
 			// Track the keys with the smallest and largest keys, so that we can

@@ -115,6 +115,7 @@ func TestIngestLoad(t *testing.T) {
 			}
 			var bv blobtest.Values
 			w := sstable.NewRawWriter(objstorageprovider.NewFileWritable(f), writerOpts)
+			defer w.Close()
 			for data := range crstrings.LinesSeq(td.Input) {
 				if strings.HasPrefix(data, "Span: ") {
 					data = strings.TrimPrefix(data, "Span: ")
@@ -154,6 +155,7 @@ func TestIngestLoad(t *testing.T) {
 				FS:         mem,
 			}
 			opts.WithFSDefaults()
+			defer opts.private.fsCloser.Close()
 			getNextFileNum := func() base.DiskFileNum { return 1 }
 			localFiles := LocalSSTables([]LocalSST{{Path: "ext"}})
 			lr, err := ingestLoad(context.Background(), opts, dbVersion, localFiles, nil, nil, nil, nil, getNextFileNum)
@@ -266,6 +268,7 @@ func TestIngestLoadRand(t *testing.T) {
 		FS:       mem,
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 	opts.EnsureDefaults()
 	lr, err := ingestLoad(context.Background(), opts, version, paths, nil, nil, nil, nil, fileNumAllocator.nextFileNum)
 	require.NoError(t, err)
@@ -748,6 +751,7 @@ func TestIngestLoadInvalid(t *testing.T) {
 		FS:       mem,
 	}
 	opts.WithFSDefaults()
+	defer opts.private.fsCloser.Close()
 	getNextFileNum := func() base.DiskFileNum { return 1 }
 	localFiles := LocalSSTables([]LocalSST{{Path: "invalid"}})
 	if _, err := ingestLoad(context.Background(), opts, internalFormatNewest, localFiles, nil, nil, nil, nil, getNextFileNum); err == nil {
@@ -1999,6 +2003,7 @@ func TestIngestMemtableOverlaps(t *testing.T) {
 					}
 					opts.EnsureDefaults()
 					opts.WithFSDefaults()
+					defer opts.private.fsCloser.Close()
 					if len(d.CmdArgs) > 1 {
 						return fmt.Sprintf("%s expects at most 1 argument", d.Cmd)
 					}
@@ -2213,9 +2218,6 @@ func TestIngest(t *testing.T) {
 	if runtime.GOARCH == "386" {
 		t.Skip("skipped on 32-bit due to slightly varied output")
 	}
-	defer func() {
-		require.NoError(t, d.Close())
-	}()
 
 	reset := func(split bool) {
 		if d != nil {
@@ -2330,6 +2332,9 @@ func TestIngest(t *testing.T) {
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
 		}
 	})
+	if d != nil {
+		require.NoError(t, d.Close())
+	}
 }
 
 // linkAndRemovePredicate is like errorfs.InjectIndex, and injects only on the
@@ -3230,6 +3235,7 @@ func TestIngest_UpdateSequenceNumber(t *testing.T) {
 			if wm.HasRangeKeys {
 				m.ExtendRangeKeyBounds(
 					cmp,
+					manifest.AnyRangeKeys,
 					wm.SmallestRangeKey,
 					maybeUpdateUpperBound(wm.LargestRangeKey),
 				)

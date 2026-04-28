@@ -81,6 +81,7 @@ func TestChecker(t *testing.T) {
 				if len(tt.rangeKeys) > 0 {
 					tt.meta.ExtendRangeKeyBounds(
 						bytes.Compare,
+						manifest.AnyRangeKeys,
 						base.MakeInternalKey(overrideBounds.Start, 0, base.InternalKeyKindRangeKeyMax),
 						base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeyMin, overrideBounds.End.Key),
 					)
@@ -95,7 +96,7 @@ func TestChecker(t *testing.T) {
 				}
 				if len(tt.rangeKeys) > 0 {
 					smallest, largest := boundsFromSpans(tt.rangeKeys)
-					tt.meta.ExtendRangeKeyBounds(bytes.Compare, smallest, largest)
+					tt.meta.ExtendRangeKeyBounds(bytes.Compare, manifest.AnyRangeKeys, smallest, largest)
 				}
 			}
 			tables.tables[tt.meta] = tt

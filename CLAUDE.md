@@ -31,6 +31,7 @@ go test -tags invariants ./internal/lint"
   - Prefix the subject line with the package in which the bulk of the changes occur.
   - For multi-commit PRs, summarize each commit in the PR record.
   - Do not include a test plan unless explicitly asked by the user.
+  - Use markdown format for the body; in particular, enclose any identifiers with backquotes.
 
 ## Interaction Style
 

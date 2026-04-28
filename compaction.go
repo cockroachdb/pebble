@@ -2533,6 +2533,7 @@ func (d *DB) runCopyCompaction(
 	}
 	if inputMeta.HasRangeKeys {
 		newMeta.ExtendRangeKeyBounds(c.comparer.Compare,
+			inputMeta.RangeKeyKinds,
 			inputMeta.RangeKeyBounds.Smallest(),
 			inputMeta.RangeKeyBounds.Largest())
 	}
@@ -3006,7 +3007,11 @@ func (c *tableCompaction) makeVersionEdit(result compact.Result) (*manifest.Vers
 				t.WriterMeta.LargestRangeDel)
 		}
 		if t.WriterMeta.HasRangeKeys {
-			fileMeta.ExtendRangeKeyBounds(c.comparer.Compare,
+			kinds := manifest.AnyRangeKeys
+			if t.WriterMeta.Properties.NumRangeKeySets == 0 {
+				kinds = manifest.OnlyRangeKeyUnsetAndDelete
+			}
+			fileMeta.ExtendRangeKeyBounds(c.comparer.Compare, kinds,
 				t.WriterMeta.SmallestRangeKey,
 				t.WriterMeta.LargestRangeKey)
 		}

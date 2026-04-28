@@ -131,6 +131,7 @@ list
 # Verify that we don't lose track of the metadata file if we reopen.
 close
 ----
+<local fs> sync: hot
 <local fs> sync: cold
 <local fs> close: hot
 <local fs> close: cold

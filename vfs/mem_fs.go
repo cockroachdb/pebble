@@ -85,6 +85,11 @@ type MemFS struct {
 
 	// cloneMu is used to block all modification operations while we clone the
 	// filesystem. Only used when crashable is true.
+	//
+	// Methods holding cloneMu must not call other public MemFS methods that also
+	// acquire cloneMu; use the unexported variants (rename, create) instead.
+	// Go's sync.RWMutex is writer-preferring, so recursive RLock deadlocks when
+	// a writer (CrashClone) is waiting.
 	cloneMu sync.RWMutex
 
 	// lockFiles holds a map of open file locks. Presence in this map indicates
@@ -224,6 +229,12 @@ func (y *MemFS) Create(fullname string, category DiskWriteCategory) (File, error
 		y.cloneMu.RLock()
 		defer y.cloneMu.RUnlock()
 	}
+	return y.create(fullname, category)
+}
+
+// create is the lock-free internal implementation of Create. The caller must
+// hold cloneMu when crashable is true.
+func (y *MemFS) create(fullname string, category DiskWriteCategory) (File, error) {
 	var ret *memFile
 	err := y.walk(fullname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -281,8 +292,6 @@ func (y *MemFS) Link(oldname, newname string) error {
 			if frag == "" {
 				return errors.New("pebble/vfs: empty file name")
 			}
-			y.cloneMu.RLock()
-			defer y.cloneMu.RUnlock()
 			if _, ok := dir.children[frag]; ok {
 				return &os.LinkError{
 					Op:  "link",
@@ -423,6 +432,12 @@ func (y *MemFS) Rename(oldname, newname string) error {
 		y.cloneMu.RLock()
 		defer y.cloneMu.RUnlock()
 	}
+	return y.rename(oldname, newname)
+}
+
+// rename is the lock-free internal implementation of Rename. The caller must
+// hold cloneMu when crashable is true.
+func (y *MemFS) rename(oldname, newname string) error {
 	var n *memNode
 	err := y.walk(oldname, func(dir *memNode, frag string, final bool) error {
 		if final {
@@ -461,7 +476,7 @@ func (y *MemFS) ReuseForWrite(oldname, newname string, category DiskWriteCategor
 		y.cloneMu.RLock()
 		defer y.cloneMu.RUnlock()
 	}
-	if err := y.Rename(oldname, newname); err != nil {
+	if err := y.rename(oldname, newname); err != nil {
 		return nil, err
 	}
 	f, err := y.Open(newname)
@@ -530,7 +545,7 @@ func (y *MemFS) Lock(fullname string) (io.Closer, error) {
 	// directory. Create the path so that we have the normal detection of
 	// non-existent directory paths, and make the lock visible when listing
 	// directory entries.
-	f, err := y.Create(fullname, WriteCategoryUnspecified)
+	f, err := y.create(fullname, WriteCategoryUnspecified)
 	if err != nil {
 		// "Release" the lock since we failed.
 		y.lockedFiles.Delete(fullname)
@@ -788,12 +803,12 @@ func (f *memFile) ReadAt(p []byte, off int64) (int, error) {
 }
 
 func (f *memFile) Write(p []byte) (int, error) {
+	if !f.write {
+		return 0, errors.New("pebble/vfs: file was not created for writing")
+	}
 	if f.fs.crashable {
 		f.fs.cloneMu.RLock()
 		defer f.fs.cloneMu.RUnlock()
-	}
-	if !f.write {
-		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
 	if f.n.isDir {
 		return 0, errors.New("pebble/vfs: cannot write a directory")
@@ -825,12 +840,12 @@ func (f *memFile) Write(p []byte) (int, error) {
 }
 
 func (f *memFile) WriteAt(p []byte, ofs int64) (int, error) {
+	if !f.write {
+		return 0, errors.New("pebble/vfs: file was not created for writing")
+	}
 	if f.fs.crashable {
 		f.fs.cloneMu.RLock()
 		defer f.fs.cloneMu.RUnlock()
-	}
-	if !f.write {
-		return 0, errors.New("pebble/vfs: file was not created for writing")
 	}
 	if f.n.isDir {
 		return 0, errors.New("pebble/vfs: cannot write a directory")

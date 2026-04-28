@@ -376,3 +376,135 @@ apply v12
   add-table: L2 000007:[f#3,SET-h#2,SET]
 ----
 pebble: internal error: L2 files 000007 and 000003 have overlapping ranges: [f#3,SET-h#2,SET] vs [f#1,SET-g#2,SET]
+
+# Range key set regions tests.
+
+# Define a version with tables that have range keys (default RangeKeyKinds=AnyRangeKeys).
+define rk1
+L1:
+  000001:[a#1,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#1-#1] points:[a#1,SET-c#1,SET] ranges:[a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+----
+L1:
+  000001:[a#1,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#1-#1] points:[a#1,SET-c#1,SET] ranges:[a#1,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+Range key set regions: [a, d)=1 [e, h)=1
+
+# Apply an edit replacing table 1 with another table with a shorter range key span.
+apply rk1 name=rk2
+  add-table: L1 000003:[b#3,RANGEKEYSET-c#inf,RANGEKEYSET] seqnums:[#3-#3] points:[b#3,SET-b#3,SET] ranges:[b#3,RANGEKEYSET-c#inf,RANGEKEYSET]
+  del-table: L1 000001
+----
+L1:
+  000003:[b#3,RANGEKEYSET-c#inf,RANGEKEYSET] seqnums:[#3-#3] points:[b#3,SET-b#3,SET] ranges:[b#3,RANGEKEYSET-c#inf,RANGEKEYSET]
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+Range key set regions: [b, c)=1 [e, h)=1
+
+apply rk2
+  del-table: L1 000002
+----
+L1:
+  000003:[b#3,RANGEKEYSET-c#inf,RANGEKEYSET] seqnums:[#3-#3] points:[b#3,SET-b#3,SET] ranges:[b#3,RANGEKEYSET-c#inf,RANGEKEYSET]
+Range key set regions: [b, c)=1
+
+apply rk2
+  del-table: L1 000003
+----
+L1:
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+Range key set regions: [e, h)=1
+
+# Tables with no range key sets do NOT contribute to the region tree.
+define rk3
+L1:
+  000001:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET] seqnums:[#1-#1] points:[a#1,SET-c#1,SET] ranges:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET];nosets
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+----
+L1:
+  000001:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET] seqnums:[#1-#1] points:[a#1,SET-c#1,SET] ranges:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET];nosets
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+Range key set regions: [e, h)=1
+
+# Adding a table with no range key sets does not affect the region tree.
+apply rk3 name=rk4
+  add-table: L1 000003:[i#3,RANGEKEYUNSET-k#inf,RANGEKEYUNSET] seqnums:[#3-#3] points:[i#3,SET-j#3,SET] ranges:[i#3,RANGEKEYUNSET-k#inf,RANGEKEYUNSET];nosets
+----
+L1:
+  000001:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET] seqnums:[#1-#1] points:[a#1,SET-c#1,SET] ranges:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET];nosets
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+  000003:[i#3,RANGEKEYUNSET-k#inf,RANGEKEYUNSET] seqnums:[#3-#3] points:[i#3,SET-j#3,SET] ranges:[i#3,RANGEKEYUNSET-k#inf,RANGEKEYUNSET];nosets
+Range key set regions: [e, h)=1
+
+# Removing a table without range key sets does not affect the region tree.
+apply rk4
+  del-table: L1 000001
+----
+L1:
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+  000003:[i#3,RANGEKEYUNSET-k#inf,RANGEKEYUNSET] seqnums:[#3-#3] points:[i#3,SET-j#3,SET] ranges:[i#3,RANGEKEYUNSET-k#inf,RANGEKEYUNSET];nosets
+Range key set regions: [e, h)=1
+
+# Replace a table that has range key sets with one that does not; region should disappear.
+apply rk3
+  del-table: L1 000002
+  add-table: L1 000004:[e#4,RANGEKEYUNSET-h#inf,RANGEKEYUNSET] seqnums:[#4-#4] points:[e#4,SET-f#4,SET] ranges:[e#4,RANGEKEYUNSET-h#inf,RANGEKEYUNSET];nosets
+----
+L1:
+  000001:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET] seqnums:[#1-#1] points:[a#1,SET-c#1,SET] ranges:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET];nosets
+  000004:[e#4,RANGEKEYUNSET-h#inf,RANGEKEYUNSET] seqnums:[#4-#4] points:[e#4,SET-f#4,SET] ranges:[e#4,RANGEKEYUNSET-h#inf,RANGEKEYUNSET];nosets
+
+# Replace a table without range key sets with one that has them.
+apply rk3
+  del-table: L1 000001
+  add-table: L1 000005:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#5-#5] points:[a#5,SET-c#5,SET] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET]
+----
+L1:
+  000005:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET] seqnums:[#5-#5] points:[a#5,SET-c#5,SET] ranges:[a#5,RANGEKEYSET-d#inf,RANGEKEYSET]
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+Range key set regions: [a, d)=1 [e, h)=1
+
+# Add a table that adds overlapping regions.
+apply rk3 name=rk5
+  add-table: L2 000006: [a#2,RANGEKEYSET-u#inf,RANGEKEYSET] seqnums:[#2-#2] ranges:[a#5,RANGEKEYSET-u#inf,RANGEKEYSET]
+----
+L1:
+  000001:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET] seqnums:[#1-#1] points:[a#1,SET-c#1,SET] ranges:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET];nosets
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+L2:
+  000006:[#0,DEL-u#inf,RANGEKEYSET] seqnums:[#2-#2] ranges:[a#5,RANGEKEYSET-u#inf,RANGEKEYSET]
+Range key set regions: [a, e)=1 [e, h)=2 [h, u)=1
+
+# Add another table that adds overlapping regions.
+apply rk5 name=rk6
+  add-table: L3 000007: [f#1,RANGEKEYSET-z#inf,RANGEKEYSET] seqnums:[#1-#1] ranges:[f#5,RANGEKEYSET-z#inf,RANGEKEYSET]
+----
+L1:
+  000001:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET] seqnums:[#1-#1] points:[a#1,SET-c#1,SET] ranges:[a#1,RANGEKEYUNSET-d#inf,RANGEKEYUNSET];nosets
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+L2:
+  000006:[#0,DEL-u#inf,RANGEKEYSET] seqnums:[#2-#2] ranges:[a#5,RANGEKEYSET-u#inf,RANGEKEYSET]
+L3:
+  000007:[#0,DEL-z#inf,RANGEKEYSET] seqnums:[#1-#1] ranges:[f#5,RANGEKEYSET-z#inf,RANGEKEYSET]
+Range key set regions: [a, e)=1 [e, f)=2 [f, h)=3 [h, u)=2 [u, z)=1
+
+# Remove some tables.
+apply rk6 name=rk7
+  del-table: L1 000001
+  del-table: L3 000007
+----
+L1:
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+L2:
+  000006:[#0,DEL-u#inf,RANGEKEYSET] seqnums:[#2-#2] ranges:[a#5,RANGEKEYSET-u#inf,RANGEKEYSET]
+Range key set regions: [a, e)=1 [e, h)=2 [h, u)=1
+
+apply rk7 name=rk8
+  del-table: L2 000006
+----
+L1:
+  000002:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET] seqnums:[#2-#2] points:[e#2,SET-f#2,SET] ranges:[e#2,RANGEKEYSET-h#inf,RANGEKEYSET]
+Range key set regions: [e, h)=1
+
+apply rk8 name=rk9
+  del-table: L1 000002
+----

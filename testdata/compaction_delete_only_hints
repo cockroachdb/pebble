@@ -360,6 +360,7 @@ L6:
   XXXXXX:[r#16,RANGEKEYSET-t#16,SET]
   XXXXXX:[u#17,RANGEKEYSET-w#inf,RANGEKEYSET]
   XXXXXX:[x#18,SET-z#18,SET]
+Range key set regions: [a, c)=1 [d, f)=1 [i, k)=1 [l, n)=1 [r, t)=1 [u, w)=1
 
 get-hints
 ----
@@ -483,6 +484,7 @@ L0.0:
 L6:
   XXXXXX:[d#11,SET-i#11,SET]
   XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
+Range key set regions: [k, o)=1
 
 get-hints
 ----
@@ -507,6 +509,7 @@ L0.0:
   XXXXXX:[b#12,RANGEDEL-r#inf,RANGEDEL]
 L6:
   XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
+Range key set regions: [k, o)=1
 
 iter
 first
@@ -545,6 +548,7 @@ L0.0:
   XXXXXX:[b#11,RANGEKEYDEL-p#inf,RANGEDEL]
 L6:
   XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
+Range key set regions: [k, o)=1
 
 get-hints
 ----
@@ -575,6 +579,7 @@ L0.0:
   XXXXXX:[b#11,RANGEKEYDEL-p#inf,RANGEDEL]
 L6:
   XXXXXX:[l#10,RANGEKEYSET-m#inf,RANGEKEYSET]
+Range key set regions: [l, m)=1
 
 iter
 first
@@ -614,6 +619,7 @@ L0.0:
   XXXXXX:[l#11,RANGEKEYDEL-m#inf,RANGEDEL]
 L6:
   XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
+Range key set regions: [k, o)=1
 
 get-hints
 ----
@@ -642,6 +648,7 @@ L0.0:
   XXXXXX:[l#11,RANGEKEYDEL-m#inf,RANGEDEL]
 L6:
   XXXXXX:[k#10,RANGEKEYSET-o#10,SET]
+Range key set regions: [k, o)=1
 
 iter
 first

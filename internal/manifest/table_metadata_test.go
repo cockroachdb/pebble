@@ -78,7 +78,7 @@ func TestExtendBounds(t *testing.T) {
 			return format(m)
 		case "extend-range-key-bounds":
 			u, l := parseBounds(d.Input)
-			m.ExtendRangeKeyBounds(cmp, u, l)
+			m.ExtendRangeKeyBounds(cmp, AnyRangeKeys, u, l)
 			return format(m)
 		default:
 			return fmt.Sprintf("unknown command %s\n", d.Cmd)
@@ -192,7 +192,7 @@ func TestTableMetadataSize(t *testing.T) {
 		t.Skip("Test only supported on amd64 and arm64 architectures")
 	}
 
-	const tableMetadataSize = 208
+	const tableMetadataSize = 216
 	if structSize := unsafe.Sizeof(TableMetadata{}); structSize != tableMetadataSize {
 		t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
 			structSize, tableMetadataSize)

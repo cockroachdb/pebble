@@ -313,7 +313,7 @@ func (lt *levelIterTest) runBuild(d *datadriven.TestData) string {
 		m.ExtendPointKeyBounds(lt.cmp.Compare, meta.SmallestRangeDel, meta.LargestRangeDel)
 	}
 	if meta.HasRangeKeys {
-		m.ExtendRangeKeyBounds(lt.cmp.Compare, meta.SmallestRangeKey, meta.LargestRangeKey)
+		m.ExtendRangeKeyBounds(lt.cmp.Compare, manifest.AnyRangeKeys, meta.SmallestRangeKey, meta.LargestRangeKey)
 	}
 	m.InitPhysicalBacking()
 	lt.metas = append(lt.metas, m)

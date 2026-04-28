@@ -64,6 +64,8 @@ func (ls *localLockedState) objChanged(meta objstorage.ObjectMetadata) {
 	if meta.Local.Tier == base.HotTier {
 		ls.hotTier.objChangeCounter++
 	} else {
+		// We dual-write the metadata part of the object.
+		ls.hotTier.objChangeCounter++
 		ls.coldTier.objChangeCounter++
 	}
 }

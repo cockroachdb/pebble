@@ -61,9 +61,9 @@ func (z *SkewedLatest) IncMax(delta uint64) {
 
 // Max returns max.
 func (z *SkewedLatest) Max() uint64 {
-	z.mu.Lock()
-	defer z.mu.Unlock()
-	return z.mu.zipf.Max()
+	z.mu.RLock()
+	defer z.mu.RUnlock()
+	return z.mu.max
 }
 
 // Uint64 returns a random Uint64 between min and max, where keys near max are

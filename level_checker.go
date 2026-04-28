@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/RaduBerinde/axisds/v3/regiontree"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -671,6 +672,73 @@ func checkLevelsInternal(c *checkConfig) (err error) {
 		return err
 	}
 
+	// Phase 4: Validate range key metadata (HasRangeKeys, RangeKeyKinds).
+	if err := checkRangeKeyMetadata(c, allTables); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// checkRangeKeyMetadata verifies that HasRangeKeys and RangeKeyKinds are
+// consistent with the actual range key contents of each table.
+func checkRangeKeyMetadata(c *checkConfig, allTables []*manifest.TableMetadata) error {
+	ctx := context.Background()
+	for _, file := range allTables {
+		iters, err := c.newIters(ctx, file, nil, internalIterOpts{}, iterRangeKeys)
+		if err != nil {
+			return err
+		}
+		rangeKeyIter := iters.rangeKey
+		if rangeKeyIter == nil {
+			// No range key iterator means no range keys in the table.
+			if file.HasRangeKeys {
+				return errors.Errorf("table %s has HasRangeKeys=true but no range key iterator", file.TableNum)
+			}
+			continue
+		}
+		current := c.readState.current
+		hasRangeKeys := false
+		hasRangeKeySets := false
+		span, err := rangeKeyIter.First()
+		for ; span != nil; span, err = rangeKeyIter.Next() {
+			hasRangeKeys = true
+			for _, k := range span.Keys {
+				if k.Kind() == base.InternalKeyKindRangeKeySet {
+					hasRangeKeySets = true
+					// Verify that no subrange of this span has a zero count
+					// in the region tree.
+					if current.RangeKeySetRegions.Any(regiontree.GE(span.Start), regiontree.LT(span.End), func(count int) bool {
+						return count == 0
+					}) {
+						return errors.Errorf(
+							"table %s has RangeKeySet in span [%s, %s) but RangeKeySetRegions has zero-count subrange",
+							file.TableNum, c.comparer.FormatKey(span.Start), c.comparer.FormatKey(span.End),
+						)
+					}
+				}
+			}
+		}
+		rangeKeyIter.Close()
+		if err != nil {
+			return err
+		}
+		// For all tables, HasRangeKeys must be set if there are range keys; and
+		// RangeKeyKinds must be AnyRangeKeys if there are range key sets.
+		if hasRangeKeys && !file.HasRangeKeys {
+			return errors.Errorf("table %s has HasRangeKeys=false but contains range keys", file.TableNum)
+		}
+		if hasRangeKeySets && file.RangeKeyKinds != manifest.AnyRangeKeys {
+			return errors.Errorf("table %s has RangeKeyKinds!=AnyRangeKeys but contains RANGEKEYSETs", file.TableNum)
+		}
+		if !file.Virtual {
+			// For non-virtual tables, HasRangeKeys must exactly match reality.
+			if file.HasRangeKeys && !hasRangeKeys {
+				return errors.Errorf("table %s has HasRangeKeys=true but contains no range keys", file.TableNum)
+			}
+			// RangeKeyKinds allows for false positives even for non-virtual tables.
+		}
+	}
 	return nil
 }
 

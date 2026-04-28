@@ -60,6 +60,10 @@ type WeightedWelford struct {
 // Add incorporates a new data point x with the given frequency into the running
 // statistics.
 func (ww *WeightedWelford) Add(x float64, frequency uint64) {
+	if frequency == 0 {
+		// A frequency of 0 is a no-op.
+		return
+	}
 	w := float64(frequency)
 	ww.wSum += w
 	ww.w2Sum += w * w

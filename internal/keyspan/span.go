@@ -455,11 +455,17 @@ type prettySpan struct {
 }
 
 func (s prettySpan) Format(fs fmt.State, c rune) {
-	if !s.Valid() {
+	if s.Start == nil && s.End == nil {
 		fmt.Fprintf(fs, "<invalid>")
 		return
 	}
-	fmt.Fprintf(fs, "%s-%s:{", s.formatKey(s.Start), s.formatKey(s.End))
+	fmtBound := func(b []byte) string {
+		if b == nil {
+			return "."
+		}
+		return fmt.Sprint(s.formatKey(b))
+	}
+	fmt.Fprintf(fs, "%s-%s:{", fmtBound(s.Start), fmtBound(s.End))
 	for i, k := range s.Keys {
 		if i > 0 {
 			fmt.Fprint(fs, " ")

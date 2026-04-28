@@ -512,6 +512,7 @@ lsm
 ----
 L6:
   000006:[a#10,RANGEKEYSET-e#12,SET]
+Range key set regions: [a, aaa)=1
 
 switch 2
 ----
@@ -543,6 +544,7 @@ L6:
   000009(000006):[a#10,RANGEKEYSET-aaa#inf,RANGEKEYSET]
   000008(000008):[b#14,DELSIZED-c#14,DEL]
   000010(000006):[d#11,SET-e#12,SET]
+Range key set regions: [a, aaa)=1
 
 iter
 first
@@ -672,6 +674,7 @@ L5:
   000007:[bb#14,RANGEKEYSET-g#inf,RANGEKEYSET]
 L6:
   000006:[a@3#10,SET-e#13,SET]
+Range key set regions: [bb, g)=1
 
 switch 2
 ----
@@ -707,6 +710,7 @@ L5:
 L6:
   000009(000009):[b@5#12,DELSIZED-e#12,DEL]
   000006:[ff#10,SET-ff#10,SET]
+Range key set regions: [bb, f)=1
 
 iter
 seek-ge b

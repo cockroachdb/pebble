@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/dsl"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -335,15 +334,11 @@ func (fs *FS) Open(name string, opts ...vfs.OpenOption) (vfs.File, error) {
 	if err := fs.inj.MaybeError(Op{Kind: OpOpen, Path: name}); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.Open(name)
+	f, err := fs.fs.Open(name, opts...)
 	if err != nil {
 		return nil, err
 	}
-	ef := &errorFile{name, f, fs.inj}
-	for _, opt := range opts {
-		opt.Apply(ef)
-	}
-	return ef, nil
+	return &errorFile{name, f, fs.inj}, nil
 }
 
 // OpenReadWrite implements FS.OpenReadWrite.
@@ -353,15 +348,11 @@ func (fs *FS) OpenReadWrite(
 	if err := fs.inj.MaybeError(Op{Kind: OpOpen, Path: name}); err != nil {
 		return nil, err
 	}
-	f, err := fs.fs.OpenReadWrite(name, category)
+	f, err := fs.fs.OpenReadWrite(name, category, opts...)
 	if err != nil {
 		return nil, err
 	}
-	ef := &errorFile{name, f, fs.inj}
-	for _, opt := range opts {
-		opt.Apply(ef)
-	}
-	return ef, nil
+	return &errorFile{name, f, fs.inj}, nil
 }
 
 // OpenDir implements FS.OpenDir.
@@ -401,10 +392,6 @@ func (fs *FS) PathJoin(elem ...string) string {
 
 // Remove implements FS.Remove.
 func (fs *FS) Remove(name string) error {
-	if _, err := fs.fs.Stat(name); oserror.IsNotExist(err) {
-		return nil
-	}
-
 	if err := fs.inj.MaybeError(Op{Kind: OpRemove, Path: name}); err != nil {
 		return err
 	}
@@ -434,7 +421,11 @@ func (fs *FS) ReuseForWrite(
 	if err := fs.inj.MaybeError(Op{Kind: OpReuseForWrite, Path: oldname}); err != nil {
 		return nil, err
 	}
-	return fs.fs.ReuseForWrite(oldname, newname, category)
+	f, err := fs.fs.ReuseForWrite(oldname, newname, category)
+	if err != nil {
+		return nil, err
+	}
+	return &errorFile{newname, f, fs.inj}, nil
 }
 
 // MkdirAll implements FS.MkdirAll.
