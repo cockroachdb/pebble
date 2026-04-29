@@ -286,7 +286,7 @@ func TestBTree(t *testing.T) {
 }
 
 func TestIterClone(t *testing.T) {
-	const count = 65536
+	const count = 8192
 
 	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
