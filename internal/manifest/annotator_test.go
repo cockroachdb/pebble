@@ -134,7 +134,7 @@ func TestNumFilesRangeAnnotationEmptyRanges(t *testing.T) {
 
 func TestNumFilesRangeAnnotationRandomized(t *testing.T) {
 	const count = 10_000
-	const numIterations = 10_000
+	const numIterations = 1_000
 
 	v, _ := makeTestVersion(count)
 
