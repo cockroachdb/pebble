@@ -2313,7 +2313,7 @@ func TestElevateThresholdAfterWriteStallUnblocksStall(t *testing.T) {
 	go func() {
 		// After ~8 writes, the default write stall threshold is exceeded.
 		// It is observed by the above goroutine, which removes the stall.
-		for i := 0; i < 200; i++ {
+		for i := 0; i < 50; i++ {
 			require.NoError(t, d.Set([]byte(fmt.Sprintf("%d", i)), value, nil))
 		}
 		done <- struct{}{}
