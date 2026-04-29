@@ -2235,8 +2235,8 @@ func TestWALFailoverAvoidsWriteStall(t *testing.T) {
 	// Secondary for WAL failover can do log creation.
 	secondary := wal.Dir{FS: mem, Dirname: "secondary"}
 	walFailover := &WALFailoverOptions{Secondary: secondary, FailoverOptions: wal.FailoverOptions{
-		UnhealthySamplingInterval:          100 * time.Millisecond,
-		UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return time.Second, true },
+		UnhealthySamplingInterval:          10 * time.Millisecond,
+		UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) { return 50 * time.Millisecond, true },
 	}}
 	o := &Options{
 		FS:                          primaryFS,
