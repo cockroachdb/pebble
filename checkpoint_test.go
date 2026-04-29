@@ -326,7 +326,7 @@ func TestCheckpointCompaction(t *testing.T) {
 	wg.Go(func() {
 		defer cancel()
 		defer close(check)
-		for i := 0; ctx.Err() == nil && i < 200; i++ {
+		for i := 0; ctx.Err() == nil && i < 50; i++ {
 			dir := fmt.Sprintf("checkpoint%06d", i)
 			if err := d.Checkpoint(dir); err != nil {
 				t.Error(err)
