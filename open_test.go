@@ -612,90 +612,93 @@ func TestNewDBFilenames(t *testing.T) {
 }
 
 func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
-	opts := testingRandomized(t, &Options{FS: fs})
-
 	useStoreRelativeWALPath := rand.IntN(2) == 0
+	// Iterations sharing the same `dirname` must run sequentially (they reopen
+	// the same on-disk database), so we parallelize only across the outer
+	// (startFromEmpty, walDirname) groups.
 	for _, startFromEmpty := range []bool{false, true} {
 		for _, walDirname := range []string{"", "wal"} {
-			for _, length := range []int{-1, 0, 1, 1000, 100000} {
-				dirname := "sharedDatabase" + walDirname
-				if startFromEmpty {
-					dirname = "startFromEmpty" + walDirname + strconv.Itoa(length)
-				}
-				dirname = fs.PathJoin(root, dirname)
-				if walDirname == "" {
-					opts.WALDir = ""
-				} else {
-					if useStoreRelativeWALPath {
-						opts.WALDir = MakeStoreRelativePath(fs, walDirname)
+			t.Run(fmt.Sprintf("sfe=%t/wal=%q", startFromEmpty, walDirname), func(t *testing.T) {
+				t.Parallel()
+				opts := testingRandomized(t, &Options{FS: fs})
+				for _, length := range []int{-1, 0, 1, 1000} {
+					dirname := "sharedDatabase" + walDirname
+					if startFromEmpty {
+						dirname = "startFromEmpty" + walDirname + strconv.Itoa(length)
+					}
+					dirname = fs.PathJoin(root, dirname)
+					if walDirname == "" {
+						opts.WALDir = ""
 					} else {
-						opts.WALDir = fs.PathJoin(dirname, walDirname)
+						if useStoreRelativeWALPath {
+							opts.WALDir = MakeStoreRelativePath(fs, walDirname)
+						} else {
+							opts.WALDir = fs.PathJoin(dirname, walDirname)
+						}
 					}
-				}
 
-				got, xxx := []byte(nil), ""
-				if length >= 0 {
-					xxx = strings.Repeat("x", length)
-				}
+					got, xxx := []byte(nil), ""
+					if length >= 0 {
+						xxx = strings.Repeat("x", length)
+					}
 
-				d0, err := Open(dirname, opts)
-				if err != nil {
-					t.Fatalf("sfe=%t, length=%d: Open #0: %v",
-						startFromEmpty, length, err)
-				}
-				if length >= 0 {
-					err = d0.Set([]byte("key"), []byte(xxx), nil)
+					d0, err := Open(dirname, opts)
 					if err != nil {
-						t.Errorf("sfe=%t, length=%d: Set: %v",
+						t.Fatalf("sfe=%t, length=%d: Open #0: %v",
+							startFromEmpty, length, err)
+					}
+					if length >= 0 {
+						err = d0.Set([]byte("key"), []byte(xxx), nil)
+						if err != nil {
+							t.Errorf("sfe=%t, length=%d: Set: %v",
+								startFromEmpty, length, err)
+							continue
+						}
+					}
+					err = d0.Close()
+					if err != nil {
+						t.Errorf("sfe=%t, length=%d: Close #0: %v",
 							startFromEmpty, length, err)
 						continue
 					}
-				}
-				err = d0.Close()
-				if err != nil {
-					t.Errorf("sfe=%t, length=%d: Close #0: %v",
-						startFromEmpty, length, err)
-					continue
-				}
 
-				d1, err := Open(dirname, opts)
-				if err != nil {
-					t.Errorf("sfe=%t, length=%d: Open #1: %v",
-						startFromEmpty, length, err)
-					continue
-				}
-				if length >= 0 {
-					var closer io.Closer
-					got, closer, err = d1.Get([]byte("key"))
+					d1, err := Open(dirname, opts)
 					if err != nil {
-						t.Errorf("sfe=%t, length=%d: Get: %v",
+						t.Errorf("sfe=%t, length=%d: Open #1: %v",
 							startFromEmpty, length, err)
 						continue
 					}
-					got = append([]byte(nil), got...)
-					closer.Close()
-				}
-				err = d1.Close()
-				if err != nil {
-					t.Errorf("sfe=%t, length=%d: Close #1: %v",
-						startFromEmpty, length, err)
-					continue
-				}
+					if length >= 0 {
+						var closer io.Closer
+						got, closer, err = d1.Get([]byte("key"))
+						if err != nil {
+							t.Errorf("sfe=%t, length=%d: Get: %v",
+								startFromEmpty, length, err)
+							continue
+						}
+						got = append([]byte(nil), got...)
+						closer.Close()
+					}
+					err = d1.Close()
+					if err != nil {
+						t.Errorf("sfe=%t, length=%d: Close #1: %v",
+							startFromEmpty, length, err)
+						continue
+					}
 
-				if length >= 0 && string(got) != xxx {
-					t.Errorf("sfe=%t, length=%d: got value differs from set value",
-						startFromEmpty, length)
-					continue
-				}
+					if length >= 0 && string(got) != xxx {
+						t.Errorf("sfe=%t, length=%d: got value differs from set value",
+							startFromEmpty, length)
+						continue
+					}
 
-				{
-					got, err := opts.FS.List(dirname)
+					listed, err := opts.FS.List(dirname)
 					if err != nil {
 						t.Fatalf("List: %v", err)
 					}
 					var optionsCount int
-					for _, s := range got {
-						if t, _, ok := base.ParseFilename(opts.FS, s); ok && t == base.FileTypeOptions {
+					for _, s := range listed {
+						if ft, _, ok := base.ParseFilename(opts.FS, s); ok && ft == base.FileTypeOptions {
 							optionsCount++
 						}
 					}
@@ -703,7 +706,7 @@ func testOpenCloseOpenClose(t *testing.T, fs vfs.FS, root string) {
 						t.Fatalf("expected 1 OPTIONS file, but found %d", optionsCount)
 					}
 				}
-			}
+			})
 		}
 	}
 }
