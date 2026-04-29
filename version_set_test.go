@@ -393,7 +393,9 @@ func TestLargeKeys(t *testing.T) {
 				FormatMajorVersion:          internalFormatNewest,
 				FS:                          vfs.NewMem(),
 				Logger:                      testutils.Logger{T: t},
+				MemTableSize:                16 << 20,
 				MemTableStopWritesThreshold: 4,
+				DisableAutomaticCompactions: true,
 				DisableTableStats:           true,
 			}
 			var err error
