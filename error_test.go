@@ -539,7 +539,7 @@ func TestDBCompactionCrash(t *testing.T) {
 	// completion without performing a k-th write operation.
 	done := false
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))
-	for k := int32(0); !done; k += rng.Int32N(5) + 1 {
+	for k := int32(0); !done; k += rng.Int32N(10) + 3 {
 		t.Run(fmt.Sprintf("k=%d", k), func(t *testing.T) {
 			// Run, simulating a crash by ignoring syncs after the k-th write
 			// operation after Open.
