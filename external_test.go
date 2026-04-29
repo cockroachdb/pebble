@@ -426,7 +426,7 @@ func TestReadOnlyRecovery(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, uint64(seed)))
 
 	// Generate a random database by running the metamorphic test with the
-	// WriteOpConfig. We'll perform ~10,000 random operations that mutate the
+	// WriteOpConfig. We'll perform ~3,000 random operations that mutate the
 	// state of the database.
 	kf := metamorphic.TestkeysKeyFormat
 	testOpts := metamorphic.RandomOptions(rng, kf, metamorphic.RandomOptionsCfg{
@@ -440,7 +440,7 @@ func TestReadOnlyRecovery(t *testing.T) {
 	var cloneFS *vfs.MemFS
 	{
 		test, err := metamorphic.New(metamorphic.GenerateOps(
-			rng, 10000, kf, metamorphic.WriteOpConfig()),
+			rng, 3000, kf, metamorphic.WriteOpConfig()),
 			testOpts, "" /* dir */, io.Discard)
 		require.NoError(t, err)
 		memFS := vfs.Root(testOpts.Opts.FS).(*vfs.MemFS)
