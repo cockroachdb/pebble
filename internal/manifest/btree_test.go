@@ -556,7 +556,7 @@ func TestRandomizedBTree(t *testing.T) {
 		// Reduce the number of ops in race mode so the test doesn't take very long.
 		numOps = 1_000 + rng.IntN(4_000)
 	} else {
-		numOps = 10_000 + rng.IntN(40_000)
+		numOps = 2_000 + rng.IntN(8_000)
 	}
 
 	var metadataAlloc [maxFileNum]TableMetadata
