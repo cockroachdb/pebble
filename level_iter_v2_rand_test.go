@@ -170,8 +170,6 @@ func runLevelIterV2RandomTest(t *testing.T, seed uint64) {
 		OpWeights:    iterv2.AllTestOps,
 		NumOps:       500,
 	}
-	// TODO(radu): implement NextPrefix.
-	checkCfg.OpWeights[iterv2.TestOpNextPrefix] = 0
 	expected := iterv2.TestIterData{
 		Points: points,
 		Spans:  allSpans,

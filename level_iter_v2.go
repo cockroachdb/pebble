@@ -734,7 +734,29 @@ func (l *levelIterV2) NextPrefix(succKey []byte) (kv *base.InternalKV) {
 			op.Finishf("= %s", kv.String())
 		}()
 	}
-	panic(errors.AssertionFailedf("NextPrefix not implemented"))
+	if l.err != nil {
+		return nil
+	}
+	if invariants.Enabled {
+		if l.dir != +1 || l.prefix != nil || l.atSyntheticBoundary || !l.currentSpan.Valid() {
+			panic(errors.AssertionFailedf("invalid use of NextPrefix"))
+		}
+		if l.iterFile != l.files.Current() {
+			panic(errors.AssertionFailedf("files.Current() (%v) != iterFile (%v)", l.files.Current(), l.iterFile))
+		}
+	}
+
+	if kv := l.iter.NextPrefix(succKey); kv != nil {
+		l.updateCurrentSpan()
+		return kv
+	}
+	if l.iterHasError() {
+		return nil
+	}
+
+	// The current file iterator is exhausted; fall back to SeekGE to advance to
+	// the appropriate later file.
+	return l.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
 }
 
 func (l *levelIterV2) Prev() (kv *base.InternalKV) {
