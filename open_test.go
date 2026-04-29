@@ -447,26 +447,27 @@ func TestOpenAlreadyLocked(t *testing.T) {
 			},
 		},
 	}
-	// We'll provide the same WAL recovery directory for all tests to
-	// verify that the lock acquired during Open is properly released.
-	walRecoveryDir := t.TempDir()
-	recoveryLock, err := base.LockDirectory(walRecoveryDir, vfs.Default)
-	require.NoError(t, err)
-	defer recoveryLock.Close()
-	walRecoveryDirs := []wal.Dir{
-		{FS: vfs.Default, Dirname: t.TempDir()},
-		{Lock: recoveryLock, FS: vfs.Default, Dirname: walRecoveryDir},
-	}
-
 	runTest := func(t *testing.T, tmpDirs [4]string, setupLocks func(opts *Options, dirname, walDirname, secondaryWalDirname string, fs vfs.FS) error, fs vfs.FS) {
 		dataDir := tmpDirs[0]
 		dataDir2 := tmpDirs[1]
 		walDir := tmpDirs[2]
 		secondaryWalDir := tmpDirs[3]
 
+		// Per-subtest WAL recovery directories. The unlocked entry verifies
+		// that Open acquires and releases the lock; the pre-locked entry
+		// verifies that Open is happy with a caller-provided lock.
+		walRecoveryDir := t.TempDir()
+		recoveryLock, err := base.LockDirectory(walRecoveryDir, vfs.Default)
+		require.NoError(t, err)
+		defer recoveryLock.Close()
+		walRecoveryDirs := []wal.Dir{
+			{FS: vfs.Default, Dirname: t.TempDir()},
+			{Lock: recoveryLock, FS: vfs.Default, Dirname: walRecoveryDir},
+		}
+
 		// Setup directory locks.
 		opts := testingRandomized(t, &Options{FS: fs, WALRecoveryDirs: walRecoveryDirs})
-		err := setupLocks(opts, dataDir, walDir, secondaryWalDir, fs)
+		err = setupLocks(opts, dataDir, walDir, secondaryWalDir, fs)
 		require.NoError(t, err)
 
 		defer func() {
@@ -525,6 +526,7 @@ func TestOpenAlreadyLocked(t *testing.T) {
 	t.Run("memfs", func(t *testing.T) {
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
 				tmpDirs := [4]string{"dir/0", "dir/1", "dir/2", "dir/3"}
 				mem := vfs.NewMem()
 				for i := range tmpDirs {
@@ -540,6 +542,7 @@ func TestOpenAlreadyLocked(t *testing.T) {
 		t.Run("absolute", func(t *testing.T) {
 			for _, tc := range testCases {
 				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
 					var tmpDirs [4]string
 					for i := range tmpDirs {
 						tmpDirs[i] = t.TempDir()
@@ -560,8 +563,9 @@ func TestOpenAlreadyLocked(t *testing.T) {
 					for i := range tmpDirs {
 						tmpDirs[i] = filepath.Join(tempRoot, fmt.Sprintf("dir%d", i))
 						require.NoError(t, os.Mkdir(tmpDirs[i], 0755), "Failed to create temp dir %s", tmpDirs[i])
-						tmpDirs[i], err = filepath.Rel(tempRoot, tmpDirs[i])
+						rel, err := filepath.Rel(tempRoot, tmpDirs[i])
 						require.NoError(t, err)
+						tmpDirs[i] = rel
 					}
 
 					runTest(t, tmpDirs, tc.setupLocks, vfs.Default)
