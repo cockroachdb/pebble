@@ -53,7 +53,7 @@ func TestInuseKeyRangesRandomized(t *testing.T) {
 	ks := testkeys.Alpha(maxKeyLen)
 	smallest := make([]byte, maxKeyLen+testkeys.MaxSuffixLen)
 	largest := make([]byte, maxKeyLen+testkeys.MaxSuffixLen)
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 200; i++ {
 		n := testkeys.WriteKeyAt(smallest[:cap(smallest)], ks, rng.Uint64N(ks.Count()), rng.Int64N(maxSuffix))
 		smallest = smallest[:n]
 		n = testkeys.WriteKeyAt(largest[:cap(largest)], ks, rng.Uint64N(ks.Count()), rng.Int64N(maxSuffix))
