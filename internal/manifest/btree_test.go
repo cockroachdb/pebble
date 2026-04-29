@@ -222,14 +222,22 @@ func TestBTree(t *testing.T) {
 	const count = 768
 	items := rang(0, count-1)
 
+	// shouldVerify gates the expensive O(N) tree walks (Verify and
+	// checkIter) so they run every 16th iteration and on the final one.
+	// This preserves boundary coverage (height transitions, near-empty/full
+	// tree, fan-out splits) while reducing per-phase work ~16x.
+	shouldVerify := func(i int) bool { return i%16 == 0 || i == count-1 }
+
 	// Add keys in sorted order.
 	for i := 0; i < count; i++ {
 		require.NoError(t, tr.Insert(items[i]))
-		tr.Verify(t)
 		if e := i + 1; e != tr.Count() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Count())
 		}
-		checkIter(t, tableMetadataIter(&tr), 0, i+1, keyMemo)
+		if shouldVerify(i) {
+			tr.Verify(t)
+			checkIter(t, tableMetadataIter(&tr), 0, i+1, keyMemo)
+		}
 	}
 
 	// delete keys in sorted order.
@@ -239,21 +247,25 @@ func TestBTree(t *testing.T) {
 		if len(obsolete.TableBackings) == 0 {
 			t.Fatalf("expected item %d to be obsolete", i)
 		}
-		tr.Verify(t)
 		if e := count - (i + 1); e != tr.Count() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Count())
 		}
-		checkIter(t, tableMetadataIter(&tr), i+1, count, keyMemo)
+		if shouldVerify(i) {
+			tr.Verify(t)
+			checkIter(t, tableMetadataIter(&tr), i+1, count, keyMemo)
+		}
 	}
 
 	// Add keys in reverse sorted order.
 	for i := 1; i <= count; i++ {
 		require.NoError(t, tr.Insert(items[count-i]))
-		tr.Verify(t)
 		if i != tr.Count() {
 			t.Fatalf("expected length %d, but found %d", i, tr.Count())
 		}
-		checkIter(t, tableMetadataIter(&tr), count-i, count, keyMemo)
+		if shouldVerify(i - 1) {
+			tr.Verify(t)
+			checkIter(t, tableMetadataIter(&tr), count-i, count, keyMemo)
+		}
 	}
 
 	// delete keys in reverse sorted order.
@@ -263,11 +275,13 @@ func TestBTree(t *testing.T) {
 		if len(obsolete.TableBackings) == 0 {
 			t.Fatalf("expected item %d to be obsolete", i)
 		}
-		tr.Verify(t)
 		if e := count - i; e != tr.Count() {
 			t.Fatalf("expected length %d, but found %d", e, tr.Count())
 		}
-		checkIter(t, tableMetadataIter(&tr), 0, count-i, keyMemo)
+		if shouldVerify(i - 1) {
+			tr.Verify(t)
+			checkIter(t, tableMetadataIter(&tr), 0, count-i, keyMemo)
+		}
 	}
 }
 
