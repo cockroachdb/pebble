@@ -763,9 +763,64 @@ func (m *mergingIterV2) Last() (kv *base.InternalKV) {
 }
 
 // NextPrefix implements base.InternalIterator.
-func (m *mergingIterV2) NextPrefix(succKey []byte) *base.InternalKV {
-	// TODO(radu): implement this using NextPrefix.
-	return m.SeekGE(succKey, 0)
+func (m *mergingIterV2) NextPrefix(succKey []byte) (kv *base.InternalKV) {
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		op := treesteps.StartOpf(m, "NextPrefix(%q)", succKey)
+		defer func() {
+			op.Finishf("= %s", kv.String())
+		}()
+	}
+	if m.dir != +1 {
+		panic(errors.AssertionFailedf("pebble: cannot switch directions with NextPrefix"))
+	}
+	if m.err != nil {
+		return nil
+	}
+	if invariants.Enabled && m.prefix != nil {
+		panic(errors.AssertionFailedf("pebble: NextPrefix in prefix iteration mode"))
+	}
+	for levelIdx, parked := range m.slab.Build(+1) {
+		level := &m.levels[levelIdx]
+		wasParked := level.parked
+		level.parked = parked
+		if parked {
+			if !wasParked {
+				// Newly parking the level. NextPrefix is forward-only and the level
+				// is currently at or before succKey, so any future unpark seek is to
+				// a key >= succKey and TrySeekUsingNext is safe.
+				level.onlyFwdSinceParked = true
+			}
+			// If the level was already parked, onlyFwdSinceParked stays as-is
+			// because we are moving forward.
+			level.iterKV = nil
+			continue
+		}
+		switch {
+		case wasParked:
+			// Unpark: seek to succKey. If the merging iterator has only moved forward
+			// since the level was parked, use TrySeekUsingNext.
+			flags := base.SeekGEFlagsNone
+			if level.onlyFwdSinceParked {
+				flags = flags.EnableTrySeekUsingNext()
+			}
+			level.iterKV = level.iter.SeekGE(succKey, flags)
+		case level.iterKV != nil &&
+			level.iterKV.K.Kind() != base.InternalKeyKindSpanBoundary &&
+			m.heap.cmp(level.iterKV.K.UserKey, succKey) < 0:
+			// The level is positioned at a point key strictly before succKey: use the
+			// NextPrefix fast path.
+			level.iterKV = level.iter.NextPrefix(succKey)
+		default:
+			// Boundary key, exhausted, or already >= succKey: SeekGE with
+			// TrySeekUsingNext.
+			level.iterKV = level.iter.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+		}
+		if level.iterKV == nil && m.levelHasError(level) {
+			return nil
+		}
+	}
+	m.initHeap(+1)
+	return m.findNextEntry()
 }
 
 // Prev implements base.InternalIterator.
