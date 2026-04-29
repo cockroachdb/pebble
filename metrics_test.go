@@ -701,7 +701,7 @@ func TestMetricsWALBytesWrittenMonotonicity(t *testing.T) {
 
 	func() {
 		defer func() { close(stopCh) }()
-		abort := time.After(time.Second)
+		abort := time.After(200 * time.Millisecond)
 		var prevWALBytesWritten uint64
 		for {
 			select {
