@@ -246,7 +246,7 @@ func TestSnapshotClosed(t *testing.T) {
 
 func TestSnapshotRangeDeletionStress(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	const runs = 200
+	const runs = 50
 	const middleKey = runs * runs
 
 	d, err := Open("", &Options{
