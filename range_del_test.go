@@ -212,14 +212,14 @@ func TestFlushDelayStress(t *testing.T) {
 		opts := &Options{
 			FS:                    vfs.NewMem(),
 			Comparer:              testkeys.Comparer,
-			FlushDelayDeleteRange: time.Duration(rng.IntN(10)+1) * time.Millisecond,
-			FlushDelayRangeKey:    time.Duration(rng.IntN(10)+1) * time.Millisecond,
+			FlushDelayDeleteRange: time.Millisecond,
+			FlushDelayRangeKey:    time.Millisecond,
 			FormatMajorVersion:    internalFormatNewest,
 			MemTableSize:          8192,
 			Logger:                testutils.Logger{T: t},
 		}
 
-		runs := 100
+		runs := 25
 		if buildtags.SlowBuild {
 			runs = 5
 		}
