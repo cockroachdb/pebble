@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/humanize"
 	"github.com/cockroachdb/pebble/internal/inflight"
 	"github.com/cockroachdb/pebble/internal/invariants"
+	"github.com/cockroachdb/pebble/internal/iterv2"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/keyspan/keyspanimpl"
 	"github.com/cockroachdb/pebble/internal/manifest"
@@ -283,8 +284,9 @@ type Iterator struct {
 	// appears here because key visibility is handled by the merging iterator.
 	// During SetOptions on an iterator over an indexed batch, this field is
 	// used to update the merging iterator's batch snapshot.
-	merging   *mergingIter
-	mergingV2 *mergingIterV2
+	merging     *mergingIter
+	mergingV2   *mergingIterV2
+	triggerIter iterv2.TriggerIter
 
 	// Keeping the bools here after all the 8 byte aligned fields shrinks the
 	// sizeof this struct by 24 bytes.
@@ -2809,6 +2811,17 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 	// lower level iterators should not trigger a switch to combined iteration.
 	i.lazyCombinedIter.combinedIterState = combinedIterState{
 		initialized: i.rangeKey != nil || !i.opts.rangeKeys(),
+	}
+	if iterv2.Enabled && i.mergingV2 != nil && !i.batchOnlyIter {
+		// Re-arm (or disarm) the TriggerIter living inside mergingIterV2 to
+		// match the new desired mode. Bounds didn't necessarily change yet,
+		// but Reset uses the iter's existing bounds; mergingIterV2.SetBounds
+		// (called below in the slow path) will propagate any new bounds.
+		var trigger iterv2.BoundaryTrigger
+		if !i.lazyCombinedIter.combinedIterState.initialized {
+			trigger = &i.lazyCombinedIter.combinedIterState
+		}
+		i.triggerIter.Reset(trigger)
 	}
 
 	boundsEqual := ((i.opts.LowerBound == nil) == (o.LowerBound == nil)) &&
