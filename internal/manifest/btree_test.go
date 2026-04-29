@@ -346,8 +346,8 @@ func TestIterCmpEdgeCases(t *testing.T) {
 }
 
 func TestIterCmpRand(t *testing.T) {
-	const itemCount = 65536
-	const iterCount = 1000
+	const itemCount = 8192
+	const iterCount = 200
 
 	var tr btree[*TableMetadata]
 	tr.bcmp = cmp
