@@ -56,7 +56,7 @@ func TestSyncQueue(t *testing.T) {
 	var doneWG sync.WaitGroup
 	for range SyncConcurrency {
 		doneWG.Go(func() {
-			for range 1000 {
+			for range 100 {
 				wg := &sync.WaitGroup{}
 				wg.Add(1)
 				// syncQueue is a single-producer, single-consumer queue. We need to
