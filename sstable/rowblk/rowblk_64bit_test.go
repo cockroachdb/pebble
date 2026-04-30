@@ -44,6 +44,9 @@ func TestSingularKVBlockRestartsOverflow(t *testing.T) {
 	largeValue := bytes.Repeat([]byte("v"), largeValueSize)
 
 	writer := &Writer{RestartInterval: 1}
+	// Pre-allocate the buffer to avoid repeated doubling/copying as the writer
+	// grows past multiple GiB.
+	writer.buf = make([]byte, 0, largeKeySize+largeValueSize+64)
 	require.NoError(t, writer.Add(base.InternalKey{UserKey: largeKey}, largeValue))
 	blockData := writer.Finish()
 	iter, err := NewIter(bytes.Compare, nil, nil, blockData, blockiter.NoTransforms)
@@ -99,6 +102,9 @@ func TestExceedingMaximumRestartOffset(t *testing.T) {
 		kvTestPairs[i] = KVTestPair{key: []byte(key), value: value4MB}
 	}
 	writer := &Writer{RestartInterval: 1}
+	// Pre-allocate the buffer to avoid repeated doubling/copying as the writer
+	// grows past 2 GiB.
+	writer.buf = make([]byte, 0, numKVs*valueSize+1<<20)
 	for _, KVPair := range kvTestPairs {
 		require.NoError(t, writer.Add(base.InternalKey{UserKey: KVPair.key}, KVPair.value))
 	}
@@ -148,6 +154,9 @@ func TestMultipleKVBlockRestartsOverflow(t *testing.T) {
 	}
 
 	writer := &Writer{RestartInterval: 1}
+	// Pre-allocate the buffer to avoid repeated doubling/copying as the writer
+	// grows past multiple GiB.
+	writer.buf = make([]byte, 0, numKVs*valueSize+fourGB+1<<20)
 	for _, KVPair := range kvTestPairs {
 		writer.Add(base.InternalKey{UserKey: KVPair.key}, KVPair.value)
 	}
