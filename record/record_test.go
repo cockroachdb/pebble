@@ -908,6 +908,9 @@ func (l *readerLogger) logf(format string, args ...interface{}) {
 }
 
 func TestWALSync(t *testing.T) {
+	defer func(prev bool) { disableBitFlipCheckForTesting = prev }(disableBitFlipCheckForTesting)
+	disableBitFlipCheckForTesting = true
+
 	var buffer bytes.Buffer
 	result := make([]byte, 0)
 	corruptChunkNumbers := make([]int, 0)
