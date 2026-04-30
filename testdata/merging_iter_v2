@@ -517,3 +517,337 @@ a@5#10,SET:
 a@3#5,SET:
 b@5#8,SET:
 c@1#3,SET:
+
+# Unparking via SeekGE: L0 RANGEDEL [c, g) parks L1 (whose next entries fall
+# inside the deleted slab). A subsequent SeekGE past the slab unparks L1; the
+# iterator internally uses TrySeekUsingNext for the unpark since the level
+# was only moved forward since being parked.
+
+define
+L
+  a#20,SET h#18,SET
+  c-g:{(#15,RANGEDEL)}
+L
+  b#10,SET d#8,SET e#7,SET f#6,SET i#5,SET
+----
+L0
+  a#20,SET
+  h#18,SET
+  c-g:{(#15,RANGEDEL)}
+L1
+  b#10,SET
+  d#8,SET
+  e#7,SET
+  f#6,SET
+  i#5,SET
+
+iter
+first
+next
+next
+seek-ge h
+next
+----
+a#20,SET:
+b#10,SET:
+h#18,SET:
+h#18,SET:
+i#5,SET:
+
+# Parked-level slab boundary at file edge: L1 has an entry exactly at the slab
+# boundary. Forward iteration past the boundary must produce the boundary key
+# from L1.
+
+define
+L
+  a#20,SET k#18,SET
+  c-g:{(#15,RANGEDEL)}
+L
+  b#10,SET d#8,SET g#6,SET j#5,SET
+----
+L0
+  a#20,SET
+  k#18,SET
+  c-g:{(#15,RANGEDEL)}
+L1
+  b#10,SET
+  d#8,SET
+  g#6,SET
+  j#5,SET
+
+iter
+first
+next
+next
+next
+next
+----
+a#20,SET:
+b#10,SET:
+g#6,SET:
+j#5,SET:
+k#18,SET:
+
+# Backward-then-forward clears onlyFwdSinceParked: after iterating forward
+# (which parks L1), a Prev moves the iterator backward. A subsequent forward
+# operation must re-seek the previously-parked level from scratch (no TSUN).
+
+define
+L
+  a#20,SET h#18,SET
+  c-g:{(#15,RANGEDEL)}
+L
+  b#10,SET d#8,SET f#6,SET i#5,SET
+----
+L0
+  a#20,SET
+  h#18,SET
+  c-g:{(#15,RANGEDEL)}
+L1
+  b#10,SET
+  d#8,SET
+  f#6,SET
+  i#5,SET
+
+iter
+first
+next
+next
+prev
+prev
+next
+next
+next
+----
+a#20,SET:
+b#10,SET:
+h#18,SET:
+b#10,SET:
+a#20,SET:
+b#10,SET:
+h#18,SET:
+i#5,SET:
+
+# SeekGE with TrySeekUsingNext: forward sequence across multiple levels with
+# no spans. Each TSUN seek must produce the same result as a fresh SeekGE.
+
+define
+L
+  a#20,SET d#18,SET g#16,SET k#14,SET
+L
+  b#10,SET e#8,SET h#6,SET m#4,SET
+L
+  c#5,SET f#4,SET i#3,SET n#2,SET
+----
+L0
+  a#20,SET
+  d#18,SET
+  g#16,SET
+  k#14,SET
+L1
+  b#10,SET
+  e#8,SET
+  h#6,SET
+  m#4,SET
+L2
+  c#5,SET
+  f#4,SET
+  i#3,SET
+  n#2,SET
+
+iter
+seek-ge a
+seek-ge c try-seek-using-next
+seek-ge f try-seek-using-next
+seek-ge h try-seek-using-next
+seek-ge l try-seek-using-next
+seek-ge n try-seek-using-next
+----
+a#20,SET:
+c#5,SET:
+f#4,SET:
+h#6,SET:
+m#4,SET:
+n#2,SET:
+
+# SeekGE with TSUN crossing RANGEDEL coverage: L0 RANGEDEL [d, h) shadows L1
+# entries inside the range. TSUN seeks must still respect the deletion.
+
+define
+L
+  a#20,SET h#18,SET
+  d-h:{(#15,RANGEDEL)}
+L
+  b#10,SET e#8,SET f#7,SET g#6,SET i#5,SET
+----
+L0
+  a#20,SET
+  h#18,SET
+  d-h:{(#15,RANGEDEL)}
+L1
+  b#10,SET
+  e#8,SET
+  f#7,SET
+  g#6,SET
+  i#5,SET
+
+iter
+seek-ge a
+seek-ge b try-seek-using-next
+seek-ge d try-seek-using-next
+seek-ge e try-seek-using-next
+seek-ge h try-seek-using-next
+----
+a#20,SET:
+b#10,SET:
+h#18,SET:
+h#18,SET:
+h#18,SET:
+
+# SeekGE with TSUN where only some levels are at/past the seek key. Levels
+# behind the seek key may be parked; the per-level TrySeekUsingNext flag
+# handling must produce a correct merged result.
+
+define
+L
+  a#20,SET m#18,SET
+L
+  b#10,SET n#8,SET
+L
+  c#5,SET d#4,SET e#3,SET o#2,SET
+----
+L0
+  a#20,SET
+  m#18,SET
+L1
+  b#10,SET
+  n#8,SET
+L2
+  c#5,SET
+  d#4,SET
+  e#3,SET
+  o#2,SET
+
+iter
+first
+next
+seek-ge d try-seek-using-next
+next
+seek-ge n try-seek-using-next
+next
+----
+a#20,SET:
+b#10,SET:
+d#4,SET:
+e#3,SET:
+n#8,SET:
+o#2,SET:
+
+# SeekPrefixGE with TrySeekUsingNext: sequential strictly-increasing prefixes
+# across multiple levels. Same-prefix TSUN is illegal per the contract.
+
+define
+L
+  a@5#20,SET a@1#19,SET d@3#18,SET d@1#17,SET h@2#16,SET
+L
+  b@4#10,SET b@1#9,SET e@5#8,SET g@2#7,SET
+L
+  c@3#5,SET d@2#4,SET h@9#3,SET h@1#2,SET
+----
+L0
+  a@5#20,SET
+  a@1#19,SET
+  d@3#18,SET
+  d@1#17,SET
+  h@2#16,SET
+L1
+  b@4#10,SET
+  b@1#9,SET
+  e@5#8,SET
+  g@2#7,SET
+L2
+  c@3#5,SET
+  d@2#4,SET
+  h@9#3,SET
+  h@1#2,SET
+
+iter
+seek-prefix-ge a@9
+seek-prefix-ge b@9 try-seek-using-next
+seek-prefix-ge c@9 try-seek-using-next
+seek-prefix-ge d@9 try-seek-using-next
+seek-prefix-ge e@9 try-seek-using-next
+seek-prefix-ge g@9 try-seek-using-next
+seek-prefix-ge h@9 try-seek-using-next
+seek-prefix-ge z@9 try-seek-using-next
+----
+a@5#20,SET:
+b@4#10,SET:
+c@3#5,SET:
+d@3#18,SET:
+e@5#8,SET:
+g@2#7,SET:
+h@9#3,SET:
+.
+
+# SeekPrefixGE with TSUN after a slab advance. Forward iteration parks some
+# levels; a subsequent TSUN prefix seek must unpark them correctly.
+
+define
+L
+  a@5#20,SET h@3#18,SET
+  b-g:{(#15,RANGEDEL)}
+L
+  c@4#10,SET d@2#9,SET e@1#8,SET h@5#7,SET
+----
+L0
+  a@5#20,SET
+  h@3#18,SET
+  b-g:{(#15,RANGEDEL)}
+L1
+  c@4#10,SET
+  d@2#9,SET
+  e@1#8,SET
+  h@5#7,SET
+
+iter
+seek-prefix-ge a@9
+next
+seek-prefix-ge h@9 try-seek-using-next
+next
+----
+a@5#20,SET:
+.
+h@5#7,SET:
+h@3#18,SET:
+
+# SeekPrefixGE with TSUN where target prefix is fully covered by RANGEDEL.
+
+define
+L
+  a@5#20,SET k@3#18,SET
+  d-h:{(#15,RANGEDEL)}
+L
+  b@4#10,SET e@5#8,SET e@2#7,SET f@1#6,SET k@9#5,SET
+----
+L0
+  a@5#20,SET
+  k@3#18,SET
+  d-h:{(#15,RANGEDEL)}
+L1
+  b@4#10,SET
+  e@5#8,SET
+  e@2#7,SET
+  f@1#6,SET
+  k@9#5,SET
+
+iter
+seek-prefix-ge a@9
+seek-prefix-ge b@9 try-seek-using-next
+seek-prefix-ge e@9 try-seek-using-next
+seek-prefix-ge k@9 try-seek-using-next
+----
+a@5#20,SET:
+b@4#10,SET:
+.
+k@9#5,SET:

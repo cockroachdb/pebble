@@ -205,6 +205,12 @@ type mergingIterV2 struct {
 	stats  *InternalIteratorStats
 
 	keyBuf []byte
+
+	// lastPrefixCopy stores a copy of the prefix from the most recent
+	// SeekPrefixGE call. It is used in invariants builds to verify that
+	// callers do not pass the same prefix when using TrySeekUsingNext (see
+	// SeekPrefixGEStrict).
+	lastPrefixCopy invariants.Value[[]byte]
 }
 
 var _ base.TopLevelIterator = (*mergingIterV2)(nil)
@@ -235,6 +241,14 @@ type mergingIterV2Level struct {
 	// RANGEDEL. A parked level's iterator is not positioned and produces
 	// no keys until unparked.
 	parked bool
+	// onlyFwdSinceParked is true when the level was parked during a forward slab
+	// advance and the merging iterator has only moved forward since then. When
+	// true, we can use TrySeekUsingNext when unparking the level in
+	// advanceSlabForward. Only valid when parked is true.
+	//
+	// This field is per-level because different levels get parked/unparked at
+	// different times.
+	onlyFwdSinceParked bool
 	// atBoundary is true when this level has a boundary key at the current
 	// slab boundary. The Next()/Prev() to cross it is deferred until we
 	// know whether the level will be parked.
@@ -292,6 +306,9 @@ func (m *mergingIterV2) nextEntry(level *mergingIterV2Level) {
 	if invariants.Enabled && level != m.heap.Top() {
 		panic(errors.AssertionFailedf("level not the top"))
 	}
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		level.iterKV = nil
+	}
 	level.iterKV = level.iter.Next()
 	if level.iterKV == nil {
 		if m.levelHasError(level) {
@@ -308,6 +325,9 @@ func (m *mergingIterV2) nextEntry(level *mergingIterV2Level) {
 func (m *mergingIterV2) prevEntry(level *mergingIterV2Level) {
 	if invariants.Enabled && level != m.heap.Top() {
 		panic(errors.AssertionFailedf("level not the top"))
+	}
+	if treesteps.Enabled && treesteps.IsRecording(m) {
+		level.iterKV = nil
 	}
 	level.iterKV = level.iter.Prev()
 	if level.iterKV == nil {
@@ -334,8 +354,12 @@ func (m *mergingIterV2) First() (kv *base.InternalKV) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.First()
 			if level.iterKV == nil && m.levelHasError(level) {
 				return nil
@@ -352,18 +376,40 @@ func (m *mergingIterV2) seekGE(key []byte, flags base.SeekGEFlags) {
 	if invariants.Enabled && flags.RelativeSeek() {
 		panic(errors.AssertionFailedf("invalid use of relative seek"))
 	}
-	// TODO(radu): support TrySeekUsingNext.
-	flags = flags.DisableTrySeekUsingNext()
 	for levelIdx, parked := range m.slab.Build(+1) {
 		level := &m.levels[levelIdx]
+		wasParked := level.parked
 		level.parked = parked
 		if parked {
+			if flags.TrySeekUsingNext() {
+				if !wasParked {
+					// We are parking the level now. We know that it is positioned at or
+					// behind <key>.
+					level.onlyFwdSinceParked = true
+				}
+				// If the level was already parked, onlyFwdSinceParked stays as-is
+				// because we are moving forward.
+			} else {
+				// Without TrySeekUsingNext, seekGE is an absolute positioning operation
+				// and we can't rely on any existing state.
+				level.onlyFwdSinceParked = false
+			}
+
 			level.iterKV = nil
 		} else {
+			levelFlags := flags
+			if wasParked && !level.onlyFwdSinceParked {
+				// The level could be positioned in an arbitrary place, so we need to do
+				// an absolute seek.
+				levelFlags = levelFlags.DisableTrySeekUsingNext()
+			}
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			if m.prefix != nil {
-				level.iterKV = level.iter.SeekPrefixGE(m.prefix, key, flags)
+				level.iterKV = level.iter.SeekPrefixGE(m.prefix, key, levelFlags)
 			} else {
-				level.iterKV = level.iter.SeekGE(key, flags)
+				level.iterKV = level.iter.SeekGE(key, levelFlags)
 			}
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -380,6 +426,37 @@ func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Int
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
+	}
+	if flags.TrySeekUsingNext() {
+		if m.err != nil || m.dir != +1 || m.prefix != nil {
+			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
+		}
+		if m.heap.Len() == 0 {
+			return nil
+		}
+		if top := m.heap.Top(); m.heap.cmp(key, top.iterKV.K.UserKey) <= 0 {
+			// The iterator is already at the right position.
+			//
+			// It is necessary to check for this case to avoid passing down
+			// TrySeekUsingNext incorrectly: it is possible multiple slab transitions
+			// are necessary between <key> and <iterKV.K>, which would mean some
+			// levels would go backwards if we seeked them at <key>.
+			//
+			// For example, consider two levels:
+			//  L1: a  [b, c):RANGEDEL d
+			//  L2:      b1
+			//
+			// A SeekGE(a1) on the merging iterator would cause slab transitions
+			// through boundaries b and c to produce the resulting key d. A subsequent
+			// SeekGE(b, TrySeekUsingNext) is legal because (from an external
+			// perspective) it doesn't move back the merging iterator. However, L1 is
+			// now positioned at d, so it would be illegal to re-seek it to b using
+			// TrySeekUsingNext.
+			return top.iterKV
+		}
+		// TODO(radu): investigate a fast path for the common case where only a
+		// level needs to be advanced and the slab doesn't need to be rebuilt; we
+		// can look at the second best in the heap to determine if this is the case.
 	}
 	m.err = nil
 	m.prefix = nil
@@ -431,7 +508,8 @@ func (m *mergingIterV2) findNextEntry() *base.InternalKV {
 
 		if invariants.Enabled && m.prefix != nil {
 			if !bytes.Equal(m.prefix, m.split.Prefix(level.iterKV.K.UserKey)) {
-				panic(errors.AssertionFailedf("mergingIterV2: prefix violation: returning key without matching prefix"))
+				panic(errors.AssertionFailedf("mergingIterV2: prefix violation: returning key %q without matching prefix %q",
+					level.iterKV.K.UserKey, m.prefix))
 			}
 		}
 		m.addLevelStats(level)
@@ -469,6 +547,9 @@ func (m *mergingIterV2) advanceSlabForward() {
 	// on that level has no span keys, try to advance without rebuilding the slab.
 	// TODO(radu): we can relax these conditions to cover more cases.
 	if len(top.span.Keys) == 0 && !m.heap.MultipleLevelsAtSameBoundary() {
+		if treesteps.Enabled && treesteps.IsRecording(m) {
+			top.iterKV = nil
+		}
 		top.iterKV = top.iter.Next()
 		if top.iterKV == nil {
 			if m.levelHasError(top) {
@@ -519,24 +600,39 @@ func (m *mergingIterV2) advanceSlabForward() {
 		wasParked := level.parked
 		level.parked = parked
 		if parked {
-			level.iterKV = nil
+			if !wasParked {
+				// Note that advanceSlabForward is only used when the iterator is
+				// already in forward mode; the last operation on any non-parked
+				// iterator must have been a forward operation.
+				level.onlyFwdSinceParked = true
+				level.iterKV = nil
+			}
 			level.atBoundary = false
 		} else if level.atBoundary {
 			// Cross the boundary via Next(). This updates the level's
 			// stashed span pointer in place.
 			level.atBoundary = false
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Next()
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
 			}
 		} else if wasParked {
-			// Unpark: seek to slab boundary.
+			// Unpark: seek to slab boundary. If the merging iterator has only moved
+			// forward since the level was parked, use TrySeekUsingNext.
+			flags := base.SeekGEFlagsNone
+			if level.onlyFwdSinceParked {
+				flags = flags.EnableTrySeekUsingNext()
+			}
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			if m.prefix != nil {
-				// TODO(radu): use TrySeekUsingNext (we'll have to keep track of whether
-				// the iteration direction has changed).
-				level.iterKV = level.iter.SeekPrefixGE(m.prefix, boundaryKey, base.SeekGEFlagsNone)
+				level.iterKV = level.iter.SeekPrefixGE(m.prefix, boundaryKey, flags)
 			} else {
-				level.iterKV = level.iter.SeekGE(boundaryKey, base.SeekGEFlagsNone)
+				level.iterKV = level.iter.SeekGE(boundaryKey, flags)
 			}
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -557,6 +653,12 @@ func (m *mergingIterV2) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags)
 
 // SeekPrefixGEStrict implements base.TopLevelIterator. The V2 merging iterator
 // always filters keys by prefix, so this is identical to SeekPrefixGE.
+//
+// When flags.TrySeekUsingNext() is set, the caller MUST pass a prefix that
+// differs from the prefix supplied to the most recent SeekPrefixGE call.
+// Reusing the same prefix with TrySeekUsingNext is illegal and is checked in
+// invariants builds. This is a particularity of this iterator and not the
+// general base.InternalIterator contract.
 func (m *mergingIterV2) SeekPrefixGEStrict(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
@@ -565,6 +667,25 @@ func (m *mergingIterV2) SeekPrefixGEStrict(
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
+	}
+	if invariants.Enabled {
+		if flags.TrySeekUsingNext() {
+			// Verify that the prefix is strictly greater than the last prefix. We can't
+			// use m.prefix, since it's a shallow copy that is no longer guaranteed to
+			// be stable.
+			//
+			// The reason we require this is that we otherwise can't tell if the
+			// iterator is already at the correct position for the seek key (in which
+			// case, re-seeking some levels could move them back; see the "iterator is
+			// already at the right position" case in SeekGE). Making that
+			// determination would require remembering a copy of the prefix or of the
+			// last point key.
+			if prev := m.lastPrefixCopy.Get(); prev == nil || bytes.Compare(prefix, prev) <= 0 {
+				panic(errors.AssertionFailedf(
+					"mergingIterV2.SeekPrefixGE(TrySeekUsingNext): prefix %q must be > previous %q", prefix, prev))
+			}
+		}
+		m.lastPrefixCopy.Set(append(m.lastPrefixCopy.Get()[:0], prefix...))
 	}
 	m.err = nil
 	m.prefix = prefix
@@ -596,8 +717,12 @@ func (m *mergingIterV2) seekLT(key []byte, flags base.SeekLTFlags) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.SeekLT(key, flags)
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -621,8 +746,12 @@ func (m *mergingIterV2) Last() (kv *base.InternalKV) {
 		level := &m.levels[levelIdx]
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 		} else {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Last()
 			if level.iterKV == nil && m.levelHasError(level) {
 				return nil
@@ -696,6 +825,9 @@ func (m *mergingIterV2) advanceSlabBackward() {
 	// on that level has no span keys, try to advance without rebuilding the slab.
 	// TODO(radu): we can relax these conditions to cover more cases.
 	if len(top.span.Keys) == 0 && !m.heap.MultipleLevelsAtSameBoundary() {
+		if treesteps.Enabled && treesteps.IsRecording(m) {
+			top.iterKV = nil
+		}
 		top.iterKV = top.iter.Prev()
 		if top.iterKV == nil {
 			if m.levelHasError(top) {
@@ -744,20 +876,32 @@ func (m *mergingIterV2) advanceSlabBackward() {
 	for levelIdx, parked := range m.slab.Build(-1) {
 		level := &m.levels[levelIdx]
 		wasParked := level.parked
+		if invariants.Enabled && wasParked && level.onlyFwdSinceParked {
+			// The iterator is moving in reverse direction; all onlyFwdSinceParked
+			// flags should have been reset.
+			panic(errors.AssertionFailedf("onlyFwdSinceParked set in reverse iteration mode"))
+		}
 		level.parked = parked
 		if parked {
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 			level.atBoundary = false
 		} else if level.atBoundary {
 			// Cross the boundary via Prev(). This updates the level's
 			// stashed span pointer in place.
 			level.atBoundary = false
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Prev()
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
 			}
 		} else if wasParked {
 			// Unpark: seek to before slab boundary.
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.SeekLT(boundaryKey, base.SeekLTFlagsNone)
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -792,11 +936,15 @@ func (m *mergingIterV2) switchToMinHeapAndNext() *base.InternalKV {
 		level := &m.levels[levelIdx]
 		if parked {
 			level.parked = true
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 			continue
 		}
 		if level.parked {
 			level.parked = false
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.SeekGE(key.UserKey, base.SeekGEFlagsNone)
 		} else {
 			level.iterKV = level.iter.Next()
@@ -807,7 +955,13 @@ func (m *mergingIterV2) switchToMinHeapAndNext() *base.InternalKV {
 		// invisible in the end), so a Prev followed by a Next might not return us
 		// to the same place.
 		for level.iterKV != nil && base.InternalCompare(m.heap.cmp, level.iterKV.K, key) <= 0 {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Next()
+		}
+		if treesteps.Enabled && treesteps.IsRecording(m) {
+			level.iterKV = nil
 		}
 		if level.iterKV == nil && m.levelHasError(level) {
 			return nil
@@ -839,8 +993,12 @@ func (m *mergingIterV2) switchToMaxHeapAndPrev() *base.InternalKV {
 		level := &m.levels[levelIdx]
 		if parked {
 			level.parked = true
+			level.onlyFwdSinceParked = false
 			level.iterKV = nil
 			continue
+		}
+		if treesteps.Enabled && treesteps.IsRecording(m) {
+			level.iterKV = nil
 		}
 		if level.parked {
 			level.parked = false
@@ -853,6 +1011,9 @@ func (m *mergingIterV2) switchToMaxHeapAndPrev() *base.InternalKV {
 		// will make them invisible in the end), so a Next followed by a Prev might
 		// not return us to the same place.
 		for level.iterKV != nil && base.InternalCompare(m.heap.cmp, level.iterKV.K, key) >= 0 {
+			if treesteps.Enabled && treesteps.IsRecording(m) {
+				level.iterKV = nil
+			}
 			level.iterKV = level.iter.Prev()
 		}
 		if level.iterKV == nil && m.levelHasError(level) {
@@ -937,6 +1098,9 @@ func (d *treestepsV2DummyNode) TreeStepsNode() treesteps.NodeInfo {
 // TreeStepsNode implements treesteps.Node.
 func (m *mergingIterV2) TreeStepsNode() treesteps.NodeInfo {
 	info := treesteps.NodeInfof(m, "mergingIterV2")
+	if m.err != nil {
+		info.AddPropf("ERROR", "%s", m.err)
+	}
 	if m.heap.Len() > 0 {
 		heapProp := crstrings.IfElse(m.heap.lessCmp == -1, "min heap", "max heap")
 		var str strings.Builder

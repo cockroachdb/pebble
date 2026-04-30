@@ -9,6 +9,8 @@ testdata/out-of-order-sst/000001.sst
 000001.sst
 WARNING: OUT OF ORDER KEYS!
     c#0,SET >= b#0,SET
+WARNING: PREFIX ITERATION FAILURE!
+    b#0,SET not found
 
 sstable check
 --key=%x
@@ -17,6 +19,8 @@ testdata/out-of-order-sst/000001.sst
 000001.sst
 WARNING: OUT OF ORDER KEYS!
     63#0,SET >= 62#0,SET
+WARNING: PREFIX ITERATION FAILURE!
+    62#0,SET not found
 
 sstable check
 --key=pretty
@@ -25,6 +29,8 @@ testdata/out-of-order-sst/000001.sst
 000001.sst
 WARNING: OUT OF ORDER KEYS!
     c#0,SET >= b#0,SET
+WARNING: PREFIX ITERATION FAILURE!
+    b#0,SET not found
 
 sstable check
 --key=pretty:test-comparer
@@ -33,6 +39,8 @@ testdata/out-of-order-sst/000001.sst
 000001.sst
 WARNING: OUT OF ORDER KEYS!
     test formatter: c#0,SET >= test formatter: b#0,SET
+WARNING: PREFIX ITERATION FAILURE!
+    test formatter: b#0,SET not found
 
 sstable check
 --key=null
@@ -40,6 +48,7 @@ testdata/out-of-order-sst/000001.sst
 ----
 000001.sst
 WARNING: OUT OF ORDER KEYS!
+WARNING: PREFIX ITERATION FAILURE!
 
 sstable check
 testdata/corrupted-sst/000003.sst
@@ -50,3 +59,8 @@ sstable check
 testdata/bad-magic-sst/000015.sst
 ----
 000015.sst: pebble/table: invalid table 000015: (bad magic number: 0xf6cff485b741e288)
+
+sstable check
+testdata/find-val-sep-db/000005.sst
+----
+000005.sst

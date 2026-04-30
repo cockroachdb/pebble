@@ -7,7 +7,6 @@ package colblk
 import (
 	"bytes"
 	"cmp"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -1250,6 +1249,21 @@ type DataBlockIter struct {
 	// It is used to optimize skipping of obsolete points during forward
 	// iteration.
 	nextObsoletePoint int
+
+	// (prefixCacheStart, nextPrefixChange) describe a range of rows that share
+	// a common prefix, used by NextWithSamePrefix to avoid recomputing the
+	// next-prefix-change boundary on every call. The cache is valid when
+	// prefixCacheStart <= row < nextPrefixChange, in which case all rows in
+	// [prefixCacheStart, nextPrefixChange) share the same prefix and
+	// nextPrefixChange is either the first row with a different prefix or
+	// maxRow+1 if all remaining rows have that same prefix.
+	//
+	// Because the cache is a property of the bitmap (not of the iterator's
+	// path through it), no other positioning method needs to invalidate it —
+	// NextWithSamePrefix detects an out-of-range row and recomputes via
+	// prefixChanged.SeekSetBitGE.
+	prefixCacheStart int
+	nextPrefixChange int
 }
 
 // InitOnce configures the data block iterator's key schema and lazy value
@@ -1300,6 +1314,8 @@ func (i *DataBlockIter) Init(
 	i.kv = base.InternalKV{}
 	i.kvRow = math.MinInt
 	i.nextObsoletePoint = 0
+	i.prefixCacheStart = -1
+	i.nextPrefixChange = -1
 
 	// Reset tiering state for lazy initialization.
 	i.tieringConfig = tieringConfig
@@ -1339,6 +1355,8 @@ func (i *DataBlockIter) InitHandle(
 	i.kv = base.InternalKV{}
 	i.kvRow = math.MinInt
 	i.nextObsoletePoint = 0
+	i.prefixCacheStart = -1
+	i.nextPrefixChange = -1
 	i.keySeeker = i.keySchema.KeySeeker(keySeekerMeta)
 
 	// Reset tiering state for lazy initialization. Block data will be obtained
@@ -1361,8 +1379,19 @@ func (i *DataBlockIter) Valid() bool {
 
 // KV returns the key-value pair at the current iterator position. The
 // iterator must be positioned over a valid KV.
+//
+// KV materializes the row lazily if necessary. NextWithSamePrefix leaves
+// i.row pointing at the new-prefix row when prefix is exhausted without
+// updating i.kv; the lazy materialization here finishes the work if KV() is
+// then called. The hot case is inlined: a single comparison of the cached
+// kvRow against the current row.
+//
+//gcassert:inline
 func (i *DataBlockIter) KV() *base.InternalKV {
-	return &i.kv
+	if i.kvRow == i.row {
+		return &i.kv
+	}
+	return i.decodeRow()
 }
 
 // Invalidate invalidates the block iterator, removing references to the block
@@ -1403,28 +1432,33 @@ func splitKey(k []byte, at int) (before, after []byte) {
 }
 
 // seekGEInternal is a wrapper around keySeeker.SeekGE which takes into account
-// the synthetic prefix and suffix.
-func (i *DataBlockIter) seekGEInternal(key []byte, boundRow int, searchDir int8) (row int) {
+// the synthetic prefix and suffix. It returns the resulting row and a flag
+// indicating whether the row's prefix matches the seek key's prefix.
+func (i *DataBlockIter) seekGEInternal(
+	key []byte, boundRow int, searchDir int8,
+) (row int, equalPrefix bool) {
 	if i.transforms.HasSyntheticPrefix() {
 		var keyPrefix []byte
 		keyPrefix, key = splitKey(key, len(i.transforms.SyntheticPrefix()))
 		if cmp := bytes.Compare(keyPrefix, i.transforms.SyntheticPrefix()); cmp != 0 {
 			if cmp < 0 {
-				return 0
+				return 0, false
 			}
-			return i.maxRow + 1
+			return i.maxRow + 1, false
 		}
 	}
 	if i.transforms.HasSyntheticSuffix() {
 		n := i.split(key)
-		row, eq := i.keySeeker.SeekGE(key[:n], boundRow, searchDir)
-		if eq && i.suffixCmp(key[n:], i.transforms.SyntheticSuffix()) > 0 {
-			row = i.d.prefixChanged.SeekSetBitGE(row + 1)
+		row, equalPrefix = i.keySeeker.SeekGE(key[:n], boundRow, searchDir)
+		if equalPrefix && i.suffixCmp(key[n:], i.transforms.SyntheticSuffix()) > 0 {
+			// The row's effective key (with synthetic suffix) is < seek key, so
+			// advance to the next prefix; the resulting row has a different
+			// prefix from the seek key.
+			return i.d.prefixChanged.SeekSetBitGE(row + 1), false
 		}
-		return row
+		return row, equalPrefix
 	}
-	row, _ = i.keySeeker.SeekGE(key, boundRow, searchDir)
-	return row
+	return i.keySeeker.SeekGE(key, boundRow, searchDir)
 }
 
 // SeekGE implements the base.InternalIterator interface.
@@ -1441,7 +1475,7 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 		i.row, _ = i.keySeeker.SeekGE(key, i.row, searchDir)
 		return i.decodeRow()
 	}
-	i.row = i.seekGEInternal(key, i.row, searchDir)
+	i.row, _ = i.seekGEInternal(key, i.row, searchDir)
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
 		if i.atObsoletePointForward() {
@@ -1454,26 +1488,58 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 	return i.decodeRow()
 }
 
-// SeekPrefixGE implements the base.InternalIterator interface.
-func (i *DataBlockIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	// This should never be called as prefix iteration is handled by
-	// sstable.Iterator.
-
-	// TODO(jackson): We can implement this and avoid propagating keys without
-	// the prefix up to the merging iterator. It will avoid unnecessary key
-	// comparisons fixing up the merging iterator heap. We can also short
-	// circuit the search if the prefix isn't found within the prefix column.
-	// There's some subtlety around ensuring we continue to benefit from the
-	// TrySeekUsingNext optimization.
-	panic(errors.AssertionFailedf("pebble: SeekPrefixGE unimplemented"))
+// SeekPrefixGE implements the blockiter.Data interface. It positions the
+// iterator at the first key ≥ key. If that key shares the same prefix as the
+// seek key, returns (kv, false). If a key ≥ key was found but with a different
+// prefix, the iterator IS positioned there but returns (nil, true). If no key
+// ≥ key exists in the block, returns (nil, false).
+func (i *DataBlockIter) SeekPrefixGE(
+	key []byte, flags base.SeekGEFlags,
+) (kv *base.InternalKV, prefixDidNotMatch bool) {
+	if i.d == nil {
+		return nil, false
+	}
+	searchDir := int8(0)
+	if flags.TrySeekUsingNext() {
+		searchDir = +1
+	}
+	var equalPrefix bool
+	if i.noTransforms {
+		// Fast path.
+		i.row, equalPrefix = i.keySeeker.SeekGE(key, i.row, searchDir)
+	} else {
+		i.row, equalPrefix = i.seekGEInternal(key, i.row, searchDir)
+		if i.transforms.HideObsoletePoints {
+			startRow := i.row
+			i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
+			if i.atObsoletePointForward() {
+				i.skipObsoletePointsForward()
+			}
+			// If skipping obsolete points crossed a prefix boundary, the
+			// resulting row has a different prefix from the seek key.
+			if equalPrefix && i.row > startRow &&
+				i.d.prefixChanged.SeekSetBitGE(startRow+1) <= i.row {
+				equalPrefix = false
+			}
+		}
+	}
+	if i.row > i.maxRow {
+		// No key ≥ seek key in the block.
+		return nil, false
+	}
+	if !equalPrefix {
+		return nil, true
+	}
+	return i.decodeRow(), false
 }
 
-// SeekLT implements the base.InternalIterator interface.
+// SeekLT implements the blockiter.Data interface.
 func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV {
 	if i.d == nil {
 		return nil
 	}
-	i.row = i.seekGEInternal(key, i.row, 0 /* searchDir */) - 1
+	row, _ := i.seekGEInternal(key, i.row, 0 /* searchDir */)
+	i.row = row - 1
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(max(i.row, 0))
 		if i.atObsoletePointBackward() {
@@ -1641,6 +1707,82 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 	return &i.kv
 }
 
+// NextWithSamePrefix advances to the next KV pair, but only if it has the same
+// prefix as the current key. Implements the blockiter.Data interface.
+//
+// On prefix exhaustion (returns nil, true), the iterator IS positioned at the
+// first row with the new (different) prefix. The kv is not materialized; a
+// subsequent KV() call materializes it lazily.
+func (i *DataBlockIter) NextWithSamePrefix() (kv *base.InternalKV, prefixExhausted bool) {
+	// The body is intentionally a copy of Next with extra checks against the
+	// (prefixCacheStart, nextPrefixChange) cache (rather than refactored into
+	// a shared helper) so the hot path stays tight.
+	if i.d == nil {
+		return nil, false
+	}
+	if i.row < i.prefixCacheStart || i.row >= i.nextPrefixChange {
+		if invariants.Enabled && i.row > i.maxRow {
+			panic(errors.AssertionFailedf("NextWithSamePrefix on exhausted iterator"))
+		}
+		// The cache is stale (or uninitialized): we either crossed the previous
+		// prefix range or i.row was repositioned (e.g. via SeekGE/Prev).
+		// SeekSetBitGE returns ≤ maxRow+1 (= bitCount), so nextPrefixChange
+		// also bounds the row index we may reach.
+		i.prefixCacheStart = i.row
+		i.nextPrefixChange = i.d.prefixChanged.SeekSetBitGE(i.row + 1)
+	}
+	i.row++
+	if i.noTransforms {
+		// Hot path. Single combined check covers both past-prefix and past-end
+		// (since nextPrefixChange ≤ maxRow+1).
+		if i.row >= i.nextPrefixChange {
+			if i.row > i.maxRow {
+				return nil, false
+			}
+			// Past prefix. Iterator is positioned at the new-prefix row;
+			// materialization is deferred to KV().
+			return nil, true
+		}
+		i.kv.K = base.InternalKey{
+			UserKey: i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row),
+			Trailer: base.InternalKeyTrailer(i.d.trailers.At(i.row)),
+		}
+	} else {
+		// Transforms branch (cold).
+		if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
+			i.skipObsoletePointsForward()
+		}
+		if i.row > i.maxRow {
+			return nil, false
+		}
+		if i.row >= i.nextPrefixChange {
+			// Past prefix. See note in the noTransforms branch.
+			return nil, true
+		}
+		if i.transforms.HasSyntheticSuffix() {
+			i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(
+				&i.keyIter, i.transforms.SyntheticSuffix(), i.kvRow, i.row,
+			)
+		} else {
+			i.kv.K.UserKey = i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
+		}
+		i.kv.K.Trailer = base.InternalKeyTrailer(i.d.trailers.At(i.row))
+		if n := i.transforms.SyntheticSeqNum; n != 0 {
+			i.kv.K.SetSeqNum(base.SeqNum(n))
+		}
+	}
+	invariants.CheckBounds(i.row, i.d.values.slices)
+	// Inline i.d.values.At(row).
+	v := i.d.values.Slice(i.d.values.offsets.At2(i.row))
+	if i.d.isValueExternal.At(i.row) {
+		i.kv.V = i.getLazyValuer.GetInternalValueForPrefixAndValueHandle(v)
+	} else {
+		i.kv.V = base.MakeInPlaceValue(v)
+	}
+	i.kvRow = i.row
+	return &i.kv, false
+}
+
 // NextPrefix moves the iterator to the next row with a different prefix than
 // the key at the current iterator position.
 //
@@ -1748,23 +1890,7 @@ func (i *DataBlockIter) Error() error {
 	return nil // infallible
 }
 
-// SetBounds implements the base.InternalIterator interface.
-func (i *DataBlockIter) SetBounds(lower, upper []byte) {
-	// This should never be called as bounds are handled by sstable.Iterator.
-	panic(errors.AssertionFailedf("pebble: SetBounds unimplemented"))
-}
-
-// SetContext implements the base.InternalIterator interface.
-func (i *DataBlockIter) SetContext(_ context.Context) {}
-
-var dataBlockTypeString string = fmt.Sprintf("%T", (*DataBlockIter)(nil))
-
-// String implements the base.InternalIterator interface.
-func (i *DataBlockIter) String() string {
-	return dataBlockTypeString
-}
-
-// TreeStepsNode is part of the InternalIterator interface.
+// TreeStepsNode is part of the blockiter.Data interface.
 func (i *DataBlockIter) TreeStepsNode() treesteps.NodeInfo {
 	ni := treesteps.NodeInfof(i, "colblk.DataBlockIter")
 	if i.Valid() {

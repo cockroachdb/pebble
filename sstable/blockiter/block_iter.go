@@ -12,8 +12,64 @@ import (
 
 // Data is a type constraint for implementations of block iterators over data
 // blocks. It's implemented by *rowblk.Iter and *colblk.DataBlockIter.
+//
+// Unlike base.InternalIterator, a data block iterator does not support
+// SetBounds or SetContext — those are handled at a higher level by the sstable
+// iterator.
 type Data interface {
-	base.InternalIterator
+	// SeekGE moves the iterator to the first key/value pair whose key is greater
+	// than or equal to the given key. Returns the key/value if the iterator is
+	// pointing at a valid entry, and nil otherwise.
+	SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV
+	// SeekPrefixGE behaves like SeekGE but only returns a KV if the key's prefix
+	// matches the seke key's prefix. Otherwise, it indicates whether there was a
+	// prefix mismatch or there were no keys.
+	//
+	// Returns:
+	//   - (kv, false) if a key with the same prefix as the seek key was found.
+	//   - (nil, true) if a key ≥ the seek key was found but its prefix differs
+	//     from the seek key's prefix. The iterator IS positioned at that key
+	//     (KV()/Valid() reflect it), so callers may use TrySeekUsingNext on a
+	//     subsequent seek.
+	//   - (nil, false) if there is no key ≥ the seek key in the block.
+	//
+	// SeekPrefixGE allows NextWithSamePrefix as a follow-up call (see
+	// NextWithSamePrefix's contract).
+	SeekPrefixGE(key []byte, flags base.SeekGEFlags) (kv *base.InternalKV, prefixDidNotMatch bool)
+	// SeekLT moves the iterator to the last key/value pair whose key is less
+	// than the given key. Returns the key/value if the iterator is pointing at a
+	// valid entry, and nil otherwise.
+	SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV
+	// First moves the iterator to the first key/value pair. Returns the
+	// key/value if the iterator is pointing at a valid entry, and nil otherwise.
+	First() *base.InternalKV
+	// Last moves the iterator to the last key/value pair. Returns the key/value
+	// if the iterator is pointing at a valid entry, and nil otherwise.
+	Last() *base.InternalKV
+	// Next moves the iterator to the next key/value pair. Returns the key/value
+	// if the iterator is pointing at a valid entry, and nil otherwise.
+	Next() *base.InternalKV
+	// NextWithSamePrefix moves the iterator to the next key/value pair, but
+	// only if the next key shares the same prefix as the current key.
+	//
+	// Returns:
+	//   - (kv, false) if the new key has the same prefix as the current key.
+	//   - (nil, true) if the next key has a different prefix. The iterator
+	//     IS positioned at that new-prefix key — KV() materializes it lazily,
+	//     enabling subsequent TrySeekUsingNext optimizations.
+	//   - (nil, false) if there are no more keys (similar to Next returning nil).
+	NextWithSamePrefix() (kv *base.InternalKV, prefixExhausted bool)
+	// NextPrefix moves the iterator to the next key/value pair with a different
+	// prefix than the key at the current iterator position. succKey is the
+	// immediate successor to the current prefix key.
+	NextPrefix(succKey []byte) *base.InternalKV
+	// Prev moves the iterator to the previous key/value pair. Returns the
+	// key/value if the iterator is pointing at a valid entry, and nil otherwise.
+	Prev() *base.InternalKV
+	// Error returns any accumulated error.
+	Error() error
+	// Close closes the iterator, releasing any resources it holds.
+	Close() error
 
 	// Handle returns the handle to the block.
 	Handle() block.BufferHandle
@@ -38,7 +94,7 @@ type Data interface {
 	IsLowerBound(k []byte) bool
 	// Invalidate invalidates the block iterator, removing references to the
 	// block it was initialized with. The iterator may continue to be used after
-	// a call to Invalidate, but all positioning methods should return false.
+	// a call to Invalidate, but all positioning methods should return nil.
 	// Valid() must also return false.
 	Invalidate()
 	// IsDataInvalidated returns true when the iterator has been invalidated
@@ -47,6 +103,8 @@ type Data interface {
 	// NB: this is different from Valid which indicates whether the current *KV*
 	// is valid.
 	IsDataInvalidated() bool
+
+	treesteps.Node
 }
 
 // Index is an interface for implementations of block iterators over index

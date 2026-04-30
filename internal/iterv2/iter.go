@@ -86,6 +86,19 @@ const Enabled = buildtags.IterV2
 //
 // # Amendments to the InternalIterator methods
 //
+// ## SeekGE with TrySeekUsingNext
+//
+// SeekGE with TrySeekUsingNext can only be called after SeekGE(), First(),
+// NextPrefix(), or Next():
+//   - after SeekGE(k): the seek key must be >= k.
+//   - after First(): the seek key can be anything.
+//   - after NextPrefix(succKey): the seek key must be >= succKey.
+//   - after Next(): the last absolute positioning operation must not be
+//     SeekPrefixGE, and the seek key must be strictly greater than the key
+//     (whether point or boundary) returned by the operation before that last
+//     Next(). For example: if the previous operations were SeekGE(a) -> b;
+//     Next() -> c, the seek key must be strictly greater than b.
+//
 // ## SeekPrefixGE
 //
 // Like SeekGE, but stops returning point keys once the prefix no longer matches
@@ -98,22 +111,69 @@ const Enabled = buildtags.IterV2
 // point keys and no boundaries with the given prefix:
 //
 //	Points:     c@2  c@1 ...      d#BOUNDARY
-//	Spans    |--- [a, d):RANGEDEL ---|
+//	Spans:   |--- [a, d):RANGEDEL ---|
 //
-// # If a SeekPrefixGE(b) returned nil, the caller would not discover that we
-// have a RANGEDEL covering the entire key space for prefix b. Instead,
+// If a SeekPrefixGE(b) returned nil, the caller would not discover that we have
+// a RANGEDEL covering the entire key space for prefix b. Instead,
 // SeekPrefixGE(b) returns the d#BOUNDARY key and exposes the RANGEDEL in the
 // Span().
 //
 // A more nuanced example:
 //
 //	Points:  a@8 a@7 a@6#BOUNDARY  b@2  b@1 ...        d#BOUNDARY
-//	Spans    --------------------|--- [a@6, d):RANGEDEL ---|
+//	Spans:   --------------------|--- [a@6, d):RANGEDEL ---|
 //
 // Consider SeekPrefixGE(a). If it returns a@8, a@7, a@6#BOUNDARY and then
 // becomes exhausted, we will never discover the [a@6, d):RANGEDEL. Inside the
 // merging iterator, this RANGEDEL is important because it could shadow keys
 // like a@3 on a lower level.
+//
+// ## SeekPrefixGE with TrySeekUsingNext
+//
+// SeekPrefixGE with TrySeekUsingNext can only be called after SeekPrefixGE(),
+// possibly followed by one or more calls to Next():
+//   - after SeekPrefixGE(): the seek key must be >= the seek key of that
+//     previous SeekPrefixGE().
+//   - after Next(): the seek key must be strictly greater than the key (whether
+//     point or boundary) returned by the operation before that last Next(). For
+//     example: if the previous operations were SeekPrefixGE(a) -> a@10;
+//     Next() -> a@5, the seek key must be strictly greater than a@10.
+//
+// For example, consider a table:
+//
+//	Points:  a@4 a@2 b@1  c#BOUNDARY  c@1
+//	Spans:   -----------------|----------
+//
+// The following sequences of operations are all valid:
+//   - SeekPrefixGE(a) -> a@4; SeekPrefixGE(a@3, TrySeekUsingNext) -> a@2
+//     Seek key a@3 is >= last seek key a.
+//   - SeekPrefixGE(a) -> a@4; SeekPrefixGE(b, TrySeekUsingNext) -> b@1
+//     Seek key b is >= last seek key a.
+//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; SeekPrefixGE(a@3, TrySeekUsingNext) -> a@2
+//     Seek key a@3 is > a@4.
+//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; SeekPrefixGE(a@2, TrySeekUsingNext) -> a@2
+//     Seek key a@2 is > a@4.
+//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; SeekPrefixGE(a@1, TrySeekUsingNext) -> c#BOUNDARY
+//     Seek key a@1 is > a@2.
+//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; SeekPrefixGE(a@1, TrySeekUsingNext) -> c#BOUNDARY
+//     Seek key a@1 is > a@2.
+//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; SeekPrefixGE(b, TrySeekUsingNext) -> b@1
+//     Seek key b is > a@2. Notice that the SeekPrefixGE(b, TrySeekUsingNext)
+//     operation returns a key that is before the previously returned boundary
+//     key and we seem to be going backward. This is because of the special
+//     semantics of prefix iteration where the b keys before the boundary were
+//     not exposed.
+//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; Next() -> nil; SeekPrefixGE(c, TrySeekUsingNext) -> c@1
+//     Seek key c is > c#BOUNDARY. This is similar to above, in that the
+//     position seems to be moving backward (from exhausted to not exhausted).
+//
+// The following sequences are not valid:
+//   - SeekPrefixGE(a@2) -> a@2; SeekPrefixGE(a@4, TrySeekUsingNext)
+//     The seek key must be >= previous seek key a@2.
+//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; SeekPrefixGE(a@3, TrySeekUsingNext)
+//     The seek key must be > a@2 (key returned before the last Next).
+//   - SeekPrefixGE(a) -> a@4; Next() -> a@2; Next() -> c#BOUNDARY; Next() -> nil; SeekPrefixGE(b, TrySeekUsingNext)
+//     The seek key must be > c#BOUNDARY.
 //
 // ## NextPrefix
 //

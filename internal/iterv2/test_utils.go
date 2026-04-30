@@ -9,8 +9,12 @@ import (
 	"cmp"
 	"fmt"
 	"math/rand/v2"
+	"runtime/debug"
 	"slices"
+	"strings"
+	"text/tabwriter"
 
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/keyspan"
@@ -20,13 +24,13 @@ import (
 // TB is a subset of testing.TB used by CheckIter, allowing it to be used
 // without a direct dependency on the testing package.
 type TB interface {
+	Helper()
 	Logf(format string, args ...interface{})
 	Fatalf(format string, args ...interface{})
 	Failed() bool
 }
 
 // TestOp enumerates the iterator operations used by CheckIter.
-// TODO(radu): add TestOpSeekPrefixGEWithTrySeekUsingNext
 type TestOp int
 
 const (
@@ -39,6 +43,8 @@ const (
 	TestOpPrev
 	TestOpNextPrefix
 	TestOpSetBounds
+	TestOpSeekGEWithTrySeekUsingNext
+	TestOpSeekPrefixGEWithTrySeekUsingNext
 	NumTestOps
 )
 
@@ -49,15 +55,17 @@ type TestOpWeights [NumTestOps]int
 
 // AllTestOps is the default set of weights, which exercises all operations.
 var AllTestOps = TestOpWeights{
-	TestOpFirst:        5,
-	TestOpLast:         5,
-	TestOpSeekGE:       15,
-	TestOpSeekPrefixGE: 15,
-	TestOpSeekLT:       15,
-	TestOpNext:         15,
-	TestOpPrev:         15,
-	TestOpNextPrefix:   10,
-	TestOpSetBounds:    5,
+	TestOpFirst:                            5,
+	TestOpLast:                             5,
+	TestOpSeekGE:                           10,
+	TestOpSeekGEWithTrySeekUsingNext:       10,
+	TestOpSeekPrefixGE:                     10,
+	TestOpSeekPrefixGEWithTrySeekUsingNext: 10,
+	TestOpSeekLT:                           15,
+	TestOpNext:                             30,
+	TestOpPrev:                             10,
+	TestOpNextPrefix:                       10,
+	TestOpSetBounds:                        5,
 }
 
 // CheckIterConfig contains parameters for CheckIter.
@@ -66,6 +74,15 @@ type CheckIterConfig struct {
 	KeyGenConfig KeyGenConfig
 	OpWeights    TestOpWeights
 	NumOps       int
+	// RequirePrefixChangeForTrySeekUsingNext, when true, requires that
+	// SeekPrefixGE(TrySeekUsingNext) be called with a prefix that differs from
+	// the prefix of the most recent SeekPrefixGE.
+	//
+	// This flag should not be used with general iterv2.Iter implementations which
+	// must support TrySeekUsingNext without changing the prefix. It is used to
+	// test mergingIterV2 which is not an iterv2.Iter (but uses the iterv2 testing
+	// infrastructure).
+	RequirePrefixChangeForTrySeekUsingNext bool
 }
 
 // CheckIter constructs a TestIter with the given points and spans and runs
@@ -90,10 +107,17 @@ func CheckIter(t TB, rng *rand.Rand, cfg CheckIterConfig, expected TestIterData,
 
 	testIter := NewTestIter(expected)
 	checkIter := NewOpCheckIter(testIter, cmp, lower, upper)
+	if cfg.RequirePrefixChangeForTrySeekUsingNext {
+		checkIter.RequirePrefixChangeForTrySeekUsingNext()
+	}
 	logIter := NewLoggingIter(iter)
 	defer func() {
 		_ = checkIter.Close()
 		_ = logIter.Close()
+		if p := recover(); p != nil {
+			t.Logf("Ops:\n%s", logIter.String())
+			t.Fatalf("panic: %v\n%s", p, string(debug.Stack()))
+		}
 	}()
 
 	var lastKV *base.InternalKV
@@ -125,11 +149,24 @@ func CheckIter(t TB, rng *rand.Rand, cfg CheckIterConfig, expected TestIterData,
 				return iter.SeekGE(opKey, base.SeekGEFlagsNone)
 			}
 
+		case TestOpSeekGEWithTrySeekUsingNext:
+			opKey = cfg.KeyGenConfig.RandKey(rng)
+			doOp = func(iter Iter) *base.InternalKV {
+				return iter.SeekGE(opKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+			}
+
 		case TestOpSeekPrefixGE:
 			opKey = cfg.KeyGenConfig.RandKey(rng)
 			prefix := cmp.Split.Prefix(opKey)
 			doOp = func(iter Iter) *base.InternalKV {
 				return iter.SeekPrefixGE(prefix, opKey, base.SeekGEFlagsNone)
+			}
+
+		case TestOpSeekPrefixGEWithTrySeekUsingNext:
+			opKey = cfg.KeyGenConfig.RandKey(rng)
+			prefix := cmp.Split.Prefix(opKey)
+			doOp = func(iter Iter) *base.InternalKV {
+				return iter.SeekPrefixGE(prefix, opKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
 			}
 
 		case TestOpSeekLT:
@@ -376,4 +413,87 @@ func RandBounds(rng *rand.Rand, cfg KeyGenConfig, startKey, endKey []byte) (lowe
 		}
 	}
 	return lower, upper
+}
+
+func RunIterOps(t TB, iter Iter, input string) string {
+	t.Helper()
+	var lastKV *base.InternalKV
+	var buf bytes.Buffer
+	tw := tabwriter.NewWriter(&buf, 2, 1, 1, ' ', 0)
+	for line := range crstrings.LinesSeq(input) {
+		parts := strings.Fields(line)
+		cmd := parts[0]
+		fmt.Fprintf(tw, "%s:\t", line)
+
+		var kv *base.InternalKV
+		switch cmd {
+		case "first":
+			kv = iter.First()
+		case "last":
+			kv = iter.Last()
+		case "next":
+			kv = iter.Next()
+		case "prev":
+			kv = iter.Prev()
+		case "next-prefix":
+			if lastKV == nil || lastKV.K.Kind() == base.InternalKeyKindSpanBoundary {
+				t.Fatalf("next-prefix requires iterator to be positioned at point key")
+			}
+			prefix := testkeys.Comparer.Split.Prefix(lastKV.K.UserKey)
+			succKey := testkeys.Comparer.ImmediateSuccessor(nil, prefix)
+			kv = iter.NextPrefix(succKey)
+		case "seek-ge":
+			if len(parts) < 2 {
+				t.Fatalf("ERROR: seek-ge requires a key argument")
+			}
+			flags := base.SeekGEFlagsNone
+			if len(parts) >= 3 && parts[2] == "try-seek-using-next" {
+				flags = flags.EnableTrySeekUsingNext()
+			}
+			kv = iter.SeekGE([]byte(parts[1]), flags)
+		case "seek-prefix-ge":
+			if len(parts) < 2 {
+				t.Fatalf("ERROR: seek-prefix-ge requires a key argument")
+			}
+			prefix := testkeys.Comparer.Split.Prefix([]byte(parts[1]))
+			flags := base.SeekGEFlagsNone
+			if len(parts) >= 3 && parts[2] == "try-seek-using-next" {
+				flags = flags.EnableTrySeekUsingNext()
+			}
+			kv = iter.SeekPrefixGE(prefix, []byte(parts[1]), flags)
+		case "seek-lt":
+			if len(parts) < 2 {
+				t.Fatalf("ERROR: seek-lt requires a key argument")
+			}
+			kv = iter.SeekLT([]byte(parts[1]), base.SeekLTFlagsNone)
+		case "set-bounds":
+			if len(parts) < 3 {
+				t.Fatalf("ERROR: set-bounds requires lower and upper args")
+			}
+			var lower, upper []byte
+			if parts[1] != "." {
+				lower = []byte(parts[1])
+			}
+			if parts[2] != "." {
+				upper = []byte(parts[2])
+			}
+			iter.SetBounds(lower, upper)
+			fmt.Fprintf(tw, "ok\n")
+			continue
+		default:
+			t.Fatalf("ERROR: unknown op %q", cmd)
+		}
+		if err := iter.Error(); err != nil {
+			fmt.Fprintf(tw, "err=%v\n", err)
+			continue
+		}
+		if kv == nil {
+			fmt.Fprintf(tw, ".\n")
+		} else {
+			fmt.Fprintf(tw, "%s %s\n", kv.K, iter.Span())
+		}
+		lastKV = kv
+	}
+	_ = tw.Flush()
+	return buf.String()
 }

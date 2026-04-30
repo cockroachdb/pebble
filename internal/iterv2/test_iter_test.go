@@ -79,7 +79,7 @@ func TestTestIter(t *testing.T) {
 				Lower:    key(lower),
 				Upper:    key(upper),
 			})
-			return runIterOps(t, iter, d.Input)
+			return RunIterOps(t, iter, d.Input)
 
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
