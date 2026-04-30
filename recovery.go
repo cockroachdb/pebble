@@ -59,6 +59,20 @@ func (rs *recoveredState) init(opts *Options, dirname string) error {
 	if err != nil {
 		return errors.Wrapf(err, "pebble: database %q", dirname)
 	}
+	// If there is no format-version marker file, the directory must either be
+	// empty (a fresh store), have been written by a Pebble version that used
+	// FormatMostCompatible (format major version 1), or be a partially-created
+	// modern store that crashed before the format-version marker was synced.
+	// The legacy v1 case is recognizable by the presence of the `CURRENT` file
+	// (v1 used `CURRENT` rather than the atomic manifest marker, so
+	// `findCurrentManifest` would otherwise miss it and we would silently
+	// overwrite the existing data). The crashed-mid-create case is handled
+	// later via `ErrorIfNotPristine` in `Open`.
+	if rs.fmv == FormatDefault {
+		if err := checkForLegacyFormatVersion1(rs.ls, dirname); err != nil {
+			return err
+		}
+	}
 
 	// Open the object storage provider.
 	providerSettings := opts.MakeObjStorageProviderSettings(dirname)
@@ -230,6 +244,29 @@ func (rs *recoveredState) RemoveObsolete(opts *Options) error {
 		}
 	}
 	return err
+}
+
+// checkForLegacyFormatVersion1 returns an error if the directory listing
+// contains a `CURRENT` file, which indicates the store was written by a
+// Pebble version that used FormatMostCompatible (format major version 1).
+// v1 stores predate the `format-version` marker and use `CURRENT` rather
+// than the atomic `manifest` marker; absent this check we would treat the
+// directory as a fresh store and overwrite the existing data.
+//
+// We deliberately do not flag stores that have `MANIFEST-*` files but no
+// `CURRENT` file: real v1 stores always have `CURRENT`, while a modern
+// store can transiently have a manifest without a format-version marker if
+// it crashed mid-creation (the marker is written after the initial
+// manifest). That case is handled by `ErrorIfNotPristine` in `Open`.
+func checkForLegacyFormatVersion1(ls []string, dirname string) error {
+	for _, filename := range ls {
+		if filename == "CURRENT" {
+			return errors.Newf(
+				"pebble: database %q was written in format major version 1, which is no longer supported",
+				dirname)
+		}
+	}
+	return nil
 }
 
 // Close closes resources held by the RecoveredState, including open file
