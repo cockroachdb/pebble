@@ -89,7 +89,7 @@ func TestLint(t *testing.T) {
 	t.Run("TestGoVet", func(t *testing.T) {
 		if err := stream.ForEach(
 			stream.Sequence(
-				dirCmd(t, pkg.Dir, "go", "vet", "-all", "./..."),
+				dirCmd(t, pkg.Dir, "go", "vet", "./..."),
 				stream.GrepNot(`^#`), // ignore comment lines
 				ignoreGoMod(),
 			), func(s string) {
