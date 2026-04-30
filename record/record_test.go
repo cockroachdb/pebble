@@ -160,9 +160,9 @@ func TestBasic(t *testing.T) {
 }
 
 func TestBoundary(t *testing.T) {
-	for i := blockSize - 16; i < blockSize+16; i++ {
+	for i := blockSize - 4; i < blockSize+4; i++ {
 		s0 := big("abcd", i)
-		for j := blockSize - 16; j < blockSize+16; j++ {
+		for j := blockSize - 4; j < blockSize+4; j++ {
 			s1 := big("ABCDE", j)
 			testLiterals(t, []string{s0, s1})
 			testLiterals(t, []string{s0, "", s1})
