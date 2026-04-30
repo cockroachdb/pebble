@@ -246,61 +246,74 @@ func newYcsb(
 	return y
 }
 
-func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
-	y.db = db
+// loadInitial inserts y.cfg.InitialKeys into db (if > 0) and waits for
+// compactions to stabilize. It does not start any worker goroutines and is
+// safe to call without a subsequent y.init.
+func (y *ycsb) loadInitial(db DB) {
+	if y.cfg.InitialKeys <= 0 {
+		return
+	}
+	buf := &ycsbBuf{rng: randvar.NewRand()}
 
-	if y.cfg.InitialKeys > 0 {
-		buf := &ycsbBuf{rng: randvar.NewRand()}
-
-		b := db.NewBatch()
-		size := 0
-		start := time.Now()
-		last := start
-		for i := 1; i <= y.cfg.InitialKeys; i++ {
-			if now := time.Now(); now.Sub(last) >= time.Second {
-				fmt.Printf("%5s inserted %d keys (%0.1f%%)\n",
-					time.Duration(now.Sub(start).Seconds()+0.5)*time.Second,
-					i-1, 100*float64(i-1)/float64(y.cfg.InitialKeys))
-				last = now
-			}
-			if size >= 1<<20 {
-				if err := b.Commit(y.writeOpts); err != nil {
-					log.Fatal(err)
-				}
-				b = db.NewBatch()
-				size = 0
-			}
-			key := y.makeKey(uint64(i+y.cfg.PrepopulatedKeys), buf)
-			value := y.randBytes(buf)
-			if err := b.Set(key, value, nil); err != nil {
+	b := db.NewBatch()
+	size := 0
+	start := time.Now()
+	last := start
+	for i := 1; i <= y.cfg.InitialKeys; i++ {
+		if now := time.Now(); now.Sub(last) >= time.Second {
+			fmt.Printf("%5s inserted %d keys (%0.1f%%)\n",
+				time.Duration(now.Sub(start).Seconds()+0.5)*time.Second,
+				i-1, 100*float64(i-1)/float64(y.cfg.InitialKeys))
+			last = now
+		}
+		if size >= 1<<20 {
+			if err := b.Commit(y.writeOpts); err != nil {
 				log.Fatal(err)
 			}
-			size += len(key) + len(value)
+			b = db.NewBatch()
+			size = 0
 		}
-		if err := b.Commit(y.writeOpts); err != nil {
+		key := y.makeKey(uint64(i+y.cfg.PrepopulatedKeys), buf)
+		value := y.randBytes(buf)
+		if err := b.Set(key, value, nil); err != nil {
 			log.Fatal(err)
 		}
-		_ = b.Close()
-		fmt.Printf("inserted keys [%d-%d)\n",
-			1+y.cfg.PrepopulatedKeys,
-			1+y.cfg.PrepopulatedKeys+y.cfg.InitialKeys)
-
-		// Wait for compactions to stabilize.
-		fmt.Println("waiting for compactions to stabilize...")
-		m := db.Metrics()
-		for {
-			maxScore := 0.0
-			for i := range m.Levels {
-				maxScore = max(maxScore, m.Levels[i].Score)
-			}
-			if maxScore <= 1.05 && m.Compact.NumInProgress == 0 {
-				break
-			}
-			time.Sleep(250 * time.Millisecond)
-			m = db.Metrics()
-		}
-		fmt.Println(m.String())
+		size += len(key) + len(value)
 	}
+	if err := b.Commit(y.writeOpts); err != nil {
+		log.Fatal(err)
+	}
+	_ = b.Close()
+	fmt.Printf("inserted keys [%d-%d)\n",
+		1+y.cfg.PrepopulatedKeys,
+		1+y.cfg.PrepopulatedKeys+y.cfg.InitialKeys)
+
+	// Flush so the resulting on-disk state is self-contained (no pending
+	// WAL); otherwise reopening the directory in read-only mode would fail.
+	if err := db.Flush(); err != nil {
+		log.Fatal(err)
+	}
+
+	// Wait for compactions to stabilize.
+	fmt.Println("waiting for compactions to stabilize...")
+	m := db.Metrics()
+	for {
+		maxScore := 0.0
+		for i := range m.Levels {
+			maxScore = max(maxScore, m.Levels[i].Score)
+		}
+		if maxScore <= 1.05 && m.Compact.NumInProgress == 0 {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+		m = db.Metrics()
+	}
+	fmt.Println(m.String())
+}
+
+func (y *ycsb) init(db DB, wg *sync.WaitGroup) {
+	y.db = db
+	y.loadInitial(db)
 	y.keyNum = ackseq.New(uint64(y.cfg.InitialKeys + y.cfg.PrepopulatedKeys))
 
 	y.limiter = y.common.RateLimiter

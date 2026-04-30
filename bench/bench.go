@@ -39,6 +39,16 @@ type CommonConfig struct {
 	PathToLocalSharedStorage string
 	SecondaryCacheSize       int64
 
+	// Ballast, when non-zero, allocates a byte slice of this size held by the
+	// opened Pebble DB to keep some disk free for emergency recovery. The
+	// cmd/pebble CLI sets this to 1 GiB; benchmarks typically leave it at 0.
+	Ballast int64
+
+	// DisableAutoCompactions disables automatic background compactions.
+	// Useful when opening a cached fixture solely to take a checkpoint, so
+	// the fixture isn't mutated between runs.
+	DisableAutoCompactions bool
+
 	// RateLimiter, when non-nil, is shared by all worker goroutines of the
 	// benchmark. cmd/pebble constructs this from its rateFlag and assigns it
 	// before invoking the benchmark.
