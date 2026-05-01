@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package main
+package bench
 
 import (
 	"log"
@@ -16,17 +16,18 @@ import (
 	"github.com/cockroachdb/pebble/vfs"
 )
 
-// DB specifies the minimal interfaces that need to be implemented to support
-// the pebble command.
+// DB specifies the minimal interfaces that need to be implemented by the
+// storage layer used by the benchmarks.
 type DB interface {
-	NewIter(*pebble.IterOptions) iterator
-	NewBatch() batch
-	Scan(iter iterator, key []byte, count int64, reverse bool) error
+	NewIter(*pebble.IterOptions) Iterator
+	NewBatch() Batch
+	Scan(iter Iterator, key []byte, count int64, reverse bool) error
 	Metrics() *pebble.Metrics
 	Flush() error
 }
 
-type iterator interface {
+// Iterator is the iterator interface used by the benchmarks.
+type Iterator interface {
 	SeekLT(key []byte) bool
 	SeekGE(key []byte) bool
 	Valid() bool
@@ -39,7 +40,8 @@ type iterator interface {
 	Close() error
 }
 
-type batch interface {
+// Batch is the batch interface used by the benchmarks.
+type Batch interface {
 	Close() error
 	Commit(opts *pebble.WriteOptions) error
 	Set(key, value []byte, opts *pebble.WriteOptions) error
@@ -47,18 +49,19 @@ type batch interface {
 	LogData(data []byte, opts *pebble.WriteOptions) error
 }
 
-// Adapters for Pebble. Since the interfaces above are based on Pebble's
-// interfaces, it can simply forward calls for everything.
+// pebbleDB is the Pebble adapter for the DB interface.
 type pebbleDB struct {
 	d       *pebble.DB
 	ballast []byte
 }
 
-func newPebbleDB(dir string) DB {
+// NewPebbleDB opens a Pebble DB at the given directory using settings derived
+// from cfg.
+func NewPebbleDB(dir string, cfg *CommonConfig) DB {
 	opts := &pebble.Options{
-		CacheSize:                   cacheSize,
+		CacheSize:                   cfg.CacheSize,
 		Comparer:                    &cockroachkvs.Comparer,
-		DisableWAL:                  disableWAL,
+		DisableWAL:                  cfg.DisableWAL,
 		FormatMajorVersion:          pebble.FormatNewest,
 		KeySchema:                   cockroachkvs.KeySchema.Name,
 		KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
@@ -104,7 +107,7 @@ func newPebbleDB(dir string) DB {
 
 	opts.EnsureDefaults()
 
-	if verbose {
+	if cfg.Verbose {
 		lel := pebble.MakeLoggingEventListener(nil)
 		opts.EventListener = &lel
 		opts.EventListener.TableDeleted = nil
@@ -113,14 +116,14 @@ func newPebbleDB(dir string) DB {
 		opts.EventListener.WALDeleted = nil
 	}
 
-	if pathToLocalSharedStorage != "" {
+	if cfg.PathToLocalSharedStorage != "" {
 		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
 			// Store all shared objects on local disk, for convenience.
-			remote.MakeLocator(""): remote.NewLocalFS(pathToLocalSharedStorage, vfs.Default),
+			remote.MakeLocator(""): remote.NewLocalFS(cfg.PathToLocalSharedStorage, vfs.Default),
 		})
 		opts.CreateOnShared = remote.CreateOnSharedAll
-		if secondaryCacheSize != 0 {
-			opts.SecondaryCacheSizeBytes = secondaryCacheSize
+		if cfg.SecondaryCacheSize != 0 {
+			opts.SecondaryCacheSizeBytes = cfg.SecondaryCacheSize
 		}
 	}
 
@@ -128,7 +131,7 @@ func newPebbleDB(dir string) DB {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if pathToLocalSharedStorage != "" {
+	if cfg.PathToLocalSharedStorage != "" {
 		if err := p.SetCreatorID(1); err != nil {
 			log.Fatal(err)
 		}
@@ -143,16 +146,16 @@ func (p pebbleDB) Flush() error {
 	return p.d.Flush()
 }
 
-func (p pebbleDB) NewIter(opts *pebble.IterOptions) iterator {
+func (p pebbleDB) NewIter(opts *pebble.IterOptions) Iterator {
 	iter, _ := p.d.NewIter(opts)
 	return iter
 }
 
-func (p pebbleDB) NewBatch() batch {
+func (p pebbleDB) NewBatch() Batch {
 	return p.d.NewBatch()
 }
 
-func (p pebbleDB) Scan(iter iterator, key []byte, count int64, reverse bool) error {
+func (p pebbleDB) Scan(iter Iterator, key []byte, count int64, reverse bool) error {
 	var data bytealloc.A
 	if reverse {
 		for i, valid := 0, iter.SeekLT(key); valid; valid = iter.Prev() {
