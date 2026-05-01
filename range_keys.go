@@ -474,6 +474,14 @@ type combinedIterState struct {
 	initialized bool
 }
 
+// Trigger implements iterv2.BoundaryTrigger. It is invoked by an iterv2
+// TriggerIter at most once per iterator operation, so no key-merging logic
+// (cf. v1's levelIter.maybeTriggerCombinedIteration) is required here.
+func (c *combinedIterState) Trigger(key []byte, dir int8) {
+	c.triggered = true
+	c.key = key
+}
+
 // Assert that *lazyCombinedIter implements internalIterator.
 var _ internalIterator = (*lazyCombinedIter)(nil)
 

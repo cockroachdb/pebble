@@ -1204,8 +1204,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 		useLazyCombinedIteration := dbi.rangeKey == nil &&
 			dbi.opts.KeyTypes == IterKeyTypePointsAndRanges &&
 			(dbi.batch == nil || dbi.batch.batch.countRangeKeys == 0) &&
-			!dbi.opts.disableLazyCombinedIteration &&
-			!iterv2.Enabled
+			!dbi.opts.disableLazyCombinedIteration
 		if useLazyCombinedIteration {
 			// The user requested combined iteration, and there's no indexed
 			// batch currently containing range keys that would prevent lazy
@@ -1226,6 +1225,12 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 				combinedIterState: combinedIterState{
 					initialized: false,
 				},
+			}
+			if iterv2.Enabled && !dbi.batchOnlyIter {
+				// The TriggerIter is the first level of mergingIterV2.
+				// Arm it so it fires when iteration enters a region with
+				// possible range-key sets.
+				dbi.triggerIter.Reset(&dbi.lazyCombinedIter.combinedIterState)
 			}
 			dbi.iter = &dbi.lazyCombinedIter
 			dbi.iter = invalidating.MaybeWrapIfInvariants(dbi.iter)
@@ -1443,6 +1448,25 @@ func (i *Iterator) constructPointIterV2(
 ) {
 	var v2iters []iterv2.Iter
 
+	var current *manifest.Version
+	if !i.batchOnlyIter {
+		if i.version != nil {
+			current = i.version
+		} else {
+			current = i.readState.current
+		}
+		// Always include the TriggerIter as the first level. It's a no-op
+		// unless armed; finishInitializingIter and SetOptions arm it via
+		// Reset() when lazy combined iteration is desired.
+		i.triggerIter.Init(
+			i.comparer.Compare,
+			&current.RangeKeySetRegions,
+			nil, /* trigger */
+			i.opts.LowerBound, i.opts.UpperBound,
+		)
+		v2iters = append(v2iters, &i.triggerIter)
+	}
+
 	// 1. Batch iterator (if any).
 	if i.batch != nil {
 		if i.batch.batch.index == nil {
@@ -1485,12 +1509,6 @@ func (i *Iterator) constructPointIterV2(
 		}
 
 		// 3. Level iterators: L0 sublevels followed by L1+.
-		var current *manifest.Version
-		if i.version != nil {
-			current = i.version
-		} else {
-			current = i.readState.current
-		}
 		i.opts.snapshotForHideObsoletePoints = buf.dbi.seqNum
 
 		addLevelIterV2 := func(files manifest.LevelIterator, layer manifest.Layer) {
@@ -1524,6 +1542,11 @@ func (i *Iterator) constructPointIterV2(
 	m.stats = &i.stats.InternalStats
 	if i.batch != nil {
 		m.slab.batchSnapshot = i.batch.batchSeqNum
+		// The batch follows the TriggerIter if one was inserted (i.e. when
+		// !batchOnlyIter); otherwise the batch is the first level.
+		if !i.batchOnlyIter {
+			m.slab.batchLevelIdx = 1
+		}
 	}
 	i.pointIter = invalidating.MaybeWrapIfInvariants(m).(topLevelIterator)
 	i.mergingV2 = m
