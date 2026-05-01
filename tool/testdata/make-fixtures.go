@@ -29,7 +29,7 @@ func makeBrokenExternalDB() {
 	}
 	store := remote.NewInMem()
 	opts.Experimental.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
-		"external": store,
+		remote.MakeLocator("external"): store,
 	})
 	opts.EnsureDefaults()
 
@@ -88,7 +88,7 @@ func makeBrokenExternalDB() {
 	}
 
 	if _, err := db.IngestExternalFiles(context.Background(), []pebble.ExternalFile{{
-		Locator:     "external",
+		Locator:     remote.MakeLocator("external"),
 		ObjName:     "foo.sst",
 		Size:        123,
 		StartKey:    []byte("a25"),
