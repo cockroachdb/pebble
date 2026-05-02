@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable/block"
@@ -804,6 +805,56 @@ func createTestSSTWithOptions(
 	}
 }
 
+func createTestKeysSSTWithOptions(
+	t *testing.T,
+	keys []string,
+	filterPolicy base.TableFilterPolicy,
+	filterDecoder base.TableFilterDecoder,
+	forceTwoLevel bool,
+) (*Reader, func()) {
+	mem := vfs.NewMem()
+
+	f, err := mem.Create("testkeys.sst", vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+
+	writerOpts := WriterOptions{
+		Comparer:     testkeys.Comparer,
+		MergerName:   base.DefaultMerger.Name,
+		FilterPolicy: filterPolicy,
+		BlockPropertyCollectors: []func() BlockPropertyCollector{
+			NewTestKeysBlockPropertyCollector,
+		},
+	}
+	if forceTwoLevel {
+		writerOpts.BlockSize = 128
+		writerOpts.IndexBlockSize = 16
+	}
+	w := NewWriter(objstorageprovider.NewFileWritable(f), writerOpts)
+
+	for _, key := range keys {
+		require.NoError(t, w.Set([]byte(key), []byte("value-"+key)))
+	}
+	require.NoError(t, w.Close())
+
+	f, err = mem.Open("testkeys.sst")
+	require.NoError(t, err)
+
+	readerOpts := ReaderOptions{
+		Comparer: testkeys.Comparer,
+		Merger:   base.DefaultMerger,
+	}
+	if filterDecoder != nil {
+		readerOpts.FilterDecoders = []base.TableFilterDecoder{filterDecoder}
+	}
+
+	reader, err := newReader(f, readerOpts)
+	require.NoError(t, err)
+
+	return reader, func() {
+		reader.Close()
+	}
+}
+
 // TestBloomFilterOptimizationSingleLevel tests the bloom filter optimization
 // in single-level iterators where data blocks are not invalidated when bloom
 // filter returns false with no error.
@@ -1006,6 +1057,88 @@ func TestBloomFilterOptimizationTwoLevel(t *testing.T) {
 
 		require.NoError(t, iter.Error())
 	})
+}
+
+func TestSeekPrefixGEBloomMissPrecedesSyntheticKeySingleLevel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	filterPolicy, filterDecoder := newControllableFilterPolicy("test-filter-synthetic-miss", false, nil)
+	reader, cleanup := createTestKeysSSTWithOptions(t,
+		[]string{"a@10", "c@1"},
+		filterPolicy, filterDecoder, false)
+	defer cleanup()
+
+	var pool block.BufferPool
+	pool.Init(5, block.ForCompaction)
+	defer pool.Release()
+
+	var stats base.InternalIteratorStats
+	iter, err := newRowBlockSingleLevelIterator(context.Background(), reader, IterOptions{
+		Transforms:            NoTransforms,
+		FilterBlockSizeLimit:  AlwaysUseFilterBlock,
+		Env:                   ReadEnv{Block: block.ReadEnv{Stats: &stats, BufferPool: &pool}},
+		ReaderProvider:        MakeTrivialReaderProvider(reader),
+		MaximumSuffixProperty: MaxTestKeysSuffixProperty{},
+	})
+	require.NoError(t, err)
+	defer iter.Close()
+
+	preload := iter.SeekGE([]byte("c@1"), base.SeekGEFlagsNone)
+	require.NotNil(t, preload)
+	require.True(t, iter.data.Valid())
+	require.False(t, iter.data.IsDataInvalidated())
+
+	kv := iter.SeekPrefixGE([]byte("b"), []byte("b@15"), base.SeekGEFlagsNone)
+	require.Nil(t, kv, "bloom miss should prevent synthetic key generation")
+	require.False(t, iter.synthetic.atSyntheticKey, "synthetic key should not be armed after bloom miss")
+	require.False(t, iter.lastBloomFilterMatched, "bloom miss should leave lastBloomFilterMatched unset")
+	require.False(t, iter.data.IsDataInvalidated(), "bloom miss should not invalidate the preloaded block")
+	require.NotNil(t, iter.SeekGE([]byte("c@1"), base.SeekGEFlagsNone), "iterator should remain usable after bloom miss")
+	require.NoError(t, iter.Error())
+}
+
+func TestSeekPrefixGEBloomMissPrecedesSyntheticKeyTwoLevel(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	filterPolicy, filterDecoder := newControllableFilterPolicy("test-filter-synthetic-2lvl-miss", false, nil)
+	keys := make([]string, 0, 129)
+	keys = append(keys, "a@10")
+	for i := 0; i < 128; i++ {
+		keys = append(keys, fmt.Sprintf("c%03d@1", i))
+	}
+	reader, cleanup := createTestKeysSSTWithOptions(t, keys, filterPolicy, filterDecoder, true)
+	defer cleanup()
+
+	require.True(t, reader.Attributes.Has(AttributeTwoLevelIndex),
+		"test requires two-level index structure to be created")
+
+	var pool block.BufferPool
+	pool.Init(5, block.ForCompaction)
+	defer pool.Release()
+
+	var stats base.InternalIteratorStats
+	iter, err := newRowBlockTwoLevelIterator(context.Background(), reader, IterOptions{
+		Transforms:            NoTransforms,
+		FilterBlockSizeLimit:  AlwaysUseFilterBlock,
+		Env:                   ReadEnv{Block: block.ReadEnv{Stats: &stats, BufferPool: &pool}},
+		ReaderProvider:        MakeTrivialReaderProvider(reader),
+		MaximumSuffixProperty: MaxTestKeysSuffixProperty{},
+	})
+	require.NoError(t, err)
+	defer iter.Close()
+
+	preload := iter.SeekGE([]byte("c064@1"), base.SeekGEFlagsNone)
+	require.NotNil(t, preload)
+	require.True(t, iter.secondLevel.data.Valid())
+	require.False(t, iter.secondLevel.data.IsDataInvalidated())
+
+	kv := iter.SeekPrefixGE([]byte("b"), []byte("b@15"), base.SeekGEFlagsNone)
+	require.Nil(t, kv, "bloom miss should prevent synthetic key generation")
+	require.False(t, iter.secondLevel.synthetic.atSyntheticKey, "synthetic key should not be armed after bloom miss")
+	require.False(t, iter.lastBloomFilterMatched, "bloom miss should leave lastBloomFilterMatched unset")
+	require.False(t, iter.secondLevel.data.IsDataInvalidated(), "bloom miss should not invalidate the preloaded block")
+	require.NotNil(t, iter.SeekGE([]byte("c127@1"), base.SeekGEFlagsNone), "iterator should remain usable after bloom miss")
+	require.NoError(t, iter.Error())
 }
 
 // TestBloomFilterOptimizationEdgeCases tests edge cases for the bloom filter

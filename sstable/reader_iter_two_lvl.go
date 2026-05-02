@@ -450,6 +450,12 @@ func (i *twoLevelIterator[I, PI, D, PD]) internalSeekGE(
 // SeekPrefixGE implements internalIterator.SeekPrefixGE, as documented in the
 // pebble package. Note that SeekPrefixGE only checks the upper bound. It is up
 // to the caller to ensure that key is greater than or equal to the lower bound.
+//
+// Ordering invariant: the bloom filter is consulted before any synthetic key
+// is materialized via the maximum-suffix-property optimization. A bloom filter
+// miss is a stronger signal of absence than the table-wide max suffix, so
+// returning nil up front avoids needlessly armed synthetic keys and the heap
+// comparisons they would force. See issue #5638.
 func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) (kv *base.InternalKV) {
@@ -459,10 +465,9 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 			op.Finishf("= %s", kv.String())
 		}()
 	}
-	i.lastOpWasSeekPrefixGE.Set(false)
 	// Store the prefix on the second-level iterator for strict prefix
 	// iteration. The prefix slice is stable for the duration of prefix
-	// iteration.
+	// iteration. lastOpWasSeekPrefixGE is reset by prepareSeekPrefixGE below.
 	i.secondLevel.prefix = prefix
 
 	if i.secondLevel.synthetic.atSyntheticKey {
@@ -483,6 +488,14 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 		if i.secondLevel.cmp(key, i.secondLevel.lower) < 0 {
 			key = i.secondLevel.lower
 		}
+	}
+	var (
+		previousErr error
+		ok          bool
+	)
+	flags, previousErr, ok = i.prepareSeekPrefixGE(prefix, flags)
+	if !ok || i.secondLevel.err != nil {
+		return nil
 	}
 	// If there's a maximum suffix property configured and the seek key contains
 	// a suffix (len(key) > len(prefix)), we might be able to defer actually
@@ -538,29 +551,59 @@ func (i *twoLevelIterator[I, PI, D, PD]) SeekPrefixGE(
 				// to still be open by the time singleLevelIterator.Next is called
 				// and we use the seek key to actually perform the seek.
 				i.secondLevel.synthetic.seekKey = append(i.secondLevel.synthetic.seekKey[:0], key...)
-				// Clear any stale error from previous operations before returning
-				// a valid key. The seekPrefixGE helper clears i.secondLevel.err,
-				// but this early return bypasses it.
-				i.secondLevel.err = nil
+				// i.secondLevel.err was already cleared by prepareSeekPrefixGE
+				// above; the previous error (returned in previousErr) is
+				// intentionally dropped because the synthetic key represents a
+				// valid kv that supersedes the deferred seek's previous failure.
 				return &i.secondLevel.synthetic.kv
 			}
 		}
 	}
 
-	kv, _ = i.seekPrefixGE(prefix, key, flags, false /* shouldReturnMeta */)
+	kv, _ = i.seekPrefixGEAfterBloomFilter(prefix, key, flags, previousErr, false /* shouldReturnMeta */)
 	return kv
 }
 
-func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
-	prefix, key []byte, flags base.SeekGEFlags, shouldReturnMeta bool,
-) (*base.InternalKV, base.KVMeta) {
-	// NOTE: prefix is only used for bloom filter checking and not later work in
-	// this method. Hence, we can use the existing iterator position if the last
-	// SeekPrefixGE did not fail bloom filter matching.
-
-	err := i.secondLevel.err
+func (i *twoLevelIterator[I, PI, D, PD]) prepareSeekPrefixGE(
+	prefix []byte, flags base.SeekGEFlags,
+) (_ base.SeekGEFlags, previousErr error, ok bool) {
+	i.lastOpWasSeekPrefixGE.Set(false)
+	previousErr = i.secondLevel.err
 	i.secondLevel.err = nil // clear cached iteration error
+	if i.useFilterBlock {
+		if !i.lastBloomFilterMatched {
+			// Iterator is not positioned based on last seek.
+			flags = flags.DisableTrySeekUsingNext()
+		}
+		i.lastBloomFilterMatched = false
+		// Check prefix bloom filter before considering the synthetic key
+		// optimization. A bloom filter miss is a stronger signal than the
+		// table-wide maximum suffix property.
+		var mayContain bool
+		mayContain, i.secondLevel.err = i.secondLevel.bloomFilterMayContain(prefix)
+		if i.secondLevel.err != nil {
+			PD(&i.secondLevel.data).Invalidate()
+			return flags, previousErr, false
+		}
+		if !mayContain {
+			if treesteps.Enabled && treesteps.IsRecording(i) {
+				treesteps.UpdateLastOpf(i, "pass bloom filter did not match")
+			}
+			// In the no-error bloom filter miss case, the key is definitely not in table.
+			// We can avoid invalidating the already loaded block since the caller is
+			// not allowed to call Next when SeekPrefixGE returns nil.
+			i.lastOpWasSeekPrefixGE.Set(true)
+			return flags, previousErr, false
+		}
+		treesteps.UpdateLastOpf(i, "bloom filter matched")
+		i.lastBloomFilterMatched = true
+	}
+	return flags, previousErr, true
+}
 
+func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGEAfterBloomFilter(
+	prefix, key []byte, flags base.SeekGEFlags, previousErr error, shouldReturnMeta bool,
+) (*base.InternalKV, base.KVMeta) {
 	if !i.ensureTopLevelIndexLoaded() {
 		return nil, base.KVMeta{}
 	}
@@ -571,36 +614,9 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	filterUsedAndDidNotMatch := i.useFilterBlock && !i.lastBloomFilterMatched
 	if flags.TrySeekUsingNext() && !filterUsedAndDidNotMatch &&
 		(i.secondLevel.exhaustedBounds == exhaustedUpperBound || (PD(&i.secondLevel.data).IsDataInvalidated() && PI(&i.secondLevel.index).IsDataInvalidated())) &&
-		err == nil {
+		previousErr == nil {
 		// Already exhausted, so return nil.
 		return nil, base.KVMeta{}
-	}
-
-	// Check prefix bloom filter.
-	if i.useFilterBlock {
-		if !i.lastBloomFilterMatched {
-			// Iterator is not positioned based on last seek.
-			flags = flags.DisableTrySeekUsingNext()
-		}
-		i.lastBloomFilterMatched = false
-		var mayContain bool
-		mayContain, i.secondLevel.err = i.secondLevel.bloomFilterMayContain(prefix)
-		if i.secondLevel.err != nil {
-			PD(&i.secondLevel.data).Invalidate()
-			return nil, base.KVMeta{}
-		}
-		if !mayContain {
-			if treesteps.Enabled && treesteps.IsRecording(i) {
-				treesteps.UpdateLastOpf(i, "pass bloom filter did not match")
-			}
-			// In the no-error bloom filter miss case, the key is definitely not in table.
-			// We can avoid invalidating the already loaded block since the caller is
-			// not allowed to call Next when SeekPrefixGE returns nil.
-			i.lastOpWasSeekPrefixGE.Set(true)
-			return nil, base.KVMeta{}
-		}
-		treesteps.UpdateLastOpf(i, "bloom filter matched")
-		i.lastBloomFilterMatched = true
 	}
 
 	// Bloom filter matches.
@@ -618,7 +634,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 	// block load.
 
 	var dontSeekWithinSingleLevelIter bool
-	if PI(&i.topLevelIndex).IsDataInvalidated() || !PI(&i.topLevelIndex).Valid() || PI(&i.secondLevel.index).IsDataInvalidated() || err != nil ||
+	if PI(&i.topLevelIndex).IsDataInvalidated() || !PI(&i.topLevelIndex).Valid() || PI(&i.secondLevel.index).IsDataInvalidated() || previousErr != nil ||
 		(i.secondLevel.boundsCmp <= 0 && !flags.TrySeekUsingNext()) || PI(&i.topLevelIndex).SeparatorLT(key) {
 		// Slow-path: need to position the topLevelIndex.
 
@@ -662,7 +678,7 @@ func (i *twoLevelIterator[I, PI, D, PD]) seekPrefixGE(
 			i.secondLevel.boundsCmp = 0
 		}
 	} else {
-		// INVARIANT: err == nil.
+		// INVARIANT: previousErr == nil.
 		//
 		// Else fast-path: There are two possible cases, from
 		// (i.boundsCmp > 0 || flags.TrySeekUsingNext()):
@@ -1050,8 +1066,16 @@ func (i *twoLevelIterator[I, PI, D, PD]) nextInternal(
 		// synthetic. Since SeekPrefixGE deferred this work during synthetic key generation.
 		// The synthetic key is no longer relevant and must be cleared.
 		i.secondLevel.synthetic.atSyntheticKey = false
-		return i.seekPrefixGE(i.secondLevel.reader.Comparer.Split.Prefix(i.secondLevel.synthetic.seekKey),
-			i.secondLevel.synthetic.seekKey, base.SeekGEFlagsNone, shouldReturnMeta)
+		// SeekPrefixGE already consulted the bloom filter (and matched) before
+		// emitting the synthetic key, and lastBloomFilterMatched is still true.
+		// Skip prepareSeekPrefixGE to avoid a redundant bloom filter probe and
+		// drive the deferred seek directly.
+		i.lastOpWasSeekPrefixGE.Set(false)
+		previousErr := i.secondLevel.err
+		i.secondLevel.err = nil
+		prefix := i.secondLevel.reader.Comparer.Split.Prefix(i.secondLevel.synthetic.seekKey)
+		return i.seekPrefixGEAfterBloomFilter(prefix, i.secondLevel.synthetic.seekKey,
+			base.SeekGEFlagsNone, previousErr, shouldReturnMeta)
 	}
 
 	if invariants.Enabled && i.lastOpWasSeekPrefixGE.Get() {

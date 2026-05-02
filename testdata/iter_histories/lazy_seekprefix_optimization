@@ -304,3 +304,47 @@ s@8: (s@8, .)
 000007.Next() = (s@7#15,SET,"s@7")
 000007.Close() = nil
 000005.Close() = nil
+
+# Test that the bloom filter is checked before generating a synthetic key.
+#
+# The sstable contains keys with prefixes "a" and "c", but NOT "b".
+# The sstable's max suffix is @10 (oldest timestamp in the table).
+#
+# A SeekPrefixGE for "b@15" satisfies all synthetic key conditions:
+#   - maximumSuffixProperty is set
+#   - seek key has a suffix (b@15 > b)
+#   - seek suffix (@15) < table max suffix (@10) in testkeys ordering
+#     (larger number = older timestamp = sorts earlier)
+#   - prefix "b" is wholly within the sstable bounds (a < b < c)
+#
+# With the bug: synthetic key is generated before the bloom filter is checked,
+# so SeekPrefixGE returns (b@10#inf,SYNTHETIC) even though "b" is not in the table.
+# The Next() then performs the real seek and finds nothing (nil).
+#
+# Regression for issue #5638: the bloom filter should be checked first and
+# exclude the sstable, so SeekPrefixGE should return nil without generating a
+# synthetic key.
+
+reset bloom-bits-per-key=100
+----
+
+batch commit
+set a@10 a@10
+set c@1  c@1
+----
+committed 2 keys
+
+flush
+----
+
+lsm
+----
+L0.0:
+  000005:[a@10#10,SET-c@1#11,SET]
+
+combined-iter probe-points=(5,(Log "000005."))
+seek-prefix-ge b@15
+----
+.
+000005.SeekPrefixGE("b@15") = nil
+000005.Close() = nil
