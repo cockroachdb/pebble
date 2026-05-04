@@ -164,6 +164,37 @@ func TestErrorIfNotPristine(t *testing.T) {
 	}
 }
 
+// TestOpenFormatVersion1NotSupported verifies that opening a directory written
+// by a Pebble version that used FormatMostCompatible (format major version 1)
+// returns a clear error instead of silently treating the directory as a fresh
+// store and overwriting the data. See issue #5969.
+func TestOpenFormatVersion1NotSupported(t *testing.T) {
+	writeFile := func(fs vfs.FS, name string) {
+		f, err := fs.Create(name, vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+	}
+
+	for _, tc := range []struct {
+		name  string
+		files []string
+	}{
+		{name: "current-only", files: []string{"CURRENT"}},
+		{name: "current-and-manifest-and-sst", files: []string{"CURRENT", "MANIFEST-000001", "000002.sst"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := vfs.NewMem()
+			for _, f := range tc.files {
+				writeFile(fs, f)
+			}
+			_, err := Open("", &Options{FS: fs})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "format major version 1")
+			require.Contains(t, err.Error(), "no longer supported")
+		})
+	}
+}
+
 func TestOpen_WALFailover(t *testing.T) {
 	filesystems := map[string]vfs.FS{}
 
