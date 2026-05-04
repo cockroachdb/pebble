@@ -446,9 +446,22 @@ func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Int
 			// TrySeekUsingNext.
 			return top.iterKV
 		}
-		// TODO(radu): investigate a fast path for the common case where only a
-		// level needs to be advanced and the slab doesn't need to be rebuilt; we
-		// can look at the second best in the heap to determine if this is the case.
+		// Fast path: when only the top level needs to advance to reach key
+		// (every other heap entry is already at >= key), and the top's current
+		// span has no keys (no RANGEDELs), we can advance top alone and skip
+		// the slab rebuild — provided top's new span also has no keys.
+		if top := m.heap.Top(); len(top.span.Keys) == 0 {
+			if sb := m.heap.SecondBest(); sb == nil || m.heap.cmp(sb.iterKV.K.UserKey, key) >= 0 {
+				m.prepareForLevelOp(top)
+				top.iterKV = top.iter.SeekGE(key, flags)
+				if m.finishSingleLevelAdvanceForward(top) {
+					return m.findNextEntry()
+				}
+				// Top landed in a span with keys; fall through to the full slab
+				// rebuild below. m.seekGE will re-seek top with TSUN (a cheap
+				// no-op since top is now at >= key) before rebuilding.
+			}
+		}
 	}
 	m.err = nil
 	m.prefix = nil
@@ -755,14 +768,30 @@ func (m *mergingIterV2) NextPrefix(succKey []byte) (kv *base.InternalKV) {
 	if m.dir != +1 {
 		panic(errors.AssertionFailedf("pebble: cannot switch directions with NextPrefix"))
 	}
-	if m.err != nil {
+	if m.err != nil || m.heap.Len() == 0 {
 		return nil
 	}
 	if invariants.Enabled && m.prefix != nil {
 		panic(errors.AssertionFailedf("pebble: NextPrefix in prefix iteration mode"))
 	}
-	// TODO(radu): add a fast path for the common case where only a single level
-	// needs to advance.
+	// Fast path: when only the top level needs to advance past succKey (every
+	// other heap entry is already at >= succKey), and the top's current span
+	// has no keys, we can call NextPrefix on top alone and skip the slab
+	// rebuild — provided top's new span also has no keys.
+	if top := m.heap.Top(); len(top.span.Keys) == 0 {
+		if sb := m.heap.SecondBest(); sb == nil || m.heap.cmp(sb.iterKV.K.UserKey, succKey) >= 0 {
+			// top.iterKV is a non-boundary key (just returned by findNextEntry),
+			// so NextPrefix is valid here.
+			m.prepareForLevelOp(top)
+			top.iterKV = top.iter.NextPrefix(succKey)
+			if m.finishSingleLevelAdvanceForward(top) {
+				return m.findNextEntry()
+			}
+			// Fall through. The slow-path loop below is a no-op for top
+			// (already at >= succKey) and will rebuild the slab with the new
+			// top.span info.
+		}
+	}
 	for levelIdx, parked := range m.slab.Build(+1) {
 		level := &m.levels[levelIdx]
 		wasParked := level.parked
@@ -1169,6 +1198,39 @@ func (m *mergingIterV2) prepareForLevelOp(level *mergingIterV2Level) {
 	}
 }
 
+// finishSingleLevelAdvanceForward is the tail of the SeekGE(TrySeekUsingNext)
+// and NextPrefix fast paths. The caller has just advanced top (and only top)
+// while holding the slab fixed. This helper inspects the result and either
+// completes the operation (returning true) or signals that the slab must be
+// fully rebuilt (returning false).
+//
+// PRECONDITIONS (asserted at the call site):
+//   - The advanced level was the heap top.
+//   - top.span had len(Keys) == 0 before the advance (no RANGEDELs to lose).
+//   - All other heap entries are at user keys >= the seek/succ target, so
+//     they don't need to be advanced.
+//
+// When the new top.span also has len(Keys) == 0, the slab's per-level
+// visibility (minSeqNum / maxSeqNum / parked) is unchanged: it is a pure
+// function of higher-numbered levels' span keys, and no level changed its
+// span keys (top went from no keys to no keys; others didn't move).
+func (m *mergingIterV2) finishSingleLevelAdvanceForward(top *mergingIterV2Level) (done bool) {
+	if top.iterKV == nil {
+		if m.levelHasError(top) {
+			return true
+		}
+		m.heap.PopTop()
+		m.slab.calcNextBoundary(+1)
+		return true
+	}
+	if len(top.span.Keys) == 0 {
+		m.heap.FixTop()
+		m.slab.calcNextBoundary(+1)
+		return true
+	}
+	return false
+}
+
 func (m *mergingIterV2) anyLevelParked() bool {
 	for i := range m.levels {
 		if m.levels[i].parked {
@@ -1254,15 +1316,13 @@ func (h *mergingIterV2Heap) Top() *mergingIterV2Level {
 	return h.items[0].level
 }
 
-// MultipleLevelsAtSameBoundary returns true if the "second best" in the heap is at
-// the same boundary key as the top.
-func (h *mergingIterV2Heap) MultipleLevelsAtSameBoundary() bool {
-	if invariants.Enabled && h.Top().iterKV.Kind() != base.InternalKeyKindSpanBoundary {
-		panic(errors.AssertionFailedf("not at boundary"))
-	}
-
+// SecondBest returns the level with the second-smallest key in the heap (i.e.
+// the level that would become the top if the current top were popped), or nil
+// if the heap has fewer than two elements. SecondBest populates the
+// winnerChild cache for items[0]; subsequent FixTop / down(0) calls reuse it.
+func (h *mergingIterV2Heap) SecondBest() *mergingIterV2Level {
 	if h.Len() < 2 {
-		return false
+		return nil
 	}
 	secondBest := h.items[1].level
 	if h.Len() > 2 {
@@ -1277,7 +1337,20 @@ func (h *mergingIterV2Heap) MultipleLevelsAtSameBoundary() bool {
 			secondBest = h.items[2].level
 		}
 	}
-	top := h.items[0].level
+	return secondBest
+}
+
+// MultipleLevelsAtSameBoundary returns true if the "second best" in the heap is at
+// the same boundary key as the top.
+func (h *mergingIterV2Heap) MultipleLevelsAtSameBoundary() bool {
+	if invariants.Enabled && h.Top().iterKV.Kind() != base.InternalKeyKindSpanBoundary {
+		panic(errors.AssertionFailedf("not at boundary"))
+	}
+	secondBest := h.SecondBest()
+	if secondBest == nil {
+		return false
+	}
+	top := h.Top()
 	// Note: the index comparison is just an optimization: we know that if there
 	// are multiple levels with the same key, the smallest index is on top. We
 	// expect the bottom level to have the most boundaries, so it can save some
