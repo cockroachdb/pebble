@@ -672,7 +672,7 @@ func (g *generator) newIterUsingClone() {
 	// With 50% probability, consider modifying the iterator options used by the
 	// clone.
 	if g.rng.IntN(2) == 1 {
-		g.maybeMutateOptions(readerID, &opts)
+		g.mutateOptions(readerID, &opts)
 	}
 	g.itersLastOpts[iterID] = opts
 
@@ -810,31 +810,53 @@ func (g *generator) iterSetBounds(iterID objID) {
 
 func (g *generator) iterSetOptions(iterID objID) {
 	opts := g.itersLastOpts[iterID]
-	g.maybeMutateOptions(g.iterReaderID[iterID], &opts)
+	readerID := g.iterReaderID[iterID]
+
+	// If this is an iterator over a batch, with 50% probability write to the
+	// batch to test iterator behavior when refreshing the iterator's view of the
+	// batch.
+	if readerID.tag() == batchTag && g.rng.IntN(2) == 1 {
+		g.add(&setOp{
+			writerID: readerID,
+			// 50% new keys.
+			key:   g.keyGenerator.RandKey(0.5),
+			value: randBytes(g.rng, 0, maxValueSize),
+		})
+	}
+
+	// With 50% probability, modify the iterator options used by the
+	// clone.
+	if g.rng.IntN(2) == 1 {
+		g.mutateOptions(readerID, &opts)
+	}
 	g.itersLastOpts[iterID] = opts
 	g.add(&iterSetOptionsOp{
 		iterID:          iterID,
 		iterOpts:        opts,
-		derivedReaderID: g.iterReaderID[iterID],
+		derivedReaderID: readerID,
 	})
 
 	// Additionally, perform a random absolute positioning operation. The
 	// SetOptions contract requires one before the next relative positioning
 	// operation. Ideally, we should not do this as part of generating a single
 	// op, but this is easier than trying to control future op generation via
-	// generator state.
-	pickOneUniform(
-		g.rng,
-		[]func(objID){
-			g.iterFirst,
-			g.iterLast,
-			g.iterSeekGE,
-			g.iterSeekGEWithLimit,
-			g.iterSeekPrefixGE,
-			g.iterSeekLT,
-			g.iterSeekLTWithLimit,
-		},
-	)(iterID)
+	// generator state. We choose SeekGE 50% of the time since that tests the more
+	// complex paths involving TrySeekUsingNext.
+	if g.rng.IntN(2) == 1 {
+		g.iterSeekGE(iterID)
+	} else {
+		pickOneUniform(
+			g.rng,
+			[]func(objID){
+				g.iterFirst,
+				g.iterLast,
+				g.iterSeekGEWithLimit,
+				g.iterSeekPrefixGE,
+				g.iterSeekLT,
+				g.iterSeekLTWithLimit,
+			},
+		)(iterID)
+	}
 }
 
 func (g *generator) iterSeekGE(iterID objID) {
@@ -1544,54 +1566,49 @@ func (g *generator) writerSingleDelete() {
 	})
 }
 
-func (g *generator) maybeMutateOptions(readerID objID, opts *iterOpts) {
-	// With 95% probability, allow changes to any options at all. This ensures
-	// that in 5% of cases there are no changes, and SetOptions hits its fast
-	// path.
-	if g.rng.IntN(100) >= 5 {
-		if !g.maybeSetSnapshotIterBounds(readerID, opts) {
-			// With 1/3 probability, clear existing bounds.
-			if opts.lower != nil && g.rng.IntN(3) == 0 {
-				opts.lower = nil
-			}
-			if opts.upper != nil && g.rng.IntN(3) == 0 {
-				opts.upper = nil
-			}
-			// With 1/3 probability, update the bounds.
-			if g.rng.IntN(3) == 0 {
-				// Generate a new key with a .1% probability.
-				opts.lower = g.keyGenerator.RandKey(0.001)
-			}
-			if g.rng.IntN(3) == 0 {
-				// Generate a new key with a .1% probability.
-				opts.upper = g.keyGenerator.RandKey(0.001)
-			}
-			if g.cmp(opts.lower, opts.upper) > 0 {
-				opts.lower, opts.upper = opts.upper, opts.lower
-			}
+func (g *generator) mutateOptions(readerID objID, opts *iterOpts) {
+	if !g.maybeSetSnapshotIterBounds(readerID, opts) {
+		// With 1/3 probability, clear existing bounds.
+		if opts.lower != nil && g.rng.IntN(3) == 0 {
+			opts.lower = nil
 		}
-
-		// With 1/3 probability, update the key-types/mask.
+		if opts.upper != nil && g.rng.IntN(3) == 0 {
+			opts.upper = nil
+		}
+		// With 1/3 probability, update the bounds.
 		if g.rng.IntN(3) == 0 {
-			opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
+			// Generate a new key with a .1% probability.
+			opts.lower = g.keyGenerator.RandKey(0.001)
 		}
+		if g.rng.IntN(3) == 0 {
+			// Generate a new key with a .1% probability.
+			opts.upper = g.keyGenerator.RandKey(0.001)
+		}
+		if g.cmp(opts.lower, opts.upper) > 0 {
+			opts.lower, opts.upper = opts.upper, opts.lower
+		}
+	}
 
-		// With 1/3 probability, clear existing filter.
-		if opts.filterMin != nil && g.rng.IntN(3) == 0 {
-			opts.filterMax, opts.filterMin = nil, nil
-		}
-		// With 10% probability, set a filter range.
-		if g.rng.IntN(10) == 1 {
-			opts.filterMin, opts.filterMax = g.keyGenerator.SuffixRange()
-		}
-		// With 10% probability, flip enablement of L6 filters.
-		if g.rng.Float64() <= 0.1 {
-			opts.useL6Filters = !opts.useL6Filters
-		}
-		// With 10% probability, flip enablement of MaximumSuffixProperty.
-		if g.rng.Float64() <= 0.1 {
-			opts.flags.useMaxSuffixProp = !opts.flags.useMaxSuffixProp
-		}
+	// With 1/3 probability, update the key-types/mask.
+	if g.rng.IntN(3) == 0 {
+		opts.keyTypes, opts.maskSuffix = g.randKeyTypesAndMask()
+	}
+
+	// With 1/3 probability, clear existing filter.
+	if opts.filterMin != nil && g.rng.IntN(3) == 0 {
+		opts.filterMax, opts.filterMin = nil, nil
+	}
+	// With 10% probability, set a filter range.
+	if g.rng.IntN(10) == 1 {
+		opts.filterMin, opts.filterMax = g.keyGenerator.SuffixRange()
+	}
+	// With 10% probability, flip enablement of L6 filters.
+	if g.rng.Float64() <= 0.1 {
+		opts.useL6Filters = !opts.useL6Filters
+	}
+	// With 10% probability, flip enablement of MaximumSuffixProperty.
+	if g.rng.Float64() <= 0.1 {
+		opts.flags.useMaxSuffixProp = !opts.flags.useMaxSuffixProp
 	}
 }
 
