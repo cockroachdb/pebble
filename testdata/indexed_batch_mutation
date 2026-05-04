@@ -757,3 +757,64 @@ next
 a: (., [a-e) @5=foo UPDATED)
 b@4: (b@4, [a-e) @5=foo)
 .
+
+# Regression: batchIter.SeekGE must drop TrySeekUsingNext when the top-level
+# Iterator passes BatchJustRefreshed. Iterator.SetOptions takes a fast path
+# when options are unchanged, preserving lastPositioningOp. The next SeekGE
+# can then carry both TrySeekUsingNext and BatchJustRefreshed down to the
+# batchIter. The batch skiplist iterator's cached node may sit past a
+# freshly inserted key, so honoring TrySeekUsingNext from that stale
+# position would return the old cached key and miss the new one.
+
+reset
+----
+
+new-batch
+set k1 v1
+set k3 v3
+----
+
+new-batch-iter i-tsun
+----
+
+iter iter=i-tsun
+seek-ge a
+----
+k1: (v1, .)
+
+mutate
+set k0a vA
+----
+
+iter iter=i-tsun
+set-options
+seek-ge k0a
+----
+.
+k0a: (vA, .)
+
+# Same scenario via NewBatchOnlyIter.
+
+new-batch
+set k1 v1
+set k3 v3
+----
+
+new-batch-only-iter i-tsun-bo
+----
+
+iter iter=i-tsun-bo
+seek-ge a
+----
+k1: (v1, .)
+
+mutate
+set k0a vA
+----
+
+iter iter=i-tsun-bo
+set-options
+seek-ge k0a
+----
+.
+k0a: (vA, .)
