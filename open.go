@@ -150,29 +150,30 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 
 	noFormatVersionMarker := formatVersion == FormatDefault
 	if noFormatVersionMarker {
-		// We will initialize the store at the minimum possible format, then upgrade
-		// the format to the desired one. This helps test the format upgrade code.
-		formatVersion = FormatMinSupported
-		if opts.Experimental.CreateOnShared != remote.CreateOnSharedNone {
-			formatVersion = FormatMinForSharedObjects
-		}
 		// There is no format version marker file. There are three cases:
 		//  - we are trying to open an existing store that was created at
 		//    FormatMostCompatible (the only one without a version marker file)
 		//  - we are creating a new store;
 		//  - we are retrying a failed creation.
 		//
-		// To error in the first case, we set ErrorIfNotPristine.
+		// The legacy v1 case is recognizable by the presence of the `CURRENT`
+		// file (v1 used `CURRENT` rather than the atomic manifest marker, so
+		// `findCurrentManifest` would otherwise miss it and we would silently
+		// overwrite the existing data). Detect it explicitly before any
+		// destructive work.
+		if err := checkForLegacyFormatVersion1(ls, dirname); err != nil {
+			return nil, err
+		}
+		// We will initialize the store at the minimum possible format, then upgrade
+		// the format to the desired one. This helps test the format upgrade code.
+		formatVersion = FormatMinSupported
+		if opts.Experimental.CreateOnShared != remote.CreateOnSharedNone {
+			formatVersion = FormatMinForSharedObjects
+		}
+		// To error in the "retrying a failed creation" case (modern store that
+		// crashed after writing a manifest but before the format-version
+		// marker was synced), we set ErrorIfNotPristine.
 		opts.ErrorIfNotPristine = true
-		defer func() {
-			if err != nil && errors.Is(err, ErrDBNotPristine) {
-				// We must be trying to open an existing store at FormatMostCompatible.
-				// Correct the error in this case -we
-				err = errors.Newf(
-					"pebble: database %q written in format major version 1 which is no longer supported",
-					dirname)
-			}
-		}()
 	} else {
 		if opts.Experimental.CreateOnShared != remote.CreateOnSharedNone && formatVersion < FormatMinForSharedObjects {
 			return nil, errors.Newf(
@@ -1228,6 +1229,29 @@ var ErrDBNotPristine = errors.New("pebble: database already exists and is not pr
 // corruption.
 func IsCorruptionError(err error) bool {
 	return errors.Is(err, base.ErrCorruption)
+}
+
+// checkForLegacyFormatVersion1 returns an error if the directory listing
+// contains a `CURRENT` file, which indicates the store was written by a
+// Pebble version that used FormatMostCompatible (format major version 1).
+// v1 stores predate the `format-version` marker and use `CURRENT` rather
+// than the atomic `manifest` marker; absent this check we would treat the
+// directory as a fresh store and overwrite the existing data.
+//
+// We deliberately do not flag stores that have `MANIFEST-*` files but no
+// `CURRENT` file: real v1 stores always have `CURRENT`, while a modern
+// store can transiently have a manifest without a format-version marker if
+// it crashed mid-creation (the marker is written after the initial
+// manifest). That case is handled by `ErrorIfNotPristine`.
+func checkForLegacyFormatVersion1(ls []string, dirname string) error {
+	for _, filename := range ls {
+		if filename == "CURRENT" {
+			return errors.Newf(
+				"pebble: database %q was written in format major version 1, which is no longer supported",
+				dirname)
+		}
+	}
+	return nil
 }
 
 func checkConsistency(v *manifest.Version, dirname string, objProvider objstorage.Provider) error {
