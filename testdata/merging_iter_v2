@@ -851,3 +851,119 @@ a@5#20,SET:
 b@4#10,SET:
 .
 k@9#5,SET:
+
+# SeekGE(TSUN) single-level fast path: only one level, no spans. SecondBest
+# is nil, top.span has no keys. Each TSUN seek advances only the top level
+# (the only level). The terminal seek-ge past the last key returns nil.
+
+define
+L
+  a#10,SET b#9,SET c#8,SET d#7,SET
+----
+L0
+  a#10,SET
+  b#9,SET
+  c#8,SET
+  d#7,SET
+
+iter
+seek-ge a
+seek-ge b try-seek-using-next
+seek-ge c try-seek-using-next
+seek-ge d try-seek-using-next
+seek-ge e try-seek-using-next
+----
+a#10,SET:
+b#9,SET:
+c#8,SET:
+d#7,SET:
+.
+
+# SeekGE(TSUN) multi-level fast path: top is behind the seek key, but
+# SecondBest is past it, so only the top level needs to advance. After L0
+# is exhausted, L1 becomes the top.
+
+define
+L
+  a#20,SET b#19,SET c#18,SET
+L
+  f#10,SET
+----
+L0
+  a#20,SET
+  b#19,SET
+  c#18,SET
+L1
+  f#10,SET
+
+iter
+seek-ge a
+seek-ge b try-seek-using-next
+seek-ge c try-seek-using-next
+seek-ge d try-seek-using-next
+seek-ge f try-seek-using-next
+seek-ge g try-seek-using-next
+----
+a#20,SET:
+b#19,SET:
+c#18,SET:
+f#10,SET:
+f#10,SET:
+.
+
+# NextPrefix multi-level fast path: top advances to the next prefix while
+# SecondBest stays past the succKey.
+
+define
+L
+  a@5#20,SET b@5#19,SET c@5#18,SET
+L
+  k@5#10,SET
+----
+L0
+  a@5#20,SET
+  b@5#19,SET
+  c@5#18,SET
+L1
+  k@5#10,SET
+
+iter
+seek-ge a@9
+next-prefix
+next-prefix
+next-prefix
+----
+a@5#20,SET:
+b@5#19,SET:
+c@5#18,SET:
+k@5#10,SET:
+
+# Fall-back: SeekGE(TSUN) advances top into a span containing a RANGEDEL.
+# The fast path's pre-condition (top.span has no keys) holds before the
+# advance, but the new span has keys, so the slow path rebuilds the slab.
+# The L1 entries inside [k, n) are deleted by L0's RANGEDEL.
+
+define
+L
+  a#20,SET p#5,SET
+  k-n:{(#15,RANGEDEL)}
+L
+  l@5#10,SET m@5#9,SET o#8,SET
+----
+L0
+  a#20,SET
+  p#5,SET
+  k-n:{(#15,RANGEDEL)}
+L1
+  l@5#10,SET
+  m@5#9,SET
+  o#8,SET
+
+iter
+seek-ge a
+seek-ge l try-seek-using-next
+seek-ge n try-seek-using-next
+----
+a#20,SET:
+o#8,SET:
+o#8,SET:
