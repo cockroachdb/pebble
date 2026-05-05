@@ -65,6 +65,7 @@ var memTableEmptySize = func() uint32 {
 // It is safe to call get, apply, newIter, and newRangeDelIter concurrently.
 type memTable struct {
 	cmp         Compare
+	split       base.Split
 	formatKey   base.FormatKey
 	equal       Equal
 	arenaBuf    manual.Buf
@@ -135,6 +136,7 @@ func (m *memTable) init(opts memTableOptions) {
 	}
 	*m = memTable{
 		cmp:                          opts.Comparer.Compare,
+		split:                        opts.Comparer.Split,
 		formatKey:                    opts.Comparer.FormatKey,
 		equal:                        opts.Comparer.Equal,
 		arenaBuf:                     opts.arenaBuf,
@@ -260,7 +262,7 @@ func (m *memTable) apply(batch *Batch, seqNum base.SeqNum) error {
 // unpositioned (Iterator.Valid() will return false). The iterator can be
 // positioned via a call to SeekGE, SeekLT, First or Last.
 func (m *memTable) newIter(o *IterOptions) internalIterator {
-	return m.skl.NewIter(o.GetLowerBound(), o.GetUpperBound())
+	return m.skl.NewIter(m.split, o.GetLowerBound(), o.GetUpperBound())
 }
 
 // newFlushIter is part of the flushable interface.
@@ -387,7 +389,7 @@ func (f *keySpanFrags) get(
 				f.spans = append(f.spans, fragmented)
 			},
 		}
-		it := skl.NewIter(nil, nil)
+		it := skl.NewIter(base.DefaultSplit, nil, nil)
 		var keysDst []keyspan.Key
 		for kv := it.First(); kv != nil; kv = it.Next() {
 			s, err := constructSpan(kv.K, kv.InPlaceValue(), keysDst)
