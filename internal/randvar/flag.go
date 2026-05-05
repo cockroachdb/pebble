@@ -6,6 +6,7 @@ package randvar
 
 import (
 	"encoding/binary"
+	"flag"
 	"math/rand/v2"
 	"regexp"
 	"strconv"
@@ -81,14 +82,17 @@ func (f *Flag) Set(spec string) error {
 	return nil
 }
 
-// BytesFlag provides a command line flag interface for specifying random
-// bytes. The specification provides for both the length of the random bytes
+// BytesFlag is a StaticBytes implementation that provides a command line flag
+// interface. The specification provides for both the length of the random bytes
 // and a target compression ratio.
 type BytesFlag struct {
 	sizeFlag          Flag
 	targetCompression float64
 	spec              string
 }
+
+var _ StaticBytes = (*BytesFlag)(nil)
+var _ flag.Value = (*BytesFlag)(nil)
 
 // NewBytesFlag creates a new BytesFlag initialized with the specified spec.
 func NewBytesFlag(spec string) *BytesFlag {
@@ -103,12 +107,12 @@ func (f *BytesFlag) String() string {
 	return f.spec
 }
 
-// Type implements the Flag.Value interface.
+// Type implements the flag.Value interface.
 func (f *BytesFlag) Type() string {
 	return "randbytes"
 }
 
-// Set implements the Flag.Value interface.
+// Set implements the flag.Value interface.
 func (f *BytesFlag) Set(spec string) error {
 	parts := strings.Split(spec, "/")
 	if len(parts) == 0 || len(parts) > 2 {

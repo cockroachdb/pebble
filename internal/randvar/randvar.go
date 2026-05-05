@@ -6,10 +6,16 @@ package randvar
 
 import "math/rand/v2"
 
-// Static models a random variable that pulls from a distribution with static
-// bounds
+// Static models a random variable that pulls from a static distribution.
 type Static interface {
+	// Uint64 returns a random uint64 value.
 	Uint64(rng *rand.Rand) uint64
+}
+
+// StaticBytes models a random variable that generates byte slices.
+type StaticBytes interface {
+	// Bytes returns a random bytes value.
+	Bytes(rng *rand.Rand, buf []byte) []byte
 }
 
 // Dynamic models a random variable that pulls from a distribution with an
@@ -17,9 +23,9 @@ type Static interface {
 type Dynamic interface {
 	Static
 
-	// Increment the max value the variable will return.
+	// IncMax increments the max value the variable will return.
 	IncMax(delta uint64)
 
-	// Read the current max value the variable will return.
+	// Max returns the current max value the variable will return.
 	Max() uint64
 }

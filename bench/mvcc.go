@@ -2,7 +2,7 @@
 // of this source code is governed by a BSD-style license that can be found in
 // the LICENSE file.
 
-package main
+package bench
 
 import (
 	"bytes"
@@ -63,7 +63,9 @@ func mvccReverseScan(d DB, start, end, ts []byte) (int, int64) {
 	return count, nbytes
 }
 
-var fauxMVCCMerger = &pebble.Merger{
+// FauxMVCCMerger is a Pebble Merger that approximates the CockroachDB MVCC
+// merger. It is exposed so cmd/pebble can register it with the tool commands.
+var FauxMVCCMerger = &pebble.Merger{
 	Name: "cockroach_merge_operator",
 	Merge: func(key, value []byte) (pebble.ValueMerger, error) {
 		// This merger is used by the compact benchmark and use the

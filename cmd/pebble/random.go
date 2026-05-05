@@ -84,9 +84,3 @@ func (f *rateFlag) newRateLimiter() *rate.Limiter {
 	}
 	return limiter
 }
-
-func wait(l *rate.Limiter) {
-	if l != nil {
-		l.Wait(1)
-	}
-}
