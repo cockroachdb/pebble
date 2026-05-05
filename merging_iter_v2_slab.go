@@ -24,8 +24,11 @@ type slabState struct {
 	// snapshot is the SeqNum at which we are reading; only point/span keys with
 	// lower seq nums are visible.
 	snapshot base.SeqNum
-	// batchSnapshot is non-zero if and only if the first level is a batch.
+	// batchSnapshot is non-zero if and only if a level is the indexed batch.
 	batchSnapshot base.SeqNum
+	// batchLevelIdx is the index of the batch level; only meaningful when
+	// batchSnapshot != 0. Defaults to 0.
+	batchLevelIdx int
 
 	// levels aliases m.levels, sharing the same backing array. Indexed by
 	// level index (0 = highest / most recent level).
@@ -67,7 +70,7 @@ func (s *slabState) Build(dir int8) iter.Seq2[int, bool] {
 
 			sl := &s.levels[levelIdx]
 			// Set maxSeqNum: batch level uses batchSnapshot, others use snapshot.
-			if levelIdx == 0 && s.batchSnapshot != 0 {
+			if s.batchSnapshot != 0 && levelIdx == s.batchLevelIdx {
 				sl.maxSeqNum = s.batchSnapshot
 			} else {
 				sl.maxSeqNum = s.snapshot

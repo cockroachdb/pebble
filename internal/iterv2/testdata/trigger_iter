@@ -1,0 +1,413 @@
+# Single region [b, g). Tests SeekGE before, inside, and past the region.
+
+define
+[b, g)=1
+[m, p)=2
+----
+[b, g)=1
+[m, p)=2
+
+# SeekGE before a region: returns BOUNDARY at region start; Next triggers.
+iter
+seek-ge a
+----
+seek-ge a: b#inf,BDRY [?, b):{}
+
+continue
+next
+----
+next: .
+trigger: b(fwd)
+
+# SeekGE inside a region: immediate trigger, nil returned.
+iter
+seek-ge c
+----
+seek-ge c: .
+trigger: c(fwd)
+
+# SeekGE past all regions: nil.
+iter
+seek-ge z
+----
+seek-ge z: .
+
+# SeekGE between regions: BOUNDARY at second region start.
+iter
+seek-ge h
+next
+----
+seek-ge h: m#inf,BDRY [?, m):{}
+next:      .
+trigger: m(fwd)
+
+# SeekGE at exact region start: immediate trigger.
+iter
+seek-ge b
+----
+seek-ge b: .
+trigger: b(fwd)
+
+# SeekLT after a region: BOUNDARY at region end; Prev triggers.
+iter
+seek-lt h
+prev
+----
+seek-lt h: g#inf,BDRY [g, ?):{}
+prev:      .
+trigger: g(bwd)
+
+# SeekLT inside a region: immediate trigger.
+iter
+seek-lt d
+----
+seek-lt d: .
+trigger: d(bwd)
+
+# SeekLT before all regions: nil.
+iter
+seek-lt a
+----
+seek-lt a: .
+
+# First: returns boundary at first region start; Next triggers.
+iter
+first
+next
+----
+first: b#inf,BDRY [?, b):{}
+next:  .
+trigger: b(fwd)
+
+# SeekLT past all regions: BOUNDARY at last region end; Prev triggers.
+iter upper=z
+seek-lt z
+prev
+----
+seek-lt z: p#inf,BDRY [p, ?):{}
+prev:      .
+trigger: p(bwd)
+
+# Last with no upper bound.
+iter
+last
+prev
+----
+last: p#inf,BDRY [p, ?):{}
+prev: .
+trigger: p(bwd)
+
+# Multiple regions: only the nearest triggers.
+iter
+seek-ge a
+next
+----
+seek-ge a: b#inf,BDRY [?, b):{}
+next:      .
+trigger: b(fwd)
+
+# After trigger, all ops return nil.
+iter
+seek-ge c
+----
+seek-ge c: .
+trigger: c(fwd)
+
+continue
+first
+last
+seek-ge a
+seek-lt z
+next
+prev
+----
+first:     .
+last:      .
+seek-ge a: .
+seek-lt z: .
+next:      .
+prev:      .
+
+# SetBounds narrowing excludes regions.
+iter lower=h upper=k
+seek-ge h
+----
+seek-ge h: .
+
+# SetBounds that includes a region.
+iter lower=b upper=h
+seek-ge b
+----
+seek-ge b: .
+trigger: b(fwd)
+
+continue
+next
+----
+next: .
+
+# SetBounds between the two regions.
+iter lower=g upper=m
+seek-ge g
+----
+seek-ge g: .
+
+# SetBounds including only the second region.
+iter lower=l upper=q
+seek-ge l
+next
+----
+seek-ge l: m#inf,BDRY [?, m):{}
+next:      .
+trigger: m(fwd)
+
+# Re-seek before trigger fires (direction change).
+iter
+seek-ge a
+seek-lt z
+prev
+----
+seek-ge a: b#inf,BDRY [?, b):{}
+seek-lt z: p#inf,BDRY [p, ?):{}
+prev:      .
+trigger: p(bwd)
+
+# Re-seek in same direction before trigger fires.
+iter
+seek-ge a
+seek-ge h
+next
+----
+seek-ge a: b#inf,BDRY [?, b):{}
+seek-ge h: m#inf,BDRY [?, m):{}
+next:      .
+trigger: m(fwd)
+
+# Direction switch: backward to forward, no region ahead → nil.
+iter
+seek-lt z
+next
+----
+seek-lt z: p#inf,BDRY [p, ?):{}
+next:      .
+
+# Direction switch: forward to backward, no region behind → nil.
+iter
+seek-ge a
+prev
+----
+seek-ge a: b#inf,BDRY [?, b):{}
+prev:      .
+
+# Direction switch: backward to forward, region exists ahead.
+iter
+seek-lt h
+next
+next
+----
+seek-lt h: g#inf,BDRY [g, ?):{}
+next:      m#inf,BDRY [?, m):{}
+next:      .
+trigger: m(fwd)
+
+# Direction switch: forward to backward, region exists behind.
+iter
+seek-ge h
+prev
+prev
+----
+seek-ge h: m#inf,BDRY [?, m):{}
+prev:      g#inf,BDRY [g, ?):{}
+prev:      .
+trigger: g(bwd)
+
+# Next when unpositioned (seek found nothing): re-seeks from lower bound.
+iter
+seek-ge z
+next
+next
+----
+seek-ge z: .
+next:      b#inf,BDRY [?, b):{}
+next:      .
+trigger: b(fwd)
+
+# Prev when unpositioned (seek found nothing): re-seeks from upper bound.
+iter upper=z
+seek-lt a
+prev
+prev
+----
+seek-lt a: .
+prev:      p#inf,BDRY [p, ?):{}
+prev:      .
+trigger: p(bwd)
+
+# Next when unpositioned with bounds excluding all regions: nil.
+iter lower=h upper=k
+seek-ge h
+next
+----
+seek-ge h: .
+next:      .
+
+# Prev when unpositioned with bounds excluding all regions: nil.
+iter lower=h upper=k
+seek-lt k
+prev
+----
+seek-lt k: .
+prev:      .
+
+# SeekPrefixGE works like SeekGE.
+iter
+seek-ge c
+----
+seek-ge c: .
+trigger: c(fwd)
+
+# SeekGE inside a region (with bounds).
+iter lower=c upper=h
+seek-ge c
+----
+seek-ge c: .
+trigger: c(fwd)
+
+# SeekLT inside a region (with bounds).
+iter lower=b upper=d
+seek-lt d
+----
+seek-lt d: .
+trigger: d(bwd)
+
+# SeekGE with TrySeekUsingNext on a position before the next boundary:
+# returns the existing boundary kv without re-seeking.
+iter
+seek-ge a
+seek-ge a try-seek-using-next
+next
+----
+seek-ge a:                     b#inf,BDRY [?, b):{}
+seek-ge a try-seek-using-next: b#inf,BDRY [?, b):{}
+next:                          .
+trigger: b(fwd)
+
+# SeekGE with TrySeekUsingNext past the current boundary: falls through to
+# a real seek, finding the next boundary.
+iter
+seek-ge a
+seek-ge h try-seek-using-next
+next
+----
+seek-ge a:                     b#inf,BDRY [?, b):{}
+seek-ge h try-seek-using-next: m#inf,BDRY [?, m):{}
+next:                          .
+trigger: m(fwd)
+
+# SeekGE with TrySeekUsingNext past the current boundary, into a region:
+# immediate trigger.
+iter
+seek-ge a
+seek-ge n try-seek-using-next
+----
+seek-ge a:                     b#inf,BDRY [?, b):{}
+seek-ge n try-seek-using-next: .
+trigger: n(fwd)
+
+# SeekGE with TrySeekUsingNext past all regions; falls through to a real
+# seek which finds nothing. A subsequent TrySeekUsingNext on the now-exhausted
+# iterator is legal and returns nil.
+iter
+seek-ge a
+seek-ge z try-seek-using-next
+seek-ge zz try-seek-using-next
+----
+seek-ge a:                      b#inf,BDRY [?, b):{}
+seek-ge z try-seek-using-next:  .
+seek-ge zz try-seek-using-next: .
+
+# Bounds that exclude all regions: all ops return nil.
+iter lower=h upper=k
+first
+last
+seek-ge h
+seek-lt k
+next
+prev
+----
+first:     .
+last:      .
+seek-ge h: .
+seek-lt k: .
+next:      .
+prev:      .
+
+# Bounds that exclude all regions: set-bounds narrows to empty range.
+iter lower=b upper=z
+seek-ge b
+----
+seek-ge b: .
+trigger: b(fwd)
+
+continue
+set-bounds h k
+seek-ge h
+next
+----
+set-bounds h k: ok
+seek-ge h:      .
+next:           .
+
+# Bounds with lower only, no upper, no regions above lower.
+iter lower=q
+seek-ge q
+next
+----
+seek-ge q: .
+next:      .
+
+# Bounds with upper only, no lower, no regions below upper.
+iter upper=b
+seek-lt b
+prev
+----
+seek-lt b: .
+prev:      .
+
+# Bounds covering gap between regions.
+iter lower=g upper=m
+first
+last
+seek-ge g
+seek-lt m
+next
+prev
+----
+first:     .
+last:      .
+seek-ge g: .
+seek-lt m: .
+next:      .
+prev:      .
+
+# Region defined with suffixed start key.
+define
+[c@4, c@1)=1
+----
+[c@4, c@1)=1
+
+# Point before the region (c@5 < c@4): boundary at c@4.
+iter
+seek-ge c@5
+next
+----
+seek-ge c@5: c@4#inf,BDRY [?, c@4):{}
+next:        .
+trigger: c@4(fwd)
+
+# Point inside the region (c@4 < c@3 < c@1): immediate trigger.
+iter
+seek-ge c@3
+----
+seek-ge c@3: .
+trigger: c@3(fwd)
