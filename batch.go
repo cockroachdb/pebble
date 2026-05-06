@@ -1722,7 +1722,9 @@ func (b *Batch) CommitStats() BatchCommitStats {
 }
 
 // Note: batchIter mirrors the implementation of flushableBatchIter. Keep the
-// two in sync.
+// two in sync. Note that flushFlushableBatchIter does not implement prefix
+// iteration: its SeekPrefixGE panics, so the prefix-mode logic below is
+// intentionally absent there.
 type batchIter struct {
 	batch *Batch
 	iter  batchskl.Iterator
@@ -1733,6 +1735,10 @@ type batchIter struct {
 	// encodes an offset within the batch. Only batch entries earlier than the
 	// offset are visible during iteration.
 	snapshot base.SeqNum
+	// prefix, when non-nil, restricts iteration to keys whose split prefix
+	// equals prefix. Set by SeekPrefixGE; cleared by SeekGE/SeekLT/First/Last/
+	// NextPrefix/SetBounds.
+	prefix []byte
 }
 
 // batchIter implements the base.InternalIterator interface.
@@ -1749,6 +1755,7 @@ func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 	}
 
 	i.err = nil // clear cached iteration error
+	i.prefix = nil
 	ikey := i.iter.SeekGE(key, flags)
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Next()
@@ -1763,11 +1770,13 @@ func (i *batchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 }
 
 func (i *batchIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	// SeekGE clears i.prefix, so any TrySeekUsingNext path inside it operates
+	// without prefix gating. Re-apply prefix afterward and check the result.
 	kv := i.SeekGE(key, flags)
+	i.prefix = prefix
 	if kv == nil {
 		return nil
 	}
-	// If the key doesn't have the sought prefix, return nil.
 	if !bytes.Equal(i.batch.comparer.Split.Prefix(kv.K.UserKey), prefix) {
 		i.kv = base.InternalKV{}
 		return nil
@@ -1777,6 +1786,7 @@ func (i *batchIter) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 
 func (i *batchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	i.err = nil // clear cached iteration error
+	i.prefix = nil
 	ikey := i.iter.SeekLT(key)
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Prev()
@@ -1792,6 +1802,7 @@ func (i *batchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV 
 
 func (i *batchIter) First() *base.InternalKV {
 	i.err = nil // clear cached iteration error
+	i.prefix = nil
 	ikey := i.iter.First()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Next()
@@ -1807,6 +1818,7 @@ func (i *batchIter) First() *base.InternalKV {
 
 func (i *batchIter) Last() *base.InternalKV {
 	i.err = nil // clear cached iteration error
+	i.prefix = nil
 	ikey := i.iter.Last()
 	for ikey != nil && ikey.SeqNum() >= i.snapshot {
 		ikey = i.iter.Prev()
@@ -1829,12 +1841,16 @@ func (i *batchIter) Next() *base.InternalKV {
 		i.kv = base.InternalKV{}
 		return nil
 	}
+	if i.prefix != nil && !bytes.Equal(i.batch.comparer.Split.Prefix(ikey.UserKey), i.prefix) {
+		return nil
+	}
 	i.kv.K = *ikey
 	i.kv.V = base.MakeInPlaceValue(i.value())
 	return &i.kv
 }
 
 func (i *batchIter) NextPrefix(succKey []byte) *base.InternalKV {
+	i.prefix = nil
 	// Because NextPrefix was invoked `succKey` must be ≥ the key at i's current
 	// position. Seek the arena iterator using TrySeekUsingNext.
 	ikey := i.iter.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
@@ -1897,6 +1913,7 @@ func (i *batchIter) Close() error {
 
 func (i *batchIter) SetBounds(lower, upper []byte) {
 	i.iter.SetBounds(lower, upper)
+	i.prefix = nil
 }
 
 func (i *batchIter) SetContext(_ context.Context) {}
@@ -2214,6 +2231,11 @@ type flushableBatchIter struct {
 	// Optionally initialize to bounds of iteration, if any.
 	lower []byte
 	upper []byte
+
+	// prefix, when non-nil, restricts iteration to keys whose split prefix
+	// equals prefix. Set by SeekPrefixGE; cleared by SeekGE/SeekLT/First/Last/
+	// NextPrefix/SetBounds.
+	prefix []byte
 }
 
 // flushableBatchIter implements the base.InternalIterator interface.
@@ -2228,6 +2250,7 @@ func (i *flushableBatchIter) String() string {
 // optimization to provide much benefit here at the moment.
 func (i *flushableBatchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	i.err = nil // clear cached iteration error
+	i.prefix = nil
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
@@ -2248,11 +2271,12 @@ func (i *flushableBatchIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.In
 func (i *flushableBatchIter) SeekPrefixGE(
 	prefix, key []byte, flags base.SeekGEFlags,
 ) *base.InternalKV {
+	// SeekGE clears i.prefix; re-apply prefix afterward and check the result.
 	kv := i.SeekGE(key, flags)
+	i.prefix = prefix
 	if kv == nil {
 		return nil
 	}
-	// If the key doesn't have the sought prefix, return nil.
 	if !bytes.Equal(i.batch.comparer.Split.Prefix(kv.K.UserKey), prefix) {
 		return nil
 	}
@@ -2263,6 +2287,7 @@ func (i *flushableBatchIter) SeekPrefixGE(
 // package.
 func (i *flushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 	i.err = nil // clear cached iteration error
+	i.prefix = nil
 	ikey := base.MakeSearchKey(key)
 	i.index = sort.Search(len(i.offsets), func(j int) bool {
 		return base.InternalCompare(i.cmp, ikey, i.getKey(j)) <= 0
@@ -2283,6 +2308,7 @@ func (i *flushableBatchIter) SeekLT(key []byte, flags base.SeekLTFlags) *base.In
 // package.
 func (i *flushableBatchIter) First() *base.InternalKV {
 	i.err = nil // clear cached iteration error
+	i.prefix = nil
 	if len(i.offsets) == 0 {
 		return nil
 	}
@@ -2299,6 +2325,7 @@ func (i *flushableBatchIter) First() *base.InternalKV {
 // package.
 func (i *flushableBatchIter) Last() *base.InternalKV {
 	i.err = nil // clear cached iteration error
+	i.prefix = nil
 	if len(i.offsets) == 0 {
 		return nil
 	}
@@ -2311,8 +2338,10 @@ func (i *flushableBatchIter) Last() *base.InternalKV {
 	return kv
 }
 
-// Note: flushFlushableBatchIter.Next mirrors the implementation of
+// Note: flushFlushableBatchIter.Next mirrors the structure of
 // flushableBatchIter.Next due to performance. Keep the two in sync.
+// flushFlushableBatchIter.Next omits the bounds and prefix checks because the
+// flush iterator never has bounds or prefix mode set.
 func (i *flushableBatchIter) Next() *base.InternalKV {
 	if i.index == len(i.offsets) {
 		return nil
@@ -2323,6 +2352,13 @@ func (i *flushableBatchIter) Next() *base.InternalKV {
 	}
 	kv := i.getKV(i.index)
 	if i.upper != nil && i.cmp(kv.K.UserKey, i.upper) >= 0 {
+		i.index = len(i.offsets)
+		return nil
+	}
+	if i.prefix != nil && !bytes.Equal(i.batch.comparer.Split.Prefix(kv.K.UserKey), i.prefix) {
+		// Explicitly exhaust the iterator by setting i.index past the end. This
+		// is safe because TrySeekUsingNext is ignored by flushableBatchIter, so
+		// a subsequent SeekPrefixGE will reposition the iterator from scratch.
 		i.index = len(i.offsets)
 		return nil
 	}
@@ -2348,6 +2384,7 @@ func (i *flushableBatchIter) Prev() *base.InternalKV {
 // Note: flushFlushableBatchIter.NextPrefix mirrors the implementation of
 // flushableBatchIter.NextPrefix due to performance. Keep the two in sync.
 func (i *flushableBatchIter) NextPrefix(succKey []byte) *base.InternalKV {
+	// SeekGE clears i.prefix.
 	return i.SeekGE(succKey, base.SeekGEFlagsNone.EnableTrySeekUsingNext())
 }
 
@@ -2408,6 +2445,7 @@ func (i *flushableBatchIter) Close() error {
 func (i *flushableBatchIter) SetBounds(lower, upper []byte) {
 	i.lower = lower
 	i.upper = upper
+	i.prefix = nil
 }
 
 func (i *flushableBatchIter) SetContext(_ context.Context) {}
@@ -2453,8 +2491,11 @@ func (i *flushFlushableBatchIter) NextPrefix(succKey []byte) *base.InternalKV {
 	panic(errors.AssertionFailedf("pebble: Prev unimplemented"))
 }
 
-// Note: flushFlushableBatchIter.Next mirrors the implementation of
-// flushableBatchIter.Next due to performance. Keep the two in sync.
+// Note: flushFlushableBatchIter.Next mirrors the structure of
+// flushableBatchIter.Next due to performance. Keep the two in sync. The
+// bounds and prefix-mode checks are intentionally omitted: the flush iterator
+// is not used with bounds and never enters prefix mode (its SeekPrefixGE
+// panics).
 func (i *flushFlushableBatchIter) Next() *base.InternalKV {
 	if i.index == len(i.offsets) {
 		return nil

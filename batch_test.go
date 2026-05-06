@@ -1105,6 +1105,127 @@ func TestBatchIter(t *testing.T) {
 	}
 }
 
+// TestBatchIterStrictPrefix verifies the strict prefix iteration behavior of
+// batchIter.SeekPrefixGE and Next using testkeys.Comparer (which has a
+// non-trivial Split that splits at '@' and orders suffixes in reverse:
+// a@3 < a@2 < a@1 < b@2 < b@1).
+func TestBatchIterStrictPrefix(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	newIter := func() *batchIter {
+		b := newIndexedBatch(nil, testkeys.Comparer)
+		for _, k := range []string{"a@1", "a@2", "a@3", "b@1", "b@2"} {
+			require.NoError(t, b.Set([]byte(k), []byte("v"+k), nil))
+		}
+		return b.newInternalIter(nil)
+	}
+
+	requireKey := func(t *testing.T, kv *base.InternalKV, want string) {
+		t.Helper()
+		require.NotNil(t, kv)
+		require.Equal(t, want, string(kv.K.UserKey))
+	}
+
+	t.Run("Next stops at prefix boundary", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.Next(), "a@2")
+		requireKey(t, iter.Next(), "a@1")
+		require.Nil(t, iter.Next())
+	})
+
+	t.Run("no matching prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		require.Nil(t, iter.SeekPrefixGE([]byte("c"), []byte("c"), base.SeekGEFlagsNone))
+	})
+
+	t.Run("seek past matching suffixes", func(t *testing.T) {
+		// testkeys reverse-suffix ordering: the first key >= "a@0" is b@2.
+		iter := newIter()
+		defer iter.Close()
+		require.Nil(t, iter.SeekPrefixGE([]byte("a"), []byte("a@0"), base.SeekGEFlagsNone))
+	})
+
+	t.Run("SeekGE clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		require.Nil(t, iter.SeekPrefixGE([]byte("a"), []byte("a@0"), base.SeekGEFlagsNone))
+		requireKey(t, iter.SeekGE([]byte("b@2"), base.SeekGEFlagsNone), "b@2")
+		requireKey(t, iter.Next(), "b@1")
+	})
+
+	t.Run("SeekPrefixGE with TrySeekUsingNext crosses prefix", func(t *testing.T) {
+		// Load-bearing case for the clear-then-set ordering in SeekPrefixGE: if
+		// SeekGE saw a non-nil i.prefix during its TrySeekUsingNext path, an
+		// inner Next() could short-circuit on prefix mismatch.
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.SeekPrefixGE([]byte("b"), []byte("b@2"),
+			base.SeekGEFlagsNone.EnableTrySeekUsingNext()), "b@2")
+	})
+
+	t.Run("First clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.First(), "a@3")
+		requireKey(t, iter.Next(), "a@2")
+		requireKey(t, iter.Next(), "a@1")
+		requireKey(t, iter.Next(), "b@2")
+		requireKey(t, iter.Next(), "b@1")
+		require.Nil(t, iter.Next())
+	})
+
+	t.Run("Last clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.Last(), "b@1")
+	})
+
+	t.Run("SeekLT clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.SeekLT([]byte("c"), base.SeekLTFlagsNone), "b@1")
+	})
+
+	t.Run("SetBounds clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		iter.SetBounds(nil, nil)
+		requireKey(t, iter.SeekGE([]byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.Next(), "a@2")
+		requireKey(t, iter.Next(), "a@1")
+		requireKey(t, iter.Next(), "b@2")
+	})
+
+	t.Run("snapshot interaction", func(t *testing.T) {
+		// Construct a batch where the snapshot loop in Next must skip an
+		// invisible key with the matching prefix and land on a visible key
+		// with a different prefix; verify the prefix check fires.
+		b := newIndexedBatch(nil, testkeys.Comparer)
+		require.NoError(t, b.Set([]byte("a@2"), []byte("v"), nil))
+		// Capture the snapshot here: subsequent Sets are invisible.
+		snap := b.nextSeqNum()
+		require.NoError(t, b.Set([]byte("a@1"), []byte("v"), nil))
+		require.NoError(t, b.Set([]byte("b@1"), []byte("v"), nil))
+
+		iter := b.newInternalIter(nil)
+		defer iter.Close()
+		iter.snapshot = snap
+
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@2")
+		// iter.Next() advances to a@1 (invisible), snapshot loop skips to b@1
+		// (visible), prefix check fails; result is nil.
+		require.Nil(t, iter.Next())
+	})
+}
+
 func TestBatchRangeOps(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	var b *Batch
@@ -1225,6 +1346,102 @@ func TestFlushableBatchIter(t *testing.T) {
 		default:
 			return fmt.Sprintf("unknown command: %s", d.Cmd)
 		}
+	})
+}
+
+// TestFlushableBatchIterStrictPrefix verifies the strict prefix iteration
+// behavior of flushableBatchIter (mirrors TestBatchIterStrictPrefix).
+func TestFlushableBatchIterStrictPrefix(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	newIter := func() internalIterator {
+		batch := newBatch(nil)
+		for _, k := range []string{"a@1", "a@2", "a@3", "b@1", "b@2"} {
+			require.NoError(t, batch.Set([]byte(k), []byte("v"+k), nil))
+		}
+		fb, err := newFlushableBatch(batch, testkeys.Comparer)
+		require.NoError(t, err)
+		return fb.newIter(nil)
+	}
+
+	requireKey := func(t *testing.T, kv *base.InternalKV, want string) {
+		t.Helper()
+		require.NotNil(t, kv)
+		require.Equal(t, want, string(kv.K.UserKey))
+	}
+
+	t.Run("Next stops at prefix boundary", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.Next(), "a@2")
+		requireKey(t, iter.Next(), "a@1")
+		require.Nil(t, iter.Next())
+	})
+
+	t.Run("no matching prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		require.Nil(t, iter.SeekPrefixGE([]byte("c"), []byte("c"), base.SeekGEFlagsNone))
+	})
+
+	t.Run("seek past matching suffixes", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		require.Nil(t, iter.SeekPrefixGE([]byte("a"), []byte("a@0"), base.SeekGEFlagsNone))
+	})
+
+	t.Run("SeekGE clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		require.Nil(t, iter.SeekPrefixGE([]byte("a"), []byte("a@0"), base.SeekGEFlagsNone))
+		requireKey(t, iter.SeekGE([]byte("b@2"), base.SeekGEFlagsNone), "b@2")
+		requireKey(t, iter.Next(), "b@1")
+	})
+
+	t.Run("SeekPrefixGE with TrySeekUsingNext crosses prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.SeekPrefixGE([]byte("b"), []byte("b@2"),
+			base.SeekGEFlagsNone.EnableTrySeekUsingNext()), "b@2")
+	})
+
+	t.Run("First clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.First(), "a@3")
+		requireKey(t, iter.Next(), "a@2")
+		requireKey(t, iter.Next(), "a@1")
+		requireKey(t, iter.Next(), "b@2")
+		requireKey(t, iter.Next(), "b@1")
+		require.Nil(t, iter.Next())
+	})
+
+	t.Run("Last clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.Last(), "b@1")
+	})
+
+	t.Run("SeekLT clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.SeekLT([]byte("c"), base.SeekLTFlagsNone), "b@1")
+	})
+
+	t.Run("SetBounds clears prefix", func(t *testing.T) {
+		iter := newIter()
+		defer iter.Close()
+		requireKey(t, iter.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone), "a@3")
+		iter.SetBounds(nil, nil)
+		requireKey(t, iter.SeekGE([]byte("a"), base.SeekGEFlagsNone), "a@3")
+		requireKey(t, iter.Next(), "a@2")
+		requireKey(t, iter.Next(), "a@1")
+		requireKey(t, iter.Next(), "b@2")
 	})
 }
 
