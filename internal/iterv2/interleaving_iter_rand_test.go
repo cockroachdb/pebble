@@ -72,7 +72,7 @@ func runRandomTest(t *testing.T, seed uint64) {
 	lower, upper := RandBounds(rng, cfg, startKey, endKey)
 
 	var pointIter base.InternalIterator
-	pointIter = base.NewFakeIterWithCmp(cmp.Compare, points)
+	pointIter = base.NewFakeIter(cmp, points)
 	if lower != nil || upper != nil {
 		pointIter.SetBounds(lower, upper)
 	}

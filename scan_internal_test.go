@@ -638,7 +638,7 @@ func TestPointCollapsingIter(t *testing.T) {
 					kvs = append(kvs, base.MakeInternalKV(k, v))
 				}
 			}
-			f := base.NewFakeIter(kvs)
+			f := base.NewFakeIter(base.DefaultComparer, kvs)
 
 			ksIter := keyspan.NewIter(base.DefaultComparer.Compare, spans)
 			pcIter := &pointCollapsingIterator{

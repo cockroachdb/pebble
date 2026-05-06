@@ -72,7 +72,7 @@ func TestInterleavingIter(t *testing.T) {
 				}
 				return []byte(s)
 			}
-			pointIter := base.NewFakeIterWithCmp(testkeys.Comparer.Compare, points)
+			pointIter := base.NewFakeIter(testkeys.Comparer, points)
 			spanIter := keyspan.NewIter(testkeys.Comparer.Compare, spans)
 			iter.Init(
 				testkeys.Comparer,

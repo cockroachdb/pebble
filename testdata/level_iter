@@ -159,7 +159,7 @@ seek-prefix-ge a
 next
 ----
 a#1,SET:1
-b#2,SET:2
+.
 
 iter
 seek-prefix-ge d

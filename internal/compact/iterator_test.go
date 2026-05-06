@@ -365,7 +365,7 @@ func makeInputIters(
 	// SSTables are not released while iterating, and therefore not
 	// susceptible to use-after-free bugs, we skip the zeroing of
 	// RangeDelete keys.
-	return base.NewFakeIter(points),
+	return base.NewFakeIter(base.DefaultComparer, points),
 		keyspan.NewIter(base.DefaultComparer.Compare, rangeDels),
 		keyspan.NewIter(base.DefaultComparer.Compare, rangeKeys)
 }

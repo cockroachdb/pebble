@@ -60,7 +60,7 @@ func TestLevelIterV2(t *testing.T) {
 		fi := files[f.TableNum]
 		var set iterSet
 		if kinds.Point() {
-			it := base.NewFakeIterWithCmp(cmp.Compare, fi.points)
+			it := base.NewFakeIter(cmp, fi.points)
 			it.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
 			set.point = it
 		}

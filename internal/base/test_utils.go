@@ -5,6 +5,7 @@
 package base
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"strconv"
@@ -74,16 +75,11 @@ func fakeIkey(s string) InternalKey {
 	return MakeInternalKey([]byte(s[:j]), SeqNum(seqNum), InternalKeyKindSet)
 }
 
-// NewFakeIter returns an iterator over the given KVs, using the default
-// comparer.
-func NewFakeIter(kvs []InternalKV) *FakeIter {
-	return NewFakeIterWithCmp(DefaultComparer.Compare, kvs)
-}
-
-// NewFakeIterWithCmp returns an iterator over the given KVs.
-func NewFakeIterWithCmp(cmp Compare, kvs []InternalKV) *FakeIter {
+// NewFakeIter returns an iterator over the given KVs.
+func NewFakeIter(cmp *Comparer, kvs []InternalKV) *FakeIter {
 	return &FakeIter{
-		cmp:   cmp,
+		cmp:   cmp.Compare,
+		split: cmp.Split,
 		kvs:   kvs,
 		index: 0,
 	}
@@ -91,11 +87,16 @@ func NewFakeIterWithCmp(cmp Compare, kvs []InternalKV) *FakeIter {
 
 // FakeIter is an iterator over a fixed set of KVs.
 type FakeIter struct {
-	cmp      Compare
-	lower    []byte
-	upper    []byte
-	kvs      []InternalKV
-	index    int
+	cmp   Compare
+	split Split
+	lower []byte
+	upper []byte
+	kvs   []InternalKV
+	index int
+	// prefix, when non-nil, restricts iteration to keys whose split prefix
+	// equals prefix. Set by SeekPrefixGE; cleared by any other absolute
+	// positioning method (SeekGE, SeekLT, First, Last, SetBounds).
+	prefix   []byte
 	closeErr error
 }
 
@@ -113,6 +114,7 @@ func (f *FakeIter) String() string {
 
 // SeekGE is part of the InternalIterator interface.
 func (f *FakeIter) SeekGE(key []byte, flags SeekGEFlags) *InternalKV {
+	f.prefix = nil
 	if flags.TrySeekUsingNext() {
 		// Note that f.index could be len(f.kvs) here (iterator exhausted), and that
 		// is ok.
@@ -135,11 +137,18 @@ func (f *FakeIter) SeekGE(key []byte, flags SeekGEFlags) *InternalKV {
 
 // SeekPrefixGE is part of the InternalIterator interface.
 func (f *FakeIter) SeekPrefixGE(prefix, key []byte, flags SeekGEFlags) *InternalKV {
-	return f.SeekGE(key, flags)
+	// SeekGE clears f.prefix, so we re-apply it after.
+	kv := f.SeekGE(key, flags)
+	f.prefix = prefix
+	if kv != nil && !bytes.Equal(f.split.Prefix(kv.K.UserKey), prefix) {
+		return nil
+	}
+	return kv
 }
 
 // SeekLT is part of the InternalIterator interface.
 func (f *FakeIter) SeekLT(key []byte, flags SeekLTFlags) *InternalKV {
+	f.prefix = nil
 	for f.index = len(f.kvs) - 1; f.index >= 0; f.index-- {
 		if f.cmp(key, f.key().UserKey) > 0 {
 			if f.lower != nil && f.cmp(f.lower, f.key().UserKey) > 0 {
@@ -153,12 +162,14 @@ func (f *FakeIter) SeekLT(key []byte, flags SeekLTFlags) *InternalKV {
 
 // First is part of the InternalIterator interface.
 func (f *FakeIter) First() *InternalKV {
+	f.prefix = nil
 	f.index = -1
 	return f.Next()
 }
 
 // Last is part of the InternalIterator interface.
 func (f *FakeIter) Last() *InternalKV {
+	f.prefix = nil
 	f.index = len(f.kvs)
 	return f.Prev()
 }
@@ -173,6 +184,9 @@ func (f *FakeIter) Next() *InternalKV {
 		return nil
 	}
 	if f.upper != nil && f.cmp(f.upper, f.key().UserKey) <= 0 {
+		return nil
+	}
+	if f.prefix != nil && !bytes.Equal(f.split.Prefix(f.key().UserKey), f.prefix) {
 		return nil
 	}
 	return &f.kvs[f.index]
@@ -217,6 +231,7 @@ func (f *FakeIter) Close() error {
 func (f *FakeIter) SetBounds(lower, upper []byte) {
 	f.lower = lower
 	f.upper = upper
+	f.prefix = nil
 }
 
 // SetContext is part of the InternalIterator interface.

@@ -193,7 +193,7 @@ func (tt *testTables) Points(
 	if len(t.points) == 0 && rand.IntN(2) == 0 {
 		return nil, nil
 	}
-	return base.NewFakeIter(t.points), nil
+	return base.NewFakeIter(base.DefaultComparer, t.points), nil
 }
 
 func (tt *testTables) RangeDels(

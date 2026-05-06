@@ -290,7 +290,7 @@ func (s *ingestedFlushable) newItersV2(
 		iiter := &iterv2.InterleavingIter{}
 		iiter.Init(
 			s.comparer,
-			base.NewFakeIterWithCmp(s.comparer.Compare, nil),
+			base.NewFakeIter(s.comparer, nil),
 			keyspan.NewIter(s.comparer.Compare, []keyspan.Span{rdel}),
 			nil, nil, nil, nil,
 		)

@@ -46,7 +46,7 @@ func TestLevelIter(t *testing.T) {
 	newIters := func(
 		_ context.Context, file *manifest.TableMetadata, opts *IterOptions, _ internalIterOpts, _ iterKinds,
 	) (iterSet, error) {
-		f := base.NewFakeIter(iterKVs[file.TableNum])
+		f := base.NewFakeIter(base.DefaultComparer, iterKVs[file.TableNum])
 		f.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
 		return iterSet{point: f}, nil
 	}

@@ -75,7 +75,7 @@ func TestMergingIterSeek(t *testing.T) {
 					kv := base.ParseInternalKV(f)
 					kvs = append(kvs, kv)
 				}
-				iters = append(iters, base.NewFakeIter(kvs))
+				iters = append(iters, base.NewFakeIter(base.DefaultComparer, kvs))
 			}
 
 			var stats base.InternalIteratorStats
@@ -134,7 +134,7 @@ func TestMergingIterNextPrev(t *testing.T) {
 							j := strings.Index(key, ":")
 							kvs = append(kvs, base.MakeInternalKV(base.ParseInternalKey(key[:j]), []byte(key[j+1:])))
 						}
-						iters[i] = base.NewFakeIter(kvs)
+						iters[i] = base.NewFakeIter(base.DefaultComparer, kvs)
 					}
 
 					var stats base.InternalIteratorStats

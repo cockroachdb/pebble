@@ -62,7 +62,7 @@ func testIterator(
 	splitFunc func(r *rand.Rand) [][]string,
 ) {
 	fakeIterWithCloseErr := func(kvs []base.InternalKV, errorMsg string) *base.FakeIter {
-		f := base.NewFakeIter(kvs)
+		f := base.NewFakeIter(base.DefaultComparer, kvs)
 		f.SetCloseErr(errors.New(errorMsg))
 		return f
 	}
@@ -77,31 +77,31 @@ func testIterator(
 		{
 			"one sub-iterator",
 			[]internalIterator{
-				base.NewFakeIter(base.FakeKVs("e:1", "w:2")),
+				base.NewFakeIter(base.DefaultComparer, base.FakeKVs("e:1", "w:2")),
 			},
 			"<e:1><w:2>.",
 		},
 		{
 			"two sub-iterators",
 			[]internalIterator{
-				base.NewFakeIter(base.FakeKVs("a0:0")),
-				base.NewFakeIter(base.FakeKVs("b1:1", "b2:2")),
+				base.NewFakeIter(base.DefaultComparer, base.FakeKVs("a0:0")),
+				base.NewFakeIter(base.DefaultComparer, base.FakeKVs("b1:1", "b2:2")),
 			},
 			"<a0:0><b1:1><b2:2>.",
 		},
 		{
 			"empty sub-iterators",
 			[]internalIterator{
-				base.NewFakeIter(nil),
-				base.NewFakeIter(nil),
-				base.NewFakeIter(nil),
+				base.NewFakeIter(base.DefaultComparer, nil),
+				base.NewFakeIter(base.DefaultComparer, nil),
+				base.NewFakeIter(base.DefaultComparer, nil),
 			},
 			".",
 		},
 		{
 			"sub-iterator errors",
 			[]internalIterator{
-				base.NewFakeIter(base.FakeKVs("a0:0", "a1:1")),
+				base.NewFakeIter(base.DefaultComparer, base.FakeKVs("a0:0", "a1:1")),
 				fakeIterWithCloseErr(base.FakeKVs("b2:2", "b3:3", "b4:4"), "the sky is falling"),
 				fakeIterWithCloseErr(base.FakeKVs("c5:5", "c6:6"), "run for your lives"),
 			},
@@ -132,7 +132,7 @@ func testIterator(
 		splits := splitFunc(r)
 		iters := make([]internalIterator, len(splits))
 		for i, split := range splits {
-			iters[i] = base.NewFakeIter(base.FakeKVs(split...))
+			iters[i] = base.NewFakeIter(base.DefaultComparer, base.FakeKVs(split...))
 		}
 		iter := invalidating.NewIter(newFunc(iters...))
 		kv := iter.First()
@@ -190,7 +190,7 @@ func TestIterator(t *testing.T) {
 			merge:    wrappedMerge,
 		}
 		// NB: Use a mergingIter to filter entries newer than seqNum.
-		fakeIter := base.NewFakeIter(kvs)
+		fakeIter := base.NewFakeIter(base.DefaultComparer, kvs)
 		fakeIter.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
 		iter := newMergingIter(nil /* logger */, &it.stats.InternalStats, it.cmp, it.comparer.Split, fakeIter)
 		iter.snapshot = seqNum
@@ -862,7 +862,7 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 
 	var errorIter errorSeekIter
 	newIter := func(opts IterOptions) *Iterator {
-		iter := base.NewFakeIter(kvs)
+		iter := base.NewFakeIter(base.DefaultComparer, kvs)
 		iter.SetBounds(opts.GetLowerBound(), opts.GetUpperBound())
 		errorIter = errorSeekIter{internalIterator: invalidating.NewIter(iter)}
 		// NB: This Iterator cannot be cloned since it is not constructed
