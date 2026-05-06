@@ -43,8 +43,9 @@ type SingleSpanIter struct {
 	// boundaries[currentRegion] for backward; the returned internal key has the
 	// same user key.
 	//
-	// The iterator is exhausted when currentRegion is outside [0, numRegions) or
-	// when the next boundary would be nil.
+	// The iterator is exhausted when presentedSpan is not valid. Typical
+	// conditions that lead to exhaustion are when currentRegion goes outside
+	// [0, numRegions) or we reach a nil boundary.
 	boundaries [4][]byte
 	numRegions int8
 	// keyRegionIdx is the index of the region containing the keyspan.Key, or

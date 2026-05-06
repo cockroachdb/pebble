@@ -282,19 +282,15 @@ func (s *ingestedFlushable) newItersV2(
 	)
 	if s.exciseSpan.Valid() {
 		// We have an excise span; we will set it up as a separate level.
-		rdel := keyspan.Span{
-			Start: s.exciseSpan.Start,
-			End:   s.exciseSpan.End,
-			Keys:  []keyspan.Key{{Trailer: base.MakeTrailer(s.exciseSeqNum, base.InternalKeyKindRangeDelete)}},
-		}
-		iiter := &iterv2.InterleavingIter{}
-		iiter.Init(
+		ssi := &iterv2.SingleSpanIter{}
+		ssi.Init(
 			s.comparer,
-			base.NewFakeIter(s.comparer, nil),
-			keyspan.NewIter(s.comparer.Compare, []keyspan.Span{rdel}),
-			nil, nil, nil, nil,
+			s.exciseSpan.Start,
+			s.exciseSpan.End,
+			base.MakeTrailer(s.exciseSeqNum, base.InternalKeyKindRangeDelete),
+			nil, nil,
 		)
-		rangeDelIter = iiter
+		rangeDelIter = ssi
 	}
 	return levelIter, rangeDelIter
 }
