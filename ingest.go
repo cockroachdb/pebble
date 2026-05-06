@@ -1990,9 +1990,11 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 
 		// If there's an excise being done atomically with the same ingest, we
 		// assign the lowest sequence number in the set of sequence numbers for this
-		// ingestion to the excise. Note that we've already allocated sstCount+1
-		// sequence numbers in this case.
+		// ingestion to the excise; the sstables get the seqnums above it. Note that
+		// we've already allocated sstCount+1 sequence numbers in this case.
+		var exciseSeqNum base.SeqNum
 		if args.ExciseSpan.Valid() {
+			exciseSeqNum = seqNum
 			seqNum++ // the first seqNum is reserved for the excise.
 		}
 		// Update the sequence numbers for all ingested sstables'
@@ -2024,7 +2026,7 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		}
 		// Assign the sstables to the correct level in the LSM and apply the
 		// version edit.
-		ve, manifestUpdateDuration, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, seqNum, args.SkipRemoteProbe)
+		ve, manifestUpdateDuration, err = d.ingestApply(ctx, jobID, loadResult, mut, args.ExciseSpan, args.ExciseBoundsPolicy, exciseSeqNum, args.SkipRemoteProbe)
 	}
 
 	// Only one ingest can occur at a time because if not, one would block waiting
