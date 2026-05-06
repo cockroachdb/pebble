@@ -43,7 +43,7 @@ func BenchmarkCockroachKeysSeekPrefixGE(b *testing.B) {
 	for _, skip := range []int{1, 2, 4, 8, 16} {
 		for _, useNext := range []bool{false, true} {
 			b.Run(fmt.Sprintf("skip=%d/use-next=%t", skip, useNext), func(b *testing.B) {
-				it := l.NewIter(nil, nil)
+				it := l.NewIter(cockroachkvs.Split, nil, nil)
 				j := 0
 				b.ResetTimer()
 				it.SeekPrefixGE(prefixes[j], keys[j], base.SeekGEFlagsNone)

@@ -30,7 +30,7 @@ import (
 // get gets the value for the given key. It returns ErrNotFound if the DB does
 // not contain the key.
 func (m *memTable) get(key []byte) (value []byte, err error) {
-	it := m.skl.NewIter(nil, nil)
+	it := m.skl.NewIter(m.split, nil, nil)
 	defer it.Close()
 	kv := it.SeekGE(key, base.SeekGEFlagsNone)
 	if kv == nil {

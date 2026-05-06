@@ -18,6 +18,7 @@
 package arenaskl
 
 import (
+	"bytes"
 	"context"
 	"sync"
 
@@ -40,6 +41,8 @@ func (s *splice) init(prev, next *node) {
 // simply value copying the struct. All iterator methods are thread-safe.
 type Iterator struct {
 	list  *Skiplist
+	split base.Split
+
 	nd    *node
 	kv    base.InternalKV
 	lower []byte
@@ -58,6 +61,11 @@ type Iterator struct {
 	// comparisons are necessary.
 	lowerNode *node
 	upperNode *node
+
+	// prefix, when non-nil, restricts iteration to keys whose split prefix
+	// equals prefix. Set by SeekPrefixGE; cleared by SeekGE/SeekLT/First/Last/
+	// SetBounds.
+	prefix []byte
 }
 
 // Iterator implements the base.InternalIterator interface.
@@ -91,6 +99,7 @@ func (it *Iterator) Error() error {
 // It is up to the caller to ensure that key is greater than or equal to the
 // lower bound.
 func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
+	it.prefix = nil
 	if flags.TrySeekUsingNext() {
 		if it.nd == it.list.tail || it.nd == it.upperNode {
 			// Iterator is done.
@@ -128,11 +137,25 @@ func (it *Iterator) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV 
 }
 
 // SeekPrefixGE moves the iterator to the first entry whose key is greater than
-// or equal to the given key. This method is equivalent to SeekGE and is
-// provided so that an arenaskl.Iterator implements the
-// internal/base.InternalIterator interface.
+// or equal to the given key, restricted to keys with the given prefix.
+// Subsequent calls to Next return nil once the iterator advances to a key
+// whose prefix differs from prefix.
+//
+// NB: SeekPrefixGE in terms of positioning the iterator behaves exactly like
+// SeekGE. The prefix parameter is only used to decide whether to return the
+// InternalKV it landed on (if the prefix matches) or nil (if the prefix does
+// not match). Since it doesn't change positioning behavior, TrySeekUsingNext
+// works with no special casing for earlier prefix iteration.
 func (it *Iterator) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *base.InternalKV {
-	return it.SeekGE(key, flags)
+	// SeekGE clears it.prefix, so the TrySeekUsingNext loop's calls to
+	// it.Next() use non-prefix semantics. We re-apply prefix afterward and
+	// check the result.
+	kv := it.SeekGE(key, flags)
+	it.prefix = prefix
+	if kv != nil && !bytes.Equal(it.split.Prefix(kv.K.UserKey), prefix) {
+		return nil
+	}
+	return kv
 }
 
 // SeekLT moves the iterator to the last entry whose key is less than the given
@@ -140,6 +163,7 @@ func (it *Iterator) SeekPrefixGE(prefix, key []byte, flags base.SeekGEFlags) *ba
 // nil otherwise. Note that SeekLT only checks the lower bound. It is up to the
 // caller to ensure that key is less than the upper bound.
 func (it *Iterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
+	it.prefix = nil
 	// NB: the top-level Iterator has already adjusted key based on
 	// the upper-bound.
 	it.nd, _ = it.seekForBaseSplice(key)
@@ -160,6 +184,7 @@ func (it *Iterator) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV 
 // only checks the upper bound. It is up to the caller to ensure that key is
 // greater than or equal to the lower bound (e.g. via a call to SeekGE(lower)).
 func (it *Iterator) First() *base.InternalKV {
+	it.prefix = nil
 	it.nd = it.list.getNext(it.list.head, 0)
 	if it.nd == it.list.tail || it.nd == it.upperNode {
 		return nil
@@ -178,6 +203,7 @@ func (it *Iterator) First() *base.InternalKV {
 // checks the lower bound. It is up to the caller to ensure that key is less
 // than the upper bound (e.g. via a call to SeekLT(upper)).
 func (it *Iterator) Last() *base.InternalKV {
+	it.prefix = nil
 	it.nd = it.list.getPrev(it.list.tail, 0)
 	if it.nd == it.list.head || it.nd == it.lowerNode {
 		return nil
@@ -205,7 +231,14 @@ func (it *Iterator) Next() *base.InternalKV {
 		it.upperNode = it.nd
 		return nil
 	}
+	// Set it.kv.V before the prefix check so that it.kv stays internally
+	// consistent. A subsequent SeekGE/SeekPrefixGE with TrySeekUsingNext may
+	// land on this same node via the fast path that returns &it.kv directly,
+	// which would otherwise expose the previous key's value.
 	it.kv.V = base.MakeInPlaceValue(it.value())
+	if it.prefix != nil && !bytes.Equal(it.split.Prefix(it.kv.K.UserKey), it.prefix) {
+		return nil
+	}
 	return &it.kv
 }
 
@@ -244,6 +277,7 @@ func (it *Iterator) SetBounds(lower, upper []byte) {
 	it.upper = upper
 	it.lowerNode = nil
 	it.upperNode = nil
+	it.prefix = nil
 }
 
 // SetContext implements base.InternalIterator.

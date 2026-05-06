@@ -299,15 +299,18 @@ func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter
 	return nil
 }
 
-// NewIter returns a new Iterator object. The lower and upper bound parameters
-// control the range of keys the iterator will return. Specifying for nil for
-// lower or upper bound disables the check for that boundary. Note that lower
-// bound is not checked on {SeekGE,First} and upper bound is not check on
-// {SeekLT,Last}. The user is expected to perform that check. Note that it is
-// safe for an iterator to be copied by value.
-func (s *Skiplist) NewIter(lower, upper []byte) *Iterator {
+// NewIter returns a new Iterator object. The split function is used to extract
+// the prefix of a user key for strict prefix iteration via SeekPrefixGE; it
+// must be non-nil (callers without a meaningful Split function should pass
+// base.DefaultSplit). The lower and upper bound parameters control the range
+// of keys the iterator will return. Specifying for nil for lower or upper
+// bound disables the check for that boundary. Note that lower bound is not
+// checked on {SeekGE,First} and upper bound is not check on {SeekLT,Last}.
+// The user is expected to perform that check. Note that it is safe for an
+// iterator to be copied by value.
+func (s *Skiplist) NewIter(split base.Split, lower, upper []byte) *Iterator {
 	it := iterPool.Get().(*Iterator)
-	*it = Iterator{list: s, nd: s.head, lower: lower, upper: upper}
+	*it = Iterator{list: s, nd: s.head, lower: lower, upper: upper, split: split}
 	return it
 }
 

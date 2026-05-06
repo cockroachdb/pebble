@@ -64,7 +64,7 @@ func makeInserterAdd(s *Skiplist) func(key base.InternalKey, value []byte) error
 // length iterates over skiplist to give exact size.
 func length(s *Skiplist) int {
 	count := 0
-	it := s.NewIter(nil, nil)
+	it := s.NewIter(base.DefaultSplit, nil, nil)
 	for kv := it.First(); kv != nil; kv = it.Next() {
 		count++
 	}
@@ -74,7 +74,7 @@ func length(s *Skiplist) int {
 // length iterates over skiplist in reverse order to give exact size.
 func lengthRev(s *Skiplist) int {
 	count := 0
-	it := s.NewIter(nil, nil)
+	it := s.NewIter(base.DefaultSplit, nil, nil)
 	for kv := it.Last(); kv != nil; kv = it.Prev() {
 		count++
 	}
@@ -93,7 +93,7 @@ func TestNoPointers(t *testing.T) {
 func TestEmpty(t *testing.T) {
 	key := makeKey("aaa")
 	l := NewSkiplist(newArena(arenaSize), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := l.NewIter(base.DefaultSplit, nil, nil)
 	require.Nil(t, it.First())
 	require.Nil(t, it.Last())
 	require.Nil(t, it.SeekGE(key, base.SeekGEFlagsNone))
@@ -128,7 +128,7 @@ func TestBasic(t *testing.T) {
 	for _, inserter := range []bool{false, true} {
 		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
 			l := NewSkiplist(newArena(arenaSize), bytes.Compare)
-			it := l.NewIter(nil, nil)
+			it := l.NewIter(base.DefaultSplit, nil, nil)
 
 			add := l.Add
 			if inserter {
@@ -220,7 +220,7 @@ func TestConcurrentBasic(t *testing.T) {
 			// Check values. Concurrent reads.
 			for i := range n {
 				wg.Go(func() {
-					it := l.NewIter(nil, nil)
+					it := l.NewIter(base.DefaultSplit, nil, nil)
 					kv := it.SeekGE(makeKey(fmt.Sprintf("%05d", i)), base.SeekGEFlagsNone)
 					require.NotNil(t, kv)
 					require.EqualValues(t, fmt.Sprintf("%05d", i), kv.K.UserKey)
@@ -269,7 +269,7 @@ func TestConcurrentOneKey(t *testing.T) {
 			var sawValue atomic.Int32
 			for range n {
 				wg.Go(func() {
-					it := l.NewIter(nil, nil)
+					it := l.NewIter(base.DefaultSplit, nil, nil)
 					kv := it.SeekGE(key, base.SeekGEFlagsNone)
 					require.NotNil(t, kv)
 					require.True(t, bytes.Equal(key, kv.K.UserKey))
@@ -292,7 +292,7 @@ func TestSkiplistAdd(t *testing.T) {
 	for _, inserter := range []bool{false, true} {
 		t.Run(fmt.Sprintf("inserter=%t", inserter), func(t *testing.T) {
 			l := NewSkiplist(newArena(arenaSize), bytes.Compare)
-			it := l.NewIter(nil, nil)
+			it := l.NewIter(base.DefaultSplit, nil, nil)
 
 			add := l.Add
 			if inserter {
@@ -308,7 +308,7 @@ func TestSkiplistAdd(t *testing.T) {
 			require.EqualValues(t, []byte{}, mustGetValue(t, kv.V))
 
 			l = NewSkiplist(newArena(arenaSize), bytes.Compare)
-			it = l.NewIter(nil, nil)
+			it = l.NewIter(base.DefaultSplit, nil, nil)
 
 			add = l.Add
 			if inserter {
@@ -385,7 +385,7 @@ func TestConcurrentAdd(t *testing.T) {
 
 			for f := 0; f < 2; f++ {
 				go func(f int) {
-					it := l.NewIter(nil, nil)
+					it := l.NewIter(base.DefaultSplit, nil, nil)
 					add := l.Add
 					if inserter {
 						add = makeInserterAdd(l)
@@ -421,7 +421,7 @@ func TestConcurrentAdd(t *testing.T) {
 func TestIteratorNext(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(newArena(arenaSize), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := l.NewIter(base.DefaultSplit, nil, nil)
 
 	require.Nil(t, it.First())
 	for i := n - 1; i >= 0; i-- {
@@ -442,7 +442,7 @@ func TestIteratorNext(t *testing.T) {
 func TestIteratorPrev(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(newArena(arenaSize), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := l.NewIter(base.DefaultSplit, nil, nil)
 
 	require.Nil(t, it.Last())
 	var ins Inserter
@@ -481,7 +481,7 @@ func mustSeekPrefixGEKV(
 func TestIteratorSeekGEAndSeekPrefixGE(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(newArena(arenaSize), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := l.NewIter(base.DefaultSplit, nil, nil)
 
 	require.Nil(t, it.First())
 	// 1000, 1010, 1020, ..., 1990.
@@ -518,7 +518,9 @@ func TestIteratorSeekGEAndSeekPrefixGE(t *testing.T) {
 		mustSeekGEKV(t, it, makeKey("01100"), base.SeekGEFlagsNone, "01100", "v01100")
 	}
 
-	// Test SeekPrefixGE with trySeekUsingNext optimization.
+	// Test SeekPrefixGE with trySeekUsingNext optimization. With base.DefaultSplit
+	// the prefix is the whole key, so strict prefix iteration is equivalent to
+	// exact-match iteration.
 	{
 		mustSeekPrefixGEKV(t, it, makeKey("01000"), base.SeekGEFlagsNone, "01000", "v01000")
 
@@ -531,11 +533,18 @@ func TestIteratorSeekGEAndSeekPrefixGE(t *testing.T) {
 		// Seeking to a key that cannot be reached using Next.
 		mustSeekPrefixGEKV(t, it, makeKey("01200"), base.SeekGEFlagsNone.EnableTrySeekUsingNext(), "01200", "v01200")
 
-		// Seeking to an earlier key, but the caller lies. Incorrect result.
-		mustSeekPrefixGEKV(t, it, makeKey("01100"), base.SeekGEFlagsNone.EnableTrySeekUsingNext(), "01200", "v01200")
+		// Seeking to an earlier key, but the caller lies. Under strict prefix
+		// iteration, the result key "01200" doesn't match the prefix "01100",
+		// so SeekPrefixGE returns nil.
+		require.Nil(t, it.SeekPrefixGE(makeKey("01100"), makeKey("01100"),
+			base.SeekGEFlagsNone.EnableTrySeekUsingNext()))
 
 		// Telling the truth works.
 		mustSeekPrefixGEKV(t, it, makeKey("01100"), base.SeekGEFlagsNone, "01100", "v01100")
+
+		// After SeekPrefixGE("01100"), Next() returns nil because the next key
+		// "01110" has a different prefix under DefaultSplit.
+		require.Nil(t, it.Next())
 	}
 
 	// Test seek for empty key.
@@ -543,10 +552,120 @@ func TestIteratorSeekGEAndSeekPrefixGE(t *testing.T) {
 	mustSeekGEKV(t, it, makeKey(""), base.SeekGEFlagsNone, "", "")
 }
 
+// TestIteratorStrictPrefix verifies the strict prefix iteration behavior of
+// SeekPrefixGE and Next using a Comparer with a non-trivial Split function
+// (testkeys.Comparer splits at '@').
+func TestIteratorStrictPrefix(t *testing.T) {
+	l := NewSkiplist(newArena(arenaSize), testkeys.Comparer.Compare)
+	// testkeys orders suffixes in reverse: a@3 < a@2 < a@1 < b@2 < b@1.
+	keys := []string{"a@1", "a@2", "a@3", "b@1", "b@2"}
+	var ins Inserter
+	for _, k := range keys {
+		require.NoError(t, ins.Add(l, makeIkey(k), []byte("v"+k)))
+	}
+
+	it := l.NewIter(testkeys.Comparer.Split, nil, nil)
+	defer it.Close()
+
+	// SeekPrefixGE("a", "a") returns the smallest key with prefix "a", which
+	// in testkeys order is a@3. Next steps through a@2, a@1, then nil because
+	// the next key (b@2) has a different prefix.
+	kv := it.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone)
+	require.NotNil(t, kv)
+	require.EqualValues(t, "a@3", string(kv.K.UserKey))
+	kv = it.Next()
+	require.NotNil(t, kv)
+	require.EqualValues(t, "a@2", string(kv.K.UserKey))
+	kv = it.Next()
+	require.NotNil(t, kv)
+	require.EqualValues(t, "a@1", string(kv.K.UserKey))
+	require.Nil(t, it.Next())
+
+	// SeekPrefixGE with no matching key after the seek key.
+	require.Nil(t, it.SeekPrefixGE([]byte("c"), []byte("c"), base.SeekGEFlagsNone))
+
+	// SeekPrefixGE past all "a" keys lands on a key with a different prefix,
+	// so the prefix check returns nil. testkeys reverse-suffix ordering means
+	// a@0 > a@1 > a@2 > a@3, so "a@0" is past all "a@x" keys in sorted order
+	// and the first key >= "a@0" is b@2.
+	require.Nil(t, it.SeekPrefixGE([]byte("a"), []byte("a@0"), base.SeekGEFlagsNone))
+
+	// After an exhausted prefix iteration, SeekGE clears prefix mode and
+	// regular iteration resumes.
+	kv = it.SeekGE([]byte("b@2"), base.SeekGEFlagsNone)
+	require.NotNil(t, kv)
+	require.EqualValues(t, "b@2", string(kv.K.UserKey))
+	kv = it.Next()
+	require.NotNil(t, kv)
+	require.EqualValues(t, "b@1", string(kv.K.UserKey))
+
+	// Switching prefixes via SeekPrefixGE with TrySeekUsingNext.
+	// Going forward to b@2 after a@... is the load-bearing case.
+	kv = it.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone)
+	require.NotNil(t, kv)
+	require.EqualValues(t, "a@3", string(kv.K.UserKey))
+	kv = it.SeekPrefixGE([]byte("b"), []byte("b@2"),
+		base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+	require.NotNil(t, kv)
+	require.EqualValues(t, "b@2", string(kv.K.UserKey))
+
+	// Last clears prefix mode.
+	kv = it.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone)
+	require.NotNil(t, kv)
+	kv = it.Last()
+	require.NotNil(t, kv)
+	require.EqualValues(t, "b@1", string(kv.K.UserKey))
+}
+
+// TestIteratorPrefixExhaustedTrySeekUsingNext exercises the case where Next
+// returns nil due to a prefix change, and a subsequent SeekPrefixGE with
+// TrySeekUsingNext lands on exactly the node where Next stopped. The
+// TrySeekUsingNext fast path returns &it.kv directly without re-fetching the
+// value, so it.kv.V must already reflect the current node — otherwise the
+// returned value is the previous (different prefix) key's stale value.
+func TestIteratorPrefixExhaustedTrySeekUsingNext(t *testing.T) {
+	l := NewSkiplist(newArena(arenaSize), testkeys.Comparer.Compare)
+	keys := []string{"a@1", "a@2", "a@3", "b@1", "b@2"}
+	var ins Inserter
+	for _, k := range keys {
+		require.NoError(t, ins.Add(l, makeIkey(k), []byte("v"+k)))
+	}
+
+	it := l.NewIter(testkeys.Comparer.Split, nil, nil)
+	defer it.Close()
+
+	// Walk the "a" prefix to its end.
+	kv := it.SeekPrefixGE([]byte("a"), []byte("a"), base.SeekGEFlagsNone)
+	require.NotNil(t, kv)
+	require.EqualValues(t, "a@3", string(kv.K.UserKey))
+	require.EqualValues(t, "va@3", string(kv.V.InPlaceValue()))
+	kv = it.Next()
+	require.NotNil(t, kv)
+	require.EqualValues(t, "a@2", string(kv.K.UserKey))
+	require.EqualValues(t, "va@2", string(kv.V.InPlaceValue()))
+	kv = it.Next()
+	require.NotNil(t, kv)
+	require.EqualValues(t, "a@1", string(kv.K.UserKey))
+	require.EqualValues(t, "va@1", string(kv.V.InPlaceValue()))
+
+	// This Next advances to "b@2" (different prefix) and returns nil. The
+	// iterator's underlying node is now positioned at "b@2".
+	require.Nil(t, it.Next())
+
+	// SeekPrefixGE with TrySeekUsingNext lands on the same "b@2" node via the
+	// fast path. The returned value must be "b@2"'s value, not the stale
+	// "a@1" value left behind by the previous Next.
+	kv = it.SeekPrefixGE([]byte("b"), []byte("b@2"),
+		base.SeekGEFlagsNone.EnableTrySeekUsingNext())
+	require.NotNil(t, kv)
+	require.EqualValues(t, "b@2", string(kv.K.UserKey))
+	require.EqualValues(t, "vb@2", string(kv.V.InPlaceValue()))
+}
+
 func TestIteratorSeekLT(t *testing.T) {
 	const n = 100
 	l := NewSkiplist(newArena(arenaSize), bytes.Compare)
-	it := l.NewIter(nil, nil)
+	it := l.NewIter(base.DefaultSplit, nil, nil)
 
 	require.Nil(t, it.First())
 	// 1000, 1010, 1020, ..., 1990.
@@ -599,7 +718,7 @@ func TestIteratorBounds(t *testing.T) {
 		return makeIntKey(i).UserKey
 	}
 
-	it := l.NewIter(key(3), key(7))
+	it := l.NewIter(base.DefaultSplit, key(3), key(7))
 
 	// SeekGE within the lower and upper bound succeeds.
 	for i := 3; i <= 6; i++ {
@@ -768,7 +887,7 @@ func BenchmarkReadWrite(b *testing.B) {
 			b.ResetTimer()
 			var count int
 			b.RunParallel(func(pb *testing.PB) {
-				it := l.NewIter(nil, nil)
+				it := l.NewIter(base.DefaultSplit, nil, nil)
 				rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 				buf := make([]byte, 8)
 
@@ -815,7 +934,7 @@ func BenchmarkIterNext(b *testing.B) {
 		}
 	}
 
-	it := l.NewIter(nil, nil)
+	it := l.NewIter(base.DefaultSplit, nil, nil)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		kv := it.Next()
@@ -836,7 +955,7 @@ func BenchmarkIterPrev(b *testing.B) {
 		}
 	}
 
-	it := l.NewIter(nil, nil)
+	it := l.NewIter(base.DefaultSplit, nil, nil)
 	_ = it.Last()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -863,7 +982,7 @@ func BenchmarkSeekPrefixGE(b *testing.B) {
 	for _, skip := range []int{1, 2, 4, 8, 16} {
 		for _, useNext := range []bool{false, true} {
 			b.Run(fmt.Sprintf("skip=%d/use-next=%t", skip, useNext), func(b *testing.B) {
-				it := l.NewIter(nil, nil)
+				it := l.NewIter(base.DefaultSplit, nil, nil)
 				j := 0
 				var k []byte
 				makeKey := func() {
