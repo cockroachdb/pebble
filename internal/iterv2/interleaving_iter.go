@@ -384,9 +384,8 @@ func (i *InterleavingIter) SeekPrefixGE(
 	}
 	kv := i.pointIter.SeekPrefixGE(prefix, key, flags)
 	i.checkPoint(kv)
-	// TODO(radu): make SeekPrefixGE strict in InternalIterator.
-	if kv != nil && !i.cmp.HasPrefix(kv.K.UserKey, prefix) {
-		kv = nil
+	if invariants.Enabled && kv != nil && !i.cmp.HasPrefix(kv.K.UserKey, prefix) {
+		panic(errors.AssertionFailedf("pointIter %T did not enforce strict prefix iteration", i.pointIter))
 	}
 	i.prefix = prefix
 	i.dir = +1
@@ -529,9 +528,8 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 				i.setError(err)
 				return nil
 			}
-		} else if i.prefix != nil && !i.cmp.HasPrefix(i.pointKV.K.UserKey, i.prefix) {
-			// TODO(radu): make SeekPrefixGE strict in InternalIterator.
-			i.pointKV = nil
+		} else if invariants.Enabled && i.prefix != nil && !i.cmp.HasPrefix(i.pointKV.K.UserKey, i.prefix) {
+			panic(errors.AssertionFailedf("pointIter %T did not enforce strict prefix iteration", i.pointIter))
 		}
 		// If pointKV is outside the current span, we will emit a boundary in
 		// resolveForward.
