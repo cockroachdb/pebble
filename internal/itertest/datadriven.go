@@ -182,7 +182,7 @@ func RunInternalIterCmdWriter(
 		case "next":
 			key, value = getKV(iter.Next())
 		case "next-prefix":
-			succKey := testkeys.Comparer.ImmediateSuccessor(prevKey[:testkeys.Comparer.Split(prevKey)], nil)
+			succKey := testkeys.Comparer.ImmediateSuccessor(nil, prevKey[:testkeys.Comparer.Split(prevKey)])
 			key, value = getKV(iter.NextPrefix(succKey))
 		case "prev":
 			key, value = getKV(iter.Prev())
