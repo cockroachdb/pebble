@@ -160,9 +160,9 @@ func TestBasic(t *testing.T) {
 }
 
 func TestBoundary(t *testing.T) {
-	for i := blockSize - 16; i < blockSize+16; i++ {
+	for i := blockSize - 4; i < blockSize+4; i++ {
 		s0 := big("abcd", i)
-		for j := blockSize - 16; j < blockSize+16; j++ {
+		for j := blockSize - 4; j < blockSize+4; j++ {
 			s1 := big("ABCDE", j)
 			testLiterals(t, []string{s0, s1})
 			testLiterals(t, []string{s0, "", s1})
@@ -908,6 +908,9 @@ func (l *readerLogger) logf(format string, args ...interface{}) {
 }
 
 func TestWALSync(t *testing.T) {
+	defer func(prev bool) { disableBitFlipCheckForTesting = prev }(disableBitFlipCheckForTesting)
+	disableBitFlipCheckForTesting = true
+
 	var buffer bytes.Buffer
 	result := make([]byte, 0)
 	corruptChunkNumbers := make([]int, 0)

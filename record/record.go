@@ -232,6 +232,12 @@ var (
 	ErrUnexpectedEOF = errors.New("pebble/record: unexpected EOF")
 )
 
+// disableBitFlipCheckForTesting, when true, causes the reader to skip the
+// (expensive) bit-flip diagnostic on a checksum mismatch and just return
+// ErrInvalidChunk. Used by tests that exercise the corruption path on large
+// chunks.
+var disableBitFlipCheckForTesting bool
+
 // IsInvalidRecord returns true if the error matches one of the error types
 // returned for invalid records. These are treated in a way similar to io.EOF
 // in recovery code.
@@ -377,13 +383,15 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 			}
 			data := r.buf[r.begin-headerSize+6 : r.end]
 			if checksum != crc.New(data).Value() {
-				computeChecksum := func(data []byte) uint32 { return crc.New(data).Value() }
-				// Check if there was a bit flip.
-				found, indexFound, bitFound := bitflip.CheckSliceForBitFlip(data, computeChecksum, checksum)
 				err := ErrInvalidChunk
-				if found {
-					err = errors.WithSafeDetails(err, ". bit flip found: block num %d. wal offset %d. byte index %d. got: 0x%x. want: 0x%x.",
-						errors.Safe(r.blockNum), errors.Safe(r.invalidOffset), errors.Safe(indexFound), errors.Safe(data[indexFound]), errors.Safe(data[indexFound]^(1<<bitFound)))
+				if !disableBitFlipCheckForTesting {
+					computeChecksum := func(data []byte) uint32 { return crc.New(data).Value() }
+					// Check if there was a bit flip.
+					found, indexFound, bitFound := bitflip.CheckSliceForBitFlip(data, computeChecksum, checksum)
+					if found {
+						err = errors.WithSafeDetails(err, ". bit flip found: block num %d. wal offset %d. byte index %d. got: 0x%x. want: 0x%x.",
+							errors.Safe(r.blockNum), errors.Safe(r.invalidOffset), errors.Safe(indexFound), errors.Safe(data[indexFound]), errors.Safe(data[indexFound]^(1<<bitFound)))
+					}
 				}
 
 				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)

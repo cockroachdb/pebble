@@ -72,3 +72,30 @@ jobs:
       sha: ${{ github.sha }}
       file_issue_branch: 'master'
       go_version: ${{ matrix.go }}
+
+  linux-iterv2:
+    strategy:
+      fail-fast: false
+      matrix:
+        go: [ '1.26' ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go }}
+
+      - run: GOTRACEBACK=all make test TAGS="invariants iterv2"
+
+      - name: Assert workspace clean
+        run: scripts/check-workspace-clean.sh
+
+      - name: Post issue on failure
+        if: failure()
+        uses: ./.github/actions/post-issue
+        with:
+          title: "master: nightly ${{ github.job }} failed"
+          body: "The nightly ${{ github.job }} test run failed on ${{ github.sha }} (go${{ matrix.go }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          labels: "C-test-failure"
