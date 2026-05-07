@@ -397,6 +397,13 @@ func (m *mergingIterV2) seekGE(key []byte, flags base.SeekGEFlags) {
 				// an absolute seek.
 				levelFlags = levelFlags.DisableTrySeekUsingNext()
 			}
+			const batchLevelIdx = 0
+			if levelIdx != batchLevelIdx {
+				// The BatchJustRefreshed flag does something only for the batch level.
+				// We don't want to pass it to other levels since it disables some
+				// optimizations in InterleavingIters.
+				levelFlags = levelFlags.DisableBatchJustRefreshed()
+			}
 			m.prepareForLevelOp(level)
 			if m.prefix != nil {
 				level.iterKV = level.iter.SeekPrefixGE(m.prefix, key, levelFlags)
@@ -423,45 +430,109 @@ func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Int
 		if m.err != nil || m.dir != +1 || m.prefix != nil {
 			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
 		}
-		if m.heap.Len() == 0 {
-			return nil
-		}
-		if top := m.heap.Top(); m.heap.cmp(key, top.iterKV.K.UserKey) <= 0 {
-			// The iterator is already at the right position.
-			//
-			// It is necessary to check for this case to avoid passing down
-			// TrySeekUsingNext incorrectly: it is possible multiple slab transitions
-			// are necessary between <key> and <iterKV.K>, which would mean some
-			// levels would go backwards if we seeked them at <key>.
-			//
-			// For example, consider two levels:
-			//  L1: a  [b, c):RANGEDEL d
-			//  L2:      b1
-			//
-			// A SeekGE(a1) on the merging iterator would cause slab transitions
-			// through boundaries b and c to produce the resulting key d. A subsequent
-			// SeekGE(b, TrySeekUsingNext) is legal because (from an external
-			// perspective) it doesn't move back the merging iterator. However, L1 is
-			// now positioned at d, so it would be illegal to re-seek it to b using
-			// TrySeekUsingNext.
-			return top.iterKV
-		}
-		// Try the single-level advance fast path.
-		if top := m.heap.Top(); m.shouldTrySingleLevelAdvance(top, key) {
-			m.prepareForLevelOp(top)
-			top.iterKV = top.iter.SeekGE(key, flags)
-			if m.finishSingleLevelAdvance(top) {
-				return m.findNextEntry()
+		if flags.BatchJustRefreshed() {
+			var done bool
+			if flags, done = m.seekGEAfterBatchRefresh(key, flags); done {
+				return nil
 			}
-			// The top.span keys might have changed; fall through to the full slab
-			// rebuild below. m.seekGE will re-seek top with TSUN (a cheap no-op since
-			// top is now at >= key) before rebuilding.
+		} else {
+			if m.heap.Len() == 0 {
+				return nil
+			}
+
+			if top := m.heap.Top(); m.heap.cmp(key, top.iterKV.K.UserKey) <= 0 {
+				// The iterator is already at the right position.
+				//
+				// It is necessary to check for this case to avoid passing down
+				// TrySeekUsingNext incorrectly: it is possible multiple slab transitions
+				// are necessary between <key> and <iterKV.K>, which would mean some
+				// levels would go backwards if we seeked them at <key>.
+				//
+				// For example, consider two levels:
+				//  L1: a  [b, c):RANGEDEL d
+				//  L2:      b1
+				//
+				// A SeekGE(a1) on the merging iterator would cause slab transitions
+				// through boundaries b and c to produce the resulting key d. A subsequent
+				// SeekGE(b, TrySeekUsingNext) is legal because (from an external
+				// perspective) it doesn't move back the merging iterator. However, L1 is
+				// now positioned at d, so it would be illegal to re-seek it to b using
+				// TrySeekUsingNext.
+				return top.iterKV
+			}
+			// Try the single-level advance fast path.
+			if top := m.heap.Top(); m.shouldTrySingleLevelAdvance(top, key) {
+				m.prepareForLevelOp(top)
+				top.iterKV = top.iter.SeekGE(key, flags)
+				if m.finishSingleLevelAdvance(top) {
+					return m.findNextEntry()
+				}
+				// The top.span keys might have changed; fall through to the full slab
+				// rebuild below. Note that m.seekGE might unnecessarily re-seek <top>
+				// but it will be a cheap no-op thanks to TrySeekUsingNext (since top is
+				// now at >= key).
+				// TODO(radu): consider a skipReseek per-level flag.
+			}
 		}
 	}
 	m.err = nil
 	m.prefix = nil
 	m.seekGE(key, flags)
 	return m.findNextEntry()
+}
+
+// seekGEAfterBatchRefresh handles the BatchJustRefreshed case for
+// SeekGE(TrySeekUsingNext).
+//
+// The batch iterator may now expose new keys that require the merging iterator
+// to move backward; for example:
+//   - batch keys: a, d
+//   - SeekGE(b) -> d
+//   - refresh the batch; new batch keys: a, c, d
+//   - SeekGE(c, TrySeekUsingNext|BatchJustRefreshed). The iterator must move
+//     back to c, and lower levels could have boundaries between c and d that
+//     also need to be re-seeked.
+//
+// We pre-seek the batch level to determine whether the merging iterator's
+// position must move back. If the entire iterator is known to remain
+// exhausted, returns done=true. Otherwise, returns the updated flags to use
+// for the fall-through to m.seekGE: TrySeekUsingNext is cleared if a backward
+// move is required, and BatchJustRefreshed is always cleared (the batch
+// level was just seeked).
+func (m *mergingIterV2) seekGEAfterBatchRefresh(
+	key []byte, flags base.SeekGEFlags,
+) (newFlags base.SeekGEFlags, done bool) {
+	const batchLevelIndex = 0
+	level := &m.levels[batchLevelIndex]
+	var previousKey []byte
+	if m.heap.Len() > 0 {
+		top := m.heap.Top()
+		previousKey = top.iterKV.K.UserKey
+		if top == level {
+			// The batch level is the top; the seek below would invalidate the
+			// reference, so make a copy.
+			m.keyBuf = append(m.keyBuf[:0], previousKey...)
+			previousKey = m.keyBuf
+		}
+	}
+	m.prepareForLevelOp(level)
+	level.iterKV = level.iter.SeekGE(key, flags)
+	if level.iterKV == nil {
+		if m.levelHasError(level) {
+			return flags, true
+		}
+		if previousKey == nil {
+			// Iterator was exhausted, nothing changed.
+			return flags, true
+		}
+	} else if previousKey == nil || m.heap.cmp(level.iterKV.K.UserKey, previousKey) < 0 {
+		// Slab moves back (or up from empty). Fall back to the general seek path.
+		flags = flags.DisableTrySeekUsingNext()
+	}
+	// Note: we will unnecessarily re-seek the batch iterator again, but it
+	// will be a very cheap operation thanks to TrySeekUsingNext.
+	// TODO(radu): consider a skipReseek per-level flag.
+	return flags.DisableBatchJustRefreshed(), false
 }
 
 // Next implements base.InternalIterator.
