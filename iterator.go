@@ -2745,14 +2745,6 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 			// able to reuse the top-level Iterator state, because it may be
 			// incorrect after the inclusion of new batch mutations.
 			i.batchJustRefreshed = true
-			if i.mergingV2 != nil && i.pointIter != nil {
-				// V2: the batch point and range del iters are wrapped in an
-				// InterleavingIter. We can't update them in place, so force
-				// a full point iterator reconstruction.
-				i.err = firstError(i.err, i.pointIter.Close())
-				i.pointIter = nil
-				i.mergingV2 = nil
-			}
 			if i.pointIter != nil && i.batch.batch.countRangeDels > 0 {
 				if i.batch.rangeDelIter.Count() == 0 {
 					// When we constructed this iterator, there were no
