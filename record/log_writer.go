@@ -734,9 +734,14 @@ func (w *LogWriter) flushLoop(context.Context) {
 		writtenOffset += uint64(len(data))
 		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, snap)
 		f.Lock()
-		if synced && f.walFileOpHistogram != nil {
+		if synced {
+			// NB: syncedOffset must be advanced on every successful sync; it is
+			// the durability watermark encoded into WAL-sync chunk headers and
+			// used by Reader.readAheadForCorruption to confirm corruption.
 			w.syncedOffset.Store(writtenOffset)
-			f.walFileOpHistogram.Observe(float64(syncLatency))
+			if f.walFileOpHistogram != nil {
+				f.walFileOpHistogram.Observe(float64(syncLatency))
+			}
 		}
 		f.err = err
 		if f.err != nil {

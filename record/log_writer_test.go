@@ -822,6 +822,101 @@ func TestWALSyncOffsetRandom(t *testing.T) {
 	validateWALSyncRecords(t, &f.buffer)
 }
 
+// TestWALSyncOffsetNoHistogram exercises the WAL-sync wire format when the
+// LogWriter is constructed without a WALFileOpHistogram (a documented and
+// reachable configuration; see wal/failover_writer.go where the histogram is
+// only set for matching directories). It verifies that:
+//
+//  1. WAL-sync chunks encode a non-zero syncedOffset after a successful sync;
+//     this is the durability watermark that Reader.readAheadForCorruption
+//     relies on to confirm corruption.
+//  2. Mid-file corruption is reported as a real corruption error rather than
+//     silently downgraded to io.ErrUnexpectedEOF.
+func TestWALSyncOffsetNoHistogram(t *testing.T) {
+	defer func(prev bool) { disableBitFlipCheckForTesting = prev }(disableBitFlipCheckForTesting)
+	disableBitFlipCheckForTesting = true
+
+	// Write several records, each individually synced. Crucially, no
+	// WALFileOpHistogram is configured.
+	const numRecords = 10
+	f := &syncFile{}
+	w := NewLogWriter(f, 1, LogWriterConfig{
+		WriteWALSyncOffsets: func() bool { return true },
+	})
+	var syncErr error
+	var firstSyncEndOffset int64
+	for i := 0; i < numRecords; i++ {
+		var syncWG sync.WaitGroup
+		syncWG.Add(1)
+		data := []byte(strings.Repeat(fmt.Sprintf("%d", i%10), blockSize/4))
+		offset, err := w.SyncRecord(data, &syncWG, &syncErr)
+		require.NoError(t, err)
+		syncWG.Wait()
+		require.NoError(t, syncErr)
+		if i == 0 {
+			firstSyncEndOffset = offset
+		}
+	}
+	require.NoError(t, w.Close())
+
+	bufBytes := f.buffer.Bytes()
+
+	// (1) Walk WAL-sync chunks and assert that at least one chunk written
+	// after the first sync completed encodes a non-zero syncedOffset. With
+	// the bug, every encoded syncedOffset is 0.
+	maxEncodedSyncedOffset := uint64(0)
+	for i := 0; i < len(bufBytes); {
+		if blockSize-(i%blockSize) < walSyncHeaderSize {
+			i += blockSize - (i % blockSize)
+			continue
+		}
+		length := binary.LittleEndian.Uint16(bufBytes[i+4 : i+6])
+		chunkEncoding := bufBytes[i+6]
+		logNum := binary.LittleEndian.Uint32(bufBytes[i+7 : i+11])
+		if logNum != 1 {
+			break
+		}
+		offset := binary.LittleEndian.Uint64(bufBytes[i+11 : i+19])
+		if offset > maxEncodedSyncedOffset {
+			maxEncodedSyncedOffset = offset
+		}
+		headerFormat := headerFormatMappings[chunkEncoding]
+		i += headerFormat.headerSize + int(length)
+	}
+	require.Greaterf(t, maxEncodedSyncedOffset, uint64(0),
+		"expected at least one WAL-sync chunk to encode a non-zero syncedOffset; "+
+			"all chunks encoded 0, which means Reader.readAheadForCorruption can never confirm corruption")
+
+	// (2) Corrupt a chunk in the first record region and verify the Reader
+	// reports a corruption error rather than ErrUnexpectedEOF. We flip a bit
+	// inside the payload of the first chunk (after its 19-byte header). A
+	// later WAL-sync chunk's syncedOffset should exceed the invalidOffset and
+	// confirm the corruption.
+	corrupted := make([]byte, len(bufBytes))
+	copy(corrupted, bufBytes)
+	require.Greater(t, len(corrupted), walSyncHeaderSize+1)
+	corrupted[walSyncHeaderSize] ^= 0xFF
+
+	r := NewReader(bytes.NewBuffer(corrupted), 1)
+	var lastErr error
+	for {
+		rr, err := r.Next()
+		if err != nil {
+			lastErr = err
+			break
+		}
+		if _, err := io.ReadAll(rr); err != nil {
+			lastErr = err
+			break
+		}
+	}
+	require.NotNil(t, lastErr)
+	require.NotErrorIsf(t, lastErr, io.ErrUnexpectedEOF,
+		"mid-file corruption was silently downgraded to ErrUnexpectedEOF; "+
+			"this indicates Reader could not confirm corruption from WAL-sync offsets "+
+			"(firstSyncEndOffset=%d)", firstSyncEndOffset)
+}
+
 // BenchmarkQueueWALBlocks exercises queueing within the LogWriter. It can be
 // useful to measure allocations involved when flushing is slow enough to
 // accumulate a large backlog fo queued blocks.
