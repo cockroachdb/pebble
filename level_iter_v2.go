@@ -391,6 +391,9 @@ func (l *levelIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Inter
 			op.Finishf("= %s", kv.String())
 		}()
 	}
+	if invariants.Enabled && flags.BatchJustRefreshed() {
+		panic(errors.AssertionFailedf("BatchJustRefreshed on level iter"))
+	}
 	if invariants.Enabled && l.lower != nil && l.comparer.Compare(key, l.lower) < 0 {
 		panic(errors.AssertionFailedf("levelIterV2 SeekGE to key %q violates lower bound %q", key, l.lower))
 	}
@@ -484,6 +487,9 @@ func (l *levelIterV2) SeekPrefixGE(
 		defer func() {
 			op.Finishf("= %s", kv.String())
 		}()
+	}
+	if invariants.Enabled && flags.BatchJustRefreshed() {
+		panic(errors.AssertionFailedf("BatchJustRefreshed on level iter"))
 	}
 	if invariants.Enabled && l.lower != nil && l.comparer.Compare(key, l.lower) < 0 {
 		panic(errors.AssertionFailedf("levelIterV2 SeekPrefixGE to key %q violates lower bound %q", key, l.lower))

@@ -1553,7 +1553,9 @@ func (i *Iterator) constructPointIterV2(
 		m.slab.batchSnapshot = i.batch.batchSeqNum
 		// The batch follows the TriggerIter if one was inserted (i.e. when
 		// !batchOnlyIter); otherwise the batch is the first level.
-		if !i.batchOnlyIter {
+		if i.batchOnlyIter {
+			m.slab.batchLevelIdx = 0
+		} else {
 			m.slab.batchLevelIdx = 1
 		}
 	}

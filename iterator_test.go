@@ -13,6 +13,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/iterv2"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/internal/treesteps"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/sstable/block/blockkind"
@@ -1207,6 +1209,278 @@ func TestIteratorGuaranteedDurable(t *testing.T) {
 	})
 }
 
+// TestSetOptionsBatchRefreshSeekGE reproduces a sequence where Iterator.SeekGE
+// passes both BatchJustRefreshed and TrySeekUsingNext to mergingIterV2.SeekGE,
+// making it return an earlier key than before.
+func TestSetOptionsBatchRefreshSeekGE(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{FS: mem})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Write keys to the LSM and flush so that the batch iterator stack has
+	// a non-empty level beneath it. The new RANGEDELs added during the
+	// refresh below will hide "d" and "e"; "g" is left to be returned
+	// afterwards.
+	require.NoError(t, d.Set([]byte("d"), []byte("v"), nil))
+	require.NoError(t, d.Set([]byte("e"), []byte("v"), nil))
+	require.NoError(t, d.Set([]byte("g"), []byte("v"), nil))
+	require.NoError(t, d.Flush())
+
+	batch := d.NewIndexedBatch()
+	defer batch.Close()
+	require.NoError(t, batch.Set([]byte("c"), []byte("v"), nil))
+	// Add an inert RANGEDEL so that the batch's range-del iterator is wired
+	// into the InterleavingIter at iterator construction time. Without this,
+	// SetOptions below would close and rebuild pointIter (see iterator.go
+	// SetOptions), bypassing the BatchJustRefreshed+TSUN path under test.
+	require.NoError(t, batch.DeleteRange([]byte("y"), []byte("z"), nil))
+
+	iter, _ := batch.NewIter(nil)
+	defer iter.Close()
+	// Bypass the testingDisableSeekOpt randomization so that
+	// Iterator.SeekGE deterministically sets TrySeekUsingNext on the second
+	// seek below.
+	iter.forceEnableSeekOpt = true
+
+	// First SeekGE positions the iterator at "c" and records
+	// lastPositioningOp = seekGELastPositioningOp with prefixOrFullSeekKey = "a".
+	require.True(t, iter.SeekGE([]byte("a")))
+	require.Equal(t, []byte("c"), iter.Key())
+
+	// Mutate the batch by inserting a new key in (a, c) and two RANGEDELs.
+	// The first RANGEDEL is positioned between the iterator's current
+	// position ("c") and the second RANGEDEL ("e","f"); both shadow LSM
+	// keys ("d" and "e" respectively).
+	require.NoError(t, batch.Set([]byte("b"), []byte("v"), nil))
+	require.NoError(t, batch.DeleteRange([]byte("c0"), []byte("d0"), nil))
+	require.NoError(t, batch.DeleteRange([]byte("e"), []byte("f"), nil))
+
+	// SetOptions with identical IterOptions hits the SetOptions fast path:
+	// i.batchJustRefreshed becomes true, but lastPositioningOp is preserved
+	// (no invalidate()). Because the batch already had a range-del iterator
+	// in the stack, this updates it in place rather than rebuilding pointIter.
+	iter.SetOptions(&IterOptions{})
+
+	// SeekGE with a key strictly greater than the previous prefixOrFullSeekKey
+	// ("a"), and <= the current heap top ("c"). Iterator.SeekGE will pass
+	// BatchJustRefreshed AND TrySeekUsingNext to mergingIterV2.SeekGE, which
+	// takes the early-return path -- triggering the exploratory panic.
+	require.True(t, iter.SeekGE([]byte("a1")))
+	require.Equal(t, []byte("b"), iter.Key())
+
+	// Walk forward. "c" is the next batch key; the LSM key "e" must be
+	// hidden by the freshly added RANGEDEL, leaving "g" as the next visible
+	// key after "c".
+	require.True(t, iter.Next())
+	require.Equal(t, []byte("c"), iter.Key())
+	require.True(t, iter.Next())
+	require.Equal(t, []byte("g"), iter.Key())
+}
+
+// TestSetOptionsBatchRefreshRand is a randomized counterpart to
+// TestSetOptionsBatchRefreshSeekGE. Each iteration mutates an indexed batch,
+// calls SetOptions to refresh, and then compares the result of a seek on the
+// long-lived iterator (which may pass TrySeekUsingNext + BatchJustRefreshed to
+// the underlying merging iterator) against a freshly constructed iterator on
+// the same batch.
+//
+// The iteration randomly picks SeekGE, SeekPrefixGE, or SeekLT for each pass.
+// SeekLT does not currently propagate any TSUN/BatchJustRefreshed signal
+// through iterator.go (the optimization is gated on i.batch == nil), but we
+// still cover it to guard against regressions if InterleavingIter ever grows a
+// SeekLT fast path.
+func TestSetOptionsBatchRefreshRand(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	// Set to true to record treesteps for the BatchJustRefreshed seek on
+	// each iteration; on a failure the recording for the failing iteration
+	// is printed.
+	const recordTreeSteps = false
+
+	seed := uint64(time.Now().UnixNano())
+	rng := rand.New(rand.NewPCG(seed, seed))
+
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{FS: mem, Comparer: testkeys.Comparer})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Generate keys via iterv2.KeyGenConfig. A small prefix length and suffix
+	// range encourage collisions between batch and LSM keys.
+	keyCfg := iterv2.KeyGenConfig{MaxPrefixLen: 2, MaxSuffix: 3, MinSeqNum: 1, MaxSeqNum: 1}
+	prefixCfg := iterv2.KeyGenConfig{MaxPrefixLen: 2, MinSeqNum: 1, MaxSeqNum: 1}
+	randKey := func() []byte { return keyCfg.RandKey(rng) }
+	randPrefix := func() []byte { return prefixCfg.RandKey(rng) }
+
+	// Seed the LSM with multiple flushed sstables so the merging iterator has
+	// several non-batch levels beneath the batch. Each flush writes a random
+	// scattering of keys; the final memtable layer adds another level.
+	for f := 0; f < 3; f++ {
+		for k := 0; k < 8; k++ {
+			require.NoError(t, d.Set(randKey(), randValue(4, rng), nil))
+		}
+		require.NoError(t, d.Flush())
+	}
+	for k := 0; k < 8; k++ {
+		require.NoError(t, d.Set(randKey(), randValue(4, rng), nil))
+	}
+
+	batch := d.NewIndexedBatch()
+	defer batch.Close()
+
+	iter, _ := batch.NewIter(nil)
+	defer iter.Close()
+	// Bypass the testingDisableSeekOpt randomization so the second seek
+	// deterministically passes TrySeekUsingNext when its key permits it.
+	iter.forceEnableSeekOpt = true
+
+	// strictlyGreaterKey returns a key with a strictly greater prefix than
+	// min's. Under testkeys.Comparer, keys are compared by prefix bytewise
+	// first, so any byte appended to min's prefix yields a strictly greater
+	// key regardless of suffix choice.
+	strictlyGreaterKey := func(min []byte) []byte {
+		split := testkeys.Comparer.Split(min)
+		k := append(slices.Clone(min[:split]), byte('a')+byte(rng.IntN(8)))
+		if rng.IntN(2) == 0 {
+			return k
+		}
+		k = append(k, '@')
+		return strconv.AppendInt(k, int64(1+rng.IntN(3)), 10)
+	}
+
+	const (
+		opSeekGE = iota
+		opSeekPrefixGE
+		opSeekLT
+	)
+	opName := []string{"SeekGE", "SeekPrefixGE", "SeekLT"}
+
+	const iterations = 300
+	for it := 0; it < iterations; it++ {
+		op := rng.IntN(3)
+		seekKey := randKey()
+		switch op {
+		case opSeekGE:
+			iter.SeekGE(seekKey)
+		case opSeekPrefixGE:
+			iter.SeekPrefixGE(seekKey)
+		case opSeekLT:
+			iter.SeekLT(seekKey)
+		}
+
+		// Mutate the batch with a small random number of point/range writes.
+		nMutations := 1 + rng.IntN(3)
+		for j := 0; j < nMutations; j++ {
+			switch rng.IntN(2) {
+			case 0:
+				require.NoError(t, batch.Set(randKey(), randValue(4, rng), nil))
+			case 1:
+				// Range del bounds use bare prefixes so we don't have to deal
+				// with testkeys suffix encoding when extending the upper bound.
+				a := slices.Clone(randPrefix())
+				b := slices.Clone(randPrefix())
+				if bytes.Compare(a, b) > 0 {
+					a, b = b, a
+				}
+				if bytes.Equal(a, b) {
+					b = append(b, byte('a')+byte(rng.IntN(8)))
+				}
+				require.NoError(t, batch.DeleteRange(a, b, nil))
+			}
+		}
+
+		iter.SetOptions(&IterOptions{})
+
+		// Choose the new seek key. For SeekGE/SeekPrefixGE, make it strictly
+		// greater than the previous key/prefix so the iterator.go-level TSUN
+		// optimization fires (and the merging iterator sees TSUN +
+		// BatchJustRefreshed). SeekLT places no constraint.
+		var newSeekKey []byte
+		switch op {
+		case opSeekGE:
+			newSeekKey = strictlyGreaterKey(seekKey)
+		case opSeekPrefixGE:
+			newSeekKey = strictlyGreaterKey(seekKey)
+		case opSeekLT:
+			newSeekKey = randKey()
+		}
+
+		var rec *treesteps.Recording
+		if recordTreeSteps && treesteps.Enabled {
+			rec = treesteps.StartRecording(iter, fmt.Sprintf("iter %d: %s(%q)", it, opName[op], newSeekKey))
+		}
+
+		// Collect the seeked key plus a few step results. For SeekLT we step
+		// backwards via Prev; otherwise forward via Next. SeekPrefixGE
+		// terminates Next at the prefix boundary.
+		const numSteps = 3
+		collect := func(it *Iterator, valid bool, forward bool) (keys, vals [][]byte) {
+			for n := 0; valid && n <= numSteps; n++ {
+				keys = append(keys, slices.Clone(it.Key()))
+				v, err := it.ValueAndErr()
+				require.NoError(t, err)
+				vals = append(vals, slices.Clone(v))
+				if n == numSteps {
+					break
+				}
+				if forward {
+					valid = it.Next()
+				} else {
+					valid = it.Prev()
+				}
+			}
+			return keys, vals
+		}
+
+		var gotValid bool
+		switch op {
+		case opSeekGE:
+			gotValid = iter.SeekGE(newSeekKey)
+		case opSeekPrefixGE:
+			gotValid = iter.SeekPrefixGE(newSeekKey)
+		case opSeekLT:
+			gotValid = iter.SeekLT(newSeekKey)
+		}
+		gotKeys, gotVals := collect(iter, gotValid, op != opSeekLT)
+		var recSteps treesteps.Steps
+		if rec != nil {
+			recSteps = rec.Finish()
+		}
+
+		// Reference: a fresh iterator on the same batch performing the same
+		// seek + traversal.
+		ref, _ := batch.NewIter(nil)
+		var wantValid bool
+		switch op {
+		case opSeekGE:
+			wantValid = ref.SeekGE(newSeekKey)
+		case opSeekPrefixGE:
+			wantValid = ref.SeekPrefixGE(newSeekKey)
+		case opSeekLT:
+			wantValid = ref.SeekLT(newSeekKey)
+		}
+		wantKeys, wantVals := collect(ref, wantValid, op != opSeekLT)
+		require.NoError(t, ref.Close())
+
+		mismatch := wantValid != gotValid || len(wantKeys) != len(gotKeys)
+		for i := 0; !mismatch && i < len(wantKeys); i++ {
+			if !bytes.Equal(wantKeys[i], gotKeys[i]) || !bytes.Equal(wantVals[i], gotVals[i]) {
+				mismatch = true
+			}
+		}
+		if mismatch {
+			t.Logf("seed: %d", seed)
+			if rec != nil {
+				u := recSteps.URL()
+				t.Logf("treesteps recording:\n%s", u.String())
+			}
+			t.Fatalf("iter %d: op=%s seekKey=%q newSeekKey=%q\n got valid=%v keys=%q vals=%q\nwant valid=%v keys=%q vals=%q",
+				it, opName[op], seekKey, newSeekKey, gotValid, gotKeys, gotVals, wantValid, wantKeys, wantVals)
+		}
+	}
+}
+
 func TestIteratorBoundsLifetimes(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
@@ -1594,7 +1868,7 @@ func testSetOptionsEquivalence(t *testing.T, seed uint64) {
 		longLivedBuf.Reset()
 		printIterState(&newIterBuf, newIter, newIterValidity, true /* printValidityState */)
 		printIterState(&longLivedBuf, longLivedIter, longLivedValidity, true /* printValidityState */)
-		fmt.Fprintf(&history, "%s = %s\n", iterOp.desc, newIterBuf.String())
+		fmt.Fprintf(&history, "%s = %s\n", iterOp.desc, longLivedBuf.String())
 
 		if newIterBuf.String() != longLivedBuf.String() {
 			t.Logf("history:\n%s\n", history.String())
