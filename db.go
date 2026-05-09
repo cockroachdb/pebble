@@ -1184,7 +1184,9 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 		// dbi.merging. If this is called during a SetOptions call and this
 		// Iterator has already initialized dbi.merging, constructPointIter is a
 		// noop and an initialized pointIter already exists in dbi.pointIter.
-		dbi.constructPointIter(ctx, memtables, buf)
+		if dbi.pointIter == nil {
+			dbi.constructPointIter(ctx, memtables, buf)
+		}
 		dbi.iter = dbi.pointIter
 	} else {
 		dbi.iter = emptyIter
@@ -1204,6 +1206,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 		useLazyCombinedIteration := dbi.rangeKey == nil &&
 			dbi.opts.KeyTypes == IterKeyTypePointsAndRanges &&
 			(dbi.batch == nil || dbi.batch.batch.countRangeKeys == 0) &&
+			!dbi.batchOnlyIter &&
 			!dbi.opts.disableLazyCombinedIteration
 		if useLazyCombinedIteration {
 			// The user requested combined iteration, and there's no indexed
@@ -1226,7 +1229,7 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 					initialized: false,
 				},
 			}
-			if iterv2.Enabled && !dbi.batchOnlyIter {
+			if iterv2.Enabled {
 				// The TriggerIter is the first level of mergingIterV2.
 				// Arm it so it fires when iteration enters a region with
 				// possible range-key sets.
@@ -1267,16 +1270,22 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 		// iterator doesn't unnecessarily try to switch to combined iteration.
 		dbi.lazyCombinedIter.combinedIterState = combinedIterState{initialized: true}
 	}
+	if iterv2.Enabled {
+		if !dbi.lazyCombinedIter.combinedIterState.initialized {
+			// Arm the TriggerIter so it fires when iteration enters a region with
+			// possible range-key sets.
+			dbi.triggerIter.Reset(&dbi.lazyCombinedIter.combinedIterState)
+		} else {
+			// Disarm the TriggerIter.
+			dbi.triggerIter.Reset(nil)
+		}
+	}
 	return dbi
 }
 
 func (i *Iterator) constructPointIter(
 	ctx context.Context, memtables flushableList, buf *iterAlloc,
 ) {
-	if i.pointIter != nil {
-		// Already have one.
-		return
-	}
 	readEnv := block.ReadEnv{
 		Stats: &i.stats.InternalStats,
 		// If the file cache has a sstable stats collector, ask it for an
