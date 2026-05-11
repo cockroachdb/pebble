@@ -151,9 +151,19 @@ func (MaxMVCCTimestampProperty) Name() string {
 	return mvccWallTimeIntervalCollector
 }
 
-// Extract implements pebble.MaximumSuffixProperty interface.
-// It extracts the maximum MVCC timestamp from the encoded block property and
-// returns it as a CockroachDB-formatted suffix.
+// Extract implements the sstable.MaximumSuffixProperty interface. It returns
+// a wall-time-only suffix that, per that interface's contract, sorts
+// at-or-before every real suffix in the block.
+//
+// The encoded BlockInterval is half-open [Lower, Upper), with each MVCC key
+// contributing {Lower: ts, Upper: ts+1} (see mapSuffixToInterval). Hence
+// Upper is one greater than the largest wall time present in the block.
+//
+// We encode wall = Upper rather than Upper-1 (the literal largest wall in
+// the block). Upper-1 would not be a valid upper bound: a suffix at
+// (Upper-1, logical=0) sorts *after* a real key at (Upper-1, logical>0),
+// since larger logical sorts first within a wall. Encoding Upper sidesteps
+// the logical component entirely.
 func (MaxMVCCTimestampProperty) Extract(
 	dst []byte, encodedProperty []byte,
 ) (suffix []byte, ok bool, err error) {
