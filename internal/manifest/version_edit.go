@@ -92,6 +92,9 @@ const (
 	customTagBlobReferences    = 69
 	// customTagBlobReferences2 contains BackingValueSize for each BlobReference.
 	customTagBlobReferences2 = 70
+	// customTagSuffixMask encodes the lower and upper bounds of the suffix
+	// mask as two consecutive length-prefixed byte slices.
+	customTagSuffixMask = 71
 )
 
 // DeletedTableEntry holds the state for a sstable deletion from a level. The
@@ -423,6 +426,8 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			var noRangeKeySets bool
 			var syntheticPrefix sstable.SyntheticPrefix
 			var syntheticSuffix sstable.SyntheticSuffix
+			var suffixMaskLower []byte
+			var suffixMaskUpper []byte
 			var blobReferences BlobReferences
 			var blobReferenceDepth BlobReferenceDepth
 			if tag == tagNewFile4 || tag == tagNewFile5 {
@@ -493,6 +498,33 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							return err
 						}
 
+					case customTagSuffixMask:
+						// The payload is a single length-prefixed bytes field
+						// containing two consecutive length-prefixed byte
+						// slices: the lower bound followed by the upper bound.
+						payload, err := d.readBytes()
+						if err != nil {
+							return err
+						}
+						reader := bytes.NewReader(payload)
+						sub := versionEditDecoder{reader}
+						lower, err := sub.readBytes()
+						if err != nil {
+							return base.CorruptionErrorf("new-file4: suffix mask: %v", err)
+						}
+						upper, err := sub.readBytes()
+						if err != nil {
+							return base.CorruptionErrorf("new-file4: suffix mask: %v", err)
+						}
+						if len(lower) == 0 || len(upper) == 0 {
+							return base.CorruptionErrorf("new-file4: suffix mask: bound is empty")
+						}
+						if reader.Len() != 0 {
+							return base.CorruptionErrorf("new-file4: suffix mask: %d trailing bytes", reader.Len())
+						}
+						suffixMaskLower = lower
+						suffixMaskUpper = upper
+
 					case customTagBlobReferences, customTagBlobReferences2:
 						// The first varint encodes the 'blob reference depth'
 						// of the table.
@@ -550,6 +582,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				BlobReferenceDepth:       blobReferenceDepth,
 				Virtual:                  virtualState.virtual,
 				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+				SuffixMask:               sstable.SuffixMask{Lower: suffixMaskLower, Upper: suffixMaskUpper},
 			}
 
 			if tag != tagNewFile5 { // no range keys present
@@ -918,7 +951,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewTables {
-		customFields := x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0 || x.Meta.RangeKeyKinds == OnlyRangeKeyUnsetAndDelete
+		customFields := x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0 || x.Meta.RangeKeyKinds == OnlyRangeKeyUnsetAndDelete || x.Meta.SuffixMask.IsSet()
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -984,6 +1017,17 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			if x.Meta.SyntheticPrefixAndSuffix.HasSuffix() {
 				e.writeUvarint(customTagSyntheticSuffix)
 				e.writeBytes(x.Meta.SyntheticPrefixAndSuffix.Suffix())
+			}
+			if x.Meta.SuffixMask.IsSet() {
+				// Encode both bounds inside a single tag's payload as two
+				// consecutive length-prefixed byte slices. See customTagSuffixMask.
+				e.writeUvarint(customTagSuffixMask)
+				var buf []byte
+				buf = binary.AppendUvarint(buf, uint64(len(x.Meta.SuffixMask.Lower)))
+				buf = append(buf, x.Meta.SuffixMask.Lower...)
+				buf = binary.AppendUvarint(buf, uint64(len(x.Meta.SuffixMask.Upper)))
+				buf = append(buf, x.Meta.SuffixMask.Upper...)
+				e.writeBytes(buf)
 			}
 			if len(x.Meta.BlobReferences) > 0 {
 				writeBackingValueSize := false

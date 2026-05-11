@@ -202,6 +202,10 @@ type TableMetadata struct {
 	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
 	// suffixes in a table; used for some virtual tables.
 	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
+
+	// SuffixMask, if set, masks point keys and range key entries whose suffix
+	// falls within the mask range (Lower, Upper]. Used for MVCC revert.
+	SuffixMask sstable.SuffixMask
 }
 
 // RangeKeyKinds describes which kinds of range keys may be present in a table.
@@ -303,6 +307,7 @@ func (m *TableMetadata) IterTransforms() sstable.IterTransforms {
 	return sstable.IterTransforms{
 		SyntheticSeqNum:          m.SyntheticSeqNum(),
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+		SuffixMask:               m.SuffixMask,
 	}
 }
 
@@ -312,6 +317,7 @@ func (m *TableMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms 
 	return sstable.FragmentIterTransforms{
 		SyntheticSeqNum:          m.SyntheticSeqNum(),
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+		SuffixMask:               m.SuffixMask,
 	}
 }
 
@@ -898,6 +904,9 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 		if m.Virtual && m.TableBacking != nil {
 			fmt.Fprintf(&b, "(%d)", m.TableBacking.Size)
 		}
+	}
+	if m.SuffixMask.IsSet() {
+		fmt.Fprintf(&b, " suffix-mask-lower:%x suffix-mask-upper:%x", m.SuffixMask.Lower, m.SuffixMask.Upper)
 	}
 	if len(m.BlobReferences) > 0 {
 		fmt.Fprint(&b, " blobrefs:[")
