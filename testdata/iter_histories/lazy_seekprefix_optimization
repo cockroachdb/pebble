@@ -58,8 +58,8 @@ next
 s@10: (s@10, .)
 s@8: (s@8, .)
 s@4: (s@4, .)
-000009.SeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
-000007.SeekPrefixGE("s@10") = (s@5#inf,SYNTHETIC,"")
+000009.SeekPrefixGE("s@10") = (s@6#inf,SYNTHETIC,"")
+000007.SeekPrefixGE("s@10") = (s@6#inf,SYNTHETIC,"")
 000005.SeekPrefixGE("s@10") = (s@10#11,SET,"s@10")
 000005.Next() = (s@8#12,SET,"s@8")
 000005.Next() = nil

@@ -57,7 +57,7 @@ b@8: (b8, .)
 b@6: (b6, .)
 .
 .
-000004.SeekPrefixGE("b@15") = (b@10#inf,SYNTHETIC,"")
+000004.SeekPrefixGE("b@15") = (b@11#inf,SYNTHETIC,"")
 000004.Next() = (b@2#7,SET,"7")
 000004.Close() = nil
 
@@ -89,7 +89,7 @@ seek-prefix-ge c@20
 b@9: (b9, .)
 b@8: (b8, .)
 .
-000004.PointKeys.SeekPrefixGE("b@20") = (b@10#inf,SYNTHETIC,"")
+000004.PointKeys.SeekPrefixGE("b@20") = (b@11#inf,SYNTHETIC,"")
 000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
 000004.RangeDels.opSpanSeekGE("b@20") = a@2-b@3:{(#10,RANGEDEL)}
 000004.PointKeys.Next() = (b@2#7,SET,"7")

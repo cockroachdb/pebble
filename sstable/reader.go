@@ -105,14 +105,46 @@ type IterOptions struct {
 	MaximumSuffixProperty MaximumSuffixProperty
 }
 
-// MaximumSuffixProperty is an interface for the maximum suffix property.
-// This is used to perform the synthetic key optimization.
+// MaximumSuffixProperty is an interface used by the sstable iterator's
+// synthetic-key optimization (see SeekPrefixGE in reader_iter_single_lvl.go).
+// When a SeekPrefixGE seeks past every real suffix in the block, the iterator
+// returns a synthetic key built from the search prefix and the suffix produced
+// by Extract, deferring the actual seek (and any associated block loads) until
+// the synthetic key surfaces in the merging iterator's heap.
+//
+// While the synthetic key is in the heap, it is compared against real keys from
+// other iterators. To preserve iteration order, Extract must return a suffix
+// that sorts at or before any real suffix in the block: for every real key with
+// prefix p and suffix s,
+//
+//	Compare(p+returnedSuffix, p+s) <= 0
+//
+// Equality is permitted: the synthetic key is constructed with SeqNumMax, so
+// on ties it sorts ahead of any real key with the same user key, and once it
+// surfaces and triggers the deferred seek, the real key takes its place in
+// the heap. The bound need not be tight.
+//
+// If this invariant is violated, another iterator's key K with
+// p+s < K < p+returnedSuffix would surface ahead of the real key it is
+// supposed to follow.
+//
+// Note that "the largest suffix value in the block" is not necessarily a
+// suffix that satisfies this invariant. Block-property collectors typically
+// summarize a single dimension of the suffix (e.g., MVCC wall time), but the
+// suffix sort order may depend on additional dimensions (logical timestamp,
+// synthetic bit, etc.) that the collector does not track. The returned
+// suffix must dominate (in iteration order) every real suffix in the block
+// across all dimensions of the comparer. See MaxMVCCTimestampProperty for a
+// concrete example.
+//
+// TODO(radu): consider renaming to SuffixUpperBoundProperty.
 type MaximumSuffixProperty interface {
 	// Name returns the name of the maximum suffix property.
 	Name() string
-	// Extract extracts the maximum suffix from the encoded property and
-	// appends it to the provided dst slice, if it exists. If no such property is found,
-	// Extract returns ok=false. The Extract method must NOT mutate the encoded property.
+	// Extract appends to dst a suffix satisfying the invariant documented on
+	// MaximumSuffixProperty (the suffix does not sort after any real suffix
+	// in the block). If no such property is found, Extract returns ok=false.
+	// Extract must NOT mutate encodedProperty.
 	Extract(dst []byte, encodedProperty []byte) (suffix []byte, ok bool, err error)
 }
 

@@ -146,8 +146,17 @@ func (testprop MaxTestKeysSuffixProperty) Name() string {
 	return `pebble.internal.testkeys.suffixes`
 }
 
-// Extract is part of the MaxTestKeysSuffixProperty interface used to extract the
-// latest suffix from the block property.
+// Extract implements the MaximumSuffixProperty interface. It returns a suffix
+// that, per that interface's contract, sorts at-or-before every real suffix in
+// the block.
+//
+// The encoded BlockInterval is half-open [Lower, Upper), with each key
+// contributing {Lower: ts, Upper: ts+1}, so Upper is one greater than the
+// largest timestamp present in the block. We encode @Upper rather than
+// @(Upper-1): testkeys suffixes sort larger-timestamp-first (see
+// compareTimestamps in internal/testkeys), so @Upper sorts strictly before
+// every real key in the block. This matches the production MVCC implementation
+// in cockroachkvs.MaxMVCCTimestampProperty.Extract.
 func (testprop MaxTestKeysSuffixProperty) Extract(
 	dst []byte, encodedProperty []byte,
 ) (suffix []byte, ok bool, err error) {
@@ -162,6 +171,6 @@ func (testprop MaxTestKeysSuffixProperty) Extract(
 		return nil, false, nil
 	}
 	dst = append(dst, '@')
-	dst = strconv.AppendUint(dst, (interval.Upper - 1), 10)
+	dst = strconv.AppendUint(dst, interval.Upper, 10)
 	return dst, true, nil
 }
