@@ -1335,8 +1335,6 @@ func (b *BulkVersionEdit) Accumulate(ve *VersionEdit) error {
 // Apply updates the backing refcounts (Ref/Unref) as files are installed into
 // the levels.
 //
-// curr may be nil, which is equivalent to a pointer to a zero version.
-//
 // Not that L0SublevelFiles is not initialized in the returned version; it is
 // the caller's responsibility to set it using L0Organizer.PerformUpdate().
 func (b *BulkVersionEdit) Apply(curr *Version, readCompactionRate int64) (*Version, error) {

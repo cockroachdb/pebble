@@ -44,7 +44,6 @@ func (w *KeyValueBlockWriter) Rows() int {
 }
 
 // AddKV adds a new key and value of a block to the key value block.
-// Add returns the index of the row.
 func (w *KeyValueBlockWriter) AddKV(key []byte, value []byte) {
 	w.keys.Put(key)
 	w.values.Put(value)

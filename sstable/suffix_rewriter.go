@@ -38,7 +38,7 @@ import (
 // re-computation of properties (is there any loss of fidelity?).
 //
 // Any block property collectors configured in the WriterOptions must implement
-// AddCollectedWithSuffixChange.
+// AddCollectedWithSuffixReplacement.
 //
 // The WriterOptions.TableFormat is ignored, and the output sstable has the same
 // TableFormat as the input, which is returned in case the caller wants to do

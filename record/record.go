@@ -295,8 +295,8 @@ func NewReader(r io.Reader, logNum base.DiskFileNum) *Reader {
 	}
 }
 
-// nextChunk sets r.buf[r.i:r.j] to hold the next chunk's payload, reading the
-// next block into the buffer if necessary.
+// nextChunk sets r.buf[r.begin:r.end] to hold the next chunk's payload,
+// reading the next block into the buffer if necessary.
 func (r *Reader) nextChunk(wantFirst bool) error {
 	for {
 		if r.end+legacyHeaderSize <= r.n {

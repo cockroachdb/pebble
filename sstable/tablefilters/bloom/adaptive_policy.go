@@ -104,7 +104,7 @@ func MaxBitsPerKey(numKeys uint, maxFilterSize uint64) uint32 {
 		return 0
 	}
 	// The filter always uses an odd number of cache lines (nLines |= 1 in
-	// filterNumLines). If maxLines is even, we can only use maxLines-1 lines.
+	// calculateNumLines). If maxLines is even, we can only use maxLines-1 lines.
 	if maxLines&1 == 0 {
 		maxLines--
 	}

@@ -117,7 +117,7 @@ func (m *SampledMetric) values(buckets int) (bucketDur time.Duration, values []f
 	bucketDur = totalDur / time.Duration(buckets)
 
 	for i, b := 0, 0; i < len(m.samples); i++ {
-		// Fill any buckets that precede this value with the previous value.
+		// Fill any buckets that precede this value with the next recorded value.
 		bi := int(m.samples[i].since / bucketDur)
 		if bi == buckets {
 			bi = buckets - 1

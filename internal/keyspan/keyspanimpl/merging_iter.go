@@ -1126,7 +1126,7 @@ func (m *MergingIter) TreeStepsNode() treesteps.NodeInfo {
 }
 
 type mergingIterItem struct {
-	// boundKey points to the corresponding mergingIterLevel's `iterKey`.
+	// boundKey points to the corresponding mergingIterLevel's `heapKey`.
 	*boundKey
 	// index is the index of this level within the MergingIter's levels field.
 	index int

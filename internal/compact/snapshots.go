@@ -45,7 +45,7 @@ import (
 //	a.PUT.5
 type Snapshots []base.SeqNum
 
-// Index returns the index of the first snapshot sequence number which is >= seq
+// Index returns the index of the first snapshot sequence number which is > seq
 // or len(s) if there is no such sequence number.
 func (s Snapshots) Index(seq base.SeqNum) int {
 	return sort.Search(len(s), func(i int) bool {
@@ -54,8 +54,8 @@ func (s Snapshots) Index(seq base.SeqNum) int {
 }
 
 // IndexAndSeqNum returns the index of the first snapshot sequence number which
-// is >= seq and that sequence number, or len(s) and InternalKeySeqNumMax if
-// there is no such sequence number.
+// is > seq and that sequence number, or len(s) and SeqNumMax if there is no
+// such sequence number.
 func (s Snapshots) IndexAndSeqNum(seq base.SeqNum) (int, base.SeqNum) {
 	index := s.Index(seq)
 	if index == len(s) {

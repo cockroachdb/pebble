@@ -22,8 +22,8 @@ const Family base.TableFilterFamily = "binaryfuse"
 var SupportedBitsPerFingerprint = bitpacking.SupportedBitsPerValue
 
 // FilterPolicy returns a base.TableFilterPolicy that creates binary fuse
-// filters with the given number of bits per fingerprint. Only 4, 8, 12, and 16
-// bits per fingerprint are supported.
+// filters with the given number of bits per fingerprint. Only 4, 8, 10, 12,
+// and 16 bits per fingerprint are supported.
 //
 // A binary fuse filter has false positive rate 1/2^bitsPerFingerprint and
 // overhead ~13% (i.e. contains ~1.13 fingerprints per key):

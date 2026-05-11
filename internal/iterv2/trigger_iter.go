@@ -32,9 +32,9 @@ type BoundaryTrigger interface {
 // top-level child of the merging iterator to detect when point iteration
 // reaches a region that may contain range key sets.
 //
-// When bounds are set, the TriggerIter will check the entire region and elide
-// any work during iterator operations if there are no possible range key sets
-// within the bounds.
+// On Init, the TriggerIter checks the [lower, upper) region (using regiontree
+// sentinels when a bound is nil) and elides any work during iterator operations
+// if there are no possible range key sets within those bounds.
 type TriggerIter struct {
 	cmp     base.Compare
 	tree    *regiontree.T[[]byte, int]
@@ -54,8 +54,8 @@ type TriggerIter struct {
 
 var _ Iter = (*TriggerIter)(nil)
 
-// checkNoRegions sets noRegions to true if both bounds are set and there are no
-// regions with non-zero count within [lower, upper).
+// checkNoRegions sets noRegions to true if there are no regions with non-zero
+// count within [lower, upper). Either bound may be nil.
 func (t *TriggerIter) checkNoRegions() {
 	if t.trigger == nil {
 		t.noRegions = true

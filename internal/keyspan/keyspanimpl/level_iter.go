@@ -472,7 +472,7 @@ func (l *LevelIter) setPosAtFile(f *manifest.TableMetadata) error {
 	return nil
 }
 
-// setPos sets l.file and l.pos (and closes the iteris for the new file).
+// setPosInternal sets l.file and l.pos.
 func (l *LevelIter) setPosInternal(f *manifest.TableMetadata, pos levelIterPos) {
 	l.file = f
 	l.fileIter = nil

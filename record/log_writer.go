@@ -414,7 +414,7 @@ type syncTimer interface {
 // LogWriter writes records to an underlying io.Writer. In order to support WAL
 // file reuse, a LogWriter's records are tagged with the WAL's file
 // number. When reading a log file a record from a previous incarnation of the
-// file will return the error ErrInvalidLogNum.
+// file will return the error ErrInvalidChunk.
 type LogWriter struct {
 	// w is the underlying writer.
 	w io.Writer

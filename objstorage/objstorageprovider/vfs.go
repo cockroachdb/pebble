@@ -26,7 +26,7 @@ type localSubsystem struct {
 
 type localLockedState struct {
 	hotTier struct {
-		// objChangeCounter is incremented whenever objects are created.
+		// objChangeCounter is incremented whenever objects are created or deleted.
 		// The purpose of this counter is to avoid syncing the local filesystem when
 		// only remote objects are changed.
 		objChangeCounter uint64
@@ -35,7 +35,7 @@ type localLockedState struct {
 		objChangeCounterLastSync uint64
 	}
 	coldTier struct {
-		// objChangeCounter is incremented whenever objects are created.
+		// objChangeCounter is incremented whenever objects are created or deleted.
 		// The purpose of this counter is to avoid syncing the local filesystem when
 		// only remote objects are changed.
 		objChangeCounter uint64

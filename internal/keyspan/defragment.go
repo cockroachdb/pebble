@@ -502,8 +502,8 @@ func (i *DefragmentingIter) defragmentForward() (*Span, error) {
 func (i *DefragmentingIter) defragmentBackward() (*Span, error) {
 	if i.iterSpan.Empty() {
 		// An empty span will never be equal to another span; see checkEqual for
-		// why. To avoid loading non-empty range keys further ahead by calling Next,
-		// return early.
+		// why. To avoid loading non-empty range keys further behind by calling
+		// Prev, return early.
 		i.iterPos = iterPosCurr
 		return i.iterSpan, nil
 	}
