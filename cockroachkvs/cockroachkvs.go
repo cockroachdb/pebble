@@ -1087,6 +1087,41 @@ func (ks *cockroachKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 	return res
 }
 
+// IsMaskedBySuffixMask implements the colblk.SuffixMaskChecker
+// interface. The bounds are encoded MVCC suffixes; we inline the decode to
+// avoid per-row function call overhead.
+func (ks *cockroachKeySeeker) IsMaskedBySuffixMask(row int, lower, upper []byte) bool {
+	rowWall := ks.mvccWallTimes.At(row)
+	rowLogical := uint32(ks.mvccLogical.At(row))
+	if rowWall == 0 && rowLogical == 0 {
+		return false
+	}
+	// Decode lower bound.
+	if len(lower) < suffixLenWithWall {
+		return false
+	}
+	lowerWall := binary.BigEndian.Uint64(lower[:8])
+	var lowerLogical uint32
+	if len(lower) >= suffixLenWithLogical {
+		lowerLogical = binary.BigEndian.Uint32(lower[8:12])
+	}
+	// Decode upper bound.
+	if len(upper) < suffixLenWithWall {
+		return false
+	}
+	upperWall := binary.BigEndian.Uint64(upper[:8])
+	var upperLogical uint32
+	if len(upper) >= suffixLenWithLogical {
+		upperLogical = binary.BigEndian.Uint32(upper[8:12])
+	}
+	// Mask when: row > lower AND row <= upper.
+	gtLower := rowWall > lowerWall || (rowWall == lowerWall && rowLogical > lowerLogical)
+	leUpper := rowWall < upperWall || (rowWall == upperWall && rowLogical <= upperLogical)
+	return gtLower && leUpper
+}
+
+var _ colblk.SuffixMaskChecker = (*cockroachKeySeeker)(nil)
+
 //go:linkname memmove runtime.memmove
 func memmove(to, from unsafe.Pointer, n uintptr)
 
