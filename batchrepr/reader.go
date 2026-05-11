@@ -112,11 +112,18 @@ func (r *Reader) Next() (kind base.InternalKeyKind, ukey []byte, value []byte, o
 // TODO(jackson): This should be unexported once pebble package callers have
 // been updated to use appropriate abstractions.
 func DecodeStr(data []byte) (odata []byte, s []byte, ok bool) {
-	// TODO(jackson): This will index out of bounds if there's no varint or an
-	// invalid varint (eg, a single 0xff byte). Correcting will add a bit of
-	// overhead. We could avoid that overhead whenever len(data) >=
-	// binary.MaxVarint32?
-
+	if len(data) <= 128 {
+		// Any valid varint here must be a single byte: a multi-byte varint
+		// encodes a value v >= 128, which would require at least 130 bytes of
+		// input (2 varint bytes + 128 string bytes).
+		if len(data) == 0 || data[0] >= byte(len(data)) {
+			return nil, nil, false
+		}
+		n := int(data[0])
+		return data[1+n:], data[1 : 1+n], true
+	}
+	// The unsafe loads below read up to 5 bytes; safe because
+	// len(data) > 128 >= binary.MaxVarintLen32.
 	var v uint32
 	var n int
 	ptr := unsafe.Pointer(&data[0])
@@ -152,8 +159,17 @@ func DecodeBlobFileIDs(value []byte) (blobIDs []base.BlobFileID, ok bool) {
 	if n <= 0 {
 		return nil, false
 	}
+	// Each blob file ID is a varint of at least one byte, so blobCount cannot
+	// exceed the number of remaining bytes. This bounds the allocation against
+	// corrupt input.
+	if blobCount > uint64(len(value)-n) {
+		return nil, false
+	}
 	blobIDs = make([]base.BlobFileID, 0, blobCount)
 	for i := uint64(0); i < blobCount; i++ {
+		if n >= len(value) {
+			return nil, false
+		}
 		blobID, m := binary.Uvarint(value[n:])
 		if m <= 0 {
 			return nil, false
