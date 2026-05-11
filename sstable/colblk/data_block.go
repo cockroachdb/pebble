@@ -192,6 +192,19 @@ type KeySeeker interface {
 	) []byte
 }
 
+// SuffixMaskChecker is an optional interface that KeySeeker
+// implementations may satisfy for optimized suffix mask checks. If
+// the KeySeeker does not implement this interface, the DataBlockIter falls
+// back to materializing the suffix and using ComparePointSuffixes.
+type SuffixMaskChecker interface {
+	// IsMaskedBySuffixMask returns true if the key at the given row
+	// should be hidden because its suffix falls within the range
+	// (lower, upper]. The semantics are defined by the key schema;
+	// for CockroachDB MVCC keys, this means the key's timestamp is
+	// strictly greater than lower and less than or equal to upper.
+	IsMaskedBySuffixMask(row int, lower, upper []byte) bool
+}
+
 const (
 	defaultKeySchemaColumnPrefix int = iota
 	defaultKeySchemaColumnSuffix
@@ -1222,6 +1235,14 @@ type DataBlockIter struct {
 	transforms   blockiter.Transforms
 	noTransforms bool
 	keySeeker    KeySeeker
+	// suffixMaskChecker is set if the keySeeker implements the optional
+	// SuffixMaskChecker interface and SuffixMask is set.
+	suffixMaskChecker SuffixMaskChecker
+	// kvRowNeedsFullDecode is set when isSuffixMasked's fallback path
+	// materializes a key (updating kvRow and keyIter) without fully
+	// decoding the row into i.kv. It prevents decodeRow from
+	// short-circuiting on the kvRow == row check.
+	kvRowNeedsFullDecode bool
 
 	// -- Tiering metadata (lazily initialized) --
 	// These fields are decoded on-demand when *WithMeta methods are first called.
@@ -1306,6 +1327,11 @@ func (i *DataBlockIter) Init(
 	meta := &KeySeekerMetadata{}
 	i.keySchema.InitKeySeekerMetadata(meta, d, bd)
 	i.keySeeker = i.keySchema.KeySeeker(meta)
+	if i.transforms.SuffixMask.IsSet() {
+		i.suffixMaskChecker, _ = i.keySeeker.(SuffixMaskChecker)
+	} else {
+		i.suffixMaskChecker = nil
+	}
 
 	// The worst case is when the largest key in the block has no suffix.
 	maxKeyLength := int(i.transforms.SyntheticPrefixAndSuffix.PrefixLen() + d.maximumKeyLength + i.transforms.SyntheticPrefixAndSuffix.SuffixLen())
@@ -1358,6 +1384,11 @@ func (i *DataBlockIter) InitHandle(
 	i.prefixCacheStart = -1
 	i.nextPrefixChange = -1
 	i.keySeeker = i.keySchema.KeySeeker(keySeekerMeta)
+	if i.transforms.SuffixMask.IsSet() {
+		i.suffixMaskChecker, _ = i.keySeeker.(SuffixMaskChecker)
+	} else {
+		i.suffixMaskChecker = nil
+	}
 
 	// Reset tiering state for lazy initialization. Block data will be obtained
 	// from h.BlockData() when needed.
@@ -1485,6 +1516,12 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 			}
 		}
 	}
+	if i.transforms.SuffixMask.IsSet() {
+		i.skipSuffixMaskedForward()
+		if i.row > i.maxRow {
+			return nil
+		}
+	}
 	return i.decodeRow()
 }
 
@@ -1522,6 +1559,14 @@ func (i *DataBlockIter) SeekPrefixGE(
 				equalPrefix = false
 			}
 		}
+		if i.transforms.SuffixMask.IsSet() {
+			startRow := i.row
+			i.skipSuffixMaskedForward()
+			if equalPrefix && i.row > startRow &&
+				i.d.prefixChanged.SeekSetBitGE(startRow+1) <= i.row {
+				equalPrefix = false
+			}
+		}
 	}
 	if i.row > i.maxRow {
 		// No key ≥ seek key in the block.
@@ -1549,6 +1594,12 @@ func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV 
 			}
 		}
 	}
+	if i.transforms.SuffixMask.IsSet() {
+		i.skipSuffixMaskedBackward()
+		if i.row < 0 {
+			return nil
+		}
+	}
 	return i.decodeRow()
 }
 
@@ -1565,6 +1616,12 @@ func (i *DataBlockIter) First() *base.InternalKV {
 			if i.row > i.maxRow {
 				return nil
 			}
+		}
+	}
+	if i.transforms.SuffixMask.IsSet() {
+		i.skipSuffixMaskedForward()
+		if i.row > i.maxRow {
+			return nil
 		}
 	}
 	return i.decodeRow()
@@ -1655,6 +1712,12 @@ func (i *DataBlockIter) Last() *base.InternalKV {
 			}
 		}
 	}
+	if i.transforms.SuffixMask.IsSet() {
+		i.skipSuffixMaskedBackward()
+		if i.row < 0 {
+			return nil
+		}
+	}
 	return i.decodeRow()
 }
 
@@ -1679,6 +1742,12 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 	} else {
 		if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
 			i.skipObsoletePointsForward()
+			if i.row > i.maxRow {
+				return nil
+			}
+		}
+		if i.transforms.SuffixMask.IsSet() {
+			i.skipSuffixMaskedForward()
 			if i.row > i.maxRow {
 				return nil
 			}
@@ -1752,6 +1821,9 @@ func (i *DataBlockIter) NextWithSamePrefix() (kv *base.InternalKV, prefixExhaust
 		if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
 			i.skipObsoletePointsForward()
 		}
+		if i.transforms.SuffixMask.IsSet() {
+			i.skipSuffixMaskedForward()
+		}
 		if i.row > i.maxRow {
 			return nil, false
 		}
@@ -1817,6 +1889,9 @@ func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
 			i.skipObsoletePointsForward()
 		}
 	}
+	if i.transforms.SuffixMask.IsSet() {
+		i.skipSuffixMaskedForward()
+	}
 
 	return i.decodeRow()
 }
@@ -1829,6 +1904,12 @@ func (i *DataBlockIter) Prev() *base.InternalKV {
 	i.row--
 	if i.transforms.HideObsoletePoints && i.atObsoletePointBackward() {
 		i.skipObsoletePointsBackward()
+		if i.row < 0 {
+			return nil
+		}
+	}
+	if i.transforms.SuffixMask.IsSet() {
+		i.skipSuffixMaskedBackward()
 		if i.row < 0 {
 			return nil
 		}
@@ -1884,6 +1965,37 @@ func (i *DataBlockIter) atObsoletePointCheck() {
 	}
 }
 
+// isSuffixMasked returns true if the key at i.row is masked by the configured
+// SuffixMask. It delegates to the SuffixMaskChecker if available,
+// otherwise falls back to materializing the suffix and comparing.
+func (i *DataBlockIter) isSuffixMasked() bool {
+	if i.suffixMaskChecker != nil {
+		return i.suffixMaskChecker.IsMaskedBySuffixMask(i.row, i.transforms.SuffixMask.Lower, i.transforms.SuffixMask.Upper)
+	}
+	key := i.keySeeker.MaterializeUserKey(&i.keyIter, i.kvRow, i.row)
+	i.kvRow = i.row
+	i.kvRowNeedsFullDecode = true
+	suffixStart := i.split(key)
+	suffix := key[suffixStart:]
+	if len(suffix) == 0 {
+		return false
+	}
+	return i.suffixCmp(suffix, i.transforms.SuffixMask.Lower) < 0 &&
+		i.suffixCmp(suffix, i.transforms.SuffixMask.Upper) >= 0
+}
+
+func (i *DataBlockIter) skipSuffixMaskedForward() {
+	for i.row <= i.maxRow && i.isSuffixMasked() {
+		i.row++
+	}
+}
+
+func (i *DataBlockIter) skipSuffixMaskedBackward() {
+	for i.row >= 0 && i.isSuffixMasked() {
+		i.row--
+	}
+}
+
 // Error implements the base.InternalIterator interface. A DataBlockIter is
 // infallible and always returns a nil error.
 func (i *DataBlockIter) Error() error {
@@ -1906,7 +2018,7 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 	switch {
 	case i.row < 0 || i.row > i.maxRow:
 		return nil
-	case i.kvRow == i.row:
+	case i.kvRow == i.row && !i.kvRowNeedsFullDecode:
 		// Already synthesized the kv at row.
 		return &i.kv
 	default:
@@ -1940,6 +2052,7 @@ func (i *DataBlockIter) decodeRow() *base.InternalKV {
 			i.kv.V = base.MakeInPlaceValue(v)
 		}
 		i.kvRow = i.row
+		i.kvRowNeedsFullDecode = false
 		return &i.kv
 	}
 }
@@ -1974,6 +2087,7 @@ var _ = (*DataBlockIter).decodeKey
 // Close implements the base.InternalIterator interface.
 func (i *DataBlockIter) Close() error {
 	i.keySeeker = nil
+	i.suffixMaskChecker = nil
 	i.d = nil
 	i.h.Release()
 	i.h = block.BufferHandle{}
