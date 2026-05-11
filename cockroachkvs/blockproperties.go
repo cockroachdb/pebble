@@ -168,9 +168,7 @@ func (MaxMVCCTimestampProperty) Extract(
 		return nil, false, nil
 	}
 	dst = append(dst, make([]byte, suffixLenWithWall)...)
-	// BlockInterval is a half-open interval [Lower, Upper). The largest wall
-	// time present in the block is therefore Upper-1.
-	binary.BigEndian.PutUint64(dst[len(dst)-suffixLenWithWall:], interval.Upper-1)
+	binary.BigEndian.PutUint64(dst[len(dst)-suffixLenWithWall:], interval.Upper)
 	dst[len(dst)-1] = suffixLenWithWall
 	return dst, true, nil
 }
