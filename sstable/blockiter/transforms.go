@@ -12,6 +12,21 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
+// SuffixMask defines a range of suffixes to mask during iteration. Lower and
+// Upper are in ascending suffix magnitude (e.g. wall-time order for MVCC
+// timestamps), NOT in ComparePointSuffixes order. Keys whose suffix is
+// strictly greater than Lower and at most Upper (in suffix magnitude) are
+// hidden. Suffixless keys are never hidden. Both bounds must be set.
+type SuffixMask struct {
+	Lower []byte
+	Upper []byte
+}
+
+// IsSet returns true if the suffix mask is configured.
+func (m SuffixMask) IsSet() bool {
+	return len(m.Lower) > 0
+}
+
 // Transforms allow on-the-fly transformation of data at iteration time.
 //
 // These transformations could in principle be implemented as block transforms
@@ -25,6 +40,10 @@ type Transforms struct {
 	// This is the norm when the sstable is foreign or the largest sequence number
 	// of the sstable is below the one we are reading.
 	HideObsoletePoints bool
+	// SuffixMask, if set, hides point keys whose suffix falls within the mask
+	// range (Lower, Upper] as determined by the key schema. Keys with no suffix
+	// are never hidden.
+	SuffixMask SuffixMask
 
 	SyntheticPrefixAndSuffix SyntheticPrefixAndSuffix
 }
@@ -36,6 +55,7 @@ var NoTransforms = Transforms{}
 func (t *Transforms) NoTransforms() bool {
 	return t.SyntheticSeqNum == 0 &&
 		!t.HideObsoletePoints &&
+		!t.SuffixMask.IsSet() &&
 		t.SyntheticPrefixAndSuffix.IsUnset()
 }
 
@@ -60,12 +80,17 @@ func (t *Transforms) SyntheticSuffix() []byte {
 type FragmentTransforms struct {
 	SyntheticSeqNum          SyntheticSeqNum
 	SyntheticPrefixAndSuffix SyntheticPrefixAndSuffix
+	// SuffixMask, if set, filters out range key entries whose suffix falls
+	// within the mask range (Lower, Upper]. Entries with no suffix pass
+	// through unfiltered.
+	SuffixMask SuffixMask
 }
 
 // NoTransforms returns true if there are no transforms enabled.
 func (t *FragmentTransforms) NoTransforms() bool {
-	// NoTransforms returns true if there are no transforms enabled.
-	return t.SyntheticSeqNum == 0 && t.SyntheticPrefixAndSuffix.IsUnset()
+	return t.SyntheticSeqNum == 0 &&
+		t.SyntheticPrefixAndSuffix.IsUnset() &&
+		!t.SuffixMask.IsSet()
 }
 
 func (t *FragmentTransforms) HasSyntheticPrefix() bool {
