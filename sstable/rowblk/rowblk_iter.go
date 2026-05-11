@@ -630,7 +630,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	}
 
 	i.clearCache()
-	// Find the index of the smallest restart point whose key is > the key
+	// Find the index of the smallest restart point whose key is >= the key
 	// sought; index will be numRestarts if there is no such restart point.
 	i.offset = 0
 	var index int32

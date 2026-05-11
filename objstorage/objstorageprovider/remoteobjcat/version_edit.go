@@ -28,8 +28,9 @@ type VersionEdit struct {
 }
 
 const (
-	// tagNewObject is followed by the FileNum, creator ID, creator FileNum,
-	// cleanup method, optional new object tags, and ending with a 0 byte.
+	// tagNewObject is followed by the FileNum, object type, creator ID, creator
+	// FileNum, cleanup method, optional new object tags, and ending with a 0
+	// byte.
 	tagNewObject = 1
 	// tagDeletedObject is followed by the FileNum.
 	tagDeletedObject = 2

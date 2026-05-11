@@ -29,8 +29,8 @@ const (
 	// tagLocator encodes the remote.Locator; if absent the locator is "". It is
 	// followed by the locator string length and the locator string.
 	tagLocator = 5
-	// tagLocator encodes a custom object name (if present). It is followed by the
-	// custom name string length and the string.
+	// tagCustomObjectName encodes a custom object name (if present). It is
+	// followed by the custom name string length and the string.
 	tagCustomObjectName = 6
 
 	// Any new tags that don't have the tagNotSafeToIgnoreMask bit set must be

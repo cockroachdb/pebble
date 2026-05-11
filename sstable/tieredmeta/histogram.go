@@ -79,7 +79,7 @@ func (s *StatsHistogram) BytesAboveThreshold(threshold base.TieringAttribute) ui
 
 // encode serializes the histogram to bytes. The encoding format is:
 //
-//	<total bytes> <total count> <zero count> <digest size> <digest data>
+//	<total bytes> <total count> <zero bytes> <digest size> <digest data>
 func (s *StatsHistogram) encode() []byte {
 	// Calculate the size needed for the t-digest.
 	digestSize := s.digest.SerializedSize()

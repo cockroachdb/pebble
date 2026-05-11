@@ -1361,10 +1361,9 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	return i.maybeVerifyKey(i.skipBackward())
 }
 
-// First implements internalIterator.First, as documented in the pebble
-// package. Note that First only checks the upper bound. It is up to the caller
-// to ensure that key is greater than or equal to the lower bound (e.g. via a
-// call to SeekGE(lower)).
+// First implements internalIterator.First, as documented in the pebble package.
+// First must not be called when a lower bound is configured on the iterator;
+// callers should use SeekGE(lower) instead.
 func (i *singleLevelIterator[I, PI, D, PD]) First() (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(i) {
 		op := treesteps.StartOpf(i, "First()")
@@ -1493,10 +1492,9 @@ func (i *singleLevelIterator[I, PI, D, PD]) firstInternal(
 	return i.skipForward(shouldReturnMeta)
 }
 
-// Last implements internalIterator.Last, as documented in the pebble
-// package. Note that Last only checks the lower bound. It is up to the caller
-// to ensure that key is less than the upper bound (e.g. via a call to
-// SeekLT(upper))
+// Last implements internalIterator.Last, as documented in the pebble package.
+// Last must not be called when an upper bound is configured on the iterator;
+// callers should use SeekLT(upper) instead.
 func (i *singleLevelIterator[I, PI, D, PD]) Last() (kv *base.InternalKV) {
 	if treesteps.Enabled && treesteps.IsRecording(i) {
 		op := treesteps.StartOpf(i, "Last()")

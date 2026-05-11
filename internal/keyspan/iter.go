@@ -49,7 +49,7 @@ type FragmentIterator interface {
 	// It is valid to call Next when the iterator is positioned before the first
 	// key/value pair due to either a prior call to SeekLT or Prev which
 	// returned an invalid span. It is not allowed to call Next when the
-	// previous call to SeekGE, SeekPrefixGE or Next returned an invalid span.
+	// previous call to SeekGE or Next returned an invalid span.
 	Next() (*Span, error)
 
 	// Prev moves the iterator to the previous span.

@@ -56,7 +56,7 @@ type InterleavingIter struct {
 	// dir is +1 for forward, -1 for backward (and 0 for unpositioned).
 	dir int8
 	// inSpan indicates whether the current position is inside span. When inSpan is true,
-	// the presentedSpan Boundary matches span.End (forward iteration) or span.End
+	// the presentedSpan Boundary matches span.End (forward iteration) or span.Start
 	// (backward iteration).
 	inSpan bool
 	// atBoundary indicates if the last returned key was a boundary key.

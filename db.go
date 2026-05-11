@@ -2840,7 +2840,7 @@ func firstError(err0, err1 error) error {
 // Remote object usage is disabled until this method is called the first time.
 // Once set, the Creator ID is persisted and cannot change.
 //
-// Does nothing if SharedStorage was not set in the options when the DB was
+// Does nothing if RemoteStorage was not set in the options when the DB was
 // opened or if the DB is in read-only mode.
 func (d *DB) SetCreatorID(creatorID uint64) error {
 	if d.opts.RemoteStorage == nil || d.opts.ReadOnly {

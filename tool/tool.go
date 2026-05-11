@@ -150,8 +150,9 @@ func WithDBExciseSpanFn(fn DBExciseSpanFn) Option {
 // gs://foo/bar).
 type DBRemoteStorageFn func(uri string) (remote.Storage, error)
 
-// WithDBRemoteStorageFn specifies a function that returns the excise span for the
-// `db excise` command.
+// WithDBRemoteStorageFn specifies a function that resolves a cloud-storage URI
+// (e.g. gs://foo/bar) to a remote.Storage, used by commands that support such
+// URIs.
 func WithDBRemoteStorageFn(fn DBRemoteStorageFn) Option {
 	return func(t *T) {
 		t.remoteStorageFn = fn

@@ -334,7 +334,7 @@ type batchInternal struct {
 	// requested. The cache is invalidated whenever a new range key
 	// (RangeKey{Set,Unset,Del}) is added to the batch. This cache can only be
 	// used when opening an iterator to read at a batch sequence number >=
-	// tombstonesSeqNum. This is the case for all new iterators created over a
+	// rangeKeysSeqNum. This is the case for all new iterators created over a
 	// batch but it's not the case for all cloned iterators.
 	rangeKeys       []keyspan.Span
 	rangeKeysSeqNum base.SeqNum

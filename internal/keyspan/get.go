@@ -7,8 +7,8 @@ package keyspan
 import "github.com/cockroachdb/pebble/internal/base"
 
 // Get returns the newest span that contains the target key. If no span contains
-// the target key, an empty span is returned. The iterator must contain
-// fragmented spans: no span may overlap another.
+// the target key, nil is returned. The iterator must contain fragmented spans:
+// no span may overlap another.
 //
 // If an error occurs while seeking iter, a nil span and non-nil error is
 // returned.

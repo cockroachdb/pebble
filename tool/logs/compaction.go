@@ -1162,7 +1162,8 @@ func (a *aggregator) aggregate() []windowSummary {
 
 		}
 		// Add "long-running" events. Those that start in this window
-		// that have duration longer than the window interval.
+		// that have duration longer than a.longRunningLimit (configurable via
+		// --long-running-limit).
 		if e.timeEnd.Sub(e.timeStart) > a.longRunningLimit {
 			curWindow.longRunning = append(curWindow.longRunning, e)
 		}

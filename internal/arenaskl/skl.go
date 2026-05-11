@@ -179,7 +179,6 @@ func (s *Skiplist) Add(key base.InternalKey, value []byte) error {
 
 func (s *Skiplist) addInternal(key base.InternalKey, value []byte, ins *Inserter) error {
 	if s.findSplice(key, ins) {
-		// Found a matching node, but handle case where it's been deleted.
 		return ErrRecordExists
 	}
 

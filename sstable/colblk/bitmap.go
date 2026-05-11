@@ -201,9 +201,9 @@ func (b Bitmap) SeekUnsetBitGE(i int) int {
 	return wordIdx<<6 + bits.TrailingZeros64(^word)
 }
 
-// SeekUnsetBitLE returns the previous bit less than or equal to i set in the
-// bitmap. The i parameter must be in [0, bitCount). Returns -1 if no previous
-// bit is unset.
+// SeekUnsetBitLE returns the index of the previous unset bit less than or
+// equal to i in the bitmap. The i parameter must be in [0, bitCount). Returns
+// -1 if no previous bit is unset.
 func (b Bitmap) SeekUnsetBitLE(i int) int {
 	invariants.CheckBounds(i, b.bitCount)
 	if b.data.ptr == nil {

@@ -773,13 +773,13 @@ func (l *VersionList) Empty() bool {
 }
 
 // Front returns the oldest version in the list. Note that this version is only
-// valid if Empty() returns true.
+// valid if Empty() returns false.
 func (l *VersionList) Front() *Version {
 	return l.root.next
 }
 
 // Back returns the newest version in the list. Note that this version is only
-// valid if Empty() returns true.
+// valid if Empty() returns false.
 func (l *VersionList) Back() *Version {
 	return l.root.prev
 }
