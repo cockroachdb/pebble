@@ -54,14 +54,17 @@ import (
 // memory backing a manual value is freed when the reference count drops to 0.
 //
 // Manual memory management brings the possibility of memory leaks. It is
-// imperative that every Handle returned by Cache.{Get,Set} is eventually
-// released. The "invariants" build tag enables a leak detection facility that
-// places a GC finalizer on cache.Value. When the cache.Value finalizer is run,
-// if the underlying buffer is still present a leak has occurred. The "tracing"
-// build tag enables tracing of cache.Value reference count manipulation and
-// eases finding where a leak has occurred. These two facilities are usually
-// used in combination by specifying `-tags invariants,tracing`. Note that
-// "tracing" produces a significant slowdown, while "invariants" does not.
+// imperative that every cache.Value returned by Handle.Get is eventually
+// released (via Value.Release), and that every cache.Value produced by Alloc
+// is either inserted via Handle.Set (which transfers the reference to the
+// cache) or released via Free. The "invariants" build tag enables a leak
+// detection facility that places a GC finalizer on cache.Value. When the
+// cache.Value finalizer is run, if the underlying buffer is still present a
+// leak has occurred. The "tracing" build tag enables tracing of cache.Value
+// reference count manipulation and eases finding where a leak has occurred.
+// These two facilities are usually used in combination by specifying
+// `-tags invariants,tracing`. Note that "tracing" produces a significant
+// slowdown, while "invariants" does not.
 type Cache struct {
 	refs    atomic.Int64
 	maxSize int64

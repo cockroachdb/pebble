@@ -162,10 +162,10 @@ func (c *shard) get(k key, level base.Level, category Category, peekOnly bool) *
 }
 
 // getWithReadEntry is the internal helper for implementing
-// Cache.{Get,GetWithReadHandle}. When desireReadEntry is true, and the block
-// is not in the cache (nil Value), a non-nil readEntry is returned (in which
-// case the caller is responsible to dereference the entry, via one of
-// unrefAndTryRemoveFromMap(), setReadValue(), setReadError()).
+// Handle.GetWithReadHandle. If the block is not in the cache (nil Value), a
+// non-nil readEntry is returned (in which case the caller is responsible to
+// dereference the entry, via one of unrefAndTryRemoveFromMap(),
+// setReadValue(), setReadError()).
 func (c *shard) getWithReadEntry(k key, level base.Level, category Category) (*Value, *readEntry) {
 	c.mu.RLock()
 	if e, _ := c.blocks.Get(k); e != nil {
@@ -641,7 +641,7 @@ func (c *shard) runHandHot() {
 
 func (c *shard) runHandTest() {
 	if c.sizeCold > 0 && c.handTest == c.handCold && c.handCold != nil {
-		// sizeCold is > 0, so assert that countCold == 0. See the
+		// sizeCold is > 0, so assert that countCold > 0. See the
 		// comment above count{Hot,Cold,Test}.
 		if c.countCold == 0 {
 			panic(errors.AssertionFailedf("pebble: mismatch %d cold size, %d cold count", errors.Safe(c.sizeCold), errors.Safe(c.countCold)))
