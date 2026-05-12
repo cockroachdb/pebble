@@ -51,6 +51,10 @@ func TestIterHistories(t *testing.T) {
 		parser := itertest.NewParser()
 		newIter := func(name string, reader Reader, o *IterOptions) *Iterator {
 			it, _ := reader.NewIter(o)
+			// These tests assert deterministic optimization behavior across
+			// SetOptions/seek calls; opt out of invariant-only randomization that
+			// suppresses seek-using-next or forces SetOptions reconstruction.
+			it.forceEnableSeekOpt = true
 			iters[name] = it
 			return it
 		}
