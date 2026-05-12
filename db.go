@@ -956,27 +956,31 @@ func (d *DB) commitWrite(b *Batch, syncWG *sync.WaitGroup, syncErr *error) (*mem
 	return mem, err
 }
 
-type iterAlloc struct {
+// iterAllocCommon contains the iterator-allocation state shared between the
+// V1 (iterAlloc) and V2 (iterV2Alloc) pool entries.
+type iterAllocCommon struct {
 	keyBuf              []byte    `invariants:"reused"`
 	boundsBuf           [2][]byte `invariants:"reused"`
 	prefixOrFullSeekKey []byte    `invariants:"reused"`
 	batchState          iteratorBatchState
 	dbi                 Iterator
-	merging             mergingIter
-	mlevels             [3 + numLevels]mergingIterLevel
-	levels              [3 + numLevels]levelIter
-	levelsPositioned    [3 + numLevels]bool
 }
 
-// maybeAssertZeroed asserts that i is a "zeroed" value. See assertZeroed for
-// the definition of "zeroed". It's used to ensure we're properly zeroing out
-// memory before returning the iterAlloc to the shared pool.
-func (i *iterAlloc) maybeAssertZeroed() {
-	if invariants.Enabled {
-		v := reflect.ValueOf(i).Elem()
-		if err := assertZeroed(v); err != nil {
-			panic(err)
-		}
+type iterAlloc struct {
+	iterAllocCommon
+	merging          mergingIter
+	mlevels          [3 + numLevels]mergingIterLevel
+	levels           [3 + numLevels]levelIter
+	levelsPositioned [3 + numLevels]bool
+}
+
+// assertZeroed asserts that i is a "zeroed" value. See assertZeroed for the
+// definition of "zeroed". It's used to ensure we're properly zeroing out memory
+// before returning the iterAlloc to the shared pool.
+func (i *iterAlloc) assertZeroed() {
+	v := reflect.ValueOf(i).Elem()
+	if err := assertZeroed(v); err != nil {
+		panic(err)
 	}
 }
 
@@ -1023,13 +1027,46 @@ func assertZeroed(v reflect.Value) error {
 
 func newIterAlloc() *iterAlloc {
 	buf := iterAllocPool.Get().(*iterAlloc)
-	buf.maybeAssertZeroed()
+	if invariants.Enabled {
+		buf.assertZeroed()
+	}
 	return buf
 }
 
 var iterAllocPool = sync.Pool{
 	New: func() interface{} {
 		return &iterAlloc{}
+	},
+}
+
+// iterV2Alloc is the pool entry for V2 iterator stacks. It mirrors iterAlloc
+// but holds the V2-specific buffers (mergingIterV2 plus pre-allocated arrays
+// for the level/heap-item/InterleavingIter/levelIterV2 children).
+type iterV2Alloc struct {
+	iterAllocCommon
+	merging    mergingIterV2
+	iiters     [4]iterv2.InterleavingIter
+	levelIters [2 + numLevels]levelIterV2
+}
+
+func (i *iterV2Alloc) assertZeroed() {
+	v := reflect.ValueOf(i).Elem()
+	if err := assertZeroed(v); err != nil {
+		panic(err)
+	}
+}
+
+func newIterV2Alloc() *iterV2Alloc {
+	buf := iterV2AllocPool.Get().(*iterV2Alloc)
+	if invariants.Enabled {
+		buf.assertZeroed()
+	}
+	return buf
+}
+
+var iterV2AllocPool = sync.Pool{
+	New: func() interface{} {
+		return &iterV2Alloc{}
 	},
 }
 
@@ -1117,10 +1154,18 @@ func (d *DB) newIter(
 
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	buf := newIterAlloc()
+	var buf *iterAllocCommon
+	if iterv2.Enabled {
+		a := newIterV2Alloc()
+		a.dbi.allocV2 = a
+		buf = &a.iterAllocCommon
+	} else {
+		a := newIterAlloc()
+		a.dbi.alloc = a
+		buf = &a.iterAllocCommon
+	}
 	dbi := &buf.dbi
 	dbi.ctx = ctx
-	dbi.alloc = buf
 	dbi.merge = d.merge
 	dbi.comparer = d.opts.Comparer
 	dbi.readState = readState
@@ -1151,17 +1196,15 @@ func (d *DB) newIter(
 	if !dbi.batchOnlyIter && d.iterTracker != nil && !dbi.opts.ExemptFromTracking {
 		dbi.trackerHandle = d.iterTracker.Start()
 	}
-	return finishInitializingIter(ctx, buf)
+	dbi.finishInitializingIter(ctx)
+	return dbi
 }
 
-// finishInitializingIter is a helper for doing the non-trivial initialization
-// of an Iterator. It's invoked to perform the initial initialization of an
-// Iterator during NewIter or Clone, and to perform reinitialization due to a
-// change in IterOptions by a call to Iterator.SetOptions.
-func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
-	// Short-hand.
-	dbi := &buf.dbi
-
+// finishInitializingIter does the non-trivial initialization of an Iterator.
+// It's invoked to perform the initial initialization of an Iterator during
+// NewIter or Clone, and to perform reinitialization due to a change in
+// IterOptions by a call to Iterator.SetOptions.
+func (dbi *Iterator) finishInitializingIter(ctx context.Context) {
 	var memtables flushableList
 	if dbi.readState != nil {
 		memtables = dbi.readState.memtables
@@ -1185,7 +1228,12 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 		// Iterator has already initialized dbi.merging, constructPointIter is a
 		// noop and an initialized pointIter already exists in dbi.pointIter.
 		if dbi.pointIter == nil {
-			dbi.constructPointIter(ctx, memtables, buf)
+			internalOpts := dbi.makeInternalIterOpts(memtables)
+			if dbi.allocV2 != nil {
+				dbi.constructPointIterV2(ctx, memtables, internalOpts)
+			} else {
+				dbi.constructPointIter(ctx, memtables, internalOpts)
+			}
 		}
 		dbi.iter = dbi.pointIter
 	} else {
@@ -1280,12 +1328,12 @@ func finishInitializingIter(ctx context.Context, buf *iterAlloc) *Iterator {
 			dbi.triggerIter.Reset(nil)
 		}
 	}
-	return dbi
 }
 
-func (i *Iterator) constructPointIter(
-	ctx context.Context, memtables flushableList, buf *iterAlloc,
-) {
+// makeInternalIterOpts builds the internalIterOpts for the point iterator
+// stack and initializes the iterator's blob value fetcher when a blob mapping
+// exists. Shared by V1 and V2 construction paths.
+func (i *Iterator) makeInternalIterOpts(memtables flushableList) internalIterOpts {
 	readEnv := block.ReadEnv{
 		Stats: &i.stats.InternalStats,
 		// If the file cache has a sstable stats collector, ask it for an
@@ -1324,12 +1372,13 @@ func (i *Iterator) constructPointIter(
 	if i.opts.RangeKeyMasking.Filter != nil {
 		internalOpts.boundLimitedFilter = &i.rangeKeyMasking
 	}
+	return internalOpts
+}
 
-	if iterv2.Enabled {
-		i.constructPointIterV2(ctx, memtables, buf, internalOpts)
-		return
-	}
-
+func (i *Iterator) constructPointIter(
+	ctx context.Context, memtables flushableList, internalOpts internalIterOpts,
+) {
+	buf := i.alloc
 	// Merging levels and levels from iterAlloc.
 	mlevels := buf.mlevels[:0]
 	levels := buf.levels[:0]
@@ -1453,19 +1502,54 @@ func (i *Iterator) constructPointIter(
 // constructPointIterV2 builds the point iterator stack using mergingIterV2 and
 // levelIterV2/InterleavingIter children.
 func (i *Iterator) constructPointIterV2(
-	ctx context.Context, memtables flushableList, buf *iterAlloc, internalOpts internalIterOpts,
+	ctx context.Context, memtables flushableList, internalOpts internalIterOpts,
 ) {
-	var v2iters []iterv2.Iter
+	buf := i.allocV2
 
+	// Compute an upper bound on the number of merging-iterator children so we
+	// can size buffers ahead of time. Per-source counts (in order of
+	// appearance):
+	//   * TriggerIter             : 1 if !batchOnlyIter
+	//   * Batch                   : 1 if i.batch != nil
+	//   * Memtables               : len(memtables) when !batchOnlyIter
+	//                               (ingestedFlushable may contribute one extra
+	//                               iter for the range-del side; we pad below)
+	//   * L0 sublevels + L1+      : current.MaxReadAmp() levelIterV2s
+	numMergingLevels := 0
+	// We create the trigger level even if KeyTypes == IterKeyTypePointsOnly, to
+	// allow reusing the iterator stack in more cases.
+	hasTriggerIter := !i.batchOnlyIter
+	if hasTriggerIter {
+		numMergingLevels++ // TriggerIter
+	}
+	if i.batch != nil {
+		numMergingLevels++
+	}
 	var current *manifest.Version
 	if !i.batchOnlyIter {
-		if i.version != nil {
-			current = i.version
-		} else {
+		// Memtables.
+		numMergingLevels += len(memtables)
+		for _, mem := range memtables {
+			if f, ok := mem.flushable.(*ingestedFlushable); ok {
+				if f.exciseSpan.Valid() {
+					// See ingestedFlushable.newItersV2().
+					numMergingLevels++
+				}
+			}
+		}
+		current = i.version
+		if current == nil {
 			current = i.readState.current
 		}
-		// Always include the TriggerIter as the first level. It's a no-op
-		// unless armed; finishInitializingIter and SetOptions arm it via
+		// Levels.
+		maxReadAmp := current.MaxReadAmp()
+		numMergingLevels += maxReadAmp
+	}
+	bld := makePointIterV2Builder(i.allocV2, numMergingLevels)
+
+	if hasTriggerIter {
+		// When the TriggerIter is used, it is always the first level. It does
+		// nothing unless armed; finishInitializingIter and SetOptions arm it via
 		// Reset() when lazy combined iteration is desired.
 		i.triggerIter.Init(
 			i.comparer.Compare,
@@ -1473,7 +1557,7 @@ func (i *Iterator) constructPointIterV2(
 			nil, /* trigger */
 			i.opts.LowerBound, i.opts.UpperBound,
 		)
-		v2iters = append(v2iters, &i.triggerIter)
+		bld.AddLevel(&i.triggerIter)
 	}
 
 	// 1. Batch iterator (if any).
@@ -1487,45 +1571,45 @@ func (i *Iterator) constructPointIterV2(
 		if i.batch.rangeDelIter.Count() > 0 {
 			rangeDelIter = &i.batch.rangeDelIter
 		}
-		iiter := new(iterv2.InterleavingIter)
+		iiter := bld.InterleavingIter()
 		iiter.Init(i.comparer,
 			&i.batch.pointIter,
 			rangeDelIter,
 			nil, nil, // startKey, endKey: unbounded
 			i.opts.LowerBound, i.opts.UpperBound)
-		v2iters = append(v2iters, iiter)
+		bld.AddLevel(iiter)
 	}
 
 	if !i.batchOnlyIter {
 		// 2. Memtable iterators (newest to oldest).
-		for j := len(memtables) - 1; j >= 0; j-- {
-			mem := memtables[j]
+		for _, mem := range slices.Backward(memtables) {
 			if fi, ok := mem.flushable.(*ingestedFlushable); ok {
 				flushableLevelIter, flushableRangeDelIter := fi.newItersV2(&i.opts, internalOpts)
-				v2iters = append(v2iters, flushableLevelIter)
+				bld.AddLevel(flushableLevelIter)
 				if flushableRangeDelIter != nil {
-					v2iters = append(v2iters, flushableRangeDelIter)
+					bld.AddLevel(flushableRangeDelIter)
 				}
 				continue
 			}
 			pointIter := mem.newIter(&i.opts)
 			rangeDelIter := mem.newRangeDelIter(&i.opts)
-			iiter := new(iterv2.InterleavingIter)
+			iiter := bld.InterleavingIter()
 			iiter.Init(i.comparer, pointIter, rangeDelIter,
 				nil, nil, // startKey, endKey: unbounded
 				i.opts.LowerBound, i.opts.UpperBound)
-			v2iters = append(v2iters, iiter)
+			bld.AddLevel(iiter)
 		}
 
 		// 3. Level iterators: L0 sublevels followed by L1+.
-		i.opts.snapshotForHideObsoletePoints = buf.dbi.seqNum
+		i.opts.snapshotForHideObsoletePoints = i.seqNum
 
 		addLevelIterV2 := func(files manifest.LevelIterator, layer manifest.Layer) {
 			// Filter to point-key files only; range-key-only files are handled
 			// by the separate range key iterator.
 			files = files.Filter(manifest.KeyTypePoint)
-			li := newLevelIterV2(ctx, i.opts, i.comparer, i.newIters, files, layer, internalOpts)
-			v2iters = append(v2iters, li)
+			li := bld.LevelIter()
+			li.init(ctx, i.opts, i.comparer, i.newIters, files, layer, internalOpts)
+			bld.AddLevel(li)
 		}
 
 		// L0 sublevels, newest to oldest.
@@ -1540,27 +1624,80 @@ func (i *Iterator) constructPointIterV2(
 			addLevelIterV2(current.Levels[level].Iter(), manifest.Level(level))
 		}
 	}
-	for j := range v2iters {
-		v2iters[j] = iterv2.MaybeWrapInInvalidating(v2iters[j])
-	}
 
-	m := newMergingIterV2(i.comparer.Compare, i.comparer.Split, i.seqNum, v2iters...)
-	m.lower = i.opts.LowerBound
-	m.upper = i.opts.UpperBound
-	m.logger = i.opts.getLogger()
-	m.stats = &i.stats.InternalStats
+	var batchSnapshot base.SeqNum
+	batchLevelIdx := -1
 	if i.batch != nil {
-		m.slab.batchSnapshot = i.batch.batchSeqNum
-		// The batch follows the TriggerIter if one was inserted (i.e. when
-		// !batchOnlyIter); otherwise the batch is the first level.
-		if i.batchOnlyIter {
-			m.slab.batchLevelIdx = 0
-		} else {
-			m.slab.batchLevelIdx = 1
+		batchSnapshot = i.batch.batchSeqNum
+		// The batch follows the TriggerIter if one was inserted; otherwise the
+		// batch is the first level.
+		batchLevelIdx = 0
+		if hasTriggerIter {
+			batchLevelIdx = 1
 		}
 	}
-	i.pointIter = invalidating.MaybeWrapIfInvariants(m).(topLevelIterator)
+
+	m := &buf.merging
+	m.Init(
+		i.comparer, i.opts.getLogger(),
+		i.opts.LowerBound, i.opts.UpperBound,
+		&i.stats.InternalStats,
+		i.seqNum,
+		batchSnapshot, batchLevelIdx,
+		bld.Levels(),
+	)
 	i.mergingV2 = m
+	i.pointIter = m
+	if invariants.Enabled && invariants.Sometimes(10) {
+		i.pointIter = invalidating.NewIter(m)
+	}
+}
+
+type pointIterV2Builder struct {
+	levels            []mergingIterV2Level
+	interleavingIters []iterv2.InterleavingIter
+	levelIters        []levelIterV2
+}
+
+func makePointIterV2Builder(buf *iterV2Alloc, numLevels int) pointIterV2Builder {
+	bld := pointIterV2Builder{
+		levels:            slices.Grow(buf.merging.levels[:0], numLevels),
+		interleavingIters: buf.iiters[:],
+		levelIters:        buf.levelIters[:],
+	}
+	return bld
+}
+
+func (bld *pointIterV2Builder) AddLevel(iter iterv2.Iter) {
+	index := len(bld.levels)
+	bld.levels = bld.levels[:index+1]
+	bld.levels[index].Init(index, iter)
+}
+
+func (bld *pointIterV2Builder) Levels() []mergingIterV2Level {
+	return bld.levels
+}
+
+// InterleavingIter produces a blank iterv2.InterleavingIter, using pre-allocated
+// space when possible.
+func (bld *pointIterV2Builder) InterleavingIter() *iterv2.InterleavingIter {
+	if len(bld.interleavingIters) > 0 {
+		iter := &bld.interleavingIters[0]
+		bld.interleavingIters = bld.interleavingIters[1:]
+		return iter
+	}
+	return &iterv2.InterleavingIter{}
+}
+
+// LevelIter produces a blank levelIterV2, using pre-allocated space when
+// possible.
+func (bld *pointIterV2Builder) LevelIter() *levelIterV2 {
+	if len(bld.levelIters) > 0 {
+		iter := &bld.levelIters[0]
+		bld.levelIters = bld.levelIters[1:]
+		return iter
+	}
+	return &levelIterV2{}
 }
 
 // NewBatch returns a new empty write-only batch. Any reads on the batch will

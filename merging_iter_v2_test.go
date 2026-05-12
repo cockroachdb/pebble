@@ -93,7 +93,7 @@ func newMergingIterV2FromLevels(
 			iters[i] = iterv2.NewOpCheckIter(iters[i], cmp, nil, nil)
 		}
 	}
-	return newMergingIterV2(cmp.Compare, cmp.Split, snapshot, iters...)
+	return newMergingIterV2(cmp, snapshot, iters...)
 }
 
 // parseMergingTestLevels parses a define block. Each level starts with an "L"
