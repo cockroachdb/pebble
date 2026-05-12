@@ -247,14 +247,18 @@ func (i *InterleavingIter) positionSpanIterForward(pos []byte, flags base.SeekGE
 		i.computeCurrentSpan()
 		return
 	}
-	// Try to avoid reseeking. We can do this in TrySeekUsingNext mode if pos is
-	// not beyond the current known span; otherwise we can do this if pos happens
-	// to be inside the known span.
 	var currentSpanOK bool
-	if flags.TrySeekUsingNext() {
-		currentSpanOK = i.span == nil || i.cmp.Compare(pos, i.span.End) < 0
-	} else {
-		currentSpanOK = i.span != nil && i.span.Contains(i.cmp.Compare, pos)
+	// Try to avoid reseeking the span iterator (unless the BatchJustRefreshed
+	// flag is set, in which case we always need to re-seek).
+	if !flags.BatchJustRefreshed() {
+		// Try to avoid reseeking. We can do this in TrySeekUsingNext mode if pos is
+		// not beyond the current known span; otherwise we can do this if pos
+		// happens to be inside the known span.
+		if flags.TrySeekUsingNext() {
+			currentSpanOK = i.span == nil || i.cmp.Compare(pos, i.span.End) < 0
+		} else {
+			currentSpanOK = i.span != nil && i.span.Contains(i.cmp.Compare, pos)
+		}
 	}
 	if !currentSpanOK {
 		i.nextSpan(i.spanIter.SeekGE(pos))
