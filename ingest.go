@@ -1366,6 +1366,10 @@ type IngestOperationStats struct {
 	// MemtableOverlappingFiles is the count of ingested sstables
 	// that overlapped keys in the memtables.
 	MemtableOverlappingFiles int
+	// LevelBytes is the number of bytes ingested into each level of the LSM.
+	LevelBytes [manifest.NumLevels]uint64
+	// LevelFiles is the number of files ingested into each level of the LSM.
+	LevelFiles [manifest.NumLevels]int
 }
 
 // ExternalFile are external sstables that can be referenced through
@@ -2100,6 +2104,8 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 				info.Tables[i].Level = e.Level
 				info.Tables[i].TableInfo = e.Meta.TableInfo()
 				stats.Bytes += e.Meta.Size
+				stats.LevelBytes[e.Level] += e.Meta.Size
+				stats.LevelFiles[e.Level]++
 				if e.Level == 0 {
 					stats.ApproxIngestedIntoL0Bytes += e.Meta.Size
 				}
