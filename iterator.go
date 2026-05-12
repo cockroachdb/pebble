@@ -2731,6 +2731,15 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		// filters.
 		len(o.RangeKeyFilters) == 0 && len(i.opts.RangeKeyFilters) == 0
 
+	// In invariant builds, sometimes force iterator reconstruction to exercise
+	// the slow path of SetOptions and surface bugs that the reuse path would
+	// otherwise hide. Skipped when forceEnableSeekOpt is set, because those
+	// tests assert deterministic optimization counts.
+	if !i.forceEnableSeekOpt {
+		reusePointIter = reusePointIter && invariants.Sometimes(10)
+		reuseRangeKey = reuseRangeKey && invariants.Sometimes(10)
+	}
+
 	// If the iterator is backed by a batch that's been mutated, refresh its
 	// existing point and range-key iterators if they are to be reused.
 	if i.batch != nil {
@@ -2801,7 +2810,10 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		o.KeyTypes == i.opts.KeyTypes &&
 		(reusePointIter || i.pointIter == nil) &&
 		i.comparer.CompareRangeSuffixes(o.RangeKeyMasking.Suffix, i.opts.RangeKeyMasking.Suffix) == 0 &&
-		o.UseL6Filters == i.opts.UseL6Filters {
+		o.UseL6Filters == i.opts.UseL6Filters &&
+		// In invariant builds, sometimes skip the fast path to exercise the slow
+		// path with reused iterators. Skipped when forceEnableSeekOpt is set.
+		(i.forceEnableSeekOpt || !invariants.Sometimes(10)) {
 		// Possible fast path: all options are unchanged and we can reuse the point
 		// iterator.
 		if reuseRangeKey {
