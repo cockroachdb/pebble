@@ -51,8 +51,8 @@ var valueEntryGoAllocated = !buildtags.Cgo || (invariants.UseFinalizers && rand.
 // Alloc allocates a byte slice of the specified size, possibly reusing
 // previously allocated but unused memory. The memory backing the value is
 // manually managed. The caller MUST either add the value to the cache (via
-// Cache.Set), or release the value (via Cache.Free). Failure to do so will
-// result in a memory leak.
+// Handle.Set), or release the value (via Free). Failure to do so will result
+// in a memory leak.
 func Alloc(n int) *Value {
 	if n == 0 {
 		return nil

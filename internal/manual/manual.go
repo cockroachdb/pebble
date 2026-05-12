@@ -86,7 +86,6 @@ func recordFree(purpose Purpose, n uintptr) {
 func GetMetrics() Metrics {
 	var res Metrics
 	for i := range res {
-		// We load the freed count first to avoid a negative value, since we don't load both counters atomically.
 		res[i].InUseBytes = uint64(counters[i].InUseBytes.Load())
 	}
 	return res

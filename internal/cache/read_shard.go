@@ -69,8 +69,7 @@ import (
 type readShard struct {
 	// shard is only used for locking, and calling shard.Set.
 	shard *shard
-	// Protected by shard.mu.
-	mu struct {
+	mu    struct {
 		sync.Mutex
 		readMap swiss.Map[key, *readEntry]
 	}
