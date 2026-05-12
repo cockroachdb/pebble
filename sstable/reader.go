@@ -282,7 +282,7 @@ func (r *Reader) NewRawRangeDelIter(
 		return nil, err
 	}
 	if r.tableFormat.BlockColumnar() {
-		iter = colblk.NewKeyspanIter(r.Comparer.Compare, h, transforms)
+		iter = colblk.NewKeyspanIter(r.Comparer, h, transforms)
 	} else {
 		iter, err = rowblk.NewFragmentIter(r.blockReader.FileNum(), r.Comparer, h, transforms)
 		if err != nil {
@@ -322,7 +322,7 @@ func (r *Reader) NewRawRangeKeyIter(
 		return nil, err
 	}
 	if r.tableFormat.BlockColumnar() {
-		iter = colblk.NewKeyspanIter(r.Comparer.Compare, h, transforms)
+		iter = colblk.NewKeyspanIter(r.Comparer, h, transforms)
 	} else {
 		iter, err = rowblk.NewFragmentIter(r.blockReader.FileNum(), r.Comparer, h, transforms)
 		if err != nil {
