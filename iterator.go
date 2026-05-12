@@ -2794,10 +2794,26 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		}
 	}
 
+	// In invariant builds, sometimes force iterator reconstruction to exercise
+	// the slow path and surface bugs that the reuse path would otherwise hide.
+	// Skipped when forceEnableSeekOpt is set, because those tests assert
+	// deterministic optimization counts.
+	allowFastPath := true
+	if invariants.Enabled && !i.forceEnableSeekOpt {
+		switch rand.IntN(10) {
+		case 0:
+			reusePointIter = false
+		case 1:
+			reuseRangeKey = false
+		case 2:
+			allowFastPath = false
+		}
+	}
+
 	boundsEqual := i.equalBound(i.opts.LowerBound, o.LowerBound) &&
 		i.equalBound(i.opts.UpperBound, o.UpperBound)
 
-	if boundsEqual &&
+	if allowFastPath && boundsEqual &&
 		o.KeyTypes == i.opts.KeyTypes &&
 		(reusePointIter || i.pointIter == nil) &&
 		i.comparer.CompareRangeSuffixes(o.RangeKeyMasking.Suffix, i.opts.RangeKeyMasking.Suffix) == 0 &&
@@ -2805,7 +2821,6 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		// Possible fast path: all options are unchanged and we can reuse the point
 		// iterator.
 		if reuseRangeKey {
-
 			// Invalidate the iterator when we are reusing the range key stack. This
 			// ensures RangeKeyChanged() returns true if a subsequent positioning
 			// operation discovers a range key. It also prevents seek no-op
