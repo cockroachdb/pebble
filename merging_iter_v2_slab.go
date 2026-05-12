@@ -26,8 +26,8 @@ type slabState struct {
 	snapshot base.SeqNum
 	// batchSnapshot is non-zero if and only if a level is the indexed batch.
 	batchSnapshot base.SeqNum
-	// batchLevelIdx is the index of the batch level; only meaningful when
-	// batchSnapshot != 0. Defaults to 0.
+	// batchLevelIdx is the index of the batch level; -1 when there is no batch
+	// (batchSnapshot == 0).
 	batchLevelIdx int
 
 	// levels aliases m.levels, sharing the same backing array. Indexed by
