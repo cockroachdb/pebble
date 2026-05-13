@@ -29,13 +29,13 @@ func testEncodeMVCCSuffix(wallTime uint64, logical uint32) []byte {
 	return buf
 }
 
-func TestSuffixUpperBoundBlockPropertyFilter(t *testing.T) {
+func TestSuffixMaskBlockPropertyFilter(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	bound := testEncodeMVCCSuffix(100, 0)
-	filter := MakeSuffixUpperBoundBlockPropertyFilter(bound)
+	filter := MakeSuffixMaskBlockPropertyFilter(bound)
 	require.True(t, filter != nil)
 
 	// Empty bound should return nil filter.
-	require.True(t, MakeSuffixUpperBoundBlockPropertyFilter(nil) == nil)
+	require.True(t, MakeSuffixMaskBlockPropertyFilter(nil) == nil)
 }

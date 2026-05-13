@@ -145,6 +145,7 @@ func (d *DB) exciseTable(
 			SeqNums:                  m.SeqNums,
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+			SuffixMask:               m.SuffixMask,
 			BlobReferenceDepth:       m.BlobReferenceDepth,
 		}
 		if looseBounds {
@@ -184,6 +185,7 @@ func (d *DB) exciseTable(
 			SeqNums:                  m.SeqNums,
 			LargestSeqNumAbsolute:    m.LargestSeqNumAbsolute,
 			SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+			SuffixMask:               m.SuffixMask,
 			BlobReferenceDepth:       m.BlobReferenceDepth,
 		}
 		if looseBounds {
