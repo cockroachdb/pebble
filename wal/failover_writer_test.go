@@ -281,6 +281,8 @@ func TestFailoverWriter(t *testing.T) {
 					logWriterCreated = make(chan struct{}, 100)
 					w, err = newFailoverWriter(failoverWriterOpts{
 						wn:                          wn,
+						primaryDir:                  testDirs[primaryDirIndex].Dir,
+						secondaryDir:                testDirs[secondaryDirIndex].Dir,
 						timeSource:                  defaultTime{},
 						logCreator:                  testLogCreator,
 						preallocateSize:             func() int { return 0 },
@@ -649,6 +651,8 @@ func TestConcurrentWritersWithManyRecords(t *testing.T) {
 	dirIndex := 0
 	ww, err := newFailoverWriter(failoverWriterOpts{
 		wn:                          0,
+		primaryDir:                  dirs[primaryDirIndex].Dir,
+		secondaryDir:                dirs[secondaryDirIndex].Dir,
 		timeSource:                  defaultTime{},
 		logCreator:                  simpleLogCreator,
 		preallocateSize:             func() int { return 0 },
@@ -759,6 +763,7 @@ func TestFailoverWriterManyRecords(t *testing.T) {
 	}
 	w, err := newFailoverWriter(failoverWriterOpts{
 		wn:                          1,
+		primaryDir:                  dir.Dir,
 		timeSource:                  defaultTime{},
 		logCreator:                  simpleLogCreator,
 		preallocateSize:             func() int { return 0 },
