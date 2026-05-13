@@ -122,6 +122,7 @@ func TestDefaultOptionsString(t *testing.T) {
   compaction_garbage_fraction_for_max_concurrency=0.40
   comparer=leveldb.BytewiseComparator
   disable_wal=false
+  iterator_stack=v1
   flush_delay_delete_range=0s
   flush_delay_range_key=0s
   flush_split_bytes=4194304
@@ -238,7 +239,11 @@ func TestDefaultOptionsString(t *testing.T) {
   target_file_size=134217728
 `
 
-	require.Equal(t, expected, DefaultOptions().String())
+	opts := DefaultOptions()
+	// Pin the iterator stack to keep the output deterministic across
+	// invariants-build randomization.
+	opts.IteratorStack = IteratorStackV1
+	require.Equal(t, expected, opts.String())
 }
 
 func TestOptionsCheckCompatibility(t *testing.T) {
@@ -543,11 +548,11 @@ func TestOptionsParseLevelNoQuotes(t *testing.T) {
   block_restart_interval=8
   block_size=10
 `
-	o1 := &Options{}
+	o1 := &Options{IteratorStack: IteratorStackV1}
 	require.NoError(t, o1.Parse(withQuotes, nil))
 	o1.EnsureDefaults()
 
-	o2 := &Options{}
+	o2 := &Options{IteratorStack: IteratorStackV1}
 	require.NoError(t, o2.Parse(withoutQuotes, nil))
 	o2.EnsureDefaults()
 

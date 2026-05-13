@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"regexp"
 	"runtime"
 	"slices"
@@ -24,6 +25,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/cache"
 	"github.com/cockroachdb/pebble/internal/deletepacer"
 	"github.com/cockroachdb/pebble/internal/humanize"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -126,6 +128,36 @@ func (t IterKeyType) String() string {
 		return "points-and-ranges"
 	default:
 		panic(errors.AssertionFailedf("unknown key type %d", errors.Safe(t)))
+	}
+}
+
+// IteratorStack selects which iterator stack implementation is used.
+// Transitional: the option exists while V2 is rolled out and will be removed
+// once V2 fully replaces V1.
+type IteratorStack uint8
+
+const (
+	// IteratorStackDefault is the zero value. EnsureDefaults replaces it with
+	// a concrete choice.
+	IteratorStackDefault IteratorStack = 0
+	// IteratorStackV1 selects the legacy V1 iterator stack.
+	IteratorStackV1 IteratorStack = 1
+	// IteratorStackV2 selects the V2 iterator stack.
+	IteratorStackV2 IteratorStack = 2
+)
+
+// String returns the string representation used in the serialized OPTIONS
+// file.
+func (s IteratorStack) String() string {
+	switch s {
+	case IteratorStackDefault:
+		return "default"
+	case IteratorStackV1:
+		return "v1"
+	case IteratorStackV2:
+		return "v2"
+	default:
+		return fmt.Sprintf("unknown(%d)", uint8(s))
 	}
 }
 
@@ -1083,6 +1115,20 @@ type Options struct {
 	// introduces significant nondeterminism.
 	DisableTableStats bool
 
+	// IteratorStack selects the iterator stack used for iterators created on
+	// this DB. The choice is fixed at DB Open time and is not dynamic: a
+	// cluster setting cannot flip live iterators because Pebble iterators
+	// (including those held across SetOptions / Clone) keep their stack for
+	// their lifetime.
+	//
+	// The default value (IteratorStackDefault) is replaced by EnsureDefaults
+	// with a concrete choice (V1 in production builds, randomized between V1
+	// and V2 in invariants builds).
+	//
+	// This option is transitional and will be removed once V2 fully replaces
+	// V1.
+	IteratorStack IteratorStack
+
 	// NoSyncOnClose decides whether the Pebble instance will enforce a
 	// close-time synchronization (e.g., fdatasync() or sync_file_range())
 	// on files it writes to. Setting this to true removes the guarantee for a
@@ -1617,6 +1663,13 @@ func (o *Options) EnsureDefaults() {
 	if o.DisableIngestAsFlushable == nil {
 		o.DisableIngestAsFlushable = func() bool { return false }
 	}
+	if o.IteratorStack == IteratorStackDefault {
+		// Default to V1; in invariant builds randomize the default.
+		o.IteratorStack = IteratorStackV1
+		if invariants.Enabled && rand.IntN(2) == 0 {
+			o.IteratorStack = IteratorStackV2
+		}
+	}
 	if o.L0CompactionConcurrency <= 0 {
 		o.L0CompactionConcurrency = 10
 	}
@@ -1861,6 +1914,9 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  disable_wal=%t\n", o.DisableWAL)
 	if o.DisableIngestAsFlushable != nil && o.DisableIngestAsFlushable() {
 		fmt.Fprintf(&buf, "  disable_ingest_as_flushable=%t\n", true)
+	}
+	if o.IteratorStack != IteratorStackDefault {
+		fmt.Fprintf(&buf, "  iterator_stack=%s\n", o.IteratorStack)
 	}
 	fmt.Fprintf(&buf, "  flush_delay_delete_range=%s\n", o.FlushDelayDeleteRange)
 	fmt.Fprintf(&buf, "  flush_delay_range_key=%s\n", o.FlushDelayRangeKey)
@@ -2163,6 +2219,15 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				}
 			case "disable_lazy_combined_iteration":
 				o.private.disableLazyCombinedIteration, err = strconv.ParseBool(value)
+			case "iterator_stack":
+				switch value {
+				case "v1":
+					o.IteratorStack = IteratorStackV1
+				case "v2":
+					o.IteratorStack = IteratorStackV2
+				default:
+					err = errors.Errorf("unknown iterator_stack value %q", value)
+				}
 			case "disable_wal":
 				o.DisableWAL, err = strconv.ParseBool(value)
 			case "flush_delay_delete_range":

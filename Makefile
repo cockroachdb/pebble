@@ -70,13 +70,6 @@ stressmeta: override STRESSFLAGS += -p 3
 stressmeta: override TESTS = TestMeta$$
 stressmeta: stress
 
-.PHONY: stressmeta-iterv2
-stressmeta-iterv2: override PKG = ./internal/metamorphic
-stressmeta-iterv2: override TAGS += iterv2
-stressmeta-iterv2: override STRESSFLAGS += -p 3
-stressmeta-iterv2: override TESTS = TestMeta$$
-stressmeta-iterv2: stress
-
 .PHONY: crossversion-meta
 crossversion-meta:
 	$(eval LATEST_RELEASE := $(shell git fetch origin && git branch -r --list '*/crl-release-*' | grep -o 'crl-release-.*$$' | sort | tail -1))

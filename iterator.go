@@ -2778,7 +2778,6 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 			panic(err)
 		}
 	}
-
 	// Ensure that the Iterator appears exhausted, regardless of whether we
 	// actually have to invalidate the internal iterator. Optimizations that
 	// avoid exhaustion are an internal implementation detail that shouldn't
@@ -3012,7 +3011,9 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	var buf *iterAllocCommon
 	var allocV1 *iterAlloc
 	var allocV2 *iterV2Alloc
-	if iterv2.Enabled {
+	// Inherit the iterator stack from the source iterator, so a clone behaves
+	// identically to the original.
+	if i.allocV2 != nil {
 		allocV2 = newIterV2Alloc()
 		buf = &allocV2.iterAllocCommon
 	} else {

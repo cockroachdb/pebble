@@ -72,9 +72,12 @@ func TestParseOptionsStr(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			o := new(pebble.Options)
 			require.NoError(t, tc.c.ParseCustomOptions(tc.c.OptionsString, o))
+			// Pin the iterator stack to avoid invariants-build randomization.
+			o.IteratorStack = pebble.IteratorStackV1
 			o.EnsureDefaults()
 			got := o.String()
 
+			tc.options.IteratorStack = pebble.IteratorStackV1
 			tc.options.EnsureDefaults()
 			want := tc.options.String()
 			require.Equal(t, want, got)

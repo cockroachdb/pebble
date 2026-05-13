@@ -8,14 +8,8 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/pebble/internal/base"
-	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 )
-
-// Enabled controls whether the V2 merging iterator is used in the iterator
-// stack. When true, constructPointIter builds a mergingIterV2 over
-// levelIterV2/InterleavingIter children instead of the V1 mergingIter.
-const Enabled = buildtags.IterV2
 
 // Iter is a base.InternalIterator that also exposes span information.
 //

@@ -19,7 +19,6 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/itertest"
-	"github.com/cockroachdb/pebble/internal/iterv2"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/internal/testutils"
@@ -32,9 +31,6 @@ import (
 // fragmented spans is susceptible to races.
 
 func TestIterHistories(t *testing.T) {
-	if iterv2.Enabled {
-		t.Skip("TestIterHistories tests are specific to the V1 iterator stack")
-	}
 	defer leaktest.AfterTest(t)()
 	datadriven.Walk(t, "testdata/iter_histories", func(t *testing.T, path string) {
 		filename := filepath.Base(path)
@@ -70,6 +66,9 @@ func TestIterHistories(t *testing.T) {
 				Logger: testutils.Logger{T: t},
 			}
 			opts.DisableAutomaticCompactions = true
+			// Force the V1 iterator stack: this test's testdata is V1-specific.
+			// TODO(radu): port TestIterHistories to the V2 iterator stack.
+			opts.IteratorStack = IteratorStackV1
 			opts.EnsureDefaults()
 			opts.WithFSDefaults()
 			originalCache := opts.Cache

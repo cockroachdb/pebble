@@ -1158,7 +1158,7 @@ func (d *DB) newIter(
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
 	var buf *iterAllocCommon
-	if iterv2.Enabled {
+	if d.opts.IteratorStack == IteratorStackV2 {
 		a := newIterV2Alloc()
 		a.dbi.allocV2 = a
 		buf = &a.iterAllocCommon
@@ -1280,7 +1280,7 @@ func (dbi *Iterator) finishInitializingIter(ctx context.Context) {
 					initialized: false,
 				},
 			}
-			if iterv2.Enabled {
+			if dbi.allocV2 != nil {
 				// The TriggerIter is the first level of mergingIterV2.
 				// Arm it so it fires when iteration enters a region with
 				// possible range-key sets.
@@ -1321,7 +1321,7 @@ func (dbi *Iterator) finishInitializingIter(ctx context.Context) {
 		// iterator doesn't unnecessarily try to switch to combined iteration.
 		dbi.lazyCombinedIter.combinedIterState = combinedIterState{initialized: true}
 	}
-	if iterv2.Enabled {
+	if dbi.allocV2 != nil {
 		if !dbi.lazyCombinedIter.combinedIterState.initialized {
 			// Arm the TriggerIter so it fires when iteration enters a region with
 			// possible range-key sets.

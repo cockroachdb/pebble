@@ -153,6 +153,9 @@ func runReplayTest(t *testing.T, path string) {
 
 func setDefaultTestOpts(opts *pebble.Options) {
 	opts.FileCacheShards = 2
+	// Pin the iterator stack so the OPTIONS file (and therefore disk usage)
+	// is deterministic across invariants-build randomization.
+	opts.IteratorStack = pebble.IteratorStackV2
 }
 
 func TestReplay(t *testing.T) {
