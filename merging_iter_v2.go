@@ -529,7 +529,13 @@ func (m *mergingIterV2) seekGEAfterBatchRefresh(
 		}
 	}
 	m.prepareForLevelOp(level)
-	level.iterKV = level.iter.SeekGE(key, flags)
+	// Clear TrySeekUsingNext: this is the first seek of the batch level since
+	// the refresh, so we have no guarantee that the new key is >= the batch
+	// level's current position. The InterleavingIter and batch iterators below
+	// would in practice ignore TrySeekUsingNext when BatchJustRefreshed is also
+	// set, but propagating it would technically violate the iterv2 SeekGE
+	// contract and prevent us from wrapping levels with OpCheckIter.
+	level.iterKV = level.iter.SeekGE(key, flags.DisableTrySeekUsingNext())
 	switch {
 	case level.iterKV == nil:
 		// The entire operation is done if there was an error or the merging
