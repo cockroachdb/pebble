@@ -655,12 +655,16 @@ func (ww *failoverWriter) switchToNewDir(dir dirAndFileHandle) error {
 		// never get recycled for NumWAL n at a later index (since recycling
 		// happens when n as a whole is obsolete).
 
-		// Determine which directory we're using and select the appropriate histogram
+		// Determine which directory we're using and select the appropriate
+		// histogram. dir.Dir is always either the primary or secondary directory.
 		var histogram record.WALFileOpHistogram
-		switch dir.Dir {
-		case ww.opts.primaryDir:
+		if dir.Dir == ww.opts.primaryDir {
 			histogram = ww.opts.primaryFileOpHistogram
-		case ww.opts.secondaryDir:
+		} else {
+			if dir.Dir != ww.opts.secondaryDir {
+				panic(errors.AssertionFailedf(
+					"dir %q matches neither primary nor secondary", dir.Dir.Dirname))
+			}
 			histogram = ww.opts.secondaryFileOpHistogram
 		}
 
