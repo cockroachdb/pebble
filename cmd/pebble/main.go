@@ -72,6 +72,10 @@ func main() {
 `)
 	rootCmd.AddCommand(benchCmd)
 
+	// The CLI always reserves a 1 GiB ballast in the opened DB to keep some
+	// disk free for emergency recovery. The bench package leaves this at 0.
+	commonCfg.Ballast = 1 << 30
+
 	t := tool.New(
 		tool.Comparers(&cockroachkvs.Comparer, testkeys.Comparer),
 		tool.Mergers(bench.FauxMVCCMerger),

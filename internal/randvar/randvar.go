@@ -4,10 +4,7 @@
 
 package randvar
 
-import (
-	"fmt"
-	"math/rand/v2"
-)
+import "math/rand/v2"
 
 // Static models a random variable that pulls from a static distribution.
 type Static interface {
@@ -17,8 +14,6 @@ type Static interface {
 
 // StaticBytes models a random variable that generates byte slices.
 type StaticBytes interface {
-	fmt.Stringer
-
 	// Bytes returns a random bytes value.
 	Bytes(rng *rand.Rand, buf []byte) []byte
 }
