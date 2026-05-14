@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bench"
 	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testkeys"
@@ -19,21 +20,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	cacheSize                int64
-	concurrency              int
-	disableWAL               bool
-	duration                 time.Duration
-	maxSize                  uint64
-	maxOpsPerSec             = newRateFlag("")
-	verbose                  bool
-	waitCompactions          bool
-	wipe                     bool
-	pathToLocalSharedStorage string
-	// If zero, or if !sharedStorageEnabled, secondary cache is
-	// not used.
-	secondaryCacheSize int64
-)
+// commonCfg holds the shared configuration that the cobra flag bindings
+// populate before each benchmark is invoked.
+var commonCfg bench.CommonConfig
+
+// maxOpsPerSec parses the --rate flag; the rate.Limiter is constructed in
+// each benchmark's RunE and assigned to commonCfg.RateLimiter.
+var maxOpsPerSec = newRateFlag("")
 
 // Define a few default key schemas including the testkey schema. Feeding this
 // schema to the tool ensures the cmd/pebble cli tool natively understands the
@@ -81,7 +74,7 @@ func main() {
 
 	t := tool.New(
 		tool.Comparers(&cockroachkvs.Comparer, testkeys.Comparer),
-		tool.Mergers(fauxMVCCMerger),
+		tool.Mergers(bench.FauxMVCCMerger),
 		tool.KeySchema(defaultSchema.Name),
 		tool.KeySchemas(&cockroachkvs.KeySchema, &testKeysSchema, &defaultSchema),
 	)
@@ -89,34 +82,34 @@ func main() {
 
 	for _, cmd := range []*cobra.Command{replayCmd, scanCmd, syncCmd, tombstoneCmd, writeBenchCmd, ycsbCmd} {
 		cmd.Flags().BoolVarP(
-			&verbose, "verbose", "v", false, "enable verbose event logging")
+			&commonCfg.Verbose, "verbose", "v", false, "enable verbose event logging")
 		cmd.Flags().StringVar(
-			&pathToLocalSharedStorage, "shared-storage", "", "path to local shared storage (empty for no shared storage)")
+			&commonCfg.PathToLocalSharedStorage, "shared-storage", "", "path to local shared storage (empty for no shared storage)")
 		cmd.Flags().Int64Var(
-			&secondaryCacheSize, "secondary-cache", 0, "secondary cache size in bytes")
+			&commonCfg.SecondaryCacheSize, "secondary-cache", 0, "secondary cache size in bytes")
 	}
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().Int64Var(
-			&cacheSize, "cache", 1<<30, "cache size")
+			&commonCfg.CacheSize, "cache", 1<<30, "cache size")
 	}
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd, fsBenchCmd, writeBenchCmd} {
 		cmd.Flags().DurationVarP(
-			&duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
+			&commonCfg.Duration, "duration", "d", 10*time.Second, "the duration to run (0, run forever)")
 	}
 	for _, cmd := range []*cobra.Command{scanCmd, syncCmd, tombstoneCmd, ycsbCmd} {
 		cmd.Flags().IntVarP(
-			&concurrency, "concurrency", "c", 1, "number of concurrent workers")
+			&commonCfg.Concurrency, "concurrency", "c", 1, "number of concurrent workers")
 		cmd.Flags().BoolVar(
-			&disableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
+			&commonCfg.DisableWAL, "disable-wal", false, "disable the WAL (voiding persistence guarantees)")
 		cmd.Flags().VarP(
 			maxOpsPerSec, "rate", "m", "max ops per second [{zipf,uniform}:]min[-max][/period (sec)]")
 		cmd.Flags().BoolVar(
-			&waitCompactions, "wait-compactions", false,
+			&commonCfg.WaitCompactions, "wait-compactions", false,
 			"wait for background compactions to complete after load stops")
 		cmd.Flags().BoolVarP(
-			&wipe, "wipe", "w", false, "wipe the database before starting")
+			&commonCfg.Wipe, "wipe", "w", false, "wipe the database before starting")
 		cmd.Flags().Uint64Var(
-			&maxSize, "max-size", 0, "maximum disk size, in MB (0, run forever)")
+			&commonCfg.MaxSize, "max-size", 0, "maximum disk size, in MB (0, run forever)")
 	}
 
 	if err := rootCmd.Execute(); err != nil {

@@ -1,9 +1,15 @@
+// Copyright 2020 The LevelDB-Go and Pebble Authors. All rights reserved. Use
+// of this source code is governed by a BSD-style license that can be found in
+// the LICENSE file.
+
 package main
 
 import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/bench"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +26,7 @@ descriptions are printed out for those names.
 }
 
 func runListFsBench(_ *cobra.Command, args []string) error {
+	benchmarks := bench.FsBenchmarks(vfs.Default)
 	if len(args) == 0 {
 		fmt.Println("Available benchmarks:")
 		for name := range benchmarks {
@@ -27,12 +34,12 @@ func runListFsBench(_ *cobra.Command, args []string) error {
 		}
 	} else {
 		for _, v := range args {
-			benchStruct, ok := benchmarks[v]
+			b, ok := benchmarks[v]
 			if !ok {
 				return errors.Errorf("trying to print out the description for unknown benchmark: %s", v)
 			}
-			fmt.Println("Name:", benchStruct.name)
-			fmt.Println("Description:", benchStruct.description)
+			fmt.Println("Name:", b.Name)
+			fmt.Println("Description:", b.Description)
 		}
 	}
 	return nil
