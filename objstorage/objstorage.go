@@ -435,8 +435,9 @@ func Copy(ctx context.Context, r ReadHandle, out Writable, offset, length uint64
 	return nil
 }
 
-// IsLocalTable returns true if a table with the given fileNum exists and is
-// local.
+// IsLocalTable returns true if a table with the given fileNum is local. It
+// also returns true for fileNums that are unknown to the provider, since
+// unknown objects are treated as Local (see Placement).
 func IsLocalTable(provider Provider, fileNum base.DiskFileNum) bool {
 	return Placement(provider, base.FileTypeTable, fileNum) == base.Local
 }
@@ -447,8 +448,10 @@ func IsExternalTable(provider Provider, fileNum base.DiskFileNum) bool {
 	return Placement(provider, base.FileTypeTable, fileNum) == base.External
 }
 
-// Placement returns the placement for a given object. The object must be known
-// to the provider.
+// Placement returns the placement for a given object. If the object is
+// unknown to the provider, Placement returns base.Local: an unknown object
+// is assumed to be a local object that disappeared before the store was
+// reopened.
 func Placement(provider Provider, fileType base.FileType, fileNum base.DiskFileNum) base.Placement {
 	meta, err := provider.Lookup(fileType, fileNum)
 	if err != nil {

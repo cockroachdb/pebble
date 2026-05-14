@@ -38,7 +38,9 @@ func (s *splice) init(prev, next *node) {
 
 // Iterator is an iterator over the skiplist object. Use Skiplist.NewIter
 // to construct an iterator. The current state of the iterator can be cloned by
-// simply value copying the struct. All iterator methods are thread-safe.
+// simply value copying the struct. The Skiplist supports concurrent insertions
+// while iterators are reading, but a single Iterator must not be used
+// concurrently from multiple goroutines.
 type Iterator struct {
 	list  *Skiplist
 	split base.Split

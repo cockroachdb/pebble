@@ -40,7 +40,9 @@ type provider struct {
 		remote remoteLockedState
 
 		// knownObjects maintains information about objects that are known to the provider.
-		// It is initialized with the list of files in the manifest when we open a DB.
+		// It is initialized from the local filesystem directory listing (for local
+		// objects, by localInit) and from the remote object catalog (for remote
+		// objects, by remoteInit).
 		knownObjects map[base.DiskFileNum]objstorage.ObjectMetadata
 
 		// protectedObjects are objects that cannot be unreferenced because they

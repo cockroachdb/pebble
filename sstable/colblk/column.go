@@ -17,7 +17,9 @@ const (
 	DataTypeInvalid DataType = 0
 	// DataTypeBool is a data type encoding a bool per row.
 	DataTypeBool DataType = 1
-	// DataTypeUint is a data type encoding a fixed 8 bits per row.
+	// DataTypeUint is a data type encoding an unsigned integer per row. The
+	// per-row width is selected by UintEncoding (0, 1, 2, 4, or 8 bytes), with
+	// optional delta encoding from a per-column constant.
 	DataTypeUint DataType = 2
 	// DataTypeBytes is a data type encoding a variable-length byte string per
 	// row.

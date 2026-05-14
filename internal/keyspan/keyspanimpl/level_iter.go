@@ -157,7 +157,7 @@ func (l *LevelIter) Init(
 //		              v
 //		.file=nil ------- .files.First() ---...
 //
-//	 When file is nil and pos is beforeFile, we are positioned after the
+//	 When file is nil and pos is beforeFile, we are positioned before the
 //	 imaginary end sentinel, i.e. after the last file:
 //
 //

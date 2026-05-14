@@ -199,8 +199,8 @@ func (s *Skiplist) Init(storage *[]byte, cmp base.Compare, abbreviatedKey base.A
 	}
 }
 
-// Add adds a new key to the skiplist if it does not yet exist. If the record
-// already exists, then Add returns ErrRecordExists.
+// Add adds a new key to the skiplist. Equal keys are inserted in arrival
+// order: a new key is spliced in before any existing key that compares equal.
 func (s *Skiplist) Add(keyOffset uint32) error {
 	data := (*s.storage)[keyOffset+1:]
 	v, n := binary.Uvarint(data)
@@ -396,7 +396,7 @@ func (s *Skiplist) findSpliceForLevel(
 		}
 		if abbreviatedKey == nextAbbreviatedKey {
 			if s.cmp(key, (*s.storage)[nextNode.keyStart:nextNode.keyEnd]) <= 0 {
-				// We are done for this level, since prev.key < key < next.key.
+				// We are done for this level, since prev.key < key <= next.key.
 				break
 			}
 		}

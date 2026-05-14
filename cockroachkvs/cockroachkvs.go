@@ -371,15 +371,18 @@ func ComparePointSuffixes(a, b []byte) int {
 	return bytes.Compare(normalizeEngineSuffixForCompare(b), normalizeEngineSuffixForCompare(a))
 }
 
-// compareVersions compares a version with a first row's untyped version
-// to determine if the version is a lower bound. Empty suffixes sort before
-// non-empty suffixes. Returns true if version >= firstRowUntypedVer.
+// compareVersions reports whether version is a lower bound for a block whose
+// first row has untyped version firstRowUntypedVer; that is, whether version
+// sorts at or before firstRowUntypedVer in suffix order.
 func compareVersions(version, firstRowUntypedVer []byte) bool {
 	switch {
 	case len(version) == 0:
-		// This includes the case where both versions are empty.
+		// An empty version sorts before any other suffix, so it is always a lower
+		// bound (this includes the case where both are empty).
 		return true
 	case len(firstRowUntypedVer) == 0:
+		// A non-empty version against an empty firstRowUntypedVer is never a lower
+		// bound, because the first row's empty suffix sorts before version.
 		return false
 	default:
 		normalizedVersion := normalizeVersionForCompare(version)
@@ -863,12 +866,10 @@ func (ks *cockroachKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) boo
 		return bytes.Compare(version, firstRowSuffix[:len(firstRowSuffix)-1]) >= 0
 	}
 
-	// NB: The sign comparison is inverted because suffixes are sorted such that
-	// the largest timestamps are "smaller" in the lexicographical ordering.
+	// NB: The sign comparisons are inverted because suffixes are sorted such that
+	// larger timestamps come first.
 	if v := cmp.Compare(firstRowWall, wallTime); v != 0 {
-		// The empty-suffixed zero-timestamped key sorts first. If the first row
-		// has zero wall and logical times, it sorts before k and k is not a
-		// lower bound.
+		// When wall times differ, logical times don't matter.
 		return v < 0
 	}
 	return cmp.Compare(uint32(firstLogical), logicalTime) <= 0

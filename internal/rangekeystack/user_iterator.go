@@ -139,11 +139,12 @@ func (ui *UserIteratorConfig) SetBounds(lower, upper []byte) {
 // Transform implements the keyspan.Transformer interface for use with a
 // keyspanimpl.MergingIter. It transforms spans by resolving range keys at the
 // provided snapshot sequence number. Shadowing of keys is resolved (eg, removal
-// of unset keys, removal of keys overwritten by a set at the same suffix, etc)
-// and then non-RangeKeySet keys are removed. The resulting transformed spans
-// only contain RangeKeySets describing the state visible at the provided
-// sequence number, and hold their Keys sorted by Suffix (except if internalKeys
-// is true, then keys remain sorted by trailer.
+// of unset keys, removal of keys overwritten by a set at the same suffix, etc).
+//
+// If ui.internalKeys is false, all non-RangeKeySet keys are removed and the
+// resulting Keys are sorted by Suffix. If internalKeys is true, the full
+// coalesced key set (including any RangeKeyUnset/RangeKeyDelete keys) is
+// retained and the Keys are sorted by trailer descending.
 func (ui *UserIteratorConfig) Transform(
 	suffixCmp base.CompareRangeSuffixes, s keyspan.Span, dst *keyspan.Span,
 ) error {

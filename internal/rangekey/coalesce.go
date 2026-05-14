@@ -154,10 +154,9 @@ func CoalesceInto(
 // shared ingested sstables. It is largely similar to the Transform function
 // implemented in UserIteratorConfig in that it calls coalesce to remove range
 // keys shadowed by other range keys, but also retains the range key that does
-// the shadowing. In addition, it elides RangeKey unsets/dels in L6 as they are
-// inapplicable when reading from a different Pebble instance. Finally, it
-// returns keys sorted in trailer order, not suffix order, as that's what the
-// rest of the iterator stack expects.
+// the shadowing. It rewrites every emitted key's sequence number to SeqNum.
+// Finally, it returns keys sorted in trailer order, not suffix order, as
+// that's what the rest of the iterator stack expects.
 type ForeignSSTTransformer struct {
 	Equal   base.Equal
 	SeqNum  base.SeqNum

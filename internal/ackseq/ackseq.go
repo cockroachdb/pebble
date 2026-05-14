@@ -45,9 +45,12 @@ func (s *S) Next() uint64 {
 	return s.next.Add(1) - 1
 }
 
-// Ack acknowledges the specified seqNum, adjusting base as necessary,
-// returning the number of newly acknowledged sequence numbers.
-func (s *S) Ack(seqNum uint64) (int, error) {
+// Ack acknowledges the specified seqNum, adjusting base as necessary. The
+// returned delta is the amount by which base advanced as a result of this
+// call (i.e., the number of contiguous newly-acknowledged seqnums starting
+// at the previous base). For an out-of-order ack that does not advance base,
+// count is 0.
+func (s *S) Ack(seqNum uint64) (delta int, _ error) {
 	s.mu.Lock()
 	if seqNum < s.mu.base || seqNum >= s.mu.base+windowSize {
 		defer s.mu.Unlock()

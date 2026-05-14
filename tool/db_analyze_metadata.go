@@ -72,7 +72,7 @@ type levelStats struct {
 
 	// KV metrics.
 	numKVsPerFile       stat
-	bytesPerKV          stat // (RawKeySize + RawValueSize) / NumEntries
+	bytesPerKV          stat // sstable file Size / NumEntries
 	bytesPerKVWithBlobs stat // includes blob value sizes
 
 	// Index metrics.
