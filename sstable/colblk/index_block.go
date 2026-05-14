@@ -28,7 +28,8 @@ const indexBlockCustomHeaderSize = 0
 //     Note that this allows consecutive separators to be equal. This is
 //     possible when snapshots required we preserve duplicate user keys at
 //     different sequence numbers.
-//   - Offsets: the offset of the end of the corresponding block.
+//   - Offsets: the offset of the start of the corresponding block within the
+//     file.
 //   - Lengths: the length in bytes of the corresponding block.
 //   - Block properties: a slice encoding arbitrary user-defined block
 //     properties.
@@ -80,8 +81,8 @@ func (w *IndexBlockWriter) Rows() int {
 	return w.rows
 }
 
-// AddBlockHandle adds a new separator and end offset of a data block to the
-// index block.  Add returns the index of the row.
+// AddBlockHandle adds a new separator and the start offset (and length) of a
+// data block to the index block. AddBlockHandle returns the index of the row.
 //
 // AddBlockHandle should only be used for first-level index blocks.
 func (w *IndexBlockWriter) AddBlockHandle(

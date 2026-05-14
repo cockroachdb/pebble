@@ -313,9 +313,9 @@ func (s *Skiplist) NewIter(split base.Split, lower, upper []byte) *Iterator {
 	return it
 }
 
-// NewFlushIter returns a new flushIterator, which is similar to an Iterator
-// but also sets the current number of the bytes that have been iterated
-// through.
+// NewFlushIter returns a new flushIterator. It is similar to an Iterator but
+// only supports forward iteration via First and Next; other positioning
+// operations such as SeekGE/SeekLT/Prev/NextPrefix are not implemented.
 func (s *Skiplist) NewFlushIter() base.InternalIterator {
 	return &flushIterator{
 		Iterator: Iterator{list: s, nd: s.head},

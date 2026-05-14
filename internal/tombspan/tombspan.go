@@ -428,10 +428,10 @@ func (ts *Set) PickCompaction(
 	v *manifest.Version, isExciseAllowed bool,
 ) (picked DeleteOnlyCompaction, ok bool) {
 	// pickCompactionForSpan is a helper function that picks a compaction for a
-	// given tombstoned span. It returns the picked compaction, a boolean
-	// indicating whether a compaction was found, and a boolean indicating
-	// whether the span should be cleared because it's unlikely to be able to
-	// schedule new delete only compactions in the future.
+	// given tombstoned span. It returns the picked compaction and a boolean
+	// indicating whether a compaction was found. If a span is unlikely to be
+	// able to schedule new delete-only compactions in the future, it is
+	// recorded for clearing via the closure-captured clearSpans slice.
 	clearSpans := ts.scratch[:0]
 	pickCompactionForSpan := func(tombBounds base.UserKeyBounds, span tombstoneSeqNums) (picked DeleteOnlyCompaction, ok bool) {
 		var skippedDueToCompacting bool

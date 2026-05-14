@@ -110,8 +110,9 @@ func (c *Checker) LSMOverlap(
 	return result, nil
 }
 
-// LevelOverlap returns true if there is possible data overlap between a user
-// key region and an L0 sublevel or L1+ level.
+// LevelOverlap returns a WithLevel describing whether the given user-key
+// region overlaps an L0 sublevel or L1+ level: None, OnlyBoundary (with an
+// optional SplitFile), or Data overlap.
 func (c *Checker) LevelOverlap(
 	ctx context.Context, region base.UserKeyBounds, ls manifest.LevelSlice,
 ) (WithLevel, error) {
