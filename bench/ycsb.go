@@ -287,6 +287,12 @@ func (y *ycsb) init(db DB) {
 		1+y.cfg.PrepopulatedKeys,
 		1+y.cfg.PrepopulatedKeys+y.cfg.InitialKeys)
 
+	// Flush so the resulting on-disk state is self-contained (no pending
+	// WAL); otherwise reopening the directory in read-only mode would fail.
+	if err := db.Flush(); err != nil {
+		log.Fatal(err)
+	}
+
 	// Wait for compactions to stabilize.
 	fmt.Println("waiting for compactions to stabilize...")
 	m := db.Metrics()

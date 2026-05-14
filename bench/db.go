@@ -24,6 +24,7 @@ type DB interface {
 	Scan(iter Iterator, key []byte, count int64, reverse bool) error
 	Metrics() *pebble.Metrics
 	Flush() error
+	Close() error
 }
 
 // Iterator is the iterator interface used by the benchmarks.
@@ -37,6 +38,7 @@ type Iterator interface {
 	Next() bool
 	Last() bool
 	Prev() bool
+	Error() error
 	Close() error
 }
 
@@ -77,6 +79,7 @@ func NewPebbleDB(dir string, cfg *CommonConfig) DB {
 		CompactionConcurrencyRange: func() (int, int) {
 			return 1, 3
 		},
+		DisableAutomaticCompactions: cfg.DisableAutoCompactions,
 	}
 	// Enable value separation. Note the minimum size of 512 means that only the
 	// variant of the ycsb benchmarks that uses 1024 values will result in any
@@ -136,10 +139,11 @@ func NewPebbleDB(dir string, cfg *CommonConfig) DB {
 			log.Fatal(err)
 		}
 	}
-	return pebbleDB{
-		d:       p,
-		ballast: make([]byte, 1<<30),
+	db := pebbleDB{d: p}
+	if cfg.Ballast > 0 {
+		db.ballast = make([]byte, cfg.Ballast)
 	}
+	return db
 }
 
 func (p pebbleDB) Flush() error {
@@ -176,9 +180,13 @@ func (p pebbleDB) Scan(iter Iterator, key []byte, count int64, reverse bool) err
 			}
 		}
 	}
-	return nil
+	return iter.Error()
 }
 
 func (p pebbleDB) Metrics() *pebble.Metrics {
 	return p.d.Metrics()
+}
+
+func (p pebbleDB) Close() error {
+	return p.d.Close()
 }
