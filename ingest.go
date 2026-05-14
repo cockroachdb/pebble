@@ -2102,14 +2102,23 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			info.GlobalSeqNum = loadResult.external[0].SeqNums.Low
 		}
 		if ve != nil {
+			remoteFiles := make(map[base.TableNum]bool, len(loadResult.shared)+len(loadResult.external))
+			for i := range loadResult.shared {
+				remoteFiles[loadResult.shared[i].TableNum] = true
+			}
+			for i := range loadResult.external {
+				remoteFiles[loadResult.external[i].TableNum] = true
+			}
 			info.Tables = make([]struct {
 				TableInfo
-				Level int
+				Level    int
+				IsRemote bool
 			}, len(ve.NewTables))
 			for i := range ve.NewTables {
 				e := &ve.NewTables[i]
 				info.Tables[i].Level = e.Level
 				info.Tables[i].TableInfo = e.Meta.TableInfo()
+				info.Tables[i].IsRemote = remoteFiles[e.Meta.TableNum]
 				stats.Bytes += e.Meta.Size
 				stats.LevelBytes[e.Level] += e.Meta.Size
 				stats.LevelFiles[e.Level]++
@@ -2124,7 +2133,8 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			// NB: If asFlushable == true, there are no shared sstables.
 			info.Tables = make([]struct {
 				TableInfo
-				Level int
+				Level    int
+				IsRemote bool
 			}, len(loadResult.local))
 			for i, f := range loadResult.local {
 				info.Tables[i].Level = -1

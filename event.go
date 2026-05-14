@@ -616,7 +616,8 @@ type TableIngestInfo struct {
 	JobID  int
 	Tables []struct {
 		TableInfo
-		Level int
+		Level    int
+		IsRemote bool
 	}
 	// GlobalSeqNum is the sequence number that was assigned to all entries in
 	// the ingested table.
@@ -666,8 +667,12 @@ func (i TableIngestInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		if !i.flushable {
 			levelStr = fmt.Sprintf("L%d:", t.Level)
 		}
-		w.Printf(" %s%s (%s)", redact.Safe(levelStr), t.FileNum,
-			redact.Safe(humanize.Bytes.Uint64(t.Size)))
+		remoteStr := ""
+		if t.IsRemote {
+			remoteStr = "(remote)"
+		}
+		w.Printf(" %s%s%s (%s)", redact.Safe(levelStr), t.FileNum,
+			redact.Safe(remoteStr), redact.Safe(humanize.Bytes.Uint64(t.Size)))
 	}
 	w.Printf("; manifest update took %.1fs; block reads took %.1fs with %s block bytes read",
 		redact.Safe(i.ManifestUpdateDuration.Seconds()), redact.Safe(i.BlockReadDuration.Seconds()),

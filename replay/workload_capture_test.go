@@ -117,7 +117,8 @@ func TestWorkloadCollector(t *testing.T) {
 					fmt.Fprintf(&buf, "created %s\n", p)
 					ingestInfo.Tables = append(ingestInfo.Tables, struct {
 						pebble.TableInfo
-						Level int
+						Level    int
+						IsRemote bool
 					}{Level: 0, TableInfo: tableInfo})
 
 					// Simulate a version edit applied to the current manifest.

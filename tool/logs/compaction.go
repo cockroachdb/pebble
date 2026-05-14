@@ -244,7 +244,8 @@ var (
 	ingestedFilePattern   = regexp.MustCompile(
 		`L` +
 			/* Level       */ `(?P<level>\d):` +
-			/* File number */ `(?P<file>\d+)\s` +
+			/* File number */ `(?P<file>\d+)` +
+			/* Remote      */ `(?:\(remote\))?\s` +
 			/* Bytes       */ `\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\)`)
 	ingestedFilePatternLevelIdx = ingestedFilePattern.SubexpIndex("level")
 	ingestedFilePatternFileIdx  = ingestedFilePattern.SubexpIndex("file")
