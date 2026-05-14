@@ -13,6 +13,9 @@ on:
       - crl-release-*
       - pebble-release-*
 
+permissions:
+  contents: read
+
 jobs:
 
   # This check is required to merge PRs.
