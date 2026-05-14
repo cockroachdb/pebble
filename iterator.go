@@ -365,6 +365,13 @@ func (i *Iterator) equalBound(a, b []byte) bool {
 	return i.comparer.Equal(a, b)
 }
 
+// needsLazyCombinedRangeKeyBuild reports whether the new options require a
+// range-key iterator stack to be constructed for lazy combined iteration. It
+// is only meaningful when there is no existing range-key stack to refresh.
+func (i *Iterator) needsLazyCombinedRangeKeyBuild(o *IterOptions) bool {
+	return o.KeyTypes != IterKeyTypePointsOnly && i.batch != nil && i.batch.batch.countRangeKeys > 0
+}
+
 // iteratorBatchState holds state pertaining to iterating over an indexed batch.
 // When an iterator is configured to read through an indexed batch, the iterator
 // maintains a pointer to this struct. This struct is embedded within the
@@ -2592,10 +2599,7 @@ func (i *Iterator) SetBounds(lower, upper []byte) {
 	// positioning method to reposition the iterator.
 	i.requiresReposition = true
 
-	if ((i.opts.LowerBound == nil) == (lower == nil)) &&
-		((i.opts.UpperBound == nil) == (upper == nil)) &&
-		i.equal(i.opts.LowerBound, lower) &&
-		i.equal(i.opts.UpperBound, upper) {
+	if i.equalBound(i.opts.LowerBound, lower) && i.equalBound(i.opts.UpperBound, upper) {
 		// Unchanged, noop.
 		return
 	}
@@ -2673,6 +2677,59 @@ func (i *Iterator) processBounds(lower, upper []byte) {
 	i.boundsBufIdx = 1 - i.boundsBufIdx
 }
 
+// maybeRefreshBatchView observes any mutations to the iterator's underlying
+// indexed batch since this iterator last looked. If the batch has been mutated,
+// the snapshot is advanced and i.batchJustRefreshed is set. The reuse{Point,
+// RangeKey}Iter pointers are updated in place to reflect whether each stack can
+// still be reused after the refresh: a stack that previously excluded the
+// batch's rangedel/rangekey iterator (because the batch held none of that kind)
+// cannot be reused if the batch now contains entries of that kind.
+func (i *Iterator) maybeRefreshBatchView(reusePointIter, reuseRangeKey *bool) {
+	if i.batch == nil {
+		return
+	}
+	nextBatchSeqNum := base.SeqNum(len(i.batch.batch.data)) | base.SeqNumBatchBit
+	if nextBatchSeqNum == i.batch.batchSeqNum {
+		return
+	}
+	i.batch.batchSeqNum = nextBatchSeqNum
+	if i.merging != nil {
+		i.merging.batchSnapshot = nextBatchSeqNum
+	} else if i.mergingV2 != nil {
+		i.mergingV2.slab.batchSnapshot = nextBatchSeqNum
+	}
+	// Prevent a no-op seek optimization on the next seek. We won't be able to
+	// reuse the top-level Iterator state, because it may be incorrect after
+	// the inclusion of new batch mutations.
+	i.batchJustRefreshed = true
+
+	// For each kind (rangedel, rangekey), if the iterator was constructed
+	// when the batch held none of that kind, the corresponding batch iterator
+	// was excluded from the stack and the stack cannot be reused now that the
+	// batch contains some. Otherwise, update the existing batch iterator in
+	// place.
+	//
+	// NB: There may or may not be new entries. We can't tell based on
+	// batch{RangeDel,RangeKey}Iter.Count(), which is the count of fragmented
+	// entries, NOT the number written to the batch
+	// [i.batch.batch.count{RangeDels,RangeKeys}].
+	if *reusePointIter && i.batch.batch.countRangeDels > 0 {
+		if i.batch.rangeDelIter.Count() == 0 {
+			*reusePointIter = false
+		} else {
+			i.batch.batch.initRangeDelIter(&i.opts, &i.batch.rangeDelIter, nextBatchSeqNum)
+		}
+	}
+	if *reuseRangeKey && i.batch.batch.countRangeKeys > 0 {
+		if i.batch.rangeKeyIter.Count() == 0 {
+			*reuseRangeKey = false
+		} else {
+			i.batch.batch.initRangeKeyIter(&i.opts, &i.batch.rangeKeyIter, nextBatchSeqNum)
+			// Note that all paths where we reuse rangeKey invalidate the iterator.
+		}
+	}
+}
+
 // SetOptions sets new iterator options for the iterator. Note that the lower
 // and upper bounds applied here will supersede any bounds set by previous calls
 // to SetBounds.
@@ -2731,69 +2788,6 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		// filters.
 		len(o.RangeKeyFilters) == 0 && len(i.opts.RangeKeyFilters) == 0
 
-	// If the iterator is backed by a batch that's been mutated, refresh its
-	// existing point and range-key iterators if they are to be reused.
-	if i.batch != nil {
-		nextBatchSeqNum := (base.SeqNum(len(i.batch.batch.data)) | base.SeqNumBatchBit)
-		if nextBatchSeqNum != i.batch.batchSeqNum {
-			i.batch.batchSeqNum = nextBatchSeqNum
-			if i.merging != nil {
-				i.merging.batchSnapshot = nextBatchSeqNum
-			} else if i.mergingV2 != nil {
-				i.mergingV2.slab.batchSnapshot = nextBatchSeqNum
-			}
-			// Prevent a no-op seek optimization on the next seek. We won't be
-			// able to reuse the top-level Iterator state, because it may be
-			// incorrect after the inclusion of new batch mutations.
-			i.batchJustRefreshed = true
-			if reusePointIter && i.batch.batch.countRangeDels > 0 {
-				if i.batch.rangeDelIter.Count() == 0 {
-					// When we constructed this iterator, there were no
-					// rangedels in the batch. Iterator construction will
-					// have excluded the batch rangedel iterator from the
-					// point iterator stack. We need to reconstruct the
-					// point iterator to add i.batchRangeDelIter into the
-					// iterator stack.
-					reusePointIter = false
-				} else {
-					// There are range deletions in the batch and we already
-					// have a batch rangedel iterator. We can update the
-					// batch rangedel iterator in place.
-					//
-					// NB: There may or may not be new range deletions. We
-					// can't tell based on i.batchRangeDelIter.Count(),
-					// which is the count of fragmented range deletions, NOT
-					// the number of range deletions written to the batch
-					// [i.batch.countRangeDels].
-					i.batch.batch.initRangeDelIter(&i.opts, &i.batch.rangeDelIter, nextBatchSeqNum)
-				}
-			}
-			if reuseRangeKey && i.batch.batch.countRangeKeys > 0 {
-				if i.batch.rangeKeyIter.Count() == 0 {
-					// When we constructed this iterator, there were no range
-					// keys in the batch. Iterator construction will have
-					// excluded the batch rangekey iterator from the range key
-					// iterator stack. We need to reconstruct the range key
-					// iterator to add i.batchRangeKeyIter into the iterator
-					// stack.
-					reuseRangeKey = false
-				} else {
-					// There are range keys in the batch and we already
-					// have a batch rangekey iterator. We can update the batch
-					// rangekey iterator in place.
-					//
-					// NB: There may or may not be new range keys. We can't
-					// tell based on i.batchRangeKeyIter.Count(), which is the
-					// count of fragmented range keys, NOT the number of
-					// range keys written to the batch [i.batch.countRangeKeys].
-					i.batch.batch.initRangeKeyIter(&i.opts, &i.batch.rangeKeyIter, nextBatchSeqNum)
-					// Note that in all paths below where we reuse rangeKey, we invalidate
-					// the iterator.
-				}
-			}
-		}
-	}
-
 	// In invariant builds, sometimes force iterator reconstruction to exercise
 	// the slow path and surface bugs that the reuse path would otherwise hide.
 	// Skipped when forceEnableSeekOpt is set, because those tests assert
@@ -2810,6 +2804,10 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		}
 	}
 
+	// If the iterator is backed by a batch that's been mutated, refresh its
+	// existing point and range-key iterators if they are to be reused.
+	i.maybeRefreshBatchView(&reusePointIter, &reuseRangeKey)
+
 	boundsEqual := i.equalBound(i.opts.LowerBound, o.LowerBound) &&
 		i.equalBound(i.opts.UpperBound, o.UpperBound)
 
@@ -2821,18 +2819,15 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		// Possible fast path: all options are unchanged and we can reuse the point
 		// iterator.
 		if reuseRangeKey {
-			// Invalidate the iterator when we are reusing the range key stack. This
-			// ensures RangeKeyChanged() returns true if a subsequent positioning
-			// operation discovers a range key. It also prevents seek no-op
-			// optimizations.
+			// Reusing the range-key stack: invalidate so RangeKeyChanged() returns
+			// true if a subsequent positioning operation discovers a range key, and
+			// to prevent seek no-op optimizations.
 			i.invalidate()
 			return
 		}
-		// If we were doing lazy combined iteration but the batch not has range
-		// keys, we have to build the range key iterator stack and can't use the
-		// fast path.
-		if i.rangeKey == nil && (i.opts.KeyTypes == IterKeyTypePointsOnly || i.batch == nil || i.batch.batch.countRangeKeys == 0) {
-			// Seek-using-Next optimizations is preserved.
+		if i.rangeKey == nil && !i.needsLazyCombinedRangeKeyBuild(o) {
+			// No range-key stack exists and lazy combined iteration won't need to
+			// build one. Seek-using-Next optimizations are preserved.
 			return
 		}
 	}
@@ -2847,23 +2842,17 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		i.rangeKey = nil
 	}
 
-	// Slow path.
-
-	// The options changed. Save the new ones to i.opts.
+	// Slow path. Save the Pebble-owned bound buffers before overwriting i.opts.
+	lower, upper := i.opts.LowerBound, i.opts.UpperBound
+	i.opts = *o
 	if boundsEqual {
-		// Copying the options into i.opts will overwrite LowerBound and
-		// UpperBound fields with the user-provided slices. We need to hold on
-		// to the Pebble-owned slices, so save them and re-set them after the
-		// copy.
-		lower, upper := i.opts.LowerBound, i.opts.UpperBound
-		i.opts = *o
+		// Restore the existing buffers; the bounds did not change.
 		i.opts.LowerBound, i.opts.UpperBound = lower, upper
 	} else {
-		i.opts = *o
 		i.processBounds(o.LowerBound, o.UpperBound)
 		// Propagate the changed bounds to the existing point iterator.
 		// NB: We propagate i.opts.{Lower,Upper}Bound, not o.{Lower,Upper}Bound
-		// because i.opts now point to buffers owned by Pebble.
+		// because i.opts now points to buffers owned by Pebble.
 		if i.pointIter != nil {
 			i.pointIter.SetBounds(i.opts.LowerBound, i.opts.UpperBound)
 		}
