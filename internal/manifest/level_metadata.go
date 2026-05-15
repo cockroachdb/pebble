@@ -677,28 +677,29 @@ func (i *LevelIterator) SeekGE(cmp Compare, userKey []byte) *TableMetadata {
 		}
 		i.iter.descend(i.iter.n, i.iter.pos)
 	}
-
-	// If the iterator is filtered or has bounds, we fall into a slow path that
-	// filters based on the current table and constraints the iterator's position
-	// according to the configured bounds.
-	if i.filter != KeyTypePointAndRange || i.start != nil || i.end != nil {
-		m := i.constrainToIteratorBounds()
-		if i.filter != KeyTypePointAndRange && m != nil {
-			b, ok := m.LargestBound(i.filter)
-			if !ok || !b.IsUpperBoundFor(cmp, userKey) {
-				// The table does not contain any keys of desired key types
-				// that are >= userKey.
-				return i.Next()
-			}
-		}
-		return i.skipFilteredForward(m)
-	}
-	// If the iterator is not filtered and has no bounds, we fall into a fast
-	// path that returns the current table.
-	if !i.iter.valid() {
+	for !i.iter.valid() {
 		return nil
 	}
-	return i.iter.cur()
+	if i.start == nil && i.end == nil {
+		// Fast path.
+		if m := i.iter.cur(); i.filter == KeyTypePointAndRange || (i.filter == KeyTypePoint && !m.HasRangeKeys) {
+			return m
+		}
+	}
+
+	// If the iterator has bounds, we fall into a slow path that
+	// filters based on the current table and constraints the iterator's position
+	// according to the configured bounds.
+	m := i.constrainToIteratorBounds()
+	if i.filter != KeyTypePointAndRange && m != nil {
+		b, ok := m.LargestBound(i.filter)
+		if !ok || !b.IsUpperBoundFor(cmp, userKey) {
+			// The table does not contain any keys of desired key types
+			// that are >= userKey.
+			return i.Next()
+		}
+	}
+	return i.skipFilteredForward(m)
 }
 
 // SeekLT seeks to the last table with a smallest key (of the desired type) that
