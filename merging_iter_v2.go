@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/iterv2"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/treesteps"
 )
 
@@ -446,7 +447,8 @@ func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Int
 				return nil
 			}
 
-			if top := m.heap.Top(); m.heap.cmp(key, top.iterKV.K.UserKey) <= 0 {
+			top := m.heap.Top()
+			if m.heap.cmp(key, top.iterKV.K.UserKey) <= 0 {
 				// The iterator is already at the right position.
 				//
 				// It is necessary to check for this case to avoid passing down
@@ -467,10 +469,10 @@ func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Int
 				return top.iterKV
 			}
 			// Try the single-level advance fast path.
-			if top := m.heap.Top(); m.shouldTrySingleLevelAdvance(top, key) {
+			if ok, spanKeysDetector := m.shouldTrySingleLevelAdvance(top, key); ok {
 				m.prepareForLevelOp(top)
 				top.iterKV = top.iter.SeekGE(key, flags)
-				if m.finishSingleLevelAdvance(top) {
+				if m.finishSingleLevelAdvance(top, &spanKeysDetector) {
 					return m.findNextEntry()
 				}
 				// The top.span keys might have changed; fall through to the full slab
@@ -615,6 +617,7 @@ func (m *mergingIterV2) addLevelStats(l *mergingIterV2Level) {
 func (m *mergingIterV2) advanceSlabForward() {
 	top := m.heap.Top()
 	boundaryKey := top.iterKV.K.UserKey
+	var boundaryKeyCopy []byte
 
 	// If in prefix mode and the boundary key is past the prefix, exhaust
 	// all levels. All matching-prefix keys have been returned. Don't seek
@@ -628,23 +631,30 @@ func (m *mergingIterV2) advanceSlabForward() {
 		return
 	}
 
-	// Optimization: when a single level has a boundary here, and the current span
-	// on that level has no span keys, try to advance without rebuilding the slab.
-	// TODO(radu): we can relax these conditions to cover more cases.
-	if len(top.span.Keys) == 0 && !m.heap.MultipleLevelsAtSameBoundary() {
+	// Optimization: when a single level has a spurious boundary here (span keys
+	// don't change), advance without rebuilding the slab.
+	if !m.heap.MultipleLevelsAtSameBoundary() {
+		if m.anyLevelParkedBelow(top.index) {
+			// Advancing this level could cause other levels to become unparked, in
+			// which case we will need the current boundary key.
+			boundaryKeyCopy = m.copyKey(boundaryKey)
+		}
+		spanKeysDetector := makeSpanKeysChangeDetector(top.span.Keys)
 		m.prepareForLevelOp(top)
 		top.iterKV = top.iter.Next()
 		if top.iterKV == nil {
 			if m.levelHasError(top) {
 				return
 			}
+			if invariants.Enabled && len(top.span.Keys) != 0 {
+				panic(errors.AssertionFailedf("span keys with nil KV"))
+			}
 			m.heap.PopTop()
 		} else {
 			m.heap.FixTop()
 		}
-		if len(top.span.Keys) == 0 {
-			// This was a spurious boundary: no keys before, no keys after. Nothing
-			// else in the slab has changed.
+		if !spanKeysDetector.MayHaveChanged(top.span.Keys) {
+			// Spurious boundary: span keys unchanged, slab state still valid.
 			m.slab.calcNextBoundary(+1)
 			return
 		}
@@ -654,6 +664,7 @@ func (m *mergingIterV2) advanceSlabForward() {
 		// the Build loop below, where we can skip it for levels that become parked
 		// (avoiding unnecessary file opens in level iterators).
 		top.atBoundary = true
+		smallestIndex := top.index
 		m.heap.PopTop()
 		for m.heap.Len() > 0 {
 			level := m.heap.Top()
@@ -664,15 +675,14 @@ func (m *mergingIterV2) advanceSlabForward() {
 				break
 			}
 			level.atBoundary = true
+			smallestIndex = min(smallestIndex, level.index)
 			m.heap.PopTop()
 		}
-	}
-
-	// If some levels are parked, we will need the boundaryKey after potentially
-	// moving the iterator that produced it; make a copy.
-	if m.anyLevelParked() {
-		m.keyBuf = append(m.keyBuf[:0], boundaryKey...)
-		boundaryKey = m.keyBuf
+		if m.anyLevelParkedBelow(smallestIndex) {
+			// Advancing these levels could cause other levels to become unparked, in
+			// which case we will need the current boundary key.
+			boundaryKeyCopy = m.copyKey(boundaryKey)
+		}
 	}
 
 	// Recompute the slab. For levels at the boundary, call Next() to cross it
@@ -707,11 +717,14 @@ func (m *mergingIterV2) advanceSlabForward() {
 			if level.onlyFwdSinceParked {
 				flags = flags.EnableTrySeekUsingNext()
 			}
+			if invariants.Enabled && boundaryKeyCopy == nil {
+				panic(errors.AssertionFailedf("unpark seek without copied boundary key"))
+			}
 			m.prepareForLevelOp(level)
 			if m.prefix != nil {
-				level.iterKV = level.iter.SeekPrefixGE(m.prefix, boundaryKey, flags)
+				level.iterKV = level.iter.SeekPrefixGE(m.prefix, boundaryKeyCopy, flags)
 			} else {
-				level.iterKV = level.iter.SeekGE(boundaryKey, flags)
+				level.iterKV = level.iter.SeekGE(boundaryKeyCopy, flags)
 			}
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
@@ -860,11 +873,12 @@ func (m *mergingIterV2) NextPrefix(succKey []byte) (kv *base.InternalKV) {
 		panic(errors.AssertionFailedf("pebble: NextPrefix called on boundary key"))
 	}
 	// Try the single-level advance fast path.
-	if top := m.heap.Top(); m.shouldTrySingleLevelAdvance(top, succKey) {
+	top := m.heap.Top()
+	if ok, spanKeysDetector := m.shouldTrySingleLevelAdvance(top, succKey); ok {
 		m.prepareForLevelOp(top)
 		// We can always call NextPrefix here (see assertion above).
 		top.iterKV = top.iter.NextPrefix(succKey)
-		if m.finishSingleLevelAdvance(top) {
+		if m.finishSingleLevelAdvance(top, &spanKeysDetector) {
 			return m.findNextEntry()
 		}
 		// The top.span keys might have changed; fall through to the full slab
@@ -966,24 +980,32 @@ func (m *mergingIterV2) findPrevEntry() *base.InternalKV {
 func (m *mergingIterV2) advanceSlabBackward() {
 	top := m.heap.Top()
 	boundaryKey := top.iterKV.K.UserKey
+	var boundaryKeyCopy []byte
 
-	// Optimization: when a single level has a boundary here, and the current span
-	// on that level has no span keys, try to advance without rebuilding the slab.
-	// TODO(radu): we can relax these conditions to cover more cases.
-	if len(top.span.Keys) == 0 && !m.heap.MultipleLevelsAtSameBoundary() {
+	// Optimization: when a single level has a spurious boundary here (span keys
+	// don't change), advance without rebuilding the slab.
+	if !m.heap.MultipleLevelsAtSameBoundary() {
+		if m.anyLevelParkedBelow(top.index) {
+			// Advancing this level could cause other levels to become unparked, in
+			// which case we will need the current boundary key.
+			boundaryKeyCopy = m.copyKey(boundaryKey)
+		}
+		spanKeysDetector := makeSpanKeysChangeDetector(top.span.Keys)
 		m.prepareForLevelOp(top)
 		top.iterKV = top.iter.Prev()
 		if top.iterKV == nil {
 			if m.levelHasError(top) {
 				return
 			}
+			if invariants.Enabled && len(top.span.Keys) != 0 {
+				panic(errors.AssertionFailedf("span keys with nil KV"))
+			}
 			m.heap.PopTop()
 		} else {
 			m.heap.FixTop()
 		}
-		if len(top.span.Keys) == 0 {
-			// This was a spurious boundary: no keys before, no keys after. Nothing
-			// else in the slab has changed.
+		if !spanKeysDetector.MayHaveChanged(top.span.Keys) {
+			// Spurious boundary: span keys unchanged, slab state still valid.
 			m.slab.calcNextBoundary(-1)
 			return
 		}
@@ -994,6 +1016,7 @@ func (m *mergingIterV2) advanceSlabBackward() {
 		// levels that become parked (avoiding unnecessary file opens in level
 		// iterators).
 		top.atBoundary = true
+		smallestIndex := top.index
 		m.heap.PopTop()
 		for m.heap.Len() > 0 {
 			level := m.heap.Top()
@@ -1004,15 +1027,14 @@ func (m *mergingIterV2) advanceSlabBackward() {
 				break
 			}
 			level.atBoundary = true
+			smallestIndex = min(smallestIndex, level.index)
 			m.heap.PopTop()
 		}
-	}
-
-	// Unless some levels are parked, we are only using boundary in the first loop
-	// below (before messing with the iterator).
-	if m.anyLevelParked() {
-		m.keyBuf = append(m.keyBuf[:0], boundaryKey...)
-		boundaryKey = m.keyBuf
+		if m.anyLevelParkedBelow(smallestIndex) {
+			// Advancing these levels could cause other levels to become unparked, in
+			// which case we will need the current boundary key.
+			boundaryKeyCopy = m.copyKey(boundaryKey)
+		}
 	}
 
 	// Recompute the slab. For levels at the boundary, call Prev() to cross it
@@ -1041,8 +1063,11 @@ func (m *mergingIterV2) advanceSlabBackward() {
 			}
 		} else if wasParked {
 			// Unpark: seek to before slab boundary.
+			if invariants.Enabled && boundaryKeyCopy == nil {
+				panic(errors.AssertionFailedf("unpark seek without copied boundary key"))
+			}
 			m.prepareForLevelOp(level)
-			level.iterKV = level.iter.SeekLT(boundaryKey, base.SeekLTFlagsNone)
+			level.iterKV = level.iter.SeekLT(boundaryKeyCopy, base.SeekLTFlagsNone)
 			if level.iterKV == nil && m.levelHasError(level) {
 				return
 			}
@@ -1286,53 +1311,61 @@ func (m *mergingIterV2) prepareForLevelOp(level *mergingIterV2Level) {
 // change as a result of the advance, the slab is unchanged and we can advance
 // just the one level.
 //
-// We establish two conditions:
+// This fast path requires two conditions:
 //
 //  1. Only the heap's top level moves (i.e. no other level needs to advance).
 //     Verified here by comparing the seek key to the second-best heap entry.
 //
-//  2. The top level's span keys don't change as a result of the advance.
-//     Currently checked conservatively: top.span must have no keys before
-//     AND after the advance. The pre-check is here; the post-check is in
-//     finishSingleLevelAdvance.
-//     TODO(radu): relax this (e.g. snapshot the span keys and compare).
-func (m *mergingIterV2) shouldTrySingleLevelAdvance(top *mergingIterV2Level, seekKey []byte) bool {
-	if len(top.span.Keys) != 0 {
-		return false
-	}
+//  2. The top level's span keys don't change as a result of the advance,
+//     checked via spanKeysChangeDetector.
+//
+// This method checks condition 1 and returns a spanKeysChangeDetector to be
+// passed to finishSingleLevelAdvance. Note that the detector is conservative
+// and may report changes spuriously (e.g. when the span has too many keys or
+// any key has a non-nil Suffix/Value); in such cases the fast path is
+// structurally unavailable and the caller will fall back to the slab rebuild.
+func (m *mergingIterV2) shouldTrySingleLevelAdvance(
+	top *mergingIterV2Level, seekKey []byte,
+) (bool, spanKeysChangeDetector) {
 	// Condition 1 is satisfied iff the second-best level is at a key >= the
 	// seek key.
-	sb := m.heap.SecondBest()
-	return sb == nil || m.heap.cmp(sb.iterKV.K.UserKey, seekKey) >= 0
+	if sb := m.heap.SecondBest(); sb != nil && m.heap.cmp(sb.iterKV.K.UserKey, seekKey) < 0 {
+		return false, spanKeysChangeDetector{}
+	}
+	return true, makeSpanKeysChangeDetector(top.span.Keys)
 }
 
 // finishSingleLevelAdvance is used after shouldTrySingleLevelAdvance returned
 // true and the top level was advanced while holding the slab fixed. It inspects
 // the result of the single-level advance: it completes condition 2 from
 // shouldTrySingleLevelAdvance (top.span keys unchanged) by verifying the new
-// top.span also has no keys.
+// top.span keys against the change detector.
 //
 // Returns true if the fast path was successful; false if the slab must be
 // rebuilt. On success, it updates the heap.
-func (m *mergingIterV2) finishSingleLevelAdvance(top *mergingIterV2Level) (ok bool) {
+func (m *mergingIterV2) finishSingleLevelAdvance(
+	top *mergingIterV2Level, spanKeysDetector *spanKeysChangeDetector,
+) bool {
+	if spanKeysDetector.MayHaveChanged(top.span.Keys) {
+		return false
+	}
 	if top.iterKV == nil {
 		if m.levelHasError(top) {
 			return true
 		}
+		if invariants.Enabled && len(top.span.Keys) != 0 {
+			panic(errors.AssertionFailedf("span keys with nil KV"))
+		}
 		m.heap.PopTop()
-		m.slab.calcNextBoundary(+1)
-		return true
-	}
-	if len(top.span.Keys) == 0 {
+	} else {
 		m.heap.FixTop()
-		m.slab.calcNextBoundary(+1)
-		return true
 	}
-	return false
+	m.slab.calcNextBoundary(+1)
+	return true
 }
 
-func (m *mergingIterV2) anyLevelParked() bool {
-	for i := range m.levels {
+func (m *mergingIterV2) anyLevelParkedBelow(levelIndex int) bool {
+	for i := levelIndex + 1; i < len(m.levels); i++ {
 		if m.levels[i].parked {
 			return true
 		}
@@ -1350,6 +1383,12 @@ func (m *mergingIterV2) levelHasError(level *mergingIterV2Level) bool {
 		return true
 	}
 	return false
+}
+
+// copyKey makes a temporary copy of a key using keyBuf.
+func (m *mergingIterV2) copyKey(key []byte) []byte {
+	m.keyBuf = append(m.keyBuf[:0], key...)
+	return m.keyBuf
 }
 
 // ----------------------------------------------------------------------------
@@ -1524,4 +1563,56 @@ func (h *mergingIterV2Heap) DebugItems() iter.Seq[*mergingIterV2Level] {
 			}
 		}
 	}
+}
+
+// spanKeysChangeDetector snapshots the trailers of a span's keys so that, after
+// an iterator advance, we can cheaply detect whether the set of keys changed.
+//
+// The trailer array is sized to cover the vast majority of common cases while
+// keeping the struct small: in practice we normally expect 0 or 1 RANGEDELs
+// per span, with a small amount of slack to accommodate spans that fragment
+// across snapshots. When the snapshot can't be taken precisely (more than
+// maxTrackedSpanKeys keys, or any non-nil Suffix/Value), n is set to -1 and
+// MayHaveChanged conservatively returns true.
+type spanKeysChangeDetector struct {
+	n        int
+	trailers [maxTrackedSpanKeys]base.InternalKeyTrailer
+}
+
+const maxTrackedSpanKeys = 3
+
+func makeSpanKeysChangeDetector(keysBefore []keyspan.Key) spanKeysChangeDetector {
+	d := spanKeysChangeDetector{}
+	if len(keysBefore) > len(d.trailers) {
+		d.n = -1
+		return d
+	}
+	for i := range keysBefore {
+		if keysBefore[i].Suffix != nil || keysBefore[i].Value != nil {
+			d.n = -1
+			return d
+		}
+	}
+	d.n = len(keysBefore)
+	for i := range keysBefore {
+		d.trailers[i] = keysBefore[i].Trailer
+	}
+	return d
+}
+
+// MayHaveChanged returns true if a change was detected between keysBefore and
+// keysAfter. False positives are possible, but no false negatives: when the
+// return value is false, the keys before and after are guaranteed to be
+// identical.
+func (d *spanKeysChangeDetector) MayHaveChanged(keysAfter []keyspan.Key) bool {
+	if len(keysAfter) != d.n {
+		// This includes the case when d.n = -1.
+		return true
+	}
+	for i := range keysAfter {
+		if keysAfter[i].Trailer != d.trailers[i] || keysAfter[i].Suffix != nil || keysAfter[i].Value != nil {
+			return true
+		}
+	}
+	return false
 }
