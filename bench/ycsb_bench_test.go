@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/randvar"
 )
 
@@ -100,6 +101,7 @@ func ensureYCSBFixture(
 	common := &CommonConfig{
 		CacheSize:   cacheBytes,
 		Concurrency: 1,
+		Logger:      base.NoopLoggerAndTracer{},
 	}
 	cfg := DefaultYCSBConfig()
 	cfg.InitialKeys = initialKeys
@@ -136,6 +138,7 @@ func runYCSBWorkload(b *testing.B, fixtureDir, workload string, valueSize, initi
 		CacheSize:   4 << 30,
 		Concurrency: 256,
 		DisableWAL:  false,
+		Logger:      base.NoopLoggerAndTracer{},
 	}
 	cfg := DefaultYCSBConfig()
 	cfg.Workload = workload

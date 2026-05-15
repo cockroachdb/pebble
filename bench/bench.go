@@ -53,6 +53,11 @@ type CommonConfig struct {
 	// benchmark. cmd/pebble constructs this from its rateFlag and assigns it
 	// before invoking the benchmark.
 	RateLimiter *rate.Limiter
+
+	// Logger, when non-nil, overrides the default Pebble logger. The in-process
+	// benchmarks set this to a noop logger so Pebble's internal log messages
+	// don't pollute `go test -v` output.
+	Logger pebble.Logger
 }
 
 // wait calls Wait(1) on the limiter if non-nil.

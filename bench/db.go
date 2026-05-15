@@ -80,6 +80,7 @@ func NewPebbleDB(dir string, cfg *CommonConfig) DB {
 			return 1, 3
 		},
 		DisableAutomaticCompactions: cfg.DisableAutoCompactions,
+		Logger:                      cfg.Logger,
 	}
 	// Enable value separation. Note the minimum size of 512 means that only the
 	// variant of the ycsb benchmarks that uses 1024 values will result in any
