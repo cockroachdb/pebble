@@ -43,6 +43,10 @@ func (d *CloseChecker) AssertNotClosed() {}
 // allow getting a valid pointer address of the field).
 type Value[V any] struct{}
 
+func MakeValue[V any](v V) Value[V] {
+	return Value[V]{}
+}
+
 // Get the current value, or the zero value if invariants are disabled.
 func (*Value[V]) Get() V {
 	var v V // zero value

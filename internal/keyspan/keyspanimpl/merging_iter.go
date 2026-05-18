@@ -690,7 +690,7 @@ func (m *MergingIter) Close() {
 	for i := range m.levels {
 		m.levels[i].iter.Close()
 	}
-	m.levels = nil
+	m.levels = m.levels[:0]
 	m.heap.items = m.heap.items[:0]
 }
 

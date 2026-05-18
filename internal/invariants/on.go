@@ -68,9 +68,18 @@ type Value[V any] struct {
 	v V
 }
 
+func MakeValue[V any](v V) Value[V] {
+	return Value[V]{v: v}
+}
+
 // Get the current value, or the zero-value if invariants are disabled.
 func (v *Value[V]) Get() V {
 	return v.v
+}
+
+// Set the value; no-op in non-invariant builds.
+func (v *Value[V]) Set(inner V) {
+	v.v = inner
 }
 
 // MaybeMangle mangles a byte slice sometimes in invariant builds.
@@ -106,11 +115,6 @@ func (bm *BufMangler) MaybeMangleLater(buf []byte) []byte {
 		return bm.lastReturnedBuf
 	}
 	return buf
-}
-
-// Set the value; no-op in non-invariant builds.
-func (v *Value[V]) Set(inner V) {
-	v.v = inner
 }
 
 // CheckBounds panics if the index is not in the range [0, n). No-op in
