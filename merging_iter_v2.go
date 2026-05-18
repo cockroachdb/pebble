@@ -541,7 +541,13 @@ func (m *mergingIterV2) seekGEAfterBatchRefresh(
 	}
 	spanKeysDetector, _ := makeSpanKeysChangeDetector(level.span.Keys)
 	m.prepareForLevelOp(level)
-	level.iterKV = level.iter.SeekGE(seekKey, flags)
+	// Clear TrySeekUsingNext: this is the first seek of the batch level since
+	// the refresh, so we have no guarantee that the new key is >= the batch
+	// level's current position. The InterleavingIter and batch iterators below
+	// would in practice ignore TrySeekUsingNext when BatchJustRefreshed is also
+	// set, but propagating it would technically violate the iterv2 SeekGE
+	// contract and prevent us from wrapping levels with OpCheckIter.
+	level.iterKV = level.iter.SeekGE(seekKey, flags.DisableTrySeekUsingNext())
 	newFlags = flags.DisableBatchJustRefreshed()
 	switch {
 	case level.iterKV == nil:
