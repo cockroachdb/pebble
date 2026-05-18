@@ -22,8 +22,8 @@ type FlushGovernor struct {
 	// lowWatermark (even if the block is very large after adding the KV). This is
 	// a safeguard to avoid very small blocks in the presence of large KVs.
 	lowWatermark int
-	// We never add another KV to a block if its existing size exceeds
-	// highWatermark (unless its initial size is < lowWatermark).
+	// We never add another KV to a block if its projected size after the add
+	// would exceed highWatermark (unless its existing size is < lowWatermark).
 	//
 	// When using allocation classes, the high watermark corresponds to the
 	// allocation size class that follows the target class. Otherwise, it

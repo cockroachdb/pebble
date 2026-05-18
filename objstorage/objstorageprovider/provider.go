@@ -45,8 +45,12 @@ type provider struct {
 		// objects, by remoteInit).
 		knownObjects map[base.DiskFileNum]objstorage.ObjectMetadata
 
-		// protectedObjects are objects that cannot be unreferenced because they
-		// have outstanding SharedObjectBackingHandles. The value is a count of outstanding handles
+		// protectedObjects are objects that cannot be unreferenced. The value is
+		// a count incremented in two situations: (a) when a RemoteObjectBacking
+		// has an outstanding RemoteObjectBackingHandle (decremented by
+		// RemoteObjectBackingHandle.Close), and (b) when CheckpointState bumps
+		// the count to prevent deletion for the life of this instance (these
+		// bumps are intentionally never released).
 		protectedObjects map[base.DiskFileNum]int
 	}
 }
@@ -188,7 +192,7 @@ const (
 	NoReadahead ReadaheadMode = iota
 
 	// SysReadahead enables the use of SYS_READAHEAD call to prefetch data.
-	// The prefetch window grows dynamically as consecutive writes are detected.
+	// The prefetch window grows dynamically as consecutive reads are detected.
 	SysReadahead
 
 	// FadviseSequential enables the use of FADV_SEQUENTIAL. For informed

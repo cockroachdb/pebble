@@ -304,12 +304,13 @@ type IterConfig struct {
 	NondeterministicSingleDeleteCallback func(userKey []byte)
 
 	// MissizedDeleteCallback is called in compactions/flushes when a DELSIZED
-	// tombstone is found that did not accurately record the size of the value it
-	// deleted. This can lead to incorrect behavior in compactions.
+	// tombstone is found that is ineffectual or does not accurately record the
+	// size of the value it deletes. This can lead to incorrect behavior in
+	// compactions.
 	//
-	// For the second case, elidedSize and expectedSize will be set to the actual
-	// size of the elided key and the expected size that was recorded in the
-	// tombstone. For the first case (when a key doesn't exist), these will be 0.
+	// elidedSize is the actual size of the elided key, or 0 if the tombstone is
+	// ineffectual (i.e. no matching key exists). expectedSize is the size
+	// recorded in the tombstone.
 	MissizedDeleteCallback func(userKey []byte, elidedSize, expectedSize uint64)
 }
 
@@ -1456,9 +1457,9 @@ const (
 // tombstoneCovers returns whether the key is covered by a tombstone and whether
 // it is covered by a tombstone visible in the given snapshot.
 //
-// The key's UserKey must be greater or equal to the last span Start key passed
-// to AddTombstoneSpan. The keys passed to tombstoneCovers calls must be
-// ordered.
+// The key's UserKey must be greater or equal to the Start key of the last span
+// recorded via setLastRangeDelSpan. The keys passed to tombstoneCovers calls
+// must be ordered.
 func (i *Iter) tombstoneCovers(key base.InternalKey, snapshot base.SeqNum) cover {
 	if i.lastRangeDelSpan.Empty() {
 		return noCover

@@ -30,8 +30,7 @@ type history struct {
 
 const historyEpochs = 100
 
-// Init the history helper to keep track of data over the given number of
-// seconds.
+// Init the history helper to keep track of data over the given timeframe.
 func (h *history) Init(now crtime.Mono, timeframe time.Duration) {
 	*h = history{
 		epochDuration: timeframe / time.Duration(historyEpochs),

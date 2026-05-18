@@ -97,7 +97,7 @@ func (w *tableFilterWriter) init(bitsPerKey uint32) {
 	w.hc.Init()
 }
 
-// AddKey implements the base.FilterWriter interface.
+// AddKey implements the base.TableFilterWriter interface.
 func (w *tableFilterWriter) AddKey(key []byte) {
 	w.hc.Add(hash(key))
 }

@@ -754,7 +754,7 @@ func (m *MergingIter) switchToMinHeap() error {
 	// In every level the first key ≥ m.end is the next in the iterator.
 	// Justification: Suppose not and a level iterator's next key was some key k
 	// such that k < m.end. The max-heap invariant dictates that the current
-	// iterator position is the largest entry with a user key ≥ m.start. This
+	// iterator position is the largest entry with a user key ≤ m.start. This
 	// means k > m.start. We started with the assumption that k < m.end, so
 	// m.start < k < m.end. But then k is between our current span bounds,
 	// and reverse iteration would have constructed the current interval to be

@@ -76,9 +76,9 @@ func (bpwc blockProviderWhenClosed) ReadValueBlock(h block.Handle) (block.Buffer
 	return bpwc.r.ReadValueBlockExternal(bpwc.ctx, h, bpwc.stats.stats, bpwc.stats.catStats)
 }
 
-// Reader implements GetLazyValueForPrefixAndValueHandler; it is used to create
-// LazyValues (each of which can can be used to retrieve a value in a value
-// block). It is used when the sstable was written with
+// Reader implements block.GetInternalValueForPrefixAndValueHandler; it is used
+// to create InternalValues (each of which can be used to retrieve a value in a
+// value block). It is used when the sstable was written with
 // Properties.ValueBlocksAreEnabled. The lifetime of this object is tied to the
 // lifetime of the sstable iterator.
 type Reader struct {

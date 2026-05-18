@@ -115,12 +115,17 @@
 // |   | 4      2            0             |    | 4           125474          |   |
 // |   | 5      3            0             |    +-----------------------------+   |
 // |   +-----------------------------------+                                      |
-// +----------------------------- Footer (30 bytes) ------------------------------+
+// +------------------ Footer (V1: 38 bytes / V2: 70 bytes) ----------------------+
 // | CRC Checksum (4 bytes)                                                       |
 // | Index Block Offset (8 bytes)                                                 |
 // | Index Block Length (8 bytes)                                                 |
 // | Checksum Type (1 byte)                                                       |
 // | Format (1 byte)                                                              |
+// | Original File Number (8 bytes)                                               |
+// | [V2 only] FileProperties Block Offset (8 bytes)                              |
+// | [V2 only] FileProperties Block Length (8 bytes)                              |
+// | [V2 only] Metaindex Block Offset (8 bytes); reserved for future use          |
+// | [V2 only] Metaindex Block Length (8 bytes); reserved for future use          |
 // | Magic String (8 bytes)                                                       |
 // +------------------------------------------------------------------------------+
 package blob

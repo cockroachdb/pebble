@@ -16,9 +16,11 @@ import (
 // individual compaction output.
 type ValueSeparationOutputConfig struct {
 	// MinimumSize imposes a lower bound on the size of values that can be
-	// separated into a blob file. Values smaller than this are always written
-	// to the sstable (but may still be written to a value block within the
-	// sstable).
+	// separated into a blob file. Values smaller than this are written to the
+	// sstable (possibly to a value block within the sstable). Note that this
+	// bound does not apply when suffix-based separation is enabled and the KV
+	// is likely MVCC garbage; see DisableValueSeparationBySuffix and
+	// MinimumMVCCGarbageSize.
 	MinimumSize int
 	// DisableValueSeparationBySuffix indicates whether we should consider the
 	// KV suffix when separating values (e.g. for MVCC garbage). See
@@ -92,9 +94,6 @@ func (NeverSeparateValues) SetNextOutputConfig(config ValueSeparationOutputConfi
 func (NeverSeparateValues) OutputConfig() ValueSeparationOutputConfig {
 	return ValueSeparationOutputConfig{}
 }
-
-// MinimumSize implements the ValueSeparation interface.
-func (v NeverSeparateValues) MinimumSize() int { return 0 }
 
 // EstimatedFileSize implements the ValueSeparation interface.
 func (NeverSeparateValues) EstimatedFileSize() uint64 { return 0 }

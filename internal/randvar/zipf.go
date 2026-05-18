@@ -39,7 +39,8 @@ const (
 // parameter without performing an expensive recomputation of the underlying
 // hidden parameters, which is a pattern used in [1] for efficiently generating
 // large volumes of Zipf-distributed records for synthetic data. Second,
-// rand.Zipf only supports theta <= 1, we suppose all values of theta.
+// rand.Zipf only supports theta > 1, while this generator supports any
+// theta > 0 except for theta == 1.
 type Zipf struct {
 	// Supplied constants.
 	theta float64
@@ -110,7 +111,7 @@ func computeZetaFromScratch(n uint64, theta float64) float64 {
 }
 
 // IncMax increments max and recomputes the internal values that depend on
-// it. Returns an error if the recomputation failed.
+// it.
 func (z *Zipf) IncMax(delta uint64) {
 	z.mu.Lock()
 	oldMax := z.mu.max

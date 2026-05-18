@@ -72,17 +72,10 @@ const (
 	maxNodesSize = min(math.MaxUint32, math.MaxInt)
 )
 
-var (
-	// ErrExists indicates that a duplicate record was inserted. This should never
-	// happen for normal usage of batchskl as every key should have a unique
-	// sequence number.
-	ErrExists = errors.New("record with this key already exists")
-
-	// ErrTooManyRecords is a sentinel error returned when the size of the raw
-	// nodes slice exceeds the maximum allowed size (currently 1 << 32 - 1). This
-	// corresponds to ~117 M skiplist entries.
-	ErrTooManyRecords = errors.New("too many records")
-)
+// ErrTooManyRecords is a sentinel error returned when the size of the raw
+// nodes slice exceeds the maximum allowed size (currently 1 << 32 - 1). This
+// corresponds to ~117 M skiplist entries.
+var ErrTooManyRecords = errors.New("too many records")
 
 type links struct {
 	next uint32
@@ -199,8 +192,9 @@ func (s *Skiplist) Init(storage *[]byte, cmp base.Compare, abbreviatedKey base.A
 	}
 }
 
-// Add adds a new key to the skiplist. Equal keys are inserted in arrival
-// order: a new key is spliced in before any existing key that compares equal.
+// Add adds a new key to the skiplist. A new key is spliced in before any
+// existing key that compares equal, so forward iteration over equal keys
+// yields the most recently inserted first.
 func (s *Skiplist) Add(keyOffset uint32) error {
 	data := (*s.storage)[keyOffset+1:]
 	v, n := binary.Uvarint(data)

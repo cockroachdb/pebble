@@ -235,7 +235,7 @@ type VersionEdit struct {
 //
 // Note that the Decode step will not set the TableBacking for virtual sstables
 // and the responsibility is left to the caller. However, the Decode step will
-// populate the NewFileEntry.BackingFileNum in VersionEdit.NewFiles.
+// populate the NewTableEntry.BackingFileNum in VersionEdit.NewTables.
 func (v *VersionEdit) Decode(r io.Reader) error {
 	br, ok := r.(byteReader)
 	if !ok {

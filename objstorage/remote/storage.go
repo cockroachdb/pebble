@@ -105,19 +105,20 @@ type Storage interface {
 	// finalize the upload.
 	CreateObject(objName string) (io.WriteCloser, error)
 
-	// List enumerates files within the supplied prefix, returning a list of
-	// objects within that prefix. If delimiter is non-empty, names which have the
-	// same prefix, prior to the delimiter but after the prefix, are grouped into a
-	// single result which is that prefix. The order that results are returned is
-	// undefined. If a prefix is specified, the prefix is trimmed from the result
-	// list.
+	// List enumerates files within the supplied prefix, returning their full
+	// (un-trimmed) names. The order that results are returned is undefined.
 	//
-	// An example would be, if the storage contains objects a, b/4, b/5 and b/6,
-	// these would be the return values:
+	// If delimiter is non-empty, names which have the same substring, prior to
+	// the delimiter but after the prefix, may be grouped into a single result
+	// which is that common prefix; delimiter support is optional and the
+	// in-tree localFSStore/inMemStore implementations panic when delimiter is
+	// not "".
+	//
+	// Example: if the storage contains objects a, b/4, b/5 and b/6:
 	//   List("", "") -> ["a", "b/4", "b/5", "b/6"]
 	//   List("", "/") -> ["a", "b"]
-	//   List("b", "/") -> ["4", "5", "6"]
-	//   List("b", "") -> ["/4", "/5", "/6"]
+	//   List("b", "") -> ["b/4", "b/5", "b/6"]
+	//   List("b", "/") -> ["b/4", "b/5", "b/6"]
 	List(prefix, delimiter string) ([]string, error)
 
 	// Delete removes the named object from the store.

@@ -35,7 +35,7 @@ func btreeCmpSmallestKey(cmp Compare) btreeCmp[*TableMetadata] {
 	}
 }
 
-// btreeCmpBlobFileID is a comparator function that compares two BlobFileIDEntry
+// btreeCmpBlobFileID is a comparator function that compares two BlobFileMetadata
 // items by their file ID. It's used for the blob file set's B-Tree.
 func btreeCmpBlobFileID(a, b BlobFileMetadata) int {
 	return stdcmp.Compare(a.FileID, b.FileID)

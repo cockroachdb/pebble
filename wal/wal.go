@@ -434,7 +434,7 @@ type Writer interface {
 type RefCount interface {
 	// Ref increments the reference count.
 	Ref()
-	// Unref increments the reference count.
+	// Unref decrements the reference count.
 	Unref()
 }
 

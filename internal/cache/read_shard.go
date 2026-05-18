@@ -172,10 +172,10 @@ func newReadEntry(rs *readShard, k key) *readEntry {
 	return e
 }
 
-// waitForReadPermissionOrHandle returns either an already read value (in
-// Handle), an error (if the context was cancelled), or neither, which is a
-// directive to the caller to do the read. In this last case the caller must
-// call either setReadValue or setReadError.
+// waitForReadPermissionOrHandle returns either an already read *Value, an
+// error (if the context was cancelled), or neither, which is a directive to
+// the caller to do the read. In this last case the caller must call either
+// setReadValue or setReadError.
 //
 // In all cases, errorDuration is populated with the total duration that
 // readers that observed an error (setReadError) spent in doing the read. This
