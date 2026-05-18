@@ -24,7 +24,7 @@ type ReaderOptions struct {
 	CacheOpts CacheOptions
 }
 
-// WriterOptions are fields of sstable.ReaderOptions that can only be set from
+// WriterOptions are fields of sstable.WriterOptions that can only be set from
 // within the pebble package.
 type WriterOptions struct {
 	CacheOpts CacheOptions

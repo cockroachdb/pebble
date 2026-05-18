@@ -253,19 +253,10 @@ type IntervalMapper interface {
 }
 
 // NewBlockIntervalCollector constructs a BlockIntervalCollector with the given
-// name. The BlockIntervalCollector makes use of the given point and range key
-// DataBlockIntervalCollectors when encountering point and range keys,
-// respectively.
-//
-// The caller may pass a nil DataBlockIntervalCollector for one of the point or
-// range key collectors, in which case keys of those types will be ignored. This
-// allows for flexible construction of BlockIntervalCollectors that operate on
-// just point keys, just range keys, or both point and range keys.
-//
-// If both point and range keys are to be tracked, two independent collectors
-// should be provided, rather than the same collector passed in twice (see the
-// comment on BlockIntervalCollector for more detail)
-// XXX update
+// name. The provided IntervalMapper is used to map point keys (via
+// MapPointKey) and range keys (via MapRangeKeys) to intervals; it must be
+// non-nil. The optional suffixReplacer is used to translate per-block
+// intervals when synthetic suffix replacement is in effect.
 func NewBlockIntervalCollector(
 	name string, mapper IntervalMapper, suffixReplacer BlockIntervalSuffixReplacer,
 ) BlockPropertyCollector {

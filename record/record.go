@@ -344,8 +344,9 @@ func (r *Reader) nextChunk(wantFirst bool) error {
 					continue
 				}
 
-				// The last case is when there was more than 19 bytes which means there shouldn't be
-				// a zeroed header. Thus, this case should also return ErrZeroedChunk.
+				// The last case is when there were at least walSyncHeaderSize (19) bytes,
+				// which means there shouldn't be a zeroed header. Thus, this case should
+				// also return ErrZeroedChunk.
 				r.invalidOffset = uint64(r.blockNum)*blockSize + uint64(r.begin)
 				return ErrZeroedChunk
 			}
@@ -848,7 +849,7 @@ func (w *Writer) Size() int64 {
 
 // LastRecordOffset returns the offset in the underlying io.Writer of the last
 // record so far - the one created by the most recent Next call. It is the
-// offset of the first chunk header, suitable to pass to Reader.SeekRecord.
+// offset of the first chunk header.
 //
 // If that io.Writer also implements io.Seeker, the return value is an absolute
 // offset, in the sense of io.SeekStart, regardless of whether the io.Writer

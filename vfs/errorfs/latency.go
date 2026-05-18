@@ -80,7 +80,7 @@ func (rl *randomLatency) MaybeError(op Op) error {
 	}
 	var dur time.Duration
 	rl.keyedPrng.withKey(op.Path, func(prng *rand.Rand) {
-		// We cap the max latency to 100x: Otherwise, it seems possible
+		// We cap the max latency to 20x the mean: Otherwise, it seems possible
 		// (although very unlikely) ExpFloat64 generates a multiplier high
 		// enough that causes a test timeout.
 		dur = time.Duration(min(prng.ExpFloat64(), 20.0) * float64(rl.mean))

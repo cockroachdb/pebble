@@ -44,12 +44,15 @@ var (
 	defaultTickInterval = 2 * time.Second
 )
 
-// OpType is the type of IO operation being monitored by a
-// diskHealthCheckingFile.
+// OpType is the type of IO or filesystem operation being monitored, both by
+// diskHealthCheckingFile (per-file operations like Write/Sync/Preallocate) and
+// by diskHealthCheckingFS (filesystem-level operations like Create/Rename/
+// Remove).
 type OpType uint8
 
-// The following OpTypes is limited to the subset of file system operations that
-// a diskHealthCheckingFile supports (namely writes and syncs).
+// The following OpTypes cover the file-level operations recorded by
+// diskHealthCheckingFile and the filesystem-level operations recorded by
+// diskHealthCheckingFS.
 const (
 	OpTypeUnknown OpType = iota
 	OpTypeWrite

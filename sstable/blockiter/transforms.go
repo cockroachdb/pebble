@@ -221,7 +221,7 @@ func (ps SyntheticPrefixAndSuffix) HasSuffix() bool {
 	return ps.suffixLen != 0
 }
 
-// SuffixLen returns the length of the synthetic prefix, or 0 if it is not set.
+// SuffixLen returns the length of the synthetic suffix, or 0 if it is not set.
 func (ps SyntheticPrefixAndSuffix) SuffixLen() uint32 {
 	return ps.suffixLen
 }

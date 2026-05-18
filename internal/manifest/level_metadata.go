@@ -718,7 +718,7 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *TableMetadata {
 		// Logic copied from sort.Search.
 		//
 		// INVARIANT A: items[j].Smallest().UserKey < userKey
-		// INVARIANT B: items[k].Smallest().UserKey >= 0
+		// INVARIANT B: items[k].Smallest().UserKey >= userKey
 		j, k := 0, int(i.iter.n.count)
 		for j < k {
 			h := int(uint(j+k) >> 1) // avoid overflow when computing h

@@ -280,7 +280,7 @@ func (bv *VirtualBackings) Get(n base.DiskFileNum) (_ *TableBacking, ok bool) {
 	return nil, false
 }
 
-// ForEach calls fn on each backing, in unspecified order.
+// All returns an iterator over all backings, in unspecified order.
 func (bv *VirtualBackings) All() iter.Seq[*TableBacking] {
 	return func(yield func(*TableBacking) bool) {
 		for _, v := range bv.m {

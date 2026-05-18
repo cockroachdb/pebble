@@ -499,10 +499,10 @@ type LogWriterConfig struct {
 	// WAL file operation latency histogram for this directory
 	WALFileOpHistogram WALFileOpHistogram
 
-	// QueueSemChan is an optional channel to pop from when popping from
-	// LogWriter.flusher.syncQueue. It functions as a semaphore that prevents
-	// the syncQueue from overflowing (which will cause a panic). All production
-	// code ensures this is non-nil.
+	// QueueSemChan is an optional channel to pop from when popping a pending
+	// sync from LogWriter.flusher.pendingSyncs. It functions as a semaphore
+	// that prevents the underlying syncQueue from overflowing (which would
+	// cause a panic). All production code ensures this is non-nil.
 	QueueSemChan chan struct{}
 
 	// ExternalSyncQueueCallback is set to non-nil when the LogWriter is used
@@ -628,30 +628,30 @@ func (w *LogWriter) flushLoop(context.Context) {
 	// - flusher.ready is a condition variable that is signalled when there is
 	//   work to do. Full blocks are contained in flusher.pending. The current
 	//   partial block is in LogWriter.block. And sync operations are held in
-	//   flusher.syncQ.
+	//   flusher.pendingSyncs.
 	//
 	// - The decision to sync is determined by whether there are any sync
-	//   requests present in flusher.syncQ and whether enough time has elapsed
-	//   since the last sync. If not enough time has elapsed since the last sync,
-	//   flusher.syncQ.blocked will be set to 1. If syncing is blocked,
-	//   syncQueue.empty() will return true and syncQueue.load() will return 0,0
-	//   (i.e. an empty list).
+	//   requests present in flusher.pendingSyncs and whether enough time has
+	//   elapsed since the last sync. If not enough time has elapsed since the
+	//   last sync, flusher.pendingSyncs's blocked flag will be set via
+	//   setBlocked(). If syncing is blocked, pendingSyncs.empty() will return
+	//   true (i.e. no work picked up).
 	//
-	// - flusher.syncQ.blocked is cleared by a timer that is initialized when
-	//   blocked is set to 1. When blocked is 1, no syncing will take place, but
-	//   flushing will continue to be performed. The on/off toggle for syncing
-	//   does not need to be carefully synchronized with the rest of processing
-	//   -- all we need to ensure is that after any transition to blocked=1 there
-	//   is eventually a transition to blocked=0. syncTimer performs this
-	//   transition. Note that any change to min-sync-interval will not take
-	//   effect until the previous timer elapses.
+	// - The blocked flag is cleared by a timer that is initialized when blocked
+	//   is set. While blocked, no syncing will take place, but flushing will
+	//   continue to be performed. The on/off toggle for syncing does not need
+	//   to be carefully synchronized with the rest of processing -- all we need
+	//   to ensure is that after any transition to blocked there is eventually
+	//   a transition to unblocked. syncTimer performs this transition. Note
+	//   that any change to min-sync-interval will not take effect until the
+	//   previous timer elapses.
 	//
 	// - Picking up the syncing work to perform requires coordination with
 	//   picking up the flushing work. Specifically, flushing work is queued
 	//   before syncing work. The guarantee of this code is that when a sync is
 	//   requested, any previously queued flush work will be synced. This
-	//   motivates reading the syncing work (f.syncQ.load()) before picking up
-	//   the flush work (w.block.written.Load()).
+	//   motivates snapshotting the syncing work (f.pendingSyncs.snapshotForPop)
+	//   before picking up the flush work (w.block.written.Load()).
 
 	// The list of full blocks that need to be written. This is copied from
 	// f.pending on every loop iteration, though the number of elements is
@@ -684,17 +684,17 @@ func (w *LogWriter) flushLoop(context.Context) {
 		}
 		// Found work to do, so no longer idle.
 		//
-		// NB: it is safe to read pending before loading from the syncQ since
+		// NB: it is safe to read pending before snapshotting pendingSyncs since
 		// mutations to pending require the w.flusher mutex, which is held here.
 		// There is no risk that someone will concurrently add to pending, so the
-		// following sequence, which would pick up a syncQ entry without the
-		// corresponding data, is impossible:
+		// following sequence, which would pick up a pendingSyncs entry without
+		// the corresponding data, is impossible:
 		//
 		// Thread enqueueing       This thread
 		//                         1. read pending
 		// 2. add block to pending
-		// 3. add to syncQ
-		//                         4. read syncQ
+		// 3. add to pendingSyncs
+		//                         4. snapshot pendingSyncs
 		workStartTime := crtime.NowMono()
 		idleDuration := workStartTime.Sub(idleStartTime)
 		pending = append(pending[:0], f.pending...)

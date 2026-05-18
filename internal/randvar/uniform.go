@@ -27,9 +27,8 @@ type Uniform struct {
 	max atomic.Uint64
 }
 
-// NewUniform constructs a new Uniform generator with the given
-// parameters. Returns an error if the parameters are outside the accepted
-// range.
+// NewUniform constructs a new Uniform generator with the given parameters.
+// The caller must ensure min <= max.
 func NewUniform(min, max uint64) *Uniform {
 	u := &Uniform{min: min}
 	u.max.Store(max)

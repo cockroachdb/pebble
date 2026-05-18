@@ -16,8 +16,8 @@ import (
 
 // Coalesce imposes range key semantics and coalesces range keys with the same
 // bounds. Coalesce drops any keys shadowed by more recent sets, unsets or
-// deletes. Coalesce modifies the provided span's Keys slice, reslicing the
-// slice to remove dropped keys.
+// deletes. The coalesced keys are written to *dst (which is reset to the
+// provided slice's zero-length view); the input keys slice is not modified.
 //
 // Coalescence has subtle behavior with respect to sequence numbers. Coalesce
 // depends on a keyspan.Span's Keys being sorted in sequence number descending

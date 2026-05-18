@@ -88,7 +88,7 @@ func (c *Cache[K, V, InitOpts]) Close() {
 
 // FindOrCreate retrieves an existing value or creates a new value for the given
 // key. The result can be accessed via ValueRef.Value(). The caller must call
-// ValueRef.Close() when it no longer needs the value.
+// ValueRef.Unref() when it no longer needs the value.
 func (c *Cache[K, V, InitOpts]) FindOrCreate(
 	ctx context.Context, key K, opts InitOpts,
 ) (ValueRef[K, V, InitOpts], error) {

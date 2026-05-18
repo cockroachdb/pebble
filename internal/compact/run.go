@@ -359,9 +359,9 @@ func (r *Runner) Finish() Result {
 	}
 }
 
-// TableSplitLimit returns a hard split limit for an output table that starts at
-// startKey (which must be strictly greater than startKey), or nil if there is
-// no limit.
+// TableSplitLimit returns a hard split limit for an output table that starts
+// at startKey, or nil if there is no limit. When non-nil, the returned key is
+// strictly greater than startKey.
 func (r *Runner) TableSplitLimit(startKey []byte) []byte {
 	var limitKey []byte
 

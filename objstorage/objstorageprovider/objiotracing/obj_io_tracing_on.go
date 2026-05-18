@@ -110,7 +110,7 @@ func (w *writable) Write(p []byte) error {
 	return w.w.Write(p)
 }
 
-// Finish is part of the objstorage.Writable interface.
+// StartMetadataPortion is part of the objstorage.Writable interface.
 func (w *writable) StartMetadataPortion() error {
 	return w.w.StartMetadataPortion()
 }

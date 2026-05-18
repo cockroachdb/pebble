@@ -14,7 +14,7 @@ import (
 var Decoders = []base.TableFilterDecoder{bloom.Decoder, binaryfuse.Decoder}
 
 // PolicyFromName returns the TableFilterPolicy corresponding to the given name,
-// or false if the string is not recognized as a binary fuse filter policy.
+// or false if the name is not recognized.
 //
 // Supports bloom filters and binary fuse filters. The "none" policy is also
 // supported.

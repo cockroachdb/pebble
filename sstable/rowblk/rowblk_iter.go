@@ -753,7 +753,7 @@ func (i *Iter) SeekGE(key []byte, flags base.SeekGEFlags) *base.InternalKV {
 	// replacement suffix), the binary search with or without suffix replacement
 	// would land on the same key, as we assume the following:
 	// (1) no two keys in the sst share the same prefix.
-	// (2) pebble.Compare(replacementSuffix,originalSuffix) > 0
+	// (2) pebble.Compare(replacementSuffix,originalSuffix) < 0
 
 	i.maybeReplaceSuffix()
 

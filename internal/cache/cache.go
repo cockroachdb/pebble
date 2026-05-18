@@ -276,7 +276,7 @@ func (c *Handle) Get(
 }
 
 // GetWithReadHandle retrieves the cache value for the specified handleID, fileNum
-// and offset. If found, a valid Handle is returned (with cacheHit set to
+// and offset. If found, a valid *Value is returned (with cacheHit set to
 // true), else a valid ReadHandle is returned.
 //
 // See the ReadHandle declaration for the contract the caller must satisfy
@@ -297,7 +297,7 @@ func (c *Handle) Get(
 // context cancellation of other readers.
 //
 // While waiting, someone else may successfully read the value, which results
-// in a valid Handle being returned. This is a case where cacheHit=false.
+// in a valid *Value being returned. This is a case where cacheHit=false.
 func (c *Handle) GetWithReadHandle(
 	ctx context.Context, fileNum base.DiskFileNum, offset uint64, level base.Level, category Category,
 ) (
