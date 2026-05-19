@@ -242,8 +242,6 @@ func (i *InterleavingIter) emitBoundary(userKey []byte) *base.InternalKV {
 // inSpan is true, pos is inside span.
 func (i *InterleavingIter) positionSpanIterForward(pos []byte, flags base.SeekGEFlags) {
 	if i.spanIter == nil {
-		i.inSpan = false
-		i.span = nil
 		i.computeCurrentSpan()
 		return
 	}
@@ -292,8 +290,6 @@ func (i *InterleavingIter) nextSpan(s *keyspan.Span, err error) {
 // inSpan is true, pos is inside span (or touching the end of the span).
 func (i *InterleavingIter) positionSpanIterBackward(pos []byte) {
 	if i.spanIter == nil {
-		i.span = nil
-		i.inSpan = false
 		i.computeCurrentSpan()
 		return
 	}
@@ -369,6 +365,11 @@ func (i *InterleavingIter) seekGEHelper(
 			i.exhaust()
 			return nil
 		}
+	} else if i.spanIter == nil {
+		// Fast path.
+		i.presentedSpan.BoundaryType = BoundaryEnd
+		i.presentedSpan.Boundary = i.effectiveUpper() // can be nil
+		return kv
 	}
 	i.positionSpanIterForward(key, flags)
 	return i.resolveForward()
@@ -405,6 +406,11 @@ func (i *InterleavingIter) SeekPrefixGE(
 			i.exhaust()
 			return nil
 		}
+	} else if i.spanIter == nil {
+		// Fast path.
+		i.presentedSpan.BoundaryType = BoundaryEnd
+		i.presentedSpan.Boundary = i.effectiveUpper() // can be nil
+		return kv
 	}
 	i.positionSpanIterForward(key, flags)
 	return i.resolveForward()
@@ -456,20 +462,23 @@ func (i *InterleavingIter) First() *base.InternalKV {
 			i.setError(err)
 			return nil
 		}
-	}
-
-	if i.pointKV == nil && i.geUpper(i.startKey) {
-		// Empty range.
-		i.exhaust()
-		return nil
+		if i.geUpper(i.startKey) {
+			// Empty range.
+			i.exhaust()
+			return nil
+		}
 	}
 
 	if i.spanIter != nil {
 		i.nextSpan(i.spanIter.First())
 		i.inSpan = i.span != nil && i.leEffectiveLower(i.span.Start)
 	} else {
-		i.span = nil
-		i.inSpan = false
+		if i.pointKV != nil {
+			// Fast path.
+			i.presentedSpan.BoundaryType = BoundaryEnd
+			i.presentedSpan.Boundary = i.effectiveUpper() // can be nil
+			return i.pointKV
+		}
 	}
 	i.computeCurrentSpan()
 	return i.resolveForward()
@@ -532,8 +541,16 @@ func (i *InterleavingIter) Next() *base.InternalKV {
 				i.setError(err)
 				return nil
 			}
-		} else if invariants.Enabled && i.prefix != nil && !i.cmp.HasPrefix(i.pointKV.K.UserKey, i.prefix) {
-			panic(errors.AssertionFailedf("pointIter %T did not enforce strict prefix iteration", i.pointIter))
+		} else {
+			if invariants.Enabled && i.prefix != nil && !i.cmp.HasPrefix(i.pointKV.K.UserKey, i.prefix) {
+				panic(errors.AssertionFailedf("pointIter %T did not enforce strict prefix iteration", i.pointIter))
+			}
+			if i.spanIter == nil {
+				// Fast path.
+				i.presentedSpan.BoundaryType = BoundaryEnd
+				i.presentedSpan.Boundary = i.effectiveUpper() // can be nil
+				return i.pointKV
+			}
 		}
 		// If pointKV is outside the current span, we will emit a boundary in
 		// resolveForward.
