@@ -5,6 +5,9 @@ on:
     - cron: '00 10 * * * ' # 10am UTC daily
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     strategy:
