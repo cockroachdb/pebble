@@ -261,8 +261,12 @@ type Iterator struct {
 	boundsBufIdx int
 	// iterKV reflects the latest position of iter, except when SetBounds is
 	// called. In that case, it is explicitly set to nil.
-	iterKV              *base.InternalKV
-	alloc               *iterAlloc
+	iterKV *base.InternalKV
+	// alloc is set when this Iterator was allocated from the V1 iterAllocPool.
+	alloc *iterAlloc
+	// allocV2 is set when this Iterator was allocated from the V2
+	// iterV2AllocPool. Exactly one of alloc and allocV2 is non-nil.
+	allocV2             *iterV2Alloc
 	prefixOrFullSeekKey []byte
 	readSampling        readSampling
 	stats               IteratorStats
@@ -2459,6 +2463,14 @@ func (i *Iterator) Error() error {
 
 const maxKeyBufCacheSize = 4 << 10 // 4 KB
 
+// maybeReuseKeyBuf saves buf into *save when buf is below the maximum cache
+// size. Used when returning iterAlloc/iterV2Alloc state to a pool.
+func maybeReuseKeyBuf(save *[]byte, buf []byte) {
+	if cap(buf) < maxKeyBufCacheSize {
+		*save = buf
+	}
+}
+
 // Close closes the iterator and returns any accumulated error. Exhausting
 // all the key/value pairs in a table is not considered to be an error.
 // It is not valid to call any method, including Close, after the iterator
@@ -2539,8 +2551,15 @@ func (i *Iterator) Close() error {
 		i.rangeKey = nil
 	}
 
-	alloc := i.alloc
-	if alloc == nil {
+	allocV1 := i.alloc
+	allocV2 := i.allocV2
+	var alloc *iterAllocCommon
+	switch {
+	case allocV1 != nil:
+		alloc = &allocV1.iterAllocCommon
+	case allocV2 != nil:
+		alloc = &allocV2.iterAllocCommon
+	default:
 		// NB: When the Iterator is used as a part of a Get(), Close() is called by
 		// getIterAlloc.Close which handles recycling the appropriate structure and
 		// fields.
@@ -2549,21 +2568,11 @@ func (i *Iterator) Close() error {
 
 	// Reset the alloc struct, retaining any buffers within their maximum
 	// bounds, and return the iterAlloc struct to the pool.
-
-	// Avoid caching the key buf if it is overly large. The constant is fairly
-	// arbitrary.
-	if cap(i.keyBuf) < maxKeyBufCacheSize {
-		alloc.keyBuf = i.keyBuf
-	}
-	if cap(i.prefixOrFullSeekKey) < maxKeyBufCacheSize {
-		alloc.prefixOrFullSeekKey = i.prefixOrFullSeekKey
-	}
+	maybeReuseKeyBuf(&alloc.keyBuf, i.keyBuf)
+	maybeReuseKeyBuf(&alloc.prefixOrFullSeekKey, i.prefixOrFullSeekKey)
 	for j := range i.boundsBuf {
-		if cap(i.boundsBuf[j]) < maxKeyBufCacheSize {
-			alloc.boundsBuf[j] = i.boundsBuf[j]
-		}
+		maybeReuseKeyBuf(&alloc.boundsBuf[j], i.boundsBuf[j])
 	}
-	mergingIterHeapItems := alloc.merging.heap.items
 
 	// We zero each field piecemeal in part to avoid the use of a stack
 	// allocated autotmp iterAlloc variable, and in part to make it easier
@@ -2575,14 +2584,22 @@ func (i *Iterator) Close() error {
 		alloc.batchState = iteratorBatchState{}
 	}
 	alloc.dbi.clearForReuse()
-	alloc.merging = mergingIter{}
-	clear(mergingIterHeapItems[:cap(mergingIterHeapItems)])
-	alloc.merging.heap.items = mergingIterHeapItems
-	clear(alloc.mlevels[:])
-	clear(alloc.levels[:])
-	clear(alloc.levelsPositioned[:])
 
-	iterAllocPool.Put(alloc)
+	if allocV1 != nil {
+		mergingIterHeapItems := allocV1.merging.heap.items
+		allocV1.merging = mergingIter{}
+		clear(mergingIterHeapItems[:cap(mergingIterHeapItems)])
+		allocV1.merging.heap.items = mergingIterHeapItems
+		clear(allocV1.mlevels[:])
+		clear(allocV1.levels[:])
+		clear(allocV1.levelsPositioned[:])
+		iterAllocPool.Put(allocV1)
+	} else {
+		allocV2.merging.PrepareForReuse()
+		clear(allocV2.interleavingIters[:])
+		clear(allocV2.levelIters[:])
+		iterV2AllocPool.Put(allocV2)
+	}
 	return err
 }
 
@@ -2874,7 +2891,7 @@ func (i *Iterator) SetOptions(o *IterOptions) {
 		}
 		return
 	}
-	finishInitializingIter(i.ctx, i.alloc)
+	i.finishInitializingIter(i.ctx)
 }
 
 func (i *Iterator) invalidate() {
@@ -2984,12 +3001,22 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	}
 	// Bundle various structures under a single umbrella in order to allocate
 	// them together.
-	buf := newIterAlloc()
+	var buf *iterAllocCommon
+	var allocV1 *iterAlloc
+	var allocV2 *iterV2Alloc
+	if iterv2.Enabled {
+		allocV2 = newIterV2Alloc()
+		buf = &allocV2.iterAllocCommon
+	} else {
+		allocV1 = newIterAlloc()
+		buf = &allocV1.iterAllocCommon
+	}
 	dbi := &buf.dbi
 	*dbi = Iterator{
 		ctx:                   ctx,
 		opts:                  *opts.IterOptions,
-		alloc:                 buf,
+		alloc:                 allocV1,
+		allocV2:               allocV2,
 		merge:                 i.merge,
 		comparer:              i.comparer,
 		readState:             readState,
@@ -3018,7 +3045,8 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 		}
 	}
 	dbi.processBounds(dbi.opts.LowerBound, dbi.opts.UpperBound)
-	return finishInitializingIter(ctx, buf), nil
+	dbi.finishInitializingIter(ctx)
+	return dbi, nil
 }
 
 // Merge adds all of the argument's statistics to the receiver. It may be used

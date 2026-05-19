@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"math/rand/v2"
 	"slices"
 	"strings"
 
@@ -255,6 +256,16 @@ type mergingIterV2Level struct {
 	atBoundary bool
 }
 
+// Init initializes a level with its index and iter. The level's span pointer is
+// stashed from iter.Span() so we don't have to keep calling Span().
+func (level *mergingIterV2Level) Init(index int, iter iterv2.Iter) {
+	*level = mergingIterV2Level{
+		index: index,
+		iter:  iter,
+		span:  iter.Span(),
+	}
+}
+
 func (level *mergingIterV2Level) Name() string {
 	return string('A' + byte(level.index))
 }
@@ -263,28 +274,67 @@ func (level *mergingIterV2Level) Compare(cmp base.Compare, other *mergingIterV2L
 	return base.InternalCompare(cmp, level.iterKV.K, other.iterKV.K)
 }
 
-// newMergingIterV2 creates a new merging iterator V2 over the given level
-// iterators. The iterators must implement iterv2.Iter.
-func newMergingIterV2(
-	cmp base.Compare, split Split, snapshot base.SeqNum, iters ...iterv2.Iter,
-) *mergingIterV2 {
-	m := &mergingIterV2{}
-	m.levels = make([]mergingIterV2Level, len(iters))
-	for i, iter := range iters {
-		m.levels[i] = mergingIterV2Level{
-			index: i,
-			iter:  iter,
-			// We stash the pointer so we don't have to keep calling Span().
-			span: iter.Span(),
+// Init initializes a mergingIterV2 in place from caller-provided buffers. The
+// levels slice must be pre-populated with initialized mergingIterV2Levels
+// (typically via mergingIterV2Level.Init). batchLevelIdx is the index of the
+// indexed-batch level, or -1 if there is no batch (in which case batchSnapshot
+// must be 0).
+func (m *mergingIterV2) Init(
+	cmp *base.Comparer,
+	logger Logger,
+	lower, upper []byte,
+	stats *InternalIteratorStats,
+	snapshot, batchSnapshot base.SeqNum,
+	batchLevelIdx int,
+	levels []mergingIterV2Level,
+) {
+	if invariants.Enabled {
+		for i := range levels {
+			switch rand.IntN(10) {
+			case 0:
+				levels[i].iter = iterv2.NewInvalidating(levels[i].iter)
+			case 1:
+				levels[i].iter = iterv2.NewOpCheckIter(levels[i].iter, cmp, lower, upper)
+			}
 		}
 	}
-	m.split = split
-	m.heap.cmp = cmp
-	m.heap.items = make([]mergingIterV2HeapItem, 0, len(iters))
-	m.slab.cmp = cmp
-	m.slab.snapshot = snapshot
-	m.slab.batchLevelIdx = -1
-	m.slab.levels = m.levels
+
+	// Reuse any existing items; see PrepareForReuse().
+	items := slices.Grow(m.heap.items[:0], len(levels))
+	*m = mergingIterV2{
+		logger: logger,
+		split:  cmp.Split,
+		levels: levels,
+		heap: mergingIterV2Heap{
+			cmp:   cmp.Compare,
+			items: items,
+		},
+		slab: slabState{
+			cmp:           cmp.Compare,
+			snapshot:      snapshot,
+			batchSnapshot: batchSnapshot,
+			batchLevelIdx: batchLevelIdx,
+			levels:        levels,
+		},
+		lower: lower,
+		upper: upper,
+		stats: stats,
+	}
+}
+
+// newMergingIterV2 creates a new merging iterator V2 over the given level
+// iterators. The iterators must implement iterv2.Iter. This constructor is
+// used by tests; production code calls mergingIterV2.Init directly with
+// caller-provided buffers.
+func newMergingIterV2(
+	cmp *base.Comparer, snapshot base.SeqNum, iters ...iterv2.Iter,
+) *mergingIterV2 {
+	levels := make([]mergingIterV2Level, len(iters))
+	for i, iter := range iters {
+		levels[i].Init(i, iter)
+	}
+	m := &mergingIterV2{}
+	m.Init(cmp, nil, nil, nil, nil, snapshot, 0, -1, levels)
 	return m
 }
 
@@ -529,7 +579,13 @@ func (m *mergingIterV2) seekGEAfterBatchRefresh(
 		}
 	}
 	m.prepareForLevelOp(level)
-	level.iterKV = level.iter.SeekGE(key, flags)
+	// Clear TrySeekUsingNext: this is the first seek of the batch level since
+	// the refresh, so we have no guarantee that the new key is >= the batch
+	// level's current position. The InterleavingIter and batch iterators below
+	// would in practice ignore TrySeekUsingNext when BatchJustRefreshed is also
+	// set, but propagating it would technically violate the iterv2 SeekGE
+	// contract and prevent us from wrapping levels with OpCheckIter.
+	level.iterKV = level.iter.SeekGE(key, flags.DisableTrySeekUsingNext())
 	switch {
 	case level.iterKV == nil:
 		// The entire operation is done if there was an error or the merging
@@ -1162,14 +1218,23 @@ func (m *mergingIterV2) Error() error {
 // Close implements base.InternalIterator.
 func (m *mergingIterV2) Close() error {
 	m.heap.Reset()
+	clear(m.heap.items[:cap(m.heap.items)])
 	for i := range m.levels {
-		m.levels[i].iterKV = nil
 		if err := m.levels[i].iter.Close(); err != nil && m.err == nil {
 			m.err = err
 		}
 	}
-	m.levels = nil
+	clear(m.levels)
+	m.levels = m.levels[:0]
 	return m.err
+}
+
+func (m *mergingIterV2) PrepareForReuse() {
+	levels := m.levels
+	items := m.heap.items
+	*m = mergingIterV2{}
+	m.levels = levels[:0]
+	m.heap.items = items[:0]
 }
 
 // SetBounds implements base.InternalIterator.
