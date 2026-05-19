@@ -805,7 +805,7 @@ func (w *RawColumnWriter) flushDataBlockWithoutNextKey(nextKey []byte) error {
 // Invariant: w.dataBlockBuf.uncompressed must already be populated.
 func (w *RawColumnWriter) maybeIncrementTombstoneDenseBlocks(uncompressedLen int) {
 	minSize := w.opts.DeletionSizeRatioThreshold * float32(uncompressedLen)
-	if w.dataBlock.numDeletions > w.opts.NumDeletionsThreshold || float32(w.dataBlock.deletionSize) > minSize {
+	if w.dataBlock.numDeletions >= w.opts.NumDeletionsThreshold || float32(w.dataBlock.deletionSize) > minSize {
 		w.props.NumTombstoneDenseBlocks++
 	}
 	w.dataBlock.numDeletions = 0
