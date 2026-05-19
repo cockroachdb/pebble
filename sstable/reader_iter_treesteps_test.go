@@ -76,6 +76,5 @@ func runIterTreeStepsCmd(t *testing.T, r *Reader, td *datadriven.TestData) strin
 	runIterCmd(td, iter, false)
 
 	steps := rec.Finish()
-	url := steps.URL()
-	return url.String()
+	return steps.URL().String()
 }

@@ -451,8 +451,7 @@ func (t *Test) runOp(idx int, h historyRecorder) {
 			rec := treesteps.StartRecording(node, op.formattedString(t.testOpts.KeyFormat))
 			defer func() {
 				steps := rec.Finish()
-				u := steps.URL()
-				fmt.Fprintf(os.Stderr, "#%d %s treesteps: %s\n", idx, op.formattedString(t.testOpts.KeyFormat), u.String())
+				fmt.Fprintf(os.Stderr, "#%d %s treesteps: %s\n", idx, op.formattedString(t.testOpts.KeyFormat), steps.URL())
 			}()
 		}
 	}

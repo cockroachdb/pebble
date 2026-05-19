@@ -87,7 +87,7 @@ func (t *TreeNode) print(parent treeprinter.Node) {
 
 // URL for a visualization of the steps. The URL contains the encoded and
 // compressed data as the URL fragment.
-func (s Steps) URL() url.URL {
+func (s Steps) URL() *url.URL {
 	// TODO(radu): ideally we would encode Steps and have a graphical
 	// visualization. For now, we generate and encode the ASCII trees.
 	var output struct {
@@ -122,7 +122,7 @@ func (s Steps) URL() url.URL {
 	if err := encoder.Close(); err != nil {
 		panic(err)
 	}
-	return url.URL{
+	return &url.URL{
 		Scheme:   "https",
 		Host:     "raduberinde.github.io",
 		Path:     "treesteps/decode.html",
