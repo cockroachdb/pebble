@@ -170,8 +170,7 @@ func TestSegmentTree(t *testing.T) {
 		if r != nil {
 			steps := r.Finish()
 			if td.HasArg("url") {
-				url := steps.URL()
-				return url.String()
+				return steps.URL().String()
 			}
 			return steps.String()
 		}

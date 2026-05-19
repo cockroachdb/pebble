@@ -1472,8 +1472,7 @@ func TestSetOptionsBatchRefreshRand(t *testing.T) {
 		if mismatch {
 			t.Logf("seed: %d", seed)
 			if rec != nil {
-				u := recSteps.URL()
-				t.Logf("treesteps recording:\n%s", u.String())
+				t.Logf("treesteps recording:\n%s", recSteps.URL())
 			}
 			t.Fatalf("iter %d: op=%s seekKey=%q newSeekKey=%q\n got valid=%v keys=%q vals=%q\nwant valid=%v keys=%q vals=%q",
 				it, opName[op], seekKey, newSeekKey, gotValid, gotKeys, gotVals, wantValid, wantKeys, wantVals)
