@@ -1,0 +1,370 @@
+# Fully contained: all keys within mask span.
+# Mask (100, max] over [a, z) should hide keys with wall > 100.
+
+batch
+set a@200 a@200
+set a@100 a@100
+set a@50 a@50
+set b@150 b@150
+set b@80 b@80
+set c c-unversioned
+set m@300 m@300
+set m@10 m@10
+set y@500 y@500
+set y@99 y@99
+----
+
+flush
+----
+
+delete-suffix-range a z lower=max upper=100
+----
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+a@100
+a@50
+b@80
+c-unversioned
+m@10
+y@99
+.
+
+# Straddling: mask [d, p) straddles the single SST.
+# Keys inside span with wall > 100 masked; keys outside untouched.
+
+reset
+----
+
+batch
+set a@200 a@200
+set a@50 a@50
+set c@300 c@300
+set d@200 d@200
+set d@80 d@80
+set h@150 h@150
+set h@100 h@100
+set m@500 m@500
+set m@10 m@10
+set p@400 p@400
+set p@20 p@20
+set y@600 y@600
+----
+
+flush
+----
+
+delete-suffix-range d p lower=max upper=100
+----
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+next
+----
+a@200
+a@50
+c@300
+d@80
+h@100
+m@10
+p@400
+p@20
+y@600
+.
+
+# Straddling with range keys at the boundary.
+# Range key [m, z) crosses the mask boundary at p.
+# Compact to L6 so the sorted-level overlap check fires.
+
+reset
+----
+
+batch
+set a@200 a@200
+set a@50 a@50
+set d@200 d@200
+set d@80 d@80
+set h@150 h@150
+set h@100 h@100
+set p@400 p@400
+set p@20 p@20
+set y@600 y@600
+range-key-set m z @50 rangeval
+----
+
+flush
+----
+
+compact a z
+----
+
+delete-suffix-range d p lower=max upper=100
+----
+
+# Straddling with compaction after mask.
+# The middleTable size is computed as m.Size - left.Size - right.Size.
+# If size estimates overshoot (left + right > original), the uint64
+# subtraction would underflow without the clamp fix. Compact after
+# masking exercises LevelMetadata.remove which catches bad sizes.
+
+reset
+----
+
+batch
+set a@200 a@200
+set a@50 a@50
+set d@200 d@200
+set d@80 d@80
+set p@400 p@400
+set p@20 p@20
+set y@600 y@600
+----
+
+flush
+----
+
+compact a z
+----
+
+delete-suffix-range d p lower=max upper=100
+----
+
+compact a z
+----
+
+iter
+first
+next
+next
+next
+next
+next
+next
+----
+a@200
+a@50
+d@80
+p@400
+p@20
+y@600
+.
+
+# Range keys outside mask span.
+# Point keys in [a, y], range key [p, z), mask over [a, k).
+# Range keys are entirely beyond span end — must not produce
+# inverted range key bounds.
+
+reset
+----
+
+batch
+set a@200 a@200
+set a@50 a@50
+set d@200 d@200
+set d@80 d@80
+set p@400 p@400
+set p@20 p@20
+set y@600 y@600
+range-key-set p z @50 rangeval
+----
+
+flush
+----
+
+compact a z
+----
+
+delete-suffix-range a k lower=max upper=100
+----
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@50
+d@80
+p@400
+p@20
+y@600
+.
+
+# Blob storage (fully contained): tables with blob references.
+
+reset blob-storage
+----
+
+batch
+set a@200 a@200-blob-val
+set a@50 a@50-blob-val
+set b@150 b@150-blob-val
+set b@80 b@80-blob-val
+----
+
+flush
+----
+
+delete-suffix-range a z lower=max upper=100
+----
+
+iter
+first
+next
+next
+----
+a@50-blob-val
+b@80-blob-val
+.
+
+# Blob storage (straddling): mask straddles a table with blob refs.
+
+reset blob-storage
+----
+
+batch
+set a@200 a@200-blob-val
+set a@50 a@50-blob-val
+set d@200 d@200-blob-val
+set d@80 d@80-blob-val
+set p@400 p@400-blob-val
+set p@20 p@20-blob-val
+----
+
+flush
+----
+
+compact a z
+----
+
+delete-suffix-range d p lower=max upper=100
+----
+
+iter
+first
+next
+next
+next
+next
+next
+----
+a@200-blob-val
+a@50-blob-val
+d@80-blob-val
+p@400-blob-val
+p@20-blob-val
+.
+
+# Blob storage: multi-table revert pattern.
+# Simulates CRDB's RevertRange with UseMVCCHistoryTruncation across
+# multiple SQL tables within a tenant. 4 "tables" (key prefixes t1-t4)
+# get initial writes, flush, more writes, flush, then a
+# DeleteSuffixRange covering all 4 tables, followed by compaction.
+
+reset blob-storage
+----
+
+# Step 1-2: Initial writes across 4 tables at wall=100.
+batch
+set t1/a@100 t1a@100
+set t1/b@100 t1b@100
+set t2/a@100 t2a@100
+set t2/b@100 t2b@100
+set t3/a@100 t3a@100
+set t3/b@100 t3b@100
+set t4/a@100 t4a@100
+set t4/b@100 t4b@100
+----
+
+# Step 3: Flush initial state.
+flush
+----
+
+# Step 4: More writes at wall=200 (after targetTime=100).
+batch
+set t1/a@200 t1a@200
+set t1/b@200 t1b@200
+set t2/a@200 t2a@200
+set t2/b@200 t2b@200
+set t3/a@200 t3a@200
+set t3/b@200 t3b@200
+set t4/a@200 t4a@200
+set t4/b@200 t4b@200
+----
+
+# Step 5: Flush again.
+flush
+----
+
+# Step 6: Revert — mask (100, max] over [t1, t5).
+# This should hide all wall=200 writes.
+delete-suffix-range t1 t5 lower=max upper=100
+----
+
+# Step 7: Compact.
+compact t1 t5
+----
+
+iter
+first
+next
+next
+next
+next
+next
+next
+next
+next
+----
+t1a@100
+t1b@100
+t2a@100
+t2b@100
+t3a@100
+t3b@100
+t4a@100
+t4b@100
+.
+
+# Already masked: re-masking with the same bounds is a no-op.
+
+reset
+----
+
+batch
+set a@200 a@200
+set a@50 a@50
+----
+
+flush
+----
+
+delete-suffix-range a z lower=max upper=100
+----
+
+delete-suffix-range a z lower=max upper=100
+----
+
+iter
+first
+next
+----
+a@50
+.

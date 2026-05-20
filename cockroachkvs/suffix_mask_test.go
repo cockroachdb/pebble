@@ -36,12 +36,51 @@ func testEncodeMVCCSuffix(wallTime uint64, logical uint32) []byte {
 func TestSuffixMaskBlockPropertyFilter(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
+	// MakeSuffixMaskBlockPropertyFilter creates a filter that skips blocks
+	// where all MVCC wall times are strictly greater than the bound's wall
+	// time. Internally it calls NewMVCCTimeIntervalFilter(0, wall).
+
 	bound := testEncodeMVCCSuffix(100, 0)
 	filter := MakeSuffixMaskBlockPropertyFilter(bound)
 	require.True(t, filter != nil)
 
+	// The filter should have the MVCCTimeInterval collector name.
+	require.Equal(t, "MVCCTimeInterval", filter.Name())
+
+	// Encode a block property interval representing a block with wall times
+	// in [50, 80). This should intersect a filter with range [0, 101).
+	prop := encodeTestBlockInterval(50, 80)
+	intersects, err := filter.Intersects(prop)
+	require.NoError(t, err)
+	require.True(t, intersects)
+
+	// A block with wall times in [150, 200) does not intersect the filter
+	// range [0, 101) — the block is entirely above the bound.
+	prop2 := encodeTestBlockInterval(150, 200)
+	intersects2, err := filter.Intersects(prop2)
+	require.NoError(t, err)
+	require.False(t, intersects2)
+
+	// A block with wall times in [90, 110) partially overlaps [0, 101).
+	prop3 := encodeTestBlockInterval(90, 110)
+	intersects3, err := filter.Intersects(prop3)
+	require.NoError(t, err)
+	require.True(t, intersects3)
+
 	// Empty bound should return nil filter.
 	require.True(t, MakeSuffixMaskBlockPropertyFilter(nil) == nil)
+
+	// A suffix with wall=0 should return nil (no meaningful timestamp).
+	require.True(t, MakeSuffixMaskBlockPropertyFilter(testEncodeMVCCSuffix(0, 0)) == nil)
+}
+
+// encodeTestBlockInterval encodes a block property interval [lower, upper) in
+// the same format used by BlockIntervalCollector: two uvarints, the first
+// being Lower and the second being (Upper - Lower).
+func encodeTestBlockInterval(lower, upper uint64) []byte {
+	buf := binary.AppendUvarint(nil, lower)
+	buf = binary.AppendUvarint(buf, upper-lower)
+	return buf
 }
 
 // initKeySeekerWithRow builds a data block containing a single key with the
