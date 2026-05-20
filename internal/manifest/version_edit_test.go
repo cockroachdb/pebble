@@ -600,6 +600,81 @@ func TestVersionEditApply(t *testing.T) {
 		})
 }
 
+func TestVersionEditRoundTripSuffixMask(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+
+	// Case 1: SuffixMask with equal-length bounds.
+	m1 := (&TableMetadata{
+		TableNum:     820,
+		Size:         8200,
+		CreationTime: 820010,
+		SuffixMask: sstable.SuffixMask{
+			Lower: []byte{0, 0, 0, 0, 0, 0, 0, 0, 5},
+			Upper: []byte{0, 0, 0, 0, 0, 0, 0, 0, 10},
+		},
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("z"), 0, base.InternalKeyKindSet),
+	)
+	m1.InitPhysicalBacking()
+
+	// Case 2: No SuffixMask set.
+	m2 := (&TableMetadata{
+		TableNum:     821,
+		Size:         8210,
+		CreationTime: 821020,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("z"), 0, base.InternalKeyKindSet),
+	)
+	m2.InitPhysicalBacking()
+
+	// Case 3: SuffixMask with different-length bounds (9-byte wall-only vs
+	// 13-byte wall+logical).
+	m3 := (&TableMetadata{
+		TableNum:     822,
+		Size:         8220,
+		CreationTime: 822030,
+		SuffixMask: sstable.SuffixMask{
+			Lower: []byte{0, 0, 0, 0, 0, 0, 0, 0, 5},              // 9 bytes
+			Upper: []byte{0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 1}, // 13 bytes
+		},
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("z"), 0, base.InternalKeyKindSet),
+	)
+	m3.InitPhysicalBacking()
+
+	ve := VersionEdit{
+		NewTables: []NewTableEntry{
+			{Level: 6, Meta: m1},
+			{Level: 6, Meta: m2},
+			{Level: 6, Meta: m3},
+		},
+	}
+	if err := checkRoundTrip(ve); err != nil {
+		t.Fatal(err)
+	}
+
+	// Additionally verify that after decode the SuffixMask fields match
+	// exactly.
+	var buf bytes.Buffer
+	require.NoError(t, ve.Encode(&buf))
+	var decoded VersionEdit
+	require.NoError(t, decoded.Decode(&buf))
+	require.Equal(t, len(ve.NewTables), len(decoded.NewTables))
+	for i, nt := range decoded.NewTables {
+		orig := ve.NewTables[i].Meta.SuffixMask
+		got := nt.Meta.SuffixMask
+		require.Equal(t, orig.Lower, got.Lower, "table %d: Lower mismatch", i)
+		require.Equal(t, orig.Upper, got.Upper, "table %d: Upper mismatch", i)
+		require.Equal(t, orig.IsSet(), got.IsSet(), "table %d: IsSet mismatch", i)
+	}
+}
+
 func TestParseVersionEditDebugRoundTrip(t *testing.T) {
 	testCases := []struct {
 		input  string

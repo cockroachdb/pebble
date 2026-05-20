@@ -267,6 +267,12 @@ const (
 	// such marked tables to have been compacted.
 	FormatRowblkMarkedForCompaction
 
+	// FormatSuffixMask is a format major version that adds support for the
+	// customTagSuffixMask manifest tag, used by DeleteSuffixRange to attach
+	// per-file suffix masks. Older versions of Pebble cannot read manifests
+	// containing this tag.
+	FormatSuffixMask
+
 	// -- Add new versions here --
 
 	// FormatNewest is the most recent format major version.
@@ -420,6 +426,9 @@ var formatMajorVersionMigrations = map[FormatMajorVersion]func(*DB) error{
 			return err
 		}
 		return d.finalizeFormatVersUpgrade(FormatRowblkMarkedForCompaction)
+	},
+	FormatSuffixMask: func(d *DB) error {
+		return d.finalizeFormatVersUpgrade(FormatSuffixMask)
 	},
 }
 

@@ -38,6 +38,8 @@ type (
 	SyntheticPrefix = blockiter.SyntheticPrefix
 	// SyntheticPrefixAndSuffix re-exports block.SyntheticPrefixAndSuffix.
 	SyntheticPrefixAndSuffix = blockiter.SyntheticPrefixAndSuffix
+	// SuffixMask re-exports blockiter.SuffixMask.
+	SuffixMask = blockiter.SuffixMask
 )
 
 // NoTransforms is the default value for IterTransforms.
