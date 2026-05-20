@@ -12,6 +12,35 @@ import (
 	"github.com/cockroachdb/pebble/internal/base"
 )
 
+// SuffixMask defines a range of suffixes [Lower, Upper) to mask during
+// iteration. Lower and Upper are ordered according to ComparePointSuffixes
+// (i.e. Lower <= Upper per the comparer). Keys whose suffix falls within
+// the range are hidden. Suffixless keys are never hidden. Both bounds
+// must be set. Lower is inclusive; Upper is exclusive.
+//
+// NB: "Lower" and "Upper" refer to the comparer's ordering, not wall-time
+// magnitude. For a comparer like CockroachDB's that sorts newest-first,
+// Lower is the newest timestamp and Upper is the oldest. To revert to a
+// timestamp T (hiding all keys newer than T), Lower would be the newest
+// timestamp to hide (e.g. infinity) and Upper would be T (exclusive, so
+// keys at T remain visible).
+//
+// Files with SyntheticSuffix are handled at the file level by
+// DeleteSuffixRange, not by per-row masking: since every key has the
+// same suffix, the file is either excised entirely or left untouched.
+//
+// TODO(dt): compact Lower and Upper into a single allocation like
+// SyntheticPrefixAndSuffix to reduce TableMetadata size.
+type SuffixMask struct {
+	Lower []byte
+	Upper []byte
+}
+
+// IsSet returns true if the suffix mask is configured.
+func (m SuffixMask) IsSet() bool {
+	return len(m.Lower) > 0
+}
+
 // Transforms allow on-the-fly transformation of data at iteration time.
 //
 // These transformations could in principle be implemented as block transforms
@@ -25,6 +54,10 @@ type Transforms struct {
 	// This is the norm when the sstable is foreign or the largest sequence number
 	// of the sstable is below the one we are reading.
 	HideObsoletePoints bool
+	// SuffixMask, if set, hides point keys whose suffix falls within the mask
+	// range (Lower, Upper] as determined by the key schema. Keys with no suffix
+	// are never hidden.
+	SuffixMask SuffixMask
 
 	SyntheticPrefixAndSuffix SyntheticPrefixAndSuffix
 }
@@ -36,6 +69,7 @@ var NoTransforms = Transforms{}
 func (t *Transforms) NoTransforms() bool {
 	return t.SyntheticSeqNum == 0 &&
 		!t.HideObsoletePoints &&
+		!t.SuffixMask.IsSet() &&
 		t.SyntheticPrefixAndSuffix.IsUnset()
 }
 
@@ -60,12 +94,17 @@ func (t *Transforms) SyntheticSuffix() []byte {
 type FragmentTransforms struct {
 	SyntheticSeqNum          SyntheticSeqNum
 	SyntheticPrefixAndSuffix SyntheticPrefixAndSuffix
+	// SuffixMask, if set, filters out range key entries whose suffix falls
+	// within the mask range (Lower, Upper]. Entries with no suffix pass
+	// through unfiltered.
+	SuffixMask SuffixMask
 }
 
 // NoTransforms returns true if there are no transforms enabled.
 func (t *FragmentTransforms) NoTransforms() bool {
-	// NoTransforms returns true if there are no transforms enabled.
-	return t.SyntheticSeqNum == 0 && t.SyntheticPrefixAndSuffix.IsUnset()
+	return t.SyntheticSeqNum == 0 &&
+		t.SyntheticPrefixAndSuffix.IsUnset() &&
+		!t.SuffixMask.IsSet()
 }
 
 func (t *FragmentTransforms) HasSyntheticPrefix() bool {

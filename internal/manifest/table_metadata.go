@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	stdcmp "cmp"
+	"encoding/hex"
 	"fmt"
 	"sync/atomic"
 
@@ -202,6 +203,10 @@ type TableMetadata struct {
 	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
 	// suffixes in a table; used for some virtual tables.
 	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
+
+	// SuffixMask, if set, masks point keys and range key entries whose suffix
+	// falls within the mask range (Lower, Upper]. Used for MVCC revert.
+	SuffixMask sstable.SuffixMask
 }
 
 // RangeKeyKinds describes which kinds of range keys may be present in a table.
@@ -303,6 +308,7 @@ func (m *TableMetadata) IterTransforms() sstable.IterTransforms {
 	return sstable.IterTransforms{
 		SyntheticSeqNum:          m.SyntheticSeqNum(),
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+		SuffixMask:               m.SuffixMask,
 	}
 }
 
@@ -312,6 +318,7 @@ func (m *TableMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms 
 	return sstable.FragmentIterTransforms{
 		SyntheticSeqNum:          m.SyntheticSeqNum(),
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+		SuffixMask:               m.SuffixMask,
 	}
 }
 
@@ -899,6 +906,9 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 			fmt.Fprintf(&b, "(%d)", m.TableBacking.Size)
 		}
 	}
+	if m.SuffixMask.IsSet() {
+		fmt.Fprintf(&b, " suffix-mask:[%x-%x)", m.SuffixMask.Lower, m.SuffixMask.Upper)
+	}
 	if len(m.BlobReferences) > 0 {
 		fmt.Fprint(&b, " blobrefs:[")
 		for i, r := range m.BlobReferences {
@@ -1016,6 +1026,19 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 			p.Expect(":")
 			m.BlobReferenceDepth = BlobReferenceDepth(p.Uint64())
 			p.Expect("]")
+
+		case "suffix-mask":
+			p.Expect("[")
+			lowerHex := p.Next()
+			p.Expect("-")
+			upperHex := p.Next()
+			p.Expect(")")
+			var errL, errU error
+			m.SuffixMask.Lower, errL = hex.DecodeString(lowerHex)
+			m.SuffixMask.Upper, errU = hex.DecodeString(upperHex)
+			if errL != nil || errU != nil {
+				p.Errf("bad suffix-mask hex: lower=%v upper=%v", errL, errU)
+			}
 
 		default:
 			p.Errf("unknown field %q", field)

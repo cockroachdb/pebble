@@ -85,9 +85,15 @@ func TestBlockFragmentIterator(t *testing.T) {
 			d.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
 			transforms.SyntheticSeqNum = blockiter.SyntheticSeqNum(seqNum)
 			var syntheticPrefix, syntheticSuffix string
+			var suffixMaskLower, suffixMaskUpper string
 			d.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 			d.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
+			d.MaybeScanArgs(t, "suffix-mask-lower", &suffixMaskLower)
+			d.MaybeScanArgs(t, "suffix-mask-upper", &suffixMaskUpper)
 			transforms.SyntheticPrefixAndSuffix = blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix))
+			if suffixMaskLower != "" {
+				transforms.SuffixMask = blockiter.SuffixMask{Lower: []byte(suffixMaskLower), Upper: []byte(suffixMaskUpper)}
+			}
 			if d.HasArg("invariants-only") && !invariants.Enabled {
 				// Skip testcase.
 				return d.Expected

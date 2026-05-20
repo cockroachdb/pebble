@@ -606,7 +606,7 @@ func (h *fileCacheHandle) newIters(
 
 	var iters iterSet
 	if kinds.RangeKey() && file.HasRangeKeys {
-		iters.rangeKey, err = newRangeKeyIter(ctx, file, r, opts.SpanIterOptions(), internalOpts)
+		iters.rangeKey, err = newRangeKeyIter(ctx, file, r, h, opts.SpanIterOptions(), internalOpts)
 	}
 	if kinds.RangeDeletion() && file.HasPointKeys && err == nil {
 		iters.rangeDeletion, err = newRangeDelIter(ctx, file, r, h, internalOpts)
@@ -679,6 +679,26 @@ func (h *fileCacheHandle) newPointIter(
 		hideObsoletePoints, pointKeyFilters =
 			r.TryAddBlockPropertyFilterForHideObsoletePoints(
 				opts.snapshotForHideObsoletePoints, file.SeqNums.High, opts.PointKeyFilters)
+
+		// NB: We intentionally do NOT add a block property filter for
+		// SuffixMask here. The block property collector tracks the range of
+		// suffixes present but does not track whether a block contains
+		// suffixless keys, so a filter based on suffix range alone could
+		// incorrectly skip blocks (and even entire tables) that contain
+		// suffixless keys which should pass through unfiltered. Row-level
+		// filtering in DataBlockIter handles SuffixMask correctly for all
+		// key types.
+		//
+		// If the block property collector were extended to also indicate
+		// whether suffixless keys are present, block- and file-level
+		// filtering would become possible here. This could also benefit
+		// callers that currently pair a filtered iterator with an unfiltered
+		// one stepped in lockstep to observe suffixless keys. In the initial
+		// use-case for suffix-masked files, the majority of blocks and files
+		// are expected to not be masked, so pessimistically including every
+		// file and block is unlikely to leave significant performance on the
+		// table. If a mask were to exclude entire blocks or files, this cost
+		// would grow and extending the collector would become worthwhile.
 
 		var ok bool
 		var err error
@@ -887,10 +907,12 @@ func newRangeKeyIter(
 	ctx context.Context,
 	file *manifest.TableMetadata,
 	r *sstable.Reader,
+	h *fileCacheHandle,
 	opts keyspan.SpanIterOptions,
 	internalOpts internalIterOpts,
 ) (keyspan.FragmentIterator, error) {
 	transforms := file.FragmentIterTransforms()
+
 	// Don't filter a table's range keys if the file contains RANGEKEYDELs.
 	// The RANGEKEYDELs may delete range keys in other levels. Skipping the
 	// file's range key blocks may surface deleted range keys below. This is

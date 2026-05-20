@@ -1,0 +1,87 @@
+# Test suffix mask filtering. testkeys.Comparer sorts suffixes in
+# descending order (larger suffix = smaller key).
+# Mask [Lower=@200, Upper=@5) hides keys with suffix in [@200, @5),
+# i.e., keys @200, @10, @9, @6, @5 are in range but @5 is exclusive.
+# So @200, @10, @9, @6 are masked. @5, @2, @1 and suffixless keys pass.
+
+write-block
+a@10#1,SET:a10
+a@5#2,SET:a5
+a@2#3,SET:a2
+b@200#4,SET:b200
+b@9#5,SET:b9
+b@1#6,SET:b1
+c#7,SET:c-nosuffix
+----
+
+# Forward iteration with suffix mask.
+iter verbose suffix-mask-lower=@200 suffix-mask-upper=@5
+first
+next
+next
+next
+next
+----
+first: a@5#2,SET:a5
+ next: a@2#3,SET:a2
+ next: b@1#6,SET:b1
+ next: c#7,SET:c-nosuffix
+ next: .
+
+# Backward iteration.
+iter verbose suffix-mask-lower=@200 suffix-mask-upper=@5
+last
+prev
+prev
+prev
+prev
+----
+last: c#7,SET:c-nosuffix
+prev: b@1#6,SET:b1
+prev: a@2#3,SET:a2
+prev: a@5#2,SET:a5
+prev: .
+
+# SeekGE landing on a masked key skips forward.
+iter verbose suffix-mask-lower=@200 suffix-mask-upper=@5
+seek-ge a@10
+next
+----
+seek-ge a@10: a@5#2,SET:a5
+        next: a@2#3,SET:a2
+
+# SeekLT landing on a masked key skips backward.
+iter verbose suffix-mask-lower=@200 suffix-mask-upper=@5
+seek-lt c
+prev
+----
+seek-lt c: b@1#6,SET:b1
+     prev: a@2#3,SET:a2
+
+# Most keys masked. @1 survives (exclusive upper) and c (suffixless).
+iter verbose suffix-mask-lower=@200 suffix-mask-upper=@1
+first
+next
+next
+----
+first: b@1#6,SET:b1
+ next: c#7,SET:c-nosuffix
+ next: .
+
+# No keys masked — all visible.
+iter verbose suffix-mask-lower=@200 suffix-mask-upper=@201
+first
+next
+next
+next
+next
+next
+next
+----
+first: a@10#1,SET:a10
+ next: a@5#2,SET:a5
+ next: a@2#3,SET:a2
+ next: b@200#4,SET:b200
+ next: b@9#5,SET:b9
+ next: b@1#6,SET:b1
+ next: c#7,SET:c-nosuffix

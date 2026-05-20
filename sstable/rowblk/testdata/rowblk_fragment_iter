@@ -153,3 +153,33 @@ iter synthetic-suffix=@4 invariants-only
 last
 ----
 panic: synthetic suffix not supported with key kind RANGEKEYUNSET
+
+# Suffix mask filtering on range key entries.
+# testkeys.Comparer sorts suffixes descending (larger = smaller key).
+# Mask [@200, @5) hides entries @200, @10, @9. Keeps @5, @2.
+
+build
+a-c:{(#10,RANGEKEYSET,@200,val200) (#9,RANGEKEYSET,@10,val10) (#8,RANGEKEYSET,@5,val5) (#7,RANGEKEYSET,@2,val2)}
+----
+a-c:{(#10,RANGEKEYSET,@200,val200) (#9,RANGEKEYSET,@10,val10) (#8,RANGEKEYSET,@5,val5) (#7,RANGEKEYSET,@2,val2)}
+
+iter suffix-mask-lower=@200 suffix-mask-upper=@5
+first
+next
+----
+   first:  a-c:{(#8,RANGEKEYSET,@5,val5) (#7,RANGEKEYSET,@2,val2)}
+    next:  <nil>
+
+# All entries masked — span should be skipped.
+iter suffix-mask-lower=@200 suffix-mask-upper=@1
+first
+----
+   first:  <nil>
+
+# Backward with mask.
+iter suffix-mask-lower=@200 suffix-mask-upper=@5
+last
+prev
+----
+    last:  a-c:{(#8,RANGEKEYSET,@5,val5) (#7,RANGEKEYSET,@2,val2)}
+    prev:  <nil>

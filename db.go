@@ -2037,6 +2037,38 @@ func (d *DB) Flush() error {
 	return nil
 }
 
+// FlushIfOverlapping flushes the memtable only if any flushable in the queue
+// possibly overlaps with the given key range. If no flushable overlaps, this
+// is a no-op. This is useful for callers that need all data within a key range
+// to be in SSTables before performing an operation on those SSTables (e.g.,
+// DeleteSuffixRange, which attaches a mask to SSTable metadata).
+func (d *DB) FlushIfOverlapping(span KeyRange) error {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
+	}
+
+	d.mu.Lock()
+	overlaps := false
+	for i := range d.mu.mem.queue {
+		d.mu.mem.queue[i].computePossibleOverlaps(func(b bounded) shouldContinue {
+			overlaps = true
+			return stopIteration
+		}, span)
+		if overlaps {
+			break
+		}
+	}
+	d.mu.Unlock()
+
+	if !overlaps {
+		return nil
+	}
+	return d.Flush()
+}
+
 // AsyncFlush asynchronously flushes the memtable to stable storage.
 //
 // If no error is returned, the caller can receive from the returned channel in

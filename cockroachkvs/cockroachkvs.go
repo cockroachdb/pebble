@@ -1088,6 +1088,42 @@ func (ks *cockroachKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 	return res
 }
 
+// IsMaskedBySuffixMask implements colblk.KeySeeker
+// interface. The bounds are encoded MVCC suffixes; we inline the decode to
+// avoid per-row function call overhead.
+func (ks *cockroachKeySeeker) IsMaskedBySuffixMask(row int, lower, upper []byte) bool {
+	rowWall := ks.mvccWallTimes.At(row)
+	rowLogical := uint32(ks.mvccLogical.At(row))
+	if rowWall == 0 && rowLogical == 0 {
+		return false
+	}
+	// Decode lower bound.
+	if len(lower) < suffixLenWithWall {
+		return false
+	}
+	lowerWall := binary.BigEndian.Uint64(lower[:8])
+	var lowerLogical uint32
+	if len(lower) >= suffixLenWithLogical {
+		lowerLogical = binary.BigEndian.Uint32(lower[8:12])
+	}
+	// Decode upper bound.
+	if len(upper) < suffixLenWithWall {
+		return false
+	}
+	upperWall := binary.BigEndian.Uint64(upper[:8])
+	var upperLogical uint32
+	if len(upper) >= suffixLenWithLogical {
+		upperLogical = binary.BigEndian.Uint32(upper[8:12])
+	}
+	// Mask range is [lower, upper) in comparer order. The comparer sorts
+	// newer (larger wall time) first, so lower has the larger wall time.
+	// row >= lower in comparer: row wall time <= lower wall time.
+	// row < upper in comparer: row wall time > upper wall time.
+	geLower := rowWall < lowerWall || (rowWall == lowerWall && rowLogical <= lowerLogical)
+	ltUpper := rowWall > upperWall || (rowWall == upperWall && rowLogical > upperLogical)
+	return geLower && ltUpper
+}
+
 //go:linkname memmove runtime.memmove
 func memmove(to, from unsafe.Pointer, n uintptr)
 
