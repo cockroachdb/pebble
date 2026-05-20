@@ -392,6 +392,11 @@ type iteratorBatchState struct {
 	pointIter    batchIter
 	rangeDelIter keyspan.Iter
 	rangeKeyIter keyspan.Iter
+	// pointInterleavingIter is the iterv2.InterleavingIter that wraps
+	// pointIter and rangeDelIter at the batch level of the merging iterator
+	// (iterv2 only; zero otherwise). It is held here so SetOptions can call
+	// InvalidateCachedSpan after re-initializing rangeDelIter.
+	pointInterleavingIter iterv2.InterleavingIter
 }
 
 // iteratorRangeKeyState holds an iterator's range key iteration state.
@@ -2718,6 +2723,9 @@ func (i *Iterator) maybeRefreshBatchView(reusePointIter, reuseRangeKey *bool) {
 			*reusePointIter = false
 		} else {
 			i.batch.batch.initRangeDelIter(&i.opts, &i.batch.rangeDelIter, nextBatchSeqNum)
+			// initRangeDelIter swaps in a new fragments slice; the batch
+			// InterleavingIter may still hold a pointer into the old one.
+			i.batch.pointInterleavingIter.InvalidateCachedSpan()
 		}
 	}
 	if *reuseRangeKey && i.batch.batch.countRangeKeys > 0 {
