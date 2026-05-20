@@ -142,13 +142,17 @@ func TestDataBlock(t *testing.T) {
 			case "iter":
 				var seqNum uint64
 				var syntheticPrefix, syntheticSuffix string
+				var suffixMaskLower, suffixMaskUpper string
 				td.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
 				td.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 				td.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
+				td.MaybeScanArgs(t, "suffix-mask-lower", &suffixMaskLower)
+				td.MaybeScanArgs(t, "suffix-mask-upper", &suffixMaskUpper)
 				transforms := blockiter.Transforms{
 					SyntheticSeqNum:          blockiter.SyntheticSeqNum(seqNum),
 					HideObsoletePoints:       td.HasArg("hide-obsolete-points"),
 					SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
+					SuffixMask:               blockiter.SuffixMask{Lower: []byte(suffixMaskLower), Upper: []byte(suffixMaskUpper)},
 				}
 				if err := it.Init(&r, bd, transforms, tieringConfig); err != nil {
 					return err.Error()

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"unsafe"
@@ -481,4 +482,54 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 
 func ikey(s string) base.InternalKey {
 	return base.InternalKey{UserKey: []byte(s)}
+}
+
+func TestBlockIterSuffixMask(t *testing.T) {
+	// Build a block with testkeys-format keys (prefix@suffix).
+	w := &Writer{RestartInterval: 1}
+	keys := []string{"a@10", "a@5", "a@2", "b@200", "b@9", "b@1", "c"}
+	for i, k := range keys {
+		ik := base.MakeInternalKey([]byte(k), base.SeqNum(100-i), base.InternalKeyKindSet)
+		require.NoError(t, w.Add(ik, []byte("val-"+k)))
+	}
+	blk := w.Finish()
+
+	cmp := testkeys.Comparer
+	// Mask [@200, @5): hides @200, @10, @9. Keeps @5, @2, @1, suffixless.
+	transforms := blockiter.Transforms{
+		SuffixMask: blockiter.SuffixMask{Lower: []byte("@200"), Upper: []byte("@5")},
+	}
+	iter, err := NewIter(cmp.Compare, cmp.ComparePointSuffixes, cmp.Split, blk, transforms)
+	require.NoError(t, err)
+
+	// Forward.
+	var forward []string
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		v, _, _ := kv.V.Value(nil)
+		forward = append(forward, string(v))
+	}
+	require.Equal(t, []string{"val-a@5", "val-a@2", "val-b@1", "val-c"}, forward)
+
+	// Backward.
+	var backward []string
+	for kv := iter.Last(); kv != nil; kv = iter.Prev() {
+		v, _, _ := kv.V.Value(nil)
+		backward = append(backward, string(v))
+	}
+	slices.Reverse(backward)
+	require.Equal(t, []string{"val-a@5", "val-a@2", "val-b@1", "val-c"}, backward)
+
+	// SeekGE landing on masked key.
+	kv := iter.SeekGE([]byte("a@10"), base.SeekGEFlagsNone)
+	require.True(t, kv != nil)
+	v, _, _ := kv.V.Value(nil)
+	require.Equal(t, "val-a@5", string(v))
+
+	// SeekLT landing on masked key.
+	kv = iter.SeekLT([]byte("c"), base.SeekLTFlagsNone)
+	require.True(t, kv != nil)
+	v, _, _ = kv.V.Value(nil)
+	require.Equal(t, "val-b@1", string(v))
+
+	require.NoError(t, iter.Close())
 }

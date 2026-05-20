@@ -75,8 +75,9 @@ import (
 //
 // We have picked the first option here.
 type Iter struct {
-	cmp   base.Compare
-	split base.Split
+	cmp       base.Compare
+	split     base.Split
+	suffixCmp base.ComparePointSuffixes
 
 	// Iterator transforms.
 	//
@@ -253,6 +254,7 @@ func (i *Iter) Init(
 	i.synthSuffixBuf = i.synthSuffixBuf[:0]
 	i.split = split
 	i.cmp = cmp
+	i.suffixCmp = suffixCmp
 	i.restarts = offsetInBlock(len(blk)) - 4*(1+offsetInBlock(numRestarts))
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&blk[0])
@@ -495,6 +497,15 @@ func (i *Iter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 		i.ikv.K.UserKey = key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
 			i.ikv.K.SetSeqNum(base.SeqNum(n))
+		}
+		if !hiddenPoint && i.transforms.SuffixMask.IsSet() && i.suffixCmp != nil {
+			si := i.split(i.ikv.K.UserKey)
+			suffix := i.ikv.K.UserKey[si:]
+			if len(suffix) > 0 &&
+				i.suffixCmp(suffix, i.transforms.SuffixMask.Lower) >= 0 &&
+				i.suffixCmp(suffix, i.transforms.SuffixMask.Upper) < 0 {
+				hiddenPoint = true
+			}
 		}
 	} else {
 		i.ikv.K.Trailer = base.InternalKeyTrailer(base.InternalKeyKindInvalid)
@@ -1175,6 +1186,15 @@ start:
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
 			i.ikv.K.SetSeqNum(base.SeqNum(n))
 		}
+		if !hiddenPoint && i.transforms.SuffixMask.IsSet() && i.suffixCmp != nil {
+			si := i.split(i.ikv.K.UserKey)
+			suffix := i.ikv.K.UserKey[si:]
+			if len(suffix) > 0 &&
+				i.suffixCmp(suffix, i.transforms.SuffixMask.Lower) >= 0 &&
+				i.suffixCmp(suffix, i.transforms.SuffixMask.Upper) < 0 {
+				hiddenPoint = true
+			}
+		}
 		if hiddenPoint {
 			goto start
 		}
@@ -1457,6 +1477,15 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
 				i.ikv.K.SetSeqNum(base.SeqNum(n))
 			}
+			if !hiddenPoint && i.transforms.SuffixMask.IsSet() && i.suffixCmp != nil {
+				si := i.split(i.ikv.K.UserKey)
+				suffix := i.ikv.K.UserKey[si:]
+				if len(suffix) > 0 &&
+					i.suffixCmp(suffix, i.transforms.SuffixMask.Lower) >= 0 &&
+					i.suffixCmp(suffix, i.transforms.SuffixMask.Upper) < 0 {
+					hiddenPoint = true
+				}
+			}
 			if i.transforms.HasSyntheticSuffix() {
 				// Inlined version of i.maybeReplaceSuffix()
 				prefixLen := i.split(i.ikv.K.UserKey)
@@ -1515,6 +1544,18 @@ start:
 			trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(i.key[n:]))
 			hiddenPoint := i.transforms.HideObsoletePoints &&
 				(trailer&TrailerObsoleteBit != 0)
+			if !hiddenPoint {
+				userKey := i.key[:n:n]
+				if i.transforms.SuffixMask.IsSet() && i.suffixCmp != nil {
+					si := i.split(userKey)
+					suffix := userKey[si:]
+					if len(suffix) > 0 &&
+						i.suffixCmp(suffix, i.transforms.SuffixMask.Lower) >= 0 &&
+						i.suffixCmp(suffix, i.transforms.SuffixMask.Upper) < 0 {
+						hiddenPoint = true
+					}
+				}
+			}
 			if hiddenPoint {
 				continue
 			}
