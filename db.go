@@ -1487,13 +1487,12 @@ func (i *Iterator) constructPointIterV2(
 		if i.batch.rangeDelIter.Count() > 0 {
 			rangeDelIter = &i.batch.rangeDelIter
 		}
-		iiter := new(iterv2.InterleavingIter)
-		iiter.Init(i.comparer,
+		i.batch.pointInterleavingIter.Init(i.comparer,
 			&i.batch.pointIter,
 			rangeDelIter,
 			nil, nil, // startKey, endKey: unbounded
 			i.opts.LowerBound, i.opts.UpperBound)
-		v2iters = append(v2iters, iiter)
+		v2iters = append(v2iters, &i.batch.pointInterleavingIter)
 	}
 
 	if !i.batchOnlyIter {
