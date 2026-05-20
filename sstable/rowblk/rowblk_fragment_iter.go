@@ -41,16 +41,18 @@ import (
 // byte slices (start, end, suffix, value) as stable for the lifetime of the
 // iterator.
 type fragmentIter struct {
-	suffixCmp base.CompareRangeSuffixes
-	blockIter Iter
-	keyBuf    [2]keyspan.Key
-	span      keyspan.Span
-	dir       int8
+	suffixCmp      base.CompareRangeSuffixes
+	pointSuffixCmp base.ComparePointSuffixes
+	blockIter      Iter
+	keyBuf         [2]keyspan.Key
+	span           keyspan.Span
+	dir            int8
 
 	// fileNum is used for logging/debugging.
 	fileNum base.DiskFileNum
 
 	syntheticPrefixAndSuffix blockiter.SyntheticPrefixAndSuffix
+	suffixMask               blockiter.SuffixMask
 	// startKeyBuf is a buffer that is reused to store the start key of the span
 	// when a synthetic prefix is used.
 	startKeyBuf []byte
@@ -84,11 +86,13 @@ func NewFragmentIter(
 	i := fragmentBlockIterPool.Get().(*fragmentIter)
 
 	i.suffixCmp = comparer.CompareRangeSuffixes
+	i.pointSuffixCmp = comparer.ComparePointSuffixes
 	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
 	// when the spans contain few keys.
 	i.span.Keys = i.keyBuf[:0]
 	i.fileNum = fileNum
 	i.syntheticPrefixAndSuffix = transforms.SyntheticPrefixAndSuffix
+	i.suffixMask = transforms.SuffixMask
 	if transforms.HasSyntheticPrefix() {
 		i.endKeyBuf = append(i.endKeyBuf[:0], transforms.SyntheticPrefix()...)
 	}
@@ -189,6 +193,20 @@ func (i *fragmentIter) applySpanTransforms() error {
 			}
 		}
 	}
+	if i.suffixMask.IsSet() && i.pointSuffixCmp != nil {
+		n := 0
+		for j := range i.span.Keys {
+			k := &i.span.Keys[j]
+			if len(k.Suffix) > 0 &&
+				i.pointSuffixCmp(k.Suffix, i.suffixMask.Lower) >= 0 &&
+				i.pointSuffixCmp(k.Suffix, i.suffixMask.Upper) < 0 {
+				continue
+			}
+			i.span.Keys[n] = i.span.Keys[j]
+			n++
+		}
+		i.span.Keys = i.span.Keys[:n]
+	}
 	return nil
 }
 
@@ -201,39 +219,45 @@ func (i *fragmentIter) applySpanTransforms() error {
 // gatherForward iterates forward, re-combining the fragmented internal keys to
 // reconstruct a keyspan.Span that holds all the keys defined over the span.
 func (i *fragmentIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, error) {
-	i.span = keyspan.Span{}
-	if kv == nil || !i.blockIter.Valid() {
-		return nil, nil
-	}
-	// Use the i.keyBuf array to back the Keys slice to prevent an allocation
-	// when a span contains few keys.
-	i.span.Keys = i.keyBuf[:0]
+	for {
+		i.span = keyspan.Span{}
+		if kv == nil || !i.blockIter.Valid() {
+			return nil, nil
+		}
+		// Use the i.keyBuf array to back the Keys slice to prevent an allocation
+		// when a span contains few keys.
+		i.span.Keys = i.keyBuf[:0]
 
-	// Decode the span's end key and individual keys from the value.
-	if err := i.initSpan(kv.K, kv.InPlaceValue()); err != nil {
-		return nil, err
-	}
-
-	// There might exist additional internal keys with identical bounds encoded
-	// within the block. Iterate forward, accumulating all the keys with
-	// identical bounds to s.
-
-	// Overlapping fragments are required to have exactly equal start and
-	// end bounds.
-	for kv = i.blockIter.Next(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Next() {
-		if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
+		// Decode the span's end key and individual keys from the value.
+		if err := i.initSpan(kv.K, kv.InPlaceValue()); err != nil {
 			return nil, err
 		}
-	}
-	if err := i.applySpanTransforms(); err != nil {
-		return nil, err
-	}
 
-	// Apply a consistent ordering.
-	keyspan.SortKeysByTrailer(i.span.Keys)
+		// There might exist additional internal keys with identical bounds encoded
+		// within the block. Iterate forward, accumulating all the keys with
+		// identical bounds to s.
 
-	// i.blockIter is positioned over the first internal key for the next span.
-	return &i.span, nil
+		// Overlapping fragments are required to have exactly equal start and
+		// end bounds.
+		for kv = i.blockIter.Next(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Next() {
+			if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
+				return nil, err
+			}
+		}
+		if err := i.applySpanTransforms(); err != nil {
+			return nil, err
+		}
+
+		// Apply a consistent ordering.
+		keyspan.SortKeysByTrailer(i.span.Keys)
+
+		if len(i.span.Keys) > 0 {
+			// i.blockIter is positioned over the first internal key for the next span.
+			return &i.span, nil
+		}
+		// SuffixMask filtering removed all keys; advance to the next span.
+		// kv is already positioned at the start of the next span from the loop above.
+	}
 }
 
 // gatherBackward gathers internal keys with identical bounds. Keys defined over
@@ -245,37 +269,43 @@ func (i *fragmentIter) gatherForward(kv *base.InternalKV) (*keyspan.Span, error)
 // gatherBackward iterates backwards, re-combining the fragmented internal keys
 // to reconstruct a keyspan.Span that holds all the keys defined over the span.
 func (i *fragmentIter) gatherBackward(kv *base.InternalKV) (*keyspan.Span, error) {
-	i.span = keyspan.Span{}
-	if kv == nil || !i.blockIter.Valid() {
-		return nil, nil
-	}
+	for {
+		i.span = keyspan.Span{}
+		if kv == nil || !i.blockIter.Valid() {
+			return nil, nil
+		}
 
-	// Decode the span's end key and individual keys from the value.
-	if err := i.initSpan(kv.K, kv.InPlaceValue()); err != nil {
-		return nil, err
-	}
-
-	// There might exist additional internal keys with identical bounds encoded
-	// within the block. Iterate backward, accumulating all the keys with
-	// identical bounds to s.
-	//
-	// Overlapping fragments are required to have exactly equal start and
-	// end bounds.
-	for kv = i.blockIter.Prev(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Prev() {
-		if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
+		// Decode the span's end key and individual keys from the value.
+		if err := i.initSpan(kv.K, kv.InPlaceValue()); err != nil {
 			return nil, err
 		}
-	}
-	// i.blockIter is positioned over the last internal key for the previous
-	// span.
 
-	// Apply a consistent ordering.
-	keyspan.SortKeysByTrailer(i.span.Keys)
+		// There might exist additional internal keys with identical bounds encoded
+		// within the block. Iterate backward, accumulating all the keys with
+		// identical bounds to s.
+		//
+		// Overlapping fragments are required to have exactly equal start and
+		// end bounds.
+		for kv = i.blockIter.Prev(); kv != nil && i.blockIter.cmp(kv.K.UserKey, i.span.Start) == 0; kv = i.blockIter.Prev() {
+			if err := i.addToSpan(i.blockIter.cmp, kv.K, kv.InPlaceValue()); err != nil {
+				return nil, err
+			}
+		}
+		// i.blockIter is positioned over the last internal key for the previous
+		// span.
 
-	if err := i.applySpanTransforms(); err != nil {
-		return nil, err
+		// Apply a consistent ordering.
+		keyspan.SortKeysByTrailer(i.span.Keys)
+
+		if err := i.applySpanTransforms(); err != nil {
+			return nil, err
+		}
+		if len(i.span.Keys) > 0 {
+			return &i.span, nil
+		}
+		// SuffixMask filtering removed all keys; step backward.
+		// kv is already positioned from the Prev loop above.
 	}
-	return &i.span, nil
 }
 
 // SetContext is part of the FragmentIterator interface.
@@ -296,6 +326,7 @@ func (i *fragmentIter) Close() {
 	i.dir = 0
 	i.fileNum = 0
 	i.syntheticPrefixAndSuffix = blockiter.SyntheticPrefixAndSuffix{}
+	i.suffixMask = blockiter.SuffixMask{}
 	i.startKeyBuf = i.startKeyBuf[:0]
 	i.endKeyBuf = i.endKeyBuf[:0]
 	fragmentBlockIterPool.Put(i)
