@@ -2039,7 +2039,9 @@ func (d *DB) Flush() error {
 
 // FlushIfOverlapping flushes the memtable only if any flushable in the queue
 // possibly overlaps with the given key range. If no flushable overlaps, this
-// is a no-op.
+// is a no-op. This is useful for callers that need all data within a key range
+// to be in SSTables before performing an operation on those SSTables (e.g.,
+// DeleteSuffixRange, which attaches a mask to SSTable metadata).
 func (d *DB) FlushIfOverlapping(span KeyRange) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
