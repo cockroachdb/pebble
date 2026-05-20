@@ -88,6 +88,7 @@ func TestBlockFragmentIterator(t *testing.T) {
 			d.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 			d.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
 			transforms.SyntheticPrefixAndSuffix = blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix))
+			transforms.SuffixMasks = parseSuffixMaskArgs(t, d)
 			if d.HasArg("invariants-only") && !invariants.Enabled {
 				// Skip testcase.
 				return d.Expected

@@ -481,3 +481,226 @@ foob-food:{(#4,RANGEKEYSET,@3,coconut)}
 foob-food:{(#4,RANGEKEYSET,@3,coconut)}
 foob-food:{(#4,RANGEKEYSET,@3,coconut)}
 fooe-foog:{(#5,RANGEKEYSET,@1,tree)}
+
+# Suffix mask filtering on range keys (testkeys.Comparer sorts suffixes
+# descending: larger numeric suffix = smaller key, so the mask [@200, @5)
+# hides suffixes >= @5 and < @200, i.e. @200, @10, @9). Two spans
+# exercise multi-span Next/Prev advancement past fully-masked spans.
+
+reset
+----
+size=37:
+0: user keys:      bytes: 0 rows set; 0 bytes in data
+1: start indices:  uint: 0 rows
+2: trailers:       uint: 0 rows
+3: suffixes:       bytes: 0 rows set; 0 bytes in data
+4: values:         bytes: 0 rows set; 0 bytes in data
+
+add
+a-c:{(#10,RANGEKEYSET,@200,a200) (#9,RANGEKEYSET,@10,a10) (#8,RANGEKEYSET,@5,a5) (#7,RANGEKEYSET,@2,a2)}
+c-e:{(#6,RANGEKEYSET,@200,c200) (#5,RANGEKEYSET,@9,c9)}
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+----
+size=127:
+0: user keys:      bytes: 4 rows set; 4 bytes in data
+1: start indices:  uint: 4 rows
+2: trailers:       uint: 8 rows
+3: suffixes:       bytes: 8 rows set; 19 bytes in data
+4: values:         bytes: 8 rows set; 19 bytes in data
+
+finish
+----
+Boundaries: a#10,RANGEKEYSET — g#inf,RANGEKEYSET
+keyspan-decoder
+ └── keyspan block header
+      ├── 000-004: x 04000000 # user key count: 4
+      ├── columnar block header
+      │    ├── 004-005: x 01       # version 1
+      │    ├── 005-007: x 0500     # 5 columns
+      │    ├── 007-011: x 08000000 # 8 rows
+      │    ├── 011-012: b 00000011 # col 0: bytes
+      │    ├── 012-016: x 24000000 # col 0: page start 36
+      │    ├── 016-017: b 00000010 # col 1: uint
+      │    ├── 017-021: x 2e000000 # col 1: page start 46
+      │    ├── 021-022: b 00000010 # col 2: uint
+      │    ├── 022-026: x 33000000 # col 2: page start 51
+      │    ├── 026-027: b 00000011 # col 3: bytes
+      │    ├── 027-031: x 44000000 # col 3: page start 68
+      │    ├── 031-032: b 00000011 # col 4: bytes
+      │    └── 032-036: x 61000000 # col 4: page start 97
+      ├── data for column 0 (bytes)
+      │    ├── offsets table
+      │    │    ├── 036-037: x 01 # encoding: 1b
+      │    │    ├── 037-038: x 00 # data[0] = 0 [42 overall]
+      │    │    ├── 038-039: x 01 # data[1] = 1 [43 overall]
+      │    │    ├── 039-040: x 02 # data[2] = 2 [44 overall]
+      │    │    ├── 040-041: x 03 # data[3] = 3 [45 overall]
+      │    │    └── 041-042: x 04 # data[4] = 4 [46 overall]
+      │    └── data
+      │         ├── 042-043: x 61 # data[0]: a
+      │         ├── 043-044: x 63 # data[1]: c
+      │         ├── 044-045: x 65 # data[2]: e
+      │         └── 045-046: x 67 # data[3]: g
+      ├── data for column 1 (uint)
+      │    ├── 046-047: x 01 # encoding: 1b
+      │    ├── 047-048: x 00 # data[0] = 0
+      │    ├── 048-049: x 04 # data[1] = 4
+      │    ├── 049-050: x 06 # data[2] = 6
+      │    └── 050-051: x 08 # data[3] = 8
+      ├── data for column 2 (uint)
+      │    ├── 051-052: x 02   # encoding: 2b
+      │    ├── 052-054: x 150a # data[0] = 2581
+      │    ├── 054-056: x 1509 # data[1] = 2325
+      │    ├── 056-058: x 1508 # data[2] = 2069
+      │    ├── 058-060: x 1507 # data[3] = 1813
+      │    ├── 060-062: x 1506 # data[4] = 1557
+      │    ├── 062-064: x 1505 # data[5] = 1301
+      │    ├── 064-066: x 1304 # data[6] = 1043
+      │    └── 066-068: x 1503 # data[7] = 789
+      ├── data for column 3 (bytes)
+      │    ├── offsets table
+      │    │    ├── 068-069: x 01 # encoding: 1b
+      │    │    ├── 069-070: x 00 # data[0] = 0 [78 overall]
+      │    │    ├── 070-071: x 04 # data[1] = 4 [82 overall]
+      │    │    ├── 071-072: x 07 # data[2] = 7 [85 overall]
+      │    │    ├── 072-073: x 09 # data[3] = 9 [87 overall]
+      │    │    ├── 073-074: x 0b # data[4] = 11 [89 overall]
+      │    │    ├── 074-075: x 0f # data[5] = 15 [93 overall]
+      │    │    ├── 075-076: x 11 # data[6] = 17 [95 overall]
+      │    │    ├── 076-077: x 11 # data[7] = 17 [95 overall]
+      │    │    └── 077-078: x 13 # data[8] = 19 [97 overall]
+      │    └── data
+      │         ├── 078-082: x 40323030 # data[0]: @200
+      │         ├── 082-085: x 403130   # data[1]: @10
+      │         ├── 085-087: x 4035     # data[2]: @5
+      │         ├── 087-089: x 4032     # data[3]: @2
+      │         ├── 089-093: x 40323030 # data[4]: @200
+      │         ├── 093-095: x 4039     # data[5]: @9
+      │         ├── 095-095: x          # data[6]:
+      │         └── 095-097: x 4031     # data[7]: @1
+      ├── data for column 4 (bytes)
+      │    ├── offsets table
+      │    │    ├── 097-098: x 01 # encoding: 1b
+      │    │    ├── 098-099: x 00 # data[0] = 0 [107 overall]
+      │    │    ├── 099-100: x 04 # data[1] = 4 [111 overall]
+      │    │    ├── 100-101: x 07 # data[2] = 7 [114 overall]
+      │    │    ├── 101-102: x 09 # data[3] = 9 [116 overall]
+      │    │    ├── 102-103: x 0b # data[4] = 11 [118 overall]
+      │    │    ├── 103-104: x 0f # data[5] = 15 [122 overall]
+      │    │    ├── 104-105: x 11 # data[6] = 17 [124 overall]
+      │    │    ├── 105-106: x 11 # data[7] = 17 [124 overall]
+      │    │    └── 106-107: x 13 # data[8] = 19 [126 overall]
+      │    └── data
+      │         ├── 107-111: x 61323030 # data[0]: a200
+      │         ├── 111-114: x 613130   # data[1]: a10
+      │         ├── 114-116: x 6135     # data[2]: a5
+      │         ├── 116-118: x 6132     # data[3]: a2
+      │         ├── 118-122: x 63323030 # data[4]: c200
+      │         ├── 122-124: x 6339     # data[5]: c9
+      │         ├── 124-124: x          # data[6]:
+      │         └── 124-126: x 6531     # data[7]: e1
+      └── 126-127: x 00 # block padding byte
+
+# Partial mask: keeps unmasked entries in each span.
+iter suffix-mask-lower=@200 suffix-mask-upper=@5
+first
+next
+next
+next
+----
+a-c:{(#8,RANGEKEYSET,@5,a5) (#7,RANGEKEYSET,@2,a2)}
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+.
+.
+
+# All entries in c-e are masked, so it is skipped entirely; iteration
+# advances forward past it to e-g. RANGEKEYDEL has no suffix and
+# survives.
+iter suffix-mask-lower=@200 suffix-mask-upper=@2
+first
+next
+next
+----
+a-c:{(#7,RANGEKEYSET,@2,a2)}
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+.
+
+# Backward iteration with skip of fully-masked middle span.
+iter suffix-mask-lower=@200 suffix-mask-upper=@2
+last
+prev
+prev
+----
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+a-c:{(#7,RANGEKEYSET,@2,a2)}
+.
+
+# SeekGE landing inside a fully-masked span advances to the next
+# non-empty span.
+iter suffix-mask-lower=@200 suffix-mask-upper=@2
+seek-ge c
+----
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+
+# SeekLT landing inside a fully-masked span retreats to the previous
+# non-empty span.
+iter suffix-mask-lower=@200 suffix-mask-upper=@2
+seek-lt e
+----
+a-c:{(#7,RANGEKEYSET,@2,a2)}
+
+# Mask `[@200, @1)` covers walls @2..@200 but is exclusive of @1; the
+# RANGEKEYSET at @1 survives, and RANGEKEYDEL entries have no per-key
+# suffix and are never masked. So only the e-g span (which contains both
+# of those survivors) is visible.
+iter suffix-mask-lower=@200 suffix-mask-upper=@1
+first
+last
+----
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+
+# Two disjoint masks: [@200,@10) hides @200; [@5,@2) hides @5.
+# So visible: @10, @2, RANGEKEYDEL, @1.
+iter suffix-mask-lower=@200 suffix-mask-upper=@10 suffix-mask-lower2=@5 suffix-mask-upper2=@2
+first
+next
+next
+next
+----
+a-c:{(#9,RANGEKEYSET,@10,a10) (#7,RANGEKEYSET,@2,a2)}
+c-e:{(#5,RANGEKEYSET,@9,c9)}
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+.
+
+# Three disjoint masks: [@200,@10) hides @200; [@9,@5) hides @9; [@2,@1)
+# hides @2. After filtering a-c keeps @10, @5; c-e is fully masked (both
+# @200 and @9 hidden) and is skipped; e-g keeps RANGEKEYDEL and @1.
+iter suffix-mask-lower=@200 suffix-mask-upper=@10 suffix-mask-lower2=@9 suffix-mask-upper2=@5 suffix-mask-lower3=@2 suffix-mask-upper3=@1
+first
+next
+next
+----
+a-c:{(#9,RANGEKEYSET,@10,a10) (#8,RANGEKEYSET,@5,a5)}
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+.
+
+# Two overlapping masks: [@200,@5) and [@10,@1) overlap. Their union
+# covers @200, @10, @9, @5, @2 — both suffixed spans (a-c, c-e) are
+# fully masked and skipped. Only e-g survives (RANGEKEYDEL and @1).
+iter suffix-mask-lower=@200 suffix-mask-upper=@5 suffix-mask-lower2=@10 suffix-mask-upper2=@1
+first
+next
+----
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+.
+
+# A mask that hides almost everything plus a redundant second mask
+# contained within it. @1 survives (exclusive upper of the first mask)
+# and RANGEKEYDEL has no suffix; both other spans are fully masked.
+iter suffix-mask-lower=@200 suffix-mask-upper=@1 suffix-mask-lower2=@10 suffix-mask-upper2=@5
+first
+next
+----
+e-g:{(#4,RANGEKEYDEL) (#3,RANGEKEYSET,@1,e1)}
+.

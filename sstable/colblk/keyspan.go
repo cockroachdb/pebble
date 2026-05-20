@@ -325,13 +325,13 @@ func (d *KeyspanDecoder) searchBoundaryKeysWithSyntheticPrefix(
 
 // NewKeyspanIter constructs a new iterator over a keyspan columnar block.
 func NewKeyspanIter(
-	cmp base.Compare, h block.BufferHandle, transforms blockiter.FragmentTransforms,
+	comparer *base.Comparer, h block.BufferHandle, transforms blockiter.FragmentTransforms,
 ) *KeyspanIter {
 	i := keyspanIterPool.Get().(*KeyspanIter)
 	i.closeCheck = invariants.CloseChecker{}
 	i.handle = h
 	d := (*KeyspanDecoder)(unsafe.Pointer(h.BlockMetadata()))
-	i.init(cmp, d, transforms)
+	i.init(comparer.Compare, comparer.ComparePointSuffixes, d, transforms)
 	return i
 }
 
@@ -381,6 +381,7 @@ func (i *KeyspanIter) Close() {
 type keyspanIter struct {
 	r            *KeyspanDecoder
 	cmp          base.Compare
+	suffixCmp    base.ComparePointSuffixes
 	transforms   blockiter.FragmentTransforms
 	noTransforms bool
 	span         keyspan.Span
@@ -402,10 +403,20 @@ var _ keyspan.FragmentIterator = (*keyspanIter)(nil)
 // init initializes the iterator with the given comparison function and keyspan
 // decoder.
 func (i *keyspanIter) init(
-	cmp base.Compare, r *KeyspanDecoder, transforms blockiter.FragmentTransforms,
+	cmp base.Compare,
+	suffixCmp base.ComparePointSuffixes,
+	r *KeyspanDecoder,
+	transforms blockiter.FragmentTransforms,
 ) {
+	if len(transforms.SuffixMasks) > 0 && suffixCmp == nil {
+		// SuffixMasks require a comparer that knows how to order suffixes;
+		// configuring one without the other would silently leak entries that
+		// should be hidden.
+		panic(errors.AssertionFailedf("keyspanIter: SuffixMasks require non-nil ComparePointSuffixes"))
+	}
 	i.r = r
 	i.cmp = cmp
+	i.suffixCmp = suffixCmp
 	i.transforms = transforms
 	i.noTransforms = transforms.NoTransforms()
 	i.span.Start, i.span.End = nil, nil
@@ -526,20 +537,26 @@ func (i *keyspanIter) gatherKeysForward(startBoundIndex int) *keyspan.Span {
 		panic(errors.AssertionFailedf("out of bounds: i.startBoundIndex=%d", errors.Safe(startBoundIndex)))
 	}
 	i.startBoundIndex = startBoundIndex
-	if i.startBoundIndex >= int(i.r.boundaryKeysCount)-1 {
-		return nil
-	}
-	if !i.isNonemptySpan(i.startBoundIndex) {
-		if i.startBoundIndex == int(i.r.boundaryKeysCount)-2 {
-			// Corruption error
-			panic(base.CorruptionErrorf("keyspan block has empty span at end"))
+	for {
+		if i.startBoundIndex >= int(i.r.boundaryKeysCount)-1 {
+			return nil
+		}
+		if !i.isNonemptySpan(i.startBoundIndex) {
+			if i.startBoundIndex == int(i.r.boundaryKeysCount)-2 {
+				// Corruption error
+				panic(base.CorruptionErrorf("keyspan block has empty span at end"))
+			}
+			i.startBoundIndex++
+			if !i.isNonemptySpan(i.startBoundIndex) {
+				panic(base.CorruptionErrorf("keyspan block has consecutive empty spans"))
+			}
+		}
+		s := i.materializeSpan()
+		if len(s.Keys) > 0 {
+			return s
 		}
 		i.startBoundIndex++
-		if !i.isNonemptySpan(i.startBoundIndex) {
-			panic(base.CorruptionErrorf("keyspan block has consecutive empty spans"))
-		}
 	}
-	return i.materializeSpan()
 }
 
 // gatherKeysBackward returns the first non-empty Span in the backward direction,
@@ -547,24 +564,30 @@ func (i *keyspanIter) gatherKeysForward(startBoundIndex int) *keyspan.Span {
 // [startBoundIndex] as the span's start boundary.
 func (i *keyspanIter) gatherKeysBackward(startBoundIndex int) *keyspan.Span {
 	i.startBoundIndex = startBoundIndex
-	if i.startBoundIndex < 0 {
-		return nil
-	}
-	if invariants.Enabled && i.startBoundIndex >= int(i.r.boundaryKeysCount)-1 {
-		panic(errors.AssertionFailedf("out of bounds: i.startBoundIndex=%d, i.r.boundaryKeysCount=%d",
-			errors.Safe(i.startBoundIndex), errors.Safe(i.r.boundaryKeysCount)))
-	}
-	if !i.isNonemptySpan(i.startBoundIndex) {
-		if i.startBoundIndex == 0 {
-			// Corruption error
-			panic(base.CorruptionErrorf("keyspan block has empty span at beginning"))
+	for {
+		if i.startBoundIndex < 0 {
+			return nil
+		}
+		if invariants.Enabled && i.startBoundIndex >= int(i.r.boundaryKeysCount)-1 {
+			panic(errors.AssertionFailedf("out of bounds: i.startBoundIndex=%d, i.r.boundaryKeysCount=%d",
+				errors.Safe(i.startBoundIndex), errors.Safe(i.r.boundaryKeysCount)))
+		}
+		if !i.isNonemptySpan(i.startBoundIndex) {
+			if i.startBoundIndex == 0 {
+				// Corruption error
+				panic(base.CorruptionErrorf("keyspan block has empty span at beginning"))
+			}
+			i.startBoundIndex--
+			if !i.isNonemptySpan(i.startBoundIndex) {
+				panic(base.CorruptionErrorf("keyspan block has consecutive empty spans"))
+			}
+		}
+		s := i.materializeSpan()
+		if len(s.Keys) > 0 {
+			return s
 		}
 		i.startBoundIndex--
-		if !i.isNonemptySpan(i.startBoundIndex) {
-			panic(base.CorruptionErrorf("keyspan block has consecutive empty spans"))
-		}
 	}
-	return i.materializeSpan()
 }
 
 // isNonemptySpan returns true if the span starting at i.startBoundIndex
@@ -617,6 +640,42 @@ func (i *keyspanIter) materializeSpan() *keyspan.Span {
 				panic(base.AssertionFailedf("synthetic suffix not supported with key kind %s", k.Kind()))
 			}
 		}
+	}
+	if len(i.transforms.SuffixMasks) > 0 {
+		// `SuffixMasks` originate from a point-key `DeleteSuffixRange` call,
+		// so the comparison uses `ComparePointSuffixes` (matching the point
+		// path), not the range-suffix comparator. The synthetic-suffix
+		// substitution above has already mapped each `k.Suffix` to its
+		// effective value, so the mask check operates on the effective
+		// suffix here — `RangeKeySet` entries with empty original suffix
+		// retain the empty effective suffix and are skipped by the
+		// `len(k.Suffix) > 0` gate (never masked, per the DSR contract).
+		// `RangeKeyDelete` entries have no per-key suffix at all and are
+		// likewise skipped. See the symmetric block in
+		// `rowblk/rowblk_fragment_iter.go` for the same logic in the
+		// row-based path; see the TODOs in `rowblk_iter.go` and
+		// `colblk/data_block.go::isSuffixMasked` for why point keys need a
+		// different (synth-aware) treatment.
+		n := 0
+		for j := range i.span.Keys {
+			k := &i.span.Keys[j]
+			masked := false
+			if len(k.Suffix) > 0 {
+				for _, m := range i.transforms.SuffixMasks {
+					if i.suffixCmp(k.Suffix, m.Lower) >= 0 &&
+						i.suffixCmp(k.Suffix, m.Upper) < 0 {
+						masked = true
+						break
+					}
+				}
+			}
+			if masked {
+				continue
+			}
+			i.span.Keys[n] = i.span.Keys[j]
+			n++
+		}
+		i.span.Keys = i.span.Keys[:n]
 	}
 	if i.transforms.HasSyntheticPrefix() || invariants.Sometimes(10) {
 		syntheticPrefix := i.transforms.SyntheticPrefix()

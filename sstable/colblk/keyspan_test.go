@@ -60,11 +60,15 @@ func TestKeyspanBlock(t *testing.T) {
 			td.MaybeScanArgs(t, "synthetic-seq-num", &syntheticSeqNum)
 			td.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 			td.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
+			masks := parseSuffixMaskArgs(t, td)
 			transforms := blockiter.FragmentTransforms{
 				SyntheticSeqNum:          blockiter.SyntheticSeqNum(syntheticSeqNum),
 				SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
+				SuffixMasks:              masks,
 			}
-			iter.init(base.DefaultComparer.Compare, &kr, transforms)
+			// testkeys.Comparer provides ComparePointSuffixes; use its
+			// Compare for consistency with the suffix comparer.
+			iter.init(testkeys.Comparer.Compare, testkeys.Comparer.ComparePointSuffixes, &kr, transforms)
 			return keyspan.RunFragmentIteratorCmd(&iter, td.Input, nil)
 		default:
 			return fmt.Sprintf("unknown command: %s", td.Cmd)
@@ -96,7 +100,7 @@ func TestKeyspanBlockPooling(t *testing.T) {
 	getBlockAndIterate := func() {
 		cv := ch.Get(base.DiskFileNum(1), 0, base.MakeLevel(0), cache.CategorySSTableData)
 		require.NotNil(t, cv)
-		it := NewKeyspanIter(testkeys.Comparer.Compare, block.CacheBufferHandle(cv), blockiter.NoFragmentTransforms)
+		it := NewKeyspanIter(testkeys.Comparer, block.CacheBufferHandle(cv), blockiter.NoFragmentTransforms)
 		defer it.Close()
 		s, err := it.First()
 		require.NoError(t, err)
@@ -166,7 +170,7 @@ func benchmarkKeyspanBlockRangeDeletions(b *testing.B, numSpans, keysPerSpan, ke
 	kr.Init(w.Finish())
 
 	var it KeyspanIter
-	it.init(base.DefaultComparer.Compare, &kr, blockiter.NoFragmentTransforms)
+	it.init(base.DefaultComparer.Compare, nil, &kr, blockiter.NoFragmentTransforms)
 	b.Run("SeekGE", func(b *testing.B) {
 		rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
