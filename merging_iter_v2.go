@@ -437,7 +437,10 @@ func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Int
 		if flags.BatchJustRefreshed() {
 			var earlyExit bool
 			if flags, earlyExit = m.seekGEAfterBatchRefresh(key, flags); earlyExit {
-				return nil
+				if m.heap.Len() == 0 {
+					return nil
+				}
+				return m.findNextEntry()
 			}
 			// We fall back to rebuilding the entire slab, with the updated flags.
 			// TODO(radu): the batch level is already in the right place; we could
@@ -509,13 +512,19 @@ func (m *mergingIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Int
 // a backward move is required, and BatchJustRefreshed is always cleared
 // (the batch level was just seeked).
 func (m *mergingIterV2) seekGEAfterBatchRefresh(
-	key []byte, flags base.SeekGEFlags,
+	seekKey []byte, flags base.SeekGEFlags,
 ) (newFlags base.SeekGEFlags, earlyExit bool) {
-	newFlags = flags.DisableBatchJustRefreshed()
 	if invariants.Enabled && m.slab.batchSnapshot == 0 {
 		panic(errors.AssertionFailedf("BatchJustRefreshed with no batch iterator"))
 	}
 	level := &m.levels[m.slab.batchLevelIdx]
+
+	if level.iterKV != nil && m.heap.cmp(level.iterKV.K.UserKey, seekKey) <= 0 {
+		// Fast path: we are seeking past the current batch iterator key anyway, so
+		// no special handling needed. We must leave BatchJustRefreshed set.
+		return flags, false
+	}
+
 	var prevTopKey []byte
 	// Whether the heap is empty or non-empty, we need to seek the batch level to
 	// see if it causes the mergingIter to move back. If the heap is non-empty, we
@@ -530,24 +539,44 @@ func (m *mergingIterV2) seekGEAfterBatchRefresh(
 			prevTopKey = m.keyBuf
 		}
 	}
+	spanKeysDetector, _ := makeSpanKeysChangeDetector(level.span.Keys)
 	m.prepareForLevelOp(level)
-	level.iterKV = level.iter.SeekGE(key, flags)
+	level.iterKV = level.iter.SeekGE(seekKey, flags)
+	newFlags = flags.DisableBatchJustRefreshed()
 	switch {
 	case level.iterKV == nil:
 		// The entire operation is done if there was an error or the merging
 		// iterator is still exhausted.
 		if m.levelHasError(level) || prevTopKey == nil {
-			return newFlags, true
+			return 0, true
 		}
-		// The heap is not moving back, we can use TrySeekUsingNext on other levels.
 	case prevTopKey == nil || m.heap.cmp(level.iterKV.K.UserKey, prevTopKey) < 0:
 		// Either the heap was empty (so other levels are exhausted and need
 		// absolute re-seeks) or the slab moves back. Fall back to the general
 		// seek path.
-		newFlags = newFlags.DisableTrySeekUsingNext()
-	default:
-		// The heap is not moving back, we can use TrySeekUsingNext on other levels.
+		return newFlags.DisableTrySeekUsingNext(), false
 	}
+	// The heap is not moving back. Check if the iterator is already at the right
+	// position. We have to handle this case because seeking all levels at seekKey
+	// with TrySeekUsingNext might not be legal. See the corresponding case in
+	// SeekGE for an example.
+	if m.heap.cmp(seekKey, prevTopKey) < 0 {
+		if spanKeysDetector.MayHaveChanged(level.span.Keys) {
+			// The batch level's span may have changed. This could affect the
+			// per-level visibility (minSeqNum) and parked status of lower levels,
+			// requiring a proper slab rebuild. Fall back to the general seek path
+			// with TSUN disabled.
+			return newFlags.DisableTrySeekUsingNext(), false
+		}
+		// Rebuild the heap, since level.iterKV may have changed.
+		level.maxSeqNum = m.slab.batchSnapshot
+		m.initHeap(+1)
+		// The batch level's span boundary may have changed, so the slab's
+		// nextBoundary is potentially stale. Recompute it.
+		m.slab.calcNextBoundary(+1)
+		return 0, true
+	}
+	// We can use TrySeekUsingNext on other levels.
 	return newFlags, false
 }
 
