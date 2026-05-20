@@ -196,6 +196,12 @@ func TestDeleteSuffixRangeCancelsOverlappingCompaction(t *testing.T) {
 func TestSuffixMaskClearedAfterCompaction(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
+	// Disable the metamorphic skip bypass so the BPF skip's behavior
+	// (and therefore which files get masks) is deterministic here.
+	prev := suffixMaskSkipBypassDisabled
+	suffixMaskSkipBypassDisabled = true
+	defer func() { suffixMaskSkipBypassDisabled = prev }()
+
 	db, _ := suffixMaskTestDB(t)
 	defer func() { require.NoError(t, db.Close()) }()
 	ctx := context.Background()
@@ -225,7 +231,10 @@ func TestSuffixMaskClearedAfterCompaction(t *testing.T) {
 		testMakeSuffix(10, 0), // upper bound = oldest wall to keep visible
 	))
 
-	// Sanity: at least one file carries the mask before compaction.
+	// Exactly one file should carry the mask: the L0 file whose key-range
+	// intersects the span AND whose wall-range intersects the mask. The L6
+	// anchor (wall=1) has no walls in the mask range, so the BPF skip
+	// keeps it mask-free.
 	var maskedBefore int
 	for level := 0; level < manifest.NumLevels; level++ {
 		for f := range db.DebugCurrentVersion().Levels[level].All() {
@@ -234,7 +243,7 @@ func TestSuffixMaskClearedAfterCompaction(t *testing.T) {
 			}
 		}
 	}
-	require.True(t, maskedBefore >= 1)
+	require.Equal(t, 1, maskedBefore)
 
 	// Compact: must merge the masked L0 file with the L6 anchor.
 	require.NoError(t, db.Compact(ctx, aStart, bStart, false))

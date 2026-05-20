@@ -1113,6 +1113,24 @@ type Options struct {
 	// built and lives for the lifetime of writing that table.
 	BlockPropertyCollectors []func() BlockPropertyCollector
 
+	// SuffixRangeIntersects, if non-nil, is consulted by DeleteSuffixRange
+	// to skip files whose block-property aggregates indicate no suffix in
+	// the file falls within the mask's range. The userProperties argument
+	// is the table-level UserProperties map (as exposed by
+	// sstable.Reader.UserProperties); lower and upper are the suffix
+	// bounds of the DeleteSuffixRange call (lower inclusive, upper
+	// exclusive in suffix-compare order). The hook must return true if
+	// any key in the file could be within the suffix range, and false
+	// only when it can prove no key intersects.
+	//
+	// Implementations typically wrap a BlockIntervalCollector aggregate
+	// (e.g., cockroachkvs.SuffixRangeIntersectsTable). If nil,
+	// DeleteSuffixRange processes every overlapping file conservatively
+	// (the previous behavior).
+	//
+	// Experimental.
+	SuffixRangeIntersects func(userProperties map[string]string, lower, upper []byte) bool
+
 	// WALBytesPerSync sets the number of bytes to write to a WAL before calling
 	// Sync on it in the background. Just like with BytesPerSync above, this
 	// helps smooth out disk write latencies, and avoids cases where the OS

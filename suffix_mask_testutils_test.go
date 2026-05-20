@@ -34,6 +34,9 @@
 //     suffixMaskTestDB.
 //   - suffixMaskCollectVisible: scan a DB and return the visible point-key
 //     values in order.
+//
+// The package-level suffixMaskSkipBypassDisabled toggle (defined in
+// suffix_mask.go) is flipped by the BPF skip tests in suffix_mask_skip_test.go.
 
 package pebble
 
@@ -182,6 +185,7 @@ func suffixMaskTestDB(t *testing.T) (*DB, vfs.FS) {
 		DebugCheck:                  DebugCheckLevels,
 		Logger:                      testutils.Logger{T: t},
 		BlockPropertyCollectors:     cockroachkvs.BlockPropertyCollectors,
+		SuffixRangeIntersects:       cockroachkvs.SuffixRangeIntersectsTable,
 	}
 	db, err := Open("", opts)
 	require.NoError(t, err)

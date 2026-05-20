@@ -66,7 +66,9 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/keyspan"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testkeys"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
@@ -777,3 +779,172 @@ func TestDeleteSuffixRangeSyntheticSuffixWithEmptyRangeKey(t *testing.T) {
 // compaction is only chosen for specific (external<->local, virtual) file
 // configurations that a self-contained test couldn't easily produce in
 // isolation.
+
+// TestDeleteSuffixRangeSkipsNonOverlappingFiles verifies the BPF-based
+// per-file skip optimization in DeleteSuffixRange. Several tables are
+// constructed at disjoint wall-time ranges, and DSR is called with a
+// suffix range that matches only the middle band. Files that don't
+// overlap the mask range must not have a SuffixMask attached.
+//
+// The metamorphic bypass (invariants.Sometimes inside DeleteSuffixRange)
+// is disabled for this test so the skip behavior is deterministic.
+func TestDeleteSuffixRangeSkipsNonOverlappingFiles(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Disable the metamorphic bypass: we want the skip to be deterministic.
+	prev := suffixMaskSkipBypassDisabled
+	suffixMaskSkipBypassDisabled = true
+	defer func() { suffixMaskSkipBypassDisabled = prev }()
+
+	db, _ := suffixMaskTestDB(t)
+	defer func() { require.NoError(t, db.Close()) }()
+	ctx := context.Background()
+
+	// Build three disjoint files by writing keys in three distinct wall-time
+	// bands and flushing between writes.
+	//
+	//   file A: keys "a".."c" with walls 10..30
+	//   file B: keys "d".."f" with walls 100..130
+	//   file C: keys "g".."i" with walls 500..530
+	type fileGroup struct {
+		prefixes []string
+		walls    []uint64
+	}
+	groups := []fileGroup{
+		{prefixes: []string{"a", "b", "c"}, walls: []uint64{10, 20, 30}},
+		{prefixes: []string{"d", "e", "f"}, walls: []uint64{100, 110, 130}},
+		{prefixes: []string{"g", "h", "i"}, walls: []uint64{500, 520, 530}},
+	}
+	for i, g := range groups {
+		for _, p := range g.prefixes {
+			for _, w := range g.walls {
+				val := fmt.Sprintf("%s@%d/file%d", p, w, i)
+				require.NoError(t, db.Set(testMakeEngineKey([]byte(p), w, 0), []byte(val), nil))
+			}
+		}
+		require.NoError(t, db.Flush())
+	}
+
+	// Sanity: three files in L0.
+	ver := db.DebugCurrentVersion()
+	var total int
+	for level := 0; level < manifest.NumLevels; level++ {
+		for range ver.Levels[level].All() {
+			total++
+		}
+	}
+	require.Equal(t, 3, total)
+
+	// Call DSR with a wall range (200, 400] — i.e. lower=suffix(400),
+	// upper=suffix(200). This wall band overlaps no file. Span the full
+	// key range so the spatial overlap test would otherwise match every
+	// file; the BPF skip is the only thing that can elide them.
+	lower := testMakeSuffix(400, 0)
+	upper := testMakeSuffix(200, 0)
+	spanStart := testMakeEngineKey([]byte("a"), 0, 0)
+	spanEnd := testMakeEngineKey([]byte("z"), 0, 0)
+	require.NoError(t, db.DeleteSuffixRange(ctx,
+		KeyRange{Start: spanStart, End: spanEnd}, lower, upper))
+
+	// No file should have received a mask: every file's wall band lies
+	// entirely outside (200, 400].
+	ver = db.DebugCurrentVersion()
+	var masked, after int
+	for level := 0; level < manifest.NumLevels; level++ {
+		for f := range ver.Levels[level].All() {
+			after++
+			if len(f.SuffixMasks) > 0 {
+				masked++
+			}
+		}
+	}
+	require.Equal(t, 3, after)
+	require.Equal(t, 0, masked)
+
+	// Now DSR a band that matches only file B's wall range (90, 140]:
+	// lower=suffix(140), upper=suffix(90). Only file B should be
+	// masked; files A (walls 10..30) and C (walls 500..530) must be
+	// skipped.
+	lower = testMakeSuffix(140, 0)
+	upper = testMakeSuffix(90, 0)
+	require.NoError(t, db.DeleteSuffixRange(ctx,
+		KeyRange{Start: spanStart, End: spanEnd}, lower, upper))
+
+	ver = db.DebugCurrentVersion()
+	masked = 0
+	after = 0
+	for level := 0; level < manifest.NumLevels; level++ {
+		for f := range ver.Levels[level].All() {
+			after++
+			if len(f.SuffixMasks) > 0 {
+				masked++
+			}
+		}
+	}
+	require.Equal(t, 3, after)
+	require.Equal(t, 1, masked)
+}
+
+// TestDeleteSuffixRangeSkipBypassExercisesPath verifies that with the
+// metamorphic bypass enabled (the default in invariants builds), at
+// least one file occasionally has a no-op mask attached even when its
+// block-property aggregate would normally let it be skipped. This is a
+// statistical assertion across many DSR calls; with bypass probability
+// 25%, the chance that 100 calls all skip is (1-0.25)^100 ≈ 3*10^-13.
+func TestDeleteSuffixRangeSkipBypassExercisesPath(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	if !invariants.Enabled {
+		t.Skip("metamorphic bypass only fires under invariants/race builds")
+	}
+
+	// Reset the bypass to its default (enabled) for this test.
+	prev := suffixMaskSkipBypassDisabled
+	suffixMaskSkipBypassDisabled = false
+	defer func() { suffixMaskSkipBypassDisabled = prev }()
+
+	db, _ := suffixMaskTestDB(t)
+	defer func() { require.NoError(t, db.Close()) }()
+	ctx := context.Background()
+
+	// One file with walls in [10, 30].
+	for _, w := range []uint64{10, 20, 30} {
+		require.NoError(t, db.Set(testMakeEngineKey([]byte("a"), w, 0),
+			[]byte(fmt.Sprintf("a@%d", w)), nil))
+	}
+	require.NoError(t, db.Flush())
+
+	// DSR with a wall band that doesn't intersect: lower=suffix(400),
+	// upper=suffix(200). The BPF would normally skip. We loop until
+	// the bypass triggers and a mask is attached, or give up after
+	// many tries (extraordinarily unlikely).
+	spanStart := testMakeEngineKey([]byte("a"), 0, 0)
+	spanEnd := testMakeEngineKey([]byte("z"), 0, 0)
+	lower := testMakeSuffix(400, 0)
+	upper := testMakeSuffix(200, 0)
+
+	const maxCalls = 200
+	for i := 0; i < maxCalls; i++ {
+		require.NoError(t, db.DeleteSuffixRange(ctx,
+			KeyRange{Start: spanStart, End: spanEnd}, lower, upper))
+		ver := db.DebugCurrentVersion()
+		for level := 0; level < manifest.NumLevels; level++ {
+			for f := range ver.Levels[level].All() {
+				if len(f.SuffixMasks) > 0 {
+					// The bypass triggered at least once: the mask was
+					// attached even though no key matches. Visible scan
+					// should still see all rows.
+					iter, err := db.NewIter(nil)
+					require.NoError(t, err)
+					var visible int
+					for iter.First(); iter.Valid(); iter.Next() {
+						visible++
+					}
+					require.NoError(t, iter.Close())
+					require.Equal(t, 3, visible)
+					return
+				}
+			}
+		}
+	}
+	t.Fatalf("expected metamorphic bypass to attach a no-op mask within %d calls", maxCalls)
+}

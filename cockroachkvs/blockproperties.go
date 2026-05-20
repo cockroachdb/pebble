@@ -7,6 +7,7 @@ package cockroachkvs
 import (
 	"encoding/binary"
 	"math"
+	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/sstable"
@@ -153,6 +154,71 @@ func MakeSuffixMaskBlockPropertyFilter(suffixUpperBound []byte) sstable.BlockPro
 		return nil
 	}
 	return NewMVCCTimeIntervalFilter(0, wall)
+}
+
+// SuffixRangeIntersectsTable reports whether a table's MVCCTimeInterval
+// block-property aggregate could intersect a DeleteSuffixRange's suffix
+// range [lower, upper). Lower and upper are MVCC-encoded suffixes; per
+// the suffix mask convention, lower is suffix-order inclusive (the newer
+// wall time) and upper is suffix-order exclusive (the older wall time).
+//
+// userProperties is the table-level UserProperties map (as exposed by
+// sstable.Reader.UserProperties). If the MVCCTimeInterval property is
+// missing (the collector was not configured when the table was written),
+// the function returns true: the optimization fails open and the table
+// is processed as usual.
+//
+// The function also returns true if lower or upper cannot be decoded as
+// MVCC suffixes — DeleteSuffixRange would still apply the mask in that
+// case, and the optimization conservatively assumes intersection rather
+// than skipping a file that may legitimately need the mask.
+func SuffixRangeIntersectsTable(userProperties map[string]string, lower, upper []byte) bool {
+	lowerWall, _, err := DecodeMVCCTimestampSuffix(lower)
+	if err != nil || lowerWall == 0 {
+		// A wall-time of zero (or a non-MVCC suffix) cannot be reasoned
+		// about by the wall-only aggregate. Fail open.
+		return true
+	}
+	upperWall, _, err := DecodeMVCCTimestampSuffix(upper)
+	if err != nil {
+		return true
+	}
+	// The mask matches keys with wall times in (upperWall, lowerWall].
+	// As a half-open uint64 interval that is [upperWall+1, lowerWall+1).
+	filterLower := upperWall + 1
+	filterUpper := lowerWall + 1
+	if filterLower >= filterUpper {
+		// Inverted/empty range; conservatively assume intersection so
+		// DeleteSuffixRange retains its existing behavior.
+		return true
+	}
+	prop, ok := userProperties[mvccWallTimeIntervalCollector]
+	if !ok {
+		// Collector was not configured when the table was written. Fail
+		// open: the caller must process the table.
+		return true
+	}
+	if len(prop) < 1 {
+		// Defensive: a present-but-empty entry would corrupt our shortID
+		// stripping. Fail open.
+		return true
+	}
+	// First byte is the shortID; the remainder is the encoded interval.
+	// Use unsafe.Slice to avoid allocating: DecodeBlockInterval does not
+	// modify the buffer.
+	propBytes := unsafe.Slice(unsafe.StringData(prop), len(prop))
+	interval, err := sstable.DecodeBlockInterval(propBytes[1:])
+	if err != nil {
+		// Corrupt aggregate: fail open rather than skipping a file that
+		// may legitimately need the mask.
+		return true
+	}
+	if interval.IsEmpty() {
+		// The collector ran but recorded no MVCC keys. No key in the
+		// file can possibly fall in the mask range.
+		return false
+	}
+	return interval.Upper > filterLower && interval.Lower < filterUpper
 }
 
 type MaxMVCCTimestampProperty struct{}

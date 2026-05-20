@@ -11,9 +11,11 @@
 // it surfaces as if the masked keys had been point-deleted.
 //
 // `DeleteSuffixRange` is the public API that attaches masks. For each
-// SSTable overlapping the user-key span, it picks one of two actions
+// SSTable overlapping the user-key span, it picks one of three actions
 // based on how the file relates to the span and the suffix range:
 //
+//	skip   — BPF says no key in this file falls in [Lower, Upper).
+//	         No version edit for this file. Pure optimization.
 //	excise — Whole-file content is in the mask range (today, only the
 //	         `SyntheticSuffix` case detects this). The overlapping
 //	         portion is deleted; outside portions become virtual SSTs
@@ -52,6 +54,7 @@ import (
 	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/sstable/block"
 )
 
 // DeleteSuffixRange deletes all point keys and range key entries within the
@@ -79,6 +82,13 @@ import (
 // Repeated DeleteSuffixRange calls are supported: a per-table SuffixMasks
 // list accumulates masks over time. Contiguous masks are merged in place;
 // disjoint masks are appended.
+//
+// As an optimization, when Options.SuffixRangeIntersects is configured,
+// each overlapping file's block-property aggregate is consulted before a
+// mask is attached. Files whose aggregate proves no key falls within the
+// mask's [lower, upper) range are skipped entirely (no mask, no excise,
+// no version edit). The optimization is invisible to readers; it merely
+// avoids attaching trivially-no-op masks.
 func (d *DB) DeleteSuffixRange(ctx context.Context, span KeyRange, lower, upper []byte) error {
 	if err := d.closed.Load(); err != nil {
 		panic(err)
@@ -161,6 +171,24 @@ func (d *DB) DeleteSuffixRange(ctx context.Context, span KeyRange, lower, upper 
 				mBounds := m.UserKeyBounds()
 				if !bounds.Overlaps(d.cmp, mBounds) {
 					continue
+				}
+				// Consult the file's block-property aggregate, if a hook
+				// is configured. If the aggregate proves no key in the
+				// file falls within the mask range, the file is skipped
+				// entirely (no version edit, no mask attached).
+				//
+				// Under invariants builds, randomly bypass the skip so
+				// the mask-attachment, virtual-table, and per-row filter
+				// machinery exercise on files that won't actually match.
+				// The mask is observably a no-op in that case.
+				if d.opts.SuffixRangeIntersects != nil {
+					skip, err := d.suffixMaskCanSkipFile(ctx, m, suffixMask.Lower, suffixMask.Upper)
+					if err != nil {
+						return versionUpdate{}, err
+					}
+					if skip && (suffixMaskSkipBypassDisabled || !invariants.Sometimes(25)) {
+						continue
+					}
 				}
 				// SyntheticSuffix files have a largely uniform mask answer:
 				// point keys all have effective suffix = synth; RangeKeySet
@@ -314,6 +342,38 @@ func (d *DB) DeleteSuffixRange(ctx context.Context, span KeyRange, lower, upper 
 	}
 	d.updateReadStateLocked(d.opts.DebugCheck)
 	return nil
+}
+
+// suffixMaskSkipBypassDisabled is set by tests that need DeleteSuffixRange
+// to skip files deterministically (i.e., never trigger the
+// invariants.Sometimes metamorphic bypass). Production code never reads
+// this; it is only consulted inside the bypass check.
+var suffixMaskSkipBypassDisabled = false
+
+// suffixMaskCanSkipFile reports whether DeleteSuffixRange may skip the
+// given file based on the file's block-property aggregate. It opens the
+// file's sstable.Reader (via the file cache) and passes the reader's
+// table-level UserProperties to the configured SuffixRangeIntersects
+// hook. The hook returning false means "no key in this file falls
+// within [lower, upper)", and the file is safe to skip; the hook
+// returning true means a mask is required.
+//
+// If opening the reader fails, the error is returned and the caller
+// must abort the DeleteSuffixRange. Callers must only invoke this
+// when d.opts.SuffixRangeIntersects is non-nil.
+func (d *DB) suffixMaskCanSkipFile(
+	ctx context.Context, m *manifest.TableMetadata, lower, upper []byte,
+) (bool, error) {
+	var intersects bool
+	err := d.fileCache.withReader(ctx, block.NoReadEnv, m,
+		func(r *sstable.Reader, _ sstable.ReadEnv) error {
+			intersects = d.opts.SuffixRangeIntersects(r.UserProperties, lower, upper)
+			return nil
+		})
+	if err != nil {
+		return false, err
+	}
+	return !intersects, nil
 }
 
 // applySuffixMaskToTable applies the suffix masks to a table that is fully
