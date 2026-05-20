@@ -92,6 +92,9 @@ const (
 	customTagBlobReferences    = 69
 	// customTagBlobReferences2 contains BackingValueSize for each BlobReference.
 	customTagBlobReferences2 = 70
+	// customTagSuffixMask encodes the lower and upper bounds of the suffix
+	// mask as two consecutive length-prefixed byte slices.
+	customTagSuffixMask = 71
 )
 
 // DeletedTableEntry holds the state for a sstable deletion from a level. The
@@ -423,6 +426,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			var noRangeKeySets bool
 			var syntheticPrefix sstable.SyntheticPrefix
 			var syntheticSuffix sstable.SyntheticSuffix
+			var suffixMasks []sstable.SuffixMask
 			var blobReferences BlobReferences
 			var blobReferenceDepth BlobReferenceDepth
 			if tag == tagNewFile4 || tag == tagNewFile5 {
@@ -493,6 +497,36 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 							return err
 						}
 
+					case customTagSuffixMask:
+						// The payload is a single length-prefixed bytes field
+						// containing two consecutive length-prefixed byte
+						// slices: the lower bound followed by the upper bound.
+						//
+						// The customTagSuffixMask tag may repeat: each
+						// occurrence appends an additional mask to
+						// SuffixMasks.
+						payload, err := d.readBytes()
+						if err != nil {
+							return err
+						}
+						reader := bytes.NewReader(payload)
+						sub := versionEditDecoder{reader}
+						lower, err := sub.readBytes()
+						if err != nil {
+							return base.CorruptionErrorf("new-file4: suffix mask: %v", err)
+						}
+						upper, err := sub.readBytes()
+						if err != nil {
+							return base.CorruptionErrorf("new-file4: suffix mask: %v", err)
+						}
+						if len(lower) == 0 || len(upper) == 0 {
+							return base.CorruptionErrorf("new-file4: suffix mask: bound is empty")
+						}
+						if reader.Len() != 0 {
+							return base.CorruptionErrorf("new-file4: suffix mask: %d trailing bytes", reader.Len())
+						}
+						suffixMasks = append(suffixMasks, sstable.SuffixMask{Lower: lower, Upper: upper})
+
 					case customTagBlobReferences, customTagBlobReferences2:
 						// The first varint encodes the 'blob reference depth'
 						// of the table.
@@ -550,6 +584,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				BlobReferenceDepth:       blobReferenceDepth,
 				Virtual:                  virtualState.virtual,
 				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+				SuffixMasks:              suffixMasks,
 			}
 
 			if tag != tagNewFile5 { // no range keys present
@@ -918,7 +953,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		e.writeUvarint(uint64(x.FileNum))
 	}
 	for _, x := range v.NewTables {
-		customFields := x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0 || x.Meta.RangeKeyKinds == OnlyRangeKeyUnsetAndDelete
+		customFields := x.Meta.CreationTime != 0 || x.Meta.Virtual || len(x.Meta.BlobReferences) > 0 || x.Meta.RangeKeyKinds == OnlyRangeKeyUnsetAndDelete || len(x.Meta.SuffixMasks) > 0
 		var tag uint64
 		switch {
 		case x.Meta.HasRangeKeys:
@@ -984,6 +1019,25 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 			if x.Meta.SyntheticPrefixAndSuffix.HasSuffix() {
 				e.writeUvarint(customTagSyntheticSuffix)
 				e.writeBytes(x.Meta.SyntheticPrefixAndSuffix.Suffix())
+			}
+			for _, mask := range x.Meta.SuffixMasks {
+				// Encode both bounds inside a single tag's payload as two
+				// consecutive length-prefixed byte slices. See customTagSuffixMask.
+				//
+				// REQUIRES: the database's FormatMajorVersion is at least
+				// FormatSuffixMask. The encoder cannot enforce this directly,
+				// so callers that attach SuffixMasks to a TableMetadata (today,
+				// only DeleteSuffixRange) must verify the gate.
+				//
+				// The customTagSuffixMask tag may repeat; the decoder accumulates
+				// each occurrence into SuffixMasks.
+				e.writeUvarint(customTagSuffixMask)
+				var buf []byte
+				buf = binary.AppendUvarint(buf, uint64(len(mask.Lower)))
+				buf = append(buf, mask.Lower...)
+				buf = binary.AppendUvarint(buf, uint64(len(mask.Upper)))
+				buf = append(buf, mask.Upper...)
+				e.writeBytes(buf)
 			}
 			if len(x.Meta.BlobReferences) > 0 {
 				writeBackingValueSize := false

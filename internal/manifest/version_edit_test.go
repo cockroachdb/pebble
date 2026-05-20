@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
@@ -598,6 +599,91 @@ func TestVersionEditApply(t *testing.T) {
 				return fmt.Sprintf("unknown command: %s", d.Cmd)
 			}
 		})
+}
+
+func TestVersionEditRoundTripSuffixMask(t *testing.T) {
+	cmp := base.DefaultComparer.Compare
+	// makeTable builds a TableMetadata for the suffix-mask roundtrip test.
+	// Every case uses identical key bounds so the meaningful axis varies only
+	// in the masks field.
+	makeTable := func(tableNum base.TableNum, masks []sstable.SuffixMask) *TableMetadata {
+		m := (&TableMetadata{
+			TableNum:    tableNum,
+			Size:        1000,
+			SuffixMasks: masks,
+		}).ExtendPointKeyBounds(
+			cmp,
+			base.MakeInternalKey([]byte("a"), 0, base.InternalKeyKindSet),
+			base.MakeInternalKey([]byte("z"), 0, base.InternalKeyKindSet),
+		)
+		m.InitPhysicalBacking()
+		return m
+	}
+
+	t.Run("hand-picked cases", func(t *testing.T) {
+		// Anchor cases for regressions. checkRoundTrip walks the full
+		// VersionEdit via pretty.Diff, which covers SuffixMasks end-to-end.
+		cases := []struct {
+			name  string
+			masks []sstable.SuffixMask
+		}{
+			{"unset", nil},
+			{"single equal-length bounds", []sstable.SuffixMask{{
+				Lower: []byte{0, 0, 0, 0, 0, 0, 0, 0, 5},
+				Upper: []byte{0, 0, 0, 0, 0, 0, 0, 0, 10},
+			}}},
+			{"single different-length bounds (wall-only / wall+logical)", []sstable.SuffixMask{{
+				Lower: []byte{0, 0, 0, 0, 0, 0, 0, 0, 5},              // 9 bytes
+				Upper: []byte{0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 1}, // 13 bytes
+			}}},
+			{"two disjoint masks", []sstable.SuffixMask{
+				{Lower: []byte{0x10}, Upper: []byte{0x05}},
+				{Lower: []byte{0x30}, Upper: []byte{0x20}},
+			}},
+			{"two contiguous masks", []sstable.SuffixMask{
+				{Lower: []byte{0x20}, Upper: []byte{0x10}},
+				{Lower: []byte{0x10}, Upper: []byte{0x05}},
+			}},
+		}
+		var tables []NewTableEntry
+		for i, tc := range cases {
+			tables = append(tables, NewTableEntry{
+				Level: 6,
+				Meta:  makeTable(base.TableNum(820+i), tc.masks),
+			})
+		}
+		require.NoError(t, checkRoundTrip(VersionEdit{NewTables: tables}))
+	})
+
+	t.Run("randomized", func(t *testing.T) {
+		// Randomized roundtrip covers length-prefix arithmetic, asymmetric
+		// bound sizes, varying counts of masks per file, and pathological byte
+		// patterns that hand-picked cases can't enumerate exhaustively.
+		rng := rand.New(rand.NewPCG(1, 2))
+		randBytes := func(n int) []byte {
+			b := make([]byte, n)
+			for i := range b {
+				b[i] = byte(rng.IntN(256))
+			}
+			return b
+		}
+		const iterations = 200
+		for i := 0; i < iterations; i++ {
+			numMasks := rng.IntN(4) // 0..3 masks per file
+			var masks []sstable.SuffixMask
+			for j := 0; j < numMasks; j++ {
+				lenL := 1 + rng.IntN(64)
+				lenU := 1 + rng.IntN(64)
+				masks = append(masks, sstable.SuffixMask{Lower: randBytes(lenL), Upper: randBytes(lenU)})
+			}
+			ve := VersionEdit{NewTables: []NewTableEntry{{
+				Level: 6,
+				Meta:  makeTable(base.TableNum(i+1), masks),
+			}}}
+			require.NoError(t, checkRoundTrip(ve), "iteration %d masks=%d", i, numMasks)
+		}
+	})
+
 }
 
 func TestParseVersionEditDebugRoundTrip(t *testing.T) {

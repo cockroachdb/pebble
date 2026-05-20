@@ -121,6 +121,14 @@ func TestTableMetadata_ParseRoundTrip(t *testing.T) {
 			name:  "blobrefs",
 			input: "000196:[bar#0,SET-foo#0,SET] seqnums:[#0-#0] points:[bar#0,SET-foo#0,SET] blobrefs:[(B000191: 2952), (B000075: 108520); depth:2]",
 		},
+		{
+			name:  "suffixmask",
+			input: "000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] suffixmask:[deadbeef-cafef00d)",
+		},
+		{
+			name:  "multiple suffixmask entries",
+			input: "000001:[a#0,SET-z#0,DEL] seqnums:[#0-#0] points:[a#0,SET-z#0,DEL] suffixmask:[20-10) suffixmask:[0900-0500)",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -192,7 +200,7 @@ func TestTableMetadataSize(t *testing.T) {
 		t.Skip("Test only supported on amd64 and arm64 architectures")
 	}
 
-	const tableMetadataSize = 216
+	const tableMetadataSize = 240
 	if structSize := unsafe.Sizeof(TableMetadata{}); structSize != tableMetadataSize {
 		t.Errorf("TableMetadata struct size (%d bytes) is not expected size (%d bytes)",
 			structSize, tableMetadataSize)

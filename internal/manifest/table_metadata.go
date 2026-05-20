@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	stdcmp "cmp"
+	"encoding/hex"
 	"fmt"
 	"sync/atomic"
 
@@ -202,6 +203,15 @@ type TableMetadata struct {
 	// SyntheticPrefix is used to prepend a prefix to all keys and/or override all
 	// suffixes in a table; used for some virtual tables.
 	SyntheticPrefixAndSuffix sstable.SyntheticPrefixAndSuffix
+
+	// SuffixMasks, if non-empty, masks point keys and range key entries whose
+	// suffix falls within any of the configured mask ranges [Lower, Upper).
+	// Used for MVCC revert. Repeated DeleteSuffixRange calls may accumulate
+	// additional masks on a file.
+	//
+	// The slice and its byte contents are immutable by convention; mutators
+	// must clone before appending. See `DeleteSuffixRange`.
+	SuffixMasks []sstable.SuffixMask
 }
 
 // RangeKeyKinds describes which kinds of range keys may be present in a table.
@@ -303,6 +313,7 @@ func (m *TableMetadata) IterTransforms() sstable.IterTransforms {
 	return sstable.IterTransforms{
 		SyntheticSeqNum:          m.SyntheticSeqNum(),
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+		SuffixMasks:              m.SuffixMasks,
 	}
 }
 
@@ -312,6 +323,7 @@ func (m *TableMetadata) FragmentIterTransforms() sstable.FragmentIterTransforms 
 	return sstable.FragmentIterTransforms{
 		SyntheticSeqNum:          m.SyntheticSeqNum(),
 		SyntheticPrefixAndSuffix: m.SyntheticPrefixAndSuffix,
+		SuffixMasks:              m.SuffixMasks,
 	}
 }
 
@@ -899,6 +911,14 @@ func (m *TableMetadata) DebugString(format base.FormatKey, verbose bool) string 
 			fmt.Fprintf(&b, "(%d)", m.TableBacking.Size)
 		}
 	}
+	for _, mask := range m.SuffixMasks {
+		// "suffixmask" is one token because '-' is a parser separator (see
+		// debugParserSeparators); using "suffix-mask" would tokenize into
+		// three tokens and ParseTableMetadataDebug would not roundtrip.
+		// Each mask emits its own "suffixmask:[...)" token; the parser loop
+		// appends each occurrence to SuffixMasks.
+		fmt.Fprintf(&b, " suffixmask:[%x-%x)", mask.Lower, mask.Upper)
+	}
 	if len(m.BlobReferences) > 0 {
 		fmt.Fprint(&b, " blobrefs:[")
 		for i, r := range m.BlobReferences {
@@ -1016,6 +1036,21 @@ func ParseTableMetadataDebug(s string) (_ *TableMetadata, err error) {
 			p.Expect(":")
 			m.BlobReferenceDepth = BlobReferenceDepth(p.Uint64())
 			p.Expect("]")
+
+		case "suffixmask":
+			// Multiple "suffixmask:[lo-hi)" tokens accumulate into the
+			// SuffixMasks slice in order.
+			p.Expect("[")
+			lowerHex := p.Next()
+			p.Expect("-")
+			upperHex := p.Next()
+			p.Expect(")")
+			lower, errL := hex.DecodeString(lowerHex)
+			upper, errU := hex.DecodeString(upperHex)
+			if errL != nil || errU != nil {
+				p.Errf("bad suffixmask hex: lower=%v upper=%v", errL, errU)
+			}
+			m.SuffixMasks = append(m.SuffixMasks, sstable.SuffixMask{Lower: lower, Upper: upper})
 
 		default:
 			p.Errf("unknown field %q", field)
