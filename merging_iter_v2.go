@@ -399,11 +399,14 @@ func (m *mergingIterV2) seekGE(key []byte, flags base.SeekGEFlags) {
 				// an absolute seek.
 				levelFlags = levelFlags.DisableTrySeekUsingNext()
 			}
-			if levelIdx != m.slab.batchLevelIdx {
-				// The BatchJustRefreshed flag does something only for the batch level.
-				// We don't want to pass it to other levels since it disables some
-				// optimizations in InterleavingIters.
+			if levelFlags.BatchJustRefreshed() {
+				// We never pass BatchJustRefreshed below.
 				levelFlags = levelFlags.DisableBatchJustRefreshed()
+				if levelIdx == m.slab.batchLevelIdx {
+					// If the batch was just refreshed, don't pass TrySeekUsingNext for
+					// the batch level: the iterators were reset so we need a full reseek.
+					levelFlags = levelFlags.DisableTrySeekUsingNext()
+				}
 			}
 			m.prepareForLevelOp(level)
 			if m.prefix != nil {
@@ -541,8 +544,8 @@ func (m *mergingIterV2) seekGEAfterBatchRefresh(
 	}
 	spanKeysDetector, _ := makeSpanKeysChangeDetector(level.span.Keys)
 	m.prepareForLevelOp(level)
-	level.iterKV = level.iter.SeekGE(seekKey, flags)
 	newFlags = flags.DisableBatchJustRefreshed()
+	level.iterKV = level.iter.SeekGE(seekKey, newFlags.DisableTrySeekUsingNext())
 	switch {
 	case level.iterKV == nil:
 		// The entire operation is done if there was an error or the merging
@@ -571,8 +574,9 @@ func (m *mergingIterV2) seekGEAfterBatchRefresh(
 		// Rebuild the heap, since level.iterKV may have changed.
 		level.maxSeqNum = m.slab.batchSnapshot
 		m.initHeap(+1)
-		// The batch level's span boundary may have changed, so the slab's
-		// nextBoundary is potentially stale. Recompute it.
+		// The level.span.Boundary could have changed, even if the keys stayed the
+		// same (for example: level.span.Keys is empty now but a RANGEDEL was added
+		// in front of us). Recompute the slab's next boundary.
 		m.slab.calcNextBoundary(+1)
 		return 0, true
 	}
