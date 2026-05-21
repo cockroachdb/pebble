@@ -1286,11 +1286,12 @@ func TestSetOptionsBatchRefreshSeekGE(t *testing.T) {
 // the underlying merging iterator) against a freshly constructed iterator on
 // the same batch.
 //
-// The iteration randomly picks SeekGE, SeekPrefixGE, or SeekLT for each pass.
-// SeekLT does not currently propagate any TSUN/BatchJustRefreshed signal
-// through iterator.go (the optimization is gated on i.batch == nil), but we
-// still cover it to guard against regressions if InterleavingIter ever grows a
-// SeekLT fast path.
+// The iteration randomly picks SeekGE, SeekPrefixGE, SeekLT, First, or Last
+// for each pass. SeekLT does not currently propagate any TSUN/BatchJustRefreshed
+// signal through iterator.go (the optimization is gated on i.batch == nil), but
+// we still cover it to guard against regressions if InterleavingIter ever grows
+// a SeekLT fast path. First and Last exercise the absolute-positioning paths
+// after a batch refresh.
 func TestSetOptionsBatchRefreshRand(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	// Set to true to record treesteps for the BatchJustRefreshed seek on
@@ -1376,7 +1377,33 @@ func TestSetOptionsBatchRefreshRand(t *testing.T) {
 	// BatchJustRefreshed+TSUN path under test.
 	require.NoError(t, batch.DeleteRange([]byte("\xff\xfe"), []byte("\xff\xff"), nil))
 
-	iter, _ := batch.NewIter(nil)
+	// Pick a fixed random lower/upper bound. Bounds ensure First/Last call
+	// SeekGE/SeekLT on the underlying InterleavingIter (rather than First/Last),
+	// which is the path that needs to propagate BatchJustRefreshed.
+	lower := slices.Clone(randPrefix())
+	upper := slices.Clone(randPrefix())
+	if bytes.Compare(lower, upper) > 0 {
+		lower, upper = upper, lower
+	}
+	if bytes.Equal(lower, upper) {
+		upper = append(slices.Clip(upper), byte('a')+byte(rng.IntN(8)))
+	}
+	iterOpts := &IterOptions{LowerBound: lower, UpperBound: upper}
+	lowerPrefix := testkeys.Comparer.Prefix(lower)
+	upperPrefix := testkeys.Comparer.Prefix(upper)
+	// randKeyInPrefixBounds returns a randKey() whose prefix lies in
+	// [lowerPrefix, upperPrefix], retrying until it does. This is required for
+	// SeekPrefixGE, which errors when the seek key's prefix is outside bounds.
+	randKeyInPrefixBounds := func() []byte {
+		for {
+			k := randKey()
+			p := testkeys.Comparer.Prefix(k)
+			if bytes.Compare(p, lowerPrefix) >= 0 && bytes.Compare(p, upperPrefix) <= 0 {
+				return k
+			}
+		}
+	}
+	iter, _ := batch.NewIter(iterOpts)
 	defer iter.Close()
 	// Bypass the testingDisableSeekOpt randomization so the second seek
 	// deterministically passes TrySeekUsingNext when its key permits it.
@@ -1400,20 +1427,29 @@ func TestSetOptionsBatchRefreshRand(t *testing.T) {
 		opSeekGE = iota
 		opSeekPrefixGE
 		opSeekLT
+		opFirst
+		opLast
 	)
-	opName := []string{"SeekGE", "SeekPrefixGE", "SeekLT"}
+	opName := []string{"SeekGE", "SeekPrefixGE", "SeekLT", "First", "Last"}
 
 	const iterations = 300
 	for it := 0; it < iterations; it++ {
-		op := rng.IntN(3)
-		seekKey := randKey()
+		op := rng.IntN(5)
+		var seekKey []byte
 		switch op {
 		case opSeekGE:
+			seekKey = randKey()
 			iter.SeekGE(seekKey)
 		case opSeekPrefixGE:
+			seekKey = randKeyInPrefixBounds()
 			iter.SeekPrefixGE(seekKey)
 		case opSeekLT:
+			seekKey = randKey()
 			iter.SeekLT(seekKey)
+		case opFirst:
+			iter.First()
+		case opLast:
+			iter.Last()
 		}
 
 		// Mutate the batch with a small random number of point/range writes.
@@ -1427,7 +1463,7 @@ func TestSetOptionsBatchRefreshRand(t *testing.T) {
 			}
 		}
 
-		iter.SetOptions(&IterOptions{})
+		iter.SetOptions(iterOpts)
 
 		// Choose the new seek key. For SeekGE/SeekPrefixGE, make it strictly
 		// greater than the previous key/prefix so the iterator.go-level TSUN
@@ -1438,9 +1474,20 @@ func TestSetOptionsBatchRefreshRand(t *testing.T) {
 		case opSeekGE:
 			newSeekKey = strictlyGreaterKey(seekKey)
 		case opSeekPrefixGE:
-			newSeekKey = strictlyGreaterKey(seekKey)
+			// Re-roll until the strictly-greater key still has a prefix within
+			// bounds (SeekPrefixGE rejects keys whose prefix is outside).
+			for {
+				newSeekKey = strictlyGreaterKey(seekKey)
+				p := testkeys.Comparer.Prefix(newSeekKey)
+				if bytes.Compare(p, lowerPrefix) >= 0 && bytes.Compare(p, upperPrefix) <= 0 {
+					break
+				}
+				seekKey = randKeyInPrefixBounds()
+			}
 		case opSeekLT:
 			newSeekKey = randKey()
+		case opFirst, opLast:
+			// No seek key.
 		}
 
 		var rec *treesteps.Recording
@@ -1478,8 +1525,13 @@ func TestSetOptionsBatchRefreshRand(t *testing.T) {
 			gotValid = iter.SeekPrefixGE(newSeekKey)
 		case opSeekLT:
 			gotValid = iter.SeekLT(newSeekKey)
+		case opFirst:
+			gotValid = iter.First()
+		case opLast:
+			gotValid = iter.Last()
 		}
-		gotKeys, gotVals := collect(iter, gotValid, op != opSeekLT)
+		forward := op != opSeekLT && op != opLast
+		gotKeys, gotVals := collect(iter, gotValid, forward)
 		var recSteps treesteps.Steps
 		if rec != nil {
 			recSteps = rec.Finish()
@@ -1487,7 +1539,7 @@ func TestSetOptionsBatchRefreshRand(t *testing.T) {
 
 		// Reference: a fresh iterator on the same batch performing the same
 		// seek + traversal.
-		ref, _ := batch.NewIter(nil)
+		ref, _ := batch.NewIter(iterOpts)
 		var wantValid bool
 		switch op {
 		case opSeekGE:
@@ -1496,8 +1548,12 @@ func TestSetOptionsBatchRefreshRand(t *testing.T) {
 			wantValid = ref.SeekPrefixGE(newSeekKey)
 		case opSeekLT:
 			wantValid = ref.SeekLT(newSeekKey)
+		case opFirst:
+			wantValid = ref.First()
+		case opLast:
+			wantValid = ref.Last()
 		}
-		wantKeys, wantVals := collect(ref, wantValid, op != opSeekLT)
+		wantKeys, wantVals := collect(ref, wantValid, forward)
 		require.NoError(t, ref.Close())
 
 		mismatch := wantValid != gotValid || len(wantKeys) != len(gotKeys)

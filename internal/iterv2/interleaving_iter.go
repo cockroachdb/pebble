@@ -335,12 +335,28 @@ func (i *InterleavingIter) setError(err error) {
 	i.err = err
 	i.dir = 0
 	i.pointKV = nil
+	i.span = nil
 	i.exhaust()
 }
 
 // Span implements Iter.
 func (i *InterleavingIter) Span() *Span {
 	return &i.presentedSpan
+}
+
+// InvalidateCachedSpan drops the InterleavingIter's cached pointer into the
+// underlying span iterator's fragment slice, forcing the next operation to
+// re-seek the span iterator. Requires that if the next operation is a SeekGE
+// with the TrySeekUsingNext flag, the BatchJustRefreshed flag is also set.
+//
+// Used for the batch level of the merging iterator, after reinitializing the
+// span iterator.
+//
+// TODO(radu): the iterators changing underneath us is pretty sketchy.
+// Investigate having a special iterv2.Iter implementation for the batch which
+// handles all this internally.
+func (i *InterleavingIter) InvalidateCachedSpan() {
+	i.span = nil
 }
 
 // SeekGE implements InternalIterator.
@@ -371,7 +387,16 @@ func (i *InterleavingIter) seekGEHelper(
 		}
 	}
 	i.positionSpanIterForward(key, flags)
-	return i.resolveForward()
+	r := i.resolveForward()
+	if invariants.Enabled && r != nil && i.lower != nil && i.cmp.Compare(r.K.UserKey, i.lower) < 0 {
+		var spanStr string
+		if i.span != nil {
+			spanStr = i.span.String()
+		}
+		panic(errors.AssertionFailedf("seekGEHelper returned %s below lower %q; inSpan=%v span=%s presentedBoundary=%q pointKV=%v",
+			r.K, i.lower, i.inSpan, spanStr, i.presentedSpan.Boundary, i.pointKV))
+	}
+	return r
 }
 
 // SeekPrefixGE implements InternalIterator.
