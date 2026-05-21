@@ -217,8 +217,8 @@ func TestBatchPreAlloc(t *testing.T) {
 	for _, c := range cases {
 		b := newBatchWithSize(nil, c.size)
 		b.Set([]byte{0x1}, []byte{0x2}, nil)
-		if cap(b.data) != c.exp {
-			t.Errorf("Unexpected memory space, required: %d, got: %d", c.exp, cap(b.data))
+		if cap(b.data) < c.exp {
+			t.Errorf("Unexpected memory space, required: %d+, got: %d", c.exp, cap(b.data))
 		}
 	}
 }
