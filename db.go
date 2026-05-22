@@ -778,8 +778,8 @@ func (d *DB) Apply(batch *Batch, opts *WriteOptions) error {
 // EXPERIMENTAL: API/feature subject to change. Do not yet use outside
 // CockroachDB.
 func (d *DB) ApplyNoSyncWait(batch *Batch, opts *WriteOptions) error {
-	if !opts.Sync {
-		return errors.Errorf("cannot request asynchonous apply when WriteOptions.Sync is false")
+	if !opts.GetSync() {
+		return errors.Errorf("cannot request asynchronous apply when WriteOptions.Sync is false")
 	}
 	return d.applyInternal(batch, opts, true)
 }
