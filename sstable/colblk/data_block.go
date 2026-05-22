@@ -902,6 +902,8 @@ func (assertNoExternalValues) GetInternalValueForPrefixAndValueHandle(
 // should make a copy.
 //
 // Note that the input slice must be 8-byte aligned.
+//
+// TODO(radu): RewriteSuffixes silently drops secondary blob handles.
 func (rw *DataBlockRewriter) RewriteSuffixes(
 	input []byte, from []byte, to []byte,
 ) (start, end base.InternalKey, rewritten []byte, err error) {
