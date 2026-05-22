@@ -614,6 +614,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 	b.data = append(b.data, batch.data[batchrepr.HeaderLen:]...)
 
 	b.setCount(b.Count() + batch.Count())
+	b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, batch.minimumFormatMajorVersion)
 
 	if b.db != nil || b.index != nil {
 		// Only iterate over the new entries if we need to track memTableSize or in

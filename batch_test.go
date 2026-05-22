@@ -311,6 +311,37 @@ func TestBatchIngestSSTWithBlobs(t *testing.T) {
 	})
 }
 
+func TestBatchApplyPropagatesMinimumFormatMajorVersion(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// A DeleteSized in the source batch should ratchet the destination batch's
+	// minimumFormatMajorVersion when merged via Batch.Apply. Without this, the
+	// FMV gate in (*DB).Apply can be bypassed by chaining batches.
+	t.Run("ratchets from source", func(t *testing.T) {
+		var b1 Batch
+		require.NoError(t, b1.DeleteSized([]byte("k"), 100, nil))
+		require.Equal(t, FormatDeleteSizedAndObsolete, b1.minimumFormatMajorVersion)
+
+		var b2 Batch
+		require.Equal(t, FormatMajorVersion(0), b2.minimumFormatMajorVersion)
+		require.NoError(t, b2.Apply(&b1, nil))
+		require.Equal(t, FormatDeleteSizedAndObsolete, b2.minimumFormatMajorVersion)
+	})
+
+	// Apply must take the max: if the destination already requires a higher
+	// FMV than the source, it must not be lowered.
+	t.Run("does not lower existing", func(t *testing.T) {
+		var b1 Batch
+		require.NoError(t, b1.Set([]byte("k"), []byte("v"), nil))
+		require.Equal(t, FormatMajorVersion(0), b1.minimumFormatMajorVersion)
+
+		var b2 Batch
+		b2.minimumFormatMajorVersion = FormatFlushableIngestExcises
+		require.NoError(t, b2.Apply(&b1, nil))
+		require.Equal(t, FormatFlushableIngestExcises, b2.minimumFormatMajorVersion)
+	})
+}
+
 func TestBatchLen(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	var b Batch
