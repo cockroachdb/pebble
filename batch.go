@@ -49,6 +49,47 @@ var ErrInvalidBatch = batchrepr.ErrInvalidBatch
 // ErrBatchTooLarge indicates that the size of this batch is over the limit of 4GB.
 var ErrBatchTooLarge = base.MarkCorruptionError(errors.Newf("pebble: batch too large: >= %s", humanize.Bytes.Uint64(maxBatchSize)))
 
+// batchKindCategory groups InternalKeyKinds by how the batch record walkers
+// should handle them. The zero value (batchKindInvalid) marks kinds that are
+// not legal inside a batch record stream.
+type batchKindCategory uint8
+
+const (
+	batchKindInvalid        batchKindCategory = iota
+	batchKindPoint                            // SET / DEL / MERGE / SINGLEDEL / SETWITHDEL / DELSIZED
+	batchKindRangeDel                         // RANGEDEL
+	batchKindRangeKey                         // RANGEKEY{SET,UNSET,DEL}
+	batchKindLogData                          // LOGDATA — no counters, no memtable size, no index
+	batchKindIngestOrExcise                   // INGESTSST{,WithBlobs} / EXCISE — no memtable size; not legal in Batch.Apply
+)
+
+// batchKindInfo encodes per-kind facts the batch record walkers need.
+type batchKindInfo struct {
+	minFMV   FormatMajorVersion
+	category batchKindCategory
+}
+
+// batchKinds is indexed by InternalKeyKind. Entries left at the zero value
+// (category batchKindInvalid) are kinds that cannot appear in a batch
+// (e.g. Separator, SyntheticKey, SpanBoundary, or unused values in the
+// range [0, InternalKeyKindMax]).
+var batchKinds = [base.InternalKeyKindMax + 1]batchKindInfo{
+	InternalKeyKindSet:                {category: batchKindPoint},
+	InternalKeyKindDelete:             {category: batchKindPoint},
+	InternalKeyKindMerge:              {category: batchKindPoint},
+	InternalKeyKindSingleDelete:       {category: batchKindPoint},
+	InternalKeyKindSetWithDelete:      {category: batchKindPoint},
+	InternalKeyKindDeleteSized:        {category: batchKindPoint, minFMV: FormatDeleteSizedAndObsolete},
+	InternalKeyKindRangeDelete:        {category: batchKindRangeDel},
+	InternalKeyKindRangeKeySet:        {category: batchKindRangeKey},
+	InternalKeyKindRangeKeyUnset:      {category: batchKindRangeKey},
+	InternalKeyKindRangeKeyDelete:     {category: batchKindRangeKey},
+	InternalKeyKindLogData:            {category: batchKindLogData},
+	InternalKeyKindIngestSST:          {category: batchKindIngestOrExcise, minFMV: FormatFlushableIngest},
+	InternalKeyKindIngestSSTWithBlobs: {category: batchKindIngestOrExcise, minFMV: FormatIngestBlobFiles},
+	InternalKeyKindExcise:             {category: batchKindIngestOrExcise, minFMV: FormatFlushableIngestExcises},
+}
+
 // DeferredBatchOp represents a batch operation (eg. set, merge, delete) that is
 // being inserted into the batch. Indexing is not performed on the specified key
 // until Finish is called, hence the name deferred. This struct lets the caller
@@ -544,45 +585,28 @@ func (b *Batch) refreshMemTableSize() error {
 			}
 			break
 		}
-		switch kind {
-		case InternalKeyKindRangeDelete:
-			b.countRangeDels++
-		case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-			b.countRangeKeys++
-		case InternalKeyKindSet, InternalKeyKindDelete, InternalKeyKindMerge, InternalKeyKindSingleDelete, InternalKeyKindSetWithDelete:
-			// fallthrough
-		case InternalKeyKindDeleteSized:
-			if b.minimumFormatMajorVersion < FormatDeleteSizedAndObsolete {
-				b.minimumFormatMajorVersion = FormatDeleteSizedAndObsolete
-			}
-		case InternalKeyKindLogData:
-			// LogData does not contribute to memtable size.
-			continue
-		case InternalKeyKindIngestSST:
-			if b.minimumFormatMajorVersion < FormatFlushableIngest {
-				b.minimumFormatMajorVersion = FormatFlushableIngest
-			}
-			// This key kind doesn't contribute to the memtable size.
-			continue
-		case InternalKeyKindIngestSSTWithBlobs:
-			if b.minimumFormatMajorVersion < FormatIngestBlobFiles {
-				b.minimumFormatMajorVersion = FormatIngestBlobFiles
-			}
-			// This key kind doesn't contribute to the memtable size.
-			continue
-		case InternalKeyKindExcise:
-			if b.minimumFormatMajorVersion < FormatFlushableIngestExcises {
-				b.minimumFormatMajorVersion = FormatFlushableIngestExcises
-			}
-			// This key kind doesn't contribute to the memtable size.
-			continue
-		default:
+		if kind > InternalKeyKindMax {
 			// Note In some circumstances this might be temporary memory
 			// corruption that can be recovered by discarding the batch and
 			// trying again. In other cases, the batch repr might've been
 			// already persisted elsewhere, and we'll loop continuously trying
 			// to commit the same corrupted batch. The caller is responsible for
 			// distinguishing.
+			return errors.Wrapf(ErrInvalidBatch, "unrecognized kind %v", kind)
+		}
+		info := batchKinds[kind]
+		b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, info.minFMV)
+		switch info.category {
+		case batchKindPoint:
+			// Contributes to memtable size below.
+		case batchKindRangeDel:
+			b.countRangeDels++
+		case batchKindRangeKey:
+			b.countRangeKeys++
+		case batchKindLogData, batchKindIngestOrExcise:
+			// These kinds do not contribute to memtable size.
+			continue
+		default: // batchKindInvalid
 			return errors.Wrapf(ErrInvalidBatch, "unrecognized kind %v", kind)
 		}
 		b.memTableSize += memTableEntrySize(len(key), len(value))
@@ -628,20 +652,7 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				}
 				break
 			}
-			switch kind {
-			case InternalKeyKindRangeDelete:
-				b.countRangeDels++
-			case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
-				b.countRangeKeys++
-			case InternalKeyKindIngestSST, InternalKeyKindIngestSSTWithBlobs, InternalKeyKindExcise:
-				panic(errors.AssertionFailedf("pebble: invalid key kind for batch"))
-			case InternalKeyKindLogData:
-				// LogData does not contribute to memtable size.
-				continue
-			case InternalKeyKindSet, InternalKeyKindDelete, InternalKeyKindMerge,
-				InternalKeyKindSingleDelete, InternalKeyKindSetWithDelete, InternalKeyKindDeleteSized:
-				// fallthrough
-			default:
+			if kind > InternalKeyKindMax {
 				// Note In some circumstances this might be temporary memory
 				// corruption that can be recovered by discarding the batch and
 				// trying again. In other cases, the batch repr might've been
@@ -650,17 +661,38 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				// responsible for distinguishing.
 				return errors.Wrapf(ErrInvalidBatch, "unrecognized kind %v", kind)
 			}
+			info := batchKinds[kind]
+			if invariants.Enabled && batch.minimumFormatMajorVersion < info.minFMV {
+				panic(errors.AssertionFailedf(
+					"source batch FMV %d < required %d for kind %s",
+					batch.minimumFormatMajorVersion, info.minFMV, kind))
+			}
+			switch info.category {
+			case batchKindPoint:
+				// Contributes to index/memtable size below.
+			case batchKindRangeDel:
+				b.countRangeDels++
+			case batchKindRangeKey:
+				b.countRangeKeys++
+			case batchKindLogData:
+				// LogData does not contribute to memtable size.
+				continue
+			case batchKindIngestOrExcise:
+				panic(errors.AssertionFailedf("pebble: invalid key kind for batch.Apply: %s", kind))
+			default: // batchKindInvalid
+				return errors.Wrapf(ErrInvalidBatch, "unrecognized kind %v", kind)
+			}
 			if b.index != nil {
 				var err error
-				switch kind {
-				case InternalKeyKindRangeDelete:
+				switch info.category {
+				case batchKindRangeDel:
 					b.tombstones = nil
 					b.tombstonesSeqNum = 0
 					if b.rangeDelIndex == nil {
 						b.rangeDelIndex = batchskl.NewSkiplist(&b.data, b.comparer.Compare, b.comparer.AbbreviatedKey)
 					}
 					err = b.rangeDelIndex.Add(uint32(offset))
-				case InternalKeyKindRangeKeySet, InternalKeyKindRangeKeyUnset, InternalKeyKindRangeKeyDelete:
+				case batchKindRangeKey:
 					b.rangeKeys = nil
 					b.rangeKeysSeqNum = 0
 					if b.rangeKeyIndex == nil {
@@ -703,6 +735,7 @@ func (b *Batch) prepareDeferredKeyValueRecord(keyLen, valueLen int, kind Interna
 	}
 	b.count++
 	b.memTableSize += memTableEntrySize(keyLen, valueLen)
+	b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, batchKinds[kind].minFMV)
 
 	pos := len(b.data)
 	b.deferredOp.offset = uint32(pos)
@@ -755,6 +788,7 @@ func (b *Batch) prepareDeferredKeyRecord(keyLen int, kind InternalKeyKind) {
 	}
 	b.count++
 	b.memTableSize += memTableEntrySize(keyLen, 0)
+	b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, batchKinds[kind].minFMV)
 
 	pos := len(b.data)
 	b.deferredOp.offset = uint32(pos)
@@ -938,10 +972,6 @@ func (b *Batch) DeleteSized(key []byte, deletedValueSize uint32, _ *WriteOptions
 // complete key slice, letting the caller encode into the DeferredBatchOp.Key
 // slice and then call Finish() on the returned object.
 func (b *Batch) DeleteSizedDeferred(keyLen int, deletedValueSize uint32) *DeferredBatchOp {
-	if b.minimumFormatMajorVersion < FormatDeleteSizedAndObsolete {
-		b.minimumFormatMajorVersion = FormatDeleteSizedAndObsolete
-	}
-
 	// Encode the sum of the key length and the value in the value.
 	v := uint64(deletedValueSize) + uint64(keyLen)
 
@@ -1229,11 +1259,9 @@ func (b *Batch) ingestSST(tableNum base.TableNum, blobFileIDs []base.BlobFileID)
 		}
 		valueBuf = valueBuf[:countLen]
 		b.prepareDeferredKeyValueRecord(keyLen, len(valueBuf), InternalKeyKindIngestSSTWithBlobs)
-		b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, FormatIngestBlobFiles)
 	} else {
 		// Use InternalKeyKindIngestSST when no blob files.
 		b.prepareDeferredKeyRecord(keyLen, InternalKeyKindIngestSST)
-		b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, FormatFlushableIngest)
 	}
 
 	copy(b.deferredOp.Key, keyBuf[:keyLen])
@@ -1266,7 +1294,6 @@ func (b *Batch) excise(start, end []byte) {
 	// is not reset because for the InternalKeyKindIngestSST/Excise the count
 	// is the number of sstable paths which have been added to the batch.
 	b.memTableSize = origMemTableSize
-	b.minimumFormatMajorVersion = FormatFlushableIngestExcises
 }
 
 // Empty returns true if the batch is empty, and false otherwise.
