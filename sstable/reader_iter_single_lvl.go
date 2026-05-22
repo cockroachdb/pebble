@@ -358,48 +358,21 @@ func (i *singleLevelIterator[I, PI, D, PD]) resetForReuse() {
 	i.synthetic.kv.K.Trailer = 0
 }
 
+// initBounds sets the iteration bounds for the current block (blockLower,blockUpper).
 func (i *singleLevelIterator[I, PI, D, PD]) initBounds() {
-	// Trim the iteration bounds for the current block. We don't have to check
-	// the bounds on each iteration if the block is entirely contained within the
-	// iteration bounds.
-	i.blockLower = i.lower
-	if i.blockLower != nil {
-		kv := PD(&i.data).First()
-		// TODO(radu): this should be <= 0
-		if kv != nil && i.cmp(i.blockLower, kv.K.UserKey) < 0 {
-			// The lower-bound is less than the first key in the block. No need
-			// to check the lower-bound again for this block.
-			i.blockLower = nil
-		}
+	// Trim the iteration bounds for the current block: we don't have to check
+	// a bounds on each key if the bound applies to the entire block.
+	i.blockLower = nil
+	if i.lower != nil && !PD(&i.data).IsLowerBound(i.lower) {
+		i.blockLower = i.lower
 	}
-	i.blockUpper = i.upper
-	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
-	if i.blockUpper != nil && PI(&i.index).SeparatorLT(i.blockUpper) {
-		// The upper-bound is greater than the index key which itself is greater
-		// than or equal to every key in the block. No need to check the
-		// upper-bound again for this block. Even if blockUpper is inclusive
-		// because of upper being inclusive, we can still safely set blockUpper
-		// to nil here.
-		i.blockUpper = nil
-	}
-}
-
-func (i *singleLevelIterator[I, PI, D, PD]) initBoundsForAlreadyLoadedBlock() {
-	// TODO(radu): determine automatically if we need to call First or not and
-	// unify this function with initBounds().
-	i.blockLower = i.lower
-	if i.blockLower != nil && PD(&i.data).IsLowerBound(i.blockLower) {
-		// The lower-bound is less than the first key in the block. No need
-		// to check the lower-bound again for this block.
-		i.blockLower = nil
-	}
-	i.blockUpper = i.upper
-	// TODO(radu): this should be >= 0 if blockUpper is inclusive.
-	if i.blockUpper != nil && PI(&i.index).SeparatorLT(i.blockUpper) {
-		// The upper-bound is greater than the index key which itself is greater
-		// than or equal to every key in the block. No need to check the
-		// upper-bound again for this block.
-		i.blockUpper = nil
+	i.blockUpper = nil
+	// The separator is >= every key in the block. If the upper bound applies to
+	// the separator, it automatically applies to the entire block.
+	if i.upper != nil && PI(&i.index).SeparatorGT(i.upper, !i.endKeyInclusive) {
+		// The bound does not apply to the separator:
+		//   separator > i.upper || (separator == i.upper && !i.endKeyInclusive)
+		i.blockUpper = i.upper
 	}
 }
 
@@ -784,7 +757,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) seekGEHelper(
 		// use Next() on the block is only applied when we are already at the
 		// block that the slow-path (the else-clause) would load -- this is the
 		// motivation for the IsSeparatorUpperBound(key, true) predicate.
-		i.initBoundsForAlreadyLoadedBlock()
+		i.initBounds()
 		kv, done := i.trySeekGEUsingNextWithinBlock(key)
 		if done {
 			return kv, base.KVMeta{}
@@ -1239,7 +1212,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) virtualLastSeekLE() *base.InternalKV
 
 // SeekLT implements internalIterator.SeekLT, as documented in the pebble
 // package. Note that SeekLT only checks the lower bound. It is up to the
-// caller to ensure that key is less than or equal to the upper bound.
+// caller to ensure that key is less than the upper bound (virtual sstable
+// iterators additionally tolerate key == upper).
 func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 	key []byte, flags base.SeekLTFlags,
 ) (kv *base.InternalKV) {
@@ -1298,7 +1272,7 @@ func (i *singleLevelIterator[I, PI, D, PD]) SeekLT(
 		// use Prev() on the block is only applied when we are already at the
 		// block that can satisfy this seek -- this is the motivation for the
 		// the i.cmp(i.data.firstKey.UserKey, key) < 0 predicate.
-		i.initBoundsForAlreadyLoadedBlock()
+		i.initBounds()
 		ikv, done := i.trySeekLTUsingPrevWithinBlock(key)
 		if done {
 			return ikv

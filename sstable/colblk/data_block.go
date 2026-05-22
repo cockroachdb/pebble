@@ -368,7 +368,7 @@ func (ks *defaultKeySeeker) init(d *DataBlockDecoder, bd *BlockDecoder) {
 // IsLowerBound is part of the KeySeeker interface.
 func (ks *defaultKeySeeker) IsLowerBound(k []byte, syntheticSuffix []byte) bool {
 	si := ks.comparer.Split(k)
-	if v := ks.comparer.Compare(ks.prefixes.UnsafeFirstSlice(), k[:si]); v != 0 {
+	if v := bytes.Compare(ks.prefixes.UnsafeFirstSlice(), k[:si]); v != 0 {
 		return v > 0
 	}
 	suffix := syntheticSuffix
