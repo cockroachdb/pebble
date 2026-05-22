@@ -318,9 +318,6 @@ func (f *minSeqNumFilter) SyntheticSuffixIntersects(prop []byte, suffix []byte) 
 
 func TestReadSampling(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	if iterv2.Enabled {
-		t.Skip("TODO(radu): investigate")
-	}
 	var d *DB
 	defer func() {
 		if d != nil {
@@ -355,6 +352,8 @@ func TestReadSampling(t *testing.T) {
 					return &minSeqNumPropertyCollector{}
 				},
 			}
+			// TODO(radu): port this test to the V2 iterator stack.
+			opts.IteratorStack = IteratorStackV1
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {
@@ -689,9 +688,6 @@ func (i *iterSeekOptWrapper) SeekPrefixGE(
 
 func TestIteratorSeekOpt(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	if iterv2.Enabled {
-		t.Skipf("not supported with iterv2")
-	}
 	var d *DB
 	defer func() {
 		require.NoError(t, d.Close())
@@ -726,6 +722,8 @@ func TestIteratorSeekOpt(t *testing.T) {
 					return &minSeqNumPropertyCollector{}
 				},
 			}
+			// TODO(radu): port to the V2 iterator stack.
+			opts.IteratorStack = IteratorStackV1
 
 			var err error
 			if d, err = runDBDefineCmd(td, opts); err != nil {

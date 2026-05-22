@@ -272,6 +272,9 @@ func TestMetrics(t *testing.T) {
 		// Fix FileCacheShards to avoid non-determinism in disk usage (the option is
 		// written to the OPTIONS file).
 		opts.FileCacheShards = 10
+		// Pin the iterator stack to keep the OPTIONS file (and therefore disk
+		// usage) deterministic across invariants-build randomization.
+		opts.IteratorStack = IteratorStackV1
 		opts.EnableValueBlocks = func() bool { return true }
 		opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
 			return ValueSeparationPolicy{

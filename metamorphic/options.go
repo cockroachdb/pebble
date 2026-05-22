@@ -604,6 +604,10 @@ func standardOptions(kf KeyFormat) []*TestOptions {
 [Value Separation]
 enabled = false
 `,
+		30: `
+[Options]
+  iterator_stack=v2
+`,
 	}
 
 	opts := make([]*TestOptions, len(stdOpts))
@@ -742,6 +746,11 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	}
 	if rng.IntN(2) == 0 {
 		opts.DisableIngestAsFlushable = func() bool { return true }
+	}
+	if rng.IntN(2) == 0 {
+		opts.IteratorStack = pebble.IteratorStackV1
+	} else {
+		opts.IteratorStack = pebble.IteratorStackV2
 	}
 
 	// We either use no multilevel compactions, multilevel compactions with the

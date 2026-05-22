@@ -236,7 +236,7 @@ Iter category stats:
 
 disk-usage
 ----
-3,684B
+3,704B
 
 batch
 set b 2
@@ -365,7 +365,7 @@ Iter category stats:
 
 disk-usage
 ----
-5,917B
+5,937B
 
 # Closing iter a will release one of the zombie memtables.
 
@@ -584,7 +584,7 @@ Iter category stats:
 
 disk-usage
 ----
-5,230B
+5,250B
 
 # Closing iter b will release the last zombie sstable and the last zombie memtable.
 
@@ -695,7 +695,7 @@ Iter category stats:
 
 disk-usage
 ----
-4,543B
+4,563B
 
 additional-metrics
 ----
@@ -2600,7 +2600,7 @@ Blob files:
 
 disk-usage
 ----
-7,605B
+7,625B
 
 init reopen
 ----
@@ -2608,4 +2608,4 @@ init reopen
 # The disk usage is expected to go down a bit because we remove the WALs.
 disk-usage
 ----
-7,088B
+7,108B

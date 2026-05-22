@@ -7,7 +7,6 @@
 package pebble
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,13 +31,6 @@ func TestTreeSteps(t *testing.T) {
 	}
 	datadriven.Walk(t, "testdata/treesteps", func(t *testing.T, path string) {
 		isV2 := strings.HasSuffix(path, "_v2")
-		baseName := filepath.Base(path)
-		if isV2 && !iterv2.Enabled {
-			t.Skipf("skipping %s: iterv2 not enabled", baseName)
-		}
-		if !isV2 && iterv2.Enabled {
-			t.Skipf("skipping %s: iterv2 enabled", baseName)
-		}
 		var d *DB
 		defer func() {
 			if d != nil {
@@ -58,6 +50,11 @@ func TestTreeSteps(t *testing.T) {
 					FS:                          vfs.NewMem(),
 					FormatMajorVersion:          FormatNewest,
 					DisableAutomaticCompactions: true,
+				}
+				if isV2 {
+					opts.IteratorStack = IteratorStackV2
+				} else {
+					opts.IteratorStack = IteratorStackV1
 				}
 				var err error
 				d, err = runDBDefineCmd(td, opts)
