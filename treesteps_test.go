@@ -119,7 +119,7 @@ func TestTreeSteps(t *testing.T) {
 						v.Levels[l].Iter(), manifest.Level(l), internalIterOpts{})
 					levelIters = append(levelIters, li)
 				}
-				miter := newMergingIterV2(d.cmp, d.split, base.SeqNumMax, levelIters...)
+				miter := newMergingIterV2(d.opts.Comparer, base.SeqNumMax, levelIters...)
 				defer miter.Close()
 				rec := treeStepsStartRecording(t, td, miter)
 				out := itertest.RunInternalIterCmd(t, td, miter, itertest.Verbose)
