@@ -8,8 +8,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
@@ -481,4 +484,67 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 
 func ikey(s string) base.InternalKey {
 	return base.InternalKey{UserKey: []byte(s)}
+}
+
+func TestIsLowerBoundRandomized(t *testing.T) {
+	cmp := testkeys.Comparer.Compare
+	suffixCmp := testkeys.Comparer.ComparePointSuffixes
+	split := testkeys.Comparer.Split
+
+	prefixes := []string{"a", "b", "c", "d", "e"}
+	suffixes := []string{"@1", "@5", "@10", "@20", "@100"}
+	synthSuffixes := [][]byte{nil, []byte("@2"), []byte("@7"), []byte("@50")}
+	synthPrefixes := [][]byte{nil, []byte("p/"), []byte("zzz/")}
+
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(seed, seed))
+
+	for iter := 0; iter < 1000; iter++ {
+		n := 1 + rng.IntN(20)
+		keySet := make(map[string]struct{}, n)
+		for len(keySet) < n {
+			keySet[prefixes[rng.IntN(len(prefixes))]+suffixes[rng.IntN(len(suffixes))]] = struct{}{}
+		}
+		keys := make([]string, 0, n)
+		for k := range keySet {
+			keys = append(keys, k)
+		}
+		slices.SortFunc(keys, func(a, b string) int { return cmp([]byte(a), []byte(b)) })
+
+		w := &Writer{RestartInterval: 1 + rng.IntN(4)}
+		for _, k := range keys {
+			require.NoError(t, w.Add(ikey(k), nil))
+		}
+		blk := w.Finish()
+
+		synthPrefix := synthPrefixes[rng.IntN(len(synthPrefixes))]
+		synthSuffix := synthSuffixes[rng.IntN(len(synthSuffixes))]
+		transforms := blockiter.Transforms{
+			SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(synthPrefix, synthSuffix),
+		}
+
+		it, err := NewIter(cmp, suffixCmp, split, blk, transforms)
+		require.NoError(t, err)
+
+		kv := it.First()
+		require.NotNil(t, kv)
+		firstKey := append([]byte(nil), kv.K.UserKey...)
+
+		for probe := 0; probe < 50; probe++ {
+			probePrefix := prefixes[rng.IntN(len(prefixes))]
+			if rng.IntN(4) == 0 && len(synthPrefix) > 0 {
+				probePrefix = string(synthPrefix) + probePrefix
+			}
+			probeKey := []byte(probePrefix + suffixes[rng.IntN(len(suffixes))])
+
+			if it.IsLowerBound(probeKey) {
+				if cmp(firstKey, probeKey) < 0 {
+					t.Fatalf("IsLowerBound(%q)=true but First()=%q < probe (transforms=%+v, keys=%v)",
+						probeKey, firstKey, transforms, keys)
+				}
+			}
+		}
+		require.NoError(t, it.Close())
+	}
 }
