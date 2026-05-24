@@ -102,7 +102,24 @@ func (d *DB) DeleteSuffixRange(ctx context.Context, span KeyRange, lower, upper 
 		)
 	}
 
-	if err := d.flushIfOverlapping(span, nil); err != nil {
+	// Flush memtables that overlap the DSR span, and extend the overlap
+	// check with the protected ranges of any pre-file-only EFOS whose
+	// protected ranges overlap our span. The extension forces a flush that
+	// will transition such EFOSes to file-only — pinning a pre-DSR
+	// `*Version` — before our mask attaches. Without this, an EFOS reader
+	// in its protected range would observe our mask via the seqnum-
+	// filtered current-LSM read path that pre-file-only EFOSes use, and
+	// the EFOS contract that protected-range reads remain consistent
+	// across non-additive mutations would be violated.
+	//
+	// Classic `Snapshot` observers cannot be protected the same way (no
+	// protected ranges, no transition mechanism); their post-DSR reads
+	// will observe the masked LSM, matching the documented
+	// excise-with-classic-snapshot behavior. See the `DB.NewSnapshot`
+	// docstring.
+	if err := d.flushIfOverlapping(span, func() []bounded {
+		return exciseOverlapBounds(d.cmp, &d.mu.snapshots.snapshotList, span, base.SeqNumMax)
+	}); err != nil {
 		return err
 	}
 
@@ -112,6 +129,19 @@ func (d *DB) DeleteSuffixRange(ctx context.Context, span KeyRange, lower, upper 
 	defer d.mu.Unlock()
 
 	_, err := d.mu.versions.UpdateVersionLocked(func() (versionUpdate, error) {
+		// Force any pre-file-only EFOS that can transition (no blocking
+		// memtable content in its protected ranges) to transition with the
+		// CURRENT (pre-DSR) version pinned. `flushIfOverlapping` above
+		// already handles the case where EFOS-protected memtable content
+		// blocks transition by forcing a flush; the flush completion's
+		// own call to this same routine transitions the EFOS. This
+		// explicit invocation closes the gap for EFOSes where the overlap
+		// check found no memtable content (so no flush was triggered)
+		// and for any EFOS whose pre-DSR transition would otherwise be
+		// deferred to an unrelated future flush — at which point the
+		// pinned version would include our mask.
+		d.maybeTransitionSnapshotsToFileOnlyLocked()
+
 		current := d.mu.versions.currentVersion()
 		ve := &manifest.VersionEdit{
 			DeletedTables: make(map[manifest.DeletedTableEntry]*manifest.TableMetadata),
