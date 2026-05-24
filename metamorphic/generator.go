@@ -1237,10 +1237,19 @@ func (g *generator) writerDeleteRange() {
 // nil-high case (DeleteSuffixRange requires a non-empty upper bound).
 //
 // A RatchetFormatMajorVersion(FormatSuffixMask) op is emitted immediately
-// before the DSR. Configs vary in their starting FMV, so without the ratchet
-// some configs would error on DSR (FMV too low) while others would succeed
-// — the histories would diverge and the cross-config compare would fail.
-// The ratchet is a no-op on configs already at FormatSuffixMask or above.
+// before the DSR — for every DB instance, not just the one DSR runs on.
+// Configs vary in their starting FMV, so without the ratchet some configs
+// would error on DSR (FMV too low) while others would succeed — the
+// histories would diverge and the cross-config compare would fail. The
+// ratchet is a no-op on configs already at FormatSuffixMask or above.
+//
+// We ratchet every DB (not just the DSR target) because DSR masks can be
+// shipped across DB instances via Replicate (shared/external ingest carries
+// SuffixMasks on ExternalFile/SharedSSTMeta). A destination DB at FMV <
+// FormatSuffixMask cannot ingest masked vssts (the ingest path enforces an
+// FMV check), so any DB that might serve as a Replicate destination must
+// also be at FormatSuffixMask. The simplest safe answer is to ratchet
+// every DB.
 func (g *generator) dbDeleteSuffixRange() {
 	dbID := g.dbs.rand(g.rng)
 	start, end := g.prefixKeyRange()
@@ -1261,7 +1270,9 @@ func (g *generator) dbDeleteSuffixRange() {
 		return
 	}
 
-	g.add(&dbRatchetFormatMajorVersionOp{dbID: dbID, vers: pebble.FormatSuffixMask})
+	for _, id := range g.dbs {
+		g.add(&dbRatchetFormatMajorVersionOp{dbID: id, vers: pebble.FormatSuffixMask})
+	}
 	g.add(&deleteSuffixRangeOp{
 		dbID:  dbID,
 		start: start,

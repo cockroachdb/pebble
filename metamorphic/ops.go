@@ -2222,20 +2222,6 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 	// separation is disabled.
 	useSharedIngest := t.testOpts.useSharedReplicate && t.testOpts.sharedStorageEnabled
 	useExternalIngest := t.testOpts.useExternalReplicate && t.testOpts.externalStorageEnabled
-	// If any DeleteSuffixRange op is in the stream, fall back to the iter-based
-	// replicate path even when shared/external replicate is configured. The
-	// shared/external paths copy SST files via Shared/ExternalSSTMeta, which
-	// do not carry the source vsst's SuffixMasks; the destination would
-	// reconstruct the vsst without a mask, exposing rows the source had
-	// hidden. The iter-based path filters source-masked rows through
-	// source.NewIter before copying, so masks are effectively baked into the
-	// shipped data — keeping cross-config histories observable-equivalent.
-	// TODO(dt): teach shared/external replicate to carry SuffixMasks through
-	// an internal-only mechanism and re-enable them when DSR is in play.
-	if t.dsrInOps {
-		useSharedIngest = false
-		useExternalIngest = false
-	}
 
 	source := t.getDB(r.source)
 	dest := t.getDB(r.dest)
