@@ -162,6 +162,8 @@ func parseOptions(
 			case "TestOptions.use_excise":
 				// TODO(radu): this should be on by default.
 				opts.useExcise = true
+			case "TestOptions.use_scan_delete_for_dsr":
+				opts.useScanDeleteForDSR = true
 			case "TestOptions.use_delete_only_compaction_excises":
 				opts.useDeleteOnlyCompactionExcises = true
 				opts.Opts.EnableDeleteOnlyCompactionExcises = func() bool {
@@ -263,6 +265,9 @@ func optionsToString(opts *TestOptions) string {
 	}
 	if opts.useExcise {
 		fmt.Fprintf(&buf, "  use_excise=%v\n", opts.useExcise)
+	}
+	if opts.useScanDeleteForDSR {
+		fmt.Fprintf(&buf, "  use_scan_delete_for_dsr=%v\n", opts.useScanDeleteForDSR)
 	}
 	if opts.useDeleteOnlyCompactionExcises {
 		fmt.Fprintf(&buf, "  use_delete_only_compaction_excises=%v\n", opts.useDeleteOnlyCompactionExcises)
@@ -434,6 +439,14 @@ type TestOptions struct {
 	// useDeleteOnlyCompactionExcises turns on the ability for delete-only compactions
 	// to do excises. Note that this can be true even when useExcise is false.
 	useDeleteOnlyCompactionExcises bool
+	// useScanDeleteForDSR routes each `deleteSuffixRangeOp` through an
+	// equivalent scan-and-delete code path instead of calling
+	// `DB.DeleteSuffixRange`. The recorded history is identical (the op
+	// records as a DSR regardless), so cross-config compare with another
+	// config running real DSR exercises the equivalence as a property
+	// test: any divergence in subsequent reads catches a bug in either
+	// implementation.
+	useScanDeleteForDSR bool
 	// disableDownloads, if true, makes downloadOp a no-op.
 	disableDownloads bool
 	// treeSteps enables treesteps visualizations for each iterator operation.
@@ -935,6 +948,9 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	opts.EnableDeleteOnlyCompactionExcises = func() bool {
 		return testOpts.useDeleteOnlyCompactionExcises
 	}
+	// Half of random configs route DSR through scan+delete. The cross-config
+	// compare with configs running real DSR is the equivalence check.
+	testOpts.useScanDeleteForDSR = rng.IntN(2) == 0
 	testOpts.disableDownloads = rng.IntN(2) == 0
 	testOpts.Opts.EnsureDefaults()
 	return testOpts

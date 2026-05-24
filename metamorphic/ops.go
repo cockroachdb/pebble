@@ -459,8 +459,99 @@ type deleteSuffixRangeOp struct {
 func (o *deleteSuffixRangeOp) run(t *Test, h historyRecorder) {
 	db := t.getDB(o.dbID)
 	span := pebble.KeyRange{Start: o.start, End: o.end}
-	err := db.DeleteSuffixRange(context.Background(), span, o.lower, o.upper)
+	var err error
+	if t.testOpts.useScanDeleteForDSR {
+		err = scanDeleteEquivalentOfDSR(db, t, span, o.lower, o.upper)
+	} else {
+		err = db.DeleteSuffixRange(context.Background(), span, o.lower, o.upper)
+	}
 	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
+}
+
+// scanDeleteEquivalentOfDSR implements the user-visible semantics of
+// `DB.DeleteSuffixRange` via explicit per-key Delete / RangeKeyUnset
+// calls. It exists so that metamorphic configs running this path can be
+// cross-compared against configs running real DSR: any divergence in
+// subsequent reads is a bug in one of the implementations.
+//
+// The equivalence holds at the observable-read level, not at the LSM-
+// state level: real DSR attaches metadata; this path writes physical
+// tombstones at a new seqnum. Both should hide the same set of rows
+// from all subsequent reads.
+func scanDeleteEquivalentOfDSR(
+	db *pebble.DB, t *Test, span pebble.KeyRange, lower, upper []byte,
+) error {
+	cmp := t.opts.Comparer
+	suffixCmp := cmp.ComparePointSuffixes
+	// inMask reports whether a key's suffix falls in [lower, upper).
+	// Empty (suffixless) keys are never masked.
+	inMask := func(suffix []byte) bool {
+		if len(suffix) == 0 {
+			return false
+		}
+		return suffixCmp(suffix, lower) >= 0 && suffixCmp(suffix, upper) < 0
+	}
+	iter, err := db.NewIter(&pebble.IterOptions{
+		LowerBound: span.Start,
+		UpperBound: span.End,
+		KeyTypes:   pebble.IterKeyTypePointsAndRanges,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = iter.Close() }()
+
+	// Collect the work first so that the Delete/RangeKeyUnset calls don't
+	// invalidate the iterator's view mid-scan.
+	type rkUnset struct {
+		start, end, suffix []byte
+	}
+	var pointDeletes [][]byte
+	var rkUnsets []rkUnset
+	seenRangeKeys := map[string]struct{}{} // dedupe (start|end|suffix) tuples
+
+	for valid := iter.First(); valid && iter.Error() == nil; valid = iter.Next() {
+		hasPoint, hasRange := iter.HasPointAndRange()
+		if hasPoint {
+			k := iter.Key()
+			si := cmp.Split(k)
+			if inMask(k[si:]) {
+				pointDeletes = append(pointDeletes, append([]byte(nil), k...))
+			}
+		}
+		if hasRange && iter.RangeKeyChanged() {
+			rkStart, rkEnd := iter.RangeBounds()
+			for _, rk := range iter.RangeKeys() {
+				if !inMask(rk.Suffix) {
+					continue
+				}
+				key := string(rkStart) + "\x00" + string(rkEnd) + "\x00" + string(rk.Suffix)
+				if _, ok := seenRangeKeys[key]; ok {
+					continue
+				}
+				seenRangeKeys[key] = struct{}{}
+				rkUnsets = append(rkUnsets, rkUnset{
+					start:  append([]byte(nil), rkStart...),
+					end:    append([]byte(nil), rkEnd...),
+					suffix: append([]byte(nil), rk.Suffix...),
+				})
+			}
+		}
+	}
+	if err := iter.Error(); err != nil {
+		return err
+	}
+	for _, k := range pointDeletes {
+		if err := db.Delete(k, t.writeOpts); err != nil {
+			return err
+		}
+	}
+	for _, u := range rkUnsets {
+		if err := db.RangeKeyUnset(u.start, u.end, u.suffix, t.writeOpts); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (o *deleteSuffixRangeOp) formattedString(kf KeyFormat) string {
