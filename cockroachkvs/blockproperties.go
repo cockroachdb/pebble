@@ -144,6 +144,17 @@ func mapSuffixToInterval(b []byte) (sstable.BlockInterval, error) {
 	return sstable.BlockInterval{}, nil
 }
 
+// MakeSuffixMaskBlockPropertyFilter creates a block property filter for use
+// with the SuffixMask transform. It skips blocks where all MVCC wall times
+// are strictly greater than the bound's wall time.
+func MakeSuffixMaskBlockPropertyFilter(suffixUpperBound []byte) sstable.BlockPropertyFilter {
+	wall, _, err := DecodeMVCCTimestampSuffix(suffixUpperBound)
+	if err != nil || wall == 0 {
+		return nil
+	}
+	return NewMVCCTimeIntervalFilter(0, wall)
+}
+
 type MaxMVCCTimestampProperty struct{}
 
 // Name implements pebble.MaximumSuffixProperty interface.

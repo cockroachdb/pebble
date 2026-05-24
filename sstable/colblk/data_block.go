@@ -190,6 +190,23 @@ type KeySeeker interface {
 	MaterializeUserKeyWithSyntheticSuffix(
 		keyIter *PrefixBytesIter, syntheticSuffix []byte, prevRow, row int,
 	) []byte
+
+	// IsMaskedBySuffixMask returns true if the key at the given row
+	// should be hidden because its suffix falls within the mask range
+	// [lower, upper) according to ComparePointSuffixes. Suffixless keys
+	// must return false. Implementations may use direct column access
+	// for performance (e.g., reading MVCC timestamps from columnar
+	// storage) rather than materializing the full key.
+	IsMaskedBySuffixMask(row int, lower, upper []byte) bool
+
+	// HasNonEmptySuffix returns true if the row's stored suffix is
+	// non-empty. Used by the SuffixMask path on iterators with a
+	// SyntheticSuffix transform: every row with a non-empty stored
+	// suffix has the same effective suffix (the synthetic one), so the
+	// mask answer is uniform — once the iterator has determined that
+	// the synthetic suffix is in the mask range, the per-row decision
+	// reduces to "is the stored suffix non-empty".
+	HasNonEmptySuffix(row int) bool
 }
 
 const (
@@ -457,6 +474,28 @@ func (ks *defaultKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 		uintptr(len(suffix)),
 	)
 	return res
+}
+
+// IsMaskedBySuffixMask implements KeySeeker.
+func (ks *defaultKeySeeker) IsMaskedBySuffixMask(row int, lower, upper []byte) bool {
+	suffix := ks.suffixes.At(row)
+	if len(suffix) == 0 {
+		return false
+	}
+	suffixCmp := ks.comparer.ComparePointSuffixes
+	if suffixCmp == nil {
+		// This panic protects against silently leaking keys that should be
+		// masked. A SuffixMask requires a comparer that knows how to order
+		// suffixes; configuring one without the other is a programming bug.
+		panic(errors.AssertionFailedf(
+			"SuffixMask requires Comparer.ComparePointSuffixes (comparer %q)", ks.comparer.Name))
+	}
+	return suffixCmp(suffix, lower) >= 0 && suffixCmp(suffix, upper) < 0
+}
+
+// HasNonEmptySuffix implements KeySeeker.
+func (ks *defaultKeySeeker) HasNonEmptySuffix(row int) bool {
+	return len(ks.suffixes.At(row)) > 0
 }
 
 // DataBlockEncoder encodes columnar data blocks using a user-defined schema.
@@ -1478,12 +1517,10 @@ func (i *DataBlockIter) SeekGE(key []byte, flags base.SeekGEFlags) *base.Interna
 	i.row, _ = i.seekGEInternal(key, i.row, searchDir)
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
-		if i.atObsoletePointForward() {
-			i.skipObsoletePointsForward()
-			if i.row > i.maxRow {
-				return nil
-			}
-		}
+	}
+	i.skipHiddenForward()
+	if i.row > i.maxRow {
+		return nil
 	}
 	return i.decodeRow()
 }
@@ -1509,13 +1546,13 @@ func (i *DataBlockIter) SeekPrefixGE(
 		i.row, equalPrefix = i.keySeeker.SeekGE(key, i.row, searchDir)
 	} else {
 		i.row, equalPrefix = i.seekGEInternal(key, i.row, searchDir)
-		if i.transforms.HideObsoletePoints {
+		if i.transforms.HideObsoletePoints || len(i.transforms.SuffixMasks) > 0 {
 			startRow := i.row
-			i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
-			if i.atObsoletePointForward() {
-				i.skipObsoletePointsForward()
+			if i.transforms.HideObsoletePoints {
+				i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
 			}
-			// If skipping obsolete points crossed a prefix boundary, the
+			i.skipHiddenForward()
+			// If skipping hidden points crossed a prefix boundary, the
 			// resulting row has a different prefix from the seek key.
 			if equalPrefix && i.row > startRow &&
 				i.d.prefixChanged.SeekSetBitGE(startRow+1) <= i.row {
@@ -1542,12 +1579,10 @@ func (i *DataBlockIter) SeekLT(key []byte, _ base.SeekLTFlags) *base.InternalKV 
 	i.row = row - 1
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(max(i.row, 0))
-		if i.atObsoletePointBackward() {
-			i.skipObsoletePointsBackward()
-			if i.row < 0 {
-				return nil
-			}
-		}
+	}
+	i.skipHiddenBackward()
+	if i.row < 0 {
+		return nil
 	}
 	return i.decodeRow()
 }
@@ -1560,12 +1595,10 @@ func (i *DataBlockIter) First() *base.InternalKV {
 	i.row = 0
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(0)
-		if i.atObsoletePointForward() {
-			i.skipObsoletePointsForward()
-			if i.row > i.maxRow {
-				return nil
-			}
-		}
+	}
+	i.skipHiddenForward()
+	if i.row > i.maxRow {
+		return nil
 	}
 	return i.decodeRow()
 }
@@ -1648,12 +1681,10 @@ func (i *DataBlockIter) Last() *base.InternalKV {
 	i.row = i.maxRow
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.maxRow + 1
-		if i.atObsoletePointBackward() {
-			i.skipObsoletePointsBackward()
-			if i.row < 0 {
-				return nil
-			}
-		}
+	}
+	i.skipHiddenBackward()
+	if i.row < 0 {
+		return nil
 	}
 	return i.decodeRow()
 }
@@ -1677,11 +1708,9 @@ func (i *DataBlockIter) Next() *base.InternalKV {
 			Trailer: base.InternalKeyTrailer(i.d.trailers.At(i.row)),
 		}
 	} else {
-		if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
-			i.skipObsoletePointsForward()
-			if i.row > i.maxRow {
-				return nil
-			}
+		i.skipHiddenForward()
+		if i.row > i.maxRow {
+			return nil
 		}
 		if i.transforms.HasSyntheticSuffix() {
 			i.kv.K.UserKey = i.keySeeker.MaterializeUserKeyWithSyntheticSuffix(
@@ -1749,9 +1778,7 @@ func (i *DataBlockIter) NextWithSamePrefix() (kv *base.InternalKV, prefixExhaust
 		}
 	} else {
 		// Transforms branch (cold).
-		if i.transforms.HideObsoletePoints && i.atObsoletePointForward() {
-			i.skipObsoletePointsForward()
-		}
+		i.skipHiddenForward()
 		if i.row > i.maxRow {
 			return nil, false
 		}
@@ -1813,11 +1840,11 @@ func (i *DataBlockIter) NextPrefix(_ []byte) *base.InternalKV {
 	i.row = i.d.prefixChanged.SeekSetBitGE(i.row + 1)
 	if i.transforms.HideObsoletePoints {
 		i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
-		if i.atObsoletePointForward() {
-			i.skipObsoletePointsForward()
-		}
 	}
-
+	i.skipHiddenForward()
+	if i.row > i.maxRow {
+		return nil
+	}
 	return i.decodeRow()
 }
 
@@ -1827,11 +1854,9 @@ func (i *DataBlockIter) Prev() *base.InternalKV {
 		return nil
 	}
 	i.row--
-	if i.transforms.HideObsoletePoints && i.atObsoletePointBackward() {
-		i.skipObsoletePointsBackward()
-		if i.row < 0 {
-			return nil
-		}
+	i.skipHiddenBackward()
+	if i.row < 0 {
+		return nil
 	}
 	return i.decodeRow()
 }
@@ -1881,6 +1906,115 @@ func (i *DataBlockIter) atObsoletePointCheck() {
 	// altogether in non-invariant builds.
 	if !i.transforms.HideObsoletePoints || !i.d.isObsolete.At(i.row) {
 		panic(errors.AssertionFailedf("expected obsolete point"))
+	}
+}
+
+// isSuffixMasked returns true if the key at i.row is masked by any of the
+// configured SuffixMasks. The key seeker fast-paths each check when possible
+// and falls back to materializing the suffix and comparing.
+//
+// Under SyntheticSuffix, every non-empty stored suffix has the same effective
+// suffix (the synthetic one); empty stored suffixes retain empty effective
+// suffix per the SyntheticSuffix contract and are never masked. We compute
+// synth-in-mask once and reduce the per-row check to HasNonEmptySuffix.
+//
+// TODO(dt): a synth-suffix file's mask answer is uniform across all rows
+// with non-empty stored suffix. DSR installs per-row masks on such files
+// only when (synth-in-mask AND HasRangeKeys) — see the synth-suffix branch
+// in `suffix_mask.go::DeleteSuffixRange`. An iter-init-time cache of
+// synth-in-mask would collapse this further (no per-call mask scan), and
+// in many cases (no empty-suffix RangeKeySet, no RangeKeyDelete) we could
+// avoid the per-row mask path entirely if we tracked richer metadata.
+func (i *DataBlockIter) isSuffixMasked() bool {
+	if i.transforms.HasSyntheticSuffix() {
+		synth := i.transforms.SyntheticSuffix()
+		if i.suffixCmp == nil {
+			// Mirror the assertion in defaultKeySeeker.IsMaskedBySuffixMask:
+			// SuffixMasks require a suffix comparer.
+			panic(errors.AssertionFailedf(
+				"SuffixMask requires Comparer.ComparePointSuffixes"))
+		}
+		synthInMask := false
+		for _, m := range i.transforms.SuffixMasks {
+			if i.suffixCmp(synth, m.Lower) >= 0 && i.suffixCmp(synth, m.Upper) < 0 {
+				synthInMask = true
+				break
+			}
+		}
+		if !synthInMask {
+			return false
+		}
+		return i.keySeeker.HasNonEmptySuffix(i.row)
+	}
+	for _, m := range i.transforms.SuffixMasks {
+		if i.keySeeker.IsMaskedBySuffixMask(i.row, m.Lower, m.Upper) {
+			return true
+		}
+	}
+	return false
+}
+
+// skipHiddenForward advances i.row past any rows that should be hidden by
+// HideObsoletePoints or SuffixMasks, interleaving the two predicates so that
+// a mask-skip landing on an obsolete row (or vice versa) is handled
+// correctly. If HideObsoletePoints is enabled, the caller must initialize
+// nextObsoletePoint before the call (and i.row must satisfy the
+// atObsoletePointForward invariant: i.row <= nextObsoletePoint).
+func (i *DataBlockIter) skipHiddenForward() {
+	hideObsolete := i.transforms.HideObsoletePoints
+	hasMask := len(i.transforms.SuffixMasks) > 0
+	if !hideObsolete && !hasMask {
+		return
+	}
+	maskSkipped := false
+	for i.row <= i.maxRow {
+		if hideObsolete && i.atObsoletePointForward() {
+			i.skipObsoletePointsForward()
+			continue
+		}
+		if hasMask && i.isSuffixMasked() {
+			i.row++
+			maskSkipped = true
+			// After advancing past a masked row we may now be at or beyond
+			// nextObsoletePoint; re-sync so the next obsolete check has a
+			// valid invariant and skipObsoletePointsForward can run.
+			if hideObsolete && i.row > i.nextObsoletePoint {
+				i.nextObsoletePoint = i.d.isObsolete.SeekSetBitGE(i.row)
+			}
+			continue
+		}
+		break
+	}
+	if maskSkipped {
+		// Invalidate kvRow so decodeRow performs a full decode of the
+		// unmasked row. The mask check may have advanced i.row past one or
+		// more rows whose materialized state would otherwise be reused.
+		i.kvRow = math.MinInt
+	}
+}
+
+// skipHiddenBackward is the backward analog of skipHiddenForward.
+func (i *DataBlockIter) skipHiddenBackward() {
+	hideObsolete := i.transforms.HideObsoletePoints
+	hasMask := len(i.transforms.SuffixMasks) > 0
+	if !hideObsolete && !hasMask {
+		return
+	}
+	maskSkipped := false
+	for i.row >= 0 {
+		if hideObsolete && i.atObsoletePointBackward() {
+			i.skipObsoletePointsBackward()
+			continue
+		}
+		if hasMask && i.isSuffixMasked() {
+			i.row--
+			maskSkipped = true
+			continue
+		}
+		break
+	}
+	if maskSkipped {
+		i.kvRow = math.MinInt
 	}
 }
 

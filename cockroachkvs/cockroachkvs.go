@@ -1087,6 +1087,60 @@ func (ks *cockroachKeySeeker) MaterializeUserKeyWithSyntheticSuffix(
 	return res
 }
 
+// IsMaskedBySuffixMask implements colblk.KeySeeker
+// interface. The bounds are encoded MVCC suffixes; we inline the decode to
+// avoid per-row function call overhead.
+//
+// Fail-open on malformed bounds is intentional: bounds originate inside
+// Pebble (DSR's validation at the API boundary rejects empty/zero-length
+// bounds, and the manifest decoder rejects them on load), so a bound that
+// is too short to decode here is a programming bug, not user input.
+// Returning false leaves the row visible — strictly safer than the
+// alternative of silently hiding rows due to corrupt internal state.
+// Compare with `defaultKeySeeker.IsMaskedBySuffixMask` which panics on
+// missing `ComparePointSuffixes`; both share the principle that an
+// internal-invariant violation should not silently mask data.
+func (ks *cockroachKeySeeker) IsMaskedBySuffixMask(row int, lower, upper []byte) bool {
+	rowWall := ks.mvccWallTimes.At(row)
+	rowLogical := uint32(ks.mvccLogical.At(row))
+	if rowWall == 0 && rowLogical == 0 {
+		return false
+	}
+	// Decode lower bound.
+	if len(lower) < suffixLenWithWall {
+		return false
+	}
+	lowerWall := binary.BigEndian.Uint64(lower[:8])
+	var lowerLogical uint32
+	if len(lower) >= suffixLenWithLogical {
+		lowerLogical = binary.BigEndian.Uint32(lower[8:12])
+	}
+	// Decode upper bound.
+	if len(upper) < suffixLenWithWall {
+		return false
+	}
+	upperWall := binary.BigEndian.Uint64(upper[:8])
+	var upperLogical uint32
+	if len(upper) >= suffixLenWithLogical {
+		upperLogical = binary.BigEndian.Uint32(upper[8:12])
+	}
+	// Mask range is [lower, upper) in comparer order. The comparer sorts
+	// newer (larger wall time) first, so lower has the larger wall time.
+	// row >= lower in comparer: row wall time <= lower wall time.
+	// row < upper in comparer: row wall time > upper wall time.
+	geLower := rowWall < lowerWall || (rowWall == lowerWall && rowLogical <= lowerLogical)
+	ltUpper := rowWall > upperWall || (rowWall == upperWall && rowLogical > upperLogical)
+	return geLower && ltUpper
+}
+
+// HasNonEmptySuffix implements colblk.KeySeeker. A row has a non-empty
+// MVCC suffix iff either the wall time or the logical timestamp is
+// non-zero (matching the "suffixless" sentinel used by
+// IsMaskedBySuffixMask).
+func (ks *cockroachKeySeeker) HasNonEmptySuffix(row int) bool {
+	return ks.mvccWallTimes.At(row) != 0 || uint32(ks.mvccLogical.At(row)) != 0
+}
+
 //go:linkname memmove runtime.memmove
 func memmove(to, from unsafe.Pointer, n uintptr)
 

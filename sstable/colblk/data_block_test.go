@@ -145,10 +145,12 @@ func TestDataBlock(t *testing.T) {
 				td.MaybeScanArgs(t, "synthetic-seq-num", &seqNum)
 				td.MaybeScanArgs(t, "synthetic-prefix", &syntheticPrefix)
 				td.MaybeScanArgs(t, "synthetic-suffix", &syntheticSuffix)
+				masks := parseSuffixMaskArgs(t, td)
 				transforms := blockiter.Transforms{
 					SyntheticSeqNum:          blockiter.SyntheticSeqNum(seqNum),
 					HideObsoletePoints:       td.HasArg("hide-obsolete-points"),
 					SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix([]byte(syntheticPrefix), []byte(syntheticSuffix)),
+					SuffixMasks:              masks,
 				}
 				if err := it.Init(&r, bd, transforms, tieringConfig); err != nil {
 					return err.Error()
@@ -550,5 +552,460 @@ func BenchmarkDataBlockDecoderInit(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		InitDataBlockMetadata(&testKeysSchema, &md, finished)
+	}
+}
+
+// TestDataBlockIterSuffixMaskOracle exercises every DataBlockIter positioning
+// method under random combinations of SuffixMask and HideObsoletePoints,
+// comparing against an oracle that filters the raw key list in user space.
+//
+// The oracle is the natural specification for "hide keys whose suffix is in
+// [Lower, Upper)" — anything more clever would just reimplement the iterator
+// (and likely the same bug). This test would have caught the obsolete-then-
+// mask interleave bug, would catch any positioning method that forgets to
+// call the hidden-row skip, and would catch any divergence between the row-
+// level mask predicate and ComparePointSuffixes.
+func TestDataBlockIterSuffixMaskOracle(t *testing.T) {
+	const targetBlockSize = 4 << 10
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(0, seed))
+
+	// Generate keys with a small prefix space so many keys share prefixes
+	// (exercises NextPrefix/SeekPrefixGE more thoroughly).
+	keys, values := makeTestKeyRandomKVs(rng, 2, 8, targetBlockSize)
+	slices.SortFunc(keys, testkeys.Comparer.Compare)
+
+	// Build a block where ~1/4 of rows are marked obsolete.
+	var w DataBlockEncoder
+	w.Init(&testKeysSchema, NoTieringColumns())
+	var blockKeys [][]byte
+	var blockObsolete []bool
+	for j := 0; w.Size() < targetBlockSize && j < len(keys); j++ {
+		ik := base.MakeInternalKey(keys[j], base.SeqNum(j+1), base.InternalKeyKindSet)
+		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
+		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+		isObsolete := rng.IntN(4) == 0
+		w.Add(ik, values[j], vp, kcmp, isObsolete, base.KVMeta{})
+		blockKeys = append(blockKeys, append([]byte(nil), ik.UserKey...))
+		blockObsolete = append(blockObsolete, isObsolete)
+	}
+	blockData, _ := w.Finish(w.Rows(), w.Size())
+	t.Logf("rows: %d", len(blockKeys))
+
+	var r DataBlockDecoder
+	bd := r.Init(&testKeysSchema, blockData)
+	split := testkeys.Comparer.Split
+	cmp := testkeys.Comparer.Compare
+	suffixCmp := testkeys.Comparer.ComparePointSuffixes
+
+	// suffixOf returns the suffix bytes of a key (empty if suffixless).
+	suffixOf := func(k []byte) []byte {
+		n := split(k)
+		return k[n:]
+	}
+
+	// randMask returns a random non-zero SuffixMask. Returns the zero value
+	// if there are not enough distinct suffixes to construct one.
+	randMask := func() (blockiter.SuffixMask, bool) {
+		// Pick two suffixes from existing keys' suffixes so the mask is
+		// likely to actually filter some rows. The testkeys comparer orders
+		// larger numeric suffixes first, so Lower must compare <= Upper per
+		// the comparer (i.e. Lower's numeric suffix is larger).
+		var suffixes [][]byte
+		for _, k := range blockKeys {
+			if s := suffixOf(k); len(s) > 0 {
+				suffixes = append(suffixes, s)
+			}
+		}
+		if len(suffixes) < 2 {
+			return blockiter.SuffixMask{}, false
+		}
+		a := suffixes[rng.IntN(len(suffixes))]
+		b := suffixes[rng.IntN(len(suffixes))]
+		if suffixCmp(a, b) > 0 {
+			a, b = b, a
+		}
+		return blockiter.SuffixMask{Lower: a, Upper: b}, true
+	}
+
+	// randMasks returns 0..3 random SuffixMasks.
+	randMasks := func() []blockiter.SuffixMask {
+		n := rng.IntN(4) // 0..3
+		var out []blockiter.SuffixMask
+		for j := 0; j < n; j++ {
+			if m, ok := randMask(); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+
+	// visibleRows returns the indices of rows visible under transforms, in
+	// block order. This is the oracle.
+	visibleRows := func(tr blockiter.Transforms) []int {
+		var out []int
+		for i, k := range blockKeys {
+			if tr.HideObsoletePoints && blockObsolete[i] {
+				continue
+			}
+			if masked := func() bool {
+				if len(tr.SuffixMasks) == 0 {
+					return false
+				}
+				s := suffixOf(k)
+				if len(s) == 0 {
+					return false
+				}
+				for _, m := range tr.SuffixMasks {
+					if suffixCmp(s, m.Lower) >= 0 && suffixCmp(s, m.Upper) < 0 {
+						return true
+					}
+				}
+				return false
+			}(); masked {
+				continue
+			}
+			out = append(out, i)
+		}
+		return out
+	}
+
+	const trials = 25
+	for trial := 0; trial < trials; trial++ {
+		tr := blockiter.Transforms{
+			HideObsoletePoints: rng.IntN(2) == 0,
+			SuffixMasks:        randMasks(),
+		}
+		t.Run(fmt.Sprintf("trial%d", trial), func(t *testing.T) {
+			t.Logf("hideObsolete=%v numMasks=%d", tr.HideObsoletePoints, len(tr.SuffixMasks))
+			for i, m := range tr.SuffixMasks {
+				t.Logf("  mask[%d]=[%x,%x)", i, m.Lower, m.Upper)
+			}
+
+			visible := visibleRows(tr)
+			t.Logf("visible rows: %d / %d", len(visible), len(blockKeys))
+
+			newIter := func() *DataBlockIter {
+				it := &DataBlockIter{}
+				it.InitOnce(&testKeysSchema, testkeys.Comparer,
+					getInternalValuer(func([]byte) base.InternalValue {
+						return base.MakeInPlaceValue(nil)
+					}), NoTieringColumns())
+				if err := it.Init(&r, bd, tr, NoTieringColumns()); err != nil {
+					t.Fatal(err)
+				}
+				return it
+			}
+
+			// Forward traversal: First/Next must yield exactly the visible rows
+			// in order.
+			t.Run("forward", func(t *testing.T) {
+				it := newIter()
+				defer it.Close()
+				var got []int
+				for kv := it.First(); kv != nil; kv = it.Next() {
+					got = append(got, it.row)
+				}
+				if !slices.Equal(got, visible) {
+					t.Fatalf("forward got rows %v, want %v", got, visible)
+				}
+			})
+
+			// Backward traversal: Last/Prev must yield visible rows in reverse.
+			t.Run("backward", func(t *testing.T) {
+				it := newIter()
+				defer it.Close()
+				var got []int
+				for kv := it.Last(); kv != nil; kv = it.Prev() {
+					got = append(got, it.row)
+				}
+				want := slices.Clone(visible)
+				slices.Reverse(want)
+				if !slices.Equal(got, want) {
+					t.Fatalf("backward got rows %v, want %v", got, want)
+				}
+			})
+
+			// SeekGE then Next: for each block key, SeekGE(k) must land at the
+			// first visible row whose key is >= k.
+			t.Run("seek-ge", func(t *testing.T) {
+				it := newIter()
+				defer it.Close()
+				for _, seekKey := range blockKeys {
+					var want []int
+					for _, r := range visible {
+						if cmp(blockKeys[r], seekKey) >= 0 {
+							want = append(want, r)
+						}
+					}
+					var got []int
+					for kv := it.SeekGE(seekKey, base.SeekGEFlagsNone); kv != nil; kv = it.Next() {
+						got = append(got, it.row)
+					}
+					if !slices.Equal(got, want) {
+						t.Fatalf("SeekGE(%q): got %v, want %v", seekKey, got, want)
+					}
+				}
+			})
+
+			// SeekLT then Prev: for each block key, SeekLT(k) must land at the
+			// last visible row whose key is < k.
+			t.Run("seek-lt", func(t *testing.T) {
+				it := newIter()
+				defer it.Close()
+				for _, seekKey := range blockKeys {
+					var want []int
+					for _, r := range visible {
+						if cmp(blockKeys[r], seekKey) < 0 {
+							want = append([]int{r}, want...) // reverse order
+						}
+					}
+					var got []int
+					for kv := it.SeekLT(seekKey, base.SeekLTFlagsNone); kv != nil; kv = it.Prev() {
+						got = append(got, it.row)
+					}
+					if !slices.Equal(got, want) {
+						t.Fatalf("SeekLT(%q): got %v, want %v", seekKey, got, want)
+					}
+				}
+			})
+
+			// NextPrefix: First then NextPrefix repeatedly must yield the first
+			// visible row of each distinct prefix in block order.
+			t.Run("next-prefix", func(t *testing.T) {
+				it := newIter()
+				defer it.Close()
+				var want []int
+				var lastPrefix []byte
+				for _, r := range visible {
+					p := blockKeys[r][:split(blockKeys[r])]
+					if lastPrefix == nil || !bytes.Equal(p, lastPrefix) {
+						want = append(want, r)
+						lastPrefix = p
+					}
+				}
+				var got []int
+				kv := it.First()
+				for kv != nil {
+					got = append(got, it.row)
+					kv = it.NextPrefix(nil)
+				}
+				if !slices.Equal(got, want) {
+					t.Fatalf("NextPrefix got %v, want %v", got, want)
+				}
+			})
+		})
+	}
+}
+
+// TestDataBlockIterSuffixMaskSyntheticOracle exercises the synth-aware per-row
+// mask check in `isSuffixMasked`: under a SyntheticSuffix transform, the
+// effective suffix of any row with a non-empty stored suffix is the synthetic
+// one (empty stored suffixes retain empty and are never masked, per the DSR
+// contract).
+//
+// The block under test mixes suffixless rows with rows at known suffix values.
+// For each trial the test picks a random synthetic suffix and a random mask
+// set, computes the visible rows with the oracle, and verifies First/Next and
+// Last/Prev produce exactly those rows. Seek positioning under synth
+// substitution is intentionally not exercised here — the synth substitution
+// changes the user-visible keys' sort order in ways that make a row-index-
+// based oracle awkward; correctness of the per-row mask predicate is the
+// concern this test pins, and forward/backward suffice.
+func TestDataBlockIterSuffixMaskSyntheticOracle(t *testing.T) {
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(0, seed))
+
+	// Build a block by hand: a few rows per prefix, mixing suffixless rows
+	// and rows at @10, @50, @99. Some rows are obsolete.
+	type kv struct {
+		key      []byte
+		obsolete bool
+	}
+	mk := func(prefix string, suffix int64) []byte {
+		buf := make([]byte, len(prefix)+testkeys.MaxSuffixLen)
+		copy(buf, prefix)
+		if suffix < 0 {
+			return buf[:len(prefix)]
+		}
+		n := testkeys.WriteSuffix(buf[len(prefix):], suffix)
+		return buf[:len(prefix)+n]
+	}
+	rows := []kv{
+		{mk("aa", -1), false}, // suffixless
+		{mk("aa", 99), true},  // obsolete
+		{mk("aa", 50), false},
+		{mk("aa", 10), false},
+		{mk("bb", -1), false}, // suffixless
+		{mk("bb", 99), false},
+		{mk("bb", 10), true}, // obsolete
+		{mk("cc", 50), false},
+		{mk("cc", 10), false},
+		{mk("dd", -1), false}, // suffixless
+	}
+	// Sort by key per the testkeys comparer (larger numeric suffix sorts
+	// first within a prefix; suffixless sorts last).
+	slices.SortFunc(rows, func(a, b kv) int { return testkeys.Comparer.Compare(a.key, b.key) })
+
+	var w DataBlockEncoder
+	w.Init(&testKeysSchema, NoTieringColumns())
+	var blockKeys [][]byte
+	var blockObsolete []bool
+	for j, r := range rows {
+		ik := base.MakeInternalKey(r.key, base.SeqNum(j+1), base.InternalKeyKindSet)
+		kcmp := w.KeyWriter.ComparePrev(ik.UserKey)
+		vp := block.InPlaceValuePrefix(kcmp.PrefixEqual())
+		w.Add(ik, []byte("v"), vp, kcmp, r.obsolete, base.KVMeta{})
+		blockKeys = append(blockKeys, append([]byte(nil), ik.UserKey...))
+		blockObsolete = append(blockObsolete, r.obsolete)
+	}
+	blockData, _ := w.Finish(w.Rows(), w.Size())
+
+	var r DataBlockDecoder
+	bd := r.Init(&testKeysSchema, blockData)
+	split := testkeys.Comparer.Split
+	suffixCmp := testkeys.Comparer.ComparePointSuffixes
+
+	suffixOf := func(k []byte) []byte {
+		n := split(k)
+		return k[n:]
+	}
+
+	// All stored non-empty suffixes are @1..@99 (well, @10/@50/@99 here).
+	// A valid synthetic suffix must sort STRICTLY BEFORE every stored
+	// non-empty suffix per the comparer. testkeys orders larger numeric
+	// suffix first, so @100..@200 all qualify. Sample within that range.
+	randSynth := func() []byte {
+		n := int64(100) + rng.Int64N(101) // @100..@200
+		buf := make([]byte, testkeys.SuffixLen(n))
+		testkeys.WriteSuffix(buf, n)
+		return buf
+	}
+
+	// Mask construction reuses the existing pattern: pick two suffixes from
+	// the universe of {stored suffixes, the chosen synth}. Lower must
+	// compare <= Upper per the comparer.
+	randMask := func(synth []byte) (blockiter.SuffixMask, bool) {
+		var suffixes [][]byte
+		for _, k := range blockKeys {
+			if s := suffixOf(k); len(s) > 0 {
+				suffixes = append(suffixes, s)
+			}
+		}
+		if len(synth) > 0 {
+			suffixes = append(suffixes, synth)
+		}
+		if len(suffixes) < 2 {
+			return blockiter.SuffixMask{}, false
+		}
+		a := suffixes[rng.IntN(len(suffixes))]
+		b := suffixes[rng.IntN(len(suffixes))]
+		if suffixCmp(a, b) > 0 {
+			a, b = b, a
+		}
+		return blockiter.SuffixMask{Lower: a, Upper: b}, true
+	}
+
+	randMasks := func(synth []byte) []blockiter.SuffixMask {
+		n := rng.IntN(3) + 1 // 1..3 masks (at least one to actually filter)
+		var out []blockiter.SuffixMask
+		for j := 0; j < n; j++ {
+			if m, ok := randMask(synth); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+
+	// visibleRows: the oracle. A row is visible iff:
+	//   - not hidden by HideObsoletePoints, AND
+	//   - its EFFECTIVE suffix is either empty or not covered by any mask.
+	// Effective suffix is the synth iff stored is non-empty; otherwise empty.
+	visibleRows := func(tr blockiter.Transforms) []int {
+		synth := tr.SyntheticSuffix()
+		var out []int
+		for i, k := range blockKeys {
+			if tr.HideObsoletePoints && blockObsolete[i] {
+				continue
+			}
+			stored := suffixOf(k)
+			effective := stored
+			if tr.HasSyntheticSuffix() && len(stored) > 0 {
+				effective = synth
+			}
+			masked := false
+			if len(effective) > 0 {
+				for _, m := range tr.SuffixMasks {
+					if suffixCmp(effective, m.Lower) >= 0 && suffixCmp(effective, m.Upper) < 0 {
+						masked = true
+						break
+					}
+				}
+			}
+			if !masked {
+				out = append(out, i)
+			}
+		}
+		return out
+	}
+
+	const trials = 25
+	for trial := 0; trial < trials; trial++ {
+		synth := randSynth()
+		tr := blockiter.Transforms{
+			HideObsoletePoints:       rng.IntN(2) == 0,
+			SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(nil, synth),
+			SuffixMasks:              randMasks(synth),
+		}
+		t.Run(fmt.Sprintf("trial%d", trial), func(t *testing.T) {
+			t.Logf("synth=%s hideObsolete=%v numMasks=%d",
+				synth, tr.HideObsoletePoints, len(tr.SuffixMasks))
+			for i, m := range tr.SuffixMasks {
+				t.Logf("  mask[%d]=[%s,%s)", i, m.Lower, m.Upper)
+			}
+
+			visible := visibleRows(tr)
+			t.Logf("visible rows: %d / %d", len(visible), len(blockKeys))
+
+			newIter := func() *DataBlockIter {
+				it := &DataBlockIter{}
+				it.InitOnce(&testKeysSchema, testkeys.Comparer,
+					getInternalValuer(func([]byte) base.InternalValue {
+						return base.MakeInPlaceValue(nil)
+					}), NoTieringColumns())
+				if err := it.Init(&r, bd, tr, NoTieringColumns()); err != nil {
+					t.Fatal(err)
+				}
+				return it
+			}
+
+			t.Run("forward", func(t *testing.T) {
+				it := newIter()
+				defer it.Close()
+				var got []int
+				for kv := it.First(); kv != nil; kv = it.Next() {
+					got = append(got, it.row)
+				}
+				if !slices.Equal(got, visible) {
+					t.Fatalf("forward got rows %v, want %v", got, visible)
+				}
+			})
+
+			t.Run("backward", func(t *testing.T) {
+				it := newIter()
+				defer it.Close()
+				var got []int
+				for kv := it.Last(); kv != nil; kv = it.Prev() {
+					got = append(got, it.row)
+				}
+				want := slices.Clone(visible)
+				slices.Reverse(want)
+				if !slices.Equal(got, want) {
+					t.Fatalf("backward got rows %v, want %v", got, want)
+				}
+			})
+		})
 	}
 }

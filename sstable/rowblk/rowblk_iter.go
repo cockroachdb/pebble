@@ -75,8 +75,9 @@ import (
 //
 // We have picked the first option here.
 type Iter struct {
-	cmp   base.Compare
-	split base.Split
+	cmp       base.Compare
+	split     base.Split
+	suffixCmp base.ComparePointSuffixes
 
 	// Iterator transforms.
 	//
@@ -249,10 +250,18 @@ func (i *Iter) Init(
 	if numRestarts == 0 {
 		return base.CorruptionErrorf("pebble/table: invalid table (block has no restart points)")
 	}
+	if len(transforms.SuffixMasks) > 0 && suffixCmp == nil {
+		// SuffixMasks require a comparer that knows how to order suffixes;
+		// configuring one without the other would silently leak keys that
+		// should be masked.
+		return errors.AssertionFailedf(
+			"rowblk: SuffixMasks require non-nil ComparePointSuffixes")
+	}
 	i.transforms = transforms
 	i.synthSuffixBuf = i.synthSuffixBuf[:0]
 	i.split = split
 	i.cmp = cmp
+	i.suffixCmp = suffixCmp
 	i.restarts = offsetInBlock(len(blk)) - 4*(1+offsetInBlock(numRestarts))
 	i.numRestarts = numRestarts
 	i.ptr = unsafe.Pointer(&blk[0])
@@ -495,6 +504,36 @@ func (i *Iter) decodeInternalKey(key []byte) (hiddenPoint bool) {
 		i.ikv.K.UserKey = key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
 			i.ikv.K.SetSeqNum(base.SeqNum(n))
+		}
+		if !hiddenPoint && len(i.transforms.SuffixMasks) > 0 {
+			si := i.split(i.ikv.K.UserKey)
+			suffix := i.ikv.K.UserKey[si:]
+			// The mask must be evaluated against the EFFECTIVE suffix, not the
+			// stored bytes. Under SyntheticSuffix the effective suffix of any
+			// non-empty stored suffix is the synthetic one (the substitution
+			// happens just below via maybeReplaceSuffix); empty stored suffixes
+			// retain the empty effective suffix and are never masked.
+			//
+			// TODO(dt): A synth-suffix file's mask answer is uniform across all
+			// rows with non-empty stored suffix. DSR installs per-row masks on
+			// such files only in one case: synth-in-mask AND HasRangeKeys —
+			// because excising would drop RangeKeyDelete entries (suffixless
+			// per the DSR contract) and any empty-suffix RangeKeySet entries
+			// (effective suffix retains empty, also never masked). See the
+			// synth-suffix branch in `suffix_mask.go::DeleteSuffixRange`. An
+			// iter-init-time cache of synth-in-mask could collapse the per-row
+			// check to "is the stored suffix non-empty".
+			if len(suffix) > 0 && i.transforms.HasSyntheticSuffix() {
+				suffix = i.transforms.SyntheticSuffix()
+			}
+			if len(suffix) > 0 {
+				for _, m := range i.transforms.SuffixMasks {
+					if i.suffixCmp(suffix, m.Lower) >= 0 && i.suffixCmp(suffix, m.Upper) < 0 {
+						hiddenPoint = true
+						break
+					}
+				}
+			}
 		}
 	} else {
 		i.ikv.K.Trailer = base.InternalKeyTrailer(base.InternalKeyKindInvalid)
@@ -896,8 +935,11 @@ func (i *Iter) SeekLT(key []byte, flags base.SeekLTFlags) *base.InternalKV {
 			// suffix replacement, the SeekLT would incorrectly return nil. With
 			// suffix replacement though, a@4 should be returned as a@4 sorts before
 			// a@3.
-			ikv := i.First()
-			if i.cmp(ikv.K.UserKey, key) < 0 {
+			//
+			// First() may return nil if every row in the block is hidden by
+			// HideObsoletePoints or a SuffixMask; in that case there is no
+			// visible key in this block less than the search key.
+			if ikv := i.First(); ikv != nil && i.cmp(ikv.K.UserKey, key) < 0 {
 				return ikv
 			}
 		}
@@ -1174,6 +1216,23 @@ start:
 		i.ikv.K.UserKey = i.key[:n:n]
 		if n := i.transforms.SyntheticSeqNum; n != 0 {
 			i.ikv.K.SetSeqNum(base.SeqNum(n))
+		}
+		if !hiddenPoint && len(i.transforms.SuffixMasks) > 0 {
+			si := i.split(i.ikv.K.UserKey)
+			suffix := i.ikv.K.UserKey[si:]
+			// See the corresponding block in the initial decode path above
+			// for the rationale on substituting the synthetic suffix here.
+			if len(suffix) > 0 && i.transforms.HasSyntheticSuffix() {
+				suffix = i.transforms.SyntheticSuffix()
+			}
+			if len(suffix) > 0 {
+				for _, m := range i.transforms.SuffixMasks {
+					if i.suffixCmp(suffix, m.Lower) >= 0 && i.suffixCmp(suffix, m.Upper) < 0 {
+						hiddenPoint = true
+						break
+					}
+				}
+			}
 		}
 		if hiddenPoint {
 			goto start
@@ -1457,6 +1516,23 @@ func (i *Iter) nextPrefixV3(succKey []byte) *base.InternalKV {
 			if n := i.transforms.SyntheticSeqNum; n != 0 {
 				i.ikv.K.SetSeqNum(base.SeqNum(n))
 			}
+			if !hiddenPoint && len(i.transforms.SuffixMasks) > 0 {
+				si := i.split(i.ikv.K.UserKey)
+				suffix := i.ikv.K.UserKey[si:]
+				// See the corresponding block in the initial decode path above
+				// for the rationale on substituting the synthetic suffix here.
+				if len(suffix) > 0 && i.transforms.HasSyntheticSuffix() {
+					suffix = i.transforms.SyntheticSuffix()
+				}
+				if len(suffix) > 0 {
+					for _, m := range i.transforms.SuffixMasks {
+						if i.suffixCmp(suffix, m.Lower) >= 0 && i.suffixCmp(suffix, m.Upper) < 0 {
+							hiddenPoint = true
+							break
+						}
+					}
+				}
+			}
 			if i.transforms.HasSyntheticSuffix() {
 				// Inlined version of i.maybeReplaceSuffix()
 				prefixLen := i.split(i.ikv.K.UserKey)
@@ -1515,6 +1591,27 @@ start:
 			trailer := base.InternalKeyTrailer(binary.LittleEndian.Uint64(i.key[n:]))
 			hiddenPoint := i.transforms.HideObsoletePoints &&
 				(trailer&TrailerObsoleteBit != 0)
+			if !hiddenPoint {
+				userKey := i.key[:n:n]
+				if len(i.transforms.SuffixMasks) > 0 {
+					si := i.split(userKey)
+					suffix := userKey[si:]
+					// See the corresponding block in the initial decode path
+					// above for the rationale on substituting the synthetic
+					// suffix here.
+					if len(suffix) > 0 && i.transforms.HasSyntheticSuffix() {
+						suffix = i.transforms.SyntheticSuffix()
+					}
+					if len(suffix) > 0 {
+						for _, m := range i.transforms.SuffixMasks {
+							if i.suffixCmp(suffix, m.Lower) >= 0 && i.suffixCmp(suffix, m.Upper) < 0 {
+								hiddenPoint = true
+								break
+							}
+						}
+					}
+				}
+			}
 			if hiddenPoint {
 				continue
 			}

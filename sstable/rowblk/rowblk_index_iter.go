@@ -21,6 +21,12 @@ var _ blockiter.Index = (*IndexIter)(nil)
 
 // Init initializes an iterator from the provided block data slice.
 func (i *IndexIter) Init(c *base.Comparer, blk []byte, transforms blockiter.Transforms) error {
+	// SuffixMasks must not be applied to index separator keys: doing so would
+	// skip a data block whenever the block's separator key happens to fall in
+	// the masked range, dropping every key in that block (including keys whose
+	// own suffix is outside the mask range). Strip them before initializing the
+	// underlying block iterator.
+	transforms.SuffixMasks = nil
 	return i.iter.Init(c.Compare, c.ComparePointSuffixes, c.Split, blk, transforms)
 }
 
@@ -28,6 +34,9 @@ func (i *IndexIter) Init(c *base.Comparer, blk []byte, transforms blockiter.Tran
 func (i *IndexIter) InitHandle(
 	comparer *base.Comparer, block block.BufferHandle, transforms blockiter.Transforms,
 ) error {
+	// See the comment on Init: SuffixMasks must not be applied to index
+	// separator keys.
+	transforms.SuffixMasks = nil
 	return i.iter.InitHandle(comparer, block, transforms)
 }
 

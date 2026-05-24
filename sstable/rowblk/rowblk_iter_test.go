@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"unsafe"
@@ -481,4 +482,253 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 
 func ikey(s string) base.InternalKey {
 	return base.InternalKey{UserKey: []byte(s)}
+}
+
+func TestBlockIterSuffixMask(t *testing.T) {
+	// Build a block with testkeys-format keys (prefix@suffix).
+	w := &Writer{RestartInterval: 1}
+	keys := []string{"a@10", "a@5", "a@2", "b@200", "b@9", "b@1", "c"}
+	for i, k := range keys {
+		ik := base.MakeInternalKey([]byte(k), base.SeqNum(100-i), base.InternalKeyKindSet)
+		require.NoError(t, w.Add(ik, []byte("val-"+k)))
+	}
+	blk := w.Finish()
+
+	cmp := testkeys.Comparer
+	// Mask [@200, @5): hides @200, @10, @9. Keeps @5, @2, @1, suffixless.
+	transforms := blockiter.Transforms{
+		SuffixMasks: []blockiter.SuffixMask{{Lower: []byte("@200"), Upper: []byte("@5")}},
+	}
+	iter, err := NewIter(cmp.Compare, cmp.ComparePointSuffixes, cmp.Split, blk, transforms)
+	require.NoError(t, err)
+
+	// Forward.
+	var forward []string
+	for kv := iter.First(); kv != nil; kv = iter.Next() {
+		v, _, _ := kv.V.Value(nil)
+		forward = append(forward, string(v))
+	}
+	require.Equal(t, []string{"val-a@5", "val-a@2", "val-b@1", "val-c"}, forward)
+
+	// Backward.
+	var backward []string
+	for kv := iter.Last(); kv != nil; kv = iter.Prev() {
+		v, _, _ := kv.V.Value(nil)
+		backward = append(backward, string(v))
+	}
+	slices.Reverse(backward)
+	require.Equal(t, []string{"val-a@5", "val-a@2", "val-b@1", "val-c"}, backward)
+
+	// SeekGE landing on masked key.
+	kv := iter.SeekGE([]byte("a@10"), base.SeekGEFlagsNone)
+	require.True(t, kv != nil)
+	v, _, _ := kv.V.Value(nil)
+	require.Equal(t, "val-a@5", string(v))
+
+	// SeekLT landing on masked key.
+	kv = iter.SeekLT([]byte("c"), base.SeekLTFlagsNone)
+	require.True(t, kv != nil)
+	v, _, _ = kv.V.Value(nil)
+	require.Equal(t, "val-b@1", string(v))
+
+	require.NoError(t, iter.Close())
+}
+
+// TestBlockIterSuffixMaskOracle exercises every Iter positioning method under
+// random combinations of SuffixMask and HideObsoletePoints, comparing against
+// an oracle that filters the raw key list in user space. Each positioning
+// method's correctness must match the oracle row-for-row; the test would
+// catch any positioning method that forgets to apply the mask check, any
+// boundary-semantics divergence, and any obsolete×mask interaction bug.
+func TestBlockIterSuffixMaskOracle(t *testing.T) {
+	seed := uint64(123456789)
+	t.Logf("seed: %d", seed)
+	rng := randNewPCG(seed)
+
+	// Generate a deterministic set of testkeys-format keys with a small
+	// prefix space and a moderate suffix space (so the mask will actually
+	// filter something). ~10% are suffixless.
+	prefixes := []string{"aa", "ab", "ba", "bc", "ca", "cb"}
+	suffixes := []int{0 /* suffixless */, 1, 2, 5, 9, 10, 20, 100, 200}
+	type kv struct {
+		key      string
+		obsolete bool
+	}
+	seen := map[string]bool{}
+	var rows []kv
+	for _, p := range prefixes {
+		for _, s := range suffixes {
+			k := p
+			if s > 0 {
+				k = fmt.Sprintf("%s@%d", p, s)
+			}
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			rows = append(rows, kv{key: k, obsolete: rng()&3 == 0})
+		}
+	}
+	// Sort by testkeys.Comparer.
+	cmp := testkeys.Comparer
+	slices.SortFunc(rows, func(a, b kv) int { return cmp.Compare([]byte(a.key), []byte(b.key)) })
+
+	// Build the block. Use AddWithOptionalValuePrefix so we can set the
+	// obsolete bit.
+	w := &Writer{RestartInterval: 1}
+	for i, r := range rows {
+		ik := base.MakeInternalKey([]byte(r.key), base.SeqNum(len(rows)-i), base.InternalKeyKindSet)
+		require.NoError(t, w.AddWithOptionalValuePrefix(
+			ik, r.obsolete, []byte("v"), len(r.key), false, 0, false))
+	}
+	blk := w.Finish()
+
+	// allSuffixes collects every distinct non-empty suffix in the block for
+	// use as candidate mask bounds.
+	var allSuffixes [][]byte
+	suffixSeen := map[string]bool{}
+	for _, r := range rows {
+		k := []byte(r.key)
+		s := k[cmp.Split(k):]
+		if len(s) > 0 && !suffixSeen[string(s)] {
+			suffixSeen[string(s)] = true
+			allSuffixes = append(allSuffixes, s)
+		}
+	}
+
+	// visibleKeys returns the keys visible under the given transforms. A key
+	// is hidden if ANY mask matches its suffix.
+	visibleKeys := func(tr blockiter.Transforms) []string {
+		var out []string
+		for _, r := range rows {
+			if tr.HideObsoletePoints && r.obsolete {
+				continue
+			}
+			masked := false
+			if len(tr.SuffixMasks) > 0 {
+				k := []byte(r.key)
+				s := k[cmp.Split(k):]
+				if len(s) > 0 {
+					for _, m := range tr.SuffixMasks {
+						if cmp.ComparePointSuffixes(s, m.Lower) >= 0 &&
+							cmp.ComparePointSuffixes(s, m.Upper) < 0 {
+							masked = true
+							break
+						}
+					}
+				}
+			}
+			if masked {
+				continue
+			}
+			out = append(out, r.key)
+		}
+		return out
+	}
+
+	// randMask returns one random mask drawn from existing suffixes.
+	randMask := func() (blockiter.SuffixMask, bool) {
+		if len(allSuffixes) < 2 {
+			return blockiter.SuffixMask{}, false
+		}
+		a := allSuffixes[rng()%uint32(len(allSuffixes))]
+		b := allSuffixes[rng()%uint32(len(allSuffixes))]
+		if cmp.ComparePointSuffixes(a, b) > 0 {
+			a, b = b, a
+		}
+		return blockiter.SuffixMask{Lower: a, Upper: b}, true
+	}
+
+	const trials = 25
+	for trial := 0; trial < trials; trial++ {
+		// 0..3 masks per trial to exercise multi-mask paths.
+		nMasks := int(rng() & 3)
+		var masks []blockiter.SuffixMask
+		for j := 0; j < nMasks; j++ {
+			if m, ok := randMask(); ok {
+				masks = append(masks, m)
+			}
+		}
+		tr := blockiter.Transforms{
+			HideObsoletePoints: rng()&1 == 0,
+			SuffixMasks:        masks,
+		}
+		want := visibleKeys(tr)
+		t.Run(fmt.Sprintf("trial%d", trial), func(t *testing.T) {
+			t.Logf("hideObsolete=%v numMasks=%d visible=%d/%d",
+				tr.HideObsoletePoints, len(masks), len(want), len(rows))
+			for i, m := range masks {
+				t.Logf("  mask[%d]=[%s,%s)", i, m.Lower, m.Upper)
+			}
+
+			newIter := func(t *testing.T) *Iter {
+				it, err := NewIter(cmp.Compare, cmp.ComparePointSuffixes, cmp.Split, blk, tr)
+				require.NoError(t, err)
+				return it
+			}
+			keysOf := func(kv *base.InternalKV, next func() *base.InternalKV) []string {
+				var out []string
+				for ; kv != nil; kv = next() {
+					out = append(out, string(kv.K.UserKey))
+				}
+				return out
+			}
+
+			t.Run("forward", func(t *testing.T) {
+				it := newIter(t)
+				defer it.Close()
+				got := keysOf(it.First(), it.Next)
+				require.Equal(t, want, got)
+			})
+			t.Run("backward", func(t *testing.T) {
+				it := newIter(t)
+				defer it.Close()
+				got := keysOf(it.Last(), it.Prev)
+				wantRev := slices.Clone(want)
+				slices.Reverse(wantRev)
+				require.Equal(t, wantRev, got)
+			})
+			t.Run("seek-ge", func(t *testing.T) {
+				it := newIter(t)
+				defer it.Close()
+				for _, r := range rows {
+					seekKey := []byte(r.key)
+					var w []string
+					for _, k := range want {
+						if cmp.Compare([]byte(k), seekKey) >= 0 {
+							w = append(w, k)
+						}
+					}
+					got := keysOf(it.SeekGE(seekKey, base.SeekGEFlagsNone), it.Next)
+					require.Equal(t, w, got, "SeekGE(%q)", seekKey)
+				}
+			})
+			t.Run("seek-lt", func(t *testing.T) {
+				it := newIter(t)
+				defer it.Close()
+				for _, r := range rows {
+					seekKey := []byte(r.key)
+					var w []string
+					for _, k := range want {
+						if cmp.Compare([]byte(k), seekKey) < 0 {
+							w = append([]string{k}, w...)
+						}
+					}
+					got := keysOf(it.SeekLT(seekKey, base.SeekLTFlagsNone), it.Prev)
+					require.Equal(t, w, got, "SeekLT(%q)", seekKey)
+				}
+			})
+		})
+	}
+}
+
+// randNewPCG returns a closure-based PCG-style RNG. We avoid the
+// math/rand/v2 import to keep this test file's import surface minimal —
+// the only requirement here is determinism across runs.
+func randNewPCG(seed uint64) func() uint32 {
+	state := seed | 1
+	return func() uint32 {
+		state = state*6364136223846793005 + 1442695040888963407
+		return uint32(state >> 33)
+	}
 }
