@@ -65,7 +65,11 @@ import (
 	"github.com/cockroachdb/crlib/testutils/require"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/cockroachkvs"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/testkeys"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -652,3 +656,124 @@ func TestDeleteSuffixRangeDataDriven(t *testing.T) {
 		}
 	})
 }
+
+// TestDeleteSuffixRangeSyntheticSuffixWithEmptyRangeKey reproduces a bug where
+// DeleteSuffixRange's SyntheticSuffix excise shortcut incorrectly dropped
+// range-key entries whose original suffix was empty.
+//
+// Background: a file ingested with SyntheticSuffix has every point key's
+// suffix replaced at iteration time. RangeKeySet entries also have their
+// suffix replaced — but only if the original suffix is non-empty. A
+// RangeKeySet with an empty original suffix retains the empty suffix.
+//
+// DSR's per-file shortcut checked whether the file's SyntheticSuffix falls in
+// the mask range; if so, it excised the file's overlapping portion entirely.
+// This was incorrect for files containing RangeKeySet entries with empty
+// original suffix: those entries' effective suffix is empty, empty suffixes
+// are never masked (per DSR's documented contract), and they should remain
+// visible after DSR. The shortcut excised them anyway.
+//
+// The fix gates the shortcut on `!m.HasRangeKeys`, falling through to the
+// per-row mask attachment path for files containing range keys.
+func TestDeleteSuffixRangeSyntheticSuffixWithEmptyRangeKey(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	remoteStorage := remote.NewInMem()
+	opts := &Options{
+		Comparer:                    &cockroachkvs.Comparer,
+		FormatMajorVersion:          FormatSuffixMask,
+		FS:                          vfs.NewMem(),
+		KeySchema:                   cockroachkvs.KeySchema.Name,
+		KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
+		DisableAutomaticCompactions: true,
+	}
+	opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		remote.MakeLocator("ext"): remoteStorage,
+	})
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	// Write an SST that contains a RangeKeySet with an EMPTY suffix.
+	writeOpts := d.opts.MakeWriterOptions(0, d.TableFormat())
+	obj, err := remoteStorage.CreateObject("ext1")
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(obj), writeOpts)
+	// A single point key, plus a range key with empty suffix spanning [a, z).
+	require.NoError(t, w.Set(testMakeEngineKey([]byte("c"), 0, 0), []byte("v-c")))
+	require.NoError(t, w.Raw().EncodeSpan(keyspan.Span{
+		Start: testMakeEngineKey([]byte("a"), 0, 0),
+		End:   testMakeEngineKey([]byte("z"), 0, 0),
+		Keys: []keyspan.Key{
+			{
+				Trailer: base.MakeTrailer(0, base.InternalKeyKindRangeKeySet),
+				Suffix:  nil,
+				Value:   []byte("rk-empty-suffix"),
+			},
+		},
+	}))
+	require.NoError(t, w.Close())
+
+	sz, err := remoteStorage.Size("ext1")
+	require.NoError(t, err)
+
+	// Ingest with a SyntheticSuffix at wall=50. This file's effective point
+	// keys all have suffix @50; range-key entry's original suffix is empty
+	// (nil), so its effective suffix stays empty.
+	synthSuffix := testMakeSuffix(50, 0)
+	_, err = d.IngestExternalFiles(context.Background(), []ExternalFile{{
+		Locator:           remote.MakeLocator("ext"),
+		ObjName:           "ext1",
+		Size:              uint64(sz),
+		StartKey:          testMakeEngineKey([]byte("a"), 0, 0),
+		EndKey:            testMakeEngineKey([]byte("z"), 0, 0),
+		EndKeyIsInclusive: false,
+		HasPointKey:       true,
+		HasRangeKey:       true,
+		SyntheticSuffix:   synthSuffix,
+	}})
+	require.NoError(t, err)
+
+	// Sanity check: range key with empty suffix is visible before DSR.
+	rangeKeyVisible := func() bool {
+		it, err := d.NewIter(&IterOptions{
+			KeyTypes: IterKeyTypeRangesOnly,
+		})
+		require.NoError(t, err)
+		defer it.Close()
+		for valid := it.First(); valid; valid = it.Next() {
+			for _, rk := range it.RangeKeys() {
+				if bytes.Equal(rk.Suffix, nil) || len(rk.Suffix) == 0 {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	require.True(t, rangeKeyVisible())
+
+	// DSR with mask range covering @50 (the synthetic suffix). Per the
+	// SyntheticSuffix optimization, the file's point keys are all masked.
+	// But the range-key entry's effective suffix is empty, so it must
+	// remain visible.
+	span := KeyRange{
+		Start: testMakeEngineKey([]byte("a"), 0, 0),
+		End:   testMakeEngineKey([]byte("z"), 0, 0),
+	}
+	require.NoError(t, d.DeleteSuffixRange(context.Background(), span,
+		testMakeSuffix(math.MaxUint64, 0), // newer-side, inclusive
+		testMakeSuffix(10, 0),             // older-side, exclusive (covers @50)
+	))
+
+	// After DSR, the range-key entry with empty suffix must still be visible.
+	if !rangeKeyVisible() {
+		t.Fatal("empty-suffix range-key entry incorrectly hidden by DSR's SyntheticSuffix shortcut")
+	}
+}
+
+// NOTE: a regression test for the runCopyCompaction SuffixMask propagation
+// fix lives in the metamorphic suite — running shared-storage + DSR + Download
+// reproduces it. A direct unit test proved tricky to author because the copy-
+// compaction is only chosen for specific (external<->local, virtual) file
+// configurations that a self-contained test couldn't easily produce in
+// isolation.

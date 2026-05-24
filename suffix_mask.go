@@ -11,10 +11,18 @@
 // it surfaces as if the masked keys had been point-deleted.
 //
 // `DeleteSuffixRange` is the public API that attaches masks. For each
-// SSTable overlapping the user-key span, the new mask is attached to
-// the (possibly virtual) inside portion. If the file straddles the
-// span, `applySuffixMaskToStraddlingTable` splits it into up to three
-// virtual tables and the mask applies only to the inside one.
+// SSTable overlapping the user-key span, it picks one of two actions
+// based on how the file relates to the span and the suffix range:
+//
+//	excise — Whole-file content is in the mask range (today, only the
+//	         `SyntheticSuffix` case detects this). The overlapping
+//	         portion is deleted; outside portions become virtual SSTs
+//	         retaining the parent's existing mask list (read-only).
+//	mask   — Some keys fall in the mask range. The new mask is attached
+//	         to the (possibly virtual) inside portion. If the file
+//	         straddles the span, `applySuffixMaskToStraddlingTable`
+//	         splits it into up to three virtual tables and the mask
+//	         applies only to the inside one.
 //
 // Multi-mask: `TableMetadata.SuffixMasks` is an ordered list, not a
 // single range, so repeated `DeleteSuffixRange` calls accumulate.
@@ -123,6 +131,56 @@ func (d *DB) DeleteSuffixRange(ctx context.Context, span KeyRange, lower, upper 
 				mBounds := m.UserKeyBounds()
 				if !bounds.Overlaps(d.cmp, mBounds) {
 					continue
+				}
+				// SyntheticSuffix files have a largely uniform mask answer:
+				// point keys all have effective suffix = synth; RangeKeySet
+				// entries with non-empty original suffix get effective = synth;
+				// RangeKeySet entries with empty original suffix retain empty
+				// (never masked); RangeKeyDelete entries have no per-key suffix
+				// (also never masked). RangeKeyUnset cannot appear on a
+				// SyntheticSuffix file (see the assertion in
+				// `rowblk_fragment_iter.go::applySpanTransforms`).
+				//
+				// Three cases based on (synth-in-mask, has-range-keys):
+				//
+				//   1. synth NOT in mask: no row in the file matches the mask.
+				//      Skip the file entirely (no version edit).
+				//   2. synth IN mask AND no range keys: every point key is
+				//      uniformly masked. Excise the file's overlap; a per-row
+				//      mask would be functionally equivalent but more expensive
+				//      at iteration time.
+				//   3. synth IN mask AND has range keys: cannot safely excise —
+				//      excising would drop RangeKeyDelete entries (suffixless
+				//      per the DSR contract) and any empty-suffix RangeKeySet
+				//      entries (effective suffix retains empty, also never
+				//      masked). Fall through to per-row mask attachment; the
+				//      per-row paths in `rowblk_iter.go`,
+				//      `colblk/data_block.go`, and `rowblk_fragment_iter.go`
+				//      collectively honor SyntheticSuffix and skip
+				//      empty-effective-suffix entries.
+				//
+				// TODO(dt): track "file contains an empty-suffix RangeKeySet"
+				// and "file contains a RangeKeyDelete" as bits on
+				// `TableMetadata` set at writer/ingest time. With those bits
+				// we could distinguish the genuinely unsafe case from the
+				// (synth-in-mask + range-keys-but-no-suffixless-entries) case,
+				// where excise would be safe and is cheaper. Today we fall
+				// through conservatively whenever HasRangeKeys is true.
+				if m.SyntheticPrefixAndSuffix.HasSuffix() {
+					ss := m.SyntheticPrefixAndSuffix.Suffix()
+					synthInMask := len(ss) > 0 &&
+						suffixCmp(ss, suffixMask.Lower) >= 0 &&
+						suffixCmp(ss, suffixMask.Upper) < 0
+					if !synthInMask {
+						continue
+					}
+					if !m.HasRangeKeys {
+						if err := d.exciseOverlap(ctx, ve, m, level, span); err != nil {
+							return versionUpdate{}, err
+						}
+						continue
+					}
+					// Fall through to per-row mask attachment below.
 				}
 
 				// Build the new SuffixMasks list for the (virtual) target
@@ -386,6 +444,51 @@ func looseMiddleTableBounds(
 			middleTable.ExtendRangeKeyBounds(cmp, originalTable.RangeKeyKinds, smallest, largest)
 		}
 	}
+}
+
+// exciseOverlap deletes the portion of m that overlaps with the span. If m is
+// fully contained, it is deleted entirely. If m straddles the span boundary,
+// the outside portions are kept as virtual tables. This is used for files with
+// SyntheticSuffix whose suffix falls within the mask range — every key in the
+// file is masked, so no per-row filtering is needed.
+func (d *DB) exciseOverlap(
+	ctx context.Context,
+	ve *manifest.VersionEdit,
+	m *manifest.TableMetadata,
+	level int,
+	span KeyRange,
+) error {
+	// See the analogous check in DeleteSuffixRange; span.End is exclusive so
+	// the half-open bounds containment is the correct comparison.
+	spanBounds := span.UserKeyBounds()
+	mBounds := m.UserKeyBounds()
+	fullyContained := spanBounds.ContainsBounds(d.cmp, mBounds)
+
+	ve.DeletedTables[manifest.DeletedTableEntry{
+		Level:   level,
+		FileNum: m.TableNum,
+	}] = m
+	if !m.Virtual {
+		ve.CreatedBackingTables = append(ve.CreatedBackingTables, m.TableBacking)
+	}
+
+	if fullyContained {
+		return nil
+	}
+
+	// Straddling: keep the outside portions.
+	exciseBounds := span.UserKeyBounds()
+	leftTable, rightTable, err := d.exciseTable(ctx, exciseBounds, m, level, tightExciseBoundsIfLocal)
+	if err != nil {
+		return err
+	}
+	if leftTable != nil {
+		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{Level: level, Meta: leftTable})
+	}
+	if rightTable != nil {
+		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{Level: level, Meta: rightTable})
+	}
+	return nil
 }
 
 // expandSuffixMask attempts to merge two SuffixMasks into a single contiguous

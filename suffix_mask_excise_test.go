@@ -21,6 +21,10 @@ import (
 	"github.com/cockroachdb/pebble/cockroachkvs"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 // TestSuffixMaskExcisePreservation verifies that when a table with a SuffixMask
@@ -400,6 +404,134 @@ func TestSuffixMaskMiddleTableSize(t *testing.T) {
 				middleTableSize(tc.originalSize, tc.leftSize+tc.rightSize))
 		})
 	}
+}
+
+// TestDeleteSuffixRangeExciseOverlap exercises the exciseOverlap path in
+// DeleteSuffixRange, which handles files with SyntheticSuffix.
+func TestDeleteSuffixRangeExciseOverlap(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	remoteStorage := remote.NewInMem()
+	opts := &Options{
+		Comparer:                    &cockroachkvs.Comparer,
+		FormatMajorVersion:          FormatSuffixMask,
+		FS:                          vfs.NewMem(),
+		KeySchema:                   cockroachkvs.KeySchema.Name,
+		KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
+		DisableAutomaticCompactions: true,
+	}
+	opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		remote.MakeLocator("ext"): remoteStorage,
+	})
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	// Write an SST with bare keys (no MVCC suffix).
+	writeOpts := d.opts.MakeWriterOptions(0, d.TableFormat())
+	obj, err := remoteStorage.CreateObject("ext1")
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(obj), writeOpts)
+	for _, rk := range []string{"bb", "cc"} {
+		require.NoError(t, w.Set(testMakeEngineKey([]byte(rk), 0, 0), []byte("val-"+rk)))
+	}
+	require.NoError(t, w.Close())
+
+	sz, err := remoteStorage.Size("ext1")
+	require.NoError(t, err)
+
+	// Ingest with SyntheticSuffix at wall=50.
+	synthSuffix := testMakeSuffix(50, 0)
+	_, err = d.IngestExternalFiles(context.Background(), []ExternalFile{{
+		Locator:           remote.MakeLocator("ext"),
+		ObjName:           "ext1",
+		Size:              uint64(sz),
+		StartKey:          testMakeEngineKey([]byte("bb"), 0, 0),
+		EndKey:            testMakeEngineKey([]byte("cd"), 0, 0),
+		EndKeyIsInclusive: false,
+		HasPointKey:       true,
+		SyntheticSuffix:   synthSuffix,
+	}})
+	require.NoError(t, err)
+
+	// Verify keys are visible.
+	iter, err := d.NewIter(nil)
+	require.NoError(t, err)
+	var before int
+	for iter.First(); iter.Valid(); iter.Next() {
+		before++
+	}
+	require.NoError(t, iter.Close())
+	require.True(t, before > 0)
+
+	// Test 1: fully-contained mask. Span covers entire file.
+	span := KeyRange{
+		Start: testMakeEngineKey([]byte("a"), 0, 0),
+		End:   testMakeEngineKey([]byte("z"), 0, 0),
+	}
+	require.NoError(t, d.DeleteSuffixRange(context.Background(), span,
+		testMakeSuffix(math.MaxUint64, 0), testMakeSuffix(10, 0)))
+
+	iter, err = d.NewIter(nil)
+	require.NoError(t, err)
+	var after int
+	for iter.First(); iter.Valid(); iter.Next() {
+		after++
+	}
+	require.NoError(t, iter.Close())
+	require.Equal(t, 0, after)
+
+	// Test 2: straddling mask. Re-ingest, then mask only part of the range.
+	obj2, err := remoteStorage.CreateObject("ext2")
+	require.NoError(t, err)
+	w2 := sstable.NewWriter(objstorageprovider.NewRemoteWritable(obj2), writeOpts)
+	for _, rk := range []string{"dd", "ff"} {
+		require.NoError(t, w2.Set(testMakeEngineKey([]byte(rk), 0, 0), []byte("val-"+rk)))
+	}
+	require.NoError(t, w2.Close())
+
+	sz2, err := remoteStorage.Size("ext2")
+	require.NoError(t, err)
+	_, err = d.IngestExternalFiles(context.Background(), []ExternalFile{{
+		Locator:           remote.MakeLocator("ext"),
+		ObjName:           "ext2",
+		Size:              uint64(sz2),
+		StartKey:          testMakeEngineKey([]byte("dd"), 0, 0),
+		EndKey:            testMakeEngineKey([]byte("fg"), 0, 0),
+		EndKeyIsInclusive: false,
+		HasPointKey:       true,
+		SyntheticSuffix:   synthSuffix,
+	}})
+	require.NoError(t, err)
+
+	// Verify both keys visible.
+	iter, err = d.NewIter(nil)
+	require.NoError(t, err)
+	var beforeStraddle []string
+	for iter.First(); iter.Valid(); iter.Next() {
+		beforeStraddle = append(beforeStraddle, string(iter.Value()))
+	}
+	require.NoError(t, iter.Close())
+	t.Logf("before straddle mask: %v", beforeStraddle)
+
+	// Mask only [dd, ee) — straddles the file [dd, ff].
+	straddleSpan := KeyRange{
+		Start: testMakeEngineKey([]byte("dd"), 0, 0),
+		End:   testMakeEngineKey([]byte("ee"), 0, 0),
+	}
+	require.NoError(t, d.DeleteSuffixRange(context.Background(), straddleSpan,
+		testMakeSuffix(math.MaxUint64, 0), testMakeSuffix(10, 0)))
+
+	// dd should be excised; ff should remain.
+	iter, err = d.NewIter(nil)
+	require.NoError(t, err)
+	var afterStraddle []string
+	for iter.First(); iter.Valid(); iter.Next() {
+		afterStraddle = append(afterStraddle, string(iter.Value()))
+	}
+	require.NoError(t, iter.Close())
+	t.Logf("after straddle mask: %v", afterStraddle)
+	require.Equal(t, []string{"val-ff"}, afterStraddle)
 }
 
 // TestLooseExciseTableBoundsSkipDisjointKeyType is a regression test for a bug
