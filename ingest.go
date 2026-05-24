@@ -117,6 +117,8 @@ func ingestSynthesizeShared(
 		meta.ExtendRangeKeyBounds(opts.Comparer.Compare, manifest.AnyRangeKeys, smallestRangeKey, largestRangeKey)
 	}
 
+	meta.SuffixMasks = cloneSuffixMasks(sm.SuffixMasks)
+
 	// For simplicity, we use the same number for both the FileNum and the
 	// DiskFileNum (even though this is a virtual sstable). Pass the underlying
 	// TableBacking's size to the same size as the virtualized view of the sstable.
@@ -195,6 +197,7 @@ func ingestLoad1External(
 	}
 
 	meta.SyntheticPrefixAndSuffix = sstable.MakeSyntheticPrefixAndSuffix(e.SyntheticPrefix, e.SyntheticSuffix)
+	meta.SuffixMasks = cloneSuffixMasks(e.SuffixMasks)
 
 	return meta, nil
 }
@@ -1432,6 +1435,19 @@ type ExternalFile struct {
 	//  - the backing sst must not contain multiple keys with the same prefix.
 	SyntheticSuffix []byte
 
+	// SuffixMasks are read-time suffix-mask filters that the destination
+	// must apply on top of the backing file (typically reproducing masks
+	// attached to the source vsst by `DB.DeleteSuffixRange`). Like
+	// SyntheticSuffix, masks are a presentation choice on the vsst, not a
+	// property of the backing file: every key returned by an iterator
+	// whose suffix falls in any mask's `[Lower, Upper)` (per
+	// `ComparePointSuffixes`) is hidden; keys with no suffix are never
+	// hidden. Multiple masks form an unordered union.
+	//
+	// When non-empty, the destination must be at `FormatSuffixMask` or
+	// higher.
+	SuffixMasks []sstable.SuffixMask
+
 	// Level denotes the level at which this file was present at read time
 	// if the external file was returned by a scan of an existing Pebble
 	// instance. If Level is 0, this field is ignored.
@@ -1755,6 +1771,22 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 			}
 			if len(external[i].SyntheticSuffix) > 0 {
 				return IngestOperationStats{}, errors.New("pebble: format major version too old for synthetic suffix ingestion")
+			}
+		}
+	}
+	if d.FormatMajorVersion() < FormatSuffixMask {
+		for i := range external {
+			if len(external[i].SuffixMasks) > 0 {
+				return IngestOperationStats{}, errors.Newf(
+					"pebble: external file ingestion with SuffixMasks requires at least format major version %d",
+					FormatSuffixMask)
+			}
+		}
+		for i := range shared {
+			if len(shared[i].SuffixMasks) > 0 {
+				return IngestOperationStats{}, errors.Newf(
+					"pebble: shared file ingestion with SuffixMasks requires at least format major version %d",
+					FormatSuffixMask)
 			}
 		}
 	}

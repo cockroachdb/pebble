@@ -87,6 +87,13 @@ type SharedSSTMeta struct {
 	// Size contains an estimate of the size of this sstable.
 	Size uint64
 
+	// SuffixMasks are the suffix masks attached to the source vsst (typically
+	// via `DB.DeleteSuffixRange`). They are a read-time presentation of the
+	// file, not a property of the backing bytes — the destination must
+	// reconstruct the same masks on its vsst to observe the source's view.
+	// When non-empty, the destination must be at `FormatSuffixMask` or higher.
+	SuffixMasks []sstable.SuffixMask
+
 	// tableNum at time of creation in the creator instance. Only used for
 	// debugging/tests.
 	tableNum base.TableNum
@@ -99,12 +106,30 @@ func (s *SharedSSTMeta) cloneFromFileMeta(f *manifest.TableMetadata) {
 		SmallestPointKey: f.PointKeyBounds.Smallest().Clone(),
 		LargestPointKey:  f.PointKeyBounds.Largest().Clone(),
 		Size:             f.Size,
+		SuffixMasks:      cloneSuffixMasks(f.SuffixMasks),
 		tableNum:         f.TableNum,
 	}
 	if f.HasRangeKeys {
 		s.SmallestRangeKey = f.RangeKeyBounds.Smallest().Clone()
 		s.LargestRangeKey = f.RangeKeyBounds.Largest().Clone()
 	}
+}
+
+// cloneSuffixMasks returns a deep copy of masks suitable for shipping across
+// the Replicate boundary (or any other context where the source and
+// destination must not alias mask byte slices).
+func cloneSuffixMasks(masks []sstable.SuffixMask) []sstable.SuffixMask {
+	if len(masks) == 0 {
+		return nil
+	}
+	out := make([]sstable.SuffixMask, len(masks))
+	for i, m := range masks {
+		out[i] = sstable.SuffixMask{
+			Lower: slices.Clone(m.Lower),
+			Upper: slices.Clone(m.Upper),
+		}
+	}
+	return out
 }
 
 // ScanInternal scans all internal keys within the specified bounds, truncating
@@ -653,6 +678,7 @@ func (d *DB) truncateExternalFile(
 		Size:            file.Size,
 		SyntheticPrefix: slices.Clone(file.SyntheticPrefixAndSuffix.Prefix()),
 		SyntheticSuffix: slices.Clone(file.SyntheticPrefixAndSuffix.Suffix()),
+		SuffixMasks:     cloneSuffixMasks(file.SuffixMasks),
 	}
 
 	needsLowerTruncate := cmp(lower, file.Smallest().UserKey) > 0

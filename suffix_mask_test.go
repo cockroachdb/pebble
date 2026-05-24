@@ -948,3 +948,159 @@ func TestDeleteSuffixRangeSkipBypassExercisesPath(t *testing.T) {
 	}
 	t.Fatalf("expected metamorphic bypass to attach a no-op mask within %d calls", maxCalls)
 }
+
+// TestExternalFileSuffixMasksRoundTrip exercises the SuffixMasks field on
+// ExternalFile (and indirectly SharedSSTMeta) end-to-end: a source DB
+// attaches a mask via DeleteSuffixRange, ScanInternal emits an ExternalFile
+// carrying the mask, and a destination DB reconstructs the masked vsst via
+// IngestAndExcise. The destination's reads must observe the same mask
+// behavior the source did.
+func TestExternalFileSuffixMasksRoundTrip(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	remoteStorage := remote.NewInMem()
+	mkDB := func(name string) *DB {
+		opts := &Options{
+			Comparer:                    &cockroachkvs.Comparer,
+			FormatMajorVersion:          FormatSuffixMask,
+			FS:                          vfs.NewMem(),
+			KeySchema:                   cockroachkvs.KeySchema.Name,
+			KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
+			DisableAutomaticCompactions: true,
+			BlockPropertyCollectors:     cockroachkvs.BlockPropertyCollectors,
+			SuffixRangeIntersects:       cockroachkvs.SuffixRangeIntersectsTable,
+		}
+		opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+			remote.MakeLocator("ext"): remoteStorage,
+		})
+		d, err := Open(name, opts)
+		require.NoError(t, err)
+		return d
+	}
+	src := mkDB("src")
+	defer src.Close()
+	dst := mkDB("dst")
+	defer dst.Close()
+
+	// Write an SST into shared storage with three keys at walls 200, 50, 5.
+	writeOpts := src.opts.MakeWriterOptions(0, src.TableFormat())
+	obj, err := remoteStorage.CreateObject("file1")
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(obj), writeOpts)
+	// MVCC keys sort newer-first within a prefix.
+	require.NoError(t, w.Set(testMakeEngineKey([]byte("a"), 200, 0), []byte("v-a-200")))
+	require.NoError(t, w.Set(testMakeEngineKey([]byte("a"), 50, 0), []byte("v-a-50")))
+	require.NoError(t, w.Set(testMakeEngineKey([]byte("a"), 5, 0), []byte("v-a-5")))
+	require.NoError(t, w.Close())
+	objSize, err := remoteStorage.Size("file1")
+	require.NoError(t, err)
+
+	// Ingest into source DB.
+	_, err = src.IngestExternalFiles(context.Background(), []ExternalFile{{
+		Locator:           remote.MakeLocator("ext"),
+		ObjName:           "file1",
+		Size:              uint64(objSize),
+		StartKey:          testMakeEngineKey([]byte("a"), 0, 0),
+		EndKey:            testMakeEngineKey([]byte("b"), 0, 0),
+		EndKeyIsInclusive: false,
+		HasPointKey:       true,
+	}})
+	require.NoError(t, err)
+
+	// Mask the middle key (wall=50) with [100, 10) — covers wall 50 only.
+	maskSpan := KeyRange{
+		Start: testMakeEngineKey([]byte("a"), 0, 0),
+		End:   testMakeEngineKey([]byte("b"), 0, 0),
+	}
+	require.NoError(t, src.DeleteSuffixRange(context.Background(), maskSpan,
+		testMakeSuffix(100, 0), testMakeSuffix(10, 0)))
+
+	// Sanity check on source: walls 200 and 5 visible, wall 50 hidden.
+	require.Equal(t, []string{"v-a-200", "v-a-5"}, suffixMaskCollectVisible(t, src))
+
+	// Source-side: ScanInternal emits an ExternalFile carrying the mask.
+	var externals []ExternalFile
+	err = src.ScanInternal(context.Background(), ScanInternalOptions{
+		IterOptions: IterOptions{
+			KeyTypes:   IterKeyTypePointsAndRanges,
+			LowerBound: testMakeEngineKey([]byte("a"), 0, 0),
+			UpperBound: testMakeEngineKey([]byte("b"), 0, 0),
+		},
+		VisitExternalFile: func(ef *ExternalFile) error {
+			externals = append(externals, *ef)
+			return nil
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(externals))
+	require.Equal(t, 1, len(externals[0].SuffixMasks))
+	// Mask bytes must be deep-cloned (not alias src's TableMetadata).
+	require.Equal(t, testMakeSuffix(100, 0), externals[0].SuffixMasks[0].Lower)
+	require.Equal(t, testMakeSuffix(10, 0), externals[0].SuffixMasks[0].Upper)
+
+	// Destination-side: IngestAndExcise applies the masks to the reconstructed
+	// vsst. The destination must observe the same hidden/visible pattern.
+	_, err = dst.IngestAndExcise(context.Background(), nil, nil, externals,
+		KeyRange{
+			Start: testMakeEngineKey([]byte("a"), 0, 0),
+			End:   testMakeEngineKey([]byte("b"), 0, 0),
+		})
+	require.NoError(t, err)
+	require.Equal(t, []string{"v-a-200", "v-a-5"}, suffixMaskCollectVisible(t, dst))
+}
+
+// TestExternalFileSuffixMasksFMVGate verifies that ingesting an ExternalFile
+// with non-empty SuffixMasks into a destination at a too-old format major
+// version is refused, rather than silently losing the masks.
+func TestExternalFileSuffixMasksFMVGate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// FormatSuffixMask - 1 is the highest FMV that should refuse masks.
+	if FormatSuffixMask == 1 {
+		t.Skip("no FMV below FormatSuffixMask")
+	}
+	remoteStorage := remote.NewInMem()
+	opts := &Options{
+		Comparer:                    &cockroachkvs.Comparer,
+		FormatMajorVersion:          FormatSuffixMask - 1,
+		FS:                          vfs.NewMem(),
+		KeySchema:                   cockroachkvs.KeySchema.Name,
+		KeySchemas:                  sstable.MakeKeySchemas(&cockroachkvs.KeySchema),
+		DisableAutomaticCompactions: true,
+	}
+	opts.RemoteStorage = remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{
+		remote.MakeLocator("ext"): remoteStorage,
+	})
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	// Trivial backing file so the ingest path actually reaches the FMV check
+	// (Size != 0 etc).
+	writeOpts := d.opts.MakeWriterOptions(0, d.TableFormat())
+	obj, err := remoteStorage.CreateObject("file1")
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewRemoteWritable(obj), writeOpts)
+	require.NoError(t, w.Set(testMakeEngineKey([]byte("a"), 50, 0), []byte("v")))
+	require.NoError(t, w.Close())
+	sz, err := remoteStorage.Size("file1")
+	require.NoError(t, err)
+
+	_, err = d.IngestExternalFiles(context.Background(), []ExternalFile{{
+		Locator:           remote.MakeLocator("ext"),
+		ObjName:           "file1",
+		Size:              uint64(sz),
+		StartKey:          testMakeEngineKey([]byte("a"), 0, 0),
+		EndKey:            testMakeEngineKey([]byte("b"), 0, 0),
+		EndKeyIsInclusive: false,
+		HasPointKey:       true,
+		SuffixMasks: []sstable.SuffixMask{{
+			Lower: testMakeSuffix(100, 0),
+			Upper: testMakeSuffix(10, 0),
+		}},
+	}})
+	if err == nil {
+		t.Fatalf("expected IngestExternalFiles to refuse SuffixMasks at FMV=%d (<%d), got nil",
+			FormatSuffixMask-1, FormatSuffixMask)
+	}
+}
