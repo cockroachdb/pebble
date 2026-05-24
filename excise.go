@@ -479,6 +479,15 @@ func determineExcisedTableSize(
 // table to the excised table, scaling each blob reference's value size
 // proportionally based on the ratio of the excised table's size to the original
 // table's size.
+//
+// The excised table is a subset of the original (it covers a sub-range of the
+// original's user-key space), so its share of any referenced blob file cannot
+// exceed the original's share. The scaling is therefore capped at the
+// original blob reference's value size; without the cap, size-estimate noise
+// (e.g., `excisedTable.Size > originalSize` due to per-key estimates or the
+// `determineExcisedTableSize` zero-clamp) could produce a `ValueSize` greater
+// than the physical blob file's `ValueSize`, tripping the invariant check in
+// `MakeBlobReference` on manifest replay.
 func determineExcisedTableBlobReferences(
 	originalBlobReferences manifest.BlobReferences,
 	originalSize uint64,
@@ -490,7 +499,8 @@ func determineExcisedTableBlobReferences(
 	}
 	newBlobReferences := make(manifest.BlobReferences, len(originalBlobReferences))
 	for i, bf := range originalBlobReferences {
-		bf.ValueSize = max(bf.ValueSize*excisedTable.Size/originalSize, 1)
+		scaled := bf.ValueSize * excisedTable.Size / originalSize
+		bf.ValueSize = max(min(scaled, bf.ValueSize), 1)
 		if fmv < FormatBackingValueSize {
 			bf.BackingValueSize = 0
 		}
