@@ -15,8 +15,8 @@ Right table bounds:
   overall: c#1,SET - e#1,SET
   point:   c#1,SET - e#1,SET
 Right table bounds (loose):
-  overall: bb#0,DELSIZED - e#1,SET
-  point:   bb#0,DELSIZED - e#1,SET
+  overall: bb#b36028797018963966,DELSIZED - e#1,SET
+  point:   bb#b36028797018963966,DELSIZED - e#1,SET
 
 excise
 [a, b]
@@ -37,8 +37,8 @@ Right table bounds:
   overall: c#1,SET - e#1,SET
   point:   c#1,SET - e#1,SET
 Right table bounds (loose):
-  overall: c#0,DELSIZED - e#1,SET
-  point:   c#0,DELSIZED - e#1,SET
+  overall: c#b36028797018963966,DELSIZED - e#1,SET
+  point:   c#b36028797018963966,DELSIZED - e#1,SET
 
 excise
 [a, cc]
@@ -101,8 +101,8 @@ Right table bounds:
   overall: d#1,SET - e#1,SET
   point:   d#1,SET - e#1,SET
 Right table bounds (loose):
-  overall: cc#0,DELSIZED - e#1,SET
-  point:   cc#0,DELSIZED - e#1,SET
+  overall: cc#b36028797018963966,DELSIZED - e#1,SET
+  point:   cc#b36028797018963966,DELSIZED - e#1,SET
 
 excise
 [bb, cc]
@@ -130,8 +130,8 @@ Right table bounds:
   overall: d#1,SET - e#1,SET
   point:   d#1,SET - e#1,SET
 Right table bounds (loose):
-  overall: d#0,DELSIZED - e#1,SET
-  point:   d#0,DELSIZED - e#1,SET
+  overall: d#b36028797018963966,DELSIZED - e#1,SET
+  point:   d#b36028797018963966,DELSIZED - e#1,SET
 
 # Test with a RANGEDEL.
 build-sst
@@ -151,8 +151,8 @@ Right table bounds:
   overall: cc#2,RANGEDEL - e#1,SET
   point:   cc#2,RANGEDEL - e#1,SET
 Right table bounds (loose):
-  overall: cc#0,DELSIZED - e#1,SET
-  point:   cc#0,DELSIZED - e#1,SET
+  overall: cc#b36028797018963966,DELSIZED - e#1,SET
+  point:   cc#b36028797018963966,DELSIZED - e#1,SET
 
 excise
 [b, b]
@@ -182,8 +182,8 @@ Right table bounds:
   overall: e#1,SET - e#1,SET
   point:   e#1,SET - e#1,SET
 Right table bounds (loose):
-  overall: e#0,DELSIZED - e#1,SET
-  point:   e#0,DELSIZED - e#1,SET
+  overall: e#b36028797018963966,DELSIZED - e#1,SET
+  point:   e#b36028797018963966,DELSIZED - e#1,SET
 
 excise
 [cc, e]
@@ -216,9 +216,9 @@ Right table bounds:
   point:   cc#1,SET - e#1,SET
   range:   cc#2,RANGEKEYSET - d#inf,RANGEKEYSET
 Right table bounds (loose):
-  overall: cc#0,DELSIZED - e#1,SET
-  point:   cc#0,DELSIZED - e#1,SET
-  range:   cc#0,RANGEKEYSET - d#inf,RANGEKEYSET
+  overall: cc#b36028797018963966,DELSIZED - e#1,SET
+  point:   cc#b36028797018963966,DELSIZED - e#1,SET
+  range:   cc#b36028797018963966,RANGEKEYSET - d#inf,RANGEKEYSET
 
 excise
 [b, cc]
@@ -240,9 +240,8 @@ Right table bounds:
   overall: e#1,SET - e#1,SET
   point:   e#1,SET - e#1,SET
 Right table bounds (loose):
-  overall: e#0,DELSIZED - e#1,SET
-  point:   e#0,DELSIZED - e#1,SET
-  range:   e#0,RANGEKEYSET - d#inf,RANGEKEYSET
+  overall: e#b36028797018963966,DELSIZED - e#1,SET
+  point:   e#b36028797018963966,DELSIZED - e#1,SET
 
 excise
 [cc, e]

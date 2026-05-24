@@ -262,17 +262,27 @@ func exciseOverlapBounds(
 //
 // Sets the smallest and largest keys, as well as HasPointKeys/HasRangeKeys in
 // the leftFile.
+//
+// Per-key-type contribution is gated on whether that key type actually extends
+// to the left of exciseSpanStart in the original table; if all keys of that
+// type fall at or after exciseSpanStart, that type contributes nothing to the
+// left table. Without the gate, the synthesized largest (clamped to a sentinel
+// at exciseSpanStart) would sort before the original's smallest user key,
+// producing a table with `smallest > largest` and failing
+// `TableMetadata.Validate`.
 func looseLeftTableBounds(
 	cmp Compare, originalTable, leftTable *manifest.TableMetadata, exciseSpanStart []byte,
 ) {
-	if originalTable.HasPointKeys {
+	if originalTable.HasPointKeys &&
+		cmp(originalTable.PointKeyBounds.Smallest().UserKey, exciseSpanStart) < 0 {
 		largestPointKey := originalTable.PointKeyBounds.Largest()
 		if largestPointKey.IsUpperBoundFor(cmp, exciseSpanStart) {
 			largestPointKey = base.MakeRangeDeleteSentinelKey(exciseSpanStart)
 		}
 		leftTable.ExtendPointKeyBounds(cmp, originalTable.PointKeyBounds.Smallest(), largestPointKey)
 	}
-	if originalTable.HasRangeKeys {
+	if originalTable.HasRangeKeys &&
+		cmp(originalTable.RangeKeyBounds.Smallest().UserKey, exciseSpanStart) < 0 {
 		largestRangeKey := originalTable.RangeKeyBounds.Largest()
 		if largestRangeKey.IsUpperBoundFor(cmp, exciseSpanStart) {
 			largestRangeKey = base.MakeExclusiveSentinelKey(InternalKeyKindRangeKeyMin, exciseSpanStart)
@@ -290,21 +300,42 @@ func looseLeftTableBounds(
 //
 // The excise span end bound is assumed to be exclusive; this function cannot be
 // used with an inclusive end bound.
+//
+// Per-key-type contribution is gated on whether that key type actually extends
+// to the right of exciseSpanEnd in the original table; if all keys of that
+// type fall before exciseSpanEnd, that type contributes nothing to the right
+// table. Without the gate, the synthesized smallest (clamped to exciseSpanEnd)
+// would sort after the original's largest user key, producing a table with
+// `smallest > largest` and failing `TableMetadata.Validate`.
 func looseRightTableBounds(
 	cmp Compare, originalTable, rightTable *manifest.TableMetadata, exciseSpanEnd []byte,
 ) {
-	if originalTable.HasPointKeys {
-		smallestPointKey := originalTable.PointKeyBounds.Smallest()
-		if !smallestPointKey.IsUpperBoundFor(cmp, exciseSpanEnd) {
-			smallestPointKey = base.MakeInternalKey(exciseSpanEnd, 0, base.InternalKeyKindMaxForSSTable)
+	exciseSpanEndBoundary := base.UserKeyExclusive(exciseSpanEnd)
+	// Always synthesize the smallest with the maximum non-sentinel trailer
+	// rather than copying the originalTable's smallest as-is. The
+	// originalTable's smallest may have a small trailer (e.g. seqnum=0,
+	// kind=DELSIZED), and a real range tombstone in the file at the same
+	// user key with a larger trailer would violate the rangeDelIter's
+	// lower-bound assertion in invariants builds. The bound is loose
+	// either way; using the largest trailer is strictly safer.
+	if originalTable.HasPointKeys &&
+		!exciseSpanEndBoundary.IsUpperBoundForInternalKey(cmp, originalTable.PointKeyBounds.Largest()) {
+		smallestUserKey := originalTable.PointKeyBounds.Smallest().UserKey
+		if cmp(smallestUserKey, exciseSpanEnd) < 0 {
+			smallestUserKey = exciseSpanEnd
 		}
+		smallestPointKey := base.MakeInternalKey(
+			smallestUserKey, base.SeqNumMax-1, base.InternalKeyKindMaxForSSTable)
 		rightTable.ExtendPointKeyBounds(cmp, smallestPointKey, originalTable.PointKeyBounds.Largest())
 	}
-	if originalTable.HasRangeKeys {
-		smallestRangeKey := originalTable.RangeKeyBounds.Smallest()
-		if !smallestRangeKey.IsUpperBoundFor(cmp, exciseSpanEnd) {
-			smallestRangeKey = base.MakeInternalKey(exciseSpanEnd, 0, base.InternalKeyKindRangeKeyMax)
+	if originalTable.HasRangeKeys &&
+		!exciseSpanEndBoundary.IsUpperBoundForInternalKey(cmp, originalTable.RangeKeyBounds.Largest()) {
+		smallestUserKey := originalTable.RangeKeyBounds.Smallest().UserKey
+		if cmp(smallestUserKey, exciseSpanEnd) < 0 {
+			smallestUserKey = exciseSpanEnd
 		}
+		smallestRangeKey := base.MakeInternalKey(
+			smallestUserKey, base.SeqNumMax-1, base.InternalKeyKindRangeKeyMax)
 		rightTable.ExtendRangeKeyBounds(cmp, originalTable.RangeKeyKinds, smallestRangeKey, originalTable.RangeKeyBounds.Largest())
 	}
 }

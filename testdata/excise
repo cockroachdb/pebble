@@ -775,7 +775,7 @@ L6:
   000023(000018):[a#0,SET-a#0,SET] seqnums:[#0-#0] points:[a#0,SET-a#0,SET] size:71(615)
   000024(000018):[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:71(615)
   000027(000026):[g#26,DELSIZED-ga#inf,RANGEDEL] seqnums:[#26-#26] points:[g#26,DELSIZED-ga#inf,RANGEDEL] size:297(594)
-  000028(000026):[ha#0,DELSIZED-j#inf,RANGEDEL] seqnums:[#26-#26] points:[ha#0,DELSIZED-j#inf,RANGEDEL] size:297(594)
+  000028(000026):[ha#b36028797018963966,DELSIZED-j#inf,RANGEDEL] seqnums:[#26-#26] points:[ha#b36028797018963966,DELSIZED-j#inf,RANGEDEL] size:297(594)
   000025(000018):[x#0,SET-x#0,SET] seqnums:[#0-#0] points:[x#0,SET-x#0,SET] size:71(615)
 
 # Non-local tables are excised without data access.
@@ -806,9 +806,9 @@ L6:
   000023(000018):[a#0,SET-a#0,SET] seqnums:[#0-#0] points:[a#0,SET-a#0,SET] size:71(615)
   000024(000018):[f#0,SET-f#0,SET] seqnums:[#0-#0] points:[f#0,SET-f#0,SET] size:71(615)
   000027(000026):[g#26,DELSIZED-ga#inf,RANGEDEL] seqnums:[#26-#26] points:[g#26,DELSIZED-ga#inf,RANGEDEL] size:297(594)
-  000028(000026):[ha#0,DELSIZED-j#inf,RANGEDEL] seqnums:[#26-#26] points:[ha#0,DELSIZED-j#inf,RANGEDEL] size:297(594)
+  000028(000026):[ha#b36028797018963966,DELSIZED-j#inf,RANGEDEL] seqnums:[#26-#26] points:[ha#b36028797018963966,DELSIZED-j#inf,RANGEDEL] size:297(594)
   000030(000026):[u#28,DELSIZED-uk#inf,RANGEDEL] seqnums:[#28-#28] points:[u#28,DELSIZED-uk#inf,RANGEDEL] size:297(594)
-  000031(000026):[vk#0,DELSIZED-w#inf,RANGEDEL] seqnums:[#28-#28] points:[vk#0,DELSIZED-w#inf,RANGEDEL] size:297(594)
+  000031(000026):[vk#b36028797018963966,DELSIZED-w#inf,RANGEDEL] seqnums:[#28-#28] points:[vk#b36028797018963966,DELSIZED-w#inf,RANGEDEL] size:297(594)
   000025(000018):[x#0,SET-x#0,SET] seqnums:[#0-#0] points:[x#0,SET-x#0,SET] size:71(615)
 
 excise a z
