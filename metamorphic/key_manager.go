@@ -637,6 +637,15 @@ func (k *keyManager) update(o op) {
 		k.expandBounds(s.writerID, k.makeEndExclusiveBounds(s.start, s.end))
 		k.objKeyMeta(s.writerID).hasRangeDels = true
 
+	case *deleteSuffixRangeOp:
+		// DeleteSuffixRange hides keys whose suffixes fall in [lower, upper),
+		// but the underlying internal records remain in place; subsequent
+		// writes are unaffected. The key manager tracks writer-side history
+		// for SingleDelete eligibility, which DSR does not affect: it neither
+		// adds a SET nor performs a delete that resets the per-key history.
+		// Bounds are not expanded either because DSR neither writes records
+		// the underlying object nor adds keys to the global set.
+
 	case *singleDeleteOp:
 		meta := k.getOrInit(s.writerID, s.key)
 		meta.history = append(meta.history, keyHistoryItem{
@@ -887,6 +896,14 @@ func opWrittenKeys(untypedOp op) [][]byte {
 		return [][]byte{t.key}
 	case *deleteRangeOp:
 		return [][]byte{t.start, t.end}
+	case *deleteSuffixRangeOp:
+		// DSR's start and end come from prefixKeyRange and may be bare
+		// prefixes that the key manager never recorded as user keys.
+		// Adding them to globalKeys during loadPrecedingKeys would inject
+		// keys the original generation run never saw, breaking the
+		// loadPrecedingKeys round-trip invariant. Range-key ops handle this
+		// the same way (their bounds are also tracked separately, not as
+		// user keys).
 	case *flushOp:
 	case *getOp:
 	case *ingestOp:

@@ -439,6 +439,49 @@ func (o *deleteRangeOp) diagramKeyRanges() []pebble.KeyRange {
 	return []pebble.KeyRange{{Start: o.start, End: o.end}}
 }
 
+// deleteSuffixRangeOp models a DB.DeleteSuffixRange operation. The operation
+// hides all point keys and range key entries within the user-key span
+// [start, end) whose suffixes fall in [lower, upper).
+//
+// DeleteSuffixRange is a DB-only API and requires FormatSuffixMask. The
+// generator pairs each DSR op with a preceding RatchetFormatMajorVersion to
+// FormatSuffixMask, so by the time this op runs every config has reached
+// the required FMV and a real call is always made — no per-run no-op
+// trickery is needed to keep histories aligned across configs.
+type deleteSuffixRangeOp struct {
+	dbID  objID
+	start UserKey
+	end   UserKey
+	lower UserKeySuffix
+	upper UserKeySuffix
+}
+
+func (o *deleteSuffixRangeOp) run(t *Test, h historyRecorder) {
+	db := t.getDB(o.dbID)
+	span := pebble.KeyRange{Start: o.start, End: o.end}
+	err := db.DeleteSuffixRange(context.Background(), span, o.lower, o.upper)
+	h.Recordf("%s // %v", o.formattedString(t.testOpts.KeyFormat), err)
+}
+
+func (o *deleteSuffixRangeOp) formattedString(kf KeyFormat) string {
+	return fmt.Sprintf("%s.DeleteSuffixRange(%q, %q, %q, %q)",
+		o.dbID,
+		kf.FormatKey(o.start), kf.FormatKey(o.end),
+		kf.FormatKeySuffix(o.lower), kf.FormatKeySuffix(o.upper))
+}
+
+func (o *deleteSuffixRangeOp) receiver() objID      { return o.dbID }
+func (o *deleteSuffixRangeOp) syncObjs() objIDSlice { return nil }
+
+func (o *deleteSuffixRangeOp) rewriteKeys(fn func(UserKey) UserKey) {
+	o.start = fn(o.start)
+	o.end = fn(o.end)
+}
+
+func (o *deleteSuffixRangeOp) diagramKeyRanges() []pebble.KeyRange {
+	return []pebble.KeyRange{{Start: o.start, End: o.end}}
+}
+
 // flushOp models a DB.Flush operation.
 type flushOp struct {
 	db objID
@@ -1867,9 +1910,13 @@ func (o *newSnapshotOp) run(t *Test, h historyRecorder) {
 	// Fibonacci hash https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
 	createEfos := ((11400714819323198485 * uint64(t.idx) * t.testOpts.seedEFOS) >> 63) == 1
 	// If either of these options is true, an EFOS _must_ be created, regardless
-	// of what the fibonacci hash returned.
+	// of what the fibonacci hash returned. DSR is treated the same as excise:
+	// it mutates the LSM non-additively, classic Snapshots cannot pin a
+	// pre-DSR Version, and the only safe option for an overlapping snapshot
+	// is an EFOS that can transition to file-only before DSR runs (see
+	// `flushIfOverlappingDSR`).
 	excisePossible := t.testOpts.useSharedReplicate || t.testOpts.useExternalReplicate || t.testOpts.useExcise
-	if createEfos || excisePossible {
+	if createEfos || excisePossible || t.dsrInOps {
 		s := t.getDB(o.dbID).NewEventuallyFileOnlySnapshot(bounds)
 		t.setSnapshot(o.snapID, s)
 	} else {
@@ -2175,6 +2222,20 @@ func (r *replicateOp) run(t *Test, h historyRecorder) {
 	// separation is disabled.
 	useSharedIngest := t.testOpts.useSharedReplicate && t.testOpts.sharedStorageEnabled
 	useExternalIngest := t.testOpts.useExternalReplicate && t.testOpts.externalStorageEnabled
+	// If any DeleteSuffixRange op is in the stream, fall back to the iter-based
+	// replicate path even when shared/external replicate is configured. The
+	// shared/external paths copy SST files via Shared/ExternalSSTMeta, which
+	// do not carry the source vsst's SuffixMasks; the destination would
+	// reconstruct the vsst without a mask, exposing rows the source had
+	// hidden. The iter-based path filters source-masked rows through
+	// source.NewIter before copying, so masks are effectively baked into the
+	// shipped data — keeping cross-config histories observable-equivalent.
+	// TODO(dt): teach shared/external replicate to carry SuffixMasks through
+	// an internal-only mechanism and re-enable them when DSR is in play.
+	if t.dsrInOps {
+		useSharedIngest = false
+		useExternalIngest = false
+	}
 
 	source := t.getDB(r.source)
 	dest := t.getDB(r.dest)

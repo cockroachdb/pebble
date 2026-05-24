@@ -66,6 +66,8 @@ func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
 		return &t.writerID, nil, []interface{}{&t.key}
 	case *deleteRangeOp:
 		return &t.writerID, nil, []interface{}{&t.start, &t.end}
+	case *deleteSuffixRangeOp:
+		return &t.dbID, nil, []interface{}{&t.start, &t.end, &t.lower, &t.upper}
 	case *downloadOp:
 		return &t.dbID, nil, []interface{}{&t.spans}
 	case *iterFirstOp:
@@ -151,6 +153,7 @@ var methods = map[string]*methodInfo{
 	"EstimateDiskUsage":         makeMethod(estimateDiskUsageOp{}, dbTag),
 	"Delete":                    makeMethod(deleteOp{}, dbTag, batchTag),
 	"DeleteRange":               makeMethod(deleteRangeOp{}, dbTag, batchTag),
+	"DeleteSuffixRange":         makeMethod(deleteSuffixRangeOp{}, dbTag),
 	"Download":                  makeMethod(downloadOp{}, dbTag),
 	"First":                     makeMethod(iterFirstOp{}, iterTag),
 	"Flush":                     makeMethod(flushOp{}, dbTag),

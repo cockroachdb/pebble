@@ -38,3 +38,14 @@ batch0 = db.NewBatch()
 batch0.First()
 ----
 metamorphic test internal error: 2:1: batch0.First: First is not a method on batch0
+
+parse
+db.DeleteSuffixRange("a", "z", "@5", "@9")
+----
+db1.DeleteSuffixRange("a", "z", "@5", "@9")
+
+parse
+batch0 = db.NewBatch()
+batch0.DeleteSuffixRange("a", "z", "@5", "@9")
+----
+metamorphic test internal error: 2:1: batch0.DeleteSuffixRange: DeleteSuffixRange is not a method on batch0

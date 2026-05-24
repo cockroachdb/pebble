@@ -58,6 +58,13 @@ type Test struct {
 	testOpts  *TestOptions
 	writeOpts *pebble.WriteOptions
 	tmpDir    string
+	// dsrInOps is true if any DeleteSuffixRange op exists in t.ops. When
+	// true, every classic-snapshot op is upgraded to an EFOS in
+	// newSnapshotOp.run, mirroring the way useExcise forces EFOS. Classic
+	// Snapshots are unsafe alongside DSR for the same reason they are
+	// unsafe alongside excise: DSR mutates the LSM non-additively and
+	// classic Snapshots cannot pin a pre-DSR Version.
+	dsrInOps bool
 	// The DBs the test is run on.
 	dbs []*pebble.DB
 	// The slots for the batches, iterators, and snapshots. These are read and
@@ -114,6 +121,12 @@ func (t *Test) init(
 		numInstances = 1
 	}
 	t.opsWaitOn, t.opsDone = computeSynchronizationPoints(t.ops)
+	for _, op := range t.ops {
+		if _, ok := op.(*deleteSuffixRangeOp); ok {
+			t.dsrInOps = true
+			break
+		}
+	}
 
 	if t.opts.Cache != nil {
 		defer t.opts.Cache.Unref()

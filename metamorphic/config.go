@@ -24,6 +24,7 @@ const (
 	OpDBCheckpoint
 	OpDBClose
 	OpDBCompact
+	OpDBDeleteSuffixRange
 	OpDBDownload
 	OpDBFlush
 	OpDBRatchetFormatMajorVersion
@@ -151,10 +152,22 @@ func DefaultOpConfig() OpConfig {
 	return OpConfig{
 		// dbClose is not in this list since it is deterministically generated once, at the end of the test.
 		ops: [NumOpTypes]int{
-			OpBatchAbort:                  5,
-			OpBatchCommit:                 5,
-			OpDBCheckpoint:                1,
-			OpDBCompact:                   1,
+			OpBatchAbort:   5,
+			OpBatchCommit:  5,
+			OpDBCheckpoint: 1,
+			OpDBCompact:    1,
+			// OpDBDeleteSuffixRange is wired up (generator, parser, FMV
+			// gating) and ratchets the FMV up to `FormatSuffixMask` before
+			// executing. Because DSR mutates the LSM non-additively
+			// (attaches per-file masks that subsequent compactions apply),
+			// classic `Snapshot` observers are unsafe in its presence — the
+			// same documented hazard that excise has. `newSnapshotOp.run`
+			// upgrades every snapshot to an EFOS when DSR ops are in the
+			// stream (`Test.dsrInOps`), and DSR itself (`DB.DeleteSuffixRange`)
+			// flushes overlapping memtables for any EFOS protected ranges,
+			// so each affected EFOS transitions to file-only before DSR
+			// runs and pins a pre-DSR `*Version`.
+			OpDBDeleteSuffixRange:         5,
 			OpDBDownload:                  1,
 			OpDBFlush:                     2,
 			OpDBRatchetFormatMajorVersion: 1,
@@ -222,6 +235,7 @@ func ReadOpConfig() OpConfig {
 			OpBatchCommit:                 0,
 			OpDBCheckpoint:                0,
 			OpDBCompact:                   0,
+			OpDBDeleteSuffixRange:         5,
 			OpDBFlush:                     0,
 			OpDBRatchetFormatMajorVersion: 0,
 			OpDBRestart:                   0,
@@ -281,6 +295,7 @@ func WriteOpConfig() OpConfig {
 			OpBatchCommit:                 5,
 			OpDBCheckpoint:                0,
 			OpDBCompact:                   1,
+			OpDBDeleteSuffixRange:         5, // see DefaultOpConfig comment
 			OpDBFlush:                     2,
 			OpDBRatchetFormatMajorVersion: 1,
 			OpDBRestart:                   2,
