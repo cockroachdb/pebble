@@ -1426,13 +1426,13 @@ func (m *mergingIterV2) shouldTrySingleLevelAdvance(
 func (m *mergingIterV2) finishSingleLevelAdvance(
 	top *mergingIterV2Level, spanKeysDetector *spanKeysChangeDetector,
 ) bool {
+	if top.iterKV == nil && m.levelHasError(top) {
+		return true
+	}
 	if spanKeysDetector.MayHaveChanged(top.span.Keys) {
 		return false
 	}
 	if top.iterKV == nil {
-		if m.levelHasError(top) {
-			return true
-		}
 		if invariants.Enabled && len(top.span.Keys) != 0 {
 			panic(errors.AssertionFailedf("span keys with nil KV"))
 		}
@@ -1458,6 +1458,8 @@ func (m *mergingIterV2) levelHasError(level *mergingIterV2Level) bool {
 		m.err = err
 		for i := range m.levels {
 			m.levels[i].atBoundary = false
+			m.levels[i].onlyFwdSinceParked = false
+			m.levels[i].iterKV = nil
 		}
 		m.heap.Reset()
 		return true

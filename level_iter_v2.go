@@ -332,10 +332,8 @@ func (l *levelIterV2) loadFile(file *manifest.TableMetadata) loadFileReturnIndic
 		return fileAlreadyLoaded
 	}
 
-	// Close the current iter.
-	if err := l.closeFileIter(); err != nil {
-		return noFileLoaded
-	}
+	// Close the current iter, ignoring any error.
+	_ = l.closeFileIter()
 
 	l.initTableBounds(file)
 	iterKinds := iterPointKeys
@@ -401,7 +399,7 @@ func (l *levelIterV2) SeekGE(key []byte, flags base.SeekGEFlags) (kv *base.Inter
 	atSyntheticBoundary := l.atSyntheticBoundary
 	if flags.TrySeekUsingNext() {
 		if invariants.Enabled && (l.err != nil || l.dir != +1 || l.prefix != nil) {
-			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext"))
+			panic(errors.AssertionFailedf("invalid use of TrySeekUsingNext (err:%v dir:%d prefix:%q)", l.err, l.dir, l.prefix))
 		}
 		if !l.currentSpan.Valid() {
 			// Iterator exhausted.
@@ -882,15 +880,14 @@ func (l *levelIterV2) Error() error {
 
 func (l *levelIterV2) closeFileIter() error {
 	if l.iterFile != nil {
-		if err := l.iter.Close(); err != nil && l.err == nil {
-			l.err = err
-		}
 		l.iterFile = nil
+		return l.iter.Close()
 	}
-	return l.err
+	return nil
 }
+
 func (l *levelIterV2) Close() error {
-	_ = l.closeFileIter()
+	l.err = firstError(l.err, l.closeFileIter())
 	l.invalidateSpan()
 	return l.err
 }
@@ -900,9 +897,10 @@ func (l *levelIterV2) SetBounds(lower, upper []byte) {
 	l.lower = lower
 	l.upper = upper
 
-	// TODO(radu): if the file is still covered by the iterator, keep it open and
-	// call SetBounds with the new bounds.
-	// closeFileIter() will set levelIterV2.err if an error occurs.
+	// Close any open iterator, ignoring any error. This is necessary because the
+	// existing iterator might not have the correct bounds.
+	// TODO(radu): if the file is still covered by the new bounds, keep it open
+	// and call SetBounds with the new bounds.
 	_ = l.closeFileIter()
 }
 
