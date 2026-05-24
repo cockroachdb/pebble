@@ -2522,6 +2522,11 @@ func (d *DB) runCopyCompaction(
 		LargestSeqNumAbsolute:    inputMeta.LargestSeqNumAbsolute,
 		Virtual:                  inputMeta.Virtual,
 		SyntheticPrefixAndSuffix: inputMeta.SyntheticPrefixAndSuffix,
+		// Copy compactions don't iterate over the input through the per-row
+		// SuffixMask filter — they're a byte-for-byte copy of the backing
+		// file. The output is read with the source's mask semantics, so the
+		// mask must be propagated to the new file's metadata.
+		SuffixMasks: slices.Clone(inputMeta.SuffixMasks),
 	}
 	if inputStats, ok := inputMeta.Stats(); ok {
 		newMeta.PopulateStats(inputStats)
