@@ -1427,6 +1427,12 @@ func (w *RawRowWriter) EncodeSpan(span keyspan.Span) error {
 	if span.Empty() {
 		return nil
 	}
+	if w.compare(span.Start, span.End) >= 0 {
+		w.err = errors.Errorf(
+			"pebble: span start must be strictly less than end: %s, %s",
+			w.formatKey(span.Start), w.formatKey(span.End))
+		return w.err
+	}
 	if span.Keys[0].Kind() == base.InternalKeyKindRangeDelete {
 		return rangedel.Encode(span, w.addTombstone)
 	}

@@ -18,10 +18,10 @@ sstable
  ├── data  offset: 12722  length: 1025
  ├── data  offset: 13752  length: 156
  ├── index  offset: 13913  length: 245
- ├── range-del  offset: 14163  length: 421
- ├── properties  offset: 14589  length: 303
- ├── meta-index  offset: 14897  length: 62
- └── footer  offset: 14964  length: 53
+ ├── range-del  offset: 14163  length: 404
+ ├── properties  offset: 14572  length: 303
+ ├── meta-index  offset: 14880  length: 62
+ └── footer  offset: 14947  length: 53
 
 sstable layout
 ../sstable/testdata/h-table-bloom-no-compression-sst/000011.sst
@@ -44,10 +44,10 @@ sstable
  ├── data  offset: 26545  length: 249
  ├── fullfilter.rocksdb.BuiltinBloomFilter  offset: 26799  length: 2245
  ├── index  offset: 29049  length: 325
- ├── range-del  offset: 29379  length: 421
- ├── properties  offset: 29805  length: 347
- ├── meta-index  offset: 30157  length: 113
- └── footer  offset: 30275  length: 53
+ ├── range-del  offset: 29379  length: 404
+ ├── properties  offset: 29788  length: 347
+ ├── meta-index  offset: 30140  length: 113
+ └── footer  offset: 30258  length: 53
 
 sstable layout
 ../sstable/testdata/h-no-compression-two-level-index-sst/000003.sst
@@ -72,10 +72,10 @@ sstable
  ├── index  offset: 26924  length: 118
  ├── index  offset: 27047  length: 95
  ├── top-index  offset: 27147  length: 70
- ├── range-del  offset: 27222  length: 421
- ├── properties  offset: 27648  length: 349
- ├── meta-index  offset: 28002  length: 64
- └── footer  offset: 28071  length: 53
+ ├── range-del  offset: 27222  length: 404
+ ├── properties  offset: 27631  length: 349
+ ├── meta-index  offset: 27985  length: 64
+ └── footer  offset: 28054  length: 53
 
 sstable layout
 -v
@@ -3706,61 +3706,58 @@ sstable
  │    │    ├── 00058 [restart 19]
  │    │    └── 00062 [restart 38]
  │    └── trailer [compression=none checksum=0xd20fdc47]
- ├── range-del  offset: 27222  length: 421
- │    ├── 00000    record (13 = 3 [0] + 9 + 1) [restart]
- │    │            a-a#0,RANGEDEL
- │    ├── 00013    record (23 = 3 [0] + 13 + 7) [restart]
+ ├── range-del  offset: 27222  length: 404
+ │    ├── 00000    record (23 = 3 [0] + 13 + 7) [restart]
  │    │            beard-bearers#0,RANGEDEL
- │    ├── 00036    record (24 = 3 [0] + 16 + 5) [restart]
+ │    ├── 00023    record (24 = 3 [0] + 16 + 5) [restart]
  │    │            carriage-carve#0,RANGEDEL
- │    ├── 00060    record (21 = 3 [0] + 13 + 5) [restart]
+ │    ├── 00047    record (21 = 3 [0] + 13 + 5) [restart]
  │    │            cross-crows#0,RANGEDEL
- │    ├── 00081    record (23 = 3 [0] + 14 + 6) [restart]
+ │    ├── 00068    record (23 = 3 [0] + 14 + 6) [restart]
  │    │            duller-duties#0,RANGEDEL
- │    ├── 00104    record (21 = 3 [0] + 14 + 4) [restart]
+ │    ├── 00091    record (21 = 3 [0] + 14 + 4) [restart]
  │    │            fierce-fire#0,RANGEDEL
- │    ├── 00125    record (21 = 3 [0] + 13 + 5) [restart]
+ │    ├── 00112    record (21 = 3 [0] + 13 + 5) [restart]
  │    │            grace-great#0,RANGEDEL
- │    ├── 00146    record (17 = 3 [0] + 11 + 3) [restart]
+ │    ├── 00133    record (17 = 3 [0] + 11 + 3) [restart]
  │    │            how-ice#0,RANGEDEL
- │    ├── 00163    record (20 = 3 [0] + 12 + 5) [restart]
+ │    ├── 00150    record (20 = 3 [0] + 12 + 5) [restart]
  │    │            lead-lends#0,RANGEDEL
- │    ├── 00183    record (18 = 3 [0] + 12 + 3) [restart]
+ │    ├── 00170    record (18 = 3 [0] + 12 + 3) [restart]
  │    │            meet-met#0,RANGEDEL
- │    ├── 00201    record (17 = 3 [0] + 10 + 4) [restart]
+ │    ├── 00188    record (17 = 3 [0] + 10 + 4) [restart]
  │    │            of-once#0,RANGEDEL
- │    ├── 00218    record (25 = 3 [0] + 16 + 6) [restart]
+ │    ├── 00205    record (25 = 3 [0] + 16 + 6) [restart]
  │    │            precurse-prison#0,RANGEDEL
- │    ├── 00243    record (15 = 3 [0] + 9 + 3) [restart]
+ │    ├── 00230    record (15 = 3 [0] + 9 + 3) [restart]
  │    │            s-saw#0,RANGEDEL
- │    ├── 00258    record (19 = 3 [0] + 12 + 4) [restart]
+ │    ├── 00245    record (19 = 3 [0] + 12 + 4) [restart]
  │    │            slay-soil#0,RANGEDEL
- │    ├── 00277    record (24 = 3 [0] + 16 + 5) [restart]
+ │    ├── 00264    record (24 = 3 [0] + 16 + 5) [restart]
  │    │            suppress-sword#0,RANGEDEL
- │    ├── 00301    record (23 = 3 [0] + 16 + 4) [restart]
+ │    ├── 00288    record (23 = 3 [0] + 16 + 4) [restart]
  │    │            traduced-true#0,RANGEDEL
- │    ├── 00324    record (25 = 3 [0] + 15 + 7) [restart]
+ │    ├── 00311    record (25 = 3 [0] + 15 + 7) [restart]
  │    │            warning-wedding#0,RANGEDEL
  │    ├── restart points
- │    │    ├── 00349 [restart 0]
- │    │    ├── 00353 [restart 13]
- │    │    ├── 00357 [restart 36]
- │    │    ├── 00361 [restart 60]
- │    │    ├── 00365 [restart 81]
- │    │    ├── 00369 [restart 104]
- │    │    ├── 00373 [restart 125]
- │    │    ├── 00377 [restart 146]
- │    │    ├── 00381 [restart 163]
- │    │    ├── 00385 [restart 183]
- │    │    ├── 00389 [restart 201]
- │    │    ├── 00393 [restart 218]
- │    │    ├── 00397 [restart 243]
- │    │    ├── 00401 [restart 258]
- │    │    ├── 00405 [restart 277]
- │    │    ├── 00409 [restart 301]
- │    │    └── 00413 [restart 324]
- │    └── trailer [compression=none checksum=0xb93b31c5]
- ├── properties  offset: 27648  length: 349
+ │    │    ├── 00336 [restart 0]
+ │    │    ├── 00340 [restart 23]
+ │    │    ├── 00344 [restart 47]
+ │    │    ├── 00348 [restart 68]
+ │    │    ├── 00352 [restart 91]
+ │    │    ├── 00356 [restart 112]
+ │    │    ├── 00360 [restart 133]
+ │    │    ├── 00364 [restart 150]
+ │    │    ├── 00368 [restart 170]
+ │    │    ├── 00372 [restart 188]
+ │    │    ├── 00376 [restart 205]
+ │    │    ├── 00380 [restart 230]
+ │    │    ├── 00384 [restart 245]
+ │    │    ├── 00388 [restart 264]
+ │    │    ├── 00392 [restart 288]
+ │    │    └── 00396 [restart 311]
+ │    └── trailer [compression=none checksum=0x96e519a4]
+ ├── properties  offset: 27631  length: 349
  │    ├── 00000    rocksdb.block.based.table.index.type (43) [restart]
  │    ├── 00043    rocksdb.comparator (39)
  │    ├── 00082    rocksdb.compression (23)
@@ -3780,17 +3777,17 @@ sstable
  │    ├── 00317    rocksdb.top-level.index.size (24)
  │    ├── restart points
  │    │    └── 00341 [restart 0]
- │    └── trailer [compression=none checksum=0x5095b010]
- ├── meta-index  offset: 28002  length: 64
- │    ├── 0000    rocksdb.properties block:27648/349 [restart]
- │    ├── 0026    rocksdb.range_del2 block:27222/421 [restart]
+ │    └── trailer [compression=none checksum=0xceb7db8a]
+ ├── meta-index  offset: 27985  length: 64
+ │    ├── 0000    rocksdb.properties block:27631/349 [restart]
+ │    ├── 0026    rocksdb.range_del2 block:27222/404 [restart]
  │    ├── restart points
  │    │    ├── 00052 [restart 0]
  │    │    └── 00056 [restart 26]
- │    └── trailer [compression=none checksum=0xfa32432f]
- └── footer  offset: 28071  length: 53
+ │    └── trailer [compression=none checksum=0x1f71c4f5]
+ └── footer  offset: 28054  length: 53
       ├── 000  checksum type: crc32c
-      ├── 001  meta: offset=28002, length=64
+      ├── 001  meta: offset=27985, length=64
       ├── 005  index: offset=27147, length=70
       ├── 041  version: 1
       └── 045  magic number: 0xf09faab3f09faab3

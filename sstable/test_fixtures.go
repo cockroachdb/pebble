@@ -164,7 +164,9 @@ func buildHamletTestSST(
 		}
 		rangeDelCounter++
 
-		if rangeDelCounter == rangeDelLength {
+		// Skip the length-1 case: a half-open range [k, k) is empty and cannot
+		// be expressed as a valid range deletion.
+		if rangeDelCounter == rangeDelLength && rangeDelLength > 1 {
 			if err := w.DeleteRange(rangeDelStart, []byte(k)); err != nil {
 				return err
 			}

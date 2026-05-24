@@ -288,6 +288,13 @@ func (w *RawColumnWriter) EncodeSpan(span keyspan.Span) error {
 	if span.Empty() {
 		return nil
 	}
+	if w.opts.Comparer.Compare(span.Start, span.End) >= 0 {
+		w.err = errors.Errorf(
+			"pebble: span start must be strictly less than end: %s, %s",
+			w.opts.Comparer.FormatKey(span.Start),
+			w.opts.Comparer.FormatKey(span.End))
+		return w.err
+	}
 	for _, k := range span.Keys {
 		w.meta.updateSeqNum(k.SeqNum())
 	}

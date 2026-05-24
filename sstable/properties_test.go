@@ -25,11 +25,11 @@ import (
 func TestPropertiesLoad(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	expected := Properties{
-		NumEntries:             1727,
-		NumDeletions:           17,
-		NumRangeDeletions:      17,
-		RawKeySize:             23938,
-		RawValueSize:           1912,
+		NumEntries:             1726,
+		NumDeletions:           16,
+		NumRangeDeletions:      16,
+		RawKeySize:             23929,
+		RawValueSize:           1911,
 		NumDataBlocks:          14,
 		ComparerName:           "leveldb.BytewiseComparator",
 		DataSize:               13913,

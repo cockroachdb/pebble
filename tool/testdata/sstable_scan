@@ -20,7 +20,6 @@ sstable scan
 ../sstable/testdata/hamlet-sst/000002.sst
 ----
 000002.sst
-a-a#0,RANGEDEL
 a#0,SET [3937]
 aboard#0,SET [32]
 about#0,SET [32]
