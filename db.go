@@ -2037,6 +2037,75 @@ func (d *DB) Flush() error {
 	return nil
 }
 
+// flushIfOverlapping flushes the memtable if any flushable in the queue
+// possibly overlaps with `span` (or with any of the additional bounds
+// returned by `extraBoundsLocked` if non-nil), and waits for that flush
+// to complete. If no flushable overlaps, it is a no-op.
+//
+// On successful return, any data written before this call that intersects
+// the considered bounds is durably stored in sstables. Concurrent writes
+// that race with this call are not guaranteed to be flushed; if the
+// caller needs that guarantee, it must serialize with its own writers.
+//
+// `extraBoundsLocked` (if non-nil) is invoked with `d.mu` held and may
+// read from `DB.mu`-protected state — e.g., the snapshot list — to
+// produce additional overlap bounds. The classic use case is a file-
+// metadata mutator (DeleteSuffixRange, cloning-with-prefix-replacements,
+// etc.) that needs the memtable flushed before it rewrites the metadata
+// of the SSTs that span overlaps; a caller may extend the overlap check
+// with snapshot-protected ranges so that a snapshot reader's view of
+// the LSM is preserved across the mutation.
+func (d *DB) flushIfOverlapping(span KeyRange, extraBoundsLocked func() []bounded) error {
+	if err := d.closed.Load(); err != nil {
+		panic(err)
+	}
+	if d.opts.ReadOnly {
+		return ErrReadOnly
+	}
+	if !span.Valid() {
+		return errors.Errorf("pebble: flushIfOverlapping called with invalid KeyRange")
+	}
+
+	// Hold commit.mu across the overlap check and the memtable rotation so
+	// that no new writes can land between the two: any write committed before
+	// this call has released commit.mu and is visible in d.mu.mem.queue, and
+	// no new write can enter the commit pipeline until we release commit.mu.
+	d.commit.mu.Lock()
+	d.mu.Lock()
+	bounds := []bounded{span}
+	if extraBoundsLocked != nil {
+		bounds = append(bounds, extraBoundsLocked()...)
+	}
+	overlaps := false
+	record := func(b bounded) shouldContinue {
+		overlaps = true
+		return stopIteration
+	}
+	for i := range d.mu.mem.queue {
+		// stopIteration short-circuits within a single flushable but not
+		// across queue entries; the outer `if overlaps` does cross-entry
+		// short-circuit.
+		d.mu.mem.queue[i].computePossibleOverlaps(record, bounds...)
+		if overlaps {
+			break
+		}
+	}
+	if !overlaps {
+		d.mu.Unlock()
+		d.commit.mu.Unlock()
+		return nil
+	}
+	flushed := d.mu.mem.queue[len(d.mu.mem.queue)-1].flushed
+	err := d.makeRoomForWrite(nil)
+	d.mu.Unlock()
+	d.commit.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	<-flushed
+	return nil
+}
+
 // AsyncFlush asynchronously flushes the memtable to stable storage.
 //
 // If no error is returned, the caller can receive from the returned channel in

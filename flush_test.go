@@ -119,3 +119,127 @@ func TestFlushEmptyKey(t *testing.T) {
 	require.NoError(t, closer.Close())
 	require.NoError(t, d.Close())
 }
+
+// TestFlushIfOverlapping verifies that `flushIfOverlapping` flushes iff some
+// memtable entry intersects the requested span (or the caller-supplied extra
+// bounds), and that point keys, range deletions, and range keys all
+// participate in the overlap check.
+func TestFlushIfOverlapping(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	open := func(t *testing.T, opts *Options) *DB {
+		if opts == nil {
+			opts = &Options{}
+		}
+		if opts.FS == nil {
+			opts.FS = vfs.NewMem()
+		}
+		if opts.FormatMajorVersion == 0 {
+			opts.FormatMajorVersion = FormatNewest
+		}
+		d, err := Open("", opts)
+		require.NoError(t, err)
+		return d
+	}
+	span := func(s, e string) KeyRange { return KeyRange{Start: []byte(s), End: []byte(e)} }
+	abz := span("a", "z")
+
+	t.Run("overlap", func(t *testing.T) {
+		type populate func(d *DB) error
+		point := func(k string) populate {
+			return func(d *DB) error { return d.Set([]byte(k), nil, nil) }
+		}
+		rangeDel := func(s, e string) populate {
+			return func(d *DB) error { return d.DeleteRange([]byte(s), []byte(e), nil) }
+		}
+		rangeKey := func(s, e, suffix string) populate {
+			return func(d *DB) error {
+				return d.RangeKeySet([]byte(s), []byte(e), []byte(suffix), nil, nil)
+			}
+		}
+
+		for _, tc := range []struct {
+			name      string
+			populate  populate
+			span      KeyRange
+			wantFlush bool
+		}{
+			{"empty memtable", nil, abz, false},
+			{"point not in span", point("a"), span("x", "z"), false},
+			{"point in span", point("m"), abz, true},
+			{"point at span start (inclusive)", point("m"), span("m", "n"), true},
+			{"point at span end (exclusive)", point("m"), span("a", "m"), false},
+			{"range del intersects", rangeDel("m", "n"), abz, true},
+			{"range del disjoint", rangeDel("m", "n"), span("x", "z"), false},
+			{"range key intersects", rangeKey("m", "n", "@1"), abz, true},
+			{"range key disjoint", rangeKey("m", "n", "@1"), span("x", "z"), false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				d := open(t, nil)
+				defer func() { require.NoError(t, d.Close()) }()
+				if tc.populate != nil {
+					require.NoError(t, tc.populate(d))
+				}
+				before := d.Metrics().Flush.Count
+				require.NoError(t, d.flushIfOverlapping(tc.span, nil))
+				after := d.Metrics().Flush.Count
+				if tc.wantFlush {
+					require.Greater(t, after, before, "expected flush")
+				} else {
+					require.Equal(t, before, after, "expected no flush")
+				}
+			})
+		}
+	})
+
+	t.Run("extra bounds callback", func(t *testing.T) {
+		// The DSR-style use case: the caller's span is disjoint from the
+		// memtable's content, but the callback supplies an extra range that
+		// does overlap, and we expect a flush.
+		d := open(t, nil)
+		defer func() { require.NoError(t, d.Close()) }()
+		require.NoError(t, d.Set([]byte("m"), nil, nil))
+		extra := KeyRange{Start: []byte("l"), End: []byte("n")}
+		before := d.Metrics().Flush.Count
+		require.NoError(t, d.flushIfOverlapping(
+			span("x", "z"),
+			func() []bounded { return []bounded{extra} },
+		))
+		require.Greater(t, d.Metrics().Flush.Count, before,
+			"expected flush triggered by extra bounds")
+
+		// Callback returning no extra bounds is equivalent to nil callback.
+		d2 := open(t, nil)
+		defer func() { require.NoError(t, d2.Close()) }()
+		require.NoError(t, d2.Set([]byte("m"), nil, nil))
+		before2 := d2.Metrics().Flush.Count
+		require.NoError(t, d2.flushIfOverlapping(
+			span("x", "z"),
+			func() []bounded { return nil },
+		))
+		require.Equal(t, before2, d2.Metrics().Flush.Count,
+			"expected no flush when neither span nor extra bounds overlap")
+	})
+
+	t.Run("closed DB panics", func(t *testing.T) {
+		d := open(t, nil)
+		require.NoError(t, d.Close())
+		require.Panics(t, func() { _ = d.flushIfOverlapping(abz, nil) })
+	})
+
+	t.Run("read-only returns ErrReadOnly", func(t *testing.T) {
+		fs := vfs.NewMem()
+		require.NoError(t, open(t, &Options{FS: fs}).Close())
+		d := open(t, &Options{FS: fs, ReadOnly: true})
+		defer func() { require.NoError(t, d.Close()) }()
+		require.ErrorIs(t, d.flushIfOverlapping(abz, nil), ErrReadOnly)
+	})
+
+	t.Run("invalid KeyRange", func(t *testing.T) {
+		d := open(t, nil)
+		defer func() { require.NoError(t, d.Close()) }()
+		require.Error(t, d.flushIfOverlapping(KeyRange{}, nil))
+		require.Error(t, d.flushIfOverlapping(KeyRange{Start: []byte("a")}, nil))
+		require.Error(t, d.flushIfOverlapping(KeyRange{End: []byte("z")}, nil))
+	})
+}
