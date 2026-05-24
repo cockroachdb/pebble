@@ -25,9 +25,17 @@ import (
 // timestamp to hide (e.g. infinity) and Upper would be T (exclusive, so
 // keys at T remain visible).
 //
-// Files with SyntheticSuffix are handled at the file level by
-// DeleteSuffixRange, not by per-row masking: since every key has the
-// same suffix, the file is either excised entirely or left untouched.
+// Interaction with `SyntheticSuffix`: under a `SyntheticSuffix`
+// transform, every non-empty stored suffix has the same effective
+// suffix (the synthetic one), so the per-row check operates on the
+// synth — see `colblk/data_block.go::isSuffixMasked` and
+// `rowblk/rowblk_iter.go`. Empty stored suffixes retain empty effective
+// suffix per the `SyntheticSuffix` contract and are never masked.
+// `DeleteSuffixRange` optimizes the common case (synth-in-mask + no
+// range keys) by excising the file's overlap rather than attaching a
+// per-row mask; synth-in-mask files WITH range keys fall through to
+// per-row attachment so that `RangeKeyDelete` entries and empty-suffix
+// `RangeKeySet` entries (both never-masked) are preserved.
 //
 // TODO(dt): compact Lower and Upper into a single allocation like
 // SyntheticPrefixAndSuffix to reduce TableMetadata size.
