@@ -2725,6 +2725,9 @@ func (d *DB) runDefaultTableCompaction(
 	if result.Err == nil {
 		ve, result.Err = c.makeVersionEdit(result)
 	}
+	if hook := d.opts.private.testingDuringCompactionIOFunc; hook != nil && !c.IsFlush() {
+		hook()
+	}
 	if result.Err != nil {
 		// Delete any created tables or blob files.
 		obsoleteFiles := manifest.ObsoleteFiles{

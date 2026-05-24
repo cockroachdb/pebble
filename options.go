@@ -1228,6 +1228,15 @@ type Options struct {
 		// before calling DB.ingestApply.
 		testingBeforeIngestApplyFunc func()
 
+		// testingDuringCompactionIOFunc when non-nil, is called from the I/O
+		// phase of a default table compaction, after the compaction has written
+		// its outputs and constructed its version edit, but before re-acquiring
+		// DB.mu to apply it. The hook is invoked without DB.mu held, providing
+		// a window in which tests can inject concurrent operations (e.g.,
+		// DeleteSuffixRange) that race with the in-progress compaction's
+		// version-edit application.
+		testingDuringCompactionIOFunc func()
+
 		// timeNow returns the current time. It defaults to time.Now. It's
 		// configurable here so that tests can mock the current time.
 		timeNow func() time.Time

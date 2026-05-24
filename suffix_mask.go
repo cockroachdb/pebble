@@ -271,6 +271,37 @@ func (d *DB) DeleteSuffixRange(ctx context.Context, span KeyRange, lower, upper 
 			}
 		}
 
+		// Cancel any in-progress compactions whose inputs overlap the DSR
+		// span. Such compactions were picked against a version that included
+		// the original (pre-mask) tables; their version edits will try to
+		// delete those tables, but our version edit replaces them with
+		// virtual tables, leaving the manifest's blob-reference tracker
+		// unable to locate the original tables. The cancelled compactions
+		// will be re-picked against the post-DSR version.
+		//
+		// We must do this with `vs.logLock` held (which we hold here because
+		// we're inside `UpdateVersionLocked`'s updateFn). Compactions check
+		// `c.cancel` while holding `vs.logLock` inside their own apply step,
+		// so setting `c.cancel` under the same lock is sufficient to prevent
+		// the cancelled compaction from applying its conflicting VE.
+		//
+		// Note: an earlier version of this code instead waited for
+		// `compactingCount == 0` before entering `UpdateVersionLocked`. That
+		// is insufficient because `UpdateVersionLocked`'s `logLock` may
+		// release DB.mu while waiting for another writer to finish, during
+		// which a new compaction may be scheduled (incrementing
+		// `compactingCount`). The cancellation pattern is correct and
+		// mirrors what `IngestAndExcise` does.
+		for c := range d.mu.compact.inProgress {
+			if c.VersionEditApplied() {
+				continue
+			}
+			cBounds := c.Bounds()
+			if cBounds != nil && cBounds.Overlaps(d.cmp, bounds) {
+				c.Cancel()
+			}
+		}
+
 		return versionUpdate{
 			VE: ve,
 			InProgressCompactionsFn: func() []compactionInfo {
