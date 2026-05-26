@@ -188,6 +188,10 @@ type Iter struct {
 	cachedBuf []byte
 	handle    block.BufferHandle
 	// for block iteration for already loaded blocks.
+	//
+	// firstUserKey is the user key of the first KV in the block. It has the
+	// synthetic prefix applied (if any), but does NOT have the synthetic suffix
+	// applied — the on-disk suffix is preserved.
 	firstUserKey      []byte
 	lazyValueHandling struct {
 		getValue       block.GetInternalValueForPrefixAndValueHandler
@@ -541,6 +545,15 @@ func (i *Iter) cacheEntry() {
 // IsLowerBound implements the blockiter.Data interface.
 func (i *Iter) IsLowerBound(k []byte) bool {
 	// Note: we ignore HideObsoletePoints, but false negatives are allowed.
+	if i.transforms.HasSyntheticSuffix() {
+		// firstUserKey has the synthetic prefix applied, but its suffix is the
+		// original on-disk suffix — not the synthetic suffix that the iterator will
+		// actually return. Instead of applying the synthetic suffix, we
+		// conservatively require firstUserKey's prefix portion to be strictly
+		// greater than k (false negatives are allowed).
+		firstPrefix := i.firstUserKey[:i.split(i.firstUserKey)]
+		return i.cmp(firstPrefix, k) > 0
+	}
 	return i.cmp(i.firstUserKey, k) >= 0
 }
 

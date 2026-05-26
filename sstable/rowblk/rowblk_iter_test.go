@@ -8,8 +8,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/cockroachdb/datadriven"
@@ -481,4 +484,77 @@ func TestBlockSyntheticSuffix(t *testing.T) {
 
 func ikey(s string) base.InternalKey {
 	return base.InternalKey{UserKey: []byte(s)}
+}
+
+func TestIsLowerBoundRand(t *testing.T) {
+	cmp := testkeys.Comparer.Compare
+	suffixCmp := testkeys.Comparer.ComparePointSuffixes
+	split := testkeys.Comparer.Split
+
+	prefixes := []string{"a", "b", "c", "d", "e", "p/", "zzz/"}
+	suffixes := []string{"", "@1", "@5", "@10", "@20", "@100"}
+
+	seed := uint64(time.Now().UnixNano())
+	t.Logf("seed: %d", seed)
+	rng := rand.New(rand.NewPCG(seed, seed))
+	randKey := func() string {
+		return prefixes[rng.IntN(len(prefixes))] + suffixes[rng.IntN(len(suffixes))]
+	}
+
+	for iter := 0; iter < 1000; iter++ {
+		// Construct a block with a random combination of prefixes and suffixes.
+		n := 1 + rng.IntN(20)
+		keySet := make(map[string]struct{}, n)
+		for len(keySet) < n {
+			keySet[randKey()] = struct{}{}
+		}
+		keys := make([]string, 0, n)
+		for k := range keySet {
+			keys = append(keys, k)
+		}
+		slices.SortFunc(keys, func(a, b string) int { return cmp([]byte(a), []byte(b)) })
+
+		w := &Writer{RestartInterval: 1 + rng.IntN(4)}
+		for _, k := range keys {
+			require.NoError(t, w.Add(ikey(k), nil))
+		}
+		blk := w.Finish()
+
+		// Pick a random prefix and suffix for the transform.
+		var synthPrefix, synthSuffix []byte
+		if rand.IntN(2) == 0 {
+			synthPrefix = []byte(prefixes[rng.IntN(len(prefixes))])
+		}
+		if rand.IntN(2) == 0 {
+			synthSuffix = []byte(suffixes[rng.IntN(len(suffixes))])
+		}
+		transforms := blockiter.Transforms{
+			SyntheticPrefixAndSuffix: blockiter.MakeSyntheticPrefixAndSuffix(synthPrefix, synthSuffix),
+		}
+
+		it, err := NewIter(cmp, suffixCmp, split, blk, transforms)
+		require.NoError(t, err)
+
+		kv := it.First()
+		require.NotNil(t, kv)
+		// firstKey is the key after the transform.
+		firstKey := slices.Clone(kv.K.UserKey)
+
+		for probe := 0; probe < 50; probe++ {
+			probeKey := []byte(randKey())
+			if rand.IntN(2) == 0 {
+				// The transformed block keys are random keys with synthPrefix
+				// prepended. To generate more interesting probe keys, sometimes prepend
+				// this prefix to the random key.
+				probeKey = append(slices.Clip(synthPrefix), probeKey...)
+			}
+			if it.IsLowerBound(probeKey) {
+				if cmp(firstKey, probeKey) < 0 {
+					t.Fatalf("IsLowerBound(%q)=true but First()=%q < probe (transforms=%+v, keys=%v)",
+						probeKey, firstKey, transforms, keys)
+				}
+			}
+		}
+		require.NoError(t, it.Close())
+	}
 }
