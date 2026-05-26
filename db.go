@@ -1168,6 +1168,7 @@ func (d *DB) newIter(
 		buf = &a.iterAllocCommon
 	}
 	dbi := &buf.dbi
+	dbi.closeChecker = invariants.CloseChecker{}
 	dbi.ctx = ctx
 	dbi.merge = d.merge
 	dbi.comparer = d.opts.Comparer

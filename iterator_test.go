@@ -339,11 +339,13 @@ func TestReadSampling(t *testing.T) {
 				if err := iter.Close(); err != nil {
 					return err.Error()
 				}
+				iter = nil
 			}
 			if d != nil {
 				if err := d.Close(); err != nil {
 					return err.Error()
 				}
+				d = nil
 			}
 
 			opts := &Options{}
@@ -472,6 +474,7 @@ func TestReadSampling(t *testing.T) {
 				if err := iter.Close(); err != nil {
 					return err.Error()
 				}
+				iter = nil
 			}
 			return ""
 

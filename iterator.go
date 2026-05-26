@@ -208,6 +208,15 @@ type Iterator struct {
 	// version's BlobFileSet or flushable ingests.
 	combinedBlobMapping combinedBlobFileMapping
 
+	// closeChecker detects double Close. It is intentionally above
+	// clearForReuseBoundary so the "closed" bit survives clearForReuse and
+	// catches a second Close on the same Iterator pointer. It is reset to the
+	// zero value when an Iterator is re-initialized for a new caller (the
+	// pool-allocation sites all use a `*dbi = Iterator{...}` literal or
+	// explicitly reset it). The `invariants:"reused"` tag exempts it from
+	// iterAlloc.assertZeroed.
+	closeChecker invariants.CloseChecker `invariants:"reused"`
+
 	// All fields below this field are cleared during Iterator.Close before
 	// returning the Iterator to the pool. Any fields above this field must also
 	// be cleared, but may be cleared as a part of the body of Iterator.Close
@@ -2481,6 +2490,7 @@ func maybeReuseKeyBuf(save *[]byte, buf []byte) {
 // It is not valid to call any method, including Close, after the iterator
 // has been closed.
 func (i *Iterator) Close() error {
+	i.closeChecker.Close()
 	if i.trackerHandle.IsValid() {
 		i.tracker.Stop(i.trackerHandle)
 		i.trackerHandle = 0

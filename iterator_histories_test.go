@@ -51,7 +51,11 @@ func TestIterHistories(t *testing.T) {
 			// SetOptions/seek calls; opt out of invariant-only randomization that
 			// suppresses seek-using-next or forces SetOptions reconstruction.
 			it.forceEnableSeekOpt = true
-			iters[name] = it
+			// Only track named iterators; unnamed ones are closed inline by
+			// runIterCmd and would otherwise be double-closed by cleanup.
+			if name != "" {
+				iters[name] = it
+			}
 			return it
 		}
 		var opts *Options
