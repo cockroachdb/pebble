@@ -1274,6 +1274,15 @@ type Options struct {
 		// before calling DB.ingestApply.
 		testingBeforeIngestApplyFunc func()
 
+		// testingBeforePublishFunc when non-nil, is called at the top of
+		// commitPipeline.publish, before visibleSeqNum is bumped. It fires
+		// for both regular commits and ingests (since both publish through
+		// commitPipeline.publish). Used by tests to widen the apply->publish
+		// race window in which a batch's data is already in the memtable /
+		// the ingested sstables are already in the version, but visibleSeqNum
+		// has not yet been advanced.
+		testingBeforePublishFunc func()
+
 		// timeNow returns the current time. It defaults to time.Now. It's
 		// configurable here so that tests can mock the current time.
 		timeNow func() time.Time

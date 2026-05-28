@@ -141,6 +141,12 @@ type commitEnv struct {
 	// the memtable the batch should be applied to. Serial execution enforced by
 	// commitPipeline.mu.
 	write func(b *Batch, wg *sync.WaitGroup, err *error) (*memTable, error)
+
+	// testingBeforePublish, if non-nil, is invoked at the top of
+	// commitPipeline.publish, before visibleSeqNum is bumped. It fires for
+	// both regular commits and ingests (both route through publish). Used
+	// by tests to widen the apply->publish race window.
+	testingBeforePublish func()
 }
 
 // A commitPipeline manages the stages of committing a set of mutations
@@ -474,6 +480,10 @@ func (p *commitPipeline) prepare(b *Batch, syncWAL bool, noSyncWait bool) (*memT
 }
 
 func (p *commitPipeline) publish(b *Batch) {
+	if p.env.testingBeforePublish != nil {
+		p.env.testingBeforePublish()
+	}
+
 	// Mark the batch as applied.
 	b.applied.Store(true)
 
