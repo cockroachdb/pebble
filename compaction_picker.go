@@ -608,13 +608,14 @@ func (pc *pickedTableCompaction) setupMultiLevelCandidate(opts *Options, env com
 	return pc.setupInputs(opts, env.diskAvailBytes, env.inProgressCompactions, &pc.inputs[1], nil /* TODO(radu) */)
 }
 
-// canCompactTables returns true if the tables in the level slice are not
-// compacting already and don't intersect any problem spans.
+// canCompactTables returns true if the tables in the level slice are
+// available for compaction (not already compacting and have published
+// seqnums) and don't intersect any problem spans.
 func canCompactTables(
 	inputs manifest.LevelSlice, level int, problemSpans *problemspans.ByLevel,
 ) bool {
 	for f := range inputs.All() {
-		if f.IsCompacting() {
+		if !f.IsAvailableForCompaction() {
 			return false
 		}
 		if problemSpans != nil && problemSpans.Overlaps(level, f.UserKeyBounds()) {
@@ -1191,10 +1192,11 @@ func pickCompactionSeedFile(
 
 	for f := startIter.First(); f != nil; f = startIter.Next() {
 		var overlappingBytes uint64
-		if f.IsCompacting() {
-			// Move on if this file is already being compacted. We'll likely
-			// still need to move past the overlapping output files regardless,
-			// but in cases where all start-level files are compacting we won't.
+		if !f.IsAvailableForCompaction() {
+			// Move on if this file is not available for compaction (already
+			// being compacted, or has unpublished seqnums). We'll likely still
+			// need to move past the overlapping output files regardless, but
+			// in cases where all start-level files are unavailable we won't.
 			continue
 		}
 		if problemSpans != nil && problemSpans.Overlaps(level, f.UserKeyBounds()) {
@@ -1210,9 +1212,9 @@ func pickCompactionSeedFile(
 		skip := false
 		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest(), f.Largest()) <= 0 {
 			overlappingBytes += outputFile.Size
-			if outputFile.IsCompacting() {
-				// If one of the overlapping files is compacting, we're not going to be
-				// able to compact f anyway, so skip it.
+			if !outputFile.IsAvailableForCompaction() {
+				// If one of the overlapping files is unavailable, we're not
+				// going to be able to compact f anyway, so skip it.
 				skip = true
 				break
 			}
@@ -1603,7 +1605,7 @@ var elisionOnlyAnnotator = manifest.MakePickFileAnnotator(
 	manifest.NewTableAnnotationIdx(),
 	manifest.PickFileAnnotatorFuncs{
 		Filter: func(f *manifest.TableMetadata) (eligible bool, cacheOK bool) {
-			if f.IsCompacting() {
+			if !f.IsAvailableForCompaction() {
 				return false, true
 			}
 
@@ -1646,7 +1648,7 @@ func (p *compactionPickerByScore) pickedCompactionFromCandidateFile(
 	outputLevel int,
 	kind compactionKind,
 ) *pickedTableCompaction {
-	if candidate == nil || candidate.IsCompacting() {
+	if candidate == nil || !candidate.IsAvailableForCompaction() {
 		return nil
 	}
 
@@ -1742,7 +1744,7 @@ func (p *compactionPickerByScore) pickVirtualRewriteCompaction(
 
 	for level, tables := range vtablesByLevel {
 		for _, vt := range tables {
-			if vt.IsCompacting() {
+			if !vt.IsAvailableForCompaction() {
 				continue
 			}
 			if pc := p.pickedCompactionFromCandidateFile(vt, env, level, level, compactionKindVirtualRewrite); pc != nil {
@@ -1865,7 +1867,7 @@ func (p *compactionPickerByScore) pickTombstoneDensityCompaction(
 	for l := numLevels - 2; l >= 0; l-- {
 		iter := p.vers.Levels[l].Iter()
 		for f := iter.First(); f != nil; f = iter.Next() {
-			if f.IsCompacting() || f.Size == 0 {
+			if !f.IsAvailableForCompaction() || f.Size == 0 {
 				continue
 			}
 			props, propsValid := f.TableBacking.Properties()
@@ -2197,8 +2199,8 @@ func pickDownloadCompaction(
 	level int,
 	file *manifest.TableMetadata,
 ) (pc *pickedTableCompaction) {
-	// Check if the file is compacting already.
-	if file.CompactionState == manifest.CompactionStateCompacting {
+	// Check if the file is available for compaction.
+	if !file.IsAvailableForCompaction() {
 		return nil
 	}
 	if kind != compactionKindCopy && kind != compactionKindRewrite {

@@ -373,8 +373,9 @@ func (c *tableCompaction) AddInProgressLocked(d *DB) {
 	var isBase, isIntraL0 bool
 	for _, cl := range c.inputs {
 		for f := range cl.files.All() {
-			if f.IsCompacting() {
-				d.opts.Logger.Fatalf("L%d->L%d: %s already being compacted", c.startLevel.level, c.outputLevel.level, f.TableNum)
+			if !f.IsAvailableForCompaction() {
+				d.opts.Logger.Fatalf("L%d->L%d: %s not available for compaction (state %s)",
+					c.startLevel.level, c.outputLevel.level, f.TableNum, f.CompactionState)
 			}
 			f.SetCompactionState(manifest.CompactionStateCompacting)
 			if c.startLevel != nil && c.outputLevel != nil && c.startLevel.level == 0 {
@@ -1948,6 +1949,48 @@ func (d *DB) maybeTransitionSnapshotsToFileOnlyLocked() {
 		_ = s.efos.transitionToFileOnlySnapshot(currentVersion)
 		s = next
 	}
+}
+
+// maybePublishTables transitions tables out of CompactionStateNotYetPublished
+// once visibleSeqNum has advanced past their SeqNums.High, then schedules a
+// compaction if any tables transitioned. Called from commitPipeline.publish
+// without DB.mu held; the atomic fast-path check keeps the common case (no
+// unpublished tables) cheap.
+func (d *DB) maybePublishTables() {
+	if !d.mu.versions.hasUnpublishedTables.Load() {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	list := d.mu.versions.unpublishedTables
+	if len(list) == 0 {
+		return
+	}
+	visible := d.mu.versions.visibleSeqNum.Load()
+	// Walk in FIFO order, stopping at the first entry that is not yet
+	// publishable. Any entries past the stopping point will be handled on a
+	// subsequent publish (visibleSeqNum is monotonically increasing, so they
+	// remain queued and eventually drain). In the typical case, all entries
+	// from a single flush/ingest become publishable at the same time.
+	i := 0
+	for i < len(list) && list[i].SeqNums.High < visible {
+		list[i].SetCompactionState(manifest.CompactionStateNotCompacting)
+		list[i] = nil
+		i++
+	}
+	if i == 0 {
+		return
+	}
+	if i == len(list) {
+		d.mu.versions.unpublishedTables = list[:0]
+		// Disarm the fast path. Safe under DB.mu: any concurrent
+		// UpdateVersionLocked also holds DB.mu and will re-arm the flag
+		// after appending its own entries.
+		d.mu.versions.hasUnpublishedTables.Store(false)
+	} else {
+		d.mu.versions.unpublishedTables = append(list[:0], list[i:]...)
+	}
+	d.maybeScheduleCompaction()
 }
 
 // maybeScheduleCompactionAsync should be used when

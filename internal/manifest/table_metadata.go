@@ -606,6 +606,10 @@ func (m *TableMetadata) SetCompactionState(to CompactionState) {
 			}
 		case CompactionStateCompacted:
 			panic(transitionErr())
+		case CompactionStateNotYetPublished:
+			if to != CompactionStateNotCompacting {
+				panic(transitionErr())
+			}
 		default:
 			panic(errors.AssertionFailedf("pebble: unknown compaction state: %d", m.CompactionState))
 		}
@@ -617,6 +621,14 @@ func (m *TableMetadata) SetCompactionState(to CompactionState) {
 // CompactionStateCompacting. Protected by DB.mu.
 func (m *TableMetadata) IsCompacting() bool {
 	return m.CompactionState == CompactionStateCompacting
+}
+
+// IsAvailableForCompaction returns true iff the file is eligible to be picked
+// as input to a new compaction (CompactionState == CompactionStateNotCompacting).
+// Returns false for tables that are already being compacted, have been
+// compacted, or whose seqnums have not yet been published. Protected by DB.mu.
+func (m *TableMetadata) IsAvailableForCompaction() bool {
+	return m.CompactionState == CompactionStateNotCompacting
 }
 
 // Stats returns the table statistics if they have been populated, or nil and
@@ -1306,10 +1318,16 @@ type TableStats struct {
 //
 // The following shows the valid state transitions:
 //
-//	NotCompacting --> Compacting --> Compacted
-//	      ^               |
-//	      |               |
-//	      +-------<-------+
+//	NotYetPublished --> NotCompacting --> Compacting --> Compacted
+//	                         ^               |
+//	                         |               |
+//	                         +-------<-------+
+//
+// A table produced by a flush or an ingest enters the LSM in the
+// NotYetPublished state if its highest sequence number has not yet been
+// published (i.e. is >= visibleSeqNum). NotYetPublished tables must not be
+// selected as inputs to a compaction. Once visibleSeqNum advances past the
+// table's SeqNums.High, the table transitions to NotCompacting.
 //
 // Input files to a compaction transition to Compacting when a compaction is
 // picked. A file that has finished compacting typically transitions into the
@@ -1328,6 +1346,7 @@ const (
 	CompactionStateNotCompacting CompactionState = iota
 	CompactionStateCompacting
 	CompactionStateCompacted
+	CompactionStateNotYetPublished
 )
 
 // SafeFormat implements redact.SafeFormatter.
@@ -1344,6 +1363,8 @@ func (s CompactionState) String() string {
 		return "Compacting"
 	case CompactionStateCompacted:
 		return "Compacted"
+	case CompactionStateNotYetPublished:
+		return "NotYetPublished"
 	default:
 		panic(errors.AssertionFailedf("pebble: unknown compaction state %d", s))
 	}

@@ -147,6 +147,12 @@ type commitEnv struct {
 	// both regular commits and ingests (both route through publish). Used
 	// by tests to widen the apply->publish race window.
 	testingBeforePublish func()
+
+	// afterPublish, if non-nil, is invoked at the end of publish, after
+	// visibleSeqNum has been bumped. The handler is expected to perform an
+	// atomic fast-path check and only acquire DB.mu when there is work to do
+	// (transitioning tables out of CompactionStateNotYetPublished).
+	afterPublish func()
 }
 
 // A commitPipeline manages the stages of committing a set of mutations
@@ -526,5 +532,9 @@ func (p *commitPipeline) publish(b *Batch) {
 		}
 
 		t.commit.Done()
+	}
+
+	if p.env.afterPublish != nil {
+		p.env.afterPublish()
 	}
 }
