@@ -17,9 +17,11 @@ import (
 // TestBuildEditsL0OutOfSeqNumOrder exercises buildEdits with a sequence of
 // version edits that add L0 files out of largest-sequence-number order. The
 // L0Organizer requires successive overlapping L0 files to have non-decreasing
-// largest sequence numbers, so buildEdits must sort L0 before constructing the
-// per-edit Version. Without the sort, the second edit panics in
-// addFileToSublevels.
+// largest sequence numbers, so buildEdits must construct the per-edit Version
+// via a path that orders L0 by seqnum. NewVersionWithFiles satisfies that by
+// building the L0 B-Tree with btreeCmpSeqNum; previously buildEdits used
+// NewVersionForTesting, which preserved slice order and would panic in
+// addFileToSublevels on the second edit.
 func TestBuildEditsL0OutOfSeqNumOrder(t *testing.T) {
 	cmp := base.DefaultComparer
 
@@ -39,8 +41,8 @@ func TestBuildEditsL0OutOfSeqNumOrder(t *testing.T) {
 
 	// VE 0 introduces an L0 file with a larger SeqNums.High than VE 1's L0
 	// file. They share the same user-key interval, so the L0Organizer will see
-	// both in the same fileInterval. If buildEdits hands them to
-	// NewVersionForTesting in arrival order, the second file's smaller
+	// both in the same fileInterval. If buildEdits handed them to a Version
+	// constructor that preserved slice order, the second file's smaller
 	// SeqNums.High would trip the addFileToSublevels precondition.
 	high := newL0Table(1, 200, 200)
 	low := newL0Table(2, 100, 100)
