@@ -323,7 +323,7 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 		}
 
 		l0Organizer := manifest.NewL0Organizer(l.cmp, 0 /* flushSplitBytes */)
-		v := manifest.NewVersionForTesting(l.cmp, l0Organizer, currentFiles)
+		v := manifest.NewVersionWithFiles(l.cmp, l0Organizer, currentFiles)
 		edit.Sublevels = make(map[base.FileNum]int)
 		for sublevel, files := range v.L0SublevelFiles {
 			for f := range files.All() {

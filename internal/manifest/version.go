@@ -80,6 +80,37 @@ func NewInitialVersion(comparer *base.Comparer) *Version {
 	return v
 }
 
+// NewVersionWithFiles constructs a new Version with the provided files. The
+// per-level B-Trees are built using the canonical comparators
+// (`btreeCmpSeqNum` for L0, `btreeCmpSmallestKey` for L1+); tree iteration
+// reflects that order regardless of the order of `files`. The L0Organizer
+// should be freshly created.
+func NewVersionWithFiles(
+	comparer *base.Comparer, l0Organizer *L0Organizer, files [7][]*TableMetadata,
+) *Version {
+	v := &Version{
+		cmp:                comparer,
+		BlobFiles:          MakeBlobFileSet(nil),
+		RangeKeySetRegions: makeRangeKeySetRegions(comparer),
+	}
+	for l := range files {
+		v.Levels[l] = MakeLevelMetadata(comparer.Compare, l, files[l])
+		v.RangeKeyLevels[l] = MakeLevelMetadata(comparer.Compare, l, nil)
+		for _, f := range files[l] {
+			if f.HasRangeKeys {
+				if err := v.RangeKeyLevels[l].insert(f); err != nil {
+					panic(err)
+				}
+				if f.RangeKeyKinds == AnyRangeKeys {
+					addToRangeKeySetRegions(&v.RangeKeySetRegions, f)
+				}
+			}
+		}
+	}
+	l0Organizer.ResetForTesting(v)
+	return v
+}
+
 // NewVersionForTesting constructs a new Version with the provided files. It
 // requires the provided files are already well-ordered. The L0Organizer should
 // be freshly created.
