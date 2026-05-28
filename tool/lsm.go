@@ -5,6 +5,7 @@
 package tool
 
 import (
+	stdcmp "cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -322,6 +323,21 @@ func (l *lsmT) buildEdits(edits []*manifest.VersionEdit) error {
 			}
 		}
 
+		// NewVersionForTesting installs L0 files into the B-Tree in slice
+		// order, and L0Organizer.ResetForTesting requires that successive
+		// overlapping files have non-decreasing largest sequence numbers. The
+		// per-edit slice mirrors the manifest's arrival order, which is not
+		// guaranteed to be seqnum-sorted, so sort L0 explicitly before
+		// constructing the Version.
+		slices.SortFunc(currentFiles[0], func(a, b *manifest.TableMetadata) int {
+			if v := stdcmp.Compare(a.SeqNums.High, b.SeqNums.High); v != 0 {
+				return v
+			}
+			if v := stdcmp.Compare(a.SeqNums.Low, b.SeqNums.Low); v != 0 {
+				return v
+			}
+			return stdcmp.Compare(a.TableNum, b.TableNum)
+		})
 		l0Organizer := manifest.NewL0Organizer(l.cmp, 0 /* flushSplitBytes */)
 		v := manifest.NewVersionForTesting(l.cmp, l0Organizer, currentFiles)
 		edit.Sublevels = make(map[base.FileNum]int)
