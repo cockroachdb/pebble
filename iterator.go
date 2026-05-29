@@ -2575,9 +2575,9 @@ func (i *Iterator) Close() error {
 	case allocV2 != nil:
 		alloc = &allocV2.iterAllocCommon
 	default:
-		// NB: When the Iterator is used as a part of a Get(), Close() is called by
-		// getIterAlloc.Close which handles recycling the appropriate structure and
-		// fields.
+		// Some tests construct an Iterator literal directly (without going
+		// through DB.newIter), in which case no alloc is associated with the
+		// iterator and there is nothing to recycle.
 		return err
 	}
 
