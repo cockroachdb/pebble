@@ -662,11 +662,12 @@ func (b *Batch) Apply(batch *Batch, _ *WriteOptions) error {
 				return errors.Wrapf(ErrInvalidBatch, "unrecognized kind %v", kind)
 			}
 			info := batchKinds[kind]
-			if invariants.Enabled && batch.minimumFormatMajorVersion < info.minFMV {
-				panic(errors.AssertionFailedf(
-					"source batch FMV %d < required %d for kind %s",
-					batch.minimumFormatMajorVersion, info.minFMV, kind))
-			}
+			// Ratchet the receiver's minimumFormatMajorVersion from the record's
+			// kind. Not all paths that populate a batch set
+			// minimumFormatMajorVersion (e.g. SetRepr on a batch with a nil db
+			// skips refreshMemTableSize); so, the source batch's value may be
+			// stale.
+			b.minimumFormatMajorVersion = max(b.minimumFormatMajorVersion, info.minFMV)
 			switch info.category {
 			case batchKindPoint:
 				// Contributes to index/memtable size below.
