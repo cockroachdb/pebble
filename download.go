@@ -286,7 +286,7 @@ func (d *DB) tryLaunchDownloadForFile(
 	level int,
 	f *manifest.TableMetadata,
 ) (doneCh chan error, ok bool) {
-	if f.IsCompacting() {
+	if !f.IsAvailableForCompaction() {
 		return nil, false
 	}
 	if download.testing.launchDownloadCompaction != nil {

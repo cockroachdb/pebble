@@ -122,6 +122,20 @@ type versionSet struct {
 	rotationHelper record.RotationHelper
 
 	pickedCompactionCache pickedCompactionCache
+
+	// unpublishedTables is the FIFO queue of tables in
+	// CompactionStateNotYetPublished. A table is appended when added by a
+	// flush or ingest whose seqnums have not yet been published, and drained
+	// from the front by DB.maybePublishTables once visibleSeqNum has advanced
+	// past the table's SeqNums.High. Protected by DB.mu.
+	unpublishedTables []*manifest.TableMetadata
+
+	// hasUnpublishedTables is a fast-path flag for DB.maybePublishTables that
+	// lets the (hot) publish path skip acquiring DB.mu when there is no work
+	// to do. Set to true (under DB.mu) inside UpdateVersionLocked whenever a
+	// new entry is appended to unpublishedTables; cleared (under DB.mu) by
+	// DB.maybePublishTables when the queue drains to empty.
+	hasUnpublishedTables atomic.Bool
 }
 
 // latestVersionState maintains mutable state describing only the most recent
@@ -374,6 +388,30 @@ func (vs *versionSet) UpdateVersionLocked(
 
 	updateManifestStart := crtime.NowMono()
 	ve := vu.VE
+
+	// Mark any newly-added tables whose seqnums have not yet been published
+	// (i.e. SeqNums.High >= visibleSeqNum) as NotYetPublished. The compaction
+	// picker will skip these tables until DB.maybePublishTables transitions
+	// them to NotCompacting once visibleSeqNum has advanced past their
+	// SeqNums.High. This prevents the publish-window race in which a
+	// compaction could drop an older entry shadowed by an entry whose seqnum
+	// is not yet visible to concurrently-created snapshots. Compaction-output
+	// tables always have SeqNums.High < visibleSeqNum, so this is a no-op for
+	// them; the only callers that produce unpublished tables are flush and
+	// ingest.
+	visible := vs.visibleSeqNum.Load()
+	for i := range ve.NewTables {
+		meta := ve.NewTables[i].Meta
+		if meta.SeqNums.High >= visible {
+			meta.CompactionState = manifest.CompactionStateNotYetPublished
+			vs.unpublishedTables = append(vs.unpublishedTables, meta)
+			// Arm the publish-side fast path. Stored before publish() runs,
+			// so a publish observing visibleSeqNum past these tables also
+			// observes the flag and runs DB.maybePublishTables.
+			vs.hasUnpublishedTables.Store(true)
+		}
+	}
+
 	if ve.MinUnflushedLogNum != 0 {
 		if ve.MinUnflushedLogNum < vs.minUnflushedLogNum ||
 			vs.nextFileNum.Load() <= uint64(ve.MinUnflushedLogNum) {

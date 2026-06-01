@@ -447,8 +447,9 @@ func (ts *Set) PickCompaction(
 					continue
 				}
 
-				// Skip any currently compacting tables.
-				if m.IsCompacting() {
+				// Skip any tables that are not available for compaction
+				// (already compacting, or seqnums not yet published).
+				if !m.IsAvailableForCompaction() {
 					skippedDueToCompacting = true
 					continue
 				}

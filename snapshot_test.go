@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"reflect"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +24,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
+	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -448,4 +452,296 @@ func TestEFOSAndExciseRace(t *testing.T) {
 	waitForCh <- struct{}{}
 	// Wait for the snapshot checking to finish.
 	<-snapDone
+}
+
+// TestNewSnapshotIngestRace, TestEFOSIngestRace, and TestNewSnapshotCommitFlushRace
+// exercise the race window between commitPipeline.publish (which bumps
+// visibleSeqNum) and the apply step that already installed the batch's data
+// into the LSM (commitApply for regular commits, ingestApply for ingests).
+// In that window:
+//
+//   - For commits: the batch's entries are already in the memtable, and the
+//     batch's writer ref on the memtable has been dropped (writerUnref runs
+//     inside commitApply). visibleSeqNum is still N.
+//   - For ingests: the ingested sstables are already installed in the current
+//     version. visibleSeqNum is still N.
+//
+// In either case, a concurrent compaction running while visibleSeqNum is
+// still N captures a snapshot list that lacks any snapshot registered at
+// S=N (because no snapshot has been registered yet at that moment), so a
+// later-created snapshot at S=N is invisible to the compaction. If the
+// compaction merges away an older entry e@old (because the stripe (old, N]
+// looks unprotected), a subsequent read from the snapshot sees the post-
+// edit version with the older entry gone — and the surviving entry at
+// seqnum N is filtered out (N < N is false). Result: ErrNotFound, which is
+// the data-loss bug.
+//
+// All three tests use a single test hook on the publish path
+// (testingBeforePublishFunc) that blocks the committing/ingesting goroutine
+// before it bumps visibleSeqNum. While that goroutine is held, the test:
+//   1. Drives a manual compaction with a context timeout. On master the
+//      compaction picks the freshly-installed sstable, captures a snapshot
+//      list that does not yet include S=N, drops e@old, and returns. With
+//      the CompactionStateNotYetPublished fix, the sstable is NotYetPublished
+//      and the compaction is deferred until publish runs; the context
+//      timeout fires and Compact returns DeadlineExceeded.
+//   2. Creates the snapshot at S=N.
+//   3. Releases the publish hook.
+//
+// On master, snap.Get returns ErrNotFound (the data-loss bug): the
+// compaction's edit has already dropped e@old and e@N is filtered out by
+// the snapshot's seqnum (N < N is false). With the fix, the compaction
+// never ran during the race window, so e@old is still present and
+// snap.Get returns it.
+func TestNewSnapshotIngestRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	runIngestSnapshotRace(t, false /* useEFOS */)
+}
+
+func TestEFOSIngestRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	runIngestSnapshotRace(t, true /* useEFOS */)
+}
+
+// snapshotReader is the common subset of *Snapshot and *EventuallyFileOnlySnapshot.
+type snapshotReader interface {
+	Get(key []byte) ([]byte, io.Closer, error)
+}
+
+// publishBlocker installs a testingBeforePublishFunc that fires exactly once
+// (after enable() has been called): it signals on entered and then blocks on
+// release. Callers use enable() to arm the hook after setup writes are done,
+// then wait on entered, and finally close release to let publish proceed.
+type publishBlocker struct {
+	enabled atomic.Bool
+	fired   atomic.Bool
+	entered chan struct{}
+	release chan struct{}
+}
+
+func newPublishBlocker() *publishBlocker {
+	return &publishBlocker{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (b *publishBlocker) hook() func() {
+	return func() {
+		if !b.enabled.Load() {
+			return
+		}
+		if b.fired.CompareAndSwap(false, true) {
+			close(b.entered)
+			<-b.release
+		}
+	}
+}
+
+func (b *publishBlocker) enable()  { b.enabled.Store(true) }
+func (b *publishBlocker) unblock() { close(b.release) }
+
+func runIngestSnapshotRace(t *testing.T, useEFOS bool) {
+	blocker := newPublishBlocker()
+	o := &Options{
+		FS:                          vfs.NewMem(),
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+	}
+	o.private.testingBeforePublishFunc = blocker.hook()
+
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Hold a long-lived "barrier" snapshot taken before any writes. This
+	// disables the last-stripe SeqNumZero rewrite in the compaction iterator
+	// so the surviving "k"@new keeps its original seqnum N. Without this,
+	// the racing snapshot at S=N would still see "k"@new (because its
+	// seqnum was rewritten to 0), masking the bug as a benign "saw the
+	// newer write" outcome instead of the actual data loss (NotFound).
+	barrier := d.NewSnapshot()
+	defer func() { require.NoError(t, barrier.Close()) }()
+
+	// Set "k"="old" and push it down to L6 via a manual compaction so that
+	// the value lives in a stable sstable below where the ingest will land.
+	require.NoError(t, d.Set([]byte("k"), []byte("old"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false))
+
+	// Arm the publish hook now that setup is done.
+	blocker.enable()
+
+	// Build an sstable containing "k"="new" for ingestion. Because "k"
+	// overlaps the L6 sstable, the ingest will land at L5.
+	f, err := o.FS.Create("ext", vfs.WriteCategoryUnspecified)
+	require.NoError(t, err)
+	w := sstable.NewWriter(objstorageprovider.NewFileWritable(f),
+		d.opts.MakeWriterOptions(0, d.TableFormat()))
+	require.NoError(t, w.Set([]byte("k"), []byte("new")))
+	require.NoError(t, w.Close())
+
+	// Start the ingest. It blocks in commitPipeline.publish once
+	// ingestApply has installed the new sstable into the current version
+	// but before visibleSeqNum has been bumped past N.
+	ingestDone := make(chan struct{})
+	go func() {
+		defer close(ingestDone)
+		require.NoError(t, d.Ingest(context.Background(), []string{"ext"}))
+	}()
+	<-blocker.entered
+
+	// We are now in the race window. The current version contains the
+	// freshly-ingested L5 sstable at seqnum N (along with the original L6
+	// sstable at some seqnum < N), but visibleSeqNum is still N (publish
+	// hasn't run).
+
+	// Drive the L5 -> L6 compaction. On master, the compaction picks the
+	// L5 file immediately, captures a snapshot list that does not yet
+	// include S=N (we have not created that snapshot yet), drops "k"@old,
+	// and returns nil. With the CompactionStateNotYetPublished fix, the
+	// L5 file is ineligible for picking until publish runs; the manual
+	// compaction is deferred and the context timeout fires
+	// (DeadlineExceeded). Either outcome is acceptable for the test setup;
+	// what matters is the snap.Get assertion below.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := d.Compact(ctx, []byte("a"), []byte("z"), false); err != nil &&
+		!errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unexpected Compact error: %v", err)
+	}
+
+	// Create the snapshot/EFOS AFTER attempting the compaction. On master
+	// this races with the compaction's already-captured snapshot list —
+	// the compaction has already dropped "k"@old and the current version
+	// lacks it, so snap.Get below returns ErrNotFound (data loss). With
+	// the fix, the compaction never ran (it timed out, deferred); the
+	// current version still contains "k"@old, so snap.Get returns "old".
+	var snap snapshotReader
+	var closeSnap func() error
+	if useEFOS {
+		efos := d.NewEventuallyFileOnlySnapshot([]KeyRange{
+			{Start: []byte("a"), End: []byte("z")},
+		})
+		snap = efos
+		closeSnap = efos.Close
+	} else {
+		s := d.NewSnapshot()
+		snap = s
+		closeSnap = s.Close
+	}
+
+	// Release the ingest so publish runs and visibleSeqNum is bumped.
+	blocker.unblock()
+	<-ingestDone
+
+	// Snapshot must still observe a value for "k": at the moment the
+	// snapshot was created, visibleSeqNum was N and "k"@old (seqnum < N)
+	// was visible. The ingest is concurrent, so either "old" or "new" is
+	// an acceptable answer — but observing NotFound is data loss.
+	v, closer, getErr := snap.Get([]byte("k"))
+	var observed string
+	if getErr == nil {
+		observed = string(v)
+		_ = closer.Close()
+	}
+	require.NoError(t, closeSnap())
+
+	require.NoError(t, getErr, "snapshot should still see the key (saw NotFound — data loss)")
+	require.Contains(t, []string{"old", "new"}, observed,
+		"snapshot should observe either pre- or post-ingest value")
+}
+
+// TestNewSnapshotCommitFlushRace is the commit+flush variant: it exploits
+// the same publish-side window but for a regular commit (not an ingest).
+// While the committing goroutine is held in publish:
+//
+//  1. d.Flush() rotates the active memtable. The committing batch's writer
+//     ref was dropped inside commitApply, so the rotated memtable can flush
+//     immediately, producing an L0 sstable containing a@N. With the fix,
+//     the new L0 sstable is in CompactionStateNotYetPublished.
+//  2. The snapshot is created at S=N (visibleSeqNum is still N).
+//  3. The L0->L6 manual compaction is started in a goroutine. With the fix
+//     it is queued but deferred; on master it would run immediately and
+//     drop a@old.
+//  4. Releasing the publish hook transitions the L0 sstable to
+//     NotCompacting and re-triggers scheduling; the deferred compaction
+//     then runs with S=N in its snapshot list and preserves a@old.
+func TestNewSnapshotCommitFlushRace(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	blocker := newPublishBlocker()
+	o := &Options{
+		FS:                          vfs.NewMem(),
+		DisableAutomaticCompactions: true,
+		FormatMajorVersion:          FormatNewest,
+	}
+	o.private.testingBeforePublishFunc = blocker.hook()
+
+	d, err := Open("", o)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+
+	// Barrier snapshot (see runIngestSnapshotRace).
+	barrier := d.NewSnapshot()
+	defer func() { require.NoError(t, barrier.Close()) }()
+
+	require.NoError(t, d.Set([]byte("a"), []byte("old"), nil))
+	require.NoError(t, d.Flush())
+	require.NoError(t, d.Compact(context.Background(), []byte("a"), []byte("z"), false))
+
+	blocker.enable()
+
+	// Commit B writing a="new". Blocks in publish: env.apply has installed
+	// a@N into the memtable and dropped B's writer ref, but visibleSeqNum
+	// is still N.
+	commitDone := make(chan struct{})
+	go func() {
+		defer close(commitDone)
+		require.NoError(t, d.Set([]byte("a"), []byte("new"), nil))
+	}()
+	<-blocker.entered
+
+	// Force the memtable to flush. The rotated memtable's writerRefs reach
+	// zero once the queue's ref is dropped (B's writer ref was already
+	// dropped inside commitApply), so the flush produces an L0 sstable
+	// containing a@N. With the fix, that L0 sstable is marked
+	// CompactionStateNotYetPublished.
+	require.NoError(t, d.Flush())
+
+	// Drive the L0 -> L6 compaction. On master, the compaction picks the
+	// L0 file immediately, captures a snapshot list lacking S=N (we have
+	// not created that snapshot yet), drops a@old, and returns nil. With
+	// the fix, the L0 file is in CompactionStateNotYetPublished; the
+	// manual compaction is deferred and the context timeout fires.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := d.Compact(ctx, []byte("a"), []byte("z"), false); err != nil &&
+		!errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unexpected Compact error: %v", err)
+	}
+
+	// Create the snapshot at S=N. On master, the compaction has already
+	// applied its edit and the current version no longer contains a@old,
+	// so snap.Get returns ErrNotFound. With the fix, the compaction never
+	// ran (deferred until publish); the version still contains a@old.
+	snap := d.NewSnapshot()
+
+	// Release B's publish.
+	blocker.unblock()
+	<-commitDone
+
+	// snap.Get loads the post-edit version: a@old is gone; a@N is filtered
+	// out by snap.seqNum == N (N < N is false). Result: ErrNotFound.
+	v, closer, getErr := snap.Get([]byte("a"))
+	var observed string
+	if getErr == nil {
+		observed = string(v)
+		_ = closer.Close()
+	}
+	require.NoError(t, snap.Close())
+
+	require.NoError(t, getErr, "snapshot should still see the key (saw NotFound — data loss)")
+	require.Contains(t, []string{"old", "new"}, observed,
+		"snapshot should observe either pre- or post-commit value")
 }

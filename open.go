@@ -222,10 +222,12 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 	}()
 
 	d.commit = newCommitPipeline(commitEnv{
-		logSeqNum:     &d.mu.versions.logSeqNum,
-		visibleSeqNum: &d.mu.versions.visibleSeqNum,
-		apply:         d.commitApply,
-		write:         d.commitWrite,
+		logSeqNum:            &d.mu.versions.logSeqNum,
+		visibleSeqNum:        &d.mu.versions.visibleSeqNum,
+		apply:                d.commitApply,
+		write:                d.commitWrite,
+		testingBeforePublish: opts.private.testingBeforePublishFunc,
+		afterPublish:         d.maybePublishTables,
 	})
 	d.mu.nextJobID = 1
 	d.mu.mem.nextSize = min(opts.MemTableSize, initialMemTableSize)

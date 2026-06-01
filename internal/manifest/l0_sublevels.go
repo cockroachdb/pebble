@@ -1454,11 +1454,18 @@ func (s *l0Sublevels) PickBaseCompaction(
 		for j := fs.minIntervalIndex; j <= fs.maxIntervalIndex; j++ {
 			consideredIntervals[j] = true
 		}
-		if f.IsCompacting() {
+		if !f.IsAvailableForCompaction() {
 			if f.IsIntraL0Compacting {
 				// If we're picking a base compaction and we came across a seed
 				// file candidate that's being intra-L0 compacted, skip the
 				// interval instead of emitting an error.
+				continue
+			}
+			if f.CompactionState == CompactionStateNotYetPublished {
+				// The file's seqnums haven't been published yet; it must be
+				// skipped from compaction picking. The seed-file iteration
+				// could have selected it because L0Sublevels does not track
+				// the not-yet-published bit in fileStateMap.
 				continue
 			}
 			// We chose a compaction seed file that should not be compacting; this
@@ -1607,7 +1614,7 @@ func (s *l0Sublevels) extendFiles(
 		if s.state(f).minIntervalIndex > cFiles.maxIntervalIndex {
 			break
 		}
-		if f.IsCompacting() {
+		if !f.IsAvailableForCompaction() {
 			return false
 		}
 		// Skip over files that are newer than earliestUnflushedSeqNum. This is
@@ -1666,8 +1673,9 @@ func (s *l0Sublevels) PickIntraL0Compaction(
 			stackDepthReduction := scoredInterval.score
 			for i := len(interval.files) - 1; i >= 0; i-- {
 				f := interval.files[i]
-				if f.IsCompacting() {
-					// This file could be in a concurrent intra-L0 or base compaction; we
+				if !f.IsAvailableForCompaction() {
+					// This file could be in a concurrent intra-L0 or base
+					// compaction, or its seqnums haven't been published; we
 					// can't use this interval.
 					return nil
 				}
@@ -1741,7 +1749,7 @@ func (s *l0Sublevels) intraL0CompactionUsingSeed(
 		f2 := interval.files[slIndex]
 		f2s := s.state(f2)
 		sl := f2s.subLevel
-		if f2.IsCompacting() {
+		if !f2.IsAvailableForCompaction() {
 			break
 		}
 		c.seedIntervalStackDepthReduction++
@@ -2011,7 +2019,7 @@ func (s *l0Sublevels) extendCandidateToRectangle(
 		candidateHasAlreadyPickedFiles := false
 		for index = firstIndex; index <= lastIndex; index++ {
 			f := files[index]
-			if f.IsCompacting() {
+			if !f.IsAvailableForCompaction() {
 				if nonCompactingFirst != -1 {
 					last := index - 1
 					// Prioritize runs of consecutive non-compacting files that
@@ -2063,10 +2071,10 @@ func (s *l0Sublevels) extendCandidateToRectangle(
 		}
 		for index := candidateNonCompactingFirst; index <= candidateNonCompactingLast; index++ {
 			f := files[index]
-			if f.IsCompacting() {
+			if !f.IsAvailableForCompaction() {
 				// TODO(bilal): Do a logger.Fatalf instead of a panic, for
 				// cleaner unwinding and error messages.
-				panic(errors.AssertionFailedf("expected %s to not be compacting", f.TableNum))
+				panic(errors.AssertionFailedf("expected %s to be available for compaction", f.TableNum))
 			}
 			if candidate.isIntraL0 && f.SeqNums.High >= candidate.earliestUnflushedSeqNum {
 				continue
