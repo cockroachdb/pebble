@@ -1323,6 +1323,10 @@ func (b *Batch) Repr() []byte {
 //
 // SetRepr may return ErrInvalidBatch if the supplied slice fails to decode in
 // any way. It will not return an error in any other circumstance.
+//
+// The caller is responsible for ensuring that the batch is applied to a DB at
+// a FormatMajorVersion that supports all of the operation kinds encoded in the
+// supplied slice.
 func (b *Batch) SetRepr(data []byte) error {
 	h, ok := batchrepr.ReadHeader(data)
 	if !ok {
