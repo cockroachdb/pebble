@@ -1,8 +1,6 @@
 name: Nightly code coverage
 
 on:
-  schedule:
-    - cron: '00 08 * * * '
   workflow_dispatch:
 
 jobs:
