@@ -44,6 +44,10 @@ const (
 
 	flushableIngestionLine23_1 = `I230831 04:13:28.824280 3780 3@pebble/event.go:685 ⋮ [n10,s10,pebble] 365  [JOB 226] flushed 6 ingested flushables L0:024334 (1.5 K) + L0:024339 (1.0 K) + L0:024335 (1.9 K) + L0:024336 (1.1 K) + L0:024337 (1.1 K) + L0:024338 (12 K) in 0.0s (0.0s total), output rate 67 M/s`
 	flushableIngestionLine     = `I230831 04:13:28.824280 3780 3@pebble/event.go:685 ⋮ [n10,s10,pebble] 365  [JOB 226] flushed 6 ingested flushables L0:024334 (1.5KB) + L0:024339 (1.0KB) + L0:024335 (1.9KB) + L0:024336 (1.1KB) + L0:024337 (1.1KB) + L0:024338 (12KB) in 0.0s (0.0s total), output rate 67MB/s`
+
+	// Lines with blob reference sizes, rendered as "(table + blob)".
+	compactionStartLineBlob = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2MB + 1.0MB) Score=1.01 + L3 [445853] (8.4MB + 2.0MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05;`
+	compactionEndLineBlob   = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB + 3.0MB), in 0.3s, output rate 42MB/s`
 )
 
 func TestCompactionLogs_Regex(t *testing.T) {
@@ -191,6 +195,32 @@ func TestCompactionLogs_Regex(t *testing.T) {
 				compactionPatternFromIdx:   "2",
 				compactionPatternToIdx:     "4",
 				compactionPatternBytesIdx:  "46MB",
+			},
+		},
+		{
+			name: "compaction start with blob references",
+			re:   compactionPattern,
+			line: compactionStartLineBlob,
+			matches: map[int]string{
+				compactionPatternJobIdx:    "284925",
+				compactionPatternSuffixIdx: "ing",
+				compactionPatternTypeIdx:   "default",
+				compactionPatternFromIdx:   "2",
+				compactionPatternToIdx:     "3",
+				compactionPatternLevels:    "L2 [442555] (4.2MB + 1.0MB) Score=1.01 + L3 [445853] (8.4MB + 2.0MB) Score=0.99",
+			},
+		},
+		{
+			name: "compaction end with blob references",
+			re:   compactionPattern,
+			line: compactionEndLineBlob,
+			matches: map[int]string{
+				compactionPatternJobIdx:    "284925",
+				compactionPatternSuffixIdx: "ed",
+				compactionPatternTypeIdx:   "default",
+				compactionPatternFromIdx:   "2",
+				compactionPatternToIdx:     "3",
+				compactionPatternBytesIdx:  "13MB + 3.0MB",
 			},
 		},
 		{
@@ -452,6 +482,16 @@ func TestParseInputBytes(t *testing.T) {
 		{
 			"(10MB) + (20MB) + (30MB)",
 			60 << 20,
+		},
+		// Blob reference sizes are rendered within a single set of parentheses as
+		// "table + blob"; both are summed.
+		{
+			"(10MB + 5MB)",
+			15 << 20,
+		},
+		{
+			"(10MB + 5MB) + (20MB + 1MB)",
+			36 << 20,
 		},
 		{
 			"foo",
