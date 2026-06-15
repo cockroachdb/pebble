@@ -10,6 +10,9 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFormatBlockDataAsHex(t *testing.T) {
@@ -29,5 +32,40 @@ func TestFormatBlockDataAsHex(t *testing.T) {
 			t.Fatalf("unknown command: %s", td.Cmd)
 			return ""
 		}
+	})
+}
+
+// tableInfoWithRefSize builds a TableInfo carrying a single blob reference with
+// the given estimated physical size.
+func tableInfoWithRefSize(num base.FileNum, size, refSize uint64) TableInfo {
+	m := &manifest.TableMetadata{TableNum: num, Size: size}
+	if refSize > 0 {
+		m.BlobReferences = manifest.BlobReferences{
+			{FileID: base.BlobFileID(num), EstimatedPhysicalSize: refSize},
+		}
+	}
+	return m.TableInfo()
+}
+
+func TestLevelInfoSafeFormat(t *testing.T) {
+	t.Run("no blob references", func(t *testing.T) {
+		li := LevelInfo{
+			Level:  1,
+			Tables: []TableInfo{tableInfoWithRefSize(1, 3<<10, 0)},
+			Score:  1.31,
+		}
+		require.Equal(t, "L1 [000001] (3.0KB) Score=1.31", li.String())
+	})
+
+	t.Run("with blob references", func(t *testing.T) {
+		li := LevelInfo{
+			Level: 0,
+			Tables: []TableInfo{
+				tableInfoWithRefSize(1, 3<<10, 1<<20),
+				tableInfoWithRefSize(2, 1<<10, 200<<10),
+			},
+			Score: 1.31,
+		}
+		require.Equal(t, "L0 [000001 000002] (4.0KB + 1.2MB) Score=1.31", li.String())
 	})
 }
