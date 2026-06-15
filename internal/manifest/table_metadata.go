@@ -1202,6 +1202,16 @@ func (t *TableInfo) GetBlobReferenceFiles() []base.BlobFileID {
 	return files
 }
 
+// EstimatedReferenceSize returns the estimated physical size of all the table's
+// blob references.
+func (t *TableInfo) EstimatedReferenceSize() uint64 {
+	var size uint64
+	for i := range t.blobReferences {
+		size += t.blobReferences[i].EstimatedPhysicalSize
+	}
+	return size
+}
+
 // TableStats contains statistics on a table used for compaction heuristics,
 // and export via Metrics.
 type TableStats struct {
