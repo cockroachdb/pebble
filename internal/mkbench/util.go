@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 )
 
-func prettyJSON(v interface{}) []byte {
+func prettyJSON(v any) []byte {
 	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
 		log.Fatal(err)

@@ -480,7 +480,7 @@ var _ Reader = (*Batch)(nil)
 var _ Writer = (*Batch)(nil)
 
 var batchPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &Batch{}
 	},
 }
@@ -491,7 +491,7 @@ type indexedBatch struct {
 }
 
 var indexedBatchPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &indexedBatch{}
 	},
 }
@@ -2584,7 +2584,7 @@ func WithMaxRetainedSizeBytes(s int) BatchOption {
 // intended for testing use only. The batch.Sort dance is done to prevent
 // exposing this method in the public pebble interface.
 func batchSort(
-	i interface{},
+	i any,
 ) (
 	points internalIterator,
 	rangeDels keyspan.FragmentIterator,

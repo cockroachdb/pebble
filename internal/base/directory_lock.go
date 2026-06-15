@@ -85,7 +85,7 @@ func LockDirectory(dirname string, fs vfs.FS) (*DirLock, error) {
 	}
 	l := &DirLock{dirname: dirname, fileLock: fileLock}
 	l.refs.Store(1)
-	invariants.SetFinalizer(l, func(obj interface{}) {
+	invariants.SetFinalizer(l, func(obj any) {
 		if refs := obj.(*DirLock).refs.Load(); refs > 0 {
 			panic(errors.AssertionFailedf("lock for %q finalized with %d refs", errors.Safe(dirname), errors.Safe(refs)))
 		}

@@ -493,7 +493,7 @@ func (b *rangeKeyBuffers) PrepareForReuse() {
 }
 
 var iterRangeKeyStateAllocPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &iteratorRangeKeyState{}
 	},
 }

@@ -845,61 +845,61 @@ func (d *dbT) runProperties(cmd *cobra.Command, args []string) {
 		fmt.Fprintln(tw, "\tL0\tL1\tL2\tL3\tL4\tL5\tL6\tTOTAL")
 
 		fmt.Fprintf(tw, "count\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
-			propArgs(all, func(p *props) interface{} { return p.Count })...)
+			propArgs(all, func(p *props) any { return p.Count })...)
 
 		fmt.Fprintln(tw, "seq num\t\t\t\t\t\t\t\t")
 		fmt.Fprintf(tw, "  smallest\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
-			propArgs(all, func(p *props) interface{} { return p.SmallestSeqNum })...)
+			propArgs(all, func(p *props) any { return p.SmallestSeqNum })...)
 		fmt.Fprintf(tw, "  largest\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
-			propArgs(all, func(p *props) interface{} { return p.LargestSeqNum })...)
+			propArgs(all, func(p *props) any { return p.LargestSeqNum })...)
 
 		fmt.Fprintln(tw, "size\t\t\t\t\t\t\t\t")
 		fmt.Fprintf(tw, "  data\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.DataSize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.DataSize) })...)
 		fmt.Fprintf(tw, "    blocks\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
-			propArgs(all, func(p *props) interface{} { return p.NumDataBlocks })...)
+			propArgs(all, func(p *props) any { return p.NumDataBlocks })...)
 		fmt.Fprintf(tw, "  index\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.IndexSize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.IndexSize) })...)
 		fmt.Fprintf(tw, "    blocks\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
-			propArgs(all, func(p *props) interface{} { return p.NumIndexBlocks })...)
+			propArgs(all, func(p *props) any { return p.NumIndexBlocks })...)
 		fmt.Fprintf(tw, "    top-level\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.TopLevelIndexSize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.TopLevelIndexSize) })...)
 		fmt.Fprintf(tw, "  filter\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.FilterSize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.FilterSize) })...)
 		fmt.Fprintf(tw, "  raw-key\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.RawKeySize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.RawKeySize) })...)
 		fmt.Fprintf(tw, "  raw-value\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.RawValueSize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.RawValueSize) })...)
 		fmt.Fprintf(tw, "  pinned-key\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.SnapshotPinnedKeySize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.SnapshotPinnedKeySize) })...)
 		fmt.Fprintf(tw, "  pinned-value\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.SnapshotPinnedValueSize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.SnapshotPinnedValueSize) })...)
 		fmt.Fprintf(tw, "  point-del-key-size\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.RawPointTombstoneKeySize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.RawPointTombstoneKeySize) })...)
 		fmt.Fprintf(tw, "  point-del-value-size\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Bytes.Uint64(p.RawPointTombstoneValueSize) })...)
+			propArgs(all, func(p *props) any { return humanize.Bytes.Uint64(p.RawPointTombstoneValueSize) })...)
 
 		fmt.Fprintln(tw, "records\t\t\t\t\t\t\t\t")
 		fmt.Fprintf(tw, "  set\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} {
+			propArgs(all, func(p *props) any {
 				return humanize.Count.Uint64(p.NumEntries - p.NumDeletions - p.NumMergeOperands)
 			})...)
 		fmt.Fprintf(tw, "  delete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Count.Uint64(p.NumDeletions - p.NumRangeDeletions) })...)
+			propArgs(all, func(p *props) any { return humanize.Count.Uint64(p.NumDeletions - p.NumRangeDeletions) })...)
 		fmt.Fprintf(tw, "  delete-sized\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Count.Uint64(p.NumSizedDeletions) })...)
+			propArgs(all, func(p *props) any { return humanize.Count.Uint64(p.NumSizedDeletions) })...)
 		fmt.Fprintf(tw, "  range-delete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Count.Uint64(p.NumRangeDeletions) })...)
+			propArgs(all, func(p *props) any { return humanize.Count.Uint64(p.NumRangeDeletions) })...)
 		fmt.Fprintf(tw, "  range-key-sets\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Count.Uint64(p.NumRangeKeySets) })...)
+			propArgs(all, func(p *props) any { return humanize.Count.Uint64(p.NumRangeKeySets) })...)
 		fmt.Fprintf(tw, "  range-key-unsets\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Count.Uint64(p.NumRangeKeyUnSets) })...)
+			propArgs(all, func(p *props) any { return humanize.Count.Uint64(p.NumRangeKeyUnSets) })...)
 		fmt.Fprintf(tw, "  range-key-deletes\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Count.Uint64(p.NumRangeKeyDeletes) })...)
+			propArgs(all, func(p *props) any { return humanize.Count.Uint64(p.NumRangeKeyDeletes) })...)
 		fmt.Fprintf(tw, "  merge\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Count.Uint64(p.NumMergeOperands) })...)
+			propArgs(all, func(p *props) any { return humanize.Count.Uint64(p.NumMergeOperands) })...)
 		fmt.Fprintf(tw, "  pinned\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			propArgs(all, func(p *props) interface{} { return humanize.Count.Uint64(p.SnapshotPinnedKeys) })...)
+			propArgs(all, func(p *props) any { return humanize.Count.Uint64(p.SnapshotPinnedKeys) })...)
 
 		if err := tw.Flush(); err != nil {
 			return err
@@ -1027,8 +1027,8 @@ func (n nonReadOnly) Apply(dirname string, opts *pebble.Options) {
 	opts.L0CompactionThreshold = 10
 }
 
-func propArgs(props []props, getProp func(*props) interface{}) []interface{} {
-	args := make([]interface{}, 0, len(props))
+func propArgs(props []props, getProp func(*props) any) []any {
+	args := make([]any, 0, len(props))
 	for _, p := range props {
 		args = append(args, getProp(&p))
 	}

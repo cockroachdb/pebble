@@ -417,14 +417,14 @@ func (l *lsmT) reason(ve *manifest.VersionEdit) string {
 	return "added"
 }
 
-func (l *lsmT) formatJSON(v interface{}) string {
+func (l *lsmT) formatJSON(v any) string {
 	if l.pretty {
 		return l.prettyJSON(v)
 	}
 	return l.uglyJSON(v)
 }
 
-func (l *lsmT) uglyJSON(v interface{}) string {
+func (l *lsmT) uglyJSON(v any) string {
 	data, err := json.Marshal(v)
 	if err != nil {
 		log.Fatal(err)
@@ -432,7 +432,7 @@ func (l *lsmT) uglyJSON(v interface{}) string {
 	return string(data)
 }
 
-func (l *lsmT) prettyJSON(v interface{}) string {
+func (l *lsmT) prettyJSON(v any) string {
 	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
 		log.Fatal(err)

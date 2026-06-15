@@ -336,10 +336,10 @@ func NewKeyspanIter(
 }
 
 var keyspanIterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		i := &KeyspanIter{}
 		if invariants.UseFinalizers {
-			invariants.SetFinalizer(i, func(obj interface{}) {
+			invariants.SetFinalizer(i, func(obj any) {
 				if i := obj.(*KeyspanIter); i.handle.Valid() {
 					fmt.Fprintf(os.Stderr, "KeyspanIter.handle is not nil: %#v\n", i.handle)
 					os.Exit(1)

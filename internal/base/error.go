@@ -33,7 +33,7 @@ func IsCorruptionError(err error) bool {
 
 // CorruptionErrorf formats according to a format specifier and returns
 // the string as an error value that is marked as a corruption error.
-func CorruptionErrorf(format string, args ...interface{}) error {
+func CorruptionErrorf(format string, args ...any) error {
 	return errors.Mark(errors.Newf(format, args...), ErrCorruption)
 }
 
@@ -67,7 +67,7 @@ func ExtractCorruptBlockData(err error) []byte {
 
 // AssertionFailedf creates an assertion error and panics in invariants.Enabled
 // builds. It should only be used when it indicates a bug.
-func AssertionFailedf(format string, args ...interface{}) error {
+func AssertionFailedf(format string, args ...any) error {
 	err := errors.AssertionFailedf(format, args...)
 	if invariants.Enabled {
 		panic(err)

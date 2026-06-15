@@ -303,7 +303,7 @@ func (i *indexBlockBuf) clear() {
 }
 
 var indexBlockBufPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &indexBlockBuf{}
 	},
 }
@@ -393,7 +393,7 @@ func (d *dataBlockEstimates) addInflightDataBlock(size int) {
 }
 
 var writeTaskPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		t := &writeTask{}
 		t.compressionDone = make(chan bool, 1)
 		return t
@@ -467,7 +467,7 @@ func (d *dataBlockBuf) clear() {
 }
 
 var dataBlockBufPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &dataBlockBuf{}
 	},
 }

@@ -52,7 +52,7 @@ type mockT struct {
 
 var _ metamorphic.TestingT = (*mockT)(nil)
 
-func (t *mockT) Errorf(format string, args ...interface{}) {
+func (t *mockT) Errorf(format string, args ...any) {
 	t.failed = true
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 }

@@ -278,7 +278,7 @@ type Reader struct {
 }
 
 type loggerForTesting interface {
-	logf(format string, args ...interface{})
+	logf(format string, args ...any)
 }
 
 // NewReader returns a new reader. If the file contains records encoded using

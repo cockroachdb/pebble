@@ -54,7 +54,7 @@ func newBlockMap(initialCapacity int) *blockMap {
 	m.Init(initialCapacity)
 
 	// Note: this is a no-op if invariants are disabled or race is enabled.
-	invariants.SetFinalizer(m, func(obj interface{}) {
+	invariants.SetFinalizer(m, func(obj any) {
 		m := obj.(*blockMap)
 		if !m.closed {
 			fmt.Fprintf(os.Stderr, "%p: block-map not closed\n", m)

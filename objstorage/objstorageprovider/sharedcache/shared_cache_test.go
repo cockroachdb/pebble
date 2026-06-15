@@ -25,7 +25,7 @@ func TestSharedCache(t *testing.T) {
 
 	datadriven.Walk(t, "testdata/cache", func(t *testing.T, path string) {
 		var log base.InMemLogger
-		fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
+		fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...any) {
 			log.Infof("<local fs> "+fmt, args...)
 		})
 
@@ -119,7 +119,7 @@ func TestSharedCacheRandomized(t *testing.T) {
 	ctx := context.Background()
 
 	var log base.InMemLogger
-	fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
+	fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...any) {
 		log.Infof("<local fs> "+fmt, args...)
 	})
 

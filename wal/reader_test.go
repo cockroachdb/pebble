@@ -109,7 +109,7 @@ func TestReader(t *testing.T) {
 	var memFS *vfs.MemFS
 	setFS := func(mem *vfs.MemFS) {
 		memFS = mem
-		fs = vfs.WithLogging(mem, func(format string, args ...interface{}) {
+		fs = vfs.WithLogging(mem, func(format string, args ...any) {
 			s := fmt.Sprintf("# "+format, args...)
 			fmt.Fprintln(&buf, strings.TrimRightFunc(s, unicode.IsSpace))
 		})

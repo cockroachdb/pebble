@@ -1339,7 +1339,7 @@ func TestBatchRangeOps(t *testing.T) {
 func TestBatchTooLarge(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	var b Batch
-	var result interface{}
+	var result any
 	func() {
 		defer func() {
 			if r := recover(); r != nil {

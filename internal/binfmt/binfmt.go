@@ -110,7 +110,7 @@ func (f *Formatter) PeekUint(w int) uint64 {
 
 // Byte formats a single byte in binary format, displaying each bit as a zero or
 // one.
-func (f *Formatter) Byte(format string, args ...interface{}) int {
+func (f *Formatter) Byte(format string, args ...any) int {
 	f.printOffsets(1)
 	f.printf("b %08b", f.data[f.off])
 	f.off++
@@ -120,7 +120,7 @@ func (f *Formatter) Byte(format string, args ...interface{}) int {
 
 // HexBytesln formats the next n bytes in hexadecimal format, appending the
 // formatted comment string to each line and ending on a newline.
-func (f *Formatter) HexBytesln(n int, format string, args ...interface{}) int {
+func (f *Formatter) HexBytesln(n int, format string, args ...any) int {
 	commentLine := strings.TrimSpace(fmt.Sprintf(format, args...))
 	printLine := func() {
 		bytesInLine := min(f.lineWidth/2, n)
@@ -164,7 +164,7 @@ func (f *Formatter) HexTextln(n int) int {
 
 // Uvarint decodes the bytes at the current offset as a uvarint, formatting them
 // in hexadecimal and prefixing the comment with the encoded decimal value.
-func (f *Formatter) Uvarint(format string, args ...interface{}) {
+func (f *Formatter) Uvarint(format string, args ...any) {
 	comment := fmt.Sprintf(format, args...)
 	v, n := binary.Uvarint(f.data[f.off:])
 	f.HexBytesln(n, "uvarint(%d): %s", v, comment)
@@ -239,7 +239,7 @@ func (f *Formatter) printOffsets(n int) {
 	f.printf(f.offsetFormatStr, f.off, f.off+n)
 }
 
-func (f *Formatter) printf(format string, args ...interface{}) {
+func (f *Formatter) printf(format string, args ...any) {
 	fmt.Fprintf(&f.buf, format, args...)
 }
 
@@ -280,7 +280,7 @@ func (l Line) HexBytes(n int) Line {
 }
 
 // Done finishes the line, appending the provided comment if any.
-func (l Line) Done(format string, args ...interface{}) int {
+func (l Line) Done(format string, args ...any) int {
 	if l.n != l.i {
 		panic(errors.AssertionFailedf("unconsumed data in line"))
 	}

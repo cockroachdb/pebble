@@ -37,7 +37,7 @@ type bufferedValueBlock struct {
 }
 
 var valueBlockWriterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &Writer{}
 	},
 }

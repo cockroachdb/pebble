@@ -302,7 +302,7 @@ func TestVersionSetSeqNums(t *testing.T) {
 		sync.Mutex
 		bytes.Buffer
 	}
-	fs := vfs.WithLogging(vfs.NewMem(), func(format string, args ...interface{}) {
+	fs := vfs.WithLogging(vfs.NewMem(), func(format string, args ...any) {
 		buf.Mutex.Lock()
 		defer buf.Mutex.Unlock()
 		fmt.Fprintf(&buf.Buffer, format, args...)

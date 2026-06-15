@@ -49,7 +49,7 @@ func (h *history) Close() {
 	h.mu.Unlock()
 }
 
-func (h *history) Recordf(op int, format string, args ...interface{}) {
+func (h *history) Recordf(op int, format string, args ...any) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.mu.closed {
@@ -83,7 +83,7 @@ func (h *history) Error() error {
 	return nil
 }
 
-func (h *history) format(typ, format string, args ...interface{}) string {
+func (h *history) format(typ, format string, args ...any) string {
 	var buf strings.Builder
 	orig := fmt.Sprintf(format, args...)
 	timestamp := time.Now().Format("15:04:05.000")
@@ -95,7 +95,7 @@ func (h *history) format(typ, format string, args ...interface{}) string {
 
 // Infof implements the pebble.Logger interface. Note that the output is
 // commented.
-func (h *history) Infof(format string, args ...interface{}) {
+func (h *history) Infof(format string, args ...any) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	// Suppress any messages that come after closing. This could happen if the
@@ -107,7 +107,7 @@ func (h *history) Infof(format string, args ...interface{}) {
 
 // Errorf implements the pebble.Logger interface. Note that the output is
 // commented.
-func (h *history) Errorf(format string, args ...interface{}) {
+func (h *history) Errorf(format string, args ...any) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	// Suppress any messages that come after closing. This could happen if the
@@ -119,7 +119,7 @@ func (h *history) Errorf(format string, args ...interface{}) {
 
 // Fatalf implements the pebble.Logger interface. Note that the output is
 // commented.
-func (h *history) Fatalf(format string, args ...interface{}) {
+func (h *history) Fatalf(format string, args ...any) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.mu.closed {
@@ -131,7 +131,7 @@ func (h *history) Fatalf(format string, args ...interface{}) {
 }
 
 func (h *history) recorder(
-	thread int, op int, optionalRecordf func(format string, args ...interface{}),
+	thread int, op int, optionalRecordf func(format string, args ...any),
 ) historyRecorder {
 	return historyRecorder{
 		history:         h,
@@ -145,11 +145,11 @@ func (h *history) recorder(
 type historyRecorder struct {
 	history         *history
 	op              int
-	optionalRecordf func(string, ...interface{})
+	optionalRecordf func(string, ...any)
 }
 
 // Recordf records the results of a single operation.
-func (h historyRecorder) Recordf(format string, args ...interface{}) {
+func (h historyRecorder) Recordf(format string, args ...any) {
 	// Check for assertion errors.
 	for _, a := range args {
 		if err, ok := a.(error); ok && errors.IsAssertionFailure(err) {

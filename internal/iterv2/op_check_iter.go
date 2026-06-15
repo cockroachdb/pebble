@@ -33,7 +33,7 @@ type IllegalOpError struct {
 
 func (e *IllegalOpError) Error() string { return e.msg }
 
-func illegalOpf(format string, args ...interface{}) *IllegalOpError {
+func illegalOpf(format string, args ...any) *IllegalOpError {
 	return &IllegalOpError{msg: fmt.Sprintf(format, args...)}
 }
 

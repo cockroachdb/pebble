@@ -287,7 +287,7 @@ func ParseDiskFileNum(s string) (dfn DiskFileNum, ok bool) {
 
 // A Fataler fatals a process with a message when called.
 type Fataler interface {
-	Fatalf(format string, args ...interface{})
+	Fatalf(format string, args ...any)
 }
 
 // MustExist checks if err is an error indicating a file does not exist.

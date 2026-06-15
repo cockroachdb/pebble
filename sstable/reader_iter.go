@@ -159,7 +159,7 @@ var (
 
 func init() {
 	singleLevelIterRowBlockPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			i := &singleLevelIteratorRowBlocks{pool: &singleLevelIterRowBlockPool}
 			if invariants.UseFinalizers {
 				invariants.SetFinalizer(i, checkSingleLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
@@ -168,7 +168,7 @@ func init() {
 		},
 	}
 	twoLevelIterRowBlockPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			i := &twoLevelIteratorRowBlocks{pool: &twoLevelIterRowBlockPool}
 			if invariants.UseFinalizers {
 				invariants.SetFinalizer(i, checkTwoLevelIterator[rowblk.IndexIter, *rowblk.IndexIter, rowblk.Iter, *rowblk.Iter])
@@ -177,7 +177,7 @@ func init() {
 		},
 	}
 	singleLevelIterColumnBlockPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			i := &singleLevelIteratorColumnBlocks{
 				pool: &singleLevelIterColumnBlockPool,
 			}
@@ -188,7 +188,7 @@ func init() {
 		},
 	}
 	twoLevelIterColumnBlockPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			i := &twoLevelIteratorColumnBlocks{
 				pool: &twoLevelIterColumnBlockPool,
 			}
@@ -201,7 +201,7 @@ func init() {
 }
 
 func checkSingleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]](
-	obj interface{},
+	obj any,
 ) {
 	i := obj.(*singleLevelIterator[I, PI, D, PD])
 	if h := PD(&i.data).Handle(); h.Valid() {
@@ -215,7 +215,7 @@ func checkSingleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlo
 }
 
 func checkTwoLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]](
-	obj interface{},
+	obj any,
 ) {
 	i := obj.(*twoLevelIterator[I, PI, D, PD])
 	if h := PD(&i.secondLevel.data).Handle(); h.Valid() {

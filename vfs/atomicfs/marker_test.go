@@ -42,7 +42,7 @@ func TestMarker_FilenameRoundtrip(t *testing.T) {
 }
 
 func TestMarker_Parsefilename(t *testing.T) {
-	testCases := map[string]func(require.TestingT, error, ...interface{}){
+	testCases := map[string]func(require.TestingT, error, ...any){
 		"marker.current.000003.MANIFEST-000021":  require.NoError,
 		"marker.current.10.MANIFEST-000021":      require.NoError,
 		"marker.v.10.1.2.3.4":                    require.NoError,

@@ -178,7 +178,7 @@ func (c Cursor) SetColumn(col int) Cursor {
 
 // Printf writes the formatted string to cursor, returning a cursor where the
 // written text ends.
-func (c Cursor) Printf(format string, args ...interface{}) Cursor {
+func (c Cursor) Printf(format string, args ...any) Cursor {
 	return c.WriteString(fmt.Sprintf(format, args...))
 }
 

@@ -110,7 +110,7 @@ type memTableOptions struct {
 	releaseAccountingReservation func()
 }
 
-func checkMemTable(obj interface{}) {
+func checkMemTable(obj any) {
 	m := obj.(*memTable)
 	if m.arenaBuf.Data() != nil {
 		fmt.Fprintf(os.Stderr, "%v: memTable buffer was not freed\n", m.arenaBuf)

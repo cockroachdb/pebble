@@ -49,7 +49,7 @@ func ensureInitialized() {
 }
 
 var builderPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		// Preallocate enough size to avoid allocations while ramping up.
 		b := &builder{
 			hashes: make([]uint64, maxSizeForPool),

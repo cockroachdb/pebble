@@ -74,7 +74,7 @@ type Iterator struct {
 var _ base.InternalIterator = (*Iterator)(nil)
 
 var iterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &Iterator{}
 	},
 }

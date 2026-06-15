@@ -53,7 +53,7 @@ func newFileReadable(
 	}
 	if invariants.UseFinalizers {
 		stack := debug.Stack()
-		invariants.SetFinalizer(r, func(obj interface{}) {
+		invariants.SetFinalizer(r, func(obj any) {
 			if obj.(*fileReadable).file != nil {
 				fmt.Fprintf(os.Stderr, "Readable %s was not closed\n%s", filename, stack)
 				os.Exit(1)
@@ -107,10 +107,10 @@ type vfsReadHandle struct {
 var _ objstorage.ReadHandle = (*vfsReadHandle)(nil)
 
 var readHandlePool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		i := &vfsReadHandle{}
 		if invariants.UseFinalizers {
-			invariants.SetFinalizer(i, func(obj interface{}) {
+			invariants.SetFinalizer(i, func(obj any) {
 				if obj.(*vfsReadHandle).r != nil {
 					fmt.Fprintf(os.Stderr, "ReadHandle was not closed")
 					os.Exit(1)

@@ -514,7 +514,7 @@ func (r *Reader) doRead(
 	}
 	readDuration := readStopwatch.Stop()
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
-	// interface{}, unless necessary.
+	// any, unless necessary.
 	if (readDuration+waitBeforeReadDuration) >= base.SlowReadTracingThreshold &&
 		r.opts.LoggerAndTracer.IsTracingEnabled(ctx) {
 		_, file1, line1, _ := runtime.Caller(1)
@@ -636,7 +636,7 @@ func ReadRaw(
 	}
 	readDuration := readStopwatch.Stop()
 	// Call IsTracingEnabled to avoid the allocations of boxing integers into an
-	// interface{}, unless necessary.
+	// any, unless necessary.
 	if readDuration >= base.SlowReadTracingThreshold && logger.IsTracingEnabled(ctx) {
 		logger.Eventf(ctx, "reading footer of %d bytes took %v",
 			len(buf), readDuration)

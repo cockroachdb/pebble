@@ -182,7 +182,7 @@ func entryAllocNew() *entry {
 		// We want to allocate each entry independently to check that it has been
 		// properly cleaned up.
 		e := &entry{}
-		invariants.SetFinalizer(e, func(obj interface{}) {
+		invariants.SetFinalizer(e, func(obj any) {
 			e := obj.(*entry)
 			if *e != (entry{}) {
 				fmt.Fprintf(os.Stderr, "%p: entry was not freed", e)
@@ -209,7 +209,7 @@ func entryAllocFree(e *entry) {
 }
 
 var entryAllocPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return newEntryAllocCache()
 	},
 }
@@ -236,7 +236,7 @@ func newEntryAllocCache() *entryAllocCache {
 	return c
 }
 
-func freeEntryAllocCache(obj interface{}) {
+func freeEntryAllocCache(obj any) {
 	c := obj.(*entryAllocCache)
 	for i, e := range c.entries {
 		c.dealloc(e)

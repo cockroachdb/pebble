@@ -25,8 +25,8 @@ import (
 // without a direct dependency on the testing package.
 type TB interface {
 	Helper()
-	Logf(format string, args ...interface{})
-	Fatalf(format string, args ...interface{})
+	Logf(format string, args ...any)
+	Fatalf(format string, args ...any)
 	Failed() bool
 }
 

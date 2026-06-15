@@ -1587,7 +1587,7 @@ func runIngestExternalCmd(
 ) error {
 	var external []ExternalFile
 	for line := range crstrings.LinesSeq(td.Input) {
-		usageErr := func(info interface{}) {
+		usageErr := func(info any) {
 			t.Helper()
 			td.Fatalf(t, "error parsing %q: %v; "+
 				"usage: obj bounds=(smallest,largest) [size=x] [synthetic-prefix=prefix] [synthetic-suffix=suffix] [no-point-keys] [has-range-keys]",

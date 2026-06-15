@@ -333,17 +333,17 @@ type redactLogger struct {
 }
 
 // Infof implements the Logger.Infof interface.
-func (l redactLogger) Infof(format string, args ...interface{}) {
+func (l redactLogger) Infof(format string, args ...any) {
 	l.logger.Infof("%s", redact.Sprintf(format, args...).Redact())
 }
 
 // Errorf implements the Logger.Errorf interface.
-func (l redactLogger) Errorf(format string, args ...interface{}) {
+func (l redactLogger) Errorf(format string, args ...any) {
 	l.logger.Errorf("%s", redact.Sprintf(format, args...).Redact())
 }
 
 // Fatalf implements the Logger.Fatalf interface.
-func (l redactLogger) Fatalf(format string, args ...interface{}) {
+func (l redactLogger) Fatalf(format string, args ...any) {
 	l.logger.Fatalf("%s", redact.Sprintf(format, args...).Redact())
 }
 
@@ -376,24 +376,24 @@ func TestMakeLoggingEventListenerSetsAllCallbacks(t *testing.T) {
 }
 
 type mockLogger struct {
-	infoFunc  func(format string, args ...interface{})
-	errorFunc func(format string, args ...interface{})
-	fatalFunc func(format string, args ...interface{})
+	infoFunc  func(format string, args ...any)
+	errorFunc func(format string, args ...any)
+	fatalFunc func(format string, args ...any)
 }
 
-func (l *mockLogger) Infof(format string, args ...interface{}) {
+func (l *mockLogger) Infof(format string, args ...any) {
 	if l.infoFunc != nil {
 		l.infoFunc(format, args...)
 	}
 }
 
-func (l *mockLogger) Errorf(format string, args ...interface{}) {
+func (l *mockLogger) Errorf(format string, args ...any) {
 	if l.errorFunc != nil {
 		l.errorFunc(format, args...)
 	}
 }
 
-func (l *mockLogger) Fatalf(format string, args ...interface{}) {
+func (l *mockLogger) Fatalf(format string, args ...any) {
 	if l.fatalFunc != nil {
 		l.fatalFunc(format, args...)
 	}
@@ -402,13 +402,13 @@ func (l *mockLogger) Fatalf(format string, args ...interface{}) {
 func newCountingMockLogger(t *testing.T) (*mockLogger, *int, *int) {
 	var infoCount, errorCount int
 	return &mockLogger{
-		infoFunc: func(format string, args ...interface{}) {
+		infoFunc: func(format string, args ...any) {
 			infoCount++
 		},
-		errorFunc: func(format string, args ...interface{}) {
+		errorFunc: func(format string, args ...any) {
 			errorCount++
 		},
-		fatalFunc: func(format string, args ...interface{}) {
+		fatalFunc: func(format string, args ...any) {
 			t.Fatal("Unexpected call to Fatalf")
 		},
 	}, &infoCount, &errorCount

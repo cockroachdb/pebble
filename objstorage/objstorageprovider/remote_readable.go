@@ -174,7 +174,7 @@ type remoteReadHandle struct {
 var _ objstorage.ReadHandle = (*remoteReadHandle)(nil)
 
 var remoteReadHandlePool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &remoteReadHandle{}
 	},
 }

@@ -23,7 +23,7 @@ type methodInfo struct {
 	validTags   uint32
 }
 
-func makeMethod(i interface{}, tags ...objTag) *methodInfo {
+func makeMethod(i any, tags ...objTag) *methodInfo {
 	var validTags uint32
 	for _, tag := range tags {
 		validTags |= 1 << tag
@@ -46,92 +46,92 @@ func makeMethod(i interface{}, tags ...objTag) *methodInfo {
 // The argument list returns pointers to operation fields that map to arguments
 // for the operation. The last argument can be a pointer to a slice,
 // corresponding to a variable number of arguments.
-func opArgs(op op) (receiverID *objID, targetID *objID, args []interface{}) {
+func opArgs(op op) (receiverID *objID, targetID *objID, args []any) {
 	switch t := op.(type) {
 	case *applyOp:
-		return &t.writerID, nil, []interface{}{&t.batchID}
+		return &t.writerID, nil, []any{&t.batchID}
 	case *checkpointOp:
-		return &t.dbID, nil, []interface{}{&t.spans}
+		return &t.dbID, nil, []any{&t.spans}
 	case *closeOp:
 		return &t.objID, nil, nil
 	case *compactOp:
-		return &t.dbID, nil, []interface{}{&t.start, &t.end, &t.parallelize}
+		return &t.dbID, nil, []any{&t.start, &t.end, &t.parallelize}
 	case *batchCommitOp:
 		return &t.batchID, nil, nil
 	case *dbRatchetFormatMajorVersionOp:
-		return &t.dbID, nil, []interface{}{&t.vers}
+		return &t.dbID, nil, []any{&t.vers}
 	case *dbRestartOp:
 		return &t.dbID, nil, nil
 	case *deleteOp:
-		return &t.writerID, nil, []interface{}{&t.key}
+		return &t.writerID, nil, []any{&t.key}
 	case *deleteRangeOp:
-		return &t.writerID, nil, []interface{}{&t.start, &t.end}
+		return &t.writerID, nil, []any{&t.start, &t.end}
 	case *downloadOp:
-		return &t.dbID, nil, []interface{}{&t.spans}
+		return &t.dbID, nil, []any{&t.spans}
 	case *iterFirstOp:
 		return &t.iterID, nil, nil
 	case *flushOp:
 		return &t.db, nil, nil
 	case *getOp:
-		return &t.readerID, nil, []interface{}{&t.key}
+		return &t.readerID, nil, []any{&t.key}
 	case *ingestOp:
-		return &t.dbID, nil, []interface{}{&t.batchIDs}
+		return &t.dbID, nil, []any{&t.batchIDs}
 	case *ingestAndExciseOp:
-		return &t.dbID, nil, []interface{}{&t.batchID, &t.exciseStart, &t.exciseEnd, ignoreExtraArgs{}}
+		return &t.dbID, nil, []any{&t.batchID, &t.exciseStart, &t.exciseEnd, ignoreExtraArgs{}}
 	case *ingestExternalFilesOp:
-		return &t.dbID, nil, []interface{}{&t.objs}
+		return &t.dbID, nil, []any{&t.objs}
 	case *initOp:
-		return nil, nil, []interface{}{&t.dbSlots, &t.batchSlots, &t.iterSlots, &t.snapshotSlots, &t.externalObjSlots}
+		return nil, nil, []any{&t.dbSlots, &t.batchSlots, &t.iterSlots, &t.snapshotSlots, &t.externalObjSlots}
 	case *iterLastOp:
 		return &t.iterID, nil, nil
 	case *logDataOp:
-		return &t.writerID, nil, []interface{}{&t.data}
+		return &t.writerID, nil, []any{&t.data}
 	case *mergeOp:
-		return &t.writerID, nil, []interface{}{&t.key, &t.value}
+		return &t.writerID, nil, []any{&t.key, &t.value}
 	case *newBatchOp:
 		return &t.dbID, &t.batchID, nil
 	case *newIndexedBatchOp:
 		return &t.dbID, &t.batchID, nil
 	case *newIterOp:
-		return &t.readerID, &t.iterID, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
+		return &t.readerID, &t.iterID, []any{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
 	case *newIterUsingCloneOp:
-		return &t.existingIterID, &t.iterID, []interface{}{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
+		return &t.existingIterID, &t.iterID, []any{&t.refreshBatch, &t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
 	case *newSnapshotOp:
-		return &t.dbID, &t.snapID, []interface{}{&t.bounds}
+		return &t.dbID, &t.snapID, []any{&t.bounds}
 	case *newExternalObjOp:
 		return &t.batchID, &t.externalObjID, nil
 	case *iterNextOp:
-		return &t.iterID, nil, []interface{}{&t.limit}
+		return &t.iterID, nil, []any{&t.limit}
 	case *iterNextPrefixOp:
 		return &t.iterID, nil, nil
 	case *iterCanSingleDelOp:
-		return &t.iterID, nil, []interface{}{}
+		return &t.iterID, nil, []any{}
 	case *iterPrevOp:
-		return &t.iterID, nil, []interface{}{&t.limit}
+		return &t.iterID, nil, []any{&t.limit}
 	case *iterSeekLTOp:
-		return &t.iterID, nil, []interface{}{&t.key, &t.limit}
+		return &t.iterID, nil, []any{&t.key, &t.limit}
 	case *iterSeekGEOp:
-		return &t.iterID, nil, []interface{}{&t.key, &t.limit}
+		return &t.iterID, nil, []any{&t.key, &t.limit}
 	case *iterSeekPrefixGEOp:
-		return &t.iterID, nil, []interface{}{&t.key}
+		return &t.iterID, nil, []any{&t.key}
 	case *setOp:
-		return &t.writerID, nil, []interface{}{&t.key, &t.value}
+		return &t.writerID, nil, []any{&t.key, &t.value}
 	case *iterSetBoundsOp:
-		return &t.iterID, nil, []interface{}{&t.lower, &t.upper}
+		return &t.iterID, nil, []any{&t.lower, &t.upper}
 	case *iterSetOptionsOp:
-		return &t.iterID, nil, []interface{}{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
+		return &t.iterID, nil, []any{&t.lower, &t.upper, &t.keyTypes, &t.filterMax, &t.filterMin, &t.useL6Filters, &t.maskSuffix, &t.flags}
 	case *singleDeleteOp:
-		return &t.writerID, nil, []interface{}{&t.key, &t.maybeReplaceDelete}
+		return &t.writerID, nil, []any{&t.key, &t.maybeReplaceDelete}
 	case *rangeKeyDeleteOp:
-		return &t.writerID, nil, []interface{}{&t.start, &t.end}
+		return &t.writerID, nil, []any{&t.start, &t.end}
 	case *rangeKeySetOp:
-		return &t.writerID, nil, []interface{}{&t.start, &t.end, &t.suffix, &t.value}
+		return &t.writerID, nil, []any{&t.start, &t.end, &t.suffix, &t.value}
 	case *rangeKeyUnsetOp:
-		return &t.writerID, nil, []interface{}{&t.start, &t.end, &t.suffix}
+		return &t.writerID, nil, []any{&t.start, &t.end, &t.suffix}
 	case *replicateOp:
-		return &t.source, nil, []interface{}{&t.dest, &t.start, &t.end}
+		return &t.source, nil, []any{&t.dest, &t.start, &t.end}
 	case *estimateDiskUsageOp:
-		return &t.dbID, nil, []interface{}{&t.start, &t.end}
+		return &t.dbID, nil, []any{&t.start, &t.end}
 	}
 	panic(errors.AssertionFailedf("unsupported op type: %T", op))
 }
@@ -330,12 +330,12 @@ func unquoteBytes(lit string) []byte {
 	return []byte(s)
 }
 
-func (p *parser) parseArgs(op op, methodName string, args []interface{}) {
+func (p *parser) parseArgs(op op, methodName string, args []any) {
 	pos, list := p.parseList()
 	p.scanToken(token.SEMICOLON)
 
 	// The last argument can have variable length.
-	var varArg interface{}
+	var varArg any
 	if len(args) > 0 {
 		switch args[len(args)-1].(type) {
 		case *iterFlags, *[]objID, *[]pebble.KeyRange, *[]pebble.CheckpointSpan, *[]pebble.DownloadSpan, *[]externalObjWithBounds, ignoreExtraArgs:
@@ -680,7 +680,7 @@ func (p *parser) tokenf(tok token.Token, lit string) string {
 	return tok.String()
 }
 
-func (p *parser) errorf(pos token.Pos, format string, args ...interface{}) error {
+func (p *parser) errorf(pos token.Pos, format string, args ...any) error {
 	return errors.New("metamorphic test internal error: " + p.fset.Position(pos).String() + ": " + fmt.Sprintf(format, args...))
 }
 

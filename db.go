@@ -1035,7 +1035,7 @@ func newIterAlloc() *iterAlloc {
 }
 
 var iterAllocPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &iterAlloc{}
 	},
 }
@@ -1068,7 +1068,7 @@ func newIterV2Alloc() *iterV2Alloc {
 }
 
 var iterV2AllocPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &iterV2Alloc{}
 	},
 }

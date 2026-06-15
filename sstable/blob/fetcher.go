@@ -58,7 +58,7 @@ func SuggestedCachedReaders(readAmp int) int {
 // retaining a recycled iterator's pool, because not all iterators need to
 // retrieve separated values.
 var cachedReaderPool sync.Pool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &cachedReaderSet{}
 	},
 }

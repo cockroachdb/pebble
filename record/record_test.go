@@ -903,7 +903,7 @@ func (l *readerLogger) getLog() string {
 	return l.builder.String()
 }
 
-func (l *readerLogger) logf(format string, args ...interface{}) {
+func (l *readerLogger) logf(format string, args ...any) {
 	fmt.Fprintf(&l.builder, format, args...)
 }
 

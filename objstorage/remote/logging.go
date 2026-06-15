@@ -13,7 +13,7 @@ import (
 
 // WithLogging wraps the given Storage implementation and emits logs for various
 // operations.
-func WithLogging(wrapped Storage, logf func(fmt string, args ...interface{})) Storage {
+func WithLogging(wrapped Storage, logf func(fmt string, args ...any)) Storage {
 	return &loggingStore{
 		logf:    logf,
 		wrapped: wrapped,
@@ -23,7 +23,7 @@ func WithLogging(wrapped Storage, logf func(fmt string, args ...interface{})) St
 // loggingStore wraps a remote.Storage implementation and emits logs of the
 // operations.
 type loggingStore struct {
-	logf    func(fmt string, args ...interface{})
+	logf    func(fmt string, args ...any)
 	wrapped Storage
 }
 
@@ -127,7 +127,7 @@ func (l *loggingStore) Size(objName string) (int64, error) {
 	return size, err
 }
 
-func errOrPrintf(err error, format string, args ...interface{}) string {
+func errOrPrintf(err error, format string, args ...any) string {
 	if err != nil {
 		return fmt.Sprintf("error: %v", err)
 	}

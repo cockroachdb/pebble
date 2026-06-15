@@ -173,11 +173,11 @@ func dataTypeFromName(name string) DataType {
 }
 
 // randBlock generates a random block of n rows with the provided schema. It
-// returns the serialized raw block and a []interface{} slice containing the
+// returns the serialized raw block and a []any slice containing the
 // generated data. The type of each element of the slice is dependent on the
 // corresponding column's type.
-func randBlock(rng *rand.Rand, rows int, schema []testColumnSpec) ([]byte, []interface{}) {
-	data := make([]interface{}, len(schema))
+func randBlock(rng *rand.Rand, rows int, schema []testColumnSpec) ([]byte, []any) {
+	data := make([]any, len(schema))
 	for col := range data {
 		switch schema[col].DataType {
 		case DataTypeBool:
@@ -219,7 +219,7 @@ func randBlock(rng *rand.Rand, rows int, schema []testColumnSpec) ([]byte, []int
 	return buf, data
 }
 
-func buildBlock(schema []testColumnSpec, rows int, data []interface{}) []byte {
+func buildBlock(schema []testColumnSpec, rows int, data []any) []byte {
 	cw := make([]ColumnWriter, len(schema))
 	for col := range schema {
 		switch schema[col].DataType {
@@ -289,7 +289,7 @@ func testRandomBlock(t *testing.T, rng *rand.Rand, rows int, schema []testColumn
 
 		for col := range data {
 			spec := schema[col]
-			var got interface{}
+			var got any
 			switch spec.DataType {
 			case DataTypeBool:
 				got = Clone(d.Bitmap(col), rows)

@@ -92,7 +92,7 @@ import (
 //     index block. It is included when AddPrevDataBlockToIndexBlock is called.
 //     An alternative would be to return an opaque handle from FinishDataBlock
 //     and pass it to a new AddToIndexBlock method, which requires more
-//     plumbing, and passing of an interface{} results in a undesirable heap
+//     plumbing, and passing of an any results in a undesirable heap
 //     allocation. AddPrevDataBlockToIndexBlock must be called before keys are
 //     added to the new data block.
 type BlockPropertyCollector interface {
@@ -668,7 +668,7 @@ type BlockPropertiesFilterer struct {
 }
 
 var blockPropertiesFiltererPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &BlockPropertiesFilterer{}
 	},
 }

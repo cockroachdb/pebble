@@ -90,7 +90,7 @@ func Interleave(
 }
 
 var interleavingIterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &interleavingIter{}
 	},
 }

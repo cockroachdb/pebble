@@ -957,7 +957,7 @@ func (f *memFileInfo) IsDir() bool {
 	return f.isDir
 }
 
-func (f *memFileInfo) Sys() interface{} {
+func (f *memFileInfo) Sys() any {
 	return nil
 }
 

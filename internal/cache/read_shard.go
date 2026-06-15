@@ -157,7 +157,7 @@ type readEntry struct {
 }
 
 var readEntryPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &readEntry{}
 	},
 }

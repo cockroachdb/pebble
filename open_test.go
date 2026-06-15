@@ -1889,7 +1889,7 @@ func TestMkdirAllAndSyncParents(t *testing.T) {
 			if p, ok := rootPaths[fsName]; ok {
 				t.Chdir(p)
 			}
-			fs := vfs.WithLogging(filesystems[fsName], func(format string, args ...interface{}) {
+			fs := vfs.WithLogging(filesystems[fsName], func(format string, args ...any) {
 				fmt.Fprintf(&buf, format+"\n", args...)
 			})
 			f, err := mkdirAllAndSyncParents(fs, path)

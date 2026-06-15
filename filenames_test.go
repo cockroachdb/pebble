@@ -101,15 +101,15 @@ type noFatalLogger struct {
 	t *testing.T
 }
 
-func (l noFatalLogger) Infof(format string, args ...interface{}) {
+func (l noFatalLogger) Infof(format string, args ...any) {
 	l.t.Logf(format, args...)
 }
 
-func (l noFatalLogger) Errorf(format string, args ...interface{}) {
+func (l noFatalLogger) Errorf(format string, args ...any) {
 	l.t.Logf(format, args...)
 }
 
-func (l noFatalLogger) Fatalf(format string, args ...interface{}) {
+func (l noFatalLogger) Fatalf(format string, args ...any) {
 	l.t.Logf(format, args...)
 }
 

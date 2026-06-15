@@ -7,7 +7,7 @@ package intern
 import "sync"
 
 var pool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return make(map[string]string)
 	},
 }

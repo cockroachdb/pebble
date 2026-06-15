@@ -27,7 +27,7 @@ const hashBlockLen = 16384
 type hashBlock [hashBlockLen]uint32
 
 var hashBlockPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &hashBlock{}
 	},
 }

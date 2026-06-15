@@ -12,7 +12,7 @@ import (
 // BatchSort is a hook for constructing iterators over the point and range
 // mutations contained in a batch in sorted order. It is intended for testing
 // use only.
-var BatchSort func(interface{}) (
+var BatchSort func(any) (
 	points base.InternalIterator,
 	rangeDels keyspan.FragmentIterator,
 	rangeKeys keyspan.FragmentIterator,

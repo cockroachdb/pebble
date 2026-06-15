@@ -81,7 +81,7 @@ type assertIter struct {
 
 var _ FragmentIterator = (*assertIter)(nil)
 
-func (i *assertIter) panicf(format string, args ...interface{}) {
+func (i *assertIter) panicf(format string, args ...any) {
 	str := fmt.Sprintf(format, args...)
 	panic(errors.AssertionFailedf("%s; wraps %T", str, i.iter))
 }

@@ -235,7 +235,7 @@ func (t *tree) addRow(level int, text string) (rowIdx int) {
 }
 
 // Childf adds a node as a child of the given node.
-func (n Node) Childf(format string, args ...interface{}) Node {
+func (n Node) Childf(format string, args ...any) Node {
 	return n.Child(fmt.Sprintf(format, args...))
 }
 

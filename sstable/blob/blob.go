@@ -184,7 +184,7 @@ func NewFileWriter(fn base.DiskFileNum, w objstorage.Writable, opts FileWriterOp
 }
 
 var writerPool = sync.Pool{
-	New: func() interface{} { return &FileWriter{} },
+	New: func() any { return &FileWriter{} },
 }
 
 // AddValue adds the provided value to the blob file, returning a Handle

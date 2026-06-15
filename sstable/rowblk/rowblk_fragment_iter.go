@@ -64,7 +64,7 @@ type fragmentIter struct {
 var _ keyspan.FragmentIterator = (*fragmentIter)(nil)
 
 var fragmentBlockIterPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		i := &fragmentIter{}
 		if invariants.UseFinalizers {
 			invariants.SetFinalizer(i, checkFragmentBlockIterator)
@@ -419,7 +419,7 @@ func (i *fragmentIter) TreeStepsNode() treesteps.NodeInfo {
 	return ni
 }
 
-func checkFragmentBlockIterator(obj interface{}) {
+func checkFragmentBlockIterator(obj any) {
 	i := obj.(*fragmentIter)
 	if h := i.blockIter.Handle(); h.Valid() {
 		fmt.Fprintf(os.Stderr, "fragmentBlockIter.blockIter.handle is not nil: %#v\n", h)

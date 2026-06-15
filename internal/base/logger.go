@@ -18,9 +18,9 @@ import (
 
 // Logger defines an interface for writing log messages.
 type Logger interface {
-	Infof(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
-	Fatalf(format string, args ...interface{})
+	Infof(format string, args ...any)
+	Errorf(format string, args ...any)
+	Fatalf(format string, args ...any)
 }
 type defaultLogger struct{}
 
@@ -30,17 +30,17 @@ var DefaultLogger defaultLogger
 var _ Logger = DefaultLogger
 
 // Infof implements the Logger.Infof interface.
-func (defaultLogger) Infof(format string, args ...interface{}) {
+func (defaultLogger) Infof(format string, args ...any) {
 	_ = log.Output(2, fmt.Sprintf(format, args...))
 }
 
 // Errorf implements the Logger.Errorf interface.
-func (defaultLogger) Errorf(format string, args ...interface{}) {
+func (defaultLogger) Errorf(format string, args ...any) {
 	_ = log.Output(2, fmt.Sprintf(format, args...))
 }
 
 // Fatalf implements the Logger.Fatalf interface.
-func (defaultLogger) Fatalf(format string, args ...interface{}) {
+func (defaultLogger) Fatalf(format string, args ...any) {
 	_ = log.Output(2, fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
@@ -71,7 +71,7 @@ func (b *InMemLogger) String() string {
 }
 
 // Infof is part of the Logger interface.
-func (b *InMemLogger) Infof(format string, args ...interface{}) {
+func (b *InMemLogger) Infof(format string, args ...any) {
 	s := fmt.Sprintf(format, args...)
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -82,12 +82,12 @@ func (b *InMemLogger) Infof(format string, args ...interface{}) {
 }
 
 // Errorf is part of the Logger interface.
-func (b *InMemLogger) Errorf(format string, args ...interface{}) {
+func (b *InMemLogger) Errorf(format string, args ...any) {
 	b.Infof(format, args...)
 }
 
 // Fatalf is part of the Logger interface.
-func (b *InMemLogger) Fatalf(format string, args ...interface{}) {
+func (b *InMemLogger) Fatalf(format string, args ...any) {
 	b.Infof("FATAL: "+format, args...)
 }
 
@@ -97,7 +97,7 @@ type LoggerAndTracer interface {
 	// Eventf formats and emits a tracing log, if tracing is enabled in the
 	// current context. It can also emit to a regular log, if expensive
 	// logging is enabled.
-	Eventf(ctx context.Context, format string, args ...interface{})
+	Eventf(ctx context.Context, format string, args ...any)
 	// IsTracingEnabled returns true if tracing is enabled for this context,
 	// or expensive logging is enabled. It can be used as an optimization to
 	// avoid calling Eventf (which will be a noop when tracing or expensive
@@ -113,7 +113,7 @@ type LoggerWithNoopTracer struct {
 var _ LoggerAndTracer = &LoggerWithNoopTracer{}
 
 // Eventf implements LoggerAndTracer.
-func (*LoggerWithNoopTracer) Eventf(ctx context.Context, format string, args ...interface{}) {
+func (*LoggerWithNoopTracer) Eventf(ctx context.Context, format string, args ...any) {
 	if invariants.Enabled && ctx == nil {
 		panic(errors.AssertionFailedf("Eventf context is nil"))
 	}
@@ -135,16 +135,16 @@ type NoopLoggerAndTracer struct{}
 var _ LoggerAndTracer = NoopLoggerAndTracer{}
 
 // Infof implements LoggerAndTracer.
-func (l NoopLoggerAndTracer) Infof(format string, args ...interface{}) {}
+func (l NoopLoggerAndTracer) Infof(format string, args ...any) {}
 
 // Errorf implements LoggerAndTracer.
-func (l NoopLoggerAndTracer) Errorf(format string, args ...interface{}) {}
+func (l NoopLoggerAndTracer) Errorf(format string, args ...any) {}
 
 // Fatalf implements LoggerAndTracer.
-func (l NoopLoggerAndTracer) Fatalf(format string, args ...interface{}) {}
+func (l NoopLoggerAndTracer) Fatalf(format string, args ...any) {}
 
 // Eventf implements LoggerAndTracer.
-func (l NoopLoggerAndTracer) Eventf(ctx context.Context, format string, args ...interface{}) {
+func (l NoopLoggerAndTracer) Eventf(ctx context.Context, format string, args ...any) {
 	if invariants.Enabled && ctx == nil {
 		panic(errors.AssertionFailedf("Eventf context is nil"))
 	}

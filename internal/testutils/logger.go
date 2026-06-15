@@ -11,15 +11,15 @@ type Logger struct {
 	T testing.TB
 }
 
-func (l Logger) Infof(format string, args ...interface{}) {
+func (l Logger) Infof(format string, args ...any) {
 	l.T.Logf(format, args...)
 }
 
-func (l Logger) Errorf(format string, args ...interface{}) {
+func (l Logger) Errorf(format string, args ...any) {
 	l.T.Logf(format, args...)
 }
 
-func (l Logger) Fatalf(format string, args ...interface{}) {
+func (l Logger) Fatalf(format string, args ...any) {
 	l.T.Helper()
 	l.T.Fatalf(format, args...)
 }

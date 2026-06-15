@@ -219,7 +219,7 @@ func (e *fsEnv) removeAllFiles(filepath string) {
 	}
 }
 
-func (e *fsEnv) verbosef(fmtstr string, args ...interface{}) {
+func (e *fsEnv) verbosef(fmtstr string, args ...any) {
 	if e.verbose {
 		fmt.Printf(fmtstr, args...)
 	}

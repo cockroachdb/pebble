@@ -112,7 +112,7 @@ type bufferFataler struct {
 	buf bytes.Buffer
 }
 
-func (b *bufferFataler) Fatalf(msg string, args ...interface{}) {
+func (b *bufferFataler) Fatalf(msg string, args ...any) {
 	fmt.Fprintf(&b.buf, msg, args...)
 }
 

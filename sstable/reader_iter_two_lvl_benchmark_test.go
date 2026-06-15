@@ -409,7 +409,7 @@ func BenchmarkTwoLevelLazyLoadingIteratorReuse(b *testing.B) {
 
 	// Create a pool for testing reuse
 	var pool sync.Pool
-	pool.New = func() interface{} {
+	pool.New = func() any {
 		return &twoLevelIteratorRowBlocks{pool: &pool}
 	}
 

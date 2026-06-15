@@ -36,10 +36,10 @@ import (
 func TestProvider(t *testing.T) {
 	datadriven.Walk(t, "testdata/provider", func(t *testing.T, path string) {
 		var log base.InMemLogger
-		fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...interface{}) {
+		fs := vfs.WithLogging(vfs.NewMem(), func(fmt string, args ...any) {
 			log.Infof("<local fs> "+fmt, args...)
 		})
-		sharedStore := remote.WithLogging(remote.NewInMem(), func(fmt string, args ...interface{}) {
+		sharedStore := remote.WithLogging(remote.NewInMem(), func(fmt string, args ...any) {
 			log.Infof("<remote> "+fmt, args...)
 		})
 		sharedFactory := remote.MakeSimpleFactory(map[remote.Locator]remote.Storage{

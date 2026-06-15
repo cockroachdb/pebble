@@ -20,7 +20,7 @@ func WithLogging(fs FS, logFn LogFn) FS {
 }
 
 // LogFn is a function that is used to capture a log when WithLogging is used.
-type LogFn func(fmt string, args ...interface{})
+type LogFn func(fmt string, args ...any)
 
 type loggingFS struct {
 	FS

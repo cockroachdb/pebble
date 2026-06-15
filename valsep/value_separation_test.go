@@ -37,7 +37,7 @@ func TestValueSeparationPolicy(t *testing.T) {
 		// the test. When testing a value separation policy that writes new blob
 		// files, this demonstrates the creation of new blob files and that
 		// they're created lazily, the first time a value is actually separated.
-		fs = vfs.WithLogging(vfs.NewMem(), func(format string, args ...interface{}) {
+		fs = vfs.WithLogging(vfs.NewMem(), func(format string, args ...any) {
 			fmt.Fprint(&buf, "# ")
 			fmt.Fprintf(&buf, format, args...)
 			fmt.Fprintln(&buf)

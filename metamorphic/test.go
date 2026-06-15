@@ -410,14 +410,14 @@ func (t *Test) saveInMemoryData() {
 // Step may be used instead of Execute to advance a test one operation at a
 // time.
 func (t *Test) Step() (more bool, operationOutput string, err error) {
-	more = t.step(t.h, func(format string, args ...interface{}) {
+	more = t.step(t.h, func(format string, args ...any) {
 		operationOutput = fmt.Sprintf(format, args...)
 	})
 	err = t.h.Error()
 	return more, operationOutput, err
 }
 
-func (t *Test) step(h *history, optionalRecordf func(string, ...interface{})) bool {
+func (t *Test) step(h *history, optionalRecordf func(string, ...any)) bool {
 	if t.idx >= len(t.ops) {
 		return false
 	}

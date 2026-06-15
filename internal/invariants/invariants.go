@@ -37,7 +37,7 @@ const UseFinalizers = !buildtags.Race && (buildtags.Invariants || buildtags.Trac
 // This function is a no-op if UseFinalizers is false and it should inline to
 // nothing. However, note that it might not inline so in very hot paths it's
 // best to check UseFinalizers first.
-func SetFinalizer(obj, finalizer interface{}) {
+func SetFinalizer(obj, finalizer any) {
 	if UseFinalizers {
 		runtime.SetFinalizer(obj, finalizer)
 	}

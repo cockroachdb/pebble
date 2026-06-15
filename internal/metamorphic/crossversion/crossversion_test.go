@@ -399,7 +399,7 @@ func saveDirs(t testing.TB, d dirsToSave) {
 	}
 }
 
-func fatalf(t testing.TB, fatalOnce *sync.Once, dirs dirsToSave, msg string, args ...interface{}) {
+func fatalf(t testing.TB, fatalOnce *sync.Once, dirs dirsToSave, msg string, args ...any) {
 	fatalOnce.Do(func() {
 		saveDirs(t, dirs)
 		t.Fatalf(msg, args...)

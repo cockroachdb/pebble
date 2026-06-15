@@ -65,7 +65,7 @@ func Alloc(n int) *Value {
 		v.ref.init(1)
 		// Note: this is a no-op if invariants and tracing are disabled or race is
 		// enabled.
-		invariants.SetFinalizer(v, func(obj interface{}) {
+		invariants.SetFinalizer(v, func(obj any) {
 			v := obj.(*Value)
 			if v.buf != nil {
 				fmt.Fprintf(os.Stderr, "%p: cache value was not freed: refs=%d\n%s",

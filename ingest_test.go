@@ -1009,7 +1009,7 @@ func TestOverlappingIngestedSSTs(t *testing.T) {
 
 		require.NoError(t, mem.MkdirAll("ext", 0755))
 		opts = &Options{
-			FS: vfs.WithLogging(mem, func(format string, args ...interface{}) {
+			FS: vfs.WithLogging(mem, func(format string, args ...any) {
 				fsLog.Lock()
 				defer fsLog.Unlock()
 				fmt.Fprintf(&fsLog.buf, format+"\n", args...)
@@ -3428,17 +3428,17 @@ type fatalCapturingLogger struct {
 }
 
 // Infof implements the Logger interface.
-func (l *fatalCapturingLogger) Infof(fmt string, args ...interface{}) {
+func (l *fatalCapturingLogger) Infof(fmt string, args ...any) {
 	l.t.Logf(fmt, args...)
 }
 
 // Errorf implements the Logger interface.
-func (l *fatalCapturingLogger) Errorf(fmt string, args ...interface{}) {
+func (l *fatalCapturingLogger) Errorf(fmt string, args ...any) {
 	l.t.Logf(fmt, args...)
 }
 
 // Fatalf implements the Logger interface.
-func (l *fatalCapturingLogger) Fatalf(_ string, args ...interface{}) {
+func (l *fatalCapturingLogger) Fatalf(_ string, args ...any) {
 	l.err = args[0].(error)
 }
 
