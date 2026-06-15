@@ -146,16 +146,14 @@ func (i LevelInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		blobInfo = redact.SafeString(fmt.Sprintf(" blob%s [%s] (%s)",
 			pluralBlob, formatBlobFileNums(i.Blobs), humanize.Bytes.Uint64(blobsTotalSize(i.Blobs))))
 	}
-	sizeStr := redact.Safe(humanize.Bytes.Uint64(tablesTotalSize(i.Tables)))
+	sizeStr := humanize.Bytes.Uint64(tablesTotalSize(i.Tables)).String()
 	if refSize := tablesTotalReferenceSize(i.Tables); refSize > 0 {
-		sizeStr = redact.Safe(fmt.Sprintf("%s + %s",
-			humanize.Bytes.Uint64(tablesTotalSize(i.Tables)),
-			humanize.Bytes.Uint64(refSize)))
+		sizeStr = fmt.Sprintf("%s + %s", sizeStr, humanize.Bytes.Uint64(refSize))
 	}
 	w.Printf("L%d [%s] (%s)%s Score=%.2f",
 		redact.Safe(i.Level),
 		redact.Safe(formatFileNums(i.Tables)),
-		sizeStr,
+		redact.Safe(sizeStr),
 		blobInfo,
 		redact.Safe(i.Score))
 }
