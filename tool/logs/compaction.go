@@ -77,8 +77,8 @@ var (
 
 			/* Start / end level */
 			`(?P<levels>L(?P<from>\d).*?(?:.*(?:\+|->)\sL(?P<to>\d))?` +
-			/* Bytes             */
-			`(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\))` +
+			/* Bytes (optionally "table + blob references", e.g. "(4.0KB + 1.2MB)") */
+			`(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B)( \+ [0-9.]+( [BKMGTPE]|[KMGTPE]?B))*)\))` +
 			/* Score */
 			`?(\s*(Score=\d+(\.\d+)))?)`,
 	)
@@ -338,7 +338,7 @@ func parseCompactionEnd(matches []string) (compactionEnd, error) {
 
 	// Optionally, if we have compacted bytes.
 	if matches[compactionPatternBytesIdx] != "" {
-		end.writtenBytes = unHumanize(matches[compactionPatternBytesIdx])
+		end.writtenBytes = unHumanizeSum(matches[compactionPatternBytesIdx])
 	}
 
 	return end, nil
@@ -1361,6 +1361,17 @@ func unHumanize(s string) uint64 {
 	return uint64(val * float64(multiplier))
 }
 
+// unHumanizeSum parses a parenthesized size value, which may be a single size
+// (e.g. "4.0KB") or a sum of a table size and its blob reference size (e.g.
+// "4.0KB + 1.2MB"), returning the total number of bytes.
+func unHumanizeSum(s string) uint64 {
+	var total uint64
+	for _, part := range strings.Split(s, "+") {
+		total += unHumanize(strings.TrimSpace(part))
+	}
+	return total
+}
+
 // sumInputBytes takes a string as input and returns the sum of the
 // human-readable sizes, as an integer number of bytes.
 func sumInputBytes(s string) (total uint64, _ error) {
@@ -1373,7 +1384,7 @@ func sumInputBytes(s string) (total uint64, _ error) {
 		case '(':
 			open = true
 		case ')':
-			total += unHumanize(b.String())
+			total += unHumanizeSum(b.String())
 			b.Reset()
 			open = false
 		default:
