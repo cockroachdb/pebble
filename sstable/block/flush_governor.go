@@ -110,6 +110,14 @@ func (fg *FlushGovernor) LowWatermark() int {
 	return fg.lowWatermark
 }
 
+// HighWatermark returns the size at or above which a block will always be
+// flushed before another KV is added to it. A value whose own size is at least
+// the high watermark fills a block on its own, so its block can be flushed
+// immediately rather than waiting for the next KV.
+func (fg *FlushGovernor) HighWatermark() int {
+	return fg.highWatermark
+}
+
 // ShouldFlush returns true if we should flush the current block of sizeBefore
 // instead of adding another KV that would increase the block to sizeAfter.
 func (fg *FlushGovernor) ShouldFlush(sizeBefore int, sizeAfter int) bool {

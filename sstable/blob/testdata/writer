@@ -135,6 +135,40 @@ PropsHandle: (348, 49)
 Properties:
   compression_stats: None:318
 
+# A value at least the high watermark (target block size) fills a block on its
+# own and is flushed immediately, instead of lingering in the pending
+# (uncompressed) block until the next AddValue. The estimated size reported right
+# after the large (compressible) value reflects its compressed block size; if the
+# value were left pending uncompressed, the estimate would instead jump by its
+# full uncompressed length.
+
+build target-block-size=64 block-size-threshold=90 compression=snappy estimated-size
+apple
+orange
+blueberry
+tangerine
+pomegranate
+watermelon
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+fig
+plum
+----
+(B000001,blk0,id0,len5)  : "apple"  (estimated size: 73)
+(B000001,blk0,id1,len6)  : "orange"  (estimated size: 80)
+(B000001,blk0,id2,len9)  : "blueberry"  (estimated size: 90)
+(B000001,blk0,id3,len9)  : "tangerine"  (estimated size: 100)
+(B000001,blk0,id4,len11) : "pomegranate"  (estimated size: 112)
+(B000001,blk1,id0,len10) : "watermelon"  (estimated size: 147)
+(B000001,blk1,id1,len82) : "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  (estimated size: 167)
+(B000001,blk2,id0,len3)  : "fig"  (estimated size: 186)
+(B000001,blk2,id1,len4)  : "plum"  (estimated size: 191)
+Stats:
+  BlockCount: 3
+  ValueCount: 9
+  UncompressedValueBytes: 139B
+  FileLen: 206B
+Compression counters: value: 0B  other: 0B
+
 # Build a sparse table containing a subset of the previous block's values.
 
 build-sparse
