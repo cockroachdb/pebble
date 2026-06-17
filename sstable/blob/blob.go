@@ -201,12 +201,24 @@ func (w *FileWriter) AddValue(v []byte, isLikelyMVCCGarbage bool) Handle {
 		w.stats.MVCCGarbageBytes += uint64(len(v))
 	}
 	w.valuesEncoder.AddValue(v)
-	return Handle{
+	h := Handle{
 		BlobFileID: base.BlobFileID(w.fileNum),
 		ValueLen:   uint32(len(v)),
 		BlockID:    BlockID(w.stats.BlockCount),
 		ValueID:    BlockValueID(valuesInBlock),
 	}
+	// If the value fills a block on its own, flush it now instead of carrying it
+	// in the pending (uncompressed) block. Otherwise EstimatedSize would account
+	// for this value at its uncompressed size until the next AddValue triggers a
+	// flush, overestimating the file size (and causing premature output splits in
+	// compactions/flushes). We use len(v) rather than valuesEncoder.size() to
+	// avoid recomputing the block size on every call; a small unfinished block is
+	// negligible for the estimate. Note h must be captured before flush(), which
+	// increments BlockCount.
+	if len(v) >= w.flushGov.HighWatermark() {
+		w.flush()
+	}
+	return h
 }
 
 // beginNewVirtualBlock adds a virtual block mapping to the current physical

@@ -29,11 +29,18 @@ func TestBlobWriter(t *testing.T) {
 		switch td.Cmd {
 		case "build":
 			opts := scanFileWriterOptions(t, td)
+			// If estimated-size is set, print the writer's EstimatedSize after each
+			// added value.
+			showEstimatedSize := td.HasArg("estimated-size")
 			obj = &objstorage.MemObj{}
 			w := NewFileWriter(000001, obj, opts)
 			for _, l := range crstrings.Lines(td.Input) {
 				h := w.AddValue([]byte(l), false /* isLikelyMVCCGarbage */)
-				fmt.Fprintf(&buf, "%-25s: %q\n", h, l)
+				fmt.Fprintf(&buf, "%-25s: %q", h, l)
+				if showEstimatedSize {
+					fmt.Fprintf(&buf, "  (estimated size: %d)", w.EstimatedSize())
+				}
+				buf.WriteByte('\n')
 			}
 			stats, err := w.Close()
 			if err != nil {
