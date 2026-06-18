@@ -47,7 +47,20 @@ func TestIterHistories(t *testing.T) {
 		parser := itertest.NewParser()
 		newIter := func(name string, reader Reader, o *IterOptions) *Iterator {
 			it, _ := reader.NewIter(o)
-			iters[name] = it
+			// These tests assert deterministic optimization behavior across
+			// SetOptions/seek calls; opt out of invariant-only randomization that
+			// suppresses seek-using-next or forces SetOptions reconstruction. The
+			// merging iterator has its own seek-using-next randomization, so it
+			// must be opted out as well.
+			it.forceEnableSeekOpt = true
+			if it.merging != nil {
+				it.merging.forceEnableSeekOpt = true
+			}
+			// Only track named iterators; unnamed ones are closed inline by
+			// runIterCmd and would otherwise be double-closed by cleanup.
+			if name != "" {
+				iters[name] = it
+			}
 			return it
 		}
 		var opts *Options
@@ -338,6 +351,17 @@ func TestIterHistories(t *testing.T) {
 						o.LowerBound = []byte(arg.Vals[0])
 					case "upper":
 						o.UpperBound = []byte(arg.Vals[0])
+					case "key-types":
+						switch arg.Vals[0] {
+						case "point":
+							o.KeyTypes = IterKeyTypePointsOnly
+						case "range":
+							o.KeyTypes = IterKeyTypeRangesOnly
+						case "both":
+							o.KeyTypes = IterKeyTypePointsAndRanges
+						default:
+							return fmt.Sprintf("unknown key-type %q", arg.Vals[0])
+						}
 					case "name":
 						name = arg.Vals[0]
 					case "reader":
