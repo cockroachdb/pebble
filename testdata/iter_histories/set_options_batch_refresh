@@ -1,0 +1,46 @@
+# Regression test: TrySeekUsingNext must not be passed to the internal iterator
+# across an indexed-batch refresh when the internal iterator has been advanced
+# past the last-returned key (e.g. iterPosNext while collecting MERGE operands).
+#
+# Setup: the DB holds a MERGE at "c" and a SET at "e". A points-only iterator is
+# opened over an indexed batch (whose keys are all > c, e). The first SeekGE("a")
+# returns the merge at "c"; collecting its operand advances the internal memtable
+# iterator past "c" to "e" (leaving the iterator at iterPosNext). The batch is
+# then mutated and SetOptions refreshes the batch view, which disables the
+# top-level no-op seek optimization. The subsequent SeekGE("b") is eligible for
+# TrySeekUsingNext (b > the previous seek key "a") but b <= the cached result
+# "c"; it must re-find "c" rather than resuming from "e" and skipping it.
+
+reset
+----
+
+batch commit
+merge c v1
+set e ve
+----
+committed 2 keys
+
+batch name=b
+set z vz
+----
+wrote 1 keys to batch "b"
+
+combined-iter name=i reader=b key-types=point
+seek-ge a
+----
+c: (v1, .)
+
+# Mutate the batch so the following SetOptions detects a changed batch view and
+# sets batchJustRefreshed.
+mutate batch=b
+set y vy
+----
+
+# SetOptions (unchanged options) refreshes the batch view and disables the
+# no-op seek optimization, then SeekGE("b") must still return "c".
+iter iter=i
+set-options
+seek-ge b
+----
+.
+c: (v1, .)

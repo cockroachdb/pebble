@@ -1362,6 +1362,21 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 			if testingDisableSeekOpt(key, uintptr(unsafe.Pointer(i))) && !i.forceEnableSeekOpt {
 				flags = flags.DisableTrySeekUsingNext()
 			}
+			// When the batch was just refreshed, the top-level no-op seek
+			// optimization above is skipped (it requires !BatchJustRefreshed),
+			// so we will re-seek the internal iterator below. TrySeekUsingNext
+			// is only safe to pass to the internal iterator when it is
+			// positioned exactly at the last key we returned
+			// (iterPosCurForward). If instead it was advanced past that key
+			// (most commonly iterPosNext, while consuming MERGE operands; also
+			// the paused positions), resuming with TrySeekUsingNext would start
+			// from that advanced position and skip the last-returned key — which
+			// this seek may still need to return, since BatchJustRefreshed seeks
+			// can be to a key at or before it. Disable TrySeekUsingNext in that
+			// case and fall back to a full re-seek.
+			if flags.BatchJustRefreshed() && i.pos != iterPosCurForward {
+				flags = flags.DisableTrySeekUsingNext()
+			}
 			if !flags.BatchJustRefreshed() && i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKV.K.UserKey) <= 0 {
 				// Have some work to do, but don't need to seek, and we can
 				// start doing findNextEntry from i.iterKey.
