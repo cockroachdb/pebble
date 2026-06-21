@@ -1,0 +1,60 @@
+# Regression test: TrySeekUsingNext must not be passed to the internal iterator
+# across an indexed-batch refresh when the internal iterator was advanced past
+# the first internal key of the last-returned user key while resolving a MERGE
+# against an older SET at the SAME user key (i.pos stays iterPosCurForward, but
+# the internal iterator sits on the SET, past the MERGE).
+#
+# Setup: the DB holds key "m" with a SET in one sstable and a MERGE in a newer
+# sstable. The first SeekGE("a") returns "m" with the merged value "xy";
+# resolving the merge stops the internal iterator on the older SET. The batch is
+# then mutated and SetOptions refreshes the batch view (disabling the top-level
+# no-op seek optimization). The subsequent SeekGE("b") is eligible for
+# TrySeekUsingNext (b > the previous seek key "a") and b <= "m"; it must
+# re-resolve the merge and return the full value "xy" rather than resuming from
+# the SET and dropping the MERGE (which would return just "x").
+
+reset
+----
+
+# SET "m" in its own sstable.
+batch commit
+set m x
+----
+committed 1 keys
+
+flush
+----
+
+# MERGE "m" in a newer sstable, so the SET and MERGE stay distinct records.
+batch commit
+merge m y
+----
+committed 1 keys
+
+flush
+----
+
+batch name=b
+set z vz
+----
+wrote 1 keys to batch "b"
+
+combined-iter name=i reader=b key-types=point
+seek-ge a
+----
+m: (xy, .)
+
+# Mutate the batch so the following SetOptions detects a changed batch view and
+# sets batchJustRefreshed.
+mutate batch=b
+set y vy
+----
+
+# SetOptions refreshes the batch view and disables the no-op seek optimization,
+# then SeekGE("b") must still return "m" with the full merged value "xy".
+iter iter=i
+set-options
+seek-ge b
+----
+.
+m: (xy, .)
