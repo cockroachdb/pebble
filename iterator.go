@@ -289,6 +289,18 @@ type Iterator struct {
 	// iterValidityState=IterValid, i.e., there is something to return to the
 	// client for the current position.
 	pos iterPos
+	// curForwardViaMerge is set by findNextEntry when the current forward
+	// position was produced by resolving a MERGE. Resolving a merge advances the
+	// internal iterator past the first internal key of the current user key
+	// (mergeNext steps at least once), so unlike a direct SET/SETWITHDELETE
+	// return the internal iterator is no longer positioned at that first key —
+	// even when pos remains iterPosCurForward (mergeNext stops on an older
+	// SET/DEL at the same user key). This distinction matters for the
+	// BatchJustRefreshed TrySeekUsingNext optimization in SeekGEWithLimit, which
+	// is only safe when the internal iterator is at the first internal key of
+	// the last-returned key. It is only meaningful for a forward position
+	// (pos == iterPosCur{Forward,Next}).
+	curForwardViaMerge bool
 	// Relates to the prefixOrFullSeekKey field above.
 	hasPrefix bool
 	// Used for deriving the value of SeekPrefixGE(..., trySeekUsingNext),
@@ -536,6 +548,7 @@ type readSampling struct {
 func (i *Iterator) findNextEntry(limit []byte) {
 	i.iterValidityState = IterExhausted
 	i.pos = iterPosCurForward
+	i.curForwardViaMerge = false
 	if i.opts.rangeKeys() && i.rangeKey != nil {
 		i.rangeKey.rangeKeyOnly = false
 	}
@@ -728,6 +741,9 @@ func (i *Iterator) nextPointCurrentUserKey() bool {
 //
 // mergeForward does not update iterValidityState.
 func (i *Iterator) mergeForward(key base.InternalKey) (valid bool) {
+	// Resolving the merge advances the internal iterator past the first internal
+	// key of the current user key (see curForwardViaMerge).
+	i.curForwardViaMerge = true
 	var iterValue []byte
 	iterValue, _, i.err = i.iterKV.Value(nil)
 	if i.err != nil {
@@ -1364,17 +1380,56 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 			}
 			// When the batch was just refreshed, the top-level no-op seek
 			// optimization above is skipped (it requires !BatchJustRefreshed),
-			// so we will re-seek the internal iterator below. TrySeekUsingNext
-			// is only safe to pass to the internal iterator when it is
-			// positioned exactly at the last key we returned
-			// (iterPosCurForward). If instead it was advanced past that key
-			// (most commonly iterPosNext, while consuming MERGE operands; also
-			// the paused positions), resuming with TrySeekUsingNext would start
-			// from that advanced position and skip the last-returned key — which
-			// this seek may still need to return, since BatchJustRefreshed seeks
-			// can be to a key at or before it. Disable TrySeekUsingNext in that
-			// case and fall back to a full re-seek.
-			if flags.BatchJustRefreshed() && i.pos != iterPosCurForward {
+			// so we re-seek the internal iterator below, passing
+			// TrySeekUsingNext when the seek key advanced (cmp < 0). The
+			// internal iterator treats TrySeekUsingNext as "the seek key is at
+			// or after your current position, so step forward instead of doing
+			// a full seek". That precondition holds only while the internal
+			// iterator's cursor is still on the first (newest) internal key of
+			// the key we last returned. Producing a returned key can consume
+			// several internal keys, leaving the cursor further along; a
+			// TrySeekUsingNext re-seek to a key at or before the returned key
+			// then cannot rewind to it and silently skips it.
+			//
+			// Think of the internal iterator as a flat stream of internal keys
+			// with a cursor (ignoring how the merging iterator produces it).
+			// There are two ways the cursor ends up past the first internal key
+			// of the returned key, both caused by resolving a MERGE:
+			//
+			//  1. The merge advanced to the next user key (pos == iterPosNext).
+			//     Example:
+			//     keys:  c#9,MERGE  e#7,SET   (different user keys)
+			//     SeekGE("a") returns "c": the cursor lands on c#9,MERGE, then Next()s
+			//     to e#7,SET to confirm there are no more "c" operands, leaving the
+			//     cursor on "e".
+			//     SeekGE("b", TrySeekUsingNext|BatchJustRefreshed) must return "c",
+			//     but the cursor is already on "e" > "b"; stepping forward cannot
+			//     reach "c". Caught by pos != iterPosCurForward.
+			//
+			//  2. The merge stopped on an older record at the SAME user key,
+			//     leaving pos == iterPosCurForward (curForwardViaMerge).
+			//     Example:
+			//     keys:  m#20,MERGE="y"  m#10,SET="x"   (same user key "m")
+			//     SeekGE("a") returns "m"="xy": the cursor lands on m#20,MERGE,
+			//     then Next()s to m#10,SET to fold in "x", leaving the cursor on
+			//     m#10,SET. pos is iterPosCurForward because the cursor is still
+			//     on "m"; iterPosCurForward says nothing about which of "m"'s
+			//     internal keys (see the iterPos documentation).
+			//     SeekGE("a1", TrySeekUsingNext|BatchJustRefreshed) must re-return
+			//     "m"="xy", but the cursor is on m#10,SET; stepping forward cannot
+			//     rewind to m#20,MERGE, so the operand is dropped and the seek
+			//     returns just "x". Caught by curForwardViaMerge.
+			//
+			// Only merge resolution consumes more than one internal key to
+			// produce a returned key (mergeForward steps at least once); a plain
+			// SET return, or skipping DELETEs to a later key, leaves the cursor
+			// on the first internal key, where TrySeekUsingNext is safe. MERGEs
+			// are rare, so disabling the optimization only in these two cases
+			// preserves it for the common case.
+			//
+			// In the !BatchJustRefreshed case, these situations are both handled by
+			// the no-op early-return above.
+			if flags.BatchJustRefreshed() && (i.pos != iterPosCurForward || i.curForwardViaMerge) {
 				flags = flags.DisableTrySeekUsingNext()
 			}
 			if !flags.BatchJustRefreshed() && i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKV.K.UserKey) <= 0 {
