@@ -548,7 +548,7 @@ func (pc *pickedTableCompaction) maybeGrowL0ForBase(cmp base.Compare, maxExpande
 	for j, f := 0, iter.First(); f != nil; j, f = j+1, iter.Next() {
 		if pc.lcf.FilesIncluded[f.L0Index] {
 			newStartLevelFiles = append(newStartLevelFiles, f)
-			sizeSum += f.Size
+			sizeSum += f.EstimatedDataSize()
 		}
 	}
 
