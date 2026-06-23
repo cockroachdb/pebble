@@ -1179,7 +1179,6 @@ func pickCompactionSeedFile(
 
 		skip := false
 		for outputFile != nil && sstableKeyCompare(cmp, outputFile.Smallest(), f.Largest()) <= 0 {
-			overlappingBytes += outputFile.Size
 			if outputFile.IsCompacting() {
 				// If one of the overlapping files is compacting, we're not going to be
 				// able to compact f anyway, so skip it.
@@ -1192,19 +1191,27 @@ func pickCompactionSeedFile(
 				break
 			}
 
+			sizeContribution := outputFile.EstimatedDataSize()
 			// For files in the bottommost level of the LSM, the
-			// Stats.RangeDeletionsBytesEstimate field is set to the estimate
-			// of bytes /within/ the file itself that may be dropped by
-			// recompacting the file. These bytes from obsolete keys would not
-			// need to be rewritten if we compacted `f` into `outputFile`, so
-			// they don't contribute to write amplification. Subtracting them
-			// out of the overlapping bytes helps prioritize these compactions
-			// that are cheaper than their file sizes suggest.
+			// Stats.RangeDeletionsBytesEstimate field is set to the estimate of bytes
+			// /within/ the file itself that may be dropped by recompacting the file.
+			// These bytes from obsolete keys would not need to be rewritten if we
+			// compacted `f` into `outputFile`, so they don't contribute to write
+			// amplification. Subtracting them out of the overlapping bytes
+			// contribution helps prioritize these compactions that are cheaper than
+			// their file sizes suggest.
 			if outputLevel == numLevels-1 && outputFile.LargestSeqNum < earliestSnapshotSeqNum {
 				if stats, ok := outputFile.Stats(); ok {
-					overlappingBytes -= stats.RangeDeletionsBytesEstimate
+					// There are no hard guarantees about the estimate, so guard against
+					// underflow.
+					if stats.RangeDeletionsBytesEstimate < sizeContribution {
+						sizeContribution -= stats.RangeDeletionsBytesEstimate
+					} else {
+						sizeContribution = 0
+					}
 				}
 			}
+			overlappingBytes += sizeContribution
 
 			// If the file in the next level extends beyond f's largest key,
 			// break out and don't advance outputIter because f's successor
