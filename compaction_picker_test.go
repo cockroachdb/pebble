@@ -579,6 +579,32 @@ func TestCompactionPickerL0(t *testing.T) {
 			base.ParseInternalKey(strings.TrimSpace(parts[0])),
 			base.ParseInternalKey(strings.TrimSpace(parts[1])),
 		)
+		// Optional space-separated fields after the key bounds, e.g.
+		//   000100:a#1,SET-b#2,SET size=1000 blob-ref-size=5000:
+		for _, f := range fields[1:] {
+			switch {
+			case strings.HasPrefix(f, "size="):
+				v, err := strconv.ParseUint(strings.TrimPrefix(f, "size="), 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				m.Size = v
+			case strings.HasPrefix(f, "blob-ref-size="):
+				v, err := strconv.ParseUint(strings.TrimPrefix(f, "blob-ref-size="), 10, 64)
+				if err != nil {
+					return nil, err
+				}
+				m.BlobReferenceDepth = 1
+				m.BlobReferences = manifest.BlobReferences{{
+					FileID:                base.BlobFileID(tableNum),
+					ValueSize:             v,
+					BackingValueSize:      v,
+					EstimatedPhysicalSize: v,
+				}}
+			default:
+				return nil, errors.Errorf("unknown field %q in table spec %q", f, s)
+			}
+		}
 		m.SeqNums.Low = m.Smallest().SeqNum()
 		m.SeqNums.High = m.Largest().SeqNum()
 		if m.SeqNums.Low > m.SeqNums.High {
