@@ -98,6 +98,9 @@ type TableMetadata struct {
 	// Size is the size of the file, in bytes. Size is an approximate value for
 	// virtual sstables.
 	//
+	// Value separation: Size does NOT include the size of separated values in
+	// blob files; add EstimatedReferenceSize() if needed.
+	//
 	// INVARIANTS:
 	// - When !TableMetadata.Virtual, Size == TableBacking.Size.
 	// - Size should be non-zero. Size 0 virtual sstables must not be created.
@@ -294,9 +297,16 @@ func (m *TableMetadata) VirtualMeta() *TableMetadata {
 	return m
 }
 
-// EstimatedReferenceSize returns the estimated physical size of all the file's
-// blob references in the table. This sum, added to the sstable's size, yields
-// an approximation of the overall size of the data represented by the table.
+// EstimatedDataSize returns the approximate overall size of the data
+// represented by the table. It is the physical size of the table plus the
+// estimated physical size of all the table's blob references.
+func (m *TableMetadata) EstimatedDataSize() uint64 {
+	return m.Size + m.EstimatedReferenceSize()
+}
+
+// EstimatedReferenceSize returns the estimated physical size of all the table's
+// blob references. This sum, added to the sstable's size, yields an
+// approximation of the overall size of the data represented by the table.
 //
 // EstimatedReferenceSize is an estimate, but it's guaranteed to be stable over
 // the lifetime of the table. This is necessary to correctly maintain
