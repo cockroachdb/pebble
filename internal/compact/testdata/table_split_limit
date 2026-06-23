@@ -224,3 +224,30 @@ o: w
 s: w
 u: w
 x: no limit
+
+# A grandparent that references a large value in a blob file contributes that
+# blob data to the grandparent overlap, forcing an earlier split. Here each
+# grandparent sstable is tiny (size 1), but 000002 references 100 bytes of blob
+# data.
+#
+# With the fix, the overlap accounting uses EstimatedDataSize (sstable size plus
+# blob reference size), so the blob-heavy 000002 trips the max-overlap limit and
+# forces a split. Before the fix, only the sstable size was counted (~1 byte per
+# grandparent), so no split limit was imposed at all.
+define
+L1:
+  1:[a#0,SET-b#0,SET] size:1
+  2:[c#0,SET-d#0,SET] size:1 blobrefs:[(B000007: 100); depth:1]
+  3:[e#0,SET-f#0,SET] size:1
+----
+L1:
+  000001:[a#0,SET-b#0,SET]
+  000002:[c#0,SET-d#0,SET]
+  000003:[e#0,SET-f#0,SET]
+
+split-limit max-overlap=10
+a c e
+----
+a: c
+c: e
+e: no limit
