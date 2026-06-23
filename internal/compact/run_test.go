@@ -26,6 +26,18 @@ func TestTableSplitLimit(t *testing.T) {
 			d.MaybeScanArgs(t, "flush-split-bytes", &flushSplitBytes)
 			l0Organizer = manifest.NewL0Organizer(base.DefaultComparer, flushSplitBytes)
 			v = testutils.CheckErr(manifest.ParseVersionDebug(base.DefaultComparer, l0Organizer, d.Input))
+			// The debug format records each blob reference's value size but not
+			// its estimated physical size, which is what EstimatedDataSize() (and
+			// thus the grandparent overlap accounting) uses. Approximate the
+			// physical size as the value size so blobrefs in the input affect the
+			// computed split limits.
+			for _, lm := range v.Levels {
+				for f := range lm.All() {
+					for i := range f.BlobReferences {
+						f.BlobReferences[i].EstimatedPhysicalSize = f.BlobReferences[i].ValueSize
+					}
+				}
+			}
 			buf.WriteString(v.String())
 			if v.Levels[0].Len() != 0 {
 				buf.WriteString("flush split keys:\n")
