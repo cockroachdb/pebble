@@ -1341,15 +1341,19 @@ func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
 		}
 	}()
 
+	// Values are large enough to be separated into blob files, depending on the
+	// random options.
+	largeValue := bytes.Repeat([]byte("x"), 2000)
+
 	// Create two sstables.
-	// sstable is contained within keyspan (fileNum = 5).
-	require.NoError(t, d.Set([]byte("c"), nil, nil))
-	require.NoError(t, d.Set([]byte("d"), nil, nil))
+	// This sstable is contained within the [a, e) keyspan.
+	require.NoError(t, d.Set([]byte("c"), largeValue, nil))
+	require.NoError(t, d.Set([]byte("d"), largeValue, nil))
 	require.NoError(t, d.Flush())
 
-	// sstable partially overlaps keyspan (fileNum = 7).
-	require.NoError(t, d.Set([]byte("d"), nil, nil))
-	require.NoError(t, d.Set([]byte("g"), nil, nil))
+	// This sstable partially overlaps the [a, e) keyspan.
+	require.NoError(t, d.Set([]byte("d"), largeValue, nil))
+	require.NoError(t, d.Set([]byte("g"), largeValue, nil))
 	require.NoError(t, d.Flush())
 
 	// cannot use WithApproximateSpanBytes without WithKeyRangeFilter.
@@ -1359,13 +1363,19 @@ func TestSSTablesWithApproximateSpanBytes(t *testing.T) {
 	tableInfos, err := d.SSTables(WithProperties(), WithKeyRangeFilter([]byte("a"), []byte("e")), WithApproximateSpanBytes())
 	require.NoError(t, err)
 
+	cmp := d.opts.Comparer.Compare
 	for _, levelTables := range tableInfos {
 		for _, table := range levelTables {
-			if table.FileNum == 5 {
-				require.Equal(t, table.ApproximateSpanBytes, table.Size)
-			}
-			if table.FileNum == 7 {
-				require.Less(t, table.ApproximateSpanBytes, table.Size)
+			// EstimatedDataSize includes the size of values stored in blob files.
+			estimatedDataSize := table.Size + table.EstimatedReferenceSize()
+			if cmp(table.Largest.UserKey, []byte("e")) < 0 {
+				// The sstable is contained within the span, so all of its data
+				// (including referenced blob data) is within the span.
+				require.Equal(t, estimatedDataSize, table.ApproximateSpanBytes)
+			} else {
+				// The sstable partially overlaps the span, so only part of its
+				// data is within the span.
+				require.Less(t, table.ApproximateSpanBytes, estimatedDataSize)
 			}
 		}
 	}

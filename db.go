@@ -2208,13 +2208,15 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 
 			if opt.withApproximateSpanBytes {
 				if m.ContainedWithinSpan(d.opts.Comparer.Compare, opt.start, opt.end) {
-					destTables[j].ApproximateSpanBytes = m.Size
+					destTables[j].ApproximateSpanBytes = m.EstimatedDataSize()
 				} else {
 					size, err := d.fileCache.estimateSize(m, opt.start, opt.end)
 					if err != nil {
 						return nil, err
 					}
-					destTables[j].ApproximateSpanBytes = size
+					// We use the size/m.Size ratio to scale the overall data size.
+					ratio := float64(size) / float64(max(m.Size, 1))
+					destTables[j].ApproximateSpanBytes = uint64(ratio * float64(m.EstimatedDataSize()))
 				}
 			}
 			j++
