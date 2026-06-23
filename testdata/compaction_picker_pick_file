@@ -298,3 +298,46 @@ L1 [b1, b2]
 pick-file L1
 ----
 000005:[d#11,SET-e#11,SET]
+
+# Test that a file's blob references count toward the overlapping bytes used to
+# compute write amplification when picking a seed file.
+#
+# Two L5 files each overlap exactly one L6 file. The L6 file overlapping "a" is a
+# tiny sstable (~786 bytes) with a large (100000-byte) blob reference; the L6
+# file overlapping "c" is a ~50000-byte sstable with no blob reference. Counting
+# only sstable size, the "a" file overlaps far fewer bytes (~786 vs ~50000) and
+# would be picked. Counting blob-referenced bytes too, the "a" file overlaps
+# ~100786 bytes versus ~50000 for the "c" file, so the "c" file is picked
+# instead. No range-deletion estimates are involved, so this exercises the
+# EstimatedReferenceSize accounting, not the bottommost range-del subtraction.
+define
+L5
+  a#11,SET:<rand-bytes=1000>
+L5
+  c#11,SET:<rand-bytes=1000>
+L6
+  a#0,SET:blob{fileNum=000020 valueLen=100000}
+L6
+  c#0,SET:<rand-bytes=50000>
+----
+L5:
+  000004:[a#11,SET-a#11,SET]
+  000005:[c#11,SET-c#11,SET]
+L6:
+  000006:[a#0,SET-a#0,SET]
+  000007:[c#0,SET-c#0,SET]
+Blob files:
+  B000020 physical:{000020 size:[172 (172B)] vals:[0 (0B)]}
+
+file-sizes
+----
+L5:
+  000004:[a#11,SET-a#11,SET]: 1671 bytes (1.6KB)
+  000005:[c#11,SET-c#11,SET]: 1671 bytes (1.6KB)
+L6:
+  000006:[a#0,SET-a#0,SET]: 753 bytes (753B)
+  000007:[c#0,SET-c#0,SET]: 50667 bytes (50KB)
+
+pick-file L5
+----
+000005:[c#11,SET-c#11,SET]
