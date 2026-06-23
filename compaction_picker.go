@@ -1631,7 +1631,7 @@ var elisionOnlyAnnotator = manifest.MakePickFileAnnotator(
 			// `NumEntries` and `RangeDeletionsBytesEstimate` are both zero) are excluded
 			// from elision-only compactions.
 			// TODO(travers): Consider an alternative heuristic for elision of range-keys.
-			eligible = stats.RangeDeletionsBytesEstimate*10 >= f.Size || backingProps.NumDeletions*10 > backingProps.NumEntries
+			eligible = stats.RangeDeletionsBytesEstimate*10 >= f.EstimatedDataSize() || backingProps.NumDeletions*10 > backingProps.NumEntries
 			return eligible, true
 		},
 		Compare: func(f1 *manifest.TableMetadata, f2 *manifest.TableMetadata) bool {
