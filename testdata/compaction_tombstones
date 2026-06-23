@@ -651,3 +651,63 @@ L4:
   000004:[a#101,DEL-e#105,SET]
 L6:
   000005:[a#1,SET-e#2,SET]
+
+# Regression test for the elision-only eligibility heuristic accounting for blob
+# references. The bottommost file 000004 references a large value (100KB) in a
+# blob file, so the data it represents (EstimatedDataSize = sstable size +
+# estimated blob reference size ~= 103KB) is far larger than its sstable size
+# (~3KB). A range deletion covers only a single key, so the range deletion
+# reclaims well under 10% of the file's overall data.
+#
+# The range-deletions-bytes-estimate (~2.5KB) is more than 10% of the sstable
+# size but far less than 10% of the overall data size, so the file should NOT be
+# eligible for an elision-only compaction.
+#
+# Before the fix, eligibility compared range-deletions-bytes-estimate*10 against
+# the sstable size alone, which excludes blob references. The estimate cleared
+# that bar and the file was (incorrectly) compacted. With the fix, the comparison
+# is against the overall EstimatedDataSize, so the small range deletion no longer
+# makes the file eligible.
+
+define auto-compactions=off block-size=1 value-separation=(enabled, min-size=10, max-ref-depth=10, latency-tolerant-min-size=1)
+L6
+  a#1,SET:a
+  b#2,SET:b
+  c#3,SET:c
+  d#4,SET:d
+  e#5,SET:e
+  f#6,SET:f
+  g#7,SET:g
+  h#8,SET:h
+  i#9,SET:i
+  j#10,SET:j
+  k#11,SET:k
+  l#12,SET:l
+  m#13,SET:m
+  n#14,SET:n
+  o#15,SET:o
+  p#16,SET:p
+  q#17,SET:q
+  r#18,SET:r
+  s#19,SET:s
+  t#20,SET:blob{fileNum=000020 valueLen=100000}
+  a#100,RANGEDEL:b
+----
+L6:
+  000004:[a#100,RANGEDEL-t#20,SET]
+Blob files:
+  B000020 physical:{000020 size:[172 (172B)] vals:[0 (0B)]}
+
+wait-pending-table-stats
+000004
+----
+num-entries: 20
+num-deletions: 1
+num-range-key-sets: 0
+point-deletions-bytes-estimate: 0
+range-deletions-bytes-estimate: 2580
+compression: None:918,Snappy:1452/1680
+
+maybe-compact
+----
+(none)
