@@ -98,7 +98,7 @@ type TableMetadata struct {
 	// virtual sstables.
 	//
 	// Value separation: Size does NOT include the size of separated values in
-	// blob files; add EstimatedReferenceSize() if needed.
+	// blob files; EstimatedDataSize() does.
 	//
 	// INVARIANTS:
 	// - When !TableMetadata.Virtual, Size == TableBacking.Size.
