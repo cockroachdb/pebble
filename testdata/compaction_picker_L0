@@ -438,3 +438,40 @@ pick-auto non-score l0_compaction_threshold=1000
 L0 -> L0
 L0: 000049
 grandparents: 000045
+
+# Regression test for blob references being accounted for when deciding whether
+# to grow an L0->Lbase compaction (maybeGrowL0ForBase).
+#
+# The seed compaction is the two-file stack over key "a" (000110, 000120),
+# overlapping the Lbase file 000200. When growing the compaction to span the rest
+# of 000200's key range, the picker would pull in 000100 (over key "c"). 000100
+# is a tiny sstable but references ~2GB of data in a blob file. Growing the
+# compaction to include it would blow past the expansion byte limit once that
+# referenced data is counted, so 000100 must NOT be pulled in.
+#
+# Before the fix, the expansion budget used the sstable size alone (~1KB), so
+# 000100 was (incorrectly) included. With the fix, EstimatedDataSize() is used,
+# which counts the blob reference, so the grow is reverted and only the seed
+# files are compacted.
+
+define
+L0
+   000100:c#10,SET-c#10,SET size=1000 blob-ref-size=2000000000:
+   000110:a#20,SET-a#20,SET size=1000:
+   000120:a#30,SET-a#30,SET size=1000:
+L1
+   000200:a#1,SET-c#2,SET size=1000:
+----
+L0.1:
+  000120:[a#30,SET-a#30,SET]
+L0.0:
+  000110:[a#20,SET-a#20,SET]
+  000100:[c#10,SET-c#10,SET]
+L1:
+  000200:[a#1,SET-c#2,SET]
+
+pick-auto l0_compaction_threshold=1
+----
+L0 -> L1
+L0: 000110,000120
+L1: 000200
