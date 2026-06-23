@@ -602,7 +602,6 @@ func TestCompactionPickerL0(t *testing.T) {
 		if m.SmallestSeqNum > m.LargestSeqNum {
 			m.SmallestSeqNum, m.LargestSeqNum = m.LargestSeqNum, m.SmallestSeqNum
 		}
-		}
 		m.LargestSeqNumAbsolute = m.LargestSeqNum
 		m.InitPhysicalBacking()
 		return m, nil
