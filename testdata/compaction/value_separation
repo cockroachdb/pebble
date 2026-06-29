@@ -689,17 +689,18 @@ Blob files:
 compact a-zzzz
 ----
 L6:
-  000052:[a@1#0,SET-ckw@1#0,SET] seqnums:[#0-#0] points:[a@1#0,SET-ckw@1#0,SET] size:23102 blobrefs:[(B000007: 51136), (B000009: 51136), (B000011: 6592); depth:1]
-  000053:[ckx@1#0,SET-ewd@1#0,SET] seqnums:[#0-#0] points:[ckx@1#0,SET-ewd@1#0,SET] size:22438 blobrefs:[(B000011: 44544), (B000013: 51136), (B000015: 13824); depth:1]
-  000054:[ewe@1#0,SET-hgu@1#0,SET] seqnums:[#0-#0] points:[ewe@1#0,SET-hgu@1#0,SET] size:23225 blobrefs:[(B000015: 37312), (B000017: 51136), (B000019: 19968); depth:1]
-  000055:[hgv@1#0,SET-js@1#0,SET] seqnums:[#0-#0] points:[hgv@1#0,SET-js@1#0,SET] size:22564 blobrefs:[(B000019: 31168), (B000021: 51136), (B000023: 27072); depth:1]
-  000056:[jsa@1#0,SET-mcx@1#0,SET] seqnums:[#0-#0] points:[jsa@1#0,SET-mcx@1#0,SET] size:23096 blobrefs:[(B000023: 24128), (B000025: 51136), (B000027: 33600); depth:1]
-  000057:[mcy@1#0,SET-onw@1#0,SET] seqnums:[#0-#0] points:[mcy@1#0,SET-onw@1#0,SET] size:23043 blobrefs:[(B000027: 17600), (B000029: 51200), (B000031: 40128); depth:1]
-  000058:[onx@1#0,SET-qyv@1#0,SET] seqnums:[#0-#0] points:[onx@1#0,SET-qyv@1#0,SET] size:23002 blobrefs:[(B000031: 11008), (B000033: 51200), (B000035: 46720); depth:1]
-  000059:[qyw@1#0,SET-tjs@1#0,SET] seqnums:[#0-#0] points:[qyw@1#0,SET-tjs@1#0,SET] size:23114 blobrefs:[(B000035: 4416), (B000037: 51200), (B000039: 51136), (B000041: 2112); depth:1]
-  000060:[tjt@1#0,SET-vuj@1#0,SET] seqnums:[#0-#0] points:[tjt@1#0,SET-vuj@1#0,SET] size:23522 blobrefs:[(B000041: 49088), (B000043: 51200), (B000045: 8128); depth:1]
-  000061:[vuk@1#0,SET-yez@1#0,SET] seqnums:[#0-#0] points:[vuk@1#0,SET-yez@1#0,SET] size:23539 blobrefs:[(B000045: 43008), (B000047: 51200), (B000049: 14144); depth:1]
-  000062:[yf@1#0,SET-zzz@1#0,SET] seqnums:[#0-#0] points:[yf@1#0,SET-zzz@1#0,SET] size:17782 blobrefs:[(B000049: 36992), (B000051: 44288); depth:1]
+  000052:[a@1#0,SET-ciw@1#0,SET] seqnums:[#0-#0] points:[a@1#0,SET-ciw@1#0,SET] size:22391 blobrefs:[(B000007: 51136), (B000009: 51136), (B000011: 3136); depth:1]
+  000053:[cix@1#0,SET-esc@1#0,SET] seqnums:[#0-#0] points:[cix@1#0,SET-esc@1#0,SET] size:21772 blobrefs:[(B000011: 48000), (B000013: 51136), (B000015: 6848); depth:1]
+  000054:[esd@1#0,SET-hba@1#0,SET] seqnums:[#0-#0] points:[esd@1#0,SET-hba@1#0,SET] size:22360 blobrefs:[(B000015: 44288), (B000017: 51136), (B000019: 10048); depth:1]
+  000055:[hbb@1#0,SET-jjt@1#0,SET] seqnums:[#0-#0] points:[hbb@1#0,SET-jjt@1#0,SET] size:22651 blobrefs:[(B000019: 41088), (B000021: 51136), (B000023: 12800); depth:1]
+  000056:[jju@1#0,SET-lss@1#0,SET] seqnums:[#0-#0] points:[jju@1#0,SET-lss@1#0,SET] size:22351 blobrefs:[(B000023: 38400), (B000025: 51136), (B000027: 15936); depth:1]
+  000057:[lst@1#0,SET-obq@1#0,SET] seqnums:[#0-#0] points:[lst@1#0,SET-obq@1#0,SET] size:22367 blobrefs:[(B000027: 35264), (B000029: 51200), (B000031: 19008); depth:1]
+  000058:[obr@1#0,SET-qkv@1#0,SET] seqnums:[#0-#0] points:[obr@1#0,SET-qkv@1#0,SET] size:21931 blobrefs:[(B000031: 32128), (B000033: 51200), (B000035: 22528); depth:1]
+  000059:[qkw@1#0,SET-stv@1#0,SET] seqnums:[#0-#0] points:[qkw@1#0,SET-stv@1#0,SET] size:22111 blobrefs:[(B000035: 28608), (B000037: 51200), (B000039: 25728); depth:1]
+  000060:[stw@1#0,SET-vct@1#0,SET] seqnums:[#0-#0] points:[stw@1#0,SET-vct@1#0,SET] size:22382 blobrefs:[(B000039: 25408), (B000041: 51200), (B000043: 28864); depth:1]
+  000061:[vcu@1#0,SET-xls@1#0,SET] seqnums:[#0-#0] points:[vcu@1#0,SET-xls@1#0,SET] size:22302 blobrefs:[(B000043: 22336), (B000045: 51136), (B000047: 32000); depth:1]
+  000062:[xlt@1#0,SET-zur@1#0,SET] seqnums:[#0-#0] points:[xlt@1#0,SET-zur@1#0,SET] size:22340 blobrefs:[(B000047: 19200), (B000049: 51136), (B000051: 35136); depth:1]
+  000063:[zus@1#0,SET-zzz@1#0,SET] seqnums:[#0-#0] points:[zus@1#0,SET-zzz@1#0,SET] size:2667 blobrefs:[(B000051: 9152); depth:1]
 Blob files:
   B000007 physical:{000007 size:[53138 (52KB)] vals:[51136 (50KB)]}
   B000009 physical:{000009 size:[53138 (52KB)] vals:[51136 (50KB)]}
@@ -730,8 +731,8 @@ excise-dryrun b c
 ----
 would excise 1 files.
   del-table:     L6 000052
-  add-table:     L6 000063(000052):[a@1#0,SET-azz@1#0,SET] seqnums:[#0-#0] points:[a@1#0,SET-azz@1#0,SET] size:11748(23102) blobrefs:[(B000007: 26004), (B000009: 26004), (B000011: 3352); depth:1]
-  add-table:     L6 000064(000052):[c@1#0,SET-ckw@1#0,SET] seqnums:[#0-#0] points:[c@1#0,SET-ckw@1#0,SET] size:6302(23102) blobrefs:[(B000007: 13949), (B000009: 13949), (B000011: 1798); depth:1]
+  add-table:     L6 000064(000052):[a@1#0,SET-azz@1#0,SET] seqnums:[#0-#0] points:[a@1#0,SET-azz@1#0,SET] size:11748(22391) blobrefs:[(B000007: 26829), (B000009: 26829), (B000011: 1645); depth:1]
+  add-table:     L6 000065(000052):[c@1#0,SET-ciw@1#0,SET] seqnums:[#0-#0] points:[c@1#0,SET-ciw@1#0,SET] size:5598(22391) blobrefs:[(B000007: 12784), (B000009: 12784), (B000011: 784); depth:1]
   add-backing:   000052
 
 
