@@ -80,10 +80,16 @@ type ValueSeparator struct {
 type pendingReference struct {
 	blobFileID base.BlobFileID
 	valueSize  uint64
-	// preserved indicates whether this reference is being carried over
-	// from an existing blob reference, or is a new reference being
-	// written to a new blob file.
-	preserved bool
+	// phys is the physical blob file backing a preserved reference. It is nil
+	// for new (non-preserved) references being written to a new blob file.
+	phys *manifest.PhysicalBlobFile
+}
+
+// preserved reports whether this reference is being carried over from an
+// existing blob reference (as opposed to a new reference being written to a new
+// blob file). A preserved reference has its source physical blob file resolved.
+func (r pendingReference) preserved() bool {
+	return r.phys != nil
 }
 
 type blobWriterAndMeta struct {
@@ -202,17 +208,17 @@ func (vs *ValueSeparator) EstimatedReferenceSize() uint64 {
 	// When we're writing to new blob files, the size of the blob file itself is
 	// a better estimate of the disk space consumed than the uncompressed value
 	// sizes, so we use vs.EstimatedFileSize.
-	//
-	// TODO(jackson): The totalValueSize is the uncompressed value sizes. With
-	// compressible data, it overestimates the disk space consumed by the blob
-	// references. It also does not include the blob file's index block or
-	// footer, so it can underestimate if values are completely incompressible.
-	//
-	// Should we compute a compression ratio per blob file and scale the
-	// references appropriately?
 	size := vs.EstimatedFileSize()
-	for i := range vs.blobTiers {
-		size += vs.blobTiers[i].totalPreservedValueSize
+	// For preserved references, scale the uncompressed value size by the source
+	// blob file's compression ratio. This uses the same computation as the
+	// EstimatedPhysicalSize set by manifest.MakeBlobReference, so this in-flight
+	// estimate converges to the size the output table will ultimately report.
+	for i := range vs.currPendingReferences {
+		ref := &vs.currPendingReferences[i]
+		if !ref.preserved() {
+			continue
+		}
+		size += ref.phys.EstimatedReferencePhysicalSize(ref.valueSize)
 	}
 	return size
 }
@@ -343,11 +349,18 @@ func (vs *ValueSeparator) preserveBlobReference(
 	}); refIdx != -1 {
 		refID = base.BlobReferenceID(refIdx)
 	} else {
+		// First reference to this blob file in the current output. Resolve its
+		// physical file now (once per unique reference); it's needed to scale
+		// the reference's size by the file's compression ratio.
+		phys, ok := vs.inputBlobPhysicalFiles[fileID]
+		if !ok {
+			return errors.AssertionFailedf("pebble: blob file %s not found among input sstables", errors.Safe(fileID))
+		}
 		refID = base.BlobReferenceID(len(vs.currPendingReferences))
 		vs.currPendingReferences = append(vs.currPendingReferences, pendingReference{
 			blobFileID: fileID,
 			valueSize:  0,
-			preserved:  true,
+			phys:       phys,
 		})
 	}
 	if invariants.Enabled && vs.currPendingReferences[refID].blobFileID != fileID {
@@ -436,7 +449,7 @@ func (vs *ValueSeparator) maybeCheckInvariants() {
 			// sum of all the reference value sizes.
 			totalValueSize := uint64(0)
 			for _, ref := range vs.currPendingReferences {
-				if ref.preserved {
+				if ref.preserved() {
 					totalValueSize += ref.valueSize
 				} else {
 					panic("no new references should exist in preserveAllHotBlobReferences mode")
@@ -461,15 +474,10 @@ func (vs *ValueSeparator) FinishOutput() (ValueSeparationMetadata, error) {
 	// these references must exist in the input files.
 	for i := range vs.currPendingReferences {
 		ref := vs.currPendingReferences[i]
-		if !ref.preserved {
+		if !ref.preserved() {
 			continue
 		}
-		phys, ok := vs.inputBlobPhysicalFiles[ref.blobFileID]
-		if !ok {
-			return ValueSeparationMetadata{},
-				errors.AssertionFailedf("pebble: blob file %s not found among input sstables", ref.blobFileID)
-		}
-		references[i] = manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, ref.valueSize, phys)
+		references[i] = manifest.MakeBlobReference(ref.blobFileID, ref.valueSize, ref.valueSize, ref.phys)
 	}
 
 	newBlobFiles, newReferencedValueSize, err := vs.closeWriters(references)
