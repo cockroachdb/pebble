@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"iter"
 	"maps"
+	"math/bits"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -65,15 +66,10 @@ func MakeBlobReference(
 		}
 	}
 	return BlobReference{
-		FileID:           fileID,
-		ValueSize:        valueSize,
-		BackingValueSize: backingValueSize,
-		//                        valueSize
-		//   Reference size =  -----------------  ×  phys.Size
-		//                      phys.ValueSize
-		//
-		// We perform the multiplication first to avoid floating point arithmetic.
-		EstimatedPhysicalSize: (valueSize * phys.Size) / phys.ValueSize,
+		FileID:                fileID,
+		ValueSize:             valueSize,
+		BackingValueSize:      backingValueSize,
+		EstimatedPhysicalSize: phys.EstimatedReferencePhysicalSize(valueSize),
 	}
 }
 
@@ -161,6 +157,24 @@ func (m *PhysicalBlobFile) String() string {
 // FileInfo returns the type and file number of the blob file.
 func (m *PhysicalBlobFile) FileInfo() (base.FileType, base.DiskFileNum) {
 	return base.FileTypeBlob, m.FileNum
+}
+
+// EstimatedReferencePhysicalSize returns an estimate of the physical (on-disk)
+// size occupied by a reference to valueSize uncompressed bytes of values stored
+// in this blob file. It scales the file's physical size by the fraction of the
+// file's values that are referenced:
+//
+//	                  valueSize
+//	Reference size =  -----------  ×  m.Size
+//	                  m.ValueSize
+//
+// The multiplication is performed in 128-bit precision to avoid overflow (and
+// to avoid floating point arithmetic). The quotient is guaranteed to fit in a
+// uint64 because valueSize ≤ m.ValueSize, so the result is at most m.Size.
+func (m *PhysicalBlobFile) EstimatedReferencePhysicalSize(valueSize uint64) uint64 {
+	hi, lo := bits.Mul64(valueSize, m.Size)
+	q, _ := bits.Div64(hi, lo, m.ValueSize)
+	return q
 }
 
 // UserKeyBounds returns the user key bounds of the blob file, if known.
