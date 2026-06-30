@@ -58,6 +58,41 @@ func formatFileNums(tables []TableInfo) string {
 	return buf.String()
 }
 
+// FormatTablesWithSizes formats a list of tables, showing each table's file
+// number, its size, and (if non-zero) its estimated blob reference size. For
+// example: "000123(1.0MB+4.0MB) 000124(2.0MB)".
+func FormatTablesWithSizes(tables []TableInfo) string {
+	var buf strings.Builder
+	for i := range tables {
+		if i > 0 {
+			buf.WriteString(" ")
+		}
+		buf.WriteString(tables[i].FileNum.String())
+		buf.WriteByte('(')
+		buf.WriteString(humanize.Bytes.Uint64(tables[i].Size).String())
+		if refSize := tables[i].EstimatedReferenceSize(); refSize > 0 {
+			buf.WriteByte('+')
+			buf.WriteString(humanize.Bytes.Uint64(refSize).String())
+		}
+		buf.WriteByte(')')
+	}
+	return buf.String()
+}
+
+// formatTotalSize formats a total table size and (if non-zero) total reference
+// size as "size+refSize" (e.g. "3.0MB+4.0MB"). The no-space form is
+// intentional: it mirrors the per-file form produced by FormatTablesWithSizes
+// (e.g. "000123(7.0MB+2.0MB)"). The log parser in tool/logs/compaction.go
+// accepts both this and the spaced "size + refSize" form that
+// LevelInfo.SafeFormat uses for input levels.
+func formatTotalSize(size, refSize uint64) string {
+	s := humanize.Bytes.Uint64(size).String()
+	if refSize > 0 {
+		s += "+" + humanize.Bytes.Uint64(refSize).String()
+	}
+	return s
+}
+
 // DataCorruptionInfo contains the information for a DataCorruption event.
 type DataCorruptionInfo struct {
 	// Path of the file that is corrupted. For remote files the path starts with
@@ -288,6 +323,41 @@ func formatBlobFileNums(blobs []BlobFileInfo) string {
 	return buf.String()
 }
 
+// FormatBlobsWithSizes formats a list of blob files, showing each blob file's
+// disk file number and size (and the MVCC garbage percentage, if present). For
+// example: "000125(5.0MB) 000126(2.0MB, MVCCGarbage: 12%)".
+func FormatBlobsWithSizes(blobs []BlobFileInfo) string {
+	var buf strings.Builder
+	for i := range blobs {
+		if i > 0 {
+			buf.WriteString(" ")
+		}
+		buf.WriteString(blobs[i].DiskFileNum.String())
+		buf.WriteByte('(')
+		buf.WriteString(humanize.Bytes.Uint64(blobs[i].Size).String())
+		if blobs[i].MVCCGarbageSize > 0 {
+			fmt.Fprintf(&buf, ", MVCCGarbage: %s",
+				crhumanize.Percent(blobs[i].MVCCGarbageSize, blobs[i].ValueSize))
+		}
+		buf.WriteByte(')')
+	}
+	return buf.String()
+}
+
+// formatOutputBlobs returns the " blob(s) [...] (...)" log segment for a list of
+// output blob files, or an empty string if there are none.
+func formatOutputBlobs(blobs []BlobFileInfo) redact.SafeString {
+	if len(blobs) == 0 {
+		return ""
+	}
+	pluralBlob := redact.SafeString("s")
+	if len(blobs) == 1 {
+		pluralBlob = ""
+	}
+	return redact.SafeString(fmt.Sprintf(" blob%s [%s] (%s)",
+		pluralBlob, FormatBlobsWithSizes(blobs), humanize.Bytes.Uint64(blobsTotalSize(blobs))))
+}
+
 // CompactionInfo contains the info for a compaction event.
 type CompactionInfo struct {
 	// JobID is the ID of the compaction job.
@@ -362,11 +432,13 @@ func (i CompactionInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	if len(i.Annotations) > 0 {
 		w.Printf("%s ", i.Annotations)
 	}
+	blobInfo := formatOutputBlobs(i.Output.Blobs)
 	w.Print(levelInfos(i.Input))
-	w.Printf(" -> L%d [%s] (%s), in %.1fs (%.1fs total), output rate %s/s",
+	w.Printf(" -> L%d [%s] (%s)%s, in %.1fs (%.1fs total), output rate %s/s",
 		redact.Safe(i.Output.Level),
-		redact.Safe(formatFileNums(i.Output.Tables)),
-		redact.Safe(humanize.Bytes.Uint64(outputSize)),
+		redact.Safe(FormatTablesWithSizes(i.Output.Tables)),
+		redact.Safe(formatTotalSize(outputSize, tablesTotalReferenceSize(i.Output.Tables))),
+		blobInfo,
 		redact.Safe(i.Duration.Seconds()),
 		redact.Safe(i.TotalDuration.Seconds()),
 		redact.Safe(humanize.Bytes.Uint64(uint64(float64(outputSize)/i.Duration.Seconds()))))
@@ -435,15 +507,7 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 	if i.Input == 1 {
 		plural = ""
 	}
-	blobInfo := redact.SafeString("")
-	if len(i.OutputBlobs) > 0 {
-		pluralBlob := redact.SafeString("s")
-		if len(i.OutputBlobs) == 1 {
-			pluralBlob = ""
-		}
-		blobInfo = redact.SafeString(fmt.Sprintf(" blob%s [%s] (%s)",
-			pluralBlob, formatBlobFileNums(i.OutputBlobs), humanize.Bytes.Uint64(blobsTotalSize(i.OutputBlobs))))
-	}
+	blobInfo := formatOutputBlobs(i.OutputBlobs)
 	if !i.Done {
 		w.Printf("[JOB %d] ", redact.Safe(i.JobID))
 		if !i.Ingest {
@@ -464,8 +528,8 @@ func (i FlushInfo) SafeFormat(w redact.SafePrinter, _ rune) {
 		w.Printf("[JOB %d] flushed %d memtable%s (%s) to L0 [%s] (%s)%s, in %.1fs (%.1fs total), output rate %s/s",
 			redact.Safe(i.JobID), redact.Safe(i.Input), plural,
 			redact.Safe(humanize.Bytes.Uint64(i.InputBytes)),
-			redact.Safe(formatFileNums(i.OutputTables)),
-			redact.Safe(humanize.Bytes.Uint64(outputSize)),
+			redact.Safe(FormatTablesWithSizes(i.OutputTables)),
+			redact.Safe(formatTotalSize(outputSize, tablesTotalReferenceSize(i.OutputTables))),
 			blobInfo,
 			redact.Safe(i.Duration.Seconds()),
 			redact.Safe(i.TotalDuration.Seconds()),

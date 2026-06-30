@@ -39,8 +39,8 @@ Blob files:
 
 flush-log
 ----
-[JOB 1] flushed 1 memtable (100B) to L0 [000005] (827B) blob [000006 (MVCCGarbage: 100%)] (102B), in 1.0s (1.0s total), output rate 827B/s
-[JOB 1] flushed 1 memtable (100B) to L0 [000008] (707B), in 1.0s (1.0s total), output rate 707B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000005(827B+102B)] (827B+102B) blob [000006(102B, MVCCGarbage: 100%)] (102B), in 1.0s (1.0s total), output rate 827B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000008(707B)] (707B), in 1.0s (1.0s total), output rate 707B/s
 
 batch
 set yay@3 a
@@ -62,4 +62,4 @@ Blob files:
 
 flush-log
 ----
-[JOB 1] flushed 1 memtable (100B) to L0 [000010] (795B) blob [000011 (MVCCGarbage: 17%)] (102B), in 1.0s (1.0s total), output rate 795B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000010(795B+102B)] (795B+102B) blob [000011(102B, MVCCGarbage: 17%)] (102B), in 1.0s (1.0s total), output rate 795B/s
