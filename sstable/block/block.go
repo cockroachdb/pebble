@@ -176,9 +176,9 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 		// Check if the checksum was due to a singular bit flip and report it.
 		data := slices.Clone(b[:bh.Length+1])
 		found, indexFound, bitFound := checkSliceForBitFlip(data, checksumType, expectedChecksum)
-		err := base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x",
-			errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
-			expectedChecksum, computedChecksum)
+		err := base.CorruptionErrorf("block %d/%d: %s checksum mismatch: expected 0x%08x, got 0x%08x",
+			errors.Safe(bh.Offset), errors.Safe(bh.Length), errors.Safe(checksumType),
+			errors.Safe(expectedChecksum), errors.Safe(computedChecksum))
 		if found {
 			err = errors.WithSafeDetails(err, ". bit flip found: byte index %d. got: %x. want: %x.",
 				indexFound, data[indexFound], data[indexFound]^(1<<bitFound))
