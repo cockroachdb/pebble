@@ -190,9 +190,9 @@ func ValidateChecksum(checksumType ChecksumType, b []byte, bh Handle) error {
 			}
 		}
 		found, indexFound, bitFound := bitflip.CheckSliceForBitFlip(data, checksumFunction, expectedChecksum)
-		err := base.CorruptionErrorf("block %d/%d: %s checksum mismatch %x != %x",
-			errors.Safe(bh.Offset), errors.Safe(bh.Length), checksumType,
-			expectedChecksum, computedChecksum)
+		err := base.CorruptionErrorf("block %d/%d: %s checksum mismatch: expected 0x%08x, got 0x%08x",
+			errors.Safe(bh.Offset), errors.Safe(bh.Length), errors.Safe(checksumType),
+			errors.Safe(expectedChecksum), errors.Safe(computedChecksum))
 		if found {
 			err = errors.WithSafeDetails(err, ". bit flip found: byte index %d. got: 0x%x. want: 0x%x.",
 				errors.Safe(indexFound), errors.Safe(data[indexFound]), errors.Safe(data[indexFound]^(1<<bitFound)))
