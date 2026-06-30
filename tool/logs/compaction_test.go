@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,6 +48,12 @@ const (
 	// Lines with blob reference sizes, rendered as "(table + blob)".
 	compactionStartLineBlob = `I211215 14:26:56.012382 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1845 ⋮ [n5,pebble,s6] 1216510  [JOB 284925] compacting(default) L2 [442555] (4.2MB + 1.0MB) Score=1.01 + L3 [445853] (8.4MB + 2.0MB) Score=0.99;  OverlappingRatio: Single 8.03, Multi 25.05;`
 	compactionEndLineBlob   = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883 445887] (13MB + 3.0MB), in 0.3s, output rate 42MB/s`
+
+	// Output lines with per-file sizes embedded in the file list and an output
+	// blob segment, e.g. "[445883(7.0MB+2.0MB) 445887(6.0MB+1.0MB)] (13MB+3.0MB)".
+	// The aggregate output size still follows the closing ']' of the table list.
+	compactionEndLinePerFileSizes = `I211215 14:26:56.318543 51831533 3@vendor/github.com/cockroachdb/pebble/compaction.go:1886 ⋮ [n5,pebble,s6] 1216554  [JOB 284925] compacted(default) L2 [442555] (4.2MB) Score=1.01 + L3 [445853] (8.4MB) Score=1.01 -> L3 [445883(7.0MB+2.0MB) 445887(6.0MB+1.0MB)] (13MB+3.0MB) blob [445890(3.0MB) 445891(1.5MB)] (4.5MB), in 0.3s, output rate 42MB/s`
+	flushEndLinePerFileSizes      = `I211213 16:23:49.134464 21136 3@vendor/github.com/cockroachdb/pebble/event.go:603 ⋮ [n9,pebble,s8] 26 [JOB 10] flushed 1 memtable (100B) to L0 [000005(859B+102B)] (859B+102B) blob [000006(102B, MVCCGarbage: 100%)] (102B), in 1.0s (1.0s total), output rate 859B/s`
 )
 
 func TestCompactionLogs_Regex(t *testing.T) {
@@ -223,6 +230,21 @@ func TestCompactionLogs_Regex(t *testing.T) {
 			},
 		},
 		{
+			name: "compaction end with per-file sizes and output blobs",
+			re:   compactionPattern,
+			line: compactionEndLinePerFileSizes,
+			matches: map[int]string{
+				compactionPatternJobIdx:    "284925",
+				compactionPatternSuffixIdx: "ed",
+				compactionPatternTypeIdx:   "default",
+				compactionPatternFromIdx:   "2",
+				compactionPatternToIdx:     "3",
+				// The aggregate table size is captured, not a per-file size or the
+				// output blob size.
+				compactionPatternBytesIdx: "13MB+3.0MB",
+			},
+		},
+		{
 			name: "flush start",
 			re:   flushPattern,
 			line: flushStartLine,
@@ -250,6 +272,18 @@ func TestCompactionLogs_Regex(t *testing.T) {
 				flushPatternJobIdx:    "10",
 				flushPatternSuffixIdx: "ed",
 				flushPatternBytesIdx:  "1.3MB",
+			},
+		},
+		{
+			name: "flush end with per-file sizes and output blobs",
+			re:   flushPattern,
+			line: flushEndLinePerFileSizes,
+			matches: map[int]string{
+				flushPatternJobIdx:    "10",
+				flushPatternSuffixIdx: "ed",
+				// The aggregate table size is captured, not a per-file size or the
+				// output blob size.
+				flushPatternBytesIdx: "859B+102B",
 			},
 		},
 		{
@@ -503,5 +537,118 @@ func TestParseInputBytes(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 		})
+	}
+}
+
+// TestParseEndWrittenBytes exercises the full match -> parse path for compaction
+// and flush end lines, including the new per-file-size output format whose
+// aggregate is a "table + blob" sum. This guards against the parser mishandling
+// the summed size (e.g. feeding it to unHumanize instead of unHumanizeSum).
+func TestParseEndWrittenBytes(t *testing.T) {
+	testCases := []struct {
+		name  string
+		flush bool
+		line  string
+		want  uint64
+	}{
+		{name: "compaction end", line: compactionEndLine, want: 13 << 20},
+		{name: "compaction end with blob references", line: compactionEndLineBlob, want: 16 << 20},
+		{name: "compaction end with per-file sizes", line: compactionEndLinePerFileSizes, want: 16 << 20},
+		// unHumanize("1.3MB") = uint64(1.3 * 2^20) = 1363148.
+		{name: "flush end", flush: true, line: flushEndLine, want: 1363148},
+		{name: "flush end with per-file sizes", flush: true, line: flushEndLinePerFileSizes, want: 859 + 102},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.flush {
+				matches := flushPattern.FindStringSubmatch(tc.line)
+				require.NotNil(t, matches)
+				end, err := parseFlushEnd(matches)
+				require.NoError(t, err)
+				require.Equal(t, tc.want, end.writtenBytes)
+			} else {
+				matches := compactionPattern.FindStringSubmatch(tc.line)
+				require.NotNil(t, matches)
+				end, err := parseCompactionEnd(matches)
+				require.NoError(t, err)
+				require.Equal(t, tc.want, end.writtenBytes)
+			}
+		})
+	}
+}
+
+// TestCompactionKindToolSupport verifies that the tool's compactionType enum
+// stays in sync with the main compactionKind enum in compaction.go.
+// This test will fail if a new compaction type is added to compaction.go
+// but not to this tool, preventing the tool from becoming out of date.
+func TestCompactionKindToolSupport(t *testing.T) {
+	// Get all compaction kinds from compaction.go via the helper function
+	allKinds := pebble.AllCompactionKindStrings()
+
+	// These kinds use flush logging format, not compaction logging format.
+	// They are handled separately and should NOT be in the compactionType enum.
+	flushLoggedKinds := map[string]string{
+		"flush":              "logged via FlushInfo, not CompactionInfo",
+		"ingested-flushable": "logged as 'flushed N ingested flushables' via FlushInfo (see parseIngestDuringFlush)",
+	}
+
+	// These kinds are not yet parsed by the tool on this branch. On master the
+	// tool handles them; they are excluded here so the sync check still covers
+	// the kinds this branch's tool does support.
+	unsupportedKinds := map[string]string{
+		"copy":              "not yet parsed by the tool on this branch",
+		"tombstone-density": "not yet parsed by the tool on this branch",
+		"rewrite":           "not yet parsed by the tool on this branch",
+	}
+
+	var missingTypes []string
+	handledCount := 0
+
+	// Verify each non-flush kind is supported by the tool
+	for kindStr := range allKinds {
+		if reason, excluded := flushLoggedKinds[kindStr]; excluded {
+			t.Logf("Skipping %q: %s", kindStr, reason)
+			continue
+		}
+		if reason, excluded := unsupportedKinds[kindStr]; excluded {
+			t.Logf("Skipping %q: %s", kindStr, reason)
+			continue
+		}
+
+		// Special case: blob-file-rewrite logs as "blob-rewrite" in practice
+		testStr := kindStr
+		if kindStr == "blob-file-rewrite" {
+			testStr = "blob-rewrite"
+		}
+
+		_, err := parseCompactionType(testStr)
+		if err != nil {
+			missingTypes = append(missingTypes, kindStr)
+			t.Errorf("SYNC ERROR: compaction kind %q from compaction.go is not supported by tool/logs/compaction.go", kindStr)
+		} else {
+			handledCount++
+		}
+	}
+
+	if len(missingTypes) > 0 {
+		t.Errorf("\n"+
+			"═══════════════════════════════════════════════════════════════════════════\n"+
+			"  COMPACTION TOOL OUT OF SYNC\n"+
+			"═══════════════════════════════════════════════════════════════════════════\n"+
+			"\n"+
+			"A new compaction type was added to compaction.go but the compaction summary\n"+
+			"tool (tool/logs/compaction.go) was not updated.\n"+
+			"\n"+
+			"Missing types: %v\n"+
+			"═══════════════════════════════════════════════════════════════════════════\n",
+			missingTypes)
+	}
+
+	// Verify we're handling the expected number of types
+	expectedHandled := len(allKinds) - len(flushLoggedKinds) - len(unsupportedKinds)
+	if handledCount != expectedHandled {
+		t.Errorf("Expected to handle %d compaction types but only handle %d", expectedHandled, handledCount)
+	} else {
+		t.Logf("Successfully verified %d compaction types are supported", handledCount)
 	}
 }
