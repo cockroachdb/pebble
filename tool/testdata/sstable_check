@@ -44,7 +44,7 @@ WARNING: OUT OF ORDER KEYS!
 sstable check
 testdata/corrupted-sst/000003.sst
 ----
-000003.sst: pebble: file 000003: block 87/465: crc32c checksum mismatch c8539ba5 != b972e324
+000003.sst: pebble: file 000003: block 87/465: crc32c checksum mismatch: expected 0xc8539ba5, got 0xb972e324
 
 sstable check
 testdata/bad-magic-sst/000015.sst
