@@ -39,8 +39,8 @@ Blob files:
 
 flush-log
 ----
-[JOB 1] flushed 1 memtable (100B) to L0 [000005] (859B) blob [000006 (MVCCGarbage: 100%)] (102B), in 1.0s (1.0s total), output rate 859B/s
-[JOB 1] flushed 1 memtable (100B) to L0 [000008] (737B), in 1.0s (1.0s total), output rate 737B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000005(859B+102B)] (859B+102B) blob [000006(102B, MVCCGarbage: 100%)] (102B), in 1.0s (1.0s total), output rate 859B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000008(737B)] (737B), in 1.0s (1.0s total), output rate 737B/s
 
 batch
 set yay@3 a
@@ -62,7 +62,7 @@ Blob files:
 
 flush-log
 ----
-[JOB 1] flushed 1 memtable (100B) to L0 [000010] (827B) blob [000011 (MVCCGarbage: 17%)] (102B), in 1.0s (1.0s total), output rate 827B/s
+[JOB 1] flushed 1 memtable (100B) to L0 [000010(827B+102B)] (827B+102B) blob [000011(102B, MVCCGarbage: 17%)] (102B), in 1.0s (1.0s total), output rate 827B/s
 
 
 # Another test with the same value separation config, but this time we set a span
