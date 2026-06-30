@@ -194,8 +194,15 @@ var (
 
 			/* Start / end level */
 			`(?P<levels>L(?P<from>\d).*?(?:.*(?:\+|->)\sL(?P<to>\d))?` +
-			/* Bytes (optionally "table + blob references", e.g. "(4.0KB + 1.2MB)") */
-			`(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B)( \+ [0-9.]+( [BKMGTPE]|[KMGTPE]?B))*)\))` +
+			/* Bytes: the aggregate size in parens following the first ']'-terminated
+			   file list after the (last) matched level, optionally
+			   "table + blob references" (e.g. "(4.0KB + 1.2MB)" or "(4.0KB+1.2MB)").
+			   For an "ed" (end) line the greedy '.*' above consumes the input levels
+			   so this captures the output size; for an "ing" (start) line it captures
+			   an input size (not asserted). The capture is anchored on the closing
+			   ']' so we skip the per-file sizes now embedded in the list itself, e.g.
+			   "[445883(7.0MB+2.0MB) 445887(6.0MB+1.0MB)] (13MB+3.0MB)". */
+			`(?:.*?]\s*\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B)(\s*\+\s*[0-9.]+( [BKMGTPE]|[KMGTPE]?B))*)\))` +
 			/* Score */
 			`?(\s*(Score=\d+(\.\d+)))?)`,
 	)
@@ -224,7 +231,10 @@ var (
 			/* Job ID                       */ `\[JOB (?P<job>\d+)]\s` +
 			/* Compaction type              */ `flush(?P<suffix>ed|ing)\s` +
 			/* Memtable count; size (23.2+) */ `\d+ memtables? (\([^)]+\))?` +
-			/* SSTable Bytes                */ `(?:.*?\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B))\))?`,
+			/* SSTable bytes: aggregate output size in parens following the output
+			   file list, anchored on the closing ']' so we skip the per-file sizes
+			   now embedded in the list. Optionally "table + blob references". */
+			`(?:.*?]\s*\((?P<bytes>[0-9.]+( [BKMGTPE]|[KMGTPE]?B)(\s*\+\s*[0-9.]+( [BKMGTPE]|[KMGTPE]?B))*)\))?`,
 	)
 	flushPatternSuffixIdx = flushPattern.SubexpIndex("suffix")
 	flushPatternJobIdx    = flushPattern.SubexpIndex("job")
@@ -506,9 +516,10 @@ func parseFlushEnd(matches []string) (compactionEnd, error) {
 	}
 	end = compactionEnd{jobID: jobID}
 
-	// Optionally, if we have flushed bytes.
+	// Optionally, if we have flushed bytes. The captured size may be a
+	// "table + blob references" sum (e.g. "859B+102B"), so use unHumanizeSum.
 	if matches[flushPatternBytesIdx] != "" {
-		end.writtenBytes = unHumanize(matches[flushPatternBytesIdx])
+		end.writtenBytes = unHumanizeSum(matches[flushPatternBytesIdx])
 	}
 
 	return end, nil
