@@ -130,11 +130,10 @@ func isSyncRangeSupported(fd uintptr) bool {
 	// Allowlist which filesystems we allow using sync_file_range with as some
 	// filesystems treat that syscall as a noop (notably ZFS). A allowlist is
 	// used instead of a denylist in order to have a more graceful failure mode
-	// in case a filesystem we haven't tested is encountered. Currently only
-	// ext2/3/4 are known to work properly.
-	const extMagic = 0xef53
+	// in case a filesystem we haven't tested is encountered. Currently ext2/3/4
+	// and XFS are known to work properly.
 	switch stat.Type {
-	case extMagic:
+	case unix.EXT4_SUPER_MAGIC, unix.XFS_SUPER_MAGIC:
 		return syncRangeSmokeTest(fd, unix.SyncFileRange)
 	}
 	return false
