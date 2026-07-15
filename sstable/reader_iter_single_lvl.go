@@ -41,6 +41,38 @@ import (
 // pattern is taken from the Go generics proposal:
 // https://go.googlesource.com/proposal/+/refs/heads/master/design/43651-type-parameters.md#pointer-method-example
 type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIterator[D]] struct {
+	// singleLevelIterClearedState holds the fields that are cleared when the
+	// iterator is reset for reuse.
+	singleLevelIterClearedState
+
+	// maximumSuffixProperty is used to store the maximum suffix property
+	// which extracts the suffix used by the synthetic key optimization.
+	maximumSuffixProperty MaximumSuffixProperty
+	// synthetic is used to store the synthetic key and the seek key.
+	synthetic syntheticKey
+
+	index I
+	data  D
+	// inPool is set to true before putting the iterator in the reusable pool;
+	// used to detect double-close.
+	inPool bool
+	// pool is the pool from which the iterator was allocated and to which the
+	// iterator should be returned on Close. Because the iterator is
+	// parameterized by the type of the data block iterator, pools must be
+	// specific to the type of the data block iterator.
+	//
+	// If the iterator is embedded within a twoLevelIterator, pool is nil and
+	// the twoLevelIterator.pool field may be non-nil.
+	pool *sync.Pool
+
+	// NOTE: any new fields should be added to singleLevelIterClearedState,
+	// unless they need to be retained when resetting the iterator.
+}
+
+// singleLevelIterClearedState holds the singleLevelIterator fields that are
+// cleared when the iterator is reset for reuse, by assigning the zero value of
+// this struct.
+type singleLevelIterClearedState struct {
 	ctx context.Context
 	cmp Compare
 	// Global lower/upper bound for the iterator.
@@ -176,31 +208,6 @@ type singleLevelIterator[I any, PI indexBlockIterator[I], D any, PD dataBlockIte
 
 	transforms IterTransforms
 
-	// All fields above this field are cleared when resetting the iterator for reuse.
-	clearForResetBoundary struct{}
-
-	// maximumSuffixProperty is used to store the maximum suffix property
-	// which extracts the suffix used by the synthetic key optimization.
-	maximumSuffixProperty MaximumSuffixProperty
-	// synthetic is used to store the synthetic key and the seek key.
-	synthetic syntheticKey
-
-	index I
-	data  D
-	// inPool is set to true before putting the iterator in the reusable pool;
-	// used to detect double-close.
-	inPool bool
-	// pool is the pool from which the iterator was allocated and to which the
-	// iterator should be returned on Close. Because the iterator is
-	// parameterized by the type of the data block iterator, pools must be
-	// specific to the type of the data block iterator.
-	//
-	// If the iterator is embedded within a twoLevelIterator, pool is nil and
-	// the twoLevelIterator.pool field may be non-nil.
-	pool *sync.Pool
-
-	// NOTE: any new fields should be added above the clearForResetBoundary field,
-	// unless they need to be retained when resetting the iterator.
 }
 
 // singleLevelIterator implements the base.InternalIterator interface.
@@ -314,15 +321,8 @@ func (i *singleLevelIterator[I, PI, D, PD]) SetupForCompaction() {
 	}
 }
 
-const clearLen = unsafe.Offsetof(singleLevelIteratorRowBlocks{}.clearForResetBoundary)
-
-// Assert that clearLen is consistent between the row and columnar implementations.
-const clearLenColBlocks = unsafe.Offsetof(singleLevelIteratorColumnBlocks{}.clearForResetBoundary)
-const _ uintptr = clearLen - clearLenColBlocks
-const _ uintptr = clearLenColBlocks - clearLen
-
 func (i *singleLevelIterator[I, PI, D, PD]) resetForReuse() {
-	*(*[clearLen]byte)(unsafe.Pointer(i)) = [clearLen]byte{}
+	i.singleLevelIterClearedState = singleLevelIterClearedState{}
 	i.inPool = true
 	// Clear the synthetic key fields.
 	clear(i.synthetic.seekKey[:cap(i.synthetic.seekKey)])
