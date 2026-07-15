@@ -90,7 +90,6 @@ func NewExternalIterWithContext(
 			// of readers indexed by *fileMetadata.
 			panic("unreachable")
 		},
-		seqNum: base.SeqNumMax,
 	}
 	dbi.externalIter.bufferPool.Init(2)
 
