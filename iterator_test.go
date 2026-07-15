@@ -184,9 +184,11 @@ func TestIterator(t *testing.T) {
 			return merge(key, value)
 		}
 		it := &Iterator{
-			opts:     opts,
-			comparer: testkeys.Comparer,
-			merge:    wrappedMerge,
+			iterClearedState: iterClearedState{
+				opts:     opts,
+				comparer: testkeys.Comparer,
+				merge:    wrappedMerge,
+			},
 		}
 		// NB: Use a mergingIter to filter entries newer than seqNum.
 		fakeIter := base.NewFakeIter(kvs)
@@ -861,10 +863,12 @@ func TestIteratorSeekOptErrors(t *testing.T) {
 		// NB: This Iterator cannot be cloned since it is not constructed
 		// with a readState. It suffices for this test.
 		return &Iterator{
-			opts:     opts,
-			comparer: testkeys.Comparer,
-			merge:    DefaultMerger.Merge,
-			iter:     &errorIter,
+			iterClearedState: iterClearedState{
+				opts:     opts,
+				comparer: testkeys.Comparer,
+				merge:    DefaultMerger.Merge,
+				iter:     &errorIter,
+			},
 		}
 	}
 
@@ -1694,8 +1698,10 @@ func newPointTestkeysDatabase(t *testing.T, ks testkeys.Keyspace) *DB {
 func BenchmarkIteratorSeekGE(b *testing.B) {
 	m, keys := buildMemTable(b)
 	iter := &Iterator{
-		comparer: DefaultComparer,
-		iter:     m.newIter(nil),
+		iterClearedState: iterClearedState{
+			comparer: DefaultComparer,
+			iter:     m.newIter(nil),
+		},
 	}
 	rng := rand.New(rand.NewPCG(0, uint64(time.Now().UnixNano())))
 
@@ -1709,8 +1715,10 @@ func BenchmarkIteratorSeekGE(b *testing.B) {
 func BenchmarkIteratorNext(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
-		comparer: DefaultComparer,
-		iter:     m.newIter(nil),
+		iterClearedState: iterClearedState{
+			comparer: DefaultComparer,
+			iter:     m.newIter(nil),
+		},
 	}
 
 	b.ResetTimer()
@@ -1725,8 +1733,10 @@ func BenchmarkIteratorNext(b *testing.B) {
 func BenchmarkIteratorPrev(b *testing.B) {
 	m, _ := buildMemTable(b)
 	iter := &Iterator{
-		comparer: DefaultComparer,
-		iter:     m.newIter(nil),
+		iterClearedState: iterClearedState{
+			comparer: DefaultComparer,
+			iter:     m.newIter(nil),
+		},
 	}
 
 	b.ResetTimer()
@@ -1843,9 +1853,11 @@ func BenchmarkIteratorSeqSeekPrefixGENotFound(b *testing.B) {
 							levelSlices := levelSlices[index]
 							m := buildMergingIter(readers, levelSlices)
 							iter := Iterator{
-								comparer: testkeys.Comparer,
-								merge:    DefaultMerger.Merge,
-								iter:     m,
+								iterClearedState: iterClearedState{
+									comparer: testkeys.Comparer,
+									merge:    DefaultMerger.Merge,
+									iter:     m,
+								},
 							}
 							pos := 0
 							b.ResetTimer()
@@ -1908,9 +1920,11 @@ func BenchmarkIteratorSeqSeekPrefixGEFound(b *testing.B) {
 							levelSlices := levelSlices[index]
 							m := buildMergingIter(readers, levelSlices)
 							iter := Iterator{
-								comparer: testkeys.Comparer,
-								merge:    DefaultMerger.Merge,
-								iter:     m,
+								iterClearedState: iterClearedState{
+									comparer: testkeys.Comparer,
+									merge:    DefaultMerger.Merge,
+									iter:     m,
+								},
 							}
 							pos := 0
 							b.ResetTimer()
@@ -1961,9 +1975,11 @@ func BenchmarkIteratorSeqSeekGEWithBounds(b *testing.B) {
 					false, false, twoLevelIndex)
 				m := buildMergingIter(readers, levelSlices)
 				iter := Iterator{
-					comparer: testkeys.Comparer,
-					merge:    DefaultMerger.Merge,
-					iter:     m,
+					iterClearedState: iterClearedState{
+						comparer: testkeys.Comparer,
+						merge:    DefaultMerger.Merge,
+						iter:     m,
+					},
 				}
 				keyCount := len(keys)
 				b.ResetTimer()
@@ -2009,9 +2025,11 @@ func BenchmarkIteratorSeekGENoop(b *testing.B) {
 		b.Run(fmt.Sprintf("withLimit=%t", withLimit), func(b *testing.B) {
 			m := buildMergingIter(readers, levelSlices)
 			iter := Iterator{
-				comparer: testkeys.Comparer,
-				merge:    DefaultMerger.Merge,
-				iter:     m,
+				iterClearedState: iterClearedState{
+					comparer: testkeys.Comparer,
+					merge:    DefaultMerger.Merge,
+					iter:     m,
+				},
 			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
