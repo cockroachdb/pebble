@@ -207,13 +207,18 @@ type Iterator struct {
 	// version's BlobFileSet or flushable ingests.
 	combinedBlobMapping combinedBlobFileMapping
 
-	// All fields below this field are cleared during Iterator.Close before
-	// returning the Iterator to the pool. Any fields above this field must also
-	// be cleared, but may be cleared as a part of the body of Iterator.Close
-	// (eg, if these types have their own Close method that zeroes their
-	// fields).
-	clearForReuseBoundary struct{}
+	// iterClearedState holds all remaining Iterator fields; it is cleared
+	// during Iterator.Close before returning the Iterator to the pool. Any
+	// fields declared directly on Iterator (above) must also be cleared, but
+	// may be cleared as a part of the body of Iterator.Close (eg, if these
+	// types have their own Close method that zeroes their fields).
+	iterClearedState
+}
 
+// iterClearedState holds the Iterator fields that are cleared when the
+// Iterator is closed and returned to its pool, by assigning the zero value of
+// this struct.
+type iterClearedState struct {
 	// The context is stored here since (a) Iterators are expected to be
 	// short-lived (since they pin memtables and sstables), (b) plumbing a
 	// context into every method is very painful, (c) they do not (yet) respect
@@ -349,11 +354,8 @@ type Iterator struct {
 	nextPrefixNotPermittedByUpperBound bool
 }
 
-const clearOff = unsafe.Offsetof(Iterator{}.clearForReuseBoundary)
-const clearLen = unsafe.Sizeof(Iterator{}) - clearOff
-
 func (i *Iterator) clearForReuse() {
-	*(*[clearLen]byte)(unsafe.Add(unsafe.Pointer(i), clearOff)) = [clearLen]byte{}
+	i.iterClearedState = iterClearedState{}
 }
 
 // cmp is a convenience shorthand for the i.comparer.Compare function.
@@ -3037,22 +3039,24 @@ func (i *Iterator) CloneWithContext(ctx context.Context, opts CloneOptions) (*It
 	buf := newIterAlloc()
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		ctx:                   ctx,
-		opts:                  *opts.IterOptions,
-		alloc:                 buf,
-		merge:                 i.merge,
-		comparer:              i.comparer,
-		readState:             readState,
-		version:               vers,
-		keyBuf:                buf.keyBuf,
-		prefixOrFullSeekKey:   buf.prefixOrFullSeekKey,
-		boundsBuf:             buf.boundsBuf,
-		fc:                    i.fc,
-		newIters:              i.newIters,
-		newIterRangeKey:       i.newIterRangeKey,
-		valueRetrievalProfile: i.valueRetrievalProfile,
-		seqNum:                i.seqNum,
-		tracker:               i.tracker,
+		iterClearedState: iterClearedState{
+			ctx:                   ctx,
+			opts:                  *opts.IterOptions,
+			alloc:                 buf,
+			merge:                 i.merge,
+			comparer:              i.comparer,
+			readState:             readState,
+			version:               vers,
+			keyBuf:                buf.keyBuf,
+			prefixOrFullSeekKey:   buf.prefixOrFullSeekKey,
+			boundsBuf:             buf.boundsBuf,
+			fc:                    i.fc,
+			newIters:              i.newIters,
+			newIterRangeKey:       i.newIterRangeKey,
+			valueRetrievalProfile: i.valueRetrievalProfile,
+			seqNum:                i.seqNum,
+			tracker:               i.tracker,
+		},
 	}
 	if i.tracker != nil && !dbi.opts.ExemptFromTracking {
 		dbi.trackerHandle = i.tracker.Start()
