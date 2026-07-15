@@ -69,29 +69,31 @@ func NewExternalIterWithContext(
 	buf := iterAllocPool.Get().(*iterAlloc)
 	dbi := &buf.dbi
 	*dbi = Iterator{
-		ctx:                 ctx,
-		alloc:               buf,
-		merge:               o.Merger.Merge,
-		comparer:            o.Comparer,
-		readState:           nil,
-		keyBuf:              buf.keyBuf,
-		prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
-		boundsBuf:           buf.boundsBuf,
-		batch:               nil,
-		// Add the external iter state to the Iterator so that Close closes it,
-		// and SetOptions can re-construct iterators using its state.
-		externalIter: &externalIterState{readers: readers},
-		newIters: func(context.Context, *manifest.TableMetadata, *IterOptions,
-			internalIterOpts, iterKinds) (iterSet, error) {
-			// NB: External iterators are currently constructed without any
-			// `levelIters`. newIters should never be called. When we support
-			// organizing multiple non-overlapping files into a single level
-			// (see TODO below), we'll need to adjust this tableNewIters
-			// implementation to open iterators by looking up f in a map
-			// of readers indexed by *fileMetadata.
-			panic("unreachable")
+		iterClearedState: iterClearedState{
+			ctx:                 ctx,
+			alloc:               buf,
+			merge:               o.Merger.Merge,
+			comparer:            o.Comparer,
+			readState:           nil,
+			keyBuf:              buf.keyBuf,
+			prefixOrFullSeekKey: buf.prefixOrFullSeekKey,
+			boundsBuf:           buf.boundsBuf,
+			batch:               nil,
+			// Add the external iter state to the Iterator so that Close closes it,
+			// and SetOptions can re-construct iterators using its state.
+			externalIter: &externalIterState{readers: readers},
+			newIters: func(context.Context, *manifest.TableMetadata, *IterOptions,
+				internalIterOpts, iterKinds) (iterSet, error) {
+				// NB: External iterators are currently constructed without any
+				// `levelIters`. newIters should never be called. When we support
+				// organizing multiple non-overlapping files into a single level
+				// (see TODO below), we'll need to adjust this tableNewIters
+				// implementation to open iterators by looking up f in a map
+				// of readers indexed by *fileMetadata.
+				panic("unreachable")
+			},
+			seqNum: base.SeqNumMax,
 		},
-		seqNum: base.SeqNumMax,
 	}
 	dbi.externalIter.bufferPool.Init(2, block.ForExternalIter)
 

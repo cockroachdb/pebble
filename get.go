@@ -112,13 +112,15 @@ func (d *DB) getInternal(key []byte, b *Batch, s *Snapshot) ([]byte, io.Closer, 
 	i := &buf.dbi
 	pointIter := get
 	*i = Iterator{
-		ctx:       context.Background(),
-		iter:      pointIter,
-		pointIter: pointIter,
-		merge:     d.merge,
-		comparer:  d.opts.Comparer,
-		readState: readState,
-		keyBuf:    buf.keyBuf,
+		iterClearedState: iterClearedState{
+			ctx:       context.Background(),
+			iter:      pointIter,
+			pointIter: pointIter,
+			merge:     d.merge,
+			comparer:  d.opts.Comparer,
+			readState: readState,
+			keyBuf:    buf.keyBuf,
+		},
 	}
 	// Set up a blob value fetcher to use for retrieving values from blob files.
 	i.blobValueFetcher.Init(&readState.current.BlobFiles, d.fileCache, block.NoReadEnv,
