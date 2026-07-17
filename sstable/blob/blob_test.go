@@ -16,6 +16,7 @@ import (
 	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/sstable/block"
 	"github.com/stretchr/testify/require"
@@ -169,4 +170,57 @@ func TestHandleRoundtrip(t *testing.T) {
 		require.Equal(t, h.InlineHandlePreface, preface)
 		require.Equal(t, h.HandleSuffix, suffix)
 	}
+}
+
+// TestFinishErrorNoAbort verifies that when FileWriter.Close() encounters an
+// error from Finish(), it does NOT call Abort() (which is illegal per the
+// objstorage.Writable contract and would crash on the default
+// fileBufferedWritable). Regression test for a nil-pointer panic bug.
+func TestFinishErrorNoAbort(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Mock writable that fails Finish() and tracks whether Abort() is called.
+	mock := &failFinishWritable{
+		finishErr: errors.New("injected Finish error"),
+	}
+
+	opts := FileWriterOptions{}
+	opts.ensureDefaults()
+	w := NewFileWriter(000001, mock, opts)
+
+	// Write at least one value so BlockCount > 0 (required by Close).
+	w.AddValue([]byte("test-value"), false)
+
+	// Close should return the Finish error without calling Abort.
+	_, err := w.Close()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "injected Finish error")
+	require.False(t, mock.abortCalled, "Abort() must not be called after Finish() errors")
+}
+
+// failFinishWritable is a mock objstorage.Writable that returns an error from
+// Finish() and panics if Abort() is called (testing the illegal post-Finish
+// Abort codepath).
+type failFinishWritable struct {
+	finishErr   error
+	abortCalled bool
+}
+
+var _ objstorage.Writable = (*failFinishWritable)(nil)
+
+func (f *failFinishWritable) Write(p []byte) error {
+	return nil
+}
+
+func (f *failFinishWritable) Finish() error {
+	return f.finishErr
+}
+
+func (f *failFinishWritable) Abort() {
+	f.abortCalled = true
+	panic("Abort() called after Finish() — illegal per objstorage.Writable contract")
+}
+
+func (f *failFinishWritable) StartMetadataPortion() error {
+	return nil
 }
