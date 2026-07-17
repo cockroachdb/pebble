@@ -369,12 +369,19 @@ func (w *FileWriter) Close() (FileWriterStats, error) {
 			return err
 		}
 		w.stats.FileLen += uint64(len(footerBuf))
-		return w.w.Finish()
+		finishErr := w.w.Finish()
+		// Finish consumes the writable; per the objstorage.Writable contract no
+		// further calls (including Abort) are allowed, even when Finish errors.
+		w.w = nil
+		return finishErr
 	}()
 	if err != nil {
 		w.err = err
-		w.w.Abort()
-		w.w = nil
+		if w.w != nil {
+			// Only reached for errors before Finish was called.
+			w.w.Abort()
+			w.w = nil
+		}
 		return FileWriterStats{}, err
 	}
 
