@@ -355,3 +355,41 @@ func makeMockReaderProvider(
 	}
 	return rp
 }
+
+// TestValueFetcherUnreferencedVirtualBlock verifies that fetching a handle
+// pointing at a virtual block that the rewrite left unreferenced fails cleanly,
+// rather than reading past the end of the index block's offsets column.
+func TestValueFetcherUnreferencedVirtualBlock(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ctx := context.Background()
+
+	// Write a file with virtual block IDs 0 and 2, leaving a gap at ID 1. The
+	// index block records the sentinel for the gap.
+	obj := &objstorage.MemObj{}
+	w := NewFileWriter(base.DiskFileNum(1), obj, FileWriterOptions{})
+	w.beginNewVirtualBlock(BlockID(0))
+	w.AddValue([]byte("hello"), false /* isLikelyMVCCGarbage */)
+	w.beginNewVirtualBlock(BlockID(2))
+	w.AddValue([]byte("world"), false /* isLikelyMVCCGarbage */)
+	_, err := w.Close()
+	require.NoError(t, err)
+
+	r, err := NewFileReader(ctx, obj, FileReaderOptions{
+		ReaderOptions: block.ReaderOptions{
+			CacheOpts: sstableinternal.CacheOptions{FileNum: base.DiskFileNum(1)},
+		},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, r.Close()) }()
+
+	rp := &mockReaderProvider{readers: map[base.DiskFileNum]*FileReader{1: r}}
+	var f ValueFetcher
+	f.Init(identityFileMapping{}, rp, block.ReadEnv{}, 5 /* maxCachedReaders */)
+	defer func() { require.NoError(t, f.Close()) }()
+
+	var handleBuf [MaxInlineHandleLength]byte
+	n := HandleSuffix{BlockID: BlockID(1), ValueID: BlockValueID(0)}.Encode(handleBuf[:])
+	_, _, err = f.FetchHandle(ctx, handleBuf[:n], base.BlobFileID(1), 5 /* valLen */, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unreferenced")
+}
