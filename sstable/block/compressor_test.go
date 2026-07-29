@@ -50,3 +50,28 @@ func TestCompressor(t *testing.T) {
 		compressor.Close()
 	}
 }
+
+// TestCompressorMinReductionStats verifies that a block abandoned because it
+// did not meet MinReductionPercent is accounted as uncompressed, rather than
+// under a synthetic setting that retains the profile's compression level.
+func TestCompressorMinReductionStats(t *testing.T) {
+	// Incompressible data, so that compression cannot meet the minimum
+	// reduction.
+	src := make([]byte, 1024)
+	for i := range src {
+		src[i] = byte(rand.Uint32())
+	}
+	profile := &CompressionProfile{
+		DataBlocks:          SimpleCompressionSetting(compression.ZstdLevel3),
+		ValueBlocks:         SimpleCompressionSetting(compression.ZstdLevel3),
+		OtherBlocks:         compression.ZstdLevel3,
+		MinReductionPercent: 20,
+	}
+	compressor := MakeCompressor(profile)
+	defer compressor.Close()
+
+	ci, out := compressor.Compress(nil, src, blockkind.SSTableData)
+	require.Equal(t, NoCompressionIndicator, ci)
+	require.Equal(t, src, out)
+	require.Equal(t, "None:1024", compressor.Stats().String())
+}

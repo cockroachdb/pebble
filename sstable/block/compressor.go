@@ -87,7 +87,7 @@ func (c *Compressor) Compress(dst, src []byte, kind Kind) (CompressionIndicator,
 	//      before
 	if setting.Algorithm != compression.NoAlgorithm &&
 		int64(len(out))*100 > int64(len(src))*int64(100-c.minReductionPercent) {
-		setting.Algorithm = compression.NoAlgorithm
+		setting = compression.NoCompression
 		out = append(out[:0], src...)
 	}
 	c.stats.addOne(setting, CompressionStatsForSetting{
