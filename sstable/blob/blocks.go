@@ -186,15 +186,20 @@ func (d *indexBlockDecoder) BlockHandle(blockIndex int) block.Handle {
 // with a non-empty virtual blocks column (i.e., index blocks for rewritten blob
 // files).
 //
+// An error is returned if the virtual block is unreferenced, i.e. it has no
+// corresponding physical block.
+//
 // REQUIRES: d.virtualBlockCount > 0
 func (d *indexBlockDecoder) RemapVirtualBlockID(
 	blockID BlockID,
-) (blockIndex int, valueIDOffset BlockValueID) {
+) (blockIndex int, valueIDOffset BlockValueID, err error) {
 	invariants.CheckBounds(int(blockID), d.virtualBlockCount)
 	v := d.virtualBlocks.At(int(blockID))
-	blockIndex = int(v & virtualBlockIndexMask)
-	valueIDOffset = BlockValueID(v >> 32)
-	return blockIndex, valueIDOffset
+	idx := v & virtualBlockIndexMask
+	if idx == virtualBlockIndexMask {
+		return 0, 0, errors.AssertionFailedf("virtual block ID %d is unreferenced", errors.Safe(blockID))
+	}
+	return int(idx), BlockValueID(v >> 32), nil
 }
 
 // BlockCount returns the number of physical blocks encoded in the index block.
