@@ -612,7 +612,11 @@ func (r *FileReader) Layout() (string, error) {
 	if indexDecoder.virtualBlockCount > 0 {
 		fmt.Fprintf(&buf, "virtual blocks mapping:\n")
 		for i := range indexDecoder.virtualBlockCount {
-			blockIndex, valueIDOffset := indexDecoder.RemapVirtualBlockID(BlockID(i))
+			blockIndex, valueIDOffset, err := indexDecoder.RemapVirtualBlockID(BlockID(i))
+			if err != nil {
+				fmt.Fprintf(&buf, "virtual block %d -> unreferenced\n", i)
+				continue
+			}
 			fmt.Fprintf(&buf, "virtual block %d -> physical block %d (valueID offset: %d)\n",
 				i, blockIndex, valueIDOffset)
 		}

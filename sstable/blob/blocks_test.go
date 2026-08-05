@@ -76,7 +76,11 @@ func TestIndexBlockEncoding(t *testing.T) {
 			for _, arg := range d.CmdArgs {
 				blockID, err := strconv.ParseInt(arg.Key, 10, 64)
 				require.NoError(t, err)
-				blockIndex, valueIDOffset := decoder.RemapVirtualBlockID(BlockID(blockID))
+				blockIndex, valueIDOffset, err := decoder.RemapVirtualBlockID(BlockID(blockID))
+				if err != nil {
+					fmt.Fprintf(&buf, "%d -> %v\n", blockID, err)
+					continue
+				}
 				fmt.Fprintf(&buf, "%d -> block %d, with valueID offset %d\n", blockID, blockIndex, valueIDOffset)
 			}
 			return buf.String()
