@@ -92,7 +92,7 @@ jobs:
 
       - name: Post issue on failure
         if: failure()
-        uses: ./.github/actions/post-issue
+        uses: $/.github/actions/post-issue
         with:
           title: "master: nightly ${{ github.job }} failed"
           body: "The nightly ${{ github.job }} test run failed on ${{ github.sha }} (go${{ matrix.go }}). Please review the run [here](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
