@@ -32,9 +32,6 @@ on:
         default: '1.26'
         type: string
 
-permissions:
-  issues: write
-
 jobs:
   linux-qemu-s390x:
     runs-on: ubuntu-latest
