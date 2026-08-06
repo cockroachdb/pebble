@@ -15,7 +15,7 @@ inputs:
     description: "The unique title to search for in the repository; if found, a comment will be posted. Defaults to title"
     required: false
   labels:
-    description: "Labels to use when creating an issue"
+    description: "Comma-separated labels to use when creating an issue"
     required: false
 
 outputs:
@@ -26,56 +26,39 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Find issue
-      id: find-issue
-      uses: actions-cool/issues-helper@v3
-      with:
-        token: ${{ inputs.token }}
-        actions: "find-issues"
-        title-includes: ${{ inputs.unique-title-includes || inputs.title}}
-
-    - name: Get issue number
-      shell: bash
-      id: get-issue-number
-      run: |
-        if num=$(jq -re '.[0].number' <<'EOF'
-        ${{ steps.find-issue.outputs.issues }}
-        EOF
-        ); then
-          echo "Found existing issue #$num"
-          echo "issue-number=$num" >> $GITHUB_OUTPUT
-        else
-          echo "No existing issue found"
-        fi
-
-    - name: Create issue
-      if: steps.get-issue-number.outputs.issue-number == ''
-      id: create-issue
-      uses: actions-cool/issues-helper@v3
-      with:
-        token: ${{ inputs.token }}
-        actions: "create-issue"
-        title: ${{ inputs.title }}
-        body: ${{ inputs.body }}
-        labels: ${{ inputs.labels }}
-
-    - name: Comment on existing issue
-      if: steps.get-issue-number.outputs.issue-number != ''
-      id: comment-on-issue
-      uses: actions-cool/issues-helper@v3
-      with:
-        token: ${{ inputs.token }}
-        actions: "create-comment"
-        issue-number: ${{ steps.get-issue-number.outputs.issue-number }}
-        title: ${{ inputs.title }}
-        body: ${{ inputs.body }}
-
-    - name: Result
-      shell: bash
+    - name: Create or comment on issue
       id: result
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        LABELS: ${{ inputs.labels }}
+        SEARCH: ${{ inputs.unique-title-includes || inputs.title }}
       run: |
-        if [ -n "${{ steps.get-issue-number.outputs.issue-number }}" ]; then
-          echo "issue-number=${{ steps.get-issue-number.outputs.issue-number }}" >> $GITHUB_OUTPUT
-        elif [ -n "${{ steps.create-issue.outputs.issue-number }}" ]; then
-          echo "issue-number=${{ steps.create-issue.outputs.issue-number }}" >> $GITHUB_OUTPUT
+        set -euo pipefail
+
+        # Find an open issue whose title contains the (unique) search string.
+        # --search narrows server-side; the jq `contains` filter makes the
+        # match exact (search is fuzzy and may return unrelated issues).
+        num=$(gh issue list --state open --limit 100 \
+          --search "in:title \"$SEARCH\"" \
+          --json number,title \
+          --jq "map(select(.title | contains(\"$SEARCH\"))) | .[0].number // empty")
+
+        if [ -n "$num" ]; then
+          echo "Commenting on existing issue #$num"
+          gh issue comment "$num" --body "$BODY"
+        else
+          echo "Creating new issue"
+          label_args=()
+          if [ -n "$LABELS" ]; then
+            label_args=(--label "$LABELS")
+          fi
+          url=$(gh issue create --title "$TITLE" --body "$BODY" "${label_args[@]}")
+          echo "Created $url"
+          num=${url##*/}
         fi
+
+        echo "issue-number=$num" >> "$GITHUB_OUTPUT"
