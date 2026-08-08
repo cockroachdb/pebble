@@ -32,8 +32,13 @@ type DeleteFn func(of ObsoleteFile, jobID int)
 // quickly can negatively impact overall disk performance due to internal garbage
 // collection overhead.
 //
-// The delete pacer maintains a queue of obsolete files and processes them at a
-// controlled rate. The deletion rate adapts dynamically based on:
+// Only local sstables and blob files are subject to pacing; deleting anything
+// else (WALs, manifests, options files, remote objects) is cheap and happens as
+// soon as possible. To that end the pacer maintains two queues, and the unpaced
+// queue is always drained first.
+//
+// Paced files are processed at a controlled rate that adapts dynamically based
+// on:
 //   - A configured baseline rate (minimum deletion throughput)
 //   - Recent deletion patterns (smoothing out bursts over a 5-minute window)
 //   - Queue backlog (accelerating when the queue grows too large)
@@ -54,7 +59,16 @@ type DeletePacer struct {
 	mu struct {
 		sync.Mutex
 
-		queue             []queueEntry
+		// pacedQueue contains the files whose deletion is rate-limited (see
+		// ObsoleteFile.needsPacing).
+		pacedQueue fileQueue
+		// unpacedQueue contains the files whose deletion is not rate-limited. It
+		// is drained ahead of pacedQueue: these deletions are cheap and holding
+		// them back behind paced deletions would delay reclaiming their space
+		// (and the corresponding event listener notifications) for no benefit.
+		unpacedQueue fileQueue
+		// queuedPacingBytes is the total pacingBytes of the entries in
+		// pacedQueue.
 		queuedPacingBytes uint64
 		// queuedHistory keeps track of pacing bytes added to the queue within the
 		// last 5 minutes.
@@ -79,10 +93,10 @@ type DeletePacer struct {
 // backlog, triggering accelerated deletion rates.
 const RecentRateWindow = 5 * time.Minute
 
-// maxQueueSize is a safety valve to prevent unbounded queue growth. If the
-// queue exceeds this size, pacing is temporarily disabled to drain the queue
-// quickly. This prevents memory exhaustion and ensures deletions don't fall too
-// far behind.
+// maxQueueSize is a safety valve to prevent unbounded growth of the paced
+// queue. If it exceeds this size, pacing is temporarily disabled to drain the
+// queue quickly. This prevents memory exhaustion and ensures deletions don't
+// fall too far behind.
 //
 // When this limit is hit, an error is logged (at most once per minute).
 const maxQueueSize = 1000
@@ -116,6 +130,37 @@ type queueEntry struct {
 	JobID int
 }
 
+// fileQueue is a FIFO queue of files waiting to be deleted.
+type fileQueue struct {
+	entries []queueEntry
+}
+
+// Len returns the number of files in the queue.
+func (q *fileQueue) Len() int {
+	return len(q.entries)
+}
+
+// Push adds a file at the back of the queue.
+func (q *fileQueue) Push(e queueEntry) {
+	if len(q.entries) == cap(q.entries) {
+		// If we have to allocate, make sure we don't have to allocate again for a
+		// while.
+		q.entries = slices.Grow(q.entries, 1000)
+	}
+	q.entries = append(q.entries, e)
+}
+
+// Pop removes and returns the file at the front of the queue. The queue must
+// not be empty.
+func (q *fileQueue) Pop() queueEntry {
+	e := q.entries[0]
+	// Clear the entry before we advance the slice; the backing array outlives the
+	// entry and we don't want to keep the referenced objects alive.
+	q.entries[0] = queueEntry{}
+	q.entries = q.entries[1:]
+	return e
+}
+
 // Close stops the background goroutine, waiting until all queued jobs are completed.
 // Delete pacing is disabled for the remaining jobs.
 //
@@ -131,12 +176,14 @@ func (dp *DeletePacer) Close() {
 	dp.waitGroup.Wait()
 }
 
-// mainLoop is the background goroutine that processes the delete queue.
+// mainLoop is the background goroutine that processes the delete queues.
 //
-// We keep track of a pacing rate in bytes/sec. When we delete a file, we add its
-// size to a "debt" counter. The debt is then paid off at the pacing rate. If the
-// debt is greater than zero, we wait until it is paid off before deleting the
-// next file.
+// Files in the unpaced queue are deleted as fast as the delete callback allows.
+//
+// For the paced queue, we keep track of a pacing rate in bytes/sec. When we
+// delete a file, we add its size to a "debt" counter. The debt is then paid off
+// at the pacing rate. If the debt is greater than zero, we wait until it is paid
+// off before deleting the next paced file.
 //
 // The pacing rate is recalculated every time we are about to delete a file or
 // when a new file gets enqueued. The pacing rate is based on:
@@ -156,28 +203,33 @@ func (dp *DeletePacer) mainLoop() {
 	dp.mu.Lock()
 	defer dp.mu.Unlock()
 	for {
-		if dp.mu.closed && len(dp.mu.queue) == 0 {
+		if dp.mu.closed && dp.mu.unpacedQueue.Len() == 0 && dp.mu.pacedQueue.Len() == 0 {
 			return
 		}
 		now := crtime.NowMono()
 		disablePacing := dp.mu.closed
-		if len(dp.mu.queue) > maxQueueSize {
+		if dp.mu.pacedQueue.Len() > maxQueueSize {
 			// The queue is getting out of hand; disable pacing.
 			disablePacing = true
 			if lastMaxQueueLog == 0 || now.Sub(lastMaxQueueLog) > time.Minute {
 				lastMaxQueueLog = now
-				dp.logger.Errorf("excessive delete pacer queue size %d; pacing temporarily disabled", len(dp.mu.queue))
+				dp.logger.Errorf("excessive delete pacer queue size %d; pacing temporarily disabled", dp.mu.pacedQueue.Len())
 			}
 		}
 
 		rateCalc.Update(now, dp.mu.queuedHistory.Sum(now), dp.mu.queuedPacingBytes, disablePacing)
 
 		// Processing priority:
-		//   1. Exit if closed and queue empty;
-		//   2. Wait for pacing debt to clear;
-		//   3. Otherwise, delete next file.
+		//   1. Exit if closed and both queues are empty (already happened at the
+		//      start of the loop);
+		//   2. Delete files that don't need pacing;
+		//   3. Wait for pacing debt to clear;
+		//   4. Otherwise, delete the next paced file.
 		switch {
-		case len(dp.mu.queue) == 0:
+		case dp.mu.unpacedQueue.Len() > 0:
+			dp.deleteNextLocked(&dp.mu.unpacedQueue, &rateCalc)
+
+		case dp.mu.pacedQueue.Len() == 0:
 			// Nothing to do.
 			dp.mu.Unlock()
 			<-dp.notifyCh
@@ -189,6 +241,8 @@ func (dp *DeletePacer) mainLoop() {
 			waitTime := rateCalc.DebtWaitTime()
 			// Don't wait more than 10 seconds; we want a chance to recalculate the
 			// rate (and check if we're running low on free space).
+			//
+			// Note that we wake up immediately (via notifyCh) if a new job is queued.
 			waitTime = min(waitTime, 10*time.Second)
 			timer.Reset(waitTime)
 			select {
@@ -199,23 +253,28 @@ func (dp *DeletePacer) mainLoop() {
 			dp.mu.Lock()
 
 		default:
-			// Delete a file.
-			file := dp.mu.queue[0]
-			dp.mu.queue = dp.mu.queue[1:]
-			if b := file.pacingBytes(); b != 0 {
-				dp.mu.queuedPacingBytes = invariants.SafeSub(dp.mu.queuedPacingBytes, b)
-				rateCalc.AddDebt(b)
-			}
-			func() {
-				dp.mu.Unlock()
-				defer dp.mu.Lock()
-				dp.deleteFn(file.ObsoleteFile, file.JobID)
-			}()
-			dp.mu.metrics.InQueue.Dec(file.FileType, file.FileSize, file.Placement)
-			dp.mu.metrics.Deleted.Inc(file.FileType, file.FileSize, file.Placement)
-			dp.mu.deletedCond.Broadcast()
+			dp.deleteNextLocked(&dp.mu.pacedQueue, &rateCalc)
 		}
 	}
+}
+
+// deleteNextLocked deletes the file at the front of the given queue, which must
+// not be empty. dp.mu is released while the delete callback runs and reacquired
+// before returning.
+func (dp *DeletePacer) deleteNextLocked(q *fileQueue, rateCalc *rateCalculator) {
+	file := q.Pop()
+	if b := file.pacingBytes(); b != 0 {
+		dp.mu.queuedPacingBytes = invariants.SafeSub(dp.mu.queuedPacingBytes, b)
+		rateCalc.AddDebt(b)
+	}
+	func() {
+		dp.mu.Unlock()
+		defer dp.mu.Lock()
+		dp.deleteFn(file.ObsoleteFile, file.JobID)
+	}()
+	dp.mu.metrics.InQueue.Dec(file.FileType, file.FileSize, file.Placement)
+	dp.mu.metrics.Deleted.Inc(file.FileType, file.FileSize, file.Placement)
+	dp.mu.deletedCond.Broadcast()
 }
 
 // Enqueue adds the given files to the delete queue. Enqueue never blocks.
@@ -230,17 +289,16 @@ func (dp *DeletePacer) Enqueue(jobID int, files ...ObsoleteFile) {
 	}
 	now := crtime.NowMono()
 	for _, file := range files {
-		if b := file.pacingBytes(); b > 0 {
-			dp.mu.queuedPacingBytes += b
-			dp.mu.queuedHistory.Add(now, b)
-		}
 		dp.mu.metrics.InQueue.Inc(file.FileType, file.FileSize, file.Placement)
-		if len(dp.mu.queue) == cap(dp.mu.queue) {
-			// If we have to allocate, make sure we don't have to allocate again for a
-			// while.
-			dp.mu.queue = slices.Grow(dp.mu.queue, 1000)
+		q := &dp.mu.unpacedQueue
+		if file.needsPacing() {
+			q = &dp.mu.pacedQueue
+			if b := file.pacingBytes(); b > 0 {
+				dp.mu.queuedPacingBytes += b
+				dp.mu.queuedHistory.Add(now, b)
+			}
 		}
-		dp.mu.queue = append(dp.mu.queue, queueEntry{
+		q.Push(queueEntry{
 			ObsoleteFile: file,
 			JobID:        jobID,
 		})
