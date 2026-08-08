@@ -695,6 +695,15 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	if rng.IntN(2) == 0 {
 		opts.WALDir = pebble.MakeStoreRelativePath(opts.FS, "wal")
 	}
+	if rng.IntN(4) == 0 {
+		// Occasionally override the WAL preallocation size; a quarter of the time
+		// use 0, which disables preallocation entirely.
+		var walPreallocateSize int
+		if rng.IntN(4) > 0 {
+			walPreallocateSize = 1 << (10 + rng.IntN(20-10+1)) // 1KB - 1MB
+		}
+		opts.WALPreallocateSize = func() int { return walPreallocateSize }
+	}
 
 	// Half the time enable WAL failover.
 	if !cfg.NoWALFailover && rng.IntN(2) == 0 {

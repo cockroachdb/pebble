@@ -2228,20 +2228,6 @@ func (d *DB) SSTables(opts ...SSTablesOption) ([][]SSTableInfo, error) {
 	return destLevels, nil
 }
 
-func (d *DB) walPreallocateSize() int {
-	// Set the WAL preallocate size to 110% of the memtable size. Note that there
-	// is a bit of apples and oranges in units here as the memtabls size
-	// corresponds to the memory usage of the memtable while the WAL size is the
-	// size of the batches (plus overhead) stored in the WAL.
-	//
-	// TODO(peter): 110% of the memtable size is quite hefty for a block
-	// size. This logic is taken from GetWalPreallocateBlockSize in
-	// RocksDB. Could a smaller preallocation block size be used?
-	size := d.opts.MemTableSize
-	size = (size / 10) + size
-	return int(size)
-}
-
 func (d *DB) newMemTable(
 	logNum base.DiskFileNum, logSeqNum base.SeqNum, minSize uint64,
 ) (*memTable, *flushableEntry) {
