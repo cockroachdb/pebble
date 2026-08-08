@@ -88,6 +88,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"Experimental.EnableDeleteOnlyCompactionExcises:",
 		"Experimental.TombstoneDenseCompactionThreshold:",
 		"Experimental.ValueSeparationPolicy:",
+		"WALPreallocateSize:",
 		"Levels[0].Compression:",
 		"Levels[0].TableFilterPolicy:",
 		"Levels[1].Compression:",
@@ -128,6 +129,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		expectEqualFn(t, o.Opts.Experimental.TombstoneDenseCompactionThreshold, parsed.Opts.Experimental.TombstoneDenseCompactionThreshold)
 		expectEqualFn(t, o.Opts.Experimental.ValueSeparationPolicy, parsed.Opts.Experimental.ValueSeparationPolicy)
 		expectEqualFn(t, o.Opts.DeletionPacing.BaselineRate, parsed.Opts.DeletionPacing.BaselineRate)
+		expectEqualFn(t, o.Opts.WALPreallocateSize, parsed.Opts.WALPreallocateSize)
 		for i := range o.Opts.Levels {
 			expectEqualFn(t, o.Opts.Levels[i].Compression, parsed.Opts.Levels[i].Compression)
 			t.Logf("L%d:  %#v  %#v\n", i, o.Opts.Levels[i].TableFilterPolicy(), parsed.Opts.Levels[i].TableFilterPolicy())
