@@ -341,7 +341,7 @@ func Open(dirname string, opts *Options) (db *DB, err error) {
 		MaxNumRecyclableLogs: opts.MemTableStopWritesThreshold + 1,
 		NoSyncOnClose:        opts.NoSyncOnClose,
 		BytesPerSync:         opts.WALBytesPerSync,
-		PreallocateSize:      d.walPreallocateSize,
+		PreallocateSize:      opts.WALPreallocateSize,
 		MinSyncInterval:      opts.WALMinSyncInterval,
 		FsyncLatency:         d.mu.log.metrics.fsyncLatency,
 		QueueSemChan:         d.commit.logSyncQSem,

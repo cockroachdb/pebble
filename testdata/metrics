@@ -539,7 +539,7 @@ Iter category stats:
 
 disk-usage
 ----
-4.4KB
+4.5KB
 
 additional-metrics
 ----
@@ -2096,7 +2096,7 @@ Blob files:
 
 disk-usage
 ----
-7.3KB
+7.4KB
 
 init reopen
 ----
@@ -2104,4 +2104,4 @@ init reopen
 # The disk usage is expected to go down a bit because we remove the WALs.
 disk-usage
 ----
-6.8KB
+6.9KB
