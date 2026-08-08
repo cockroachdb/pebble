@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -248,7 +249,7 @@ func TestFallingBehind(t *testing.T) {
 	queueSize := func() int {
 		dp.mu.Lock()
 		defer dp.mu.Unlock()
-		return len(dp.mu.queue)
+		return dp.mu.pacedQueue.Len()
 	}
 	// At 1MB, each job will take 100ms each. Note that the rate increase based on
 	// history won't make much difference, since the enqueued size is averaged
@@ -273,4 +274,64 @@ func TestFallingBehind(t *testing.T) {
 			t.Fatalf("jobs channel length never dropped below threshold (%d vs %d)", queueSize(), maxQueueSize)
 		}
 	}
+}
+
+// TestUnpacedFilesJumpQueue verifies that files which are not subject to pacing
+// (WALs, manifests, remote objects) are deleted right away, even when paced
+// files that were enqueued earlier are still waiting out the pacing debt.
+func TestUnpacedFilesJumpQueue(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		opts := Options{
+			BaselineRate: func() uint64 { return MB },
+		}
+		var mu struct {
+			sync.Mutex
+			deleted []base.FileType
+		}
+		deleteFn := func(of ObsoleteFile, jobID int) {
+			mu.Lock()
+			defer mu.Unlock()
+			mu.deleted = append(mu.deleted, of.FileType)
+		}
+		requireDeleted := func(expected ...base.FileType) {
+			t.Helper()
+			synctest.Wait()
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, expected, mu.deleted)
+		}
+
+		dp := Open(opts, testutils.Logger{T: t}, func() uint64 { return 100 * GB }, deleteFn)
+		defer dp.Close()
+
+		// The first table is deleted immediately and incurs 10MB of debt, which
+		// takes 10s to pay off at the 1MB/s baseline rate.
+		dp.Enqueue(1, ObsoleteFile{
+			FileType: base.FileTypeTable, FileNum: 1, FileSize: 10 * MB, Placement: base.Local,
+		})
+		requireDeleted(base.FileTypeTable)
+
+		// A second table has to wait for the debt, but a WAL and a shared table
+		// enqueued after it must not.
+		dp.Enqueue(2,
+			ObsoleteFile{FileType: base.FileTypeTable, FileNum: 2, FileSize: 10 * MB, Placement: base.Local},
+			ObsoleteFile{FileType: base.FileTypeLog, FileNum: 3, FileSize: 64 * MB, Placement: base.Local},
+			ObsoleteFile{FileType: base.FileTypeTable, FileNum: 4, FileSize: 10 * MB, Placement: base.Shared},
+		)
+		requireDeleted(base.FileTypeTable, base.FileTypeLog, base.FileTypeTable)
+
+		// A WAL enqueued while the second table is still waiting also goes first.
+		time.Sleep(5 * time.Second)
+		dp.Enqueue(3, ObsoleteFile{
+			FileType: base.FileTypeLog, FileNum: 5, FileSize: 64 * MB, Placement: base.Local,
+		})
+		requireDeleted(base.FileTypeTable, base.FileTypeLog, base.FileTypeTable, base.FileTypeLog)
+
+		// The second table is deleted once the debt is paid off, 10s after the
+		// first deletion.
+		time.Sleep(4 * time.Second)
+		requireDeleted(base.FileTypeTable, base.FileTypeLog, base.FileTypeTable, base.FileTypeLog)
+		time.Sleep(2 * time.Second)
+		requireDeleted(base.FileTypeTable, base.FileTypeLog, base.FileTypeTable, base.FileTypeLog, base.FileTypeTable)
+	})
 }
