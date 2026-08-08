@@ -141,6 +141,7 @@ func TestDefaultOptionsString(t *testing.T) {
   validate_on_ingest=false
   wal_dir=
   wal_bytes_per_sync=0
+  wal_preallocate_size=4613734
   secondary_cache_size_bytes=0
   create_on_shared=0
 

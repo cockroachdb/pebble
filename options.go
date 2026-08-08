@@ -1137,6 +1137,16 @@ type Options struct {
 	// changing options dynamically?
 	WALMinSyncInterval func() time.Duration
 
+	// WALPreallocateSize is the size in bytes to which WAL files are
+	// preallocated when they are created. Preallocation reduces filesystem
+	// metadata updates and file fragmentation as the WAL grows. A value of 0
+	// disables preallocation. This option is supplied as a closure in order to
+	// allow the value to be changed dynamically; it is consulted each time a WAL
+	// file is created.
+	//
+	// The default is 110% of MemTableSize.
+	WALPreallocateSize func() int
+
 	// DeletionPacing manage deletion pacing, which slows down deletions when
 	// compactions finish or when readers close and obsolete files must be cleaned
 	// up. Rapid deletion of many files simultaneously can increase disk latency
@@ -1583,6 +1593,18 @@ func (o *Options) EnsureDefaults() {
 	if o.WALFailover != nil {
 		o.WALFailover.FailoverOptions.EnsureDefaults()
 	}
+	if o.WALPreallocateSize == nil {
+		// Default the WAL preallocate size to 110% of the memtable size. Note that
+		// there is a bit of apples and oranges in units here as the memtable size
+		// corresponds to the memory usage of the memtable while the WAL size is the
+		// size of the batches (plus overhead) stored in the WAL.
+		//
+		// TODO(peter): 110% of the memtable size is quite hefty for a block
+		// size. This logic is taken from GetWalPreallocateBlockSize in
+		// RocksDB. Could a smaller preallocation block size be used?
+		size := int(o.MemTableSize + o.MemTableSize/10)
+		o.WALPreallocateSize = func() int { return size }
+	}
 	if o.Experimental.UseDeprecatedCompensatedScore == nil {
 		o.Experimental.UseDeprecatedCompensatedScore = func() bool { return false }
 	}
@@ -1757,6 +1779,7 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  validate_on_ingest=%t\n", o.Experimental.ValidateOnIngest)
 	fmt.Fprintf(&buf, "  wal_dir=%s\n", o.WALDir)
 	fmt.Fprintf(&buf, "  wal_bytes_per_sync=%d\n", o.WALBytesPerSync)
+	fmt.Fprintf(&buf, "  wal_preallocate_size=%d\n", o.WALPreallocateSize())
 	fmt.Fprintf(&buf, "  secondary_cache_size_bytes=%d\n", o.Experimental.SecondaryCacheSizeBytes)
 	fmt.Fprintf(&buf, "  create_on_shared=%d\n", o.Experimental.CreateOnShared)
 
@@ -2209,6 +2232,12 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				o.WALDir = value
 			case "wal_bytes_per_sync":
 				o.WALBytesPerSync, err = strconv.Atoi(value)
+			case "wal_preallocate_size":
+				var walPreallocateSize int
+				walPreallocateSize, err = strconv.Atoi(value)
+				if err == nil {
+					o.WALPreallocateSize = func() int { return walPreallocateSize }
+				}
 			case "secondary_cache_size_bytes":
 				o.Experimental.SecondaryCacheSizeBytes, err = strconv.ParseInt(value, 10, 64)
 			case "create_on_shared":
