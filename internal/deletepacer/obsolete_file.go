@@ -19,11 +19,19 @@ type ObsoleteFile struct {
 	Placement base.Placement
 }
 
+// needsPacing returns whether the deletion of this file is subject to pacing.
+// Deletions that don't require pacing (WALs, manifests, options files, remote
+// objects) are performed as soon as possible.
+func (of ObsoleteFile) needsPacing() bool {
+	// We only need to pace local objects--sstables and blob files.
+	return of.Placement == base.Local &&
+		(of.FileType == base.FileTypeTable || of.FileType == base.FileTypeBlob)
+}
+
 // pacingBytes returns the size of the file, or 0 if deleting the file does not
 // require pacing.
 func (of ObsoleteFile) pacingBytes() uint64 {
-	// We only need to pace local objects--sstables and blob files.
-	if of.Placement == base.Local && (of.FileType == base.FileTypeTable || of.FileType == base.FileTypeBlob) {
+	if of.needsPacing() {
 		return of.FileSize
 	}
 	return 0
