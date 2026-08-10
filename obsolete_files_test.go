@@ -7,8 +7,10 @@ package pebble
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/testutils"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -269,4 +272,147 @@ func TestCleanupManagerFallingBehind(t *testing.T) {
 	// Set a high rate so the rest of the jobs finish quickly.
 	rate.Store(1 * GB)
 	cm.Close()
+}
+
+// TestUnpacedFilesJumpQueue verifies that files which are not subject to pacing
+// (WALs, manifests, remote objects) are deleted right away, even when paced
+// files that were enqueued earlier are still waiting out the pacing delay.
+func TestUnpacedFilesJumpQueue(t *testing.T) {
+	mem := vfs.NewMem()
+	var mu struct {
+		sync.Mutex
+		deleted []base.FileType
+	}
+	record := func(fileType base.FileType) {
+		mu.Lock()
+		defer mu.Unlock()
+		mu.deleted = append(mu.deleted, fileType)
+	}
+	numDeleted := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(mu.deleted)
+	}
+	opts := &Options{
+		FS:                      mem,
+		FreeSpaceThresholdBytes: 1,
+		// 1 KB/s; a 10MB table takes ~3 hours to get through the pacer.
+		TargetByteDeletionRate: func() int { return 1024 },
+		EventListener: &EventListener{
+			TableDeleted:    func(TableDeleteInfo) { record(base.FileTypeTable) },
+			WALDeleted:      func(WALDeleteInfo) { record(base.FileTypeLog) },
+			ManifestDeleted: func(ManifestDeleteInfo) { record(base.FileTypeManifest) },
+		},
+	}
+	opts.EnsureDefaults()
+
+	objProvider, err := objstorageprovider.Open(objstorageprovider.Settings{
+		FS:        mem,
+		FSDirName: "/",
+		FSCleaner: base.DeleteCleaner{},
+	})
+	require.NoError(t, err)
+	defer objProvider.Close()
+
+	getDeletePacerInfo := func() deletionPacerInfo {
+		return deletionPacerInfo{
+			freeBytes: 10 * GB,
+			liveBytes: 10 * GB,
+		}
+	}
+	cm := openCleanupManager(opts, objProvider, getDeletePacerInfo)
+
+	// The files must exist, otherwise their deletion is a no-op which doesn't
+	// notify the event listener.
+	table := func(fileNum int, isLocal bool) obsoleteFile {
+		w, _, err := objProvider.Create(
+			context.Background(), base.FileTypeTable, base.DiskFileNum(fileNum), objstorage.CreateOptions{},
+		)
+		require.NoError(t, err)
+		require.NoError(t, w.Finish())
+		return obsoleteFile{
+			fileType: base.FileTypeTable,
+			fs:       mem,
+			path:     fmt.Sprintf("%06d.sst", fileNum),
+			fileNum:  base.DiskFileNum(fileNum),
+			fileSize: 10 * MB,
+			isLocal:  isLocal,
+		}
+	}
+	manifest := func(fileNum int) obsoleteFile {
+		path := fmt.Sprintf("MANIFEST-%06d", fileNum)
+		f, err := mem.Create(path, vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		return obsoleteFile{
+			fileType: base.FileTypeManifest,
+			fs:       mem,
+			path:     path,
+			fileNum:  base.DiskFileNum(fileNum),
+			fileSize: 1 * MB,
+			isLocal:  true,
+		}
+	}
+	wal := func(fileNum int) obsoleteFile {
+		path := fmt.Sprintf("%06d.log", fileNum)
+		f, err := mem.Create(path, vfs.WriteCategoryUnspecified)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		return obsoleteFile{
+			fileType: base.FileTypeLog,
+			fs:       mem,
+			path:     path,
+			fileNum:  base.DiskFileNum(fileNum),
+			fileSize: 64 * MB,
+			isLocal:  true,
+		}
+	}
+	deleted := func() []base.FileType {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(mu.deleted)
+	}
+
+	// The first table is deleted right away and puts the pacer in debt; at
+	// 1 KB/s, 10MB take hours to pay off.
+	cm.EnqueueJob(1, []obsoleteFile{table(1, true /* isLocal */)}, obsoleteObjectStats{})
+	require.Eventually(t, func() bool { return numDeleted() >= 1 }, 30*time.Second, time.Millisecond)
+
+	// A second table has to wait for the debt, but a WAL, a manifest and a remote
+	// table enqueued in the same job after it must not.
+	remoteTableStats := obsoleteObjectStats{
+		tablesAll: countAndSize{count: 1, size: 10 * MB},
+	}
+	cm.EnqueueJob(2, []obsoleteFile{
+		table(2, true /* isLocal */), wal(3), manifest(4), table(5, false /* isLocal */),
+	}, remoteTableStats)
+	require.Eventually(t, func() bool { return numDeleted() >= 4 }, 30*time.Second, time.Millisecond)
+
+	// A WAL enqueued while the second table is still waiting also goes first.
+	cm.EnqueueJob(3, []obsoleteFile{wal(6)}, obsoleteObjectStats{})
+	require.Eventually(t, func() bool { return numDeleted() >= 5 }, 30*time.Second, time.Millisecond)
+
+	require.Equal(t, []base.FileType{
+		base.FileTypeTable,    // job 1
+		base.FileTypeLog,      // job 2, unpaced
+		base.FileTypeManifest, // job 2, unpaced
+		base.FileTypeTable,    // job 2, unpaced (remote)
+		base.FileTypeLog,      // job 3
+	}, deleted())
+
+	// The stats of a job that was split are only accounted for once the paced
+	// part completes.
+	require.Equal(t, obsoleteObjectStats{}, cm.CompletedStats())
+
+	// Close disables pacing, so the second table is deleted as well.
+	cm.Close()
+	require.Equal(t, []base.FileType{
+		base.FileTypeTable,
+		base.FileTypeLog,
+		base.FileTypeManifest,
+		base.FileTypeTable,
+		base.FileTypeLog,
+		base.FileTypeTable, // job 2, paced
+	}, deleted())
+	require.Equal(t, remoteTableStats, cm.CompletedStats())
 }
