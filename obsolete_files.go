@@ -37,12 +37,34 @@ type cleanupManager struct {
 	objProvider objstorage.Provider
 	deletePacer *deletionPacer
 
-	// jobsCh is used as the cleanup job queue.
+	// jobsCh is used as the cleanup job queue for files whose deletion is paced
+	// (see obsoleteFile.needsPacing).
 	jobsCh chan *cleanupJob
+	// unpacedJobsCh is used as the cleanup job queue for files whose deletion is
+	// not paced. It is drained ahead of jobsCh (and even while we are waiting to
+	// delete a paced file): these deletions are cheap and holding them back
+	// behind paced deletions would delay reclaiming their space (and the
+	// corresponding event listener notifications) for no benefit. Unpaced files
+	// cannot starve paced ones since they are deleted at full speed and don't
+	// contribute to the pacing debt.
+	unpacedJobsCh chan *cleanupJob
 	// waitGroup is used to wait for the background goroutine to exit.
 	waitGroup sync.WaitGroup
 	// stopCh is closed when the pacer is disabled after closing the cleanup manager.
 	stopCh chan struct{}
+
+	// bg contains state that is only accessed by the background goroutine.
+	bg struct {
+		// unpacedCh and pacedCh are the receiving ends of unpacedJobsCh and
+		// jobsCh; each is set to nil once the corresponding channel is closed and
+		// drained.
+		unpacedCh <-chan *cleanupJob
+		pacedCh   <-chan *cleanupJob
+		// pendingPaced is a job that was received from pacedCh but that is not
+		// being processed yet, because we must first check the unpaced queue (see
+		// nextJob).
+		pendingPaced *cleanupJob
+	}
 
 	mu struct {
 		sync.Mutex
@@ -106,9 +128,12 @@ func openCleanupManager(
 			opts.ObsoleteBytesTimeframe,
 			getDeletePacerInfo,
 		),
-		jobsCh: make(chan *cleanupJob, jobsQueueDepth),
-		stopCh: make(chan struct{}),
+		jobsCh:        make(chan *cleanupJob, jobsQueueDepth),
+		unpacedJobsCh: make(chan *cleanupJob, jobsQueueDepth),
+		stopCh:        make(chan struct{}),
 	}
+	cm.bg.pacedCh = cm.jobsCh
+	cm.bg.unpacedCh = cm.unpacedJobsCh
 	cm.mu.completedJobsCond.L = &cm.mu.Mutex
 	cm.waitGroup.Add(1)
 
@@ -125,6 +150,7 @@ func openCleanupManager(
 // Delete pacing is disabled for the remaining jobs.
 func (cm *cleanupManager) Close() {
 	close(cm.jobsCh)
+	close(cm.unpacedJobsCh)
 	close(cm.stopCh)
 	cm.waitGroup.Wait()
 }
@@ -133,32 +159,68 @@ func (cm *cleanupManager) Close() {
 func (cm *cleanupManager) EnqueueJob(
 	jobID JobID, obsoleteFiles []obsoleteFile, stats obsoleteObjectStats,
 ) {
-	job := &cleanupJob{
-		jobID:         jobID,
-		obsoleteFiles: obsoleteFiles,
-		stats:         stats,
+	// Split the files into a job for the unpaced queue and a job for the paced
+	// queue.
+	var pacingBytes uint64
+	var pacedFiles, unpacedFiles []obsoleteFile
+	for _, of := range obsoleteFiles {
+		if of.needsPacing() {
+			pacingBytes += of.fileSize
+			pacedFiles = append(pacedFiles, of)
+		} else {
+			unpacedFiles = append(unpacedFiles, of)
+		}
 	}
 
 	// Report deleted bytes to the pacer, which can use this data to potentially
 	// increase the deletion rate to keep up. We want to do this at enqueue time
 	// rather than when we get to the job, otherwise the reported bytes will be
 	// subject to the throttling rate which defeats the purpose.
-	var pacingBytes uint64
-	for _, of := range obsoleteFiles {
-		if of.needsPacing() {
-			pacingBytes += of.fileSize
-		}
-	}
 	if pacingBytes > 0 {
 		cm.deletePacer.DeletionEnqueued(crtime.NowMono(), pacingBytes)
 	}
 
+	numJobs := 0
+	if len(unpacedFiles) > 0 {
+		numJobs++
+	}
+	if len(pacedFiles) > 0 {
+		numJobs++
+	}
+	if numJobs == 0 {
+		// There is nothing to delete; account for the stats right away, otherwise
+		// they would be reported as pending forever.
+		cm.mu.Lock()
+		defer cm.mu.Unlock()
+		cm.mu.completedStats.Add(stats)
+		return
+	}
+
 	cm.mu.Lock()
-	cm.mu.totalJobs++
+	cm.mu.totalJobs += numJobs
 	cm.maybeLogLocked()
 	cm.mu.Unlock()
 
-	cm.jobsCh <- job
+	// The unpaced job is always processed first (see nextJob), so we attach the
+	// stats to the paced job (when there is one); this way they are accounted for
+	// only once all the files in the original job have been deleted.
+	if len(unpacedFiles) > 0 {
+		unpacedJob := &cleanupJob{
+			jobID:         jobID,
+			obsoleteFiles: unpacedFiles,
+		}
+		if len(pacedFiles) == 0 {
+			unpacedJob.stats = stats
+		}
+		cm.unpacedJobsCh <- unpacedJob
+	}
+	if len(pacedFiles) > 0 {
+		cm.jobsCh <- &cleanupJob{
+			jobID:         jobID,
+			obsoleteFiles: pacedFiles,
+			stats:         stats,
+		}
+	}
 }
 
 // Wait until the completion of all jobs that were already queued.
@@ -186,20 +248,96 @@ func (cm *cleanupManager) mainLoop() {
 	var tb tokenbucket.TokenBucket
 	// Use a token bucket with 1 token / second refill rate and 1 token burst.
 	tb.Init(1.0, 1.0)
-	for job := range cm.jobsCh {
+	for {
+		job, ok := cm.nextJob()
+		if !ok {
+			return
+		}
 		select {
 		case <-cm.stopCh:
 			cm.deleteObsoleteFilesInJob(job, nil, nil)
 		default:
 			cm.deleteObsoleteFilesInJob(job, &tb, paceTimer)
 		}
-		cm.mu.Lock()
-		cm.mu.completedJobs++
-		cm.mu.completedStats.Add(job.stats)
-		cm.mu.completedJobsCond.Broadcast()
-		cm.maybeLogLocked()
-		cm.mu.Unlock()
+		cm.jobCompleted(job)
 	}
+}
+
+// nextJob returns the next job to process, giving priority to the unpaced
+// queue. It returns false if both queues are closed and drained.
+//
+// A job is never returned ahead of an unpaced job that was enqueued before it;
+// in particular, the two jobs that EnqueueJob can produce for the same set of
+// files are always returned in order.
+//
+// It is only called from the background goroutine.
+func (cm *cleanupManager) nextJob() (*cleanupJob, bool) {
+	for {
+		// Prefer any job in the unpaced queue.
+		select {
+		case job, ok := <-cm.bg.unpacedCh:
+			if !ok {
+				// unpacedCh was closed; set it to nil so further reads block.
+				cm.bg.unpacedCh = nil
+				continue
+			}
+			return job, true
+		default:
+		}
+		if job := cm.bg.pendingPaced; job != nil {
+			// We already pulled a job from pacedCh.
+			cm.bg.pendingPaced = nil
+			return job, true
+		}
+		if cm.bg.unpacedCh == nil && cm.bg.pacedCh == nil {
+			return nil, false
+		}
+		// Wait until either channel gets a job.
+		//
+		// Note that receiving from a nil channel blocks forever, which is what we
+		// want for a queue that was closed and drained. We ensured above that at
+		// least one channel is not nil.
+		select {
+		case job, ok := <-cm.bg.unpacedCh:
+			if !ok {
+				// unpacedCh was closed; set it to nil so further reads block.
+				cm.bg.unpacedCh = nil
+				continue
+			}
+			return job, true
+
+		case job, ok := <-cm.bg.pacedCh:
+			if !ok {
+				// pacedCh was closed; set it to nil so further reads block.
+				cm.bg.pacedCh = nil
+				continue
+			}
+			// Both queues can become ready while we are between the check above and
+			// this select, in which case the select chooses at random. Stash the job
+			// and go back to the unpaced check: any unpaced job that was enqueued
+			// before this one is necessarily in the buffer already, since EnqueueJob
+			// sends the unpaced job first.
+			cm.bg.pendingPaced = job
+		}
+	}
+}
+
+// processUnpacedJob deletes all files in a job from the unpaced queue. Such a
+// job contains no files that need pacing, so no pacing state is necessary.
+func (cm *cleanupManager) processUnpacedJob(job *cleanupJob) {
+	cm.deleteObsoleteFilesInJob(job, nil, nil)
+	cm.jobCompleted(job)
+}
+
+// jobCompleted updates the manager's state after all files in the job have been
+// deleted.
+func (cm *cleanupManager) jobCompleted(job *cleanupJob) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.mu.completedJobs++
+	cm.mu.completedStats.Add(job.stats)
+	cm.mu.completedJobsCond.Broadcast()
+	cm.maybeLogLocked()
 }
 
 // deleteObsoleteFilesInJob deletes all obsolete files in the given job. If tb
@@ -234,8 +372,9 @@ func (cm *cleanupManager) maybePace(
 		return
 	}
 	if len(cm.jobsCh) >= jobsQueueHighThreshold {
-		// If there are many jobs queued up, disable pacing. In this state, we
-		// execute deletion jobs at the same rate as new jobs get queued.
+		// If there are many paced jobs queued up, disable pacing. In this state, we
+		// execute deletion jobs at the same rate as new jobs get queued. Note that
+		// this safety valve only concerns the paced queue; unpaced jobs never wait.
 		return
 	}
 	tokens := cm.deletePacer.PacingDelay(crtime.NowMono(), of.fileSize)
@@ -247,6 +386,10 @@ func (cm *cleanupManager) maybePace(
 	}
 	// Wait for tokens. We use a token bucket instead of sleeping outright because
 	// the token bucket accumulates up to one second of unused tokens.
+	//
+	// Note that we can go through an iteration without the timer firing (when we
+	// delete an unpaced file instead); Reset discards any pending value, and in
+	// the worst case we just recalculate the remaining delay and wait again.
 	for {
 		ok, d := tb.TryToFulfill(tokenbucket.Tokens(tokens))
 		if ok {
@@ -257,6 +400,14 @@ func (cm *cleanupManager) maybePace(
 		case <-paceTimer.C:
 		case <-cm.stopCh:
 			return
+
+		case job, ok := <-cm.bg.unpacedCh:
+			// Deletions that don't need pacing must not wait behind paced ones.
+			if !ok {
+				cm.bg.unpacedCh = nil
+				continue
+			}
+			cm.processUnpacedJob(job)
 		}
 	}
 }
