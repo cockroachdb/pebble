@@ -1832,22 +1832,30 @@ func (d *DB) ingest(ctx context.Context, args ingestArgs) (IngestOperationStats,
 		// TODO(xinhaoz): Allow blob files as flushable ingests.
 		hasBlobFiles := len(local) < local.TotalFiles()
 		canIngestFlushable := d.FormatMajorVersion() >= FormatFlushableIngest &&
-			// We require that either the queue of flushables is below the
-			// stop-writes threshold (note that this is typically a conservative
-			// check, since not every element of this queue will contribute the full
-			// memtable memory size that could result in a write stall), or WAL
-			// failover is permitting an unlimited queue without causing a write
-			// stall. The latter condition is important to avoid delays in
-			// visibility of concurrent writes that happen to get a sequence number
-			// after this ingest and then must wait for this ingest that is itself
-			// waiting on a large flush. See
-			// https://github.com/cockroachdb/pebble/issues/4944 for an illustration
-			// of this problem.
-			(len(d.mu.mem.queue) < d.opts.MemTableStopWritesThreshold ||
-				d.mu.log.manager.ElevateWriteStallThresholdForFailover()) &&
-			!d.opts.Experimental.DisableIngestAsFlushable() && !hasRemoteFiles &&
+			!d.opts.Experimental.DisableIngestAsFlushable() &&
+			!hasRemoteFiles &&
 			(!args.ExciseSpan.Valid() || d.FormatMajorVersion() >= FormatFlushableIngestExcises) &&
 			!hasBlobFiles
+
+		if canIngestFlushable {
+			// We require that the queue of flushables is below the stop-writes
+			// threshold (note that this is typically a conservative check, since not
+			// every element of this queue will contribute the full memtable memory
+			// size that could result in a write stall).
+			//
+			// During WAL failover we permit a longer queue without causing a write
+			// stall. The latter condition is important to avoid delays in visibility
+			// of concurrent writes that happen to get a sequence number after this
+			// ingest and then must wait for this ingest that is itself waiting on a
+			// large flush. See https://github.com/cockroachdb/pebble/issues/4944 for
+			// an illustration of this problem.
+			queueLimit := d.opts.MemTableStopWritesThreshold
+			if d.mu.log.manager.ElevateWriteStallThresholdForFailover() {
+				queueLimit *= d.opts.FlushableIngestLimitMultiplierDuringFailover()
+			}
+			canIngestFlushable = len(d.mu.mem.queue) < queueLimit
+		}
+
 		if !canIngestFlushable {
 			// We're not able to ingest as a flushable,
 			// so we must synchronously flush.
