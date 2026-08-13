@@ -31,6 +31,7 @@ import (
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble/internal/base"
 	"github.com/cockroachdb/pebble/internal/blobtest"
+	"github.com/cockroachdb/pebble/internal/buildtags"
 	"github.com/cockroachdb/pebble/internal/keyspan"
 	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/rangekey"
@@ -2753,6 +2754,92 @@ func TestIngestFlushQueuedMemTable(t *testing.T) {
 
 	ingest("a")
 
+	require.NoError(t, d.Close())
+}
+
+// TestIngestFlushableLimitDuringFailover verifies that the flushable queue does
+// not grow without bound when WAL failover elevates the write stall threshold
+// and ingests keep getting added to the queue as flushables.
+func TestIngestFlushableLimitDuringFailover(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	const stopWritesThreshold = 2
+	const multiplier = 3
+	const queueLimit = stopWritesThreshold * multiplier
+	const numIngests = 4 * queueLimit
+
+	mem := vfs.NewMem()
+	// Block all sstable creation, so that flushes cannot make progress and the
+	// flushable queue can only grow.
+	blockingFS := newBlockingFS(mem, false /* blockWAL */, true /* blockSST */)
+	o := &Options{
+		FS:                          blockingFS,
+		FormatMajorVersion:          internalFormatNewest,
+		MemTableStopWritesThreshold: stopWritesThreshold,
+		FlushableIngestLimitMultiplierDuringFailover: func() int { return multiplier },
+		Logger: testutils.Logger{T: t},
+	}
+	o.DisableAutomaticCompactions = true
+	d, err := Open("", o)
+	require.NoError(t, err)
+
+	// Pretend we are failed over to the secondary WAL location; writes no longer
+	// stall on the length of the flushable queue.
+	d.mu.Lock()
+	testWALManager := &testLogManager{Manager: d.mu.log.manager}
+	testWALManager.elevateWriteStallThreshold.Store(true)
+	d.mu.log.manager = testWALManager
+	d.mu.Unlock()
+
+	// Add "a" to the memtable so that every ingest below overlaps something in
+	// the flushable queue and is thus eligible to be ingested as a flushable.
+	require.NoError(t, d.Set([]byte("a"), nil, nil))
+
+	var numIngested atomic.Int32
+	ingestsDone := make(chan struct{})
+	go func() {
+		defer close(ingestsDone)
+		for i := 0; i < numIngests; i++ {
+			path := fmt.Sprintf("ext%d", i)
+			f, err := mem.Create(path, vfs.WriteCategoryUnspecified)
+			require.NoError(t, err)
+			w := sstable.NewWriter(objstorageprovider.NewFileWritable(f), sstable.WriterOptions{
+				TableFormat: o.FormatMajorVersion.MinTableFormat(),
+			})
+			require.NoError(t, w.Set([]byte("a"), nil))
+			require.NoError(t, w.Close())
+			require.NoError(t, d.Ingest(context.Background(), []string{path}))
+			numIngested.Add(1)
+		}
+	}()
+
+	// Once the queue reaches the limit, ingests can no longer be added as
+	// flushables; the next ingest blocks waiting for a flush which cannot
+	// complete while sstable writes are blocked.
+	timeout := time.Second
+	if buildtags.SlowBuild {
+		timeout = 10 * time.Second
+	}
+	select {
+	case <-ingestsDone:
+		t.Fatalf("all %d ingests completed without any flush", numIngests)
+	case <-time.After(timeout):
+	}
+	d.mu.Lock()
+	queueLen := len(d.mu.mem.queue)
+	d.mu.Unlock()
+	// Each flushable ingest adds the ingest itself plus a new mutable memtable to
+	// the queue, so the queue can exceed the limit by one entry.
+	require.LessOrEqual(t, queueLen, queueLimit+1)
+	require.Less(t, int(numIngested.Load()), numIngests)
+
+	// Unblock flushes; all remaining ingests should now complete.
+	blockingFS.unblock()
+	select {
+	case <-ingestsDone:
+	case <-time.After(time.Minute):
+		t.Fatalf("ingests did not complete; %d out of %d done", numIngested.Load(), numIngests)
+	}
 	require.NoError(t, d.Close())
 }
 
