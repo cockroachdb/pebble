@@ -968,6 +968,16 @@ type Options struct {
 	// The default value is 2.
 	MemTableStopWritesThreshold int
 
+	// FlushableIngestLimitMultiplierDuringFailover limits the eligibility of
+	// flushable ingest during failover to a flushable queue length of
+	// FlushableIngestLimitMultiplierDuringFailover * MemTableStopWritesThreshold.
+	//
+	// A higher limit allows for longer periods without the primary disk being
+	// available, but allows more WALs to accumulate in the secondary location.
+	//
+	// The default value is 4.
+	FlushableIngestLimitMultiplierDuringFailover func() int
+
 	// Merger defines the associative merge operation to use for merging values
 	// written with {Batch,DB}.Merge.
 	//
@@ -1563,6 +1573,9 @@ func (o *Options) EnsureDefaults() {
 	}
 	if o.MemTableStopWritesThreshold <= 0 {
 		o.MemTableStopWritesThreshold = 2
+	}
+	if o.FlushableIngestLimitMultiplierDuringFailover == nil {
+		o.FlushableIngestLimitMultiplierDuringFailover = func() int { return 4 }
 	}
 	if o.Merger == nil {
 		o.Merger = DefaultMerger
