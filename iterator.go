@@ -1456,7 +1456,33 @@ func (i *Iterator) SeekGEWithLimit(key []byte, limit []byte) IterValidityState {
 			//
 			// In the !BatchJustRefreshed case, these situations are both handled by
 			// the no-op early-return above.
-			if flags.BatchJustRefreshed() && (i.pos != iterPosCurForward || i.curForwardViaMerge) {
+			//
+			// A third condition is specific to BatchJustRefreshed on the V1
+			// stack. mergingIter hands the same flags to every level, but the
+			// batch level ignores TrySeekUsingNext and performs a fresh seek,
+			// so it may surface a newly-written key anywhere at or after the
+			// seek key. The remaining levels only step forward from where they
+			// are, and everything before their current positions has already
+			// been consumed. If the internal iterator's cursor sits at a user
+			// key beyond the seek key, the batch can surface a key that the
+			// other levels have already stepped past, leaving the merging
+			// iterator with levels positioned beyond the key it returns. The
+			// stream then omits the intervening internal keys: a MERGE surfaced
+			// by the batch loses the operands the other levels hold for it, and
+			// a subsequent direction switch re-observes those keys in reverse,
+			// where they were never observed going forward. Requiring the seek
+			// key to be at or after the cursor's user key rules this out, since
+			// the batch cannot then land before any other level's position.
+			// This still preserves the optimization for the common pattern of
+			// seeking forward past the last returned key.
+			//
+			// mergingIterV2 pre-seeks the batch level and detects the backward
+			// move itself (see seekGEAfterBatchRefresh), so it needs no help
+			// here; the check is restricted to V1 to avoid disabling the
+			// optimization in cases V2 handles precisely.
+			v1BatchMayRewind := i.iterKV == nil || i.cmp(key, i.iterKV.K.UserKey) < 0
+			if flags.BatchJustRefreshed() &&
+				(i.pos != iterPosCurForward || i.curForwardViaMerge || v1BatchMayRewind) {
 				flags = flags.DisableTrySeekUsingNext()
 			}
 			if !flags.BatchJustRefreshed() && i.pos == iterPosCurForwardPaused && i.cmp(key, i.iterKV.K.UserKey) <= 0 {
