@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/pebble/vfs/errorfs"
@@ -607,6 +608,119 @@ func TestFailoverManager_Quiesce(t *testing.T) {
 		}
 		require.NoError(t, m.Close())
 	})
+}
+
+// limitSwitchWriter is a switchableWriter that succeeds switchToNewDir a
+// bounded number of times, then returns the same error failoverWriter
+// returns when maxPhysicalLogs is exhausted. Latency grows faster than
+// the monitor's 2x decay gate so switches continue until the cap.
+type limitSwitchWriter struct {
+	mu            sync.Mutex
+	calls         int
+	samples       int
+	maxSuccessful int
+}
+
+func (w *limitSwitchWriter) switchToNewDir(dirAndFileHandle) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.calls++
+	if w.calls > w.maxSuccessful {
+		return errors.Errorf("exceeded switching limit")
+	}
+	return nil
+}
+
+func (w *limitSwitchWriter) ongoingLatencyOrErrorForCurDir() (time.Duration, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.samples++
+	// 100ms * 3^samples exceeds the 2x-of-last-switch latency heuristic.
+	lat := 100 * time.Millisecond
+	for i := 1; i < w.samples; i++ {
+		lat *= 3
+	}
+	return lat, nil
+}
+
+func (w *limitSwitchWriter) switchCalls() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.calls
+}
+
+// TestFailoverMonitor_SwitchLimitPreservesDirState checks that once
+// switchToNewDir hits the physical-log cap, the monitor does not keep
+// flipping dirIndex, dirSwitchCount, or lastFailBackTime.
+func TestFailoverMonitor_SwitchLimitPreservesDirState(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	memFS := vfs.NewMem()
+	require.NoError(t, memFS.MkdirAll("pri", os.ModePerm))
+	require.NoError(t, memFS.MkdirAll("sec", os.ModePerm))
+	pri, err := memFS.OpenDir("pri")
+	require.NoError(t, err)
+	defer pri.Close()
+	sec, err := memFS.OpenDir("sec")
+	require.NoError(t, err)
+	defer sec.Close()
+
+	ts := newManualTime(time.UnixMilli(0))
+	monitorCh := make(chan struct{}, 1000)
+	stopper := newStopper()
+	defer stopper.stop()
+
+	w := &limitSwitchWriter{maxSuccessful: maxPhysicalLogs}
+	m := newFailoverMonitor(failoverMonitorOptions{
+		dirs: [numDirIndices]dirAndFileHandle{
+			{Dir: Dir{FS: memFS, Dirname: "pri"}, File: pri},
+			{Dir: Dir{FS: memFS, Dirname: "sec"}, File: sec},
+		},
+		FailoverOptions: FailoverOptions{
+			PrimaryDirProbeInterval:      time.Second,
+			HealthyProbeLatencyThreshold: 50 * time.Millisecond,
+			HealthyInterval:              200 * time.Millisecond,
+			UnhealthySamplingInterval:    75 * time.Millisecond,
+			UnhealthyOperationLatencyThreshold: func() (time.Duration, bool) {
+				return 50 * time.Millisecond, true
+			},
+			timeSource:                 ts,
+			monitorIterationForTesting: monitorCh,
+		},
+		stopper: stopper,
+	})
+	// Wait for the monitor goroutine to start.
+	<-monitorCh
+
+	m.newWriter(func(dirAndFileHandle) switchableWriter { return w })
+
+	// Each sample sees an injected writer error, so the monitor attempts a
+	// switch. After maxPhysicalLogs successes the next attempt must fail
+	// without further bookkeeping. Extra samples would previously keep
+	// flipping dirIndex and incrementing dirSwitchCount.
+	const extraSamples = 5
+	for range maxPhysicalLogs + extraSamples {
+		ts.advance(75 * time.Millisecond)
+		<-monitorCh
+	}
+
+	stats := m.stats()
+	require.Equal(t, int64(maxPhysicalLogs), stats.DirSwitchCount)
+	require.Equal(t, maxPhysicalLogs+1, w.switchCalls())
+	m.mu.Lock()
+	dirIdx := m.mu.dirIndex
+	m.mu.Unlock()
+	// An even number of successful switches returns the monitor to primary.
+	require.Equal(t, primaryDirIndex, dirIdx)
+
+	// A new writer must be allowed to switch again.
+	w2 := &limitSwitchWriter{maxSuccessful: 1}
+	m.noWriter()
+	m.newWriter(func(dirAndFileHandle) switchableWriter { return w2 })
+	ts.advance(75 * time.Millisecond)
+	<-monitorCh
+	require.Equal(t, 1, w2.switchCalls())
+	require.Equal(t, int64(maxPhysicalLogs+1), m.stats().DirSwitchCount)
 }
 
 func TestFailoverManager_SecondaryIsWritable(t *testing.T) {
