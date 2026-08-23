@@ -476,9 +476,16 @@ type LogWriter struct {
 
 	pendingSyncForSyncQueueBacking pendingSyncForSyncQueue
 
-	// syncedOffset is the offset in the log that is durably synced after a
-	// flush. This member is used to write the WAL Sync chunk format's "Offset"
-	// field in the header.
+	// syncedOffset is the exclusive end offset of the prefix of the log that is
+	// known to be durable: every byte below it has been written and
+	// successfully synced. It is written only by the flush loop goroutine,
+	// which advances it after each successful sync, and is read by the writer
+	// goroutine in emitFragmentSyncOffsets to fill in the WAL Sync chunk
+	// format's "Offset" header field. Readers use those stamped offsets to tell
+	// genuine corruption apart from an unclean tail; see
+	// Reader.readAheadForCorruption. The final sync performed by Close does not
+	// advance it, which is harmless: no chunks are emitted after the EOF
+	// trailer.
 	syncedOffset atomic.Uint64
 
 	// emitFragment is set at runtime depending on which FormatMajorVersion
@@ -616,10 +623,12 @@ func (w *LogWriter) flushLoop(context.Context) {
 		f.Unlock()
 	}()
 
-	// writtenOffset is the amount of data that has been written
-	// but not necessarily synced. This is used to update logWriter's
-	// syncedOffset after a sync.
-	var writtenOffset uint64 = 0
+	// queuedBlocks is the number of blocks that have been passed to flushPending
+	// to be written out. Each such block occupies exactly blockSize bytes in the
+	// file (a block that is queued before it is completely full is zero-padded
+	// to blockSize), so queuedBlocks*blockSize is the file offset at which the
+	// contents of the block currently being filled will be written.
+	var queuedBlocks uint64
 
 	// The flush loop performs flushing of full and partial data blocks to the
 	// underlying writer (LogWriter.w), syncing of the writer, and notification
@@ -731,11 +740,17 @@ func (w *LogWriter) flushLoop(context.Context) {
 			f.Lock()
 			continue
 		}
-		writtenOffset += uint64(len(data))
-		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, snap)
+		// writtenOffset is the file offset just past the last byte that
+		// flushPending writes below: the blocks in pending occupy their full
+		// blockSize extent in the file, and the current block is written up to
+		// written. Note that queuedBlocks is advanced here rather than above so
+		// that it stays accurate on the error path, where the blocks are dropped
+		// instead of written.
+		queuedBlocks += uint64(len(pending))
+		writtenOffset := queuedBlocks*uint64(blockSize) + uint64(written)
+		synced, syncLatency, bytesWritten, err := w.flushPending(data, pending, snap, writtenOffset)
 		f.Lock()
 		if synced && f.walFileOpHistogram != nil {
-			w.syncedOffset.Store(writtenOffset)
 			f.walFileOpHistogram.Observe(float64(syncLatency))
 		}
 		f.err = err
@@ -772,8 +787,12 @@ func (w *LogWriter) flushLoop(context.Context) {
 	}
 }
 
+// flushPending writes the pending blocks and the tail of the current block to
+// the underlying writer, and syncs it if there are any pending syncs.
+// writtenOffset is the file offset just past the last byte being written; on a
+// successful sync it becomes the LogWriter's syncedOffset.
 func (w *LogWriter) flushPending(
-	data []byte, pending []*block, snap pendingSyncsSnapshot,
+	data []byte, pending []*block, snap pendingSyncsSnapshot, writtenOffset uint64,
 ) (synced bool, syncLatency time.Duration, bytesWritten int64, err error) {
 	defer func() {
 		// Translate panics into errors. The errors will cause flushLoop to shut
@@ -805,6 +824,15 @@ func (w *LogWriter) flushPending(
 	if synced {
 		if err == nil && w.s != nil {
 			syncLatency, err = w.syncWithLatency()
+			if err == nil {
+				// Advance the durability watermark that gets encoded into
+				// WAL-sync chunk headers and that Reader.readAheadForCorruption
+				// uses to confirm corruption. This must happen before the sync
+				// waiters are popped below: once a waiter is notified, the
+				// writer can emit new chunks, and those chunks should be
+				// stamped with the offset that is now durable.
+				w.syncedOffset.Store(writtenOffset)
+			}
 		} else {
 			synced = false
 		}
@@ -845,8 +873,10 @@ func (w *LogWriter) flushBlock(b *block) error {
 // queueBlock queues the current block for writing to the underlying writer,
 // allocates a new block and reserves space for the next header.
 func (w *LogWriter) queueBlock() {
-	// Allocate a new block, blocking until one is available. We do this first
-	// because w.block is protected by w.flusher.Mutex.
+	// Take a block off the free list, falling back to the pool if it is empty;
+	// this never blocks, so a writer can build up a backlog of queued blocks
+	// even if the flush loop is stalled. We do this first because w.block is
+	// protected by w.flusher.Mutex.
 	w.free.Lock()
 	if len(w.free.blocks) == 0 {
 		w.free.blocks = append(w.free.blocks, blockPool.Get().(*block))

@@ -731,12 +731,16 @@ func TestSyncRecordGeneralizedWithCloseError(t *testing.T) {
 	require.Less(t, f.syncPos.Load(), f.writePos.Load())
 }
 
-func writeWALSyncRecords(t *testing.T, numRecords int, recordSizes []int) *syncFile {
+// writeWALSyncRecords writes and synchronously syncs numRecords records with
+// the given sizes, using the WAL sync chunk format. It returns the resulting
+// file along with the end offset of each record.
+func writeWALSyncRecords(t *testing.T, numRecords int, recordSizes []int) (*syncFile, []uint64) {
 	f := &syncFile{}
 	w := NewLogWriter(f, 1, LogWriterConfig{
 		WriteWALSyncOffsets: func() bool { return true },
 	})
 	var syncErr error
+	recordEnd := make([]uint64, numRecords)
 	for i := 0; i < numRecords; i++ {
 		var syncWG sync.WaitGroup
 		syncWG.Add(1)
@@ -751,13 +755,27 @@ func writeWALSyncRecords(t *testing.T, numRecords int, recordSizes []int) *syncF
 		if v := f.syncPos.Load(); offset != v {
 			t.Fatalf("expected sync pos %d, but found %d", offset, v)
 		}
+		// Everything written so far is now durable, so the writer's durability
+		// watermark must have caught up with the file's sync position.
+		if v := w.syncedOffset.Load(); v != uint64(offset) {
+			t.Fatalf("record %d: expected syncedOffset %d, but found %d", i, offset, v)
+		}
+		recordEnd[i] = uint64(offset)
 	}
-	return f
+	require.NoError(t, w.Close())
+	return f, recordEnd
 }
 
-func validateWALSyncRecords(t *testing.T, buf *bytes.Buffer) {
-	var largestOffset uint64 = 0
+// validateWALSyncRecords checks that every chunk in the file is stamped with
+// the offset that was durably synced when the chunk was written, and that the
+// file reads back cleanly. recordEnd holds the end offset of each record; since
+// writeWALSyncRecords syncs each record before writing the next one, a chunk
+// belonging to record i must be stamped with recordEnd[i-1].
+func validateWALSyncRecords(t *testing.T, buf *bytes.Buffer, recordEnd []uint64) {
+	// record is the index of the record that the chunk at offset i belongs to.
+	record := 0
 	i := 0
+	foundEOFTrailer := false
 	bufBytes := (*buf).Bytes()
 	for i < len(bufBytes) {
 		if blockSize-(i%blockSize) < walSyncHeaderSize {
@@ -773,19 +791,33 @@ func validateWALSyncRecords(t *testing.T, buf *bytes.Buffer) {
 		// Reader and Writer have a logNum of 1, so a logNum of 2 is EOF.
 		if logNum == 2 {
 			// reached EOF trailer
-			if checksum != 0 && length != 0 {
+			if checksum != 0 || length != 0 {
 				t.Fatal("Mismatched logNum but not EOF trailer")
 			}
+			foundEOFTrailer = true
 			break
 		}
-		offset := binary.LittleEndian.Uint64(bufBytes[i+11 : i+19])
-		if offset < largestOffset {
-			t.Fatal("Expected monotonitcally increasing offsets.")
+		for record < len(recordEnd) && uint64(i) >= recordEnd[record] {
+			record++
 		}
-		largestOffset = offset
+		if record >= len(recordEnd) {
+			t.Fatalf("chunk at offset %d is past the last record", i)
+		}
+		var expected uint64
+		if record > 0 {
+			expected = recordEnd[record-1]
+		}
+		offset := binary.LittleEndian.Uint64(bufBytes[i+11 : i+19])
+		if offset != expected {
+			t.Fatalf("chunk at offset %d (record %d): expected stamped offset %d, but found %d",
+				i, record, expected, offset)
+		}
 		headerFormat := headerFormatMappings[chunkEncoding]
 		headerSize := headerFormat.headerSize
 		i += headerSize + int(length)
+	}
+	if !foundEOFTrailer {
+		t.Fatal("did not reach the EOF trailer")
 	}
 
 	r := NewReader(bytes.NewBuffer(bufBytes), 1)
@@ -809,8 +841,8 @@ func TestWALSyncOffsetSimple(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		recordSizes = append(recordSizes, blockSize-walSyncHeaderSize)
 	}
-	f := writeWALSyncRecords(t, len(recordSizes), recordSizes)
-	validateWALSyncRecords(t, &f.buffer)
+	f, recordEnd := writeWALSyncRecords(t, len(recordSizes), recordSizes)
+	validateWALSyncRecords(t, &f.buffer, recordEnd)
 }
 
 func TestWALSyncOffsetRandom(t *testing.T) {
@@ -818,8 +850,60 @@ func TestWALSyncOffsetRandom(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		recordSizes = append(recordSizes, 1+rand.IntN(blockSize-walSyncHeaderSize))
 	}
-	f := writeWALSyncRecords(t, len(recordSizes), recordSizes)
-	validateWALSyncRecords(t, &f.buffer)
+	f, recordEnd := writeWALSyncRecords(t, len(recordSizes), recordSizes)
+	validateWALSyncRecords(t, &f.buffer, recordEnd)
+}
+
+// TestWALSyncOffsetMultiBlock exercises records that span multiple blocks, so
+// that a record is split across first/middle/last chunks and its bytes reach
+// the file through queued blocks rather than through the tail of the block
+// currently being filled.
+func TestWALSyncOffsetMultiBlock(t *testing.T) {
+	recordSizes := []int{}
+	for i := 0; i < 20; i++ {
+		recordSizes = append(recordSizes, 1+rand.IntN(10*blockSize))
+	}
+	f, recordEnd := writeWALSyncRecords(t, len(recordSizes), recordSizes)
+	validateWALSyncRecords(t, &f.buffer, recordEnd)
+}
+
+// TestWALSyncOffsetBatchedBlocks verifies the durability watermark when a
+// single flush drains many queued blocks at once. The flush loop is held inside
+// Write while the writer fills up a backlog of blocks, so the flush that
+// follows has to account for all of them.
+func TestWALSyncOffsetBatchedBlocks(t *testing.T) {
+	f := &syncFileWithWait{}
+	f.writeWG.Add(1)
+	w := NewLogWriter(f, 1, LogWriterConfig{
+		WriteWALSyncOffsets: func() bool { return true },
+	})
+	// Build up a backlog of roughly 20 queued blocks. None of these request a
+	// sync, and the flush loop cannot drain them while writeWG is held.
+	const numRecords = 40
+	for i := 0; i < numRecords; i++ {
+		_, err := w.SyncRecord([]byte(strings.Repeat("x", blockSize/2)), nil, nil)
+		require.NoError(t, err)
+	}
+	f.writeWG.Done()
+
+	// Sync a final record; everything written so far must be covered by the
+	// watermark.
+	var syncWG sync.WaitGroup
+	var syncErr error
+	syncWG.Add(1)
+	offset, err := w.SyncRecord([]byte("last"), &syncWG, &syncErr)
+	require.NoError(t, err)
+	syncWG.Wait()
+	require.NoError(t, syncErr)
+	require.EqualValues(t, offset, f.f.syncPos.Load())
+	require.EqualValues(t, offset, w.syncedOffset.Load())
+	require.NoError(t, w.Close())
+
+	// Confirm the backlog actually materialized; otherwise the flush loop kept
+	// up and this test would silently degenerate into the single-block case,
+	// which would drain one block per flush and yield a mean of at most 1.
+	m := w.Metrics()
+	require.GreaterOrEqual(t, m.PendingBufferLen.Mean(), float64(3))
 }
 
 // BenchmarkQueueWALBlocks exercises queueing within the LogWriter. It can be
