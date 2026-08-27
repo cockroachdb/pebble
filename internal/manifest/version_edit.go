@@ -242,6 +242,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 		br = bufio.NewReader(r)
 	}
 	d := versionEditDecoder{br}
+	var (
+		smallestPointKey, largestPointKey []byte
+		smallestRangeKey, largestRangeKey []byte
+		tagCreationTime                   []byte
+		tagNoRangeKeySets                 []byte
+		tagSyntheticPrefix                []byte
+		tagSyntheticSuffix                []byte
+	)
 	for {
 		tag, err := binary.ReadUvarint(br)
 		if err == io.EOF {
@@ -348,18 +356,16 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			// whether we have point, range or both types of keys present in the
 			// table.
 			var (
-				smallestPointKey, largestPointKey []byte
-				smallestRangeKey, largestRangeKey []byte
-				parsedPointBounds                 bool
-				boundsMarker                      byte
+				parsedPointBounds bool
+				boundsMarker      byte
 			)
 			if tag != tagNewFile5 {
 				// Range keys not present in the table. Parse the point key bounds.
-				smallestPointKey, err = d.readBytes()
+				smallestPointKey, err = d.readBytesInto(smallestPointKey)
 				if err != nil {
 					return err
 				}
-				largestPointKey, err = d.readBytes()
+				largestPointKey, err = d.readBytesInto(largestPointKey)
 				if err != nil {
 					return err
 				}
@@ -372,11 +378,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 				// Parse point key bounds, if present.
 				if boundsMarker&maskContainsPointKeys > 0 {
-					smallestPointKey, err = d.readBytes()
+					smallestPointKey, err = d.readBytesInto(smallestPointKey)
 					if err != nil {
 						return err
 					}
-					largestPointKey, err = d.readBytes()
+					largestPointKey, err = d.readBytesInto(largestPointKey)
 					if err != nil {
 						return err
 					}
@@ -392,11 +398,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 				}
 				// Parse range key bounds.
-				smallestRangeKey, err = d.readBytes()
+				smallestRangeKey, err = d.readBytesInto(smallestRangeKey)
 				if err != nil {
 					return err
 				}
-				largestRangeKey, err = d.readBytes()
+				largestRangeKey, err = d.readBytesInto(largestRangeKey)
 				if err != nil {
 					return err
 				}
@@ -421,8 +427,6 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				backingFileNum uint64
 			}{}
 			var noRangeKeySets bool
-			var syntheticPrefix sstable.SyntheticPrefix
-			var syntheticSuffix sstable.SyntheticSuffix
 			var blobReferences BlobReferences
 			var blobReferenceDepth BlobReferenceDepth
 			if tag == tagNewFile4 || tag == tagNewFile5 {
@@ -452,22 +456,22 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 
 					case customTagCreationTime:
-						field, err := d.readBytes()
+						tagCreationTime, err = d.readBytesInto(tagCreationTime)
 						if err != nil {
 							return err
 						}
 						var n int
-						creationTime, n = binary.Uvarint(field)
-						if n != len(field) {
+						creationTime, n = binary.Uvarint(tagCreationTime)
+						if n != len(tagCreationTime) {
 							return base.CorruptionErrorf("new-file4: invalid file creation time")
 						}
 
 					case customTagNoRangeKeySets:
-						field, err := d.readBytes()
+						tagNoRangeKeySets, err = d.readBytesInto(tagNoRangeKeySets)
 						if err != nil {
 							return err
 						}
-						if len(field) != 0 {
+						if len(tagNoRangeKeySets) != 0 {
 							return base.CorruptionErrorf("new-file4: invalid no-range-key-sets value")
 						}
 						noRangeKeySets = true
@@ -482,14 +486,13 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 
 					case customTagSyntheticPrefix:
-						synthetic, err := d.readBytes()
+						tagSyntheticPrefix, err = d.readBytesInto(tagSyntheticPrefix)
 						if err != nil {
 							return err
 						}
-						syntheticPrefix = synthetic
 
 					case customTagSyntheticSuffix:
-						if syntheticSuffix, err = d.readBytes(); err != nil {
+						if tagSyntheticSuffix, err = d.readBytesInto(tagSyntheticSuffix); err != nil {
 							return err
 						}
 
@@ -549,7 +552,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				BlobReferences:           blobReferences,
 				BlobReferenceDepth:       blobReferenceDepth,
 				Virtual:                  virtualState.virtual,
-				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
+				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(tagSyntheticPrefix, tagSyntheticSuffix),
 			}
 
 			if tag != tagNewFile5 { // no range keys present
@@ -1053,7 +1056,7 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 		return nil, err
 	}
 	s := make([]byte, n)
-	_, err = io.ReadFull(d, s)
+	_, err = io.ReadFull(d.byteReader, s)
 	if err != nil {
 		if err == io.ErrUnexpectedEOF {
 			return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
@@ -1061,6 +1064,21 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+func (d versionEditDecoder) readBytesInto(dst []byte) ([]byte, error) {
+	n, err := d.readUvarint()
+	if err != nil {
+		return nil, err
+	}
+	dst = slices.Grow(dst[:0], int(n))[:n]
+	if _, err := io.ReadFull(d.byteReader, dst); err != nil {
+		if err == io.ErrUnexpectedEOF {
+			return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
+		}
+		return nil, err
+	}
+	return dst, nil
 }
 
 func (d versionEditDecoder) readLevel() (int, error) {
@@ -1083,7 +1101,7 @@ func (d versionEditDecoder) readFileNum() (base.FileNum, error) {
 }
 
 func (d versionEditDecoder) readUvarint() (uint64, error) {
-	u, err := binary.ReadUvarint(d)
+	u, err := binary.ReadUvarint(d.byteReader)
 	if err != nil {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			return 0, base.CorruptionErrorf("pebble: corrupt manifest: failed to read uvarint")
