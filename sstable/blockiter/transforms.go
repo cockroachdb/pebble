@@ -176,7 +176,7 @@ type SyntheticPrefixAndSuffix struct {
 }
 
 // MakeSyntheticPrefixAndSuffix returns a SyntheticPrefixAndSuffix with the
-// given prefix and suffix.
+// given prefix and suffix. Copies input rather than retaining aliases.
 func MakeSyntheticPrefixAndSuffix(
 	prefix SyntheticPrefix, suffix SyntheticSuffix,
 ) SyntheticPrefixAndSuffix {

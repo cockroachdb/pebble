@@ -242,7 +242,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 		br = bufio.NewReader(r)
 	}
 	d := versionEditDecoder{br}
+
+	// A scratch buffer is reused across iterations to reduce allocations.
+	// Scratch slices should not be passed to code that may retain or alias
+	// them beyond the current iteration.
+	var sb scratchBuffer
 	for {
+		sb.Reset()
+
 		tag, err := binary.ReadUvarint(br)
 		if err == io.EOF {
 			break
@@ -252,7 +259,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 		}
 		switch tag {
 		case tagComparator:
-			s, err := d.readBytes()
+			s, err := d.readBytesInto(&sb)
 			if err != nil {
 				return err
 			}
@@ -283,7 +290,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if _, err := d.readLevel(); err != nil {
 				return err
 			}
-			if _, err := d.readBytes(); err != nil {
+			if _, err := d.readBytesInto(&sb); err != nil {
 				return err
 			}
 			// NB: RocksDB does not use compaction pointers anymore.
@@ -348,6 +355,9 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			// whether we have point, range or both types of keys present in the
 			// table.
 			var (
+				// Safe to use scratch buffer even though DecodeInternalKey
+				// aliases the slice because SetInternalKeyBounds ultimately
+				// copies key bytes.
 				smallestPointKey, largestPointKey []byte
 				smallestRangeKey, largestRangeKey []byte
 				parsedPointBounds                 bool
@@ -355,11 +365,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			)
 			if tag != tagNewFile5 {
 				// Range keys not present in the table. Parse the point key bounds.
-				smallestPointKey, err = d.readBytes()
+				smallestPointKey, err = d.readBytesInto(&sb)
 				if err != nil {
 					return err
 				}
-				largestPointKey, err = d.readBytes()
+				largestPointKey, err = d.readBytesInto(&sb)
 				if err != nil {
 					return err
 				}
@@ -372,11 +382,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 				// Parse point key bounds, if present.
 				if boundsMarker&maskContainsPointKeys > 0 {
-					smallestPointKey, err = d.readBytes()
+					smallestPointKey, err = d.readBytesInto(&sb)
 					if err != nil {
 						return err
 					}
-					largestPointKey, err = d.readBytes()
+					largestPointKey, err = d.readBytesInto(&sb)
 					if err != nil {
 						return err
 					}
@@ -392,11 +402,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 				}
 				// Parse range key bounds.
-				smallestRangeKey, err = d.readBytes()
+				smallestRangeKey, err = d.readBytesInto(&sb)
 				if err != nil {
 					return err
 				}
-				largestRangeKey, err = d.readBytes()
+				largestRangeKey, err = d.readBytesInto(&sb)
 				if err != nil {
 					return err
 				}
@@ -421,8 +431,10 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				backingFileNum uint64
 			}{}
 			var noRangeKeySets bool
-			var syntheticPrefix sstable.SyntheticPrefix
-			var syntheticSuffix sstable.SyntheticSuffix
+			// Safe to use scratch buffer because MakeSyntheticPrefixAndSuffix
+			// copies prefix/suffix bytes.
+			var syntheticPrefix []byte
+			var syntheticSuffix []byte
 			var blobReferences BlobReferences
 			var blobReferenceDepth BlobReferenceDepth
 			if tag == tagNewFile4 || tag == tagNewFile5 {
@@ -452,7 +464,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 
 					case customTagCreationTime:
-						field, err := d.readBytes()
+						field, err := d.readBytesInto(&sb)
 						if err != nil {
 							return err
 						}
@@ -463,7 +475,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 
 					case customTagNoRangeKeySets:
-						field, err := d.readBytes()
+						field, err := d.readBytesInto(&sb)
 						if err != nil {
 							return err
 						}
@@ -482,14 +494,13 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 
 					case customTagSyntheticPrefix:
-						synthetic, err := d.readBytes()
+						syntheticPrefix, err = d.readBytesInto(&sb)
 						if err != nil {
 							return err
 						}
-						syntheticPrefix = synthetic
 
 					case customTagSyntheticSuffix:
-						if syntheticSuffix, err = d.readBytes(); err != nil {
+						if syntheticSuffix, err = d.readBytesInto(&sb); err != nil {
 							return err
 						}
 
@@ -1042,6 +1053,21 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	return err
 }
 
+// scratchBuffer is a reusable temp buffer that minimizes allocations across
+// decode iterations.
+type scratchBuffer []byte
+
+// New returns n bytes of scratch space.
+func (sc *scratchBuffer) New(n int) []byte {
+	*sc = slices.Grow(*sc, n)[:len(*sc)+n]
+	return (*sc)[len(*sc)-n:]
+}
+
+// Reset buffer between iterations.
+func (sc *scratchBuffer) Reset() {
+	(*sc) = (*sc)[:0]
+}
+
 // versionEditDecoder should be used to decode version edits.
 type versionEditDecoder struct {
 	byteReader
@@ -1053,7 +1079,7 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 		return nil, err
 	}
 	s := make([]byte, n)
-	_, err = io.ReadFull(d, s)
+	_, err = io.ReadFull(d.byteReader, s)
 	if err != nil {
 		if err == io.ErrUnexpectedEOF {
 			return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
@@ -1061,6 +1087,23 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// readBytesInto reads the next n bytes into the scratch buffer and returns a
+// slice that is valid until the buffer is reset.
+func (d versionEditDecoder) readBytesInto(sb *scratchBuffer) ([]byte, error) {
+	n, err := d.readUvarint()
+	if err != nil {
+		return nil, err
+	}
+	buf := sb.New(int(n))
+	if _, err := io.ReadFull(d.byteReader, buf); err != nil {
+		if err == io.ErrUnexpectedEOF {
+			return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
+		}
+		return nil, err
+	}
+	return buf, nil
 }
 
 func (d versionEditDecoder) readLevel() (int, error) {
@@ -1083,7 +1126,7 @@ func (d versionEditDecoder) readFileNum() (base.FileNum, error) {
 }
 
 func (d versionEditDecoder) readUvarint() (uint64, error) {
-	u, err := binary.ReadUvarint(d)
+	u, err := binary.ReadUvarint(d.byteReader)
 	if err != nil {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			return 0, base.CorruptionErrorf("pebble: corrupt manifest: failed to read uvarint")

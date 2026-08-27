@@ -35,11 +35,24 @@ func checkRoundTrip(e0 VersionEdit) error {
 	}
 	diff := pretty.Diff(e0, e1)
 	// SyntheticPrefixAndSuffix can't be correctly compared with pretty.Diff.
+	// Compared separately below.
 	diff = slices.DeleteFunc(diff, func(s string) bool {
 		return strings.Contains(s, "SyntheticPrefixAndSuffix")
 	})
 	if len(diff) > 0 {
 		return errors.Errorf("%s", strings.Join(diff, "\n"))
+	}
+	if len(e0.NewTables) != len(e1.NewTables) {
+		return errors.Errorf("NewTables length mismatch: %d vs %d", len(e0.NewTables), len(e1.NewTables))
+	}
+	for i := range e0.NewTables {
+		a := e0.NewTables[i].Meta.SyntheticPrefixAndSuffix
+		b := e1.NewTables[i].Meta.SyntheticPrefixAndSuffix
+		if !bytes.Equal(a.Prefix(), b.Prefix()) || !bytes.Equal(a.Suffix(), b.Suffix()) {
+			return errors.Errorf("NewTables[%d].SyntheticPrefixAndSuffix mismatch: "+
+				"prefix %q vs %q, suffix %q vs %q",
+				i, a.Prefix(), b.Prefix(), a.Suffix(), b.Suffix())
+		}
 	}
 	return nil
 }
@@ -321,6 +334,35 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	)
 	m8.InitPhysicalBacking()
 
+	// Tables m9 and m10 ensure that synthetic prefix/suffix doesn't leak
+	// across `NewTables` entries.
+	m9 := (&TableMetadata{
+		TableNum:                 814,
+		Size:                     8140,
+		CreationTime:             814090,
+		SeqNums:                  base.SeqNumRange{Low: 15, High: 17},
+		LargestSeqNumAbsolute:    17,
+		SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix([]byte("pre"), []byte("suf")),
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("c"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("k"), 0, base.InternalKeyKindSet),
+	)
+	m9.InitPhysicalBacking()
+
+	m10 := (&TableMetadata{
+		TableNum:              815,
+		Size:                  8150,
+		CreationTime:          815100,
+		SeqNums:               base.SeqNumRange{Low: 18, High: 20},
+		LargestSeqNumAbsolute: 20,
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.MakeInternalKey([]byte("d"), 0, base.InternalKeyKindSet),
+		base.MakeInternalKey([]byte("l"), 0, base.InternalKeyKindSet),
+	)
+	m10.InitPhysicalBacking()
+
 	testCases := []VersionEdit{
 		// An empty version edit.
 		{},
@@ -367,6 +409,14 @@ func TestVersionEditRoundTrip(t *testing.T) {
 				{
 					Level: 6,
 					Meta:  m8,
+				},
+				{
+					Level: 6,
+					Meta:  m9,
+				},
+				{
+					Level: 6,
+					Meta:  m10,
 				},
 			},
 		},

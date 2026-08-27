@@ -5,6 +5,7 @@
 package pebble
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -326,6 +327,7 @@ func recoverVersion(
 	}
 	defer manifestFile.Close()
 	rr := record.NewReader(manifestFile, 0 /* logNum */)
+	br := bufio.NewReader(nil) // wrap io.Reader in a io.ByteReader
 	for {
 		r, err := rr.Next()
 		if err == io.EOF || record.IsInvalidRecord(err) {
@@ -335,8 +337,9 @@ func recoverVersion(
 			return nil, errors.Wrapf(err, "pebble: error when loading manifest file %q",
 				errors.Safe(manifestFilename))
 		}
+		br.Reset(r)
 		var ve manifest.VersionEdit
-		err = ve.Decode(r)
+		err = ve.Decode(br)
 		if err != nil {
 			// Break instead of returning an error if the record is corrupted
 			// or invalid.
