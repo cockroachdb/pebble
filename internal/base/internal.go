@@ -808,6 +808,7 @@ func (ikr *InternalKeyBounds) Contains(cmp Compare, key []byte) bool {
 	return cmp(key, ikr.SmallestUserKey()) >= 0 && ikr.Largest().IsUpperBoundFor(cmp, key)
 }
 
+// SetInternalKeyBounds copies input keys rather than retaining aliases.
 func (ikr *InternalKeyBounds) SetInternalKeyBounds(smallest, largest InternalKey) {
 	ikr.userKeyData = string(smallest.UserKey) + string(largest.UserKey)
 	ikr.smallestTrailer = smallest.Trailer

@@ -242,15 +242,14 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 		br = bufio.NewReader(r)
 	}
 	d := versionEditDecoder{br}
-	var (
-		smallestPointKey, largestPointKey []byte
-		smallestRangeKey, largestRangeKey []byte
-		tagCreationTime                   []byte
-		tagNoRangeKeySets                 []byte
-		tagSyntheticPrefix                []byte
-		tagSyntheticSuffix                []byte
-	)
+
+	// A scratch buffer is reused across iterations to reduce allocations.
+	// Scratch slices should not be passed to code that may retain or alias
+	// them beyond the current iteration.
+	var sb scratchBuffer
 	for {
+		sb.Reset()
+
 		tag, err := binary.ReadUvarint(br)
 		if err == io.EOF {
 			break
@@ -260,7 +259,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 		}
 		switch tag {
 		case tagComparator:
-			s, err := d.readBytes()
+			s, err := d.readBytesInto(&sb)
 			if err != nil {
 				return err
 			}
@@ -291,7 +290,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			if _, err := d.readLevel(); err != nil {
 				return err
 			}
-			if _, err := d.readBytes(); err != nil {
+			if _, err := d.readBytesInto(&sb); err != nil {
 				return err
 			}
 			// NB: RocksDB does not use compaction pointers anymore.
@@ -356,16 +355,21 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 			// whether we have point, range or both types of keys present in the
 			// table.
 			var (
-				parsedPointBounds bool
-				boundsMarker      byte
+				// Safe to use scratch buffer even though DecodeInternalKey
+				// aliases the slice because SetInternalKeyBounds ultimately
+				// copies key bytes.
+				smallestPointKey, largestPointKey []byte
+				smallestRangeKey, largestRangeKey []byte
+				parsedPointBounds                 bool
+				boundsMarker                      byte
 			)
 			if tag != tagNewFile5 {
 				// Range keys not present in the table. Parse the point key bounds.
-				smallestPointKey, err = d.readBytesInto(smallestPointKey)
+				smallestPointKey, err = d.readBytesInto(&sb)
 				if err != nil {
 					return err
 				}
-				largestPointKey, err = d.readBytesInto(largestPointKey)
+				largestPointKey, err = d.readBytesInto(&sb)
 				if err != nil {
 					return err
 				}
@@ -378,11 +382,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				}
 				// Parse point key bounds, if present.
 				if boundsMarker&maskContainsPointKeys > 0 {
-					smallestPointKey, err = d.readBytesInto(smallestPointKey)
+					smallestPointKey, err = d.readBytesInto(&sb)
 					if err != nil {
 						return err
 					}
-					largestPointKey, err = d.readBytesInto(largestPointKey)
+					largestPointKey, err = d.readBytesInto(&sb)
 					if err != nil {
 						return err
 					}
@@ -398,11 +402,11 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 					}
 				}
 				// Parse range key bounds.
-				smallestRangeKey, err = d.readBytesInto(smallestRangeKey)
+				smallestRangeKey, err = d.readBytesInto(&sb)
 				if err != nil {
 					return err
 				}
-				largestRangeKey, err = d.readBytesInto(largestRangeKey)
+				largestRangeKey, err = d.readBytesInto(&sb)
 				if err != nil {
 					return err
 				}
@@ -427,6 +431,10 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				backingFileNum uint64
 			}{}
 			var noRangeKeySets bool
+			// Safe to use scratch buffer because MakeSyntheticPrefixAndSuffix
+			// copies prefix/suffix bytes.
+			var syntheticPrefix []byte
+			var syntheticSuffix []byte
 			var blobReferences BlobReferences
 			var blobReferenceDepth BlobReferenceDepth
 			if tag == tagNewFile4 || tag == tagNewFile5 {
@@ -456,22 +464,22 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 
 					case customTagCreationTime:
-						tagCreationTime, err = d.readBytesInto(tagCreationTime)
+						field, err := d.readBytesInto(&sb)
 						if err != nil {
 							return err
 						}
 						var n int
-						creationTime, n = binary.Uvarint(tagCreationTime)
-						if n != len(tagCreationTime) {
+						creationTime, n = binary.Uvarint(field)
+						if n != len(field) {
 							return base.CorruptionErrorf("new-file4: invalid file creation time")
 						}
 
 					case customTagNoRangeKeySets:
-						tagNoRangeKeySets, err = d.readBytesInto(tagNoRangeKeySets)
+						field, err := d.readBytesInto(&sb)
 						if err != nil {
 							return err
 						}
-						if len(tagNoRangeKeySets) != 0 {
+						if len(field) != 0 {
 							return base.CorruptionErrorf("new-file4: invalid no-range-key-sets value")
 						}
 						noRangeKeySets = true
@@ -486,13 +494,13 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 						}
 
 					case customTagSyntheticPrefix:
-						tagSyntheticPrefix, err = d.readBytesInto(tagSyntheticPrefix)
+						syntheticPrefix, err = d.readBytesInto(&sb)
 						if err != nil {
 							return err
 						}
 
 					case customTagSyntheticSuffix:
-						if tagSyntheticSuffix, err = d.readBytesInto(tagSyntheticSuffix); err != nil {
+						if syntheticSuffix, err = d.readBytesInto(&sb); err != nil {
 							return err
 						}
 
@@ -552,7 +560,7 @@ func (v *VersionEdit) Decode(r io.Reader) error {
 				BlobReferences:           blobReferences,
 				BlobReferenceDepth:       blobReferenceDepth,
 				Virtual:                  virtualState.virtual,
-				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(tagSyntheticPrefix, tagSyntheticSuffix),
+				SyntheticPrefixAndSuffix: sstable.MakeSyntheticPrefixAndSuffix(syntheticPrefix, syntheticSuffix),
 			}
 
 			if tag != tagNewFile5 { // no range keys present
@@ -1045,6 +1053,21 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 	return err
 }
 
+// scratchBuffer is a reusable temp buffer that minimizes allocations across
+// decode iterations.
+type scratchBuffer []byte
+
+// New returns n bytes of scratch space.
+func (sc *scratchBuffer) New(n int) []byte {
+	*sc = slices.Grow(*sc, n)[:len(*sc)+n]
+	return (*sc)[len(*sc)-n:]
+}
+
+// Reset buffer between iterations.
+func (sc *scratchBuffer) Reset() {
+	(*sc) = (*sc)[:0]
+}
+
 // versionEditDecoder should be used to decode version edits.
 type versionEditDecoder struct {
 	byteReader
@@ -1066,19 +1089,21 @@ func (d versionEditDecoder) readBytes() ([]byte, error) {
 	return s, nil
 }
 
-func (d versionEditDecoder) readBytesInto(dst []byte) ([]byte, error) {
+// readBytesInto reads the next n bytes into the scratch buffer and returns a
+// slice that is valid until the buffer is reset.
+func (d versionEditDecoder) readBytesInto(sb *scratchBuffer) ([]byte, error) {
 	n, err := d.readUvarint()
 	if err != nil {
 		return nil, err
 	}
-	dst = slices.Grow(dst[:0], int(n))[:n]
-	if _, err := io.ReadFull(d.byteReader, dst); err != nil {
+	buf := sb.New(int(n))
+	if _, err := io.ReadFull(d.byteReader, buf); err != nil {
 		if err == io.ErrUnexpectedEOF {
 			return nil, base.CorruptionErrorf("pebble: corrupt manifest: failed to read %d bytes", n)
 		}
 		return nil, err
 	}
-	return dst, nil
+	return buf, nil
 }
 
 func (d versionEditDecoder) readLevel() (int, error) {
