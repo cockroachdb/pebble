@@ -973,7 +973,7 @@ func (v *VersionEdit) Encode(w io.Writer) error {
 		}
 		e.writeUvarint(uint64(x.Meta.SeqNums.Low))
 		e.writeUvarint(uint64(x.Meta.SeqNums.High))
-		if customFields {
+		if tag == tagNewFile4 || tag == tagNewFile5 {
 			if x.Meta.CreationTime != 0 {
 				e.writeUvarint(customTagCreationTime)
 				var buf [binary.MaxVarintLen64]byte
