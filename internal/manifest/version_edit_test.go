@@ -428,6 +428,80 @@ func TestVersionEditRoundTrip(t *testing.T) {
 	}
 }
 
+func TestVersionEditRoundTripRangeKeysWithoutCustomFields(t *testing.T) {
+	makeRangeKeyTable := func(fileNum base.FileNum, creationTime int64) *TableMetadata {
+		m := (&TableMetadata{
+			TableNum:              fileNum,
+			Size:                  100,
+			CreationTime:          creationTime,
+			SeqNums:               base.SeqNumRange{Low: 1, High: 2},
+			LargestSeqNumAbsolute: 2,
+		}).ExtendRangeKeyBounds(
+			base.DefaultComparer.Compare,
+			AnyRangeKeys,
+			base.MakeInternalKey([]byte("a"), 1, base.InternalKeyKindRangeKeySet),
+			base.MakeExclusiveSentinelKey(base.InternalKeyKindRangeKeyDelete, []byte("z")),
+		)
+		m.InitPhysicalBacking()
+		return m
+	}
+	makePointKeyTable := func(fileNum base.FileNum) *TableMetadata {
+		m := (&TableMetadata{
+			TableNum: fileNum,
+			Size:     100,
+		}).ExtendPointKeyBounds(
+			base.DefaultComparer.Compare,
+			base.MakeInternalKey([]byte("a"), 1, base.InternalKeyKindSet),
+			base.MakeInternalKey([]byte("z"), 1, base.InternalKeyKindSet),
+		)
+		m.InitPhysicalBacking()
+		return m
+	}
+
+	testCases := []struct {
+		name string
+		edit VersionEdit
+	}{
+		{
+			name: "single range-key table",
+			edit: VersionEdit{NewTables: []NewTableEntry{
+				{Level: 6, Meta: makeRangeKeyTable(1, 0)},
+			}},
+		},
+		{
+			name: "multiple range-key tables",
+			edit: VersionEdit{NewTables: []NewTableEntry{
+				{Level: 6, Meta: makeRangeKeyTable(1, 0)},
+				{Level: 6, Meta: makeRangeKeyTable(2, 0)},
+			}},
+		},
+		{
+			name: "range-key table followed by point-key table",
+			edit: VersionEdit{NewTables: []NewTableEntry{
+				{Level: 6, Meta: makeRangeKeyTable(1, 0)},
+				{Level: 6, Meta: makePointKeyTable(2)},
+			}},
+		},
+		{
+			name: "range-key table with creation time",
+			edit: VersionEdit{NewTables: []NewTableEntry{
+				{Level: 6, Meta: makeRangeKeyTable(1, 1234)},
+			}},
+		},
+		{
+			name: "point-key table without custom fields",
+			edit: VersionEdit{NewTables: []NewTableEntry{
+				{Level: 6, Meta: makePointKeyTable(1)},
+			}},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, checkRoundTrip(tc.edit))
+		})
+	}
+}
+
 func TestVersionEditDecode(t *testing.T) {
 	var inputBuf, outputBuf bytes.Buffer
 	datadriven.RunTest(t, "testdata/version_edit_decode",
