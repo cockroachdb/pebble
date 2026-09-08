@@ -246,6 +246,80 @@ close: db/000006.log
 sync: checkpoints/checkpoint2
 close: checkpoints/checkpoint2
 
+# Same restriction as checkpoint2, but with WithMinimalManifest. The destination
+# MANIFEST is a single snapshot record; the source MANIFEST is not opened.
+checkpoint db checkpoints/checkpoint2_minimal restrict=(d-f) minimal
+----
+mkdir-all: checkpoints/checkpoint2_minimal 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint2_minimal
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint2_minimal/OPTIONS-000002
+sync-data: checkpoints/checkpoint2_minimal/OPTIONS-000002
+close: checkpoints/checkpoint2_minimal/OPTIONS-000002
+close: db/OPTIONS-000002
+open-dir: checkpoints/checkpoint2_minimal
+create: checkpoints/checkpoint2_minimal/marker.format-version.000001.030
+sync-data: checkpoints/checkpoint2_minimal/marker.format-version.000001.030
+close: checkpoints/checkpoint2_minimal/marker.format-version.000001.030
+sync: checkpoints/checkpoint2_minimal
+close: checkpoints/checkpoint2_minimal
+link: db/000007.sst -> checkpoints/checkpoint2_minimal/000007.sst
+create: checkpoints/checkpoint2_minimal/MANIFEST-000001
+sync-data: checkpoints/checkpoint2_minimal/MANIFEST-000001
+close: checkpoints/checkpoint2_minimal/MANIFEST-000001
+open-dir: checkpoints/checkpoint2_minimal
+sync: checkpoints/checkpoint2_minimal
+create: checkpoints/checkpoint2_minimal/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint2_minimal/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint2_minimal/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint2_minimal
+close: checkpoints/checkpoint2_minimal
+create: checkpoints/checkpoint2_minimal/000006.log
+open: db/000006.log (options: *vfs.sequentialReadsOption)
+sync-data: checkpoints/checkpoint2_minimal/000006.log
+close: checkpoints/checkpoint2_minimal/000006.log
+close: db/000006.log
+sync: checkpoints/checkpoint2_minimal
+close: checkpoints/checkpoint2_minimal
+
+open checkpoints/checkpoint2_minimal readonly
+----
+open-dir: checkpoints/checkpoint2_minimal
+lock: checkpoints/checkpoint2_minimal/LOCK
+open-dir: checkpoints/checkpoint2_minimal
+open-dir: checkpoints/checkpoint2_minimal
+open-dir: checkpoints/checkpoint2_minimal
+open-dir: checkpoints/checkpoint2_minimal
+open: checkpoints/checkpoint2_minimal/MANIFEST-000001
+close: checkpoints/checkpoint2_minimal/MANIFEST-000001
+open: checkpoints/checkpoint2_minimal/OPTIONS-000002
+close: checkpoints/checkpoint2_minimal/OPTIONS-000002
+open-dir: checkpoints/checkpoint2_minimal
+open: checkpoints/checkpoint2_minimal/000006.log (options: *vfs.sequentialReadsOption)
+close: checkpoints/checkpoint2_minimal/000006.log
+get-disk-usage: checkpoints/checkpoint2_minimal
+
+scan checkpoints/checkpoint2_minimal
+----
+open: checkpoints/checkpoint2_minimal/000007.sst (options: *vfs.randomReadsOption)
+read-at(641, 61): checkpoints/checkpoint2_minimal/000007.sst
+read-at(590, 51): checkpoints/checkpoint2_minimal/000007.sst
+read-at(132, 458): checkpoints/checkpoint2_minimal/000007.sst
+read-at(91, 41): checkpoints/checkpoint2_minimal/000007.sst
+read-at(0, 91): checkpoints/checkpoint2_minimal/000007.sst
+b 5
+d 7
+e 8
+f 9
+g 10
+.
+
+close checkpoints/checkpoint2_minimal
+----
+
 # Create a checkpoint that omits SSTs that don't overlap with [a - e) and [d - f).
 checkpoint db checkpoints/checkpoint3 restrict=(a-e, d-f)
 ----
@@ -893,6 +967,105 @@ L6:
   000016(000011):[k#20,SET-k#20,SET]
   000014:[z#22,SET-z#22,SET]
 
+# Same restriction as checkpoint6, but with WithMinimalManifest. Exercises the
+# minimal path against a DB with virtual sstables: the destination MANIFEST's
+# CreatedBackingTables must contain only the backings actually referenced by
+# the included virtual sstables.
+checkpoint db checkpoints/checkpoint6_minimal restrict=(i-zz) minimal
+----
+mkdir-all: checkpoints/checkpoint6_minimal 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint6_minimal
+open: db/OPTIONS-000002
+create: checkpoints/checkpoint6_minimal/OPTIONS-000002
+sync-data: checkpoints/checkpoint6_minimal/OPTIONS-000002
+close: checkpoints/checkpoint6_minimal/OPTIONS-000002
+close: db/OPTIONS-000002
+open-dir: checkpoints/checkpoint6_minimal
+create: checkpoints/checkpoint6_minimal/marker.format-version.000001.030
+sync-data: checkpoints/checkpoint6_minimal/marker.format-version.000001.030
+close: checkpoints/checkpoint6_minimal/marker.format-version.000001.030
+sync: checkpoints/checkpoint6_minimal
+close: checkpoints/checkpoint6_minimal
+link: db/000011.sst -> checkpoints/checkpoint6_minimal/000011.sst
+link: db/000014.sst -> checkpoints/checkpoint6_minimal/000014.sst
+create: checkpoints/checkpoint6_minimal/MANIFEST-000001
+sync-data: checkpoints/checkpoint6_minimal/MANIFEST-000001
+close: checkpoints/checkpoint6_minimal/MANIFEST-000001
+open-dir: checkpoints/checkpoint6_minimal
+sync: checkpoints/checkpoint6_minimal
+create: checkpoints/checkpoint6_minimal/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint6_minimal/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint6_minimal/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint6_minimal
+close: checkpoints/checkpoint6_minimal
+create: checkpoints/checkpoint6_minimal/000008.log
+open: db/000008.log (options: *vfs.sequentialReadsOption)
+sync-data: checkpoints/checkpoint6_minimal/000008.log
+close: checkpoints/checkpoint6_minimal/000008.log
+close: db/000008.log
+sync: checkpoints/checkpoint6_minimal
+close: checkpoints/checkpoint6_minimal
+
+open checkpoints/checkpoint6_minimal
+----
+mkdir-all: checkpoints/checkpoint6_minimal 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint6_minimal
+close: checkpoints/checkpoint6_minimal
+open-dir: checkpoints/checkpoint6_minimal
+lock: checkpoints/checkpoint6_minimal/LOCK
+open-dir: checkpoints/checkpoint6_minimal
+open-dir: checkpoints/checkpoint6_minimal
+open-dir: checkpoints/checkpoint6_minimal
+open-dir: checkpoints/checkpoint6_minimal
+open: checkpoints/checkpoint6_minimal/MANIFEST-000001
+close: checkpoints/checkpoint6_minimal/MANIFEST-000001
+open: checkpoints/checkpoint6_minimal/OPTIONS-000002
+close: checkpoints/checkpoint6_minimal/OPTIONS-000002
+open-dir: checkpoints/checkpoint6_minimal
+open: checkpoints/checkpoint6_minimal/000008.log (options: *vfs.sequentialReadsOption)
+close: checkpoints/checkpoint6_minimal/000008.log
+create: checkpoints/checkpoint6_minimal/temporary.000018.dbtmp
+sync: checkpoints/checkpoint6_minimal/temporary.000018.dbtmp
+close: checkpoints/checkpoint6_minimal/temporary.000018.dbtmp
+rename: checkpoints/checkpoint6_minimal/temporary.000018.dbtmp -> checkpoints/checkpoint6_minimal/OPTIONS-000018
+sync: checkpoints/checkpoint6_minimal
+remove: checkpoints/checkpoint6_minimal/OPTIONS-000002
+create: checkpoints/checkpoint6_minimal/000019.sst
+sync-data: checkpoints/checkpoint6_minimal/000019.sst
+close: checkpoints/checkpoint6_minimal/000019.sst
+sync: checkpoints/checkpoint6_minimal
+get-disk-usage: checkpoints/checkpoint6_minimal
+create: checkpoints/checkpoint6_minimal/MANIFEST-000020
+sync: checkpoints/checkpoint6_minimal
+sync: checkpoints/checkpoint6_minimal/MANIFEST-000020
+create: checkpoints/checkpoint6_minimal/marker.manifest.000002.MANIFEST-000020
+sync: checkpoints/checkpoint6_minimal/marker.manifest.000002.MANIFEST-000020
+close: checkpoints/checkpoint6_minimal/marker.manifest.000002.MANIFEST-000020
+remove: checkpoints/checkpoint6_minimal/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint6_minimal
+remove: checkpoints/checkpoint6_minimal/000008.log
+create: checkpoints/checkpoint6_minimal/000021.log
+sync: checkpoints/checkpoint6_minimal
+get-disk-usage: checkpoints/checkpoint6_minimal
+
+lsm checkpoints/checkpoint6_minimal
+----
+L0.0:
+  000019:[h#18,SET-h#18,SET]
+L6:
+  000015(000011):[i#20,SET-i#20,SET]
+  000016(000011):[k#20,SET-k#20,SET]
+  000014:[z#22,SET-z#22,SET]
+
+close checkpoints/checkpoint6_minimal
+----
+
 # Close and re-open db, this time with WAL failover configured and the secondary
 # pointing to /failover-logs.
 
@@ -1267,4 +1440,85 @@ f f
 .
 
 close checkpoints/checkpoint9
+----
+
+# Same restriction as checkpoint9, but with WithMinimalManifest. Exercises the
+# minimal path against a DB with blob files: only referenced blob files should
+# appear in the destination MANIFEST.
+checkpoint valsepdb checkpoints/checkpoint9_minimal restrict=(a-c) minimal
+----
+mkdir-all: checkpoints/checkpoint9_minimal 0755
+open-dir: checkpoints
+sync: checkpoints
+close: checkpoints
+open-dir: checkpoints/checkpoint9_minimal
+open: valsepdb/OPTIONS-000002
+create: checkpoints/checkpoint9_minimal/OPTIONS-000002
+sync-data: checkpoints/checkpoint9_minimal/OPTIONS-000002
+close: checkpoints/checkpoint9_minimal/OPTIONS-000002
+close: valsepdb/OPTIONS-000002
+open-dir: checkpoints/checkpoint9_minimal
+create: checkpoints/checkpoint9_minimal/marker.format-version.000001.030
+sync-data: checkpoints/checkpoint9_minimal/marker.format-version.000001.030
+close: checkpoints/checkpoint9_minimal/marker.format-version.000001.030
+sync: checkpoints/checkpoint9_minimal
+close: checkpoints/checkpoint9_minimal
+link: valsepdb/000006.blob -> checkpoints/checkpoint9_minimal/000006.blob
+link: valsepdb/000005.sst -> checkpoints/checkpoint9_minimal/000005.sst
+create: checkpoints/checkpoint9_minimal/MANIFEST-000001
+sync-data: checkpoints/checkpoint9_minimal/MANIFEST-000001
+close: checkpoints/checkpoint9_minimal/MANIFEST-000001
+open-dir: checkpoints/checkpoint9_minimal
+sync: checkpoints/checkpoint9_minimal
+create: checkpoints/checkpoint9_minimal/marker.manifest.000001.MANIFEST-000001
+sync-data: checkpoints/checkpoint9_minimal/marker.manifest.000001.MANIFEST-000001
+close: checkpoints/checkpoint9_minimal/marker.manifest.000001.MANIFEST-000001
+sync: checkpoints/checkpoint9_minimal
+close: checkpoints/checkpoint9_minimal
+create: checkpoints/checkpoint9_minimal/000007.log
+open: valsepdb/000007.log (options: *vfs.sequentialReadsOption)
+sync-data: checkpoints/checkpoint9_minimal/000007.log
+close: checkpoints/checkpoint9_minimal/000007.log
+close: valsepdb/000007.log
+sync: checkpoints/checkpoint9_minimal
+close: checkpoints/checkpoint9_minimal
+
+open checkpoints/checkpoint9_minimal readonly
+----
+open-dir: checkpoints/checkpoint9_minimal
+lock: checkpoints/checkpoint9_minimal/LOCK
+open-dir: checkpoints/checkpoint9_minimal
+open-dir: checkpoints/checkpoint9_minimal
+open-dir: checkpoints/checkpoint9_minimal
+open-dir: checkpoints/checkpoint9_minimal
+open: checkpoints/checkpoint9_minimal/MANIFEST-000001
+close: checkpoints/checkpoint9_minimal/MANIFEST-000001
+open: checkpoints/checkpoint9_minimal/OPTIONS-000002
+close: checkpoints/checkpoint9_minimal/OPTIONS-000002
+open-dir: checkpoints/checkpoint9_minimal
+open: checkpoints/checkpoint9_minimal/000007.log (options: *vfs.sequentialReadsOption)
+close: checkpoints/checkpoint9_minimal/000007.log
+get-disk-usage: checkpoints/checkpoint9_minimal
+
+scan checkpoints/checkpoint9_minimal
+----
+open: checkpoints/checkpoint9_minimal/000005.sst (options: *vfs.randomReadsOption)
+read-at(764, 61): checkpoints/checkpoint9_minimal/000005.sst
+read-at(687, 77): checkpoints/checkpoint9_minimal/000005.sst
+read-at(197, 490): checkpoints/checkpoint9_minimal/000005.sst
+read-at(131, 41): checkpoints/checkpoint9_minimal/000005.sst
+read-at(0, 131): checkpoints/checkpoint9_minimal/000005.sst
+open: checkpoints/checkpoint9_minimal/000006.blob (options: *vfs.randomReadsOption)
+read-at(115, 70): checkpoints/checkpoint9_minimal/000006.blob
+read-at(32, 30): checkpoints/checkpoint9_minimal/000006.blob
+read-at(0, 32): checkpoints/checkpoint9_minimal/000006.blob
+a a
+b b
+c c
+d d
+e e
+f f
+.
+
+close checkpoints/checkpoint9_minimal
 ----
