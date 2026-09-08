@@ -28,6 +28,10 @@ type checkpointOptions struct {
 
 	// If set, any SSTs that don't overlap with these spans are excluded from a checkpoint.
 	restrictToSpans []CheckpointSpan
+
+	// If set, rewrites the checkpoint's MANIFEST to reference only the tables
+	// and files included in the checkpoint.
+	minimalManifest bool
 }
 
 // CheckpointOption set optional parameters used by `DB.Checkpoint`.
@@ -66,6 +70,15 @@ func WithRestrictToSpans(spans []CheckpointSpan) CheckpointOption {
 type CheckpointSpan struct {
 	Start []byte
 	End   []byte
+}
+
+// WithMinimalManifest rewrites the checkpoint's MANIFEST to reference only the
+// tables and files included in the checkpoint. It reduces MANIFEST size,
+// especially when used in conjunction with WithRestrictToSpans.
+func WithMinimalManifest() CheckpointOption {
+	return func(opt *checkpointOptions) {
+		opt.minimalManifest = true
+	}
 }
 
 // excludeFromCheckpoint returns true if an SST file should be excluded from the
@@ -196,6 +209,8 @@ func (d *DB) Checkpoint(
 	formatVers := d.FormatMajorVersion()
 	manifestFileNum := d.mu.versions.manifestFileNum
 	manifestSize := d.mu.versions.manifest.Size()
+	minUnflushedLogNum := d.mu.versions.minUnflushedLogNum
+	nextFileNum := d.mu.versions.nextFileNum.Load()
 	optionsFileNum := d.optionsFileNum
 
 	virtualBackingFiles := make(map[base.DiskFileNum]struct{})
@@ -302,11 +317,12 @@ func (d *DB) Checkpoint(
 	}
 
 	var excludedTables map[manifest.DeletedTableEntry]*manifest.TableMetadata
+	includedTables := make(map[base.TableNum]manifest.NewTableEntry)
 	var includedBlobFiles map[base.BlobFileID]struct{}
 	var remoteFiles []base.DiskFileNum
 	// Set of TableBacking.DiskFileNum which will be required by virtual sstables
 	// in the checkpoint.
-	requiredVirtualBackingFiles := make(map[base.DiskFileNum]struct{})
+	requiredVirtualBackingFiles := make(map[base.DiskFileNum]*manifest.TableBacking)
 
 	copyFile := func(typ base.FileType, fileNum base.DiskFileNum) error {
 		meta, err := d.objProvider.Lookup(typ, fileNum)
@@ -342,6 +358,7 @@ func (d *DB) Checkpoint(
 				}] = f
 				continue
 			}
+			includedTables[f.TableNum] = manifest.NewTableEntry{Level: l, Meta: f}
 
 			// Copy any referenced blob files that have not already been copied.
 			if len(f.BlobReferences) > 0 {
@@ -370,7 +387,7 @@ func (d *DB) Checkpoint(
 				if _, ok := requiredVirtualBackingFiles[tableBacking.DiskFileNum]; ok {
 					continue
 				}
-				requiredVirtualBackingFiles[tableBacking.DiskFileNum] = struct{}{}
+				requiredVirtualBackingFiles[tableBacking.DiskFileNum] = tableBacking
 			}
 			ckErr = copyFile(base.FileTypeTable, tableBacking.DiskFileNum)
 			if ckErr != nil {
@@ -416,10 +433,18 @@ func (d *DB) Checkpoint(
 		}
 	}
 
-	ckErr = d.writeCheckpointManifest(
-		fs, formatVers, destDir, dir, manifestFileNum, manifestSize,
-		excludedTables, removeBackingTables, excludedBlobFiles,
-	)
+	if opt.minimalManifest {
+		ckErr = d.writeMinimalCheckpointManifest(
+			fs, destDir, manifestFileNum, current, formatVers,
+			minUnflushedLogNum, nextFileNum, visibleSeqNum,
+			includedTables, requiredVirtualBackingFiles, includedBlobFiles,
+		)
+	} else {
+		ckErr = d.writeCheckpointManifest(
+			fs, formatVers, destDir, dir, manifestFileNum, manifestSize,
+			excludedTables, removeBackingTables, excludedBlobFiles,
+		)
+	}
 	if ckErr != nil {
 		return ckErr
 	}
@@ -600,6 +625,12 @@ func (d *DB) writeCheckpointManifest(
 		return err
 	}
 
+	return d.writeManifestMarker(fs, destDirPath, manifestFileNum)
+}
+
+func (d *DB) writeManifestMarker(
+	fs vfs.FS, destDirPath string, manifestFileNum base.DiskFileNum,
+) error {
 	var manifestMarker *atomicfs.Marker
 	manifestMarker, _, err := atomicfs.LocateMarker(fs, destDirPath, manifestMarkerName)
 	if err != nil {
@@ -619,4 +650,81 @@ func (d *DB) writeCheckpointManifest(
 		return err
 	}
 	return manifestMarker.Close()
+}
+
+// writeMinimalCheckpointManifest writes a new MANIFEST that references only the
+// tables and files included in the checkpoint.
+func (d *DB) writeMinimalCheckpointManifest(
+	fs vfs.FS,
+	destDirPath string,
+	manifestFileNum base.DiskFileNum,
+	currentVersion *manifest.Version,
+	formatVers FormatMajorVersion,
+	minUnflushedLogNum base.DiskFileNum,
+	nextFileNum uint64,
+	lastSeqNum base.SeqNum,
+	includedTables map[base.TableNum]manifest.NewTableEntry,
+	virtualBackingFiles map[base.DiskFileNum]*manifest.TableBacking,
+	includedBlobFiles map[base.BlobFileID]struct{},
+) error {
+	snapshot := &manifest.VersionEdit{
+		ComparerName:       d.opts.Comparer.Name,
+		MinUnflushedLogNum: minUnflushedLogNum,
+		NextFileNum:        nextFileNum,
+		LastSeqNum:         lastSeqNum,
+	}
+	// Populate tables, blob files, and tables marked for compaction,
+	// restricted to the checkpoint spans.
+	snapshot.NewTables = make([]manifest.NewTableEntry, 0, len(includedTables))
+	for _, t := range includedTables {
+		snapshot.NewTables = append(snapshot.NewTables, t)
+	}
+	snapshot.CreatedBackingTables = make([]*manifest.TableBacking, 0, len(virtualBackingFiles))
+	for _, backing := range virtualBackingFiles {
+		snapshot.CreatedBackingTables = append(snapshot.CreatedBackingTables, backing)
+	}
+	snapshot.NewBlobFiles = make([]manifest.BlobFileMetadata, 0, len(includedBlobFiles))
+	for fileID := range includedBlobFiles {
+		phys, ok := currentVersion.BlobFiles.LookupPhysical(fileID)
+		if !ok {
+			return errors.Errorf("blob file %s not found", fileID)
+		}
+		snapshot.NewBlobFiles = append(snapshot.NewBlobFiles, manifest.BlobFileMetadata{FileID: fileID, Physical: phys})
+	}
+	if formatVers >= FormatMarkForCompactionInVersionEdit {
+		for meta, level := range currentVersion.MarkedForCompaction.Ascending() {
+			if _, ok := includedTables[meta.TableNum]; !ok {
+				continue
+			}
+			snapshot.TablesMarkedForCompaction = append(snapshot.TablesMarkedForCompaction, manifest.TableMarkedForCompactionEntry{
+				Level:    level,
+				TableNum: meta.TableNum,
+			})
+		}
+	}
+
+	if err := func() error {
+		destPath := fs.PathJoin(destDirPath, base.MakeFilename(base.FileTypeManifest, manifestFileNum))
+		dst, err := fs.Create(destPath, vfs.WriteCategoryUnspecified)
+		if err != nil {
+			return err
+		}
+		defer dst.Close()
+		w := record.NewWriter(dst)
+		rw, err := w.Next()
+		if err != nil {
+			return err
+		}
+		if err := snapshot.Encode(rw); err != nil {
+			return err
+		}
+		if err := w.Close(); err != nil {
+			return err
+		}
+		return dst.Sync()
+	}(); err != nil {
+		return err
+	}
+
+	return d.writeManifestMarker(fs, destDirPath, manifestFileNum)
 }

@@ -487,6 +487,75 @@ func TestCheckpointManyFiles(t *testing.T) {
 	}
 }
 
+func TestCheckpointMinimalManifest(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	if testing.Short() {
+		t.Skip("skipping because of short flag")
+	}
+	// Create two checkpoints, one with the default manifest and one with a
+	// minimal manifest.
+	const defaultManifest = "default"
+	const minimalManifest = "minimal"
+
+	opts := &Options{
+		FS:                          vfs.NewMem(),
+		FormatMajorVersion:          internalFormatNewest,
+		DisableAutomaticCompactions: true,
+		Logger:                      testutils.Logger{T: t},
+	}
+	opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
+		return ValueSeparationPolicy{
+			Enabled:                true,
+			MinimumSize:            8,
+			MinimumMVCCGarbageSize: 8,
+			MaxBlobReferenceDepth:  5,
+		}
+	}
+	opts.EnsureDefaults()
+	for i := range opts.Levels {
+		opts.Levels[i].Compression = func() *sstable.CompressionProfile { return sstable.NoCompression }
+	}
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	// Write some data to the DB, including values that qualify for value
+	// separation.
+	mkKey := func(x int) []byte {
+		return []byte(fmt.Sprintf("key%06d", x))
+	}
+	n := 400 + rand.IntN(100)
+	for i := 0; i < n; i++ {
+		val := bytes.Repeat([]byte("v"), rand.IntN(32))
+		require.NoError(t, d.Set(mkKey(i), val, nil))
+		require.NoError(t, d.Flush())
+	}
+
+	span := []CheckpointSpan{{Start: mkKey(0), End: mkKey(10)}}
+	require.NoError(t, d.Checkpoint(defaultManifest, WithRestrictToSpans(span)))
+	require.NoError(t, d.Checkpoint(minimalManifest, WithRestrictToSpans(span), WithMinimalManifest()))
+
+	// Read all the data from both checkpoints and assert that they match.
+	readAllKVs := func(t *testing.T, dir string) []string {
+		d, err := Open(dir, opts)
+		require.NoError(t, err)
+		defer d.Close()
+
+		iter, err := d.NewIter(nil)
+		require.NoError(t, err)
+		defer iter.Close()
+
+		var kvs []string
+		for iter.First(); iter.Valid(); iter.Next() {
+			kvs = append(kvs, fmt.Sprintf("%s=%s", iter.Key(), iter.Value()))
+		}
+		require.NoError(t, iter.Error())
+		return kvs
+	}
+	require.Equal(t, readAllKVs(t, defaultManifest), readAllKVs(t, minimalManifest))
+}
+
 // TestCheckpointFlushableIngest is a regression test: a Checkpoint taken while
 // there are pending flushable ingest entries in the memtable queue must copy
 // the corresponding SSTable files to the checkpoint directory. Without the fix,
