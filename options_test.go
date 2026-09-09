@@ -601,6 +601,37 @@ comparer=unrecognized`, nil)
 	require.Equal(t, testkeys.Comparer, o.Comparer)
 }
 
+func TestOptionsParseKeySchema(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	// A malformed DefaultKeySchema(...) value must be reported as an error
+	// rather than panicking while indexing the argument list.
+	for _, value := range []string{
+		"DefaultKeySchema()",
+		"DefaultKeySchema( )",
+		"DefaultKeySchema(,,)",
+		"DefaultKeySchema(leveldb.BytewiseComparator)",
+		"DefaultKeySchema(leveldb.BytewiseComparator,16,32)",
+		"DefaultKeySchema(leveldb.BytewiseComparator,sixteen)",
+	} {
+		t.Run(value, func(t *testing.T) {
+			o := &Options{}
+			require.Error(t, o.Parse("[Options]\n  key_schema="+value+"\n", nil))
+		})
+	}
+
+	// A well-formed value still parses both arguments.
+	o := &Options{}
+	require.NoError(t, o.Parse("[Options]\n  key_schema=DefaultKeySchema(leveldb.BytewiseComparator,32)\n", nil))
+	require.Equal(t, "DefaultKeySchema(leveldb.BytewiseComparator,32)", o.KeySchema)
+	require.Contains(t, o.KeySchemas, o.KeySchema)
+
+	// A key schema that is not spelled DefaultKeySchema(...) is still tolerated
+	// when there are no hooks to resolve it.
+	o = &Options{}
+	require.NoError(t, o.Parse("[Options]\n  key_schema=some-other-schema\n", nil))
+	require.Equal(t, "some-other-schema", o.KeySchema)
+}
+
 func TestOptionsValidate(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	testCases := []struct {
