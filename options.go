@@ -2273,7 +2273,12 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 						})
 						var comparer *base.Comparer
 						var bundleSize int
-						comparer, err = parseComparer(args[0])
+						if len(args) != 2 {
+							err = errors.Newf("key_schema %q: require 2 arguments", errors.Safe(value))
+						}
+						if err == nil {
+							comparer, err = parseComparer(args[0])
+						}
 						if err == nil {
 							bundleSize, err = strconv.Atoi(args[1])
 						}
