@@ -683,7 +683,22 @@ func (i *Iter) Next() *base.InternalKV {
 					if i.closeValueCloser() != nil {
 						return nil
 					}
-					continue
+					// The merged result is non-existent. Eliding it inline via
+					// `continue` would re-enter the iteration loop without the
+					// skip/position bookkeeping the returned-key path performs:
+					// if mergeNext consumed a base SET/DEL in this stripe it
+					// set skip=true, and continuing with that state pending
+					// re-processes entries the merge already consumed and trips
+					// the "compaction iterator has skip=true, but iterator is
+					// at iterPosNext" assertion on a later Next (see
+					// TestCompactionDeletableMergerStress). Instead, surface
+					// the non-existent result as a DELETE tombstone through
+					// the normal return path, which maintains the iterator
+					// invariants; the tombstone is elided by the usual means
+					// on a later bottommost compaction.
+					i.kv.K.SetKind(base.InternalKeyKindDelete)
+					i.kv.V = base.MakeInPlaceValue(nil)
+					return &i.kv
 				}
 				return &i.kv
 			}
