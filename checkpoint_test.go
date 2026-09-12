@@ -19,9 +19,11 @@ import (
 	"github.com/cockroachdb/crlib/testutils/leaktest"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/manifest"
 	"github.com/cockroachdb/pebble/internal/testutils"
 	"github.com/cockroachdb/pebble/objstorage/objstorageprovider"
 	"github.com/cockroachdb/pebble/objstorage/remote"
+	"github.com/cockroachdb/pebble/record"
 	"github.com/cockroachdb/pebble/sstable"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
@@ -81,22 +83,27 @@ func testCheckpointImpl(t *testing.T, ddFile string, createOnShared bool) {
 
 		case "checkpoint":
 			if len(td.CmdArgs) < 2 {
-				return "checkpoint <db> <dir> [restrict=(start-end, ...)]"
+				return "checkpoint <db> <dir> [restrict=(start-end, ...)] [minimal]"
 			}
 			var opts []CheckpointOption
-			if len(td.CmdArgs) == 3 {
-				var spans []CheckpointSpan
-				for _, v := range td.CmdArgs[2].Vals {
-					splits := strings.SplitN(v, "-", 2)
-					if len(splits) != 2 {
-						return fmt.Sprintf("invalid restrict range %q", v)
+			for _, arg := range td.CmdArgs[2:] {
+				switch arg.Key {
+				case "restrict":
+					var spans []CheckpointSpan
+					for _, v := range arg.Vals {
+						splits := strings.SplitN(v, "-", 2)
+						if len(splits) != 2 {
+							return fmt.Sprintf("invalid restrict range %q", v)
+						}
+						spans = append(spans, CheckpointSpan{
+							Start: []byte(splits[0]),
+							End:   []byte(splits[1]),
+						})
 					}
-					spans = append(spans, CheckpointSpan{
-						Start: []byte(splits[0]),
-						End:   []byte(splits[1]),
-					})
+					opts = append(opts, WithRestrictToSpans(spans))
+				case "minimal":
+					opts = append(opts, WithMinimalManifest())
 				}
-				opts = append(opts, WithRestrictToSpans(spans))
 			}
 			memLog.Reset()
 			d := dbs[td.CmdArgs[0].String()]
@@ -487,6 +494,113 @@ func TestCheckpointManyFiles(t *testing.T) {
 	}
 }
 
+func TestCheckpointMinimalManifest(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	if testing.Short() {
+		t.Skip("skipping because of short flag")
+	}
+
+	opts := &Options{
+		FS:                          vfs.NewMem(),
+		FormatMajorVersion:          internalFormatNewest,
+		DisableAutomaticCompactions: true,
+		Logger:                      testutils.Logger{T: t},
+	}
+	opts.ValueSeparationPolicy = func() ValueSeparationPolicy {
+		return ValueSeparationPolicy{
+			Enabled:                true,
+			MinimumSize:            8,
+			MinimumMVCCGarbageSize: 8,
+			MaxBlobReferenceDepth:  5,
+		}
+	}
+	opts.EnsureDefaults()
+	for i := range opts.Levels {
+		opts.Levels[i].Compression = func() *sstable.CompressionProfile { return sstable.NoCompression }
+	}
+
+	d, err := Open("", opts)
+	require.NoError(t, err)
+	defer d.Close()
+
+	// Write some data to the DB, including values that qualify for value
+	// separation.
+	mkKey := func(x int) []byte {
+		return []byte(fmt.Sprintf("key%06d", x))
+	}
+	for i := 0; i < 100; i++ {
+		val := bytes.Repeat([]byte("v"), i%32)
+		require.NoError(t, d.Set(mkKey(i), val, nil))
+		require.NoError(t, d.Flush())
+	}
+	// Write unflushed data to the DB to exercise WAL replay.
+	for i := 0; i < 100; i++ {
+		val := bytes.Repeat([]byte("v"), i%32)
+		require.NoError(t, d.Set(mkKey(i), val, nil))
+	}
+
+	// Create two checkpoints, one with the default manifest and one with a
+	// minimal manifest.
+	require.NoError(t, d.Checkpoint("default"))
+	require.NoError(t, d.Checkpoint("minimal", WithMinimalManifest()))
+
+	expected, err := getCheckpointContents("default", opts)
+	require.NoError(t, err)
+	actual, err := getCheckpointContents("minimal", opts)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+
+	// Create two checkpoints with restricted spans, one with the default
+	// manifest and one with a minimal manifest.
+	span := []CheckpointSpan{{Start: mkKey(0), End: mkKey(10)}}
+	require.NoError(t, d.Checkpoint("with-spans", WithRestrictToSpans(span)))
+	require.NoError(t, d.Checkpoint("minimal-with-spans", WithRestrictToSpans(span), WithMinimalManifest()))
+
+	expected, err = getCheckpointContents("with-spans", opts)
+	require.NoError(t, err)
+	actual, err = getCheckpointContents("minimal-with-spans", opts)
+	require.NoError(t, err)
+	require.Equal(t, expected, actual)
+
+	// Ensure the MANIFESTs contain a single record.
+	rr, err := getManifestRecords(d.opts.FS, "minimal")
+	require.NoError(t, err)
+	require.Len(t, rr, 1)
+	rr, err = getManifestRecords(d.opts.FS, "minimal-with-spans")
+	require.NoError(t, err)
+	require.Len(t, rr, 1)
+}
+
+func TestCheckpointMinimalManifest_MarkedForCompaction(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	fs := vfs.NewMem()
+	require.NoError(t, fs.MkdirAll("ck", 0755))
+
+	v := manifest.NewInitialVersion(base.DefaultComparer)
+	included := &manifest.TableMetadata{TableNum: 1}
+	excluded := &manifest.TableMetadata{TableNum: 2}
+	v.MarkedForCompaction.Insert(included, 6)
+	v.MarkedForCompaction.Insert(excluded, 6)
+
+	excludedTables := map[manifest.DeletedTableEntry]*manifest.TableMetadata{
+		{Level: 6, FileNum: excluded.TableNum}: excluded,
+	}
+	snapshot := &manifest.VersionEdit{ComparerName: base.DefaultComparer.Name, NextFileNum: 2}
+
+	d := &DB{opts: &Options{Comparer: base.DefaultComparer}}
+	require.NoError(t, d.writeMinimalCheckpointManifest(
+		fs, internalFormatNewest, "ck", snapshot, 1, v, excludedTables, nil, nil))
+
+	// Read back the single record and verify the filter kept only the included table.
+	rr, err := getManifestRecords(fs, "ck")
+	require.NoError(t, err)
+
+	require.Len(t, rr, 1)
+	require.Len(t, rr[0].TablesMarkedForCompaction, 1)
+	require.Equal(t, included.TableNum, rr[0].TablesMarkedForCompaction[0].TableNum)
+}
+
 // TestCheckpointFlushableIngest is a regression test: a Checkpoint taken while
 // there are pending flushable ingest entries in the memtable queue must copy
 // the corresponding SSTable files to the checkpoint directory. Without the fix,
@@ -570,4 +684,109 @@ func TestCheckpointFlushableIngest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("ingested"), val)
 	closer.Close()
+}
+
+type checkpointContents struct {
+	kvs                []string
+	comparerName       string
+	minUnflushedLogNum base.DiskFileNum
+	nextFileNum        uint64
+	logSeqNum          base.SeqNum
+	tables             []string
+	virtualBackings    []string
+	blobFiles          []string
+}
+
+// getCheckpointContents extracts data and file metadata from a checkpoint
+// to support checkpoint equality comparison.
+func getCheckpointContents(dir string, opts *Options) (result checkpointContents, err error) {
+	// Open in read-only mode to avoid mutating checkpoint on-disk state.
+	roOpts := *opts
+	roOpts.ReadOnly = true
+	ckDB, err := Open(dir, &roOpts)
+	if err != nil {
+		return result, err
+	}
+	defer ckDB.Close()
+
+	iter, err := ckDB.NewIter(nil)
+	if err != nil {
+		return result, err
+	}
+	defer iter.Close()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		result.kvs = append(result.kvs, fmt.Sprintf("%s=%s", iter.Key(), iter.Value()))
+	}
+	if err := iter.Error(); err != nil {
+		return result, err
+	}
+
+	ckDB.mu.Lock()
+	defer ckDB.mu.Unlock()
+	v := ckDB.mu.versions.currentVersion()
+	result.comparerName = ckDB.opts.Comparer.Name
+	result.minUnflushedLogNum = ckDB.mu.versions.minUnflushedLogNum
+	result.nextFileNum = ckDB.mu.versions.nextFileNum.Load()
+	result.logSeqNum = ckDB.mu.versions.logSeqNum.Load()
+
+	for level, lm := range v.Levels {
+		for meta := range lm.All() {
+			id := fmt.Sprintf("L%d.%s", level, meta.TableNum)
+			result.tables = append(result.tables, id)
+		}
+	}
+	for backing := range ckDB.mu.versions.latest.virtualBackings.All() {
+		result.virtualBackings = append(result.virtualBackings, backing.DiskFileNum.String())
+	}
+	sort.Strings(result.virtualBackings)
+	for meta := range v.BlobFiles.All() {
+		result.blobFiles = append(result.blobFiles, meta.FileID.String())
+	}
+	sort.Strings(result.blobFiles)
+
+	return result, nil
+}
+
+// getManifestRecords reads all MANIFEST records from a checkpoint dir.
+func getManifestRecords(fs vfs.FS, dir string) ([]manifest.VersionEdit, error) {
+	files, err := fs.List(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]manifest.VersionEdit, 0)
+	for _, filename := range files {
+		fileType, _, ok := base.ParseFilename(fs, filename)
+		if !ok || fileType != base.FileTypeManifest {
+			continue
+		}
+
+		f, err := fs.Open(fs.PathJoin(dir, filename))
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+
+		rr := record.NewReader(f, 0 /* logNum */)
+
+		for {
+			r, err := rr.Next()
+			if err == io.EOF || record.IsInvalidRecord(err) {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+
+			var ve manifest.VersionEdit
+			err = ve.Decode(r)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, ve)
+		}
+	}
+
+	return result, nil
 }
