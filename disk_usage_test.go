@@ -33,8 +33,8 @@ func TestEstimateDiskUsageClosedDB(t *testing.T) {
 }
 
 // Test that the four spellings of the inclusive range holding only the empty
-// key -- (nil, nil), ([]byte{}, []byte{}), (nil, []byte{}) and ([]byte{}, nil)
-// -- are all accepted and agree, for both EstimateDiskUsage and
+// key, (nil, nil), ([]byte{}, []byte{}), (nil, []byte{}) and ([]byte{}, nil),
+// are all accepted and agree, for both EstimateDiskUsage and
 // EstimateDiskUsageByBackingType. (nil, nil) regressed to "invalid key-range
 // specified (start > end)" when internal/base.UserKeyBounds.Valid grew an
 // IsUnset check.
