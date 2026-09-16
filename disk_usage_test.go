@@ -32,6 +32,50 @@ func TestEstimateDiskUsageClosedDB(t *testing.T) {
 	})
 }
 
+// Test that the four spellings of the inclusive range holding only the empty
+// key -- (nil, nil), ([]byte{}, []byte{}), (nil, []byte{}) and ([]byte{}, nil)
+// -- are all accepted and agree, for both EstimateDiskUsage and
+// EstimateDiskUsageByBackingType. (nil, nil) regressed to "invalid key-range
+// specified (start > end)" when internal/base.UserKeyBounds.Valid grew an
+// IsUnset check.
+func TestEstimateDiskUsageNilRange(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	mem := vfs.NewMem()
+	d, err := Open("", &Options{FS: mem})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, d.Close()) }()
+	require.NoError(t, d.Set([]byte("key"), []byte("value"), nil))
+	require.NoError(t, d.Flush())
+
+	type spelling struct {
+		name       string
+		start, end []byte
+	}
+	spellings := []spelling{
+		{"nil,nil", nil, nil},
+		{"empty,empty", []byte{}, []byte{}},
+		{"nil,empty", nil, []byte{}},
+		{"empty,nil", []byte{}, nil},
+	}
+
+	var want uint64
+	for i, s := range spellings {
+		got, err := d.EstimateDiskUsage(s.start, s.end)
+		require.NoErrorf(t, err, "%s: EstimateDiskUsage", s.name)
+		if i == 0 {
+			want = got
+		} else {
+			require.Equalf(t, want, got, "%s: EstimateDiskUsage disagrees with %s", s.name, spellings[0].name)
+		}
+
+		total, remote, external, err := d.EstimateDiskUsageByBackingType(s.start, s.end)
+		require.NoErrorf(t, err, "%s: EstimateDiskUsageByBackingType", s.name)
+		require.Equalf(t, want, total, "%s: EstimateDiskUsageByBackingType total disagrees", s.name)
+		require.LessOrEqual(t, remote, total)
+		require.LessOrEqual(t, external, remote)
+	}
+}
+
 // Test the EstimateDiskUsage and EstimateDiskUsageByBackingType data driven tests
 func TestEstimateDiskUsageDataDriven(t *testing.T) {
 	defer leaktest.AfterTest(t)()
