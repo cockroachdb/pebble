@@ -1733,3 +1733,37 @@ func parseTableNum(t *testing.T, s string) base.TableNum {
 	}
 	return base.TableNum(n)
 }
+
+func TestSmallestTableSizeAnnotator(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	opts := DefaultOptions()
+	newTable := func(i int, size, blobRefSize uint64) *manifest.TableMetadata {
+		key := []byte(fmt.Sprintf("%03d", i))
+		m := &manifest.TableMetadata{TableNum: base.TableNum(i + 1), Size: size}
+		m.ExtendPointKeyBounds(opts.Comparer.Compare,
+			base.MakeInternalKey(key, 1, base.InternalKeyKindSet),
+			base.MakeInternalKey(key, 1, base.InternalKeyKindSet))
+		m.SeqNums.Low, m.SeqNums.High, m.LargestSeqNumAbsolute = 1, 1, 1
+		if blobRefSize > 0 {
+			m.BlobReferenceDepth = 1
+			m.BlobReferences = manifest.BlobReferences{{
+				FileID:                base.BlobFileID(i + 1),
+				ValueSize:             blobRefSize,
+				BackingValueSize:      blobRefSize,
+				EstimatedPhysicalSize: blobRefSize,
+			}}
+		}
+		m.InitPhysicalBacking()
+		return m
+	}
+
+	var files [manifest.NumLevels][]*manifest.TableMetadata
+	files[5] = []*manifest.TableMetadata{newTable(1, 300, 0), newTable(2, 50, 0), newTable(3, 100, 0)}
+	// The estimated size of blob references counts towards the size.
+	files[6] = []*manifest.TableMetadata{newTable(4, 100, 500), newTable(5, 200, 0), newTable(6, 150, 100)}
+	v, _ := newVersionWithLatest(opts, files)
+
+	require.Equal(t, smallestTableSize{}, smallestTableSizeAnnotator.LevelAnnotation(v.Levels[4]))
+	require.Equal(t, smallestTableSize{set: true, size: 50}, smallestTableSizeAnnotator.LevelAnnotation(v.Levels[5]))
+	require.Equal(t, smallestTableSize{set: true, size: 200}, smallestTableSizeAnnotator.LevelAnnotation(v.Levels[6]))
+}
