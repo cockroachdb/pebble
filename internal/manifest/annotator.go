@@ -49,7 +49,7 @@ func (a *nodeAnnotations) Reset() {
 	*a = nodeAnnotations{}
 }
 
-const maxAnnotationsPerNode = 4
+const maxAnnotationsPerNode = 5
 
 // nodeAnnotation computes this annotator's annotation of this node across all
 // files in the node's subtree. The second return value indicates whether the

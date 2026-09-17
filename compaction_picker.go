@@ -1640,6 +1640,32 @@ var elisionOnlyAnnotator = manifest.MakePickFileAnnotator(
 	},
 )
 
+// smallestTableSize is the annotation computed by smallestTableSizeAnnotator.
+type smallestTableSize struct {
+	// set is false if there are no tables (the zero value).
+	set  bool
+	size uint64
+}
+
+// smallestTableSizeAnnotator is a manifest.TableAnnotator that annotates B-Tree
+// nodes with the smallest EstimatedDataSize of any table in the subtree. It
+// allows cheaply determining whether a level contains any table smaller than a
+// given size.
+var smallestTableSizeAnnotator = manifest.MakeTableAnnotator[smallestTableSize](
+	manifest.NewTableAnnotationIdx(),
+	manifest.TableAnnotatorFuncs[smallestTableSize]{
+		Merge: func(dst *smallestTableSize, src smallestTableSize) {
+			if src.set && (!dst.set || src.size < dst.size) {
+				*dst = src
+			}
+		},
+		Table: func(t *manifest.TableMetadata) (_ smallestTableSize, cacheOK bool) {
+			// EstimatedDataSize is fixed for the lifetime of a table.
+			return smallestTableSize{set: true, size: t.EstimatedDataSize()}, true
+		},
+	},
+)
+
 // pickedCompactionFromCandidateFile creates a pickedCompaction from a *fileMetadata
 // with various checks to ensure that the file still exists in the expected level
 // and isn't already being compacted.
