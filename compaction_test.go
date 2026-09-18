@@ -3717,3 +3717,49 @@ func TestMoveCompactionMultipleTables(t *testing.T) {
 	require.Equal(t, uint64(len(metas)), moved.Count)
 	require.Equal(t, uint64(600), moved.Bytes)
 }
+
+// drainCompactions runs pending compactions to completion. It returns once no
+// compaction is running and the DB has nothing further it wants to run.
+//
+// REQUIRES: d.mu is not held.
+func drainCompactions(d *DB) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// Automatic compactions are enabled for the duration and restored afterwards;
+	// without them the DB picks nothing and the drain is a no-op.
+	if d.opts.DisableAutomaticCompactions {
+		d.opts.DisableAutomaticCompactions = false
+		defer func() { d.opts.DisableAutomaticCompactions = true }()
+	}
+	for {
+		// There are certain cases where we need to force picking a compaction
+		// now:
+		//  - we just enabled compactions above;
+		//  - we depend on an injected read compaction;
+		//  - we depend on an elision-only compaction.
+		// This is also what makes the DB report a waiting compaction to the
+		// scheduler, so it must run on every pass.
+		d.maybeScheduleCompaction()
+		// Every decrement of compactProcesses broadcasts cond, so waiting on it
+		// here cannot miss a wakeup.
+		for d.mu.compact.compactProcesses > 0 {
+			d.mu.compact.cond.Wait()
+		}
+		// DB.mu alone suffices for this peek: the loop only observes whether
+		// something is cached and never acts on the compaction itself, so it does
+		// not need the log lock to keep the value from being superseded.
+		if d.mu.versions.pickedCompactionCache.peek() == nil {
+			return
+		}
+		// A pickedCompaction is cached and has been reported; the scheduler
+		// starts it from its own goroutine. Nothing broadcasts cond when the
+		// cache is filled or invalidated (a concurrent version install can drop
+		// it and leave the DB with nothing to run), so poll rather than wait.
+		//
+		// NB: this spins if the scheduler never grants, e.g. because its
+		// concurrency is saturated by fake in-progress compactions.
+		d.mu.Unlock()
+		time.Sleep(time.Millisecond)
+		d.mu.Lock()
+	}
+}

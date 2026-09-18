@@ -216,6 +216,19 @@ func parseCompactionLines(
 			case "->":
 				continue
 			default:
+				if kindStr, ok := strings.CutPrefix(p, "kind="); ok {
+					found := false
+					for k := compactionKindDefault; k <= compactionKindVirtualRewrite; k++ {
+						if k.String() == kindStr {
+							info.kind = k
+							found = true
+						}
+					}
+					if !found {
+						return nil, errors.Errorf("unknown compaction kind %q", kindStr)
+					}
+					continue
+				}
 				tableNum := parseTableNum(t, p)
 				var compactFile *manifest.TableMetadata
 				for _, m := range fileMetas[level] {
@@ -559,61 +572,143 @@ func TestCompactionPickerEstimatedCompactionDebt(t *testing.T) {
 		})
 }
 
+// parseTableMetaSpec parses a table specification of the form
+//
+//	000100:a#1,SET-b#2,SET [size=1000] [blob-ref-size=5000]
+//
+// used by the compaction picker tests.
+func parseTableMetaSpec(cmp base.Compare, s string) (*manifest.TableMetadata, error) {
+	parts := strings.Split(s, ":")
+	tableNum, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return nil, errors.Wrapf(err, "parsing %q as table number", parts[0])
+	}
+	fields := strings.Fields(parts[1])
+	parts = strings.Split(fields[0], "-")
+	if len(parts) != 2 {
+		return nil, errors.Errorf("malformed table spec: %s", s)
+	}
+	m := (&manifest.TableMetadata{
+		TableNum: base.TableNum(tableNum),
+	}).ExtendPointKeyBounds(
+		cmp,
+		base.ParseInternalKey(strings.TrimSpace(parts[0])),
+		base.ParseInternalKey(strings.TrimSpace(parts[1])),
+	)
+	// Optional space-separated fields after the key bounds.
+	for _, f := range fields[1:] {
+		switch {
+		case strings.HasPrefix(f, "size="):
+			v, err := strconv.ParseUint(strings.TrimPrefix(f, "size="), 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			m.Size = v
+		case strings.HasPrefix(f, "blob-ref-size="):
+			v, err := strconv.ParseUint(strings.TrimPrefix(f, "blob-ref-size="), 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			m.BlobReferenceDepth = 1
+			m.BlobReferences = manifest.BlobReferences{{
+				FileID:                base.BlobFileID(tableNum),
+				ValueSize:             v,
+				BackingValueSize:      v,
+				EstimatedPhysicalSize: v,
+			}}
+		default:
+			return nil, errors.Errorf("unknown field %q in table spec %q", f, s)
+		}
+	}
+	m.SeqNums.Low = m.Smallest().SeqNum()
+	m.SeqNums.High = m.Largest().SeqNum()
+	if m.SeqNums.Low > m.SeqNums.High {
+		m.SeqNums.Low, m.SeqNums.High = m.SeqNums.High, m.SeqNums.Low
+	}
+	m.LargestSeqNumAbsolute = m.SeqNums.High
+	m.InitPhysicalBacking()
+	return m, nil
+}
+
+// parseLevelsAndCompactions parses the input of a "define" command consisting
+// of level headers (L0..L6) followed by table specs (see parseTableMetaSpec)
+// and an optional trailing "compactions" section (see parseCompactionLines).
+// It returns the tables per level, the base level and the in-progress
+// compactions.
+func parseLevelsAndCompactions(
+	t *testing.T, cmp base.Compare, input string,
+) (
+	fileMetas [manifest.NumLevels][]*manifest.TableMetadata,
+	baseLevel int,
+	inProgressCompactions []compactionInfo,
+	err error,
+) {
+	baseLevel = manifest.NumLevels - 1
+	level := 0
+	lines := strings.Split(input, "\n")
+	for len(lines) > 0 {
+		data := strings.TrimSpace(lines[0])
+		lines = lines[1:]
+		switch data {
+		case "":
+		case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
+			level, err = strconv.Atoi(data[1:])
+			if err != nil {
+				return fileMetas, 0, nil, err
+			}
+		case "compactions":
+			inProgressCompactions, err = parseCompactionLines(t, lines, fileMetas)
+			if err != nil {
+				return fileMetas, 0, nil, err
+			}
+			// Compactions should be the last definition.
+			lines = nil
+		default:
+			meta, err := parseTableMetaSpec(cmp, data)
+			if err != nil {
+				return fileMetas, 0, nil, err
+			}
+			if level != 0 && level < baseLevel {
+				baseLevel = level
+			}
+			fileMetas[level] = append(fileMetas[level], meta)
+		}
+	}
+	return fileMetas, baseLevel, inProgressCompactions, nil
+}
+
+// newPickerForTesting constructs a compactionPickerByScore over a version
+// built from the given tables.
+func newPickerForTesting(
+	opts *Options,
+	fileMetas [manifest.NumLevels][]*manifest.TableMetadata,
+	baseLevel int,
+	inProgressCompactions []compactionInfo,
+) *compactionPickerByScore {
+	version, latest := newVersionWithLatest(opts, fileMetas)
+	latest.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
+	vs := &versionSet{
+		opts:   opts,
+		latest: latest,
+		cmp:    DefaultComparer,
+	}
+	vs.versions.Init(nil)
+	vs.append(version)
+	picker := &compactionPickerByScore{
+		opts:               opts,
+		vers:               version,
+		latestVersionState: vs.latest,
+		baseLevel:          baseLevel,
+	}
+	vs.picker = picker
+	picker.initLevelMaxBytes(inProgressCompactions)
+	return picker
+}
+
 func TestCompactionPickerL0(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	opts := DefaultOptions()
 	opts.Experimental.L0CompactionConcurrency = 1
-
-	parseMeta := func(s string) (*manifest.TableMetadata, error) {
-		parts := strings.Split(s, ":")
-		tableNum := parseTableNum(t, parts[0])
-		fields := strings.Fields(parts[1])
-		parts = strings.Split(fields[0], "-")
-		if len(parts) != 2 {
-			return nil, errors.Errorf("malformed table spec: %s", s)
-		}
-		m := (&manifest.TableMetadata{
-			TableNum: tableNum,
-		}).ExtendPointKeyBounds(
-			opts.Comparer.Compare,
-			base.ParseInternalKey(strings.TrimSpace(parts[0])),
-			base.ParseInternalKey(strings.TrimSpace(parts[1])),
-		)
-		// Optional space-separated fields after the key bounds, e.g.
-		//   000100:a#1,SET-b#2,SET size=1000 blob-ref-size=5000:
-		for _, f := range fields[1:] {
-			switch {
-			case strings.HasPrefix(f, "size="):
-				v, err := strconv.ParseUint(strings.TrimPrefix(f, "size="), 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				m.Size = v
-			case strings.HasPrefix(f, "blob-ref-size="):
-				v, err := strconv.ParseUint(strings.TrimPrefix(f, "blob-ref-size="), 10, 64)
-				if err != nil {
-					return nil, err
-				}
-				m.BlobReferenceDepth = 1
-				m.BlobReferences = manifest.BlobReferences{{
-					FileID:                base.BlobFileID(tableNum),
-					ValueSize:             v,
-					BackingValueSize:      v,
-					EstimatedPhysicalSize: v,
-				}}
-			default:
-				return nil, errors.Errorf("unknown field %q in table spec %q", f, s)
-			}
-		}
-		m.SeqNums.Low = m.Smallest().SeqNum()
-		m.SeqNums.High = m.Largest().SeqNum()
-		if m.SeqNums.Low > m.SeqNums.High {
-			m.SeqNums.Low, m.SeqNums.High = m.SeqNums.High, m.SeqNums.Low
-		}
-		m.LargestSeqNumAbsolute = m.SeqNums.High
-		m.InitPhysicalBacking()
-		return m, nil
-	}
 
 	var picker *compactionPickerByScore
 	var inProgressCompactions []compactionInfo
@@ -623,60 +718,15 @@ func TestCompactionPickerL0(t *testing.T) {
 		inProgressCompactions = nil
 		switch td.Cmd {
 		case "define":
-			fileMetas := [manifest.NumLevels][]*manifest.TableMetadata{}
-			baseLevel := manifest.NumLevels - 1
-			level := 0
-			var err error
-			lines := strings.Split(td.Input, "\n")
-
-			for len(lines) > 0 {
-				data := strings.TrimSpace(lines[0])
-				lines = lines[1:]
-				switch data {
-				case "L0", "L1", "L2", "L3", "L4", "L5", "L6":
-					level, err = strconv.Atoi(data[1:])
-					if err != nil {
-						return err.Error()
-					}
-				case "compactions":
-					inProgressCompactions, err = parseCompactionLines(t, lines, fileMetas)
-					if err != nil {
-						return err.Error()
-					}
-					// Compactions should be the last definition.
-					lines = nil
-				default:
-					meta, err := parseMeta(data)
-					if err != nil {
-						return err.Error()
-					}
-					if level != 0 && level < baseLevel {
-						baseLevel = level
-					}
-					fileMetas[level] = append(fileMetas[level], meta)
-				}
+			fileMetas, baseLevel, compactions, err := parseLevelsAndCompactions(t, opts.Comparer.Compare, td.Input)
+			if err != nil {
+				return err.Error()
 			}
-
-			version, latest := newVersionWithLatest(opts, fileMetas)
-			latest.l0Organizer.InitCompactingFileInfo(inProgressL0Compactions(inProgressCompactions))
-			vs := &versionSet{
-				opts:   opts,
-				latest: latest,
-				cmp:    DefaultComparer,
-			}
-			vs.versions.Init(nil)
-			vs.append(version)
-			picker = &compactionPickerByScore{
-				opts:               opts,
-				vers:               version,
-				latestVersionState: vs.latest,
-				baseLevel:          baseLevel,
-			}
-			vs.picker = picker
-			picker.initLevelMaxBytes(inProgressCompactions)
+			inProgressCompactions = compactions
+			picker = newPickerForTesting(opts, fileMetas, baseLevel, inProgressCompactions)
 
 			var buf bytes.Buffer
-			fmt.Fprint(&buf, version.String())
+			fmt.Fprint(&buf, picker.vers.String())
 			if len(inProgressCompactions) > 0 {
 				fmt.Fprintln(&buf, "compactions")
 				for _, c := range inProgressCompactions {

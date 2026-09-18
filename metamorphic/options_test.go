@@ -77,6 +77,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		"CompactionConcurrencyRange:",
 		"MaxConcurrentDownloads:",
 		"DeletionPacing.BaselineRate:",
+		"SmallTableCompactionMinRunLength:",
 		"Experimental.CompactionGarbageFractionForMaxConcurrency:",
 		"Experimental.DisableIngestAsFlushable:",
 		"Experimental.EnableColumnarBlocks:",
@@ -128,6 +129,7 @@ func TestOptionsRoundtrip(t *testing.T) {
 		expectEqualFn(t, o.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency, parsed.Opts.Experimental.CompactionGarbageFractionForMaxConcurrency)
 		expectEqualFn(t, o.Opts.Experimental.TombstoneDenseCompactionThreshold, parsed.Opts.Experimental.TombstoneDenseCompactionThreshold)
 		expectEqualFn(t, o.Opts.Experimental.ValueSeparationPolicy, parsed.Opts.Experimental.ValueSeparationPolicy)
+		expectEqualFn(t, o.Opts.SmallTableCompactionMinRunLength, parsed.Opts.SmallTableCompactionMinRunLength)
 		expectEqualFn(t, o.Opts.DeletionPacing.BaselineRate, parsed.Opts.DeletionPacing.BaselineRate)
 		expectEqualFn(t, o.Opts.WALPreallocateSize, parsed.Opts.WALPreallocateSize)
 		for i := range o.Opts.Levels {

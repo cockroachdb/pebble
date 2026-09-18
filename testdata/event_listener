@@ -312,8 +312,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  1.2KB    0B |      4  3.4KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
-count |       1       0        0     0     0     0        0     0      0     0       0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual small
+count |       1       0        0     0     0     0        0     0      0     0       0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
@@ -484,8 +484,8 @@ level | score    ff   cff | tables  size |   top    in  read | tables  blob | ta
 ------+-------------------+--------------+-------------------+--------------+---------------------
 total |     -     -     - |      0    0B |    0B    0B    0B |  1.2KB    0B |      5  5.4KB     0B
 
- kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual
-count |       1       0        0     0     0     0        0     0      0     0       0
+ kind | default  delete  elision  move  read  tomb  rewrite  copy  multi  blob virtual small
+count |       1       0        0     0     0     0        0     0      0     0       0     0
 
 COMMIT PIPELINE
                wals                |              memtables              |       ingestions
