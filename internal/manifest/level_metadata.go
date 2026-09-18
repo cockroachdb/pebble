@@ -762,6 +762,13 @@ func (i *LevelIterator) SeekLT(cmp Compare, userKey []byte) *TableMetadata {
 	return m
 }
 
+func (i *LevelIterator) Current() *TableMetadata {
+	if !i.iter.valid() {
+		return nil
+	}
+	return i.iter.cur()
+}
+
 // assertNotL0Cmp verifies that the btree associated with the iterator is
 // ordered by Smallest key (i.e. L1+ or L0 sublevel) and not by LargestSeqNum
 // (L0).

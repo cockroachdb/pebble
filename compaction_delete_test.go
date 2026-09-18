@@ -57,6 +57,9 @@ func TestCompactionDeleteOnlyHints(t *testing.T) {
 			// Collection of table stats can trigger compactions. As we want full
 			// control over when compactions are run, disable stats by default.
 			DisableTableStats: true,
+			// The test relies on runs of small adjacent tables staying separate so
+			// that range deletions can delete them individually.
+			SmallTableCompactionMinRunLength: func() int { return 0 },
 			// EventListener: &EventListener{
 			//	CompactionEnd: func(info CompactionInfo) {
 			//		if compactInfo != nil {

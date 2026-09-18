@@ -739,6 +739,15 @@ type compactionPickerByScore struct {
 	// level.
 	levelMaxBytes [numLevels]int64
 	dbSizeBytes   uint64
+
+	// noSmallTableRunsForK, if non-zero, is the minimum run length K for which
+	// a scan of vers by pickSmallTableCompaction found no run of small tables
+	// that could be compacted, with no table excluded for a reason that can go
+	// away without a new version being installed (a compaction in progress, an
+	// active problem span). The result of the scan can then only change when a
+	// new version is installed (which creates a new picker) or when K changes,
+	// so the scan is not repeated for the same picker and K.
+	noSmallTableRunsForK int
 }
 
 var _ compactionPicker = &compactionPickerByScore{}
@@ -1568,6 +1577,13 @@ func (p *compactionPickerByScore) pickAutoNonScore(env compactionEnv) (pc picked
 		if pc := p.pickRewriteCompaction(env); pc != nil {
 			return pc
 		}
+	}
+
+	// Finally, check for runs of adjacent small tables that can be consolidated
+	// into a single table. Reducing the file count does not help us keep up with
+	// writes, reclaim space, or speed up reads, so this is the lowest priority.
+	if pc := p.pickSmallTableCompaction(env); pc != nil {
+		return pc
 	}
 
 	return nil

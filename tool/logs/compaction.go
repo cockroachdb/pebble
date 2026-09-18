@@ -54,6 +54,8 @@ var (
 		table.Div(),
 		table.Int("rwrt", 4, table.AlignRight, func(r compactionTableRow) int { return r.Rewrite }),
 		table.Div(),
+		table.Int("small", 5, table.AlignRight, func(r compactionTableRow) int { return r.SmallTables }),
+		table.Div(),
 		table.Int("cnt", 3, table.AlignRight, func(r compactionTableRow) int { return r.Count }),
 		table.Div(),
 		table.Bytes("in(B)", 5, table.AlignRight, func(r compactionTableRow) uint64 { return r.BytesIn }),
@@ -103,24 +105,25 @@ var (
 )
 
 type compactionTableRow struct {
-	Kind       string
-	From       string
-	To         string
-	Default    int
-	Move       int
-	Elide      int
-	Delete     int
-	Blob       int
-	Virtual    int
-	Copy       int
-	Tombstone  int
-	Rewrite    int
-	Count      int
-	BytesIn    uint64
-	BytesOut   uint64
-	BytesMoved uint64
-	BytesDel   uint64
-	Duration   string
+	Kind        string
+	From        string
+	To          string
+	Default     int
+	Move        int
+	Elide       int
+	Delete      int
+	Blob        int
+	Virtual     int
+	Copy        int
+	Tombstone   int
+	Rewrite     int
+	SmallTables int
+	Count       int
+	BytesIn     uint64
+	BytesOut    uint64
+	BytesMoved  uint64
+	BytesDel    uint64
+	Duration    string
 }
 
 type flushIngestTableRow struct {
@@ -330,6 +333,7 @@ const (
 	compactionTypeTombstoneDensity
 	compactionTypeRewrite
 	compactionTypeBlobRewrite
+	compactionTypeSmallTables
 	compactionTypeVirtualRewrite
 )
 
@@ -354,6 +358,8 @@ func (c compactionType) String() string {
 		return "rewrite"
 	case compactionTypeBlobRewrite:
 		return "blob-rewrite"
+	case compactionTypeSmallTables:
+		return "small-tables"
 	case compactionTypeVirtualRewrite:
 		return "virtual-sst-rewrite"
 	default:
@@ -383,6 +389,8 @@ func parseCompactionType(s string) (t compactionType, err error) {
 		t = compactionTypeRewrite
 	case "blob-rewrite":
 		t = compactionTypeBlobRewrite
+	case "small-tables":
+		t = compactionTypeSmallTables
 	case "virtual-sst-rewrite":
 		t = compactionTypeVirtualRewrite
 	default:
@@ -829,7 +837,7 @@ func (s windowSummary) String() string {
 	// Print compactions statistics.
 	if len(s.compactionCounts) > 0 {
 		var compactionRows []compactionTableRow
-		var totalDef, totalMove, totalElision, totalDel, totalBlob, totalVirtual, totalCopy, totalTombstone, totalRewrite int
+		var totalDef, totalMove, totalElision, totalDel, totalBlob, totalVirtual, totalCopy, totalTombstone, totalRewrite, totalSmallTables int
 		var totalBytesIn, totalBytesOut, totalBytesMoved, totalBytesDel uint64
 		var totalTime time.Duration
 
@@ -843,27 +851,29 @@ func (s windowSummary) String() string {
 			copy := p.counts[compactionTypeCopy]
 			tombstone := p.counts[compactionTypeTombstoneDensity]
 			rewrite := p.counts[compactionTypeRewrite]
-			total := def + move + elision + del + blob + virtual + copy + tombstone + rewrite
+			smallTables := p.counts[compactionTypeSmallTables]
+			total := def + move + elision + del + blob + virtual + copy + tombstone + rewrite + smallTables
 
 			compactionRows = append(compactionRows, compactionTableRow{
-				Kind:       "compact",
-				From:       p.ft.from.String(),
-				To:         p.ft.to.String(),
-				Default:    def,
-				Move:       move,
-				Elide:      elision,
-				Delete:     del,
-				Blob:       blob,
-				Virtual:    virtual,
-				Copy:       copy,
-				Tombstone:  tombstone,
-				Rewrite:    rewrite,
-				Count:      total,
-				BytesIn:    p.bytesIn,
-				BytesOut:   p.bytesOut,
-				BytesMoved: p.bytesMoved,
-				BytesDel:   p.bytesDel,
-				Duration:   p.duration.Truncate(time.Second).String(),
+				Kind:        "compact",
+				From:        p.ft.from.String(),
+				To:          p.ft.to.String(),
+				Default:     def,
+				Move:        move,
+				Elide:       elision,
+				Delete:      del,
+				Blob:        blob,
+				Virtual:     virtual,
+				Copy:        copy,
+				Tombstone:   tombstone,
+				Rewrite:     rewrite,
+				SmallTables: smallTables,
+				Count:       total,
+				BytesIn:     p.bytesIn,
+				BytesOut:    p.bytesOut,
+				BytesMoved:  p.bytesMoved,
+				BytesDel:    p.bytesDel,
+				Duration:    p.duration.Truncate(time.Second).String(),
 			})
 
 			totalDef += def
@@ -875,6 +885,7 @@ func (s windowSummary) String() string {
 			totalCopy += copy
 			totalTombstone += tombstone
 			totalRewrite += rewrite
+			totalSmallTables += smallTables
 			totalBytesIn += p.bytesIn
 			totalBytesOut += p.bytesOut
 			totalBytesMoved += p.bytesMoved
@@ -883,24 +894,25 @@ func (s windowSummary) String() string {
 		}
 
 		compactionRows = append(compactionRows, compactionTableRow{
-			Kind:       "total",
-			From:       "",
-			To:         "",
-			Default:    totalDef,
-			Move:       totalMove,
-			Elide:      totalElision,
-			Delete:     totalDel,
-			Blob:       totalBlob,
-			Virtual:    totalVirtual,
-			Copy:       totalCopy,
-			Tombstone:  totalTombstone,
-			Rewrite:    totalRewrite,
-			Count:      s.eventCount,
-			BytesIn:    totalBytesIn,
-			BytesOut:   totalBytesOut,
-			BytesMoved: totalBytesMoved,
-			BytesDel:   totalBytesDel,
-			Duration:   totalTime.Truncate(time.Second).String(),
+			Kind:        "total",
+			From:        "",
+			To:          "",
+			Default:     totalDef,
+			Move:        totalMove,
+			Elide:       totalElision,
+			Delete:      totalDel,
+			Blob:        totalBlob,
+			Virtual:     totalVirtual,
+			Copy:        totalCopy,
+			Tombstone:   totalTombstone,
+			Rewrite:     totalRewrite,
+			SmallTables: totalSmallTables,
+			Count:       s.eventCount,
+			BytesIn:     totalBytesIn,
+			BytesOut:    totalBytesOut,
+			BytesMoved:  totalBytesMoved,
+			BytesDel:    totalBytesDel,
+			Duration:    totalTime.Truncate(time.Second).String(),
 		})
 
 		board := ascii.Make(20, 1)

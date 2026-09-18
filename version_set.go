@@ -805,6 +805,9 @@ func (vs *versionSet) incrementCompactions(
 	case compactionKindBlobFileRewrite:
 		vs.metrics.Compact.BlobFileRewriteCount++
 
+	case compactionKindSmallTables:
+		vs.metrics.Compact.SmallTablesCount++
+
 	case compactionKindVirtualRewrite:
 		vs.metrics.Compact.VirtualRewriteCount++
 

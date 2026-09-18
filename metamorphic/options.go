@@ -774,6 +774,14 @@ func RandomOptions(rng *rand.Rand, kf KeyFormat, cfg RandomOptionsCfg) *TestOpti
 	if rng.IntN(2) == 0 {
 		opts.AllocatorSizeClasses = pebble.JemallocSizeClasses
 	}
+	// Small-table compactions: disabled 25% of the time, otherwise a minimum
+	// run length in [3, 10].
+	if rng.IntN(4) == 0 {
+		opts.SmallTableCompactionMinRunLength = func() int { return 0 }
+	} else {
+		minRunLength := 3 + rng.IntN(8)
+		opts.SmallTableCompactionMinRunLength = func() int { return minRunLength }
+	}
 
 	opts.TargetFileSizes[0] = int64(randPowerOf2(rng, 0, 28)) // 1B - 256MB
 	if opts.TargetFileSizes[0] < 1<<12 {

@@ -1,0 +1,1418 @@
+# Tests for small-table compactions. Unless otherwise specified, the target file
+# size for every level is 1000 bytes and the minimum run length is 4.
+
+# Basic case: a run of 4 small tables in L6 (no level below) is consolidated.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+
+pick
+----
+small-tables L6 [a, h]: 000001,000002,000003,000004 (400 B)
+
+# The compaction is picked through pickAutoNonScore too.
+
+pick-auto
+----
+small-tables L6 [a, h]: 000001,000002,000003,000004 (400 B)
+
+# Fewer than K tables is not a run.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+
+pick
+----
+nil
+
+# A smaller K admits the run.
+
+define min-run-length=3
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+
+pick
+----
+small-tables L6 [a, f]: 000001,000002,000003 (300 B)
+
+# A fruitless scan is remembered for the version together with the K it used;
+# a different K (which can change at runtime) scans again.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+
+pick
+----
+nil
+
+pick keep-memo
+----
+nil
+
+pick keep-memo min-run-length=3
+----
+small-tables L6 [a, f]: 000001,000002,000003 (300 B)
+
+# K=0 disables the mechanism.
+
+define min-run-length=0
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+
+pick
+----
+nil
+
+# Values of K below 3 are treated as 3.
+
+define min-run-length=1
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+
+pick
+----
+nil
+
+define min-run-length=2
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+
+pick
+----
+small-tables L6 [a, f]: 000001,000002,000003 (300 B)
+
+# Byte cap: the total size of the run must not exceed the target file size.
+# There is no per-file smallness threshold: a 400-byte table qualifies as part
+# of a run whose sum fits (and which is at most half of the sum).
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=200
+  000002:c#1,SET-d#1,SET size=200
+  000003:e#1,SET-f#1,SET size=200
+  000004:g#1,SET-h#1,SET size=400
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+
+pick
+----
+small-tables L6 [a, h]: 000001,000002,000003,000004 (1 KiB)
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=200
+  000002:c#1,SET-d#1,SET size=200
+  000003:e#1,SET-f#1,SET size=200
+  000004:g#1,SET-h#1,SET size=401
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+
+pick
+----
+nil
+
+# The scan does its work around tables of size at most cap/K (250 here); a run
+# may include larger tables before the first such table (at most K-1 of them
+# can fit in a run).
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=260
+  000002:c#1,SET-d#1,SET size=260
+  000003:e#1,SET-f#1,SET size=260
+  000004:g#1,SET-h#1,SET size=260
+  000005:i#1,SET-j#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+  000005:[i#1,SET-j#1,SET]
+
+pick
+----
+small-tables L6 [c, j]: 000002,000003,000004,000005 (880 B)
+
+# The smallest table in a run of K tables under the cap is at most cap/K; a
+# level whose smallest table is exactly cap/K is still scanned.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=250
+  000002:c#1,SET-d#1,SET size=250
+  000003:e#1,SET-f#1,SET size=250
+  000004:g#1,SET-h#1,SET size=250
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+
+pick
+----
+small-tables L6 [a, h]: 000001,000002,000003,000004 (1 KiB)
+
+# Size-tiered condition: the largest table in a run must be at most half of the
+# run's total size, so that a table produced by consolidation is not rewritten
+# every time K-1 small tables land next to it. Here the 600-byte table (the
+# result of an earlier consolidation) is not merged with 3 new small tables...
+
+define
+L6
+  000001:a#1,SET-h#1,SET size=600
+  000002:i#1,SET-j#1,SET size=100
+  000003:k#1,SET-l#1,SET size=100
+  000004:m#1,SET-n#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-h#1,SET]
+  000002:[i#1,SET-j#1,SET]
+  000003:[k#1,SET-l#1,SET]
+  000004:[m#1,SET-n#1,SET]
+
+pick
+----
+nil
+
+# ... but once 4 small tables have accumulated, they form a run on their own
+# (the 600-byte table is excluded because 600 > 400/2 + 600/2).
+
+define
+L6
+  000001:a#1,SET-h#1,SET size=600
+  000002:i#1,SET-j#1,SET size=100
+  000003:k#1,SET-l#1,SET size=100
+  000004:m#1,SET-n#1,SET size=100
+  000005:o#1,SET-p#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-h#1,SET]
+  000002:[i#1,SET-j#1,SET]
+  000003:[k#1,SET-l#1,SET]
+  000004:[m#1,SET-n#1,SET]
+  000005:[o#1,SET-p#1,SET]
+
+pick
+----
+small-tables L6 [i, p]: 000002,000003,000004,000005 (400 B)
+
+# With 6 small tables (600 bytes), the large table is at most half of the total
+# and the whole run of 7 qualifies (given a byte cap that admits it).
+
+define target-file-size=2000
+L6
+  000001:a#1,SET-h#1,SET size=600
+  000002:i#1,SET-j#1,SET size=100
+  000003:k#1,SET-l#1,SET size=100
+  000004:m#1,SET-n#1,SET size=100
+  000005:o#1,SET-p#1,SET size=100
+  000006:q#1,SET-r#1,SET size=100
+  000007:s#1,SET-t#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-h#1,SET]
+  000002:[i#1,SET-j#1,SET]
+  000003:[k#1,SET-l#1,SET]
+  000004:[m#1,SET-n#1,SET]
+  000005:[o#1,SET-p#1,SET]
+  000006:[q#1,SET-r#1,SET]
+  000007:[s#1,SET-t#1,SET]
+
+pick
+----
+small-tables L6 [a, t]: 000001,000002,000003,000004,000005,000006,000007 (1.2 KiB)
+
+# The large table can be anywhere in the run: here it is in the middle, and the
+# longest qualifying window is the suffix after it.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-h#1,SET size=600
+  000004:i#1,SET-j#1,SET size=100
+  000005:k#1,SET-l#1,SET size=100
+  000006:m#1,SET-n#1,SET size=100
+  000007:o#1,SET-p#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-h#1,SET]
+  000004:[i#1,SET-j#1,SET]
+  000005:[k#1,SET-l#1,SET]
+  000006:[m#1,SET-n#1,SET]
+  000007:[o#1,SET-p#1,SET]
+
+pick
+----
+small-tables L6 [i, p]: 000004,000005,000006,000007 (400 B)
+
+# Successive maxima: the 500-byte table is more than half of the total (860);
+# after excluding it, the 200-byte table is still more than half of what
+# remains (360), so it is excluded too.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=500
+  000002:c#1,SET-d#1,SET size=200
+  000003:e#1,SET-f#1,SET size=40
+  000004:g#1,SET-h#1,SET size=40
+  000005:i#1,SET-j#1,SET size=40
+  000006:k#1,SET-l#1,SET size=40
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+  000005:[i#1,SET-j#1,SET]
+  000006:[k#1,SET-l#1,SET]
+
+pick
+----
+small-tables L6 [e, l]: 000003,000004,000005,000006 (160 B)
+
+# Blob reference sizes count towards the byte cap.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100 blob-ref-size=700
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+
+pick
+----
+nil
+
+# A large table in the middle of a level splits the level into two windows; the
+# longest qualifying window wins, with ties broken by the smallest sum.
+
+define
+L6
+  000001:a#1,SET-a#1,SET size=100
+  000002:b#1,SET-b#1,SET size=100
+  000003:c#1,SET-c#1,SET size=100
+  000004:d#1,SET-d#1,SET size=100
+  000005:e#1,SET-e#1,SET size=5000
+  000006:f#1,SET-f#1,SET size=100
+  000007:g#1,SET-g#1,SET size=100
+  000008:h#1,SET-h#1,SET size=100
+  000009:i#1,SET-i#1,SET size=100
+  000010:j#1,SET-j#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-a#1,SET]
+  000002:[b#1,SET-b#1,SET]
+  000003:[c#1,SET-c#1,SET]
+  000004:[d#1,SET-d#1,SET]
+  000005:[e#1,SET-e#1,SET]
+  000006:[f#1,SET-f#1,SET]
+  000007:[g#1,SET-g#1,SET]
+  000008:[h#1,SET-h#1,SET]
+  000009:[i#1,SET-i#1,SET]
+  000010:[j#1,SET-j#1,SET]
+
+pick
+----
+small-tables L6 [f, j]: 000006,000007,000008,000009,000010 (500 B)
+
+define
+L6
+  000001:a#1,SET-a#1,SET size=100
+  000002:b#1,SET-b#1,SET size=100
+  000003:c#1,SET-c#1,SET size=100
+  000004:d#1,SET-d#1,SET size=10
+  000005:e#1,SET-e#1,SET size=5000
+  000006:f#1,SET-f#1,SET size=100
+  000007:g#1,SET-g#1,SET size=100
+  000008:h#1,SET-h#1,SET size=100
+  000009:i#1,SET-i#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-a#1,SET]
+  000002:[b#1,SET-b#1,SET]
+  000003:[c#1,SET-c#1,SET]
+  000004:[d#1,SET-d#1,SET]
+  000005:[e#1,SET-e#1,SET]
+  000006:[f#1,SET-f#1,SET]
+  000007:[g#1,SET-g#1,SET]
+  000008:[h#1,SET-h#1,SET]
+  000009:[i#1,SET-i#1,SET]
+
+pick
+----
+small-tables L6 [a, d]: 000001,000002,000003,000004 (310 B)
+
+# The window slides: with a run of 6 tables whose total exceeds the cap, the
+# longest window that fits is chosen. Both 5-table windows have the same sum;
+# the earliest one wins.
+
+define
+L6
+  000001:a#1,SET-a#1,SET size=300
+  000002:b#1,SET-b#1,SET size=300
+  000003:c#1,SET-c#1,SET size=100
+  000004:d#1,SET-d#1,SET size=100
+  000005:e#1,SET-e#1,SET size=100
+  000006:f#1,SET-f#1,SET size=300
+----
+L6:
+  000001:[a#1,SET-a#1,SET]
+  000002:[b#1,SET-b#1,SET]
+  000003:[c#1,SET-c#1,SET]
+  000004:[d#1,SET-d#1,SET]
+  000005:[e#1,SET-e#1,SET]
+  000006:[f#1,SET-f#1,SET]
+
+pick
+----
+small-tables L6 [a, e]: 000001,000002,000003,000004,000005 (900 B)
+
+# File cap: at most 100 tables per compaction. With 105 tiny tables, the window
+# has 100 tables; the earliest window is chosen (ties broken by sum, then by
+# position).
+
+define
+L6
+  000001:a01#1,SET-a01#1,SET size=1
+  000002:a02#1,SET-a02#1,SET size=1
+  000003:a03#1,SET-a03#1,SET size=1
+  000004:a04#1,SET-a04#1,SET size=1
+  000005:a05#1,SET-a05#1,SET size=1
+  000006:a06#1,SET-a06#1,SET size=1
+  000007:a07#1,SET-a07#1,SET size=1
+  000008:a08#1,SET-a08#1,SET size=1
+  000009:a09#1,SET-a09#1,SET size=1
+  000010:a10#1,SET-a10#1,SET size=1
+  000011:a11#1,SET-a11#1,SET size=1
+  000012:a12#1,SET-a12#1,SET size=1
+  000013:a13#1,SET-a13#1,SET size=1
+  000014:a14#1,SET-a14#1,SET size=1
+  000015:a15#1,SET-a15#1,SET size=1
+  000016:a16#1,SET-a16#1,SET size=1
+  000017:a17#1,SET-a17#1,SET size=1
+  000018:a18#1,SET-a18#1,SET size=1
+  000019:a19#1,SET-a19#1,SET size=1
+  000020:a20#1,SET-a20#1,SET size=1
+  000021:a21#1,SET-a21#1,SET size=1
+  000022:a22#1,SET-a22#1,SET size=1
+  000023:a23#1,SET-a23#1,SET size=1
+  000024:a24#1,SET-a24#1,SET size=1
+  000025:a25#1,SET-a25#1,SET size=1
+  000026:a26#1,SET-a26#1,SET size=1
+  000027:a27#1,SET-a27#1,SET size=1
+  000028:a28#1,SET-a28#1,SET size=1
+  000029:a29#1,SET-a29#1,SET size=1
+  000030:a30#1,SET-a30#1,SET size=1
+  000031:a31#1,SET-a31#1,SET size=1
+  000032:a32#1,SET-a32#1,SET size=1
+  000033:a33#1,SET-a33#1,SET size=1
+  000034:a34#1,SET-a34#1,SET size=1
+  000035:a35#1,SET-a35#1,SET size=1
+  000036:a36#1,SET-a36#1,SET size=1
+  000037:a37#1,SET-a37#1,SET size=1
+  000038:a38#1,SET-a38#1,SET size=1
+  000039:a39#1,SET-a39#1,SET size=1
+  000040:a40#1,SET-a40#1,SET size=1
+  000041:a41#1,SET-a41#1,SET size=1
+  000042:a42#1,SET-a42#1,SET size=1
+  000043:a43#1,SET-a43#1,SET size=1
+  000044:a44#1,SET-a44#1,SET size=1
+  000045:a45#1,SET-a45#1,SET size=1
+  000046:a46#1,SET-a46#1,SET size=1
+  000047:a47#1,SET-a47#1,SET size=1
+  000048:a48#1,SET-a48#1,SET size=1
+  000049:a49#1,SET-a49#1,SET size=1
+  000050:a50#1,SET-a50#1,SET size=1
+  000051:a51#1,SET-a51#1,SET size=1
+  000052:a52#1,SET-a52#1,SET size=1
+  000053:a53#1,SET-a53#1,SET size=1
+  000054:a54#1,SET-a54#1,SET size=1
+  000055:a55#1,SET-a55#1,SET size=1
+  000056:a56#1,SET-a56#1,SET size=1
+  000057:a57#1,SET-a57#1,SET size=1
+  000058:a58#1,SET-a58#1,SET size=1
+  000059:a59#1,SET-a59#1,SET size=1
+  000060:a60#1,SET-a60#1,SET size=1
+  000061:a61#1,SET-a61#1,SET size=1
+  000062:a62#1,SET-a62#1,SET size=1
+  000063:a63#1,SET-a63#1,SET size=1
+  000064:a64#1,SET-a64#1,SET size=1
+  000065:a65#1,SET-a65#1,SET size=1
+  000066:a66#1,SET-a66#1,SET size=1
+  000067:a67#1,SET-a67#1,SET size=1
+  000068:a68#1,SET-a68#1,SET size=1
+  000069:a69#1,SET-a69#1,SET size=1
+  000070:a70#1,SET-a70#1,SET size=1
+  000071:a71#1,SET-a71#1,SET size=1
+  000072:a72#1,SET-a72#1,SET size=1
+  000073:a73#1,SET-a73#1,SET size=1
+  000074:a74#1,SET-a74#1,SET size=1
+  000075:a75#1,SET-a75#1,SET size=1
+  000076:a76#1,SET-a76#1,SET size=1
+  000077:a77#1,SET-a77#1,SET size=1
+  000078:a78#1,SET-a78#1,SET size=1
+  000079:a79#1,SET-a79#1,SET size=1
+  000080:a80#1,SET-a80#1,SET size=1
+  000081:a81#1,SET-a81#1,SET size=1
+  000082:a82#1,SET-a82#1,SET size=1
+  000083:a83#1,SET-a83#1,SET size=1
+  000084:a84#1,SET-a84#1,SET size=1
+  000085:a85#1,SET-a85#1,SET size=1
+  000086:a86#1,SET-a86#1,SET size=1
+  000087:a87#1,SET-a87#1,SET size=1
+  000088:a88#1,SET-a88#1,SET size=1
+  000089:a89#1,SET-a89#1,SET size=1
+  000090:a90#1,SET-a90#1,SET size=1
+  000091:a91#1,SET-a91#1,SET size=1
+  000092:a92#1,SET-a92#1,SET size=1
+  000093:a93#1,SET-a93#1,SET size=1
+  000094:a94#1,SET-a94#1,SET size=1
+  000095:a95#1,SET-a95#1,SET size=1
+  000096:a96#1,SET-a96#1,SET size=1
+  000097:a97#1,SET-a97#1,SET size=1
+  000098:a98#1,SET-a98#1,SET size=1
+  000099:a99#1,SET-a99#1,SET size=1
+  000100:b00#1,SET-b00#1,SET size=1
+  000101:b01#1,SET-b01#1,SET size=1
+  000102:b02#1,SET-b02#1,SET size=1
+  000103:b03#1,SET-b03#1,SET size=1
+  000104:b04#1,SET-b04#1,SET size=1
+  000105:b05#1,SET-b05#1,SET size=1
+----
+L6:
+  000001:[a01#1,SET-a01#1,SET]
+  000002:[a02#1,SET-a02#1,SET]
+  000003:[a03#1,SET-a03#1,SET]
+  000004:[a04#1,SET-a04#1,SET]
+  000005:[a05#1,SET-a05#1,SET]
+  000006:[a06#1,SET-a06#1,SET]
+  000007:[a07#1,SET-a07#1,SET]
+  000008:[a08#1,SET-a08#1,SET]
+  000009:[a09#1,SET-a09#1,SET]
+  000010:[a10#1,SET-a10#1,SET]
+  000011:[a11#1,SET-a11#1,SET]
+  000012:[a12#1,SET-a12#1,SET]
+  000013:[a13#1,SET-a13#1,SET]
+  000014:[a14#1,SET-a14#1,SET]
+  000015:[a15#1,SET-a15#1,SET]
+  000016:[a16#1,SET-a16#1,SET]
+  000017:[a17#1,SET-a17#1,SET]
+  000018:[a18#1,SET-a18#1,SET]
+  000019:[a19#1,SET-a19#1,SET]
+  000020:[a20#1,SET-a20#1,SET]
+  000021:[a21#1,SET-a21#1,SET]
+  000022:[a22#1,SET-a22#1,SET]
+  000023:[a23#1,SET-a23#1,SET]
+  000024:[a24#1,SET-a24#1,SET]
+  000025:[a25#1,SET-a25#1,SET]
+  000026:[a26#1,SET-a26#1,SET]
+  000027:[a27#1,SET-a27#1,SET]
+  000028:[a28#1,SET-a28#1,SET]
+  000029:[a29#1,SET-a29#1,SET]
+  000030:[a30#1,SET-a30#1,SET]
+  000031:[a31#1,SET-a31#1,SET]
+  000032:[a32#1,SET-a32#1,SET]
+  000033:[a33#1,SET-a33#1,SET]
+  000034:[a34#1,SET-a34#1,SET]
+  000035:[a35#1,SET-a35#1,SET]
+  000036:[a36#1,SET-a36#1,SET]
+  000037:[a37#1,SET-a37#1,SET]
+  000038:[a38#1,SET-a38#1,SET]
+  000039:[a39#1,SET-a39#1,SET]
+  000040:[a40#1,SET-a40#1,SET]
+  000041:[a41#1,SET-a41#1,SET]
+  000042:[a42#1,SET-a42#1,SET]
+  000043:[a43#1,SET-a43#1,SET]
+  000044:[a44#1,SET-a44#1,SET]
+  000045:[a45#1,SET-a45#1,SET]
+  000046:[a46#1,SET-a46#1,SET]
+  000047:[a47#1,SET-a47#1,SET]
+  000048:[a48#1,SET-a48#1,SET]
+  000049:[a49#1,SET-a49#1,SET]
+  000050:[a50#1,SET-a50#1,SET]
+  000051:[a51#1,SET-a51#1,SET]
+  000052:[a52#1,SET-a52#1,SET]
+  000053:[a53#1,SET-a53#1,SET]
+  000054:[a54#1,SET-a54#1,SET]
+  000055:[a55#1,SET-a55#1,SET]
+  000056:[a56#1,SET-a56#1,SET]
+  000057:[a57#1,SET-a57#1,SET]
+  000058:[a58#1,SET-a58#1,SET]
+  000059:[a59#1,SET-a59#1,SET]
+  000060:[a60#1,SET-a60#1,SET]
+  000061:[a61#1,SET-a61#1,SET]
+  000062:[a62#1,SET-a62#1,SET]
+  000063:[a63#1,SET-a63#1,SET]
+  000064:[a64#1,SET-a64#1,SET]
+  000065:[a65#1,SET-a65#1,SET]
+  000066:[a66#1,SET-a66#1,SET]
+  000067:[a67#1,SET-a67#1,SET]
+  000068:[a68#1,SET-a68#1,SET]
+  000069:[a69#1,SET-a69#1,SET]
+  000070:[a70#1,SET-a70#1,SET]
+  000071:[a71#1,SET-a71#1,SET]
+  000072:[a72#1,SET-a72#1,SET]
+  000073:[a73#1,SET-a73#1,SET]
+  000074:[a74#1,SET-a74#1,SET]
+  000075:[a75#1,SET-a75#1,SET]
+  000076:[a76#1,SET-a76#1,SET]
+  000077:[a77#1,SET-a77#1,SET]
+  000078:[a78#1,SET-a78#1,SET]
+  000079:[a79#1,SET-a79#1,SET]
+  000080:[a80#1,SET-a80#1,SET]
+  000081:[a81#1,SET-a81#1,SET]
+  000082:[a82#1,SET-a82#1,SET]
+  000083:[a83#1,SET-a83#1,SET]
+  000084:[a84#1,SET-a84#1,SET]
+  000085:[a85#1,SET-a85#1,SET]
+  000086:[a86#1,SET-a86#1,SET]
+  000087:[a87#1,SET-a87#1,SET]
+  000088:[a88#1,SET-a88#1,SET]
+  000089:[a89#1,SET-a89#1,SET]
+  000090:[a90#1,SET-a90#1,SET]
+  000091:[a91#1,SET-a91#1,SET]
+  000092:[a92#1,SET-a92#1,SET]
+  000093:[a93#1,SET-a93#1,SET]
+  000094:[a94#1,SET-a94#1,SET]
+  000095:[a95#1,SET-a95#1,SET]
+  000096:[a96#1,SET-a96#1,SET]
+  000097:[a97#1,SET-a97#1,SET]
+  000098:[a98#1,SET-a98#1,SET]
+  000099:[a99#1,SET-a99#1,SET]
+  000100:[b00#1,SET-b00#1,SET]
+  000101:[b01#1,SET-b01#1,SET]
+  000102:[b02#1,SET-b02#1,SET]
+  000103:[b03#1,SET-b03#1,SET]
+  000104:[b04#1,SET-b04#1,SET]
+  000105:[b05#1,SET-b05#1,SET]
+
+pick
+----
+small-tables L6 [a01, b00]: 000001,000002,000003,000004,000005,000006,000007,000008,000009,000010,000011,000012,000013,000014,000015,000016,000017,000018,000019,000020,000021,000022,000023,000024,000025,000026,000027,000028,000029,000030,000031,000032,000033,000034,000035,000036,000037,000038,000039,000040,000041,000042,000043,000044,000045,000046,000047,000048,000049,000050,000051,000052,000053,000054,000055,000056,000057,000058,000059,000060,000061,000062,000063,000064,000065,000066,000067,000068,000069,000070,000071,000072,000073,000074,000075,000076,000077,000078,000079,000080,000081,000082,000083,000084,000085,000086,000087,000088,000089,000090,000091,000092,000093,000094,000095,000096,000097,000098,000099,000100 (100 B)
+
+# Containment: a run in L5 that lies within a single L6 table qualifies.
+
+define
+L5
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:f#1,SET-g#1,SET size=100
+  000004:h#1,SET-i#1,SET size=100
+L6
+  000005:a#0,SET-z#0,SET size=100000
+----
+L5:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[h#1,SET-i#1,SET]
+L6:
+  000005:[a#0,SET-z#0,SET]
+
+pick
+----
+small-tables L5 [b, i]: 000001,000002,000003,000004 (400 B)
+
+# A run in L5 that overlaps no L6 table is moved down to L6 rather than
+# consolidated in place (both the run before and the run after the L6 table are
+# candidates; the longest wins and ties go to the first).
+
+define
+L5
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:f#1,SET-g#1,SET size=100
+  000004:h#1,SET-i#1,SET size=100
+  000005:t#1,SET-u#1,SET size=100
+  000006:v#1,SET-w#1,SET size=100
+  000007:x#1,SET-y#1,SET size=100
+L6
+  000008:m#0,SET-p#0,SET size=100000
+----
+L5:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[h#1,SET-i#1,SET]
+  000005:[t#1,SET-u#1,SET]
+  000006:[v#1,SET-w#1,SET]
+  000007:[x#1,SET-y#1,SET]
+L6:
+  000008:[m#0,SET-p#0,SET]
+
+pick
+----
+small-tables L5 -> L6 (move) [b, i]: 000001,000002,000003,000004 (400 B)
+
+# The gap before and the gap after an L6 table are different regions: the 4
+# tables here (2 before, 2 after) don't form a run, so nothing is moved.
+
+define
+L5
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000005:t#1,SET-u#1,SET size=100
+  000006:v#1,SET-w#1,SET size=100
+L6
+  000008:m#0,SET-p#0,SET size=100000
+----
+L5:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000005:[t#1,SET-u#1,SET]
+  000006:[v#1,SET-w#1,SET]
+L6:
+  000008:[m#0,SET-p#0,SET]
+
+pick
+----
+nil
+
+# Tables contained in different L6 tables belong to different stretches, even
+# when the L6 tables are adjacent.
+
+define
+L5
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:h#1,SET-i#1,SET size=100
+  000004:j#1,SET-k#1,SET size=100
+L6
+  000005:a#0,SET-f#0,SET size=100000
+  000006:g#0,SET-z#0,SET size=100000
+----
+L5:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[h#1,SET-i#1,SET]
+  000004:[j#1,SET-k#1,SET]
+L6:
+  000005:[a#0,SET-f#0,SET]
+  000006:[g#0,SET-z#0,SET]
+
+pick
+----
+nil
+
+# A table that straddles an L6 table boundary is excluded and breaks the run;
+# the tables on either side form separate stretches.
+
+define
+L5
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:f#1,SET-h#1,SET size=100
+  000004:i#1,SET-j#1,SET size=100
+  000005:k#1,SET-l#1,SET size=100
+  000006:m#1,SET-n#1,SET size=100
+  000007:o#1,SET-p#1,SET size=100
+L6
+  000008:a#0,SET-g#0,SET size=100000
+  000009:gg#0,SET-z#0,SET size=100000
+----
+L5:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[f#1,SET-h#1,SET]
+  000004:[i#1,SET-j#1,SET]
+  000005:[k#1,SET-l#1,SET]
+  000006:[m#1,SET-n#1,SET]
+  000007:[o#1,SET-p#1,SET]
+L6:
+  000008:[a#0,SET-g#0,SET]
+  000009:[gg#0,SET-z#0,SET]
+
+pick
+----
+small-tables L5 [i, p]: 000004,000005,000006,000007 (400 B)
+
+# A table in L5 that is contained in an L6 table and extends exactly to its
+# boundary is still contained.
+
+define
+L5
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+L6
+  000005:a#0,SET-h#0,SET size=100000
+  000006:i#0,SET-z#0,SET size=100000
+----
+L5:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+L6:
+  000005:[a#0,SET-h#0,SET]
+  000006:[i#0,SET-z#0,SET]
+
+pick
+----
+small-tables L5 [a, h]: 000001,000002,000003,000004 (400 B)
+
+# A range deletion whose exclusive end coincides with the start of an L6 table
+# does not overlap that table: the run lies in the gap before it and is moved.
+
+define
+L5
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,RANGEDEL-i#inf,RANGEDEL size=100
+L6
+  000006:i#0,SET-z#0,SET size=100000
+----
+L5:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,RANGEDEL-i#inf,RANGEDEL]
+L6:
+  000006:[i#0,SET-z#0,SET]
+
+pick
+----
+small-tables L5 -> L6 (move) [a, i): 000001,000002,000003,000004 (400 B)
+
+# The same range deletion straddles the boundary when the L6 table below ends
+# (inclusively) before its exclusive end.
+
+define
+L5
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,RANGEDEL-i#inf,RANGEDEL size=100
+L6
+  000005:a#0,SET-h#0,SET size=100000
+  000006:i#0,SET-z#0,SET size=100000
+----
+L5:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,RANGEDEL-i#inf,RANGEDEL]
+L6:
+  000005:[a#0,SET-h#0,SET]
+  000006:[i#0,SET-z#0,SET]
+
+pick
+----
+nil
+
+# Bottom-up level priority: with candidates in both L5 and L6, L6 is chosen.
+# After L6 is consolidated (simulated by the second define), L5 is chosen.
+
+define
+L5
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:f#1,SET-g#1,SET size=100
+  000004:h#1,SET-i#1,SET size=100
+L6
+  000005:a#0,SET-b#0,SET size=100
+  000006:c#0,SET-d#0,SET size=100
+  000007:e#0,SET-f#0,SET size=100
+  000008:g#0,SET-z#0,SET size=100
+----
+L5:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[h#1,SET-i#1,SET]
+L6:
+  000005:[a#0,SET-b#0,SET]
+  000006:[c#0,SET-d#0,SET]
+  000007:[e#0,SET-f#0,SET]
+  000008:[g#0,SET-z#0,SET]
+
+pick
+----
+small-tables L6 [a, z]: 000005,000006,000007,000008 (400 B)
+
+define
+L5
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:f#1,SET-g#1,SET size=100
+  000004:h#1,SET-i#1,SET size=100
+L6
+  000009:a#0,SET-z#0,SET size=400
+----
+L5:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[h#1,SET-i#1,SET]
+L6:
+  000009:[a#0,SET-z#0,SET]
+
+pick
+----
+small-tables L5 [b, i]: 000001,000002,000003,000004 (400 B)
+
+# Runs are considered in Lbase too, but never in L0. With nothing underneath,
+# the Lbase run is moved down one level.
+
+define
+L0
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:f#1,SET-g#1,SET size=100
+  000004:h#1,SET-i#1,SET size=100
+L3
+  000005:b#1,SET-c#1,SET size=100
+  000006:d#1,SET-e#1,SET size=100
+  000007:f#1,SET-g#1,SET size=100
+  000008:h#1,SET-i#1,SET size=100
+----
+L0.0:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[h#1,SET-i#1,SET]
+L3:
+  000005:[b#1,SET-c#1,SET]
+  000006:[d#1,SET-e#1,SET]
+  000007:[f#1,SET-g#1,SET]
+  000008:[h#1,SET-i#1,SET]
+
+pick
+----
+small-tables L3 -> L4 (move) [b, i]: 000005,000006,000007,000008 (400 B)
+
+# The byte cap uses the level's target file size (which depends on the base
+# level). With a 200 byte target file size, only 2 tables fit in the cap and
+# there is no run of 4.
+
+define target-file-size=200
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+
+pick
+----
+nil
+
+# Span policy regions: a run cannot cross a span policy region boundary.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+  000005:i#1,SET-j#1,SET size=100
+  000006:k#1,SET-l#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+  000005:[i#1,SET-j#1,SET]
+  000006:[k#1,SET-l#1,SET]
+
+pick
+----
+small-tables L6 [a, l]: 000001,000002,000003,000004,000005,000006 (600 B)
+
+# A region boundary at "i" splits the level into a run of 4 and a run of 2.
+
+span-policy-boundaries i
+----
+
+pick
+----
+small-tables L6 [a, h]: 000001,000002,000003,000004 (400 B)
+
+# A boundary in the middle of a table (between "g" and "h") excludes that table,
+# leaving runs of 3 and 2.
+
+span-policy-boundaries gg
+----
+
+pick
+----
+nil
+
+# A boundary at "e" leaves 2 tables in the first region and 4 in the second.
+
+span-policy-boundaries e
+----
+
+pick
+----
+small-tables L6 [e, l]: 000003,000004,000005,000006 (400 B)
+
+# Multiple boundaries: the middle region holds a run of 4.
+
+span-policy-boundaries c k
+----
+
+pick
+----
+small-tables L6 [c, j]: 000002,000003,000004,000005 (400 B)
+
+# A table whose exclusive end (from a range deletion) coincides with a region
+# boundary lies within the region.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,RANGEDEL-i#inf,RANGEDEL size=100
+  000005:i#1,SET-j#1,SET size=100
+  000006:k#1,SET-l#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,RANGEDEL-i#inf,RANGEDEL]
+  000005:[i#1,SET-j#1,SET]
+  000006:[k#1,SET-l#1,SET]
+
+span-policy-boundaries i
+----
+
+pick
+----
+small-tables L6 [a, i): 000001,000002,000003,000004 (400 B)
+
+# If the best run in a region includes a table that is already compacting, the
+# region is ignored until that compaction finishes (which installs a new
+# version); the result is not memoized.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+  000005:i#1,SET-j#1,SET size=100
+  000006:k#1,SET-l#1,SET size=100
+  000007:m#1,SET-n#1,SET size=100
+  000008:o#1,SET-p#1,SET size=100
+  000009:q#1,SET-r#1,SET size=100
+compactions
+  L6 000005 -> L6
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+  000005:[i#1,SET-j#1,SET]
+  000006:[k#1,SET-l#1,SET]
+  000007:[m#1,SET-n#1,SET]
+  000008:[o#1,SET-p#1,SET]
+  000009:[q#1,SET-r#1,SET]
+compactions
+  L6 000005 -> L6
+
+pick
+----
+nil (inconclusive)
+
+# A run blocked by a table that is compacting or by a problem span is not
+# memoized as "no runs", since the table can become available again without a
+# new version being installed.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+compactions
+  L6 000003 -> L6
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+compactions
+  L6 000003 -> L6
+
+pick
+----
+nil (inconclusive)
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+
+problem-spans
+L6 [e, f]
+----
+
+pick
+----
+nil (inconclusive)
+
+# Only one small-table compaction can be in progress at a time.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+  000005:i#1,SET-j#1,SET size=100
+  000006:k#1,SET-l#1,SET size=100
+  000007:m#1,SET-n#1,SET size=100
+  000008:o#1,SET-p#1,SET size=100
+  000009:q#1,SET-r#1,SET size=100
+compactions
+  L6 000009 -> L6 kind=small-tables
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+  000005:[i#1,SET-j#1,SET]
+  000006:[k#1,SET-l#1,SET]
+  000007:[m#1,SET-n#1,SET]
+  000008:[o#1,SET-p#1,SET]
+  000009:[q#1,SET-r#1,SET]
+compactions
+  L6 000009 -> L6
+
+pick
+----
+nil (inconclusive)
+
+# An in-progress compaction outputting into the key range of the run prevents
+# picking it, even when it involves none of the run's tables: here the L5 table
+# [c, d] lies in a gap between the tables of the L6 run [a, j] and is being
+# compacted into L6, where it would overlap the consolidated table. The scan
+# moves on to L5, which has its own run.
+
+define
+L5
+  000010:c#1,SET-d#1,SET size=100
+  000011:p#1,SET-q#1,SET size=100
+  000012:r#1,SET-s#1,SET size=100
+  000013:t#1,SET-u#1,SET size=100
+  000014:v#1,SET-w#1,SET size=100
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:e#1,SET-f#1,SET size=100
+  000003:g#1,SET-h#1,SET size=100
+  000004:i#1,SET-j#1,SET size=100
+  000005:o#1,SET-z#1,SET size=100000
+compactions
+  L5 000010 -> L6
+----
+L5:
+  000010:[c#1,SET-d#1,SET]
+  000011:[p#1,SET-q#1,SET]
+  000012:[r#1,SET-s#1,SET]
+  000013:[t#1,SET-u#1,SET]
+  000014:[v#1,SET-w#1,SET]
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[e#1,SET-f#1,SET]
+  000003:[g#1,SET-h#1,SET]
+  000004:[i#1,SET-j#1,SET]
+  000005:[o#1,SET-z#1,SET]
+compactions
+  L5 000010 -> L6
+
+pick
+----
+small-tables L5 [p, w]: 000011,000012,000013,000014 (400 B)
+
+# Likewise for a run that includes a table overlapping a problem span.
+
+define
+L6
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+  000005:i#1,SET-j#1,SET size=100
+  000006:k#1,SET-l#1,SET size=100
+  000007:m#1,SET-n#1,SET size=100
+  000008:o#1,SET-p#1,SET size=100
+----
+L6:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+  000005:[i#1,SET-j#1,SET]
+  000006:[k#1,SET-l#1,SET]
+  000007:[m#1,SET-n#1,SET]
+  000008:[o#1,SET-p#1,SET]
+
+problem-spans
+L6 [c, d]
+----
+
+pick
+----
+nil (inconclusive)
+
+# Only a qualifying run is moved: a single table with nothing underneath is
+# not a candidate on its own. The run of 4 small tables contained in the L6
+# table is consolidated.
+
+define
+L5
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:f#1,SET-g#1,SET size=100
+  000004:h#1,SET-i#1,SET size=100
+  000005:t#1,SET-u#1,SET size=100
+L6
+  000006:a#0,SET-m#0,SET size=100000
+----
+L5:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[h#1,SET-i#1,SET]
+  000005:[t#1,SET-u#1,SET]
+L6:
+  000006:[a#0,SET-m#0,SET]
+
+pick
+----
+small-tables L5 [b, i]: 000001,000002,000003,000004 (400 B)
+
+# A move is subject to the same sizing rules as a consolidation: the 4 tables
+# with nothing underneath exceed the byte cap, so they are not moved.
+
+define
+L5
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=20000
+  000003:e#1,SET-f#1,SET size=20000
+  000004:g#1,SET-h#1,SET size=100
+L6
+  000005:x#0,SET-z#0,SET size=100000
+----
+L5:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+L6:
+  000005:[x#0,SET-z#0,SET]
+
+pick
+----
+nil
+
+# A level whose smallest table is larger than the byte cap divided by K is not
+# scanned at all, even if it has tables with nothing underneath: moving tables
+# down only serves eventual consolidation.
+
+define
+L5
+  000001:a#1,SET-b#1,SET size=300
+  000002:c#1,SET-d#1,SET size=300
+L6
+  000005:x#0,SET-z#0,SET size=100000
+----
+L5:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+L6:
+  000005:[x#0,SET-z#0,SET]
+
+pick
+----
+nil
+
+# A run with nothing underneath that includes a compacting table is ignored;
+# another such run is chosen instead.
+
+define
+L5
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+  000005:r#1,SET-s#1,SET size=100
+  000006:t#1,SET-u#1,SET size=100
+  000007:v#1,SET-w#1,SET size=100
+  000008:x#1,SET-y#1,SET size=100
+L6
+  000009:m#0,SET-p#0,SET size=100000
+compactions
+  L5 000002 -> L6
+----
+L5:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+  000005:[r#1,SET-s#1,SET]
+  000006:[t#1,SET-u#1,SET]
+  000007:[v#1,SET-w#1,SET]
+  000008:[x#1,SET-y#1,SET]
+L6:
+  000009:[m#0,SET-p#0,SET]
+compactions
+  L5 000002 -> L6
+
+pick
+----
+small-tables L5 -> L6 (move) [r, y]: 000005,000006,000007,000008 (400 B)
+
+# Bottom-up: a consolidation in L6 takes precedence over a move in L5.
+
+define
+L5
+  000001:a#1,SET-b#1,SET size=100
+  000002:c#1,SET-d#1,SET size=100
+  000003:e#1,SET-f#1,SET size=100
+  000004:g#1,SET-h#1,SET size=100
+L6
+  000005:m#0,SET-n#0,SET size=100
+  000006:o#0,SET-p#0,SET size=100
+  000007:q#0,SET-r#0,SET size=100
+  000008:s#0,SET-t#0,SET size=100
+----
+L5:
+  000001:[a#1,SET-b#1,SET]
+  000002:[c#1,SET-d#1,SET]
+  000003:[e#1,SET-f#1,SET]
+  000004:[g#1,SET-h#1,SET]
+L6:
+  000005:[m#0,SET-n#0,SET]
+  000006:[o#0,SET-p#0,SET]
+  000007:[q#0,SET-r#0,SET]
+  000008:[s#0,SET-t#0,SET]
+
+pick
+----
+small-tables L6 [m, t]: 000005,000006,000007,000008 (400 B)
+
+# A move is not prevented by the run overlapping a lot of data two levels down
+# (the heuristic that avoids move compactions with too much grandparent
+# overlap does not apply: the tables are moved intact). Here the L4 run
+# overlaps a 100KB L6 table, far above 10x the L5 target file size.
+
+define
+L4
+  000001:b#1,SET-c#1,SET size=100
+  000002:d#1,SET-e#1,SET size=100
+  000003:f#1,SET-g#1,SET size=100
+  000004:h#1,SET-i#1,SET size=100
+L5
+  000005:x#1,SET-y#1,SET size=100
+L6
+  000006:a#0,SET-z#0,SET size=100000
+----
+L4:
+  000001:[b#1,SET-c#1,SET]
+  000002:[d#1,SET-e#1,SET]
+  000003:[f#1,SET-g#1,SET]
+  000004:[h#1,SET-i#1,SET]
+L5:
+  000005:[x#1,SET-y#1,SET]
+L6:
+  000006:[a#0,SET-z#0,SET]
+
+pick
+----
+small-tables L4 -> L5 (move) [b, i]: 000001,000002,000003,000004 (400 B)

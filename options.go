@@ -603,6 +603,27 @@ type Options struct {
 	// flushes, compactions, and table deletion.
 	EventListener *EventListener
 
+	// SmallTableCompactionMinRunLength is the minimum number of adjacent tables
+	// in a level that must together be no larger than the level's target file
+	// size for the run to be consolidated into a single table by a small-table
+	// compaction. The largest table in the run must be at most half of the run's
+	// total size, so that consolidation at least doubles a table's size and the
+	// write amplification stays logarithmic. Only runs whose merged result would
+	// be well-formed are considered: the run must lie within the user-key span of
+	// a single table in the next level and within a single span policy region.
+	// A qualifying run that overlaps no table in the next level is instead moved
+	// down a level, until it reaches a level where it can be consolidated. Such
+	// runs are produced by workloads that flush or compact
+	// small amounts of data into non-overlapping key regions; without
+	// consolidation, the file count grows without bound while every level stays
+	// below its size target.
+	//
+	// A value of 0 (the default) disables small-table compactions. A good value
+	// is 4. Values below 3 are treated as 3.
+	//
+	// Experimental.
+	SmallTableCompactionMinRunLength func() int
+
 	// Experimental contains experimental options which are off by default.
 	// These options are temporary and will eventually either be deleted, moved
 	// out of the experimental group, or made the non-adjustable default. These
@@ -808,6 +829,7 @@ type Options struct {
 			//
 			// The default value is 0 (disabled).
 			PollInterval time.Duration
+
 
 			// MaxAge is the age above which iterators are considered long-lived. If
 			// zero, disables iterator tracking.
@@ -1329,6 +1351,11 @@ var ValueStorageLowReadLatency = base.ValueStoragePolicyAdjustment{
 // output. If the compaction reaches the end key, the current output sst is
 // finished and the function is called again.
 //
+// The compaction picker also calls this function (with the bounds of existing
+// tables) to determine which tables lie in the same region, while holding
+// internal DB locks. The function must therefore be cheap and must not block or
+// call back into the DB.
+//
 // Correctness must never depend on having a specific span policy. The function
 // is allowed to change the returned policy arbitrarily.
 //
@@ -1791,6 +1818,9 @@ func (o *Options) EnsureDefaults() {
 	if o.Experimental.Tiering.NowFn == nil {
 		o.Experimental.Tiering.NowFn = time.Now
 	}
+	if o.SmallTableCompactionMinRunLength == nil {
+		o.SmallTableCompactionMinRunLength = func() int { return 0 }
+	}
 	if o.private.timeNow == nil {
 		o.private.timeNow = time.Now
 	}
@@ -1905,6 +1935,11 @@ func (o *Options) String() string {
 	fmt.Fprintf(&buf, "  num_deletions_threshold=%d\n", o.Experimental.NumDeletionsThreshold)
 	fmt.Fprintf(&buf, "  deletion_size_ratio_threshold=%f\n", o.Experimental.DeletionSizeRatioThreshold)
 	fmt.Fprintf(&buf, "  tombstone_dense_compaction_threshold=%f\n", o.Experimental.TombstoneDenseCompactionThreshold())
+	if o.SmallTableCompactionMinRunLength != nil {
+		if minRunLength := o.SmallTableCompactionMinRunLength(); minRunLength > 0 {
+			fmt.Fprintf(&buf, "  small_table_compaction_min_run_length=%d\n", minRunLength)
+		}
+	}
 	// We no longer care about strict_wal_tail, but set it to true in case an
 	// older version reads the options.
 	fmt.Fprintf(&buf, "  strict_wal_tail=%t\n", true)
@@ -2349,6 +2384,12 @@ func (o *Options) Parse(s string, hooks *ParseHooks) error {
 				threshold, err = strconv.ParseFloat(value, 64)
 				if err == nil {
 					o.Experimental.TombstoneDenseCompactionThreshold = func() float64 { return threshold }
+				}
+			case "small_table_compaction_min_run_length":
+				var minRunLength int
+				minRunLength, err = strconv.Atoi(value)
+				if err == nil {
+					o.SmallTableCompactionMinRunLength = func() int { return minRunLength }
 				}
 			case "table_cache_shards":
 				o.Experimental.FileCacheShards, err = strconv.Atoi(value)

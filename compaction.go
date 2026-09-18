@@ -152,6 +152,10 @@ const (
 	compactionKindRewrite
 	compactionKindIngestedFlushable
 	compactionKindBlobFileRewrite
+	// compactionKindSmallTables denotes a compaction that consolidates a run of
+	// adjacent small tables within a level into a single table. See
+	// pickSmallTableCompaction.
+	compactionKindSmallTables
 	// compactionKindVirtualRewrite must be the last compactionKind.
 	// If a new kind has to be added after VirtualRewrite,
 	// update AllCompactionKindStrings() accordingly.
@@ -182,6 +186,8 @@ func (k compactionKind) String() string {
 		return "copy"
 	case compactionKindBlobFileRewrite:
 		return "blob-file-rewrite"
+	case compactionKindSmallTables:
+		return "small-tables"
 	case compactionKindVirtualRewrite:
 		return "virtual-sst-rewrite"
 	}
@@ -649,6 +655,18 @@ func newCompaction(
 		c.comparer.Compare, c.version, pc.l0Organizer, c.outputLevel.level, c.bounds,
 	)
 	c.kind = pc.kind
+	if c.kind == compactionKindSmallTables && c.startLevel.level == c.outputLevel.level {
+		// A small-table compaction that consolidates a run of tables within its
+		// level must produce exactly one output table; the picker only admits
+		// runs whose merged result the output splitting heuristics would endorse
+		// anyway (it crosses no next-level table boundary, lies within a single
+		// span policy region and fits within the target file size). Disable all
+		// output splitting so that the run cannot be split back into small
+		// tables.
+		c.grandparents = manifest.LevelSlice{}
+		c.maxOverlapBytes = math.MaxUint64
+		c.maxOutputFileSize = math.MaxUint64
+	}
 
 	c.maybeSwitchToMoveOrCopy(preferSharedStorage, provider)
 	c.objCreateOpts = objstorage.CreateOptions{
@@ -689,6 +707,14 @@ func (c *tableCompaction) maybeSwitchToMoveOrCopy(
 		if c.startLevel.files.Len() != 1 || c.outputLevel.level == numLevels-1 {
 			return
 		}
+	case compactionKindSmallTables:
+		// A small-table compaction that moves a run of tables down a level (see
+		// pickSmallTableCompaction) can move any number of tables at once. A
+		// small-table compaction that consolidates a run within its level is
+		// not a candidate.
+		if c.startLevel.level == c.outputLevel.level {
+			return
+		}
 	default:
 		// Other compaction kinds not supported.
 		return
@@ -696,11 +722,15 @@ func (c *tableCompaction) maybeSwitchToMoveOrCopy(
 
 	// We avoid a move or copy if there is lots of overlapping grandparent data.
 	// Otherwise, the move could create a parent file that will require a very
-	// expensive merge later on.
+	// expensive merge later on. A small-table compaction moves a run of
+	// existing tables intact: the grandparent data that each of them overlaps
+	// is unchanged by the move (and it is the run as a whole, not any single
+	// table, that overlaps a lot of it), so the check does not apply.
 	//
 	// Note that if eventualOutputLevel != outputLevel, there are no
 	// "grandparents" on the output level.
-	if c.eventualOutputLevel == c.outputLevel.level && c.grandparents.AggregateSizeSum() > c.maxOverlapBytes {
+	if c.kind != compactionKindSmallTables && c.eventualOutputLevel == c.outputLevel.level &&
+		c.grandparents.AggregateSizeSum() > c.maxOverlapBytes {
 		return
 	}
 
