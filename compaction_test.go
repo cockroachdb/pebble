@@ -3679,3 +3679,41 @@ func TestTombstoneDensityCompactionMoveOptimization_InvalidStats(t *testing.T) {
 	pc := vs.picker.pickAutoNonScore(compactionEnv{diskAvailBytes: 1 << 30})
 	require.Nil(t, pc, "no compaction should be picked if stats are missing or invalid")
 }
+
+// TestMoveCompactionMultipleTables verifies that a move compaction re-links all
+// of its input tables in the output level.
+func TestMoveCompactionMultipleTables(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	cmp := DefaultComparer.Compare
+	var metas []*manifest.TableMetadata
+	for i, keys := range []string{"a-b", "c-d", "e-f"} {
+		parts := strings.Split(keys, "-")
+		m := &manifest.TableMetadata{TableNum: base.TableNum(i + 1), Size: uint64(100 * (i + 1))}
+		m.ExtendPointKeyBounds(cmp,
+			base.MakeInternalKey([]byte(parts[0]), 1, base.InternalKeyKindSet),
+			base.MakeInternalKey([]byte(parts[1]), 1, base.InternalKeyKindSet))
+		m.InitPhysicalBacking()
+		metas = append(metas, m)
+	}
+	c := &tableCompaction{
+		kind: compactionKindMove,
+		inputs: []compactionLevel{
+			{level: 4, files: manifest.NewLevelSliceKeySorted(cmp, metas)},
+			{level: 5},
+		},
+	}
+	c.startLevel, c.outputLevel = &c.inputs[0], &c.inputs[1]
+
+	var d DB
+	ve, _, _, err := d.runMoveCompaction(1, c)
+	require.NoError(t, err)
+	require.Len(t, ve.DeletedTables, len(metas))
+	require.Len(t, ve.NewTables, len(metas))
+	for i, m := range metas {
+		require.Equal(t, m, ve.DeletedTables[manifest.DeletedTableEntry{Level: 4, FileNum: m.TableNum}])
+		require.Equal(t, manifest.NewTableEntry{Level: 5, Meta: m}, ve.NewTables[i])
+	}
+	moved := c.metrics.perLevel.level(5).TablesMoved
+	require.Equal(t, uint64(len(metas)), moved.Count)
+	require.Equal(t, uint64(600), moved.Bytes)
+}
