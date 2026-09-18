@@ -667,30 +667,26 @@ func newCompaction(
 func (c *tableCompaction) maybeSwitchToMoveOrCopy(
 	preferSharedStorage bool, provider objstorage.Provider,
 ) {
-	// Only non-multi-level compactions with a single input file can be
+	// Only non-multi-level compactions with no tables in the output level can be
 	// considered.
-	if c.startLevel.files.Len() != 1 || !c.outputLevel.files.Empty() || c.hasExtraLevelData() {
+	if c.startLevel.files.Empty() || !c.outputLevel.files.Empty() || c.hasExtraLevelData() {
 		return
 	}
 
-	// In addition to the default compaction, we also check whether a tombstone
-	// density compaction can be optimized into a move compaction. However, we
-	// want to avoid performing a move compaction into the lowest level, since the
-	// goal there is to actually remove the tombstones.
-	//
-	// Tombstone density compaction is meant to address cases where tombstones
-	// don't reclaim much space but are still expensive to scan over. We can only
-	// remove the tombstones once there's nothing at all underneath them.
 	switch c.kind {
 	case compactionKindDefault:
-		// Proceed.
+		// Only a single input table can be moved or copied.
+		if c.startLevel.files.Len() != 1 {
+			return
+		}
 	case compactionKindTombstoneDensity:
 		// Tombstone density compaction can be optimized into a move compaction.
 		// However, we want to avoid performing a move compaction into the lowest
 		// level, since the goal there is to actually remove the tombstones; even if
 		// they don't prevent a lot of space from being reclaimed, tombstones can
-		// still be expensive to scan over.
-		if c.outputLevel.level == numLevels-1 {
+		// still be expensive to scan over. We can only remove the tombstones once
+		// there's nothing at all underneath them.
+		if c.startLevel.files.Len() != 1 || c.outputLevel.level == numLevels-1 {
 			return
 		}
 	default:
@@ -708,20 +704,26 @@ func (c *tableCompaction) maybeSwitchToMoveOrCopy(
 		return
 	}
 
-	iter := c.startLevel.files.Iter()
-	meta := iter.First()
-
+	// Shared and external tables can always be moved. We can also move local
+	// tables unless we need the result to be on shared storage.
+	//
 	// We should always be passed a provider, except in some unit tests.
-	isRemote := provider != nil && !objstorage.IsLocalTable(provider, meta.TableBacking.DiskFileNum)
-
-	// Shared and external tables can always be moved. We can also move a local
-	// table unless we need the result to be on shared storage.
-	if isRemote || !preferSharedStorage {
+	allRemote := provider != nil
+	for meta := range c.startLevel.files.All() {
+		allRemote = allRemote && !objstorage.IsLocalTable(provider, meta.TableBacking.DiskFileNum)
+	}
+	if allRemote || !preferSharedStorage {
 		c.kind = compactionKindMove
 		return
 	}
 
-	// We can rewrite the table (regular compaction) or we can use a copy compaction.
+	// We can rewrite the tables (regular compaction) or, if there is a single
+	// table, we can use a copy compaction.
+	if c.startLevel.files.Len() != 1 {
+		return
+	}
+	iter := c.startLevel.files.Iter()
+	meta := iter.First()
 	switch {
 	case meta.Virtual:
 		// We want to avoid a copy compaction if the table is virtual, as we may end
@@ -2649,28 +2651,29 @@ func (d *DB) runCopyCompaction(
 	return ve, compact.Stats{}, []compact.OutputBlob{}, nil
 }
 
+// runMoveCompaction produces the version edit for a move compaction, which
+// re-links every table of the start level in the output level without
+// rewriting it. The compaction must have no tables in the output level.
 func (d *DB) runMoveCompaction(
 	jobID JobID, c *tableCompaction,
 ) (ve *manifest.VersionEdit, stats compact.Stats, blobs []compact.OutputBlob, _ error) {
-	iter := c.startLevel.files.Iter()
-	meta := iter.First()
-	if iter.Next() != nil {
-		return nil, stats, blobs, base.AssertionFailedf("got more than one file for a move compaction")
+	if c.startLevel.files.Empty() || !c.outputLevel.files.Empty() {
+		return nil, stats, blobs, base.AssertionFailedf("move compaction with %d start level tables and %d output level tables",
+			c.startLevel.files.Len(), c.outputLevel.files.Len())
 	}
 	if c.cancel.Load() {
 		return ve, stats, blobs, ErrCancelledCompaction
 	}
 	outputMetrics := c.metrics.perLevel.level(c.outputLevel.level)
-	outputMetrics.TablesMoved.Inc(meta.Size)
 	ve = &manifest.VersionEdit{
-		DeletedTables: map[manifest.DeletedTableEntry]*manifest.TableMetadata{
-			{Level: c.startLevel.level, FileNum: meta.TableNum}: meta,
-		},
-		NewTables: []manifest.NewTableEntry{
-			{Level: c.outputLevel.level, Meta: meta},
-		},
+		DeletedTables: make(map[manifest.DeletedTableEntry]*manifest.TableMetadata, c.startLevel.files.Len()),
+		NewTables:     make([]manifest.NewTableEntry, 0, c.startLevel.files.Len()),
 	}
-
+	for meta := range c.startLevel.files.All() {
+		outputMetrics.TablesMoved.Inc(meta.Size)
+		ve.DeletedTables[manifest.DeletedTableEntry{Level: c.startLevel.level, FileNum: meta.TableNum}] = meta
+		ve.NewTables = append(ve.NewTables, manifest.NewTableEntry{Level: c.outputLevel.level, Meta: meta})
+	}
 	return ve, stats, blobs, nil
 }
 
