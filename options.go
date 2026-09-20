@@ -830,7 +830,6 @@ type Options struct {
 			// The default value is 0 (disabled).
 			PollInterval time.Duration
 
-
 			// MaxAge is the age above which iterators are considered long-lived. If
 			// zero, disables iterator tracking.
 			//
