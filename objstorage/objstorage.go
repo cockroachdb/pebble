@@ -142,6 +142,8 @@ type ObjectMetadata struct {
 	// The fields below are only set if the object is on local storage.
 	Local struct {
 		Tier base.StorageTier
+		// Path is the path to the object on the local filesystem.
+		Path string
 	}
 
 	// The fields below are only set if the object is on remote storage.

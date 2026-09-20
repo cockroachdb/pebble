@@ -286,7 +286,7 @@ func (p *provider) OpenForReading(
 
 	var r objstorage.Readable
 	if !meta.IsRemote() {
-		r, err = p.localOpenForReading(ctx, fileType, fileNum, meta.Local.Tier, opts)
+		r, err = p.localOpenForReading(ctx, meta, opts)
 	} else {
 		r, err = p.remoteOpenForReading(ctx, meta, opts)
 		if err != nil && p.isNotExistError(meta, err) {
@@ -354,7 +354,7 @@ func (p *provider) Remove(fileType base.FileType, fileNum base.DiskFileNum) erro
 	}
 
 	if !meta.IsRemote() {
-		err = p.localRemove(fileType, fileNum, meta.Local.Tier)
+		err = p.localRemove(meta)
 	} else {
 		// TODO(radu): implement remote object removal (i.e. deref).
 		err = p.sharedUnref(meta)
@@ -436,6 +436,7 @@ func (p *provider) LinkOrCopyFromLocal(
 				FileType:    dstFileType,
 			}
 			meta.Local.Tier = tier
+			meta.Local.Path = dstPath
 			p.addMetadata(meta)
 			return meta, nil
 		}
@@ -501,6 +502,9 @@ func (p *provider) Lookup(
 // Path is part of the objstorage.Provider interface.
 func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 	if !meta.IsRemote() {
+		if meta.Local.Path != "" {
+			return meta.Local.Path
+		}
 		_, path := p.localPath(meta.FileType, meta.DiskFileNum, meta.Local.Tier)
 		return path
 	}
@@ -510,7 +514,7 @@ func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 // Size returns the size of the object.
 func (p *provider) Size(meta objstorage.ObjectMetadata) (int64, error) {
 	if !meta.IsRemote() {
-		return p.localSize(meta.FileType, meta.DiskFileNum, meta.Local.Tier)
+		return p.localSize(meta)
 	}
 	return p.remoteSize(meta)
 }
