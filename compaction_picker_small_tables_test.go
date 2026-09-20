@@ -457,3 +457,92 @@ func TestCompactionSmallTables(t *testing.T) {
 		require.Greater(t, numCompactions, int64(0))
 	})
 }
+
+// BenchmarkPickSmallTableCompaction measures the cost of scanning an LSM for a
+// small-table compaction. The LSM is well-formed: L6 has 100K tables, each
+// table in L1-L5 spans exactly five tables of the level below, and the size of
+// a table is proportional to the number of keys it spans (a full-width table
+// has the level's target file size). Then, in each level, ten random tables are
+// broken up into a random number (up to maxPieces) of one-key small tables,
+// followed by a larger leftover table. With maxPieces below K no run of small
+// tables exists, but the small tables defeat the per-level annotator check, so
+// the whole LSM is scanned: the worst case for a pick. With larger values, L6
+// has qualifying runs (possibly very long ones) and the scan stops there.
+func BenchmarkPickSmallTableCompaction(b *testing.B) {
+	const numL6Tables = 100_000
+	const l6TableWidth = 100_000 // keys
+	const baseLevel = 1
+	const brokenPerLevel = 10
+	key := func(i int) []byte { return []byte(fmt.Sprintf("%012d", i)) }
+	for _, k := range []int{3, 4, 5} {
+		for _, maxPieces := range []int{2, 10, 1000, 10000} {
+			b.Run(fmt.Sprintf("k=%d/max-pieces=%d", k, maxPieces), func(b *testing.B) {
+				opts := DefaultOptions()
+				opts.SmallTableCompactionMinRunLength = func() int { return k }
+				rng := rand.New(rand.NewPCG(uint64(k), uint64(maxPieces)))
+				var fileMetas [manifest.NumLevels][]*manifest.TableMetadata
+				var tableNum base.TableNum
+				// addTable adds a table spanning keys [start, start+width) to a
+				// level, with a size proportional to its width.
+				addTable := func(level, start, width int, bytesPerKey float64) {
+					tableNum++
+					m := &manifest.TableMetadata{TableNum: tableNum, Size: uint64(float64(width) * bytesPerKey)}
+					m.ExtendPointKeyBounds(opts.Comparer.Compare,
+						base.MakeInternalKey(key(start), 1, base.InternalKeyKindSet),
+						base.MakeInternalKey(key(start+width-1), 1, base.InternalKeyKindSet))
+					m.SeqNums.Low, m.SeqNums.High, m.LargestSeqNumAbsolute = 1, 1, 1
+					m.InitPhysicalBacking()
+					fileMetas[level] = append(fileMetas[level], m)
+				}
+				n, tableWidth := numL6Tables, l6TableWidth
+				for l := manifest.NumLevels - 1; l >= baseLevel; l-- {
+					bytesPerKey := float64(opts.TargetFileSize(l, baseLevel)) / float64(tableWidth)
+					broken := make(map[int]bool, brokenPerLevel)
+					for len(broken) < brokenPerLevel {
+						broken[rng.IntN(n)] = true
+					}
+					for i := range n {
+						start := i * tableWidth
+						if !broken[i] {
+							addTable(l, start, tableWidth, bytesPerKey)
+							continue
+						}
+						pieces := 1 + rng.IntN(maxPieces)
+						for j := range pieces {
+							addTable(l, start+j, 1, bytesPerKey)
+						}
+						addTable(l, start+pieces, tableWidth-pieces, bytesPerKey)
+					}
+					n /= 5
+					tableWidth *= 5
+				}
+				picker := newPickerForTesting(opts, fileMetas, baseLevel, nil /* inProgressCompactions */)
+				env := compactionEnv{
+					diskAvailBytes:          math.MaxUint64,
+					earliestUnflushedSeqNum: math.MaxUint64,
+					earliestSnapshotSeqNum:  math.MaxUint64,
+				}
+				// Populate the smallest-table-size annotations, which persist
+				// across picks (and across versions, for unchanged B-Tree nodes).
+				pc := picker.pickSmallTableCompaction(env)
+				if (pc != nil) != (maxPieces >= k) {
+					b.Fatalf("expected a compaction to be found iff max-pieces >= K; got %v", pc)
+				}
+				// The scan proceeds bottom-up and stops at the level where the
+				// compaction is found.
+				scannedTables := 0
+				for l := manifest.NumLevels - 1; l >= baseLevel && (pc == nil || l >= pc.startLevel.level); l-- {
+					scannedTables += len(fileMetas[l])
+				}
+				b.ReportAllocs()
+				for b.Loop() {
+					// The picker remembers a fruitless scan; we want to measure the
+					// scan itself.
+					picker.noSmallTableRunsForK = 0
+					picker.pickSmallTableCompaction(env)
+				}
+				b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(scannedTables), "ns/table")
+			})
+		}
+	}
+}
