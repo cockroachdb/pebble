@@ -502,6 +502,9 @@ func (p *provider) Lookup(
 // Path is part of the objstorage.Provider interface.
 func (p *provider) Path(meta objstorage.ObjectMetadata) string {
 	if !meta.IsRemote() {
+		// Local.Path is set for all objects known to the provider. Callers may
+		// pass bare metadata for an object that isn't known (e.g. reportCorruption
+		// for a missing local file); reconstruct the path in that case.
 		if meta.Local.Path != "" {
 			return meta.Local.Path
 		}

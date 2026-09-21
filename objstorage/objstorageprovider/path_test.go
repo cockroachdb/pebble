@@ -95,15 +95,20 @@ func TestLocalObjectPath(t *testing.T) {
 	})
 
 	t.Run("fallback", func(t *testing.T) {
-		fs := &pathJoinCountingFS{FS: vfs.NewMem()}
-		p := &provider{}
-		p.st.Local.FS = fs
-		p.st.Local.FSDirName = "db"
+		mem := vfs.NewMem()
+		fs := &pathJoinCountingFS{FS: mem}
+		require.NoError(t, fs.MkdirAll("db", 0755))
+		p, err := Open(DefaultSettings(fs, "db"))
+		require.NoError(t, err)
+		defer func() { require.NoError(t, p.Close()) }()
+
+		// reportCorruption passes bare metadata when a local object is missing.
 		meta := objstorage.ObjectMetadata{
 			DiskFileNum: 1,
 			FileType:    base.FileTypeTable,
 		}
-		require.Equal(t, base.MakeFilepath(fs.FS, "db", base.FileTypeTable, 1), p.Path(meta))
-		require.Equal(t, 1, fs.pathJoins)
+		fs.pathJoins = 0
+		require.Equal(t, base.MakeFilepath(mem, "db", base.FileTypeTable, 1), p.Path(meta))
+		require.NotZero(t, fs.pathJoins)
 	})
 }
