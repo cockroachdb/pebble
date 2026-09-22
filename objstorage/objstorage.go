@@ -142,6 +142,10 @@ type ObjectMetadata struct {
 	// The fields below are only set if the object is on local storage.
 	Local struct {
 		Tier base.StorageTier
+		// Path is the object's path within the filesystem for Tier (the hot
+		// tier FS or the cold tier FS). It is populated by the provider for all
+		// local objects it knows about; callers should use Provider.Path.
+		Path string
 	}
 
 	// The fields below are only set if the object is on remote storage.
@@ -200,6 +204,9 @@ func (meta *ObjectMetadata) Placement() base.Placement {
 // AssertValid checks that the metadata is sane.
 func (meta *ObjectMetadata) AssertValid() {
 	if !meta.IsRemote() {
+		if meta.Local.Path == "" {
+			panic(errors.AssertionFailedf("meta.Local.Path not set"))
+		}
 		// Verify all Remote fields are empty.
 		if meta.Remote != (ObjectMetadata{}).Remote {
 			panic(errors.AssertionFailedf("meta.Remote not empty: %#v", errors.Safe(meta.Remote)))

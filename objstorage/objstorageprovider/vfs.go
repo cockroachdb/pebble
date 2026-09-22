@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble/internal/base"
+	"github.com/cockroachdb/pebble/internal/invariants"
 	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/cockroachdb/pebble/vfs"
 )
@@ -73,10 +74,24 @@ func (ls *localLockedState) objChanged(meta objstorage.ObjectMetadata) {
 func (p *provider) localPath(
 	fileType base.FileType, fileNum base.DiskFileNum, tier base.StorageTier,
 ) (vfs.FS, string) {
+	fs, dir := p.localTierFS(tier)
+	return fs, base.MakeFilepath(fs, dir, fileType, fileNum)
+}
+
+// localFS returns the filesystem backing the given tier. It falls back to the
+// hot tier when no cold tier filesystem is configured.
+func (p *provider) localFS(tier base.StorageTier) vfs.FS {
+	fs, _ := p.localTierFS(tier)
+	return fs
+}
+
+// localTierFS returns the filesystem and directory backing the given tier. It
+// falls back to the hot tier when no cold tier filesystem is configured.
+func (p *provider) localTierFS(tier base.StorageTier) (vfs.FS, string) {
 	if coldFS := p.st.Local.ColdTier.FS; tier == base.ColdTier && coldFS != nil {
-		return coldFS, base.MakeFilepath(coldFS, p.st.Local.ColdTier.FSDirName, fileType, fileNum)
+		return coldFS, p.st.Local.ColdTier.FSDirName
 	}
-	return p.st.Local.FS, base.MakeFilepath(p.st.Local.FS, p.st.Local.FSDirName, fileType, fileNum)
+	return p.st.Local.FS, p.st.Local.FSDirName
 }
 
 // metaFileType returns the file type for a file that contains only the metadata
@@ -119,17 +134,14 @@ func offsetFromMetaPath(filename string) (startOffset int64, ok bool) {
 }
 
 func (p *provider) localOpenForReading(
-	ctx context.Context,
-	fileType base.FileType,
-	fileNum base.DiskFileNum,
-	tier base.StorageTier,
-	opts objstorage.OpenOptions,
+	ctx context.Context, meta objstorage.ObjectMetadata, opts objstorage.OpenOptions,
 ) (objstorage.Readable, error) {
-	fs, filename := p.localPath(fileType, fileNum, tier)
+	fs := p.localFS(meta.Local.Tier)
+	filename := meta.Local.Path
 	file, err := fs.Open(filename, vfs.RandomReadsOption)
 	if err != nil {
 		if opts.MustExist && p.IsNotExistError(err) {
-			err = base.AddDetailsToNotExistError(p.st.Local.FS, filename, err)
+			err = base.AddDetailsToNotExistError(fs, filename, err)
 			err = base.MarkCorruptionError(err)
 		}
 		return nil, err
@@ -138,9 +150,11 @@ func (p *provider) localOpenForReading(
 	if err != nil {
 		return nil, err
 	}
-	if tier == base.ColdTier {
-		if startOffset, ok := p.getColdObjectMetaFile(fileType, fileNum); ok {
-			metaPath := p.metaPath(fileType, fileNum, startOffset)
+	if meta.Local.Tier == base.ColdTier {
+		if startOffset, ok := p.getColdObjectMetaFile(meta.FileType, meta.DiskFileNum); ok {
+			// TODO: Store this path in metaFileInfo to avoid reconstructing it on
+			// every open and removal of a cold-tier object.
+			metaPath := p.metaPath(meta.FileType, meta.DiskFileNum, startOffset)
 			return newColdReadableWithHotMeta(r, p.st.Local.FS, metaPath, startOffset), nil
 		}
 	}
@@ -172,6 +186,7 @@ func (p *provider) vfsCreate(
 		FileType:    fileType,
 	}
 	meta.Local.Tier = tier
+	meta.Local.Path = filename
 	w := objstorage.Writable(newFileBufferedWritable(file))
 	if tier == base.ColdTier {
 		w = newColdWritable(p, fileType, fileNum, w, category)
@@ -179,15 +194,13 @@ func (p *provider) vfsCreate(
 	return w, meta, nil
 }
 
-func (p *provider) localRemove(
-	fileType base.FileType, fileNum base.DiskFileNum, tier base.StorageTier,
-) error {
-	fs, path := p.localPath(fileType, fileNum, tier)
-	err := p.st.Local.FSCleaner.Clean(fs, fileType, path)
-	if tier == base.ColdTier {
-		if startOffset, ok := p.popColdObjectMetaFile(fileType, fileNum); ok {
-			metaPath := p.metaPath(fileType, fileNum, startOffset)
-			metaFileType := metaFileType(fileType)
+func (p *provider) localRemove(meta objstorage.ObjectMetadata) error {
+	fs := p.localFS(meta.Local.Tier)
+	err := p.st.Local.FSCleaner.Clean(fs, meta.FileType, meta.Local.Path)
+	if meta.Local.Tier == base.ColdTier {
+		if startOffset, ok := p.popColdObjectMetaFile(meta.FileType, meta.DiskFileNum); ok {
+			metaPath := p.metaPath(meta.FileType, meta.DiskFileNum, startOffset)
+			metaFileType := metaFileType(meta.FileType)
 			err = firstError(err, p.st.Local.FSCleaner.Clean(p.st.Local.FS, metaFileType, metaPath))
 		}
 	}
@@ -219,6 +232,10 @@ func (p *provider) localInit() error {
 					DiskFileNum: fileNum,
 				}
 				o.Local.Tier = base.HotTier
+				_, o.Local.Path = p.localPath(o.FileType, o.DiskFileNum, o.Local.Tier)
+				if invariants.Enabled {
+					o.AssertValid()
+				}
 				p.mu.knownObjects[o.DiskFileNum] = o
 			}
 		}
@@ -246,6 +263,10 @@ func (p *provider) localInit() error {
 						DiskFileNum: fileNum,
 					}
 					o.Local.Tier = base.ColdTier
+					_, o.Local.Path = p.localPath(o.FileType, o.DiskFileNum, o.Local.Tier)
+					if invariants.Enabled {
+						o.AssertValid()
+					}
 					if _, exists := p.mu.knownObjects[o.DiskFileNum]; exists {
 						p.st.Logger.Errorf("object %s exists on both tiers; using hot tier version", o.DiskFileNum)
 					} else {
@@ -327,11 +348,9 @@ func (p *provider) localSync() error {
 	return nil
 }
 
-func (p *provider) localSize(
-	fileType base.FileType, fileNum base.DiskFileNum, tier base.StorageTier,
-) (int64, error) {
-	fs, filename := p.localPath(fileType, fileNum, tier)
-	stat, err := fs.Stat(filename)
+func (p *provider) localSize(meta objstorage.ObjectMetadata) (int64, error) {
+	fs := p.localFS(meta.Local.Tier)
+	stat, err := fs.Stat(meta.Local.Path)
 	if err != nil {
 		return 0, err
 	}
