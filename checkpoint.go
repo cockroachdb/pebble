@@ -511,11 +511,11 @@ func copyCheckpointOptions(fs vfs.FS, srcPath, dstPath string) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(nf, &buf)
-	if err != nil {
+	defer nf.Close()
+	if _, err = io.Copy(nf, &buf); err != nil {
 		return err
 	}
-	return errors.CombineErrors(nf.Sync(), nf.Close())
+	return nf.Sync()
 }
 
 func (d *DB) writeCheckpointManifest(
