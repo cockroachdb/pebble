@@ -3,6 +3,9 @@ name: Nightlies (master)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     strategy:
