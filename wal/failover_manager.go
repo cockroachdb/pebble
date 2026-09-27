@@ -400,6 +400,11 @@ type lastWriterInfo struct {
 	numSwitches            int
 	ongoingLatencyAtSwitch time.Duration
 	errorCounts            [numDirIndices]int
+	// switchLimitReached is set when switchToNewDir returns a non-nil error
+	// (the only such error is "exceeded switching limit"). Further switch
+	// attempts for this writer are skipped so monitor bookkeeping stays
+	// aligned with the writer's last successful directory.
+	switchLimitReached bool
 }
 
 func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
@@ -470,30 +475,42 @@ func (m *failoverMonitor) monitorLoop(shouldQuiesce <-chan struct{}) {
 					}
 				}
 			}
+			if lastWriter.switchLimitReached {
+				switchDir = false
+			}
 			if switchDir {
-				lastWriter.numSwitches++
+				nextDirIndex := secondaryDirIndex
 				if dirIndex == secondaryDirIndex {
-					// Switching back to primary, so don't need to probe to see if
-					// primary is healthy.
-					m.prober.disableProbing()
-					dirIndex = primaryDirIndex
-				} else {
-					m.prober.enableProbing()
-					dirIndex = secondaryDirIndex
+					nextDirIndex = primaryDirIndex
 				}
-				dir := m.opts.dirs[dirIndex]
+				dir := m.opts.dirs[nextDirIndex]
 				m.mu.Lock()
-				now := m.opts.timeSource.now()
-				m.accumulateDurationLocked(now)
-				m.mu.dirIndex = dirIndex
-				m.mu.dirSwitchCount++
-				if dirIndex == primaryDirIndex {
-					m.mu.lastFailBackTime = now
-				}
+				var switchErr error
 				if m.mu.writer != nil {
-					_ = m.mu.writer.switchToNewDir(dir)
+					switchErr = m.mu.writer.switchToNewDir(dir)
 				}
-				m.mu.Unlock()
+				if switchErr != nil {
+					lastWriter.switchLimitReached = true
+					m.mu.Unlock()
+				} else {
+					lastWriter.numSwitches++
+					now := m.opts.timeSource.now()
+					m.accumulateDurationLocked(now)
+					m.mu.dirIndex = nextDirIndex
+					m.mu.dirSwitchCount++
+					if nextDirIndex == primaryDirIndex {
+						m.mu.lastFailBackTime = now
+					}
+					m.mu.Unlock()
+					if nextDirIndex == primaryDirIndex {
+						// Switching back to primary, so don't need to probe to see if
+						// primary is healthy.
+						m.prober.disableProbing()
+					} else {
+						m.prober.enableProbing()
+					}
+					dirIndex = nextDirIndex
+				}
 			}
 		}
 		if m.opts.monitorStateForTesting != nil {
