@@ -135,7 +135,9 @@ func (eb UserKeyBoundary) CompareUpperBounds(cmp Compare, other UserKeyBoundary)
 // UserKeyBounds is a user key interval with an inclusive start boundary and
 // with an end boundary that can be either inclusive or exclusive.
 //
-// Unset bounds are not valid (but can be used as the identity for Union).
+// The zero value is not Valid (its end boundary is exclusive) and acts as the
+// identity for Union. Nil and empty keys are otherwise equivalent, so bounds
+// such as UserKeyBoundsInclusive(nil, nil) hold exactly the empty key.
 type UserKeyBounds struct {
 	Start []byte
 	End   UserKeyBoundary
@@ -178,14 +180,16 @@ func UserKeyBoundsFromInternal(smallest, largest InternalKey) UserKeyBounds {
 }
 
 // IsUnset returns true if the bounds are the zero value (no start key and no
-// end key). Unset bounds are not Valid and act as the identity for Union.
+// end key). Unset bounds act as the identity for Union.
 func (b *UserKeyBounds) IsUnset() bool {
 	return b.Start == nil && b.End.Key == nil
 }
 
-// Valid returns true if the bounds contain at least a user key.
+// Valid returns true if the bounds contain at least a user key. A nil key is
+// treated the same as an empty key, so an inclusive (nil, nil) range is valid
+// while the zero value, whose end is exclusive, is not.
 func (b *UserKeyBounds) Valid(cmp Compare) bool {
-	return !b.IsUnset() && b.End.IsUpperBoundFor(cmp, b.Start)
+	return b.End.IsUpperBoundFor(cmp, b.Start)
 }
 
 // Overlaps returns true if the bounds overlap.
