@@ -471,7 +471,7 @@ func (d *DB) Checkpoint(
 // database. For example, the entire [WAL Failover] stanza is commented out
 // because Checkpoint will copy all WAL segment files from both the primary and
 // secondary WAL directories into the checkpoint.
-func copyCheckpointOptions(fs vfs.FS, srcPath, dstPath string) error {
+func copyCheckpointOptions(fs vfs.FS, srcPath, dstPath string) (err error) {
 	var buf bytes.Buffer
 	f, err := fs.Open(srcPath)
 	if err != nil {
@@ -511,11 +511,13 @@ func copyCheckpointOptions(fs vfs.FS, srcPath, dstPath string) error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(nf, &buf)
-	if err != nil {
+	defer func() {
+		err = errors.CombineErrors(err, nf.Close())
+	}()
+	if _, err = io.Copy(nf, &buf); err != nil {
 		return err
 	}
-	return errors.CombineErrors(nf.Sync(), nf.Close())
+	return nf.Sync()
 }
 
 func (d *DB) writeCheckpointManifest(
