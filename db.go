@@ -420,6 +420,11 @@ type DB struct {
 			cond sync.Cond
 			// True when a flush is in progress.
 			flushing bool
+			// True while a retry is delayed after a flush error. flushing and
+			// flushRetrying are mutually exclusive.
+			flushRetrying bool
+			// The current backoff between consecutive flush errors.
+			flushRetryBackoff time.Duration
 			// The number of ongoing non-download compactions.
 			compactingCount int
 			// The number of calls to compact that have not yet finished. This is different
@@ -1866,7 +1871,8 @@ func (d *DB) Close() error {
 
 	defer d.cacheHandle.Close()
 
-	for d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 || d.mu.compact.flushing {
+	for d.mu.compact.compactingCount > 0 || d.mu.compact.downloadingCount > 0 ||
+		d.mu.compact.flushing || d.mu.compact.flushRetrying {
 		d.mu.compact.cond.Wait()
 	}
 	for d.mu.tableStats.loading {

@@ -134,6 +134,9 @@ func (c *compactionWritable) Write(p []byte) error {
 
 type compactionKind int
 
+// Flush retries start quickly to recover from transient errors, but eventually
+// settle at one attempt every five seconds to bound CPU and BackgroundError
+// callback churn during persistent failures.
 const (
 	compactionKindDefault compactionKind = iota
 	compactionKindFlush
@@ -1370,11 +1373,26 @@ func (d *DB) calculateDiskAvailableBytes() uint64 {
 	return space.AvailBytes
 }
 
+const (
+	flushRetryInitialBackoff = 100 * time.Millisecond
+	flushRetryMaxBackoff     = 5 * time.Second
+)
+
+func nextFlushRetryBackoff(previous time.Duration) time.Duration {
+	if previous == 0 {
+		return flushRetryInitialBackoff
+	}
+	if previous >= flushRetryMaxBackoff/2 {
+		return flushRetryMaxBackoff
+	}
+	return 2 * previous
+}
+
 // maybeScheduleFlush schedules a flush if necessary.
 //
 // d.mu must be held when calling this.
 func (d *DB) maybeScheduleFlush() {
-	if d.mu.compact.flushing || d.closed.Load() != nil || d.opts.ReadOnly {
+	if d.mu.compact.flushing || d.mu.compact.flushRetrying || d.closed.Load() != nil || d.opts.ReadOnly {
 		return
 	}
 	if len(d.mu.mem.queue) <= 1 {
@@ -1387,6 +1405,33 @@ func (d *DB) maybeScheduleFlush() {
 
 	d.mu.compact.flushing = true
 	go d.flush()
+}
+
+// scheduleFlushRetry schedules another flush attempt after delay. It prevents
+// other callers from scheduling a flush in the meantime. d.mu must be held
+// when calling this.
+func (d *DB) scheduleFlushRetry(delay time.Duration) {
+	d.mu.compact.flushRetrying = true
+	go func() {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+
+		select {
+		case <-d.closedCh:
+		case <-timer.C:
+		}
+
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.mu.compact.flushRetrying = false
+		d.maybeScheduleFlush()
+		if !d.mu.compact.flushing {
+			// There is no longer any flush work to retry. Treat a future error
+			// as the beginning of a new sequence.
+			d.mu.compact.flushRetryBackoff = 0
+		}
+		d.mu.compact.cond.Broadcast()
+	}()
 }
 
 func (d *DB) passedFlushThreshold() bool {
@@ -1477,9 +1522,13 @@ func (d *DB) flush() {
 		idleDuration := flushingWorkStart.Sub(d.mu.compact.noOngoingFlushStartTime)
 		var bytesFlushed uint64
 		var err error
+		var retryDelay time.Duration
 		if bytesFlushed, err = d.flush1(); err != nil {
-			// TODO(peter): count consecutive flush errors and backoff.
+			d.mu.compact.flushRetryBackoff = nextFlushRetryBackoff(d.mu.compact.flushRetryBackoff)
+			retryDelay = d.mu.compact.flushRetryBackoff
 			d.opts.EventListener.BackgroundError(err)
+		} else {
+			d.mu.compact.flushRetryBackoff = 0
 		}
 		d.mu.compact.flushing = false
 		d.mu.compact.noOngoingFlushStartTime = crtime.NowMono()
@@ -1487,9 +1536,15 @@ func (d *DB) flush() {
 		d.mu.compact.flushWriteThroughput.Bytes += int64(bytesFlushed)
 		d.mu.compact.flushWriteThroughput.WorkDuration += workDuration
 		d.mu.compact.flushWriteThroughput.IdleDuration += idleDuration
-		// More flush work may have arrived while we were flushing, so schedule
-		// another flush if needed.
-		d.maybeScheduleFlush()
+		if retryDelay > 0 {
+			// A failed flush leaves the same work queued. Delay its retry rather
+			// than immediately starting another failing flush.
+			d.scheduleFlushRetry(retryDelay)
+		} else {
+			// More flush work may have arrived while we were flushing, so schedule
+			// another flush if needed.
+			d.maybeScheduleFlush()
+		}
 		// Let the CompactionScheduler know, so that it can react immediately to
 		// an increase in DB.GetAllowedWithoutPermission.
 		d.compactionScheduler.UpdateGetAllowedWithoutPermission()
