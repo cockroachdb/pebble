@@ -389,7 +389,7 @@ func Copy(fs FS, oldname, newname string) error {
 
 // CopyAcrossFS copies the contents of oldname on srcFS to newname dstFS. If
 // newname exists, it will be overwritten.
-func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) error {
+func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) (err error) {
 	src, err := srcFS.Open(oldname, SequentialReadsOption)
 	if err != nil {
 		return err
@@ -400,9 +400,11 @@ func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) error {
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() {
+		err = errors.CombineErrors(err, dst.Close())
+	}()
 
-	if _, err := io.Copy(dst, src); err != nil {
+	if _, err = io.Copy(dst, src); err != nil {
 		return err
 	}
 	return dst.Sync()
@@ -410,7 +412,7 @@ func CopyAcrossFS(srcFS FS, oldname string, dstFS FS, newname string) error {
 
 // LimitedCopy copies up to maxBytes from oldname to newname. If newname
 // exists, it will be overwritten.
-func LimitedCopy(fs FS, oldname, newname string, maxBytes int64) error {
+func LimitedCopy(fs FS, oldname, newname string, maxBytes int64) (err error) {
 	src, err := fs.Open(oldname, SequentialReadsOption)
 	if err != nil {
 		return err
@@ -421,9 +423,11 @@ func LimitedCopy(fs FS, oldname, newname string, maxBytes int64) error {
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() {
+		err = errors.CombineErrors(err, dst.Close())
+	}()
 
-	if _, err := io.Copy(dst, &io.LimitedReader{R: src, N: maxBytes}); err != nil {
+	if _, err = io.Copy(dst, &io.LimitedReader{R: src, N: maxBytes}); err != nil {
 		return err
 	}
 	return dst.Sync()
